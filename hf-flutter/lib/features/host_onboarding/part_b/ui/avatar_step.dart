@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/api/api_error.dart';
-import '../../../../core/theme/hf_tokens.dart';
+import '../../../../core/theme/hf_theme.dart';
 import '../../../../core/widgets/widgets.dart';
 import '../../../host_profile/ui/widgets/net_image.dart';
 import '../../../kyc/kyc.dart';
@@ -71,10 +71,16 @@ class _AvatarStepState extends ConsumerState<AvatarStep> {
     } on ApiError catch (e) {
       if (!mounted) return;
       final taken = e.code == 'avatar_taken';
-      OnboardingTelemetry.step('avatar', taken ? 'taken' : 'error', reason: e.code, status: e.status);
+      OnboardingTelemetry.step(
+        'avatar',
+        taken ? 'taken' : 'error',
+        reason: e.code,
+        status: e.status,
+      );
       setState(() {
         _claiming = null;
-        _message = e.message ?? (taken ? PartBCopy.avatarClaimFailed : e.userMessage);
+        _message =
+            e.message ?? (taken ? PartBCopy.avatarClaimFailed : e.userMessage);
       });
       if (taken) ref.invalidate(avatarCatalogProvider);
     }
@@ -112,7 +118,9 @@ class _AvatarStepState extends ConsumerState<AvatarStep> {
               key: const ValueKey<String>('avatar-continue'),
               label: PartBCopy.continueLabel,
               loading: _busy,
-              onPressed: (chosen != null || lock.avatarLocked) ? _continue : null,
+              onPressed: (chosen != null || lock.avatarLocked)
+                  ? _continue
+                  : null,
             ),
           ],
         ),
@@ -123,7 +131,10 @@ class _AvatarStepState extends ConsumerState<AvatarStep> {
   Widget _grid(List<AvatarChoice> all, EditLock lock) {
     final shown = [
       for (final a in all)
-        if ((_gender == 'all' || a.gender == _gender) && (_age == 'all' || a.age == _age) && (_look == 'all' || a.look == _look)) a,
+        if ((_gender == 'all' || a.gender == _gender) &&
+            (_age == 'all' || a.age == _age) &&
+            (_look == 'all' || a.look == _look))
+          a,
     ];
     final banner = lock.banner();
     final locked = lock.avatarLocked;
@@ -131,16 +142,27 @@ class _AvatarStepState extends ConsumerState<AvatarStep> {
     return CustomScrollView(
       slivers: [
         SliverPadding(
-          padding: const EdgeInsets.fromLTRB(HfSpacing.page, 8, HfSpacing.page, 8),
+          padding: const EdgeInsets.fromLTRB(
+            HfSpacing.page,
+            8,
+            HfSpacing.page,
+            8,
+          ),
           sliver: SliverToBoxAdapter(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 const HfScene(kind: HfSceneKind.profile, height: 128),
                 const SizedBox(height: 20),
-                const Text(PartBCopy.avatarTitle, style: HfText.title),
+                Text(
+                  PartBCopy.avatarTitle,
+                  style: HfText.of(context, HfText.title),
+                ),
                 const SizedBox(height: 8),
-                const Text(PartBCopy.avatarLead, style: HfText.bodyText),
+                Text(
+                  PartBCopy.avatarLead,
+                  style: HfText.of(context, HfText.body),
+                ),
                 const SizedBox(height: 16),
                 if (banner != null) LockBanner(banner),
                 _FilterRow(
@@ -191,7 +213,11 @@ class _AvatarStepState extends ConsumerState<AvatarStep> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    const Text(PartBCopy.avatarNone, style: HfText.bodyStrong, textAlign: TextAlign.center),
+                    Text(
+                      PartBCopy.avatarNone,
+                      style: HfText.of(context, HfText.bodyStrong),
+                      textAlign: TextAlign.center,
+                    ),
                     const SizedBox(height: 12),
                     HfButton(
                       key: const ValueKey<String>('avatar-show-all'),
@@ -213,7 +239,11 @@ class _AvatarStepState extends ConsumerState<AvatarStep> {
             padding: const EdgeInsets.symmetric(horizontal: HfSpacing.page),
             sliver: SliverGrid(
               gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: MediaQuery.sizeOf(context).width < 360 || MediaQuery.textScalerOf(context).scale(14) > 20 ? 1 : (MediaQuery.sizeOf(context).width >= 720 ? 3 : 2),
+                crossAxisCount:
+                    MediaQuery.sizeOf(context).width < 360 ||
+                        MediaQuery.textScalerOf(context).scale(14) > 20
+                    ? 1
+                    : (MediaQuery.sizeOf(context).width >= 720 ? 3 : 2),
                 mainAxisSpacing: 12,
                 crossAxisSpacing: 12,
                 childAspectRatio: 0.86,
@@ -230,9 +260,19 @@ class _AvatarStepState extends ConsumerState<AvatarStep> {
               ),
             ),
           ),
-        const SliverPadding(
-          padding: EdgeInsets.fromLTRB(HfSpacing.page, 16, HfSpacing.page, 24),
-          sliver: SliverToBoxAdapter(child: Text(PartBCopy.avatarNote, style: HfText.note)),
+        SliverPadding(
+          padding: const EdgeInsets.fromLTRB(
+            HfSpacing.page,
+            16,
+            HfSpacing.page,
+            24,
+          ),
+          sliver: SliverToBoxAdapter(
+            child: Text(
+              PartBCopy.avatarNote,
+              style: HfText.of(context, HfText.note),
+            ),
+          ),
         ),
       ],
     );
@@ -261,7 +301,10 @@ class _FilterRow extends StatelessWidget {
       children: [
         Padding(
           padding: const EdgeInsets.only(top: 4, bottom: 2),
-          child: Semantics(header: true, child: Text(legend, style: HfText.label)),
+          child: Semantics(
+            header: true,
+            child: Text(legend, style: HfText.of(context, HfText.label)),
+          ),
         ),
         Wrap(
           spacing: 8,
@@ -298,7 +341,8 @@ class _AvatarTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final radius = BorderRadius.circular(HfRadius.card);
+    final radius = BorderRadius.circular(HfRadius.tileSmall);
+    final dark = HfBrightness.isDark(context);
     final enabled = onTap != null && !avatar.taken;
     return Semantics(
       button: true,
@@ -312,26 +356,48 @@ class _AvatarTile extends StatelessWidget {
         onTap: enabled ? onTap : null,
         child: Container(
           decoration: BoxDecoration(
-            color: HfColors.white,
-            boxShadow: HfShadows.card,
+            color: dark ? HfColors.darkCard : HfColors.white,
             borderRadius: radius,
-            border: Border.all(color: selected ? HfColors.ink : HfColors.line, width: selected ? 3 : 1.5),
+            border: Border.all(
+              color: selected
+                  ? (dark ? HfColors.lavenderLight : HfColors.ink)
+                  : (dark ? HfColors.darkLine : HfColors.line),
+              width: selected ? 2 : 1,
+            ),
           ),
           child: ClipRRect(
-            borderRadius: BorderRadius.circular(HfRadius.card - 2),
+            borderRadius: BorderRadius.circular(HfRadius.tileSmall - 2),
             child: Stack(
               fit: StackFit.expand,
               children: [
-                Opacity(opacity: avatar.taken ? 0.45 : 1, child: image(context, avatar.url, fit: BoxFit.cover)),
-                const Positioned(left: 8, bottom: 8, child: AiLabel(text: PartBCopy.avatarAiLabel)),
+                Opacity(
+                  opacity: avatar.taken ? 0.45 : 1,
+                  child: image(context, avatar.url, fit: BoxFit.cover),
+                ),
+                const Positioned(
+                  left: 8,
+                  bottom: 8,
+                  child: AiLabel(text: PartBCopy.avatarAiLabel),
+                ),
                 if (avatar.taken)
                   Positioned(
                     top: 8,
                     left: 8,
                     child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                      decoration: BoxDecoration(color: HfColors.butter, borderRadius: BorderRadius.circular(HfRadius.pill)),
-                      child: const Text(PartBCopy.avatarTaken, style: HfText.badge),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 5,
+                      ),
+                      decoration: BoxDecoration(
+                        color: HfTint.butter.bg(context),
+                        borderRadius: BorderRadius.circular(
+                          HfRadius.pillRadius,
+                        ),
+                      ),
+                      child: Text(
+                        PartBCopy.avatarTaken,
+                        style: HfText.of(context, HfText.badge),
+                      ),
                     ),
                   ),
                 if (selected)
@@ -340,13 +406,17 @@ class _AvatarTile extends StatelessWidget {
                     right: 8,
                     child: CircleAvatar(
                       radius: 16,
-                      backgroundColor: HfColors.orchid,
-                      child: Icon(Icons.check_rounded, size: 20, color: HfColors.white),
+                      backgroundColor: HfColors.ink,
+                      child: Icon(
+                        Icons.check_rounded,
+                        size: 20,
+                        color: HfColors.white,
+                      ),
                     ),
                   ),
                 if (claiming)
                   Container(
-                    color: const Color(0x66FFFDF7),
+                    color: HfColors.white.withValues(alpha: 0.4),
                     alignment: Alignment.center,
                     child: const CircularProgressIndicator(),
                   ),

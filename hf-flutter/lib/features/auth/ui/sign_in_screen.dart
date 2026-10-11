@@ -11,7 +11,7 @@ import '../../../core/router/nav.dart';
 import '../../../core/router/pending_intent.dart';
 import '../data/registration_progress.dart';
 import '../../../core/router/routes.dart';
-import '../../../core/theme/hf_tokens.dart';
+import '../../../core/theme/hf_theme.dart';
 import '../../../core/widgets/widgets.dart';
 import '../../welcome/data/ack_service.dart';
 import '../data/auth_messages.dart';
@@ -21,17 +21,19 @@ import 'code_boxes.dart';
 /// Copy of the sign-in screens. Matches the website's WhatsApp sign-in, in simple English.
 abstract final class SignInCopy {
   static const String title = 'Your next hello';
-  static const String numberHint = "We'll send a private 6-digit WhatsApp code. New here? You can create an account with the same number.";
+  static const String numberHint = "We'll send a code on WhatsApp.";
   static const String prefix = '+91';
   static const String numberLabel = 'WhatsApp number';
   static const String numberPlaceholder = '10-digit number';
   static const String sendCode = 'Send code on WhatsApp';
-  static const String ageTick = "I'm 18 or over and I agree to the terms and safety rules.";
+  static const String ageTick =
+      "I'm 18 or over and I agree to the terms and safety rules.";
   static const String terms = 'Terms';
   static const String safety = 'Safety';
 
   static const String codeTitle = 'Enter the code';
-  static String sentTo(String masked) => 'We sent a 6-digit code on WhatsApp to $masked.';
+  static String sentTo(String masked) =>
+      'We sent a 6-digit code on WhatsApp to $masked.';
   static const String verify = 'Verify and log in';
   static const String resend = 'Send a new code';
   static String resendIn(int s) => 'Send a new code in ${s}s';
@@ -62,10 +64,13 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
     final ack = ref.read(ackServiceProvider);
     _c = SignInController(
       api: ref.read(apiClientProvider),
-      redeem: (ticket, {String? phone}) =>
-          ref.read(sessionProvider.notifier).signInWithTicket(ticket, phone: phone),
-      onNewAccount: () => ref.read(registrationProgressProvider).markNewAccount(),
-      afterSignIn: ({required bool tickedNow}) => ack.syncToServer(tickedNow: tickedNow),
+      redeem: (ticket, {String? phone}) => ref
+          .read(sessionProvider.notifier)
+          .signInWithTicket(ticket, phone: phone),
+      onNewAccount: () =>
+          ref.read(registrationProgressProvider).markNewAccount(),
+      afterSignIn: ({required bool tickedNow}) =>
+          ack.syncToServer(tickedNow: tickedNow),
       readAcked: () async => (await ack.readLocal()) != null,
     );
     unawaited(_c.init());
@@ -164,7 +169,11 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
         return PopScope(
           canPop: !onCode,
           onPopInvokedWithResult: (didPop, result) {
-            if (!didPop) { _c.changeNumber(); } else if (result != true) { unawaited(ref.read(pendingIntentProvider).clear()); }
+            if (!didPop) {
+              _c.changeNumber();
+            } else if (result != true) {
+              unawaited(ref.read(pendingIntentProvider).clear());
+            }
           },
           child: Scaffold(
             appBar: AppBar(
@@ -174,18 +183,38 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
                 icon: const Icon(Icons.arrow_back_rounded),
                 onPressed: _back,
               ),
-              title: Text(onCode ? SignInCopy.codeTitle : SignInCopy.title),
             ),
             body: SafeArea(
               child: ListView(
-                padding: const EdgeInsets.all(HfSpacing.page),
+                padding: const EdgeInsets.fromLTRB(
+                  HfSpacing.pageWide,
+                  0,
+                  HfSpacing.pageWide,
+                  HfSpacing.section,
+                ),
                 children: [
                   const HfScene(kind: HfSceneKind.welcome, height: 150),
                   const SizedBox(height: 20),
-                  HfCard(child: Column(crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: onCode ? _codeStep() : _numberStep())),
+                  Semantics(
+                    header: true,
+                    child: Text(
+                      onCode ? SignInCopy.codeTitle : SignInCopy.title,
+                      style: HfText.of(context, HfText.headline),
+                    ),
+                  ),
+                  const SizedBox(height: HfSpacing.lg),
+                  HfCard(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: onCode ? _codeStep() : _numberStep(),
+                    ),
+                  ),
                   const SizedBox(height: 16),
-                  const Text('Your number stays private from other people.', style: HfText.note, textAlign: TextAlign.center),
+                  Text(
+                    'Your number stays private from other people.',
+                    style: HfText.of(context, HfText.note),
+                    textAlign: TextAlign.center,
+                  ),
                 ],
               ),
             ),
@@ -200,26 +229,53 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
   List<Widget> _numberStep() {
     final phoneError = _c.errorField == 'phone' ? _c.error : null;
     return [
-      Wrap(spacing: 8, runSpacing: 8, children: [
-        ChoiceChip(label: const Text('Log in'), selected: !_c.registration, onSelected: (_) => _c.setRegistration(false)),
-        ChoiceChip(label: const Text('Create account'), selected: _c.registration, onSelected: (_) => _c.setRegistration(true)),
-      ]),
+      Wrap(
+        spacing: 8,
+        runSpacing: 0,
+        children: [
+          HfChip(
+            label: 'Log in',
+            selected: !_c.registration,
+            onTap: () => _c.setRegistration(false),
+          ),
+          HfChip(
+            label: 'Create account',
+            selected: _c.registration,
+            onTap: () => _c.setRegistration(true),
+          ),
+        ],
+      ),
       const SizedBox(height: 16),
-      Text(_c.registration ? 'Your account starts with a verified WhatsApp number. Please accept the age and safety rules below.' : SignInCopy.numberHint, style: HfText.bodyText),
+      Text(
+        _c.registration
+            ? 'Your account starts with a verified WhatsApp number. Please accept the age and safety rules below.'
+            : SignInCopy.numberHint,
+        style: HfText.of(context, HfText.note),
+      ),
       const SizedBox(height: HfSpacing.gapLarge),
       Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Container(
-            height: 56,
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            alignment: Alignment.center,
-            decoration: BoxDecoration(
-              color: HfColors.lilac,
-              borderRadius: BorderRadius.circular(HfRadius.control),
-              border: Border.all(color: HfColors.line, width: 1.5),
-            ),
-            child: const Text(SignInCopy.prefix, style: HfText.bodyStrong),
+          Builder(
+            builder: (context) {
+              final dark = HfBrightness.isDark(context);
+              return Container(
+                height: 56,
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: dark ? HfColors.darkTile : HfColors.surfaceSoft,
+                  borderRadius: BorderRadius.circular(HfRadius.input),
+                  border: Border.all(
+                    color: dark ? HfColors.darkLine : HfColors.line,
+                  ),
+                ),
+                child: Text(
+                  SignInCopy.prefix,
+                  style: HfText.of(context, HfText.bodyStrong),
+                ),
+              );
+            },
           ),
           const SizedBox(width: 12),
           Expanded(
@@ -230,9 +286,8 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
               keyboardType: TextInputType.phone,
               textInputAction: TextInputAction.done,
               inputFormatters: const [IndianMobileFormatter()],
-              style: HfText.bodyText,
+              style: HfText.of(context, HfText.body),
               decoration: InputDecoration(
-                labelText: SignInCopy.numberLabel,
                 hintText: SignInCopy.numberPlaceholder,
                 errorText: phoneError,
                 errorMaxLines: 3,
@@ -262,11 +317,19 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
   // ------------------------------------------------------------- code step
 
   List<Widget> _codeStep() {
-    final codeError = _c.errorField == 'code' || _c.errorField == 'phone' ? _c.error : null;
+    final codeError = _c.errorField == 'code' || _c.errorField == 'phone'
+        ? _c.error
+        : null;
     return [
-      Text(_c.registration ? 'One code, and you’re nearly there' : 'Welcome back', style: HfText.title),
+      Text(
+        _c.registration ? 'One code, and you’re nearly there' : 'Welcome back',
+        style: HfText.of(context, HfText.section),
+      ),
       const SizedBox(height: 12),
-      Text(SignInCopy.sentTo(_c.phoneMasked ?? ''), style: HfText.bodyText),
+      Text(
+        SignInCopy.sentTo(_c.phoneMasked ?? ''),
+        style: HfText.of(context, HfText.note),
+      ),
       const SizedBox(height: HfSpacing.gapLarge),
       CodeBoxes(
         controller: _code,
@@ -282,7 +345,11 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
           child: Text(
             codeError,
             key: const ValueKey<String>('signin-error'),
-            style: HfText.note.copyWith(color: HfColors.accent),
+            style: HfText.note.copyWith(
+              color: HfBrightness.isDark(context)
+                  ? HfColors.blushLight
+                  : HfColors.accent,
+            ),
           ),
         ),
       ],
@@ -290,7 +357,11 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
         const SizedBox(height: 10),
         Semantics(
           liveRegion: true,
-          child: Text(_c.notice!, key: const ValueKey<String>('signin-notice'), style: HfText.note),
+          child: Text(
+            _c.notice!,
+            key: const ValueKey<String>('signin-notice'),
+            style: HfText.of(context, HfText.note),
+          ),
         ),
       ],
       const SizedBox(height: HfSpacing.gapLarge),
@@ -304,13 +375,22 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
       ),
       const SizedBox(height: HfSpacing.gap),
       if (_c.resendIn > 0)
-        Padding(
-          padding: const EdgeInsets.symmetric(vertical: 14),
-          child: Text(
-            SignInCopy.resendIn(_c.resendIn),
-            key: const ValueKey<String>('signin-resend-wait'),
-            style: HfText.note,
-            textAlign: TextAlign.center,
+        Center(
+          child: Container(
+            margin: const EdgeInsets.symmetric(vertical: 10),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+            decoration: BoxDecoration(
+              color: HfBrightness.isDark(context)
+                  ? HfColors.darkTile
+                  : HfColors.surfaceSoft,
+              borderRadius: BorderRadius.circular(HfRadius.pillRadius),
+            ),
+            child: Text(
+              SignInCopy.resendIn(_c.resendIn),
+              key: const ValueKey<String>('signin-resend-wait'),
+              style: HfText.of(context, HfText.badge),
+              textAlign: TextAlign.center,
+            ),
           ),
         )
       else
@@ -320,7 +400,11 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
           loading: _c.sending,
           onPressed: _c.canResend ? _c.resend : null,
         ),
-      HfButton(label: SignInCopy.changeNumber, kind: HfButtonKind.text, onPressed: _c.changeNumber),
+      HfButton(
+        label: SignInCopy.changeNumber,
+        kind: HfButtonKind.text,
+        onPressed: _c.changeNumber,
+      ),
     ];
   }
 }
@@ -349,13 +433,16 @@ class _AgeTick extends StatelessWidget {
                 Checkbox(
                   value: value,
                   onChanged: (v) => onChanged(v ?? false),
-                  activeColor: HfColors.plum,
-                  checkColor: HfColors.cream,
+                  activeColor: HfColors.ink,
+                  checkColor: HfColors.white,
                 ),
-                const Expanded(
+                Expanded(
                   child: Padding(
-                    padding: EdgeInsets.only(top: 12),
-                    child: Text(SignInCopy.ageTick, style: HfText.bodyText),
+                    padding: const EdgeInsets.only(top: 12),
+                    child: Text(
+                      SignInCopy.ageTick,
+                      style: HfText.of(context, HfText.body),
+                    ),
                   ),
                 ),
               ],
@@ -364,8 +451,14 @@ class _AgeTick extends StatelessWidget {
         ),
         Wrap(
           children: [
-            TextButton(onPressed: () => LinkOpener.instance.site('/terms'), child: const Text(SignInCopy.terms)),
-            TextButton(onPressed: () => LinkOpener.instance.site('/safety'), child: const Text(SignInCopy.safety)),
+            TextButton(
+              onPressed: () => LinkOpener.instance.site('/terms'),
+              child: const Text(SignInCopy.terms),
+            ),
+            TextButton(
+              onPressed: () => LinkOpener.instance.site('/safety'),
+              child: const Text(SignInCopy.safety),
+            ),
           ],
         ),
       ],

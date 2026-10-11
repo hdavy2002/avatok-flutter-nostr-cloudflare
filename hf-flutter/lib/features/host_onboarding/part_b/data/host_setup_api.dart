@@ -36,10 +36,12 @@ class AvatarChoice {
 
   String get genderLabel => gender == 'man' ? 'Man' : 'Woman';
 
-  String get lookLabel => look.isEmpty ? '' : '${look[0].toUpperCase()}${look.substring(1)}';
+  String get lookLabel =>
+      look.isEmpty ? '' : '${look[0].toUpperCase()}${look.substring(1)}';
 
   /// What a screen reader says for this tile.
-  String get spoken => '$genderLabel, $age, $lookLabel look${taken ? ', taken' : ''}';
+  String get spoken =>
+      '$genderLabel, $age, $lookLabel look${taken ? ', taken' : ''}';
 
   static AvatarChoice? fromJson(Object? raw) {
     if (raw is! Map) return null;
@@ -60,7 +62,11 @@ class AvatarChoice {
 
 /// `GET /api/hosts/generate/status`: `{status, stages:{text,images,safety}, error?}`.
 class GenerationStatus {
-  const GenerationStatus({required this.status, required this.stages, this.error});
+  const GenerationStatus({
+    required this.status,
+    required this.stages,
+    this.error,
+  });
 
   /// `none | queued | running | done | failed | ...`.
   final String status;
@@ -71,10 +77,15 @@ class GenerationStatus {
 
   String stage(String key) => stages[key] ?? 'waiting';
 
-  bool get anyFailed => status == 'failed' || status == 'error' || kGenerationStages.any((k) => stage(k) == 'failed');
+  bool get anyFailed =>
+      status == 'failed' ||
+      status == 'error' ||
+      kGenerationStages.any((k) => stage(k) == 'failed');
 
   /// Every stage is done (or skipped for now).
-  bool get finished => kGenerationStages.every((k) => stage(k) == 'done' || stage(k) == 'skipped');
+  bool get finished => kGenerationStages.every(
+    (k) => stage(k) == 'done' || stage(k) == 'skipped',
+  );
 
   factory GenerationStatus.fromJson(Map<String, dynamic> j) {
     final raw = j['stages'];
@@ -135,7 +146,10 @@ class HostSetupApi {
       '/api/hosts/me/voice',
       bytes: bytes,
       contentType: mime,
-      headers: <String, String>{'x-duration-seconds': '$seconds', 'x-voice-consent': '1'},
+      headers: <String, String>{
+        'x-duration-seconds': '$seconds',
+        'x-voice-consent': '1',
+      },
       onProgress: onProgress,
     );
     final v = j['voice'];
@@ -152,7 +166,10 @@ class HostSetupApi {
 
   /// `PUT /api/hosts/me {agreements: true}`.
   Future<void> acceptAgreements() async {
-    await _api.putJson('/api/hosts/me', body: <String, Object?>{'agreements': true});
+    await _api.putJson(
+      '/api/hosts/me',
+      body: <String, Object?>{'agreements': true},
+    );
   }
 
   /// `POST /api/hosts/generate` -> the job id. Errors: `409 profile_incomplete {missing[]}`, `409 already_generating`,
@@ -164,7 +181,9 @@ class HostSetupApi {
 
   /// `GET /api/hosts/generate/status`.
   Future<GenerationStatus> generationStatus() async =>
-      GenerationStatus.fromJson(await _api.getJson('/api/hosts/generate/status'));
+      GenerationStatus.fromJson(
+        await _api.getJson('/api/hosts/generate/status'),
+      );
 
   /// `PUT /api/hosts/me/generated {tagline?, quote?, aboutPolished?}`.
   Future<void> saveGenerated(Map<String, String> patch) async {
@@ -177,12 +196,17 @@ class HostSetupApi {
   }
 }
 
-final hostSetupApiProvider = Provider<HostSetupApi>((ref) => HostSetupApi(ref.watch(apiClientProvider)));
+final hostSetupApiProvider = Provider<HostSetupApi>(
+  (ref) => HostSetupApi(ref.watch(apiClientProvider)),
+);
 
 /// The avatar catalogue. A failure shows "Try again"; it is not retried behind the person's back.
-final avatarCatalogProvider = FutureProvider.autoDispose<List<AvatarChoice>>(retry: noAutoRetry, (ref) {
-  return ref.watch(hostSetupApiProvider).avatars();
-});
+final avatarCatalogProvider = FutureProvider.autoDispose<List<AvatarChoice>>(
+  retry: noAutoRetry,
+  (ref) {
+    return ref.watch(hostSetupApiProvider).avatars();
+  },
+);
 
 /// The `missing` list of a `profile_incomplete` / `incomplete` error, as step keys the person can open.
 List<String> missingSteps(ApiError e) {

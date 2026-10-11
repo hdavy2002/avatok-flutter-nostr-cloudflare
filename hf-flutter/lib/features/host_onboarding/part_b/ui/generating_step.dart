@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/api/api_error.dart';
-import '../../../../core/theme/hf_tokens.dart';
+import '../../../../core/theme/hf_theme.dart';
 import '../../../../core/widgets/widgets.dart';
 import '../../../kyc/kyc.dart';
 import '../../flow/onboarding_context.dart';
@@ -15,7 +15,9 @@ import 'part_b_copy.dart';
 import 'part_b_widgets.dart';
 
 /// How often the status is read (the contract says every 3 seconds). Tests make it short.
-final generationPollIntervalProvider = Provider<Duration>((ref) => const Duration(seconds: 3));
+final generationPollIntervalProvider = Provider<Duration>(
+  (ref) => const Duration(seconds: 3),
+);
 
 /// After this long without an end, the screen says it is taking long and tells the host they can close the app.
 const Duration kGenerationSlowAfter = Duration(minutes: 8);
@@ -100,7 +102,12 @@ class _GeneratingStepState extends ConsumerState<GeneratingStep> {
         _follow();
         return;
       }
-      OnboardingTelemetry.step('generating', 'error', reason: e.code, status: e.status);
+      OnboardingTelemetry.step(
+        'generating',
+        'error',
+        reason: e.code,
+        status: e.status,
+      );
       setState(() {
         _phase = _Phase.failed;
         if (e.code == 'attempts_exhausted') {
@@ -144,7 +151,13 @@ class _GeneratingStepState extends ConsumerState<GeneratingStep> {
         });
         return;
       }
-      if (st.finished || const {'done', 'complete', 'completed', 'succeeded'}.contains(st.status)) {
+      if (st.finished ||
+          const {
+            'done',
+            'complete',
+            'completed',
+            'succeeded',
+          }.contains(st.status)) {
         await _finish();
         return;
       }
@@ -164,7 +177,10 @@ class _GeneratingStepState extends ConsumerState<GeneratingStep> {
       }
     }
     _timer?.cancel();
-    _timer = Timer(ref.read(generationPollIntervalProvider), () => unawaited(_poll()));
+    _timer = Timer(
+      ref.read(generationPollIntervalProvider),
+      () => unawaited(_poll()),
+    );
   }
 
   Future<void> _finish() async {
@@ -222,20 +238,32 @@ class _GeneratingStepState extends ConsumerState<GeneratingStep> {
       lead: PartBCopy.generatingLead,
       children: [
         if (_phase == _Phase.starting && _status == null)
-          const Padding(
-            padding: EdgeInsets.only(bottom: 12),
-            child: Text(PartBCopy.generatingStarting, key: ValueKey<String>('gen-starting'), style: HfText.bodyText),
+          Padding(
+            padding: const EdgeInsets.only(bottom: 12),
+            child: Text(
+              PartBCopy.generatingStarting,
+              key: const ValueKey<String>('gen-starting'),
+              style: HfText.of(context, HfText.body),
+            ),
           ),
         Semantics(liveRegion: true, child: _stageList()),
         if (_offline)
-          const Padding(
-            padding: EdgeInsets.only(top: 12),
-            child: Text(PartBCopy.generatingOffline, key: ValueKey<String>('gen-offline'), style: HfText.note),
+          Padding(
+            padding: const EdgeInsets.only(top: 12),
+            child: Text(
+              PartBCopy.generatingOffline,
+              key: const ValueKey<String>('gen-offline'),
+              style: HfText.of(context, HfText.note),
+            ),
           ),
         if (_slow)
-          const Padding(
-            padding: EdgeInsets.only(top: 12),
-            child: Text(PartBCopy.generatingSlow, key: ValueKey<String>('gen-slow'), style: HfText.note),
+          Padding(
+            padding: const EdgeInsets.only(top: 12),
+            child: Text(
+              PartBCopy.generatingSlow,
+              key: const ValueKey<String>('gen-slow'),
+              style: HfText.of(context, HfText.note),
+            ),
           ),
       ],
     );
@@ -249,7 +277,11 @@ class _GeneratingStepState extends ConsumerState<GeneratingStep> {
       lead: PartBCopy.generatingLead,
       bottom: [
         if (!_exhausted && _fixSteps.isEmpty)
-          HfButton(key: const ValueKey<String>('gen-retry'), label: PartBCopy.tryAgain, onPressed: _start),
+          HfButton(
+            key: const ValueKey<String>('gen-retry'),
+            label: PartBCopy.tryAgain,
+            onPressed: _start,
+          ),
       ],
       children: [
         if (_status != null) _stageList(),
@@ -258,7 +290,10 @@ class _GeneratingStepState extends ConsumerState<GeneratingStep> {
         if (!_exhausted && _fixSteps.isEmpty && _attempts > 0 && tries > 0)
           Padding(
             padding: const EdgeInsets.only(top: 6),
-            child: Text(PartBCopy.triesLeft(tries), style: HfText.note),
+            child: Text(
+              PartBCopy.triesLeft(tries),
+              style: HfText.of(context, HfText.note),
+            ),
           ),
         for (final key in _fixSteps)
           Padding(
@@ -286,10 +321,13 @@ class _GeneratingStepState extends ConsumerState<GeneratingStep> {
           label: PartBCopy.seeMyProfile,
           onPressed: () => ctx.goTo(OnboardingKeys.preview),
         ),
-        if (tries > 0 && ctx.state.hostStatus != 'pending_review' && ctx.state.hostStatus != 'live')
+        if (tries > 0 &&
+            ctx.state.hostStatus != 'pending_review' &&
+            ctx.state.hostStatus != 'live')
           HfButton(
             key: const ValueKey<String>('gen-again'),
-            label: '${PartBCopy.makeNewVersion} (${PartBCopy.triesLeft(tries)})',
+            label:
+                '${PartBCopy.makeNewVersion} (${PartBCopy.triesLeft(tries)})',
             kind: HfButtonKind.text,
             onPressed: _start,
           ),
@@ -307,7 +345,7 @@ class _GeneratingStepState extends ConsumerState<GeneratingStep> {
 }
 
 /// One line of the stage list: an icon for the state, the label and the state as a word (so colour is never the
-/// only sign). Never green: done is orchid, failed is the alert red.
+/// only sign). Never green: waiting is muted, working amber, done lavender deep, failed the alert red.
 class _StageRow extends StatelessWidget {
   const _StageRow({required this.id, required this.label, required this.state});
 
@@ -331,20 +369,41 @@ class _StageRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final dark = HfBrightness.isDark(context);
     final Widget icon;
     switch (state) {
       case 'done':
       case 'skipped':
-        icon = const Icon(Icons.check_circle_rounded, size: 28, color: HfColors.forest);
+        icon = _Dot(
+          color: dark ? HfColors.lavenderLight : HfColors.lavenderDeep,
+          child: const Icon(
+            Icons.check_rounded,
+            size: 14,
+            color: HfColors.white,
+          ),
+        );
       case 'working':
-        icon = const Padding(
-          padding: EdgeInsets.all(3),
-          child: SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 3)),
+        icon = const SizedBox(
+          width: 24,
+          height: 24,
+          child: Stack(
+            alignment: Alignment.center,
+            children: [
+              CircularProgressIndicator(
+                strokeWidth: 3,
+                color: HfColors.amberDot,
+              ),
+              _Dot(color: HfColors.amberDot, size: 10),
+            ],
+          ),
         );
       case 'failed':
-        icon = const Icon(Icons.error_rounded, size: 28, color: HfColors.accent);
+        icon = const _Dot(
+          color: HfColors.accent,
+          child: Icon(Icons.close_rounded, size: 14, color: HfColors.white),
+        );
       default:
-        icon = const Icon(Icons.radio_button_unchecked_rounded, size: 28, color: HfColors.mauve);
+        icon = const _Dot(color: HfColors.mutedSoft);
     }
     return Semantics(
       label: '$label, $_word',
@@ -356,14 +415,37 @@ class _StageRow extends StatelessWidget {
           children: [
             SizedBox(width: 32, height: 32, child: Center(child: icon)),
             const SizedBox(width: 12),
-            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(label, style: HfText.bodyStrong),
-              const SizedBox(height: 4),
-              Text(_word, style: HfText.note),
-            ])),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(label, style: HfText.of(context, HfText.bodyStrong)),
+                  const SizedBox(height: 4),
+                  Text(_word, style: HfText.of(context, HfText.note)),
+                ],
+              ),
+            ),
           ],
         ),
       ),
     );
   }
+}
+
+/// A stage dot: a filled circle (22 px by default) with an optional small mark inside.
+class _Dot extends StatelessWidget {
+  const _Dot({required this.color, this.size = 22, this.child});
+
+  final Color color;
+  final double size;
+  final Widget? child;
+
+  @override
+  Widget build(BuildContext context) => Container(
+    width: size,
+    height: size,
+    alignment: Alignment.center,
+    decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+    child: child,
+  );
 }

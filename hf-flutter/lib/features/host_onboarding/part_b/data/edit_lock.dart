@@ -26,9 +26,12 @@ class EditLock {
   /// A live host may record a new introduction; the old one keeps playing until the new one is approved.
   bool get voiceLocked => inReview;
 
-  static const String _generating = 'We are making your profile. You can change things when it is ready.';
-  static const String _pending = 'Your profile is with our team. You can change things once they have looked at it.';
-  static const String _live = 'Your profile is live. Only your price, hours and voice introduction can be changed here.';
+  static const String _generating =
+      'We are making your profile. You can change things when it is ready.';
+  static const String _pending =
+      'Your profile is with our team. You can change things once they have looked at it.';
+  static const String _live =
+      'Your profile is live. Only your price, hours and voice introduction can be changed here.';
 
   /// The calm note at the top of a locked step, or null when the step can be edited.
   /// [editableWhenLive]: price, hours and voice stay editable on a live profile.

@@ -49,7 +49,8 @@ class PermissionGate extends ConsumerStatefulWidget {
 
 enum _Gate { checking, explain, requesting, denied, granted }
 
-class _PermissionGateState extends ConsumerState<PermissionGate> with WidgetsBindingObserver {
+class _PermissionGateState extends ConsumerState<PermissionGate>
+    with WidgetsBindingObserver {
   _Gate _state = _Gate.checking;
 
   PermissionService get _service => ref.read(permissionServiceProvider);
@@ -69,7 +70,9 @@ class _PermissionGateState extends ConsumerState<PermissionGate> with WidgetsBin
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed && _state == _Gate.denied) unawaited(_check());
+    if (state == AppLifecycleState.resumed && _state == _Gate.denied) {
+      unawaited(_check());
+    }
   }
 
   Future<bool> _allGranted() async {
@@ -82,7 +85,11 @@ class _PermissionGateState extends ConsumerState<PermissionGate> with WidgetsBin
   Future<void> _check() async {
     final ok = await _allGranted();
     if (!mounted) return;
-    setState(() => _state = ok ? _Gate.granted : (_state == _Gate.denied ? _Gate.denied : _Gate.explain));
+    setState(
+      () => _state = ok
+          ? _Gate.granted
+          : (_state == _Gate.denied ? _Gate.denied : _Gate.explain),
+    );
   }
 
   Future<void> _allow() async {
@@ -91,7 +98,10 @@ class _PermissionGateState extends ConsumerState<PermissionGate> with WidgetsBin
       for (final p in widget.permissions) {
         if (await _service.isGranted(p)) continue;
         final r = await _service.request(p);
-        KycTelemetry.permission(p.name, r == HfPermissionResult.granted ? 'granted' : 'denied');
+        KycTelemetry.permission(
+          p.name,
+          r == HfPermissionResult.granted ? 'granted' : 'denied',
+        );
         if (r != HfPermissionResult.granted) {
           if (mounted) setState(() => _state = _Gate.denied);
           return;
@@ -113,7 +123,10 @@ class _PermissionGateState extends ConsumerState<PermissionGate> with WidgetsBin
         return widget.child;
       case _Gate.checking:
       case _Gate.requesting:
-        return const Padding(padding: EdgeInsets.all(24), child: LoadingPanel());
+        return const Padding(
+          padding: EdgeInsets.all(24),
+          child: LoadingPanel(),
+        );
       case _Gate.explain:
       case _Gate.denied:
         return PermissionExplainer(

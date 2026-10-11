@@ -34,7 +34,8 @@ class ProfileSaver extends ChangeNotifier {
   bool _disposed = false;
 
   /// What the person set last for [field], else [fallback] (the server's value).
-  Object? valueOf(String field, Object? fallback) => _local.containsKey(field) ? _local[field] : fallback;
+  Object? valueOf(String field, Object? fallback) =>
+      _local.containsKey(field) ? _local[field] : fallback;
 
   /// The server's message for [field], or null.
   String? errorOf(String field) => _errors[field];
@@ -47,7 +48,11 @@ class ProfileSaver extends ChangeNotifier {
   /// Tells the saver what the server already holds, so an untouched field is never sent again.
   /// Ignored for a field the person has already changed or that was already sent in this session.
   void seed(String field, Object? serverValue) {
-    if (serverValue == null || _local.containsKey(field) || _sent.containsKey(field)) return;
+    if (serverValue == null ||
+        _local.containsKey(field) ||
+        _sent.containsKey(field)) {
+      return;
+    }
     _sent[field] = jsonEncode(serverValue);
   }
 
@@ -95,7 +100,10 @@ class ProfileSaver extends ChangeNotifier {
       final sig = jsonEncode(value);
       if (_sent[field] == sig) continue;
       try {
-        await _api.putJson('/api/hosts/me', body: <String, Object?>{field: value});
+        await _api.putJson(
+          '/api/hosts/me',
+          body: <String, Object?>{field: value},
+        );
         _sent[field] = sig;
         _errors.remove(field);
         // Turning the LGBTQ+ lane off resets "show on my profile" on the server.
@@ -105,7 +113,9 @@ class ProfileSaver extends ChangeNotifier {
           _sent[field] = sig;
         } else if (e.isOffline || e.isUnauthorized) {
           _dirty.insert(0, field);
-          _saveProblem = e.isOffline ? e.userMessage : 'Please sign in again to save.';
+          _saveProblem = e.isOffline
+              ? e.userMessage
+              : 'Please sign in again to save.';
           _notify();
           return;
         } else {

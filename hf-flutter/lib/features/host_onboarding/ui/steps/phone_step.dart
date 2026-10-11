@@ -3,7 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../../../../core/links.dart';
-import '../../../../core/theme/hf_tokens.dart';
+import '../../../../core/theme/hf_theme.dart';
 import '../../../../core/widgets/widgets.dart';
 import '../../../kyc/kyc.dart';
 import '../../flow/onboarding_context.dart';
@@ -24,25 +24,31 @@ class PhoneStep extends StatelessWidget {
     if (s.phoneVerified) {
       final last4 = s.phoneLast4;
       return OnboardingStepPage(
-      scene: HfSceneKind.verify,
+        scene: HfSceneKind.verify,
         title: OnboardingCopy.phoneVerifiedTitle,
+        footer: [
+          HfButton(
+            key: const ValueKey<String>('phone-continue'),
+            label: OnboardingCopy.continueLabel,
+            onPressed: () => ctx.next(),
+          ),
+        ],
         children: [
           HfCard(
             key: const ValueKey<String>('phone-verified'),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                DoneRow(last4 == null ? '+91 verified' : '+91 •••• $last4 verified'),
+                DoneRow(
+                  last4 == null ? '+91 verified' : '+91 •••• $last4 verified',
+                ),
                 const SizedBox(height: 8),
-                const Text(OnboardingCopy.phoneVerifiedBody, style: HfText.bodyText),
+                Text(
+                  OnboardingCopy.phoneVerifiedBody,
+                  style: HfText.of(context, HfText.body),
+                ),
               ],
             ),
-          ),
-          const SizedBox(height: 24),
-          HfButton(
-            key: const ValueKey<String>('phone-continue'),
-            label: OnboardingCopy.continueLabel,
-            onPressed: () => ctx.next(),
           ),
         ],
       );
@@ -51,11 +57,12 @@ class PhoneStep extends StatelessWidget {
       scene: HfSceneKind.verify,
       title: OnboardingCopy.phoneNotVerifiedTitle,
       lead: OnboardingCopy.phoneNotVerifiedBody,
-      children: [
+      footer: [
         HfButton(
           key: const ValueKey<String>('phone-verify'),
           label: OnboardingCopy.phoneVerifyButton,
-          onPressed: () => unawaited(LinkOpener.instance.site('/sign-up?finish=1')),
+          onPressed: () =>
+              unawaited(LinkOpener.instance.site('/sign-up?finish=1')),
         ),
         const SizedBox(height: 8),
         HfButton(
@@ -65,6 +72,7 @@ class PhoneStep extends StatelessWidget {
           onPressed: () => unawaited(ctx.refresh()),
         ),
       ],
+      children: const [],
     );
   }
 }

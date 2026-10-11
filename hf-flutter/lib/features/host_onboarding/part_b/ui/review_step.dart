@@ -5,7 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/api/api_error.dart';
 import '../../../../core/links.dart';
-import '../../../../core/theme/hf_tokens.dart';
+import '../../../../core/theme/hf_theme.dart';
 import '../../../../core/widgets/widgets.dart';
 import '../../../explore/data/host_options.dart';
 import '../../../host_profile/ui/widgets/net_image.dart';
@@ -45,7 +45,8 @@ class _ReviewStepState extends ConsumerState<ReviewStep> {
   @override
   void initState() {
     super.initState();
-    final done = ctx.state.hostNum('agreementsAt') != null || ctx.state.generated;
+    final done =
+        ctx.state.hostNum('agreementsAt') != null || ctx.state.generated;
     _rules = done;
     _agreement = done;
     _welfare = done;
@@ -55,9 +56,9 @@ class _ReviewStepState extends ConsumerState<ReviewStep> {
 
   /// Steps of the profile that the server does not have yet (hours are optional).
   List<OnboardingStepDef> _missing() => [
-        for (final def in kOnboardingSteps)
-          if (_isProfilePart(def.key) && !def.isDone(ctx.state)) def,
-      ];
+    for (final def in kOnboardingSteps)
+      if (_isProfilePart(def.key) && !def.isDone(ctx.state)) def,
+  ];
 
   static bool _isProfilePart(String key) =>
       key == OnboardingKeys.avatar ||
@@ -82,7 +83,12 @@ class _ReviewStepState extends ConsumerState<ReviewStep> {
       await ref.read(hostSetupApiProvider).acceptAgreements();
     } on ApiError catch (e) {
       if (e.code != 'locked') {
-        OnboardingTelemetry.step('review', 'error', reason: e.code, status: e.status);
+        OnboardingTelemetry.step(
+          'review',
+          'error',
+          reason: e.code,
+          status: e.status,
+        );
         if (!mounted) return;
         setState(() {
           _busy = false;
@@ -103,7 +109,8 @@ class _ReviewStepState extends ConsumerState<ReviewStep> {
     final lock = EditLock.of(s.hostStatus);
     final missing = _missing();
     final generating = s.hostStatus == 'generating';
-    final canCreate = generating || (!lock.inReview && missing.isEmpty && _allTicked);
+    final canCreate =
+        generating || (!lock.inReview && missing.isEmpty && _allTicked);
     final banner = lock.inReview && !generating ? lock.banner() : null;
 
     return PartBStep(
@@ -123,25 +130,39 @@ class _ReviewStepState extends ConsumerState<ReviewStep> {
       children: [
         if (banner != null) LockBanner(banner),
         if (generating) LockBanner(lock.banner() ?? ''),
-        if (missing.isNotEmpty && !lock.inReview) _MissingBox(missing: missing, onFix: ctx.goTo),
+        if (missing.isNotEmpty && !lock.inReview)
+          _MissingBox(missing: missing, onFix: ctx.goTo),
         _verified(s),
         _section(PartBCopy.reviewAvatar, OnboardingKeys.avatar, [_avatar(s)]),
         _section(PartBCopy.reviewNameAbout, OnboardingKeys.about, [
-          Text(s.hostString('displayName') ?? '-', style: HfText.bodyStrong),
+          Text(
+            s.hostString('displayName') ?? '-',
+            style: HfText.of(context, HfText.bodyStrong),
+          ),
           const SizedBox(height: 4),
-          Text(s.hostString('about') ?? '', style: HfText.bodyText),
+          Text(
+            s.hostString('about') ?? '',
+            style: HfText.of(context, HfText.body),
+          ),
         ]),
         _section(PartBCopy.reviewLanguages, OnboardingKeys.languages, [
-          Text(s.hostStrings('languages').join(', '), style: HfText.bodyText),
+          Text(
+            s.hostStrings('languages').join(', '),
+            style: HfText.of(context, HfText.body),
+          ),
           const SizedBox(height: 4),
-          Text(_styleLabel(s.hostString('style')), style: HfText.note),
+          Text(
+            _styleLabel(s.hostString('style')),
+            style: HfText.of(context, HfText.note),
+          ),
         ]),
         _section(PartBCopy.reviewTopics, OnboardingKeys.topics, [
           Wrap(
             spacing: 8,
             runSpacing: 8,
             children: [
-              for (final t in s.hostStrings('topics')) _Pill(options?.topicLabel(t) ?? t.replaceAll('-', ' ')),
+              for (final t in s.hostStrings('topics'))
+                _Pill(options?.topicLabel(t) ?? t.replaceAll('-', ' ')),
             ],
           ),
         ]),
@@ -169,18 +190,26 @@ class _ReviewStepState extends ConsumerState<ReviewStep> {
         ),
         const SizedBox(height: 4),
         _linkButton('review-read-rules', PartBCopy.readRules, '/hosts/rules'),
-        _linkButton('review-read-agreement', PartBCopy.readAgreement, '/hosts/agreement'),
-        _linkButton('review-read-welfare', PartBCopy.readWelfare, '/hosts/crisis-script'),
+        _linkButton(
+          'review-read-agreement',
+          PartBCopy.readAgreement,
+          '/hosts/agreement',
+        ),
+        _linkButton(
+          'review-read-welfare',
+          PartBCopy.readWelfare,
+          '/hosts/crisis-script',
+        ),
       ],
     );
   }
 
   Widget _linkButton(String key, String label, String path) => HfButton(
-        key: ValueKey<String>(key),
-        label: label,
-        kind: HfButtonKind.text,
-        onPressed: () => unawaited(LinkOpener.instance.site(path)),
-      );
+    key: ValueKey<String>(key),
+    label: label,
+    kind: HfButtonKind.text,
+    onPressed: () => unawaited(LinkOpener.instance.site(path)),
+  );
 
   static String _styleLabel(String? slug) {
     for (final c in kStyleChoices) {
@@ -199,11 +228,23 @@ class _ReviewStepState extends ConsumerState<ReviewStep> {
           children: [
             Row(
               children: [
-                Expanded(child: Semantics(header: true, child: Text(title, style: HfText.subtitle))),
+                Expanded(
+                  child: Semantics(
+                    header: true,
+                    child: Text(
+                      title,
+                      style: HfText.of(context, HfText.subsection),
+                    ),
+                  ),
+                ),
                 TextButton(
                   key: ValueKey<String>('review-edit-$step'),
                   onPressed: () => ctx.goTo(step),
-                  child: Semantics(label: '${PartBCopy.edit} $title', excludeSemantics: true, child: const Text(PartBCopy.edit)),
+                  child: Semantics(
+                    label: '${PartBCopy.edit} $title',
+                    excludeSemantics: true,
+                    child: const Text(PartBCopy.edit),
+                  ),
                 ),
               ],
             ),
@@ -221,9 +262,13 @@ class _ReviewStepState extends ConsumerState<ReviewStep> {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(ok ? Icons.check_circle_rounded : Icons.error_outline_rounded, size: 22, color: ok ? HfColors.orchid : HfColors.accent),
+          Icon(
+            ok ? Icons.check_circle_rounded : Icons.error_outline_rounded,
+            size: 22,
+            color: ok ? HfColors.lavenderDeep : HfColors.accent,
+          ),
           const SizedBox(width: 10),
-          Expanded(child: Text(text, style: HfText.bodyText)),
+          Expanded(child: Text(text, style: HfText.of(context, HfText.body))),
         ],
       ),
     );
@@ -231,25 +276,49 @@ class _ReviewStepState extends ConsumerState<ReviewStep> {
 
   Widget _verified(OnboardingServerState s) {
     final k = s.kyc;
-    final selfieOk = k.selfieStatus == 'pending' || k.selfieStatus == 'approved';
+    final selfieOk =
+        k.selfieStatus == 'pending' || k.selfieStatus == 'approved';
     return _section(PartBCopy.reviewVerified, OnboardingKeys.phone, [
       _tickRow(s.phoneVerified, 'WhatsApp +91 •••• ${s.phoneLast4 ?? '----'}'),
       _tickRow(k.aadhaarDone, '${KycCopy.aadhaarEnding} ${k.last4 ?? '----'}'),
-      _tickRow(selfieOk, k.selfieStatus == 'approved' ? 'Selfie video approved' : (selfieOk ? 'Selfie video awaiting review' : 'Selfie video not done')),
-      _tickRow(k.payoutDone, k.payoutDone ? 'Payout account ending ${k.payoutLast4 ?? '----'} (name matched)' : 'Payout account not done'),
+      _tickRow(
+        selfieOk,
+        k.selfieStatus == 'approved'
+            ? 'Selfie video approved'
+            : (selfieOk
+                  ? 'Selfie video awaiting review'
+                  : 'Selfie video not done'),
+      ),
+      _tickRow(
+        k.payoutDone,
+        k.payoutDone
+            ? 'Payout account ending ${k.payoutLast4 ?? '----'} (name matched)'
+            : 'Payout account not done',
+      ),
     ]);
   }
 
   Widget _avatar(OnboardingServerState s) {
     final url = s.hostString('avatarUrl');
-    if (url == null) return const Text(PartBCopy.reviewNoAvatar, style: HfText.bodyText);
+    if (url == null) {
+      return Text(
+        PartBCopy.reviewNoAvatar,
+        style: HfText.of(context, HfText.body),
+      );
+    }
     final image = ref.watch(hostImageBuilderProvider);
     return Wrap(
-      spacing: 12, runSpacing: 12, crossAxisAlignment: WrapCrossAlignment.center,
+      spacing: 12,
+      runSpacing: 12,
+      crossAxisAlignment: WrapCrossAlignment.center,
       children: [
         ClipRRect(
           borderRadius: BorderRadius.circular(HfRadius.control),
-          child: SizedBox(width: 96, height: 96, child: image(context, url, fit: BoxFit.cover)),
+          child: SizedBox(
+            width: 96,
+            height: 96,
+            child: image(context, url, fit: BoxFit.cover),
+          ),
         ),
         const SizedBox(width: 12),
         const AiLabel(text: PartBCopy.avatarAiLabel),
@@ -259,10 +328,10 @@ class _ReviewStepState extends ConsumerState<ReviewStep> {
 
   Widget _price(OnboardingServerState s) {
     final p = s.hostNum('pricePerMin')?.toInt();
-    if (p == null) return const Text('-', style: HfText.bodyText);
+    if (p == null) return Text('-', style: HfText.of(context, HfText.body));
     return Text(
       '${rupeesText(p)} per minute. You get ${rupeesFromPaise(hostSharePaise(p))}.',
-      style: HfText.bodyText,
+      style: HfText.of(context, HfText.body),
     );
   }
 
@@ -271,35 +340,60 @@ class _ReviewStepState extends ConsumerState<ReviewStep> {
     final days = <String>[
       if (h['days'] is List)
         for (final d in h['days'] as List)
-          if (d is num && d >= 0 && d < kDayLabels.length) kDayLabels[d.toInt()],
+          if (d is num && d >= 0 && d < kDayLabels.length)
+            kDayLabels[d.toInt()],
     ];
     final lgbtq = s.host?['lgbtqLane'] == true;
     final lgbtqPublic = s.host?['lgbtqPublic'] == true;
     return [
       Text(
-        days.isEmpty ? PartBCopy.reviewNoDays : '${days.join(', ')}, ${validHhmm(h['from'], '19:00')} to ${validHhmm(h['to'], '22:00')}',
-        style: HfText.bodyText,
+        days.isEmpty
+            ? PartBCopy.reviewNoDays
+            : '${days.join(', ')}, ${validHhmm(h['from'], '19:00')} to ${validHhmm(h['to'], '22:00')}',
+        style: HfText.of(context, HfText.body),
       ),
       const SizedBox(height: 4),
-      Text(s.host?['womenLane'] == true ? PartBCopy.reviewWomenOnly : PartBCopy.reviewAllCallers, style: HfText.note),
-      Text(lgbtq ? (lgbtqPublic ? PartBCopy.reviewLgbtqPublic : PartBCopy.reviewLgbtqOn) : PartBCopy.reviewLgbtqOff, style: HfText.note),
+      Text(
+        s.host?['womenLane'] == true
+            ? PartBCopy.reviewWomenOnly
+            : PartBCopy.reviewAllCallers,
+        style: HfText.of(context, HfText.note),
+      ),
+      Text(
+        lgbtq
+            ? (lgbtqPublic
+                  ? PartBCopy.reviewLgbtqPublic
+                  : PartBCopy.reviewLgbtqOn)
+            : PartBCopy.reviewLgbtqOff,
+        style: HfText.of(context, HfText.note),
+      ),
     ];
   }
 
   Widget _voice(OnboardingServerState s) {
     final v = s.hostMap('voice');
     final secs = v['seconds'];
-    if (secs is! num || secs <= 0) return const Text(PartBCopy.reviewNoVoice, style: HfText.bodyText);
+    if (secs is! num || secs <= 0) {
+      return Text(
+        PartBCopy.reviewNoVoice,
+        style: HfText.of(context, HfText.body),
+      );
+    }
     final status = (v['status'] ?? '').toString();
     final text = status == 'approved'
         ? PartBCopy.voiceStatusApproved
-        : (status == 'rejected' ? PartBCopy.voiceStatusRejected : PartBCopy.voiceStatusPending);
+        : (status == 'rejected'
+              ? PartBCopy.voiceStatusRejected
+              : PartBCopy.voiceStatusPending);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(PartBCopy.voiceLength(mmss(secs.toInt())), style: HfText.bodyText),
+        Text(
+          PartBCopy.voiceLength(mmss(secs.toInt())),
+          style: HfText.of(context, HfText.body),
+        ),
         const SizedBox(height: 4),
-        Text(text, style: HfText.note),
+        Text(text, style: HfText.of(context, HfText.note)),
       ],
     );
   }
@@ -313,11 +407,16 @@ class _Pill extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ConstrainedBox(
-      constraints: BoxConstraints(maxWidth: MediaQuery.sizeOf(context).width - 2 * HfSpacing.page - 32),
+      constraints: BoxConstraints(
+        maxWidth: MediaQuery.sizeOf(context).width - 2 * HfSpacing.page - 32,
+      ),
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-        decoration: BoxDecoration(color: HfColors.lilac, borderRadius: BorderRadius.circular(HfRadius.pill)),
-        child: Text(text, style: HfText.badge),
+        decoration: BoxDecoration(
+          color: HfColors.lavender,
+          borderRadius: BorderRadius.circular(HfRadius.pillRadius),
+        ),
+        child: Text(text, style: HfText.of(context, HfText.badge)),
       ),
     );
   }
@@ -336,11 +435,17 @@ class _MissingBox extends StatelessWidget {
       child: Container(
         key: const ValueKey<String>('review-missing'),
         padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(color: HfColors.blush, borderRadius: BorderRadius.circular(HfRadius.card)),
+        decoration: BoxDecoration(
+          color: HfColors.blush,
+          borderRadius: BorderRadius.circular(HfRadius.card),
+        ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            const Text(PartBCopy.generatingMissing, style: HfText.subtitle),
+            Text(
+              PartBCopy.generatingMissing,
+              style: HfText.of(context, HfText.subsection),
+            ),
             const SizedBox(height: 6),
             for (final m in missing)
               Padding(

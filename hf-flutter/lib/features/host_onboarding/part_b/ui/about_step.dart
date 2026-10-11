@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../../../core/theme/hf_tokens.dart';
+import '../../../../core/theme/hf_theme.dart';
 import '../../../../core/widgets/widgets.dart';
 import '../../../kyc/kyc.dart';
 import '../../flow/onboarding_context.dart';
@@ -44,8 +44,13 @@ class _AboutStepState extends ConsumerState<AboutStep> {
     final s = ctx.state;
     _saver.seed('displayName', s.hostString('displayName'));
     _saver.seed('about', s.hostString('about'));
-    _name = TextEditingController(text: '${_saver.valueOf('displayName', s.hostString('displayName')) ?? ''}');
-    _about = TextEditingController(text: '${_saver.valueOf('about', s.hostString('about')) ?? ''}');
+    _name = TextEditingController(
+      text:
+          '${_saver.valueOf('displayName', s.hostString('displayName')) ?? ''}',
+    );
+    _about = TextEditingController(
+      text: '${_saver.valueOf('about', s.hostString('about')) ?? ''}',
+    );
     _saver.addListener(_changed);
   }
 
@@ -66,9 +71,12 @@ class _AboutStepState extends ConsumerState<AboutStep> {
   String get _nameText => _name.text.trim();
   String get _aboutText => _about.text.trim();
 
-  bool get _nameOk => isValidFirstName(_nameText) && contactLeakMessage(_nameText) == null;
+  bool get _nameOk =>
+      isValidFirstName(_nameText) && contactLeakMessage(_nameText) == null;
   bool get _aboutOk =>
-      _aboutText.length >= kAboutMin && _aboutText.length <= kAboutMax && contactLeakMessage(_aboutText) == null;
+      _aboutText.length >= kAboutMin &&
+      _aboutText.length <= kAboutMax &&
+      contactLeakMessage(_aboutText) == null;
 
   String? get _nameError {
     if (_nameText.isEmpty) return null;
@@ -83,7 +91,10 @@ class _AboutStepState extends ConsumerState<AboutStep> {
   }
 
   bool get _valid =>
-      _nameOk && _aboutOk && _saver.errorOf('displayName') == null && _saver.errorOf('about') == null;
+      _nameOk &&
+      _aboutOk &&
+      _saver.errorOf('displayName') == null &&
+      _saver.errorOf('about') == null;
 
   void _nameChanged(String v) {
     final t = v.trim();
@@ -115,11 +126,17 @@ class _AboutStepState extends ConsumerState<AboutStep> {
     }
     if (!_valid) return;
     setState(() => _busy = true);
-    final ok = await _saver.flush(fields: const <String>['displayName', 'about']);
+    final ok = await _saver.flush(
+      fields: const <String>['displayName', 'about'],
+    );
     if (!mounted) return;
     setState(() => _busy = false);
     if (!ok) {
-      OnboardingTelemetry.step('about', 'error', reason: _saver.saveProblem == null ? 'invalid_field' : 'save_failed');
+      OnboardingTelemetry.step(
+        'about',
+        'error',
+        reason: _saver.saveProblem == null ? 'invalid_field' : 'save_failed',
+      );
       return;
     }
     OnboardingTelemetry.step('about', 'ok');
@@ -189,20 +206,37 @@ class _AboutStepState extends ConsumerState<AboutStep> {
           onChanged: _aboutChanged,
         ),
         const SizedBox(height: 6),
-        Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text('$len / $kAboutMax', key: const ValueKey<String>('about-count'),
-            style: HfText.note.copyWith(color: len > 0 && len < kAboutMin ? HfColors.accent : HfColors.mauve)),
-          const SizedBox(height: 8),
-          const Text(PartBCopy.aboutHelp, style: HfText.note),
-        ]),
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              '$len / $kAboutMax',
+              key: const ValueKey<String>('about-count'),
+              style: HfText.of(context, HfText.note).copyWith(
+                color: len > 0 && len < kAboutMin
+                    ? HfColors.accent
+                    : HfColors.muted,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(PartBCopy.aboutHelp, style: HfText.of(context, HfText.note)),
+          ],
+        ),
         if (len > 0 && len < kAboutMin)
           Padding(
             padding: const EdgeInsets.only(top: 6),
-            child: Text(PartBCopy.aboutMore(kAboutMin - len), key: const ValueKey<String>('about-more'), style: HfText.note),
+            child: Text(
+              PartBCopy.aboutMore(kAboutMin - len),
+              key: const ValueKey<String>('about-more'),
+              style: HfText.of(context, HfText.note),
+            ),
           ),
         if (!locked) ...[
           const SizedBox(height: 20),
-          const Text(PartBCopy.ideasTitle, style: HfText.bodyStrong),
+          Text(
+            PartBCopy.ideasTitle,
+            style: HfText.of(context, HfText.bodyStrong),
+          ),
           const SizedBox(height: 8),
           for (var i = 0; i < PartBCopy.ideas.length; i++)
             Padding(

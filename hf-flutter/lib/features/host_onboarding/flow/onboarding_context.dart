@@ -37,28 +37,33 @@ class OnboardingStepContext {
 }
 
 /// How a step is built.
-typedef OnboardingStepBuilder = Widget Function(BuildContext context, OnboardingStepContext ctx);
+typedef OnboardingStepBuilder =
+    Widget Function(BuildContext context, OnboardingStepContext ctx);
 
 /// `GET /api/hosts/me` plus `GET /api/account/phone/status`. A `404 not_enabled` (flag `hostOnboardingEnabled` off)
 /// arrives as an `ApiError` and the shell shows "Coming soon". Part B calls `ref.invalidate(onboardingStateProvider)`
 /// only through [OnboardingStepContext.refresh].
-final onboardingStateProvider = FutureProvider.autoDispose<OnboardingServerState>(retry: _noAutoRetry, (ref) async {
-  final api = ref.watch(apiClientProvider);
-  final me = await api.getJson('/api/hosts/me');
-  Map<String, dynamic>? phone;
-  try {
-    phone = await api.getJson('/api/account/phone/status');
-  } on ApiError {
-    phone = null; // the sign-in already verified the WhatsApp number; the session copy is used instead
-  }
-  final session = ref.read(sessionProvider);
-  return OnboardingServerState.fromJson(
-    me,
-    phone: phone,
-    sessionPhoneVerified: session.me?.whatsappVerified ?? false,
-    sessionPhoneMasked: session.me?.phoneMasked,
-  );
-});
+final onboardingStateProvider = FutureProvider.autoDispose<OnboardingServerState>(
+  retry: _noAutoRetry,
+  (ref) async {
+    final api = ref.watch(apiClientProvider);
+    final me = await api.getJson('/api/hosts/me');
+    Map<String, dynamic>? phone;
+    try {
+      phone = await api.getJson('/api/account/phone/status');
+    } on ApiError {
+      phone =
+          null; // the sign-in already verified the WhatsApp number; the session copy is used instead
+    }
+    final session = ref.read(sessionProvider);
+    return OnboardingServerState.fromJson(
+      me,
+      phone: phone,
+      sessionPhoneVerified: session.me?.whatsappVerified ?? false,
+      sessionPhoneMasked: session.me?.phoneMasked,
+    );
+  },
+);
 
 /// A failed read shows its message with a Try again button; it is not retried behind the person's back.
 Duration? _noAutoRetry(int retryCount, Object error) => null;

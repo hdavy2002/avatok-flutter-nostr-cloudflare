@@ -13,10 +13,17 @@ import '../../support/fake_api_client.dart';
 import '../../support/fake_clerk.dart';
 
 class SwitchingNameSession extends StubSession {
-  SwitchingNameSession() : super(const SessionState(status: SessionStatus.signedIn,
-    me: HfMe(uid: 'first')));
-  void switchAccount() => state = const SessionState(status: SessionStatus.signedIn,
-    me: HfMe(uid: 'second'));
+  SwitchingNameSession()
+    : super(
+        const SessionState(
+          status: SessionStatus.signedIn,
+          me: HfMe(uid: 'first'),
+        ),
+      );
+  void switchAccount() => state = const SessionState(
+    status: SessionStatus.signedIn,
+    me: HfMe(uid: 'second'),
+  );
 }
 
 class DelayedNameClerk extends FakeClerk {
@@ -27,45 +34,79 @@ class DelayedNameClerk extends FakeClerk {
 }
 
 void main() {
-  test('switching accounts during token acquisition prevents name dispatch', () async {
-    final token = Completer<String?>();
-    final session = SwitchingNameSession();
-    final api = FakeApiClient();
-    final container = ProviderContainer(overrides: [
-      sessionProvider.overrideWith(() => session),
-      apiClientProvider.overrideWithValue(api),
-      clerkProvider.overrideWithValue(DelayedNameClerk(token)),
-    ]);
-    addTearDown(container.dispose);
-    final saving = container.read(meApiProvider).updateName('Asha', expectedUid: 'first');
-    final rejected = expectLater(saving, throwsA(isA<ApiError>().having((e) => e.code, 'code', 'account_changed')));
-    session.switchAccount();
-    token.complete(await FakeClerk(user: const ClerkUser(id: 'first')).sessionToken());
-    await rejected;
-    expect(api.calls, isEmpty);
-  });
+  test(
+    'switching accounts during token acquisition prevents name dispatch',
+    () async {
+      final token = Completer<String?>();
+      final session = SwitchingNameSession();
+      final api = FakeApiClient();
+      final container = ProviderContainer(
+        overrides: [
+          sessionProvider.overrideWith(() => session),
+          apiClientProvider.overrideWithValue(api),
+          clerkProvider.overrideWithValue(DelayedNameClerk(token)),
+        ],
+      );
+      addTearDown(container.dispose);
+      final saving = container
+          .read(meApiProvider)
+          .updateName('Asha', expectedUid: 'first');
+      final rejected = expectLater(
+        saving,
+        throwsA(
+          isA<ApiError>().having((e) => e.code, 'code', 'account_changed'),
+        ),
+      );
+      session.switchAccount();
+      token.complete(
+        await FakeClerk(user: const ClerkUser(id: 'first')).sessionToken(),
+      );
+      await rejected;
+      expect(api.calls, isEmpty);
+    },
+  );
 
-  test('a late name response cannot report success for a different account', () async {
-    final response = Completer<Object?>();
-    final dispatched = Completer<void>();
-    final session = SwitchingNameSession();
-    final api = FakeApiClient()..on('PATCH', '/api/hf/me', (_) {
-      dispatched.complete();
-      return response.future;
-    });
-    final container = ProviderContainer(overrides: [
-      sessionProvider.overrideWith(() => session),
-      apiClientProvider.overrideWithValue(api),
-      clerkProvider.overrideWithValue(FakeClerk(user: const ClerkUser(id: 'first'))),
-    ]);
-    addTearDown(container.dispose);
-    final saving = container.read(meApiProvider).updateName('Asha', expectedUid: 'first');
-    final rejected = expectLater(saving, throwsA(isA<ApiError>().having((e) => e.code, 'code', 'account_changed')));
-    await dispatched.future;
-    session.switchAccount();
-    response.complete({'displayName': 'Asha'});
-    await rejected;
-    expect(api.callsTo('PATCH', '/api/hf/me'), hasLength(1));
-    expect(api.calls.single.auth, isFalse, reason: 'The pinned credential must not use automatic token refresh/retry.');
-  });
+  test(
+    'a late name response cannot report success for a different account',
+    () async {
+      final response = Completer<Object?>();
+      final dispatched = Completer<void>();
+      final session = SwitchingNameSession();
+      final api = FakeApiClient()
+        ..on('PATCH', '/api/hf/me', (_) {
+          dispatched.complete();
+          return response.future;
+        });
+      final container = ProviderContainer(
+        overrides: [
+          sessionProvider.overrideWith(() => session),
+          apiClientProvider.overrideWithValue(api),
+          clerkProvider.overrideWithValue(
+            FakeClerk(user: const ClerkUser(id: 'first')),
+          ),
+        ],
+      );
+      addTearDown(container.dispose);
+      final saving = container
+          .read(meApiProvider)
+          .updateName('Asha', expectedUid: 'first');
+      final rejected = expectLater(
+        saving,
+        throwsA(
+          isA<ApiError>().having((e) => e.code, 'code', 'account_changed'),
+        ),
+      );
+      await dispatched.future;
+      session.switchAccount();
+      response.complete({'displayName': 'Asha'});
+      await rejected;
+      expect(api.callsTo('PATCH', '/api/hf/me'), hasLength(1));
+      expect(
+        api.calls.single.auth,
+        isFalse,
+        reason:
+            'The pinned credential must not use automatic token refresh/retry.',
+      );
+    },
+  );
 }

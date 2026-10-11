@@ -5,14 +5,16 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/api/api_error.dart';
-import '../../../../core/theme/hf_tokens.dart';
+import '../../../../core/theme/hf_theme.dart';
 import '../../../../core/widgets/widgets.dart';
 import '../../../kyc/kyc.dart';
 import '../../flow/onboarding_context.dart';
 import '../widgets/step_page.dart';
 import 'onboarding_copy.dart';
 
-final RegExp _upiRe = RegExp(r'^[a-zA-Z0-9._-]{2,256}@[a-zA-Z][a-zA-Z0-9.-]{1,63}$');
+final RegExp _upiRe = RegExp(
+  r'^[a-zA-Z0-9._-]{2,256}@[a-zA-Z][a-zA-Z0-9.-]{1,63}$',
+);
 final RegExp _ifscRe = RegExp(r'^[A-Z]{4}0[A-Z0-9]{6}$');
 final RegExp _accountRe = RegExp(r'^\d{9,18}$');
 
@@ -70,7 +72,9 @@ class _PayoutStepState extends ConsumerState<PayoutStep> {
       _result = null;
     });
     try {
-      final r = await ref.read(kycApiProvider).payoutVerify(
+      final r = await ref
+          .read(kycApiProvider)
+          .payoutVerify(
             upi: _upi.text.trim().toLowerCase(),
             account: _account.text,
             ifsc: _ifsc.text,
@@ -94,7 +98,12 @@ class _PayoutStepState extends ConsumerState<PayoutStep> {
       }
     } on ApiError catch (e) {
       if (!mounted) return;
-      KycTelemetry.kycStep('payout_verify', 'error', reason: e.code, status: e.status);
+      KycTelemetry.kycStep(
+        'payout_verify',
+        'error',
+        reason: e.code,
+        status: e.status,
+      );
       setState(() {
         final f = e.field;
         if (f == 'upi' || f == 'account' || f == 'ifsc') {
@@ -116,27 +125,9 @@ class _PayoutStepState extends ConsumerState<PayoutStep> {
     if (done) {
       final last4 = k.payoutLast4 ?? _result?.accountLast4;
       return OnboardingStepPage(
-      scene: HfSceneKind.wallet,
+        scene: HfSceneKind.wallet,
         title: OnboardingCopy.payoutDoneTitle,
-        children: [
-          HfCard(
-            key: const ValueKey<String>('payout-done'),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const DoneRow(OnboardingCopy.payoutDoneMatch),
-                if (_result?.nameAtBank != null) ...[
-                  const SizedBox(height: 12),
-                  Text('${OnboardingCopy.nameAtBank}: ${_result!.nameAtBank}', style: HfText.bodyText),
-                ],
-                if (last4 != null) ...[
-                  const SizedBox(height: 4),
-                  Text('${OnboardingCopy.accountEnding} $last4', style: HfText.bodyText),
-                ],
-              ],
-            ),
-          ),
-          const SizedBox(height: 24),
+        footer: [
           HfButton(
             key: const ValueKey<String>('payout-continue'),
             label: OnboardingCopy.continueLabel,
@@ -152,6 +143,31 @@ class _PayoutStepState extends ConsumerState<PayoutStep> {
             }),
           ),
         ],
+        children: [
+          HfCard(
+            key: const ValueKey<String>('payout-done'),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const DoneRow(OnboardingCopy.payoutDoneMatch),
+                if (_result?.nameAtBank != null) ...[
+                  const SizedBox(height: 12),
+                  Text(
+                    '${OnboardingCopy.nameAtBank}: ${_result!.nameAtBank}',
+                    style: HfText.of(context, HfText.body),
+                  ),
+                ],
+                if (last4 != null) ...[
+                  const SizedBox(height: 4),
+                  Text(
+                    '${OnboardingCopy.accountEnding} $last4',
+                    style: HfText.of(context, HfText.body),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ],
       );
     }
 
@@ -159,6 +175,14 @@ class _PayoutStepState extends ConsumerState<PayoutStep> {
       scene: HfSceneKind.wallet,
       title: OnboardingCopy.payoutTitle,
       lead: OnboardingCopy.payoutLead,
+      footer: [
+        HfButton(
+          key: const ValueKey<String>('payout-verify'),
+          label: OnboardingCopy.payoutVerify,
+          loading: _busy,
+          onPressed: _valid ? _verify : null,
+        ),
+      ],
       children: [
         TextField(
           key: const ValueKey<String>('payout-upi'),
@@ -170,7 +194,11 @@ class _PayoutStepState extends ConsumerState<PayoutStep> {
           decoration: InputDecoration(
             labelText: OnboardingCopy.upiLabel,
             hintText: OnboardingCopy.upiHint,
-            errorText: _fieldErrors['upi'] ?? (_upi.text.isNotEmpty && !_upiOk ? OnboardingCopy.upiFormat : null),
+            errorText:
+                _fieldErrors['upi'] ??
+                (_upi.text.isNotEmpty && !_upiOk
+                    ? OnboardingCopy.upiFormat
+                    : null),
           ),
           onChanged: (_) => setState(() => _fieldErrors.remove('upi')),
         ),
@@ -182,10 +210,17 @@ class _PayoutStepState extends ConsumerState<PayoutStep> {
           obscureText: true,
           autocorrect: false,
           enableSuggestions: false,
-          inputFormatters: [FilteringTextInputFormatter.digitsOnly, LengthLimitingTextInputFormatter(18)],
+          inputFormatters: [
+            FilteringTextInputFormatter.digitsOnly,
+            LengthLimitingTextInputFormatter(18),
+          ],
           decoration: InputDecoration(
             labelText: OnboardingCopy.accountLabel,
-            errorText: _fieldErrors['account'] ?? (_account.text.isNotEmpty && !_accountOk ? OnboardingCopy.accountFormat : null),
+            errorText:
+                _fieldErrors['account'] ??
+                (_account.text.isNotEmpty && !_accountOk
+                    ? OnboardingCopy.accountFormat
+                    : null),
           ),
           onChanged: (_) => setState(() => _fieldErrors.remove('account')),
         ),
@@ -196,10 +231,15 @@ class _PayoutStepState extends ConsumerState<PayoutStep> {
           keyboardType: TextInputType.number,
           autocorrect: false,
           enableSuggestions: false,
-          inputFormatters: [FilteringTextInputFormatter.digitsOnly, LengthLimitingTextInputFormatter(18)],
+          inputFormatters: [
+            FilteringTextInputFormatter.digitsOnly,
+            LengthLimitingTextInputFormatter(18),
+          ],
           decoration: InputDecoration(
             labelText: OnboardingCopy.accountConfirmLabel,
-            errorText: _account2.text.isNotEmpty && !_sameOk ? OnboardingCopy.accountSame : null,
+            errorText: _account2.text.isNotEmpty && !_sameOk
+                ? OnboardingCopy.accountSame
+                : null,
           ),
           onChanged: (_) => setState(() {}),
         ),
@@ -218,12 +258,16 @@ class _PayoutStepState extends ConsumerState<PayoutStep> {
           decoration: InputDecoration(
             labelText: OnboardingCopy.ifscLabel,
             hintText: OnboardingCopy.ifscHint,
-            errorText: _fieldErrors['ifsc'] ?? (_ifsc.text.isNotEmpty && !_ifscOk ? OnboardingCopy.ifscFormat : null),
+            errorText:
+                _fieldErrors['ifsc'] ??
+                (_ifsc.text.isNotEmpty && !_ifscOk
+                    ? OnboardingCopy.ifscFormat
+                    : null),
           ),
           onChanged: (_) => setState(() => _fieldErrors.remove('ifsc')),
         ),
         const SizedBox(height: 12),
-        const Text(OnboardingCopy.payoutKeep, style: HfText.note),
+        Text(OnboardingCopy.payoutKeep, style: HfText.of(context, HfText.note)),
         if (_result != null && !_result!.match) ...[
           const SizedBox(height: 16),
           const InfoBox(
@@ -234,13 +278,6 @@ class _PayoutStepState extends ConsumerState<PayoutStep> {
           ),
         ],
         if (_error != null) InlineError(_error!),
-        const SizedBox(height: 20),
-        HfButton(
-          key: const ValueKey<String>('payout-verify'),
-          label: OnboardingCopy.payoutVerify,
-          loading: _busy,
-          onPressed: _valid ? _verify : null,
-        ),
       ],
     );
   }
@@ -248,6 +285,8 @@ class _PayoutStepState extends ConsumerState<PayoutStep> {
 
 class _UpperCaseFormatter extends TextInputFormatter {
   @override
-  TextEditingValue formatEditUpdate(TextEditingValue oldValue, TextEditingValue newValue) =>
-      newValue.copyWith(text: newValue.text.toUpperCase());
+  TextEditingValue formatEditUpdate(
+    TextEditingValue oldValue,
+    TextEditingValue newValue,
+  ) => newValue.copyWith(text: newValue.text.toUpperCase());
 }

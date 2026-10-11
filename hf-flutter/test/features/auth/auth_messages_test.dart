@@ -29,11 +29,17 @@ void main() {
     expect(isValidIndianMobile(''), isFalse);
   });
 
-  test('toE164India adds +91', () => expect(toE164India('9876543210'), '+919876543210'));
+  test(
+    'toE164India adds +91',
+    () => expect(toE164India('9876543210'), '+919876543210'),
+  );
 
   test('the input formatter strips a pasted prefix', () {
     const f = IndianMobileFormatter();
-    final out = f.formatEditUpdate(TextEditingValue.empty, const TextEditingValue(text: '+91 98765 43210'));
+    final out = f.formatEditUpdate(
+      TextEditingValue.empty,
+      const TextEditingValue(text: '+91 98765 43210'),
+    );
     expect(out.text, '9876543210');
     expect(out.selection.baseOffset, 10);
   });
@@ -62,49 +68,99 @@ void main() {
 
     for (final stage in SignInStage.values) {
       for (final code in codes) {
-        test('$code at ${stage.name} has a friendly line even with no message from the server', () {
-          final f = mapSignInError(ApiError(status: 400, code: code), stage);
-          expect(f.message, isNotEmpty);
-          expect(f.message, isNot(contains('_')), reason: 'a code leaked into the message: ${f.message}');
-          expect(f.reason, code);
-        });
+        test(
+          '$code at ${stage.name} has a friendly line even with no message from the server',
+          () {
+            final f = mapSignInError(ApiError(status: 400, code: code), stage);
+            expect(f.message, isNotEmpty);
+            expect(
+              f.message,
+              isNot(contains('_')),
+              reason: 'a code leaked into the message: ${f.message}',
+            );
+            expect(f.reason, code);
+          },
+        );
       }
     }
 
     test('an unknown code uses the worker words, then a calm default', () {
       final withWords = mapSignInError(
-          const ApiError(status: 400, code: 'brand_new', message: 'Something specific.'), SignInStage.verify);
+        const ApiError(
+          status: 400,
+          code: 'brand_new',
+          message: 'Something specific.',
+        ),
+        SignInStage.verify,
+      );
       expect(withWords.message, 'Something specific.');
-      final without = mapSignInError(const ApiError(status: 500, code: 'http_500'), SignInStage.verify);
+      final without = mapSignInError(
+        const ApiError(status: 500, code: 'http_500'),
+        SignInStage.verify,
+      );
       expect(without.message, 'Something went wrong. Please try again.');
     });
 
     test('rate_limited with retry_after_s becomes a countdown', () {
       final f = mapSignInError(
-          const ApiError(status: 429, code: 'rate_limited', extra: {'retry_after_s': 1}), SignInStage.send);
+        const ApiError(
+          status: 429,
+          code: 'rate_limited',
+          extra: {'retry_after_s': 1},
+        ),
+        SignInStage.send,
+      );
       expect(f.retryAfterSeconds, 1);
       expect(f.message, 'Please wait 1 second before asking for another code.');
     });
 
-    test('wrong_code reads the tries left, and the last one allows a new code', () {
-      final two = mapSignInError(
-          const ApiError(status: 400, code: 'wrong_code', extra: {'attempts_left': 2}), SignInStage.verify);
-      expect(two.message, 'That code is not right. 2 tries left.');
-      expect(two.allowResend, isFalse);
-      final none = mapSignInError(
-          const ApiError(status: 400, code: 'wrong_code', extra: {'attempts_left': 0}), SignInStage.verify);
-      expect(none.allowResend, isTrue);
-    });
+    test(
+      'wrong_code reads the tries left, and the last one allows a new code',
+      () {
+        final two = mapSignInError(
+          const ApiError(
+            status: 400,
+            code: 'wrong_code',
+            extra: {'attempts_left': 2},
+          ),
+          SignInStage.verify,
+        );
+        expect(two.message, 'That code is not right. 2 tries left.');
+        expect(two.allowResend, isFalse);
+        final none = mapSignInError(
+          const ApiError(
+            status: 400,
+            code: 'wrong_code',
+            extra: {'attempts_left': 0},
+          ),
+          SignInStage.verify,
+        );
+        expect(none.allowResend, isTrue);
+      },
+    );
 
     test('dead codes allow asking for a new one at once', () {
       for (final code in ['code_expired', 'too_many_attempts', 'no_code']) {
-        expect(mapSignInError(ApiError(status: 400, code: code), SignInStage.verify).allowResend, isTrue, reason: code);
+        expect(
+          mapSignInError(
+            ApiError(status: 400, code: code),
+            SignInStage.verify,
+          ).allowResend,
+          isTrue,
+          reason: code,
+        );
       }
     });
 
     test('offline and slow answers say so', () {
-      expect(mapSignInError(ApiError.network(), SignInStage.send).message, 'No internet. Check your connection.');
-      expect(mapSignInError(ApiError.timeout(), SignInStage.verify).message, 'That took too long. Please try again.');
+      expect(
+        mapSignInError(ApiError.network(), SignInStage.send).message,
+        'No internet. Check your connection.',
+      );
+      expect(
+        mapSignInError(ApiError.timeout(), SignInStage.verify).message,
+        'That took too long. Please try again.',
+      );
     });
   });
 }

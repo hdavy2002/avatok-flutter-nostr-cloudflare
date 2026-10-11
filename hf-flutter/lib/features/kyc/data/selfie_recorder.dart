@@ -6,7 +6,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 /// A finished selfie video, in memory (about 10 s at medium quality is well under the worker's 12 MB limit).
 class SelfieClip {
-  const SelfieClip({required this.bytes, required this.mime, required this.seconds});
+  const SelfieClip({
+    required this.bytes,
+    required this.mime,
+    required this.seconds,
+  });
 
   final Uint8List bytes;
 
@@ -25,7 +29,8 @@ class SelfieRecorderException implements Exception {
   bool get isDenied => code == 'denied';
 
   @override
-  String toString() => 'SelfieRecorderException($code${detail == null ? '' : ': $detail'})';
+  String toString() =>
+      'SelfieRecorderException($code${detail == null ? '' : ': $detail'})';
 }
 
 /// The camera, behind a small interface so widget tests use a fake (`FakeSelfieRecorder`).
@@ -48,14 +53,17 @@ abstract class SelfieRecorder {
 typedef SelfieRecorderFactory = SelfieRecorder Function();
 
 /// Tests override this with a factory that returns a fake.
-final selfieRecorderFactoryProvider = Provider<SelfieRecorderFactory>((ref) => CameraSelfieRecorder.new);
+final selfieRecorderFactoryProvider = Provider<SelfieRecorderFactory>(
+  (ref) => CameraSelfieRecorder.new,
+);
 
 /// The real recorder, on the `camera` package (CameraX on Android records MP4).
 class CameraSelfieRecorder implements SelfieRecorder {
   CameraController? _controller;
   DateTime? _startedAt;
 
-  static bool _isDeniedCode(String code) => code.contains('AccessDenied') || code.contains('AccessRestricted');
+  static bool _isDeniedCode(String code) =>
+      code.contains('AccessDenied') || code.contains('AccessRestricted');
 
   @override
   Future<void> open() async {
@@ -66,11 +74,18 @@ class CameraSelfieRecorder implements SelfieRecorder {
         (c) => c.lensDirection == CameraLensDirection.front,
         orElse: () => cameras.first,
       );
-      final controller = CameraController(front, ResolutionPreset.medium, enableAudio: true);
+      final controller = CameraController(
+        front,
+        ResolutionPreset.medium,
+        enableAudio: true,
+      );
       _controller = controller;
       await controller.initialize();
     } on CameraException catch (e) {
-      throw SelfieRecorderException(_isDeniedCode(e.code) ? 'denied' : 'failed', e.description ?? e.code);
+      throw SelfieRecorderException(
+        _isDeniedCode(e.code) ? 'denied' : 'failed',
+        e.description ?? e.code,
+      );
     }
   }
 
@@ -89,7 +104,10 @@ class CameraSelfieRecorder implements SelfieRecorder {
       await c.startVideoRecording();
       _startedAt = DateTime.now();
     } on CameraException catch (e) {
-      throw SelfieRecorderException(_isDeniedCode(e.code) ? 'denied' : 'failed', e.description ?? e.code);
+      throw SelfieRecorderException(
+        _isDeniedCode(e.code) ? 'denied' : 'failed',
+        e.description ?? e.code,
+      );
     }
   }
 
@@ -101,9 +119,13 @@ class CameraSelfieRecorder implements SelfieRecorder {
       final file = await c.stopVideoRecording();
       final bytes = await file.readAsBytes();
       final started = _startedAt;
-      final seconds = started == null ? 0 : DateTime.now().difference(started).inSeconds;
+      final seconds = started == null
+          ? 0
+          : DateTime.now().difference(started).inSeconds;
       final m = file.mimeType;
-      final mime = (m == 'video/webm' || m == 'video/quicktime') ? m! : 'video/mp4';
+      final mime = (m == 'video/webm' || m == 'video/quicktime')
+          ? m!
+          : 'video/mp4';
       return SelfieClip(bytes: bytes, mime: mime, seconds: seconds);
     } on CameraException catch (e) {
       throw SelfieRecorderException('failed', e.description ?? e.code);

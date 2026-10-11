@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/api/api_error.dart';
-import '../../../../core/theme/hf_tokens.dart';
+import '../../../../core/theme/hf_theme.dart';
 import '../../../../core/widgets/widgets.dart';
 import '../../../explore/data/host_options.dart';
 import '../../../host_profile/data/host_profile.dart';
@@ -46,7 +46,11 @@ class _PreviewStepState extends ConsumerState<PreviewStep> {
 
   OnboardingStepContext get ctx => widget.ctx;
 
-  static const Map<String, int> _limits = <String, int>{'tagline': 120, 'quote': 240, 'aboutPolished': 900};
+  static const Map<String, int> _limits = <String, int>{
+    'tagline': 120,
+    'quote': 240,
+    'aboutPolished': 900,
+  };
 
   @override
   void dispose() {
@@ -56,7 +60,9 @@ class _PreviewStepState extends ConsumerState<PreviewStep> {
 
   String _value(String key) {
     final s = ctx.state;
-    if (key == 'aboutPolished') return s.hostString('aboutPolished') ?? s.hostString('about') ?? '';
+    if (key == 'aboutPolished') {
+      return s.hostString('aboutPolished') ?? s.hostString('about') ?? '';
+    }
     return s.hostString(key) ?? '';
   }
 
@@ -69,9 +75,9 @@ class _PreviewStepState extends ConsumerState<PreviewStep> {
   }
 
   void _cancelEdit() => setState(() {
-        _editing = null;
-        _editError = null;
-      });
+    _editing = null;
+    _editError = null;
+  });
 
   Future<void> _saveEdit() async {
     final key = _editing;
@@ -92,7 +98,9 @@ class _PreviewStepState extends ConsumerState<PreviewStep> {
       _editError = null;
     });
     try {
-      await ref.read(hostSetupApiProvider).saveGenerated(<String, String>{key: v});
+      await ref.read(hostSetupApiProvider).saveGenerated(<String, String>{
+        key: v,
+      });
       OnboardingTelemetry.step('preview', 'saved');
       await ctx.refresh();
       if (!mounted) return;
@@ -101,7 +109,12 @@ class _PreviewStepState extends ConsumerState<PreviewStep> {
         _editing = null;
       });
     } on ApiError catch (e) {
-      OnboardingTelemetry.step('preview', 'error', reason: e.code, status: e.status);
+      OnboardingTelemetry.step(
+        'preview',
+        'error',
+        reason: e.code,
+        status: e.status,
+      );
       if (!mounted) return;
       setState(() {
         _savingEdit = false;
@@ -124,7 +137,12 @@ class _PreviewStepState extends ConsumerState<PreviewStep> {
       await ctx.next();
       if (mounted) setState(() => _submitting = false);
     } on ApiError catch (e) {
-      OnboardingTelemetry.step('preview', 'error', reason: e.code, status: e.status);
+      OnboardingTelemetry.step(
+        'preview',
+        'error',
+        reason: e.code,
+        status: e.status,
+      );
       if (!mounted) return;
       if (e.code == 'bad_status' && ctx.state.hostStatus == 'pending_review') {
         await ctx.next();
@@ -140,7 +158,9 @@ class _PreviewStepState extends ConsumerState<PreviewStep> {
 
   String? get _profileImageUrl {
     for (final m in ctx.state.media) {
-      if (m['kind'] == 'profile' && '${m['url'] ?? ''}'.isNotEmpty) return '${m['url']}';
+      if (m['kind'] == 'profile' && '${m['url'] ?? ''}'.isNotEmpty) {
+        return '${m['url']}';
+      }
     }
     return ctx.state.hostString('avatarUrl');
   }
@@ -150,7 +170,9 @@ class _PreviewStepState extends ConsumerState<PreviewStep> {
       for (final m in ctx.state.media)
         if (m['kind'] == 'gallery' && '${m['url'] ?? ''}'.isNotEmpty) m,
     ];
-    items.sort((a, b) => ((a['sort'] as num?) ?? 0).compareTo((b['sort'] as num?) ?? 0));
+    items.sort(
+      (a, b) => ((a['sort'] as num?) ?? 0).compareTo((b['sort'] as num?) ?? 0),
+    );
     return [for (final m in items) GalleryImage.fromJson(m)];
   }
 
@@ -207,7 +229,8 @@ class _PreviewStepState extends ConsumerState<PreviewStep> {
         ],
       ],
       children: [
-        if (status == 'pending_review') const LockBanner(PartBCopy.previewLockedPending),
+        if (status == 'pending_review')
+          const LockBanner(PartBCopy.previewLockedPending),
         if (status == 'live') const LockBanner(PartBCopy.previewLockedLive),
         if ((status == 'rejected' || status == 'paused'))
           Padding(
@@ -216,13 +239,22 @@ class _PreviewStepState extends ConsumerState<PreviewStep> {
               key: const ValueKey<String>('preview-changes'),
               width: double.infinity,
               padding: const EdgeInsets.all(14),
-              decoration: BoxDecoration(color: HfColors.blush, borderRadius: BorderRadius.circular(HfRadius.card)),
+              decoration: BoxDecoration(
+                color: HfColors.blush,
+                borderRadius: BorderRadius.circular(HfRadius.card),
+              ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text(PartBCopy.previewChangesTitle, style: HfText.subtitle),
+                  Text(
+                    PartBCopy.previewChangesTitle,
+                    style: HfText.of(context, HfText.subsection),
+                  ),
                   const SizedBox(height: 4),
-                  Text(note ?? PartBCopy.previewChangesFallback, style: HfText.bodyText),
+                  Text(
+                    note ?? PartBCopy.previewChangesFallback,
+                    style: HfText.of(context, HfText.body),
+                  ),
                 ],
               ),
             ),
@@ -230,22 +262,36 @@ class _PreviewStepState extends ConsumerState<PreviewStep> {
         if (hero != null)
           ClipRRect(
             borderRadius: BorderRadius.circular(HfRadius.card),
-            child: AspectRatio(aspectRatio: 1, child: image(context, hero, fit: BoxFit.cover)),
+            child: AspectRatio(
+              aspectRatio: 1,
+              child: image(context, hero, fit: BoxFit.cover),
+            ),
           ),
         const SizedBox(height: 8),
-        const Align(alignment: Alignment.centerLeft, child: AiLabel(text: PartBCopy.avatarAiLabel)),
+        const Align(
+          alignment: Alignment.centerLeft,
+          child: AiLabel(text: PartBCopy.avatarAiLabel),
+        ),
         const SizedBox(height: 12),
         Semantics(
           header: true,
-          child: Text(s.hostString('displayName') ?? '', key: const ValueKey<String>('preview-name'), style: HfText.title),
+          child: Text(
+            s.hostString('displayName') ?? '',
+            key: const ValueKey<String>('preview-name'),
+            style: HfText.of(context, HfText.title),
+          ),
         ),
-        if (price != null) Text('${rupeesText(price)}${PartBCopy.previewPerMin}', style: HfText.bodyStrong),
+        if (price != null)
+          Text(
+            '${rupeesText(price)}${PartBCopy.previewPerMin}',
+            style: HfText.of(context, HfText.bodyStrong),
+          ),
         const SizedBox(height: 12),
         _editable(
           field: 'tagline',
           label: PartBCopy.taglineLabel,
           editLabel: PartBCopy.previewEditTagline,
-          style: HfText.bodyStrong,
+          style: HfText.of(context, HfText.bodyStrong),
           maxLines: 2,
           locked: locked,
         ),
@@ -253,7 +299,10 @@ class _PreviewStepState extends ConsumerState<PreviewStep> {
           field: 'quote',
           label: PartBCopy.quoteLabel,
           editLabel: PartBCopy.previewEditQuote,
-          style: HfText.bodyText.copyWith(fontStyle: FontStyle.italic),
+          style: HfText.of(
+            context,
+            HfText.body,
+          ).copyWith(fontStyle: FontStyle.italic),
           maxLines: 3,
           locked: locked,
           quoted: true,
@@ -266,9 +315,18 @@ class _PreviewStepState extends ConsumerState<PreviewStep> {
             children: [
               for (final t in s.hostStrings('topics'))
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                  decoration: BoxDecoration(color: HfColors.lilac, borderRadius: BorderRadius.circular(HfRadius.pill)),
-                  child: Text(options?.topicLabel(t) ?? t.replaceAll('-', ' '), style: HfText.badge),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 6,
+                  ),
+                  decoration: BoxDecoration(
+                    color: HfColors.lavender,
+                    borderRadius: BorderRadius.circular(HfRadius.pillRadius),
+                  ),
+                  child: Text(
+                    options?.topicLabel(t) ?? t.replaceAll('-', ' '),
+                    style: HfText.of(context, HfText.badge),
+                  ),
                 ),
             ],
           ),
@@ -278,7 +336,7 @@ class _PreviewStepState extends ConsumerState<PreviewStep> {
           field: 'aboutPolished',
           label: PartBCopy.aboutEditLabel,
           editLabel: PartBCopy.previewEditAbout,
-          style: HfText.bodyText,
+          style: HfText.of(context, HfText.body),
           maxLines: 12,
           locked: locked,
           multiline: true,
@@ -294,7 +352,10 @@ class _PreviewStepState extends ConsumerState<PreviewStep> {
               : Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text(PartBCopy.previewNoVoice, style: HfText.bodyText),
+                    Text(
+                      PartBCopy.previewNoVoice,
+                      style: HfText.of(context, HfText.body),
+                    ),
                     HfButton(
                       key: const ValueKey<String>('preview-record'),
                       label: PartBCopy.previewRecordNow,
@@ -309,14 +370,23 @@ class _PreviewStepState extends ConsumerState<PreviewStep> {
           GalleryPager(items: gallery),
         ],
         const SizedBox(height: 16),
-        const HfCard(
-          color: HfColors.lilac,
+        HfCard(
+          color: HfColors.lavender,
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Icon(Icons.shield_outlined, size: 24, color: HfColors.orchid),
-              SizedBox(width: 10),
-              Expanded(child: Text(PartBCopy.previewPrivacy, style: HfText.note)),
+              const Icon(
+                Icons.shield_outlined,
+                size: 24,
+                color: HfColors.lavenderDeep,
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  PartBCopy.previewPrivacy,
+                  style: HfText.of(context, HfText.note),
+                ),
+              ),
             ],
           ),
         ),
@@ -356,14 +426,26 @@ class _PreviewStepState extends ConsumerState<PreviewStep> {
               maxLines: multiline ? 10 : 3,
               maxLength: _limits[field],
               textCapitalization: TextCapitalization.sentences,
-              decoration: InputDecoration(labelText: label, errorText: _editError, errorMaxLines: 3),
+              decoration: InputDecoration(
+                labelText: label,
+                errorText: _editError,
+                errorMaxLines: 3,
+              ),
             ),
             const SizedBox(height: 8),
-            HfButton(key: const ValueKey<String>('preview-save'), label: PartBCopy.save,
-              loading: _savingEdit, onPressed: _saveEdit),
+            HfButton(
+              key: const ValueKey<String>('preview-save'),
+              label: PartBCopy.save,
+              loading: _savingEdit,
+              onPressed: _saveEdit,
+            ),
             const SizedBox(height: 12),
-            HfButton(key: const ValueKey<String>('preview-cancel'), label: PartBCopy.cancel,
-              kind: HfButtonKind.secondary, onPressed: _savingEdit ? null : _cancelEdit),
+            HfButton(
+              key: const ValueKey<String>('preview-cancel'),
+              label: PartBCopy.cancel,
+              kind: HfButtonKind.secondary,
+              onPressed: _savingEdit ? null : _cancelEdit,
+            ),
           ],
         ),
       );
@@ -375,7 +457,11 @@ class _PreviewStepState extends ConsumerState<PreviewStep> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           if (value.isNotEmpty)
-            Text(quoted ? '“$value”' : value, key: ValueKey<String>('preview-text-$field'), style: style),
+            Text(
+              quoted ? '“$value”' : value,
+              key: ValueKey<String>('preview-text-$field'),
+              style: style,
+            ),
           if (!locked)
             TextButton(
               key: ValueKey<String>('preview-edit-$field'),

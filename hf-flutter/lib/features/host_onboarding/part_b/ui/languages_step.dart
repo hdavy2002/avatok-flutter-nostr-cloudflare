@@ -3,7 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../../../core/theme/hf_tokens.dart';
+import '../../../../core/theme/hf_theme.dart';
 import '../../../../core/widgets/widgets.dart';
 import '../../../explore/data/host_options.dart';
 import '../../../kyc/kyc.dart';
@@ -88,11 +88,17 @@ class _LanguagesStepState extends ConsumerState<LanguagesStep> {
     }
     if (!_valid) return;
     setState(() => _busy = true);
-    final ok = await _saver.flush(fields: const <String>['languages', 'conversationLang', 'style']);
+    final ok = await _saver.flush(
+      fields: const <String>['languages', 'conversationLang', 'style'],
+    );
     if (!mounted) return;
     setState(() => _busy = false);
     if (!ok) {
-      OnboardingTelemetry.step('languages', 'error', reason: _saver.saveProblem == null ? 'invalid_field' : 'save_failed');
+      OnboardingTelemetry.step(
+        'languages',
+        'error',
+        reason: _saver.saveProblem == null ? 'invalid_field' : 'save_failed',
+      );
       return;
     }
     OnboardingTelemetry.step('languages', 'ok');
@@ -115,7 +121,10 @@ class _LanguagesStepState extends ConsumerState<LanguagesStep> {
     final banner = lock.banner();
     final full = _languages.length >= kMaxLanguages;
     final problem = _saver.saveProblem;
-    final fieldError = _saver.errorOf('languages') ?? _saver.errorOf('style') ?? _saver.errorOf('conversationLang');
+    final fieldError =
+        _saver.errorOf('languages') ??
+        _saver.errorOf('style') ??
+        _saver.errorOf('conversationLang');
     return PartBStep(
       scene: HfSceneKind.discover,
       title: PartBCopy.languagesTitle,
@@ -142,11 +151,20 @@ class _LanguagesStepState extends ConsumerState<LanguagesStep> {
                 key: ValueKey<String>('language-${l.code}'),
                 label: l.label,
                 selected: _languages.contains(l.label),
-                onTap: locked || (full && !_languages.contains(l.label)) ? null : () => _toggle(l.label, o),
+                onTap: locked || (full && !_languages.contains(l.label))
+                    ? null
+                    : () => _toggle(l.label, o),
               ),
           ],
         ),
-        if (full) const Padding(padding: EdgeInsets.only(top: 8), child: Text(PartBCopy.languagesMax, style: HfText.note)),
+        if (full)
+          Padding(
+            padding: const EdgeInsets.only(top: 8),
+            child: Text(
+              PartBCopy.languagesMax,
+              style: HfText.of(context, HfText.note),
+            ),
+          ),
         const SizedBox(height: 12),
         const GroupLegend(PartBCopy.styleLegend),
         for (final s in kStyleChoices)

@@ -3,7 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../../../core/theme/hf_tokens.dart';
+import '../../../../core/theme/hf_theme.dart';
 import '../../../../core/widgets/widgets.dart';
 import '../../../kyc/kyc.dart';
 import '../../flow/onboarding_context.dart';
@@ -54,14 +54,26 @@ class _HoursStepState extends ConsumerState<HoursStep> {
     final serverFrom = validHhmm(hours['from'], '19:00');
     final serverTo = validHhmm(hours['to'], '22:00');
     if (serverDays.isNotEmpty) {
-      _saver.seed('hours', <String, Object?>{'days': serverDays, 'from': serverFrom, 'to': serverTo});
+      _saver.seed('hours', <String, Object?>{
+        'days': serverDays,
+        'from': serverFrom,
+        'to': serverTo,
+      });
     }
-    for (final k in const <String>['healthConsent', 'lgbtqLane', 'lgbtqPublic', 'womenLane']) {
+    for (final k in const <String>[
+      'healthConsent',
+      'lgbtqLane',
+      'lgbtqPublic',
+      'womenLane',
+    ]) {
       _saver.seed(k, _serverBool(k));
     }
     final h = _saver.valueOf('hours', null);
     if (h is Map) {
-      _days = <int>{for (final d in (h['days'] as List? ?? const <Object?>[])) if (d is int) d};
+      _days = <int>{
+        for (final d in (h['days'] as List? ?? const <Object?>[]))
+          if (d is int) d,
+      };
       _from = validHhmm(h['from'], serverFrom);
       _to = validHhmm(h['to'], serverTo);
     } else {
@@ -69,9 +81,11 @@ class _HoursStepState extends ConsumerState<HoursStep> {
       _from = serverFrom;
       _to = serverTo;
     }
-    _health = _saver.valueOf('healthConsent', _serverBool('healthConsent')) == true;
+    _health =
+        _saver.valueOf('healthConsent', _serverBool('healthConsent')) == true;
     _lgbtq = _saver.valueOf('lgbtqLane', _serverBool('lgbtqLane')) == true;
-    _lgbtqPublic = _saver.valueOf('lgbtqPublic', _serverBool('lgbtqPublic')) == true;
+    _lgbtqPublic =
+        _saver.valueOf('lgbtqPublic', _serverBool('lgbtqPublic')) == true;
     _women = _saver.valueOf('womenLane', _serverBool('womenLane')) == true;
     _saver.addListener(_changed);
   }
@@ -90,7 +104,11 @@ class _HoursStepState extends ConsumerState<HoursStep> {
   void _saveHours() {
     if (_days.isEmpty) return;
     final sorted = _days.toList()..sort();
-    _saver.set('hours', <String, Object?>{'days': sorted, 'from': _from, 'to': _to});
+    _saver.set('hours', <String, Object?>{
+      'days': sorted,
+      'from': _from,
+      'to': _to,
+    });
   }
 
   void _toggleDay(int d) {
@@ -103,7 +121,10 @@ class _HoursStepState extends ConsumerState<HoursStep> {
   Future<void> _pickTime({required bool from}) async {
     final cur = from ? _from : _to;
     final parts = cur.split(':');
-    final initial = TimeOfDay(hour: int.tryParse(parts[0]) ?? 19, minute: int.tryParse(parts.length > 1 ? parts[1] : '0') ?? 0);
+    final initial = TimeOfDay(
+      hour: int.tryParse(parts[0]) ?? 19,
+      minute: int.tryParse(parts.length > 1 ? parts[1] : '0') ?? 0,
+    );
     final picked = await showTimePicker(context: context, initialTime: initial);
     if (picked == null || !mounted) return;
     setState(() {
@@ -148,18 +169,38 @@ class _HoursStepState extends ConsumerState<HoursStep> {
       return;
     }
     setState(() => _busy = true);
-    final ok = await _saver.flush(fields: const <String>['hours', 'healthConsent', 'lgbtqLane', 'lgbtqPublic', 'womenLane']);
+    final ok = await _saver.flush(
+      fields: const <String>[
+        'hours',
+        'healthConsent',
+        'lgbtqLane',
+        'lgbtqPublic',
+        'womenLane',
+      ],
+    );
     if (!mounted) return;
     setState(() => _busy = false);
     if (!ok) {
-      OnboardingTelemetry.step('hours', 'error', reason: _saver.saveProblem == null ? 'invalid_field' : 'save_failed');
+      OnboardingTelemetry.step(
+        'hours',
+        'error',
+        reason: _saver.saveProblem == null ? 'invalid_field' : 'save_failed',
+      );
       return;
     }
     OnboardingTelemetry.step('hours', 'ok');
     await ctx.next();
   }
 
-  Widget _switch(String key, bool value, String title, {String? body, String? error, required bool enabled, required ValueChanged<bool> onChanged}) {
+  Widget _switch(
+    String key,
+    bool value,
+    String title, {
+    String? body,
+    String? error,
+    required bool enabled,
+    required ValueChanged<bool> onChanged,
+  }) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
       child: HfCard(
@@ -172,11 +213,16 @@ class _HoursStepState extends ConsumerState<HoursStep> {
               value: value,
               onChanged: enabled ? onChanged : null,
               contentPadding: const EdgeInsets.symmetric(horizontal: 8),
-              title: Text(title, style: HfText.bodyStrong),
-              subtitle: body == null ? null : Text(body, style: HfText.note),
+              title: Text(title, style: HfText.of(context, HfText.bodyStrong)),
+              subtitle: body == null
+                  ? null
+                  : Text(body, style: HfText.of(context, HfText.note)),
             ),
             if (error != null)
-              Padding(padding: const EdgeInsets.fromLTRB(8, 0, 8, 8), child: InlineError(error)),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(8, 0, 8, 8),
+                child: InlineError(error),
+              ),
           ],
         ),
       ),
@@ -222,35 +268,92 @@ class _HoursStepState extends ConsumerState<HoursStep> {
               ),
           ],
         ),
-        if (_saver.errorOf('hours') != null) InlineError(_saver.errorOf('hours')!),
+        if (_saver.errorOf('hours') != null)
+          InlineError(_saver.errorOf('hours')!),
         const SizedBox(height: 12),
-        LayoutBuilder(builder: (context, constraints) {
-          final from = _TimeBox(label: PartBCopy.fromLabel, value: _from, boxKey: 'hours-from', onTap: hoursLocked ? null : () => unawaited(_pickTime(from: true)));
-          final to = _TimeBox(label: PartBCopy.toLabel, value: _to, boxKey: 'hours-to', onTap: hoursLocked ? null : () => unawaited(_pickTime(from: false)));
-          if (constraints.maxWidth < 340 || MediaQuery.textScalerOf(context).scale(14) > 20) {
-            return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [from, const SizedBox(height: 12), to]);
-          }
-          return Row(children: [Expanded(child: from), const SizedBox(width: 12), Expanded(child: to)]);
-        }),
+        LayoutBuilder(
+          builder: (context, constraints) {
+            final from = _TimeBox(
+              label: PartBCopy.fromLabel,
+              value: _from,
+              boxKey: 'hours-from',
+              onTap: hoursLocked
+                  ? null
+                  : () => unawaited(_pickTime(from: true)),
+            );
+            final to = _TimeBox(
+              label: PartBCopy.toLabel,
+              value: _to,
+              boxKey: 'hours-to',
+              onTap: hoursLocked
+                  ? null
+                  : () => unawaited(_pickTime(from: false)),
+            );
+            if (constraints.maxWidth < 340 ||
+                MediaQuery.textScalerOf(context).scale(14) > 20) {
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [from, const SizedBox(height: 12), to],
+              );
+            }
+            return Row(
+              children: [
+                Expanded(child: from),
+                const SizedBox(width: 12),
+                Expanded(child: to),
+              ],
+            );
+          },
+        ),
         const SizedBox(height: 16),
         const GroupLegend(PartBCopy.comfortTitle),
-        _switch('hours-health', _health, PartBCopy.healthConsent,
-            error: _saver.errorOf('healthConsent'), enabled: !comfortLocked, onChanged: _setHealth),
-        _switch('hours-lgbtq', _lgbtq, PartBCopy.lgbtqTitle,
-            body: PartBCopy.lgbtqBody, error: _saver.errorOf('lgbtqLane'), enabled: !comfortLocked, onChanged: _setLgbtq),
+        _switch(
+          'hours-health',
+          _health,
+          PartBCopy.healthConsent,
+          error: _saver.errorOf('healthConsent'),
+          enabled: !comfortLocked,
+          onChanged: _setHealth,
+        ),
+        _switch(
+          'hours-lgbtq',
+          _lgbtq,
+          PartBCopy.lgbtqTitle,
+          body: PartBCopy.lgbtqBody,
+          error: _saver.errorOf('lgbtqLane'),
+          enabled: !comfortLocked,
+          onChanged: _setLgbtq,
+        ),
         if (_lgbtq)
-          _switch('hours-lgbtq-public', _lgbtqPublic, PartBCopy.lgbtqPublic,
-              error: _saver.errorOf('lgbtqPublic'), enabled: !comfortLocked, onChanged: _setLgbtqPublic),
+          _switch(
+            'hours-lgbtq-public',
+            _lgbtqPublic,
+            PartBCopy.lgbtqPublic,
+            error: _saver.errorOf('lgbtqPublic'),
+            enabled: !comfortLocked,
+            onChanged: _setLgbtqPublic,
+          ),
         if (isWoman)
-          _switch('hours-women', _women, PartBCopy.womenLane,
-              error: _saver.errorOf('womenLane'), enabled: !comfortLocked, onChanged: _setWomen),
+          _switch(
+            'hours-women',
+            _women,
+            PartBCopy.womenLane,
+            error: _saver.errorOf('womenLane'),
+            enabled: !comfortLocked,
+            onChanged: _setWomen,
+          ),
       ],
     );
   }
 }
 
 class _TimeBox extends StatelessWidget {
-  const _TimeBox({required this.label, required this.value, required this.boxKey, required this.onTap});
+  const _TimeBox({
+    required this.label,
+    required this.value,
+    required this.boxKey,
+    required this.onTap,
+  });
 
   final String label;
   final String value;
@@ -281,8 +384,8 @@ class _TimeBox extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Text(label, style: HfText.label),
-              Text(value, style: HfText.subtitle),
+              Text(label, style: HfText.of(context, HfText.label)),
+              Text(value, style: HfText.of(context, HfText.subsection)),
             ],
           ),
         ),

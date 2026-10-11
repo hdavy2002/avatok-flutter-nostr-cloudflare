@@ -40,20 +40,24 @@ class AadhaarResult {
   /// Women-only space rule (worker lib/hf_lanes.ts): female or transgender.
   bool get isFemaleOrTransgender => gender == 'F' || gender == 'T';
 
-  factory AadhaarResult.fromJson(Map<String, dynamic> j, {bool alreadyVerified = false, bool viaDigiLocker = false}) =>
-      AadhaarResult(
-        gender: _str(j['gender']),
-        last4: _str(j['last4']),
-        firstName: _str(j['firstName']),
-        alreadyVerified: alreadyVerified || j['already_verified'] == true,
-        viaDigiLocker: viaDigiLocker,
-      );
+  factory AadhaarResult.fromJson(
+    Map<String, dynamic> j, {
+    bool alreadyVerified = false,
+    bool viaDigiLocker = false,
+  }) => AadhaarResult(
+    gender: _str(j['gender']),
+    last4: _str(j['last4']),
+    firstName: _str(j['firstName']),
+    alreadyVerified: alreadyVerified || j['already_verified'] == true,
+    viaDigiLocker: viaDigiLocker,
+  );
 }
 
 /// `POST /api/hosts/kyc/aadhaar/otp`: either a code was sent, or the person was verified already.
 class AadhaarOtpOutcome {
   const AadhaarOtpOutcome.sent(int this.expiresInSeconds) : verified = null;
-  const AadhaarOtpOutcome.alreadyVerified(AadhaarResult this.verified) : expiresInSeconds = null;
+  const AadhaarOtpOutcome.alreadyVerified(AadhaarResult this.verified)
+    : expiresInSeconds = null;
 
   final int? expiresInSeconds;
   final AadhaarResult? verified;
@@ -62,7 +66,8 @@ class AadhaarOtpOutcome {
 /// `POST /api/hosts/kyc/digilocker/start`: a DigiLocker link to open, or already verified.
 class DigiLockerStartOutcome {
   const DigiLockerStartOutcome.link(Uri this.url) : verified = null;
-  const DigiLockerStartOutcome.alreadyVerified(AadhaarResult this.verified) : url = null;
+  const DigiLockerStartOutcome.alreadyVerified(AadhaarResult this.verified)
+    : url = null;
 
   final Uri? url;
   final AadhaarResult? verified;
@@ -71,11 +76,11 @@ class DigiLockerStartOutcome {
 /// `POST /api/hosts/kyc/digilocker/complete`: done, or DigiLocker has not answered yet (HTTP 202).
 class DigiLockerCompleteOutcome {
   const DigiLockerCompleteOutcome.done(AadhaarResult this.result)
-      : pending = false,
-        message = null;
+    : pending = false,
+      message = null;
   const DigiLockerCompleteOutcome.pending([this.message])
-      : pending = true,
-        result = null;
+    : pending = true,
+      result = null;
 
   final bool pending;
   final String? message;
@@ -84,7 +89,12 @@ class DigiLockerCompleteOutcome {
 
 /// `POST /api/hosts/payout/verify`.
 class PayoutResult {
-  const PayoutResult({required this.match, this.nameAtBank, this.accountLast4, this.upiVerified = false});
+  const PayoutResult({
+    required this.match,
+    this.nameAtBank,
+    this.accountLast4,
+    this.upiVerified = false,
+  });
 
   /// The bank account holder name matches the Aadhaar name.
   final bool match;
@@ -95,11 +105,11 @@ class PayoutResult {
   final bool upiVerified;
 
   factory PayoutResult.fromJson(Map<String, dynamic> j) => PayoutResult(
-        match: j['match'] == true,
-        nameAtBank: _str(j['nameAtBank']),
-        accountLast4: _str(j['accountLast4']),
-        upiVerified: j['upiVerified'] == true,
-      );
+    match: j['match'] == true,
+    nameAtBank: _str(j['nameAtBank']),
+    accountLast4: _str(j['accountLast4']),
+    upiVerified: j['upiVerified'] == true,
+  );
 }
 
 /// `GET /api/hosts/kyc/status`, and the `kyc` object of `GET /api/hosts/me` (same shape).
@@ -151,4 +161,5 @@ String? _str(Object? v) {
   return s.isEmpty ? null : s;
 }
 
-Map<String, dynamic> _map(Object? v) => v is Map ? Map<String, dynamic>.from(v) : <String, dynamic>{};
+Map<String, dynamic> _map(Object? v) =>
+    v is Map ? Map<String, dynamic>.from(v) : <String, dynamic>{};

@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/api/api_error.dart';
-import '../../../../core/theme/hf_tokens.dart';
+import '../../../../core/theme/hf_theme.dart';
 import '../../../../core/widgets/widgets.dart';
 import '../../../kyc/kyc.dart';
 import '../../flow/onboarding_context.dart';
@@ -51,16 +51,25 @@ class _AadhaarStepState extends ConsumerState<AadhaarStep> {
 
   void _maybeUpgradeRole() {
     final k = ctx.state.kyc;
-    if (_roleChecked || !k.aadhaarDone || k.role == null || k.role == KycRole.host.wire) return;
+    if (_roleChecked ||
+        !k.aadhaarDone ||
+        k.role == null ||
+        k.role == KycRole.host.wire) {
+      return;
+    }
     _roleChecked = true;
     _upgrading = true;
     unawaited(() async {
       try {
-        final result = await ref.read(kycApiProvider).digilockerStart(role: KycRole.host);
+        final result = await ref
+            .read(kycApiProvider)
+            .digilockerStart(role: KycRole.host);
         if (!mounted) return;
         setState(() {
           _roleReady = result.verified != null;
-          _upgradeError = _roleReady ? null : 'We could not reuse your verification. Please try again.';
+          _upgradeError = _roleReady
+              ? null
+              : 'We could not reuse your verification. Please try again.';
         });
       } on ApiError catch (e) {
         if (mounted) setState(() => _upgradeError = e.userMessage);
@@ -99,40 +108,66 @@ class _AadhaarStepState extends ConsumerState<AadhaarStep> {
       final last4 = k.last4 ?? _just?.last4;
       final gender = k.gender ?? _just?.gender;
       return OnboardingStepPage(
-      scene: HfSceneKind.verify,
+        scene: HfSceneKind.verify,
         title: OnboardingCopy.aadhaarDoneTitle,
+        footer: [
+          if (_upgradeError != null)
+            HfButton(
+              label: 'Try again',
+              kind: HfButtonKind.secondary,
+              onPressed: () {
+                setState(() {
+                  _roleChecked = false;
+                  _upgradeError = null;
+                });
+                _maybeUpgradeRole();
+              },
+            ),
+          HfButton(
+            key: const ValueKey<String>('aadhaar-continue'),
+            label: OnboardingCopy.continueLabel,
+            loading: _upgrading,
+            onPressed: k.role == KycRole.laneCaller.wire && !_roleReady
+                ? null
+                : () => ctx.next(),
+          ),
+        ],
         children: [
           HfCard(
             key: const ValueKey<String>('aadhaar-done'),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                DoneRow(last4 == null ? KycCopy.aadhaarVerified : '${KycCopy.aadhaarEnding} $last4'),
+                DoneRow(
+                  last4 == null
+                      ? KycCopy.aadhaarVerified
+                      : '${KycCopy.aadhaarEnding} $last4',
+                ),
                 const SizedBox(height: 12),
-                Text('Gender: ${_genderLabel(gender)}', style: HfText.bodyText),
+                Text(
+                  'Gender: ${_genderLabel(gender)}',
+                  style: HfText.of(context, HfText.body),
+                ),
                 const SizedBox(height: 4),
-                const Text(OnboardingCopy.aadhaarAge, style: HfText.bodyText),
+                Text(
+                  OnboardingCopy.aadhaarAge,
+                  style: HfText.of(context, HfText.body),
+                ),
               ],
             ),
           ),
           const SizedBox(height: 12),
-          const Text(OnboardingCopy.aadhaarKeep, style: HfText.note),
-          const SizedBox(height: 24),
-          if (k.role == KycRole.laneCaller.wire)
-            const Text('We reuse your verified identity for hosting. Payout and profile review are separate.', style: HfText.note),
-          if (_upgradeError != null) ...[
-            InlineError(_upgradeError!),
-            HfButton(label: 'Try again', kind: HfButtonKind.secondary, onPressed: () {
-              setState(() { _roleChecked = false; _upgradeError = null; });
-              _maybeUpgradeRole();
-            }),
-          ],
-          HfButton(
-            key: const ValueKey<String>('aadhaar-continue'),
-            label: OnboardingCopy.continueLabel,
-            loading: _upgrading,
-            onPressed: k.role == KycRole.laneCaller.wire && !_roleReady ? null : () => ctx.next(),
+          Text(
+            OnboardingCopy.aadhaarKeep,
+            style: HfText.of(context, HfText.note),
           ),
+          const SizedBox(height: 12),
+          if (k.role == KycRole.laneCaller.wire)
+            Text(
+              'We reuse your verified identity for hosting. Payout and profile review are separate.',
+              style: HfText.of(context, HfText.note),
+            ),
+          if (_upgradeError != null) InlineError(_upgradeError!),
         ],
       );
     }

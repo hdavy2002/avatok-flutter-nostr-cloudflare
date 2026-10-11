@@ -39,7 +39,8 @@ class PushService {
   DateTime _now() => _ref.read(pushClockProvider)();
 
   /// `native-<versionCode>` (the worker stores it as the shell version).
-  String get shell => Analytics.appBuild > 0 ? 'native-${Analytics.appBuild}' : 'native';
+  String get shell =>
+      Analytics.appBuild > 0 ? 'native-${Analytics.appBuild}' : 'native';
 
   // ---- opt-in sheet ----------------------------------------------------------------------------
 
@@ -55,7 +56,10 @@ class PushService {
   Future<void> _writeRecord(OptInAnswer answer) async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      await prefs.setString(optInKey, OptInRecord(answer: answer, at: _now()).encode());
+      await prefs.setString(
+        optInKey,
+        OptInRecord(answer: answer, at: _now()).encode(),
+      );
     } catch (_) {
       // best effort: worst case the sheet asks once more
     }
@@ -63,7 +67,9 @@ class PushService {
 
   Future<bool> _flagOn() async {
     try {
-      final flags = await _ref.read(flagsProvider.future).timeout(const Duration(seconds: 3));
+      final flags = await _ref
+          .read(flagsProvider.future)
+          .timeout(const Duration(seconds: 3));
       return flags.hfPushEnabled;
     } catch (_) {
       return false;
@@ -96,12 +102,20 @@ class PushService {
     try {
       result = await _gateway.requestPermission();
     } catch (e, st) {
-      await Analytics.captureException(e, st, handled: true, extra: {'where': 'hf_push_permission'});
+      await Analytics.captureException(
+        e,
+        st,
+        handled: true,
+        extra: {'where': 'hf_push_permission'},
+      );
       result = PushPermission.notGranted;
     }
     final granted = result == PushPermission.granted;
     await _writeRecord(granted ? OptInAnswer.allowed : OptInAnswer.denied);
-    await Analytics.capture('hf_app_permission', {'kind': 'push', 'result': granted ? 'granted' : 'denied'});
+    await Analytics.capture('hf_app_permission', {
+      'kind': 'push',
+      'result': granted ? 'granted' : 'denied',
+    });
     if (granted) await registerToken();
     return granted;
   }
@@ -109,7 +123,10 @@ class PushService {
   /// "Not now": remembered for 14 days. The Android prompt is never shown.
   Future<void> notNow() async {
     await _writeRecord(OptInAnswer.later);
-    await Analytics.capture('hf_app_permission', {'kind': 'push', 'result': 'dismissed'});
+    await Analytics.capture('hf_app_permission', {
+      'kind': 'push',
+      'result': 'dismissed',
+    });
   }
 
   // ---- token -----------------------------------------------------------------------------------
@@ -134,14 +151,24 @@ class PushService {
     try {
       final t = token ?? await _gateway.token();
       if (t == null || t.isEmpty) {
-        await Analytics.capture('hf_push_registered',
-            {'outcome': 'failed', 'reason': 'no_token', 'ms': sw.elapsedMilliseconds, 'shell_version': shell});
+        await Analytics.capture('hf_push_registered', {
+          'outcome': 'failed',
+          'reason': 'no_token',
+          'ms': sw.elapsedMilliseconds,
+          'shell_version': shell,
+        });
         return;
       }
-      await _api.postJson('/api/hf/push/register', body: {'token': t, 'platform': 'android', 'shell': shell});
+      await _api.postJson(
+        '/api/hf/push/register',
+        body: {'token': t, 'platform': 'android', 'shell': shell},
+      );
       await _storeToken(t);
-      await Analytics.capture(
-          'hf_push_registered', {'outcome': 'ok', 'ms': sw.elapsedMilliseconds, 'shell_version': shell});
+      await Analytics.capture('hf_push_registered', {
+        'outcome': 'ok',
+        'ms': sw.elapsedMilliseconds,
+        'shell_version': shell,
+      });
     } on ApiError catch (e) {
       await Analytics.capture('hf_push_registered', {
         'outcome': 'failed',
@@ -151,7 +178,12 @@ class PushService {
         'shell_version': shell,
       });
     } catch (e, st) {
-      await Analytics.captureException(e, st, handled: true, extra: {'where': 'hf_push_register'});
+      await Analytics.captureException(
+        e,
+        st,
+        handled: true,
+        extra: {'where': 'hf_push_register'},
+      );
       await Analytics.capture('hf_push_registered', {
         'outcome': 'failed',
         'reason': 'error',
@@ -213,7 +245,9 @@ class PushService {
     final payload = message.payload;
     if (payload == null) return false;
     await Analytics.capture('hf_push_opened', {'kind': payload.kind.wire});
-    await _ref.read(deepLinkHandlerProvider).handle(payload.path, source: 'push', launch: launch);
+    await _ref
+        .read(deepLinkHandlerProvider)
+        .handle(payload.path, source: 'push', launch: launch);
     return true;
   }
 }

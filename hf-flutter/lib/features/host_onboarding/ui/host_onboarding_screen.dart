@@ -7,7 +7,7 @@ import 'package:go_router/go_router.dart';
 import '../../../core/api/api_error.dart';
 import '../../../core/router/nav.dart';
 import '../../../core/router/routes.dart';
-import '../../../core/theme/hf_tokens.dart';
+import '../../../core/theme/hf_theme.dart';
 import '../../../core/widgets/widgets.dart';
 import '../../kyc/kyc.dart';
 import '../flow/onboarding_context.dart';
@@ -25,13 +25,18 @@ import 'steps/onboarding_copy.dart';
 ///   belongs to a lane join, the person goes to the lane screen instead, which finishes it.
 /// - A flag that is off (`404 not_enabled`) shows "Coming soon".
 class HostOnboardingScreen extends ConsumerStatefulWidget {
-  const HostOnboardingScreen({super.key, this.step, this.digiLockerReturn = false});
+  const HostOnboardingScreen({
+    super.key,
+    this.step,
+    this.digiLockerReturn = false,
+  });
 
   final String? step;
   final bool digiLockerReturn;
 
   @override
-  ConsumerState<HostOnboardingScreen> createState() => _HostOnboardingScreenState();
+  ConsumerState<HostOnboardingScreen> createState() =>
+      _HostOnboardingScreenState();
 }
 
 class _HostOnboardingScreenState extends ConsumerState<HostOnboardingScreen> {
@@ -46,24 +51,33 @@ class _HostOnboardingScreenState extends ConsumerState<HostOnboardingScreen> {
   @override
   void didUpdateWidget(covariant HostOnboardingScreen old) {
     super.didUpdateWidget(old);
-    if (widget.digiLockerReturn && !old.digiLockerReturn) unawaited(_routeDigiLockerReturn());
-    if (widget.step != old.step || (widget.digiLockerReturn && !old.digiLockerReturn)) {
+    if (widget.digiLockerReturn && !old.digiLockerReturn) {
+      unawaited(_routeDigiLockerReturn());
+    }
+    if (widget.step != old.step ||
+        (widget.digiLockerReturn && !old.digiLockerReturn)) {
       final s = ref.read(onboardingStateProvider);
       final state = s.hasValue ? s.value : null;
-      if (state != null) setState(() => _key = startStepKey(state, requested: _requested));
+      if (state != null) {
+        setState(() => _key = startStepKey(state, requested: _requested));
+      }
     }
   }
 
-  String? get _requested => widget.step ?? (widget.digiLockerReturn ? OnboardingKeys.aadhaar : null);
+  String? get _requested =>
+      widget.step ?? (widget.digiLockerReturn ? OnboardingKeys.aadhaar : null);
 
   /// A DigiLocker check that a lane join started finishes on the lane screen.
   Future<void> _routeDigiLockerReturn() async {
     final p = await ref.read(digiLockerPendingStoreProvider).read();
     if (!mounted) return;
-    if (p != null && p.role == KycRole.laneCaller) context.go(Routes.lanesOf(p.lane, next: p.next));
+    if (p != null && p.role == KycRole.laneCaller) {
+      context.go(Routes.lanesOf(p.lane, next: p.next));
+    }
   }
 
-  Future<OnboardingServerState> _refresh() => ref.refresh(onboardingStateProvider.future);
+  Future<OnboardingServerState> _refresh() =>
+      ref.refresh(onboardingStateProvider.future);
 
   Future<void> _next() async {
     try {
@@ -118,10 +132,16 @@ class _HostOnboardingScreenState extends ConsumerState<HostOnboardingScreen> {
             skipLoadingOnReload: true,
             skipLoadingOnRefresh: true,
             skipError: true,
-            loading: () => const LoadingPanel(message: OnboardingCopy.loadingState),
+            loading: () =>
+                const LoadingPanel(message: OnboardingCopy.loadingState),
             error: (e, _) {
-              if (e is ApiError && e.isNotEnabled) return const ComingSoonPanel();
-              return ErrorPanel(error: e, onRetry: () => ref.invalidate(onboardingStateProvider));
+              if (e is ApiError && e.isNotEnabled) {
+                return const ComingSoonPanel();
+              }
+              return ErrorPanel(
+                error: e,
+                onRetry: () => ref.invalidate(onboardingStateProvider),
+              );
             },
             data: _body,
           ),
@@ -141,16 +161,23 @@ class _HostOnboardingScreenState extends ConsumerState<HostOnboardingScreen> {
       next: _next,
       goTo: _goTo,
       refresh: _refresh,
-      digiLockerReturn: widget.digiLockerReturn && key == OnboardingKeys.aadhaar,
+      digiLockerReturn:
+          widget.digiLockerReturn && key == OnboardingKeys.aadhaar,
     );
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        _ProgressHeader(index: index < 0 ? 0 : index, total: kOnboardingSteps.length, group: def?.group.label ?? ''),
+        _ProgressHeader(
+          index: index < 0 ? 0 : index,
+          total: kOnboardingSteps.length,
+          group: def?.group.label ?? '',
+        ),
         Expanded(
           child: KeyedSubtree(
             key: ValueKey<String>('onboarding-step-$key'),
-            child: builder == null ? const _ComingStep() : builder(context, ctx),
+            child: builder == null
+                ? const _ComingStep()
+                : builder(context, ctx),
           ),
         ),
       ],
@@ -159,29 +186,98 @@ class _HostOnboardingScreenState extends ConsumerState<HostOnboardingScreen> {
 }
 
 class _ProgressHeader extends StatelessWidget {
-  const _ProgressHeader({required this.index, required this.total, required this.group});
+  const _ProgressHeader({
+    required this.index,
+    required this.total,
+    required this.group,
+  });
 
   final int index;
   final int total;
   final String group;
 
+  HfTint get _tint {
+    switch (group) {
+      case 'Verify':
+        return HfTint.sky;
+      case 'Profile':
+        return HfTint.peach;
+      case 'Voice':
+        return HfTint.blush;
+      case 'Finish':
+        return HfTint.butter;
+      default:
+        return HfTint.lavender;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    final label = '${OnboardingCopy.stepOf} ${index + 1} ${OnboardingCopy.of} $total${group.isEmpty ? '' : ', $group'}';
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(HfSpacing.page, 4, HfSpacing.page, 12),
+    final tint = _tint;
+    final dark = HfBrightness.isDark(context);
+    final label =
+        '${OnboardingCopy.stepOf} ${index + 1} ${OnboardingCopy.of} $total';
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(
+        HfSpacing.page,
+        HfSpacing.sm,
+        HfSpacing.page,
+        HfSpacing.xl,
+      ),
+      decoration: BoxDecoration(
+        color: tint.bg(context),
+        borderRadius: const BorderRadius.vertical(
+          bottom: Radius.circular(HfRadius.tile),
+        ),
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(label, key: const ValueKey<String>('onboarding-progress'), style: HfText.label),
-          const SizedBox(height: 8),
+          Row(
+            children: [
+              if (group.isNotEmpty)
+                Expanded(
+                  child: Semantics(
+                    header: true,
+                    child: Text(
+                      group,
+                      style: HfText.section.copyWith(
+                        color: tint.valueInk(context),
+                      ),
+                    ),
+                  ),
+                )
+              else
+                const Spacer(),
+              const SizedBox(width: HfSpacing.sm),
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 6,
+                ),
+                decoration: BoxDecoration(
+                  color: dark ? HfColors.darkCard : HfColors.white,
+                  borderRadius: BorderRadius.circular(HfRadius.pillRadius),
+                ),
+                child: Text(
+                  label,
+                  key: const ValueKey<String>('onboarding-progress'),
+                  style: HfText.badge.copyWith(
+                    color: dark ? HfColors.darkText : HfColors.ink,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: HfSpacing.lg),
           ClipRRect(
-            borderRadius: BorderRadius.circular(8),
+            borderRadius: BorderRadius.circular(3),
             child: LinearProgressIndicator(
               value: (index + 1) / total,
-              minHeight: 8,
-              backgroundColor: HfColors.white,
-              color: HfColors.forest,
+              minHeight: 6,
+              backgroundColor: dark ? HfColors.darkCard : HfColors.white,
+              color: dark ? HfColors.lavenderLight : HfColors.lavenderDeep,
             ),
           ),
         ],
@@ -195,6 +291,8 @@ class _ComingStep extends StatelessWidget {
   const _ComingStep();
 
   @override
-  Widget build(BuildContext context) =>
-      const ComingSoonPanel(title: OnboardingCopy.notBuiltTitle, body: OnboardingCopy.notBuiltBody);
+  Widget build(BuildContext context) => const ComingSoonPanel(
+    title: OnboardingCopy.notBuiltTitle,
+    body: OnboardingCopy.notBuiltBody,
+  );
 }

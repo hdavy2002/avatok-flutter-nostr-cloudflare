@@ -18,13 +18,28 @@ void main() {
   });
 
   group('contact leak', () {
-    test('numbers, links, handles and app names are refused with a friendly line', () {
-      expect(contactLeakMessage('call me 98765 43210'), 'Please remove phone numbers.');
-      expect(contactLeakMessage('mail me at a@b.c'), 'Please remove emails, links or @handles.');
-      expect(contactLeakMessage('see www.example.org'), 'Please remove emails, links or @handles.');
-      expect(contactLeakMessage('find me on instagram'), 'Please do not mention apps or payment IDs.');
-      expect(contactLeakMessage('I love old songs and chai'), isNull);
-    });
+    test(
+      'numbers, links, handles and app names are refused with a friendly line',
+      () {
+        expect(
+          contactLeakMessage('call me 98765 43210'),
+          'Please remove phone numbers.',
+        );
+        expect(
+          contactLeakMessage('mail me at a@b.c'),
+          'Please remove emails, links or @handles.',
+        );
+        expect(
+          contactLeakMessage('see www.example.org'),
+          'Please remove emails, links or @handles.',
+        );
+        expect(
+          contactLeakMessage('find me on instagram'),
+          'Please do not mention apps or payment IDs.',
+        );
+        expect(contactLeakMessage('I love old songs and chai'), isNull);
+      },
+    );
   });
 
   group('voice length', () {
@@ -67,7 +82,10 @@ void main() {
 
   group('generation status', () {
     test('stages default to waiting; finished and failed', () {
-      final s = GenerationStatus.fromJson({'status': 'running', 'stages': {'text': 'done'}});
+      final s = GenerationStatus.fromJson({
+        'status': 'running',
+        'stages': {'text': 'done'},
+      });
       expect(s.stage('images'), 'waiting');
       expect(s.finished, isFalse);
       expect(s.anyFailed, isFalse);
@@ -86,26 +104,48 @@ void main() {
     });
 
     test('missing steps from the worker become step keys, once each', () {
-      const e = ApiError(status: 409, code: 'profile_incomplete', extra: {
-        'missing': ['avatar', 'displayName', 'about', 'agreements', 'nonsense'],
-      });
+      const e = ApiError(
+        status: 409,
+        code: 'profile_incomplete',
+        extra: {
+          'missing': [
+            'avatar',
+            'displayName',
+            'about',
+            'agreements',
+            'nonsense',
+          ],
+        },
+      );
       expect(missingSteps(e), ['avatar', 'about', 'review']);
       expect(stepForMissing('media'), 'generating');
     });
   });
 
   group('edit lock', () {
-    test('with the team nothing changes; live keeps price, hours and voice', () {
-      final team = EditLock.of('pending_review');
-      expect(team.profileLocked && team.priceHoursLocked && team.voiceLocked && team.avatarLocked, isTrue);
-      final live = EditLock.of('live');
-      expect(live.profileLocked, isTrue);
-      expect(live.priceHoursLocked, isFalse);
-      expect(live.voiceLocked, isFalse);
-      final draft = EditLock.of('draft');
-      expect(draft.profileLocked || draft.priceHoursLocked || draft.voiceLocked, isFalse);
-      expect(draft.banner(), isNull);
-      expect(team.banner(), isNotNull);
-    });
+    test(
+      'with the team nothing changes; live keeps price, hours and voice',
+      () {
+        final team = EditLock.of('pending_review');
+        expect(
+          team.profileLocked &&
+              team.priceHoursLocked &&
+              team.voiceLocked &&
+              team.avatarLocked,
+          isTrue,
+        );
+        final live = EditLock.of('live');
+        expect(live.profileLocked, isTrue);
+        expect(live.priceHoursLocked, isFalse);
+        expect(live.voiceLocked, isFalse);
+        final draft = EditLock.of('draft');
+        expect(
+          draft.profileLocked || draft.priceHoursLocked || draft.voiceLocked,
+          isFalse,
+        );
+        expect(draft.banner(), isNull);
+        expect(team.banner(), isNotNull);
+      },
+    );
   });
 }

@@ -10,7 +10,7 @@ import '../../../core/format/money.dart';
 import '../../../core/links.dart';
 import '../../../core/router/nav.dart';
 import '../../../core/router/routes.dart';
-import '../../../core/theme/hf_tokens.dart';
+import '../../../core/theme/hf_theme.dart';
 import '../../../core/widgets/widgets.dart';
 import '../data/me_api.dart';
 import '../data/me_telemetry.dart';
@@ -18,33 +18,46 @@ import '../data/me_telemetry.dart';
 /// Copy of the delete-account screen, in simple English.
 abstract final class DeleteCopy {
   static const String title = 'Delete my account';
-  static const String deleteIntro = 'We found no money that needs to be settled. You can delete your account now.';
-  static const String exitIntro = 'You have money in your account. We settle it first, then delete your account.';
+  static const String deleteIntro =
+      'We found no money that needs to be settled. You can delete your account now.';
+  static const String exitIntro =
+      'You have money in your account. We settle it first, then delete your account.';
   static const String whatHappens = 'What happens next';
-  static const String waitTime = 'Your account goes into a 30-day waiting time. You can change your mind in that time.';
-  static const String dataDeleted = "After 30 days your data is deleted, as India's data protection law (DPDP) asks.";
-  static const String testDropped = 'Test credits and test earnings have no cash value. They are removed.';
+  static const String waitTime =
+      'Your account goes into a 30-day waiting time. You can change your mind in that time.';
+  static const String dataDeleted =
+      "After 30 days your data is deleted, as India's data protection law (DPDP) asks.";
+  static const String testDropped =
+      'Test credits and test earnings have no cash value. They are removed.';
   static const String readMore = 'Read about data deletion';
   static const String ack = 'I understand and want to delete my account.';
   static const String deleteButton = 'Delete my account';
   static const String closeButton = 'Settle my money and delete my account';
-  static const String forfeitNoBank = 'No bank account is verified, so we cannot pay your earnings.';
+  static const String forfeitNoBank =
+      'No bank account is verified, so we cannot pay your earnings.';
   static const String forfeitOther = 'Some of your money cannot be paid out.';
   static const String addBank = 'Add my bank account';
-  static const String notEnabled = 'Closing your account this way is not open right now.';
-  static const String settleFirst = 'You have money to settle first. Please check the details below.';
+  static const String notEnabled =
+      'Closing your account this way is not open right now.';
+  static const String settleFirst =
+      'You have money to settle first. Please check the details below.';
 
   static const String scheduledTitle = 'Your account is scheduled for deletion';
   static const String keepAccount = 'Keep my account';
   static const String signOut = 'Sign out';
-  static const String keptSnack = 'Your account is safe. Nothing will be deleted.';
+  static const String keptSnack =
+      'Your account is safe. Nothing will be deleted.';
 
   static const String statusTitle = 'We are closing your account';
-  static const String statusHold = 'Some of your earnings are still on hold. We pay them out as soon as the hold ends.';
-  static const String statusPayouts = 'We are paying out your money. Your account is deleted once that is done.';
-  static const String statusReady = 'Your money is settled. We are deleting your account now.';
+  static const String statusHold =
+      'Some of your earnings are still on hold. We pay them out as soon as the hold ends.';
+  static const String statusPayouts =
+      'We are paying out your money. Your account is deleted once that is done.';
+  static const String statusReady =
+      'Your money is settled. We are deleting your account now.';
   static const String cancelClosing = 'Cancel closing my account';
-  static const String cancelledSnack = 'Closing was cancelled. Your account stays.';
+  static const String cancelledSnack =
+      'Closing was cancelled. Your account stays.';
 
   static String forfeitLabel(String amount) => 'I give up $amount.';
 
@@ -81,7 +94,20 @@ abstract final class DeleteCopy {
   }
 }
 
-const List<String> _months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+const List<String> _months = [
+  'Jan',
+  'Feb',
+  'Mar',
+  'Apr',
+  'May',
+  'Jun',
+  'Jul',
+  'Aug',
+  'Sep',
+  'Oct',
+  'Nov',
+  'Dec',
+];
 
 /// `12 Nov 2026` from epoch milliseconds, in the phone's time zone.
 String formatDay(int epochMs) {
@@ -103,7 +129,8 @@ class DeleteAccountScreen extends ConsumerStatefulWidget {
   const DeleteAccountScreen({super.key});
 
   @override
-  ConsumerState<DeleteAccountScreen> createState() => _DeleteAccountScreenState();
+  ConsumerState<DeleteAccountScreen> createState() =>
+      _DeleteAccountScreenState();
 }
 
 class _DeleteAccountScreenState extends ConsumerState<DeleteAccountScreen> {
@@ -152,7 +179,9 @@ class _DeleteAccountScreenState extends ConsumerState<DeleteAccountScreen> {
       if (!mounted) return;
       setState(() {
         _busy = false;
-        _scheduledAt = at ?? DateTime.now().add(const Duration(days: 30)).millisecondsSinceEpoch;
+        _scheduledAt =
+            at ??
+            DateTime.now().add(const Duration(days: 30)).millisecondsSinceEpoch;
       });
       await _refresh();
     } on ApiError catch (e) {
@@ -169,7 +198,12 @@ class _DeleteAccountScreenState extends ConsumerState<DeleteAccountScreen> {
         ref.invalidate(exitStateProvider);
         return;
       }
-      MeTelemetry.deleteResult('delete', 'failed', reason: e.code, status: e.status);
+      MeTelemetry.deleteResult(
+        'delete',
+        'failed',
+        reason: e.code,
+        status: e.status,
+      );
       _setError(e.userMessage);
     }
   }
@@ -183,7 +217,9 @@ class _DeleteAccountScreenState extends ConsumerState<DeleteAccountScreen> {
     });
     _idempotencyKey ??= newIdempotencyKey(ref.read(sessionProvider).me?.uid);
     try {
-      await ref.read(accountApiProvider).startExit(forfeit: _forfeit, idempotencyKey: _idempotencyKey!);
+      await ref
+          .read(accountApiProvider)
+          .startExit(forfeit: _forfeit, idempotencyKey: _idempotencyKey!);
       MeTelemetry.deleteResult('exit', 'ok');
       _idempotencyKey = null;
       if (!mounted) return;
@@ -195,7 +231,12 @@ class _DeleteAccountScreenState extends ConsumerState<DeleteAccountScreen> {
     } on ApiError catch (e) {
       // A refusal is final for this attempt; only "no answer" keeps the key so the retry is a replay.
       if (!e.isOffline) _idempotencyKey = null;
-      MeTelemetry.deleteResult('exit', 'failed', reason: e.code, status: e.status);
+      MeTelemetry.deleteResult(
+        'exit',
+        'failed',
+        reason: e.code,
+        status: e.status,
+      );
       if (e.code == 'nothing_to_settle') {
         // Nothing left to pay: the plain delete path applies now.
         if (!mounted) return;
@@ -272,7 +313,7 @@ class _DeleteAccountScreenState extends ConsumerState<DeleteAccountScreen> {
     if (!mounted) return;
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
-      ..showSnackBar(SnackBar(content: Text(text, style: HfText.bodyText.copyWith(color: HfColors.cream))));
+      ..showSnackBar(SnackBar(content: Text(text)));
   }
 
   // ---- build ----------------------------------------------------------------------------------------
@@ -292,14 +333,18 @@ class _DeleteAccountScreenState extends ConsumerState<DeleteAccountScreen> {
           loadingMessage: 'Checking your account…',
           onRetry: () => ref.invalidate(exitStateProvider),
           data: (s) => SingleChildScrollView(
-            padding: const EdgeInsets.all(HfSpacing.page),
+            padding: const EdgeInsets.fromLTRB(
+              HfSpacing.page,
+              0,
+              HfSpacing.page,
+              HfSpacing.section,
+            ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 const HfScene(kind: HfSceneKind.profile, height: 110),
                 const SizedBox(height: 16),
-                HfCard(child: Column(crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: _content(context, s))),
+                ..._content(context, s),
               ],
             ),
           ),
@@ -316,50 +361,144 @@ class _DeleteAccountScreenState extends ConsumerState<DeleteAccountScreen> {
     return _deleteView();
   }
 
+  bool get _dark => HfBrightness.isDark(context);
+  Color get _danger => _dark ? HfColors.blushLight : HfColors.accent;
+
+  /// A white panel: radius 22, 1 px line border.
+  Widget _panel({Key? key, required Widget child, HfTint? tint}) => Container(
+    key: key,
+    width: double.infinity,
+    padding: const EdgeInsets.all(HfSpacing.xxl),
+    decoration: BoxDecoration(
+      color: tint != null
+          ? tint.bg(context)
+          : (_dark ? HfColors.darkCard : HfColors.white),
+      borderRadius: BorderRadius.circular(HfRadius.tile),
+      border: tint != null
+          ? null
+          : Border.all(color: _dark ? HfColors.darkLine : HfColors.line),
+    ),
+    child: child,
+  );
+
   Widget _errorBox() {
     final e = _error;
     if (e == null) return const SizedBox.shrink();
     return Padding(
-      padding: const EdgeInsets.only(bottom: HfSpacing.gap),
-      child: HfCard(
+      padding: const EdgeInsets.only(bottom: HfSpacing.lg),
+      child: _panel(
         key: const ValueKey<String>('delete-error'),
-        color: HfColors.blush,
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Icon(Icons.error_outline_rounded, color: HfColors.accent),
-            const SizedBox(width: 12),
-            Expanded(child: Text(e, style: HfText.bodyText)),
-          ],
+        tint: HfTint.blush,
+        child: Semantics(
+          liveRegion: true,
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(Icons.error_outline_rounded, color: _danger),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  e,
+                  style: HfText.body.copyWith(
+                    color: HfTint.blush.valueInk(context),
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
   }
 
-  Widget _bullet(IconData icon, String text, {Key? key}) {
+  Widget _bullet(
+    IconData icon,
+    String text, {
+    Key? key,
+    HfTint tint = HfTint.lavender,
+  }) {
     return Padding(
       key: key,
       padding: const EdgeInsets.only(bottom: 12),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(icon, size: 22, color: HfColors.orchid),
+          Container(
+            width: 40,
+            height: 40,
+            decoration: BoxDecoration(
+              color: tint.bg(context),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Icon(icon, size: 20, color: tint.ink(context)),
+          ),
           const SizedBox(width: 12),
-          Expanded(child: Text(text, style: HfText.bodyText)),
+          Expanded(
+            child: Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: Text(text, style: HfText.of(context, HfText.body)),
+            ),
+          ),
         ],
       ),
     );
   }
 
-  Widget _ackBox({required Key key, required String label, required bool value, required ValueChanged<bool> onChanged}) {
+  /// The one destructive action of a screen: accent fill, white text, 56 tall.
+  Widget _destructive({
+    required Key key,
+    required String label,
+    required VoidCallback? onPressed,
+  }) {
+    return SizedBox(
+      key: key,
+      width: double.infinity,
+      child: FilledButton(
+        style: FilledButton.styleFrom(
+          backgroundColor: HfColors.accent,
+          foregroundColor: HfColors.white,
+          disabledBackgroundColor: _dark
+              ? HfColors.darkSelected
+              : HfColors.segmentTrack,
+          disabledForegroundColor: HfColors.mutedSoft,
+        ),
+        onPressed: _busy ? null : onPressed,
+        child: _busy
+            ? const SizedBox(
+                height: 22,
+                width: 22,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2.5,
+                  color: HfColors.white,
+                ),
+              )
+            : Text(label, textAlign: TextAlign.center),
+      ),
+    );
+  }
+
+  Widget _ackBox({
+    required Key key,
+    required String label,
+    required bool value,
+    required ValueChanged<bool> onChanged,
+  }) {
     return InkWell(
       onTap: _busy ? null : () => onChanged(!value),
       child: ConstrainedBox(
         constraints: const BoxConstraints(minHeight: HfSpacing.tap),
         child: Row(
           children: [
-            Checkbox(key: key, value: value, onChanged: _busy ? null : (v) => onChanged(v ?? false)),
-            Expanded(child: Text(label, style: HfText.bodyText)),
+            Checkbox(
+              key: key,
+              value: value,
+              activeColor: HfColors.ink,
+              checkColor: HfColors.white,
+              onChanged: _busy ? null : (v) => onChanged(v ?? false),
+            ),
+            Expanded(
+              child: Text(label, style: HfText.of(context, HfText.body)),
+            ),
           ],
         ),
       ),
@@ -367,48 +506,62 @@ class _DeleteAccountScreenState extends ConsumerState<DeleteAccountScreen> {
   }
 
   Widget _readMore() => HfButton(
-        key: const ValueKey<String>('delete-read-more'),
-        label: DeleteCopy.readMore,
-        kind: HfButtonKind.text,
-        icon: Icons.open_in_new_rounded,
-        onPressed: () => unawaited(LinkOpener.instance.site('/data-deletion')),
-      );
+    key: const ValueKey<String>('delete-read-more'),
+    label: DeleteCopy.readMore,
+    kind: HfButtonKind.text,
+    icon: Icons.open_in_new_rounded,
+    onPressed: () => unawaited(LinkOpener.instance.site('/data-deletion')),
+  );
 
   // ---- delete path ----------------------------------------------------------------------------------
 
   List<Widget> _deleteView() => [
-        _errorBox(),
-        const Text(DeleteCopy.deleteIntro, style: HfText.bodyText),
-        const SizedBox(height: HfSpacing.gapLarge),
-        HfCard(
-          key: const ValueKey<String>('delete-path'),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text(DeleteCopy.whatHappens, style: HfText.subtitle),
-              const SizedBox(height: 12),
-              _bullet(Icons.hourglass_bottom_rounded, DeleteCopy.waitTime),
-              _bullet(Icons.shield_outlined, DeleteCopy.dataDeleted),
-              _bullet(Icons.toll_outlined, DeleteCopy.testDropped),
-            ],
+    _errorBox(),
+    Text(DeleteCopy.deleteIntro, style: HfText.of(context, HfText.body)),
+    const SizedBox(height: HfSpacing.section),
+    _panel(
+      key: const ValueKey<String>('delete-path'),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            DeleteCopy.whatHappens,
+            style: HfText.of(context, HfText.subsection),
           ),
-        ),
-        _readMore(),
-        const SizedBox(height: HfSpacing.gap),
-        _ackBox(
-          key: const ValueKey<String>('delete-ack'),
-          label: DeleteCopy.ack,
-          value: _ack,
-          onChanged: (v) => setState(() => _ack = v),
-        ),
-        const SizedBox(height: HfSpacing.gap),
-        HfButton(
-          key: const ValueKey<String>('delete-confirm'),
-          label: DeleteCopy.deleteButton,
-          loading: _busy,
-          onPressed: _ack ? () => unawaited(_delete()) : null,
-        ),
-      ];
+          const SizedBox(height: 12),
+          _bullet(
+            Icons.hourglass_bottom_rounded,
+            DeleteCopy.waitTime,
+            tint: HfTint.butter,
+          ),
+          _bullet(
+            Icons.shield_outlined,
+            DeleteCopy.dataDeleted,
+            tint: HfTint.sky,
+          ),
+          _bullet(
+            Icons.toll_outlined,
+            DeleteCopy.testDropped,
+            tint: HfTint.peach,
+          ),
+        ],
+      ),
+    ),
+    _readMore(),
+    const SizedBox(height: HfSpacing.gap),
+    _ackBox(
+      key: const ValueKey<String>('delete-ack'),
+      label: DeleteCopy.ack,
+      value: _ack,
+      onChanged: (v) => setState(() => _ack = v),
+    ),
+    const SizedBox(height: HfSpacing.gap),
+    _destructive(
+      key: const ValueKey<String>('delete-confirm'),
+      label: DeleteCopy.deleteButton,
+      onPressed: _ack ? () => unawaited(_delete()) : null,
+    ),
+  ];
 
   // ---- settle (exit) path ---------------------------------------------------------------------------
 
@@ -419,14 +572,14 @@ class _DeleteAccountScreenState extends ConsumerState<DeleteAccountScreen> {
     final canStart = _ack && (!needsForfeit || _forfeit);
     return [
       _errorBox(),
-      const Text(DeleteCopy.exitIntro, style: HfText.bodyText),
-      const SizedBox(height: HfSpacing.gapLarge),
-      HfCard(
+      Text(DeleteCopy.exitIntro, style: HfText.of(context, HfText.body)),
+      const SizedBox(height: HfSpacing.section),
+      _panel(
         key: const ValueKey<String>('exit-path'),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text('Your money', style: HfText.subtitle),
+            Text('Your money', style: HfText.of(context, HfText.subsection)),
             const SizedBox(height: 12),
             if (s.refundable > 0)
               _bullet(
@@ -454,25 +607,37 @@ class _DeleteAccountScreenState extends ConsumerState<DeleteAccountScreen> {
                 '${Money.rupees(s.manualRefund)} of unused top-up money is refunded by our team.',
                 key: const ValueKey<String>('exit-manual'),
               ),
-            if (s.testCredits > 0 || s.testEarnings > 0) _bullet(Icons.toll_outlined, DeleteCopy.testDropped),
-            if (s.refundable <= 0 && s.withdrawable <= 0 && s.held <= 0 && s.manualRefund <= 0)
-              _bullet(Icons.info_outline_rounded, 'We are checking what is left to settle.'),
+            if (s.testCredits > 0 || s.testEarnings > 0)
+              _bullet(Icons.toll_outlined, DeleteCopy.testDropped),
+            if (s.refundable <= 0 &&
+                s.withdrawable <= 0 &&
+                s.held <= 0 &&
+                s.manualRefund <= 0)
+              _bullet(
+                Icons.info_outline_rounded,
+                'We are checking what is left to settle.',
+              ),
           ],
         ),
       ),
       if (needsForfeit) ...[
         const SizedBox(height: HfSpacing.gap),
-        HfCard(
+        _panel(
           key: const ValueKey<String>('exit-forfeit-card'),
-          color: HfColors.butter,
+          tint: HfTint.butter,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(s.bankOk ? DeleteCopy.forfeitOther : DeleteCopy.forfeitNoBank, style: HfText.bodyStrong),
+              Text(
+                s.bankOk ? DeleteCopy.forfeitOther : DeleteCopy.forfeitNoBank,
+                style: HfText.bodyStrong.copyWith(
+                  color: HfTint.butter.valueInk(context),
+                ),
+              ),
               const SizedBox(height: 8),
               Text(
                 'You can add and verify a bank account first, or give up ${Money.rupees(forfeit)}.',
-                style: HfText.bodyText,
+                style: HfText.body.copyWith(color: HfTint.butter.ink(context)),
               ),
               const SizedBox(height: 12),
               if (!s.bankOk)
@@ -480,7 +645,9 @@ class _DeleteAccountScreenState extends ConsumerState<DeleteAccountScreen> {
                   key: const ValueKey<String>('exit-add-bank'),
                   label: DeleteCopy.addBank,
                   kind: HfButtonKind.secondary,
-                  onPressed: () => unawaited(context.push(Routes.hostOnboardingAt('payout'))),
+                  onPressed: () => unawaited(
+                    context.push(Routes.hostOnboardingAt('payout')),
+                  ),
                 ),
               _ackBox(
                 key: const ValueKey<String>('exit-forfeit'),
@@ -493,14 +660,25 @@ class _DeleteAccountScreenState extends ConsumerState<DeleteAccountScreen> {
         ),
       ],
       const SizedBox(height: HfSpacing.gap),
-      HfCard(
+      _panel(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(DeleteCopy.whatHappens, style: HfText.subtitle),
+            Text(
+              DeleteCopy.whatHappens,
+              style: HfText.of(context, HfText.subsection),
+            ),
             const SizedBox(height: 12),
-            _bullet(Icons.hourglass_bottom_rounded, DeleteCopy.waitTime),
-            _bullet(Icons.shield_outlined, DeleteCopy.dataDeleted),
+            _bullet(
+              Icons.hourglass_bottom_rounded,
+              DeleteCopy.waitTime,
+              tint: HfTint.butter,
+            ),
+            _bullet(
+              Icons.shield_outlined,
+              DeleteCopy.dataDeleted,
+              tint: HfTint.sky,
+            ),
           ],
         ),
       ),
@@ -513,10 +691,9 @@ class _DeleteAccountScreenState extends ConsumerState<DeleteAccountScreen> {
         onChanged: (v) => setState(() => _ack = v),
       ),
       const SizedBox(height: HfSpacing.gap),
-      HfButton(
+      _destructive(
         key: const ValueKey<String>('exit-confirm'),
         label: DeleteCopy.closeButton,
-        loading: _busy,
         onPressed: canStart ? () => unawaited(_settleAndClose(s)) : null,
       ),
     ];
@@ -529,17 +706,21 @@ class _DeleteAccountScreenState extends ConsumerState<DeleteAccountScreen> {
     final line = status == 'waiting_hold'
         ? DeleteCopy.statusHold
         : status == 'ready'
-            ? DeleteCopy.statusReady
-            : DeleteCopy.statusPayouts;
+        ? DeleteCopy.statusReady
+        : DeleteCopy.statusPayouts;
     final payout = s.payout;
     final refund = s.refund;
     final heldOn = s.heldReleaseAt;
     return [
       _errorBox(),
-      const Text(DeleteCopy.statusTitle, style: HfText.title),
+      Text(DeleteCopy.statusTitle, style: HfText.of(context, HfText.title)),
       const SizedBox(height: 8),
-      Text(line, key: const ValueKey<String>('exit-status-line'), style: HfText.bodyText),
-      const SizedBox(height: HfSpacing.gapLarge),
+      Text(
+        line,
+        key: const ValueKey<String>('exit-status-line'),
+        style: HfText.of(context, HfText.body),
+      ),
+      const SizedBox(height: HfSpacing.section),
       if (heldOn != null && status == 'waiting_hold')
         _settlementCard(
           key: const ValueKey<String>('exit-status-hold'),
@@ -556,8 +737,8 @@ class _DeleteAccountScreenState extends ConsumerState<DeleteAccountScreen> {
           detail: payout.status == 'paid' && payout.utr != null
               ? 'Bank reference ${payout.utr}'
               : payout.status == 'rejected'
-                  ? payout.reason
-                  : null,
+              ? payout.reason
+              : null,
         ),
       if (refund != null)
         _settlementCard(
@@ -587,24 +768,40 @@ class _DeleteAccountScreenState extends ConsumerState<DeleteAccountScreen> {
     String? detail,
   }) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: HfSpacing.gap),
-      child: HfCard(
+      padding: const EdgeInsets.only(bottom: HfSpacing.lg),
+      child: _panel(
         key: key,
+        tint: HfTint.lavender,
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Icon(icon, color: HfColors.orchid),
+            Icon(icon, color: HfTint.lavender.ink(context)),
             const SizedBox(width: 14),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(title, style: HfText.bodyStrong),
+                  Text(
+                    title,
+                    style: HfText.statSmall.copyWith(
+                      color: HfTint.lavender.valueInk(context),
+                    ),
+                  ),
                   const SizedBox(height: 2),
-                  Text(status, style: HfText.bodyText),
+                  Text(
+                    status,
+                    style: HfText.body.copyWith(
+                      color: HfTint.lavender.ink(context),
+                    ),
+                  ),
                   if (detail != null && detail.isNotEmpty) ...[
                     const SizedBox(height: 2),
-                    Text(detail, style: HfText.note),
+                    Text(
+                      detail,
+                      style: HfText.note.copyWith(
+                        color: HfTint.lavender.ink(context),
+                      ),
+                    ),
                   ],
                 ],
               ),
@@ -618,28 +815,28 @@ class _DeleteAccountScreenState extends ConsumerState<DeleteAccountScreen> {
   // ---- deletion scheduled ---------------------------------------------------------------------------
 
   List<Widget> _scheduledView(int atMs) => [
-        _errorBox(),
-        const Text(DeleteCopy.scheduledTitle, style: HfText.title),
-        const SizedBox(height: 8),
-        Text(
-          'Your account and data will be deleted on ${formatDay(atMs)}. Until then you can change your mind.',
-          key: const ValueKey<String>('deletion-date'),
-          style: HfText.bodyText,
-        ),
-        const SizedBox(height: HfSpacing.gapLarge),
-        HfButton(
-          key: const ValueKey<String>('deletion-keep'),
-          label: DeleteCopy.keepAccount,
-          loading: _busy,
-          onPressed: () => unawaited(_keepAccount()),
-        ),
-        const SizedBox(height: 4),
-        HfButton(
-          key: const ValueKey<String>('deletion-sign-out'),
-          label: DeleteCopy.signOut,
-          kind: HfButtonKind.text,
-          onPressed: () => unawaited(_signOut()),
-        ),
-        _readMore(),
-      ];
+    _errorBox(),
+    Text(DeleteCopy.scheduledTitle, style: HfText.of(context, HfText.title)),
+    const SizedBox(height: 8),
+    Text(
+      'Your account and data will be deleted on ${formatDay(atMs)}. Until then you can change your mind.',
+      key: const ValueKey<String>('deletion-date'),
+      style: HfText.of(context, HfText.body),
+    ),
+    const SizedBox(height: HfSpacing.section),
+    HfButton(
+      key: const ValueKey<String>('deletion-keep'),
+      label: DeleteCopy.keepAccount,
+      loading: _busy,
+      onPressed: () => unawaited(_keepAccount()),
+    ),
+    const SizedBox(height: 4),
+    HfButton(
+      key: const ValueKey<String>('deletion-sign-out'),
+      label: DeleteCopy.signOut,
+      kind: HfButtonKind.text,
+      onPressed: () => unawaited(_signOut()),
+    ),
+    _readMore(),
+  ];
 }

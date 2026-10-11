@@ -3,7 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../../../core/theme/hf_tokens.dart';
+import '../../../../core/theme/hf_theme.dart';
 import '../../../../core/widgets/widgets.dart';
 import '../../../kyc/kyc.dart';
 import '../../ui/widgets/step_page.dart';
@@ -14,7 +14,14 @@ import 'part_b_copy.dart';
 /// A step page with the main button pinned under the scrolling content, so Continue is always in reach
 /// (long lists such as topics and avatars, small phones, the keyboard open).
 class PartBStep extends StatelessWidget {
-  const PartBStep({super.key, this.title, this.lead, this.scene = HfSceneKind.profile, required this.children, this.bottom = const <Widget>[]});
+  const PartBStep({
+    super.key,
+    this.title,
+    this.lead,
+    this.scene = HfSceneKind.profile,
+    required this.children,
+    this.bottom = const <Widget>[],
+  });
 
   final String? title;
   final String? lead;
@@ -26,41 +33,51 @@ class PartBStep extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return LayoutBuilder(builder: (context, constraints) {
-      // Large text and a short keyboard viewport put actions in the same scrollable page.
-      final compact = constraints.maxHeight < 520 || MediaQuery.textScalerOf(context).scale(14) > 20;
-      if (compact) return OnboardingStepPage(title: title, lead: lead, scene: scene,
-        children: [...children, if (bottom.isNotEmpty) const SizedBox(height: 20), ...bottom]);
-      return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        Expanded(child: OnboardingStepPage(title: title, lead: lead, scene: scene, children: children)),
-        if (bottom.isNotEmpty) PinnedBar(children: bottom),
-      ]);
-    });
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        // Large text and a short keyboard viewport put actions in the same scrollable page.
+        final compact =
+            constraints.maxHeight < 520 ||
+            MediaQuery.textScalerOf(context).scale(14) > 20;
+        if (compact) {
+          return OnboardingStepPage(
+            title: title,
+            lead: lead,
+            scene: scene,
+            children: [
+              ...children,
+              if (bottom.isNotEmpty) const SizedBox(height: 20),
+              ...bottom,
+            ],
+          );
+        }
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Expanded(
+              child: OnboardingStepPage(
+                title: title,
+                lead: lead,
+                scene: scene,
+                children: children,
+              ),
+            ),
+            if (bottom.isNotEmpty) PinnedBar(children: bottom),
+          ],
+        );
+      },
+    );
   }
 }
 
-/// The bar under a step: cream, a thin line on top, 20 dp sides.
+/// The sticky bar under a step (see [StepFooter]).
 class PinnedBar extends StatelessWidget {
   const PinnedBar({super.key, required this.children});
 
   final List<Widget> children;
 
   @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.fromLTRB(HfSpacing.page, 10, HfSpacing.page, 12),
-      decoration: const BoxDecoration(
-        color: HfColors.white,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-        boxShadow: [BoxShadow(color: Color(0x140B153C), blurRadius: 24, offset: Offset(0, -5))],
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: children,
-      ),
-    );
-  }
+  Widget build(BuildContext context) => StepFooter(children: children);
 }
 
 /// The calm note at the top of a step that cannot be edited now (profile with the team, or live).
@@ -79,13 +96,27 @@ class LockBanner extends StatelessWidget {
           key: const ValueKey<String>('lock-banner'),
           width: double.infinity,
           padding: const EdgeInsets.all(14),
-          decoration: BoxDecoration(color: HfColors.butter, borderRadius: BorderRadius.circular(HfRadius.card)),
+          decoration: BoxDecoration(
+            color: HfTint.butter.bg(context),
+            borderRadius: BorderRadius.circular(HfRadius.tile),
+          ),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Icon(Icons.lock_outline_rounded, size: 22, color: HfColors.plum),
+              Icon(
+                Icons.lock_outline_rounded,
+                size: 22,
+                color: HfTint.butter.ink(context),
+              ),
               const SizedBox(width: 10),
-              Expanded(child: Text(text, style: HfText.bodyText)),
+              Expanded(
+                child: Text(
+                  text,
+                  style: HfText.body.copyWith(
+                    color: HfTint.butter.valueInk(context),
+                  ),
+                ),
+              ),
             ],
           ),
         ),
@@ -95,9 +126,15 @@ class LockBanner extends StatelessWidget {
 }
 
 /// A big choice with a title and a line of help (conversation style, topics): at least 56 dp high, the whole
-/// card taps. Selected choices have a mint fill, dark outline and a tick.
+/// card taps. Selected choices have a lavender fill, ink outline and a tick.
 class ChoiceTile extends StatelessWidget {
-  const ChoiceTile({super.key, required this.title, this.help, required this.selected, required this.onTap});
+  const ChoiceTile({
+    super.key,
+    required this.title,
+    this.help,
+    required this.selected,
+    required this.onTap,
+  });
 
   final String title;
   final String? help;
@@ -106,7 +143,8 @@ class ChoiceTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final radius = BorderRadius.circular(HfRadius.card);
+    final radius = BorderRadius.circular(HfRadius.tile);
+    final dark = HfBrightness.isDark(context);
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
       child: Semantics(
@@ -116,7 +154,9 @@ class ChoiceTile extends StatelessWidget {
         label: help == null ? title : '$title. $help',
         excludeSemantics: true,
         child: Material(
-          color: selected ? HfColors.mint : HfColors.white,
+          color: selected
+              ? HfTint.lavender.bg(context)
+              : (dark ? HfColors.darkCard : HfColors.white),
           borderRadius: radius,
           child: InkWell(
             borderRadius: radius,
@@ -126,25 +166,36 @@ class ChoiceTile extends StatelessWidget {
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
               decoration: BoxDecoration(
                 borderRadius: radius,
-                boxShadow: const [BoxShadow(color: Color(0x100B153C), blurRadius: 10, offset: Offset(0, 4))],
-                border: Border.all(color: selected ? HfColors.ink : HfColors.line, width: selected ? 2 : 1.5),
+                border: Border.all(
+                  color: selected
+                      ? (dark ? HfColors.lavenderLight : HfColors.ink)
+                      : (dark ? HfColors.darkLine : HfColors.line),
+                  width: selected ? 2 : 1,
+                ),
               ),
               child: Row(
                 children: [
                   Icon(
-                    selected ? Icons.check_circle_rounded : Icons.circle_outlined,
+                    selected
+                        ? Icons.check_circle_rounded
+                        : Icons.circle_outlined,
                     size: 26,
-                    color: selected ? HfColors.ink : HfColors.mauve,
+                    color: selected
+                        ? (dark ? HfColors.lavenderLight : HfColors.ink)
+                        : HfColors.mutedSoft,
                   ),
                   const SizedBox(width: 12),
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(title, style: HfText.bodyStrong),
+                        Text(
+                          title,
+                          style: HfText.of(context, HfText.bodyStrong),
+                        ),
                         if (help != null) ...[
                           const SizedBox(height: 2),
-                          Text(help!, style: HfText.note),
+                          Text(help!, style: HfText.of(context, HfText.note)),
                         ],
                       ],
                     ),
@@ -169,7 +220,10 @@ class GroupLegend extends StatelessWidget {
   Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.only(top: 8, bottom: 8),
-      child: Semantics(header: true, child: Text(text, style: HfText.subtitle)),
+      child: Semantics(
+        header: true,
+        child: Text(text, style: HfText.of(context, HfText.subsection)),
+      ),
     );
   }
 }
@@ -179,7 +233,12 @@ enum _ClipPhase { idle, loading, playing, paused }
 /// Play, pause and a bar you can drag, for one audio file on the phone. [loadPath] runs on the first tap (it
 /// returns the file's path, or null when there is nothing to play). The player is made on that first tap.
 class ClipPlayerBar extends ConsumerStatefulWidget {
-  const ClipPlayerBar({super.key, required this.loadPath, this.knownSeconds, this.recordedByYou = true});
+  const ClipPlayerBar({
+    super.key,
+    required this.loadPath,
+    this.knownSeconds,
+    this.recordedByYou = true,
+  });
 
   final Future<String?> Function() loadPath;
 
@@ -193,7 +252,8 @@ class ClipPlayerBar extends ConsumerStatefulWidget {
 
 class _ClipPlayerBarState extends ConsumerState<ClipPlayerBar> {
   ClipPlayer? _player;
-  final List<StreamSubscription<Object?>> _subs = <StreamSubscription<Object?>>[];
+  final List<StreamSubscription<Object?>> _subs =
+      <StreamSubscription<Object?>>[];
   _ClipPhase _phase = _ClipPhase.idle;
   bool _started = false;
   Duration _position = Duration.zero;
@@ -207,12 +267,16 @@ class _ClipPlayerBarState extends ConsumerState<ClipPlayerBar> {
     final p = ref.read(clipPlayerFactoryProvider)();
     _subs
       ..add(p.states.listen(_onState))
-      ..add(p.positions.listen((d) {
-        if (mounted) setState(() => _position = d);
-      }))
-      ..add(p.durations.listen((d) {
-        if (mounted && d > Duration.zero) setState(() => _length = d);
-      }));
+      ..add(
+        p.positions.listen((d) {
+          if (mounted) setState(() => _position = d);
+        }),
+      )
+      ..add(
+        p.durations.listen((d) {
+          if (mounted && d > Duration.zero) setState(() => _length = d);
+        }),
+      );
     return _player = p;
   }
 
@@ -294,9 +358,13 @@ class _ClipPlayerBarState extends ConsumerState<ClipPlayerBar> {
 
   @override
   Widget build(BuildContext context) {
-    final totalSeconds = (_length?.inMilliseconds ?? ((widget.knownSeconds ?? 0) * 1000)) / 1000.0;
+    final totalSeconds =
+        (_length?.inMilliseconds ?? ((widget.knownSeconds ?? 0) * 1000)) /
+        1000.0;
     final max = totalSeconds > 0 ? totalSeconds : 1.0;
-    final shown = (_drag ?? _position.inMilliseconds / 1000.0).clamp(0.0, max).toDouble();
+    final shown = (_drag ?? _position.inMilliseconds / 1000.0)
+        .clamp(0.0, max)
+        .toDouble();
     final playing = _phase == _ClipPhase.playing;
     final loading = _phase == _ClipPhase.loading;
     return Column(
@@ -308,13 +376,22 @@ class _ClipPlayerBarState extends ConsumerState<ClipPlayerBar> {
               width: 56,
               height: 56,
               child: loading
-                  ? const Padding(padding: EdgeInsets.all(14), child: CircularProgressIndicator(strokeWidth: 3))
+                  ? const Padding(
+                      padding: EdgeInsets.all(14),
+                      child: CircularProgressIndicator(strokeWidth: 3),
+                    )
                   : IconButton.filled(
                       key: const ValueKey<String>('clip-play'),
-                      tooltip: playing ? PartBCopy.voicePause : PartBCopy.voicePlay,
+                      tooltip: playing
+                          ? PartBCopy.voicePause
+                          : PartBCopy.voicePlay,
                       iconSize: 30,
                       onPressed: _toggle,
-                      icon: Icon(playing ? Icons.pause_rounded : Icons.play_arrow_rounded),
+                      icon: Icon(
+                        playing
+                            ? Icons.pause_rounded
+                            : Icons.play_arrow_rounded,
+                      ),
                     ),
             ),
             const SizedBox(width: 8),
@@ -331,8 +408,10 @@ class _ClipPlayerBarState extends ConsumerState<ClipPlayerBar> {
         Padding(
           padding: const EdgeInsets.only(left: 64),
           child: Text(
-            totalSeconds > 0 ? '${mmss(shown.round())} / ${mmss(totalSeconds.round())}' : mmss(shown.round()),
-            style: HfText.note,
+            totalSeconds > 0
+                ? '${mmss(shown.round())} / ${mmss(totalSeconds.round())}'
+                : mmss(shown.round()),
+            style: HfText.of(context, HfText.note),
           ),
         ),
         if (_error != null) InlineError(_error!),
@@ -352,13 +431,25 @@ class _RecordedChip extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-      decoration: BoxDecoration(color: HfColors.lilac, borderRadius: BorderRadius.circular(HfRadius.pill)),
+      decoration: BoxDecoration(
+        color: HfTint.lavender.bg(context),
+        borderRadius: BorderRadius.circular(HfRadius.pillRadius),
+      ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const Icon(Icons.mic_rounded, size: 16, color: HfColors.orchid),
+          Icon(
+            Icons.mic_rounded,
+            size: 16,
+            color: HfTint.lavender.ink(context),
+          ),
           const SizedBox(width: 6),
-          Flexible(child: Text(PartBCopy.voiceRecorded, style: HfText.badge.copyWith(color: HfColors.orchid))),
+          Flexible(
+            child: Text(
+              PartBCopy.voiceRecorded,
+              style: HfText.badge.copyWith(color: HfTint.lavender.ink(context)),
+            ),
+          ),
         ],
       ),
     );

@@ -4,7 +4,11 @@ import '../../../core/router/routes.dart';
 /// One push message, as the app sees it. The worker (`consumers/src/fcm.ts buildHfPayload`) sends a
 /// notification `{title, body}` plus `data: {type: 'hf_push', kind, path}` on channel `hf_default`.
 class PushMessage {
-  const PushMessage({this.title = '', this.body = '', this.data = const <String, String>{}});
+  const PushMessage({
+    this.title = '',
+    this.body = '',
+    this.data = const <String, String>{},
+  });
 
   final String title;
   final String body;
@@ -82,5 +86,6 @@ class PushPayload {
   DeepLinkTarget get target => DeepLinks.resolve(path);
 
   @override
-  String toString() => 'PushPayload(${kind.wire}, ${DeepLinks.telemetryPath(path)})';
+  String toString() =>
+      'PushPayload(${kind.wire}, ${DeepLinks.telemetryPath(path)})';
 }

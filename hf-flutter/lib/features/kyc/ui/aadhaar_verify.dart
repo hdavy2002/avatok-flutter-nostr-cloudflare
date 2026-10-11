@@ -8,7 +8,7 @@ import '../../../core/api/api_error.dart';
 import '../../../core/links.dart';
 import '../../../core/router/pending_intent.dart';
 import '../../../core/storage/account_storage.dart';
-import '../../../core/theme/hf_tokens.dart';
+import '../../../core/theme/hf_theme.dart';
 import '../../../core/widgets/widgets.dart';
 import '../data/digilocker_pending.dart';
 import '../data/kyc_api.dart';
@@ -70,7 +70,8 @@ enum _Mode { otpNumber, otpCode, digilocker }
 
 enum _Dl { consent, starting, waiting, checking, failed }
 
-class AadhaarVerifyState extends ConsumerState<AadhaarVerifyWidget> with WidgetsBindingObserver {
+class AadhaarVerifyState extends ConsumerState<AadhaarVerifyWidget>
+    with WidgetsBindingObserver {
   _Mode _mode = _Mode.otpNumber;
   _Dl _dl = _Dl.consent;
 
@@ -107,7 +108,9 @@ class AadhaarVerifyState extends ConsumerState<AadhaarVerifyWidget> with Widgets
   @override
   void didUpdateWidget(covariant AadhaarVerifyWidget oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (widget.resumeNow && !oldWidget.resumeNow && !_finished) unawaited(_restorePending(force: true));
+    if (widget.resumeNow && !oldWidget.resumeNow && !_finished) {
+      unawaited(_restorePending(force: true));
+    }
   }
 
   @override
@@ -123,7 +126,10 @@ class AadhaarVerifyState extends ConsumerState<AadhaarVerifyWidget> with Widgets
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     // Back from the Custom Tab (or from the DigiLocker app): check once.
-    if (state == AppLifecycleState.resumed && _mode == _Mode.digilocker && _dl == _Dl.waiting && !_finished) {
+    if (state == AppLifecycleState.resumed &&
+        _mode == _Mode.digilocker &&
+        _dl == _Dl.waiting &&
+        !_finished) {
       _polls = 0;
       unawaited(_complete());
     }
@@ -137,7 +143,10 @@ class AadhaarVerifyState extends ConsumerState<AadhaarVerifyWidget> with Widgets
   Future<void> _restorePending({bool force = false}) async {
     final p = await _store.read();
     if (!mounted || _finished) return;
-    final mine = p != null && p.role == widget.role && (widget.lane == null || p.lane == null || p.lane == widget.lane);
+    final mine =
+        p != null &&
+        p.role == widget.role &&
+        (widget.lane == null || p.lane == null || p.lane == widget.lane);
     if (mine || widget.resumeNow || force) {
       setState(() {
         _mode = _Mode.digilocker;
@@ -192,8 +201,17 @@ class AadhaarVerifyState extends ConsumerState<AadhaarVerifyWidget> with Widgets
         await _finish(done);
         return;
       }
-      await _store.save(DigiLockerPending(role: widget.role, at: DateTime.now(), lane: widget.lane, next: widget.next));
-      if (widget.next != null) await ref.read(pendingIntentProvider).save(widget.next!);
+      await _store.save(
+        DigiLockerPending(
+          role: widget.role,
+          at: DateTime.now(),
+          lane: widget.lane,
+          next: widget.next,
+        ),
+      );
+      if (widget.next != null) {
+        await ref.read(pendingIntentProvider).save(widget.next!);
+      }
       KycTelemetry.kycStep('digilocker_start', 'started');
       if (!mounted) return;
       setState(() => _dl = _Dl.waiting);
@@ -208,7 +226,12 @@ class AadhaarVerifyState extends ConsumerState<AadhaarVerifyWidget> with Widgets
       }
     } on ApiError catch (e) {
       if (!mounted) return;
-      KycTelemetry.kycStep('digilocker_start', 'error', reason: e.code, status: e.status);
+      KycTelemetry.kycStep(
+        'digilocker_start',
+        'error',
+        reason: e.code,
+        status: e.status,
+      );
       setState(() {
         _dl = _Dl.consent;
         _error = e.userMessage;
@@ -244,7 +267,10 @@ class AadhaarVerifyState extends ConsumerState<AadhaarVerifyWidget> with Widgets
           _dl = _Dl.waiting;
           _error = null;
         });
-        _pollTimer = Timer(kDigiLockerPollInterval, () => unawaited(_complete()));
+        _pollTimer = Timer(
+          kDigiLockerPollInterval,
+          () => unawaited(_complete()),
+        );
       } else {
         setState(() {
           _dl = _Dl.waiting;
@@ -260,7 +286,12 @@ class AadhaarVerifyState extends ConsumerState<AadhaarVerifyWidget> with Widgets
   }
 
   Future<void> _onCompleteError(ApiError e) async {
-    KycTelemetry.kycStep('digilocker_complete', 'error', reason: e.code, status: e.status);
+    KycTelemetry.kycStep(
+      'digilocker_complete',
+      'error',
+      reason: e.code,
+      status: e.status,
+    );
     // The first call may already have finished the check (resume AND the return link both ran):
     // the worker then says there is no session. Ask the worker whether the Aadhaar is done.
     if (e.code == 'no_session' || e.code == 'session_expired') {
@@ -283,7 +314,14 @@ class AadhaarVerifyState extends ConsumerState<AadhaarVerifyWidget> with Widgets
       if (s.aadhaarDone) {
         await _store.clear();
         if (!mounted) return true;
-        await _finish(AadhaarResult(gender: s.gender, last4: s.last4, alreadyVerified: true, viaDigiLocker: true));
+        await _finish(
+          AadhaarResult(
+            gender: s.gender,
+            last4: s.last4,
+            alreadyVerified: true,
+            viaDigiLocker: true,
+          ),
+        );
         return true;
       }
     } on ApiError {
@@ -439,17 +477,20 @@ class AadhaarVerifyState extends ConsumerState<AadhaarVerifyWidget> with Widgets
   }
 
   Widget _verifiedCard(AadhaarResult r) => HfCard(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const DoneRow(KycCopy.aadhaarVerified),
-            if (r.last4 != null) ...[
-              const SizedBox(height: 8),
-              Text('${KycCopy.aadhaarEnding} ${r.last4}', style: HfText.bodyText),
-            ],
-          ],
-        ),
-      );
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const DoneRow(KycCopy.aadhaarVerified),
+        if (r.last4 != null) ...[
+          const SizedBox(height: 8),
+          Text(
+            '${KycCopy.aadhaarEnding} ${r.last4}',
+            style: HfText.of(context, HfText.body),
+          ),
+        ],
+      ],
+    ),
+  );
 
   Widget _numberForm() {
     final number = _digits(_aadhaar.text);
@@ -457,11 +498,11 @@ class AadhaarVerifyState extends ConsumerState<AadhaarVerifyWidget> with Widgets
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        const Icon(Icons.badge_outlined, size: 36, color: HfColors.ink),
+        const _KycIcon(Icons.badge_outlined),
         const SizedBox(height: 12),
-        const Text(KycCopy.otpTitle, style: HfText.title),
+        Text(KycCopy.otpTitle, style: HfText.of(context, HfText.title)),
         const SizedBox(height: 8),
-        const Text(KycCopy.otpLead, style: HfText.bodyText),
+        Text(KycCopy.otpLead, style: HfText.of(context, HfText.body)),
         const SizedBox(height: 16),
         TextField(
           key: const ValueKey<String>('aadhaar-number'),
@@ -472,7 +513,10 @@ class AadhaarVerifyState extends ConsumerState<AadhaarVerifyWidget> with Widgets
           enableIMEPersonalizedLearning: false,
           autofillHints: const <String>[],
           inputFormatters: [_AadhaarFormatter()],
-          style: HfText.bodyStrong.copyWith(letterSpacing: 1.5),
+          style: HfText.of(
+            context,
+            HfText.bodyStrong,
+          ).copyWith(letterSpacing: 1.5),
           decoration: InputDecoration(
             labelText: KycCopy.aadhaarNumberLabel,
             hintText: '0000 0000 0000',
@@ -499,7 +543,7 @@ class AadhaarVerifyState extends ConsumerState<AadhaarVerifyWidget> with Widgets
           onPressed: canSend ? _sendOtp : null,
         ),
         const SizedBox(height: 12),
-        const Text(KycCopy.noPhoneLinked, style: HfText.note),
+        Text(KycCopy.noPhoneLinked, style: HfText.of(context, HfText.note)),
         HfButton(
           key: const ValueKey<String>('use-digilocker'),
           label: KycCopy.useDigiLockerInstead,
@@ -516,11 +560,11 @@ class AadhaarVerifyState extends ConsumerState<AadhaarVerifyWidget> with Widgets
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        const Icon(Icons.password_rounded, size: 36, color: HfColors.ink),
+        const _KycIcon(Icons.password_rounded),
         const SizedBox(height: 12),
-        const Text(KycCopy.codeTitle, style: HfText.title),
+        Text(KycCopy.codeTitle, style: HfText.of(context, HfText.title)),
         const SizedBox(height: 8),
-        const Text(KycCopy.codeLead, style: HfText.bodyText),
+        Text(KycCopy.codeLead, style: HfText.of(context, HfText.body)),
         const SizedBox(height: 16),
         TextField(
           key: const ValueKey<String>('otp-code'),
@@ -528,14 +572,24 @@ class AadhaarVerifyState extends ConsumerState<AadhaarVerifyWidget> with Widgets
           keyboardType: TextInputType.number,
           autocorrect: false,
           enableSuggestions: false,
-          inputFormatters: [FilteringTextInputFormatter.digitsOnly, LengthLimitingTextInputFormatter(6)],
-          style: HfText.title.copyWith(letterSpacing: 6),
-          decoration: InputDecoration(labelText: KycCopy.codeLabel, hintText: '······', errorText: _codeError),
+          inputFormatters: [
+            FilteringTextInputFormatter.digitsOnly,
+            LengthLimitingTextInputFormatter(6),
+          ],
+          style: HfText.of(context, HfText.title).copyWith(letterSpacing: 6),
+          decoration: InputDecoration(
+            labelText: KycCopy.codeLabel,
+            hintText: '······',
+            errorText: _codeError,
+          ),
           onChanged: (_) => setState(() => _codeError = null),
         ),
         if (tries != null) ...[
           const SizedBox(height: 8),
-          Text(tries == 1 ? KycCopy.oneTryLeft : '$tries ${KycCopy.triesLeft}', style: HfText.note),
+          Text(
+            tries == 1 ? KycCopy.oneTryLeft : '$tries ${KycCopy.triesLeft}',
+            style: HfText.of(context, HfText.note),
+          ),
         ],
         const SizedBox(height: 16),
         HfButton(
@@ -547,7 +601,9 @@ class AadhaarVerifyState extends ConsumerState<AadhaarVerifyWidget> with Widgets
         const SizedBox(height: 8),
         HfButton(
           key: const ValueKey<String>('otp-resend'),
-          label: _cooldown > 0 ? '${KycCopy.resendIn} $_cooldown s' : KycCopy.resend,
+          label: _cooldown > 0
+              ? '${KycCopy.resendIn} $_cooldown s'
+              : KycCopy.resend,
           kind: HfButtonKind.text,
           onPressed: _cooldown > 0 || _busy ? null : _sendOtp,
         ),
@@ -567,7 +623,7 @@ class AadhaarVerifyState extends ConsumerState<AadhaarVerifyWidget> with Widgets
           },
         ),
         const SizedBox(height: 4),
-        const Text(KycCopy.noPhoneLinked, style: HfText.note),
+        Text(KycCopy.noPhoneLinked, style: HfText.of(context, HfText.note)),
         HfButton(
           key: const ValueKey<String>('use-digilocker'),
           label: KycCopy.useDigiLockerInstead,
@@ -590,12 +646,16 @@ class AadhaarVerifyState extends ConsumerState<AadhaarVerifyWidget> with Widgets
           key: const ValueKey<String>('dl-waiting'),
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            const Text(KycCopy.waitingTitle, style: HfText.title),
+            Text(KycCopy.waitingTitle, style: HfText.of(context, HfText.title)),
             const SizedBox(height: 8),
-            const Text(KycCopy.waitingLead, style: HfText.bodyText),
+            Text(KycCopy.waitingLead, style: HfText.of(context, HfText.body)),
             if (_error != null) InlineError(_error!),
             const SizedBox(height: 16),
-            HfButton(key: const ValueKey<String>('dl-check'), label: KycCopy.checkAgain, onPressed: _checkAgain),
+            HfButton(
+              key: const ValueKey<String>('dl-check'),
+              label: KycCopy.checkAgain,
+              onPressed: _checkAgain,
+            ),
             HfButton(
               key: const ValueKey<String>('dl-restart'),
               label: KycCopy.startAgain,
@@ -609,10 +669,17 @@ class AadhaarVerifyState extends ConsumerState<AadhaarVerifyWidget> with Widgets
           key: const ValueKey<String>('dl-failed'),
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            const Text(KycCopy.couldNotFinish, style: HfText.title),
+            Text(
+              KycCopy.couldNotFinish,
+              style: HfText.of(context, HfText.title),
+            ),
             if (_error != null) InlineError(_error!),
             const SizedBox(height: 16),
-            HfButton(key: const ValueKey<String>('dl-restart'), label: KycCopy.tryDigiLockerAgain, onPressed: _startAgain),
+            HfButton(
+              key: const ValueKey<String>('dl-restart'),
+              label: KycCopy.tryDigiLockerAgain,
+              onPressed: _startAgain,
+            ),
             HfButton(
               key: const ValueKey<String>('dl-back-to-otp'),
               label: KycCopy.backToOtp,
@@ -637,9 +704,15 @@ class AadhaarVerifyState extends ConsumerState<AadhaarVerifyWidget> with Widgets
             ],
             const HfScene(kind: HfSceneKind.verify, height: 100),
             const SizedBox(height: 12),
-            const Text(KycCopy.digiLockerTitle, style: HfText.title),
+            Text(
+              KycCopy.digiLockerTitle,
+              style: HfText.of(context, HfText.title),
+            ),
             const SizedBox(height: 8),
-            const Text(KycCopy.digiLockerLead, style: HfText.bodyText),
+            Text(
+              KycCopy.digiLockerLead,
+              style: HfText.of(context, HfText.body),
+            ),
             const SizedBox(height: 12),
             ConsentRow(
               key: const ValueKey<String>('dl-consent'),
@@ -667,10 +740,34 @@ class AadhaarVerifyState extends ConsumerState<AadhaarVerifyWidget> with Widgets
   }
 }
 
+/// A 52 px lavender icon tile at the top of a verification step.
+class _KycIcon extends StatelessWidget {
+  const _KycIcon(this.icon);
+
+  final IconData icon;
+
+  @override
+  Widget build(BuildContext context) => Align(
+    alignment: Alignment.centerLeft,
+    child: Container(
+      width: 52,
+      height: 52,
+      decoration: BoxDecoration(
+        color: HfTint.lavender.bg(context),
+        borderRadius: BorderRadius.circular(HfRadius.tileSmall),
+      ),
+      child: Icon(icon, size: 26, color: HfTint.lavender.ink(context)),
+    ),
+  );
+}
+
 /// Shows the number in groups of four (`1234 5678 9012`) and allows 12 digits.
 class _AadhaarFormatter extends TextInputFormatter {
   @override
-  TextEditingValue formatEditUpdate(TextEditingValue oldValue, TextEditingValue newValue) {
+  TextEditingValue formatEditUpdate(
+    TextEditingValue oldValue,
+    TextEditingValue newValue,
+  ) {
     final digits = newValue.text.replaceAll(RegExp(r'\D'), '');
     final d = digits.length > 12 ? digits.substring(0, 12) : digits;
     final b = StringBuffer();
@@ -679,6 +776,9 @@ class _AadhaarFormatter extends TextInputFormatter {
       b.write(d[i]);
     }
     final text = b.toString();
-    return TextEditingValue(text: text, selection: TextSelection.collapsed(offset: text.length));
+    return TextEditingValue(
+      text: text,
+      selection: TextSelection.collapsed(offset: text.length),
+    );
   }
 }

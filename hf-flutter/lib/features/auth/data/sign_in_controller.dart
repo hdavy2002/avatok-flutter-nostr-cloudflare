@@ -12,10 +12,12 @@ import 'auth_messages.dart';
 enum SignInStep { number, code }
 
 /// Telemetry sink. The default is the PostHog wrapper (a no-op until it is ready); tests pass a recorder.
-typedef SignInTelemetry = void Function(String event, Map<String, Object> props);
+typedef SignInTelemetry =
+    void Function(String event, Map<String, Object> props);
 
 /// Redeems the sign-in ticket: the session controller's `signInWithTicket`.
-typedef RedeemTicket = Future<ClerkStep> Function(String ticket, {String? phone});
+typedef RedeemTicket =
+    Future<ClerkStep> Function(String ticket, {String? phone});
 
 /// After a good sign-in: record the 18+ tick made on the sign-in screen and send the acceptance to the account.
 typedef AfterSignIn = Future<void> Function({required bool tickedNow});
@@ -66,6 +68,7 @@ class SignInController extends ChangeNotifier {
     ageTick = false;
     _notify();
   }
+
   bool ageTick = false;
 
   /// The 10 digits after +91.
@@ -90,7 +93,8 @@ class SignInController extends ChangeNotifier {
   /// Explicit registration asks for fresh consent. Existing login only asks for the number/code.
   bool get needsTick => loaded && registration;
 
-  bool get canSend => loaded && digits.length == 10 && !sending && (!needsTick || ageTick);
+  bool get canSend =>
+      loaded && digits.length == 10 && !sending && (!needsTick || ageTick);
   bool get canResend => resendIn == 0 && !sending && !verifying;
   String get e164 => toE164India(digits);
 
@@ -101,7 +105,8 @@ class SignInController extends ChangeNotifier {
     _notify();
   }
 
-  void trackStarted(String from) => _track('hf_app_signin_started', {'from': from});
+  void trackStarted(String from) =>
+      _track('hf_app_signin_started', {'from': from});
 
   void setDigits(String value) {
     final normalized = normalizeIndianMobile(value);
@@ -160,15 +165,24 @@ class SignInController extends ChangeNotifier {
     _notify();
     final sw = Stopwatch()..start();
     try {
-      final res = await api.postJson('/api/auth/whatsapp/send',
-          body: {'phone': e164, 'client': 'android'}, auth: false);
+      final res = await api.postJson(
+        '/api/auth/whatsapp/send',
+        body: {'phone': e164, 'client': 'android'},
+        auth: false,
+      );
       final masked = res['phone_masked'];
-      phoneMasked = (masked is String && masked.isNotEmpty) ? masked : _localMask();
+      phoneMasked = (masked is String && masked.isNotEmpty)
+          ? masked
+          : _localMask();
       final gap = res['resend_after_s'];
       _startTimer(gap is num && gap > 0 ? gap.ceil() : _fallbackGapSeconds);
       step = SignInStep.code;
       attemptsLeft = null;
-      _track('hf_app_signin_code_sent', {'outcome': 'ok', 'ms': sw.elapsedMilliseconds, 'resend': resend});
+      _track('hf_app_signin_code_sent', {
+        'outcome': 'ok',
+        'ms': sw.elapsedMilliseconds,
+        'resend': resend,
+      });
     } on ApiError catch (e) {
       final f = mapSignInError(e, SignInStage.send);
       if (f.reason == 'rate_limited' && f.retryAfterSeconds != null) {
@@ -230,12 +244,16 @@ class SignInController extends ChangeNotifier {
     final sw = Stopwatch()..start();
     var stage = 'verify';
     try {
-      final res = await api.postJson('/api/auth/whatsapp/verify', body: {
-        'phone': e164,
-        'code': cleaned,
-        'client': 'android',
-        if (ageTick) 'age_confirmed': true,
-      }, auth: false);
+      final res = await api.postJson(
+        '/api/auth/whatsapp/verify',
+        body: {
+          'phone': e164,
+          'code': cleaned,
+          'client': 'android',
+          if (ageTick) 'age_confirmed': true,
+        },
+        auth: false,
+      );
       final ticket = res['ticket'];
       if (ticket is! String || ticket.isEmpty || res['ok'] == false) {
         // `needs_email` means the number has no account and phone-only sign-up is not open yet: never the
@@ -272,12 +290,18 @@ class SignInController extends ChangeNotifier {
         // The acceptance is kept on the device and retried later; it never undoes a good sign-in.
       }
       signedIn = true;
-      _track('hf_app_signin_success', {'outcome': 'ok', 'is_new': isNew, 'ms': sw.elapsedMilliseconds});
+      _track('hf_app_signin_success', {
+        'outcome': 'ok',
+        'is_new': isNew,
+        'ms': sw.elapsedMilliseconds,
+      });
       return true;
     } on ApiError catch (e) {
       final f = mapSignInError(e, SignInStage.verify);
       if (f.allowResend) _startTimer(0);
-      if (f.retryAfterSeconds != null && f.reason == 'rate_limited') _startTimer(f.retryAfterSeconds!);
+      if (f.retryAfterSeconds != null && f.reason == 'rate_limited') {
+        _startTimer(f.retryAfterSeconds!);
+      }
       attemptsLeft = f.attemptsLeft;
       return _fail(
         reason: f.reason,
@@ -329,11 +353,15 @@ class SignInController extends ChangeNotifier {
   String _ticketMessage(String? clerkError) {
     final e = clerkError ?? '';
     // Clerk's own wording is shown only for the two calm network lines the Clerk client writes itself.
-    if (e.startsWith('That took too long') || e.contains('check your connection')) return e;
+    if (e.startsWith('That took too long') ||
+        e.contains('check your connection')) {
+      return e;
+    }
     return AuthCopy.ticketFailed;
   }
 
-  String _localMask() => '+91 ******${digits.length >= 4 ? digits.substring(digits.length - 4) : digits}';
+  String _localMask() =>
+      '+91 ******${digits.length >= 4 ? digits.substring(digits.length - 4) : digits}';
 
   void _setError(String message, String field) {
     error = message;

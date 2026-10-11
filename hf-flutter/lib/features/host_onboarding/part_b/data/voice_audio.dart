@@ -18,7 +18,12 @@ import '../../../../core/env.dart';
 /// A finished recording. The bytes are in memory (5 minutes of 64 kbit/s AAC is about 2.4 MB, well under the
 /// worker's 15 MB limit); [path] is the temp file, kept so the host can listen to it before saving.
 class VoiceClip {
-  const VoiceClip({required this.bytes, required this.path, required this.mime, required this.seconds});
+  const VoiceClip({
+    required this.bytes,
+    required this.path,
+    required this.mime,
+    required this.seconds,
+  });
 
   final Uint8List bytes;
   final String path;
@@ -29,7 +34,8 @@ class VoiceClip {
   /// Measured on the phone, rounded to whole seconds.
   final int seconds;
 
-  VoiceClip withSeconds(int s) => VoiceClip(bytes: bytes, path: path, mime: mime, seconds: s);
+  VoiceClip withSeconds(int s) =>
+      VoiceClip(bytes: bytes, path: path, mime: mime, seconds: s);
 }
 
 /// Why the microphone could not be used. [code]: `denied` (permission) or `failed`.
@@ -42,7 +48,8 @@ class VoiceRecorderException implements Exception {
   bool get isDenied => code == 'denied';
 
   @override
-  String toString() => 'VoiceRecorderException($code${detail == null ? '' : ': $detail'})';
+  String toString() =>
+      'VoiceRecorderException($code${detail == null ? '' : ': $detail'})';
 }
 
 /// The microphone, behind a small interface so widget tests use a fake (`FakeVoiceRecorder`).
@@ -66,7 +73,9 @@ abstract class VoiceRecorder {
 typedef VoiceRecorderFactory = VoiceRecorder Function();
 
 /// Tests override this with a factory that returns a fake.
-final voiceRecorderFactoryProvider = Provider<VoiceRecorderFactory>((ref) => PackageVoiceRecorder.new);
+final voiceRecorderFactoryProvider = Provider<VoiceRecorderFactory>(
+  (ref) => PackageVoiceRecorder.new,
+);
 
 /// The real recorder, on the `record` package (AAC-LC, mono, 64 kbit/s: clear speech, small file).
 class PackageVoiceRecorder implements VoiceRecorder {
@@ -82,18 +91,27 @@ class PackageVoiceRecorder implements VoiceRecorder {
   @override
   Future<void> start() async {
     try {
-      if (!await _rec.hasPermission()) throw const VoiceRecorderException('denied');
+      if (!await _rec.hasPermission()) {
+        throw const VoiceRecorderException('denied');
+      }
       final dir = await Directory.systemTemp.createTemp('hf_voice');
       final path = '${dir.path}/intro.m4a';
       _path = path;
       await _rec.start(
-        const RecordConfig(encoder: AudioEncoder.aacLc, bitRate: 64000, sampleRate: 44100, numChannels: 1),
+        const RecordConfig(
+          encoder: AudioEncoder.aacLc,
+          bitRate: 64000,
+          sampleRate: 44100,
+          numChannels: 1,
+        ),
         path: path,
       );
       _clock
         ..reset()
         ..start();
-      _amp = _rec.onAmplitudeChanged(const Duration(milliseconds: 200)).listen((a) {
+      _amp = _rec.onAmplitudeChanged(const Duration(milliseconds: 200)).listen((
+        a,
+      ) {
         // -60 dB (quiet room) to 0 dB (very loud) mapped to 0..1.
         final level = ((a.current + 60) / 60).clamp(0.0, 1.0).toDouble();
         if (!_levels.isClosed) _levels.add(level);
@@ -115,7 +133,12 @@ class PackageVoiceRecorder implements VoiceRecorder {
       final path = out ?? _path;
       if (path == null) throw const VoiceRecorderException('failed', 'no file');
       final bytes = await File(path).readAsBytes();
-      return VoiceClip(bytes: bytes, path: path, mime: 'audio/mp4', seconds: (_clock.elapsedMilliseconds / 1000).round());
+      return VoiceClip(
+        bytes: bytes,
+        path: path,
+        mime: 'audio/mp4',
+        seconds: (_clock.elapsedMilliseconds / 1000).round(),
+      );
     } on VoiceRecorderException {
       rethrow;
     } catch (e) {
@@ -173,18 +196,18 @@ class AudioplayersClipPlayer implements ClipPlayer {
 
   @override
   Stream<ClipPlayerState> get states => _player.onPlayerStateChanged.map((s) {
-        switch (s) {
-          case PlayerState.playing:
-            return ClipPlayerState.playing;
-          case PlayerState.paused:
-            return ClipPlayerState.paused;
-          case PlayerState.completed:
-            return ClipPlayerState.completed;
-          case PlayerState.stopped:
-          case PlayerState.disposed:
-            return ClipPlayerState.stopped;
-        }
-      });
+    switch (s) {
+      case PlayerState.playing:
+        return ClipPlayerState.playing;
+      case PlayerState.paused:
+        return ClipPlayerState.paused;
+      case PlayerState.completed:
+        return ClipPlayerState.completed;
+      case PlayerState.stopped:
+      case PlayerState.disposed:
+        return ClipPlayerState.stopped;
+    }
+  });
 
   @override
   Stream<Duration> get positions => _player.onPositionChanged;
@@ -209,7 +232,9 @@ class AudioplayersClipPlayer implements ClipPlayer {
 }
 
 /// Makes one player per playback widget, on its first tap. Tests override this with a fake.
-final clipPlayerFactoryProvider = Provider<ClipPlayer Function()>((ref) => AudioplayersClipPlayer.new);
+final clipPlayerFactoryProvider = Provider<ClipPlayer Function()>(
+  (ref) => AudioplayersClipPlayer.new,
+);
 
 // ---------------------------------------------------------------------------------------------
 // The host's own saved introduction
@@ -235,7 +260,9 @@ class HttpOwnVoiceFetcher extends OwnVoiceFetcher {
       final res = await http
           .get(
             Uri.parse('${Env.apiOrigin}/api/hosts/me/voice'),
-            headers: <String, String>{if (token != null) 'Authorization': 'Bearer $token'},
+            headers: <String, String>{
+              if (token != null) 'Authorization': 'Bearer $token',
+            },
           )
           .timeout(const Duration(seconds: 60));
       if (res.statusCode != 200 || res.bodyBytes.isEmpty) return null;
@@ -249,4 +276,6 @@ class HttpOwnVoiceFetcher extends OwnVoiceFetcher {
   }
 }
 
-final ownVoiceFetcherProvider = Provider<OwnVoiceFetcher>((ref) => HttpOwnVoiceFetcher(ref.watch(clerkProvider)));
+final ownVoiceFetcherProvider = Provider<OwnVoiceFetcher>(
+  (ref) => HttpOwnVoiceFetcher(ref.watch(clerkProvider)),
+);

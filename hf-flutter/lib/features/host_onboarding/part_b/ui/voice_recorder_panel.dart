@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/api/api_error.dart';
-import '../../../../core/theme/hf_tokens.dart';
+import '../../../../core/theme/hf_theme.dart';
 import '../../../../core/widgets/widgets.dart';
 import '../../../kyc/kyc.dart';
 import '../data/host_setup_api.dart';
@@ -23,7 +23,11 @@ import 'part_b_widgets.dart';
 ///   here and never uploaded). The host listens to it, then saves it or records again.
 /// - **uploading**: `PUT /api/hosts/me/voice` with a progress bar. The worker's message shows if it refuses.
 class VoiceRecorderPanel extends ConsumerStatefulWidget {
-  const VoiceRecorderPanel({super.key, required this.consent, required this.onSaved});
+  const VoiceRecorderPanel({
+    super.key,
+    required this.consent,
+    required this.onSaved,
+  });
 
   /// "This is my own voice" is ticked. Saving needs it.
   final bool consent;
@@ -131,7 +135,9 @@ class _VoiceRecorderPanelState extends ConsumerState<VoiceRecorderPanel> {
     final VoiceClip kept = clip;
     // Stopping by itself at 5:00 can land a moment late: one second of slack, never more.
     var seconds = kept.seconds;
-    if (auto && seconds > kVoiceMaxSeconds && seconds <= kVoiceMaxSeconds + 1) seconds = kVoiceMaxSeconds;
+    if (auto && seconds > kVoiceMaxSeconds && seconds <= kVoiceMaxSeconds + 1) {
+      seconds = kVoiceMaxSeconds;
+    }
     switch (checkVoiceSeconds(seconds)) {
       case VoiceLength.tooShort:
         OnboardingTelemetry.step('voice', 'blocked', reason: 'too_short');
@@ -174,12 +180,12 @@ class _VoiceRecorderPanelState extends ConsumerState<VoiceRecorderPanel> {
   }
 
   void _recordAgain() => setState(() {
-        _clip = null;
-        _phase = _Phase.idle;
-        _elapsed = 0;
-        _progress = 0;
-        _error = null;
-      });
+    _clip = null;
+    _phase = _Phase.idle;
+    _elapsed = 0;
+    _progress = 0;
+    _error = null;
+  });
 
   Future<void> _save() async {
     final clip = _clip;
@@ -190,19 +196,28 @@ class _VoiceRecorderPanelState extends ConsumerState<VoiceRecorderPanel> {
       _error = null;
     });
     try {
-      final saved = await ref.read(hostSetupApiProvider).uploadVoice(
+      final saved = await ref
+          .read(hostSetupApiProvider)
+          .uploadVoice(
             bytes: clip.bytes,
             mime: clip.mime,
             seconds: clip.seconds,
             onProgress: (sent, total) {
-              if (mounted) setState(() => _progress = total <= 0 ? 0 : sent / total);
+              if (mounted) {
+                setState(() => _progress = total <= 0 ? 0 : sent / total);
+              }
             },
           );
       OnboardingTelemetry.voiceRecorded(saved.seconds);
       OnboardingTelemetry.step('voice', 'saved');
       await widget.onSaved(clip, saved);
     } on ApiError catch (e) {
-      OnboardingTelemetry.step('voice', 'error', reason: e.code, status: e.status);
+      OnboardingTelemetry.step(
+        'voice',
+        'error',
+        reason: e.code,
+        status: e.status,
+      );
       if (!mounted) return;
       setState(() {
         _phase = _Phase.review;
@@ -230,24 +245,41 @@ class _VoiceRecorderPanelState extends ConsumerState<VoiceRecorderPanel> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
-        Container(padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(color: HfColors.lavender, borderRadius: BorderRadius.circular(20)),
-          child: const Text(PartBCopy.voiceTapMic, style: HfText.bodyStrong, textAlign: TextAlign.center)),
+        Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: HfTint.lavender.bg(context),
+            borderRadius: BorderRadius.circular(HfRadius.tile),
+          ),
+          child: Text(
+            PartBCopy.voiceTapMic,
+            style: HfText.of(context, HfText.bodyStrong),
+            textAlign: TextAlign.center,
+          ),
+        ),
         const SizedBox(height: 16),
         SizedBox(
-          width: 88,
-          height: 88,
+          width: 72,
+          height: 72,
           child: starting
-              ? const Padding(padding: EdgeInsets.all(24), child: CircularProgressIndicator(strokeWidth: 3))
+              ? const Padding(
+                  padding: EdgeInsets.all(20),
+                  child: CircularProgressIndicator(strokeWidth: 3),
+                )
               : IconButton.filled(
                   key: const ValueKey<String>('voice-record'),
                   tooltip: PartBCopy.voiceTapMic,
-                  iconSize: 44,
+                  style: IconButton.styleFrom(
+                    backgroundColor: HfColors.rose,
+                    foregroundColor: HfColors.white,
+                  ),
+                  iconSize: 36,
                   onPressed: _start,
                   icon: const Icon(Icons.mic_rounded),
                 ),
         ),
-        if (_error != null) Align(alignment: Alignment.centerLeft, child: InlineError(_error!)),
+        if (_error != null)
+          Align(alignment: Alignment.centerLeft, child: InlineError(_error!)),
       ],
     );
   }
@@ -256,7 +288,9 @@ class _VoiceRecorderPanelState extends ConsumerState<VoiceRecorderPanel> {
     final tooShort = _elapsed < kVoiceMinSeconds;
     final hint = tooShort
         ? PartBCopy.voiceKeepGoing
-        : (_elapsed < kVoiceSuggestSeconds ? PartBCopy.voiceNiceStop : PartBCopy.voiceCanStop);
+        : (_elapsed < kVoiceSuggestSeconds
+              ? PartBCopy.voiceNiceStop
+              : PartBCopy.voiceCanStop);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -265,7 +299,7 @@ class _VoiceRecorderPanelState extends ConsumerState<VoiceRecorderPanel> {
           child: Text(
             '${PartBCopy.voiceRecording} ${mmss(_elapsed)}',
             key: const ValueKey<String>('voice-timer'),
-            style: HfText.title,
+            style: HfText.of(context, HfText.title),
             textAlign: TextAlign.center,
           ),
         ),
@@ -276,8 +310,8 @@ class _VoiceRecorderPanelState extends ConsumerState<VoiceRecorderPanel> {
             key: const ValueKey<String>('voice-length'),
             value: (_elapsed / kVoiceMaxSeconds).clamp(0.0, 1.0).toDouble(),
             minHeight: 10,
-            backgroundColor: HfColors.sky,
-            color: HfColors.ink,
+            backgroundColor: HfTint.sky.bg(context),
+            color: HfColors.skyDeep,
           ),
         ),
         const SizedBox(height: 10),
@@ -287,12 +321,17 @@ class _VoiceRecorderPanelState extends ConsumerState<VoiceRecorderPanel> {
             key: const ValueKey<String>('voice-level'),
             value: _level.clamp(0.0, 1.0).toDouble(),
             minHeight: 10,
-            backgroundColor: HfColors.mint,
-            color: HfColors.forest,
+            backgroundColor: HfTint.peach.bg(context),
+            color: HfColors.peachDeep,
           ),
         ),
         const SizedBox(height: 10),
-        Text('$hint ${PartBCopy.voiceAutoStop}', key: const ValueKey<String>('voice-hint'), style: HfText.note, textAlign: TextAlign.center),
+        Text(
+          '$hint ${PartBCopy.voiceAutoStop}',
+          key: const ValueKey<String>('voice-hint'),
+          style: HfText.of(context, HfText.note),
+          textAlign: TextAlign.center,
+        ),
         const SizedBox(height: 16),
         HfButton(
           key: const ValueKey<String>('voice-stop'),
@@ -319,13 +358,19 @@ class _VoiceRecorderPanelState extends ConsumerState<VoiceRecorderPanel> {
         Text(
           '${PartBCopy.voiceListenFirst} (${mmss(clip.seconds)})',
           key: const ValueKey<String>('voice-review-title'),
-          style: HfText.subtitle,
+          style: HfText.of(context, HfText.subsection),
         ),
         const SizedBox(height: 10),
-        ClipPlayerBar(loadPath: () async => clip.path, knownSeconds: clip.seconds),
+        ClipPlayerBar(
+          loadPath: () async => clip.path,
+          knownSeconds: clip.seconds,
+        ),
         const SizedBox(height: 14),
         if (uploading) ...[
-          const Text(PartBCopy.voiceUploading, style: HfText.note),
+          Text(
+            PartBCopy.voiceUploading,
+            style: HfText.of(context, HfText.note),
+          ),
           const SizedBox(height: 6),
           ClipRRect(
             borderRadius: BorderRadius.circular(6),
@@ -333,8 +378,8 @@ class _VoiceRecorderPanelState extends ConsumerState<VoiceRecorderPanel> {
               key: const ValueKey<String>('voice-progress'),
               value: _progress.clamp(0.0, 1.0).toDouble(),
               minHeight: 10,
-              backgroundColor: HfColors.sky,
-              color: HfColors.ink,
+              backgroundColor: HfTint.sky.bg(context),
+              color: HfColors.skyDeep,
             ),
           ),
           const SizedBox(height: 14),
@@ -345,7 +390,14 @@ class _VoiceRecorderPanelState extends ConsumerState<VoiceRecorderPanel> {
           loading: uploading,
           onPressed: widget.consent ? () => unawaited(_save()) : null,
         ),
-        if (!widget.consent) const Padding(padding: EdgeInsets.only(top: 6), child: Text(PartBCopy.voiceNeedConsent, style: HfText.note)),
+        if (!widget.consent)
+          Padding(
+            padding: const EdgeInsets.only(top: 6),
+            child: Text(
+              PartBCopy.voiceNeedConsent,
+              style: HfText.of(context, HfText.note),
+            ),
+          ),
         HfButton(
           key: const ValueKey<String>('voice-rerecord'),
           label: PartBCopy.voiceRecordAgain,

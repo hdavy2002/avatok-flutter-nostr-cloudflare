@@ -5,7 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/api/api_error.dart';
 import '../../../core/auth/session.dart';
-import '../../../core/theme/hf_tokens.dart';
+import '../../../core/theme/hf_theme.dart';
 import '../../../core/widgets/widgets.dart';
 import '../data/me_api.dart';
 import '../data/me_telemetry.dart';
@@ -33,7 +33,9 @@ class NameSheet extends ConsumerStatefulWidget {
 }
 
 class _NameSheetState extends ConsumerState<NameSheet> {
-  late final TextEditingController _controller = TextEditingController(text: widget.initial);
+  late final TextEditingController _controller = TextEditingController(
+    text: widget.initial,
+  );
   String? _error;
   bool _saving = false;
   String? _ownerUid;
@@ -66,7 +68,9 @@ class _NameSheetState extends ConsumerState<NameSheet> {
     try {
       final uid = _ownerUid;
       if (uid == null) throw const ApiError(status: 401, code: 'unauthorized');
-      final saved = await ref.read(meApiProvider).updateName(name, expectedUid: uid);
+      final saved = await ref
+          .read(meApiProvider)
+          .updateName(name, expectedUid: uid);
       MeTelemetry.nameUpdated('ok');
       if (!mounted) return;
       if (widget.onSaved != null) {
@@ -88,7 +92,12 @@ class _NameSheetState extends ConsumerState<NameSheet> {
   Widget build(BuildContext context) {
     final bottom = MediaQuery.viewInsetsOf(context).bottom;
     return Padding(
-      padding: EdgeInsets.fromLTRB(HfSpacing.page, 0, HfSpacing.page, HfSpacing.page + bottom),
+      padding: EdgeInsets.fromLTRB(
+        HfSpacing.page,
+        0,
+        HfSpacing.page,
+        HfSpacing.page + bottom,
+      ),
       child: SingleChildScrollView(
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -96,9 +105,9 @@ class _NameSheetState extends ConsumerState<NameSheet> {
           children: [
             const HfScene(kind: HfSceneKind.profile, height: 100),
             const SizedBox(height: 16),
-            const Text(NameCopy.title, style: HfText.headline),
+            Text(NameCopy.title, style: HfText.of(context, HfText.headline)),
             const SizedBox(height: 6),
-            const Text(NameCopy.hint, style: HfText.note),
+            Text(NameCopy.hint, style: HfText.of(context, HfText.note)),
             const SizedBox(height: 16),
             TextField(
               key: const ValueKey<String>('name-field'),
@@ -108,7 +117,7 @@ class _NameSheetState extends ConsumerState<NameSheet> {
               maxLength: 40,
               textCapitalization: TextCapitalization.words,
               textInputAction: TextInputAction.done,
-              style: HfText.bodyText,
+              style: HfText.of(context, HfText.body),
               decoration: InputDecoration(
                 labelText: NameCopy.label,
                 errorText: _error,

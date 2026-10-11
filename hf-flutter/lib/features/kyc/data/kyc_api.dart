@@ -28,14 +28,18 @@ class KycApi {
   final ApiClient _api;
 
   /// `POST /api/hosts/kyc/aadhaar/otp`.
-  Future<AadhaarOtpOutcome> aadhaarOtp({required String aadhaar, required KycRole role}) async {
-    final j = await _api.postJson('/api/hosts/kyc/aadhaar/otp', body: {
-      'aadhaar': aadhaar,
-      'consent': true,
-      'role': role.wire,
-    });
+  Future<AadhaarOtpOutcome> aadhaarOtp({
+    required String aadhaar,
+    required KycRole role,
+  }) async {
+    final j = await _api.postJson(
+      '/api/hosts/kyc/aadhaar/otp',
+      body: {'aadhaar': aadhaar, 'consent': true, 'role': role.wire},
+    );
     if (j['already_verified'] == true) {
-      return AadhaarOtpOutcome.alreadyVerified(AadhaarResult.fromJson(j, alreadyVerified: true));
+      return AadhaarOtpOutcome.alreadyVerified(
+        AadhaarResult.fromJson(j, alreadyVerified: true),
+      );
     }
     final ttl = j['expires_in_s'];
     return AadhaarOtpOutcome.sent(ttl is num ? ttl.toInt() : 600);
@@ -43,19 +47,26 @@ class KycApi {
 
   /// `POST /api/hosts/kyc/aadhaar/verify`.
   Future<AadhaarResult> aadhaarVerify(String otp) async {
-    final j = await _api.postJson('/api/hosts/kyc/aadhaar/verify', body: {'otp': otp});
+    final j = await _api.postJson(
+      '/api/hosts/kyc/aadhaar/verify',
+      body: {'otp': otp},
+    );
     return AadhaarResult.fromJson(j);
   }
 
   /// `POST /api/hosts/kyc/digilocker/start`.
-  Future<DigiLockerStartOutcome> digilockerStart({required KycRole role, String returnPath = kDigiLockerReturnPath}) async {
-    final j = await _api.postJson('/api/hosts/kyc/digilocker/start', body: {
-      'consent': true,
-      'role': role.wire,
-      'returnPath': returnPath,
-    });
+  Future<DigiLockerStartOutcome> digilockerStart({
+    required KycRole role,
+    String returnPath = kDigiLockerReturnPath,
+  }) async {
+    final j = await _api.postJson(
+      '/api/hosts/kyc/digilocker/start',
+      body: {'consent': true, 'role': role.wire, 'returnPath': returnPath},
+    );
     if (j['already_verified'] == true) {
-      return DigiLockerStartOutcome.alreadyVerified(AadhaarResult.fromJson(j, alreadyVerified: true));
+      return DigiLockerStartOutcome.alreadyVerified(
+        AadhaarResult.fromJson(j, alreadyVerified: true),
+      );
     }
     final url = Uri.tryParse((j['url'] ?? '').toString());
     if (url == null || !url.hasScheme) throw ApiError.badResponse(200);
@@ -65,12 +76,19 @@ class KycApi {
   /// `POST /api/hosts/kyc/digilocker/complete`. HTTP 202 arrives here as a normal body with `pending: true`
   /// (the client returns 2xx bodies as they are), so [DigiLockerCompleteOutcome.pending] is not an error.
   Future<DigiLockerCompleteOutcome> digilockerComplete() async {
-    final j = await _api.postJson('/api/hosts/kyc/digilocker/complete', body: const <String, Object?>{});
+    final j = await _api.postJson(
+      '/api/hosts/kyc/digilocker/complete',
+      body: const <String, Object?>{},
+    );
     if (j['pending'] == true || j['ok'] == false) {
       final m = j['message'];
-      return DigiLockerCompleteOutcome.pending(m is String && m.isNotEmpty ? m : null);
+      return DigiLockerCompleteOutcome.pending(
+        m is String && m.isNotEmpty ? m : null,
+      );
     }
-    return DigiLockerCompleteOutcome.done(AadhaarResult.fromJson(j, viaDigiLocker: true));
+    return DigiLockerCompleteOutcome.done(
+      AadhaarResult.fromJson(j, viaDigiLocker: true),
+    );
   }
 
   /// `POST /api/hosts/kyc/selfie/code` -> the 4-digit code to say out loud (valid 10 minutes).
@@ -100,13 +118,23 @@ class KycApi {
   }
 
   /// `POST /api/hosts/payout/verify`.
-  Future<PayoutResult> payoutVerify({required String upi, required String account, required String ifsc}) async {
-    final j = await _api.postJson('/api/hosts/payout/verify', body: {'upi': upi, 'account': account, 'ifsc': ifsc});
+  Future<PayoutResult> payoutVerify({
+    required String upi,
+    required String account,
+    required String ifsc,
+  }) async {
+    final j = await _api.postJson(
+      '/api/hosts/payout/verify',
+      body: {'upi': upi, 'account': account, 'ifsc': ifsc},
+    );
     return PayoutResult.fromJson(j);
   }
 
   /// `GET /api/hosts/kyc/status`.
-  Future<KycStatus> status() async => KycStatus.fromJson(await _api.getJson('/api/hosts/kyc/status'));
+  Future<KycStatus> status() async =>
+      KycStatus.fromJson(await _api.getJson('/api/hosts/kyc/status'));
 }
 
-final kycApiProvider = Provider<KycApi>((ref) => KycApi(ref.watch(apiClientProvider)));
+final kycApiProvider = Provider<KycApi>(
+  (ref) => KycApi(ref.watch(apiClientProvider)),
+);

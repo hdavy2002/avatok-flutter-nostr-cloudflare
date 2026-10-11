@@ -15,7 +15,12 @@ import 'kyc_models.dart';
 /// completion call runs once, in the right place. Saved per account, valid 30 minutes (the worker keeps the
 /// DigiLocker session 30 minutes too).
 class DigiLockerPending {
-  const DigiLockerPending({required this.role, required this.at, this.lane, this.next});
+  const DigiLockerPending({
+    required this.role,
+    required this.at,
+    this.lane,
+    this.next,
+  });
 
   final KycRole role;
   final DateTime at;
@@ -72,7 +77,12 @@ class DigiLockerPendingStore {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString(
         key,
-        jsonEncode({'role': p.role.wire, 'at': p.at.millisecondsSinceEpoch, if (p.lane != null) 'lane': p.lane, if (Routes.safeNext(p.next) != null) 'next': Routes.safeNext(p.next)}),
+        jsonEncode({
+          'role': p.role.wire,
+          'at': p.at.millisecondsSinceEpoch,
+          if (p.lane != null) 'lane': p.lane,
+          if (Routes.safeNext(p.next) != null) 'next': Routes.safeNext(p.next),
+        }),
       );
     } catch (e) {
       debugPrint('digilocker pending save failed: $e');
@@ -90,4 +100,6 @@ class DigiLockerPendingStore {
   }
 }
 
-final digiLockerPendingStoreProvider = Provider<DigiLockerPendingStore>((ref) => const DigiLockerPendingStore());
+final digiLockerPendingStoreProvider = Provider<DigiLockerPendingStore>(
+  (ref) => const DigiLockerPendingStore(),
+);

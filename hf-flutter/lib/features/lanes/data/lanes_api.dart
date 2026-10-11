@@ -51,7 +51,8 @@ class LaneStatus {
   bool granted(Lane l) => l == Lane.women ? womenGranted : lgbtqGranted;
 
   factory LaneStatus.fromJson(Map<String, dynamic> j) {
-    Map<String, dynamic> m(Object? v) => v is Map ? Map<String, dynamic>.from(v) : <String, dynamic>{};
+    Map<String, dynamic> m(Object? v) =>
+        v is Map ? Map<String, dynamic>.from(v) : <String, dynamic>{};
     final lanes = m(j['lanes']);
     final women = m(lanes['women']);
     final lgbtq = m(lanes['lgbtq']);
@@ -64,11 +65,23 @@ class LaneStatus {
       womenGranted: women['granted'] == true,
       lgbtqDeclared: lgbtq['declared'] == true,
       // Older server responses must not unlock a space without the new evidence.
-      lgbtqGranted: lgbtq['granted'] == true && lgbtq['declared'] == true &&
-          j['aadhaarVerified'] == true && lgbtq['selfieStatus'] == 'approved',
-      selfieStatus: const {'pending', 'approved', 'rejected'}.contains(lgbtq['selfieStatus'])
-          ? lgbtq['selfieStatus'] as String : 'none',
-      selfieReason: lgbtq['selfieStatus'] == 'rejected' && lgbtq['selfieReason'] is String ? lgbtq['selfieReason'] as String : null,
+      lgbtqGranted:
+          lgbtq['granted'] == true &&
+          lgbtq['declared'] == true &&
+          j['aadhaarVerified'] == true &&
+          lgbtq['selfieStatus'] == 'approved',
+      selfieStatus:
+          const {
+            'pending',
+            'approved',
+            'rejected',
+          }.contains(lgbtq['selfieStatus'])
+          ? lgbtq['selfieStatus'] as String
+          : 'none',
+      selfieReason:
+          lgbtq['selfieStatus'] == 'rejected' && lgbtq['selfieReason'] is String
+          ? lgbtq['selfieReason'] as String
+          : null,
     );
   }
 }
@@ -80,7 +93,8 @@ class LanesApi {
 
   final ApiClient _api;
 
-  Future<LaneStatus> me() async => LaneStatus.fromJson(await _api.getJson('/api/hf/lanes/me'));
+  Future<LaneStatus> me() async =>
+      LaneStatus.fromJson(await _api.getJson('/api/hf/lanes/me'));
 
   /// `POST /api/hf/lanes/women/join`.
   Future<void> joinWomen() async {
@@ -89,7 +103,10 @@ class LanesApi {
 
   /// `POST /api/hf/lanes/lgbtq/join {declare:true, ack18:true}`: a private self-declaration.
   Future<void> joinLgbtq({required bool declare, required bool ack18}) async {
-    await _api.postJson('/api/hf/lanes/lgbtq/join', body: {'declare': declare, 'ack18': ack18});
+    await _api.postJson(
+      '/api/hf/lanes/lgbtq/join',
+      body: {'declare': declare, 'ack18': ack18},
+    );
   }
 
   /// `DELETE /api/hf/lanes/:lane`.
@@ -98,7 +115,9 @@ class LanesApi {
   }
 }
 
-final lanesApiProvider = Provider<LanesApi>((ref) => LanesApi(ref.watch(apiClientProvider)));
+final lanesApiProvider = Provider<LanesApi>(
+  (ref) => LanesApi(ref.watch(apiClientProvider)),
+);
 
 /// The person's lane state. `ref.invalidate(laneStatusProvider)` after a join or a leave.
 /// The Me screen (HF-NATIVE-12) can read it for "My spaces" and call `ref.read(lanesApiProvider).leave(lane)`.

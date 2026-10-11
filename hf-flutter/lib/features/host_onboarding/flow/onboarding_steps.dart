@@ -85,8 +85,13 @@ class OnboardingServerState {
   }
 
   /// The profile has been made at least once (it is past the generating step).
-  bool get generated =>
-      const {'pending_host', 'pending_review', 'live', 'rejected', 'paused'}.contains(hostStatus);
+  bool get generated => const {
+    'pending_host',
+    'pending_review',
+    'live',
+    'rejected',
+    'paused',
+  }.contains(hostStatus);
 
   factory OnboardingServerState.fromJson(
     Map<String, dynamic> me, {
@@ -104,9 +109,14 @@ class OnboardingServerState {
     if (digits.length >= 4) last4 = digits.substring(digits.length - 4);
     return OnboardingServerState(
       host: hostRaw is Map ? Map<String, dynamic>.from(hostRaw) : null,
-      kyc: kycRaw is Map ? KycStatus.fromJson(Map<String, dynamic>.from(kycRaw)) : const KycStatus(),
+      kyc: kycRaw is Map
+          ? KycStatus.fromJson(Map<String, dynamic>.from(kycRaw))
+          : const KycStatus(),
       media: mediaRaw is List
-          ? [for (final m in mediaRaw) if (m is Map) Map<String, dynamic>.from(m)]
+          ? [
+              for (final m in mediaRaw)
+                if (m is Map) Map<String, dynamic>.from(m),
+            ]
           : const <Map<String, dynamic>>[],
       job: jobRaw is Map ? Map<String, dynamic>.from(jobRaw) : null,
       phoneVerified: phone?['verified'] == true || sessionPhoneVerified,
@@ -133,13 +143,31 @@ class OnboardingStepDef {
 }
 
 bool _anyProgress(OnboardingServerState s) =>
-    s.hasHost || s.kyc.aadhaarDone || s.kyc.selfieStatus != 'none' || s.kyc.payoutDone;
+    s.hasHost ||
+    s.kyc.aadhaarDone ||
+    s.kyc.selfieStatus != 'none' ||
+    s.kyc.payoutDone;
 
 /// Every step, in order. Part B may refine an `isDone` rule for its own steps.
 final List<OnboardingStepDef> kOnboardingSteps = <OnboardingStepDef>[
-  const OnboardingStepDef(OnboardingKeys.welcome, OnboardingGroup.start, 'Welcome', _anyProgress),
-  OnboardingStepDef(OnboardingKeys.phone, OnboardingGroup.verify, 'Your WhatsApp number', (s) => s.phoneVerified),
-  OnboardingStepDef(OnboardingKeys.aadhaar, OnboardingGroup.verify, 'Aadhaar check', (s) => s.kyc.aadhaarDone && s.kyc.role != KycRole.laneCaller.wire),
+  const OnboardingStepDef(
+    OnboardingKeys.welcome,
+    OnboardingGroup.start,
+    'Welcome',
+    _anyProgress,
+  ),
+  OnboardingStepDef(
+    OnboardingKeys.phone,
+    OnboardingGroup.verify,
+    'Your WhatsApp number',
+    (s) => s.phoneVerified,
+  ),
+  OnboardingStepDef(
+    OnboardingKeys.aadhaar,
+    OnboardingGroup.verify,
+    'Aadhaar check',
+    (s) => s.kyc.aadhaarDone && s.kyc.role != KycRole.laneCaller.wire,
+  ),
   OnboardingStepDef(
     OnboardingKeys.selfie,
     OnboardingGroup.verify,
@@ -147,19 +175,32 @@ final List<OnboardingStepDef> kOnboardingSteps = <OnboardingStepDef>[
     // A rejected video has to be recorded again.
     (s) => s.kyc.selfieStatus == 'pending' || s.kyc.selfieStatus == 'approved',
   ),
-  OnboardingStepDef(OnboardingKeys.payout, OnboardingGroup.verify, 'Where we pay you', (s) => s.kyc.payoutDone),
-  OnboardingStepDef(OnboardingKeys.avatar, OnboardingGroup.profile, 'Choose your avatar', (s) => s.hostString('avatarId') != null),
+  OnboardingStepDef(
+    OnboardingKeys.payout,
+    OnboardingGroup.verify,
+    'Where we pay you',
+    (s) => s.kyc.payoutDone,
+  ),
+  OnboardingStepDef(
+    OnboardingKeys.avatar,
+    OnboardingGroup.profile,
+    'Choose your avatar',
+    (s) => s.hostString('avatarId') != null,
+  ),
   OnboardingStepDef(
     OnboardingKeys.about,
     OnboardingGroup.profile,
     'About you',
-    (s) => (s.hostString('displayName') ?? '').length >= 2 && s.hostString('about') != null,
+    (s) =>
+        (s.hostString('displayName') ?? '').length >= 2 &&
+        s.hostString('about') != null,
   ),
   OnboardingStepDef(
     OnboardingKeys.languages,
     OnboardingGroup.profile,
     'Languages and style',
-    (s) => s.hostStrings('languages').isNotEmpty && s.hostString('style') != null,
+    (s) =>
+        s.hostStrings('languages').isNotEmpty && s.hostString('style') != null,
   ),
   OnboardingStepDef(
     OnboardingKeys.topics,
@@ -167,33 +208,62 @@ final List<OnboardingStepDef> kOnboardingSteps = <OnboardingStepDef>[
     'What you like to talk about',
     (s) => s.hostStrings('topics').isNotEmpty,
   ),
-  OnboardingStepDef(OnboardingKeys.price, OnboardingGroup.profile, 'Your price', (s) => s.hostNum('pricePerMin') != null),
-  OnboardingStepDef(OnboardingKeys.hours, OnboardingGroup.profile, 'Hours and comfort', (s) {
-    final days = s.hostMap('hours')['days'];
-    return days is List && days.isNotEmpty;
-  }),
-  OnboardingStepDef(OnboardingKeys.voice, OnboardingGroup.voice, 'Record your introduction', (s) {
-    final seconds = s.hostMap('voice')['seconds'];
-    return seconds is num && seconds > 0;
-  }),
+  OnboardingStepDef(
+    OnboardingKeys.price,
+    OnboardingGroup.profile,
+    'Your price',
+    (s) => s.hostNum('pricePerMin') != null,
+  ),
+  OnboardingStepDef(
+    OnboardingKeys.hours,
+    OnboardingGroup.profile,
+    'Hours and comfort',
+    (s) {
+      final days = s.hostMap('hours')['days'];
+      return days is List && days.isNotEmpty;
+    },
+  ),
+  OnboardingStepDef(
+    OnboardingKeys.voice,
+    OnboardingGroup.voice,
+    'Record your introduction',
+    (s) {
+      final seconds = s.hostMap('voice')['seconds'];
+      return seconds is num && seconds > 0;
+    },
+  ),
   OnboardingStepDef(
     OnboardingKeys.review,
     OnboardingGroup.finish,
     'Check everything',
-    (s) => s.hostNum('agreementsAt') != null || s.generated || s.hostStatus == 'generating',
+    (s) =>
+        s.hostNum('agreementsAt') != null ||
+        s.generated ||
+        s.hostStatus == 'generating',
   ),
-  OnboardingStepDef(OnboardingKeys.generating, OnboardingGroup.finish, 'Creating your profile', (s) => s.generated),
+  OnboardingStepDef(
+    OnboardingKeys.generating,
+    OnboardingGroup.finish,
+    'Creating your profile',
+    (s) => s.generated,
+  ),
   OnboardingStepDef(
     OnboardingKeys.preview,
     OnboardingGroup.finish,
     'Your profile',
     (s) => s.hostStatus == 'pending_review' || s.hostStatus == 'live',
   ),
-  OnboardingStepDef(OnboardingKeys.done, OnboardingGroup.finish, 'Sent for review', (s) => false),
+  OnboardingStepDef(
+    OnboardingKeys.done,
+    OnboardingGroup.finish,
+    'Sent for review',
+    (s) => false,
+  ),
 ];
 
 /// Position of [key] in [kOnboardingSteps], or -1.
-int onboardingStepIndex(String? key) => kOnboardingSteps.indexWhere((s) => s.key == key);
+int onboardingStepIndex(String? key) =>
+    kOnboardingSteps.indexWhere((s) => s.key == key);
 
 /// The step to resume at, from what the server knows.
 ///

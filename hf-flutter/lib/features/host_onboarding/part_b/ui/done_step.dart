@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../../core/router/routes.dart';
-import '../../../../core/theme/hf_tokens.dart';
+import '../../../../core/theme/hf_theme.dart';
 import '../../../../core/widgets/widgets.dart';
 import '../../flow/onboarding_context.dart';
 import 'part_b_copy.dart';
@@ -41,8 +41,15 @@ class DoneStep extends StatelessWidget {
             width: 96,
             height: 96,
             margin: const EdgeInsets.symmetric(vertical: 16),
-            decoration: const BoxDecoration(color: HfColors.blush, shape: BoxShape.circle),
-            child: const Icon(Icons.favorite_rounded, size: 48, color: HfColors.rose),
+            decoration: const BoxDecoration(
+              color: HfColors.blush,
+              shape: BoxShape.circle,
+            ),
+            child: const Icon(
+              Icons.favorite_rounded,
+              size: 48,
+              color: HfColors.rose,
+            ),
           ),
         ),
         HfCard(
@@ -50,7 +57,13 @@ class DoneStep extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Semantics(header: true, child: const Text(PartBCopy.nextTitle, style: HfText.subtitle)),
+              Semantics(
+                header: true,
+                child: Text(
+                  PartBCopy.nextTitle,
+                  style: HfText.of(context, HfText.subsection),
+                ),
+              ),
               const SizedBox(height: 8),
               const _NextRow(Icons.schedule_rounded, PartBCopy.nextOnline),
               const _NextRow(Icons.phone_rounded, PartBCopy.nextCalls),
@@ -76,9 +89,9 @@ class _NextRow extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(icon, size: 24, color: HfColors.orchid),
+          Icon(icon, size: 24, color: HfColors.lavenderDeep),
           const SizedBox(width: 12),
-          Expanded(child: Text(text, style: HfText.bodyText)),
+          Expanded(child: Text(text, style: HfText.of(context, HfText.body))),
         ],
       ),
     );

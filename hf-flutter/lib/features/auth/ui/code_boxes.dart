@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-import '../../../core/theme/hf_tokens.dart';
+import '../../../core/theme/hf_theme.dart';
 
 /// Six boxes for the WhatsApp code. A real [TextField] (transparent) sits over the boxes, so the number keyboard,
 /// paste and one-time-code autofill all work and a tap anywhere on the boxes opens the keyboard.
@@ -50,7 +50,10 @@ class CodeBoxes extends StatelessWidget {
                           _Box(
                             width: width,
                             digit: i < text.length ? text[i] : '',
-                            active: enabled && focusNode.hasFocus && i == text.length.clamp(0, length - 1),
+                            active:
+                                enabled &&
+                                focusNode.hasFocus &&
+                                i == text.length.clamp(0, length - 1),
                             hasError: hasError,
                           ),
                         ],
@@ -99,7 +102,12 @@ class CodeBoxes extends StatelessWidget {
 }
 
 class _Box extends StatelessWidget {
-  const _Box({required this.width, required this.digit, required this.active, required this.hasError});
+  const _Box({
+    required this.width,
+    required this.digit,
+    required this.active,
+    required this.hasError,
+  });
 
   final double width;
   final String digit;
@@ -108,17 +116,27 @@ class _Box extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final border = hasError ? HfColors.accent : (active ? HfColors.orchid : HfColors.line);
+    final dark = HfBrightness.isDark(context);
+    final border = hasError
+        ? (dark ? HfColors.blushLight : HfColors.accent)
+        : (active
+              ? (dark ? HfColors.lavenderLight : HfColors.ink)
+              : (dark ? HfColors.darkLine : HfColors.line));
     return Container(
       width: width,
-      height: CodeBoxes.boxHeight + (MediaQuery.textScalerOf(context).scale(22) - 22),
+      height:
+          CodeBoxes.boxHeight +
+          (MediaQuery.textScalerOf(context).scale(22) - 22),
       alignment: Alignment.center,
       decoration: BoxDecoration(
-        color: HfColors.white,
-        borderRadius: BorderRadius.circular(HfRadius.control),
-        border: Border.all(color: border, width: active || hasError ? 2 : 1.5),
+        color: dark ? HfColors.darkCard : HfColors.white,
+        borderRadius: BorderRadius.circular(HfRadius.chip),
+        border: Border.all(color: border, width: active || hasError ? 2 : 1),
       ),
-      child: FittedBox(fit: BoxFit.scaleDown, child: Text(digit, style: HfText.title)),
+      child: FittedBox(
+        fit: BoxFit.scaleDown,
+        child: Text(digit, style: HfText.of(context, HfText.title)),
+      ),
     );
   }
 }

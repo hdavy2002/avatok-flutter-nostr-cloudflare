@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/api/api_error.dart';
-import '../../../core/theme/hf_tokens.dart';
+import '../../../core/theme/hf_theme.dart';
 import '../../../core/widgets/widgets.dart';
 import '../data/kyc_api.dart';
 import '../data/kyc_telemetry.dart';
@@ -77,7 +77,12 @@ class _SelfieVideoState extends ConsumerState<SelfieVideoWidget> {
       setState(() => _code = code);
     } on ApiError catch (e) {
       if (!mounted) return;
-      KycTelemetry.kycStep('selfie_code', 'error', reason: e.code, status: e.status);
+      KycTelemetry.kycStep(
+        'selfie_code',
+        'error',
+        reason: e.code,
+        status: e.status,
+      );
       setState(() => _codeError = e.userMessage);
     }
   }
@@ -130,7 +135,12 @@ class _SelfieVideoState extends ConsumerState<SelfieVideoWidget> {
       widget.onUploaded();
     } on ApiError catch (e) {
       if (!mounted) return;
-      KycTelemetry.kycStep('selfie_upload', 'error', reason: e.code, status: e.status);
+      KycTelemetry.kycStep(
+        'selfie_upload',
+        'error',
+        reason: e.code,
+        status: e.status,
+      );
       switch (e.code) {
         case 'code_expired':
         case 'code_mismatch':
@@ -138,7 +148,9 @@ class _SelfieVideoState extends ConsumerState<SelfieVideoWidget> {
           setState(() {
             _step = _Step.ready;
             _clip = null;
-            _error = e.code == 'code_expired' ? KycCopy.codeExpired : e.userMessage;
+            _error = e.code == 'code_expired'
+                ? KycCopy.codeExpired
+                : e.userMessage;
           });
           unawaited(_loadCode());
         case 'too_large':
@@ -160,10 +172,10 @@ class _SelfieVideoState extends ConsumerState<SelfieVideoWidget> {
   }
 
   void _recordAgain() => setState(() {
-        _clip = null;
-        _step = _Step.ready;
-        _error = null;
-      });
+    _clip = null;
+    _step = _Step.ready;
+    _error = null;
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -187,14 +199,17 @@ class _SelfieVideoState extends ConsumerState<SelfieVideoWidget> {
       case _Step.uploading:
         return _review();
       case _Step.done:
-        return const HfCard(
-          key: ValueKey<String>('selfie-done'),
+        return HfCard(
+          key: const ValueKey<String>('selfie-done'),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              DoneRow(KycCopy.videoSent),
-              SizedBox(height: 8),
-              Text(KycCopy.videoSentBody, style: HfText.bodyText),
+              const DoneRow(KycCopy.videoSent),
+              const SizedBox(height: 8),
+              Text(
+                KycCopy.videoSentBody,
+                style: HfText.of(context, HfText.body),
+              ),
             ],
           ),
         );
@@ -211,23 +226,28 @@ class _SelfieVideoState extends ConsumerState<SelfieVideoWidget> {
       children: [
         const HfScene(kind: HfSceneKind.verify, height: 100),
         const SizedBox(height: 16),
-        const Text(KycCopy.selfieTitle, style: HfText.title),
+        Text(KycCopy.selfieTitle, style: HfText.of(context, HfText.title)),
         const SizedBox(height: 8),
-        const Text(KycCopy.selfieLead, style: HfText.bodyText),
+        Text(KycCopy.selfieLead, style: HfText.of(context, HfText.body)),
         const SizedBox(height: 16),
         HfCard(
-          color: HfColors.sky,
+          color: HfTint.sky.bg(context),
           child: Column(
             children: [
-              const Text(KycCopy.yourCode, style: HfText.label),
+              Text(KycCopy.yourCode, style: HfText.of(context, HfText.label)),
               const SizedBox(height: 4),
               Semantics(
-                label: code == null ? KycCopy.gettingCode : '${KycCopy.yourCode} $spaced',
+                label: code == null
+                    ? KycCopy.gettingCode
+                    : '${KycCopy.yourCode} $spaced',
                 excludeSemantics: true,
                 child: Text(
                   code ?? '····',
                   key: const ValueKey<String>('selfie-code'),
-                  style: HfText.hero.copyWith(fontSize: 32, letterSpacing: 4),
+                  style: HfText.of(
+                    context,
+                    HfText.hero,
+                  ).copyWith(fontSize: 32, letterSpacing: 4),
                 ),
               ),
               const SizedBox(height: 8),
@@ -241,11 +261,14 @@ class _SelfieVideoState extends ConsumerState<SelfieVideoWidget> {
                   onPressed: () => unawaited(_loadCode()),
                 ),
               ] else if (code == null)
-                const Text(KycCopy.gettingCode, style: HfText.note)
+                Text(
+                  KycCopy.gettingCode,
+                  style: HfText.of(context, HfText.note),
+                )
               else
                 Text(
                   'Look at the camera and say: Mera code $spaced hai',
-                  style: HfText.bodyText,
+                  style: HfText.of(context, HfText.body),
                   textAlign: TextAlign.center,
                 ),
             ],
@@ -264,7 +287,9 @@ class _SelfieVideoState extends ConsumerState<SelfieVideoWidget> {
           key: const ValueKey<String>('selfie-open-camera'),
           label: KycCopy.openCamera,
           icon: Icons.videocam_rounded,
-          onPressed: _consent && code != null ? () => setState(() => _step = _Step.camera) : null,
+          onPressed: _consent && code != null
+              ? () => setState(() => _step = _Step.camera)
+              : null,
         ),
       ],
     );
@@ -273,7 +298,9 @@ class _SelfieVideoState extends ConsumerState<SelfieVideoWidget> {
   Widget _review() {
     final clip = _clip;
     final uploading = _step == _Step.uploading;
-    final mb = clip == null ? '' : (clip.bytes.length / (1024 * 1024)).toStringAsFixed(1);
+    final mb = clip == null
+        ? ''
+        : (clip.bytes.length / (1024 * 1024)).toStringAsFixed(1);
     return Column(
       key: const ValueKey<String>('selfie-review'),
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -284,10 +311,18 @@ class _SelfieVideoState extends ConsumerState<SelfieVideoWidget> {
             children: [
               const DoneRow(KycCopy.videoReady),
               const SizedBox(height: 8),
-              if (clip != null) Text('${clip.seconds} s, $mb MB', style: HfText.note),
+              if (clip != null)
+                Text(
+                  '${clip.seconds} s, $mb MB',
+                  style: HfText.of(context, HfText.note),
+                ),
               if (uploading) ...[
                 const SizedBox(height: 16),
-                const Text(KycCopy.uploading, style: HfText.bodyText, semanticsLabel: KycCopy.uploading),
+                Text(
+                  KycCopy.uploading,
+                  style: HfText.of(context, HfText.body),
+                  semanticsLabel: KycCopy.uploading,
+                ),
                 const SizedBox(height: 8),
                 ClipRRect(
                   borderRadius: BorderRadius.circular(8),
@@ -295,8 +330,8 @@ class _SelfieVideoState extends ConsumerState<SelfieVideoWidget> {
                     key: const ValueKey<String>('selfie-progress'),
                     value: _progress,
                     minHeight: 10,
-                    backgroundColor: HfColors.lilac,
-                    color: HfColors.orchid,
+                    backgroundColor: HfColors.lavender,
+                    color: HfColors.lavenderDeep,
                   ),
                 ),
               ],
@@ -470,7 +505,8 @@ class _CameraStageState extends ConsumerState<_CameraStage> {
             HfButton(
               key: const ValueKey<String>('camera-open-settings'),
               label: 'Open settings',
-              onPressed: () => unawaited(ref.read(permissionServiceProvider).openSettings()),
+              onPressed: () =>
+                  unawaited(ref.read(permissionServiceProvider).openSettings()),
             ),
           if (_denied) const SizedBox(height: 8),
           HfButton(
@@ -479,11 +515,18 @@ class _CameraStageState extends ConsumerState<_CameraStage> {
             kind: _denied ? HfButtonKind.secondary : HfButtonKind.primary,
             onPressed: () => unawaited(_open()),
           ),
-          HfButton(label: KycCopy.cancel, kind: HfButtonKind.text, onPressed: widget.onCancel),
+          HfButton(
+            label: KycCopy.cancel,
+            kind: HfButtonKind.text,
+            onPressed: widget.onCancel,
+          ),
         ],
       );
     }
-    final live = _cam == _Cam.countdown || _cam == _Cam.recording || _cam == _Cam.stopping;
+    final live =
+        _cam == _Cam.countdown ||
+        _cam == _Cam.recording ||
+        _cam == _Cam.stopping;
     final spaced = widget.code.split('').join(' ');
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -495,18 +538,25 @@ class _CameraStageState extends ConsumerState<_CameraStage> {
             child: Stack(
               fit: StackFit.expand,
               children: [
-                const ColoredBox(color: HfColors.plum),
-                if (_cam != _Cam.opening) Center(child: _recorder.buildPreview(context)),
-                if (_cam == _Cam.opening) const Center(child: CircularProgressIndicator(color: HfColors.cream)),
+                const ColoredBox(color: HfColors.ink),
+                if (_cam != _Cam.opening)
+                  Center(child: _recorder.buildPreview(context)),
+                if (_cam == _Cam.opening)
+                  const Center(
+                    child: CircularProgressIndicator(color: HfColors.white),
+                  ),
                 Positioned(
                   left: 12,
                   right: 12,
                   top: 12,
                   child: Container(
                     key: const ValueKey<String>('camera-code'),
-                    padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
+                    padding: const EdgeInsets.symmetric(
+                      vertical: 10,
+                      horizontal: 12,
+                    ),
                     decoration: BoxDecoration(
-                      color: HfColors.plum.withValues(alpha: 0.78),
+                      color: HfColors.ink.withValues(alpha: 0.78),
                       borderRadius: BorderRadius.circular(HfRadius.control),
                     ),
                     child: Column(
@@ -514,11 +564,18 @@ class _CameraStageState extends ConsumerState<_CameraStage> {
                       children: [
                         Text(
                           widget.code,
-                          style: HfText.hero.copyWith(color: HfColors.cream, fontSize: 30, letterSpacing: 4),
+                          style: HfText.of(context, HfText.hero).copyWith(
+                            color: HfColors.white,
+                            fontSize: 30,
+                            letterSpacing: 4,
+                          ),
                         ),
                         Text(
                           'Say: Mera code $spaced hai',
-                          style: HfText.bodyText.copyWith(color: HfColors.cream),
+                          style: HfText.of(
+                            context,
+                            HfText.body,
+                          ).copyWith(color: HfColors.white),
                           textAlign: TextAlign.center,
                         ),
                       ],
@@ -527,10 +584,23 @@ class _CameraStageState extends ConsumerState<_CameraStage> {
                 ),
                 if (_cam == _Cam.countdown)
                   Center(
-                    child: Text(
-                      '$_left',
-                      key: const ValueKey<String>('camera-countdown'),
-                      style: HfText.hero.copyWith(color: HfColors.cream, fontSize: 96),
+                    child: Container(
+                      width: 128,
+                      height: 128,
+                      alignment: Alignment.center,
+                      decoration: const BoxDecoration(
+                        color: HfColors.butter,
+                        shape: BoxShape.circle,
+                      ),
+                      child: Text(
+                        '$_left',
+                        key: const ValueKey<String>('camera-countdown'),
+                        style: HfText.hero.copyWith(
+                          color: HfColors.butterValue,
+                          fontSize: 72,
+                          height: 1.1,
+                        ),
+                      ),
                     ),
                   ),
                 if (_cam == _Cam.recording || _cam == _Cam.stopping)
@@ -541,18 +611,27 @@ class _CameraStageState extends ConsumerState<_CameraStage> {
                     child: Container(
                       padding: const EdgeInsets.all(12),
                       decoration: BoxDecoration(
-                        color: HfColors.plum.withValues(alpha: 0.78),
+                        color: HfColors.ink.withValues(alpha: 0.78),
                         borderRadius: BorderRadius.circular(HfRadius.control),
                       ),
                       child: Row(
                         children: [
-                          const Icon(Icons.fiber_manual_record_rounded, color: HfColors.accent, size: 22),
+                          const Icon(
+                            Icons.fiber_manual_record_rounded,
+                            color: HfColors.roseDot,
+                            size: 22,
+                          ),
                           const SizedBox(width: 8),
                           Expanded(
                             child: Text(
-                              _cam == _Cam.stopping ? 'Saving…' : 'Recording, $_left ${KycCopy.recordingLeft}',
+                              _cam == _Cam.stopping
+                                  ? 'Saving…'
+                                  : 'Recording, $_left ${KycCopy.recordingLeft}',
                               key: const ValueKey<String>('camera-recording'),
-                              style: HfText.bodyStrong.copyWith(color: HfColors.cream),
+                              style: HfText.of(
+                                context,
+                                HfText.bodyStrong,
+                              ).copyWith(color: HfColors.white),
                             ),
                           ),
                         ],
@@ -565,14 +644,62 @@ class _CameraStageState extends ConsumerState<_CameraStage> {
         ),
         const SizedBox(height: 16),
         if (!live)
-          HfButton(
-            key: const ValueKey<String>('camera-start'),
-            label: KycCopy.startRecording,
-            icon: Icons.fiber_manual_record_rounded,
-            onPressed: _cam == _Cam.idle ? _begin : null,
+          Center(
+            child: _RecordButton(
+              key: const ValueKey<String>('camera-start'),
+              label: KycCopy.startRecording,
+              onPressed: _cam == _Cam.idle ? _begin : null,
+            ),
           ),
-        if (!live) HfButton(label: KycCopy.cancel, kind: HfButtonKind.text, onPressed: widget.onCancel),
+        if (!live)
+          HfButton(
+            label: KycCopy.cancel,
+            kind: HfButtonKind.text,
+            onPressed: widget.onCancel,
+          ),
       ],
+    );
+  }
+}
+
+/// The round record button: a 72 px rose circle (the tap area is at least 48 px, here 72 px).
+class _RecordButton extends StatelessWidget {
+  const _RecordButton({
+    super.key,
+    required this.label,
+    required this.onPressed,
+  });
+
+  final String label;
+  final VoidCallback? onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      button: true,
+      enabled: onPressed != null,
+      label: label,
+      excludeSemantics: true,
+      child: Opacity(
+        opacity: onPressed == null ? 0.5 : 1,
+        child: Material(
+          color: HfColors.rose,
+          shape: const CircleBorder(),
+          child: InkWell(
+            customBorder: const CircleBorder(),
+            onTap: onPressed,
+            child: const SizedBox(
+              width: 72,
+              height: 72,
+              child: Icon(
+                Icons.fiber_manual_record_rounded,
+                color: HfColors.white,
+                size: 36,
+              ),
+            ),
+          ),
+        ),
+      ),
     );
   }
 }

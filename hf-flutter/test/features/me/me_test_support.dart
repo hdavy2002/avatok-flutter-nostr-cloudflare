@@ -44,19 +44,21 @@ SessionState meSession({
   bool lgbtq = false,
   String? hostStatus,
   bool closing = false,
-}) =>
-    SessionState(
-      status: SessionStatus.signedIn,
-      me: HfMe(
-        uid: 'user_test', ackVersion: 'hf-ack-v1',
-        displayName: name,
-        phoneMasked: phone,
-        womenLane: women,
-        lgbtqLane: lgbtq,
-        closing: closing,
-        host: hostStatus == null ? null : HfMeHost(status: hostStatus, slug: 'asha'),
-      ),
-    );
+}) => SessionState(
+  status: SessionStatus.signedIn,
+  me: HfMe(
+    uid: 'user_test',
+    ackVersion: 'hf-ack-v1',
+    displayName: name,
+    phoneMasked: phone,
+    womenLane: women,
+    lgbtqLane: lgbtq,
+    closing: closing,
+    host: hostStatus == null
+        ? null
+        : HfMeHost(status: hostStatus, slug: 'asha'),
+  ),
+);
 
 /// Notifications that never touch the phone.
 class FakeNotificationControl extends NotificationControl {
@@ -84,13 +86,18 @@ class FakeNotificationControl extends NotificationControl {
 
 /// Telemetry of the Me screen, as `(event, props)`.
 class MeEvents {
-  final List<(String, Map<String, Object>)> events = <(String, Map<String, Object>)>[];
+  final List<(String, Map<String, Object>)> events =
+      <(String, Map<String, Object>)>[];
 
-  void install() => MeTelemetry.sink = (event, props) async => events.add((event, props));
+  void install() =>
+      MeTelemetry.sink = (event, props) async => events.add((event, props));
 
   void remove() => MeTelemetry.resetSink();
 
-  List<Map<String, Object>> named(String name) => [for (final e in events) if (e.$1 == name) e.$2];
+  List<Map<String, Object>> named(String name) => [
+    for (final e in events)
+      if (e.$1 == name) e.$2,
+  ];
 }
 
 /// Pumps the whole app at [location] with a recording session, a fake API and any extra overrides.
@@ -108,20 +115,32 @@ Future<ProviderContainer> pumpMe(
     LinkOpener.instance = links;
     addTearDown(() => LinkOpener.instance = const LinkOpener());
   }
-  final container = ProviderContainer(overrides: <Override>[
-    sessionProvider.overrideWith(() => RecordingSession(session)),
-    clerkProvider.overrideWithValue(FakeClerk(user: session.isSignedIn ? ClerkUser(id: session.user?.id ?? session.me!.uid) : null)),
-    apiClientProvider.overrideWithValue(api),
-    secureStoreProvider.overrideWithValue(MemoryKeyValueStore()),
-    initialLocationProvider.overrideWithValue(location),
-    notificationControlProvider.overrideWithValue(notifications ?? FakeNotificationControl()),
-    ...overrides,
-  ]);
+  final container = ProviderContainer(
+    overrides: <Override>[
+      sessionProvider.overrideWith(() => RecordingSession(session)),
+      clerkProvider.overrideWithValue(
+        FakeClerk(
+          user: session.isSignedIn
+              ? ClerkUser(id: session.user?.id ?? session.me!.uid)
+              : null,
+        ),
+      ),
+      apiClientProvider.overrideWithValue(api),
+      secureStoreProvider.overrideWithValue(MemoryKeyValueStore()),
+      initialLocationProvider.overrideWithValue(location),
+      notificationControlProvider.overrideWithValue(
+        notifications ?? FakeNotificationControl(),
+      ),
+      ...overrides,
+    ],
+  );
   addTearDown(container.dispose);
-  await tester.pumpWidget(UncontrolledProviderScope(
-    container: container,
-    child: const HfApp(listenForLinks: false),
-  ));
+  await tester.pumpWidget(
+    UncontrolledProviderScope(
+      container: container,
+      child: const HfApp(listenForLinks: false),
+    ),
+  );
   await tester.pumpAndSettle();
   return container;
 }

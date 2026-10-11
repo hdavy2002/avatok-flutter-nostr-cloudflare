@@ -31,9 +31,12 @@ class FakePushGateway extends PushGateway {
   PushMessage? initial;
 
   int promptCount = 0;
-  final StreamController<String> _refresh = StreamController<String>.broadcast();
-  final StreamController<PushMessage> _foreground = StreamController<PushMessage>.broadcast();
-  final StreamController<PushMessage> _opened = StreamController<PushMessage>.broadcast();
+  final StreamController<String> _refresh =
+      StreamController<String>.broadcast();
+  final StreamController<PushMessage> _foreground =
+      StreamController<PushMessage>.broadcast();
+  final StreamController<PushMessage> _opened =
+      StreamController<PushMessage>.broadcast();
 
   void emitRefresh(String t) => _refresh.add(t);
   void emitForeground(PushMessage m) => _foreground.add(m);
@@ -75,14 +78,26 @@ class RecordingLinkHandler extends DeepLinkHandler {
   final List<({String input, String source, String launch})> handled = [];
 
   @override
-  Future<void> handle(String input, {required String source, String launch = 'warm'}) async {
+  Future<void> handle(
+    String input, {
+    required String source,
+    String launch = 'warm',
+  }) async {
     handled.add((input: input, source: source, launch: launch));
   }
 }
 
 /// A push message the way the worker builds it (`buildHfPayload`).
-PushMessage workerPush(String kind, String path, {String title = 'Hello', String body = 'Something happened'}) =>
-    PushMessage(title: title, body: body, data: {'type': 'hf_push', 'kind': kind, 'path': path});
+PushMessage workerPush(
+  String kind,
+  String path, {
+  String title = 'Hello',
+  String body = 'Something happened',
+}) => PushMessage(
+  title: title,
+  body: body,
+  data: {'type': 'hf_push', 'kind': kind, 'path': path},
+);
 
 /// The seven kinds and the paths the worker sends for them (hf_push_pure.ts).
 const Map<String, String> kindPaths = {
@@ -103,16 +118,20 @@ List<Override> pushOverrides({
   bool flagOn = true,
   DateTime Function()? clock,
   bool recordLinks = true,
-}) =>
-    <Override>[
-      sessionProvider.overrideWith(() => StubSession(signedIn ? signedInState() : signedOutState())),
-      apiClientProvider.overrideWithValue(api),
-      secureStoreProvider.overrideWithValue(MemoryKeyValueStore()),
-      pushGatewayProvider.overrideWithValue(gateway),
-      flagsProvider.overrideWith((ref) => HfFlags.fromJson({'hfPushEnabled': flagOn})),
-      if (clock != null) pushClockProvider.overrideWithValue(clock),
-      if (recordLinks) deepLinkHandlerProvider.overrideWith((ref) => RecordingLinkHandler(ref)),
-    ];
+}) => <Override>[
+  sessionProvider.overrideWith(
+    () => StubSession(signedIn ? signedInState() : signedOutState()),
+  ),
+  apiClientProvider.overrideWithValue(api),
+  secureStoreProvider.overrideWithValue(MemoryKeyValueStore()),
+  pushGatewayProvider.overrideWithValue(gateway),
+  flagsProvider.overrideWith(
+    (ref) => HfFlags.fromJson({'hfPushEnabled': flagOn}),
+  ),
+  if (clock != null) pushClockProvider.overrideWithValue(clock),
+  if (recordLinks)
+    deepLinkHandlerProvider.overrideWith((ref) => RecordingLinkHandler(ref)),
+];
 
 FakeApiClient pushApi() => FakeApiClient()
   ..onJson('POST', '/api/hf/push/register', {'ok': true})

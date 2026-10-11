@@ -3,7 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../../../../core/api/api_error.dart';
-import '../../../../core/theme/hf_tokens.dart';
+import '../../../../core/theme/hf_theme.dart';
 import '../../../../core/widgets/widgets.dart';
 import '../../../kyc/kyc.dart';
 import '../../flow/onboarding_context.dart';
@@ -41,23 +41,12 @@ class _SelfieStepState extends State<SelfieStep> {
   Widget build(BuildContext context) {
     final k = ctx.state.kyc;
     final status = k.selfieStatus;
-    final sent = _uploaded || ((status == 'pending' || status == 'approved') && !_again);
+    final sent =
+        _uploaded || ((status == 'pending' || status == 'approved') && !_again);
     if (sent) {
       return OnboardingStepPage(
-      scene: HfSceneKind.verify,
-        children: [
-          HfCard(
-            key: const ValueKey<String>('selfie-step-done'),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                DoneRow(status == 'approved' ? 'Approved video reused' : OnboardingCopy.selfieSentTitle),
-                SizedBox(height: 8),
-                Text(status == 'approved' ? 'Your approved identity video is already on file. No new recording is needed.' : OnboardingCopy.selfieSentBody, style: HfText.bodyText),
-              ],
-            ),
-          ),
-          const SizedBox(height: 24),
+        scene: HfSceneKind.verify,
+        footer: [
           HfButton(
             key: const ValueKey<String>('selfie-continue'),
             label: OnboardingCopy.continueLabel,
@@ -70,6 +59,28 @@ class _SelfieStepState extends State<SelfieStep> {
               kind: HfButtonKind.text,
               onPressed: () => setState(() => _again = true),
             ),
+        ],
+        children: [
+          HfCard(
+            key: const ValueKey<String>('selfie-step-done'),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                DoneRow(
+                  status == 'approved'
+                      ? 'Approved video reused'
+                      : OnboardingCopy.selfieSentTitle,
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  status == 'approved'
+                      ? 'Your approved identity video is already on file. No new recording is needed.'
+                      : OnboardingCopy.selfieSentBody,
+                  style: HfText.of(context, HfText.body),
+                ),
+              ],
+            ),
+          ),
         ],
       );
     }

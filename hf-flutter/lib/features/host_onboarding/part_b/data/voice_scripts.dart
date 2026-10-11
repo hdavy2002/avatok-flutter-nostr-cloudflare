@@ -2,7 +2,11 @@
 /// (`web/src/islands/host-onboarding/data.ts` VOICE_SCRIPTS). The names are examples only: the host says their own
 /// first name. Hindi first, then English.
 class VoiceScriptSet {
-  const VoiceScriptSet({required this.code, required this.label, required this.items});
+  const VoiceScriptSet({
+    required this.code,
+    required this.label,
+    required this.items,
+  });
 
   /// `hi` or `en`.
   final String code;

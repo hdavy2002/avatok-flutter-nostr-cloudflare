@@ -57,8 +57,8 @@ rule. Part B may refine the rule of its own steps there (it is the only shared f
    | `ctx.refresh()` | Re-reads `GET /api/hosts/me` and returns the new state. The shell hands the new state to the step. |
    | `ctx.digiLockerReturn` | Only true on the Aadhaar step after `?dl=return`. Part B can ignore it. |
 
-Use `OnboardingStepPage(title:, lead:, children:)` (`ui/widgets/step_page.dart`) for the standard step layout: scrollable, 20 dp gutter,
-Nunito title. The shell draws the progress header and the Back button; steps do not.
+Use `OnboardingStepPage(title:, lead:, children:, footer:)` (`ui/widgets/step_page.dart`) for the standard step layout: scrollable, 16 dp page padding,
+Nunito title; `footer` (usually Continue) is pinned in a `StepFooter` above the keyboard. The shell draws the progress header and the Back button; steps do not.
 
 For the microphone step wrap the recorder in the shared permission flow (explainer, Android prompt, denied with "Open settings",
 re-check when the person comes back):

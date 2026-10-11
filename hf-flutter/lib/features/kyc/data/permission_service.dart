@@ -31,10 +31,13 @@ abstract class PermissionService {
 class SystemPermissionService extends PermissionService {
   const SystemPermissionService();
 
-  ph.Permission _map(HfPermission p) => p == HfPermission.camera ? ph.Permission.camera : ph.Permission.microphone;
+  ph.Permission _map(HfPermission p) => p == HfPermission.camera
+      ? ph.Permission.camera
+      : ph.Permission.microphone;
 
   @override
-  Future<bool> isGranted(HfPermission p) async => (await _map(p).status).isGranted;
+  Future<bool> isGranted(HfPermission p) async =>
+      (await _map(p).status).isGranted;
 
   @override
   Future<HfPermissionResult> request(HfPermission p) async {
@@ -48,4 +51,6 @@ class SystemPermissionService extends PermissionService {
   Future<bool> openSettings() => ph.openAppSettings();
 }
 
-final permissionServiceProvider = Provider<PermissionService>((ref) => const SystemPermissionService());
+final permissionServiceProvider = Provider<PermissionService>(
+  (ref) => const SystemPermissionService(),
+);

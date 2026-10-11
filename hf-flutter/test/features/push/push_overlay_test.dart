@@ -27,16 +27,24 @@ Future<ProviderContainer> pumpPushApp(
   usePhoneScreen(tester);
   final container = ProviderContainer(
     overrides: [
-      ...pushOverrides(gateway: gateway, api: api, signedIn: signedIn, flagOn: flagOn, clock: clock),
+      ...pushOverrides(
+        gateway: gateway,
+        api: api,
+        signedIn: signedIn,
+        flagOn: flagOn,
+        clock: clock,
+      ),
       initialLocationProvider.overrideWithValue('/somewhere-with-no-screen'),
     ],
     retry: (_, __) => null,
   );
   addTearDown(container.dispose);
-  await tester.pumpWidget(UncontrolledProviderScope(
-    container: container,
-    child: const HfApp(listenForLinks: false),
-  ));
+  await tester.pumpWidget(
+    UncontrolledProviderScope(
+      container: container,
+      child: const HfApp(listenForLinks: false),
+    ),
+  );
   await settle(tester);
   return container;
 }
@@ -52,42 +60,59 @@ void main() {
   setUp(() => SharedPreferences.setMockInitialValues(<String, Object>{}));
 
   group('opt-in sheet', () {
-    testWidgets('shows once after sign-in with the caller copy and two big buttons', (tester) async {
-      final gw = FakePushGateway();
-      await pumpPushApp(tester, gateway: gw, api: pushApi());
+    testWidgets(
+      'shows once after sign-in with the caller copy and two big buttons',
+      (tester) async {
+        final gw = FakePushGateway();
+        await pumpPushApp(tester, gateway: gw, api: pushApi());
 
-      expect(find.text(PushStrings.callerTitle), findsOneWidget);
-      expect(find.text(PushStrings.allow), findsOneWidget);
-      expect(find.text(PushStrings.notNow), findsOneWidget);
-      expect(gw.promptCount, 0, reason: 'the Android prompt waits for Allow');
-      for (final label in [PushStrings.allow, PushStrings.notNow]) {
-        final size = tester.getSize(find.ancestor(of: find.text(label), matching: find.bySubtype<ButtonStyleButton>()).first);
-        expect(size.height, greaterThanOrEqualTo(48), reason: label);
-      }
-    });
+        expect(find.text(PushStrings.callerTitle), findsOneWidget);
+        expect(find.text(PushStrings.allow), findsOneWidget);
+        expect(find.text(PushStrings.notNow), findsOneWidget);
+        expect(gw.promptCount, 0, reason: 'the Android prompt waits for Allow');
+        for (final label in [PushStrings.allow, PushStrings.notNow]) {
+          final size = tester.getSize(
+            find
+                .ancestor(
+                  of: find.text(label),
+                  matching: find.bySubtype<ButtonStyleButton>(),
+                )
+                .first,
+          );
+          expect(size.height, greaterThanOrEqualTo(48), reason: label);
+        }
+      },
+    );
 
     testWidgets('a host hears about approval instead', (tester) async {
-      await tester.pumpWidget(const MaterialApp(home: Scaffold(body: PushOptInSheet(host: true))));
+      await tester.pumpWidget(
+        const MaterialApp(home: Scaffold(body: PushOptInSheet(host: true))),
+      );
       expect(find.text(PushStrings.hostTitle), findsOneWidget);
       expect(find.text(PushStrings.callerTitle), findsNothing);
     });
 
-    testWidgets('Not now closes it, never shows the Android prompt, and is remembered', (tester) async {
-      final gw = FakePushGateway();
-      final c = await pumpPushApp(tester, gateway: gw, api: pushApi());
+    testWidgets(
+      'Not now closes it, never shows the Android prompt, and is remembered',
+      (tester) async {
+        final gw = FakePushGateway();
+        final c = await pumpPushApp(tester, gateway: gw, api: pushApi());
 
-      await tester.tap(find.text(PushStrings.notNow));
-      await settle(tester);
+        await tester.tap(find.text(PushStrings.notNow));
+        await settle(tester);
 
-      expect(find.text(PushStrings.callerTitle), findsNothing);
-      expect(gw.promptCount, 0);
-      final rec = await c.read(pushServiceProvider).readRecord();
-      expect(rec, isNotNull);
-      expect(rec!.answer.name, 'later');
-      expect(await c.read(pushServiceProvider).shouldPrompt(), isFalse);
-    });
+        expect(find.text(PushStrings.callerTitle), findsNothing);
+        expect(gw.promptCount, 0);
+        final rec = await c.read(pushServiceProvider).readRecord();
+        expect(rec, isNotNull);
+        expect(rec!.answer.name, 'later');
+        expect(await c.read(pushServiceProvider).shouldPrompt(), isFalse);
+      },
+    );
 
-    testWidgets('Allow runs the Android prompt and registers the token', (tester) async {
+    testWidgets('Allow runs the Android prompt and registers the token', (
+      tester,
+    ) async {
       final gw = FakePushGateway();
       final api = pushApi();
       await pumpPushApp(tester, gateway: gw, api: api);
@@ -101,36 +126,63 @@ void main() {
     });
 
     testWidgets('not shown when signed out', (tester) async {
-      await pumpPushApp(tester, gateway: FakePushGateway(), api: pushApi(), signedIn: false);
+      await pumpPushApp(
+        tester,
+        gateway: FakePushGateway(),
+        api: pushApi(),
+        signedIn: false,
+      );
       expect(find.text(PushStrings.callerTitle), findsNothing);
     });
 
     testWidgets('not shown while hfPushEnabled is off', (tester) async {
-      await pumpPushApp(tester, gateway: FakePushGateway(), api: pushApi(), flagOn: false);
+      await pumpPushApp(
+        tester,
+        gateway: FakePushGateway(),
+        api: pushApi(),
+        flagOn: false,
+      );
       expect(find.text(PushStrings.callerTitle), findsNothing);
     });
 
-    testWidgets('not shown when notifications are already allowed; the token is registered quietly', (tester) async {
-      final api = pushApi();
-      final gw = FakePushGateway(current: PushPermission.granted);
-      await pumpPushApp(tester, gateway: gw, api: api);
+    testWidgets(
+      'not shown when notifications are already allowed; the token is registered quietly',
+      (tester) async {
+        final api = pushApi();
+        final gw = FakePushGateway(current: PushPermission.granted);
+        await pumpPushApp(tester, gateway: gw, api: api);
 
-      expect(find.text(PushStrings.callerTitle), findsNothing);
-      expect(api.callsTo('POST', '/api/hf/push/register'), hasLength(1));
-      expect(gw.promptCount, 0);
-    });
+        expect(find.text(PushStrings.callerTitle), findsNothing);
+        expect(api.callsTo('POST', '/api/hf/push/register'), hasLength(1));
+        expect(gw.promptCount, 0);
+      },
+    );
 
-    testWidgets('not shown without Firebase (a build with no google-services.json)', (tester) async {
-      final api = pushApi();
-      await pumpPushApp(tester, gateway: FakePushGateway(isAvailable: false), api: api);
-      expect(find.text(PushStrings.callerTitle), findsNothing);
-      expect(api.calls, isEmpty);
-    });
+    testWidgets(
+      'not shown without Firebase (a build with no google-services.json)',
+      (tester) async {
+        final api = pushApi();
+        await pumpPushApp(
+          tester,
+          gateway: FakePushGateway(isAvailable: false),
+          api: api,
+        );
+        expect(find.text(PushStrings.callerTitle), findsNothing);
+        expect(api.calls, isEmpty);
+      },
+    );
 
-    testWidgets('after Not now it stays hidden, and comes back after 14 days', (tester) async {
+    testWidgets('after Not now it stays hidden, and comes back after 14 days', (
+      tester,
+    ) async {
       var now = DateTime.utc(2026, 10, 10);
       final gw = FakePushGateway();
-      final c = await pumpPushApp(tester, gateway: gw, api: pushApi(), clock: () => now);
+      final c = await pumpPushApp(
+        tester,
+        gateway: gw,
+        api: pushApi(),
+        clock: () => now,
+      );
       await tester.tap(find.text(PushStrings.notNow));
       await settle(tester);
 
@@ -142,34 +194,55 @@ void main() {
   });
 
   group('foreground banner', () {
-    testWidgets('a message while the app is open shows a banner; Open routes it', (tester) async {
+    testWidgets(
+      'a message while the app is open shows a banner; Open routes it',
+      (tester) async {
+        final gw = FakePushGateway(current: PushPermission.granted);
+        final c = await pumpPushApp(tester, gateway: gw, api: pushApi());
+        final handler = c.read(deepLinkHandlerProvider) as RecordingLinkHandler;
+
+        gw.emitForeground(
+          workerPush(
+            'notify_me',
+            '/h/asha',
+            title: 'Asha is online',
+            body: 'Say hello',
+          ),
+        );
+        await settle(tester);
+
+        expect(find.byType(PushBanner), findsOneWidget);
+        expect(find.text('Asha is online'), findsOneWidget);
+        expect(find.text('Say hello'), findsOneWidget);
+        final openSize = tester.getSize(
+          find
+              .ancestor(
+                of: find.text(PushStrings.bannerOpen),
+                matching: find.byType(TextButton),
+              )
+              .first,
+        );
+        expect(openSize.height, greaterThanOrEqualTo(48));
+
+        await tester.tap(find.text(PushStrings.bannerOpen));
+        await settle(tester);
+
+        expect(find.byType(PushBanner), findsNothing);
+        expect(handler.handled.single.input, '/h/asha');
+        expect(handler.handled.single.source, 'push');
+      },
+    );
+
+    testWidgets('the close button hides it without opening anything', (
+      tester,
+    ) async {
       final gw = FakePushGateway(current: PushPermission.granted);
       final c = await pumpPushApp(tester, gateway: gw, api: pushApi());
       final handler = c.read(deepLinkHandlerProvider) as RecordingLinkHandler;
 
-      gw.emitForeground(workerPush('notify_me', '/h/asha', title: 'Asha is online', body: 'Say hello'));
-      await settle(tester);
-
-      expect(find.byType(PushBanner), findsOneWidget);
-      expect(find.text('Asha is online'), findsOneWidget);
-      expect(find.text('Say hello'), findsOneWidget);
-      final openSize = tester.getSize(find.ancestor(of: find.text(PushStrings.bannerOpen), matching: find.byType(TextButton)).first);
-      expect(openSize.height, greaterThanOrEqualTo(48));
-
-      await tester.tap(find.text(PushStrings.bannerOpen));
-      await settle(tester);
-
-      expect(find.byType(PushBanner), findsNothing);
-      expect(handler.handled.single.input, '/h/asha');
-      expect(handler.handled.single.source, 'push');
-    });
-
-    testWidgets('the close button hides it without opening anything', (tester) async {
-      final gw = FakePushGateway(current: PushPermission.granted);
-      final c = await pumpPushApp(tester, gateway: gw, api: pushApi());
-      final handler = c.read(deepLinkHandlerProvider) as RecordingLinkHandler;
-
-      gw.emitForeground(workerPush('low_balance', '/wallet', title: 'Balance is low'));
+      gw.emitForeground(
+        workerPush('low_balance', '/wallet', title: 'Balance is low'),
+      );
       await settle(tester);
       expect(find.byType(PushBanner), findsOneWidget);
 
@@ -183,7 +256,9 @@ void main() {
       final gw = FakePushGateway(current: PushPermission.granted);
       await pumpPushApp(tester, gateway: gw, api: pushApi());
 
-      gw.emitForeground(workerPush('low_balance', '/wallet', title: 'Balance is low'));
+      gw.emitForeground(
+        workerPush('low_balance', '/wallet', title: 'Balance is low'),
+      );
       await settle(tester);
       expect(find.byType(PushBanner), findsOneWidget);
 
@@ -193,26 +268,39 @@ void main() {
     });
   });
 
-  testWidgets('a banner link that arrives before boot waits for the splash (pending link)', (tester) async {
-    // The real handler, not the recorder: a cold-start push is held until bootDone.
-    final api = pushApi();
-    final gw = FakePushGateway(current: PushPermission.granted, initial: workerPush('low_balance', '/wallet'));
-    usePhoneScreen(tester);
-    final c = ProviderContainer(
-      overrides: [
-        ...pushOverrides(gateway: gw, api: api, recordLinks: false),
-        initialLocationProvider.overrideWithValue('/somewhere-with-no-screen'),
-      ],
-      retry: (_, __) => null,
-    );
-    addTearDown(c.dispose);
-    await tester.pumpWidget(UncontrolledProviderScope(container: c, child: const HfApp(listenForLinks: false)));
-    await settle(tester);
+  testWidgets(
+    'a banner link that arrives before boot waits for the splash (pending link)',
+    (tester) async {
+      // The real handler, not the recorder: a cold-start push is held until bootDone.
+      final api = pushApi();
+      final gw = FakePushGateway(
+        current: PushPermission.granted,
+        initial: workerPush('low_balance', '/wallet'),
+      );
+      usePhoneScreen(tester);
+      final c = ProviderContainer(
+        overrides: [
+          ...pushOverrides(gateway: gw, api: api, recordLinks: false),
+          initialLocationProvider.overrideWithValue(
+            '/somewhere-with-no-screen',
+          ),
+        ],
+        retry: (_, __) => null,
+      );
+      addTearDown(c.dispose);
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: c,
+          child: const HfApp(listenForLinks: false),
+        ),
+      );
+      await settle(tester);
 
-    final pending = c.read(pendingLinkProvider);
-    expect(pending, isNotNull);
-    expect(pending!.input, '/wallet');
-    expect(pending.source, 'push');
-    expect(pending.launch, 'cold');
-  });
+      final pending = c.read(pendingLinkProvider);
+      expect(pending, isNotNull);
+      expect(pending!.input, '/wallet');
+      expect(pending.source, 'push');
+      expect(pending.launch, 'cold');
+    },
+  );
 }

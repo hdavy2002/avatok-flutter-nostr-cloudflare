@@ -31,27 +31,44 @@ Future<void> pumpRouter(
 }) async {
   usePhoneScreen(tester);
   addTearDown(router.dispose);
-  await tester.pumpWidget(ProviderScope(
-    overrides: [
-      appRouterProvider.overrideWithValue(router),
-      apiClientProvider.overrideWithValue(api),
-      clerkProvider.overrideWithValue(clerk ?? FakeClerk(user: stubSession?.isSignedIn == true ? ClerkUser(id: stubSession!.user?.id ?? stubSession.me!.uid) : null)),
-      secureStoreProvider.overrideWithValue(MemoryKeyValueStore()),
-      if (stubSession != null) sessionProvider.overrideWith(() => StubSession(stubSession)),
-    ],
-    child: MaterialApp.router(theme: buildHfTheme(), routerConfig: router),
-  ));
+  await tester.pumpWidget(
+    ProviderScope(
+      overrides: [
+        appRouterProvider.overrideWithValue(router),
+        apiClientProvider.overrideWithValue(api),
+        clerkProvider.overrideWithValue(
+          clerk ??
+              FakeClerk(
+                user: stubSession?.isSignedIn == true
+                    ? ClerkUser(
+                        id: stubSession!.user?.id ?? stubSession.me!.uid,
+                      )
+                    : null,
+              ),
+        ),
+        secureStoreProvider.overrideWithValue(MemoryKeyValueStore()),
+        if (stubSession != null)
+          sessionProvider.overrideWith(() => StubSession(stubSession)),
+      ],
+      child: MaterialApp.router(theme: buildHfTheme(), routerConfig: router),
+    ),
+  );
   await settle(tester);
 }
 
-String locationOf(GoRouter router) => router.routeInformationProvider.value.uri.toString();
+String locationOf(GoRouter router) =>
+    router.routeInformationProvider.value.uri.toString();
 
 /// Every piece of text on screen is 14 sp or bigger (owner rule).
 void expectNoTinyText(WidgetTester tester) {
   for (final rt in tester.widgetList<RichText>(find.byType(RichText))) {
     final size = rt.text.style?.fontSize;
     if (size != null) {
-      expect(size, greaterThanOrEqualTo(14), reason: 'text "${rt.text.toPlainText()}" is below 14 sp');
+      expect(
+        size,
+        greaterThanOrEqualTo(14),
+        reason: 'text "${rt.text.toPlainText()}" is below 14 sp',
+      );
     }
   }
 }

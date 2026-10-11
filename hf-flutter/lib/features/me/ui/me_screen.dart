@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
@@ -11,7 +12,7 @@ import '../../../core/auth/session.dart';
 import '../../../core/links.dart';
 import '../../../core/router/nav.dart';
 import '../../../core/router/routes.dart';
-import '../../../core/theme/hf_tokens.dart';
+import '../../../core/theme/hf_theme.dart';
 import '../../../core/widgets/widgets.dart';
 import '../../lanes/data/lanes_api.dart';
 import '../data/me_telemetry.dart';
@@ -22,7 +23,8 @@ import 'name_sheet.dart';
 abstract final class MeCopy {
   static const String title = 'Me';
   static const String signInTitle = 'Sign in';
-  static const String signInBody = 'Sign in with your WhatsApp number to call, add money and manage your account.';
+  static const String signInBody =
+      'Sign in with your WhatsApp number to call, add money and manage your account.';
   static const String signInButton = 'Sign in';
   static const String noName = 'Add your name';
   static const String editName = 'Change name';
@@ -38,20 +40,25 @@ abstract final class MeCopy {
   static const String join = 'Join';
   static const String leave = 'Leave';
   static const String leaveTitle = 'Leave this space?';
-  static const String leaveBody = 'You can join again later with a fresh declaration. Valid identity and approved video checks can be reused.';
+  static const String leaveBody =
+      'You can join again later with a fresh declaration. Valid identity and approved video checks can be reused.';
   static const String leaveStay = 'Stay';
   static const String leaveYes = 'Leave';
   static const String hostTitle = 'Host';
   static const String hostDashboard = 'Host dashboard';
   static const String becomeHost = 'Become a host';
-  static const String becomeHostBody = 'Talk to people and earn. It takes about 10 minutes to set up.';
+  static const String becomeHostBody =
+      'Talk to people and earn. It takes about 10 minutes to set up.';
   static const String notificationsTitle = 'Notifications';
-  static const String notificationsBody = 'Know when your favourite host is online.';
+  static const String notificationsBody =
+      'Know when your favourite host is online.';
   static const String helpTitle = 'Help and legal';
   static const String signOut = 'Sign out';
   static const String deleteAccount = 'Delete my account';
-  static const String couldNotOpenPage = "We couldn't open that page. Please try again.";
-  static const String couldNotLeave = "We couldn't update that. Please try again.";
+  static const String couldNotOpenPage =
+      "We couldn't open that page. Please try again.";
+  static const String couldNotLeave =
+      "We couldn't update that. Please try again.";
 
   /// Key, label and site path of every help and legal page.
   static const List<(String, String, String)> links = [
@@ -96,7 +103,8 @@ class MeScreen extends ConsumerStatefulWidget {
   ConsumerState<MeScreen> createState() => _MeScreenState();
 }
 
-class _MeScreenState extends ConsumerState<MeScreen> with WidgetsBindingObserver {
+class _MeScreenState extends ConsumerState<MeScreen>
+    with WidgetsBindingObserver {
   /// The name just saved, shown at once (the session reloads `/api/hf/me` behind it).
   String? _savedName;
 
@@ -149,11 +157,10 @@ class _MeScreenState extends ConsumerState<MeScreen> with WidgetsBindingObserver
   }
 
   Future<void> _editName(String? current) async {
-    final saved = await showModalBottomSheet<String>(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: HfColors.cream,
-      showDragHandle: true,
+    final saved = await showHfSheet<String>(
+      context,
+      initialSize: 0.9,
+      minSize: 0.5,
       builder: (_) => NameSheet(initial: current ?? ''),
     );
     if (saved == null || !mounted) return;
@@ -176,7 +183,10 @@ class _MeScreenState extends ConsumerState<MeScreen> with WidgetsBindingObserver
         title: const Text(MeCopy.leaveTitle),
         content: const Text(MeCopy.leaveBody),
         actions: [
-          TextButton(onPressed: () => Navigator.of(ctx).pop(false), child: const Text(MeCopy.leaveStay)),
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text(MeCopy.leaveStay),
+          ),
           TextButton(
             key: const ValueKey<String>('me-leave-confirm'),
             onPressed: () => Navigator.of(ctx).pop(true),
@@ -206,7 +216,7 @@ class _MeScreenState extends ConsumerState<MeScreen> with WidgetsBindingObserver
   void _snack(String text) {
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
-      ..showSnackBar(SnackBar(content: Text(text, style: HfText.bodyText.copyWith(color: HfColors.cream))));
+      ..showSnackBar(SnackBar(content: Text(text)));
   }
 
   Future<void> _openPage(String path) async {
@@ -224,50 +234,163 @@ class _MeScreenState extends ConsumerState<MeScreen> with WidgetsBindingObserver
   Widget build(BuildContext context) {
     final session = ref.watch(sessionProvider);
     return Scaffold(
-      appBar: AppBar(automaticallyImplyLeading: false, title: const Text(MeCopy.title)),
+      appBar: AppBar(
+        automaticallyImplyLeading: false,
+        title: const Text(MeCopy.title),
+      ),
       body: SafeArea(
         child: session.isLoading
             ? const LoadingPanel()
             : SingleChildScrollView(
-                padding: const EdgeInsets.all(HfSpacing.page),
+                padding: const EdgeInsets.fromLTRB(
+                  HfSpacing.page,
+                  0,
+                  HfSpacing.page,
+                  120,
+                ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: session.isSignedIn ? _signedIn(context, session) : _signedOut(context),
+                  children: session.isSignedIn
+                      ? _signedIn(context, session)
+                      : _signedOut(context),
                 ),
               ),
       ),
     );
   }
 
+  // ---- building blocks ------------------------------------------------------------------------------
+
+  Widget _heading(String text) => Padding(
+    padding: const EdgeInsets.fromLTRB(4, 0, 4, HfSpacing.sm),
+    child: Semantics(
+      header: true,
+      child: Text(text, style: HfText.of(context, HfText.subsection)),
+    ),
+  );
+
+  /// A grouped list card: radius 22, 1 px line border, rows divided by hairlines.
+  Widget _group(List<Widget> rows, {Key? key}) {
+    final dark = HfBrightness.isDark(context);
+    return Container(
+      key: key,
+      clipBehavior: Clip.antiAlias,
+      decoration: BoxDecoration(
+        color: dark ? HfColors.darkCard : HfColors.white,
+        borderRadius: BorderRadius.circular(HfRadius.tile),
+        border: Border.all(color: dark ? HfColors.darkLine : HfColors.line),
+      ),
+      child: Material(
+        type: MaterialType.transparency,
+        child: Column(
+          children: [
+            for (var i = 0; i < rows.length; i++) ...[
+              if (i > 0)
+                Divider(
+                  height: 1,
+                  color: dark ? HfColors.darkLine : HfColors.line,
+                ),
+              rows[i],
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _iconSquare(IconData icon, HfTint tint, {Color? color}) => Container(
+    width: 40,
+    height: 40,
+    decoration: BoxDecoration(
+      color: tint.bg(context),
+      borderRadius: BorderRadius.circular(12),
+    ),
+    child: Icon(icon, size: 20, color: color ?? tint.ink(context)),
+  );
+
+  Widget _row({
+    Key? key,
+    required IconData icon,
+    required HfTint tint,
+    required String title,
+    String? subtitle,
+    Widget? trailing,
+    VoidCallback? onTap,
+    Color? titleColor,
+    Color? iconColor,
+  }) {
+    final content = ConstrainedBox(
+      constraints: const BoxConstraints(minHeight: 60),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        child: Row(
+          children: [
+            _iconSquare(icon, tint, color: iconColor),
+            const SizedBox(width: HfSpacing.lg),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: HfText.of(
+                      context,
+                      HfText.bodyStrong,
+                    ).copyWith(color: titleColor),
+                  ),
+                  if (subtitle != null) ...[
+                    const SizedBox(height: 2),
+                    Text(subtitle, style: HfText.of(context, HfText.note)),
+                  ],
+                ],
+              ),
+            ),
+            if (trailing != null) ...[
+              const SizedBox(width: HfSpacing.sm),
+              trailing,
+            ],
+          ],
+        ),
+      ),
+    );
+    if (onTap == null) return KeyedSubtree(key: key, child: content);
+    return InkWell(key: key, onTap: onTap, child: content);
+  }
+
+  Widget _chevron() => Icon(
+    Icons.chevron_right_rounded,
+    color: HfText.of(context, HfText.note).color,
+  );
+
   // ---- signed out -----------------------------------------------------------------------------------
 
   List<Widget> _signedOut(BuildContext context) => [
-        const HfScene(kind: HfSceneKind.profile, height: 150),
-        const SizedBox(height: 16),
-        HfCard(
-          color: HfColors.white,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text(MeCopy.signInTitle, style: HfText.title),
-              const SizedBox(height: 8),
-              const Text(MeCopy.signInBody, style: HfText.bodyText),
-              const SizedBox(height: 16),
-              HfButton(
-                key: const ValueKey<String>('me-sign-in'),
-                label: MeCopy.signInButton,
-                onPressed: () => unawaited(requireSignIn(context, ref, next: Routes.me)),
-              ),
-            ],
+    const HfScene(kind: HfSceneKind.profile, height: 150),
+    const SizedBox(height: 16),
+    HfCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(MeCopy.signInTitle, style: HfText.of(context, HfText.title)),
+          const SizedBox(height: 8),
+          Text(MeCopy.signInBody, style: HfText.of(context, HfText.body)),
+          const SizedBox(height: 16),
+          HfButton(
+            key: const ValueKey<String>('me-sign-in'),
+            label: MeCopy.signInButton,
+            onPressed: () =>
+                unawaited(requireSignIn(context, ref, next: Routes.me)),
           ),
-        ),
-        const SizedBox(height: HfSpacing.gapLarge),
-        ..._helpSection(),
-        const SizedBox(height: HfSpacing.gapLarge),
-        const CrisisStrip(),
-        const SizedBox(height: HfSpacing.gapLarge),
-        _versionLine(),
-      ];
+        ],
+      ),
+    ),
+    const SizedBox(height: HfSpacing.section),
+    ..._helpSection(),
+    const SizedBox(height: HfSpacing.section),
+    const CrisisStrip(),
+    const SizedBox(height: HfSpacing.section),
+    _versionLine(),
+  ];
 
   // ---- signed in ------------------------------------------------------------------------------------
 
@@ -275,33 +398,29 @@ class _MeScreenState extends ConsumerState<MeScreen> with WidgetsBindingObserver
     final me = session.me;
     final name = _savedName ?? me?.displayName;
     return [
-      const HfScene(kind: HfSceneKind.profile, height: 130),
-      const SizedBox(height: 16),
       _profileCard(name, me),
-      const SizedBox(height: 16),
-      HfCard(child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        const Text('Make yourself at home', style: HfText.subtitle),
-        const SizedBox(height: 8),
-        const Text('Your conversations, your spaces, your choices.', style: HfText.note),
-        const SizedBox(height: 12),
-        Wrap(spacing: 8, runSpacing: 8, children: [
-          HfButton(label: 'Browse people', expand: false, kind: HfButtonKind.secondary,
-            icon: Icons.search_rounded, onPressed: () => context.go(Routes.home)),
-          HfButton(label: 'My wallet', expand: false, kind: HfButtonKind.secondary,
-            icon: Icons.account_balance_wallet_outlined, onPressed: () => context.go(Routes.wallet)),
-        ]),
-      ])),
       if (me?.closing ?? false) ...[
-        const SizedBox(height: HfSpacing.gap),
+        const SizedBox(height: HfSpacing.lg),
         HfCard(
           key: const ValueKey<String>('me-closing'),
-          color: HfColors.blush,
+          color: HfBrightness.isDark(context)
+              ? HfColors.darkTileBlush
+              : HfColors.blush,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text(MeCopy.closingTitle, style: HfText.subtitle),
+              Text(
+                MeCopy.closingTitle,
+                style: HfText.of(
+                  context,
+                  HfText.subsection,
+                ).copyWith(color: HfTint.blush.valueInk(context)),
+              ),
               const SizedBox(height: 6),
-              const Text(MeCopy.closingBody, style: HfText.bodyText),
+              Text(
+                MeCopy.closingBody,
+                style: HfText.body.copyWith(color: HfTint.blush.ink(context)),
+              ),
               const SizedBox(height: 12),
               HfButton(
                 key: const ValueKey<String>('me-closing-status'),
@@ -313,88 +432,122 @@ class _MeScreenState extends ConsumerState<MeScreen> with WidgetsBindingObserver
           ),
         ),
       ],
-      const SizedBox(height: HfSpacing.gapLarge),
-      const Text(MeCopy.spacesTitle, style: HfText.subtitle),
-      const SizedBox(height: 8),
-      _laneRow(Lane.women, MeCopy.womenSpace, me),
-      const SizedBox(height: 8),
-      _laneRow(Lane.lgbtq, MeCopy.lgbtqSpace, me),
-      const SizedBox(height: HfSpacing.gapLarge),
-      const Text(MeCopy.hostTitle, style: HfText.subtitle),
-      const SizedBox(height: 8),
-      _hostCard(context, me),
-      const SizedBox(height: HfSpacing.gapLarge),
+      const SizedBox(height: HfSpacing.section),
       _notificationsCard(),
-      const SizedBox(height: HfSpacing.gapLarge),
+      const SizedBox(height: HfSpacing.section),
+      _heading(MeCopy.spacesTitle),
+      _group([
+        _laneRow(Lane.women, MeCopy.womenSpace, me),
+        _laneRow(Lane.lgbtq, MeCopy.lgbtqSpace, me),
+      ]),
+      const SizedBox(height: HfSpacing.section),
+      _heading(MeCopy.hostTitle),
+      _hostCard(context, me),
+      const SizedBox(height: HfSpacing.section),
       ..._helpSection(),
-      const SizedBox(height: HfSpacing.gapLarge),
+      const SizedBox(height: HfSpacing.section),
       const CrisisStrip(),
-      const SizedBox(height: HfSpacing.gapLarge),
-      HfButton(
-        key: const ValueKey<String>('me-sign-out'),
-        label: MeCopy.signOut,
-        kind: HfButtonKind.secondary,
-        icon: Icons.logout_rounded,
-        onPressed: () => unawaited(_signOut()),
-      ),
-      const SizedBox(height: 4),
-      TextButton(
-        key: const ValueKey<String>('me-delete'),
-        style: TextButton.styleFrom(
-          foregroundColor: HfColors.accent,
-          minimumSize: const Size.fromHeight(HfSpacing.tap),
+      const SizedBox(height: HfSpacing.section),
+      _group([
+        _row(
+          key: const ValueKey<String>('me-sign-out'),
+          icon: Icons.logout_rounded,
+          tint: HfTint.sky,
+          title: MeCopy.signOut,
+          onTap: () => unawaited(_signOut()),
         ),
-        onPressed: () => unawaited(context.push(Routes.meDelete)),
-        child: const Text(MeCopy.deleteAccount),
-      ),
-      const SizedBox(height: 8),
+        _row(
+          key: const ValueKey<String>('me-delete'),
+          icon: Icons.delete_outline_rounded,
+          tint: HfTint.blush,
+          title: MeCopy.deleteAccount,
+          titleColor: HfBrightness.isDark(context)
+              ? HfColors.blushLight
+              : HfColors.accent,
+          iconColor: HfBrightness.isDark(context)
+              ? HfColors.blushLight
+              : HfColors.accent,
+          onTap: () => unawaited(context.push(Routes.meDelete)),
+        ),
+      ]),
+      const SizedBox(height: HfSpacing.lg),
       _versionLine(),
     ];
   }
 
   Widget _profileCard(String? name, HfMe? me) {
-    final shownName = (name == null || name.trim().isEmpty) ? null : name.trim();
+    final shownName = (name == null || name.trim().isEmpty)
+        ? null
+        : name.trim();
     final phone = me?.phoneMasked;
     return HfCard(
-      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        Row(children: [
-          Container(width: 60, height: 60,
-            decoration: BoxDecoration(color: HfColors.coral, borderRadius: BorderRadius.circular(22)),
-            child: const Icon(Icons.person_rounded, color: HfColors.ink, size: 32)),
-          const SizedBox(width: 14),
-          Expanded(child: Text(shownName ?? MeCopy.noName,
-            key: const ValueKey<String>('me-name'), style: HfText.headline)),
-        ]),
-        const SizedBox(height: 16),
-        if (phone != null) Text('${MeCopy.whatsapp} $phone', key: const ValueKey<String>('me-phone'), style: HfText.note),
-        const SizedBox(height: 12),
-        HfButton(key: const ValueKey<String>('me-edit-name'), label: MeCopy.editName,
-          kind: HfButtonKind.secondary, icon: Icons.edit_rounded,
-          onPressed: () => unawaited(_editName(shownName))),
-      ]),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 60,
+                height: 60,
+                decoration: BoxDecoration(
+                  color: HfTint.lavender.bg(context),
+                  borderRadius: BorderRadius.circular(HfRadius.tile),
+                ),
+                child: Icon(
+                  Icons.person_rounded,
+                  color: HfTint.lavender.ink(context),
+                  size: 32,
+                ),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      shownName ?? MeCopy.noName,
+                      key: const ValueKey<String>('me-name'),
+                      style: HfText.of(context, HfText.title),
+                    ),
+                    if (phone != null) ...[
+                      const SizedBox(height: 2),
+                      Text(
+                        '${MeCopy.whatsapp} $phone',
+                        key: const ValueKey<String>('me-phone'),
+                        style: HfText.of(context, HfText.note),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          HfButton(
+            key: const ValueKey<String>('me-edit-name'),
+            label: MeCopy.editName,
+            kind: HfButtonKind.secondary,
+            icon: Icons.edit_rounded,
+            onPressed: () => unawaited(_editName(shownName)),
+          ),
+        ],
+      ),
     );
   }
 
   Widget _laneRow(Lane lane, String label, HfMe? me) {
     final inLane = _inLane(lane, me);
     final busy = _leaving == lane;
-    return HfCard(
+    return _row(
       key: ValueKey<String>('me-lane-${lane.wire}'),
-      child: Row(
-        children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(label, style: HfText.bodyStrong),
-                const SizedBox(height: 2),
-                Text(inLane ? MeCopy.youAreIn : MeCopy.notJoined, style: HfText.note),
-              ],
-            ),
-          ),
-          const SizedBox(width: 8),
-          if (inLane)
-            HfButton(
+      icon: lane == Lane.women
+          ? Icons.favorite_rounded
+          : Icons.diversity_1_rounded,
+      tint: lane == Lane.women ? HfTint.blush : HfTint.lavender,
+      title: label,
+      subtitle: inLane ? MeCopy.youAreIn : MeCopy.notJoined,
+      trailing: inLane
+          ? HfButton(
               key: ValueKey<String>('me-lane-${lane.wire}-leave'),
               label: MeCopy.leave,
               kind: HfButtonKind.secondary,
@@ -402,132 +555,138 @@ class _MeScreenState extends ConsumerState<MeScreen> with WidgetsBindingObserver
               loading: busy,
               onPressed: () => unawaited(_leaveLane(lane)),
             )
-          else
-            HfButton(
+          : HfButton(
               key: ValueKey<String>('me-lane-${lane.wire}-join'),
               label: MeCopy.join,
               kind: HfButtonKind.secondary,
               expand: false,
-              onPressed: () => unawaited(context.push(Routes.lanesOf(lane.wire))),
+              onPressed: () =>
+                  unawaited(context.push(Routes.lanesOf(lane.wire))),
             ),
-        ],
-      ),
     );
   }
 
   Widget _hostCard(BuildContext context, HfMe? me) {
     final host = me?.host;
     if (host != null) {
-      return HfCard(
-        key: const ValueKey<String>('me-host'),
-        onTap: () => context.go(Routes.host),
-        child: Row(
-          children: [
-            const Icon(Icons.storefront_rounded, color: HfColors.orchid),
-            const SizedBox(width: 14),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+      return _group([
+        _row(
+          key: const ValueKey<String>('me-host'),
+          icon: Icons.storefront_rounded,
+          tint: HfTint.lavender,
+          title: MeCopy.hostDashboard,
+          subtitle: MeCopy.hostStatusLine(host.status),
+          trailing: _chevron(),
+          onTap: () => context.go(Routes.host),
+        ),
+      ]);
+    }
+    final dark = HfBrightness.isDark(context);
+    return Container(
+      decoration: BoxDecoration(
+        color: HfTint.lavender.bg(context),
+        borderRadius: BorderRadius.circular(HfRadius.tile),
+      ),
+      child: Material(
+        type: MaterialType.transparency,
+        child: InkWell(
+          key: const ValueKey<String>('me-become-host'),
+          borderRadius: BorderRadius.circular(HfRadius.tile),
+          onTap: () => unawaited(context.push(Routes.hostOnboarding)),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(minHeight: 72),
+            child: Padding(
+              padding: const EdgeInsets.all(14),
+              child: Row(
                 children: [
-                  const Text(MeCopy.hostDashboard, style: HfText.bodyStrong),
-                  const SizedBox(height: 2),
-                  Text(MeCopy.hostStatusLine(host.status), style: HfText.note),
+                  Container(
+                    width: 40,
+                    height: 40,
+                    decoration: BoxDecoration(
+                      color: dark ? HfColors.darkCard : HfColors.white,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Icon(
+                      Icons.mic_rounded,
+                      size: 20,
+                      color: HfTint.lavender.ink(context),
+                    ),
+                  ),
+                  const SizedBox(width: HfSpacing.lg),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          MeCopy.becomeHost,
+                          style: HfText.bodyStrong.copyWith(
+                            color: HfTint.lavender.valueInk(context),
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          MeCopy.becomeHostBody,
+                          style: HfText.note.copyWith(
+                            color: HfTint.lavender.ink(context),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Icon(
+                    Icons.chevron_right_rounded,
+                    color: HfTint.lavender.ink(context),
+                  ),
                 ],
               ),
             ),
-            const Icon(Icons.chevron_right_rounded, color: HfColors.mauve),
-          ],
-        ),
-      );
-    }
-    return HfCard(
-      key: const ValueKey<String>('me-become-host'),
-      color: HfColors.white,
-      onTap: () => unawaited(context.push(Routes.hostOnboarding)),
-      child: const Row(
-        children: [
-          Icon(Icons.mic_rounded, color: HfColors.orchid),
-          SizedBox(width: 14),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(MeCopy.becomeHost, style: HfText.bodyStrong),
-                SizedBox(height: 2),
-                Text(MeCopy.becomeHostBody, style: HfText.note),
-              ],
-            ),
           ),
-          Icon(Icons.chevron_right_rounded, color: HfColors.mauve),
-        ],
+        ),
       ),
     );
   }
 
   Widget _notificationsCard() {
     final on = _notificationsOn ?? false;
-    return HfCard(
-      child: Row(
-        children: [
-          const Icon(Icons.notifications_rounded, color: HfColors.orchid),
-          const SizedBox(width: 14),
-          const Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(MeCopy.notificationsTitle, style: HfText.bodyStrong),
-                SizedBox(height: 2),
-                Text(MeCopy.notificationsBody, style: HfText.note),
-              ],
-            ),
-          ),
-          Switch(
-            key: const ValueKey<String>('me-notifications'),
-            value: on,
-            onChanged: (_notificationsOn == null || _notificationsBusy) ? null : (v) => unawaited(_toggleNotifications(v)),
-          ),
-        ],
+    return _group([
+      _row(
+        icon: Icons.notifications_rounded,
+        tint: HfTint.blush,
+        title: MeCopy.notificationsTitle,
+        subtitle: MeCopy.notificationsBody,
+        trailing: Switch(
+          key: const ValueKey<String>('me-notifications'),
+          value: on,
+          onChanged: (_notificationsOn == null || _notificationsBusy)
+              ? null
+              : (v) {
+                  HapticFeedback.selectionClick();
+                  unawaited(_toggleNotifications(v));
+                },
+        ),
       ),
-    );
+    ]);
   }
 
   // ---- shared ---------------------------------------------------------------------------------------
 
   List<Widget> _helpSection() => [
-        const Text(MeCopy.helpTitle, style: HfText.subtitle),
-        const SizedBox(height: 8),
-        HfCard(
-          padding: EdgeInsets.zero,
-          child: Column(
-            children: [
-              for (var i = 0; i < MeCopy.links.length; i++) ...[
-                if (i > 0) const Divider(height: 1, color: HfColors.line),
-                _linkRow(MeCopy.links[i].$1, MeCopy.links[i].$2, MeCopy.links[i].$3),
-              ],
-            ],
-          ),
-        ),
-      ];
+    _heading(MeCopy.helpTitle),
+    _group([for (final l in MeCopy.links) _linkRow(l.$1, l.$2, l.$3)]),
+  ];
 
   Widget _linkRow(String key, String label, String path) {
-    return InkWell(
+    return _row(
       key: ValueKey<String>('me-link-$key'),
-      onTap: () => unawaited(_openPage(path)),
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(minHeight: 52),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-          child: Row(
-            children: [
-              Container(padding: const EdgeInsets.all(8), margin: const EdgeInsets.only(right: 12),
-                decoration: BoxDecoration(color: HfColors.sky, borderRadius: BorderRadius.circular(12)),
-                child: Icon(key == 'help' ? Icons.help_outline_rounded : Icons.article_outlined, size: 20, color: HfColors.ink)),
-              Expanded(child: Text(label, style: HfText.bodyText)),
-              const Icon(Icons.open_in_new_rounded, size: 20, color: HfColors.mauve),
-            ],
-          ),
-        ),
+      icon: key == 'help' ? Icons.help_outline_rounded : Icons.article_outlined,
+      tint: HfTint.sky,
+      title: label,
+      trailing: Icon(
+        Icons.open_in_new_rounded,
+        size: 20,
+        color: HfText.of(context, HfText.note).color,
       ),
+      onTap: () => unawaited(_openPage(path)),
     );
   }
 
@@ -536,7 +695,14 @@ class _MeScreenState extends ConsumerState<MeScreen> with WidgetsBindingObserver
     final v = Analytics.appVersion;
     if (v.isEmpty || v == 'unresolved') return const SizedBox.shrink();
     final parts = v.split('+');
-    final text = parts.length == 2 ? 'Version ${parts[0]} (${parts[1]})' : 'Version $v';
-    return Text(text, key: const ValueKey<String>('me-version'), style: HfText.note, textAlign: TextAlign.center);
+    final text = parts.length == 2
+        ? 'Version ${parts[0]} (${parts[1]})'
+        : 'Version $v';
+    return Text(
+      text,
+      key: const ValueKey<String>('me-version'),
+      style: HfText.of(context, HfText.label),
+      textAlign: TextAlign.center,
+    );
   }
 }

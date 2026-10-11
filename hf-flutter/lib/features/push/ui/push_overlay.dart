@@ -7,7 +7,7 @@ import 'package:go_router/go_router.dart';
 import '../../../core/auth/session.dart';
 import '../../../core/router/app_router.dart';
 import '../../../core/router/routes.dart';
-import '../../../core/theme/hf_tokens.dart';
+import '../../../core/widgets/widgets.dart';
 import '../data/push_controller.dart';
 import '../data/push_service.dart';
 import 'push_widgets.dart';
@@ -33,7 +33,12 @@ class _PushOverlayState extends ConsumerState<PushOverlay> {
   GoRouter? _router;
 
   /// The sheet never opens over these: the person is still getting in.
-  static const Set<String> _quietPaths = {Routes.splash, Routes.welcome, Routes.signIn, Routes.completeProfile};
+  static const Set<String> _quietPaths = {
+    Routes.splash,
+    Routes.welcome,
+    Routes.signIn,
+    Routes.completeProfile,
+  };
 
   @override
   void initState() {
@@ -67,10 +72,17 @@ class _PushOverlayState extends ConsumerState<PushOverlay> {
     // that frame, then check the current account and route before opening UI.
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _sheetScheduled = false;
-      if (!mounted || _sheetOpen || !ref.read(sessionProvider).isSignedIn ||
-          !ref.read(pushControllerProvider).promptOptIn) return;
+      if (!mounted ||
+          _sheetOpen ||
+          !ref.read(sessionProvider).isSignedIn ||
+          !ref.read(pushControllerProvider).promptOptIn) {
+        return;
+      }
       final router = _router;
-      if (router == null || _quietPaths.contains(router.routeInformationProvider.value.uri.path)) return;
+      if (router == null ||
+          _quietPaths.contains(router.routeInformationProvider.value.uri.path)) {
+        return;
+      }
       final navContext = router.routerDelegate.navigatorKey.currentContext;
       if (navContext != null) unawaited(_showSheet(navContext));
     });
@@ -84,13 +96,10 @@ class _PushOverlayState extends ConsumerState<PushOverlay> {
     final host = ref.read(sessionProvider).hasHostTab;
     controller.promptHandled();
     try {
-      final allow = await showModalBottomSheet<bool>(
-        context: navContext,
-        isScrollControlled: true,
-        backgroundColor: HfColors.cream,
-        shape: const RoundedRectangleBorder(
-          borderRadius: BorderRadius.vertical(top: Radius.circular(HfRadius.card + 6)),
-        ),
+      final allow = await showHfSheet<bool>(
+        navContext,
+        initialSize: 0.95,
+        minSize: 0.5,
         builder: (_) => PushOptInSheet(host: host),
       );
       // Allow runs the Android prompt. Not now, a swipe down or Back count as "Not now" for 14 days.
@@ -130,8 +139,11 @@ class _PushOverlayState extends ConsumerState<PushOverlay> {
             right: 0,
             child: PushBanner(
               message: banner,
-              onOpen: () => unawaited(ref.read(pushControllerProvider.notifier).openBanner()),
-              onClose: () => ref.read(pushControllerProvider.notifier).dismissBanner(),
+              onOpen: () => unawaited(
+                ref.read(pushControllerProvider.notifier).openBanner(),
+              ),
+              onClose: () =>
+                  ref.read(pushControllerProvider.notifier).dismissBanner(),
             ),
           ),
       ],

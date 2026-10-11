@@ -3,7 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../../../core/theme/hf_tokens.dart';
+import '../../../../core/theme/hf_theme.dart';
 import '../../../../core/widgets/widgets.dart';
 import '../../../explore/data/host_options.dart';
 import '../../../kyc/kyc.dart';
@@ -75,7 +75,11 @@ class _PriceStepState extends ConsumerState<PriceStep> {
     if (!mounted) return;
     setState(() => _busy = false);
     if (!ok) {
-      OnboardingTelemetry.step('price', 'error', reason: _saver.saveProblem == null ? 'invalid_field' : 'save_failed');
+      OnboardingTelemetry.step(
+        'price',
+        'error',
+        reason: _saver.saveProblem == null ? 'invalid_field' : 'save_failed',
+      );
       return;
     }
     OnboardingTelemetry.step('price', 'ok');
@@ -122,8 +126,17 @@ class _PriceStepState extends ConsumerState<PriceStep> {
                 child: Text.rich(
                   TextSpan(
                     children: [
-                      TextSpan(text: rupeesText(price), style: HfText.hero.copyWith(fontSize: 36)),
-                      const TextSpan(text: ' ${PartBCopy.perMin}', style: HfText.bodyStrong),
+                      TextSpan(
+                        text: rupeesText(price),
+                        style: HfText.of(
+                          context,
+                          HfText.hero,
+                        ).copyWith(fontSize: 36),
+                      ),
+                      TextSpan(
+                        text: ' ${PartBCopy.perMin}',
+                        style: HfText.of(context, HfText.bodyStrong),
+                      ),
                     ],
                   ),
                   key: const ValueKey<String>('price-big'),
@@ -134,11 +147,16 @@ class _PriceStepState extends ConsumerState<PriceStep> {
               Row(
                 children: [
                   IconButton.filledTonal(
-                    constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
+                    constraints: const BoxConstraints(
+                      minWidth: 48,
+                      minHeight: 48,
+                    ),
                     key: const ValueKey<String>('price-minus'),
                     tooltip: PartBCopy.lowerPrice,
                     iconSize: 28,
-                    onPressed: locked || price <= min ? null : () => _set(price - 1, min, max),
+                    onPressed: locked || price <= min
+                        ? null
+                        : () => _set(price - 1, min, max),
                     icon: const Icon(Icons.remove_rounded),
                   ),
                   Expanded(
@@ -148,16 +166,24 @@ class _PriceStepState extends ConsumerState<PriceStep> {
                       min: min.toDouble(),
                       max: max.toDouble(),
                       divisions: max - min,
-                      semanticFormatterCallback: (v) => '${rupeesText(v.round())} per minute',
-                      onChanged: locked ? null : (v) => _set(v.round(), min, max),
+                      semanticFormatterCallback: (v) =>
+                          '${rupeesText(v.round())} per minute',
+                      onChanged: locked
+                          ? null
+                          : (v) => _set(v.round(), min, max),
                     ),
                   ),
                   IconButton.filledTonal(
-                    constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
+                    constraints: const BoxConstraints(
+                      minWidth: 48,
+                      minHeight: 48,
+                    ),
                     key: const ValueKey<String>('price-plus'),
                     tooltip: PartBCopy.raisePrice,
                     iconSize: 28,
-                    onPressed: locked || price >= max ? null : () => _set(price + 1, min, max),
+                    onPressed: locked || price >= max
+                        ? null
+                        : () => _set(price + 1, min, max),
                     icon: const Icon(Icons.add_rounded),
                   ),
                 ],
@@ -165,12 +191,15 @@ class _PriceStepState extends ConsumerState<PriceStep> {
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Text(rupeesText(min), style: HfText.note),
-                  Text(rupeesText(max), style: HfText.note),
+                  Text(rupeesText(min), style: HfText.of(context, HfText.note)),
+                  Text(rupeesText(max), style: HfText.of(context, HfText.note)),
                 ],
               ),
               const SizedBox(height: 12),
-              const Text(PartBCopy.quickPicks, style: HfText.bodyStrong),
+              Text(
+                PartBCopy.quickPicks,
+                style: HfText.of(context, HfText.bodyStrong),
+              ),
               const SizedBox(height: 4),
               Wrap(
                 spacing: 8,
@@ -191,20 +220,34 @@ class _PriceStepState extends ConsumerState<PriceStep> {
         ),
         const SizedBox(height: 16),
         HfCard(
-          color: HfColors.mint,
+          color: HfColors.lavender,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              _Line(PartBCopy.callerPays, '${rupeesText(price)}${PartBCopy.previewPerMin}'),
-              _Line(PartBCopy.youGet, '${rupeesFromPaise(mine)}${PartBCopy.previewPerMin}', strong: true, lineKey: 'price-you-get'),
+              _Line(
+                PartBCopy.callerPays,
+                '${rupeesText(price)}${PartBCopy.previewPerMin}',
+              ),
+              _Line(
+                PartBCopy.youGet,
+                '${rupeesFromPaise(mine)}${PartBCopy.previewPerMin}',
+                strong: true,
+                lineKey: 'price-you-get',
+              ),
               _Line(PartBCopy.platformGets, rupeesFromPaise(platform)),
               const SizedBox(height: 8),
-              Text(PartBCopy.priceExample(rupeesFromPaise(monthlyPaise)), style: HfText.note),
+              Text(
+                PartBCopy.priceExample(rupeesFromPaise(monthlyPaise)),
+                style: HfText.of(context, HfText.note),
+              ),
             ],
           ),
         ),
         const SizedBox(height: 12),
-        const Text(PartBCopy.priceChangeAnytime, style: HfText.note),
+        Text(
+          PartBCopy.priceChangeAnytime,
+          style: HfText.of(context, HfText.note),
+        ),
       ],
     );
   }
@@ -220,7 +263,9 @@ class _Line extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final style = strong ? HfText.bodyStrong : HfText.bodyText;
+    final style = strong
+        ? HfText.of(context, HfText.bodyStrong)
+        : HfText.of(context, HfText.body);
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
       child: Column(
@@ -228,7 +273,11 @@ class _Line extends StatelessWidget {
         children: [
           Text(label, style: style),
           const SizedBox(height: 4),
-          Text(value, key: lineKey == null ? null : ValueKey<String>(lineKey!), style: style),
+          Text(
+            value,
+            key: lineKey == null ? null : ValueKey<String>(lineKey!),
+            style: style,
+          ),
         ],
       ),
     );

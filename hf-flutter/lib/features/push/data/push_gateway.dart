@@ -36,7 +36,9 @@ abstract class PushGateway {
   Future<PushMessage?> initialMessage();
 }
 
-final pushGatewayProvider = Provider<PushGateway>((ref) => const FirebasePushGateway());
+final pushGatewayProvider = Provider<PushGateway>(
+  (ref) => const FirebasePushGateway(),
+);
 
 class FirebasePushGateway extends PushGateway {
   const FirebasePushGateway();
@@ -53,9 +55,10 @@ class FirebasePushGateway extends PushGateway {
   FirebaseMessaging get _fm => FirebaseMessaging.instance;
 
   static PushPermission _map(AuthorizationStatus s) =>
-      (s == AuthorizationStatus.authorized || s == AuthorizationStatus.provisional)
-          ? PushPermission.granted
-          : PushPermission.notGranted;
+      (s == AuthorizationStatus.authorized ||
+          s == AuthorizationStatus.provisional)
+      ? PushPermission.granted
+      : PushPermission.notGranted;
 
   @override
   Future<PushPermission> permission() async {
@@ -75,15 +78,18 @@ class FirebasePushGateway extends PushGateway {
   Future<String?> token() async => available ? _fm.getToken() : null;
 
   @override
-  Stream<String> get onTokenRefresh => available ? _fm.onTokenRefresh : const Stream<String>.empty();
+  Stream<String> get onTokenRefresh =>
+      available ? _fm.onTokenRefresh : const Stream<String>.empty();
 
   @override
-  Stream<PushMessage> get onForeground =>
-      available ? FirebaseMessaging.onMessage.map(_message) : const Stream<PushMessage>.empty();
+  Stream<PushMessage> get onForeground => available
+      ? FirebaseMessaging.onMessage.map(_message)
+      : const Stream<PushMessage>.empty();
 
   @override
-  Stream<PushMessage> get onOpened =>
-      available ? FirebaseMessaging.onMessageOpenedApp.map(_message) : const Stream<PushMessage>.empty();
+  Stream<PushMessage> get onOpened => available
+      ? FirebaseMessaging.onMessageOpenedApp.map(_message)
+      : const Stream<PushMessage>.empty();
 
   @override
   Future<PushMessage?> initialMessage() async {
@@ -93,8 +99,8 @@ class FirebasePushGateway extends PushGateway {
   }
 
   static PushMessage _message(RemoteMessage m) => PushMessage(
-        title: m.notification?.title ?? '',
-        body: m.notification?.body ?? '',
-        data: m.data.map((k, v) => MapEntry(k, '$v')),
-      );
+    title: m.notification?.title ?? '',
+    body: m.notification?.body ?? '',
+    data: m.data.map((k, v) => MapEntry(k, '$v')),
+  );
 }

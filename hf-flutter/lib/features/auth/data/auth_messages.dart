@@ -36,27 +36,44 @@ class SignInFailure {
 }
 
 abstract final class AuthCopy {
-  static const String invalidPhone = 'Please enter a valid 10-digit mobile number.';
-  static const String notOnWhatsapp = 'This number is not on WhatsApp. Please use a number that has WhatsApp.';
-  static const String sendFailed = 'We could not send the code on WhatsApp. Please try again.';
-  static const String unavailable = 'WhatsApp sign-in is not available right now. Please try again soon.';
+  static const String invalidPhone =
+      'Please enter a valid 10-digit mobile number.';
+  static const String notOnWhatsapp =
+      'This number is not on WhatsApp. Please use a number that has WhatsApp.';
+  static const String sendFailed =
+      'We could not send the code on WhatsApp. Please try again.';
+  static const String unavailable =
+      'WhatsApp sign-in is not available right now. Please try again soon.';
   static const String enterCode = 'Enter the 6-digit code we sent you.';
-  static const String wrongCode = 'That code is not right. Please check and try again.';
-  static const String sendFirst = 'That code is no longer valid. Please ask for a new one.';
-  static const String codeExpired = 'That code has expired. Please ask for a new one.';
-  static const String tooManyAttempts = 'Too many wrong tries. Please ask for a new code.';
-  static const String verifyFailed = 'We could not check the code just now. Please try again.';
-  static const String signInFailed = 'We could not sign you in just now. Please try again.';
-  static const String signUpFailed = 'We could not create your account just now. Please try again.';
-  static const String creating = 'Your account is being created. Please try again in a moment.';
-  static const String needsEmail = 'We could not finish sign-up in the app yet. Please try again soon.';
-  static const String ticketFailed = 'We could not finish signing you in. Please try again.';
-  static const String rateHourly = 'Too many codes asked for. Please try again in an hour.';
-  static const String tickRequired = 'Please tick the box to say you are 18 or older.';
+  static const String wrongCode =
+      'That code is not right. Please check and try again.';
+  static const String sendFirst =
+      'That code is no longer valid. Please ask for a new one.';
+  static const String codeExpired =
+      'That code has expired. Please ask for a new one.';
+  static const String tooManyAttempts =
+      'Too many wrong tries. Please ask for a new code.';
+  static const String verifyFailed =
+      'We could not check the code just now. Please try again.';
+  static const String signInFailed =
+      'We could not sign you in just now. Please try again.';
+  static const String signUpFailed =
+      'We could not create your account just now. Please try again.';
+  static const String creating =
+      'Your account is being created. Please try again in a moment.';
+  static const String needsEmail =
+      'We could not finish sign-up in the app yet. Please try again soon.';
+  static const String ticketFailed =
+      'We could not finish signing you in. Please try again.';
+  static const String rateHourly =
+      'Too many codes asked for. Please try again in an hour.';
+  static const String tickRequired =
+      'Please tick the box to say you are 18 or older.';
   static const String banned =
       'This account cannot sign in. Please write to ${Brand.supportEmail} if you think this is a mistake.';
 
-  static String waitSeconds(int s) => 'Please wait $s ${s == 1 ? 'second' : 'seconds'} before asking for another code.';
+  static String waitSeconds(int s) =>
+      'Please wait $s ${s == 1 ? 'second' : 'seconds'} before asking for another code.';
   static String triesLeft(int n) => n > 0
       ? 'That code is not right. $n ${n == 1 ? 'try' : 'tries'} left.'
       : 'That code is not right. Please ask for a new code.';
@@ -67,15 +84,26 @@ abstract final class AuthCopy {
 SignInFailure mapSignInError(ApiError e, SignInStage stage) {
   // No answer at all.
   if (e.isOffline) {
-    return SignInFailure(reason: e.code, message: e.isNetwork ? Strings.noInternet : Strings.timedOut);
+    return SignInFailure(
+      reason: e.code,
+      message: e.isNetwork ? Strings.noInternet : Strings.timedOut,
+    );
   }
   final server = e.message;
   final retry = e.retryAfterSeconds;
   switch (e.code) {
     case 'invalid_phone':
-      return SignInFailure(reason: e.code, message: AuthCopy.invalidPhone, field: 'phone');
+      return SignInFailure(
+        reason: e.code,
+        message: AuthCopy.invalidPhone,
+        field: 'phone',
+      );
     case 'not_on_whatsapp':
-      return SignInFailure(reason: e.code, message: AuthCopy.notOnWhatsapp, field: 'phone');
+      return SignInFailure(
+        reason: e.code,
+        message: AuthCopy.notOnWhatsapp,
+        field: 'phone',
+      );
     case 'rate_limited':
       if (retry != null && retry > 0) {
         return SignInFailure(
@@ -87,17 +115,36 @@ SignInFailure mapSignInError(ApiError e, SignInStage stage) {
       }
       return SignInFailure(
         reason: e.code,
-        message: (server != null && server.isNotEmpty) ? server : AuthCopy.rateHourly,
+        message: (server != null && server.isNotEmpty)
+            ? server
+            : AuthCopy.rateHourly,
         field: stage == SignInStage.send ? 'phone' : 'code',
       );
     case 'otp_unavailable':
-      return SignInFailure(reason: e.code, message: AuthCopy.unavailable, field: 'phone');
+      return SignInFailure(
+        reason: e.code,
+        message: AuthCopy.unavailable,
+        field: 'phone',
+      );
     case 'provider_error':
-      return SignInFailure(reason: e.code, message: AuthCopy.sendFailed, field: 'phone');
+      return SignInFailure(
+        reason: e.code,
+        message: AuthCopy.sendFailed,
+        field: 'phone',
+      );
     case 'invalid_code':
-      return SignInFailure(reason: e.code, message: AuthCopy.enterCode, field: 'code');
+      return SignInFailure(
+        reason: e.code,
+        message: AuthCopy.enterCode,
+        field: 'code',
+      );
     case 'no_code':
-      return SignInFailure(reason: e.code, message: AuthCopy.sendFirst, field: 'code', allowResend: true);
+      return SignInFailure(
+        reason: e.code,
+        message: AuthCopy.sendFirst,
+        field: 'code',
+        allowResend: true,
+      );
     case 'wrong_code':
       final left = e.extra['attempts_left'];
       final n = left is num ? left.toInt() : null;
@@ -105,22 +152,46 @@ SignInFailure mapSignInError(ApiError e, SignInStage stage) {
         reason: e.code,
         message: n != null
             ? AuthCopy.triesLeft(n)
-            : ((server != null && server.isNotEmpty) ? server : AuthCopy.wrongCode),
+            : ((server != null && server.isNotEmpty)
+                  ? server
+                  : AuthCopy.wrongCode),
         field: 'code',
         attemptsLeft: n,
         allowResend: n == 0,
       );
     case 'code_expired':
-      return SignInFailure(reason: e.code, message: AuthCopy.codeExpired, field: 'code', allowResend: true);
+      return SignInFailure(
+        reason: e.code,
+        message: AuthCopy.codeExpired,
+        field: 'code',
+        allowResend: true,
+      );
     case 'too_many_attempts':
-      return SignInFailure(reason: e.code, message: AuthCopy.tooManyAttempts, field: 'code', allowResend: true);
+      return SignInFailure(
+        reason: e.code,
+        message: AuthCopy.tooManyAttempts,
+        field: 'code',
+        allowResend: true,
+      );
     case 'verify_failed':
-      return SignInFailure(reason: e.code, message: AuthCopy.verifyFailed, field: 'code');
+      return SignInFailure(
+        reason: e.code,
+        message: AuthCopy.verifyFailed,
+        field: 'code',
+      );
     case 'signin_failed':
-      return SignInFailure(reason: e.code, message: AuthCopy.signInFailed, field: 'code');
+      return SignInFailure(
+        reason: e.code,
+        message: AuthCopy.signInFailed,
+        field: 'code',
+      );
     case 'signup_failed':
       // The server gives the code back: the same code can be tried again.
-      return SignInFailure(reason: e.code, message: AuthCopy.signUpFailed, field: 'code');
+      return SignInFailure(
+        reason: e.code,
+        message: AuthCopy.signUpFailed,
+        field: 'code',
+      );
     case 'signup_in_progress':
       return SignInFailure(
         reason: e.code,
@@ -133,10 +204,18 @@ SignInFailure mapSignInError(ApiError e, SignInStage stage) {
     case 'account_suspended':
     case 'account_closing':
     case 'account_blocked':
-      return SignInFailure(reason: e.code, message: AuthCopy.banned, field: 'code');
+      return SignInFailure(
+        reason: e.code,
+        message: AuthCopy.banned,
+        field: 'code',
+      );
   }
   if (server != null && server.isNotEmpty) {
-    return SignInFailure(reason: e.code, message: server, field: stage == SignInStage.send ? 'phone' : 'code');
+    return SignInFailure(
+      reason: e.code,
+      message: server,
+      field: stage == SignInStage.send ? 'phone' : 'code',
+    );
   }
   return SignInFailure(
     reason: e.code,
@@ -168,8 +247,14 @@ class IndianMobileFormatter extends TextInputFormatter {
   const IndianMobileFormatter();
 
   @override
-  TextEditingValue formatEditUpdate(TextEditingValue oldValue, TextEditingValue newValue) {
+  TextEditingValue formatEditUpdate(
+    TextEditingValue oldValue,
+    TextEditingValue newValue,
+  ) {
     final digits = normalizeIndianMobile(newValue.text);
-    return TextEditingValue(text: digits, selection: TextSelection.collapsed(offset: digits.length));
+    return TextEditingValue(
+      text: digits,
+      selection: TextSelection.collapsed(offset: digits.length),
+    );
   }
 }

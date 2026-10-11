@@ -3,7 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../../../core/theme/hf_tokens.dart';
+import '../../../../core/theme/hf_theme.dart';
 import '../../../../core/widgets/widgets.dart';
 import '../../../explore/data/host_options.dart';
 import '../../../kyc/kyc.dart';
@@ -78,7 +78,11 @@ class _TopicsStepState extends ConsumerState<TopicsStep> {
     if (!mounted) return;
     setState(() => _busy = false);
     if (!ok) {
-      OnboardingTelemetry.step('topics', 'error', reason: _saver.saveProblem == null ? 'invalid_field' : 'save_failed');
+      OnboardingTelemetry.step(
+        'topics',
+        'error',
+        reason: _saver.saveProblem == null ? 'invalid_field' : 'save_failed',
+      );
       return;
     }
     OnboardingTelemetry.step('topics', 'ok');
@@ -107,9 +111,16 @@ class _TopicsStepState extends ConsumerState<TopicsStep> {
     // Topics grouped by mood, in the worker's order. A topic whose group is unknown still shows, under "More".
     final known = <String>{for (final g in o.moodGroups) g.label};
     final groups = <MapEntry<String, List<HostTopic>>>[
-      for (final g in o.moodGroups) MapEntry(g.label, [for (final t in o.topics) if (t.group == g.label) t]),
+      for (final g in o.moodGroups)
+        MapEntry(g.label, [
+          for (final t in o.topics)
+            if (t.group == g.label) t,
+        ]),
     ];
-    final extra = [for (final t in o.topics) if (!known.contains(t.group)) t];
+    final extra = [
+      for (final t in o.topics)
+        if (!known.contains(t.group)) t,
+    ];
     if (extra.isNotEmpty) groups.add(MapEntry(PartBCopy.topicsMore, extra));
 
     return PartBStep(
@@ -122,7 +133,7 @@ class _TopicsStepState extends ConsumerState<TopicsStep> {
           child: Text(
             '${PartBCopy.topicsCount(n)}${full ? PartBCopy.topicsFull : ''}',
             key: const ValueKey<String>('topics-count'),
-            style: HfText.bodyStrong,
+            style: HfText.of(context, HfText.bodyStrong),
           ),
         ),
         if (fieldError != null) InlineError(fieldError),
@@ -145,7 +156,9 @@ class _TopicsStepState extends ConsumerState<TopicsStep> {
                 key: ValueKey<String>('topic-${t.slug}'),
                 title: t.label,
                 selected: _topics.contains(t.slug),
-                onTap: locked || (full && !_topics.contains(t.slug)) ? null : () => _toggle(t.slug),
+                onTap: locked || (full && !_topics.contains(t.slug))
+                    ? null
+                    : () => _toggle(t.slug),
               ),
           ],
       ],

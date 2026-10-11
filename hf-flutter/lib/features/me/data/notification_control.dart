@@ -66,7 +66,7 @@ class SystemNotificationControl extends NotificationControl {
 /// notification settings so the permission can be taken back too.
 class PushNotificationControl extends NotificationControl {
   PushNotificationControl(this._ref, {Future<void> Function()? openSettings})
-      : _openSettings = openSettings ?? openNotificationSettings;
+    : _openSettings = openSettings ?? openNotificationSettings;
 
   final Ref _ref;
   final Future<void> Function() _openSettings;
@@ -76,7 +76,9 @@ class PushNotificationControl extends NotificationControl {
 
   @override
   Future<bool> isEnabled() async {
-    if (!_gateway.available) return const SystemNotificationControl().isEnabled();
+    if (!_gateway.available) {
+      return const SystemNotificationControl().isEnabled();
+    }
     try {
       if (await _gateway.permission() != PushPermission.granted) return false;
       final prefs = await SharedPreferences.getInstance();
@@ -89,7 +91,9 @@ class PushNotificationControl extends NotificationControl {
 
   @override
   Future<bool> setEnabled(bool on) async {
-    if (!_gateway.available) return const SystemNotificationControl().setEnabled(on);
+    if (!_gateway.available) {
+      return const SystemNotificationControl().setEnabled(on);
+    }
     try {
       if (on) {
         if (await _service.allow()) return true;
@@ -105,4 +109,6 @@ class PushNotificationControl extends NotificationControl {
   }
 }
 
-final notificationControlProvider = Provider<NotificationControl>((ref) => PushNotificationControl(ref));
+final notificationControlProvider = Provider<NotificationControl>(
+  (ref) => PushNotificationControl(ref),
+);

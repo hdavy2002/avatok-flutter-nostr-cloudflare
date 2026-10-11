@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/api/api_error.dart';
-import '../../../../core/theme/hf_tokens.dart';
+import '../../../../core/theme/hf_theme.dart';
 import '../../../../core/widgets/widgets.dart';
 import '../../../kyc/kyc.dart';
 import '../../flow/onboarding_context.dart';
@@ -117,7 +117,10 @@ class _VoiceStepState extends ConsumerState<VoiceStep> {
         if (banner != null) LockBanner(banner),
         const _IdeasCard(),
         const SizedBox(height: 16),
-        if (showSaved) _savedCard(status, locked) else if (!locked) _recorderCard(),
+        if (showSaved)
+          _savedCard(status, locked)
+        else if (!locked)
+          _recorderCard(),
         const SizedBox(height: 12),
         ConsentRow(
           key: const ValueKey<String>('voice-consent'),
@@ -132,25 +135,31 @@ class _VoiceStepState extends ConsumerState<VoiceStep> {
   Widget _savedCard(String? status, bool locked) {
     final fetcher = ref.read(ownVoiceFetcherProvider);
     final local = _localPath;
-    final Future<String?> Function() load = local != null ? () async => local : fetcher.fetchToFile;
+    final Future<String?> Function() load = local != null
+        ? () async => local
+        : fetcher.fetchToFile;
     return HfCard(
       key: const ValueKey<String>('voice-saved'),
-      color: HfColors.lilac,
+      color: HfColors.lavender,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           const DoneRow(PartBCopy.voiceSavedTitle),
           const SizedBox(height: 10),
-          Text(_statusText(status), key: const ValueKey<String>('voice-status'), style: HfText.bodyText),
-          const SizedBox(height: 6),
-          const Text(PartBCopy.voiceChecked, style: HfText.note),
-          const SizedBox(height: 6),
-          Text(PartBCopy.voiceLength(mmss(_savedSeconds)), style: HfText.note),
-          const SizedBox(height: 12),
-          ClipPlayerBar(
-            loadPath: load,
-            knownSeconds: _savedSeconds,
+          Text(
+            _statusText(status),
+            key: const ValueKey<String>('voice-status'),
+            style: HfText.of(context, HfText.body),
           ),
+          const SizedBox(height: 6),
+          Text(PartBCopy.voiceChecked, style: HfText.of(context, HfText.note)),
+          const SizedBox(height: 6),
+          Text(
+            PartBCopy.voiceLength(mmss(_savedSeconds)),
+            style: HfText.of(context, HfText.note),
+          ),
+          const SizedBox(height: 12),
+          ClipPlayerBar(loadPath: load, knownSeconds: _savedSeconds),
           if (!locked) ...[
             const SizedBox(height: 12),
             HfButton(
@@ -204,14 +213,20 @@ class _IdeasCardState extends State<_IdeasCard> {
 
   @override
   Widget build(BuildContext context) {
-    final set = kVoiceScripts.firstWhere((s) => s.code == _lang, orElse: () => kVoiceScripts.first);
+    final set = kVoiceScripts.firstWhere(
+      (s) => s.code == _lang,
+      orElse: () => kVoiceScripts.first,
+    );
     return HfCard(
       padding: const EdgeInsets.symmetric(horizontal: 8),
       child: Theme(
         data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
         child: ExpansionTile(
           key: const ValueKey<String>('voice-ideas'),
-          title: const Text(PartBCopy.voiceIdeasTitle, style: HfText.subtitle),
+          title: Text(
+            PartBCopy.voiceIdeasTitle,
+            style: HfText.of(context, HfText.subsection),
+          ),
           tilePadding: const EdgeInsets.symmetric(horizontal: 8),
           childrenPadding: const EdgeInsets.fromLTRB(8, 0, 8, 12),
           expandedCrossAxisAlignment: CrossAxisAlignment.start,
@@ -234,11 +249,17 @@ class _IdeasCardState extends State<_IdeasCard> {
                 width: double.infinity,
                 margin: const EdgeInsets.only(bottom: 10),
                 padding: const EdgeInsets.all(14),
-                decoration: BoxDecoration(color: HfColors.butter, borderRadius: BorderRadius.circular(HfRadius.card)),
-                child: Text(t, style: HfText.bodyText),
+                decoration: BoxDecoration(
+                  color: HfColors.butter,
+                  borderRadius: BorderRadius.circular(HfRadius.card),
+                ),
+                child: Text(t, style: HfText.of(context, HfText.body)),
               ),
             const SizedBox(height: 4),
-            const Text(PartBCopy.voiceTips, style: HfText.bodyStrong),
+            Text(
+              PartBCopy.voiceTips,
+              style: HfText.of(context, HfText.bodyStrong),
+            ),
             const SizedBox(height: 4),
             for (final tip in PartBCopy.voiceTipItems)
               Padding(
@@ -248,9 +269,15 @@ class _IdeasCardState extends State<_IdeasCard> {
                   children: [
                     const Padding(
                       padding: EdgeInsets.only(top: 3, right: 8),
-                      child: Icon(Icons.check_rounded, size: 20, color: HfColors.orchid),
+                      child: Icon(
+                        Icons.check_rounded,
+                        size: 20,
+                        color: HfColors.lavenderDeep,
+                      ),
                     ),
-                    Expanded(child: Text(tip, style: HfText.bodyText)),
+                    Expanded(
+                      child: Text(tip, style: HfText.of(context, HfText.body)),
+                    ),
                   ],
                 ),
               ),
@@ -258,12 +285,21 @@ class _IdeasCardState extends State<_IdeasCard> {
             Container(
               width: double.infinity,
               padding: const EdgeInsets.all(14),
-              decoration: BoxDecoration(color: HfColors.blush, borderRadius: BorderRadius.circular(HfRadius.card)),
-              child: const Text.rich(
+              decoration: BoxDecoration(
+                color: HfColors.blush,
+                borderRadius: BorderRadius.circular(HfRadius.card),
+              ),
+              child: Text.rich(
                 TextSpan(
                   children: [
-                    TextSpan(text: '${PartBCopy.voiceDontsTitle}: ', style: HfText.bodyStrong),
-                    TextSpan(text: PartBCopy.voiceDonts, style: HfText.bodyText),
+                    TextSpan(
+                      text: '${PartBCopy.voiceDontsTitle}: ',
+                      style: HfText.of(context, HfText.bodyStrong),
+                    ),
+                    TextSpan(
+                      text: PartBCopy.voiceDonts,
+                      style: HfText.of(context, HfText.body),
+                    ),
                   ],
                 ),
               ),
