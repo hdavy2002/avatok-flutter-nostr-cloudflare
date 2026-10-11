@@ -7,11 +7,18 @@ import '../../../../core/theme/hf_tokens.dart';
 /// Draws a picture from a URL. The default uses `cached_network_image` (7-day disk cache, memory cache sized
 /// to the screen). Widget tests override [hostImageBuilderProvider] with a plain box, so no test needs
 /// the network or the cache database.
-typedef HostImageBuilder = Widget Function(BuildContext context, String url, {BoxFit fit});
+typedef HostImageBuilder =
+    Widget Function(BuildContext context, String url, {BoxFit fit});
 
-final hostImageBuilderProvider = Provider<HostImageBuilder>((ref) => _cachedImage);
+final hostImageBuilderProvider = Provider<HostImageBuilder>(
+  (ref) => _cachedImage,
+);
 
-Widget _cachedImage(BuildContext context, String url, {BoxFit fit = BoxFit.cover}) {
+Widget _cachedImage(
+  BuildContext context,
+  String url, {
+  BoxFit fit = BoxFit.cover,
+}) {
   return CachedNetworkImage(
     imageUrl: url,
     fit: fit,
@@ -31,9 +38,9 @@ class PicturePlaceholder extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      color: HfColors.lilac,
+      color: HfColors.lavender,
       alignment: Alignment.center,
-      child: Icon(icon, size: 72, color: HfColors.orchid),
+      child: Icon(icon, size: 72, color: HfColors.link),
     );
   }
 }

@@ -11,6 +11,7 @@ import 'package:hf_app/core/auth/session.dart';
 import 'package:hf_app/core/boot.dart';
 import 'package:hf_app/core/links.dart';
 import 'package:hf_app/core/router/routes.dart';
+import 'package:hf_app/core/widgets/widgets.dart';
 import 'package:hf_app/core/storage/secure_store.dart';
 import 'package:hf_app/features/host_profile/data/host_profile.dart';
 import 'package:hf_app/features/host_profile/data/host_profile_providers.dart';
@@ -32,63 +33,75 @@ Map<String, dynamic> profileJson({
   bool lgbtq = false,
   bool intro = false,
   bool gallery = false,
+  int galleryCount = 2,
   bool reviews = false,
-}) =>
-    {
-      'slug': 'asha',
-      'protectedLane': null,
-      'displayName': 'Asha',
-      'tagline': 'A warm listener',
-      'avatarUrl': 'https://media.example.test/a.webp',
-      'languages': ['Hindi', 'English'],
-      'style': 'calm',
-      'topics': ['naye-dost', 'tension'],
-      'pricePerMin': 12,
-      'rating': reviews ? 4.6 : null,
-      'reviewCount': reviews ? 5 : 0,
-      'ratingBreakdown': reviews ? {'5': 3, '4': 2, '3': 0, '2': 0, '1': 0} : {},
-      'talkedTo': reviews ? 40 : 0,
-      'regulars': reviews ? 6 : 0,
-      'lgbtqFriendly': lgbtq,
-      'womenOnly': womenOnly,
-      'introAudioUrl': intro ? 'https://media.example.test/intro.m4a' : null,
-      'introSeconds': intro ? 30 : null,
-      'status': status,
-      'aboutPolished': 'I like a calm chat about everyday life.',
-      'quote': 'Baat se baat banti hai.',
-      'gallery': gallery
-          ? [
-              {'url': 'https://media.example.test/g1.webp', 'caption': 'Morning chai'},
-              {'url': 'https://media.example.test/g2.webp', 'caption': null},
-            ]
-          : [],
-      'reviews': reviews
-          ? [
-              {
-                'firstName': 'Ravi',
-                'stars': 5,
-                'text': 'Very kind and patient.',
-                'topic': 'tension',
-                'minutes': 12,
-                'regular': true,
-                'date': '2026-10-01T10:00:00.000Z',
-              },
-            ]
-          : [],
-    };
+  String? quote = 'Baat se baat banti hai.',
+}) => {
+  'slug': 'asha',
+  'protectedLane': null,
+  'displayName': 'Asha',
+  'tagline': 'A warm listener',
+  'avatarUrl': 'https://media.example.test/a.webp',
+  'languages': ['Hindi', 'English'],
+  'style': 'calm',
+  'topics': ['naye-dost', 'tension'],
+  'pricePerMin': 12,
+  'rating': reviews ? 4.6 : null,
+  'reviewCount': reviews ? 5 : 0,
+  'ratingBreakdown': reviews ? {'5': 3, '4': 2, '3': 0, '2': 0, '1': 0} : {},
+  'talkedTo': reviews ? 40 : 0,
+  'regulars': reviews ? 6 : 0,
+  'lgbtqFriendly': lgbtq,
+  'womenOnly': womenOnly,
+  'introAudioUrl': intro ? 'https://media.example.test/intro.m4a' : null,
+  'introSeconds': intro ? 30 : null,
+  'status': status,
+  'aboutPolished': 'I like a calm chat about everyday life.',
+  'quote': quote,
+  'gallery': gallery
+      ? [
+          for (var i = 1; i <= galleryCount; i++)
+            {
+              'url': 'https://media.example.test/g$i.webp',
+              'caption': i == 1 ? 'Morning chai' : null,
+            },
+        ]
+      : [],
+  'reviews': reviews
+      ? [
+          {
+            'firstName': 'Ravi',
+            'stars': 5,
+            'text': 'Very kind and patient.',
+            'topic': 'tension',
+            'minutes': 12,
+            'regular': true,
+            'date': '2026-10-01T10:00:00.000Z',
+          },
+        ]
+      : [],
+};
 
 SessionState signedIn({bool womenLane = false}) => SessionState(
-      status: SessionStatus.signedIn,
-      me: HfMe(uid: 'user_test', displayName: 'Caller', ackVersion: 'hf-ack-v1', womenLane: womenLane),
-    );
+  status: SessionStatus.signedIn,
+  me: HfMe(
+    uid: 'user_test',
+    displayName: 'Caller',
+    ackVersion: 'hf-ack-v1',
+    womenLane: womenLane,
+  ),
+);
 
 class FakeIntroPlayer implements IntroPlayer {
   final List<String> played = <String>[];
   int paused = 0;
   int resumed = 0;
-  final StreamController<IntroPlayerState> _states = StreamController<IntroPlayerState>.broadcast(sync: true);
-  final StreamController<Duration> _positions = StreamController<Duration>.broadcast(sync: true);
-  final StreamController<Duration> _durations = StreamController<Duration>.broadcast(sync: true);
+  final StreamController<IntroPlayerState> _states =
+      StreamController<IntroPlayerState>.broadcast(sync: true);
+  final StreamController<Duration> _positions =
+      StreamController<Duration>.broadcast(sync: true);
+  final StreamController<Duration> _durations =
+      StreamController<Duration>.broadcast(sync: true);
 
   @override
   Stream<IntroPlayerState> get states => _states.stream;
@@ -142,7 +155,6 @@ class _Rig {
 
   /// Slugs the call confirm opener was asked to open.
   final List<String> opened;
-
 }
 
 /// Pumps the whole app at `/h/asha`. The picture builder, audio player and call confirm opener are faked.
@@ -156,25 +168,37 @@ Future<_Rig> _pumpProfile(
 }) async {
   usePhoneScreen(tester);
   // A pulsing status dot never settles: switch animations off like the phone setting does.
-  tester.platformDispatcher.accessibilityFeaturesTestValue = const FakeAccessibilityFeatures(disableAnimations: true);
+  tester.platformDispatcher.accessibilityFeaturesTestValue =
+      const FakeAccessibilityFeatures(disableAnimations: true);
   addTearDown(tester.platformDispatcher.clearAccessibilityFeaturesTestValue);
   final opened = <String>[];
-  final container = ProviderContainer(overrides: [
-    sessionProvider.overrideWith(() => StubSession(session ?? signedOutState())),
-    apiClientProvider.overrideWithValue(api),
-    secureStoreProvider.overrideWithValue(MemoryKeyValueStore()),
-    initialLocationProvider.overrideWithValue(location),
-    hostImageBuilderProvider.overrideWithValue(
-      (context, url, {BoxFit fit = BoxFit.cover}) => const ColoredBox(color: Colors.white),
-    ),
-    introPlayerFactoryProvider.overrideWithValue(() => player ?? FakeIntroPlayer()),
-    callConfirmOpenerProvider.overrideWithValue((context, slug) async => opened.add(slug)),
-  ]);
+  final container = ProviderContainer(
+    overrides: [
+      sessionProvider.overrideWith(
+        () => StubSession(session ?? signedOutState()),
+      ),
+      apiClientProvider.overrideWithValue(api),
+      secureStoreProvider.overrideWithValue(MemoryKeyValueStore()),
+      initialLocationProvider.overrideWithValue(location),
+      hostImageBuilderProvider.overrideWithValue(
+        (context, url, {BoxFit fit = BoxFit.cover}) =>
+            const ColoredBox(color: Colors.white),
+      ),
+      introPlayerFactoryProvider.overrideWithValue(
+        () => player ?? FakeIntroPlayer(),
+      ),
+      callConfirmOpenerProvider.overrideWithValue(
+        (context, slug) async => opened.add(slug),
+      ),
+    ],
+  );
   addTearDown(container.dispose);
-  await tester.pumpWidget(UncontrolledProviderScope(
-    container: container,
-    child: const HfApp(listenForLinks: false),
-  ));
+  await tester.pumpWidget(
+    UncontrolledProviderScope(
+      container: container,
+      child: const HfApp(listenForLinks: false),
+    ),
+  );
   if (settle) {
     await tester.pumpAndSettle();
   } else {
@@ -184,7 +208,10 @@ Future<_Rig> _pumpProfile(
   return _Rig(container, opened);
 }
 
-FakeApiClient apiWith(Map<String, dynamic> profile, {bool notifySubscribed = false}) {
+FakeApiClient apiWith(
+  Map<String, dynamic> profile, {
+  bool notifySubscribed = false,
+}) {
   return FakeApiClient()
     ..onJson('GET', _profilePath, profile)
     ..onJson('GET', '/api/hf/options', {
@@ -207,70 +234,116 @@ void main() {
   tearDown(() => LinkOpener.instance = const LinkOpener());
 
   group('states', () {
-    testWidgets('loading shows plain text and a spinner, then the profile', (tester) async {
+    testWidgets('loading shows a skeleton of the layout, then the profile', (
+      tester,
+    ) async {
       final gate = Completer<Object?>();
       final api = FakeApiClient()..on('GET', _profilePath, (_) => gate.future);
       await _pumpProfile(tester, api: api, settle: false);
-      expect(find.text('Loading profile…'), findsOneWidget);
-      expect(find.byType(CircularProgressIndicator), findsOneWidget);
+      expect(find.byType(HfSkeleton), findsWidgets);
+      expect(find.byTooltip('Back'), findsOneWidget);
+      expect(find.byType(CircularProgressIndicator), findsNothing);
       gate.complete(profileJson());
       await tester.pumpAndSettle();
       expect(find.text('Asha'), findsOneWidget);
     });
 
-    testWidgets('content: name, tagline, price, topics with labels, languages, about and quote', (tester) async {
-      await _pumpProfile(tester, api: apiWith(profileJson(lgbtq: true)));
-      expect(find.text('Asha'), findsOneWidget);
-      expect(find.text('A warm listener'), findsOneWidget);
-      expect(find.text('Online now'), findsOneWidget);
-      expect(find.text('₹12/min'), findsOneWidget);
-      expect(find.text('See your estimate before starting a call.'), findsOneWidget);
-      expect(find.text('New host'), findsOneWidget);
-      expect(find.text('Naye dost'), findsOneWidget);
-      expect(find.text('Hindi, English'), findsOneWidget);
-      expect(find.text('Calm listener'), findsOneWidget);
-      expect(find.text('LGBTQ+ friendly'), findsOneWidget);
-      expect(find.text('I like a calm chat about everyday life.'), findsOneWidget);
-      expect(find.textContaining('Baat se baat banti hai.'), findsOneWidget);
-    });
+    testWidgets(
+      'content: name, tagline, price, topics with labels, languages, about and quote',
+      (tester) async {
+        await _pumpProfile(tester, api: apiWith(profileJson(lgbtq: true)));
+        expect(find.text('Asha'), findsOneWidget);
+        expect(find.byType(HfVerifiedBadge), findsOneWidget);
+        expect(find.text('A warm listener'), findsOneWidget);
+        expect(find.text('Online now'), findsOneWidget);
+        expect(find.text('₹12 /min'), findsOneWidget);
+        expect(find.text('10 min ≈ ₹120'), findsOneWidget);
+        expect(find.text('New'), findsOneWidget);
+        expect(find.text('talked to'), findsOneWidget);
+        expect(find.text('regulars'), findsOneWidget);
+        expect(find.text('AI avatar chosen by the host'), findsOneWidget);
+        expect(
+          find.text('Pick a topic, bring a story, or just say hello.'),
+          findsOneWidget,
+        );
+        expect(find.text('Naye dost'), findsOneWidget);
+        expect(find.text('Hindi, English'), findsOneWidget);
+        expect(find.text('Calm listener'), findsOneWidget);
+        expect(find.text('LGBTQ+ friendly'), findsOneWidget);
+        expect(
+          find.text('I like a calm chat about everyday life.'),
+          findsOneWidget,
+        );
+        expect(find.textContaining('Baat se baat banti hai.'), findsOneWidget);
+      },
+    );
 
-    testWidgets('not found shows "This profile isn\'t available." and a way back', (tester) async {
-      final api = FakeApiClient()
-        ..onError('GET', _profilePath, const ApiError(status: 404, code: 'not_found', message: 'not_found'));
-      await _pumpProfile(tester, api: api);
-      expect(find.text("This profile isn't available."), findsOneWidget);
-      expect(find.text('Explore hosts'), findsOneWidget);
-      expect(find.text('Call'), findsNothing);
-    });
+    testWidgets(
+      'not found shows "This profile isn\'t available." and a way back',
+      (tester) async {
+        final api = FakeApiClient()
+          ..onError(
+            'GET',
+            _profilePath,
+            const ApiError(
+              status: 404,
+              code: 'not_found',
+              message: 'not_found',
+            ),
+          );
+        await _pumpProfile(tester, api: api);
+        expect(find.text("This profile isn't available."), findsOneWidget);
+        expect(find.text('Explore hosts'), findsOneWidget);
+        expect(find.textContaining('Call '), findsNothing);
+        expect(find.byTooltip('Back'), findsOneWidget);
+      },
+    );
 
-    testWidgets('error shows the message and Try again loads it again', (tester) async {
+    testWidgets('error shows the message and Try again loads it again', (
+      tester,
+    ) async {
       var attempts = 0;
       final api = FakeApiClient()
         ..on('GET', _profilePath, (_) {
           attempts++;
-          if (attempts == 1) throw const ApiError(status: 500, code: 'http_500');
+          if (attempts == 1) {
+            throw const ApiError(status: 500, code: 'http_500');
+          }
           return profileJson();
         });
       await _pumpProfile(tester, api: api);
-      expect(find.text('Something went wrong. Please try again.'), findsOneWidget);
+      expect(
+        find.text('Something went wrong. Please try again.'),
+        findsOneWidget,
+      );
       await tester.tap(find.text('Try again'));
       await tester.pumpAndSettle();
       expect(attempts, 2);
       expect(find.text('Asha'), findsOneWidget);
     });
 
-    testWidgets('offline shows the saved profile of the last visit with a pill', (tester) async {
-      SharedPreferences.setMockInitialValues(<String, Object>{
-        hostProfileCacheKey('asha'): jsonEncode({'at': DateTime.now().toIso8601String(), 'data': profileJson()}),
-      });
-      final api = FakeApiClient()..onError('GET', _profilePath, ApiError.network());
-      await _pumpProfile(tester, api: api);
-      expect(find.text('Showing saved profile'), findsOneWidget);
-      expect(find.text('Asha'), findsOneWidget);
-    });
+    testWidgets(
+      'offline shows the saved profile of the last visit with a pill',
+      (tester) async {
+        SharedPreferences.setMockInitialValues(<String, Object>{
+          hostProfileCacheKey('asha'): jsonEncode({
+            'at': DateTime.now().toIso8601String(),
+            'data': profileJson(),
+          }),
+        });
+        final api = FakeApiClient()
+          ..onError('GET', _profilePath, ApiError.network());
+        await _pumpProfile(tester, api: api);
+        expect(find.text('Showing saved profile'), findsOneWidget);
+        expect(find.text('Asha'), findsOneWidget);
+      },
+    );
 
-    testWidgets('offline with nothing saved shows the no-internet panel', (tester) async {
-      final api = FakeApiClient()..onError('GET', _profilePath, ApiError.network());
+    testWidgets('offline with nothing saved shows the no-internet panel', (
+      tester,
+    ) async {
+      final api = FakeApiClient()
+        ..onError('GET', _profilePath, ApiError.network());
       await _pumpProfile(tester, api: api);
       expect(find.text('No internet. Check your connection.'), findsOneWidget);
       expect(find.text('Try again'), findsOneWidget);
@@ -278,125 +351,218 @@ void main() {
   });
 
   group('AI labels', () {
-    testWidgets('avatar and gallery keep visible compact AI disclosures; recording label stays readable', (tester) async {
-      await _pumpProfile(tester, api: apiWith(profileJson(gallery: true, intro: true)));
-      for (final label in ['AI avatar', 'AI images', 'AI image', 'Recorded by the host']) {
-        final texts = tester.widgetList<Text>(find.text(label)).toList();
-        expect(texts, isNotEmpty, reason: label);
-        for (final t in texts) {
-          expect(t.style?.fontSize, isNotNull, reason: label);
-          expect(t.style!.fontSize!, greaterThanOrEqualTo(label == 'Recorded by the host' ? 14 : 11), reason: label);
+    testWidgets(
+      'avatar and gallery keep visible compact AI disclosures; recording label stays readable',
+      (tester) async {
+        await _pumpProfile(
+          tester,
+          api: apiWith(profileJson(gallery: true, intro: true)),
+        );
+        for (final label in [
+          'AI avatar chosen by the host',
+          'AI images',
+          'AI image',
+          'Recorded by the host',
+        ]) {
+          final texts = tester.widgetList<Text>(find.text(label)).toList();
+          expect(texts, isNotEmpty, reason: label);
+          for (final t in texts) {
+            expect(t.style?.fontSize, isNotNull, reason: label);
+            expect(
+              t.style!.fontSize!,
+              greaterThanOrEqualTo(label == 'Recorded by the host' ? 14 : 11),
+              reason: label,
+            );
+          }
         }
-      }
-    });
+      },
+    );
 
-    testWidgets('only the approved AI disclosure may be smaller than 14 sp', (tester) async {
-      await _pumpProfile(tester, api: apiWith(profileJson(gallery: true, intro: true, reviews: true, womenOnly: true)));
+    testWidgets('only the approved AI disclosure may be smaller than 14 sp', (
+      tester,
+    ) async {
+      await _pumpProfile(
+        tester,
+        api: apiWith(
+          profileJson(
+            gallery: true,
+            intro: true,
+            reviews: true,
+            womenOnly: true,
+          ),
+        ),
+      );
       for (final t in tester.widgetList<Text>(find.byType(Text))) {
         final size = t.style?.fontSize;
-        final aiDisclosure = const {'AI avatar', 'AI image', 'AI images'}.contains(t.data);
-        if (size != null) expect(size, greaterThanOrEqualTo(aiDisclosure ? 11 : 14), reason: '"${t.data}"');
+        final aiDisclosure = const {
+          'AI avatar chosen by the host',
+          'AI image',
+          'AI images',
+        }.contains(t.data);
+        if (size != null) {
+          expect(
+            size,
+            greaterThanOrEqualTo(aiDisclosure ? 11 : 14),
+            reason: '"${t.data}"',
+          );
+        }
       }
     });
   });
 
   group('action bar', () {
-    testWidgets('online + signed in: Call opens the call confirm step for this host', (tester) async {
-      final rig = await _pumpProfile(tester, api: apiWith(profileJson()), session: signedIn());
-      expect(find.text('Call'), findsOneWidget);
-      expect(find.text('Notify me when online'), findsNothing);
-      await tester.tap(find.text('Call'));
-      await tester.pumpAndSettle();
-      expect(rig.opened, ['asha']);
-    });
+    testWidgets(
+      'online + signed in: Call opens the call confirm step for this host',
+      (tester) async {
+        final rig = await _pumpProfile(
+          tester,
+          api: apiWith(profileJson()),
+          session: signedIn(),
+        );
+        expect(find.text('Call Asha'), findsOneWidget);
+        expect(find.text('Notify me when online'), findsNothing);
+        await tester.tap(find.text('Call Asha'));
+        await tester.pumpAndSettle();
+        expect(rig.opened, ['asha']);
+      },
+    );
 
-    testWidgets('online + signed out: Call asks for sign-in first', (tester) async {
+    testWidgets('online + signed out: Call asks for sign-in first', (
+      tester,
+    ) async {
       final rig = await _pumpProfile(tester, api: apiWith(profileJson()));
-      await tester.tap(find.text('Call'));
+      await tester.tap(find.text('Call Asha'));
       await tester.pumpAndSettle();
       expect(rig.opened, isEmpty);
       expect(find.byType(SignInScreen), findsOneWidget);
-      expect(tester.widget<SignInScreen>(find.byType(SignInScreen)).next, Routes.callConfirmOf('asha'));
+      expect(
+        tester.widget<SignInScreen>(find.byType(SignInScreen)).next,
+        Routes.callConfirmOf('asha'),
+      );
     });
 
-    testWidgets('guest call preserves its lane in the saved confirmation destination', (tester) async {
-      final rig = await _pumpProfile(tester, api: apiWith(profileJson()),
-        location: '/h/asha?lane=lgbtq');
-      await tester.tap(find.text('Call'));
-      await tester.pumpAndSettle();
-      expect(rig.opened, isEmpty);
-      expect(tester.widget<SignInScreen>(find.byType(SignInScreen)).next,
-        Routes.callConfirmOf('asha', lane: 'lgbtq'));
-    });
+    testWidgets(
+      'guest call preserves its lane in the saved confirmation destination',
+      (tester) async {
+        final rig = await _pumpProfile(
+          tester,
+          api: apiWith(profileJson()),
+          location: '/h/asha?lane=lgbtq',
+        );
+        await tester.tap(find.text('Call Asha'));
+        await tester.pumpAndSettle();
+        expect(rig.opened, isEmpty);
+        expect(
+          tester.widget<SignInScreen>(find.byType(SignInScreen)).next,
+          Routes.callConfirmOf('asha', lane: 'lgbtq'),
+        );
+      },
+    );
 
-    testWidgets('guest women-only call opens the public explanation before sign-in', (tester) async {
-      await _pumpProfile(tester, api: apiWith(profileJson(womenOnly: true)));
-      await tester.tap(find.text('Verify to call'));
-      await tester.pumpAndSettle();
-      expect(find.byType(SignInScreen), findsNothing);
-      expect(find.byType(LanesScreen), findsOneWidget);
-      final laneScreen = tester.widget<LanesScreen>(find.byType(LanesScreen));
-      expect(laneScreen.lane, 'women');
-      expect(laneScreen.next, Routes.callConfirmOf('asha', lane: 'women'));
-    });
+    testWidgets(
+      'guest women-only call opens the public explanation before sign-in',
+      (tester) async {
+        await _pumpProfile(tester, api: apiWith(profileJson(womenOnly: true)));
+        await tester.tap(find.text('Verify to call'));
+        await tester.pumpAndSettle();
+        expect(find.byType(SignInScreen), findsNothing);
+        expect(find.byType(LanesScreen), findsOneWidget);
+        final laneScreen = tester.widget<LanesScreen>(find.byType(LanesScreen));
+        expect(laneScreen.lane, 'women');
+        expect(laneScreen.next, Routes.callConfirmOf('asha', lane: 'women'));
+      },
+    );
 
-    testWidgets('busy: "Notify me when free" and a note, no Call', (tester) async {
-      await _pumpProfile(tester, api: apiWith(profileJson(status: 'busy')), session: signedIn());
+    testWidgets('busy: "Notify me when free" and a note, no Call', (
+      tester,
+    ) async {
+      await _pumpProfile(
+        tester,
+        api: apiWith(profileJson(status: 'busy')),
+        session: signedIn(),
+      );
       expect(find.text('On a call'), findsOneWidget);
       expect(find.text('Notify me when free'), findsOneWidget);
       expect(find.text('Asha is on a call right now.'), findsOneWidget);
-      expect(find.text('Call'), findsNothing);
+      expect(find.textContaining('Call Asha'), findsNothing);
     });
 
-    testWidgets('offline: "Notify me when online" and a note, no Call', (tester) async {
-      await _pumpProfile(tester, api: apiWith(profileJson(status: 'offline')), session: signedIn());
+    testWidgets('offline: "Notify me when online" and a note, no Call', (
+      tester,
+    ) async {
+      await _pumpProfile(
+        tester,
+        api: apiWith(profileJson(status: 'offline')),
+        session: signedIn(),
+      );
       expect(find.text('Offline'), findsOneWidget);
       expect(find.text('Notify me when online'), findsOneWidget);
       expect(find.text('Asha is offline right now.'), findsOneWidget);
-      expect(find.text('Call'), findsNothing);
+      expect(find.textContaining('Call Asha'), findsNothing);
     });
 
-    testWidgets('women-only host, caller not in the lane: Verify to call explains the space and opens lanes', (tester) async {
-      final rig = await _pumpProfile(
-        tester,
-        api: apiWith(profileJson(womenOnly: true)),
-        session: signedIn(),
-      );
-      expect(find.text('Women-only space'), findsOneWidget);
-      expect(find.text('This is a women-only space. Verify once to call hosts here.'), findsOneWidget);
-      expect(find.text('Call'), findsNothing);
-      await tester.tap(find.text('Verify to call'));
-      await tester.pumpAndSettle();
-      expect(rig.opened, isEmpty);
-      expect(find.byType(LanesScreen), findsOneWidget);
-      expect(tester.widget<LanesScreen>(find.byType(LanesScreen)).lane, 'women');
-    });
+    testWidgets(
+      'women-only host, caller not in the lane: Verify to call explains the space and opens lanes',
+      (tester) async {
+        final rig = await _pumpProfile(
+          tester,
+          api: apiWith(profileJson(womenOnly: true)),
+          session: signedIn(),
+        );
+        expect(find.text('Women-only space'), findsOneWidget);
+        expect(
+          find.text(
+            'This is a women-only space. Verify once to call hosts here.',
+          ),
+          findsOneWidget,
+        );
+        expect(find.textContaining('Call Asha'), findsNothing);
+        await tester.tap(find.text('Verify to call'));
+        await tester.pumpAndSettle();
+        expect(rig.opened, isEmpty);
+        expect(find.byType(LanesScreen), findsOneWidget);
+        expect(
+          tester.widget<LanesScreen>(find.byType(LanesScreen)).lane,
+          'women',
+        );
+      },
+    );
 
-    testWidgets('women-only host, caller already in the lane: Call', (tester) async {
+    testWidgets('women-only host, caller already in the lane: Call', (
+      tester,
+    ) async {
       final rig = await _pumpProfile(
         tester,
         api: apiWith(profileJson(womenOnly: true)),
         session: signedIn(womenLane: true),
       );
       expect(find.text('Verify to call'), findsNothing);
-      await tester.tap(find.text('Call'));
+      await tester.tap(find.text('Call Asha'));
       await tester.pumpAndSettle();
       expect(rig.opened, ['asha']);
     });
 
     testWidgets('calls flag off: a disabled "Calls open soon"', (tester) async {
       final api = apiWith(profileJson())
-        ..onJson('GET', '/api/config', {'hostsPublicEnabled': true, 'hfCallsEnabled': false});
+        ..onJson('GET', '/api/config', {
+          'hostsPublicEnabled': true,
+          'hfCallsEnabled': false,
+        });
       await _pumpProfile(tester, api: api, session: signedIn());
       expect(find.text('Calls open soon'), findsOneWidget);
-      expect(find.text('Call'), findsNothing);
-      final button = tester.widget<ElevatedButton>(
-        find.ancestor(of: find.text('Calls open soon'), matching: find.byType(ElevatedButton)),
+      expect(find.textContaining('Call Asha'), findsNothing);
+      final button = tester.widget<InkWell>(
+        find.ancestor(
+          of: find.text('Calls open soon'),
+          matching: find.byType(InkWell),
+        ),
       );
-      expect(button.onPressed, isNull);
+      expect(button.onTap, isNull);
     });
 
-    testWidgets('token estimate shows when signed in and in token mode', (tester) async {
+    testWidgets('token estimate shows when signed in and in token mode', (
+      tester,
+    ) async {
       final api = apiWith(profileJson())
         ..onJson('GET', '/api/hf/wallet/estimate', {
           'mode': 'tokens',
@@ -407,6 +573,7 @@ void main() {
         });
       await _pumpProfile(tester, api: api, session: signedIn());
       expect(find.text('about 8 min 12 s'), findsOneWidget);
+      expect(find.text('10 min ≈ ₹120'), findsNothing);
     });
 
     testWidgets('no token estimate when signed out', (tester) async {
@@ -427,21 +594,32 @@ void main() {
       expect(api.callsTo('POST', _notifyPath), isEmpty);
     });
 
-    testWidgets('guest notification saves an explicit on operation', (tester) async {
+    testWidgets('guest notification saves an explicit on operation', (
+      tester,
+    ) async {
       final api = apiWith(profileJson(status: 'offline'));
       await _pumpProfile(tester, api: api);
       await tester.tap(find.text('Notify me when online'));
       await tester.pumpAndSettle();
       final next = tester.widget<SignInScreen>(find.byType(SignInScreen)).next!;
-      expect(Uri.parse(next).queryParameters, {'action': 'notify', 'notify': 'on'});
+      expect(Uri.parse(next).queryParameters, {
+        'action': 'notify',
+        'notify': 'on',
+      });
       expect(api.callsTo('POST', _notifyPath), isEmpty);
     });
 
-    testWidgets('restored on intent confirms POST even if already subscribed', (tester) async {
+    testWidgets('restored on intent confirms POST even if already subscribed', (
+      tester,
+    ) async {
       final api = apiWith(profileJson(), notifySubscribed: true)
         ..onJson('POST', _notifyPath, {'ok': true, 'subscribed': true});
-      await _pumpProfile(tester, api: api, session: signedIn(),
-        location: '/h/asha?action=notify&notify=on');
+      await _pumpProfile(
+        tester,
+        api: api,
+        session: signedIn(),
+        location: '/h/asha?action=notify&notify=on',
+      );
       expect(find.text('Confirm notification'), findsOneWidget);
       expect(api.callsTo('POST', _notifyPath), isEmpty);
       expect(api.callsTo('DELETE', _notifyPath), isEmpty);
@@ -451,22 +629,35 @@ void main() {
       expect(api.callsTo('DELETE', _notifyPath), isEmpty);
     });
 
-    testWidgets('restored off intent confirms DELETE even if currently unsubscribed', (tester) async {
-      final api = apiWith(profileJson(status: 'offline'))
-        ..onJson('DELETE', _notifyPath, {'ok': true, 'subscribed': false});
-      await _pumpProfile(tester, api: api, session: signedIn(),
-        location: '/h/asha?action=notify&notify=off');
-      expect(api.callsTo('DELETE', _notifyPath), isEmpty);
-      await tester.tap(find.text('Confirm stop'));
-      await tester.pumpAndSettle();
-      expect(api.callsTo('DELETE', _notifyPath), hasLength(1));
-      expect(api.callsTo('POST', _notifyPath), isEmpty);
-    });
+    testWidgets(
+      'restored off intent confirms DELETE even if currently unsubscribed',
+      (tester) async {
+        final api = apiWith(profileJson(status: 'offline'))
+          ..onJson('DELETE', _notifyPath, {'ok': true, 'subscribed': false});
+        await _pumpProfile(
+          tester,
+          api: api,
+          session: signedIn(),
+          location: '/h/asha?action=notify&notify=off',
+        );
+        expect(api.callsTo('DELETE', _notifyPath), isEmpty);
+        await tester.tap(find.text('Confirm stop'));
+        await tester.pumpAndSettle();
+        expect(api.callsTo('DELETE', _notifyPath), hasLength(1));
+        expect(api.callsTo('POST', _notifyPath), isEmpty);
+      },
+    );
 
-    testWidgets('restored notification can be cancelled without a write', (tester) async {
+    testWidgets('restored notification can be cancelled without a write', (
+      tester,
+    ) async {
       final api = apiWith(profileJson(status: 'offline'));
-      await _pumpProfile(tester, api: api, session: signedIn(),
-        location: '/h/asha?action=notify&notify=on');
+      await _pumpProfile(
+        tester,
+        api: api,
+        session: signedIn(),
+        location: '/h/asha?action=notify&notify=on',
+      );
       await tester.tap(find.text('Cancel'));
       await tester.pumpAndSettle();
       expect(find.text('Confirm notification'), findsNothing);
@@ -474,35 +665,54 @@ void main() {
       expect(api.callsTo('DELETE', _notifyPath), isEmpty);
     });
 
-    testWidgets('success: POST and "We\'ll WhatsApp you when they\'re online."', (tester) async {
-      final api = apiWith(profileJson(status: 'offline'))
-        ..onJson('POST', _notifyPath, {'ok': true, 'subscribed': true});
-      await _pumpProfile(tester, api: api, session: signedIn());
-      await tester.tap(find.text('Notify me when online'));
-      await tester.pumpAndSettle();
-      expect(api.callsTo('POST', _notifyPath), hasLength(1));
-      expect(find.text("We'll WhatsApp you when they're online."), findsOneWidget);
-      expect(find.text('Stop notifying me'), findsOneWidget);
-    });
+    testWidgets(
+      'success: POST and "We\'ll WhatsApp you when they\'re online."',
+      (tester) async {
+        final api = apiWith(profileJson(status: 'offline'))
+          ..onJson('POST', _notifyPath, {'ok': true, 'subscribed': true});
+        await _pumpProfile(tester, api: api, session: signedIn());
+        await tester.tap(find.text('Notify me when online'));
+        await tester.pumpAndSettle();
+        expect(api.callsTo('POST', _notifyPath), hasLength(1));
+        expect(
+          find.text("We'll WhatsApp you when they're online."),
+          findsOneWidget,
+        );
+        expect(find.text('Stop notifying me'), findsOneWidget);
+      },
+    );
 
-    testWidgets('error: the worker message is shown and the button stays', (tester) async {
+    testWidgets('error: the worker message is shown and the button stays', (
+      tester,
+    ) async {
       final api = apiWith(profileJson(status: 'busy'))
         ..onError(
           'POST',
           _notifyPath,
-          const ApiError(status: 403, code: 'not_verified', message: 'Verify your WhatsApp number first.'),
+          const ApiError(
+            status: 403,
+            code: 'not_verified',
+            message: 'Verify your WhatsApp number first.',
+          ),
         );
       await _pumpProfile(tester, api: api, session: signedIn());
       await tester.tap(find.text('Notify me when free'));
       await tester.pumpAndSettle();
       expect(find.text('Verify your WhatsApp number first.'), findsOneWidget);
-      expect(find.text("We'll WhatsApp you when they're online."), findsNothing);
+      expect(
+        find.text("We'll WhatsApp you when they're online."),
+        findsNothing,
+      );
       expect(find.text('Notify me when free'), findsOneWidget);
     });
 
-    testWidgets('already subscribed: Stop notifying me sends DELETE', (tester) async {
-      final api = apiWith(profileJson(status: 'offline'), notifySubscribed: true)
-        ..onJson('DELETE', _notifyPath, {'ok': true, 'subscribed': false});
+    testWidgets('already subscribed: Stop notifying me sends DELETE', (
+      tester,
+    ) async {
+      final api = apiWith(
+        profileJson(status: 'offline'),
+        notifySubscribed: true,
+      )..onJson('DELETE', _notifyPath, {'ok': true, 'subscribed': false});
       await _pumpProfile(tester, api: api, session: signedIn());
       expect(find.text('Stop notifying me'), findsOneWidget);
       await tester.tap(find.text('Stop notifying me'));
@@ -521,11 +731,16 @@ void main() {
 
     testWidgets('play, progress and pause', (tester) async {
       final player = FakeIntroPlayer();
-      await _pumpProfile(tester, api: apiWith(profileJson(intro: true)), player: player);
+      await _pumpProfile(
+        tester,
+        api: apiWith(profileJson(intro: true)),
+        player: player,
+      );
       expect(find.text('Recorded by the host'), findsOneWidget);
       expect(find.text('00:00 / 00:30'), findsOneWidget);
       await tester.ensureVisible(find.byTooltip('Play introduction'));
       await tester.pump();
+      expect(find.text('Hear Asha first'), findsOneWidget);
       await tester.tap(find.byTooltip('Play introduction'));
       await tester.pumpAndSettle();
       expect(player.played, ['https://media.example.test/intro.m4a']);
@@ -541,26 +756,87 @@ void main() {
   });
 
   group('reviews, gallery, report', () {
-    testWidgets('reviews show first name, stars and text', (tester) async {
+    testWidgets('reviews show the summary, first name, stars and text', (
+      tester,
+    ) async {
       await _pumpProfile(tester, api: apiWith(profileJson(reviews: true)));
       expect(find.text('Ravi'), findsOneWidget);
       expect(find.text('Very kind and patient.'), findsOneWidget);
-      expect(find.text('4.6'), findsNWidgets(2)); // header and summary
-      expect(find.text('5 reviews'), findsOneWidget);
-      expect(find.text('Talked to 40 people · 6 regulars'), findsOneWidget);
+      expect(find.text('4.6'), findsOneWidget); // the summary card
+      expect(find.text('★ 4.6'), findsOneWidget); // the stat strip
+      expect(
+        find.text('5 reviews'),
+        findsNWidgets(2),
+      ); // strip caption and summary
+      expect(find.text('40'), findsOneWidget);
+      expect(find.text('Tension · 12 min · Regular'), findsOneWidget);
+      expect(
+        find.text(
+          'Reviews are checked before they appear. Only first names are shown.',
+        ),
+        findsOneWidget,
+      );
     });
 
-    testWidgets('gallery swipes to the next picture and shows its caption', (tester) async {
-      await _pumpProfile(tester, api: apiWith(profileJson(gallery: true)));
-      await tester.ensureVisible(find.byType(PageView));
-      await tester.pumpAndSettle();
-      expect(find.text('Morning chai'), findsOneWidget);
-      await tester.drag(find.byType(PageView), const Offset(-500, 0));
-      await tester.pumpAndSettle();
-      expect(find.text('Morning chai'), findsNothing);
+    testWidgets(
+      'no reviews: the stat strip says New host and the section says so',
+      (tester) async {
+        await _pumpProfile(tester, api: apiWith(profileJson()));
+        expect(find.text('No reviews yet.'), findsOneWidget);
+        expect(find.text('New'), findsOneWidget);
+      },
+    );
+
+    testWidgets('one or two pictures: no "+N more" tile', (tester) async {
+      await _pumpProfile(
+        tester,
+        api: apiWith(profileJson(gallery: true, galleryCount: 2)),
+      );
+      expect(find.byKey(const ValueKey('gallery-tile-0')), findsOneWidget);
+      expect(find.byKey(const ValueKey('gallery-tile-1')), findsOneWidget);
+      expect(find.byKey(const ValueKey('gallery-more')), findsNothing);
     });
 
-    testWidgets('Report opens the web report page for this host', (tester) async {
+    testWidgets('more than two pictures: a "+N more" tile opens the lightbox', (
+      tester,
+    ) async {
+      await _pumpProfile(
+        tester,
+        api: apiWith(profileJson(gallery: true, galleryCount: 5)),
+      );
+      expect(find.text('+3 more'), findsOneWidget);
+      await tester.ensureVisible(find.byKey(const ValueKey('gallery-more')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('gallery-more')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('gallery-lightbox')), findsOneWidget);
+      expect(find.text('3 / 5'), findsOneWidget);
+      await tester.tap(find.byIcon(Icons.close_rounded));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('gallery-lightbox')), findsNothing);
+    });
+
+    testWidgets(
+      'the hero shows the avatar first and swipes to the gallery pictures',
+      (tester) async {
+        await _pumpProfile(tester, api: apiWith(profileJson(gallery: true)));
+        expect(find.text('AI avatar chosen by the host'), findsOneWidget);
+        await tester.drag(find.byType(PageView).first, const Offset(-400, 0));
+        await tester.pumpAndSettle();
+        expect(find.text('AI avatar chosen by the host'), findsNothing);
+      },
+    );
+
+    testWidgets('a quote card appears only when the host has a quote', (
+      tester,
+    ) async {
+      await _pumpProfile(tester, api: apiWith(profileJson(quote: null)));
+      expect(find.textContaining('Baat se baat'), findsNothing);
+    });
+
+    testWidgets('Report opens the web report page for this host', (
+      tester,
+    ) async {
       await _pumpProfile(tester, api: apiWith(profileJson()));
       await tester.ensureVisible(find.text('Report this profile'));
       await tester.pumpAndSettle();
@@ -569,6 +845,82 @@ void main() {
       expect(links.opened, hasLength(1));
       expect(links.opened.single.path, '/report');
       expect(links.opened.single.queryParameters['profile'], 'asha');
+    });
+  });
+
+  group('layout', () {
+    testWidgets(
+      'the segmented control scrolls to its section and follows the scroll back',
+      (tester) async {
+        await _pumpProfile(
+          tester,
+          api: apiWith(
+            profileJson(gallery: true, galleryCount: 4, reviews: true),
+          ),
+        );
+        final scroll = tester
+            .widget<CustomScrollView>(find.byType(CustomScrollView))
+            .controller!;
+        // The tab bar is in the flow, and a copy is pinned at the top once the original scrolls away: .last is the visible one.
+        HfSegmented tabs() =>
+            tester.widgetList<HfSegmented>(find.byType(HfSegmented)).last;
+        Finder tab(String label) => find
+            .descendant(
+              of: find.byType(HfSegmented),
+              matching: find.text(label),
+            )
+            .last;
+        expect(scroll.offset, 0);
+        expect(tabs().selected, 0);
+        await tester.ensureVisible(tab('Reviews'));
+        await tester.pumpAndSettle();
+
+        await tester.tap(tab('Reviews'));
+        await tester.pumpAndSettle();
+        final atReviews = scroll.offset;
+        expect(atReviews, greaterThan(0));
+        expect(tabs().selected, 2);
+
+        await tester.tap(tab('Gallery'));
+        await tester.pumpAndSettle();
+        expect(scroll.offset, greaterThan(atReviews));
+        expect(tabs().selected, 3);
+
+        for (var i = 0; i < 3; i++) {
+          await tester.drag(
+            find.byType(CustomScrollView),
+            const Offset(0, 5000),
+          );
+          await tester.pumpAndSettle();
+        }
+        expect(scroll.offset, 0);
+        expect(tabs().selected, 0);
+      },
+    );
+
+    testWidgets('large text (2.0) on a narrow screen does not overflow', (
+      tester,
+    ) async {
+      tester.platformDispatcher.textScaleFactorTestValue = 2.0;
+      addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+      await _pumpProfile(
+        tester,
+        api: apiWith(
+          profileJson(
+            gallery: true,
+            galleryCount: 4,
+            reviews: true,
+            intro: true,
+            lgbtq: true,
+            womenOnly: true,
+          ),
+        ),
+        session: signedIn(),
+      );
+      expect(tester.takeException(), isNull);
+      await tester.drag(find.byType(CustomScrollView), const Offset(0, -3000));
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
     });
   });
 
@@ -585,7 +937,10 @@ void main() {
     test('review dates read ISO text and epoch milliseconds', () {
       expect(formatReviewDate('not a date'), '');
       expect(formatReviewDate(null), '');
-      expect(formatReviewDate('2026-10-01T10:00:00.000Z'), matches(RegExp(r'^\d{1,2} Oct 2026$')));
+      expect(
+        formatReviewDate('2026-10-01T10:00:00.000Z'),
+        matches(RegExp(r'^\d{1,2} Oct 2026$')),
+      );
       expect(formatReviewDate(1790000000000), isNotEmpty);
     });
 

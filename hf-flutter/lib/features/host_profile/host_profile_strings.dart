@@ -17,7 +17,8 @@ abstract final class HostProfileStrings {
   static const String introTitle = 'Hear the introduction';
   static const String playIntro = 'Play introduction';
   static const String pauseIntro = 'Pause introduction';
-  static const String introFailed = "We couldn't play the introduction. Please try again.";
+  static const String introFailed =
+      "We couldn't play the introduction. Please try again.";
 
   // Sections
   static const String about = 'About';
@@ -33,10 +34,21 @@ abstract final class HostProfileStrings {
   static const String disclosure =
       'The pictures on a profile are made by AI from an avatar the host chose. The voice introduction is the host’s own recording. '
       'The person you talk to on a call is a real, identity-checked host.';
+
+  /// Order and titles follow the Profile mockup: private number, respect, not therapy.
   static const List<(String, String)> beforeNotes = [
-    ('Just a conversation', 'Talk and share at your own pace. No professional advice or promised results.'),
-    ('Keep it respectful', '18+ only. You can end a call at any time. If you feel unsafe, end the call and report it.'),
-    ('Your number stays private', 'Your phone rings and the host’s phone rings. Neither of you sees the other’s number.'),
+    (
+      'Your number stays private',
+      'Your phone rings and the host’s phone rings. Neither of you sees the other’s number.',
+    ),
+    (
+      'Keep it respectful, 18+ only',
+      '18+ only. You can end a call at any time. If you feel unsafe, end the call and report it.',
+    ),
+    (
+      'Just a conversation, not therapy',
+      'Talk and share at your own pace. No professional advice or promised results.',
+    ),
   ];
   static const String report = 'Report this profile';
 
@@ -49,8 +61,41 @@ abstract final class HostProfileStrings {
   static const String notifyOn = "We'll WhatsApp you when they're online.";
   static const String notifyOff = "Okay, we won't message you.";
   static const String verifyToCall = 'Verify to call';
-  static const String womenLaneNote = 'This is a women-only space. Verify once to call hosts here.';
+  static const String womenLaneNote =
+      'This is a women-only space. Verify once to call hosts here.';
 
   static String hostOnCall(String name) => '$name is on a call right now.';
   static String hostOffline(String name) => '$name is offline right now.';
+
+  // Profile redesign (HF-UI-5)
+  static const String aiAvatarChosen = 'AI avatar chosen by the host';
+  static const String backLabel = 'Back';
+  static const String saveLabel = 'Save profile';
+  static const String unsaveLabel = 'Remove from saved';
+  static const String shareLabel = 'Share profile';
+  static const String linkCopied = 'Profile link copied.';
+  static const String newLabel = 'New';
+  static const String hostWord = 'host';
+  static const String talkedTo = 'talked to';
+  static const String regulars = 'regulars';
+  static const String styleTile = 'Style';
+  static const String spaceTile = 'Space';
+  static const String welcomeTile = 'Welcome';
+  static const String topicsNote =
+      'Pick a topic, bring a story, or just say hello.';
+  static const String reviewsNote =
+      'Reviews are checked before they appear. Only first names are shown.';
+  static const String crisisLead = 'In crisis? Call Tele-MANAS';
+  static const String crisisOr = 'or';
+  static const String perMin = ' /min';
+  static const String tabTopics = 'Topics';
+  static const String tabReviews = 'Reviews';
+
+  static String introHeading(String name) => 'Hear $name first';
+  static String callName(String name) => 'Call $name';
+  static String tenMinutes(String amount) => '10 min ≈ $amount';
+  static String reviewCount(int n) => '$n ${n == 1 ? 'review' : 'reviews'}';
+  static String morePictures(int n) => '+$n more';
+  static String openPicture(int n) => 'Open picture $n';
+  static String seeAllPictures(int n) => 'See all $n pictures';
 }

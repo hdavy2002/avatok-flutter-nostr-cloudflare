@@ -112,13 +112,16 @@ class HostProfile {
       quote: _s(j['quote']),
       gallery: rawGallery is List
           ? rawGallery
-              .whereType<Map>()
-              .map((m) => GalleryImage.fromJson(Map<String, dynamic>.from(m)))
-              .where((g) => g.url.isNotEmpty)
-              .toList()
+                .whereType<Map>()
+                .map((m) => GalleryImage.fromJson(Map<String, dynamic>.from(m)))
+                .where((g) => g.url.isNotEmpty)
+                .toList()
           : const <GalleryImage>[],
       reviews: rawReviews is List
-          ? rawReviews.whereType<Map>().map((m) => HostReview.fromJson(Map<String, dynamic>.from(m))).toList()
+          ? rawReviews
+                .whereType<Map>()
+                .map((m) => HostReview.fromJson(Map<String, dynamic>.from(m)))
+                .toList()
           : const <HostReview>[],
     );
   }
@@ -128,10 +131,12 @@ class HostProfile {
     return s.isEmpty ? null : s;
   }
 
-  static int? _i(Object? v) => v is num ? v.toInt() : int.tryParse('${v ?? ''}');
+  static int? _i(Object? v) =>
+      v is num ? v.toInt() : int.tryParse('${v ?? ''}');
 
-  static List<String> _strings(Object? v) =>
-      v is List ? v.map((e) => '$e'.trim()).where((e) => e.isNotEmpty).toList() : const <String>[];
+  static List<String> _strings(Object? v) => v is List
+      ? v.map((e) => '$e'.trim()).where((e) => e.isNotEmpty).toList()
+      : const <String>[];
 }
 
 class GalleryImage {
@@ -142,7 +147,10 @@ class GalleryImage {
 
   factory GalleryImage.fromJson(Map<String, dynamic> j) {
     final c = (j['caption'] ?? '').toString().trim();
-    return GalleryImage(url: (j['url'] ?? '').toString(), caption: c.isEmpty ? null : c);
+    return GalleryImage(
+      url: (j['url'] ?? '').toString(),
+      caption: c.isEmpty ? null : c,
+    );
   }
 }
 
@@ -188,7 +196,20 @@ class HostReview {
   String get dateLabel => formatReviewDate(date);
 }
 
-const List<String> _months = <String>['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+const List<String> _months = <String>[
+  'Jan',
+  'Feb',
+  'Mar',
+  'Apr',
+  'May',
+  'Jun',
+  'Jul',
+  'Aug',
+  'Sep',
+  'Oct',
+  'Nov',
+  'Dec',
+];
 
 String formatReviewDate(Object? date) {
   DateTime? d;
@@ -196,7 +217,9 @@ String formatReviewDate(Object? date) {
     d = DateTime.fromMillisecondsSinceEpoch(date.toInt(), isUtc: true);
   } else if (date is String && date.isNotEmpty) {
     final asNumber = int.tryParse(date);
-    d = asNumber != null ? DateTime.fromMillisecondsSinceEpoch(asNumber, isUtc: true) : DateTime.tryParse(date);
+    d = asNumber != null
+        ? DateTime.fromMillisecondsSinceEpoch(asNumber, isUtc: true)
+        : DateTime.tryParse(date);
   }
   if (d == null) return '';
   final local = d.toLocal();
@@ -206,7 +229,11 @@ String formatReviewDate(Object? date) {
 /// `GET /api/hf/wallet/estimate?host=<slug>` (signed in). Token mode adds `tokensPerMinute` and `aboutText`
 /// ("about 8 min 12 s", or "add tokens to call" with an empty balance). Old mode is rupees only.
 class HostEstimate {
-  const HostEstimate({required this.isTokens, this.tokensPerMinute, this.aboutText});
+  const HostEstimate({
+    required this.isTokens,
+    this.tokensPerMinute,
+    this.aboutText,
+  });
 
   final bool isTokens;
   final String? tokensPerMinute;

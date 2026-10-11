@@ -37,10 +37,17 @@ class _GalleryPagerState extends ConsumerState<GalleryPager> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Wrap(
-          spacing: 12, runSpacing: 8,
+          spacing: 12,
+          runSpacing: 8,
           crossAxisAlignment: WrapCrossAlignment.center,
           children: [
-            Semantics(header: true, child: const Text(HostProfileStrings.gallery, style: HfText.title)),
+            Semantics(
+              header: true,
+              child: const Text(
+                HostProfileStrings.gallery,
+                style: HfText.title,
+              ),
+            ),
             const SizedBox(width: 12),
             const AiLabel(text: Strings.aiImagesLabel),
           ],
@@ -58,7 +65,8 @@ class _GalleryPagerState extends ConsumerState<GalleryPager> {
                 padding: const EdgeInsets.symmetric(horizontal: 2),
                 child: Semantics(
                   image: true,
-                  label: 'Picture ${i + 1} of ${items.length}: ${item.caption ?? HostProfileStrings.galleryImage}',
+                  label:
+                      'Picture ${i + 1} of ${items.length}: ${item.caption ?? HostProfileStrings.galleryImage}',
                   excludeSemantics: true,
                   child: ClipRRect(
                     borderRadius: BorderRadius.circular(HfRadius.card),
@@ -80,7 +88,8 @@ class _GalleryPagerState extends ConsumerState<GalleryPager> {
           ),
         ),
         const SizedBox(height: 10),
-        if (items[_page].caption != null) Text(items[_page].caption!, style: HfText.note),
+        if (items[_page].caption != null)
+          Text(items[_page].caption!, style: HfText.note),
         if (items.length > 1) ...[
           const SizedBox(height: 10),
           Row(

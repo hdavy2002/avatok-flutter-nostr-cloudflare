@@ -29,18 +29,18 @@ class AudioplayersIntroPlayer implements IntroPlayer {
 
   @override
   Stream<IntroPlayerState> get states => _player.onPlayerStateChanged.map((s) {
-        switch (s) {
-          case PlayerState.playing:
-            return IntroPlayerState.playing;
-          case PlayerState.paused:
-            return IntroPlayerState.paused;
-          case PlayerState.completed:
-            return IntroPlayerState.completed;
-          case PlayerState.stopped:
-          case PlayerState.disposed:
-            return IntroPlayerState.stopped;
-        }
-      });
+    switch (s) {
+      case PlayerState.playing:
+        return IntroPlayerState.playing;
+      case PlayerState.paused:
+        return IntroPlayerState.paused;
+      case PlayerState.completed:
+        return IntroPlayerState.completed;
+      case PlayerState.stopped:
+      case PlayerState.disposed:
+        return IntroPlayerState.stopped;
+    }
+  });
 
   @override
   Stream<Duration> get positions => _player.onPositionChanged;
@@ -65,4 +65,6 @@ class AudioplayersIntroPlayer implements IntroPlayer {
 }
 
 /// Makes one player per voice-intro widget, on its first tap. Tests override this with a fake.
-final introPlayerFactoryProvider = Provider<IntroPlayer Function()>((ref) => AudioplayersIntroPlayer.new);
+final introPlayerFactoryProvider = Provider<IntroPlayer Function()>(
+  (ref) => AudioplayersIntroPlayer.new,
+);
