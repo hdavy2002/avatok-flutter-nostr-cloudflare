@@ -123,7 +123,9 @@ class CallInfo {
       chargedRupees: j['chargedRupees'] is num ? j['chargedRupees'] as num : 0,
       endReason: s(j['endReason']),
       canReview: j['canReview'] == true,
-      billableSeconds: j['billableSeconds'] == null ? null : i(j['billableSeconds']),
+      billableSeconds: j['billableSeconds'] == null
+          ? null
+          : i(j['billableSeconds']),
       tokensSpent: j['tokensSpent'] == null ? null : '${j['tokensSpent']}',
     );
   }
@@ -158,10 +160,16 @@ class CallEstimate {
     final tokens = j['mode'] == 'tokens';
     return CallEstimate(
       isTokens: tokens,
-      ratePerMinRupees: j['ratePerMinRupees'] is num ? j['ratePerMinRupees'] as num : 0,
-      tokensPerMinute: j['tokensPerMinute'] == null ? null : '${j['tokensPerMinute']}',
+      ratePerMinRupees: j['ratePerMinRupees'] is num
+          ? j['ratePerMinRupees'] as num
+          : 0,
+      tokensPerMinute: j['tokensPerMinute'] == null
+          ? null
+          : '${j['tokensPerMinute']}',
       aboutText: j['aboutText'] == null ? null : '${j['aboutText']}',
-      affordableSeconds: j['affordableSeconds'] is num ? (j['affordableSeconds'] as num).toInt() : null,
+      affordableSeconds: j['affordableSeconds'] is num
+          ? (j['affordableSeconds'] as num).toInt()
+          : null,
       // Old mode has no balance check on the server estimate: the start call is the authority.
       canStart: tokens ? j['canStart'] != false : true,
       hasDebt: j['hasDebt'] == true,
@@ -172,7 +180,12 @@ class CallEstimate {
 
 /// `POST /api/hf/calls` success: `{ok, callId, status:"ringing_host", rate, maxMinutes, maxSeconds?, mode?:"tokens"}`.
 class StartedCall {
-  const StartedCall({required this.callId, this.rate, this.maxMinutes, this.isTokens = false});
+  const StartedCall({
+    required this.callId,
+    this.rate,
+    this.maxMinutes,
+    this.isTokens = false,
+  });
 
   final String callId;
   final num? rate;
@@ -180,11 +193,13 @@ class StartedCall {
   final bool isTokens;
 
   factory StartedCall.fromJson(Map<String, dynamic> j) => StartedCall(
-        callId: '${j['callId'] ?? ''}',
-        rate: j['rate'] is num ? j['rate'] as num : null,
-        maxMinutes: j['maxMinutes'] is num ? (j['maxMinutes'] as num).toInt() : null,
-        isTokens: j['mode'] == 'tokens',
-      );
+    callId: '${j['callId'] ?? ''}',
+    rate: j['rate'] is num ? j['rate'] as num : null,
+    maxMinutes: j['maxMinutes'] is num
+        ? (j['maxMinutes'] as num).toInt()
+        : null,
+    isTokens: j['mode'] == 'tokens',
+  );
 }
 
 /// What the person should be offered when starting a call fails.
@@ -233,36 +248,78 @@ class CallStartProblem {
   /// `host_unavailable` always uses the one calm sentence (HF-WELL-3: never a rejection).
   static CallStartProblem fromError(ApiError e) {
     final code = e.code;
-    if (e.isNotEnabled) return CallStartProblem(CallProblemKind.comingSoon, Strings.comingSoonBody, code: code);
-    if (e.isOffline) return CallStartProblem(CallProblemKind.retry, e.userMessage, code: code);
+    if (e.isNotEnabled) {
+      return CallStartProblem(
+        CallProblemKind.comingSoon,
+        Strings.comingSoonBody,
+        code: code,
+      );
+    }
+    if (e.isOffline) {
+      return CallStartProblem(CallProblemKind.retry, e.userMessage, code: code);
+    }
     switch (code) {
       case 'host_unavailable':
       case 'host_declined':
       case 'blocked':
-        return CallStartProblem(CallProblemKind.hostUnavailable, CallStrings.hostUnavailable, code: code);
+        return CallStartProblem(
+          CallProblemKind.hostUnavailable,
+          CallStrings.hostUnavailable,
+          code: code,
+        );
       case 'call_in_progress':
-        return CallStartProblem(CallProblemKind.callInProgress, e.userMessage, code: code);
+        return CallStartProblem(
+          CallProblemKind.callInProgress,
+          e.userMessage,
+          code: code,
+        );
       case 'not_verified':
       case 'unauthorized':
-        return CallStartProblem(CallProblemKind.signIn, e.userMessage, code: code);
+        return CallStartProblem(
+          CallProblemKind.signIn,
+          e.userMessage,
+          code: code,
+        );
       case 'lane_required':
         final lane = e.extra['lane'];
-        return CallStartProblem(CallProblemKind.lane, e.userMessage,
-            lane: lane is String && lane.isNotEmpty ? lane : 'women', code: code);
+        return CallStartProblem(
+          CallProblemKind.lane,
+          e.userMessage,
+          lane: lane is String && lane.isNotEmpty ? lane : 'women',
+          code: code,
+        );
       case 'low_balance':
-        return CallStartProblem(CallProblemKind.wallet, e.userMessage, code: code);
+        return CallStartProblem(
+          CallProblemKind.wallet,
+          e.userMessage,
+          code: code,
+        );
       case 'debt_open':
-        return CallStartProblem(CallProblemKind.debt, e.userMessage, code: code);
+        return CallStartProblem(
+          CallProblemKind.debt,
+          e.userMessage,
+          code: code,
+        );
       case 'wallet_busy':
       case 'call_failed':
       case 'rate_limited':
-        return CallStartProblem(CallProblemKind.retry, e.userMessage, code: code);
+        return CallStartProblem(
+          CallProblemKind.retry,
+          e.userMessage,
+          code: code,
+        );
       case 'account_closing':
       case 'calls_not_ready':
         // Trying again changes nothing: just the worker's own words.
-        return CallStartProblem(CallProblemKind.message, e.userMessage, code: code);
+        return CallStartProblem(
+          CallProblemKind.message,
+          e.userMessage,
+          code: code,
+        );
     }
-    if (e.status == 429 || e.status >= 500) return CallStartProblem(CallProblemKind.retry, e.userMessage, code: code);
+    if (e.status == 429 || e.status >= 500) {
+      return CallStartProblem(CallProblemKind.retry, e.userMessage, code: code);
+    }
     // account_closing, calls_not_ready, invalid_lane and anything unknown: the worker's own words.
     return CallStartProblem(CallProblemKind.message, e.userMessage, code: code);
   }
@@ -284,23 +341,30 @@ abstract final class CallStrings {
   static const String callsOpenSoon = 'Calls open soon';
 
   /// The 2-minute minimum rule (worker: START_RESERVE_MINUTES).
-  static const String twoMinuteRule = 'A call starts only if you have 2 minutes of balance. A call lasts up to 60 minutes.';
-  static const String phoneRings = 'Your phone will ring. Pick up to connect. Your number stays private.';
+  static const String twoMinuteRule =
+      'A call starts only if you have 2 minutes of balance. A call lasts up to 60 minutes.';
+  static const String phoneRings =
+      'Your phone will ring. Pick up to connect. Your number stays private.';
   static const String ringingNoCharge = 'Ringing or no answer costs nothing.';
 
   static const String screenTitle = 'Your call';
-  static const String yourPhoneWillRing = 'Your phone will ring in a few seconds';
+  static const String yourPhoneWillRing =
+      'Your phone will ring in a few seconds';
   static const String yourPhoneWillRingSub =
       'Please keep your phone nearby and pick up when it rings. Your number stays private.';
   static const String cancelCall = 'Cancel call';
   static const String cancelling = 'Cancelling…';
-  static const String tooLateToCancel = "It's too late to cancel: you are already connected.";
-  static const String cancelFailed = "We couldn't cancel the call. Please try again.";
+  static const String tooLateToCancel =
+      "It's too late to cancel: you are already connected.";
+  static const String cancelFailed =
+      "We couldn't cancel the call. Please try again.";
   static const String connected = 'Connected';
-  static const String endWithHash = 'Press # on your phone to end the call and block.';
+  static const String endWithHash =
+      'Press # on your phone to end the call and block.';
   static const String maxLengthHint = 'A call can last up to 60 minutes.';
   static const String checking = 'Checking your call…';
-  static const String connectionTrouble = "We can't reach the server. If your phone is ringing, you can still pick up.";
+  static const String connectionTrouble =
+      "We can't reach the server. If your phone is ringing, you can still pick up.";
   static const String callNotFound = "We couldn't find this call.";
   static const String done = 'Done';
   static const String rateYourCall = 'Rate your call';
@@ -309,11 +373,44 @@ abstract final class CallStrings {
   static const String charged = 'Charged';
   static const String noTimeBilled = 'No time billed';
 
+  // ---- Confirm sheet (mockup CallSheet) ----
+  static const String rateLabel = 'Rate';
+  static const String minBalanceNote =
+      'Calls start only with 2 minutes of balance.';
+  static const String orTapToCall = 'Or tap here to call';
+  static const String addMoneyToCall = 'add money to call';
+  static String slideToCall(String name) => 'Slide to call $name';
+  static String yourWalletAmount(String amount) => 'Your wallet $amount';
+  static const String yourWalletPlain = 'Your wallet';
+  static String stepRingFirst(String name) =>
+      'We ring $name first. No answer, no charge.';
+  static const String stepPhoneLead = 'Then ';
+  static const String stepPhoneBold = 'your phone rings';
+  static const String stepPhoneTail = '. Pick up to connect.';
+  static const String stepEnd = 'Press # any time to end. Max 60 minutes.';
+
+  // ---- Call screen (mockup Calling) ----
+  static const String bothPrivate = 'Both numbers stay private';
+  static const String progressLabel = 'Call progress';
+  static const String progressYou = 'You';
+  static const String progressTalking = 'Talking';
+  static String ringingHostHeadline(String name) => 'Ringing $name…';
+  static const String ringingHostNote =
+      "If they don't pick up, you won't be charged.";
+  static String saidYes(String name) => '$name said yes';
+  static const String phoneWillRingNow =
+      'Your phone will ring now.\nPick it up.';
+  static const String billingStarts =
+      'Billing starts only once you are connected.';
+  static const String endFromPhone = 'End the call from your phone';
+
   /// "Ringing {name}… If they don't pick up, you won't be charged."
-  static String ringingHost(String name) => "Ringing $name… If they don't pick up, you won't be charged.";
+  static String ringingHost(String name) =>
+      "Ringing $name… If they don't pick up, you won't be charged.";
 
   /// "{name} said yes. Your phone will ring now. Pick it up."
-  static String ringingCaller(String name) => '$name said yes. Your phone will ring now. Pick it up.';
+  static String ringingCaller(String name) =>
+      '$name said yes. Your phone will ring now. Pick it up.';
 
   /// Why a call ended, in simple English. Null when there is nothing useful to add.
   static String? endReasonText(String? reason, String hostName) {

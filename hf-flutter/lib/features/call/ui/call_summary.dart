@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
 
 import '../../../core/format/money.dart';
-import '../../../core/theme/hf_tokens.dart';
+import '../../../core/theme/hf_theme.dart';
 import '../../../core/widgets/widgets.dart';
 import '../data/call_models.dart';
+import 'call_avatar.dart';
 
 /// What the person sees when a call is over: how long they talked, what it cost, why it ended, and
 /// Rate your call (when the server says [CallInfo.canReview]) or Done.
@@ -56,46 +57,84 @@ class CallSummary extends StatelessWidget {
   Widget build(BuildContext context) {
     final completed = info.status == CallStatus.completed;
     final charge = CallStrings.hasCharge(info);
-    final reason = CallStrings.endReasonText(info.endReason, info.hostFirstName);
+    final reason = CallStrings.endReasonText(
+      info.endReason,
+      info.hostFirstName,
+    );
     // A cancelled or declined call has no end reason worth saying.
-    final shownReason = (completed || info.status == CallStatus.failed) && !cancelledByMe ? reason : null;
+    final shownReason =
+        (completed || info.status == CallStatus.failed) && !cancelledByMe
+        ? reason
+        : null;
     final showRate = completed && info.canReview && !reviewed;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        HfScene(kind: completed ? HfSceneKind.success : HfSceneKind.call, height: 150),
-        const SizedBox(height: 16),
+        Center(
+          child: HfCallAvatar(
+            name: info.hostFirstName == 'your host' ? '' : info.hostFirstName,
+            size: 96,
+            radius: 48,
+            borderColor: HfBrightness.isDark(context)
+                ? HfColors.darkBg
+                : HfColors.white,
+            borderWidth: 4,
+          ),
+        ),
+        const SizedBox(height: HfSpacing.xl),
         Semantics(
           liveRegion: true,
-          child: Text(_headline, style: HfText.headline, textAlign: TextAlign.center),
+          child: Text(
+            _headline,
+            style: HfText.of(context, HfText.headline),
+            textAlign: TextAlign.center,
+          ),
         ),
         if (shownReason != null) ...[
-          const SizedBox(height: 8),
-          Text(shownReason, style: HfText.bodyText, textAlign: TextAlign.center),
+          const SizedBox(height: HfSpacing.sm),
+          Text(
+            shownReason,
+            style: HfText.of(context, HfText.note),
+            textAlign: TextAlign.center,
+          ),
         ],
-        const SizedBox(height: 20),
+        const SizedBox(height: HfSpacing.section),
         if (completed || charge)
           HfCard(
-            color: HfColors.white,
             child: Column(
               children: [
                 _Row(
                   label: CallStrings.timeTalked,
-                  value: info.talkedSeconds > 0 ? Money.duration(info.talkedSeconds) : CallStrings.noTimeBilled,
+                  value: info.talkedSeconds > 0
+                      ? Money.duration(info.talkedSeconds)
+                      : CallStrings.noTimeBilled,
                 ),
-                const SizedBox(height: 12),
-                _Row(label: CallStrings.charged, value: charge ? CallStrings.chargedText(info) : 'No charge'),
+                const SizedBox(height: HfSpacing.lg),
+                _Row(
+                  label: CallStrings.charged,
+                  value: charge ? CallStrings.chargedText(info) : 'No charge',
+                ),
               ],
             ),
           )
         else
-          const HfCard(child: Text('You were not charged.', style: HfText.bodyStrong, textAlign: TextAlign.center)),
-        const SizedBox(height: 24),
+          HfCard(
+            child: Text(
+              'You were not charged.',
+              style: HfText.of(context, HfText.bodyStrong),
+              textAlign: TextAlign.center,
+            ),
+          ),
+        const SizedBox(height: HfSpacing.section),
         if (showRate) ...[
-          HfButton(label: CallStrings.rateYourCall, icon: Icons.star_rounded, onPressed: onRate),
-          const SizedBox(height: 8),
-          HfButton(label: CallStrings.done, kind: HfButtonKind.secondary, onPressed: onDone),
+          HfButton(label: CallStrings.rateYourCall, onPressed: onRate),
+          const SizedBox(height: HfSpacing.sm),
+          HfButton(
+            label: CallStrings.done,
+            kind: HfButtonKind.text,
+            onPressed: onDone,
+          ),
         ] else
           HfButton(label: CallStrings.done, onPressed: onDone),
       ],
@@ -114,9 +153,15 @@ class _Row extends StatelessWidget {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        Flexible(child: Text(label, style: HfText.bodyText)),
-        const SizedBox(width: 12),
-        Flexible(child: Text(value, style: HfText.subtitle, textAlign: TextAlign.end)),
+        Flexible(child: Text(label, style: HfText.of(context, HfText.note))),
+        const SizedBox(width: HfSpacing.lg),
+        Flexible(
+          child: Text(
+            value,
+            style: HfText.of(context, HfText.subsection),
+            textAlign: TextAlign.end,
+          ),
+        ),
       ],
     );
   }

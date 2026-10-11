@@ -1,21 +1,21 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/api/api_error.dart';
-import '../../../core/format/money.dart';
 import '../../../core/router/nav.dart';
 import '../../../core/router/routes.dart';
 import '../../../core/strings.dart';
-import '../../../core/theme/hf_tokens.dart';
+import '../../../core/theme/hf_theme.dart';
 import '../../../core/widgets/widgets.dart';
 import '../data/call_api.dart';
 import '../data/call_models.dart';
 import '../data/call_telemetry.dart';
 import 'call_confirm_page.dart';
-import 'call_confirm_sheet.dart';
+import 'call_live_view.dart';
 import 'call_summary.dart';
 
 /// `/call/:id` (needs sign-in). Follows one call (spec section 2.8):
@@ -44,7 +44,8 @@ class CallScreen extends StatelessWidget {
   static const Duration pollEvery = Duration(seconds: 2);
 
   @override
-  Widget build(BuildContext context) => id == newCallId ? const CallConfirmPage() : CallFollower(id: id);
+  Widget build(BuildContext context) =>
+      id == newCallId ? const CallConfirmPage() : CallFollower(id: id);
 }
 
 /// Follows one running or finished call (see [CallScreen]).
@@ -57,7 +58,8 @@ class CallFollower extends ConsumerStatefulWidget {
   ConsumerState<CallFollower> createState() => _CallFollowerState();
 }
 
-class _CallFollowerState extends ConsumerState<CallFollower> with WidgetsBindingObserver {
+class _CallFollowerState extends ConsumerState<CallFollower>
+    with WidgetsBindingObserver {
   CallInfo? _info;
   ApiError? _fatal;
   int _failures = 0;
@@ -74,7 +76,8 @@ class _CallFollowerState extends ConsumerState<CallFollower> with WidgetsBinding
   bool _endedReported = false;
 
   bool get _terminal => _info?.status.isTerminal ?? false;
-  bool get _shouldPoll => mounted && _foreground && _fatal == null && !_terminal;
+  bool get _shouldPoll =>
+      mounted && _foreground && _fatal == null && !_terminal;
 
   @override
   void initState() {
@@ -125,7 +128,9 @@ class _CallFollowerState extends ConsumerState<CallFollower> with WidgetsBinding
       if (mounted) {
         if (e.status == 404 || e.code == 'not_found') {
           // The server does not know this call: forget it.
-          unawaited(ref.read(activeCallStoreProvider).clear(onlyIfId: widget.id));
+          unawaited(
+            ref.read(activeCallStoreProvider).clear(onlyIfId: widget.id),
+          );
           _stopTimers();
           setState(() => _fatal = e);
         } else {
@@ -154,6 +159,7 @@ class _CallFollowerState extends ConsumerState<CallFollower> with WidgetsBinding
   void _apply(CallInfo info) {
     if (info.status != _lastReported) {
       _lastReported = info.status;
+      if (info.status == CallStatus.connected) HapticFeedback.mediumImpact();
       CallTelemetry.status(info.status.wire);
     }
     if (info.status == CallStatus.connected) {
@@ -202,7 +208,9 @@ class _CallFollowerState extends ConsumerState<CallFollower> with WidgetsBinding
       if (!mounted) return;
       setState(() {
         _cancelling = false;
-        _notice = e.code == 'already_connected' ? CallStrings.tooLateToCancel : CallStrings.cancelFailed;
+        _notice = e.code == 'already_connected'
+            ? CallStrings.tooLateToCancel
+            : CallStrings.cancelFailed;
       });
     }
     // Show what really happened now (ended, or connected after all).
@@ -218,37 +226,38 @@ class _CallFollowerState extends ConsumerState<CallFollower> with WidgetsBinding
 
   int _elapsedSeconds(CallInfo info) {
     final now = ref.read(callClockProvider)();
-    final fromServer = info.connectedAt == null ? null : now.difference(info.connectedAt!);
+    final fromServer = info.connectedAt == null
+        ? null
+        : now.difference(info.connectedAt!);
     // Trust the server's start time unless the phone's clock is clearly off (then count from first sight).
     final d = (fromServer != null && fromServer.inSeconds > -5)
         ? fromServer
-        : (_firstSeenConnected == null ? Duration.zero : now.difference(_firstSeenConnected!));
+        : (_firstSeenConnected == null
+              ? Duration.zero
+              : now.difference(_firstSeenConnected!));
     return d.inSeconds < 0 ? 0 : d.inSeconds;
   }
 
   @override
   Widget build(BuildContext context) {
+    final info = _info;
+    final live = _fatal == null && info != null && !info.status.isTerminal;
+    final dark = HfBrightness.isDark(context);
     return Scaffold(
-      appBar: AppBar(
-        automaticallyImplyLeading: false,
-        leading: const HfBackButton(),
-        title: const Text(CallStrings.screenTitle),
-      ),
-      body: SafeArea(child: _content(_info)),
-      bottomNavigationBar: _fatal == null && (_info?.status.isRinging ?? false)
-          ? SafeArea(
-              top: false,
-              child: Padding(
-                padding: const EdgeInsets.all(HfSpacing.page),
-                child: HfButton(
-                  label: _cancelling ? CallStrings.cancelling : CallStrings.cancelCall,
-                  kind: HfButtonKind.secondary,
-                  loading: _cancelling,
-                  onPressed: _cancel,
-                ),
-              ),
-            )
+      // The live view is a full-bleed lavender page (mockup `Calling`); the other states use the app page.
+      backgroundColor: live
+          ? (dark
+                ? HfColors.darkBg
+                : Color.lerp(HfColors.page, HfColors.lavender, 0.45))
           : null,
+      appBar: live
+          ? null
+          : AppBar(
+              automaticallyImplyLeading: false,
+              leading: const HfBackButton(),
+              title: const Text(CallStrings.screenTitle),
+            ),
+      body: SafeArea(child: _content(info)),
     );
   }
 
@@ -256,7 +265,9 @@ class _CallFollowerState extends ConsumerState<CallFollower> with WidgetsBinding
     final fatal = _fatal;
     if (fatal != null) {
       return EmptyPanel(
-        message: fatal.status == 404 ? CallStrings.callNotFound : fatal.userMessage,
+        message: fatal.status == 404
+            ? CallStrings.callNotFound
+            : fatal.userMessage,
         icon: Icons.phone_disabled_rounded,
         actionLabel: Strings.goHome,
         onAction: () => GoRouter.of(context).go(Routes.home),
@@ -265,89 +276,111 @@ class _CallFollowerState extends ConsumerState<CallFollower> with WidgetsBinding
     if (info == null) {
       // First answer not here yet. After a few misses, say what is going on.
       if (_failures >= 3) {
-        return ErrorPanel(message: CallStrings.connectionTrouble, onRetry: () => unawaited(_poll()));
+        return ErrorPanel(
+          message: CallStrings.connectionTrouble,
+          onRetry: () => unawaited(_poll()),
+        );
       }
-      return const LoadingPanel(message: CallStrings.checking);
+      return const LoadingPanel(
+        message: CallStrings.checking,
+        skeleton: _CallSkeleton(),
+      );
     }
-    return LayoutBuilder(
-      builder: (context, constraints) => SingleChildScrollView(
-        padding: const EdgeInsets.all(HfSpacing.page),
-        child: ConstrainedBox(
-          constraints: BoxConstraints(minHeight: constraints.maxHeight - HfSpacing.page * 2),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: info.status.isTerminal
-                ? [
-                    CallSummary(
-                      info: info,
-                      cancelledByMe: _cancelledByMe,
-                      reviewed: _reviewed,
-                      onRate: () => unawaited(_rate(info)),
-                      onDone: () => popOrHome(context),
-                    ),
-                  ]
-                : _live(info),
+    if (info.status.isTerminal) {
+      return LayoutBuilder(
+        builder: (context, constraints) => SingleChildScrollView(
+          padding: const EdgeInsets.all(HfSpacing.page),
+          child: ConstrainedBox(
+            constraints: BoxConstraints(
+              minHeight: constraints.maxHeight - HfSpacing.page * 2,
+            ),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                CallSummary(
+                  info: info,
+                  cancelledByMe: _cancelledByMe,
+                  reviewed: _reviewed,
+                  onRate: () => unawaited(_rate(info)),
+                  onDone: () => popOrHome(context),
+                ),
+              ],
+            ),
           ),
         ),
-      ),
-    );
+      );
+    }
+    return _live(info);
   }
 
-  List<Widget> _live(CallInfo info) {
+  Widget _live(CallInfo info) {
     final connected = info.status == CallStatus.connected;
-    final name = info.hostFirstName;
-    final String headline;
-    final String sub;
-    if (connected) {
-      headline = CallStrings.connected;
-      sub = '${CallStrings.endWithHash} ${CallStrings.maxLengthHint}';
-    } else if (info.status == CallStatus.ringingCaller) {
-      headline = CallStrings.ringingCaller(name);
-      sub = CallStrings.yourPhoneWillRingSub;
-    } else {
-      headline = CallStrings.yourPhoneWillRing;
-      sub = CallStrings.ringingHost(name);
-    }
-    return [
-      HfScene(kind: HfSceneKind.call, height: 180, animated: !connected),
-      const SizedBox(height: 24),
-      Semantics(
-        liveRegion: true,
-        child: Text(headline, style: HfText.headline, textAlign: TextAlign.center),
-      ),
-      if (connected) ...[
-        const SizedBox(height: 8),
-        Text(
-          Money.clock(_elapsedSeconds(info)),
-          key: const ValueKey<String>('call-clock'),
-          style: HfText.hero,
-          textAlign: TextAlign.center,
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Expanded(
+          child: SingleChildScrollView(
+            child: CallLiveView(
+              info: info,
+              elapsedSeconds: connected ? _elapsedSeconds(info) : 0,
+              notice: _notice,
+              showConnectionTrouble: _failures >= 3,
+            ),
+          ),
         ),
+        if (info.status.isRinging)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(
+              HfSpacing.pageWide,
+              HfSpacing.sm,
+              HfSpacing.pageWide,
+              34,
+            ),
+            child: HfButton(
+              label: _cancelling
+                  ? CallStrings.cancelling
+                  : CallStrings.cancelCall,
+              kind: HfButtonKind.secondary,
+              loading: _cancelling,
+              onPressed: _cancel,
+            ),
+          )
+        else if (connected)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(
+              HfSpacing.pageWide,
+              HfSpacing.sm,
+              HfSpacing.pageWide,
+              34,
+            ),
+            child: Text(
+              CallStrings.endFromPhone,
+              textAlign: TextAlign.center,
+              style: HfText.of(context, HfText.note),
+            ),
+          ),
       ],
-      const SizedBox(height: 8),
-      HfCard(child: Column(children: [
-        Text(name, style: HfText.title, textAlign: TextAlign.center),
-        const SizedBox(height: 12),
-        Text(sub, style: HfText.bodyText, textAlign: TextAlign.center),
-        if (!connected) ...[
-          const SizedBox(height: 12),
-          const Text(CallStrings.ringingNoCharge, style: HfText.bodyStrong, textAlign: TextAlign.center),
-        ],
-      ])),
-      const SizedBox(height: 20),
-      const CallSafetyCard(),
-      if (_notice != null) ...[
-        const SizedBox(height: 12),
-        Semantics(
-          liveRegion: true,
-          child: Text(_notice!, style: HfText.bodyStrong, textAlign: TextAlign.center),
-        ),
+    );
+  }
+}
+
+/// Placeholder with the shape of the live call: privacy chip, the ringed avatar, three text lines.
+class _CallSkeleton extends StatelessWidget {
+  const _CallSkeleton();
+
+  @override
+  Widget build(BuildContext context) {
+    return const Column(
+      children: [
+        HfSkeleton.box(width: 200, height: 34, radius: 16),
+        SizedBox(height: 44),
+        HfSkeleton.box(width: 240, height: 240, radius: 120),
+        SizedBox(height: HfSpacing.section),
+        HfSkeleton.box(width: 260, height: 36, radius: 12),
+        SizedBox(height: HfSpacing.md),
+        HfSkeleton.line(width: 220),
       ],
-      if (_failures >= 3) ...[
-        const SizedBox(height: 12),
-        const Text(CallStrings.connectionTrouble, style: HfText.note, textAlign: TextAlign.center),
-      ],
-    ];
+    );
   }
 }

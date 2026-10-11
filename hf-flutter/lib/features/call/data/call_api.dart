@@ -14,28 +14,35 @@ class CallApi {
   final ApiClient _api;
 
   /// `GET /api/hf/wallet/estimate?host=<slug>`.
-  Future<CallEstimate> estimate(String slug) async =>
-      CallEstimate.fromJson(await _api.getJson('/api/hf/wallet/estimate', query: {'host': slug}));
+  Future<CallEstimate> estimate(String slug) async => CallEstimate.fromJson(
+    await _api.getJson('/api/hf/wallet/estimate', query: {'host': slug}),
+  );
 
   /// `POST /api/hf/calls {hostSlug, lane?}`. [lane] is `lgbtq` only when the person came from the LGBTQ+ tab;
   /// women-lane hosts are lane-set by the server.
   Future<StartedCall> start(String slug, {String? lane}) async {
-    final json = await _api.postJson('/api/hf/calls', body: {
-      'hostSlug': slug,
-      if (lane != null && lane.isNotEmpty) 'lane': lane,
-    });
+    final json = await _api.postJson(
+      '/api/hf/calls',
+      body: {
+        'hostSlug': slug,
+        if (lane != null && lane.isNotEmpty) 'lane': lane,
+      },
+    );
     final started = StartedCall.fromJson(json);
     if (started.callId.isEmpty) throw ApiError.badResponse(200);
     return started;
   }
 
   /// `GET /api/hf/calls/:id`.
-  Future<CallInfo> status(String id) async =>
-      CallInfo.fromJson(await _api.getJson('/api/hf/calls/${Uri.encodeComponent(id)}'));
+  Future<CallInfo> status(String id) async => CallInfo.fromJson(
+    await _api.getJson('/api/hf/calls/${Uri.encodeComponent(id)}'),
+  );
 
   /// `POST /api/hf/calls/:id/cancel` -> the status after the cancel. `409 already_connected` is thrown.
   Future<CallStatus> cancel(String id) async {
-    final json = await _api.postJson('/api/hf/calls/${Uri.encodeComponent(id)}/cancel');
+    final json = await _api.postJson(
+      '/api/hf/calls/${Uri.encodeComponent(id)}/cancel',
+    );
     return CallStatus.parse(json['status']);
   }
 
@@ -45,43 +52,59 @@ class CallApi {
   }
 }
 
-final callApiProvider = Provider<CallApi>((ref) => CallApi(ref.watch(apiClientProvider)));
+final callApiProvider = Provider<CallApi>(
+  (ref) => CallApi(ref.watch(apiClientProvider)),
+);
 
 /// A host's display name for the confirm page (`GET /api/hosts/public/:slug`, public). A host that cannot be
 /// read just gives an empty name: the confirm step still works, it says "your host".
 final callHostNameProvider = FutureProvider.autoDispose.family<String, String>(
   retry: (_, __) => null,
   (ref, slug) async {
-  try {
-    final json = await ref.watch(apiClientProvider).getJson('/api/hosts/public/${Uri.encodeComponent(slug)}', auth: false);
-    return '${json['displayName'] ?? ''}'.trim();
-  } catch (_) {
-    return '';
-  }
-});
+    try {
+      final json = await ref
+          .watch(apiClientProvider)
+          .getJson(
+            '/api/hosts/public/${Uri.encodeComponent(slug)}',
+            auth: false,
+          );
+      return '${json['displayName'] ?? ''}'.trim();
+    } catch (_) {
+      return '';
+    }
+  },
+);
 
 /// Protected-profile names are fetched with the same explicit lane context as
 /// discovery. Family data is refreshed when the authenticated account changes.
-final callHostNameInLaneProvider = FutureProvider.autoDispose.family<String, ({String slug, String lane})>(
-  retry: (_, __) => null,
-  (ref, key) async {
-    ref.watch(sessionProvider.select((s) => s.user?.id ?? s.me?.uid));
-    try {
-      final json = await ref.watch(apiClientProvider).getJson(
-        '/api/hosts/public/${Uri.encodeComponent(key.slug)}', query: {'lane': key.lane});
-      return '${json['displayName'] ?? ''}'.trim();
-    } catch (_) { return ''; }
-  },
-);
+final callHostNameInLaneProvider = FutureProvider.autoDispose
+    .family<String, ({String slug, String lane})>(retry: (_, __) => null, (
+      ref,
+      key,
+    ) async {
+      ref.watch(sessionProvider.select((s) => s.user?.id ?? s.me?.uid));
+      try {
+        final json = await ref
+            .watch(apiClientProvider)
+            .getJson(
+              '/api/hosts/public/${Uri.encodeComponent(key.slug)}',
+              query: {'lane': key.lane},
+            );
+        return '${json['displayName'] ?? ''}'.trim();
+      } catch (_) {
+        return '';
+      }
+    });
 
 /// "Now", replaceable in tests so the connected timer is exact.
 final callClockProvider = Provider<DateTime Function()>((ref) => DateTime.now);
 
 /// The estimate for a host, fetched when the confirm sheet opens (never cached: money is live).
-final callEstimateProvider = FutureProvider.autoDispose.family<CallEstimate, String>(
-  retry: (_, __) => null,
-  (ref, slug) => ref.watch(callApiProvider).estimate(slug),
-);
+final callEstimateProvider = FutureProvider.autoDispose
+    .family<CallEstimate, String>(
+      retry: (_, __) => null,
+      (ref, slug) => ref.watch(callApiProvider).estimate(slug),
+    );
 
 /// The id of the call in progress, kept on the phone so reopening the app resumes the call screen.
 /// The key is account-scoped (one phone, several accounts) and is wiped at sign-out with the other
@@ -124,31 +147,36 @@ class ActiveCallStore {
   }
 }
 
-final activeCallStoreProvider = Provider<ActiveCallStore>((ref) => const ActiveCallStore());
+final activeCallStoreProvider = Provider<ActiveCallStore>(
+  (ref) => const ActiveCallStore(),
+);
 
 /// Is there a call to resume? Returns its id when the stored call is still going, else null (and forgets it).
 ///
 /// The splash / home screen (or the app root) reads this once after sign-in is known and, when it
 /// returns an id, opens `Routes.callOf(id)`. A stored call that has ended, or that the server no longer
 /// knows, is cleared. When the server cannot be reached the id is kept: the call may still be live.
-final activeCallResumeProvider = FutureProvider.autoDispose<String?>(retry: (_, __) => null, (ref) async {
-  // Everything the provider needs is read before the first await: the ref may be disposed after it.
-  final store = ref.read(activeCallStoreProvider);
-  final signedIn = ref.read(sessionProvider).isSignedIn;
-  final api = ref.read(callApiProvider);
-  final id = await store.read();
-  if (id == null) return null;
-  if (!signedIn) return null;
-  try {
-    final info = await api.status(id);
-    if (info.status.isTerminal) {
+final activeCallResumeProvider = FutureProvider.autoDispose<String?>(
+  retry: (_, __) => null,
+  (ref) async {
+    // Everything the provider needs is read before the first await: the ref may be disposed after it.
+    final store = ref.read(activeCallStoreProvider);
+    final signedIn = ref.read(sessionProvider).isSignedIn;
+    final api = ref.read(callApiProvider);
+    final id = await store.read();
+    if (id == null) return null;
+    if (!signedIn) return null;
+    try {
+      final info = await api.status(id);
+      if (info.status.isTerminal) {
+        await store.clear(onlyIfId: id);
+        return null;
+      }
+      return id;
+    } on ApiError catch (e) {
+      if (e.isOffline) return id;
       await store.clear(onlyIfId: id);
       return null;
     }
-    return id;
-  } on ApiError catch (e) {
-    if (e.isOffline) return id;
-    await store.clear(onlyIfId: id);
-    return null;
-  }
-});
+  },
+);

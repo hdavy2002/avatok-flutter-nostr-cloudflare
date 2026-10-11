@@ -21,7 +21,8 @@ class Marker extends StatelessWidget {
   final String label;
 
   @override
-  Widget build(BuildContext context) => Scaffold(body: Center(child: Text(label)));
+  Widget build(BuildContext context) =>
+      Scaffold(body: Center(child: Text(label)));
 }
 
 class CallTestApp {
@@ -57,28 +58,55 @@ Future<CallTestApp> pumpCallApp(
 }) async {
   usePhoneScreen(tester);
   final clock = TestClock();
-  final container = ProviderContainer(overrides: [
-    sessionProvider.overrideWith(() => StubSession(session ?? signedInState())),
-    apiClientProvider.overrideWithValue(api),
-    secureStoreProvider.overrideWithValue(MemoryKeyValueStore()),
-    callClockProvider.overrideWithValue(() => clock.now),
-  ]);
+  final container = ProviderContainer(
+    overrides: [
+      sessionProvider.overrideWith(
+        () => StubSession(session ?? signedInState()),
+      ),
+      apiClientProvider.overrideWithValue(api),
+      secureStoreProvider.overrideWithValue(MemoryKeyValueStore()),
+      callClockProvider.overrideWithValue(() => clock.now),
+    ],
+  );
   addTearDown(container.dispose);
-  final router = GoRouter(initialLocation: location, routes: [
-    GoRoute(path: '/', builder: (_, __) => const Marker('HOME PAGE')),
-    GoRoute(path: '/call/:id', builder: (_, s) => CallScreen(id: s.pathParameters['id']!)),
-    GoRoute(path: '/review/call/:id', builder: (_, s) => ReviewScreen(callId: s.pathParameters['id'])),
-    GoRoute(path: '/review/:token', builder: (_, s) => ReviewScreen(token: s.pathParameters['token'])),
-    GoRoute(path: '/wallet', builder: (_, __) => const Marker('WALLET PAGE')),
-    GoRoute(path: '/explore', builder: (_, __) => const Marker('EXPLORE PAGE')),
-    GoRoute(path: '/h/:slug', builder: (_, s) => Marker('PROFILE ${s.pathParameters['slug']}')),
-    GoRoute(path: '/sign-in', builder: (_, __) => const Marker('SIGN IN PAGE')),
-  ]);
+  final router = GoRouter(
+    initialLocation: location,
+    routes: [
+      GoRoute(path: '/', builder: (_, __) => const Marker('HOME PAGE')),
+      GoRoute(
+        path: '/call/:id',
+        builder: (_, s) => CallScreen(id: s.pathParameters['id']!),
+      ),
+      GoRoute(
+        path: '/review/call/:id',
+        builder: (_, s) => ReviewScreen(callId: s.pathParameters['id']),
+      ),
+      GoRoute(
+        path: '/review/:token',
+        builder: (_, s) => ReviewScreen(token: s.pathParameters['token']),
+      ),
+      GoRoute(path: '/wallet', builder: (_, __) => const Marker('WALLET PAGE')),
+      GoRoute(
+        path: '/explore',
+        builder: (_, __) => const Marker('EXPLORE PAGE'),
+      ),
+      GoRoute(
+        path: '/h/:slug',
+        builder: (_, s) => Marker('PROFILE ${s.pathParameters['slug']}'),
+      ),
+      GoRoute(
+        path: '/sign-in',
+        builder: (_, __) => const Marker('SIGN IN PAGE'),
+      ),
+    ],
+  );
   addTearDown(router.dispose);
-  await tester.pumpWidget(UncontrolledProviderScope(
-    container: container,
-    child: MaterialApp.router(theme: buildHfTheme(), routerConfig: router),
-  ));
+  await tester.pumpWidget(
+    UncontrolledProviderScope(
+      container: container,
+      child: MaterialApp.router(theme: buildHfTheme(), routerConfig: router),
+    ),
+  );
   // Let the first requests answer and the screen rebuild (a review screen loads twice: target, then topics).
   for (var i = 0; i < 4; i++) {
     await tester.pump();
@@ -117,18 +145,17 @@ Map<String, Object?> callJson(
   String? endReason,
   bool canReview = false,
   Map<String, Object?> extra = const {},
-}) =>
-    {
-      'id': id,
-      'status': status,
-      'hostSlug': 'asha',
-      'hostName': 'Asha Verma',
-      'rate': 12,
-      'connectedAt': connectedAt,
-      'endedAt': null,
-      'billedMinutes': billedMinutes,
-      'chargedRupees': chargedRupees,
-      'endReason': endReason,
-      'canReview': canReview,
-      ...extra,
-    };
+}) => {
+  'id': id,
+  'status': status,
+  'hostSlug': 'asha',
+  'hostName': 'Asha Verma',
+  'rate': 12,
+  'connectedAt': connectedAt,
+  'endedAt': null,
+  'billedMinutes': billedMinutes,
+  'chargedRupees': chargedRupees,
+  'endReason': endReason,
+  'canReview': canReview,
+  ...extra,
+};

@@ -23,29 +23,45 @@ class CallConfirmPage extends ConsumerWidget {
     final query = GoRouterState.of(context).uri.queryParameters;
     final slug = (query['host'] ?? '').trim().toLowerCase();
     // Preserve the selected protected space; the server remains the eligibility authority.
-    final lane = query['lane'] == 'lgbtq' || query['lane'] == 'women' ? query['lane'] : null;
+    final lane = query['lane'] == 'lgbtq' || query['lane'] == 'women'
+        ? query['lane']
+        : null;
     return Scaffold(
       appBar: AppBar(
         automaticallyImplyLeading: false,
-        leading: IconButton(tooltip: 'Back', icon: const Icon(Icons.arrow_back_rounded), onPressed: () async {
-          await ref.read(pendingIntentProvider).clear();
-          if (context.mounted) popOrHome(context);
-        }),
+        leading: IconButton(
+          tooltip: 'Back',
+          icon: const Icon(Icons.arrow_back_rounded),
+          onPressed: () async {
+            await ref.read(pendingIntentProvider).clear();
+            if (context.mounted) popOrHome(context);
+          },
+        ),
         title: const Text('Start a call'),
       ),
-      body: SafeArea(child: slug.isEmpty ? _noHost(context) : _confirm(context, ref, slug, lane)),
+      body: SafeArea(
+        child: slug.isEmpty
+            ? _noHost(context)
+            : _confirm(context, ref, slug, lane),
+      ),
     );
   }
 
   Widget _noHost(BuildContext context) => EmptyPanel(
-        message: 'Choose someone to call first.',
-        icon: Icons.person_search_rounded,
-        actionLabel: Strings.tabExplore,
-        onAction: () => GoRouter.of(context).go(Routes.explore),
-      );
+    message: 'Choose someone to call first.',
+    icon: Icons.person_search_rounded,
+    actionLabel: Strings.tabExplore,
+    onAction: () => GoRouter.of(context).go(Routes.explore),
+  );
 
-  Widget _confirm(BuildContext context, WidgetRef ref, String slug, String? lane) {
-    final name = lane == null ? ref.watch(callHostNameProvider(slug))
+  Widget _confirm(
+    BuildContext context,
+    WidgetRef ref,
+    String slug,
+    String? lane,
+  ) {
+    final name = lane == null
+        ? ref.watch(callHostNameProvider(slug))
         : ref.watch(callHostNameInLaneProvider((slug: slug, lane: lane)));
     return name.when(
       loading: () => const LoadingPanel(),

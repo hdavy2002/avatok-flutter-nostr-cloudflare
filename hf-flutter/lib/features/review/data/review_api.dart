@@ -22,7 +22,8 @@ abstract final class ReviewRules {
       'Please remove phone numbers, emails or links from your review. We keep contact details private.';
 
   /// The text as the worker will see it: whitespace collapsed, trimmed.
-  static String clean(String text) => text.replaceAll(RegExp(r'\s+'), ' ').trim();
+  static String clean(String text) =>
+      text.replaceAll(RegExp(r'\s+'), ' ').trim();
 
   /// A message to show, or null when the review can be sent.
   static String? validate({required int stars, required String text}) {
@@ -39,7 +40,9 @@ abstract final class ReviewRules {
   /// A phone number, an email address, a link or an @handle in the text.
   static bool looksLikeContact(String t) {
     if (RegExp(r'[\w.+-]+@[\w-]+\.[\w.-]+').hasMatch(t)) return true;
-    if (RegExp(r'(https?://|www\.)', caseSensitive: false).hasMatch(t)) return true;
+    if (RegExp(r'(https?://|www\.)', caseSensitive: false).hasMatch(t)) {
+      return true;
+    }
     if (RegExp(r'@\w{3,}').hasMatch(t)) return true;
     // Eight or more digits in one run, allowing spaces, dashes, dots and brackets between them.
     if (RegExp(r'(?:\d[\s\-().]*){8,}').hasMatch(t)) return true;
@@ -130,12 +133,21 @@ class ReviewApi {
   final CallApi _calls;
 
   /// `GET /api/hf/review/:token`: no sign-in, the token is the credential.
-  Future<ReviewTarget> tokenTarget(String token) async => ReviewTarget.fromTokenJson(
-      await _api.getJson('/api/hf/review/${Uri.encodeComponent(token)}', auth: false));
+  Future<ReviewTarget> tokenTarget(String token) async =>
+      ReviewTarget.fromTokenJson(
+        await _api.getJson(
+          '/api/hf/review/${Uri.encodeComponent(token)}',
+          auth: false,
+        ),
+      );
 
   /// `POST /api/hf/review/:token {stars, text?, topic?}`: no sign-in.
   Future<void> submitToken(String token, ReviewDraft d) async {
-    await _api.postJson('/api/hf/review/${Uri.encodeComponent(token)}', body: d.toJson(), auth: false);
+    await _api.postJson(
+      '/api/hf/review/${Uri.encodeComponent(token)}',
+      body: d.toJson(),
+      auth: false,
+    );
   }
 
   /// The signed-in path starts from the call itself (`GET /api/hf/calls/:id`).
@@ -151,50 +163,64 @@ class ReviewApi {
 
   /// `POST /api/hf/calls/:id/review {stars, text?, topic?}`: the signed-in caller of a completed call.
   Future<void> submitCall(String callId, ReviewDraft d) async {
-    await _api.postJson('/api/hf/calls/${Uri.encodeComponent(callId)}/review', body: d.toJson());
+    await _api.postJson(
+      '/api/hf/calls/${Uri.encodeComponent(callId)}/review',
+      body: d.toJson(),
+    );
   }
 }
 
-final reviewApiProvider =
-    Provider<ReviewApi>((ref) => ReviewApi(ref.watch(apiClientProvider), ref.watch(callApiProvider)));
+final reviewApiProvider = Provider<ReviewApi>(
+  (ref) => ReviewApi(ref.watch(apiClientProvider), ref.watch(callApiProvider)),
+);
 
 /// Which call is being reviewed: exactly one of the two is set. A record, so it works as a provider key.
 typedef ReviewKey = ({String? callId, String? token});
 
-final reviewTargetProvider = FutureProvider.autoDispose.family<ReviewTarget, ReviewKey>(
-  retry: (_, __) => null,
-  (ref, key) {
-  final api = ref.watch(reviewApiProvider);
-  final token = key.token;
-  if (token != null) return api.tokenTarget(token);
-  return api.callTarget(key.callId ?? '');
-});
+final reviewTargetProvider = FutureProvider.autoDispose
+    .family<ReviewTarget, ReviewKey>(retry: (_, __) => null, (ref, key) {
+      final api = ref.watch(reviewApiProvider);
+      final token = key.token;
+      if (token != null) return api.tokenTarget(token);
+      return api.callTarget(key.callId ?? '');
+    });
 
 /// The topics a caller can pick for this host: the host's own topics, with their labels from `/api/hf/options`.
 /// A picker that cannot load is simply not shown (the topic is optional).
-final reviewTopicsProvider = FutureProvider.autoDispose.family<List<ReviewTopic>, String>(
-  retry: (_, __) => null,
-  (ref, hostSlug) async {
-  final api = ref.watch(apiClientProvider);
-  try {
-    final host = await api.getJson('/api/hosts/public/${Uri.encodeComponent(hostSlug)}', auth: false);
-    final opts = await api.getJson('/api/hf/options', auth: false);
-    final mine = <String>{
-      for (final t in (host['topics'] is List ? host['topics'] as List : const [])) '$t'.toLowerCase(),
-    };
-    final out = <ReviewTopic>[];
-    for (final t in (opts['topics'] is List ? opts['topics'] as List : const [])) {
-      if (t is! Map) continue;
-      final slug = '${t['slug'] ?? ''}';
-      final label = '${t['label'] ?? ''}';
-      if (slug.isEmpty || label.isEmpty) continue;
-      if (mine.contains(slug.toLowerCase()) || mine.contains(label.toLowerCase())) out.add(ReviewTopic(slug, label));
-    }
-    return out;
-  } catch (_) {
-    return const <ReviewTopic>[];
-  }
-});
+final reviewTopicsProvider = FutureProvider.autoDispose
+    .family<List<ReviewTopic>, String>(retry: (_, __) => null, (
+      ref,
+      hostSlug,
+    ) async {
+      final api = ref.watch(apiClientProvider);
+      try {
+        final host = await api.getJson(
+          '/api/hosts/public/${Uri.encodeComponent(hostSlug)}',
+          auth: false,
+        );
+        final opts = await api.getJson('/api/hf/options', auth: false);
+        final mine = <String>{
+          for (final t
+              in (host['topics'] is List ? host['topics'] as List : const []))
+            '$t'.toLowerCase(),
+        };
+        final out = <ReviewTopic>[];
+        for (final t
+            in (opts['topics'] is List ? opts['topics'] as List : const [])) {
+          if (t is! Map) continue;
+          final slug = '${t['slug'] ?? ''}';
+          final label = '${t['label'] ?? ''}';
+          if (slug.isEmpty || label.isEmpty) continue;
+          if (mine.contains(slug.toLowerCase()) ||
+              mine.contains(label.toLowerCase())) {
+            out.add(ReviewTopic(slug, label));
+          }
+        }
+        return out;
+      } catch (_) {
+        return const <ReviewTopic>[];
+      }
+    });
 
 /// `hf_app_review_submitted {stars, via}`: `via` is `call` (signed in, from the call screen) or `token` (a
 /// WhatsApp or push link). `outcome` is `ok` or `failed` (with the server's code as `reason`).
@@ -206,12 +232,14 @@ void reportReviewSubmitted({
   int? httpStatus,
   int? ms,
 }) {
-  unawaited(Analytics.capture('hf_app_review_submitted', {
-    'stars': stars,
-    'via': via,
-    'outcome': ok ? 'ok' : 'failed',
-    if (reason != null) 'reason': reason,
-    if (httpStatus != null) 'status': httpStatus,
-    if (ms != null) 'ms': ms,
-  }));
+  unawaited(
+    Analytics.capture('hf_app_review_submitted', {
+      'stars': stars,
+      'via': via,
+      'outcome': ok ? 'ok' : 'failed',
+      if (reason != null) 'reason': reason,
+      if (httpStatus != null) 'status': httpStatus,
+      if (ms != null) 'ms': ms,
+    }),
+  );
 }
