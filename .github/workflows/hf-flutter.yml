@@ -137,7 +137,15 @@ jobs:
       - name: Test
         if: env.MODE != 'scaffold'
         working-directory: hf-flutter
-        run: flutter test
+        run: flutter test --dart-define=EXPORT_DESIGN_REVIEW=true
+
+      - name: Upload native design review captures
+        if: always() && env.MODE != 'scaffold'
+        uses: actions/upload-artifact@v4
+        with:
+          name: hf-native-design-review
+          path: hf-flutter/test_output/design_review/*.png
+          if-no-files-found: warn
 
       - name: Guard - target API 36
         if: env.MODE == 'apk' || env.MODE == 'aab' || env.MODE == 'internal'

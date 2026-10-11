@@ -35,6 +35,9 @@ jobs:
       - name: Type-check worker
         working-directory: worker
         run: npm run typecheck
+      - name: Native protected-space and KYC regression
+        working-directory: worker
+        run: npx vitest run src/lib/hf_lanes.test.ts src/routes/hf_hosts_list.test.ts src/routes/hf_account_closing.test.ts src/routes/hf_host_kyc_reuse.test.ts
       - name: Unified availability and checkout regression
         working-directory: worker
         run: npx vitest run availability commercial_checkout_phase2c_contract.test.ts
