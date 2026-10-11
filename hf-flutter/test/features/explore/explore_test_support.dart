@@ -23,14 +23,16 @@ class MemoryJsonCache extends JsonCache {
       store[key] = CacheEntry(at: at ?? DateTime.now(), data: data);
 
   @override
-  Future<CacheEntry?> read(String key, {bool scoped = false}) async => store[key];
+  Future<CacheEntry?> read(String key, {bool scoped = false}) async =>
+      store[key];
 
   @override
   Future<void> write(String key, Object? data, {bool scoped = false}) async =>
       store[key] = CacheEntry(at: DateTime.now(), data: data);
 
   @override
-  Future<void> remove(String key, {bool scoped = false}) async => store.remove(key);
+  Future<void> remove(String key, {bool scoped = false}) async =>
+      store.remove(key);
 
   @override
   Future<void> clearAll() async => store.clear();
@@ -73,48 +75,54 @@ Map<String, Object?> hostJson(
   int reviews = 12,
   String? intro,
   bool womenOnly = false,
-}) =>
-    <String, Object?>{
-      'slug': slug,
-      'displayName': name ?? 'Host $slug',
-      'tagline': 'Tagline of $slug',
-      'avatarUrl': null,
-      'languages': languages,
-      'style': 'warm',
-      'topics': topics,
-      'pricePerMin': price,
-      'rating': rating,
-      'reviewCount': reviews,
-      'talkedTo': 30,
-      'regulars': 4,
-      'lgbtqFriendly': false,
-      'womenOnly': womenOnly,
-      'introAudioUrl': intro,
-      'introSeconds': intro == null ? null : 12,
-      'status': status,
-    };
+}) => <String, Object?>{
+  'slug': slug,
+  'displayName': name ?? 'Host $slug',
+  'tagline': 'Tagline of $slug',
+  'avatarUrl': null,
+  'languages': languages,
+  'style': 'warm',
+  'topics': topics,
+  'pricePerMin': price,
+  'rating': rating,
+  'reviewCount': reviews,
+  'talkedTo': 30,
+  'regulars': 4,
+  'lgbtqFriendly': false,
+  'womenOnly': womenOnly,
+  'introAudioUrl': intro,
+  'introSeconds': intro == null ? null : 12,
+  'status': status,
+};
 
-Map<String, Object?> pageJson(List<Map<String, Object?>> items, {int? next, int? total}) =>
-    <String, Object?>{'items': items, 'nextOffset': next, 'total': total ?? items.length};
+Map<String, Object?> pageJson(
+  List<Map<String, Object?>> items, {
+  int? next,
+  int? total,
+}) => <String, Object?>{
+  'items': items,
+  'nextOffset': next,
+  'total': total ?? items.length,
+};
 
 /// `GET /api/hf/options`, small.
 Map<String, Object?> optionsJson() => <String, Object?>{
-      'topics': [
-        {'slug': 'dost-a', 'label': 'Roz baat', 'group': 'Naye dost'},
-        {'slug': 'tension-a', 'label': 'Exam tension', 'group': 'Tension'},
-      ],
-      'moodGroups': [
-        {'slug': 'naye-dost', 'label': 'Naye dost'},
-        {'slug': 'tension', 'label': 'Tension'},
-      ],
-      'languages': [
-        {'code': 'hi', 'label': 'Hindi'},
-        {'code': 'en', 'label': 'English'},
-      ],
-      'styles': <Object?>[],
-      'priceMin': 5,
-      'priceMax': 100,
-    };
+  'topics': [
+    {'slug': 'dost-a', 'label': 'Roz baat', 'group': 'Naye dost'},
+    {'slug': 'tension-a', 'label': 'Exam tension', 'group': 'Tension'},
+  ],
+  'moodGroups': [
+    {'slug': 'naye-dost', 'label': 'Naye dost'},
+    {'slug': 'tension', 'label': 'Tension'},
+  ],
+  'languages': [
+    {'code': 'hi', 'label': 'Hindi'},
+    {'code': 'en', 'label': 'English'},
+  ],
+  'styles': <Object?>[],
+  'priceMin': 5,
+  'priceMax': 100,
+};
 
 /// A fake API that already answers `/api/hf/options` and `/api/config`.
 FakeApiClient fakeApi() => FakeApiClient()
@@ -136,21 +144,28 @@ Future<ProviderContainer> pumpScreen(
   tester.view.devicePixelRatio = 3.0;
   addTearDown(tester.view.resetPhysicalSize);
   addTearDown(tester.view.resetDevicePixelRatio);
-  tester.platformDispatcher.accessibilityFeaturesTestValue = const FakeAccessibilityFeatures(disableAnimations: true);
+  tester.platformDispatcher.accessibilityFeaturesTestValue =
+      const FakeAccessibilityFeatures(disableAnimations: true);
   addTearDown(tester.platformDispatcher.clearAccessibilityFeaturesTestValue);
-  final container = ProviderContainer(overrides: [
-    sessionProvider.overrideWith(() => StubSession(session ?? signedOutState())),
-    apiClientProvider.overrideWithValue(api),
-    secureStoreProvider.overrideWithValue(MemoryKeyValueStore()),
-    jsonCacheProvider.overrideWithValue(cache ?? MemoryJsonCache()),
-    introAudioProvider.overrideWithValue(audio ?? FakeIntroAudio()),
-    initialLocationProvider.overrideWithValue(location),
-  ]);
+  final container = ProviderContainer(
+    overrides: [
+      sessionProvider.overrideWith(
+        () => StubSession(session ?? signedOutState()),
+      ),
+      apiClientProvider.overrideWithValue(api),
+      secureStoreProvider.overrideWithValue(MemoryKeyValueStore()),
+      jsonCacheProvider.overrideWithValue(cache ?? MemoryJsonCache()),
+      introAudioProvider.overrideWithValue(audio ?? FakeIntroAudio()),
+      initialLocationProvider.overrideWithValue(location),
+    ],
+  );
   addTearDown(container.dispose);
-  await tester.pumpWidget(UncontrolledProviderScope(
-    container: container,
-    child: const HfApp(listenForLinks: false),
-  ));
+  await tester.pumpWidget(
+    UncontrolledProviderScope(
+      container: container,
+      child: const HfApp(listenForLinks: false),
+    ),
+  );
   await tester.pumpAndSettle();
   return container;
 }

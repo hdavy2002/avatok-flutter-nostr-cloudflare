@@ -1,12 +1,21 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/analytics/analytics.dart';
+import '../../../core/api/api_error.dart';
+import '../../../core/auth/session.dart';
 import '../../../core/config/flags.dart';
+import '../../../core/router/nav.dart';
 import '../../../core/router/routes.dart';
-import '../../../core/theme/hf_tokens.dart';
+import '../../../core/theme/hf_theme.dart';
 import '../../../core/widgets/widgets.dart';
+import '../../host_profile/data/host_profile_providers.dart';
+import '../../host_profile/host_profile_strings.dart';
+import '../data/favourites.dart';
 import '../data/host_card.dart';
 import 'host_image.dart';
 import 'intro_player.dart';
@@ -16,17 +25,57 @@ const String kAiPictureLabel = 'AI avatar';
 
 /// What a tap on a host card does by default: telemetry `hf_app_host_card_tapped {slug, from}`, stop any
 /// intro that is playing, then open the host profile (`/h/:slug`).
-void openHostProfile(BuildContext context, WidgetRef ref, HostCard host, {required String from, String? lane}) {
-  Analytics.capture('hf_app_host_card_tapped', <String, Object>{'slug': host.slug, 'from': from});
+void openHostProfile(
+  BuildContext context,
+  WidgetRef ref,
+  HostCard host, {
+  required String from,
+  String? lane,
+}) {
+  Analytics.capture('hf_app_host_card_tapped', <String, Object>{
+    'slug': host.slug,
+    'from': from,
+  });
   ref.read(introPlayerProvider.notifier).stop();
   GoRouter.of(context).push(Routes.hostProfileOf(host.slug, lane: lane));
+}
+
+/// Waveform bar heights (percent, 30 to 100) for a host's voice bar. The same slug always gives the same
+/// shape, so the bar does not change between rebuilds, scrolls or app starts.
+List<int> hostWaveHeights(String slug, {int count = 20}) {
+  var h = 7;
+  for (final c in slug.codeUnits) {
+    h = (h * 31 + c) % 65537;
+  }
+  final out = <int>[];
+  for (var i = 0; i < count; i++) {
+    h = (h * 75 + 74) % 65537;
+    out.add(30 + h % 71);
+  }
+  return out;
+}
+
+String _clock(int seconds) {
+  final s = seconds < 0 ? 0 : seconds;
+  return '${s ~/ 60}:${(s % 60).toString().padLeft(2, '0')}';
+}
+
+/// "calm_and-warm" to "Calm and warm".
+String _prettyStyle(String? raw) {
+  final s = (raw ?? '').replaceAll('_', ' ').replaceAll('-', ' ').trim();
+  return s.isEmpty ? '—' : '${s[0].toUpperCase()}${s.substring(1)}';
 }
 
 /// Play / pause for a host's voice intro, inline. One speaker for the whole app: starting one intro stops
 /// the one before. A 48 dp round button, with the length ("12s") beside it.
 /// Shared with the host profile screen: give it `from: 'profile'`.
 class IntroPlayButton extends ConsumerWidget {
-  const IntroPlayButton({super.key, required this.host, required this.from, this.dark = false});
+  const IntroPlayButton({
+    super.key,
+    required this.host,
+    required this.from,
+    this.dark = false,
+  });
 
   final HostCard host;
   final bool dark;
@@ -41,7 +90,10 @@ class IntroPlayButton extends ConsumerWidget {
     final player = ref.watch(introPlayerProvider);
     final playing = player.isPlaying(host.slug);
     final failed = player.failedSlug == host.slug;
-    final label = playing ? 'Pause voice intro of ${host.displayName}' : 'Play voice intro of ${host.displayName}';
+    final label = playing
+        ? 'Pause voice intro of ${host.displayName}'
+        : 'Play voice intro of ${host.displayName}';
+    final muted = dark ? HfColors.mutedSoft : HfColors.muted;
     return Wrap(
       crossAxisAlignment: WrapCrossAlignment.center,
       runSpacing: 6,
@@ -52,38 +104,49 @@ class IntroPlayButton extends ConsumerWidget {
           excludeSemantics: true,
           child: InkResponse(
             key: ValueKey<String>('intro-${host.slug}'),
-            onTap: () => ref.read(introPlayerProvider.notifier).toggle(slug: host.slug, url: url, from: from),
+            onTap: () => ref
+                .read(introPlayerProvider.notifier)
+                .toggle(slug: host.slug, url: url, from: from),
             radius: 28,
             child: Container(
               width: HfSpacing.tap,
               height: HfSpacing.tap,
-              decoration: const BoxDecoration(color: HfColors.coral, shape: BoxShape.circle),
+              decoration: BoxDecoration(
+                color: dark ? HfColors.peachLight : HfColors.ink,
+                shape: BoxShape.circle,
+              ),
               child: Icon(
                 playing ? Icons.pause_rounded : Icons.play_arrow_rounded,
                 size: 28,
-                color: HfColors.ink,
+                color: dark ? HfColors.ink : HfColors.white,
               ),
             ),
           ),
         ),
         if (host.introSeconds != null) ...[
           const SizedBox(width: 6),
-          Text('${host.introSeconds}s', style: HfText.badge.copyWith(color: dark ? HfColors.white : HfColors.mauve)),
+          Text(
+            '${host.introSeconds}s',
+            style: HfText.badge.copyWith(color: muted),
+          ),
         ],
         if (failed) ...[
           const SizedBox(width: 6),
-          Text("Can't play", style: HfText.badge.copyWith(color: HfColors.accent)),
+          Text(
+            "Can't play",
+            style: HfText.badge.copyWith(color: HfColors.accent),
+          ),
         ],
       ],
     );
   }
 }
 
-/// A host in the Explore list: picture, name, tagline, languages, topics, price, rating, status and the
-/// intro button. The whole card opens the profile.
+/// A host on Discover (mockup `Main`): the photo card with the frosted name panel and voice bar, a 2x2 grid of
+/// tiles, up to three topic chips and the price bar with the Call now / Notify me action.
 ///
 /// [topicLabels] maps a topic slug to its label (`HostOptions.topicLabels`); an unknown slug shows as words.
-/// Pass [onTap] to replace the default (open the profile).
+/// Pass [onTap] to replace the default (open the profile). Tapping the photo or the name opens the profile.
 class HostCardView extends ConsumerWidget {
   const HostCardView({
     super.key,
@@ -105,112 +168,628 @@ class HostCardView extends ConsumerWidget {
   final bool animate;
 
   static const int _maxTopics = 3;
+  static const List<HfTint> _photoTints = <HfTint>[
+    HfTint.lavender,
+    HfTint.peach,
+    HfTint.sky,
+    HfTint.butter,
+    HfTint.blush,
+  ];
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final callsOn = ref.watch(flagsProvider).when(data: (f) => f.hfCallsEnabled, loading: () => false, error: (_, __) => false);
+    final dark = HfBrightness.isDark(context);
+    final open =
+        onTap ??
+        () => openHostProfile(context, ref, host, from: from, lane: lane);
+    final saved = ref.watch(
+      favouriteHostsProvider.select((s) => s.contains(host.slug)),
+    );
+    final tint =
+        _photoTints[host.slug.codeUnits.fold<int>(0, (a, b) => a + b) %
+            _photoTints.length];
+    final dpr = MediaQuery.devicePixelRatioOf(context);
+    final photo = host.avatarUrl == null
+        ? null
+        : resizedImageUrl(
+            host.avatarUrl!,
+            width: (MediaQuery.sizeOf(context).width - 12) * dpr,
+            quality: 70,
+          );
     final tags = <String>[
-      for (final t in host.topics.take(_maxTopics)) topicLabels[t] ?? t.replaceAll('-', ' '),
+      for (final t in host.topics.take(_maxTopics))
+        topicLabels[t] ?? t.replaceAll('-', ' '),
     ];
-    final open = onTap ?? () => openHostProfile(context, ref, host, from: from, lane: lane);
-    final palette = [HfColors.blush, HfColors.butter, HfColors.sky, HfColors.mint, HfColors.lavender];
-    final shade = palette[host.slug.codeUnits.fold<int>(0, (a, b) => a+b) % palette.length];
-    Widget identity() => Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      Text(host.displayName, style: HfText.headline),
-      const SizedBox(height: 8),
-      StatusPill(presence: host.status, animate: animate),
-      if (host.tagline != null) ...[
-        const SizedBox(height: 10), Text(host.tagline!, style: HfText.bodyText)],
-    ]);
-    return HfCard(
-      onTap: open,
-      padding: const EdgeInsets.all(16),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        LayoutBuilder(builder: (context, c) {
-          final stacked = c.maxWidth < 260 || MediaQuery.textScalerOf(context).scale(16) > 22;
-          final photo = Container(padding: const EdgeInsets.all(4),
-            decoration: BoxDecoration(color: shade, borderRadius: BorderRadius.circular(26)),
-            child: HostAvatar(url: host.avatarUrl, size: stacked ? 152 : 124, radius: 22, aiLabel: kAiPictureLabel));
-          if (stacked) return Column(crossAxisAlignment: CrossAxisAlignment.start,
-            children: [photo, const SizedBox(height: 12), identity()]);
-          return Row(crossAxisAlignment: CrossAxisAlignment.start,
-            children: [photo, const SizedBox(width: 14), Expanded(child: identity())]);
-        }),
-        const SizedBox(height: 14),
-        Wrap(spacing: 16, runSpacing: 10, children: [
-          HostRating(host: host),
-          if (host.regulars > 0) Text('${host.regulars} regulars', style: HfText.note),
-          if (host.languages.isNotEmpty) Text(host.languages.join(' · '), style: HfText.bodyText),
-          if (host.style != null) Text(host.style!.replaceAll('_', ' ').replaceAll('-', ' '), style: HfText.note),
-        ]),
-        if (tags.isNotEmpty || host.womenOnly || host.lgbtqFriendly) ...[
-          const SizedBox(height: 14),
-          Wrap(spacing: 8, runSpacing: 8, children: [
-            if (host.womenOnly) const HostTag('Women-only', accent: true),
-            if (host.lgbtqFriendly) const HostTag('LGBTQ+ friendly', accent: true),
-            for (final t in tags) HostTag(t),
-          ]),
+    final moreTopics = host.topics.length - _maxTopics;
+    return Container(
+      decoration: BoxDecoration(
+        color: dark ? HfColors.darkCard : HfColors.white,
+        borderRadius: BorderRadius.circular(HfRadius.card),
+        boxShadow: dark ? null : HfShadows.card,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(6, 6, 6, 0),
+            child: Semantics(
+              container: true,
+              button: true,
+              label: 'Open ${host.displayName}’s profile',
+              child: GestureDetector(
+                onTap: open,
+                child: HfPhotoCard(
+                  imageUrl: photo,
+                  height: 380,
+                  status: switch (host.status) {
+                    HostPresence.online => HfPresence.online,
+                    HostPresence.busy => HfPresence.busy,
+                    HostPresence.offline => HfPresence.offline,
+                  },
+                  aiLabel: kAiPictureLabel,
+                  saved: saved,
+                  tint: tint,
+                  animatePill: animate,
+                  onSave: () {
+                    HapticFeedback.selectionClick();
+                    unawaited(
+                      ref
+                          .read(favouriteHostsProvider.notifier)
+                          .toggle(host.slug),
+                    );
+                  },
+                  child: _PanelContent(host: host, from: from),
+                ),
+              ),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                _tiles(),
+                if (tags.isNotEmpty) ...[
+                  // The chips are 40 high inside a 48 tap area, so 10 here is the mockup's 14 gap.
+                  const SizedBox(height: HfSpacing.md),
+                  Wrap(
+                    spacing: HfSpacing.sm,
+                    children: [
+                      for (final t in tags) HfChip.outline(label: t),
+                      if (moreTopics > 0) _MoreChip(count: moreTopics),
+                    ],
+                  ),
+                  const SizedBox(height: HfSpacing.md),
+                ] else
+                  const SizedBox(height: HfSpacing.xl),
+                _PriceBar(host: host, lane: lane, onOpen: open),
+              ],
+            ),
+          ),
         ],
-        if (host.hasIntro) ...[
-          const SizedBox(height: 16), _CardVoice(host: host, from: from)],
-        const SizedBox(height: 16),
-        LayoutBuilder(builder: (context, c) {
-          final price = Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(host.priceLabel, style: HfText.title),
-            const Text('Estimate before you call', style: HfText.note),
-          ]);
-          final call = HfButton(label: !callsOn ? 'Calls open soon' : host.isOnline ? 'Call ${host.displayName}' : 'View availability',
-            icon: host.isOnline ? Icons.call_rounded : Icons.notifications_outlined,
-            onPressed: !callsOn ? null : host.isOnline ? () {
-              ref.read(introPlayerProvider.notifier).stop();
-              GoRouter.of(context).push(Routes.callConfirmOf(host.slug,
-                lane: lane));
-            } : open);
-          if (c.maxWidth < 280 || MediaQuery.textScalerOf(context).scale(16)>22) {
-            return Column(crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [price, const SizedBox(height: 12), call]);
-          }
-          return Row(children: [Expanded(child: price), const SizedBox(width: 12), Expanded(child: call)]);
-        }),
-        Align(alignment: Alignment.centerRight, child: TextButton(
-          onPressed: open, child: const Text('View profile →'))),
-      ]),
+      ),
+    );
+  }
+
+  Widget _tiles() {
+    final langs = host.languages.isEmpty ? '—' : host.languages.join(', ');
+    const gap = SizedBox(width: HfSpacing.sm);
+    final textTile = HfText.badge.copyWith(height: 1.35);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        IntrinsicHeight(
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Expanded(
+                child: HfTile(
+                  tint: HfTint.lavender,
+                  icon: Icons.groups_rounded,
+                  value: '${host.talkedTo}',
+                  caption: 'talked to',
+                  compact: true,
+                ),
+              ),
+              gap,
+              Expanded(
+                child: HfTile(
+                  tint: HfTint.sky,
+                  icon: Icons.sync_rounded,
+                  value: '${host.regulars}',
+                  caption: 'regulars',
+                  compact: true,
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: HfSpacing.sm),
+        IntrinsicHeight(
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Expanded(
+                child: HfTile(
+                  tint: HfTint.butter,
+                  icon: Icons.language_rounded,
+                  value: langs,
+                  compact: true,
+                  valueStyle: textTile,
+                ),
+              ),
+              gap,
+              Expanded(
+                child: HfTile(
+                  tint: HfTint.blush,
+                  icon: Icons.auto_awesome_rounded,
+                  value: _prettyStyle(host.style),
+                  compact: true,
+                  valueStyle: textTile,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 }
 
-/// A dark voice strip keeps audio clearly separate from the paid call action.
-class _CardVoice extends ConsumerWidget {
-  const _CardVoice({required this.host, required this.from});
-  final HostCard host;
-  final String from;
+/// "+2": the topics that did not fit.
+class _MoreChip extends StatelessWidget {
+  const _MoreChip({required this.count});
+
+  final int count;
+
   @override
-  Widget build(BuildContext context, WidgetRef ref) => Container(
-    padding: const EdgeInsets.all(12),
-    decoration: BoxDecoration(color: HfColors.ink, borderRadius: BorderRadius.circular(26)),
-    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      Row(children: [
-        Expanded(child: IntroPlayButton(host: host, from: from, dark: true)),
-        const SizedBox(width: 10),
-        Expanded(flex: 2, child: Text('Hear ${host.displayName}',
-          style: HfText.bodyStrong.copyWith(color: HfColors.white))),
-      ]),
-      const SizedBox(height: 8),
-      ExcludeSemantics(child: SizedBox(height: 20, child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [for (var i=0;i<24;i++) Container(width: 3,
-          height: 5.0 + (i * 7 % 16), decoration: BoxDecoration(
-            color: HfColors.mint, borderRadius: BorderRadius.circular(3)))],
-      ))),
-      const SizedBox(height: 8),
-      Text('Recorded by the host', style: HfText.badge.copyWith(color: HfColors.white)),
-    ]),
-  );
+  Widget build(BuildContext context) {
+    final dark = HfBrightness.isDark(context);
+    return ConstrainedBox(
+      constraints: const BoxConstraints(minHeight: HfSpacing.tap),
+      child: Center(
+        widthFactor: 1,
+        child: Container(
+          height: 40,
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: dark ? HfColors.darkBar : HfColors.surfaceSoft,
+            borderRadius: BorderRadius.circular(HfRadius.control),
+          ),
+          child: Text(
+            '+$count',
+            style: HfText.badge.copyWith(
+              color: dark ? HfColors.mutedSoft : HfColors.muted,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 }
 
-/// A narrow card for a horizontal strip ("Online now" on Home): picture, name, price, status, intro button.
+/// What sits in the frosted panel over the photo: name, verified badge, rating, tagline and the voice bar.
+class _PanelContent extends ConsumerWidget {
+  const _PanelContent({required this.host, required this.from});
+
+  final HostCard host;
+  final String from;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final dark = HfBrightness.isDark(context);
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Row(
+          children: [
+            Flexible(
+              child: Text(
+                host.displayName,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: HfText.of(context, HfText.title),
+              ),
+            ),
+            const SizedBox(width: HfSpacing.xs),
+            const HfVerifiedBadge(size: 20),
+            Expanded(
+              child: Align(
+                alignment: Alignment.centerRight,
+                child: HostRating(host: host),
+              ),
+            ),
+          ],
+        ),
+        if (host.tagline != null) ...[
+          const SizedBox(height: 3),
+          Text(
+            host.tagline!,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: HfText.label.copyWith(
+              fontWeight: FontWeight.w400,
+              color: dark ? HfColors.mutedSoft : HfColors.inkTagline,
+            ),
+          ),
+        ],
+        if (host.hasIntro) ...[
+          const SizedBox(height: HfSpacing.md),
+          _CardVoice(host: host, from: from),
+        ],
+      ],
+    );
+  }
+}
+
+/// The compact peach voice bar. Plays the host's intro with the app's one speaker; the waveform fills while it plays.
+class _CardVoice extends ConsumerStatefulWidget {
+  const _CardVoice({required this.host, required this.from});
+
+  final HostCard host;
+  final String from;
+
+  @override
+  ConsumerState<_CardVoice> createState() => _CardVoiceState();
+}
+
+class _CardVoiceState extends ConsumerState<_CardVoice>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _progress = AnimationController(
+    vsync: this,
+    duration: Duration(seconds: (widget.host.introSeconds ?? 20).clamp(1, 600)),
+  );
+
+  @override
+  void initState() {
+    super.initState();
+    // A recycled card whose clip is still playing picks the fill up again.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted &&
+          ref.read(introPlayerProvider).isPlaying(widget.host.slug)) {
+        _start();
+      }
+    });
+  }
+
+  void _start() {
+    if (MediaQuery.disableAnimationsOf(context)) return;
+    _progress.forward(from: 0);
+  }
+
+  @override
+  void dispose() {
+    _progress.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final host = widget.host;
+    final player = ref.watch(introPlayerProvider);
+    final playing = player.isPlaying(host.slug);
+    ref.listen<bool>(
+      introPlayerProvider.select((s) => s.isPlaying(host.slug)),
+      (prev, now) {
+        if (now) {
+          _start();
+        } else {
+          _progress
+            ..stop()
+            ..value = 0;
+        }
+      },
+    );
+    final url = host.introAudioUrl!;
+    final failed = player.failedSlug == host.slug;
+    final bigText = MediaQuery.textScalerOf(context).scale(16) > 22;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        AnimatedBuilder(
+          animation: _progress,
+          builder: (context, _) => HfVoiceBar(
+            key: ValueKey<String>('intro-${host.slug}'),
+            compact: true,
+            title: host.voiceTitle,
+            durationLabel: host.introSeconds == null
+                ? '–'
+                : _clock(host.introSeconds!),
+            // HfVoiceBar's 2 px gaps overflow when a big system font leaves the waveform a few pixels.
+            heights: hostWaveHeights(host.slug, count: bigText ? 6 : 20),
+            progress: _progress.value,
+            playing: playing,
+            onTap: () => ref
+                .read(introPlayerProvider.notifier)
+                .toggle(slug: host.slug, url: url, from: widget.from),
+          ),
+        ),
+        if (failed)
+          Padding(
+            padding: const EdgeInsets.only(top: HfSpacing.xs),
+            child: Text(
+              "Can't play",
+              style: HfText.badge.copyWith(color: HfColors.accent),
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+/// The price bar: "₹20 /min" and "10 min ≈ ₹200" on the left; Call now (online) or Notify me on the right.
+class _PriceBar extends ConsumerStatefulWidget {
+  const _PriceBar({
+    required this.host,
+    required this.lane,
+    required this.onOpen,
+  });
+
+  final HostCard host;
+  final String? lane;
+  final VoidCallback onOpen;
+
+  @override
+  ConsumerState<_PriceBar> createState() => _PriceBarState();
+}
+
+class _PriceBarState extends ConsumerState<_PriceBar> {
+  bool _busy = false;
+  bool? _subscribedOverride;
+
+  HostCard get _h => widget.host;
+
+  /// The same steps as the profile's Call button: telemetry, sign in, then the call confirm step.
+  Future<void> _call() async {
+    unawaited(
+      Analytics.capture('hf_app_call_tapped', <String, Object>{
+        'slug': _h.slug,
+        'status': _h.status.name,
+      }),
+    );
+    unawaited(ref.read(introPlayerProvider.notifier).stop());
+    if (_h.womenOnly && ref.read(sessionProvider).me?.womenLane != true) {
+      // The space explanation is public; registration belongs to its join action.
+      unawaited(
+        GoRouter.of(context).push<Object?>(
+          Routes.lanesOf(
+            'women',
+            next: Routes.callConfirmOf(_h.slug, lane: 'women'),
+          ),
+        ),
+      );
+      return;
+    }
+    if (!await requireSignIn(
+      context,
+      ref,
+      next: Routes.callConfirmOf(_h.slug, lane: widget.lane),
+    )) {
+      return;
+    }
+    if (!mounted) return;
+    await ref.read(callConfirmOpenerProvider)(context, _h.slug);
+  }
+
+  /// The same steps as the profile's Notify me: sign in, then `POST` / `DELETE /api/hf/hosts/:slug/notify`.
+  Future<void> _toggleNotify(bool subscribed) async {
+    if (_busy) return;
+    final turnOn = !subscribed;
+    final next = Uri(
+      path: Routes.hostProfileOf(_h.slug),
+      queryParameters: <String, String>{
+        'action': 'notify',
+        'notify': turnOn ? 'on' : 'off',
+        if (widget.lane != null) 'lane': widget.lane!,
+      },
+    ).toString();
+    if (!await requireSignIn(context, ref, next: next)) return;
+    if (!mounted) return;
+    unawaited(HapticFeedback.selectionClick());
+    setState(() => _busy = true);
+    final messenger = ScaffoldMessenger.maybeOf(context);
+    final sw = Stopwatch()..start();
+    try {
+      final now = await setNotifyMe(
+        ref.read(apiClientProvider),
+        _h.slug,
+        on: turnOn,
+      );
+      if (!mounted) return;
+      setState(() {
+        _busy = false;
+        _subscribedOverride = now;
+      });
+      messenger?.showSnackBar(
+        SnackBar(
+          content: Text(
+            now ? HostProfileStrings.notifyOn : HostProfileStrings.notifyOff,
+          ),
+        ),
+      );
+      unawaited(
+        Analytics.capture('hf_app_notify_me', <String, Object>{
+          'slug': _h.slug,
+          'on': now,
+          'outcome': 'ok',
+          'ms': sw.elapsedMilliseconds,
+        }),
+      );
+    } on ApiError catch (e) {
+      if (!mounted) return;
+      setState(() => _busy = false);
+      messenger?.showSnackBar(SnackBar(content: Text(e.userMessage)));
+      unawaited(
+        Analytics.capture('hf_app_notify_me', <String, Object>{
+          'slug': _h.slug,
+          'on': turnOn,
+          'outcome': 'error',
+          'reason': e.code,
+          'status': e.status,
+          'ms': sw.elapsedMilliseconds,
+        }),
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final dark = HfBrightness.isDark(context);
+    final callsOn = ref
+        .watch(flagsProvider)
+        .when(
+          data: (f) => f.hfCallsEnabled,
+          loading: () => true,
+          error: (_, __) => true,
+        );
+    final online = _h.isOnline;
+    final bool subscribed = online
+        ? false
+        : (_subscribedOverride ??
+              ref
+                  .watch(notifyStatusProvider(_h.slug))
+                  .when<bool>(
+                    data: (v) => v == true,
+                    loading: () => false,
+                    error: (_, __) => false,
+                  ));
+
+    final String label;
+    final IconData icon;
+    final Color bg;
+    final Color fg;
+    final VoidCallback? action;
+    String? semantics;
+    if (!callsOn) {
+      label = HostProfileStrings.callsSoon;
+      icon = Icons.call_rounded;
+      bg = dark ? HfColors.darkTile : HfColors.handle;
+      fg = dark ? HfColors.mutedSoft : HfColors.muted;
+      action = null;
+    } else if (online) {
+      label = 'Call now';
+      icon = Icons.call_rounded;
+      bg = dark ? HfColors.lavender : HfColors.ink;
+      fg = dark ? HfColors.ink : HfColors.white;
+      action = _call;
+    } else {
+      label = subscribed ? 'Notifying' : 'Notify me';
+      semantics = subscribed ? HostProfileStrings.notifyStop : null;
+      icon = subscribed
+          ? Icons.notifications_active_rounded
+          : Icons.notifications_none_rounded;
+      bg = dark ? HfColors.darkCard : HfColors.white;
+      fg = dark ? HfColors.darkText : HfColors.ink;
+      action = _busy ? null : () => _toggleNotify(subscribed);
+    }
+
+    final muted = dark ? HfColors.mutedSoft : HfColors.muted;
+    return Container(
+      constraints: const BoxConstraints(minHeight: 60),
+      padding: const EdgeInsets.all(5),
+      decoration: BoxDecoration(
+        color: dark ? HfColors.darkBar : HfColors.surfaceSoft,
+        borderRadius: BorderRadius.circular(HfRadius.tile),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          Expanded(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(
+                horizontal: HfSpacing.lg,
+                vertical: 2,
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text.rich(
+                    TextSpan(
+                      children: [
+                        TextSpan(
+                          text: '₹${_h.pricePerMin}',
+                          style: HfText.of(context, HfText.section),
+                        ),
+                        TextSpan(
+                          text: ' /min',
+                          style: HfText.label.copyWith(color: muted),
+                        ),
+                      ],
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  Text(
+                    '10 min ≈ ₹${_h.pricePerMin * 10}',
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: HfText.label.copyWith(
+                      color: muted,
+                      fontWeight: FontWeight.w400,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          Flexible(
+            fit: FlexFit.loose,
+            child: Semantics(
+              button: true,
+              enabled: action != null,
+              label: semantics ?? label,
+              excludeSemantics: true,
+              child: Material(
+                color: bg,
+                borderRadius: BorderRadius.circular(HfRadius.tileSmall),
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(HfRadius.tileSmall),
+                  onTap: action,
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(minHeight: HfSpacing.tap),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: HfSpacing.xxl,
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(icon, size: 17, color: fg),
+                          const SizedBox(width: HfSpacing.sm),
+                          Flexible(
+                            child: Text(
+                              label,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: HfText.buttonSmall.copyWith(color: fg),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// A narrow card for a horizontal strip: picture, name, price, status, intro button.
 class HostMiniCard extends ConsumerWidget {
-  const HostMiniCard({super.key, required this.host, this.from = 'home', this.onTap, this.animate = true});
+  const HostMiniCard({
+    super.key,
+    required this.host,
+    this.from = 'home',
+    this.onTap,
+    this.animate = true,
+  });
 
   final HostCard host;
   final String from;
@@ -230,16 +809,30 @@ class HostMiniCard extends ConsumerWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisSize: MainAxisSize.min,
           children: [
-            Center(child: HostAvatar(url: host.avatarUrl, size: 96, aiLabel: kAiPictureLabel)),
+            Center(
+              child: HostAvatar(
+                url: host.avatarUrl,
+                size: 96,
+                aiLabel: kAiPictureLabel,
+              ),
+            ),
             const SizedBox(height: 10),
-            Text(host.displayName, style: HfText.subtitle, maxLines: 1, overflow: TextOverflow.ellipsis),
+            Text(
+              host.displayName,
+              style: HfText.of(context, HfText.subsection),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
             const SizedBox(height: 2),
             Wrap(
               spacing: 8,
               runSpacing: 2,
               crossAxisAlignment: WrapCrossAlignment.center,
               children: [
-                Text(host.priceLabel, style: HfText.bodyStrong),
+                Text(
+                  host.priceLabel,
+                  style: HfText.of(context, HfText.bodyStrong),
+                ),
                 HostRating(host: host),
               ],
             ),
@@ -249,7 +842,10 @@ class HostMiniCard extends ConsumerWidget {
               runSpacing: 4,
               crossAxisAlignment: WrapCrossAlignment.center,
               children: [
-                _Pill(host: host, animate: animate),
+                FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: StatusPill(presence: host.status, animate: animate),
+                ),
                 if (host.hasIntro) IntroPlayButton(host: host, from: from),
               ],
             ),
@@ -260,7 +856,7 @@ class HostMiniCard extends ConsumerWidget {
   }
 }
 
-/// "★ 4.8 (23)", or "New" when nobody has rated this host yet.
+/// "★ 4.8", or "New" when nobody has rated this host yet.
 class HostRating extends StatelessWidget {
   const HostRating({super.key, required this.host});
 
@@ -269,16 +865,32 @@ class HostRating extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final r = host.rating;
-    if (r == null || host.reviewCount <= 0) return Text('New', style: HfText.badge.copyWith(color: HfColors.orchid));
+    if (r == null || host.reviewCount <= 0) {
+      return Text(
+        'New',
+        style: HfText.badge.copyWith(
+          color: HfBrightness.isDark(context)
+              ? HfColors.lavenderLight
+              : HfColors.link,
+        ),
+      );
+    }
     return Semantics(
       label: 'Rated ${r.toStringAsFixed(1)} from ${host.reviewCount} reviews',
       excludeSemantics: true,
       child: Text.rich(
-        TextSpan(children: [
-          const TextSpan(text: '★ ', style: TextStyle(color: HfColors.rose)),
-          TextSpan(text: r.toStringAsFixed(1), style: HfText.badge),
-          TextSpan(text: ' (${host.reviewCount})', style: HfText.badge.copyWith(color: HfColors.mauve)),
-        ]),
+        TextSpan(
+          children: [
+            const TextSpan(
+              text: '★ ',
+              style: TextStyle(color: HfColors.star),
+            ),
+            TextSpan(
+              text: r.toStringAsFixed(1),
+              style: HfText.of(context, HfText.buttonSmall),
+            ),
+          ],
+        ),
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
       ),
@@ -292,30 +904,19 @@ class HostTag extends StatelessWidget {
 
   final String text;
 
-  /// Rose on blush for the lane tags; orchid on lilac for topics.
+  /// Blush for the lane tags; lavender for topics.
   final bool accent;
 
   @override
   Widget build(BuildContext context) {
+    final tint = accent ? HfTint.blush : HfTint.lavender;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
       decoration: BoxDecoration(
-        color: accent ? HfColors.blush : HfColors.lilac,
-        borderRadius: BorderRadius.circular(HfRadius.pill),
+        color: tint.bg(context),
+        borderRadius: BorderRadius.circular(HfRadius.pillRadius),
       ),
-      child: Text(text, style: HfText.badge.copyWith(color: accent ? HfColors.rose : HfColors.orchid)),
+      child: Text(text, style: HfText.badge.copyWith(color: tint.ink(context))),
     );
   }
-}
-
-/// The status pill, shrunk to fit when the phone's font is turned up very high (never overflows).
-class _Pill extends StatelessWidget {
-  const _Pill({required this.host, required this.animate});
-
-  final HostCard host;
-  final bool animate;
-
-  @override
-  Widget build(BuildContext context) =>
-      FittedBox(fit: BoxFit.scaleDown, child: StatusPill(presence: host.status, animate: animate));
 }

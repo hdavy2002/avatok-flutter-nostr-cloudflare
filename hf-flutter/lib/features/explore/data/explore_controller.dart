@@ -79,21 +79,22 @@ class ExploreState {
     bool? loadMoreFailed,
     ApiError? error,
     bool clearError = false,
-  }) =>
-      ExploreState(
-        filters: filters ?? this.filters,
-        status: status ?? this.status,
-        items: items ?? this.items,
-        nextOffset: identical(nextOffset, _keep) ? this.nextOffset : nextOffset as int?,
-        total: total ?? this.total,
-        fromCache: fromCache ?? this.fromCache,
-        stale: stale ?? this.stale,
-        refreshFailed: refreshFailed ?? this.refreshFailed,
-        awaitingFresh: awaitingFresh ?? this.awaitingFresh,
-        loadingMore: loadingMore ?? this.loadingMore,
-        loadMoreFailed: loadMoreFailed ?? this.loadMoreFailed,
-        error: clearError ? null : (error ?? this.error),
-      );
+  }) => ExploreState(
+    filters: filters ?? this.filters,
+    status: status ?? this.status,
+    items: items ?? this.items,
+    nextOffset: identical(nextOffset, _keep)
+        ? this.nextOffset
+        : nextOffset as int?,
+    total: total ?? this.total,
+    fromCache: fromCache ?? this.fromCache,
+    stale: stale ?? this.stale,
+    refreshFailed: refreshFailed ?? this.refreshFailed,
+    awaitingFresh: awaitingFresh ?? this.awaitingFresh,
+    loadingMore: loadingMore ?? this.loadingMore,
+    loadMoreFailed: loadMoreFailed ?? this.loadMoreFailed,
+    error: clearError ? null : (error ?? this.error),
+  );
 
   static const Object _keep = Object();
 }
@@ -104,35 +105,58 @@ enum FilterSource { sheet, lane, route, clear }
 /// The Explore list: filters, the first page (cached, then fresh), more pages, refresh.
 ///
 /// One request counts at a time: every new load bumps [_gen], and an answer from an older load is dropped.
-final exploreControllerProvider = NotifierProvider<ExploreController, ExploreState>(ExploreController.new);
+final exploreControllerProvider =
+    NotifierProvider<ExploreController, ExploreState>(ExploreController.new);
 
 class ExploreController extends Notifier<ExploreState> {
   int _gen = 0;
   bool _started = false;
 
   @override
-  ExploreState build() => const ExploreState(filters: HostFilters.none, status: ExploreStatus.loading);
+  ExploreState build() => const ExploreState(
+    filters: HostFilters.none,
+    status: ExploreStatus.loading,
+  );
 
   HostsRepository get _repo => ref.read(hostsRepositoryProvider);
 
   /// The route's filters arrived (first build, a Home tile, a deep link). The local sort is kept.
   Future<void> applyRoute(HostFilters fromRoute) {
     final next = fromRoute.copyWith(sort: state.filters.sort);
-    if (_started && state.filters.sameRequest(next)) return Future<void>.value();
+    if (_started && state.filters.sameRequest(next)) {
+      return Future<void>.value();
+    }
     final changed = _started;
     if (changed) _filterApplied(next, FilterSource.route);
     return _load(next);
   }
 
   /// The person changed filters (sheet, lane tab, clear).
-  Future<void> setFilters(HostFilters next, {FilterSource source = FilterSource.sheet}) {
-    if (_started && state.filters.sameRequest(next)) return Future<void>.value();
+  Future<void> setFilters(
+    HostFilters next, {
+    FilterSource source = FilterSource.sheet,
+  }) {
+    if (_started && state.filters.sameRequest(next)) {
+      return Future<void>.value();
+    }
     _filterApplied(next, source);
     return _load(next);
   }
 
+  /// How many hosts these filters would show (the filter sheet's "Show N hosts"). One cheap request that
+  /// never touches the list on screen. Null when it cannot be read.
+  Future<int?> previewCount(HostFilters f) async {
+    try {
+      final page = await _repo.fetch(f, limit: 1);
+      return page.total;
+    } catch (_) {
+      return null;
+    }
+  }
+
   /// Pull to refresh, "Try again", and the sign-in coming back. Keeps the list on screen while it loads.
-  Future<void> refresh() => _load(state.filters, keepItems: true, useCache: false);
+  Future<void> refresh() =>
+      _load(state.filters, keepItems: true, useCache: false);
 
   /// Reload for the same filters, starting from the saved copy (used after sign-in).
   Future<void> reload() => _load(state.filters);
@@ -144,7 +168,11 @@ class ExploreController extends Notifier<ExploreState> {
     });
   }
 
-  Future<void> _load(HostFilters f, {bool keepItems = false, bool useCache = true}) async {
+  Future<void> _load(
+    HostFilters f, {
+    bool keepItems = false,
+    bool useCache = true,
+  }) async {
     final gen = ++_gen;
     _started = true;
     final signedIn = ref.read(sessionProvider).isSignedIn;
@@ -152,9 +180,17 @@ class ExploreController extends Notifier<ExploreState> {
       state = ExploreState(filters: f, status: ExploreStatus.signInNeeded);
       return;
     }
-    final keep = keepItems && state.status == ExploreStatus.ready && state.items.isNotEmpty;
+    final keep =
+        keepItems &&
+        state.status == ExploreStatus.ready &&
+        state.items.isNotEmpty;
     state = keep
-        ? state.copyWith(filters: f, loadMoreFailed: false, loadingMore: false, refreshFailed: false)
+        ? state.copyWith(
+            filters: f,
+            loadMoreFailed: false,
+            loadingMore: false,
+            refreshFailed: false,
+          )
         : ExploreState(filters: f, status: ExploreStatus.loading);
     try {
       await for (final u in _repo.firstPage(
@@ -183,10 +219,19 @@ class ExploreController extends Notifier<ExploreState> {
       } else if (f.lane != null && e.code == 'lane_required') {
         state = ExploreState(filters: f, status: ExploreStatus.laneRequired);
       } else if (e.isNotEnabled) {
-        state = ExploreState(filters: f, status: ExploreStatus.comingSoon, error: e);
+        state = ExploreState(
+          filters: f,
+          status: ExploreStatus.comingSoon,
+          error: e,
+        );
       } else if (keep) {
         // The refresh failed: keep what is on screen and say it is not fresh.
-        state = state.copyWith(fromCache: true, refreshFailed: true, awaitingFresh: false, error: e);
+        state = state.copyWith(
+          fromCache: true,
+          refreshFailed: true,
+          awaitingFresh: false,
+          error: e,
+        );
       } else {
         state = ExploreState(filters: f, status: ExploreStatus.error, error: e);
       }
@@ -198,7 +243,12 @@ class ExploreController extends Notifier<ExploreState> {
   Future<void> loadMore({bool retry = false}) async {
     final s = state;
     final offset = s.nextOffset;
-    if (s.status != ExploreStatus.ready || s.loadingMore || s.awaitingFresh || offset == null) return;
+    if (s.status != ExploreStatus.ready ||
+        s.loadingMore ||
+        s.awaitingFresh ||
+        offset == null) {
+      return;
+    }
     if (s.loadMoreFailed && !retry) return;
     final gen = _gen;
     state = s.copyWith(loadingMore: true, loadMoreFailed: false);
@@ -206,7 +256,11 @@ class ExploreController extends Notifier<ExploreState> {
       final page = await _repo.fetch(s.filters, offset: offset);
       if (gen != _gen) return;
       final seen = <String>{for (final c in state.items) c.slug};
-      final merged = <HostCard>[...state.items, for (final c in page.items) if (seen.add(c.slug)) c];
+      final merged = <HostCard>[
+        ...state.items,
+        for (final c in page.items)
+          if (seen.add(c.slug)) c,
+      ];
       state = state.copyWith(
         items: merged,
         nextOffset: page.items.isEmpty ? null : page.nextOffset,

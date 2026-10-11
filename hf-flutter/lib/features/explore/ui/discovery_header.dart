@@ -1,15 +1,34 @@
 import 'package:flutter/material.dart';
-import '../../../core/brand.dart';
-import '../../../core/theme/hf_tokens.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
+
+import '../../../core/auth/session.dart';
+import '../../../core/router/routes.dart';
+import '../../../core/theme/hf_theme.dart';
 import '../../../core/widgets/widgets.dart';
+import '../../home/data/home_balance.dart';
+import '../../home/ui/home_copy.dart';
 import '../data/host_filters.dart';
 import '../data/host_options.dart';
-import '../widgets/option_chip.dart';
+import 'explore_copy.dart';
 
-/// The marketplace starts with useful discovery controls, not a marketing page.
-class DiscoveryHeader extends StatelessWidget {
-  const DiscoveryHeader({super.key, required this.filters, required this.options,
-    required this.onFilters, required this.onApply, required this.onSearch, required this.search});
+/// The top of Discover (mockup `Main`, dark: `HomeDark`): greeting, the question, the wallet pill, the search
+/// bar with its filter button, the Everyone / Women-only / LGBTQ+ switch, the mood chips and the list title.
+class DiscoveryHeader extends ConsumerWidget {
+  const DiscoveryHeader({
+    super.key,
+    required this.filters,
+    required this.options,
+    required this.onFilters,
+    required this.onApply,
+    required this.onSearch,
+    required this.search,
+    this.showListTitle = false,
+    this.trailing,
+    this.now,
+  });
+
   final HostFilters filters;
   final HostOptions? options;
   final VoidCallback onFilters;
@@ -17,103 +36,400 @@ class DiscoveryHeader extends StatelessWidget {
   final ValueChanged<String> onSearch;
   final TextEditingController search;
 
+  /// "Good listeners for you" and [trailing] ("23 online") under the chips.
+  final bool showListTitle;
+  final String? trailing;
+
+  /// For tests: the clock the greeting reads.
+  final DateTime? now;
+
+  static const List<String> _lanes = <String>[
+    'Everyone',
+    'Women-only',
+    'LGBTQ+',
+  ];
+  static const List<HfTint> _moodTints = <HfTint>[
+    HfTint.peach,
+    HfTint.sky,
+    HfTint.butter,
+  ];
+
   @override
-  Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.fromLTRB(HfSpacing.page, 12, HfSpacing.page, 4),
-    child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      const Text(Brand.name, style: HfText.title),
-      const SizedBox(height: 12),
-      const Text('Who feels like your kind of company?', style: HfText.hero),
-      const SizedBox(height: 18),
-      Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Expanded(child: DecoratedBox(
-          decoration: BoxDecoration(color: HfColors.white,
-            borderRadius: BorderRadius.circular(HfRadius.pill), boxShadow: HfShadows.card),
-          child: TextField(controller: search, onChanged: onSearch,
-            textInputAction: TextInputAction.search,
-            decoration: InputDecoration(
-              hintText: 'Search hosts shown below',
-              prefixIcon: const Icon(Icons.search_rounded),
-              suffixIcon: search.text.isEmpty ? null : IconButton(
-                tooltip: 'Clear search', onPressed: () { search.clear(); onSearch(''); },
-                icon: const Icon(Icons.close_rounded)),
-            )),
-        )),
-        const SizedBox(width: 8),
-        DecoratedBox(decoration: const BoxDecoration(color: HfColors.white,
-          shape: BoxShape.circle, boxShadow: HfShadows.card),
-          child: IconButton(key: const ValueKey<String>('open-filters'),
-            tooltip: 'Filters', onPressed: onFilters,
-            padding: const EdgeInsets.all(16),
-            icon: Badge(isLabelVisible: filters.activeCount>0,
-              backgroundColor: HfColors.ink,
-              label: Text('${filters.activeCount}', style: HfText.badge.copyWith(color: HfColors.white)), child: const Icon(Icons.tune_rounded)))),
-      ]),
-      const SizedBox(height: 12),
-      Wrap(spacing: 8, runSpacing: 8, children: [
-        OptionChip(label: 'Everyone', selected: filters.lane==null,
-          onTap: () => onApply(filters.copyWith(lane: null))),
-        OptionChip(label: 'Women-only', selected: filters.lane==HostLane.women,
-          onTap: () => onApply(filters.copyWith(lane: HostLane.women))),
-        OptionChip(label: 'LGBTQ+', selected: filters.lane==HostLane.lgbtq,
-          onTap: () => onApply(filters.copyWith(lane: HostLane.lgbtq))),
-      ]),
-      const SizedBox(height: 14),
-      if (filters.lane==null) _moods(context)
-      else HfCard(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        HfScene(kind: filters.lane==HostLane.women ? HfSceneKind.women : HfSceneKind.lgbtq, height: 110),
-        Text(filters.lane==HostLane.women ? 'A space for women' : 'A space to be yourself', style: HfText.title),
-        const SizedBox(height: 6),
-        Text(filters.lane==HostLane.women
-          ? 'Private conversations with women. Entry follows our identity verification rules.'
-          : 'A private LGBTQ+ space. Join by choice, with identity and video verification.',
-          style: HfText.bodyText),
-      ])),
-      const SizedBox(height: 14),
-      Wrap(spacing: 8, runSpacing: 8, children: [
-        _filter('Language', Icons.language_rounded, onFilters),
-        _filter(filters.maxPrice==null ? 'Price' : 'Up to ₹${filters.maxPrice}/min',
-          Icons.sell_outlined, onFilters),
-        OptionChip(label: 'Online now', selected: filters.online,
-          onTap: () => onApply(filters.copyWith(online: !filters.online))),
-      ]),
-      if (options!=null) ...[
-        const SizedBox(height: 10),
-        Text('Host rates ₹${options!.priceMin}–₹${options!.priceMax}/min',
-          style: HfText.note),
+  Widget build(BuildContext context, WidgetRef ref) {
+    final dark = HfBrightness.isDark(context);
+    final name = ref.watch(
+      sessionProvider.select((s) {
+        final raw = (s.user?.firstName ?? s.me?.displayName ?? '').trim();
+        return raw.isEmpty ? null : raw.split(RegExp(r'\s+')).first;
+      }),
+    );
+    final laneIndex = filters.lane == HostLane.women
+        ? 1
+        : filters.lane == HostLane.lgbtq
+        ? 2
+        : 0;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(
+            HfSpacing.pageWide,
+            12,
+            HfSpacing.pageWide,
+            0,
+          ),
+          child: LayoutBuilder(
+            builder: (context, c) {
+              final texts = Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    HomeCopy.greeting(name, now: now),
+                    style: HfText.of(
+                      context,
+                      HfText.note,
+                    ).copyWith(fontWeight: FontWeight.w600),
+                  ),
+                  const SizedBox(height: HfSpacing.xs),
+                  Text(
+                    HomeCopy.hero,
+                    style: HfText.of(context, HfText.headline),
+                  ),
+                ],
+              );
+              // A very big system font or a very narrow phone: the pill goes under the question.
+              final stacked =
+                  c.maxWidth < 300 ||
+                  MediaQuery.textScalerOf(context).scale(16) > 22;
+              if (stacked) {
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    texts,
+                    const SizedBox(height: HfSpacing.sm),
+                    const _WalletPill(),
+                  ],
+                );
+              }
+              return Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(child: texts),
+                  const SizedBox(width: HfSpacing.lg),
+                  const _WalletPill(),
+                ],
+              );
+            },
+          ),
+        ),
+        const SizedBox(height: HfSpacing.xxl),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: HfSpacing.pageWide),
+          child: _SearchBar(
+            controller: search,
+            onChanged: onSearch,
+            onFilters: onFilters,
+            activeCount: filters.activeCount,
+          ),
+        ),
+        const SizedBox(height: HfSpacing.xxl),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: HfSpacing.pageWide),
+          child: HfSegmented(
+            options: _lanes,
+            selected: laneIndex,
+            onChanged: (i) {
+              HapticFeedback.selectionClick();
+              onApply(
+                filters.copyWith(
+                  lane: i == 1
+                      ? HostLane.women
+                      : i == 2
+                      ? HostLane.lgbtq
+                      : null,
+                ),
+              );
+            },
+          ),
+        ),
+        const SizedBox(height: HfSpacing.xl),
+        _moodRow(context),
+        if (showListTitle)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(
+              HfSpacing.pageWide,
+              22,
+              HfSpacing.pageWide,
+              0,
+            ),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.baseline,
+              textBaseline: TextBaseline.alphabetic,
+              children: [
+                Expanded(
+                  child: Text(
+                    ExploreCopy.listTitle,
+                    style: HfText.of(context, HfText.section),
+                  ),
+                ),
+                if (trailing != null) ...[
+                  const SizedBox(width: HfSpacing.md),
+                  Flexible(
+                    child: Text(
+                      trailing!,
+                      textAlign: TextAlign.end,
+                      style: HfText.label.copyWith(
+                        color: dark ? HfColors.mutedSoft : HfColors.muted,
+                        fontWeight: FontWeight.w400,
+                      ),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
       ],
-      const SizedBox(height: 12),
-    ]),
-  );
+    );
+  }
 
-  Widget _filter(String label, IconData icon, VoidCallback onTap) => HfButton(
-    label: label, icon: icon, kind: HfButtonKind.secondary, expand: false, onPressed: onTap);
+  bool _groupSelected(MoodGroup g) {
+    final t = options?.topicsOfGroup(g) ?? const <String>[];
+    return t.isNotEmpty &&
+        filters.topics.length == t.length &&
+        t.every(filters.topics.contains);
+  }
 
-  Widget _moods(BuildContext context) {
-    final groups=options?.moodGroups.take(3).toList() ?? <MoodGroup>[];
-    if(groups.isEmpty) return const HfScene(kind: HfSceneKind.discover, height: 150);
-    const colors=[HfColors.mint,HfColors.sky,HfColors.lavender];
-    const kinds=[HfSceneKind.discover,HfSceneKind.call,HfSceneKind.welcome];
-    Widget tile(int i) => HfCard(key: ValueKey<String>('mood-${groups[i].slug}'), color: colors[i], padding: const EdgeInsets.all(14),
-      onTap: () => onApply(filters.copyWith(topics: options!.topicsOfGroup(groups[i]))),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Text(groups[i].label, style: HfText.subtitle),
-        HfScene(kind:kinds[i],height:groups.length==2 ? 66 : i==0 ? 180 : 52),
-        const Row(children: [Expanded(child: Text('Find company', style: HfText.badge)),
-          Icon(Icons.arrow_forward_rounded, size:20)]),
-      ]));
-    return LayoutBuilder(builder: (context,c) {
-      final largeType=MediaQuery.textScalerOf(context).scale(16)>22;
-      if(c.maxWidth<280 || largeType || groups.length==1) {
-        return Column(children: [for(var i=0;i<groups.length;i++) ...[
-          tile(i), if(i<groups.length-1) const SizedBox(height:10)]]);
-      }
-      if (groups.length==2) return Row(crossAxisAlignment: CrossAxisAlignment.start,
-        children: [Expanded(child:tile(0)),const SizedBox(width:10),Expanded(child:tile(1))]);
-      return Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Expanded(child:tile(0)),const SizedBox(width:10),
-        Expanded(child:Column(children:[tile(1),const SizedBox(height:10),tile(2)])),
-      ]);
-    });
+  /// "All moods" (dark chip) and one tinted chip per server mood group; a picked group is a topic filter.
+  Widget _moodRow(BuildContext context) {
+    final groups = options?.moodGroups ?? const <MoodGroup>[];
+    final allSelected = filters.topics.isEmpty;
+    return SizedBox(
+      height: HfSpacing.tap,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: HfSpacing.pageWide),
+        itemCount: groups.length + 1,
+        separatorBuilder: (_, __) => const SizedBox(width: HfSpacing.sm),
+        itemBuilder: (context, i) {
+          if (i == 0) {
+            void resetMoods() {
+              HapticFeedback.selectionClick();
+              onApply(filters.copyWith(topics: const <String>[]));
+            }
+
+            return allSelected
+                ? HfChip.dark(
+                    key: const ValueKey<String>('mood-all'),
+                    label: ExploreCopy.allMoods,
+                    onTap: resetMoods,
+                  )
+                : HfChip.outline(
+                    key: const ValueKey<String>('mood-all'),
+                    label: ExploreCopy.allMoods,
+                    onTap: resetMoods,
+                  );
+          }
+          final g = groups[i - 1];
+          final tint = _moodTints[(i - 1) % _moodTints.length];
+          final picked = _groupSelected(g);
+          void onTap() {
+            HapticFeedback.selectionClick();
+            onApply(
+              filters.copyWith(
+                topics: picked ? const <String>[] : options!.topicsOfGroup(g),
+              ),
+            );
+          }
+
+          final key = ValueKey<String>('mood-${g.slug}');
+          return picked
+              ? HfChip.selected(
+                  key: key,
+                  label: g.label,
+                  tint: tint,
+                  onTap: onTap,
+                )
+              : HfChip.filled(
+                  key: key,
+                  label: g.label,
+                  tint: tint,
+                  onTap: onTap,
+                );
+        },
+      ),
+    );
+  }
+}
+
+/// The lavender wallet pill: the balance for a signed-in person, "Sign in" for a guest. Opens `/wallet`.
+class _WalletPill extends ConsumerWidget {
+  const _WalletPill();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final dark = HfBrightness.isDark(context);
+    final signedIn = ref.watch(sessionProvider.select((s) => s.isSignedIn));
+    final wallet = signedIn ? ref.watch(homeBalanceProvider) : null;
+    final balance = (wallet != null && wallet.hasValue)
+        ? wallet.requireValue
+        : null;
+    final label = !signedIn
+        ? HomeCopy.walletSignIn
+        : (balance ?? HomeCopy.walletFallback);
+    final bg = HfTint.lavender.bg(context);
+    final fg = HfTint.lavender.ink(context);
+    return Semantics(
+      button: true,
+      label: signedIn
+          ? '${HomeCopy.walletLabel} $label'
+          : '${HomeCopy.walletLabel}, $label',
+      excludeSemantics: true,
+      child: GestureDetector(
+        key: const ValueKey<String>('wallet-pill'),
+        behavior: HitTestBehavior.opaque,
+        onTap: () => GoRouter.of(context).go(Routes.wallet),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(minHeight: HfSpacing.tap),
+          child: Center(
+            widthFactor: 1,
+            child: Container(
+              constraints: const BoxConstraints(minHeight: 44),
+              padding: const EdgeInsets.symmetric(horizontal: HfSpacing.xl),
+              decoration: BoxDecoration(
+                color: bg,
+                borderRadius: BorderRadius.circular(22),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    Icons.account_balance_wallet_outlined,
+                    size: 18,
+                    color: fg,
+                  ),
+                  const SizedBox(width: HfSpacing.sm),
+                  Text(
+                    label,
+                    style: HfText.buttonSmall.copyWith(
+                      color: dark
+                          ? HfColors.lavenderLight
+                          : HfColors.lavenderDeep,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// White search bar (radius 18, hairline, soft shadow): magnifier, a text field and the soft-square filter button.
+class _SearchBar extends StatelessWidget {
+  const _SearchBar({
+    required this.controller,
+    required this.onChanged,
+    required this.onFilters,
+    required this.activeCount,
+  });
+
+  final TextEditingController controller;
+  final ValueChanged<String> onChanged;
+  final VoidCallback onFilters;
+  final int activeCount;
+
+  @override
+  Widget build(BuildContext context) {
+    final dark = HfBrightness.isDark(context);
+    final muted = dark ? HfColors.mutedSoft : HfColors.muted;
+    return Container(
+      constraints: const BoxConstraints(minHeight: 54),
+      padding: const EdgeInsets.fromLTRB(16, 0, 8, 0),
+      decoration: BoxDecoration(
+        color: dark ? HfColors.darkCard : HfColors.white,
+        borderRadius: BorderRadius.circular(HfRadius.input),
+        border: Border.all(color: dark ? HfColors.darkLine : HfColors.line),
+        boxShadow: dark ? null : HfShadows.field,
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.search_rounded, size: 20, color: muted),
+          const SizedBox(width: HfSpacing.lg),
+          Expanded(
+            child: TextField(
+              controller: controller,
+              onChanged: onChanged,
+              textInputAction: TextInputAction.search,
+              style: HfText.body.copyWith(
+                fontSize: 15,
+                color: dark ? HfColors.darkText : HfColors.ink,
+              ),
+              decoration: InputDecoration(
+                isDense: true,
+                filled: false,
+                border: InputBorder.none,
+                enabledBorder: InputBorder.none,
+                focusedBorder: InputBorder.none,
+                contentPadding: const EdgeInsets.symmetric(vertical: 14),
+                hintText: ExploreCopy.searchHint,
+                hintStyle: HfText.body.copyWith(fontSize: 15, color: muted),
+              ),
+            ),
+          ),
+          ListenableBuilder(
+            listenable: controller,
+            builder: (context, _) => controller.text.isEmpty
+                ? const SizedBox.shrink()
+                : IconButton(
+                    tooltip: 'Clear search',
+                    onPressed: () {
+                      controller.clear();
+                      onChanged('');
+                    },
+                    icon: Icon(Icons.close_rounded, color: muted),
+                  ),
+          ),
+          Tooltip(
+            message: ExploreCopy.filters,
+            child: GestureDetector(
+              key: const ValueKey<String>('open-filters'),
+              behavior: HitTestBehavior.opaque,
+              onTap: onFilters,
+              child: SizedBox(
+                width: HfSpacing.tap,
+                height: HfSpacing.tap,
+                child: Center(
+                  child: Container(
+                    width: 40,
+                    height: 40,
+                    decoration: BoxDecoration(
+                      color: dark ? HfColors.darkBar : HfColors.surfaceSoft,
+                      borderRadius: BorderRadius.circular(HfRadius.segmentItem),
+                    ),
+                    child: Badge(
+                      isLabelVisible: activeCount > 0,
+                      backgroundColor: dark ? HfColors.lavender : HfColors.ink,
+                      label: Text(
+                        '$activeCount',
+                        style: HfText.badge.copyWith(
+                          color: dark ? HfColors.ink : HfColors.white,
+                        ),
+                      ),
+                      child: Icon(
+                        Icons.tune_rounded,
+                        size: 18,
+                        color: dark ? HfColors.darkText : HfColors.ink,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }

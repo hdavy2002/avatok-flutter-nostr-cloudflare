@@ -9,7 +9,11 @@ import 'hosts_repository.dart';
 /// `{topics:[{slug,label,group}], moodGroups:[{slug,label}], languages:[{code,label}], styles, priceMin, priceMax}`.
 /// The app keeps NO copy of these lists: topic labels, mood groups, languages and the price range all come from here.
 class HostTopic {
-  const HostTopic({required this.slug, required this.label, required this.group});
+  const HostTopic({
+    required this.slug,
+    required this.label,
+    required this.group,
+  });
   final String slug;
   final String label;
 
@@ -53,10 +57,15 @@ class HostOptions {
   }
 
   /// Topic slug to label, for the cards.
-  Map<String, String> get topicLabels => <String, String>{for (final t in topics) t.slug: t.label};
+  Map<String, String> get topicLabels => <String, String>{
+    for (final t in topics) t.slug: t.label,
+  };
 
   /// The topic slugs of one mood group (a Home tile opens Explore with these).
-  List<String> topicsOfGroup(MoodGroup g) => [for (final t in topics) if (t.group == g.label) t.slug];
+  List<String> topicsOfGroup(MoodGroup g) => [
+    for (final t in topics)
+      if (t.group == g.label) t.slug,
+  ];
 
   /// The language code for a label ("Hindi" -> "hi"), or null.
   String? languageCode(String label) {
@@ -68,8 +77,12 @@ class HostOptions {
 
   factory HostOptions.fromJson(Object? raw) {
     final j = raw is Map ? Map<String, dynamic>.from(raw) : <String, dynamic>{};
-    List<Map<String, dynamic>> maps(Object? v) =>
-        v is List ? [for (final e in v) if (e is Map) Map<String, dynamic>.from(e)] : <Map<String, dynamic>>[];
+    List<Map<String, dynamic>> maps(Object? v) => v is List
+        ? [
+            for (final e in v)
+              if (e is Map) Map<String, dynamic>.from(e),
+          ]
+        : <Map<String, dynamic>>[];
     String s(Object? v) => (v ?? '').toString();
     int n(Object? v, int fallback) => v is num ? v.toInt() : fallback;
     final min = n(j['priceMin'], 5);
@@ -77,15 +90,22 @@ class HostOptions {
     return HostOptions(
       topics: [
         for (final m in maps(j['topics']))
-          if (s(m['slug']).isNotEmpty) HostTopic(slug: s(m['slug']), label: s(m['label']), group: s(m['group'])),
+          if (s(m['slug']).isNotEmpty)
+            HostTopic(
+              slug: s(m['slug']),
+              label: s(m['label']),
+              group: s(m['group']),
+            ),
       ],
       moodGroups: [
         for (final m in maps(j['moodGroups']))
-          if (s(m['label']).isNotEmpty) MoodGroup(slug: s(m['slug']), label: s(m['label'])),
+          if (s(m['label']).isNotEmpty)
+            MoodGroup(slug: s(m['slug']), label: s(m['label'])),
       ],
       languages: [
         for (final m in maps(j['languages']))
-          if (s(m['code']).isNotEmpty) HostLanguage(code: s(m['code']), label: s(m['label'])),
+          if (s(m['code']).isNotEmpty)
+            HostLanguage(code: s(m['code']), label: s(m['label'])),
       ],
       priceMin: min,
       priceMax: max > min ? max : min + 1,
@@ -94,7 +114,8 @@ class HostOptions {
 }
 
 /// The options when they are loaded, else null (screens that only need labels work without them).
-HostOptions? optionsOf(AsyncValue<HostOptions> v) => v is AsyncData<HostOptions> ? v.value : null;
+HostOptions? optionsOf(AsyncValue<HostOptions> v) =>
+    v is AsyncData<HostOptions> ? v.value : null;
 
 const String _optionsCacheKey = 'hf.cache.options.v1';
 
@@ -104,7 +125,9 @@ Duration? noAutoRetry(int retryCount, Object error) => null;
 
 /// The options, cached on the phone: the fresh answer when the network works, else the saved copy.
 /// Errors only when there is neither (the filter sheet then shows "Try again").
-final hostOptionsProvider = FutureProvider<HostOptions>(retry: noAutoRetry, (ref) async {
+final hostOptionsProvider = FutureProvider<HostOptions>(retry: noAutoRetry, (
+  ref,
+) async {
   final api = ref.watch(apiClientProvider);
   final cache = ref.watch(jsonCacheProvider);
   try {
@@ -113,7 +136,9 @@ final hostOptionsProvider = FutureProvider<HostOptions>(retry: noAutoRetry, (ref
     if (opts.topics.isNotEmpty) unawaited(cache.write(_optionsCacheKey, json));
     return opts;
   } catch (e) {
-    final saved = await cache.read(_optionsCacheKey).timeout(HostsRepository.cacheReadTimeout, onTimeout: () => null);
+    final saved = await cache
+        .read(_optionsCacheKey)
+        .timeout(HostsRepository.cacheReadTimeout, onTimeout: () => null);
     if (saved != null) return HostOptions.fromJson(saved.data);
     rethrow;
   }

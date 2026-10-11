@@ -2,7 +2,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 
 import '../../../core/brand.dart';
-import '../../../core/theme/hf_tokens.dart';
+import '../../../core/theme/hf_theme.dart';
 
 /// Cloudflare image resizing, the same rule the website uses (web/src/lib/config.ts `cfImage`):
 /// only our own public media is transformed; signed, private, svg and gif URLs are left alone.
@@ -14,16 +14,29 @@ String resizedImageUrl(String url, {required double width, int quality = 60}) {
     final u = Uri.parse(url);
     if (!(u.scheme == 'https' || u.scheme == 'http')) return url;
     final host = u.host;
-    final ours = host == Brand.domain ||
+    final ours =
+        host == Brand.domain ||
         host.endsWith('.${Brand.domain}') ||
         host == Brand.apiHost ||
         host == Brand.mediaHost;
-    if (!ours || u.userInfo.isNotEmpty || u.hasQuery || u.fragment.isNotEmpty) return url;
+    if (!ours || u.userInfo.isNotEmpty || u.hasQuery || u.fragment.isNotEmpty) {
+      return url;
+    }
     final path = u.path;
     if (path.startsWith('/cdn-cgi/image/')) return url;
-    if (RegExp(r'(?:^|/)(?:private|private-read|api|verification)(?:/|$)', caseSensitive: false).hasMatch(path)) return url;
-    if (RegExp(r'\.(?:svg|gif)$', caseSensitive: false).hasMatch(path)) return url;
-    final w = kImageWidths.firstWhere((v) => v >= width, orElse: () => kImageWidths.last);
+    if (RegExp(
+      r'(?:^|/)(?:private|private-read|api|verification)(?:/|$)',
+      caseSensitive: false,
+    ).hasMatch(path)) {
+      return url;
+    }
+    if (RegExp(r'\.(?:svg|gif)$', caseSensitive: false).hasMatch(path)) {
+      return url;
+    }
+    final w = kImageWidths.firstWhere(
+      (v) => v >= width,
+      orElse: () => kImageWidths.last,
+    );
     final port = u.hasPort ? ':${u.port}' : '';
     return '${u.scheme}://$host$port/cdn-cgi/image/format=webp,quality=$quality,width=$w,fit=cover$path';
   } catch (_) {
@@ -34,7 +47,13 @@ String resizedImageUrl(String url, {required double width, int quality = 60}) {
 /// A host's picture: cached on disk for 7 days (cached_network_image), resized by Cloudflare, decoded at
 /// the size it is shown. No picture, or one that fails, shows a soft lilac tile with a person icon.
 class HostAvatar extends StatelessWidget {
-  const HostAvatar({super.key, required this.url, required this.size, this.radius = HfRadius.card, this.aiLabel});
+  const HostAvatar({
+    super.key,
+    required this.url,
+    required this.size,
+    this.radius = HfRadius.card,
+    this.aiLabel,
+  });
 
   final String? url;
   final double size;
@@ -51,9 +70,13 @@ class HostAvatar extends StatelessWidget {
     final placeholder = Container(
       width: size,
       height: size,
-      color: HfColors.lilac,
+      color: HfTint.lavender.bg(context),
       alignment: Alignment.center,
-      child: Icon(Icons.person_rounded, size: size * 0.5, color: HfColors.orchid),
+      child: Icon(
+        Icons.person_rounded,
+        size: size * 0.5,
+        color: HfTint.lavender.ink(context),
+      ),
     );
     final label = aiLabel;
     return ClipRRect(
@@ -83,14 +106,20 @@ class HostAvatar extends StatelessWidget {
                 right: 6,
                 bottom: 6,
                 child: Container(
-                  decoration: BoxDecoration(color: const Color(0xEFFFFFFF), borderRadius: BorderRadius.circular(20)),
+                  decoration: BoxDecoration(
+                    color: const Color(0xEFFFFFFF),
+                    borderRadius: BorderRadius.circular(20),
+                  ),
                   padding: const EdgeInsets.symmetric(vertical: 3),
                   child: Text(
                     label,
                     textAlign: TextAlign.center,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: HfText.badge.copyWith(fontSize: 11, color: HfColors.ink),
+                    style: HfText.badge.copyWith(
+                      fontSize: 11,
+                      color: HfColors.ink,
+                    ),
                   ),
                 ),
               ),

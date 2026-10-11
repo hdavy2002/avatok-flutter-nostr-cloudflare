@@ -73,7 +73,10 @@ class IntroPlayerState {
   bool isPlaying(String slug) => playingSlug == slug;
 }
 
-final introPlayerProvider = NotifierProvider<IntroPlayerController, IntroPlayerState>(IntroPlayerController.new);
+final introPlayerProvider =
+    NotifierProvider<IntroPlayerController, IntroPlayerState>(
+      IntroPlayerController.new,
+    );
 
 class IntroPlayerController extends Notifier<IntroPlayerState> {
   StreamSubscription<void>? _sub;
@@ -88,7 +91,11 @@ class IntroPlayerController extends Notifier<IntroPlayerState> {
 
   /// Tap on a card's play button: play it, or pause it when it is already playing. [from] is where the
   /// card sits (`explore`, `home`, `profile`), for telemetry.
-  Future<void> toggle({required String slug, required String url, required String from}) async {
+  Future<void> toggle({
+    required String slug,
+    required String url,
+    required String from,
+  }) async {
     if (state.isPlaying(slug)) {
       state = const IntroPlayerState();
       try {
@@ -103,10 +110,23 @@ class IntroPlayerController extends Notifier<IntroPlayerState> {
     state = IntroPlayerState(playingSlug: slug);
     try {
       await _audio.play(url);
-      unawaited(Analytics.capture('hf_app_intro_played', <String, Object>{'slug': slug, 'from': from}));
+      unawaited(
+        Analytics.capture('hf_app_intro_played', <String, Object>{
+          'slug': slug,
+          'from': from,
+        }),
+      );
     } catch (e, st) {
       if (state.playingSlug == slug) state = IntroPlayerState(failedSlug: slug);
-      unawaited(Analytics.captureException(e, st, screen: from, handled: true, extra: {'where': 'intro_play'}));
+      unawaited(
+        Analytics.captureException(
+          e,
+          st,
+          screen: from,
+          handled: true,
+          extra: {'where': 'intro_play'},
+        ),
+      );
     }
   }
 

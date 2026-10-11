@@ -19,9 +19,23 @@ import '../../support/app_harness.dart';
 import '../../support/fake_api_client.dart';
 import 'explore_test_support.dart';
 
-Uri location(ProviderContainer c) => c.read(appRouterProvider).routeInformationProvider.value.uri;
+Uri location(ProviderContainer c) =>
+    c.read(appRouterProvider).routeInformationProvider.value.uri;
 
-List<RecordedCall> listCalls(FakeApiClient api) => api.callsTo('GET', '/api/hf/hosts');
+/// The list requests. The filter sheet's live count asks the same endpoint with `limit: 1`; those are not the list.
+List<RecordedCall> listCalls(FakeApiClient api) => api
+    .callsTo('GET', '/api/hf/hosts')
+    .where((c) => c.query!['limit'] != 1)
+    .toList();
+
+/// A `/api/hf/options` answer with [n] mood topics, to test the "+N more" chip.
+Map<String, Object?> manyTopicsOptions(int n) => <String, Object?>{
+  ...optionsJson(),
+  'topics': [
+    for (var i = 1; i <= n; i++)
+      {'slug': 't$i', 'label': 'Mood $i', 'group': 'Tension'},
+  ],
+};
 
 Future<void> tapInSheet(WidgetTester tester, Finder f) async {
   final target = inSheet(f);
@@ -31,78 +45,99 @@ Future<void> tapInSheet(WidgetTester tester, Finder f) async {
   await tester.pump();
 }
 
-Finder inSheet(Finder f) => find.descendant(of: find.byType(FilterSheet), matching: f);
+Finder inSheet(Finder f) =>
+    find.descendant(of: find.byType(FilterSheet), matching: f);
 
 /// Discovery controls precede a lazy host list. Scroll like a person before
 /// asserting list/panel content or interacting with it at phone dimensions.
 Future<void> revealResult(WidgetTester tester, Finder target) async {
-  await tester.scrollUntilVisible(target, 240,
-    scrollable: find.descendant(of: find.byType(CustomScrollView), matching: find.byType(Scrollable)).first);
+  await tester.scrollUntilVisible(
+    target,
+    240,
+    scrollable: find
+        .descendant(
+          of: find.byType(CustomScrollView),
+          matching: find.byType(Scrollable),
+        )
+        .first,
+  );
   await tester.pump();
 }
 
 Future<void> returnToHeader(WidgetTester tester) async {
   // The header has been disposed when the lazy viewport is down in the list.
-  tester.state<ScrollableState>(find.descendant(of: find.byType(CustomScrollView),
-    matching: find.byType(Scrollable)).first).position.jumpTo(0);
+  tester
+      .state<ScrollableState>(
+        find
+            .descendant(
+              of: find.byType(CustomScrollView),
+              matching: find.byType(Scrollable),
+            )
+            .first,
+      )
+      .position
+      .jumpTo(0);
   await tester.pump();
 }
 
 void main() {
   group('cached then fresh', () {
-    testWidgets('an old saved list shows at once with the pill, then the fresh list replaces it', (tester) async {
-      final cache = MemoryJsonCache()
-        ..seed(
-          kExploreCacheKey,
-          {
+    testWidgets(
+      'an old saved list shows at once with the pill, then the fresh list replaces it',
+      (tester) async {
+        final cache = MemoryJsonCache()
+          ..seed(kExploreCacheKey, {
             'key': HostFilters.none.cacheKey,
             'page': pageJson([hostJson('old', name: 'Old Asha')]),
-          },
-          at: DateTime.now().subtract(const Duration(hours: 1)),
-        );
-      final fresh = Completer<Object?>();
-      final api = fakeApi()..on('GET', '/api/hf/hosts', (_) => fresh.future);
-      final c = await pumpScreen(tester, api: api, cache: cache);
+          }, at: DateTime.now().subtract(const Duration(hours: 1)));
+        final fresh = Completer<Object?>();
+        final api = fakeApi()..on('GET', '/api/hf/hosts', (_) => fresh.future);
+        final c = await pumpScreen(tester, api: api, cache: cache);
 
-      // Saved copy on screen while the network answer is still on its way.
-      await revealResult(tester, find.text('Old Asha'));
-      expect(find.text('Old Asha'), findsOneWidget);
-      await returnToHeader(tester);
-      await revealResult(tester, find.text('Showing saved list'));
-      expect(find.text('Showing saved list'), findsOneWidget);
-      expect(c.read(exploreControllerProvider).awaitingFresh, isTrue);
+        // Saved copy on screen while the network answer is still on its way.
+        await revealResult(tester, find.text('Old Asha'));
+        expect(find.text('Old Asha'), findsOneWidget);
+        await returnToHeader(tester);
+        await revealResult(tester, find.text('Showing saved list'));
+        expect(find.text('Showing saved list'), findsOneWidget);
+        expect(c.read(exploreControllerProvider).awaitingFresh, isTrue);
 
-      fresh.complete(pageJson([hostJson('new', name: 'New Bela')]));
-      await tester.pumpAndSettle();
+        fresh.complete(pageJson([hostJson('new', name: 'New Bela')]));
+        await tester.pumpAndSettle();
 
-      await revealResult(tester, find.text('New Bela'));
-      expect(find.text('New Bela'), findsOneWidget);
-      expect(find.text('Old Asha'), findsNothing);
-      expect(find.text('Showing saved list'), findsNothing);
-      // The fresh page replaced the saved copy for next time.
-      final saved = cache.store[kExploreCacheKey]!.data! as Map;
-      expect(((saved['page'] as Map)['items'] as List).single['slug'], 'new');
-      // An anonymous list is requested without the bearer token (so it can sit in the edge cache).
-      expect(listCalls(api).single.auth, isFalse);
-      expect(listCalls(api).single.query, {'limit': 24, 'offset': 0});
-    });
+        await revealResult(tester, find.text('New Bela'));
+        expect(find.text('New Bela'), findsOneWidget);
+        expect(find.text('Old Asha'), findsNothing);
+        expect(find.text('Showing saved list'), findsNothing);
+        // The fresh page replaced the saved copy for next time.
+        final saved = cache.store[kExploreCacheKey]!.data! as Map;
+        expect(((saved['page'] as Map)['items'] as List).single['slug'], 'new');
+        // An anonymous list is requested without the bearer token (so it can sit in the edge cache).
+        expect(listCalls(api).single.auth, isFalse);
+        expect(listCalls(api).single.query, {'limit': 24, 'offset': 0});
+      },
+    );
 
-    testWidgets('a fresh saved list shows with no pill; offline keeps it and says so', (tester) async {
-      final cache = MemoryJsonCache()
-        ..seed(kExploreCacheKey, {
-          'key': HostFilters.none.cacheKey,
-          'page': pageJson([hostJson('old', name: 'Old Asha')]),
-        });
-      final api = fakeApi()..onError('GET', '/api/hf/hosts', ApiError.network());
-      await pumpScreen(tester, api: api, cache: cache);
-      await revealResult(tester, find.text('Old Asha'));
-      expect(find.text('Old Asha'), findsOneWidget);
-      // The refresh failed: the saved copy is all there is, and the pill says so.
-      await returnToHeader(tester);
-      await revealResult(tester, find.text('Showing saved list'));
-      expect(find.text('Showing saved list'), findsOneWidget);
-      expect(find.text('Try again'), findsNothing);
-    });
+    testWidgets(
+      'a fresh saved list shows with no pill; offline keeps it and says so',
+      (tester) async {
+        final cache = MemoryJsonCache()
+          ..seed(kExploreCacheKey, {
+            'key': HostFilters.none.cacheKey,
+            'page': pageJson([hostJson('old', name: 'Old Asha')]),
+          });
+        final api = fakeApi()
+          ..onError('GET', '/api/hf/hosts', ApiError.network());
+        await pumpScreen(tester, api: api, cache: cache);
+        await revealResult(tester, find.text('Old Asha'));
+        expect(find.text('Old Asha'), findsOneWidget);
+        // The refresh failed: the saved copy is all there is, and the pill says so.
+        await returnToHeader(tester);
+        await revealResult(tester, find.text('Showing saved list'));
+        expect(find.text('Showing saved list'), findsOneWidget);
+        expect(find.text('Try again'), findsNothing);
+      },
+    );
 
     testWidgets('a saved list for other filters is not shown', (tester) async {
       final cache = MemoryJsonCache()
@@ -110,43 +145,89 @@ void main() {
           'key': const HostFilters(online: true).cacheKey,
           'page': pageJson([hostJson('old', name: 'Old Asha')]),
         });
-      final api = fakeApi()..onError('GET', '/api/hf/hosts', ApiError.network());
+      final api = fakeApi()
+        ..onError('GET', '/api/hf/hosts', ApiError.network());
       await pumpScreen(tester, api: api, cache: cache);
       expect(find.text('Old Asha'), findsNothing);
-      await revealResult(tester, find.text('No internet. Check your connection.'));
+      await revealResult(
+        tester,
+        find.text('No internet. Check your connection.'),
+      );
       expect(find.text('No internet. Check your connection.'), findsOneWidget);
     });
   });
 
   group('empty and error', () {
+    testWidgets('two host-card skeletons show while the first page loads', (
+      tester,
+    ) async {
+      final fresh = Completer<Object?>();
+      final api = fakeApi()..on('GET', '/api/hf/hosts', (_) => fresh.future);
+      await pumpScreen(tester, api: api);
+      expect(find.byType(HfSkeleton), findsNWidgets(2));
+      fresh.complete(pageJson([hostJson('asha', name: 'Asha')]));
+      await tester.pumpAndSettle();
+      expect(find.byType(HfSkeleton), findsNothing);
+      await revealResult(tester, find.text('Asha'));
+      expect(find.text('Asha'), findsOneWidget);
+    });
+
     testWidgets('empty list with no filters', (tester) async {
       final api = fakeApi()..onJson('GET', '/api/hf/hosts', pageJson([]));
       await pumpScreen(tester, api: api);
-      await revealResult(tester, find.text('No hosts are live yet. Check back soon.'));
-      expect(find.text('No hosts are live yet. Check back soon.'), findsOneWidget);
+      await revealResult(
+        tester,
+        find.text('No hosts are live yet. Check back soon.'),
+      );
+      expect(
+        find.text('No hosts are live yet. Check back soon.'),
+        findsOneWidget,
+      );
       expect(find.text('Clear filters'), findsNothing);
     });
 
-    testWidgets('empty with filters offers Clear filters, which asks again without them', (tester) async {
-      final api = fakeApi()..onJson('GET', '/api/hf/hosts', pageJson([]));
-      final c = await pumpScreen(tester, api: api, location: '/explore?online=1');
-      await revealResult(tester, find.text('No one matches. Try fewer filters.'));
-      expect(find.text('No one matches. Try fewer filters.'), findsOneWidget);
-      expect(listCalls(api).first.query!['online'], '1');
+    testWidgets(
+      'empty with filters offers Clear filters, which asks again without them',
+      (tester) async {
+        final api = fakeApi()..onJson('GET', '/api/hf/hosts', pageJson([]));
+        final c = await pumpScreen(
+          tester,
+          api: api,
+          location: '/explore?online=1',
+        );
+        await revealResult(
+          tester,
+          find.text('No one matches. Try fewer filters.'),
+        );
+        expect(find.text('No one matches. Try fewer filters.'), findsOneWidget);
+        expect(listCalls(api).first.query!['online'], '1');
 
-      await tester.ensureVisible(find.text('Clear filters'));
-      await tester.tap(find.text('Clear filters'));
-      await tester.pumpAndSettle();
-      expect(listCalls(api).last.query!.containsKey('online'), isFalse);
-      expect(location(c).toString(), '/explore');
-      await revealResult(tester, find.text('No hosts are live yet. Check back soon.'));
-      expect(find.text('No hosts are live yet. Check back soon.'), findsOneWidget);
-    });
+        await tester.ensureVisible(find.text('Clear filters'));
+        await tester.tap(find.text('Clear filters'));
+        await tester.pumpAndSettle();
+        expect(listCalls(api).last.query!.containsKey('online'), isFalse);
+        expect(location(c).toString(), '/explore');
+        await revealResult(
+          tester,
+          find.text('No hosts are live yet. Check back soon.'),
+        );
+        expect(
+          find.text('No hosts are live yet. Check back soon.'),
+          findsOneWidget,
+        );
+      },
+    );
 
-    testWidgets('error shows the message and Try again loads the list', (tester) async {
-      final api = fakeApi()..onError('GET', '/api/hf/hosts', ApiError.network());
+    testWidgets('error shows the message and Try again loads the list', (
+      tester,
+    ) async {
+      final api = fakeApi()
+        ..onError('GET', '/api/hf/hosts', ApiError.network());
       await pumpScreen(tester, api: api);
-      await revealResult(tester, find.text('No internet. Check your connection.'));
+      await revealResult(
+        tester,
+        find.text('No internet. Check your connection.'),
+      );
       expect(find.text('No internet. Check your connection.'), findsOneWidget);
 
       api.onJson('GET', '/api/hf/hosts', pageJson([hostJson('asha')]));
@@ -158,9 +239,15 @@ void main() {
       expect(find.text('No internet. Check your connection.'), findsNothing);
     });
 
-    testWidgets('a flag that is off shows Coming soon, not an error', (tester) async {
+    testWidgets('a flag that is off shows Coming soon, not an error', (
+      tester,
+    ) async {
       final api = fakeApi()
-        ..onError('GET', '/api/hf/hosts', const ApiError(status: 404, code: 'not_enabled'));
+        ..onError(
+          'GET',
+          '/api/hf/hosts',
+          const ApiError(status: 404, code: 'not_enabled'),
+        );
       await pumpScreen(tester, api: api);
       await revealResult(tester, find.text('Coming soon'));
       expect(find.text('Coming soon'), findsOneWidget);
@@ -169,239 +256,489 @@ void main() {
   });
 
   group('lanes', () {
-    testWidgets('signed out: a lane link explains the space before registration and does not read private hosts', (tester) async {
-      final api = fakeApi()..onJson('GET', '/api/hf/hosts', pageJson([hostJson('asha')]));
-      await pumpScreen(tester, api: api, location: '/explore?lane=women');
-      await revealResult(tester, find.text('Sign in to enter this space'));
-      expect(find.text('Sign in to enter this space'), findsOneWidget);
-      expect(listCalls(api), isEmpty);
+    testWidgets(
+      'signed out: a lane link explains the space before registration and does not read private hosts',
+      (tester) async {
+        final api = fakeApi()
+          ..onJson('GET', '/api/hf/hosts', pageJson([hostJson('asha')]));
+        await pumpScreen(tester, api: api, location: '/explore?lane=women');
+        await revealResult(tester, find.text('Sign in to enter this space'));
+        expect(find.text('Sign in to enter this space'), findsOneWidget);
+        expect(listCalls(api), isEmpty);
 
-      await tester.ensureVisible(find.widgetWithText(HfButton, 'About this space'));
-      await tester.tap(find.widgetWithText(HfButton, 'About this space'));
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 600));
-      expect(find.byType(LanesScreen), findsOneWidget);
-    });
+        await tester.ensureVisible(
+          find.widgetWithText(HfButton, 'About this space'),
+        );
+        await tester.tap(find.widgetWithText(HfButton, 'About this space'));
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 600));
+        expect(find.byType(LanesScreen), findsOneWidget);
+      },
+    );
 
-    testWidgets('403 lane_required shows the Verify to join panel that opens the lanes route', (tester) async {
-      final api = fakeApi()
-        ..onError('GET', '/api/hf/hosts', const ApiError(status: 403, code: 'lane_required'));
-      await pumpScreen(tester, api: api, session: signedInState(), location: '/explore?lane=lgbtq');
-      await revealResult(tester, find.widgetWithText(HfButton, 'Verify to join'));
-      expect(find.text('Verify to join'), findsWidgets);
-      // The lane list carries the bearer token, and says which lane.
-      expect(listCalls(api).single.auth, isTrue);
-      expect(listCalls(api).single.query!['lane'], 'lgbtq');
+    testWidgets(
+      '403 lane_required shows the Verify to join panel that opens the lanes route',
+      (tester) async {
+        final api = fakeApi()
+          ..onError(
+            'GET',
+            '/api/hf/hosts',
+            const ApiError(status: 403, code: 'lane_required'),
+          );
+        await pumpScreen(
+          tester,
+          api: api,
+          session: signedInState(),
+          location: '/explore?lane=lgbtq',
+        );
+        await revealResult(
+          tester,
+          find.widgetWithText(HfButton, 'Verify to join'),
+        );
+        expect(find.text('Verify to join'), findsWidgets);
+        // The lane list carries the bearer token, and says which lane.
+        expect(listCalls(api).single.auth, isTrue);
+        expect(listCalls(api).single.query!['lane'], 'lgbtq');
 
-      await tester.ensureVisible(find.widgetWithText(HfButton, 'Verify to join'));
-      await tester.tap(find.widgetWithText(HfButton, 'Verify to join'));
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 600));
-      expect(find.byType(LanesScreen), findsOneWidget);
-    });
+        await tester.ensureVisible(
+          find.widgetWithText(HfButton, 'Verify to join'),
+        );
+        await tester.tap(find.widgetWithText(HfButton, 'Verify to join'));
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 600));
+        expect(find.byType(LanesScreen), findsOneWidget);
+      },
+    );
 
-    testWidgets('a joined member sees the lane list; the tabs switch lanes and keep the route in step', (tester) async {
-      final api = fakeApi()
-        ..on('GET', '/api/hf/hosts', (call) {
-          final lane = call.query!['lane'];
-          return pageJson([hostJson(lane == null ? 'all' : 'lane-$lane', name: lane == null ? 'Public host' : 'Lane host')]);
-        });
-      final c = await pumpScreen(tester, api: api, session: const SessionState(
-        status: SessionStatus.signedIn, me: HfMe(uid: 'member', displayName: 'Caller', ackVersion: 'hf-ack-v1', womenLane: true)));
-      await revealResult(tester, find.text('Public host'));
-      expect(find.text('Public host'), findsOneWidget);
+    testWidgets(
+      'a joined member sees the lane list; the tabs switch lanes and keep the route in step',
+      (tester) async {
+        final api = fakeApi()
+          ..on('GET', '/api/hf/hosts', (call) {
+            final lane = call.query!['lane'];
+            return pageJson([
+              hostJson(
+                lane == null ? 'all' : 'lane-$lane',
+                name: lane == null ? 'Public host' : 'Lane host',
+              ),
+            ]);
+          });
+        final c = await pumpScreen(
+          tester,
+          api: api,
+          session: const SessionState(
+            status: SessionStatus.signedIn,
+            me: HfMe(
+              uid: 'member',
+              displayName: 'Caller',
+              ackVersion: 'hf-ack-v1',
+              womenLane: true,
+            ),
+          ),
+        );
+        await revealResult(tester, find.text('Public host'));
+        expect(find.text('Public host'), findsOneWidget);
 
-      await returnToHeader(tester);
-      await tester.ensureVisible(find.text('Women-only'));
-      await tester.tap(find.text('Women-only'));
-      await tester.pumpAndSettle();
-      await revealResult(tester, find.text('Lane host'));
-      expect(find.text('Lane host'), findsOneWidget);
-      expect(location(c).queryParameters['lane'], 'women');
-      expect(listCalls(api).last.query!['lane'], 'women');
+        await returnToHeader(tester);
+        await tester.ensureVisible(find.text('Women-only'));
+        await tester.tap(find.text('Women-only'));
+        await tester.pumpAndSettle();
+        await revealResult(tester, find.text('Lane host'));
+        expect(find.text('Lane host'), findsOneWidget);
+        expect(location(c).queryParameters['lane'], 'women');
+        expect(listCalls(api).last.query!['lane'], 'women');
 
-      await returnToHeader(tester);
-      await tester.ensureVisible(find.text('Everyone'));
-      await tester.tap(find.text('Everyone'));
-      await tester.pumpAndSettle();
-      await revealResult(tester, find.text('Public host'));
-      expect(find.text('Public host'), findsOneWidget);
-      expect(location(c).toString(), '/explore');
-    });
+        await returnToHeader(tester);
+        await tester.ensureVisible(find.text('Everyone'));
+        await tester.tap(find.text('Everyone'));
+        await tester.pumpAndSettle();
+        await revealResult(tester, find.text('Public host'));
+        expect(find.text('Public host'), findsOneWidget);
+        expect(location(c).toString(), '/explore');
+      },
+    );
   });
 
   group('filters', () {
-    testWidgets('choices in the sheet become query parameters and route parameters', (tester) async {
-      final api = fakeApi()..onJson('GET', '/api/hf/hosts', pageJson([hostJson('asha')]));
-      final c = await pumpScreen(tester, api: api);
-      expect(listCalls(api), hasLength(1));
+    testWidgets(
+      'choices in the sheet become query parameters and route parameters',
+      (tester) async {
+        final api = fakeApi()
+          ..onJson('GET', '/api/hf/hosts', pageJson([hostJson('asha')]));
+        final c = await pumpScreen(tester, api: api);
+        expect(listCalls(api), hasLength(1));
 
+        await tester.tap(find.byKey(const ValueKey<String>('open-filters')));
+        await tester.pumpAndSettle();
+        expect(find.byType(FilterSheet), findsOneWidget);
+        expect(find.text('Find your person'), findsOneWidget);
+        expect(find.text('How are you feeling?'), findsOneWidget);
+
+        await tapInSheet(tester, find.text('Exam tension'));
+        await tapInSheet(tester, find.text('Hindi'));
+        await tapInSheet(
+          tester,
+          find.byKey(const ValueKey<String>('filter-online')),
+        );
+        await tester.pumpAndSettle();
+        // The button counts the hosts these filters would show (the fake answers one host).
+        expect(find.text('Show 1 host'), findsOneWidget);
+        await tester.tap(find.byKey(const ValueKey<String>('filter-show')));
+        await tester.pumpAndSettle();
+
+        expect(find.byType(FilterSheet), findsNothing);
+        expect(listCalls(api), hasLength(2));
+        expect(listCalls(api).last.query, {
+          'topic': 'tension-a',
+          'lang': 'hi',
+          'online': '1',
+          'limit': 24,
+          'offset': 0,
+        });
+        final route = location(c);
+        expect(route.path, '/explore');
+        expect(route.queryParameters, {
+          'topics': 'tension-a',
+          'lang': 'hi',
+          'online': '1',
+        });
+      },
+    );
+
+    testWidgets('the live count follows the choices: Show N hosts', (
+      tester,
+    ) async {
+      final api = fakeApi()
+        ..on('GET', '/api/hf/hosts', (call) {
+          final online = call.query!['online'] == '1';
+          return pageJson([hostJson('a')], total: online ? 14 : 40);
+        });
+      await pumpScreen(tester, api: api);
       await tester.tap(find.byKey(const ValueKey<String>('open-filters')));
       await tester.pumpAndSettle();
-      expect(find.byType(FilterSheet), findsOneWidget);
-
-      await tapInSheet(tester, find.text('Exam tension'));
-      await tapInSheet(tester, find.text('Hindi'));
-      await tapInSheet(tester, find.byKey(const ValueKey<String>('filter-online')));
-      await tapInSheet(tester, find.text('Price: low to high'));
+      expect(find.text('Show 40 hosts'), findsOneWidget);
+      await tapInSheet(
+        tester,
+        find.byKey(const ValueKey<String>('filter-online')),
+      );
+      // The count is asked 300 ms after the last change.
+      await tester.pump(const Duration(milliseconds: 400));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Show results'));
-      await tester.pumpAndSettle();
-
-      expect(find.byType(FilterSheet), findsNothing);
-      expect(listCalls(api), hasLength(2));
-      expect(listCalls(api).last.query, {
-        'topic': 'tension-a',
-        'lang': 'hi',
-        'online': '1',
-        'sort': 'price_low',
-        'limit': 24,
-        'offset': 0,
-      });
-      final route = location(c);
-      expect(route.path, '/explore');
-      expect(route.queryParameters, {'topics': 'tension-a', 'lang': 'hi', 'online': '1'});
-      expect(c.read(exploreControllerProvider).filters.sort, HostSort.priceLow);
+      expect(find.text('Show 14 hosts'), findsOneWidget);
+      expect(api.callsTo('GET', '/api/hf/hosts').last.query!['limit'], 1);
     });
 
-    testWidgets('a deep link brings its filters; Clear all in the sheet removes them', (tester) async {
-      final api = fakeApi()..onJson('GET', '/api/hf/hosts', pageJson([hostJson('asha')]));
-      await pumpScreen(tester, api: api, location: '/explore?topics=tension-a&max=20');
-      expect(listCalls(api).first.query, {'topic': 'tension-a', 'maxPrice': 20, 'limit': 24, 'offset': 0});
-
+    testWidgets('the price slider caps the price; its end means any price', (
+      tester,
+    ) async {
+      final api = fakeApi()
+        ..onJson('GET', '/api/hf/hosts', pageJson([hostJson('asha')]));
+      await pumpScreen(tester, api: api);
       await tester.tap(find.byKey(const ValueKey<String>('open-filters')));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Clear all'));
+      expect(find.text('Any price'), findsOneWidget);
+      expect(find.text('₹5'), findsOneWidget);
+      expect(find.text('₹100+'), findsOneWidget);
+      final slider = inSheet(
+        find.byKey(const ValueKey<String>('filter-price')),
+      );
+      await tester.ensureVisible(slider);
+      await tester.pump();
+      await tester.tapAt(tester.getCenter(slider));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Show results'));
+      expect(find.textContaining('Up to ₹'), findsOneWidget);
+      await tester.tap(find.byKey(const ValueKey<String>('filter-show')));
       await tester.pumpAndSettle();
-      expect(listCalls(api).last.query, {'limit': 24, 'offset': 0});
+      final max = listCalls(api).last.query!['maxPrice'] as int;
+      expect(max, inInclusiveRange(30, 80));
     });
 
-    testWidgets('closing the sheet without Show results changes nothing', (tester) async {
-      final api = fakeApi()..onJson('GET', '/api/hf/hosts', pageJson([hostJson('asha')]));
+    testWidgets('mood chips show six and a +N more chip opens the rest', (
+      tester,
+    ) async {
+      final api = fakeApi()
+        ..onJson('GET', '/api/hf/options', manyTopicsOptions(9))
+        ..onJson('GET', '/api/hf/hosts', pageJson([hostJson('asha')]));
+      await pumpScreen(tester, api: api);
+      await tester.tap(find.byKey(const ValueKey<String>('open-filters')));
+      await tester.pumpAndSettle();
+      expect(find.text('Mood 6'), findsOneWidget);
+      expect(find.text('Mood 7'), findsNothing);
+      expect(find.text('+3 more'), findsOneWidget);
+      await tapInSheet(tester, find.text('+3 more'));
+      await tester.pumpAndSettle();
+      expect(find.text('Mood 9'), findsOneWidget);
+      expect(find.text('Show fewer'), findsOneWidget);
+    });
+
+    testWidgets(
+      'a deep link brings its filters; Clear all in the sheet removes them',
+      (tester) async {
+        final api = fakeApi()
+          ..onJson('GET', '/api/hf/hosts', pageJson([hostJson('asha')]));
+        await pumpScreen(
+          tester,
+          api: api,
+          location: '/explore?topics=tension-a&max=20',
+        );
+        expect(listCalls(api).first.query, {
+          'topic': 'tension-a',
+          'maxPrice': 20,
+          'limit': 24,
+          'offset': 0,
+        });
+
+        await tester.tap(find.byKey(const ValueKey<String>('open-filters')));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Clear all'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.byKey(const ValueKey<String>('filter-show')));
+        await tester.pumpAndSettle();
+        expect(listCalls(api).last.query, {'limit': 24, 'offset': 0});
+      },
+    );
+
+    testWidgets('closing the sheet without Show changes nothing', (
+      tester,
+    ) async {
+      final api = fakeApi()
+        ..onJson('GET', '/api/hf/hosts', pageJson([hostJson('asha')]));
       await pumpScreen(tester, api: api);
       await tester.tap(find.byKey(const ValueKey<String>('open-filters')));
       await tester.pumpAndSettle();
       await tapInSheet(tester, find.text('Hindi'));
-      await tester.tap(find.byTooltip('Close'));
+      // A tap on the dimmed page behind the sheet closes it.
+      await tester.tapAt(const Offset(180, 20));
       await tester.pumpAndSettle();
+      expect(find.byType(FilterSheet), findsNothing);
       expect(listCalls(api), hasLength(1));
     });
 
-    testWidgets('the sheet shows Try again when the choices cannot load', (tester) async {
+    testWidgets(
+      'the mood chips on the page are a topic filter; All moods clears it',
+      (tester) async {
+        final api = fakeApi()
+          ..onJson('GET', '/api/hf/hosts', pageJson([hostJson('asha')]));
+        final c = await pumpScreen(tester, api: api);
+        await tester.ensureVisible(
+          find.byKey(const ValueKey<String>('mood-tension')),
+        );
+        await tester.pump();
+        await tester.tap(find.byKey(const ValueKey<String>('mood-tension')));
+        await tester.pumpAndSettle();
+        expect(location(c).queryParameters['topics'], 'tension-a');
+        expect(listCalls(api).last.query!['topic'], 'tension-a');
+        await tester.ensureVisible(
+          find.byKey(const ValueKey<String>('mood-all')),
+        );
+        await tester.pump();
+        await tester.tap(find.byKey(const ValueKey<String>('mood-all')));
+        await tester.pumpAndSettle();
+        expect(location(c).toString(), '/explore');
+        expect(listCalls(api).last.query!.containsKey('topic'), isFalse);
+      },
+    );
+
+    testWidgets('the sheet shows Try again when the choices cannot load', (
+      tester,
+    ) async {
       final api = FakeApiClient()
         ..onError('GET', '/api/hf/options', ApiError.network())
         ..onJson('GET', '/api/hf/hosts', pageJson([hostJson('asha')]));
       await pumpScreen(tester, api: api);
       await tester.tap(find.byKey(const ValueKey<String>('open-filters')));
       await tester.pumpAndSettle();
-      expect(find.text('We could not load the filter choices.'), findsOneWidget);
+      expect(
+        find.text('We could not load the filter choices.'),
+        findsOneWidget,
+      );
     });
   });
 
   group('pagination', () {
-    testWidgets('scrolling to the end asks for the next page at nextOffset and appends it', (tester) async {
-      final api = fakeApi()
-        ..on('GET', '/api/hf/hosts', (call) {
-          final offset = call.query!['offset'] as int;
-          if (offset == 0) {
-            return pageJson([for (var i = 1; i <= 4; i++) hostJson('p1-$i')], next: 4, total: 6);
-          }
-          return pageJson([hostJson('p2-1'), hostJson('p2-2')], total: 6);
-        });
-      final c = await pumpScreen(tester, api: api);
-      expect(listCalls(api), hasLength(1));
-      expect(c.read(exploreControllerProvider).items, hasLength(4));
+    testWidgets(
+      'scrolling to the end asks for the next page at nextOffset and appends it',
+      (tester) async {
+        final api = fakeApi()
+          ..on('GET', '/api/hf/hosts', (call) {
+            final offset = call.query!['offset'] as int;
+            if (offset == 0) {
+              return pageJson(
+                [for (var i = 1; i <= 4; i++) hostJson('p1-$i')],
+                next: 4,
+                total: 6,
+              );
+            }
+            return pageJson([hostJson('p2-1'), hostJson('p2-2')], total: 6);
+          });
+        final c = await pumpScreen(tester, api: api);
+        expect(listCalls(api), hasLength(1));
+        expect(c.read(exploreControllerProvider).items, hasLength(4));
 
-      await tester.drag(find.byType(CustomScrollView), const Offset(0, -3000));
-      await tester.pumpAndSettle();
+        // The cards are tall and built lazily, so the first drag only gets near the end; the second reaches it.
+        await tester.drag(
+          find.byType(CustomScrollView),
+          const Offset(0, -3000),
+        );
+        await tester.pumpAndSettle();
+        await tester.drag(
+          find.byType(CustomScrollView),
+          const Offset(0, -3000),
+        );
+        await tester.pumpAndSettle();
 
-      expect(listCalls(api), hasLength(2));
-      expect(listCalls(api).last.query!['offset'], 4);
-      final st = c.read(exploreControllerProvider);
-      expect(st.items.map((h) => h.slug), ['p1-1', 'p1-2', 'p1-3', 'p1-4', 'p2-1', 'p2-2']);
-      expect(st.hasMore, isFalse);
+        expect(listCalls(api), hasLength(2));
+        expect(listCalls(api).last.query!['offset'], 4);
+        final st = c.read(exploreControllerProvider);
+        expect(st.items.map((h) => h.slug), [
+          'p1-1',
+          'p1-2',
+          'p1-3',
+          'p1-4',
+          'p2-1',
+          'p2-2',
+        ]);
+        expect(st.hasMore, isFalse);
 
-      // No more pages: more scrolling asks for nothing.
-      await tester.drag(find.byType(CustomScrollView), const Offset(0, -3000));
-      await tester.pumpAndSettle();
-      expect(listCalls(api), hasLength(2));
-    });
+        // No more pages: more scrolling asks for nothing.
+        await tester.drag(
+          find.byType(CustomScrollView),
+          const Offset(0, -3000),
+        );
+        await tester.pumpAndSettle();
+        expect(listCalls(api), hasLength(2));
+      },
+    );
 
-    testWidgets('a short first page on a tall screen still loads the next page', (tester) async {
-      final api = fakeApi()
-        ..on('GET', '/api/hf/hosts', (call) {
-          final offset = call.query!['offset'] as int;
-          return offset == 0
-              ? pageJson([hostJson('a')], next: 1, total: 2)
-              : pageJson([hostJson('b')], total: 2);
-        });
-      final c = await pumpScreen(tester, api: api, size: const Size(360, 2400));
-      expect(listCalls(api), hasLength(2));
-      expect(c.read(exploreControllerProvider).items.map((h) => h.slug), ['a', 'b']);
-    });
+    testWidgets(
+      'a short first page on a tall screen still loads the next page',
+      (tester) async {
+        final api = fakeApi()
+          ..on('GET', '/api/hf/hosts', (call) {
+            final offset = call.query!['offset'] as int;
+            return offset == 0
+                ? pageJson([hostJson('a')], next: 1, total: 2)
+                : pageJson([hostJson('b')], total: 2);
+          });
+        final c = await pumpScreen(
+          tester,
+          api: api,
+          size: const Size(360, 2400),
+        );
+        expect(listCalls(api), hasLength(2));
+        expect(c.read(exploreControllerProvider).items.map((h) => h.slug), [
+          'a',
+          'b',
+        ]);
+      },
+    );
 
-    testWidgets('a failed next page shows Try again under the list and keeps the list', (tester) async {
-      var fail = true;
-      final api = fakeApi()
-        ..on('GET', '/api/hf/hosts', (call) {
-          final offset = call.query!['offset'] as int;
-          if (offset == 0) return pageJson([for (var i = 1; i <= 4; i++) hostJson('p1-$i')], next: 4, total: 5);
-          if (fail) throw ApiError.network();
-          return pageJson([hostJson('p2-1')], total: 5);
-        });
-      final c = await pumpScreen(tester, api: api);
-      await tester.drag(find.byType(CustomScrollView), const Offset(0, -3000));
-      await tester.pumpAndSettle();
-      await tester.drag(find.byType(CustomScrollView), const Offset(0, -3000));
-      await tester.pumpAndSettle();
-      expect(find.text('Could not load more people.'), findsOneWidget);
-      expect(c.read(exploreControllerProvider).items, hasLength(4));
+    testWidgets(
+      'a failed next page shows Try again under the list and keeps the list',
+      (tester) async {
+        var fail = true;
+        final api = fakeApi()
+          ..on('GET', '/api/hf/hosts', (call) {
+            final offset = call.query!['offset'] as int;
+            if (offset == 0) {
+              return pageJson(
+                [for (var i = 1; i <= 4; i++) hostJson('p1-$i')],
+                next: 4,
+                total: 5,
+              );
+            }
+            if (fail) throw ApiError.network();
+            return pageJson([hostJson('p2-1')], total: 5);
+          });
+        final c = await pumpScreen(tester, api: api);
+        await tester.drag(
+          find.byType(CustomScrollView),
+          const Offset(0, -3000),
+        );
+        await tester.pumpAndSettle();
+        await tester.drag(
+          find.byType(CustomScrollView),
+          const Offset(0, -3000),
+        );
+        await tester.pumpAndSettle();
+        expect(find.text('Could not load more people.'), findsOneWidget);
+        expect(c.read(exploreControllerProvider).items, hasLength(4));
 
-      fail = false;
-      await tester.ensureVisible(find.text('Try again'));
-      await tester.tap(find.text('Try again'));
-      await tester.pumpAndSettle();
-      expect(c.read(exploreControllerProvider).items, hasLength(5));
-    });
+        fail = false;
+        await tester.ensureVisible(find.text('Try again'));
+        await tester.tap(find.text('Try again'));
+        await tester.pumpAndSettle();
+        expect(c.read(exploreControllerProvider).items, hasLength(5));
+      },
+    );
   });
 
-  testWidgets('pull to refresh asks again and keeps the list on screen', (tester) async {
+  testWidgets('pull to refresh asks again and keeps the list on screen', (
+    tester,
+  ) async {
     var n = 0;
     final api = fakeApi()
-      ..on('GET', '/api/hf/hosts', (_) => pageJson([hostJson('a', name: n++ == 0 ? 'Before' : 'After')]));
+      ..on(
+        'GET',
+        '/api/hf/hosts',
+        (_) => pageJson([hostJson('a', name: n++ == 0 ? 'Before' : 'After')]),
+      );
     await pumpScreen(tester, api: api);
     await revealResult(tester, find.text('Before'));
     expect(find.text('Before'), findsOneWidget);
     // Return to the top so the following gesture is a refresh, not an ordinary scroll.
-    tester.state<ScrollableState>(find.descendant(of: find.byType(CustomScrollView),
-      matching: find.byType(Scrollable)).first).position.jumpTo(0);
+    tester
+        .state<ScrollableState>(
+          find
+              .descendant(
+                of: find.byType(CustomScrollView),
+                matching: find.byType(Scrollable),
+              )
+              .first,
+        )
+        .position
+        .jumpTo(0);
     await tester.pump();
-    await tester.fling(find.byType(CustomScrollView), const Offset(0, 400), 1000);
+    await tester.fling(
+      find.byType(CustomScrollView),
+      const Offset(0, 400),
+      1000,
+    );
     await tester.pumpAndSettle();
     expect(listCalls(api), hasLength(2));
     await revealResult(tester, find.text('After'));
     expect(find.text('After'), findsOneWidget);
   });
 
-  testWidgets('a card shows name, tagline, languages, topic label, price, rating, status and the AI picture label',
-      (tester) async {
-    final api = fakeApi()
-      ..onJson('GET', '/api/hf/hosts', pageJson([hostJson('asha', name: 'Asha', price: 12, status: 'busy')]));
-    await pumpScreen(tester, api: api);
-    await revealResult(tester, find.text('Asha'));
-    expect(find.text('Asha'), findsOneWidget);
-    expect(find.text('Tagline of asha'), findsOneWidget);
-    expect(find.text('Hindi · English'), findsOneWidget);
-    expect(find.text('Exam tension'), findsOneWidget);
-    expect(find.text('₹12/min'), findsOneWidget);
-    expect(find.text('On a call'), findsOneWidget);
-    expect(find.text('AI avatar'), findsOneWidget);
-  });
+  testWidgets(
+    'a card shows name, tagline, languages, topic label, price, rating, status and the AI picture label',
+    (tester) async {
+      final api = fakeApi()
+        ..onJson(
+          'GET',
+          '/api/hf/hosts',
+          pageJson([hostJson('asha', name: 'Asha', price: 12, status: 'busy')]),
+        );
+      await pumpScreen(tester, api: api);
+      await revealResult(tester, find.text('Asha'));
+      expect(find.text('Asha'), findsOneWidget);
+      expect(find.text('Tagline of asha'), findsOneWidget);
+      expect(find.text('Hindi, English'), findsOneWidget);
+      expect(find.text('Exam tension'), findsOneWidget);
+      expect(find.text('₹12 /min', findRichText: true), findsOneWidget);
+      expect(find.text('10 min ≈ ₹120'), findsOneWidget);
+      expect(find.text('On a call'), findsOneWidget);
+      expect(find.text('AI avatar'), findsOneWidget);
+    },
+  );
 
   testWidgets('tapping a card opens the host profile', (tester) async {
-    final api = fakeApi()..onJson('GET', '/api/hf/hosts', pageJson([hostJson('asha', name: 'Asha')]));
+    final api = fakeApi()
+      ..onJson(
+        'GET',
+        '/api/hf/hosts',
+        pageJson([hostJson('asha', name: 'Asha')]),
+      );
     await pumpScreen(tester, api: api);
     await revealResult(tester, find.text('Asha'));
     await tester.tap(find.text('Asha'));
@@ -410,14 +747,28 @@ void main() {
     expect(find.byType(HostProfileScreen), findsOneWidget);
   });
 
-  testWidgets('the screen survives the largest system font without overflow', (tester) async {
+  testWidgets('the screen survives the largest system font without overflow', (
+    tester,
+  ) async {
     tester.platformDispatcher.textScaleFactorTestValue = 2.0;
     addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
     final api = fakeApi()
-      ..onJson('GET', '/api/hf/hosts',
-          pageJson([hostJson('asha', name: 'Asha with a rather long name indeed', intro: 'https://x/a.m4a')]));
+      ..onJson(
+        'GET',
+        '/api/hf/hosts',
+        pageJson([
+          hostJson(
+            'asha',
+            name: 'Asha with a rather long name indeed',
+            intro: 'https://x/a.m4a',
+          ),
+        ]),
+      );
     await pumpScreen(tester, api: api, size: const Size(360, 800));
-    await revealResult(tester, find.text('Asha with a rather long name indeed'));
+    await revealResult(
+      tester,
+      find.text('Asha with a rather long name indeed'),
+    );
     expect(tester.takeException(), isNull);
   });
 }

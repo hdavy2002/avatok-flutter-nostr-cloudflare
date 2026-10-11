@@ -26,6 +26,7 @@ class HostCard {
     this.introAudioUrl,
     this.introSeconds,
     this.status = HostPresence.offline,
+    this.gender,
   });
 
   final String slug;
@@ -50,8 +51,19 @@ class HostCard {
   final int? introSeconds;
   final HostPresence status;
 
+  /// `female`, `male` or null when the server does not say (the card then calls the clip "Voice intro").
+  final String? gender;
+
   bool get isOnline => status == HostPresence.online;
   bool get hasIntro => introAudioUrl != null && introAudioUrl!.isNotEmpty;
+
+  /// The words on the voice bar: "Her voice", "His voice", else "Voice intro". A women-only host is a woman.
+  String get voiceTitle {
+    final g = gender ?? (womenOnly ? 'female' : null);
+    if (g == 'female') return 'Her voice';
+    if (g == 'male') return 'His voice';
+    return 'Voice intro';
+  }
 
   /// "₹12/min".
   String get priceLabel => '₹$pricePerMin/min';
@@ -80,29 +92,31 @@ class HostCard {
       introAudioUrl: _str(j['introAudioUrl']),
       introSeconds: _int(j['introSeconds']),
       status: HostPresence.parse(j['status']),
+      gender: _gender(j['gender']),
     );
   }
 
   /// For the offline cache.
   Map<String, Object?> toJson() => <String, Object?>{
-        'slug': slug,
-        'displayName': displayName,
-        'tagline': tagline,
-        'avatarUrl': avatarUrl,
-        'languages': languages,
-        'style': style,
-        'topics': topics,
-        'pricePerMin': pricePerMin,
-        'rating': rating,
-        'reviewCount': reviewCount,
-        'talkedTo': talkedTo,
-        'regulars': regulars,
-        'lgbtqFriendly': lgbtqFriendly,
-        'womenOnly': womenOnly,
-        'introAudioUrl': introAudioUrl,
-        'introSeconds': introSeconds,
-        'status': status.name,
-      };
+    'slug': slug,
+    'displayName': displayName,
+    'tagline': tagline,
+    'avatarUrl': avatarUrl,
+    'languages': languages,
+    'style': style,
+    'topics': topics,
+    'pricePerMin': pricePerMin,
+    'rating': rating,
+    'reviewCount': reviewCount,
+    'talkedTo': talkedTo,
+    'regulars': regulars,
+    'lgbtqFriendly': lgbtqFriendly,
+    'womenOnly': womenOnly,
+    'introAudioUrl': introAudioUrl,
+    'introSeconds': introSeconds,
+    'status': status.name,
+    'gender': gender,
+  };
 
   static String? _str(Object? v) {
     if (v == null) return null;
@@ -110,10 +124,29 @@ class HostCard {
     return s.isEmpty ? null : s;
   }
 
-  static List<String> _strList(Object? v) =>
-      v is List ? v.map((e) => e.toString()).where((e) => e.isNotEmpty).toList() : const <String>[];
+  static String? _gender(Object? v) {
+    switch ('${v ?? ''}'.trim().toLowerCase()) {
+      case 'f':
+      case 'female':
+      case 'woman':
+      case 'she':
+        return 'female';
+      case 'm':
+      case 'male':
+      case 'man':
+      case 'he':
+        return 'male';
+      default:
+        return null;
+    }
+  }
 
-  static num? _num(Object? v) => v is num ? v : (v is String ? num.tryParse(v) : null);
+  static List<String> _strList(Object? v) => v is List
+      ? v.map((e) => e.toString()).where((e) => e.isNotEmpty).toList()
+      : const <String>[];
+
+  static num? _num(Object? v) =>
+      v is num ? v : (v is String ? num.tryParse(v) : null);
 
   static int? _int(Object? v) => _num(v)?.round();
 }
@@ -151,8 +184,8 @@ class HostsPage {
   }
 
   Map<String, Object?> toJson() => <String, Object?>{
-        'items': items.map((c) => c.toJson()).toList(),
-        'nextOffset': nextOffset,
-        'total': total,
-      };
+    'items': items.map((c) => c.toJson()).toList(),
+    'nextOffset': nextOffset,
+    'total': total,
+  };
 }

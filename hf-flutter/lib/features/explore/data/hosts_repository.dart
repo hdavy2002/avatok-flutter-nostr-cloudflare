@@ -56,7 +56,11 @@ class HostsRepository {
   static const Duration cacheReadTimeout = Duration(seconds: 1);
 
   /// One page from the server. Throws [ApiError] (the network, `401` or `403 lane_required` for a lane, `404 not_enabled`).
-  Future<HostsPage> fetch(HostFilters f, {int offset = 0, int limit = pageSize}) async {
+  Future<HostsPage> fetch(
+    HostFilters f, {
+    int offset = 0,
+    int limit = pageSize,
+  }) async {
     final json = await _api.request(
       'GET',
       '/api/hf/hosts',
@@ -84,7 +88,9 @@ class HostsRepository {
     HostsPage? saved;
     var savedStale = true;
     if (useCache && cacheKey != null && f.lane == null) {
-      final entry = await _cache.read(cacheKey).timeout(cacheReadTimeout, onTimeout: () => null);
+      final entry = await _cache
+          .read(cacheKey)
+          .timeout(cacheReadTimeout, onTimeout: () => null);
       final data = entry?.data;
       if (entry != null && data is Map && data['key'] == f.cacheKey) {
         saved = HostsPage.fromJson(data['page']);
@@ -96,18 +102,44 @@ class HostsRepository {
       final page = await fetch(f, limit: limit);
       if (cacheKey != null && f.lane == null) {
         // Not awaited: the fresh page is shown without waiting for the disk.
-        unawaited(_cache.write(cacheKey, <String, Object?>{'key': f.cacheKey, 'page': page.toJson()}));
+        unawaited(
+          _cache.write(cacheKey, <String, Object?>{
+            'key': f.cacheKey,
+            'page': page.toJson(),
+          }),
+        );
       }
-      _report(screen, ok: true, count: page.items.length, fromCache: false, sw: sw);
+      _report(
+        screen,
+        ok: true,
+        count: page.items.length,
+        fromCache: false,
+        sw: sw,
+      );
       yield HostListUpdate(page: page);
     } catch (e, st) {
       final err = _asApiError(e, st);
-      _report(screen, ok: false, count: saved?.items.length ?? 0, fromCache: saved != null, sw: sw, error: err);
+      _report(
+        screen,
+        ok: false,
+        count: saved?.items.length ?? 0,
+        fromCache: saved != null,
+        sw: sw,
+        error: err,
+      );
       // A flag that is off, or a lane that is closed to this person, is an answer, not a bad connection:
       // never hide it behind an old list.
       final shown = saved;
-      if (shown != null && !err.isNotEnabled && !err.isUnauthorized && err.code != 'lane_required') {
-        yield HostListUpdate(page: shown, fromCache: true, stale: true, failed: true);
+      if (shown != null &&
+          !err.isNotEnabled &&
+          !err.isUnauthorized &&
+          err.code != 'lane_required') {
+        yield HostListUpdate(
+          page: shown,
+          fromCache: true,
+          stale: true,
+          failed: true,
+        );
       } else {
         throw err;
       }
@@ -117,12 +149,24 @@ class HostsRepository {
   ApiError _asApiError(Object e, StackTrace st) {
     if (e is ApiError) return e;
     // Not an API failure: a bug. Report it, show the generic message.
-    Analytics.captureException(e, st, screen: 'explore', handled: true, extra: {'where': 'hosts_repository'});
+    Analytics.captureException(
+      e,
+      st,
+      screen: 'explore',
+      handled: true,
+      extra: {'where': 'hosts_repository'},
+    );
     return const ApiError(status: 0, code: 'unknown');
   }
 
-  void _report(String screen,
-      {required bool ok, required int count, required bool fromCache, required Stopwatch sw, ApiError? error}) {
+  void _report(
+    String screen, {
+    required bool ok,
+    required int count,
+    required bool fromCache,
+    required Stopwatch sw,
+    ApiError? error,
+  }) {
     Analytics.capture('hf_hosts_list_loaded', <String, Object>{
       'screen_name': screen,
       'outcome': ok ? 'ok' : 'error',
@@ -137,5 +181,8 @@ class HostsRepository {
 }
 
 final hostsRepositoryProvider = Provider<HostsRepository>(
-  (ref) => HostsRepository(ref.watch(apiClientProvider), ref.watch(jsonCacheProvider)),
+  (ref) => HostsRepository(
+    ref.watch(apiClientProvider),
+    ref.watch(jsonCacheProvider),
+  ),
 );

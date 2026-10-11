@@ -10,8 +10,10 @@ enum HostSort {
   final String wire;
   final String label;
 
-  static HostSort parse(String? v) =>
-      HostSort.values.firstWhere((s) => s.wire == v, orElse: () => HostSort.onlineFirst);
+  static HostSort parse(String? v) => HostSort.values.firstWhere(
+    (s) => s.wire == v,
+    orElse: () => HostSort.onlineFirst,
+  );
 }
 
 /// The lanes: women-only and LGBTQ+ (the `lane` query value).
@@ -72,22 +74,22 @@ class HostFilters {
     bool? online,
     Object? lane = _keep,
     HostSort? sort,
-  }) =>
-      HostFilters(
-        topics: topics ?? this.topics,
-        languages: languages ?? this.languages,
-        minPrice: identical(minPrice, _keep) ? this.minPrice : minPrice as int?,
-        maxPrice: identical(maxPrice, _keep) ? this.maxPrice : maxPrice as int?,
-        online: online ?? this.online,
-        lane: identical(lane, _keep) ? this.lane : lane as String?,
-        sort: sort ?? this.sort,
-      );
+  }) => HostFilters(
+    topics: topics ?? this.topics,
+    languages: languages ?? this.languages,
+    minPrice: identical(minPrice, _keep) ? this.minPrice : minPrice as int?,
+    maxPrice: identical(maxPrice, _keep) ? this.maxPrice : maxPrice as int?,
+    online: online ?? this.online,
+    lane: identical(lane, _keep) ? this.lane : lane as String?,
+    sort: sort ?? this.sort,
+  );
 
   static const Object _keep = Object();
 
   /// The query for `GET /api/hf/hosts`. Defaults are left out, so the unfiltered list has the same
   /// edge-cache key for everyone.
-  Map<String, Object?> toApiQuery({required int limit, required int offset}) => <String, Object?>{
+  Map<String, Object?> toApiQuery({required int limit, required int offset}) =>
+      <String, Object?>{
         if (topics.isNotEmpty) 'topic': topics.join(','),
         if (languages.isNotEmpty) 'lang': languages.join(','),
         if (minPrice != null) 'minPrice': minPrice,
@@ -101,24 +103,30 @@ class HostFilters {
 
   /// Query values for the route: `lane`, `topics`, `lang`, `max`, `online` (and `min`, which the Home never sets).
   Map<String, String> toRouteQuery() => <String, String>{
-        if (lane != null) 'lane': lane!,
-        if (topics.isNotEmpty) 'topics': topics.join(','),
-        if (languages.isNotEmpty) 'lang': languages.join(','),
-        if (maxPrice != null) 'max': '$maxPrice',
-        if (minPrice != null) 'min': '$minPrice',
-        if (online) 'online': '1',
-      };
+    if (lane != null) 'lane': lane!,
+    if (topics.isNotEmpty) 'topics': topics.join(','),
+    if (languages.isNotEmpty) 'lang': languages.join(','),
+    if (maxPrice != null) 'max': '$maxPrice',
+    if (minPrice != null) 'min': '$minPrice',
+    if (online) 'online': '1',
+  };
 
   /// The `/explore?...` location for these filters.
   String toLocation() {
     final q = toRouteQuery();
-    return q.isEmpty ? Routes.explore : Uri(path: Routes.explore, queryParameters: q).toString();
+    return q.isEmpty
+        ? Routes.explore
+        : Uri(path: Routes.explore, queryParameters: q).toString();
   }
 
   /// Reads the route's query. Unknown or junk values are dropped (a deep link never crashes the screen).
   factory HostFilters.fromRouteQuery(Map<String, String> q) {
-    List<String> csv(String? v) =>
-        (v ?? '').split(',').map((e) => e.trim()).where((e) => e.isNotEmpty).toSet().toList();
+    List<String> csv(String? v) => (v ?? '')
+        .split(',')
+        .map((e) => e.trim())
+        .where((e) => e.isNotEmpty)
+        .toSet()
+        .toList();
     int? price(String? v) {
       final n = int.tryParse((v ?? '').trim());
       return (n == null || n < 0) ? null : n;
@@ -136,14 +144,14 @@ class HostFilters {
 
   /// A short, anonymous description for telemetry (`hf_app_filter_applied {filters}`): slugs and numbers only.
   Map<String, Object> toTelemetry() => <String, Object>{
-        if (topics.isNotEmpty) 'topics': topics,
-        if (languages.isNotEmpty) 'languages': languages,
-        if (minPrice != null) 'min_price': minPrice!,
-        if (maxPrice != null) 'max_price': maxPrice!,
-        if (online) 'online': true,
-        if (lane != null) 'lane': lane!,
-        'sort': sort.wire,
-      };
+    if (topics.isNotEmpty) 'topics': topics,
+    if (languages.isNotEmpty) 'languages': languages,
+    if (minPrice != null) 'min_price': minPrice!,
+    if (maxPrice != null) 'max_price': maxPrice!,
+    if (online) 'online': true,
+    if (lane != null) 'lane': lane!,
+    'sort': sort.wire,
+  };
 
   /// Same filters on the parts the route can carry (the sort is local only).
   bool sameAsRoute(HostFilters o) =>

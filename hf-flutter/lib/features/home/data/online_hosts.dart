@@ -8,7 +8,9 @@ import '../../explore/data/hosts_repository.dart';
 /// (Same list endpoint and cache logic as Explore, with its own cache key.)
 final onlineHostsProvider = StreamProvider.autoDispose<HostListUpdate>(
   retry: noAutoRetry,
-  (ref) => ref.watch(hostsRepositoryProvider).firstPage(
+  (ref) => ref
+      .watch(hostsRepositoryProvider)
+      .firstPage(
         const HostFilters(online: true),
         cacheKey: kOnlineCacheKey,
         limit: 12,

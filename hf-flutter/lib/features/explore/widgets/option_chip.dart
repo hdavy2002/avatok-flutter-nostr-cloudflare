@@ -1,12 +1,17 @@
 import 'package:flutter/material.dart';
 
-import '../../../core/theme/hf_tokens.dart';
+import '../../../core/theme/hf_theme.dart';
 
 /// A choice chip for the filter sheet and the lane tabs. Like the shared `HfChip`, but a long label
 /// (some topics are a whole sentence) wraps onto a second line instead of running off the screen.
 /// The tap area is at least 48 dp high.
 class OptionChip extends StatelessWidget {
-  const OptionChip({super.key, required this.label, required this.selected, required this.onTap});
+  const OptionChip({
+    super.key,
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
 
   final String label;
   final bool selected;
@@ -14,7 +19,11 @@ class OptionChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final fg = selected ? HfColors.cream : HfColors.plum;
+    final dark = HfBrightness.isDark(context);
+    final fg = selected
+        ? (dark ? HfColors.ink : HfColors.white)
+        : (dark ? HfColors.darkText : HfColors.inkSoft);
+    final accent = dark ? HfColors.lavender : HfColors.ink;
     final maxWidth = MediaQuery.sizeOf(context).width - 2 * HfSpacing.page;
     return Semantics(
       button: true,
@@ -22,12 +31,23 @@ class OptionChip extends StatelessWidget {
       label: label,
       excludeSemantics: true,
       child: ConstrainedBox(
-        constraints: BoxConstraints(maxWidth: maxWidth, minHeight: HfSpacing.tap, minWidth: HfSpacing.tap),
+        constraints: BoxConstraints(
+          maxWidth: maxWidth,
+          minHeight: HfSpacing.tap,
+          minWidth: HfSpacing.tap,
+        ),
         child: Material(
-          color: selected ? HfColors.plum : HfColors.white,
+          color: selected
+              ? accent
+              : (dark ? HfColors.darkCard : HfColors.white),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(HfRadius.control),
-            side: BorderSide(color: selected ? HfColors.plum : HfColors.line, width: 1.5),
+            side: BorderSide(
+              color: selected
+                  ? accent
+                  : (dark ? HfColors.darkLine : HfColors.outlineChip),
+              width: 1.5,
+            ),
           ),
           child: InkWell(
             onTap: onTap,
@@ -43,7 +63,11 @@ class OptionChip extends StatelessWidget {
                     const SizedBox(width: 6),
                   ],
                   Flexible(
-                    child: Text(label, style: HfText.badge.copyWith(color: fg, fontSize: 15), maxLines: 3),
+                    child: Text(
+                      label,
+                      style: HfText.badge.copyWith(color: fg, fontSize: 15),
+                      maxLines: 3,
+                    ),
                   ),
                 ],
               ),
