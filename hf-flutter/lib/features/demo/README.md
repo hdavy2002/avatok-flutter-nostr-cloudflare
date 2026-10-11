@@ -25,7 +25,7 @@ Quick off switch: set `kDemoEnabled = false` in `demo_data.dart` (the hooks beco
 | `lib/features/host_profile/ui/widgets/net_image.dart` | `asset://` pictures on the profile hero and gallery |
 | `lib/features/host_profile/ui/widgets/profile_header.dart` | the Demo chip next to the name |
 | `lib/features/call/ui/call_confirm_page.dart` | host name for a demo slug, no name request |
-| `lib/features/call/ui/call_confirm_sheet.dart` | fake estimate (wallet ₹342, about 60 min), fake start, photo, calls-flag bypass |
+| `lib/features/call/ui/call_confirm_sheet.dart` | fake estimate (wallet ₹342, about 96 min), fake start, photo, calls-flag bypass |
 | `lib/features/call/ui/call_screen.dart` | `/call/demo-call` opens `DemoCallScreen` |
 | `lib/features/call/ui/call_avatar.dart` | `asset://` pictures in the call avatar |
 | `lib/features/review/ui/review_screen.dart` | the demo call id: fake target, topics, and a fake successful send |

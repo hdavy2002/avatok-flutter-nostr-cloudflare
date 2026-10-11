@@ -11,6 +11,11 @@ import '../../support/fake_api_client.dart';
 import '../../support/fake_billing.dart';
 import 'wallet_support.dart';
 
+const String _play100Breakdown =
+    'Total ₹120.00 · GST included ₹18.31 · Added to wallet ₹101.69';
+const String _play100Success =
+    '₹101.69 added to your wallet.\n$_play100Breakdown';
+
 void main() {
   late FakeBillingAdapter billing;
   late FakeApiClient api;
@@ -38,7 +43,7 @@ void main() {
         tester
             .widget<Text>(find.byKey(const ValueKey<String>('gst-hf_tokens_100')))
             .data,
-        'Total ₹100.00 · GST included ₹15.25 · Added to wallet ₹84.75',
+        _play100Breakdown,
       );
       expect(find.text('Paid via Google Play'), findsWidgets);
     },
@@ -66,6 +71,15 @@ void main() {
           findsOneWidget,
         );
 
+        expect(
+          tester
+              .widget<Text>(
+                find.byKey(const ValueKey<String>('gst-hf_tokens_100')),
+              )
+              .data,
+          _play100Breakdown,
+        );
+
         await buy100(tester);
 
         // prepare first, then the Play sheet with the server's account id, then verify with the token.
@@ -82,9 +96,7 @@ void main() {
         });
 
         expect(
-          find.text(
-            '₹101.69 added to your wallet.\nTotal ₹120.00 · GST included ₹18.31 · Added to wallet ₹101.69',
-          ),
+          find.text(_play100Success),
           findsOneWidget,
         );
         expect(
@@ -164,11 +176,11 @@ void main() {
 
     testWidgets('selecting another pack changes the Pay label', (tester) async {
       await pumpWallet(tester, api: api, billing: billing);
-      expect(find.text('Pay ₹100.00 with Google Play'), findsOneWidget);
+      expect(find.text('Pay ₹120.00 with Google Play'), findsOneWidget);
       await tester.tap(buyButton('hf_tokens_1000'));
       await tester.pumpAndSettle();
-      expect(find.text('Pay ₹1,000.00 with Google Play'), findsOneWidget);
-      expect(find.text('Pay ₹100.00 with Google Play'), findsNothing);
+      expect(find.text('Pay ₹1,200.00 with Google Play'), findsOneWidget);
+      expect(find.text('Pay ₹120.00 with Google Play'), findsNothing);
     });
 
     testWidgets('the Popular pack is selected first and wears the badge', (
@@ -448,6 +460,7 @@ void main() {
           'POST',
           '/api/hf/tokens/play/verify',
           verifyAnswer(
+            productId: 'hf_tokens_1000',
             paidPaise: 120000,
             gstPaise: 18305,
             walletPaise: 101695,
@@ -457,7 +470,7 @@ void main() {
         await buy1000(tester);
         expect(find.text('Are you sure?'), findsOneWidget);
         expect(
-          find.textContaining('₹1,000.00'),
+          find.textContaining('₹1,200.00'),
           findsWidgets,
         ); // Play's price string is in the question
         expect(
@@ -633,7 +646,7 @@ void main() {
         expect(api.callsTo('POST', '/api/hf/tokens/play/verify'), hasLength(1));
         expect(
           container.read(purchaseControllerProvider).notice?.message,
-          '₹101.69 added to your wallet.\nTotal ₹120.00 · GST included ₹18.31 · Added to wallet ₹101.69',
+          _play100Success,
         );
       },
     );

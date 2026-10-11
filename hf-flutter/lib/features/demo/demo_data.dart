@@ -245,14 +245,14 @@ HostProfile? demoProfileFor(String slug) {
   return null;
 }
 
-/// What the confirm sheet shows for a demo host: wallet ₹342, capped at the 60-minute call maximum.
+/// What the confirm sheet shows for a demo host: the ₹342 wallet pays for 96 min 5 s across the three bands.
 const CallEstimate kDemoEstimate = CallEstimate(
   isMetered: true,
   ratePerMinRupees: 3.99,
   ratePaisePerMin: 399,
   tiers: kDemoPriceTiers,
-  aboutText: 'No time limit — your balance is enough to start',
-  affordableSeconds: 60 * 60,
+  aboutText: 'about 96 min 5 s',
+  affordableSeconds: 96 * 60 + 5,
   canStart: true,
   startNeedPaise: 798,
   startNeed: '₹7.98',

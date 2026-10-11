@@ -15,15 +15,15 @@ class FakeBillingAdapter implements BillingAdapter {
           const <String, StoreProduct>{
             'hf_tokens_100': StoreProduct(
               productId: 'hf_tokens_100',
-              priceText: '₹100.00',
+              priceText: '₹120.00',
               currencyCode: 'INR',
-              priceMicros: 100000000,
+              priceMicros: 120000000,
             ),
             'hf_tokens_1000': StoreProduct(
               productId: 'hf_tokens_1000',
-              priceText: '₹1,000.00',
+              priceText: '₹1,200.00',
               currencyCode: 'INR',
-              priceMicros: 1000000000,
+              priceMicros: 1200000000,
             ),
           };
 

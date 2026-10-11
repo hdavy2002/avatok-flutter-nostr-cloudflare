@@ -156,6 +156,7 @@ Map<String, Object?> prepareAnswer(String productId) => {
 };
 
 Map<String, Object?> verifyAnswer({
+  String productId = 'hf_tokens_100',
   String status = 'consumed',
   bool duplicate = false,
   int paidPaise = 12000,
@@ -166,7 +167,7 @@ Map<String, Object?> verifyAnswer({
   'status': status,
   'duplicate': duplicate,
   'orderId': 'GPA.1',
-  'productId': 'hf_tokens_100',
+  'productId': productId,
   'paidPaise': paidPaise,
   'gstPaise': gstPaise,
   'walletPaise': walletPaise,
@@ -175,8 +176,8 @@ Map<String, Object?> verifyAnswer({
   'wallet': formatPaise(walletPaise),
   'consumed': status == 'consumed',
   'balance': {
-    'balancePaise': 14689,
-    'availablePaise': 14689,
+    'balancePaise': 4520 + walletPaise,
+    'availablePaise': 4520 + walletPaise,
     'debtValuePaise': 0,
     'byValue': <Object?>[],
   },
