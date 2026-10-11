@@ -38,4 +38,10 @@ Source inspection and whitespace checks completed. Brand literals introduce no n
 
 Regression coverage was added for continuation sanitization, account-scoped registration/consent, private-profile caching, latest video access, direct-call gating and KYC reuse. Real-font layout review cases cover 320×640 and 412×915 with normal and 2× text, plus reduced-motion scenes.
 
-Flutter analysis/tests, rendered screenshots and backend tests have **not run**. Project instructions prohibit local build tools and require an explicit owner request for a GitHub Actions dispatch. No build, production deployment, flag change or database write occurred. Actual phone review remains required before release. Backend access corrections must be deployed together with the native rollout (server first); the new client fails closed against older protected-space responses.
+The owner explicitly authorized CI checks. Flutter analysis, the full test suite and real-font layout captures passed for source commit `53f20192`: https://github.com/hdavy2002/avatok-flutter-nostr-cloudflare/actions/runs/38099866914. Captures use test data and placeholder host portraits; they are rendered Flutter screens, not generated mockups.
+
+Worker type-checking and all 43 targeted protected-space/KYC tests passed in https://github.com/hdavy2002/avatok-flutter-nostr-cloudflare/actions/runs/38098970032. That broader workflow remains red on pre-existing AvaWallet contract failures, a missing website listing-defaults file and earlier release-manifest gaps. Those unrelated guards were not weakened.
+
+CI exposed and corrected wrapped presence labels, a visible ringing-call Cancel action, notification prompting before Navigator mounting, lazy-viewport test navigation, and screenshot test I/O. Review captures now load bundled text/icon fonts and use current pack prices.
+
+No release build, production deployment, flag change or database write occurred. Actual phone testing of PSTN calls, Google Play purchase/refund recovery, DigiLocker and video capture remains required before release. Backend access corrections must be deployed together with the native rollout (server first); the new client fails closed against older protected-space responses.
