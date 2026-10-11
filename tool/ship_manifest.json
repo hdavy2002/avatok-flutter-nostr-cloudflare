@@ -10178,5 +10178,27 @@
         "note": "Test women-only eligibility and LGBTQ+ declaration with Aadhaar and reviewed video. Pending/rejected latest video must deny LGBTQ+ list, explicit-lane profile and direct call. Approval requires explicit continuation and a refreshed call estimate; joining never starts a call."
       }
     ]
+  },
+  "HF-TOPUP-NOTIFY-1": {
+    "description": "[HF-TOPUP-NOTIFY-1 2026-10-11] After a Google Play top-up is newly credited (processPlayPurchase, credit.applied), the buyer gets a WhatsApp confirmation (amount added, amount paid incl. 18% GST, order id, new balance) to his verified WhatsApp number and a branded Hello Fraands payment receipt email (not a tax invoice, no GSTIN) through the durable email outbox keyed hf-topup:<orderId>. Rulebook HF-PAY-20. Receipt template now shows 'Added to your wallet' instead of tokens.",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [
+      "hfTokensEnabled"
+    ],
+    "success": [
+      {
+        "event": "hf_topup_email_receipt",
+        "property": "result",
+        "equals": "queued",
+        "note": "Email receipt queued for the buyer after a credited top-up. 'skipped' = no email on the account; 'failed' = outbox/provider failure."
+      },
+      {
+        "event": "hf_topup_whatsapp_receipt",
+        "property": "result",
+        "equals": "sent",
+        "note": "WhatsApp confirmation delivered to Wasender. 'skipped' = no verified WhatsApp number / not on WhatsApp / unconfigured; 'failed' = provider error."
+      }
+    ]
   }
 }

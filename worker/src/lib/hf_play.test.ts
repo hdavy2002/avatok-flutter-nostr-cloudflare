@@ -1,6 +1,8 @@
 // @ts-nocheck -- uses node:sqlite via the D1 shim
 // [HF-TOK-PLAY-1] Purchase verify / credit / consume / refund / cron, against real SQL (node:sqlite) and a fake Play API (mocked fetch).
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+const topup = vi.hoisted(() => ({ calls: [] as any[] }));
+vi.mock("./hf_topup_notify", () => ({ notifyTopupCredited: async (_e: any, n: any) => { topup.calls.push(n); return { whatsapp: "sent", email: "queued" }; } }));
 import { makePlayWorld, makeEnv, CFG } from "./hf_play_testkit";
 import { processPlayPurchase, applyPlayRefund, runPlayCron, accountHashFor, rememberAccount, ackAndConsume } from "./hf_play";
 import { balanceSummary, hasOpenDebt, getLots, settleCall } from "./hf_token_ledger";
@@ -27,6 +29,17 @@ beforeEach(() => {
 afterEach(() => { vi.unstubAllGlobals(); });
 
 describe("verify + credit", () => {
+  it("[HF-TOPUP-NOTIFY-1] tells the buyer once per payment, whichever path credits it", async () => {
+    topup.calls.length = 0;
+    const t = await buyFor("u1", 901);
+    await verify("u1", t);
+    await verify("u1", t);
+    await processPlayPurchase(env, CFG, { productId: "hf_tokens_100", purchaseToken: t, source: "rtdn" });
+    expect(topup.calls).toHaveLength(1);
+    expect(topup.calls[0]).toMatchObject({ uid: "u1", orderId: `GPA.${t}`, paidPaise: 12000 });
+    expect(topup.calls[0].creditPaise).toBeGreaterThan(0);
+  });
+
   it("happy path: one lot at the pack's value, paid from Play's rupee price, acknowledged and consumed", async () => {
     const t = await buyFor("u1", 1);
     const r = await verify("u1", t);

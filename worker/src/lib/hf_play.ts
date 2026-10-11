@@ -19,6 +19,7 @@ import { trackUser, trackException } from "../hooks";
 import { emailFor } from "./identity";
 import { BRAND } from "./brand";
 import { issuePurchaseRecord } from "./hf_receipts";
+import { notifyTopupCredited } from "./hf_topup_notify";
 import { readConfig } from "../routes/config";
 
 const APP = BRAND.slug;
@@ -245,10 +246,16 @@ export async function processPlayPurchase(env: Env, cfg: HfTokenConfig, a: Proce
 
   if (credit.applied) {
     // [HF-TOK-EXIT-1] Purchase record for /wallet; best-effort (backfill covers a miss).
+    let receiptNumber: string | null = null;
     try {
       const cfg = (await readConfig(env)) as unknown as Record<string, unknown>;
-      await issuePurchaseRecord(env, cfg, { id: credit.lotId, uid, tokens_granted_micro: micro, paid_paise: paidPaise, redemption_paise_per_token: prod.redemptionPaisePerToken, provider_ref: orderId, created_at: Date.now(), pricing_version: prod.pricingVersion });
+      const rec = await issuePurchaseRecord(env, cfg, { id: credit.lotId, uid, tokens_granted_micro: micro, paid_paise: paidPaise, redemption_paise_per_token: prod.redemptionPaisePerToken, provider_ref: orderId, created_at: Date.now(), pricing_version: prod.pricingVersion });
+      receiptNumber = rec?.number ?? null;
     } catch { /* backfill */ }
+    // [HF-TOPUP-NOTIFY-1] WhatsApp + email receipt, once per newly applied credit (HF-PAY-20). Never throws, never blocks the credit.
+    try {
+      await notifyTopupCredited(env, { uid, orderId, paidPaise, creditPaise: Math.round((micro / MICRO) * prod.redemptionPaisePerToken), receiptNumber });
+    } catch { /* best-effort */ }
   }
   const consumed = await ackAndConsume(env, pkg, { purchase_token: a.purchaseToken, product_id: a.productId }, p);
   await emit(env, uid, "hf_token_purchase_verified", { tokens: prod.tokens, paid_paise: paidPaise, duplicate: !credit.applied, source: a.source });

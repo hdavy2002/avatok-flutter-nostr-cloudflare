@@ -54,7 +54,10 @@ describe("purchase records", () => {
     expect(a.kind).toBe("receipt");
     expect(a.gst_paise ?? null).toBe(null);
     const html = renderReceiptHtml(a, supplierFrom({}), null);
-    expect(html).toContain("Purchase record");
+    expect(html).toContain("Payment receipt");
+    expect(html).toContain("Added to your wallet");
+    expect(html).toContain("includes 18% GST");
+    expect(html).not.toContain("Tokens bought");
     expect(html).toContain("paid via Google Play");
     expect(html).toContain("GPA.3300-1");
     expect(html).not.toMatch(/CGST|SGST|IGST/);

@@ -239,18 +239,18 @@ export function renderReceiptHtml(r: ReceiptRow, sup: Supplier, customerName: st
   const isInvoice = r.kind === "tax_invoice";
   const legal = esc(sup.legalName || BRAND.name);
   const supplierBlock = `<p><strong>${legal}</strong><br>${esc(sup.address).replace(/\n/g, "<br>")}${isInvoice && r.gstin ? `<br>GSTIN: ${esc(r.gstin)}` : ""}</p>`;
-  const title = isInvoice ? "Tax invoice" : (data as Record<string, unknown>).type === "play_purchase" ? "Purchase record — paid via Google Play" : "Payment receipt";
+  const title = isInvoice ? "Tax invoice" : (data as Record<string, unknown>).type === "play_purchase" ? "Payment receipt — paid via Google Play" : "Payment receipt";
   const isPlay = !isInvoice && data.type === "play_purchase";
   let body: string;
   if (isPlay) {
+    // [HF-TOPUP-NOTIFY-1] The wallet holds rupees (HF-WALLET-RUPEES): show what was added, not tokens. Paid includes 18% GST (HF-PAY-19).
     const micro = Number(data.tokensMicro ?? 0), paid = Number(data.paidPaise ?? 0), v = Number(data.valuePaisePerToken ?? 0);
-    const tokens = (micro / 1_000_000).toLocaleString("en-IN", { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+    const added = Math.round((micro / 1_000_000) * v);
     body = `<table><thead><tr><th>Description</th><th class="n">Detail</th></tr></thead><tbody>
       <tr><td>Google Play order</td><td class="n">${esc(data.orderId ?? "")}</td></tr>
-      <tr><td>Tokens bought</td><td class="n">${esc(tokens)}</td></tr>
-      <tr><td>Value of each token in call time</td><td class="n">${inr(v)}</td></tr>
-      <tr class="t"><td>Paid</td><td class="n">${inr(paid)}</td></tr></tbody></table>
-      <p class="muted">You paid through Google Play, which sends its own payment receipt. This is a record of your purchase, not a tax invoice.</p>`;
+      <tr><td>Added to your wallet</td><td class="n">${inr(added)}</td></tr>
+      <tr class="t"><td>Paid (includes 18% GST)</td><td class="n">${inr(paid)}</td></tr></tbody></table>
+      <p class="muted">You paid through Google Play, which sends its own payment receipt. This is a payment receipt, not a tax invoice.</p>`;
   } else if (isInvoice) {
     const cgst = Number(data.cgstPaise ?? 0), sgst = Number(data.sgstPaise ?? 0), igst = Number(data.igstPaise ?? 0);
     const taxable = Number(r.taxable_paise ?? 0), gst = Number(r.gst_paise ?? 0);
