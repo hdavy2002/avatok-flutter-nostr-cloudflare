@@ -2,7 +2,7 @@
 //
 //  - Called from processPlayPurchase ONLY when the ledger credit was newly applied (credit.applied), so one payment = one message, whichever
 //    path credited it (app verify, Google's real-time notice, or the cron backstop).
-//  - WhatsApp: a one-line confirmation from the Hello Fraands WasenderAPI session to the buyer's VERIFIED WhatsApp number.
+//  - WhatsApp: a one-line confirmation from the brand WasenderAPI session to the buyer's VERIFIED WhatsApp number.
 //  - Email: a branded "Payment receipt" (not a tax invoice: no GSTIN yet, owner decision 2026-10-11) through the durable email outbox,
 //    keyed `hf-topup:<orderId>` so a retry never sends twice.
 //  - Never throws and never blocks the credit: a missing number / email is a "skipped" event, a provider error is a "failed" event.
