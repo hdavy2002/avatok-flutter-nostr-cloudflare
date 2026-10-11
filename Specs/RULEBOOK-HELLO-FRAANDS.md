@@ -49,7 +49,7 @@ works; the backend must be built to match these rules before calls go live.
 | HF-CALL-3 | No app needed for calls; the Android app is optional. Calls come to the normal phone number. Wallet, favourites and history live on the website. | ADOPTED | DONE | TODO |
 | HF-CALL-4 | Either person can hang up any time. **#** at any time ends the call, blocks the other person and reports the incident. | ADOPTED | DONE | TODO |
 | HF-CALL-5 | Both people hear a short **safety notice** before connecting (not a recording notice). Proposed wording: *"This is a friendly chat, not counselling. In crisis, dial 14416."* | ADOPTED (wording PROPOSED) | DONE (wording in terms) | TODO |
-| HF-CALL-6 | **Notify me, no queue** (owner decision 2026-10-09). When a host is busy or offline, the caller sees "Busy — Notify me" / "Offline — Notify me". We send one WhatsApp when the host goes online (at most one per 24 h per caller), then the subscription ends. Nobody waits in a line. If a host declines or misses a call, the caller is offered the same Notify me. | ADOPTED | DONE (HF-CALLS-1, behind hfCallsEnabled) | TODO (HF-CALLS-1) |
+| HF-CALL-6 | **Notify me, no queue** (owner decision 2026-10-09). When a host is busy or offline, the caller sees "On a call — Notify me" / "Offline — Notify me". We send one WhatsApp when the host goes online (at most one per 24 h per caller), then the subscription ends. Nobody waits in a line. If a host declines or misses a call, the caller is offered the same Notify me. | ADOPTED | DONE (HF-CALLS-1, behind hfCallsEnabled) | TODO (HF-CALLS-1) |
 
 ## 3. Privacy and recording
 
@@ -343,3 +343,4 @@ else, or come back later."
 | 2026-10-11 | HF-GST-RULE-1: owner decision — top-ups now include 18% GST (HF-PAY-16 "a top-up carries no GST" struck through and replaced). GSTIN goes on receipts when the number arrives. Backend TODO: move invoice GST from the platform-share basis to the top-up basis (with the CA) before `hfGstin` is set, or GST is counted twice. |
 | 2026-10-11 | HF-TOPUP-NOTIFY-1: top-ups now send a WhatsApp confirmation and a branded email payment receipt (HF-PAY-20); receipt page shows rupees added instead of tokens. |
 | 2026-10-11 | HF-HOST-NUDGE-1: owner decision — a live host who is offline gets a WhatsApp reminder about every 3 hours between 08:00 and 23:00 IST, and can pause it. Worker built (HF-PRESENCE-NUDGE-1), flag off; STOP reply and an in-app pause switch still TODO. |
+| 2026-10-11 | HF-PRESENCE-WEB-1: host status pill on the website has no green (owner rule): online = rose text on blush, busy = amber, offline unchanged; the busy state always reads "On a call" (also on the Notify me button). Host dashboard on/off switch is rose when on. |

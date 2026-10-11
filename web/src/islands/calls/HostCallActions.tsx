@@ -361,7 +361,7 @@ export default function HostCallActions({ host, variant, refresh }: { host: Call
     );
   }
   if (status !== 'online') {
-    return <NotifyButton host={h} variant={variant} prefix={status === 'busy' ? 'Busy' : 'Offline'} initial={subscribed} />;
+    return <NotifyButton host={h} variant={variant} prefix={status === 'busy' ? 'On a call' : 'Offline'} initial={subscribed} />;
   }
   if (gate === 'app') {
     return (

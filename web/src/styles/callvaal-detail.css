@@ -23,8 +23,8 @@ body:has(.cv-detail-main)>.cv-header{padding-block:22px}
 .cv-profile-hero{position:relative;display:grid;grid-template-columns:minmax(200px,.85fr) minmax(0,1.4fr);gap:24px;padding:10px;border:1px solid #eee7ef;border-radius:16px;background:#fff;box-shadow:0 4px 20px #43113906}
 .cv-profile-photo{position:relative;min-width:0;align-self:stretch}
 .cv-profile-photo>img{display:block;width:100%;height:100%;min-height:320px;object-fit:cover;object-position:center 30%;border-radius:10px}
-.cv-online{position:absolute;left:10px;top:10px;display:inline-flex;align-items:center;gap:7px;background:#f1fff4;color:#06592d;border:1px solid #81b395;border-radius:11px;padding:5px 11px;font-size:.9375rem;box-shadow:0 2px 8px #173e2310}
-.cv-online>span{height:9px;width:9px;border-radius:50%;background:#078841}
+.cv-online{position:absolute;left:10px;top:10px;display:inline-flex;align-items:center;gap:7px;background:#ffe0ea;color:#b1325f;border:1px solid #f0afc4;border-radius:11px;padding:5px 11px;font-size:.9375rem;box-shadow:0 2px 8px #46113e14}
+.cv-online>span{height:9px;width:9px;border-radius:50%;background:#e0527e}
 .cv-yellow-note{position:absolute;left:-16px;bottom:-16px;z-index:1;transform:rotate(-10deg);padding:19px 17px 12px;background:#ffe47b;color:#231422;font:1.15rem/1.06 Comfortaa,Nunito,sans-serif;box-shadow:2px 4px 0 #f1d05266;clip-path:polygon(3% 4%,18% 3%,21% 0,80% 2%,83% 0,97% 4%,100% 93%,96% 97%,70% 98%,50% 96%,25% 100%,3% 96%,0 40%)}
 .cv-yellow-note>span{display:block;text-align:center;font-size:1.65rem;line-height:1.1}
 .cv-identity{padding:8px 0 4px;display:flex;flex-direction:column;align-items:flex-start}
@@ -129,7 +129,7 @@ html[data-site-embed] .cv-booking-card>.cv-book-button{margin-top:12px}
 
 /* [HF-PROFILE-DETAIL-2] Card fields on the detail page, sample reviews, review form.
    Same colours, radii and type sizes as the profile card (profile-card.css). */
-.cv-status-busy{background:#fff1d9;color:#84520a;border-color:#e7c48c}.cv-status-busy>span{background:#a9680a}
+.cv-status-busy{background:#fff1c7;color:#6e4f00;border-color:#e7c48c}.cv-status-busy>span{background:#d89a00}
 .cv-identity .cv-role{font-family:Comfortaa,Nunito,sans-serif;font-size:1.2rem}
 .cv-profile-stats{list-style:none;padding:0;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;width:100%;margin-top:18px!important}
 .cv-profile-stats li{display:flex;align-items:center;gap:9px;padding:12px 10px;border-radius:13px;background:#f8f1fc;min-width:0}

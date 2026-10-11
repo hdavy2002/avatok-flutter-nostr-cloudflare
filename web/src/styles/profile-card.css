@@ -5,10 +5,10 @@
 .people-grid .person-portrait{position:absolute;inset:0;width:100%;height:100%;aspect-ratio:auto;object-fit:cover;object-position:center 20%;border-radius:0}
 .people-grid .favourite-button{top:14px;right:14px;border-radius:12px;background:#fffdf8;color:var(--plum)}
 .people-grid .favourite-button[aria-pressed=true]{background:var(--plum);color:white}
-.people-grid .person-status{position:absolute;bottom:14px;left:14px;max-width:calc(100% - 28px);margin:0;padding:7px 12px;border-radius:24px;background:#f3fff9;color:#076737;font-size:var(--text-note);font-weight:700;box-shadow:0 2px 8px #46113e14}
+.people-grid .person-status{position:absolute;bottom:14px;left:14px;max-width:calc(100% - 28px);margin:0;padding:7px 12px;border-radius:24px;background:#ffe0ea;color:#b1325f;font-size:var(--text-note);font-weight:700;box-shadow:0 2px 8px #46113e14}
 .people-grid .person-status.is-offline{background:#f2efff;color:var(--muted)}
-.people-grid .person-status.is-busy{background:#fff1d9;color:#84520a}
-.people-grid .person-status.is-busy span{background:#a9680a}
+.people-grid .person-status.is-busy{background:#fff1c7;color:#6e4f00}
+.people-grid .person-status.is-busy span{background:#d89a00}
 .people-grid .person-copy{display:flex;flex:1;flex-direction:column;gap:12px;padding:20px;color:var(--muted);min-width:0}
 .people-grid .person-copy p{margin:0}
 .people-grid .profile-card-heading{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}
