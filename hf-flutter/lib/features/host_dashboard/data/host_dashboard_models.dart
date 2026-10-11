@@ -13,14 +13,26 @@ String? _str(Object? v) {
   return s.isEmpty ? null : s;
 }
 
-Map<String, dynamic>? _map(Object? v) => v is Map ? Map<String, dynamic>.from(v) : null;
+Map<String, dynamic>? _map(Object? v) =>
+    v is Map ? Map<String, dynamic>.from(v) : null;
 
-List<Map<String, dynamic>> _maps(Object? v) =>
-    v is List ? [for (final e in v) if (e is Map) Map<String, dynamic>.from(e)] : const <Map<String, dynamic>>[];
+List<Map<String, dynamic>> _maps(Object? v) => v is List
+    ? [
+        for (final e in v)
+          if (e is Map) Map<String, dynamic>.from(e),
+      ]
+    : const <Map<String, dynamic>>[];
 
 /// `GET /api/hosts/me`: only what the dashboard needs, the profile status and the reviewer's note.
 class HostProfileStatus {
-  const HostProfileStatus({required this.hasHost, this.status = 'draft', this.reviewNote});
+  const HostProfileStatus({
+    required this.hasHost,
+    this.status = 'draft',
+    this.reviewNote,
+    this.displayName,
+    this.avatarUrl,
+    this.slug,
+  });
 
   final bool hasHost;
 
@@ -30,11 +42,17 @@ class HostProfileStatus {
   /// The reviewer's reason when the profile was rejected or paused.
   final String? reviewNote;
 
+  /// Header details from the same `host` object (all optional; the screen falls back to the session).
+  final String? displayName;
+  final String? avatarUrl;
+  final String? slug;
+
   bool get isLive => status == 'live';
   bool get isInReview => status == 'pending_review' || status == 'submitted';
 
   /// Money screens (earnings, withdrawals) show once the profile has been through review.
-  bool get showsMoney => status == 'live' || status == 'paused' || status == 'rejected';
+  bool get showsMoney =>
+      status == 'live' || status == 'paused' || status == 'rejected';
 
   factory HostProfileStatus.fromJson(Map<String, dynamic> j) {
     final host = _map(j['host']);
@@ -43,6 +61,9 @@ class HostProfileStatus {
       hasHost: true,
       status: _str(host['status']) ?? 'draft',
       reviewNote: _str(host['reviewNote']),
+      displayName: _str(host['displayName']),
+      avatarUrl: _str(host['avatarUrl']),
+      slug: _str(host['slug']),
     );
   }
 }
@@ -72,18 +93,23 @@ class HostCall {
   bool get completed => status == 'completed';
 
   factory HostCall.fromJson(Map<String, dynamic> j) => HostCall(
-        id: (j['id'] ?? '').toString(),
-        status: (j['status'] ?? '').toString(),
-        callerHandle: _str(j['callerHandle']),
-        createdAt: _intOrNull(j['createdAt']),
-        billedMinutes: _int(j['billedMinutes']),
-        earningRupees: _num(j['earningRupees']) ?? 0,
-        endReason: _str(j['endReason']),
-      );
+    id: (j['id'] ?? '').toString(),
+    status: (j['status'] ?? '').toString(),
+    callerHandle: _str(j['callerHandle']),
+    createdAt: _intOrNull(j['createdAt']),
+    billedMinutes: _int(j['billedMinutes']),
+    earningRupees: _num(j['earningRupees']) ?? 0,
+    endReason: _str(j['endReason']),
+  );
 }
 
 class HostCallsData {
-  const HostCallsData({this.calls = const <HostCall>[], this.todayCalls = 0, this.todayMinutes = 0, this.todayEarningRupees = 0});
+  const HostCallsData({
+    this.calls = const <HostCall>[],
+    this.todayCalls = 0,
+    this.todayMinutes = 0,
+    this.todayEarningRupees = 0,
+  });
 
   final List<HostCall> calls;
   final int todayCalls;
@@ -125,13 +151,13 @@ class CallEarning {
   bool get isTest => testPaise > 0 && paidPaise == 0;
 
   factory CallEarning.fromJson(Map<String, dynamic> j) => CallEarning(
-        callId: (j['callId'] ?? '').toString(),
-        at: _intOrNull(j['at']),
-        earnedPaise: _int(j['earnedPaise']),
-        paidPaise: _int(j['paidPaise']),
-        testPaise: _int(j['testPaise']),
-        availableAt: _intOrNull(j['availableAt']),
-      );
+    callId: (j['callId'] ?? '').toString(),
+    at: _intOrNull(j['at']),
+    earnedPaise: _int(j['earnedPaise']),
+    paidPaise: _int(j['paidPaise']),
+    testPaise: _int(j['testPaise']),
+    availableAt: _intOrNull(j['availableAt']),
+  );
 }
 
 /// Money that unlocks on one day.
@@ -172,7 +198,8 @@ class HostEarnings {
   static HostEarnings? fromWalletJson(Map<String, dynamic> j) {
     final h = _map(j['host']);
     if (h == null) return null;
-    final tokenMode = h.containsKey('availablePaise') || h.containsKey('pendingPaise');
+    final tokenMode =
+        h.containsKey('availablePaise') || h.containsKey('pendingPaise');
     if (tokenMode) {
       final test = _int(h['testEarningsPaise']);
       final paidOut = _int(h['paidOutPaise']);
@@ -197,12 +224,12 @@ class HostEarnings {
 
   /// Fallback when the wallet answer is not available: the withdrawals answer carries the same two numbers.
   factory HostEarnings.fromPayouts(PayoutsData p) => HostEarnings(
-        total: '',
-        pending: p.heldDisplay,
-        available: p.withdrawableDisplay,
-        testEarnings: p.testEarnings > 0 ? Money.rupees(p.testEarnings) : null,
-        tokenMode: p.tokenMode,
-      );
+    total: '',
+    pending: p.heldDisplay,
+    available: p.withdrawableDisplay,
+    testEarnings: p.testEarnings > 0 ? Money.rupees(p.testEarnings) : null,
+    tokenMode: p.tokenMode,
+  );
 
   /// Per-call earning by call id (token mode), for the test-or-paid tag on the calls list.
   Map<String, CallEarning> get byCall => {for (final e in perCall) e.callId: e};
@@ -259,16 +286,16 @@ class PayoutRequest {
   bool get canCancel => status == 'requested';
 
   factory PayoutRequest.fromJson(Map<String, dynamic> j) => PayoutRequest(
-        id: (j['id'] ?? '').toString(),
-        amount: _int(j['amount']),
-        status: (j['status'] ?? '').toString(),
-        accountLast4: _str(j['accountLast4']),
-        ifsc: _str(j['ifsc']),
-        utr: _str(j['utr']),
-        reason: _str(j['reason']),
-        createdAt: _intOrNull(j['createdAt']),
-        paidAt: _intOrNull(j['paidAt']),
-      );
+    id: (j['id'] ?? '').toString(),
+    amount: _int(j['amount']),
+    status: (j['status'] ?? '').toString(),
+    accountLast4: _str(j['accountLast4']),
+    ifsc: _str(j['ifsc']),
+    utr: _str(j['utr']),
+    reason: _str(j['reason']),
+    createdAt: _intOrNull(j['createdAt']),
+    paidAt: _intOrNull(j['paidAt']),
+  );
 }
 
 class PayoutsData {
@@ -313,9 +340,11 @@ class PayoutsData {
   bool get tokenMode => withdrawablePaise != null;
   bool get hostLive => hostStatus == 'live';
 
-  String get withdrawableDisplay =>
-      withdrawablePaise != null ? Money.paise(withdrawablePaise!) : Money.rupees(withdrawable);
-  String get heldDisplay => pendingPaise != null ? Money.paise(pendingPaise!) : Money.rupees(held);
+  String get withdrawableDisplay => withdrawablePaise != null
+      ? Money.paise(withdrawablePaise!)
+      : Money.rupees(withdrawable);
+  String get heldDisplay =>
+      pendingPaise != null ? Money.paise(pendingPaise!) : Money.rupees(held);
 
   /// Why the Withdraw button is off, or null when it can be used.
   PayoutBlock? get block {
@@ -343,7 +372,9 @@ class PayoutsData {
       testEarnings: _int(j['testEarnings']),
       withdrawablePaise: _intOrNull(j['withdrawablePaise']),
       pendingPaise: _intOrNull(j['pendingPaise']),
-      requests: [for (final r in _maps(j['requests'])) PayoutRequest.fromJson(r)],
+      requests: [
+        for (final r in _maps(j['requests'])) PayoutRequest.fromJson(r),
+      ],
     );
   }
 }

@@ -40,22 +40,27 @@ void main() {
       h.dispose();
     });
 
-    testWidgets('background stops it; foreground again beats once and restarts', (tester) async {
-      var beats = 0;
-      final h = PresenceHeartbeat(beat: () => beats++);
-      h.setOnline(true);
-      h.setForeground(false);
-      expect(h.running, isFalse);
-      await tester.pump(const Duration(hours: 1));
-      expect(beats, 0);
-      h.setForeground(true);
-      expect(beats, 1);
-      await tester.pump(const Duration(minutes: 5));
-      expect(beats, 2);
-      h.dispose();
-    });
+    testWidgets(
+      'background stops it; foreground again beats once and restarts',
+      (tester) async {
+        var beats = 0;
+        final h = PresenceHeartbeat(beat: () => beats++);
+        h.setOnline(true);
+        h.setForeground(false);
+        expect(h.running, isFalse);
+        await tester.pump(const Duration(hours: 1));
+        expect(beats, 0);
+        h.setForeground(true);
+        expect(beats, 1);
+        await tester.pump(const Duration(minutes: 5));
+        expect(beats, 2);
+        h.dispose();
+      },
+    );
 
-    testWidgets('offline in the foreground never beats, even after a resume', (tester) async {
+    testWidgets('offline in the foreground never beats, even after a resume', (
+      tester,
+    ) async {
       var beats = 0;
       final h = PresenceHeartbeat(beat: () => beats++);
       h.setForeground(false);
@@ -77,7 +82,9 @@ void main() {
       h.dispose();
     });
 
-    testWidgets('setting online twice does not start two timers', (tester) async {
+    testWidgets('setting online twice does not start two timers', (
+      tester,
+    ) async {
       var beats = 0;
       final h = PresenceHeartbeat(beat: () => beats++);
       h.setOnline(true);
@@ -89,7 +96,8 @@ void main() {
   });
 
   group('PayoutRules.check', () {
-    PayoutCheck c(String s, {int min = 500, int max = 2000}) => PayoutRules.check(s, minRupees: min, withdrawable: max);
+    PayoutCheck c(String s, {int min = 500, int max = 2000}) =>
+        PayoutRules.check(s, minRupees: min, withdrawable: max);
 
     test('a good amount passes, spaces are ignored', () {
       expect(c('500').amount, 500);
@@ -114,51 +122,89 @@ void main() {
 
   group('PayoutRules.failure', () {
     PayoutFailure f(String code, {int status = 400, String? message}) =>
-        PayoutRules.failure(ApiError(status: status, code: code, message: message));
+        PayoutRules.failure(
+          ApiError(status: status, code: code, message: message),
+        );
 
     test('every documented code has simple English and the right action', () {
       expect(f('not_enabled', status: 404).message, 'Withdrawals open soon.');
-      expect(f('not_live', status: 403).message, 'Withdrawals open once your profile is live.');
+      expect(
+        f('not_live', status: 403).message,
+        'Withdrawals open once your profile is live.',
+      );
       expect(f('kyc_required', status: 409).action, PayoutAction.finishSetup);
       expect(f('bank_required', status: 409).action, PayoutAction.finishSetup);
-      expect(f('invalid_amount').message, 'Enter a whole rupee amount, like 500.');
+      expect(
+        f('invalid_amount').message,
+        'Enter a whole rupee amount, like 500.',
+      );
       expect(f('below_minimum').message, 'The smallest withdrawal is ₹500.');
       expect(f('weekly_limit', status: 429).message, contains('week'));
-      expect(f('insufficient_withdrawable', status: 402).action, PayoutAction.none);
+      expect(
+        f('insufficient_withdrawable', status: 402).action,
+        PayoutAction.none,
+      );
       expect(f('wallet_error', status: 502).action, PayoutAction.retry);
     });
 
     test('below_minimum uses the minimum the server sent', () {
-      expect(PayoutRules.failure(const ApiError(status: 400, code: 'below_minimum'), minRupees: 1000).message,
-          'The smallest withdrawal is ₹1,000.');
+      expect(
+        PayoutRules.failure(
+          const ApiError(status: 400, code: 'below_minimum'),
+          minRupees: 1000,
+        ).message,
+        'The smallest withdrawal is ₹1,000.',
+      );
     });
 
-    test('offline and server errors can be retried; the message is the network one', () {
-      final off = PayoutRules.failure(ApiError.network());
-      expect(off.message, 'No internet. Check your connection.');
-      expect(off.action, PayoutAction.retry);
-      expect(f('http_500', status: 500).action, PayoutAction.retry);
-    });
+    test(
+      'offline and server errors can be retried; the message is the network one',
+      () {
+        final off = PayoutRules.failure(ApiError.network());
+        expect(off.message, 'No internet. Check your connection.');
+        expect(off.action, PayoutAction.retry);
+        expect(f('http_500', status: 500).action, PayoutAction.retry);
+      },
+    );
 
     test('keepsKey only for a lost answer', () {
       expect(PayoutRules.keepsKey(ApiError.network()), isTrue);
       expect(PayoutRules.keepsKey(ApiError.timeout()), isTrue);
-      expect(PayoutRules.keepsKey(const ApiError(status: 502, code: 'wallet_error')), isTrue);
-      expect(PayoutRules.keepsKey(const ApiError(status: 402, code: 'insufficient_withdrawable')), isFalse);
-      expect(PayoutRules.keepsKey(const ApiError(status: 429, code: 'weekly_limit')), isFalse);
+      expect(
+        PayoutRules.keepsKey(const ApiError(status: 502, code: 'wallet_error')),
+        isTrue,
+      );
+      expect(
+        PayoutRules.keepsKey(
+          const ApiError(status: 402, code: 'insufficient_withdrawable'),
+        ),
+        isFalse,
+      );
+      expect(
+        PayoutRules.keepsKey(const ApiError(status: 429, code: 'weekly_limit')),
+        isFalse,
+      );
     });
   });
 
   group('models', () {
     test('HostProfileStatus: no host, and the reviewer note', () {
       expect(HostProfileStatus.fromJson(noHostMe()).hasHost, isFalse);
-      final s = HostProfileStatus.fromJson(hostMe(status: 'rejected', note: ' Needs a clearer photo. '));
+      final s = HostProfileStatus.fromJson(
+        hostMe(status: 'rejected', note: ' Needs a clearer photo. '),
+      );
       expect(s.hasHost, isTrue);
       expect(s.status, 'rejected');
       expect(s.reviewNote, 'Needs a clearer photo.');
       expect(s.showsMoney, isTrue);
-      expect(HostProfileStatus.fromJson(hostMe(status: 'draft')).showsMoney, isFalse);
-      expect(HostProfileStatus.fromJson(hostMe(status: 'submitted')).isInReview, isTrue);
+      expect(
+        HostProfileStatus.fromJson(hostMe(status: 'draft')).showsMoney,
+        isFalse,
+      );
+      expect(
+        HostProfileStatus.fromJson(hostMe(status: 'submitted')).isInReview,
+        isTrue,
+      );
     });
 
     test('HostEarnings token shape: paise to rupees, never tokens', () {
@@ -187,29 +233,57 @@ void main() {
       expect(HostEarnings.fromWalletJson(tokenHostWallet(host: false)), isNull);
     });
 
-    test('releases group held money by day, soonest first, and skip money already free', () {
-      final now = DateTime(2026, 10, 10, 12);
-      int at(int d, int h) => DateTime(2026, 10, d, h).millisecondsSinceEpoch;
-      final e = HostEarnings.fromWalletJson({
-        'host': {
-          'availablePaise': 0,
-          'pendingPaise': 9000,
-          'perCall': [
-            {'callId': 'a', 'paidPaise': 3000, 'testPaise': 0, 'availableAt': at(14, 9)},
-            {'callId': 'b', 'paidPaise': 2000, 'testPaise': 0, 'availableAt': at(14, 18)},
-            {'callId': 'c', 'paidPaise': 4000, 'testPaise': 0, 'availableAt': at(12, 8)},
-            {'callId': 'd', 'paidPaise': 5000, 'testPaise': 0, 'availableAt': at(9, 8)},
-            {'callId': 'e', 'paidPaise': 0, 'testPaise': 700, 'availableAt': at(20, 8)},
-          ],
-        },
-      })!;
-      final r = e.releases(now);
-      expect(r.length, 2);
-      expect(r[0].date, DateTime(2026, 10, 12));
-      expect(r[0].paise, 4000);
-      expect(r[1].date, DateTime(2026, 10, 14));
-      expect(r[1].paise, 5000);
-    });
+    test(
+      'releases group held money by day, soonest first, and skip money already free',
+      () {
+        final now = DateTime(2026, 10, 10, 12);
+        int at(int d, int h) => DateTime(2026, 10, d, h).millisecondsSinceEpoch;
+        final e = HostEarnings.fromWalletJson({
+          'host': {
+            'availablePaise': 0,
+            'pendingPaise': 9000,
+            'perCall': [
+              {
+                'callId': 'a',
+                'paidPaise': 3000,
+                'testPaise': 0,
+                'availableAt': at(14, 9),
+              },
+              {
+                'callId': 'b',
+                'paidPaise': 2000,
+                'testPaise': 0,
+                'availableAt': at(14, 18),
+              },
+              {
+                'callId': 'c',
+                'paidPaise': 4000,
+                'testPaise': 0,
+                'availableAt': at(12, 8),
+              },
+              {
+                'callId': 'd',
+                'paidPaise': 5000,
+                'testPaise': 0,
+                'availableAt': at(9, 8),
+              },
+              {
+                'callId': 'e',
+                'paidPaise': 0,
+                'testPaise': 700,
+                'availableAt': at(20, 8),
+              },
+            ],
+          },
+        })!;
+        final r = e.releases(now);
+        expect(r.length, 2);
+        expect(r[0].date, DateTime(2026, 10, 12));
+        expect(r[0].paise, 4000);
+        expect(r[1].date, DateTime(2026, 10, 14));
+        expect(r[1].paise, 5000);
+      },
+    );
 
     test('PayoutsData: both shapes and the reason a withdrawal is blocked', () {
       final t = PayoutsData.fromJson(payoutsAnswer());
@@ -218,24 +292,54 @@ void main() {
       expect(t.heldDisplay, '₹500');
       expect(t.block, isNull);
 
-      final l = PayoutsData.fromJson(payoutsAnswer(tokenMode: false, withdrawable: 750));
+      final l = PayoutsData.fromJson(
+        payoutsAnswer(tokenMode: false, withdrawable: 750),
+      );
       expect(l.tokenMode, isFalse);
       expect(l.withdrawableDisplay, '₹750');
 
-      expect(PayoutsData.fromJson(payoutsAnswer(hostStatus: 'paused')).block, PayoutBlock.notLive);
-      expect(PayoutsData.fromJson(payoutsAnswer(kycOk: false)).block, PayoutBlock.kyc);
-      expect(PayoutsData.fromJson(payoutsAnswer(bankOk: false)).block, PayoutBlock.bank);
-      expect(PayoutsData.fromJson(payoutsAnswer(withdrawable: 499)).block, PayoutBlock.tooLow);
+      expect(
+        PayoutsData.fromJson(payoutsAnswer(hostStatus: 'paused')).block,
+        PayoutBlock.notLive,
+      );
+      expect(
+        PayoutsData.fromJson(payoutsAnswer(kycOk: false)).block,
+        PayoutBlock.kyc,
+      );
+      expect(
+        PayoutsData.fromJson(payoutsAnswer(bankOk: false)).block,
+        PayoutBlock.bank,
+      );
+      expect(
+        PayoutsData.fromJson(payoutsAnswer(withdrawable: 499)).block,
+        PayoutBlock.tooLow,
+      );
     });
 
-    test('PayoutRequest: only requested can be cancelled; the UTR and reason ride along', () {
-      final paid = PayoutRequest.fromJson(payoutRow('p', 'paid', utr: 'UTR1'));
-      expect(paid.canCancel, isFalse);
-      expect(paid.utr, 'UTR1');
-      expect(PayoutRequest.fromJson(payoutRow('p', 'requested')).canCancel, isTrue);
-      expect(PayoutRequest.fromJson(payoutRow('p', 'approved')).canCancel, isFalse);
-      expect(PayoutRequest.fromJson(payoutRow('p', 'rejected', reason: 'No.')).reason, 'No.');
-    });
+    test(
+      'PayoutRequest: only requested can be cancelled; the UTR and reason ride along',
+      () {
+        final paid = PayoutRequest.fromJson(
+          payoutRow('p', 'paid', utr: 'UTR1'),
+        );
+        expect(paid.canCancel, isFalse);
+        expect(paid.utr, 'UTR1');
+        expect(
+          PayoutRequest.fromJson(payoutRow('p', 'requested')).canCancel,
+          isTrue,
+        );
+        expect(
+          PayoutRequest.fromJson(payoutRow('p', 'approved')).canCancel,
+          isFalse,
+        );
+        expect(
+          PayoutRequest.fromJson(
+            payoutRow('p', 'rejected', reason: 'No.'),
+          ).reason,
+          'No.',
+        );
+      },
+    );
 
     test('HostCallsData tolerates missing keys', () {
       final d = HostCallsData.fromJson(const <String, dynamic>{});
@@ -247,9 +351,22 @@ void main() {
   group('DashFormat', () {
     test('day and time', () {
       expect(DashFormat.day(DateTime(2026, 10, 4)), '4 Oct');
-      expect(DashFormat.dayTimeOf(DateTime(2026, 10, 9, 16, 30).millisecondsSinceEpoch), '9 Oct, 4:30 pm');
-      expect(DashFormat.dayTimeOf(DateTime(2026, 1, 2, 0, 5).millisecondsSinceEpoch), '2 Jan, 12:05 am');
-      expect(DashFormat.dayTimeOf(DateTime(2026, 1, 2, 12, 0).millisecondsSinceEpoch), '2 Jan, 12:00 pm');
+      expect(
+        DashFormat.dayTimeOf(
+          DateTime(2026, 10, 9, 16, 30).millisecondsSinceEpoch,
+        ),
+        '9 Oct, 4:30 pm',
+      );
+      expect(
+        DashFormat.dayTimeOf(DateTime(2026, 1, 2, 0, 5).millisecondsSinceEpoch),
+        '2 Jan, 12:05 am',
+      );
+      expect(
+        DashFormat.dayTimeOf(
+          DateTime(2026, 1, 2, 12, 0).millisecondsSinceEpoch,
+        ),
+        '2 Jan, 12:00 pm',
+      );
       expect(DashFormat.dayOf(null), '');
       expect(DashFormat.dayTimeOf(null), '');
     });

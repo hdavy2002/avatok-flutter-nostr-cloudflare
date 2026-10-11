@@ -2,15 +2,17 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/format/money.dart';
-import '../../../core/theme/hf_tokens.dart';
+import '../../../core/theme/hf_theme.dart';
 import '../../../core/widgets/widgets.dart';
 import '../data/dash_format.dart';
 import '../data/host_dashboard_models.dart';
 import '../host_dashboard_providers.dart';
+import 'dash_surface.dart';
 import 'host_dashboard_copy.dart';
 import 'section_async.dart';
 
-/// "Today": calls, minutes and rupees earned since midnight (the worker works out the day).
+/// The three tiles under the online card: calls today (sky), minutes (lavender), rupees earned (butter).
+/// The worker works out "today"; the app only shows the numbers.
 class TodayCard extends ConsumerWidget {
   const TodayCard({super.key});
 
@@ -22,20 +24,44 @@ class TodayCard extends ConsumerWidget {
       value: calls,
       onRetry: () => ref.invalidate(hostCallsProvider),
       notEnabledMessage: 'Calls open soon.',
-      builder: (d) => HfCard(
+      skeletonHeight: 78,
+      skeletonRadius: HfRadius.tileSmall,
+      builder: (d) => IntrinsicHeight(
         key: const ValueKey<String>('today-card'),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            const Text(HostCopy.todayTitle, style: HfText.subtitle),
-            const SizedBox(height: 12),
-            Wrap(
-              spacing: 12, runSpacing: 12,
-              children: [
-                _Stat(label: HostCopy.todayCalls, value: '${d.todayCalls}', keyName: 'today-calls', color: HfColors.sky),
-                _Stat(label: HostCopy.todayMinutes, value: '${d.todayMinutes}', keyName: 'today-minutes', color: HfColors.lavender),
-                _Stat(label: HostCopy.todayEarned, value: Money.rupees(d.todayEarningRupees), keyName: 'today-earned', color: HfColors.butter),
-              ],
+            Expanded(
+              child: KeyedSubtree(
+                key: const ValueKey<String>('today-calls'),
+                child: HfTile(
+                  tint: HfTint.sky,
+                  value: '${d.todayCalls}',
+                  caption: HostCopy.todayCallsCaption,
+                ),
+              ),
+            ),
+            const SizedBox(width: HfSpacing.sm),
+            Expanded(
+              child: KeyedSubtree(
+                key: const ValueKey<String>('today-minutes'),
+                child: HfTile(
+                  tint: HfTint.lavender,
+                  value: '${d.todayMinutes}',
+                  caption: HostCopy.todayMinutesCaption,
+                ),
+              ),
+            ),
+            const SizedBox(width: HfSpacing.sm),
+            Expanded(
+              child: KeyedSubtree(
+                key: const ValueKey<String>('today-earned'),
+                child: HfTile(
+                  tint: HfTint.butter,
+                  value: Money.rupees(d.todayEarningRupees),
+                  caption: HostCopy.todayEarnedCaption,
+                ),
+              ),
             ),
           ],
         ),
@@ -44,33 +70,7 @@ class TodayCard extends ConsumerWidget {
   }
 }
 
-class _Stat extends StatelessWidget {
-  const _Stat({required this.label, required this.value, required this.keyName, required this.color});
-
-  final String label;
-  final String value;
-  final String keyName;
-  final Color color;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      constraints: const BoxConstraints(minWidth: 120),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(20)),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(value, key: ValueKey<String>(keyName), style: HfText.title),
-          const SizedBox(height: 2),
-          Text(label, style: HfText.label),
-        ],
-      ),
-    );
-  }
-}
-
-/// The recent calls: caller handle, when, how long, rupees earned, and a Paid or Test tag.
+/// "Today's calls" with "See all": caller handle, when, how long, rupees earned, and a Paid or Test tag.
 class CallsSection extends ConsumerStatefulWidget {
   const CallsSection({super.key});
 
@@ -88,34 +88,57 @@ class _CallsSectionState extends ConsumerState<CallsSection> {
     // The Paid / Test tag needs the per-call earnings; without them (legacy wallet) rows just show the rupees.
     final earnings = dashValueOf(ref.watch(hostEarningsProvider));
     final byCall = earnings?.byCall ?? const <String, CallEarning>{};
+    final now = ref.read(dashboardClockProvider)();
     return SectionAsync<HostCallsData>(
       title: HostCopy.callsTitle,
       value: calls,
       onRetry: () => ref.invalidate(hostCallsProvider),
       notEnabledMessage: 'Calls open soon.',
+      skeletonHeight: 140,
+      skeletonRadius: HfRadius.control,
       builder: (d) {
         final shown = _all ? d.calls : d.calls.take(_firstPage).toList();
-        return HfCard(
+        return Column(
           key: const ValueKey<String>('calls-card'),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text(HostCopy.callsTitle, style: HfText.subtitle),
-              const SizedBox(height: 8),
-              if (d.calls.isEmpty)
-                const Text(HostCopy.callsEmpty, style: HfText.bodyText, key: ValueKey<String>('calls-empty'))
-              else ...[
-                for (final c in shown) CallRow(call: c, earning: byCall[c.id]),
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                const Expanded(child: DashHeading(HostCopy.callsTitle)),
                 if (d.calls.length > _firstPage)
-                  HfButton(
+                  TextButton(
                     key: const ValueKey<String>('calls-more'),
-                    label: _all ? HostCopy.showLess : HostCopy.showMore,
-                    kind: HfButtonKind.text,
                     onPressed: () => setState(() => _all = !_all),
+                    child: Text(_all ? HostCopy.seeFewer : HostCopy.seeAll),
                   ),
               ],
-            ],
-          ),
+            ),
+            const SizedBox(height: HfSpacing.sm),
+            if (d.calls.isEmpty)
+              DashSurface(
+                radius: HfRadius.control,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: HfSpacing.lg,
+                ),
+                child: Text(
+                  HostCopy.callsEmpty,
+                  key: const ValueKey<String>('calls-empty'),
+                  style: dashMuted(context),
+                ),
+              )
+            else
+              for (var i = 0; i < shown.length; i++) ...[
+                if (i > 0) const SizedBox(height: HfSpacing.sm),
+                CallRow(
+                  call: shown[i],
+                  earning: byCall[shown[i].id],
+                  index: i,
+                  now: now,
+                ),
+              ],
+          ],
         );
       },
     );
@@ -123,10 +146,22 @@ class _CallsSectionState extends ConsumerState<CallsSection> {
 }
 
 class CallRow extends StatelessWidget {
-  const CallRow({super.key, required this.call, this.earning});
+  const CallRow({
+    super.key,
+    required this.call,
+    this.earning,
+    this.index = 0,
+    this.now,
+  });
 
   final HostCall call;
   final CallEarning? earning;
+
+  /// Row position: even rows get a sky initial tile, odd rows a peach one.
+  final int index;
+
+  /// "Today" for the time format (a call from today shows only its time).
+  final DateTime? now;
 
   static String statusText(HostCall c) {
     switch (c.status) {
@@ -149,46 +184,110 @@ class CallRow extends StatelessWidget {
     }
   }
 
+  /// `@handle`; a name with a space (no real handle) is shown as it is.
+  static String handleOf(HostCall c) {
+    final h = c.callerHandle;
+    if (h == null) return 'A caller';
+    return h.startsWith('@') || h.contains(' ') ? h : '@$h';
+  }
+
   @override
   Widget build(BuildContext context) {
     final paid = call.completed && call.billedMinutes >= 1;
-    final when = DashFormat.dayTimeOf(call.createdAt);
+    final time = (now != null && DashFormat.isSameDay(call.createdAt, now!))
+        ? DashFormat.timeOf(call.createdAt)
+        : DashFormat.dayTimeOf(call.createdAt);
     final detail = paid
-        ? '${when.isEmpty ? '' : '$when, '}${call.billedMinutes} min'
+        ? '${time.isEmpty ? '' : '$time · '}${call.billedMinutes} min'
         : (call.completed ? HostCopy.underMinute : statusText(call));
     final isTest = earning?.isTest ?? false;
-    return Container(
+    final tint = index.isEven ? HfTint.sky : HfTint.peach;
+    final handle = handleOf(call);
+    final initial = handle.replaceFirst('@', '').trim();
+    final letter = initial.isEmpty
+        ? '?'
+        : initial.substring(0, 1).toUpperCase();
+    return DashSurface(
       key: ValueKey<String>('call-${call.id}'),
-      constraints: const BoxConstraints(minHeight: HfSpacing.tap),
-      padding: const EdgeInsets.symmetric(vertical: 10),
-      decoration: const BoxDecoration(border: Border(bottom: BorderSide(color: HfColors.line))),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(call.callerHandle ?? 'A caller', style: HfText.bodyStrong),
-                const SizedBox(height: 2),
-                Text(detail, style: HfText.note),
-                if (paid && earning != null) ...[
-                  const SizedBox(height: 6),
-                  Container(
-                    key: ValueKey<String>('tag-${call.id}'),
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: isTest ? HfColors.butter : HfColors.blush,
-                      borderRadius: BorderRadius.circular(HfRadius.pill),
+      radius: HfRadius.control,
+      padding: const EdgeInsets.symmetric(
+        horizontal: 14,
+        vertical: HfSpacing.lg,
+      ),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(minHeight: 40),
+        child: Row(
+          children: [
+            Container(
+              width: 40,
+              height: 40,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: tint.bg(context),
+                borderRadius: BorderRadius.circular(HfRadius.chip),
+              ),
+              child: Text(
+                letter,
+                style: HfText.bodyStrong.copyWith(
+                  color: tint.valueInk(context),
+                ),
+              ),
+            ),
+            const SizedBox(width: HfSpacing.lg),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    handle,
+                    style: HfText.of(
+                      context,
+                      HfText.bodyStrong.copyWith(fontSize: 15),
                     ),
-                    child: Text(isTest ? HostCopy.testCall : HostCopy.paidCall, style: HfText.badge),
                   ),
+                  Text(detail, style: dashMuted(context)),
+                  if (paid && earning != null) ...[
+                    const SizedBox(height: 4),
+                    Container(
+                      key: ValueKey<String>('tag-${call.id}'),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 2,
+                      ),
+                      decoration: BoxDecoration(
+                        color: (isTest ? HfTint.butter : HfTint.blush).bg(
+                          context,
+                        ),
+                        borderRadius: BorderRadius.circular(
+                          HfRadius.pillRadius,
+                        ),
+                      ),
+                      child: Text(
+                        isTest ? HostCopy.testCall : HostCopy.paidCall,
+                        style: HfText.badge.copyWith(
+                          color: (isTest ? HfTint.butter : HfTint.blush).ink(
+                            context,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
                 ],
-              ],
-          ),
-          const SizedBox(height: 8),
-          if (paid)
-            Text(Money.rupees(call.earningRupees), key: ValueKey<String>('earned-${call.id}'), style: HfText.bodyStrong),
-        ],
+              ),
+            ),
+            if (paid) ...[
+              const SizedBox(width: HfSpacing.sm),
+              Text(
+                '+${Money.rupees(call.earningRupees)}',
+                key: ValueKey<String>('earned-${call.id}'),
+                style: HfText.bodyStrong.copyWith(
+                  fontSize: 15,
+                  color: HfTint.lavender.ink(context),
+                ),
+              ),
+            ],
+          ],
+        ),
       ),
     );
   }

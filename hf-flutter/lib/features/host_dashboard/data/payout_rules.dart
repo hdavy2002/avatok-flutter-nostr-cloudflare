@@ -33,16 +33,31 @@ class PayoutCheck {
 /// Pure rules for the withdrawal form. The server decides in the end; these only save a round trip and
 /// say it in simple English. Amounts are whole rupees (the worker pays whole rupees, minimum Rs 500).
 abstract final class PayoutRules {
-  static String belowMinimum(int minRupees) => 'The smallest withdrawal is ${Money.rupees(minRupees)}.';
+  static String belowMinimum(int minRupees) =>
+      'The smallest withdrawal is ${Money.rupees(minRupees)}.';
 
-  static PayoutCheck check(String input, {required int minRupees, required int withdrawable}) {
+  static PayoutCheck check(
+    String input, {
+    required int minRupees,
+    required int withdrawable,
+  }) {
     final text = input.trim();
-    if (text.isEmpty) return const PayoutCheck.error('Enter how much you want to withdraw.');
-    if (!RegExp(r'^\d{1,9}$').hasMatch(text)) return const PayoutCheck.error('Enter a whole rupee amount, like 500.');
+    if (text.isEmpty) {
+      return const PayoutCheck.error('Enter how much you want to withdraw.');
+    }
+    if (!RegExp(r'^\d{1,9}$').hasMatch(text)) {
+      return const PayoutCheck.error('Enter a whole rupee amount, like 500.');
+    }
     final amount = int.parse(text);
-    if (amount <= 0) return const PayoutCheck.error('Enter a whole rupee amount, like 500.');
+    if (amount <= 0) {
+      return const PayoutCheck.error('Enter a whole rupee amount, like 500.');
+    }
     if (amount < minRupees) return PayoutCheck.error(belowMinimum(minRupees));
-    if (amount > withdrawable) return PayoutCheck.error('You can withdraw up to ${Money.rupees(withdrawable)} right now.');
+    if (amount > withdrawable) {
+      return PayoutCheck.error(
+        'You can withdraw up to ${Money.rupees(withdrawable)} right now.',
+      );
+    }
     return PayoutCheck.ok(amount);
   }
 
@@ -52,21 +67,31 @@ abstract final class PayoutRules {
     final fallback = switch (e.code) {
       'not_enabled' => 'Withdrawals open soon.',
       'not_live' => 'Withdrawals open once your profile is live.',
-      'kyc_required' => 'Please finish your identity check before you withdraw.',
+      'kyc_required' =>
+        'Please finish your identity check before you withdraw.',
       'bank_required' => 'Please add your bank account before you withdraw.',
       'invalid_amount' => 'Enter a whole rupee amount, like 500.',
       'below_minimum' => belowMinimum(minRupees),
-      'weekly_limit' => "You've reached this week's withdrawal limit. Please try again next week.",
-      'insufficient_withdrawable' => 'That amount is not available yet. Earnings are held for 7 days.',
+      'weekly_limit' =>
+        "You've reached this week's withdrawal limit. Please try again next week.",
+      'insufficient_withdrawable' =>
+        'That amount is not available yet. Earnings are held for 7 days.',
       'wallet_error' => "We couldn't set that money aside. Please try again.",
       'not_cancellable' => 'This request can no longer be cancelled.',
       _ => e.userMessage,
     };
-    final message = e.isOffline ? e.userMessage : ((e.message != null && e.message!.isNotEmpty) ? e.message! : fallback);
+    final message = e.isOffline
+        ? e.userMessage
+        : ((e.message != null && e.message!.isNotEmpty)
+              ? e.message!
+              : fallback);
     final action = switch (e.code) {
       'kyc_required' || 'bank_required' => PayoutAction.finishSetup,
       'wallet_error' || 'rate_limited' => PayoutAction.retry,
-      _ => (e.isOffline || e.status >= 500 || e.isRateLimited) ? PayoutAction.retry : PayoutAction.none,
+      _ =>
+        (e.isOffline || e.status >= 500 || e.isRateLimited)
+            ? PayoutAction.retry
+            : PayoutAction.none,
     };
     return PayoutFailure(message, action);
   }

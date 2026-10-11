@@ -7,7 +7,10 @@ import 'dart:async';
 ///
 /// Pure Dart: the screen feeds it `setOnline` and `setForeground`; tests drive it with a fake clock.
 class PresenceHeartbeat {
-  PresenceHeartbeat({required this.beat, this.interval = const Duration(minutes: 5)});
+  PresenceHeartbeat({
+    required this.beat,
+    this.interval = const Duration(minutes: 5),
+  });
 
   /// Sends one beat. Must not throw (the screen wraps the API call).
   final void Function() beat;

@@ -7,23 +7,109 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/analytics/analytics.dart';
 import '../../../core/api/api_error.dart';
 import '../../../core/format/money.dart';
-import '../../../core/theme/hf_tokens.dart';
+import '../../../core/theme/hf_theme.dart';
 import '../../../core/widgets/widgets.dart';
 import '../../wallet/data/wallet_api.dart';
 import '../data/dash_format.dart';
 import '../data/host_dashboard_models.dart';
 import '../data/payout_rules.dart';
 import '../host_dashboard_providers.dart';
+import 'dash_surface.dart';
 import 'host_dashboard_copy.dart';
 import 'section_async.dart';
 
-/// Withdrawals: what can be taken out now, the request form, and the history with status and UTR.
-/// Payouts are manual: the host asks, an admin approves and pays by bank transfer, then enters the UTR.
-class PayoutsSection extends ConsumerWidget {
-  const PayoutsSection({super.key, required this.onFinishSetup});
+/// The bottom of the earnings card: "Withdraw to bank •• 1234" (opens the request sheet), or the one reason
+/// withdrawing is off (profile not live, identity check, bank account, below the minimum) with "Finish setup"
+/// where the host can fix it. Payouts are manual: the host asks, an admin approves and pays by bank transfer.
+class WithdrawArea extends ConsumerWidget {
+  const WithdrawArea({super.key, required this.onFinishSetup});
 
   /// Opens onboarding at the identity or bank step.
   final void Function(String step) onFinishSetup;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final p = dashValueOf(ref.watch(hostPayoutsProvider));
+    if (p == null || !p.enabled) return const SizedBox.shrink();
+    final block = p.block;
+    return Padding(
+      padding: const EdgeInsets.only(top: HfSpacing.lg),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          if (block != null) ...[
+            Text(
+              _blockText(block, p),
+              style: HfText.of(context, HfText.body),
+              key: const ValueKey<String>('payout-block'),
+            ),
+            if (block == PayoutBlock.kyc || block == PayoutBlock.bank) ...[
+              const SizedBox(height: HfSpacing.md),
+              FilledButton(
+                key: const ValueKey<String>('payout-finish'),
+                onPressed: () => onFinishSetup(
+                  block == PayoutBlock.kyc ? 'aadhaar' : 'payout',
+                ),
+                child: const Text(HostCopy.finishSetup),
+              ),
+            ],
+          ] else
+            FilledButton(
+              key: const ValueKey<String>('payout-open'),
+              style: FilledButton.styleFrom(
+                minimumSize: const Size(HfSpacing.tap, 52),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 12,
+                ),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(HfRadius.tileSmall),
+                ),
+                textStyle: HfText.buttonSmall,
+              ),
+              onPressed: () => _openSheet(context, ref, p),
+              child: Text(
+                HostCopy.withdrawToBank(p.bankLast4),
+                textAlign: TextAlign.center,
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  static String _blockText(PayoutBlock b, PayoutsData p) => switch (b) {
+    PayoutBlock.notLive => HostCopy.blockNotLive,
+    PayoutBlock.kyc => HostCopy.blockKyc,
+    PayoutBlock.bank => HostCopy.blockBank,
+    PayoutBlock.tooLow => HostCopy.blockTooLow(Money.rupees(p.minRupees)),
+  };
+
+  Future<void> _openSheet(
+    BuildContext context,
+    WidgetRef ref,
+    PayoutsData p,
+  ) async {
+    final messenger = ScaffoldMessenger.of(context);
+    final done = await showHfSheet<bool>(
+      context,
+      title: HostCopy.requestTitle,
+      initialSize: 0.7,
+      minSize: 0.4,
+      builder: (_) => PayoutSheet(payouts: p, onFinishSetup: onFinishSetup),
+    );
+    if (done == true) {
+      messenger
+        ..hideCurrentSnackBar()
+        ..showSnackBar(const SnackBar(content: Text(HostCopy.requested)));
+    }
+  }
+}
+
+/// "Your withdrawals": the history with status and bank reference (UTR), cancel while still requested, and
+/// the calm "Withdrawals open soon." note when the feature is off.
+class PayoutsSection extends ConsumerWidget {
+  const PayoutsSection({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -33,62 +119,43 @@ class PayoutsSection extends ConsumerWidget {
       value: payouts,
       onRetry: () => ref.invalidate(hostPayoutsProvider),
       notEnabledMessage: HostCopy.payoutsSoon,
+      skeletonHeight: 90,
       builder: (p) {
-        if (!p.enabled) {
-          return HfCard(
-            key: const ValueKey<String>('payouts-card'),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Wrap(spacing: 12, runSpacing: 8, children: [
-                Icon(Icons.account_balance_rounded, color: HfColors.ink, size: 28),
-                Text(HostCopy.payoutsTitle, style: HfText.subtitle),
-              ]),
-                const SizedBox(height: 8),
-                const Text(HostCopy.payoutsSoon, style: HfText.bodyText, key: ValueKey<String>('payouts-soon')),
-                if (p.requests.isNotEmpty) ..._history(context, ref, p),
-              ],
-            ),
-          );
-        }
-        final block = p.block;
-        return HfCard(
+        final muted = dashMuted(context);
+        return DashSurface(
           key: const ValueKey<String>('payouts-card'),
           child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              const Wrap(spacing: 12, runSpacing: 8, children: [
-                Icon(Icons.account_balance_rounded, color: HfColors.ink, size: 28),
-                Text(HostCopy.payoutsTitle, style: HfText.subtitle),
-              ]),
-              const SizedBox(height: 10),
-              Text(HostCopy.upTo(p.withdrawableDisplay), style: HfText.bodyStrong, key: const ValueKey<String>('payout-upto')),
-              const SizedBox(height: 4),
-              Text(HostCopy.rules(Money.rupees(p.minRupees), p.maxPerWeek), style: HfText.note),
-              if (p.bankOk && p.bankLast4 != null) ...[
-                const SizedBox(height: 4),
-                Text(HostCopy.bank(p.bankLast4!, p.bankIfsc), style: HfText.note, key: const ValueKey<String>('payout-bank')),
-              ],
-              const SizedBox(height: 4),
-              const Text(HostCopy.manualNote, style: HfText.note),
-              const SizedBox(height: 14),
-              if (block != null) ...[
-                Text(_blockText(block, p), style: HfText.bodyText, key: const ValueKey<String>('payout-block')),
-                const SizedBox(height: 10),
-                if (block == PayoutBlock.kyc || block == PayoutBlock.bank)
-                  HfButton(
-                    key: const ValueKey<String>('payout-finish'),
-                    label: HostCopy.finishSetup,
-                    onPressed: () => onFinishSetup(block == PayoutBlock.kyc ? 'aadhaar' : 'payout'),
-                  ),
-              ] else
-                HfButton(
-                  key: const ValueKey<String>('payout-open'),
-                  label: HostCopy.withdraw,
-                  icon: Icons.account_balance_rounded,
-                  onPressed: () => _openSheet(context, ref, p),
+              const DashHeading(HostCopy.historyTitle),
+              const SizedBox(height: HfSpacing.sm),
+              if (!p.enabled) ...[
+                Text(
+                  HostCopy.payoutsSoon,
+                  style: muted,
+                  key: const ValueKey<String>('payouts-soon'),
                 ),
-              ..._history(context, ref, p),
+                for (final r in p.requests)
+                  PayoutRow(
+                    request: r,
+                    onCancel: r.canCancel
+                        ? () => _confirmCancel(context, ref, r)
+                        : null,
+                  ),
+              ] else if (p.requests.isEmpty)
+                Text(
+                  HostCopy.historyEmpty,
+                  style: muted,
+                  key: const ValueKey<String>('payout-history-empty'),
+                )
+              else
+                for (final r in p.requests)
+                  PayoutRow(
+                    request: r,
+                    onCancel: r.canCancel
+                        ? () => _confirmCancel(context, ref, r)
+                        : null,
+                  ),
             ],
           ),
         );
@@ -96,39 +163,11 @@ class PayoutsSection extends ConsumerWidget {
     );
   }
 
-  static String _blockText(PayoutBlock b, PayoutsData p) => switch (b) {
-        PayoutBlock.notLive => HostCopy.blockNotLive,
-        PayoutBlock.kyc => HostCopy.blockKyc,
-        PayoutBlock.bank => HostCopy.blockBank,
-        PayoutBlock.tooLow => HostCopy.blockTooLow(Money.rupees(p.minRupees)),
-      };
-
-  List<Widget> _history(BuildContext context, WidgetRef ref, PayoutsData p) {
-    return [
-      const SizedBox(height: 18),
-      const Text(HostCopy.historyTitle, style: HfText.bodyStrong),
-      const SizedBox(height: 6),
-      if (p.requests.isEmpty)
-        const Text(HostCopy.historyEmpty, style: HfText.note, key: ValueKey<String>('payout-history-empty'))
-      else
-        for (final r in p.requests) PayoutRow(request: r, onCancel: r.canCancel ? () => _confirmCancel(context, ref, r) : null),
-    ];
-  }
-
-  Future<void> _openSheet(BuildContext context, WidgetRef ref, PayoutsData p) async {
-    final done = await showModalBottomSheet<bool>(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: HfColors.cream,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(HfRadius.card))),
-      builder: (_) => PayoutSheet(payouts: p, onFinishSetup: onFinishSetup),
-    );
-    if (done == true && context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text(HostCopy.requested)));
-    }
-  }
-
-  Future<void> _confirmCancel(BuildContext context, WidgetRef ref, PayoutRequest r) async {
+  Future<void> _confirmCancel(
+    BuildContext context,
+    WidgetRef ref,
+    PayoutRequest r,
+  ) async {
     final messenger = ScaffoldMessenger.of(context);
     final yes = await showDialog<bool>(
       context: context,
@@ -154,7 +193,9 @@ class PayoutsSection extends ConsumerWidget {
       await ref.read(hostDashboardApiProvider).cancelPayout(r.id);
       messenger.showSnackBar(const SnackBar(content: Text(HostCopy.cancelled)));
     } on ApiError catch (e) {
-      messenger.showSnackBar(SnackBar(content: Text(PayoutRules.failure(e).message)));
+      messenger.showSnackBar(
+        SnackBar(content: Text(PayoutRules.failure(e).message)),
+      );
     }
     ref.invalidate(hostPayoutsProvider);
     ref.invalidate(hostEarningsProvider);
@@ -168,50 +209,82 @@ class PayoutRow extends StatelessWidget {
   final PayoutRequest request;
   final VoidCallback? onCancel;
 
-  static (String, Color, Color) statusStyle(String status) => switch (status) {
-        'requested' => ('Requested', HfColors.plum, HfColors.butter),
-        'approved' => ('Approved, paying soon', HfColors.orchid, HfColors.lilac),
-        'paid' => ('Paid', HfColors.forest, HfColors.mint),
-        'rejected' => ('Not paid', HfColors.accent, HfColors.blush),
-        'cancelled' => ('Cancelled', HfColors.mauve, HfColors.white),
-        _ => (status, HfColors.mauve, HfColors.white),
-      };
+  /// Words and tint of a status pill. `null` tint = the neutral grey pill.
+  static (String, HfTint?) statusStyle(String status) => switch (status) {
+    'requested' => ('Requested', HfTint.butter),
+    'approved' => ('Approved, paying soon', HfTint.lavender),
+    'paid' => ('Paid', HfTint.sky),
+    'rejected' => ('Not paid', HfTint.blush),
+    'cancelled' => ('Cancelled', null),
+    _ => (status, null),
+  };
 
   @override
   Widget build(BuildContext context) {
-    final (label, fg, bg) = statusStyle(request.status);
-    final when = request.status == 'paid' ? DashFormat.dayOf(request.paidAt ?? request.createdAt) : DashFormat.dayOf(request.createdAt);
+    final dark = HfBrightness.isDark(context);
+    final (label, tint) = statusStyle(request.status);
+    final bg =
+        tint?.bg(context) ?? (dark ? HfColors.darkBar : HfColors.surfaceSoft);
+    final fg =
+        tint?.ink(context) ?? (dark ? HfColors.mutedSoft : HfColors.muted);
+    final when = request.status == 'paid'
+        ? DashFormat.dayOf(request.paidAt ?? request.createdAt)
+        : DashFormat.dayOf(request.createdAt);
+    final muted = dashMuted(context);
     return Container(
       key: ValueKey<String>('payout-${request.id}'),
       constraints: const BoxConstraints(minHeight: HfSpacing.tap),
-      padding: const EdgeInsets.symmetric(vertical: 10),
-      decoration: const BoxDecoration(border: Border(bottom: BorderSide(color: HfColors.line))),
+      padding: const EdgeInsets.symmetric(vertical: HfSpacing.md),
+      decoration: BoxDecoration(
+        border: Border(
+          bottom: BorderSide(color: dark ? HfColors.darkLine : HfColors.line),
+        ),
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              Expanded(child: Text(Money.rupees(request.amount), style: HfText.bodyStrong)),
+              Expanded(
+                child: Text(
+                  Money.rupees(request.amount),
+                  style: HfText.of(context, HfText.bodyStrong),
+                ),
+              ),
               Flexible(
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 4,
+                  ),
                   decoration: BoxDecoration(
                     color: bg,
-                    borderRadius: BorderRadius.circular(HfRadius.pill),
-                    border: Border.all(color: HfColors.line),
+                    borderRadius: BorderRadius.circular(HfRadius.pillRadius),
                   ),
-                  child: Text(label, style: HfText.badge.copyWith(color: fg), key: ValueKey<String>('payout-status-${request.id}')),
+                  child: Text(
+                    label,
+                    style: HfText.badge.copyWith(color: fg),
+                    key: ValueKey<String>('payout-status-${request.id}'),
+                  ),
                 ),
               ),
             ],
           ),
-          if (when.isNotEmpty) Text(when, style: HfText.note),
+          if (when.isNotEmpty) Text(when, style: muted),
           if (request.accountLast4 != null)
-            Text('To the account ending ${request.accountLast4}', style: HfText.note),
+            Text('To the account ending ${request.accountLast4}', style: muted),
           if (request.status == 'paid' && request.utr != null)
-            Text('Bank reference (UTR): ${request.utr}', style: HfText.bodyText, key: ValueKey<String>('payout-utr-${request.id}')),
+            Text(
+              'Bank reference (UTR): ${request.utr}',
+              style: HfText.of(context, HfText.body),
+              key: ValueKey<String>('payout-utr-${request.id}'),
+            ),
           if (request.status == 'rejected' && request.reason != null)
-            Text(request.reason!, style: HfText.bodyText, key: ValueKey<String>('payout-reason-${request.id}')),
+            Text(
+              request.reason!,
+              style: HfText.of(context, HfText.body),
+              key: ValueKey<String>('payout-reason-${request.id}'),
+            ),
           if (onCancel != null)
             HfButton(
               key: ValueKey<String>('cancel-${request.id}'),
@@ -226,11 +299,15 @@ class PayoutRow extends StatelessWidget {
   }
 }
 
-/// The request form (a bottom sheet). Checks the amount on the phone, asks the server, and says in simple
-/// English what went wrong. One Idempotency-Key per amount: a retry after a lost answer reuses it, so the
-/// money is never reserved twice.
+/// The request form (content of the shared bottom sheet). Shows the limits, checks the amount on the phone,
+/// asks the server, and says in simple English what went wrong, under the amount. One Idempotency-Key per
+/// amount: a retry after a lost answer reuses it, so the money is never reserved twice.
 class PayoutSheet extends ConsumerStatefulWidget {
-  const PayoutSheet({super.key, required this.payouts, required this.onFinishSetup});
+  const PayoutSheet({
+    super.key,
+    required this.payouts,
+    required this.onFinishSetup,
+  });
 
   final PayoutsData payouts;
   final void Function(String step) onFinishSetup;
@@ -255,7 +332,11 @@ class _PayoutSheetState extends ConsumerState<PayoutSheet> {
 
   Future<void> _submit() async {
     final p = widget.payouts;
-    final check = PayoutRules.check(_amount.text, minRupees: p.minRupees, withdrawable: p.withdrawable);
+    final check = PayoutRules.check(
+      _amount.text,
+      minRupees: p.minRupees,
+      withdrawable: p.withdrawable,
+    );
     if (!check.isOk) {
       setState(() {
         _error = check.error;
@@ -275,18 +356,27 @@ class _PayoutSheetState extends ConsumerState<PayoutSheet> {
       _action = PayoutAction.none;
     });
     try {
-      await ref.read(hostDashboardApiProvider).requestPayout(amount, idempotencyKey: _key);
-      unawaited(Analytics.capture('hf_app_payout_requested', {'amount_rupees': amount, 'outcome': 'ok'}));
+      await ref
+          .read(hostDashboardApiProvider)
+          .requestPayout(amount, idempotencyKey: _key);
+      unawaited(
+        Analytics.capture('hf_app_payout_requested', {
+          'amount_rupees': amount,
+          'outcome': 'ok',
+        }),
+      );
       ref.invalidate(hostPayoutsProvider);
       ref.invalidate(hostEarningsProvider);
       if (mounted) Navigator.of(context).pop(true);
     } on ApiError catch (e) {
-      unawaited(Analytics.capture('hf_app_payout_requested', {
-        'amount_rupees': amount,
-        'outcome': 'error',
-        'reason': e.code,
-        'status': e.status,
-      }));
+      unawaited(
+        Analytics.capture('hf_app_payout_requested', {
+          'amount_rupees': amount,
+          'outcome': 'error',
+          'reason': e.code,
+          'status': e.status,
+        }),
+      );
       if (!PayoutRules.keepsKey(e)) _keyAmount = '';
       final f = PayoutRules.failure(e, minRupees: p.minRupees);
       // The numbers may have moved (a payout was approved, a hold ended): read them again.
@@ -303,58 +393,93 @@ class _PayoutSheetState extends ConsumerState<PayoutSheet> {
   @override
   Widget build(BuildContext context) {
     final p = widget.payouts;
-    return Padding(
-      padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(context).bottom),
-      child: SingleChildScrollView(
-        padding: const EdgeInsets.all(HfSpacing.page),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const HfScene(kind: HfSceneKind.wallet, height: 110),
-            const SizedBox(height: 16),
-            const Text(HostCopy.requestTitle, style: HfText.title),
-            const SizedBox(height: 6),
-            Text(HostCopy.upTo(p.withdrawableDisplay), style: HfText.note),
-            Text(HostCopy.rules(Money.rupees(p.minRupees), p.maxPerWeek), style: HfText.note),
-            const SizedBox(height: 14),
-            TextField(
-              key: const ValueKey<String>('payout-amount'),
-              controller: _amount,
-              enabled: !_sending,
-              keyboardType: TextInputType.number,
-              inputFormatters: [FilteringTextInputFormatter.digitsOnly, LengthLimitingTextInputFormatter(9)],
-              style: HfText.title,
-              decoration: const InputDecoration(labelText: HostCopy.amountLabel, prefixText: '₹ '),
-              onChanged: (_) {
-                if (_error != null) setState(() => _error = null);
-              },
-            ),
-            if (_error != null) ...[
-              const SizedBox(height: 10),
-              Text(_error!, key: const ValueKey<String>('payout-error'), style: HfText.bodyText.copyWith(color: HfColors.accent)),
-            ],
-            const SizedBox(height: 16),
-            if (_action == PayoutAction.finishSetup)
-              HfButton(
-                key: const ValueKey<String>('payout-sheet-finish'),
-                label: HostCopy.finishSetup,
-                onPressed: () {
-                  Navigator.of(context).pop(false);
-                  final needsKyc = !p.kycOk;
-                  widget.onFinishSetup(needsKyc ? 'aadhaar' : 'payout');
-                },
-              )
-            else
-              HfButton(
-                key: const ValueKey<String>('payout-submit'),
-                label: _action == PayoutAction.retry ? 'Try again' : HostCopy.requestAction,
-                loading: _sending,
-                onPressed: _submit,
-              ),
-          ],
-        ),
+    final muted = dashMuted(context);
+    final dark = HfBrightness.isDark(context);
+    return ListView(
+      padding: EdgeInsets.fromLTRB(
+        HfSpacing.pageWide,
+        HfSpacing.sm,
+        HfSpacing.pageWide,
+        HfSpacing.section + MediaQuery.viewInsetsOf(context).bottom,
       ),
+      children: [
+        Text(
+          HostCopy.upTo(p.withdrawableDisplay),
+          style: HfText.of(context, HfText.bodyStrong),
+          key: const ValueKey<String>('payout-upto'),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          HostCopy.rules(Money.rupees(p.minRupees), p.maxPerWeek),
+          style: muted,
+        ),
+        if (p.bankOk && p.bankLast4 != null) ...[
+          const SizedBox(height: 4),
+          Text(
+            HostCopy.bank(p.bankLast4!, p.bankIfsc),
+            style: muted,
+            key: const ValueKey<String>('payout-bank'),
+          ),
+        ],
+        const SizedBox(height: 4),
+        Text(HostCopy.manualNote, style: muted),
+        const SizedBox(height: HfSpacing.xxl),
+        TextField(
+          key: const ValueKey<String>('payout-amount'),
+          controller: _amount,
+          enabled: !_sending,
+          keyboardType: TextInputType.number,
+          inputFormatters: [
+            FilteringTextInputFormatter.digitsOnly,
+            LengthLimitingTextInputFormatter(9),
+          ],
+          style: HfText.of(context, HfText.title),
+          decoration: const InputDecoration(
+            labelText: HostCopy.amountLabel,
+            prefixText: '₹ ',
+          ),
+          onChanged: (_) {
+            if (_error != null) setState(() => _error = null);
+          },
+        ),
+        if (_error != null) ...[
+          const SizedBox(height: HfSpacing.md),
+          Text(
+            _error!,
+            key: const ValueKey<String>('payout-error'),
+            style: HfText.body.copyWith(
+              color: dark ? HfColors.blushLight : HfColors.accent,
+            ),
+          ),
+        ],
+        if (_sending) ...[
+          const SizedBox(height: HfSpacing.lg),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(4),
+            child: const LinearProgressIndicator(minHeight: 4),
+          ),
+        ],
+        const SizedBox(height: HfSpacing.xxl),
+        if (_action == PayoutAction.finishSetup)
+          FilledButton(
+            key: const ValueKey<String>('payout-sheet-finish'),
+            onPressed: () {
+              Navigator.of(context).pop(false);
+              final needsKyc = !p.kycOk;
+              widget.onFinishSetup(needsKyc ? 'aadhaar' : 'payout');
+            },
+            child: const Text(HostCopy.finishSetup),
+          )
+        else
+          HfButton(
+            key: const ValueKey<String>('payout-submit'),
+            label: _action == PayoutAction.retry
+                ? 'Try again'
+                : HostCopy.requestAction,
+            loading: _sending,
+            onPressed: _submit,
+          ),
+      ],
     );
   }
 }
