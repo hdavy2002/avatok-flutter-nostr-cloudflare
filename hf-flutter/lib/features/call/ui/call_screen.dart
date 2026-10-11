@@ -379,7 +379,10 @@ class _CallFollowerState extends ConsumerState<CallFollower>
     final slug = info.hostSlug;
     int? currentRate;
     if (connected && slug != null) {
-      final estimate = ref.watch(callEstimateProvider(slug)).valueOrNull;
+      final estimateValue = ref.watch(callEstimateProvider(slug));
+      final estimate = estimateValue.hasValue
+          ? estimateValue.requireValue
+          : null;
       if (estimate != null) {
         currentRate = currentRatePaise(
           estimate.tiers,

@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/theme/hf_theme.dart';
 import '../../../../core/widgets/widgets.dart';
 import '../../../explore/data/host_options.dart';
+import '../../../kyc/kyc.dart';
 import '../../flow/onboarding_context.dart';
 import '../data/edit_lock.dart';
 import '../data/part_b_rules.dart';
