@@ -2114,6 +2114,8 @@ export interface PlatformConfig {
   // hfCheckoutProvider: none|google_play|paytm|razorpay|cashfree. Numbers (paise per minute, basis points) go in numericKeys.
   // [HF-APP-4] Android push notifications (worker/src/lib/hf_push.ts). Default OFF; never sent raw to the browser.
   hfPushEnabled: boolean;
+  // [HF-PRESENCE-NUDGE-1] 3-hourly WhatsApp (+ push) reminder to a LIVE host who is offline, 08:00-23:00 IST (worker/src/lib/hf_presence_nudge.ts). Default OFF; server-only.
+  hfPresenceNudgeEnabled: boolean;
   hfTokensEnabled: boolean;
   hfCheckoutProvider: string;
   hfPricingVersion: string;
@@ -2903,6 +2905,7 @@ const DEFAULTS: PlatformConfig = {
   hfExitGateEnabled: true,
   hfTopupConfirmAboveRupees: 1000, // [HF-WALLET-LIMITS-1]
   hfPushEnabled: false, // [HF-APP-4] dark until tested on a phone and the owner flips it
+  hfPresenceNudgeEnabled: false, // [HF-PRESENCE-NUDGE-1] dark until the owner flips it
   hfTokensEnabled: false, // [HF-TOK-MATH-1] dark until tested and the owner flips it
   hfCheckoutProvider: "google_play",
   hfPricingVersion: "gp-r1",
@@ -3059,6 +3062,7 @@ export async function getConfig(env: Env): Promise<Response> {
   delete merged.hfTopupGateway; delete merged.hfTopupPacks; delete merged.hfTopupMinRupees; delete merged.hfTopupMaxRupees; delete merged.hfTopupEnabled;
   delete merged.hfTokensEnabled; delete merged.hfCheckoutProvider; delete merged.hfPricingVersion; delete merged.hfCallCostPaisePerMin; delete merged.hfHostShareBps; delete merged.hfPlayPackageId; // [HF-TOK-MATH-1] not public
   delete merged.hfPushEnabled; // [HF-APP-4] server-only
+  delete merged.hfPresenceNudgeEnabled; // [HF-PRESENCE-NUDGE-1] server-only
   delete merged.hfPhoneOnlySignupEnabled; // [HF-AUTH-WA-1] server-only
   return json({ ...merged, partyEnabled }, 200, {
     "cache-control": "public, max-age=60",

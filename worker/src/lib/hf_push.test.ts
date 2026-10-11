@@ -41,7 +41,7 @@ describe("safePushPath", () => {
 });
 
 describe("hfPushCopy + buildHfPushJob", () => {
-  it("builds all seven kinds with a safe path, a title and a body", () => {
+  it("builds every kind with a safe path, a title and a body", () => {
     for (const k of HF_PUSH_KINDS) {
       const m = hfPushCopy(k, "Brand", { name: "Priya", slug: "priya", token: "tok123", rupees: 500 });
       const job = buildHfPushJob("uid_1234", m);

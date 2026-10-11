@@ -1218,3 +1218,12 @@ Release review must cover guest Browse, existing login, new registration and can
 call/top-up return, protected-space pending/rejected/approved video, host KYC reuse, payouts and
 account switching. The real-font layout matrix includes 320×640 and 412×915 at normal and 2× text
 and reduced motion. These checks are prepared; source review is not executed device telemetry.
+
+## Hello Fraands host offline reminder (`[HF-PRESENCE-NUDGE-1]`, worker cron, 2026-10-11)
+
+Server events (`app_name = hello-fraands` brand slug, `service_name` as every worker event). Never in any prop: the name or the phone number.
+
+| Event | Props | Note |
+|---|---|---|
+| `hf_presence_nudge_sent` | `area: 'hf_presence_nudge'`, `outcome: 'ok' \| 'skipped' \| 'failed'`, `reason` | One per host per reminder attempt, from the 5-minute cron (flag `hfPresenceNudgeEnabled`). `ok`: `reason` = `whatsapp`, `push` or `whatsapp_push` (what was delivered). `skipped`: `no_verified_whatsapp`, `not_on_whatsapp`, `unconfigured` or `account_closing` (nothing delivered, next try in 3 h). `failed`: `provider_error`, `rate_limited` or `exception` (the slot is handed back, the next tick retries). **Success value:** `outcome = ok`. |
+| `hf_presence_nudge_paused` | `area`, `paused: boolean` | The host paused or resumed the reminders (`PUT /api/hosts/me/presence/nudges`). |

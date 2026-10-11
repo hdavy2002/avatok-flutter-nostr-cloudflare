@@ -305,6 +305,7 @@ import { hfVobizAdminRoute } from "./routes/hf_vobiz_admin"; // [HF-VOBIZ-SPEND-
 import { runVobizWatch } from "./lib/hf_vobiz_watch"; // [HF-VOBIZ-SPEND-1] every-minute Vobiz spend watcher
 import { hfCallsRoute } from "./routes/hf_calls"; // [HF-CALLS-1] masked paid calls, presence, test credits, Vobiz webhooks (flag hfCallsEnabled)
 import { runHfCallsCron } from "./lib/hf_calls_store"; // [HF-CALLS-1] 8 h auto-offline + stuck-call sweep
+import { runHfPresenceNudge } from "./lib/hf_presence_nudge"; // [HF-PRESENCE-NUDGE-1] 3-hourly "you're offline" reminder (flag hfPresenceNudgeEnabled)
 import { hfTopupRoute } from "./routes/hf_topup"; // [HF-TOPUP-1] wallet top-up, any gateway (flags hfTopupEnabled + hfTopupGateway)
 import { expireHfTopups } from "./lib/hf_topup"; // [HF-TOPUP-1] close unpaid top-ups after 24 h
 import { hfRefundsRoute } from "./routes/hf_refunds"; // [HF-WALLET-EXIT-1] refunds of unused top-up money (flag hfRefundsEnabled)
@@ -501,6 +502,7 @@ export default {
           .catch((e) => { console.error("[play-voids] failed:", String(e)); }),
         runConsultCron(env).catch((e) => { console.error("[consult-cron] failed:", String(e)); }), // [AUMFE-CONSULT-FOUNDATION-1]
         runHfCallsCron(env).catch((e) => { console.error("[hf-calls-cron] failed:", String(e)); }), // [HF-CALLS-1]
+        runHfPresenceNudge(env).then((r) => { if (r.scanned) console.log("[hf-presence-nudge]", JSON.stringify(r)); }).catch((e) => { console.error("[hf-presence-nudge] failed:", String(e)); }), // [HF-PRESENCE-NUDGE-1]
         runVobizWatch(env).catch((e) => { console.error("[hf-vobiz-watch] failed:", String(e)); }), // [HF-VOBIZ-SPEND-2] every 5 min (a 1-min trigger halted all crons)
         expireHfTopups(env).catch((e) => { console.error("[hf-topup-expire] failed:", String(e)); }), // [HF-TOPUP-1]
         runHfPlayCron(env).then((r) => { if (r.consumeRetried || r.rechecked || r.swept) console.log("[hf-play-cron]", JSON.stringify(r)); }).catch((e) => { console.error("[hf-play-cron] failed:", String(e)); }), // [HF-TOK-PLAY-1]

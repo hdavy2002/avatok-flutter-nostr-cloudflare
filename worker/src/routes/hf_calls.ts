@@ -5,7 +5,8 @@
 //   POST /api/hf/calls/:id/cancel                     (caller, before connect)
 //   GET  /api/hf/wallet                               -> {paidBalance, testBalance, spendable, host?, history[], balanceRupees (legacy)}   [HF-WALLET-1]
 //   POST /api/admin/hf/wallet/migrate-test-credits {dry_run?=true}   (one-off: moves earlier wallet test credits into hf_credits)
-//   GET|PUT /api/hosts/me/presence {online}           -> {ok, presence}      POST /api/hosts/me/presence/beat
+//   GET|PUT /api/hosts/me/presence {online}           -> {ok, presence[, nudgesPaused on GET]}      POST /api/hosts/me/presence/beat
+//   PUT /api/hosts/me/presence/nudges {paused}        -> {ok, paused}   pause / resume the 3-hourly "you are offline" reminders   [HF-PRESENCE-NUDGE-1]
 //   GET  /api/hosts/me/calls                          -> {ok, calls:[...], today:{calls,minutes,earningRupees}}   (handles only, never numbers)
 //   POST /api/admin/hf/wallet/credit {uid | phone, rupees 1..2000, note, opId?, via?}   GET /api/admin/hf/users/search?q=      GET /api/admin/hf/calls?status=&limit=&offset=
 //   POST /api/hf/vobiz/<VOBIZ_WEBHOOK_SECRET>/{answer/<host|caller>/<id> | digits/host/<id> | hangup/<host|caller>/<id> | conf/<id>/<host|caller> | notice/host-nopickup/<id>}
@@ -387,7 +388,23 @@ async function presenceRoute(req: Request, env: Env, p: string, ctx?: ExecutionC
   const host = await env.DB_META.prepare("SELECT uid, status, presence FROM hf_hosts WHERE uid=?1").bind(u.uid).first<{ uid: string; status: string; presence: string | null }>();
   if (!host || host.status !== "live") return err(409, "not_live", "Your profile isn't live yet.");
   const now = Date.now();
-  if (req.method === "GET") return json({ ok: true, presence: host.presence ?? "offline" }, 200, { "cache-control": "private, no-store" });
+  // [HF-PRESENCE-NUDGE-1] nudge_paused comes from an ALTER migration: read it on its own so a worker deployed before the migration still serves presence.
+  const nudgesPaused = async (): Promise<boolean> => {
+    try { return Number((await env.DB_META.prepare("SELECT nudge_paused FROM hf_hosts WHERE uid=?1").bind(u.uid).first<{ nudge_paused: number }>())?.nudge_paused ?? 0) === 1; } catch { return false; }
+  };
+  if (req.method === "GET") return json({ ok: true, presence: host.presence ?? "offline", nudgesPaused: await nudgesPaused() }, 200, { "cache-control": "private, no-store" });
+  if (p.endsWith("/nudges")) { // PUT {paused:boolean} -> {ok, paused}: pause / resume the 3-hourly "you're offline" reminders
+    const b = await readJson(req);
+    if (typeof b.paused !== "boolean") return err(400, "invalid_field", "paused must be true or false.");
+    try {
+      await env.DB_META.prepare("UPDATE hf_hosts SET nudge_paused=?1 WHERE uid=?2").bind(b.paused ? 1 : 0, u.uid).run();
+    } catch (e) {
+      await trackException(env, e, { route: p, method: "PUT", uid: u.uid, handled: true, app_name: HF_CALL_APP, extra: { area: "hf_presence_nudge" } });
+      return err(503, "unavailable", "Try again in a little while.");
+    }
+    void track(env, u.uid, "hf_presence_nudge_paused", HF_CALL_APP, { area: "hf_presence_nudge", paused: b.paused }).catch(() => undefined);
+    return json({ ok: true, paused: b.paused });
+  }
   if (p.endsWith("/beat")) {
     await env.DB_META.prepare("UPDATE hf_hosts SET presence_at=?1 WHERE uid=?2 AND presence IN ('online','busy')").bind(now, u.uid).run();
     return json({ ok: true, presence: host.presence ?? "offline" });
@@ -620,6 +637,7 @@ export async function hfCallsRoute(req: Request, env: Env, p: string, ctx?: Exec
     if (p === "/api/hf/wallet/estimate" && m === "GET") return await walletEstimate(req, env);
     if (p === "/api/hosts/me/presence" && (m === "PUT" || m === "GET")) return await presenceRoute(req, env, p, ctx);
     if (p === "/api/hosts/me/presence/beat" && m === "POST") return await presenceRoute(req, env, p, ctx);
+    if (p === "/api/hosts/me/presence/nudges" && m === "PUT") return await presenceRoute(req, env, p, ctx); // [HF-PRESENCE-NUDGE-1]
     if (p === "/api/hosts/me/calls" && m === "GET") return await hostCalls(req, env);
     if (p === "/api/admin/hf/wallet/credit" && m === "POST") return await adminCredit(req, env);
     if (p === "/api/admin/hf/wallet/migrate-test-credits" && m === "POST") return await adminMigrateTestCredits(req, env);

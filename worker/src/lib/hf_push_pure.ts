@@ -2,7 +2,7 @@
 // No imports from the runtime so it is unit-testable and safe to mirror on the web side.
 
 export const HF_PUSH_KINDS = [
-  "notify_me", "host_approved", "host_changes", "withdrawal_approved", "withdrawal_paid", "low_balance", "review_request",
+  "notify_me", "host_approved", "host_changes", "withdrawal_approved", "withdrawal_paid", "low_balance", "review_request", "presence_nudge",
 ] as const;
 export type HfPushKind = (typeof HF_PUSH_KINDS)[number];
 
@@ -48,6 +48,8 @@ export function hfPushCopy(kind: HfPushKind, brand: string, v: { name?: string; 
       return { kind, title: "Your balance is low", body: "Add money to your wallet to keep talking without a break.", path: "/wallet" };
     case "review_request":
       return { kind, title: "How was your call?", body: `Tell us about your call with ${v.name?.trim() || "your host"}. It takes a few seconds.`, path: v.token ? `/review/${v.token}` : "/" };
+    case "presence_nudge": // [HF-PRESENCE-NUDGE-1]
+      return { kind, title: "You're showing as offline", body: `Callers can't reach you on ${brand}. Open the app and turn the switch on.`, path: "/host" };
   }
 }
 

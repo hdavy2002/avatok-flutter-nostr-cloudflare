@@ -64,3 +64,7 @@ export const notifyLowBalance = (env: Env, uid: string, ctx?: ExecutionContext) 
 /** (5) After a call: ask for a review. */
 export const pushReviewRequest = (env: Env, ctx: ExecutionContext | undefined, callerUid: string, hostName: string | null | undefined, token: string) =>
   sendHfPush(env, callerUid, hfPushCopy("review_request", BRAND.name, { name: firstName(hostName), token }), ctx);
+
+/** (6) [HF-PRESENCE-NUDGE-1] A live host who is offline: remind her to switch on. Opens the Host tab. */
+export const pushPresenceNudge = (env: Env, ctx: ExecutionContext | undefined, hostUid: string) =>
+  sendHfPush(env, hostUid, hfPushCopy("presence_nudge", BRAND.name), ctx);
