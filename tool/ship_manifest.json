@@ -10154,5 +10154,29 @@
         "note": "On a phone with the native build, finish a test host sign-up: record the voice introduction (hf_app_voice_recorded arrives with seconds between 30 and 300), wait for the three stages to finish, tap Send for review. hf_app_host_submitted arrives and the page says Sent for review. Needs a phone: microphone, the real recording and the generation wait."
       }
     ]
+  },
+  "HF-NATIVE-REDESIGN-1": {
+    "description": "Native customer and host redesign: guest-first Browse, contextual registration and login, account-bound consent and name completion, illustrated off-white/white-card UI, wallet and call return confirmations, host onboarding and dashboard, and server-enforced protected-space profile/call access using latest reviewed video KYC.",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [
+      "hfCallsEnabled",
+      "hostOnboardingEnabled",
+      "hostKycEnabled"
+    ],
+    "success": [
+      {
+        "event": "hf_app_registration_step",
+        "property": "outcome",
+        "equals": "completed",
+        "note": "On the native build, open Call, Wallet or Me as a guest, complete a new account registration and save the name. Expect step=name, outcome=completed with account identity from the analytics base. Cancellation remains browseable and asks for the missing name on the next privileged action; another account cannot inherit consent or continuation. No name text, OTP or KYC content is included."
+      },
+      {
+        "event": "hf_app_lane_join",
+        "property": "result",
+        "equals": "joined",
+        "note": "Test women-only eligibility and LGBTQ+ declaration with Aadhaar and reviewed video. Pending/rejected latest video must deny LGBTQ+ list, explicit-lane profile and direct call. Approval requires explicit continuation and a refreshed call estimate; joining never starts a call."
+      }
+    ]
   }
 }

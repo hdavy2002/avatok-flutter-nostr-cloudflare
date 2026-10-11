@@ -8,3 +8,5 @@ export 'permission_explainer.dart';
 export 'state_panels.dart';
 export 'status_pill.dart';
 export 'stub_screen.dart';
+
+export 'hf_scene.dart';

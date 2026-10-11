@@ -40,7 +40,10 @@ class PayoutsSection extends ConsumerWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text(HostCopy.payoutsTitle, style: HfText.subtitle),
+                const Wrap(spacing: 12, runSpacing: 8, children: [
+                Icon(Icons.account_balance_rounded, color: HfColors.ink, size: 28),
+                Text(HostCopy.payoutsTitle, style: HfText.subtitle),
+              ]),
                 const SizedBox(height: 8),
                 const Text(HostCopy.payoutsSoon, style: HfText.bodyText, key: ValueKey<String>('payouts-soon')),
                 if (p.requests.isNotEmpty) ..._history(context, ref, p),
@@ -54,7 +57,10 @@ class PayoutsSection extends ConsumerWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text(HostCopy.payoutsTitle, style: HfText.subtitle),
+              const Wrap(spacing: 12, runSpacing: 8, children: [
+                Icon(Icons.account_balance_rounded, color: HfColors.ink, size: 28),
+                Text(HostCopy.payoutsTitle, style: HfText.subtitle),
+              ]),
               const SizedBox(height: 10),
               Text(HostCopy.upTo(p.withdrawableDisplay), style: HfText.bodyStrong, key: const ValueKey<String>('payout-upto')),
               const SizedBox(height: 4),
@@ -165,7 +171,7 @@ class PayoutRow extends StatelessWidget {
   static (String, Color, Color) statusStyle(String status) => switch (status) {
         'requested' => ('Requested', HfColors.plum, HfColors.butter),
         'approved' => ('Approved, paying soon', HfColors.orchid, HfColors.lilac),
-        'paid' => ('Paid', HfColors.rose, HfColors.blush),
+        'paid' => ('Paid', HfColors.forest, HfColors.mint),
         'rejected' => ('Not paid', HfColors.accent, HfColors.blush),
         'cancelled' => ('Cancelled', HfColors.mauve, HfColors.white),
         _ => (status, HfColors.mauve, HfColors.white),
@@ -305,6 +311,8 @@ class _PayoutSheetState extends ConsumerState<PayoutSheet> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            const HfScene(kind: HfSceneKind.wallet, height: 110),
+            const SizedBox(height: 16),
             const Text(HostCopy.requestTitle, style: HfText.title),
             const SizedBox(height: 6),
             Text(HostCopy.upTo(p.withdrawableDisplay), style: HfText.note),

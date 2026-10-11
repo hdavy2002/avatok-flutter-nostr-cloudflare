@@ -40,7 +40,7 @@ class HostAvatar extends StatelessWidget {
   final double size;
   final double radius;
 
-  /// A band along the bottom of the picture (HF-AVA-1: "AI picture"). 14 sp, never hidden.
+  /// Always-visible compact disclosure at the bottom of the avatar (owner-approved 11sp exception).
   final String? aiLabel;
 
   @override
@@ -79,18 +79,18 @@ class HostAvatar extends StatelessWidget {
               ),
             if (label != null)
               Positioned(
-                left: 0,
-                right: 0,
-                bottom: 0,
+                left: 6,
+                right: 6,
+                bottom: 6,
                 child: Container(
-                  color: const Color(0xEBF2EFFF), // lilac, a little see-through
+                  decoration: BoxDecoration(color: const Color(0xEFFFFFFF), borderRadius: BorderRadius.circular(20)),
                   padding: const EdgeInsets.symmetric(vertical: 3),
                   child: Text(
                     label,
                     textAlign: TextAlign.center,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: HfText.badge.copyWith(color: HfColors.orchid),
+                    style: HfText.badge.copyWith(fontSize: 11, color: HfColors.ink),
                   ),
                 ),
               ),

@@ -136,6 +136,8 @@ class _AvatarStepState extends ConsumerState<AvatarStep> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
+                const HfScene(kind: HfSceneKind.profile, height: 128),
+                const SizedBox(height: 20),
                 const Text(PartBCopy.avatarTitle, style: HfText.title),
                 const SizedBox(height: 8),
                 const Text(PartBCopy.avatarLead, style: HfText.bodyText),
@@ -210,11 +212,11 @@ class _AvatarStepState extends ConsumerState<AvatarStep> {
           SliverPadding(
             padding: const EdgeInsets.symmetric(horizontal: HfSpacing.page),
             sliver: SliverGrid(
-              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: 2,
+              gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: MediaQuery.sizeOf(context).width < 360 || MediaQuery.textScalerOf(context).scale(14) > 20 ? 1 : (MediaQuery.sizeOf(context).width >= 720 ? 3 : 2),
                 mainAxisSpacing: 12,
                 crossAxisSpacing: 12,
-                childAspectRatio: 0.82,
+                childAspectRatio: 0.86,
               ),
               delegate: SliverChildBuilderDelegate(
                 (context, i) => _AvatarTile(
@@ -310,8 +312,10 @@ class _AvatarTile extends StatelessWidget {
         onTap: enabled ? onTap : null,
         child: Container(
           decoration: BoxDecoration(
+            color: HfColors.white,
+            boxShadow: HfShadows.card,
             borderRadius: radius,
-            border: Border.all(color: selected ? HfColors.orchid : HfColors.line, width: selected ? 3 : 1.5),
+            border: Border.all(color: selected ? HfColors.ink : HfColors.line, width: selected ? 3 : 1.5),
           ),
           child: ClipRRect(
             borderRadius: BorderRadius.circular(HfRadius.card - 2),

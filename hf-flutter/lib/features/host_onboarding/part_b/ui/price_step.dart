@@ -97,6 +97,7 @@ class _PriceStepState extends ConsumerState<PriceStep> {
     final problem = _saver.saveProblem;
     final fieldError = _saver.errorOf('pricePerMin');
     return PartBStep(
+      scene: HfSceneKind.wallet,
       title: PartBCopy.priceTitle,
       lead: PartBCopy.priceLead,
       bottom: [
@@ -133,6 +134,7 @@ class _PriceStepState extends ConsumerState<PriceStep> {
               Row(
                 children: [
                   IconButton.filledTonal(
+                    constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
                     key: const ValueKey<String>('price-minus'),
                     tooltip: PartBCopy.lowerPrice,
                     iconSize: 28,
@@ -151,6 +153,7 @@ class _PriceStepState extends ConsumerState<PriceStep> {
                     ),
                   ),
                   IconButton.filledTonal(
+                    constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
                     key: const ValueKey<String>('price-plus'),
                     tooltip: PartBCopy.raisePrice,
                     iconSize: 28,
@@ -188,7 +191,7 @@ class _PriceStepState extends ConsumerState<PriceStep> {
         ),
         const SizedBox(height: 16),
         HfCard(
-          color: HfColors.lilac,
+          color: HfColors.mint,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
@@ -220,11 +223,11 @@ class _Line extends StatelessWidget {
     final style = strong ? HfText.bodyStrong : HfText.bodyText;
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
-      child: Row(
+      child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Expanded(child: Text(label, style: style)),
-          const SizedBox(width: 12),
+          Text(label, style: style),
+          const SizedBox(height: 4),
           Text(value, key: lineKey == null ? null : ValueKey<String>(lineKey!), style: style),
         ],
       ),

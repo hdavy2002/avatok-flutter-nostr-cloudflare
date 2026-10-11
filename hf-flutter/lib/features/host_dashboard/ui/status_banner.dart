@@ -6,7 +6,7 @@ import '../data/host_dashboard_models.dart';
 import 'host_dashboard_copy.dart';
 
 /// The profile status banner: what is going on with the host's profile and the one next step.
-/// `live` shows no banner. Never green: waiting states are butter, problems are blush with a rose edge.
+/// `live` shows no banner. Waiting and revision states retain a distinct, readable accent.
 class StatusBanner extends StatelessWidget {
   const StatusBanner({super.key, required this.status, required this.onAction});
 
@@ -25,13 +25,18 @@ class StatusBanner extends StatelessWidget {
       width: double.infinity,
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: spec.problem ? HfColors.blush : HfColors.butter,
+        color: HfColors.white,
+        boxShadow: HfShadows.card,
         borderRadius: BorderRadius.circular(HfRadius.card),
         border: Border.all(color: spec.problem ? HfColors.rose : HfColors.butterDeep),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          Container(padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(color: spec.problem ? HfColors.blush : HfColors.butter, borderRadius: BorderRadius.circular(18)),
+            child: Icon(spec.problem ? Icons.edit_note_rounded : Icons.hourglass_top_rounded, color: HfColors.ink, size: 30)),
+          const SizedBox(height: 16),
           Text(spec.title, style: HfText.subtitle),
           const SizedBox(height: 6),
           Text(spec.body, style: HfText.bodyText, key: const ValueKey<String>('status-body')),

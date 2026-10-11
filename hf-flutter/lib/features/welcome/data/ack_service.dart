@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -22,18 +23,19 @@ bool ackIsCurrent(String? version, String? current) {
 bool needsWelcome({String? local, String? server, String? current}) =>
     !(ackIsCurrent(local, current) || ackIsCurrent(server, current));
 
-/// The 18+ and safety acknowledgement (spec 2.4, HF-WELL-8 / HF-WELL-10).
-///
-/// Stored on the device first (so a guest can browse), then sent with `POST /api/hf/me/ack` once signed in.
-/// The device value is NOT account-scoped on purpose: it records that the person holding this phone accepted
-/// the rules, and it must survive sign-out. Its key does not start with `hf.cache.` and does not end in an
-/// account suffix, so `JsonCache.clearAll` leaves it alone.
+/// Consent belongs to the authenticated account. The legacy device-global key is
+/// deliberately ignored; accepting on one account cannot consent for another.
 class AckService {
   AckService(this._ref);
 
   final Ref _ref;
 
   static const String storageKey = 'hf.ack.version';
+
+  String? get _uid {
+    final session = _ref.read(sessionProvider);
+    return session.isSignedIn ? (session.user?.id ?? session.me?.uid) : null;
+  }
 
   /// The current version from `/api/config`, or null when the config is not loaded.
   String? currentVersion() {
@@ -46,19 +48,23 @@ class AckService {
   String versionToSend() => currentVersion() ?? kFallbackAckVersion;
 
   Future<String?> readLocal() async {
+    final uid = _uid;
+    if (uid == null) return null;
     try {
       final prefs = await SharedPreferences.getInstance();
-      final v = prefs.getString(storageKey);
-      return (v == null || v.isEmpty) ? null : v;
+      final v = prefs.getString('${storageKey}_$uid');
+      return _uid != uid || v == null || v.isEmpty ? null : v;
     } catch (_) {
       return null; // unreadable storage: treated as "not accepted yet"
     }
   }
 
   Future<void> writeLocal(String version) async {
+    final uid = _uid;
+    if (uid == null) return;
     try {
       final prefs = await SharedPreferences.getInstance();
-      await prefs.setString(storageKey, version);
+      await prefs.setString('${storageKey}_$uid', version);
     } catch (_) {
       // The server copy (after sign-in) still holds it.
     }
@@ -66,23 +72,37 @@ class AckService {
 
   /// `POST /api/hf/me/ack {version, ack18:true, client:'android'}`. True on success; failures are reported
   /// by the API client and never block the person (the device copy stays, and [syncToServer] retries).
-  Future<bool> postAck(String version) async {
+  Future<bool> postAck(String version, {String? expectedUid}) async {
+    final uid = expectedUid ?? _uid;
+    if (uid == null || _uid != uid) return false;
     try {
-      await _ref.read(apiClientProvider).postJson('/api/hf/me/ack', body: {
-        'version': version,
-        'ack18': true,
-        'client': 'android',
-      });
-      return true;
-    } catch (_) {
-      return false;
-    }
+      // Freeze the credential before dispatch. ApiClient's usual 401 retry could
+      // otherwise pick up a different account on a shared phone mid-request.
+      final jwt = await _ref.read(clerkProvider).sessionToken();
+      if (jwt == null || _uid != uid || !_tokenBelongsTo(jwt, uid)) return false;
+      await _ref.read(apiClientProvider).request('POST', '/api/hf/me/ack',
+        auth: false, headers: {'Authorization': 'Bearer $jwt'}, body: {
+          'version': version, 'ack18': true, 'client': 'android',
+        });
+      return _uid == uid;
+    } catch (_) { return false; }
   }
 
-  /// Splash decision. Also heals the two copies: an account that already accepted on another phone fills the
-  /// device copy, and a device acceptance made as a guest is sent to a signed-in account that lacks it.
+  bool _tokenBelongsTo(String token, String uid) {
+    try {
+      final parts = token.split('.');
+      if (parts.length != 3) return false;
+      final claims = jsonDecode(utf8.decode(base64Url.decode(base64Url.normalize(parts[1]))));
+      return claims is Map && claims['sub'] == uid;
+    } catch (_) { return false; }
+  }
+
+  /// Privileged action decision. Sync only copies belonging to this authenticated UID.
+  /// The old global value and guest state never participate.
   Future<bool> needsWelcomeNow() async {
+    final uid = _uid;
     final local = await readLocal();
+    if (uid != _uid) return true;
     final session = _ref.read(sessionProvider);
     final server = session.isSignedIn ? session.me?.ackVersion : null;
     final current = currentVersion();
@@ -90,27 +110,31 @@ class AckService {
     final serverOk = ackIsCurrent(server, current);
     if (!localOk && serverOk) await writeLocal(server!);
     if (localOk && !serverOk && session.isSignedIn) unawaited(syncToServer().catchError((Object _) {}));
-    return !(localOk || serverOk);
+    return _uid != uid || !(localOk || serverOk);
   }
 
   /// The person tapped Continue on Welcome: keep it on the device, and send it when signed in.
   Future<String> accept() async {
+    final uid = _uid;
     final version = versionToSend();
     await writeLocal(version);
-    if (_ref.read(sessionProvider).isSignedIn) await postAck(version);
+    if (uid != null && _uid == uid && await postAck(version, expectedUid: uid)) {
+      if (_uid == uid) await _ref.read(sessionProvider.notifier).refreshMe();
+    }
     return version;
   }
 
   /// Signed in with an acceptance on the device that the account does not have yet: send it.
   /// [tickedNow] is true when the sign-in screen itself showed the 18+ tick (no Welcome beforehand).
   Future<void> syncToServer({bool tickedNow = false}) async {
-    if (tickedNow && await readLocal() == null) await writeLocal(versionToSend());
+    final uid = _uid;
+    if (tickedNow) await writeLocal(versionToSend());
     final local = await readLocal();
-    if (local == null) return;
+    if (local == null || uid == null || _uid != uid) return;
     final session = _ref.read(sessionProvider);
     if (!session.isSignedIn) return;
     if (session.me?.ackVersion == local) return;
-    if (await postAck(local)) {
+    if (await postAck(local, expectedUid: uid)) {
       await _ref.read(sessionProvider.notifier).refreshMe();
     }
   }

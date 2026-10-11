@@ -26,7 +26,7 @@ class StarRow extends StatelessWidget {
             Icon(
               i <= stars ? Icons.star_rounded : Icons.star_outline_rounded,
               size: size,
-              color: i <= stars ? HfColors.orchid : HfColors.line,
+              color: i <= stars ? HfColors.ink : HfColors.mauve,
             ),
         ],
       ),
@@ -56,28 +56,21 @@ class ReviewsSection extends StatelessWidget {
           if (!hasReviews)
             const Text(HostProfileStrings.noReviews, style: HfText.bodyText)
           else ...[
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(rating.toStringAsFixed(1), style: HfText.hero),
-                    StarRow(stars: rating.round()),
-                    const SizedBox(height: 4),
-                    Text('$total ${total == 1 ? 'review' : 'reviews'}', style: HfText.note),
-                  ],
-                ),
-                const SizedBox(width: 20),
-                Expanded(
-                  child: Column(
-                    children: [
-                      for (var n = 5; n >= 1; n--) _BreakdownRow(stars: n, count: profile.ratingBreakdown[n] ?? 0, total: total),
-                    ],
-                  ),
-                ),
-              ],
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(color: HfColors.lavender,
+                borderRadius: BorderRadius.circular(22)),
+              child: Wrap(spacing: 14, runSpacing: 8,
+                crossAxisAlignment: WrapCrossAlignment.center, children: [
+                  Text(rating.toStringAsFixed(1), style: HfText.hero),
+                  StarRow(stars: rating.round()),
+                  Text('$total ${total == 1 ? 'review' : 'reviews'}', style: HfText.note),
+                ]),
             ),
+            const SizedBox(height: 12),
+            for (var n = 5; n >= 1; n--)
+              _BreakdownRow(stars: n, count: profile.ratingBreakdown[n] ?? 0, total: total),
             if (profile.talkedTo > 0) ...[
               const SizedBox(height: HfSpacing.gap),
               Text(
@@ -111,7 +104,7 @@ class _BreakdownRow extends StatelessWidget {
       padding: const EdgeInsets.symmetric(vertical: 3),
       child: Row(
         children: [
-          SizedBox(width: 22, child: Text('$stars', style: HfText.badge)),
+          SizedBox(width: MediaQuery.textScalerOf(context).scale(22), child: Text('$stars', style: HfText.badge)),
           const Icon(Icons.star_rounded, size: 16, color: HfColors.orchid),
           const SizedBox(width: 8),
           Expanded(
@@ -126,7 +119,7 @@ class _BreakdownRow extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 8),
-          SizedBox(width: 28, child: Text('$count', style: HfText.badge, textAlign: TextAlign.end)),
+          Flexible(child: Text('$count', style: HfText.badge, textAlign: TextAlign.end)),
         ],
       ),
     );

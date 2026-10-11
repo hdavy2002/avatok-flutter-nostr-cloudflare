@@ -126,11 +126,11 @@ class _VoiceIntroPlayerState extends ConsumerState<VoiceIntroPlayer> {
     final playing = _phase == _Phase.playing;
     final loading = _phase == _Phase.loading;
     return HfCard(
-      color: HfColors.lilac,
+      color: HfColors.ink,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(HostProfileStrings.introTitle, style: HfText.subtitle),
+          Text(HostProfileStrings.introTitle, style: HfText.subtitle.copyWith(color: HfColors.white)),
           const SizedBox(height: 8),
           Row(
             children: [
@@ -138,9 +138,10 @@ class _VoiceIntroPlayerState extends ConsumerState<VoiceIntroPlayer> {
                 width: 56,
                 height: 56,
                 child: loading
-                    ? const Padding(padding: EdgeInsets.all(14), child: CircularProgressIndicator(strokeWidth: 3))
+                    ? const Padding(padding: EdgeInsets.all(14), child: CircularProgressIndicator(strokeWidth: 3, color: HfColors.mint))
                     : IconButton.filled(
                         tooltip: playing ? HostProfileStrings.pauseIntro : HostProfileStrings.playIntro,
+                        style: IconButton.styleFrom(backgroundColor: HfColors.coral, foregroundColor: HfColors.ink),
                         iconSize: 30,
                         onPressed: _toggle,
                         icon: Icon(playing ? Icons.pause_rounded : Icons.play_arrow_rounded),
@@ -149,6 +150,8 @@ class _VoiceIntroPlayerState extends ConsumerState<VoiceIntroPlayer> {
               const SizedBox(width: 8),
               Expanded(
                 child: Slider(
+                  activeColor: HfColors.mint,
+                  inactiveColor: HfColors.mauve,
                   value: shown,
                   max: max,
                   onChanged: _started ? (v) => setState(() => _dragSeconds = v) : null,
@@ -163,7 +166,7 @@ class _VoiceIntroPlayerState extends ConsumerState<VoiceIntroPlayer> {
               totalSeconds > 0
                   ? '${Money.clock(shown.round())} / ${Money.clock(totalSeconds.round())}'
                   : Money.clock(shown.round()),
-              style: HfText.note,
+              style: HfText.note.copyWith(color: HfColors.white),
             ),
           ),
           if (_error != null) ...[

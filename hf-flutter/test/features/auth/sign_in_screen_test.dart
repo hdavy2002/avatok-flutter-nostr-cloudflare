@@ -7,6 +7,7 @@ import 'package:hf_app/core/storage/account_storage.dart';
 import 'package:hf_app/features/auth/data/auth_messages.dart';
 import 'package:hf_app/features/auth/ui/sign_in_screen.dart';
 import 'package:hf_app/features/welcome/data/ack_service.dart';
+import 'package:hf_app/features/welcome/ui/welcome_screen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../support/fake_api_client.dart';
@@ -19,9 +20,9 @@ const _sendPath = '/api/auth/whatsapp/send';
 const _verifyPath = '/api/auth/whatsapp/verify';
 
 const _sendOk = {'ok': true, 'phone_masked': '+91 ******3210', 'expires_in_s': 600, 'resend_after_s': 30};
-const _verifyOk = {'ok': true, 'status': 'signed_in', 'ticket': 'tkt-1', 'isNew': true, 'needs18Plus': false};
+const _verifyOk = {'ok': true, 'status': 'signed_in', 'ticket': 'tkt-1', 'isNew': false, 'needs18Plus': false};
 
-FakeApiClient okApi({Map<String, Object?> me = const {'uid': 'user_test'}}) => FakeApiClient()
+FakeApiClient okApi({Map<String, Object?> me = const {'uid': 'user_test', 'ackVersion': '2026-10-10', 'displayName': 'Asha'}}) => FakeApiClient()
   ..onJson('POST', _sendPath, _sendOk)
   ..onJson('POST', _verifyPath, _verifyOk)
   ..onJson('GET', '/api/hf/me', me)
@@ -30,8 +31,9 @@ FakeApiClient okApi({Map<String, Object?> me = const {'uid': 'user_test'}}) => F
 GoRouter signInRouter() => GoRouter(
       initialLocation: '/sign-in',
       routes: [
-        GoRoute(path: '/sign-in', builder: (_, __) => const SignInScreen(next: '/after')),
-        GoRoute(path: '/after', builder: (_, __) => const Scaffold(body: Text('AFTER PAGE'))),
+        GoRoute(path: '/sign-in', builder: (_, __) => const SignInScreen(next: '/me')),
+        GoRoute(path: '/me', builder: (_, __) => const Scaffold(body: Text('AFTER PAGE'))),
+        GoRoute(path: '/welcome', builder: (_, __) => const WelcomeScreen()),
         GoRoute(path: '/', builder: (_, __) => const Scaffold(body: Text('HOME PAGE'))),
       ],
     );
@@ -42,6 +44,7 @@ Future<void> enterNumber(WidgetTester tester, [String number = '9876543210']) as
 }
 
 Future<void> tapSend(WidgetTester tester) async {
+  await tester.ensureVisible(find.text(SignInCopy.sendCode));
   await tester.tap(find.text(SignInCopy.sendCode));
   await settle(tester);
 }
@@ -149,19 +152,22 @@ void main() {
       expect(find.text(SignInCopy.resendIn(21)), findsOneWidget);
     });
 
-    testWidgets('without a recorded acceptance the 18+ tick is shown and required', (tester) async {
+    testWidgets('Create account asks for fresh consent before requesting a code', (tester) async {
       SharedPreferences.setMockInitialValues(<String, Object>{});
       final api = okApi();
       await pumpRouter(tester, signInRouter(), api: api);
+      await tester.tap(find.text('Create account'));
+      await tester.pump();
       expect(find.text(SignInCopy.ageTick), findsOneWidget);
       await enterNumber(tester);
       expect(isEnabled(tester, SignInCopy.sendCode), isFalse);
+      await tester.ensureVisible(find.byKey(const ValueKey<String>('signin-age-tick')));
       await tester.tap(find.byKey(const ValueKey<String>('signin-age-tick')));
       await tester.pump();
       expect(isEnabled(tester, SignInCopy.sendCode), isTrue);
     });
 
-    testWidgets('after Welcome there is no tick on this screen', (tester) async {
+    testWidgets('existing login is short and does not inherit device consent', (tester) async {
       await pumpRouter(tester, signInRouter(), api: okApi());
       expect(find.text(SignInCopy.ageTick), findsNothing);
     });
@@ -180,16 +186,14 @@ void main() {
         'phone': '+919876543210',
         'code': '123456',
         'client': 'android',
-        'age_confirmed': true,
       });
       expect(verify.auth, isFalse);
       expect(clerk.tickets, ['tkt-1']);
-      expect(locationOf(router), '/after');
+      expect(locationOf(router), '/me');
       expect(find.text('AFTER PAGE'), findsOneWidget);
       expect(AccountScope.id, 'user_test');
       // The account had no acceptance: the device acceptance is sent.
-      final ack = api.callsTo('POST', '/api/hf/me/ack').single;
-      expect(ack.body, {'version': '2026-10-10', 'ack18': true, 'client': 'android'});
+      expect(api.callsTo('POST', '/api/hf/me/ack'), isEmpty);
     });
 
     testWidgets('an account that already accepted is not asked again', (tester) async {
@@ -206,7 +210,7 @@ void main() {
       await pumpRouter(tester, router, api: api);
       await toCodeStep(tester);
       await enterCode(tester);
-      expect(locationOf(router), '/after');
+      expect(locationOf(router), '/me');
     });
 
     testWidgets('the tick made on this screen is kept and sent', (tester) async {
@@ -214,15 +218,18 @@ void main() {
       final api = okApi();
       final router = signInRouter();
       await pumpRouter(tester, router, api: api);
+      await tester.tap(find.text('Create account'));
+      await tester.pump();
       await enterNumber(tester);
+      await tester.ensureVisible(find.byKey(const ValueKey<String>('signin-age-tick')));
       await tester.tap(find.byKey(const ValueKey<String>('signin-age-tick')));
       await tester.pump();
       await tapSend(tester);
       await enterCode(tester);
       expect(api.callsTo('POST', _verifyPath).single.body, containsPair('age_confirmed', true));
-      expect(locationOf(router), '/after');
+      expect(locationOf(router), '/me');
       final prefs = await SharedPreferences.getInstance();
-      expect(prefs.getString(AckService.storageKey), kFallbackAckVersion);
+      expect(prefs.getString('${AckService.storageKey}_user_test'), kFallbackAckVersion);
       expect(api.callsTo('POST', '/api/hf/me/ack').single.body, containsPair('version', kFallbackAckVersion));
     });
 

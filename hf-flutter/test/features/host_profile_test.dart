@@ -10,6 +10,8 @@ import 'package:hf_app/core/auth/hf_me.dart';
 import 'package:hf_app/core/auth/session.dart';
 import 'package:hf_app/core/boot.dart';
 import 'package:hf_app/core/links.dart';
+import 'package:hf_app/core/router/app_router.dart';
+import 'package:hf_app/core/router/routes.dart';
 import 'package:hf_app/core/storage/secure_store.dart';
 import 'package:hf_app/features/host_profile/data/host_profile.dart';
 import 'package:hf_app/features/host_profile/data/host_profile_providers.dart';
@@ -35,6 +37,7 @@ Map<String, dynamic> profileJson({
 }) =>
     {
       'slug': 'asha',
+      'protectedLane': null,
       'displayName': 'Asha',
       'tagline': 'A warm listener',
       'avatarUrl': 'https://media.example.test/a.webp',
@@ -150,6 +153,7 @@ Future<_Rig> _pumpProfile(
   SessionState? session,
   FakeIntroPlayer? player,
   bool settle = true,
+  String location = '/h/asha',
 }) async {
   usePhoneScreen(tester);
   // A pulsing status dot never settles: switch animations off like the phone setting does.
@@ -160,7 +164,7 @@ Future<_Rig> _pumpProfile(
     sessionProvider.overrideWith(() => StubSession(session ?? signedOutState())),
     apiClientProvider.overrideWithValue(api),
     secureStoreProvider.overrideWithValue(MemoryKeyValueStore()),
-    initialLocationProvider.overrideWithValue('/h/asha'),
+    initialLocationProvider.overrideWithValue(location),
     hostImageBuilderProvider.overrideWithValue(
       (context, url, {BoxFit fit = BoxFit.cover}) => const ColoredBox(color: Colors.white),
     ),
@@ -221,7 +225,7 @@ void main() {
       expect(find.text('A warm listener'), findsOneWidget);
       expect(find.text('Online now'), findsOneWidget);
       expect(find.text('₹12/min'), findsOneWidget);
-      expect(find.textContaining('₹120'), findsOneWidget);
+      expect(find.text('See your estimate before starting a call.'), findsOneWidget);
       expect(find.text('New host'), findsOneWidget);
       expect(find.text('Naye dost'), findsOneWidget);
       expect(find.text('Hindi, English'), findsOneWidget);
@@ -275,23 +279,24 @@ void main() {
   });
 
   group('AI labels', () {
-    testWidgets('avatar, gallery section and every gallery picture are labelled at 14 sp or more', (tester) async {
+    testWidgets('avatar and gallery keep visible compact AI disclosures; recording label stays readable', (tester) async {
       await _pumpProfile(tester, api: apiWith(profileJson(gallery: true, intro: true)));
-      for (final label in ['AI avatar chosen by the host', 'AI images', 'AI image', 'Recorded by the host']) {
+      for (final label in ['AI avatar', 'AI images', 'AI image', 'Recorded by the host']) {
         final texts = tester.widgetList<Text>(find.text(label)).toList();
         expect(texts, isNotEmpty, reason: label);
         for (final t in texts) {
           expect(t.style?.fontSize, isNotNull, reason: label);
-          expect(t.style!.fontSize!, greaterThanOrEqualTo(14), reason: label);
+          expect(t.style!.fontSize!, greaterThanOrEqualTo(label == 'Recorded by the host' ? 14 : 11), reason: label);
         }
       }
     });
 
-    testWidgets('no text on the profile is smaller than 14 sp', (tester) async {
+    testWidgets('only the approved AI disclosure may be smaller than 14 sp', (tester) async {
       await _pumpProfile(tester, api: apiWith(profileJson(gallery: true, intro: true, reviews: true, womenOnly: true)));
       for (final t in tester.widgetList<Text>(find.byType(Text))) {
         final size = t.style?.fontSize;
-        if (size != null) expect(size, greaterThanOrEqualTo(14), reason: '"${t.data}"');
+        final aiDisclosure = const {'AI avatar', 'AI image', 'AI images'}.contains(t.data);
+        if (size != null) expect(size, greaterThanOrEqualTo(aiDisclosure ? 11 : 14), reason: '"${t.data}"');
       }
     });
   });
@@ -312,7 +317,28 @@ void main() {
       await tester.pumpAndSettle();
       expect(rig.opened, isEmpty);
       expect(find.byType(SignInScreen), findsOneWidget);
-      expect(tester.widget<SignInScreen>(find.byType(SignInScreen)).next, '/h/asha');
+      expect(tester.widget<SignInScreen>(find.byType(SignInScreen)).next, Routes.callConfirmOf('asha'));
+    });
+
+    testWidgets('guest call preserves its lane in the saved confirmation destination', (tester) async {
+      final rig = await _pumpProfile(tester, api: apiWith(profileJson()),
+        location: '/h/asha?lane=lgbtq');
+      await tester.tap(find.text('Call'));
+      await tester.pumpAndSettle();
+      expect(rig.opened, isEmpty);
+      expect(tester.widget<SignInScreen>(find.byType(SignInScreen)).next,
+        Routes.callConfirmOf('asha', lane: 'lgbtq'));
+    });
+
+    testWidgets('guest women-only call opens the public explanation before sign-in', (tester) async {
+      final rig = await _pumpProfile(tester, api: apiWith(profileJson(womenOnly: true)));
+      await tester.tap(find.text('Verify to call'));
+      await tester.pumpAndSettle();
+      expect(find.byType(SignInScreen), findsNothing);
+      expect(find.byType(LanesScreen), findsOneWidget);
+      final uri = rig.container.read(appRouterProvider).routeInformationProvider.value.uri;
+      expect(uri.queryParameters['lane'], 'women');
+      expect(uri.queryParameters['next'], Routes.callConfirmOf('asha', lane: 'women'));
     });
 
     testWidgets('busy: "Notify me when free" and a note, no Call', (tester) async {
@@ -400,6 +426,53 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.byType(SignInScreen), findsOneWidget);
       expect(api.callsTo('POST', _notifyPath), isEmpty);
+    });
+
+    testWidgets('guest notification saves an explicit on operation', (tester) async {
+      final api = apiWith(profileJson(status: 'offline'));
+      await _pumpProfile(tester, api: api);
+      await tester.tap(find.text('Notify me when online'));
+      await tester.pumpAndSettle();
+      final next = tester.widget<SignInScreen>(find.byType(SignInScreen)).next!;
+      expect(Uri.parse(next).queryParameters, {'action': 'notify', 'notify': 'on'});
+      expect(api.callsTo('POST', _notifyPath), isEmpty);
+    });
+
+    testWidgets('restored on intent confirms POST even if already subscribed', (tester) async {
+      final api = apiWith(profileJson(), notifySubscribed: true)
+        ..onJson('POST', _notifyPath, {'ok': true, 'subscribed': true});
+      await _pumpProfile(tester, api: api, session: signedIn(),
+        location: '/h/asha?action=notify&notify=on');
+      expect(find.text('Confirm notification'), findsOneWidget);
+      expect(api.callsTo('POST', _notifyPath), isEmpty);
+      expect(api.callsTo('DELETE', _notifyPath), isEmpty);
+      await tester.tap(find.text('Confirm notification'));
+      await tester.pumpAndSettle();
+      expect(api.callsTo('POST', _notifyPath), hasLength(1));
+      expect(api.callsTo('DELETE', _notifyPath), isEmpty);
+    });
+
+    testWidgets('restored off intent confirms DELETE even if currently unsubscribed', (tester) async {
+      final api = apiWith(profileJson(status: 'offline'))
+        ..onJson('DELETE', _notifyPath, {'ok': true, 'subscribed': false});
+      await _pumpProfile(tester, api: api, session: signedIn(),
+        location: '/h/asha?action=notify&notify=off');
+      expect(api.callsTo('DELETE', _notifyPath), isEmpty);
+      await tester.tap(find.text('Confirm stop'));
+      await tester.pumpAndSettle();
+      expect(api.callsTo('DELETE', _notifyPath), hasLength(1));
+      expect(api.callsTo('POST', _notifyPath), isEmpty);
+    });
+
+    testWidgets('restored notification can be cancelled without a write', (tester) async {
+      final api = apiWith(profileJson(status: 'offline'));
+      await _pumpProfile(tester, api: api, session: signedIn(),
+        location: '/h/asha?action=notify&notify=on');
+      await tester.tap(find.text('Cancel'));
+      await tester.pumpAndSettle();
+      expect(find.text('Confirm notification'), findsNothing);
+      expect(api.callsTo('POST', _notifyPath), isEmpty);
+      expect(api.callsTo('DELETE', _notifyPath), isEmpty);
     });
 
     testWidgets('success: POST and "We\'ll WhatsApp you when they\'re online."', (tester) async {

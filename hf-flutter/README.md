@@ -39,5 +39,21 @@ expect(api.callsTo('GET', '/api/hf/hosts'), hasLength(1));
 
 ## Rules
 
-Nunito headlines, Comfortaa text, light and colourful, rounded, never green, nothing under 14 sp, full width.
-Money and tokens are displayed with `Money` and never computed on the phone. Per-user local state goes through `scopedKey`.
+Nunito headlines and Comfortaa text are bundled. The native design uses off-white pages, white cards with soft
+shadows, pill controls and mint, sky, lavender, yellow, pink and coral decoration. Dark ink keeps text readable.
+Body text is at least 14 sp; the owner-approved discreet AI avatar disclosure is the only smaller caption.
+Layouts fill the available width, respect large text and safe areas, and keep touch targets at least 48 dp.
+Reduced motion disables decorative animation. Money is displayed with `Money` and never computed on the phone.
+Per-user local state goes through `scopedKey`.
+
+## Entry and journeys
+
+Browse is home. Guests can discover people and open ordinary public profiles immediately. Calling, Wallet and
+Me request registration or login contextually. Auth, top-up and space verification return to the intended action
+with a fresh confirmation; they never automatically start a paid call. Host onboarding is a separate upgrade.
+Women-only access retains the existing Aadhaar eligibility policy. LGBTQ+ access requires a private declaration,
+verified Aadhaar and approved video KYC; pending or rejected video never unlocks browsing or calling.
+
+`test/design_review_test.dart` prepares real-font review captures at 320×640 and 412×915 with normal and 2× text,
+including reduced-motion scenes. Captures are opt-in through `EXPORT_DESIGN_REVIEW` in an authorized CI run;
+source inspection alone does not verify Flutter compilation or rendered layout.

@@ -296,21 +296,7 @@ class _CallFollowerState extends ConsumerState<CallFollower> with WidgetsBinding
       sub = CallStrings.ringingHost(name);
     }
     return [
-      Center(
-        child: Container(
-          width: 112,
-          height: 112,
-          decoration: BoxDecoration(
-            color: connected ? HfColors.lilac : HfColors.blush,
-            shape: BoxShape.circle,
-          ),
-          child: Icon(
-            connected ? Icons.call_rounded : Icons.phone_in_talk_rounded,
-            size: 52,
-            color: connected ? HfColors.orchid : HfColors.rose,
-          ),
-        ),
-      ),
+      HfScene(kind: HfSceneKind.call, height: 180, animated: !connected),
       const SizedBox(height: 24),
       Semantics(
         liveRegion: true,
@@ -326,7 +312,15 @@ class _CallFollowerState extends ConsumerState<CallFollower> with WidgetsBinding
         ),
       ],
       const SizedBox(height: 8),
-      Text(sub, style: HfText.bodyText, textAlign: TextAlign.center),
+      HfCard(child: Column(children: [
+        Text(name, style: HfText.title, textAlign: TextAlign.center),
+        const SizedBox(height: 12),
+        Text(sub, style: HfText.bodyText, textAlign: TextAlign.center),
+        if (!connected) ...[
+          const SizedBox(height: 12),
+          const Text(CallStrings.ringingNoCharge, style: HfText.bodyStrong, textAlign: TextAlign.center),
+        ],
+      ])),
       const SizedBox(height: 20),
       const CallSafetyCard(),
       if (_notice != null) ...[

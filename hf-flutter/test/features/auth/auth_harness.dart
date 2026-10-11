@@ -3,7 +3,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:hf_app/core/auth/session.dart';
+import 'package:hf_app/core/auth/clerk_client.dart';
 import 'package:hf_app/core/links.dart';
+import 'package:hf_app/core/router/app_router.dart';
 import 'package:hf_app/core/storage/secure_store.dart';
 import 'package:hf_app/core/theme/hf_theme.dart';
 
@@ -31,8 +33,9 @@ Future<void> pumpRouter(
   addTearDown(router.dispose);
   await tester.pumpWidget(ProviderScope(
     overrides: [
+      appRouterProvider.overrideWithValue(router),
       apiClientProvider.overrideWithValue(api),
-      clerkProvider.overrideWithValue(clerk ?? FakeClerk()),
+      clerkProvider.overrideWithValue(clerk ?? FakeClerk(user: stubSession?.isSignedIn == true ? ClerkUser(id: stubSession!.user?.id ?? stubSession.me!.uid) : null)),
       secureStoreProvider.overrideWithValue(MemoryKeyValueStore()),
       if (stubSession != null) sessionProvider.overrideWith(() => StubSession(stubSession)),
     ],

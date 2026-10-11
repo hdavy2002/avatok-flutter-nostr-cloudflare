@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../theme/hf_tokens.dart';
 
-/// A filter or topic chip: radius 12, plum when selected. The tap area is at least 48 dp high even
+/// A filter or topic pill: ink when selected. The tap area is at least 48 dp high even
 /// though the chip itself is slimmer.
 class HfChip extends StatelessWidget {
   const HfChip({
@@ -47,7 +47,7 @@ class HfChip extends StatelessWidget {
                     Icon(icon, size: 18, color: fg),
                     const SizedBox(width: 6),
                   ],
-                  Text(label, style: HfText.badge.copyWith(color: fg, fontSize: 15)),
+                  Flexible(child: Text(label, style: HfText.badge.copyWith(color: fg, fontSize: 15))),
                 ],
               ),
             ),

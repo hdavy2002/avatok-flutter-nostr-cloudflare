@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:hf_app/core/auth/clerk_client.dart';
 
 /// A [ClerkApi] with no network. `user` null means signed out.
@@ -27,7 +29,13 @@ class FakeClerk implements ClerkApi {
   Future<ClerkUser?> currentUser() async => user;
 
   @override
-  Future<String?> sessionToken({bool forceRefresh = false}) async => user == null ? null : 'fake-jwt';
+  Future<String?> sessionToken({bool forceRefresh = false}) async {
+    final identity = user;
+    if (identity == null) return null;
+    String part(Map<String, Object> payload) => base64Url.encode(utf8.encode(jsonEncode(payload))).replaceAll('=', '');
+    // Deliberately unsigned test evidence; the fake API never validates a signature.
+    return '${part({'alg': 'none', 'typ': 'JWT'})}.${part({'sub': identity.id})}.test-signature';
+  }
 
   @override
   Future<void> signOut() async => user = null;

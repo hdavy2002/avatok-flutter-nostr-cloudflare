@@ -2,6 +2,7 @@
 // presence helpers, webhook URLs and the cron sweep. Contract: Specs/HF-CALLS-CONTRACT.md.
 import type { Env } from "../types";
 import { BRAND } from "./brand";
+import { getLaneAccess } from "./hf_lanes";
 import { walletOp } from "../routes/wallet";
 import { trackException } from "../hooks";
 
@@ -76,12 +77,9 @@ export async function releaseHost(env: Env, hostUid: string): Promise<void> {
   await env.DB_META.prepare("UPDATE hf_hosts SET presence='online', presence_at=?1 WHERE uid=?2 AND presence='busy'").bind(Date.now(), hostUid).run();
 }
 
-/** Tolerant lane lookup: hf_lane_access belongs to another worktree and may not exist yet -> no access. */
+/** Calls use the same current Aadhaar/declaration/video authority as discovery. */
 export async function hasLaneAccess(env: Env, uid: string, lane: "women" | "lgbtq"): Promise<boolean> {
-  try {
-    const r = await env.DB_META.prepare("SELECT 1 AS ok FROM hf_lane_access WHERE uid=?1 AND lane=?2 LIMIT 1").bind(uid, lane).first();
-    return !!r;
-  } catch { return false; }
+  return (await getLaneAccess(env, uid))[lane];
 }
 
 export async function isBlockedEitherWay(env: Env, a: string, b: string): Promise<boolean> {

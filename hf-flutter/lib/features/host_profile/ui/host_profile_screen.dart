@@ -26,9 +26,10 @@ import 'widgets/voice_intro_player.dart';
 /// States: loading, content, not found ("This profile isn't available."), error with "Try again", and
 /// the saved copy of the last visit when the network fails (with a "Showing saved profile" pill).
 class HostProfileScreen extends ConsumerStatefulWidget {
-  const HostProfileScreen({super.key, required this.slug});
+  const HostProfileScreen({super.key, required this.slug, this.lane});
 
   final String slug;
+  final String? lane;
 
   @override
   ConsumerState<HostProfileScreen> createState() => _HostProfileScreenState();
@@ -52,9 +53,16 @@ class _HostProfileScreenState extends ConsumerState<HostProfileScreen> {
   @override
   Widget build(BuildContext context) {
     final slug = widget.slug;
-    final async = ref.watch(hostProfileProvider(slug));
+    final async = widget.lane == null
+      ? ref.watch(hostProfileProvider(slug))
+      : ref.watch(laneHostProfileProvider((slug: slug, lane: widget.lane!)));
+    final query = GoRouterState.of(context).uri.queryParameters;
+    final notifyIntent = query['action'] != 'notify' ? null
+      : query['notify'] == 'on' || query['notify'] == 'off' ? query['notify'] : 'choose';
     final Widget? bar = async.when<Widget?>(
-      data: (r) => HostActionBar(profile: r.profile),
+      data: (r) => HostActionBar(
+        key: ValueKey('$slug:${widget.lane}:$notifyIntent'),
+        profile: r.profile, notificationIntent: notifyIntent),
       loading: () => null,
       error: (_, __) => null,
     );
@@ -87,7 +95,16 @@ class _HostProfileScreenState extends ConsumerState<HostProfileScreen> {
         onAction: () => GoRouter.of(context).go(Routes.explore),
       );
     }
-    return ErrorPanel(error: e, onRetry: () => ref.invalidate(hostProfileProvider(widget.slug)));
+    if (e is ApiError && (e.status == 401 || e.status == 403) && widget.lane != null) {
+      return EmptyPanel(message: 'Verify to enter this private space.',
+        icon: Icons.lock_outline_rounded, actionLabel: 'Continue to verification',
+        onAction: () => GoRouter.of(context).push(Routes.lanesOf(widget.lane,
+          next: Routes.hostProfileOf(widget.slug, lane: widget.lane))));
+    }
+    return ErrorPanel(error: e, onRetry: () {
+      if (widget.lane == null) { ref.invalidate(hostProfileProvider(widget.slug)); }
+      else { ref.invalidate(laneHostProfileProvider((slug: widget.slug, lane: widget.lane!))); }
+    });
   }
 }
 
@@ -218,10 +235,11 @@ class _BeforeYouCall extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return HfCard(
-      color: HfColors.blush,
+      color: HfColors.white,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          const HfScene(kind: HfSceneKind.call, height: 110),
           Semantics(header: true, child: const Text(HostProfileStrings.beforeYouCall, style: HfText.title)),
           const SizedBox(height: HfSpacing.gap),
           const Text(HostProfileStrings.disclosure, style: HfText.bodyText),

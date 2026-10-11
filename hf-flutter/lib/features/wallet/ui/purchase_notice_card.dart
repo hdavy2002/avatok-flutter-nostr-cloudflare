@@ -4,8 +4,7 @@ import '../../../core/theme/hf_tokens.dart';
 import '../../../core/widgets/widgets.dart';
 import '../billing/purchase_controller.dart';
 
-/// The result of a purchase, drawn as a card at the top of the Wallet. Never green: success is lilac with
-/// an orchid tick, trouble is blush with the alert colour.
+/// A server purchase result in a white card with a distinct coloured status icon.
 class PurchaseNoticeCard extends StatelessWidget {
   const PurchaseNoticeCard({super.key, required this.notice, required this.onDismiss});
 
@@ -15,7 +14,7 @@ class PurchaseNoticeCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final (Color bg, Color fg, IconData icon) = switch (notice.kind) {
-      NoticeKind.success => (HfColors.lilac, HfColors.orchid, Icons.check_circle_outline_rounded),
+      NoticeKind.success => (HfColors.mint, HfColors.ink, Icons.check_circle_outline_rounded),
       NoticeKind.pending => (HfColors.butter, HfColors.plum, Icons.hourglass_top_rounded),
       NoticeKind.cancelled => (HfColors.lilac, HfColors.mauve, Icons.info_outline_rounded),
       NoticeKind.error => (HfColors.blush, HfColors.accent, Icons.error_outline_rounded),
@@ -25,14 +24,14 @@ class PurchaseNoticeCard extends StatelessWidget {
       container: true,
       child: HfCard(
         key: const ValueKey<String>('purchase-notice'),
-        color: bg,
+        color: HfColors.white,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Icon(icon, color: fg, size: 28),
+                Container(padding: const EdgeInsets.all(10), decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(16)), child: Icon(icon, color: fg, size: 28)),
                 const SizedBox(width: 12),
                 Expanded(child: Text(notice.message, style: HfText.bodyStrong)),
               ],

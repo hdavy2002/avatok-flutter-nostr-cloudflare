@@ -198,7 +198,7 @@ took reasonable care, every time, with records. A disclaimer alone is not enough
 | HF-LIST-2 | Per host we generate 1 profile image + 5 gallery images (the host records their own voice introduction, see HF-AVA-2; no AI sample conversation since 2026-10-09). Regeneration limits TBD. | ADOPTED | N/A | TODO |
 | HF-LGBT-1 | **LGBTQ+ space**: a private lane where LGBTQ+ callers talk to LGBTQ+ hosts; hidden from everyone else. Friendship and conversation only; all conduct rules apply. | ADOPTED | DONE (/lgbtq, FAQ, help) | TODO |
 | HF-LGBT-2 | Joining is **self-declared and private by default** — we never guess. Showing "LGBTQ+ friendly" on the public profile is a **separate opt-in**, changeable any time. Orientation is sensitive data: private storage, never sold. | ADOPTED | DONE (/lgbtq) | TODO (mock toggles built) |
-| HF-LGBT-3 | **Callers in the lane must be verified** (Aadhaar OTP, DigiLocker as fallback), because the lane is a known target for extortion. | ADOPTED | DONE (/lgbtq) | DONE (HF-LANE-VERIFY-1: caller side; calls pending) |
+| HF-LGBT-3 | **Callers in the lane need private self-declaration, verified Aadhaar and an approved 10-second random-code selfie video.** The video checks authenticity against Aadhaar; it does not verify orientation. The latest upload wins: none, pending or rejected keeps access closed across lane discovery, lane profiles and direct calls. Reuse shared approved host/caller evidence; leaving removes membership and rejoining requires a fresh declaration. | ADOPTED | Native DONE; web copy TODO | DONE in source (HF-NATIVE-REDESIGN-1); deployment pending |
 | HF-LGBT-4 | AI safety in the lane watches for threats, money demands and "outing" threats; # ends and blocks; reports go to priority review. | ADOPTED | DONE (/lgbtq safety section) | TODO |
 
 ---
@@ -220,6 +220,17 @@ The app is the website inside an Android shell (Capacitor). Spec: `Specs/SPEC-20
 | HF-APP-9 | **Push notifications are added**, with WhatsApp kept as the fallback for people on the website (spec D9). | ADOPTED | N/A | TODO |
 | HF-APP-10 | **A new upload key for this app only** (`hf-upload.jks`); Google Play App Signing holds the real app key (spec D10). The key and its passwords are never committed. | ADOPTED | N/A | N/A |
 | HF-APP-11 | **Calls paid with Play tokens start only in the app** (spec D11). On the website the Call button says "Open the app to call"; admin test credits still work on the web. | ADOPTED | N/A | TODO |
+
+---
+
+## 15. Native app journeys and visual design (2026-10-11)
+
+| ID | Rule | Decision | Pages | Backend |
+|---|---|---|---|---|
+| HF-NATIVE-UI-1 | Native Android opens directly into the guest marketplace with one discovery tab; public profiles need no registration. Sign-in and account-correct adult/safety consent occur when needed for privileged actions. | ADOPTED | Native source updated | Existing WhatsApp/Clerk authority retained |
+| HF-NATIVE-UI-2 | Off-white background, white cards, visible soft shadows, pill controls and illustrated bento panels in mint, sky, lavender, yellow, pink, coral and restrained red. This supersedes earlier restrictions against green/blue in native UI. Nunito headlines, Comfortaa body, minimum 14px, 48px touch controls, small screens/large text and reduced motion supported. The approved small AI-avatar label is the explicit size exception. | ADOPTED | Native source updated | N/A |
+| HF-NATIVE-FLOW-1 | Keep the intended host/action/lane through auth, wallet and KYC in a safe account-scoped destination. After verification or confirmed funds, offer return to fresh confirmation; never dial or purchase automatically. Pending payments and pending video do not unlock the action. | ADOPTED | Native source updated | Existing billing unchanged |
+| HF-NATIVE-KYC-1 | Host upgrade is a distinct resumable flow. Reuse verified WhatsApp/Aadhaar and the latest approved selfie; complete role bookkeeping without repeating Aadhaar. Host payout account checks, profile/voice review and admin approval remain separate. Women-only caller entry retains Aadhaar F/T eligibility and does not add a selfie requirement. | ADOPTED | Native source updated | Shared verification records retained; no migration |
 
 ---
 
@@ -294,6 +305,7 @@ else, or come back later."
 
 | Date | Change |
 |---|---|
+| 2026-10-11 | HF-NATIVE-REDESIGN-1: approved native marketplace-first journeys and multicolour bento design recorded in section 15. LGBTQ+ access now requires private declaration, Aadhaar and latest approved shared selfie at the discovery/profile/call authorities; pending/rejected video stays locked. Women F/T policy unchanged. Host role upgrade reuses existing verification. Source changes only; no production deployment or build performed. |
 | 2026-10-10 | HF-PAY-18 changed (HF-VOBIZ-SPEND-2): the Vobiz balance check runs every 5 minutes, not every minute — adding a 1-minute cron trigger stopped every scheduled job on the worker, so it was removed. Each call's cost is still saved the moment the call ends. |
 | 2026-10-10 | HF-PAY-18 added (HF-VOBIZ-SPEND-1): Vobiz spend monitor — hash-chained ledger of every Vobiz leg, every-minute balance check, WhatsApp/email alerts (alerts only, no auto-pause), admin Phone costs page with PDF/CSV, nightly and monthly emailed proof. Records kept 8 years with full numbers (admin only). |
 | 2026-10-10 | HF-APP-1: Android app (Capacitor wrapper of the live website) approved and scaffolded in `hf-app/`; new section 14 (HF-APP-1 to HF-APP-11 = spec decisions D1 to D11); HF-CALL-3 reworded to "No app needed for calls; the Android app is optional". Spec: Specs/SPEC-2026-10-10-HF-ANDROID-APP.md. |

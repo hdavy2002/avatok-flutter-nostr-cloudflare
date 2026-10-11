@@ -134,6 +134,7 @@ class _AboutStepState extends ConsumerState<AboutStep> {
     final len = _aboutText.length;
     final problem = _saver.saveProblem;
     return PartBStep(
+      scene: HfSceneKind.profile,
       title: PartBCopy.aboutTitle,
       lead: PartBCopy.aboutLead,
       bottom: [
@@ -157,10 +158,11 @@ class _AboutStepState extends ConsumerState<AboutStep> {
           textInputAction: TextInputAction.next,
           inputFormatters: [LengthLimitingTextInputFormatter(20)],
           decoration: InputDecoration(
+            prefixIcon: const Icon(Icons.badge_outlined),
             labelText: PartBCopy.nameLabel,
             hintText: PartBCopy.nameHint,
             helperText: PartBCopy.nameHelp,
-            helperMaxLines: 2,
+            helperMaxLines: 5,
             errorText: _nameError,
             errorMaxLines: 3,
           ),
@@ -187,18 +189,12 @@ class _AboutStepState extends ConsumerState<AboutStep> {
           onChanged: _aboutChanged,
         ),
         const SizedBox(height: 6),
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Expanded(child: Text(PartBCopy.aboutHelp, style: HfText.note)),
-            const SizedBox(width: 12),
-            Text(
-              '$len / $kAboutMax',
-              key: const ValueKey<String>('about-count'),
-              style: HfText.note.copyWith(color: len > 0 && len < kAboutMin ? HfColors.accent : HfColors.mauve),
-            ),
-          ],
-        ),
+        Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text('$len / $kAboutMax', key: const ValueKey<String>('about-count'),
+            style: HfText.note.copyWith(color: len > 0 && len < kAboutMin ? HfColors.accent : HfColors.mauve)),
+          const SizedBox(height: 8),
+          const Text(PartBCopy.aboutHelp, style: HfText.note),
+        ]),
         if (len > 0 && len < kAboutMin)
           Padding(
             padding: const EdgeInsets.only(top: 6),

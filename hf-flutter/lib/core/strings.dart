@@ -31,8 +31,8 @@ abstract final class Strings {
   static const String recordedByHost = 'Recorded by the host';
 
   // Tabs
-  static const String tabHome = 'Home';
-  static const String tabExplore = 'Explore';
+  static const String tabHome = 'Browse';
+  static const String tabExplore = 'Browse';
   static const String tabWallet = 'Wallet';
   static const String tabHost = 'Host';
   static const String tabMe = 'Me';

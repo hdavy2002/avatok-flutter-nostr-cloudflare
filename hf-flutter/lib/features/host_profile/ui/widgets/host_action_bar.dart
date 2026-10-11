@@ -24,9 +24,12 @@ import '../../host_profile_strings.dart';
 /// - Online: **Call** (sign in first, then the call confirm step of HF-NATIVE-5).
 /// - Busy or offline: **Notify me** (sign in first, then `POST /api/hf/hosts/:slug/notify`).
 class HostActionBar extends ConsumerStatefulWidget {
-  const HostActionBar({super.key, required this.profile});
+  const HostActionBar({super.key, required this.profile, this.notificationIntent});
 
   final HostProfile profile;
+
+  /// on/off preserves the requested operation; choose handles older saved links.
+  final String? notificationIntent;
 
   @override
   ConsumerState<HostActionBar> createState() => _HostActionBarState();
@@ -34,34 +37,46 @@ class HostActionBar extends ConsumerStatefulWidget {
 
 class _HostActionBarState extends ConsumerState<HostActionBar> {
   bool _busy = false;
+  bool _intentHandled = false;
   bool? _subscribedOverride;
   String? _message;
   bool _messageIsError = false;
 
   HostProfile get _p => widget.profile;
 
+  String? get _lane {
+    final value = GoRouterState.of(context).uri.queryParameters['lane'];
+    return value == 'women' || value == 'lgbtq' ? value : null;
+  }
+
   Future<void> _call() async {
     unawaited(Analytics.capture('hf_app_call_tapped', {'slug': _p.slug, 'status': _p.status.name}));
-    if (!await requireSignIn(context, ref)) return;
+    if (!await requireSignIn(context, ref,
+      next: Routes.callConfirmOf(_p.slug, lane: _lane))) return;
     if (!mounted) return;
     await ref.read(callConfirmOpenerProvider)(context, _p.slug);
   }
 
   Future<void> _verifyToCall() async {
-    if (!await requireSignIn(context, ref)) return;
-    if (!mounted) return;
-    // Signing in may already show this person's lane (the account was verified before): then just call.
     if (ref.read(sessionProvider).me?.womenLane == true) {
       await _call();
       return;
     }
-    unawaited(GoRouter.of(context).push<Object?>(Routes.lanesOf('women')));
+    // The space explanation is public; registration belongs to its join action.
+    unawaited(GoRouter.of(context).push<Object?>(Routes.lanesOf('women',
+      next: Routes.callConfirmOf(_p.slug, lane: 'women'))));
   }
 
-  Future<void> _toggleNotify(bool subscribed) async {
+  Future<void> _toggleNotify(bool subscribed) => _setNotify(!subscribed);
+
+  Future<void> _setNotify(bool turnOn) async {
     if (_busy) return;
-    final turnOn = !subscribed;
-    if (!await requireSignIn(context, ref)) return;
+    final next = Uri(path: Routes.hostProfileOf(_p.slug), queryParameters: {
+      'action': 'notify',
+      'notify': turnOn ? 'on' : 'off',
+      if (_lane != null) 'lane': _lane!,
+    }).toString();
+    if (!await requireSignIn(context, ref, next: next)) return;
     if (!mounted) return;
     setState(() {
       _busy = true;
@@ -74,6 +89,7 @@ class _HostActionBarState extends ConsumerState<HostActionBar> {
       setState(() {
         _busy = false;
         _subscribedOverride = now;
+        _intentHandled = true;
         _messageIsError = false;
         _message = now ? HostProfileStrings.notifyOn : HostProfileStrings.notifyOff;
       });
@@ -106,9 +122,32 @@ class _HostActionBarState extends ConsumerState<HostActionBar> {
 
     final String? note;
     final Widget button;
+    final pendingNotify = widget.notificationIntent != null && !_intentHandled;
     if (!callsOn) {
       note = null;
       button = const HfButton(label: HostProfileStrings.callsSoon, onPressed: null);
+    } else if (pendingNotify) {
+      final intent = widget.notificationIntent;
+      note = intent == 'off'
+        ? 'You asked to stop notifications for this host. Confirm to continue.'
+        : intent == 'on'
+          ? 'You asked for a notification when this host is available. Confirm to continue.'
+          : 'You returned to manage notifications for this host. Choose what to do.';
+      button = Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        HfButton(
+          label: intent == 'off' ? 'Confirm stop' : 'Confirm notification',
+          icon: intent == 'off' ? Icons.notifications_off_rounded : Icons.notifications_active_rounded,
+          loading: _busy,
+          onPressed: () => _setNotify(intent != 'off'),
+        ),
+        if (intent == 'choose') ...[
+          const SizedBox(height: 8),
+          HfButton(label: 'Stop notifications', kind: HfButtonKind.secondary,
+            onPressed: _busy ? null : () => _setNotify(false)),
+        ],
+        TextButton(onPressed: _busy ? null : () => setState(() => _intentHandled = true),
+          child: const Text('Cancel', style: HfText.badge)),
+      ]);
     } else if (_p.womenOnly && !inWomenLane) {
       note = HostProfileStrings.womenLaneNote;
       button = HfButton(label: HostProfileStrings.verifyToCall, icon: Icons.verified_user_rounded, onPressed: _verifyToCall);

@@ -131,15 +131,17 @@ class _PresenceCardState extends ConsumerState<PresenceCard> with WidgetsBinding
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
+          Wrap(spacing: 16, runSpacing: 12, crossAxisAlignment: WrapCrossAlignment.center,
             children: [
-              const Expanded(child: Text(HostCopy.presenceTitle, style: HfText.subtitle)),
+              Container(padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(color: online ? HfColors.mint : HfColors.sky, borderRadius: BorderRadius.circular(18)),
+                child: const Icon(Icons.headset_mic_rounded, color: HfColors.ink, size: 30)),
+              const Text(HostCopy.presenceTitle, style: HfText.subtitle),
               StatusPill(presence: pill),
-            ],
-          ),
+            ]),
           const SizedBox(height: 14),
-          SizedBox(
-            height: 64,
+          ConstrainedBox(
+            constraints: const BoxConstraints(minHeight: 64),
             child: HfButton(
               key: const ValueKey<String>('presence-toggle'),
               label: online ? HostCopy.goOffline : HostCopy.goOnline,

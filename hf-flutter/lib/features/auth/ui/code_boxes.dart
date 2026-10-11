@@ -32,7 +32,7 @@ class CodeBoxes extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return SizedBox(
-      height: boxHeight,
+      height: boxHeight + (MediaQuery.textScalerOf(context).scale(22) - 22),
       child: Stack(
         children: [
           Positioned.fill(
@@ -111,14 +111,14 @@ class _Box extends StatelessWidget {
     final border = hasError ? HfColors.accent : (active ? HfColors.orchid : HfColors.line);
     return Container(
       width: width,
-      height: CodeBoxes.boxHeight,
+      height: CodeBoxes.boxHeight + (MediaQuery.textScalerOf(context).scale(22) - 22),
       alignment: Alignment.center,
       decoration: BoxDecoration(
         color: HfColors.white,
         borderRadius: BorderRadius.circular(HfRadius.control),
         border: Border.all(color: border, width: active || hasError ? 2 : 1.5),
       ),
-      child: Text(digit, style: HfText.title),
+      child: FittedBox(fit: BoxFit.scaleDown, child: Text(digit, style: HfText.title)),
     );
   }
 }

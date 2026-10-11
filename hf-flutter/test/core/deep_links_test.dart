@@ -34,6 +34,14 @@ void main() {
     test('an unknown lane or unknown query key is dropped', () {
       expectRoute(site('/marketplace?lane=nope&x=1'), '/explore');
     });
+    test('native discovery and call routes retain their safe context', () {
+      expectRoute('/explore?lang=hi&online=1', '/explore?lang=hi&online=1');
+      expectRoute('/call/new?host=asha&lane=lgbtq', '/call/new?host=asha&lane=lgbtq');
+      expectRoute('/h/asha?lane=women', '/h/asha?lane=women');
+      expectRoute('/lanes?lane=women&next=%2Fcall%2Fnew%3Fhost%3Dasha',
+        '/lanes?lane=women&next=%2Fcall%2Fnew%3Fhost%3Dasha');
+      expectRoute('/wallet?next=https%3A%2F%2Fevil.test', '/wallet');
+    });
     test('/women-only -> Explore lane=women', () => expectRoute(site('/women-only'), '/explore?lane=women'));
     test('/lgbtq -> Explore lane=lgbtq', () => expectRoute(site('/lgbtq'), '/explore?lane=lgbtq'));
     test('/h/<slug> -> host profile', () {

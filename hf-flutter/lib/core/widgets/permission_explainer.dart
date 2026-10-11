@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../strings.dart';
 import '../theme/hf_tokens.dart';
 import 'hf_button.dart';
+import 'hf_scene.dart';
 
 /// The screen shown BEFORE an Android permission prompt (spec 2.13):
 ///   Camera: "We need your camera for a 10-second video to prove it's really you."
@@ -35,13 +36,14 @@ class PermissionExplainer extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
+    return SingleChildScrollView(
       padding: const EdgeInsets.all(HfSpacing.page),
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Icon(icon, size: 56, color: HfColors.orchid),
+          const HfScene(kind: HfSceneKind.verify, height: 140),
+          Icon(icon, size: 40, color: HfColors.ink),
           const SizedBox(height: 16),
           Text(title, style: HfText.title, textAlign: TextAlign.center),
           const SizedBox(height: 8),

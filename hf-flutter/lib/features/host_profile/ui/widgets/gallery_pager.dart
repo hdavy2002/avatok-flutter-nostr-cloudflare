@@ -36,11 +36,13 @@ class _GalleryPagerState extends ConsumerState<GalleryPager> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Row(
+        Wrap(
+          spacing: 12, runSpacing: 8,
+          crossAxisAlignment: WrapCrossAlignment.center,
           children: [
             Semantics(header: true, child: const Text(HostProfileStrings.gallery, style: HfText.title)),
             const SizedBox(width: 12),
-            const Flexible(child: AiLabel(text: Strings.aiImagesLabel)),
+            const AiLabel(text: Strings.aiImagesLabel),
           ],
         ),
         const SizedBox(height: HfSpacing.gap),

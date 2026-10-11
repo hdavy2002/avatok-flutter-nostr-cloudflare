@@ -8,6 +8,8 @@ import '../../../core/auth/session.dart';
 import '../../../core/links.dart';
 import '../../../core/router/deep_links.dart';
 import '../../../core/router/nav.dart';
+import '../../../core/router/pending_intent.dart';
+import '../data/registration_progress.dart';
 import '../../../core/router/routes.dart';
 import '../../../core/theme/hf_tokens.dart';
 import '../../../core/widgets/widgets.dart';
@@ -18,8 +20,8 @@ import 'code_boxes.dart';
 
 /// Copy of the sign-in screens. Matches the website's WhatsApp sign-in, in simple English.
 abstract final class SignInCopy {
-  static const String title = 'Sign in with WhatsApp';
-  static const String numberHint = "We'll send a 6-digit code on WhatsApp to sign you in.";
+  static const String title = 'Your next hello';
+  static const String numberHint = "We'll send a private 6-digit WhatsApp code. New here? You can create an account with the same number.";
   static const String prefix = '+91';
   static const String numberLabel = 'WhatsApp number';
   static const String numberPlaceholder = '10-digit number';
@@ -62,11 +64,13 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
       api: ref.read(apiClientProvider),
       redeem: (ticket, {String? phone}) =>
           ref.read(sessionProvider.notifier).signInWithTicket(ticket, phone: phone),
+      onNewAccount: () => ref.read(registrationProgressProvider).markNewAccount(),
       afterSignIn: ({required bool tickedNow}) => ack.syncToServer(tickedNow: tickedNow),
       readAcked: () async => (await ack.readLocal()) != null,
     );
     unawaited(_c.init());
-    final next = widget.next;
+    final next = Routes.safeNext(widget.next);
+    if (next != null) unawaited(ref.read(pendingIntentProvider).save(next));
     _c.trackStarted(next == null ? 'direct' : DeepLinks.telemetryPath(next));
     _c.addListener(_onChange);
   }
@@ -110,10 +114,35 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
       return;
     }
     final router = GoRouter.of(context);
+    final next = Routes.safeNext(widget.next);
+    if (next != null) await ref.read(pendingIntentProvider).save(next);
+    if (!mounted) return;
+    if (await ref.read(ackServiceProvider).needsWelcomeNow()) {
+      if (!mounted) return;
+      final accepted = await router.push<bool>(Routes.welcomeTo(next));
+      if (!mounted) return;
+      if (accepted != true) {
+        await ref.read(pendingIntentProvider).clear();
+        if (mounted) router.go(Routes.home);
+        return;
+      }
+    }
+    if (await ref.read(registrationProgressProvider).needsName()) {
+      if (!mounted) return;
+      final named = await router.push<bool>(Routes.completeProfileTo(next));
+      if (!mounted) return;
+      if (named != true) {
+        await ref.read(pendingIntentProvider).clear();
+        if (mounted) router.go(Routes.home);
+        return;
+      }
+    }
+    await ref.read(pendingIntentProvider).clear();
+    if (!mounted) return;
     if (router.canPop()) {
       router.pop(true);
     } else {
-      router.go(widget.next ?? Routes.home);
+      router.go(next ?? Routes.home);
     }
   }
 
@@ -121,6 +150,7 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
     if (_c.step == SignInStep.code) {
       _c.changeNumber();
     } else {
+      unawaited(ref.read(pendingIntentProvider).clear());
       popOrHome(context);
     }
   }
@@ -133,8 +163,8 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
         final onCode = _c.step == SignInStep.code;
         return PopScope(
           canPop: !onCode,
-          onPopInvokedWithResult: (didPop, _) {
-            if (!didPop) _c.changeNumber();
+          onPopInvokedWithResult: (didPop, result) {
+            if (!didPop) { _c.changeNumber(); } else if (result != true) { unawaited(ref.read(pendingIntentProvider).clear()); }
           },
           child: Scaffold(
             appBar: AppBar(
@@ -149,7 +179,14 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
             body: SafeArea(
               child: ListView(
                 padding: const EdgeInsets.all(HfSpacing.page),
-                children: onCode ? _codeStep() : _numberStep(),
+                children: [
+                  const HfScene(kind: HfSceneKind.welcome, height: 150),
+                  const SizedBox(height: 20),
+                  HfCard(child: Column(crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: onCode ? _codeStep() : _numberStep())),
+                  const SizedBox(height: 16),
+                  const Text('Your number stays private from other people.', style: HfText.note, textAlign: TextAlign.center),
+                ],
               ),
             ),
           ),
@@ -163,7 +200,12 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
   List<Widget> _numberStep() {
     final phoneError = _c.errorField == 'phone' ? _c.error : null;
     return [
-      const Text(SignInCopy.numberHint, style: HfText.bodyText),
+      Wrap(spacing: 8, runSpacing: 8, children: [
+        ChoiceChip(label: const Text('Log in'), selected: !_c.registration, onSelected: (_) => _c.setRegistration(false)),
+        ChoiceChip(label: const Text('Create account'), selected: _c.registration, onSelected: (_) => _c.setRegistration(true)),
+      ]),
+      const SizedBox(height: 16),
+      Text(_c.registration ? 'Your account starts with a verified WhatsApp number. Please accept the age and safety rules below.' : SignInCopy.numberHint, style: HfText.bodyText),
       const SizedBox(height: HfSpacing.gapLarge),
       Row(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -222,6 +264,8 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
   List<Widget> _codeStep() {
     final codeError = _c.errorField == 'code' || _c.errorField == 'phone' ? _c.error : null;
     return [
+      Text(_c.registration ? 'One code, and you’re nearly there' : 'Welcome back', style: HfText.title),
+      const SizedBox(height: 12),
       Text(SignInCopy.sentTo(_c.phoneMasked ?? ''), style: HfText.bodyText),
       const SizedBox(height: HfSpacing.gapLarge),
       CodeBoxes(
@@ -281,7 +325,7 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
   }
 }
 
-/// The 18+ tick, shown only when Welcome did not run on this device.
+/// Explicit registration consent, never inferred from another account on this phone.
 class _AgeTick extends StatelessWidget {
   const _AgeTick({required this.value, required this.onChanged});
 

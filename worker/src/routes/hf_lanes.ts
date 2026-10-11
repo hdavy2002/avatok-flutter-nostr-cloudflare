@@ -13,7 +13,7 @@ import { trackUser, trackException } from "../hooks";
 import { BRAND } from "../lib/brand";
 import { emailFor } from "../lib/identity";
 import { readConfig } from "./config";
-import { parseLane, laneEligible, womenEligible, WOMEN_NOT_ELIGIBLE_MESSAGE, getLaneAccess, type Lane } from "../lib/hf_lanes";
+import { parseLane, laneEligible, womenEligible, WOMEN_NOT_ELIGIBLE_MESSAGE, getLaneAccess, latestLaneSelfie, type Lane } from "../lib/hf_lanes";
 
 const APP = BRAND.slug;
 const err = (status: number, error: string, extra: Record<string, unknown> = {}) => json({ error, ...extra }, status);
@@ -44,11 +44,12 @@ async function kycFacts(env: Env, uid: string): Promise<{ aadhaarVerified: boole
 async function me(req: Request, env: Env): Promise<Response> {
   const u = await requireUser(req, env);
   if (isFail(u)) return err(u.status, u.error);
-  const [kyc, cv, access, decl] = await Promise.all([
+  const [kyc, cv, access, decl, selfie] = await Promise.all([
     kycFacts(env, u.uid),
     env.DB_META.prepare("SELECT phone_verified FROM contact_verification WHERE uid=?1").bind(u.uid).first<{ phone_verified: number }>().catch(() => null),
     getLaneAccess(env, u.uid),
     env.DB_META.prepare("SELECT declared_at FROM hf_lane_access WHERE uid=?1 AND lane='lgbtq'").bind(u.uid).first<{ declared_at: number | null }>().catch(() => null),
+    latestLaneSelfie(env, u.uid),
   ]);
   return json({
     whatsappVerified: !!cv && Number(cv.phone_verified) === 1,
@@ -56,9 +57,9 @@ async function me(req: Request, env: Env): Promise<Response> {
     gender: kyc.gender,
     lanes: {
       women: { eligible: laneEligible("women", kyc.aadhaarVerified, kyc.gender), granted: access.women },
-      lgbtq: { declared: !!decl?.declared_at, granted: access.lgbtq },
+      lgbtq: { declared: decl?.declared_at != null, granted: access.lgbtq && selfie.status === "approved", selfieStatus: selfie.status, selfieReason: selfie.reason },
     },
-  });
+  }, 200, { "cache-control": "private, no-store" });
 }
 
 async function join(req: Request, env: Env, ctx: ExecutionContext | undefined, lane: Lane): Promise<Response> {
@@ -86,8 +87,10 @@ async function join(req: Request, env: Env, ctx: ExecutionContext | undefined, l
     `INSERT INTO hf_lane_access (uid, lane, verified_at, declared_at) VALUES (?1,?2,?3,?4)
      ON CONFLICT(uid, lane) DO UPDATE SET verified_at=excluded.verified_at, declared_at=COALESCE(excluded.declared_at, hf_lane_access.declared_at)`,
   ).bind(u.uid, lane, now, declaredAt).run();
+  const access = await getLaneAccess(env, u.uid);
+  const selfie = lane === "lgbtq" ? await latestLaneSelfie(env, u.uid) : null;
   emit("hf_lane_joined", { lane });
-  return json({ ok: true, lane });
+  return json({ ok: true, lane, granted: access[lane] && (!selfie || selfie.status === "approved"), ...(selfie ? { selfieStatus: selfie.status, selfieReason: selfie.reason } : {}) });
 }
 
 async function leave(req: Request, env: Env, ctx: ExecutionContext | undefined, lane: Lane): Promise<Response> {

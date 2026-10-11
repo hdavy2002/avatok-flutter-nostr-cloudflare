@@ -5,9 +5,11 @@ import '../api/api_error.dart';
 import '../strings.dart';
 import '../theme/hf_tokens.dart';
 import 'hf_button.dart';
+import 'hf_scene.dart';
+import 'hf_card.dart';
 
 /// Every list screen has four states: loading, content, empty, error. These are the shared panels, so
-/// every screen looks and reads the same. Loading is plain text and a spinner (no grey skeleton cards).
+/// Shared bento states keep the same clear hierarchy as the finished screens.
 class _PanelFrame extends StatelessWidget {
   const _PanelFrame({required this.icon, required this.title, this.body, this.action});
 
@@ -23,10 +25,11 @@ class _PanelFrame extends StatelessWidget {
         padding: const EdgeInsets.all(HfSpacing.page),
         child: Semantics(
           liveRegion: true,
-          child: Column(
+          child: HfCard(child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(icon, size: 44, color: HfColors.orchid),
+              const HfScene(kind: HfSceneKind.discover, height: 110),
+              Icon(icon, size: 32, color: HfColors.ink),
               const SizedBox(height: 12),
               Text(title, style: HfText.subtitle, textAlign: TextAlign.center),
               if (body != null) ...[
@@ -38,7 +41,7 @@ class _PanelFrame extends StatelessWidget {
                 action!,
               ],
             ],
-          ),
+          )),
         ),
       ),
     );
@@ -60,7 +63,7 @@ class LoadingPanel extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const CircularProgressIndicator(),
+            const SizedBox(width: 28, height: 28, child: CircularProgressIndicator(strokeWidth: 3)),
             const SizedBox(height: 16),
             Text(message, style: HfText.bodyText, textAlign: TextAlign.center),
           ],

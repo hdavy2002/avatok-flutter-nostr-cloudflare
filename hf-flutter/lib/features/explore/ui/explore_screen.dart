@@ -7,7 +7,6 @@ import 'package:go_router/go_router.dart';
 
 import '../../../core/analytics/analytics.dart';
 import '../../../core/auth/session.dart';
-import '../../../core/router/nav.dart';
 import '../../../core/router/routes.dart';
 import '../../../core/strings.dart';
 import '../../../core/theme/hf_tokens.dart';
@@ -16,9 +15,9 @@ import '../data/explore_controller.dart';
 import '../data/host_filters.dart';
 import '../data/host_options.dart';
 import '../widgets/host_card_view.dart';
-import '../widgets/option_chip.dart';
 import 'explore_copy.dart';
 import 'filter_sheet.dart';
+import 'discovery_header.dart';
 
 /// Tab 2: the marketplace. Filters live in the route query: `/explore?lane=&topics=&lang=&max=&online=`.
 ///
@@ -37,6 +36,8 @@ class ExploreScreen extends ConsumerStatefulWidget {
 
 class _ExploreScreenState extends ConsumerState<ExploreScreen> {
   final ScrollController _scroll = ScrollController();
+  final TextEditingController _search = TextEditingController();
+  String _searchText = '';
 
   ExploreController get _controller => ref.read(exploreControllerProvider.notifier);
 
@@ -69,6 +70,7 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
   @override
   void dispose() {
     _scroll.dispose();
+    _search.dispose();
     super.dispose();
   }
 
@@ -90,19 +92,25 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
     GoRouter.of(context).go(f.toLocation());
   }
 
+  void _chooseFilters(HostFilters next) {
+    final previous = ref.read(exploreControllerProvider).filters;
+    final me = ref.read(sessionProvider).me;
+    final granted = next.lane == HostLane.women ? me?.womenLane == true : me?.lgbtqLane == true;
+    if (next.lane != null && next.lane != previous.lane && !granted) {
+      unawaited(GoRouter.of(context).push(Routes.lanesOf(next.lane, next: next.toLocation())));
+      return;
+    }
+    _apply(next, next.lane != previous.lane ? FilterSource.lane : FilterSource.sheet);
+  }
+
   Future<void> _openFilters(HostFilters current) async {
     final result = await showFilterSheet(context, current);
     if (result == null || !mounted) return;
     _apply(result, FilterSource.sheet);
   }
 
-  Future<void> _signIn() async {
-    final ok = await requireSignIn(context, ref);
-    if (ok && mounted) unawaited(_controller.reload());
-  }
-
   Future<void> _verify(String? lane) async {
-    await GoRouter.of(context).push(Routes.lanesOf(lane));
+    await GoRouter.of(context).push(Routes.lanesOf(lane, next: ref.read(exploreControllerProvider).filters.toLocation()));
     if (mounted) unawaited(_controller.reload());
   }
 
@@ -118,27 +126,8 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) => _fillViewport());
     final f = st.filters;
     return Scaffold(
-      appBar: AppBar(
-        automaticallyImplyLeading: false,
-        title: const Text(ExploreCopy.title),
-        actions: [
-          IconButton(
-            key: const ValueKey<String>('open-filters'),
-            tooltip: ExploreCopy.filters,
-            iconSize: 28,
-            onPressed: () => _openFilters(f),
-            icon: Badge(
-              isLabelVisible: f.activeCount > 0,
-              label: Text('${f.activeCount}', style: HfText.badge.copyWith(color: HfColors.white)),
-              backgroundColor: HfColors.rose,
-              child: const Icon(Icons.tune_rounded),
-            ),
-          ),
-          const SizedBox(width: 4),
-        ],
-      ),
       body: SafeArea(
-        top: false,
+        top: true,
         child: RefreshIndicator(
           onRefresh: _controller.refresh,
           child: CustomScrollView(
@@ -146,7 +135,10 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
             physics: const AlwaysScrollableScrollPhysics(),
             slivers: [
               SliverToBoxAdapter(
-                child: _LaneTabs(lane: f.lane, onChanged: (l) => _apply(f.copyWith(lane: l), FilterSource.lane)),
+                child: DiscoveryHeader(filters: f, options: options,
+                  search: _search, onSearch: (value) => setState(() => _searchText = value.trim().toLowerCase()),
+                  onFilters: () => _openFilters(f),
+                  onApply: _chooseFilters),
               ),
               if (st.status == ExploreStatus.ready && st.showSavedPill) const SliverToBoxAdapter(child: _SavedPill()),
               ..._body(st, options),
@@ -173,7 +165,7 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
             icon: Icons.lock_outline_rounded,
             title: ExploreCopy.signInLaneTitle,
             body: ExploreCopy.signInLaneBody,
-            action: HfButton(label: ExploreCopy.signIn, onPressed: _signIn),
+            action: HfButton(label: 'About this space', onPressed: () => _verify(f.lane)),
           )),
         ];
       case ExploreStatus.laneRequired:
@@ -204,26 +196,37 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
 
   List<Widget> _list(ExploreState st, HostOptions? options) {
     final labels = options?.topicLabels ?? const <String, String>{};
-    final shown = st.total > st.items.length ? st.total : st.items.length;
+    final items = _searchText.isEmpty ? st.items : st.items.where((h) =>
+      [h.displayName, h.tagline ?? '', ...h.languages, ...h.topics.map((t) => labels[t] ?? t)]
+        .join(' ').toLowerCase().contains(_searchText)).toList();
+    final shown = _searchText.isEmpty ? (st.total > st.items.length ? st.total : st.items.length) : items.length;
     return [
       SliverToBoxAdapter(
         child: Padding(
           padding: const EdgeInsets.fromLTRB(HfSpacing.page, 4, HfSpacing.page, 8),
-          child: Text(ExploreCopy.peopleCount(shown), style: HfText.label),
+          child: Text(_searchText.isEmpty ? ExploreCopy.peopleCount(shown) : '$shown matches in the hosts shown', style: HfText.label),
         ),
       ),
+      if (items.isEmpty && _searchText.isNotEmpty) SliverToBoxAdapter(child: Padding(
+        padding: const EdgeInsets.all(HfSpacing.page),
+        child: EmptyPanel(message: 'No matching hosts shown yet.', actionLabel: 'Clear search',
+          onAction: () => setState(() { _search.clear(); _searchText = ''; })))),
+      if (_searchText.isNotEmpty && st.hasMore && !st.loadingMore) SliverToBoxAdapter(
+        child: Padding(padding: const EdgeInsets.all(HfSpacing.page),
+          child: HfButton(label: 'Search more hosts', kind: HfButtonKind.secondary,
+            onPressed: () => unawaited(_controller.loadMore(retry: st.loadMoreFailed))))),
       SliverPadding(
         padding: const EdgeInsets.symmetric(horizontal: HfSpacing.page),
         sliver: SliverLayoutBuilder(builder: (context, c) {
           // Full width on a phone; two columns once the screen is wide (tablet, foldable).
           final columns = c.crossAxisExtent >= 720 ? 2 : 1;
-          final rows = (st.items.length / columns).ceil();
+          final rows = (items.length / columns).ceil();
           return SliverList.separated(
             itemCount: rows,
             separatorBuilder: (_, __) => const SizedBox(height: HfSpacing.gap),
             itemBuilder: (context, row) {
-              Widget cardAt(int idx) => idx < st.items.length
-                  ? HostCardView(host: st.items[idx], topicLabels: labels, from: 'explore')
+              Widget cardAt(int idx) => idx < items.length
+                  ? HostCardView(host: items[idx], topicLabels: labels, from: 'explore', lane: st.filters.lane)
                   : const SizedBox.shrink();
               if (columns == 1) return cardAt(row);
               final cells = <Widget>[];
@@ -231,40 +234,15 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
                 cells.add(Expanded(child: cardAt(row * columns + i)));
                 if (i < columns - 1) cells.add(const SizedBox(width: HfSpacing.gap));
               }
-              return IntrinsicHeight(child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: cells));
+              return Row(crossAxisAlignment: CrossAxisAlignment.start, children: cells);
             },
           );
         }),
       ),
       SliverToBoxAdapter(child: _Footer(st: st, onRetry: () => unawaited(_controller.loadMore(retry: true)))),
+      const SliverToBoxAdapter(child: Padding(padding: EdgeInsets.fromLTRB(HfSpacing.page, 0, HfSpacing.page, 20),
+        child: CrisisStrip())),
     ];
-  }
-}
-
-/// All / Women-only / LGBTQ+.
-class _LaneTabs extends StatelessWidget {
-  const _LaneTabs({required this.lane, required this.onChanged});
-
-  final String? lane;
-  final ValueChanged<String?> onChanged;
-
-  @override
-  Widget build(BuildContext context) {
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      padding: const EdgeInsets.symmetric(horizontal: HfSpacing.page, vertical: 8),
-      child: Row(
-        children: [
-          OptionChip(label: ExploreCopy.laneAll, selected: lane == null, onTap: () => onChanged(null)),
-          const SizedBox(width: 8),
-          OptionChip(
-              label: ExploreCopy.laneWomen, selected: lane == HostLane.women, onTap: () => onChanged(HostLane.women)),
-          const SizedBox(width: 8),
-          OptionChip(
-              label: ExploreCopy.laneLgbtq, selected: lane == HostLane.lgbtq, onTap: () => onChanged(HostLane.lgbtq)),
-        ],
-      ),
-    );
   }
 }
 
@@ -291,7 +269,7 @@ class _SavedPill extends StatelessWidget {
             children: [
               Icon(Icons.history_rounded, size: 18, color: HfColors.plum),
               SizedBox(width: 6),
-              Text(Strings.showingSavedList, style: HfText.badge),
+              Flexible(child: Text(Strings.showingSavedList, style: HfText.badge)),
             ],
           ),
         ),

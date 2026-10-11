@@ -107,6 +107,7 @@ class _ReviewStepState extends ConsumerState<ReviewStep> {
     final banner = lock.inReview && !generating ? lock.banner() : null;
 
     return PartBStep(
+      scene: HfSceneKind.verify,
       title: PartBCopy.reviewTitle,
       lead: PartBCopy.reviewLead,
       bottom: [
@@ -234,7 +235,7 @@ class _ReviewStepState extends ConsumerState<ReviewStep> {
     return _section(PartBCopy.reviewVerified, OnboardingKeys.phone, [
       _tickRow(s.phoneVerified, 'WhatsApp +91 •••• ${s.phoneLast4 ?? '----'}'),
       _tickRow(k.aadhaarDone, '${KycCopy.aadhaarEnding} ${k.last4 ?? '----'}'),
-      _tickRow(selfieOk, selfieOk ? 'Selfie video sent' : 'Selfie video not done'),
+      _tickRow(selfieOk, k.selfieStatus == 'approved' ? 'Selfie video approved' : (selfieOk ? 'Selfie video awaiting review' : 'Selfie video not done')),
       _tickRow(k.payoutDone, k.payoutDone ? 'Payout account ending ${k.payoutLast4 ?? '----'} (name matched)' : 'Payout account not done'),
     ]);
   }
@@ -243,14 +244,15 @@ class _ReviewStepState extends ConsumerState<ReviewStep> {
     final url = s.hostString('avatarUrl');
     if (url == null) return const Text(PartBCopy.reviewNoAvatar, style: HfText.bodyText);
     final image = ref.watch(hostImageBuilderProvider);
-    return Row(
+    return Wrap(
+      spacing: 12, runSpacing: 12, crossAxisAlignment: WrapCrossAlignment.center,
       children: [
         ClipRRect(
           borderRadius: BorderRadius.circular(HfRadius.control),
           child: SizedBox(width: 96, height: 96, child: image(context, url, fit: BoxFit.cover)),
         ),
         const SizedBox(width: 12),
-        const Flexible(child: AiLabel(text: PartBCopy.avatarAiLabel)),
+        const AiLabel(text: PartBCopy.avatarAiLabel),
       ],
     );
   }

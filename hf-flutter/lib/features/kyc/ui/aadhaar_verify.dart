@@ -6,6 +6,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/api/api_error.dart';
 import '../../../core/links.dart';
+import '../../../core/router/pending_intent.dart';
+import '../../../core/storage/account_storage.dart';
 import '../../../core/theme/hf_tokens.dart';
 import '../../../core/widgets/widgets.dart';
 import '../data/digilocker_pending.dart';
@@ -44,6 +46,7 @@ class AadhaarVerifyWidget extends ConsumerStatefulWidget {
     required this.role,
     required this.onVerified,
     this.lane,
+    this.next,
     this.resumeNow = false,
   });
 
@@ -54,6 +57,7 @@ class AadhaarVerifyWidget extends ConsumerStatefulWidget {
 
   /// `women` or `lgbtq` when a lane join started the check (saved with the pending attempt).
   final String? lane;
+  final String? next;
 
   /// The person just came back from DigiLocker (`dl=return` link): run the completion call right away.
   final bool resumeNow;
@@ -179,15 +183,17 @@ class AadhaarVerifyState extends ConsumerState<AadhaarVerifyWidget> with Widgets
       _error = null;
     });
     try {
+      final account = AccountScope.id;
       final out = await _api.digilockerStart(role: widget.role);
-      if (!mounted) return;
+      if (!mounted || AccountScope.id != account) return;
       final done = out.verified;
       if (done != null) {
         KycTelemetry.kycStep('digilocker_start', 'already_verified');
         await _finish(done);
         return;
       }
-      await _store.save(DigiLockerPending(role: widget.role, at: DateTime.now(), lane: widget.lane));
+      await _store.save(DigiLockerPending(role: widget.role, at: DateTime.now(), lane: widget.lane, next: widget.next));
+      if (widget.next != null) await ref.read(pendingIntentProvider).save(widget.next!);
       KycTelemetry.kycStep('digilocker_start', 'started');
       if (!mounted) return;
       setState(() => _dl = _Dl.waiting);
@@ -451,6 +457,8 @@ class AadhaarVerifyState extends ConsumerState<AadhaarVerifyWidget> with Widgets
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
+        const Icon(Icons.badge_outlined, size: 36, color: HfColors.ink),
+        const SizedBox(height: 12),
         const Text(KycCopy.otpTitle, style: HfText.title),
         const SizedBox(height: 8),
         const Text(KycCopy.otpLead, style: HfText.bodyText),
@@ -508,6 +516,8 @@ class AadhaarVerifyState extends ConsumerState<AadhaarVerifyWidget> with Widgets
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
+        const Icon(Icons.password_rounded, size: 36, color: HfColors.ink),
+        const SizedBox(height: 12),
         const Text(KycCopy.codeTitle, style: HfText.title),
         const SizedBox(height: 8),
         const Text(KycCopy.codeLead, style: HfText.bodyText),
@@ -625,6 +635,8 @@ class AadhaarVerifyState extends ConsumerState<AadhaarVerifyWidget> with Widgets
               ),
               const SizedBox(height: 16),
             ],
+            const HfScene(kind: HfSceneKind.verify, height: 100),
+            const SizedBox(height: 12),
             const Text(KycCopy.digiLockerTitle, style: HfText.title),
             const SizedBox(height: 8),
             const Text(KycCopy.digiLockerLead, style: HfText.bodyText),

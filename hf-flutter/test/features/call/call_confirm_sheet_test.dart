@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hf_app/core/api/api_error.dart';
 import 'package:hf_app/core/auth/session.dart';
+import 'package:hf_app/core/router/routes.dart';
 import 'package:hf_app/core/storage/secure_store.dart';
 import 'package:hf_app/core/theme/hf_theme.dart';
 import 'package:hf_app/features/call/data/call_api.dart';
@@ -72,6 +73,15 @@ Future<void> _tapText(WidgetTester tester, String text) async {
 }
 
 void main() {
+  testWidgets('low balance carries host and lane to Wallet without starting a call', (tester) async {
+    prepareStorage();
+    final sheet = await _pumpSheet(tester, estimate: _tokenEstimate(canStart: false), lane: 'lgbtq');
+    await _tapText(tester, CallStrings.addTokens);
+    expect(sheet.outcomes.single.action, CallSheetAction.wallet);
+    expect(sheet.outcomes.single.next, Routes.callConfirmOf('asha', lane: 'lgbtq'));
+    expect(sheet.api.callsTo('POST', '/api/hf/calls'), isEmpty);
+  });
+
   testWidgets('shows host, price, estimate, the 2-minute rule and the safety reminder', (tester) async {
     prepareStorage();
     await _pumpSheet(tester);

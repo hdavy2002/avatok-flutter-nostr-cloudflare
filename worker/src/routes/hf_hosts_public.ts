@@ -45,18 +45,6 @@ export async function hfHostsPublicRoute(req: Request, env: Env, ctx?: Execution
   if (!(p === "/api/hosts/public" || one) || req.method !== "GET") return null;
   try {
     if ((await readConfig(env)).hostsPublicEnabled !== true) return err(404, "not_enabled");
-    if (one) {
-      const r = await env.DB_META.prepare(`${SEL} WHERE h.slug=?1 AND h.status='live'`).bind(one[1]).first<LiveRow>();
-      if (!r) return err(404, "not_found");
-      const gal = (await env.DB_META.prepare("SELECT * FROM hf_host_media WHERE uid=?1 AND kind='gallery' AND status='active' ORDER BY sort, created_at").bind(r.uid).all<MediaRow>()).results ?? [];
-      return json({
-        ...card(env, r, (await hostAggregates(env, [r.uid])).get(r.uid)), reviews: await hostReviews(env, r.uid, 10), aboutPolished: r.about_polished, quote: r.quote,
-        gallery: gal.map((m) => { const j = mediaToJson(env, m); return { url: j.url, caption: j.caption }; }),
-      }, 200, CACHE);
-    }
-    const limit = Math.min(48, Math.max(1, Math.floor(Number(url.searchParams.get("limit") || 24)) || 24));
-    const offset = Math.max(0, Math.floor(Number(url.searchParams.get("offset") || 0)) || 0);
-    // [HF-LANE-VERIFY-1] A protected-lane list is only for callers who have joined that lane.
     const laneRaw = url.searchParams.get("lane");
     const lane = parseLane(laneRaw);
     if (laneRaw && !lane) return err(400, "bad_lane");
@@ -67,6 +55,20 @@ export async function hfHostsPublicRoute(req: Request, env: Env, ctx?: Execution
       if (!(await getLaneAccess(env, u.uid))[lane]) return err(403, "lane_required");
       laneWhere = lane === "women" ? " AND h.women_lane=1" : " AND h.lgbtq_lane=1";
     }
+    if (one) {
+      const r = await env.DB_META.prepare(`${SEL} WHERE h.slug=?1 AND h.status='live'`).bind(one[1]).first<LiveRow>();
+      if (!r) return err(404, "not_found");
+      if ((lane === "women" && r.women_lane !== 1) || (lane === "lgbtq" && r.lgbtq_lane !== 1)) return err(404, "not_found");
+      const gal = (await env.DB_META.prepare("SELECT * FROM hf_host_media WHERE uid=?1 AND kind='gallery' AND status='active' ORDER BY sort, created_at").bind(r.uid).all<MediaRow>()).results ?? [];
+      return json({
+        protectedLane: lane,
+        ...card(env, r, (await hostAggregates(env, [r.uid])).get(r.uid)), reviews: await hostReviews(env, r.uid, 10), aboutPolished: r.about_polished, quote: r.quote,
+        gallery: gal.map((m) => { const j = mediaToJson(env, m); return { url: j.url, caption: j.caption }; }),
+      }, 200, lane ? { "cache-control": "private, no-store" } : CACHE);
+    }
+    const limit = Math.min(48, Math.max(1, Math.floor(Number(url.searchParams.get("limit") || 24)) || 24));
+    const offset = Math.max(0, Math.floor(Number(url.searchParams.get("offset") || 0)) || 0);
+    // [HF-LANE-VERIFY-1] A protected-lane list is only for callers who have joined that lane.
     const rows = (await env.DB_META.prepare(`${SEL} WHERE h.status='live' AND h.slug IS NOT NULL${laneWhere} ORDER BY h.live_at DESC, h.uid LIMIT ?1 OFFSET ?2`).bind(limit, offset).all<LiveRow>()).results ?? [];
     const aggs = await hostAggregates(env, rows.map((r) => r.uid)); // [HF-CALLS-1]
     return json(rows.map((r) => card(env, r, aggs.get(r.uid))), 200, lane ? { "cache-control": "private, no-store" } : CACHE);

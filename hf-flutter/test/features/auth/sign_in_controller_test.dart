@@ -117,14 +117,15 @@ void main() {
     expect(env.afterCalls, isEmpty);
   });
 
-  test('age_confirmed is sent only when the person ticked (Welcome earlier, or the tick here)', () async {
+  test('legacy device acknowledgement never grants registration consent', () async {
     final acked = await ready(acked: true);
     acked.controller.setDigits('9876543210');
     await acked.controller.sendCode();
     await acked.controller.verify('123456');
-    expect(acked.api.callsTo('POST', _verify).single.body, containsPair('age_confirmed', true));
+    expect(acked.api.callsTo('POST', _verify).single.body, isNot(contains('age_confirmed')));
 
     final fresh = await ready(acked: false);
+    fresh.controller.setRegistration(true);
     fresh.controller.setDigits('9876543210');
     expect(fresh.controller.needsTick, isTrue);
     expect(fresh.controller.canSend, isFalse);

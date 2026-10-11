@@ -129,6 +129,8 @@ class _RefundSectionState extends ConsumerState<RefundSection> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              const Wrap(spacing: 8, children: [Icon(Icons.receipt_long_rounded, color: HfColors.ink), Text('Payments & refunds', style: HfText.subtitle)]),
+              const SizedBox(height: 12),
               const Text('${RefundCopy.viaGoogle}${Brand.supportEmail}.', style: HfText.bodyText),
               const SizedBox(height: 12),
               HfButton(
@@ -173,6 +175,8 @@ class _RefundSectionState extends ConsumerState<RefundSection> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              const Icon(Icons.replay_rounded, color: HfColors.ink),
+              const SizedBox(height: 12),
               Text('Bought ${shortDate(l.boughtAt)}', style: HfText.bodyStrong),
               const SizedBox(height: 4),
               Text('₹${l.tokens} unused', style: HfText.bodyText),

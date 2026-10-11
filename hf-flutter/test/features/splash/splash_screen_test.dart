@@ -40,10 +40,10 @@ void main() {
   setUp(() => SharedPreferences.setMockInitialValues(<String, Object>{}));
   tearDown(() => AccountScope.id = null);
 
-  testWidgets('a fresh device goes to Welcome', (tester) async {
+  testWidgets('a fresh guest goes directly to marketplace without onboarding', (tester) async {
     await runSplash(tester, splashRouter(), api: configApi());
-    expect(find.text(WelcomeCopy.title), findsOneWidget);
-    expect(find.text('HOME PAGE'), findsNothing);
+    expect(find.text(WelcomeCopy.title), findsNothing);
+    expect(find.text('HOME PAGE'), findsOneWidget);
   });
 
   testWidgets('a device that accepted the current version goes Home', (tester) async {
@@ -52,10 +52,10 @@ void main() {
     expect(find.text('HOME PAGE'), findsOneWidget);
   });
 
-  testWidgets('a new terms version is asked again', (tester) async {
+  testWidgets('new safety terms do not gate public browsing', (tester) async {
     SharedPreferences.setMockInitialValues({AckService.storageKey: 'hf-ack-v0'});
     await runSplash(tester, splashRouter(), api: configApi());
-    expect(find.text(WelcomeCopy.title), findsOneWidget);
+    expect(find.text(WelcomeCopy.title), findsNothing);
   });
 
   testWidgets('offline (no config), an earlier acceptance still opens Home', (tester) async {
@@ -64,9 +64,9 @@ void main() {
     expect(find.text('HOME PAGE'), findsOneWidget);
   });
 
-  testWidgets('offline and never accepted: Welcome', (tester) async {
+  testWidgets('offline and never accepted: browse', (tester) async {
     await runSplash(tester, splashRouter(), api: configApi(ackVersion: null));
-    expect(find.text(WelcomeCopy.title), findsOneWidget);
+    expect(find.text(WelcomeCopy.title), findsNothing);
   });
 
   testWidgets('a signed-in account that accepted on another phone goes Home and fills the device copy',
@@ -76,10 +76,10 @@ void main() {
     await runSplash(tester, splashRouter(), api: api, clerk: clerk);
     expect(find.text('HOME PAGE'), findsOneWidget);
     final prefs = await SharedPreferences.getInstance();
-    expect(prefs.getString(AckService.storageKey), '2026-10-10');
+    expect(prefs.getString(AckService.storageKey), isNull);
   });
 
-  testWidgets('signed in with a device acceptance the account lacks: Home, and it is sent', (tester) async {
+  testWidgets('legacy device consent never silently posts for another account', (tester) async {
     SharedPreferences.setMockInitialValues({AckService.storageKey: '2026-10-10'});
     final api = configApi()
       ..onJson('GET', '/api/hf/me', {'uid': 'user_1'})
@@ -87,21 +87,7 @@ void main() {
     final clerk = FakeClerk(user: const ClerkUser(id: 'user_1'));
     await runSplash(tester, splashRouter(), api: api, clerk: clerk);
     expect(find.text('HOME PAGE'), findsOneWidget);
-    expect(api.callsTo('POST', '/api/hf/me/ack').single.body,
-        {'version': '2026-10-10', 'ack18': true, 'client': 'android'});
-  });
-
-  testWidgets('a link that arrived during start waits for Welcome, then opens after Continue', (tester) async {
-    final router = splashRouter();
-    await pumpRouter(tester, router, api: configApi());
-    final container = ProviderScope.containerOf(tester.element(find.byType(Scaffold).first));
-    container.read(pendingLinkProvider.notifier).set(
-          const PendingLinkData(input: '/explore', source: 'link', launch: 'cold'),
-        );
-    await settle(tester, 12);
-    expect(find.text(WelcomeCopy.title), findsOneWidget);
-    expect(container.read(bootDoneProvider), isFalse);
-    expect(container.read(pendingLinkProvider), isNotNull);
+    expect(api.callsTo('POST', '/api/hf/me/ack'), isEmpty);
   });
 
   testWidgets('with nothing to ask the splash marks boot done', (tester) async {

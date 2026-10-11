@@ -87,6 +87,9 @@ class _FilterSheetState extends ConsumerState<FilterSheet> {
       child: Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        const HfScene(kind: HfSceneKind.discover, height: 100),
+        const Text('Find your kind of company', style: HfText.title),
+        const SizedBox(height: 8),
         const _SectionTitle(ExploreCopy.sort),
         Wrap(
           spacing: 8,
@@ -183,25 +186,16 @@ class _FilterSheetState extends ConsumerState<FilterSheet> {
         color: HfColors.white,
         border: Border(top: BorderSide(color: HfColors.line)),
       ),
-      child: Row(
-        children: [
-          Expanded(
-            child: HfButton(
-              label: ExploreCopy.clearAll,
-              kind: HfButtonKind.secondary,
-              onPressed: () => setState(() => _draft = HostFilters.none.copyWith(lane: widget.initial.lane)),
-            ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            flex: 2,
-            child: HfButton(
-              label: ExploreCopy.showResults,
-              onPressed: () => Navigator.of(context).pop(_draft),
-            ),
-          ),
-        ],
-      ),
+      child: SafeArea(top: false, child: LayoutBuilder(builder: (context, c) {
+        final clear = HfButton(label: ExploreCopy.clearAll, kind: HfButtonKind.secondary,
+          onPressed: () => setState(() => _draft = HostFilters.none.copyWith(lane: widget.initial.lane)));
+        final show = HfButton(label: ExploreCopy.showResults,
+          onPressed: () => Navigator.of(context).pop(_draft));
+        if (c.maxWidth < 340 || MediaQuery.textScalerOf(context).scale(16) > 22) {
+          return Column(mainAxisSize: MainAxisSize.min, children: [show, const SizedBox(height: 8), clear]);
+        }
+        return Row(children: [Expanded(child: clear), const SizedBox(width: 12), Expanded(flex: 2, child: show)]);
+      })),
     );
   }
 }

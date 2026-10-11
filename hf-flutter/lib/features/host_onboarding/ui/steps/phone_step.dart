@@ -24,6 +24,7 @@ class PhoneStep extends StatelessWidget {
     if (s.phoneVerified) {
       final last4 = s.phoneLast4;
       return OnboardingStepPage(
+      scene: HfSceneKind.verify,
         title: OnboardingCopy.phoneVerifiedTitle,
         children: [
           HfCard(
@@ -47,6 +48,7 @@ class PhoneStep extends StatelessWidget {
       );
     }
     return OnboardingStepPage(
+      scene: HfSceneKind.verify,
       title: OnboardingCopy.phoneNotVerifiedTitle,
       lead: OnboardingCopy.phoneNotVerifiedBody,
       children: [

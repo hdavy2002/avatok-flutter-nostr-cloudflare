@@ -19,6 +19,7 @@ class DoneStep extends StatelessWidget {
   Widget build(BuildContext context) {
     final live = ctx.state.hostStatus == 'live';
     return PartBStep(
+      scene: HfSceneKind.success,
       title: live ? PartBCopy.liveTitle : PartBCopy.doneTitle,
       lead: live ? PartBCopy.liveLead : PartBCopy.doneLead,
       bottom: [

@@ -3,6 +3,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:hf_app/core/api/api_error.dart';
 import 'package:hf_app/core/brand.dart';
 import 'package:hf_app/core/links.dart';
+import 'package:hf_app/core/widgets/widgets.dart';
+import 'package:hf_app/core/storage/account_storage.dart';
 import 'package:hf_app/features/wallet/billing/billing_adapter.dart';
 import 'package:hf_app/features/wallet/data/pack_offer.dart';
 import 'package:hf_app/features/wallet/data/wallet_models.dart';
@@ -26,6 +28,17 @@ void main() {
   late FakeBillingAdapter billing;
 
   setUp(() => billing = FakeBillingAdapter());
+
+  testWidgets('a Wallet detour retains context but cannot unlock a call with zero funds', (tester) async {
+    AccountScope.id = 'user_test';
+    addTearDown(() => AccountScope.id = null);
+    final api = walletApi(wallet: tokenWallet(balance: '0.00', balanceMicro: 0));
+    await pumpWallet(tester, api: api, billing: billing,
+      query: const {'next': '/call/new?host=asha&lane=lgbtq'});
+    final button = tester.widget<HfButton>(find.byKey(const ValueKey('wallet-return-to-call')));
+    expect(button.onPressed, isNull);
+    expect(api.callsTo('POST', '/api/hf/calls'), isEmpty);
+  });
 
   group('token wallet', () {
     testWidgets('shows the balance with 2 decimals, the value breakdown, test tokens and history', (tester) async {

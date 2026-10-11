@@ -26,7 +26,8 @@ let prepares = 0;
 function makeEnv() {
   const db = new DatabaseSync(":memory:");
   for (const f of ["2026-10-09-hf-hosts.sql", "2026-10-09-hf-presence.sql", "2026-10-09-hf-reviews.sql", "2026-10-09-hf-lane-access.sql", "2026-10-10-hf-hosts-list-idx.sql"]) db.exec(mig(f));
-  db.exec(`CREATE TABLE hf_kyc (uid TEXT PRIMARY KEY, gender TEXT, verified_at INTEGER);`);
+  db.exec(`CREATE TABLE hf_kyc (uid TEXT PRIMARY KEY, gender TEXT, verified_at INTEGER);
+    CREATE TABLE hf_selfie (id TEXT PRIMARY KEY, uid TEXT, created_at INTEGER, review_status TEXT, review_reason TEXT);`);
   const stmt = (q: string, args: unknown[] = []) => ({
     bind: (...a: unknown[]) => stmt(q, a),
     first: async () => (db.prepare(q).get(...args) as any) ?? null,
@@ -173,7 +174,7 @@ describe("GET /api/hf/hosts", () => {
     });
     it("with access the lane list is filtered and never cached", async () => {
       currentUid = "viewer";
-      E.db.exec(`INSERT INTO hf_kyc VALUES ('viewer','F',1); INSERT INTO hf_lane_access (uid, lane, verified_at) VALUES ('viewer','women',1),('viewer','lgbtq',1);`);
+      E.db.exec(`INSERT INTO hf_kyc VALUES ('viewer','F',1); INSERT INTO hf_lane_access (uid, lane, verified_at, declared_at) VALUES ('viewer','women',1,NULL),('viewer','lgbtq',1,1); INSERT INTO hf_selfie VALUES ('s1','viewer',1,'approved',NULL);`);
       const w = (await get("lane=women", { authorization: "Bearer t" }))!;
       expect(w.status).toBe(200);
       expect(w.headers.get("cache-control")).toBe("private, no-store");
@@ -183,6 +184,34 @@ describe("GET /api/hf/hosts", () => {
       expect(wb.total).toBe(1);
       const l: any = await (await get("lane=lgbtq&online=1", { authorization: "Bearer t" }))!.json();
       expect(l.items.map((i: any) => i.slug)).toEqual(["dev-dddd"]);
+    });
+    it.each(["pending", "rejected"])("a newer %s video revokes lane list and profile access", async (status) => {
+      currentUid = "viewer";
+      E.db.exec(`INSERT INTO hf_kyc VALUES ('viewer','M',1);
+        INSERT INTO hf_lane_access VALUES ('viewer','lgbtq',1,1);
+        INSERT INTO hf_selfie VALUES ('a','viewer',1,'approved',NULL);`);
+      E.db.prepare("INSERT INTO hf_selfie VALUES ('b','viewer',1,?,NULL)").run(status);
+      expect((await get("lane=lgbtq", { authorization: "Bearer t" }))!.status).toBe(403);
+      const detail = await hfHostsPublicRoute(new Request("https://api.test/api/hosts/public/dev-dddd?lane=lgbtq", { headers: { authorization: "Bearer t" } }), E.env);
+      expect(detail!.status).toBe(403);
+      expect(detail!.headers.get("cache-control") ?? "").not.toContain("public");
+    });
+    it("gates lane profiles but keeps ordinary public detail browseable", async () => {
+      const publicDetail = await hfHostsPublicRoute(new Request("https://api.test/api/hosts/public/dev-dddd"), E.env);
+      expect(publicDetail!.status).toBe(200);
+      expect((await publicDetail!.json() as any).protectedLane).toBeNull();
+      expect((await hfHostsPublicRoute(new Request("https://api.test/api/hosts/public/dev-dddd?lane=lgbtq"), E.env))!.status).toBe(401);
+      currentUid = "viewer";
+      E.db.exec(`INSERT INTO hf_kyc VALUES ('viewer','M',1); INSERT INTO hf_lane_access VALUES ('viewer','lgbtq',1,1); INSERT INTO hf_selfie VALUES ('a','viewer',1,'approved',NULL);`);
+      const gated = await hfHostsPublicRoute(new Request("https://api.test/api/hosts/public/dev-dddd?lane=lgbtq"), E.env);
+      expect(gated!.status).toBe(200);
+      expect(gated!.headers.get("cache-control")).toBe("private, no-store");
+      expect((await gated!.json() as any).protectedLane).toBe("lgbtq");
+    });
+    it("old granted membership without a video remains locked", async () => {
+      currentUid = "viewer";
+      E.db.exec(`INSERT INTO hf_kyc VALUES ('viewer','M',1); INSERT INTO hf_lane_access VALUES ('viewer','lgbtq',1,1);`);
+      expect((await get("lane=lgbtq", { authorization: "Bearer t" }))!.status).toBe(403);
     });
     it("women lane needs a female/transgender Aadhaar even with a lane row", async () => {
       currentUid = "viewer";

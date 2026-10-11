@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/api/api_error.dart';
+import '../../../core/auth/session.dart';
 import '../../../core/theme/hf_tokens.dart';
 import '../../../core/widgets/widgets.dart';
 import '../data/me_api.dart';
@@ -21,7 +22,9 @@ abstract final class NameCopy {
 /// characters, no numbers, no phone numbers or links) and answers `400 invalid_field {field:'displayName', message}`;
 /// that message is shown right under the field. Pops with the saved name.
 class NameSheet extends ConsumerStatefulWidget {
-  const NameSheet({super.key, this.initial = ''});
+  const NameSheet({super.key, this.initial = '', this.onSaved});
+
+  final Future<void> Function(String name)? onSaved;
 
   final String initial;
 
@@ -33,6 +36,14 @@ class _NameSheetState extends ConsumerState<NameSheet> {
   late final TextEditingController _controller = TextEditingController(text: widget.initial);
   String? _error;
   bool _saving = false;
+  String? _ownerUid;
+
+  @override
+  void initState() {
+    super.initState();
+    final session = ref.read(sessionProvider);
+    _ownerUid = session.user?.id ?? session.me?.uid;
+  }
 
   @override
   void dispose() {
@@ -53,10 +64,16 @@ class _NameSheetState extends ConsumerState<NameSheet> {
       _error = null;
     });
     try {
-      final saved = await ref.read(meApiProvider).updateName(name);
+      final uid = _ownerUid;
+      if (uid == null) throw const ApiError(status: 401, code: 'unauthorized');
+      final saved = await ref.read(meApiProvider).updateName(name, expectedUid: uid);
       MeTelemetry.nameUpdated('ok');
       if (!mounted) return;
-      Navigator.of(context).pop(saved);
+      if (widget.onSaved != null) {
+        await widget.onSaved!(saved);
+      } else {
+        Navigator.of(context).pop(saved);
+      }
     } on ApiError catch (e) {
       MeTelemetry.nameUpdated('failed', reason: e.code, status: e.status);
       if (!mounted) return;
@@ -77,7 +94,9 @@ class _NameSheetState extends ConsumerState<NameSheet> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            const Text(NameCopy.title, style: HfText.title),
+            const HfScene(kind: HfSceneKind.profile, height: 100),
+            const SizedBox(height: 16),
+            const Text(NameCopy.title, style: HfText.headline),
             const SizedBox(height: 6),
             const Text(NameCopy.hint, style: HfText.note),
             const SizedBox(height: 16),

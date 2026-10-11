@@ -50,7 +50,7 @@ abstract final class KycCopy {
 
   // Selfie video
   static const String selfieTitle = '10-second selfie video';
-  static const String selfieLead = 'This shows us you are a real person.';
+  static const String selfieLead = 'A private check that the person in your Aadhaar photo is you. Record in good light and say the code clearly.';
   static const String yourCode = 'Your code';
   static const String gettingCode = 'Getting your code…';
   static const String selfieConsent =

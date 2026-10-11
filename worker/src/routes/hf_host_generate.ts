@@ -34,7 +34,7 @@ async function start(req: Request, env: Env, ctx: ExecutionContext | undefined):
 
   const [kyc, selfie, payout] = await Promise.all([
     env.DB_META.prepare("SELECT verified_at FROM hf_kyc WHERE uid=?1").bind(uid).first<{ verified_at: number | null }>().catch(() => null),
-    env.DB_META.prepare("SELECT review_status FROM hf_selfie WHERE uid=?1 ORDER BY created_at DESC LIMIT 1").bind(uid).first<{ review_status: string }>().catch(() => null),
+    env.DB_META.prepare("SELECT review_status FROM hf_selfie WHERE uid=?1 ORDER BY created_at DESC, id DESC LIMIT 1").bind(uid).first<{ review_status: string }>().catch(() => null),
     env.DB_META.prepare("SELECT name_match FROM hf_payout WHERE uid=?1").bind(uid).first<{ name_match: number }>().catch(() => null),
   ]);
   const missing: string[] = [];

@@ -16,7 +16,7 @@ class PushOptInSheet extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return SafeArea(
-      child: Padding(
+      child: SingleChildScrollView(
         padding: const EdgeInsets.fromLTRB(HfSpacing.page, 12, HfSpacing.page, HfSpacing.page),
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -30,14 +30,7 @@ class PushOptInSheet extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 20),
-            Center(
-              child: Container(
-                width: 72,
-                height: 72,
-                decoration: const BoxDecoration(color: HfColors.lilac, shape: BoxShape.circle),
-                child: const Icon(Icons.notifications_active_rounded, size: 36, color: HfColors.orchid),
-              ),
-            ),
+            const HfScene(kind: HfSceneKind.welcome, height: 120),
             const SizedBox(height: 16),
             Text(
               host ? PushStrings.hostTitle : PushStrings.callerTitle,
@@ -47,6 +40,8 @@ class PushOptInSheet extends StatelessWidget {
             const SizedBox(height: 8),
             const Text(PushStrings.body, style: HfText.bodyText, textAlign: TextAlign.center),
             const SizedBox(height: 20),
+            const HfCard(child: Text('You choose what reaches you. Change notifications any time in Me.', style: HfText.note)),
+            const SizedBox(height: 16),
             HfButton(label: PushStrings.allow, onPressed: () => Navigator.of(context).pop(true)),
             const SizedBox(height: 4),
             HfButton(
@@ -92,10 +87,9 @@ class PushBanner extends StatelessWidget {
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Padding(
-                  padding: EdgeInsets.only(top: 2, right: 12),
-                  child: Icon(Icons.notifications_rounded, color: HfColors.orchid, size: 28),
-                ),
+                Container(padding: const EdgeInsets.all(8), margin: const EdgeInsets.only(right: 10),
+                  decoration: BoxDecoration(color: HfColors.butter, borderRadius: BorderRadius.circular(14)),
+                  child: const Icon(Icons.notifications_rounded, color: HfColors.ink, size: 24)),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,

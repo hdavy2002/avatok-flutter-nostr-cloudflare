@@ -215,7 +215,7 @@ async function hostDetail(req: Request, env: Env, uid: string): Promise<Response
       .all<{ id: string; kind: string; r2_key: string; caption: string | null; transcript_json: string | null; sort: number }>(),
     env.DB_META.prepare("SELECT name_enc, gender, aadhaar_last4, age_ok, photo_r2_key, verified_at FROM hf_kyc WHERE uid=?1").bind(uid)
       .first<{ name_enc: string | null; gender: string | null; aadhaar_last4: string | null; age_ok: number; photo_r2_key: string | null; verified_at: number | null }>(),
-    env.DB_META.prepare("SELECT id, review_status, review_reason, created_at FROM hf_selfie WHERE uid=?1 ORDER BY created_at DESC LIMIT 1").bind(uid)
+    env.DB_META.prepare("SELECT id, review_status, review_reason, created_at FROM hf_selfie WHERE uid=?1 ORDER BY created_at DESC, id DESC LIMIT 1").bind(uid)
       .first<{ id: string; review_status: string; review_reason: string | null; created_at: number }>(),
     env.DB_META.prepare("SELECT name_match, upi_verified, account_last4, verified_at FROM hf_payout WHERE uid=?1").bind(uid)
       .first<{ name_match: number; upi_verified: number; account_last4: string | null; verified_at: number | null }>(),
@@ -275,7 +275,7 @@ async function decide(req: Request, env: Env, uid: string): Promise<Response> {
   if (decision === "approve") {
     if (!["pending_review", "paused", "rejected"].includes(h.status)) return err(409, "bad_state", { status: h.status });
     const [selfie, payout, media] = await Promise.all([
-      env.DB_META.prepare("SELECT review_status FROM hf_selfie WHERE uid=?1 ORDER BY created_at DESC LIMIT 1").bind(uid).first<{ review_status: string }>(),
+      env.DB_META.prepare("SELECT review_status FROM hf_selfie WHERE uid=?1 ORDER BY created_at DESC, id DESC LIMIT 1").bind(uid).first<{ review_status: string }>(),
       env.DB_META.prepare("SELECT name_match FROM hf_payout WHERE uid=?1").bind(uid).first<{ name_match: number }>(),
       env.DB_META.prepare("SELECT COUNT(*) AS n FROM hf_host_media WHERE uid=?1 AND status='active' AND kind IN ('profile','gallery')").bind(uid).first<{ n: number }>(),
     ]);

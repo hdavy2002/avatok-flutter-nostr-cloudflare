@@ -208,6 +208,8 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
     return ListView(
       padding: const EdgeInsets.all(HfSpacing.page),
       children: [
+        const HfScene(kind: HfSceneKind.success, height: 130),
+        const SizedBox(height: 20),
         Text('How was your call with $name?', style: HfText.headline),
         if (detail.isNotEmpty) ...[
           const SizedBox(height: 4),
@@ -216,8 +218,8 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
         const SizedBox(height: 20),
         Semantics(
           label: 'Star rating',
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
+          child: Wrap(
+            alignment: WrapAlignment.center,
             children: [
               for (var n = 1; n <= 5; n++)
                 _StarButton(
@@ -231,8 +233,8 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
             ],
           ),
         ),
-        SizedBox(
-          height: 28,
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: 8),
           child: Center(
             child: Text(ReviewStrings.starWords[_stars], style: HfText.bodyStrong),
           ),
@@ -313,7 +315,7 @@ class _StarButton extends StatelessWidget {
           child: Icon(
             selected ? Icons.star_rounded : Icons.star_outline_rounded,
             size: 44,
-            color: selected ? HfColors.rose : HfColors.line,
+            color: selected ? HfColors.ink : HfColors.mauve,
           ),
         ),
       ),
@@ -335,7 +337,7 @@ class _Thanks extends StatelessWidget {
       padding: const EdgeInsets.all(HfSpacing.page),
       children: [
         const SizedBox(height: 24),
-        const Icon(Icons.favorite_rounded, size: 64, color: HfColors.rose),
+        const HfScene(kind: HfSceneKind.success, height: 150),
         const SizedBox(height: 16),
         Semantics(
           liveRegion: true,

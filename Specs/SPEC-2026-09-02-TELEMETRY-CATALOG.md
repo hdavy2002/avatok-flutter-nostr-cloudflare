@@ -1198,3 +1198,23 @@ Avatar, about, languages, topics, price, hours, voice introduction, review, prof
 ### Ship manifest note
 
 `HF-NATIVE-10` is one-sided (one phone). Success: `hf_app_host_submitted` arrives, and `hf_app_voice_recorded` with `seconds` between 30 and 300.
+
+
+### HF native redesign — HF-NATIVE-REDESIGN-1
+
+The native redesign retains the existing auth, wallet, call, host, KYC, notification and account events.
+`hf_app_registration_step` adds the account-name chapter with `step=name` and
+`outcome=viewed|completed|cancelled`; failures of the name API remain `hf_app_name_updated`
+with the existing outcome/reason/status properties. No typed name, OTP, Aadhaar data, private declaration
+or video content is included. Account UID, known email and phone come from the existing analytics base.
+
+Consent and incomplete registration are scoped to the signed-in account. Cancelling or switching accounts
+clears the pending action; resuming registration does not start a call, purchase or notification subscription.
+LGBTQ+ declaration can be saved while video review is pending. `hf_app_lane_join` result=joined
+means access was granted; pending/rejected review is a separate UI state and never evidence of access.
+Latest review status controls protected listings, explicit-lane profiles and direct calls server-side.
+
+Release review must cover guest Browse, existing login, new registration and cancellation, zero-balance
+call/top-up return, protected-space pending/rejected/approved video, host KYC reuse, payouts and
+account switching. The real-font layout matrix includes 320×640 and 412×915 at normal and 2× text
+and reduced motion. These checks are prepared; source review is not executed device telemetry.

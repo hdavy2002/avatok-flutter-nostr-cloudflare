@@ -35,6 +35,19 @@ void main() {
       expect(resumeStepKey(state(host: {'status': 'draft'}, phone: true)), 'aadhaar');
     });
 
+    test('lane caller reuses evidence but resumes at host role bookkeeping', () {
+      final shared = state(phone: true, kyc: {
+        'aadhaar': {'done': true, 'role': 'lane_caller'},
+        'selfie': {'status': 'approved'},
+      });
+      expect(resumeStepKey(shared), 'aadhaar');
+      expect(shared.kyc.selfieStatus, 'approved');
+      expect(resumeStepKey(state(phone: true, kyc: {
+        'aadhaar': {'done': true, 'role': 'host'},
+        'selfie': {'status': 'approved'},
+      })), 'payout');
+    });
+
     test('Aadhaar done: selfie next', () {
       expect(resumeStepKey(state(host: {'status': 'draft'}, kyc: aadhaarDone, phone: true)), 'selfie');
     });

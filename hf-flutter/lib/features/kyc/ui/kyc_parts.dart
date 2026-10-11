@@ -23,7 +23,7 @@ class ConsentRow extends StatelessWidget {
         child: ConstrainedBox(
           constraints: const BoxConstraints(minHeight: HfSpacing.tap),
           child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: 4),
+            padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -87,7 +87,9 @@ class InfoBox extends StatelessWidget {
         width: double.infinity,
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: color,
+          color: HfColors.white,
+          border: Border.all(color: color, width: 3),
+          boxShadow: HfShadows.card,
           borderRadius: BorderRadius.circular(HfRadius.card),
         ),
         child: Column(
@@ -105,7 +107,7 @@ class InfoBox extends StatelessWidget {
   }
 }
 
-/// A done tick with a line of text. The tick is orchid, never green.
+/// A done tick with a line of text, distinct from pending review.
 class DoneRow extends StatelessWidget {
   const DoneRow(this.text, {super.key});
 
@@ -115,7 +117,7 @@ class DoneRow extends StatelessWidget {
   Widget build(BuildContext context) {
     return Row(
       children: [
-        const Icon(Icons.check_circle_rounded, size: 28, color: HfColors.orchid),
+        const Icon(Icons.check_circle_rounded, size: 28, color: HfColors.forest),
         const SizedBox(width: 12),
         Expanded(child: Text(text, style: HfText.bodyStrong)),
       ],

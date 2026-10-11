@@ -25,6 +25,9 @@ let db: any, env: any;
 function makeEnv() {
   db = new DatabaseSync(":memory:");
   db.exec(`
+    CREATE TABLE hf_lane_access (uid TEXT, lane TEXT, verified_at INTEGER, declared_at INTEGER);
+    CREATE TABLE hf_kyc (uid TEXT, gender TEXT, verified_at INTEGER);
+    CREATE TABLE hf_selfie (id TEXT, uid TEXT, created_at INTEGER, review_status TEXT, review_reason TEXT);
     CREATE TABLE hf_hosts (uid TEXT PRIMARY KEY, slug TEXT, display_name TEXT, price_per_min INTEGER, women_lane INTEGER DEFAULT 0, lgbtq_lane INTEGER DEFAULT 0, presence TEXT, presence_at INTEGER, status TEXT);
     CREATE TABLE hf_exit_requests (uid TEXT PRIMARY KEY, status TEXT, requested_at INTEGER, updated_at INTEGER, payout_id TEXT, refund_id TEXT, note TEXT);
     CREATE TABLE hf_topups (id TEXT PRIMARY KEY, uid TEXT, amount_rupees INTEGER, gateway TEXT, gateway_order_id TEXT, status TEXT, credited INTEGER, raw_status TEXT, gateway_payment_id TEXT, created_at INTEGER, updated_at INTEGER, paid_at INTEGER);
@@ -87,5 +90,25 @@ describe("closure guards", () => {
     const r = await hfTopupRoute(req("POST", "/api/hf/wallet/topup", "u1", { amount: 100 }), env, "/api/hf/wallet/topup");
     expect(r.status).toBe(409); expect((await r.json()).error).toBe("account_closing");
     expect(db.prepare("SELECT COUNT(*) AS n FROM hf_topups").get().n).toBe(0);
+  });
+});
+
+
+describe("protected direct-call guard", () => {
+  it.each(["pending", "rejected"])("cannot call the LGBTQ+ lane with a newer %s video", async (status) => {
+    db.exec(`UPDATE hf_hosts SET lgbtq_lane=1 WHERE uid='host1';
+      INSERT INTO hf_kyc VALUES ('u1','M',1);
+      INSERT INTO hf_lane_access VALUES ('u1','lgbtq',1,1);
+      INSERT INTO hf_selfie VALUES ('a','u1',1,'approved',NULL);`);
+    db.prepare("INSERT INTO hf_selfie VALUES ('b','u1',1,?,NULL)").run(status);
+    const r = await hfCallsRoute(req("POST", "/api/hf/calls", "u1", { hostSlug: "asha-k", lane: "lgbtq" }), env, "/api/hf/calls");
+    expect(r.status).toBe(403);
+    expect((await r.json()).error).toBe("lane_required");
+  });
+  it("an old membership row alone cannot call a protected host", async () => {
+    db.exec(`UPDATE hf_hosts SET women_lane=1 WHERE uid='host1'; INSERT INTO hf_lane_access VALUES ('u1','women',1,NULL);`);
+    const r = await hfCallsRoute(req("POST", "/api/hf/calls", "u1", { hostSlug: "asha-k" }), env, "/api/hf/calls");
+    expect(r.status).toBe(403);
+    expect((await r.json()).error).toBe("lane_required");
   });
 });

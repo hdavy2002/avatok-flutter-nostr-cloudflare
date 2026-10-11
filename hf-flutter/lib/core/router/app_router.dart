@@ -9,6 +9,8 @@ import '../strings.dart';
 import '../theme/hf_tokens.dart';
 import '../widgets/widgets.dart';
 import '../../features/auth/ui/sign_in_screen.dart';
+import '../../features/auth/ui/complete_profile_screen.dart';
+import '../../features/auth/data/registration_progress.dart';
 import '../../features/call/ui/call_screen.dart';
 import '../../features/explore/ui/explore_screen.dart';
 import '../../features/home/ui/home_screen.dart';
@@ -22,6 +24,7 @@ import '../../features/review/ui/review_screen.dart';
 import '../../features/splash/ui/splash_screen.dart';
 import '../../features/wallet/ui/wallet_screen.dart';
 import '../../features/welcome/ui/welcome_screen.dart';
+import '../../features/welcome/data/ack_service.dart';
 import 'deep_links.dart';
 import 'routes.dart';
 import 'tab_shell.dart';
@@ -30,7 +33,7 @@ import 'tab_shell.dart';
 final appRouterProvider = Provider<GoRouter>((ref) {
   final refresh = _RefreshNotifier();
   ref.listen<SessionState>(sessionProvider, (prev, next) {
-    if (prev?.status != next.status) refresh.poke();
+    if (prev?.status != next.status || prev?.me?.ackVersion != next.me?.ackVersion) refresh.poke();
   });
   final router = createAppRouter(
     ref: ref,
@@ -65,11 +68,26 @@ GoRouter createAppRouter({
   final router = GoRouter(
     initialLocation: initialLocation,
     refreshListenable: refreshListenable,
-    redirect: (context, state) => hfRedirect(ref.read(sessionProvider), state.uri),
+    redirect: (context, state) async {
+      final session = ref.read(sessionProvider);
+      final auth = hfRedirect(session, state.uri);
+      if (auth != null) return auth;
+      final resumingCall = state.uri.path.startsWith('/call/') && state.uri.path != '/call/new';
+      if (session.isSignedIn && !resumingCall && state.uri.path != Routes.welcome && Routes.needsSignIn(state.uri.path) &&
+          await ref.read(ackServiceProvider).needsWelcomeNow()) {
+        return Routes.welcomeTo(state.uri.toString());
+      }
+      if (session.isSignedIn && !resumingCall && state.uri.path != Routes.welcome && state.uri.path != Routes.completeProfile &&
+          Routes.needsSignIn(state.uri.path) && await ref.read(registrationProgressProvider).needsName()) {
+        return Routes.completeProfileTo(state.uri.toString());
+      }
+      return null;
+    },
     errorBuilder: (context, state) => const _NotFoundScreen(),
     routes: [
+      GoRoute(path: Routes.completeProfile, builder: (_, state) => CompleteProfileScreen(next: Routes.safeNext(state.uri.queryParameters['next']))),
       GoRoute(path: Routes.splash, builder: (_, __) => const SplashScreen()),
-      GoRoute(path: Routes.welcome, builder: (_, __) => const WelcomeScreen()),
+      GoRoute(path: Routes.welcome, builder: (_, state) => WelcomeScreen(next: Routes.safeNext(state.uri.queryParameters['next']))),
       GoRoute(
         path: Routes.signIn,
         builder: (_, state) {
@@ -79,7 +97,7 @@ GoRouter createAppRouter({
       ),
       GoRoute(
         path: Routes.hostProfile,
-        builder: (_, state) => HostProfileScreen(slug: state.pathParameters['slug'] ?? ''),
+        builder: (_, state) => HostProfileScreen(slug: state.pathParameters['slug'] ?? '', lane: state.uri.queryParameters['lane']),
       ),
       GoRoute(path: Routes.call, builder: (_, state) => CallScreen(id: state.pathParameters['id'] ?? '')),
       // `review/call/:id` must come before `review/:token`.
@@ -91,7 +109,7 @@ GoRouter createAppRouter({
         path: Routes.reviewToken,
         builder: (_, state) => ReviewScreen(token: state.pathParameters['token']),
       ),
-      GoRoute(path: Routes.lanes, builder: (_, state) => LanesScreen(lane: state.uri.queryParameters['lane'])),
+      GoRoute(path: Routes.lanes, builder: (_, state) => LanesScreen(lane: state.uri.queryParameters['lane'], next: Routes.safeNext(state.uri.queryParameters['next']))),
       GoRoute(
         path: Routes.hostOnboarding,
         builder: (_, state) => HostOnboardingScreen(
@@ -103,7 +121,7 @@ GoRouter createAppRouter({
       StatefulShellRoute.indexedStack(
         builder: (_, __, shell) => HfTabShell(navigationShell: shell),
         branches: [
-          StatefulShellBranch(routes: [GoRoute(path: Routes.home, builder: (_, __) => const HomeScreen())]),
+          StatefulShellBranch(routes: [GoRoute(path: Routes.home, builder: (_, state) => HomeScreen(query: state.uri.queryParameters))]),
           StatefulShellBranch(routes: [
             GoRoute(path: Routes.explore, builder: (_, state) => ExploreScreen(query: state.uri.queryParameters)),
           ]),

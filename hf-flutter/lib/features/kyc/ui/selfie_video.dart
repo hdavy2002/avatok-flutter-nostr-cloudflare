@@ -209,12 +209,14 @@ class _SelfieVideoState extends ConsumerState<SelfieVideoWidget> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
+        const HfScene(kind: HfSceneKind.verify, height: 100),
+        const SizedBox(height: 16),
         const Text(KycCopy.selfieTitle, style: HfText.title),
         const SizedBox(height: 8),
         const Text(KycCopy.selfieLead, style: HfText.bodyText),
         const SizedBox(height: 16),
         HfCard(
-          color: HfColors.lilac,
+          color: HfColors.sky,
           child: Column(
             children: [
               const Text(KycCopy.yourCode, style: HfText.label),
@@ -225,7 +227,7 @@ class _SelfieVideoState extends ConsumerState<SelfieVideoWidget> {
                 child: Text(
                   code ?? '····',
                   key: const ValueKey<String>('selfie-code'),
-                  style: HfText.hero.copyWith(fontSize: 48, letterSpacing: 10),
+                  style: HfText.hero.copyWith(fontSize: 32, letterSpacing: 4),
                 ),
               ),
               const SizedBox(height: 8),
@@ -489,7 +491,7 @@ class _CameraStageState extends ConsumerState<_CameraStage> {
         ClipRRect(
           borderRadius: BorderRadius.circular(HfRadius.card),
           child: SizedBox(
-            height: 420,
+            height: MediaQuery.textScalerOf(context).scale(14) > 20 ? 560 : 420,
             child: Stack(
               fit: StackFit.expand,
               children: [
@@ -512,7 +514,7 @@ class _CameraStageState extends ConsumerState<_CameraStage> {
                       children: [
                         Text(
                           widget.code,
-                          style: HfText.hero.copyWith(color: HfColors.cream, fontSize: 44, letterSpacing: 8),
+                          style: HfText.hero.copyWith(color: HfColors.cream, fontSize: 30, letterSpacing: 4),
                         ),
                         Text(
                           'Say: Mera code $spaced hai',

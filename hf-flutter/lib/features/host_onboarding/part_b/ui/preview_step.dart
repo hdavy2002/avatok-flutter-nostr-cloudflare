@@ -169,6 +169,7 @@ class _PreviewStepState extends ConsumerState<PreviewStep> {
     final price = s.hostNum('pricePerMin')?.toInt();
 
     return PartBStep(
+      scene: HfSceneKind.profile,
       title: PartBCopy.previewTitle,
       lead: locked ? null : PartBCopy.previewLead,
       bottom: [
@@ -358,27 +359,11 @@ class _PreviewStepState extends ConsumerState<PreviewStep> {
               decoration: InputDecoration(labelText: label, errorText: _editError, errorMaxLines: 3),
             ),
             const SizedBox(height: 8),
-            Row(
-              children: [
-                Expanded(
-                  child: HfButton(
-                    key: const ValueKey<String>('preview-save'),
-                    label: PartBCopy.save,
-                    loading: _savingEdit,
-                    onPressed: _saveEdit,
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: HfButton(
-                    key: const ValueKey<String>('preview-cancel'),
-                    label: PartBCopy.cancel,
-                    kind: HfButtonKind.secondary,
-                    onPressed: _savingEdit ? null : _cancelEdit,
-                  ),
-                ),
-              ],
-            ),
+            HfButton(key: const ValueKey<String>('preview-save'), label: PartBCopy.save,
+              loading: _savingEdit, onPressed: _saveEdit),
+            const SizedBox(height: 12),
+            HfButton(key: const ValueKey<String>('preview-cancel'), label: PartBCopy.cancel,
+              kind: HfButtonKind.secondary, onPressed: _savingEdit ? null : _cancelEdit),
           ],
         ),
       );

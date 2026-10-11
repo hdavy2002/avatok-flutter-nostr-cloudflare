@@ -8,6 +8,8 @@ import '../../../core/brand.dart';
 import '../../../core/links.dart';
 import '../../../core/router/deep_link_handler.dart';
 import '../../../core/router/routes.dart';
+import '../../../core/router/nav.dart';
+import '../../../core/router/pending_intent.dart';
 import '../../../core/theme/hf_tokens.dart';
 import '../../../core/widgets/widgets.dart';
 import '../data/ack_service.dart';
@@ -40,11 +42,12 @@ abstract final class WelcomeCopy {
   static const String safety = 'Safety';
 }
 
-/// `/welcome`: 18+ and safety rules, one screen, shown first on a device (or account) that has not accepted
-/// the current version. Browse-before-sign-in: nothing here asks for an account. The acceptance is kept on the
-/// device and sent to the server (`POST /api/hf/me/ack`) once the person is signed in.
+/// Contextual, account-scoped 18+ and safety consent before a privileged action.
+/// Public browsing never passes through this page.
 class WelcomeScreen extends ConsumerStatefulWidget {
-  const WelcomeScreen({super.key});
+  const WelcomeScreen({super.key, this.next});
+
+  final String? next;
 
   @override
   ConsumerState<WelcomeScreen> createState() => _WelcomeScreenState();
@@ -53,6 +56,7 @@ class WelcomeScreen extends ConsumerStatefulWidget {
 class _WelcomeScreenState extends ConsumerState<WelcomeScreen> {
   bool _ticked = false;
   bool _busy = false;
+  String? _error;
 
   Future<void> _continue() async {
     if (!_ticked || _busy) return;
@@ -69,78 +73,66 @@ class _WelcomeScreenState extends ConsumerState<WelcomeScreen> {
       ref.read(bootDoneProvider.notifier).markDone();
       final opened = await ref.read(deepLinkHandlerProvider).flushPending();
       if (!mounted) return;
-      if (!opened) context.go(Routes.home);
+      if (!opened) {
+        final router = GoRouter.of(context);
+        if (router.canPop()) {
+          router.pop(true);
+        } else {
+          final next = Routes.safeNext(widget.next);
+          await ref.read(pendingIntentProvider).clear();
+          if (mounted) router.go(next ?? Routes.home);
+        }
+      }
+    } catch (_) {
+      if (mounted) setState(() => _error = 'We could not save that. Please try again.');
     } finally {
       if (mounted) setState(() => _busy = false);
     }
   }
 
+  Future<void> _cancel() async {
+    await ref.read(pendingIntentProvider).clear();
+    if (mounted) popOrHome(context);
+  }
+
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      body: SafeArea(
-        child: Column(
-          children: [
-            Expanded(
-              child: ListView(
-                padding: const EdgeInsets.fromLTRB(HfSpacing.page, 24, HfSpacing.page, HfSpacing.page),
-                children: [
-                  Row(
-                    children: [
-                      Image.asset(
-                        'assets/images/logo.png',
-                        width: 56,
-                        height: 56,
-                        errorBuilder: (_, __, ___) => const SizedBox(width: 56, height: 56),
-                      ),
-                      const SizedBox(width: 12),
-                      const Expanded(child: Text(Brand.name, style: HfText.headline)),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  const Text(Brand.slogan, style: HfText.note),
-                  const SizedBox(height: HfSpacing.gapLarge),
-                  const Text(WelcomeCopy.title, style: HfText.title),
-                  const SizedBox(height: 6),
-                  const Text(WelcomeCopy.intro, style: HfText.bodyText),
-                  const SizedBox(height: HfSpacing.gap),
-                  const _RuleCard(
-                    icon: Icons.lock_outline_rounded,
-                    color: HfColors.lilac,
-                    title: WelcomeCopy.rule1Title,
-                    body: WelcomeCopy.rule1Body,
-                  ),
-                  const SizedBox(height: HfSpacing.gap),
-                  const _RuleCard(
-                    icon: Icons.tag_rounded,
-                    color: HfColors.blush,
-                    title: WelcomeCopy.rule2Title,
-                    body: WelcomeCopy.rule2Body,
-                  ),
-                  const SizedBox(height: HfSpacing.gap),
-                  const _RuleCard(
-                    icon: Icons.favorite_border_rounded,
-                    color: HfColors.butter,
-                    title: WelcomeCopy.rule3Title,
-                    body: WelcomeCopy.rule3Body,
-                  ),
-                  const SizedBox(height: HfSpacing.gapLarge),
-                  const CrisisStrip(),
-                  const SizedBox(height: HfSpacing.gap),
-                  const _LegalLinks(),
-                ],
-              ),
-            ),
-            _AcceptPanel(
-              ticked: _ticked,
-              busy: _busy,
-              onTick: (v) => setState(() => _ticked = v),
-              onContinue: _continue,
-            ),
-          ],
-        ),
-      ),
-    );
+    return PopScope<Object?>(
+      canPop: GoRouter.of(context).canPop(),
+      onPopInvokedWithResult: (didPop, result) {
+        if (!didPop) { _cancel(); }
+        else if (result != true) { ref.read(pendingIntentProvider).clear(); }
+      },
+      child: Scaffold(
+      appBar: AppBar(leading: IconButton(tooltip: 'Keep browsing', icon: const Icon(Icons.arrow_back_rounded), onPressed: _cancel), title: const Text('A safe space for a hello')),
+      body: SafeArea(child: ListView(
+        padding: const EdgeInsets.all(HfSpacing.page),
+        children: [
+          const HfScene(kind: HfSceneKind.welcome, height: 150),
+          const SizedBox(height: 20),
+          const Text(WelcomeCopy.title, style: HfText.headline),
+          const SizedBox(height: 8),
+          const Text(WelcomeCopy.intro, style: HfText.bodyText),
+          const SizedBox(height: 20),
+          const _RuleCard(icon: Icons.lock_outline_rounded, color: HfColors.mint,
+            title: WelcomeCopy.rule1Title, body: WelcomeCopy.rule1Body),
+          const SizedBox(height: 12),
+          const _RuleCard(icon: Icons.tag_rounded, color: HfColors.sky,
+            title: WelcomeCopy.rule2Title, body: WelcomeCopy.rule2Body),
+          const SizedBox(height: 12),
+          const _RuleCard(icon: Icons.favorite_border_rounded, color: HfColors.lavender,
+            title: WelcomeCopy.rule3Title, body: WelcomeCopy.rule3Body),
+          const SizedBox(height: 20),
+          const CrisisStrip(),
+          const SizedBox(height: 16),
+          HfCard(child: _AcceptPanel(ticked: _ticked, busy: _busy,
+            onTick: (v) => setState(() => _ticked = v), onContinue: _continue)),
+          if (_error != null) Text(_error!, style: HfText.bodyText),
+          const SizedBox(height: 16),
+          const _LegalLinks(),
+        ],
+      )),
+    ));
   }
 }
 
@@ -155,11 +147,11 @@ class _RuleCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return HfCard(
-      color: color,
+      color: HfColors.white,
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(icon, size: 28, color: HfColors.orchid),
+          Container(padding: const EdgeInsets.all(10), decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(18)), child: Icon(icon, size: 26, color: HfColors.ink)),
           const SizedBox(width: 12),
           Expanded(
             child: Column(
@@ -218,8 +210,7 @@ class _AcceptPanel extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.fromLTRB(HfSpacing.page, 8, HfSpacing.page, 16),
       decoration: const BoxDecoration(
-        color: HfColors.cream,
-        border: Border(top: BorderSide(color: HfColors.line)),
+        color: HfColors.white,
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,

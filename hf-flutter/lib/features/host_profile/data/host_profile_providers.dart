@@ -19,34 +19,48 @@ const int kProfileCacheMax = 20;
 
 String _hostPath(String slug, [String suffix = '']) => '/api/hosts/public/${Uri.encodeComponent(slug)}$suffix';
 
-/// `GET /api/hosts/public/:slug`, public (no token). On success the JSON is saved. When the network
-/// fails (or the server errors) the saved copy of the last visit is shown instead, with [HostProfileResult.fromCache].
-/// A `404 not_found` is never answered from the saved copy (the host is gone), and it drops that copy.
-final hostProfileProvider = FutureProvider.autoDispose.family<HostProfileResult, String>((ref, slug) async {
+/// Public detail with optional account authentication. Only explicitly public responses
+/// are cached; authorization failures and private lane requests never fall back to disk.
+/// Watching session also discards protected results on sign-out or account switch.
+final hostProfileProvider = FutureProvider.autoDispose.family<HostProfileResult, String>(
+  (ref, slug) => _readProfile(ref, slug), retry: (_, __) => null);
+
+/// Lane context is part of provider identity and never falls back to public cache.
+final laneHostProfileProvider = FutureProvider.autoDispose.family<HostProfileResult, ({String slug, String lane})>(
+  (ref, request) => _readProfile(ref, request.slug, lane: request.lane), retry: (_, __) => null);
+
+Future<HostProfileResult> _readProfile(Ref ref, String slug, {String? lane}) async {
+  final session = ref.watch(sessionProvider);
   final api = ref.watch(apiClientProvider);
   final cache = ref.watch(jsonCacheProvider);
   try {
-    final json = await api.getJson(_hostPath(slug), auth: false);
+    final json = await api.getJson(_hostPath(slug), auth: session.isSignedIn,
+      query: lane == null ? null : {'lane': lane});
     final profile = HostProfile.fromJson(json);
-    unawaited(_remember(cache, slug, json));
+    // Only explicitly public payloads are reusable offline. The old v1 cache did
+    // not encode access, so an unmarked response is never treated as public proof.
+    if (lane == null && json.containsKey('protectedLane') && json['protectedLane'] == null) {
+      unawaited(_remember(cache, slug, json));
+    } else {
+      unawaited(_forget(cache, slug));
+    }
     return HostProfileResult(profile: profile);
   } on ApiError catch (e) {
     if (e.isNotEnabled) rethrow;
-    if (e.status == 404) {
+    if (e.status == 401 || e.status == 403 || e.status == 404) {
       unawaited(_forget(cache, slug));
       rethrow;
     }
+    if (lane != null) rethrow;
     final saved = await cache.read(hostProfileCacheKey(slug));
     final data = saved?.data;
-    if (data is Map) {
+    if (data is Map && data.containsKey('protectedLane') && data['protectedLane'] == null) {
       return HostProfileResult(profile: HostProfile.fromJson(Map<String, dynamic>.from(data)), fromCache: true);
     }
+    if (data != null) unawaited(_forget(cache, slug));
     rethrow;
   }
-},
-    // No automatic retry (Riverpod 3 retries a failed provider by default): a 404 must show "not available"
-    // at once, and an offline phone must show its saved copy or "Try again", not a long spinner.
-    retry: (_, __) => null);
+}
 
 Future<void> _remember(JsonCache cache, String slug, Map<String, dynamic> json) async {
   await cache.write(hostProfileCacheKey(slug), json);
@@ -140,10 +154,10 @@ Future<bool> setNotifyMe(ApiClient api, String slug, {required bool on}) async {
 /// slug in `host`; NATIVE-5 either reads that, or replaces the opener here with its own builder.
 typedef CallConfirmOpener = Future<void> Function(BuildContext context, String slug);
 
-String callConfirmLocation(String slug) => Uri(path: Routes.callOf('new'), queryParameters: {'host': slug}).toString();
+String callConfirmLocation(String slug, {String? lane}) => Routes.callConfirmOf(slug, lane: lane);
 
 final callConfirmOpenerProvider = Provider<CallConfirmOpener>((ref) {
   return (context, slug) async {
-    await GoRouter.of(context).push<Object?>(callConfirmLocation(slug));
+    await GoRouter.of(context).push<Object?>(callConfirmLocation(slug, lane: GoRouterState.of(context).uri.queryParameters['lane']));
   };
 });

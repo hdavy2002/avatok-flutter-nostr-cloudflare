@@ -32,6 +32,8 @@ class LaneStatus {
     this.womenGranted = false,
     this.lgbtqDeclared = false,
     this.lgbtqGranted = false,
+    this.selfieStatus = 'none',
+    this.selfieReason,
   });
 
   final bool whatsappVerified;
@@ -43,6 +45,8 @@ class LaneStatus {
   final bool womenGranted;
   final bool lgbtqDeclared;
   final bool lgbtqGranted;
+  final String selfieStatus;
+  final String? selfieReason;
 
   bool granted(Lane l) => l == Lane.women ? womenGranted : lgbtqGranted;
 
@@ -59,7 +63,12 @@ class LaneStatus {
       womenEligible: women['eligible'] == true,
       womenGranted: women['granted'] == true,
       lgbtqDeclared: lgbtq['declared'] == true,
-      lgbtqGranted: lgbtq['granted'] == true,
+      // Older server responses must not unlock a space without the new evidence.
+      lgbtqGranted: lgbtq['granted'] == true && lgbtq['declared'] == true &&
+          j['aadhaarVerified'] == true && lgbtq['selfieStatus'] == 'approved',
+      selfieStatus: const {'pending', 'approved', 'rejected'}.contains(lgbtq['selfieStatus'])
+          ? lgbtq['selfieStatus'] as String : 'none',
+      selfieReason: lgbtq['selfieStatus'] == 'rejected' && lgbtq['selfieReason'] is String ? lgbtq['selfieReason'] as String : null,
     );
   }
 }

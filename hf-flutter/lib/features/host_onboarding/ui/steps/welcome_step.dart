@@ -16,13 +16,14 @@ class WelcomeStep extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return OnboardingStepPage(
+      scene: HfSceneKind.welcome,
       title: OnboardingCopy.welcomeTitle,
       lead: OnboardingCopy.welcomeLead,
       children: [
         const Text(OnboardingCopy.welcomeHinglish, style: HfText.bodyStrong),
         const SizedBox(height: 20),
         const HfCard(
-          color: HfColors.lilac,
+          color: HfColors.white,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -38,7 +39,7 @@ class WelcomeStep extends StatelessWidget {
         ),
         const SizedBox(height: 16),
         const HfCard(
-          color: HfColors.blush,
+          color: HfColors.white,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -46,7 +47,7 @@ class WelcomeStep extends StatelessWidget {
                 children: [
                   Icon(Icons.shield_rounded, color: HfColors.orchid),
                   SizedBox(width: 8),
-                  Text(OnboardingCopy.keepTitle, style: HfText.subtitle),
+                  Expanded(child: Text(OnboardingCopy.keepTitle, style: HfText.subtitle)),
                 ],
               ),
               SizedBox(height: 8),

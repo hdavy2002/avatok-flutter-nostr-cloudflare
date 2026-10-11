@@ -1,22 +1,27 @@
 import 'package:flutter/painting.dart';
 
-/// Design tokens taken from the website (web/src/styles, the callvaal and profile-card CSS).
-/// Light, colourful, rounded. NEVER GREEN, anywhere (owner rule): the "online now" pill is rose on blush.
+/// Native bento palette approved 2026-10-11. Soft colour is decoration; ink carries readable text.
 abstract final class HfColors {
-  /// Ink and primary.
-  static const Color plum = Color(0xFF46113E);
+  /// Deep ink for readable text.
+  static const Color ink = Color(0xFF121C3D);
+  static const Color plum = ink;
+  static const Color mint = Color(0xFFAFF0D5);
+  static const Color sky = Color(0xFFA9D6FF);
+  static const Color lavender = Color(0xFFDBD0FF);
+  static const Color coral = Color(0xFFFF626C);
+  static const Color forest = Color(0xFF14634E);
 
   /// Page background.
-  static const Color cream = Color(0xFFFFFDF7);
-  static const Color lilac = Color(0xFFF2EFFF);
-  static const Color blush = Color(0xFFFCE4EB);
-  static const Color butter = Color(0xFFFFF1CF);
-  static const Color butterDeep = Color(0xFFFFE28A);
-  static const Color orchid = Color(0xFF7B388C);
+  static const Color cream = Color(0xFFF7F8FC);
+  static const Color lilac = lavender;
+  static const Color blush = Color(0xFFFFE1E9);
+  static const Color butter = Color(0xFFFFE8A4);
+  static const Color butterDeep = Color(0xFFFFCD53);
+  static const Color orchid = Color(0xFF614884);
 
   /// Muted text.
-  static const Color mauve = Color(0xFF785979);
-  static const Color line = Color(0xFFE8DCE7);
+  static const Color mauve = Color(0xFF64708B);
+  static const Color line = Color(0xFFE6E9F1);
 
   /// Alerts and errors.
   static const Color accent = Color(0xFFBD2740);
@@ -24,16 +29,16 @@ abstract final class HfColors {
   static const Color white = Color(0xFFFFFFFF);
 }
 
-/// Radii: 18 on cards, 12 on chips and buttons, 24 on pills.
+/// Generous native cards and rounded controls.
 abstract final class HfRadius {
-  static const double card = 18;
-  static const double control = 12;
-  static const double pill = 24;
+  static const double card = 28;
+  static const double control = 24;
+  static const double pill = 40;
 }
 
 abstract final class HfSpacing {
   /// Side padding of every page. Content fills the width; it is never a narrow centred column.
-  static const double page = 20;
+  static const double page = 18;
   static const double gap = 12;
   static const double gapLarge = 20;
 
@@ -42,14 +47,16 @@ abstract final class HfSpacing {
 }
 
 abstract final class HfShadows {
-  /// `0 5 22 #46113E0B`.
+  /// Visible, soft elevation against the off-white page.
   static const List<BoxShadow> card = [
-    BoxShadow(color: Color(0x0B46113E), offset: Offset(0, 5), blurRadius: 22),
+    BoxShadow(color: Color(0x14121C3D), offset: Offset(0, 8), blurRadius: 24),
+    BoxShadow(color: Color(0x06121C3D), offset: Offset(0, 2), blurRadius: 5),
   ];
 }
 
 /// Text styles. Nunito for display and headline styles, Comfortaa for everything else.
-/// Sizes: body 16, note 15, badge 14 (the floor: nothing is smaller), title 22, hero 28-32.
+/// Sizes: body 16, note 15, badge 14, title 22, hero 28-32.
+/// Only the owner-approved discreet AI avatar caption uses a smaller local style.
 abstract final class HfText {
   static const String display = 'Nunito';
   static const String body = 'Comfortaa';

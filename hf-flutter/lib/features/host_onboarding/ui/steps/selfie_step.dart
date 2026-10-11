@@ -44,15 +44,16 @@ class _SelfieStepState extends State<SelfieStep> {
     final sent = _uploaded || ((status == 'pending' || status == 'approved') && !_again);
     if (sent) {
       return OnboardingStepPage(
+      scene: HfSceneKind.verify,
         children: [
-          const HfCard(
-            key: ValueKey<String>('selfie-step-done'),
+          HfCard(
+            key: const ValueKey<String>('selfie-step-done'),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                DoneRow(OnboardingCopy.selfieSentTitle),
+                DoneRow(status == 'approved' ? 'Approved video reused' : OnboardingCopy.selfieSentTitle),
                 SizedBox(height: 8),
-                Text(OnboardingCopy.selfieSentBody, style: HfText.bodyText),
+                Text(status == 'approved' ? 'Your approved identity video is already on file. No new recording is needed.' : OnboardingCopy.selfieSentBody, style: HfText.bodyText),
               ],
             ),
           ),
@@ -73,6 +74,7 @@ class _SelfieStepState extends State<SelfieStep> {
       );
     }
     return OnboardingStepPage(
+      scene: HfSceneKind.verify,
       children: [
         if (status == 'rejected' && !_again) ...[
           InfoBox(

@@ -18,6 +18,7 @@ GoRouter welcomeRouter() => GoRouter(
       initialLocation: '/welcome',
       routes: [
         GoRoute(path: '/welcome', builder: (_, __) => const WelcomeScreen()),
+        GoRoute(path: '/explore', builder: (_, __) => const Scaffold(body: Text('BROWSE PAGE'))),
         GoRoute(path: '/', builder: (_, __) => const Scaffold(body: Text('HOME PAGE'))),
       ],
     );
@@ -50,8 +51,7 @@ void main() {
 
   testWidgets('shows the brand, the three rules, the crisis lines and the tick text', (tester) async {
     await pumpRouter(tester, welcomeRouter(), api: FakeApiClient());
-    expect(find.text(Brand.name), findsOneWidget);
-    expect(find.text(Brand.slogan), findsOneWidget);
+    expect(find.text('A safe space for a hello'), findsOneWidget);
     for (final t in [WelcomeCopy.rule1Title, WelcomeCopy.rule2Title, WelcomeCopy.rule3Title]) {
       await reveal(tester, find.text(t));
       expect(find.text(t), findsOneWidget);
@@ -67,10 +67,13 @@ void main() {
 
   testWidgets('Continue waits for the tick', (tester) async {
     await pumpRouter(tester, welcomeRouter(), api: FakeApiClient());
+    await reveal(tester, find.text(WelcomeCopy.button));
     expect(continueEnabled(tester), isFalse);
+    await reveal(tester, find.byKey(_tickKey));
     await tester.tap(find.byKey(_tickKey));
     await tester.pump();
     expect(continueEnabled(tester), isTrue);
+    await reveal(tester, find.byKey(_tickKey));
     await tester.tap(find.byKey(_tickKey));
     await tester.pump();
     expect(continueEnabled(tester), isFalse);
@@ -79,21 +82,25 @@ void main() {
   testWidgets('a guest taps Continue: kept on the device, nothing is sent, Home opens', (tester) async {
     final api = FakeApiClient();
     await pumpRouter(tester, welcomeRouter(), api: api);
+    await reveal(tester, find.byKey(_tickKey));
     await tester.tap(find.byKey(_tickKey));
     await tester.pump();
+    await reveal(tester, find.text(WelcomeCopy.button));
     await tester.tap(find.text(WelcomeCopy.button));
     await settle(tester);
     expect(find.text('HOME PAGE'), findsOneWidget);
     expect(api.callsTo('POST', '/api/hf/me/ack'), isEmpty, reason: 'a guest has no account to send it to');
     final prefs = await SharedPreferences.getInstance();
-    expect(prefs.getString(AckService.storageKey), kFallbackAckVersion);
+    expect(prefs.getString(AckService.storageKey), isNull);
   });
 
   testWidgets('a signed-in person taps Continue: the acceptance goes to the account too', (tester) async {
     final api = FakeApiClient()..onJson('POST', '/api/hf/me/ack', {'ok': true, 'ackVersion': kFallbackAckVersion});
     await pumpRouter(tester, welcomeRouter(), api: api, stubSession: signedInState());
+    await reveal(tester, find.byKey(_tickKey));
     await tester.tap(find.byKey(_tickKey));
     await tester.pump();
+    await reveal(tester, find.text(WelcomeCopy.button));
     await tester.tap(find.text(WelcomeCopy.button));
     await settle(tester);
     expect(find.text('HOME PAGE'), findsOneWidget);
@@ -105,13 +112,15 @@ void main() {
     final api = FakeApiClient()
       ..onError('POST', '/api/hf/me/ack', const ApiError(status: 503, code: 'ack_failed'));
     await pumpRouter(tester, welcomeRouter(), api: api, stubSession: signedInState());
+    await reveal(tester, find.byKey(_tickKey));
     await tester.tap(find.byKey(_tickKey));
     await tester.pump();
+    await reveal(tester, find.text(WelcomeCopy.button));
     await tester.tap(find.text(WelcomeCopy.button));
     await settle(tester);
     expect(find.text('HOME PAGE'), findsOneWidget);
     final prefs = await SharedPreferences.getInstance();
-    expect(prefs.getString(AckService.storageKey), isNotNull);
+    expect(prefs.getString('${AckService.storageKey}_user_test'), isNotNull);
   });
 
   testWidgets('Terms, Privacy, Community guidelines and Safety open the site in a Custom Tab', (tester) async {
@@ -138,7 +147,7 @@ void main() {
     expect(tester.getSize(find.byKey(_tickKey)).height, greaterThanOrEqualTo(48));
     final button = find.ancestor(of: find.text(WelcomeCopy.button), matching: find.bySubtype<ElevatedButton>());
     expect(tester.getSize(button).height, greaterThanOrEqualTo(48));
-    expect(tester.getSize(find.byKey(_tickKey)).width, greaterThan(300));
+    expect(tester.getSize(find.byKey(_tickKey)).width, greaterThan(200));
     expectNoTinyText(tester);
   });
 
@@ -149,8 +158,10 @@ void main() {
           const PendingLinkData(input: '/explore', source: 'link', launch: 'cold'),
         );
     expect(container.read(bootDoneProvider), isFalse);
+    await reveal(tester, find.byKey(_tickKey));
     await tester.tap(find.byKey(_tickKey));
     await tester.pump();
+    await reveal(tester, find.text(WelcomeCopy.button));
     await tester.tap(find.text(WelcomeCopy.button));
     await settle(tester);
     expect(container.read(bootDoneProvider), isTrue);

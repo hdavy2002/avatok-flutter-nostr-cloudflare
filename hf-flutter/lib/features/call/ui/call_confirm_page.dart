@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../core/router/nav.dart';
 import '../../../core/router/routes.dart';
+import '../../../core/router/pending_intent.dart';
 import '../../../core/strings.dart';
 import '../../../core/widgets/widgets.dart';
 import '../data/call_api.dart';
@@ -21,12 +22,15 @@ class CallConfirmPage extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final query = GoRouterState.of(context).uri.queryParameters;
     final slug = (query['host'] ?? '').trim().toLowerCase();
-    // women-lane hosts are lane-set by the server: only the LGBTQ+ lane is ever sent from here
-    final lane = query['lane'] == 'lgbtq' ? 'lgbtq' : null;
+    // Preserve the selected protected space; the server remains the eligibility authority.
+    final lane = query['lane'] == 'lgbtq' || query['lane'] == 'women' ? query['lane'] : null;
     return Scaffold(
       appBar: AppBar(
         automaticallyImplyLeading: false,
-        leading: const HfBackButton(),
+        leading: IconButton(tooltip: 'Back', icon: const Icon(Icons.arrow_back_rounded), onPressed: () async {
+          await ref.read(pendingIntentProvider).clear();
+          if (context.mounted) popOrHome(context);
+        }),
         title: const Text('Start a call'),
       ),
       body: SafeArea(child: slug.isEmpty ? _noHost(context) : _confirm(context, ref, slug, lane)),
@@ -41,7 +45,8 @@ class CallConfirmPage extends ConsumerWidget {
       );
 
   Widget _confirm(BuildContext context, WidgetRef ref, String slug, String? lane) {
-    final name = ref.watch(callHostNameProvider(slug));
+    final name = lane == null ? ref.watch(callHostNameProvider(slug))
+        : ref.watch(callHostNameInLaneProvider((slug: slug, lane: lane)));
     return name.when(
       loading: () => const LoadingPanel(),
       error: (_, __) => _sheet(context, slug, '', lane),

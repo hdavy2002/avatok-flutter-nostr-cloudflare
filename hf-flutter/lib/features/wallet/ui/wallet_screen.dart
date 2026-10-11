@@ -2,12 +2,17 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../../core/analytics/analytics.dart';
 import '../../../core/api/api_error.dart';
 import '../../../core/auth/session.dart';
 import '../../../core/format/money.dart';
 import '../../../core/router/nav.dart';
+import '../../../core/router/routes.dart';
+import '../../../core/router/pending_intent.dart';
+import '../../call/data/call_api.dart';
+import '../billing/purchase_controller.dart';
 import '../../../core/theme/hf_tokens.dart';
 import '../../../core/widgets/widgets.dart';
 import '../data/wallet_models.dart';
@@ -45,6 +50,8 @@ class _WalletScreenState extends ConsumerState<WalletScreen> {
   @override
   void initState() {
     super.initState();
+    final next = Routes.safeNext(widget.query['next']);
+    if (next != null) unawaited(ref.read(pendingIntentProvider).save(next));
     // Recovery on each Wallet open: finish any purchase Play still lists but the server has not confirmed.
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
@@ -79,7 +86,7 @@ class _WalletScreenState extends ConsumerState<WalletScreen> {
         onAction: () => requireSignIn(context, ref),
       );
     } else {
-      body = _WalletBody(onRefresh: _refresh);
+      body = _WalletBody(onRefresh: _refresh, next: Routes.safeNext(widget.query['next']));
     }
     return Scaffold(
       appBar: AppBar(automaticallyImplyLeading: false, title: const Text(WalletCopy.title)),
@@ -90,7 +97,9 @@ class _WalletScreenState extends ConsumerState<WalletScreen> {
 
 /// Only built for a signed-in person, so a guest never reads the wallet.
 class _WalletBody extends ConsumerStatefulWidget {
-  const _WalletBody({required this.onRefresh});
+  const _WalletBody({required this.onRefresh, this.next});
+
+  final String? next;
 
   final Future<void> Function() onRefresh;
 
@@ -121,13 +130,15 @@ class _WalletBodyState extends ConsumerState<_WalletBody> {
         if (e is ApiError && e.isNotEnabled) return const ComingSoonPanel();
         return ErrorPanel(error: e, onRetry: () => ref.invalidate(walletProvider));
       },
-      data: (data) => _WalletList(data: data, onRefresh: widget.onRefresh),
+      data: (data) => _WalletList(data: data, onRefresh: widget.onRefresh, next: widget.next),
     );
   }
 }
 
 class _WalletList extends ConsumerWidget {
-  const _WalletList({required this.data, required this.onRefresh});
+  const _WalletList({required this.data, required this.onRefresh, this.next});
+
+  final String? next;
 
   final WalletData data;
   final Future<void> Function() onRefresh;
@@ -142,6 +153,32 @@ class _WalletList extends ConsumerWidget {
         physics: const AlwaysScrollableScrollPhysics(),
         padding: const EdgeInsets.all(HfSpacing.page),
         children: [
+          const HfScene(kind: HfSceneKind.wallet, height: 135),
+          const SizedBox(height: 16),
+          const Text('More room for good conversations', style: HfText.headline),
+          const SizedBox(height: 16),
+          if (next != null) ...[
+            HfCard(child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+              const Text('Your call is waiting for you', style: HfText.subtitle),
+              const SizedBox(height: 8),
+              const Text('Payments must be confirmed before money is available. You will review the latest price and balance before starting your call.', style: HfText.note),
+              const SizedBox(height: 12),
+              HfButton(key: const ValueKey('wallet-return-to-call'), label: 'Return to call',
+                icon: Icons.arrow_forward_rounded,
+                onPressed: !data.hasDebt && (data.tokenMode ? data.availableMicro > 0 : data.spendable > 0) && notice?.kind != NoticeKind.pending
+                  ? () async {
+                      final slug = Uri.parse(next!).queryParameters['host'];
+                      if (slug != null) ref.invalidate(callEstimateProvider(slug));
+                      await ref.read(pendingIntentProvider).clear();
+                      if (context.mounted) context.go(next!);
+                    } : null),
+              HfButton(label: 'Keep browsing', kind: HfButtonKind.text, onPressed: () async {
+                await ref.read(pendingIntentProvider).clear();
+                if (context.mounted) context.go(Routes.home);
+              }),
+            ])),
+            gap,
+          ],
           if (notice != null) ...[
             PurchaseNoticeCard(notice: notice, onDismiss: () => ref.read(purchaseControllerProvider.notifier).dismissNotice()),
             gap,
@@ -181,11 +218,14 @@ class _TokenBalanceCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return HfCard(
       key: const ValueKey<String>('token-balance'),
-      color: HfColors.lilac,
+      color: HfColors.white,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(WalletCopy.balance, style: HfText.label),
+          const Wrap(spacing: 8, crossAxisAlignment: WrapCrossAlignment.center, children: [
+            Icon(Icons.account_balance_wallet_rounded, color: HfColors.ink),
+            Text(WalletCopy.balance, style: HfText.label),
+          ]),
           const SizedBox(height: 4),
           Text('₹${data.balanceText}', key: const ValueKey<String>('balance-total'), style: HfText.hero),
           const SizedBox(height: 8),
@@ -220,11 +260,14 @@ class _LegacyBalanceCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return HfCard(
       key: const ValueKey<String>('legacy-balance'),
-      color: HfColors.lilac,
+      color: HfColors.white,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(WalletCopy.balance, style: HfText.label),
+          const Wrap(spacing: 8, crossAxisAlignment: WrapCrossAlignment.center, children: [
+            Icon(Icons.account_balance_wallet_rounded, color: HfColors.ink),
+            Text(WalletCopy.balance, style: HfText.label),
+          ]),
           const SizedBox(height: 4),
           Text(Money.rupees(data.paidBalance), key: const ValueKey<String>('balance-total'), style: HfText.hero),
           if (data.testBalance > 0) ...[
@@ -321,6 +364,9 @@ class _PurchaseRow extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          Container(padding: const EdgeInsets.all(10), margin: const EdgeInsets.only(right: 12),
+            decoration: BoxDecoration(color: HfColors.sky, borderRadius: BorderRadius.circular(14)),
+            child: const Icon(Icons.receipt_long_rounded, size: 22, color: HfColors.ink)),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -330,7 +376,7 @@ class _PurchaseRow extends StatelessWidget {
               ],
             ),
           ),
-          if (record.tokens != null) Text(record.tokens!, style: HfText.bodyStrong),
+          if (record.tokens != null) Flexible(child: Text(record.tokens!, style: HfText.bodyStrong, textAlign: TextAlign.end)),
         ],
       ),
     );
@@ -391,7 +437,7 @@ class _HistoryRow extends StatelessWidget {
               ),
             ),
             const SizedBox(width: 12),
-            Text(item.amountText, style: HfText.bodyStrong),
+            Flexible(child: Text(item.amountText, style: HfText.bodyStrong, textAlign: TextAlign.end)),
           ],
         ),
       ),

@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hf_app/core/auth/session.dart';
 import 'package:hf_app/core/theme/hf_theme.dart';
+import 'package:hf_app/core/storage/secure_store.dart';
 import 'package:hf_app/features/wallet/ui/wallet_screen.dart';
 import 'package:hf_app/features/wallet/wallet_providers.dart';
 
@@ -102,6 +103,7 @@ Future<ProviderContainer> pumpWallet(
   required FakeApiClient api,
   required FakeBillingAdapter billing,
   SessionState? session,
+  Map<String, String> query = const {},
 }) async {
   // A tall phone so the whole list is built and nothing needs scrolling.
   tester.view.physicalSize = const Size(1080, 7000);
@@ -111,6 +113,7 @@ Future<ProviderContainer> pumpWallet(
   final container = ProviderContainer(
     retry: (_, __) => null,
     overrides: [
+      secureStoreProvider.overrideWithValue(MemoryKeyValueStore()),
       sessionProvider.overrideWith(() => StubSession(session ?? signedInState())),
       apiClientProvider.overrideWithValue(api),
       billingAdapterProvider.overrideWithValue(billing),
@@ -120,7 +123,7 @@ Future<ProviderContainer> pumpWallet(
   addTearDown(container.dispose);
   await tester.pumpWidget(UncontrolledProviderScope(
     container: container,
-    child: MaterialApp(theme: buildHfTheme(), home: const WalletScreen()),
+    child: MaterialApp(theme: buildHfTheme(), home: WalletScreen(query: query)),
   ));
   await tester.pumpAndSettle();
   return container;

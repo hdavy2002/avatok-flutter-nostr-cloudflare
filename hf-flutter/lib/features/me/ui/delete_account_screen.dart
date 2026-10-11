@@ -295,7 +295,12 @@ class _DeleteAccountScreenState extends ConsumerState<DeleteAccountScreen> {
             padding: const EdgeInsets.all(HfSpacing.page),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: _content(context, s),
+              children: [
+                const HfScene(kind: HfSceneKind.profile, height: 110),
+                const SizedBox(height: 16),
+                HfCard(child: Column(crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: _content(context, s))),
+              ],
             ),
           ),
         ),

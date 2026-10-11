@@ -20,6 +20,9 @@ Map<String, Object?> laneMe({
   bool womenEligible = false,
   bool womenGranted = false,
   bool lgbtqGranted = false,
+  bool declared = false,
+  String selfieStatus = 'none',
+  String? selfieReason,
 }) =>
     {
       'whatsappVerified': true,
@@ -27,7 +30,7 @@ Map<String, Object?> laneMe({
       'gender': gender,
       'lanes': {
         'women': {'eligible': womenEligible, 'granted': womenGranted},
-        'lgbtq': {'declared': lgbtqGranted, 'granted': lgbtqGranted},
+        'lgbtq': {'declared': declared || lgbtqGranted, 'granted': lgbtqGranted, 'selfieStatus': selfieStatus, 'selfieReason': selfieReason},
       },
     };
 
@@ -47,6 +50,13 @@ void main() {
       pumpApp(tester, session: signedInState(), location: Routes.lanesOf(lane), api: api).then((_) {});
 
   Map<String, Object> lastJoinEvent() => log.named('hf_app_lane_join').last;
+
+  testWidgets('guest sees women eligibility before sign-in and makes no private request', (tester) async {
+    await pumpApp(tester, location: Routes.lanesOf('women'), api: api);
+    expect(find.byKey(const ValueKey<String>('lane-sign-in')), findsOneWidget);
+    expect(find.textContaining('female or transgender'), findsWidgets);
+    expect(api.callsTo('GET', _me), isEmpty);
+  });
 
   group('chooser', () {
     testWidgets('lists both spaces and opens the one that is tapped', (tester) async {
@@ -72,7 +82,10 @@ void main() {
     testWidgets('Aadhaar already done and female: tick, join, you are in', (tester) async {
       api
         ..onJson('GET', _me, laneMe(aadhaar: true, gender: 'F', womenEligible: true))
-        ..onJson('POST', '/api/hf/lanes/women/join', {'ok': true});
+        ..on('POST', '/api/hf/lanes/women/join', (_) {
+          api.onJson('GET', _me, laneMe(aadhaar: true, gender: 'F', womenEligible: true, womenGranted: true));
+          return {'ok': true, 'granted': true};
+        });
       await open(tester, lane: 'women');
 
       // The join button waits for the 18+ tick.
@@ -126,6 +139,7 @@ void main() {
         ..onJson('GET', _me, laneMe(aadhaar: true, gender: 'T', womenEligible: true))
         ..on('POST', '/api/hf/lanes/women/join', (_) {
           if (++n == 1) throw ApiError.network();
+          api.onJson('GET', _me, laneMe(aadhaar: true, gender: 'T', womenEligible: true, womenGranted: true));
           return {'ok': true};
         });
       await open(tester, lane: 'women');
@@ -142,7 +156,10 @@ void main() {
         ..onJson('GET', _me, laneMe())
         ..onJson('POST', _otp, {'ok': true, 'expires_in_s': 600})
         ..onJson('POST', _verify, {'ok': true, 'gender': 'F', 'last4': '1234'})
-        ..onJson('POST', '/api/hf/lanes/women/join', {'ok': true});
+        ..on('POST', '/api/hf/lanes/women/join', (_) {
+          api.onJson('GET', _me, laneMe(aadhaar: true, gender: 'F', womenEligible: true, womenGranted: true));
+          return {'ok': true, 'granted': true};
+        });
       await open(tester, lane: 'women');
 
       await tapKey(tester, 'lane-ack18');
@@ -180,7 +197,10 @@ void main() {
     testWidgets('needs both ticks, then sends declare and ack18', (tester) async {
       api
         ..onJson('GET', _me, laneMe(aadhaar: true, gender: 'M'))
-        ..onJson('POST', '/api/hf/lanes/lgbtq/join', {'ok': true});
+        ..on('POST', '/api/hf/lanes/lgbtq/join', (_) {
+          api.onJson('GET', _me, laneMe(aadhaar: true, gender: 'M', declared: true, selfieStatus: 'pending'));
+          return {'ok': true, 'granted': false, 'selfieStatus': 'pending'};
+        });
       await open(tester, lane: 'lgbtq');
 
       await tapKey(tester, 'lane-ack18');
@@ -190,8 +210,9 @@ void main() {
       await tapKey(tester, 'lane-declare');
       await tapKey(tester, 'lane-join');
       expect(api.callsTo('POST', '/api/hf/lanes/lgbtq/join').single.body, {'declare': true, 'ack18': true});
-      expect(find.byKey(const ValueKey<String>('lane-in')), findsOneWidget);
-      expect(lastJoinEvent(), {'lane': 'lgbtq', 'result': 'joined'});
+      expect(find.byKey(const ValueKey<String>('lane-in')), findsNothing);
+      expect(lastJoinEvent(), {'lane': 'lgbtq', 'result': 'pending'});
+      expect(find.byKey(const ValueKey<String>('lane-video-pending')), findsOneWidget);
     });
 
     testWidgets('a man can join this space: gender never blocks it', (tester) async {
@@ -216,7 +237,10 @@ void main() {
     testWidgets('telemetry never carries the declaration or gender', (tester) async {
       api
         ..onJson('GET', _me, laneMe(aadhaar: true, gender: 'T'))
-        ..onJson('POST', '/api/hf/lanes/lgbtq/join', {'ok': true});
+        ..on('POST', '/api/hf/lanes/lgbtq/join', (_) {
+          api.onJson('GET', _me, laneMe(aadhaar: true, gender: 'M', declared: true, selfieStatus: 'pending'));
+          return {'ok': true, 'granted': false, 'selfieStatus': 'pending'};
+        });
       await open(tester, lane: 'lgbtq');
       await tapKey(tester, 'lane-ack18');
       await tapKey(tester, 'lane-declare');
@@ -224,6 +248,33 @@ void main() {
       for (final e in log.events) {
         expect(e.$2.keys.toSet().difference({'lane', 'result', 'reason', 'status'}), isEmpty);
       }
+    });
+  });
+
+  group('private video authority', () {
+    test('old or inconsistent responses fail closed', () {
+      final old = laneMe(aadhaar: true, lgbtqGranted: true);
+      expect(LaneStatus.fromJson(Map<String, dynamic>.from(old)).lgbtqGranted, isFalse);
+      expect(LaneStatus.fromJson(Map<String, dynamic>.from(laneMe(aadhaar: true, lgbtqGranted: true, selfieStatus: 'approved'))).lgbtqGranted, isTrue);
+      expect(LaneStatus.fromJson(Map<String, dynamic>.from(laneMe(lgbtqGranted: true, selfieStatus: 'approved'))).lgbtqGranted, isFalse);
+    });
+
+    testWidgets('approved shared video opens access without recording again', (tester) async {
+      api.onJson('GET', _me, laneMe(aadhaar: true, lgbtqGranted: true, selfieStatus: 'approved'));
+      await open(tester, lane: 'lgbtq');
+      expect(find.byKey(const ValueKey<String>('lane-in')), findsOneWidget);
+      expect(api.callsTo('POST', '/api/hosts/kyc/selfie/code'), isEmpty);
+    });
+
+    testWidgets('rejection reason stays on the private screen and supports re-recording', (tester) async {
+      api.onJson('GET', _me, laneMe(aadhaar: true, declared: true, selfieStatus: 'rejected', selfieReason: 'Please keep your face visible.'));
+      api.onJson('POST', '/api/hosts/kyc/selfie/code', {'code': '1234'});
+      await open(tester, lane: 'lgbtq');
+      expect(find.byKey(const ValueKey<String>('lane-video-rejected')), findsOneWidget);
+      expect(find.text('Please keep your face visible.'), findsOneWidget);
+      expect(find.byKey(const ValueKey<String>('selfie-open-camera')), findsOneWidget);
+      expect(find.byKey(const ValueKey<String>('lane-browse')), findsNothing);
+      expect(log.events.any((e) => e.$2.toString().contains('Please keep your face')), isFalse);
     });
   });
 

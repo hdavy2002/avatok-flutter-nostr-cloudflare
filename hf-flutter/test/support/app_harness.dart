@@ -29,7 +29,10 @@ SessionState signedOutState() => const SessionState.signedOut();
 
 SessionState signedInState({bool host = false}) => SessionState(
       status: SessionStatus.signedIn,
-      me: HfMe(uid: 'user_test', host: host ? const HfMeHost(status: 'live', slug: 'asha') : null),
+      me: HfMe(
+        uid: 'user_test', displayName: 'Asha', ackVersion: 'hf-ack-v1',
+        host: host ? const HfMeHost(status: 'live', slug: 'asha') : null,
+      ),
     );
 
 /// Phone-sized screen (360x800 dp at 3x) so layout checks look like a real phone.

@@ -7,6 +7,7 @@ import '../../../core/config/flags.dart';
 import '../../../core/format/money.dart';
 import '../../../core/router/nav.dart';
 import '../../../core/router/routes.dart';
+import '../../../core/router/pending_intent.dart';
 import '../../../core/strings.dart';
 import '../../../core/theme/hf_tokens.dart';
 import '../../../core/widgets/widgets.dart';
@@ -31,7 +32,7 @@ Future<void> showCallConfirmSheet(
   required String hostName,
   String? lane,
 }) async {
-  if (!await requireSignIn(context, ref)) return;
+  if (!await requireSignIn(context, ref, next: Routes.callConfirmOf(slug, lane: lane))) return;
   if (!context.mounted) return;
   final router = GoRouter.of(context);
   final outcome = await showModalBottomSheet<CallSheetOutcome>(
@@ -49,7 +50,7 @@ Future<void> showCallConfirmSheet(
       onOutcome: (o) => Navigator.of(sheetContext).pop(o),
     ),
   );
-  if (outcome == null) return;
+  if (outcome == null) { await ref.read(pendingIntentProvider).clear(); return; }
   await handleCallSheetOutcome(router, outcome);
 }
 
@@ -69,11 +70,11 @@ Future<void> handleCallSheetOutcome(GoRouter router, CallSheetOutcome outcome, {
         await router.push(Routes.callOf(id));
       }
     case CallSheetAction.wallet:
-      router.go(Routes.wallet);
+      router.go(outcome.next == null ? Routes.wallet : Routes.walletWithNext(outcome.next!));
     case CallSheetAction.lane:
-      await router.push(Routes.lanesOf(outcome.value));
+      await router.push(Routes.lanesOf(outcome.value, next: outcome.next));
     case CallSheetAction.signIn:
-      await router.push(Routes.signIn);
+      await router.push(Routes.signInTo(outcome.next));
   }
 }
 
@@ -81,10 +82,11 @@ enum CallSheetAction { close, started, openCall, wallet, lane, signIn }
 
 /// What the sheet asks its host to do next. [value] is the call id, or the lane.
 class CallSheetOutcome {
-  const CallSheetOutcome(this.action, [this.value]);
+  const CallSheetOutcome(this.action, [this.value, this.next]);
 
   final CallSheetAction action;
   final String? value;
+  final String? next;
 }
 
 /// The body of the confirm sheet: host, price, estimate, the 2-minute rule, the safety reminder and Start call.
@@ -117,6 +119,16 @@ class _CallConfirmSheetState extends ConsumerState<CallConfirmSheet> {
   bool _notifying = false;
   String? _notifyMessage;
 
+  Future<void> _emit(CallSheetOutcome outcome) async {
+    final next = Routes.callConfirmOf(widget.slug, lane: widget.lane);
+    if ({CallSheetAction.wallet, CallSheetAction.lane, CallSheetAction.signIn}.contains(outcome.action)) {
+      await ref.read(pendingIntentProvider).save(next);
+    } else {
+      await ref.read(pendingIntentProvider).clear();
+    }
+    if (mounted) widget.onOutcome(CallSheetOutcome(outcome.action, outcome.value, next));
+  }
+
   String get _firstName {
     final n = widget.hostName.trim();
     return n.isEmpty ? 'your host' : n.split(RegExp(r'\s+')).first;
@@ -137,7 +149,7 @@ class _CallConfirmSheetState extends ConsumerState<CallConfirmSheet> {
       // Remembered before the screen opens, so killing the app right now still resumes the call.
       await ref.read(activeCallStoreProvider).save(started.callId);
       if (!mounted) return;
-      widget.onOutcome(CallSheetOutcome(CallSheetAction.started, started.callId));
+      _emit(CallSheetOutcome(CallSheetAction.started, started.callId));
     } on ApiError catch (e) {
       CallTelemetry.started(
           slug: widget.slug, ok: false, reason: e.code, httpStatus: e.status, ms: sw.elapsedMilliseconds);
@@ -152,7 +164,7 @@ class _CallConfirmSheetState extends ConsumerState<CallConfirmSheet> {
   Future<void> _resumeExisting() async {
     final id = await ref.read(activeCallStoreProvider).read();
     if (!mounted) return;
-    if (id != null) widget.onOutcome(CallSheetOutcome(CallSheetAction.openCall, id));
+    if (id != null) _emit(CallSheetOutcome(CallSheetAction.openCall, id));
   }
 
   Future<void> _notify() async {
@@ -203,6 +215,8 @@ class _CallConfirmSheetState extends ConsumerState<CallConfirmSheet> {
             ),
             const SizedBox(height: 16),
           ],
+          const HfScene(kind: HfSceneKind.call, height: 130),
+          const SizedBox(height: 12),
           Text('Call ${widget.hostName.trim().isEmpty ? 'your host' : widget.hostName.trim()}', style: HfText.headline),
           const SizedBox(height: 16),
           if (!callsOn)
@@ -223,7 +237,7 @@ class _CallConfirmSheetState extends ConsumerState<CallConfirmSheet> {
           HfButton(
             label: CallStrings.notNow,
             kind: HfButtonKind.text,
-            onPressed: () => widget.onOutcome(const CallSheetOutcome(CallSheetAction.close)),
+            onPressed: () => _emit(const CallSheetOutcome(CallSheetAction.close)),
           ),
         ],
       ),
@@ -238,10 +252,12 @@ class _CallConfirmSheetState extends ConsumerState<CallConfirmSheet> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         HfCard(
-          color: HfColors.lilac,
+          color: HfColors.white,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              const Text('Your call, at a glance', style: HfText.label),
+              const SizedBox(height: 8),
               Text('${Money.rupees(est.ratePerMinRupees)}/min', style: HfText.hero),
               const SizedBox(height: 8),
               Text(
@@ -268,13 +284,13 @@ class _CallConfirmSheetState extends ConsumerState<CallConfirmSheet> {
           _Warning(
             text: 'Please clear the amount owed before calling.',
             actionLabel: CallStrings.clearWhatYouOwe,
-            onAction: () => widget.onOutcome(const CallSheetOutcome(CallSheetAction.wallet)),
+            onAction: () => _emit(const CallSheetOutcome(CallSheetAction.wallet)),
           )
         else if (!est.canStart)
           _Warning(
             text: 'You need at least 2 minutes of balance to start. Add money to call.',
             actionLabel: CallStrings.addTokens,
-            onAction: () => widget.onOutcome(const CallSheetOutcome(CallSheetAction.wallet)),
+            onAction: () => _emit(const CallSheetOutcome(CallSheetAction.wallet)),
           )
         else ...[
           if (problem != null) ...[
@@ -285,7 +301,7 @@ class _CallConfirmSheetState extends ConsumerState<CallConfirmSheet> {
               notifying: _notifying,
               onNotify: _notify,
               onResume: _resumeExisting,
-              onOutcome: widget.onOutcome,
+              onOutcome: _emit,
             ),
             const SizedBox(height: 12),
           ],

@@ -47,7 +47,10 @@ class EarningsCard extends ConsumerWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text(HostCopy.earningsTitle, style: HfText.subtitle),
+              const Wrap(spacing: 12, runSpacing: 8, children: [
+                Icon(Icons.account_balance_wallet_rounded, color: HfColors.forest, size: 28),
+                Text(HostCopy.earningsTitle, style: HfText.subtitle),
+              ]),
               const SizedBox(height: 12),
               _Line(label: HostCopy.earningsAvailable, value: e.available, keyName: 'earn-available', big: true),
               _Line(label: HostCopy.earningsPending, value: e.pending, keyName: 'earn-pending'),
@@ -87,13 +90,15 @@ class _Line extends StatelessWidget {
   Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 6),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
-          Expanded(child: Text(label, style: big ? HfText.bodyStrong : HfText.bodyText)),
-          const SizedBox(width: 12),
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(color: big ? HfColors.mint : HfColors.cream, borderRadius: BorderRadius.circular(18)),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(label, style: big ? HfText.bodyStrong : HfText.bodyText),
+          const SizedBox(height: 6),
           Text(value, key: ValueKey<String>(keyName), style: big ? HfText.title : HfText.bodyStrong),
-        ],
+        ]),
       ),
     );
   }

@@ -9,7 +9,8 @@ import 'package:hf_app/core/widgets/widgets.dart';
 import 'package:hf_app/features/explore/data/explore_controller.dart';
 import 'package:hf_app/features/explore/data/host_filters.dart';
 import 'package:hf_app/features/explore/data/hosts_repository.dart';
-import 'package:hf_app/features/auth/ui/sign_in_screen.dart';
+import 'package:hf_app/core/auth/session.dart';
+import 'package:hf_app/core/auth/hf_me.dart';
 import 'package:hf_app/features/explore/ui/filter_sheet.dart';
 import 'package:hf_app/features/host_profile/ui/host_profile_screen.dart';
 import 'package:hf_app/features/lanes/ui/lanes_screen.dart';
@@ -108,6 +109,7 @@ void main() {
       expect(find.text('No one matches. Try fewer filters.'), findsOneWidget);
       expect(listCalls(api).first.query!['online'], '1');
 
+      await tester.ensureVisible(find.text('Clear filters'));
       await tester.tap(find.text('Clear filters'));
       await tester.pumpAndSettle();
       expect(listCalls(api).last.query!.containsKey('online'), isFalse);
@@ -121,6 +123,7 @@ void main() {
       expect(find.text('No internet. Check your connection.'), findsOneWidget);
 
       api.onJson('GET', '/api/hf/hosts', pageJson([hostJson('asha')]));
+      await tester.ensureVisible(find.text('Try again'));
       await tester.tap(find.text('Try again'));
       await tester.pumpAndSettle();
       expect(find.text('Host asha'), findsOneWidget);
@@ -137,16 +140,17 @@ void main() {
   });
 
   group('lanes', () {
-    testWidgets('signed out: a lane tab asks to sign in and does not call the server', (tester) async {
+    testWidgets('signed out: a lane link explains the space before registration and does not read private hosts', (tester) async {
       final api = fakeApi()..onJson('GET', '/api/hf/hosts', pageJson([hostJson('asha')]));
       await pumpScreen(tester, api: api, location: '/explore?lane=women');
       expect(find.text('Sign in to enter this space'), findsOneWidget);
       expect(listCalls(api), isEmpty);
 
-      await tester.tap(find.widgetWithText(HfButton, 'Sign in'));
+      await tester.ensureVisible(find.widgetWithText(HfButton, 'About this space'));
+      await tester.tap(find.widgetWithText(HfButton, 'About this space'));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 600));
-      expect(find.byType(SignInScreen), findsOneWidget);
+      expect(find.byType(LanesScreen), findsOneWidget);
     });
 
     testWidgets('403 lane_required shows the Verify to join panel that opens the lanes route', (tester) async {
@@ -158,6 +162,7 @@ void main() {
       expect(listCalls(api).single.auth, isTrue);
       expect(listCalls(api).single.query!['lane'], 'lgbtq');
 
+      await tester.ensureVisible(find.widgetWithText(HfButton, 'Verify to join'));
       await tester.tap(find.widgetWithText(HfButton, 'Verify to join'));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 600));
@@ -168,10 +173,11 @@ void main() {
       final api = fakeApi()
         ..on('GET', '/api/hf/hosts', (call) {
           final lane = call.query!['lane'];
-          return pageJson([hostJson(lane == null ? 'all' : 'lane-$lane', name: lane == null ? 'Everyone' : 'Lane host')]);
+          return pageJson([hostJson(lane == null ? 'all' : 'lane-$lane', name: lane == null ? 'Public host' : 'Lane host')]);
         });
-      final c = await pumpScreen(tester, api: api, session: signedInState());
-      expect(find.text('Everyone'), findsOneWidget);
+      final c = await pumpScreen(tester, api: api, session: const SessionState(
+        status: SessionStatus.signedIn, me: HfMe(uid: 'member', womenLane: true)));
+      expect(find.text('Public host'), findsOneWidget);
 
       await tester.tap(find.text('Women-only'));
       await tester.pumpAndSettle();
@@ -179,9 +185,9 @@ void main() {
       expect(location(c).queryParameters['lane'], 'women');
       expect(listCalls(api).last.query!['lane'], 'women');
 
-      await tester.tap(find.text('All'));
+      await tester.tap(find.text('Everyone'));
       await tester.pumpAndSettle();
-      expect(find.text('Everyone'), findsOneWidget);
+      expect(find.text('Public host'), findsOneWidget);
       expect(location(c).toString(), '/explore');
     });
   });
@@ -316,6 +322,7 @@ void main() {
       expect(c.read(exploreControllerProvider).items, hasLength(4));
 
       fail = false;
+      await tester.ensureVisible(find.text('Try again'));
       await tester.tap(find.text('Try again'));
       await tester.pumpAndSettle();
       expect(c.read(exploreControllerProvider).items, hasLength(5));

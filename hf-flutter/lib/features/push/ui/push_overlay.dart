@@ -32,7 +32,7 @@ class _PushOverlayState extends ConsumerState<PushOverlay> {
   GoRouter? _router;
 
   /// The sheet never opens over these: the person is still getting in.
-  static const Set<String> _quietPaths = {Routes.splash, Routes.welcome, Routes.signIn};
+  static const Set<String> _quietPaths = {Routes.splash, Routes.welcome, Routes.signIn, Routes.completeProfile};
 
   @override
   void initState() {

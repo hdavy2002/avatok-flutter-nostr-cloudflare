@@ -104,6 +104,9 @@ class _HostDashboardScreenState extends ConsumerState<HostDashboardScreen> {
           );
         }
         final sections = <Widget>[
+          const HfScene(kind: HfSceneKind.host, height: 150),
+          const Text('Your hosting corner', style: HfText.title),
+          const Text('Make room for a good conversation. You choose when you are available.', style: HfText.bodyText),
           if (!s.isLive) StatusBanner(status: s, onAction: _openOnboarding),
           if (s.isLive) ...const [PresenceCard(), TodayCard(), CallsSection()],
           if (s.showsMoney) ...[
@@ -118,15 +121,12 @@ class _HostDashboardScreenState extends ConsumerState<HostDashboardScreen> {
           child: SingleChildScrollView(
             physics: const AlwaysScrollableScrollPhysics(),
             padding: const EdgeInsets.all(HfSpacing.page),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
+            child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
                 for (var i = 0; i < sections.length; i++) ...[
                   if (i > 0) const SizedBox(height: HfSpacing.gapLarge),
                   sections[i],
                 ],
-              ],
-            ),
+              ]),
           ),
         );
       },

@@ -38,7 +38,7 @@ abstract final class MeCopy {
   static const String join = 'Join';
   static const String leave = 'Leave';
   static const String leaveTitle = 'Leave this space?';
-  static const String leaveBody = 'You can join again later. You will have to verify again.';
+  static const String leaveBody = 'You can join again later with a fresh declaration. Valid identity and approved video checks can be reused.';
   static const String leaveStay = 'Stay';
   static const String leaveYes = 'Leave';
   static const String hostTitle = 'Host';
@@ -242,8 +242,10 @@ class _MeScreenState extends ConsumerState<MeScreen> with WidgetsBindingObserver
   // ---- signed out -----------------------------------------------------------------------------------
 
   List<Widget> _signedOut(BuildContext context) => [
+        const HfScene(kind: HfSceneKind.profile, height: 150),
+        const SizedBox(height: 16),
         HfCard(
-          color: HfColors.lilac,
+          color: HfColors.white,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -273,7 +275,22 @@ class _MeScreenState extends ConsumerState<MeScreen> with WidgetsBindingObserver
     final me = session.me;
     final name = _savedName ?? me?.displayName;
     return [
+      const HfScene(kind: HfSceneKind.profile, height: 130),
+      const SizedBox(height: 16),
       _profileCard(name, me),
+      const SizedBox(height: 16),
+      HfCard(child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        const Text('Make yourself at home', style: HfText.subtitle),
+        const SizedBox(height: 8),
+        const Text('Your conversations, your spaces, your choices.', style: HfText.note),
+        const SizedBox(height: 12),
+        Wrap(spacing: 8, runSpacing: 8, children: [
+          HfButton(label: 'Browse people', expand: false, kind: HfButtonKind.secondary,
+            icon: Icons.search_rounded, onPressed: () => context.go(Routes.home)),
+          HfButton(label: 'My wallet', expand: false, kind: HfButtonKind.secondary,
+            icon: Icons.account_balance_wallet_outlined, onPressed: () => context.go(Routes.wallet)),
+        ]),
+      ])),
       if (me?.closing ?? false) ...[
         const SizedBox(height: HfSpacing.gap),
         HfCard(
@@ -339,40 +356,22 @@ class _MeScreenState extends ConsumerState<MeScreen> with WidgetsBindingObserver
     final shownName = (name == null || name.trim().isEmpty) ? null : name.trim();
     final phone = me?.phoneMasked;
     return HfCard(
-      child: Row(
-        children: [
-          Container(
-            width: 52,
-            height: 52,
-            decoration: const BoxDecoration(color: HfColors.lilac, shape: BoxShape.circle),
-            child: const Icon(Icons.person_rounded, color: HfColors.orchid, size: 28),
-          ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Row(children: [
+          Container(width: 60, height: 60,
+            decoration: BoxDecoration(color: HfColors.coral, borderRadius: BorderRadius.circular(22)),
+            child: const Icon(Icons.person_rounded, color: HfColors.ink, size: 32)),
           const SizedBox(width: 14),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  shownName ?? MeCopy.noName,
-                  key: const ValueKey<String>('me-name'),
-                  style: shownName != null ? HfText.subtitle : HfText.subtitle.copyWith(color: HfColors.mauve),
-                ),
-                if (phone != null) ...[
-                  const SizedBox(height: 2),
-                  Text('${MeCopy.whatsapp} $phone', key: const ValueKey<String>('me-phone'), style: HfText.note),
-                ],
-              ],
-            ),
-          ),
-          IconButton(
-            key: const ValueKey<String>('me-edit-name'),
-            tooltip: MeCopy.editName,
-            constraints: const BoxConstraints(minWidth: HfSpacing.tap, minHeight: HfSpacing.tap),
-            onPressed: () => unawaited(_editName(shownName)),
-            icon: const Icon(Icons.edit_rounded, color: HfColors.orchid),
-          ),
-        ],
-      ),
+          Expanded(child: Text(shownName ?? MeCopy.noName,
+            key: const ValueKey<String>('me-name'), style: HfText.headline)),
+        ]),
+        const SizedBox(height: 16),
+        if (phone != null) Text('${MeCopy.whatsapp} $phone', key: const ValueKey<String>('me-phone'), style: HfText.note),
+        const SizedBox(height: 12),
+        HfButton(key: const ValueKey<String>('me-edit-name'), label: MeCopy.editName,
+          kind: HfButtonKind.secondary, icon: Icons.edit_rounded,
+          onPressed: () => unawaited(_editName(shownName))),
+      ]),
     );
   }
 
@@ -443,7 +442,7 @@ class _MeScreenState extends ConsumerState<MeScreen> with WidgetsBindingObserver
     }
     return HfCard(
       key: const ValueKey<String>('me-become-host'),
-      color: HfColors.butter,
+      color: HfColors.white,
       onTap: () => unawaited(context.push(Routes.hostOnboarding)),
       child: const Row(
         children: [
@@ -520,6 +519,9 @@ class _MeScreenState extends ConsumerState<MeScreen> with WidgetsBindingObserver
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
           child: Row(
             children: [
+              Container(padding: const EdgeInsets.all(8), margin: const EdgeInsets.only(right: 12),
+                decoration: BoxDecoration(color: HfColors.sky, borderRadius: BorderRadius.circular(12)),
+                child: Icon(key == 'help' ? Icons.help_outline_rounded : Icons.article_outlined, size: 20, color: HfColors.ink)),
               Expanded(child: Text(label, style: HfText.bodyText)),
               const Icon(Icons.open_in_new_rounded, size: 20, color: HfColors.mauve),
             ],

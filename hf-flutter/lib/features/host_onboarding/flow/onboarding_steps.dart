@@ -139,7 +139,7 @@ bool _anyProgress(OnboardingServerState s) =>
 final List<OnboardingStepDef> kOnboardingSteps = <OnboardingStepDef>[
   const OnboardingStepDef(OnboardingKeys.welcome, OnboardingGroup.start, 'Welcome', _anyProgress),
   OnboardingStepDef(OnboardingKeys.phone, OnboardingGroup.verify, 'Your WhatsApp number', (s) => s.phoneVerified),
-  OnboardingStepDef(OnboardingKeys.aadhaar, OnboardingGroup.verify, 'Aadhaar check', (s) => s.kyc.aadhaarDone),
+  OnboardingStepDef(OnboardingKeys.aadhaar, OnboardingGroup.verify, 'Aadhaar check', (s) => s.kyc.aadhaarDone && s.kyc.role != KycRole.laneCaller.wire),
   OnboardingStepDef(
     OnboardingKeys.selfie,
     OnboardingGroup.verify,

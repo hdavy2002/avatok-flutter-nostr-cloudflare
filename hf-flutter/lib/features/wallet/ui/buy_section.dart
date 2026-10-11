@@ -139,10 +139,15 @@ class _Packs extends ConsumerWidget {
           _Plain(text: phaseText, loading: true),
           const SizedBox(height: HfSpacing.gap),
         ],
-        for (final o in offers.offers) ...[
-          _PackCard(offer: o, enabled: offers.storeAvailable && !purchase.busy && o.store != null),
-          const SizedBox(height: HfSpacing.gap),
-        ],
+        LayoutBuilder(builder: (context, constraints) {
+          final columns = constraints.maxWidth >= 620 && MediaQuery.textScalerOf(context).scale(14) <= 21 ? 2 : 1;
+          final width = (constraints.maxWidth - (columns - 1) * HfSpacing.gap) / columns;
+          return Wrap(spacing: HfSpacing.gap, runSpacing: HfSpacing.gap, children: [
+            for (final o in offers.offers) SizedBox(width: width,
+              child: _PackCard(offer: o, enabled: offers.storeAvailable && !purchase.busy && o.store != null)),
+          ]);
+        }),
+        const SizedBox(height: HfSpacing.gap),
         const Text(BuyCopy.paidViaPlay, style: HfText.note),
       ],
     );
@@ -164,6 +169,15 @@ class _PackCard extends ConsumerWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          Container(padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(color: HfColors.mint, borderRadius: BorderRadius.circular(18)),
+            child: const Icon(Icons.forum_rounded, color: HfColors.ink, size: 28)),
+          const SizedBox(height: 16),
+          if (credit != null) ...[
+            Text(Money.paise(credit), style: HfText.headline),
+            const Text('conversation balance', style: HfText.note),
+            const SizedBox(height: 12),
+          ],
           if (price != null) ...[
             Text(price, style: HfText.subtitle),
             Text(BuyCopy.gstOnPack, key: ValueKey<String>('gst-${offer.productId}'), style: HfText.note),

@@ -4,7 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../analytics/analytics.dart';
 import '../links.dart';
 import '../theme/hf_tokens.dart';
-import '../widgets/hf_button.dart';
+import '../widgets/widgets.dart';
 import 'update_check.dart';
 
 /// Copy of the update prompts (kept here, next to the widgets).
@@ -120,7 +120,7 @@ class UpdateBanner extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: HfColors.blush,
+      color: HfColors.white,
       child: SafeArea(
         bottom: false,
         child: Padding(
@@ -130,7 +130,7 @@ class UpdateBanner extends StatelessWidget {
             children: [
               Row(
                 children: [
-                  const Icon(Icons.system_update_rounded, color: HfColors.rose),
+                  const Icon(Icons.system_update_rounded, color: HfColors.ink),
                   const SizedBox(width: 12),
                   const Expanded(child: Text(UpdateCopy.bannerText, style: HfText.bodyStrong)),
                   TextButton(
@@ -181,11 +181,11 @@ class UpdateRequiredScreen extends StatelessWidget {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                const Icon(Icons.system_update_rounded, size: 64, color: HfColors.orchid),
+                const HfScene(kind: HfSceneKind.success, height: 160),
                 const SizedBox(height: 16),
                 const Text(UpdateCopy.forcedTitle, style: HfText.title, textAlign: TextAlign.center),
                 const SizedBox(height: 12),
-                const Text(UpdateCopy.forcedBody, style: HfText.bodyText, textAlign: TextAlign.center),
+                const HfCard(child: Text(UpdateCopy.forcedBody, style: HfText.bodyText, textAlign: TextAlign.center)),
                 const SizedBox(height: HfSpacing.gapLarge),
                 HfButton(
                   key: const ValueKey<String>('update-required-button'),

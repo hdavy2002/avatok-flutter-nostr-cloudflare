@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/misc.dart' show Override;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hf_app/app.dart';
 import 'package:hf_app/core/auth/hf_me.dart';
+import 'package:hf_app/core/auth/clerk_client.dart';
 import 'package:hf_app/core/auth/session.dart';
 import 'package:hf_app/core/boot.dart';
 import 'package:hf_app/core/links.dart';
@@ -12,6 +13,7 @@ import 'package:hf_app/features/me/data/me_telemetry.dart';
 import 'package:hf_app/features/me/data/notification_control.dart';
 
 import '../../support/app_harness.dart';
+import '../../support/fake_clerk.dart';
 import '../../support/fake_api_client.dart';
 import '../../support/kyc_fakes.dart' show FakeLinkOpener;
 
@@ -46,7 +48,7 @@ SessionState meSession({
     SessionState(
       status: SessionStatus.signedIn,
       me: HfMe(
-        uid: 'user_test',
+        uid: 'user_test', ackVersion: 'hf-ack-v1',
         displayName: name,
         phoneMasked: phone,
         womenLane: women,
@@ -108,6 +110,7 @@ Future<ProviderContainer> pumpMe(
   }
   final container = ProviderContainer(overrides: <Override>[
     sessionProvider.overrideWith(() => RecordingSession(session)),
+    clerkProvider.overrideWithValue(FakeClerk(user: session.isSignedIn ? ClerkUser(id: session.user?.id ?? session.me!.uid) : null)),
     apiClientProvider.overrideWithValue(api),
     secureStoreProvider.overrideWithValue(MemoryKeyValueStore()),
     initialLocationProvider.overrideWithValue(location),

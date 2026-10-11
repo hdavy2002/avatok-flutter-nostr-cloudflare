@@ -38,14 +38,16 @@ class SignInController extends ChangeNotifier {
     required this.redeem,
     required this.afterSignIn,
     required this.readAcked,
+    this.onNewAccount,
     SignInTelemetry? telemetry,
   }) : _telemetry = telemetry ?? _defaultTelemetry;
 
   final ApiClient api;
   final RedeemTicket redeem;
   final AfterSignIn afterSignIn;
+  final Future<void> Function()? onNewAccount;
 
-  /// True when this device already holds the 18+ and safety acceptance (Welcome came first).
+  /// Legacy construction seam. Device-global acceptance is deliberately never trusted.
   final Future<bool> Function() readAcked;
   final SignInTelemetry _telemetry;
 
@@ -56,6 +58,14 @@ class SignInController extends ChangeNotifier {
   /// False until [init] has read the local acceptance.
   bool loaded = false;
   bool ackedBefore = false;
+  bool registration = false;
+  bool isNewAccount = false;
+
+  void setRegistration(bool value) {
+    registration = value;
+    ageTick = false;
+    _notify();
+  }
   bool ageTick = false;
 
   /// The 10 digits after +91.
@@ -77,19 +87,16 @@ class SignInController extends ChangeNotifier {
   Timer? _timer;
   bool _disposed = false;
 
-  /// No acceptance on this device (Welcome was skipped): the number step shows the 18+ tick itself.
-  bool get needsTick => loaded && !ackedBefore;
+  /// Explicit registration asks for fresh consent. Existing login only asks for the number/code.
+  bool get needsTick => loaded && registration;
 
   bool get canSend => loaded && digits.length == 10 && !sending && (!needsTick || ageTick);
   bool get canResend => resendIn == 0 && !sending && !verifying;
   String get e164 => toE164India(digits);
 
   Future<void> init() async {
-    try {
-      ackedBefore = await readAcked();
-    } catch (_) {
-      ackedBefore = false;
-    }
+    // A device or former account acknowledgement cannot consent for this number.
+    ackedBefore = false;
     loaded = true;
     _notify();
   }
@@ -97,7 +104,9 @@ class SignInController extends ChangeNotifier {
   void trackStarted(String from) => _track('hf_app_signin_started', {'from': from});
 
   void setDigits(String value) {
-    digits = normalizeIndianMobile(value);
+    final normalized = normalizeIndianMobile(value);
+    if (normalized != digits) ageTick = false;
+    digits = normalized;
     if (errorField == 'phone') {
       error = null;
       errorField = null;
@@ -225,7 +234,7 @@ class SignInController extends ChangeNotifier {
         'phone': e164,
         'code': cleaned,
         'client': 'android',
-        if (ackedBefore || ageTick) 'age_confirmed': true,
+        if (ageTick) 'age_confirmed': true,
       }, auth: false);
       final ticket = res['ticket'];
       if (ticket is! String || ticket.isEmpty || res['ok'] == false) {
@@ -242,7 +251,8 @@ class SignInController extends ChangeNotifier {
         );
       }
       stage = 'ticket';
-      final isNew = res['isNew'] == true;
+      final isNew = res['isNew'] == true || res['is_new'] == true;
+      isNewAccount = isNew;
       final clerk = await redeem(ticket, phone: e164);
       if (!clerk.isComplete) {
         return _fail(
@@ -255,8 +265,9 @@ class SignInController extends ChangeNotifier {
           extra: {'clerk_error': clerk.error ?? ''},
         );
       }
+      if (isNew) await onNewAccount?.call();
       try {
-        await afterSignIn(tickedNow: !ackedBefore && ageTick);
+        await afterSignIn(tickedNow: ageTick);
       } catch (_) {
         // The acceptance is kept on the device and retried later; it never undoes a good sign-in.
       }

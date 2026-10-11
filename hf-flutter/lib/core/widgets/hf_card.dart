@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../theme/hf_tokens.dart';
 
-/// White card: radius 18, line border, soft shadow. Pass `onTap` to make the whole card tappable.
+/// White bento card, generous corners and visible soft elevation. Optional whole-card action.
 class HfCard extends StatelessWidget {
   const HfCard({
     super.key,

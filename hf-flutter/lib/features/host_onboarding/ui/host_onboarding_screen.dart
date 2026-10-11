@@ -60,7 +60,7 @@ class _HostOnboardingScreenState extends ConsumerState<HostOnboardingScreen> {
   Future<void> _routeDigiLockerReturn() async {
     final p = await ref.read(digiLockerPendingStoreProvider).read();
     if (!mounted) return;
-    if (p != null && p.role == KycRole.laneCaller) context.go(Routes.lanesOf(p.lane));
+    if (p != null && p.role == KycRole.laneCaller) context.go(Routes.lanesOf(p.lane, next: p.next));
   }
 
   Future<OnboardingServerState> _refresh() => ref.refresh(onboardingStateProvider.future);
@@ -180,8 +180,8 @@ class _ProgressHeader extends StatelessWidget {
             child: LinearProgressIndicator(
               value: (index + 1) / total,
               minHeight: 8,
-              backgroundColor: HfColors.lilac,
-              color: HfColors.orchid,
+              backgroundColor: HfColors.white,
+              color: HfColors.forest,
             ),
           ),
         ],

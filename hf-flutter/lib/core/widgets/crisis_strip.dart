@@ -22,9 +22,10 @@ class CrisisStrip extends StatelessWidget {
       width: double.infinity,
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: HfColors.butter,
+        color: HfColors.white,
         borderRadius: BorderRadius.circular(HfRadius.card),
-        border: Border.all(color: HfColors.butterDeep),
+        border: Border.all(color: HfColors.line),
+        boxShadow: HfShadows.card,
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -32,7 +33,7 @@ class CrisisStrip extends StatelessWidget {
           const Text(Strings.crisisTitle, style: HfText.subtitle),
           const SizedBox(height: 12),
           // At large text sizes the two buttons stack, so the labels never overflow.
-          if (MediaQuery.textScalerOf(context).scale(14) > 22)
+          if (MediaQuery.textScalerOf(context).scale(14) > 22 || MediaQuery.sizeOf(context).width < 380)
             Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [call(Strings.crisisTeleManas, Strings.crisisTeleManasNumber), const SizedBox(height: 12), call(Strings.crisisEmergency, Strings.crisisEmergencyNumber)],

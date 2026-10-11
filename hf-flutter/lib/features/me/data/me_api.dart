@@ -1,4 +1,5 @@
 import 'dart:math';
+import 'dart:convert';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -25,18 +26,38 @@ String? _str(Object? v) {
 
 /// `PATCH /api/hf/me {displayName}`. A refusal is `400 invalid_field {field:'displayName', message}`.
 class MeApi {
-  const MeApi(this._api);
+  const MeApi(this._api, this._ref);
 
   final ApiClient _api;
+  final Ref _ref;
+
+  String? get _uid {
+    final session = _ref.read(sessionProvider);
+    return session.isSignedIn ? (session.user?.id ?? session.me?.uid) : null;
+  }
 
   /// Returns the name as the server saved it (trimmed, spaces tidied).
-  Future<String> updateName(String name) async {
-    final j = await _api.patchJson('/api/hf/me', body: {'displayName': name});
+  Future<String> updateName(String name, {required String expectedUid}) async {
+    const changed = ApiError(status: 401, code: 'account_changed',
+      message: 'Your account changed. Please open your profile again.');
+    if (_uid != expectedUid) throw changed;
+    final jwt = await _ref.read(clerkProvider).sessionToken();
+    if (_uid != expectedUid || jwt == null) throw changed;
+    try {
+      final parts = jwt.split('.');
+      if (parts.length != 3) throw changed;
+      final claims = jsonDecode(utf8.decode(base64Url.decode(base64Url.normalize(parts[1]))));
+      if (claims is! Map || claims['sub'] != expectedUid) throw changed;
+    } on ApiError { rethrow; } catch (_) { throw changed; }
+    // Keep this mutation on its original account even if Clerk changes while it is in flight.
+    final j = ApiClient.asMap(await _api.request('PATCH', '/api/hf/me', auth: false,
+      headers: {'Authorization': 'Bearer $jwt'}, body: {'displayName': name}));
+    if (_uid != expectedUid) throw changed;
     return _str(j['displayName']) ?? name;
   }
 }
 
-final meApiProvider = Provider<MeApi>((ref) => MeApi(ref.watch(apiClientProvider)));
+final meApiProvider = Provider<MeApi>((ref) => MeApi(ref.watch(apiClientProvider), ref));
 
 /// Where an account closure stands (`exit` in `GET /api/hf/account/exit`).
 class ExitProgress {

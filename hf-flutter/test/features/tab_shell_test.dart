@@ -13,10 +13,10 @@ Finder tabLabel(String label) =>
     find.descendant(of: find.byType(HfTabBar), matching: find.text(label));
 
 void main() {
-  testWidgets('a guest sees Home, Explore, Wallet and Me, and no Host tab', (tester) async {
+  testWidgets('a guest sees Browse, Wallet and Me, and no Host tab', (tester) async {
     await pumpApp(tester);
     expect(find.byType(HfTabBar), findsOneWidget);
-    for (final l in ['Home', 'Explore', 'Wallet', 'Me']) {
+    for (final l in ['Browse', 'Wallet', 'Me']) {
       expect(tabLabel(l), findsOneWidget, reason: l);
     }
     expect(tabLabel('Host'), findsNothing);
@@ -34,10 +34,10 @@ void main() {
 
   testWidgets('tapping a tab opens its screen', (tester) async {
     await pumpApp(tester);
-    await tester.tap(find.byKey(const ValueKey<String>('tab-explore')));
+    await tester.tap(find.byKey(const ValueKey<String>('tab-home')));
     await tester.pumpAndSettle();
     expect(find.byKey(const ValueKey<String>('open-filters')), findsOneWidget);
-    expect(find.text('Explore'), findsWidgets);
+    expect(find.text('Browse'), findsWidgets);
   });
 
   testWidgets('Wallet needs sign-in: a guest lands on sign-in with next', (tester) async {
@@ -94,7 +94,7 @@ void main() {
 
   testWidgets('every tab label is at least 14 sp', (tester) async {
     await pumpApp(tester, session: signedInState(host: true));
-    for (final l in ['Home', 'Explore', 'Wallet', 'Host', 'Me']) {
+    for (final l in ['Browse', 'Wallet', 'Host', 'Me']) {
       final text = tester.widget<Text>(tabLabel(l));
       final style = DefaultTextStyle.of(tester.element(tabLabel(l))).style.merge(text.style);
       expect(style.fontSize, greaterThanOrEqualTo(14), reason: l);

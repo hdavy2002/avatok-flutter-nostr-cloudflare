@@ -29,12 +29,12 @@ class TodayCard extends ConsumerWidget {
           children: [
             const Text(HostCopy.todayTitle, style: HfText.subtitle),
             const SizedBox(height: 12),
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
+            Wrap(
+              spacing: 12, runSpacing: 12,
               children: [
-                _Stat(label: HostCopy.todayCalls, value: '${d.todayCalls}', keyName: 'today-calls'),
-                _Stat(label: HostCopy.todayMinutes, value: '${d.todayMinutes}', keyName: 'today-minutes'),
-                _Stat(label: HostCopy.todayEarned, value: Money.rupees(d.todayEarningRupees), keyName: 'today-earned'),
+                _Stat(label: HostCopy.todayCalls, value: '${d.todayCalls}', keyName: 'today-calls', color: HfColors.sky),
+                _Stat(label: HostCopy.todayMinutes, value: '${d.todayMinutes}', keyName: 'today-minutes', color: HfColors.lavender),
+                _Stat(label: HostCopy.todayEarned, value: Money.rupees(d.todayEarningRupees), keyName: 'today-earned', color: HfColors.butter),
               ],
             ),
           ],
@@ -45,15 +45,19 @@ class TodayCard extends ConsumerWidget {
 }
 
 class _Stat extends StatelessWidget {
-  const _Stat({required this.label, required this.value, required this.keyName});
+  const _Stat({required this.label, required this.value, required this.keyName, required this.color});
 
   final String label;
   final String value;
   final String keyName;
+  final Color color;
 
   @override
   Widget build(BuildContext context) {
-    return Expanded(
+    return Container(
+      constraints: const BoxConstraints(minWidth: 120),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(20)),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -158,11 +162,10 @@ class CallRow extends StatelessWidget {
       constraints: const BoxConstraints(minHeight: HfSpacing.tap),
       padding: const EdgeInsets.symmetric(vertical: 10),
       decoration: const BoxDecoration(border: Border(bottom: BorderSide(color: HfColors.line))),
-      child: Row(
+      child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Expanded(
-            child: Column(
+          Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(call.callerHandle ?? 'A caller', style: HfText.bodyStrong),
@@ -181,9 +184,8 @@ class CallRow extends StatelessWidget {
                   ),
                 ],
               ],
-            ),
           ),
-          const SizedBox(width: 12),
+          const SizedBox(height: 8),
           if (paid)
             Text(Money.rupees(call.earningRupees), key: ValueKey<String>('earned-${call.id}'), style: HfText.bodyStrong),
         ],

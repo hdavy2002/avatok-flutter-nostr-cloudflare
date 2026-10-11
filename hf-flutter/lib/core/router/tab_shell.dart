@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 import '../auth/session.dart';
 import '../strings.dart';
 import '../theme/hf_tokens.dart';
+import 'pending_intent.dart';
 
 /// Branch indexes of the shell, in router order. The Host tab always has a branch (so `/host` works as a
 /// deep link) but its button shows only when the person has a host profile.
@@ -27,8 +28,7 @@ class _TabSpec {
 }
 
 const List<_TabSpec> _allTabs = [
-  _TabSpec(TabBranch.home, Strings.tabHome, Icons.home_outlined, Icons.home_rounded, 'tab-home'),
-  _TabSpec(TabBranch.explore, Strings.tabExplore, Icons.explore_outlined, Icons.explore_rounded, 'tab-explore'),
+  _TabSpec(TabBranch.home, Strings.tabHome, Icons.search_rounded, Icons.search_rounded, 'tab-home'),
   _TabSpec(TabBranch.wallet, Strings.tabWallet, Icons.account_balance_wallet_outlined,
       Icons.account_balance_wallet_rounded, 'tab-wallet'),
   _TabSpec(TabBranch.host, Strings.tabHost, Icons.storefront_outlined, Icons.storefront_rounded, 'tab-host'),
@@ -72,9 +72,12 @@ class HfTabShell extends ConsumerWidget {
         body: navigationShell,
         bottomNavigationBar: HfTabBar(
           tabs: [for (final t in tabs) HfTabItem(key: t.key, label: t.label, icon: t.icon, iconSelected: t.iconSelected)],
-          selected: tabs.indexWhere((t) => t.branch == navigationShell.currentIndex),
-          onTap: (i) {
+          selected: tabs.indexWhere((t) => t.branch == (navigationShell.currentIndex == TabBranch.explore ? TabBranch.home : navigationShell.currentIndex)),
+          onTap: (i) async {
             final branch = tabs[i].branch;
+            if (branch == TabBranch.home && navigationShell.currentIndex == TabBranch.explore) return;
+            await ref.read(pendingIntentProvider).clear();
+            if (!context.mounted) return;
             navigationShell.goBranch(branch, initialLocation: branch == navigationShell.currentIndex);
           },
         ),
@@ -91,8 +94,7 @@ class HfTabItem {
   final IconData iconSelected;
 }
 
-/// 64 dp bar, a lilac pill behind the selected icon, 14 sp labels (the floor), text scale clamped to 1.15
-/// so a large system font never overflows the bar.
+/// Pill navigation grows with system text, retaining the full accessibility scale.
 class HfTabBar extends StatelessWidget {
   const HfTabBar({super.key, required this.tabs, required this.selected, required this.onTap});
 
@@ -105,7 +107,7 @@ class HfTabBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final media = MediaQuery.of(context);
-    final scale = media.textScaler.clamp(maxScaleFactor: 1.15);
+    final scale = media.textScaler;
     return MediaQuery(
       data: media.copyWith(textScaler: scale),
       child: Material(
@@ -115,7 +117,7 @@ class HfTabBar extends StatelessWidget {
         child: SafeArea(
           top: false,
           child: SizedBox(
-            height: 64,
+            height: 64 + (scale.scale(14) - 14) * 3,
             child: Row(
               children: [
                 for (var i = 0; i < tabs.length; i++)
@@ -152,23 +154,23 @@ class _TabButton extends StatelessWidget {
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             AnimatedContainer(
-              duration: const Duration(milliseconds: 180),
+              duration: MediaQuery.disableAnimationsOf(context) ? Duration.zero : const Duration(milliseconds: 180),
               width: 56,
               height: 30,
               decoration: BoxDecoration(
-                color: selected ? HfColors.lilac : Colors.transparent,
+                color: selected ? HfColors.ink : Colors.transparent,
                 borderRadius: BorderRadius.circular(HfRadius.pill),
               ),
               child: Icon(
                 selected ? item.iconSelected : item.icon,
                 size: 24,
-                color: selected ? HfColors.orchid : HfColors.mauve,
+                color: selected ? HfColors.white : HfColors.mauve,
               ),
             ),
             const SizedBox(height: 2),
             Text(
               item.label,
-              maxLines: 1,
+              maxLines: 2,
               overflow: TextOverflow.ellipsis,
               style: HfText.label.copyWith(
                 fontWeight: selected ? FontWeight.w700 : FontWeight.w500,

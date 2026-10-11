@@ -10,11 +10,10 @@ import '../../../core/router/deep_link_handler.dart';
 import '../../../core/router/routes.dart';
 import '../../../core/theme/hf_tokens.dart';
 import '../../call/data/call_api.dart';
-import '../../welcome/data/ack_service.dart';
+import '../../../core/router/pending_intent.dart';
+import '../../../core/widgets/widgets.dart';
 
-/// Cold start: shows the brand while the session and the flags load (capped at 6 s). Then: Welcome (18+ and
-/// safety rules) when this device and account have not accepted the current version; else a link that arrived
-/// during start; else Home.
+/// Boot restoration only, with no artificial animation delay. Public browsing never requires consent.
 class SplashScreen extends ConsumerStatefulWidget {
   const SplashScreen({super.key});
 
@@ -36,26 +35,14 @@ class _SplashScreenState extends ConsumerState<SplashScreen> {
       // boot never throws, and a failure must not strand the person here
     }
     if (!mounted) return;
-    // 18+ and safety rules first (spec 2.1): this device or this account must have accepted the current
-    // version. A link that arrived during start stays pending: Welcome releases it after Continue.
-    var welcomeFirst = false;
-    try {
-      welcomeFirst = await ref.read(ackServiceProvider).needsWelcomeNow();
-    } catch (_) {
-      // An unreadable ack must not trap the person on the splash: ask them again, which is safe.
-      welcomeFirst = true;
-    }
-    if (!mounted) return;
-    if (welcomeFirst) {
-      context.go(Routes.welcome);
-      return;
-    }
     final handler = ref.read(deepLinkHandlerProvider);
     ref.read(bootDoneProvider.notifier).markDone();
     final opened = await handler.flushPending();
     if (!mounted) return;
     if (opened) return;
-    context.go(Routes.home);
+    final pending = await ref.read(pendingIntentProvider).read();
+    if (!mounted) return;
+    context.go(pending ?? Routes.home);
     // [HF-NATIVE-FIX-1] A call that is still going when the app starts: go back into it (Home stays underneath).
     try {
       final callId = await ref.read(activeCallResumeProvider.future);
@@ -74,14 +61,11 @@ class _SplashScreenState extends ConsumerState<SplashScreen> {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Image.asset(
-                'assets/images/logo.png',
-                width: 96,
-                height: 96,
-                errorBuilder: (_, __, ___) => const SizedBox(width: 96, height: 96),
-              ),
+              const HfScene(kind: HfSceneKind.discover, height: 190, animated: true),
               const SizedBox(height: 16),
               const Text(Brand.name, style: HfText.headline),
+              const SizedBox(height: 8),
+              const Text('A little hello. A real connection.', style: HfText.bodyText),
               const SizedBox(height: 24),
               const SizedBox(
                 width: 28,

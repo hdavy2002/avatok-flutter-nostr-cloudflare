@@ -8,7 +8,7 @@ import '../../data/host_profile.dart';
 import '../../host_profile_strings.dart';
 import 'net_image.dart';
 
-/// A small rounded label (languages, topics, badges). 14 sp or more, never green.
+/// A readable pill label for languages, topics and server-provided badges.
 class HfTag extends StatelessWidget {
   const HfTag({
     super.key,
@@ -66,62 +66,50 @@ class ProfileHeader extends ConsumerWidget {
       if (profile.lgbtqFriendly)
         const HfTag(label: HostProfileStrings.lgbtqBadge, icon: Icons.diversity_1_rounded),
     ];
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Semantics(
-          image: true,
-          label: '${profile.displayName}, ${HostProfileStrings.aiAvatarAlt}',
-          excludeSemantics: true,
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(HfRadius.card),
-            child: AspectRatio(
-              aspectRatio: 1,
-              child: Stack(
-                fit: StackFit.expand,
-                children: [
-                  if (avatar != null) image(context, avatar, fit: BoxFit.cover) else const PicturePlaceholder(),
-                  const Positioned(left: 12, right: 12, bottom: 12, child: Align(alignment: Alignment.bottomLeft, child: AiLabel())),
-                ],
-              ),
-            ),
-          ),
-        ),
-        const SizedBox(height: HfSpacing.gapLarge),
-        Semantics(header: true, child: Text(profile.displayName, style: HfText.headline)),
-        if (profile.tagline != null) ...[
-          const SizedBox(height: 6),
-          Text(profile.tagline!, style: HfText.bodyText),
-        ],
-        const SizedBox(height: HfSpacing.gap),
-        Wrap(
-          spacing: 12,
-          runSpacing: 8,
-          crossAxisAlignment: WrapCrossAlignment.center,
-          children: [
-            StatusPill(presence: profile.status),
-            _RatingLine(profile: profile),
-          ],
-        ),
-        const SizedBox(height: HfSpacing.gap),
-        Wrap(
-          spacing: 12,
-          crossAxisAlignment: WrapCrossAlignment.end,
-          children: [
+    final picture = Semantics(image: true,
+      label: '${profile.displayName}, ${HostProfileStrings.aiAvatarAlt}', excludeSemantics: true,
+      child: ClipRRect(borderRadius: BorderRadius.circular(26),
+        child: SizedBox(width: 156, height: 178,
+          child: Stack(fit: StackFit.expand, children: [
+            if (avatar != null) image(context, avatar, fit: BoxFit.cover) else const PicturePlaceholder(),
+            const Positioned(left: 8, right: 8, bottom: 8,
+              child: Align(alignment: Alignment.bottomLeft, child: AiLabel())),
+          ]))));
+    final identity = Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Semantics(header: true, child: Text(profile.displayName, style: HfText.hero)),
+      const SizedBox(height: 10),
+      StatusPill(presence: profile.status),
+      if (profile.tagline != null) ...[
+        const SizedBox(height: 10), Text(profile.tagline!, style: HfText.bodyText)],
+    ]);
+    return HfCard(padding: const EdgeInsets.all(16),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        LayoutBuilder(builder: (context, c) {
+          if (c.maxWidth<320 || MediaQuery.textScalerOf(context).scale(16)>22) {
+            return Column(crossAxisAlignment: CrossAxisAlignment.start,
+              children: [picture, const SizedBox(height: 16), identity]);
+          }
+          return Row(crossAxisAlignment: CrossAxisAlignment.start,
+            children: [picture, const SizedBox(width: 16), Expanded(child: identity)]);
+        }),
+        const SizedBox(height: 18),
+        Wrap(spacing: 16, runSpacing: 10, children: [
+          _RatingLine(profile: profile),
+          if (profile.languages.isNotEmpty) Text(profile.languages.join(' · '), style: HfText.bodyText),
+        ]),
+        const SizedBox(height: 18),
+        Container(padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(color: HfColors.cream, borderRadius: BorderRadius.circular(22)),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Text('${Money.rupees(price)}/min', style: HfText.title),
-            Text('10 min ≈ ${Money.rupees(price * 10)}', style: HfText.note),
-          ],
-        ),
-        if (est != null && est.isTokens && est.aboutText != null) ...[
-          const SizedBox(height: 4),
-          Text(est.aboutText!, style: HfText.note),
-        ],
+            const SizedBox(height: 4),
+            if (est != null && est.isTokens && est.aboutText != null)
+              Text(est.aboutText!, style: HfText.note)
+            else const Text('See your estimate before starting a call.', style: HfText.note),
+          ])),
         if (badges.isNotEmpty) ...[
-          const SizedBox(height: HfSpacing.gap),
-          Wrap(spacing: 8, runSpacing: 8, children: badges),
-        ],
-      ],
-    );
+          const SizedBox(height: 14), Wrap(spacing: 8, runSpacing: 8, children: badges)],
+      ]));
   }
 }
 
@@ -140,8 +128,10 @@ class _RatingLine extends StatelessWidget {
     return Semantics(
       label: '${rating.toStringAsFixed(1)} out of 5, $n ${n == 1 ? 'review' : 'reviews'}',
       excludeSemantics: true,
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
+      child: Wrap(
+        spacing: 4,
+        runSpacing: 4,
+        crossAxisAlignment: WrapCrossAlignment.center,
         children: [
           const Icon(Icons.star_rounded, size: 22, color: HfColors.orchid),
           const SizedBox(width: 4),

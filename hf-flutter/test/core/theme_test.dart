@@ -36,14 +36,13 @@ void main() {
     }
   });
 
-  test('the palette has no green', () {
-    for (final c in [
-      HfColors.plum, HfColors.cream, HfColors.lilac, HfColors.blush, HfColors.butter, HfColors.butterDeep,
-      HfColors.orchid, HfColors.mauve, HfColors.line, HfColors.accent, HfColors.rose, HfColors.white,
-    ]) {
-      final hsv = HSVColor.fromColor(c);
-      final isGreen = hsv.saturation > 0.2 && hsv.value > 0.2 && hsv.hue > 75 && hsv.hue < 165;
-      expect(isGreen, isFalse, reason: '$c');
+  test('approved bento surfaces keep readable ink and visible elevation', () {
+    for (final surface in [HfColors.white, HfColors.cream, HfColors.mint,
+      HfColors.sky, HfColors.lavender, HfColors.butter, HfColors.blush, HfColors.coral]) {
+      final contrast = (surface.computeLuminance() + 0.05) / (HfColors.ink.computeLuminance() + 0.05);
+      expect(contrast, greaterThanOrEqualTo(4.5), reason: '$surface');
     }
+    expect(HfColors.white, isNot(HfColors.cream));
+    expect(HfShadows.card, isNotEmpty);
   });
 }

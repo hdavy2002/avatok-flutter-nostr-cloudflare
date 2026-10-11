@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hf_app/core/widgets/status_pill.dart';
+import 'package:hf_app/core/config/flags.dart';
 import 'package:hf_app/features/explore/widgets/widgets.dart';
 
 import 'explore_test_support.dart';
@@ -12,7 +13,8 @@ HostCard card(String slug, {String status = 'online', String? intro, double? rat
 Future<FakeIntroAudio> pumpCards(WidgetTester tester, List<Widget> cards) async {
   final audio = FakeIntroAudio();
   await tester.pumpWidget(ProviderScope(
-    overrides: [introAudioProvider.overrideWithValue(audio)],
+    overrides: [introAudioProvider.overrideWithValue(audio),
+      flagsProvider.overrideWith((ref) async => HfFlags.unknown)],
     child: MaterialApp(
       home: Scaffold(
         body: SingleChildScrollView(child: Column(children: cards)),
@@ -35,11 +37,13 @@ void main() {
     final playB = find.byKey(const ValueKey<String>('intro-b'));
 
     expect(find.byIcon(Icons.play_arrow_rounded), findsNWidgets(2));
+    await tester.ensureVisible(playA);
     await tester.tap(playA);
     await tester.pump();
     expect(audio.played, ['https://x/a.m4a']);
     expect(find.byIcon(Icons.pause_rounded), findsOneWidget);
 
+    await tester.ensureVisible(playB);
     await tester.tap(playB);
     await tester.pump();
     expect(audio.played, ['https://x/a.m4a', 'https://x/b.m4a']);
@@ -48,6 +52,7 @@ void main() {
     expect(find.descendant(of: playB, matching: find.byIcon(Icons.pause_rounded)), findsOneWidget);
     expect(find.descendant(of: playA, matching: find.byIcon(Icons.play_arrow_rounded)), findsOneWidget);
 
+    await tester.ensureVisible(playB);
     await tester.tap(playB);
     await tester.pump();
     expect(audio.pauses, 1);
@@ -82,7 +87,7 @@ void main() {
     expect(size.height, greaterThanOrEqualTo(48));
   });
 
-  testWidgets('every status has its pill; none of them is green', (tester) async {
+  testWidgets('every status has a distinct labelled pill', (tester) async {
     await pumpCards(tester, [
       HostCardView(host: card('a', status: 'online'), animate: false),
       HostCardView(host: card('b', status: 'busy'), animate: false),
@@ -94,7 +99,7 @@ void main() {
     expect(find.byType(StatusPill), findsNWidgets(3));
   });
 
-  testWidgets('rating shows stars and count, or New for an unrated host; the AI picture label is always there',
+  testWidgets('rating shows stars and count, or New for an unrated host; the AI avatar label is always there',
       (tester) async {
     await pumpCards(tester, [
       HostCardView(host: card('a', rating: 4.5, reviews: 3), animate: false),
@@ -102,15 +107,15 @@ void main() {
     ]);
     expect(find.textContaining('4.5'), findsOneWidget);
     expect(find.text('New'), findsOneWidget);
-    expect(find.text('AI picture'), findsNWidgets(2));
+    expect(find.text('AI avatar'), findsNWidgets(2));
   });
 
-  testWidgets('the mini card (Online now strip) shows name, price, status and the AI picture label', (tester) async {
+  testWidgets('the mini card (Online now strip) shows name, price, status and the AI avatar label', (tester) async {
     await pumpCards(tester, [HostMiniCard(host: card('a'), animate: false)]);
     expect(find.text('Host a'), findsOneWidget);
     expect(find.text('₹10/min'), findsOneWidget);
     expect(find.text('Online now'), findsOneWidget);
-    expect(find.text('AI picture'), findsOneWidget);
+    expect(find.text('AI avatar'), findsOneWidget);
   });
 
   testWidgets('tap on a card runs onTap', (tester) async {

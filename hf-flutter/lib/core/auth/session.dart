@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../analytics/analytics.dart';
+import '../router/pending_intent.dart';
 import '../api/api_client.dart';
 import '../api/api_error.dart';
 import '../storage/account_storage.dart';
@@ -125,23 +126,30 @@ class SessionController extends Notifier<SessionState> {
   /// Reload `GET /api/hf/me`. A failure keeps the previous value and records [SessionState.meError].
   Future<void> refreshMe() async {
     if (!state.isSignedIn) return;
+    final uid = state.user?.id;
     try {
       final json = await _api.getJson('/api/hf/me');
+      if (!state.isSignedIn || state.user?.id != uid) return;
       state = state.copyWith(me: HfMe.fromJson(json), clearMeError: true);
     } on ApiError catch (e) {
+      if (!state.isSignedIn || state.user?.id != uid) return;
       state = state.copyWith(meError: e);
     }
   }
 
   Future<void> _adopt(ClerkUser user, {String? phone}) async {
+    final sameAccount = AccountScope.id == user.id;
+    if (!sameAccount) await ref.read(pendingIntentProvider).clear();
     AccountScope.id = user.id;
-    state = SessionState(status: SessionStatus.signedIn, user: user, me: state.me);
+    state = SessionState(status: SessionStatus.signedIn, user: user, me: sameAccount ? state.me : null);
     await Analytics.identify(user.id, phone: phone);
     await Analytics.aliasClerk(user.id);
     await refreshMe();
   }
 
   Future<void> _clearLocal() async {
+    await ref.read(pendingIntentProvider).clear();
+    await ref.read(pendingIntentProvider).clearGuest();
     try {
       await ref.read(jsonCacheProvider).clearAll(); // while AccountScope.id is still set
     } catch (_) {

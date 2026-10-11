@@ -39,7 +39,7 @@ async function readJson(req: Request): Promise<Record<string, unknown>> {
 async function kycSummary(env: Env, uid: string) {
   const [kyc, selfie, payout] = await Promise.all([
     env.DB_META.prepare("SELECT role, aadhaar_last4, gender, verified_at FROM hf_kyc WHERE uid=?1").bind(uid).first<{ role: string; aadhaar_last4: string | null; gender: string | null; verified_at: number | null }>().catch(() => null),
-    env.DB_META.prepare("SELECT review_status, review_reason FROM hf_selfie WHERE uid=?1 ORDER BY created_at DESC LIMIT 1").bind(uid).first<{ review_status: string; review_reason: string | null }>().catch(() => null),
+    env.DB_META.prepare("SELECT review_status, review_reason FROM hf_selfie WHERE uid=?1 ORDER BY created_at DESC, id DESC LIMIT 1").bind(uid).first<{ review_status: string; review_reason: string | null }>().catch(() => null),
     env.DB_META.prepare("SELECT name_match, account_last4, upi_verified FROM hf_payout WHERE uid=?1").bind(uid).first<{ name_match: number; account_last4: string | null; upi_verified: number }>().catch(() => null),
   ]);
   return {

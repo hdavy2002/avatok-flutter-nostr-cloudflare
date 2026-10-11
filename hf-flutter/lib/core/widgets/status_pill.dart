@@ -21,7 +21,7 @@ enum HostPresence {
   }
 }
 
-/// "Online now" / "On a call" / "Offline". NEVER green (owner rule): online is rose text on blush with
+/// "Online now" / "On a call" / "Offline". Approved native status palette with
 /// a pulsing dot. Text is 14 sp bold. Pass `animate: false` in widget tests (a repeating animation never
 /// settles); the dot also stays still when the phone has animations turned off.
 class StatusPill extends StatefulWidget {
@@ -69,8 +69,8 @@ class _StatusPillState extends State<StatusPill> with SingleTickerProviderStateM
   @override
   Widget build(BuildContext context) {
     final (String text, Color fg, Color bg, Color border) = switch (widget.presence) {
-      HostPresence.online => ('Online now', HfColors.rose, HfColors.blush, HfColors.blush),
-      HostPresence.busy => ('On a call', HfColors.orchid, HfColors.lilac, HfColors.lilac),
+      HostPresence.online => ('Online now', HfColors.forest, HfColors.mint, HfColors.mint),
+      HostPresence.busy => ('On a call', HfColors.ink, HfColors.butter, HfColors.butter),
       HostPresence.offline => ('Offline', HfColors.mauve, HfColors.white, HfColors.line),
     };
     return Semantics(

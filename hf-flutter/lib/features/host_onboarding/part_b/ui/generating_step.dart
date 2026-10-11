@@ -217,6 +217,7 @@ class _GeneratingStepState extends ConsumerState<GeneratingStep> {
 
   Widget _following() {
     return PartBStep(
+      scene: HfSceneKind.profile,
       title: PartBCopy.generatingTitle,
       lead: PartBCopy.generatingLead,
       children: [
@@ -243,6 +244,7 @@ class _GeneratingStepState extends ConsumerState<GeneratingStep> {
   Widget _failed() {
     final tries = kMaxGenerationTries - _attempts;
     return PartBStep(
+      scene: HfSceneKind.profile,
       title: PartBCopy.generatingTitle,
       lead: PartBCopy.generatingLead,
       bottom: [
@@ -275,6 +277,7 @@ class _GeneratingStepState extends ConsumerState<GeneratingStep> {
   Widget _ready() {
     final tries = kMaxGenerationTries - _attempts;
     return PartBStep(
+      scene: HfSceneKind.profile,
       title: PartBCopy.generatingReadyTitle,
       lead: PartBCopy.generatingReadyBody,
       bottom: [
@@ -332,7 +335,7 @@ class _StageRow extends StatelessWidget {
     switch (state) {
       case 'done':
       case 'skipped':
-        icon = const Icon(Icons.check_circle_rounded, size: 28, color: HfColors.orchid);
+        icon = const Icon(Icons.check_circle_rounded, size: 28, color: HfColors.forest);
       case 'working':
         icon = const Padding(
           padding: EdgeInsets.all(3),
@@ -353,8 +356,11 @@ class _StageRow extends StatelessWidget {
           children: [
             SizedBox(width: 32, height: 32, child: Center(child: icon)),
             const SizedBox(width: 12),
-            Expanded(child: Text(label, style: HfText.bodyStrong)),
-            Text(_word, style: HfText.note),
+            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(label, style: HfText.bodyStrong),
+              const SizedBox(height: 4),
+              Text(_word, style: HfText.note),
+            ])),
           ],
         ),
       ),

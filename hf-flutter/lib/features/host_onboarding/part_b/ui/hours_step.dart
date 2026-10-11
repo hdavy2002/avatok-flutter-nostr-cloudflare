@@ -192,6 +192,7 @@ class _HoursStepState extends ConsumerState<HoursStep> {
     final problem = _saver.saveProblem;
     final isWoman = ctx.state.kyc.gender == 'F';
     return PartBStep(
+      scene: HfSceneKind.host,
       title: PartBCopy.hoursTitle,
       lead: PartBCopy.hoursLead,
       bottom: [
@@ -223,13 +224,14 @@ class _HoursStepState extends ConsumerState<HoursStep> {
         ),
         if (_saver.errorOf('hours') != null) InlineError(_saver.errorOf('hours')!),
         const SizedBox(height: 12),
-        Row(
-          children: [
-            Expanded(child: _TimeBox(label: PartBCopy.fromLabel, value: _from, boxKey: 'hours-from', onTap: hoursLocked ? null : () => unawaited(_pickTime(from: true)))),
-            const SizedBox(width: 12),
-            Expanded(child: _TimeBox(label: PartBCopy.toLabel, value: _to, boxKey: 'hours-to', onTap: hoursLocked ? null : () => unawaited(_pickTime(from: false)))),
-          ],
-        ),
+        LayoutBuilder(builder: (context, constraints) {
+          final from = _TimeBox(label: PartBCopy.fromLabel, value: _from, boxKey: 'hours-from', onTap: hoursLocked ? null : () => unawaited(_pickTime(from: true)));
+          final to = _TimeBox(label: PartBCopy.toLabel, value: _to, boxKey: 'hours-to', onTap: hoursLocked ? null : () => unawaited(_pickTime(from: false)));
+          if (constraints.maxWidth < 340 || MediaQuery.textScalerOf(context).scale(14) > 20) {
+            return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [from, const SizedBox(height: 12), to]);
+          }
+          return Row(children: [Expanded(child: from), const SizedBox(width: 12), Expanded(child: to)]);
+        }),
         const SizedBox(height: 16),
         const GroupLegend(PartBCopy.comfortTitle),
         _switch('hours-health', _health, PartBCopy.healthConsent,
@@ -271,7 +273,7 @@ class _TimeBox extends StatelessWidget {
           constraints: const BoxConstraints(minHeight: 64),
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
           decoration: BoxDecoration(
-            color: HfColors.white,
+            color: HfColors.sky,
             borderRadius: radius,
             border: Border.all(color: HfColors.line, width: 1.5),
           ),

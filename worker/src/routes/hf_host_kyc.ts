@@ -145,11 +145,6 @@ async function digilockerStart(req: Request, env: Env, ctx: ExecutionContext | u
   if (isFail(u)) return err(u.status, u.error);
   const uid = u.uid;
   const emit = makeEmit(env, ctx, uid);
-  if (!sandboxConfigured(env) || !piiKeyConfigured(env)) {
-    // Fail closed before creating a DigiLocker session we could not store the result of.
-    await trackException(env, new Error("hf_kyc not configured (SANDBOX_* or HF_PII_KEY)"), { uid, route: "/api/hosts/kyc/digilocker/start", handled: true, app_name: APP, extra: { area: "hf_kyc" } });
-    return err(503, "kyc_unavailable", NOT_AVAILABLE);
-  }
   const b = await readJson(req);
   if (b.consent !== true) return err(400, "consent_required", { message: "Please agree to the Aadhaar verification notice to continue.", field: "consent" });
   const role = b.role === "lane_caller" ? "lane_caller" : "host";
@@ -162,6 +157,12 @@ async function digilockerStart(req: Request, env: Env, ctx: ExecutionContext | u
       await env.DB_META.prepare("UPDATE hf_kyc SET role='host', updated_at=?2 WHERE uid=?1").bind(uid, Date.now()).run();
     }
     return json({ ok: true, already_verified: true, gender: done.gender, last4: done.aadhaar_last4 });
+  }
+
+  if (!sandboxConfigured(env) || !piiKeyConfigured(env)) {
+    // Fail closed before creating a DigiLocker session we could not store the result of.
+    await trackException(env, new Error("hf_kyc not configured (SANDBOX_* or HF_PII_KEY)"), { uid, route: "/api/hosts/kyc/digilocker/start", handled: true, app_name: APP, extra: { area: "hf_kyc" } });
+    return err(503, "kyc_unavailable", NOT_AVAILABLE);
   }
 
   const lim = (await limited(env, `hfkyc_dl_h:${uid}`, 3, 3600, "Too many DigiLocker attempts. Please try again in an hour."))
@@ -537,7 +538,7 @@ async function status(req: Request, env: Env): Promise<Response> {
   if (isFail(u)) return err(u.status, u.error);
   const [kyc, selfie, payout] = await Promise.all([
     kycRow(env, u.uid).catch(() => null),
-    env.DB_META.prepare("SELECT review_status, review_reason FROM hf_selfie WHERE uid=?1 ORDER BY created_at DESC LIMIT 1").bind(u.uid)
+    env.DB_META.prepare("SELECT review_status, review_reason FROM hf_selfie WHERE uid=?1 ORDER BY created_at DESC, id DESC LIMIT 1").bind(u.uid)
       .first<{ review_status: string; review_reason: string | null }>().catch(() => null),
     env.DB_META.prepare("SELECT name_match, account_last4, upi_verified FROM hf_payout WHERE uid=?1").bind(u.uid)
       .first<{ name_match: number; account_last4: string | null; upi_verified: number }>().catch(() => null),
@@ -660,7 +661,7 @@ async function adminDecide(req: Request, env: Env, ctx: ExecutionContext | undef
 
   const row = selfieId
     ? await env.DB_META.prepare("SELECT id, review_status FROM hf_selfie WHERE id=?1 AND uid=?2").bind(selfieId, targetUid).first<{ id: string; review_status: string }>()
-    : await env.DB_META.prepare("SELECT id, review_status FROM hf_selfie WHERE uid=?1 AND review_status='pending' ORDER BY created_at DESC LIMIT 1").bind(targetUid).first<{ id: string; review_status: string }>();
+    : await env.DB_META.prepare("SELECT id, review_status FROM hf_selfie WHERE uid=?1 AND review_status='pending' ORDER BY created_at DESC, id DESC LIMIT 1").bind(targetUid).first<{ id: string; review_status: string }>();
   if (!row) return err(404, "no_pending_selfie");
   if (row.review_status !== "pending") return err(409, "already_reviewed", { status: row.review_status });
 

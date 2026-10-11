@@ -127,9 +127,13 @@ abstract final class DeepLinks {
   static DeepLinkTarget _resolveSite(List<String> rawSegments, Uri uri) {
     final s = rawSegments.where((e) => e.isNotEmpty).toList();
     final q = uri.queryParameters;
-    if (s.isEmpty) return const OpenRoute(Routes.home);
+    if (s.isEmpty) {
+      final browse = Uri.parse(_exploreFrom(q));
+      return OpenRoute(browse.hasQuery ? Uri(path: Routes.home, query: browse.query).toString() : Routes.home);
+    }
 
     switch (s[0]) {
+      case 'explore':
       case 'marketplace':
       case 'talk':
         if (s.length == 1) return OpenRoute(_exploreFrom(q));
@@ -141,10 +145,35 @@ abstract final class DeepLinks {
         if (s.length == 1) return OpenRoute(Routes.exploreWith(lane: 'lgbtq'));
         break;
       case 'h':
-        if (s.length == 2) return OpenRoute(Routes.hostProfileOf(s[1]));
+        if (s.length == 2) {
+          final profile = Uri.parse(Routes.hostProfileOf(s[1], lane: q['lane']));
+          if (q['action'] == 'notify') {
+            return OpenRoute(profile.replace(queryParameters: {...profile.queryParameters, 'action': 'notify',
+              if (q['notify'] == 'on' || q['notify'] == 'off') 'notify': q['notify']!,
+            }).toString());
+          }
+          return OpenRoute(profile.toString());
+        }
         break;
       case 'people':
         if (s.length == 2) return const OpenRoute(Routes.explore);
+        break;
+      case 'call':
+        if (s.length == 2) {
+          if (s[1] == 'new') {
+            final slug = q['host'];
+            if (slug == null || slug.isEmpty) return const OpenRoute(Routes.explore);
+            return OpenRoute(Routes.callConfirmOf(slug, lane: q['lane']));
+          }
+          return OpenRoute(Routes.callOf(s[1]));
+        }
+        break;
+      case 'lanes':
+        if (s.length == 1) return OpenRoute(Routes.lanesOf(q['lane'], next: Routes.safeNext(q['next'])));
+        break;
+      case 'me':
+        if (s.length == 1) return const OpenRoute(Routes.me);
+        if (s.length == 2 && s[1] == 'delete') return const OpenRoute(Routes.meDelete);
         break;
       case 'wallet':
         if (s.length == 1) return OpenRoute(_withQuery(Routes.wallet, uri));
@@ -153,6 +182,7 @@ abstract final class DeepLinks {
         if (s.length == 2 && s[1] == 'wallet') return OpenRoute(_withQuery(Routes.wallet, uri));
         break;
       case 'review':
+        if (s.length == 3 && s[1] == 'call') return OpenRoute(Routes.reviewCallOf(s[2]));
         if (s.length == 2) return OpenRoute(Routes.reviewTokenOf(s[1]));
         break;
       case 'hosts':
@@ -160,7 +190,7 @@ abstract final class DeepLinks {
       case 'verify':
         if (s.length == 2 && s[1] == 'lane') {
           final lane = q['lane'];
-          return OpenRoute(Routes.lanesOf(_isLane(lane) ? lane : null));
+          return OpenRoute(Routes.lanesOf(_isLane(lane) ? lane : null, next: Routes.safeNext(q['next'])));
         }
         break;
       case 'account':
@@ -168,7 +198,7 @@ abstract final class DeepLinks {
         break;
       case 'sign-in':
       case 'sign-up':
-        return const OpenRoute(Routes.signIn);
+        return OpenRoute(Routes.signInTo(Routes.safeNext(q['next'])));
       case '.well-known':
       case '_astro':
       case 'api':
@@ -205,7 +235,7 @@ abstract final class DeepLinks {
 
   static String _digiLockerLocation(Map<String, String> q) {
     final step = _nonEmpty(q['step']) ?? 'aadhaar';
-    return Uri(path: Routes.hostOnboarding, queryParameters: {'step': step, 'dl': 'return'}).toString();
+    return Uri(path: Routes.hostOnboarding, queryParameters: {'step': step, 'dl': 'return', if (Routes.safeNext(q['next']) != null) 'next': q['next']!}).toString();
   }
 
   static const Set<String> _exploreKeys = {'lane', 'topics', 'lang', 'max', 'online'};
@@ -221,8 +251,10 @@ abstract final class DeepLinks {
     return keep.isEmpty ? Routes.explore : Uri(path: Routes.explore, queryParameters: keep).toString();
   }
 
-  static String _withQuery(String route, Uri uri) =>
-      uri.hasQuery ? Uri(path: route, query: uri.query).toString() : route;
+  static String _withQuery(String route, Uri uri) {
+    final keep = {for (final e in uri.queryParameters.entries) if (e.key != 'next' || Routes.isSafeNext(e.value)) e.key: e.value};
+    return keep.isEmpty ? route : Uri(path: route, queryParameters: keep).toString();
+  }
 
   static bool _isLane(String? v) => v == 'women' || v == 'lgbtq';
 

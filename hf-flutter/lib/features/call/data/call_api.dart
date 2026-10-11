@@ -60,6 +60,20 @@ final callHostNameProvider = FutureProvider.autoDispose.family<String, String>(
   }
 });
 
+/// Protected-profile names are fetched with the same explicit lane context as
+/// discovery. Family data is refreshed when the authenticated account changes.
+final callHostNameInLaneProvider = FutureProvider.autoDispose.family<String, ({String slug, String lane})>(
+  retry: (_, __) => null,
+  (ref, key) async {
+    ref.watch(sessionProvider.select((s) => s.user?.id ?? s.me?.uid));
+    try {
+      final json = await ref.watch(apiClientProvider).getJson(
+        '/api/hosts/public/${Uri.encodeComponent(key.slug)}', query: {'lane': key.lane});
+      return '${json['displayName'] ?? ''}'.trim();
+    } catch (_) { return ''; }
+  },
+);
+
 /// "Now", replaceable in tests so the connected timer is exact.
 final callClockProvider = Provider<DateTime Function()>((ref) => DateTime.now);
 

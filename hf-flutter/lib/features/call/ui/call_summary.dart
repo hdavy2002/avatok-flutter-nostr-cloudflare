@@ -64,11 +64,7 @@ class CallSummary extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Icon(
-          completed ? Icons.check_circle_outline_rounded : Icons.call_end_rounded,
-          size: 72,
-          color: HfColors.orchid,
-        ),
+        HfScene(kind: completed ? HfSceneKind.success : HfSceneKind.call, height: 150),
         const SizedBox(height: 16),
         Semantics(
           liveRegion: true,
@@ -81,7 +77,7 @@ class CallSummary extends StatelessWidget {
         const SizedBox(height: 20),
         if (completed || charge)
           HfCard(
-            color: HfColors.lilac,
+            color: HfColors.white,
             child: Column(
               children: [
                 _Row(
@@ -94,7 +90,7 @@ class CallSummary extends StatelessWidget {
             ),
           )
         else
-          const Text('You were not charged.', style: HfText.bodyStrong, textAlign: TextAlign.center),
+          const HfCard(child: Text('You were not charged.', style: HfText.bodyStrong, textAlign: TextAlign.center)),
         const SizedBox(height: 24),
         if (showRate) ...[
           HfButton(label: CallStrings.rateYourCall, icon: Icons.star_rounded, onPressed: onRate),

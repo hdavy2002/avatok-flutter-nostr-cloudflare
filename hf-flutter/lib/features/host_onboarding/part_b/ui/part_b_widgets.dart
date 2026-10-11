@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/theme/hf_tokens.dart';
+import '../../../../core/widgets/widgets.dart';
 import '../../../kyc/kyc.dart';
 import '../../ui/widgets/step_page.dart';
 import '../data/part_b_rules.dart';
@@ -13,10 +14,11 @@ import 'part_b_copy.dart';
 /// A step page with the main button pinned under the scrolling content, so Continue is always in reach
 /// (long lists such as topics and avatars, small phones, the keyboard open).
 class PartBStep extends StatelessWidget {
-  const PartBStep({super.key, this.title, this.lead, required this.children, this.bottom = const <Widget>[]});
+  const PartBStep({super.key, this.title, this.lead, this.scene = HfSceneKind.profile, required this.children, this.bottom = const <Widget>[]});
 
   final String? title;
   final String? lead;
+  final HfSceneKind scene;
   final List<Widget> children;
 
   /// Widgets pinned at the bottom (usually an error line and the button).
@@ -24,13 +26,16 @@ class PartBStep extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Expanded(child: OnboardingStepPage(title: title, lead: lead, children: children)),
+    return LayoutBuilder(builder: (context, constraints) {
+      // Large text and a short keyboard viewport put actions in the same scrollable page.
+      final compact = constraints.maxHeight < 520 || MediaQuery.textScalerOf(context).scale(14) > 20;
+      if (compact) return OnboardingStepPage(title: title, lead: lead, scene: scene,
+        children: [...children, if (bottom.isNotEmpty) const SizedBox(height: 20), ...bottom]);
+      return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Expanded(child: OnboardingStepPage(title: title, lead: lead, scene: scene, children: children)),
         if (bottom.isNotEmpty) PinnedBar(children: bottom),
-      ],
-    );
+      ]);
+    });
   }
 }
 
@@ -45,8 +50,9 @@ class PinnedBar extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.fromLTRB(HfSpacing.page, 10, HfSpacing.page, 12),
       decoration: const BoxDecoration(
-        color: HfColors.cream,
-        border: Border(top: BorderSide(color: HfColors.line)),
+        color: HfColors.white,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        boxShadow: [BoxShadow(color: Color(0x140B153C), blurRadius: 24, offset: Offset(0, -5))],
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -89,7 +95,7 @@ class LockBanner extends StatelessWidget {
 }
 
 /// A big choice with a title and a line of help (conversation style, topics): at least 56 dp high, the whole
-/// card taps. The selected one has an orchid border and a tick, never green.
+/// card taps. Selected choices have a mint fill, dark outline and a tick.
 class ChoiceTile extends StatelessWidget {
   const ChoiceTile({super.key, required this.title, this.help, required this.selected, required this.onTap});
 
@@ -110,7 +116,7 @@ class ChoiceTile extends StatelessWidget {
         label: help == null ? title : '$title. $help',
         excludeSemantics: true,
         child: Material(
-          color: selected ? HfColors.lilac : HfColors.white,
+          color: selected ? HfColors.mint : HfColors.white,
           borderRadius: radius,
           child: InkWell(
             borderRadius: radius,
@@ -120,14 +126,15 @@ class ChoiceTile extends StatelessWidget {
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
               decoration: BoxDecoration(
                 borderRadius: radius,
-                border: Border.all(color: selected ? HfColors.orchid : HfColors.line, width: selected ? 2 : 1.5),
+                boxShadow: const [BoxShadow(color: Color(0x100B153C), blurRadius: 10, offset: Offset(0, 4))],
+                border: Border.all(color: selected ? HfColors.ink : HfColors.line, width: selected ? 2 : 1.5),
               ),
               child: Row(
                 children: [
                   Icon(
                     selected ? Icons.check_circle_rounded : Icons.circle_outlined,
                     size: 26,
-                    color: selected ? HfColors.orchid : HfColors.mauve,
+                    color: selected ? HfColors.ink : HfColors.mauve,
                   ),
                   const SizedBox(width: 12),
                   Expanded(

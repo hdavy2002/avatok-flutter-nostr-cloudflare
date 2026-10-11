@@ -5,6 +5,8 @@ import '../analytics/analytics.dart';
 import '../links.dart';
 import 'app_router.dart';
 import 'deep_links.dart';
+import 'routes.dart';
+import '../../features/kyc/data/digilocker_pending.dart';
 
 /// A link that arrived before the splash screen finished (cold start from a link or a push).
 class PendingLinkData {
@@ -75,7 +77,13 @@ class DeepLinkHandler {
         router.go(location);
       case DigiLockerReturn(:final location):
         // The onboarding and lane screens run `digilocker/complete` when they see `dl=return` (HF-NATIVE-8).
-        router.go(location);
+        final pending = await _ref.read(digiLockerPendingStoreProvider).read();
+        if (pending != null && pending.role.wire == 'lane_caller') {
+          final laneRoute = Uri.parse(Routes.lanesOf(pending.lane, next: Routes.safeNext(pending.next)));
+          router.go(laneRoute.replace(queryParameters: {...laneRoute.queryParameters, 'dl': 'return'}).toString());
+        } else {
+          router.go(location);
+        }
       case OpenCustomTab(:final uri):
         await LinkOpener.instance.customTab(uri);
       case IgnoreLink():
