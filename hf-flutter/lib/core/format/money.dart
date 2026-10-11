@@ -10,7 +10,9 @@ abstract final class Money {
     final abs = paise.abs();
     final rupees = abs ~/ 100;
     final rest = abs % 100;
-    final body = rest == 0 ? _group(rupees) : '${_group(rupees)}.${rest.toString().padLeft(2, '0')}';
+    final body = rest == 0
+        ? _group(rupees)
+        : '${_group(rupees)}.${rest.toString().padLeft(2, '0')}';
     return '${negative ? '-' : ''}₹$body';
   }
 

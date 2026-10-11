@@ -17,8 +17,14 @@ enum UpdateStatus {
   forced,
 }
 
-UpdateStatus updateStatusFor({required int installed, required int latest, required int min}) {
-  if (installed <= 0) return UpdateStatus.none; // our own build is unknown: never nag on a guess
+UpdateStatus updateStatusFor({
+  required int installed,
+  required int latest,
+  required int min,
+}) {
+  if (installed <= 0) {
+    return UpdateStatus.none; // our own build is unknown: never nag on a guess
+  }
   if (min > 0 && installed < min) return UpdateStatus.forced;
   if (latest > 0 && installed < latest) return UpdateStatus.soft;
   return UpdateStatus.none;
@@ -33,11 +39,17 @@ final installedBuildProvider = Provider<int>((ref) => Analytics.appBuild);
 final updateStatusProvider = Provider<UpdateStatus>((ref) {
   final installed = ref.watch(installedBuildProvider);
   if (installed <= 0) return UpdateStatus.none;
-  final flags = ref.watch(flagsProvider).when<HfFlags?>(
+  final flags = ref
+      .watch(flagsProvider)
+      .when<HfFlags?>(
         data: (f) => f,
         loading: () => null,
         error: (_, __) => null,
       );
   if (flags == null) return UpdateStatus.none;
-  return updateStatusFor(installed: installed, latest: flags.hfAppLatestBuild, min: flags.hfAppMinBuild);
+  return updateStatusFor(
+    installed: installed,
+    latest: flags.hfAppLatestBuild,
+    min: flags.hfAppMinBuild,
+  );
 });

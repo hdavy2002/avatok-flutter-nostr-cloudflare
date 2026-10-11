@@ -38,13 +38,20 @@ class LinkOpener {
   /// This app's page in the Play Store (the update button). Falls back to the web page.
   Future<bool> playStore() async {
     try {
-      if (await launchUrl(Uri.parse(Env.playMarketUri), mode: LaunchMode.externalApplication)) return true;
+      if (await launchUrl(
+        Uri.parse(Env.playMarketUri),
+        mode: LaunchMode.externalApplication,
+      )) {
+        return true;
+      }
     } catch (_) {
       // fall through to the web page
     }
     try {
       return await launchUrl(
-        Uri.https('play.google.com', '/store/apps/details', {'id': Brand.hfPlayPackageId}),
+        Uri.https('play.google.com', '/store/apps/details', {
+          'id': Brand.hfPlayPackageId,
+        }),
         mode: LaunchMode.externalApplication,
       );
     } catch (e) {

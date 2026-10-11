@@ -55,10 +55,14 @@ abstract final class DeepLinks {
   static DeepLinkTarget resolve(String input) {
     final text = input.trim();
     if (text.isEmpty) return const IgnoreLink('empty');
-    if (text.startsWith('//')) return const IgnoreLink('protocol_relative'); // never a same-site path
+    if (text.startsWith('//')) {
+      return const IgnoreLink('protocol_relative'); // never a same-site path
+    }
     if (text.startsWith('/')) {
       final uri = Uri.tryParse('${Brand.webOrigin}$text');
-      return uri == null ? const IgnoreLink('unparseable') : _resolveSite(uri.pathSegments, uri);
+      return uri == null
+          ? const IgnoreLink('unparseable')
+          : _resolveSite(uri.pathSegments, uri);
     }
     final uri = Uri.tryParse(text);
     if (uri == null) return const IgnoreLink('unparseable');
@@ -69,12 +73,17 @@ abstract final class DeepLinks {
     final scheme = uri.scheme.toLowerCase();
     if (scheme == 'https') {
       final host = uri.host.toLowerCase();
-      if (host != Brand.domain && host != Brand.wwwHost) return const IgnoreLink('foreign_host');
+      if (host != Brand.domain && host != Brand.wwwHost) {
+        return const IgnoreLink('foreign_host');
+      }
       return _resolveSite(uri.pathSegments, uri);
     }
     if (scheme == Brand.scheme) {
       // <scheme>://hosts/onboarding?... : the first path segment arrives as the "host".
-      final segments = <String>[if (uri.host.isNotEmpty) uri.host, ...uri.pathSegments];
+      final segments = <String>[
+        if (uri.host.isNotEmpty) uri.host,
+        ...uri.pathSegments,
+      ];
       return _resolveSite(segments, uri);
     }
     return const IgnoreLink('foreign_scheme');
@@ -96,14 +105,26 @@ abstract final class DeepLinks {
   }
 
   /// `link` for an https App Link, `scheme` for the custom scheme. (`push` is passed by the push handler.)
-  static String sourceOf(Uri uri) => uri.scheme.toLowerCase() == Brand.scheme ? 'scheme' : 'link';
+  static String sourceOf(Uri uri) =>
+      uri.scheme.toLowerCase() == Brand.scheme ? 'scheme' : 'link';
 
   static List<String> _segmentsOf(Uri uri) {
-    final raw = uri.scheme.toLowerCase() == Brand.scheme ? <String>[if (uri.host.isNotEmpty) uri.host, ...uri.pathSegments] : uri.pathSegments;
+    final raw = uri.scheme.toLowerCase() == Brand.scheme
+        ? <String>[if (uri.host.isNotEmpty) uri.host, ...uri.pathSegments]
+        : uri.pathSegments;
     return raw.where((s) => s.isNotEmpty).toList();
   }
 
-  static const Set<String> _idParents = {'h', 'people', 'call', 'book', 'watch', 'l', 'c', 'u'};
+  static const Set<String> _idParents = {
+    'h',
+    'people',
+    'call',
+    'book',
+    'watch',
+    'l',
+    'c',
+    'u',
+  };
 
   static String _templated(List<String> s) {
     if (s.isEmpty) return '/';
@@ -129,7 +150,11 @@ abstract final class DeepLinks {
     final q = uri.queryParameters;
     if (s.isEmpty) {
       final browse = Uri.parse(_exploreFrom(q));
-      return OpenRoute(browse.hasQuery ? Uri(path: Routes.home, query: browse.query).toString() : Routes.home);
+      return OpenRoute(
+        browse.hasQuery
+            ? Uri(path: Routes.home, query: browse.query).toString()
+            : Routes.home,
+      );
     }
 
     switch (s[0]) {
@@ -146,11 +171,22 @@ abstract final class DeepLinks {
         break;
       case 'h':
         if (s.length == 2) {
-          final profile = Uri.parse(Routes.hostProfileOf(s[1], lane: q['lane']));
+          final profile = Uri.parse(
+            Routes.hostProfileOf(s[1], lane: q['lane']),
+          );
           if (q['action'] == 'notify') {
-            return OpenRoute(profile.replace(queryParameters: {...profile.queryParameters, 'action': 'notify',
-              if (q['notify'] == 'on' || q['notify'] == 'off') 'notify': q['notify']!,
-            }).toString());
+            return OpenRoute(
+              profile
+                  .replace(
+                    queryParameters: {
+                      ...profile.queryParameters,
+                      'action': 'notify',
+                      if (q['notify'] == 'on' || q['notify'] == 'off')
+                        'notify': q['notify']!,
+                    },
+                  )
+                  .toString(),
+            );
           }
           return OpenRoute(profile.toString());
         }
@@ -162,27 +198,39 @@ abstract final class DeepLinks {
         if (s.length == 2) {
           if (s[1] == 'new') {
             final slug = q['host'];
-            if (slug == null || slug.isEmpty) return const OpenRoute(Routes.explore);
+            if (slug == null || slug.isEmpty) {
+              return const OpenRoute(Routes.explore);
+            }
             return OpenRoute(Routes.callConfirmOf(slug, lane: q['lane']));
           }
           return OpenRoute(Routes.callOf(s[1]));
         }
         break;
       case 'lanes':
-        if (s.length == 1) return OpenRoute(Routes.lanesOf(q['lane'], next: Routes.safeNext(q['next'])));
+        if (s.length == 1) {
+          return OpenRoute(
+            Routes.lanesOf(q['lane'], next: Routes.safeNext(q['next'])),
+          );
+        }
         break;
       case 'me':
         if (s.length == 1) return const OpenRoute(Routes.me);
-        if (s.length == 2 && s[1] == 'delete') return const OpenRoute(Routes.meDelete);
+        if (s.length == 2 && s[1] == 'delete') {
+          return const OpenRoute(Routes.meDelete);
+        }
         break;
       case 'wallet':
         if (s.length == 1) return OpenRoute(_withQuery(Routes.wallet, uri));
         break;
       case 'dashboard':
-        if (s.length == 2 && s[1] == 'wallet') return OpenRoute(_withQuery(Routes.wallet, uri));
+        if (s.length == 2 && s[1] == 'wallet') {
+          return OpenRoute(_withQuery(Routes.wallet, uri));
+        }
         break;
       case 'review':
-        if (s.length == 3 && s[1] == 'call') return OpenRoute(Routes.reviewCallOf(s[2]));
+        if (s.length == 3 && s[1] == 'call') {
+          return OpenRoute(Routes.reviewCallOf(s[2]));
+        }
         if (s.length == 2) return OpenRoute(Routes.reviewTokenOf(s[1]));
         break;
       case 'hosts':
@@ -190,11 +238,18 @@ abstract final class DeepLinks {
       case 'verify':
         if (s.length == 2 && s[1] == 'lane') {
           final lane = q['lane'];
-          return OpenRoute(Routes.lanesOf(_isLane(lane) ? lane : null, next: Routes.safeNext(q['next'])));
+          return OpenRoute(
+            Routes.lanesOf(
+              _isLane(lane) ? lane : null,
+              next: Routes.safeNext(q['next']),
+            ),
+          );
         }
         break;
       case 'account':
-        if (s.length == 2 && s[1] == 'close') return const OpenRoute(Routes.meDelete);
+        if (s.length == 2 && s[1] == 'close') {
+          return const OpenRoute(Routes.meDelete);
+        }
         break;
       case 'sign-in':
       case 'sign-up':
@@ -235,10 +290,23 @@ abstract final class DeepLinks {
 
   static String _digiLockerLocation(Map<String, String> q) {
     final step = _nonEmpty(q['step']) ?? 'aadhaar';
-    return Uri(path: Routes.hostOnboarding, queryParameters: {'step': step, 'dl': 'return', if (Routes.safeNext(q['next']) != null) 'next': q['next']!}).toString();
+    return Uri(
+      path: Routes.hostOnboarding,
+      queryParameters: {
+        'step': step,
+        'dl': 'return',
+        if (Routes.safeNext(q['next']) != null) 'next': q['next']!,
+      },
+    ).toString();
   }
 
-  static const Set<String> _exploreKeys = {'lane', 'topics', 'lang', 'max', 'online'};
+  static const Set<String> _exploreKeys = {
+    'lane',
+    'topics',
+    'lang',
+    'max',
+    'online',
+  };
 
   static String _exploreFrom(Map<String, String> q) {
     final keep = <String, String>{};
@@ -248,12 +316,19 @@ abstract final class DeepLinks {
       if (k == 'lane' && !_isLane(v)) continue;
       keep[k] = v;
     }
-    return keep.isEmpty ? Routes.explore : Uri(path: Routes.explore, queryParameters: keep).toString();
+    return keep.isEmpty
+        ? Routes.explore
+        : Uri(path: Routes.explore, queryParameters: keep).toString();
   }
 
   static String _withQuery(String route, Uri uri) {
-    final keep = {for (final e in uri.queryParameters.entries) if (e.key != 'next' || Routes.isSafeNext(e.value)) e.key: e.value};
-    return keep.isEmpty ? route : Uri(path: route, queryParameters: keep).toString();
+    final keep = {
+      for (final e in uri.queryParameters.entries)
+        if (e.key != 'next' || Routes.isSafeNext(e.value)) e.key: e.value,
+    };
+    return keep.isEmpty
+        ? route
+        : Uri(path: route, queryParameters: keep).toString();
   }
 
   static bool _isLane(String? v) => v == 'women' || v == 'lgbtq';
@@ -262,9 +337,9 @@ abstract final class DeepLinks {
 
   /// The same page on the website (brand host, no matter which host or scheme the link used).
   static Uri _siteUri(List<String> segments, Uri uri) => Uri(
-        scheme: 'https',
-        host: Brand.domain,
-        pathSegments: segments,
-        query: uri.hasQuery ? uri.query : null,
-      );
+    scheme: 'https',
+    host: Brand.domain,
+    pathSegments: segments,
+    query: uri.hasQuery ? uri.query : null,
+  );
 }

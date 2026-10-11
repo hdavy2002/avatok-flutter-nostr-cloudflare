@@ -10,7 +10,11 @@ import '../../features/kyc/data/digilocker_pending.dart';
 
 /// A link that arrived before the splash screen finished (cold start from a link or a push).
 class PendingLinkData {
-  const PendingLinkData({required this.input, required this.source, required this.launch});
+  const PendingLinkData({
+    required this.input,
+    required this.source,
+    required this.launch,
+  });
   final String input;
   final String source;
   final String launch;
@@ -23,7 +27,9 @@ class PendingLink extends Notifier<PendingLinkData?> {
   void set(PendingLinkData? v) => state = v;
 }
 
-final pendingLinkProvider = NotifierProvider<PendingLink, PendingLinkData?>(PendingLink.new);
+final pendingLinkProvider = NotifierProvider<PendingLink, PendingLinkData?>(
+  PendingLink.new,
+);
 
 class BootDone extends Notifier<bool> {
   @override
@@ -44,9 +50,15 @@ class DeepLinkHandler {
 
   final Ref _ref;
 
-  Future<void> handle(String input, {required String source, String launch = 'warm'}) async {
+  Future<void> handle(
+    String input, {
+    required String source,
+    String launch = 'warm',
+  }) async {
     if (!_ref.read(bootDoneProvider)) {
-      _ref.read(pendingLinkProvider.notifier).set(PendingLinkData(input: input, source: source, launch: 'cold'));
+      _ref
+          .read(pendingLinkProvider.notifier)
+          .set(PendingLinkData(input: input, source: source, launch: 'cold'));
       return;
     }
     await _apply(input, source, launch);
@@ -79,8 +91,19 @@ class DeepLinkHandler {
         // The onboarding and lane screens run `digilocker/complete` when they see `dl=return` (HF-NATIVE-8).
         final pending = await _ref.read(digiLockerPendingStoreProvider).read();
         if (pending != null && pending.role.wire == 'lane_caller') {
-          final laneRoute = Uri.parse(Routes.lanesOf(pending.lane, next: Routes.safeNext(pending.next)));
-          router.go(laneRoute.replace(queryParameters: {...laneRoute.queryParameters, 'dl': 'return'}).toString());
+          final laneRoute = Uri.parse(
+            Routes.lanesOf(pending.lane, next: Routes.safeNext(pending.next)),
+          );
+          router.go(
+            laneRoute
+                .replace(
+                  queryParameters: {
+                    ...laneRoute.queryParameters,
+                    'dl': 'return',
+                  },
+                )
+                .toString(),
+          );
         } else {
           router.go(location);
         }
@@ -92,4 +115,6 @@ class DeepLinkHandler {
   }
 }
 
-final deepLinkHandlerProvider = Provider<DeepLinkHandler>((ref) => DeepLinkHandler(ref));
+final deepLinkHandlerProvider = Provider<DeepLinkHandler>(
+  (ref) => DeepLinkHandler(ref),
+);

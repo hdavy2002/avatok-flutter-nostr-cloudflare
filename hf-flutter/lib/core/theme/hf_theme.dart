@@ -6,7 +6,8 @@ export 'hf_tokens.dart';
 
 /// Brightness helper: `HfBrightness.isDark(context)`.
 abstract final class HfBrightness {
-  static bool isDark(BuildContext context) => Theme.of(context).brightness == Brightness.dark;
+  static bool isDark(BuildContext context) =>
+      Theme.of(context).brightness == Brightness.dark;
 }
 
 /// The five pastel tints shared by tiles, chips, nav items and status surfaces.
@@ -18,53 +19,56 @@ enum HfTint {
   blush;
 
   /// Surface colour of this tint in the theme of [context] (light pastel, or the matching dark tile).
-  Color bg(BuildContext context) => HfBrightness.isDark(context) ? _darkBg : _lightBg;
+  Color bg(BuildContext context) =>
+      HfBrightness.isDark(context) ? _darkBg : _lightBg;
 
   /// Text and icon colour on [bg] (the mockups' "deep" colour; the light pastel ink on dark).
-  Color ink(BuildContext context) => HfBrightness.isDark(context) ? _darkInk : _lightDeep;
+  Color ink(BuildContext context) =>
+      HfBrightness.isDark(context) ? _darkInk : _lightDeep;
 
   /// Colour of the big number on a tile (the mockups' darker "ink" of the tint).
-  Color valueInk(BuildContext context) => HfBrightness.isDark(context) ? _darkInk : _lightValue;
+  Color valueInk(BuildContext context) =>
+      HfBrightness.isDark(context) ? _darkInk : _lightValue;
 
   Color get _lightBg => switch (this) {
-        HfTint.lavender => HfColors.lavender,
-        HfTint.peach => HfColors.peach,
-        HfTint.sky => HfColors.sky,
-        HfTint.butter => HfColors.butter,
-        HfTint.blush => HfColors.blush,
-      };
+    HfTint.lavender => HfColors.lavender,
+    HfTint.peach => HfColors.peach,
+    HfTint.sky => HfColors.sky,
+    HfTint.butter => HfColors.butter,
+    HfTint.blush => HfColors.blush,
+  };
 
   Color get _lightDeep => switch (this) {
-        HfTint.lavender => HfColors.lavenderDeep,
-        HfTint.peach => HfColors.peachDeep,
-        HfTint.sky => HfColors.skyDeep,
-        HfTint.butter => HfColors.butterDeep,
-        HfTint.blush => HfColors.blushDeep,
-      };
+    HfTint.lavender => HfColors.lavenderDeep,
+    HfTint.peach => HfColors.peachDeep,
+    HfTint.sky => HfColors.skyDeep,
+    HfTint.butter => HfColors.butterDeep,
+    HfTint.blush => HfColors.blushDeep,
+  };
 
   Color get _lightValue => switch (this) {
-        HfTint.lavender => HfColors.lavenderInk,
-        HfTint.peach => HfColors.peachInk,
-        HfTint.sky => HfColors.skyInk,
-        HfTint.butter => HfColors.butterValue,
-        HfTint.blush => HfColors.blushInk,
-      };
+    HfTint.lavender => HfColors.lavenderInk,
+    HfTint.peach => HfColors.peachInk,
+    HfTint.sky => HfColors.skyInk,
+    HfTint.butter => HfColors.butterValue,
+    HfTint.blush => HfColors.blushInk,
+  };
 
   Color get _darkBg => switch (this) {
-        HfTint.lavender => HfColors.darkTile,
-        HfTint.peach => HfColors.darkTilePeach,
-        HfTint.sky => HfColors.darkTileSky,
-        HfTint.butter => HfColors.darkBar,
-        HfTint.blush => HfColors.darkTileBlush,
-      };
+    HfTint.lavender => HfColors.darkTile,
+    HfTint.peach => HfColors.darkTilePeach,
+    HfTint.sky => HfColors.darkTileSky,
+    HfTint.butter => HfColors.darkBar,
+    HfTint.blush => HfColors.darkTileBlush,
+  };
 
   Color get _darkInk => switch (this) {
-        HfTint.lavender => HfColors.lavenderLight,
-        HfTint.peach => HfColors.peachLight,
-        HfTint.sky => HfColors.skyLight,
-        HfTint.butter => HfColors.star,
-        HfTint.blush => HfColors.blushLight,
-      };
+    HfTint.lavender => HfColors.lavenderLight,
+    HfTint.peach => HfColors.peachLight,
+    HfTint.sky => HfColors.skyLight,
+    HfTint.butter => HfColors.star,
+    HfTint.blush => HfColors.blushLight,
+  };
 }
 
 /// The light ThemeData of the app. Every text style is 14 sp or bigger.
@@ -122,14 +126,16 @@ ThemeData _build(Brightness brightness) {
     labelSmall: c(HfText.badge, text),
   );
 
-  final controlShape = RoundedRectangleBorder(borderRadius: BorderRadius.circular(HfRadius.control));
+  final controlShape = RoundedRectangleBorder(
+    borderRadius: BorderRadius.circular(HfRadius.control),
+  );
   const buttonSize = Size(HfSpacing.tap, 56);
   const buttonPadding = EdgeInsets.symmetric(horizontal: 22, vertical: 16);
 
   OutlineInputBorder border(Color color, double width) => OutlineInputBorder(
-        borderRadius: BorderRadius.circular(HfRadius.input),
-        borderSide: BorderSide(color: color, width: width),
-      );
+    borderRadius: BorderRadius.circular(HfRadius.input),
+    borderSide: BorderSide(color: color, width: width),
+  );
 
   return ThemeData(
     useMaterial3: true,
@@ -177,7 +183,10 @@ ThemeData _build(Brightness brightness) {
         minimumSize: buttonSize,
         shape: controlShape,
         backgroundColor: Colors.transparent,
-        side: BorderSide(color: dark ? HfColors.lavenderLight : HfColors.ink, width: 2),
+        side: BorderSide(
+          color: dark ? HfColors.lavenderLight : HfColors.ink,
+          width: 2,
+        ),
         padding: buttonPadding,
         textStyle: HfText.button,
       ),
@@ -194,7 +203,9 @@ ThemeData _build(Brightness brightness) {
       selectedColor: dark ? HfColors.darkTile : HfColors.sky,
       labelStyle: c(HfText.badge, text),
       side: BorderSide(color: dark ? HfColors.darkLine : HfColors.outlineChip),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(HfRadius.chip)),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(HfRadius.chip),
+      ),
     ),
     inputDecorationTheme: InputDecorationTheme(
       filled: true,
@@ -207,15 +218,25 @@ ThemeData _build(Brightness brightness) {
       enabledBorder: border(line, 1),
       focusedBorder: border(dark ? HfColors.lavenderLight : HfColors.ink, 2),
       errorBorder: border(dark ? HfColors.blushLight : HfColors.accent, 1),
-      focusedErrorBorder: border(dark ? HfColors.blushLight : HfColors.accent, 2),
+      focusedErrorBorder: border(
+        dark ? HfColors.blushLight : HfColors.accent,
+        2,
+      ),
     ),
     dividerTheme: DividerThemeData(color: line, thickness: 1, space: 1),
-    progressIndicatorTheme: ProgressIndicatorThemeData(color: dark ? HfColors.lavenderLight : HfColors.ink),
+    progressIndicatorTheme: ProgressIndicatorThemeData(
+      color: dark ? HfColors.lavenderLight : HfColors.ink,
+    ),
     snackBarTheme: SnackBarThemeData(
       behavior: SnackBarBehavior.floating,
       backgroundColor: dark ? HfColors.darkSelected : HfColors.ink,
-      contentTextStyle: c(HfText.body, dark ? HfColors.darkText : HfColors.white),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(HfRadius.input)),
+      contentTextStyle: c(
+        HfText.body,
+        dark ? HfColors.darkText : HfColors.white,
+      ),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(HfRadius.input),
+      ),
     ),
     bottomSheetTheme: BottomSheetThemeData(
       backgroundColor: card,
@@ -224,7 +245,9 @@ ThemeData _build(Brightness brightness) {
       dragHandleColor: dark ? HfColors.darkSelected : HfColors.handle,
       dragHandleSize: const Size(44, 5),
       shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(HfRadius.sheet)),
+        borderRadius: BorderRadius.vertical(
+          top: Radius.circular(HfRadius.sheet),
+        ),
       ),
     ),
     switchTheme: SwitchThemeData(
@@ -234,7 +257,9 @@ ThemeData _build(Brightness brightness) {
             ? HfColors.rose
             : (dark ? HfColors.darkSelected : HfColors.handle),
       ),
-      trackOutlineColor: const WidgetStatePropertyAll<Color>(Colors.transparent),
+      trackOutlineColor: const WidgetStatePropertyAll<Color>(
+        Colors.transparent,
+      ),
     ),
     sliderTheme: SliderThemeData(
       activeTrackColor: dark ? HfColors.lavenderLight : HfColors.lavenderDeep,
@@ -243,7 +268,9 @@ ThemeData _build(Brightness brightness) {
     ),
     dialogTheme: DialogThemeData(
       backgroundColor: card,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(HfRadius.card)),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(HfRadius.card),
+      ),
       titleTextStyle: c(HfText.title, text),
       contentTextStyle: c(HfText.body, text),
     ),

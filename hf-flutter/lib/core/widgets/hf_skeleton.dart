@@ -10,19 +10,24 @@ import '../theme/hf_theme.dart';
 /// * `HfSkeleton.hostCard()`: the whole Discover host card (photo 380 px / radius 28, four tiles, three chips,
 ///   the price bar) so the feed does not jump when real cards arrive.
 class HfSkeleton extends StatelessWidget {
-  const HfSkeleton.box({super.key, this.width, required this.height, this.radius = 12, this.animate = true})
-      : _hostCard = false;
+  const HfSkeleton.box({
+    super.key,
+    this.width,
+    required this.height,
+    this.radius = 12,
+    this.animate = true,
+  }) : _hostCard = false;
 
   const HfSkeleton.line({super.key, this.width, this.animate = true})
-      : height = 14,
-        radius = 7,
-        _hostCard = false;
+    : height = 14,
+      radius = 7,
+      _hostCard = false;
 
   const HfSkeleton.hostCard({super.key, this.animate = true})
-      : width = null,
-        height = 0,
-        radius = HfRadius.card,
-        _hostCard = true;
+    : width = null,
+      height = 0,
+      radius = HfRadius.card,
+      _hostCard = true;
 
   final double? width;
   final double height;
@@ -37,13 +42,16 @@ class HfSkeleton extends StatelessWidget {
       excludeSemantics: true,
       child: _Pulse(
         animate: animate,
-        child: _hostCard ? const _HostCardSkeleton() : _Block(width: width, height: height, radius: radius),
+        child: _hostCard
+            ? const _HostCardSkeleton()
+            : _Block(width: width, height: height, radius: radius),
       ),
     );
   }
 }
 
-Color _blockColor(BuildContext context) => HfBrightness.isDark(context) ? HfColors.darkTile : HfColors.segmentTrack;
+Color _blockColor(BuildContext context) =>
+    HfBrightness.isDark(context) ? HfColors.darkTile : HfColors.segmentTrack;
 
 class _Block extends StatelessWidget {
   const _Block({this.width, required this.height, required this.radius});
@@ -54,10 +62,13 @@ class _Block extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Container(
-        width: width,
-        height: height,
-        decoration: BoxDecoration(color: _blockColor(context), borderRadius: BorderRadius.circular(radius)),
-      );
+    width: width,
+    height: height,
+    decoration: BoxDecoration(
+      color: _blockColor(context),
+      borderRadius: BorderRadius.circular(radius),
+    ),
+  );
 }
 
 class _Pulse extends StatefulWidget {
@@ -71,7 +82,10 @@ class _Pulse extends StatefulWidget {
 }
 
 class _PulseState extends State<_Pulse> with SingleTickerProviderStateMixin {
-  late final AnimationController _c = AnimationController(vsync: this, duration: const Duration(milliseconds: 900));
+  late final AnimationController _c = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 900),
+  );
 
   @override
   void didChangeDependencies() {
@@ -104,7 +118,10 @@ class _PulseState extends State<_Pulse> with SingleTickerProviderStateMixin {
   @override
   Widget build(BuildContext context) {
     return FadeTransition(
-      opacity: Tween<double>(begin: 0.5, end: 1).animate(CurvedAnimation(parent: _c, curve: Curves.easeInOut)),
+      opacity: Tween<double>(
+        begin: 0.5,
+        end: 1,
+      ).animate(CurvedAnimation(parent: _c, curve: Curves.easeInOut)),
       child: widget.child,
     );
   }
@@ -116,7 +133,8 @@ class _HostCardSkeleton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final dark = HfBrightness.isDark(context);
-    Widget tile() => const Expanded(child: _Block(height: 56, radius: HfRadius.tileSmall));
+    Widget tile() =>
+        const Expanded(child: _Block(height: 56, radius: HfRadius.tileSmall));
     return Container(
       decoration: BoxDecoration(
         color: dark ? HfColors.darkCard : HfColors.white,
@@ -135,17 +153,40 @@ class _HostCardSkeleton extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Row(children: [tile(), const SizedBox(width: HfSpacing.sm), tile()]),
+                Row(
+                  children: [
+                    tile(),
+                    const SizedBox(width: HfSpacing.sm),
+                    tile(),
+                  ],
+                ),
                 const SizedBox(height: HfSpacing.sm),
-                Row(children: [tile(), const SizedBox(width: HfSpacing.sm), tile()]),
+                Row(
+                  children: [
+                    tile(),
+                    const SizedBox(width: HfSpacing.sm),
+                    tile(),
+                  ],
+                ),
                 const SizedBox(height: HfSpacing.xl),
-                const Row(children: [
-                  _Block(width: 110, height: 34, radius: HfRadius.chip),
-                  SizedBox(width: HfSpacing.sm),
-                  _Block(width: 90, height: 34, radius: HfRadius.chip),
-                  SizedBox(width: HfSpacing.sm),
-                  _Block(width: 48, height: 34, radius: HfRadius.chip),
-                ]),
+                const Row(
+                  children: [
+                    Flexible(
+                      flex: 110,
+                      child: _Block(height: 34, radius: HfRadius.chip),
+                    ),
+                    SizedBox(width: HfSpacing.sm),
+                    Flexible(
+                      flex: 90,
+                      child: _Block(height: 34, radius: HfRadius.chip),
+                    ),
+                    SizedBox(width: HfSpacing.sm),
+                    Flexible(
+                      flex: 48,
+                      child: _Block(height: 34, radius: HfRadius.chip),
+                    ),
+                  ],
+                ),
                 const SizedBox(height: HfSpacing.xl),
                 const _Block(height: 60, radius: HfRadius.tile),
               ],

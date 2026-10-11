@@ -26,11 +26,11 @@ enum HfPresence {
 
   /// The words on the pill.
   String get label => switch (this) {
-        HfPresence.online => 'Online now',
-        HfPresence.busy => 'On a call',
-        HfPresence.offline => 'Offline',
-        HfPresence.away => 'Not taking calls',
-      };
+    HfPresence.online => 'Online now',
+    HfPresence.busy => 'On a call',
+    HfPresence.offline => 'Offline',
+    HfPresence.away => 'Not taking calls',
+  };
 }
 
 /// Presence pill: online is blush with a rose dot, busy is butter with an amber dot, offline and away are soft
@@ -38,7 +38,12 @@ enum HfPresence {
 /// gently (1.6 s) unless [animate] is false or the phone asks for no animations: pass `animate: false` in
 /// widget tests that use `pumpAndSettle`.
 class HfStatusPill extends StatefulWidget {
-  const HfStatusPill({super.key, required this.status, this.large = false, this.animate = true});
+  const HfStatusPill({
+    super.key,
+    required this.status,
+    this.large = false,
+    this.animate = true,
+  });
 
   final HfPresence status;
   final bool large;
@@ -48,8 +53,12 @@ class HfStatusPill extends StatefulWidget {
   State<HfStatusPill> createState() => _HfStatusPillState();
 }
 
-class _HfStatusPillState extends State<HfStatusPill> with SingleTickerProviderStateMixin {
-  late final AnimationController _pulse = AnimationController(vsync: this, duration: const Duration(milliseconds: 1600));
+class _HfStatusPillState extends State<HfStatusPill>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _pulse = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 1600),
+  );
 
   @override
   void didChangeDependencies() {
@@ -64,7 +73,10 @@ class _HfStatusPillState extends State<HfStatusPill> with SingleTickerProviderSt
   }
 
   void _sync() {
-    final run = widget.animate && widget.status == HfPresence.online && !MediaQuery.disableAnimationsOf(context);
+    final run =
+        widget.animate &&
+        widget.status == HfPresence.online &&
+        !MediaQuery.disableAnimationsOf(context);
     if (run) {
       if (!_pulse.isAnimating) _pulse.repeat(reverse: true);
     } else {
@@ -83,34 +95,51 @@ class _HfStatusPillState extends State<HfStatusPill> with SingleTickerProviderSt
   Widget build(BuildContext context) {
     final dark = HfBrightness.isDark(context);
     final (Color bg, Color fg, Color dot) = switch (widget.status) {
-      HfPresence.online => dark
-          ? (HfColors.darkTileBlush, HfColors.blushLight, HfColors.blushDot)
-          : (HfColors.blush, HfColors.blushDeep, HfColors.roseDot),
-      HfPresence.busy => dark
-          ? (HfColors.darkBar, HfColors.star, HfColors.star)
-          : (HfColors.butter, HfColors.butterDeep, HfColors.amberDot),
-      HfPresence.offline || HfPresence.away => dark
-          ? (HfColors.darkBar, HfColors.mutedSoft, HfColors.mutedSoft)
-          : (HfColors.surfaceSoft, HfColors.muted, HfColors.muted),
+      HfPresence.online =>
+        dark
+            ? (HfColors.darkTileBlush, HfColors.blushLight, HfColors.blushDot)
+            : (HfColors.blush, HfColors.blushDeep, HfColors.roseDot),
+      HfPresence.busy =>
+        dark
+            ? (HfColors.darkBar, HfColors.star, HfColors.star)
+            : (HfColors.butter, HfColors.butterDeep, HfColors.amberDot),
+      HfPresence.offline || HfPresence.away =>
+        dark
+            ? (HfColors.darkBar, HfColors.mutedSoft, HfColors.mutedSoft)
+            : (HfColors.surfaceSoft, HfColors.muted, HfColors.muted),
     };
     final text = widget.status.label;
     return Semantics(
       label: text,
       excludeSemantics: true,
       child: Container(
-        padding: widget.large ? const EdgeInsets.symmetric(horizontal: 14, vertical: 10) : const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(HfRadius.segment)),
+        padding: widget.large
+            ? const EdgeInsets.symmetric(horizontal: 14, vertical: 10)
+            : const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: BoxDecoration(
+          color: bg,
+          borderRadius: BorderRadius.circular(HfRadius.segment),
+        ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
             FadeTransition(
               opacity: Tween<double>(begin: 0.4, end: 1).animate(_pulse),
-              child: Container(width: 9, height: 9, decoration: BoxDecoration(color: dot, shape: BoxShape.circle)),
+              child: Container(
+                width: 9,
+                height: 9,
+                decoration: BoxDecoration(color: dot, shape: BoxShape.circle),
+              ),
             ),
             const SizedBox(width: 7),
             Flexible(
-              child: Text(text,
-                  style: HfText.badge.copyWith(color: fg, fontSize: widget.large ? 16 : 14)),
+              child: Text(
+                text,
+                style: HfText.badge.copyWith(
+                  color: fg,
+                  fontSize: widget.large ? 16 : 14,
+                ),
+              ),
             ),
           ],
         ),

@@ -31,11 +31,11 @@ class StatusPill extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => HfStatusPill(
-        status: switch (presence) {
-          HostPresence.online => HfPresence.online,
-          HostPresence.busy => HfPresence.busy,
-          HostPresence.offline => HfPresence.offline,
-        },
-        animate: animate,
-      );
+    status: switch (presence) {
+      HostPresence.online => HfPresence.online,
+      HostPresence.busy => HfPresence.busy,
+      HostPresence.offline => HfPresence.offline,
+    },
+    animate: animate,
+  );
 }

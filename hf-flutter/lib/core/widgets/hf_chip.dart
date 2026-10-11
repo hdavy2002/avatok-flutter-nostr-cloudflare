@@ -20,8 +20,8 @@ class HfChip extends StatelessWidget {
     required bool selected,
     required this.onTap,
     this.icon,
-  })  : tint = HfTint.lavender,
-        _variant = selected ? _HfChipVariant.dark : _HfChipVariant.outline;
+  }) : tint = HfTint.lavender,
+       _variant = selected ? _HfChipVariant.dark : _HfChipVariant.outline;
 
   const HfChip.filled({
     super.key,
@@ -31,29 +31,21 @@ class HfChip extends StatelessWidget {
     this.icon,
   }) : _variant = _HfChipVariant.filled;
 
-  const HfChip.outline({
-    super.key,
-    required this.label,
-    this.onTap,
-    this.icon,
-  })  : tint = HfTint.lavender,
-        _variant = _HfChipVariant.outline;
+  const HfChip.outline({super.key, required this.label, this.onTap, this.icon})
+    : tint = HfTint.lavender,
+      _variant = _HfChipVariant.outline;
 
   const HfChip.selected({
     super.key,
     required this.label,
     this.tint = HfTint.sky,
     this.onTap,
-  })  : icon = null,
-        _variant = _HfChipVariant.selected;
+  }) : icon = null,
+       _variant = _HfChipVariant.selected;
 
-  const HfChip.dark({
-    super.key,
-    required this.label,
-    this.onTap,
-    this.icon,
-  })  : tint = HfTint.lavender,
-        _variant = _HfChipVariant.dark;
+  const HfChip.dark({super.key, required this.label, this.onTap, this.icon})
+    : tint = HfTint.lavender,
+      _variant = _HfChipVariant.dark;
 
   final String label;
   final VoidCallback? onTap;
@@ -62,7 +54,8 @@ class HfChip extends StatelessWidget {
   final _HfChipVariant _variant;
 
   /// True for the `selected` and `dark` variants (what screens read as "picked").
-  bool get isSelected => _variant == _HfChipVariant.selected || _variant == _HfChipVariant.dark;
+  bool get isSelected =>
+      _variant == _HfChipVariant.selected || _variant == _HfChipVariant.dark;
 
   @override
   Widget build(BuildContext context) {
@@ -79,13 +72,17 @@ class HfChip extends StatelessWidget {
       case _HfChipVariant.outline:
         bg = dark ? HfColors.darkCard : HfColors.white;
         fg = dark ? HfColors.darkText : HfColors.inkSoft;
-        border = Border.all(color: dark ? HfColors.darkLine : HfColors.outlineChip);
+        border = Border.all(
+          color: dark ? HfColors.darkLine : HfColors.outlineChip,
+        );
         weight = FontWeight.w600;
       case _HfChipVariant.dark:
         bg = dark ? HfColors.lavender : HfColors.ink;
         fg = dark ? HfColors.ink : HfColors.white;
     }
-    final leading = _variant == _HfChipVariant.selected ? Icons.check_rounded : icon;
+    final leading = _variant == _HfChipVariant.selected
+        ? Icons.check_rounded
+        : icon;
     return Semantics(
       button: onTap != null,
       selected: isSelected,
@@ -100,7 +97,9 @@ class HfChip extends StatelessWidget {
             widthFactor: 1,
             child: Container(
               height: 40,
-              padding: EdgeInsets.symmetric(horizontal: _variant == _HfChipVariant.selected ? 14 : 16),
+              padding: EdgeInsets.symmetric(
+                horizontal: _variant == _HfChipVariant.selected ? 14 : 16,
+              ),
               decoration: BoxDecoration(
                 color: bg,
                 borderRadius: BorderRadius.circular(HfRadius.control),
@@ -114,8 +113,15 @@ class HfChip extends StatelessWidget {
                     const SizedBox(width: HfSpacing.xs),
                   ],
                   Flexible(
-                    child: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis,
-                        style: HfText.badge.copyWith(color: fg, fontWeight: weight)),
+                    child: Text(
+                      label,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: HfText.badge.copyWith(
+                        color: fg,
+                        fontWeight: weight,
+                      ),
+                    ),
                   ),
                 ],
               ),

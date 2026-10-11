@@ -15,7 +15,10 @@ class HfVerifiedBadge extends StatelessWidget {
       label: 'Video verified',
       image: true,
       excludeSemantics: true,
-      child: CustomPaint(size: Size.square(size), painter: const _BadgePainter()),
+      child: CustomPaint(
+        size: Size.square(size),
+        painter: const _BadgePainter(),
+      ),
     );
   }
 }
@@ -24,10 +27,26 @@ class _BadgePainter extends CustomPainter {
   const _BadgePainter();
 
   static const List<Offset> _star = [
-    Offset(12, 2), Offset(14.4, 3.8), Offset(17.4, 3.6), Offset(18.3, 6.5), Offset(20.8, 8.2),
-    Offset(19.8, 11), Offset(20.8, 13.8), Offset(18.3, 15.5), Offset(17.4, 18.4), Offset(14.4, 18.2),
-    Offset(12, 22), Offset(9.6, 20.2), Offset(6.6, 20.4), Offset(5.7, 17.5), Offset(3.2, 15.8),
-    Offset(4.2, 13), Offset(3.2, 10.2), Offset(5.7, 8.5), Offset(6.6, 5.6), Offset(9.6, 5.8),
+    Offset(12, 2),
+    Offset(14.4, 3.8),
+    Offset(17.4, 3.6),
+    Offset(18.3, 6.5),
+    Offset(20.8, 8.2),
+    Offset(19.8, 11),
+    Offset(20.8, 13.8),
+    Offset(18.3, 15.5),
+    Offset(17.4, 18.4),
+    Offset(14.4, 18.2),
+    Offset(12, 22),
+    Offset(9.6, 20.2),
+    Offset(6.6, 20.4),
+    Offset(5.7, 17.5),
+    Offset(3.2, 15.8),
+    Offset(4.2, 13),
+    Offset(3.2, 10.2),
+    Offset(5.7, 8.5),
+    Offset(6.6, 5.6),
+    Offset(9.6, 5.8),
   ];
 
   @override

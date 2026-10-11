@@ -47,42 +47,76 @@ class HfVoiceBar extends StatelessWidget {
         onTap: onTap,
         child: Container(
           padding: const EdgeInsets.fromLTRB(6, 6, 12, 6),
-          decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(compact ? HfRadius.tileSmall : HfRadius.control)),
+          decoration: BoxDecoration(
+            color: bg,
+            borderRadius: BorderRadius.circular(
+              compact ? HfRadius.tileSmall : HfRadius.control,
+            ),
+          ),
           child: Row(
             children: [
               Container(
                 width: button,
                 height: button,
-                decoration: BoxDecoration(color: dark ? HfColors.peachLight : HfColors.ink, shape: BoxShape.circle),
-                child: Icon(playing ? Icons.pause_rounded : Icons.play_arrow_rounded,
-                    size: compact ? 20 : 24, color: dark ? HfColors.ink : HfColors.white),
+                decoration: BoxDecoration(
+                  color: dark ? HfColors.peachLight : HfColors.ink,
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(
+                  playing ? Icons.pause_rounded : Icons.play_arrow_rounded,
+                  size: compact ? 20 : 24,
+                  color: dark ? HfColors.ink : HfColors.white,
+                ),
               ),
               const SizedBox(width: HfSpacing.md),
               Flexible(
-                child: Text(title, maxLines: 1, overflow: TextOverflow.ellipsis, style: HfText.badge.copyWith(color: ink)),
+                child: Text(
+                  title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: HfText.badge.copyWith(color: ink),
+                ),
               ),
               const SizedBox(width: HfSpacing.md),
               Expanded(
                 child: SizedBox(
                   height: waveHeight,
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.center,
-                    children: [
-                      for (var i = 0; i < heights.length; i++) ...[
-                        if (i > 0) const SizedBox(width: 2),
-                        Expanded(
-                          child: Center(
-                            child: Container(
-                              height: waveHeight * (heights[i].clamp(0, 100) / 100),
-                              decoration: BoxDecoration(
-                                color: (i / heights.length) < p ? played : idle,
-                                borderRadius: BorderRadius.circular(2),
+                  child: LayoutBuilder(
+                    builder: (context, c) {
+                      // Each bar needs ~4px (2px bar + 2px gap); with less room (big system text) sample fewer bars.
+                      final fit = (c.maxWidth / 4).floor().clamp(
+                        1,
+                        heights.length,
+                      );
+                      final step = heights.length / fit;
+                      final shown = [
+                        for (var i = 0; i < fit; i++)
+                          heights[(i * step).floor()],
+                      ];
+                      return Row(
+                        crossAxisAlignment: CrossAxisAlignment.center,
+                        children: [
+                          for (var i = 0; i < shown.length; i++) ...[
+                            if (i > 0) const SizedBox(width: 2),
+                            Expanded(
+                              child: Center(
+                                child: Container(
+                                  height:
+                                      waveHeight *
+                                      (shown[i].clamp(0, 100) / 100),
+                                  decoration: BoxDecoration(
+                                    color: (i / shown.length) < p
+                                        ? played
+                                        : idle,
+                                    borderRadius: BorderRadius.circular(2),
+                                  ),
+                                ),
                               ),
                             ),
-                          ),
-                        ),
-                      ],
-                    ],
+                          ],
+                        ],
+                      );
+                    },
                   ),
                 ),
               ),

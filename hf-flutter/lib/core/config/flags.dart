@@ -89,7 +89,9 @@ class HfFlags {
       hfPushEnabled: b('hfPushEnabled'),
       hfAppMinBuild: n('hfAppMinBuild'),
       hfAppLatestBuild: n('hfAppLatestBuild'),
-      hfAckVersion: (j['hfAckVersion'] is String && (j['hfAckVersion'] as String).trim().isNotEmpty)
+      hfAckVersion:
+          (j['hfAckVersion'] is String &&
+              (j['hfAckVersion'] as String).trim().isNotEmpty)
           ? (j['hfAckVersion'] as String).trim()
           : null,
     );

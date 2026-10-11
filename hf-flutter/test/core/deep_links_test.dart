@@ -28,37 +28,62 @@ void main() {
     test('/marketplace and /talk -> Explore, filters kept', () {
       expectRoute(site('/marketplace'), '/explore');
       expectRoute(site('/talk'), '/explore');
-      expectRoute(site('/talk?lane=women&lang=hi&max=50&online=1&topics=career,love'),
-          '/explore?lane=women&topics=career%2Clove&lang=hi&max=50&online=1');
+      expectRoute(
+        site('/talk?lane=women&lang=hi&max=50&online=1&topics=career,love'),
+        '/explore?lane=women&topics=career%2Clove&lang=hi&max=50&online=1',
+      );
     });
     test('an unknown lane or unknown query key is dropped', () {
       expectRoute(site('/marketplace?lane=nope&x=1'), '/explore');
     });
     test('native discovery and call routes retain their safe context', () {
       expectRoute('/explore?lang=hi&online=1', '/explore?lang=hi&online=1');
-      expectRoute('/call/new?host=asha&lane=lgbtq', '/call/new?host=asha&lane=lgbtq');
+      expectRoute(
+        '/call/new?host=asha&lane=lgbtq',
+        '/call/new?host=asha&lane=lgbtq',
+      );
       expectRoute('/h/asha?lane=women', '/h/asha?lane=women');
-      expectRoute('/lanes?lane=women&next=%2Fcall%2Fnew%3Fhost%3Dasha',
-        '/lanes?lane=women&next=%2Fcall%2Fnew%3Fhost%3Dasha');
+      expectRoute(
+        '/lanes?lane=women&next=%2Fcall%2Fnew%3Fhost%3Dasha',
+        '/lanes?lane=women&next=%2Fcall%2Fnew%3Fhost%3Dasha',
+      );
       expectRoute('/wallet?next=https%3A%2F%2Fevil.test', '/wallet');
     });
-    test('/women-only -> Explore lane=women', () => expectRoute(site('/women-only'), '/explore?lane=women'));
-    test('/lgbtq -> Explore lane=lgbtq', () => expectRoute(site('/lgbtq'), '/explore?lane=lgbtq'));
+    test(
+      '/women-only -> Explore lane=women',
+      () => expectRoute(site('/women-only'), '/explore?lane=women'),
+    );
+    test(
+      '/lgbtq -> Explore lane=lgbtq',
+      () => expectRoute(site('/lgbtq'), '/explore?lane=lgbtq'),
+    );
     test('/h/<slug> -> host profile', () {
       expectRoute(site('/h/asha-k'), '/h/asha-k');
       expectRoute(www('/h/asha-k'), '/h/asha-k');
     });
-    test('/people/<slug> -> Explore', () => expectRoute(site('/people/asha'), '/explore'));
+    test(
+      '/people/<slug> -> Explore',
+      () => expectRoute(site('/people/asha'), '/explore'),
+    );
     test('/wallet and /dashboard/wallet -> Wallet, query kept', () {
       expectRoute(site('/wallet'), '/wallet');
       expectRoute(site('/dashboard/wallet'), '/wallet');
       expectRoute(site('/wallet?topup=ok'), '/wallet?topup=ok');
     });
-    test('/review/<token> -> token review', () => expectRoute(site('/review/abc123'), '/review/abc123'));
-    test('/hosts/dashboard -> Host tab', () => expectRoute(site('/hosts/dashboard'), '/host'));
+    test(
+      '/review/<token> -> token review',
+      () => expectRoute(site('/review/abc123'), '/review/abc123'),
+    );
+    test(
+      '/hosts/dashboard -> Host tab',
+      () => expectRoute(site('/hosts/dashboard'), '/host'),
+    );
     test('/hosts/onboarding, /hosts/join, /hosts/kyc -> host onboarding', () {
       expectRoute(site('/hosts/onboarding'), '/host/onboarding');
-      expectRoute(site('/hosts/onboarding?step=photo'), '/host/onboarding?step=photo');
+      expectRoute(
+        site('/hosts/onboarding?step=photo'),
+        '/host/onboarding?step=photo',
+      );
       expectRoute(site('/hosts/join'), '/host/onboarding');
       expectRoute(site('/hosts/kyc'), '/host/onboarding');
     });
@@ -69,7 +94,10 @@ void main() {
       ]) {
         final t = DeepLinks.resolve(input);
         expect(t, isA<DigiLockerReturn>(), reason: input);
-        expect((t as DigiLockerReturn).location, '/host/onboarding?step=aadhaar&dl=return');
+        expect(
+          (t as DigiLockerReturn).location,
+          '/host/onboarding?step=aadhaar&dl=return',
+        );
       }
     });
     test('/verify/lane -> lanes', () {
@@ -77,7 +105,10 @@ void main() {
       expectRoute(site('/verify/lane'), '/lanes');
       expectRoute(site('/verify/lane?lane=other'), '/lanes');
     });
-    test('/account/close -> delete account', () => expectRoute(site('/account/close'), '/me/delete'));
+    test(
+      '/account/close -> delete account',
+      () => expectRoute(site('/account/close'), '/me/delete'),
+    );
     test('/sign-in and /sign-up -> sign-in', () {
       expectRoute(site('/sign-in'), '/sign-in');
       expectRoute(site('/sign-up'), '/sign-in');
@@ -97,7 +128,11 @@ void main() {
       expect(t.uri.scheme, 'https');
     });
     test('never opened: /api, /.well-known, /_astro', () {
-      for (final p in ['/api/config', '/.well-known/assetlinks.json', '/_astro/x.js']) {
+      for (final p in [
+        '/api/config',
+        '/.well-known/assetlinks.json',
+        '/_astro/x.js',
+      ]) {
         expect(DeepLinks.resolve(site(p)), isA<IgnoreLink>(), reason: p);
       }
     });
@@ -114,7 +149,10 @@ void main() {
     });
     test('foreign hosts and schemes are ignored', () {
       expect(DeepLinks.resolve('https://example.org/h/x'), isA<IgnoreLink>());
-      expect(DeepLinks.resolve('http://${Brand.domain}/h/x'), isA<IgnoreLink>());
+      expect(
+        DeepLinks.resolve('http://${Brand.domain}/h/x'),
+        isA<IgnoreLink>(),
+      );
       expect(DeepLinks.resolve('mailto:a@b.c'), isA<IgnoreLink>());
       expect(DeepLinks.resolve('other://h/x'), isA<IgnoreLink>());
     });
@@ -137,7 +175,10 @@ void main() {
       expect(DeepLinks.telemetryPath(site('/')), '/');
     });
     test('never contains the slug', () {
-      expect(DeepLinks.telemetryPath(site('/h/very-private-slug')), isNot(contains('very-private-slug')));
+      expect(
+        DeepLinks.telemetryPath(site('/h/very-private-slug')),
+        isNot(contains('very-private-slug')),
+      );
     });
   });
 }

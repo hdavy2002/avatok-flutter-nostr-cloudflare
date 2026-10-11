@@ -24,10 +24,10 @@ class HfBackButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => IconButton(
-        tooltip: 'Back',
-        icon: const Icon(Icons.arrow_back_rounded),
-        onPressed: () => popOrHome(context),
-      );
+    tooltip: 'Back',
+    icon: const Icon(Icons.arrow_back_rounded),
+    onPressed: () => popOrHome(context),
+  );
 }
 
 /// Browse-before-sign-in gate (owner decision). Home, Explore and host profiles open without an account;
@@ -42,12 +42,24 @@ class HfBackButton extends StatelessWidget {
 /// Returns true when the person is (now) signed in. Otherwise it opens `/sign-in?next=<where you are>`
 /// and returns false once the sign-in screen is closed without signing in. After a successful sign-in the
 /// sign-in screen sends the person back to `next` and this returns true.
-Future<bool> requireSignIn(BuildContext context, WidgetRef ref, {String? next}) async {
+Future<bool> requireSignIn(
+  BuildContext context,
+  WidgetRef ref, {
+  String? next,
+}) async {
   final router = GoRouter.of(context);
-  final where = Routes.safeNext(next ?? router.routeInformationProvider.value.uri.toString()) ?? Routes.home;
+  final where =
+      Routes.safeNext(
+        next ?? router.routeInformationProvider.value.uri.toString(),
+      ) ??
+      Routes.home;
   if (!ref.read(sessionProvider).isSignedIn) {
     final result = await router.push<bool>(Routes.signInTo(where));
-    if (result != true || !context.mounted || !ref.read(sessionProvider).isSignedIn) return false;
+    if (result != true ||
+        !context.mounted ||
+        !ref.read(sessionProvider).isSignedIn) {
+      return false;
+    }
   }
   if (await ref.read(ackServiceProvider).needsWelcomeNow()) {
     if (!context.mounted) return false;

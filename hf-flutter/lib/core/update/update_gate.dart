@@ -16,14 +16,17 @@ abstract final class UpdateCopy {
   static const String forcedBody =
       'This version is too old to keep working. Update it from Google Play, then open the app again.';
   static const String forcedButton = 'Update';
-  static const String couldNotOpen = "We couldn't open Google Play. Please open it yourself and update the app.";
+  static const String couldNotOpen =
+      "We couldn't open Google Play. Please open it yourself and update the app.";
 }
 
 /// Telemetry for the update prompt (`hf_app_update_prompt`). Best effort; tests replace [sink].
 abstract final class UpdateTelemetry {
-  static Future<void> Function(String event, Map<String, Object> props) sink = _toAnalytics;
+  static Future<void> Function(String event, Map<String, Object> props) sink =
+      _toAnalytics;
 
-  static Future<void> _toAnalytics(String event, Map<String, Object> props) => Analytics.capture(event, props);
+  static Future<void> _toAnalytics(String event, Map<String, Object> props) =>
+      Analytics.capture(event, props);
 
   static void resetSink() => sink = _toAnalytics;
 
@@ -64,11 +67,17 @@ class _UpdateGateState extends ConsumerState<UpdateGate> {
     if (_shownKind == kind) return;
     _shownKind = kind;
     final installed = ref.read(installedBuildProvider);
-    WidgetsBinding.instance.addPostFrameCallback((_) => UpdateTelemetry.prompt(kind, 'shown', installed: installed));
+    WidgetsBinding.instance.addPostFrameCallback(
+      (_) => UpdateTelemetry.prompt(kind, 'shown', installed: installed),
+    );
   }
 
   Future<void> _openStore(String kind) async {
-    UpdateTelemetry.prompt(kind, 'update_tapped', installed: ref.read(installedBuildProvider));
+    UpdateTelemetry.prompt(
+      kind,
+      'update_tapped',
+      installed: ref.read(installedBuildProvider),
+    );
     final ok = await LinkOpener.instance.playStore();
     if (!mounted) return;
     setState(() => _openFailed = !ok);
@@ -81,7 +90,10 @@ class _UpdateGateState extends ConsumerState<UpdateGate> {
 
     if (status == UpdateStatus.forced) {
       _reportShown('forced');
-      return UpdateRequiredScreen(onUpdate: () => _openStore('forced'), openFailed: _openFailed);
+      return UpdateRequiredScreen(
+        onUpdate: () => _openStore('forced'),
+        openFailed: _openFailed,
+      );
     }
     final showBanner = status == UpdateStatus.soft && !_dismissed;
     if (showBanner) _reportShown('soft');
@@ -94,7 +106,11 @@ class _UpdateGateState extends ConsumerState<UpdateGate> {
           UpdateBanner(
             onUpdate: () => _openStore('soft'),
             onClose: () {
-              UpdateTelemetry.prompt('soft', 'dismissed', installed: ref.read(installedBuildProvider));
+              UpdateTelemetry.prompt(
+                'soft',
+                'dismissed',
+                installed: ref.read(installedBuildProvider),
+              );
               setState(() => _dismissed = true);
             },
             openFailed: _openFailed,
@@ -102,7 +118,11 @@ class _UpdateGateState extends ConsumerState<UpdateGate> {
         Expanded(
           key: _appKey,
           // The banner already covers the status bar, so the screen below must not add that space again.
-          child: MediaQuery.removePadding(context: context, removeTop: showBanner, child: child),
+          child: MediaQuery.removePadding(
+            context: context,
+            removeTop: showBanner,
+            child: child,
+          ),
         ),
       ],
     );
@@ -111,7 +131,12 @@ class _UpdateGateState extends ConsumerState<UpdateGate> {
 
 /// The soft banner: "A new version is ready" with Update and Not now. Rose on blush (never green).
 class UpdateBanner extends StatelessWidget {
-  const UpdateBanner({super.key, required this.onUpdate, required this.onClose, this.openFailed = false});
+  const UpdateBanner({
+    super.key,
+    required this.onUpdate,
+    required this.onClose,
+    this.openFailed = false,
+  });
 
   final VoidCallback onUpdate;
   final VoidCallback onClose;
@@ -132,19 +157,33 @@ class UpdateBanner extends StatelessWidget {
                 children: [
                   const Icon(Icons.system_update_rounded, color: HfColors.ink),
                   const SizedBox(width: 12),
-                  const Expanded(child: Text(UpdateCopy.bannerText, style: HfText.bodyStrong)),
+                  const Expanded(
+                    child: Text(
+                      UpdateCopy.bannerText,
+                      style: HfText.bodyStrong,
+                    ),
+                  ),
                   TextButton(
                     key: const ValueKey<String>('update-banner-button'),
-                    style: TextButton.styleFrom(minimumSize: const Size(64, HfSpacing.tap)),
+                    style: TextButton.styleFrom(
+                      minimumSize: const Size(64, HfSpacing.tap),
+                    ),
                     onPressed: onUpdate,
                     child: const Text(UpdateCopy.bannerButton),
                   ),
                   // No tooltip here: this banner sits above the Navigator, so there is no Overlay for one.
                   IconButton(
                     key: const ValueKey<String>('update-banner-close'),
-                    constraints: const BoxConstraints(minWidth: HfSpacing.tap, minHeight: HfSpacing.tap),
+                    constraints: const BoxConstraints(
+                      minWidth: HfSpacing.tap,
+                      minHeight: HfSpacing.tap,
+                    ),
                     onPressed: onClose,
-                    icon: const Icon(Icons.close_rounded, color: HfColors.plum, semanticLabel: UpdateCopy.bannerClose),
+                    icon: const Icon(
+                      Icons.close_rounded,
+                      color: HfColors.plum,
+                      semanticLabel: UpdateCopy.bannerClose,
+                    ),
                   ),
                 ],
               ),
@@ -164,7 +203,11 @@ class UpdateBanner extends StatelessWidget {
 /// The blocking screen for a build below `hfAppMinBuild`. The only action is Update (Play Store, with the
 /// web page as the fallback inside [LinkOpener.playStore]).
 class UpdateRequiredScreen extends StatelessWidget {
-  const UpdateRequiredScreen({super.key, required this.onUpdate, this.openFailed = false});
+  const UpdateRequiredScreen({
+    super.key,
+    required this.onUpdate,
+    this.openFailed = false,
+  });
 
   final VoidCallback onUpdate;
   final bool openFailed;
@@ -183,9 +226,19 @@ class UpdateRequiredScreen extends StatelessWidget {
               children: [
                 const HfScene(kind: HfSceneKind.success, height: 160),
                 const SizedBox(height: 16),
-                const Text(UpdateCopy.forcedTitle, style: HfText.title, textAlign: TextAlign.center),
+                const Text(
+                  UpdateCopy.forcedTitle,
+                  style: HfText.title,
+                  textAlign: TextAlign.center,
+                ),
                 const SizedBox(height: 12),
-                const HfCard(child: Text(UpdateCopy.forcedBody, style: HfText.bodyText, textAlign: TextAlign.center)),
+                const HfCard(
+                  child: Text(
+                    UpdateCopy.forcedBody,
+                    style: HfText.bodyText,
+                    textAlign: TextAlign.center,
+                  ),
+                ),
                 const SizedBox(height: HfSpacing.gapLarge),
                 HfButton(
                   key: const ValueKey<String>('update-required-button'),
@@ -195,7 +248,11 @@ class UpdateRequiredScreen extends StatelessWidget {
                 ),
                 if (openFailed) ...[
                   const SizedBox(height: 12),
-                  const Text(UpdateCopy.couldNotOpen, style: HfText.note, textAlign: TextAlign.center),
+                  const Text(
+                    UpdateCopy.couldNotOpen,
+                    style: HfText.note,
+                    textAlign: TextAlign.center,
+                  ),
                 ],
               ],
             ),

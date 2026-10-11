@@ -13,44 +13,52 @@ import 'core/boot.dart';
 
 Future<void> main() async {
   coldStartClock.start();
-  await runZonedGuarded<Future<void>>(() async {
-    WidgetsFlutterBinding.ensureInitialized();
+  await runZonedGuarded<Future<void>>(
+    () async {
+      WidgetsFlutterBinding.ensureInitialized();
 
-    FlutterError.onError = (details) {
-      FlutterError.presentError(details);
-      Analytics.captureException(details.exception, details.stack, handled: false);
-    };
-    PlatformDispatcher.instance.onError = (error, stack) {
-      Analytics.captureException(error, stack, handled: false);
-      return true;
-    };
+      FlutterError.onError = (details) {
+        FlutterError.presentError(details);
+        Analytics.captureException(
+          details.exception,
+          details.stack,
+          handled: false,
+        );
+      };
+      PlatformDispatcher.instance.onError = (error, stack) {
+        Analytics.captureException(error, stack, handled: false);
+        return true;
+      };
 
-    await Analytics.init();
-    try {
-      // Needs google-services.json; a build without it still runs (push is added in HF-NATIVE-7).
-      await Firebase.initializeApp();
-    } catch (e) {
-      debugPrint('Firebase not initialised: $e');
-    }
+      await Analytics.init();
+      try {
+        // Needs google-services.json; a build without it still runs (push is added in HF-NATIVE-7).
+        await Firebase.initializeApp();
+      } catch (e) {
+        debugPrint('Firebase not initialised: $e');
+      }
 
-    await SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
-    SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
-      statusBarColor: Colors.transparent,
-      systemNavigationBarColor: Colors.transparent,
-      statusBarIconBrightness: Brightness.dark,
-      systemNavigationBarIconBrightness: Brightness.dark,
-    ));
-    await SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
-
-    runApp(
-      PostHogWidget(
-        child: ProviderScope(
-          retry: (_, __) => null,
-          child: const HfApp(),
+      await SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+      SystemChrome.setSystemUIOverlayStyle(
+        const SystemUiOverlayStyle(
+          statusBarColor: Colors.transparent,
+          systemNavigationBarColor: Colors.transparent,
+          statusBarIconBrightness: Brightness.dark,
+          systemNavigationBarIconBrightness: Brightness.dark,
         ),
-      ),
-    );
-  }, (error, stack) {
-    Analytics.captureException(error, stack, handled: false);
-  });
+      );
+      await SystemChrome.setPreferredOrientations([
+        DeviceOrientation.portraitUp,
+      ]);
+
+      runApp(
+        PostHogWidget(
+          child: ProviderScope(retry: (_, __) => null, child: const HfApp()),
+        ),
+      );
+    },
+    (error, stack) {
+      Analytics.captureException(error, stack, handled: false);
+    },
+  );
 }

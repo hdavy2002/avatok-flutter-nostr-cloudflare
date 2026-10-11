@@ -54,7 +54,9 @@ class HfMe {
       whatsappVerified: j['whatsappVerified'] == true,
       ackVersion: _s(j['ackVersion']),
       isHost: j['isHost'] == true || hostRaw is Map,
-      host: hostRaw is Map ? HfMeHost.fromJson(Map<String, dynamic>.from(hostRaw)) : null,
+      host: hostRaw is Map
+          ? HfMeHost.fromJson(Map<String, dynamic>.from(hostRaw))
+          : null,
       womenLane: lanes is Map ? flag(lanes['women']) : false,
       lgbtqLane: lanes is Map ? flag(lanes['lgbtq']) : false,
       closing: j['closing'] == true,
@@ -76,6 +78,8 @@ class HfMeHost {
 
   bool get isLive => status == 'live';
 
-  factory HfMeHost.fromJson(Map<String, dynamic> j) =>
-      HfMeHost(status: (j['status'] ?? 'draft').toString(), slug: j['slug']?.toString());
+  factory HfMeHost.fromJson(Map<String, dynamic> j) => HfMeHost(
+    status: (j['status'] ?? 'draft').toString(),
+    slug: j['slug']?.toString(),
+  );
 }

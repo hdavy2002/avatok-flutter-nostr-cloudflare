@@ -14,35 +14,53 @@ class CrisisStrip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     Widget call(String label, String number) => HfButton(
-          label: label,
-          icon: Icons.phone_rounded,
-          kind: HfButtonKind.secondary,
-          onPressed: () => LinkOpener.instance.tel(number),
-        );
+      label: label,
+      icon: Icons.phone_rounded,
+      kind: HfButtonKind.secondary,
+      onPressed: () => LinkOpener.instance.tel(number),
+    );
     return SizedBox(
       width: double.infinity,
       child: HfCard(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(Strings.crisisTitle, style: HfText.of(context, HfText.subsection)),
-          const SizedBox(height: 12),
-          // At large text sizes the two buttons stack, so the labels never overflow.
-          if (MediaQuery.textScalerOf(context).scale(14) > 22 || MediaQuery.sizeOf(context).width < 380)
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [call(Strings.crisisTeleManas, Strings.crisisTeleManasNumber), const SizedBox(height: 12), call(Strings.crisisEmergency, Strings.crisisEmergencyNumber)],
-            )
-          else
-            Row(
-              children: [
-                Expanded(child: call(Strings.crisisTeleManas, Strings.crisisTeleManasNumber)),
-                const SizedBox(width: 12),
-                Expanded(child: call(Strings.crisisEmergency, Strings.crisisEmergencyNumber)),
-              ],
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              Strings.crisisTitle,
+              style: HfText.of(context, HfText.subsection),
             ),
-        ],
-      ),
+            const SizedBox(height: 12),
+            // At large text sizes the two buttons stack, so the labels never overflow.
+            if (MediaQuery.textScalerOf(context).scale(14) > 22 ||
+                MediaQuery.sizeOf(context).width < 380)
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  call(Strings.crisisTeleManas, Strings.crisisTeleManasNumber),
+                  const SizedBox(height: 12),
+                  call(Strings.crisisEmergency, Strings.crisisEmergencyNumber),
+                ],
+              )
+            else
+              Row(
+                children: [
+                  Expanded(
+                    child: call(
+                      Strings.crisisTeleManas,
+                      Strings.crisisTeleManasNumber,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: call(
+                      Strings.crisisEmergency,
+                      Strings.crisisEmergencyNumber,
+                    ),
+                  ),
+                ],
+              ),
+          ],
+        ),
       ),
     );
   }

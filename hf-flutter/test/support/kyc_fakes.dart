@@ -16,9 +16,12 @@ import 'fake_api_client.dart';
 /// A permission service that never touches the phone. `granted` is the set that is already allowed;
 /// `requestResults` is what the Android prompt answers, per permission (default: granted, and it is then remembered).
 class FakePermissionService extends PermissionService {
-  FakePermissionService({Set<HfPermission>? granted, Map<HfPermission, HfPermissionResult>? requestResults, this.throwOnRequest = false})
-      : granted = granted ?? <HfPermission>{},
-        requestResults = requestResults ?? <HfPermission, HfPermissionResult>{};
+  FakePermissionService({
+    Set<HfPermission>? granted,
+    Map<HfPermission, HfPermissionResult>? requestResults,
+    this.throwOnRequest = false,
+  }) : granted = granted ?? <HfPermission>{},
+       requestResults = requestResults ?? <HfPermission, HfPermissionResult>{};
 
   final Set<HfPermission> granted;
   final Map<HfPermission, HfPermissionResult> requestResults;
@@ -48,7 +51,13 @@ class FakePermissionService extends PermissionService {
 /// A camera that records nothing. [openError] makes `open` fail; [clip] is what `stop` returns.
 class FakeSelfieRecorder implements SelfieRecorder {
   FakeSelfieRecorder({this.openError, SelfieClip? clip})
-      : clip = clip ?? SelfieClip(bytes: Uint8List(64 * 1024), mime: 'video/mp4', seconds: 2);
+    : clip =
+          clip ??
+          SelfieClip(
+            bytes: Uint8List(64 * 1024),
+            mime: 'video/mp4',
+            seconds: 2,
+          );
 
   final SelfieRecorderException? openError;
   final SelfieClip clip;
@@ -65,7 +74,8 @@ class FakeSelfieRecorder implements SelfieRecorder {
   }
 
   @override
-  Widget buildPreview(BuildContext context) => const SizedBox(key: ValueKey<String>('fake-preview'), height: 40);
+  Widget buildPreview(BuildContext context) =>
+      const SizedBox(key: ValueKey<String>('fake-preview'), height: 40);
 
   @override
   Future<void> start() async => starts += 1;
@@ -139,7 +149,8 @@ class CapturingApi extends FakeApiClient {
 
 /// Telemetry events the code under test sent.
 class TelemetryLog {
-  final List<(String, Map<String, Object>)> events = <(String, Map<String, Object>)>[];
+  final List<(String, Map<String, Object>)> events =
+      <(String, Map<String, Object>)>[];
 
   void install() {
     KycTelemetry.sink = (event, props) async => events.add((event, props));
@@ -148,9 +159,15 @@ class TelemetryLog {
   void remove() => KycTelemetry.resetSink();
 
   /// All `hf_app_kyc_step` events as `step:result`.
-  List<String> steps() => [for (final e in events) if (e.$1 == 'hf_app_kyc_step') '${e.$2['step']}:${e.$2['result']}'];
+  List<String> steps() => [
+    for (final e in events)
+      if (e.$1 == 'hf_app_kyc_step') '${e.$2['step']}:${e.$2['result']}',
+  ];
 
-  List<Map<String, Object>> named(String name) => [for (final e in events) if (e.$1 == name) e.$2];
+  List<Map<String, Object>> named(String name) => [
+    for (final e in events)
+      if (e.$1 == name) e.$2,
+  ];
 }
 
 /// Lets timers and microphone-free futures run without waiting for every animation to stop
@@ -188,21 +205,28 @@ Future<ProviderContainer> pumpWidgetUnderTest(
   List<Override> overrides = const <Override>[],
 }) async {
   usePhoneScreen(tester);
-  final container = ProviderContainer(overrides: [
-    apiClientProvider.overrideWithValue(api ?? FakeApiClient()),
-    secureStoreProvider.overrideWithValue(MemoryKeyValueStore()),
-    ...overrides,
-  ]);
+  final container = ProviderContainer(
+    overrides: [
+      apiClientProvider.overrideWithValue(api ?? FakeApiClient()),
+      secureStoreProvider.overrideWithValue(MemoryKeyValueStore()),
+      ...overrides,
+    ],
+  );
   addTearDown(container.dispose);
-  await tester.pumpWidget(UncontrolledProviderScope(
-    container: container,
-    child: MaterialApp(
-      theme: buildHfTheme(),
-      home: Scaffold(
-        body: SingleChildScrollView(padding: const EdgeInsets.all(20), child: child),
+  await tester.pumpWidget(
+    UncontrolledProviderScope(
+      container: container,
+      child: MaterialApp(
+        theme: buildHfTheme(),
+        home: Scaffold(
+          body: SingleChildScrollView(
+            padding: const EdgeInsets.all(20),
+            child: child,
+          ),
+        ),
       ),
     ),
-  ));
+  );
   await settle(tester);
   return container;
 }

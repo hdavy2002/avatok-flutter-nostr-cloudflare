@@ -22,7 +22,12 @@ class AiLabel extends StatelessWidget {
         children: [
           const Icon(Icons.auto_awesome, size: 14, color: HfColors.inkSoft),
           const SizedBox(width: HfSpacing.xs),
-          Flexible(child: Text(text, style: HfText.label.copyWith(color: HfColors.inkSoft))),
+          Flexible(
+            child: Text(
+              text,
+              style: HfText.label.copyWith(color: HfColors.inkSoft),
+            ),
+          ),
         ],
       ),
     );

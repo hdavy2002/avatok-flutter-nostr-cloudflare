@@ -32,9 +32,17 @@ class HfTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final dark = HfBrightness.isDark(context);
     final base = valueStyle ?? (compact ? HfText.statSmall : HfText.stat);
-    final valueText = base.copyWith(color: base.color == HfColors.ink ? tint.valueInk(context) : base.color);
+    final valueText = base.copyWith(
+      color: base.color == HfColors.ink ? tint.valueInk(context) : base.color,
+    );
     final captionStyle = HfText.label.copyWith(
-      color: dark ? tint.ink(context) : (tint == HfTint.butter ? HfColors.butterInk : tint == HfTint.blush ? HfColors.blushInk : HfColors.inkSoft),
+      color: dark
+          ? tint.ink(context)
+          : (tint == HfTint.butter
+                ? HfColors.butterInk
+                : tint == HfTint.blush
+                ? HfColors.blushInk
+                : HfColors.inkSoft),
       fontWeight: FontWeight.w400,
     );
     return Semantics(

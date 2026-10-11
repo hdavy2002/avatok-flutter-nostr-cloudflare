@@ -31,7 +31,8 @@ class HfSlideToConfirm extends StatefulWidget {
   State<HfSlideToConfirm> createState() => _HfSlideToConfirmState();
 }
 
-class _HfSlideToConfirmState extends State<HfSlideToConfirm> with SingleTickerProviderStateMixin {
+class _HfSlideToConfirmState extends State<HfSlideToConfirm>
+    with SingleTickerProviderStateMixin {
   static const double _knob = 56;
   static const double _pad = 6;
   static const double _threshold = 0.9;
@@ -57,7 +58,10 @@ class _HfSlideToConfirmState extends State<HfSlideToConfirm> with SingleTickerPr
 
   void _springBack() {
     if (!mounted) return;
-    _backAnim = Tween<double>(begin: _fraction, end: 0).animate(CurvedAnimation(parent: _back, curve: HfMotion.curve));
+    _backAnim = Tween<double>(
+      begin: _fraction,
+      end: 0,
+    ).animate(CurvedAnimation(parent: _back, curve: HfMotion.curve));
     _back.duration = HfMotion.of(context, HfMotion.slow);
     _back.forward(from: 0);
     if (_back.duration == Duration.zero) setState(() => _fraction = 0);
@@ -82,7 +86,10 @@ class _HfSlideToConfirmState extends State<HfSlideToConfirm> with SingleTickerPr
         children: [
           LayoutBuilder(
             builder: (context, constraints) {
-              final maxDrag = (constraints.maxWidth - _knob - _pad * 2).clamp(1.0, double.infinity);
+              final maxDrag = (constraints.maxWidth - _knob - _pad * 2).clamp(
+                1.0,
+                double.infinity,
+              );
               return Semantics(
                 button: true,
                 enabled: widget.enabled,
@@ -92,7 +99,10 @@ class _HfSlideToConfirmState extends State<HfSlideToConfirm> with SingleTickerPr
                 child: Container(
                   height: 68,
                   padding: const EdgeInsets.all(_pad),
-                  decoration: BoxDecoration(color: trackColor, borderRadius: BorderRadius.circular(34)),
+                  decoration: BoxDecoration(
+                    color: trackColor,
+                    borderRadius: BorderRadius.circular(34),
+                  ),
                   child: Stack(
                     alignment: Alignment.centerLeft,
                     children: [
@@ -107,7 +117,11 @@ class _HfSlideToConfirmState extends State<HfSlideToConfirm> with SingleTickerPr
                                 textAlign: TextAlign.center,
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
-                                style: HfText.button.copyWith(color: dark ? HfColors.darkText : HfColors.white),
+                                style: HfText.button.copyWith(
+                                  color: dark
+                                      ? HfColors.darkText
+                                      : HfColors.white,
+                                ),
                               ),
                             ),
                           ),
@@ -123,7 +137,11 @@ class _HfSlideToConfirmState extends State<HfSlideToConfirm> with SingleTickerPr
                           },
                           onHorizontalDragUpdate: (d) {
                             if (!widget.enabled) return;
-                            setState(() => _fraction = (_fraction + d.delta.dx / maxDrag).clamp(0.0, 1.0));
+                            setState(
+                              () =>
+                                  _fraction = (_fraction + d.delta.dx / maxDrag)
+                                      .clamp(0.0, 1.0),
+                            );
                           },
                           onHorizontalDragEnd: (_) {
                             if (!widget.enabled) return;
@@ -142,7 +160,11 @@ class _HfSlideToConfirmState extends State<HfSlideToConfirm> with SingleTickerPr
                               shape: BoxShape.circle,
                               boxShadow: HfShadows.knob,
                             ),
-                            child: Icon(widget.icon, size: 22, color: HfColors.ink),
+                            child: Icon(
+                              widget.icon,
+                              size: 22,
+                              color: HfColors.ink,
+                            ),
                           ),
                         ),
                       ),
@@ -156,7 +178,9 @@ class _HfSlideToConfirmState extends State<HfSlideToConfirm> with SingleTickerPr
           Center(
             child: TextButton(
               onPressed: widget.enabled ? widget.onFallback : null,
-              style: TextButton.styleFrom(minimumSize: const Size(HfSpacing.tap, 44)),
+              style: TextButton.styleFrom(
+                minimumSize: const Size(HfSpacing.tap, 44),
+              ),
               child: Text(widget.fallbackLabel),
             ),
           ),

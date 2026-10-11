@@ -45,7 +45,9 @@ Future<void> _capture(WidgetTester tester, String name) async {
       if (bytes == null) throw StateError('PNG capture failed');
       final folder = Directory('test_output/design_review');
       await folder.create(recursive: true);
-      await File('${folder.path}/$name.png').writeAsBytes(bytes.buffer.asUint8List());
+      await File(
+        '${folder.path}/$name.png',
+      ).writeAsBytes(bytes.buffer.asUint8List());
     } finally {
       pixels.dispose();
     }
@@ -63,10 +65,18 @@ void main() {
         tester.platformDispatcher.textScaleFactorTestValue = scale;
         addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
         final api = fakeApi()
-          ..onJson('GET', '/api/hf/hosts', pageJson([
-            hostJson('neha', name: 'Neha', intro: 'https://media.example.test/intro.m4a'),
-            hostJson('rohan', name: 'Rohan', status: 'busy'),
-          ]));
+          ..onJson(
+            'GET',
+            '/api/hf/hosts',
+            pageJson([
+              hostJson(
+                'neha',
+                name: 'Neha',
+                intro: 'https://media.example.test/intro.m4a',
+              ),
+              hostJson('rohan', name: 'Rohan', status: 'busy'),
+            ]),
+          );
         await pumpScreen(tester, api: api, location: '/', size: size);
         expect(tester.takeException(), isNull);
         await _capture(tester, 'browse-$label');
@@ -74,12 +84,31 @@ void main() {
       testWidgets('wallet layout $label', (tester) async {
         tester.platformDispatcher.textScaleFactorTestValue = scale;
         addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
-        tester.platformDispatcher.accessibilityFeaturesTestValue = const FakeAccessibilityFeatures(disableAnimations: true);
-        addTearDown(tester.platformDispatcher.clearAccessibilityFeaturesTestValue);
-        await pumpWallet(tester, api: walletApi(), billing: FakeBillingAdapter(products: const {
-          'hf_tokens_100': StoreProduct(productId: 'hf_tokens_100', priceText: '₹120.00', currencyCode: 'INR', priceMicros: 120000000),
-          'hf_tokens_1000': StoreProduct(productId: 'hf_tokens_1000', priceText: '₹1,200.00', currencyCode: 'INR', priceMicros: 1200000000),
-        }));
+        tester.platformDispatcher.accessibilityFeaturesTestValue =
+            const FakeAccessibilityFeatures(disableAnimations: true);
+        addTearDown(
+          tester.platformDispatcher.clearAccessibilityFeaturesTestValue,
+        );
+        await pumpWallet(
+          tester,
+          api: walletApi(),
+          billing: FakeBillingAdapter(
+            products: const {
+              'hf_tokens_100': StoreProduct(
+                productId: 'hf_tokens_100',
+                priceText: '₹120.00',
+                currencyCode: 'INR',
+                priceMicros: 120000000,
+              ),
+              'hf_tokens_1000': StoreProduct(
+                productId: 'hf_tokens_1000',
+                priceText: '₹1,200.00',
+                currencyCode: 'INR',
+                priceMicros: 1200000000,
+              ),
+            },
+          ),
+        );
         tester.view.physicalSize = Size(size.width * 3, size.height * 3);
         await tester.pumpAndSettle();
         expect(tester.takeException(), isNull);
@@ -91,16 +120,26 @@ void main() {
           tester.view.devicePixelRatio = 1;
           addTearDown(tester.view.resetPhysicalSize);
           addTearDown(tester.view.resetDevicePixelRatio);
-          await tester.pumpWidget(MaterialApp(
-            theme: buildHfTheme(),
-            home: MediaQuery(
-              data: MediaQueryData(size: size, textScaler: TextScaler.linear(scale), disableAnimations: true),
-              child: Scaffold(body: SafeArea(child: ListView(
-                padding: const EdgeInsets.all(20),
-                children: [HfScene(kind: kind, animated: true)],
-              ))),
+          await tester.pumpWidget(
+            MaterialApp(
+              theme: buildHfTheme(),
+              home: MediaQuery(
+                data: MediaQueryData(
+                  size: size,
+                  textScaler: TextScaler.linear(scale),
+                  disableAnimations: true,
+                ),
+                child: Scaffold(
+                  body: SafeArea(
+                    child: ListView(
+                      padding: const EdgeInsets.all(20),
+                      children: [HfScene(kind: kind, animated: true)],
+                    ),
+                  ),
+                ),
+              ),
             ),
-          ));
+          );
           await tester.pumpAndSettle();
           expect(tester.takeException(), isNull);
           await _capture(tester, 'scene-${kind.name}-$label');

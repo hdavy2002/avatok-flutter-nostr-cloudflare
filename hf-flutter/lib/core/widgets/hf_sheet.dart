@@ -21,10 +21,14 @@ Future<T?> showHfSheet<T>(
 }) {
   return showModalBottomSheet<T>(
     context: context,
+    // Root navigator: inside a tab the floating nav sits above the tab's navigator and would cover the footer.
+    useRootNavigator: true,
     isScrollControlled: true,
     useSafeArea: true,
     backgroundColor: Colors.transparent,
-    barrierColor: const Color(0x6B1D1A33), // rgba(29,26,51,0.42) from the mockup scrim
+    barrierColor: const Color(
+      0x6B1D1A33,
+    ), // rgba(29,26,51,0.42) from the mockup scrim
     builder: (sheetContext) => DraggableScrollableSheet(
       expand: false,
       initialChildSize: initialSize,
@@ -42,7 +46,13 @@ Future<T?> showHfSheet<T>(
 }
 
 class _HfSheetBody extends StatelessWidget {
-  const _HfSheetBody({required this.controller, required this.builder, this.footer, this.title, this.onClear});
+  const _HfSheetBody({
+    required this.controller,
+    required this.builder,
+    this.footer,
+    this.title,
+    this.onClear,
+  });
 
   final ScrollController controller;
   final WidgetBuilder builder;
@@ -54,14 +64,17 @@ class _HfSheetBody extends StatelessWidget {
   Widget build(BuildContext context) {
     final dark = HfBrightness.isDark(context);
     final media = MediaQuery.of(context);
-    final footerBottom = (media.viewInsets.bottom > media.viewPadding.bottom
+    final footerBottom =
+        (media.viewInsets.bottom > media.viewPadding.bottom
             ? media.viewInsets.bottom
             : media.viewPadding.bottom) +
         12;
     return Container(
       decoration: BoxDecoration(
         color: dark ? HfColors.darkCard : HfColors.white,
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(HfRadius.sheet)),
+        borderRadius: const BorderRadius.vertical(
+          top: Radius.circular(HfRadius.sheet),
+        ),
       ),
       child: Column(
         children: [
@@ -81,30 +94,54 @@ class _HfSheetBody extends StatelessWidget {
           ),
           if (title != null)
             Padding(
-              padding: const EdgeInsets.fromLTRB(HfSpacing.pageWide, 0, HfSpacing.pageWide, 6),
+              padding: const EdgeInsets.fromLTRB(
+                HfSpacing.pageWide,
+                0,
+                HfSpacing.pageWide,
+                6,
+              ),
               child: Row(
                 children: [
-                  Expanded(child: Text(title!, style: HfText.of(context, HfText.title))),
+                  Expanded(
+                    child: Text(
+                      title!,
+                      style: HfText.of(context, HfText.title),
+                    ),
+                  ),
                   if (onClear != null)
                     TextButton(
                       onPressed: onClear,
-                      style: TextButton.styleFrom(minimumSize: const Size(HfSpacing.tap, 44)),
+                      style: TextButton.styleFrom(
+                        minimumSize: const Size(HfSpacing.tap, 44),
+                      ),
                       child: const Text('Clear all'),
                     ),
                 ],
               ),
             ),
           Expanded(
-            child: PrimaryScrollController(controller: controller, child: Builder(builder: builder)),
+            child: PrimaryScrollController(
+              controller: controller,
+              child: Builder(builder: builder),
+            ),
           ),
           if (footer != null)
             DecoratedBox(
               decoration: BoxDecoration(
-                border: Border(top: BorderSide(color: dark ? HfColors.darkLine : HfColors.line)),
+                border: Border(
+                  top: BorderSide(
+                    color: dark ? HfColors.darkLine : HfColors.line,
+                  ),
+                ),
               ),
               child: AnimatedPadding(
                 duration: HfMotion.of(context, HfMotion.fast),
-                padding: EdgeInsets.fromLTRB(HfSpacing.pageWide, 12, HfSpacing.pageWide, footerBottom),
+                padding: EdgeInsets.fromLTRB(
+                  HfSpacing.pageWide,
+                  12,
+                  HfSpacing.pageWide,
+                  footerBottom,
+                ),
                 child: footer!,
               ),
             ),

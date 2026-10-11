@@ -33,7 +33,10 @@ import 'tab_shell.dart';
 final appRouterProvider = Provider<GoRouter>((ref) {
   final refresh = _RefreshNotifier();
   ref.listen<SessionState>(sessionProvider, (prev, next) {
-    if (prev?.status != next.status || prev?.me?.ackVersion != next.me?.ackVersion) refresh.poke();
+    if (prev?.status != next.status ||
+        prev?.me?.ackVersion != next.me?.ackVersion) {
+      refresh.poke();
+    }
   });
   final router = createAppRouter(
     ref: ref,
@@ -56,7 +59,9 @@ class _RefreshNotifier extends ChangeNotifier {
 /// arrives early waits for boot).
 String? hfRedirect(SessionState session, Uri uri) {
   if (session.isLoading) return null;
-  if (!session.isSignedIn && Routes.needsSignIn(uri.path)) return Routes.signInTo(uri.toString());
+  if (!session.isSignedIn && Routes.needsSignIn(uri.path)) {
+    return Routes.signInTo(uri.toString());
+  }
   return null;
 }
 
@@ -72,34 +77,60 @@ GoRouter createAppRouter({
       final session = ref.read(sessionProvider);
       final auth = hfRedirect(session, state.uri);
       if (auth != null) return auth;
-      final resumingCall = state.uri.path.startsWith('/call/') && state.uri.path != '/call/new';
-      if (session.isSignedIn && !resumingCall && state.uri.path != Routes.welcome && Routes.needsSignIn(state.uri.path) &&
+      final resumingCall =
+          state.uri.path.startsWith('/call/') && state.uri.path != '/call/new';
+      if (session.isSignedIn &&
+          !resumingCall &&
+          state.uri.path != Routes.welcome &&
+          Routes.needsSignIn(state.uri.path) &&
           await ref.read(ackServiceProvider).needsWelcomeNow()) {
         return Routes.welcomeTo(state.uri.toString());
       }
-      if (session.isSignedIn && !resumingCall && state.uri.path != Routes.welcome && state.uri.path != Routes.completeProfile &&
-          Routes.needsSignIn(state.uri.path) && await ref.read(registrationProgressProvider).needsName()) {
+      if (session.isSignedIn &&
+          !resumingCall &&
+          state.uri.path != Routes.welcome &&
+          state.uri.path != Routes.completeProfile &&
+          Routes.needsSignIn(state.uri.path) &&
+          await ref.read(registrationProgressProvider).needsName()) {
         return Routes.completeProfileTo(state.uri.toString());
       }
       return null;
     },
     errorBuilder: (context, state) => const _NotFoundScreen(),
     routes: [
-      GoRoute(path: Routes.completeProfile, builder: (_, state) => CompleteProfileScreen(next: Routes.safeNext(state.uri.queryParameters['next']))),
+      GoRoute(
+        path: Routes.completeProfile,
+        builder: (_, state) => CompleteProfileScreen(
+          next: Routes.safeNext(state.uri.queryParameters['next']),
+        ),
+      ),
       GoRoute(path: Routes.splash, builder: (_, __) => const SplashScreen()),
-      GoRoute(path: Routes.welcome, builder: (_, state) => WelcomeScreen(next: Routes.safeNext(state.uri.queryParameters['next']))),
+      GoRoute(
+        path: Routes.welcome,
+        builder: (_, state) => WelcomeScreen(
+          next: Routes.safeNext(state.uri.queryParameters['next']),
+        ),
+      ),
       GoRoute(
         path: Routes.signIn,
         builder: (_, state) {
           final next = state.uri.queryParameters['next'];
-          return SignInScreen(next: next != null && Routes.isSafeNext(next) ? next : null);
+          return SignInScreen(
+            next: next != null && Routes.isSafeNext(next) ? next : null,
+          );
         },
       ),
       GoRoute(
         path: Routes.hostProfile,
-        builder: (_, state) => HostProfileScreen(slug: state.pathParameters['slug'] ?? '', lane: state.uri.queryParameters['lane']),
+        builder: (_, state) => HostProfileScreen(
+          slug: state.pathParameters['slug'] ?? '',
+          lane: state.uri.queryParameters['lane'],
+        ),
       ),
-      GoRoute(path: Routes.call, builder: (_, state) => CallScreen(id: state.pathParameters['id'] ?? '')),
+      GoRoute(
+        path: Routes.call,
+        builder: (_, state) => CallScreen(id: state.pathParameters['id'] ?? ''),
+      ),
       // `review/call/:id` must come before `review/:token`.
       GoRoute(
         path: Routes.reviewCall,
@@ -107,9 +138,16 @@ GoRouter createAppRouter({
       ),
       GoRoute(
         path: Routes.reviewToken,
-        builder: (_, state) => ReviewScreen(token: state.pathParameters['token']),
+        builder: (_, state) =>
+            ReviewScreen(token: state.pathParameters['token']),
       ),
-      GoRoute(path: Routes.lanes, builder: (_, state) => LanesScreen(lane: state.uri.queryParameters['lane'], next: Routes.safeNext(state.uri.queryParameters['next']))),
+      GoRoute(
+        path: Routes.lanes,
+        builder: (_, state) => LanesScreen(
+          lane: state.uri.queryParameters['lane'],
+          next: Routes.safeNext(state.uri.queryParameters['next']),
+        ),
+      ),
       GoRoute(
         path: Routes.hostOnboarding,
         builder: (_, state) => HostOnboardingScreen(
@@ -117,19 +155,53 @@ GoRouter createAppRouter({
           digiLockerReturn: state.uri.queryParameters['dl'] == 'return',
         ),
       ),
-      GoRoute(path: Routes.meDelete, builder: (_, __) => const DeleteAccountScreen()),
+      GoRoute(
+        path: Routes.meDelete,
+        builder: (_, __) => const DeleteAccountScreen(),
+      ),
       StatefulShellRoute.indexedStack(
         builder: (_, __, shell) => HfTabShell(navigationShell: shell),
         branches: [
-          StatefulShellBranch(routes: [GoRoute(path: Routes.home, builder: (_, state) => HomeScreen(query: state.uri.queryParameters))]),
-          StatefulShellBranch(routes: [
-            GoRoute(path: Routes.explore, builder: (_, state) => ExploreScreen(query: state.uri.queryParameters)),
-          ]),
-          StatefulShellBranch(routes: [
-            GoRoute(path: Routes.wallet, builder: (_, state) => WalletScreen(query: state.uri.queryParameters)),
-          ]),
-          StatefulShellBranch(routes: [GoRoute(path: Routes.host, builder: (_, __) => const HostDashboardScreen())]),
-          StatefulShellBranch(routes: [GoRoute(path: Routes.me, builder: (_, __) => const MeScreen())]),
+          StatefulShellBranch(
+            routes: [
+              GoRoute(
+                path: Routes.home,
+                builder: (_, state) =>
+                    HomeScreen(query: state.uri.queryParameters),
+              ),
+            ],
+          ),
+          StatefulShellBranch(
+            routes: [
+              GoRoute(
+                path: Routes.explore,
+                builder: (_, state) =>
+                    ExploreScreen(query: state.uri.queryParameters),
+              ),
+            ],
+          ),
+          StatefulShellBranch(
+            routes: [
+              GoRoute(
+                path: Routes.wallet,
+                builder: (_, state) =>
+                    WalletScreen(query: state.uri.queryParameters),
+              ),
+            ],
+          ),
+          StatefulShellBranch(
+            routes: [
+              GoRoute(
+                path: Routes.host,
+                builder: (_, __) => const HostDashboardScreen(),
+              ),
+            ],
+          ),
+          StatefulShellBranch(
+            routes: [
+              GoRoute(path: Routes.me, builder: (_, __) => const MeScreen()),
+            ],
+          ),
         ],
       ),
     ],
@@ -160,9 +232,16 @@ class _NotFoundScreen extends StatelessWidget {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            const Text(Strings.notFoundBody, style: HfText.bodyText, textAlign: TextAlign.center),
+            const Text(
+              Strings.notFoundBody,
+              style: HfText.bodyText,
+              textAlign: TextAlign.center,
+            ),
             const SizedBox(height: HfSpacing.gapLarge),
-            HfButton(label: Strings.goHome, onPressed: () => GoRouter.of(context).go(Routes.home)),
+            HfButton(
+              label: Strings.goHome,
+              onPressed: () => GoRouter.of(context).go(Routes.home),
+            ),
           ],
         ),
       ),

@@ -46,7 +46,8 @@ class ApiError implements Exception {
 
   factory ApiError.timeout() => const ApiError(status: 0, code: codeTimeout);
 
-  factory ApiError.badResponse(int status) => ApiError(status: status, code: codeBadResponse);
+  factory ApiError.badResponse(int status) =>
+      ApiError(status: status, code: codeBadResponse);
 
   /// Maps a response to an error. [body] is the raw response text.
   factory ApiError.fromResponse(int status, String body) {
@@ -74,11 +75,15 @@ class ApiError implements Exception {
         ..remove('error')
         ..remove('message')
         ..remove('field');
-      if (code.isEmpty) code = status == 401 ? codeUnauthorized : 'http_$status';
+      if (code.isEmpty) {
+        code = status == 401 ? codeUnauthorized : 'http_$status';
+      }
       return ApiError(
         status: status,
         code: code,
-        message: (message == null || message.trim().isEmpty) ? null : message.trim(),
+        message: (message == null || message.trim().isEmpty)
+            ? null
+            : message.trim(),
         field: field,
         extra: extra,
       );
@@ -122,7 +127,9 @@ class ApiError implements Exception {
     if (byCode != null) return byCode;
     if (status == 401) return Strings.signInAgain;
     if (status == 404) return Strings.notAvailable;
-    if (status == 429) return 'Too many tries. Please wait a moment and try again.';
+    if (status == 429) {
+      return 'Too many tries. Please wait a moment and try again.';
+    }
     if (status >= 500) return Strings.somethingWrong;
     return Strings.somethingWrong;
   }
@@ -139,15 +146,18 @@ class ApiError implements Exception {
     'blocked': "This host isn't available right now.",
     'not_found': Strings.notAvailable,
     'invalid_phone': 'Please enter a valid 10-digit mobile number.',
-    'not_on_whatsapp': 'This number is not on WhatsApp. Please use a WhatsApp number.',
-    'otp_unavailable': 'We could not send the code right now. Please try again soon.',
+    'not_on_whatsapp':
+        'This number is not on WhatsApp. Please use a WhatsApp number.',
+    'otp_unavailable':
+        'We could not send the code right now. Please try again soon.',
     'invalid_code': 'That code is not right. Please check and try again.',
     'wrong_code': 'That code is not right. Please check and try again.',
     'no_code': 'Please enter the code we sent you.',
     'code_expired': 'That code has expired. Please ask for a new one.',
     'too_many_attempts': 'Too many wrong tries. Please ask for a new code.',
     'low_balance': 'Your balance is too low for this call. Please add money.',
-    'debt_open': 'Please clear what you owe first. Your next purchase clears it.',
+    'debt_open':
+        'Please clear what you owe first. Your next purchase clears it.',
     'lane_required': 'Please verify to enter this space.',
     'not_verified': 'Please sign in again with your WhatsApp number.',
     'account_closing': 'This account is being closed.',
@@ -161,5 +171,6 @@ class ApiError implements Exception {
   };
 
   @override
-  String toString() => 'ApiError($status $code${message == null ? '' : ': $message'})';
+  String toString() =>
+      'ApiError($status $code${message == null ? '' : ': $message'})';
 }

@@ -39,10 +39,13 @@ class ClerkClient implements ClerkApi {
   static const _apiVersion = '2025-11-10';
   static const _tokenKey = 'clerk_client_token';
 
-  ClerkClient({KeyValueStore? store, http.Client? httpClient, String? publishableKey})
-      : _storage = store ?? SecureKeyValueStore(),
-        _http = httpClient ?? http.Client(),
-        _domain = deriveDomain(publishableKey ?? Brand.clerkPublishableKey);
+  ClerkClient({
+    KeyValueStore? store,
+    http.Client? httpClient,
+    String? publishableKey,
+  }) : _storage = store ?? SecureKeyValueStore(),
+       _http = httpClient ?? http.Client(),
+       _domain = deriveDomain(publishableKey ?? Brand.clerkPublishableKey);
 
   final KeyValueStore _storage;
   final http.Client _http;
@@ -51,7 +54,8 @@ class ClerkClient implements ClerkApi {
   String? _clientToken;
   String? _sessionJwt;
   int _sessionJwtSoftExpiry = 0; // epoch s: refresh proactively after this
-  int _sessionJwtHardExpiry = 0; // epoch s: the token is genuinely valid until this
+  int _sessionJwtHardExpiry =
+      0; // epoch s: the token is genuinely valid until this
 
   // Session-mint state. sessionToken() runs on EVERY authed request, so anything unguarded here
   // multiplies by the number of in-flight calls: single-flight, a cached session id, a failure backoff.
@@ -68,20 +72,22 @@ class ClerkClient implements ClerkApi {
   }
 
   Uri _uri(String path) => Uri(
-        scheme: 'https',
-        host: _domain,
-        path: 'v1$path',
-        queryParameters: {'_is_native': 'true', '_clerk_js_version': _jsVersion},
-      );
+    scheme: 'https',
+    host: _domain,
+    path: 'v1$path',
+    queryParameters: {'_is_native': 'true', '_clerk_js_version': _jsVersion},
+  );
 
   Map<String, String> _headers({bool get = false}) => {
-        'Accept': 'application/json',
-        'Accept-Language': 'en',
-        'Content-Type': get ? 'application/json' : 'application/x-www-form-urlencoded',
-        if (_clientToken != null) 'Authorization': _clientToken!,
-        'clerk-api-version': _apiVersion,
-        'x-mobile': '1',
-      };
+    'Accept': 'application/json',
+    'Accept-Language': 'en',
+    'Content-Type': get
+        ? 'application/json'
+        : 'application/x-www-form-urlencoded',
+    if (_clientToken != null) 'Authorization': _clientToken!,
+    'clerk-api-version': _apiVersion,
+    'x-mobile': '1',
+  };
 
   void _capture(http.Response r) {
     final auth = r.headers['authorization'];
@@ -108,7 +114,11 @@ class ClerkClient implements ClerkApi {
     }
   }
 
-  Future<Map<String, dynamic>> _send(String path, {bool get = false, Map<String, String>? body}) async {
+  Future<Map<String, dynamic>> _send(
+    String path, {
+    bool get = false,
+    Map<String, String>? body,
+  }) async {
     await _loadToken();
     final uri = _uri(path);
     // 8 s cap on every FAPI round trip: a stalled connection used to hang the shell gate and the JWT mint.
@@ -118,8 +128,10 @@ class ClerkClient implements ClerkApi {
       r = get
           ? await _http.get(uri, headers: _headers(get: true)).timeout(timeout)
           : await (body == null
-              ? _http.delete(uri, headers: _headers()).timeout(timeout)
-              : _http.post(uri, headers: _headers(), body: body).timeout(timeout));
+                ? _http.delete(uri, headers: _headers()).timeout(timeout)
+                : _http
+                      .post(uri, headers: _headers(), body: body)
+                      .timeout(timeout));
     } on TimeoutException {
       _sx('fapi_timeout', reason: path);
       rethrow;
@@ -127,7 +139,9 @@ class ClerkClient implements ClerkApi {
     _capture(r);
     try {
       final decoded = jsonDecode(r.body);
-      return decoded is Map<String, dynamic> ? decoded : {'_status': r.statusCode};
+      return decoded is Map<String, dynamic>
+          ? decoded
+          : {'_status': r.statusCode};
     } catch (_) {
       return {'_status': r.statusCode};
     }
@@ -142,25 +156,43 @@ class ClerkClient implements ClerkApi {
     final cleaned = ticket.trim();
     if (cleaned.isEmpty) {
       _sx('ticket_redeem_failed', reason: 'empty_ticket');
-      return ClerkStep.error('We could not finish signing you in. Please try again.');
+      return ClerkStep.error(
+        'We could not finish signing you in. Please try again.',
+      );
     }
     try {
       _resetSessionState(keepClientToken: false);
       await _send('/client', body: {});
-      final body = await _send('/client/sign_ins', body: {'strategy': 'ticket', 'ticket': cleaned});
+      final body = await _send(
+        '/client/sign_ins',
+        body: {'strategy': 'ticket', 'ticket': cleaned},
+      );
       final user = await currentUser();
       if (user != null) {
         _sx('ticket_redeem_completed', ms: sw.elapsedMilliseconds);
         return ClerkStep.complete(user);
       }
       final err = _firstError(body);
-      _sx('ticket_redeem_failed', reason: 'no_session', detail: err, ms: sw.elapsedMilliseconds);
-      return ClerkStep.error(err ?? 'We could not finish signing you in. Please try again.');
+      _sx(
+        'ticket_redeem_failed',
+        reason: 'no_session',
+        detail: err,
+        ms: sw.elapsedMilliseconds,
+      );
+      return ClerkStep.error(
+        err ?? 'We could not finish signing you in. Please try again.',
+      );
     } on TimeoutException {
       return ClerkStep.error('That took too long. Please try again.');
     } catch (e) {
-      _sx('ticket_redeem_failed', reason: e.runtimeType.toString(), ms: sw.elapsedMilliseconds);
-      return ClerkStep.error('We could not finish signing you in. Please check your connection and try again.');
+      _sx(
+        'ticket_redeem_failed',
+        reason: e.runtimeType.toString(),
+        ms: sw.elapsedMilliseconds,
+      );
+      return ClerkStep.error(
+        'We could not finish signing you in. Please check your connection and try again.',
+      );
     }
   }
 
@@ -195,18 +227,26 @@ class ClerkClient implements ClerkApi {
         _mintBackoffUntil = 0;
       }
       final now = _nowS();
-      if (_sessionJwt != null && now < _sessionJwtSoftExpiry) return _sessionJwt;
-      if (now < _mintBackoffUntil && _sessionJwt != null && now < _sessionJwtHardExpiry) {
+      if (_sessionJwt != null && now < _sessionJwtSoftExpiry) {
+        return _sessionJwt;
+      }
+      if (now < _mintBackoffUntil &&
+          _sessionJwt != null &&
+          now < _sessionJwtHardExpiry) {
         return _sessionJwt;
       }
       final minted = await _mintOnce();
       if (minted != null) return minted;
-      if (_sessionJwt != null && now < _sessionJwtHardExpiry && !forceRefresh) return _sessionJwt;
+      if (_sessionJwt != null && now < _sessionJwtHardExpiry && !forceRefresh) {
+        return _sessionJwt;
+      }
       return null;
     } catch (e) {
       _sx('jwt_guard_tripped', reason: e.runtimeType.toString());
       final now = _nowS();
-      if (_sessionJwt != null && now < _sessionJwtHardExpiry && !forceRefresh) return _sessionJwt;
+      if (_sessionJwt != null && now < _sessionJwtHardExpiry && !forceRefresh) {
+        return _sessionJwt;
+      }
       return null;
     }
   }
@@ -238,17 +278,22 @@ class ClerkClient implements ClerkApi {
     for (var attempt = 0; attempt < 2; attempt++) {
       try {
         final sid = await _resolveSessionId(force: attempt > 0);
-        if (sid == null) break; // signed out or /client unreadable: no point retrying
+        if (sid == null) {
+          break; // signed out or /client unreadable: no point retrying
+        }
         final body = await _send('/client/sessions/$sid/tokens', body: {});
         final resp = body['response'];
-        final jwt = (body['jwt'] ?? (resp is Map<String, dynamic> ? resp['jwt'] : null))?.toString();
+        final jwt =
+            (body['jwt'] ?? (resp is Map<String, dynamic> ? resp['jwt'] : null))
+                ?.toString();
         if (jwt != null && jwt.isNotEmpty) {
           _adoptJwt(jwt);
           _mintFailures = 0;
           _mintBackoffUntil = 0;
           return jwt;
         }
-        _sessionId = null; // rotated or stale session id: re-resolve on the retry
+        _sessionId =
+            null; // rotated or stale session id: re-resolve on the retry
       } catch (e) {
         _sx('jwt_mint_failed', reason: e.runtimeType.toString());
       }
@@ -272,7 +317,10 @@ class ClerkClient implements ClerkApi {
     if (exp != null && exp > now) {
       final ttl = exp - now;
       _sessionJwtHardExpiry = exp - 2; // 2 s clock-skew margin
-      _sessionJwtSoftExpiry = min(now + max(5, (ttl * 3) ~/ 4), _sessionJwtHardExpiry);
+      _sessionJwtSoftExpiry = min(
+        now + max(5, (ttl * 3) ~/ 4),
+        _sessionJwtHardExpiry,
+      );
     } else {
       _sessionJwtSoftExpiry = now + 45;
       _sessionJwtHardExpiry = now + 58;
@@ -283,7 +331,9 @@ class ClerkClient implements ClerkApi {
     try {
       final parts = jwt.split('.');
       if (parts.length < 2) return null;
-      final payload = jsonDecode(utf8.decode(base64.decode(base64.normalize(parts[1]))));
+      final payload = jsonDecode(
+        utf8.decode(base64.decode(base64.normalize(parts[1]))),
+      );
       final exp = (payload as Map<String, dynamic>)['exp'];
       return exp is int ? exp : int.tryParse(exp.toString());
     } catch (_) {
@@ -312,7 +362,9 @@ class ClerkClient implements ClerkApi {
   @override
   Future<void> signOut() async {
     try {
-      await _send('/client'); // DELETE /client: signs out all sessions on this device
+      await _send(
+        '/client',
+      ); // DELETE /client: signs out all sessions on this device
     } catch (_) {
       // offline sign-out still clears the device below
     }
@@ -349,18 +401,21 @@ class ClerkClient implements ClerkApi {
     if (errors is! List || errors.isEmpty) return null;
     final e = errors.first;
     if (e is! Map) return null;
-    return (e['long_message'] ?? e['message'] ?? 'Authentication failed').toString();
+    return (e['long_message'] ?? e['message'] ?? 'Authentication failed')
+        .toString();
   }
 
   /// `signup_step` telemetry for one stage. Best effort, never throws into the auth path.
   void _sx(String step, {String? reason, String? detail, int? ms}) {
-    unawaited(Analytics.capture('signup_step', {
-      'provider': 'whatsapp_ticket',
-      'step': step,
-      if (reason != null) 'reason': reason,
-      if (detail != null && detail.isNotEmpty) 'detail': detail,
-      if (ms != null) 'ms': ms,
-    }));
+    unawaited(
+      Analytics.capture('signup_step', {
+        'provider': 'whatsapp_ticket',
+        'step': step,
+        if (reason != null) 'reason': reason,
+        if (detail != null && detail.isNotEmpty) 'detail': detail,
+        if (ms != null) 'ms': ms,
+      }),
+    );
   }
 }
 
@@ -379,7 +434,13 @@ class ClerkStep {
 }
 
 class ClerkUser {
-  const ClerkUser({required this.id, this.label = 'Account', this.firstName, this.lastName, this.imageUrl});
+  const ClerkUser({
+    required this.id,
+    this.label = 'Account',
+    this.firstName,
+    this.lastName,
+    this.imageUrl,
+  });
 
   /// Clerk user id (`user_...`), stable per account.
   final String id;

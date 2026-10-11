@@ -30,8 +30,12 @@ class HfSegmented extends StatelessWidget {
     final n = options.length;
     final index = selected.clamp(0, n - 1);
     final tint = (tints != null && tints!.length == n) ? tints![index] : null;
-    final pillColor = tint != null ? tint.bg(context) : (dark ? HfColors.darkSelected : HfColors.white);
-    final selectedText = tint != null ? tint.ink(context) : (dark ? HfColors.darkText : HfColors.ink);
+    final pillColor = tint != null
+        ? tint.bg(context)
+        : (dark ? HfColors.darkSelected : HfColors.white);
+    final selectedText = tint != null
+        ? tint.ink(context)
+        : (dark ? HfColors.darkText : HfColors.ink);
     final idleText = dark ? HfColors.mutedSoft : HfColors.muted;
     final duration = HfMotion.of(context, HfMotion.base);
     return Container(
@@ -80,7 +84,9 @@ class HfSegmented extends StatelessWidget {
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             style: HfText.badge.copyWith(
-                              fontWeight: i == index ? FontWeight.w700 : FontWeight.w600,
+                              fontWeight: i == index
+                                  ? FontWeight.w700
+                                  : FontWeight.w600,
                               color: i == index ? selectedText : idleText,
                             ),
                           ),

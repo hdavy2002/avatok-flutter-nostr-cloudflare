@@ -43,12 +43,21 @@ class StubScreen extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(title, style: HfText.title.copyWith(color: HfColors.ink)),
+                  Text(
+                    title,
+                    style: HfText.title.copyWith(color: HfColors.ink),
+                  ),
                   const SizedBox(height: 8),
-                  Text('This screen is built in $issue.', style: HfText.body.copyWith(color: HfColors.ink)),
+                  Text(
+                    'This screen is built in $issue.',
+                    style: HfText.body.copyWith(color: HfColors.ink),
+                  ),
                   for (final e in details.entries) ...[
                     const SizedBox(height: 8),
-                    Text('${e.key}: ${e.value}', style: HfText.note.copyWith(color: HfColors.inkSoft)),
+                    Text(
+                      '${e.key}: ${e.value}',
+                      style: HfText.note.copyWith(color: HfColors.inkSoft),
+                    ),
                   ],
                 ],
               ),

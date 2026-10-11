@@ -47,10 +47,14 @@ class HfPhotoCard extends StatelessWidget {
     final url = imageUrl;
     final placeholderColor = tint.bg(context);
     Widget tile(IconData icon) => Container(
-          color: placeholderColor,
-          alignment: Alignment.center,
-          child: Icon(icon, size: 56, color: tint.ink(context).withValues(alpha: 0.5)),
-        );
+      color: placeholderColor,
+      alignment: Alignment.center,
+      child: Icon(
+        icon,
+        size: 56,
+        color: tint.ink(context).withValues(alpha: 0.5),
+      ),
+    );
     return ClipRRect(
       borderRadius: BorderRadius.circular(HfRadius.cardInner),
       child: SizedBox(
@@ -70,18 +74,28 @@ class HfPhotoCard extends StatelessWidget {
                 errorWidget: (_, __, ___) => tile(Icons.person_rounded),
               ),
             if (status != null)
-              Positioned(top: 12, left: 12, child: HfStatusPill(status: status!, animate: animatePill)),
+              Positioned(
+                top: 12,
+                left: 12,
+                child: HfStatusPill(status: status!, animate: animatePill),
+              ),
             if (aiLabel != null)
               Positioned(
                 top: 60,
                 left: 12,
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 5,
+                  ),
                   decoration: BoxDecoration(
                     color: const Color(0xD9FFFFFF),
                     borderRadius: BorderRadius.circular(HfRadius.segmentItem),
                   ),
-                  child: Text(aiLabel!, style: HfText.label.copyWith(color: HfColors.inkSoft)),
+                  child: Text(
+                    aiLabel!,
+                    style: HfText.label.copyWith(color: HfColors.inkSoft),
+                  ),
                 ),
               ),
             Positioned(
@@ -98,9 +112,17 @@ class HfPhotoCard extends StatelessWidget {
                   child: Container(
                     width: 48,
                     height: 48,
-                    decoration: const BoxDecoration(color: Color(0xE6FFFFFF), shape: BoxShape.circle),
-                    child: Icon(saved ? Icons.favorite_rounded : Icons.favorite_border_rounded,
-                        size: 22, color: HfColors.rose),
+                    decoration: const BoxDecoration(
+                      color: Color(0xE6FFFFFF),
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(
+                      saved
+                          ? Icons.favorite_rounded
+                          : Icons.favorite_border_rounded,
+                      size: 22,
+                      color: HfColors.rose,
+                    ),
                   ),
                 ),
               ),
@@ -116,7 +138,9 @@ class HfPhotoCard extends StatelessWidget {
                     filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
                     child: Container(
                       padding: const EdgeInsets.all(HfSpacing.xl),
-                      color: dark ? const Color(0xDB14121F) : const Color(0xE6FFFFFF),
+                      color: dark
+                          ? const Color(0xDB14121F)
+                          : const Color(0xE6FFFFFF),
                       child: child,
                     ),
                   ),

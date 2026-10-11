@@ -39,10 +39,11 @@ class MemoryKeyValueStore implements KeyValueStore {
 /// that freezes forever. Other keys (other accounts on a shared phone) are kept.
 class SecureKeyValueStore implements KeyValueStore {
   SecureKeyValueStore([FlutterSecureStorage? storage])
-      : _storage = storage ??
-            const FlutterSecureStorage(
-              aOptions: AndroidOptions(encryptedSharedPreferences: true),
-            );
+    : _storage =
+          storage ??
+          const FlutterSecureStorage(
+            aOptions: AndroidOptions(encryptedSharedPreferences: true),
+          );
 
   final FlutterSecureStorage _storage;
 
@@ -55,7 +56,10 @@ class SecureKeyValueStore implements KeyValueStore {
       return await _storage.read(key: key);
     } on PlatformException catch (e) {
       final text = '${e.code} ${e.message}';
-      if (text.contains('BadPadding') || text.contains('BAD_DECRYPT') || text.contains('Bad') || text.contains('decrypt')) {
+      if (text.contains('BadPadding') ||
+          text.contains('BAD_DECRYPT') ||
+          text.contains('Bad') ||
+          text.contains('decrypt')) {
         onHealed?.call(key);
         try {
           await _storage.delete(key: key);
@@ -69,7 +73,8 @@ class SecureKeyValueStore implements KeyValueStore {
   }
 
   @override
-  Future<void> write(String key, String value) => _storage.write(key: key, value: value);
+  Future<void> write(String key, String value) =>
+      _storage.write(key: key, value: value);
 
   @override
   Future<void> delete(String key) => _storage.delete(key: key);

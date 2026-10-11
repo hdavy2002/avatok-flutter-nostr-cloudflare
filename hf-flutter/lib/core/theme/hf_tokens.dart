@@ -21,7 +21,9 @@ abstract final class HfColors {
   static const Color peach = Color(0xFFFFE3D3);
   static const Color peachInk = Color(0xFF6B2C12);
   static const Color peachDeep = Color(0xFF8A3A1C);
-  static const Color peachWave = Color(0xFFB4664A); // voice bar waveform, not yet played
+  static const Color peachWave = Color(
+    0xFFB4664A,
+  ); // voice bar waveform, not yet played
 
   static const Color sky = Color(0xFFDCEBFF);
   static const Color skyInk = Color(0xFF1D3F6E);
@@ -36,7 +38,9 @@ abstract final class HfColors {
   static const Color blushDeep = Color(0xFF9C2853);
 
   // ---- Accents -----------------------------------------------------------------------------------------
-  static const Color rose = Color(0xFFB1325F); // hearts, switches, the HELLO eyebrow
+  static const Color rose = Color(
+    0xFFB1325F,
+  ); // hearts, switches, the HELLO eyebrow
   static const Color roseDot = Color(0xFFE0527E); // "Online now" dot
   static const Color amberDot = Color(0xFFD89A00); // "On a call" dot
   static const Color verifiedBlue = Color(0xFF4B6FD6);
@@ -50,10 +54,16 @@ abstract final class HfColors {
 
   // ---- Neutrals ----------------------------------------------------------------------------------------
   static const Color muted = Color(0xFF5E5A78); // secondary text
-  static const Color mutedSoft = Color(0xFFABA6C6); // secondary text on dark; grey presence dot
+  static const Color mutedSoft = Color(
+    0xFFABA6C6,
+  ); // secondary text on dark; grey presence dot
   static const Color line = Color(0xFFECE8F4); // hairlines and card borders
-  static const Color surfaceSoft = Color(0xFFF3F0FA); // price bar, offline pill, search button
-  static const Color segmentTrack = Color(0xFFEFEBF7); // segmented control track, skeleton blocks
+  static const Color surfaceSoft = Color(
+    0xFFF3F0FA,
+  ); // price bar, offline pill, search button
+  static const Color segmentTrack = Color(
+    0xFFEFEBF7,
+  ); // segmented control track, skeleton blocks
   static const Color handle = Color(0xFFD6D0E4); // sheet drag handle
 
   /// Caption on a tinted tile, tag text (mockup `#3D3858`).
@@ -71,12 +81,16 @@ abstract final class HfColors {
   // ---- Dark mode ---------------------------------------------------------------------------------------
   static const Color darkBg = Color(0xFF14121F);
   static const Color darkCard = Color(0xFF1F1C2E);
-  static const Color darkTile = Color(0xFF2E2852); // lavender tile, chips, photo placeholder
+  static const Color darkTile = Color(
+    0xFF2E2852,
+  ); // lavender tile, chips, photo placeholder
   static const Color darkTileSky = Color(0xFF1C2A40);
   static const Color darkTileBlush = Color(0xFF3A1F2B);
   static const Color darkTilePeach = Color(0xFF3A2620);
   static const Color darkNav = Color(0xFF262238);
-  static const Color darkSelected = Color(0xFF3A3460); // selected segment / nav item
+  static const Color darkSelected = Color(
+    0xFF3A3460,
+  ); // selected segment / nav item
   static const Color darkText = Color(0xFFF3F0FF);
   static const Color lavenderLight = Color(0xFFCFC4FF);
   static const Color peachLight = Color(0xFFFFC9AE);
@@ -94,16 +108,58 @@ abstract final class HfColors {
 
   /// Every live colour above. The tokens test walks this list (no green hue allowed).
   static const List<Color> all = [
-    ink, page, white,
-    lavender, lavenderInk, lavenderDeep,
-    peach, peachInk, peachDeep, peachWave,
-    sky, skyInk, skyDeep,
-    butter, butterInk, butterDeep,
-    blush, blushInk, blushDeep,
-    rose, roseDot, amberDot, verifiedBlue, link, star, accent,
-    muted, mutedSoft, line, surfaceSoft, segmentTrack, handle, inkSoft, inkTagline, outlineChip, butterValue,
-    darkBg, darkCard, darkTile, darkTileSky, darkTileBlush, darkTilePeach, darkNav, darkSelected, darkText,
-    lavenderLight, peachLight, blushLight, skyLight, darkBar, darkLine, blushDot,
+    ink,
+    page,
+    white,
+    lavender,
+    lavenderInk,
+    lavenderDeep,
+    peach,
+    peachInk,
+    peachDeep,
+    peachWave,
+    sky,
+    skyInk,
+    skyDeep,
+    butter,
+    butterInk,
+    butterDeep,
+    blush,
+    blushInk,
+    blushDeep,
+    rose,
+    roseDot,
+    amberDot,
+    verifiedBlue,
+    link,
+    star,
+    accent,
+    muted,
+    mutedSoft,
+    line,
+    surfaceSoft,
+    segmentTrack,
+    handle,
+    inkSoft,
+    inkTagline,
+    outlineChip,
+    butterValue,
+    darkBg,
+    darkCard,
+    darkTile,
+    darkTileSky,
+    darkTileBlush,
+    darkTilePeach,
+    darkNav,
+    darkSelected,
+    darkText,
+    lavenderLight,
+    peachLight,
+    blushLight,
+    skyLight,
+    darkBar,
+    darkLine,
+    blushDot,
   ];
 
   // ---- Deprecated aliases: the old bento names keep compiling. Use the new names in new code. -----------
@@ -230,60 +286,135 @@ abstract final class HfText {
   // ---- Display (Nunito) --------------------------------------------------------------------------------
   /// Welcome headline 30 (mockup 900, here w800).
   static const TextStyle hero = TextStyle(
-      fontFamily: displayFamily, fontSize: 30, fontWeight: FontWeight.w800, height: 1.15, letterSpacing: 0.3, color: HfColors.ink);
+    fontFamily: displayFamily,
+    fontSize: 30,
+    fontWeight: FontWeight.w800,
+    height: 1.15,
+    letterSpacing: 0.3,
+    color: HfColors.ink,
+  );
 
   /// Screen headline 27 (mockup 900, here w800).
   static const TextStyle headline = TextStyle(
-      fontFamily: displayFamily, fontSize: 27, fontWeight: FontWeight.w800, height: 1.15, letterSpacing: 0.3, color: HfColors.ink);
+    fontFamily: displayFamily,
+    fontSize: 27,
+    fontWeight: FontWeight.w800,
+    height: 1.15,
+    letterSpacing: 0.3,
+    color: HfColors.ink,
+  );
 
   /// Host name, sheet title 24 (mockup 900, here w800).
   static const TextStyle title = TextStyle(
-      fontFamily: displayFamily, fontSize: 24, fontWeight: FontWeight.w800, height: 1.2, letterSpacing: 0.3, color: HfColors.ink);
+    fontFamily: displayFamily,
+    fontSize: 24,
+    fontWeight: FontWeight.w800,
+    height: 1.2,
+    letterSpacing: 0.3,
+    color: HfColors.ink,
+  );
 
   /// Section heading 20/800.
   static const TextStyle section = TextStyle(
-      fontFamily: displayFamily, fontSize: 20, fontWeight: FontWeight.w800, height: 1.25, letterSpacing: 0.3, color: HfColors.ink);
+    fontFamily: displayFamily,
+    fontSize: 20,
+    fontWeight: FontWeight.w800,
+    height: 1.25,
+    letterSpacing: 0.3,
+    color: HfColors.ink,
+  );
 
   /// Sub-section heading 17/800.
   static const TextStyle subsection = TextStyle(
-      fontFamily: displayFamily, fontSize: 17, fontWeight: FontWeight.w800, height: 1.3, letterSpacing: 0.3, color: HfColors.ink);
+    fontFamily: displayFamily,
+    fontSize: 17,
+    fontWeight: FontWeight.w800,
+    height: 1.3,
+    letterSpacing: 0.3,
+    color: HfColors.ink,
+  );
 
   /// Big number 22 (mockup 900, here w800).
   static const TextStyle stat = TextStyle(
-      fontFamily: displayFamily, fontSize: 22, fontWeight: FontWeight.w800, height: 1.15, letterSpacing: 0.3, color: HfColors.ink);
+    fontFamily: displayFamily,
+    fontSize: 22,
+    fontWeight: FontWeight.w800,
+    height: 1.15,
+    letterSpacing: 0.3,
+    color: HfColors.ink,
+  );
 
   /// Tile number 18 (mockup 900, here w800).
   static const TextStyle statSmall = TextStyle(
-      fontFamily: displayFamily, fontSize: 18, fontWeight: FontWeight.w800, height: 1.2, letterSpacing: 0.3, color: HfColors.ink);
+    fontFamily: displayFamily,
+    fontSize: 18,
+    fontWeight: FontWeight.w800,
+    height: 1.2,
+    letterSpacing: 0.3,
+    color: HfColors.ink,
+  );
 
   // ---- Body (Comfortaa) --------------------------------------------------------------------------------
   /// Paragraph 16/400.
   static const TextStyle body = TextStyle(
-      fontFamily: bodyFamily, fontSize: 16, fontWeight: FontWeight.w400, height: 1.5, color: HfColors.ink);
+    fontFamily: bodyFamily,
+    fontSize: 16,
+    fontWeight: FontWeight.w400,
+    height: 1.5,
+    color: HfColors.ink,
+  );
 
   /// Paragraph 16/700.
   static const TextStyle bodyStrong = TextStyle(
-      fontFamily: bodyFamily, fontSize: 16, fontWeight: FontWeight.w700, height: 1.5, color: HfColors.ink);
+    fontFamily: bodyFamily,
+    fontSize: 16,
+    fontWeight: FontWeight.w700,
+    height: 1.5,
+    color: HfColors.ink,
+  );
 
   /// Secondary paragraph 15/400.
   static const TextStyle note = TextStyle(
-      fontFamily: bodyFamily, fontSize: 15, fontWeight: FontWeight.w400, height: 1.4, color: HfColors.muted);
+    fontFamily: bodyFamily,
+    fontSize: 15,
+    fontWeight: FontWeight.w400,
+    height: 1.4,
+    color: HfColors.muted,
+  );
 
   /// Pill text 14/700.
   static const TextStyle badge = TextStyle(
-      fontFamily: bodyFamily, fontSize: 14, fontWeight: FontWeight.w700, height: 1.3, color: HfColors.ink);
+    fontFamily: bodyFamily,
+    fontSize: 14,
+    fontWeight: FontWeight.w700,
+    height: 1.3,
+    color: HfColors.ink,
+  );
 
   /// Caption 14/600.
   static const TextStyle label = TextStyle(
-      fontFamily: bodyFamily, fontSize: 14, fontWeight: FontWeight.w600, height: 1.3, color: HfColors.muted);
+    fontFamily: bodyFamily,
+    fontSize: 14,
+    fontWeight: FontWeight.w600,
+    height: 1.3,
+    color: HfColors.muted,
+  );
 
   /// Button 16/700.
   static const TextStyle button = TextStyle(
-      fontFamily: bodyFamily, fontSize: 16, fontWeight: FontWeight.w700, height: 1.2);
+    fontFamily: bodyFamily,
+    fontSize: 16,
+    fontWeight: FontWeight.w700,
+    height: 1.2,
+  );
 
   /// Small button / link button 15/700.
   static const TextStyle buttonSmall = TextStyle(
-      fontFamily: bodyFamily, fontSize: 15, fontWeight: FontWeight.w700, height: 1.2);
+    fontFamily: bodyFamily,
+    fontSize: 15,
+    fontWeight: FontWeight.w700,
+    height: 1.2,
+  );
 
   // ---- Old names, kept so existing screens compile -----------------------------------------------------
   /// Same as [body].
@@ -297,7 +428,9 @@ abstract final class HfText {
   /// [HfColors.mutedSoft]. Any other colour is kept.
   static TextStyle onDark(TextStyle style) {
     final c = style.color;
-    if (c == null || c == HfColors.ink) return style.copyWith(color: HfColors.darkText);
+    if (c == null || c == HfColors.ink) {
+      return style.copyWith(color: HfColors.darkText);
+    }
     if (c == HfColors.muted) return style.copyWith(color: HfColors.mutedSoft);
     return style;
   }

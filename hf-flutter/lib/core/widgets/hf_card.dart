@@ -28,7 +28,10 @@ class HfCard extends StatelessWidget {
     final radius = BorderRadius.circular(HfRadius.card);
     // A transparent Material inside the decorated box lets ListTile / ExpansionTile / InkWell children paint
     // their ink and splashes above the card colour instead of being hidden by it.
-    final body = Material(type: MaterialType.transparency, child: Padding(padding: padding, child: child));
+    final body = Material(
+      type: MaterialType.transparency,
+      child: Padding(padding: padding, child: child),
+    );
     return Container(
       margin: margin,
       decoration: BoxDecoration(

@@ -43,18 +43,26 @@ class _HfAppState extends ConsumerState<HfApp> with WidgetsBindingObserver {
     } catch (_) {
       // no initial link
     }
-    _sub = links.uriLinkStream.listen((u) => _onLink(u, launch: 'warm'), onError: (_) {});
+    _sub = links.uriLinkStream.listen(
+      (u) => _onLink(u, launch: 'warm'),
+      onError: (_) {},
+    );
   }
 
   void _onLink(Uri uri, {required String launch}) {
     final text = uri.toString();
     final now = DateTime.now();
     // The initial link can be delivered twice (getInitialLink and the stream).
-    if (text == _lastLink && now.difference(_lastLinkAt) < const Duration(seconds: 2)) return;
+    if (text == _lastLink &&
+        now.difference(_lastLinkAt) < const Duration(seconds: 2)) {
+      return;
+    }
     _lastLink = text;
     _lastLinkAt = now;
     final source = uri.scheme == Brand.scheme ? 'scheme' : 'link';
-    ref.read(deepLinkHandlerProvider).handle(text, source: source, launch: launch);
+    ref
+        .read(deepLinkHandlerProvider)
+        .handle(text, source: source, launch: launch);
   }
 
   @override
@@ -89,8 +97,9 @@ class _HfAppState extends ConsumerState<HfApp> with WidgetsBindingObserver {
       routerConfig: ref.watch(appRouterProvider),
       // [HF-NATIVE-7] push banner, opt-in sheet and token registration;
       // [HF-NATIVE-12] soft update banner or the blocking update screen above everything.
-      builder: (context, child) =>
-          UpdateGate(child: PushOverlay(child: child ?? const SizedBox.shrink())),
+      builder: (context, child) => UpdateGate(
+        child: PushOverlay(child: child ?? const SizedBox.shrink()),
+      ),
     );
   }
 }

@@ -31,9 +31,15 @@ void main() {
       expect(Money.microTokens(4999), '0.00');
       expect(Money.microTokens(0), '0.00');
     });
-    test('a value that rounds to zero has no minus', () => expect(Money.microTokens(-4000), '0.00'));
+    test(
+      'a value that rounds to zero has no minus',
+      () => expect(Money.microTokens(-4000), '0.00'),
+    );
     test('negative', () => expect(Money.microTokens(-1500000), '-1.50'));
-    test('grouping', () => expect(Money.microTokens(1234567000000), '12,34,567.00'));
+    test(
+      'grouping',
+      () => expect(Money.microTokens(1234567000000), '12,34,567.00'),
+    );
     test('unit word follows the shown number', () {
       expect(Money.tokensWithUnit(1), '₹1.00');
       expect(Money.tokensWithUnit(3), '₹3.00');
@@ -57,15 +63,30 @@ void main() {
 
   group('update status', () {
     test('unknown installed build never nags', () {
-      expect(updateStatusFor(installed: 0, latest: 9, min: 9), UpdateStatus.none);
+      expect(
+        updateStatusFor(installed: 0, latest: 9, min: 9),
+        UpdateStatus.none,
+      );
     });
     test('zero means never prompt', () {
-      expect(updateStatusFor(installed: 5, latest: 0, min: 0), UpdateStatus.none);
+      expect(
+        updateStatusFor(installed: 5, latest: 0, min: 0),
+        UpdateStatus.none,
+      );
     });
     test('soft and forced', () {
-      expect(updateStatusFor(installed: 5, latest: 7, min: 0), UpdateStatus.soft);
-      expect(updateStatusFor(installed: 5, latest: 7, min: 6), UpdateStatus.forced);
-      expect(updateStatusFor(installed: 7, latest: 7, min: 6), UpdateStatus.none);
+      expect(
+        updateStatusFor(installed: 5, latest: 7, min: 0),
+        UpdateStatus.soft,
+      );
+      expect(
+        updateStatusFor(installed: 5, latest: 7, min: 6),
+        UpdateStatus.forced,
+      );
+      expect(
+        updateStatusFor(installed: 7, latest: 7, min: 6),
+        UpdateStatus.none,
+      );
     });
   });
 }

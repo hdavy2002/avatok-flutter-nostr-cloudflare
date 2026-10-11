@@ -32,7 +32,8 @@ class FakeClerk implements ClerkApi {
   Future<String?> sessionToken({bool forceRefresh = false}) async {
     final identity = user;
     if (identity == null) return null;
-    String part(Map<String, Object> payload) => base64Url.encode(utf8.encode(jsonEncode(payload))).replaceAll('=', '');
+    String part(Map<String, Object> payload) =>
+        base64Url.encode(utf8.encode(jsonEncode(payload))).replaceAll('=', '');
     // Deliberately unsigned test evidence; the fake API never validates a signature.
     return '${part({'alg': 'none', 'typ': 'JWT'})}.${part({'sub': identity.id})}.test-signature';
   }

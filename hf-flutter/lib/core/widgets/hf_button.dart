@@ -53,15 +53,27 @@ class HfButton extends StatelessWidget {
       case HfButtonKind.primary:
         button = icon == null || loading
             ? ElevatedButton(onPressed: action, child: content)
-            : ElevatedButton.icon(onPressed: action, icon: Icon(icon), label: content);
+            : ElevatedButton.icon(
+                onPressed: action,
+                icon: Icon(icon),
+                label: content,
+              );
       case HfButtonKind.secondary:
         button = icon == null || loading
             ? OutlinedButton(onPressed: action, child: content)
-            : OutlinedButton.icon(onPressed: action, icon: Icon(icon), label: content);
+            : OutlinedButton.icon(
+                onPressed: action,
+                icon: Icon(icon),
+                label: content,
+              );
       case HfButtonKind.text:
         button = icon == null || loading
             ? TextButton(onPressed: action, child: content)
-            : TextButton.icon(onPressed: action, icon: Icon(icon), label: content);
+            : TextButton.icon(
+                onPressed: action,
+                icon: Icon(icon),
+                label: content,
+              );
     }
     return Semantics(
       button: true,

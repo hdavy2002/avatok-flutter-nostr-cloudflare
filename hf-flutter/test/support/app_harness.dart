@@ -28,12 +28,14 @@ class StubSession extends SessionController {
 SessionState signedOutState() => const SessionState.signedOut();
 
 SessionState signedInState({bool host = false}) => SessionState(
-      status: SessionStatus.signedIn,
-      me: HfMe(
-        uid: 'user_test', displayName: 'Asha', ackVersion: 'hf-ack-v1',
-        host: host ? const HfMeHost(status: 'live', slug: 'asha') : null,
-      ),
-    );
+  status: SessionStatus.signedIn,
+  me: HfMe(
+    uid: 'user_test',
+    displayName: 'Asha',
+    ackVersion: 'hf-ack-v1',
+    host: host ? const HfMeHost(status: 'live', slug: 'asha') : null,
+  ),
+);
 
 /// Phone-sized screen (360x800 dp at 3x) so layout checks look like a real phone.
 void usePhoneScreen(WidgetTester tester) {
@@ -52,17 +54,23 @@ Future<ProviderContainer> pumpApp(
   FakeApiClient? api,
 }) async {
   usePhoneScreen(tester);
-  final container = ProviderContainer(overrides: [
-    sessionProvider.overrideWith(() => StubSession(session ?? signedOutState())),
-    apiClientProvider.overrideWithValue(api ?? FakeApiClient()),
-    secureStoreProvider.overrideWithValue(MemoryKeyValueStore()),
-    initialLocationProvider.overrideWithValue(location),
-  ]);
+  final container = ProviderContainer(
+    overrides: [
+      sessionProvider.overrideWith(
+        () => StubSession(session ?? signedOutState()),
+      ),
+      apiClientProvider.overrideWithValue(api ?? FakeApiClient()),
+      secureStoreProvider.overrideWithValue(MemoryKeyValueStore()),
+      initialLocationProvider.overrideWithValue(location),
+    ],
+  );
   addTearDown(container.dispose);
-  await tester.pumpWidget(UncontrolledProviderScope(
-    container: container,
-    child: const HfApp(listenForLinks: false),
-  ));
+  await tester.pumpWidget(
+    UncontrolledProviderScope(
+      container: container,
+      child: const HfApp(listenForLinks: false),
+    ),
+  );
   await tester.pumpAndSettle();
   return container;
 }

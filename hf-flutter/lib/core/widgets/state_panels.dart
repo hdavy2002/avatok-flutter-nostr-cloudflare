@@ -11,7 +11,12 @@ import 'hf_card.dart';
 /// Every list screen has four states: loading, content, empty, error. These are the shared panels, so
 /// Shared bento states keep the same clear hierarchy as the finished screens.
 class _PanelFrame extends StatelessWidget {
-  const _PanelFrame({required this.icon, required this.title, this.body, this.action});
+  const _PanelFrame({
+    required this.icon,
+    required this.title,
+    this.body,
+    this.action,
+  });
 
   final IconData icon;
   final String title;
@@ -25,23 +30,34 @@ class _PanelFrame extends StatelessWidget {
         padding: const EdgeInsets.all(HfSpacing.pageWide),
         child: Semantics(
           liveRegion: true,
-          child: HfCard(child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const HfScene(kind: HfSceneKind.discover, height: 110),
-              Icon(icon, size: 32, color: HfText.of(context, HfText.body).color),
-              const SizedBox(height: 12),
-              Text(title, style: HfText.of(context, HfText.subsection), textAlign: TextAlign.center),
-              if (body != null) ...[
-                const SizedBox(height: 8),
-                Text(body!, style: HfText.of(context, HfText.body), textAlign: TextAlign.center),
+          child: HfCard(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const HfScene(kind: HfSceneKind.discover, height: 110),
+                Icon(
+                  icon,
+                  size: 32,
+                  color: HfText.of(context, HfText.body).color,
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  title,
+                  style: HfText.of(context, HfText.subsection),
+                  textAlign: TextAlign.center,
+                ),
+                if (body != null) ...[
+                  const SizedBox(height: 8),
+                  Text(
+                    body!,
+                    style: HfText.of(context, HfText.body),
+                    textAlign: TextAlign.center,
+                  ),
+                ],
+                if (action != null) ...[const SizedBox(height: 20), action!],
               ],
-              if (action != null) ...[
-                const SizedBox(height: 20),
-                action!,
-              ],
-            ],
-          )),
+            ),
+          ),
         ),
       ),
     );
@@ -52,7 +68,11 @@ class _PanelFrame extends StatelessWidget {
 /// replaces the spinner so the layout does not jump when the content arrives. The message stays as the
 /// screen-reader label either way.
 class LoadingPanel extends StatelessWidget {
-  const LoadingPanel({super.key, this.message = Strings.loadingDefault, this.skeleton});
+  const LoadingPanel({
+    super.key,
+    this.message = Strings.loadingDefault,
+    this.skeleton,
+  });
 
   final String message;
   final Widget? skeleton;
@@ -78,9 +98,17 @@ class LoadingPanel extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const SizedBox(width: 28, height: 28, child: CircularProgressIndicator(strokeWidth: 3)),
+            const SizedBox(
+              width: 28,
+              height: 28,
+              child: CircularProgressIndicator(strokeWidth: 3),
+            ),
             const SizedBox(height: 16),
-            Text(message, style: HfText.of(context, HfText.body), textAlign: TextAlign.center),
+            Text(
+              message,
+              style: HfText.of(context, HfText.body),
+              textAlign: TextAlign.center,
+            ),
           ],
         ),
       ),
@@ -90,7 +118,13 @@ class LoadingPanel extends StatelessWidget {
 
 /// Friendly line plus an action ("No hosts are live yet. Check back soon.").
 class EmptyPanel extends StatelessWidget {
-  const EmptyPanel({super.key, required this.message, this.actionLabel, this.onAction, this.icon = Icons.search_off_rounded});
+  const EmptyPanel({
+    super.key,
+    required this.message,
+    this.actionLabel,
+    this.onAction,
+    this.icon = Icons.search_off_rounded,
+  });
 
   final String message;
   final String? actionLabel;
@@ -121,27 +155,36 @@ class ErrorPanel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final e = error;
-    final text = message ??
-        (e is ApiError ? e.userMessage : Strings.somethingWrong);
+    final text =
+        message ?? (e is ApiError ? e.userMessage : Strings.somethingWrong);
     final offline = e is ApiError && e.isOffline;
     return _PanelFrame(
       icon: offline ? Icons.wifi_off_rounded : Icons.error_outline_rounded,
       title: text,
-      action: onRetry != null ? HfButton(label: Strings.tryAgain, onPressed: onRetry, expand: false) : null,
+      action: onRetry != null
+          ? HfButton(label: Strings.tryAgain, onPressed: onRetry, expand: false)
+          : null,
     );
   }
 }
 
 /// A flag is off, or the feature is not open yet: calm, never an error.
 class ComingSoonPanel extends StatelessWidget {
-  const ComingSoonPanel({super.key, this.title = Strings.comingSoonTitle, this.body = Strings.comingSoonBody});
+  const ComingSoonPanel({
+    super.key,
+    this.title = Strings.comingSoonTitle,
+    this.body = Strings.comingSoonBody,
+  });
 
   final String title;
   final String body;
 
   @override
-  Widget build(BuildContext context) =>
-      _PanelFrame(icon: Icons.hourglass_empty_rounded, title: title, body: body);
+  Widget build(BuildContext context) => _PanelFrame(
+    icon: Icons.hourglass_empty_rounded,
+    title: title,
+    body: body,
+  );
 }
 
 /// The four states of a screen driven by a Riverpod `AsyncValue`:
@@ -184,10 +227,13 @@ class AsyncValueView<T> extends StatelessWidget {
     return value.when(
       data: (d) {
         final emptyWidget = empty;
-        if (emptyWidget != null && (isEmpty?.call(d) ?? false)) return emptyWidget;
+        if (emptyWidget != null && (isEmpty?.call(d) ?? false)) {
+          return emptyWidget;
+        }
         return data(d);
       },
-      loading: () => LoadingPanel(message: loadingMessage, skeleton: loadingSkeleton),
+      loading: () =>
+          LoadingPanel(message: loadingMessage, skeleton: loadingSkeleton),
       error: (e, _) {
         if (e is ApiError && e.isNotEnabled) return const ComingSoonPanel();
         return ErrorPanel(error: e, onRetry: onRetry);

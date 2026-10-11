@@ -108,26 +108,31 @@ class Analytics {
   static String get _platformOs => Platform.isAndroid ? 'android' : 'other';
 
   static Map<String, Object> _base([Map<String, Object>? p]) => {
-        'platform': Env.telemetryPlatform,
-        'service_name': Env.telemetryService,
-        'app': Brand.slug,
-        'os': _platformOs,
-        'release': Env.release,
-        'app_version': appVersion,
-        'app_build': appBuild,
-        'environment': 'prod',
-        if (currentScreen != null) 'screen': currentScreen!,
-        if (_accountId != null) 'account_id': _accountId!,
-        if (_email != null) 'email': _email!,
-        if (_phone != null) 'phone': _phone!,
-        if (_clerkUid != null) 'clerk_uid': _clerkUid!,
-        'session_seq': ++_seq,
-        ...?p,
-      };
+    'platform': Env.telemetryPlatform,
+    'service_name': Env.telemetryService,
+    'app': Brand.slug,
+    'os': _platformOs,
+    'release': Env.release,
+    'app_version': appVersion,
+    'app_build': appBuild,
+    'environment': 'prod',
+    if (currentScreen != null) 'screen': currentScreen!,
+    if (_accountId != null) 'account_id': _accountId!,
+    if (_email != null) 'email': _email!,
+    if (_phone != null) 'phone': _phone!,
+    if (_clerkUid != null) 'clerk_uid': _clerkUid!,
+    'session_seq': ++_seq,
+    ...?p,
+  };
 
   /// Attach all later events to this person. Pass [phone] (E.164) and [email] when known; they ride
   /// every event and become person properties, so support can find a user's telemetry by phone.
-  static Future<void> identify(String uid, {String? phone, String? email, Map<String, Object>? properties}) async {
+  static Future<void> identify(
+    String uid, {
+    String? phone,
+    String? email,
+    Map<String, Object>? properties,
+  }) async {
     _accountId = uid;
     if (phone != null && phone.isNotEmpty) {
       _phone = phone;
@@ -161,10 +166,16 @@ class Analytics {
     }
   }
 
-  static Future<void> capture(String event, [Map<String, Object>? properties]) async {
+  static Future<void> capture(
+    String event, [
+    Map<String, Object>? properties,
+  ]) async {
     if (!_ready) return;
     try {
-      await Posthog().capture(eventName: event, properties: _base(_scrubErrorProps(properties)));
+      await Posthog().capture(
+        eventName: event,
+        properties: _base(_scrubErrorProps(properties)),
+      );
     } catch (_) {
       // best effort
     }
@@ -183,14 +194,13 @@ class Analytics {
     required int status,
     String? code,
     int? ms,
-  }) =>
-      capture('api_error', {
-        'endpoint': endpoint,
-        'status': status,
-        if (code != null) 'code': code,
-        if (ms != null) 'ms': ms,
-        if (ms != null) 'latency_ms': ms,
-      });
+  }) => capture('api_error', {
+    'endpoint': endpoint,
+    'status': status,
+    if (code != null) 'code': code,
+    if (ms != null) 'ms': ms,
+    if (ms != null) 'latency_ms': ms,
+  });
 
   /// Report an exception to PostHog Error Tracking. [handled] is for a failure the app recovered from.
   static Future<void> captureException(
@@ -204,28 +214,31 @@ class Analytics {
     try {
       final type = error.runtimeType.toString();
       final value = scrub(error.toString());
-      await Posthog().capture(eventName: '\$exception', properties: _base({
-        '\$exception_list': [
-          {
-            'type': type,
-            'value': value,
-            'mechanism': {'handled': handled, 'synthetic': false},
-            if (stack != null)
-              'stacktrace': {
-                'type': 'raw',
-                'frames': [
-                  {'platform': 'dart', 'raw': scrub(stack.toString())},
-                ],
-              },
-          },
-        ],
-        '\$exception_message': value,
-        '\$exception_type': type,
-        if (screen != null) 'screen': screen,
-        '\$exception_level': handled ? 'error' : 'fatal',
-        'is_fatal': !handled,
-        ...?extra,
-      }));
+      await Posthog().capture(
+        eventName: '\$exception',
+        properties: _base({
+          '\$exception_list': [
+            {
+              'type': type,
+              'value': value,
+              'mechanism': {'handled': handled, 'synthetic': false},
+              if (stack != null)
+                'stacktrace': {
+                  'type': 'raw',
+                  'frames': [
+                    {'platform': 'dart', 'raw': scrub(stack.toString())},
+                  ],
+                },
+            },
+          ],
+          '\$exception_message': value,
+          '\$exception_type': type,
+          if (screen != null) 'screen': screen,
+          '\$exception_level': handled ? 'error' : 'fatal',
+          'is_fatal': !handled,
+          ...?extra,
+        }),
+      );
     } catch (_) {
       // best effort
     }
@@ -278,7 +291,11 @@ class Analytics {
     for (final entry in p.entries) {
       final k = entry.key.toLowerCase();
       final v = entry.value;
-      final isErrorKey = k == 'error' || k == 'err' || k.endsWith('_error') || k.endsWith('_err');
+      final isErrorKey =
+          k == 'error' ||
+          k == 'err' ||
+          k.endsWith('_error') ||
+          k.endsWith('_err');
       if (isErrorKey && v is String) {
         (out ??= Map<String, Object>.of(p))[entry.key] = scrub(v);
       }

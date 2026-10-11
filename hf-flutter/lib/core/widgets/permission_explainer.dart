@@ -45,9 +45,17 @@ class PermissionExplainer extends StatelessWidget {
           const HfScene(kind: HfSceneKind.verify, height: 140),
           Icon(icon, size: 40, color: HfText.of(context, HfText.body).color),
           const SizedBox(height: 16),
-          Text(title, style: HfText.of(context, HfText.title), textAlign: TextAlign.center),
+          Text(
+            title,
+            style: HfText.of(context, HfText.title),
+            textAlign: TextAlign.center,
+          ),
           const SizedBox(height: 8),
-          Text(body, style: HfText.of(context, HfText.body), textAlign: TextAlign.center),
+          Text(
+            body,
+            style: HfText.of(context, HfText.body),
+            textAlign: TextAlign.center,
+          ),
           const SizedBox(height: 24),
           if (denied)
             HfButton(label: Strings.openSettings, onPressed: onOpenSettings)
@@ -55,7 +63,11 @@ class PermissionExplainer extends StatelessWidget {
             HfButton(label: Strings.continueLabel, onPressed: onAllow),
           if (onSkip != null) ...[
             const SizedBox(height: 8),
-            HfButton(label: Strings.notNow, kind: HfButtonKind.text, onPressed: onSkip),
+            HfButton(
+              label: Strings.notNow,
+              kind: HfButtonKind.text,
+              onPressed: onSkip,
+            ),
           ],
         ],
       ),

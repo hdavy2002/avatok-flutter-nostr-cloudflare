@@ -15,11 +15,15 @@ import 'hf_me.dart';
 // FakeApiClient, `clerkProvider` with a FakeClerk, `secureStoreProvider` with MemoryKeyValueStore.
 // ---------------------------------------------------------------------------------------------
 
-final secureStoreProvider = Provider<KeyValueStore>((ref) => SecureKeyValueStore());
+final secureStoreProvider = Provider<KeyValueStore>(
+  (ref) => SecureKeyValueStore(),
+);
 
 final jsonCacheProvider = Provider<JsonCache>((ref) => const JsonCache());
 
-final clerkProvider = Provider<ClerkApi>((ref) => ClerkClient(store: ref.watch(secureStoreProvider)));
+final clerkProvider = Provider<ClerkApi>(
+  (ref) => ClerkClient(store: ref.watch(secureStoreProvider)),
+);
 
 /// The API client every feature uses. `ref.watch(apiClientProvider)` in a provider, then call `getJson`,
 /// `postJson`, ... A persistent 401 signs the person out through [sessionProvider].
@@ -33,7 +37,9 @@ final apiClientProvider = Provider<ApiClient>((ref) {
 /// Things to do on sign-out, in order (each in its own try/catch): unregister the push token (HF-NATIVE-7),
 /// drop feature caches. A feature adds one with `ref.read(signOutHooksProvider).add(...)`.
 typedef SignOutHook = Future<void> Function();
-final signOutHooksProvider = Provider<List<SignOutHook>>((ref) => <SignOutHook>[]);
+final signOutHooksProvider = Provider<List<SignOutHook>>(
+  (ref) => <SignOutHook>[],
+);
 
 // ---------------------------------------------------------------------------------------------
 // Session
@@ -60,15 +66,21 @@ class SessionState {
   /// The Host tab shows when the person has a host profile.
   bool get hasHostTab => me?.hasHost ?? false;
 
-  SessionState copyWith({HfMe? me, ApiError? meError, bool clearMeError = false}) => SessionState(
-        status: status,
-        user: user,
-        me: me ?? this.me,
-        meError: clearMeError ? null : (meError ?? this.meError),
-      );
+  SessionState copyWith({
+    HfMe? me,
+    ApiError? meError,
+    bool clearMeError = false,
+  }) => SessionState(
+    status: status,
+    user: user,
+    me: me ?? this.me,
+    meError: clearMeError ? null : (meError ?? this.meError),
+  );
 }
 
-final sessionProvider = NotifierProvider<SessionController, SessionState>(SessionController.new);
+final sessionProvider = NotifierProvider<SessionController, SessionState>(
+  SessionController.new,
+);
 
 class SessionController extends Notifier<SessionState> {
   @override
@@ -141,7 +153,11 @@ class SessionController extends Notifier<SessionState> {
     final sameAccount = AccountScope.id == user.id;
     if (!sameAccount) await ref.read(pendingIntentProvider).clear();
     AccountScope.id = user.id;
-    state = SessionState(status: SessionStatus.signedIn, user: user, me: sameAccount ? state.me : null);
+    state = SessionState(
+      status: SessionStatus.signedIn,
+      user: user,
+      me: sameAccount ? state.me : null,
+    );
     await Analytics.identify(user.id, phone: phone);
     await Analytics.aliasClerk(user.id);
     await refreshMe();
@@ -151,7 +167,9 @@ class SessionController extends Notifier<SessionState> {
     await ref.read(pendingIntentProvider).clear();
     await ref.read(pendingIntentProvider).clearGuest();
     try {
-      await ref.read(jsonCacheProvider).clearAll(); // while AccountScope.id is still set
+      await ref
+          .read(jsonCacheProvider)
+          .clearAll(); // while AccountScope.id is still set
     } catch (_) {
       // best effort
     }

@@ -46,32 +46,75 @@ abstract class ApiClient {
     void Function(int sent, int total)? onProgress,
   });
 
-  Future<Map<String, dynamic>> getJson(String path,
-      {Map<String, Object?>? query, bool auth = true}) async =>
-      asMap(await request('GET', path, query: query, auth: auth));
+  Future<Map<String, dynamic>> getJson(
+    String path, {
+    Map<String, Object?>? query,
+    bool auth = true,
+  }) async => asMap(await request('GET', path, query: query, auth: auth));
 
-  Future<List<dynamic>> getList(String path,
-      {Map<String, Object?>? query, bool auth = true}) async {
+  Future<List<dynamic>> getList(
+    String path, {
+    Map<String, Object?>? query,
+    bool auth = true,
+  }) async {
     final v = await request('GET', path, query: query, auth: auth);
     if (v is List) return v;
     throw ApiError.badResponse(200);
   }
 
-  Future<Map<String, dynamic>> postJson(String path,
-      {Object? body, Map<String, Object?>? query, bool auth = true, String? idempotencyKey}) async =>
-      asMap(await request('POST', path,
-          body: body ?? const <String, Object?>{}, query: query, auth: auth, idempotencyKey: idempotencyKey));
+  Future<Map<String, dynamic>> postJson(
+    String path, {
+    Object? body,
+    Map<String, Object?>? query,
+    bool auth = true,
+    String? idempotencyKey,
+  }) async => asMap(
+    await request(
+      'POST',
+      path,
+      body: body ?? const <String, Object?>{},
+      query: query,
+      auth: auth,
+      idempotencyKey: idempotencyKey,
+    ),
+  );
 
-  Future<Map<String, dynamic>> putJson(String path,
-      {Object? body, bool auth = true, String? idempotencyKey}) async =>
-      asMap(await request('PUT', path, body: body ?? const <String, Object?>{}, auth: auth, idempotencyKey: idempotencyKey));
+  Future<Map<String, dynamic>> putJson(
+    String path, {
+    Object? body,
+    bool auth = true,
+    String? idempotencyKey,
+  }) async => asMap(
+    await request(
+      'PUT',
+      path,
+      body: body ?? const <String, Object?>{},
+      auth: auth,
+      idempotencyKey: idempotencyKey,
+    ),
+  );
 
-  Future<Map<String, dynamic>> patchJson(String path, {Object? body, bool auth = true}) async =>
-      asMap(await request('PATCH', path, body: body ?? const <String, Object?>{}, auth: auth));
+  Future<Map<String, dynamic>> patchJson(
+    String path, {
+    Object? body,
+    bool auth = true,
+  }) async => asMap(
+    await request(
+      'PATCH',
+      path,
+      body: body ?? const <String, Object?>{},
+      auth: auth,
+    ),
+  );
 
-  Future<Map<String, dynamic>> deleteJson(String path,
-      {Object? body, Map<String, Object?>? query, bool auth = true}) async =>
-      asMap(await request('DELETE', path, body: body, query: query, auth: auth));
+  Future<Map<String, dynamic>> deleteJson(
+    String path, {
+    Object? body,
+    Map<String, Object?>? query,
+    bool auth = true,
+  }) async => asMap(
+    await request('DELETE', path, body: body, query: query, auth: auth),
+  );
 
   /// Raw upload (selfie video, voice intro): [bytes] with a [contentType] and extra [headers]
   /// (`x-selfie-code`, `x-duration-seconds`, ...). 60 s timeout, with progress.
@@ -82,9 +125,16 @@ abstract class ApiClient {
     required String contentType,
     Map<String, String>? headers,
     void Function(int sent, int total)? onProgress,
-  }) async =>
-      asMap(await request(method, path,
-          bytes: bytes, contentType: contentType, headers: headers, onProgress: onProgress));
+  }) async => asMap(
+    await request(
+      method,
+      path,
+      bytes: bytes,
+      contentType: contentType,
+      headers: headers,
+      onProgress: onProgress,
+    ),
+  );
 
   /// Narrow a decoded body to a JSON object, or throw `bad_response`.
   static Map<String, dynamic> asMap(Object? v) {
@@ -96,7 +146,12 @@ abstract class ApiClient {
 
 /// One finished call, for telemetry.
 class ApiCallReport {
-  const ApiCallReport({required this.endpoint, required this.status, required this.code, required this.ms});
+  const ApiCallReport({
+    required this.endpoint,
+    required this.status,
+    required this.code,
+    required this.ms,
+  });
   final String endpoint;
   final int status;
   final String? code;
@@ -119,9 +174,9 @@ class HttpApiClient extends ApiClient {
     this.onSessionLost,
     ApiReporter? reporter,
     String? origin,
-  })  : _http = client ?? http.Client(),
-        _reporter = reporter ?? _defaultReporter,
-        _origin = origin ?? Env.apiOrigin;
+  }) : _http = client ?? http.Client(),
+       _reporter = reporter ?? _defaultReporter,
+       _origin = origin ?? Env.apiOrigin;
 
   final AuthTokens? tokens;
   final Future<void> Function()? onSessionLost;
@@ -133,7 +188,12 @@ class HttpApiClient extends ApiClient {
   static const Duration _uploadTimeout = Duration(seconds: 60);
 
   static void _defaultReporter(ApiCallReport r) {
-    Analytics.apiError(endpoint: r.endpoint, status: r.status, code: r.code, ms: r.ms);
+    Analytics.apiError(
+      endpoint: r.endpoint,
+      status: r.status,
+      code: r.code,
+      ms: r.ms,
+    );
   }
 
   Uri _uri(String path, Map<String, Object?>? query) {
@@ -168,15 +228,40 @@ class HttpApiClient extends ApiClient {
     final endpoint = '$method ${path.split('?').first}';
     try {
       var token = auth ? await tokens?.sessionToken() : null;
-      var resp = await _send(method, path, query, body, bytes, contentType, headers, token, idempotencyKey, onProgress);
+      var resp = await _send(
+        method,
+        path,
+        query,
+        body,
+        bytes,
+        contentType,
+        headers,
+        token,
+        idempotencyKey,
+        onProgress,
+      );
       if (resp.statusCode == 401 && auth && tokens != null) {
         final fresh = await tokens!.sessionToken(forceRefresh: true);
         if (fresh != null && fresh != token) {
           token = fresh;
-          resp = await _send(method, path, query, body, bytes, contentType, headers, token, idempotencyKey, onProgress);
+          resp = await _send(
+            method,
+            path,
+            query,
+            body,
+            bytes,
+            contentType,
+            headers,
+            token,
+            idempotencyKey,
+            onProgress,
+          );
         }
         if (resp.statusCode == 401) {
-          final err = ApiError.fromResponse(401, utf8.decode(resp.bodyBytes, allowMalformed: true));
+          final err = ApiError.fromResponse(
+            401,
+            utf8.decode(resp.bodyBytes, allowMalformed: true),
+          );
           _report(endpoint, err, sw);
           await onSessionLost?.call();
           throw err;
@@ -215,7 +300,14 @@ class HttpApiClient extends ApiClient {
 
   void _report(String endpoint, ApiError err, Stopwatch sw) {
     try {
-      _reporter(ApiCallReport(endpoint: endpoint, status: err.status, code: err.code, ms: sw.elapsedMilliseconds));
+      _reporter(
+        ApiCallReport(
+          endpoint: endpoint,
+          status: err.status,
+          code: err.code,
+          ms: sw.elapsedMilliseconds,
+        ),
+      );
     } catch (_) {
       // telemetry never throws into a request
     }

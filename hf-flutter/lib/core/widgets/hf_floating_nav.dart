@@ -5,7 +5,12 @@ import '../theme/hf_theme.dart';
 
 /// One destination of [HfFloatingNav].
 class HfNavItem {
-  const HfNavItem({required this.icon, required this.label, required this.tint, this.keyName});
+  const HfNavItem({
+    required this.icon,
+    required this.label,
+    required this.tint,
+    this.keyName,
+  });
 
   final IconData icon;
   final String label;
@@ -26,7 +31,12 @@ class HfNavItem {
 /// overflowing. Place it in `Scaffold.bottomNavigationBar` (or a Stack) over a page that has bottom padding of
 /// about 108.
 class HfFloatingNav extends StatelessWidget {
-  const HfFloatingNav({super.key, required this.items, required this.selected, required this.onTap});
+  const HfFloatingNav({
+    super.key,
+    required this.items,
+    required this.selected,
+    required this.onTap,
+  });
 
   final List<HfNavItem> items;
   final int selected;
@@ -54,7 +64,9 @@ class HfFloatingNav extends StatelessWidget {
               Flexible(
                 flex: i == selected ? 1 : 0,
                 child: _NavButton(
-                  key: items[i].keyName == null ? null : ValueKey<String>(items[i].keyName!),
+                  key: items[i].keyName == null
+                      ? null
+                      : ValueKey<String>(items[i].keyName!),
                   item: items[i],
                   selected: i == selected,
                   onTap: () {
@@ -71,7 +83,12 @@ class HfFloatingNav extends StatelessWidget {
 }
 
 class _NavButton extends StatelessWidget {
-  const _NavButton({super.key, required this.item, required this.selected, required this.onTap});
+  const _NavButton({
+    super.key,
+    required this.item,
+    required this.selected,
+    required this.onTap,
+  });
 
   final HfNavItem item;
   final bool selected;
@@ -81,22 +98,31 @@ class _NavButton extends StatelessWidget {
   Widget build(BuildContext context) {
     final dark = HfBrightness.isDark(context);
     final tintInk = item.tint.ink(context);
-    final pillBg = dark && item.tint == HfTint.lavender ? HfColors.darkSelected : item.tint.bg(context);
+    final pillBg = dark && item.tint == HfTint.lavender
+        ? HfColors.darkSelected
+        : item.tint.bg(context);
     final idle = dark ? HfColors.mutedSoft : HfColors.muted;
     final Widget body = selected
         ? Container(
             key: const ValueKey<String>('nav-selected'),
             height: 48,
             padding: const EdgeInsets.symmetric(horizontal: 16),
-            decoration: BoxDecoration(color: pillBg, borderRadius: BorderRadius.circular(HfRadius.tileSmall)),
+            decoration: BoxDecoration(
+              color: pillBg,
+              borderRadius: BorderRadius.circular(HfRadius.tileSmall),
+            ),
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
                 Icon(item.icon, size: 20, color: tintInk),
                 const SizedBox(width: HfSpacing.sm),
                 Flexible(
-                  child: Text(item.label,
-                      maxLines: 1, overflow: TextOverflow.ellipsis, style: HfText.badge.copyWith(color: tintInk)),
+                  child: Text(
+                    item.label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: HfText.badge.copyWith(color: tintInk),
+                  ),
                 ),
               ],
             ),
