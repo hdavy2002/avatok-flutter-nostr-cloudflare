@@ -29,6 +29,7 @@ class PushOverlay extends ConsumerStatefulWidget {
 class _PushOverlayState extends ConsumerState<PushOverlay> {
   Timer? _bannerTimer;
   bool _sheetOpen = false;
+  bool _sheetScheduled = false;
   GoRouter? _router;
 
   /// The sheet never opens over these: the person is still getting in.
@@ -59,14 +60,21 @@ class _PushOverlayState extends ConsumerState<PushOverlay> {
   }
 
   void _maybeShowSheet() {
-    if (!mounted || _sheetOpen) return;
+    if (!mounted || _sheetOpen || _sheetScheduled) return;
     if (!ref.read(pushControllerProvider).promptOptIn) return;
-    final router = _router;
-    if (router == null) return;
-    if (_quietPaths.contains(router.routeInformationProvider.value.uri.path)) return; // asked again on the next route change
-    final navContext = router.routerDelegate.navigatorKey.currentContext;
-    if (navContext == null) return;
-    unawaited(_showSheet(navContext));
+    _sheetScheduled = true;
+    // An async redirect can notify before its Navigator is mounted. Wait for
+    // that frame, then check the current account and route before opening UI.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _sheetScheduled = false;
+      if (!mounted || _sheetOpen || !ref.read(sessionProvider).isSignedIn ||
+          !ref.read(pushControllerProvider).promptOptIn) return;
+      final router = _router;
+      if (router == null || _quietPaths.contains(router.routeInformationProvider.value.uri.path)) return;
+      final navContext = router.routerDelegate.navigatorKey.currentContext;
+      if (navContext != null) unawaited(_showSheet(navContext));
+    });
+    WidgetsBinding.instance.ensureVisualUpdate();
   }
 
   Future<void> _showSheet(BuildContext navContext) async {
@@ -108,7 +116,9 @@ class _PushOverlayState extends ConsumerState<PushOverlay> {
       }
       if (next.promptOptIn && !(prev?.promptOptIn ?? false)) _maybeShowSheet();
     });
-    final banner = ref.watch(pushControllerProvider.select((s) => s.banner));
+    final state = ref.watch(pushControllerProvider);
+    if (state.promptOptIn) _maybeShowSheet();
+    final banner = state.banner;
     return Stack(
       fit: StackFit.expand,
       children: [

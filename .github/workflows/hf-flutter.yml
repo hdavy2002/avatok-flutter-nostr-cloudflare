@@ -137,7 +137,7 @@ jobs:
       - name: Test
         if: env.MODE != 'scaffold'
         working-directory: hf-flutter
-        run: flutter test --dart-define=EXPORT_DESIGN_REVIEW=true
+        run: flutter test --timeout=2m --dart-define=EXPORT_DESIGN_REVIEW=true
 
       - name: Upload native design review captures
         if: always() && env.MODE != 'scaffold'

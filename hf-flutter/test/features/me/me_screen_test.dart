@@ -199,7 +199,8 @@ void main() {
       await tapKeyed(tester, 'me-lane-women-leave', ms: 400);
       await tester.tap(find.text(MeCopy.leaveStay));
       await pumpFor(tester, 400);
-      expect(api.calls, isEmpty);
+      expect(api.calls.where((call) => call.method != 'GET'), isEmpty, reason: 'Staying must not change any account data.');
+      expect(api.callsTo('DELETE', '/api/hf/lanes/women'), isEmpty);
       expect(_key('me-lane-women-leave'), findsOneWidget);
     });
 

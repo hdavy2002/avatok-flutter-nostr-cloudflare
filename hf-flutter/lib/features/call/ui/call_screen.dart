@@ -235,6 +235,20 @@ class _CallFollowerState extends ConsumerState<CallFollower> with WidgetsBinding
         title: const Text(CallStrings.screenTitle),
       ),
       body: SafeArea(child: _content(_info)),
+      bottomNavigationBar: _fatal == null && (_info?.status.isRinging ?? false)
+          ? SafeArea(
+              top: false,
+              child: Padding(
+                padding: const EdgeInsets.all(HfSpacing.page),
+                child: HfButton(
+                  label: _cancelling ? CallStrings.cancelling : CallStrings.cancelCall,
+                  kind: HfButtonKind.secondary,
+                  loading: _cancelling,
+                  onPressed: _cancel,
+                ),
+              ),
+            )
+          : null,
     );
   }
 
@@ -333,15 +347,6 @@ class _CallFollowerState extends ConsumerState<CallFollower> with WidgetsBinding
       if (_failures >= 3) ...[
         const SizedBox(height: 12),
         const Text(CallStrings.connectionTrouble, style: HfText.note, textAlign: TextAlign.center),
-      ],
-      if (info.status.isRinging) ...[
-        const SizedBox(height: 20),
-        HfButton(
-          label: _cancelling ? CallStrings.cancelling : CallStrings.cancelCall,
-          kind: HfButtonKind.secondary,
-          loading: _cancelling,
-          onPressed: _cancel,
-        ),
       ],
     ];
   }

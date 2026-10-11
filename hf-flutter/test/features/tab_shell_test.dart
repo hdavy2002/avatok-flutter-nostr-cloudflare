@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:hf_app/features/host_profile/ui/host_profile_screen.dart';
 import 'package:hf_app/features/review/ui/review_screen.dart';
 import 'package:hf_app/core/router/app_router.dart';
@@ -13,6 +14,7 @@ Finder tabLabel(String label) =>
     find.descendant(of: find.byType(HfTabBar), matching: find.text(label));
 
 void main() {
+  setUp(() => SharedPreferences.setMockInitialValues(<String, Object>{}));
   testWidgets('a guest sees Browse, Wallet and Me, and no Host tab', (tester) async {
     await pumpApp(tester);
     expect(find.byType(HfTabBar), findsOneWidget);
@@ -56,10 +58,13 @@ void main() {
       ..onJson('GET', '/api/hf/tokens/products', {'ok': true, 'enabled': false, 'products': []})
       ..onJson('GET', '/api/hf/wallet/refunds', {'enabled': false, 'requests': []})
       ..onJson('GET', '/api/hf/wallet/receipts', {'ok': true, 'receipts': []});
-    await pumpApp(tester, session: signedInState(), api: api);
+    final container = await pumpApp(tester, session: signedInState(), api: api);
     await tester.tap(find.byKey(const ValueKey<String>('tab-wallet')));
     await tester.pumpAndSettle();
+    expect(container.read(appRouterProvider).routeInformationProvider.value.uri.path, '/wallet');
+    await tester.scrollUntilVisible(find.text('Your balance'), 200, scrollable: find.byType(Scrollable).last);
     expect(find.text('Your balance'), findsOneWidget);
+    expect(api.callsTo('GET', '/api/hf/wallet'), hasLength(1));
   });
 
   testWidgets('Explore and host profiles open without an account', (tester) async {

@@ -95,7 +95,7 @@ class _StatusPillState extends State<StatusPill> with SingleTickerProviderStateM
               ),
             ),
             const SizedBox(width: 8),
-            Text(text, style: HfText.badge.copyWith(color: fg)),
+            Flexible(child: Text(text, style: HfText.badge.copyWith(color: fg))),
           ],
         ),
       ),

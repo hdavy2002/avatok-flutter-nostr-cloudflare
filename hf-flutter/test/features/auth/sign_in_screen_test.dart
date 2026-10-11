@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:hf_app/core/api/api_error.dart';
+import 'package:hf_app/core/widgets/hf_card.dart';
 import 'package:hf_app/core/auth/clerk_client.dart';
 import 'package:hf_app/core/storage/account_storage.dart';
 import 'package:hf_app/features/auth/data/auth_messages.dart';
@@ -349,12 +350,19 @@ void main() {
       expect(locationOf(router), '/sign-in');
     });
 
-    testWidgets('code boxes are full width with 48 dp or bigger targets', (tester) async {
+    testWidgets('code input fills the card width with a 48 dp or bigger touch height', (tester) async {
       await pumpRouter(tester, signInRouter(), api: okApi());
       await toCodeStep(tester);
-      final size = tester.getSize(find.byKey(_codeKey));
+      final field = find.byKey(_codeKey);
+      await tester.ensureVisible(field);
+      await tester.pump();
+      final size = tester.getSize(field);
+      final card = tester.widget<HfCard>(find.ancestor(of: field, matching: find.byType(HfCard)).first);
+      final contentSize = tester.getSize(find.byWidget(card.child));
       expect(size.height, greaterThanOrEqualTo(48));
-      expect(size.width, greaterThan(300));
+      expect(size.width, greaterThanOrEqualTo(48));
+      expect(size.width, closeTo(contentSize.width, 0.01), reason: 'The single editable input spans all six decorative boxes and the available card width.');
+      expect(field.hitTestable(), findsOneWidget);
     });
   });
 

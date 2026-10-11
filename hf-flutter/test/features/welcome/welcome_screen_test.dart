@@ -144,7 +144,9 @@ void main() {
 
   testWidgets('tap targets are 48 dp or bigger and no text is under 14 sp', (tester) async {
     await pumpRouter(tester, welcomeRouter(), api: FakeApiClient());
+    await reveal(tester, find.byKey(_tickKey));
     expect(tester.getSize(find.byKey(_tickKey)).height, greaterThanOrEqualTo(48));
+    await reveal(tester, find.text(WelcomeCopy.button));
     final button = find.ancestor(of: find.text(WelcomeCopy.button), matching: find.bySubtype<ElevatedButton>());
     expect(tester.getSize(button).height, greaterThanOrEqualTo(48));
     expect(tester.getSize(find.byKey(_tickKey)).width, greaterThan(200));

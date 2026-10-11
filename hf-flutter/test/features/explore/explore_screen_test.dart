@@ -33,6 +33,14 @@ Future<void> tapInSheet(WidgetTester tester, Finder f) async {
 
 Finder inSheet(Finder f) => find.descendant(of: find.byType(FilterSheet), matching: f);
 
+/// Discovery controls precede a lazy host list. Scroll like a person before
+/// asserting list/panel content or interacting with it at phone dimensions.
+Future<void> revealResult(WidgetTester tester, Finder target) async {
+  await tester.scrollUntilVisible(target, 240,
+    scrollable: find.descendant(of: find.byType(CustomScrollView), matching: find.byType(Scrollable)).first);
+  await tester.pump();
+}
+
 void main() {
   group('cached then fresh', () {
     testWidgets('an old saved list shows at once with the pill, then the fresh list replaces it', (tester) async {
@@ -50,6 +58,7 @@ void main() {
       final c = await pumpScreen(tester, api: api, cache: cache);
 
       // Saved copy on screen while the network answer is still on its way.
+      await revealResult(tester, find.text('Old Asha'));
       expect(find.text('Old Asha'), findsOneWidget);
       expect(find.text('Showing saved list'), findsOneWidget);
       expect(c.read(exploreControllerProvider).awaitingFresh, isTrue);
@@ -57,6 +66,7 @@ void main() {
       fresh.complete(pageJson([hostJson('new', name: 'New Bela')]));
       await tester.pumpAndSettle();
 
+      await revealResult(tester, find.text('New Bela'));
       expect(find.text('New Bela'), findsOneWidget);
       expect(find.text('Old Asha'), findsNothing);
       expect(find.text('Showing saved list'), findsNothing);
@@ -76,6 +86,7 @@ void main() {
         });
       final api = fakeApi()..onError('GET', '/api/hf/hosts', ApiError.network());
       await pumpScreen(tester, api: api, cache: cache);
+      await revealResult(tester, find.text('Old Asha'));
       expect(find.text('Old Asha'), findsOneWidget);
       // The refresh failed: the saved copy is all there is, and the pill says so.
       expect(find.text('Showing saved list'), findsOneWidget);
@@ -91,6 +102,7 @@ void main() {
       final api = fakeApi()..onError('GET', '/api/hf/hosts', ApiError.network());
       await pumpScreen(tester, api: api, cache: cache);
       expect(find.text('Old Asha'), findsNothing);
+      await revealResult(tester, find.text('No internet. Check your connection.'));
       expect(find.text('No internet. Check your connection.'), findsOneWidget);
     });
   });
@@ -99,6 +111,7 @@ void main() {
     testWidgets('empty list with no filters', (tester) async {
       final api = fakeApi()..onJson('GET', '/api/hf/hosts', pageJson([]));
       await pumpScreen(tester, api: api);
+      await revealResult(tester, find.text('No hosts are live yet. Check back soon.'));
       expect(find.text('No hosts are live yet. Check back soon.'), findsOneWidget);
       expect(find.text('Clear filters'), findsNothing);
     });
@@ -106,6 +119,7 @@ void main() {
     testWidgets('empty with filters offers Clear filters, which asks again without them', (tester) async {
       final api = fakeApi()..onJson('GET', '/api/hf/hosts', pageJson([]));
       final c = await pumpScreen(tester, api: api, location: '/explore?online=1');
+      await revealResult(tester, find.text('No one matches. Try fewer filters.'));
       expect(find.text('No one matches. Try fewer filters.'), findsOneWidget);
       expect(listCalls(api).first.query!['online'], '1');
 
@@ -114,18 +128,21 @@ void main() {
       await tester.pumpAndSettle();
       expect(listCalls(api).last.query!.containsKey('online'), isFalse);
       expect(location(c).toString(), '/explore');
+      await revealResult(tester, find.text('No hosts are live yet. Check back soon.'));
       expect(find.text('No hosts are live yet. Check back soon.'), findsOneWidget);
     });
 
     testWidgets('error shows the message and Try again loads the list', (tester) async {
       final api = fakeApi()..onError('GET', '/api/hf/hosts', ApiError.network());
       await pumpScreen(tester, api: api);
+      await revealResult(tester, find.text('No internet. Check your connection.'));
       expect(find.text('No internet. Check your connection.'), findsOneWidget);
 
       api.onJson('GET', '/api/hf/hosts', pageJson([hostJson('asha')]));
       await tester.ensureVisible(find.text('Try again'));
       await tester.tap(find.text('Try again'));
       await tester.pumpAndSettle();
+      await revealResult(tester, find.text('Host asha'));
       expect(find.text('Host asha'), findsOneWidget);
       expect(find.text('No internet. Check your connection.'), findsNothing);
     });
@@ -134,6 +151,7 @@ void main() {
       final api = fakeApi()
         ..onError('GET', '/api/hf/hosts', const ApiError(status: 404, code: 'not_enabled'));
       await pumpScreen(tester, api: api);
+      await revealResult(tester, find.text('Coming soon'));
       expect(find.text('Coming soon'), findsOneWidget);
       expect(find.text('Try again'), findsNothing);
     });
@@ -143,6 +161,7 @@ void main() {
     testWidgets('signed out: a lane link explains the space before registration and does not read private hosts', (tester) async {
       final api = fakeApi()..onJson('GET', '/api/hf/hosts', pageJson([hostJson('asha')]));
       await pumpScreen(tester, api: api, location: '/explore?lane=women');
+      await revealResult(tester, find.text('Sign in to enter this space'));
       expect(find.text('Sign in to enter this space'), findsOneWidget);
       expect(listCalls(api), isEmpty);
 
@@ -157,6 +176,7 @@ void main() {
       final api = fakeApi()
         ..onError('GET', '/api/hf/hosts', const ApiError(status: 403, code: 'lane_required'));
       await pumpScreen(tester, api: api, session: signedInState(), location: '/explore?lane=lgbtq');
+      await revealResult(tester, find.widgetWithText(HfButton, 'Verify to join'));
       expect(find.text('Verify to join'), findsWidgets);
       // The lane list carries the bearer token, and says which lane.
       expect(listCalls(api).single.auth, isTrue);
@@ -176,17 +196,22 @@ void main() {
           return pageJson([hostJson(lane == null ? 'all' : 'lane-$lane', name: lane == null ? 'Public host' : 'Lane host')]);
         });
       final c = await pumpScreen(tester, api: api, session: const SessionState(
-        status: SessionStatus.signedIn, me: HfMe(uid: 'member', womenLane: true)));
+        status: SessionStatus.signedIn, me: HfMe(uid: 'member', displayName: 'Caller', ackVersion: 'hf-ack-v1', womenLane: true)));
+      await revealResult(tester, find.text('Public host'));
       expect(find.text('Public host'), findsOneWidget);
 
+      await tester.ensureVisible(find.text('Women-only'));
       await tester.tap(find.text('Women-only'));
       await tester.pumpAndSettle();
+      await revealResult(tester, find.text('Lane host'));
       expect(find.text('Lane host'), findsOneWidget);
       expect(location(c).queryParameters['lane'], 'women');
       expect(listCalls(api).last.query!['lane'], 'women');
 
+      await tester.ensureVisible(find.text('Everyone'));
       await tester.tap(find.text('Everyone'));
       await tester.pumpAndSettle();
+      await revealResult(tester, find.text('Public host'));
       expect(find.text('Public host'), findsOneWidget);
       expect(location(c).toString(), '/explore');
     });
@@ -334,10 +359,16 @@ void main() {
     final api = fakeApi()
       ..on('GET', '/api/hf/hosts', (_) => pageJson([hostJson('a', name: n++ == 0 ? 'Before' : 'After')]));
     await pumpScreen(tester, api: api);
+    await revealResult(tester, find.text('Before'));
     expect(find.text('Before'), findsOneWidget);
+    // Return to the top so the following gesture is a refresh, not an ordinary scroll.
+    tester.state<ScrollableState>(find.descendant(of: find.byType(CustomScrollView),
+      matching: find.byType(Scrollable)).first).position.jumpTo(0);
+    await tester.pump();
     await tester.fling(find.byType(CustomScrollView), const Offset(0, 400), 1000);
     await tester.pumpAndSettle();
     expect(listCalls(api), hasLength(2));
+    await revealResult(tester, find.text('After'));
     expect(find.text('After'), findsOneWidget);
   });
 
@@ -346,18 +377,20 @@ void main() {
     final api = fakeApi()
       ..onJson('GET', '/api/hf/hosts', pageJson([hostJson('asha', name: 'Asha', price: 12, status: 'busy')]));
     await pumpScreen(tester, api: api);
+    await revealResult(tester, find.text('Asha'));
     expect(find.text('Asha'), findsOneWidget);
     expect(find.text('Tagline of asha'), findsOneWidget);
     expect(find.text('Hindi · English'), findsOneWidget);
     expect(find.text('Exam tension'), findsOneWidget);
     expect(find.text('₹12/min'), findsOneWidget);
     expect(find.text('On a call'), findsOneWidget);
-    expect(find.text('AI picture'), findsOneWidget);
+    expect(find.text('AI avatar'), findsOneWidget);
   });
 
   testWidgets('tapping a card opens the host profile', (tester) async {
     final api = fakeApi()..onJson('GET', '/api/hf/hosts', pageJson([hostJson('asha', name: 'Asha')]));
     await pumpScreen(tester, api: api);
+    await revealResult(tester, find.text('Asha'));
     await tester.tap(find.text('Asha'));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 500));
@@ -371,6 +404,7 @@ void main() {
       ..onJson('GET', '/api/hf/hosts',
           pageJson([hostJson('asha', name: 'Asha with a rather long name indeed', intro: 'https://x/a.m4a')]));
     await pumpScreen(tester, api: api, size: const Size(360, 800));
+    await revealResult(tester, find.text('Asha with a rather long name indeed'));
     expect(tester.takeException(), isNull);
   });
 }

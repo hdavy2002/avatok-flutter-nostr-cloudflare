@@ -57,9 +57,11 @@ void main() {
       expect(find.text('How was your call with Asha?'), findsOneWidget);
       expect(find.byIcon(Icons.star_outline_rounded), findsNWidgets(5));
       expect(find.text('0/500'), findsOneWidget);
+      await tester.scrollUntilVisible(find.text('Tension'), 250, scrollable: find.byType(Scrollable).first);
       expect(find.text('Tension'), findsOneWidget);
       expect(find.text('Career'), findsOneWidget);
       expect(find.text('Something else'), findsNothing, reason: 'only the host topics are offered');
+      await tester.scrollUntilVisible(find.text('Reviews are checked before they appear. Only your first name is shown.'), 200, scrollable: find.byType(Scrollable).first);
       expect(find.text('Reviews are checked before they appear. Only your first name is shown.'), findsOneWidget);
       await closeApp(tester);
     });
@@ -72,6 +74,7 @@ void main() {
       expect(find.byIcon(Icons.star_rounded), findsNWidgets(4));
       expect(find.text('Good'), findsOneWidget);
       await tester.enterText(find.byType(TextField), 'Very kind and patient listener');
+      await tester.scrollUntilVisible(find.text('Tension'), 250, scrollable: find.byType(Scrollable).first);
       await tester.tap(find.text('Tension'));
       await tester.pump();
       await _send(tester);
@@ -280,7 +283,8 @@ void main() {
       await tester.pump();
       await tester.pump();
       await tester.pump();
-      expect(find.text('Send review'), findsOneWidget);
+      await tester.scrollUntilVisible(find.text('Send review'), 250, scrollable: find.byType(Scrollable).first);
+      expect(find.text('Send review').hitTestable(), findsOneWidget);
       await closeApp(tester);
     });
   });

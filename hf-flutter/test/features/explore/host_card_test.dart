@@ -87,6 +87,21 @@ void main() {
     expect(size.height, greaterThanOrEqualTo(48));
   });
 
+  testWidgets('status labels wrap in a narrow card at double text size', (tester) async {
+    await tester.pumpWidget(MaterialApp(home: Scaffold(body: MediaQuery(
+      data: const MediaQueryData(textScaler: TextScaler.linear(2)),
+      child: const SizedBox(width: 144, child: Column(children: [
+        StatusPill(presence: HostPresence.online, animate: false),
+        StatusPill(presence: HostPresence.busy, animate: false),
+        StatusPill(presence: HostPresence.offline, animate: false),
+      ])),
+    ))));
+    expect(find.text('Online now'), findsOneWidget);
+    expect(find.text('On a call'), findsOneWidget);
+    expect(find.text('Offline'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('every status has a distinct labelled pill', (tester) async {
     await pumpCards(tester, [
       HostCardView(host: card('a', status: 'online'), animate: false),

@@ -10,7 +10,6 @@ import 'package:hf_app/core/auth/hf_me.dart';
 import 'package:hf_app/core/auth/session.dart';
 import 'package:hf_app/core/boot.dart';
 import 'package:hf_app/core/links.dart';
-import 'package:hf_app/core/router/app_router.dart';
 import 'package:hf_app/core/router/routes.dart';
 import 'package:hf_app/core/storage/secure_store.dart';
 import 'package:hf_app/features/host_profile/data/host_profile.dart';
@@ -80,7 +79,7 @@ Map<String, dynamic> profileJson({
 
 SessionState signedIn({bool womenLane = false}) => SessionState(
       status: SessionStatus.signedIn,
-      me: HfMe(uid: 'user_test', womenLane: womenLane),
+      me: HfMe(uid: 'user_test', displayName: 'Caller', ackVersion: 'hf-ack-v1', womenLane: womenLane),
     );
 
 class FakeIntroPlayer implements IntroPlayer {
@@ -331,14 +330,14 @@ void main() {
     });
 
     testWidgets('guest women-only call opens the public explanation before sign-in', (tester) async {
-      final rig = await _pumpProfile(tester, api: apiWith(profileJson(womenOnly: true)));
+      await _pumpProfile(tester, api: apiWith(profileJson(womenOnly: true)));
       await tester.tap(find.text('Verify to call'));
       await tester.pumpAndSettle();
       expect(find.byType(SignInScreen), findsNothing);
       expect(find.byType(LanesScreen), findsOneWidget);
-      final uri = rig.container.read(appRouterProvider).routeInformationProvider.value.uri;
-      expect(uri.queryParameters['lane'], 'women');
-      expect(uri.queryParameters['next'], Routes.callConfirmOf('asha', lane: 'women'));
+      final laneScreen = tester.widget<LanesScreen>(find.byType(LanesScreen));
+      expect(laneScreen.lane, 'women');
+      expect(laneScreen.next, Routes.callConfirmOf('asha', lane: 'women'));
     });
 
     testWidgets('busy: "Notify me when free" and a note, no Call', (tester) async {
@@ -525,6 +524,8 @@ void main() {
       await _pumpProfile(tester, api: apiWith(profileJson(intro: true)), player: player);
       expect(find.text('Recorded by the host'), findsOneWidget);
       expect(find.text('00:00 / 00:30'), findsOneWidget);
+      await tester.ensureVisible(find.byTooltip('Play introduction'));
+      await tester.pump();
       await tester.tap(find.byTooltip('Play introduction'));
       await tester.pumpAndSettle();
       expect(player.played, ['https://media.example.test/intro.m4a']);

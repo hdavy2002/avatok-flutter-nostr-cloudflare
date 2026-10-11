@@ -297,6 +297,9 @@ void main() {
       expect(find.text('₹20 · Not approved'), findsOneWidget);
       expect(find.text('Money was already used.'), findsOneWidget);
       expect(find.text('Cancel request'), findsOneWidget, reason: 'only the waiting one');
+      await tester.ensureVisible(find.text('Cancel request'));
+      await tester.pump();
+      expect(find.text('Cancel request').hitTestable(), findsOneWidget);
       await tester.tap(find.text('Cancel request'));
       await tester.pumpAndSettle();
       expect(api.callsTo('POST', '/api/hf/wallet/refunds/req_1/cancel'), hasLength(1));

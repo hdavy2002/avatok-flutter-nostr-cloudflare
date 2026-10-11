@@ -34,16 +34,18 @@ Future<void> _capture(WidgetTester tester, String name) async {
   if (!_export) return;
   final candidates = find.byType(RepaintBoundary);
   final boundary = tester.renderObject<RenderRepaintBoundary>(candidates.first);
-  final pixels = await boundary.toImage(pixelRatio: 1);
-  try {
-    final bytes = await pixels.toByteData(format: ui.ImageByteFormat.png);
-    if (bytes == null) throw StateError('PNG capture failed');
-    final folder = Directory('test_output/design_review');
-    await folder.create(recursive: true);
-    await File('${folder.path}/$name.png').writeAsBytes(bytes.buffer.asUint8List());
-  } finally {
-    pixels.dispose();
-  }
+  await tester.runAsync(() async {
+    final pixels = await boundary.toImage(pixelRatio: 1);
+    try {
+      final bytes = await pixels.toByteData(format: ui.ImageByteFormat.png);
+      if (bytes == null) throw StateError('PNG capture failed');
+      final folder = Directory('test_output/design_review');
+      await folder.create(recursive: true);
+      await File('${folder.path}/$name.png').writeAsBytes(bytes.buffer.asUint8List());
+    } finally {
+      pixels.dispose();
+    }
+  });
 }
 
 void main() {

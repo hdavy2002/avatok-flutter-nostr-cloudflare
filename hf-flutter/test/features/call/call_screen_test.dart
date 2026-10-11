@@ -109,6 +109,7 @@ void main() {
       return {'ok': true, 'status': 'failed'};
     });
     await pumpCallApp(tester, api: api);
+    expect(find.text('Cancel call').hitTestable(), findsOneWidget, reason: 'Cancel must remain reachable without scrolling.');
     await tester.tap(find.text('Cancel call'));
     await tester.pump();
     await tester.pump();
@@ -128,6 +129,7 @@ void main() {
       throw const ApiError(status: 409, code: 'already_connected', message: 'The call is already connected.');
     });
     await pumpCallApp(tester, api: api);
+    expect(find.text('Cancel call').hitTestable(), findsOneWidget, reason: 'Cancel must remain reachable without scrolling.');
     await tester.tap(find.text('Cancel call'));
     await tester.pump();
     await tester.pump();
@@ -277,7 +279,8 @@ void main() {
     await tester.pump();
     await tester.pump();
     await tester.pump();
-    expect(find.text('Send review'), findsOneWidget);
+    await tester.scrollUntilVisible(find.text('Send review'), 250, scrollable: find.byType(Scrollable).first);
+    expect(find.text('Send review').hitTestable(), findsOneWidget);
     await closeApp(tester);
   });
 }
