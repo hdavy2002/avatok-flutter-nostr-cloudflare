@@ -487,6 +487,7 @@ void main() {
         await pumpDashboard(
           tester,
           api: hostApi(wallet: legacyHostWallet(), standardPlan: false),
+          standardPlan: false,
         );
         expect(tester.widget<Text>(key('earn-available')).data, '₹900.00');
         expect(tester.widget<Text>(key('earn-pending')).data, '₹300.00');

@@ -224,6 +224,7 @@ Future<ProviderContainer> pumpDashboard(
   WidgetTester tester, {
   required FakeApiClient api,
   SessionState? session,
+  bool standardPlan = true,
   Duration beatInterval = const Duration(minutes: 5),
 }) async {
   tester.view.physicalSize = const Size(1080, 9000);
@@ -236,6 +237,11 @@ Future<ProviderContainer> pumpDashboard(
     overrides: [
       sessionProvider.overrideWith(() => StubSession(initialSession)),
       apiClientProvider.overrideWithValue(api),
+      flagsProvider.overrideWith(
+        (_) => HfFlags.fromJson({
+          'hfStdPlan': {'enabled': standardPlan},
+        }),
+      ),
       presenceBeatIntervalProvider.overrideWithValue(beatInterval),
       dashboardClockProvider.overrideWithValue(() => pinnedNow),
     ],
@@ -269,7 +275,6 @@ Future<ProviderContainer> pumpDashboard(
       ),
     ),
   );
-  if (initialSession.isSignedIn) await container.read(flagsProvider.future);
   await tester.pumpAndSettle();
   return container;
 }
