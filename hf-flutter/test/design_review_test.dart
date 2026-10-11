@@ -8,6 +8,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:hf_app/core/theme/hf_theme.dart';
 import 'package:hf_app/core/widgets/widgets.dart';
+import 'package:hf_app/features/wallet/billing/billing_adapter.dart';
 
 import 'features/explore/explore_test_support.dart';
 import 'features/wallet/wallet_support.dart';
@@ -18,6 +19,9 @@ import 'support/fake_billing.dart';
 const _export = bool.fromEnvironment('EXPORT_DESIGN_REVIEW');
 
 Future<void> _loadFonts() async {
+  final icons = FontLoader('MaterialIcons')
+    ..addFont(rootBundle.load('fonts/MaterialIcons-Regular.otf'));
+  await icons.load();
   for (final family in ['Nunito', 'Comfortaa']) {
     final loader = FontLoader(family);
     final weights = family == 'Nunito'
@@ -72,7 +76,10 @@ void main() {
         addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
         tester.platformDispatcher.accessibilityFeaturesTestValue = const FakeAccessibilityFeatures(disableAnimations: true);
         addTearDown(tester.platformDispatcher.clearAccessibilityFeaturesTestValue);
-        await pumpWallet(tester, api: walletApi(), billing: FakeBillingAdapter());
+        await pumpWallet(tester, api: walletApi(), billing: FakeBillingAdapter(products: const {
+          'hf_tokens_100': StoreProduct(productId: 'hf_tokens_100', priceText: '₹120.00', currencyCode: 'INR', priceMicros: 120000000),
+          'hf_tokens_1000': StoreProduct(productId: 'hf_tokens_1000', priceText: '₹1,200.00', currencyCode: 'INR', priceMicros: 1200000000),
+        }));
         tester.view.physicalSize = Size(size.width * 3, size.height * 3);
         await tester.pumpAndSettle();
         expect(tester.takeException(), isNull);

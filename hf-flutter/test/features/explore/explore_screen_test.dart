@@ -41,6 +41,13 @@ Future<void> revealResult(WidgetTester tester, Finder target) async {
   await tester.pump();
 }
 
+Future<void> returnToHeader(WidgetTester tester) async {
+  // The header has been disposed when the lazy viewport is down in the list.
+  tester.state<ScrollableState>(find.descendant(of: find.byType(CustomScrollView),
+    matching: find.byType(Scrollable)).first).position.jumpTo(0);
+  await tester.pump();
+}
+
 void main() {
   group('cached then fresh', () {
     testWidgets('an old saved list shows at once with the pill, then the fresh list replaces it', (tester) async {
@@ -60,6 +67,8 @@ void main() {
       // Saved copy on screen while the network answer is still on its way.
       await revealResult(tester, find.text('Old Asha'));
       expect(find.text('Old Asha'), findsOneWidget);
+      await returnToHeader(tester);
+      await revealResult(tester, find.text('Showing saved list'));
       expect(find.text('Showing saved list'), findsOneWidget);
       expect(c.read(exploreControllerProvider).awaitingFresh, isTrue);
 
@@ -89,6 +98,8 @@ void main() {
       await revealResult(tester, find.text('Old Asha'));
       expect(find.text('Old Asha'), findsOneWidget);
       // The refresh failed: the saved copy is all there is, and the pill says so.
+      await returnToHeader(tester);
+      await revealResult(tester, find.text('Showing saved list'));
       expect(find.text('Showing saved list'), findsOneWidget);
       expect(find.text('Try again'), findsNothing);
     });
@@ -200,6 +211,7 @@ void main() {
       await revealResult(tester, find.text('Public host'));
       expect(find.text('Public host'), findsOneWidget);
 
+      await returnToHeader(tester);
       await tester.ensureVisible(find.text('Women-only'));
       await tester.tap(find.text('Women-only'));
       await tester.pumpAndSettle();
@@ -208,6 +220,7 @@ void main() {
       expect(location(c).queryParameters['lane'], 'women');
       expect(listCalls(api).last.query!['lane'], 'women');
 
+      await returnToHeader(tester);
       await tester.ensureVisible(find.text('Everyone'));
       await tester.tap(find.text('Everyone'));
       await tester.pumpAndSettle();

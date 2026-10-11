@@ -17,6 +17,13 @@ Future<void> revealHome(WidgetTester tester, Finder target) async {
   await tester.pump();
 }
 
+Future<void> returnToHeader(WidgetTester tester) async {
+  // The header has been disposed when the lazy viewport is down in the list.
+  tester.state<ScrollableState>(find.descendant(of: find.byType(CustomScrollView),
+    matching: find.byType(Scrollable)).first).position.jumpTo(0);
+  await tester.pump();
+}
+
 void main() {
   testWidgets('guest home is the marketplace without account onboarding', (tester) async {
     final api = fakeApi()..onJson('GET', '/api/hf/hosts', pageJson([hostJson('asha', name: 'Asha')]));
@@ -51,11 +58,13 @@ void main() {
     await revealHome(tester, hostNamed('Bela'));
     expect(hostNamed('Bela'), findsOneWidget);
     expect(find.text('Asha'), findsNothing);
+    await returnToHeader(tester);
     await tester.ensureVisible(find.byType(TextField));
     await tester.enterText(find.byType(TextField), 'no match');
     await tester.pumpAndSettle();
     await revealHome(tester, find.text('No matching hosts shown yet.'));
     expect(find.text('No matching hosts shown yet.'), findsOneWidget);
+    await returnToHeader(tester);
     await tester.ensureVisible(find.byTooltip('Clear search'));
     await tester.tap(find.byTooltip('Clear search'));
     await tester.pumpAndSettle();
