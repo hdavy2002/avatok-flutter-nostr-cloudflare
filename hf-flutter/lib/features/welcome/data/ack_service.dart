@@ -79,22 +79,35 @@ class AckService {
       // Freeze the credential before dispatch. ApiClient's usual 401 retry could
       // otherwise pick up a different account on a shared phone mid-request.
       final jwt = await _ref.read(clerkProvider).sessionToken();
-      if (jwt == null || _uid != uid || !_tokenBelongsTo(jwt, uid)) return false;
-      await _ref.read(apiClientProvider).request('POST', '/api/hf/me/ack',
-        auth: false, headers: {'Authorization': 'Bearer $jwt'}, body: {
-          'version': version, 'ack18': true, 'client': 'android',
-        });
+      if (jwt == null || _uid != uid || !_tokenBelongsTo(jwt, uid)) {
+        return false;
+      }
+      await _ref
+          .read(apiClientProvider)
+          .request(
+            'POST',
+            '/api/hf/me/ack',
+            auth: false,
+            headers: {'Authorization': 'Bearer $jwt'},
+            body: {'version': version, 'ack18': true, 'client': 'android'},
+          );
       return _uid == uid;
-    } catch (_) { return false; }
+    } catch (_) {
+      return false;
+    }
   }
 
   bool _tokenBelongsTo(String token, String uid) {
     try {
       final parts = token.split('.');
       if (parts.length != 3) return false;
-      final claims = jsonDecode(utf8.decode(base64Url.decode(base64Url.normalize(parts[1]))));
+      final claims = jsonDecode(
+        utf8.decode(base64Url.decode(base64Url.normalize(parts[1]))),
+      );
       return claims is Map && claims['sub'] == uid;
-    } catch (_) { return false; }
+    } catch (_) {
+      return false;
+    }
   }
 
   /// Privileged action decision. Sync only copies belonging to this authenticated UID.
@@ -109,7 +122,9 @@ class AckService {
     final localOk = ackIsCurrent(local, current);
     final serverOk = ackIsCurrent(server, current);
     if (!localOk && serverOk) await writeLocal(server!);
-    if (localOk && !serverOk && session.isSignedIn) unawaited(syncToServer().catchError((Object _) {}));
+    if (localOk && !serverOk && session.isSignedIn) {
+      unawaited(syncToServer().catchError((Object _) {}));
+    }
     return _uid != uid || !(localOk || serverOk);
   }
 
@@ -118,7 +133,9 @@ class AckService {
     final uid = _uid;
     final version = versionToSend();
     await writeLocal(version);
-    if (uid != null && _uid == uid && await postAck(version, expectedUid: uid)) {
+    if (uid != null &&
+        _uid == uid &&
+        await postAck(version, expectedUid: uid)) {
       if (_uid == uid) await _ref.read(sessionProvider.notifier).refreshMe();
     }
     return version;

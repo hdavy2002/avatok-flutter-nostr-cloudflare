@@ -5,7 +5,8 @@ import 'package:go_router/go_router.dart';
 
 import '../auth/session.dart';
 import '../strings.dart';
-import '../theme/hf_tokens.dart';
+import '../theme/hf_theme.dart';
+import '../widgets/hf_floating_nav.dart';
 import 'pending_intent.dart';
 
 /// Branch indexes of the shell, in router order. The Host tab always has a branch (so `/host` works as a
@@ -18,24 +19,56 @@ abstract final class TabBranch {
   static const int me = 4;
 }
 
+/// Space the floating nav takes: its 68 px bar plus the 20 px gap under it.
+const double kHfNavReserved = 68 + 20;
+
+/// Bottom padding for a scrolling screen inside the shell, so its last item can clear the floating nav.
+/// The shell hands each tab the system bottom inset only (not the nav height), so this does not double count.
+double hfNavPadding(BuildContext c) =>
+    kHfNavReserved + MediaQuery.paddingOf(c).bottom + 12;
+
 class _TabSpec {
-  const _TabSpec(this.branch, this.label, this.icon, this.iconSelected, this.key);
+  const _TabSpec(this.branch, this.label, this.icon, this.tint, this.key);
   final int branch;
   final String label;
   final IconData icon;
-  final IconData iconSelected;
+  final HfTint tint;
   final String key;
 }
 
 const List<_TabSpec> _allTabs = [
-  _TabSpec(TabBranch.home, Strings.tabHome, Icons.search_rounded, Icons.search_rounded, 'tab-home'),
-  _TabSpec(TabBranch.wallet, Strings.tabWallet, Icons.account_balance_wallet_outlined,
-      Icons.account_balance_wallet_rounded, 'tab-wallet'),
-  _TabSpec(TabBranch.host, Strings.tabHost, Icons.storefront_outlined, Icons.storefront_rounded, 'tab-host'),
-  _TabSpec(TabBranch.me, Strings.tabMe, Icons.person_outline_rounded, Icons.person_rounded, 'tab-me'),
+  _TabSpec(
+    TabBranch.home,
+    Strings.tabHome,
+    Icons.search_rounded,
+    HfTint.lavender,
+    'tab-home',
+  ),
+  _TabSpec(
+    TabBranch.wallet,
+    Strings.tabWallet,
+    Icons.account_balance_wallet_rounded,
+    HfTint.butter,
+    'tab-wallet',
+  ),
+  _TabSpec(
+    TabBranch.host,
+    Strings.tabHost,
+    Icons.mic_rounded,
+    HfTint.blush,
+    'tab-host',
+  ),
+  _TabSpec(
+    TabBranch.me,
+    Strings.tabMe,
+    Icons.person_rounded,
+    HfTint.sky,
+    'tab-me',
+  ),
 ];
 
-/// The bottom-tab shell. Back from a tab other than Home goes to Home; back from Home asks to exit.
+/// The bottom-tab shell with the floating nav. Back from a tab other than Home goes to Home; back from Home
+/// asks to exit. Screens scroll under the bar (`extendBody`); use [hfNavPadding] as their bottom padding.
 class HfTabShell extends ConsumerWidget {
   const HfTabShell({super.key, required this.navigationShell});
 
@@ -51,8 +84,14 @@ class HfTabShell extends ConsumerWidget {
       builder: (ctx) => AlertDialog(
         title: const Text(Strings.exitTitle),
         actions: [
-          TextButton(onPressed: () => Navigator.of(ctx).pop(false), child: const Text(Strings.exitNo)),
-          TextButton(onPressed: () => Navigator.of(ctx).pop(true), child: const Text(Strings.exitYes)),
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text(Strings.exitNo),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text(Strings.exitYes),
+          ),
         ],
       ),
     );
@@ -62,122 +101,60 @@ class HfTabShell extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final hasHost = ref.watch(sessionProvider.select((s) => s.hasHostTab));
-    final tabs = _allTabs.where((t) => t.branch != TabBranch.host || hasHost).toList();
+    final tabs = _allTabs
+        .where((t) => t.branch != TabBranch.host || hasHost)
+        .toList();
+    final systemBottom = MediaQuery.paddingOf(context).bottom;
     return PopScope(
       canPop: false,
       onPopInvokedWithResult: (didPop, _) {
         if (!didPop) _onBack(context);
       },
       child: Scaffold(
-        body: navigationShell,
-        bottomNavigationBar: HfTabBar(
-          tabs: [for (final t in tabs) HfTabItem(key: t.key, label: t.label, icon: t.icon, iconSelected: t.iconSelected)],
-          selected: tabs.indexWhere((t) => t.branch == (navigationShell.currentIndex == TabBranch.explore ? TabBranch.home : navigationShell.currentIndex)),
-          onTap: (i) async {
-            final branch = tabs[i].branch;
-            if (branch == TabBranch.home && navigationShell.currentIndex == TabBranch.explore) return;
-            await ref.read(pendingIntentProvider).clear();
-            if (!context.mounted) return;
-            navigationShell.goBranch(branch, initialLocation: branch == navigationShell.currentIndex);
+        extendBody: true,
+        // The body's bottom padding would include the nav height with extendBody; screens add [hfNavPadding]
+        // themselves, so give them the system inset only.
+        body: Builder(
+          builder: (inner) {
+            final media = MediaQuery.of(inner);
+            return MediaQuery(
+              data: media.copyWith(
+                padding: media.padding.copyWith(bottom: systemBottom),
+              ),
+              child: navigationShell,
+            );
           },
         ),
-      ),
-    );
-  }
-}
-
-class HfTabItem {
-  const HfTabItem({required this.key, required this.label, required this.icon, required this.iconSelected});
-  final String key;
-  final String label;
-  final IconData icon;
-  final IconData iconSelected;
-}
-
-/// Pill navigation grows with system text, retaining the full accessibility scale.
-class HfTabBar extends StatelessWidget {
-  const HfTabBar({super.key, required this.tabs, required this.selected, required this.onTap});
-
-  final List<HfTabItem> tabs;
-
-  /// Index into [tabs], or -1 when the current page has no tab (for example `/host` without a host profile).
-  final int selected;
-  final ValueChanged<int> onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final media = MediaQuery.of(context);
-    final scale = media.textScaler;
-    return MediaQuery(
-      data: media.copyWith(textScaler: scale),
-      child: Material(
-        color: HfColors.white,
-        elevation: 8,
-        shadowColor: const Color(0x2246113E),
-        child: SafeArea(
-          top: false,
-          child: SizedBox(
-            height: 64 + (scale.scale(14) - 14) * 3,
-            child: Row(
-              children: [
-                for (var i = 0; i < tabs.length; i++)
-                  Expanded(
-                    child: _TabButton(item: tabs[i], selected: i == selected, onTap: () => onTap(i)),
-                  ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _TabButton extends StatelessWidget {
-  const _TabButton({required this.item, required this.selected, required this.onTap});
-
-  final HfTabItem item;
-  final bool selected;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return Semantics(
-      button: true,
-      selected: selected,
-      label: item.label,
-      excludeSemantics: true,
-      child: InkWell(
-        key: ValueKey<String>(item.key),
-        onTap: onTap,
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            AnimatedContainer(
-              duration: MediaQuery.disableAnimationsOf(context) ? Duration.zero : const Duration(milliseconds: 180),
-              width: 56,
-              height: 30,
-              decoration: BoxDecoration(
-                color: selected ? HfColors.ink : Colors.transparent,
-                borderRadius: BorderRadius.circular(HfRadius.pill),
+        bottomNavigationBar: HfFloatingNav(
+          items: [
+            for (final t in tabs)
+              HfNavItem(
+                icon: t.icon,
+                label: t.label,
+                tint: t.tint,
+                keyName: t.key,
               ),
-              child: Icon(
-                selected ? item.iconSelected : item.icon,
-                size: 24,
-                color: selected ? HfColors.white : HfColors.mauve,
-              ),
-            ),
-            const SizedBox(height: 2),
-            Text(
-              item.label,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style: HfText.label.copyWith(
-                fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
-                color: selected ? HfColors.plum : HfColors.mauve,
-              ),
-            ),
           ],
+          selected: tabs.indexWhere(
+            (t) =>
+                t.branch ==
+                (navigationShell.currentIndex == TabBranch.explore
+                    ? TabBranch.home
+                    : navigationShell.currentIndex),
+          ),
+          onTap: (i) async {
+            final branch = tabs[i].branch;
+            if (branch == TabBranch.home &&
+                navigationShell.currentIndex == TabBranch.explore) {
+              return;
+            }
+            await ref.read(pendingIntentProvider).clear();
+            if (!context.mounted) return;
+            navigationShell.goBranch(
+              branch,
+              initialLocation: branch == navigationShell.currentIndex,
+            );
+          },
         ),
       ),
     );

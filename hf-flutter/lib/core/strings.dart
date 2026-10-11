@@ -8,9 +8,11 @@ abstract final class Strings {
   static const String tryAgain = 'Try again';
   static const String noInternet = 'No internet. Check your connection.';
   static const String timedOut = 'That took too long. Please try again.';
-  static const String somethingWrong = 'Something went wrong. Please try again.';
+  static const String somethingWrong =
+      'Something went wrong. Please try again.';
   static const String comingSoonTitle = 'Coming soon';
-  static const String comingSoonBody = 'This is not open yet. Please check back soon.';
+  static const String comingSoonBody =
+      'This is not open yet. Please check back soon.';
   static const String showingSavedList = 'Showing saved list';
   static const String notAvailable = "This profile isn't available.";
 
@@ -31,8 +33,8 @@ abstract final class Strings {
   static const String recordedByHost = 'Recorded by the host';
 
   // Tabs
-  static const String tabHome = 'Browse';
-  static const String tabExplore = 'Browse';
+  static const String tabHome = 'Discover';
+  static const String tabExplore = 'Discover';
   static const String tabWallet = 'Wallet';
   static const String tabHost = 'Host';
   static const String tabMe = 'Me';
