@@ -13,13 +13,16 @@ import { API_BASE } from '../../lib/config';
 import { moods } from '../../lib/callvaalHomeReference';
 import HostCallActions from '../../islands/calls/HostCallActions';
 import { relDate } from '../../lib/hfCallsApi';
+import { SAME_RATE_LINE, chargeForSeconds, stdRateLabel, type PriceTier } from '../../lib/hfStdPlan';
+import { formatPaise } from '../../lib/money';
 import { shortCallDisclaimer } from '../../lib/callvaalProfileDetails';
 import '../../styles/callvaal-detail.css';
 import '../../styles/hf-calls.css';
 
 interface Card {
   slug: string; displayName: string; tagline: string | null; avatarUrl: string | null; languages: string[]; style: string | null; topics: string[];
-  pricePerMin: number; lgbtqFriendly: boolean;
+  /** [HF-STD-PLAN-1] pricePerMin is a number and may be fractional (3.99). */
+  pricePerMin: number; pricePaisePerMin?: number; priceLabel?: string; priceTiers?: PriceTier[]; plan?: string; lgbtqFriendly: boolean;
   introAudioUrl: string | null; introSeconds: number | null; introMime: string | null;
   aboutPolished: string | null; quote: string | null;
   gallery: { url: string; caption: string | null }[];
@@ -49,7 +52,10 @@ else Astro.response.headers.set('cache-control', 'public, max-age=60');
 
 const moodLabel = (s: string) => moods.find(m => m.slug === s)?.label ?? s;
 const name = host?.displayName ?? '';
-const price = host?.pricePerMin ?? 0;
+const paisePerMin = host?.pricePaisePerMin ?? Math.round(Number(host?.pricePerMin ?? 0) * 100);
+const standard = host?.plan === 'standard';
+const rateLabel = standard ? (host?.priceLabel || stdRateLabel(paisePerMin || undefined)) : `₹${Number(host?.pricePerMin ?? 0).toLocaleString('en-IN')}/min`;
+const tenMin = standard ? formatPaise(chargeForSeconds(host?.priceTiers, 600)) : null;
 const topics = (host?.topics ?? []).map(moodLabel);
 const gallery = host?.gallery ?? [];
 const reviewCount = host?.reviewCount ?? 0;
@@ -58,10 +64,10 @@ const reviews = host?.reviews ?? [];
 const breakdown = host?.ratingBreakdown ?? { '5': 0, '4': 0, '3': 0, '2': 0, '1': 0 };
 const talkedTo = host?.talkedTo ?? 0;
 const regulars = host?.regulars ?? 0;
-const callHost = host ? { slug: host.slug, displayName: host.displayName, pricePerMin: host.pricePerMin, status: host.status ?? 'offline', womenOnly: !!host.womenOnly } : null;
+const callHost = host ? { slug: host.slug, displayName: host.displayName, pricePerMin: host.pricePerMin, pricePaisePerMin: paisePerMin || undefined, priceTiers: host.priceTiers, plan: host.plan, status: host.status ?? 'offline', womenOnly: !!host.womenOnly } : null;
 const audioUrl = host?.introAudioUrl ?? null;
 const introLen = host?.introSeconds ? `${Math.floor(host.introSeconds / 60)}:${String(host.introSeconds % 60).padStart(2, '0')}` : '';
-const description = host ? `${name} on ${identity.name}. ${host.tagline ?? 'A real person to talk to, in your language.'} From ₹${price}/min. Your number stays private.` : 'This host page is not available.';
+const description = host ? `${name} on ${identity.name}. ${host.tagline ?? 'A real person to talk to, in your language.'} From ${rateLabel}. Your number stays private.` : 'This host page is not available.';
 const galleryJson = JSON.stringify(gallery.map(g => ({ src: g.url, alt: g.caption || 'AI image' }))).replace(/</g, '\\u003c');
 ---
 <Base title={host ? `${name} — talk to a real person | ${identity.name}` : `Host not found | ${identity.name}`} description={description} image={host?.avatarUrl ?? undefined} noindex={!host} keywords="" lang="en-IN">
@@ -151,14 +157,14 @@ const galleryJson = JSON.stringify(gallery.map(g => ({ src: g.url, alt: g.captio
             </div></section>
           </div>
           <aside class="cv-booking-rail" aria-label="Call options">
-            <div class="cv-booking-card"><strong class="cv-rate">₹{price}/min</strong><p class="cv-rate-estimate">10 min ≈ ₹{price * 10}</p>
+            <div class="cv-booking-card"><strong class="cv-rate">{rateLabel}</strong>{tenMin && <p class="cv-rate-estimate">10 min ≈ {tenMin}</p>}{standard && <p class="cv-rate-estimate">{SAME_RATE_LINE}</p>}
               {callHost && <HostCallActions client:idle variant="rail" refresh host={callHost} />}
               <ul class="cv-booking-benefits"><li><ModernIcon name="lock" /><div><strong>Your number stays private</strong><span>Calls are bridged through {identity.name}</span></div></li><li><DetailIcon name="shield" /><div><strong>ID-verified host</strong><span>Aadhaar and a live selfie, checked by our team</span></div></li></ul>
             </div>
           </aside>
         </div>
       </main>
-      <div class="cv-mobile-booking" aria-label="Call options"><div><strong>₹{price}/min</strong><small>10 min ≈ ₹{price * 10}</small></div>{callHost && <HostCallActions client:idle variant="bar" refresh host={callHost} />}</div>
+      <div class="cv-mobile-booking" aria-label="Call options"><div><strong>{rateLabel}</strong>{tenMin && <small>10 min ≈ {tenMin}</small>}</div>{callHost && <HostCallActions client:idle variant="bar" refresh host={callHost} />}</div>
       <dialog class="cv-detail-dialog cv-gallery-dialog" id="hf-lightbox" aria-labelledby="hf-lightbox-caption"><button class="cv-dialog-close" type="button" data-dialog-close aria-label="Close gallery">×</button><figure><img data-gallery-image alt="" width="1254" height="1254"/><span class="hf-ai-chip hf-ai-lb">AI image</span><figcaption id="hf-lightbox-caption" aria-live="polite"></figcaption></figure><div class="cv-gallery-controls"><button type="button" data-gallery-step="-1" aria-label="Previous picture">←</button><span data-gallery-count></span><button type="button" data-gallery-step="1" aria-label="Next picture">→</button></div></dialog>
       <script type="application/json" id="hf-gallery-data" set:html={galleryJson} />
     </>

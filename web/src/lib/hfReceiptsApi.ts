@@ -3,7 +3,14 @@
 import { API_BASE } from './env';
 import { hfCall, type HfResult } from './hfCallsApi';
 
-export interface ReceiptItem { id: string; number: string; kind: 'receipt' | 'tax_invoice'; source: string; amountRupees: number; issuedAt: number }
+export interface ReceiptItem { id: string; number: string; kind: 'receipt' | 'tax_invoice'; source: string; amountRupees: number; issuedAt: number;
+  /** [HF-STD-PLAN-1] top-up split in paise (top level, or inside `data`): total paid, GST included, added to the wallet. */
+  paidPaise?: number; gstPaise?: number; walletPaise?: number; data?: { paidPaise?: number; gstPaise?: number; walletPaise?: number } }
+/** The three-way split of a receipt, or null for older receipts without it. */
+export function receiptSplit(r: ReceiptItem): { paid: number; gst: number; wallet: number } | null {
+  const paid = r.paidPaise ?? r.data?.paidPaise, gst = r.gstPaise ?? r.data?.gstPaise, wallet = r.walletPaise ?? r.data?.walletPaise;
+  return paid != null && gst != null && wallet != null ? { paid, gst, wallet } : null;
+}
 export interface ReceiptList { ok: boolean; invoicing: boolean; receipts: ReceiptItem[] }
 export const fetchReceipts = (): Promise<HfResult<ReceiptList>> => hfCall<ReceiptList>('GET', '/api/hf/wallet/receipts');
 

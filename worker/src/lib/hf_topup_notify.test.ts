@@ -26,25 +26,32 @@ beforeEach(async () => {
 
 describe("texts", () => {
   it("rupees are whole when whole, two decimals otherwise", () => {
-    expect(rupeesText(12000)).toBe("₹120");
+    // [HF-STD-PLAN-1] always two decimals with Indian grouping (formatRupees), never a bare "₹120"
+    expect(rupeesText(12000)).toBe("₹120.00");
     expect(rupeesText(14720)).toBe("₹147.20");
-    expect(rupeesText(102000)).toBe("₹1,020");
+    expect(rupeesText(10169)).toBe("₹101.69");
+    expect(rupeesText(101695)).toBe("₹1,016.95");
   });
   it("WhatsApp says what was added, what was paid with GST, the order and the balance", () => {
     const t = topupWhatsAppText(notice, 10200);
-    expect(t).toContain("₹102 has been added to your wallet");
-    expect(t).toContain("You paid ₹120 (includes 18% GST) via Google Play");
+    // [HF-STD-PLAN-1] new wording: wallet credit, total paid, GST included, order, balance - all as two-decimal rupees
+    expect(t).toContain("₹102.00 has been added to your wallet");
+    expect(t).toContain("You paid ₹120.00 via Google Play, including ₹18.00 GST");
     expect(t).toContain("GPA.1234-5678");
-    expect(t).toContain("balance is now ₹102");
+    expect(t).toContain("balance is now ₹102.00");
+    expect(t).not.toMatch(/token/i);
   });
   it("email is a branded payment receipt, not a tax invoice, with no GSTIN", () => {
     const h = topupEmailHtml(notice, 10200);
     expect(h).toContain("Hello Fraands");
     expect(h).toContain("Payment receipt");
     expect(h).toContain("HF/R/2026-27/12");
-    expect(h).toContain("Amount paid (includes 18% GST)");
-    expect(h).toContain("₹120");
-    expect(h).toContain("₹102 added to your wallet");
+    // [HF-STD-PLAN-1] Total paid / GST included / Added to your wallet
+    expect(h).toContain("Total paid");
+    expect(h).toContain("GST included (18%)");
+    expect(h).toContain("₹120.00");
+    expect(h).toContain("₹18.00");
+    expect(h).toContain("₹102.00 added to your wallet");
     expect(h).toContain("not a tax invoice");
     expect(h).not.toMatch(/GSTIN/);
     expect(h).not.toMatch(/<script/i);
@@ -57,7 +64,7 @@ describe("notifyTopupCredited", () => {
     expect(r).toMatchObject({ whatsapp: "sent", email: "queued" });
     expect(sent.wa).toHaveLength(1);
     expect(sent.wa[0].to).toBe("+919876543210");
-    expect(sent.wa[0].text).toContain("balance is now ₹102");
+    expect(sent.wa[0].text).toContain("balance is now ₹102.00");
     expect(sent.mail).toHaveLength(1);
     expect(sent.mail[0]).toMatchObject({ to: "buyer@example.com", outboxKey: "hf-topup:GPA.1234-5678", kind: "hf_topup_receipt" });
     const wa = sent.events.find((e) => e.event === "hf_topup_whatsapp_receipt");

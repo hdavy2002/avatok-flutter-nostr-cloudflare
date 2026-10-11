@@ -14,6 +14,7 @@ import { hostAggregates } from "../lib/hf_reviews";
 import { buildHfOptions } from "../lib/hf_options";
 import { parseHostList, buildListSql, listCacheKey } from "../lib/hf_hosts_list";
 import { card, SEL, type LiveRow } from "./hf_hosts_public";
+import { readHfStdPlan } from "../lib/hf_token_config"; // [HF-STD-PLAN-1]
 
 const LIST_TTL_S = 45;
 const err = (status: number, error: string) => json({ error }, status);
@@ -25,10 +26,13 @@ export async function hfHostsListRoute(req: Request, env: Env, ctx?: ExecutionCo
   if (req.method !== "GET" || !(p === "/api/hf/hosts" || p === "/api/hf/options")) return null;
   if (p === "/api/hf/options") return json(buildHfOptions(), 200, { "cache-control": "public, max-age=3600" });
   try {
-    if ((await readConfig(env)).hostsPublicEnabled !== true) return err(404, "not_enabled");
+    const cfgAll = await readConfig(env);
+    if (cfgAll.hostsPublicEnabled !== true) return err(404, "not_enabled");
     const parsed = parseHostList(url.searchParams);
     if (!parsed.ok) return err(parsed.status, parsed.error);
-    const q = parsed.q;
+    const std = readHfStdPlan(cfgAll as unknown as Record<string, unknown>); // [HF-STD-PLAN-1]
+    // Standard plan: every host has the same price, so price filters and the price sort would only reorder by a stale host column.
+    const q = std.enabled ? { ...parsed.q, minPrice: null, maxPrice: null, sort: parsed.q.sort === "price_low" ? "online_first" as const : parsed.q.sort } : parsed.q;
     const authed = req.headers.has("authorization");
     if (q.lane) {
       const u = await requireUser(req, env);
@@ -46,7 +50,7 @@ export async function hfHostsListRoute(req: Request, env: Env, ctx?: ExecutionCo
     const rows = (await env.DB_META.prepare(b.sql).bind(...b.binds).all<LiveRow>()).results ?? [];
     const total = Number((await env.DB_META.prepare(b.countSql).bind(...b.countBinds).first<{ c: number }>())?.c ?? 0);
     const aggs = await hostAggregates(env, rows.map((r) => r.uid));
-    const items = rows.map((r) => card(env, r, aggs.get(r.uid)));
+    const items = rows.map((r) => card(env, r, aggs.get(r.uid), std));
     const end = q.offset + items.length;
     const body = { items, nextOffset: items.length > 0 && end < total ? end : null, total };
     if (!cacheable || !key) return json(body, 200, NO_STORE);

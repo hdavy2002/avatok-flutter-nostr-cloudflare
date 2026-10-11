@@ -79,6 +79,8 @@ abstract final class HostCopy {
 
   // Earnings
   static const String earningsTitle = 'Earnings';
+  static const String standardPlan =
+      'Standard plan: you earn ₹2.00 for every connected minute.';
   static const String earningsReady = 'Ready to withdraw';
   static String earningsHold(int days) => 'On $days-day hold';
   static String earningsTotalLine(String amount) => 'Total $amount';

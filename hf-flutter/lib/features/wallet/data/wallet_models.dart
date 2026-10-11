@@ -88,6 +88,38 @@ class TokenDebt {
   }
 }
 
+class PurchaseAmounts {
+  const PurchaseAmounts({
+    required this.paidPaise,
+    required this.gstPaise,
+    required this.walletPaise,
+    this.orderId,
+  });
+
+  final int paidPaise;
+  final int gstPaise;
+  final int walletPaise;
+  final String? orderId;
+
+  String get line =>
+      'Total ${formatPaise(paidPaise)} · GST included ${formatPaise(gstPaise)} · Added to wallet ${formatPaise(walletPaise)}';
+
+  static PurchaseAmounts? tryParse(Object? raw) {
+    if (raw is! Map) return null;
+    final j = Map<String, dynamic>.from(raw);
+    final paid = _num(j['paidPaise']);
+    final wallet = _num(j['walletPaise']);
+    if (paid == null || wallet == null || paid <= 0) return null;
+    final gst = _num(j['gstPaise']);
+    return PurchaseAmounts(
+      paidPaise: paid.round(),
+      gstPaise: gst?.round() ?? paid.round() - wallet.round(),
+      walletPaise: wallet.round(),
+      orderId: _str(j['orderId']),
+    );
+  }
+}
+
 /// One history line. Token mode carries [tokens] (`+100.00`, `-3.20`); old money carries [rupees].
 class HistoryItem {
   const HistoryItem({
@@ -97,6 +129,8 @@ class HistoryItem {
     this.tokens,
     this.rupees,
     this.callId,
+    this.amountPaise,
+    this.purchase,
   });
 
   final DateTime? at;
@@ -105,9 +139,15 @@ class HistoryItem {
   final String? tokens;
   final num? rupees;
   final String? callId;
+  final int? amountPaise;
+  final PurchaseAmounts? purchase;
 
   /// Shown on the right: `+₹100.00`, `-₹3.20`, `-₹40`.
   String get amountText {
+    final paise = amountPaise;
+    if (paise != null) {
+      return '${paise > 0 && kind != 'debt_create' ? '+' : ''}${formatPaise(paise)}';
+    }
     final t = tokens;
     if (t != null) {
       final signed = t.startsWith('+') || t.startsWith('-');
@@ -115,7 +155,7 @@ class HistoryItem {
     }
     final r = rupees;
     if (r == null) return '';
-    return '${r > 0 ? '+' : ''}${Money.rupees(r)}';
+    return '${r > 0 ? '+' : ''}${formatRupees(r)}';
   }
 
   factory HistoryItem.fromJson(Map<String, dynamic> j) => HistoryItem(
@@ -125,6 +165,8 @@ class HistoryItem {
     tokens: _str(j['tokens']),
     rupees: _num(j['rupees']),
     callId: _str(j['callId']),
+    amountPaise: _num(j['amountPaise'])?.round(),
+    purchase: PurchaseAmounts.tryParse(j['purchase']),
   );
 }
 
@@ -134,26 +176,32 @@ class PurchaseRecord {
   const PurchaseRecord({
     this.orderId,
     required this.label,
-    this.tokens,
+    this.added,
     this.paidPaise,
+    this.amounts,
     this.at,
     this.state,
   });
 
   final String? orderId;
   final String label;
-  final String? tokens;
+  final String? added;
   final int? paidPaise;
+  final PurchaseAmounts? amounts;
   final DateTime? at;
   final String? state;
 
   factory PurchaseRecord.fromJson(Map<String, dynamic> j) {
+    final amounts = PurchaseAmounts.tryParse(j);
     final t = _num(j['tokens']);
     return PurchaseRecord(
       orderId: _str(j['orderId']),
       label: 'Paid via Google Play',
-      tokens: t == null ? _str(j['tokens']) : tokensPlain(t),
+      added: amounts != null
+          ? formatPaise(amounts.walletPaise)
+          : (t == null ? _str(j['tokens']) : formatRupees(t)),
       paidPaise: j['paidPaise'] == null ? null : _int(j['paidPaise']),
+      amounts: amounts,
       at: _date(j['at']),
       state: _str(j['state']),
     );
@@ -166,6 +214,7 @@ class WalletData {
     required this.tokenMode,
     required this.history,
     required this.purchases,
+    this.rupeeMode = false,
     this.balanceText = '0.00',
     this.availableText = '0.00',
     this.availableMicro = 0,
@@ -176,9 +225,15 @@ class WalletData {
     this.paidBalance = 0,
     this.testBalance = 0,
     this.spendable = 0,
+    this.balancePaise = 0,
+    this.availablePaise = 0,
+    this.reservedPaise = 0,
+    this.paidPaise = 0,
+    this.testPaise = 0,
   });
 
   final bool tokenMode;
+  final bool rupeeMode;
 
   // token mode
   final String balanceText;
@@ -194,18 +249,28 @@ class WalletData {
   final num testBalance;
   final num spendable;
 
+  final int balancePaise;
+  final int availablePaise;
+  final int reservedPaise;
+  final int paidPaise;
+  final int testPaise;
+
   final List<HistoryItem> history;
   final List<PurchaseRecord> purchases;
 
   bool get hasDebt => debt.open;
 
-  /// More tokens in the balance than free to spend (some are held for a call in progress).
-  bool get hasReserved => availableMicro < balanceMicro;
+  /// More money in the balance than is free to spend (some is held for a call in progress).
+  bool get hasReserved => availablePaise < balancePaise;
 
-  /// True when there are test tokens (spend-only). Compared, never added up.
-  bool get hasTestTokens {
-    final n = num.tryParse(testTokensText.replaceAll(',', ''));
-    return n != null && n > 0;
+  /// True when there is test credit (spend-only). Compared, never added up.
+  bool get hasTestTokens => testPaise > 0;
+
+  int get spendablePaise => tokenMode ? availablePaise : (spendable * 100).round();
+
+  static int _paiseOfText(Object? text) {
+    final n = _num(text);
+    return n == null ? 0 : (n * 100).round();
   }
 
   factory WalletData.fromJson(Map<String, dynamic> j) {
@@ -221,13 +286,47 @@ class WalletData {
         for (final h in history)
           if (h.kind == 'purchase')
             PurchaseRecord(
+              orderId: h.purchase?.orderId,
               label: 'Paid via Google Play',
-              tokens: h.tokens == null
-                  ? null
-                  : '₹${h.tokens!.replaceFirst('+', '')}',
+              added: h.amountPaise != null
+                  ? formatPaise(h.amountPaise!)
+                  : (h.tokens == null
+                      ? null
+                      : '₹${h.tokens!.replaceFirst('+', '')}'),
+              paidPaise: h.purchase?.paidPaise,
+              amounts: h.purchase,
               at: h.at,
             ),
       ];
+    }
+    if (j['mode'] == 'rupees' && j['wallet'] is Map) {
+      final w = Map<String, dynamic>.from(j['wallet'] as Map);
+      final balance = _int(w['balancePaise']);
+      final available = w['availablePaise'] == null
+          ? balance
+          : _int(w['availablePaise']);
+      final debtPaise = _int(w['debtPaise']);
+      return WalletData(
+        tokenMode: true,
+        rupeeMode: true,
+        balancePaise: balance,
+        availablePaise: available,
+        reservedPaise: w['reservedPaise'] == null
+            ? (balance - available < 0 ? 0 : balance - available)
+            : _int(w['reservedPaise']),
+        paidPaise: _int(w['paidPaise']),
+        testPaise: _int(w['testPaise']),
+        balanceText: (balance / 100).toStringAsFixed(2),
+        availableText: (available / 100).toStringAsFixed(2),
+        testTokensText: (_int(w['testPaise']) / 100).toStringAsFixed(2),
+        debt: TokenDebt(
+          tokensText: (debtPaise / 100).toStringAsFixed(2),
+          valuePaise: debtPaise,
+          open: w['debtOpen'] == true || debtPaise > 0,
+        ),
+        history: history,
+        purchases: purchases,
+      );
     }
     if (j['mode'] == 'tokens' && j['tokens'] is Map) {
       final t = Map<String, dynamic>.from(j['tokens'] as Map);
@@ -235,17 +334,27 @@ class WalletData {
       final availableMicro = t['availableMicro'] == null
           ? balanceMicro
           : _int(t['availableMicro']);
+      final balanceText = t['balanceMicro'] != null
+          ? Money.microTokens(balanceMicro)
+          : (_str(t['balance']) ?? '0.00');
+      final availableText = t['availableMicro'] != null
+          ? Money.microTokens(availableMicro)
+          : (_str(t['available']) ?? '0.00');
+      final testText = _str(t['testTokens']) ?? '0.00';
+      final balancePaise = _paiseOfText(balanceText.replaceAll(',', ''));
+      final availablePaise = _paiseOfText(availableText.replaceAll(',', ''));
       return WalletData(
         tokenMode: true,
         balanceMicro: balanceMicro,
         availableMicro: availableMicro,
-        balanceText: t['balanceMicro'] != null
-            ? Money.microTokens(balanceMicro)
-            : (_str(t['balance']) ?? '0.00'),
-        availableText: t['availableMicro'] != null
-            ? Money.microTokens(availableMicro)
-            : (_str(t['available']) ?? '0.00'),
-        testTokensText: _str(t['testTokens']) ?? '0.00',
+        balanceText: balanceText,
+        availableText: availableText,
+        testTokensText: testText,
+        balancePaise: balancePaise,
+        availablePaise: availablePaise,
+        reservedPaise:
+            balancePaise > availablePaise ? balancePaise - availablePaise : 0,
+        testPaise: _paiseOfText(testText.replaceAll(',', '')),
         byValue: [for (final m in _maps(t['byValue'])) ByValue.fromJson(m)],
         debt: TokenDebt.fromJson(t['debt']),
         history: history,
@@ -272,6 +381,10 @@ class TokenPack {
     this.redemptionPaisePerToken,
     this.purchasePaisePerToken,
     this.creditPaise,
+    this.pricePaise,
+    this.gstPaise,
+    this.walletPaise,
+    this.gstBps = 1800,
   });
 
   final String productId;
@@ -286,8 +399,12 @@ class TokenPack {
 
   /// What the pack adds to the wallet, in paise (`10200` = "Adds ₹102 to your wallet"). The server computes it.
   final int? creditPaise;
+  final int? pricePaise;
+  final int? gstPaise;
+  final int? walletPaise;
+  final int gstBps;
 
-  factory TokenPack.fromJson(Map<String, dynamic> j) => TokenPack(
+  factory TokenPack.fromJson(Map<String, dynamic> j, {int gstBps = 1800}) => TokenPack(
     productId: _str(j['productId']) ?? '',
     tokens: _num(j['tokens']) ?? 0,
     redemptionPaisePerToken: j['redemptionPaisePerToken'] == null
@@ -297,22 +414,31 @@ class TokenPack {
         ? null
         : _int(j['purchasePaisePerToken']),
     creditPaise: j['creditPaise'] == null ? null : _int(j['creditPaise']),
+    pricePaise: j['pricePaise'] == null ? null : _int(j['pricePaise']),
+    gstPaise: j['gstPaise'] == null ? null : _int(j['gstPaise']),
+    walletPaise: j['walletPaise'] == null ? null : _int(j['walletPaise']),
+    gstBps: j['gstBps'] == null ? gstBps : _int(j['gstBps'], gstBps),
   );
 }
 
 class TokenCatalog {
-  const TokenCatalog({required this.enabled, required this.packs});
+  const TokenCatalog({required this.enabled, required this.packs, this.gstBps = 1800});
 
   final bool enabled;
   final List<TokenPack> packs;
+  final int gstBps;
 
-  factory TokenCatalog.fromJson(Map<String, dynamic> j) => TokenCatalog(
-    enabled: j['enabled'] == true,
-    packs: [
-      for (final m in _maps(j['products']))
-        if (_str(m['productId']) != null) TokenPack.fromJson(m),
-    ],
-  );
+  factory TokenCatalog.fromJson(Map<String, dynamic> j) {
+    final bps = j['gstBps'] == null ? 1800 : _int(j['gstBps'], 1800);
+    return TokenCatalog(
+      enabled: j['enabled'] == true,
+      gstBps: bps,
+      packs: [
+        for (final m in _maps(j['products']))
+          if (_str(m['productId']) != null) TokenPack.fromJson(m, gstBps: bps),
+      ],
+    );
+  }
 }
 
 /// `POST /api/hf/tokens/play/prepare` answer.
@@ -344,12 +470,34 @@ class VerifyResult {
     required this.duplicate,
     this.tokens,
     this.orderId,
+    this.paidPaise,
+    this.gstPaise,
+    this.walletPaise,
+    this.paidText,
+    this.gstText,
+    this.walletText,
   });
 
   final VerifyStatus status;
   final bool duplicate;
   final num? tokens;
   final String? orderId;
+  final int? paidPaise;
+  final int? gstPaise;
+  final int? walletPaise;
+  final String? paidText;
+  final String? gstText;
+  final String? walletText;
+
+  String? get paidLabel => paidPaise != null ? formatPaise(paidPaise!) : paidText;
+  String? get gstLabel => gstPaise != null ? formatPaise(gstPaise!) : gstText;
+  String? get walletLabel =>
+      walletPaise != null ? formatPaise(walletPaise!) : walletText;
+  bool get hasBreakdown =>
+      paidLabel != null && gstLabel != null && walletLabel != null;
+  String? get breakdownLine => hasBreakdown
+      ? 'Total $paidLabel · GST included $gstLabel · Added to wallet $walletLabel'
+      : null;
 
   /// Tokens were credited (now or earlier): `consumed` and `credited` are both success.
   bool get isCredited =>
@@ -377,6 +525,12 @@ class VerifyResult {
       duplicate: j['duplicate'] == true,
       tokens: _num(j['tokens']),
       orderId: _str(j['orderId']),
+      paidPaise: j['paidPaise'] == null ? null : _int(j['paidPaise']),
+      gstPaise: j['gstPaise'] == null ? null : _int(j['gstPaise']),
+      walletPaise: j['walletPaise'] == null ? null : _int(j['walletPaise']),
+      paidText: _str(j['paid']),
+      gstText: _str(j['gst']),
+      walletText: _str(j['wallet']),
     );
   }
 }
@@ -483,7 +637,7 @@ class RefundsInfo {
 
   factory RefundsInfo.fromJson(Map<String, dynamic> j) => RefundsInfo(
     enabled: j['enabled'] == true,
-    tokenMode: j['mode'] == 'tokens',
+    tokenMode: j['mode'] == 'tokens' || j['mode'] == 'rupees',
     refundableRupees: _num(j['refundable']) ?? 0,
     windowDays: j['windowDays'] == null ? 180 : _int(j['windowDays'], 180),
     lots: [for (final m in _maps(j['lots'])) RefundLot.fromJson(m)],

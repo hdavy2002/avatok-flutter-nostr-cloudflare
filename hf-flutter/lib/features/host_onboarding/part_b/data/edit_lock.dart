@@ -1,7 +1,7 @@
 /// Which parts of the profile can still be changed, from `host.status` (worker rules in `hf_hosts.ts`):
 ///
 /// - `generating` and `pending_review`: nothing (`409 locked`). The profile is being made or checked.
-/// - `live`: only the price, the hours and a new voice introduction. Everything else is locked.
+/// - `live`: legacy pricing, hours and a new voice introduction remain editable.
 /// - anything else (`draft`, `pending_host`, `rejected`, `paused`): everything.
 ///
 /// Locked steps still open, read-only, so a host can look at what they sent.
@@ -18,7 +18,10 @@ class EditLock {
   /// Name, about, languages, style, topics and the comfort switches.
   bool get profileLocked => inReview || live;
 
-  /// Price and hours.
+  /// Hours remain editable while live.
+  bool get hoursLocked => inReview;
+
+  /// Legacy price editing follows the same lock as hours.
   bool get priceHoursLocked => inReview;
 
   bool get avatarLocked => inReview || live;
@@ -31,10 +34,10 @@ class EditLock {
   static const String _pending =
       'Your profile is with our team. You can change things once they have looked at it.';
   static const String _live =
-      'Your profile is live. Only your price, hours and voice introduction can be changed here.';
+      'Your profile is live. Only your hours and voice introduction can be changed here.';
 
   /// The calm note at the top of a locked step, or null when the step can be edited.
-  /// [editableWhenLive]: price, hours and voice stay editable on a live profile.
+  /// [editableWhenLive]: hours and voice stay editable on a live profile.
   String? banner({bool editableWhenLive = false}) {
     if (status == 'generating') return _generating;
     if (status == 'pending_review') return _pending;

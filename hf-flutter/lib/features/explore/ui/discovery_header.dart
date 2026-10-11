@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/auth/session.dart';
+import '../../../core/config/flags.dart';
 import '../../../core/router/routes.dart';
 import '../../../core/theme/hf_theme.dart';
 import '../../../core/widgets/widgets.dart';
@@ -57,6 +58,7 @@ class DiscoveryHeader extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final dark = HfBrightness.isDark(context);
+    final standardPlan = hfStdPlanOn(ref.watch(flagsProvider));
     final name = ref.watch(
       sessionProvider.select((s) {
         final raw = (s.user?.firstName ?? s.me?.displayName ?? '').trim();
@@ -132,6 +134,13 @@ class DiscoveryHeader extends ConsumerWidget {
             activeCount: filters.activeCount,
           ),
         ),
+        if (standardPlan) ...[
+          const SizedBox(height: HfSpacing.sm),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: HfSpacing.pageWide),
+            child: Text(ExploreCopy.sameRate, style: HfText.note),
+          ),
+        ],
         const SizedBox(height: HfSpacing.xxl),
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: HfSpacing.pageWide),

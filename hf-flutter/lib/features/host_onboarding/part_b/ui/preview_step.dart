@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/api/api_error.dart';
+import '../../../../core/config/flags.dart';
 import '../../../../core/theme/hf_theme.dart';
 import '../../../../core/widgets/widgets.dart';
 import '../../../explore/data/host_options.dart';
@@ -189,6 +190,7 @@ class _PreviewStepState extends ConsumerState<PreviewStep> {
     final voiceSeconds = (s.hostMap('voice')['seconds'] as num?)?.toInt() ?? 0;
     final note = s.hostString('reviewNote');
     final price = s.hostNum('pricePerMin')?.toInt();
+    final standardPlan = hfStdPlanOn(ref.watch(flagsProvider));
 
     return PartBStep(
       scene: HfClusterKind.profile,
@@ -281,9 +283,16 @@ class _PreviewStepState extends ConsumerState<PreviewStep> {
             style: HfText.of(context, HfText.title),
           ),
         ),
-        if (price != null)
+        if (standardPlan)
+          Text(
+            PartBCopy.standardPlan,
+            key: const ValueKey<String>('preview-standard-plan'),
+            style: HfText.of(context, HfText.bodyStrong),
+          )
+        else if (price != null)
           Text(
             '${rupeesText(price)}${PartBCopy.previewPerMin}',
+            key: const ValueKey<String>('preview-legacy-price'),
             style: HfText.of(context, HfText.bodyStrong),
           ),
         const SizedBox(height: 12),

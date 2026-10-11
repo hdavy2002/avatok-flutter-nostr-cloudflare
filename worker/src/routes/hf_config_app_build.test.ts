@@ -28,6 +28,7 @@ describe("HF app build keys [HF-NATIVE-S7]", () => {
     const pub = await (await getConfig(env)).json();
     expect(pub.hfAppLatestBuild).toBe(0);
     expect(pub.hfAppMinBuild).toBe(0);
+    expect(pub.hfStdPlan.minCompatibleBuild).toBe(2078);
   });
 
   it("an admin can set them after deploy; they come back as numbers in /api/config and server reads", async () => {
@@ -58,6 +59,25 @@ describe("HF app build keys [HF-NATIVE-S7]", () => {
 
   it("only admins can set them", async () => {
     expect((await put({ hfAppLatestBuild: 5 }, "someone")).status).toBe(403);
+  });
+});
+
+describe("Standard-plan rollout interlock [HF-STD-PLAN-1]", () => {
+  it("defaults off and refuses enablement until token billing and a compatible-client floor are armed", async () => {
+    expect((await (await getConfig(env)).json()).hfStdPlan.enabled).toBe(false);
+    expect((await put({ hfStdPlanEnabled: true })).status).toBe(409);
+    expect((await put({ hfTokensEnabled: true, hfStdPlanEnabled: true })).status).toBe(409);
+    expect((await put({ hfTokensEnabled: true, hfAppMinBuild: 2077, hfStdPlanEnabled: true })).status).toBe(409);
+    expect((await put({ hfTokensEnabled: true, hfAppMinBuild: 2078, hfStdPlanEnabled: true })).status).toBe(200);
+    bustConfigMemo();
+    expect((await (await getConfig(env)).json()).hfStdPlan.enabled).toBe(true);
+  });
+
+  it("does not allow the client floor or token billing to be disarmed while Standard is on", async () => {
+    expect((await put({ hfTokensEnabled: true, hfAppMinBuild: 2078, hfStdPlanEnabled: true })).status).toBe(200);
+    expect((await put({ hfAppMinBuild: 0 })).status).toBe(409);
+    expect((await put({ hfTokensEnabled: false })).status).toBe(409);
+    expect((await put({ hfStdPlanEnabled: false, hfAppMinBuild: 0 })).status).toBe(200);
   });
 });
 

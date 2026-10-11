@@ -1,51 +1,49 @@
 ---
 title: "How much will I earn as a host?"
-description: "See how host earnings are worked out per minute, with simple examples at ₹5, 10, 20 and 30 per minute."
+description: "See what you earn as a host: ₹2.00 for every connected minute, paid by the second."
 section: hosts
 order: 2
 updated: 2026-10-08
-keywords: ["host earnings", "kitna kamayenge", "per minute rate", "paisa kamao", "gst", "platform share", "host income", "regulars"]
+keywords: ["host earnings", "kitna kamayenge", "per minute", "paisa kamao", "host income", "regulars"]
 audience: creator
 faq:
   - q: "Can I set my own price?"
-    a: "Yes. Each host sets their own rate. Prices start from ₹5 per minute, and callers see your price before they call."
-  - q: "Is GST taken from me separately?"
-    a: "No. The 18% GST is already included inside the platform's share. You see the amount that is yours."
+    a: "No. Every host is on one standard plan, so callers pay the same price for every host. You earn ₹2.00 for every connected minute."
+  - q: "Is it paid by the second?"
+    a: "Yes. Your earnings are worked out for the exact seconds you are connected. 30 seconds earns ₹1.00."
   - q: "Will I get calls every day?"
     a: "Calls are not guaranteed. How many calls you get depends on callers choosing you."
 draft: false
 ---
+
 <!-- rebrand: reviewed -->
 
-You set your own price per minute. {{brand.name}} keeps a small share, and the rest is yours. Here is how it works, in plain words.
+You earn the same amount on every call. {{brand.name}} does not ask you to set a price. Here is how it works, in plain words.
 
-## The simple formula
+## The simple rule
 
-The platform keeps **₹2 for every minute**, plus **40% of the amount above ₹2**. The rest goes to you. The 18% GST is already included inside the platform's share. So you do not pay it again.
+You earn **₹2.00 for every connected minute** of every call. It is paid by the second. Your earnings are shown in rupees, with the payout status.
 
-## Examples for each minute
+## Examples
 
-- **₹5 per minute:** you earn **₹1.80**
-- **₹10 per minute:** you earn **₹4.80**
-- **₹20 per minute:** you earn **₹10.80**
-- **₹30 per minute:** you earn **₹16.80**
-
-Let us check one. At ₹10 per minute, the amount above ₹2 is ₹8. Forty percent of ₹8 is ₹3.20. Add the ₹2. The platform keeps ₹5.20. You get ₹4.80.
+- **5 minutes:** you earn **₹10.00**
+- **15 minutes:** you earn **₹30.00**
+- **30 minutes:** you earn **₹60.00**
+- **60 minutes:** you earn **₹120.00**
 
 ## A sample 15-minute call
 
-Rohit from Pune has an exam tomorrow. He calls Meera, who charges ₹10 per minute. They talk for 15 minutes.
+Rohit from Pune has an exam tomorrow. He calls Meera. They talk for 15 minutes.
 
-- Rohit pays 15 × ₹10 = **₹150**
-- Meera earns 15 × ₹4.80 = **₹72**
+- Meera earns 15 × ₹2.00 = **₹30.00**
 
-Callers pay for each started minute of connected time. If the call never connects, nobody pays anything.
+If the call never connects, nobody pays anything and nothing is earned.
 
 ## Things to know
 
 - **Calls are not guaranteed.** Some days are busy and some days are quiet.
-- You choose your own price. A higher price can mean fewer calls. A lower price can mean more calls. You can change it as you learn.
-- Charging starts only when both of you are connected.
+- You do not set a price. Callers see the same standard price for every host.
+- Earning starts only when both of you are connected.
 
 ## Build your regulars
 

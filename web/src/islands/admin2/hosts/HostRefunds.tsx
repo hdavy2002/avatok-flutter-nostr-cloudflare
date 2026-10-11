@@ -4,7 +4,11 @@
  * the gateway) use "Mark paid by hand" after you have paid the person yourself and enter the bank reference (UTR). Nothing under 14px. */
 import { useCallback, useEffect, useState } from 'react';
 import { adminCall } from '../peopleKit';
-import { Banner, ConfirmDialog, ConsultShell, Spinner, dateIST, fail, rupees } from '../consultants/kit';
+import { Banner, ConfirmDialog, ConsultShell, Spinner, dateIST, fail } from '../consultants/kit';
+import { formatPaise } from '../../../lib/money';
+
+/** [HF-STD-PLAN-1] rupees with paise (the shared helper rounds to whole rupees). */
+const rupees = (n: number | null | undefined): string => (n == null ? '—' : formatPaise(Math.round(n * 100)));
 
 const paiseRupees = (p: number) => rupees(p / 100);
 const T14 = { fontSize: 14 } as const;

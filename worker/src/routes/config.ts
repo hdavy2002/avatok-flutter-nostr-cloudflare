@@ -5,7 +5,7 @@
 import type { Env } from "../types";
 import { json } from "../util";
 import { hfTopupPublic, HF_TOPUP_GATEWAYS } from "../lib/hf_topup_config"; // [HF-TOPUP-1]
-import { HF_CHECKOUT_PROVIDERS } from "../lib/hf_token_config"; // [HF-TOK-MATH-1]
+import { HF_CHECKOUT_PROVIDERS, HF_STD_PLAN_MIN_COMPAT_BUILD, hfStdPlanPublic } from "../lib/hf_token_config"; // [HF-TOK-MATH-1] [HF-STD-PLAN-1]
 import { isFail, requireUser } from "../authz";
 
 const KEY = "platform_config";
@@ -2122,6 +2122,18 @@ export interface PlatformConfig {
   hfCallCostPaisePerMin: number;
   hfHostShareBps: number;
   hfPlayPackageId: string;
+  // [HF-STD-PLAN-1] Standard calling plan + rupee wallet. Dark by default; rates are progressive per connected second.
+  // Host pay and phone cost are server-only inputs to settlement/admin reporting. Top-up GST is included in the Play price.
+  hfStdPlanEnabled: boolean;
+  hfStdTier1PaisePerMin: number;
+  hfStdTier2PaisePerMin: number;
+  hfStdTier3PaisePerMin: number;
+  hfStdTier1EndMin: number;
+  hfStdTier2EndMin: number;
+  hfStdHostPaisePerMin: number;
+  hfStdPhoneCostPaisePerMin: number;
+  hfTopupGstBps: number;
+  hfTopupGstInclusive: boolean;
   // [HF-WALLET-LIMITS-1] Supplier details for receipts / GST tax invoices (HF-PAY-16). Empty hfGstin = plain payment receipts only; set it and
   // monthly tax invoices on the platform share start. Config-only switch: no deploy needed.
   hfGstin: string;
@@ -2912,6 +2924,16 @@ const DEFAULTS: PlatformConfig = {
   hfCallCostPaisePerMin: 200,
   hfHostShareBps: 6000,
   hfPlayPackageId: "com.hellofraands.app",
+  hfStdPlanEnabled: false, // [HF-STD-PLAN-1] explicit production rollout switch; never auto-activate
+  hfStdTier1PaisePerMin: 399,
+  hfStdTier2PaisePerMin: 350,
+  hfStdTier3PaisePerMin: 325,
+  hfStdTier1EndMin: 30,
+  hfStdTier2EndMin: 60,
+  hfStdHostPaisePerMin: 200,
+  hfStdPhoneCostPaisePerMin: 100,
+  hfTopupGstBps: 1800,
+  hfTopupGstInclusive: true,
   hfGstin: "",
   hfLegalName: "",
   hfLegalAddress: "",
@@ -3061,6 +3083,10 @@ export async function getConfig(env: Env): Promise<Response> {
   merged.hfTopup = { ...hfTopupPublic(env, merged as any), confirmAboveRupees: Number(merged.hfTopupConfirmAboveRupees ?? 1000) }; // [HF-WALLET-LIMITS-1] confirm step threshold
   delete merged.hfTopupGateway; delete merged.hfTopupPacks; delete merged.hfTopupMinRupees; delete merged.hfTopupMaxRupees; delete merged.hfTopupEnabled;
   delete merged.hfTokensEnabled; delete merged.hfCheckoutProvider; delete merged.hfPricingVersion; delete merged.hfCallCostPaisePerMin; delete merged.hfHostShareBps; delete merged.hfPlayPackageId; // [HF-TOK-MATH-1] not public
+  // [HF-STD-PLAN-1] Public clients get only the standard rate card and GST treatment. Host pay/cost inputs remain private.
+  merged.hfStdPlan = hfStdPlanPublic(merged);
+  for (const k of ["hfStdPlanEnabled", "hfStdTier1PaisePerMin", "hfStdTier2PaisePerMin", "hfStdTier3PaisePerMin", "hfStdTier1EndMin", "hfStdTier2EndMin",
+    "hfStdHostPaisePerMin", "hfStdPhoneCostPaisePerMin", "hfTopupGstBps", "hfTopupGstInclusive"]) delete merged[k];
   delete merged.hfPushEnabled; // [HF-APP-4] server-only
   delete merged.hfPresenceNudgeEnabled; // [HF-PRESENCE-NUDGE-1] server-only
   delete merged.hfPhoneOnlySignupEnabled; // [HF-AUTH-WA-1] server-only
@@ -3235,6 +3261,8 @@ export async function putConfig(req: Request, env: Env): Promise<Response> {
     "hfRefundWindowDays", // [HF-WALLET-EXIT-1]
     "hfTopupConfirmAboveRupees", // [HF-WALLET-LIMITS-1]
     "hfCallCostPaisePerMin", "hfHostShareBps", // [HF-TOK-MATH-1]
+    "hfStdTier1PaisePerMin", "hfStdTier2PaisePerMin", "hfStdTier3PaisePerMin", "hfStdTier1EndMin", "hfStdTier2EndMin", // [HF-STD-PLAN-1]
+    "hfStdHostPaisePerMin", "hfStdPhoneCostPaisePerMin", "hfTopupGstBps",
   ]);
   const stringKeys = new Set([
     "virtualNumberPrimaryProvider",
@@ -3313,6 +3341,20 @@ export async function putConfig(req: Request, env: Env): Promise<Response> {
     if (k === "hfHostShareBps" && (!Number.isInteger(v) || (v as number) < 0 || (v as number) > 10_000)) {
       return json({ error: "hfHostShareBps must be an integer 0-10000" }, 400);
     }
+    if (/^hfStdTier\dPaisePerMin$/.test(k) && (!Number.isInteger(v) || (v as number) <= 0 || (v as number) > 100_000)) {
+      return json({ error: `${k} must be an integer 1-100000 (paise per minute)` }, 400);
+    }
+    if ((k === "hfStdHostPaisePerMin" || k === "hfStdPhoneCostPaisePerMin")
+      && (!Number.isInteger(v) || (v as number) <= 0 || (v as number) > 100_000)) {
+      return json({ error: `${k} must be an integer 1-100000 (paise per minute)` }, 400);
+    }
+    if ((k === "hfStdTier1EndMin" || k === "hfStdTier2EndMin")
+      && (!Number.isInteger(v) || (v as number) < 1 || (v as number) > 1440)) {
+      return json({ error: `${k} must be an integer 1-1440 (minutes)` }, 400);
+    }
+    if (k === "hfTopupGstBps" && (!Number.isInteger(v) || (v as number) < 0 || (v as number) > 5000)) {
+      return json({ error: "hfTopupGstBps must be an integer 0-5000 (1800 = 18%)" }, 400);
+    }
     // [HF-WALLET-LIMITS-1]
     if (k === "hfTopupConfirmAboveRupees" && (!Number.isInteger(v) || (v as number) < 0 || (v as number) > 1_000_000)) {
       return json({ error: `${k} must be a whole rupee amount 0-1000000` }, 400);
@@ -3369,6 +3411,30 @@ export async function putConfig(req: Request, env: Env): Promise<Response> {
       return json({ error: `${k} must be a non-empty string of at most 64 characters` }, 400);
     }
     next[k] = v;
+  }
+  if (Object.keys(body).some((key) => key.startsWith("hfStd") || key === "hfTopupGstBps" || key === "hfTopupGstInclusive"
+    || key === "hfTokensEnabled" || key === "hfAppMinBuild")) {
+    const proposed = { ...DEFAULTS, ...current, ...body } as PlatformConfig;
+    if (proposed.hfStdTier2EndMin <= proposed.hfStdTier1EndMin) {
+      return json({ error: "hfStdTier2EndMin must be greater than hfStdTier1EndMin" }, 400);
+    }
+    if (!(proposed.hfStdTier1PaisePerMin >= proposed.hfStdTier2PaisePerMin
+      && proposed.hfStdTier2PaisePerMin >= proposed.hfStdTier3PaisePerMin)) {
+      return json({ error: "Standard-plan caller rates must stay flat or decrease across tiers" }, 400);
+    }
+    const lowestCallerRate = Math.min(proposed.hfStdTier1PaisePerMin, proposed.hfStdTier2PaisePerMin, proposed.hfStdTier3PaisePerMin);
+    if (proposed.hfStdHostPaisePerMin + proposed.hfStdPhoneCostPaisePerMin > lowestCallerRate) {
+      return json({ error: "Standard-plan host pay plus estimated phone cost must not exceed the lowest caller rate" }, 400);
+    }
+    // [HF-STD-PLAN-1] Enabling changes the unit shown to callers and the host-rate contract. Do not let an operator expose it to an
+    // installed binary that predates the matching UI: first arm the existing HF mandatory-update floor with the known-compatible build.
+    // Build 2078 is the first declared-compatible binary; a generic positive floor is not enough to protect older installed clients.
+    if (proposed.hfStdPlanEnabled && proposed.hfAppMinBuild < HF_STD_PLAN_MIN_COMPAT_BUILD) {
+      return json({ error: `hfStdPlanEnabled requires hfAppMinBuild >= ${HF_STD_PLAN_MIN_COMPAT_BUILD}` }, 409);
+    }
+    if (proposed.hfStdPlanEnabled && !proposed.hfTokensEnabled) {
+      return json({ error: "hfStdPlanEnabled requires hfTokensEnabled" }, 409);
+    }
   }
   if (Object.keys(body).some(key => key.startsWith('commercialQuality'))) {
     const proposed = { ...normalizeCommercialQualityPolicy({ ...DEFAULTS, ...current }), ...body } as PlatformConfig;

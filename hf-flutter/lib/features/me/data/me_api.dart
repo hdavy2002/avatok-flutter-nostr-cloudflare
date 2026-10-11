@@ -153,7 +153,7 @@ class ExitState {
   final num held;
   final int? heldReleaseAt;
 
-  /// Unused purchased tokens (worth this many rupees): refunded through Google Play on request.
+  /// Unused wallet money (this many rupees): refunded through Google Play on request.
   final num refundable;
   final num manualRefund;
 

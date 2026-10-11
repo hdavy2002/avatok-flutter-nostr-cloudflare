@@ -99,10 +99,10 @@ export async function runHfCallsCron(env: Env): Promise<void> {
     await env.DB_META.prepare(
       `UPDATE hf_hosts SET presence='online', presence_at=?1 WHERE presence='busy' AND presence_at < ?2
          AND NOT EXISTS (SELECT 1 FROM hf_calls c WHERE c.host_uid = hf_hosts.uid AND c.status IN ('ringing_host','ringing_caller','connected') AND c.created_at > ?3)`,
-    ).bind(now, now - 10 * 60_000, now - 4 * 3600_000).run();
+    ).bind(now, now - 10 * 60_000, now - 25 * 3600_000).run(); // [HF-STD-PLAN-1] cover the explicit 24 h operational safety ceiling
     const stuck = await env.DB_META.prepare(
       "SELECT id FROM hf_calls WHERE status IN ('ringing_host','ringing_caller','connected') AND created_at < ?1 AND created_at > ?2 LIMIT 20",
-    ).bind(now - 3 * 60_000, now - 6 * 3600_000).all<{ id: string }>();
+    ).bind(now - 3 * 60_000, now - 25 * 3600_000).all<{ id: string }>(); // [HF-STD-PLAN-1] watchdog covers calls up to the 24 h bound
     for (const r of stuck.results ?? []) {
       try { await env.HF_CALL.get(env.HF_CALL.idFromName(r.id)).fetch("https://hfcall/watchdog", { method: "POST", body: "{}" }); } catch { /* next tick */ }
     }

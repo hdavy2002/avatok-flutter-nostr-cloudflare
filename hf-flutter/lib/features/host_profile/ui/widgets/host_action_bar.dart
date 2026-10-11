@@ -268,9 +268,21 @@ class _HostActionBarState extends ConsumerState<HostActionBar> {
     }
 
     final onInk = HfText.note.copyWith(fontSize: 14, color: HfColors.mutedSoft);
+    final estimateText = estimate?.aboutText;
+    final safeEstimateText = estimateText != null &&
+            RegExp(r'\b(tokens?|coins?)\b', caseSensitive: false)
+                .hasMatch(estimateText)
+        ? HostProfileStrings.addMoneyToCall
+        : estimateText;
     final price = _PriceBlock(
-      price: _p.pricePerMin,
-      about: estimate != null && estimate.isTokens ? estimate.aboutText : null,
+      priceLabel: _p.priceLabel,
+      about: estimate != null && estimate.isMetered
+          ? safeEstimateText
+          : (_p.plan == 'standard' || _p.priceTiers.isNotEmpty)
+          ? 'Lower rates after 30 min'
+          : HostProfileStrings.tenMinutes(
+              formatRupees(_p.pricePerMin * 10),
+            ),
     );
     return SafeArea(
       top: false,
@@ -382,9 +394,9 @@ class _HostActionBarState extends ConsumerState<HostActionBar> {
 
 /// "₹20 /min" and under it "10 min ≈ ₹200" (or, signed in on token mode, the server's own "about 8 min" line).
 class _PriceBlock extends StatelessWidget {
-  const _PriceBlock({required this.price, this.about});
+  const _PriceBlock({required this.priceLabel, this.about});
 
-  final int price;
+  final String priceLabel;
   final String? about;
 
   @override
@@ -393,29 +405,16 @@ class _PriceBlock extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text.rich(
-          TextSpan(
-            children: [
-              TextSpan(
-                text: Money.rupees(price),
-                style: HfText.stat.copyWith(
-                  fontSize: 21,
-                  height: 1.1,
-                  color: HfColors.white,
-                ),
-              ),
-              TextSpan(
-                text: HostProfileStrings.perMin,
-                style: HfText.badge.copyWith(
-                  fontWeight: FontWeight.w600,
-                  color: HfColors.mutedSoft,
-                ),
-              ),
-            ],
+        Text(
+          priceLabel,
+          style: HfText.stat.copyWith(
+            fontSize: 21,
+            height: 1.1,
+            color: HfColors.white,
           ),
         ),
         Text(
-          about ?? HostProfileStrings.tenMinutes(Money.rupees(price * 10)),
+          about ?? HostProfileStrings.sameRate,
           style: HfText.note.copyWith(fontSize: 14, color: HfColors.mutedSoft),
         ),
       ],

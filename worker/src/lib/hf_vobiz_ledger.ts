@@ -16,6 +16,7 @@ import type { Env } from "../types";
 import { track, trackException } from "../hooks";
 import { BRAND } from "./brand";
 import { getCdr, rupeesToPaise, parseTimeMs, type VobizCdr } from "./hf_vobiz_api";
+import { refreshActualPhoneCost, refreshActualPhoneCostForLeg } from "./hf_std_cost"; // [HF-STD-PLAN-1]
 
 type ChainTable = "hf_vobiz_legs" | "hf_vobiz_leg_cdr_log" | "hf_vobiz_balance" | "hf_vobiz_recharges";
 
@@ -135,6 +136,7 @@ export async function recordLegFromWebhook(env: Env, a: { callId: string; role: 
       cdr_json: null, cdr_checked_at: null, cdr_attempts: 0, mismatch: null,
       created_at: Date.now(),
     }, { col: "leg_uuid", val: legUuid });
+    if (c) await refreshActualPhoneCost(env, a.callId); // [HF-STD-PLAN-1] best effort, never throws
     // [HF-VOBIZ-SPEND-1] success value: has_cost=true means the webhook carried Vobiz's charge for this leg.
     void track(env, user ?? "system", "hf_vobiz_leg_recorded", APP, { area: "hf_vobiz", source: "webhook", role: a.role, has_cost: totalPaise !== null }).catch(() => undefined);
   } catch (e) {
@@ -171,7 +173,7 @@ async function upsertCore(env: Env, cdr: VobizCdr): Promise<{ result: "inserted"
       hangup_cause: cdr.hangupCause, hangup_source: cdr.hangupSource, mos: cdr.mos,
       source: "cdr", webhook_json: null, cdr_json: rawJson, cdr_checked_at: now, cdr_attempts: 1, mismatch: null, created_at: now,
     }, { col: "leg_uuid", val: cdr.uuid });
-    if (r.inserted) { await appendCdrLog(env, cdr.uuid, cdr, now); return { result: "inserted", mismatch: false }; }
+    if (r.inserted) { await appendCdrLog(env, cdr.uuid, cdr, now); await refreshActualPhoneCostForLeg(env, cdr.uuid); return { result: "inserted", mismatch: false }; }
     return { result: "unchanged", mismatch: false };
   }
   if (ex.cdr_checked_at !== null && ex.cdr_checked_at !== undefined) return { result: "unchanged", mismatch: false };
@@ -180,6 +182,7 @@ async function upsertCore(env: Env, cdr: VobizCdr): Promise<{ result: "inserted"
     .bind(rawJson, now, note, cdr.uuid).run();
   if ((u.meta?.changes ?? 0) === 0) return { result: "unchanged", mismatch: false };
   await appendCdrLog(env, cdr.uuid, cdr, now);
+  await refreshActualPhoneCostForLeg(env, cdr.uuid); // [HF-STD-PLAN-1]
   // [HF-VOBIZ-SPEND-1] success value: has_cost=true means Vobiz's own CDR gave us a total cost for the leg.
   void track(env, "system", "hf_vobiz_cdr_checked", APP, { area: "hf_vobiz", has_cost: cdr.totalCostPaise !== null, mismatch: !!note }).catch(() => undefined);
   return { result: "filled", mismatch: !!note };

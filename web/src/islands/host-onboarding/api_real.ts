@@ -193,6 +193,9 @@ function draftFromServer(me: MeJson, phone: { verified: boolean; phone: string |
 
 // ── autosave ────────────────────────────────────────────────────────────────
 type Field = [string, unknown];
+let standardPlanEnabled = false;
+export const setOnboardingStandardPlan = (enabled: boolean) => { standardPlanEnabled = enabled; };
+export const isOnboardingStandardPlan = () => standardPlanEnabled;
 function fieldsOf(d: Draft): Field[] {
   const f: Field[] = [];
   const name = d.displayName.trim();
@@ -207,7 +210,7 @@ function fieldsOf(d: Draft): Field[] {
   const st = d.style ? STYLE_TO_SERVER[d.style] : undefined;
   if (st) f.push(['style', st]);
   if (d.topics.length) f.push(['topics', d.topics]);
-  if (Number.isInteger(d.pricePerMin) && d.pricePerMin >= 5 && d.pricePerMin <= 100) f.push(['pricePerMin', d.pricePerMin]);
+  if (!standardPlanEnabled && Number.isInteger(d.pricePerMin) && d.pricePerMin >= 5 && d.pricePerMin <= 100) f.push(['pricePerMin', d.pricePerMin]);
   if (d.hours.days.length && HHMM.test(d.hours.from) && HHMM.test(d.hours.to)) {
     f.push(['hours', { days: d.hours.days.map(x => DAYS.indexOf(x)).filter(i => i >= 0).sort(), from: d.hours.from, to: d.hours.to }]);
   }

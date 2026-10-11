@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hf_app/core/api/api_error.dart';
 import 'package:hf_app/features/call/data/call_models.dart';
+import 'package:hf_app/features/explore/data/host_card.dart';
 import 'package:hf_app/features/review/data/review_api.dart';
 
 void main() {
@@ -63,11 +64,11 @@ void main() {
         'endReason': 'caller_hangup',
         'canReview': true,
       });
-      expect(i.isTokenCall, isFalse);
+      expect(i.isMeteredCall, isFalse);
       expect(i.talkedSeconds, 180);
       expect(i.hostFirstName, 'Asha');
       expect(i.canReview, isTrue);
-      expect(CallStrings.chargedText(i), '₹36');
+      expect(CallStrings.chargedText(i), '₹36.00');
       // seconds and milliseconds both become the same kind of time
       expect(i.connectedAt!.millisecondsSinceEpoch, 1760000000000);
       expect(i.endedAt!.millisecondsSinceEpoch, 1760000200000);
@@ -82,7 +83,7 @@ void main() {
         'billableSeconds': 72,
         'tokensSpent': '1.20',
       });
-      expect(i.isTokenCall, isTrue);
+      expect(i.isMeteredCall, isTrue);
       expect(i.talkedSeconds, 72);
       expect(CallStrings.chargedText(i), '₹1.20');
       expect(CallStrings.hasCharge(i), isTrue);
@@ -131,16 +132,75 @@ void main() {
         'hasDebt': true,
         'balance': '45.20',
       });
-      expect(e.isTokens, isTrue);
-      expect(e.tokensPerMinute, '15.00');
+      expect(e.isMetered, isTrue);
+      expect(e.ratePaise, 1200);
       expect(e.canStart, isFalse);
       expect(e.hasDebt, isTrue);
     });
 
     test('old mode can always try: the start call is the authority', () {
       final e = CallEstimate.fromJson({'mode': 'inr', 'ratePerMinRupees': 10});
-      expect(e.isTokens, isFalse);
+      expect(e.isMetered, isFalse);
       expect(e.canStart, isTrue);
+    });
+  });
+
+  group('Standard plan', () {
+    const tiers = <PriceTier>[
+      PriceTier(fromMin: 0, toMin: 30, paisePerMin: 399),
+      PriceTier(fromMin: 30, toMin: 60, paisePerMin: 350),
+      PriceTier(fromMin: 60, paisePerMin: 325),
+    ];
+
+    test('estimate parses rupee bands and the two-minute start amount', () {
+      final e = CallEstimate.fromJson({
+        'mode': 'rupees',
+        'ratePerMinRupees': '3.99',
+        'ratePaisePerMin': 399,
+        'tiers': [
+          {'fromMin': 0, 'toMin': 30, 'paisePerMin': 399},
+          {'fromMin': 30, 'toMin': 60, 'paisePerMin': 350},
+          {'fromMin': 60, 'toMin': null, 'paisePerMin': 325},
+        ],
+        'startNeedPaise': 798,
+        'startNeed': '₹7.98',
+      });
+      expect(e.isMetered, isTrue);
+      expect(e.ratePaise, 399);
+      expect(e.tiers.length, 3);
+      expect(e.startNeedLabel, '₹7.98');
+    });
+
+    test('current rate follows connected time', () {
+      expect(currentRatePaise(tiers, 0), 399);
+      expect(currentRatePaise(tiers, 1799), 399);
+      expect(currentRatePaise(tiers, 1800), 350);
+      expect(currentRatePaise(tiers, 3600), 325);
+    });
+
+    test('summary parses caller charges and host earnings separately', () {
+      final caller = CallInfo.fromJson({
+        'id': 'c3',
+        'status': 'completed',
+        'billableSeconds': 1860,
+        'chargedPaise': 12320,
+        'tiers': [
+          {'fromMin': 0, 'toMin': 30, 'paisePerMin': 399, 'seconds': 1800, 'amountPaise': 11970},
+          {'fromMin': 30, 'toMin': 60, 'paisePerMin': 350, 'seconds': 60, 'amountPaise': 350},
+        ],
+      });
+      expect(caller.talkedSeconds, 1860);
+      expect(CallStrings.chargedText(caller), '₹123.20');
+      expect(caller.isHostView, isFalse);
+
+      final host = CallInfo.fromJson({
+        'id': 'c4',
+        'status': 'completed',
+        'billableSeconds': 60,
+        'earningPaise': 200,
+      });
+      expect(host.isHostView, isTrue);
+      expect(CallStrings.earningText(host), '₹2.00');
     });
   });
 

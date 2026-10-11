@@ -73,7 +73,9 @@ abstract final class PartBCopy {
       ' That is the most. Remove one to pick another.';
   static const String topicsMore = 'More';
 
-  // Price
+  // Standard plan and the legacy flag-off price step.
+  static const String standardPlan =
+      'Standard plan · callers pay ₹3.99/min (less on long calls) · you earn ₹2.00 per connected minute';
   static const String priceTitle = 'Your price';
   static const String priceLead =
       'One price for every topic, charged per minute of call.';
@@ -88,7 +90,6 @@ abstract final class PartBCopy {
       '1 hour of calls a day for 25 days is about $amount for you';
   static const String lowerPrice = 'Lower price by 1 rupee';
   static const String raisePrice = 'Raise price by 1 rupee';
-  static const String priceSlider = 'Price per minute in rupees';
 
   // Hours and comfort
   static const String hoursTitle = 'When are you usually free?';
@@ -181,6 +182,7 @@ abstract final class PartBCopy {
   static const String reviewNameAbout = 'Name and about';
   static const String reviewLanguages = 'Languages and style';
   static const String reviewTopics = 'Topics';
+  static const String reviewPlan = 'Plan';
   static const String reviewPrice = 'Price';
   static const String reviewHours = 'Hours and comfort';
   static const String reviewVoice = 'Voice introduction';

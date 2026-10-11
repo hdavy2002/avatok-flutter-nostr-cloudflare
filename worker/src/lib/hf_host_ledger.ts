@@ -7,7 +7,9 @@
 //   payout_reserve     -  money set aside when a withdrawal is requested (whole rupees * 100)
 //   payout_cancel      +  gives that reserve back (cancelled / rejected)
 //   payout_paid        0  marker only: the reserve already left the balance, "paid" just freezes it (UTR lives on the payout request)
-//   admin_adjust       +/- manual correction, counts at once
+//   admin_adjust       +/- manual correction, counts at once. EXCEPT [HF-STD-PLAN-1] a call-charge correction reversal: an admin_adjust row that
+//                      carries a call_id and the earning's available_at behaves like a (negative) call_earning for that same call, so it
+//                      only touches the balance when that earning matures and it reduces "pending" while the earning is still held.
 // withdrawable = matured call_earning + payout_reserve + payout_cancel + admin_adjust. Every write is a single statement guarded by the
 // UNIQUE op_id, so a retry never doubles anything, and a payout reserve checks the balance inside the same INSERT (two requests cannot both fit).
 import type { Env } from "../types";
@@ -56,16 +58,17 @@ export interface HostSummary {
 
 /** SQL for the withdrawable balance of ?host at ?now. Reused inside the payout-reserve INSERT so the check and the write are one statement. */
 const WITHDRAWABLE_SQL = (host: string, now: string) =>
-  `(SELECT COALESCE(SUM(CASE WHEN kind='call_earning' THEN (CASE WHEN available_at<=${now} THEN amount_paise ELSE 0 END)
+  `(SELECT COALESCE(SUM(CASE WHEN kind='call_earning' OR (kind='admin_adjust' AND available_at IS NOT NULL) THEN (CASE WHEN available_at<=${now} THEN amount_paise ELSE 0 END)
                             WHEN kind IN ('payout_reserve','payout_cancel','admin_adjust') THEN amount_paise ELSE 0 END),0)
       FROM hf_host_ledger WHERE host_uid=${host})`;
 
 export async function hostSummary(env: Env, hostUid: string, now = Date.now()): Promise<HostSummary> {
   const r = await env.DB_META.prepare(
-    `SELECT COALESCE(SUM(CASE WHEN kind='call_earning' THEN amount_paise END),0) AS earned,
-            COALESCE(SUM(CASE WHEN kind='call_earning' AND available_at<=?2 THEN amount_paise END),0) AS matured,
+    // [HF-STD-PLAN-1] a held admin_adjust (call-charge correction reversal, available_at set) counts with the call earnings, not as an instant adjustment.
+    `SELECT COALESCE(SUM(CASE WHEN kind='call_earning' OR (kind='admin_adjust' AND available_at IS NOT NULL) THEN amount_paise END),0) AS earned,
+            COALESCE(SUM(CASE WHEN (kind='call_earning' OR (kind='admin_adjust' AND available_at IS NOT NULL)) AND available_at<=?2 THEN amount_paise END),0) AS matured,
             COALESCE(SUM(CASE WHEN kind='call_earning_test' THEN amount_paise END),0) AS test,
-            COALESCE(SUM(CASE WHEN kind IN ('payout_reserve','payout_cancel','admin_adjust') THEN amount_paise END),0) AS adj
+            COALESCE(SUM(CASE WHEN kind IN ('payout_reserve','payout_cancel') OR (kind='admin_adjust' AND available_at IS NULL) THEN amount_paise END),0) AS adj
        FROM hf_host_ledger WHERE host_uid=?1`,
   ).bind(hostUid, now).first<{ earned: number; matured: number; test: number; adj: number }>();
   const earned = Number(r?.earned ?? 0), matured = Number(r?.matured ?? 0), adj = Number(r?.adj ?? 0);
@@ -124,10 +127,11 @@ export interface CallEarning { callId: string; at: number; paidPaise: number; te
 export async function listCallEarnings(env: Env, hostUid: string, limit = 50): Promise<CallEarning[]> {
   const rows = (await env.DB_META.prepare(
     `SELECT call_id AS callId, MAX(created_at) AS at,
-            COALESCE(SUM(CASE WHEN kind='call_earning' THEN amount_paise END),0) AS paid,
+            COALESCE(SUM(CASE WHEN kind IN ('call_earning','admin_adjust') THEN amount_paise END),0) AS paid,
             COALESCE(SUM(CASE WHEN kind='call_earning_test' THEN amount_paise END),0) AS test,
             MAX(available_at) AS availableAt
-       FROM hf_host_ledger WHERE host_uid=?1 AND kind IN ('call_earning','call_earning_test') AND call_id IS NOT NULL
+       FROM hf_host_ledger WHERE host_uid=?1 AND call_id IS NOT NULL
+        AND (kind IN ('call_earning','call_earning_test') OR (kind='admin_adjust' AND available_at IS NOT NULL))
       GROUP BY call_id ORDER BY at DESC LIMIT ?2`,
   ).bind(hostUid, Math.max(1, Math.min(200, Math.trunc(limit)))).all<{ callId: string; at: number; paid: number; test: number; availableAt: number | null }>()).results ?? [];
   return rows.map((r) => ({ callId: r.callId, at: Number(r.at), paidPaise: Number(r.paid), testPaise: Number(r.test), availableAt: r.availableAt == null ? null : Number(r.availableAt) }));

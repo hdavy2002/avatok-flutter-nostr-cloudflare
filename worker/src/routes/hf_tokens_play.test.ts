@@ -2,7 +2,7 @@
 // [HF-TOK-PLAY-1] Routes: products, prepare, verify (idempotent), RTDN (Google-signed JWT, 401 / 503 / handled).
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 
-const state = { uid: "u1", cfg: { hfTokensEnabled: true, hfCheckoutProvider: "google_play" } as any };
+const state = { uid: "u1", cfg: { hfTokensEnabled: true, hfCheckoutProvider: "google_play", hfStdPlanEnabled: true, hfAppMinBuild: 2078 } as any };
 vi.mock("../authz", () => ({
   requireUser: async () => ({ uid: state.uid }),
   isFail: (u: any) => !!u?.error,
@@ -27,49 +27,65 @@ const TOK = "purchase-token-1-abcdefghij";
 beforeEach(() => {
   world = makePlayWorld();
   env = makeEnv({ HF_RTDN_AUDIENCE: AUD, HF_RTDN_PUSH_SA: SA });
-  state.uid = "u1"; state.cfg = { hfTokensEnabled: true, hfCheckoutProvider: "google_play" };
+  state.uid = "u1"; state.cfg = { hfTokensEnabled: true, hfCheckoutProvider: "google_play", hfStdPlanEnabled: true, hfAppMinBuild: 2078 };
   _resetJwksCache();
   vi.stubGlobal("fetch", world.fetchImpl);
 });
 afterEach(() => { vi.unstubAllGlobals(); });
 
 describe("products", () => {
+  it("keeps rupee packs hidden while the Standard rollout flag is off", async () => {
+    state.cfg = { hfTokensEnabled: true, hfCheckoutProvider: "google_play", hfStdPlanEnabled: false };
+    const j = await (await call("/api/hf/tokens/products")).json();
+    expect(j.enabled).toBe(true);
+    expect(j.products.map((p: any) => p.productId)).toEqual(["hf_tokens_100", "hf_tokens_200", "hf_tokens_500", "hf_tokens_1000"]);
+    expect(j.products[0]).toMatchObject({ pricingVersion: "gp-r1", tokens: 102, creditPaise: 10200 });
+    expect((await call("/api/hf/tokens/play/prepare", { productId: "hf_tokens_100" })).status).toBe(200);
+    expect((await call("/api/hf/tokens/play/prepare", { productId: "hf_rupees_120" })).status).toBe(400);
+  });
+
   it("lists active packs with pricing, never a display price", async () => {
     const r = await call("/api/hf/tokens/products");
     const j = await r.json();
     expect(r.status).toBe(200);
-    expect(j.products.map((p: any) => p.productId)).toEqual(["hf_tokens_100", "hf_tokens_200", "hf_tokens_500", "hf_tokens_1000"]);
-    expect(j.products[0]).toEqual({ productId: "hf_tokens_100", tokens: 102, pricingVersion: "gp-r1", redemptionPaisePerToken: 100, purchasePaisePerToken: 118, creditPaise: 10200 });
-    expect(j.products.map((p: any) => p.tokens)).toEqual([102, 204, 510, 1020]); // Rs 120 / 240 / 600 / 1,200 packs add Rs 102 / 204 / 510 / 1,020
-    expect(j.products.map((p: any) => p.creditPaise)).toEqual([10200, 20400, 51000, 102000]);
-    expect(JSON.stringify(j)).not.toMatch(/price"|display|rupee/i);
+    expect(j.products.map((p: any) => p.productId)).toEqual(["hf_rupees_120", "hf_rupees_240", "hf_rupees_600", "hf_rupees_1200"]);
+    // [HF-STD-PLAN-1] packs are GST-inclusive rupee packs (gp-r2): Rs 120 -> GST Rs 18.31 + wallet Rs 101.69
+    expect(j).toMatchObject({ gstBps: 1800, gstInclusive: true, currency: "INR" });
+    expect(j.products[0]).toMatchObject({ productId: "hf_rupees_120", pricingVersion: "gp-r2", pricePaise: 12000, gstPaise: 1831, walletPaise: 10169, creditPaise: 10169, price: "₹120.00", gst: "₹18.31", wallet: "₹101.69" });
+    expect(j.products.map((p: any) => p.pricePaise)).toEqual([12000, 24000, 60000, 120000]);
+    expect(j.products.map((p: any) => p.walletPaise)).toEqual([10169, 20339, 50847, 101695]);
+    expect(j.products.map((p: any) => p.gstPaise)).toEqual([1831, 3661, 9153, 18305]);
+    expect(j.products.map((p: any) => p.wallet)).toEqual(["₹101.69", "₹203.39", "₹508.47", "₹1,016.95"]);
+    for (const p of j.products) expect(p.pricePaise).toBe(p.gstPaise + p.walletPaise);
   });
 });
 
 describe("prepare", () => {
   it("returns the HMAC account id, remembers it, and carries the confirm threshold", async () => {
-    const r = await call("/api/hf/tokens/play/prepare", { productId: "hf_tokens_500" });
+    const r = await call("/api/hf/tokens/play/prepare", { productId: "hf_rupees_600" });
     const j = await r.json();
     expect(r.status).toBe(200);
     expect(j.obfuscatedAccountId).toBe(await accountHashFor(env, "u1"));
     expect(j.obfuscatedAccountId).toMatch(/^[A-Za-z0-9_-]{43}$/);
     expect(j.confirmAbovePaise).toBe(100_000);
     expect(env.DB_META._raw.prepare("SELECT uid FROM hf_play_accounts WHERE account_hash=?").get(j.obfuscatedAccountId).uid).toBe("u1");
+    expect(JSON.parse(env.DB_META._raw.prepare("SELECT pricing_snapshot FROM hf_play_prepare_snapshots WHERE uid='u1' AND product_id='hf_rupees_600'").get().pricing_snapshot))
+      .toMatchObject({ version: 1, product: { productId: "hf_rupees_600", pricingVersion: "gp-r2", listPricePaise: 60000 }, gstBps: 1800, gstInclusive: true });
     expect(env._events.some((e: any) => e.event === "hf_token_purchase_prepared")).toBe(true);
   });
 
   it("the account id is stable per user and different between users", async () => {
-    const a = await (await call("/api/hf/tokens/play/prepare", { productId: "hf_tokens_100" })).json();
-    const a2 = await (await call("/api/hf/tokens/play/prepare", { productId: "hf_tokens_100" })).json();
+    const a = await (await call("/api/hf/tokens/play/prepare", { productId: "hf_rupees_120" })).json();
+    const a2 = await (await call("/api/hf/tokens/play/prepare", { productId: "hf_rupees_120" })).json();
     state.uid = "u2";
-    const b = await (await call("/api/hf/tokens/play/prepare", { productId: "hf_tokens_100" })).json();
+    const b = await (await call("/api/hf/tokens/play/prepare", { productId: "hf_rupees_120" })).json();
     expect(a.obfuscatedAccountId).toBe(a2.obfuscatedAccountId);
     expect(a.obfuscatedAccountId).not.toBe(b.obfuscatedAccountId);
   });
 
   it("no spend limit: a big day of purchases never stops prepare (HF-NOLIMITS-1)", async () => {
     env.DB_META._raw.prepare("INSERT INTO hf_token_lots (id, uid, kind, pricing_version, redemption_paise_per_token, tokens_granted_micro, tokens_left_micro, tokens_reserved_micro, paid_paise, provider, provider_ref, created_at, status) VALUES ('l1','u1','purchase','gp-v1',82,1,1,0,150000,'google_play','o',?, 'active')").run(Date.now());
-    const r = await call("/api/hf/tokens/play/prepare", { productId: "hf_tokens_1000" });
+    const r = await call("/api/hf/tokens/play/prepare", { productId: "hf_rupees_1200" });
     const j = await r.json();
     expect(r.status).toBe(200);
     expect(j.dayRemainingPaise).toBeUndefined();
@@ -78,40 +94,54 @@ describe("prepare", () => {
 
   it("refuses when tokens are off, for an unknown pack, and without the salt", async () => {
     state.cfg = { hfTokensEnabled: false };
-    expect((await call("/api/hf/tokens/play/prepare", { productId: "hf_tokens_100" })).status).toBe(503);
-    state.cfg = { hfTokensEnabled: true, hfCheckoutProvider: "google_play" };
+    expect((await call("/api/hf/tokens/play/prepare", { productId: "hf_rupees_120" })).status).toBe(503);
+    state.cfg = { hfTokensEnabled: true, hfCheckoutProvider: "google_play", hfStdPlanEnabled: true, hfAppMinBuild: 2078 };
     expect((await call("/api/hf/tokens/play/prepare", { productId: "nope_pack" })).status).toBe(400);
     delete env.HF_PLAY_ACCOUNT_SALT;
-    expect((await call("/api/hf/tokens/play/prepare", { productId: "hf_tokens_100" })).status).toBe(503);
+    expect((await call("/api/hf/tokens/play/prepare", { productId: "hf_rupees_120" })).status).toBe(503);
   });
 });
 
 describe("verify route", () => {
+  it("honours the prepared legacy contract after the Standard flag turns on", async () => {
+    state.cfg = { hfTokensEnabled: true, hfCheckoutProvider: "google_play", hfStdPlanEnabled: false };
+    await call("/api/hf/tokens/play/prepare", { productId: "hf_tokens_100" });
+    env.DB_META._raw.prepare("UPDATE hf_token_products SET active=0 WHERE product_id='hf_tokens_100'").run();
+    world.buy(TOK, { sku: "hf_tokens_100", obfuscated: await accountHashFor(env, "u1") });
+    state.cfg = { hfTokensEnabled: true, hfCheckoutProvider: "google_play", hfStdPlanEnabled: true, hfAppMinBuild: 2078 };
+    const j = await (await call("/api/hf/tokens/play/verify", { productId: "hf_tokens_100", purchaseToken: TOK })).json();
+    expect(j).toMatchObject({ ok: true, paidPaise: 12000, walletPaise: 10200, gstPaise: 0 });
+    expect(env.DB_META._raw.prepare("SELECT pricing_version AS v FROM hf_token_lots").get().v).toBe("gp-r1");
+  });
+
   it("credits once and answers the same on a retry, with a balance summary", async () => {
     const hash = await accountHashFor(env, "u1");
     world.buy(TOK, { obfuscated: hash });
-    const body = { productId: "hf_tokens_100", purchaseToken: TOK };
+    await call("/api/hf/tokens/play/prepare", { productId: "hf_rupees_120" });
+    const body = { productId: "hf_rupees_120", purchaseToken: TOK };
     const a = await (await call("/api/hf/tokens/play/verify", body)).json();
     const b = await (await call("/api/hf/tokens/play/verify", body)).json();
-    expect(a).toMatchObject({ ok: true, status: "consumed", duplicate: false, tokens: 102, paidPaise: 12000, consumed: true });
-    expect(a.balance).toMatchObject({ totalTokens: 102, availableTokens: 102 });
-    expect(b).toMatchObject({ ok: true, status: "consumed", duplicate: true, tokens: 102 });
+    // [HF-STD-PLAN-1] Rs 120 paid: Rs 18.31 GST, Rs 101.69 in the wallet
+    expect(a).toMatchObject({ ok: true, status: "consumed", duplicate: false, paidPaise: 12000, gstPaise: 1831, walletPaise: 10169, paid: "₹120.00", gst: "₹18.31", wallet: "₹101.69", consumed: true });
+    expect(a.balance).toMatchObject({ balancePaise: 10169, availablePaise: 10169 });
+    expect(b).toMatchObject({ ok: true, status: "consumed", duplicate: true, walletPaise: 10169, gstPaise: 1831 });
     expect((await getLots(env, "u1")).length).toBe(1);
   });
 
   it("pending answers {status:'pending'}; another user's token is a 403", async () => {
     const hash = await accountHashFor(env, "u1");
     world.buy(TOK, { obfuscated: hash, purchaseState: 2, orderId: undefined });
-    const j = await (await call("/api/hf/tokens/play/verify", { productId: "hf_tokens_100", purchaseToken: TOK })).json();
+    await call("/api/hf/tokens/play/prepare", { productId: "hf_rupees_120" });
+    const j = await (await call("/api/hf/tokens/play/verify", { productId: "hf_rupees_120", purchaseToken: TOK })).json();
     expect(j).toMatchObject({ ok: true, status: "pending" });
     state.uid = "u2";
-    const r = await call("/api/hf/tokens/play/verify", { productId: "hf_tokens_100", purchaseToken: TOK });
+    const r = await call("/api/hf/tokens/play/verify", { productId: "hf_rupees_120", purchaseToken: TOK });
     expect(r.status).toBe(403);
     expect((await r.json()).error).toBe("account_mismatch");
   });
 
   it("rejects malformed bodies", async () => {
-    expect((await call("/api/hf/tokens/play/verify", { productId: "hf_tokens_100", purchaseToken: "short" })).status).toBe(400);
+    expect((await call("/api/hf/tokens/play/verify", { productId: "hf_rupees_120", purchaseToken: "short" })).status).toBe(400);
     expect((await call("/api/hf/tokens/play/verify", { productId: "Bad Product!", purchaseToken: TOK })).status).toBe(400);
   });
 });
@@ -157,14 +187,16 @@ describe("rtdn", () => {
   });
 
   it("PURCHASED credits through the account map (no session), once even when delivered twice", async () => {
-    await call("/api/hf/tokens/play/prepare", { productId: "hf_tokens_100" }); // stores hash -> u1
+    await call("/api/hf/tokens/play/prepare", { productId: "hf_rupees_120" }); // stores hash -> u1 and the pricing contract
     world.buy(TOK, { obfuscated: await accountHashFor(env, "u1") });
+    state.cfg = { hfTokensEnabled: true, hfCheckoutProvider: "google_play", hfStdPlanEnabled: false }; // RTDN must use prepare, not this later flag
     const { jwt, jwk } = await mintJwt(claims());
     world.jwks.keys = [jwk];
-    const n = { packageName: PKG, oneTimeProductNotification: { version: "1.0", notificationType: 1, purchaseToken: TOK, sku: "hf_tokens_100" } };
+    const n = { packageName: PKG, oneTimeProductNotification: { version: "1.0", notificationType: 1, purchaseToken: TOK, sku: "hf_rupees_120" } };
     expect((await rtdn(n, jwt)).status).toBe(200);
     expect((await rtdn(n, jwt)).status).toBe(200);
     expect((await getLots(env, "u1")).length).toBe(1);
+    expect((await getLots(env, "u1"))[0].pricingVersion).toBe("gp-r2");
     expect(env.DB_META._raw.prepare("SELECT state FROM hf_play_purchases").get().state).toBe("consumed");
   });
 
@@ -172,7 +204,7 @@ describe("rtdn", () => {
     world.buy(TOK, { obfuscated: "unknown-account-hash-0123456789abcdefghijklm" });
     const { jwt, jwk } = await mintJwt(claims());
     world.jwks.keys = [jwk];
-    const r = await rtdn({ packageName: PKG, oneTimeProductNotification: { notificationType: 1, purchaseToken: TOK, sku: "hf_tokens_100" } }, jwt);
+    const r = await rtdn({ packageName: PKG, oneTimeProductNotification: { notificationType: 1, purchaseToken: TOK, sku: "hf_rupees_120" } }, jwt);
     expect(r.status).toBe(200);
     expect((await r.json()).ignored).toBe("unknown_account");
     expect(count("SELECT COUNT(*) AS n FROM hf_token_lots")).toBe(0);
@@ -181,7 +213,7 @@ describe("rtdn", () => {
   it("voidedPurchaseNotification refunds the lot; a repeat is a harmless 200", async () => {
     const hash = await accountHashFor(env, "u1");
     world.buy(TOK, { obfuscated: hash });
-    await call("/api/hf/tokens/play/verify", { productId: "hf_tokens_100", purchaseToken: TOK });
+    await call("/api/hf/tokens/play/verify", { productId: "hf_rupees_120", purchaseToken: TOK });
     const { jwt, jwk } = await mintJwt(claims());
     world.jwks.keys = [jwk];
     const n = { packageName: PKG, voidedPurchaseNotification: { purchaseToken: TOK, orderId: "GPA." + TOK, productType: 1, refundType: 1 } };
@@ -200,12 +232,12 @@ describe("rtdn", () => {
   });
 
   it("Play being down on a PURCHASED notification answers 503 so Pub/Sub retries", async () => {
-    await call("/api/hf/tokens/play/prepare", { productId: "hf_tokens_100" });
+    await call("/api/hf/tokens/play/prepare", { productId: "hf_rupees_120" });
     world.buy(TOK, { obfuscated: await accountHashFor(env, "u1") });
     world.flags.down = true;
     const { jwt, jwk } = await mintJwt(claims());
     world.jwks.keys = [jwk];
-    const r = await rtdn({ packageName: PKG, oneTimeProductNotification: { notificationType: 1, purchaseToken: TOK, sku: "hf_tokens_100" } }, jwt);
+    const r = await rtdn({ packageName: PKG, oneTimeProductNotification: { notificationType: 1, purchaseToken: TOK, sku: "hf_rupees_120" } }, jwt);
     expect(r.status).toBe(503);
   });
 });

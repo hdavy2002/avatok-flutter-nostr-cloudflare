@@ -3,14 +3,14 @@
 import { ApiError, request } from './apiClient';
 
 export interface RefundItem { id: string; amount: number; status: 'requested' | 'processing' | 'refunded' | 'rejected' | 'cancelled'; reason: string | null; utr: string | null; exit: boolean; createdAt: number; refundedAt: number | null }
-export interface RefundInfo { enabled: boolean; mode?: 'tokens'; windowDays?: number; refundable?: number; eligible?: number; lots?: RefundLot[]; requests: RefundItem[] }
+export interface RefundInfo { enabled: boolean; mode?: 'tokens' | 'rupees'; windowDays?: number; refundable?: number; eligible?: number; lots?: RefundLot[]; requests: RefundItem[] }
 /** Token mode: one entry per Google Play purchase that still has unused tokens (money in rupees, fractional). */
 export interface RefundLot { lotId: string; tokens: string; paid: number; refund: number; wholeOrder: boolean; boughtAt: number }
 export interface TokenExitInfo { mode: 'tokens'; refundPaise: number; refundLots: number; partialLots: number; partialPaise: number; testValuePaise: number; debtValuePaise: number; availablePaise: number; pendingPaise: number }
 
 export interface ExitInfo {
   gateEnabled: boolean;
-  mode?: 'tokens';
+  mode?: 'tokens' | 'rupees';
   tokens?: TokenExitInfo;
   decision: 'delete' | 'exit';
   paidBalance: number; withdrawable: number; held: number; heldReleaseAt: number | null;

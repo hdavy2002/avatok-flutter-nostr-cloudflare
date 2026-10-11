@@ -204,21 +204,21 @@ class HostEarnings {
       final test = _int(h['testEarningsPaise']);
       final paidOut = _int(h['paidOutPaise']);
       return HostEarnings(
-        total: Money.paise(_int(h['totalEarnedPaise'])),
-        pending: Money.paise(_int(h['pendingPaise'])),
-        available: Money.paise(_int(h['availablePaise'])),
-        testEarnings: test > 0 ? Money.paise(test) : null,
-        paidOut: paidOut > 0 ? Money.paise(paidOut) : null,
+        total: formatPaise(_int(h['totalEarnedPaise'])),
+        pending: formatPaise(_int(h['pendingPaise'])),
+        available: formatPaise(_int(h['availablePaise'])),
+        testEarnings: test > 0 ? formatPaise(test) : null,
+        paidOut: paidOut > 0 ? formatPaise(paidOut) : null,
         perCall: [for (final p in _maps(h['perCall'])) CallEarning.fromJson(p)],
         tokenMode: true,
       );
     }
     final test = _num(h['testEarningsRupees']) ?? 0;
     return HostEarnings(
-      total: Money.rupees(_num(h['lifetimePaidEarnings']) ?? 0),
-      pending: Money.rupees(_num(h['heldRupees'] ?? h['pendingRupees']) ?? 0),
-      available: Money.rupees(_num(h['availableRupees']) ?? 0),
-      testEarnings: test > 0 ? Money.rupees(test) : null,
+      total: formatRupees(_num(h['lifetimePaidEarnings']) ?? 0),
+      pending: formatRupees(_num(h['heldRupees'] ?? h['pendingRupees']) ?? 0),
+      available: formatRupees(_num(h['availableRupees']) ?? 0),
+      testEarnings: test > 0 ? formatRupees(test) : null,
     );
   }
 
@@ -227,7 +227,7 @@ class HostEarnings {
     total: '',
     pending: p.heldDisplay,
     available: p.withdrawableDisplay,
-    testEarnings: p.testEarnings > 0 ? Money.rupees(p.testEarnings) : null,
+    testEarnings: p.testEarnings > 0 ? formatRupees(p.testEarnings) : null,
     tokenMode: p.tokenMode,
   );
 
@@ -341,10 +341,11 @@ class PayoutsData {
   bool get hostLive => hostStatus == 'live';
 
   String get withdrawableDisplay => withdrawablePaise != null
-      ? Money.paise(withdrawablePaise!)
-      : Money.rupees(withdrawable);
-  String get heldDisplay =>
-      pendingPaise != null ? Money.paise(pendingPaise!) : Money.rupees(held);
+      ? formatPaise(withdrawablePaise!)
+      : formatRupees(withdrawable);
+  String get heldDisplay => pendingPaise != null
+      ? formatPaise(pendingPaise!)
+      : formatRupees(held);
 
   /// Why the Withdraw button is off, or null when it can be used.
   PayoutBlock? get block {

@@ -4,6 +4,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { hfAdminApi, apiUrl, type AdminHost, type AdminHostDetail, type HostStatus, type KycItem } from '../../../lib/hfAdminApi';
 import { Banner, ConsultShell, Spinner, dateIST, fail, track } from '../consultants/kit';
+import { request } from '../../../lib/apiClient';
 import '../../../styles/profile-card.css';
 
 const TABS: { key: HostStatus; label: string }[] = [
@@ -17,6 +18,8 @@ export default function HostReview() {
   const [rows, setRows] = useState<AdminHost[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [openUid, setOpenUid] = useState<string | null>(null);
+  const [standard, setStandard] = useState(false);
+  useEffect(() => { let live = true; void request<{ hfStdPlan?: { enabled?: boolean } }>('/api/config').then(c => { if (live) setStandard(c?.hfStdPlan?.enabled === true); }).catch(() => {}); return () => { live = false; }; }, []);
 
   const load = useCallback(async () => {
     setError(null); setRows(null);
@@ -44,7 +47,7 @@ export default function HostReview() {
                   <td>{h.avatarUrl && <img src={h.avatarUrl} alt="" width={48} height={48} style={{ borderRadius: 10, objectFit: 'cover' }} />}</td>
                   <td><strong>{h.displayName || 'No name'}</strong><div className="muted" style={T14}>{h.tagline || ''}</div></td>
                   <td>{h.languages.join(', ') || '—'}</td>
-                  <td>₹{h.pricePerMin}/min</td>
+                  <td>{standard ? 'Standard plan' : `₹${h.pricePerMin}/min`}</td>
                   <td>{dateIST(h.submittedAt ?? h.updatedAt)}</td>
                   <td><button type="button" className="btn small" style={T14} onClick={() => setOpenUid(h.uid)} aria-label={`Open ${h.displayName || 'host'}`}>Open</button></td>
                 </tr>
@@ -53,12 +56,12 @@ export default function HostReview() {
           </table>
         </div>
       )}
-      {openUid && <Drawer uid={openUid} onClose={() => setOpenUid(null)} onChanged={() => { void load(); }} />}
+      {openUid && <Drawer uid={openUid} standard={standard} onClose={() => setOpenUid(null)} onChanged={() => { void load(); }} />}
     </ConsultShell>
   );
 }
 
-function Drawer({ uid, onClose, onChanged }: { uid: string; onClose: () => void; onChanged: () => void }) {
+function Drawer({ uid, standard, onClose, onChanged }: { uid: string; standard: boolean; onClose: () => void; onChanged: () => void }) {
   const [d, setD] = useState<AdminHostDetail | null>(null);
   const [kyc, setKyc] = useState<KycItem | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -125,7 +128,7 @@ function Drawer({ uid, onClose, onChanged }: { uid: string; onClose: () => void;
                     <div><dt>Style</dt><dd>{h.style || '—'}</dd></div>
                   </dl>
                   {h.topics.length > 0 && <ul className="person-moods">{h.topics.map((t) => <li key={t}>{t}</li>)}</ul>}
-                  <div className="person-actions"><span className="person-price">₹{h.pricePerMin}/min</span></div>
+                  <div className="person-actions"><span className="person-price">{standard ? 'Standard plan' : `₹${h.pricePerMin}/min`}</span></div>
                 </div>
               </article>
             </div>

@@ -78,7 +78,7 @@ class _RefundSectionState extends ConsumerState<RefundSection> {
         Analytics.capture('hf_app_refund_requested', {
           'outcome': 'ok',
           'ms': sw.elapsedMilliseconds,
-          'kind': lotId == null ? 'money' : 'tokens',
+          'kind': lotId == null ? 'money' : 'purchase',
         }),
       );
       if (!mounted) return;
@@ -228,8 +228,8 @@ class _RefundSectionState extends ConsumerState<RefundSection> {
               Text('₹${l.tokens} unused', style: HfText.bodyText),
               Text(
                 l.wholeOrder
-                    ? 'You paid ${Money.rupees(l.paidRupees)}. Refund: ${Money.rupees(l.refundRupees)}'
-                    : 'You paid ${Money.rupees(l.paidRupees)}. Refund for the unused part: ${Money.rupees(l.refundRupees)}',
+                    ? 'You paid ${formatRupees(l.paidRupees)}. Refund: ${formatRupees(l.refundRupees)}'
+                    : 'You paid ${formatRupees(l.paidRupees)}. Refund for the unused part: ${formatRupees(l.refundRupees)}',
                 style: HfText.note,
               ),
               const SizedBox(height: 12),
@@ -242,7 +242,7 @@ class _RefundSectionState extends ConsumerState<RefundSection> {
                     ? () => _ask(
                         lotId: l.lotId,
                         confirmText:
-                            'We will refund ${Money.rupees(l.refundRupees)} for the unused ₹${l.tokens} from this purchase, and remove it from your wallet.',
+                            'We will refund ${formatRupees(l.refundRupees)} for the unused ₹${l.tokens} from this purchase, and remove it from your wallet.',
                       )
                     : null,
               ),
@@ -260,7 +260,7 @@ class _RefundSectionState extends ConsumerState<RefundSection> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            'Unused money that can go back: ${Money.rupees(info.refundableRupees)}',
+            'Unused money that can go back: ${formatRupees(info.refundableRupees)}',
             style: HfText.bodyStrong,
           ),
           const SizedBox(height: 12),
@@ -272,7 +272,7 @@ class _RefundSectionState extends ConsumerState<RefundSection> {
             onPressed: _busyId == null
                 ? () => _ask(
                     confirmText:
-                        'We will refund ${Money.rupees(info.refundableRupees)} of unused money to the way you paid.',
+                        'We will refund ${formatRupees(info.refundableRupees)} of unused money to the way you paid.',
                   )
                 : null,
           ),
@@ -292,7 +292,7 @@ class _RefundSectionState extends ConsumerState<RefundSection> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              '${Money.rupees(r.amountRupees)} · ${r.statusText}',
+              '${formatRupees(r.amountRupees)} · ${r.statusText}',
               style: HfText.bodyStrong,
             ),
             if (r.createdAt != null)

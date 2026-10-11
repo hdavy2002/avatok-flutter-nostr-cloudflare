@@ -32,7 +32,7 @@ You should pay nothing when a call is ringing, when the host declines, when time
 
 If a call did connect and you simply did not enjoy it, that is not a billing error. Connected calls are not refunded. Read [why there are no refunds](/help/wallet-and-payments/no-refunds) to understand why.
 
-Also remember that you pay per started minute. For example, 61 seconds at ₹5 per minute is 2 minutes, which is ₹10. 3 minutes 20 seconds at ₹10 per minute is 4 minutes, which is ₹40. That is correct billing.
+Also remember that you pay for the exact seconds you are connected, at the standard price. For example, 5 minutes cost ₹19.95 and 30 minutes cost ₹119.70. That is correct billing. If we find a mistake, the wrong amount is put back in your wallet and linked to that call.
 
 ## How to report it
 
@@ -49,7 +49,7 @@ A clear report helps us fix it faster.
 
 We look at it. If it is a real billing error, **the wrong amount is put back in your wallet**. It is not a refund. It is just fixing our mistake.
 
-Rohit sees two charges of ₹30 for one 3-minute call. He writes to support with the call ID, the time and the amount. The extra ₹30 goes back to his wallet.
+Rohit sees two charges of ₹11.97 for one 3-minute call. He writes to support with the call ID, the time and the amount. The extra ₹11.97 goes back to his wallet.
 
 ## Stay safe
 

@@ -20,6 +20,7 @@ class HfFlags {
     required this.hfPayoutsEnabled,
     required this.hfRefundsEnabled,
     required this.hfPushEnabled,
+    required this.hfStdPlanEnabled,
     required this.hfAppMinBuild,
     required this.hfAppLatestBuild,
     this.hfAckVersion,
@@ -37,11 +38,12 @@ class HfFlags {
   final bool hfPayoutsEnabled;
   final bool hfRefundsEnabled;
   final bool hfPushEnabled;
+  final bool hfStdPlanEnabled;
   final int hfAppMinBuild;
   final int hfAppLatestBuild;
 
-  /// Used when `/api/config` cannot be reached and nothing is cached: every feature is assumed on, so
-  /// screens still try, and the server is the authority (it answers `404 not_enabled` for a flag that is off).
+  /// Used when `/api/config` cannot be reached and nothing is cached. Existing features stay fail-open so
+  /// the server remains the authority; the Standard plan stays fail-closed so legacy pricing is preserved.
   /// Build numbers are 0: never prompt for an update on a guess.
   static const HfFlags unknown = HfFlags(
     hostsPublicEnabled: true,
@@ -52,6 +54,7 @@ class HfFlags {
     hfPayoutsEnabled: true,
     hfRefundsEnabled: true,
     hfPushEnabled: true,
+    hfStdPlanEnabled: false,
     hfAppMinBuild: 0,
     hfAppLatestBuild: 0,
   );
@@ -66,6 +69,7 @@ class HfFlags {
     hfPayoutsEnabled: false,
     hfRefundsEnabled: false,
     hfPushEnabled: false,
+    hfStdPlanEnabled: false,
     hfAppMinBuild: 0,
     hfAppLatestBuild: 0,
   );
@@ -78,6 +82,8 @@ class HfFlags {
       return int.tryParse('$v') ?? 0;
     }
 
+    final stdRaw = j['hfStdPlan'];
+    final std = stdRaw is Map ? Map<String, dynamic>.from(stdRaw) : null;
     return HfFlags(
       hostsPublicEnabled: b('hostsPublicEnabled'),
       hfCallsEnabled: b('hfCallsEnabled'),
@@ -87,6 +93,7 @@ class HfFlags {
       hfPayoutsEnabled: b('hfPayoutsEnabled'),
       hfRefundsEnabled: b('hfRefundsEnabled'),
       hfPushEnabled: b('hfPushEnabled'),
+      hfStdPlanEnabled: std?['enabled'] == true,
       hfAppMinBuild: n('hfAppMinBuild'),
       hfAppLatestBuild: n('hfAppLatestBuild'),
       hfAckVersion:
@@ -96,6 +103,16 @@ class HfFlags {
           : null,
     );
   }
+}
+
+/// The Standard plan is active only after an explicit public-config `enabled: true`.
+bool hfStdPlanOn(AsyncValue<HfFlags>? flags) {
+  if (flags == null) return false;
+  return flags.when(
+    data: (value) => value.hfStdPlanEnabled,
+    loading: () => false,
+    error: (_, __) => false,
+  );
 }
 
 const String _flagsCacheKey = 'hf.cache.config.v1';

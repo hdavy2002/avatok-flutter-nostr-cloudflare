@@ -8,13 +8,21 @@ import ReviewForm from './ReviewForm';
 import { API_BASE } from '../../lib/env';
 import { isAppMode } from '../../lib/nativeBridge';
 import { HF_PLAY_URL, trackWebBlocked } from '../../lib/hfApp';
+import { RateLines } from './RateCard';
+import { capture } from '../../lib/analytics';
+import { formatPaise } from '../../lib/money';
+import { chargeForSeconds, stdRateLabel, type PriceTier } from '../../lib/hfStdPlan';
 import {
   callsEnabled, fetchWallet, firstName, hfCall, inr, isTerminal, looksSignedOut, mmss, signInUrl, soFar, toMs,
   type CallInfo, type HostPresence,
 } from '../../lib/hfCallsApi';
 import '../../styles/hf-calls.css';
 
-export interface CallHost { slug: string; displayName: string; pricePerMin: number; status?: HostPresence; womenOnly?: boolean }
+/** [HF-STD-PLAN-1] pricePerMin may be fractional (3.99); pricePaisePerMin / priceTiers come from the worker's host card. */
+export interface CallHost { slug: string; displayName: string; pricePerMin: number; pricePaisePerMin?: number; priceTiers?: PriceTier[]; plan?: string; status?: HostPresence; womenOnly?: boolean }
+const hostRateLabel = (h: CallHost): string => h.plan === 'standard'
+  ? stdRateLabel(h.pricePaisePerMin ?? Math.round(Number(h.pricePerMin) * 100))
+  : `₹${Number(h.pricePerMin).toLocaleString('en-IN', { maximumFractionDigits: 2 })}/min`;
 type Variant = 'card' | 'rail' | 'bar';
 const POLL_MS = 2000;
 const SAFETY = 'This is a friendly chat, not counselling. In crisis, dial 14416. Press # at any time to end the call and block.';
@@ -55,9 +63,11 @@ export function NotifyButton({ host, variant, prefix, initial, big }: { host: Ca
 
 /* ── The call sheet ────────────────────────────────────────────────────── */
 type Phase = 'confirm' | 'starting' | 'live' | 'error';
-interface Problem { text: string; link?: { href: string; label: string }; balance?: boolean; notify?: boolean; tokens?: boolean }
-/** [HF-TOK-CALLS-1] Token mode (hfTokensEnabled): the caller's balance in tokens and what a call with THIS host costs them. */
-interface TokView { balance: string; hasDebt: boolean; est?: { tokensPerMinute: string; aboutText: string; affordableSeconds: number; canStart: boolean } }
+interface Problem { text: string; link?: { href: string; label: string }; balance?: boolean; notify?: boolean; addMoney?: boolean }
+/** [HF-STD-PLAN-1] Rupee wallet: the caller's balance and what the Standard plan lets them do with it (GET /api/hf/wallet/estimate). */
+interface StdEstimate { plan?: string; ratePerMinRupees?: string; tokensPerMinute?: string; aboutText: string; affordableSeconds: number; canStart: boolean; startNeed?: string; startNeedPaise?: number; balance?: string; tiers?: PriceTier[] }
+interface TokView { balance: string; hasDebt: boolean; standard: boolean; est?: StdEstimate }
+const capFirst = (t: string) => (t ? t.charAt(0).toUpperCase() + t.slice(1) : t);
 
 function useNow(active: boolean): number {
   const [n, setN] = useState(Date.now());
@@ -86,12 +96,14 @@ function CallSheet({ host, open, onClose }: { host: CallHost; open: boolean; onC
 
   const loadWallet = useCallback(async () => {
     // [HF-WALLET-1] what you can spend on a call = paid balance + test credits
-    const r = await hfCall<{ balanceRupees: number; spendable?: number; mode?: string; tokens?: { balance: string; debt: { open: boolean } } }>('GET', '/api/hf/wallet');
+    const r = await hfCall<{ balanceRupees: number; spendable?: number; mode?: string; wallet?: { balance: string; debtOpen: boolean }; tokens?: { balance: string; debt: { open: boolean } } }>('GET', '/api/hf/wallet');
     if (r.ok) {
-      if (r.data.mode === 'tokens' && r.data.tokens) {
-        // [HF-TOK-CALLS-1] tokens for the caller; the host's rupee rate stays as it is
-        const e = await hfCall<{ tokensPerMinute: string; aboutText: string; affordableSeconds: number; canStart: boolean }>('GET', `/api/hf/wallet/estimate?host=${encodeURIComponent(host.slug)}`);
-        setTok({ balance: r.data.tokens.balance, hasDebt: !!r.data.tokens.debt?.open, est: e.ok ? e.data : undefined });
+      if ((r.data.mode === 'rupees' && r.data.wallet) || (r.data.mode === 'tokens' && r.data.tokens)) {
+        const e = await hfCall<StdEstimate>('GET', `/api/hf/wallet/estimate?host=${encodeURIComponent(host.slug)}`);
+        const standard = r.data.mode === 'rupees' && !!r.data.wallet && e.ok && e.data.plan === 'standard';
+        const bal = standard ? r.data.wallet!.balance : `${r.data.tokens?.balance ?? '0.00'} tokens`;
+        setTok({ balance: bal, hasDebt: standard ? !!r.data.wallet!.debtOpen : !!r.data.tokens?.debt?.open, standard, est: e.ok ? e.data : undefined });
+        if (standard) capture('hf_std_rate_card_viewed', { surface: 'call_confirm', host: host.slug, can_start: e.data.canStart });
       } else setBalance(Number(r.data.spendable ?? r.data.balanceRupees) || 0);
     } else if (r.status === 401) window.location.assign(signInUrl());
   }, [host.slug]);
@@ -149,7 +161,10 @@ function CallSheet({ host, open, onClose }: { host: CallHost; open: boolean; onC
     let p: Problem;
     if (r.code === 'not_verified') p = { text: 'Please verify your WhatsApp number first. We use it to ring you.', link: { href: '/sign-up?finish=1', label: 'Verify my number' } };
     else if (r.code === 'lane_required') p = { text: lane === 'lgbtq' ? 'This is an LGBTQ+ space host. Verify to call.' : 'This is a women-only space host. Verify to call.', link: { href: `/verify/lane?lane=${encodeURIComponent(lane || 'women')}`, label: 'Verify to call' } };
-    else if (r.code === 'low_balance' && typeof r.body.shortfallTokens === 'string') p = { text: r.message || 'You need more money in your wallet to start this call.', tokens: true };
+    else if (r.code === 'low_balance' && (typeof r.body.shortfallRupees === 'string' || typeof r.body.shortfallTokens === 'string')) {
+      const short = typeof r.body.shortfallRupees === 'string' ? r.body.shortfallRupees : typeof r.body.shortfallPaise === 'number' ? formatPaise(r.body.shortfallPaise) : '';
+      p = { text: short ? `You need ${short} more to start this call.` : (r.message || 'You need more money in your wallet to start this call.'), addMoney: true };
+    }
     else if (r.code === 'debt_open') p = { text: r.message || 'Please clear the amount owed before calling' };
     else if (r.code === 'low_balance') { const b = Number(r.body.balance); if (Number.isFinite(b)) setBalance(b); p = { text: `You need at least ${inr(Number(r.body.needed) || rate * 2)} to start a call.`, balance: true }; }
     else if (r.code === 'host_unavailable') p = { text: r.message || 'This host isn’t available right now.', notify: true };
@@ -169,8 +184,9 @@ function CallSheet({ host, open, onClose }: { host: CallHost; open: boolean; onC
   const need = rate * 2;
   const lowBalance = tok ? tok.hasDebt || tok.est?.canStart === false : balance != null && balance < need;
   const canMax = tok ? null : balance != null ? Math.min(60, Math.floor(balance / rate)) : null;
-  const twoMinTokens = tok?.est ? (Number(tok.est.tokensPerMinute) * 2).toFixed(2) : null;
-  const balanceText = tok ? `₹${tok.balance}` : balance == null ? '…' : inr(balance);
+  const startNeedText = tok?.est?.startNeed ?? (tok?.est?.startNeedPaise != null ? formatPaise(tok.est.startNeedPaise) : null);
+  const tiers = tok?.est?.tiers ?? host.priceTiers;
+  const balanceText = tok ? tok.balance : balance == null ? '…' : inr(balance);
   const connectedMs = toMs(info?.connectedAt) ?? null;
   let sec = 0;
   if (connected) {
@@ -191,12 +207,14 @@ function CallSheet({ host, open, onClose }: { host: CallHost; open: boolean; onC
         <div className="hfc-body">
           <p className="hfc-chip" aria-live="polite">Your balance: <strong>{balanceText}</strong>{!tok && <> <span>Test credits only for now</span></>}</p>
           <ul className="hfc-facts">
-            {tok ? (
-              <li><Icon name="rupee" size={22} /><span><strong>{inr(rate)}/min</strong> · billed per second. Ringing or no answer costs nothing.</span></li>
+            {tok?.standard ? (
+              <li><Icon name="rupee" size={22} /><span><strong>Standard plan · {hostRateLabel(host)}</strong> to start. <RateLines tiers={tiers} />Same rate for every host · billed per second. Ringing or no answer costs nothing.</span></li>
+            ) : tok ? (
+              <li><Icon name="rupee" size={22} /><span><strong>{tok.est?.tokensPerMinute ?? '—'} tokens/min</strong> · billed per started minute. Ringing or no answer costs nothing.</span></li>
             ) : (
               <li><Icon name="rupee" size={22} /><span><strong>{inr(rate)}/min</strong> · billed per started minute. Ringing or no answer costs nothing.</span></li>
             )}
-            {tok?.est && !lowBalance && <li><Icon name="clock" size={22} /><span>With your balance you can talk for <strong>{tok.est.aboutText}</strong>.</span></li>}
+            {tok?.est && tok.est.affordableSeconds < 24 * 60 * 60 && !lowBalance && <li><Icon name="clock" size={22} /><span><strong>{capFirst(tok.est.aboutText)}</strong> with your balance. The call runs until you hang up or your balance is used up.</span></li>}
             {canMax != null && !lowBalance && <li><Icon name="clock" size={22} /><span>You can talk for up to <strong>{canMax} min</strong> with your balance.</span></li>}
             <li><Icon name="lock" size={22} /><span><strong>Your number stays hidden.</strong> We ring your phone and {name}’s phone, then connect you.</span></li>
             <li><Icon name="shield" size={22} /><span>{SAFETY}</span></li>
@@ -206,7 +224,7 @@ function CallSheet({ host, open, onClose }: { host: CallHost; open: boolean; onC
             <div className="hfc-note hfc-warn" role="status">
               {tok.hasDebt
                 ? <strong>Please clear the amount owed before calling.</strong>
-                : <><strong>Add money to call.</strong> You need at least 2 minutes of balance{twoMinTokens ? ` (about ₹${twoMinTokens})` : ''} to start. Add money in the app.</>}
+                : <><strong>Add money to call.</strong> You need at least 2 minutes of balance{startNeedText ? ` (${startNeedText})` : ''} to start. Add money in the app.</>}
             </div>
           )}
           {lowBalance && !tok && (
@@ -227,13 +245,24 @@ function CallSheet({ host, open, onClose }: { host: CallHost; open: boolean; onC
         <div className="hfc-body" aria-live="polite">
           {st === 'ringing_host' && <><p className="hfc-status hfc-pulse">Ringing {name}…</p><p className="hfc-sub">Keep this page open. If {name} doesn’t pick up, you won’t be charged.</p></>}
           {st === 'ringing_caller' && <><p className="hfc-status hfc-pulse">{name} accepted — we’re calling your phone now. Pick up!</p><p className="hfc-sub">Your number is never shown to {name}.</p></>}
-          {connected && (tok
-            ? <><p className="hfc-status hfc-live">Connected · {mmss(sec)}</p><p className="hfc-sub">Billed per second{maxMin ? `, up to ${maxMin} min` : ''}. Press # on your phone to end the call and block.</p></>
+          {connected && (tok?.standard
+            ? <><p className="hfc-status hfc-live">Connected · {mmss(sec)} · about {formatPaise(chargeForSeconds(tiers, sec))} so far</p><p className="hfc-sub">Billed per second. Press # on your phone to end the call and block.</p></>
             : <><p className="hfc-status hfc-live">Connected · {mmss(sec)} · {inr(soFar(sec, rate))} so far</p><p className="hfc-sub">Billed per started minute{maxMin ? `, up to ${maxMin} min` : ''}. Press # on your phone to end the call and block.</p></>)}
           {st === 'completed' && <>
-            <p className="hfc-status">{tok || info.tokensSpent !== undefined
-              ? ((info.billableSeconds ?? 0) > 0 ? `Call ended · ${mmss(info.billableSeconds ?? 0)} · ₹${info.tokensSpent ?? '0.00'}` : 'Call ended · No charge')
+            <p className="hfc-status">{info.charged !== undefined || info.chargedPaise !== undefined
+              ? ((info.billableSeconds ?? 0) > 0 ? `Call ended · ${mmss(info.billableSeconds ?? 0)} · ${info.charged ?? formatPaise(info.chargedPaise ?? 0)}` : 'Call ended · No charge')
+              : info.earning !== undefined || info.earningPaise !== undefined
+              ? ((info.billableSeconds ?? 0) > 0 ? `Call ended · ${mmss(info.billableSeconds ?? 0)} · You earned ${info.earning ?? formatPaise(info.earningPaise ?? 0)}` : 'Call ended · No earnings')
+              : tok || info.tokensSpent !== undefined
+              ? ((info.billableSeconds ?? 0) > 0 ? `Call ended · ${mmss(info.billableSeconds ?? 0)}` : 'Call ended · No charge')
               : mins > 0 ? `Call ended · ${mins} min · ${inr(info.chargedRupees ?? mins * rate)}` : 'Call ended · No charge'}</p>
+            {info.tiers && info.tiers.some(t => t.seconds > 0) && info.charged !== undefined && (
+              <ul className="hfc-calls" aria-label="How your call was charged">
+                {info.tiers.filter(t => t.seconds > 0).map(t => (
+                  <li key={t.fromMin}><strong>{formatPaise(t.paisePerMin)}/min</strong><span>{formatPaise(t.amountPaise)}</span><small>{mmss(t.seconds)} at this rate</small></li>
+                ))}
+              </ul>
+            )}
             {info.canReview && !rating && <button type="button" className="hfc-btn hfc-primary" onClick={() => setRating(true)}><Icon name="star" size={22} />Rate your call</button>}
             {info.canReview && rating && <ReviewForm mode="call" callId={info.id} hostName={name} />}
           </>}
@@ -258,7 +287,7 @@ function CallSheet({ host, open, onClose }: { host: CallHost; open: boolean; onC
         <div className="hfc-body">
           <p className="hfc-status" role="alert">{problem.text}</p>
           {problem.balance && <p className="hfc-note hfc-warn">Add balance to call. <em>Test credits only for now.</em></p>}
-          {problem.tokens && <p className="hfc-note hfc-warn">Add money in the app to call.</p>}
+          {problem.addMoney && <p className="hfc-note hfc-warn">Add money in the app to call.</p>}
           {problem.link && <a className="hfc-btn hfc-primary" href={problem.link.href}>{problem.link.label}</a>}
           {problem.notify && <NotifyButton host={host} variant="rail" big />}
           <div className="hfc-actions"><button type="button" className="hfc-btn" onClick={onClose}>Close</button></div>
@@ -290,7 +319,7 @@ function webHasTestCredits(): Promise<boolean> {
   if (!webCreditsP) {
     const p = fetchWallet().then(r => {
       if (!r.ok) { if (webCreditsP === p) webCreditsP = null; return false; }
-      return Number(r.data.testBalance) > 0;
+      return Number(r.data.testBalance) > 0 || (r.data.wallet?.testPaise ?? 0) > 0; // [HF-STD-PLAN-1] rupee wallet reports testPaise
     }).catch(() => { if (webCreditsP === p) webCreditsP = null; return false; });
     webCreditsP = p;
   }
@@ -377,7 +406,7 @@ export default function HostCallActions({ host, variant, refresh }: { host: Call
         if (looksSignedOut()) { window.location.assign(signInUrl()); return; }
         setBridge(true); setEverOpen(true); setOpen(true);
       }}>
-        <Icon name="phone" size={22} />Call {inr(host.pricePerMin)}/min
+        <Icon name="phone" size={22} />Call {hostRateLabel(host)}
       </button>
       {everOpen && <CallSheet host={h} open={open} onClose={onClose} />}
     </>

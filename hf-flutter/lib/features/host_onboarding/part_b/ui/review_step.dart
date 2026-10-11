@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/api/api_error.dart';
+import '../../../../core/config/flags.dart';
 import '../../../../core/links.dart';
 import '../../../../core/theme/hf_theme.dart';
 import '../../../../core/widgets/widgets.dart';
@@ -55,17 +56,17 @@ class _ReviewStepState extends ConsumerState<ReviewStep> {
   bool get _allTicked => _rules && _agreement && _welfare;
 
   /// Steps of the profile that the server does not have yet (hours are optional).
-  List<OnboardingStepDef> _missing() => [
-    for (final def in kOnboardingSteps)
-      if (_isProfilePart(def.key) && !def.isDone(ctx.state)) def,
+  List<OnboardingStepDef> _missing(bool standardPlan) => [
+    for (final def in onboardingSteps(standardPlan: standardPlan))
+      if (_isProfilePart(def.key, standardPlan) && !def.isDone(ctx.state)) def,
   ];
 
-  static bool _isProfilePart(String key) =>
+  static bool _isProfilePart(String key, bool standardPlan) =>
       key == OnboardingKeys.avatar ||
       key == OnboardingKeys.about ||
       key == OnboardingKeys.languages ||
       key == OnboardingKeys.topics ||
-      key == OnboardingKeys.price ||
+      (!standardPlan && key == OnboardingKeys.price) ||
       key == OnboardingKeys.voice;
 
   Future<void> _create() async {
@@ -106,8 +107,9 @@ class _ReviewStepState extends ConsumerState<ReviewStep> {
   Widget build(BuildContext context) {
     final s = ctx.state;
     final options = optionsOf(ref.watch(hostOptionsProvider));
+    final standardPlan = hfStdPlanOn(ref.watch(flagsProvider));
     final lock = EditLock.of(s.hostStatus);
-    final missing = _missing();
+    final missing = _missing(standardPlan);
     final generating = s.hostStatus == 'generating';
     final canCreate =
         generating || (!lock.inReview && missing.isEmpty && _allTicked);
@@ -166,7 +168,20 @@ class _ReviewStepState extends ConsumerState<ReviewStep> {
             ],
           ),
         ]),
-        _section(PartBCopy.reviewPrice, OnboardingKeys.price, [_price(s)]),
+        if (standardPlan)
+          _section(
+            PartBCopy.reviewPlan,
+            'standard-plan',
+            [
+              Text(
+                PartBCopy.standardPlan,
+                style: HfText.of(context, HfText.body),
+              ),
+            ],
+            editable: false,
+          )
+        else
+          _section(PartBCopy.reviewPrice, OnboardingKeys.price, [_price(s)]),
         _section(PartBCopy.reviewHours, OnboardingKeys.hours, _hours(s)),
         _section(PartBCopy.reviewVoice, OnboardingKeys.voice, [_voice(s)]),
         const SizedBox(height: 8),
@@ -218,7 +233,12 @@ class _ReviewStepState extends ConsumerState<ReviewStep> {
     return slug ?? '';
   }
 
-  Widget _section(String title, String step, List<Widget> body) {
+  Widget _section(
+    String title,
+    String step,
+    List<Widget> body, {
+    bool editable = true,
+  }) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
       child: HfCard(
@@ -237,15 +257,16 @@ class _ReviewStepState extends ConsumerState<ReviewStep> {
                     ),
                   ),
                 ),
-                TextButton(
-                  key: ValueKey<String>('review-edit-$step'),
-                  onPressed: () => ctx.goTo(step),
-                  child: Semantics(
-                    label: '${PartBCopy.edit} $title',
-                    excludeSemantics: true,
-                    child: const Text(PartBCopy.edit),
+                if (editable)
+                  TextButton(
+                    key: ValueKey<String>('review-edit-$step'),
+                    onPressed: () => ctx.goTo(step),
+                    child: Semantics(
+                      label: '${PartBCopy.edit} $title',
+                      excludeSemantics: true,
+                      child: const Text(PartBCopy.edit),
+                    ),
                   ),
-                ),
               ],
             ),
             const SizedBox(height: 4),
@@ -253,6 +274,15 @@ class _ReviewStepState extends ConsumerState<ReviewStep> {
           ],
         ),
       ),
+    );
+  }
+
+  Widget _price(OnboardingServerState s) {
+    final price = s.hostNum('pricePerMin')?.toInt();
+    if (price == null) return Text('-', style: HfText.of(context, HfText.body));
+    return Text(
+      '${rupeesText(price)} per minute. You get ${rupeesFromPaise(hostSharePaise(price))}.',
+      style: HfText.of(context, HfText.body),
     );
   }
 
@@ -323,15 +353,6 @@ class _ReviewStepState extends ConsumerState<ReviewStep> {
         const SizedBox(width: 12),
         const AiLabel(text: PartBCopy.avatarAiLabel),
       ],
-    );
-  }
-
-  Widget _price(OnboardingServerState s) {
-    final p = s.hostNum('pricePerMin')?.toInt();
-    if (p == null) return Text('-', style: HfText.of(context, HfText.body));
-    return Text(
-      '${rupeesText(p)} per minute. You get ${rupeesFromPaise(hostSharePaise(p))}.',
-      style: HfText.of(context, HfText.body),
     );
   }
 

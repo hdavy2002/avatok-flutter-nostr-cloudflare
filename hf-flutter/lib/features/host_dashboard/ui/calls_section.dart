@@ -58,7 +58,7 @@ class TodayCard extends ConsumerWidget {
                 key: const ValueKey<String>('today-earned'),
                 child: HfTile(
                   tint: HfTint.butter,
-                  value: Money.rupees(d.todayEarningRupees),
+                  value: formatRupees(d.todayEarningRupees),
                   caption: HostCopy.todayEarnedCaption,
                 ),
               ),
@@ -278,7 +278,7 @@ class CallRow extends StatelessWidget {
             if (paid) ...[
               const SizedBox(width: HfSpacing.sm),
               Text(
-                '+${Money.rupees(call.earningRupees)}',
+                '+${formatRupees(call.earningRupees)}',
                 key: ValueKey<String>('earned-${call.id}'),
                 style: HfText.bodyStrong.copyWith(
                   fontSize: 15,

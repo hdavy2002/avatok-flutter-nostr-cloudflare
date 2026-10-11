@@ -39,7 +39,7 @@ String? contactLeakMessage(String text) {
 }
 
 // ---------------------------------------------------------------------------------------------
-// Style, days, price
+// Style and days
 // ---------------------------------------------------------------------------------------------
 
 /// A conversation style: the value the worker stores, the label the host sees and a one-line help.
@@ -93,8 +93,7 @@ const List<String> kDayLabels = <String>[
 const int kDefaultPrice = 20;
 const List<int> kQuickPrices = <int>[10, 15, 20, 25, 30];
 
-/// What the host earns per minute, in paise: the platform keeps Rs 2 and 40% of the rest (HF-PAY-6), so the host
-/// gets 60% of the amount above Rs 2. Whole paise, no floating point: Rs 20 gives 1080 paise.
+/// Legacy flag-off host share: 60% of the amount above ₹2, in whole paise.
 int hostSharePaise(int pricePerMin) =>
     pricePerMin <= 2 ? 0 : (pricePerMin - 2) * 60;
 
@@ -172,6 +171,8 @@ String? stepForMissing(String key) {
       return 'languages';
     case 'topics':
       return 'topics';
+    case 'price':
+      return 'price';
     case 'agreements':
       return 'review';
     case 'voice':

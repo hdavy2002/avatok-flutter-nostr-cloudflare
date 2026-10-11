@@ -6,7 +6,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/theme/hf_theme.dart';
 import '../../../../core/widgets/widgets.dart';
 import '../../../explore/data/host_options.dart';
-import '../../../kyc/kyc.dart';
 import '../../flow/onboarding_context.dart';
 import '../data/edit_lock.dart';
 import '../data/part_b_rules.dart';
@@ -15,9 +14,7 @@ import '../data/profile_saver.dart';
 import 'part_b_copy.dart';
 import 'part_b_widgets.dart';
 
-/// Step `price`: one price for every topic, whole rupees per minute (from `GET /api/hf/options`, 5 to 100).
-/// Shows what the caller pays and what the host gets (the platform keeps Rs 2 and 40% of the rest, GST inside).
-/// A live host can still change the price.
+/// Legacy flag-off step: one price for every topic, in whole rupees per minute.
 class PriceStep extends ConsumerStatefulWidget {
   const PriceStep({super.key, required this.ctx});
 
@@ -40,8 +37,8 @@ class _PriceStepState extends ConsumerState<PriceStep> {
     _saver = ref.read(profileSaverProvider);
     final server = ctx.state.hostNum('pricePerMin')?.toInt();
     _saver.seed('pricePerMin', server);
-    final v = _saver.valueOf('pricePerMin', server);
-    _price = v is int ? v : kDefaultPrice;
+    final value = _saver.valueOf('pricePerMin', server);
+    _price = value is int ? value : kDefaultPrice;
     _saver.addListener(_changed);
   }
 
@@ -56,8 +53,8 @@ class _PriceStepState extends ConsumerState<PriceStep> {
     if (mounted) setState(() {});
   }
 
-  void _set(int v, int min, int max) {
-    final next = v < min ? min : (v > max ? max : v);
+  void _set(int value, int min, int max) {
+    final next = value < min ? min : (value > max ? max : value);
     setState(() => _price = next);
     _saver.set('pricePerMin', next);
   }
@@ -69,7 +66,6 @@ class _PriceStepState extends ConsumerState<PriceStep> {
       return;
     }
     setState(() => _busy = true);
-    // The default price counts as a choice: it is saved even when the host never touched it.
     _saver.set('pricePerMin', _price);
     final ok = await _saver.flush(fields: const <String>['pricePerMin']);
     if (!mounted) return;
@@ -88,9 +84,9 @@ class _PriceStepState extends ConsumerState<PriceStep> {
 
   @override
   Widget build(BuildContext context) {
-    final opts = optionsOf(ref.watch(hostOptionsProvider));
-    final min = opts?.priceMin ?? 5;
-    final max = opts?.priceMax ?? 100;
+    final options = optionsOf(ref.watch(hostOptionsProvider));
+    final min = options?.priceMin ?? 5;
+    final max = options?.priceMax ?? 100;
     final lock = EditLock.of(ctx.state.hostStatus);
     final locked = lock.priceHoursLocked;
     final banner = lock.banner(editableWhenLive: true);
@@ -166,11 +162,11 @@ class _PriceStepState extends ConsumerState<PriceStep> {
                       min: min.toDouble(),
                       max: max.toDouble(),
                       divisions: max - min,
-                      semanticFormatterCallback: (v) =>
-                          '${rupeesText(v.round())} per minute',
+                      semanticFormatterCallback: (value) =>
+                          '${rupeesText(value.round())} per minute',
                       onChanged: locked
                           ? null
-                          : (v) => _set(v.round(), min, max),
+                          : (value) => _set(value.round(), min, max),
                     ),
                   ),
                   IconButton.filledTonal(
@@ -205,13 +201,13 @@ class _PriceStepState extends ConsumerState<PriceStep> {
                 spacing: 8,
                 runSpacing: 4,
                 children: [
-                  for (final v in kQuickPrices)
-                    if (v >= min && v <= max)
+                  for (final value in kQuickPrices)
+                    if (value >= min && value <= max)
                       HfChip(
-                        key: ValueKey<String>('price-pick-$v'),
-                        label: rupeesText(v),
-                        selected: price == v,
-                        onTap: locked ? null : () => _set(v, min, max),
+                        key: ValueKey<String>('price-pick-$value'),
+                        label: rupeesText(value),
+                        selected: price == value,
+                        onTap: locked ? null : () => _set(value, min, max),
                       ),
                 ],
               ),
@@ -244,10 +240,7 @@ class _PriceStepState extends ConsumerState<PriceStep> {
           ),
         ),
         const SizedBox(height: 12),
-        Text(
-          PartBCopy.priceChangeAnytime,
-          style: HfText.of(context, HfText.note),
-        ),
+        Text(PartBCopy.priceChangeAnytime, style: HfText.of(context, HfText.note)),
       ],
     );
   }

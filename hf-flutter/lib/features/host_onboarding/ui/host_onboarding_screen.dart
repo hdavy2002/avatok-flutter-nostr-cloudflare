@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/api/api_error.dart';
+import '../../../core/config/flags.dart';
 import '../../../core/router/nav.dart';
 import '../../../core/router/routes.dart';
 import '../../../core/theme/hf_theme.dart';
@@ -43,6 +44,12 @@ class HostOnboardingScreen extends ConsumerStatefulWidget {
 class _HostOnboardingScreenState extends ConsumerState<HostOnboardingScreen> {
   String? _key;
 
+  bool get _standardPlan =>
+      hfStdPlanOn(ref.read(flagsProvider));
+
+  List<OnboardingStepDef> get _steps =>
+      onboardingSteps(standardPlan: _standardPlan);
+
   @override
   void initState() {
     super.initState();
@@ -60,7 +67,13 @@ class _HostOnboardingScreenState extends ConsumerState<HostOnboardingScreen> {
       final s = ref.read(onboardingStateProvider);
       final state = s.hasValue ? s.value : null;
       if (state != null) {
-        setState(() => _key = startStepKey(state, requested: _requested));
+        setState(
+          () => _key = startStepKey(
+            state,
+            requested: _requested,
+            standardPlan: _standardPlan,
+          ),
+        );
       }
     }
   }
@@ -87,16 +100,19 @@ class _HostOnboardingScreenState extends ConsumerState<HostOnboardingScreen> {
       // keep going: the next step reads the server again when it needs to
     }
     if (!mounted) return;
-    final i = onboardingStepIndex(_key);
-    if (i < 0 || i >= kOnboardingSteps.length - 1) return;
-    setState(() => _key = kOnboardingSteps[i + 1].key);
+    final steps = _steps;
+    final i = onboardingStepIndex(_key, standardPlan: _standardPlan);
+    if (i < 0 || i >= steps.length - 1) return;
+    setState(() => _key = steps[i + 1].key);
   }
 
   void _goTo(String key) {
-    if (onboardingStepIndex(key) >= 0) setState(() => _key = key);
+    if (onboardingStepIndex(key, standardPlan: _standardPlan) >= 0) {
+      setState(() => _key = key);
+    }
   }
 
-  int get _index => onboardingStepIndex(_key);
+  int get _index => onboardingStepIndex(_key, standardPlan: _standardPlan);
 
   bool get _atFirstStep => _key == null || _index <= 0;
 
@@ -104,13 +120,14 @@ class _HostOnboardingScreenState extends ConsumerState<HostOnboardingScreen> {
     if (_atFirstStep) {
       popOrHome(context);
     } else {
-      setState(() => _key = kOnboardingSteps[_index - 1].key);
+      setState(() => _key = _steps[_index - 1].key);
     }
   }
 
   @override
   Widget build(BuildContext context) {
     final async = ref.watch(onboardingStateProvider);
+    final standardPlan = hfStdPlanOn(ref.watch(flagsProvider));
     return PopScope(
       // Back always goes through _back: one step back, or (at the first step) pop, or Home when opened by a link.
       canPop: false,
@@ -127,7 +144,7 @@ class _HostOnboardingScreenState extends ConsumerState<HostOnboardingScreen> {
                 title: OnboardingCopy.screenTitle,
                 onBack: _back,
               ),
-              Expanded(child: _content(async)),
+              Expanded(child: _content(async, standardPlan)),
             ],
           ),
         ),
@@ -135,7 +152,10 @@ class _HostOnboardingScreenState extends ConsumerState<HostOnboardingScreen> {
     );
   }
 
-  Widget _content(AsyncValue<OnboardingServerState> async) {
+  Widget _content(
+    AsyncValue<OnboardingServerState> async,
+    bool standardPlan,
+  ) {
     return async.when(
       skipLoadingOnReload: true,
       skipLoadingOnRefresh: true,
@@ -150,15 +170,22 @@ class _HostOnboardingScreenState extends ConsumerState<HostOnboardingScreen> {
           onRetry: () => ref.invalidate(onboardingStateProvider),
         );
       },
-      data: _body,
+      data: (state) => _body(state, standardPlan),
     );
   }
 
-  Widget _body(OnboardingServerState state) {
-    _key ??= startStepKey(state, requested: _requested);
+  Widget _body(OnboardingServerState state, bool standardPlan) {
+    final steps = onboardingSteps(standardPlan: standardPlan);
+    if (_key == null || onboardingStepIndex(_key, standardPlan: standardPlan) < 0) {
+      _key = startStepKey(
+        state,
+        requested: _requested,
+        standardPlan: standardPlan,
+      );
+    }
     final key = _key!;
-    final index = onboardingStepIndex(key);
-    final def = index >= 0 ? kOnboardingSteps[index] : null;
+    final index = onboardingStepIndex(key, standardPlan: standardPlan);
+    final def = index >= 0 ? steps[index] : null;
     final builder = ref.watch(onboardingStepBuildersProvider)[key];
     final ctx = OnboardingStepContext(
       state: state,
@@ -173,7 +200,7 @@ class _HostOnboardingScreenState extends ConsumerState<HostOnboardingScreen> {
       children: [
         _ProgressHeader(
           index: index < 0 ? 0 : index,
-          total: kOnboardingSteps.length,
+          total: steps.length,
           group: def?.group.label ?? '',
         ),
         Expanded(

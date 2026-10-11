@@ -5,14 +5,15 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import SessionBridge from './SessionBridge';
 import WithdrawPanel from './WithdrawPanel'; // [HF-PAYOUT-1]
 import { API_BASE } from '../../lib/env';
-import { callsEnabled, fetchWallet, hfCall, inr, inr2, looksSignedOut, relDate, signInUrl, toMs, type HostPresence, type WalletInfo } from '../../lib/hfCallsApi';
+import { callsEnabled, fetchWallet, hfCall, hostPaise, looksSignedOut, relDate, signInUrl, toMs, type HostPresence, type WalletInfo } from '../../lib/hfCallsApi';
+import { formatPaise } from '../../lib/money';
 import '../../styles/hf-calls.css';
 
 const BEAT_MS = 5 * 60_000;
 const REFRESH_MS = 60_000;
 
 interface MeHost { slug: string | null; status: string; displayName: string | null; presence?: string | null }
-interface Row { id: string; status: string; handle: string; at: number | null; minutes: number; earned: number | null }
+interface Row { id: string; status: string; handle: string; at: number | null; minutes: number; earned: number | null; seconds?: number }
 interface Today { calls: number; minutes: number; earned: number }
 
 const STATUS_NOTE: Record<string, string> = {
@@ -26,13 +27,14 @@ const STATUS_NOTE: Record<string, string> = {
 
 const num = (v: unknown): number | null => (typeof v === 'number' && Number.isFinite(v) ? v : null);
 function normRow(x: Record<string, unknown>): Row {
-  const paise = num(x.hostEarningPaise);
+  const paise = num(x.hostEarningPaise) ?? num(x.earningPaise);
   return {
     id: String(x.id ?? Math.random()),
     status: String(x.status ?? ''),
     handle: String(x.callerHandle ?? x.handle ?? x.caller ?? 'A caller'),
     at: toMs((x.connectedAt ?? x.createdAt ?? x.startedAt ?? null) as number | string | null),
     minutes: num(x.billedMinutes) ?? 0,
+    seconds: num(x.billableSeconds) ?? undefined,
     earned: num(x.hostEarningRupees) ?? num(x.earnedRupees) ?? (paise != null ? paise / 100 : null),
   };
 }
@@ -50,7 +52,7 @@ function parseCalls(d: unknown): { rows: Row[]; today: Today } {
 }
 function rowText(r: Row): string {
   switch (r.status) {
-    case 'completed': return `${r.minutes} min${r.earned != null ? ` · ${inr(r.earned)}` : ''}`;
+    case 'completed': return `${r.seconds != null ? `${Math.floor(r.seconds / 60)} min ${r.seconds % 60} s` : `${r.minutes} min`}${r.earned != null ? ` · ${formatPaise(Math.round(r.earned * 100))}` : ''}`;
     case 'connected': return 'On a call now';
     case 'ringing_host': case 'ringing_caller': return 'Ringing';
     case 'host_declined': return 'You declined';
@@ -170,21 +172,31 @@ export default function HostDashboard() {
         <div className="hfc-stats">
           <div className="hfc-stat"><strong>{today.calls}</strong><span>calls</span></div>
           <div className="hfc-stat"><strong>{today.minutes}</strong><span>minutes</span></div>
-          <div className="hfc-stat"><strong>{(wallet?.mode === 'tokens' ? inr2 : inr)(today.earned)}</strong><span>earned today</span></div>
+          <div className="hfc-stat"><strong>{formatPaise(Math.round(today.earned * 100))}</strong><span>earned today</span></div>
         </div>
       </section>
 
-      {wallet?.host && (
+      {wallet?.host && (() => { const hp = hostPaise(wallet.host); return (
         <section className="hfc-card" aria-labelledby="hfc-earn">
           <h2 id="hfc-earn">Your earnings</h2>
+          <p className="hfc-sub" style={{ margin: 0 }}>{wallet.mode === 'rupees' ? 'Standard plan: you earn ₹2.00 for every connected minute.' : 'Your earnings use the rate agreed for each call.'}</p>
           <div className="hfc-stats">
-            <div className="hfc-stat"><strong>{(wallet.mode === 'tokens' ? inr2 : inr)(wallet.host.heldRupees)}</strong><span>held (releases after 7 days)</span></div>
-            <div className="hfc-stat"><strong>{(wallet.mode === 'tokens' ? inr2 : inr)(wallet.host.availableRupees)}</strong><span>available</span></div>
-            <div className="hfc-stat"><strong>{(wallet.mode === 'tokens' ? inr2 : inr)(wallet.host.testEarningsRupees)}</strong><span>from test credits, not withdrawable</span></div>
+            <div className="hfc-stat"><strong>{formatPaise(hp.pending)}</strong><span>pending (releases after 7 days)</span></div>
+            <div className="hfc-stat"><strong>{formatPaise(hp.available)}</strong><span>available to withdraw</span></div>
+            <div className="hfc-stat"><strong>{formatPaise(hp.total)}</strong><span>total earned</span></div>
+            {hp.test > 0 && <div className="hfc-stat"><strong>{formatPaise(hp.test)}</strong><span>from test credits, not withdrawable</span></div>}
           </div>
+          {(hp.openPayout > 0 || hp.paidOut > 0) && <p className="hfc-sub" style={{ margin: 0 }}>Withdrawals: {formatPaise(hp.openPayout)} in progress · {formatPaise(hp.paidOut)} paid out</p>}
+          {wallet.host?.payouts && wallet.host.payouts.length > 0 && (
+            <ul className="hfc-calls">
+              {wallet.host.payouts.map(p => (
+                <li key={p.id}><strong>Withdrawal · {p.status}</strong><span>{formatPaise(p.amountPaise)}</span><small>{relDate(p.paidAt ?? p.createdAt)}</small></li>
+              ))}
+            </ul>
+          )}
           <p className="hfc-sub" style={{ margin: 0 }}><a href="/wallet">See wallet and history</a></p>
         </section>
-      )}
+      ); })()}
 
       <WithdrawPanel onChanged={() => void loadCalls()} />
 

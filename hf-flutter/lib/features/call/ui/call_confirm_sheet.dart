@@ -14,6 +14,7 @@ import '../../../core/strings.dart';
 import '../../../core/theme/hf_theme.dart';
 import '../../../core/widgets/widgets.dart';
 import '../../demo/demo_data.dart'; // [HF-DEMO] remove with lib/features/demo
+import '../../explore/data/host_card.dart' show PriceTier;
 import '../data/call_api.dart';
 import '../data/call_models.dart';
 import '../data/call_telemetry.dart';
@@ -200,7 +201,7 @@ class _CallConfirmSheetState extends ConsumerState<CallConfirmSheet> {
         slug: widget.slug,
         ok: true,
         ms: sw.elapsedMilliseconds,
-        mode: started.isTokens ? 'tokens' : 'inr',
+        mode: started.isMetered ? 'rupees' : 'inr',
       );
       // Remembered before the screen opens, so killing the app right now still resumes the call.
       await ref.read(activeCallStoreProvider).save(started.callId);
@@ -349,23 +350,36 @@ class _CallConfirmSheetState extends ConsumerState<CallConfirmSheet> {
 
   Widget _body(CallEstimate est) {
     final problem = _problem;
-    final walletAmount = est.balance == null
+    final standardPlan = est.plan == 'standard' || est.tiers.isNotEmpty;
+    final startNeedLabel = est.startNeedLabel ??
+        (standardPlan ? formatPaise(est.ratePaise * 2) : null);
+    final rawBalance = est.balance?.trim();
+    final parsedBalance = rawBalance == null
         ? null
-        : num.tryParse(est.balance!);
+        : num.tryParse(rawBalance.replaceAll('₹', '').replaceAll(',', ''));
+    final walletLabel = rawBalance == null
+        ? null
+        : rawBalance.startsWith('₹')
+        ? rawBalance
+        : parsedBalance == null
+        ? rawBalance
+        : formatRupees(parsedBalance);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         _Tiles(
-          rate: '${Money.rupees(est.ratePerMinRupees)}/min',
-          walletCaption: walletAmount == null
+          rate: formatPaiseRate(est.ratePaise),
+          walletCaption: walletLabel == null
               ? CallStrings.yourWalletPlain
-              : CallStrings.yourWalletAmount(
-                  Money.tokensWithUnit(walletAmount),
-                ),
-          walletValue: est.isTokens ? _aboutMinutes(est) : null,
+              : CallStrings.yourWalletAmount(walletLabel),
+          walletValue: est.isMetered ? _aboutMinutes(est) : null,
         ),
+        if (est.tiers.isNotEmpty) ...[
+          const SizedBox(height: HfSpacing.md),
+          _RateCard(tiers: est.tiers),
+        ],
         _gap,
-        _Steps(name: _firstName),
+        _Steps(name: _firstName, standardPlan: standardPlan),
         _gap,
         if (est.hasDebt)
           _Warning(
@@ -376,9 +390,8 @@ class _CallConfirmSheetState extends ConsumerState<CallConfirmSheet> {
           )
         else if (!est.canStart)
           _Warning(
-            text:
-                'You need at least 2 minutes of balance to start. Add money to call.',
-            actionLabel: CallStrings.addTokens,
+            text: CallStrings.needToStart(startNeedLabel),
+            actionLabel: CallStrings.addMoney,
             onAction: () =>
                 _emit(const CallSheetOutcome(CallSheetAction.wallet)),
           )
@@ -407,7 +420,9 @@ class _CallConfirmSheetState extends ConsumerState<CallConfirmSheet> {
         ],
         const SizedBox(height: HfSpacing.sm),
         Text(
-          CallStrings.minBalanceNote,
+          standardPlan
+              ? CallStrings.startRule(startNeedLabel)
+              : CallStrings.legacyStartRule,
           textAlign: TextAlign.center,
           style: HfText.of(context, HfText.note.copyWith(fontSize: 14)),
         ),
@@ -600,11 +615,59 @@ class _Tile extends StatelessWidget {
   }
 }
 
+class _RateCard extends StatelessWidget {
+  const _RateCard({required this.tiers});
+
+  final List<PriceTier> tiers;
+
+  @override
+  Widget build(BuildContext context) {
+    return HfCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            CallStrings.rateCardTitle,
+            style: HfText.of(context, HfText.bodyStrong),
+          ),
+          const SizedBox(height: HfSpacing.xs),
+          Text(
+            CallStrings.billedPerSecond,
+            style: HfText.of(context, HfText.note),
+          ),
+          const SizedBox(height: HfSpacing.md),
+          for (final tier in tiers)
+            Padding(
+              padding: const EdgeInsets.only(top: HfSpacing.xs),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Flexible(
+                    child: Text(
+                      tierBandLabel(tier),
+                      style: HfText.of(context, HfText.body),
+                    ),
+                  ),
+                  const SizedBox(width: HfSpacing.md),
+                  Text(
+                    tier.rateLabel,
+                    style: HfText.of(context, HfText.bodyStrong),
+                  ),
+                ],
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
 /// The three numbered steps (sky / peach / blush circles).
 class _Steps extends StatelessWidget {
-  const _Steps({required this.name});
+  const _Steps({required this.name, required this.standardPlan});
 
   final String name;
+  final bool standardPlan;
 
   @override
   Widget build(BuildContext context) {
@@ -642,7 +705,10 @@ class _Steps extends StatelessWidget {
         _Step(
           n: 3,
           tint: HfTint.blush,
-          child: Text(CallStrings.stepEnd, style: base),
+          child: Text(
+            standardPlan ? CallStrings.stepEnd : CallStrings.legacyStepEnd,
+            style: base,
+          ),
         ),
       ],
     );
@@ -874,7 +940,7 @@ class _ProblemCard extends StatelessWidget {
         );
       case CallProblemKind.wallet:
         action = HfButton(
-          label: CallStrings.addTokens,
+          label: CallStrings.addMoney,
           icon: Icons.account_balance_wallet_rounded,
           onPressed: () =>
               onOutcome(const CallSheetOutcome(CallSheetAction.wallet)),

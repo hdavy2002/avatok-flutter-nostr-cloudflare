@@ -13,7 +13,7 @@ Same keys and order as the website (`web/src/islands/host-onboarding/data.ts`), 
 | Key | Group | Built by |
 |---|---|---|
 | `welcome`, `phone`, `aadhaar`, `selfie`, `payout` | Start, Verify | part A (`ui/steps/`) |
-| `avatar`, `about`, `languages`, `topics`, `price`, `hours` | Profile | **part B** |
+| `avatar`, `about`, `languages`, `topics`, `price`, `hours` | Profile | **part B** (`price` is included only while `hfStdPlan.enabled` is false) |
 | `voice` | Voice | **part B** |
 | `review`, `generating`, `preview`, `done` | Finish | **part B** |
 

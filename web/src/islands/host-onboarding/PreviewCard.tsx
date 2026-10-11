@@ -3,12 +3,13 @@
 import { TOPICS } from './data';
 import type { Avatar, Draft } from './types';
 import Icon from './Icon';
+import { stdRateLabel, tenMinuteLabel } from '../../lib/hfStdPlan';
+import { isOnboardingStandardPlan } from './api_real';
 
 const WAVE = [20, 35, 55, 30, 65, 90, 50, 35, 70, 45, 25, 55, 80, 40, 65, 100, 70, 45, 30, 60, 80, 50, 35, 65, 40, 25, 50, 75, 45, 30];
 
 export default function PreviewCard({ draft, avatar }: { draft: Draft; avatar: Avatar | null }) {
   const name = draft.displayName.trim() || 'Your name';
-  const price = draft.pricePerMin;
   const topicLabel = (slug: string) => TOPICS.find(t => t.slug === slug)?.label ?? slug;
   return (
     <div className="people-grid hob-preview-grid">
@@ -49,7 +50,7 @@ export default function PreviewCard({ draft, avatar }: { draft: Draft; avatar: A
           </div>
           <div className="profile-card-footer">
             <div className="person-actions">
-              <div className="profile-card-price"><strong className="person-price">₹{price}/min</strong><small>10 min ≈ ₹{price * 10}</small></div>
+              <div className="profile-card-price">{isOnboardingStandardPlan() ? <><strong className="person-price">{stdRateLabel()}</strong><small>10 min ≈ {tenMinuteLabel()}</small></> : <strong className="person-price">{`₹${draft.pricePerMin}/min`}</strong>}</div>
               <button type="button" className="sample-call hob-call-off" disabled><Icon name="phone" size={22} />Call</button>
             </div>
           </div>

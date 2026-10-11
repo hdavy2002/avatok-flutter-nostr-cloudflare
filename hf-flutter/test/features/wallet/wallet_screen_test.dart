@@ -55,9 +55,9 @@ void main() {
     },
   );
 
-  group('token wallet', () {
+  group('rupee wallet', () {
     testWidgets(
-      'shows the balance with 2 decimals, the value breakdown, test tokens and history',
+      'shows the balance with 2 decimals, test credit and history',
       (tester) async {
         await pumpWallet(tester, api: walletApi(), billing: billing);
         expect(find.text('Balance'), findsOneWidget);
@@ -69,7 +69,11 @@ void main() {
         expect(find.text('−₹3.20'), findsOneWidget);
         expect(find.text('Added money'), findsOneWidget);
         expect(find.textContaining('Google Play'), findsWidgets);
-        expect(find.text('+₹100.00'), findsOneWidget);
+        expect(find.text('+₹101.69'), findsOneWidget);
+        expect(
+          find.textContaining(RegExp('token', caseSensitive: false)),
+          findsNothing,
+        );
       },
     );
 
@@ -137,7 +141,7 @@ void main() {
       });
       await pumpWallet(tester, api: walletApi(), billing: billing);
       // 45.20 / 15 = 3.01
-      expect(minutesText(tester), 'About 3 minutes at ₹15/min');
+      expect(minutesText(tester), 'About 3 minutes at ₹15.00/min');
     });
 
     testWidgets('with no call yet, the cheapest cached host sets the rate', (
@@ -149,13 +153,13 @@ void main() {
       });
       await pumpWallet(tester, api: walletApi(), billing: billing);
       // 45.20 / 7 = 6.45
-      expect(minutesText(tester), 'About 6 minutes at ₹7/min');
+      expect(minutesText(tester), 'About 6 minutes at ₹7.00/min');
     });
 
     testWidgets('with nothing known, the rate is Rs 10', (tester) async {
       SharedPreferences.setMockInitialValues(<String, Object>{});
       await pumpWallet(tester, api: walletApi(), billing: billing);
-      expect(minutesText(tester), 'About 4 minutes at ₹10/min');
+      expect(minutesText(tester), 'About 4 minutes at ₹10.00/min');
     });
 
     testWidgets('a zero balance says how to start', (tester) async {
@@ -648,8 +652,8 @@ void main() {
               'status': 'cancelled',
             });
         await pumpWallet(tester, api: api, billing: billing);
-        expect(find.text('₹50 · Waiting for review'), findsOneWidget);
-        expect(find.text('₹20 · Not approved'), findsOneWidget);
+        expect(find.text('₹50.00 · Waiting for review'), findsOneWidget);
+        expect(find.text('₹20.00 · Not approved'), findsOneWidget);
         expect(find.text('Money was already used.'), findsOneWidget);
         expect(
           find.text('Cancel request'),
@@ -689,7 +693,7 @@ void main() {
             'amount': 120,
           });
       await pumpWallet(tester, api: api, billing: billing);
-      expect(find.text('Unused money that can go back: ₹120'), findsOneWidget);
+      expect(find.text('Unused money that can go back: ₹120.00'), findsOneWidget);
       await tester.tap(find.byKey(const ValueKey<String>('refund-money')));
       await tester.pumpAndSettle();
       await tester.tap(find.text('Yes, ask'));
@@ -701,6 +705,37 @@ void main() {
   });
 
   group('parsing and rules', () {
+    test('rupee wallet keeps paise, reserves, debt and purchase amounts', () {
+      final d = WalletData.fromJson(
+        rupeeWallet(
+          balancePaise: 10169,
+          availablePaise: 10000,
+          testPaise: 0,
+          debtPaise: 5,
+        ),
+      );
+      expect(d.rupeeMode, isTrue);
+      expect(d.spendablePaise, 10000);
+      expect(d.reservedPaise, 169);
+      expect(d.hasDebt, isTrue);
+      expect(d.history.first.amountText, '+₹101.69');
+      expect(d.purchases.single.amounts!.line,
+          'Total ₹120.00 · GST included ₹18.31 · Added to wallet ₹101.69');
+    });
+
+    test('GST-inclusive pack split uses integer paise', () {
+      final split = splitGstInclusive(12000);
+      expect(split.walletPaise, 10169);
+      expect(split.gstPaise, 1831);
+      expect(split.walletPaise + split.gstPaise, split.paidPaise);
+    });
+
+    test('verify response exposes the public rupee breakdown', () {
+      final result = VerifyResult.fromJson(verifyAnswer());
+      expect(result.breakdownLine,
+          'Total ₹120.00 · GST included ₹18.31 · Added to wallet ₹101.69');
+    });
+
     test(
       'the server\'s token strings are shown as sent when micro amounts are missing',
       () {

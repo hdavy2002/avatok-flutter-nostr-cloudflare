@@ -25,11 +25,13 @@ import { walletOp } from "./wallet";
 import { classifyAdminQuery, searchable } from "../lib/hf_admin_search";
 import { searchHfUsers, resolvePhone } from "../lib/hf_admin_users";
 import { readConfig } from "./config";
-import { readHfTokenConfig } from "../lib/hf_token_config";
-import { formatTokens, formatDuration } from "../lib/hf_token_math";
+import { readHfTokenConfig, readHfStdPlan, type HfStdPlan } from "../lib/hf_token_config";
+import { formatTokens, formatDuration, formatRupees, tierBreakdown, chargePaise, validTariff, START_RESERVE_MINUTES as TOK_START_MINUTES, STD_TECH_MAX_SECONDS, type Tariff } from "../lib/hf_token_math";
+import { hfStdPlanPublic } from "../lib/hf_token_config";
 import { balanceSummary, availableLots, getLots, release as releaseTokenLots } from "../lib/hf_token_ledger";
 import { prepareTokenStart, estimateForHost, activeValuePaise } from "../lib/hf_token_calls";
 import { hostSummary, listCallEarnings } from "../lib/hf_host_ledger";
+import { correctCallCharge } from "../lib/hf_call_corrections"; // [HF-STD-PLAN-1] rule 6
 import { grantTestLot, migrateTestCreditsToLots } from "../lib/hf_token_test_credits";
 import {
   HF_CALL_APP, WALLET_APP, callsConfigured, claimHost, releaseHost, hasLaneAccess, isBlockedEitherWay, hfReserve, hfRelease, hfWalletBalance, type HfCallRow,
@@ -103,14 +105,18 @@ async function startCall(req: Request, env: Env): Promise<Response> {
 
   const open = await env.DB_META.prepare(
     "SELECT 1 AS x FROM hf_calls WHERE caller_uid=?1 AND status IN ('ringing_host','ringing_caller','connected') AND created_at>?2 LIMIT 1",
-  ).bind(uid, Date.now() - 4 * 3600_000).first();
+  ).bind(uid, Date.now() - 25 * 3600_000).first(); // [HF-STD-PLAN-1] cover the explicit 24 h operational safety ceiling
   if (open) return err(409, "call_in_progress", "You already have a call in progress.");
 
   const rate = Math.trunc(Number(host.price_per_min));
-  if (!(rate > 0)) return UNAVAILABLE();
   const callId = crypto.randomUUID();
   // [HF-TOK-CALLS-1] hfTokensEnabled on: the whole call runs on token lots (reserve, per-second billing, host paid in paise). Flag off: old path below.
-  const tk = readHfTokenConfig((await readConfig(env).catch(() => ({}))) as Record<string, unknown>);
+  // [HF-STD-PLAN-1] Standard plan on: the host's own price is ignored; every call uses the Standard tariff on the rupee wallet (always the lot path).
+  const rawCfg = (await readConfig(env).catch(() => ({}))) as Record<string, unknown>;
+  const tk = readHfTokenConfig(rawCfg);
+  const std = readHfStdPlan(rawCfg);
+  if (std.enabled) return await startTokenCall(env, { uid, hostUid: host.uid, lane, rate: std.tariff.tiers[0].paisePerMin / 100, callId, tk, std });
+  if (!(rate > 0)) return UNAVAILABLE();
   if (tk.enabled) return await startTokenCall(env, { uid, hostUid: host.uid, lane, rate, callId, tk });
   const needed = rate * START_RESERVE_MINUTES;
 
@@ -168,10 +174,10 @@ async function startCall(req: Request, env: Env): Promise<Response> {
 
 // [HF-TOK-CALLS-1] Token-mode start. Debt and balance gates + lot reservation happen in prepareTokenStart; the hf_calls row carries the
 // pricing snapshot (rate, call cost per minute, host share, versions) so a later config change never alters this call.
-async function startTokenCall(env: Env, a: { uid: string; hostUid: string; lane: string | null; rate: number; callId: string; tk: ReturnType<typeof readHfTokenConfig> }): Promise<Response> {
+async function startTokenCall(env: Env, a: { uid: string; hostUid: string; lane: string | null; rate: number; callId: string; tk: ReturnType<typeof readHfTokenConfig>; std?: HfStdPlan }): Promise<Response> {
   const { uid, hostUid, lane, rate, callId, tk } = a;
-  const ratePaise = rate * 100;
-  const chk = await prepareTokenStart(env, { uid, callId, ratePaise, tk });
+  const ratePaise = Math.round(rate * 100);
+  const chk = await prepareTokenStart(env, { uid, callId, ratePaise, tk, std: a.std ?? null });
   if (!chk.ok) return err(chk.status, chk.error, chk.message, chk.extra ?? {});
   const undo = async (claimed: boolean) => {
     if (claimed) await releaseHost(env, hostUid).catch(() => undefined);
@@ -181,9 +187,10 @@ async function startTokenCall(env: Env, a: { uid: string; hostUid: string; lane:
   const maxMinutes = Math.floor(chk.maxSeconds / 60);
   try {
     await env.DB_META.prepare(
-      `INSERT INTO hf_calls (id, caller_uid, host_uid, rate_paise, status, lane, created_at, conference_name, call_cost_paise_per_min, host_share_bps, tax_mode, split_rule_version)
-       VALUES (?1,?2,?3,?4,'ringing_host',?5,?6,?7,?8,?9,?10,?11)`,
-    ).bind(callId, uid, hostUid, ratePaise, lane, Date.now(), `hf_${callId.replace(/-/g, "")}`, chk.snapshot.callCostPaisePerMin, chk.snapshot.hostShareBps, chk.snapshot.taxMode, chk.snapshot.splitRuleVersion).run();
+      `INSERT INTO hf_calls (id, caller_uid, host_uid, rate_paise, status, lane, created_at, conference_name, call_cost_paise_per_min, host_share_bps, tax_mode, split_rule_version, pricing_snapshot)
+       VALUES (?1,?2,?3,?4,'ringing_host',?5,?6,?7,?8,?9,?10,?11,?12)`,
+    ).bind(callId, uid, hostUid, chk.snapshot.ratePaise, lane, Date.now(), `hf_${callId.replace(/-/g, "")}`, chk.snapshot.callCostPaisePerMin, chk.snapshot.hostShareBps, chk.snapshot.taxMode, chk.snapshot.splitRuleVersion,
+      chk.snapshot.std ? JSON.stringify(chk.snapshot.std) : null).run();
   } catch (e) {
     await undo(true);
     await trackException(env, e, { uid, route: "/api/hf/calls", handled: true, app_name: HF_CALL_APP, extra: { area: "hf_calls", step: "insert_tokens" } });
@@ -194,7 +201,7 @@ async function startTokenCall(env: Env, a: { uid: string; hostUid: string; lane:
       method: "POST",
       body: JSON.stringify({
         callId, callerUid: uid, hostUid, rateRupees: rate, reservedRupees: 0, testReservedRupees: 0, fundsRupees: 0, maxMinutes, limitReason: chk.limitReason,
-        tokens: { ratePaise, callCostPaisePerMin: chk.snapshot.callCostPaisePerMin, hostShareBps: chk.snapshot.hostShareBps, maxSeconds: chk.maxSeconds },
+        tokens: { ratePaise: chk.snapshot.ratePaise, callCostPaisePerMin: chk.snapshot.callCostPaisePerMin, hostShareBps: chk.snapshot.hostShareBps, maxSeconds: chk.maxSeconds, std: chk.snapshot.std ?? null },
       }),
     });
     if (!r.ok) throw new Error(`init ${r.status}`);
@@ -204,8 +211,8 @@ async function startTokenCall(env: Env, a: { uid: string; hostUid: string; lane:
     await trackException(env, e, { uid, route: "/api/hf/calls", handled: true, app_name: HF_CALL_APP, extra: { area: "hf_calls", step: "init_tokens" } });
     return err(502, "call_failed", "We couldn't place the call. Please try again.");
   }
-  void track(env, uid, "hf_call_started", HF_CALL_APP, { area: "hf_call", call_id: callId, rate_rupees: rate, lane, max_minutes: maxMinutes, max_seconds: chk.maxSeconds, mode: "tokens" }).catch(() => undefined);
-  return json({ ok: true, callId, status: "ringing_host", rate, maxMinutes, maxSeconds: chk.maxSeconds, mode: "tokens" });
+  void track(env, uid, "hf_call_started", HF_CALL_APP, { area: "hf_call", call_id: callId, rate_rupees: rate, lane, max_minutes: maxMinutes, max_seconds: chk.maxSeconds, mode: "tokens", plan: chk.snapshot.std ? "standard" : "host_rate" }).catch(() => undefined);
+  return json({ ok: true, callId, status: "ringing_host", rate, maxMinutes, maxSeconds: chk.maxSeconds, mode: "tokens", plan: chk.snapshot.std ? "standard" : "host_rate" });
 }
 
 // ── GET /api/hf/calls/:id ────────────────────────────────────────────────────
@@ -228,11 +235,20 @@ async function getCall(req: Request, env: Env, id: string): Promise<Response> {
   return json({
     id: c.id, status: c.status, hostSlug: h?.slug ?? null, hostName: h?.display_name ?? null, rate: rupees(c.rate_paise),
     connectedAt: c.connected_at, endedAt: c.ended_at, billedMinutes: c.billed_minutes, chargedRupees: rupees(c.charged_paise), endReason: c.end_reason, canReview,
-    // [HF-TOK-CALLS-1] token calls: seconds billed and tokens spent for the CALLER (the host never sees tokens; the host gets earningRupees).
+    // [HF-TOK-CALLS-1] token calls: seconds billed for both; [HF-STD-PLAN-1] the CALLER sees the rupee charge (and the per-band breakdown on a
+    // Standard call), the HOST sees only his rupee earnings. Margins and phone costs are admin-only.
     ...(tokCall(c)
       ? c.caller_uid === u.uid
-        ? { billableSeconds: tokCall(c)!.secs, tokensSpent: formatTokens(tokCall(c)!.micro, 2) }
-        : { billableSeconds: tokCall(c)!.secs, earningRupees: rupees(c.host_earning_paise) }
+        ? (() => {
+          const x = c as unknown as { consumed_value_paise?: number | null; pricing_snapshot?: string | null };
+          const charged = Math.max(0, Math.trunc(Number(x.consumed_value_paise ?? c.charged_paise ?? 0)));
+          const t = stdTariffOf(x.pricing_snapshot);
+          return {
+            billableSeconds: tokCall(c)!.secs, chargedPaise: charged, charged: formatRupees(charged), plan: t ? "standard" : "host_rate",
+            ...(t ? { tiers: tierBreakdown(t, tokCall(c)!.secs) } : {}),
+          };
+        })()
+        : { billableSeconds: tokCall(c)!.secs, earningPaise: Math.max(0, Math.trunc(Number(c.host_earning_paise ?? 0))), earningRupees: rupees(c.host_earning_paise), earning: formatRupees(Math.max(0, Math.trunc(Number(c.host_earning_paise ?? 0)))) }
       : {}),
   }, 200, { "cache-control": "private, no-store" });
 }
@@ -256,8 +272,13 @@ async function walletGet(req: Request, env: Env): Promise<Response> {
   const u = await requireUser(req, env);
   if (isFail(u)) return err(u.status, u.error, u.error);
   // [HF-TOK-CALLS-1] token mode: callers see tokens (2 decimals) + the per-value breakdown + any amount owed; hosts see rupees only.
-  const tkCfg = readHfTokenConfig((await readConfig(env).catch(() => ({}))) as Record<string, unknown>);
-  if (tkCfg.enabled) return await walletGetTokens(env, u.uid, tkCfg);
+  const cfgAll = (await readConfig(env).catch(() => ({}))) as Record<string, unknown>;
+  const tkCfg = readHfTokenConfig(cfgAll);
+  if (tkCfg.enabled) {
+    return readHfStdPlan(cfgAll).enabled
+      ? await walletGetStandard(env, u.uid, tkCfg, cfgAll)
+      : await walletGetTokens(env, u.uid, tkCfg);
+  }
   // [HF-WALLET-1] paid (withdrawable) money and spend-only test credits are reported separately; host block only for hosts.
   const snap = await walletOp(env, u.uid, { op: "balance", uid: u.uid });
   const paidBalance = snap.status === 200 ? Math.max(0, Math.trunc(Number(snap.body?.balance ?? 0))) : 0;
@@ -303,13 +324,17 @@ async function walletGet(req: Request, env: Env): Promise<Response> {
 }
 
 const rs = (paise: number) => Math.round(paise) / 100;
+/** [HF-STD-PLAN-1] The Standard tariff frozen on a call row, or null for an old host-rate call. */
+function stdTariffOf(snapshot: string | null | undefined): Tariff | null {
+  if (!snapshot) return null;
+  try { const j = JSON.parse(snapshot); return j && j.plan === "std" && validTariff(j.tariff) ? (j.tariff as Tariff) : null; } catch { return null; }
+}
 async function walletGetTokens(env: Env, uid: string, tk: ReturnType<typeof readHfTokenConfig>): Promise<Response> {
   const [sum, isHostRow, allLots] = await Promise.all([
     balanceSummary(env, uid),
     env.DB_META.prepare("SELECT 1 AS x FROM hf_hosts WHERE uid=?1").bind(uid).first().catch(() => null),
     getLots(env, uid),
   ]);
-  // tokens in `test` lots (admin test credits): the plain web still lets people with these call (HF-APP-D11), so it reads testBalance.
   const testMicro = allLots.filter((l) => l.kind === "test").reduce((t, l) => t + l.leftMicro, 0);
   type H = { at: number; kind: string; tokens?: string; label: string; callId?: string };
   const hist: H[] = [];
@@ -340,7 +365,7 @@ async function walletGetTokens(env: Env, uid: string, tk: ReturnType<typeof read
       pendingPaise: hs.pendingPaise, availablePaise: hs.availablePaise, totalEarnedPaise: hs.earnedPaise, testEarningsPaise: hs.testPaise,
       openPayoutPaise: hs.openPayoutPaise, paidOutPaise: hs.paidOutPaise,
       pendingRupees: rs(hs.pendingPaise), availableRupees: rs(hs.availablePaise), totalEarnedRupees: rs(hs.earnedPaise), testEarningsRupees: rs(hs.testPaise),
-      heldRupees: rs(hs.pendingPaise), lifetimePaidEarnings: rs(hs.earnedPaise), // same names the old host block used, now with paise
+      heldRupees: rs(hs.pendingPaise), lifetimePaidEarnings: rs(hs.earnedPaise),
       perCall: per.map((p) => ({ callId: p.callId, at: p.at, earnedPaise: p.paidPaise + p.testPaise, paidPaise: p.paidPaise, testPaise: p.testPaise, availableAt: p.availableAt })),
       payouts: payouts.map((p) => ({ id: p.id, amountPaise: Number(p.amount_rupees) * 100, status: p.status, createdAt: Number(p.created_at), paidAt: p.paid_at == null ? null : Number(p.paid_at) })),
     };
@@ -353,8 +378,91 @@ async function walletGetTokens(env: Env, uid: string, tk: ReturnType<typeof read
       debt: { tokens: formatTokens(sum.debtMicro, 2), micro: sum.debtMicro, valuePaise: sum.debtValuePaise, open: sum.debtValuePaise > 0 || sum.debtMicro > 0 },
       activeValuePaisePerToken: await activeValuePaise(env, tk),
     },
-    // legacy fields kept so an older client renders zeros instead of breaking
     balanceRupees: 0, testCredits: true, paidBalance: 0, testBalance: Number(formatTokens(testMicro, 2)), spendable: 0,
+    ...(host ? { host } : {}), history: hist.slice(0, 50),
+  }, 200, { "cache-control": "private, no-store" });
+}
+
+async function walletGetStandard(env: Env, uid: string, tk: ReturnType<typeof readHfTokenConfig>, cfgAll: Record<string, unknown>): Promise<Response> {
+  const [sum, isHostRow, allLots] = await Promise.all([
+    balanceSummary(env, uid),
+    env.DB_META.prepare("SELECT 1 AS x FROM hf_hosts WHERE uid=?1").bind(uid).first().catch(() => null),
+    getLots(env, uid),
+  ]);
+  // [HF-STD-PLAN-1] Every amount below is RUPEES in paise (amountPaise, signed) with a ready "+₹101.69" string. `tokens` stays only as a legacy
+  // copy of the same rupee figure for app builds that still read it.
+  type H = { at: number; kind: string; amountPaise: number; amount: string; tokens?: string; label: string; callId?: string;
+    purchase?: { paidPaise: number; gstPaise: number; walletPaise: number; orderId: string | null } };
+  const hist: H[] = [];
+  const sign = (p: number, owed = false) => `${p < 0 ? "-" : owed ? "" : "+"}${formatRupees(Math.abs(p))}`;
+  const led = (await env.DB_META.prepare(
+    // A call-charge correction writes two rows (the credit and the "Call charge corrected" marker): show only the marker, linked to the call.
+    `SELECT l.kind, l.delta_micro, l.rupee_value_paise, l.created_at, l.lot_id, l.call_id, t.paid_paise, t.gst_paise, t.provider_ref
+       FROM hf_token_ledger l LEFT JOIN hf_token_lots t ON t.id = l.lot_id
+      WHERE l.uid=?1 AND l.kind IN ('purchase','admin_adjust','refund_revoke','debt_create','debt_clear','call_refund')
+        AND NOT (l.kind IN ('purchase','admin_adjust') AND l.note LIKE 'call_refund:%')
+        AND NOT (l.kind='admin_adjust' AND l.note = 'hf_std_migration') ORDER BY l.created_at DESC LIMIT 50`,
+  ).bind(uid).all<{ kind: string; delta_micro: number; rupee_value_paise: number; created_at: number; lot_id: string | null; call_id: string | null; paid_paise: number | null; gst_paise: number | null; provider_ref: string | null }>().catch(() => ({ results: [] }))).results ?? [];
+  const lbl: Record<string, string> = {
+    purchase: "Money added", admin_adjust: "Test credit added", refund_revoke: "Money removed (refund)", debt_create: "Amount owed after a refund",
+    debt_clear: "Amount owed paid from new money", call_refund: "Call charge corrected",
+  };
+  for (const l of led) {
+    const neg = Number(l.delta_micro) < 0 || l.kind === "refund_revoke" || l.kind === "debt_clear";
+    const v = Math.abs(Math.trunc(Number(l.rupee_value_paise ?? 0)));
+    const amt = l.kind === "debt_create" ? v : neg ? -v : v;
+    hist.push({
+      at: Number(l.created_at), kind: l.kind, amountPaise: amt, amount: sign(amt, l.kind === "debt_create"), tokens: (amt / 100).toFixed(2), label: lbl[l.kind] ?? l.kind,
+      ...(l.kind === "call_refund" && l.call_id ? { callId: l.call_id } : {}),
+      ...(l.kind === "purchase" ? { purchase: { paidPaise: Number(l.paid_paise ?? 0), gstPaise: Number(l.gst_paise ?? 0), walletPaise: v, orderId: l.provider_ref } } : {}),
+    });
+  }
+  const calls = (await env.DB_META.prepare(
+    `SELECT c.id, c.created_at, c.ended_at, c.billable_seconds, c.consumed_value_paise, (SELECT display_name FROM hf_hosts h WHERE h.uid=c.host_uid) AS host_name
+       FROM hf_calls c WHERE c.caller_uid=?1 AND c.status='completed' AND c.tokens_spent_micro IS NOT NULL AND c.billable_seconds>0 ORDER BY c.created_at DESC LIMIT 50`,
+  ).bind(uid).all<{ id: string; created_at: number; ended_at: number | null; billable_seconds: number; consumed_value_paise: number | null; host_name: string | null }>().catch(() => ({ results: [] }))).results ?? [];
+  for (const c of calls) {
+    const p = -Math.max(0, Math.trunc(Number(c.consumed_value_paise ?? 0)));
+    hist.push({ at: Number(c.ended_at ?? c.created_at), kind: "call_spent", amountPaise: p, amount: sign(p), tokens: (p / 100).toFixed(2), label: `Call with ${callerHandle(c.host_name)} (${formatDuration(Number(c.billable_seconds))})`, callId: c.id });
+  }
+  hist.sort((a, b) => b.at - a.at);
+  const testPaise = allLots.filter((l) => l.kind === "test").reduce((t, l) => t + Math.floor((l.leftMicro * l.valuePaisePerToken) / 1_000_000), 0);
+
+  let host: Record<string, unknown> | undefined;
+  if (isHostRow) {
+    const [hs, per] = await Promise.all([hostSummary(env, uid), listCallEarnings(env, uid, 50)]);
+    const payouts = (await env.DB_META.prepare("SELECT id, amount_rupees, status, created_at, paid_at FROM hf_payout_requests WHERE host_uid=?1 AND NOT (status='cancelled' AND reject_reason LIKE 'system:%') ORDER BY created_at DESC LIMIT 50")
+      .bind(uid).all<{ id: string; amount_rupees: number; status: string; created_at: number; paid_at: number | null }>().catch(() => ({ results: [] }))).results ?? [];
+    host = {
+      currency: "INR",
+      pendingPaise: hs.pendingPaise, availablePaise: hs.availablePaise, totalEarnedPaise: hs.earnedPaise, testEarningsPaise: hs.testPaise,
+      openPayoutPaise: hs.openPayoutPaise, paidOutPaise: hs.paidOutPaise,
+      pendingRupees: rs(hs.pendingPaise), availableRupees: rs(hs.availablePaise), totalEarnedRupees: rs(hs.earnedPaise), testEarningsRupees: rs(hs.testPaise),
+      heldRupees: rs(hs.pendingPaise), lifetimePaidEarnings: rs(hs.earnedPaise), // same names the old host block used, now with paise
+      perCall: per.map((p) => ({ callId: p.callId, at: p.at, earnedPaise: p.paidPaise + p.testPaise, paidPaise: p.paidPaise, testPaise: p.testPaise, availableAt: p.availableAt })),
+      payouts: payouts.map((p) => ({ id: p.id, amountPaise: Number(p.amount_rupees) * 100, status: p.status, createdAt: Number(p.created_at), paidAt: p.paid_at == null ? null : Number(p.paid_at) })),
+    };
+  }
+  return json({
+    mode: "rupees",
+    // [HF-STD-PLAN-1] The wallet in rupees (integer paise + display strings). Reserved = held for a call in progress.
+    wallet: {
+      currency: "INR",
+      balancePaise: sum.totalPaise, availablePaise: sum.availablePaise, reservedPaise: Math.max(0, sum.totalPaise - sum.availablePaise),
+      paidPaise: sum.availablePaidPaise, testPaise, debtPaise: sum.debtValuePaise,
+      balance: formatRupees(sum.totalPaise), available: formatRupees(sum.availablePaise), test: formatRupees(testPaise), debt: formatRupees(sum.debtValuePaise),
+      debtOpen: sum.debtValuePaise > 0 || sum.debtMicro > 0,
+    },
+    plan: hfStdPlanPublic(cfgAll),
+    // legacy copy for app builds before HF-STD-PLAN-1: the same RUPEE figures as plain numbers with 2 decimals (no token values any more).
+    tokens: {
+      balance: (sum.totalPaise / 100).toFixed(2), balanceMicro: sum.totalMicro, testTokens: (testPaise / 100).toFixed(2), available: (sum.availablePaise / 100).toFixed(2), availableMicro: sum.availableMicro,
+      byValue: sum.byValue.map((b) => ({ valuePaisePerToken: b.valuePaisePerToken, valueRupees: (b.valuePaisePerToken / 100).toFixed(2), tokens: formatTokens(b.micro, 2), micro: b.micro })),
+      debt: { tokens: formatTokens(sum.debtMicro, 2), micro: sum.debtMicro, valuePaise: sum.debtValuePaise, open: sum.debtValuePaise > 0 || sum.debtMicro > 0 },
+      activeValuePaisePerToken: await activeValuePaise(env, tk),
+    },
+    // legacy fields kept so an older client renders zeros instead of breaking
+    balanceRupees: 0, testCredits: true, paidBalance: 0, testBalance: testPaise / 100, spendable: 0,
     ...(host ? { host } : {}),
     history: hist.slice(0, 50),
   }, 200, { "cache-control": "private, no-store" });
@@ -370,7 +478,23 @@ async function walletEstimate(req: Request, env: Env): Promise<Response> {
   const h = await env.DB_META.prepare("SELECT price_per_min FROM hf_hosts WHERE slug=?1 AND status='live'").bind(slug).first<{ price_per_min: number }>().catch(() => null);
   if (!h) return err(404, "not_found", "Host not found.");
   const rate = Math.trunc(Number(h.price_per_min));
-  const tk = readHfTokenConfig((await readConfig(env).catch(() => ({}))) as Record<string, unknown>);
+  const cfgAll = (await readConfig(env).catch(() => ({}))) as Record<string, unknown>;
+  const tk = readHfTokenConfig(cfgAll);
+  const std = readHfStdPlan(cfgAll);
+  if (std.enabled) {
+    // [HF-STD-PLAN-1] Same rate card for every host. Wallet affordability is uncapped; the separate 24 h ceiling is operational only.
+    const [lots, v, sum] = await Promise.all([availableLots(env, u.uid), activeValuePaise(env, tk), balanceSummary(env, u.uid)]);
+    const e = estimateForHost(lots, std.tariff, v, null);
+    const needPaise = chargePaise(std.tariff, TOK_START_MINUTES * 60);
+    return json({
+      mode: "rupees", plan: "standard", ...hfStdPlanPublic(cfgAll),
+      ratePerMinRupees: e.ratePerMinRupees, ratePaisePerMin: e.ratePaise, aboutText: e.aboutText, affordableSeconds: e.affordableSeconds, affordableChargePaise: e.affordableChargePaise,
+      operationalMaxSeconds: STD_TECH_MAX_SECONDS,
+      canStart: e.canStart, startNeedPaise: needPaise, startNeed: formatRupees(needPaise),
+      balancePaise: sum.availablePaise, balance: formatRupees(sum.availablePaise), hasDebt: sum.debtValuePaise > 0 || sum.debtMicro > 0,
+      tokensPerMinute: e.ratePerMinRupees, // legacy field for older app builds (now the rupee rate)
+    }, 200, { "cache-control": "private, no-store" });
+  }
   if (!tk.enabled) return json({ mode: "inr", ratePerMinRupees: rate }, 200, { "cache-control": "private, no-store" });
   const [lots, v, sum] = await Promise.all([availableLots(env, u.uid), activeValuePaise(env, tk), balanceSummary(env, u.uid)]);
   const e = estimateForHost(lots, rate * 100, v);
@@ -548,7 +672,7 @@ async function adminMigrateTestToLots(req: Request, env: Env): Promise<Response>
   let out;
   try { out = await migrateTestCreditsToLots(env, { dryRun, pricingVersionId: tk.pricingVersion }); } catch (e) {
     await trackException(env, e, { uid: a.uid, route: "/api/admin/hf/tokens/migrate-test-credits", handled: true, app_name: HF_CALL_APP, extra: { area: "hf_tokens", step: "migrate" } });
-    return err(502, "migration_failed", "The migration did not run. Check that the token tables exist.");
+    return err(502, "migration_failed", "The migration did not run. Check that the wallet tables exist.");
   }
   await audit(env, a.uid, "migrate_test_credits_to_lots", "-", { dry_run: dryRun, users: out.rows.length, moved: out.rows.filter((r) => r.migrated).length, tokens: out.totalTokens });
   return json({ ok: true, dryRun, pricingVersion: tk.pricingVersion, users: out.rows, totalTokens: out.totalTokens }, 200, { "cache-control": "private, no-store" });
@@ -622,6 +746,28 @@ async function vobizWebhook(req: Request, env: Env, p: string): Promise<Response
   return xml(hangupXml(), 404);
 }
 
+// POST /api/admin/hf/calls/:id/correct {amountPaise?, note}   [HF-STD-PLAN-1 rule 6]
+// Billing-error correction: money goes back to the caller's wallet (a new adjustment lot), traceable to the call, ONCE per call. The host's
+// earning is reversed only while it is still inside the 7-day hold. Asking again returns the first correction and moves nothing.
+async function adminCorrectCall(req: Request, env: Env, callId: string): Promise<Response> {
+  const a = await adminCtx(req, env);
+  if (a instanceof Response) return a;
+  const b = await readJson(req);
+  const note = String(b.note ?? "").trim().slice(0, 200);
+  if (!note) return err(400, "invalid_field", "Add a note saying why.", { field: "note" });
+  const raw = b.amountPaise;
+  if (raw !== undefined && raw !== null && !(typeof raw === "number" && Number.isInteger(raw) && raw > 0)) return err(400, "invalid_field", "amountPaise must be a whole number of paise above zero.", { field: "amountPaise" });
+  let r;
+  try { r = await correctCallCharge(env, { callId, amountPaise: typeof raw === "number" ? raw : null, adminUid: a.uid, note }); }
+  catch (e) {
+    await trackException(env, e, { uid: a.uid, route: "/api/admin/hf/calls/:id/correct", handled: true, app_name: HF_CALL_APP, extra: { area: "hf_calls", step: "correct" } });
+    return err(502, "wallet_error", "The correction didn't go through.");
+  }
+  if (!r.ok) return err(r.error === "not_found" ? 404 : r.error === "wallet_error" ? 502 : 400, r.error, r.message, r.maxPaise != null ? { maxPaise: r.maxPaise } : {});
+  await audit(env, a.uid, "call_charge_corrected", callId, { amountPaise: r.correctedPaise, chargedPaise: r.chargedPaise, hostReversal: r.hostReversal, hostReversedPaise: r.hostReversedPaise, again: r.again, note });
+  return json({ ok: true, again: r.again, callId, correctedPaise: r.correctedPaise, corrected: formatRupees(r.correctedPaise), hostReversedPaise: r.hostReversedPaise, hostReversal: r.hostReversal });
+}
+
 // ── router ───────────────────────────────────────────────────────────────────
 /** Returns null when the path is not ours so index.ts can fall through. */
 export async function hfCallsRoute(req: Request, env: Env, p: string, ctx?: ExecutionContext): Promise<Response | null> {
@@ -644,6 +790,8 @@ export async function hfCallsRoute(req: Request, env: Env, p: string, ctx?: Exec
     if (p === "/api/admin/hf/tokens/migrate-test-credits" && m === "POST") return await adminMigrateTestToLots(req, env);
     if (p === "/api/admin/hf/users/search" && m === "GET") return await adminUserSearch(req, env);
     if (p === "/api/admin/hf/calls" && m === "GET") return await adminCalls(req, env);
+    const corr = p.match(/^\/api\/admin\/hf\/calls\/([A-Za-z0-9_-]{8,64})\/correct$/);
+    if (corr && m === "POST") return await adminCorrectCall(req, env, corr[1]);
     return null;
   } catch (e) {
     await trackException(env, e, { route: p, method: m, handled: true, app_name: HF_CALL_APP, extra: { area: "hf_calls" } });

@@ -6,7 +6,9 @@ import RefundPanel from './RefundPanel'; // [HF-WALLET-EXIT-1]
 import ReceiptsPanel from './ReceiptsPanel'; // [HF-WALLET-LIMITS-1]
 import SessionBridge from '../calls/SessionBridge';
 import { isAppMode } from '../../lib/nativeBridge';
-import { fetchWallet, inr, inr2, looksSignedOut, relDate, signInUrl, type WalletInfo } from '../../lib/hfCallsApi';
+import { fetchWallet, hostPaise, inr, inr2, looksSignedOut, relDate, signInUrl, type WalletInfo } from '../../lib/hfCallsApi';
+import { formatPaise } from '../../lib/money';
+import RateCard from '../calls/RateCard';
 import '../../styles/hf-calls.css';
 
 const signed = (n: number): string => `${n < 0 ? '-' : '+'}${inr(Math.abs(n))}`;
@@ -48,15 +50,31 @@ export default function HfWallet() {
     return <main className="hfc-page"><h1>Wallet</h1><p>We could not load your wallet. Please check your internet and try again.</p><button type="button" className="hfc-btn hfc-primary" onClick={() => window.location.reload()}>Try again</button></main>;
   }
 
+  const rupees = w.mode === 'rupees' && !!w.wallet; // [HF-STD-PLAN-1] plain rupees, no tokens
   const tokenMode = w.mode === 'tokens';
   const hm = tokenMode ? inr2 : inr; // hosts see rupees; token mode shows the paise too (Rs 10.80 a minute)
+  const hp = w.host ? hostPaise(w.host) : null;
+  const spentIds = new Set(w.history.filter(h => h.kind === 'call_spent' && h.callId).map(h => h.callId));
   return (
     <main className="hfc-page">
       <SessionBridge on />
       <h1>Wallet</h1>
       <section className="hfc-card" aria-labelledby="hfw-bal">
         <h2 id="hfw-bal">Balance</h2>
-        {tokenMode && w.tokens ? (
+        {rupees && w.wallet ? (
+          <>
+            <div className="hfc-stats">
+              <div className="hfc-stat"><strong>{formatPaise(w.wallet.availablePaise)}</strong><span>available to spend</span></div>
+              {w.wallet.reservedPaise > 0 && <div className="hfc-stat"><strong>{formatPaise(w.wallet.reservedPaise)}</strong><span>reserved during your call</span></div>}
+              {w.wallet.testPaise > 0 && <div className="hfc-stat"><strong>{formatPaise(w.wallet.testPaise)}</strong><span>Test credits (can’t be withdrawn)</span></div>}
+            </div>
+            {w.wallet.debtOpen && (
+              <p className="hfc-note hfc-warn" role="status">
+                You owe {formatPaise(w.wallet.debtPaise)} after a refund. It is cleared from the next money you add. Please clear the amount owed before calling.
+              </p>
+            )}
+          </>
+        ) : tokenMode && w.tokens ? (
           <>
             <div className="hfc-stats">
               <div className="hfc-stat"><strong>₹{w.tokens.balance}</strong><span>in your wallet</span></div>
@@ -79,20 +97,48 @@ export default function HfWallet() {
         )}
       </section>
 
+      {rupees && <RateCard surface="wallet" tiers={w.plan?.tiers} />}
       <TokensPanel />
       <ReceiptsPanel reloadKey={rcptKey} />
 
       <RefundPanel onChanged={() => { fetchWallet().then(r => { if (r.ok) setW(r.data); }); }} />
 
-      {w.host && (
+      {w.host && rupees && hp && (
+        <section className="hfc-card" aria-labelledby="hfw-earn">
+          <h2 id="hfw-earn">Host earnings</h2>
+          <p className="hfc-sub" style={{ margin: 0 }}>Standard plan: you earn ₹2.00 for every connected minute.</p>
+          <div className="hfc-stats">
+            <div className="hfc-stat"><strong>{formatPaise(hp.pending)}</strong><span>pending (releases after 7 days)</span></div>
+            <div className="hfc-stat"><strong>{formatPaise(hp.available)}</strong><span>available to withdraw</span></div>
+            <div className="hfc-stat"><strong>{formatPaise(hp.total)}</strong><span>total earned</span></div>
+            {hp.test > 0 && <div className="hfc-stat"><strong>{formatPaise(hp.test)}</strong><span>from test credits, not withdrawable</span></div>}
+          </div>
+          {(hp.openPayout > 0 || hp.paidOut > 0) && <p className="hfc-sub" style={{ margin: 0 }}>Withdrawals: {formatPaise(hp.openPayout)} in progress · {formatPaise(hp.paidOut)} paid out</p>}
+          {w.host.perCall && w.host.perCall.length > 0 && (
+            <ul className="hfc-calls">
+              {w.host.perCall.map(p => (
+                <li key={p.callId}><strong>Call earnings{p.testPaise > 0 ? ' (includes test credits, not withdrawable)' : ''}</strong><span>{formatPaise(p.earnedPaise)}</span><small>{relDate(p.at)}</small></li>
+              ))}
+            </ul>
+          )}
+          {w.host.payouts && w.host.payouts.length > 0 && (
+            <ul className="hfc-calls">
+              {w.host.payouts.map(p => (
+                <li key={p.id}><strong>Withdrawal · {p.status}</strong><span>{formatPaise(p.amountPaise)}</span><small>{relDate(p.paidAt ?? p.createdAt)}</small></li>
+              ))}
+            </ul>
+          )}
+        </section>
+      )}
+      {w.host && !rupees && (
         <section className="hfc-card" aria-labelledby="hfw-earn">
           <h2 id="hfw-earn">Host earnings</h2>
           <div className="hfc-stats">
-            <div className="hfc-stat"><strong>{hm(w.host.heldRupees)}</strong><span>held (releases after 7 days)</span></div>
-            <div className="hfc-stat"><strong>{hm(w.host.availableRupees)}</strong><span>available</span></div>
-            <div className="hfc-stat"><strong>{hm(w.host.testEarningsRupees)}</strong><span>from test credits, not withdrawable</span></div>
+            <div className="hfc-stat"><strong>{hm(w.host.heldRupees ?? 0)}</strong><span>held (releases after 7 days)</span></div>
+            <div className="hfc-stat"><strong>{hm(w.host.availableRupees ?? 0)}</strong><span>available</span></div>
+            <div className="hfc-stat"><strong>{hm(w.host.testEarningsRupees ?? 0)}</strong><span>from test credits, not withdrawable</span></div>
           </div>
-          <p className="hfc-sub" style={{ margin: 0 }}>Lifetime paid earnings: {hm(w.host.lifetimePaidEarnings)}</p>
+          <p className="hfc-sub" style={{ margin: 0 }}>Lifetime paid earnings: {hm(w.host.lifetimePaidEarnings ?? 0)}</p>
           {tokenMode && w.host.perCall && w.host.perCall.length > 0 && (
             <ul className="hfc-calls">
               {w.host.perCall.map(p => (
@@ -114,7 +160,17 @@ export default function HfWallet() {
         <h2 id="hfw-hist">History</h2>
         {w.history.length === 0 ? <p>Nothing here yet. Calls and credits will show up here.</p> : (
           <ul className="hfc-calls">
-            {w.history.map((h, i) => (
+            {w.history.map((h, i) => rupees && h.amountPaise !== undefined ? (
+              <li key={`${h.at}-${h.callId ?? i}`} id={h.kind === 'call_spent' && h.callId ? `hfw-call-${h.callId}` : undefined}>
+                <strong>{h.kind === 'call_refund' ? 'Call charge corrected' : h.label}</strong>
+                <span>{h.amount ?? formatPaise(h.amountPaise)}</span>
+                <small>
+                  {relDate(h.at)}
+                  {h.purchase && <> · Paid {formatPaise(h.purchase.paidPaise)} · GST {formatPaise(h.purchase.gstPaise)} · Added {formatPaise(h.purchase.walletPaise)}</>}
+                  {h.kind === 'call_refund' && h.callId && (spentIds.has(h.callId) ? <> · <a href={`#hfw-call-${h.callId}`}>See the call</a></> : <> · {h.label}</>)}
+                </small>
+              </li>
+            ) : (
               <li key={`${h.at}-${h.callId ?? i}`}><strong>{h.label}</strong><span>{h.tokens !== undefined ? h.tokens : signed(h.rupees ?? 0)}</span><small>{relDate(h.at)}</small></li>
             ))}
           </ul>

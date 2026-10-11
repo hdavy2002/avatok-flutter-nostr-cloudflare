@@ -1,6 +1,6 @@
 ---
 title: "How do I get paid as a host?"
-description: "Learn when your earnings are credited and how to withdraw them to your own UPI ID."
+description: "Learn when your earnings are credited and how to withdraw them to your own bank account or UPI ID."
 section: hosts
 order: 5
 updated: 2026-10-08
@@ -17,22 +17,22 @@ draft: false
 ---
 <!-- rebrand: reviewed -->
 
-Your money is simple to follow. You earn after each call, and you can send it to your own UPI ID.
+Your money is simple to follow. You earn after each call, and you can send it to your own bank account or UPI ID.
 
 ## How you earn
 
 After each **completed call**, your earnings for that call are credited to your account. You can see each call and its amount in your wallet history.
 
-To learn how much you earn per minute, read [how much you will earn](/help/hosts/host-earnings).
+You earn ₹2.00 for every connected minute. To learn more, read [how much you will earn](/help/hosts/host-earnings).
 
 ## How to withdraw
 
 1. Sign in to your dashboard.
 2. Open your earnings.
 3. Choose to withdraw.
-4. Enter a **UPI ID in your own name**.
+4. Use a **bank account or UPI ID in your own name**.
 
-The UPI ID must be yours. We do not send money to other people's UPI IDs. This keeps your money safe.
+The minimum payout is **₹500**. New earnings are held for **7 days** first. Our team approves each payout before it is sent. The account must be yours. We do not send money to other people's accounts. This keeps your money safe.
 
 ## Never take money outside the platform
 

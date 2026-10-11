@@ -4,7 +4,11 @@
 import { useCallback, useEffect, useState } from 'react';
 import { adminCall } from '../peopleKit';
 import { adminBlob, saveBlob } from '../adminApi';
-import { Banner, ConsultShell, Spinner, fail, rupees } from '../consultants/kit';
+import { Banner, ConsultShell, Spinner, fail } from '../consultants/kit';
+import { formatPaise } from '../../../lib/money';
+
+/** [HF-STD-PLAN-1] rupees with paise everywhere on this page (the shared helper rounds to whole rupees). */
+const rupees = (n: number | null | undefined): string => (n == null ? '—' : formatPaise(Math.round(n * 100)));
 
 const T14 = { fontSize: 14 } as const;
 const field = { ...T14, padding: 10, borderRadius: 10, border: '1px solid #c8afd1', minHeight: 44 } as const;

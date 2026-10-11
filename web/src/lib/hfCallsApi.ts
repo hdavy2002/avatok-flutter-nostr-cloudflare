@@ -14,7 +14,12 @@ export interface CallInfo {
   billedMinutes?: number | null; chargedRupees?: number | null; endReason?: string | null; canReview?: boolean;
   /** [HF-TOK-CALLS-1] token mode (caller only): seconds billed and tokens spent, 2 decimals. */
   billableSeconds?: number; tokensSpent?: string;
+  /** [HF-STD-PLAN-1] Caller: what the call cost, in rupees, with one line per rate band (the lines add up to chargedPaise). */
+  chargedPaise?: number; charged?: string; plan?: string; tiers?: CallTierLine[];
+  /** [HF-STD-PLAN-1] Host: only their own earning for the call. */
+  earningPaise?: number; earning?: string;
 }
+export interface CallTierLine { fromMin: number; toMin: number | null; paisePerMin: number; seconds: number; amountPaise: number }
 
 export type HfResult<T> = { ok: true; data: T } | { ok: false; status: number; code: string; message: string; body: Record<string, unknown> };
 
@@ -89,7 +94,22 @@ export function relDate(v: number | string | null | undefined): string {
 
 /* [HF-WALLET-1] GET /api/hf/wallet. paidBalance is withdrawable money; testBalance is spend-only test credits (never withdrawable).
  * `host` is present only for hosts. `history` merges test-credit grants with completed calls (as caller and as host). */
-export interface WalletHistoryItem { at: number; kind: 'test_credit' | 'test_credit_removed' | 'call_spent' | 'call_earned' | string; rupees?: number; tokens?: string; label: string; callId?: string }
+export interface WalletHistoryItem {
+  at: number; kind: 'test_credit' | 'test_credit_removed' | 'call_spent' | 'call_earned' | 'purchase' | 'call_refund' | string; rupees?: number; tokens?: string; label: string; callId?: string;
+  /** [HF-STD-PLAN-1] rupee mode: signed paise, a ready string ("-₹22.47"), and the three-way split for a purchase. */
+  amountPaise?: number; amount?: string; purchase?: PurchaseSplit;
+}
+/** [HF-STD-PLAN-1] Host earnings in paise from either the new or the older response shape. */
+export function hostPaise(h: NonNullable<WalletInfo['host']>) {
+  return {
+    pending: h.pendingPaise ?? Math.round((h.heldRupees ?? 0) * 100),
+    available: h.availablePaise ?? Math.round((h.availableRupees ?? 0) * 100),
+    total: h.totalEarnedPaise ?? Math.round((h.lifetimePaidEarnings ?? 0) * 100),
+    test: h.testEarningsPaise ?? Math.round((h.testEarningsRupees ?? 0) * 100),
+    openPayout: h.openPayoutPaise ?? 0,
+    paidOut: h.paidOutPaise ?? 0,
+  };
+}
 /** [HF-TOK-CALLS-1] Token mode (hfTokensEnabled): callers see tokens, hosts see rupees with paise. Absent in the old mode. */
 export interface TokenWallet {
   balance: string; available: string; testTokens: string;
@@ -98,13 +118,24 @@ export interface TokenWallet {
 }
 export interface HostInrWallet {
   currency: 'INR'; pendingPaise: number; availablePaise: number; totalEarnedPaise: number; testEarningsPaise: number;
+  /** [HF-STD-PLAN-1] withdrawals asked for / already paid out, in paise. */
+  openPayoutPaise?: number; paidOutPaise?: number;
   perCall: Array<{ callId: string; at: number; earnedPaise: number; paidPaise: number; testPaise: number; availableAt: number | null }>;
   payouts: Array<{ id: string; amountPaise: number; status: string; createdAt: number; paidAt: number | null }>;
 }
+/** [HF-STD-PLAN-1] mode "rupees": the wallet is plain rupees (integer paise + ready-made strings). */
+export interface RupeeWallet {
+  currency: 'INR'; balancePaise: number; availablePaise: number; reservedPaise: number; paidPaise: number; testPaise: number; debtPaise: number;
+  balance: string; available: string; test: string; debt: string; debtOpen: boolean;
+}
+export interface StdPlanTier { fromMin: number; toMin: number | null; paisePerMin: number; rupeesPerMin?: string }
+export interface StdPlanInfo { enabled?: boolean; startPaisePerMin?: number; gstBps?: number; gstInclusive?: boolean; tiers?: StdPlanTier[] }
+export interface PurchaseSplit { paidPaise: number; gstPaise: number; walletPaise: number; orderId?: string }
 export interface WalletInfo {
   paidBalance: number; testBalance: number; spendable: number;
-  mode?: 'tokens'; tokens?: TokenWallet;
-  host?: { heldRupees: number; availableRupees: number; testEarningsRupees: number; lifetimePaidEarnings: number } & Partial<HostInrWallet>;
+  mode?: 'tokens' | 'rupees'; tokens?: TokenWallet;
+  wallet?: RupeeWallet; plan?: StdPlanInfo;
+  host?: { heldRupees?: number; availableRupees?: number; testEarningsRupees?: number; lifetimePaidEarnings?: number } & Partial<HostInrWallet>;
   history: WalletHistoryItem[];
   balanceRupees?: number;
 }

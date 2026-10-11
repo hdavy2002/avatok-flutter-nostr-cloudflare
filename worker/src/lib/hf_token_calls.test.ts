@@ -5,10 +5,10 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { makeDb } from "./hf_token_d1_shim";
 import { creditLot, getLots, balanceSummary, createDebt, reserveForCall, release, getReservation } from "./hf_token_ledger";
-import { prepareTokenStart, settleTokenCall, splitHostByKind, estimateForHost, snapshotFor, DEBT_MESSAGE } from "./hf_token_calls";
+import { prepareTokenStart, settleTokenCall, splitHostByKind, estimateForHost, snapshotFor, stdSnapshotFor, DEBT_MESSAGE } from "./hf_token_calls";
 import { hostSummary, creditCallEarning, reservePayout, cancelPayoutReserve, markPayoutPaid, listCallEarnings, wholeRupees, HOST_HOLD_MS } from "./hf_host_ledger";
-import { readHfTokenConfig } from "./hf_token_config";
-import { MICRO } from "./hf_token_math";
+import { readHfTokenConfig, readHfStdPlan } from "./hf_token_config";
+import { MICRO, paiseToMicro, chargePaise, stdTariff, STD_TECH_MAX_SECONDS } from "./hf_token_math";
 
 const T = (n: number) => Math.round(n * MICRO);
 const TK = readHfTokenConfig({ hfTokensEnabled: true });
@@ -33,14 +33,14 @@ const settleIn = (o: any = {}) => ({
 const rowOf = (id: string) => env.DB_META._raw.prepare("SELECT * FROM hf_calls WHERE id=?").get(id);
 
 describe("start gate", () => {
-  it("refuses under 2 minutes and reports the shortfall in tokens; nothing stays reserved", async () => {
+  it("refuses under 2 minutes and reports the shortfall in rupees; nothing stays reserved", async () => {
     await lot("u1", "purchase", 100, 82, "a"); // Rs 82 of value (an old gp-v1 lot); 2 min at Rs 50/min needs Rs 100
     const r = await prepareTokenStart(env, { uid: "u1", callId: "c1", ratePaise: 5000, tk: TK });
     expect(r.ok).toBe(false);
     expect(r.status).toBe(402);
     expect(r.error).toBe("low_balance");
     expect(r.extra.shortfallPaise).toBe(1800);
-    expect(r.extra.shortfallTokens).toBe("18.00"); // Rs 18.00 / Rs 1 (a NEW unit is worth the active gp-r1 value, Rs 1)
+    expect(r.extra.shortfallRupees).toBe("₹18.00"); // [HF-STD-PLAN-1] reported in rupees, no token figure
     expect(r.message).toContain("₹18.00");
     expect(await getReservation(env, "c1")).toBe(null);
     expect((await balanceSummary(env, "u1")).availableMicro).toBe(T(100));
@@ -341,5 +341,188 @@ describe("caller estimate", () => {
     const o = await settleTokenCall(env, settleIn({ connectedSeconds: 60 }));
     expect(o.hostPaise).toBe(1080);
     expect(o.tokensSpentMicro).toBe(T(20));
+  });
+});
+
+// ── [HF-STD-PLAN-1] Standard plan, end to end on rupee lots ──────────────────────────────────────────────
+describe("Standard plan calls", () => {
+  const STD = readHfStdPlan({ hfStdPlanEnabled: true, hfTokensEnabled: true, hfAppMinBuild: 2078 });
+  const TAR = stdTariff();
+  const rlot = (uid: string, paise: number, op: string, kind: "purchase" | "test" = "purchase") =>
+    creditLot(env, uid, {
+      kind, pricingVersion: kind === "test" ? "pt-v1" : "gp-r2", valuePaisePerToken: 100, micro: paiseToMicro(paise),
+      paidPaise: kind === "test" ? 0 : paise, provider: kind === "test" ? "admin" : "google_play", providerRef: op,
+    }, op);
+  const stdCallRow = (id: string, caller = "u1", host = "h1") => callRow(id, caller, host, 399, { cost: 100, bps: 0 });
+  const stdIn = (o: any = {}) => ({
+    callId: "c1", callerUid: "u1", hostUid: "h1", ratePaise: 399, callCostPaisePerMin: 100, hostShareBps: 0,
+    connectedSeconds: 3600, maxSeconds: STD_TECH_MAX_SECONDS, endedAt: 1_000_000, std: stdSnapshotFor(STD).std, ...o,
+  });
+
+  it("reports wallet affordability beyond 24 hours while the call start path keeps its separate operational ceiling", () => {
+    const e = estimateForHost([{ id: "rich", valuePaisePerToken: 100, leftMicro: paiseToMicro(1_000_000) }], TAR, 100, null);
+    expect(e.affordableSeconds).toBeGreaterThan(STD_TECH_MAX_SECONDS);
+    expect(e.affordableChargePaise).toBe(chargePaise(TAR, e.affordableSeconds));
+  });
+
+  it("reserves the WHOLE balance (no 60-minute cap): Rs 500 runs well past 3600 seconds", async () => {
+    await rlot("u1", 50000, "a");
+    const r = await prepareTokenStart(env, { uid: "u1", callId: "c1", ratePaise: 0, tk: TK, std: STD });
+    expect(r.ok).toBe(true);
+    expect(r.maxSeconds).toBeGreaterThan(3600);
+    expect(r.limitReason).toBe("balance");
+    expect(r.snapshot.std).toBeTruthy();
+    // what is reserved is everything the balance can pay for, to the last whole second; under 1 paisa-second of change is left
+    const res = await getReservation(env, "c1");
+    expect(res.secondsCovered).toBe(r.maxSeconds);
+    expect(chargePaise(TAR, r.maxSeconds)).toBeLessThanOrEqual(50000);
+    expect(chargePaise(TAR, r.maxSeconds + 1)).toBeGreaterThan(50000);
+    expect((await balanceSummary(env, "u1")).availablePaise).toBeLessThan(6);
+  });
+
+  it("the old host-rate path still caps at 60 minutes", async () => {
+    await rlot("u1", 300000, "a"); // Rs 3,000 at Rs 20/min would pay for 150 minutes
+    const r = await prepareTokenStart(env, { uid: "u1", callId: "c1", ratePaise: 2000, tk: TK });
+    expect(r.ok).toBe(true);
+    expect(r.maxSeconds).toBe(3600);
+    expect(r.limitReason).toBe("time_limit");
+  });
+
+  it("starting needs 2 minutes = Rs 7.98: Rs 7.98 starts, Rs 7.97 does not", async () => {
+    await rlot("u1", 798, "a");
+    const ok = await prepareTokenStart(env, { uid: "u1", callId: "c1", ratePaise: 0, tk: TK, std: STD });
+    expect(ok.ok).toBe(true);
+    expect(ok.maxSeconds).toBeGreaterThanOrEqual(120);
+    await rlot("u2", 797, "b");
+    const no = await prepareTokenStart(env, { uid: "u2", callId: "c2", ratePaise: 0, tk: TK, std: STD });
+    expect(no.ok).toBe(false);
+    expect(no.status).toBe(402);
+    expect(no.extra.shortfallPaise).toBe(1);
+    expect(await getReservation(env, "c2")).toBe(null);
+  });
+
+  it("low balance is said in rupees, with no token wording", async () => {
+    await rlot("u1", 500, "a");
+    const r = await prepareTokenStart(env, { uid: "u1", callId: "c1", ratePaise: 0, tk: TK, std: STD });
+    expect(r.ok).toBe(false);
+    expect(r.error).toBe("low_balance");
+    expect(r.message).toBe("You need about ₹2.98 more in your wallet to start this call.");
+    expect(r.extra).toMatchObject({ shortfallPaise: 298, shortfallRupees: "₹2.98" });
+    expect(r.message).not.toMatch(/token/i);
+    expect(JSON.stringify(r.extra)).not.toMatch(/Tokens/);
+  });
+
+  it("settle: a 60-minute call gives the owner's numbers and writes them on hf_calls", async () => {
+    await rlot("u1", 30000, "a");
+    stdCallRow("c1");
+    await prepareTokenStart(env, { uid: "u1", callId: "c1", ratePaise: 0, tk: TK, std: STD });
+    const o = await settleTokenCall(env, stdIn());
+    expect(o).toMatchObject({ billableSeconds: 3600, shortfall: false, consumedValuePaise: 22470, hostPaise: 12000, callCostPaise: 6000, platformPaise: 4470 });
+    const row = rowOf("c1");
+    expect(row).toMatchObject({ consumed_value_paise: 22470, host_earning_paise: 12000, call_cost_paise: 6000, platform_paise: 4470, billable_seconds: 3600, charged_paise: 22470 });
+    expect(JSON.parse(row.lots_used)[0].kind).toBe("purchase");
+    // wallet: 30000 - 22470 left, nothing stays reserved
+    const b = await balanceSummary(env, "u1");
+    expect(b.totalPaise).toBe(7530);
+    expect(b.availablePaise).toBe(7530);
+    // the host got the Rs 120.00 as paid earnings (purchase lot), held 7 days
+    const hs = await hostSummary(env, "h1", 1_000_000);
+    expect(hs.earnedPaise).toBe(12000);
+    expect(hs.pendingPaise).toBe(12000);
+    expect(hs.testPaise).toBe(0);
+  });
+
+  it("settle: the other owner examples (30, 90, 120 minutes)", async () => {
+    for (const [mins, v, h] of [[30, 11970, 6000], [90, 32220, 18000], [120, 41970, 24000]] as const) {
+      const uid = `u${mins}`, id = `call${mins}xx`;
+      await rlot(uid, 50000, `lot${mins}`);
+      stdCallRow(id, uid, `h${mins}`);
+      await prepareTokenStart(env, { uid, callId: id, ratePaise: 0, tk: TK, std: STD });
+      const o = await settleTokenCall(env, stdIn({ callId: id, callerUid: uid, hostUid: `h${mins}`, connectedSeconds: mins * 60 }));
+      expect(o.consumedValuePaise).toBe(v);
+      expect(o.hostPaise).toBe(h);
+      expect(o.hostPaise + o.callCostPaise + o.platformPaise).toBe(v);
+    }
+  });
+
+  it("two simultaneous starts cannot both reserve the same money", async () => {
+    await rlot("u1", 1000, "a");
+    const [x, y] = await Promise.all([
+      prepareTokenStart(env, { uid: "u1", callId: "ca", ratePaise: 0, tk: TK, std: STD }),
+      prepareTokenStart(env, { uid: "u1", callId: "cb", ratePaise: 0, tk: TK, std: STD }),
+    ]);
+    expect([x.ok, y.ok].filter(Boolean)).toHaveLength(1);
+    const b = await balanceSummary(env, "u1");
+    expect(b.totalPaise).toBe(1000);
+    expect(b.availablePaise).toBeLessThan(6);
+    const lost = x.ok ? y : x;
+    expect(lost.status).toBe(402);
+  });
+
+  it("settle twice is idempotent: one spend, one host earning, same numbers", async () => {
+    await rlot("u1", 30000, "a");
+    stdCallRow("c1");
+    await prepareTokenStart(env, { uid: "u1", callId: "c1", ratePaise: 0, tk: TK, std: STD });
+    const a = await settleTokenCall(env, stdIn());
+    const b = await settleTokenCall(env, stdIn());
+    expect(b).toEqual(a);
+    expect((await balanceSummary(env, "u1")).totalPaise).toBe(30000 - 22470);
+    const n = env.DB_META._raw.prepare("SELECT COUNT(*) AS n FROM hf_host_ledger WHERE call_id='c1'").get().n;
+    expect(n).toBe(1);
+    expect((await hostSummary(env, "h1", 1_000_000)).earnedPaise).toBe(12000);
+  });
+
+  it("when the money runs out the call stops at the last whole second the wallet can pay for", async () => {
+    await rlot("u1", 1000, "a");
+    stdCallRow("c1");
+    const st = await prepareTokenStart(env, { uid: "u1", callId: "c1", ratePaise: 0, tk: TK, std: STD });
+    // the phone line stayed up for 2 hours (e.g. a late hang-up event): billing still stops where the wallet ran out
+    const o = await settleTokenCall(env, stdIn({ connectedSeconds: 7200 }));
+    expect(o.shortfall).toBe(true);
+    expect(o.billableSeconds).toBe(st.maxSeconds);
+    expect(chargePaise(TAR, o.billableSeconds)).toBeLessThanOrEqual(1000);
+    expect(chargePaise(TAR, o.billableSeconds + 1)).toBeGreaterThan(1000);
+    expect(o.consumedValuePaise).toBe(chargePaise(TAR, o.billableSeconds));
+    expect((await balanceSummary(env, "u1")).totalPaise).toBe(1000 - o.consumedValuePaise);
+  });
+
+  it("a config change in the middle of a call does not change it (the snapshot rules)", async () => {
+    await rlot("u1", 30000, "a");
+    stdCallRow("c1");
+    const snap = stdSnapshotFor(STD); // taken at start
+    await prepareTokenStart(env, { uid: "u1", callId: "c1", ratePaise: 0, tk: TK, std: STD });
+    const changed = readHfStdPlan({ hfStdTier1PaisePerMin: 999, hfStdTier2PaisePerMin: 900, hfStdTier3PaisePerMin: 800, hfStdHostPaisePerMin: 500, hfStdPhoneCostPaisePerMin: 300 });
+    expect(stdSnapshotFor(changed).std.tariff).not.toEqual(snap.std.tariff); // the new config really is different...
+    const o = await settleTokenCall(env, stdIn({ std: snap.std })); // ...but the call settles on what was frozen at start
+    expect(o).toMatchObject({ consumedValuePaise: 22470, hostPaise: 12000, callCostPaise: 6000, platformPaise: 4470 });
+    expect(snap.splitRuleVersion).toBe("std-r1/std-split-v1");
+    expect(snap.ratePaise).toBe(399);
+  });
+
+  it("a purchase lot and a test lot in one call: host earning splits by the value each lot paid", async () => {
+    await rlot("u1", 10000, "t1", "test"); // oldest: spent first
+    await rlot("u1", 20000, "p1", "purchase");
+    stdCallRow("c1");
+    await prepareTokenStart(env, { uid: "u1", callId: "c1", ratePaise: 0, tk: TK, std: STD });
+    const o = await settleTokenCall(env, stdIn());
+    expect(o.consumedValuePaise).toBe(22470);
+    const paidValue = o.lots.filter((l: any) => l.kind === "purchase").reduce((t: number, l: any) => t + l.valuePaise, 0);
+    expect(paidValue).toBe(12470);
+    expect(o.hostPaidPaise).toBe(Math.floor((12000 * 12470) / 22470)); // 6659
+    expect(o.hostTestPaise).toBe(12000 - o.hostPaidPaise);
+    expect(o.hostPaidPaise + o.hostTestPaise).toBe(o.hostPaise);
+    const hs = await hostSummary(env, "h1", 1_000_000);
+    expect(hs.earnedPaise).toBe(o.hostPaidPaise); // only the real-money part is withdrawable
+    expect(hs.testPaise).toBe(o.hostTestPaise);
+  });
+
+  it("an all-test-lot call earns the host nothing withdrawable", async () => {
+    await rlot("u1", 30000, "t1", "test");
+    stdCallRow("c1");
+    await prepareTokenStart(env, { uid: "u1", callId: "c1", ratePaise: 0, tk: TK, std: STD });
+    const o = await settleTokenCall(env, stdIn());
+    expect(o.hostPaidPaise).toBe(0);
+    expect(o.hostTestPaise).toBe(12000);
+    expect((await hostSummary(env, "h1", 1_000_000)).earnedPaise).toBe(0);
   });
 });

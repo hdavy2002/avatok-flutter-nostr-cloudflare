@@ -127,9 +127,11 @@ Map<String, Object?> optionsJson() => <String, Object?>{
 };
 
 /// A fake API that already answers `/api/hf/options` and `/api/config`.
-FakeApiClient fakeApi() => FakeApiClient()
+FakeApiClient fakeApi({bool standardPlan = true}) => FakeApiClient()
   ..onJson('GET', '/api/hf/options', optionsJson())
-  ..onJson('GET', '/api/config', <String, Object?>{});
+  ..onJson('GET', '/api/config', <String, Object?>{
+    'hfStdPlan': {'enabled': standardPlan},
+  });
 
 /// Pumps the whole app at [location] with the fakes in place (cache in memory, speaker fake, animations off so
 /// the pulsing online dot lets `pumpAndSettle` finish).

@@ -1,6 +1,8 @@
 import '../../../core/api/api_error.dart';
-import '../../../core/format/money.dart';
+import '../../../core/format/money.dart'
+    show formatPaise, formatPaiseRate, formatRupees;
 import '../../../core/strings.dart';
+import '../../explore/data/host_card.dart' show PriceTier;
 
 /// `GET /api/hf/calls/:id` `status` values (worker `hf_calls.ts`, contract HF-CALLS-1).
 enum CallStatus {
@@ -69,6 +71,12 @@ class CallInfo {
     this.canReview = false,
     this.billableSeconds,
     this.tokensSpent,
+    this.chargedPaise,
+    this.chargedLabel,
+    this.plan,
+    this.tiers = const <CallTierLine>[],
+    this.earningPaise,
+    this.earningLabel,
   });
 
   final String id;
@@ -87,12 +95,20 @@ class CallInfo {
   final String? endReason;
   final bool canReview;
 
-  /// Token calls only.
+  /// Exact connected seconds for a per-second call.
   final int? billableSeconds;
+  /// Legacy per-second amount field. It represents rupees and is never labelled as tokens.
   final String? tokensSpent;
 
-  /// A token-mode call: it has a tokens figure.
-  bool get isTokenCall => tokensSpent != null;
+  final int? chargedPaise;
+  final String? chargedLabel;
+  final String? plan;
+  final List<CallTierLine> tiers;
+  final int? earningPaise;
+  final String? earningLabel;
+
+  bool get isMeteredCall => billableSeconds != null;
+  bool get isHostView => earningPaise != null || earningLabel != null;
 
   /// Seconds actually talked: exact for a token call, whole billed minutes for an old-mode call.
   int get talkedSeconds => billableSeconds ?? billedMinutes * 60;
@@ -127,52 +143,128 @@ class CallInfo {
           ? null
           : i(j['billableSeconds']),
       tokensSpent: j['tokensSpent'] == null ? null : '${j['tokensSpent']}',
+      chargedPaise: j['chargedPaise'] is num
+          ? (j['chargedPaise'] as num).round()
+          : null,
+      chargedLabel: s(j['charged']),
+      plan: s(j['plan']),
+      tiers: CallTierLine.listFrom(j['tiers']),
+      earningPaise: j['earningPaise'] is num
+          ? (j['earningPaise'] as num).round()
+          : null,
+      earningLabel: s(j['earning']),
     );
   }
+}
+
+class CallTierLine {
+  const CallTierLine({
+    required this.tier,
+    required this.seconds,
+    required this.amountPaise,
+  });
+
+  final PriceTier tier;
+  final int seconds;
+  final int amountPaise;
+
+  String get bandLabel => tierBandLabel(tier);
+
+  static List<CallTierLine> listFrom(Object? raw) {
+    if (raw is! List) return const <CallTierLine>[];
+    final out = <CallTierLine>[];
+    for (final value in raw) {
+      if (value is! Map) continue;
+      final tier = PriceTier.tryParse(value);
+      if (tier == null) continue;
+      num? n(Object? v) =>
+          v is num ? v : (v is String ? num.tryParse(v) : null);
+      out.add(CallTierLine(
+        tier: tier,
+        seconds: n(value['seconds'])?.round() ?? 0,
+        amountPaise: n(value['amountPaise'])?.round() ?? 0,
+      ));
+    }
+    return out;
+  }
+}
+
+String tierBandLabel(PriceTier tier) {
+  final to = tier.toMin;
+  if (to == null) return 'After ${tier.fromMin} min';
+  if (tier.fromMin <= 0) return 'First $to min';
+  return 'Next ${to - tier.fromMin} min';
+}
+
+int? currentRatePaise(List<PriceTier> tiers, int elapsedSeconds) {
+  if (tiers.isEmpty) return null;
+  final seconds = elapsedSeconds < 0 ? 0 : elapsedSeconds;
+  for (final tier in tiers) {
+    final to = tier.toMin;
+    if (seconds >= tier.fromMin * 60 &&
+        (to == null || seconds < to * 60)) {
+      return tier.paisePerMin;
+    }
+  }
+  return tiers.last.paisePerMin;
 }
 
 /// `GET /api/hf/wallet/estimate?host=<slug>`: old mode `{mode:"inr", ratePerMinRupees}`, token mode
 /// `{mode:"tokens", ratePerMinRupees, tokensPerMinute, aboutText, affordableSeconds, canStart, hasDebt, balance}`.
 class CallEstimate {
   const CallEstimate({
-    required this.isTokens,
+    required this.isMetered,
     required this.ratePerMinRupees,
-    this.tokensPerMinute,
+    this.ratePaisePerMin,
+    this.plan,
+    this.tiers = const <PriceTier>[],
     this.aboutText,
     this.affordableSeconds,
     this.canStart = true,
     this.hasDebt = false,
+    this.startNeedPaise,
+    this.startNeed,
     this.balance,
   });
 
-  final bool isTokens;
+  final bool isMetered;
   final num ratePerMinRupees;
-  final String? tokensPerMinute;
+  final int? ratePaisePerMin;
+  final String? plan;
+  final List<PriceTier> tiers;
 
   /// `about 3 min 20 s`, or `add tokens to call` with an empty balance (the server writes it).
   final String? aboutText;
   final int? affordableSeconds;
   final bool canStart;
   final bool hasDebt;
+  final int? startNeedPaise;
+  final String? startNeed;
   final String? balance;
 
+  int get ratePaise =>
+      ratePaisePerMin ?? (ratePerMinRupees * 100).round();
+  String? get startNeedLabel =>
+      startNeedPaise != null ? formatPaise(startNeedPaise!) : startNeed;
+
   factory CallEstimate.fromJson(Map<String, dynamic> j) {
-    final tokens = j['mode'] == 'tokens';
+    final mode = j['mode'];
+    final metered = mode == 'rupees' || mode == 'tokens';
+    num? n(Object? v) =>
+        v is num ? v : (v is String ? num.tryParse(v) : null);
     return CallEstimate(
-      isTokens: tokens,
-      ratePerMinRupees: j['ratePerMinRupees'] is num
-          ? j['ratePerMinRupees'] as num
-          : 0,
-      tokensPerMinute: j['tokensPerMinute'] == null
-          ? null
-          : '${j['tokensPerMinute']}',
+      isMetered: metered,
+      ratePerMinRupees: n(j['ratePerMinRupees']) ?? 0,
+      ratePaisePerMin: n(j['ratePaisePerMin'])?.round(),
+      plan: j['plan'] == null ? null : '${j['plan']}',
+      tiers: PriceTier.listFrom(j['tiers']),
       aboutText: j['aboutText'] == null ? null : '${j['aboutText']}',
-      affordableSeconds: j['affordableSeconds'] is num
-          ? (j['affordableSeconds'] as num).toInt()
-          : null,
+      affordableSeconds: n(j['affordableSeconds'])?.toInt(),
       // Old mode has no balance check on the server estimate: the start call is the authority.
-      canStart: tokens ? j['canStart'] != false : true,
+      canStart: metered ? j['canStart'] != false : true,
       hasDebt: j['hasDebt'] == true,
+      startNeedPaise: n(j['startNeedPaise'])?.round(),
+      startNeed: j['startNeed'] == null ? null : '${j['startNeed']}',
       balance: j['balance'] == null ? null : '${j['balance']}',
     );
   }
@@ -184,13 +276,15 @@ class StartedCall {
     required this.callId,
     this.rate,
     this.maxMinutes,
-    this.isTokens = false,
+    this.isMetered = false,
+    this.plan,
   });
 
   final String callId;
   final num? rate;
   final int? maxMinutes;
-  final bool isTokens;
+  final bool isMetered;
+  final String? plan;
 
   factory StartedCall.fromJson(Map<String, dynamic> j) => StartedCall(
     callId: '${j['callId'] ?? ''}',
@@ -198,7 +292,11 @@ class StartedCall {
     maxMinutes: j['maxMinutes'] is num
         ? (j['maxMinutes'] as num).toInt()
         : null,
-    isTokens: j['mode'] == 'tokens',
+    isMetered:
+        j['mode'] == 'tokens' ||
+        j['mode'] == 'rupees' ||
+        j['plan'] == 'standard',
+    plan: j['plan'] == null ? null : '${j['plan']}',
   );
 }
 
@@ -289,9 +387,12 @@ class CallStartProblem {
           code: code,
         );
       case 'low_balance':
+        final shortfall = e.extra['shortfallRupees'];
         return CallStartProblem(
           CallProblemKind.wallet,
-          e.userMessage,
+          shortfall is String && shortfall.isNotEmpty
+              ? 'You need about $shortfall more in your wallet to start this call.'
+              : e.userMessage,
           code: code,
         );
       case 'debt_open':
@@ -332,7 +433,7 @@ abstract final class CallStrings {
       'This is a friendly chat, not counselling. In crisis, dial 14416. Press # at any time to end the call and block.';
   static const String startCall = 'Start call';
   static const String notNow = 'Not now';
-  static const String addTokens = 'Add money';
+  static const String addMoney = 'Add money';
   static const String clearWhatYouOwe = 'Clear what you owe';
   static const String notifyMe = 'Notify me';
   static const String verifyToCall = 'Verify to call';
@@ -341,8 +442,17 @@ abstract final class CallStrings {
   static const String callsOpenSoon = 'Calls open soon';
 
   /// The 2-minute minimum rule (worker: START_RESERVE_MINUTES).
-  static const String twoMinuteRule =
+  static String startRule(String? startNeed) => startNeed == null
+      ? 'A call starts only if you have 2 minutes of balance. There is no time limit: it ends when you hang up or your balance is used up.'
+      : 'A call starts only if you have at least $startNeed (2 minutes). There is no time limit: it ends when you hang up or your balance is used up.';
+  static const String legacyStartRule =
       'A call starts only if you have 2 minutes of balance. A call lasts up to 60 minutes.';
+  static String needToStart(String? startNeed) => startNeed == null
+      ? 'You need at least 2 minutes of balance to start. Add money to call.'
+      : 'You need at least $startNeed to start a call. Add money to call.';
+  static const String billedPerSecond =
+      'Billed per second, at the Standard rate. The same rate for every host.';
+  static const String rateCardTitle = 'Standard rate';
   static const String phoneRings =
       'Your phone will ring. Pick up to connect. Your number stays private.';
   static const String ringingNoCharge = 'Ringing or no answer costs nothing.';
@@ -361,7 +471,11 @@ abstract final class CallStrings {
   static const String connected = 'Connected';
   static const String endWithHash =
       'Press # on your phone to end the call and block.';
-  static const String maxLengthHint = 'A call can last up to 60 minutes.';
+  static const String noLimitHint =
+      'There is no time limit. The call ends when you hang up or your balance is used up.';
+  static const String legacyLimitHint = 'A call can last up to 60 minutes.';
+  static String currentRate(int paisePerMin) =>
+      'Current rate: ${formatPaiseRate(paisePerMin)}';
   static const String checking = 'Checking your call…';
   static const String connectionTrouble =
       "We can't reach the server. If your phone is ringing, you can still pick up.";
@@ -371,6 +485,7 @@ abstract final class CallStrings {
   static const String callEnded = 'Call ended';
   static const String timeTalked = 'Time talked';
   static const String charged = 'Charged';
+  static const String earned = 'You earned';
   static const String noTimeBilled = 'No time billed';
 
   // ---- Confirm sheet (mockup CallSheet) ----
@@ -387,7 +502,10 @@ abstract final class CallStrings {
   static const String stepPhoneLead = 'Then ';
   static const String stepPhoneBold = 'your phone rings';
   static const String stepPhoneTail = '. Pick up to connect.';
-  static const String stepEnd = 'Press # any time to end. Max 60 minutes.';
+  static const String stepEnd =
+      'Press # any time to end. There is no time limit.';
+  static const String legacyStepEnd =
+      'Press # any time to end. Max 60 minutes.';
 
   // ---- Call screen (mockup Calling) ----
   static const String bothPrivate = 'Both numbers stay private';
@@ -422,7 +540,7 @@ abstract final class CallStrings {
       case 'hash_block':
         return 'The call ended because # was pressed. That person is now blocked.';
       case 'time_limit':
-        return 'The call reached the 60-minute limit.';
+        return 'The call reached its time limit.';
       case 'balance':
         return 'Your balance ran out.';
       case 'error':
@@ -433,18 +551,29 @@ abstract final class CallStrings {
 
   /// A rupee figure for the summary. Wallet calls show the server's amount as rupees.
   static String chargedText(CallInfo info) {
+    final charged = info.chargedPaise;
+    if (charged != null) return formatPaise(charged);
+    final label = info.chargedLabel;
+    if (label != null) return label;
     final tokens = info.tokensSpent;
     if (tokens != null) {
       final n = num.tryParse(tokens);
-      return n == null ? '₹$tokens' : Money.tokensWithUnit(n);
+      return n == null ? '₹$tokens' : formatRupees(n);
     }
-    return Money.rupees(info.chargedRupees);
+    return formatRupees(info.chargedRupees);
   }
 
   /// Is there any charge to show?
   static bool hasCharge(CallInfo info) {
+    if (info.chargedPaise != null) return info.chargedPaise! > 0;
     final tokens = info.tokensSpent;
     if (tokens != null) return (num.tryParse(tokens) ?? 0) > 0;
     return info.chargedRupees > 0;
+  }
+
+  static String? earningText(CallInfo info) {
+    final paise = info.earningPaise;
+    if (paise != null) return formatPaise(paise);
+    return info.earningLabel;
   }
 }

@@ -1,8 +1,39 @@
+import '../../../core/format/money.dart';
 import '../billing/billing_adapter.dart';
 import 'wallet_models.dart';
 
-/// A token pack as the person sees it: the server's pack (tokens, value per token) joined with Play's own
-/// product details (the localized price string). [store] is null when Play does not know the product.
+class PackBreakdown {
+  const PackBreakdown({
+    required this.paidPaise,
+    required this.gstPaise,
+    required this.walletPaise,
+  });
+
+  final int paidPaise;
+  final int gstPaise;
+  final int walletPaise;
+
+  String get total => formatPaise(paidPaise);
+  String get gst => formatPaise(gstPaise);
+  String get wallet => formatPaise(walletPaise);
+  String get line =>
+      'Total $total · GST included $gst · Added to wallet $wallet';
+  String get lines =>
+      'Total payment: $total\nGST included: $gst\nAdded to wallet: $wallet';
+}
+
+PackBreakdown splitGstInclusive(int paidPaise, {int gstBps = 1800}) {
+  final paid = paidPaise < 0 ? 0 : paidPaise;
+  final denominator = 10000 + (gstBps < 0 ? 0 : gstBps);
+  final wallet = (2 * paid * 10000 + denominator) ~/ (2 * denominator);
+  return PackBreakdown(
+    paidPaise: paid,
+    gstPaise: paid - wallet,
+    walletPaise: wallet,
+  );
+}
+
+/// A money pack joined with Play's localized product price.
 class PackOffer {
   const PackOffer({required this.pack, this.store});
 
@@ -13,6 +44,29 @@ class PackOffer {
 
   /// The text beside the buy button: Play's price, never a number from our server.
   String? get priceText => store?.priceText;
+
+  PackBreakdown? get breakdown {
+    final s = store;
+    if (s != null &&
+        s.currencyCode == 'INR' &&
+        s.priceMicros != null &&
+        s.priceMicros! > 0) {
+      return splitGstInclusive(
+        (s.priceMicros! + 5000) ~/ 10000,
+        gstBps: pack.gstBps,
+      );
+    }
+    final paid = pack.pricePaise;
+    if (paid == null) return null;
+    if (pack.gstPaise != null && pack.walletPaise != null) {
+      return PackBreakdown(
+        paidPaise: paid,
+        gstPaise: pack.gstPaise!,
+        walletPaise: pack.walletPaise!,
+      );
+    }
+    return splitGstInclusive(paid, gstBps: pack.gstBps);
+  }
 }
 
 /// Everything the "Add money" section needs to draw itself.
@@ -24,7 +78,7 @@ class PackOffers {
     this.storeError = false,
   });
 
-  /// False when the products route says purchases are off ("Buying tokens is coming soon").
+  /// False when the products route says purchases are off ("Adding money is coming soon").
   final bool enabled;
   final List<PackOffer> offers;
 
@@ -49,6 +103,8 @@ int? packPricePaise(PackOffer o) {
   if (s != null && s.currencyCode == 'INR' && s.priceMicros != null) {
     return (s.priceMicros! + 5000) ~/ 10000;
   }
+  final catalogue = o.pack.pricePaise;
+  if (catalogue != null) return catalogue;
   final per = o.pack.purchasePaisePerToken;
   if (per != null) return (o.pack.tokens * per).round();
   return null;

@@ -188,8 +188,12 @@ FakeApiClient hostApi({
   Map<String, Object?>? calls,
   Map<String, Object?>? wallet,
   Map<String, Object?>? payouts,
+  bool standardPlan = true,
 }) {
   return FakeApiClient()
+    ..onJson('GET', '/api/config', {
+      'hfStdPlan': {'enabled': standardPlan},
+    })
     ..onJson('GET', '/api/hosts/me', me ?? hostMe())
     ..onJson('GET', presencePath, {'ok': true, 'presence': presence})
     ..on(

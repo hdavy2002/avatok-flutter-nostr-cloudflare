@@ -74,6 +74,12 @@ void demoStep(String step) {
   unawaited(Analytics.capture('hf_demo_flow', <String, Object>{'step': step}));
 }
 
+const List<PriceTier> kDemoPriceTiers = <PriceTier>[
+  PriceTier(fromMin: 0, toMin: 30, paisePerMin: 399),
+  PriceTier(fromMin: 30, toMin: 60, paisePerMin: 350),
+  PriceTier(fromMin: 60, paisePerMin: 325),
+];
+
 const HostCard kDemoNehaCard = HostCard(
   slug: kDemoNehaSlug,
   displayName: 'Neha',
@@ -88,7 +94,10 @@ const HostCard kDemoNehaCard = HostCard(
     'koi-jo-mujhe-jaane',
     'apni-bhasha-mein-dost',
   ],
-  pricePerMin: 20,
+  pricePerMin: 3.99,
+  pricePaisePerMin: 399,
+  priceTiers: kDemoPriceTiers,
+  plan: 'standard',
   rating: 4.9,
   reviewCount: 48,
   talkedTo: 164,
@@ -113,7 +122,10 @@ const HostCard kDemoRohanCard = HostCard(
     'aaj-akela-lag-raha-hai',
     'koi-jo-mujhe-jaane',
   ],
-  pricePerMin: 20,
+  pricePerMin: 3.99,
+  pricePaisePerMin: 399,
+  priceTiers: kDemoPriceTiers,
+  plan: 'standard',
   rating: 4.7,
   reviewCount: 31,
   talkedTo: 130,
@@ -160,7 +172,10 @@ HostProfile? demoProfileFor(String slug) {
         languages: kDemoNehaCard.languages,
         style: kDemoNehaCard.style,
         topics: kDemoNehaCard.topics,
-        pricePerMin: 20,
+        pricePerMin: 3.99,
+        pricePaisePerMin: 399,
+        priceTiers: kDemoPriceTiers,
+        plan: 'standard',
         rating: 4.9,
         reviewCount: 48,
         ratingBreakdown: const <int, int>{5: 41, 4: 5, 3: 2, 2: 0, 1: 0},
@@ -209,7 +224,10 @@ HostProfile? demoProfileFor(String slug) {
         languages: kDemoRohanCard.languages,
         style: kDemoRohanCard.style,
         topics: kDemoRohanCard.topics,
-        pricePerMin: 20,
+        pricePerMin: 3.99,
+        pricePaisePerMin: 399,
+        priceTiers: kDemoPriceTiers,
+        plan: 'standard',
         rating: 4.7,
         reviewCount: 31,
         ratingBreakdown: const <int, int>{5: 22, 4: 7, 3: 2, 2: 0, 1: 0},
@@ -229,13 +247,16 @@ HostProfile? demoProfileFor(String slug) {
 
 /// What the confirm sheet shows for a demo host: wallet ₹342, about 17 minutes.
 const CallEstimate kDemoEstimate = CallEstimate(
-  isTokens: true,
-  ratePerMinRupees: 20,
-  tokensPerMinute: '20.00',
-  aboutText: 'about 17 min',
-  affordableSeconds: 17 * 60 + 6,
+  isMetered: true,
+  ratePerMinRupees: 3.99,
+  ratePaisePerMin: 399,
+  tiers: kDemoPriceTiers,
+  aboutText: 'No time limit — your balance is enough to start',
+  affordableSeconds: 60 * 60,
   canStart: true,
-  balance: '342',
+  startNeedPaise: 798,
+  startNeed: '₹7.98',
+  balance: '₹342.00',
 );
 
 const ReviewTarget kDemoReviewTarget = ReviewTarget(

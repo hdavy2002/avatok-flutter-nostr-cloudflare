@@ -40,7 +40,7 @@ enum OnboardingGroup {
 
 /// What the server knows about this person when the screen opens: `GET /api/hosts/me`
 /// (`{host, kyc, media, job}`) plus `GET /api/account/phone/status`. Part B reads the profile fields from
-/// [host] (the raw `host` object: `displayName, about, languages, style, topics, pricePerMin, hours, healthConsent,
+/// [host] (the raw `host` object: `displayName, about, languages, style, topics, hours, healthConsent,
 /// womenLane, lgbtqLane, lgbtqPublic, avatarId, avatarUrl, voice:{seconds,mime,status}, genAttempts, agreementsAt,
 /// reviewNote, tagline, aboutPolished, quote, status, slug`), [media] and [job].
 class OnboardingServerState {
@@ -261,9 +261,16 @@ final List<OnboardingStepDef> kOnboardingSteps = <OnboardingStepDef>[
   ),
 ];
 
-/// Position of [key] in [kOnboardingSteps], or -1.
-int onboardingStepIndex(String? key) =>
-    kOnboardingSteps.indexWhere((s) => s.key == key);
+List<OnboardingStepDef> onboardingSteps({required bool standardPlan}) =>
+    standardPlan
+    ? [for (final step in kOnboardingSteps) if (step.key != OnboardingKeys.price) step]
+    : kOnboardingSteps;
+
+/// Position of [key] in the active step list, or -1.
+int onboardingStepIndex(String? key, {bool standardPlan = false}) =>
+    onboardingSteps(
+      standardPlan: standardPlan,
+    ).indexWhere((s) => s.key == key);
 
 /// The step to resume at, from what the server knows.
 ///
@@ -271,7 +278,7 @@ int onboardingStepIndex(String? key) =>
 /// - `generating`: `generating`.
 /// - `rejected` or `paused`: `preview` ("Fix and send again" reopens at the preview).
 /// - otherwise: the first step whose [OnboardingStepDef.isDone] is false.
-String resumeStepKey(OnboardingServerState s) {
+String resumeStepKey(OnboardingServerState s, {bool standardPlan = false}) {
   switch (s.hostStatus) {
     case 'pending_review':
     case 'live':
@@ -282,7 +289,7 @@ String resumeStepKey(OnboardingServerState s) {
     case 'paused':
       return OnboardingKeys.preview;
   }
-  for (final step in kOnboardingSteps) {
+  for (final step in onboardingSteps(standardPlan: standardPlan)) {
     if (!step.isDone(s)) return step.key;
   }
   return OnboardingKeys.done;
@@ -290,9 +297,15 @@ String resumeStepKey(OnboardingServerState s) {
 
 /// Where the screen opens. A `?step=` from a link wins only when it is not past the resume step, so a link
 /// can take a person back to edit, but never skip the checks that come first. Unknown keys resume.
-String startStepKey(OnboardingServerState s, {String? requested}) {
-  final resume = resumeStepKey(s);
-  final ri = onboardingStepIndex(requested);
+String startStepKey(
+  OnboardingServerState s, {
+  String? requested,
+  bool standardPlan = false,
+}) {
+  final resume = resumeStepKey(s, standardPlan: standardPlan);
+  final ri = onboardingStepIndex(requested, standardPlan: standardPlan);
   if (requested == null || ri < 0) return resume;
-  return ri <= onboardingStepIndex(resume) ? requested : resume;
+  return ri <= onboardingStepIndex(resume, standardPlan: standardPlan)
+      ? requested
+      : resume;
 }

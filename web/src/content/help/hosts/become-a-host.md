@@ -39,14 +39,14 @@ Hosts are not doctors, lawyers, counsellors, CAs or financial advisors. You are 
 2. Sign up with a one-time code (OTP) sent to your WhatsApp. There is no password.
 3. Do the **video KYC**. You record a short video so we can see it is really you.
 4. Do the **Aadhaar check with an OTP**. We send an OTP to the mobile linked to your Aadhaar. If that doesn't work, you can use DigiLocker instead: sign in and approve sharing your e-Aadhaar. We never store your full Aadhaar number, only the last 4 digits.
-5. Pick your **moods**, your **languages**, your **price per minute**, and the **topics** you are happy to talk about.
+5. Pick your **moods**, your **languages**, and the **topics** you are happy to talk about.
 6. Go **online**. Callers can now find you and ring you.
 
 You do not need to install any app. Calls come to your normal phone.
 
 ## What your profile shows
 
-Callers see your display name, your video-KYC badge, your moods, languages, price, rating, and how many people you have talked to. They also see the topics you have agreed to talk about.
+Callers see your display name, your video-KYC badge, your moods, languages, rating, and how many people you have talked to. They also see the topics you have agreed to talk about.
 
 They do **not** see your real name, your Aadhaar details or your phone number.
 

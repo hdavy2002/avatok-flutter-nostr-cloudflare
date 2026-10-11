@@ -20,7 +20,7 @@ async function buyFor(uid: string, n: number, o: any = {}) {
   world.buy(TOK(n), { obfuscated: hash, ...o });
   return TOK(n);
 }
-const verify = (uid: string, token: string, productId = "hf_tokens_100", cfg = CFG) => processPlayPurchase(env, cfg, { productId, purchaseToken: token, uid, source: "verify" });
+const verify = (uid: string, token: string, productId = "hf_rupees_120", cfg = CFG) => processPlayPurchase(env, cfg, { productId, purchaseToken: token, uid, source: "verify" });
 
 beforeEach(() => {
   world = makePlayWorld(); env = makeEnv();
@@ -34,7 +34,7 @@ describe("verify + credit", () => {
     const t = await buyFor("u1", 901);
     await verify("u1", t);
     await verify("u1", t);
-    await processPlayPurchase(env, CFG, { productId: "hf_tokens_100", purchaseToken: t, source: "rtdn" });
+    await processPlayPurchase(env, CFG, { productId: "hf_rupees_120", purchaseToken: t, source: "rtdn" });
     expect(topup.calls).toHaveLength(1);
     expect(topup.calls[0]).toMatchObject({ uid: "u1", orderId: `GPA.${t}`, paidPaise: 12000 });
     expect(topup.calls[0].creditPaise).toBeGreaterThan(0);
@@ -46,34 +46,37 @@ describe("verify + credit", () => {
     expect(r.ok).toBe(true);
     expect(r.status).toBe("consumed");
     expect(r.duplicate).toBe(false);
-    expect(r.tokensMicro).toBe(102 * MICRO); // hf_tokens_100 is the Rs 120 pack = Rs 102 in the wallet (102 units)
+    // [HF-STD-PLAN-1] hf_rupees_120 is the Rs 120 pack, GST included: wallet = 12000 / 1.18 = 10169 paise (Rs 101.69), GST Rs 18.31
+    expect(r.tokensMicro).toBe(10169 * 10000);
+    expect(r).toMatchObject({ walletPaise: 10169, gstPaise: 1831 });
     expect(r.paidPaise).toBe(12000);
     const lots = await getLots(env, "u1");
     expect(lots.length).toBe(1);
-    expect(lots[0]).toMatchObject({ kind: "purchase", valuePaisePerToken: 100, pricingVersion: "gp-r1", leftMicro: 102 * MICRO, paidPaise: 12000, provider: "google_play", providerRef: "GPA." + t });
+    expect(lots[0]).toMatchObject({ kind: "purchase", valuePaisePerToken: 100, pricingVersion: "gp-r2", leftMicro: 10169 * 10000, paidPaise: 12000, provider: "google_play", providerRef: "GPA." + t });
     expect(row(t).state).toBe("consumed");
     expect(row(t).lot_id).toBe(lots[0].id);
     expect(world.calls.filter((c: string) => c.includes(":acknowledge")).length).toBe(1);
     expect(world.calls.filter((c: string) => c.includes(":consume")).length).toBe(1);
-    expect(events("hf_token_purchase_verified")[0].props).toMatchObject({ tokens: 102, paid_paise: 12000, duplicate: false });
+    expect(events("hf_token_purchase_verified")[0].props).toMatchObject({ wallet_paise: 10169, gst_paise: 1831, paid_paise: 12000, duplicate: false });
   });
 
   it("falls back to the catalogue price when Play reports no rupee price", async () => {
     const t = await buyFor("u1", 1, { priceMicros: undefined });
-    expect((await verify("u1", t)).paidPaise).toBe(12036) // approximate fallback: 102 x 118 paise;
+    // [HF-STD-PLAN-1] the fallback is the catalogue price incl. GST (list_price_paise), no longer an approximation
+    expect((await verify("u1", t)).paidPaise).toBe(12000);
   });
 
   it("the same purchase three times (verify, notification, cron) is ONE lot and one ledger row", async () => {
     const t = await buyFor("u1", 1);
     const a = await verify("u1", t);
-    const b = await processPlayPurchase(env, CFG, { productId: "hf_tokens_100", purchaseToken: t, source: "rtdn" });
-    const c = await processPlayPurchase(env, CFG, { productId: "hf_tokens_100", purchaseToken: t, uid: "u1", source: "cron" });
+    const b = await processPlayPurchase(env, CFG, { productId: "hf_rupees_120", purchaseToken: t, source: "rtdn" });
+    const c = await processPlayPurchase(env, CFG, { productId: "hf_rupees_120", purchaseToken: t, uid: "u1", source: "cron" });
     for (const x of [a, b, c]) expect(x.ok).toBe(true);
     expect(b.duplicate).toBe(true); expect(c.duplicate).toBe(true);
     expect(count("SELECT COUNT(*) AS n FROM hf_token_lots")).toBe(1);
     expect(count("SELECT COUNT(*) AS n FROM hf_token_ledger WHERE kind='purchase'")).toBe(1);
     expect(count("SELECT COUNT(*) AS n FROM hf_play_purchases")).toBe(1);
-    expect((await balanceSummary(env, "u1")).totalMicro).toBe(102 * MICRO);
+    expect((await balanceSummary(env, "u1")).totalMicro).toBe(10169 * 10000); // [HF-STD-PLAN-1]
     expect(events("hf_token_purchase_verified").map((e: any) => e.props.duplicate)).toEqual([false, true, true]);
   });
 
@@ -94,17 +97,17 @@ describe("verify + credit", () => {
   it("unknown or inactive products are rejected before Play is called", async () => {
     const t = await buyFor("u1", 1, { sku: "hf_tokens_bogus" });
     expect((await verify("u1", t, "hf_tokens_bogus")).code).toBe("unknown_product");
-    env.DB_META._raw.exec("UPDATE hf_token_products SET active=0 WHERE product_id='hf_tokens_200'");
-    const t2 = await buyFor("u1", 2, { sku: "hf_tokens_200" });
-    expect((await verify("u1", t2, "hf_tokens_200")).code).toBe("unknown_product");
+    env.DB_META._raw.exec("UPDATE hf_token_products SET active=0 WHERE product_id='hf_rupees_240'");
+    const t2 = await buyFor("u1", 2, { sku: "hf_rupees_240" });
+    expect((await verify("u1", t2, "hf_rupees_240")).code).toBe("unknown_product");
     expect(world.calls.length).toBe(0);
     expect(count("SELECT COUNT(*) AS n FROM hf_token_lots")).toBe(0);
   });
 
   it("refuses when tokens are disabled or the provider is not google_play", async () => {
     const t = await buyFor("u1", 1);
-    expect((await verify("u1", t, "hf_tokens_100", { ...CFG, enabled: false })).code).toBe("disabled");
-    expect((await verify("u1", t, "hf_tokens_100", { ...CFG, provider: "none" })).code).toBe("disabled");
+    expect((await verify("u1", t, "hf_rupees_120", { ...CFG, enabled: false })).code).toBe("disabled");
+    expect((await verify("u1", t, "hf_rupees_120", { ...CFG, provider: "none" })).code).toBe("disabled");
     expect(count("SELECT COUNT(*) AS n FROM hf_token_lots")).toBe(0);
   });
 
@@ -174,7 +177,7 @@ describe("acknowledge + consume", () => {
     world.flags.failConsume = true;
     const r = await verify("u1", t);
     expect(r).toMatchObject({ ok: true, status: "credited" });
-    expect((await balanceSummary(env, "u1")).totalMicro).toBe(102 * MICRO);
+    expect((await balanceSummary(env, "u1")).totalMicro).toBe(10169 * 10000); // [HF-STD-PLAN-1]
     expect(row(t).state).toBe("credited");
     // too fresh for the retry
     expect((await runPlayCron(env, CFG)).consumeRetried).toBe(0);
@@ -212,7 +215,7 @@ describe("refunds", () => {
     const t = await buyFor("u1", 1);
     await verify("u1", t);
     const r = await applyPlayRefund(env, "GPA." + t, "rtdn");
-    expect(r).toMatchObject({ found: true, applied: true, debtValuePaise: 0, removedMicro: 102 * MICRO });
+    expect(r).toMatchObject({ found: true, applied: true, debtValuePaise: 0, removedMicro: 10169 * 10000 });
     expect((await balanceSummary(env, "u1")).totalMicro).toBe(0);
     expect(await hasOpenDebt(env, "u1")).toBe(false);
     expect(row(t).state).toBe("refunded");
@@ -280,7 +283,7 @@ describe("refunds", () => {
   it("the voided-purchases sweep refunds what Play lists and advances its cursor", async () => {
     const t = await buyFor("u1", 1);
     await verify("u1", t);
-    world.voided.push({ purchaseToken: t, orderId: "GPA." + t, productId: "hf_tokens_100", voidedTimeMillis: String(Date.now()), voidedReason: 0 });
+    world.voided.push({ purchaseToken: t, orderId: "GPA." + t, productId: "hf_rupees_120", voidedTimeMillis: String(Date.now()), voidedReason: 0 });
     const r = await runPlayCron(env, CFG);
     expect(r).toMatchObject({ swept: true, voidedScanned: 1, refundsApplied: 1 });
     expect(row(t).state).toBe("refunded");

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/api/api_error.dart';
+import '../../../core/config/flags.dart';
 import '../../../core/format/money.dart';
 import '../../../core/theme/hf_theme.dart';
 import '../data/dash_format.dart';
@@ -23,6 +24,7 @@ class EarningsCard extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final standardPlan = hfStdPlanOn(ref.watch(flagsProvider));
     final earnings = ref.watch(hostEarningsProvider);
     final payouts = dashValueOf(ref.watch(hostPayoutsProvider));
     // The wallet answer carries the host block; when it is missing or fails, the withdrawals answer has the
@@ -119,7 +121,7 @@ class EarningsCard extends ConsumerWidget {
                   Padding(
                     padding: const EdgeInsets.only(bottom: 4),
                     child: Text(
-                      '${Money.paise(r.paise)} unlocks on ${DashFormat.day(r.date)}',
+                      '${formatPaise(r.paise)} unlocks on ${DashFormat.day(r.date)}',
                       key: ValueKey<String>(
                         'release-${r.date.millisecondsSinceEpoch}',
                       ),
@@ -140,6 +142,7 @@ class EarningsCard extends ConsumerWidget {
                   ),
               ],
               const SizedBox(height: HfSpacing.sm),
+              if (standardPlan) Text(HostCopy.standardPlan, style: muted),
               Text(HostCopy.holdNote(holdDays), style: muted),
               if (e.testEarnings != null)
                 Text(HostCopy.earningsTestNote, style: muted),

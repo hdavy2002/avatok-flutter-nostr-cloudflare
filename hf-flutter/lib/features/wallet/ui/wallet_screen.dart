@@ -26,9 +26,9 @@ import 'wallet_surface.dart';
 abstract final class WalletCopy {
   static const String title = 'Wallet';
   static const String balance = 'Balance';
-  static const String noTokens =
+  static const String noMoney =
       'No money in your wallet yet. Add money below to start calling.';
-  static const String testTokens = 'Test credit (spend only)';
+  static const String testCredit = 'Test credit (spend only)';
   static const String recent = 'Recent';
   static const String historyEmpty = 'No activity yet.';
   static const String purchases = 'Purchase records';
@@ -39,10 +39,6 @@ abstract final class WalletCopy {
 
 /// Muted text on the ink balance card (mockup `#D6D1EE`).
 const Color _onInkMuted = Color(0xFFD6D1EE);
-
-/// `45.00` -> `45`, `45.20` -> `45.20`: whole rupees drop the decimals, like the mockup's "₹342".
-String _plainRupees(String text) =>
-    text.endsWith('.00') ? text.substring(0, text.length - 3) : text;
 
 /// Tab 3 (needs sign-in). Both wallet shapes render. Money is read live every time: nothing here is cached.
 class WalletScreen extends ConsumerStatefulWidget {
@@ -221,7 +217,9 @@ class _WalletBodyState extends ConsumerState<_WalletBody> {
       if (data == null || _viewed) return;
       _viewed = true;
       Analytics.capture('hf_app_wallet_viewed', {
-        'mode': data.tokenMode ? 'tokens' : 'legacy',
+        'mode': data.rupeeMode
+            ? 'rupees'
+            : (data.tokenMode ? 'lots' : 'legacy'),
         'has_debt': data.hasDebt,
       });
     });
@@ -299,9 +297,7 @@ class _WalletList extends ConsumerWidget {
                     icon: Icons.arrow_forward_rounded,
                     onPressed:
                         !data.hasDebt &&
-                            (data.tokenMode
-                                ? data.availableMicro > 0
-                                : data.spendable > 0) &&
+                            data.spendablePaise > 0 &&
                             notice?.kind != NoticeKind.pending
                         ? () async {
                             final slug = Uri.parse(
@@ -360,7 +356,7 @@ class _WalletList extends ConsumerWidget {
 /// "About N minutes at ₹R/min" (whole rupees); "Add money to start talking" when nothing is left to spend.
 String _minutesLine(int minutes, num rate) => minutes <= 0
     ? 'Add money to start talking'
-    : 'About $minutes ${minutes == 1 ? 'minute' : 'minutes'} at ₹${rate.round()}/min';
+    : 'About $minutes ${minutes == 1 ? 'minute' : 'minutes'} at ${formatRupees(rate)}/min';
 
 /// The ink balance card: radius 28, two decorative circles, the balance in Nunito 44.
 class _BalanceCard extends StatelessWidget {
@@ -373,9 +369,7 @@ class _BalanceCard extends StatelessWidget {
   int? get _minutes {
     final r = rate;
     if (r == null || r <= 0) return null;
-    final spendable = data.tokenMode
-        ? data.availableMicro / 1000000
-        : data.spendable;
+    final spendable = data.spendablePaise / 100;
     return (spendable / r).floor();
   }
 
@@ -383,8 +377,8 @@ class _BalanceCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final tokens = data.tokenMode;
     final amount = tokens
-        ? '₹${_plainRupees(data.balanceText)}'
-        : Money.rupees(data.paidBalance);
+        ? formatPaise(data.balancePaise)
+        : formatRupees(data.paidBalance);
     final minutes = _minutes;
     final small = HfText.body.copyWith(
       fontSize: 14,
@@ -464,15 +458,14 @@ class _BalanceCard extends StatelessWidget {
                     ),
                   ],
                   if (tokens &&
-                      data.byValue.isEmpty &&
-                      data.balanceMicro == 0) ...[
+                      data.balancePaise == 0) ...[
                     const SizedBox(height: 4),
-                    Text(WalletCopy.noTokens, style: small),
+                    Text(WalletCopy.noMoney, style: small),
                   ],
                   if (tokens && data.hasTestTokens) ...[
                     const SizedBox(height: 4),
                     Text(
-                      '${WalletCopy.testTokens}: ₹${data.testTokensText}',
+                      '${WalletCopy.testCredit}: ${formatPaise(data.testPaise)}',
                       key: const ValueKey<String>('test-tokens'),
                       style: small,
                     ),
@@ -480,14 +473,14 @@ class _BalanceCard extends StatelessWidget {
                   if (tokens && data.hasReserved) ...[
                     const SizedBox(height: 4),
                     Text(
-                      '₹${data.availableText} is free to spend. The rest is held for a call in progress.',
+                      '${formatPaise(data.availablePaise)} is free to spend. The rest is held for a call in progress.',
                       style: small,
                     ),
                   ],
                   if (!tokens && data.testBalance > 0) ...[
                     const SizedBox(height: 4),
                     Text(
-                      'Test credits (spend only): ${Money.rupees(data.testBalance)}',
+                      'Test credits (spend only): ${formatRupees(data.testBalance)}',
                       style: small,
                     ),
                   ],
@@ -505,6 +498,10 @@ class _DebtBanner extends StatelessWidget {
   const _DebtBanner({required this.debt});
 
   final TokenDebt debt;
+
+  String get _owedText => debt.valuePaise > 0
+      ? formatPaise(debt.valuePaise)
+      : formatRupees(num.tryParse(debt.tokensText.replaceAll(',', '')) ?? 0);
 
   @override
   Widget build(BuildContext context) {
@@ -532,7 +529,7 @@ class _DebtBanner extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'You owe ₹${debt.tokensText} after a refund.',
+                      'You owe $_owedText after a refund.',
                       style: HfText.bodyStrong.copyWith(
                         color: tint.valueInk(context),
                       ),
@@ -587,6 +584,7 @@ class _PurchaseRow extends StatelessWidget {
     final sub = [
       if (record.orderId != null) 'Order ${record.orderId}',
       if (record.at != null) shortDate(record.at),
+      if (record.amounts != null) record.amounts!.line,
     ].join(' · ');
     return WalletRow(
       leading: const WalletRowTile(
@@ -595,7 +593,7 @@ class _PurchaseRow extends StatelessWidget {
       ),
       title: record.label,
       subtitle: sub,
-      trailing: record.tokens ?? '',
+      trailing: record.added ?? '',
     );
   }
 }
@@ -709,7 +707,7 @@ class _Receipts extends ConsumerWidget {
                   ),
                   title: 'Receipt ${r.number}',
                   subtitle: r.issuedAt == null ? '' : shortDate(r.issuedAt),
-                  trailing: Money.rupees(r.amountRupees),
+                  trailing: formatRupees(r.amountRupees),
                 ),
             ],
           ),

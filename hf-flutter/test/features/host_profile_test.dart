@@ -256,8 +256,8 @@ void main() {
         expect(find.byType(HfVerifiedBadge), findsOneWidget);
         expect(find.text('A warm listener'), findsOneWidget);
         expect(find.text('Online now'), findsOneWidget);
-        expect(find.text('₹12 /min'), findsOneWidget);
-        expect(find.text('10 min ≈ ₹120'), findsOneWidget);
+        expect(find.text('₹12.00/min'), findsOneWidget);
+        expect(find.text('10 min ≈ ₹120.00'), findsOneWidget);
         expect(find.text('New'), findsOneWidget);
         expect(find.text('talked to'), findsOneWidget);
         expect(find.text('regulars'), findsOneWidget);
@@ -573,7 +573,7 @@ void main() {
         });
       await _pumpProfile(tester, api: api, session: signedIn());
       expect(find.text('about 8 min 12 s'), findsOneWidget);
-      expect(find.text('10 min ≈ ₹120'), findsNothing);
+      expect(find.text('10 min ≈ ₹120.00'), findsNothing);
     });
 
     testWidgets('no token estimate when signed out', (tester) async {

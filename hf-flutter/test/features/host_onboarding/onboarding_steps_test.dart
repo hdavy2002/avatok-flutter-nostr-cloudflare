@@ -165,8 +165,8 @@ void main() {
   });
 
   group('the step list', () {
-    test('keys match the web, in order', () {
-      expect(kOnboardingSteps.map((s) => s.key), [
+    test('standard plan omits price while flag off keeps it', () {
+      expect(onboardingSteps(standardPlan: true).map((s) => s.key), [
         'welcome',
         'phone',
         'aadhaar',
@@ -176,7 +176,6 @@ void main() {
         'about',
         'languages',
         'topics',
-        'price',
         'hours',
         'voice',
         'review',
@@ -184,13 +183,41 @@ void main() {
         'preview',
         'done',
       ]);
+      expect(
+        onboardingSteps(standardPlan: false).map((s) => s.key),
+        contains('price'),
+      );
     });
 
     test('onboardingStepIndex', () {
-      expect(onboardingStepIndex('welcome'), 0);
-      expect(onboardingStepIndex('done'), kOnboardingSteps.length - 1);
-      expect(onboardingStepIndex('x'), -1);
-      expect(onboardingStepIndex(null), -1);
+      expect(onboardingStepIndex('welcome', standardPlan: true), 0);
+      expect(
+        onboardingStepIndex('done', standardPlan: true),
+        onboardingSteps(standardPlan: true).length - 1,
+      );
+      expect(onboardingStepIndex('price', standardPlan: true), -1);
+      expect(onboardingStepIndex('price', standardPlan: false), greaterThan(0));
+      expect(onboardingStepIndex('x', standardPlan: true), -1);
+      expect(onboardingStepIndex(null, standardPlan: true), -1);
+    });
+
+    test('resume requires legacy price only while the flag is off', () {
+      final host = <String, Object?>{
+        'status': 'draft',
+        'avatarId': 'a1',
+        'displayName': 'Asha',
+        'about': 'I listen carefully and enjoy friendly conversations.',
+        'languages': ['hi'],
+        'style': 'warm',
+        'topics': ['tension-a'],
+        'hours': {
+          'days': [1],
+        },
+        'voice': {'seconds': 60},
+      };
+      final ready = state(host: host, kyc: payoutDone, phone: true);
+      expect(resumeStepKey(ready, standardPlan: false), 'price');
+      expect(resumeStepKey(ready, standardPlan: true), 'review');
     });
   });
 

@@ -369,7 +369,7 @@ void main() {
         await pumpDashboard(tester, api: hostApi());
         expect(find.text('Caller 12'), findsNWidgets(2));
         expect(find.text('9 Oct, 4:30 pm · 5 min'), findsOneWidget);
-        expect(tester.widget<Text>(key('earned-c1')).data, '+₹40');
+        expect(tester.widget<Text>(key('earned-c1')).data, '+₹40.00');
         expect(tester.widget<Text>(key('earned-c2')).data, '+₹32.50');
         expect(
           find.descendant(
@@ -392,7 +392,7 @@ void main() {
       'legacy wallet has no per-call list: rows show rupees and no tag',
       (tester) async {
         await pumpDashboard(tester, api: hostApi(wallet: legacyHostWallet()));
-        expect(tester.widget<Text>(key('earned-c1')).data, '+₹40');
+        expect(tester.widget<Text>(key('earned-c1')).data, '+₹40.00');
         expect(key('tag-c1'), findsNothing);
       },
     );
@@ -425,7 +425,7 @@ void main() {
       await pumpDashboard(tester, api: api);
       expect(find.text(HostCopy.callsEmpty), findsOneWidget);
       expect(
-        find.descendant(of: key('today-earned'), matching: find.text('₹0')),
+        find.descendant(of: key('today-earned'), matching: find.text('₹0.00')),
         findsOneWidget,
       );
     });
@@ -467,11 +467,12 @@ void main() {
       (tester) async {
         await pumpDashboard(tester, api: hostApi());
         expect(tester.widget<Text>(key('earn-available')).data, '₹1,200.50');
-        expect(tester.widget<Text>(key('earn-pending')).data, '₹500');
-        expect(tester.widget<Text>(key('earn-total')).data, 'Total ₹4,000');
-        expect(tester.widget<Text>(key('earn-paidout')).data, '₹1,500');
-        expect(tester.widget<Text>(key('earn-test')).data, '₹25');
-        expect(find.text('₹40 unlocks on 16 Oct'), findsOneWidget);
+        expect(tester.widget<Text>(key('earn-pending')).data, '₹500.00');
+        expect(tester.widget<Text>(key('earn-total')).data, 'Total ₹4,000.00');
+        expect(tester.widget<Text>(key('earn-paidout')).data, '₹1,500.00');
+        expect(tester.widget<Text>(key('earn-test')).data, '₹25.00');
+        expect(find.text('₹40.00 unlocks on 16 Oct'), findsOneWidget);
+        expect(find.text(HostCopy.standardPlan), findsOneWidget);
         expect(find.text(HostCopy.holdNote(7)), findsOneWidget);
         expect(
           find.textContaining(RegExp('token', caseSensitive: false)),
@@ -483,12 +484,16 @@ void main() {
     testWidgets(
       'legacy shape: rupees from heldRupees / availableRupees / lifetimePaidEarnings',
       (tester) async {
-        await pumpDashboard(tester, api: hostApi(wallet: legacyHostWallet()));
-        expect(tester.widget<Text>(key('earn-available')).data, '₹900');
-        expect(tester.widget<Text>(key('earn-pending')).data, '₹300');
-        expect(tester.widget<Text>(key('earn-total')).data, 'Total ₹2,500');
+        await pumpDashboard(
+          tester,
+          api: hostApi(wallet: legacyHostWallet(), standardPlan: false),
+        );
+        expect(tester.widget<Text>(key('earn-available')).data, '₹900.00');
+        expect(tester.widget<Text>(key('earn-pending')).data, '₹300.00');
+        expect(tester.widget<Text>(key('earn-total')).data, 'Total ₹2,500.00');
         expect(key('earn-test'), findsNothing);
         expect(key('earn-paidout'), findsNothing);
+        expect(find.text(HostCopy.standardPlan), findsNothing);
         expect(
           find.textContaining(RegExp('token', caseSensitive: false)),
           findsNothing,
@@ -506,8 +511,8 @@ void main() {
             const ApiError(status: 502, code: 'http_502'),
           );
         await pumpDashboard(tester, api: api);
-        expect(tester.widget<Text>(key('earn-available')).data, '₹1,000');
-        expect(tester.widget<Text>(key('earn-pending')).data, '₹500');
+        expect(tester.widget<Text>(key('earn-available')).data, '₹1,000.00');
+        expect(tester.widget<Text>(key('earn-pending')).data, '₹500.00');
         expect(key('earn-total'), findsNothing);
       },
     );

@@ -1,5 +1,7 @@
 # HF-CALLS-1: masked paid calls, presence, notify-me, reviews (contract, owner-approved 2026-10-09)
 
+> **Current billing authority (2026-10-11):** `Specs/HF-STD-PLAN-1-CONTRACT.md` supersedes the legacy pricing bullets below whenever `hfStdPlanEnabled` is true. The flag defaults OFF. Enabled calls use ₹3.99/₹3.50/₹3.25 cumulative per-second tiers, a ₹7.98 start reserve, ₹2/min host earnings, and a 24-hour operational failsafe. With it OFF, this contract's legacy pricing path remains functional.
+
 Owner decisions:
 - Vobiz is the provider. The owner buys one Indian number → secret/var `HF_CALL_DID` (E.164).
 - Testing uses admin-added **test credits**. Real top-up comes later; `MONEY_IN_DISABLED` stays as is.
@@ -18,7 +20,7 @@ Everything is dark behind flag `hfCallsEnabled` (default false), added to Platfo
 
 **Recording:** none. No audio and no transcripts; metadata only.
 
-**Billing**
+**Billing (legacy fallback while `hfStdPlanEnabled` is OFF)**
 - Per started minute of connected time (from both-joined to end). Ringing, decline or failure costs ₹0.
 - The caller needs ≥ 2 minutes of balance at the host's rate to start.
 - Max call length = min(60 min, floor(balance / rate) minutes), with a spoken warning 60 s before the limit.

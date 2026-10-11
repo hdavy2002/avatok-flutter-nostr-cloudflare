@@ -1,9 +1,10 @@
 /* HostCalls — [HF-CALLS-1] Recent masked calls + [HF-ADMIN-CREDIT-1] the "Add test credits" panel (search by WhatsApp number, email or name, one-tap credit). Worker: GET /api/admin/hf/calls, GET /api/admin/hf/users/search?q=, POST /api/admin/hf/wallet/credit {uid|phone, rupees 1..2000, note}.
  * Test credits are the only money-in for now. Nothing under 14px. */
 import { useCallback, useEffect, useState } from 'react';
-import { hfAdminApi, type AdminCall, type AdminUserHit } from '../../../lib/hfAdminApi';
+import { hfAdminApi, type AdminCall, type AdminUserHit, type StdCallRow, type StdTotals } from '../../../lib/hfAdminApi';
 import { toMs } from '../../../lib/hfCallsApi';
-import { Banner, ConsultShell, Spinner, dateIST, fail, rupees } from '../consultants/kit';
+import { Banner, ConsultShell, Spinner, dateIST, fail } from '../consultants/kit';
+import { formatPaise } from '../../../lib/money';
 
 const T14 = { fontSize: 14 } as const;
 const field = { width: '100%', ...T14, padding: 10, borderRadius: 10, border: '1px solid #c8afd1', minHeight: 44 } as const;
@@ -134,6 +135,58 @@ function CreditPanel() {
   );
 }
 
+/* [HF-STD-PLAN-1] Calls & margins: what each Standard-plan call cost the caller, what the host earned, the estimated phone cost and what is left for the platform.
+ * Worker: GET /api/admin/hf/std/calls and /summary. Estimates only, before other expenses, never profit. */
+const pn = (v: number | null | undefined): string => (v == null ? '—' : formatPaise(v));
+function MarginsPanel() {
+  const [rows, setRows] = useState<StdCallRow[] | null>(null);
+  const [totals, setTotals] = useState<StdTotals | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => {
+    let live = true;
+    (async () => {
+      try {
+        const [c, t] = await Promise.all([hfAdminApi.stdCalls(), hfAdminApi.stdSummary().catch(() => null)]);
+        if (!live) return;
+        setRows(c.items); setTotals(t ?? c.totals ?? null);
+      } catch (e) { if (live) { setError(fail('hf_std_calls', e)); setRows([]); } }
+    })();
+    return () => { live = false; };
+  }, []);
+  return (
+    <section className="card" style={{ background: '#fff', display: 'grid', gap: 10, marginBottom: 18 }}>
+      <h2 style={{ margin: 0, fontSize: 18 }}>Calls &amp; margins</h2>
+      <p className="muted" style={{ margin: 0, ...T14 }}>Estimates before other expenses — not profit.</p>
+      {error && <Banner tone="error">{error}</Banner>}
+      {rows === null && <Spinner label="Loading…" />}
+      {totals && (
+        <div style={{ ...T14, display: 'flex', gap: 16, flexWrap: 'wrap', fontWeight: 700 }}>
+          <span>Calls {totals.calls ?? '—'}</span><span>Charged {pn(totals.chargePaise)}</span><span>Hosts {pn(totals.hostPaise)}</span>
+          <span>Phone est. {pn(totals.phoneCostEstPaise)}</span><span>Phone actual {pn(totals.phoneCostActualPaise)}</span><span>Platform est. {pn(totals.platformEstPaise)}</span>
+        </div>
+      )}
+      {rows && rows.length === 0 && !error && <div className="muted" style={{ fontWeight: 700, ...T14 }}>No Standard-plan calls yet.</div>}
+      {rows && rows.length > 0 && (
+        <div style={{ overflow: 'auto' }}>
+          <table className="t" style={T14}>
+            <thead><tr><th>When</th><th>Host</th><th>Charge</th><th>Host</th><th>Phone est.</th><th>Phone actual</th><th>Platform est.</th></tr></thead>
+            <tbody>
+              {rows.map((c) => (
+                <tr key={c.id}>
+                  <td>{dateIST(toMs(c.at ?? c.createdAt))}</td>
+                  <td>{c.hostName || c.hostSlug || '—'}</td>
+                  <td>{pn(c.chargePaise)}</td><td>{pn(c.hostPaise)}</td><td>{pn(c.phoneCostEstPaise)}</td><td>{pn(c.phoneCostActualPaise)}</td>
+                  <td>{pn(c.platformAfterActualPaise ?? c.platformEstPaise)}{c.platformAfterActualPaise != null ? ' (after actual phone cost)' : ''}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </section>
+  );
+}
+
 export default function HostCalls() {
   const [rows, setRows] = useState<AdminCall[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -146,6 +199,7 @@ export default function HostCalls() {
   return (
     <ConsultShell>
       <CreditPanel />
+      <MarginsPanel />
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, marginBottom: 10 }}>
         <h2 style={{ margin: 0, fontSize: 18 }}>Recent calls</h2>
         <button type="button" className="btn ghost small" style={T14} onClick={() => void load()}>Refresh</button>
@@ -165,8 +219,8 @@ export default function HostCalls() {
                   <td style={{ wordBreak: 'break-all' }}>{c.callerUid || '—'}</td>
                   <td>{c.status}</td>
                   <td>{c.billedMinutes ?? '—'}</td>
-                  <td>{c.chargedPaise != null ? rupees(c.chargedPaise / 100) : '—'}</td>
-                  <td>{c.hostEarningPaise != null ? rupees(c.hostEarningPaise / 100) : '—'}</td>
+                  <td>{c.chargedPaise != null ? formatPaise(c.chargedPaise) : '—'}</td>
+                  <td>{c.hostEarningPaise != null ? formatPaise(c.hostEarningPaise) : '—'}</td>
                   <td>{c.endReason || '—'}</td>
                 </tr>
               ))}

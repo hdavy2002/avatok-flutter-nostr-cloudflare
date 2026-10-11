@@ -12,7 +12,7 @@ class WalletApi {
   Future<WalletData> wallet() async =>
       WalletData.fromJson(await _api.getJson('/api/hf/wallet'));
 
-  /// Public route. `enabled: false` means purchases are off: show "Buying tokens is coming soon".
+  /// Public route. `enabled: false` means purchases are off: show "Adding money is coming soon".
   Future<TokenCatalog> products() async => TokenCatalog.fromJson(
     await _api.getJson('/api/hf/tokens/products', auth: false),
   );

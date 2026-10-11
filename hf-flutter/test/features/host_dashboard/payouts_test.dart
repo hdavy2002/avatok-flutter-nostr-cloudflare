@@ -39,7 +39,7 @@ void main() {
         await _openSheet(tester);
         expect(
           tester.widget<Text>(key('payout-upto')).data,
-          HostCopy.upTo('₹1,000'),
+          HostCopy.upTo('₹1,000.00'),
         );
         expect(
           find.text('Smallest withdrawal ₹500. Up to 2 requests a week.'),
@@ -336,7 +336,7 @@ void main() {
       await _openSheet(tester);
       expect(
         tester.widget<Text>(key('payout-upto')).data,
-        HostCopy.upTo('₹750'),
+        HostCopy.upTo('₹750.00'),
       );
     });
   });

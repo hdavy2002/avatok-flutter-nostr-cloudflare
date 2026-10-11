@@ -222,7 +222,10 @@ class _PacksState extends ConsumerState<_Packs> {
                 builder: (ctx) => AlertDialog(
                   title: const Text(BuyCopy.areYouSure),
                   content: Text(
-                    'You are about to add ${offer.pack.creditPaise == null ? 'money' : Money.paise(offer.pack.creditPaise!)} to your wallet. You pay ${offer.priceText ?? ''} (includes 18% GST) through Google Play.',
+                    offer.breakdown != null
+                        ? 'You are about to add ${offer.breakdown!.wallet} to your wallet.\n\n${offer.breakdown!.lines}\n\nYou pay through Google Play.'
+                        : 'You are about to add money to your wallet. You pay ${offer.priceText ?? ''} (includes 18% GST) through Google Play.',
+                    key: const ValueKey<String>('confirm-breakdown'),
                     style: HfText.body,
                   ),
                   actions: [
@@ -382,14 +385,15 @@ class _PackTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final dark = HfBrightness.isDark(context);
     final price = offer.priceText;
-    final credit = offer.pack.creditPaise;
+    final breakdown = offer.breakdown;
+    final legacyCredit = offer.pack.creditPaise;
     final border = selected
         ? (dark ? HfColors.lavenderLight : HfColors.ink)
         : Colors.transparent;
     final label = price == null ? BuyCopy.unavailable : 'Pay $price';
     final semantic = [
       label,
-      if (credit != null) 'adds ${Money.paise(credit)}',
+      if (breakdown != null) breakdown.line,
       if (popular) BuyCopy.popular,
     ].join(', ');
     final radius = BorderRadius.circular(HfRadius.tile);
@@ -438,11 +442,20 @@ class _PackTile extends StatelessWidget {
                                 color: tint.ink(context),
                               ),
                             ),
-                            if (credit != null) ...[
+                            if (breakdown != null) ...[
                               const SizedBox(height: 4),
                               Text(
-                                '+${Money.paise(credit)}',
-                                style: HfText.stat.copyWith(
+                                breakdown.line,
+                                key: ValueKey<String>('gst-${offer.productId}'),
+                                style: HfText.note.copyWith(
+                                  color: tint.valueInk(context),
+                                ),
+                              ),
+                            ] else if (legacyCredit != null) ...[
+                              const SizedBox(height: 4),
+                              Text(
+                                'Added to wallet ${formatPaise(legacyCredit)}',
+                                style: HfText.note.copyWith(
                                   color: tint.valueInk(context),
                                 ),
                               ),

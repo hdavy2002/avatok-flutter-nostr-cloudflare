@@ -18,13 +18,13 @@ draft: false
 
 <!-- rebrand: reviewed -->
 
-{{brand.name}} lets you talk to a real person on a normal phone call. You pick who to talk to, you talk in your own language, and you pay only per minute. **Baat karo. Dil halka karo.**
+{{brand.name}} lets you talk to a real person on a normal phone call. You pick who to talk to, you talk in your own language, and you pay only for the seconds you talk. **Baat karo. Dil halka karo.**
 
 ## What it is
 
 Sometimes you just want someone to listen. Maybe you feel alone. Maybe you want a new friend. Maybe you want to talk about a subject you love.
 
-On {{brand.name}}, you choose a host by mood, language and price. A host is a real person who is 18 or older. Every host has been checked with a video check. Hosts earn from home by talking.
+On {{brand.name}}, you choose a host by mood and language. A host is a real person who is 18 or older. Every host has been checked with a video check. Hosts earn from home by talking.
 
 - You talk on a normal phone call. No app is needed.
 - Your phone number stays private. So does the host's.

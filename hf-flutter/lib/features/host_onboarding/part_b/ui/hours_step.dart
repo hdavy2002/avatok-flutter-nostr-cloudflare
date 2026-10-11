@@ -164,7 +164,7 @@ class _HoursStepState extends ConsumerState<HoursStep> {
   Future<void> _continue() async {
     if (_busy) return;
     final lock = EditLock.of(ctx.state.hostStatus);
-    if (lock.priceHoursLocked) {
+    if (lock.hoursLocked) {
       await ctx.next();
       return;
     }
@@ -232,7 +232,7 @@ class _HoursStepState extends ConsumerState<HoursStep> {
   @override
   Widget build(BuildContext context) {
     final lock = EditLock.of(ctx.state.hostStatus);
-    final hoursLocked = lock.priceHoursLocked;
+    final hoursLocked = lock.hoursLocked;
     final comfortLocked = lock.profileLocked;
     final banner = lock.banner(editableWhenLive: true);
     final problem = _saver.saveProblem;

@@ -11,6 +11,7 @@ import { trackUser, trackException } from "../hooks";
 import { BRAND } from "../lib/brand";
 import { emailFor } from "../lib/identity";
 import { readConfig } from "./config";
+import { readHfStdPlan } from "../lib/hf_token_config"; // [HF-STD-PLAN-1]
 import { getHost, upsertHost, listMedia, hostToJson, mediaToJson, mediaUrl, avatarUrlFor, type HostPatch } from "../lib/hf_host_store";
 import { normalizeIntroMime, validateIntro, INTRO_ACCEPTED_TYPES, INTRO_MAX_BYTES } from "../lib/hf_intro";
 import { transcribeAndFlag } from "../lib/hf_intro_check";
@@ -125,7 +126,10 @@ async function putMe(req: Request, env: Env, ctx: ExecutionContext | undefined):
     if (typeof b.conversationLang !== "string" || !LANGUAGE_CODE_SET.has(b.conversationLang)) return bad("conversationLang", "Pick a conversation language from the list.");
     patch.conversation_lang = b.conversationLang; changed.push("conversationLang");
   }
-  if (has("pricePerMin")) {
+  // [HF-STD-PLAN-1] Standard plan: hosts no longer set a price; one rate card applies to every call. An older app still sending
+  // pricePerMin is ignored (never an error, so onboarding is not blocked).
+  const stdOn = readHfStdPlan((await readConfig(env).catch(() => ({}))) as unknown as Record<string, unknown>).enabled;
+  if (has("pricePerMin") && !stdOn) {
     const n = b.pricePerMin;
     if (typeof n !== "number" || !Number.isInteger(n) || n < PRICE_MIN || n > PRICE_MAX) return bad("pricePerMin", `Price must be a whole number from ₹${PRICE_MIN} to ₹${PRICE_MAX} per minute.`);
     patch.price_per_min = n; changed.push("pricePerMin");

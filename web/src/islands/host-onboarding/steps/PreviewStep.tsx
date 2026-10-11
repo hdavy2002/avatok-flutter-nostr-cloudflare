@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import Icon from '../Icon';
 import PreviewCard from '../PreviewCard';
-import { TOPICS } from '../data';
+import { STD_PLAN_HOST_LINE, TOPICS } from '../data';
 import type { GeneratedProfile, StepProps } from '../types';
+import { isOnboardingStandardPlan } from '../api_real';
 
 const mmss = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
 
@@ -76,6 +77,8 @@ export default function PreviewStep({ draft, update, api, setAction, goTo, avata
 
       <h2 className="hob-f-h2">Your card</h2>
       <div className="hob-f-cardwrap"><PreviewCard draft={draft} avatar={avatar} /></div>
+
+      <p className="hob-help">{isOnboardingStandardPlan() ? STD_PLAN_HOST_LINE : `Your price: ₹${draft.pricePerMin}/min`}</p>
 
       <h2 className="hob-f-h2">Your profile page</h2>
       <section className="hob-card hob-f-profile">

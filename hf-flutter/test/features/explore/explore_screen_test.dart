@@ -12,6 +12,7 @@ import 'package:hf_app/features/explore/data/hosts_repository.dart';
 import 'package:hf_app/core/auth/session.dart';
 import 'package:hf_app/core/auth/hf_me.dart';
 import 'package:hf_app/features/explore/ui/filter_sheet.dart';
+import 'package:hf_app/features/explore/ui/explore_copy.dart';
 import 'package:hf_app/features/host_profile/ui/host_profile_screen.dart';
 import 'package:hf_app/features/lanes/ui/lanes_screen.dart';
 
@@ -428,7 +429,7 @@ void main() {
       expect(api.callsTo('GET', '/api/hf/hosts').last.query!['limit'], 1);
     });
 
-    testWidgets('the price slider caps the price; its end means any price', (
+    testWidgets('there is no price filter or price sort under the standard plan', (
       tester,
     ) async {
       final api = fakeApi()
@@ -436,21 +437,26 @@ void main() {
       await pumpScreen(tester, api: api);
       await tester.tap(find.byKey(const ValueKey<String>('open-filters')));
       await tester.pumpAndSettle();
-      expect(find.text('Any price'), findsOneWidget);
-      expect(find.text('₹5'), findsOneWidget);
-      expect(find.text('₹100+'), findsOneWidget);
-      final slider = inSheet(
-        find.byKey(const ValueKey<String>('filter-price')),
-      );
-      await tester.ensureVisible(slider);
-      await tester.pump();
-      await tester.tapAt(tester.getCenter(slider));
+      expect(find.byKey(const ValueKey<String>('filter-price')), findsNothing);
+      expect(find.text('Price per minute'), findsNothing);
+      expect(find.text('Price: low to high'), findsNothing);
+    });
+
+    testWidgets('flag off restores price filter, sort, and request state', (
+      tester,
+    ) async {
+      final api = fakeApi(standardPlan: false)
+        ..onJson('GET', '/api/hf/hosts', pageJson([hostJson('asha')]));
+      await pumpScreen(tester, api: api);
+      expect(find.text(ExploreCopy.sameRate), findsNothing);
+      await tester.tap(find.byKey(const ValueKey<String>('open-filters')));
       await tester.pumpAndSettle();
-      expect(find.textContaining('Up to ₹'), findsOneWidget);
+      expect(find.byKey(const ValueKey<String>('filter-price')), findsOneWidget);
+      expect(find.text('Price: low to high'), findsOneWidget);
+      await tapInSheet(tester, find.text('Price: low to high'));
       await tester.tap(find.byKey(const ValueKey<String>('filter-show')));
       await tester.pumpAndSettle();
-      final max = listCalls(api).last.query!['maxPrice'] as int;
-      expect(max, inInclusiveRange(30, 80));
+      expect(listCalls(api).last.query?['sort'], 'price_low');
     });
 
     testWidgets('mood chips show six and a +N more chip opens the rest', (
@@ -474,7 +480,7 @@ void main() {
     testWidgets(
       'a deep link brings its filters; Clear all in the sheet removes them',
       (tester) async {
-        final api = fakeApi()
+        final api = fakeApi(standardPlan: false)
           ..onJson('GET', '/api/hf/hosts', pageJson([hostJson('asha')]));
         await pumpScreen(
           tester,
@@ -497,6 +503,23 @@ void main() {
         expect(listCalls(api).last.query, {'limit': 24, 'offset': 0});
       },
     );
+
+    testWidgets('standard plan removes legacy price state from a deep link', (
+      tester,
+    ) async {
+      final api = fakeApi()
+        ..onJson('GET', '/api/hf/hosts', pageJson([hostJson('asha')]));
+      await pumpScreen(
+        tester,
+        api: api,
+        location: '/explore?topics=tension-a&max=20',
+      );
+      expect(listCalls(api).first.query, {
+        'topic': 'tension-a',
+        'limit': 24,
+        'offset': 0,
+      });
+    });
 
     testWidgets('closing the sheet without Show changes nothing', (
       tester,
@@ -725,8 +748,8 @@ void main() {
       expect(find.text('Tagline of asha'), findsOneWidget);
       expect(find.text('Hindi, English'), findsOneWidget);
       expect(find.text('Exam tension'), findsOneWidget);
-      expect(find.text('₹12 /min', findRichText: true), findsOneWidget);
-      expect(find.text('10 min ≈ ₹120'), findsOneWidget);
+      expect(find.text('₹12.00/min'), findsOneWidget);
+      expect(find.text('10 min ≈ ₹120.00'), findsOneWidget);
       expect(find.text('On a call'), findsOneWidget);
       expect(find.text('AI avatar'), findsOneWidget);
     },

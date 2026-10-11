@@ -3,11 +3,10 @@
  * Worker: GET/POST/DELETE /api/hf/account/exit, POST /api/account/delete (no-money case). Rulebook HF-PAY-14. */
 import { useEffect, useState } from 'react';
 import SessionBridge from '../calls/SessionBridge';
-import { inr, looksSignedOut, signInUrl } from '../../lib/hfCallsApi';
+import { looksSignedOut, signInUrl } from '../../lib/hfCallsApi';
+import { formatPaise } from '../../lib/money';
 import { fetchExit, startExit, cancelExit, deleteAccountNow, walletExitMessage, ApiError, type ExitInfo } from '../../lib/hfWalletExitApi';
 
-// Token mode amounts are fractional rupees (paise): show decimals only when there are any.
-const inr2 = (n: number) => (Number.isInteger(n) ? inr(n) : `₹${n.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
 const dateIN = (ms: number | null | undefined): string => (ms ? new Date(ms).toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' }) : '');
 const PAY: Record<string, string> = { requested: 'Waiting for approval', approved: 'Approved, being paid', paid: 'Paid', rejected: 'Not paid', cancelled: 'Cancelled' };
 const REF: Record<string, string> = { requested: 'Waiting for approval', processing: 'Being sent back', refunded: 'Sent back', rejected: 'Not processed', cancelled: 'Cancelled' };
@@ -64,8 +63,8 @@ export default function AccountClose() {
 
   const ex = info.exit && ['waiting_hold', 'waiting_payouts', 'ready'].includes(info.exit.status) ? info.exit : null;
   const hasMoney = info.paidBalance > 0 || info.refund != null || info.payout != null;
-  const tk = info.mode === 'tokens';
-  const m = tk ? inr2 : inr;
+  const tk = info.mode === 'tokens' || info.mode === 'rupees'; // money came in through Google Play
+  const m = (n: number) => formatPaise(Math.round(n * 100)); // [HF-STD-PLAN-1] rupees, two decimals
   const scheduled = info.deletion?.scheduledAt ?? closedAt;
 
   return (
@@ -85,7 +84,7 @@ export default function AccountClose() {
           <h2 id="hfx-prog">We are paying out your money first</h2>
           <p className="hfc-sub" style={{ margin: 0 }}>Your account will be deleted automatically as soon as everything below is paid. Nothing else is needed from you.</p>
           {ex.status === 'waiting_hold' && (
-            <p className="hfc-note">Some of your earnings ({inr(info.held)}) are still in the 7-day hold{info.heldReleaseAt ? `, which ends on ${dateIN(info.heldReleaseAt)}` : ''}. After that we create your final withdrawal.</p>
+            <p className="hfc-note">Some of your earnings ({m(info.held)}) are still in the 7-day hold{info.heldReleaseAt ? `, which ends on ${dateIN(info.heldReleaseAt)}` : ''}. After that we create your final withdrawal.</p>
           )}
           <p className="hfc-sub" style={{ margin: 0 }}>While your account is closing you can’t make calls, go online as a host or add money.</p>
           {info.refund && (
@@ -115,14 +114,14 @@ export default function AccountClose() {
             <div className="hfc-stat"><strong>{m(info.held)}</strong><span>earnings in the 7-day hold{info.heldReleaseAt ? `, until ${dateIN(info.heldReleaseAt)}` : ''}</span></div>
           </div>
           {info.held > 0 && <p className="hfc-note">Held earnings are paid after the hold ends, so closing will wait until then.</p>}
-          {info.manualRefund > 0 && <p className="hfc-sub" style={{ margin: 0 }}>{tk ? `${m(info.manualRefund)} is part of a purchase where some of the money was already used. Our team refunds that part for you in Google Play.` : `${inr(info.manualRefund)} is old enough that the payment provider may not take it back. In that case our team pays it to you by bank transfer.`}</p>}
+          {info.manualRefund > 0 && <p className="hfc-sub" style={{ margin: 0 }}>{tk ? `${m(info.manualRefund)} is part of a purchase where some of the money was already used. Our team refunds that part for you in Google Play.` : `${m(info.manualRefund)} is old enough that the payment provider may not take it back. In that case our team pays it to you by bank transfer.`}</p>}
           {!info.bankOk && (info.withdrawable > 0 || info.held > 0) && (
             <p className="hfc-note">To receive your earnings you need a verified bank account (<a href="/hosts/dashboard">add it on your host dashboard</a>). If you would rather not, you can give up those earnings below.</p>
           )}
           {info.forfeitRupees > 0 && (
             <label style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
               <input type="checkbox" checked={agree} onChange={e => setAgree(e.target.checked)} style={{ marginTop: 4, width: 20, height: 20 }} />
-              <span>I understand that {inr(info.forfeitRupees)} cannot be paid out and will be lost when my account is deleted.</span>
+              <span>I understand that {m(info.forfeitRupees)} cannot be paid out and will be lost when my account is deleted.</span>
             </label>
           )}
           {(info.testCredits > 0 || info.testEarnings > 0) && <p className="hfc-sub" style={{ margin: 0 }}>Test credits ({m(info.testCredits)}) and earnings from test credits ({m(info.testEarnings)}) are not real money and are simply removed.</p>}
@@ -135,7 +134,7 @@ export default function AccountClose() {
       {!ex && !scheduled && (info.decision === 'delete' || !hasMoney) && (
         <section className="hfc-card" aria-labelledby="hfx-now">
           <h2 id="hfx-now">You have no money to settle</h2>
-          <p style={{ margin: 0 }}>Your account and personal details will be deleted after a 30-day waiting period. You can change your mind by signing in again before it ends.{info.testCredits > 0 ? ` Your test credits (${inr(info.testCredits)}) are not real money and will be removed.` : ''}</p>
+          <p style={{ margin: 0 }}>Your account and personal details will be deleted after a 30-day waiting period. You can change your mind by signing in again before it ends.{info.testCredits > 0 ? ` Your test credits (${m(info.testCredits)}) are not real money and will be removed.` : ''}</p>
           <button type="button" className="hfc-btn hfc-primary" disabled={busy} onClick={() => void closeNow()}>{busy ? 'Working…' : 'Close my account'}</button>
         </section>
       )}

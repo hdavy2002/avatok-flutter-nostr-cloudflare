@@ -9665,6 +9665,7 @@
       {
         "event": "hf_payout_requested",
         "property": "amount",
+        "exists": true,
         "note": "A host asked to withdraw earnings."
       }
     ]
@@ -9681,6 +9682,7 @@
       {
         "event": "hf_refund_requested",
         "property": "amount",
+        "exists": true,
         "note": "A caller asked for unused top-up money back, or the closure flow created a refund."
       }
     ]
@@ -10198,6 +10200,86 @@
         "property": "result",
         "equals": "sent",
         "note": "WhatsApp confirmation delivered to Wasender. 'skipped' = no verified WhatsApp number / not on WhatsApp / unconfigured; 'failed' = provider error."
+      }
+    ]
+  },
+  "HF-STD-PLAN-1": {
+    "description": "Standard calling plan and rupee wallet: cumulative per-second rates Rs 3.99/3.50/3.25, 24-hour operational ceiling, Rs 2/min host earning, and GST-inclusive Play top-ups. Enable only after the minimum app build is enforced so callers and hosts cannot see mixed token or host-rate behavior.",
+    "two_sided": true,
+    "min_devices_on_build": 2,
+    "flags": [
+      "hfStdPlanEnabled",
+      "hfTokensEnabled",
+      "hfCallsEnabled"
+    ],
+    "success": [
+      {
+        "event": "hf_call_settled",
+        "where": { "plan": "standard" },
+        "property": "billable_seconds",
+        "gt": 0,
+        "note": "A real two-phone Standard-plan call settled with positive connected time; both caller and host must be represented by the separate newest-build gate."
+      },
+      {
+        "event": "hf_call_settled",
+        "where": { "plan": "standard", "billable_seconds": 60 },
+        "property": "charge_paise",
+        "equals": 399,
+        "note": "Known-duration audit sample: exactly 60 billable seconds must charge the caller Rs 3.99 after cumulative half-up rounding once."
+      },
+      {
+        "event": "hf_call_settled",
+        "where": { "plan": "standard", "billable_seconds": 60 },
+        "property": "host_earning_paise",
+        "equals": 200,
+        "note": "The same known-duration sample must credit the host Rs 2.00, prorated by connected seconds and floored once."
+      },
+      {
+        "event": "hf_token_purchase_verified",
+        "where": { "duplicate": false, "paid_paise": 12000 },
+        "property": "wallet_paise",
+        "equals": 10169,
+        "note": "A newly credited verified Rs 120 Play purchase must add Rs 101.69 to the wallet; paid_paise is the Play-authoritative price."
+      },
+      {
+        "event": "hf_token_purchase_verified",
+        "where": { "duplicate": false, "paid_paise": 12000 },
+        "property": "gst_paise",
+        "equals": 1831,
+        "note": "The same purchase must record Rs 18.31 GST, so this known pack reconciles paid = wallet + GST (12000 = 10169 + 1831 paise)."
+      },
+      {
+        "event": "hf_app_update_prompt",
+        "where": { "kind": "forced" },
+        "property": "action",
+        "equals": "shown",
+        "note": "Before enabling the Standard plan, a deliberately old supported client must receive the forced minimum-build gate so it cannot show legacy token or host-rate behavior."
+      },
+      {
+        "event": "hf_call_charge_corrected",
+        "property": "amount_paise",
+        "gt": 0,
+        "note": "An admin correction was applied once and emitted its positive caller refund amount. The event also carries host_reversal and host_reversed_paise for the operational audit."
+      },
+      {
+        "event": "hf_call_charge_corrected",
+        "property": "host_reversal",
+        "in": ["reversed", "after_hold_platform_absorbs", "none"],
+        "note": "The correction outcome records whether the held host earning was reversed or, after the hold, the platform absorbed the correction; retention is never described as profit."
+      },
+      {
+        "event": "hf_std_migration_batch",
+        "where": { "phase": "apply" },
+        "property": "outcome",
+        "equals": "done",
+        "note": "The applied lot migration reached a completed batch. Operations must also inspect migrated_count, repaired_count, remaining_count, skipped_reserved and before_paise/after_paise before enabling the Standard plan."
+      },
+      {
+        "event": "hf_std_migration_batch",
+        "where": { "phase": "apply", "outcome": "done" },
+        "property": "remaining_count",
+        "equals": 0,
+        "note": "No eligible legacy lot remains after the final crash-safe migration pass; reserved or conflicting lots stay visible in the event's separate skip counters for manual review."
       }
     ]
   },

@@ -9,6 +9,9 @@ abstract final class HostProfileStrings {
 
   // Header
   static const String newHost = 'New host';
+  static const String sameRate =
+      'Same rate for every host · lower on long calls';
+  static const String addMoneyToCall = 'Add money to call';
   static const String idChecked = 'Identity checked by our team';
   static const String womenOnlyBadge = 'Women-only space';
   static const String lgbtqBadge = 'LGBTQ+ friendly';

@@ -52,7 +52,7 @@ export interface Draft {
   languages: string[];
   style: string | null;        // conversation style label
   topics: string[];            // mood slugs, 1..6
-  pricePerMin: number;         // one price for all topics (owner decision 2026-10-09), ₹5 floor
+  pricePerMin: number;         // legacy fallback only; ignored when hfStdPlan is enabled
   hours: { days: string[]; from: string; to: string };
   healthConsent: boolean;
   lgbtqLane: boolean;          // private LGBTQ+ lane, offered to all genders, callers must be verified

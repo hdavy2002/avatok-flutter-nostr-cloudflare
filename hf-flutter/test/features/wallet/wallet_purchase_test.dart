@@ -34,27 +34,33 @@ void main() {
         find.byKey(const ValueKey<String>('gst-subtitle')),
         findsOneWidget,
       );
+      expect(
+        tester
+            .widget<Text>(find.byKey(const ValueKey<String>('gst-hf_tokens_100')))
+            .data,
+        'Total ₹120.00 · GST included ₹18.31 · Added to wallet ₹101.69',
+      );
       expect(find.text('Paid via Google Play'), findsWidgets);
     },
   );
 
-  group('buying tokens', () {
+  group('adding money', () {
     testWidgets(
-      'purchased -> verify -> "₹102 added to your wallet" and the balance is refreshed',
+      'purchased -> verify -> the rupee breakdown and refreshed balance',
       (tester) async {
         var balanceReads = 0;
         api.on('GET', '/api/hf/wallet', (_) {
           balanceReads++;
           return balanceReads == 1
-              ? tokenWallet(balance: '0.00', balanceMicro: 0)
-              : tokenWallet(balance: '100.00', balanceMicro: 100000000);
+              ? rupeeWallet(balancePaise: 0, testPaise: 0)
+              : rupeeWallet(balancePaise: 10169, testPaise: 0);
         });
         billing.answerWith(StorePurchaseStatus.purchased, token: 'tok-abc');
         await pumpWallet(tester, api: api, billing: billing);
         expect(
           find.descendant(
             of: find.byKey(const ValueKey<String>('balance-total')),
-            matching: find.text('₹0'),
+            matching: find.text('₹0.00'),
             matchRoot: true,
           ),
           findsOneWidget,
@@ -75,7 +81,12 @@ void main() {
           'purchaseToken': 'tok-abc',
         });
 
-        expect(find.text('₹102 added to your wallet'), findsOneWidget);
+        expect(
+          find.text(
+            '₹101.69 added to your wallet.\nTotal ₹120.00 · GST included ₹18.31 · Added to wallet ₹101.69',
+          ),
+          findsOneWidget,
+        );
         expect(
           balanceReads,
           2,
@@ -84,7 +95,7 @@ void main() {
         expect(
           find.descendant(
             of: find.byKey(const ValueKey<String>('balance-total')),
-            matching: find.text('₹100'),
+            matching: find.text('₹101.69'),
             matchRoot: true,
           ),
           findsOneWidget,
@@ -112,8 +123,18 @@ void main() {
         await pumpWallet(tester, api: api, billing: billing);
         expect(find.text('Pay Rs 99.99 (from Play)'), findsOneWidget);
         expect(find.text('Pay Rs 999.99 (from Play)'), findsOneWidget);
-        expect(find.text('+₹102'), findsOneWidget);
-        expect(find.text('+₹1,020'), findsOneWidget);
+        expect(
+          find.text(
+            'Total ₹99.99 · GST included ₹15.25 · Added to wallet ₹84.74',
+          ),
+          findsOneWidget,
+        );
+        expect(
+          find.text(
+            'Total ₹999.99 · GST included ₹152.54 · Added to wallet ₹847.45',
+          ),
+          findsOneWidget,
+        );
         expect(
           find.text('Pay Rs 99.99 (from Play) with Google Play'),
           findsOneWidget,
@@ -221,7 +242,7 @@ void main() {
           find.text('This money was already added to your wallet.'),
           findsOneWidget,
         );
-        expect(find.text('₹102 added to your wallet'), findsNothing);
+        expect(find.textContaining('₹101.69 added to your wallet.'), findsNothing);
       },
     );
 
@@ -236,12 +257,12 @@ void main() {
         billing.answerWith(StorePurchaseStatus.purchased);
         await pumpWallet(tester, api: api, billing: billing);
         await buy100(tester);
-        expect(find.text('₹102 added to your wallet'), findsOneWidget);
+        expect(find.textContaining('₹101.69 added to your wallet.'), findsOneWidget);
       },
     );
 
     testWidgets(
-      'pending: tells the buyer tokens come when Google confirms, and adds nothing',
+      'pending: tells the buyer money comes when Google confirms, and adds nothing',
       (tester) async {
         api.onJson('POST', '/api/hf/tokens/play/verify', {
           'ok': true,
@@ -258,7 +279,7 @@ void main() {
           ),
           findsOneWidget,
         );
-        expect(find.text('₹102 added to your wallet'), findsNothing);
+        expect(find.textContaining('₹101.69 added to your wallet.'), findsNothing);
         expect(
           api.callsTo('POST', '/api/hf/tokens/play/verify').single.body,
           containsPair('purchaseToken', 'tok-pending'),
@@ -354,7 +375,7 @@ void main() {
           find.textContaining("We're still confirming your payment"),
           findsOneWidget,
         );
-        expect(find.text('₹102 added to your wallet'), findsNothing);
+        expect(find.textContaining('₹101.69 added to your wallet.'), findsNothing);
       },
     );
 
@@ -426,7 +447,11 @@ void main() {
         api.onJson(
           'POST',
           '/api/hf/tokens/play/verify',
-          verifyAnswer(tokens: 1020),
+          verifyAnswer(
+            paidPaise: 120000,
+            gstPaise: 18305,
+            walletPaise: 101695,
+          ),
         );
         await pumpWallet(tester, api: api, billing: billing);
         await buy1000(tester);
@@ -443,7 +468,7 @@ void main() {
         await tester.tap(find.text('Yes, buy'));
         await tester.pumpAndSettle();
         expect(billing.boughtProductIds, ['hf_tokens_1000']);
-        expect(find.text('₹1,020 added to your wallet'), findsOneWidget);
+        expect(find.textContaining('₹1,016.95 added to your wallet.'), findsOneWidget);
       },
     );
 
@@ -486,9 +511,9 @@ void main() {
       });
       expect(billing.recoverCalls, greaterThanOrEqualTo(1));
       expect(
-        find.text('₹102 added to your wallet'),
+        find.textContaining('₹101.69 added to your wallet.'),
         findsOneWidget,
-        reason: 'late tokens are news',
+        reason: 'late money is news',
       );
     });
 
@@ -608,7 +633,7 @@ void main() {
         expect(api.callsTo('POST', '/api/hf/tokens/play/verify'), hasLength(1));
         expect(
           container.read(purchaseControllerProvider).notice?.message,
-          '₹102 added to your wallet',
+          '₹101.69 added to your wallet.\nTotal ₹120.00 · GST included ₹18.31 · Added to wallet ₹101.69',
         );
       },
     );

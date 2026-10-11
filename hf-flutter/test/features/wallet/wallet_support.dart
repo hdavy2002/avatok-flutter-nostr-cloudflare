@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hf_app/core/auth/session.dart';
+import 'package:hf_app/core/format/money.dart';
 import 'package:hf_app/core/theme/hf_theme.dart';
 import 'package:hf_app/core/storage/secure_store.dart';
 import 'package:hf_app/features/wallet/ui/wallet_screen.dart';
@@ -10,6 +11,51 @@ import 'package:hf_app/features/wallet/wallet_providers.dart';
 import '../../support/app_harness.dart';
 import '../../support/fake_api_client.dart';
 import '../../support/fake_billing.dart';
+
+Map<String, Object?> rupeeWallet({
+  int balancePaise = 4520,
+  int availablePaise = -1,
+  int testPaise = 500,
+  int debtPaise = 0,
+  List<Object?>? history,
+}) {
+  final available = availablePaise < 0 ? balancePaise : availablePaise;
+  return {
+    'mode': 'rupees',
+    'wallet': {
+      'currency': 'INR',
+      'balancePaise': balancePaise,
+      'availablePaise': available,
+      'reservedPaise': balancePaise - available,
+      'paidPaise': balancePaise - testPaise,
+      'testPaise': testPaise,
+      'debtPaise': debtPaise,
+      'debtOpen': debtPaise > 0,
+    },
+    'history': history ??
+        [
+          {
+            'at': 1760000000000,
+            'kind': 'purchase',
+            'amountPaise': 10169,
+            'label': 'Money added',
+            'purchase': {
+              'paidPaise': 12000,
+              'gstPaise': 1831,
+              'walletPaise': 10169,
+              'orderId': 'GPA.1',
+            },
+          },
+          {
+            'at': 1760100000000,
+            'kind': 'call_spent',
+            'amountPaise': -320,
+            'label': 'Call with Asha (4 min)',
+            'callId': 'c1',
+          },
+        ],
+  };
+}
 
 /// A token-mode `GET /api/hf/wallet` answer, shaped like worker/src/routes/hf_calls.ts walletGetTokens.
 Map<String, Object?> tokenWallet({
@@ -81,23 +127,22 @@ Map<String, Object?> legacyWallet() => {
 Map<String, Object?> productsAnswer({bool enabled = true}) => {
   'ok': true,
   'enabled': enabled,
+  'gstBps': 1800,
   'products': enabled
       ? [
           {
             'productId': 'hf_tokens_100',
-            'tokens': 102,
-            'pricingVersion': 'gp-r1',
-            'redemptionPaisePerToken': 100,
-            'purchasePaisePerToken': 118,
-            'creditPaise': 10200,
+            'pricePaise': 12000,
+            'gstPaise': 1831,
+            'walletPaise': 10169,
+            'creditPaise': 10169,
           },
           {
             'productId': 'hf_tokens_1000',
-            'tokens': 1020,
-            'pricingVersion': 'gp-r1',
-            'redemptionPaisePerToken': 100,
-            'purchasePaisePerToken': 118,
-            'creditPaise': 102000,
+            'pricePaise': 120000,
+            'gstPaise': 18305,
+            'walletPaise': 101695,
+            'creditPaise': 101695,
           },
         ]
       : <Object?>[],
@@ -107,26 +152,31 @@ Map<String, Object?> prepareAnswer(String productId) => {
   'ok': true,
   'obfuscatedAccountId': 'acct_hash_1',
   'productId': productId,
-  'tokens': productId == 'hf_tokens_1000' ? 1020 : 102,
   'confirmAbovePaise': 100000,
 };
 
 Map<String, Object?> verifyAnswer({
   String status = 'consumed',
   bool duplicate = false,
-  num tokens = 102,
+  int paidPaise = 12000,
+  int gstPaise = 1831,
+  int walletPaise = 10169,
 }) => {
   'ok': true,
   'status': status,
   'duplicate': duplicate,
   'orderId': 'GPA.1',
   'productId': 'hf_tokens_100',
-  'tokens': tokens,
-  'paidPaise': 12000,
+  'paidPaise': paidPaise,
+  'gstPaise': gstPaise,
+  'walletPaise': walletPaise,
+  'paid': formatPaise(paidPaise),
+  'gst': formatPaise(gstPaise),
+  'wallet': formatPaise(walletPaise),
   'consumed': status == 'consumed',
   'balance': {
-    'totalTokens': 145.2,
-    'availableTokens': 145.2,
+    'balancePaise': 14689,
+    'availablePaise': 14689,
     'debtValuePaise': 0,
     'byValue': <Object?>[],
   },
@@ -139,7 +189,7 @@ FakeApiClient walletApi({
   Map<String, Object?>? refunds,
 }) {
   return FakeApiClient()
-    ..onJson('GET', '/api/hf/wallet', wallet ?? tokenWallet())
+    ..onJson('GET', '/api/hf/wallet', wallet ?? rupeeWallet())
     ..onJson(
       'GET',
       '/api/hf/tokens/products',

@@ -1,3 +1,4 @@
+import '../../../core/format/money.dart';
 import '../../../core/widgets/status_pill.dart';
 
 /// One host as the list endpoints answer it (`GET /api/hf/hosts` items, same shape as `/api/hosts/public`).
@@ -17,6 +18,10 @@ class HostCard {
     this.style,
     this.topics = const <String>[],
     this.pricePerMin = 0,
+    this.pricePaisePerMin = 0,
+    this.serverPriceLabel,
+    this.priceTiers = const <PriceTier>[],
+    this.plan,
     this.rating,
     this.reviewCount = 0,
     this.talkedTo = 0,
@@ -37,8 +42,12 @@ class HostCard {
   final String? style;
   final List<String> topics;
 
-  /// Whole rupees per minute.
-  final int pricePerMin;
+  /// Rupees per minute for the first band. May be fractional.
+  final double pricePerMin;
+  final int pricePaisePerMin;
+  final String? serverPriceLabel;
+  final List<PriceTier> priceTiers;
+  final String? plan;
 
   /// Average of approved stars (1 decimal), or null when there are no reviews yet.
   final double? rating;
@@ -65,8 +74,14 @@ class HostCard {
     return 'Voice intro';
   }
 
-  /// "₹12/min".
-  String get priceLabel => '₹$pricePerMin/min';
+  String get priceLabel {
+    final fromServer = serverPriceLabel;
+    if (fromServer != null) return fromServer;
+    final paise = pricePaisePerMin > 0
+        ? pricePaisePerMin
+        : (pricePerMin * 100).round();
+    return formatPaiseRate(paise);
+  }
 
   /// Null when the row has no usable slug (it cannot open a profile, so the list drops it).
   static HostCard? tryParse(Object? raw) {
@@ -82,7 +97,11 @@ class HostCard {
       languages: _strList(j['languages']),
       style: _str(j['style']),
       topics: _strList(j['topics']),
-      pricePerMin: _int(j['pricePerMin']) ?? 0,
+      pricePerMin: _num(j['pricePerMin'])?.toDouble() ?? 0,
+      pricePaisePerMin: _int(j['pricePaisePerMin']) ?? 0,
+      serverPriceLabel: _str(j['priceLabel']),
+      priceTiers: PriceTier.listFrom(j['priceTiers']),
+      plan: _str(j['plan']),
       rating: _num(j['rating'])?.toDouble(),
       reviewCount: _int(j['reviewCount']) ?? 0,
       talkedTo: _int(j['talkedTo']) ?? 0,
@@ -106,6 +125,10 @@ class HostCard {
     'style': style,
     'topics': topics,
     'pricePerMin': pricePerMin,
+    'pricePaisePerMin': pricePaisePerMin,
+    'priceLabel': serverPriceLabel,
+    'priceTiers': priceTiers.map((t) => t.toJson()).toList(),
+    'plan': plan,
     'rating': rating,
     'reviewCount': reviewCount,
     'talkedTo': talkedTo,
@@ -149,6 +172,50 @@ class HostCard {
       v is num ? v : (v is String ? num.tryParse(v) : null);
 
   static int? _int(Object? v) => _num(v)?.round();
+}
+
+/// One band of the Standard plan rate card.
+class PriceTier {
+  const PriceTier({
+    required this.fromMin,
+    this.toMin,
+    required this.paisePerMin,
+  });
+
+  final int fromMin;
+  final int? toMin;
+  final int paisePerMin;
+
+  String get rateLabel => formatPaiseRate(paisePerMin);
+
+  static PriceTier? tryParse(Object? raw) {
+    if (raw is! Map) return null;
+    num? n(Object? v) =>
+        v is num ? v : (v is String ? num.tryParse(v) : null);
+    final paise = n(raw['paisePerMin']);
+    if (paise == null) return null;
+    return PriceTier(
+      fromMin: n(raw['fromMin'])?.round() ?? 0,
+      toMin: n(raw['toMin'])?.round(),
+      paisePerMin: paise.round(),
+    );
+  }
+
+  static List<PriceTier> listFrom(Object? raw) {
+    if (raw is! List) return const <PriceTier>[];
+    final result = <PriceTier>[];
+    for (final value in raw) {
+      final tier = tryParse(value);
+      if (tier != null) result.add(tier);
+    }
+    return result;
+  }
+
+  Map<String, Object?> toJson() => <String, Object?>{
+    'fromMin': fromMin,
+    'toMin': toMin,
+    'paisePerMin': paisePerMin,
+  };
 }
 
 /// One page of hosts: `{items, nextOffset, total}`.

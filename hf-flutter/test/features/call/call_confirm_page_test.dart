@@ -34,7 +34,7 @@ void main() {
       final api = _api();
       await pumpCallApp(tester, api: api, location: '/call/new?host=asha');
       expect(find.text('Call Asha Verma'), findsOneWidget);
-      expect(find.text('₹12/min'), findsOneWidget);
+      expect(find.text('₹12.00/min'), findsOneWidget);
       expect(find.text('about 3 min'), findsOneWidget);
       expect(find.textContaining('14416'), findsOneWidget);
       expect(api.callsTo('GET', '/api/hf/wallet/estimate').single.query, {

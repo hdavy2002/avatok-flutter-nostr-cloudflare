@@ -13,7 +13,7 @@ import { verifiedWhatsAppNumber } from "./whatsapp_notify";
 import { enqueueEmail } from "./email_outbox";
 import { emailFor } from "./identity";
 import { balanceSummary } from "./hf_token_ledger";
-import { MICRO } from "./hf_token_math";
+import { formatRupees } from "./hf_token_math";
 import { trackUser, trackException } from "../hooks";
 
 const APP = BRAND.slug;
@@ -25,21 +25,22 @@ export interface TopupNotice {
   paidPaise: number;
   /** What reached the wallet (paise). */
   creditPaise: number;
+  /** [HF-STD-PLAN-1] GST included in the price (paid = credit + GST). Absent on old notices: derived as paid - credit. */
+  gstPaise?: number;
   /** The receipt number from hf_receipts (e.g. HF/R/2026-27/12), when it was issued. */
   receiptNumber?: string | null;
   at?: number;
 }
 
-/** "₹120" or "₹147.20" — whole rupees without decimals, otherwise two. */
+/** [HF-STD-PLAN-1] Always two decimals, Indian grouping: "₹120.00", "₹101.69", "₹1,016.95". */
 export function rupeesText(paise: number): string {
-  const p = Math.max(0, Math.round(Number(paise) || 0));
-  const whole = p % 100 === 0;
-  return `₹${(p / 100).toLocaleString("en-IN", { minimumFractionDigits: whole ? 0 : 2, maximumFractionDigits: 2 })}`;
+  return formatRupees(Math.max(0, Math.round(Number(paise) || 0)));
 }
+const gstOf = (n: TopupNotice): number => Math.max(0, Math.round(n.gstPaise ?? (n.paidPaise - n.creditPaise)));
 
 export function topupWhatsAppText(n: TopupNotice, balancePaise: number | null): string {
   const bal = balancePaise == null ? "" : ` Your wallet balance is now ${rupeesText(balancePaise)}.`;
-  return `${BRAND.name}: ${rupeesText(n.creditPaise)} has been added to your wallet. You paid ${rupeesText(n.paidPaise)} (includes 18% GST) via Google Play. Order ${n.orderId}.${bal}`;
+  return `${BRAND.name}: ${rupeesText(n.creditPaise)} has been added to your wallet. You paid ${rupeesText(n.paidPaise)} via Google Play, including ${rupeesText(gstOf(n))} GST. Order ${n.orderId}.${bal}`;
 }
 
 const esc = (s: unknown) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]!));
@@ -77,7 +78,8 @@ export function topupEmailHtml(n: TopupNotice, balancePaise: number | null): str
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
     ${n.receiptNumber ? row("Receipt number", esc(n.receiptNumber)) : ""}
     ${row("Date", esc(istDateTime(at)))}
-    ${row("Amount paid (includes 18% GST)", esc(rupeesText(n.paidPaise)), true)}
+    ${row("Total paid", esc(rupeesText(n.paidPaise)), true)}
+    ${row("GST included (18%)", esc(rupeesText(gstOf(n))))}
     ${row("Added to your wallet", esc(rupeesText(n.creditPaise)), true)}
     ${row("Paid via", "Google Play")}
     ${row("Google Play order", esc(n.orderId))}
@@ -96,8 +98,7 @@ export function topupEmailHtml(n: TopupNotice, balancePaise: number | null): str
 /** Wallet balance in rupees as the app shows it (each token's value in call time). Null when it cannot be read. */
 async function balancePaiseFor(env: Env, uid: string): Promise<number | null> {
   try {
-    const s = await balanceSummary(env, uid);
-    return Math.round((s.totalMicro / MICRO) * 100);
+    return (await balanceSummary(env, uid)).totalPaise;
   } catch {
     return null;
   }

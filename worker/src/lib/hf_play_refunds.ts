@@ -1,5 +1,5 @@
 
-// [HF-TOK-EXIT-1] Refunds of unused PURCHASED tokens through Google Play (hfTokensEnabled on). Rulebook: HF-PAY-15 (tokens wording), HF-PAY-14.
+// [HF-TOK-EXIT-1] Refunds of unused PURCHASED wallet money through Google Play (hfTokensEnabled on). Rulebook: HF-PAY-15 (tokens wording), HF-PAY-14.
 // One request = one purchase lot (hf_refund_requests, kind 'play_refund', amount_paise = the unspent share of what the buyer paid, pro rata).
 // Flow: the buyer asks from /wallet (or the account-closure flow asks) -> an admin confirms -> the money goes back THROUGH GOOGLE:
 //   * nothing of the lot was spent  -> the Orders API refunds the whole order (refundOrderFor, built by HF-TOK-PLAY-1; see the port below),
@@ -14,6 +14,7 @@ import { BRAND } from "./brand";
 import { verifiedWhatsAppNumber } from "./whatsapp_notify";
 import { sendWhatsAppText } from "./whatsapp_send";
 import { valuePaiseOfMicro } from "./hf_token_ledger";
+import { formatRupees } from "./hf_token_math";
 import { refundOrderFor } from "../play";
 
 export const PLAY_REFUND = "play_refund";
@@ -119,7 +120,7 @@ export async function hasActiveCall(env: Env, uid: string, now = Date.now()): Pr
   } catch { return false; }
 }
 
-const inr2 = (paise: number) => `₹${(paise / 100).toFixed(2)}`;
+const inr2 = (paise: number) => formatRupees(paise); // [HF-STD-PLAN-1] two decimals, Indian grouping
 async function notify(env: Env, uid: string, text: string): Promise<void> {
   try {
     const e164 = await verifiedWhatsAppNumber(env, uid);

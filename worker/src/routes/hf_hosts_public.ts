@@ -17,6 +17,8 @@ const err = (status: number, error: string) => json({ error }, status);
 const parse = <T>(s: string | null | undefined, fb: T): T => { try { return s ? (JSON.parse(s) as T) : fb; } catch { return fb; } };
 
 export type LiveRow = HostRow & { presence?: string | null; image_key: string | null; audio_key: string | null; audio_caption: string | null };
+import { readHfStdPlan, type HfStdPlan } from "../lib/hf_token_config"; // [HF-STD-PLAN-1]
+import { formatRupees } from "../lib/hf_token_math";
 export const SEL = `SELECT h.*, a.image_key AS image_key,
   (SELECT r2_key FROM hf_host_media m WHERE m.uid=h.uid AND m.kind='intro_audio' AND m.status='active' ORDER BY m.created_at DESC LIMIT 1) AS audio_key,
   (SELECT caption FROM hf_host_media m WHERE m.uid=h.uid AND m.kind='intro_audio' AND m.status='active' ORDER BY m.created_at DESC LIMIT 1) AS audio_caption
@@ -28,10 +30,26 @@ function intro(env: Env, r: LiveRow) {
   return { introAudioUrl: r.audio_key ? mediaUrl(env, r.audio_key) : null, introSeconds: r.audio_key ? c.seconds : null, introMime: r.audio_key ? c.mime : null };
 }
 
-export function card(env: Env, r: LiveRow, agg?: HostAggregate) {
+/**
+ * [HF-STD-PLAN-1] Price block on every card. Standard plan on: every host shows the same rate card (first band, e.g. ₹3.99/min, lower on
+ * long calls) and the host's own price_per_min is ignored. Off: the host's own whole-rupee rate as before.
+ */
+export function priceFields(r: { price_per_min: number }, std?: HfStdPlan | null) {
+  if (std && std.enabled) {
+    const t = std.tariff.tiers;
+    return {
+      plan: "standard" as const, pricePerMin: t[0].paisePerMin / 100, pricePaisePerMin: t[0].paisePerMin, priceLabel: `${formatRupees(t[0].paisePerMin)}/min`,
+      priceTiers: t.map((b, i) => ({ fromMin: b.fromSec / 60, toMin: i + 1 < t.length ? t[i + 1].fromSec / 60 : null, paisePerMin: b.paisePerMin })),
+    };
+  }
+  const paise = Math.max(0, Math.trunc(Number(r.price_per_min))) * 100;
+  return { plan: "host_rate" as const, pricePerMin: r.price_per_min, pricePaisePerMin: paise, priceLabel: `${formatRupees(paise)}/min`, priceTiers: [{ fromMin: 0, toMin: null, paisePerMin: paise }] };
+}
+
+export function card(env: Env, r: LiveRow, agg?: HostAggregate, std?: HfStdPlan | null) {
   return {
     slug: r.slug, displayName: r.display_name, tagline: r.tagline, avatarUrl: r.image_key ? mediaUrl(env, r.image_key) : null,
-    languages: parse<string[]>(r.languages_json, []), style: r.style, topics: parse<string[]>(r.topics_json, []), pricePerMin: r.price_per_min,
+    languages: parse<string[]>(r.languages_json, []), style: r.style, topics: parse<string[]>(r.topics_json, []), ...priceFields(r, std),
     ...aggregateFields(agg), lgbtqFriendly: r.lgbtq_lane === 1 && r.lgbtq_public === 1, womenOnly: r.women_lane === 1,
     ...intro(env, r), status: (r.presence === "online" || r.presence === "busy" ? r.presence : "offline") as "online" | "busy" | "offline",
   };
@@ -44,7 +62,9 @@ export async function hfHostsPublicRoute(req: Request, env: Env, ctx?: Execution
   const one = p.match(/^\/api\/hosts\/public\/([a-z0-9-]{3,40})$/);
   if (!(p === "/api/hosts/public" || one) || req.method !== "GET") return null;
   try {
-    if ((await readConfig(env)).hostsPublicEnabled !== true) return err(404, "not_enabled");
+    const cfgAll = await readConfig(env);
+    if (cfgAll.hostsPublicEnabled !== true) return err(404, "not_enabled");
+    const std = readHfStdPlan(cfgAll as unknown as Record<string, unknown>); // [HF-STD-PLAN-1]
     const laneRaw = url.searchParams.get("lane");
     const lane = parseLane(laneRaw);
     if (laneRaw && !lane) return err(400, "bad_lane");
@@ -62,7 +82,7 @@ export async function hfHostsPublicRoute(req: Request, env: Env, ctx?: Execution
       const gal = (await env.DB_META.prepare("SELECT * FROM hf_host_media WHERE uid=?1 AND kind='gallery' AND status='active' ORDER BY sort, created_at").bind(r.uid).all<MediaRow>()).results ?? [];
       return json({
         protectedLane: lane,
-        ...card(env, r, (await hostAggregates(env, [r.uid])).get(r.uid)), reviews: await hostReviews(env, r.uid, 10), aboutPolished: r.about_polished, quote: r.quote,
+        ...card(env, r, (await hostAggregates(env, [r.uid])).get(r.uid), std), reviews: await hostReviews(env, r.uid, 10), aboutPolished: r.about_polished, quote: r.quote,
         gallery: gal.map((m) => { const j = mediaToJson(env, m); return { url: j.url, caption: j.caption }; }),
       }, 200, lane ? { "cache-control": "private, no-store" } : CACHE);
     }
@@ -71,7 +91,7 @@ export async function hfHostsPublicRoute(req: Request, env: Env, ctx?: Execution
     // [HF-LANE-VERIFY-1] A protected-lane list is only for callers who have joined that lane.
     const rows = (await env.DB_META.prepare(`${SEL} WHERE h.status='live' AND h.slug IS NOT NULL${laneWhere} ORDER BY h.live_at DESC, h.uid LIMIT ?1 OFFSET ?2`).bind(limit, offset).all<LiveRow>()).results ?? [];
     const aggs = await hostAggregates(env, rows.map((r) => r.uid)); // [HF-CALLS-1]
-    return json(rows.map((r) => card(env, r, aggs.get(r.uid))), 200, lane ? { "cache-control": "private, no-store" } : CACHE);
+    return json(rows.map((r) => card(env, r, aggs.get(r.uid), std)), 200, lane ? { "cache-control": "private, no-store" } : CACHE);
   } catch (e) {
     await trackException(env, e, { route: p, method: "GET", handled: true, app_name: BRAND.slug, extra: { area: "hf_host_public" } });
     return err(500, "internal_error");

@@ -1,10 +1,11 @@
 /* [HF-WALLET-EXIT-1] "Request a refund" card on /wallet: unused top-up money goes back to the ORIGINAL payment after a person approves it.
  * Hidden completely (renders nothing) while hfRefundsEnabled is off or the worker is unreachable. */
 import { useEffect, useState } from 'react';
-import { inr, relDate } from '../../lib/hfCallsApi';
+import { relDate } from '../../lib/hfCallsApi';
+import { formatPaise } from '../../lib/money';
 
-// Token mode amounts are fractional rupees (paise), so show them with two decimals when needed.
-const inr2 = (n: number) => (Number.isInteger(n) ? inr(n) : `₹${n.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
+// [HF-STD-PLAN-1] Amounts here are rupees (maybe fractional): always two decimals, Indian grouping.
+const money = (n: number) => formatPaise(Math.round(n * 100));
 import { fetchRefunds, requestRefund, cancelRefund, walletExitMessage, type RefundInfo } from '../../lib/hfWalletExitApi';
 
 const LABEL: Record<string, string> = { requested: 'Waiting for approval', processing: 'Being sent back', refunded: 'Sent back', rejected: 'Not processed', cancelled: 'Cancelled' };
@@ -18,14 +19,13 @@ export default function RefundPanel({ onChanged }: { onChanged?: () => void }) {
   useEffect(() => { void load(); }, []);
 
   if (!info || !info.enabled) return null;
-  const tokens = info.mode === 'tokens';
-  const money = tokens ? inr2 : inr;
+  const viaPlay = info.mode === 'tokens' || info.mode === 'rupees'; // money came in through Google Play
   const refundable = info.refundable ?? 0;
   const open = info.requests.some(r => r.status === 'requested' || r.status === 'processing');
 
   async function ask() {
     setBusy(true); setMsg(null);
-    try { const r = await requestRefund(); setMsg({ kind: 'ok', text: `Refund of ${money(r.amount)} requested. ${tokens ? 'We will send it back through Google Play once a person approves it.' : 'We will send it back to the payment you used.'}` }); await load(); onChanged?.(); }
+    try { const r = await requestRefund(); setMsg({ kind: 'ok', text: `Refund of ${money(r.amount)} requested. ${viaPlay ? 'We will send it back through Google Play once a person approves it.' : 'We will send it back to the payment you used.'}` }); await load(); onChanged?.(); }
     catch (e) { setMsg({ kind: 'err', text: walletExitMessage(e) }); }
     setBusy(false);
   }
@@ -43,8 +43,8 @@ export default function RefundPanel({ onChanged }: { onChanged?: () => void }) {
         <div className="hfc-stat"><strong>{money(refundable)}</strong><span>can be refunded now</span></div>
       </div>
       <p className="hfc-sub" style={{ margin: 0 }}>
-        {tokens
-          ? `Unused tokens you bought go back through Google Play, after a person approves it. Each purchase can be refunded for ${info.windowDays ?? 180} days after you bought it, and only the tokens you have not used. Tokens already used on calls and test credits cannot be refunded. Host earnings are withdrawn from the host dashboard instead.`
+        {viaPlay
+          ? `Unused money you added goes back through Google Play, after a person approves it. Each purchase can be refunded for ${info.windowDays ?? 180} days after you bought it, and only the part you have not used. Money already used on calls and test credits cannot be refunded. Host earnings are withdrawn from the host dashboard instead.`
           : `Unused money you added goes back to the payment you used, after a person approves it. Each top-up can be refunded for ${info.windowDays ?? 180} days after you paid, and only the part you have not spent. Money already spent on calls and test credits cannot be refunded. Host earnings are withdrawn from the host dashboard instead.`}
       </p>
       <button type="button" className="hfc-btn hfc-primary" disabled={busy || refundable <= 0 || open} onClick={() => void ask()}>

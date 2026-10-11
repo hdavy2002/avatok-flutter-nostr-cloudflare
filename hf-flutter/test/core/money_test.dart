@@ -47,6 +47,21 @@ void main() {
     });
   });
 
+  group('standard-plan money', () {
+    test('paise always show two decimals', () {
+      expect(formatPaise(10169), '₹101.69');
+      expect(formatPaise(12000), '₹120.00');
+      expect(formatPaise(5), '₹0.05');
+      expect(formatPaise(-2247), '-₹22.47');
+    });
+
+    test('rate labels keep paise', () {
+      expect(formatPaiseRate(399), '₹3.99/min');
+      expect(formatPaiseRate(350), '₹3.50/min');
+      expect(formatPaiseRate(325), '₹3.25/min');
+    });
+  });
+
   group('time', () {
     test('call clock', () {
       expect(Money.clock(0), '00:00');

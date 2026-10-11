@@ -9,6 +9,7 @@ import '../../../core/analytics/analytics.dart';
 import '../../../core/api/api_error.dart';
 import '../../../core/auth/session.dart';
 import '../../../core/config/flags.dart';
+import '../../../core/format/money.dart';
 import '../../../core/router/nav.dart';
 import '../../../core/router/routes.dart';
 import '../../../core/theme/hf_theme.dart';
@@ -730,24 +731,16 @@ class _PriceBarState extends ConsumerState<_PriceBar> {
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text.rich(
-                    TextSpan(
-                      children: [
-                        TextSpan(
-                          text: '₹${_h.pricePerMin}',
-                          style: HfText.of(context, HfText.section),
-                        ),
-                        TextSpan(
-                          text: ' /min',
-                          style: HfText.label.copyWith(color: muted),
-                        ),
-                      ],
-                    ),
+                  Text(
+                    _h.priceLabel,
+                    style: HfText.of(context, HfText.section),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),
                   Text(
-                    '10 min ≈ ₹${_h.pricePerMin * 10}',
+                    _h.plan == 'standard' || _h.priceTiers.isNotEmpty
+                        ? 'Lower rates after 30 min'
+                        : '10 min ≈ ${formatRupees(_h.pricePerMin * 10)}',
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                     style: HfText.label.copyWith(

@@ -57,6 +57,11 @@ class CallSummary extends StatelessWidget {
   Widget build(BuildContext context) {
     final completed = info.status == CallStatus.completed;
     final charge = CallStrings.hasCharge(info);
+    final hostView = info.isHostView;
+    final tierLines = <CallTierLine>[
+      for (final tier in info.tiers)
+        if (tier.seconds > 0) tier,
+    ];
     final reason = CallStrings.endReasonText(
       info.endReason,
       info.hostFirstName,
@@ -100,7 +105,7 @@ class CallSummary extends StatelessWidget {
           ),
         ],
         const SizedBox(height: HfSpacing.section),
-        if (completed || charge)
+        if (completed || charge || hostView)
           HfCard(
             child: Column(
               children: [
@@ -110,11 +115,29 @@ class CallSummary extends StatelessWidget {
                       ? Money.duration(info.talkedSeconds)
                       : CallStrings.noTimeBilled,
                 ),
-                const SizedBox(height: HfSpacing.lg),
-                _Row(
-                  label: CallStrings.charged,
-                  value: charge ? CallStrings.chargedText(info) : 'No charge',
-                ),
+                if (hostView) ...[
+                  const SizedBox(height: HfSpacing.lg),
+                  _Row(
+                    label: CallStrings.earned,
+                    value: CallStrings.earningText(info) ?? formatPaise(0),
+                  ),
+                ] else ...[
+                  for (final tier in tierLines) ...[
+                    const SizedBox(height: HfSpacing.lg),
+                    _Row(
+                      label:
+                          '${tier.bandLabel} · ${Money.duration(tier.seconds)} at ${tier.tier.rateLabel}',
+                      value: formatPaise(tier.amountPaise),
+                    ),
+                  ],
+                  const SizedBox(height: HfSpacing.lg),
+                  _Row(
+                    label: CallStrings.charged,
+                    value: charge
+                        ? CallStrings.chargedText(info)
+                        : 'No charge',
+                  ),
+                ],
               ],
             ),
           )

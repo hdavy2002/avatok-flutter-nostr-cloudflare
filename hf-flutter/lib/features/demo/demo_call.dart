@@ -37,7 +37,7 @@ class DemoCallState {
   }
 
   /// Rupees the real flow would have charged. Nothing is charged in the demo.
-  int get pretendCharge => billedMinutes * kDemoNehaCard.pricePerMin;
+  num get pretendCharge => billedMinutes * kDemoNehaCard.pricePerMin;
 
   CallInfo get info => CallInfo(
     id: kDemoCallId,
@@ -47,6 +47,11 @@ class DemoCallState {
     rate: kDemoNehaCard.pricePerMin,
     billedMinutes: billedMinutes,
     chargedRupees: pretendCharge,
+    billableSeconds: status == CallStatus.completed ? elapsedSeconds : null,
+    chargedPaise: status == CallStatus.completed
+        ? (elapsedSeconds * 399 / 60).round()
+        : null,
+    plan: 'standard',
     endReason: status == CallStatus.completed ? 'caller_hangup' : null,
     canReview: status == CallStatus.completed,
   );

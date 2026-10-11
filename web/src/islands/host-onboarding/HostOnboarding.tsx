@@ -7,7 +7,7 @@ import { publicImage } from '../../lib/config';
 import { capture } from '../../lib/analytics';
 import { EMPTY_DRAFT, GROUP_LABEL, STEPS } from './data';
 import { mockApi } from './api';
-import { realApi } from './api_real';
+import { realApi, setOnboardingStandardPlan } from './api_real';
 import { request } from '../../lib/apiClient';
 import { loadDraft, saveDraft } from './storage';
 import PreviewCard from './PreviewCard';
@@ -50,15 +50,20 @@ function looksSignedOut(): boolean {
 const SIGN_IN_URL = `/sign-in?redirect_url=${encodeURIComponent('/hosts/onboarding')}`;
 
 /** Real mode only when the worker says both flags are on (cache-busted) and the URL does not ask for ?mock=1. */
+let ACTIVE_STEPS = STEPS;
+let KEYS = ACTIVE_STEPS.map(s => s.key);
 async function pickApi(): Promise<OnboardingApi> {
   try { if (new URLSearchParams(window.location.search).get('mock') === '1') return mockApi; } catch { /* ignore */ }
   try {
-    const cfg = await request<{ hostOnboardingEnabled?: boolean; hostKycEnabled?: boolean }>('/api/config', { query: { _: Date.now() }, timeoutMs: 8000 });
+    const cfg = await request<{ hostOnboardingEnabled?: boolean; hostKycEnabled?: boolean; hfStdPlan?: { enabled?: boolean } }>('/api/config', { query: { _: Date.now() }, timeoutMs: 8000 });
+    const standard = cfg?.hfStdPlan?.enabled === true;
+    setOnboardingStandardPlan(standard);
+    ACTIVE_STEPS = standard ? STEPS.filter(s => s.key !== 'price') : STEPS;
+    KEYS = ACTIVE_STEPS.map(s => s.key);
     return cfg && cfg.hostOnboardingEnabled === true && cfg.hostKycEnabled === true ? realApi : mockApi;
   } catch { return mockApi; }
 }
 
-const KEYS = STEPS.map(s => s.key);
 const DEFAULT_ACTION: StepAction = { label: 'Continue' };
 const NO_PREVIEW: StepKey[] = ['welcome', 'generating', 'done'];
 const NO_BACK: StepKey[] = ['welcome', 'generating', 'done'];
@@ -75,7 +80,7 @@ function isComplete(key: StepKey, d: Draft): boolean {
     case 'about': return !!d.displayName.trim() && d.about.trim().length >= 40;
     case 'languages': return d.languages.length > 0 && !!d.style;
     case 'topics': return d.topics.length >= 1;
-    case 'price': return true;
+    case 'price': return Number.isInteger(d.pricePerMin) && d.pricePerMin >= 5 && d.pricePerMin <= 100;
     case 'hours': return true;
     case 'voice': return d.voice.recorded && d.voice.consent;
     case 'review': return d.agreements.rules && d.agreements.agreement && d.agreements.welfare;
@@ -259,7 +264,7 @@ export default function HostOnboarding() {
   }, [sheet]);
 
   const index = KEYS.indexOf(step);
-  const meta = STEPS[index];
+  const meta = ACTIVE_STEPS[index];
   const avatar = useMemo(() => avatars.find(a => a.id === draft.avatarId) ?? null, [avatars, draft.avatarId]);
   const showPreview = !NO_PREVIEW.includes(step);
   const showBack = !NO_BACK.includes(step) && index > 0;

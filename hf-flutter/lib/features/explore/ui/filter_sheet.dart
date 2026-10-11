@@ -15,9 +15,10 @@ import 'explore_copy.dart';
 Future<HostFilters?> showFilterSheet(
   BuildContext context,
   HostFilters initial, {
+  required bool standardPlan,
   Future<int?> Function(HostFilters filters)? countFor,
 }) async {
-  final draft = FilterDraft(initial, countFor);
+  final draft = FilterDraft(initial, countFor, standardPlan: standardPlan);
   // The tab shell's floating nav sits above each tab's navigator and would cover the pinned button, so the
   // sheet opens on the root navigator (the root overlay's context finds it).
   final rootContext = Overlay.of(context, rootOverlay: true).context;
@@ -52,18 +53,28 @@ Future<HostFilters?> showFilterSheet(
     draft.close();
   }
 }
-
 /// The filters being edited in the sheet, and how many hosts they would show.
 ///
 /// The count is asked for once at the start and again 300 ms after the last change, one request at a time
 /// (an older answer never overwrites a newer one). A count that cannot be read just leaves "Show hosts".
 class FilterDraft extends ChangeNotifier {
-  FilterDraft(this.initial, this._countFor) : _value = initial {
+  FilterDraft(
+    this.initial,
+    this._countFor, {
+    required this.standardPlan,
+  }) : _value = standardPlan
+           ? initial.copyWith(
+               minPrice: null,
+               maxPrice: null,
+               sort: HostSort.onlineFirst,
+             )
+           : initial {
     unawaited(_fetch());
   }
 
   final HostFilters initial;
   final Future<int?> Function(HostFilters)? _countFor;
+  final bool standardPlan;
 
   HostFilters _value;
   int? _count;
@@ -104,7 +115,7 @@ class FilterDraft extends ChangeNotifier {
   }
 }
 
-/// The scrolling content of the sheet: moods, language, price and "Online now only". The choices come from
+/// The scrolling content of the sheet. Legacy host pricing also shows price and sort controls.
 /// `GET /api/hf/options`; nothing is typed in here.
 class FilterSheet extends ConsumerStatefulWidget {
   const FilterSheet({super.key, required this.draft});
@@ -180,8 +191,12 @@ class _FilterSheetState extends ConsumerState<FilterSheet> {
             _languages(o, d),
             const SizedBox(height: HfSpacing.section - 4),
           ],
-          _price(context, o, d),
-          const SizedBox(height: HfSpacing.section - 4),
+          if (!_draft.standardPlan) ...[
+            _sort(context, d),
+            const SizedBox(height: HfSpacing.section - 4),
+            _price(context, o, d),
+            const SizedBox(height: HfSpacing.section - 4),
+          ],
           _OnlineRow(
             value: d.online,
             onChanged: (v) {
@@ -270,6 +285,27 @@ class _FilterSheetState extends ConsumerState<FilterSheet> {
     );
   }
 
+  Widget _sort(BuildContext context, HostFilters d) => Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      _heading(context, ExploreCopy.sort),
+      const SizedBox(height: HfSpacing.sm),
+      Wrap(
+        spacing: HfSpacing.sm,
+        runSpacing: HfSpacing.sm,
+        children: [
+          for (final sort in HostSort.values)
+            HfChip(
+              key: ValueKey<String>('filter-sort-${sort.wire}'),
+              label: sort.label,
+              selected: d.sort == sort,
+              onTap: () => _draft.update(d.copyWith(sort: sort)),
+            ),
+        ],
+      ),
+    ],
+  );
+
   Widget _price(BuildContext context, HostOptions o, HostFilters d) {
     final dark = HfBrightness.isDark(context);
     final accent = dark ? HfColors.lavenderLight : HfColors.link;
@@ -322,7 +358,6 @@ class _FilterSheetState extends ConsumerState<FilterSheet> {
               _draft.update(
                 d.copyWith(
                   maxPrice: n >= o.priceMax ? null : n,
-                  // A minimum above the new cap would match nobody.
                   minPrice: (d.minPrice != null && d.minPrice! > n)
                       ? null
                       : d.minPrice,
@@ -482,7 +517,6 @@ class _OnlineRow extends StatelessWidget {
   }
 }
 
-/// The price slider's knob: a 28 px white disc with a 3 px ring in the accent colour and a soft shadow.
 class _FilterThumb extends SliderComponentShape {
   const _FilterThumb(this.ring);
 

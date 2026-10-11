@@ -1,5 +1,7 @@
 # SPEC — Hello Fraands Android app (Capacitor wrapper) · `HF-APP-*`
 
+> **Standard-plan amendment (approved 2026-10-11):** `Specs/HF-STD-PLAN-1-CONTRACT.md` supersedes token-facing wallet/call copy in this document when `hfStdPlanEnabled` is true. The app must render the server's verified rupee/GST fields and plan tiers, including ₹7.98 minimum start and ₹2/min host earnings. The flag defaults OFF and the legacy client path remains usable. Do not enable until the shipped minimum build and two-device readiness gate ensure callers and hosts cannot see mixed token/host-rate behavior.
+
 Status: **PROPOSED, waiting for owner approval** · Written 2026-10-10 · Owner: Davy
 Work is done by Claude end to end: code, CI builds, and Google Play Console in the browser.
 
@@ -28,8 +30,8 @@ Work is done by Claude end to end: code, CI builds, and Google Play Console in t
 | HF-APP-D5 | The app loads the live site (`https://<domain>` from `Specs/brand.json`), not a bundled copy. The site is server-rendered on Cloudflare, so it can't be bundled anyway. A small bundled offline page is shown when there is no network. | PROPOSED |
 | HF-APP-D6 | Calls stay normal phone calls through Vobiz. The app adds **no** phone, SMS, contacts or call-log permissions (they trigger Play's strict sensitive-permission review and are not needed). | PROPOSED |
 | HF-APP-D7 | Admin pages stay web-only. The app never links to `/admin/*` (they still open if typed, behind admin auth). | PROPOSED |
-| HF-APP-D8 | ~~Top-up hidden in the app~~ **Superseded 2026-10-10:** callers buy **tokens with Google Play Billing inside the app**. The website cannot use Play Billing, so `/wallet` on the web says "Download the app to add tokens". No UPI, BaseUPI or Paytm checkout for customers at launch. Full model in §11. | ADOPTED 2026-10-10 |
-| HF-APP-D11 | Calls paid with Play tokens are started **only in the app** (Play rule: in-app currency is used in the app). On the website the Call button says "Open the app to call"; admin test credits still work on the web. | ADOPTED 2026-10-10 |
+| HF-APP-D8 | Callers add money with Google Play Billing inside the app. Under the Standard plan the public UI says wallet/rupees; internal product ids remain unchanged. The website cannot open Play Billing. | AMENDED 2026-10-11 |
+| HF-APP-D11 | Calls funded by a Play wallet are started **only in the app**. On the website the Call button says "Open the app to call"; admin test credits still work on the web. | AMENDED 2026-10-11 |
 | HF-APP-D9 | Push notifications are added, with WhatsApp kept as the fallback for people on the website. | PROPOSED |
 | HF-APP-D10 | New upload key for this app only (`hf-upload.jks`), and Google Play App Signing holds the real app key. | PROPOSED |
 
@@ -278,24 +280,25 @@ Home (host cards and filters) · host profile with voice intro · call flow (Cal
 | Billing policy (§9) | Settled: Play Billing in the app, web points to the app (§11). |
 | Play's 12-testers-for-14-days rule | The Console shows a **Personal** account, so it likely applies before production. Internal testing is fine; a 12-person, 14-day closed test is needed before going public. |
 
-## 9. Paying for tokens inside the app — DECIDED 2026-10-10
-Google Play Billing in the app; the website sends people to the app. Full model in §11. The earlier options (keep top-up off, India alternative billing, ask Play support) are parked. India alternative billing stays a possible way to cut the fee later, through the provider switch in §11.6.
+## 9. Adding money with Google Play — amended 2026-10-11
+Google Play Billing runs in the app; the website sends people to the app. Customer copy uses rupees and wallet amounts. Internal token-named routes and product ids remain implementation details.
 
 ## 10. Later (not in this spec)
 Closed testing → production · iOS (Capacitor iOS, App Store person-to-person rule) · in-app review prompt · native contact-free "call me back" widget.
 
 ---
 
-## 11. Tokens, Google Play Billing and host earnings — `HF-TOK-*` (owner brief 2026-10-10)
+## 11. Google Play and host earnings — current Standard plan plus legacy internals
 
 ### 11.0 In simple words
-- **[HF-WALLET-RUPEES, 2026-10-10] There are no tokens for people: the caller wallet holds RUPEES.** Callers add money in the app with Google Play. Packs are ₹120 / ₹240 / ₹600 / ₹1,200 and add **₹102 / ₹204 / ₹510 / ₹1,020** to the wallet ("if a customer pays ₹120, he gets ₹102 in his wallet, end of story"). Product ids stay `hf_tokens_100/200/500/1000`. Internally the ledger still counts "units" (code and table names keep `token`), and 1 unit = ₹1. Version gp-v1 (100 tokens for ₹100, ₹0.82 each) is retired and kept only for old lots.
+- **[HF-STD-PLAN-1, 2026-10-11] There are no tokens for people: the caller wallet holds RUPEES.** Verified Play prices are authoritative and GST-inclusive. ₹120 / ₹240 / ₹600 / ₹1,200 add **₹101.69 / ₹203.39 / ₹508.47 / ₹1,016.95** after the GST split. Product ids keep their internal `hf_tokens_*` names; these identifiers are never customer copy.
+  Enabled calls use the fixed cumulative ₹3.99/₹3.50/₹3.25 tiers and pay every host ₹2.00 per connected minute. The remainder of §11 records the flag-off legacy lot and host-rate implementation; it is not active Standard-plan pricing.
 - Pricing version `gp-r1`: redemption value 100 paise a unit (₹1); `purchase_paise_per_token` = 118 is only an approximate fallback (used when Play reports no INR price). The real amount paid always comes from Play. We never call the gap between ₹120 and ₹102 "Google's fee" or "GST" anywhere user-facing.
 - A host keeps the price in **rupees per minute** (say ₹10/min). A call charges the caller exactly that, per second: ₹10/min costs the caller ₹10/min, and a ₹102 wallet lasts **10 min 12 s** at ₹10/min. Nothing is converted or rounded up for the caller.
 - Calls are charged by the second, adding up over the whole call. Rounding to the paisa happens once, when the call ends.
 - **Hosts only ever see rupees.** Per full minute at ₹20: ₹2 covers the call cost (Vobiz), and of the ₹18 left the host gets 60% = **₹10.80** and the platform 40% = **₹7.20**, with any GST inside the platform's part. Google's fee is never taken off again here.
 - Later, when another gateway approves us, a new pricing version can credit more rupees per rupee paid. Lots keep the value they were bought at. The host always sees actual rupees earned (₹4.80 per ₹10 minute).
-- The **website can't use Google Play**, so tapping "Add tokens" on the web says "Download the Hello Fraands app to add tokens", with the Play link. Calls paid with tokens start from the app (HF-APP-D11).
+- The **website can't use Google Play**, so tapping "Add money" on the web says to download the app. Calls funded from that wallet start from the app (HF-APP-D11).
 
 ### 11.1 Owner decisions (2026-10-10)
 | ID | Decision |
@@ -346,7 +349,7 @@ For a call snapshot with rate **R** paise/min and **s** billable seconds:
 - **Live metering:** the call DO computes the total from the start each tick, `micro_total(s) = floor(R × s × 10⁶ / (60 × v))`. It never adds tick by tick, so there is no drift. Lots are walked oldest first; when a lot runs out mid-second, the remainder converts at the next lot's value.
 - **How long the balance lasts:** sum over lots of `tokens_left × v`, as rupee value, ÷ R. Shown as "about 4 min 6 s".
 - **Start rule** (unchanged): the balance must cover 2 minutes; 60-minute cap; 1-minute warning.
-- **Display:** rates show 2 decimals ("24.39 tokens/min · ₹20/min"); balances show 2 decimals; the full precision is kept inside.
+- **Display:** Standard-plan rates and wallet balances show rupees with 2 decimals and Indian grouping; internal token/lot precision is never shown to customers.
 - **Running out mid-call:** billing stops at the last whole second the lots can pay for, and the call ends with the existing balance warning.
 
 ### 11.5 Google Play purchase flow (`HF-TOK-PLAY-1`)
@@ -411,4 +414,4 @@ Telemetry: `hf_token_purchase_started|verified|duplicate|failed`, `hf_token_refu
 10. Provider switch mid-balance: old lot keeps ₹0.82, the new purchase is ₹1; a call already running keeps its snapshot after a config change.
 11. Paise only: no floats in stored balances; property test over random rates and durations shows V = C + H + P exactly.
 12. [HF-WALLET-RUPEES] Under gp-r1 (1 unit = ₹1): host ₹10/min → 10 units/min (₹10/min); a ₹102 wallet (a ₹120 pack) = 10.2 min at ₹10/min (612 s); one minute at ₹10 → call cost ₹2.00, host ₹4.80, platform ₹3.20. Items 1–11 above are written with gp-v1 numbers and still hold for old gp-v1 lots.
-13. [HF-WALLET-RUPEES] Test-credit migration: ₹120 of old test balance → ₹120 in the wallet (120 units). Products API returns `creditPaise` (hf_tokens_100 → 10200).
+13. [HF-STD-PLAN-1] Test-credit migration is value-preserving; migrated ledger rows are excluded from revenue totals. Products expose the verified split (hf_tokens_100 at ₹120 → walletPaise 10169, gstPaise 1831).

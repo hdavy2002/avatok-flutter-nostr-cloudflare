@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/analytics/analytics.dart';
 import '../../../core/api/api_error.dart';
 import '../../../core/auth/session.dart';
+import '../../../core/config/flags.dart';
 import '../../demo/demo_data.dart'; // [HF-DEMO] remove with lib/features/demo
 import 'host_card.dart';
 import 'host_filters.dart';
@@ -122,37 +123,50 @@ class ExploreController extends Notifier<ExploreState> {
   HostsRepository get _repo => ref.read(hostsRepositoryProvider);
 
   /// The route's filters arrived (first build, a Home tile, a deep link). The local sort is kept.
-  Future<void> applyRoute(HostFilters fromRoute) {
-    final next = fromRoute.copyWith(sort: state.filters.sort);
+  Future<void> applyRoute(HostFilters fromRoute) async {
+    final next = await _forPlan(
+      fromRoute.copyWith(sort: state.filters.sort),
+    );
     if (_started && state.filters.sameRequest(next)) {
-      return Future<void>.value();
+      return;
     }
     final changed = _started;
     if (changed) _filterApplied(next, FilterSource.route);
-    return _load(next);
+    await _load(next);
   }
 
   /// The person changed filters (sheet, lane tab, clear).
   Future<void> setFilters(
     HostFilters next, {
     FilterSource source = FilterSource.sheet,
-  }) {
+  }) async {
+    next = await _forPlan(next);
     if (_started && state.filters.sameRequest(next)) {
-      return Future<void>.value();
+      return;
     }
     _filterApplied(next, source);
-    return _load(next);
+    await _load(next);
   }
 
   /// How many hosts these filters would show (the filter sheet's "Show N hosts"). One cheap request that
   /// never touches the list on screen. Null when it cannot be read.
   Future<int?> previewCount(HostFilters f) async {
     try {
-      final page = await _repo.fetch(f, limit: 1);
+      final page = await _repo.fetch(await _forPlan(f), limit: 1);
       return page.total;
     } catch (_) {
       return null;
     }
+  }
+
+  Future<HostFilters> _forPlan(HostFilters filters) async {
+    final flags = await ref.read(flagsProvider.future);
+    if (!flags.hfStdPlanEnabled) return filters;
+    return filters.copyWith(
+      minPrice: null,
+      maxPrice: null,
+      sort: HostSort.onlineFirst,
+    );
   }
 
   /// Pull to refresh, "Try again", and the sign-in coming back. Keeps the list on screen while it loads.

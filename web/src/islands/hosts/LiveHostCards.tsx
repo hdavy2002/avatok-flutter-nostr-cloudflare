@@ -12,12 +12,15 @@ import { moods } from '../../lib/callvaalHomeReference';
 import Icon from '../host-onboarding/Icon';
 import HostCallActions from '../calls/HostCallActions';
 import { callsEnabled, type HostPresence } from '../../lib/hfCallsApi';
+import { chargeForSeconds, stdRateLabel, type PriceTier } from '../../lib/hfStdPlan';
+import { formatPaise } from '../../lib/money';
 import '../../styles/profile-card.css';
 import '../../styles/live-hosts.css';
 
 interface HostCard {
   slug: string; displayName: string; tagline: string | null; avatarUrl: string | null; languages: string[]; style: string | null; topics: string[];
-  pricePerMin: number; lgbtqFriendly: boolean;
+  /** [HF-STD-PLAN-1] pricePerMin is a NUMBER and may be fractional (3.99): never parse it as an int. */
+  pricePerMin: number; pricePaisePerMin?: number; priceLabel?: string; priceTiers?: PriceTier[]; plan?: string; lgbtqFriendly: boolean;
   /** [HF-LANE-VERIFY-1] Women-lane host: only verified eligible callers can call. */
   womenOnly?: boolean;
   /** [HF-VOICE-INTRO-1] The host's own recorded introduction (admin-approved). */
@@ -91,10 +94,14 @@ function Card({ h, lane, callsOn }: { h: HostCard; lane?: LaneName | null; calls
   const href = `/h/${h.slug}`;
   const status: HostPresence = h.status === 'online' || h.status === 'busy' ? h.status : 'offline';
   const reviews = h.reviewCount ?? 0;
+  const standard = h.plan === 'standard';
+  const paisePerMin = h.pricePaisePerMin ?? Math.round(Number(h.pricePerMin) * 100);
+  const rateLabel = standard ? (h.priceLabel || stdRateLabel(paisePerMin || undefined)) : `₹${Number(h.pricePerMin).toLocaleString('en-IN')}/min`;
+  const tenMin = standard ? formatPaise(chargeForSeconds(h.priceTiers, 600)) : null;
   return (
     <article
       className="profile-card hf-live-card" data-live-host={h.slug} {...(lane ? { 'data-lane-host': lane } : {})} data-person data-profile-id={`live-${h.slug}`}
-      data-moods={h.topics.join(' ')} data-languages={h.languages.join(', ')} data-price={h.pricePerMin} data-online={callsOn && status === 'online' ? 'true' : 'false'}
+      data-moods={h.topics.join(' ')} data-languages={h.languages.join(', ')} data-price={paisePerMin / 100} data-online={callsOn && status === 'online' ? 'true' : 'false'}
       data-search={`${h.displayName} ${h.languages.join(' ')} ${h.topics.map(moodLabel).join(' ')}`}
     >
       <div className="portrait-wrap">
@@ -125,10 +132,10 @@ function Card({ h, lane, callsOn }: { h: HostCard; lane?: LaneName | null; calls
         )}
         <div className="profile-card-footer">
           <div className="person-actions">
-            <div className="profile-card-price"><strong className="person-price">₹{h.pricePerMin}/min</strong><small>10 min ≈ ₹{h.pricePerMin * 10}</small></div>
+            <div className="profile-card-price"><strong className="person-price">{rateLabel}</strong>{tenMin && <small>10 min ≈ {tenMin}</small>}</div>
             {h.womenOnly && !lane && !callsOn
               ? <a className="sample-call hf-lane-verify" href="/verify/lane?lane=women"><Icon name="shield" size={22} />Verify to call</a>
-              : <HostCallActions variant="card" host={{ slug: h.slug, displayName: h.displayName, pricePerMin: h.pricePerMin, status, womenOnly: h.womenOnly }} />}
+              : <HostCallActions variant="card" host={{ slug: h.slug, displayName: h.displayName, pricePerMin: h.pricePerMin, pricePaisePerMin: paisePerMin || undefined, priceTiers: h.priceTiers, plan: h.plan, status, womenOnly: h.womenOnly }} />}
           </div>
           <a className="profile-card-link" href={href}>View full profile <span aria-hidden="true">→</span></a>
         </div>
@@ -223,6 +230,14 @@ export default function LiveHostCards() {
   // Tell the page filters (notebookHome.ts) that real cards now exist so they apply the active filters to them.
   useEffect(() => {
     if (!mount || hosts.length === 0) return;
+    const standard = hosts.some(h => h.plan === 'standard');
+    const price = document.querySelector<HTMLSelectElement>('#price-filter');
+    const priceLabel = document.querySelector<HTMLLabelElement>('label[for="price-filter"]');
+    if (standard) {
+      if (price) { price.value = ''; price.hidden = true; }
+      if (priceLabel) priceLabel.hidden = true;
+      document.querySelectorAll<HTMLElement>('.people-grid > .profile-card:not([data-live-host])').forEach(card => { card.hidden = true; });
+    }
     document.dispatchEvent(new CustomEvent('hf:people-changed'));
   }, [mount, hosts, callsOn]);
 

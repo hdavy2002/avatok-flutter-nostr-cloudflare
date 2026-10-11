@@ -59,9 +59,65 @@ export function formatDuration(seconds: number): string {
 
 // ── core money ──────────────────────────────────────────────────────────────
 
-/** V = round(R * s / 60), half up, in paise. Same whichever lots pay for it. */
-export function consumedValuePaise(ratePaise: number, billableSeconds: number): number {
-  return num(roundHalfUpDiv(nat(ratePaise) * nat(billableSeconds), 60n));
+// ── [HF-STD-PLAN-1] tariffs: a flat host rate (old) or the Standard plan's progressive tiers ─────────────────
+
+/** One price band: from `fromSec` connected seconds (inclusive) onward, `paisePerMin` until the next band starts. */
+export interface TariffTier { fromSec: number; paisePerMin: number }
+/** Bands sorted by fromSec, the first starting at 0. A flat rate is one band. */
+export interface Tariff { tiers: TariffTier[] }
+/** Either a flat rate in paise per minute (old host-priced calls) or a tariff. */
+export type Price = number | Tariff;
+
+export const flatTariff = (ratePaise: number): Tariff => ({ tiers: [{ fromSec: 0, paisePerMin: Math.max(0, Math.trunc(ratePaise)) }] });
+export const asTariff = (p: Price): Tariff => (typeof p === "number" ? flatTariff(p) : p);
+
+/** A usable tariff: starts at 0, strictly increasing band starts, non-negative integer prices, at least one band above 0. */
+export function validTariff(t: Tariff | null | undefined): t is Tariff {
+  if (!t || !Array.isArray(t.tiers) || t.tiers.length === 0 || t.tiers.length > 10) return false;
+  let prev = -1;
+  for (const b of t.tiers) {
+    if (!Number.isInteger(b.fromSec) || !Number.isInteger(b.paisePerMin) || b.paisePerMin < 0 || b.paisePerMin > 100_000) return false;
+    if (prev === -1 ? b.fromSec !== 0 : b.fromSec <= prev) return false;
+    prev = b.fromSec;
+  }
+  return t.tiers.some((b) => b.paisePerMin > 0);
+}
+export const priceValid = (p: Price): boolean => validTariff(asTariff(p));
+
+/**
+ * Exact charge before rounding, in SIXTIETHS of a paisa (an integer): sum over bands of paisePerMin x seconds spent in that band.
+ * Only time AFTER a band starts is priced at that band; earlier seconds keep their own price (no repricing).
+ */
+export function chargeSixtieths(p: Price, seconds: number): bigint {
+  const tiers = asTariff(p).tiers;
+  const s = nat(seconds);
+  let total = 0n;
+  for (let i = 0; i < tiers.length; i++) {
+    const from = BigInt(tiers[i].fromSec);
+    if (s <= from) break;
+    const to = i + 1 < tiers.length ? BigInt(tiers[i + 1].fromSec) : s;
+    const end = s < to ? s : to;
+    total += nat(tiers[i].paisePerMin) * (end - from);
+  }
+  return total;
+}
+
+/** Cumulative charge for `seconds` of connected time, rounded ONCE, half up, to whole paise. Never rounded second by second. */
+export function chargePaise(p: Price, seconds: number): number {
+  return num(roundHalfUpDiv(chargeSixtieths(p, seconds), 60n));
+}
+
+/** The price per minute that applies at a given connected second (what the caller is paying "now"). */
+export function rateAtSecond(p: Price, second: number): number {
+  const tiers = asTariff(p).tiers;
+  let r = tiers[0]?.paisePerMin ?? 0;
+  for (const b of tiers) if (Math.trunc(second) >= b.fromSec) r = b.paisePerMin;
+  return r;
+}
+
+/** V = round(R * s / 60) for a flat rate, or the tiered cumulative charge; half up, in paise. Same whichever lots pay for it. */
+export function consumedValuePaise(ratePaise: Price, billableSeconds: number): number {
+  return chargePaise(ratePaise, billableSeconds);
 }
 
 export interface CallSplit { valuePaise: number; callCostPaise: number; hostPaise: number; platformPaise: number }
@@ -84,7 +140,7 @@ export function microForValue(valuePaise: number, valuePaisePerToken: number): n
   return num(ceilDiv(nat(valuePaise) * MICRO_N, posValue(valuePaisePerToken)));
 }
 
-/** Live metering total from the START of the call (never tick-by-tick, so no drift): floor(R * s * 1e6 / (60 * v)). */
+/** Live metering total from the START of the call (never tick-by-tick, so no drift): floor(R * s * 1e6 / (60 * v)). Flat rate only. */
 export function cumulativeMicro(ratePaise: number, seconds: number, valuePaisePerToken: number): number {
   return num((nat(ratePaise) * nat(seconds) * MICRO_N) / (60n * posValue(valuePaisePerToken)));
 }
@@ -136,7 +192,7 @@ function walk(lots: Lot[], valuePaise: bigint): { uses: LotUse[]; ok: boolean } 
  * What a call of `billableSeconds` takes from the lots. If the lots run out, billing stops at the last WHOLE second they can pay
  * for (secondsCovered), never a partial second.
  */
-export function planSpend(lots: Lot[], ratePaise: number, billableSeconds: number): SpendPlan {
+export function planSpend(lots: Lot[], ratePaise: Price, billableSeconds: number): SpendPlan {
   const want = Math.trunc(Math.max(0, billableSeconds));
   let totalCap = 0n;
   for (const l of lots) totalCap += lotCapPaise(l);
@@ -162,12 +218,21 @@ export function planSpend(lots: Lot[], ratePaise: number, billableSeconds: numbe
 }
 
 /** Whole seconds the lots can pay for at this rate, capped (60 min by default). */
-export function affordableSeconds(lots: Lot[], ratePaise: number, capSeconds = MAX_CALL_SECONDS): number {
+export function affordableSeconds(lots: Lot[], ratePaise: Price, capSeconds = MAX_CALL_SECONDS): number {
   return planSpend(lots, ratePaise, capSeconds).secondsCovered;
 }
 
+/** Whole seconds the wallet can afford with no product time cap. Operational call ceilings must be applied separately. */
+export function walletAffordableSeconds(lots: Lot[], ratePaise: Price): number {
+  if (!lots.length || !priceValid(ratePaise)) return 0;
+  let cap = 1;
+  // Positive approved tariffs eventually exceed every finite D1 wallet. Doubling keeps this independent of the 24-hour call safety ceiling.
+  while (cap < Number.MAX_SAFE_INTEGER / 2 && planSpend(lots, ratePaise, cap).secondsCovered === cap) cap *= 2;
+  return planSpend(lots, ratePaise, Math.trunc(cap)).secondsCovered;
+}
+
 /** Start rule: the balance must cover `reserveMinutes` (default 2) whole minutes. */
-export function canStart(lots: Lot[], ratePaise: number, reserveMinutes = START_RESERVE_MINUTES): boolean {
+export function canStart(lots: Lot[], ratePaise: Price, reserveMinutes = START_RESERVE_MINUTES): boolean {
   const need = Math.trunc(reserveMinutes * 60);
   return affordableSeconds(lots, ratePaise, need) >= need;
 }
@@ -231,4 +296,104 @@ export function applyRefund(lot: RefundLot): RefundPlan {
   const debtMicro = granted - left;
   const debtValue = roundHalfUpDiv(debtMicro * posValue(lot.valuePaisePerToken), MICRO_N);
   return { removeMicro: num(left), releaseReservedMicro: num(reserved), debtMicro: num(debtMicro), debtValuePaise: num(debtValue) };
+}
+
+// ── [HF-STD-PLAN-1] Standard plan: rupee wallet in paise, progressive tiers, host per-minute pay ───────────────────────────
+
+/**
+ * Wallet lots created from 2026-10-11 hold RUPEES: value 100 paise per unit, so 1 paisa = 10_000 micro units exactly. Every posting
+ * on such a lot (credit, reserve, spend, refund) is a whole number of paise because microForValue(x, 100) = x * 10_000.
+ */
+export const RUPEE_LOT_VALUE_PAISE = 100;
+export const MICRO_PER_PAISA = MICRO / RUPEE_LOT_VALUE_PAISE; // 10_000
+export const paiseToMicro = (paise: number): number => Math.max(0, Math.trunc(paise)) * MICRO_PER_PAISA;
+/** Paise held by a micro amount on a rupee lot (floor: a fraction of a paisa is never spendable). */
+export const microToPaise = (micro: number): number => Math.floor(Math.max(0, Math.trunc(micro)) / MICRO_PER_PAISA);
+
+/** Pricing version for wallet credits made under the Standard plan (Google Play, GST-inclusive packs). */
+export const PRICING_GP_R2: PricingVersion = {
+  id: "gp-r2", provider: "google_play", purchasePaisePerToken: 100, redemptionPaisePerToken: RUPEE_LOT_VALUE_PAISE, providerFeeBps: 1500, taxMode: "none_unregistered",
+};
+
+/**
+ * Top-up with GST INCLUDED in the price: wallet = paid / (1 + gst), rounded half up to the paisa; GST = paid - wallet.
+ * Rs 120.00 -> Rs 101.69 + GST Rs 18.31; Rs 118.00 -> Rs 100.00 + GST Rs 18.00. With gstInclusive=false nothing is deducted.
+ */
+export function topupSplit(paidPaise: number, gstBps: number, gstInclusive = true): { walletPaise: number; gstPaise: number } {
+  const paid = nat(paidPaise);
+  const bps = BigInt(Math.max(0, Math.min(10_000, Math.trunc(Number.isFinite(gstBps) ? gstBps : 0))));
+  if (!gstInclusive || bps === 0n) return { walletPaise: num(paid), gstPaise: 0 };
+  const wallet = roundHalfUpDiv(paid * 10_000n, 10_000n + bps);
+  return { walletPaise: num(wallet), gstPaise: num(paid - wallet) };
+}
+
+export interface StdPlanConfig {
+  /** Paise per minute for each band. */ tier1PaisePerMin: number; tier2PaisePerMin: number; tier3PaisePerMin: number;
+  /** Band ends in minutes of connected time. */ tier1EndMin: number; tier2EndMin: number;
+  hostPaisePerMin: number; phoneCostPaisePerMin: number;
+}
+export const STD_PLAN_DEFAULTS: StdPlanConfig = {
+  tier1PaisePerMin: 399, tier2PaisePerMin: 350, tier3PaisePerMin: 325, tier1EndMin: 30, tier2EndMin: 60, hostPaisePerMin: 200, phoneCostPaisePerMin: 100,
+};
+export const stdTariff = (c: StdPlanConfig = STD_PLAN_DEFAULTS): Tariff => ({
+  tiers: [
+    { fromSec: 0, paisePerMin: c.tier1PaisePerMin },
+    { fromSec: c.tier1EndMin * 60, paisePerMin: c.tier2PaisePerMin },
+    { fromSec: c.tier2EndMin * 60, paisePerMin: c.tier3PaisePerMin },
+  ],
+});
+
+/**
+ * Standard has no shorter commercial duration cap: hang-up or wallet exhaustion normally ends the call. This explicit 24-hour operational
+ * safety ceiling bounds reservations, the DO alarm and the provider backstop even when a wallet could afford longer.
+ */
+export const STD_TECH_MAX_SECONDS = 24 * 3600;
+
+export interface StdSplit { valuePaise: number; hostPaise: number; phoneCostPaise: number; platformPaise: number }
+/**
+ * Standard plan split. V = tiered charge (rounded once). H = host per-minute pay, floored to the paisa (never overpaid).
+ * C = ESTIMATED phone cost, half up, capped at V - H. P = the remainder (estimated platform retention, before other costs).
+ * V = H + C + P always. 60 min at defaults: V 22470, H 12000, C 6000, P 4470.
+ */
+export function stdSplit(a: { tariff: Tariff; billableSeconds: number; hostPaisePerMin: number; phoneCostPaisePerMin: number }): StdSplit {
+  const s = nat(a.billableSeconds);
+  const V = roundHalfUpDiv(chargeSixtieths(a.tariff, a.billableSeconds), 60n);
+  const rawH = (nat(a.hostPaisePerMin) * s) / 60n;
+  const H = rawH < V ? rawH : V;
+  const rawC = roundHalfUpDiv(nat(a.phoneCostPaisePerMin) * s, 60n);
+  const C = rawC < V - H ? rawC : V - H;
+  return { valuePaise: num(V), hostPaise: num(H), phoneCostPaise: num(C), platformPaise: num(V - H - C) };
+}
+
+/** "₹101.69" from paise. Indian digit grouping for thousands ("₹1,016.95"). */
+export function formatRupees(paise: number): string {
+  const neg = paise < 0;
+  const p = Math.abs(Math.trunc(paise));
+  const whole = Math.floor(p / 100).toString();
+  const frac = (p % 100).toString().padStart(2, "0");
+  const last3 = whole.slice(-3), rest = whole.slice(0, -3);
+  const grouped = rest ? `${rest.replace(/\B(?=(\d{2})+(?!\d))/g, ",")},${last3}` : last3;
+  return `${neg ? "-" : ""}₹${grouped}.${frac}`;
+}
+
+export interface TierLine { fromMin: number; toMin: number | null; paisePerMin: number; seconds: number; amountPaise: number }
+/**
+ * Per-band breakdown of a charge for receipts and the call summary. Each line's amount is the difference of the ROUNDED cumulative totals,
+ * so the lines always add up exactly to chargePaise(p, seconds). Bands the call never reached are left out.
+ */
+export function tierBreakdown(p: Price, seconds: number): TierLine[] {
+  const tiers = asTariff(p).tiers;
+  const s = Math.max(0, Math.trunc(seconds));
+  const out: TierLine[] = [];
+  let prevRounded = 0;
+  for (let i = 0; i < tiers.length; i++) {
+    const from = tiers[i].fromSec;
+    if (s <= from) break;
+    const to = i + 1 < tiers.length ? tiers[i + 1].fromSec : null;
+    const end = to == null ? s : Math.min(s, to);
+    const cum = chargePaise(p, end);
+    out.push({ fromMin: from / 60, toMin: to == null ? null : to / 60, paisePerMin: tiers[i].paisePerMin, seconds: end - from, amountPaise: cum - prevRounded });
+    prevRounded = cum;
+  }
+  return out;
 }

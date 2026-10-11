@@ -20,7 +20,7 @@ import { cleanUtr } from "../lib/hf_payouts";
 import { exitFlags } from "../lib/hf_exit";
 import { readConfig } from "./config";
 import { readHfTokenConfig } from "../lib/hf_token_config"; // [HF-TOK-EXIT-1]
-import { formatTokens } from "../lib/hf_token_math";
+import { formatTokens, formatRupees } from "../lib/hf_token_math";
 import {
   PLAY_REFUND, isPlayRefund, refundableLots, requestPlayRefunds, cancelPlayRefund, confirmPlayRefund, rejectPlayRefund, unspentSharePaise, type LotRow,
 } from "../lib/hf_play_refunds";
@@ -68,7 +68,7 @@ async function tokenGet(env: Env, uid: string, windowDays: number): Promise<Resp
   const rows = (await env.DB_META.prepare("SELECT * FROM hf_refund_requests WHERE uid=?1 ORDER BY created_at DESC LIMIT 50").bind(uid).all<RefundRow>().catch(() => ({ results: [] as RefundRow[] }))).results ?? [];
   return json({
     enabled: true, mode: "tokens", windowDays, refundable: paise / 100, eligible: paise / 100,
-    lots: lots.map((l) => ({ lotId: l.lotId, tokens: formatTokens(l.leftMicro, 2), paid: l.paidPaise / 100, refund: l.sharePaise / 100, wholeOrder: l.wholeOrder, boughtAt: l.createdAt })),
+    lots: lots.map((l) => ({ lotId: l.lotId, tokens: formatTokens(l.leftMicro, 2), paid: l.paidPaise / 100, refund: l.sharePaise / 100, refundPaise: l.sharePaise, refundText: formatRupees(l.sharePaise), paidPaise: l.paidPaise, paidText: formatRupees(l.paidPaise), wholeOrder: l.wholeOrder, boughtAt: l.createdAt })),
     requests: rows.filter((r) => !isSystemRow(r)).map(publicRow),
   });
 }
@@ -165,7 +165,7 @@ async function adminAct(req: Request, env: Env, id: string, action: string): Pro
   const a = await adminCtx(req, env); if (a instanceof Response) return a;
   let res;
   const target = await getRefund(env, id);
-  if (isPlayRefund(target)) { // [HF-TOK-EXIT-1] a Google Play refund of unused tokens: its own confirm / reject, no WalletDO, no gateway slices
+  if (isPlayRefund(target)) { // [HF-TOK-EXIT-1] a Google Play refund of unused wallet money: its own confirm / reject, no WalletDO, no gateway slices
     const packageId = (await tokenCfg(env)).playPackageId;
     let pr;
     if (action === "approve" || action === "retry" || action === "play-confirm") {

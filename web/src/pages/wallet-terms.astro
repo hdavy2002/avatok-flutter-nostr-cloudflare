@@ -3,17 +3,22 @@ import HelloFraandsPage from '../layouts/HelloFraandsPage.astro';
 ---
 <HelloFraandsPage title="Payment & wallet terms" summary="Wallet ka balance platform par baat karne ke liye hai — aur bacha hua paisa UPI par wapas." review={true} related={[{"href":"/refunds","label":"Refunds"},{"href":"/terms","label":"Terms of use"},{"href":"/grievance","label":"Grievance redressal"}]}>
 <h2>Prepaid talk-time wallet</h2>
-<p>Callers top up a prepaid wallet with UPI and spend it on connected call minutes. The wallet is for calls on this platform only; it is not a bank account and earns no interest.</p>
-<h2>Rate and minimum balance</h2>
-<p>Each host sets a per-minute rate. The general-lane floor of ₹5/minute applies; the women-only space may have a separate minimum. The host's actual rate is shown before you call. You need at least two minutes of balance at that rate to start a call.</p>
+<p>Callers add money to a prepaid wallet and spend it on connected call time. The wallet holds rupees. It is for calls on this platform only; it is not a bank account and earns no interest.</p>
+<h2>Adding money and GST</h2>
+<p>The price of each pack includes 18% GST. Your wallet gets the amount without GST. For example, if you pay ₹120, the GST is ₹18.31 and ₹101.69 is added to your wallet. Pay ₹240 and ₹203.39 is added. Pay ₹600 and ₹508.47 is added. Pay ₹1,200 and ₹1,016.95 is added.</p>
+<p>Before you pay, you see the total, the GST and the amount added to your wallet. The same three amounts are on your receipt. Money is added only after Google Play confirms your payment, and only once. No GST is charged again when you spend wallet money on calls.</p>
+<h2>Call price and minimum balance</h2>
+<p>Every host has the same price. A call costs ₹3.99 a minute for the first 30 minutes, ₹3.50 a minute for the next 30 minutes, and ₹3.25 a minute after 60 minutes. The lower price applies only to the time after each mark. Minutes you have already talked are never charged again at a new price.</p>
+<ul><li>30 minutes cost ₹119.70.</li><li>60 minutes cost ₹224.70.</li><li>90 minutes cost ₹322.20.</li><li>120 minutes cost ₹419.70.</li></ul>
+<p>A new call starts again at ₹3.99 a minute. You need at least ₹7.98 (two minutes) in your wallet to start a call.</p>
 <h2>When charges start</h2>
-<p>Billing starts only when host and caller are connected, not while a phone rings or the host decides. Billing is per started minute: for example, 61 connected seconds at ₹5/minute costs ₹10. Declines, timeouts before connection and failed connections cost nothing.</p>
-<p>A call can last as many whole minutes as your balance buys, up to 60 minutes per call. You hear a warning about 60 seconds before the limit, then the call ends automatically. Your balance can never go below zero.</p>
-<h2>Settlement and host earnings</h2>
-<p>Each call settles once against its connection and end records. The platform share per minute is ₹2 plus 40% of the amount above ₹2, with 18% GST included in the platform share. At ₹5/minute, this is ₹3.20 for the platform and ₹1.80 for the host. Host earnings are credited after each completed call and withdrawn to a UPI ID in the host's own name.</p>
+<p>Billing starts only when host and caller are connected, not while a phone rings or the host decides. You are billed for the exact seconds you are connected, with no rounding up to a full minute. Ringing, a declined or missed call, a failed connection and waiting all cost ₹0.</p>
+<p>There is no fixed time limit on a call. It goes on until either person hangs up or your wallet money is used up. About one minute before your wallet money ends, you hear "one minute left". Your balance can never go below zero.</p>
+<h2>Host earnings</h2>
+<p>Hosts earn ₹2.00 for every connected minute of every call, paid by the second. Host earnings are shown in rupees with their payout status. Payouts go to a bank account or UPI ID in the host's own name.</p>
 <h2>Refunds of unused wallet money</h2>
 <p>Unused wallet money can be refunded on request through Google Play within 180 days. Calls themselves are not refundable — see the <a href="/refunds">refund policy</a>.</p>
 <h2>Ended calls, bans and disputes</h2>
-<p>A call ended by either person, by # or by a safety action bills connected time under the same started-minute rule. If an account is banned, it can no longer make or receive calls, but the owner can still sign in and request a refund of unused wallet money through Google Play within 180 days. Money is never forfeited as a penalty.</p>
+<p>A call ended by either person, by # or by a safety action bills the connected time up to that moment. If an account is banned, it can no longer make or receive calls, but the owner can still sign in and request a refund of unused wallet money through Google Play within 180 days. Money is never forfeited as a penalty.</p>
 <p>See <a href="/refunds">refunds and billing errors</a> for incorrect charges, and <a href="/grievance">grievance redressal</a> to ask for a review of an account restriction.</p>
 </HelloFraandsPage>

@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../../core/config/flags.dart';
 import '../../../../core/links.dart';
 import '../../../../core/theme/hf_theme.dart';
 import '../../../../core/widgets/widgets.dart';
@@ -8,17 +10,20 @@ import '../widgets/step_page.dart';
 import 'onboarding_copy.dart';
 
 /// Step `welcome`: what you need, and what we keep (spec 2.13). No API call.
-class WelcomeStep extends StatelessWidget {
+class WelcomeStep extends ConsumerWidget {
   const WelcomeStep({super.key, required this.ctx});
 
   final OnboardingStepContext ctx;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final standardPlan = hfStdPlanOn(ref.watch(flagsProvider));
     return OnboardingStepPage(
       scene: HfClusterKind.welcome,
       title: OnboardingCopy.welcomeTitle,
-      lead: OnboardingCopy.welcomeLead,
+      lead: standardPlan
+          ? OnboardingCopy.welcomeLead
+          : OnboardingCopy.legacyWelcomeLead,
       footer: [
         HfButton(
           key: const ValueKey<String>('welcome-start'),
@@ -107,7 +112,12 @@ class WelcomeStep extends StatelessWidget {
         ),
         const SizedBox(height: 16),
         const _Fact(Icons.verified_user_rounded, OnboardingCopy.factsAge),
-        const _Fact(Icons.currency_rupee_rounded, OnboardingCopy.factsPrice),
+        _Fact(
+          Icons.currency_rupee_rounded,
+          standardPlan
+              ? OnboardingCopy.factsPrice
+              : OnboardingCopy.legacyFactsPrice,
+        ),
         const _Fact(Icons.call_rounded, OnboardingCopy.factsPhone),
       ],
     );

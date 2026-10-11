@@ -54,10 +54,9 @@ export const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
 export const PRICE_MIN = 5;
 export const PRICE_MAX = 100;
-/** HF-PAY-6: platform keeps ₹2 + 40% of the amount above ₹2 (GST inside). ₹20 → host ₹10.80. */
-export function hostShare(price: number): number {
-  return Math.round(Math.max(0, price - 2) * 0.6 * 100) / 100;
-}
+export const hostShare = (price: number) => Math.round(price * 0.60 * 100) / 100;
+/** [HF-STD-PLAN-1] Shown only after the runtime flag is enabled. */
+export const STD_PLAN_HOST_LINE = 'Standard plan · callers pay ₹3.99/min (less on long calls) · you earn ₹2.00 per connected minute';
 export const rupees = (n: number) => `₹${Number.isInteger(n) ? n : n.toFixed(2)}`;
 
 /** Text a caller must never see: numbers, emails, links, social handles. */
@@ -107,7 +106,7 @@ export const EMPTY_DRAFT: Draft = {
   displayName: '', about: '',
   languages: [], style: null,
   topics: [],
-  pricePerMin: 20,
+  pricePerMin: 10, // legacy default; the Standard plan ignores this field
   hours: { days: [], from: '19:00', to: '22:00' },
   healthConsent: false, womenOnlyLane: false,
   lgbtqLane: false, lgbtqShowOnProfile: false,

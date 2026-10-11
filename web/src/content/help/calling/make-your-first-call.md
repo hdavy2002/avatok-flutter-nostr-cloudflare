@@ -4,13 +4,13 @@ description: "Top up your wallet, pick a host, check the price and tap call. Her
 section: calling
 order: 1
 updated: 2026-10-08
-keywords: ["first call", "pehli call", "top up", "wallet", "UPI", "how to call", "call kaise karein"]
+keywords: ["first call", "pehli call", "top up", "wallet", "how to call", "call kaise karein"]
 audience: buyer
 faq:
   - q: "How do I add money?"
-    a: "Top up your prepaid talk-time wallet with UPI on the website. You pay only for the minutes you use."
+    a: "Add money to your prepaid talk-time wallet through Google Play in the Android app. You pay only for the seconds you talk."
   - q: "How much balance do I need?"
-    a: "You need at least 2 minutes of balance at that host's rate. For a ₹5 a minute host, that is ₹10."
+    a: "You need at least ₹7.98 in your wallet. That is 2 minutes at ₹3.99 a minute, the same for every host."
   - q: "Will I be charged if the host does not pick up?"
     a: "No. Charging starts only when you are both connected. Ringing, a decline or a timeout costs ₹0."
 draft: false
@@ -23,14 +23,14 @@ Your first call takes only a few minutes to set up. Here is the whole way, step 
 ## Before you call
 
 1. [Create your account](/help/getting-started/create-your-account) if you have not yet.
-2. **Top up your wallet.** Open the wallet on the website and pay with UPI. Your wallet holds your talk time.
-3. Make sure you have enough balance. You need at least 2 minutes at that host's rate. For a ₹5 a minute host, keep ₹10. For a ₹20 a minute host, keep ₹40.
+2. **Top up your wallet.** Open your wallet and pay through Google Play. Your wallet holds your talk-time money in rupees.
+3. Make sure you have enough balance. You need at least ₹7.98 (2 minutes). The price is ₹3.99 a minute for every host.
 
 ## Pick a host and check the price
 
 1. Choose a mood, a language and "online now". See [Find someone to talk to](/help/getting-started/find-someone-to-talk-to).
 2. Open a profile. Read the topics the host agreed to.
-3. **Check the price per minute.** It is shown before you call.
+3. **Check the price.** It is the same for every host: ₹3.99 a minute at first, then ₹3.50 after 30 minutes and ₹3.25 after 60 minutes.
 
 ## Tap call
 

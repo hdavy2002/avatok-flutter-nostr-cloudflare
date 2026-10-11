@@ -129,6 +129,8 @@ const nzp = (n: unknown): number => (Number.isFinite(Number(n)) ? Math.max(0, Ma
 export interface PurchaseLotForReceipt {
   id: string; uid: string; tokens_granted_micro: number; paid_paise: number; redemption_paise_per_token: number;
   provider_ref: string | null; created_at: number; pricing_version?: string | null;
+  /** [HF-STD-PLAN-1] GST included in the price (0 on older purchases). */
+  gst_paise?: number | null;
 }
 /** One record per purchase lot, exactly once (source 'play_purchase', source id = the lot id). Never throws. */
 export async function issuePurchaseRecord(env: Env, cfg: Record<string, unknown>, l: PurchaseLotForReceipt): Promise<ReceiptRow | null> {
@@ -139,6 +141,8 @@ export async function issuePurchaseRecord(env: Env, cfg: Record<string, unknown>
       data: {
         type: "play_purchase", orderId: l.provider_ref, tokensMicro: nzp(l.tokens_granted_micro), paidPaise: nzp(l.paid_paise),
         valuePaisePerToken: nzp(l.redemption_paise_per_token), pricingVersion: l.pricing_version ?? null, taxMode: "none_unregistered", paidAt: Number(l.created_at) || Date.now(),
+        // [HF-STD-PLAN-1] rupees: what reached the wallet and the GST included in the price (paid = wallet + GST).
+        walletPaise: Number((BigInt(nzp(l.tokens_granted_micro)) * BigInt(nzp(l.redemption_paise_per_token))) / 1_000_000n), gstPaise: nzp(l.gst_paise ?? 0),
       },
     });
   } catch (e) {
@@ -150,8 +154,8 @@ export async function issuePurchaseRecord(env: Env, cfg: Record<string, unknown>
 export async function backfillPurchaseRecords(env: Env, cfg: Record<string, unknown>, uid: string): Promise<void> {
   try {
     const rows = (await env.DB_META.prepare(
-      `SELECT t.id, t.uid, t.tokens_granted_micro, t.paid_paise, t.redemption_paise_per_token, t.provider_ref, t.created_at, t.pricing_version FROM hf_token_lots t
-        WHERE t.uid=?1 AND t.kind='purchase' AND t.provider='google_play'
+      `SELECT t.id, t.uid, t.tokens_granted_micro, t.paid_paise, t.redemption_paise_per_token, t.provider_ref, t.created_at, t.pricing_version, t.gst_paise FROM hf_token_lots t
+        WHERE t.uid=?1 AND t.kind='purchase' AND t.provider='google_play' AND t.source_lot_id IS NULL
           AND NOT EXISTS (SELECT 1 FROM hf_receipts r WHERE r.kind='receipt' AND r.source='play_purchase' AND r.source_id=t.id)
         ORDER BY t.created_at LIMIT 20`,
     ).bind(uid).all<PurchaseLotForReceipt>()).results ?? [];
@@ -183,6 +187,9 @@ export interface StatementResult { month: string; issued: number; skipped: numbe
 export async function runMonthlyStatements(env: Env, cfg: Record<string, unknown>, now = Date.now(), batch = 100): Promise<StatementResult | null> {
   const sup = supplierFrom(cfg);
   if (!invoicingOn(sup)) return null;
+  // [HF-STD-PLAN-1] GST is now on the TOP-UP (price includes 18%, HF-PAY-16/19). These statements take GST out of the platform share of calls,
+  // which would tax the same money twice, so they never run while top-ups are GST-inclusive. The invoice basis is for the CA to decide.
+  if (cfg.hfTopupGstInclusive !== false) { console.warn("[hf-receipt] monthly call-share tax invoices skipped: top-ups are GST-inclusive (HF-STD-PLAN-1)"); return null; }
   if (new Date(now + IST_OFFSET_MS).getUTCDate() > STATEMENT_WINDOW_DAYS) return null; // only the first days of the month (catch-up for missed ticks)
   const from = istPrevMonthStart(now), to = istMonthStart(now);
   const month = istMonthStr(from);

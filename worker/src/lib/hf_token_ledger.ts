@@ -11,7 +11,7 @@
 //  - Lots are used OLDEST FIRST and never revalued. Reservations are held INSIDE tokens_left (available = left - reserved).
 //  - Gate rows carry delta_micro 0 (kind decides the meaning); the per-lot rows carry the amounts, so SUMs never double count.
 import type { Env } from "../types";
-import { planSpend, microForValue, applyRefund, PRICING_GP_V1, PRICING_GP_R1, MICRO, type Lot } from "./hf_token_math";
+import { planSpend, microForValue, applyRefund, priceValid, PRICING_GP_V1, PRICING_GP_R1, PRICING_GP_R2, MICRO, type Lot, type Price } from "./hf_token_math";
 
 export const resOpId = (callId: string) => `hftres:${callId}`;
 export const relOpId = (callId: string) => `hftrel:${callId}`;
@@ -69,15 +69,25 @@ export interface BalanceSummary {
   byValue: Array<{ valuePaisePerToken: number; micro: number }>;
   debtMicro: number;
   debtValuePaise: number;
+  /** [HF-STD-PLAN-1] Rupee value held (incl. reserved) and free to spend, in paise: per lot floor(left x value / 1e6), the spendable boundary. */
+  totalPaise: number;
+  availablePaise: number;
+  /** [HF-STD-PLAN-1] Of availablePaise, what came from purchases (real money) vs test credits / adjustments. */
+  availablePaidPaise: number;
+  availableTestPaise: number;
 }
 export async function balanceSummary(env: Env, uid: string): Promise<BalanceSummary> {
   const lots = await getLots(env, uid);
-  let total = 0, avail = 0;
+  let total = 0, avail = 0, totalPaise = 0, availPaise = 0, paidPaise = 0;
   const by = new Map<number, number>();
   for (const l of lots) {
     total += l.leftMicro;
     const a = Math.max(0, l.leftMicro - l.reservedMicro);
     avail += a;
+    totalPaise += capPaise(l.leftMicro, l.valuePaisePerToken);
+    const ap = capPaise(a, l.valuePaisePerToken);
+    availPaise += ap;
+    if (l.kind === "purchase") paidPaise += ap;
     if (a > 0) by.set(l.valuePaisePerToken, (by.get(l.valuePaisePerToken) ?? 0) + a);
   }
   const d = await env.DB_META.prepare("SELECT COALESCE(SUM(amount_micro),0) AS m, COALESCE(SUM(value_paise),0) AS p FROM hf_token_debts WHERE uid=?1 AND status='open'")
@@ -86,6 +96,7 @@ export async function balanceSummary(env: Env, uid: string): Promise<BalanceSumm
     totalMicro: total, availableMicro: avail,
     byValue: [...by.entries()].map(([valuePaisePerToken, micro]) => ({ valuePaisePerToken, micro })),
     debtMicro: Number(d?.m ?? 0), debtValuePaise: Number(d?.p ?? 0),
+    totalPaise, availablePaise: availPaise, availablePaidPaise: paidPaise, availableTestPaise: availPaise - paidPaise,
   };
 }
 
@@ -101,7 +112,7 @@ export async function getPricingVersion(env: Env, id: string): Promise<PricingRo
     "SELECT id, provider, purchase_paise_per_token AS p, redemption_paise_per_token AS v, provider_fee_bps AS f FROM hf_pricing_versions WHERE id=?1",
   ).bind(id).first<{ id: string; provider: string; p: number; v: number; f: number }>().catch(() => null);
   if (r) return { id: r.id, provider: r.provider, purchasePaisePerToken: Number(r.p), redemptionPaisePerToken: Number(r.v), providerFeeBps: Number(r.f) };
-  for (const c of [PRICING_GP_V1, PRICING_GP_R1]) {
+  for (const c of [PRICING_GP_V1, PRICING_GP_R1, PRICING_GP_R2]) {
     if (id === c.id) return { id, provider: c.provider, purchasePaisePerToken: c.purchasePaisePerToken, redemptionPaisePerToken: c.redemptionPaisePerToken, providerFeeBps: c.providerFeeBps };
   }
   return null;
@@ -112,6 +123,10 @@ export async function getPricingVersion(env: Env, id: string): Promise<PricingRo
 export interface CreditArgs {
   kind: LotKind; pricingVersion: string; valuePaisePerToken: number; micro: number; paidPaise: number;
   provider: string | null; providerRef: string | null; note?: string;
+  /** [HF-STD-PLAN-1] GST included in a GST-inclusive top-up (paidPaise = wallet credit + gstPaise). */
+  gstPaise?: number;
+  /** [HF-STD-PLAN-1] A migration lot points at the lot it replaced. */
+  sourceLotId?: string | null;
 }
 export type CreditResult = { applied: boolean; lotId: string | null };
 
@@ -132,9 +147,10 @@ export async function creditLot(env: Env, uid: string, a: CreditArgs, opId: stri
        VALUES (?1,?2,?3,?4,?5,?6,NULL,?7,?8,?9,?10)`,
     ).bind(crypto.randomUUID(), uid, ledgerKind, lotId, a.micro, valuePaiseOfMicro(a.micro, a.valuePaisePerToken), a.providerRef, opId, nonce, now),
     db.prepare(
-      `INSERT INTO hf_token_lots (id, uid, kind, pricing_version, redemption_paise_per_token, tokens_granted_micro, tokens_left_micro, tokens_reserved_micro, paid_paise, provider, provider_ref, created_at, status)
-       SELECT ?1,?2,?3,?4,?5,?6,?6,0,?7,?8,?9,?10,'active' WHERE EXISTS (SELECT 1 FROM hf_token_ledger WHERE op_id=?11 AND note=?12)`,
-    ).bind(lotId, uid, a.kind, a.pricingVersion, a.valuePaisePerToken, a.micro, paid, a.provider, a.providerRef, now, opId, nonce),
+      `INSERT INTO hf_token_lots (id, uid, kind, pricing_version, redemption_paise_per_token, tokens_granted_micro, tokens_left_micro, tokens_reserved_micro, paid_paise, provider, provider_ref, created_at, status, gst_paise, source_lot_id)
+       SELECT ?1,?2,?3,?4,?5,?6,?6,0,?7,?8,?9,?10,'active',?13,?14 WHERE EXISTS (SELECT 1 FROM hf_token_ledger WHERE op_id=?11 AND note=?12)`,
+    ).bind(lotId, uid, a.kind, a.pricingVersion, a.valuePaisePerToken, a.micro, paid, a.provider, a.providerRef, now, opId, nonce,
+      Math.max(0, Math.trunc(a.gstPaise ?? 0)), a.sourceLotId ?? null),
   ]);
   const row = await db.prepare("SELECT lot_id, note FROM hf_token_ledger WHERE op_id=?1").bind(opId).first<{ lot_id: string | null; note: string | null }>();
   const applied = row?.note === nonce;
@@ -297,11 +313,11 @@ async function readReservation(env: Env, callId: string): Promise<Reservation | 
 }
 
 /**
- * Hold, oldest lot first, the tokens a call of up to `seconds` needs at `ratePaise` (paise per minute). Reserves what the lots can pay
+ * Hold, oldest lot first, the tokens a call of up to `seconds` needs at `ratePaise` (paise per minute, or a tiered tariff [HF-STD-PLAN-1]). Reserves what the lots can pay
  * for (secondsCovered may be less than asked; the caller decides whether that is enough to start). Idempotent per callId.
  */
-export async function reserveForCall(env: Env, uid: string, callId: string, ratePaise: number, seconds: number): Promise<ReserveResult> {
-  if (!(ratePaise > 0) || !(seconds > 0)) return { ok: false, reason: "invalid" };
+export async function reserveForCall(env: Env, uid: string, callId: string, ratePaise: Price, seconds: number): Promise<ReserveResult> {
+  if (!priceValid(ratePaise) || !(seconds > 0)) return { ok: false, reason: "invalid" };
   const db = env.DB_META;
   const again = async (): Promise<ReserveResult | null> => {
     const r = await readReservation(env, callId);
@@ -409,8 +425,8 @@ async function readSettlement(env: Env, callId: string): Promise<Extract<SettleR
  * this call, oldest first, plus further available lots if the reservation was too small; the unspent reservation is released. One batch.
  * Idempotent (op `hftset:<callId>`): a retry returns the first result. A call that never reserved can still settle from available lots.
  */
-export async function settleCall(env: Env, uid: string, callId: string, ratePaise: number, billableSeconds: number): Promise<SettleResult> {
-  if (!(ratePaise > 0) || !(billableSeconds >= 0)) return { ok: false, reason: "invalid" };
+export async function settleCall(env: Env, uid: string, callId: string, ratePaise: Price, billableSeconds: number): Promise<SettleResult> {
+  if (!priceValid(ratePaise) || !(billableSeconds >= 0)) return { ok: false, reason: "invalid" };
   const db = env.DB_META;
   const done = await readSettlement(env, callId);
   if (done) return done;

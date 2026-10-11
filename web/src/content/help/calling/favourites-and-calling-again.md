@@ -68,4 +68,4 @@ If a host asks you for money outside the platform, report it at [report form](/r
 
 ## Check the price each time
 
-Each host sets their own rate. Check the price on the profile before you call. You need at least 2 minutes of balance. See [How much does a call cost?](/help/calling/price-and-minutes).
+Every host has the same standard price. You need at least ₹7.98 in your wallet to start a call. See [How much does a call cost?](/help/calling/price-and-minutes).

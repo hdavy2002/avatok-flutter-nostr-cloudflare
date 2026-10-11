@@ -18,7 +18,8 @@ import {
   HF_CALL_APP, webhookBase, releaseHost, hfReserve, hfRelease, hfConsume, hfEarn, type HfCallRow,
 } from "../lib/hf_calls_store";
 import { settleTestCredits } from "../lib/hf_credits";
-import { settleTokenCall } from "../lib/hf_token_calls"; // [HF-TOK-CALLS-1]
+import { settleTokenCall, type StdSnapshot } from "../lib/hf_token_calls"; // [HF-TOK-CALLS-1]
+import { validTariff } from "../lib/hf_token_math"; // [HF-STD-PLAN-1]
 import {
   settleCall, billedMinutes, hostTokensToCredit, splitCharge, splitHostShare, paidStillNeeded, callerHandle, hostAnnounceXml, noticeAndConferenceXml, hangupXml, emptyXml,
   LIMIT_WARNING_TEXT, WARN_BEFORE_LIMIT_SEC,
@@ -37,7 +38,7 @@ interface Plan {
   testUsed?: number; paidUsed?: number; hostPaid?: number; hostTest?: number;
 }
 // [HF-TOK-CALLS-1] Token-mode call: the snapshot taken at start (never live config) + the call's own time limit in seconds.
-interface TokenSnap { ratePaise: number; callCostPaisePerMin: number; hostShareBps: number; maxSeconds: number }
+interface TokenSnap { ratePaise: number; callCostPaisePerMin: number; hostShareBps: number; maxSeconds: number; std?: StdSnapshot | null }
 interface Bill {
   tokSettled?: boolean;
   funds?: number; plan?: Plan; consumed?: number; released?: boolean; earned?: boolean; saved?: boolean; post?: boolean; attempts: number;
@@ -86,7 +87,8 @@ export class HfCallDO {
   private room(s: S) { return `hf_${s.callId.replace(/-/g, "")}`; }
   /** The call's time limit in seconds: exact for token calls, whole minutes for the old path. */
   private maxSec(s: S) { return s.tok ? s.tok.maxSeconds : s.maxMinutes * 60; }
-  private backstopSec(s: S) { return this.maxSec(s) + 90; }
+  // [HF-STD-PLAN-1] provider backstop never above 24 h (Standard calls are sized up to STD_TECH_MAX_SECONDS); the DO alarm is the real limit.
+  private backstopSec(s: S) { return Math.min(this.maxSec(s) + 90, 86_400); }
 
   // ── HTTP entry (internal: only routes/hf_calls.ts and the cron call this) ───────────────────────────────────────
   async fetch(req: Request): Promise<Response> {
@@ -133,6 +135,12 @@ export class HfCallDO {
         ratePaise: Math.trunc(Number(t.ratePaise)), callCostPaisePerMin: Math.trunc(Number(t.callCostPaisePerMin)),
         hostShareBps: Math.trunc(Number(t.hostShareBps)), maxSeconds: Math.max(0, Math.trunc(Number(t.maxSeconds))),
       };
+      // [HF-STD-PLAN-1] Standard plan snapshot (tiers + host pay + phone estimate), frozen for the life of this call.
+      const sd = t.std as StdSnapshot | null | undefined;
+      if (sd && sd.plan === "std" && validTariff(sd.tariff)) {
+        s.tok.std = { plan: "std", tariff: { tiers: sd.tariff.tiers.map((x) => ({ fromSec: Math.trunc(x.fromSec), paisePerMin: Math.trunc(x.paisePerMin) })) },
+          hostPaisePerMin: Math.max(0, Math.trunc(Number(sd.hostPaisePerMin))), phoneCostPaisePerMin: Math.max(0, Math.trunc(Number(sd.phoneCostPaisePerMin))) };
+      }
       s.maxMinutes = Math.floor(s.tok.maxSeconds / 60);
     }
     await this.save(s);
@@ -301,8 +309,9 @@ export class HfCallDO {
       }
       if (due("guess")) {
         delete s.tasks.guess;
-        // Vobiz sent no conference callbacks at all: assume both legs are in the room (the caller answered and the host accepted).
-        if (!s.connectedAt && !s.anyEnter && s.callerPicked && s.hostAccepted) await this.connect(s, true);
+        // Answer/accept webhooks prove only that each PSTN leg reached its prompt. Without provider conference evidence for BOTH members,
+        // never synthesize a connected timestamp or bill seconds: close unbilled for explicit reconciliation.
+        if (!s.connectedAt && !s.anyEnter && s.callerPicked && s.hostAccepted) await this.finish(s, "reconciliation", "conference_callbacks_missing");
         else await this.save(s);
       }
       if (due("ring")) {
@@ -375,7 +384,7 @@ export class HfCallDO {
         const seconds = s.connectedAt ? Math.floor((endedAt - s.connectedAt) / 1000) : 0;
         const out = await settleTokenCall(this.env, {
           callId: s.callId, callerUid: s.callerUid, hostUid: s.hostUid, ratePaise: t.ratePaise, callCostPaisePerMin: t.callCostPaisePerMin,
-          hostShareBps: t.hostShareBps, connectedSeconds: seconds, maxSeconds: t.maxSeconds, endedAt,
+          hostShareBps: t.hostShareBps, connectedSeconds: seconds, maxSeconds: t.maxSeconds, endedAt, std: t.std ?? null,
         });
         b.plan = { billedMinutes: out.billedMinutes, chargeRupees: 0, hostEarningPaise: out.hostPaise, hostTokens: 0, capped: out.shortfall };
         b.tokSettled = true; b.saved = true;
@@ -383,6 +392,7 @@ export class HfCallDO {
         this.emit(s.callerUid, "hf_call_settled", {
           call_id: s.callId, consumed_value_paise: out.consumedValuePaise, host_earning_paise: out.hostPaise, lots: out.lots.length,
           billable_seconds: out.billableSeconds, tokens_spent_micro: out.tokensSpentMicro,
+          plan: t.std ? "standard" : "host_rate", charge_paise: out.consumedValuePaise, phone_cost_est_paise: out.callCostPaise, platform_paise: out.platformPaise, shortfall: out.shortfall,
         });
       }
       return true;

@@ -1,17 +1,19 @@
 # Host onboarding — spec (HF-HOST-ONBOARD)
 
+> **Standard-plan amendment (approved 2026-10-11):** when `hfStdPlanEnabled` is true, omit the host price step and show the fixed ₹2.00 per connected minute earning; callers use the ₹3.99/₹3.50/₹3.25 Standard tiers. When the flag is OFF (the default), retain the legacy price step, validation and autosave. `Specs/HF-STD-PLAN-1-CONTRACT.md` is authoritative.
+
 Owner approved 2026-10-09. Plan context: project doc `claude/hello-fraands-host-listing-plan.md`.
 
 ## Owner decisions (2026-10-09)
 - App = this website wrapped with **Capacitor** (no Flutter rebuild). Same React code in browser and app.
-- **One price for all topics.** ₹5 floor. Earnings per HF-PAY-6.
+- **Legacy fallback:** one price for all topics, ₹5 floor, earnings per HF-PAY-6. Standard-plan rollout replaces this only while its flag is enabled.
 - **KYC first** (phone → video KYC → Aadhaar), then profile, so no generation money is spent on unverified hosts.
 - Phase 1 uses the 12 existing sample portraits as avatars.
 - Photo avatars (no video). AI images and cloned-voice sample conversation are labelled as AI.
 - Never real photos of the host.
 
 ## Steps
-welcome · phone · aadhaar · selfie · payout · avatar · about · languages · topics · price · hours · voice · review · generating · preview · done
+Legacy flag-off: welcome · phone · aadhaar · selfie · payout · avatar · about · languages · topics · price · hours · voice · review · generating · preview · done. Standard flag-on omits `price`.
 (contract: `web/src/islands/host-onboarding/types.ts`, lists: `data.ts`)
 
 ## Phases

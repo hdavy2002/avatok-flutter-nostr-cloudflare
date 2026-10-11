@@ -7,6 +7,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../core/analytics/analytics.dart';
 import '../../../core/auth/session.dart';
+import '../../../core/config/flags.dart';
 import '../../../core/router/routes.dart';
 import '../../../core/router/tab_shell.dart';
 import '../../../core/strings.dart';
@@ -119,9 +120,12 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
   }
 
   Future<void> _openFilters(HostFilters current) async {
+    final standardPlan = (await ref.read(flagsProvider.future)).hfStdPlanEnabled;
+    if (!mounted) return;
     final result = await showFilterSheet(
       context,
       current,
+      standardPlan: standardPlan,
       countFor: _controller.previewCount,
     );
     if (result == null || !mounted) return;

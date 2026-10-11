@@ -7,6 +7,8 @@ abstract final class OnboardingCopy {
   // Welcome
   static const String welcomeTitle = 'Earn from home by talking to people';
   static const String welcomeLead =
+      'Listen, chat and be a friendly voice for people who want to talk. You choose your hours and earn ₹2.00 for every connected minute.';
+  static const String legacyWelcomeLead =
       'Listen, chat and be a friendly voice for people who want to talk. You pick your price and your hours.';
   static const String welcomeHinglish =
       'Ghar baithe kamaayein, bas baat karke.';
@@ -25,7 +27,8 @@ abstract final class OnboardingCopy {
   static const String start = 'Start';
   static const String readRules = 'Read host rules';
   static const String factsAge = '18+ only';
-  static const String factsPrice = 'You choose your price';
+  static const String factsPrice = 'Earn ₹2.00 per connected minute';
+  static const String legacyFactsPrice = 'You choose your price';
   static const String factsPhone = 'Calls come to your phone';
 
   // Phone

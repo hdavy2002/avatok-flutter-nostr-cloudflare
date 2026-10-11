@@ -96,7 +96,7 @@ void main() {
         estimate: _tokenEstimate(canStart: false),
         lane: 'lgbtq',
       );
-      await _tapText(tester, CallStrings.addTokens);
+      await _tapText(tester, CallStrings.addMoney);
       expect(sheet.outcomes.single.action, CallSheetAction.wallet);
       expect(
         sheet.outcomes.single.next,
@@ -113,7 +113,7 @@ void main() {
       await _pumpSheet(tester);
       expect(find.text('Call Asha Verma'), findsOneWidget);
       expect(find.text('Rate'), findsOneWidget);
-      expect(find.text('₹12/min'), findsOneWidget);
+      expect(find.text('₹12.00/min'), findsOneWidget);
       expect(find.textContaining('tokens'), findsNothing);
       expect(find.text('Your wallet ₹45.20'), findsOneWidget);
       expect(find.text('about 3 min'), findsOneWidget);
@@ -231,7 +231,7 @@ void main() {
   testWidgets('old rupee mode shows the rate only', (tester) async {
     prepareStorage();
     await _pumpSheet(tester, estimate: {'mode': 'inr', 'ratePerMinRupees': 10});
-    expect(find.text('₹10/min'), findsOneWidget);
+    expect(find.text('₹10.00/min'), findsOneWidget);
     expect(find.textContaining('tokens/min'), findsNothing);
     expect(find.textContaining('Your wallet'), findsNothing);
     expect(find.text(CallStrings.orTapToCall), findsOneWidget);
@@ -303,7 +303,7 @@ void main() {
     expect(find.text(CallStrings.orTapToCall), findsNothing);
     expect(find.byType(HfSlideToConfirm), findsNothing);
     expect(find.text('add money to call'), findsOneWidget);
-    await _tapText(tester, CallStrings.addTokens);
+    await _tapText(tester, CallStrings.addMoney);
     expect(s.outcomes.single.action, CallSheetAction.wallet);
     expect(s.api.callsTo('POST', '/api/hf/calls'), isEmpty);
   });
@@ -396,7 +396,7 @@ void main() {
     );
     expect(find.text('No internet. Check your connection.'), findsOneWidget);
     await _tapText(tester, 'Try again');
-    expect(find.text('₹12/min'), findsOneWidget);
+    expect(find.text('₹12.00/min'), findsOneWidget);
   });
 
   group('start errors', () {
@@ -415,7 +415,7 @@ void main() {
               'shortfallPaise': 200,
             },
             'You need about ₹2.00 more in your wallet to start this call.',
-            CallStrings.addTokens,
+            CallStrings.addMoney,
             CallSheetAction.wallet,
           ),
           (

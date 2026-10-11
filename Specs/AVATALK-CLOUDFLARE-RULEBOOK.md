@@ -22,6 +22,7 @@ Every app follows the same architecture. No exceptions. No app-specific infrastr
 | 1.6 | 2026-06-10 | **RULE CHANGE (owner decision, Phase 10):** group conferences allowed in AvaTalk groups, ≤25 participants, via LiveKit. 1:1 stays P2P (CallRoom DO, 2-peer cap unchanged). Group/conference CONSULTING still lives in AvaConsult. >25-member groups: call icons disabled + notice popup. Gated by `conferenceEnabled`. Supersedes 1.5's "group calls NOT allowed". See Calls section. |
 | 1.7 | 2026-08-02 | Human chat and human 1:1/group calls were made free and unlimited. Superseded for calls by 1.8; human messaging remains free. |
 | 1.8 | 2026-08-19 | **CALL ALLOWANCE + METERING (owner decision; supersedes 1.7 for human calls):** human messaging remains free. Each account gets one shared 200 participant-minute UTC-month pool across 1:1/group audio and video. After exhaustion, audio is 0.05 wallet token/min and video is 0.10 wallet token/min. Each participant pays their own usage; insufficient allowance/wallet removes only that participant from a group call. Provider-neutral enforcement is mandatory so Stream/Cloudflare switches never alter billing. |
+| 1.9 | 2026-10-11 | **Hello Fraands Standard plan:** while `hfStdPlanEnabled` is true, public surfaces use rupees only; callers pay cumulative per-second tiers ₹3.99/₹3.50/₹3.25, hosts earn ₹2/min prorated by connected seconds, and Google Play top-ups are GST-inclusive. The flag defaults OFF and legacy behavior remains the rollback. See `HF-STD-PLAN-1-CONTRACT.md`. |
 
 ---
 

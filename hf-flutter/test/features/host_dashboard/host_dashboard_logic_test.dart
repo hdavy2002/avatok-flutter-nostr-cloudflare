@@ -211,10 +211,10 @@ void main() {
       final e = HostEarnings.fromWalletJson(tokenHostWallet())!;
       expect(e.tokenMode, isTrue);
       expect(e.available, '₹1,200.50');
-      expect(e.pending, '₹500');
-      expect(e.total, '₹4,000');
-      expect(e.testEarnings, '₹25');
-      expect(e.paidOut, '₹1,500');
+      expect(e.pending, '₹500.00');
+      expect(e.total, '₹4,000.00');
+      expect(e.testEarnings, '₹25.00');
+      expect(e.paidOut, '₹1,500.00');
       expect(e.byCall['c2']!.isTest, isTrue);
       expect(e.byCall['c1']!.isTest, isFalse);
     });
@@ -222,9 +222,9 @@ void main() {
     test('HostEarnings legacy shape', () {
       final e = HostEarnings.fromWalletJson(legacyHostWallet())!;
       expect(e.tokenMode, isFalse);
-      expect(e.available, '₹900');
-      expect(e.pending, '₹300');
-      expect(e.total, '₹2,500');
+      expect(e.available, '₹900.00');
+      expect(e.pending, '₹300.00');
+      expect(e.total, '₹2,500.00');
       expect(e.testEarnings, isNull);
       expect(e.perCall, isEmpty);
     });
@@ -288,15 +288,15 @@ void main() {
     test('PayoutsData: both shapes and the reason a withdrawal is blocked', () {
       final t = PayoutsData.fromJson(payoutsAnswer());
       expect(t.tokenMode, isTrue);
-      expect(t.withdrawableDisplay, '₹1,000');
-      expect(t.heldDisplay, '₹500');
+      expect(t.withdrawableDisplay, '₹1,000.00');
+      expect(t.heldDisplay, '₹500.00');
       expect(t.block, isNull);
 
       final l = PayoutsData.fromJson(
         payoutsAnswer(tokenMode: false, withdrawable: 750),
       );
       expect(l.tokenMode, isFalse);
-      expect(l.withdrawableDisplay, '₹750');
+      expect(l.withdrawableDisplay, '₹750.00');
 
       expect(
         PayoutsData.fromJson(payoutsAnswer(hostStatus: 'paused')).block,

@@ -35,7 +35,7 @@ export function makePlayWorld() {
   };
   return {
     purchases, voided, calls, flags, jwks, fetchImpl,
-    buy(token, o = {}) { purchases.set(token, { sku: "hf_tokens_100", orderId: `GPA.${token}`, purchaseState: 0, consumptionState: 0, acknowledgementState: 0, priceMicros: 120_000_000, currency: "INR", obfuscated: "", ...o }); return purchases.get(token); },
+    buy(token, o = {}) { purchases.set(token, { sku: "hf_rupees_120", orderId: `GPA.${token}`, purchaseState: 0, consumptionState: 0, acknowledgementState: 0, priceMicros: 120_000_000, currency: "INR", obfuscated: "", ...o }); return purchases.get(token); },
   };
 }
 

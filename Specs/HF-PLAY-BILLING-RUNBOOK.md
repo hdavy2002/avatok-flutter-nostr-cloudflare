@@ -1,6 +1,8 @@
 # HF Play Billing runbook (`HF-TOK-PLAY-1`)
 
-Server side of buying HF tokens with Google Play Billing. Owner brief 2026-10-10; spec section 11.5 of the HF Android app spec.
+> **Current money model (2026-10-11):** `Specs/HF-STD-PLAN-1-CONTRACT.md` is authoritative when `hfStdPlanEnabled` is true. Public UI says rupees/wallet, never tokens or coins. Verified Google Play price is authoritative; each GST-inclusive payment is split once using half-up paise rounding (₹120/₹240/₹600/₹1,200 → ₹101.69/₹203.39/₹508.47/₹1,016.95 wallet; paid = wallet + GST). `hfStdPlanEnabled` defaults OFF, so the legacy token route described below remains the rollback path until explicit rollout.
+
+Server route lineage for Google Play Billing. Owner brief 2026-10-10; spec section 11.5 of the HF Android app spec.
 Everything here is dark until `hfTokensEnabled` is switched on. Never type the brand name or domain in code; hosts below come from `Specs/brand.json` (`hosts.api`).
 
 ## 1. What was built
@@ -27,7 +29,7 @@ Worker secrets (`scripts/cf.sh worker secret put NAME`):
 Flags (already declared): `hfTokensEnabled` (false), `hfCheckoutProvider` (`google_play`), `hfPricingVersion` (`gp-r1`; if an admin ever saved `gp-v1` in the config row, set it to `gp-r1`), `hfPlayPackageId` (`com.hellofraands.app`), `hfTopupConfirmAboveRupees` (1000, returned to the app as `confirmAbovePaise`).
 There are no daily or monthly spend limits (removed, HF-NOLIMITS-1).
 
-D1 (rupee wallet, [HF-WALLET-RUPEES]): after `2026-10-10-hf-tokens.sql`, apply `2026-10-10-hf-pricing-gpr1.sql` with `cf.sh worker d1 execute --file` (INSERT/UPDATE only, safe to run twice and safe on a DB still on gp-v1; adds gp-r1 where 1 unit = Rs 1, retires gp-v1, moves the four packs to 102/204/510/1020 units). Run it BEFORE the worker that defaults to gp-r1 goes live and before any purchase at the new Play prices. Then run the test-credit migration (`POST /api/admin/hf/tokens/migrate-test-credits`): Rs 1 of test credit becomes Rs 1 in the wallet. Products API now also returns `creditPaise` per pack (what the pack adds to the wallet, shown under the buy button).
+D1 (rupee wallet): apply the Standard-plan migration before enabling the flag. It introduces gp-r2 GST-inclusive packs and value-preserving migration; migrated rows are excluded from purchase revenue. Products return verified `paidPaise`, `gstPaise` and `walletPaise` fields.
 
 D1: apply `2026-10-10-hf-play-accounts.sql` with `cf.sh worker d1 execute` (it only CREATEs).
 
@@ -47,7 +49,7 @@ Use the Google Cloud project that owns the Play API service account (the one beh
 6. **Set the secrets** `HF_RTDN_AUDIENCE` and `HF_RTDN_PUSH_SA` (section 2), then deploy the worker (owner approval needed for deploys).
 7. **Point Play at the topic.** Play Console, select the HF app, **Monetize with Play, Monetization setup**, section "Real-time developer notifications": Topic name `projects/<project>/topics/hf-play-rtdn`. Notification content: choose the option that includes **one-time products** ("All notifications" or "Subscriptions, voided purchases, and all one-time products"). Save.
 8. **Test.** Click "Send test notification" in the same section. Expected: the worker logs an RTDN request answered 200 with `ignored: "test"`. A 401 means the audience or service-account email does not match the secrets; a 503 means a secret is missing.
-9. **Create the in-app products** (Monetize with Play, Products, In-app products): `hf_tokens_100`, `hf_tokens_200`, `hf_tokens_500`, `hf_tokens_1000`, consumable, active, INR price **Rs 120 / 240 / 600 / 1,200** (gp-r1: they add Rs 102 / 204 / 510 / 1,020 to the wallet; the ids keep their old names and cannot change). The server only credits product ids that are active in `hf_token_products`.
+9. **Create the in-app products**: internal ids stay `hf_tokens_100/200/500/1000`, consumable and active, at **₹120 / ₹240 / ₹600 / ₹1,200**. Verified Play price wins. gp-r2 credits ₹101.69 / ₹203.39 / ₹508.47 / ₹1,016.95 after the included-GST split.
 10. **Invite the service account to the app** (section 2, `PLAY_SERVICE_ACCOUNT_JSON` row). Google can take hours to apply new permissions.
 
 Pub/Sub retries any non-2xx answer. The worker answers 503 only when Play itself is unreachable for a PURCHASED notification; everything else (handled, ignored, unknown order, other package) is 200 so it is never redelivered.

@@ -2,7 +2,11 @@
  * Manual payouts: you ask, we check it, we pay your verified bank account and show the bank reference (UTR) here. Whole rupees. */
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ApiError, request } from '../../lib/apiClient';
-import { inr, relDate } from '../../lib/hfCallsApi';
+import { relDate } from '../../lib/hfCallsApi';
+import { formatPaise } from '../../lib/money';
+
+/** [HF-STD-PLAN-1] rupees with paise (an earning of ₹2.98 must not read as ₹3). */
+const inr = (n: number): string => formatPaise(Math.round(n * 100));
 
 interface Req { id: string; amount: number; status: 'requested' | 'approved' | 'paid' | 'rejected' | 'cancelled'; utr: string | null; reason: string | null; createdAt: number; paidAt: number | null }
 interface Info {

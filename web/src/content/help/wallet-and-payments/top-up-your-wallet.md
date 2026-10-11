@@ -1,51 +1,61 @@
 ---
 title: "How do I top up my wallet?"
-description: "Learn how to add money to your prepaid talk-time wallet with UPI and see your history."
+description: "Learn how to add money to your prepaid talk-time wallet and see your history."
 section: wallet-and-payments
 order: 1
 updated: 2026-10-08
-keywords: ["wallet top up", "add money", "upi payment", "recharge", "talk time", "paise daalo", "wallet history", "receipt"]
+keywords: ["wallet top up", "add money", "gst", "recharge", "talk time", "paise daalo", "wallet history", "receipt"]
 audience: buyer
 faq:
   - q: "How do I pay to add money?"
-    a: "You pay with UPI. The money goes into your prepaid talk-time wallet."
+    a: "You pay through Google Play in the Android app. The money goes into your prepaid talk-time wallet in rupees."
+  - q: "Is GST charged on the money I add?"
+    a: "The price of each pack includes 18% GST. Your wallet gets the amount without GST. If you pay ₹120, the GST is ₹18.31 and ₹101.69 is added to your wallet."
   - q: "Where can I see my top-ups and calls?"
-    a: "Every top-up and call charge shows in your wallet history, with the date, duration and amount."
+    a: "Every addition and call charge shows in your wallet history, with the date, duration and amount."
   - q: "Do I pay anything just to join?"
-    a: "No. Joining is free. You only pay for the minutes you talk."
+    a: "No. Joining is free. You only pay for the time you talk."
 draft: false
 ---
+
 <!-- rebrand: reviewed -->
 
 On {{brand.name}}, you pay for calls from a prepaid talk-time wallet. You add money first, then you talk. It is simple.
 
 ## What is the wallet?
 
-The wallet holds your talk-time money. When you call a host, the cost of each minute is taken from it. You can only use what you have added, so there are no surprise bills. Joining is free. There is no subscription.
+The wallet holds your talk-time money in rupees. When you call a host, the cost of the call is taken from it second by second. You can only use what you have added, so there are no surprise bills. Joining is free. There is no subscription.
 
 ## How to add money
 
-1. Sign in on the website.
-2. Open your wallet.
-3. Choose how much to add.
-4. Pay with **UPI**.
+1. Open your wallet.
+2. Choose how much to add.
+3. Pay through **Google Play**.
 
-Once the payment is done, the money shows in your wallet. Then you can call any host who is online.
+Money is added only after Google Play confirms your payment, and only once. Then you can call any host who is online.
+
+## GST and what reaches your wallet
+
+The price of each pack includes 18% GST. Your wallet gets the amount without GST. Before you pay, you see three things: the total you pay, the GST, and the amount added to your wallet. Your receipt shows the same three.
+
+| You pay | GST | Added to wallet |
+|---|---|---|
+| ₹120 | ₹18.31 | ₹101.69 |
+| ₹240 | ₹36.61 | ₹203.39 |
+| ₹600 | ₹91.53 | ₹508.47 |
+| ₹1,200 | ₹183.05 | ₹1,016.95 |
+
+No GST is charged again when you spend wallet money on calls.
 
 ## How much should I add?
 
-Prices start from ₹5 per minute. Each host sets their own rate, and you see it before you call.
+Every host has the same price: ₹3.99 a minute for the first 30 minutes, then ₹3.50, then ₹3.25 after 60 minutes. To start a call, you need at least ₹7.98 in your wallet.
 
-To start a call, you need at least 2 minutes of balance at that host's rate. For example:
-
-- ₹10 for a host at ₹5 per minute
-- ₹40 for a host at ₹20 per minute
-
-Rohit from Pune wants a quick chat with a host who charges ₹10 per minute. He adds ₹100. That is enough for up to 10 minutes of talking.
+Rohit from Pune wants a quick chat. He adds the ₹120 pack, so ₹101.69 goes into his wallet. That is enough for about 25 minutes of talking.
 
 ## Your wallet history
 
-Every top-up and every call charge shows in your wallet history. For each line you can see the date, the duration and the amount. Use it as your receipt. If you think there is a mistake, read [billing errors](/help/wallet-and-payments/billing-errors).
+Every addition and every call charge shows in your wallet history. For each line you can see the date, the duration and the amount. Use it as your receipt. If you think there is a mistake, read [billing errors](/help/wallet-and-payments/billing-errors).
 
 ## Good to know
 

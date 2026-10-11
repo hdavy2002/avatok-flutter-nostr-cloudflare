@@ -51,6 +51,9 @@ void main() {
   setUp(() {
     SharedPreferences.setMockInitialValues(<String, Object>{});
     api = FakeApiClient()
+      ..onJson('GET', '/api/config', {
+        'hfStdPlan': {'enabled': true},
+      })
       ..onJson('GET', _phone, {'verified': true, 'phone': '+91 98765 41234'});
     links = FakeLinkOpener();
     LinkOpener.instance = links;
@@ -92,6 +95,68 @@ void main() {
       .isNotEmpty;
 
   group('resume', () {
+    testWidgets('flag off keeps legacy host price and earnings copy', (
+      tester,
+    ) async {
+      api
+        ..onJson('GET', '/api/config', {
+          'hfStdPlan': {'enabled': false},
+        })
+        ..onJson('GET', _me, hostsMe());
+      await open(tester);
+      expect(find.text(OnboardingCopy.legacyWelcomeLead), findsOneWidget);
+      expect(find.text(OnboardingCopy.legacyFactsPrice), findsOneWidget);
+      expect(find.text(OnboardingCopy.factsPrice), findsNothing);
+    });
+
+    testWidgets('price step is routed only while the Standard plan is off', (
+      tester,
+    ) async {
+      const ready = <String, Object?>{
+        'status': 'draft',
+        'avatarId': 'a1',
+        'displayName': 'Asha',
+        'about': 'I listen carefully and enjoy friendly conversations.',
+        'languages': ['hi'],
+        'style': 'warm',
+        'topics': ['tension-a'],
+        'hours': {
+          'days': [1],
+        },
+        'voice': {'seconds': 60},
+      };
+      api
+        ..onJson('GET', '/api/config', {
+          'hfStdPlan': {'enabled': false},
+        })
+        ..onJson('GET', _me, hostsMe(host: ready, kyc: allIdentity));
+      await open(tester, step: 'price');
+      expect(onStep('price'), isTrue);
+      expect(find.byKey(const ValueKey<String>('price-slider')), findsOneWidget);
+    });
+
+    testWidgets('standard plan skips a requested legacy price step', (
+      tester,
+    ) async {
+      const ready = <String, Object?>{
+        'status': 'draft',
+        'avatarId': 'a1',
+        'displayName': 'Asha',
+        'about': 'I listen carefully and enjoy friendly conversations.',
+        'languages': ['hi'],
+        'style': 'warm',
+        'topics': ['tension-a'],
+        'hours': {
+          'days': [1],
+        },
+        'voice': {'seconds': 60},
+      };
+      api.onJson('GET', _me, hostsMe(host: ready, kyc: allIdentity));
+      await open(tester, step: 'price');
+      expect(onStep('price'), isFalse);
+      expect(onStep('review'), isTrue);
+    });
+
     testWidgets(
       'a new person sees the welcome step; Start opens the phone step, passed by itself',
       (tester) async {
@@ -99,6 +164,8 @@ void main() {
         await open(tester);
         expect(onStep('welcome'), isTrue);
         expect(find.text(OnboardingCopy.needTitle), findsOneWidget);
+        expect(find.text(OnboardingCopy.welcomeLead), findsOneWidget);
+        expect(find.text(OnboardingCopy.factsPrice), findsOneWidget);
 
         await tapKey(tester, 'welcome-start');
         expect(onStep('phone'), isTrue);
@@ -119,7 +186,7 @@ void main() {
           find.byKey(const ValueKey<String>('aadhaar-number')),
           findsOneWidget,
         );
-        expect(find.textContaining('Step 3 of 16'), findsOneWidget);
+      expect(find.textContaining('Step 3 of 15'), findsOneWidget);
       },
     );
 

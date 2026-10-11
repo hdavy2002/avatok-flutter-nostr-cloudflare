@@ -7,12 +7,13 @@ import {
 } from "./hf_token_ledger";
 import { creditCallEarning } from "./hf_host_ledger";
 import {
-  callSplit, canStart, planSpend, microForValue, tokensPerMinuteMicro, formatTokens, formatDuration, MAX_CALL_SECONDS, START_RESERVE_MINUTES,
-  PRICING_GP_R1, type Lot,
+  callSplit, canStart, planSpend, walletAffordableSeconds, microForValue, tokensPerMinuteMicro, formatTokens, formatDuration, MAX_CALL_SECONDS, START_RESERVE_MINUTES,
+  PRICING_GP_R1, chargePaise, stdSplit, formatRupees, rateAtSecond, STD_TECH_MAX_SECONDS, type Lot, type Price, type Tariff,
 } from "./hf_token_math";
-import type { HfTokenConfig } from "./hf_token_config";
+import type { HfTokenConfig, HfStdPlan } from "./hf_token_config";
 
 export const SPLIT_RULE = "split-v1"; // C prorated, H floored, P remainder (hf_token_math.callSplit)
+export const STD_SPLIT_RULE = "std-split-v1"; // [HF-STD-PLAN-1] tiered V, host per minute floored, phone estimate, platform remainder (stdSplit)
 export const DEBT_MESSAGE = "Please clear the amount owed before calling";
 
 const snapshotVersion = (tk: HfTokenConfig) => `${tk.pricingVersion}/${SPLIT_RULE}`;
@@ -24,11 +25,27 @@ export type StartCheck =
   | { ok: false; status: number; error: string; message: string; extra?: Record<string, unknown> };
 
 /** What is frozen on the hf_calls row at start. A config change later never alters a running call (HF-TOK-D3/D4). */
-export interface CallSnapshot { ratePaise: number; callCostPaisePerMin: number; hostShareBps: number; taxMode: string; splitRuleVersion: string }
+export interface CallSnapshot {
+  ratePaise: number; callCostPaisePerMin: number; hostShareBps: number; taxMode: string; splitRuleVersion: string;
+  /** [HF-STD-PLAN-1] Standard plan: the tiers, host pay and phone-cost estimate in force when the call started. Absent = old host-rate call. */
+  std?: StdSnapshot;
+}
+export interface StdSnapshot { plan: "std"; tariff: Tariff; hostPaisePerMin: number; phoneCostPaisePerMin: number }
 
 export function snapshotFor(ratePaise: number, tk: HfTokenConfig): CallSnapshot {
   return { ratePaise, callCostPaisePerMin: tk.callCostPaisePerMin, hostShareBps: tk.hostShareBps, taxMode: "none_unregistered", splitRuleVersion: snapshotVersion(tk) };
 }
+
+/** [HF-STD-PLAN-1] Standard plan snapshot: rate_paise holds the first band (for old readers), call cost the phone estimate. */
+export function stdSnapshotFor(std: HfStdPlan): CallSnapshot {
+  return {
+    ratePaise: std.tariff.tiers[0].paisePerMin, callCostPaisePerMin: std.phoneCostPaisePerMin, hostShareBps: 0, taxMode: "none_unregistered",
+    splitRuleVersion: `std-r1/${STD_SPLIT_RULE}`,
+    std: { plan: "std", tariff: { tiers: std.tariff.tiers.map((t) => ({ ...t })) }, hostPaisePerMin: std.hostPaisePerMin, phoneCostPaisePerMin: std.phoneCostPaisePerMin },
+  };
+}
+/** Price used for maths: the tariff of a Standard call, else the flat host rate. */
+export const priceOf = (snap: { ratePaise: number; std?: StdSnapshot | null }): Price => (snap.std ? snap.std.tariff : snap.ratePaise);
 
 /** Value (paise per token) a NEW token would have: used to say how many tokens a top-up must add. */
 async function activeValue(env: Env, tk: HfTokenConfig): Promise<number> {
@@ -36,8 +53,8 @@ async function activeValue(env: Env, tk: HfTokenConfig): Promise<number> {
 }
 
 /** Tokens short of a 2-minute start, valued at the active pricing version. */
-export async function startShortfall(env: Env, tk: HfTokenConfig, lots: Lot[], ratePaise: number): Promise<{ shortfallMicro: number; shortfallPaise: number }> {
-  const needPaise = Math.round((ratePaise * START_RESERVE_MINUTES * 60) / 60);
+export async function startShortfall(env: Env, tk: HfTokenConfig, lots: Lot[], ratePaise: Price): Promise<{ shortfallMicro: number; shortfallPaise: number }> {
+  const needPaise = chargePaise(ratePaise, START_RESERVE_MINUTES * 60);
   // What the lots can absorb in rupees (floor per lot, same boundary the lot walk uses), NOT what a short call would take.
   let have = 0n;
   for (const l of lots) have += (BigInt(Math.max(0, Math.trunc(l.leftMicro))) * BigInt(Math.trunc(l.valuePaisePerToken))) / 1_000_000n;
@@ -49,20 +66,26 @@ export async function startShortfall(env: Env, tk: HfTokenConfig, lots: Lot[], r
  * Start gate for a token call: open debt blocks, the balance must cover 2 whole minutes (shortfall reported in tokens), then the lots are
  * reserved for up to 60 minutes (or what they can pay for). On refusal nothing stays reserved.
  */
-export async function prepareTokenStart(env: Env, a: { uid: string; callId: string; ratePaise: number; tk: HfTokenConfig }): Promise<StartCheck> {
-  const { uid, callId, ratePaise, tk } = a;
+export async function prepareTokenStart(env: Env, a: { uid: string; callId: string; ratePaise: number; tk: HfTokenConfig; std?: HfStdPlan | null }): Promise<StartCheck> {
+  const { uid, callId, tk } = a;
+  // [HF-STD-PLAN-1] Standard plan: one tariff and no shorter commercial cap — reserve what the whole balance can pay for
+  // (up to the explicit 24 h operational safety ceiling), so hang-up or wallet exhaustion normally ends it. Old host-rate calls keep 60 min.
+  const std = a.std && a.std.enabled ? a.std : null;
+  const ratePaise: Price = std ? std.tariff : a.ratePaise;
+  const cap = std ? STD_TECH_MAX_SECONDS : MAX_CALL_SECONDS;
+  const snapshot = std ? stdSnapshotFor(std) : snapshotFor(a.ratePaise, tk);
   if (await hasOpenDebt(env, uid)) return { ok: false, status: 409, error: "debt_open", message: DEBT_MESSAGE, extra: { reason: "debt_open" } };
   const low = async (lots: Lot[]): Promise<StartCheck> => {
     const s = await startShortfall(env, tk, lots, ratePaise);
     return {
       ok: false, status: 402, error: "low_balance",
-      message: `You need about ₹${formatTokens(s.shortfallMicro, 2)} more in your wallet to start this call.`,
-      extra: { shortfallMicro: s.shortfallMicro, shortfallTokens: formatTokens(s.shortfallMicro, 2), shortfallPaise: s.shortfallPaise },
+      message: `You need about ${formatRupees(s.shortfallPaise)} more in your wallet to start this call.`,
+      extra: { shortfallPaise: s.shortfallPaise, shortfallRupees: formatRupees(s.shortfallPaise), shortfallMicro: s.shortfallMicro },
     };
   };
   const lots = await availableLots(env, uid);
   if (!canStart(lots, ratePaise)) return low(lots);
-  const r = await reserveForCall(env, uid, callId, ratePaise, MAX_CALL_SECONDS);
+  const r = await reserveForCall(env, uid, callId, ratePaise, cap);
   if (!r.ok) {
     if (r.reason === "conflict") return { ok: false, status: 503, error: "wallet_busy", message: "We couldn't check your balance. Please try again." };
     return low(await availableLots(env, uid));
@@ -71,8 +94,8 @@ export async function prepareTokenStart(env: Env, a: { uid: string; callId: stri
     await release(env, callId).catch(() => undefined);
     return low(await availableLots(env, uid));
   }
-  const maxSeconds = Math.min(MAX_CALL_SECONDS, r.secondsCovered);
-  return { ok: true, maxSeconds, secondsCovered: r.secondsCovered, limitReason: maxSeconds >= MAX_CALL_SECONDS ? "time_limit" : "balance", snapshot: snapshotFor(ratePaise, tk) };
+  const maxSeconds = Math.min(cap, r.secondsCovered);
+  return { ok: true, maxSeconds, secondsCovered: r.secondsCovered, limitReason: maxSeconds >= cap ? "time_limit" : "balance", snapshot };
 }
 
 // ── settle ──────────────────────────────────────────────────────────────────
@@ -93,6 +116,8 @@ export interface TokenSettleInput {
   ratePaise: number; callCostPaisePerMin: number; hostShareBps: number;
   /** Connected seconds (floored) and the call's own time limit; billable = min of the two, then cut to what the lots can pay for. */
   connectedSeconds: number; maxSeconds: number; endedAt: number;
+  /** [HF-STD-PLAN-1] Standard plan snapshot from the call row; when present it replaces ratePaise / hostShareBps / callCostPaisePerMin. */
+  std?: StdSnapshot | null;
 }
 export interface TokenSettleOutput {
   billableSeconds: number; billedMinutes: number; shortfall: boolean;
@@ -106,12 +131,16 @@ export interface TokenSettleOutput {
  */
 export async function settleTokenCall(env: Env, i: TokenSettleInput): Promise<TokenSettleOutput> {
   const want = Math.max(0, Math.min(Math.trunc(i.connectedSeconds), Math.trunc(i.maxSeconds)));
-  const s = await settleCall(env, i.callerUid, i.callId, i.ratePaise, want);
+  const price = priceOf(i);
+  const s = await settleCall(env, i.callerUid, i.callId, price, want);
   let billable = 0, lots: SettleLotUse[] = [], shortfall = false, micro = 0;
   if (s.ok) { billable = s.billableSeconds; lots = s.lots; shortfall = s.shortfall; micro = s.totalMicro; }
   else if (s.reason !== "released") throw new Error(`hf_token settle ${s.reason}`);
   // "released" = the reservation was given back before connect: nothing was consumed.
-  const split = callSplit({ ratePaise: i.ratePaise, billableSeconds: billable, callCostPaisePerMin: i.callCostPaisePerMin, hostShareBps: i.hostShareBps });
+  const split = i.std
+    ? (() => { const x = stdSplit({ tariff: i.std!.tariff, billableSeconds: billable, hostPaisePerMin: i.std!.hostPaisePerMin, phoneCostPaisePerMin: i.std!.phoneCostPaisePerMin });
+      return { valuePaise: x.valuePaise, callCostPaise: x.phoneCostPaise, hostPaise: x.hostPaise, platformPaise: x.platformPaise }; })()
+    : callSplit({ ratePaise: i.ratePaise, billableSeconds: billable, callCostPaisePerMin: i.callCostPaisePerMin, hostShareBps: i.hostShareBps });
   // Only purchase-lot value is withdrawable by the host; test and admin-adjustment lots become non-withdrawable test earnings.
   const paidValue = lots.filter((l) => l.kind === "purchase").reduce((t, l) => t + l.valuePaise, 0);
   const hs = splitHostByKind(split.hostPaise, split.valuePaise, paidValue);
@@ -128,7 +157,7 @@ export async function settleTokenCall(env: Env, i: TokenSettleInput): Promise<To
             platform_paise=?7, tokens_spent_micro=?8, lots_used=?9 WHERE id=?10`,
   ).bind(billedMinutes, split.valuePaise, split.hostPaise, billable, split.valuePaise, split.callCostPaise, split.platformPaise, micro,
     JSON.stringify(lots.map((l) => ({ lotId: l.lotId, kind: l.kind, valuePaisePerToken: l.valuePaisePerToken, micro: l.micro, valuePaise: l.valuePaise }))), i.callId).run();
-  await maybeNotifyLowBalance(env, i.callerUid, i.callId, i.ratePaise, billable); // [HF-TOK-EXIT-1]
+  await maybeNotifyLowBalance(env, i.callerUid, i.callId, price, billable); // [HF-TOK-EXIT-1]
   return out;
 }
 
@@ -137,9 +166,9 @@ export async function settleTokenCall(env: Env, i: TokenSettleInput): Promise<To
  * (less than 2 minutes at that host's rate). A marker row in the token ledger (op `hftlow:<callId>`) makes a settle retry send nothing twice.
  * notifyLowBalance itself does nothing unless hfPushEnabled is on and the person has a registered device. Never throws, never touches money.
  */
-export async function maybeNotifyLowBalance(env: Env, uid: string, callId: string, ratePaise: number, billableSeconds: number): Promise<boolean> {
+export async function maybeNotifyLowBalance(env: Env, uid: string, callId: string, ratePaise: Price, billableSeconds: number): Promise<boolean> {
   try {
-    if (!(billableSeconds > 0) || !(ratePaise > 0)) return false;
+    if (!(billableSeconds > 0) || !(chargePaise(ratePaise, 60) > 0)) return false;
     if (canStart(await availableLots(env, uid), ratePaise)) return false;
     const r = await env.DB_META.prepare(
       `INSERT OR IGNORE INTO hf_token_ledger (id, uid, kind, lot_id, delta_micro, rupee_value_paise, call_id, purchase_id, op_id, note, created_at)
@@ -159,17 +188,22 @@ export async function maybeNotifyLowBalance(env: Env, uid: string, callId: strin
 
 export interface HostEstimate {
   tokensPerMinute: string; tokensPerMinuteMicro: number; ratePaise: number;
-  /** Whole seconds the available lots pay for with this host (capped at 60 min). */
+  /** [HF-STD-PLAN-1] rupees: price per minute right now (first band), what the whole balance pays for, and the charge for that time. */
+  ratePerMinRupees: string; affordableChargePaise: number;
+  /** Whole seconds the available lots pay for; callers choose whether an operational cap applies. */
   affordableSeconds: number; aboutText: string; canStart: boolean;
 }
 /** tokens/min at the value of the lot that will be used first (or the active value with an empty balance), and "about N min M s". */
-export function estimateForHost(lots: Lot[], ratePaise: number, fallbackValuePaisePerToken: number): HostEstimate {
+export function estimateForHost(lots: Lot[], price: Price, fallbackValuePaisePerToken: number, capSeconds: number | null = MAX_CALL_SECONDS): HostEstimate {
+  const ratePaise = rateAtSecond(price, 0);
   const v = lots[0]?.valuePaisePerToken ?? fallbackValuePaisePerToken;
   const perMin = tokensPerMinuteMicro(ratePaise, v);
-  const secs = planSpend(lots, ratePaise, MAX_CALL_SECONDS).secondsCovered;
+  const secs = capSeconds == null ? walletAffordableSeconds(lots, price) : planSpend(lots, price, capSeconds).secondsCovered;
+  const affordableChargePaise = chargePaise(price, secs);
   return {
     tokensPerMinute: formatTokens(perMin, 2), tokensPerMinuteMicro: perMin, ratePaise, affordableSeconds: secs,
-    aboutText: lots.length ? `about ${formatDuration(secs)}` : "add money to call", canStart: canStart(lots, ratePaise),
+    ratePerMinRupees: (ratePaise / 100).toFixed(2), affordableChargePaise,
+    aboutText: lots.length ? `about ${formatDuration(secs)}` : "add money to call", canStart: canStart(lots, price),
   };
 }
 export async function activeValuePaise(env: Env, tk: HfTokenConfig): Promise<number> { return activeValue(env, tk); }

@@ -18,6 +18,14 @@ export function makeDb(migrations: string[] = ["2026-10-10-hf-tokens.sql"], o: {
     if (m === "2026-10-10-hf-tokens.sql") db.exec(readFileSync(new URL("../../migrations/2026-10-10-hf-pricing-gpr1.sql", import.meta.url), "utf8"));
     if (o.alters) for (const l of lines.filter((x) => x.trim().startsWith("ALTER TABLE"))) { try { db.exec(l.replace(/--.*$/, "")); } catch { /* column already there */ } }
   }
+  // [HF-STD-PLAN-1] production gets the Standard-plan columns and prepared-purchase snapshots before the parallel gp-r1/gp-r2 catalogue.
+  for (const l of readFileSync(new URL("../../migrations/2026-10-11-hf-std-plan-alters.sql", import.meta.url), "utf8").split("\n").filter((x) => x.trim().startsWith("ALTER TABLE"))) {
+    try { db.exec(l.replace(/--.*$/, "")); } catch { /* table absent or column already there */ }
+  }
+  if (migrations.includes("2026-10-10-hf-tokens.sql")) {
+    db.exec(readFileSync(new URL("../../migrations/2026-10-11-hf-std-plan-play-snapshots.sql", import.meta.url), "utf8"));
+    db.exec(readFileSync(new URL("../../migrations/2026-10-11-hf-std-plan-seed.sql", import.meta.url), "utf8"));
+  }
   const stmt = (q: string, args: unknown[] = []) => ({
     bind: (...a: unknown[]) => stmt(q, a),
     run: async () => { const r = db.prepare(q).run(...args); return { meta: { changes: Number(r.changes) } }; },

@@ -6,7 +6,7 @@ import { adminCall } from '../islands/admin2/peopleKit';
 export type HostStatus = 'draft' | 'generating' | 'pending_host' | 'pending_review' | 'live' | 'paused' | 'rejected';
 export interface AdminHost {
   uid: string; slug: string | null; status: HostStatus; displayName: string | null; about: string | null; tagline: string | null; quote: string | null;
-  aboutPolished: string | null; languages: string[]; style: string | null; topics: string[]; conversationLang: string | null; pricePerMin: number;
+  aboutPolished: string | null; languages: string[]; style: string | null; topics: string[]; conversationLang: string | null; pricePerMin: number; plan?: string;
   hours: { days?: string[]; from?: string; to?: string }; healthConsent: boolean; womenLane: boolean; lgbtqLane: boolean; lgbtqPublic: boolean;
   avatarId: string | null; avatarUrl: string | null; genAttempts: number; reviewNote: string | null; liveAt: number | null;
   submittedAt: number | null; updatedAt: number;
@@ -38,6 +38,17 @@ export interface AdminCall {
   id: string; status: string; callerUid?: string; hostUid?: string; hostName?: string | null; hostSlug?: string | null;
   ratePaise?: number; billedMinutes?: number | null; chargedPaise?: number | null; hostEarningPaise?: number | null; endReason?: string | null;
   createdAt?: number | string | null;
+}
+
+/** [HF-STD-PLAN-1] Standard-plan call with its margin estimates (admin only). All money in paise; estimates are before other expenses, NOT profit. */
+export interface StdCallRow {
+  id: string; at?: number | string | null; createdAt?: number | string | null; hostName?: string | null; hostSlug?: string | null; billableSeconds?: number | null;
+  chargePaise?: number | null; hostPaise?: number | null; phoneCostEstPaise?: number | null; phoneCostActualPaise?: number | null;
+  platformEstPaise?: number | null; platformAfterActualPaise?: number | null; tiers?: { fromMin: number; toMin: number | null; paisePerMin: number; seconds: number; amountPaise: number }[];
+}
+export interface StdTotals {
+  calls?: number; seconds?: number; chargePaise?: number; hostPaise?: number; phoneCostEstPaise?: number; phoneCostActualPaise?: number | null;
+  platformEstPaise?: number; platformAfterActualPaise?: number | null;
 }
 
 /** [HF-ADMIN-CREDIT-1] One row of the caller picker (admin only: full phone and email). */
@@ -77,5 +88,8 @@ export const hfAdminApi = {
   /** [HF-ADMIN-CREDIT-1] Credit by uid (search result / advanced) or by WhatsApp number. */
   creditWallet: (b: { uid?: string; phone?: string; rupees: number; note: string; via?: 'search'; opId?: string }) =>
     adminCall<{ ok: true; uid: string; name: string | null; balanceRupees: number }>('/api/admin/hf/wallet/credit', { method: 'POST', body: b }),
+  /** [HF-STD-PLAN-1] Calls & margins. */
+  stdCalls: async () => { const r = await adminCall<{ items?: StdCallRow[]; calls?: StdCallRow[]; totals?: StdTotals }>('/api/admin/hf/std/calls'); return { items: r.items ?? r.calls ?? [], totals: r.totals }; },
+  stdSummary: async () => { const r = await adminCall<{ totals?: StdTotals } & StdTotals>('/api/admin/hf/std/summary'); return (r.totals ?? r) as StdTotals; },
   searchUsers: async (q: string) => (await adminCall<{ items: AdminUserHit[] }>(`/api/admin/hf/users/search?q=${e(q)}`)).items ?? [],
 };

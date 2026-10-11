@@ -1,7 +1,8 @@
 import { useEffect } from 'react';
 import Icon from '../Icon';
-import { GENDER_LABEL, hostShare, rupees, TOPICS } from '../data';
+import { GENDER_LABEL, STD_PLAN_HOST_LINE, TOPICS } from '../data';
 import type { StepKey, StepProps } from '../types';
+import { isOnboardingStandardPlan } from '../api_real';
 
 function Row({ title, step, goTo, children }: { title: string; step: StepKey; goTo: (s: StepKey) => void; children: React.ReactNode }) {
   return (
@@ -52,9 +53,10 @@ export default function ReviewStep({ draft, update, goTo, avatars, setAction }: 
       <Row title="Topics" step="topics" goTo={goTo}>
         <div className="hob-f-chips">{topics.map(t => <span key={t} className="hob-f-pill">{t}</span>)}</div>
       </Row>
-      <Row title="Price" step="price" goTo={goTo}>
-        <p><span className="hob-f-strong">{rupees(draft.pricePerMin)} per minute</span> · you get {rupees(hostShare(draft.pricePerMin))}</p>
-      </Row>
+      {isOnboardingStandardPlan() ? <section className="hob-card hob-f-rev">
+        <div className="hob-f-rev-head"><h2 className="hob-f-h2">Price</h2></div>
+        <div className="hob-f-rev-body"><p><span className="hob-f-strong">{STD_PLAN_HOST_LINE}</span></p></div>
+      </section> : <Row title="Price" step="price" goTo={goTo}><p><span className="hob-f-strong">₹{draft.pricePerMin}/min</span></p></Row>}
       <Row title="Hours & comfort" step="hours" goTo={goTo}>
         <p>{h.days.join(', ') || 'No days chosen'} · {h.from} to {h.to}</p>
         <p>{draft.womenOnlyLane ? 'Only women callers' : 'All callers'}</p>

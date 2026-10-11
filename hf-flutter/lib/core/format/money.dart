@@ -63,6 +63,9 @@ abstract final class Money {
     return '$m min $sec s';
   }
 
+  /// Indian grouping of a whole-rupee count (public so [formatPaise] can share it).
+  static String groupRupees(int n) => _group(n);
+
   /// Indian grouping: last three digits, then groups of two.
   static String _group(int n) {
     final s = n.toString();
@@ -78,3 +81,18 @@ abstract final class Money {
     return '${parts.join(',')},$last3';
   }
 }
+
+/// A paise amount as rupees, always with two decimals and Indian grouping.
+String formatPaise(int paise) {
+  final negative = paise < 0;
+  final abs = paise.abs();
+  final rupees = Money.groupRupees(abs ~/ 100);
+  final rest = (abs % 100).toString().padLeft(2, '0');
+  return '${negative ? '-' : ''}₹$rupees.$rest';
+}
+
+/// A paise-per-minute rate for a public label.
+String formatPaiseRate(int paisePerMin) => '${formatPaise(paisePerMin)}/min';
+
+/// A server-computed rupee amount with two decimals.
+String formatRupees(num rupees) => formatPaise((rupees * 100).round());

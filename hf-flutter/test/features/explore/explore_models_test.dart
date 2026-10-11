@@ -117,10 +117,34 @@ void main() {
       )!;
       expect(c.slug, 'asha');
       expect(c.status, HostPresence.busy);
-      expect(c.priceLabel, '₹12/min');
+      expect(c.priceLabel, '₹12.00/min');
       expect(c.rating, 4.8);
       expect(c.hasIntro, isTrue);
       expect(c.introSeconds, 12);
+    });
+
+    test('the Standard plan keeps fractional price and rate bands', () {
+      final c = HostCard.tryParse({
+        'slug': 'asha',
+        'plan': 'standard',
+        'pricePerMin': 3.99,
+        'pricePaisePerMin': 399,
+        'priceLabel': '₹3.99/min',
+        'priceTiers': [
+          {'fromMin': 0, 'toMin': 30, 'paisePerMin': 399},
+          {'fromMin': 30, 'toMin': 60, 'paisePerMin': 350},
+          {'fromMin': 60, 'toMin': null, 'paisePerMin': 325},
+        ],
+      })!;
+      expect(c.priceLabel, '₹3.99/min');
+      expect(c.priceTiers.map((t) => t.rateLabel), [
+        '₹3.99/min',
+        '₹3.50/min',
+        '₹3.25/min',
+      ]);
+      final back = HostCard.tryParse(c.toJson())!;
+      expect(back.plan, 'standard');
+      expect(back.priceTiers.length, 3);
     });
 
     test('a row without a slug is dropped, and a bad status is offline', () {

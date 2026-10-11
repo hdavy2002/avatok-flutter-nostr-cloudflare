@@ -14,12 +14,14 @@ class CallLiveView extends StatelessWidget {
     super.key,
     required this.info,
     required this.elapsedSeconds,
+    this.currentRatePaise,
     this.notice,
     this.showConnectionTrouble = false,
   });
 
   final CallInfo info;
   final int elapsedSeconds;
+  final int? currentRatePaise;
   final String? notice;
   final bool showConnectionTrouble;
 
@@ -28,6 +30,7 @@ class CallLiveView extends StatelessWidget {
     final dark = HfBrightness.isDark(context);
     final connected = info.status == CallStatus.connected;
     final callerRinging = info.status == CallStatus.ringingCaller;
+    final standardPlan = info.plan == 'standard' || currentRatePaise != null;
     final name = info.hostFirstName;
     final step = connected ? 2 : (callerRinging ? 1 : 0);
 
@@ -38,7 +41,7 @@ class CallLiveView extends StatelessWidget {
               ? CallStrings.phoneWillRingNow
               : CallStrings.ringingHostHeadline(name));
     final String note = connected
-        ? '${CallStrings.endWithHash} ${CallStrings.maxLengthHint}'
+        ? '${CallStrings.endWithHash} ${standardPlan ? CallStrings.noLimitHint : CallStrings.legacyLimitHint}'
         : (callerRinging
               ? '${CallStrings.yourPhoneWillRingSub} ${CallStrings.billingStarts}'
               : CallStrings.ringingHostNote);
@@ -89,6 +92,15 @@ class CallLiveView extends StatelessWidget {
                       HfText.hero.copyWith(fontSize: 44, height: 1.1),
                     ),
                   ),
+                  if (currentRatePaise != null) ...[
+                    const SizedBox(height: HfSpacing.xs),
+                    Text(
+                      CallStrings.currentRate(currentRatePaise!),
+                      key: const ValueKey<String>('call-rate'),
+                      textAlign: TextAlign.center,
+                      style: HfText.of(context, HfText.note),
+                    ),
+                  ],
                 ],
                 const SizedBox(height: HfSpacing.md),
                 Text(

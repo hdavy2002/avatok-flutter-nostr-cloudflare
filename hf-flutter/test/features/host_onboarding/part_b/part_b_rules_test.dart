@@ -61,7 +61,7 @@ void main() {
   });
 
   group('price', () {
-    test('the host keeps 60 percent of what is above Rs 2, in whole paise', () {
+    test('legacy flag-off host share and paise display', () {
       expect(hostSharePaise(20), 1080);
       expect(hostSharePaise(2), 0);
       expect(hostSharePaise(1), 0);
@@ -129,6 +129,7 @@ void main() {
         final team = EditLock.of('pending_review');
         expect(
           team.profileLocked &&
+              team.hoursLocked &&
               team.priceHoursLocked &&
               team.voiceLocked &&
               team.avatarLocked,
@@ -136,11 +137,15 @@ void main() {
         );
         final live = EditLock.of('live');
         expect(live.profileLocked, isTrue);
+        expect(live.hoursLocked, isFalse);
         expect(live.priceHoursLocked, isFalse);
         expect(live.voiceLocked, isFalse);
         final draft = EditLock.of('draft');
         expect(
-          draft.profileLocked || draft.priceHoursLocked || draft.voiceLocked,
+          draft.profileLocked ||
+              draft.hoursLocked ||
+              draft.priceHoursLocked ||
+              draft.voiceLocked,
           isFalse,
         );
         expect(draft.banner(), isNull);

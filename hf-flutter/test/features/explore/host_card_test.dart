@@ -288,7 +288,7 @@ void main() {
     (tester) async {
       await pumpCards(tester, [HostMiniCard(host: card('a'), animate: false)]);
       expect(find.text('Host a'), findsOneWidget);
-      expect(find.text('₹10/min'), findsOneWidget);
+    expect(find.text('₹10.00/min'), findsOneWidget);
       expect(find.text('Online now'), findsOneWidget);
       expect(find.text('AI avatar'), findsOneWidget);
     },

@@ -74,7 +74,7 @@ abstract final class PurchaseCopy {
   static const String cancelled = 'Purchase cancelled. You were not charged.';
   static const String alreadyAdded =
       'This money was already added to your wallet.';
-  static const String tokensAdded = 'Money added to your wallet.';
+  static const String moneyAdded = 'Money added to your wallet.';
   static const String stillConfirming =
       "We're still confirming your payment. The money will be added automatically. Open this screen again in a few minutes.";
   static const String paymentCanceled =
@@ -92,12 +92,18 @@ abstract final class PurchaseCopy {
   static const String otherAccount =
       'This purchase was made with a different account, so we cannot add it here.';
 
-  static String added(num? tokens) => tokens == null
-      ? tokensAdded
-      : '${tokensPlain(tokens)} added to your wallet';
+  static String added(VerifyResult result) {
+    final wallet = result.walletLabel;
+    final line = result.breakdownLine;
+    if (wallet != null && line != null) {
+      return '$wallet added to your wallet.\n$line';
+    }
+    if (wallet != null) return '$wallet added to your wallet.';
+    return moneyAdded;
+  }
 }
 
-/// Buying tokens with Google Play Billing, and finishing purchases that were never finished.
+/// Adding money with Google Play Billing, and finishing purchases that were never finished.
 ///
 /// The contract (Specs/HF-PLAY-BILLING-RUNBOOK.md section 4):
 ///  1. `prepare {productId}` -> `obfuscatedAccountId`.
@@ -261,7 +267,7 @@ class PurchaseController extends Notifier<PurchaseState> {
     unawaited(
       Analytics.capture('hf_token_purchase_started', {
         'product_id': productId,
-        'tokens': offer.pack.tokens,
+        if (price != null) 'paid_paise': price,
       }),
     );
     state = PurchaseState(
@@ -383,14 +389,16 @@ class PurchaseController extends Notifier<PurchaseState> {
                 NoticeKind.success,
                 res.duplicate
                     ? PurchaseCopy.alreadyAdded
-                    : PurchaseCopy.added(res.tokens),
+                    : PurchaseCopy.added(res),
               )
             : null;
         _result(
           res.duplicate ? 'duplicate' : 'credited',
           productId: p.productId,
           recovery: recovery,
-          extra: {if (res.tokens != null) 'tokens': res.tokens!},
+          extra: {
+            if (res.walletPaise != null) 'wallet_paise': res.walletPaise!,
+          },
         );
         if (mine) {
           _finish(notice);

@@ -61,7 +61,7 @@ let E: ReturnType<typeof makeEnv>;
 const get = (qs = "", headers: Record<string, string> = {}, path = "/api/hf/hosts") => hfHostsListRoute(new Request(`https://api.test${path}${qs ? "?" + qs : ""}`, { headers }), E.env);
 const slugs = async (qs = "") => ((await (await get(qs))!.json()) as any).items.map((i: any) => i.slug.slice(0, -5));
 
-beforeEach(() => { E = makeEnv(); seed(E.db); cfg = { hostsPublicEnabled: true }; currentUid = null; prepares = 0; });
+beforeEach(() => { E = makeEnv(); seed(E.db); cfg = { hostsPublicEnabled: true, hfTokensEnabled: true, hfStdPlanEnabled: true, hfAppMinBuild: 2078 }; currentUid = null; prepares = 0; });
 afterEach(() => { delete (globalThis as any).caches; });
 
 describe("GET /api/hf/hosts", () => {
@@ -73,8 +73,11 @@ describe("GET /api/hf/hosts", () => {
     expect(b.nextOffset).toBeNull();
     expect(b.items.map((i: any) => i.slug)).not.toContain("fay-ffff");
     expect(Object.keys(b.items[0]).sort()).toEqual(
-      ["avatarUrl", "displayName", "introAudioUrl", "introMime", "introSeconds", "languages", "lgbtqFriendly", "pricePerMin", "rating", "ratingBreakdown", "regulars", "reviewCount", "slug", "status", "style", "tagline", "talkedTo", "topics", "womenOnly"],
+      // [HF-STD-PLAN-1] cards now carry the Standard-plan price block (plan, pricePaisePerMin, priceLabel, priceTiers) next to pricePerMin
+      ["avatarUrl", "displayName", "introAudioUrl", "introMime", "introSeconds", "languages", "lgbtqFriendly", "plan", "priceLabel", "pricePaisePerMin", "pricePerMin", "priceTiers", "rating", "ratingBreakdown", "regulars", "reviewCount", "slug", "status", "style", "tagline", "talkedTo", "topics", "womenOnly"],
     );
+    expect(b.items[0]).toMatchObject({ plan: "standard", pricePerMin: 3.99, pricePaisePerMin: 399, priceLabel: "₹3.99/min" });
+    expect(b.items[0].priceTiers).toEqual([{ fromMin: 0, toMin: 30, paisePerMin: 399 }, { fromMin: 30, toMin: 60, paisePerMin: 350 }, { fromMin: 60, toMin: null, paisePerMin: 325 }]);
   });
 
   it("cards are identical to /api/hosts/public cards", async () => {
@@ -89,7 +92,21 @@ describe("GET /api/hf/hosts", () => {
     expect(await slugs()).toEqual(["ana", "esha", "dev", "bina", "chit"]);
     expect(await slugs("sort=online_first")).toEqual(["ana", "esha", "dev", "bina", "chit"]);
   });
+  it("[HF-STD-PLAN-1] price filters and price_low are ignored under the Standard plan (every host has the same price)", async () => {
+    expect(await slugs("sort=price_low")).toEqual(["ana", "esha", "dev", "bina", "chit"]); // falls back to online_first
+    expect(await slugs("maxPrice=20")).toEqual(["ana", "esha", "dev", "bina", "chit"]);
+    expect(await slugs("minPrice=40&maxPrice=60")).toEqual(["ana", "esha", "dev", "bina", "chit"]);
+    const items: any[] = ((await (await get())!.json()) as any).items;
+    expect(new Set(items.map((i) => i.pricePaisePerMin))).toEqual(new Set([399])); // host-set prices (10..50) never reach the card
+  });
+  it("[HF-STD-PLAN-1] with the plan off the host's own rate card, price filters and price_low still work", async () => {
+    cfg = { hostsPublicEnabled: true, hfStdPlanEnabled: false };
+    expect(await slugs("sort=price_low")).toEqual(["ana", "dev", "bina", "chit", "esha"]);
+    const items: any[] = ((await (await get())!.json()) as any).items;
+    expect(items.find((i) => i.slug === "bina-bbbb")).toMatchObject({ plan: "host_rate", pricePerMin: 20, pricePaisePerMin: 2000, priceLabel: "₹20.00/min" });
+  });
   it("sort price_low and rating (unrated last; pending/rejected reviews ignored)", async () => {
+    cfg = { hostsPublicEnabled: true, hfStdPlanEnabled: false }; // [HF-STD-PLAN-1] the old host-rate path
     expect(await slugs("sort=price_low")).toEqual(["ana", "dev", "bina", "chit", "esha"]);
     expect(await slugs("sort=rating")).toEqual(["ana", "esha", "bina", "dev", "chit"]);
     const items: any[] = ((await (await get("sort=rating"))!.json()) as any).items;
@@ -98,6 +115,7 @@ describe("GET /api/hf/hosts", () => {
   });
 
   it("filters by topic (any of), language (codes or names), price range and online", async () => {
+    cfg = { hostsPublicEnabled: true, hfStdPlanEnabled: false }; // [HF-STD-PLAN-1] price range only filters on the old host-rate path
     expect(await slugs("topic=breakup")).toEqual(["ana", "esha", "chit"]);
     expect(await slugs("topic=din-kharab-tha,naukri-ki-chinta")).toEqual(["dev", "bina"]);
     expect(await slugs("lang=hi")).toEqual(["ana", "esha", "bina"]);

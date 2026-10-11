@@ -9,6 +9,9 @@
 //   host_payout_ledger   per withdrawal: the ledger holds -amount while it is open or paid, and nothing once cancelled or rejected
 //   host_balance_negative a host whose ledger balance (earnings - payouts) is below zero
 //   purchase_without_lot / lot_without_purchase   a credited Play purchase must have its lot and every Play lot its purchase
+//   topup_gst_split      [HF-STD-PLAN-1] a gp-r2 (rupee) top-up lot must satisfy paid = wallet value + GST included, to the paisa
+// [HF-STD-PLAN-1] Rupee-correct: purchases also report the GST included and the wallet value credited (rupees), per IST day. Lots made by the
+// explicit balance migration (source_lot_id set) carry old history and are NOT counted as purchases again. Call-charge corrections ('call_refund').
 // buildTokenReconciliation() is pure (rows in, report out); loadTokenReconciliation() is the D1 reader. Read-only: nothing here writes.
 import type { Env } from "../types";
 import { istDateStr } from "./hf_ist";
@@ -16,7 +19,11 @@ import { istDateStr } from "./hf_ist";
 const DAY = 86_400_000;
 const n = (v: unknown): number => Math.trunc(Number(v ?? 0)) || 0;
 
-export interface LotRec { id: string; kind: string; created_at: number; tokens_granted_micro: number; paid_paise: number }
+export interface LotRec {
+  id: string; kind: string; created_at: number; tokens_granted_micro: number; paid_paise: number;
+  /** [HF-STD-PLAN-1] optional so older fixtures still type-check */
+  redemption_paise_per_token?: number; gst_paise?: number; pricing_version?: string; source_lot_id?: string | null;
+}
 export interface CallRec {
   id: string; uid: string; ts: number; tokens_spent_micro: number | null; consumed_value_paise: number | null; call_cost_paise: number | null;
   host_earning_paise: number | null; platform_paise: number | null; lots_used: string | null;
@@ -26,30 +33,30 @@ export interface HostLedgerRec { kind: string; amount_paise: number; created_at:
 export interface PlayRefundRec { recorded_paise: number | null; refunded_at: number }
 
 export type TokenMismatchKind =
-  | "lot_balance" | "call_split" | "host_earning_ledger" | "host_payout_ledger" | "host_balance_negative" | "purchase_without_lot" | "lot_without_purchase";
+  | "lot_balance" | "call_split" | "host_earning_ledger" | "host_payout_ledger" | "host_balance_negative" | "purchase_without_lot" | "lot_without_purchase" | "topup_gst_split";
 export interface TokenMismatch { kind: TokenMismatchKind; ref: string; uid: string | null; expected: number | null; actual: number | null; detail: string }
 
 export interface TokenDay {
   date: string;
-  purchases: { count: number; paidPaise: number; tokensMicro: number };
+  purchases: { count: number; paidPaise: number; tokensMicro: number; gstPaise: number; walletPaise: number };
   spent: { calls: number; tokensMicro: number; consumedPaise: number; callCostPaise: number; hostPaise: number; platformPaise: number };
   hostLedger: { earningsPaise: number; testEarningsPaise: number };
-  refunds: { revocations: number; revokedMicro: number; revokedValuePaise: number; playRefunds: number; playRefundPaise: number; debtsCreated: number; debtsCreatedPaise: number; debtsWrittenOffPaise: number };
+  refunds: { revocations: number; revokedMicro: number; revokedValuePaise: number; playRefunds: number; playRefundPaise: number; debtsCreated: number; debtsCreatedPaise: number; debtsWrittenOffPaise: number; callRefunds: number; callRefundPaise: number };
   testLots: { grantedLots: number; grantedMicro: number; spentMicro: number; spentValuePaise: number };
 }
 export interface TokenReconciliation {
   from: string; to: string; days: TokenDay[]; totals: Omit<TokenDay, "date">;
   openDebts: { count: number; valuePaise: number; tokensMicro: number };
-  outstanding: { purchaseTokensMicro: number; testTokensMicro: number; hostBalancePaise: number };
+  outstanding: { purchaseTokensMicro: number; testTokensMicro: number; hostBalancePaise: number; purchasePaise: number; testPaise: number };
   mismatches: TokenMismatch[];
 }
 
 const emptyDay = (date: string): TokenDay => ({
   date,
-  purchases: { count: 0, paidPaise: 0, tokensMicro: 0 },
+  purchases: { count: 0, paidPaise: 0, tokensMicro: 0, gstPaise: 0, walletPaise: 0 },
   spent: { calls: 0, tokensMicro: 0, consumedPaise: 0, callCostPaise: 0, hostPaise: 0, platformPaise: 0 },
   hostLedger: { earningsPaise: 0, testEarningsPaise: 0 },
-  refunds: { revocations: 0, revokedMicro: 0, revokedValuePaise: 0, playRefunds: 0, playRefundPaise: 0, debtsCreated: 0, debtsCreatedPaise: 0, debtsWrittenOffPaise: 0 },
+  refunds: { revocations: 0, revokedMicro: 0, revokedValuePaise: 0, playRefunds: 0, playRefundPaise: 0, debtsCreated: 0, debtsCreatedPaise: 0, debtsWrittenOffPaise: 0, callRefunds: 0, callRefundPaise: 0 },
   testLots: { grantedLots: 0, grantedMicro: 0, spentMicro: 0, spentValuePaise: 0 },
 });
 
@@ -61,6 +68,23 @@ export function testPartOfCall(lotsUsed: string | null): { micro: number; valueP
     if (Array.isArray(j)) for (const u of j) if (u && u.kind !== "purchase") { micro += n(u.micro); valuePaise += n(u.valuePaise); }
   } catch { /* unreadable: counted as nothing */ }
   return { micro, valuePaise };
+}
+
+/** Wallet value (paise) a lot was granted with: round(micro x value / 1e6). Old lots use their frozen value, rupee lots 100. */
+export function lotWalletPaise(l: Pick<LotRec, "tokens_granted_micro" | "redemption_paise_per_token">): number {
+  const v = n(l.redemption_paise_per_token ?? 100) || 100;
+  return Number((2n * BigInt(Math.max(0, n(l.tokens_granted_micro))) * BigInt(v) + 1_000_000n) / 2_000_000n);
+}
+
+/** Pure: gp-r2 top-ups where what the buyer paid is not exactly the wallet value plus the GST included. Migrated lots and non-purchases are exempt. */
+export function topupGstMismatches(lots: LotRec[]): TokenMismatch[] {
+  const out: TokenMismatch[] = [];
+  for (const l of lots) {
+    if (l.kind !== "purchase" || l.pricing_version !== "gp-r2" || l.source_lot_id) continue;
+    const wallet = lotWalletPaise(l), gst = n(l.gst_paise), paid = n(l.paid_paise);
+    if (paid !== wallet + gst) out.push({ kind: "topup_gst_split", ref: l.id, uid: null, expected: paid, actual: wallet + gst, detail: `Paid ${paid} paise but wallet ${wallet} + GST ${gst} = ${wallet + gst}` });
+  }
+  return out;
 }
 
 /** Pure: calls whose consumed value is not exactly call cost + host + platform. */
@@ -85,8 +109,11 @@ export function buildTokenReconciliation(a: {
   for (const l of a.lots) {
     if (!inRange(l.created_at)) continue;
     const d = day(l.created_at)!;
-    if (l.kind === "purchase") { d.purchases.count++; d.purchases.paidPaise += n(l.paid_paise); d.purchases.tokensMicro += n(l.tokens_granted_micro); }
-    else if (l.kind === "test") { d.testLots.grantedLots++; d.testLots.grantedMicro += n(l.tokens_granted_micro); }
+    if (l.source_lot_id) continue; // [HF-STD-PLAN-1] a migration lot is the same money as the lot it replaced
+    if (l.kind === "purchase") {
+      d.purchases.count++; d.purchases.paidPaise += n(l.paid_paise); d.purchases.tokensMicro += n(l.tokens_granted_micro);
+      d.purchases.gstPaise += n(l.gst_paise); d.purchases.walletPaise += lotWalletPaise(l);
+    } else if (l.kind === "test") { d.testLots.grantedLots++; d.testLots.grantedMicro += n(l.tokens_granted_micro); }
   }
   for (const c of a.calls) {
     if (!inRange(c.ts)) continue;
@@ -100,6 +127,7 @@ export function buildTokenReconciliation(a: {
     if (!inRange(l.created_at)) continue;
     const d = day(l.created_at)!;
     if (l.kind === "refund_revoke") { d.refunds.revocations++; d.refunds.revokedMicro += Math.abs(n(l.delta_micro)); d.refunds.revokedValuePaise += n(l.rupee_value_paise); }
+    else if (l.kind === "call_refund") { d.refunds.callRefunds++; d.refunds.callRefundPaise += n(l.rupee_value_paise); }
     else if (l.kind === "debt_create") { d.refunds.debtsCreated++; d.refunds.debtsCreatedPaise += n(l.rupee_value_paise); }
     else if (l.kind === "debt_writeoff") d.refunds.debtsWrittenOffPaise += n(l.rupee_value_paise);
   }
@@ -134,16 +162,19 @@ async function rows<T>(env: Env, sql: string, ...b: unknown[]): Promise<T[] | nu
 
 export async function loadTokenReconciliation(env: Env, fromMs: number, toMs: number): Promise<TokenReconciliation> {
   const mismatches: TokenMismatch[] = [];
-  const [lots, calls, ledger, hostLedger, playRefunds] = await Promise.all([
-    rows<LotRec>(env, "SELECT id, kind, created_at, tokens_granted_micro, paid_paise FROM hf_token_lots WHERE created_at>=?1 AND created_at<?2 LIMIT 20000", fromMs, toMs),
+  const [lotsNew, lotsOld, calls, ledger, hostLedger, playRefunds] = await Promise.all([
+    rows<LotRec>(env, "SELECT id, kind, created_at, tokens_granted_micro, paid_paise, redemption_paise_per_token, gst_paise, pricing_version, source_lot_id FROM hf_token_lots WHERE created_at>=?1 AND created_at<?2 LIMIT 20000", fromMs, toMs),
+    rows<LotRec>(env, "SELECT id, kind, created_at, tokens_granted_micro, paid_paise, redemption_paise_per_token, pricing_version FROM hf_token_lots WHERE created_at>=?1 AND created_at<?2 LIMIT 20000", fromMs, toMs), // before the gst_paise / source_lot_id columns exist
     rows<CallRec>(env,
       `SELECT id, caller_uid AS uid, COALESCE(ended_at, created_at) AS ts, tokens_spent_micro, consumed_value_paise, call_cost_paise, host_earning_paise, platform_paise, lots_used FROM hf_calls
         WHERE lots_used IS NOT NULL AND COALESCE(ended_at, created_at)>=?1 AND COALESCE(ended_at, created_at)<?2 LIMIT 20000`, fromMs, toMs),
-    rows<LedgerRec>(env, "SELECT kind, delta_micro, rupee_value_paise, created_at FROM hf_token_ledger WHERE kind IN ('refund_revoke','debt_create','debt_writeoff') AND created_at>=?1 AND created_at<?2 LIMIT 20000", fromMs, toMs),
+    rows<LedgerRec>(env, "SELECT kind, delta_micro, rupee_value_paise, created_at FROM hf_token_ledger WHERE kind IN ('refund_revoke','debt_create','debt_writeoff','call_refund') AND created_at>=?1 AND created_at<?2 LIMIT 20000", fromMs, toMs),
     rows<HostLedgerRec>(env, "SELECT kind, amount_paise, created_at FROM hf_host_ledger WHERE kind IN ('call_earning','call_earning_test') AND created_at>=?1 AND created_at<?2 LIMIT 20000", fromMs, toMs),
     rows<PlayRefundRec>(env, "SELECT recorded_paise, refunded_at FROM hf_refund_requests WHERE kind='play_refund' AND status='refunded' AND refunded_at>=?1 AND refunded_at<?2 LIMIT 5000", fromMs, toMs),
   ]);
 
+  const lots = lotsNew ?? lotsOld;
+  if (lotsNew) mismatches.push(...topupGstMismatches(lotsNew)); // needs gst_paise: skipped until the Standard-plan columns exist
   // invariants (whole ledger for lots / hosts / purchases; the chosen range for calls)
   const bal = await rows<{ id: string; uid: string; kind: string; status: string; left_m: number; reserved: number; net: number }>(env,
     `SELECT t.id, t.uid, t.kind, t.status, t.tokens_left_micro AS left_m, t.tokens_reserved_micro AS reserved, COALESCE(s.net,0) AS net
@@ -181,19 +212,22 @@ export async function loadTokenReconciliation(env: Env, fromMs: number, toMs: nu
     "SELECT p.order_id, p.uid, p.state FROM hf_play_purchases p LEFT JOIN hf_token_lots t ON t.id=p.lot_id WHERE p.state IN ('credited','consumed','refunded','revoked') AND t.id IS NULL LIMIT 200");
   for (const p of pw ?? []) mismatches.push({ kind: "purchase_without_lot", ref: p.order_id, uid: p.uid, expected: null, actual: null, detail: `Play purchase is '${p.state}' but no token lot exists for it` });
   const lw = await rows<{ id: string; uid: string; provider_ref: string | null }>(env,
-    "SELECT t.id, t.uid, t.provider_ref FROM hf_token_lots t WHERE t.kind='purchase' AND t.provider='google_play' AND NOT EXISTS (SELECT 1 FROM hf_play_purchases p WHERE p.lot_id=t.id) LIMIT 200");
+    "SELECT t.id, t.uid, t.provider_ref FROM hf_token_lots t WHERE t.kind='purchase' AND t.provider='google_play' AND t.status IN ('active','revoked') AND NOT EXISTS (SELECT 1 FROM hf_play_purchases p WHERE p.lot_id=t.id) LIMIT 200");
   for (const l of lw ?? []) mismatches.push({ kind: "lot_without_purchase", ref: l.id, uid: l.uid, expected: null, actual: null, detail: `Purchase lot (order ${l.provider_ref ?? "?"}) has no Play purchase record` });
 
   const od = (await rows<{ c: number; v: number; m: number }>(env, "SELECT COUNT(*) AS c, COALESCE(SUM(value_paise),0) AS v, COALESCE(SUM(amount_micro),0) AS m FROM hf_token_debts WHERE status='open'"))?.[0];
-  const out = (await rows<{ pm: number; tm: number }>(env,
-    "SELECT COALESCE(SUM(CASE WHEN kind='purchase' THEN tokens_left_micro END),0) AS pm, COALESCE(SUM(CASE WHEN kind='test' THEN tokens_left_micro END),0) AS tm FROM hf_token_lots WHERE status='active'"))?.[0];
+  const out = (await rows<{ pm: number; tm: number; pp: number; tp: number }>(env,
+    `SELECT COALESCE(SUM(CASE WHEN kind='purchase' THEN tokens_left_micro END),0) AS pm, COALESCE(SUM(CASE WHEN kind='test' THEN tokens_left_micro END),0) AS tm,
+            COALESCE(SUM(CASE WHEN kind='purchase' THEN (tokens_left_micro * redemption_paise_per_token) / 1000000 END),0) AS pp,
+            COALESCE(SUM(CASE WHEN kind='test' THEN (tokens_left_micro * redemption_paise_per_token) / 1000000 END),0) AS tp
+       FROM hf_token_lots WHERE status='active'`))?.[0];
   const hb = (await rows<{ b: number }>(env,
     "SELECT COALESCE(SUM(CASE WHEN kind IN ('call_earning','payout_reserve','payout_cancel','admin_adjust') THEN amount_paise ELSE 0 END),0) AS b FROM hf_host_ledger"))?.[0];
 
   return buildTokenReconciliation({
     fromMs, toMs, lots: lots ?? [], calls: calls ?? [], ledger: ledger ?? [], hostLedger: hostLedger ?? [], playRefunds: playRefunds ?? [],
     openDebts: { count: n(od?.c), valuePaise: n(od?.v), tokensMicro: n(od?.m) },
-    outstanding: { purchaseTokensMicro: n(out?.pm), testTokensMicro: n(out?.tm), hostBalancePaise: n(hb?.b) },
+    outstanding: { purchaseTokensMicro: n(out?.pm), testTokensMicro: n(out?.tm), hostBalancePaise: n(hb?.b), purchasePaise: n(out?.pp), testPaise: n(out?.tp) },
     mismatches,
   });
 }
@@ -208,15 +242,17 @@ export function tokenReconciliationCsv(r: TokenReconciliation): string {
     "date", "purchases_count", "purchases_paid_paise", "purchases_tokens_micro", "calls", "tokens_spent_micro", "consumed_value_paise", "call_cost_paise", "host_paise", "platform_paise",
     "host_ledger_earnings_paise", "host_ledger_test_earnings_paise", "revocations", "revoked_tokens_micro", "revoked_value_paise", "play_refunds", "play_refunds_paise",
     "debts_created", "debts_created_paise", "debts_written_off_paise", "test_lots_granted", "test_tokens_granted_micro", "test_tokens_spent_micro", "test_value_spent_paise",
+    "purchases_gst_included_paise", "purchases_wallet_credited_paise", "call_refunds", "call_refunds_paise",
   ];
   const line = (label: string, d: Omit<TokenDay, "date">) => [
     label, d.purchases.count, d.purchases.paidPaise, d.purchases.tokensMicro, d.spent.calls, d.spent.tokensMicro, d.spent.consumedPaise, d.spent.callCostPaise, d.spent.hostPaise, d.spent.platformPaise,
     d.hostLedger.earningsPaise, d.hostLedger.testEarningsPaise, d.refunds.revocations, d.refunds.revokedMicro, d.refunds.revokedValuePaise, d.refunds.playRefunds, d.refunds.playRefundPaise,
     d.refunds.debtsCreated, d.refunds.debtsCreatedPaise, d.refunds.debtsWrittenOffPaise, d.testLots.grantedLots, d.testLots.grantedMicro, d.testLots.spentMicro, d.testLots.spentValuePaise,
+    d.purchases.gstPaise, d.purchases.walletPaise, d.refunds.callRefunds, d.refunds.callRefundPaise,
   ].map(q).join(",");
   const out = ["", "TOKENS (money in paise, tokens in micro-tokens: 1 token = 1000000)", head.join(","), ...r.days.map((d) => line(d.date, d)), line("TOTAL", r.totals)];
-  out.push("", "open_debts_count,open_debts_value_paise,open_debts_tokens_micro,purchase_tokens_outstanding_micro,test_tokens_outstanding_micro,host_balance_paise");
-  out.push([r.openDebts.count, r.openDebts.valuePaise, r.openDebts.tokensMicro, r.outstanding.purchaseTokensMicro, r.outstanding.testTokensMicro, r.outstanding.hostBalancePaise].map(q).join(","));
+  out.push("", "open_debts_count,open_debts_value_paise,open_debts_tokens_micro,purchase_tokens_outstanding_micro,test_tokens_outstanding_micro,host_balance_paise,purchase_wallet_outstanding_paise,test_wallet_outstanding_paise");
+  out.push([r.openDebts.count, r.openDebts.valuePaise, r.openDebts.tokensMicro, r.outstanding.purchaseTokensMicro, r.outstanding.testTokensMicro, r.outstanding.hostBalancePaise, r.outstanding.purchasePaise, r.outstanding.testPaise].map(q).join(","));
   out.push("", "token_mismatch_kind,ref,uid,expected,actual,detail");
   for (const m of r.mismatches) out.push([m.kind, m.ref, m.uid, m.expected, m.actual, m.detail].map(q).join(","));
   return out.join("\n") + "\n";

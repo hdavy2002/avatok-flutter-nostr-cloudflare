@@ -105,7 +105,8 @@ describe("GST split (18% included in the platform share)", () => {
 });
 
 describe("monthly statements", () => {
-  const CFG = { hfGstin: "27ABCDE1234F1Z5", hfLegalName: "Example Pvt Ltd", hfLegalAddress: "1 Road, Mumbai", hfStateCode: "27", hfInvoicePrefix: "HF" };
+  // [HF-STD-PLAN-1] hfTopupGstInclusive:false keeps exercising the monthly platform-share statements (switched off while top-ups include GST)
+  const CFG = { hfTopupGstInclusive: false, hfGstin: "27ABCDE1234F1Z5", hfLegalName: "Example Pvt Ltd", hfLegalAddress: "1 Road, Mumbai", hfStateCode: "27", hfInvoicePrefix: "HF" };
   const call = (id, uid, at, paid, hostPaid) => h.db.prepare("INSERT INTO hf_calls (id, caller_uid, host_uid, status, created_at, ended_at, billed_minutes, paid_rupees, test_rupees, host_paid_rupees) VALUES (?,?,?,?,?,?,?,?,0,?)").run(id, uid, "h1", "completed", at, at, 5, paid, hostPaid);
 
   it("does nothing while hfGstin is empty: receipts only", async () => {
@@ -131,6 +132,13 @@ describe("monthly statements", () => {
     expect(u1.taxable_paise + u1.gst_paise).toBe(14400);
     expect(u1.number).toMatch(/^HF\/I\/26-27\/\d+$/);
     expect(JSON.parse(u1.data)).toMatchObject({ period: "2026-09", calls: 2, intraState: true });
+  });
+  it("[HF-STD-PLAN-1] while top-ups are GST-inclusive (the default) no monthly platform-share invoice is issued, even with a GSTIN", async () => {
+    call("c1", "u1", T("2026-09-10T00:00:00Z"), 100, 48);
+    const on = { hfGstin: CFG.hfGstin, hfLegalName: CFG.hfLegalName, hfLegalAddress: CFG.hfLegalAddress, hfStateCode: "27", hfInvoicePrefix: "HF" };
+    expect(await runMonthlyStatements(h.env, on, T("2026-10-01T05:00:00Z"))).toBeNull();
+    expect(await runMonthlyStatements(h.env, { ...on, hfTopupGstInclusive: true }, T("2026-10-01T05:00:00Z"))).toBeNull();
+    expect((await h.env.DB_META.prepare("SELECT COUNT(*) AS n FROM hf_receipts").first()).n).toBe(0);
   });
   it("catches up only in the first days of the month", async () => {
     call("c1", "u1", T("2026-09-10T00:00:00Z"), 100, 48);

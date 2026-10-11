@@ -30,6 +30,8 @@ abstract final class ExploreCopy {
   static const String language = 'Language';
   static const String price = 'Price per minute';
   static const String anyPrice = 'Any price';
+  static const String sameRate =
+      'Same rate for every host · lower on long calls';
   static const String onlineOnly = 'Online now only';
   static const String optionsFailed = 'We could not load the filter choices.';
 

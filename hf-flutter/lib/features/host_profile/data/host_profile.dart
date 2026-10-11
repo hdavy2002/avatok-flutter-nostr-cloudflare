@@ -1,4 +1,6 @@
+import '../../../core/format/money.dart';
 import '../../../core/widgets/status_pill.dart';
+import '../../explore/data/host_card.dart' show PriceTier;
 
 /// `GET /api/hosts/public/:slug` (worker/src/routes/hf_hosts_public.ts): the card fields plus
 /// `reviews[]`, `aboutPolished`, `quote` and `gallery[]`. Parsing is tolerant: a missing key is a safe
@@ -13,6 +15,10 @@ class HostProfile {
     this.style,
     this.topics = const <String>[],
     this.pricePerMin = 0,
+    this.pricePaisePerMin = 0,
+    this.serverPriceLabel,
+    this.priceTiers = const <PriceTier>[],
+    this.plan,
     this.rating,
     this.reviewCount = 0,
     this.ratingBreakdown = const <int, int>{},
@@ -41,8 +47,11 @@ class HostProfile {
   /// Topic slugs. Labels come from `GET /api/hf/options`.
   final List<String> topics;
 
-  /// Whole rupees per minute.
-  final int pricePerMin;
+  final double pricePerMin;
+  final int pricePaisePerMin;
+  final String? serverPriceLabel;
+  final List<PriceTier> priceTiers;
+  final String? plan;
   final double? rating;
   final int reviewCount;
 
@@ -61,6 +70,15 @@ class HostProfile {
   final List<HostReview> reviews;
 
   bool get hasIntro => (introAudioUrl ?? '').isNotEmpty;
+
+  String get priceLabel {
+    final fromServer = serverPriceLabel;
+    if (fromServer != null) return fromServer;
+    final paise = pricePaisePerMin > 0
+        ? pricePaisePerMin
+        : (pricePerMin * 100).round();
+    return formatPaiseRate(paise);
+  }
 
   /// Same labels as the website's profile page.
   static const Map<String, String> _styleLabels = <String, String>{
@@ -97,7 +115,11 @@ class HostProfile {
       languages: _strings(j['languages']),
       style: _s(j['style']),
       topics: _strings(j['topics']),
-      pricePerMin: _i(j['pricePerMin']) ?? 0,
+      pricePerMin: _d(j['pricePerMin']) ?? 0,
+      pricePaisePerMin: _i(j['pricePaisePerMin']) ?? 0,
+      serverPriceLabel: _s(j['priceLabel']),
+      priceTiers: PriceTier.listFrom(j['priceTiers']),
+      plan: _s(j['plan']),
       rating: j['rating'] is num ? (j['rating'] as num).toDouble() : null,
       reviewCount: _i(j['reviewCount']) ?? 0,
       ratingBreakdown: breakdown,
@@ -132,7 +154,10 @@ class HostProfile {
   }
 
   static int? _i(Object? v) =>
-      v is num ? v.toInt() : int.tryParse('${v ?? ''}');
+      v is num ? v.round() : num.tryParse('${v ?? ''}')?.round();
+
+  static double? _d(Object? v) =>
+      v is num ? v.toDouble() : double.tryParse('${v ?? ''}');
 
   static List<String> _strings(Object? v) => v is List
       ? v.map((e) => '$e'.trim()).where((e) => e.isNotEmpty).toList()
@@ -229,14 +254,9 @@ String formatReviewDate(Object? date) {
 /// `GET /api/hf/wallet/estimate?host=<slug>` (signed in). Token mode adds `tokensPerMinute` and `aboutText`
 /// ("about 8 min 12 s", or "add tokens to call" with an empty balance). Old mode is rupees only.
 class HostEstimate {
-  const HostEstimate({
-    required this.isTokens,
-    this.tokensPerMinute,
-    this.aboutText,
-  });
+  const HostEstimate({required this.isMetered, this.aboutText});
 
-  final bool isTokens;
-  final String? tokensPerMinute;
+  final bool isMetered;
   final String? aboutText;
 
   factory HostEstimate.fromJson(Map<String, dynamic> j) {
@@ -245,9 +265,9 @@ class HostEstimate {
       return t.isEmpty ? null : t;
     }
 
+    final mode = j['mode'];
     return HostEstimate(
-      isTokens: j['mode'] == 'tokens',
-      tokensPerMinute: s(j['tokensPerMinute']),
+      isMetered: mode == 'rupees' || mode == 'tokens',
       aboutText: s(j['aboutText']),
     );
   }

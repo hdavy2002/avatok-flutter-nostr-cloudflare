@@ -182,7 +182,7 @@ class _CallFollowerState extends ConsumerState<CallFollower>
           seconds: info.talkedSeconds,
           endReason: info.endReason,
           status: info.status.wire,
-          mode: info.isTokenCall ? 'tokens' : 'inr',
+          mode: info.isMeteredCall ? 'rupees' : 'inr',
         );
       }
     }
@@ -321,6 +321,17 @@ class _CallFollowerState extends ConsumerState<CallFollower>
 
   Widget _live(CallInfo info) {
     final connected = info.status == CallStatus.connected;
+    final slug = info.hostSlug;
+    int? currentRate;
+    if (connected && slug != null) {
+      final estimate = ref.watch(callEstimateProvider(slug)).valueOrNull;
+      if (estimate != null) {
+        currentRate = currentRatePaise(
+          estimate.tiers,
+          _elapsedSeconds(info),
+        );
+      }
+    }
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -329,6 +340,7 @@ class _CallFollowerState extends ConsumerState<CallFollower>
             child: CallLiveView(
               info: info,
               elapsedSeconds: connected ? _elapsedSeconds(info) : 0,
+              currentRatePaise: currentRate,
               notice: _notice,
               showConnectionTrouble: _failures >= 3,
             ),
