@@ -684,7 +684,8 @@ void main() {
         expect(has('preview-submit'), isFalse);
         expect(has('preview-edit-tagline'), isFalse);
         expect(has('preview-edit-aboutPolished'), isFalse);
-        expect(api.calls, isEmpty);
+        expect(api.calls, hasLength(1));
+        expect(api.callsTo('GET', '/api/config'), hasLength(1));
         await leave(tester);
       },
     );

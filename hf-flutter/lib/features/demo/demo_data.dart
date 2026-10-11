@@ -245,7 +245,7 @@ HostProfile? demoProfileFor(String slug) {
   return null;
 }
 
-/// What the confirm sheet shows for a demo host: wallet ₹342, about 17 minutes.
+/// What the confirm sheet shows for a demo host: wallet ₹342, capped at the 60-minute call maximum.
 const CallEstimate kDemoEstimate = CallEstimate(
   isMetered: true,
   ratePerMinRupees: 3.99,

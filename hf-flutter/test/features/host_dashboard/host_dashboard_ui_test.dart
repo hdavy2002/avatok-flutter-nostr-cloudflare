@@ -151,7 +151,7 @@ void main() {
         expect(
           find.descendant(
             of: key('today-earned'),
-            matching: find.text('₹1,026'),
+            matching: find.text('₹1,026.00'),
           ),
           findsOneWidget,
         );
@@ -190,7 +190,7 @@ void main() {
         await pumpDashboard(tester, api: api);
         expect(find.text('@aditya_k'), findsOneWidget);
         expect(find.text('9:42 pm · 18 min'), findsOneWidget);
-        expect(tester.widget<Text>(key('earned-t1')).data, '+₹276');
+        expect(tester.widget<Text>(key('earned-t1')).data, '+₹276.00');
       },
     );
 

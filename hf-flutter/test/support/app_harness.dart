@@ -47,11 +47,13 @@ void usePhoneScreen(WidgetTester tester) {
 
 /// Pumps the whole app at [location] with a stub session and a fake API.
 /// Returns the container so a test can read providers or call `ref.read(appRouterProvider).go(...)`.
+/// Set [settle] to false when the starting screen has a looping animation.
 Future<ProviderContainer> pumpApp(
   WidgetTester tester, {
   SessionState? session,
   String location = Routes.home,
   FakeApiClient? api,
+  bool settle = true,
 }) async {
   usePhoneScreen(tester);
   final container = ProviderContainer(
@@ -71,6 +73,10 @@ Future<ProviderContainer> pumpApp(
       child: const HfApp(listenForLinks: false),
     ),
   );
-  await tester.pumpAndSettle();
+  if (settle) {
+    await tester.pumpAndSettle();
+  } else {
+    await tester.pump(const Duration(milliseconds: 100));
+  }
   return container;
 }

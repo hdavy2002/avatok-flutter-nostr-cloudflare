@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:hf_app/core/auth/session.dart';
+import 'package:hf_app/core/config/flags.dart';
 import 'package:hf_app/core/router/routes.dart';
 import 'package:hf_app/core/theme/hf_theme.dart';
 import 'package:hf_app/features/host_dashboard/host_dashboard_providers.dart';
@@ -229,12 +230,11 @@ Future<ProviderContainer> pumpDashboard(
   tester.view.devicePixelRatio = 3.0;
   addTearDown(tester.view.resetPhysicalSize);
   addTearDown(tester.view.resetDevicePixelRatio);
+  final initialSession = session ?? signedInState(host: true);
   final container = ProviderContainer(
     retry: (_, __) => null,
     overrides: [
-      sessionProvider.overrideWith(
-        () => StubSession(session ?? signedInState(host: true)),
-      ),
+      sessionProvider.overrideWith(() => StubSession(initialSession)),
       apiClientProvider.overrideWithValue(api),
       presenceBeatIntervalProvider.overrideWithValue(beatInterval),
       dashboardClockProvider.overrideWithValue(() => pinnedNow),
@@ -269,6 +269,7 @@ Future<ProviderContainer> pumpDashboard(
       ),
     ),
   );
+  if (initialSession.isSignedIn) await container.read(flagsProvider.future);
   await tester.pumpAndSettle();
   return container;
 }

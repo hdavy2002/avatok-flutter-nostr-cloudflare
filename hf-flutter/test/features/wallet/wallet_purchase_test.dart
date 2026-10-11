@@ -38,7 +38,7 @@ void main() {
         tester
             .widget<Text>(find.byKey(const ValueKey<String>('gst-hf_tokens_100')))
             .data,
-        'Total ₹120.00 · GST included ₹18.31 · Added to wallet ₹101.69',
+        'Total ₹100.00 · GST included ₹15.25 · Added to wallet ₹84.75',
       );
       expect(find.text('Paid via Google Play'), findsWidgets);
     },

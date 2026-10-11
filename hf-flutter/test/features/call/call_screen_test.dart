@@ -98,7 +98,7 @@ void main() {
       expect(find.text('Call ended'), findsOneWidget);
       expect(find.text('You ended the call.'), findsOneWidget);
       expect(find.text('3 min'), findsOneWidget);
-      expect(find.text('₹36'), findsOneWidget);
+      expect(find.text('₹36.00'), findsOneWidget);
       expect(find.text('Rate your call'), findsOneWidget);
       expect(find.text('Done'), findsOneWidget);
 

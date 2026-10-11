@@ -35,7 +35,7 @@ void main() {
   testWidgets('warm: a link while the app runs goes straight to the route', (
     tester,
   ) async {
-    final c = await pumpApp(tester);
+    final c = await pumpApp(tester, settle: false);
     c.read(bootDoneProvider.notifier).markDone();
 
     await c
@@ -53,7 +53,7 @@ void main() {
   testWidgets(
     'a route that needs sign-in goes to /sign-in?next=<route> and remembers where to continue',
     (tester) async {
-      final c = await pumpApp(tester);
+      final c = await pumpApp(tester, settle: false);
       c.read(bootDoneProvider.notifier).markDone();
 
       await c
@@ -70,7 +70,7 @@ void main() {
   testWidgets(
     'cold: a link before the splash finished waits, then opens once',
     (tester) async {
-      final c = await pumpApp(tester);
+      final c = await pumpApp(tester, settle: false);
       final handler = c.read(deepLinkHandlerProvider);
 
       await handler.handle(
@@ -98,7 +98,7 @@ void main() {
   testWidgets('the custom scheme link is handled like the https one', (
     tester,
   ) async {
-    final c = await pumpApp(tester);
+    final c = await pumpApp(tester, settle: false);
     c.read(bootDoneProvider.notifier).markDone();
 
     await c
@@ -114,7 +114,7 @@ void main() {
     (tester) async {
       final opener = _RecordingOpener();
       LinkOpener.instance = opener;
-      final c = await pumpApp(tester);
+      final c = await pumpApp(tester, settle: false);
       c.read(bootDoneProvider.notifier).markDone();
 
       await c
@@ -130,7 +130,7 @@ void main() {
   testWidgets('a link that is not ours does nothing', (tester) async {
     final opener = _RecordingOpener();
     LinkOpener.instance = opener;
-    final c = await pumpApp(tester);
+    final c = await pumpApp(tester, settle: false);
     c.read(bootDoneProvider.notifier).markDone();
 
     await c

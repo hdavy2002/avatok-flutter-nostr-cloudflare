@@ -129,7 +129,7 @@ void main() {
       expect(find.text('Slide to call Asha'), findsOneWidget);
       expect(find.byType(HfSlideToConfirm), findsOneWidget);
       expect(
-        find.text('Calls start only with 2 minutes of balance.'),
+        find.text(CallStrings.legacyStartRule),
         findsOneWidget,
       );
       expect(find.textContaining('14416'), findsOneWidget);

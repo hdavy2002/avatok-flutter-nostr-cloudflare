@@ -99,7 +99,7 @@ void main() {
       await tester.tap(find.text('Call Neha'));
       await tester.pumpAndSettle();
       expect(find.text('Call Neha'), findsWidgets);
-      expect(find.text('about 17 min'), findsOneWidget);
+      expect(find.text('about 60 min'), findsOneWidget);
       await tester.tap(find.text('Or tap here to call'));
       await tester.pump(const Duration(seconds: 1));
       await tester.pump(const Duration(milliseconds: 600));
@@ -147,7 +147,7 @@ void main() {
         );
         await tester.pump(const Duration(milliseconds: 100));
         expect(find.text('Call Neha'), findsOneWidget);
-        expect(find.text('about 17 min'), findsOneWidget);
+        expect(find.text('about 60 min'), findsOneWidget);
         expect(find.textContaining('₹342'), findsOneWidget);
 
         await tester.tap(find.text('Or tap here to call'));
@@ -188,9 +188,9 @@ void main() {
         await tester.pump();
         await tester.pump(const Duration(milliseconds: 400));
         expect(find.text('Call ended'), findsOneWidget);
-        // 65 s is 2 started minutes at ₹20.
-        expect(find.text('2 min'), findsOneWidget);
-        expect(find.text('₹40'), findsOneWidget);
+        // Standard-plan calls show exact duration and per-second charges.
+        expect(find.text('1 min 5 s'), findsOneWidget);
+        expect(find.text('₹4.32'), findsOneWidget);
         expect(find.text('Demo — nothing was charged.'), findsOneWidget);
         expect(find.text('Rate your call'), findsOneWidget);
         expect(api.calls, isEmpty);

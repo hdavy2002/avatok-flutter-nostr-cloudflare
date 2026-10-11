@@ -216,7 +216,7 @@ void main() {
           billing: billing,
         );
         expect(find.textContaining('worth'), findsNothing);
-        expect(find.text('₹60'), findsOneWidget);
+        expect(find.text('₹60.00'), findsOneWidget);
       },
     );
 
@@ -257,7 +257,7 @@ void main() {
           find.byKey(const ValueKey<String>('debt-banner')),
           findsOneWidget,
         );
-        expect(find.text('You owe ₹12.50 after a refund.'), findsOneWidget);
+        expect(find.text('You owe ₹10.25 after a refund.'), findsOneWidget);
         expect(
           find.text(
             'Your next purchase clears it first. Calls stay paused until then.',
@@ -318,7 +318,7 @@ void main() {
       expect(
         find.descendant(
           of: find.byKey(const ValueKey<String>('purchases')),
-          matching: find.text('₹100'),
+          matching: find.text('₹100.00'),
         ),
         findsOneWidget,
       );
@@ -352,9 +352,9 @@ void main() {
             ],
           });
         await pumpWallet(tester, api: api, billing: billing);
-        expect(find.text('₹250'), findsOneWidget);
-        expect(find.text('Test credits (spend only): ₹40'), findsOneWidget);
-        expect(find.text('−₹40'), findsOneWidget);
+        expect(find.text('₹250.00'), findsOneWidget);
+        expect(find.text('Test credits (spend only): ₹40.00'), findsOneWidget);
+        expect(find.text('−₹40.00'), findsOneWidget);
         expect(find.text('Adding money is coming soon'), findsOneWidget);
         expect(
           find.byKey(const ValueKey<String>('purchases')),
@@ -544,7 +544,10 @@ void main() {
           findsOneWidget,
         );
         expect(find.text('₹100.00 unused'), findsOneWidget);
-        expect(find.text('You paid ₹100. Refund: ₹82'), findsOneWidget);
+        expect(
+          find.text('You paid ₹100.00. Refund: ₹82.00'),
+          findsOneWidget,
+        );
       },
     );
 
