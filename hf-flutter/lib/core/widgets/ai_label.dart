@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 
-import '../theme/hf_tokens.dart';
+import '../theme/hf_theme.dart';
 
-/// Always-visible AI disclosure. The owner approved this caption-only 11sp exception.
+/// Always-visible AI disclosure ("AI avatar"): a white 85% chip, 14 sp, radius 12. Never hide it.
 class AiLabel extends StatelessWidget {
   const AiLabel({super.key, this.text = 'AI avatar'});
 
@@ -14,15 +14,15 @@ class AiLabel extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
       decoration: BoxDecoration(
-        color: HfColors.white,
-        borderRadius: BorderRadius.circular(HfRadius.pill),
+        color: const Color(0xD9FFFFFF),
+        borderRadius: BorderRadius.circular(HfRadius.segmentItem),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const Icon(Icons.auto_awesome, size: 12, color: HfColors.ink),
-          const SizedBox(width: 6),
-          Flexible(child: Text(text, style: HfText.badge.copyWith(fontSize: 11, color: HfColors.ink))),
+          const Icon(Icons.auto_awesome, size: 14, color: HfColors.inkSoft),
+          const SizedBox(width: HfSpacing.xs),
+          Flexible(child: Text(text, style: HfText.label.copyWith(color: HfColors.inkSoft))),
         ],
       ),
     );

@@ -84,6 +84,8 @@ class _HfAppState extends ConsumerState<HfApp> with WidgetsBindingObserver {
       title: Brand.name,
       debugShowCheckedModeBanner: false,
       theme: buildHfTheme(),
+      darkTheme: buildHfDarkTheme(),
+      themeMode: ThemeMode.system,
       routerConfig: ref.watch(appRouterProvider),
       // [HF-NATIVE-7] push banner, opt-in sheet and token registration;
       // [HF-NATIVE-12] soft update banner or the blocking update screen above everything.

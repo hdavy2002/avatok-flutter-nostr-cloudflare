@@ -3,7 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../api/api_error.dart';
 import '../strings.dart';
-import '../theme/hf_tokens.dart';
+import '../theme/hf_theme.dart';
 import 'hf_button.dart';
 import 'hf_scene.dart';
 import 'hf_card.dart';
@@ -22,19 +22,19 @@ class _PanelFrame extends StatelessWidget {
   Widget build(BuildContext context) {
     return Center(
       child: SingleChildScrollView(
-        padding: const EdgeInsets.all(HfSpacing.page),
+        padding: const EdgeInsets.all(HfSpacing.pageWide),
         child: Semantics(
           liveRegion: true,
           child: HfCard(child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
               const HfScene(kind: HfSceneKind.discover, height: 110),
-              Icon(icon, size: 32, color: HfColors.ink),
+              Icon(icon, size: 32, color: HfText.of(context, HfText.body).color),
               const SizedBox(height: 12),
-              Text(title, style: HfText.subtitle, textAlign: TextAlign.center),
+              Text(title, style: HfText.of(context, HfText.subsection), textAlign: TextAlign.center),
               if (body != null) ...[
                 const SizedBox(height: 8),
-                Text(body!, style: HfText.bodyText, textAlign: TextAlign.center),
+                Text(body!, style: HfText.of(context, HfText.body), textAlign: TextAlign.center),
               ],
               if (action != null) ...[
                 const SizedBox(height: 20),
@@ -48,14 +48,29 @@ class _PanelFrame extends StatelessWidget {
   }
 }
 
-/// "Finding people…" and a spinner.
+/// "Finding people..." and a spinner, or the [skeleton] you pass (for example `HfSkeleton.hostCard()`), which
+/// replaces the spinner so the layout does not jump when the content arrives. The message stays as the
+/// screen-reader label either way.
 class LoadingPanel extends StatelessWidget {
-  const LoadingPanel({super.key, this.message = Strings.loadingDefault});
+  const LoadingPanel({super.key, this.message = Strings.loadingDefault, this.skeleton});
 
   final String message;
+  final Widget? skeleton;
 
   @override
   Widget build(BuildContext context) {
+    final sk = skeleton;
+    if (sk != null) {
+      return Semantics(
+        liveRegion: true,
+        label: message,
+        child: SingleChildScrollView(
+          physics: const NeverScrollableScrollPhysics(),
+          padding: const EdgeInsets.all(HfSpacing.page),
+          child: sk,
+        ),
+      );
+    }
     return Center(
       child: Semantics(
         liveRegion: true,
@@ -65,7 +80,7 @@ class LoadingPanel extends StatelessWidget {
           children: [
             const SizedBox(width: 28, height: 28, child: CircularProgressIndicator(strokeWidth: 3)),
             const SizedBox(height: 16),
-            Text(message, style: HfText.bodyText, textAlign: TextAlign.center),
+            Text(message, style: HfText.of(context, HfText.body), textAlign: TextAlign.center),
           ],
         ),
       ),
@@ -148,6 +163,7 @@ class AsyncValueView<T> extends StatelessWidget {
     required this.value,
     required this.data,
     this.loadingMessage = Strings.loadingDefault,
+    this.loadingSkeleton,
     this.isEmpty,
     this.empty,
     this.onRetry,
@@ -156,6 +172,9 @@ class AsyncValueView<T> extends StatelessWidget {
   final AsyncValue<T> value;
   final Widget Function(T data) data;
   final String loadingMessage;
+
+  /// Shown instead of the spinner while loading (for example `HfSkeleton.hostCard()`).
+  final Widget? loadingSkeleton;
   final bool Function(T data)? isEmpty;
   final Widget? empty;
   final VoidCallback? onRetry;
@@ -168,7 +187,7 @@ class AsyncValueView<T> extends StatelessWidget {
         if (emptyWidget != null && (isEmpty?.call(d) ?? false)) return emptyWidget;
         return data(d);
       },
-      loading: () => LoadingPanel(message: loadingMessage),
+      loading: () => LoadingPanel(message: loadingMessage, skeleton: loadingSkeleton),
       error: (e, _) {
         if (e is ApiError && e.isNotEnabled) return const ComingSoonPanel();
         return ErrorPanel(error: e, onRetry: onRetry);

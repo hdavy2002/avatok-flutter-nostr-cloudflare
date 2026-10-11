@@ -1,6 +1,6 @@
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
-import '../theme/hf_tokens.dart';
+import '../theme/hf_theme.dart';
 
 enum HfSceneKind { discover, welcome, wallet, profile, call, women, lgbtq, host, verify, success }
 
@@ -73,15 +73,15 @@ class _ScenePainter extends CustomPainter {
   }
 
   void _plant(Canvas c, double x, double y) {
-    _line(c, Offset(x,y), Offset(x+4,y-58), HfColors.forest, 3);
+    _line(c, Offset(x,y), Offset(x+4,y-58), HfColors.lavenderDeep, 3);
     for (var i=0; i<3; i++) {
       final yy=y-14-i*15;
       c.drawOval(Rect.fromCenter(center: Offset(x-7,yy), width: 20, height: 10),
-        Paint()..color=HfColors.forest);
+        Paint()..color=HfColors.lavenderDeep);
       c.drawOval(Rect.fromCenter(center: Offset(x+10,yy-9), width: 20, height: 10),
-        Paint()..color=HfColors.forest);
+        Paint()..color=HfColors.lavenderDeep);
     }
-    _rect(c, Rect.fromLTWH(x-12,y-1,28,25), HfColors.coral, 7);
+    _rect(c, Rect.fromLTWH(x-12,y-1,28,25), HfColors.rose, 7);
   }
   void _spark(Canvas c, Offset p, Color color) {
     _line(c,p.translate(-5,0),p.translate(5,0),color,3);
@@ -109,14 +109,14 @@ class _ScenePainter extends CustomPainter {
         _rect(c,const Rect.fromLTWH(208,10,102,60),HfColors.butter,22);
         _rect(c,const Rect.fromLTWH(208,80,102,60),HfColors.blush,22);
         _rect(c,const Rect.fromLTWH(49,45,116,73),HfColors.ink,16);
-        _rect(c,const Rect.fromLTWH(119,65,55,32),HfColors.coral,10);
+        _rect(c,const Rect.fromLTWH(119,65,55,32),HfColors.rose,10);
         _dot(c,const Offset(134,81),4,HfColors.white);
-        for(var i=0;i<3;i++) _dot(c,Offset(228+i*14.0,37),12,HfColors.butterDeep);
-        _spark(c,const Offset(257,108),HfColors.coral);
+        for(var i=0;i<3;i++) _dot(c,Offset(228+i*14.0,37),12,HfColors.amberDot);
+        _spark(c,const Offset(257,108),HfColors.rose);
         _spark(c,const Offset(42,31),HfColors.white);
       case HfSceneKind.verify:
       case HfSceneKind.success:
-        _rect(c,const Rect.fromLTWH(10,10,300,130),HfColors.mint,26);
+        _rect(c,const Rect.fromLTWH(10,10,300,130),HfColors.sky,26);
         _person(c,83,64,HfColors.butter,scale:0.8);
         _rect(c,const Rect.fromLTWH(178,33,80,89),HfColors.white,20);
         final shield=Path()..moveTo(218,48)..lineTo(242,58)..lineTo(239,86)
@@ -125,13 +125,13 @@ class _ScenePainter extends CustomPainter {
         c.drawPath(shield,Paint()..color=HfColors.lavender);
         _line(c,const Offset(204,77),const Offset(215,87),HfColors.ink);
         _line(c,const Offset(215,87),const Offset(232,67),HfColors.ink);
-        _spark(c,const Offset(275,34),HfColors.coral);
+        _spark(c,const Offset(275,34),HfColors.rose);
       case HfSceneKind.profile:
       case HfSceneKind.host:
         _rect(c,const Rect.fromLTWH(10,10,140,130),HfColors.blush,26);
         _rect(c,const Rect.fromLTWH(160,10,150,62),HfColors.lavender,22);
         _rect(c,const Rect.fromLTWH(160,82,150,58),HfColors.butter,22);
-        _person(c,80,66,HfColors.coral,longHair:true,scale:0.8);
+        _person(c,80,66,HfColors.rose,longHair:true,scale:0.8);
         _line(c,const Offset(179,33),const Offset(266,33),HfColors.ink,5);
         _line(c,const Offset(179,49),const Offset(241,49),HfColors.white,5);
         for(var i=0;i<6;i++) _line(c,Offset(181+i*19.0,108-(i%3)*4),
@@ -141,12 +141,12 @@ class _ScenePainter extends CustomPainter {
       case HfSceneKind.call:
       case HfSceneKind.welcome:
       case HfSceneKind.discover:
-        final shade=kind==HfSceneKind.women ? HfColors.blush : kind==HfSceneKind.lgbtq ? HfColors.lavender : HfColors.mint;
+        final shade=kind==HfSceneKind.women ? HfColors.blush : kind==HfSceneKind.lgbtq ? HfColors.lavender : HfColors.sky;
         _rect(c,const Rect.fromLTWH(10,10,182,130),shade,26);
         _rect(c,const Rect.fromLTWH(202,10,108,60),HfColors.sky,22);
         _rect(c,const Rect.fromLTWH(202,80,108,60),HfColors.lavender,22);
         if (kind==HfSceneKind.call || kind==HfSceneKind.women || kind==HfSceneKind.lgbtq) {
-          _person(c,57,77,HfColors.coral,longHair:kind==HfSceneKind.women,scale:0.65);
+          _person(c,57,77,HfColors.rose,longHair:kind==HfSceneKind.women,scale:0.65);
           _person(c,132,77,HfColors.butter,longHair:true,scale:0.65);
           _bubble(c,const Rect.fromLTWH(75,17,49,24),HfColors.white);
         } else {
@@ -154,9 +154,9 @@ class _ScenePainter extends CustomPainter {
           _plant(c,157,104);
         }
         _bubble(c,const Rect.fromLTWH(224,24,64,29),HfColors.white);
-        _dot(c,const Offset(255,109),20,HfColors.butterDeep);
+        _dot(c,const Offset(255,109),20,HfColors.amberDot);
         _dot(c,const Offset(266,101),18,HfColors.lavender);
-        _spark(c,const Offset(284,116),HfColors.coral);
+        _spark(c,const Offset(284,116),HfColors.rose);
         _spark(c,const Offset(32,38),HfColors.white);
     }
     c.restore();

@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../strings.dart';
-import '../theme/hf_tokens.dart';
+import '../theme/hf_theme.dart';
 import 'hf_button.dart';
 import 'hf_scene.dart';
 
@@ -37,17 +37,17 @@ class PermissionExplainer extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return SingleChildScrollView(
-      padding: const EdgeInsets.all(HfSpacing.page),
+      padding: const EdgeInsets.all(HfSpacing.pageWide),
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           const HfScene(kind: HfSceneKind.verify, height: 140),
-          Icon(icon, size: 40, color: HfColors.ink),
+          Icon(icon, size: 40, color: HfText.of(context, HfText.body).color),
           const SizedBox(height: 16),
-          Text(title, style: HfText.title, textAlign: TextAlign.center),
+          Text(title, style: HfText.of(context, HfText.title), textAlign: TextAlign.center),
           const SizedBox(height: 8),
-          Text(body, style: HfText.bodyText, textAlign: TextAlign.center),
+          Text(body, style: HfText.of(context, HfText.body), textAlign: TextAlign.center),
           const SizedBox(height: 24),
           if (denied)
             HfButton(label: Strings.openSettings, onPressed: onOpenSettings)

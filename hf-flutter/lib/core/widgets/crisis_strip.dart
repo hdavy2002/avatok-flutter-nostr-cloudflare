@@ -2,8 +2,9 @@ import 'package:flutter/material.dart';
 
 import '../links.dart';
 import '../strings.dart';
-import '../theme/hf_tokens.dart';
+import '../theme/hf_theme.dart';
 import 'hf_button.dart';
+import 'hf_card.dart';
 
 /// Tele-MANAS 14416 and 112 as `tel:` links (HF-WELL-8, HF-WELL-10). Shown on Home, the welcome screen and Me.
 /// The person taps Call in the dialer themselves; the app never places a call.
@@ -18,19 +19,13 @@ class CrisisStrip extends StatelessWidget {
           kind: HfButtonKind.secondary,
           onPressed: () => LinkOpener.instance.tel(number),
         );
-    return Container(
+    return SizedBox(
       width: double.infinity,
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: HfColors.white,
-        borderRadius: BorderRadius.circular(HfRadius.card),
-        border: Border.all(color: HfColors.line),
-        boxShadow: HfShadows.card,
-      ),
+      child: HfCard(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(Strings.crisisTitle, style: HfText.subtitle),
+          Text(Strings.crisisTitle, style: HfText.of(context, HfText.subsection)),
           const SizedBox(height: 12),
           // At large text sizes the two buttons stack, so the labels never overflow.
           if (MediaQuery.textScalerOf(context).scale(14) > 22 || MediaQuery.sizeOf(context).width < 380)
@@ -47,6 +42,7 @@ class CrisisStrip extends StatelessWidget {
               ],
             ),
         ],
+      ),
       ),
     );
   }

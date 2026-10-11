@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../router/nav.dart';
-import '../theme/hf_tokens.dart';
+import '../theme/hf_theme.dart';
 import 'hf_card.dart';
 
 /// Placeholder body of a screen that a later issue builds. Replace the whole widget in
@@ -36,25 +36,25 @@ class StubScreen extends StatelessWidget {
       ),
       body: SafeArea(
         child: ListView(
-          padding: const EdgeInsets.all(HfSpacing.page),
+          padding: const EdgeInsets.all(HfSpacing.pageWide),
           children: [
             HfCard(
-              color: HfColors.lilac,
+              color: HfColors.lavender,
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(title, style: HfText.title),
+                  Text(title, style: HfText.title.copyWith(color: HfColors.ink)),
                   const SizedBox(height: 8),
-                  Text('This screen is built in $issue.', style: HfText.bodyText),
+                  Text('This screen is built in $issue.', style: HfText.body.copyWith(color: HfColors.ink)),
                   for (final e in details.entries) ...[
                     const SizedBox(height: 8),
-                    Text('${e.key}: ${e.value}', style: HfText.note),
+                    Text('${e.key}: ${e.value}', style: HfText.note.copyWith(color: HfColors.inkSoft)),
                   ],
                 ],
               ),
             ),
             for (final c in children) ...[
-              const SizedBox(height: HfSpacing.gapLarge),
+              const SizedBox(height: HfSpacing.pageWide),
               c,
             ],
           ],

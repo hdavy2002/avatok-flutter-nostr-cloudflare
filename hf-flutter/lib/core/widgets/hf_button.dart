@@ -1,19 +1,17 @@
 import 'package:flutter/material.dart';
 
-import '../theme/hf_tokens.dart';
-
 enum HfButtonKind {
-  /// Coral fill: the one main action of a screen.
+  /// Ink fill, white text: the one main action of a screen.
   primary,
 
-  /// Ink on a white outlined surface.
+  /// 2 px ink outline.
   secondary,
 
-  /// Orchid text, no box.
+  /// Link-coloured text, no box.
   text,
 }
 
-/// A pill button, full width by default, at least 52 dp high and free to grow with its label.
+/// A rounded (radius 20) button, full width by default, at least 56 dp high and free to grow with its label.
 /// `loading` shows a spinner and disables the button, so a second tap cannot double-submit.
 class HfButton extends StatelessWidget {
   const HfButton({
@@ -36,13 +34,16 @@ class HfButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final VoidCallback? action = loading ? null : onPressed;
+    final spinnerColor = kind == HfButtonKind.primary
+        ? Theme.of(context).colorScheme.onPrimary
+        : Theme.of(context).colorScheme.onSurface;
     final Widget content = loading
         ? SizedBox(
             height: 22,
             width: 22,
             child: CircularProgressIndicator(
               strokeWidth: 2.5,
-              color: HfColors.ink,
+              color: spinnerColor,
             ),
           )
         : Text(label, textAlign: TextAlign.center);

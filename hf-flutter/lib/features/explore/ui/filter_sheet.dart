@@ -16,7 +16,7 @@ Future<HostFilters?> showFilterSheet(BuildContext context, HostFilters initial) 
     useSafeArea: true,
     backgroundColor: HfColors.cream,
     shape: const RoundedRectangleBorder(
-      borderRadius: BorderRadius.vertical(top: Radius.circular(HfRadius.pill)),
+      borderRadius: BorderRadius.vertical(top: Radius.circular(HfRadius.sheet)),
     ),
     builder: (_) => FilterSheet(initial: initial),
   );
