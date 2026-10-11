@@ -37,12 +37,14 @@ class PlayBillingAdapter implements BillingAdapter {
             c.add(_map(d));
           }
         },
-        onError: (Object e) => c.add(StorePurchase(
-          productId: '',
-          purchaseToken: '',
-          status: StorePurchaseStatus.error,
-          errorMessage: '$e',
-        )),
+        onError: (Object e) => c.add(
+          StorePurchase(
+            productId: '',
+            purchaseToken: '',
+            status: StorePurchaseStatus.error,
+            errorMessage: '$e',
+          ),
+        ),
       );
     } catch (_) {
       // No billing on this device: the stream just stays quiet.
@@ -82,7 +84,9 @@ class PlayBillingAdapter implements BillingAdapter {
   }
 
   @override
-  Future<Map<String, StoreProduct>> queryProducts(Set<String> productIds) async {
+  Future<Map<String, StoreProduct>> queryProducts(
+    Set<String> productIds,
+  ) async {
     if (productIds.isEmpty) return const <String, StoreProduct>{};
     final resp = await _iap.queryProductDetails(productIds);
     if (resp.error != null && resp.productDetails.isEmpty) {
@@ -103,13 +107,19 @@ class PlayBillingAdapter implements BillingAdapter {
   }
 
   @override
-  Future<bool> buy(StoreProduct product, {required String obfuscatedAccountId}) async {
+  Future<bool> buy(
+    StoreProduct product, {
+    required String obfuscatedAccountId,
+  }) async {
     final details = _details[product.productId];
     if (details == null) return false;
     try {
       return await _iap.buyConsumable(
         // applicationUserName is the Play obfuscatedAccountId on Android.
-        purchaseParam: PurchaseParam(productDetails: details, applicationUserName: obfuscatedAccountId),
+        purchaseParam: PurchaseParam(
+          productDetails: details,
+          applicationUserName: obfuscatedAccountId,
+        ),
         autoConsume: false,
       );
     } catch (_) {

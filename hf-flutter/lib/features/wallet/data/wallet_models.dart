@@ -45,33 +45,59 @@ class ByValue {
   final int micro;
 
   factory ByValue.fromJson(Map<String, dynamic> j) {
-    final micro = j['micro'] != null ? _int(j['micro']) : (((_num(j['tokens']) ?? 0) * 1000000).round());
-    return ByValue(valuePaisePerToken: _int(j['valuePaisePerToken']), micro: micro);
+    final micro = j['micro'] != null
+        ? _int(j['micro'])
+        : (((_num(j['tokens']) ?? 0) * 1000000).round());
+    return ByValue(
+      valuePaisePerToken: _int(j['valuePaisePerToken']),
+      micro: micro,
+    );
   }
 }
 
 class TokenDebt {
-  const TokenDebt({required this.tokensText, required this.valuePaise, required this.open});
+  const TokenDebt({
+    required this.tokensText,
+    required this.valuePaise,
+    required this.open,
+  });
 
   final String tokensText;
   final int valuePaise;
   final bool open;
 
-  static const TokenDebt none = TokenDebt(tokensText: '0.00', valuePaise: 0, open: false);
+  static const TokenDebt none = TokenDebt(
+    tokensText: '0.00',
+    valuePaise: 0,
+    open: false,
+  );
 
   factory TokenDebt.fromJson(Object? v) {
     if (v is! Map) return none;
     final j = Map<String, dynamic>.from(v);
     final micro = _int(j['micro']);
     final paise = _int(j['valuePaise']);
-    final text = j['micro'] != null ? Money.microTokens(micro) : (_str(j['tokens']) ?? '0.00');
-    return TokenDebt(tokensText: text, valuePaise: paise, open: j['open'] == true || paise > 0 || micro > 0);
+    final text = j['micro'] != null
+        ? Money.microTokens(micro)
+        : (_str(j['tokens']) ?? '0.00');
+    return TokenDebt(
+      tokensText: text,
+      valuePaise: paise,
+      open: j['open'] == true || paise > 0 || micro > 0,
+    );
   }
 }
 
 /// One history line. Token mode carries [tokens] (`+100.00`, `-3.20`); old money carries [rupees].
 class HistoryItem {
-  const HistoryItem({required this.at, required this.kind, required this.label, this.tokens, this.rupees, this.callId});
+  const HistoryItem({
+    required this.at,
+    required this.kind,
+    required this.label,
+    this.tokens,
+    this.rupees,
+    this.callId,
+  });
 
   final DateTime? at;
   final String kind;
@@ -93,19 +119,26 @@ class HistoryItem {
   }
 
   factory HistoryItem.fromJson(Map<String, dynamic> j) => HistoryItem(
-        at: _date(j['at']),
-        kind: _str(j['kind']) ?? '',
-        label: _str(j['label']) ?? '',
-        tokens: _str(j['tokens']),
-        rupees: _num(j['rupees']),
-        callId: _str(j['callId']),
-      );
+    at: _date(j['at']),
+    kind: _str(j['kind']) ?? '',
+    label: _str(j['label']) ?? '',
+    tokens: _str(j['tokens']),
+    rupees: _num(j['rupees']),
+    callId: _str(j['callId']),
+  );
 }
 
 /// A Google Play purchase record. The server's `purchases[]` (when present) carries the order id; until
 /// then the records are built from history lines of kind `purchase` (no order id).
 class PurchaseRecord {
-  const PurchaseRecord({this.orderId, required this.label, this.tokens, this.paidPaise, this.at, this.state});
+  const PurchaseRecord({
+    this.orderId,
+    required this.label,
+    this.tokens,
+    this.paidPaise,
+    this.at,
+    this.state,
+  });
 
   final String? orderId;
   final String label;
@@ -176,26 +209,42 @@ class WalletData {
   }
 
   factory WalletData.fromJson(Map<String, dynamic> j) {
-    final history = [for (final m in _maps(j['history'])) HistoryItem.fromJson(m)];
-    var purchases = [for (final m in _maps(j['purchases'])) PurchaseRecord.fromJson(m)];
+    final history = [
+      for (final m in _maps(j['history'])) HistoryItem.fromJson(m),
+    ];
+    var purchases = [
+      for (final m in _maps(j['purchases'])) PurchaseRecord.fromJson(m),
+    ];
     if (purchases.isEmpty) {
       // Until the server sends purchases[] (order ids), the token history says which lines were purchases.
       purchases = [
         for (final h in history)
           if (h.kind == 'purchase')
-            PurchaseRecord(label: 'Paid via Google Play', tokens: h.tokens == null ? null : '₹${h.tokens!.replaceFirst('+', '')}', at: h.at),
+            PurchaseRecord(
+              label: 'Paid via Google Play',
+              tokens: h.tokens == null
+                  ? null
+                  : '₹${h.tokens!.replaceFirst('+', '')}',
+              at: h.at,
+            ),
       ];
     }
     if (j['mode'] == 'tokens' && j['tokens'] is Map) {
       final t = Map<String, dynamic>.from(j['tokens'] as Map);
       final balanceMicro = _int(t['balanceMicro']);
-      final availableMicro = t['availableMicro'] == null ? balanceMicro : _int(t['availableMicro']);
+      final availableMicro = t['availableMicro'] == null
+          ? balanceMicro
+          : _int(t['availableMicro']);
       return WalletData(
         tokenMode: true,
         balanceMicro: balanceMicro,
         availableMicro: availableMicro,
-        balanceText: t['balanceMicro'] != null ? Money.microTokens(balanceMicro) : (_str(t['balance']) ?? '0.00'),
-        availableText: t['availableMicro'] != null ? Money.microTokens(availableMicro) : (_str(t['available']) ?? '0.00'),
+        balanceText: t['balanceMicro'] != null
+            ? Money.microTokens(balanceMicro)
+            : (_str(t['balance']) ?? '0.00'),
+        availableText: t['availableMicro'] != null
+            ? Money.microTokens(availableMicro)
+            : (_str(t['available']) ?? '0.00'),
         testTokensText: _str(t['testTokens']) ?? '0.00',
         byValue: [for (final m in _maps(t['byValue'])) ByValue.fromJson(m)],
         debt: TokenDebt.fromJson(t['debt']),
@@ -217,7 +266,13 @@ class WalletData {
 /// A token pack from `GET /api/hf/tokens/products`. There is NO price here on purpose: the price beside a
 /// Play button is Play's own `ProductDetails.price`.
 class TokenPack {
-  const TokenPack({required this.productId, required this.tokens, this.redemptionPaisePerToken, this.purchasePaisePerToken, this.creditPaise});
+  const TokenPack({
+    required this.productId,
+    required this.tokens,
+    this.redemptionPaisePerToken,
+    this.purchasePaisePerToken,
+    this.creditPaise,
+  });
 
   final String productId;
   final num tokens;
@@ -233,12 +288,16 @@ class TokenPack {
   final int? creditPaise;
 
   factory TokenPack.fromJson(Map<String, dynamic> j) => TokenPack(
-        productId: _str(j['productId']) ?? '',
-        tokens: _num(j['tokens']) ?? 0,
-        redemptionPaisePerToken: j['redemptionPaisePerToken'] == null ? null : _int(j['redemptionPaisePerToken']),
-        purchasePaisePerToken: j['purchasePaisePerToken'] == null ? null : _int(j['purchasePaisePerToken']),
-        creditPaise: j['creditPaise'] == null ? null : _int(j['creditPaise']),
-      );
+    productId: _str(j['productId']) ?? '',
+    tokens: _num(j['tokens']) ?? 0,
+    redemptionPaisePerToken: j['redemptionPaisePerToken'] == null
+        ? null
+        : _int(j['redemptionPaisePerToken']),
+    purchasePaisePerToken: j['purchasePaisePerToken'] == null
+        ? null
+        : _int(j['purchasePaisePerToken']),
+    creditPaise: j['creditPaise'] == null ? null : _int(j['creditPaise']),
+  );
 }
 
 class TokenCatalog {
@@ -248,23 +307,28 @@ class TokenCatalog {
   final List<TokenPack> packs;
 
   factory TokenCatalog.fromJson(Map<String, dynamic> j) => TokenCatalog(
-        enabled: j['enabled'] == true,
-        packs: [
-          for (final m in _maps(j['products']))
-            if (_str(m['productId']) != null) TokenPack.fromJson(m),
-        ],
-      );
+    enabled: j['enabled'] == true,
+    packs: [
+      for (final m in _maps(j['products']))
+        if (_str(m['productId']) != null) TokenPack.fromJson(m),
+    ],
+  );
 }
 
 /// `POST /api/hf/tokens/play/prepare` answer.
 class PreparedPurchase {
-  const PreparedPurchase({required this.obfuscatedAccountId, required this.confirmAbovePaise, required this.productId});
+  const PreparedPurchase({
+    required this.obfuscatedAccountId,
+    required this.confirmAbovePaise,
+    required this.productId,
+  });
 
   final String obfuscatedAccountId;
   final int confirmAbovePaise;
   final String productId;
 
-  factory PreparedPurchase.fromJson(Map<String, dynamic> j, String productId) => PreparedPurchase(
+  factory PreparedPurchase.fromJson(Map<String, dynamic> j, String productId) =>
+      PreparedPurchase(
         obfuscatedAccountId: _str(j['obfuscatedAccountId']) ?? '',
         confirmAbovePaise: _int(j['confirmAbovePaise']),
         productId: productId,
@@ -275,7 +339,12 @@ enum VerifyStatus { consumed, credited, pending, canceled, refunded, unknown }
 
 /// `POST /api/hf/tokens/play/verify` answer.
 class VerifyResult {
-  const VerifyResult({required this.status, required this.duplicate, this.tokens, this.orderId});
+  const VerifyResult({
+    required this.status,
+    required this.duplicate,
+    this.tokens,
+    this.orderId,
+  });
 
   final VerifyStatus status;
   final bool duplicate;
@@ -283,7 +352,8 @@ class VerifyResult {
   final String? orderId;
 
   /// Tokens were credited (now or earlier): `consumed` and `credited` are both success.
-  bool get isCredited => status == VerifyStatus.consumed || status == VerifyStatus.credited;
+  bool get isCredited =>
+      status == VerifyStatus.consumed || status == VerifyStatus.credited;
 
   factory VerifyResult.fromJson(Map<String, dynamic> j) {
     final VerifyStatus s;
@@ -302,7 +372,12 @@ class VerifyResult {
       default:
         s = VerifyStatus.unknown;
     }
-    return VerifyResult(status: s, duplicate: j['duplicate'] == true, tokens: _num(j['tokens']), orderId: _str(j['orderId']));
+    return VerifyResult(
+      status: s,
+      duplicate: j['duplicate'] == true,
+      tokens: _num(j['tokens']),
+      orderId: _str(j['orderId']),
+    );
   }
 }
 
@@ -325,17 +400,23 @@ class RefundLot {
   final DateTime? boughtAt;
 
   factory RefundLot.fromJson(Map<String, dynamic> j) => RefundLot(
-        lotId: _str(j['lotId']) ?? '',
-        tokens: _str(j['tokens']) ?? '0.00',
-        paidRupees: _num(j['paid']) ?? 0,
-        refundRupees: _num(j['refund']) ?? 0,
-        wholeOrder: j['wholeOrder'] == true,
-        boughtAt: _date(j['boughtAt']),
-      );
+    lotId: _str(j['lotId']) ?? '',
+    tokens: _str(j['tokens']) ?? '0.00',
+    paidRupees: _num(j['paid']) ?? 0,
+    refundRupees: _num(j['refund']) ?? 0,
+    wholeOrder: j['wholeOrder'] == true,
+    boughtAt: _date(j['boughtAt']),
+  );
 }
 
 class RefundRequest {
-  const RefundRequest({required this.id, required this.amountRupees, required this.status, this.reason, this.createdAt});
+  const RefundRequest({
+    required this.id,
+    required this.amountRupees,
+    required this.status,
+    this.reason,
+    this.createdAt,
+  });
 
   final String id;
   final num amountRupees;
@@ -364,12 +445,12 @@ class RefundRequest {
   }
 
   factory RefundRequest.fromJson(Map<String, dynamic> j) => RefundRequest(
-        id: _str(j['id']) ?? '',
-        amountRupees: _num(j['amount']) ?? 0,
-        status: _str(j['status']) ?? '',
-        reason: _str(j['reason']),
-        createdAt: _date(j['createdAt']),
-      );
+    id: _str(j['id']) ?? '',
+    amountRupees: _num(j['amount']) ?? 0,
+    status: _str(j['status']) ?? '',
+    reason: _str(j['reason']),
+    createdAt: _date(j['createdAt']),
+  );
 }
 
 /// `GET /api/hf/wallet/refunds`.
@@ -392,22 +473,32 @@ class RefundsInfo {
   /// Old rupee money only: how much unused top-up money can go back.
   final num refundableRupees;
 
-  static const RefundsInfo off =
-      RefundsInfo(enabled: false, tokenMode: false, windowDays: 180, lots: <RefundLot>[], requests: <RefundRequest>[]);
+  static const RefundsInfo off = RefundsInfo(
+    enabled: false,
+    tokenMode: false,
+    windowDays: 180,
+    lots: <RefundLot>[],
+    requests: <RefundRequest>[],
+  );
 
   factory RefundsInfo.fromJson(Map<String, dynamic> j) => RefundsInfo(
-        enabled: j['enabled'] == true,
-        tokenMode: j['mode'] == 'tokens',
-        refundableRupees: _num(j['refundable']) ?? 0,
-        windowDays: j['windowDays'] == null ? 180 : _int(j['windowDays'], 180),
-        lots: [for (final m in _maps(j['lots'])) RefundLot.fromJson(m)],
-        requests: [for (final m in _maps(j['requests'])) RefundRequest.fromJson(m)],
-      );
+    enabled: j['enabled'] == true,
+    tokenMode: j['mode'] == 'tokens',
+    refundableRupees: _num(j['refundable']) ?? 0,
+    windowDays: j['windowDays'] == null ? 180 : _int(j['windowDays'], 180),
+    lots: [for (final m in _maps(j['lots'])) RefundLot.fromJson(m)],
+    requests: [for (final m in _maps(j['requests'])) RefundRequest.fromJson(m)],
+  );
 }
 
 /// One receipt of old rupee money (`GET /api/hf/wallet/receipts`).
 class WalletReceipt {
-  const WalletReceipt({required this.id, required this.number, required this.amountRupees, this.issuedAt});
+  const WalletReceipt({
+    required this.id,
+    required this.number,
+    required this.amountRupees,
+    this.issuedAt,
+  });
 
   final String id;
   final String number;
@@ -415,14 +506,27 @@ class WalletReceipt {
   final DateTime? issuedAt;
 
   factory WalletReceipt.fromJson(Map<String, dynamic> j) => WalletReceipt(
-        id: _str(j['id']) ?? '',
-        number: _str(j['number']) ?? '',
-        amountRupees: _num(j['amountRupees']) ?? 0,
-        issuedAt: _date(j['issuedAt']),
-      );
+    id: _str(j['id']) ?? '',
+    number: _str(j['number']) ?? '',
+    amountRupees: _num(j['amountRupees']) ?? 0,
+    issuedAt: _date(j['issuedAt']),
+  );
 }
 
-const List<String> _months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+const List<String> _months = [
+  'Jan',
+  'Feb',
+  'Mar',
+  'Apr',
+  'May',
+  'Jun',
+  'Jul',
+  'Aug',
+  'Sep',
+  'Oct',
+  'Nov',
+  'Dec',
+];
 
 /// `10 Oct 2026`. Local time. Display only.
 String shortDate(DateTime? d) {

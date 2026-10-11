@@ -1,21 +1,26 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/api/api_error.dart';
 import '../../../core/format/money.dart';
-import '../../../core/theme/hf_tokens.dart';
+import '../../../core/theme/hf_theme.dart';
 import '../../../core/widgets/widgets.dart';
 import '../billing/purchase_controller.dart';
 import '../data/pack_offer.dart';
 import '../wallet_providers.dart';
+import 'wallet_surface.dart';
 
 /// Copy of the Add money section.
 abstract final class BuyCopy {
   static const String title = 'Add money';
   static const String comingSoon = 'Adding money is coming soon';
-  static const String comingSoonBody = 'We will let you know here as soon as you can add money.';
-  static const String noStore = 'Google Play is not available on this device, so you cannot add money here.';
-  static const String noPrices = 'We could not load the prices from Google Play.';
+  static const String comingSoonBody =
+      'We will let you know here as soon as you can add money.';
+  static const String noStore =
+      'Google Play is not available on this device, so you cannot add money here.';
+  static const String noPrices =
+      'We could not load the prices from Google Play.';
   static const String unavailable = 'Not available';
   static const String loading = 'Loading packs…';
   static const String preparing = 'Getting ready…';
@@ -23,89 +28,238 @@ abstract final class BuyCopy {
   static const String areYouSure = 'Are you sure?';
   static const String yesBuy = 'Yes, buy';
   static const String cancel = 'Cancel';
-  static const String paidViaPlay = 'All prices shown include 18% GST. You pay through Google Play.';
+  static const String paidViaPlay = 'Paid via Google Play';
+  static const String popular = 'Popular';
 
   /// HF-GST-NOTE-1 / rulebook HF-PAY-19 (owner decision 2026-10-11): pack prices include 18% GST.
-  static const String gstSubtitle = 'The price shown includes 18% GST.';
-  static const String gstOnPack = 'Includes 18% GST';
+  /// Wording follows the Wallet mockup.
+  static const String gstSubtitle = 'Price includes 18% GST.';
 }
 
-/// The packs, with Google Play's own price on each button, and the whole buy flow.
+/// Tile colours in mockup order: sky, butter, peach, lavender.
+const List<HfTint> _tileTints = [
+  HfTint.sky,
+  HfTint.butter,
+  HfTint.peach,
+  HfTint.lavender,
+];
+
+/// Marks the pack the mockup calls "Popular" (the one that adds Rs 204). A badge only: it never decides a price.
+bool _isPopular(PackOffer o) =>
+    o.pack.creditPaise == 20400 || o.store?.priceMicros == 240000000;
+
+/// "Add money": the packs as 2x2 tiles with Google Play's own price, one Pay button, and the whole buy flow.
 class BuySection extends ConsumerWidget {
   const BuySection({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final offers = ref.watch(packOffersProvider);
-    final purchase = ref.watch(purchaseControllerProvider);
     return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        const Text(BuyCopy.title, style: HfText.title),
-        const SizedBox(height: 2),
-        const Text(BuyCopy.gstSubtitle, key: ValueKey<String>('gst-subtitle'), style: HfText.note),
-        const SizedBox(height: HfSpacing.gap),
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.baseline,
+          textBaseline: TextBaseline.alphabetic,
+          children: [
+            const Flexible(child: WalletSectionTitle(BuyCopy.title)),
+            const SizedBox(width: HfSpacing.lg),
+            Flexible(
+              child: Text(
+                BuyCopy.paidViaPlay,
+                textAlign: TextAlign.end,
+                style: HfText.of(
+                  context,
+                  HfText.label,
+                ).copyWith(fontWeight: FontWeight.w400),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 16),
         offers.when(
           skipLoadingOnReload: true,
           skipLoadingOnRefresh: true,
-          loading: () => const _Plain(text: BuyCopy.loading, loading: true),
-          error: (e, _) => HfCard(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  e is ApiError ? e.userMessage : 'We could not load the packs. Please try again.',
-                  style: HfText.bodyText,
-                ),
-                const SizedBox(height: 12),
-                HfButton(label: 'Try again', kind: HfButtonKind.secondary, onPressed: () => ref.invalidate(packOffersProvider)),
-              ],
-            ),
+          loading: () => const _PacksSkeleton(),
+          error: (e, _) => _Message(
+            text: e is ApiError
+                ? e.userMessage
+                : 'We could not load the packs. Please try again.',
+            onRetry: () => ref.invalidate(packOffersProvider),
           ),
-          data: (o) => _Packs(offers: o, purchase: purchase),
+          data: (o) => _Packs(offers: o),
         ),
       ],
     );
   }
 }
 
-class _Plain extends StatelessWidget {
-  const _Plain({required this.text, this.loading = false});
+class _PacksSkeleton extends StatelessWidget {
+  const _PacksSkeleton();
+
+  @override
+  Widget build(BuildContext context) {
+    Widget tile() => const Expanded(
+      child: HfSkeleton.box(height: 76, radius: HfRadius.tile),
+    );
+    return Semantics(
+      label: BuyCopy.loading,
+      child: Column(
+        children: [
+          Row(
+            children: [
+              tile(),
+              const SizedBox(width: HfSpacing.md),
+              tile(),
+            ],
+          ),
+          const SizedBox(height: HfSpacing.md),
+          Row(
+            children: [
+              tile(),
+              const SizedBox(width: HfSpacing.md),
+              tile(),
+            ],
+          ),
+          const SizedBox(height: 16),
+          const HfSkeleton.box(height: 56, radius: HfRadius.control),
+        ],
+      ),
+    );
+  }
+}
+
+class _Message extends StatelessWidget {
+  const _Message({required this.text, this.onRetry}) : loading = false;
 
   final String text;
+  final VoidCallback? onRetry;
   final bool loading;
 
   @override
-  Widget build(BuildContext context) => HfCard(
-        child: Row(
-          children: [
-            if (loading) ...[
-              const SizedBox(height: 22, width: 22, child: CircularProgressIndicator(strokeWidth: 2.5)),
-              const SizedBox(width: 12),
+  Widget build(BuildContext context) {
+    return WalletSurface(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              if (loading) ...[
+                const SizedBox(
+                  height: 22,
+                  width: 22,
+                  child: CircularProgressIndicator(strokeWidth: 2.5),
+                ),
+                const SizedBox(width: 12),
+              ],
+              Expanded(
+                child: Text(text, style: HfText.of(context, HfText.body)),
+              ),
             ],
-            Expanded(child: Text(text, style: HfText.bodyText)),
+          ),
+          if (onRetry != null) ...[
+            const SizedBox(height: 12),
+            HfButton(
+              label: 'Try again',
+              kind: HfButtonKind.secondary,
+              onPressed: onRetry,
+            ),
           ],
-        ),
-      );
+        ],
+      ),
+    );
+  }
 }
 
-class _Packs extends ConsumerWidget {
-  const _Packs({required this.offers, required this.purchase});
+class _Packs extends ConsumerStatefulWidget {
+  const _Packs({required this.offers});
 
   final PackOffers offers;
-  final PurchaseState purchase;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<_Packs> createState() => _PacksState();
+}
+
+class _PacksState extends ConsumerState<_Packs> {
+  String? _picked;
+
+  /// Double-tap guard: true from the tap until the buy flow has handed over to Play.
+  bool _starting = false;
+
+  /// The tapped pack; else the popular one; else the first one Play can sell; else the first.
+  PackOffer? _selected(List<PackOffer> all) {
+    if (all.isEmpty) return null;
+    for (final o in all) {
+      if (o.productId == _picked) return o;
+    }
+    for (final o in all) {
+      if (_isPopular(o) && o.store != null) return o;
+    }
+    for (final o in all) {
+      if (o.store != null) return o;
+    }
+    return all.first;
+  }
+
+  Future<void> _pay(PackOffer offer) async {
+    if (_starting) return;
+    setState(() => _starting = true);
+    try {
+      await ref
+          .read(purchaseControllerProvider.notifier)
+          .buy(
+            offer,
+            confirm: (prepared, pricePaise) async {
+              if (!mounted) return false;
+              final ok = await showDialog<bool>(
+                context: context,
+                builder: (ctx) => AlertDialog(
+                  title: const Text(BuyCopy.areYouSure),
+                  content: Text(
+                    'You are about to add ${offer.pack.creditPaise == null ? 'money' : Money.paise(offer.pack.creditPaise!)} to your wallet. You pay ${offer.priceText ?? ''} (includes 18% GST) through Google Play.',
+                    style: HfText.body,
+                  ),
+                  actions: [
+                    TextButton(
+                      onPressed: () => Navigator.of(ctx).pop(false),
+                      child: const Text(BuyCopy.cancel),
+                    ),
+                    ElevatedButton(
+                      onPressed: () => Navigator.of(ctx).pop(true),
+                      child: const Text(BuyCopy.yesBuy),
+                    ),
+                  ],
+                ),
+              );
+              return ok == true;
+            },
+          );
+    } finally {
+      if (mounted) setState(() => _starting = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final offers = widget.offers;
+    final purchase = ref.watch(purchaseControllerProvider);
     if (!offers.enabled || offers.offers.isEmpty) {
-      return HfCard(
-        color: HfColors.butter,
+      return WalletSurface(
+        color: HfTint.butter.bg(context),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(BuyCopy.comingSoon, style: HfText.subtitle),
+            Text(
+              BuyCopy.comingSoon,
+              style: HfText.subsection.copyWith(
+                color: HfTint.butter.valueInk(context),
+              ),
+            ),
             const SizedBox(height: 6),
-            Text(BuyCopy.comingSoonBody, style: HfText.bodyText.copyWith(color: HfColors.mauve)),
+            Text(
+              BuyCopy.comingSoonBody,
+              style: HfText.body.copyWith(color: HfTint.butter.ink(context)),
+            ),
           ],
         ),
       );
@@ -115,110 +269,218 @@ class _Packs extends ConsumerWidget {
       PurchasePhase.verifying => BuyCopy.verifying,
       _ => null,
     };
+    final working = _starting || purchase.phase != PurchasePhase.idle;
+    final selected = _selected(offers.offers);
+    final price = selected?.priceText;
+    final canPay =
+        selected != null && price != null && offers.storeAvailable && !working;
+    final tilesEnabled = offers.storeAvailable && !working;
+
+    final tiles = <Widget>[
+      for (var i = 0; i < offers.offers.length; i++)
+        _PackTile(
+          offer: offers.offers[i],
+          tint: _tileTints[i % _tileTints.length],
+          selected: offers.offers[i].productId == selected?.productId,
+          popular: _isPopular(offers.offers[i]),
+          onTap: tilesEnabled
+              ? () {
+                  HapticFeedback.selectionClick();
+                  setState(() => _picked = offers.offers[i].productId);
+                }
+              : null,
+        ),
+    ];
+
     return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         if (!offers.storeAvailable) ...[
-          const _Plain(text: BuyCopy.noStore),
-          const SizedBox(height: HfSpacing.gap),
+          const _Message(text: BuyCopy.noStore),
+          const SizedBox(height: 16),
         ],
         if (offers.storeError) ...[
-          HfCard(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+          _Message(
+            text: BuyCopy.noPrices,
+            onRetry: () => ref.invalidate(packOffersProvider),
+          ),
+          const SizedBox(height: 16),
+        ],
+        for (var i = 0; i < tiles.length; i += 2) ...[
+          if (i > 0) const SizedBox(height: HfSpacing.md),
+          IntrinsicHeight(
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                const Text(BuyCopy.noPrices, style: HfText.bodyText),
-                const SizedBox(height: 12),
-                HfButton(label: 'Try again', kind: HfButtonKind.secondary, onPressed: () => ref.invalidate(packOffersProvider)),
+                Expanded(child: tiles[i]),
+                const SizedBox(width: HfSpacing.md),
+                Expanded(
+                  child: i + 1 < tiles.length
+                      ? tiles[i + 1]
+                      : const SizedBox.shrink(),
+                ),
               ],
             ),
           ),
-          const SizedBox(height: HfSpacing.gap),
         ],
+        const SizedBox(height: 16),
         if (phaseText != null) ...[
-          _Plain(text: phaseText, loading: true),
-          const SizedBox(height: HfSpacing.gap),
+          Semantics(
+            liveRegion: true,
+            child: Text(
+              phaseText,
+              textAlign: TextAlign.center,
+              style: HfText.of(context, HfText.note),
+            ),
+          ),
+          const SizedBox(height: HfSpacing.sm),
         ],
-        LayoutBuilder(builder: (context, constraints) {
-          final columns = constraints.maxWidth >= 620 && MediaQuery.textScalerOf(context).scale(14) <= 21 ? 2 : 1;
-          final width = (constraints.maxWidth - (columns - 1) * HfSpacing.gap) / columns;
-          return Wrap(spacing: HfSpacing.gap, runSpacing: HfSpacing.gap, children: [
-            for (final o in offers.offers) SizedBox(width: width,
-              child: _PackCard(offer: o, enabled: offers.storeAvailable && !purchase.busy && o.store != null)),
-          ]);
-        }),
-        const SizedBox(height: HfSpacing.gap),
-        const Text(BuyCopy.paidViaPlay, style: HfText.note),
+        // The label carries Play's own price string. No price is ever typed or taken from our server.
+        HfButton(
+          key: const ValueKey<String>('pay-button'),
+          label: price == null
+              ? 'Pay with Google Play'
+              : 'Pay $price with Google Play',
+          loading: working,
+          onPressed: canPay ? () => _pay(selected) : null,
+        ),
+        const SizedBox(height: HfSpacing.md),
+        Text(
+          BuyCopy.gstSubtitle,
+          key: const ValueKey<String>('gst-subtitle'),
+          textAlign: TextAlign.center,
+          style: HfText.of(
+            context,
+            HfText.label,
+          ).copyWith(fontWeight: FontWeight.w400),
+        ),
       ],
     );
   }
 }
 
-class _PackCard extends ConsumerWidget {
-  const _PackCard({required this.offer, required this.enabled});
+class _PackTile extends StatelessWidget {
+  const _PackTile({
+    required this.offer,
+    required this.tint,
+    required this.selected,
+    required this.popular,
+    required this.onTap,
+  });
 
   final PackOffer offer;
-  final bool enabled;
+  final HfTint tint;
+  final bool selected;
+  final bool popular;
+  final VoidCallback? onTap;
 
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final credit = offer.pack.creditPaise;
-    final price = offer.priceText;
-    return HfCard(
-      key: ValueKey<String>('pack-${offer.productId}'),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(color: HfColors.mint, borderRadius: BorderRadius.circular(18)),
-            child: const Icon(Icons.forum_rounded, color: HfColors.ink, size: 28)),
-          const SizedBox(height: 16),
-          if (credit != null) ...[
-            Text(Money.paise(credit), style: HfText.headline),
-            const Text('conversation balance', style: HfText.note),
-            const SizedBox(height: 12),
-          ],
-          if (price != null) ...[
-            Text(price, style: HfText.subtitle),
-            Text(BuyCopy.gstOnPack, key: ValueKey<String>('gst-${offer.productId}'), style: HfText.note),
-          ],
-          const SizedBox(height: 12),
-          // The label carries Play's own price string. No price is ever typed or taken from our server.
-          HfButton(
-            key: ValueKey<String>('buy-${offer.productId}'),
-            label: price == null ? BuyCopy.unavailable : 'Buy for $price',
-            onPressed: enabled ? () => _buy(context, ref) : null,
-          ),
-          if (credit != null) ...[
-            const SizedBox(height: 8),
-            Text('Adds ${Money.paise(credit)} to your wallet', key: ValueKey<String>('credit-${offer.productId}'), style: HfText.note),
-          ],
-        ],
-      ),
-    );
+  Color _labelInk(BuildContext context) {
+    if (HfBrightness.isDark(context)) return tint.ink(context);
+    return switch (tint) {
+      HfTint.sky => HfColors.skyInk,
+      HfTint.butter => HfColors.butterInk,
+      HfTint.peach => HfColors.peachInk,
+      HfTint.lavender => HfColors.lavenderInk,
+      HfTint.blush => HfColors.blushInk,
+    };
   }
 
-  Future<void> _buy(BuildContext context, WidgetRef ref) {
-    return ref.read(purchaseControllerProvider.notifier).buy(
-      offer,
-      confirm: (prepared, pricePaise) async {
-        if (!context.mounted) return false;
-        final ok = await showDialog<bool>(
-          context: context,
-          builder: (ctx) => AlertDialog(
-            title: const Text(BuyCopy.areYouSure),
-            content: Text(
-              'You are about to add ${offer.pack.creditPaise == null ? 'money' : Money.paise(offer.pack.creditPaise!)} to your wallet. You pay ${offer.priceText ?? ''} (includes 18% GST) through Google Play.',
-              style: HfText.bodyText,
+  @override
+  Widget build(BuildContext context) {
+    final dark = HfBrightness.isDark(context);
+    final price = offer.priceText;
+    final credit = offer.pack.creditPaise;
+    final border = selected
+        ? (dark ? HfColors.darkText : HfColors.ink)
+        : Colors.transparent;
+    final label = price == null ? BuyCopy.unavailable : 'Pay $price';
+    final semantic = [
+      label,
+      if (credit != null) 'adds ${Money.paise(credit)}',
+      if (popular) BuyCopy.popular,
+    ].join(', ');
+    final radius = BorderRadius.circular(HfRadius.tile);
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        Semantics(
+          button: true,
+          selected: selected,
+          enabled: onTap != null,
+          label: semantic,
+          excludeSemantics: true,
+          onTap: onTap,
+          child: AnimatedContainer(
+            key: ValueKey<String>('buy-${offer.productId}'),
+            duration: HfMotion.of(context, HfMotion.fast),
+            curve: HfMotion.curve,
+            constraints: const BoxConstraints(minHeight: HfSpacing.tap),
+            decoration: BoxDecoration(
+              color: tint.bg(context),
+              borderRadius: radius,
+              border: Border.all(color: border, width: 3),
             ),
-            actions: [
-              TextButton(onPressed: () => Navigator.of(ctx).pop(false), child: const Text(BuyCopy.cancel)),
-              ElevatedButton(onPressed: () => Navigator.of(ctx).pop(true), child: const Text(BuyCopy.yesBuy)),
-            ],
+            child: Material(
+              type: MaterialType.transparency,
+              child: InkWell(
+                borderRadius: radius,
+                onTap: onTap,
+                child: Padding(
+                  padding: const EdgeInsets.all(11),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        label,
+                        style: HfText.label.copyWith(
+                          fontWeight: FontWeight.w400,
+                          color: _labelInk(context),
+                        ),
+                      ),
+                      if (credit != null) ...[
+                        const SizedBox(height: 4),
+                        Text(
+                          '+${Money.paise(credit)}',
+                          style: HfText.stat.copyWith(
+                            color: tint.valueInk(context),
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              ),
+            ),
           ),
-        );
-        return ok == true;
-      },
+        ),
+        if (popular)
+          Positioned(
+            top: -12,
+            right: 12,
+            child: IgnorePointer(
+              child: ExcludeSemantics(
+                child: Container(
+                  key: ValueKey<String>('popular-${offer.productId}'),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 9,
+                    vertical: 3,
+                  ),
+                  decoration: BoxDecoration(
+                    color: dark ? HfColors.darkText : HfColors.ink,
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Text(
+                    BuyCopy.popular,
+                    style: HfText.badge.copyWith(
+                      color: dark ? HfColors.ink : HfColors.white,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+      ],
     );
   }
 }

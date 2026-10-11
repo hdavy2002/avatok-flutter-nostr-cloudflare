@@ -28,7 +28,11 @@ enum NoticeKind { success, pending, cancelled, error }
 
 /// A result the Wallet shows after a purchase. [id] changes for every new notice.
 class PurchaseNotice {
-  const PurchaseNotice({required this.id, required this.kind, required this.message});
+  const PurchaseNotice({
+    required this.id,
+    required this.kind,
+    required this.message,
+  });
 
   final int id;
   final NoticeKind kind;
@@ -36,39 +40,61 @@ class PurchaseNotice {
 }
 
 class PurchaseState {
-  const PurchaseState({this.phase = PurchasePhase.idle, this.productId, this.notice});
+  const PurchaseState({
+    this.phase = PurchasePhase.idle,
+    this.productId,
+    this.notice,
+  });
 
   final PurchasePhase phase;
   final String? productId;
   final PurchaseNotice? notice;
 
-  bool get busy => phase == PurchasePhase.preparing || phase == PurchasePhase.verifying;
+  bool get busy =>
+      phase == PurchasePhase.preparing || phase == PurchasePhase.verifying;
 
-  PurchaseState copyWith({PurchasePhase? phase, String? productId, PurchaseNotice? notice, bool clearNotice = false}) =>
-      PurchaseState(
-        phase: phase ?? this.phase,
-        productId: phase == PurchasePhase.idle ? null : (productId ?? this.productId),
-        notice: clearNotice ? null : (notice ?? this.notice),
-      );
+  PurchaseState copyWith({
+    PurchasePhase? phase,
+    String? productId,
+    PurchaseNotice? notice,
+    bool clearNotice = false,
+  }) => PurchaseState(
+    phase: phase ?? this.phase,
+    productId: phase == PurchasePhase.idle
+        ? null
+        : (productId ?? this.productId),
+    notice: clearNotice ? null : (notice ?? this.notice),
+  );
 }
 
 /// Copy for the purchase flow. Simple English, one place.
 abstract final class PurchaseCopy {
-  static const String pending = "Payment pending. We'll add the money to your wallet when Google confirms it.";
+  static const String pending =
+      "Payment pending. We'll add the money to your wallet when Google confirms it.";
   static const String cancelled = 'Purchase cancelled. You were not charged.';
-  static const String alreadyAdded = 'This money was already added to your wallet.';
+  static const String alreadyAdded =
+      'This money was already added to your wallet.';
   static const String tokensAdded = 'Money added to your wallet.';
   static const String stillConfirming =
       "We're still confirming your payment. The money will be added automatically. Open this screen again in a few minutes.";
-  static const String paymentCanceled = 'This payment was cancelled, so no money was added.';
-  static const String refunded = 'Google refunded this payment, so no money was added.';
-  static const String playFailed = 'Google Play could not complete this purchase. Please try again.';
-  static const String playClosed = 'Google Play could not open. Please try again.';
-  static const String notAvailable = 'Adding money is not available right now. Please try again soon.';
-  static const String packMissing = 'This pack is not available on Google Play yet.';
-  static const String otherAccount = 'This purchase was made with a different account, so we cannot add it here.';
+  static const String paymentCanceled =
+      'This payment was cancelled, so no money was added.';
+  static const String refunded =
+      'Google refunded this payment, so no money was added.';
+  static const String playFailed =
+      'Google Play could not complete this purchase. Please try again.';
+  static const String playClosed =
+      'Google Play could not open. Please try again.';
+  static const String notAvailable =
+      'Adding money is not available right now. Please try again soon.';
+  static const String packMissing =
+      'This pack is not available on Google Play yet.';
+  static const String otherAccount =
+      'This purchase was made with a different account, so we cannot add it here.';
 
-  static String added(num? tokens) => tokens == null ? tokensAdded : '${tokensPlain(tokens)} added to your wallet';
+  static String added(num? tokens) => tokens == null
+      ? tokensAdded
+      : '${tokensPlain(tokens)} added to your wallet';
 }
 
 /// Buying tokens with Google Play Billing, and finishing purchases that were never finished.
@@ -115,7 +141,10 @@ class PurchaseController extends Notifier<PurchaseState> {
   void start() {
     if (_sub != null) return;
     try {
-      _sub = ref.read(billingAdapterProvider).purchases.listen(_onPurchase, onError: (Object _) {});
+      _sub = ref
+          .read(billingAdapterProvider)
+          .purchases
+          .listen(_onPurchase, onError: (Object _) {});
     } catch (_) {
       // Billing not available on this device: nothing to listen to.
     }
@@ -150,33 +179,48 @@ class PurchaseController extends Notifier<PurchaseState> {
     state = state.copyWith(clearNotice: true);
   }
 
-  PurchaseNotice _notice(NoticeKind kind, String message) => PurchaseNotice(id: ++_seq, kind: kind, message: message);
+  PurchaseNotice _notice(NoticeKind kind, String message) =>
+      PurchaseNotice(id: ++_seq, kind: kind, message: message);
 
   void _finish(PurchaseNotice? notice) {
-    state = PurchaseState(phase: PurchasePhase.idle, notice: notice ?? state.notice);
+    state = PurchaseState(
+      phase: PurchasePhase.idle,
+      notice: notice ?? state.notice,
+    );
   }
 
-  void _result(String status, {String? productId, String? reason, bool recovery = false, Map<String, Object>? extra}) {
-    unawaited(Analytics.capture('hf_app_purchase_result', {
-      'status': status,
-      if (productId != null && productId.isNotEmpty) 'product_id': productId,
-      if (reason != null) 'reason': reason,
-      'source': recovery ? 'recovery' : 'buy',
-      ...?extra,
-    }));
+  void _result(
+    String status, {
+    String? productId,
+    String? reason,
+    bool recovery = false,
+    Map<String, Object>? extra,
+  }) {
+    unawaited(
+      Analytics.capture('hf_app_purchase_result', {
+        'status': status,
+        if (productId != null && productId.isNotEmpty) 'product_id': productId,
+        if (reason != null) 'reason': reason,
+        'source': recovery ? 'recovery' : 'buy',
+        ...?extra,
+      }),
+    );
   }
 
   /// The whole buy flow for one pack. [confirm] shows "Are you sure?" and answers yes or no; it is asked
   /// only when the pack price is at or above the server's `confirmAbovePaise`.
   Future<void> buy(
     PackOffer offer, {
-    required Future<bool> Function(PreparedPurchase prepared, int? pricePaise) confirm,
+    required Future<bool> Function(PreparedPurchase prepared, int? pricePaise)
+    confirm,
   }) async {
     if (state.busy) return;
     final store = offer.store;
     final productId = offer.productId;
     if (store == null) {
-      state = state.copyWith(notice: _notice(NoticeKind.error, PurchaseCopy.packMissing));
+      state = state.copyWith(
+        notice: _notice(NoticeKind.error, PurchaseCopy.packMissing),
+      );
       return;
     }
     start();
@@ -189,7 +233,12 @@ class PurchaseController extends Notifier<PurchaseState> {
       _prepareFailed(e, productId);
       return;
     } catch (_) {
-      _finish(_notice(NoticeKind.error, ApiError.fallbackMessageFor('bad_response', 0)));
+      _finish(
+        _notice(
+          NoticeKind.error,
+          ApiError.fallbackMessageFor('bad_response', 0),
+        ),
+      );
       _result('failed', productId: productId, reason: 'prepare');
       return;
     }
@@ -200,18 +249,31 @@ class PurchaseController extends Notifier<PurchaseState> {
     }
 
     final price = packPricePaise(offer);
-    final needsConfirm = prepared.confirmAbovePaise > 0 && (price == null || price >= prepared.confirmAbovePaise);
+    final needsConfirm =
+        prepared.confirmAbovePaise > 0 &&
+        (price == null || price >= prepared.confirmAbovePaise);
     if (needsConfirm && !await confirm(prepared, price)) {
       _finish(null);
       _result('user_cancelled', productId: productId, reason: 'not_confirmed');
       return;
     }
 
-    unawaited(Analytics.capture('hf_token_purchase_started', {'product_id': productId, 'tokens': offer.pack.tokens}));
-    state = PurchaseState(phase: PurchasePhase.awaitingSheet, productId: productId, notice: state.notice);
+    unawaited(
+      Analytics.capture('hf_token_purchase_started', {
+        'product_id': productId,
+        'tokens': offer.pack.tokens,
+      }),
+    );
+    state = PurchaseState(
+      phase: PurchasePhase.awaitingSheet,
+      productId: productId,
+      notice: state.notice,
+    );
     final bool opened;
     try {
-      opened = await ref.read(billingAdapterProvider).buy(store, obfuscatedAccountId: prepared.obfuscatedAccountId);
+      opened = await ref
+          .read(billingAdapterProvider)
+          .buy(store, obfuscatedAccountId: prepared.obfuscatedAccountId);
     } catch (_) {
       _finish(_notice(NoticeKind.error, PurchaseCopy.playClosed));
       _result('failed', productId: productId, reason: 'launch');
@@ -225,13 +287,21 @@ class PurchaseController extends Notifier<PurchaseState> {
   }
 
   void _prepareFailed(ApiError e, String productId) {
-    final off = e.status == 503 && (e.code == 'disabled' || e.code == 'unconfigured') || e.isNotEnabled;
-    _finish(_notice(NoticeKind.error, off ? PurchaseCopy.notAvailable : e.userMessage));
+    final off =
+        e.status == 503 && (e.code == 'disabled' || e.code == 'unconfigured') ||
+        e.isNotEnabled;
+    _finish(
+      _notice(
+        NoticeKind.error,
+        off ? PurchaseCopy.notAvailable : e.userMessage,
+      ),
+    );
     _result('failed', productId: productId, reason: e.code);
   }
 
   bool _isMine(StorePurchase p) =>
-      state.phase != PurchasePhase.idle && (p.productId.isEmpty || p.productId == state.productId);
+      state.phase != PurchasePhase.idle &&
+      (p.productId.isEmpty || p.productId == state.productId);
 
   void _onPurchase(StorePurchase p) {
     final mine = _isMine(p);
@@ -260,12 +330,18 @@ class PurchaseController extends Notifier<PurchaseState> {
     final token = p.purchaseToken;
     if (token.isEmpty || _done.contains(token) || !_inFlight.add(token)) return;
     final recovery = !mine;
-    if (mine) state = PurchaseState(phase: PurchasePhase.verifying, productId: p.productId, notice: state.notice);
+    if (mine) {
+      state = PurchaseState(
+        phase: PurchasePhase.verifying,
+        productId: p.productId,
+        notice: state.notice,
+      );
+    }
     try {
       VerifyResult? res;
       ApiError? failure;
       final delays = ref.read(purchaseRetryDelaysProvider);
-      for (var i = 0;; i++) {
+      for (var i = 0; ; i++) {
         try {
           res = await ref.read(walletApiProvider).verify(p.productId, token);
           break;
@@ -289,7 +365,12 @@ class PurchaseController extends Notifier<PurchaseState> {
     }
   }
 
-  void _verified(VerifyResult res, StorePurchase p, {required bool mine, required bool recovery}) {
+  void _verified(
+    VerifyResult res,
+    StorePurchase p, {
+    required bool mine,
+    required bool recovery,
+  }) {
     final token = p.purchaseToken;
     switch (res.status) {
       case VerifyStatus.consumed:
@@ -298,10 +379,19 @@ class PurchaseController extends Notifier<PurchaseState> {
         _refreshWallet();
         final announce = !res.duplicate || mine;
         final notice = announce
-            ? _notice(NoticeKind.success, res.duplicate ? PurchaseCopy.alreadyAdded : PurchaseCopy.added(res.tokens))
+            ? _notice(
+                NoticeKind.success,
+                res.duplicate
+                    ? PurchaseCopy.alreadyAdded
+                    : PurchaseCopy.added(res.tokens),
+              )
             : null;
-        _result(res.duplicate ? 'duplicate' : 'credited',
-            productId: p.productId, recovery: recovery, extra: {if (res.tokens != null) 'tokens': res.tokens!});
+        _result(
+          res.duplicate ? 'duplicate' : 'credited',
+          productId: p.productId,
+          recovery: recovery,
+          extra: {if (res.tokens != null) 'tokens': res.tokens!},
+        );
         if (mine) {
           _finish(notice);
         } else if (notice != null) {
@@ -311,7 +401,9 @@ class PurchaseController extends Notifier<PurchaseState> {
       case VerifyStatus.unknown:
         // Nothing is credited yet; the purchase stays listed by Play and is verified again on the next start.
         final first = _announcedPending.add(token);
-        final notice = (mine || first) ? _notice(NoticeKind.pending, PurchaseCopy.pending) : null;
+        final notice = (mine || first)
+            ? _notice(NoticeKind.pending, PurchaseCopy.pending)
+            : null;
         _result('pending', productId: p.productId, recovery: recovery);
         if (mine) {
           _finish(notice);
@@ -322,30 +414,59 @@ class PurchaseController extends Notifier<PurchaseState> {
       case VerifyStatus.refunded:
         _done.add(token);
         final refunded = res.status == VerifyStatus.refunded;
-        _result(refunded ? 'refunded' : 'payment_canceled', productId: p.productId, recovery: recovery);
-        if (mine) _finish(_notice(NoticeKind.error, refunded ? PurchaseCopy.refunded : PurchaseCopy.paymentCanceled));
+        _result(
+          refunded ? 'refunded' : 'payment_canceled',
+          productId: p.productId,
+          recovery: recovery,
+        );
+        if (mine) {
+          _finish(
+            _notice(
+              NoticeKind.error,
+              refunded ? PurchaseCopy.refunded : PurchaseCopy.paymentCanceled,
+            ),
+          );
+        }
     }
   }
 
   void _verifyFailed(ApiError? e, StorePurchase p, {required bool mine}) {
     final code = e?.code ?? 'unknown';
     _result('failed', productId: p.productId, reason: code, recovery: !mine);
-    final permanent = e != null &&
+    final permanent =
+        e != null &&
         !_retryable(e) &&
-        (const {'unknown_product', 'invalid_purchase', 'bad_token', 'account_mismatch', 'bad_product'}.contains(code) ||
-            (e.status >= 400 && e.status < 500 && !e.isUnauthorized && e.status != 429));
+        (const {
+              'unknown_product',
+              'invalid_purchase',
+              'bad_token',
+              'account_mismatch',
+              'bad_product',
+            }.contains(code) ||
+            (e.status >= 400 &&
+                e.status < 500 &&
+                !e.isUnauthorized &&
+                e.status != 429));
     if (permanent) {
-      _done.add(p.purchaseToken); // do not retry a purchase the server will never accept
+      _done.add(
+        p.purchaseToken,
+      ); // do not retry a purchase the server will never accept
       if (mine) {
-        _finish(_notice(
-          NoticeKind.error,
-          code == 'account_mismatch' ? PurchaseCopy.otherAccount : e.userMessage,
-        ));
+        _finish(
+          _notice(
+            NoticeKind.error,
+            code == 'account_mismatch'
+                ? PurchaseCopy.otherAccount
+                : e.userMessage,
+          ),
+        );
       }
       return;
     }
     // Temporary: the purchase stays unconsumed in Play, so the next start or resume verifies it again.
-    if (mine) _finish(_notice(NoticeKind.pending, PurchaseCopy.stillConfirming));
+    if (mine) {
+      _finish(_notice(NoticeKind.pending, PurchaseCopy.stillConfirming));
+    }
   }
 
   void _refreshWallet() {

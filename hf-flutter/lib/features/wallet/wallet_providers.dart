@@ -12,27 +12,43 @@ import 'data/wallet_models.dart';
 T? valueOf<T>(AsyncValue<T> v) => v.hasValue ? v.requireValue : null;
 
 /// The Wallet's typed API. Tests override [apiClientProvider] with a FakeApiClient.
-final walletApiProvider = Provider<WalletApi>((ref) => WalletApi(ref.watch(apiClientProvider)));
+final walletApiProvider = Provider<WalletApi>(
+  (ref) => WalletApi(ref.watch(apiClientProvider)),
+);
 
 /// Google Play Billing. Tests override this with a fake adapter.
-final billingAdapterProvider = Provider<BillingAdapter>((ref) => PlayBillingAdapter());
+final billingAdapterProvider = Provider<BillingAdapter>(
+  (ref) => PlayBillingAdapter(),
+);
 
 /// Waits between tries when verify cannot be reached (Play or our server is busy). Tests use an empty list.
-final purchaseRetryDelaysProvider =
-    Provider<List<Duration>>((ref) => const <Duration>[Duration(seconds: 2), Duration(seconds: 6)]);
+final purchaseRetryDelaysProvider = Provider<List<Duration>>(
+  (ref) => const <Duration>[Duration(seconds: 2), Duration(seconds: 6)],
+);
 
 /// Money is never cached: each of these reads the server live, every time the screen opens.
-final walletProvider = FutureProvider.autoDispose<WalletData>((ref) => ref.watch(walletApiProvider).wallet());
+final walletProvider = FutureProvider.autoDispose<WalletData>(
+  (ref) => ref.watch(walletApiProvider).wallet(),
+);
 
-final refundsProvider = FutureProvider.autoDispose<RefundsInfo>((ref) => ref.watch(walletApiProvider).refunds());
+/// The per-minute rate (rupees) of the host the person last called, when the app knows it. The Wallet's
+/// "About N minutes at Rs R/min" line shows only when this is set; null (the default) hides the line.
+final lastCallRateProvider = Provider<num?>((ref) => null);
 
-final receiptsProvider =
-    FutureProvider.autoDispose<List<WalletReceipt>>((ref) => ref.watch(walletApiProvider).receipts());
+final refundsProvider = FutureProvider.autoDispose<RefundsInfo>(
+  (ref) => ref.watch(walletApiProvider).refunds(),
+);
+
+final receiptsProvider = FutureProvider.autoDispose<List<WalletReceipt>>(
+  (ref) => ref.watch(walletApiProvider).receipts(),
+);
 
 /// Server packs merged with Play's product details (the localized price strings).
 final packOffersProvider = FutureProvider.autoDispose<PackOffers>((ref) async {
   final catalog = await ref.watch(walletApiProvider).products();
-  if (!catalog.enabled || catalog.packs.isEmpty) return PackOffers(enabled: catalog.enabled, offers: const <PackOffer>[]);
+  if (!catalog.enabled || catalog.packs.isEmpty) {
+    return PackOffers(enabled: catalog.enabled, offers: const <PackOffer>[]);
+  }
   final billing = ref.watch(billingAdapterProvider);
   if (!await billing.isAvailable()) {
     return PackOffers(
@@ -42,10 +58,15 @@ final packOffersProvider = FutureProvider.autoDispose<PackOffers>((ref) async {
     );
   }
   try {
-    final found = await billing.queryProducts({for (final p in catalog.packs) p.productId});
+    final found = await billing.queryProducts({
+      for (final p in catalog.packs) p.productId,
+    });
     return PackOffers(
       enabled: true,
-      offers: [for (final p in catalog.packs) PackOffer(pack: p, store: found[p.productId])],
+      offers: [
+        for (final p in catalog.packs)
+          PackOffer(pack: p, store: found[p.productId]),
+      ],
     );
   } catch (_) {
     return PackOffers(
@@ -57,7 +78,8 @@ final packOffersProvider = FutureProvider.autoDispose<PackOffers>((ref) async {
 });
 
 /// Lives for the whole app: it listens to Play's purchase stream and finishes purchases with the server.
-final purchaseControllerProvider = NotifierProvider<PurchaseController, PurchaseState>(PurchaseController.new);
+final purchaseControllerProvider =
+    NotifierProvider<PurchaseController, PurchaseState>(PurchaseController.new);
 
 /// Watched once, near the root of the app: when a person is signed in it starts the purchase listener and
 /// asks Play for purchases that were never finished (recovery on start). The controller repeats that on

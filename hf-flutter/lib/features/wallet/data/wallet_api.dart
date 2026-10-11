@@ -9,24 +9,35 @@ class WalletApi {
 
   final ApiClient _api;
 
-  Future<WalletData> wallet() async => WalletData.fromJson(await _api.getJson('/api/hf/wallet'));
+  Future<WalletData> wallet() async =>
+      WalletData.fromJson(await _api.getJson('/api/hf/wallet'));
 
   /// Public route. `enabled: false` means purchases are off: show "Buying tokens is coming soon".
-  Future<TokenCatalog> products() async =>
-      TokenCatalog.fromJson(await _api.getJson('/api/hf/tokens/products', auth: false));
+  Future<TokenCatalog> products() async => TokenCatalog.fromJson(
+    await _api.getJson('/api/hf/tokens/products', auth: false),
+  );
 
   /// Debt and the "Are you sure?" threshold are checked here.
-  Future<PreparedPurchase> prepare(String productId) async => PreparedPurchase.fromJson(
-        await _api.postJson('/api/hf/tokens/play/prepare', body: {'productId': productId}),
+  Future<PreparedPurchase> prepare(String productId) async =>
+      PreparedPurchase.fromJson(
+        await _api.postJson(
+          '/api/hf/tokens/play/prepare',
+          body: {'productId': productId},
+        ),
         productId,
       );
 
   /// Idempotent: the same purchase token again answers `duplicate`, never a second credit.
-  Future<VerifyResult> verify(String productId, String purchaseToken) async => VerifyResult.fromJson(
-        await _api.postJson('/api/hf/tokens/play/verify', body: {'productId': productId, 'purchaseToken': purchaseToken}),
+  Future<VerifyResult> verify(String productId, String purchaseToken) async =>
+      VerifyResult.fromJson(
+        await _api.postJson(
+          '/api/hf/tokens/play/verify',
+          body: {'productId': productId, 'purchaseToken': purchaseToken},
+        ),
       );
 
-  Future<RefundsInfo> refunds() async => RefundsInfo.fromJson(await _api.getJson('/api/hf/wallet/refunds'));
+  Future<RefundsInfo> refunds() async =>
+      RefundsInfo.fromJson(await _api.getJson('/api/hf/wallet/refunds'));
 
   /// Asks for a refund of one purchase lot (token mode); with no [lotId], of all unused old top-up money.
   /// The Idempotency-Key makes a retry safe.
@@ -39,7 +50,9 @@ class WalletApi {
   }
 
   Future<void> cancelRefund(String id) async {
-    await _api.postJson('/api/hf/wallet/refunds/${Uri.encodeComponent(id)}/cancel');
+    await _api.postJson(
+      '/api/hf/wallet/refunds/${Uri.encodeComponent(id)}/cancel',
+    );
   }
 
   /// Old rupee money only.

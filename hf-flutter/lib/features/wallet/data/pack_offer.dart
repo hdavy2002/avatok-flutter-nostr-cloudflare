@@ -34,7 +34,10 @@ class PackOffers {
   /// True when Play could not be reached to read the prices.
   final bool storeError;
 
-  static const PackOffers off = PackOffers(enabled: false, offers: <PackOffer>[]);
+  static const PackOffers off = PackOffers(
+    enabled: false,
+    offers: <PackOffer>[],
+  );
 }
 
 /// Decides only "is this pack at or above the Are-you-sure line". Never shown.
