@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_riverpod/misc.dart' show Override;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hf_app/app.dart';
 import 'package:hf_app/core/auth/hf_me.dart';
@@ -54,6 +55,7 @@ Future<ProviderContainer> pumpApp(
   String location = Routes.home,
   FakeApiClient? api,
   bool settle = true,
+  List<Override> overrides = const <Override>[],
 }) async {
   usePhoneScreen(tester);
   final container = ProviderContainer(
@@ -64,6 +66,7 @@ Future<ProviderContainer> pumpApp(
       apiClientProvider.overrideWithValue(api ?? FakeApiClient()),
       secureStoreProvider.overrideWithValue(MemoryKeyValueStore()),
       initialLocationProvider.overrideWithValue(location),
+      ...overrides,
     ],
   );
   addTearDown(container.dispose);

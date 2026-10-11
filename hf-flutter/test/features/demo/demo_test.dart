@@ -100,7 +100,10 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('Call Neha'), findsWidgets);
       expect(find.text('about 96 min'), findsOneWidget);
-      await tester.tap(find.text('Or tap here to call'));
+      final callButton = find.text('Or tap here to call');
+      await tester.ensureVisible(callButton);
+      await tester.pump();
+      await tester.tap(callButton);
       await tester.pump(const Duration(seconds: 1));
       await tester.pump(const Duration(milliseconds: 600));
       expect(find.text('Ringing Neha…'), findsOneWidget);
@@ -150,7 +153,10 @@ void main() {
         expect(find.text('about 96 min'), findsOneWidget);
         expect(find.textContaining('₹342'), findsOneWidget);
 
-        await tester.tap(find.text('Or tap here to call'));
+        final callButton = find.text('Or tap here to call');
+        await tester.ensureVisible(callButton);
+        await tester.pump();
+        await tester.tap(callButton);
         await tester.pump();
         await tester.pump(const Duration(milliseconds: 600));
         await tester.pump(const Duration(milliseconds: 600));

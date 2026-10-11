@@ -4,6 +4,7 @@ import 'package:hf_app/core/brand.dart';
 import 'package:hf_app/core/links.dart';
 import 'package:hf_app/core/router/app_router.dart';
 import 'package:hf_app/core/router/deep_link_handler.dart';
+import 'package:hf_app/features/explore/data/host_options.dart';
 
 import '../support/app_harness.dart';
 
@@ -26,6 +27,23 @@ String where(ProviderContainer container) => container
     .uri
     .toString();
 
+/// Home watches host options; keep its cache-read timeout out of these routing tests.
+Future<ProviderContainer> pumpDeepLinkApp(WidgetTester tester) => pumpApp(
+  tester,
+  settle: false,
+  overrides: [
+    hostOptionsProvider.overrideWith(
+      (_) => const HostOptions(
+        topics: <HostTopic>[],
+        moodGroups: <MoodGroup>[],
+        languages: <HostLanguage>[],
+        priceMin: 5,
+        priceMax: 100,
+      ),
+    ),
+  ],
+);
+
 void main() {
   late LinkOpener saved;
   setUp(() => saved = LinkOpener.instance);
@@ -35,7 +53,7 @@ void main() {
   testWidgets('warm: a link while the app runs goes straight to the route', (
     tester,
   ) async {
-    final c = await pumpApp(tester, settle: false);
+    final c = await pumpDeepLinkApp(tester);
     c.read(bootDoneProvider.notifier).markDone();
 
     await c
@@ -53,7 +71,7 @@ void main() {
   testWidgets(
     'a route that needs sign-in goes to /sign-in?next=<route> and remembers where to continue',
     (tester) async {
-      final c = await pumpApp(tester, settle: false);
+      final c = await pumpDeepLinkApp(tester);
       c.read(bootDoneProvider.notifier).markDone();
 
       await c
@@ -70,7 +88,7 @@ void main() {
   testWidgets(
     'cold: a link before the splash finished waits, then opens once',
     (tester) async {
-      final c = await pumpApp(tester, settle: false);
+      final c = await pumpDeepLinkApp(tester);
       final handler = c.read(deepLinkHandlerProvider);
 
       await handler.handle(
@@ -98,7 +116,7 @@ void main() {
   testWidgets('the custom scheme link is handled like the https one', (
     tester,
   ) async {
-    final c = await pumpApp(tester, settle: false);
+    final c = await pumpDeepLinkApp(tester);
     c.read(bootDoneProvider.notifier).markDone();
 
     await c
@@ -114,7 +132,7 @@ void main() {
     (tester) async {
       final opener = _RecordingOpener();
       LinkOpener.instance = opener;
-      final c = await pumpApp(tester, settle: false);
+      final c = await pumpDeepLinkApp(tester);
       c.read(bootDoneProvider.notifier).markDone();
 
       await c
@@ -130,7 +148,7 @@ void main() {
   testWidgets('a link that is not ours does nothing', (tester) async {
     final opener = _RecordingOpener();
     LinkOpener.instance = opener;
-    final c = await pumpApp(tester, settle: false);
+    final c = await pumpDeepLinkApp(tester);
     c.read(bootDoneProvider.notifier).markDone();
 
     await c
