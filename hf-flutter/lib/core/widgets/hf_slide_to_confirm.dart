@@ -37,13 +37,14 @@ class _HfSlideToConfirmState extends State<HfSlideToConfirm>
   static const double _pad = 6;
   static const double _threshold = 0.9;
 
-  late final AnimationController _back = AnimationController(vsync: this);
+  late final AnimationController _back;
   double _fraction = 0;
   Animation<double>? _backAnim;
 
   @override
   void initState() {
     super.initState();
+    _back = AnimationController(vsync: this);
     _back.addListener(() {
       final a = _backAnim;
       if (a != null) setState(() => _fraction = a.value);

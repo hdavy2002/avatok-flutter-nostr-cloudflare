@@ -440,10 +440,14 @@ class _StarRow extends StatefulWidget {
 
 class _StarRowState extends State<_StarRow>
     with SingleTickerProviderStateMixin {
-  late final AnimationController _bounce = AnimationController(
-    vsync: this,
-    duration: HfMotion.base,
-  );
+  late final AnimationController _bounce;
+
+  @override
+  void initState() {
+    super.initState();
+    _bounce = AnimationController(vsync: this, duration: HfMotion.base);
+  }
+
   late final Animation<double> _scale = TweenSequence<double>([
     TweenSequenceItem(
       tween: Tween<double>(
@@ -608,10 +612,13 @@ class _CheckBurst extends StatefulWidget {
 
 class _CheckBurstState extends State<_CheckBurst>
     with SingleTickerProviderStateMixin {
-  late final AnimationController _c = AnimationController(
-    vsync: this,
-    duration: HfMotion.slow,
-  );
+  late final AnimationController _c;
+
+  @override
+  void initState() {
+    super.initState();
+    _c = AnimationController(vsync: this, duration: HfMotion.slow);
+  }
 
   @override
   void didChangeDependencies() {

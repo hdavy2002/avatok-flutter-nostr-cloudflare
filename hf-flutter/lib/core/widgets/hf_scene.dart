@@ -32,10 +32,17 @@ class HfScene extends StatefulWidget {
 }
 
 class _HfSceneState extends State<HfScene> with SingleTickerProviderStateMixin {
-  late final AnimationController _motion = AnimationController(
-    vsync: this,
-    duration: const Duration(milliseconds: 2200),
-  );
+  late final AnimationController _motion;
+
+  @override
+  void initState() {
+    super.initState();
+    _motion = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 2200),
+    );
+  }
+
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();

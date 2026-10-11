@@ -182,10 +182,16 @@ class _Rings extends StatefulWidget {
 }
 
 class _RingsState extends State<_Rings> with SingleTickerProviderStateMixin {
-  late final AnimationController _pulse = AnimationController(
-    vsync: this,
-    duration: const Duration(milliseconds: 1800),
-  );
+  late final AnimationController _pulse;
+
+  @override
+  void initState() {
+    super.initState();
+    _pulse = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1800),
+    );
+  }
 
   @override
   void didChangeDependencies() {

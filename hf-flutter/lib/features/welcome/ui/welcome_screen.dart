@@ -66,7 +66,14 @@ class _WelcomeScreenState extends ConsumerState<WelcomeScreen>
   static const int _gapMs = 120;
   static const int _totalMs = _rowMs + 2 * _gapMs;
 
-  late final AnimationController _intro = AnimationController(vsync: this);
+  late final AnimationController _intro;
+
+  @override
+  void initState() {
+    super.initState();
+    _intro = AnimationController(vsync: this);
+  }
+
   bool _introStarted = false;
 
   bool _ticked = false;

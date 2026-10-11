@@ -437,14 +437,17 @@ class _CardVoice extends ConsumerStatefulWidget {
 
 class _CardVoiceState extends ConsumerState<_CardVoice>
     with SingleTickerProviderStateMixin {
-  late final AnimationController _progress = AnimationController(
-    vsync: this,
-    duration: Duration(seconds: (widget.host.introSeconds ?? 20).clamp(1, 600)),
-  );
+  late final AnimationController _progress;
 
   @override
   void initState() {
     super.initState();
+    _progress = AnimationController(
+      vsync: this,
+      duration: Duration(
+        seconds: (widget.host.introSeconds ?? 20).clamp(1, 600),
+      ),
+    );
     // A recycled card whose clip is still playing picks the fill up again.
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted &&

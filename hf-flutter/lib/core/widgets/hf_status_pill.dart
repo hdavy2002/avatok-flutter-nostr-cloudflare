@@ -55,10 +55,16 @@ class HfStatusPill extends StatefulWidget {
 
 class _HfStatusPillState extends State<HfStatusPill>
     with SingleTickerProviderStateMixin {
-  late final AnimationController _pulse = AnimationController(
-    vsync: this,
-    duration: const Duration(milliseconds: 1600),
-  );
+  late final AnimationController _pulse;
+
+  @override
+  void initState() {
+    super.initState();
+    _pulse = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1600),
+    );
+  }
 
   @override
   void didChangeDependencies() {
