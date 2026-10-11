@@ -4,6 +4,7 @@ import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/analytics/analytics.dart';
+import '../../demo/demo_audio.dart'; // [HF-DEMO] remove with lib/features/demo
 
 /// The one speaker for host voice intros. An interface, so widget tests swap in a fake with no platform channel.
 abstract class IntroAudio {
@@ -56,7 +57,8 @@ class AudioplayersIntroAudio implements IntroAudio {
 }
 
 final introAudioProvider = Provider<IntroAudio>((ref) {
-  final audio = AudioplayersIntroAudio();
+  // [HF-DEMO] remove with lib/features/demo: wrap with `AudioplayersIntroAudio()` alone.
+  final audio = DemoAwareIntroAudio(AudioplayersIntroAudio());
   ref.onDispose(audio.dispose);
   return audio;
 });

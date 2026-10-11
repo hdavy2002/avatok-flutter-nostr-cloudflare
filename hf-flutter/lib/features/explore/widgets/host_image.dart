@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 
 import '../../../core/brand.dart';
 import '../../../core/theme/hf_theme.dart';
+import '../../demo/demo_data.dart'; // [HF-DEMO] remove with lib/features/demo
+import '../../demo/demo_widgets.dart'; // [HF-DEMO] remove with lib/features/demo
 
 /// Cloudflare image resizing, the same rule the website uses (web/src/lib/config.ts `cfImage`):
 /// only our own public media is transformed; signed, private, svg and gif URLs are left alone.
@@ -89,6 +91,9 @@ class HostAvatar extends StatelessWidget {
           children: [
             if (source == null)
               placeholder
+            else if (demoAssetPath(source) !=
+                null) // [HF-DEMO] remove with lib/features/demo
+              DemoAssetImage(source, cacheWidth: px)
             else
               CachedNetworkImage(
                 imageUrl: resizedImageUrl(source, width: size * dpr),

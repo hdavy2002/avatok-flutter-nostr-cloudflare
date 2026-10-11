@@ -3,6 +3,8 @@ import 'dart:ui' show ImageFilter;
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 
+import '../../features/demo/demo_data.dart'; // [HF-DEMO] remove with lib/features/demo
+import '../../features/demo/demo_widgets.dart'; // [HF-DEMO] remove with lib/features/demo
 import '../theme/hf_theme.dart';
 import 'hf_status_pill.dart';
 
@@ -65,6 +67,9 @@ class HfPhotoCard extends StatelessWidget {
           children: [
             if (url == null || url.isEmpty)
               tile(Icons.person_rounded)
+            else if (demoAssetPath(url) !=
+                null) // [HF-DEMO] remove with lib/features/demo
+              DemoAssetImage(url)
             else
               CachedNetworkImage(
                 imageUrl: url,

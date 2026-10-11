@@ -233,7 +233,7 @@ class _GeneratingStepState extends ConsumerState<GeneratingStep> {
 
   Widget _following() {
     return PartBStep(
-      scene: HfSceneKind.profile,
+      scene: HfClusterKind.profile,
       title: PartBCopy.generatingTitle,
       lead: PartBCopy.generatingLead,
       children: [
@@ -272,7 +272,7 @@ class _GeneratingStepState extends ConsumerState<GeneratingStep> {
   Widget _failed() {
     final tries = kMaxGenerationTries - _attempts;
     return PartBStep(
-      scene: HfSceneKind.profile,
+      scene: HfClusterKind.profile,
       title: PartBCopy.generatingTitle,
       lead: PartBCopy.generatingLead,
       bottom: [
@@ -312,7 +312,7 @@ class _GeneratingStepState extends ConsumerState<GeneratingStep> {
   Widget _ready() {
     final tries = kMaxGenerationTries - _attempts;
     return PartBStep(
-      scene: HfSceneKind.profile,
+      scene: HfClusterKind.profile,
       title: PartBCopy.generatingReadyTitle,
       lead: PartBCopy.generatingReadyBody,
       bottom: [

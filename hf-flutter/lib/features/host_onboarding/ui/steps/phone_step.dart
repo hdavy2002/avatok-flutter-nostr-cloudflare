@@ -24,7 +24,7 @@ class PhoneStep extends StatelessWidget {
     if (s.phoneVerified) {
       final last4 = s.phoneLast4;
       return OnboardingStepPage(
-        scene: HfSceneKind.verify,
+        scene: HfClusterKind.verify,
         title: OnboardingCopy.phoneVerifiedTitle,
         footer: [
           HfButton(
@@ -54,7 +54,7 @@ class PhoneStep extends StatelessWidget {
       );
     }
     return OnboardingStepPage(
-      scene: HfSceneKind.verify,
+      scene: HfClusterKind.verify,
       title: OnboardingCopy.phoneNotVerifiedTitle,
       lead: OnboardingCopy.phoneNotVerifiedBody,
       footer: [

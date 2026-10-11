@@ -27,7 +27,7 @@ class PushOptInSheet extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            const HfScene(kind: HfSceneKind.welcome, height: 64),
+            const HfCluster(kind: HfClusterKind.welcome, height: 96),
             const SizedBox(height: 12),
             Text(
               host ? PushStrings.hostTitle : PushStrings.callerTitle,

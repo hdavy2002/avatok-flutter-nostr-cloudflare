@@ -108,7 +108,7 @@ class _AadhaarStepState extends ConsumerState<AadhaarStep> {
       final last4 = k.last4 ?? _just?.last4;
       final gender = k.gender ?? _just?.gender;
       return OnboardingStepPage(
-        scene: HfSceneKind.verify,
+        scene: HfClusterKind.verify,
         title: OnboardingCopy.aadhaarDoneTitle,
         footer: [
           if (_upgradeError != null)
@@ -172,7 +172,7 @@ class _AadhaarStepState extends ConsumerState<AadhaarStep> {
       );
     }
     return OnboardingStepPage(
-      scene: HfSceneKind.verify,
+      scene: HfClusterKind.verify,
       children: [
         AadhaarVerifyWidget(
           role: KycRole.host,

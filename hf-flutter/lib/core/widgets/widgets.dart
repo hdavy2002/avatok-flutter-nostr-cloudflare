@@ -6,7 +6,7 @@ export 'hf_card.dart';
 export 'hf_chip.dart';
 export 'hf_floating_nav.dart';
 export 'hf_photo_card.dart';
-export 'hf_scene.dart';
+export 'hf_cluster.dart';
 export 'hf_segmented.dart';
 export 'hf_sheet.dart';
 export 'hf_skeleton.dart';

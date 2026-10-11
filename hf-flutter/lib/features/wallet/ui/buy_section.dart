@@ -36,6 +36,12 @@ abstract final class BuyCopy {
   static const String gstSubtitle = 'Price includes 18% GST.';
 }
 
+/// Gap between pack tiles (mockup: 10).
+const double _gridGap = 10;
+
+/// Width / height of a pack tile (mockup grid). The tile is never shorter than 84.
+const double _tileAspect = 1.9;
+
 /// Tile colours in mockup order: sky, butter, peach, lavender.
 const List<HfTint> _tileTints = [
   HfTint.sky,
@@ -100,7 +106,7 @@ class _PacksSkeleton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     Widget tile() => const Expanded(
-      child: HfSkeleton.box(height: 76, radius: HfRadius.tile),
+      child: HfSkeleton.box(height: 88, radius: HfRadius.tile),
     );
     return Semantics(
       label: BuyCopy.loading,
@@ -306,21 +312,19 @@ class _PacksState extends ConsumerState<_Packs> {
           ),
           const SizedBox(height: 16),
         ],
+        // Room for the "Popular" badge that overlaps the top edge of its tile.
+        const SizedBox(height: 6),
         for (var i = 0; i < tiles.length; i += 2) ...[
-          if (i > 0) const SizedBox(height: HfSpacing.md),
-          IntrinsicHeight(
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Expanded(child: tiles[i]),
-                const SizedBox(width: HfSpacing.md),
-                Expanded(
-                  child: i + 1 < tiles.length
-                      ? tiles[i + 1]
-                      : const SizedBox.shrink(),
-                ),
-              ],
-            ),
+          if (i > 0) const SizedBox(height: _gridGap),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(child: tiles[i]),
+              const SizedBox(width: _gridGap),
+              Expanded(
+                child: i + 1 < tiles.length ? tiles[i + 1] : const SizedBox(),
+              ),
+            ],
           ),
         ],
         const SizedBox(height: 16),
@@ -374,24 +378,13 @@ class _PackTile extends StatelessWidget {
   final bool popular;
   final VoidCallback? onTap;
 
-  Color _labelInk(BuildContext context) {
-    if (HfBrightness.isDark(context)) return tint.ink(context);
-    return switch (tint) {
-      HfTint.sky => HfColors.skyInk,
-      HfTint.butter => HfColors.butterInk,
-      HfTint.peach => HfColors.peachInk,
-      HfTint.lavender => HfColors.lavenderInk,
-      HfTint.blush => HfColors.blushInk,
-    };
-  }
-
   @override
   Widget build(BuildContext context) {
     final dark = HfBrightness.isDark(context);
     final price = offer.priceText;
     final credit = offer.pack.creditPaise;
     final border = selected
-        ? (dark ? HfColors.darkText : HfColors.ink)
+        ? (dark ? HfColors.lavenderLight : HfColors.ink)
         : Colors.transparent;
     final label = price == null ? BuyCopy.unavailable : 'Pay $price';
     final semantic = [
@@ -410,44 +403,54 @@ class _PackTile extends StatelessWidget {
           label: semantic,
           excludeSemantics: true,
           onTap: onTap,
-          child: AnimatedContainer(
-            key: ValueKey<String>('buy-${offer.productId}'),
-            duration: HfMotion.of(context, HfMotion.fast),
-            curve: HfMotion.curve,
-            constraints: const BoxConstraints(minHeight: HfSpacing.tap),
-            decoration: BoxDecoration(
-              color: tint.bg(context),
-              borderRadius: radius,
-              border: Border.all(color: border, width: 3),
-            ),
-            child: Material(
-              type: MaterialType.transparency,
-              child: InkWell(
+          child: AspectRatio(
+            aspectRatio: _tileAspect,
+            child: AnimatedContainer(
+              key: ValueKey<String>('buy-${offer.productId}'),
+              duration: HfMotion.of(context, HfMotion.fast),
+              curve: HfMotion.curve,
+              constraints: const BoxConstraints(minHeight: 84),
+              decoration: BoxDecoration(
+                color: tint.bg(context),
                 borderRadius: radius,
-                onTap: onTap,
-                child: Padding(
-                  padding: const EdgeInsets.all(11),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        label,
-                        style: HfText.label.copyWith(
-                          fontWeight: FontWeight.w400,
-                          color: _labelInk(context),
+                border: Border.all(color: border, width: 3),
+              ),
+              child: Material(
+                type: MaterialType.transparency,
+                child: InkWell(
+                  borderRadius: radius,
+                  onTap: onTap,
+                  child: Padding(
+                    padding: const EdgeInsets.all(14),
+                    child: Align(
+                      alignment: Alignment.centerLeft,
+                      child: FittedBox(
+                        fit: BoxFit.scaleDown,
+                        alignment: Alignment.centerLeft,
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              label,
+                              style: HfText.label.copyWith(
+                                fontWeight: FontWeight.w600,
+                                color: tint.ink(context),
+                              ),
+                            ),
+                            if (credit != null) ...[
+                              const SizedBox(height: 4),
+                              Text(
+                                '+${Money.paise(credit)}',
+                                style: HfText.stat.copyWith(
+                                  color: tint.valueInk(context),
+                                ),
+                              ),
+                            ],
+                          ],
                         ),
                       ),
-                      if (credit != null) ...[
-                        const SizedBox(height: 4),
-                        Text(
-                          '+${Money.paise(credit)}',
-                          style: HfText.stat.copyWith(
-                            color: tint.valueInk(context),
-                          ),
-                        ),
-                      ],
-                    ],
+                    ),
                   ),
                 ),
               ),
@@ -456,8 +459,8 @@ class _PackTile extends StatelessWidget {
         ),
         if (popular)
           Positioned(
-            top: -12,
-            right: 12,
+            top: -10,
+            right: 14,
             child: IgnorePointer(
               child: ExcludeSemantics(
                 child: Container(
@@ -467,7 +470,7 @@ class _PackTile extends StatelessWidget {
                     vertical: 3,
                   ),
                   decoration: BoxDecoration(
-                    color: dark ? HfColors.darkText : HfColors.ink,
+                    color: dark ? HfColors.lavenderLight : HfColors.ink,
                     borderRadius: BorderRadius.circular(10),
                   ),
                   child: Text(

@@ -702,7 +702,7 @@ class AadhaarVerifyState extends ConsumerState<AadhaarVerifyWidget>
               ),
               const SizedBox(height: 16),
             ],
-            const HfScene(kind: HfSceneKind.verify, height: 100),
+            const HfCluster(kind: HfClusterKind.verify, height: 140),
             const SizedBox(height: 12),
             Text(
               KycCopy.digiLockerTitle,

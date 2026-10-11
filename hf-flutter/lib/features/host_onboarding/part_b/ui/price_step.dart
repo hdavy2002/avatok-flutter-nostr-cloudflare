@@ -101,7 +101,7 @@ class _PriceStepState extends ConsumerState<PriceStep> {
     final problem = _saver.saveProblem;
     final fieldError = _saver.errorOf('pricePerMin');
     return PartBStep(
-      scene: HfSceneKind.wallet,
+      scene: HfClusterKind.wallet,
       title: PartBCopy.priceTitle,
       lead: PartBCopy.priceLead,
       bottom: [

@@ -101,7 +101,7 @@ class _VoiceStepState extends ConsumerState<VoiceStep> {
     final rejected = status == 'rejected';
     final canContinue = (_hasSaved && !_replacing && !rejected) || locked;
     return PartBStep(
-      scene: HfSceneKind.call,
+      scene: HfClusterKind.call,
       title: PartBCopy.voiceTitle,
       lead: PartBCopy.voiceLead,
       bottom: [

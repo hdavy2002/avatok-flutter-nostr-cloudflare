@@ -224,7 +224,7 @@ class _SelfieVideoState extends ConsumerState<SelfieVideoWidget> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        const HfScene(kind: HfSceneKind.verify, height: 100),
+        const HfCluster(kind: HfClusterKind.verify, height: 140),
         const SizedBox(height: 16),
         Text(KycCopy.selfieTitle, style: HfText.of(context, HfText.title)),
         const SizedBox(height: 8),

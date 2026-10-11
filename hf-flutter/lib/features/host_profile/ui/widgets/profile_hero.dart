@@ -90,7 +90,7 @@ class _ProfileHeroState extends ConsumerState<ProfileHero> {
             Positioned(
               left: HfSpacing.page,
               right: HfSpacing.page,
-              bottom: HfSpacing.section * 2 + 4,
+              bottom: HfSpacing.section * 2 + 4 - kHeroOverlap,
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.end,
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,

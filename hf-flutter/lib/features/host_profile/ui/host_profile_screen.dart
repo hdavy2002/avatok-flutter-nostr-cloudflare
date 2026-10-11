@@ -363,107 +363,111 @@ class _ProfileBodyState extends ConsumerState<_ProfileBody> {
         CustomScrollView(
           controller: _scroll,
           slivers: [
-            // The photo is 440 tall; its last 32 px sit under the body sheet.
+            // The photo area is 408 tall; the rounded body sheet starts right below it (the mockup overlaps 32 px).
             SliverToBoxAdapter(
               child: SizedBox(
-                height: kHeroHeight - kHeroOverlap,
-                child: Stack(
-                  clipBehavior: Clip.none,
-                  children: [
-                    Positioned(
-                      left: 0,
-                      right: 0,
-                      top: 0,
-                      height: kHeroHeight,
-                      child: ProfileHero(profile: p),
-                    ),
-                  ],
-                ),
+                height: kHeroHeight,
+                child: ProfileHero(profile: p),
               ),
             ),
             SliverToBoxAdapter(
-              child: Container(
-                decoration: BoxDecoration(
-                  color: profilePage(context),
-                  borderRadius: const BorderRadius.vertical(
-                    top: Radius.circular(HfRadius.sheet),
+              child: Stack(
+                children: [
+                  // The photo's colour shows behind the sheet's rounded top corners.
+                  Positioned(
+                    top: 0,
+                    left: 0,
+                    right: 0,
+                    height: kHeroOverlap,
+                    child: ColoredBox(color: HfTint.lavender.bg(context)),
                   ),
-                ),
-                padding: const EdgeInsets.only(
-                  top: 22,
-                  bottom: HfSpacing.section,
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    if (widget.result.fromCache) ...[
-                      const Padding(
-                        padding: pad,
-                        child: Align(
-                          alignment: Alignment.centerLeft,
-                          child: _SavedPill(
-                            label: HostProfileStrings.savedProfile,
+                  Container(
+                    decoration: BoxDecoration(
+                      color: profilePage(context),
+                      borderRadius: const BorderRadius.vertical(
+                        top: Radius.circular(HfRadius.sheet),
+                      ),
+                    ),
+                    padding: const EdgeInsets.only(
+                      top: 22,
+                      bottom: HfSpacing.section,
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        if (widget.result.fromCache) ...[
+                          const Padding(
+                            padding: pad,
+                            child: Align(
+                              alignment: Alignment.centerLeft,
+                              child: _SavedPill(
+                                label: HostProfileStrings.savedProfile,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: HfSpacing.lg),
+                        ],
+                        Padding(
+                          padding: pad,
+                          child: ProfileHeader(
+                            profile: p,
+                            onReviews: () => _goTo(_reviews),
                           ),
                         ),
-                      ),
-                      const SizedBox(height: HfSpacing.lg),
-                    ],
-                    Padding(
-                      padding: pad,
-                      child: ProfileHeader(
-                        profile: p,
-                        onReviews: () => _goTo(_reviews),
-                      ),
-                    ),
-                    if (p.hasIntro) ...[
-                      gap,
-                      Padding(
-                        padding: pad,
-                        child: VoiceIntroPlayer(
-                          url: p.introAudioUrl!,
-                          name: p.displayName,
-                          introSeconds: p.introSeconds,
+                        if (p.hasIntro) ...[
+                          gap,
+                          Padding(
+                            padding: pad,
+                            child: VoiceIntroPlayer(
+                              url: p.introAudioUrl!,
+                              name: p.displayName,
+                              introSeconds: p.introSeconds,
+                            ),
+                          ),
+                        ],
+                        if (quote != null) ...[
+                          gap,
+                          Padding(
+                            padding: pad,
+                            child: QuoteCard(quote: quote, name: p.displayName),
+                          ),
+                        ],
+                        gap,
+                        Padding(
+                          padding: pad,
+                          child: KeyedSubtree(key: _segKey, child: segmented),
                         ),
-                      ),
-                    ],
-                    if (quote != null) ...[
-                      gap,
-                      Padding(
-                        padding: pad,
-                        child: QuoteCard(quote: quote, name: p.displayName),
-                      ),
-                    ],
-                    gap,
-                    Padding(
-                      padding: pad,
-                      child: KeyedSubtree(key: _segKey, child: segmented),
+                        gap,
+                        KeyedSubtree(
+                          key: _keys[_about],
+                          child: AboutSection(profile: p),
+                        ),
+                        gap,
+                        KeyedSubtree(
+                          key: _keys[_topics],
+                          child: TopicsSection(profile: p, labels: labels),
+                        ),
+                        gap,
+                        KeyedSubtree(
+                          key: _keys[_reviews],
+                          child: ReviewsSection(
+                            profile: p,
+                            topicLabels: labels,
+                          ),
+                        ),
+                        gap,
+                        KeyedSubtree(
+                          key: _keys[_gallery],
+                          child: GalleryGrid(items: p.gallery),
+                        ),
+                        gap,
+                        const BeforeYouCall(),
+                        gap,
+                        CrisisAndReport(onReport: widget.onReport),
+                      ],
                     ),
-                    gap,
-                    KeyedSubtree(
-                      key: _keys[_about],
-                      child: AboutSection(profile: p),
-                    ),
-                    gap,
-                    KeyedSubtree(
-                      key: _keys[_topics],
-                      child: TopicsSection(profile: p, labels: labels),
-                    ),
-                    gap,
-                    KeyedSubtree(
-                      key: _keys[_reviews],
-                      child: ReviewsSection(profile: p, topicLabels: labels),
-                    ),
-                    gap,
-                    KeyedSubtree(
-                      key: _keys[_gallery],
-                      child: GalleryGrid(items: p.gallery),
-                    ),
-                    gap,
-                    const BeforeYouCall(),
-                    gap,
-                    CrisisAndReport(onReport: widget.onReport),
-                  ],
-                ),
+                  ),
+                ],
               ),
             ),
           ],

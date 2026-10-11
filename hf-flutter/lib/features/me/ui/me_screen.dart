@@ -12,6 +12,7 @@ import '../../../core/auth/session.dart';
 import '../../../core/links.dart';
 import '../../../core/router/nav.dart';
 import '../../../core/router/routes.dart';
+import '../../../core/theme/theme_mode_store.dart';
 import '../../../core/theme/hf_theme.dart';
 import '../../../core/widgets/widgets.dart';
 import '../../host_dashboard/host_dashboard_providers.dart';
@@ -50,6 +51,12 @@ abstract final class MeCopy {
   static const String becomeHost = 'Become a host';
   static const String becomeHostBody =
       'Talk to people and earn. It takes about 10 minutes to set up.';
+  static const String appearanceTitle = 'Appearance';
+  static const String appearanceBody =
+      'Light is the default. System follows your phone.';
+  static const String appearanceLight = 'Light';
+  static const String appearanceDark = 'Dark';
+  static const String appearanceSystem = 'System';
   static const String notificationsTitle = 'Notifications';
   static const String notificationsBody =
       'Know when your favourite host is online.';
@@ -415,7 +422,7 @@ class _MeScreenState extends ConsumerState<MeScreen>
   // ---- signed out -----------------------------------------------------------------------------------
 
   List<Widget> _signedOut(BuildContext context) => [
-    const HfScene(kind: HfSceneKind.profile, height: 150),
+    const HfCluster(kind: HfClusterKind.profile, height: 150),
     const SizedBox(height: 16),
     HfCard(
       child: Column(
@@ -434,6 +441,8 @@ class _MeScreenState extends ConsumerState<MeScreen>
         ],
       ),
     ),
+    const SizedBox(height: HfSpacing.section),
+    ..._appearanceSection(),
     const SizedBox(height: HfSpacing.section),
     ..._helpSection(),
     const SizedBox(height: HfSpacing.section),
@@ -493,6 +502,8 @@ class _MeScreenState extends ConsumerState<MeScreen>
       const SizedBox(height: HfSpacing.section),
       _heading(MeCopy.hostTitle),
       _hostCard(context, me),
+      const SizedBox(height: HfSpacing.section),
+      ..._appearanceSection(),
       const SizedBox(height: HfSpacing.section),
       ..._helpSection(),
       const SizedBox(height: HfSpacing.section),
@@ -737,6 +748,62 @@ class _MeScreenState extends ConsumerState<MeScreen>
   }
 
   // ---- shared ---------------------------------------------------------------------------------------
+
+  /// Light / Dark / System, saved on the device (not per account).
+  List<Widget> _appearanceSection() {
+    final mode = ref.watch(themeModeProvider);
+    const modes = [ThemeMode.light, ThemeMode.dark, ThemeMode.system];
+    return [
+      _heading(MeCopy.appearanceTitle),
+      HfCard(
+        key: const ValueKey<String>('me-appearance'),
+        padding: const EdgeInsets.all(14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              children: [
+                _iconSquare(
+                  mode == ThemeMode.dark
+                      ? Icons.dark_mode_rounded
+                      : mode == ThemeMode.system
+                      ? Icons.phone_android_rounded
+                      : Icons.light_mode_rounded,
+                  mode == ThemeMode.dark
+                      ? HfTint.lavender
+                      : mode == ThemeMode.system
+                      ? HfTint.sky
+                      : HfTint.butter,
+                ),
+                const SizedBox(width: HfSpacing.lg),
+                Expanded(
+                  child: Text(
+                    MeCopy.appearanceBody,
+                    style: HfText.of(context, HfText.note),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: HfSpacing.lg),
+            HfSegmented(
+              key: const ValueKey<String>('me-appearance-mode'),
+              options: const [
+                MeCopy.appearanceLight,
+                MeCopy.appearanceDark,
+                MeCopy.appearanceSystem,
+              ],
+              tints: const [HfTint.butter, HfTint.lavender, HfTint.sky],
+              selected: modes.indexOf(mode),
+              onChanged: (i) {
+                HapticFeedback.selectionClick();
+                unawaited(ref.read(themeModeProvider.notifier).set(modes[i]));
+              },
+            ),
+          ],
+        ),
+      ),
+    ];
+  }
 
   List<Widget> _helpSection() => [
     _heading(MeCopy.helpTitle),

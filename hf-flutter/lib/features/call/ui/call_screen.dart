@@ -11,6 +11,8 @@ import '../../../core/router/routes.dart';
 import '../../../core/strings.dart';
 import '../../../core/theme/hf_theme.dart';
 import '../../../core/widgets/widgets.dart';
+import '../../demo/demo_call.dart'; // [HF-DEMO] remove with lib/features/demo
+import '../../demo/demo_data.dart'; // [HF-DEMO] remove with lib/features/demo
 import '../data/call_api.dart';
 import '../data/call_models.dart';
 import '../data/call_telemetry.dart';
@@ -44,8 +46,11 @@ class CallScreen extends StatelessWidget {
   static const Duration pollEvery = Duration(seconds: 2);
 
   @override
-  Widget build(BuildContext context) =>
-      id == newCallId ? const CallConfirmPage() : CallFollower(id: id);
+  Widget build(BuildContext context) {
+    // [HF-DEMO] remove with lib/features/demo
+    if (isDemoCallId(id)) return const DemoCallScreen();
+    return id == newCallId ? const CallConfirmPage() : CallFollower(id: id);
+  }
 }
 
 /// Follows one running or finished call (see [CallScreen]).

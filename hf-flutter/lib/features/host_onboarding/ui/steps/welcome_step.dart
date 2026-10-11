@@ -16,7 +16,7 @@ class WelcomeStep extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return OnboardingStepPage(
-      scene: HfSceneKind.welcome,
+      scene: HfClusterKind.welcome,
       title: OnboardingCopy.welcomeTitle,
       lead: OnboardingCopy.welcomeLead,
       footer: [

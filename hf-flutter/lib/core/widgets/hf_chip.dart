@@ -77,7 +77,7 @@ class HfChip extends StatelessWidget {
         );
         weight = FontWeight.w600;
       case _HfChipVariant.dark:
-        bg = dark ? HfColors.lavender : HfColors.ink;
+        bg = dark ? HfColors.lavenderLight : HfColors.ink;
         fg = dark ? HfColors.ink : HfColors.white;
     }
     final leading = _variant == _HfChipVariant.selected
@@ -95,7 +95,9 @@ class HfChip extends StatelessWidget {
           constraints: const BoxConstraints(minHeight: HfSpacing.tap),
           child: Center(
             widthFactor: 1,
-            child: Container(
+            child: AnimatedContainer(
+              duration: HfMotion.of(context, HfMotion.fast),
+              curve: HfMotion.curve,
               height: 40,
               padding: EdgeInsets.symmetric(
                 horizontal: _variant == _HfChipVariant.selected ? 14 : 16,

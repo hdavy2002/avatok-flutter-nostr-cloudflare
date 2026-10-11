@@ -18,14 +18,14 @@ class PartBStep extends StatelessWidget {
     super.key,
     this.title,
     this.lead,
-    this.scene = HfSceneKind.profile,
+    this.scene = HfClusterKind.profile,
     required this.children,
     this.bottom = const <Widget>[],
   });
 
   final String? title;
   final String? lead;
-  final HfSceneKind scene;
+  final HfClusterKind scene;
   final List<Widget> children;
 
   /// Widgets pinned at the bottom (usually an error line and the button).

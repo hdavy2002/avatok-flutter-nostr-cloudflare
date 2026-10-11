@@ -12,6 +12,7 @@ import '../../../core/router/pending_intent.dart';
 import '../data/registration_progress.dart';
 import '../../../core/router/routes.dart';
 import '../../../core/theme/hf_theme.dart';
+import '../../../core/widgets/hf_page_header.dart';
 import '../../../core/widgets/widgets.dart';
 import '../../welcome/data/ack_service.dart';
 import '../data/auth_messages.dart';
@@ -176,51 +177,55 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
             }
           },
           child: Scaffold(
-            appBar: AppBar(
-              automaticallyImplyLeading: false,
-              leading: IconButton(
-                tooltip: 'Back',
-                icon: const Icon(Icons.arrow_back_rounded),
-                onPressed: _back,
-              ),
-            ),
             body: SafeArea(
-              child: ListView(
-                padding: const EdgeInsets.fromLTRB(
-                  HfSpacing.pageWide,
-                  0,
-                  HfSpacing.pageWide,
-                  HfSpacing.section,
-                ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  const HfScene(kind: HfSceneKind.welcome, height: 150),
-                  const SizedBox(height: 20),
-                  Semantics(
-                    header: true,
-                    child: Text(
-                      onCode ? SignInCopy.codeTitle : SignInCopy.title,
-                      style: HfText.of(context, HfText.headline),
-                    ),
-                  ),
-                  const SizedBox(height: HfSpacing.lg),
-                  HfCard(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: onCode ? _codeStep() : _numberStep(),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  Text(
-                    'Your number stays private from other people.',
-                    style: HfText.of(context, HfText.note),
-                    textAlign: TextAlign.center,
-                  ),
+                  HfPageHeader(onBack: _back),
+                  Expanded(child: _form(onCode)),
                 ],
               ),
             ),
           ),
         );
       },
+    );
+  }
+
+  Widget _form(bool onCode) {
+    return Builder(
+      builder: (context) => ListView(
+        padding: const EdgeInsets.fromLTRB(
+          HfSpacing.pageWide,
+          0,
+          HfSpacing.pageWide,
+          HfSpacing.section,
+        ),
+        children: [
+          const HfCluster(kind: HfClusterKind.welcome, height: 150),
+          const SizedBox(height: 20),
+          Semantics(
+            header: true,
+            child: Text(
+              onCode ? SignInCopy.codeTitle : SignInCopy.title,
+              style: HfText.of(context, HfText.headline),
+            ),
+          ),
+          const SizedBox(height: HfSpacing.lg),
+          HfCard(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: onCode ? _codeStep() : _numberStep(),
+            ),
+          ),
+          const SizedBox(height: 16),
+          Text(
+            'Your number stays private from other people.',
+            style: HfText.of(context, HfText.note),
+            textAlign: TextAlign.center,
+          ),
+        ],
+      ),
     );
   }
 
@@ -430,11 +435,12 @@ class _AgeTick extends StatelessWidget {
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Checkbox(
-                  value: value,
-                  onChanged: (v) => onChanged(v ?? false),
-                  activeColor: HfColors.ink,
-                  checkColor: HfColors.white,
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
+                  child: Semantics(
+                    checked: value,
+                    child: HfCheckMark(checked: value),
+                  ),
                 ),
                 Expanded(
                   child: Padding(

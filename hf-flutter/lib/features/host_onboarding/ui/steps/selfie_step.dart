@@ -45,7 +45,7 @@ class _SelfieStepState extends State<SelfieStep> {
         _uploaded || ((status == 'pending' || status == 'approved') && !_again);
     if (sent) {
       return OnboardingStepPage(
-        scene: HfSceneKind.verify,
+        scene: HfClusterKind.verify,
         footer: [
           HfButton(
             key: const ValueKey<String>('selfie-continue'),
@@ -85,7 +85,7 @@ class _SelfieStepState extends State<SelfieStep> {
       );
     }
     return OnboardingStepPage(
-      scene: HfSceneKind.verify,
+      scene: HfClusterKind.verify,
       children: [
         if (status == 'rejected' && !_again) ...[
           InfoBox(

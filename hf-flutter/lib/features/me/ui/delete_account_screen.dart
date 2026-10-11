@@ -342,7 +342,7 @@ class _DeleteAccountScreenState extends ConsumerState<DeleteAccountScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                const HfScene(kind: HfSceneKind.profile, height: 110),
+                const HfCluster(kind: HfClusterKind.profile, height: 110),
                 const SizedBox(height: 16),
                 ..._content(context, s),
               ],

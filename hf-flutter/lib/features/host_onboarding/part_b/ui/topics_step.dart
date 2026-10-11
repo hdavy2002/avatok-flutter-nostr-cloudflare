@@ -124,7 +124,7 @@ class _TopicsStepState extends ConsumerState<TopicsStep> {
     if (extra.isNotEmpty) groups.add(MapEntry(PartBCopy.topicsMore, extra));
 
     return PartBStep(
-      scene: HfSceneKind.discover,
+      scene: HfClusterKind.discover,
       title: PartBCopy.topicsTitle,
       lead: PartBCopy.topicsLead,
       bottom: [

@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import '../strings.dart';
 import '../theme/hf_theme.dart';
 import 'hf_button.dart';
-import 'hf_scene.dart';
+import 'hf_cluster.dart';
 
 /// The screen shown BEFORE an Android permission prompt (spec 2.13):
 ///   Camera: "We need your camera for a 10-second video to prove it's really you."
@@ -42,7 +42,7 @@ class PermissionExplainer extends StatelessWidget {
         mainAxisAlignment: MainAxisAlignment.center,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          const HfScene(kind: HfSceneKind.verify, height: 140),
+          const HfCluster(kind: HfClusterKind.verify, height: 140),
           Icon(icon, size: 40, color: HfText.of(context, HfText.body).color),
           const SizedBox(height: 16),
           Text(

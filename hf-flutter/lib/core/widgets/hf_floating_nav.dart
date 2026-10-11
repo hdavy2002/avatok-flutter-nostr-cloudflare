@@ -24,7 +24,7 @@ class HfNavItem {
 
 /// The floating bottom bar: 68 px tall, 16 px side margins, 20 px above the bottom safe area, radius 26.
 ///
-/// Unselected items are 52x48 icon buttons in muted; the selected item expands to a 48 px tinted pill with its
+/// Unselected items are 52x48 26 px icon buttons in muted (mutedSoft on dark); the selected item expands to a 48 px tinted pill with its
 /// icon and label. The width change animates over 220 ms ([AnimatedSize], instant on reduced motion). A tap on
 /// another item gives a `selectionClick` haptic and calls [onTap] with its index. [selected] may be -1 when the
 /// current page has no item. The bar grows with the system text size and the label is replaced by an icon-only
@@ -55,9 +55,9 @@ class HfFloatingNav extends StatelessWidget {
     )..layout();
     final textWidth = painter.width;
     painter.dispose();
-    // Pill = 16 + icon 20 + gap + text + 16; the other items are 52 wide each.
+    // Pill = 14 + icon 26 + gap + text + 14; the other items are 52 wide each.
     final avail = rowWidth - (items.length - 1) * 52;
-    return 16 + 20 + HfSpacing.sm + textWidth + 16 > avail;
+    return 14 + 26 + HfSpacing.sm + textWidth + 14 > avail;
   }
 
   @override
@@ -126,45 +126,46 @@ class _NavButton extends StatelessWidget {
   Widget build(BuildContext context) {
     final dark = HfBrightness.isDark(context);
     final tintInk = item.tint.ink(context);
-    final pillBg = dark && item.tint == HfTint.lavender
-        ? HfColors.darkSelected
-        : item.tint.bg(context);
+    final pillBg = item.tint.bg(context);
     final idle = dark ? HfColors.mutedSoft : HfColors.muted;
     final Widget body = selected
-        ? Container(
-            key: const ValueKey<String>('nav-selected'),
-            height: 48,
-            width: iconOnly ? 52 : null,
-            padding: iconOnly
-                ? EdgeInsets.zero
-                : const EdgeInsets.symmetric(horizontal: 16),
-            decoration: BoxDecoration(
-              color: pillBg,
-              borderRadius: BorderRadius.circular(HfRadius.tileSmall),
-            ),
-            child: iconOnly
-                ? Center(child: Icon(item.icon, size: 20, color: tintInk))
-                : Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(item.icon, size: 20, color: tintInk),
-                      const SizedBox(width: HfSpacing.sm),
-                      Flexible(
-                        child: Text(
-                          item.label,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: HfText.badge.copyWith(color: tintInk),
+        ? _ScaleIn(
+            duration: HfMotion.of(context, HfMotion.base),
+            child: Container(
+              key: const ValueKey<String>('nav-selected'),
+              height: 48,
+              width: iconOnly ? 52 : null,
+              padding: iconOnly
+                  ? EdgeInsets.zero
+                  : const EdgeInsets.symmetric(horizontal: 14),
+              decoration: BoxDecoration(
+                color: pillBg,
+                borderRadius: BorderRadius.circular(HfRadius.tileSmall),
+              ),
+              child: iconOnly
+                  ? Center(child: Icon(item.icon, size: 26, color: tintInk))
+                  : Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(item.icon, size: 26, color: tintInk),
+                        const SizedBox(width: HfSpacing.sm),
+                        Flexible(
+                          child: Text(
+                            item.label,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: HfText.badge.copyWith(color: tintInk),
+                          ),
                         ),
-                      ),
-                    ],
-                  ),
+                      ],
+                    ),
+            ),
           )
         : SizedBox(
             key: const ValueKey<String>('nav-idle'),
             width: 52,
             height: 48,
-            child: Center(child: Icon(item.icon, size: 22, color: idle)),
+            child: Center(child: Icon(item.icon, size: 26, color: idle)),
           );
     return Semantics(
       button: true,
@@ -181,6 +182,30 @@ class _NavButton extends StatelessWidget {
           child: body,
         ),
       ),
+    );
+  }
+}
+
+/// Plays a 0.92 -> 1 scale-in once when it first appears (the pill arriving at its new tab).
+class _ScaleIn extends StatelessWidget {
+  const _ScaleIn({required this.duration, required this.child});
+
+  final Duration duration;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    if (duration == Duration.zero) return child;
+    return TweenAnimationBuilder<double>(
+      tween: Tween<double>(begin: 0.92, end: 1),
+      duration: duration,
+      curve: HfMotion.curve,
+      builder: (context, v, child) => Transform.scale(
+        scale: v,
+        alignment: Alignment.centerLeft,
+        child: child,
+      ),
+      child: child,
     );
   }
 }

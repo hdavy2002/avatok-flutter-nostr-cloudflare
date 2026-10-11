@@ -103,7 +103,7 @@ class _NameSheetState extends ConsumerState<NameSheet> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            const HfScene(kind: HfSceneKind.profile, height: 100),
+            const HfCluster(kind: HfClusterKind.profile, height: 96),
             const SizedBox(height: 16),
             Text(NameCopy.title, style: HfText.of(context, HfText.headline)),
             const SizedBox(height: 6),

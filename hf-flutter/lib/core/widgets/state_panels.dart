@@ -5,7 +5,7 @@ import '../api/api_error.dart';
 import '../strings.dart';
 import '../theme/hf_theme.dart';
 import 'hf_button.dart';
-import 'hf_scene.dart';
+import 'hf_cluster.dart';
 import 'hf_card.dart';
 
 /// Every list screen has four states: loading, content, empty, error. These are the shared panels, so
@@ -34,7 +34,7 @@ class _PanelFrame extends StatelessWidget {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                const HfScene(kind: HfSceneKind.discover, height: 110),
+                const HfCluster(kind: HfClusterKind.discover, height: 110),
                 Icon(
                   icon,
                   size: 32,

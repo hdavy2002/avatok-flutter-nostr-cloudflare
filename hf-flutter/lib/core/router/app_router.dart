@@ -12,6 +12,7 @@ import '../../features/auth/ui/sign_in_screen.dart';
 import '../../features/auth/ui/complete_profile_screen.dart';
 import '../../features/auth/data/registration_progress.dart';
 import '../../features/call/ui/call_screen.dart';
+import '../../features/demo/demo_data.dart'; // [HF-DEMO] remove with lib/features/demo
 import '../../features/explore/ui/explore_screen.dart';
 import '../../features/home/ui/home_screen.dart';
 import '../../features/host_dashboard/ui/host_dashboard_screen.dart';
@@ -59,7 +60,8 @@ class _RefreshNotifier extends ChangeNotifier {
 /// arrives early waits for boot).
 String? hfRedirect(SessionState session, Uri uri) {
   if (session.isLoading) return null;
-  if (!session.isSignedIn && Routes.needsSignIn(uri.path)) {
+  // [HF-DEMO] remove with lib/features/demo: the demo flow needs no account.
+  if (!session.isSignedIn && Routes.needsSignIn(uri.path) && !isDemoUri(uri)) {
     return Routes.signInTo(uri.toString());
   }
   return null;

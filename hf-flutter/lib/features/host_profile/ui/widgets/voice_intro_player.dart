@@ -3,13 +3,16 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../../../core/format/money.dart';
 import '../../../../core/strings.dart';
 import '../../../../core/theme/hf_theme.dart';
 import '../../../../core/widgets/widgets.dart';
 import '../../data/intro_player.dart';
 import '../../host_profile_strings.dart';
 import 'profile_common.dart';
+
+/// Compact m:ss ("0:07"), so the label leaves the waveform its room.
+String _mss(int seconds) =>
+    '${seconds ~/ 60}:${(seconds % 60).toString().padLeft(2, '0')}';
 
 enum _Phase { idle, loading, playing, paused }
 
@@ -163,8 +166,8 @@ class _VoiceIntroPlayerState extends ConsumerState<VoiceIntroPlayer> {
     final ink = dark ? HfColors.peachLight : HfColors.peachInk;
     final tight = profileBigText(context, 1.4);
     final label = totalSeconds > 0 && !tight
-        ? '${Money.clock(shown.round())} / ${Money.clock(totalSeconds.round())}'
-        : Money.clock(shown.round());
+        ? '${_mss(shown.round())} / ${_mss(totalSeconds.round())}'
+        : _mss(shown.round());
     final tooltip = playing
         ? HostProfileStrings.pauseIntro
         : HostProfileStrings.playIntro;
@@ -211,15 +214,7 @@ class _VoiceIntroPlayerState extends ConsumerState<VoiceIntroPlayer> {
           const SizedBox(height: HfSpacing.lg),
           LayoutBuilder(
             builder: (context, c) {
-              // Estimate the room left for the waveform (button, paddings, gaps and the time label) and use as many
-              // bars as fit with their 2 px gaps, sampled evenly from the mockup's 28.
-              final scale = MediaQuery.textScalerOf(context).scale(14) / 14;
-              final room = c.maxWidth - 120 - label.length * 14 * scale;
-              final n = ((room + 2) / 5).floor().clamp(2, _kWave.length);
-              final heights = [
-                for (var i = 0; i < n; i++)
-                  _kWave[(i * _kWave.length / n).floor()],
-              ];
+              const heights = _kWave;
               return Semantics(
                 button: true,
                 label: tooltip,

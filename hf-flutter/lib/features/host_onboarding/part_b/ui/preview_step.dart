@@ -191,7 +191,7 @@ class _PreviewStepState extends ConsumerState<PreviewStep> {
     final price = s.hostNum('pricePerMin')?.toInt();
 
     return PartBStep(
-      scene: HfSceneKind.profile,
+      scene: HfClusterKind.profile,
       title: PartBCopy.previewTitle,
       lead: locked ? null : PartBCopy.previewLead,
       bottom: [

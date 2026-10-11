@@ -38,7 +38,7 @@ abstract final class WalletCopy {
 }
 
 /// Muted text on the ink balance card (mockup `#D6D1EE`).
-const Color _onInkMuted = HfColors.handle;
+const Color _onInkMuted = Color(0xFFD6D1EE);
 
 /// `45.00` -> `45`, `45.20` -> `45.20`: whole rupees drop the decimals, like the mockup's "₹342".
 String _plainRupees(String text) =>
@@ -149,7 +149,7 @@ class _WalletSkeleton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     Widget tile() => const Expanded(
-      child: HfSkeleton.box(height: 76, radius: HfRadius.tile),
+      child: HfSkeleton.box(height: 88, radius: HfRadius.tile),
     );
     return Semantics(
       liveRegion: true,
@@ -395,16 +395,21 @@ class _BalanceCard extends StatelessWidget {
       key: ValueKey<String>(tokens ? 'token-balance' : 'legacy-balance'),
       borderRadius: BorderRadius.circular(HfRadius.cardInner),
       child: DecoratedBox(
-        decoration: const BoxDecoration(color: HfColors.ink),
+        decoration: BoxDecoration(
+          color: HfBrightness.isDark(context)
+              ? HfColors.darkTile
+              : HfColors.ink,
+        ),
         child: Stack(
+          clipBehavior: Clip.hardEdge,
           children: [
             Positioned(
-              right: -40,
-              top: -40,
+              right: -50,
+              top: -50,
               child: ExcludeSemantics(
                 child: Container(
-                  width: 150,
-                  height: 150,
+                  width: 130,
+                  height: 130,
                   decoration: const BoxDecoration(
                     shape: BoxShape.circle,
                     color: HfColors.lavenderDeep,
@@ -413,8 +418,8 @@ class _BalanceCard extends StatelessWidget {
               ),
             ),
             Positioned(
-              right: 40,
-              bottom: -60,
+              right: 24,
+              bottom: -70,
               child: ExcludeSemantics(
                 child: Container(
                   width: 120,

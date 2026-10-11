@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/analytics/analytics.dart';
 import '../../../core/api/api_error.dart';
 import '../../../core/auth/session.dart';
+import '../../demo/demo_data.dart'; // [HF-DEMO] remove with lib/features/demo
 import 'host_card.dart';
 import 'host_filters.dart';
 import 'hosts_repository.dart';
@@ -203,7 +204,10 @@ class ExploreController extends Notifier<ExploreState> {
         state = ExploreState(
           filters: f,
           status: ExploreStatus.ready,
-          items: u.page.items,
+          items: withDemoHosts(
+            f,
+            u.page.items,
+          ), // [HF-DEMO] remove with lib/features/demo
           nextOffset: u.page.nextOffset,
           total: u.page.total,
           fromCache: u.fromCache,

@@ -152,7 +152,7 @@ class _AvatarStepState extends ConsumerState<AvatarStep> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                const HfScene(kind: HfSceneKind.profile, height: 128),
+                const HfCluster(kind: HfClusterKind.profile, height: 140),
                 const SizedBox(height: 20),
                 Text(
                   PartBCopy.avatarTitle,

@@ -224,7 +224,7 @@ class UpdateRequiredScreen extends StatelessWidget {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                const HfScene(kind: HfSceneKind.success, height: 160),
+                const HfCluster(kind: HfClusterKind.success, height: 160),
                 const SizedBox(height: 16),
                 const Text(
                   UpdateCopy.forcedTitle,

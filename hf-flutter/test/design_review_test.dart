@@ -114,7 +114,7 @@ void main() {
         expect(tester.takeException(), isNull);
         await _capture(tester, 'wallet-$label');
       });
-      for (final kind in HfSceneKind.values) {
+      for (final kind in HfClusterKind.values) {
         testWidgets('decorative scene ${kind.name} $label', (tester) async {
           tester.view.physicalSize = size;
           tester.view.devicePixelRatio = 1;
@@ -133,7 +133,9 @@ void main() {
                   body: SafeArea(
                     child: ListView(
                       padding: const EdgeInsets.all(20),
-                      children: [HfScene(kind: kind, animated: true)],
+                      children: [
+                        HfCluster(kind: kind, chipText: '+91 •••• 1727'),
+                      ],
                     ),
                   ),
                 ),

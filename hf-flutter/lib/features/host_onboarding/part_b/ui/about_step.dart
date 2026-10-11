@@ -151,7 +151,7 @@ class _AboutStepState extends ConsumerState<AboutStep> {
     final len = _aboutText.length;
     final problem = _saver.saveProblem;
     return PartBStep(
-      scene: HfSceneKind.profile,
+      scene: HfClusterKind.profile,
       title: PartBCopy.aboutTitle,
       lead: PartBCopy.aboutLead,
       bottom: [

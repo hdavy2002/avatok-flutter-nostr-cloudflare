@@ -8,6 +8,7 @@ import '../../../core/api/api_error.dart';
 import '../../../core/router/nav.dart';
 import '../../../core/router/routes.dart';
 import '../../../core/theme/hf_theme.dart';
+import '../../../core/widgets/hf_page_header.dart';
 import '../../../core/widgets/widgets.dart';
 import '../../kyc/kyc.dart';
 import '../flow/onboarding_context.dart';
@@ -117,36 +118,39 @@ class _HostOnboardingScreenState extends ConsumerState<HostOnboardingScreen> {
         if (!didPop) _back();
       },
       child: Scaffold(
-        appBar: AppBar(
-          automaticallyImplyLeading: false,
-          leading: IconButton(
-            key: const ValueKey<String>('onboarding-back'),
-            tooltip: 'Back',
-            icon: const Icon(Icons.arrow_back_rounded),
-            onPressed: _back,
-          ),
-          title: const Text(OnboardingCopy.screenTitle),
-        ),
         body: SafeArea(
-          child: async.when(
-            skipLoadingOnReload: true,
-            skipLoadingOnRefresh: true,
-            skipError: true,
-            loading: () =>
-                const LoadingPanel(message: OnboardingCopy.loadingState),
-            error: (e, _) {
-              if (e is ApiError && e.isNotEnabled) {
-                return const ComingSoonPanel();
-              }
-              return ErrorPanel(
-                error: e,
-                onRetry: () => ref.invalidate(onboardingStateProvider),
-              );
-            },
-            data: _body,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              HfPageHeader(
+                backKey: const ValueKey<String>('onboarding-back'),
+                title: OnboardingCopy.screenTitle,
+                onBack: _back,
+              ),
+              Expanded(child: _content(async)),
+            ],
           ),
         ),
       ),
+    );
+  }
+
+  Widget _content(AsyncValue<OnboardingServerState> async) {
+    return async.when(
+      skipLoadingOnReload: true,
+      skipLoadingOnRefresh: true,
+      skipError: true,
+      loading: () => const LoadingPanel(message: OnboardingCopy.loadingState),
+      error: (e, _) {
+        if (e is ApiError && e.isNotEnabled) {
+          return const ComingSoonPanel();
+        }
+        return ErrorPanel(
+          error: e,
+          onRetry: () => ref.invalidate(onboardingStateProvider),
+        );
+      },
+      data: _body,
     );
   }
 
@@ -217,19 +221,26 @@ class _ProgressHeader extends StatelessWidget {
     final dark = HfBrightness.isDark(context);
     final label =
         '${OnboardingCopy.stepOf} ${index + 1} ${OnboardingCopy.of} $total';
+    final deep = dark ? HfColors.lavenderLight : HfColors.lavenderDeep;
+    // The pill is lavender; on a lavender strip it flips to the card colour so it stays visible.
+    final pillBg = tint == HfTint.lavender
+        ? (dark ? HfColors.darkCard : HfColors.white)
+        : HfTint.lavender.bg(context);
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.fromLTRB(
-        HfSpacing.page,
+      margin: const EdgeInsets.fromLTRB(
+        HfSpacing.pageWide,
         HfSpacing.sm,
-        HfSpacing.page,
-        HfSpacing.xl,
+        HfSpacing.pageWide,
+        HfSpacing.sm,
+      ),
+      padding: const EdgeInsets.symmetric(
+        horizontal: HfSpacing.pageWide,
+        vertical: 16,
       ),
       decoration: BoxDecoration(
         color: tint.bg(context),
-        borderRadius: const BorderRadius.vertical(
-          bottom: Radius.circular(HfRadius.tile),
-        ),
+        borderRadius: BorderRadius.circular(HfRadius.tile),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -242,9 +253,7 @@ class _ProgressHeader extends StatelessWidget {
                     header: true,
                     child: Text(
                       group,
-                      style: HfText.section.copyWith(
-                        color: tint.valueInk(context),
-                      ),
+                      style: HfText.section.copyWith(color: deep),
                     ),
                   ),
                 )
@@ -257,27 +266,32 @@ class _ProgressHeader extends StatelessWidget {
                   vertical: 6,
                 ),
                 decoration: BoxDecoration(
-                  color: dark ? HfColors.darkCard : HfColors.white,
+                  color: pillBg,
                   borderRadius: BorderRadius.circular(HfRadius.pillRadius),
                 ),
                 child: Text(
                   label,
                   key: const ValueKey<String>('onboarding-progress'),
-                  style: HfText.badge.copyWith(
-                    color: dark ? HfColors.darkText : HfColors.ink,
-                  ),
+                  style: HfText.badge.copyWith(color: deep),
                 ),
               ),
             ],
           ),
-          const SizedBox(height: HfSpacing.lg),
+          const SizedBox(height: HfSpacing.xl),
           ClipRRect(
             borderRadius: BorderRadius.circular(3),
-            child: LinearProgressIndicator(
-              value: (index + 1) / total,
-              minHeight: 6,
-              backgroundColor: dark ? HfColors.darkCard : HfColors.white,
-              color: dark ? HfColors.lavenderLight : HfColors.lavenderDeep,
+            child: TweenAnimationBuilder<double>(
+              tween: Tween<double>(end: (index + 1) / total),
+              duration: HfMotion.of(context, HfMotion.base),
+              curve: HfMotion.curve,
+              builder: (context, value, _) => LinearProgressIndicator(
+                value: value,
+                minHeight: 6,
+                backgroundColor: dark
+                    ? HfColors.darkCard
+                    : HfColors.segmentTrack,
+                color: deep,
+              ),
             ),
           ),
         ],

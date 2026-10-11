@@ -13,6 +13,7 @@ import '../../../core/router/pending_intent.dart';
 import '../../../core/strings.dart';
 import '../../../core/theme/hf_theme.dart';
 import '../../../core/widgets/widgets.dart';
+import '../../demo/demo_data.dart'; // [HF-DEMO] remove with lib/features/demo
 import '../data/call_api.dart';
 import '../data/call_models.dart';
 import '../data/call_telemetry.dart';
@@ -180,6 +181,16 @@ class _CallConfirmSheetState extends ConsumerState<CallConfirmSheet> {
       _problem = null;
       _notifyMessage = null;
     });
+    // [HF-DEMO] remove with lib/features/demo: pretend to start, no request, no saved call id.
+    if (isDemoSlug(widget.slug)) {
+      demoStep('started');
+      await Future<void>.delayed(const Duration(milliseconds: 450));
+      if (!mounted) return;
+      unawaited(
+        _emit(const CallSheetOutcome(CallSheetAction.started, kDemoCallId)),
+      );
+      return;
+    }
     final sw = Stopwatch()..start();
     try {
       final started = await ref
@@ -245,14 +256,23 @@ class _CallConfirmSheetState extends ConsumerState<CallConfirmSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final callsOn = ref
-        .watch(flagsProvider)
-        .when(
-          data: (f) => f.hfCallsEnabled,
-          loading: () => true,
-          error: (_, __) => true,
-        );
-    final estimate = ref.watch(callEstimateProvider(widget.slug));
+    final demo = isDemoSlug(
+      widget.slug,
+    ); // [HF-DEMO] remove with lib/features/demo
+    final callsOn =
+        demo ||
+        ref
+            .watch(flagsProvider)
+            .when(
+              data: (f) => f.hfCallsEnabled,
+              loading: () => true,
+              error: (_, __) => true,
+            );
+    final estimate = demo
+        ? const AsyncData<CallEstimate>(
+            kDemoEstimate,
+          ) // [HF-DEMO] remove with lib/features/demo
+        : ref.watch(callEstimateProvider(widget.slug));
     final bottomInset = MediaQuery.viewInsetsOf(context).bottom;
     final display = widget.hostName.trim().isEmpty
         ? 'your host'
@@ -287,8 +307,16 @@ class _CallConfirmSheetState extends ConsumerState<CallConfirmSheet> {
             ),
           _HostStrip(
             name: display,
-            presence: widget.presence,
-            photoUrl: widget.photoUrl,
+            presence:
+                widget.presence ??
+                (demo
+                    ? HfPresence.online
+                    : null), // [HF-DEMO] remove with lib/features/demo
+            photoUrl:
+                widget.photoUrl ??
+                (demo
+                    ? demoAvatarFor(widget.slug)
+                    : null), // [HF-DEMO] remove with lib/features/demo
           ),
           _gap,
           if (!callsOn)

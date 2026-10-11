@@ -9,6 +9,7 @@ import 'core/brand.dart';
 import 'core/router/app_router.dart';
 import 'core/router/deep_link_handler.dart';
 import 'core/theme/hf_theme.dart';
+import 'core/theme/theme_mode_store.dart';
 import 'core/update/update_gate.dart';
 import 'features/push/ui/push_overlay.dart';
 import 'features/wallet/wallet_providers.dart';
@@ -93,7 +94,9 @@ class _HfAppState extends ConsumerState<HfApp> with WidgetsBindingObserver {
       debugShowCheckedModeBanner: false,
       theme: buildHfTheme(),
       darkTheme: buildHfDarkTheme(),
-      themeMode: ThemeMode.system,
+      themeMode: ref.watch(themeModeProvider),
+      themeAnimationDuration: const Duration(milliseconds: 300),
+      themeAnimationCurve: Curves.easeOutCubic,
       routerConfig: ref.watch(appRouterProvider),
       // [HF-NATIVE-7] push banner, opt-in sheet and token registration;
       // [HF-NATIVE-12] soft update banner or the blocking update screen above everything.

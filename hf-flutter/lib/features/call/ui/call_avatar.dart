@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
 import '../../../core/theme/hf_theme.dart';
+import '../../demo/demo_data.dart'; // [HF-DEMO] remove with lib/features/demo
+import '../../demo/demo_widgets.dart'; // [HF-DEMO] remove with lib/features/demo
 
 /// A host's face for the call screens: the photo when there is one, otherwise the first letter of the name on
 /// lavender. [radius] is the corner radius; pass `size / 2` for a circle.
@@ -59,6 +61,9 @@ class HfCallAvatar extends StatelessWidget {
         clipBehavior: Clip.antiAlias,
         child: url == null || url.isEmpty
             ? fallback
+            : demoAssetPath(url) !=
+                  null // [HF-DEMO] remove with lib/features/demo
+            ? DemoAssetImage(url)
             : Image.network(
                 url,
                 fit: BoxFit.cover,

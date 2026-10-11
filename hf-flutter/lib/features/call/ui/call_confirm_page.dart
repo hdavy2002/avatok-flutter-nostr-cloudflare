@@ -9,6 +9,7 @@ import '../../../core/router/routes.dart';
 import '../../../core/router/pending_intent.dart';
 import '../../../core/strings.dart';
 import '../../../core/widgets/widgets.dart';
+import '../../demo/demo_data.dart'; // [HF-DEMO] remove with lib/features/demo
 import '../data/call_api.dart';
 import 'call_confirm_sheet.dart';
 
@@ -60,6 +61,15 @@ class CallConfirmPage extends ConsumerWidget {
     String slug,
     String? lane,
   ) {
+    // [HF-DEMO] remove with lib/features/demo: a demo host has no server row to read the name from.
+    if (isDemoSlug(slug)) {
+      return _sheet(
+        context,
+        slug,
+        slug == kDemoNehaSlug ? 'Neha' : 'Rohan',
+        lane,
+      );
+    }
     final name = lane == null
         ? ref.watch(callHostNameProvider(slug))
         : ref.watch(callHostNameInLaneProvider((slug: slug, lane: lane)));

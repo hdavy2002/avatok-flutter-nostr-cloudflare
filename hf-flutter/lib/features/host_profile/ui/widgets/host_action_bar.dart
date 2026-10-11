@@ -17,6 +17,7 @@ import '../../../../core/theme/hf_theme.dart';
 import '../../data/host_profile.dart';
 import '../../data/host_profile_providers.dart';
 import '../../host_profile_strings.dart';
+import '../../../demo/demo_data.dart'; // [HF-DEMO] remove with lib/features/demo
 
 /// The sticky bottom action of the profile: an ink bar (radius 28) with the price on the left and a white pill on
 /// the right.
@@ -63,11 +64,13 @@ class _HostActionBarState extends ConsumerState<HostActionBar> {
         'status': _p.status.name,
       }),
     );
-    if (!await requireSignIn(
-      context,
-      ref,
-      next: Routes.callConfirmOf(_p.slug, lane: _lane),
-    )) {
+    // [HF-DEMO] remove with lib/features/demo: no sign-in gate for demo hosts.
+    if (!isDemoSlug(_p.slug) &&
+        !await requireSignIn(
+          context,
+          ref,
+          next: Routes.callConfirmOf(_p.slug, lane: _lane),
+        )) {
       return;
     }
     if (!mounted) return;
@@ -97,6 +100,14 @@ class _HostActionBarState extends ConsumerState<HostActionBar> {
 
   Future<void> _setNotify(bool turnOn) async {
     if (_busy) return;
+    // [HF-DEMO] remove with lib/features/demo: a snackbar, no sign-in, no request.
+    if (isDemoSlug(_p.slug)) {
+      unawaited(HapticFeedback.selectionClick());
+      ScaffoldMessenger.maybeOf(context)
+        ?..hideCurrentSnackBar()
+        ..showSnackBar(const SnackBar(content: Text(kDemoNotifyMessage)));
+      return;
+    }
     final next = Uri(
       path: Routes.hostProfileOf(_p.slug),
       queryParameters: {
@@ -158,13 +169,15 @@ class _HostActionBarState extends ConsumerState<HostActionBar> {
 
   @override
   Widget build(BuildContext context) {
-    final callsOn = ref
-        .watch(flagsProvider)
-        .when(
-          data: (f) => f.hfCallsEnabled,
-          loading: () => true,
-          error: (_, __) => true,
-        );
+    final callsOn =
+        ref
+            .watch(flagsProvider)
+            .when(
+              data: (f) => f.hfCallsEnabled,
+              loading: () => true,
+              error: (_, __) => true,
+            ) ||
+        isDemoSlug(_p.slug); // [HF-DEMO] remove with lib/features/demo
     final inWomenLane = ref.watch(
       sessionProvider.select((s) => s.me?.womenLane ?? false),
     );

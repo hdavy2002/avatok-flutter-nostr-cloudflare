@@ -126,7 +126,7 @@ class _LanguagesStepState extends ConsumerState<LanguagesStep> {
         _saver.errorOf('style') ??
         _saver.errorOf('conversationLang');
     return PartBStep(
-      scene: HfSceneKind.discover,
+      scene: HfClusterKind.discover,
       title: PartBCopy.languagesTitle,
       lead: PartBCopy.languagesLead,
       bottom: [

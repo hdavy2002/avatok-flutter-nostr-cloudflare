@@ -13,14 +13,14 @@ class OnboardingStepPage extends StatelessWidget {
     super.key,
     this.title,
     this.lead,
-    this.scene = HfSceneKind.host,
+    this.scene = HfClusterKind.host,
     required this.children,
     this.footer = const <Widget>[],
   });
 
   final String? title;
   final String? lead;
-  final HfSceneKind scene;
+  final HfClusterKind scene;
   final List<Widget> children;
 
   /// Widgets pinned at the bottom of the step.
@@ -29,15 +29,15 @@ class OnboardingStepPage extends StatelessWidget {
   Widget _page(BuildContext context, List<Widget> kids) =>
       SingleChildScrollView(
         padding: const EdgeInsets.fromLTRB(
-          HfSpacing.page,
-          HfSpacing.page,
-          HfSpacing.page,
+          HfSpacing.pageWide,
+          16,
+          HfSpacing.pageWide,
           32,
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            HfScene(kind: scene, height: 104),
+            HfCluster(kind: scene, height: 140),
             const SizedBox(height: 16),
             if (title != null)
               Semantics(
@@ -49,7 +49,7 @@ class OnboardingStepPage extends StatelessWidget {
               Text(lead!, style: HfText.of(context, HfText.note)),
             ],
             const SizedBox(height: 16),
-            HfCard(
+            _StepCard(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: kids,
@@ -97,13 +97,13 @@ class StepFooter extends StatelessWidget {
     final dark = HfBrightness.isDark(context);
     return Container(
       padding: const EdgeInsets.fromLTRB(
-        HfSpacing.page,
+        HfSpacing.pageWide,
         HfSpacing.lg,
-        HfSpacing.page,
+        HfSpacing.pageWide,
         HfSpacing.lg,
       ),
       decoration: BoxDecoration(
-        color: dark ? HfColors.darkCard : HfColors.white,
+        color: dark ? HfColors.darkBg : HfColors.page,
         border: Border(
           top: BorderSide(color: dark ? HfColors.darkLine : HfColors.line),
         ),
@@ -112,6 +112,29 @@ class StepFooter extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: children,
+      ),
+    );
+  }
+}
+
+/// A step's white workspace: radius 22, 1 px `line` (light) / `darkLine` (dark) border, no heavy shadow.
+class _StepCard extends StatelessWidget {
+  const _StepCard({required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final dark = HfBrightness.isDark(context);
+    return Container(
+      decoration: BoxDecoration(
+        color: dark ? HfColors.darkCard : HfColors.white,
+        borderRadius: BorderRadius.circular(HfRadius.tile),
+        border: Border.all(color: dark ? HfColors.darkLine : HfColors.line),
+      ),
+      child: Material(
+        type: MaterialType.transparency,
+        child: Padding(padding: const EdgeInsets.all(16), child: child),
       ),
     );
   }

@@ -13,6 +13,8 @@ import '../../../core/router/nav.dart';
 import '../../../core/router/routes.dart';
 import '../../../core/theme/hf_theme.dart';
 import '../../../core/widgets/widgets.dart';
+import '../../demo/demo_data.dart'; // [HF-DEMO] remove with lib/features/demo
+import '../../demo/demo_widgets.dart'; // [HF-DEMO] remove with lib/features/demo
 import '../../host_profile/data/host_profile_providers.dart';
 import '../../host_profile/host_profile_strings.dart';
 import '../data/favourites.dart';
@@ -352,15 +354,17 @@ class _MoreChip extends StatelessWidget {
         child: Container(
           height: 40,
           padding: const EdgeInsets.symmetric(horizontal: 16),
-          alignment: Alignment.center,
           decoration: BoxDecoration(
             color: dark ? HfColors.darkBar : HfColors.surfaceSoft,
             borderRadius: BorderRadius.circular(HfRadius.control),
           ),
-          child: Text(
-            '+$count',
-            style: HfText.badge.copyWith(
-              color: dark ? HfColors.mutedSoft : HfColors.muted,
+          child: Center(
+            widthFactor: 1,
+            child: Text(
+              '+$count',
+              style: HfText.badge.copyWith(
+                color: dark ? HfColors.mutedSoft : HfColors.muted,
+              ),
             ),
           ),
         ),
@@ -395,6 +399,11 @@ class _PanelContent extends ConsumerWidget {
             ),
             const SizedBox(width: HfSpacing.xs),
             const HfVerifiedBadge(size: 20),
+            if (isDemoSlug(host.slug)) ...[
+              // [HF-DEMO] remove with lib/features/demo
+              const SizedBox(width: HfSpacing.xs),
+              const DemoChip(),
+            ],
             Expanded(
               child: Align(
                 alignment: Alignment.centerRight,
@@ -565,11 +574,13 @@ class _PriceBarState extends ConsumerState<_PriceBar> {
       );
       return;
     }
-    if (!await requireSignIn(
-      context,
-      ref,
-      next: Routes.callConfirmOf(_h.slug, lane: widget.lane),
-    )) {
+    // [HF-DEMO] remove with lib/features/demo: no sign-in gate for demo hosts.
+    if (!isDemoSlug(_h.slug) &&
+        !await requireSignIn(
+          context,
+          ref,
+          next: Routes.callConfirmOf(_h.slug, lane: widget.lane),
+        )) {
       return;
     }
     if (!mounted) return;
@@ -580,6 +591,14 @@ class _PriceBarState extends ConsumerState<_PriceBar> {
   Future<void> _toggleNotify(bool subscribed) async {
     if (_busy) return;
     final turnOn = !subscribed;
+    // [HF-DEMO] remove with lib/features/demo: a snackbar, no sign-in, no request.
+    if (isDemoSlug(_h.slug)) {
+      unawaited(HapticFeedback.selectionClick());
+      ScaffoldMessenger.maybeOf(context)
+        ?..hideCurrentSnackBar()
+        ..showSnackBar(const SnackBar(content: Text(kDemoNotifyMessage)));
+      return;
+    }
     final next = Uri(
       path: Routes.hostProfileOf(_h.slug),
       queryParameters: <String, String>{
@@ -640,13 +659,15 @@ class _PriceBarState extends ConsumerState<_PriceBar> {
   @override
   Widget build(BuildContext context) {
     final dark = HfBrightness.isDark(context);
-    final callsOn = ref
-        .watch(flagsProvider)
-        .when(
-          data: (f) => f.hfCallsEnabled,
-          loading: () => true,
-          error: (_, __) => true,
-        );
+    final callsOn =
+        ref
+            .watch(flagsProvider)
+            .when(
+              data: (f) => f.hfCallsEnabled,
+              loading: () => true,
+              error: (_, __) => true,
+            ) ||
+        isDemoSlug(_h.slug); // [HF-DEMO] remove with lib/features/demo
     final online = _h.isOnline;
     final bool subscribed = online
         ? false

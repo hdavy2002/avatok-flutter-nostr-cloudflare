@@ -125,7 +125,7 @@ class _PayoutStepState extends ConsumerState<PayoutStep> {
     if (done) {
       final last4 = k.payoutLast4 ?? _result?.accountLast4;
       return OnboardingStepPage(
-        scene: HfSceneKind.wallet,
+        scene: HfClusterKind.wallet,
         title: OnboardingCopy.payoutDoneTitle,
         footer: [
           HfButton(
@@ -172,7 +172,7 @@ class _PayoutStepState extends ConsumerState<PayoutStep> {
     }
 
     return OnboardingStepPage(
-      scene: HfSceneKind.wallet,
+      scene: HfClusterKind.wallet,
       title: OnboardingCopy.payoutTitle,
       lead: OnboardingCopy.payoutLead,
       footer: [

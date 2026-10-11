@@ -87,6 +87,7 @@ abstract final class HfColors {
   static const Color darkTileSky = Color(0xFF1C2A40);
   static const Color darkTileBlush = Color(0xFF3A1F2B);
   static const Color darkTilePeach = Color(0xFF3A2620);
+  static const Color darkTileButter = Color(0xFF3A3120);
   static const Color darkNav = Color(0xFF262238);
   static const Color darkSelected = Color(
     0xFF3A3460,
@@ -96,6 +97,7 @@ abstract final class HfColors {
   static const Color peachLight = Color(0xFFFFC9AE);
   static const Color blushLight = Color(0xFFFFB3CB);
   static const Color skyLight = Color(0xFFA9CCFF);
+  static const Color butterLight = Color(0xFFFFE08A);
 
   /// Price bar in dark mode (mockup `#2A2640`); also the dark butter tile.
   static const Color darkBar = Color(0xFF2A2640);
@@ -150,6 +152,7 @@ abstract final class HfColors {
     darkTileSky,
     darkTileBlush,
     darkTilePeach,
+    darkTileButter,
     darkNav,
     darkSelected,
     darkText,
@@ -157,6 +160,7 @@ abstract final class HfColors {
     peachLight,
     blushLight,
     skyLight,
+    butterLight,
     darkBar,
     darkLine,
     blushDot,

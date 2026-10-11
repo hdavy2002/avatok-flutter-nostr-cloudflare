@@ -10,6 +10,7 @@ import '../../../core/router/nav.dart';
 import '../../../core/router/pending_intent.dart';
 import '../../../core/router/routes.dart';
 import '../../../core/theme/hf_theme.dart';
+import '../../../core/widgets/hf_page_header.dart';
 import '../../../core/widgets/widgets.dart';
 import '../../kyc/kyc.dart';
 import '../../call/data/call_api.dart';
@@ -106,19 +107,21 @@ class _LanesScreenState extends ConsumerState<LanesScreen> {
         if (didPop) unawaited(ref.read(pendingIntentProvider).clear());
       },
       child: Scaffold(
-        appBar: AppBar(
-          automaticallyImplyLeading: false,
-          leading: IconButton(
-            tooltip: 'Back',
-            icon: const Icon(Icons.arrow_back_rounded),
-            onPressed: () async {
-              await ref.read(pendingIntentProvider).clear();
-              if (context.mounted) popOrHome(context);
-            },
+        body: SafeArea(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              HfPageHeader(
+                title: LaneCopy.screenTitle,
+                onBack: () async {
+                  await ref.read(pendingIntentProvider).clear();
+                  if (context.mounted) popOrHome(context);
+                },
+              ),
+              Expanded(child: body),
+            ],
           ),
-          title: const Text(LaneCopy.screenTitle),
         ),
-        body: SafeArea(child: body),
       ),
     );
   }
@@ -138,9 +141,9 @@ class _GuestIntro extends StatelessWidget {
   Widget build(BuildContext context) => ListView(
     padding: const EdgeInsets.all(HfSpacing.page),
     children: [
-      HfScene(
-        kind: lane == Lane.women ? HfSceneKind.women : HfSceneKind.lgbtq,
-        height: 160,
+      HfCluster(
+        kind: lane == Lane.women ? HfClusterKind.women : HfClusterKind.lgbtq,
+        height: 150,
       ),
       const SizedBox(height: 20),
       Text(LaneCopy.titleOf(lane), style: HfText.of(context, HfText.headline)),
@@ -200,7 +203,7 @@ class _Chooser extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          const HfScene(kind: HfSceneKind.women, height: 160),
+          const HfCluster(kind: HfClusterKind.women, height: 150),
           const SizedBox(height: 20),
           Text(
             LaneCopy.chooseTitle,
@@ -216,11 +219,11 @@ class _Chooser extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  HfScene(
+                  HfCluster(
                     kind: l == Lane.women
-                        ? HfSceneKind.women
-                        : HfSceneKind.lgbtq,
-                    height: 104,
+                        ? HfClusterKind.women
+                        : HfClusterKind.lgbtq,
+                    height: 96,
                   ),
                   const SizedBox(height: 16),
                   Text(
@@ -439,8 +442,8 @@ class _LaneFlowState extends ConsumerState<_LaneFlow> {
     return ListView(
       padding: const EdgeInsets.all(HfSpacing.page),
       children: [
-        HfScene(
-          kind: _lane == Lane.women ? HfSceneKind.women : HfSceneKind.lgbtq,
+        HfCluster(
+          kind: _lane == Lane.women ? HfClusterKind.women : HfClusterKind.lgbtq,
           height: 150,
         ),
         const SizedBox(height: 20),

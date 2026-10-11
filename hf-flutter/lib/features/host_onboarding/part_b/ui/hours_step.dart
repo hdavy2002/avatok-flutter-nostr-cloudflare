@@ -238,7 +238,7 @@ class _HoursStepState extends ConsumerState<HoursStep> {
     final problem = _saver.saveProblem;
     final isWoman = ctx.state.kyc.gender == 'F';
     return PartBStep(
-      scene: HfSceneKind.host,
+      scene: HfClusterKind.host,
       title: PartBCopy.hoursTitle,
       lead: PartBCopy.hoursLead,
       bottom: [

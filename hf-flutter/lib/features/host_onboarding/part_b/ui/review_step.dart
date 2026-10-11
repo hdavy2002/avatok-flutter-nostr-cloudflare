@@ -114,7 +114,7 @@ class _ReviewStepState extends ConsumerState<ReviewStep> {
     final banner = lock.inReview && !generating ? lock.banner() : null;
 
     return PartBStep(
-      scene: HfSceneKind.verify,
+      scene: HfClusterKind.verify,
       title: PartBCopy.reviewTitle,
       lead: PartBCopy.reviewLead,
       bottom: [

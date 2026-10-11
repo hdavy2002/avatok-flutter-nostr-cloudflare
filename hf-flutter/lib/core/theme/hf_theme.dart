@@ -26,7 +26,7 @@ enum HfTint {
   Color ink(BuildContext context) =>
       HfBrightness.isDark(context) ? _darkInk : _lightDeep;
 
-  /// Colour of the big number on a tile (the mockups' darker "ink" of the tint).
+  /// Colour of the big number on a tile (the mockups' darker "ink" of the tint; the same bright pastel on dark).
   Color valueInk(BuildContext context) =>
       HfBrightness.isDark(context) ? _darkInk : _lightValue;
 
@@ -58,7 +58,7 @@ enum HfTint {
     HfTint.lavender => HfColors.darkTile,
     HfTint.peach => HfColors.darkTilePeach,
     HfTint.sky => HfColors.darkTileSky,
-    HfTint.butter => HfColors.darkBar,
+    HfTint.butter => HfColors.darkTileButter,
     HfTint.blush => HfColors.darkTileBlush,
   };
 
@@ -66,7 +66,7 @@ enum HfTint {
     HfTint.lavender => HfColors.lavenderLight,
     HfTint.peach => HfColors.peachLight,
     HfTint.sky => HfColors.skyLight,
-    HfTint.butter => HfColors.star,
+    HfTint.butter => HfColors.butterLight,
     HfTint.blush => HfColors.blushLight,
   };
 }
@@ -85,8 +85,9 @@ ThemeData _build(Brightness brightness) {
   final Color muted = dark ? HfColors.mutedSoft : HfColors.muted;
   final Color line = dark ? HfColors.darkLine : HfColors.line;
   final Color linkColor = dark ? HfColors.lavenderLight : HfColors.link;
-  // Primary buttons are ink with white text; in dark mode they flip to lavender with ink text.
-  final Color primary = dark ? HfColors.lavender : HfColors.ink;
+  // Primary buttons are ink with white text; in dark mode they flip to lavenderLight with ink text
+  // (mockup HomeDark "Call now").
+  final Color primary = dark ? HfColors.lavenderLight : HfColors.ink;
   final Color onPrimary = dark ? HfColors.ink : HfColors.white;
 
   final scheme = ColorScheme(
@@ -95,6 +96,8 @@ ThemeData _build(Brightness brightness) {
     onPrimary: onPrimary,
     secondary: linkColor,
     onSecondary: dark ? HfColors.ink : HfColors.white,
+    primaryContainer: dark ? HfColors.darkTile : HfColors.lavender,
+    onPrimaryContainer: dark ? HfColors.lavenderLight : HfColors.lavenderInk,
     tertiary: HfColors.rose,
     onTertiary: HfColors.white,
     error: dark ? HfColors.blushLight : HfColors.accent,
@@ -201,6 +204,9 @@ ThemeData _build(Brightness brightness) {
     chipTheme: ChipThemeData(
       backgroundColor: card,
       selectedColor: dark ? HfColors.darkTile : HfColors.sky,
+      secondarySelectedColor: dark ? HfColors.darkTile : HfColors.sky,
+      checkmarkColor: dark ? HfColors.lavenderLight : HfColors.ink,
+      disabledColor: dark ? HfColors.darkBar : HfColors.segmentTrack,
       labelStyle: c(HfText.badge, text),
       side: BorderSide(color: dark ? HfColors.darkLine : HfColors.outlineChip),
       shape: RoundedRectangleBorder(
@@ -234,6 +240,7 @@ ThemeData _build(Brightness brightness) {
         HfText.body,
         dark ? HfColors.darkText : HfColors.white,
       ),
+      actionTextColor: dark ? HfColors.lavenderLight : HfColors.lavender,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(HfRadius.input),
       ),
