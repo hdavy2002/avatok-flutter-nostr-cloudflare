@@ -1,4 +1,8 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:hf_app/features/explore/data/hosts_repository.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hf_app/core/api/api_error.dart';
 import 'package:hf_app/core/brand.dart';
@@ -8,7 +12,6 @@ import 'package:hf_app/core/storage/account_storage.dart';
 import 'package:hf_app/features/wallet/billing/billing_adapter.dart';
 import 'package:hf_app/features/wallet/data/pack_offer.dart';
 import 'package:hf_app/features/wallet/data/wallet_models.dart';
-import 'package:hf_app/features/wallet/wallet_providers.dart';
 
 import '../../support/app_harness.dart';
 import '../../support/fake_billing.dart';
@@ -105,19 +108,70 @@ void main() {
       expect(find.text('No activity yet.'), findsOneWidget);
     });
 
-    testWidgets('the rate line shows only when the last called host is known', (
+    String minutesText(WidgetTester tester) => tester
+        .widget<Text>(find.byKey(const ValueKey<String>('balance-minutes')))
+        .data!;
+
+    String cachedHosts(List<int> prices) => jsonEncode({
+      'at': DateTime.now().toIso8601String(),
+      'data': {
+        'key': 'k',
+        'page': {
+          'items': [
+            for (var i = 0; i < prices.length; i++)
+              {
+                'slug': 'h$i',
+                'displayName': 'Host $i',
+                'pricePerMin': prices[i],
+              },
+          ],
+          'total': prices.length,
+        },
+      },
+    });
+
+    testWidgets('the rate saved from the last call wins', (tester) async {
+      SharedPreferences.setMockInitialValues(<String, Object>{
+        scopedKey('hf.last_call_rate.v1'): 15.0,
+        kExploreCacheKey: cachedHosts([4]),
+      });
+      await pumpWallet(tester, api: walletApi(), billing: billing);
+      // 45.20 / 15 = 3.01
+      expect(minutesText(tester), 'About 3 minutes at ₹15/min');
+    });
+
+    testWidgets('with no call yet, the cheapest cached host sets the rate', (
       tester,
     ) async {
-      final container = await pumpWallet(
+      SharedPreferences.setMockInitialValues(<String, Object>{
+        kExploreCacheKey: cachedHosts([12, 9, 20]),
+        kOnlineCacheKey: cachedHosts([7, 30]),
+      });
+      await pumpWallet(tester, api: walletApi(), billing: billing);
+      // 45.20 / 7 = 6.45
+      expect(minutesText(tester), 'About 6 minutes at ₹7/min');
+    });
+
+    testWidgets('with nothing known, the rate is Rs 10', (tester) async {
+      SharedPreferences.setMockInitialValues(<String, Object>{});
+      await pumpWallet(tester, api: walletApi(), billing: billing);
+      expect(minutesText(tester), 'About 4 minutes at ₹10/min');
+    });
+
+    testWidgets('a zero balance says how to start', (tester) async {
+      SharedPreferences.setMockInitialValues(<String, Object>{});
+      await pumpWallet(
         tester,
-        api: walletApi(),
+        api: walletApi(
+          wallet: tokenWallet(
+            balance: '0.00',
+            balanceMicro: 0,
+            testTokens: '0.00',
+          ),
+        ),
         billing: billing,
       );
-      expect(
-        find.byKey(const ValueKey<String>('balance-minutes')),
-        findsNothing,
-      );
-      expect(container.read(lastCallRateProvider), isNull);
+      expect(minutesText(tester), 'Add money to start talking');
     });
 
     testWidgets(

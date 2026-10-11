@@ -263,7 +263,7 @@ class _WalletList extends ConsumerWidget {
     final notice = ref.watch(
       purchaseControllerProvider.select((s) => s.notice),
     );
-    final rate = ref.watch(lastCallRateProvider);
+    final rate = valueOf(ref.watch(walletRateProvider));
     const gap = SizedBox(height: 16);
     return RefreshIndicator(
       onRefresh: onRefresh,
@@ -357,6 +357,11 @@ class _WalletList extends ConsumerWidget {
   }
 }
 
+/// "About N minutes at ₹R/min" (whole rupees); "Add money to start talking" when nothing is left to spend.
+String _minutesLine(int minutes, num rate) => minutes <= 0
+    ? 'Add money to start talking'
+    : 'About $minutes ${minutes == 1 ? 'minute' : 'minutes'} at ₹${rate.round()}/min';
+
 /// The ink balance card: radius 28, two decorative circles, the balance in Nunito 44.
 class _BalanceCard extends StatelessWidget {
   const _BalanceCard({required this.data, required this.rate});
@@ -371,8 +376,7 @@ class _BalanceCard extends StatelessWidget {
     final spendable = data.tokenMode
         ? data.availableMicro / 1000000
         : data.spendable;
-    final m = (spendable / r).floor();
-    return m > 0 ? m : null;
+    return (spendable / r).floor();
   }
 
   @override
@@ -449,7 +453,7 @@ class _BalanceCard extends StatelessWidget {
                   if (minutes != null) ...[
                     const SizedBox(height: 4),
                     Text(
-                      'About $minutes ${minutes == 1 ? 'minute' : 'minutes'} at ${Money.rupees(rate!)}/min',
+                      _minutesLine(minutes, rate!),
                       key: const ValueKey<String>('balance-minutes'),
                       style: small,
                     ),

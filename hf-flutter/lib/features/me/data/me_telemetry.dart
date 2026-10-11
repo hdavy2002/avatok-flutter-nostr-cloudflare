@@ -21,6 +21,12 @@ abstract final class MeTelemetry {
     }
   }
 
+  /// The host flipped the offline-reminder switch. `on`: reminders on after the flip; `outcome`: `ok | failed`.
+  static void presenceNudgeToggle({
+    required bool on,
+    required String outcome,
+  }) => _send('hf_presence_nudge_toggle', {'on': on, 'outcome': outcome});
+
   /// The Me tab was opened.
   static void viewed({required bool signedIn}) =>
       _send('hf_app_me_viewed', {'signed_in': signedIn});

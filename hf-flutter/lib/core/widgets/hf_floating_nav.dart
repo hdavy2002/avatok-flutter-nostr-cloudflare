@@ -27,8 +27,8 @@ class HfNavItem {
 /// Unselected items are 52x48 icon buttons in muted; the selected item expands to a 48 px tinted pill with its
 /// icon and label. The width change animates over 220 ms ([AnimatedSize], instant on reduced motion). A tap on
 /// another item gives a `selectionClick` haptic and calls [onTap] with its index. [selected] may be -1 when the
-/// current page has no item. The bar grows with the system text size and the label ellipsises rather than
-/// overflowing. Place it in `Scaffold.bottomNavigationBar` (or a Stack) over a page that has bottom padding of
+/// current page has no item. The bar grows with the system text size and the label is replaced by an icon-only
+/// pill (label kept as semantics) when it would not fit. Place it in `Scaffold.bottomNavigationBar` (or a Stack) over a page that has bottom padding of
 /// about 108.
 class HfFloatingNav extends StatelessWidget {
   const HfFloatingNav({
@@ -41,6 +41,24 @@ class HfFloatingNav extends StatelessWidget {
   final List<HfNavItem> items;
   final int selected;
   final ValueChanged<int> onTap;
+
+  /// True when the selected item's label cannot be shown in full (large text, or measured wider than the pill).
+  bool _labelWontFit(BuildContext context, double rowWidth) {
+    if (selected < 0 || selected >= items.length) return false;
+    final scaler = MediaQuery.textScalerOf(context);
+    if (scaler.scale(14) / 14 > 1.3) return true;
+    final painter = TextPainter(
+      text: TextSpan(text: items[selected].label, style: HfText.badge),
+      textDirection: Directionality.of(context),
+      textScaler: scaler,
+      maxLines: 1,
+    )..layout();
+    final textWidth = painter.width;
+    painter.dispose();
+    // Pill = 16 + icon 20 + gap + text + 16; the other items are 52 wide each.
+    final avail = rowWidth - (items.length - 1) * 52;
+    return 16 + 20 + HfSpacing.sm + textWidth + 16 > avail;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -57,25 +75,31 @@ class HfFloatingNav extends StatelessWidget {
           borderRadius: BorderRadius.circular(HfRadius.nav),
           boxShadow: dark ? HfShadows.navDark : HfShadows.nav,
         ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            for (var i = 0; i < items.length; i++)
-              Flexible(
-                flex: i == selected ? 1 : 0,
-                child: _NavButton(
-                  key: items[i].keyName == null
-                      ? null
-                      : ValueKey<String>(items[i].keyName!),
-                  item: items[i],
-                  selected: i == selected,
-                  onTap: () {
-                    if (i != selected) HapticFeedback.selectionClick();
-                    onTap(i);
-                  },
-                ),
-              ),
-          ],
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final iconOnly = _labelWontFit(context, constraints.maxWidth);
+            return Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                for (var i = 0; i < items.length; i++)
+                  Flexible(
+                    flex: i == selected ? 1 : 0,
+                    child: _NavButton(
+                      key: items[i].keyName == null
+                          ? null
+                          : ValueKey<String>(items[i].keyName!),
+                      item: items[i],
+                      selected: i == selected,
+                      iconOnly: iconOnly,
+                      onTap: () {
+                        if (i != selected) HapticFeedback.selectionClick();
+                        onTap(i);
+                      },
+                    ),
+                  ),
+              ],
+            );
+          },
         ),
       ),
     );
@@ -87,11 +111,15 @@ class _NavButton extends StatelessWidget {
     super.key,
     required this.item,
     required this.selected,
+    required this.iconOnly,
     required this.onTap,
   });
 
   final HfNavItem item;
   final bool selected;
+
+  /// Selected but label too large: show the tinted 48 px pill with the icon only (label stays in semantics).
+  final bool iconOnly;
   final VoidCallback onTap;
 
   @override
@@ -106,26 +134,31 @@ class _NavButton extends StatelessWidget {
         ? Container(
             key: const ValueKey<String>('nav-selected'),
             height: 48,
-            padding: const EdgeInsets.symmetric(horizontal: 16),
+            width: iconOnly ? 52 : null,
+            padding: iconOnly
+                ? EdgeInsets.zero
+                : const EdgeInsets.symmetric(horizontal: 16),
             decoration: BoxDecoration(
               color: pillBg,
               borderRadius: BorderRadius.circular(HfRadius.tileSmall),
             ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(item.icon, size: 20, color: tintInk),
-                const SizedBox(width: HfSpacing.sm),
-                Flexible(
-                  child: Text(
-                    item.label,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: HfText.badge.copyWith(color: tintInk),
+            child: iconOnly
+                ? Center(child: Icon(item.icon, size: 20, color: tintInk))
+                : Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(item.icon, size: 20, color: tintInk),
+                      const SizedBox(width: HfSpacing.sm),
+                      Flexible(
+                        child: Text(
+                          item.label,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: HfText.badge.copyWith(color: tintInk),
+                        ),
+                      ),
+                    ],
                   ),
-                ),
-              ],
-            ),
           )
         : SizedBox(
             key: const ValueKey<String>('nav-idle'),

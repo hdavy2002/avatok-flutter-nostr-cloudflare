@@ -25,6 +25,19 @@ class HostDashboardApi {
     await _api.postJson('/api/hosts/me/presence/beat');
   }
 
+  /// `GET /api/hosts/me/presence` -> `nudgesPaused`: true when she paused the offline reminders.
+  Future<bool> nudgesPaused() async =>
+      (await _api.getJson('/api/hosts/me/presence'))['nudgesPaused'] == true;
+
+  /// `PUT /api/hosts/me/presence/nudges {paused}` -> `{ok, paused}`; returns the saved `paused`.
+  Future<bool> setNudgesPaused(bool paused) async {
+    final j = await _api.putJson(
+      '/api/hosts/me/presence/nudges',
+      body: {'paused': paused},
+    );
+    return j['paused'] == true;
+  }
+
   Future<HostCallsData> calls() async =>
       HostCallsData.fromJson(await _api.getJson('/api/hosts/me/calls'));
 

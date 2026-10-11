@@ -4,6 +4,9 @@ import '../../core/auth/session.dart';
 import 'billing/billing_adapter.dart';
 import 'billing/play_billing_adapter.dart';
 import 'billing/purchase_controller.dart';
+import '../call/data/call_api.dart';
+import '../explore/data/host_card.dart';
+import '../explore/data/hosts_repository.dart';
 import 'data/pack_offer.dart';
 import 'data/wallet_api.dart';
 import 'data/wallet_models.dart';
@@ -31,9 +34,34 @@ final walletProvider = FutureProvider.autoDispose<WalletData>(
   (ref) => ref.watch(walletApiProvider).wallet(),
 );
 
-/// The per-minute rate (rupees) of the host the person last called, when the app knows it. The Wallet's
-/// "About N minutes at Rs R/min" line shows only when this is set; null (the default) hides the line.
-final lastCallRateProvider = Provider<num?>((ref) => null);
+/// The per-minute rate (rupees) of the host the person last called, read from the account's prefs
+/// (`hf.last_call_rate.v1`, written by the call API). Null when there has been no call yet.
+final lastCallRateProvider = FutureProvider.autoDispose<num?>(
+  (ref) => const LastCallRateStore().read(),
+);
+
+/// The rate the Wallet uses for "About N minutes at Rs R/min": the last call's rate, else the cheapest host
+/// in the saved host lists, else Rs 10. Always a positive number.
+final walletRateProvider = FutureProvider.autoDispose<num>((ref) async {
+  final last = await ref.watch(lastCallRateProvider.future);
+  if (last != null && last > 0) return last;
+  final cache = ref.watch(jsonCacheProvider);
+  num? cheapest;
+  for (final key in const [kExploreCacheKey, kOnlineCacheKey]) {
+    final entry = await cache.read(key);
+    final data = entry?.data;
+    if (data is! Map) continue;
+    for (final h in HostsPage.fromJson(data['page']).items) {
+      if (h.pricePerMin > 0 && (cheapest == null || h.pricePerMin < cheapest)) {
+        cheapest = h.pricePerMin;
+      }
+    }
+  }
+  return cheapest ?? kDefaultRatePerMin;
+});
+
+/// The rate assumed when the app knows nothing else.
+const num kDefaultRatePerMin = 10;
 
 final refundsProvider = FutureProvider.autoDispose<RefundsInfo>(
   (ref) => ref.watch(walletApiProvider).refunds(),

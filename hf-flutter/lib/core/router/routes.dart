@@ -149,7 +149,9 @@ abstract final class Routes {
         RegExp(r'^/call/[^/]+$').hasMatch(path) ||
         RegExp(r'^/review/(call/)?[^/]+$').hasMatch(path);
     if (!known ||
-        uri.pathSegments.any((s) => s == '.' || s == '..' || s.contains('\\'))) {
+        uri.pathSegments.any(
+          (s) => s == '.' || s == '..' || s.contains('\\'),
+        )) {
       return false;
     }
     final allowedKeys = switch (path) {

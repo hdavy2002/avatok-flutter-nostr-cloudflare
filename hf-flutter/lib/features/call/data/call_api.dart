@@ -30,13 +30,18 @@ class CallApi {
     );
     final started = StartedCall.fromJson(json);
     if (started.callId.isEmpty) throw ApiError.badResponse(200);
+    await const LastCallRateStore().save(started.rate);
     return started;
   }
 
   /// `GET /api/hf/calls/:id`.
-  Future<CallInfo> status(String id) async => CallInfo.fromJson(
-    await _api.getJson('/api/hf/calls/${Uri.encodeComponent(id)}'),
-  );
+  Future<CallInfo> status(String id) async {
+    final info = CallInfo.fromJson(
+      await _api.getJson('/api/hf/calls/${Uri.encodeComponent(id)}'),
+    );
+    await const LastCallRateStore().save(info.rate);
+    return info;
+  }
 
   /// `POST /api/hf/calls/:id/cancel` -> the status after the cancel. `409 already_connected` is thrown.
   Future<CallStatus> cancel(String id) async {
@@ -49,6 +54,34 @@ class CallApi {
   /// `POST /api/hf/hosts/:slug/notify` (needs a verified WhatsApp number).
   Future<void> notifyMe(String slug) async {
     await _api.postJson('/api/hf/hosts/${Uri.encodeComponent(slug)}/notify');
+  }
+}
+
+/// The rupee-per-minute rate of the host the person last called (account-scoped), for the Wallet's
+/// "About N minutes" line. Best effort: storage trouble never breaks a call.
+class LastCallRateStore {
+  const LastCallRateStore();
+
+  static const String _base = 'hf.last_call_rate.v1';
+
+  Future<num?> read() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final v = prefs.getDouble(scopedKey(_base));
+      return (v == null || v <= 0) ? null : v;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<void> save(num? rate) async {
+    if (rate == null || rate <= 0) return;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setDouble(scopedKey(_base), rate.toDouble());
+    } catch (_) {
+      // best effort
+    }
   }
 }
 

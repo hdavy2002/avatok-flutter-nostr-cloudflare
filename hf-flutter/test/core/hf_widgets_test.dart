@@ -63,6 +63,41 @@ void main() {
       await tester.tap(find.text('A'));
       expect(calls, 0);
     });
+    testWidgets('wraps labels at 2.0x text on a 320 phone, no overflow', (
+      tester,
+    ) async {
+      tester.view.physicalSize = const Size(320, 640);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      await tester.pumpWidget(
+        MediaQuery(
+          data: const MediaQueryData(
+            size: Size(320, 640),
+            textScaler: TextScaler.linear(2.0),
+          ),
+          child: _host(
+            HfSegmented(
+              options: const ['Everyone', 'Women-only', 'LGBTQ+'],
+              selected: 1,
+              onChanged: (_) {},
+            ),
+          ),
+        ),
+      );
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(tester.takeException(), isNull);
+      for (final label in ['Everyone', 'Women-only', 'LGBTQ+']) {
+        final text = tester.widget<Text>(find.text(label));
+        expect(text.maxLines, 2);
+        expect(text.overflow, isNot(TextOverflow.ellipsis));
+        expect(text.softWrap, isTrue);
+        // (didExceedMaxLines is not asserted: the test font Ahem is ~2x wider than the shipped one.)
+      }
+      expect(
+        tester.getSize(find.byType(HfSegmented)).height,
+        greaterThanOrEqualTo(48),
+      );
+    });
   });
 
   group('HfSlideToConfirm', () {
@@ -195,6 +230,41 @@ void main() {
         _host(HfFloatingNav(items: items, selected: 0, onTap: (_) {})),
       );
       await tester.pump(const Duration(milliseconds: 300));
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('selected item goes icon-only at 2.0x on a 320 phone', (
+      tester,
+    ) async {
+      tester.view.physicalSize = const Size(320, 640);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      await tester.pumpWidget(
+        MediaQuery(
+          data: const MediaQueryData(
+            size: Size(320, 640),
+            textScaler: TextScaler.linear(2.0),
+          ),
+          child: _host(HfFloatingNav(items: items, selected: 0, onTap: (_) {})),
+        ),
+      );
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(tester.takeException(), isNull);
+      // No truncated label is ever painted; the pill stays 48 tall with the icon.
+      expect(find.text('Discover'), findsNothing);
+      final pill = find.byKey(const ValueKey<String>('nav-selected'));
+      expect(pill, findsOneWidget);
+      expect(tester.getSize(pill).height, 48);
+      expect(find.byIcon(Icons.search_rounded), findsOneWidget);
+      expect(find.bySemanticsLabel('Discover'), findsOneWidget);
+    });
+
+    testWidgets('keeps the label at normal scale', (tester) async {
+      await tester.pumpWidget(
+        _host(HfFloatingNav(items: items, selected: 0, onTap: (_) {})),
+      );
+      final text = tester.widget<Text>(find.text('Discover'));
+      expect(text.overflow, TextOverflow.ellipsis);
       expect(tester.takeException(), isNull);
     });
   });

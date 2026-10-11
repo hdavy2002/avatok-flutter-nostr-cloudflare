@@ -14,6 +14,7 @@ import '../../../core/router/nav.dart';
 import '../../../core/router/routes.dart';
 import '../../../core/theme/hf_theme.dart';
 import '../../../core/widgets/widgets.dart';
+import '../../host_dashboard/host_dashboard_providers.dart';
 import '../../lanes/data/lanes_api.dart';
 import '../data/me_telemetry.dart';
 import '../data/notification_control.dart';
@@ -52,6 +53,11 @@ abstract final class MeCopy {
   static const String notificationsTitle = 'Notifications';
   static const String notificationsBody =
       'Know when your favourite host is online.';
+  static const String nudgeTitle = 'Offline reminders';
+  static const String nudgeBody =
+      "A WhatsApp nudge every 3 hours while you're offline";
+  static const String couldNotSaveNudge =
+      "We couldn't update that. Please try again.";
   static const String helpTitle = 'Help and legal';
   static const String signOut = 'Sign out';
   static const String deleteAccount = 'Delete my account';
@@ -115,6 +121,10 @@ class _MeScreenState extends ConsumerState<MeScreen>
   bool? _notificationsOn;
   bool _notificationsBusy = false;
 
+  /// Offline reminders for a host: on = not paused. Null until the server has answered.
+  bool? _nudgesOn;
+  bool _nudgesBusy = false;
+
   @override
   void initState() {
     super.initState();
@@ -123,6 +133,7 @@ class _MeScreenState extends ConsumerState<MeScreen>
       if (!mounted) return;
       MeTelemetry.viewed(signedIn: ref.read(sessionProvider).isSignedIn);
       unawaited(_loadNotifications());
+      unawaited(_loadNudges());
     });
   }
 
@@ -142,6 +153,45 @@ class _MeScreenState extends ConsumerState<MeScreen>
     final on = await ref.read(notificationControlProvider).isEnabled();
     if (!mounted) return;
     setState(() => _notificationsOn = on);
+  }
+
+  Future<void> _loadNudges() async {
+    if (!ref.read(sessionProvider).hasHostTab) return;
+    try {
+      final paused = await ref.read(hostDashboardApiProvider).nudgesPaused();
+      if (!mounted) return;
+      setState(() => _nudgesOn = !paused);
+    } catch (_) {
+      // Stays unknown: the switch is off-limits until the server answers.
+    }
+  }
+
+  Future<void> _toggleNudges(bool on) async {
+    if (_nudgesBusy) return;
+    final before = _nudgesOn;
+    setState(() {
+      _nudgesBusy = true;
+      _nudgesOn = on;
+    });
+    try {
+      final paused = await ref
+          .read(hostDashboardApiProvider)
+          .setNudgesPaused(!on);
+      if (!mounted) return;
+      setState(() {
+        _nudgesBusy = false;
+        _nudgesOn = !paused;
+      });
+      MeTelemetry.presenceNudgeToggle(on: on, outcome: 'ok');
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _nudgesBusy = false;
+        _nudgesOn = before;
+      });
+      MeTelemetry.presenceNudgeToggle(on: on, outcome: 'failed');
+      _snack(MeCopy.couldNotSaveNudge);
+    }
   }
 
   Future<void> _toggleNotifications(bool on) async {
@@ -648,6 +698,7 @@ class _MeScreenState extends ConsumerState<MeScreen>
 
   Widget _notificationsCard() {
     final on = _notificationsOn ?? false;
+    final isHost = ref.watch(sessionProvider.select((s) => s.hasHostTab));
     return _group([
       _row(
         icon: Icons.notifications_rounded,
@@ -665,6 +716,23 @@ class _MeScreenState extends ConsumerState<MeScreen>
                 },
         ),
       ),
+      if (isHost)
+        _row(
+          icon: Icons.notifications_paused_rounded,
+          tint: HfTint.blush,
+          title: MeCopy.nudgeTitle,
+          subtitle: MeCopy.nudgeBody,
+          trailing: Switch(
+            key: const ValueKey<String>('me-offline-reminders'),
+            value: _nudgesOn ?? false,
+            onChanged: (_nudgesOn == null || _nudgesBusy)
+                ? null
+                : (v) {
+                    HapticFeedback.selectionClick();
+                    unawaited(_toggleNudges(v));
+                  },
+          ),
+        ),
     ]);
   }
 

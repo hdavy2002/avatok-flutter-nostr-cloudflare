@@ -80,7 +80,9 @@ class _PushOverlayState extends ConsumerState<PushOverlay> {
       }
       final router = _router;
       if (router == null ||
-          _quietPaths.contains(router.routeInformationProvider.value.uri.path)) {
+          _quietPaths.contains(
+            router.routeInformationProvider.value.uri.path,
+          )) {
         return;
       }
       final navContext = router.routerDelegate.navigatorKey.currentContext;

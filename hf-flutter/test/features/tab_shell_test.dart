@@ -187,6 +187,10 @@ void main() {
 
   testWidgets('the selected tab label is at least 14 sp', (tester) async {
     await pumpApp(tester, session: signedInState(host: true));
+    // The test font (Ahem) is far wider than the real one; give the bar room so the label is not swapped
+    // for the icon-only pill that HfFloatingNav uses when a label would not fit.
+    tester.view.physicalSize = const Size(1800, 2400);
+    await tester.pump();
     final text = tester.widget<Text>(tabLabel('Discover'));
     final style = DefaultTextStyle.of(
       tester.element(tabLabel('Discover')),
