@@ -47,7 +47,8 @@ describe("window and copy", () => {
     expect(t).toContain("Hi Priya");
     expect(t).toContain("Hello Fraands");
     expect(t).toContain("Host tab");
-    expect(t).toContain("Reply STOP");
+    expect(t).toContain("Me › Notifications");
+    expect(t).not.toContain("STOP");
     expect(presenceNudgeText("  ")).toContain("Hi there");
   });
 });

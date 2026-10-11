@@ -38,7 +38,7 @@ export function inNudgeWindow(now: number): boolean {
 
 export function presenceNudgeText(displayName: string | null | undefined): string {
   const name = (displayName ?? "").trim().replace(/\s+/g, " ").slice(0, 60) || "there";
-  return `Hi ${name}, FYI — you're showing as offline on ${BRAND.name}, so callers can't reach you. Forgotten to switch on? Open the app › Host tab › turn the switch on. Reply STOP to pause these reminders.`;
+  return `Hi ${name}, FYI — you're showing as offline on ${BRAND.name}, so callers can't reach you. Forgotten to switch on? Open the app › Host tab › turn the switch on. You can pause these reminders in the app: Me › Notifications.`;
 }
 
 export interface NudgeRunResult { scanned: number; ok: number; skipped: number; failed: number; reason?: string }
