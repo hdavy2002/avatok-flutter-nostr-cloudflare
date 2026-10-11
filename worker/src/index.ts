@@ -93,6 +93,7 @@ import {
   saathumCheckoutPaid, // [SAATHUM-UPI-3LAYER 2026-09-29]
 } from "./routes/saathum_checkout";
 import { runWhatsAppOutboxDrain } from "./lib/whatsapp_notify"; // [WA-NOTIFY-1]
+import { hfNotifyRoute, runHfNotifyMaterializer } from "./lib/hf_notify"; // [HF-CALLS-1 / HF-NOTIFY-DELIVERY-1]
 import { preetiRoute } from "./routes/preeti"; // [SAATHUM-PREETI-1]
 import { runPreetiDailyMaintenance } from "./lib/preeti/knowledge"; // [SAATHUM-PREETI-1]
 import { runPreetiChatMaintenance } from "./lib/preeti/maintenance"; // [SAATHUM-PREETI-1]
@@ -313,7 +314,6 @@ import { hfRefundsRoute } from "./routes/hf_refunds"; // [HF-WALLET-EXIT-1] refu
 import { hfExitRoute } from "./routes/hf_exit"; // [HF-WALLET-EXIT-1] pay-out-first account closure (flag hfExitGateEnabled)
 import { runHfExitCron } from "./lib/hf_exit"; // [HF-WALLET-EXIT-1]
 import { hfReviewsRoute } from "./lib/hf_reviews"; // [HF-CALLS-1] reviews (token + signed-in + admin)
-import { hfNotifyRoute } from "./lib/hf_notify"; // [HF-CALLS-1] notify-me
 import { hfPushRoute } from "./routes/hf_push"; // [HF-APP-4] push token register
 import { hfMeRoute } from "./routes/hf_me"; // [HF-NATIVE-S1] native app: who am I (GET/PATCH /api/hf/me)
 import { hfTokensPlayRoute, runHfPlayCron } from "./routes/hf_tokens_play"; // [HF-TOK-PLAY-1] Play Billing token purchases + RTDN + cron
@@ -601,7 +601,10 @@ export default {
         // per tick (this cron runs every 5 min — see the crons comment above), so a
         // ban-risking burst on the unofficial WasenderAPI number never happens even
         // when an event with hundreds of buyers gets its live/video link saved at once.
-        runWhatsAppOutboxDrain(env)
+        runHfNotifyMaterializer(env)
+          .then((r) => { if (r.scanned) console.log("[hf-notify-materialize]", JSON.stringify(r)); })
+          .catch((e) => { console.error("[hf-notify-materialize] failed:", String(e)); })
+          .then(() => runWhatsAppOutboxDrain(env))
           .then((r) => { if (r.scanned) console.log("[whatsapp-outbox-drain]", JSON.stringify(r)); })
           .catch((e) => { console.error("[whatsapp-outbox-drain] failed:", String(e)); }),
         // [SAATHUM-WATCH-1 2026-09-28] Marks event_videos.ended_at from the YouTube

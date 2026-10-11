@@ -72,8 +72,11 @@ class _CallFollowerState extends ConsumerState<CallFollower>
   bool _foreground = true;
   bool _cancelling = false;
   bool _cancelledByMe = false;
+  bool _notifying = false;
+  bool _notified = false;
   bool _reviewed = false;
   String? _notice;
+  String? _notifyMessage;
   Timer? _pollTimer;
   Timer? _clockTimer;
   DateTime? _firstSeenConnected;
@@ -223,6 +226,52 @@ class _CallFollowerState extends ConsumerState<CallFollower>
     await _poll();
   }
 
+  Future<void> _notify(CallInfo info) async {
+    final slug = info.hostSlug;
+    if (_notifying || _notified || slug == null) return;
+    setState(() {
+      _notifying = true;
+      _notifyMessage = null;
+    });
+    final sw = Stopwatch()..start();
+    try {
+      await ref.read(callApiProvider).notifyMe(slug);
+      CallTelemetry.notifyMe(
+        slug: slug,
+        callStatus: info.status.wire,
+        ok: true,
+        ms: sw.elapsedMilliseconds,
+      );
+      if (!mounted) return;
+      setState(() {
+        _notifying = false;
+        _notified = true;
+        _notifyMessage =
+            "We'll WhatsApp you when ${info.hostFirstName} is free.";
+      });
+    } on ApiError catch (e) {
+      CallTelemetry.notifyMe(
+        slug: slug,
+        callStatus: info.status.wire,
+        ok: false,
+        reason: e.code,
+        httpStatus: e.status,
+        ms: sw.elapsedMilliseconds,
+      );
+      if (!mounted) return;
+      setState(() {
+        _notifying = false;
+        _notifyMessage = e.userMessage;
+      });
+    }
+  }
+
+  bool _canNotify(CallInfo info) =>
+      !_cancelledByMe &&
+      info.hostSlug != null &&
+      (info.status == CallStatus.hostDeclined ||
+          info.status == CallStatus.noAnswer);
+
   Future<void> _rate(CallInfo info) async {
     final router = GoRouter.of(context);
     final result = await router.push<bool>(Routes.reviewCallOf(info.id));
@@ -307,6 +356,12 @@ class _CallFollowerState extends ConsumerState<CallFollower>
                   info: info,
                   cancelledByMe: _cancelledByMe,
                   reviewed: _reviewed,
+                  notifying: _notifying,
+                  notified: _notified,
+                  notifyMessage: _notifyMessage,
+                  onNotify: _canNotify(info)
+                      ? () => unawaited(_notify(info))
+                      : null,
                   onRate: () => unawaited(_rate(info)),
                   onDone: () => popOrHome(context),
                 ),

@@ -9599,9 +9599,47 @@
       },
       {
         "event": "hf_notify_sent",
-        "property": "count",
-        "gte": 1,
-        "note": "Notify-me WhatsApp sent when a host came online."
+        "property": "channel",
+        "equals": "whatsapp",
+        "note": "Notify-me WhatsApp provider reported success and the guarded outbox transition completed with status=sent. Queue acceptance is hf_notify_queued; ambiguous results never emit this event."
+      }
+    ]
+  },
+  "HF-NOTIFY-DELIVERY-1": {
+    "description": "[HF-NOTIFY-DELIVERY-1 2026-10-11] Durable, one-shot Notify me delivery behind the existing hfCallsEnabled flag. HFN-A1: no visible caller queue, line, position, ETA, reservation or held caller. HFN-A2: web keeps the initial-unavailable and post-decline/miss action; native keeps initial-unavailable and adds the one-shot call-summary action for host_declined/no_answer. HFN-A3: stable pagination materializes every eligible subscriber, including recipient 26+. HFN-A4: deterministic materialization plus an atomic guarded queued->sending claim gives one provider attempt per claim; no provider idempotency is assumed, and ambiguous provider/exception/stale-sending results are terminal manual_reconcile and never auto-replayed. HFN-A5: the caller/host 24 h guard uses prior sent_at with created_at fallback and makes exact +24 h eligible; materialization ends the one-shot subscription. HFN-A6: new blocked/no-verified-number subscriptions are silently dropped, and stale queued rows are silently cancelled before provider I/O if hfCallsEnabled is off, either side blocked, or the current verified E.164 is absent or changed. HFN-A7: with the provider key configured, the shared five-minute cron considers 25 rows per tick and paces provider attempts at about one per two seconds; rate_limited retries up to attempt six, while sent/failed/manual-reconcile states are observable. Without WASENDER_API_KEY, the drain returns before scanning and leaves rows queued without attempt or event. HFN-A8: reuses hfCallsEnabled, whatsapp_outbox, the shared cron, generated brand values and account verification; no migration or binding. hfPushEnabled controls only a supplemental push after confirmed WhatsApp success and is not a release gate.",
+    "two_sided": true,
+    "min_devices_on_build": 2,
+    "flags": [
+      "hfCallsEnabled"
+    ],
+    "success": [
+      {
+        "event": "hf_app_notify_me",
+        "property": "surface",
+        "equals": "call_summary",
+        "min_events": 1,
+        "note": "Native post-decline/missed-call one-shot action succeeded. call_status must be host_declined or no_answer; on=true and outcome=ok. The existing initial-unavailable host-profile/card action does not set surface."
+      },
+      {
+        "event": "hf_notify_queued",
+        "property": "channel",
+        "equals": "whatsapp",
+        "min_events": 1,
+        "note": "A deterministic durable outbox row was inserted. This proves queue acceptance only, not provider delivery. During the >25-subscriber acceptance run, every eligible subscription must produce exactly one row/event across pagination."
+      },
+      {
+        "event": "hf_notify_sent",
+        "property": "status",
+        "equals": "sent",
+        "min_events": 1,
+        "note": "The WhatsApp provider reported success and the guarded outbox transition completed. This is the delivery success signal; it must also carry channel=whatsapp and attempt>=1. push_queued reports only the optional supplemental push and does not gate this issue. Ambiguous results must never emit hf_notify_sent."
+      },
+      {
+        "event": "hf_notify_failed",
+        "property": "stage",
+        "exists": true,
+        "min_events": 0,
+        "note": "Failure-path evidence only; zero is healthy. Materialize failures carry retryable=true. Delivery carries attempt, reason, retryable, terminal and status: rate_limited is known-not-accepted and stays status=queued only before attempt six; at exhaustion or for not_on_whatsapp it is terminal status=failed. Missing WASENDER_API_KEY emits no delivery failure: the drain leaves rows queued without scanning or incrementing attempts. ambiguous_provider_result, ambiguous_exception and ambiguous_in_flight must be terminal status=manual_reconcile with manual_reconcile=true and must never be auto-replayed or emit hf_notify_sent. Silent pre-send privacy/kill-switch cancellation emits no failure event."
       }
     ]
   },

@@ -32,14 +32,18 @@ import { sha256Hex } from "../util";
 import { track, trackException } from "../hooks";
 import { sendWhatsAppText } from "./whatsapp_send";
 import { readConfig } from "../routes/config"; // [WA-NOTIFY-2] saathumLiveLinkNotifyEnabled kill switch
+import { pushNotifyMe } from "./hf_push";
+import { hfCallsOn } from "./hf_reviews";
 
 const APP = "saathum";
 const MAX_SEND_ATTEMPTS = 6;
+const OUTBOX_CLAIM_LEASE_MS = 120_000;
 
 /** Buyer-facing booking reference, same as the web checkout shows (SAA- + first 8 of the checkout id). */
 export const bookingRef = (checkoutId: string) => `SAA-${checkoutId.replace(/-/g, "").slice(0, 8).toUpperCase()}`;
 
 export type NotifyKind = "live_link" | "video_ready" | "booking_confirmed" | "booking_rejected" | "weather_delay" // [SAATHUM-UPI-3LAYER 2026-09-29] [SAATHUM-WEATHER-NOTICE-1 2026-09-29]
+  | "hf_notify" // [HF-NOTIFY-DELIVERY-1] one-shot host-online delivery, queued by lib/hf_notify.ts
   // [SAATHUM-SHOP-API-ORDERS-1 2026-10-01] Shop order messages (queued by lib/shop_notify.ts with listing_id='shop').
   | "shop_order_confirmed" | "shop_order_rejected" | "shop_order_printing" | "shop_order_shipped" | "shop_order_delivered" | "shop_order_refunded";
 // [WA-NOTIFY-2 2026-09-28] Which path queued this send — "link_saved" is the
@@ -247,49 +251,183 @@ export function sendSaathumVideoReadyWhatsApp(env: Env, listingId: string, url: 
   });
 }
 
+type OutboxDrainRow = {
+  id: number;
+  uid: string;
+  e164: string;
+  message: string;
+  kind: string;
+  listing_id: string;
+  attempts: number;
+  created_at: number;
+  updated_at: number;
+};
+
+async function trackHfDeliveryFailure(
+  env: Env,
+  row: Pick<OutboxDrainRow, "id" | "uid" | "listing_id" | "kind">,
+  props: { attempt: number; reason: string; retryable: boolean; terminal: boolean; status: string; manual_reconcile?: boolean },
+): Promise<void> {
+  if (row.kind !== "hf_notify") return;
+  await track(env, row.uid, "hf_notify_failed", BRAND.slug, {
+    host_uid: row.listing_id,
+    outbox_id: row.id,
+    stage: "delivery",
+    ...props,
+  }).catch(() => undefined);
+}
+
+async function quarantineAmbiguous(
+  env: Env,
+  row: OutboxDrainRow,
+  attempt: number,
+  reason: string,
+  detail: string,
+): Promise<void> {
+  const now = Date.now();
+  const changed = await env.DB_META.prepare(
+    "UPDATE whatsapp_outbox SET status='manual_reconcile', error=?2, updated_at=?3 WHERE id=?1 AND status='sending'",
+  ).bind(row.id, `${reason}:${detail}`.slice(0, 300), now).run().catch(() => undefined);
+  if (!changed?.meta?.changes) return;
+  await trackHfDeliveryFailure(env, row, {
+    attempt,
+    reason,
+    retryable: false,
+    terminal: true,
+    status: "manual_reconcile",
+    manual_reconcile: true,
+  });
+}
+
+/** A crashed/expired send claim is ambiguous: never replay it automatically. */
+async function reconcileExpiredClaims(env: Env, now: number, limit: number): Promise<void> {
+  const rows = (await env.DB_META.prepare(
+    `SELECT id, uid, listing_id, kind, attempts FROM whatsapp_outbox
+      WHERE status='sending' AND updated_at<=?1 ORDER BY updated_at LIMIT ?2`,
+  ).bind(now - OUTBOX_CLAIM_LEASE_MS, limit).all<Pick<OutboxDrainRow, "id" | "uid" | "listing_id" | "kind" | "attempts">>()).results ?? [];
+  for (const partial of rows) {
+    const changed = await env.DB_META.prepare(
+      "UPDATE whatsapp_outbox SET status='manual_reconcile', error='ambiguous_in_flight', updated_at=?2 WHERE id=?1 AND status='sending' AND updated_at<=?3",
+    ).bind(partial.id, now, now - OUTBOX_CLAIM_LEASE_MS).run();
+    if (!changed.meta?.changes) continue;
+    if (partial.kind === "hf_notify") await trackHfDeliveryFailure(env, partial, {
+      attempt: partial.attempts,
+      reason: "ambiguous_in_flight",
+      retryable: false,
+      terminal: true,
+      status: "manual_reconcile",
+      manual_reconcile: true,
+    });
+  }
+}
+
+async function revalidateHfNotify(env: Env, row: OutboxDrainRow): Promise<"eligible" | "cancelled"> {
+  if (!(await hfCallsOn(env))) return "cancelled";
+  const blocked = await env.DB_META.prepare(
+    "SELECT 1 AS x FROM hf_blocks WHERE (blocker_uid=?1 AND blocked_uid=?2) OR (blocker_uid=?2 AND blocked_uid=?1)",
+  ).bind(row.uid, row.listing_id).first();
+  if (blocked) return "cancelled";
+  const currentE164 = await verifiedWhatsAppNumber(env, row.uid);
+  return currentE164 && currentE164 === row.e164 ? "eligible" : "cancelled";
+}
+
 /**
- * Cron drain (index.ts scheduled()): sends up to `limit` queued messages, at
- * ~1 / 2s, and returns. Never throws. A `rate_limited` failure is retried (up
- * to MAX_SEND_ATTEMPTS) on a later tick; every other failure — including
- * `not_on_whatsapp`, which can't succeed on retry — is terminal.
+ * Cron drain (index.ts scheduled()): atomically claims and sends up to `limit`
+ * queued messages at ~1 / 2s. `rate_limited`/`unconfigured` are known-not-accepted
+ * and may retry up to MAX_SEND_ATTEMPTS. Provider errors, thrown calls and expired
+ * claims are ambiguous, so they enter `manual_reconcile` and are never replayed.
  */
 export async function runWhatsAppOutboxDrain(env: Env, limit = 25): Promise<{ scanned: number; sent: number; failed: number }> {
-  if (!(env.WASENDER_API_KEY ?? "").trim()) return { scanned: 0, sent: 0, failed: 0 };
   const db = env.DB_META;
+  const boundedLimit = Math.max(1, Math.min(100, limit));
+  const startedAt = Date.now();
+  await reconcileExpiredClaims(env, startedAt, boundedLimit).catch(() => undefined);
+  if (!(env.WASENDER_API_KEY ?? "").trim()) return { scanned: 0, sent: 0, failed: 0 };
   const rows = await db.prepare(
-    `SELECT id, uid, e164, message, kind, listing_id, attempts FROM whatsapp_outbox
+    `SELECT id, uid, e164, message, kind, listing_id, attempts, created_at, updated_at FROM whatsapp_outbox
       WHERE status='queued' ORDER BY created_at ASC LIMIT ?1`,
-  ).bind(Math.max(1, Math.min(100, limit))).all<{
-    id: number; uid: string; e164: string; message: string; kind: string; listing_id: string; attempts: number;
-  }>().catch(() => null);
+  ).bind(boundedLimit).all<OutboxDrainRow>().catch(() => null);
   const list = rows?.results ?? [];
-  let sent = 0, failed = 0;
-  for (let i = 0; i < list.length; i++) {
-    const row = list[i];
-    const now = Date.now();
+  let sent = 0, failed = 0, providerCalls = 0;
+  for (const row of list) {
+    const claimAt = Date.now();
+    const claim = await db.prepare(
+      "UPDATE whatsapp_outbox SET status='sending', attempts=attempts+1, updated_at=?2 WHERE id=?1 AND status='queued'",
+    ).bind(row.id, claimAt).run().catch(() => null);
+    if (!claim?.meta?.changes) continue;
+    const attempt = row.attempts + 1;
     try {
+      if (row.kind === "hf_notify" && await revalidateHfNotify(env, row) !== "eligible") {
+        await db.prepare(
+          "UPDATE whatsapp_outbox SET status='cancelled', error='ineligible_before_send', updated_at=?2 WHERE id=?1 AND status='sending'",
+        ).bind(row.id, Date.now()).run();
+        continue;
+      }
+
+      if (providerCalls > 0) await new Promise((resolve) => setTimeout(resolve, 2000));
+      providerCalls++;
       const res = await sendWhatsAppText(env, row.e164, row.message);
       if (res.ok) {
-        await db.prepare("UPDATE whatsapp_outbox SET status='sent', sent_at=?2, updated_at=?2, attempts=attempts+1 WHERE id=?1")
-          .bind(row.id, now).run();
+        let pushQueued = false;
+        if (row.kind === "hf_notify") {
+          const host = await db.prepare("SELECT display_name, slug FROM hf_hosts WHERE uid=?1")
+            .bind(row.listing_id).first<{ display_name: string | null; slug: string | null }>().catch(() => null);
+          pushQueued = host?.slug
+            ? await pushNotifyMe(env, undefined, row.uid, { display_name: host.display_name, slug: host.slug }).catch(() => false)
+            : false;
+        }
+        const sentAt = Date.now();
+        const finalized = await db.prepare(
+          "UPDATE whatsapp_outbox SET status='sent', sent_at=?2, updated_at=?2, error=NULL WHERE id=?1 AND status='sending'",
+        ).bind(row.id, sentAt).run();
+        if (!finalized.meta?.changes) continue;
+        if (row.kind === "hf_notify") await track(env, row.uid, "hf_notify_sent", BRAND.slug, {
+          host_uid: row.listing_id,
+          outbox_id: row.id,
+          attempt,
+          channel: "whatsapp",
+          push_queued: pushQueued,
+          status: "sent",
+        }).catch(() => undefined);
         sent++;
-      } else {
-        failed++;
-        const attempts = row.attempts + 1;
-        const retryable = res.reason === "rate_limited" && attempts < MAX_SEND_ATTEMPTS;
-        await db.prepare("UPDATE whatsapp_outbox SET status=?2, error=?3, attempts=?4, updated_at=?5 WHERE id=?1")
-          .bind(row.id, retryable ? "queued" : "failed", res.detail.slice(0, 300), attempts, now).run();
-        await trackException(env, new Error(`whatsapp_send_failed:${res.reason}`), {
-          uid: row.uid, route: "whatsapp_outbox_drain", handled: true, app_name: APP,
-          extra: { kind: row.kind, listing_id: row.listing_id, reason: res.reason, retryable },
-        });
+        continue;
       }
-    } catch (err) {
+
       failed++;
-      await trackException(env, err, { uid: row.uid, route: "whatsapp_outbox_drain", handled: true, app_name: APP });
+      if (res.reason === "provider_error") {
+        await quarantineAmbiguous(env, row, attempt, "ambiguous_provider_result", res.detail);
+        await trackException(env, new Error("whatsapp_send_ambiguous:provider_error"), {
+          uid: row.uid, route: "whatsapp_outbox_drain", handled: true, app_name: APP,
+          extra: { kind: row.kind, listing_id: row.listing_id, reason: "ambiguous_provider_result", retryable: false, status: "manual_reconcile" },
+        }).catch(() => undefined);
+        continue;
+      }
+      const retryable = (res.reason === "rate_limited" || res.reason === "unconfigured") && attempt < MAX_SEND_ATTEMPTS;
+      const status = retryable ? "queued" : "failed";
+      await db.prepare("UPDATE whatsapp_outbox SET status=?2, error=?3, updated_at=?4 WHERE id=?1 AND status='sending'")
+        .bind(row.id, status, res.detail.slice(0, 300), Date.now()).run();
+      await trackHfDeliveryFailure(env, row, {
+        attempt,
+        reason: res.reason,
+        retryable,
+        terminal: !retryable,
+        status,
+      });
+      await trackException(env, new Error(`whatsapp_send_failed:${res.reason}`), {
+        uid: row.uid, route: "whatsapp_outbox_drain", handled: true, app_name: APP,
+        extra: { kind: row.kind, listing_id: row.listing_id, reason: res.reason, retryable, status },
+      }).catch(() => undefined);
+    } catch (cause) {
+      failed++;
+      await quarantineAmbiguous(env, row, attempt, "ambiguous_exception", String(cause));
+      await trackException(env, cause, {
+        uid: row.uid,
+        route: "whatsapp_outbox_drain",
+        handled: true,
+        app_name: APP,
+        extra: { kind: row.kind, listing_id: row.listing_id, reason: "ambiguous_exception", retryable: false },
+      }).catch(() => undefined);
     }
-    // ~1 message / 2s — see the pacing note at the top of this file.
-    if (i < list.length - 1) await new Promise((resolve) => setTimeout(resolve, 2000));
   }
   return { scanned: list.length, sent, failed };
 }

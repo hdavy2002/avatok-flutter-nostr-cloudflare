@@ -19,6 +19,10 @@ class CallSummary extends StatelessWidget {
     required this.onRate,
     required this.onDone,
     this.reviewed = false,
+    this.notifying = false,
+    this.notified = false,
+    this.notifyMessage,
+    this.onNotify,
   });
 
   final CallInfo info;
@@ -30,6 +34,13 @@ class CallSummary extends StatelessWidget {
 
   /// A review was just sent from this screen: hide Rate your call.
   final bool reviewed;
+
+  /// Post-miss Notify me state. A null callback means this terminal status is
+  /// not eligible; [notified] hides the one-shot action after success.
+  final bool notifying;
+  final bool notified;
+  final String? notifyMessage;
+  final VoidCallback? onNotify;
 
   String get _headline {
     final name = info.hostFirstName;
@@ -149,8 +160,32 @@ class CallSummary extends StatelessWidget {
               textAlign: TextAlign.center,
             ),
           ),
+        if (notifyMessage != null) ...[
+          const SizedBox(height: HfSpacing.lg),
+          Semantics(
+            liveRegion: true,
+            child: Text(
+              notifyMessage!,
+              style: HfText.of(context, HfText.note),
+              textAlign: TextAlign.center,
+            ),
+          ),
+        ],
         const SizedBox(height: HfSpacing.section),
-        if (showRate) ...[
+        if (onNotify != null && !notified) ...[
+          HfButton(
+            label: CallStrings.notifyMe,
+            icon: Icons.notifications_active_rounded,
+            loading: notifying,
+            onPressed: onNotify,
+          ),
+          const SizedBox(height: HfSpacing.sm),
+          HfButton(
+            label: CallStrings.done,
+            kind: HfButtonKind.text,
+            onPressed: onDone,
+          ),
+        ] else if (showRate) ...[
           HfButton(label: CallStrings.rateYourCall, onPressed: onRate),
           const SizedBox(height: HfSpacing.sm),
           HfButton(

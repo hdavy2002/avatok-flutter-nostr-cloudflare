@@ -32,6 +32,29 @@ abstract final class CallTelemetry {
     unawaited(Analytics.capture('hf_app_call_status', {'status': status}));
   }
 
+  /// The existing Notify me event, from the post-miss call summary.
+  static void notifyMe({
+    required String slug,
+    required String callStatus,
+    required bool ok,
+    String? reason,
+    int? httpStatus,
+    int? ms,
+  }) {
+    unawaited(
+      Analytics.capture('hf_app_notify_me', {
+        'slug': slug,
+        'on': true,
+        'outcome': ok ? 'ok' : 'error',
+        'surface': 'call_summary',
+        'call_status': callStatus,
+        if (reason != null) 'reason': reason,
+        if (httpStatus != null) 'status': httpStatus,
+        if (ms != null) 'ms': ms,
+      }),
+    );
+  }
+
   /// `hf_app_call_cancelled`: `outcome` is `ok`, `too_late` (already connected) or `failed`.
   static void cancelled(String outcome, {String? reason}) {
     unawaited(

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hf_app/core/api/api_error.dart';
@@ -172,11 +174,101 @@ void main() {
         }
         expect(find.text('Done'), findsOneWidget);
         expect(find.text('Rate your call'), findsNothing);
+        final notifyEligible =
+            e.key == 'host_declined' || e.key == 'no_answer';
+        expect(
+          find.text(CallStrings.notifyMe),
+          notifyEligible ? findsOneWidget : findsNothing,
+        );
         await tester.pump(const Duration(seconds: 10));
         expect(api.callsTo('GET', _statusPath), hasLength(1));
         await closeApp(tester);
       });
     }
+  });
+
+  testWidgets(
+    'post-miss Notify me is busy, posts once, then shows success',
+    (tester) async {
+      prepareStorage();
+      final notify = Completer<Object?>();
+      final api = FakeApiClient()
+        ..onJson('GET', _statusPath, callJson('host_declined'))
+        ..on('POST', '/api/hf/hosts/asha/notify', (_) => notify.future);
+      await pumpCallApp(tester, api: api);
+
+      await tester.tap(find.text(CallStrings.notifyMe));
+      await tester.pump();
+      expect(
+        api.callsTo('POST', '/api/hf/hosts/asha/notify'),
+        hasLength(1),
+      );
+      expect(find.byType(CircularProgressIndicator), findsOneWidget);
+
+      notify.complete({'ok': true, 'subscribed': true});
+      await tester.pump();
+      await tester.pump();
+      expect(
+        find.text("We'll WhatsApp you when Asha is free."),
+        findsOneWidget,
+      );
+      expect(
+        find.text(CallStrings.notifyMe),
+        findsNothing,
+        reason: 'success makes this a one-shot action',
+      );
+      expect(
+        api.callsTo('POST', '/api/hf/hosts/asha/notify'),
+        hasLength(1),
+      );
+      await closeApp(tester);
+    },
+  );
+
+  testWidgets(
+    'post-miss Notify me shows the verified-number error and remains retryable',
+    (tester) async {
+      prepareStorage();
+      final api = FakeApiClient()
+        ..onJson('GET', _statusPath, callJson('no_answer'))
+        ..onError(
+          'POST',
+          '/api/hf/hosts/asha/notify',
+          const ApiError(
+            status: 403,
+            code: 'not_verified',
+            message: 'Please verify your WhatsApp number first.',
+          ),
+        );
+      await pumpCallApp(tester, api: api);
+
+      await tester.tap(find.text(CallStrings.notifyMe));
+      await tester.pump();
+      await tester.pump();
+      expect(
+        find.text('Please verify your WhatsApp number first.'),
+        findsOneWidget,
+      );
+      expect(find.text(CallStrings.notifyMe), findsOneWidget);
+      expect(
+        api.callsTo('POST', '/api/hf/hosts/asha/notify'),
+        hasLength(1),
+      );
+      await closeApp(tester);
+    },
+  );
+
+  testWidgets('post-miss Notify me needs a host slug', (tester) async {
+    prepareStorage();
+    final api = FakeApiClient()
+      ..onJson(
+        'GET',
+        _statusPath,
+        callJson('host_declined', extra: {'hostSlug': ''}),
+      );
+    await pumpCallApp(tester, api: api);
+    expect(find.text(CallStrings.notifyMe), findsNothing);
+    await closeApp(tester);
   });
 
   testWidgets('Cancel call posts the cancel and shows the cancelled summary', (
@@ -189,12 +281,12 @@ void main() {
       'GET',
       _statusPath,
       (_) => cancelled
-          ? callJson('failed', endReason: 'caller_hangup')
+          ? callJson('no_answer', endReason: 'caller_hangup')
           : callJson('ringing_host'),
     );
     api.on('POST', '$_statusPath/cancel', (_) {
       cancelled = true;
-      return {'ok': true, 'status': 'failed'};
+      return {'ok': true, 'status': 'no_answer'};
     });
     await pumpCallApp(tester, api: api);
     expect(
@@ -208,6 +300,11 @@ void main() {
     expect(api.callsTo('POST', '$_statusPath/cancel'), hasLength(1));
     expect(find.text('Call cancelled.'), findsOneWidget);
     expect(find.text('You were not charged.'), findsOneWidget);
+    expect(
+      find.text(CallStrings.notifyMe),
+      findsNothing,
+      reason: 'a caller-cancelled no-answer must not offer Notify me',
+    );
     await closeApp(tester);
   });
 

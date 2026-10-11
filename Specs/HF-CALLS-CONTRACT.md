@@ -5,7 +5,7 @@
 Owner decisions:
 - Vobiz is the provider. The owner buys one Indian number → secret/var `HF_CALL_DID` (E.164).
 - Testing uses admin-added **test credits**. Real top-up comes later; `MONEY_IN_DISABLED` stays as is.
-- A busy or offline host shows **Notify me** (WhatsApp). There is no queue.
+- A busy or offline host shows **Notify me** (WhatsApp). A decline or missed host answer offers the same one-shot action on web and native. There is no caller queue: no line, position, ETA, reservation or held caller. The internal durable delivery outbox records notification delivery state and must never be exposed as call availability.
 
 Everything is dark behind flag `hfCallsEnabled` (default false), added to PlatformConfig and DEFAULTS in `worker/src/routes/config.ts`. Start returns 503 `calls_not_ready` when `HF_CALL_DID` or the Vobiz secrets are missing.
 
@@ -50,7 +50,9 @@ Everything is dark behind flag `hfCallsEnabled` (default false), added to Platfo
 
 **hf_review_tokens** (reviews agent): `token PK`, `call_id`, `expires_at`.
 
-**hf_notify** (reviews agent): `caller_uid`, `host_uid`, `created_at`, `notified_at`, PRIMARY KEY (`caller_uid`, `host_uid`).
+**hf_notify** (reviews agent): `caller_uid`, `host_uid`, `created_at`, `notified_at`, PRIMARY KEY (`caller_uid`, `host_uid`). It represents only a live one-shot subscription; `notified_at` is not the durable delivery authority.
+
+**whatsapp_outbox** (existing shared table, reused by HF-NOTIFY-DELIVERY-1): rows with `kind='hf_notify'` hold durable WhatsApp delivery state. The stable key is derived from `host_uid + caller_uid + subscription created_at`; the existing unique key plus `INSERT OR IGNORE` makes repeated materialization deterministic. Delivery uses an atomic guarded state claim, not provider idempotency. No new binding or migration is introduced.
 
 ## Worker API (all JSON, Clerk bearer auth unless noted, errors `{error, message}`)
 
@@ -87,7 +89,16 @@ Everything is dark behind flag `hfCallsEnabled` (default false), added to Platfo
 
 ### Reviews agent
 - **`lib/hf_notify.ts`**
-  - `notifyHostOnline(env, ctx, hostUid)` sends a WhatsApp to every subscriber of that host (the existing whatsapp_send helper): "<Name> is online now on <brand>. Call: <brandUrl('/h/'+slug)>". At most 1 per subscriber per 24 h; set `notified_at`, then delete the subscription.
+  - `notifyHostOnline(env, ctx, hostUid)` paginates every eligible one-shot subscription for the online host in stable `(created_at, caller_uid)` order, 200 rows at a time. Recipient 26 and beyond are materialized; the send cap is not a subscription cap.
+  - Before any durable artifact is created, blocked pairs and callers without a currently verified WhatsApp number are silently dropped. No WhatsApp, push or reason leaks to either side.
+  - Each eligible subscription is inserted into the existing `whatsapp_outbox` as `kind='hf_notify'` with a deterministic identity, then removed. A stop between insert and delete is safe: `INSERT OR IGNORE` proves the same materialized row on retry. This deduplicates outbox creation; it is not a claim that the provider offers idempotent sends.
+  - The existing five-minute cron runs `runHfNotifyMaterializer` first as a bounded safety sweep (up to 200 missed subscriptions), then runs the shared outbox drain. Both materialization and HF delivery are gated by `hfCallsEnabled`. The drain considers at most 25 rows per tick and paces actual provider calls at about one every two seconds.
+  - If `WASENDER_API_KEY` is absent, the drain returns before scanning: rows remain `queued` untouched for a later configured drain, with no claim, attempt increment or delivery event. Otherwise, before provider I/O, the drain atomically and conditionally claims `queued -> sending` and increments `attempts`; only the winner may make that attempt. A known-not-accepted `rate_limited` result returns the row to `queued` for the next five-minute tick, up to attempt six; rate-limit exhaustion and `not_on_whatsapp` become terminal `failed`.
+  - A provider error result, a thrown/otherwise ambiguous send result, or a `sending` claim still unresolved after 120 seconds could already have reached the provider. It therefore becomes terminal `manual_reconcile` with `ambiguous_provider_result`, `ambiguous_exception` or `ambiguous_in_flight` and is never replayed automatically. The contract is an at-most-once provider attempt per atomic claim with explicit ambiguous reconciliation, not provider idempotency.
+  - Immediately before sending an HF row, the drain rechecks `hfCallsEnabled`, blocks in either direction and the caller's current verified E.164. A disabled feature, block, missing number or number mismatch silently changes the claimed row to terminal `cancelled`; it emits no WhatsApp, push or failure event.
+  - The 24-hour guard is scoped to the caller/host pair and reads the prior `sent_at`, with `created_at` only as fallback. It uses a strict newer-than boundary, so exact `+24 h` is eligible. Successful materialization ends that subscription; a same-pair subscription still inside the window records the prior timestamp and remains for a later safety sweep.
+  - `hf_notify_queued` means the durable outbox accepted a new row. `hf_notify_sent` with `status='sent'` is emitted only after `sendWhatsAppText` reports success and the guarded row becomes sent; it is never queue acceptance. `hf_notify_failed` makes materialization, known failure and ambiguous manual-reconciliation states observable.
+  - While the successful send claim is still held, the existing `pushNotifyMe` hook may queue one supplemental push when `hfPushEnabled` and a registered device allow it. Push is an optional second channel, not required for durable WhatsApp delivery or the `HF-NOTIFY-DELIVERY-1` gate.
   - `POST /api/hf/hosts/:slug/notify` → `{ok, subscribed:true}` (caller must have a verified WhatsApp).
   - `DELETE /api/hf/hosts/:slug/notify`.
   - `GET /api/hf/hosts/:slug/notify` → `{subscribed}`.
@@ -102,12 +113,24 @@ Everything is dark behind flag `hfCallsEnabled` (default false), added to Platfo
   - Both audited.
 - **Public aggregates** (in `hf_hosts_public` list + detail): `rating` (avg of approved, 1 decimal or null), `reviewCount`, `ratingBreakdown {5,4,3,2,1}`, `talkedTo` (distinct callers with completed calls), `regulars` (callers with ≥ 3 completed calls).
   - Detail only: `reviews` (latest 10 approved) as `[{firstName, stars, text, topic, minutes, regular:boolean, date}]`. The first name comes from the caller's display name; fall back to "A caller".
-- **Events:** hf_review_submitted, hf_review_decided, hf_notify_subscribed, hf_notify_sent.
+- **Events:** `hf_review_submitted`, `hf_review_decided`, `hf_notify_subscribed`, `hf_notify_queued`, `hf_notify_sent`, `hf_notify_failed`. `hf_notify_sent` remains the only delivery-success event.
+
+### HF-NOTIFY-DELIVERY-1 acceptance
+- **HFN-A1 — no visible queue:** no line, position, ETA, reservation or held caller on web, native or API copy; the outbox is internal delivery state only.
+- **HFN-A2 — one-shot CTA:** existing initial-unavailable actions remain, and both web and native offer the same action after `host_declined` / `no_answer` without starting another call.
+- **HFN-A3 — complete fan-out:** an online transition materializes all eligible subscribers through stable pagination; the 25-send drain cap does not strand later recipients.
+- **HFN-A4 — deterministic, at-most-once attempts:** the subscription identity deduplicates materialization; an atomic `queued -> sending` claim permits one provider attempt per claim. No provider-idempotency guarantee is assumed: ambiguous results become `manual_reconcile` and are never auto-replayed.
+- **HFN-A5 — one per 24 h:** the caller/host guard uses prior `sent_at` with `created_at` fallback and a strict boundary, so exact `+24 h` is eligible; materialization ends the one-shot subscription.
+- **HFN-A6 — privacy:** blocks and missing verified WhatsApp numbers silently end new subscriptions before materialization; already queued rows are revalidated and silently `cancelled` before provider I/O when the feature is off, a block exists, or the verified number is missing or changed. No WhatsApp, push or failure event leaks the reason.
+- **HFN-A7 — paced and observable:** provider calls are paced at about one every two seconds and capped at 25 candidate rows per cron tick. A missing provider key leaves rows queued without scanning, attempts or events; known-not-accepted `rate_limited` results retry at most six attempts. Sent, failed and ambiguous manual-reconciliation states are distinct and observable.
+- **HFN-A8 — no infrastructure/account regression:** both materialization and HF delivery reuse `hfCallsEnabled`, `whatsapp_outbox`, the shared cron, generated brand values and the existing verified account phone lookup; add no binding or migration. `hfPushEnabled` governs only the optional post-success push.
 
 ### Web agent
 - **Call buttons** on LiveHostCards, `/h/[slug]` (side rail + mobile bar):
   - "Call ₹X/min" when online.
-  - "Busy — Notify me" / "Offline — Notify me" otherwise (toggle subscribe; "We'll WhatsApp you").
+  - "Busy — Notify me" / "Offline — Notify me" otherwise (toggle subscribe; "We'll WhatsApp you"). This is the initial-unavailable path.
+  - If `POST /api/hf/calls` returns `host_unavailable`, show the same calm unavailable copy and Notify me action.
+  - If polling ends at `host_declined` or `no_answer`, say the host cannot take the call, confirm there was no charge and show the same Notify me action. Do not expose decline versus miss as queue state.
   - If signed out → sign-in.
 - **Call flow UI** (dialog or `/call/[id]` page):
   1. Confirm sheet: rate, balance, max minutes, the safety notice, and "Your number stays hidden".
@@ -129,6 +152,13 @@ Everything is dark behind flag `hfCallsEnabled` (default false), added to Platfo
   - Reviews moderation at `/admin/hosts/reviews` (nav key `host-reviews` under group "Hosts").
   - Test credit form + calls list at `/admin/hosts/calls` (nav key `host-calls`).
 - Respect `hfCallsEnabled` from `/api/config`. When off, keep today's disabled "Calls open soon" buttons.
+
+### Native app
+- Busy/offline host cards and profiles keep the existing Notify me toggle; this is the initial-unavailable path.
+- A start-time `host_unavailable` keeps the existing calm unavailable panel and its Notify me action.
+- A terminal `host_declined` or `no_answer` summary shows the same one-shot Notify me action after confirming there was no charge, only when the host slug is present and the caller did not cancel. It stays hidden for `blocked`, `caller_no_answer`, `failed`, `completed`, a caller-cancelled no-answer and a missing slug. It uses the existing `POST /api/hf/hosts/:slug/notify` subscription, never a call queue.
+- While subscribing the action is disabled. Success removes the action and says WhatsApp will message the caller when the host is free; an `ApiError` keeps it retryable and shows the existing server message, including `not_verified`.
+- Native reuses `hf_app_notify_me` with `surface: call_summary` and `call_status: host_declined | no_answer`; it does not add a second event name. The client must not show a line, position, ETA, reservation, held caller or why a blocked pair received no notification.
 
 ### Payouts (HF-PAYOUT-1, flag `hfPayoutsEnabled`, manual: request, admin approves, owner pays by hand and enters the UTR)
 Table `hf_payout_requests` (DB_META, `migrations/2026-10-09-hf-payouts.sql`): `id, host_uid, amount_rupees, status requested|approved|paid|rejected|cancelled, bank_snapshot {accountLast4, ifsc, name} (never the full account), wallet_ref hfpayout:<id>, utr, reject_reason, admin_uid, withdrawable_at_request, created_at, updated_at, approved_at, paid_at`.

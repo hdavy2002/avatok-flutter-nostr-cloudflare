@@ -985,6 +985,35 @@ Errors (all via `captureException`, tagged `where`): `studio_list`, `studio_get_
 | `shop_fulfilment_status` | `from, to, provider` | Partner status moved (poll). |
 | `$ai_generation` | — | Studio best-match text and product-copy draft (Gemini text only; no image generation anywhere). |
 
+## Notify me durable delivery (`[HF-NOTIFY-DELIVERY-1]`, 2026-10-11)
+
+Worker source: `worker/src/lib/hf_notify.ts` materializes eligible one-shot subscriptions into existing `whatsapp_outbox` rows with `kind = hf_notify`;
+`worker/src/lib/whatsapp_notify.ts` atomically claims and performs the paced provider attempt. This outbox is internal notification delivery state, **not a caller queue**. It has no
+caller line, position, ETA, reservation or held call. Both materialization and HF delivery reuse `hfCallsEnabled`; `hfPushEnabled` affects only the optional
+supplemental push queued after a confirmed WhatsApp success.
+
+| Event | Props | Note |
+|---|---|---|
+| `hf_notify_queued` | `host_uid`, `subscription_created_at`, `channel: 'whatsapp'` | A new deterministic `hf_notify` outbox row was inserted. Queue acceptance only: this does **not** mean the provider sent the message. Re-materializing the same subscription is an `INSERT OR IGNORE` duplicate and emits no second queued event. |
+| `hf_notify_sent` | `host_uid`, `outbox_id`, `attempt`, `channel: 'whatsapp'`, `push_queued: boolean`, `status: 'sent'` | Emitted only after `sendWhatsAppText` reports success and the atomically claimed row is guarded into `sent`. This preserves the event as confirmed provider success, never queue acceptance. `push_queued` reports only the optional supplemental channel queued while the claim was held. **Success value:** `channel = whatsapp`, `status = sent`, `attempt >= 1`. |
+| `hf_notify_failed` | `host_uid`, `stage: 'materialize' \| 'delivery'`, `retryable`; materialize also has `subscription_created_at`; delivery also has `outbox_id`, `attempt`, `reason`, `terminal`, `status`, optional `manual_reconcile` | Materialization failure is retryable and leaves the subscription for the cron safety sweep. Delivery `reason` is `rate_limited \| not_on_whatsapp \| ambiguous_provider_result \| ambiguous_exception \| ambiguous_in_flight`. Known-not-accepted `rate_limited` stays `status = queued`, `retryable = true` only before attempt six, then becomes terminal `failed`; `not_on_whatsapp` is terminal `failed` immediately. Ambiguous provider/exception results and a `sending` claim older than 120 seconds use `status = manual_reconcile`, `manual_reconcile = true`, `retryable = false`, `terminal = true` and are never auto-replayed. |
+
+The 24-hour guard is per caller/host pair and compares the true prior `sent_at`, with `created_at` only as fallback; its strict boundary makes exact `+24 h` eligible.
+When `WASENDER_API_KEY` is absent, the drain returns before scanning; queued rows remain untouched for a later configured run, and no attempt increment or delivery event occurs. `unconfigured` is therefore not an emitted HF delivery reason.
+Handled exceptions remain in `trackException` under `hf_notify.materialize`, `hf_notify.notifyHostOnline` or `whatsapp_outbox_drain`.
+Blocked pairs and callers without a currently verified WhatsApp number are silently removed before materialization. Immediately before provider I/O, an
+already queued HF row is atomically claimed and revalidated: `hfCallsEnabled` off, a block, no current verified E.164 or a mismatch with the queued number
+silently sets `status = cancelled`. Cancellation emits none of these delivery events and sends neither WhatsApp nor push. The atomic `queued -> sending`
+claim increments `attempts`; only its winner may perform that attempt. This is at-most-once attempt control with explicit ambiguous reconciliation, not a
+provider-idempotency claim. At catalog-update time, PostHog's 30-day event taxonomy contained none of the three delivery events; the rows above document
+the inspected source contract and must not be presented as observed production traffic until they arrive.
+
+### Native post-decline / missed-call action
+
+The native call summary reuses `hf_app_notify_me` rather than introducing a second client event. For a non-cancelled `host_declined` or `no_answer`
+with a host slug, it adds `surface = call_summary` and `call_status`; success removes the one-shot action, while an API error keeps it retryable.
+The initial-unavailable host-profile/card shape remains unchanged.
+
 ## Hello Fraands Android app — app mode on the website (`[HF-APP-3]`, 2026-10-10)
 
 Spec: the Hello Fraands Android app spec, HF-APP-3 / HF-APP-8 (project doc `hello-fraands-android-app-spec`). The app is a Capacitor shell that loads the
@@ -1081,7 +1110,7 @@ Errors (`captureException`): uncaught Flutter, platform and zone errors. Later i
 |---|---|---|
 | `hf_app_profile_viewed` | `slug`, `status: 'online' \| 'busy' \| 'offline'` | Once per opening of `/h/:slug`, when the profile (live or the saved copy) is on screen. Not fired for not-found or error states. **Success value:** arrives with `platform = android-app` after opening a host on the native build. |
 | `hf_app_call_tapped` | `slug`, `status` | The Call button was tapped (before the sign-in check, so signed-out taps count). The call itself is reported by the call screen events. |
-| `hf_app_notify_me` | `slug`, `on: boolean`, `outcome: 'ok' \| 'error'`, `reason`, `status`, `ms` | Notify me turned on or off (`POST` / `DELETE /api/hf/hosts/:slug/notify`). `reason` is the worker code (`not_verified`, `own_profile`, `not_found`, `network`, ...) and `status` the HTTP status, on error only. **Success value:** `outcome = ok`, `on = true` for a signed-in test on an offline host. |
+| `hf_app_notify_me` | `slug`, `on: boolean`, `outcome: 'ok' \| 'error'`, `reason`, `status`, `ms`, optional `surface: 'call_summary'`, optional `call_status: 'host_declined' \| 'no_answer'` | Notify me turned on or off (`POST` / `DELETE /api/hf/hosts/:slug/notify`). The host-profile/card path keeps the original shape. The post-call one-shot action adds `surface = call_summary`, `call_status`, and always has `on = true`; it is offered only after a host decline or missed host answer. `reason` is the worker code (`not_verified`, `own_profile`, `not_found`, `network`, ...) and `status` the HTTP status, on error only. **Success value:** `outcome = ok`, `on = true`; for the new post-call path also require `surface = call_summary`. |
 | `hf_app_report_tapped` | `slug` | "Report this profile" opened the web report page in a Custom Tab. |
 
 ### Wallet and token purchases (`[HF-NATIVE-6]`, `hf-flutter/lib/features/wallet/`)
