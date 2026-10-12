@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hf_app/core/api/api_error.dart';
 import 'package:hf_app/core/router/routes.dart';
+import 'package:hf_app/core/storage/account_storage.dart';
 import 'package:hf_app/features/lanes/data/lanes_api.dart';
 import 'package:hf_app/features/lanes/ui/lanes_screen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -48,14 +49,22 @@ void main() {
     log = TelemetryLog()..install();
   });
 
-  tearDown(() => log.remove());
+  tearDown(() {
+    AccountScope.id = null;
+    log.remove();
+  });
 
-  Future<void> open(WidgetTester tester, {String? lane}) => pumpApp(
-    tester,
-    session: signedInState(),
-    location: Routes.lanesOf(lane),
-    api: api,
-  ).then((_) {});
+  Future<void> open(WidgetTester tester, {String? lane}) async {
+    final session = signedInState();
+    // StubSession skips the real session's account-scope initialization.
+    AccountScope.id = session.me!.uid;
+    await pumpApp(
+      tester,
+      session: session,
+      location: Routes.lanesOf(lane),
+      api: api,
+    );
+  }
 
   Map<String, Object> lastJoinEvent() => log.named('hf_app_lane_join').last;
 
@@ -499,13 +508,19 @@ void main() {
             selfieReason: 'Please keep your face visible.',
           ),
         );
-        api.onJson('POST', '/api/hosts/kyc/selfie/code', {'code': '1234'});
+        api.onJson('POST', '/api/hosts/kyc/selfie/code', {'code': '123456'});
         await open(tester, lane: 'lgbtq');
         expect(
           find.byKey(const ValueKey<String>('lane-video-rejected')),
           findsOneWidget,
         );
         expect(find.text('Please keep your face visible.'), findsOneWidget);
+        expect(find.text('123456'), findsOneWidget);
+        expect(
+          api.callsTo('POST', '/api/hosts/kyc/selfie/code'),
+          hasLength(1),
+        );
+        expect(api.callsTo('POST', '/api/hosts/kyc/selfie'), isEmpty);
         expect(
           find.byKey(const ValueKey<String>('selfie-open-camera')),
           findsOneWidget,

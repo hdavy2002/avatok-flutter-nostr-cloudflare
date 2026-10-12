@@ -8,6 +8,7 @@ import 'package:hf_app/core/auth/session.dart';
 import 'package:hf_app/core/boot.dart';
 import 'package:hf_app/core/links.dart';
 import 'package:hf_app/core/router/routes.dart';
+import 'package:hf_app/core/storage/account_storage.dart';
 import 'package:hf_app/core/storage/secure_store.dart';
 import 'package:hf_app/features/host_onboarding/flow/onboarding_steps.dart';
 import 'package:hf_app/features/host_onboarding/ui/step_registry.dart';
@@ -49,6 +50,8 @@ void main() {
   late FakeLinkOpener links;
 
   setUp(() {
+    // StubSession skips the real session's account-scope initialization.
+    AccountScope.id = signedInState().me!.uid;
     SharedPreferences.setMockInitialValues(<String, Object>{});
     api = FakeApiClient()
       ..onJson('GET', '/api/config', {
@@ -59,7 +62,10 @@ void main() {
     LinkOpener.instance = links;
   });
 
-  tearDown(() => LinkOpener.instance = const LinkOpener());
+  tearDown(() {
+    AccountScope.id = null;
+    LinkOpener.instance = const LinkOpener();
+  });
 
   Future<void> open(
     WidgetTester tester, {
@@ -186,7 +192,7 @@ void main() {
           find.byKey(const ValueKey<String>('aadhaar-number')),
           findsOneWidget,
         );
-      expect(find.textContaining('Step 3 of 15'), findsOneWidget);
+        expect(find.textContaining('Step 3 of 15'), findsOneWidget);
       },
     );
 
@@ -195,10 +201,15 @@ void main() {
     ) async {
       api
         ..onJson('GET', _me, hostsMe(host: draft, kyc: aadhaarOnly))
-        ..onJson('POST', '/api/hosts/kyc/selfie/code', {'code': '5512'});
+        ..onJson('POST', '/api/hosts/kyc/selfie/code', {'code': '551234'});
       await open(tester);
       expect(onStep('selfie'), isTrue);
-      expect(find.text('5512'), findsOneWidget);
+      expect(find.text('551234'), findsOneWidget);
+      expect(
+        api.callsTo('POST', '/api/hosts/kyc/selfie/code'),
+        hasLength(1),
+      );
+      expect(api.callsTo('POST', '/api/hosts/kyc/selfie'), isEmpty);
     });
 
     testWidgets('video sent: opens at payout', (tester) async {
@@ -213,7 +224,7 @@ void main() {
       (tester) async {
         api
           ..onJson('GET', _me, hostsMe(host: draft, kyc: aadhaarOnly))
-          ..onJson('POST', '/api/hosts/kyc/selfie/code', {'code': '5512'});
+          ..onJson('POST', '/api/hosts/kyc/selfie/code', {'code': '551234'});
         await open(tester, step: 'payout');
         expect(onStep('selfie'), isTrue);
         expect(onStep('payout'), isFalse);
@@ -251,7 +262,7 @@ void main() {
             },
           ),
         )
-        ..onJson('POST', '/api/hosts/kyc/selfie/code', {'code': '7001'});
+        ..onJson('POST', '/api/hosts/kyc/selfie/code', {'code': '700123'});
       await open(tester);
       expect(onStep('selfie'), isTrue);
       expect(
@@ -326,7 +337,7 @@ void main() {
     ) async {
       api
         ..onJson('GET', _me, hostsMe(host: draft, kyc: aadhaarOnly))
-        ..onJson('POST', '/api/hosts/kyc/selfie/code', {'code': '5512'});
+        ..onJson('POST', '/api/hosts/kyc/selfie/code', {'code': '551234'});
       await open(tester);
       expect(onStep('selfie'), isTrue);
       await tapKey(tester, 'onboarding-back');
@@ -383,6 +394,8 @@ void main() {
           find.byKey(const ValueKey<String>('aadhaar-done')),
           findsOneWidget,
         );
+        expect(find.text('${KycCopy.aadhaarEnding} 4321'), findsOneWidget);
+        expect(await const DigiLockerPendingStore().read(), isNull);
       },
     );
 
@@ -414,6 +427,14 @@ void main() {
       await open(tester, location: '${Routes.hostOnboarding}?dl=return');
       expect(find.text(LaneCopy.titleOf(Lane.women)), findsWidgets);
       expect(find.byKey(const ValueKey<String>('lane-ack18')), findsOneWidget);
+      expect(
+        api.callsTo('POST', '/api/hosts/kyc/digilocker/complete'),
+        hasLength(1),
+      );
+      expect(find.byKey(const ValueKey<String>('dl-waiting')), findsOneWidget);
+      expect(api.callsTo('POST', '/api/hf/lanes/women/join'), isEmpty);
+      // Dispose the waiting verification before ending its polling-clock test.
+      await tester.pumpWidget(const SizedBox.shrink());
     });
   });
 
