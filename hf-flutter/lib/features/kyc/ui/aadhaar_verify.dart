@@ -158,6 +158,9 @@ class AadhaarVerifyState extends ConsumerState<AadhaarVerifyWidget>
         p != null &&
         p.role == widget.role &&
         (widget.lane == null || p.lane == null || p.lane == widget.lane);
+    // A return link can briefly mount host onboarding before routing to the
+    // saved lane. Only that destination may complete the pending attempt.
+    if (p != null && !mine) return;
     if (mine || widget.resumeNow || force) {
       setState(() {
         _mode = _Mode.digilocker;

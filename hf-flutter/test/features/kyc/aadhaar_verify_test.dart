@@ -426,6 +426,47 @@ void main() {
       expect(api.callsTo('POST', _dlComplete), isEmpty);
     });
 
+    testWidgets('a return link leaves a saved lane attempt for its destination', (
+      tester,
+    ) async {
+      await const DigiLockerPendingStore().save(
+        DigiLockerPending(
+          role: KycRole.laneCaller,
+          at: DateTime.now(),
+          lane: 'women',
+        ),
+      );
+      api.onJson('POST', _dlComplete, _verifiedJson);
+      await pump(tester, role: KycRole.host, resumeNow: true);
+      expect(api.callsTo('POST', _dlComplete), isEmpty);
+      expect(verifiedCalls, 0);
+      final pending = await const DigiLockerPendingStore().read();
+      expect(pending?.role, KycRole.laneCaller);
+      expect(pending?.lane, 'women');
+    });
+
+    testWidgets('a return link cannot resume a different lane attempt', (
+      tester,
+    ) async {
+      await const DigiLockerPendingStore().save(
+        DigiLockerPending(
+          role: KycRole.laneCaller,
+          at: DateTime.now(),
+          lane: 'women',
+        ),
+      );
+      api.onJson('POST', _dlComplete, _verifiedJson);
+      await pump(
+        tester,
+        role: KycRole.laneCaller,
+        lane: 'lgbtq',
+        resumeNow: true,
+      );
+      expect(api.callsTo('POST', _dlComplete), isEmpty);
+      expect(verifiedCalls, 0);
+      expect((await const DigiLockerPendingStore().read())?.lane, 'women');
+    });
+
     testWidgets('202 pending is polled every 3 seconds until it answers', (
       tester,
     ) async {

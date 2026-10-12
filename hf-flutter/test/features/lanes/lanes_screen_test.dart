@@ -280,6 +280,7 @@ void main() {
           ..onJson('POST', _otp, {'ok': true, 'expires_in_s': 600})
           ..onJson('POST', _verify, {
             'ok': true,
+            'ageOk': true,
             'gender': 'F',
             'last4': '1234',
           })
@@ -309,6 +310,7 @@ void main() {
         await typeKey(tester, 'otp-code', '123456');
         await tapKey(tester, 'otp-verify');
 
+        expect(api.callsTo('POST', _verify).single.body, {'otp': '123456'});
         expect(api.callsTo('POST', '/api/hf/lanes/women/join'), hasLength(1));
         expect(find.byKey(const ValueKey<String>('lane-in')), findsOneWidget);
       },
@@ -322,6 +324,7 @@ void main() {
           ..onJson('POST', _otp, {'ok': true, 'expires_in_s': 600})
           ..onJson('POST', _verify, {
             'ok': true,
+            'ageOk': true,
             'gender': 'M',
             'last4': '1234',
           });
@@ -333,6 +336,7 @@ void main() {
         await typeKey(tester, 'otp-code', '123456');
         await tapKey(tester, 'otp-verify');
 
+        expect(api.callsTo('POST', _verify).single.body, {'otp': '123456'});
         expect(
           find.byKey(const ValueKey<String>('lane-not-eligible')),
           findsOneWidget,
