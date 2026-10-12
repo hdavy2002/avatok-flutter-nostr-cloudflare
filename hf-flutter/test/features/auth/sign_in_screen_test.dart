@@ -569,8 +569,11 @@ void main() {
       final router = signInRouter();
       await pumpRouter(tester, router, api: okApi());
       await toCodeStep(tester);
-      await tester.tap(find.byTooltip('Back'));
-      await settle(tester);
+      // The back row lives inside the form's lazy list, above the OTP field.
+      tester.state<ScrollableState>(find.byType(Scrollable).first)
+          .position.jumpTo(0);
+      await tester.pump();
+      await tapVisible(tester, find.byTooltip('Back'));
       expect(find.text(SignInCopy.sendCode), findsOneWidget);
       expect(locationOf(router), '/sign-in');
     });
@@ -634,7 +637,8 @@ void main() {
     await pumpRouter(tester, router, api: okApi());
     await tester.tap(find.text('open'));
     await settle(tester);
-    await tester.tap(find.byTooltip('Back'));
+    // The welcome screen uses Android/system Back to dismiss the pushed route.
+    await tester.binding.handlePopRoute();
     await settle(tester);
     expect(find.text('result: null'), findsOneWidget);
   });

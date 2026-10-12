@@ -156,29 +156,33 @@ Future<int> _capture(
   final boundary = tester.renderObject<RenderRepaintBoundary>(
     find.byKey(boundaryKey),
   );
-  final image = await boundary.toImage(pixelRatio: 1);
-  try {
-    expect(image.width, _designSize.width, reason: state.name);
-    expect(image.height, _designSize.height, reason: state.name);
-    final data = await image.toByteData(format: ui.ImageByteFormat.png);
-    expect(data, isNotNull, reason: state.name);
-    final bytes = data!.buffer.asUint8List(
-      data.offsetInBytes,
-      data.lengthInBytes,
-    );
-    if (_export) {
-      await tester.runAsync(() async {
+  // Rasterization and PNG encoding complete on the engine's real async queue.
+  // Awaiting them in the widget test's fake clock can hang without another pump.
+  final byteCount = await tester.runAsync(() async {
+    final image = await boundary.toImage(pixelRatio: 1);
+    try {
+      expect(image.width, _designSize.width, reason: state.name);
+      expect(image.height, _designSize.height, reason: state.name);
+      final data = await image.toByteData(format: ui.ImageByteFormat.png);
+      expect(data, isNotNull, reason: state.name);
+      final bytes = data!.buffer.asUint8List(
+        data.offsetInBytes,
+        data.lengthInBytes,
+      );
+      if (_export) {
         final folder = Directory('test_output/design_review');
         await folder.create(recursive: true);
         await File(
           '${folder.path}/auth-${state.name}.png',
         ).writeAsBytes(bytes);
-      });
+      }
+      return bytes.length;
+    } finally {
+      image.dispose();
     }
-    return bytes.length;
-  } finally {
-    image.dispose();
-  }
+  });
+  expect(byteCount, isNotNull, reason: '${state.name} rasterization');
+  return byteCount!;
 }
 
 void main() {

@@ -148,6 +148,9 @@ void main() {
         250,
         scrollable: find.byType(Scrollable).first,
       );
+      // ensureVisible completes before the next layout frame positions the chip.
+      await tester.pump();
+      expect(find.text('Tension').hitTestable(), findsOneWidget);
       await tester.tap(find.text('Tension'));
       await tester.pump();
       await _send(tester);
