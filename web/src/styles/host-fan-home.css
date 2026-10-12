@@ -352,3 +352,12 @@
  .hfh-reference-page .hfh-lane-art>img{transform:scale(1.1);transform-origin:right bottom}
  .hfh-reference-page .hfh-host-art>img{object-fit:fill}
 }
+
+/* Decorative strokes are painted inside the caption's own measured box at any text size. */
+.hfh-reference-page .hfh-connection figcaption{max-width:100%;box-sizing:border-box;padding:.3rem 2rem;transform:none}
+.hfh-reference-page .hfh-connection figcaption:before{inset:0 1.5rem;transform:rotate(-1deg)}
+.hfh-reference-page .hfh-connection figcaption:after{inset:.1rem 0;background:url('/assets/callvaal/host-fan/pen-brackets.svg') center/100% 100% no-repeat}
+.hfh-reference-page .hfh-secure+.hfh-connector-arrow{transform:translateY(-.6rem) rotate(180deg)}
+.hfh-reference-page .hfh-secure:before{inset:8% -16% 48%;background:url('/assets/callvaal/host-fan/pen-brackets.svg') center/100% 100% no-repeat}
+.hfh-reference-page .hfh-host-art:after{width:7%;right:1%;height:30%;transform:rotate(180deg)}
+@media(min-width:1024px){.hfh-reference-page .hfh-lane--women .hfh-lane-art>.hfh-note{top:-6%;right:5%}}
