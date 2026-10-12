@@ -64,6 +64,7 @@ class SignInController extends ChangeNotifier {
   bool isNewAccount = false;
 
   void setRegistration(bool value) {
+    if (sending || verifying) return;
     registration = value;
     ageTick = false;
     _notify();
@@ -109,6 +110,7 @@ class SignInController extends ChangeNotifier {
       _track('hf_app_signin_started', {'from': from});
 
   void setDigits(String value) {
+    if (sending || verifying) return;
     final normalized = normalizeIndianMobile(value);
     if (normalized != digits) ageTick = false;
     digits = normalized;
@@ -120,6 +122,7 @@ class SignInController extends ChangeNotifier {
   }
 
   void setAgeTick(bool value) {
+    if (sending || verifying) return;
     ageTick = value;
     if (value && errorField == 'phone') {
       error = null;
@@ -130,6 +133,7 @@ class SignInController extends ChangeNotifier {
 
   /// Back to the number step. The resend timer keeps running: the server's 30 s gap does too.
   void changeNumber() {
+    if (sending || verifying) return;
     step = SignInStep.number;
     error = null;
     errorField = null;

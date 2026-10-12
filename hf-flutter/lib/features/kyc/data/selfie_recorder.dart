@@ -1,4 +1,5 @@
 import 'dart:typed_data';
+import 'dart:io';
 
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
@@ -70,10 +71,9 @@ class CameraSelfieRecorder implements SelfieRecorder {
     try {
       final cameras = await availableCameras();
       if (cameras.isEmpty) throw const SelfieRecorderException('no_camera');
-      final front = cameras.firstWhere(
-        (c) => c.lensDirection == CameraLensDirection.front,
-        orElse: () => cameras.first,
-      );
+      final frontCameras = cameras.where((c) => c.lensDirection == CameraLensDirection.front);
+      if (frontCameras.isEmpty) throw const SelfieRecorderException('no_camera');
+      final front = frontCameras.first;
       final controller = CameraController(
         front,
         ResolutionPreset.medium,
@@ -118,6 +118,9 @@ class CameraSelfieRecorder implements SelfieRecorder {
     try {
       final file = await c.stopVideoRecording();
       final bytes = await file.readAsBytes();
+      // Camera's temporary output is not a persistent account cache.
+      // Review creates its own UID-scoped copy and removes it on exit.
+      try { await File(file.path).delete(); } catch (_) {}
       final started = _startedAt;
       final seconds = started == null
           ? 0

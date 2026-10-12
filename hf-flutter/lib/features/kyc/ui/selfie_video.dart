@@ -4,8 +4,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/api/api_error.dart';
+import '../../../core/auth/session.dart';
+import '../../../core/storage/account_storage.dart';
 import '../../../core/theme/hf_theme.dart';
 import '../../../core/widgets/widgets.dart';
+import '../../auth/ui/identity_header.dart';
 import '../data/kyc_api.dart';
 import '../data/kyc_telemetry.dart';
 import '../data/permission_service.dart';
@@ -13,18 +16,19 @@ import '../data/selfie_recorder.dart';
 import 'kyc_copy.dart';
 import 'kyc_parts.dart';
 import 'permission_gate.dart';
+import 'selfie_review_player.dart';
 
 /// The selfie video is exactly this long (spec 2.13).
 const int kSelfieSeconds = 10;
 
 /// The shared selfie-video widget (HF-NATIVE-8): "prove you are a real person".
 ///
-/// 1. Gets a 4-digit code from the worker (`selfie/code`) and shows it large, with the line to say out loud.
+/// 1. Gets a 6-digit code from the worker (`selfie/code`) and shows it large, with the line to say out loud.
 /// 2. The person ticks the consent box and opens the camera, after the camera and microphone explainer
 ///    ([PermissionGate]: explainer, Android prompt, "Open settings" after a denial).
 /// 3. FRONT camera, medium quality. A 3-2-1 countdown, then it records for exactly [recordSeconds] (10 s)
 ///    and stops by itself. The code stays on the preview the whole time.
-/// 4. Review: "Use this video" or "Record again" (no playback inside the app: the 17-package list has no video player).
+/// 4. Review the actual local video, then "Use this video" or "Record again".
 /// 5. Upload with a progress bar: raw video body, `x-selfie-code`, at most 12 MB, `video/mp4`.
 ///    `code_expired` and `code_mismatch` fetch a new code; `too_large` sends the person back to record again.
 ///
@@ -57,23 +61,27 @@ class _SelfieVideoState extends ConsumerState<SelfieVideoWidget> {
   SelfieClip? _clip;
   double _progress = 0;
   String? _error;
+  late final String? _owner;
+  bool get _mine => _owner != null && AccountScope.id == _owner;
 
   KycApi get _api => ref.read(kycApiProvider);
 
   @override
   void initState() {
     super.initState();
+    _owner = AccountScope.id;
     unawaited(_loadCode());
   }
 
   Future<void> _loadCode() async {
+    if (!_mine) return;
     setState(() {
       _code = null;
       _codeError = null;
     });
     try {
       final code = await _api.selfieCode();
-      if (!mounted) return;
+      if (!mounted || !_mine) return;
       setState(() => _code = code);
     } on ApiError catch (e) {
       if (!mounted) return;
@@ -88,6 +96,7 @@ class _SelfieVideoState extends ConsumerState<SelfieVideoWidget> {
   }
 
   void _onClip(SelfieClip clip) {
+    if (!_mine || !mounted) return;
     if (clip.bytes.length > kSelfieMaxBytes) {
       KycTelemetry.kycStep('selfie_upload', 'error', reason: 'too_large_local');
       setState(() {
@@ -114,7 +123,7 @@ class _SelfieVideoState extends ConsumerState<SelfieVideoWidget> {
   Future<void> _upload() async {
     final clip = _clip;
     final code = _code;
-    if (clip == null || code == null || _step == _Step.uploading) return;
+    if (!_mine || clip == null || code == null || _step == _Step.uploading) return;
     setState(() {
       _step = _Step.uploading;
       _progress = 0;
@@ -129,7 +138,7 @@ class _SelfieVideoState extends ConsumerState<SelfieVideoWidget> {
           if (mounted && total > 0) setState(() => _progress = sent / total);
         },
       );
-      if (!mounted) return;
+      if (!mounted || !_mine) return;
       KycTelemetry.kycStep('selfie_upload', 'ok');
       setState(() => _step = _Step.done);
       widget.onUploaded();
@@ -179,6 +188,8 @@ class _SelfieVideoState extends ConsumerState<SelfieVideoWidget> {
 
   @override
   Widget build(BuildContext context) {
+    ref.watch(sessionProvider);
+    if (!_mine) return const Text('Your account changed. Reopen verification to continue.');
     switch (_step) {
       case _Step.camera:
         return PermissionGate(
@@ -224,11 +235,12 @@ class _SelfieVideoState extends ConsumerState<SelfieVideoWidget> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        const HfCluster(kind: HfClusterKind.verify, height: 140),
-        const SizedBox(height: 16),
-        Text(KycCopy.selfieTitle, style: HfText.of(context, HfText.title)),
-        const SizedBox(height: 8),
-        Text(KycCopy.selfieLead, style: HfText.of(context, HfText.body)),
+        const IdentityHeader(title: 'Allow camera & microphone',
+          subtitle: 'We need a short video to confirm it is really you.', step: 5, total: 8),
+        const HfCard(child: Column(children: [
+          ListTile(leading: Icon(Icons.camera_alt_outlined), title: Text('Camera'), subtitle: Text('Record your face')),
+          ListTile(leading: Icon(Icons.mic_none), title: Text('Microphone'), subtitle: Text('Hear the verification code')),
+        ])),
         const SizedBox(height: 16),
         HfCard(
           color: HfTint.sky.bg(context),
@@ -242,7 +254,7 @@ class _SelfieVideoState extends ConsumerState<SelfieVideoWidget> {
                     : '${KycCopy.yourCode} $spaced',
                 excludeSemantics: true,
                 child: Text(
-                  code ?? '····',
+                  code ?? '······',
                   key: const ValueKey<String>('selfie-code'),
                   style: HfText.of(
                     context,
@@ -305,6 +317,12 @@ class _SelfieVideoState extends ConsumerState<SelfieVideoWidget> {
       key: const ValueKey<String>('selfie-review'),
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
+        const IdentityHeader(title: 'Review your video', subtitle: 'Check your face and voice before sending.',
+          step: 7, total: 8, imageHeight: 0),
+        if (clip != null) ref.watch(selfieReviewBuilderProvider)(clip),
+        const SizedBox(height: 12),
+        const Text('Make sure your face and voice are clear.'),
+        const SizedBox(height: 12),
         HfCard(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -531,6 +549,8 @@ class _CameraStageState extends ConsumerState<_CameraStage> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
+        const IdentityHeader(title: 'Record a 10-second selfie', subtitle: 'Good light · Face the camera · No sunglasses',
+          step: 6, total: 8, imageHeight: 0),
         ClipRRect(
           borderRadius: BorderRadius.circular(HfRadius.card),
           child: SizedBox(

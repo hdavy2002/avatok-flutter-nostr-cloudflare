@@ -25,6 +25,18 @@ abstract interface class ClerkApi implements AuthTokens {
   Future<void> warmSession();
 }
 
+/// Optional native email capability; test and alternative auth clients can omit it.
+abstract interface class ClerkEmailApi {
+  Future<EmailChallenge> startEmailCode(String email);
+  Future<ClerkStep> verifyEmailCode(EmailChallenge challenge, String code);
+}
+
+class EmailChallenge {
+  const EmailChallenge(this.id, {this.secondFactor = false});
+  final String id;
+  final bool secondFactor;
+}
+
 /// Minimal Clerk Frontend API (FAPI) client, native mode. Trimmed from the avaTOK app's
 /// auth/clerk_client.dart: email code, Google, password and deleteAccount are gone; the ticket
 /// redeem is its own method, [signInWithTicket].
@@ -34,7 +46,7 @@ abstract interface class ClerkApi implements AuthTokens {
 /// `authorization` response header, is stored in secure storage under `clerk_client_token` and sent
 /// back on every call. The Worker never sees it: it verifies the short-lived session JWT minted by
 /// [sessionToken].
-class ClerkClient implements ClerkApi {
+class ClerkClient implements ClerkApi, ClerkEmailApi {
   static const _jsVersion = '4.70.0';
   static const _apiVersion = '2025-11-10';
   static const _tokenKey = 'clerk_client_token';
@@ -63,6 +75,59 @@ class ClerkClient implements ClerkApi {
   Future<String?>? _mintInFlight;
   int _mintBackoffUntil = 0;
   int _mintFailures = 0;
+
+  @override
+  Future<EmailChallenge> startEmailCode(String email) async {
+    _resetSessionState();
+    await _storage.delete(_tokenKey);
+    await _send('/client', body: {});
+    final result = await _send('/client/sign_ins', body: {'identifier': email.trim()});
+    final error = _firstError(result);
+    if (error != null) throw StateError(error);
+    final response = result['response'];
+    if (response is! Map<String, dynamic>) throw StateError('Email sign-in is unavailable.');
+    return _prepareEmailChallenge(response);
+  }
+
+  Future<EmailChallenge> _prepareEmailChallenge(Map<String, dynamic> response, {bool secondFactor = false}) async {
+    final id = response['id'];
+    final factors = response[secondFactor ? 'supported_second_factors' : 'supported_first_factors'];
+    Map? factor;
+    if (factors is List) {
+      for (final candidate in factors) {
+        if (candidate is Map && candidate['strategy'] == 'email_code') { factor = candidate; break; }
+      }
+    }
+    if (id is! String || id.isEmpty || factor == null) {
+      throw StateError('Email sign-in is unavailable. Please use WhatsApp.');
+    }
+    final prepared = await _send('/client/sign_ins/$id/prepare_${secondFactor ? 'second' : 'first'}_factor',
+      body: {'strategy': 'email_code', if (factor['email_address_id'] != null)
+        'email_address_id': factor['email_address_id'].toString()});
+    if (_firstError(prepared) != null) throw StateError(_firstError(prepared)!);
+    if (prepared['response'] is! Map) throw StateError('Email code could not be sent.');
+    return EmailChallenge(id, secondFactor: secondFactor);
+  }
+
+  @override
+  Future<ClerkStep> verifyEmailCode(EmailChallenge challenge, String code) async {
+    final result = await _send('/client/sign_ins/${challenge.id}/attempt_${challenge.secondFactor ? 'second' : 'first'}_factor',
+      body: {'strategy': 'email_code', 'code': code});
+    final error = _firstError(result);
+    if (error != null) return ClerkStep.error(error);
+    final response = result['response'];
+    if (response is Map<String, dynamic>) {
+      if (response['status'] == 'needs_second_factor' || response['status'] == 'needs_client_trust') {
+        throw EmailSecondFactor(await _prepareEmailChallenge(response, secondFactor: true));
+      }
+      if (response['status'] == 'complete') {
+        _resetSessionState(keepClientToken: true);
+        final user = await currentUser();
+        if (user != null && user.id.isNotEmpty) return ClerkStep.complete(user);
+      }
+    }
+    return ClerkStep.error('We could not complete email sign-in. Please try again.');
+  }
 
   /// `clerk.<domain>`, from the publishable key.
   static String deriveDomain(String key) {
@@ -431,6 +496,11 @@ class ClerkStep {
   factory ClerkStep.error(String message) => ClerkStep._(null, message);
 
   bool get isComplete => user != null;
+}
+
+class EmailSecondFactor implements Exception {
+  const EmailSecondFactor(this.challenge);
+  final EmailChallenge challenge;
 }
 
 class ClerkUser {

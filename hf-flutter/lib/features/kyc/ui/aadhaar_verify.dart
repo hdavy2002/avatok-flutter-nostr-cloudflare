@@ -5,6 +5,9 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/api/api_error.dart';
+import '../../../core/auth/session.dart';
+import '../../auth/ui/identity_header.dart';
+import '../../auth/ui/code_boxes.dart';
 import '../../../core/links.dart';
 import '../../../core/router/pending_intent.dart';
 import '../../../core/storage/account_storage.dart';
@@ -77,6 +80,9 @@ class AadhaarVerifyState extends ConsumerState<AadhaarVerifyWidget>
 
   final TextEditingController _aadhaar = TextEditingController();
   final TextEditingController _otp = TextEditingController();
+  final FocusNode _otpFocus = FocusNode();
+  late final String? _owner;
+  bool get _mine => _owner != null && AccountScope.id == _owner;
   bool _otpConsent = false;
   bool _dlConsent = false;
   bool _busy = false;
@@ -101,9 +107,13 @@ class AadhaarVerifyState extends ConsumerState<AadhaarVerifyWidget>
   @override
   void initState() {
     super.initState();
+    _owner = AccountScope.id;
+    _otp.addListener(_otpChanged);
     WidgetsBinding.instance.addObserver(this);
     unawaited(_restorePending());
   }
+
+  void _otpChanged() { if (mounted) setState(() {}); }
 
   @override
   void didUpdateWidget(covariant AadhaarVerifyWidget oldWidget) {
@@ -120,6 +130,7 @@ class AadhaarVerifyState extends ConsumerState<AadhaarVerifyWidget>
     _pollTimer?.cancel();
     _aadhaar.dispose();
     _otp.dispose();
+    _otpFocus.dispose();
     super.dispose();
   }
 
@@ -142,7 +153,7 @@ class AadhaarVerifyState extends ConsumerState<AadhaarVerifyWidget>
   /// Is a DigiLocker check waiting for us (saved earlier, or the return link just opened)? Then finish it.
   Future<void> _restorePending({bool force = false}) async {
     final p = await _store.read();
-    if (!mounted || _finished) return;
+    if (!mounted || !_mine || _finished) return;
     final mine =
         p != null &&
         p.role == widget.role &&
@@ -175,6 +186,7 @@ class AadhaarVerifyState extends ConsumerState<AadhaarVerifyWidget>
   }
 
   void _backToOtp() {
+    if (!_mine) return;
     _pollTimer?.cancel();
     unawaited(_store.clear());
     setState(() {
@@ -186,7 +198,7 @@ class AadhaarVerifyState extends ConsumerState<AadhaarVerifyWidget>
   }
 
   Future<void> _startDigiLocker() async {
-    if (!_dlConsent || _dl == _Dl.starting) return;
+    if (!_mine || !_dlConsent || _dl == _Dl.starting) return;
     setState(() {
       _dl = _Dl.starting;
       _error = null;
@@ -194,7 +206,7 @@ class AadhaarVerifyState extends ConsumerState<AadhaarVerifyWidget>
     try {
       final account = AccountScope.id;
       final out = await _api.digilockerStart(role: widget.role);
-      if (!mounted || AccountScope.id != account) return;
+      if (!mounted || !_mine || AccountScope.id != account) return;
       final done = out.verified;
       if (done != null) {
         KycTelemetry.kycStep('digilocker_start', 'already_verified');
@@ -213,11 +225,11 @@ class AadhaarVerifyState extends ConsumerState<AadhaarVerifyWidget>
         await ref.read(pendingIntentProvider).save(widget.next!);
       }
       KycTelemetry.kycStep('digilocker_start', 'started');
-      if (!mounted) return;
+      if (!mounted || !_mine) return;
       setState(() => _dl = _Dl.waiting);
       _polls = 0;
       final opened = await LinkOpener.instance.customTab(out.url!);
-      if (!opened && mounted) {
+      if (!opened && mounted && _mine) {
         await _store.clear();
         setState(() {
           _dl = _Dl.consent;
@@ -241,7 +253,7 @@ class AadhaarVerifyState extends ConsumerState<AadhaarVerifyWidget>
 
   /// `digilocker/complete`. Safe to call from several places: only one runs at a time.
   Future<void> _complete() async {
-    if (_completing || _finished || !mounted) return;
+    if (_completing || _finished || !mounted || !_mine) return;
     _completing = true;
     _pollTimer?.cancel();
     setState(() {
@@ -251,7 +263,7 @@ class AadhaarVerifyState extends ConsumerState<AadhaarVerifyWidget>
     });
     try {
       final out = await _api.digilockerComplete();
-      if (!mounted) return;
+      if (!mounted || !_mine) return;
       final done = out.result;
       if (!out.pending && done != null) {
         KycTelemetry.kycStep('digilocker_complete', 'ok');
@@ -286,6 +298,7 @@ class AadhaarVerifyState extends ConsumerState<AadhaarVerifyWidget>
   }
 
   Future<void> _onCompleteError(ApiError e) async {
+    if (!_mine) return;
     KycTelemetry.kycStep(
       'digilocker_complete',
       'error',
@@ -311,6 +324,7 @@ class AadhaarVerifyState extends ConsumerState<AadhaarVerifyWidget>
   Future<bool> _recoverIfVerified() async {
     try {
       final s = await _api.status();
+      if (!mounted || !_mine) return false;
       if (s.aadhaarDone) {
         await _store.clear();
         if (!mounted) return true;
@@ -331,6 +345,7 @@ class AadhaarVerifyState extends ConsumerState<AadhaarVerifyWidget>
   }
 
   void _startAgain() {
+    if (!_mine) return;
     _pollTimer?.cancel();
     unawaited(_store.clear());
     setState(() {
@@ -366,7 +381,7 @@ class AadhaarVerifyState extends ConsumerState<AadhaarVerifyWidget>
 
   Future<void> _sendOtp() async {
     final number = _digits(_aadhaar.text);
-    if (number.length != 12 || !_otpConsent || _busy) return;
+    if (!_mine || number.length != 12 || !_otpConsent || _busy) return;
     setState(() {
       _busy = true;
       _error = null;
@@ -374,7 +389,7 @@ class AadhaarVerifyState extends ConsumerState<AadhaarVerifyWidget>
     });
     try {
       final out = await _api.aadhaarOtp(aadhaar: number, role: widget.role);
-      if (!mounted) return;
+      if (!mounted || !_mine) return;
       final done = out.verified;
       if (done != null) {
         KycTelemetry.kycStep('aadhaar_otp', 'already_verified');
@@ -399,7 +414,7 @@ class AadhaarVerifyState extends ConsumerState<AadhaarVerifyWidget>
 
   Future<void> _verifyOtp() async {
     final code = _digits(_otp.text);
-    if (code.length != 6 || _busy) return;
+    if (!_mine || code.length != 6 || _busy) return;
     setState(() {
       _busy = true;
       _error = null;
@@ -407,7 +422,7 @@ class AadhaarVerifyState extends ConsumerState<AadhaarVerifyWidget>
     });
     try {
       final r = await _api.aadhaarVerify(code);
-      if (!mounted) return;
+      if (!mounted || !_mine) return;
       KycTelemetry.kycStep('aadhaar_verify', 'ok');
       await _finish(r);
     } on ApiError catch (e) {
@@ -449,7 +464,7 @@ class AadhaarVerifyState extends ConsumerState<AadhaarVerifyWidget>
   }
 
   Future<void> _finish(AadhaarResult r) async {
-    if (_finished) return;
+    if (_finished || !_mine) return;
     _finished = true;
     _pollTimer?.cancel();
     _cooldownTimer?.cancel();
@@ -465,6 +480,8 @@ class AadhaarVerifyState extends ConsumerState<AadhaarVerifyWidget>
 
   @override
   Widget build(BuildContext context) {
+    ref.watch(sessionProvider);
+    if (!_mine) return const Text('Your account changed. Reopen verification to continue.');
     if (_result != null) return _verifiedCard(_result!);
     switch (_mode) {
       case _Mode.otpNumber:
@@ -498,12 +515,7 @@ class AadhaarVerifyState extends ConsumerState<AadhaarVerifyWidget>
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        const _KycIcon(Icons.badge_outlined),
-        const SizedBox(height: 12),
-        Text(KycCopy.otpTitle, style: HfText.of(context, HfText.title)),
-        const SizedBox(height: 8),
-        Text(KycCopy.otpLead, style: HfText.of(context, HfText.body)),
-        const SizedBox(height: 16),
+        const IdentityHeader(title: KycCopy.otpTitle, subtitle: KycCopy.otpLead, step: 2, total: 8),
         TextField(
           key: const ValueKey<String>('aadhaar-number'),
           controller: _aadhaar,
@@ -560,30 +572,11 @@ class AadhaarVerifyState extends ConsumerState<AadhaarVerifyWidget>
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        const _KycIcon(Icons.password_rounded),
-        const SizedBox(height: 12),
-        Text(KycCopy.codeTitle, style: HfText.of(context, HfText.title)),
-        const SizedBox(height: 8),
-        Text(KycCopy.codeLead, style: HfText.of(context, HfText.body)),
-        const SizedBox(height: 16),
-        TextField(
-          key: const ValueKey<String>('otp-code'),
-          controller: _otp,
-          keyboardType: TextInputType.number,
-          autocorrect: false,
-          enableSuggestions: false,
-          inputFormatters: [
-            FilteringTextInputFormatter.digitsOnly,
-            LengthLimitingTextInputFormatter(6),
-          ],
-          style: HfText.of(context, HfText.title).copyWith(letterSpacing: 6),
-          decoration: InputDecoration(
-            labelText: KycCopy.codeLabel,
-            hintText: '······',
-            errorText: _codeError,
-          ),
-          onChanged: (_) => setState(() => _codeError = null),
-        ),
+        const IdentityHeader(title: KycCopy.codeTitle, subtitle: KycCopy.codeLead, step: 3, total: 8),
+        CodeBoxes(fieldKey: const ValueKey<String>('otp-code'), controller: _otp,
+          focusNode: _otpFocus, sourceLabel: 'Aadhaar', enabled: !_busy, hasError: _codeError != null,
+          onCompleted: () => setState(() => _codeError = null)),
+        if (_codeError != null) InlineError(_codeError!),
         if (tries != null) ...[
           const SizedBox(height: 8),
           Text(
@@ -646,9 +639,7 @@ class AadhaarVerifyState extends ConsumerState<AadhaarVerifyWidget>
           key: const ValueKey<String>('dl-waiting'),
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Text(KycCopy.waitingTitle, style: HfText.of(context, HfText.title)),
-            const SizedBox(height: 8),
-            Text(KycCopy.waitingLead, style: HfText.of(context, HfText.body)),
+            const IdentityHeader(title: KycCopy.waitingTitle, subtitle: KycCopy.waitingLead, step: 3, total: 8),
             if (_error != null) InlineError(_error!),
             const SizedBox(height: 16),
             HfButton(
@@ -702,18 +693,7 @@ class AadhaarVerifyState extends ConsumerState<AadhaarVerifyWidget>
               ),
               const SizedBox(height: 16),
             ],
-            const HfCluster(kind: HfClusterKind.verify, height: 140),
-            const SizedBox(height: 12),
-            Text(
-              KycCopy.digiLockerTitle,
-              style: HfText.of(context, HfText.title),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              KycCopy.digiLockerLead,
-              style: HfText.of(context, HfText.body),
-            ),
-            const SizedBox(height: 12),
+            const IdentityHeader(title: KycCopy.digiLockerTitle, subtitle: KycCopy.digiLockerLead, step: 2, total: 8),
             ConsentRow(
               key: const ValueKey<String>('dl-consent'),
               value: _dlConsent,
@@ -738,27 +718,6 @@ class AadhaarVerifyState extends ConsumerState<AadhaarVerifyWidget>
         );
     }
   }
-}
-
-/// A 52 px lavender icon tile at the top of a verification step.
-class _KycIcon extends StatelessWidget {
-  const _KycIcon(this.icon);
-
-  final IconData icon;
-
-  @override
-  Widget build(BuildContext context) => Align(
-    alignment: Alignment.centerLeft,
-    child: Container(
-      width: 52,
-      height: 52,
-      decoration: BoxDecoration(
-        color: HfTint.lavender.bg(context),
-        borderRadius: BorderRadius.circular(HfRadius.tileSmall),
-      ),
-      child: Icon(icon, size: 26, color: HfTint.lavender.ink(context)),
-    ),
-  );
 }
 
 /// Shows the number in groups of four (`1234 5678 9012`) and allows 12 digits.

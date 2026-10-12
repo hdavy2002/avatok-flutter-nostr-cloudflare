@@ -17,6 +17,7 @@ abstract final class Routes {
   static const String hostOnboarding = '/host/onboarding';
   static const String me = '/me';
   static const String meDelete = '/me/delete';
+  static const String identityKyc = '/me/verification';
 
   // Builders: always use these, never string-concatenate a route in a screen.
 
@@ -144,6 +145,7 @@ abstract final class Routes {
           hostOnboarding,
           me,
           meDelete,
+          identityKyc,
         }.contains(path) ||
         RegExp(r'^/h/[^/]+$').hasMatch(path) ||
         RegExp(r'^/call/[^/]+$').hasMatch(path) ||
@@ -159,6 +161,7 @@ abstract final class Routes {
       wallet => <String>{'next', 'topup'},
       lanes => <String>{'lane', 'next', 'dl'},
       hostOnboarding => <String>{'step', 'dl'},
+      identityKyc => <String>{'dl', 'creator'},
       '/call/new' => <String>{'host', 'lane'},
       _ =>
         path.startsWith('/h/')

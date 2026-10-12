@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hf_app/core/api/api_error.dart';
 import 'package:hf_app/core/strings.dart';
+import 'package:hf_app/core/storage/account_storage.dart';
+import 'package:hf_app/features/kyc/ui/selfie_review_player.dart';
 import 'package:hf_app/features/kyc/kyc.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -20,8 +22,9 @@ void main() {
   int uploaded = 0;
 
   setUp(() {
+    AccountScope.id = 'user_kyc';
     SharedPreferences.setMockInitialValues(<String, Object>{});
-    api = CapturingApi()..onJson('POST', _code, {'code': '4821'});
+    api = CapturingApi()..onJson('POST', _code, {'code': '482913'});
     perms = FakePermissionService(
       granted: {HfPermission.camera, HfPermission.mic},
     );
@@ -30,7 +33,7 @@ void main() {
     uploaded = 0;
   });
 
-  tearDown(() => log.remove());
+  tearDown(() { log.remove(); AccountScope.id = null; });
 
   Future<void> pump(WidgetTester tester) => pumpWidgetUnderTest(
     tester,
@@ -41,6 +44,7 @@ void main() {
     ),
     api: api,
     overrides: [
+      selfieReviewBuilderProvider.overrideWithValue((_) => const SizedBox(height: 120, child: Text('Recorded video preview'))),
       permissionServiceProvider.overrideWithValue(perms),
       selfieRecorderFactoryProvider.overrideWithValue(() => recorder),
     ],
@@ -65,8 +69,8 @@ void main() {
     'shows the server code, spaced, and blocks the camera until the person agrees',
     (tester) async {
       await pump(tester);
-      expect(find.text('4821'), findsOneWidget);
-      expect(find.textContaining('4 8 2 1'), findsOneWidget);
+      expect(find.text('482913'), findsOneWidget);
+      expect(find.textContaining('4 8 2 9 1 3'), findsOneWidget);
       final btn = tester.widget<ElevatedButton>(
         find.descendant(
           of: find.byKey(const ValueKey<String>('selfie-open-camera')),
@@ -80,7 +84,7 @@ void main() {
   testWidgets(
     'happy path: records exactly the set seconds, uploads raw bytes with the code header',
     (tester) async {
-      api.onJson('POST', _upload, {'ok': true});
+      api.onJson('POST', _upload, {'ok': true, 'status': 'pending'});
       await pump(tester);
       await recordClip(tester);
 
@@ -97,7 +101,7 @@ void main() {
       final idx = api.calls.indexOf(call);
       expect(api.contentTypes[idx], 'video/mp4');
       final header = api.headersSeen[idx]!;
-      expect(header['x-selfie-code'], '4821');
+      expect(header['x-selfie-code'], '482913');
       for (final v in header.values) {
         expect(
           v.codeUnits.every((c) => c < 128),
@@ -222,7 +226,7 @@ void main() {
         var n = 0;
         api.on('POST', _upload, (_) {
           if (++n == 1) throw ApiError.network();
-          return {'ok': true};
+          return {'ok': true, 'status': 'pending'};
         });
         await pump(tester);
         await recordClip(tester);
@@ -279,7 +283,7 @@ void main() {
       var n = 0;
       api.on('POST', _code, (_) {
         if (++n == 1) throw ApiError.network();
-        return {'code': '9034'};
+        return {'code': '903412'};
       });
       await pump(tester);
       expect(
@@ -287,7 +291,7 @@ void main() {
         findsOneWidget,
       );
       await tapKey(tester, 'selfie-code-retry');
-      expect(find.text('9034'), findsOneWidget);
+      expect(find.text('903412'), findsOneWidget);
     });
 
     testWidgets('camera denied: message and Open settings', (tester) async {

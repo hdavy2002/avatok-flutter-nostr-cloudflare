@@ -18,6 +18,9 @@ import '../../welcome/data/ack_service.dart';
 import '../data/auth_messages.dart';
 import '../data/sign_in_controller.dart';
 import 'code_boxes.dart';
+import 'identity_header.dart';
+import 'email_code_form.dart';
+import '../data/remembered_accounts.dart';
 
 /// Copy of the sign-in screens. Matches the website's WhatsApp sign-in, in simple English.
 abstract final class SignInCopy {
@@ -32,7 +35,7 @@ abstract final class SignInCopy {
   static const String terms = 'Terms';
   static const String safety = 'Safety';
 
-  static const String codeTitle = 'Enter the code';
+  static const String codeTitle = 'Verify WhatsApp';
   static String sentTo(String masked) =>
       'We sent a 6-digit code on WhatsApp to $masked.';
   static const String verify = 'Verify and log in';
@@ -44,9 +47,10 @@ abstract final class SignInCopy {
 /// `/sign-in?next=`: WhatsApp number, then the 6-digit code. Opened by `requireSignIn` (pushed: closes with
 /// `true`) or by the router's sign-in rule (replaces the stack: goes to `next`, else Home).
 class SignInScreen extends ConsumerStatefulWidget {
-  const SignInScreen({super.key, this.next});
+  const SignInScreen({super.key, this.next, this.secondNumber = false});
 
   final String? next;
+  final bool secondNumber;
 
   @override
   ConsumerState<SignInScreen> createState() => _SignInScreenState();
@@ -58,6 +62,10 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
   final TextEditingController _code = TextEditingController();
   final FocusNode _phoneFocus = FocusNode();
   final FocusNode _codeFocus = FocusNode();
+  List<RememberedAccount> _accounts = [];
+  bool _landing = true;
+  bool _emailBusy = false;
+  RememberedAccounts get _remembered => RememberedAccounts(ref.read(secureStoreProvider));
 
   @override
   void initState() {
@@ -75,6 +83,9 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
       readAcked: () async => (await ack.readLocal()) != null,
     );
     unawaited(_c.init());
+    _landing = widget.next == null && !widget.secondNumber;
+    if (widget.secondNumber) _c.setRegistration(true);
+    unawaited(_loadAccounts());
     final next = Routes.safeNext(widget.next);
     if (next != null) unawaited(ref.read(pendingIntentProvider).save(next));
     _c.trackStarted(next == null ? 'direct' : DeepLinks.telemetryPath(next));
@@ -82,6 +93,11 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
   }
 
   SignInStep _lastStep = SignInStep.number;
+
+  Future<void> _loadAccounts() async {
+    final accounts = await _remembered.read();
+    if (mounted) setState(() => _accounts = accounts);
+  }
 
   void _onChange() {
     if (_c.step == _lastStep) return;
@@ -119,6 +135,18 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
       });
       return;
     }
+    final account = ref.read(sessionProvider);
+    if (account.user != null) {
+      try {
+        await _remembered.remember(RememberedAccount(uid: account.user!.id,
+          label: account.me?.displayName ?? account.user!.label, phone: _c.e164));
+      } catch (_) { /* Remembering a choice never blocks a verified sign-in. */ }
+    }
+    await _finishSignIn();
+  }
+
+  Future<void> _finishSignIn() async {
+    if (!mounted) return;
     final router = GoRouter.of(context);
     final next = Routes.safeNext(widget.next);
     if (next != null) await ref.read(pendingIntentProvider).save(next);
@@ -182,7 +210,9 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   HfPageHeader(onBack: _back),
-                  Expanded(child: _form(onCode)),
+                  Expanded(child: Center(child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 520),
+                    child: _landing ? _welcome() : _form(onCode)))),
                 ],
               ),
             ),
@@ -202,16 +232,21 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
           HfSpacing.section,
         ),
         children: [
-          const HfCluster(kind: HfClusterKind.welcome, height: 150),
-          const SizedBox(height: 20),
-          Semantics(
-            header: true,
-            child: Text(
-              onCode ? SignInCopy.codeTitle : SignInCopy.title,
-              style: HfText.of(context, HfText.headline),
-            ),
+          IdentityHeader(
+            title: onCode ? SignInCopy.codeTitle : widget.secondNumber ? 'Add your second number' : 'Welcome back',
+            subtitle: onCode ? SignInCopy.sentTo(_c.phoneMasked ?? '')
+              : widget.secondNumber ? 'Create a separate account with another WhatsApp number you control.'
+              : 'Log in to continue your journey.',
+            step: onCode && _c.registration ? 1 : null,
           ),
-          const SizedBox(height: HfSpacing.lg),
+          if (!onCode && !_c.registration && !widget.secondNumber) ...[
+            HfCard(child: EmailCodeForm(onVerified: _finishSignIn,
+              enabled: !_c.sending && !_c.verifying,
+              onBusyChanged: (busy) { if (mounted) setState(() => _emailBusy = busy); })),
+            const Padding(padding: EdgeInsets.symmetric(vertical: 16), child: Row(children: [
+              Expanded(child: Divider()), Padding(padding: EdgeInsets.symmetric(horizontal: 16), child: Text('OR')), Expanded(child: Divider()),
+            ])),
+          ],
           HfCard(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -219,6 +254,20 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
             ),
           ),
           const SizedBox(height: 16),
+          if (!onCode && _accounts.length > 1) ...[
+            Text('Your accounts', style: HfText.of(context, HfText.section)),
+            const Text('Choose an account, then verify its WhatsApp code.'),
+            for (final account in _accounts) Card(child: ListTile(
+              leading: const CircleAvatar(child: Icon(Icons.person_outline)),
+              title: Text(account.label), subtitle: Text(account.masked),
+              onTap: _emailBusy || _c.sending ? null : () { _phone.text = normalizeIndianMobile(account.phone); _c.setDigits(_phone.text); _c.setRegistration(false); },
+              trailing: IconButton(tooltip: 'Forget this account', icon: const Icon(Icons.close), onPressed: () async {
+                await _remembered.forget(account.uid); await _loadAccounts();
+              }),
+            )),
+          ],
+          if (!onCode && !widget.secondNumber) HfButton(label: 'Add another WhatsApp number', kind: HfButtonKind.text,
+            onPressed: _emailBusy || _c.sending ? null : () => Navigator.of(context).push<void>(MaterialPageRoute(builder: (_) => SignInScreen(next: widget.next, secondNumber: true)))),
           Text(
             'Your number stays private from other people.',
             style: HfText.of(context, HfText.note),
@@ -228,6 +277,18 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
       ),
     );
   }
+
+  Widget _welcome() => ListView(padding: const EdgeInsets.fromLTRB(24, 12, 24, 32), children: [
+    const IdentityHeader(title: 'Find people, services and conversations that fit you',
+      subtitle: 'A safer, kinder place to talk, learn and get support.', imageHeight: 320),
+    HfButton(label: 'Log in', icon: Icons.arrow_forward, onPressed: () => setState(() { _landing = false; _c.setRegistration(false); })),
+    const SizedBox(height: 12),
+    HfButton(label: 'Sign up', kind: HfButtonKind.secondary, icon: Icons.arrow_forward,
+      onPressed: () => setState(() { _landing = false; _c.setRegistration(true); })),
+    const SizedBox(height: 20),
+    const HfCard(child: ListTile(leading: Icon(Icons.shield_outlined), title: Text('Safe and trusted'),
+      subtitle: Text('Your privacy matters. Identity verification helps keep conversations safer.'))),
+  ]);
 
   // ----------------------------------------------------------- number step
 
@@ -241,18 +302,20 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
           HfChip(
             label: 'Log in',
             selected: !_c.registration,
-            onTap: () => _c.setRegistration(false),
+            onTap: _emailBusy || _c.sending ? null : () => _c.setRegistration(false),
           ),
           HfChip(
             label: 'Create account',
             selected: _c.registration,
-            onTap: () => _c.setRegistration(true),
+            onTap: _emailBusy || _c.sending ? null : () => _c.setRegistration(true),
           ),
         ],
       ),
       const SizedBox(height: 16),
       Text(
-        _c.registration
+        widget.secondNumber
+            ? 'Enter the WhatsApp number for your other account. We verify access using an OTP; we do not detect or verify a physical SIM in this phone.'
+            : _c.registration
             ? 'Your account starts with a verified WhatsApp number. Please accept the age and safety rules below.'
             : SignInCopy.numberHint,
         style: HfText.of(context, HfText.note),
@@ -287,6 +350,7 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
             child: TextField(
               key: const ValueKey<String>('signin-phone'),
               controller: _phone,
+              enabled: !_emailBusy && !_c.sending,
               focusNode: _phoneFocus,
               keyboardType: TextInputType.phone,
               textInputAction: TextInputAction.done,
@@ -299,7 +363,7 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
               ),
               onChanged: _c.setDigits,
               onSubmitted: (_) {
-                if (_c.canSend) _c.sendCode();
+                if (!_emailBusy && _c.canSend) _c.sendCode();
               },
             ),
           ),
@@ -314,7 +378,7 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
         label: SignInCopy.sendCode,
         icon: Icons.chat_bubble_outline_rounded,
         loading: _c.sending,
-        onPressed: _c.canSend ? _c.sendCode : null,
+        onPressed: !_emailBusy && _c.canSend ? _c.sendCode : null,
       ),
     ];
   }
@@ -331,10 +395,7 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
         style: HfText.of(context, HfText.section),
       ),
       const SizedBox(height: 12),
-      Text(
-        SignInCopy.sentTo(_c.phoneMasked ?? ''),
-        style: HfText.of(context, HfText.note),
-      ),
+      Text('Enter 6-digit code', style: HfText.of(context, HfText.note)),
       const SizedBox(height: HfSpacing.gapLarge),
       CodeBoxes(
         controller: _code,

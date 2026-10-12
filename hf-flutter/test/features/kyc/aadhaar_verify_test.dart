@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hf_app/core/api/api_error.dart';
 import 'package:hf_app/core/links.dart';
+import 'package:hf_app/core/storage/account_storage.dart';
 import 'package:hf_app/features/kyc/kyc.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -43,6 +44,7 @@ void main() {
   int verifiedCalls = 0;
 
   setUp(() {
+    AccountScope.id = 'user_kyc';
     SharedPreferences.setMockInitialValues(<String, Object>{});
     api = FakeApiClient();
     links = FakeLinkOpener();
@@ -53,6 +55,7 @@ void main() {
   });
 
   tearDown(() {
+    AccountScope.id = null;
     LinkOpener.instance = const LinkOpener();
     log.remove();
   });

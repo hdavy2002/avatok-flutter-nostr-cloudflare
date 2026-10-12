@@ -112,6 +112,14 @@ class SessionController extends Notifier<SessionState> {
     return step;
   }
 
+  Future<ClerkStep> signInWithEmailCode(EmailChallenge challenge, String code) async {
+    final clerk = _clerk;
+    if (clerk is! ClerkEmailApi) return ClerkStep.error('Email sign-in is unavailable. Please use WhatsApp.');
+    final step = await clerk.verifyEmailCode(challenge, code);
+    if (step.isComplete && step.user != null) await _adopt(step.user!);
+    return step;
+  }
+
   /// Sign out: run the hooks (push unregister), Clerk sign-out, telemetry reset, clear caches.
   Future<void> signOut() async {
     for (final hook in List<SignOutHook>.of(ref.read(signOutHooksProvider))) {

@@ -9,7 +9,7 @@ import '../../../core/auth/session.dart';
 import '../../../core/router/pending_intent.dart';
 import '../../../core/router/routes.dart';
 import '../../../core/theme/hf_theme.dart';
-import '../../me/ui/name_sheet.dart';
+import 'registration_form.dart';
 import '../data/registration_progress.dart';
 
 /// Cancelling retains the account's required-name marker for the next privileged action.
@@ -89,7 +89,7 @@ class _CompleteProfileScreenState extends ConsumerState<CompleteProfileScreen> {
     },
     child: Scaffold(
       appBar: AppBar(
-        title: const Text('One last introduction'),
+        title: const Text('Create your account'),
         leading: IconButton(
           tooltip: 'Keep browsing',
           icon: const Icon(Icons.arrow_back_rounded),
@@ -99,7 +99,7 @@ class _CompleteProfileScreenState extends ConsumerState<CompleteProfileScreen> {
       body: SafeArea(
         child: Padding(
           padding: const EdgeInsets.only(top: HfSpacing.gap),
-          child: NameSheet(onSaved: _saved),
+          child: RegistrationForm(onSaved: _saved),
         ),
       ),
     ),

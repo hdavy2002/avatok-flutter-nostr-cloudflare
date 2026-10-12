@@ -20,6 +20,8 @@ import '../../lanes/data/lanes_api.dart';
 import '../data/me_telemetry.dart';
 import '../data/notification_control.dart';
 import 'name_sheet.dart';
+import '../../kyc/ui/identity_kyc_screen.dart';
+import '../../auth/ui/sign_in_screen.dart';
 
 /// Copy of the Me screen.
 abstract final class MeCopy {
@@ -458,6 +460,27 @@ class _MeScreenState extends ConsumerState<MeScreen>
     final name = _savedName ?? me?.displayName;
     return [
       _profileCard(name, me),
+      if (me?.username != null) Padding(padding: const EdgeInsets.all(12),
+        child: Text('@${me!.username} · permanent username', style: HfText.of(context, HfText.note))),
+      const SizedBox(height: 16),
+      HfCard(child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        ListTile(leading: const Icon(Icons.verified_user_outlined), title: const Text('Identity verification'),
+          subtitle: const Text('View your Aadhaar and video review status'),
+          trailing: const Icon(Icons.chevron_right), onTap: () => Navigator.of(context).push<void>(
+            MaterialPageRoute(builder: (_) => const IdentityKycScreen()))),
+        ListTile(leading: const Icon(Icons.stars_outlined), title: const Text('Influencer or Celebrity'),
+          subtitle: const Text('Full identity and video verification is required. The team confirms eligibility after review.'),
+          trailing: const Icon(Icons.chevron_right), onTap: () => Navigator.of(context).push<void>(
+            MaterialPageRoute(builder: (_) => const IdentityKycScreen(creator: true)))),
+        ListTile(leading: const Icon(Icons.switch_account_outlined), title: const Text('Use another account'),
+          subtitle: const Text('Sign out, then verify another WhatsApp number. No physical SIM detection.'),
+          trailing: const Icon(Icons.chevron_right), onTap: () async {
+            final navigator = Navigator.of(context);
+            GoRouter.of(context).go(Routes.home);
+            await ref.read(sessionProvider.notifier).signOut();
+            if (navigator.mounted) await navigator.push<void>(MaterialPageRoute(builder: (_) => const SignInScreen(secondNumber: true)));
+          }),
+      ])),
       if (me?.closing ?? false) ...[
         const SizedBox(height: HfSpacing.lg),
         HfCard(

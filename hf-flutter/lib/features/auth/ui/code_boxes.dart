@@ -16,6 +16,7 @@ class CodeBoxes extends StatelessWidget {
     this.enabled = true,
     this.length = 6,
     this.fieldKey = const ValueKey<String>('signin-code'),
+    this.sourceLabel = 'WhatsApp',
   });
 
   final TextEditingController controller;
@@ -25,6 +26,7 @@ class CodeBoxes extends StatelessWidget {
   final bool enabled;
   final int length;
   final Key fieldKey;
+  final String sourceLabel;
 
   static const double boxHeight = 60;
   static const double gap = 8;
@@ -66,7 +68,7 @@ class CodeBoxes extends StatelessWidget {
           ),
           Positioned.fill(
             child: Semantics(
-              label: 'Code from WhatsApp, $length digits',
+              label: 'Code from $sourceLabel, $length digits',
               textField: true,
               child: TextField(
                 key: fieldKey,

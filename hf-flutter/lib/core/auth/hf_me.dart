@@ -9,6 +9,8 @@ class HfMe {
   const HfMe({
     required this.uid,
     this.displayName,
+    this.username,
+    this.registrationComplete = false,
     this.phoneMasked,
     this.whatsappVerified = false,
     this.ackVersion,
@@ -21,6 +23,8 @@ class HfMe {
 
   final String uid;
   final String? displayName;
+  final String? username;
+  final bool registrationComplete;
   final String? phoneMasked;
   final bool whatsappVerified;
 
@@ -50,6 +54,8 @@ class HfMe {
     return HfMe(
       uid: (j['uid'] ?? '').toString(),
       displayName: _s(j['displayName']),
+      username: _s(j['username']),
+      registrationComplete: j['registrationComplete'] == true,
       phoneMasked: _s(j['phoneMasked']),
       whatsappVerified: j['whatsappVerified'] == true,
       ackVersion: _s(j['ackVersion']),

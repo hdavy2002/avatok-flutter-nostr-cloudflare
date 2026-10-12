@@ -36,6 +36,7 @@ class KycApi {
       '/api/hosts/kyc/aadhaar/otp',
       body: {'aadhaar': aadhaar, 'consent': true, 'role': role.wire},
     );
+    if (j['ok'] != true) throw ApiError.badResponse(200);
     if (j['already_verified'] == true) {
       return AadhaarOtpOutcome.alreadyVerified(
         AadhaarResult.fromJson(j, alreadyVerified: true),
@@ -51,6 +52,7 @@ class KycApi {
       '/api/hosts/kyc/aadhaar/verify',
       body: {'otp': otp},
     );
+    if (j['ok'] != true || j['ageOk'] != true) throw ApiError.badResponse(200);
     return AadhaarResult.fromJson(j);
   }
 
@@ -63,13 +65,14 @@ class KycApi {
       '/api/hosts/kyc/digilocker/start',
       body: {'consent': true, 'role': role.wire, 'returnPath': returnPath},
     );
+    if (j['ok'] != true) throw ApiError.badResponse(200);
     if (j['already_verified'] == true) {
       return DigiLockerStartOutcome.alreadyVerified(
         AadhaarResult.fromJson(j, alreadyVerified: true),
       );
     }
     final url = Uri.tryParse((j['url'] ?? '').toString());
-    if (url == null || !url.hasScheme) throw ApiError.badResponse(200);
+    if (url == null || url.scheme != 'https' || url.host.isEmpty) throw ApiError.badResponse(200);
     return DigiLockerStartOutcome.link(url);
   }
 
@@ -86,16 +89,17 @@ class KycApi {
         m is String && m.isNotEmpty ? m : null,
       );
     }
+    if (j['ok'] != true || j['ageOk'] != true) throw ApiError.badResponse(200);
     return DigiLockerCompleteOutcome.done(
       AadhaarResult.fromJson(j, viaDigiLocker: true),
     );
   }
 
-  /// `POST /api/hosts/kyc/selfie/code` -> the 4-digit code to say out loud (valid 10 minutes).
+  /// `POST /api/hosts/kyc/selfie/code` -> the 6-digit code to say out loud (valid 10 minutes).
   Future<String> selfieCode() async {
     final j = await _api.postJson('/api/hosts/kyc/selfie/code');
     final code = (j['code'] ?? '').toString();
-    if (code.isEmpty) throw ApiError.badResponse(200);
+    if (!RegExp(r'^\d{6}$').hasMatch(code)) throw ApiError.badResponse(200);
     return code;
   }
 
@@ -107,7 +111,7 @@ class KycApi {
     required String code,
     void Function(int sent, int total)? onProgress,
   }) async {
-    await _api.uploadBytes(
+    final response = await _api.uploadBytes(
       'POST',
       '/api/hosts/kyc/selfie',
       bytes: bytes,
@@ -115,6 +119,9 @@ class KycApi {
       headers: {'x-selfie-code': code},
       onProgress: onProgress,
     );
+    if (response['ok'] != true || response['status'] != 'pending') {
+      throw ApiError.badResponse(200);
+    }
   }
 
   /// `POST /api/hosts/payout/verify`.

@@ -85,6 +85,12 @@ class _HostOnboardingScreenState extends ConsumerState<HostOnboardingScreen> {
   Future<void> _routeDigiLockerReturn() async {
     final p = await ref.read(digiLockerPendingStoreProvider).read();
     if (!mounted) return;
+    final pendingNext = p?.next;
+    if (pendingNext != null && Uri.tryParse(pendingNext)?.path == Routes.identityKyc) {
+      final next = Uri.parse(pendingNext);
+      context.go(next.replace(queryParameters: {...next.queryParameters, 'dl': 'return'}).toString());
+      return;
+    }
     if (p != null && p.role == KycRole.laneCaller) {
       context.go(Routes.lanesOf(p.lane, next: p.next));
     }

@@ -28,8 +28,8 @@ class RegistrationProgress {
   Future<bool> needsName() async {
     final uid = _uid;
     if (uid == null) return false;
-    final name = _ref.read(sessionProvider).me?.displayName;
-    if (name != null && name.trim().isNotEmpty) {
+    final profile = _ref.read(sessionProvider).me;
+    if (profile?.registrationComplete == true) {
       await complete(expectedUid: uid);
       return false;
     }
