@@ -158,8 +158,13 @@ Future<int> _capture(
   _AuthCaptureState state,
   Key boundaryKey,
 ) async {
+  final captureBoundary = find.byWidgetPredicate(
+    (widget) => widget is RepaintBoundary && widget.key == boundaryKey,
+    description: '${state.name} capture boundary',
+  );
+  expect(captureBoundary, findsOneWidget);
   final boundary = tester.renderObject<RenderRepaintBoundary>(
-    find.byKey(boundaryKey),
+    captureBoundary,
   );
   // Rasterization and PNG encoding complete on the engine's real async queue.
   // Awaiting them in the widget test's fake clock can hang without another pump.
