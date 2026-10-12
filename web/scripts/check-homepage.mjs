@@ -85,7 +85,8 @@ for (const [index, [id, name, category, rating, availability, rate]] of expected
   assert(card.includes('alt="Illustrative portrait of ' + name + '"'));
 }
 assert.doesNotMatch(main, /data-live-host|<astro-island|id="mood-filter"|data-person(?:=|\s|>)/, 'Retired homepage discovery removed; marketplace stays independent');
-assert(main.includes(identity.domain + '/yourname'), 'Sample share URL uses central identity');
+// A discretionary line-break element does not change the displayed URL.
+assert(main.replace(/<wbr\s*\/?>/gi, '').includes(identity.domain + '/yourname'), 'Sample share URL uses central identity');
 assert(main.includes(identity.name), 'Private connector uses central identity');
 assert.equal((main.match(/class="hfh-kyc"/g) || []).length, 2);
 const footer = bodyHtml.match(/<footer\b[^>]*\bdata-callvaal-chrome(?:="")?[^>]*>([\s\S]*?)<\/footer>/)?.[1] || '';
