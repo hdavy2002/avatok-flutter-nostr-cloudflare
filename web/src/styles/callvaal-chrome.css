@@ -23,7 +23,10 @@ html[data-site-auth=in] .cv-header[data-auth-mode=auto] .cv-auth-out{display:non
 .cv-footer-group li{margin:0}
 .cv-footer-group a,.cv-footer-group button{display:flex;align-items:center;min-height:44px;padding:8px 0;border:0;background:none;color:#785979;font:inherit;text-align:left;text-decoration:none;overflow-wrap:anywhere;max-width:100%;cursor:pointer}
 .cv-footer-group a:hover,.cv-footer-group button:hover,.cv-navigation a:hover{text-decoration:underline;text-underline-offset:4px}
-.cv-footer-copyright{margin:28px 0 0;color:#785979;font-size:.9375rem;overflow-wrap:anywhere}
+.cv-footer-credits{margin-top:28px;text-align:center;color:#785979;font-size:.9375rem;line-height:1.7}
+.cv-footer-credits .cv-footer-copyright{margin:0;font-size:inherit;overflow-wrap:anywhere}
+.cv-footer-made{margin:.4rem 0 0}
+.cv-footer-heart{color:#be2043;font-size:1.2em;line-height:1;vertical-align:baseline}
 .cv-footer:after{content:"";display:block;height:14px;margin-top:20px;background:radial-gradient(circle at 7px 7px,transparent 3px,#c6a4cc 3px,#c6a4cc 4px,transparent 4px);background-size:14px 14px}
 .cv-preview-dialog{box-sizing:border-box;width:min(480px,calc(100% - 32px));max-height:calc(100dvh - 32px);overflow:auto;border:1px solid #e8dce7;border-radius:18px;padding:28px;background:#fffdf7;color:#46113e;font-family:Comfortaa,sans-serif}
 .cv-preview-dialog::backdrop{background:#270d2b88;backdrop-filter:blur(4px)}

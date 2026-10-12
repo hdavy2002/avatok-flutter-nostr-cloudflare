@@ -386,3 +386,38 @@
 @font-face{font-family:HomeNunito;src:url('/fonts/Nunito-Variable.ttf') format('truetype');font-weight:200 1000;font-display:swap}
 
 .hfh-reference-page .hfh-share-url{font-size:.8em}
+
+/* [HF-HOME-POLISH-1] Air between paper panels, with a calmer readable type scale. */
+.hfh-reference-page .hfh-home{--hfh-section-space:clamp(2rem,4cqw,4rem)}
+.hfh-reference-page .hfh-home>[data-home-section]+[data-home-section],
+.hfh-reference-page .hfh-home>.hfh-how{margin-top:var(--hfh-section-space)}
+.hfh-reference-page .hfh-hero{padding-block:1.25rem 1.75rem}
+.hfh-reference-page .hfh-creators,.hfh-reference-page .hfh-privacy,
+.hfh-reference-page .hfh-lane,.hfh-reference-page .hfh-host-cta{padding-block:clamp(1.5rem,2.5cqw,2.5rem)}
+.hfh-reference-page .hfh-lanes{gap:clamp(1.5rem,2.5cqw,2.5rem)}
+.hfh-reference-page .hfh-how{padding-block:1rem}
+.hfh-reference-page .hfh-section-heading{margin-bottom:1.25rem}
+.hfh-reference-page .hfh-steps{margin-top:1.5rem}
+.hfh-reference-page .hfh-hero h1{font-size:clamp(2rem,3.5cqw,3.5rem);line-height:1.14}
+.hfh-reference-page .hfh-home h2{font-size:clamp(1.75rem,2.7cqw,2.75rem);line-height:1.2}
+.hfh-reference-page .hfh-lane h2,.hfh-reference-page .hfh-host-copy h2{font-size:clamp(1.5rem,2.1cqw,2rem)}
+.hfh-reference-page .hfh-card-heading h3{font-size:clamp(1.25rem,1.55cqw,1.5rem)}
+.hfh-reference-page .hfh-steps h3{font-size:clamp(1.125rem,1.4cqw,1.375rem)}
+.hfh-reference-page .hfh-hero-copy>p,.hfh-reference-page .hfh-section-heading p,
+.hfh-reference-page .hfh-privacy p{font-size:clamp(1rem,1.2cqw,1.125rem);line-height:1.65;max-width:48ch}
+.hfh-reference-page .hfh-lane-copy>p:not(.hfh-kyc),
+.hfh-reference-page .hfh-steps p,.hfh-reference-page .hfh-host-copy p{font-size:1rem;line-height:1.6}
+.hfh-reference-page .hfh-actions .hfh-button,
+.hfh-reference-page .hfh-section-heading>a{font-size:1rem}
+.hfh-reference-page .hfh-proof li{font-size:.9375rem}
+.hfh-reference-page .hfh-connection figcaption{font-size:1rem;line-height:1.5}
+.hfh-reference-page .cv-footer,.hfh-reference-page .cv-footer *:not(svg,svg *),
+.hfh-reference-page .hfh-preview-dialog *:not(svg,svg *){font-family:HomeComfortaa,Comfortaa,sans-serif!important}
+.hfh-reference-page .hfh-home :is(h1,h2,h3,h4,h5,h6),
+.hfh-reference-page .hfh-home :is(h1,h2,h3,h4,h5,h6) *:not(svg,svg *),
+.hfh-reference-page .cv-footer-group summary,
+.hfh-reference-page .hfh-preview-dialog h2{font-family:HomeNunito,Nunito,sans-serif!important}
+@container home-reference (max-width:40rem){
+ .hfh-reference-page .hfh-hero{gap:2rem}
+ .hfh-reference-page .hfh-lanes{row-gap:var(--hfh-section-space)}
+}

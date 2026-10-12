@@ -144,7 +144,7 @@ try {
       await expect(page.locator('link[rel="canonical"]')).toHaveAttribute('href', `https://${homepageIdentity.domain}/`);
       await expect(page.locator('meta[property="og:url"]')).toHaveAttribute('content', `https://${homepageIdentity.domain}/`);
       await expect(page.locator('h1')).toHaveText('Talk to your favourite social media influencers over a private phone call.');
-      await expect(page.locator('.hfh-beta')).toContainText('INVITE ONLY · BETA PHASE');
+      await expect(page.locator('.hfh-beta')).toHaveCount(0);
       await expect(page.locator('.hfh-creator-card')).toHaveCount(4);
       await expect(page.locator('.hfh-card-heading h3')).toHaveText(['Neha', 'Arjun', 'Meera', 'Rohit']);
       await expect(page.locator('.hfh-rate')).toHaveText(['₹3.99/min', '₹4.50/min', '₹3.50/min', '₹3.25/min']);
@@ -171,7 +171,7 @@ try {
         return {
           hero: columns('.hfh-hero'), creators: columns('.hfh-creator-grid'), privacy: columns('.hfh-privacy'),
           lanes: columns('.hfh-lanes'), steps: columns('.hfh-steps'),
-          ribbonBottom: document.querySelector('.hfh-beta').getBoundingClientRect().bottom,
+          heroTop: document.querySelector('.hfh-hero').getBoundingClientRect().top,
           headerTop: document.querySelector('header').getBoundingClientRect().top,
           headerBottom: document.querySelector('header').getBoundingClientRect().bottom,
           smallControls: [...document.querySelectorAll('.hfh-home button, .hfh-home a')].filter(el => el.getClientRects().length && el.getBoundingClientRect().height < 43.9).map(el => el.textContent),
@@ -183,7 +183,7 @@ try {
       assert.equal(geometry.privacy, width >= 1024 ? 2 : 1, name + ': privacy columns');
       assert.equal(geometry.lanes, width >= 1024 ? 2 : 1, name + ': lane columns');
       assert.equal(geometry.steps, width >= 768 ? 3 : 1, name + ': steps columns');
-      assert(geometry.ribbonBottom <= geometry.headerTop + 1, name + ': reference beta ribbon above header');
+      assert(geometry.headerBottom <= geometry.heroTop + 1, name + ': header above hero');
       assert.deepEqual(geometry.smallControls, [], name + ': 44px minimum control height');
       assert.equal(new Set(geometry.ids).size, geometry.ids.length, name + ': IDs unique');
       const readability = await inspectReadability(page);
