@@ -67,9 +67,32 @@ export function checkHelloFraandsPages(root, identity) {
     'Your earnings are 60% of the connected-call charge, minus ₹2.00 for each connected minute to cover the telephone call.',
     'Example at ₹20 per minute for a one-minute connected call: the fan pays ₹20, your earning is ₹10, ₹2 covers the call, and the platform share is ₹8.',
   ]) assert(hostRates.includes(copy), 'Current host rates contract: ' + copy);
-  assert(text(faq).includes('starting from ₹5/min'), 'FAQ minimum rate');
+  // FAQ and wallet terms describe Standard calling; influencer pricing and
+  // earnings are covered separately by the host join/rates contracts above.
+  const faqText = text(faq);
+  for (const copy of [
+    '₹3.99 a minute for the first 30 minutes, ₹3.50 for the next 30 minutes and ₹3.25 after 60 minutes.',
+    'Only once both of you are connected. Ringing, a host declining, or a call that never connects costs nothing.',
+    'By the second of connected time, with no rounding up to a full minute.',
+    'A 30-minute call costs ₹119.70 and a 60-minute call costs ₹224.70.',
+    'You need at least ₹7.98 (two minutes) in your wallet to start a call.',
+    'you earn ₹2.00 for every connected minute, paid by the second.',
+    'A 15-minute call earns ₹30.00.',
+  ]) assert(faqText.includes(copy), 'FAQ Standard call contract: ' + copy);
   const wallet = text(pages.get('/wallet-terms'));
-  for (const copy of ['general-lane floor of ₹5/minute', '61 connected seconds at ₹5/minute costs ₹10', '₹3.20 for the platform and ₹1.80 for the host']) assert(wallet.includes(copy), 'Wallet ₹5 example: ' + copy);
+  for (const copy of [
+    'A call costs ₹3.99 a minute for the first 30 minutes, ₹3.50 a minute for the next 30 minutes, and ₹3.25 a minute after 60 minutes.',
+    'The lower price applies only to the time after each mark.',
+    'Minutes you have already talked are never charged again at a new price.',
+    '30 minutes cost ₹119.70.', '60 minutes cost ₹224.70.',
+    '90 minutes cost ₹322.20.', '120 minutes cost ₹419.70.',
+    'A new call starts again at ₹3.99 a minute.',
+    'You need at least ₹7.98 (two minutes) in your wallet to start a call.',
+    'Billing starts only when host and caller are connected, not while a phone rings or the host decides.',
+    'You are billed for the exact seconds you are connected, with no rounding up to a full minute.',
+    'Ringing, a declined or missed call, a failed connection and waiting all cost ₹0.',
+    'Hosts earn ₹2.00 for every connected minute of every call, paid by the second.',
+  ]) assert(wallet.includes(copy), 'Wallet Standard call contract: ' + copy);
   const earningsTable = pages.get('/hosts/join').match(/<tbody>([\s\S]*?)<\/tbody>/)?.[1] || '';
   const earningsRows = [...earningsTable.matchAll(/<tr>([\s\S]*?)<\/tr>/g)].map(row => [...row[1].matchAll(/<td>([^<]+)<\/td>/g)].map(cell => cell[1]));
   assert.deepEqual(earningsRows, [

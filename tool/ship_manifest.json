@@ -10465,6 +10465,12 @@
       }
     ]
   },
+  "HF-HOME-DEPLOY-CI-3": {
+    "description": "Align the homepage release guard with the published Standard-call FAQ and wallet pricing, exact-second billing, start balance, and host earnings contracts.",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "no_telemetry": "CI-only assertion correction; it changes no runtime product path and emits no event."
+  },
   "HF-PRESENCE-NUDGE-1": {
     "description": "[HF-PRESENCE-NUDGE-1 2026-10-11] 3-hourly WhatsApp (plus push when she has the app) reminder to a LIVE host who is showing offline, only 08:00-23:00 IST, pausable (PUT /api/hosts/me/presence/nudges; GET presence gains nudgesPaused). Worker: lib/hf_presence_nudge.ts run from the 5-minute cron in index.ts; D1 hf_hosts.nudge_last_at / nudge_paused (migration 2026-10-11-hf-presence-nudge.sql, ALTER only, apply BEFORE the worker deploy); push kind presence_nudge (path /host). Rulebook HF-HOST-NUDGE-1. Dark behind hfPresenceNudgeEnabled. Replying STOP is not wired yet.",
     "two_sided": false,
