@@ -25,6 +25,14 @@ abstract final class HostLane {
   static String? clean(String? v) => (v == women || v == lgbtq) ? v : null;
 }
 
+abstract final class HostCategoryFilter {
+  static const String influencer = 'influencer';
+  static const String celebrity = 'celebrity';
+
+  static String? clean(String? value) =>
+      value == influencer || value == celebrity ? value : null;
+}
+
 /// Everything the person can filter by. Immutable; [copyWith] makes the next one.
 ///
 /// It maps to the API (`toApiQuery`) and to the route (`toRouteQuery`, which `/explore?lane=&topics=&lang=&max=&online=`
@@ -37,6 +45,7 @@ class HostFilters {
     this.maxPrice,
     this.online = false,
     this.lane,
+    this.category,
     this.sort = HostSort.onlineFirst,
   });
 
@@ -51,6 +60,7 @@ class HostFilters {
 
   /// `women`, `lgbtq` or null for All.
   final String? lane;
+  final String? category;
   final HostSort sort;
 
   static const HostFilters none = HostFilters();
@@ -62,6 +72,7 @@ class HostFilters {
       (languages.isEmpty ? 0 : 1) +
       ((minPrice != null || maxPrice != null) ? 1 : 0) +
       (online ? 1 : 0) +
+      (category == null ? 0 : 1) +
       (sort == HostSort.onlineFirst ? 0 : 1);
 
   bool get hasAny => activeCount > 0 || lane != null;
@@ -73,6 +84,7 @@ class HostFilters {
     Object? maxPrice = _keep,
     bool? online,
     Object? lane = _keep,
+    Object? category = _keep,
     HostSort? sort,
   }) => HostFilters(
     topics: topics ?? this.topics,
@@ -81,6 +93,7 @@ class HostFilters {
     maxPrice: identical(maxPrice, _keep) ? this.maxPrice : maxPrice as int?,
     online: online ?? this.online,
     lane: identical(lane, _keep) ? this.lane : lane as String?,
+    category: identical(category, _keep) ? this.category : category as String?,
     sort: sort ?? this.sort,
   );
 
@@ -96,6 +109,7 @@ class HostFilters {
         if (maxPrice != null) 'maxPrice': maxPrice,
         if (online) 'online': '1',
         if (lane != null) 'lane': lane,
+        if (category != null) 'category': category,
         if (sort != HostSort.onlineFirst) 'sort': sort.wire,
         'limit': limit,
         'offset': offset,
@@ -104,6 +118,7 @@ class HostFilters {
   /// Query values for the route: `lane`, `topics`, `lang`, `max`, `online` (and `min`, which the Home never sets).
   Map<String, String> toRouteQuery() => <String, String>{
     if (lane != null) 'lane': lane!,
+    if (category != null) 'category': category!,
     if (topics.isNotEmpty) 'topics': topics.join(','),
     if (languages.isNotEmpty) 'lang': languages.join(','),
     if (maxPrice != null) 'max': '$maxPrice',
@@ -139,6 +154,7 @@ class HostFilters {
       maxPrice: price(q['max']),
       online: q['online'] == '1' || q['online'] == 'true',
       lane: HostLane.clean(q['lane']),
+      category: HostCategoryFilter.clean(q['category']),
     );
   }
 
@@ -150,6 +166,7 @@ class HostFilters {
     if (maxPrice != null) 'max_price': maxPrice!,
     if (online) 'online': true,
     if (lane != null) 'lane': lane!,
+    if (category != null) 'category': category!,
     'sort': sort.wire,
   };
 
@@ -160,7 +177,8 @@ class HostFilters {
       minPrice == o.minPrice &&
       maxPrice == o.maxPrice &&
       online == o.online &&
-      lane == o.lane;
+      lane == o.lane &&
+      category == o.category;
 
   /// Same list request: every field, including the sort.
   bool sameRequest(HostFilters o) => sameAsRoute(o) && sort == o.sort;
@@ -169,7 +187,7 @@ class HostFilters {
   String get cacheKey {
     final t = [...topics]..sort();
     final l = [...languages]..sort();
-    return 't=${t.join(',')}|l=${l.join(',')}|min=${minPrice ?? ''}|max=${maxPrice ?? ''}|o=${online ? 1 : 0}|s=${sort.wire}';
+    return 't=${t.join(',')}|l=${l.join(',')}|min=${minPrice ?? ''}|max=${maxPrice ?? ''}|o=${online ? 1 : 0}|c=${category ?? ''}|s=${sort.wire}';
   }
 
   static bool _same(List<String> a, List<String> b) {

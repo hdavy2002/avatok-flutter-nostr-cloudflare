@@ -22,6 +22,7 @@ class HostCard {
     this.serverPriceLabel,
     this.priceTiers = const <PriceTier>[],
     this.plan,
+    this.category = 'standard',
     this.rating,
     this.reviewCount = 0,
     this.talkedTo = 0,
@@ -48,6 +49,7 @@ class HostCard {
   final String? serverPriceLabel;
   final List<PriceTier> priceTiers;
   final String? plan;
+  final String category;
 
   /// Average of approved stars (1 decimal), or null when there are no reviews yet.
   final double? rating;
@@ -106,6 +108,7 @@ class HostCard {
       serverPriceLabel: _str(j['priceLabel']),
       priceTiers: PriceTier.listFrom(j['priceTiers']),
       plan: _str(j['plan']),
+      category: _category(j['category']),
       rating: _num(j['rating'])?.toDouble(),
       reviewCount: _int(j['reviewCount']) ?? 0,
       talkedTo: _int(j['talkedTo']) ?? 0,
@@ -133,6 +136,7 @@ class HostCard {
     'priceLabel': serverPriceLabel,
     'priceTiers': priceTiers.map((t) => t.toJson()).toList(),
     'plan': plan,
+    'category': category,
     'rating': rating,
     'reviewCount': reviewCount,
     'talkedTo': talkedTo,
@@ -166,6 +170,11 @@ class HostCard {
       default:
         return null;
     }
+  }
+
+  static String _category(Object? v) {
+    final value = '${v ?? ''}'.trim().toLowerCase();
+    return value == 'influencer' || value == 'celebrity' ? value : 'standard';
   }
 
   static List<String> _strList(Object? v) => v is List
