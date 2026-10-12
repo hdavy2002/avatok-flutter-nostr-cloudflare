@@ -13,12 +13,14 @@ import 'code_boxes.dart';
 
 class EmailCodeForm extends ConsumerStatefulWidget {
   const EmailCodeForm({super.key, required this.onVerified, this.verification = false,
-    this.enabled = true, this.onBusyChanged, this.onChallengeChanged});
+    this.enabled = true, this.onBusyChanged, this.onChallengeChanged, this.initialEmail, this.challengeExpiresAt});
   final Future<void> Function() onVerified;
   final bool verification;
   final bool enabled;
   final ValueChanged<bool>? onBusyChanged;
   final ValueChanged<bool>? onChallengeChanged;
+  final String? initialEmail;
+  final int? challengeExpiresAt;
   @override
   ConsumerState<EmailCodeForm> createState() => _EmailCodeFormState();
 }
@@ -38,7 +40,13 @@ class _EmailCodeFormState extends ConsumerState<EmailCodeForm> {
   IdentityApi get _api => IdentityApi(ref.read(apiClientProvider));
 
   @override
-  void initState() { super.initState(); _owner = AccountScope.id; }
+  void initState() {
+    super.initState(); _owner = AccountScope.id;
+    _email.text = widget.initialEmail ?? '';
+    // Challenge metadata is restored for this account, never the OTP itself.
+    _sent = widget.verification && _email.text.isNotEmpty &&
+        (widget.challengeExpiresAt ?? 0) > DateTime.now().millisecondsSinceEpoch;
+  }
 
   @override
   void dispose() {

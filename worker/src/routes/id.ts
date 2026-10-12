@@ -18,6 +18,7 @@ import { stripeKycSession, stripeIdentityConfigured } from "./kyc";
 import { track, trackUser, metric, brainFact } from "../hooks";
 import { notifyUser } from "../notify";
 import { recordLivenessAudit, storeRekognitionAuditImages, deviceCtxFromBody, edgeCtx } from "./liveness_audit";
+import { attachVerifiedClerkEmail } from "../lib/clerk_verified_email";
 
 const MIN_CONFIDENCE = 90;        // §10.4 auto-approve threshold
 const MAX_ATTEMPTS_24H = 3;       // §10.4 retry cap
@@ -236,10 +237,11 @@ function emailOtpHtml(code: string): string {
 export async function idEmailStart(req: Request, env: Env): Promise<Response> {
   const ctx = await requireUser(req, env);
   if (isFail(ctx)) return json({ error: ctx.error }, ctx.status);
+  if (!env.CLERK_SECRET_KEY) return json({ error: "email_link_unavailable", message: "Email verification is unavailable right now. Please try again later." }, 503);
 
   const b = (await req.json().catch(() => ({}))) as { email?: string };
   const email = String(b.email || "").trim().toLowerCase();
-  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return json({ error: "valid email required" }, 400);
+  if (email.length > 254 || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return json({ error: "valid email required" }, 400);
 
   // Rate-limit sends per identity (defends against spamming an inbox).
   const sendKey = `otp:email:sends:${ctx.uid}`;
@@ -267,13 +269,14 @@ export async function idEmailStart(req: Request, env: Env): Promise<Response> {
       from: `${BRAND.name} Support <${BRAND.emails.noreply}>`,
     });
   } catch {
+    await env.TOKENS.delete(`otp:email:${ctx.uid}`);
     metric(env, "email_otp_enqueue_error", [1]);
     return json({ error: "could not send the email — please try again" }, 502);
   }
 
   track(env, ctx.uid, "email_verification_sent", "avaid", {});
   metric(env, "email_otp_sent", [1]);
-  return json({ ok: true });
+  return json({ ok: true, expires_at: exp, resend_after_s: 30 });
 }
 
 // POST /api/id/email/verify  { email, code }
@@ -284,7 +287,7 @@ export async function idEmailVerify(req: Request, env: Env): Promise<Response> {
   const b = (await req.json().catch(() => ({}))) as { email?: string; code?: string };
   const email = String(b.email || "").trim().toLowerCase();
   const code = String(b.code || "").trim();
-  if (!email || !code) return json({ error: "email and code required" }, 400);
+  if (email.length > 254 || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email) || !/^\d{6}$/.test(code)) return json({ error: "email and six-digit code required" }, 400);
 
   const key = `otp:email:${ctx.uid}`;
   const raw = await env.TOKENS.get(key);
@@ -293,6 +296,7 @@ export async function idEmailVerify(req: Request, env: Env): Promise<Response> {
   let rec: { hash: string; email: string; exp: number; attempts: number };
   try {
     rec = JSON.parse(raw);
+    if (!rec || typeof rec.hash !== "string" || typeof rec.email !== "string" || !Number.isFinite(rec.exp) || !Number.isInteger(rec.attempts) || rec.attempts < 0) throw new Error("invalid challenge");
   } catch {
     await env.TOKENS.delete(key);
     return json({ error: "code expired — request a new one" }, 400);
@@ -314,6 +318,13 @@ export async function idEmailVerify(req: Request, env: Env): Promise<Response> {
     return json({ error: "incorrect or expired code" }, 400);
   }
 
+  const linked = await attachVerifiedClerkEmail(env, ctx.clerkUserId ?? ctx.uid, email);
+  if (!linked.ok) {
+    track(env, ctx.uid, "email_verification_failed", "avaid", { reason: linked.error });
+    return json({ error: linked.error, field: "email", message: linked.error === "email_taken"
+      ? "That email is already linked to another account. Use another email or sign in to that account."
+      : "We could not finish linking your email. Please try the code again." }, linked.status);
+  }
   const now = Date.now();
   const emailHash = await sha256Hex(email);
   await metaDb(env).prepare(

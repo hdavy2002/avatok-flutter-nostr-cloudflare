@@ -33,6 +33,7 @@ class RegistrationProgress {
       await complete(expectedUid: uid);
       return false;
     }
+    if (profile?.registrationRequired == true) return true;
     if (_required.contains(uid)) return true;
     try {
       final pending = await _store.read('${key}_$uid');

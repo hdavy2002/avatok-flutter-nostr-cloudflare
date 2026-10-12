@@ -8,6 +8,16 @@ import 'package:hf_app/features/auth/data/registration_progress.dart';
 import '../../support/app_harness.dart';
 
 void main() {
+  test('server-required registration survives a fresh device with no local marker', () async {
+    final container = ProviderContainer(overrides: [
+      secureStoreProvider.overrideWithValue(MemoryKeyValueStore()),
+      sessionProvider.overrideWith(() => StubSession(const SessionState(
+        status: SessionStatus.signedIn, me: HfMe(uid: 'new', registrationRequired: true),
+      ))),
+    ]);
+    addTearDown(container.dispose);
+    expect(await container.read(registrationProgressProvider).needsName(), isTrue);
+  });
   ProviderContainer account(String uid, MemoryKeyValueStore store) {
     final container = ProviderContainer(
       overrides: [

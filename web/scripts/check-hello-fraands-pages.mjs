@@ -21,7 +21,13 @@ export function checkHelloFraandsPages(root, identity) {
     // accordions), not the HelloFraandsPage legal layout, so it has no summary/date line.
     if (route !== '/faq') {
       assert.match(body, /class="hf-hindi"[^>]*>\s*<em\b/, `${route}: italic Hindi summary`);
-      assert(text(body).includes('Last updated: {{DATE}}'), `${route}: date placeholder`);
+      const registrationPolicies = new Set(['/terms', '/privacy', '/disclaimer', '/community-guidelines']);
+      if (registrationPolicies.has(route)) {
+        assert.match(text(body), /Last updated: \d{4}-\d{2}-\d{2}/, `${route}: dated registration policy`);
+        assert(!/\{\{|\bpreview\b|\bplaceholder\b/i.test(text(body)), `${route}: no draft placeholders`);
+      } else {
+        assert(text(body).includes('Last updated: {{DATE}}'), `${route}: date placeholder`);
+      }
     }
     assert.match(body, /<h2\b/, `${route}: real structured content`);
     assert.equal((html.match(/<header\b[^>]*data-callvaal-chrome/g) || []).length, 1, `${route}: shared header`);

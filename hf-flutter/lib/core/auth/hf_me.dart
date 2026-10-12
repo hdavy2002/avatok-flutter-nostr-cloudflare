@@ -11,6 +11,7 @@ class HfMe {
     this.displayName,
     this.username,
     this.registrationComplete = false,
+    this.registrationRequired = false,
     this.phoneMasked,
     this.whatsappVerified = false,
     this.ackVersion,
@@ -25,6 +26,7 @@ class HfMe {
   final String? displayName;
   final String? username;
   final bool registrationComplete;
+  final bool registrationRequired;
   final String? phoneMasked;
   final bool whatsappVerified;
 
@@ -56,6 +58,7 @@ class HfMe {
       displayName: _s(j['displayName']),
       username: _s(j['username']),
       registrationComplete: j['registrationComplete'] == true,
+      registrationRequired: j['registrationRequired'] == true,
       phoneMasked: _s(j['phoneMasked']),
       whatsappVerified: j['whatsappVerified'] == true,
       ackVersion: _s(j['ackVersion']),

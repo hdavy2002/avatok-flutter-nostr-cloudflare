@@ -62,7 +62,7 @@ export async function hfMeRoute(req: Request, env: Env, p: string): Promise<Resp
 
 async function getMe(env: Env, uid: string): Promise<Response> {
   // One joined read for the profile facts, plus the ack, lane and closing checks and the (KV-cached) config, all in parallel.
-  const [row, ack, registration, lanes, closing, cfg] = await Promise.all([
+  const [row, ack, registration, registrationPending, lanes, closing, cfg] = await Promise.all([
     env.DB_META.prepare(
       `SELECT u.display_name AS display_name,
               cv.phone_verified AS phone_verified,
@@ -79,6 +79,10 @@ async function getMe(env: Env, uid: string): Promise<Response> {
     // [HF-REF-AUTH-1] Registration is a separate immutable record. Keep this
     // read failure-isolated so an unapplied migration does not break sign-in.
     env.DB_META.prepare("SELECT username FROM hf_user_registration WHERE uid=?1").bind(uid).first<{ username: string }>().catch(() => null),
+    // Server-owned signup membership survives reinstalls, lost ticket responses,
+    // and another device signing into an unfinished account.
+    env.DB_META.prepare(`SELECT 1 AS x FROM hf_phone_signup WHERE uid=?1 AND state='done'
+      UNION SELECT 1 AS x FROM hf_registration_progress WHERE uid=?1 LIMIT 1`).bind(uid).first(),
     getLaneAccess(env, uid).catch(() => ({ women: false, lgbtq: false })),
     isClosing(env, uid),
     readConfig(env).catch(() => null),
@@ -89,6 +93,7 @@ async function getMe(env: Env, uid: string): Promise<Response> {
     displayName: row?.display_name?.trim() ? row.display_name : null,
     username: registration?.username ?? null,
     registrationComplete: !!registration?.username,
+    registrationRequired: !registration?.username && !!registrationPending,
     phoneMasked: maskPhoneLast4(row?.e164),
     whatsappVerified: Number(row?.phone_verified) === 1,
     ackVersion: ack?.version ?? null,

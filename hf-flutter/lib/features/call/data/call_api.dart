@@ -188,9 +188,10 @@ class ActiveCallStore {
   static const String _base = 'hf.active_call.v1';
 
   Future<String?> read() async {
+    final key = scopedKey(_base);
     try {
       final prefs = await SharedPreferences.getInstance();
-      final v = prefs.getString(scopedKey(_base));
+      final v = prefs.getString(key);
       return (v == null || v.isEmpty) ? null : v;
     } catch (_) {
       // Unreadable storage is "no active call", never an error.
@@ -199,9 +200,10 @@ class ActiveCallStore {
   }
 
   Future<void> save(String id) async {
+    final key = scopedKey(_base);
     try {
       final prefs = await SharedPreferences.getInstance();
-      await prefs.setString(scopedKey(_base), id);
+      await prefs.setString(key, id);
     } catch (_) {
       // best effort: the call still runs, only the resume after a restart is lost
     }
@@ -209,9 +211,9 @@ class ActiveCallStore {
 
   /// Forget the call. With [onlyIfId], only when that is the stored one (a newer call is left alone).
   Future<void> clear({String? onlyIfId}) async {
+    final key = scopedKey(_base);
     try {
       final prefs = await SharedPreferences.getInstance();
-      final key = scopedKey(_base);
       if (onlyIfId != null && prefs.getString(key) != onlyIfId) return;
       await prefs.remove(key);
     } catch (_) {

@@ -27,6 +27,8 @@ function makeEnv() {
     CREATE TABLE hf_age_confirm (uid TEXT PRIMARY KEY, confirmed_at INTEGER NOT NULL, source TEXT NOT NULL);
     CREATE TABLE hf_user_ack (uid TEXT NOT NULL, version TEXT NOT NULL, at INTEGER NOT NULL, PRIMARY KEY (uid, version));
     CREATE TABLE hf_user_registration (uid TEXT PRIMARY KEY, username TEXT NOT NULL UNIQUE);
+    CREATE TABLE hf_phone_signup (uid TEXT PRIMARY KEY, state TEXT);
+    CREATE TABLE hf_registration_progress (uid TEXT PRIMARY KEY);
     CREATE TABLE hf_hosts (uid TEXT PRIMARY KEY, slug TEXT, status TEXT NOT NULL DEFAULT 'draft');
     CREATE TABLE hf_kyc (uid TEXT PRIMARY KEY, gender TEXT, verified_at INTEGER);
     CREATE TABLE hf_lane_access (uid TEXT NOT NULL, lane TEXT NOT NULL, verified_at INTEGER NOT NULL, declared_at INTEGER, PRIMARY KEY (uid, lane));
@@ -52,12 +54,19 @@ const call = (r: Request) => hfMeRoute(r, env, "/api/hf/me");
 beforeEach(() => { makeEnv(); cfg = {}; authFail = null; });
 
 describe("GET /api/hf/me", () => {
+  it('marks unfinished phone signups for completion on any device', async () => {
+    db.prepare("INSERT INTO hf_phone_signup VALUES ('u1','done')").run();
+    expect(await (await call(req('GET'))).json()).toMatchObject({ registrationRequired: true, registrationComplete: false });
+    expect(await (await call(req('GET', undefined, 'u2'))).json()).toMatchObject({ registrationRequired: false });
+    db.prepare("INSERT INTO hf_user_registration VALUES ('u1','maya')").run();
+    expect(await (await call(req('GET'))).json()).toMatchObject({ registrationRequired: false, registrationComplete: true });
+  });
   it("a brand-new caller: safe defaults, no host, nothing confirmed", async () => {
     db.prepare("INSERT INTO users (uid) VALUES ('u1')").run();
     const r = await call(req("GET"));
     expect(r.status).toBe(200);
     expect(await r.json()).toEqual({
-      uid: "u1", displayName: null, username: null, registrationComplete: false, phoneMasked: null, whatsappVerified: false, ackVersion: null, age18ConfirmedAt: null,
+      uid: "u1", displayName: null, username: null, registrationComplete: false, registrationRequired: false, phoneMasked: null, whatsappVerified: false, ackVersion: null, age18ConfirmedAt: null,
       isHost: false, host: null, lanes: { women: false, lgbtq: false }, closing: false, tokensMode: false,
     });
   });
@@ -78,7 +87,7 @@ describe("GET /api/hf/me", () => {
     cfg = { hfTokensEnabled: true };
     const b = await (await call(req("GET"))).json();
     expect(b).toEqual({
-      uid: "u1", displayName: "Meena", username: "meena", registrationComplete: true, phoneMasked: "******3210", whatsappVerified: true, ackVersion: "2026-10-10", age18ConfirmedAt: 1234,
+      uid: "u1", displayName: "Meena", username: "meena", registrationComplete: true, registrationRequired: false, phoneMasked: "******3210", whatsappVerified: true, ackVersion: "2026-10-10", age18ConfirmedAt: 1234,
       isHost: true, host: { status: "live", slug: "meena" }, lanes: { women: true, lgbtq: false }, closing: true, tokensMode: true,
     });
     expect(JSON.stringify(b)).not.toContain("98765");

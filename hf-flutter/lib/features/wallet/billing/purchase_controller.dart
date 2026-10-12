@@ -50,8 +50,7 @@ class PurchaseState {
   final String? productId;
   final PurchaseNotice? notice;
 
-  bool get busy =>
-      phase == PurchasePhase.preparing || phase == PurchasePhase.verifying;
+  bool get busy => phase != PurchasePhase.idle;
 
   PurchaseState copyWith({
     PurchasePhase? phase,
@@ -122,10 +121,33 @@ class PurchaseController extends Notifier<PurchaseState> {
   final Set<String> _done = <String>{};
   final Set<String> _announcedPending = <String>{};
   int _seq = 0;
+  int _epoch = 0;
+  String? _ownerUid;
+  bool _disposed = false;
+
+  String? _uid(SessionState session) => session.isSignedIn
+      ? session.user?.id ?? session.me?.uid : null;
+  bool _owns(String? uid, int epoch) => !_disposed && uid != null &&
+      _epoch == epoch && _ownerUid == uid && _uid(ref.read(sessionProvider)) == uid;
+  bool get hasActivePurchase => state.phase != PurchasePhase.idle || _inFlight.isNotEmpty;
 
   @override
   PurchaseState build() {
-    ref.onDispose(_stop);
+    _ownerUid = _uid(ref.read(sessionProvider));
+    ref.listen<SessionState>(sessionProvider, (_, next) {
+      final uid = _uid(next);
+      if (uid == _ownerUid) return;
+      final listening = _sub != null;
+      _epoch++;
+      _ownerUid = uid;
+      _stop();
+      _inFlight.clear();
+      _done.clear();
+      _announcedPending.clear();
+      state = const PurchaseState();
+      if (listening && uid != null) start();
+    });
+    ref.onDispose(() { _disposed = true; _epoch++; _stop(); });
     return const PurchaseState();
   }
 
@@ -146,11 +168,14 @@ class PurchaseController extends Notifier<PurchaseState> {
   /// Starts listening to Play's purchase stream. Safe to call many times.
   void start() {
     if (_sub != null) return;
+    final uid = _ownerUid;
+    final epoch = _epoch;
+    if (!_owns(uid, epoch)) return;
     try {
       _sub = ref
           .read(billingAdapterProvider)
           .purchases
-          .listen(_onPurchase, onError: (Object _) {});
+          .listen((purchase) { if (_owns(uid, epoch)) _onPurchase(purchase); }, onError: (Object _) {});
     } catch (_) {
       // Billing not available on this device: nothing to listen to.
     }
@@ -173,6 +198,7 @@ class PurchaseController extends Notifier<PurchaseState> {
   /// Asks Play for purchases it still lists (owned and not consumed, or pending). Each one arrives on the
   /// stream and is verified. Safe to call often: a token being verified, or already done, is skipped.
   Future<void> recover() async {
+    if (!_owns(_ownerUid, _epoch)) return;
     start();
     try {
       await ref.read(billingAdapterProvider).recover();
@@ -220,7 +246,9 @@ class PurchaseController extends Notifier<PurchaseState> {
     required Future<bool> Function(PreparedPurchase prepared, int? pricePaise)
     confirm,
   }) async {
-    if (state.busy) return;
+    final uid = _ownerUid;
+    final epoch = _epoch;
+    if (!_owns(uid, epoch) || hasActivePurchase) return;
     final store = offer.store;
     final productId = offer.productId;
     if (store == null) {
@@ -236,9 +264,11 @@ class PurchaseController extends Notifier<PurchaseState> {
     try {
       prepared = await ref.read(walletApiProvider).prepare(productId);
     } on ApiError catch (e) {
+      if (!_owns(uid, epoch)) return;
       _prepareFailed(e, productId);
       return;
     } catch (_) {
+      if (!_owns(uid, epoch)) return;
       _finish(
         _notice(
           NoticeKind.error,
@@ -248,6 +278,7 @@ class PurchaseController extends Notifier<PurchaseState> {
       _result('failed', productId: productId, reason: 'prepare');
       return;
     }
+    if (!_owns(uid, epoch)) return;
     if (prepared.obfuscatedAccountId.isEmpty) {
       _finish(_notice(NoticeKind.error, PurchaseCopy.notAvailable));
       _result('failed', productId: productId, reason: 'no_account_id');
@@ -258,7 +289,9 @@ class PurchaseController extends Notifier<PurchaseState> {
     final needsConfirm =
         prepared.confirmAbovePaise > 0 &&
         (price == null || price >= prepared.confirmAbovePaise);
-    if (needsConfirm && !await confirm(prepared, price)) {
+    final confirmed = !needsConfirm || await confirm(prepared, price);
+    if (!_owns(uid, epoch)) return;
+    if (!confirmed) {
       _finish(null);
       _result('user_cancelled', productId: productId, reason: 'not_confirmed');
       return;
@@ -281,10 +314,12 @@ class PurchaseController extends Notifier<PurchaseState> {
           .read(billingAdapterProvider)
           .buy(store, obfuscatedAccountId: prepared.obfuscatedAccountId);
     } catch (_) {
+      if (!_owns(uid, epoch)) return;
       _finish(_notice(NoticeKind.error, PurchaseCopy.playClosed));
       _result('failed', productId: productId, reason: 'launch');
       return;
     }
+    if (!_owns(uid, epoch)) return;
     if (!opened) {
       _finish(_notice(NoticeKind.error, PurchaseCopy.playClosed));
       _result('failed', productId: productId, reason: 'launch');
@@ -333,6 +368,9 @@ class PurchaseController extends Notifier<PurchaseState> {
   }
 
   Future<void> _verify(StorePurchase p, {required bool mine}) async {
+    final uid = _ownerUid;
+    final epoch = _epoch;
+    if (!_owns(uid, epoch)) return;
     final token = p.purchaseToken;
     if (token.isEmpty || _done.contains(token) || !_inFlight.add(token)) return;
     final recovery = !mine;
@@ -348,26 +386,31 @@ class PurchaseController extends Notifier<PurchaseState> {
       ApiError? failure;
       final delays = ref.read(purchaseRetryDelaysProvider);
       for (var i = 0; ; i++) {
+        if (!_owns(uid, epoch)) return;
         try {
           res = await ref.read(walletApiProvider).verify(p.productId, token);
+          if (!_owns(uid, epoch)) return;
           break;
         } on ApiError catch (e) {
+          if (!_owns(uid, epoch)) return;
           failure = e;
           if (!_retryable(e) || i >= delays.length) break;
         } catch (_) {
+          if (!_owns(uid, epoch)) return;
           failure = const ApiError(status: 0, code: ApiError.codeBadResponse);
           if (i >= delays.length) break;
         }
         await Future<void>.delayed(delays[i]);
       }
 
+      if (!_owns(uid, epoch)) return;
       if (res == null) {
         _verifyFailed(failure, p, mine: mine);
         return;
       }
       _verified(res, p, mine: mine, recovery: recovery);
     } finally {
-      _inFlight.remove(token);
+      if (_owns(uid, epoch)) _inFlight.remove(token);
     }
   }
 

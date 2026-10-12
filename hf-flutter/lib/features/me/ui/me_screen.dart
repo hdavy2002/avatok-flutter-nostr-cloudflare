@@ -22,6 +22,8 @@ import '../data/notification_control.dart';
 import 'name_sheet.dart';
 import '../../kyc/ui/identity_kyc_screen.dart';
 import '../../auth/ui/sign_in_screen.dart';
+import '../../call/data/call_api.dart';
+import '../../wallet/wallet_providers.dart';
 
 /// Copy of the Me screen.
 abstract final class MeCopy {
@@ -133,6 +135,7 @@ class _MeScreenState extends ConsumerState<MeScreen>
   /// Offline reminders for a host: on = not paused. Null until the server has answered.
   bool? _nudgesOn;
   bool _nudgesBusy = false;
+  bool _leavingAccount = false;
 
   @override
   void initState() {
@@ -283,10 +286,53 @@ class _MeScreenState extends ConsumerState<MeScreen>
     if (!ok && mounted) _snack(MeCopy.couldNotOpenPage);
   }
 
-  Future<void> _signOut() async {
-    // Go Home first: /me needs an account, so staying on it would bounce to the sign-in screen.
-    GoRouter.of(context).go(Routes.home);
-    await ref.read(sessionProvider.notifier).signOut();
+  Future<void> _signOut({bool switchAccount = false}) async {
+    if (_leavingAccount) return;
+    setState(() => _leavingAccount = true);
+    final session = ref.read(sessionProvider);
+    final uid = session.user?.id ?? session.me?.uid;
+    bool sameAccount() {
+      if (!mounted) return false;
+      final current = ref.read(sessionProvider);
+      return current.isSignedIn && (current.user?.id ?? current.me?.uid) == uid;
+    }
+    try {
+      final purchases = ref.read(purchaseControllerProvider.notifier);
+      if (purchases.hasActivePurchase) {
+        _snack('Finish your purchase before leaving this account.');
+        return;
+      }
+      final store = ref.read(activeCallStoreProvider);
+      final callApi = ref.read(callApiProvider);
+      final callId = await store.read();
+      if (!sameAccount()) return;
+      if (callId != null) {
+        try {
+          final info = await callApi.status(callId);
+          if (!sameAccount()) return;
+          if (!info.status.isTerminal) {
+            _snack('Finish your active call before leaving this account.');
+            return;
+          }
+          await store.clear(onlyIfId: callId);
+        } catch (_) {
+          if (sameAccount()) _snack('We could not confirm that your call ended. Please try again.');
+          return;
+        }
+      }
+      if (!sameAccount()) return;
+      if (purchases.hasActivePurchase) {
+        _snack('Finish your purchase before leaving this account.');
+        return;
+      }
+      final navigator = Navigator.of(context);
+      final controller = ref.read(sessionProvider.notifier);
+      GoRouter.of(context).go(Routes.home);
+      await controller.signOut();
+      if (switchAccount && navigator.mounted) {
+        await navigator.push<void>(MaterialPageRoute(builder: (_) => const SignInScreen(secondNumber: true)));
+      }
+    } finally { if (mounted) setState(() => _leavingAccount = false); }
   }
 
   @override
@@ -472,14 +518,9 @@ class _MeScreenState extends ConsumerState<MeScreen>
           subtitle: const Text('Full identity and video verification is required. The team confirms eligibility after review.'),
           trailing: const Icon(Icons.chevron_right), onTap: () => Navigator.of(context).push<void>(
             MaterialPageRoute(builder: (_) => const IdentityKycScreen(creator: true)))),
-        ListTile(leading: const Icon(Icons.switch_account_outlined), title: const Text('Use another account'),
+        ListTile(key: const ValueKey('me-switch-account'), leading: const Icon(Icons.switch_account_outlined), title: const Text('Use another account'),
           subtitle: const Text('Sign out, then verify another WhatsApp number. No physical SIM detection.'),
-          trailing: const Icon(Icons.chevron_right), onTap: () async {
-            final navigator = Navigator.of(context);
-            GoRouter.of(context).go(Routes.home);
-            await ref.read(sessionProvider.notifier).signOut();
-            if (navigator.mounted) await navigator.push<void>(MaterialPageRoute(builder: (_) => const SignInScreen(secondNumber: true)));
-          }),
+          trailing: const Icon(Icons.chevron_right), onTap: _leavingAccount ? null : () => _signOut(switchAccount: true)),
       ])),
       if (me?.closing ?? false) ...[
         const SizedBox(height: HfSpacing.lg),

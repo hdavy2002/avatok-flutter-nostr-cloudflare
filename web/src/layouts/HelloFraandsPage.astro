@@ -6,7 +6,7 @@
 //
 // NOTE FOR AI:
 //  - Contracts in web/scripts/check-hello-fraands-pages.mjs read these hooks: `.hf-hindi > em`,
-//    `.hf-date` text "Last updated: {{DATE}}", at least one <h2>, `.hf-review-note` with
+//    `.hf-date` text "Last updated: <date>" (legacy pages use {{DATE}}), at least one <h2>, `.hf-review-note` with
 //    "This page is under legal review." and a related review link. Keep them.
 //  - Sections are split from the rendered slot at build time on each <h2>; text before the first
 //    <h2> becomes the intro card. Pages need no changes.
@@ -17,8 +17,8 @@ import '../styles/callvaal-notebook.css';
 import '../styles/hello-fraands-pages.css';
 
 interface Link { href: string; label: string }
-interface Props { title: string; summary: string; review?: boolean; related?: Link[]; description?: string }
-const { title, summary, review = false, related = [], description = summary } = Astro.props;
+interface Props { title: string; summary: string; review?: boolean; related?: Link[]; description?: string; updated?: string }
+const { title, summary, review = false, related = [], description = summary, updated = '{{DATE}}' } = Astro.props;
 const identity = brandConfig.homepageIdentity;
 const pathname = Astro.url.pathname.replace(/\/+$/, '') || '/';
 const canonical = `https://${identity.domain}${pathname}`;
@@ -74,7 +74,7 @@ const tones = ['cream', 'pink', 'lilac', 'paper'];
             <nav class="hf-breadcrumb" aria-label="Breadcrumb"><a href="/">Home</a><span aria-hidden="true">/</span><span aria-current="page">{title}</span></nav>
             <h1>{title}</h1>
             <p class="hf-hindi"><em>{summary}</em></p>
-            <p class="hf-date">Last updated: {'{{DATE}}'}</p>
+            <p class="hf-date">Last updated: {updated}</p>
           </div>
           <div class="hfp-hero-note paper-note" aria-hidden="true">Seedhi baat.<br />Saaf niyam.</div>
         </header>

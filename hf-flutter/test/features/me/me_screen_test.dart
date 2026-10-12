@@ -6,6 +6,9 @@ import 'package:hf_app/core/auth/session.dart';
 import 'package:hf_app/core/theme/hf_theme.dart';
 import 'package:hf_app/features/me/data/notification_control.dart';
 import 'package:hf_app/features/me/ui/me_screen.dart';
+import 'package:hf_app/features/call/data/call_api.dart';
+import 'package:hf_app/features/wallet/billing/purchase_controller.dart';
+import 'package:hf_app/features/wallet/wallet_providers.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../support/app_harness.dart';
@@ -16,6 +19,16 @@ import 'me_test_support.dart';
 const _patchMe = '/api/hf/me';
 
 Finder _key(String k) => find.byKey(ValueKey<String>(k));
+
+class _OpenPurchase extends PurchaseController {
+  @override
+  PurchaseState build() => const PurchaseState(phase: PurchasePhase.awaitingSheet);
+}
+
+class _ActiveCall extends ActiveCallStore {
+  @override
+  Future<String?> read() async => 'active-call';
+}
 
 void main() {
   late FakeApiClient api;
@@ -69,6 +82,34 @@ void main() {
   });
 
   group('signed in', () {
+    testWidgets('switching accounts is blocked while the Play sheet is active', (tester) async {
+      final c = await pumpMe(tester, session: meSession(), api: api, overrides: [
+        purchaseControllerProvider.overrideWith(_OpenPurchase.new),
+      ]);
+      await tapKeyed(tester, 'me-switch-account');
+      expect((c.read(sessionProvider.notifier) as RecordingSession).signOuts, 0);
+      expect(find.text('Finish your purchase before leaving this account.'), findsOneWidget);
+    });
+
+    testWidgets('switching accounts is blocked while a call is connected', (tester) async {
+      api.onJson('GET', '/api/hf/calls/active-call', {'id': 'active-call', 'status': 'connected'});
+      final c = await pumpMe(tester, session: meSession(), api: api, overrides: [
+        activeCallStoreProvider.overrideWithValue(_ActiveCall()),
+      ]);
+      await tapKeyed(tester, 'me-switch-account');
+      expect((c.read(sessionProvider.notifier) as RecordingSession).signOuts, 0);
+      expect(find.text('Finish your active call before leaving this account.'), findsOneWidget);
+    });
+
+    testWidgets('an unreachable active call check cannot silently permit switching', (tester) async {
+      api.onError('GET', '/api/hf/calls/active-call', ApiError.network());
+      final c = await pumpMe(tester, session: meSession(), api: api, overrides: [
+        activeCallStoreProvider.overrideWithValue(_ActiveCall()),
+      ]);
+      await tapKeyed(tester, 'me-switch-account');
+      expect((c.read(sessionProvider.notifier) as RecordingSession).signOuts, 0);
+      expect(find.text('We could not confirm that your call ended. Please try again.'), findsOneWidget);
+    });
     testWidgets(
       'shows the name, the masked WhatsApp number, spaces and the host link',
       (tester) async {

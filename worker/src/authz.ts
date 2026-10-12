@@ -5,7 +5,7 @@
 import type { Env } from "./types";
 import { verifyClerk, resolveCanonicalUid } from "./auth";
 
-export interface UserCtx { uid: string; }
+export interface UserCtx { uid: string; clerkUserId?: string; }
 export interface AuthFail { error: string; status: number; }
 export function isFail(x: UserCtx | AuthFail): x is AuthFail {
   return (x as AuthFail).error !== undefined;
@@ -38,7 +38,9 @@ export async function requireUser(req: Request, env: Env): Promise<UserCtx | Aut
       return { error: "account temporarily blocked", status: 403 };
     }
   }
-  return { uid };
+  // Preserve the authenticated provider identity for Clerk account mutations;
+  // the canonical uid can refer to an older, relinked account.
+  return { uid, clerkUserId: clerk.clerkUserId };
 }
 
 // KYC gate — sending / posting / transacting require a verified Stripe Identity.
