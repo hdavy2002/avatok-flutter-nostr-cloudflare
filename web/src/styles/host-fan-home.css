@@ -384,3 +384,5 @@
  .hfh-reference-page .hfh-host-art .hfh-note{font-size:clamp(.75rem,.9cqw,.9375rem);line-height:1.3}
 }
 @font-face{font-family:HomeNunito;src:url('/fonts/Nunito-Variable.ttf') format('truetype');font-weight:200 1000;font-display:swap}
+
+.hfh-reference-page .hfh-share-url{font-size:.8em}
