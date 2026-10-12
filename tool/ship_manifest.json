@@ -10373,6 +10373,12 @@
     "flags": ["hfTokensEnabled"],
     "success": [{ "event": "hf_token_purchase_verified", "where": { "duplicate": false, "paid_paise": 36000 }, "property": "wallet_paise", "gt": 0, "note": "The Play-authoritative Rs 360 pack credited once; repeat the operational check for paid_paise 50000." }]
   },
+  "HF-REF-MANIFEST-1": {
+    "description": "Ship-readiness definitions for the exact-reference implementation.",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "no_telemetry": "Manifest-only operational metadata; it changes no runtime path and emits no event."
+  },
   "HF-REFERENCE-SCREENS-1": {
     "description": "[HF-REFERENCE-SCREENS-1 2026-10-12] Exact-reference native registration, KYC, discovery, wallet, masked-call and review surfaces with honest backend values. Adds verified same-account email registration, six-digit selfie video KYC, 20-second voice introductions, backend-owned influencer/celebrity communities and service navigation, private creator sample drafts, creator pricing (fan rate; creator 60% minus Rs 2 per connected minute; platform 40% with its GST absorbed), real notification inbox, exact short-call reviews, and fixed Google Play Rs 360/Rs 500 catalogue rows. Standard calls remain Rs 3.99/3.50/3.25. Apply worker/migrations/2026-10-12-hf-registration.sql, 2026-10-12-hf-registration-progress.sql, 2026-10-12-hf-creator-price-alters.sql and 2026-10-12-hf-wallet-reference-packs.sql before the Worker. Play Console products hf_rupees_360 and hf_rupees_500 must exist and be active before their rows are exposed. No sample listing can publish or call until linked to a real account that passes the publication blockers.",
     "two_sided": true,
