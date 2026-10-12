@@ -11,22 +11,22 @@ import '../../support/fake_api_client.dart';
 import '../../support/fake_billing.dart';
 import 'wallet_support.dart';
 
-const String _play100Breakdown =
+const String _play120Breakdown =
     'Total ₹120.00 · GST included ₹18.31 · Added to wallet ₹101.69';
-const String _play100Success =
-    '₹101.69 added to your wallet.\n$_play100Breakdown';
+const String _play120Success =
+    '₹101.69 added to your wallet.\n$_play120Breakdown';
 
 void main() {
   late FakeBillingAdapter billing;
   late FakeApiClient api;
 
   setUp(() {
-    billing = FakeBillingAdapter();
+    billing = walletBilling();
     api = walletApi();
   });
 
-  Future<void> buy100(WidgetTester tester) async {
-    await selectAndPay(tester, 'hf_tokens_100');
+  Future<void> buy120(WidgetTester tester) async {
+    await selectAndPay(tester, 'hf_rupees_120');
     await tester.pumpAndSettle();
   }
 
@@ -41,7 +41,7 @@ void main() {
       );
       expect(
         tester
-            .widget<Text>(find.byKey(const ValueKey<String>('gst-hf_tokens_100')))
+            .widget<Text>(find.byKey(const ValueKey<String>('gst-hf_rupees_120')))
             .data,
         '+ ₹101.69 to wallet',
       );
@@ -74,29 +74,29 @@ void main() {
         expect(
           tester
               .widget<Text>(
-                find.byKey(const ValueKey<String>('gst-hf_tokens_100')),
+                find.byKey(const ValueKey<String>('gst-hf_rupees_120')),
               )
               .data,
           '+ ₹101.69 to wallet',
         );
 
-        await buy100(tester);
+        await buy120(tester);
 
         // prepare first, then the Play sheet with the server's account id, then verify with the token.
         final prepare = api.callsTo('POST', '/api/hf/tokens/play/prepare');
         expect(prepare, hasLength(1));
-        expect((prepare.single.body as Map)['productId'], 'hf_tokens_100');
-        expect(billing.boughtProductIds, ['hf_tokens_100']);
+        expect((prepare.single.body as Map)['productId'], 'hf_rupees_120');
+        expect(billing.boughtProductIds, ['hf_rupees_120']);
         expect(billing.accountIdsSent, ['acct_hash_1']);
         final verify = api.callsTo('POST', '/api/hf/tokens/play/verify');
         expect(verify, hasLength(1));
         expect(verify.single.body, {
-          'productId': 'hf_tokens_100',
+          'productId': 'hf_rupees_120',
           'purchaseToken': 'tok-abc',
         });
 
         expect(
-          find.text(_play100Success),
+          find.text(_play120Success),
           findsOneWidget,
         );
         expect(
@@ -119,14 +119,14 @@ void main() {
       'the price on the button is Play\'s own string, not a number from our server',
       (tester) async {
         billing.products = {
-          'hf_tokens_100': const StoreProduct(
-            productId: 'hf_tokens_100',
+          'hf_rupees_120': const StoreProduct(
+            productId: 'hf_rupees_120',
             priceText: 'Rs 99.99 (from Play)',
             currencyCode: 'INR',
             priceMicros: 99990000,
           ),
-          'hf_tokens_1000': const StoreProduct(
-            productId: 'hf_tokens_1000',
+          'hf_rupees_500': const StoreProduct(
+            productId: 'hf_rupees_500',
             priceText: 'Rs 999.99 (from Play)',
             currencyCode: 'INR',
             priceMicros: 999990000,
@@ -157,10 +157,10 @@ void main() {
         billing.products = {
           billing.products.entries.first.key:
               billing.products.entries.first.value,
-        }; // only the 100 pack
+        }; // only the ₹120 pack
         await pumpWallet(tester, api: api, billing: billing);
         expect(find.text('Not available'), findsOneWidget);
-        await tester.tap(buyButton('hf_tokens_1000'));
+        await tester.tap(buyButton('hf_rupees_500'));
         await tester.pump();
         final b = tester.widget<ElevatedButton>(
           find.descendant(of: payButton, matching: find.byType(ElevatedButton)),
@@ -173,10 +173,29 @@ void main() {
     testWidgets('selecting another pack changes the Pay label', (tester) async {
       await pumpWallet(tester, api: api, billing: billing);
       expect(find.text('Pay ₹120.00 with Google Play'), findsOneWidget);
-      await tester.tap(buyButton('hf_tokens_1000'));
+      await tester.tap(buyButton('hf_rupees_500'));
       await tester.pumpAndSettle();
-      expect(find.text('Pay ₹1,200.00 with Google Play'), findsOneWidget);
+      expect(find.text('Pay ₹500.00 with Google Play'), findsOneWidget);
       expect(find.text('Pay ₹120.00 with Google Play'), findsNothing);
+    });
+
+    testWidgets('legacy packs cannot become new purchases', (tester) async {
+      api.onJson('GET', '/api/hf/tokens/products', {
+        'ok': true,
+        'enabled': true,
+        'products': [
+          {'productId': 'hf_tokens_100', 'pricePaise': 12000},
+        ],
+      });
+      billing = FakeBillingAdapter();
+      await pumpWallet(tester, api: api, billing: billing);
+      expect(
+        find.text('The approved fixed packs are not available right now.'),
+        findsOneWidget,
+      );
+      expect(buyButton('hf_tokens_100'), findsNothing);
+      expect(payButton, findsNothing);
+      expect(billing.boughtProductIds, isEmpty);
     });
 
     testWidgets('the Popular pack is selected first and wears the badge', (
@@ -187,25 +206,25 @@ void main() {
         'enabled': true,
         'products': [
           {
-            'productId': 'hf_tokens_120',
+            'productId': 'hf_rupees_120',
             'tokens': 102,
             'pricePaise': 12000,
             'creditPaise': 10200,
           },
           {
-            'productId': 'hf_tokens_240',
+            'productId': 'hf_rupees_240',
             'tokens': 204,
             'pricePaise': 24000,
             'creditPaise': 20400,
           },
           {
-            'productId': 'hf_tokens_360',
+            'productId': 'hf_rupees_360',
             'tokens': 305,
             'pricePaise': 36000,
             'creditPaise': 30500,
           },
           {
-            'productId': 'hf_tokens_500',
+            'productId': 'hf_rupees_500',
             'tokens': 424,
             'pricePaise': 50000,
             'creditPaise': 42400,
@@ -213,26 +232,26 @@ void main() {
         ],
       });
       billing.products = {
-        'hf_tokens_120': const StoreProduct(
-          productId: 'hf_tokens_120',
+        'hf_rupees_120': const StoreProduct(
+          productId: 'hf_rupees_120',
           priceText: '₹120.00',
           currencyCode: 'INR',
           priceMicros: 120000000,
         ),
-        'hf_tokens_240': const StoreProduct(
-          productId: 'hf_tokens_240',
+        'hf_rupees_240': const StoreProduct(
+          productId: 'hf_rupees_240',
           priceText: '₹240.00',
           currencyCode: 'INR',
           priceMicros: 240000000,
         ),
-        'hf_tokens_360': const StoreProduct(
-          productId: 'hf_tokens_360',
+        'hf_rupees_360': const StoreProduct(
+          productId: 'hf_rupees_360',
           priceText: '₹360.00',
           currencyCode: 'INR',
           priceMicros: 360000000,
         ),
-        'hf_tokens_500': const StoreProduct(
-          productId: 'hf_tokens_500',
+        'hf_rupees_500': const StoreProduct(
+          productId: 'hf_rupees_500',
           priceText: '₹500.00',
           currencyCode: 'INR',
           priceMicros: 500000000,
@@ -240,19 +259,19 @@ void main() {
       };
       await pumpWallet(tester, api: api, billing: billing);
       expect(
-        find.byKey(const ValueKey<String>('popular-hf_tokens_240')),
+        find.byKey(const ValueKey<String>('popular-hf_rupees_240')),
         findsOneWidget,
       );
       expect(
-        find.byKey(const ValueKey<String>('popular-hf_tokens_100')),
+        find.byKey(const ValueKey<String>('popular-hf_rupees_120')),
         findsNothing,
       );
       expect(find.text('Pay ₹240.00 with Google Play'), findsOneWidget);
       for (final id in const [
-        'hf_tokens_120',
-        'hf_tokens_240',
-        'hf_tokens_360',
-        'hf_tokens_500',
+        'hf_rupees_120',
+        'hf_rupees_240',
+        'hf_rupees_360',
+        'hf_rupees_500',
       ]) {
         expect(find.byKey(ValueKey<String>('buy-$id')), findsOneWidget);
       }
@@ -262,7 +281,7 @@ void main() {
       tester,
     ) async {
       await pumpWallet(tester, api: api, billing: billing);
-      await selectAndPay(tester, 'hf_tokens_100');
+      await selectAndPay(tester, 'hf_rupees_120');
       await tester.pump(const Duration(milliseconds: 50));
       await tester.pump(const Duration(milliseconds: 50));
       // The Play sheet is open and has not answered: Pay stays off and the tiles are locked.
@@ -270,14 +289,14 @@ void main() {
         find.descendant(of: payButton, matching: find.byType(ElevatedButton)),
       );
       expect(b.onPressed, isNull);
-      expect(billing.boughtProductIds, ['hf_tokens_100']);
+      expect(billing.boughtProductIds, ['hf_rupees_120']);
       expect(find.byType(CircularProgressIndicator), findsWidgets);
     });
 
     testWidgets('the buy button is at least 48 dp tall', (tester) async {
       await pumpWallet(tester, api: api, billing: billing);
       expect(
-        tester.getSize(buyButton('hf_tokens_100')).height,
+        tester.getSize(buyButton('hf_rupees_120')).height,
         greaterThanOrEqualTo(48),
       );
     });
@@ -288,11 +307,11 @@ void main() {
         api.onJson(
           'POST',
           '/api/hf/tokens/play/verify',
-          verifyAnswer(duplicate: true),
+          verifyAnswer(productId: 'hf_rupees_120', duplicate: true),
         );
         billing.answerWith(StorePurchaseStatus.purchased);
         await pumpWallet(tester, api: api, billing: billing);
-        await buy100(tester);
+        await buy120(tester);
         expect(
           find.text('This money was already added to your wallet.'),
           findsOneWidget,
@@ -307,11 +326,11 @@ void main() {
         api.onJson(
           'POST',
           '/api/hf/tokens/play/verify',
-          verifyAnswer(status: 'credited'),
+          verifyAnswer(productId: 'hf_rupees_120', status: 'credited'),
         );
         billing.answerWith(StorePurchaseStatus.purchased);
         await pumpWallet(tester, api: api, billing: billing);
-        await buy100(tester);
+        await buy120(tester);
         expect(find.textContaining('₹101.69 added to your wallet.'), findsOneWidget);
       },
     );
@@ -327,7 +346,7 @@ void main() {
         });
         billing.answerWith(StorePurchaseStatus.pending, token: 'tok-pending');
         await pumpWallet(tester, api: api, billing: billing);
-        await buy100(tester);
+        await buy120(tester);
         expect(
           find.text(
             "Payment pending. We'll add the money to your wallet when Google confirms it.",
@@ -347,7 +366,7 @@ void main() {
     ) async {
       billing.answerWith(StorePurchaseStatus.canceled);
       await pumpWallet(tester, api: api, billing: billing);
-      await buy100(tester);
+      await buy120(tester);
       expect(
         find.text('Purchase cancelled. You were not charged.'),
         findsOneWidget,
@@ -358,7 +377,7 @@ void main() {
     testWidgets('a Play error shows a simple message', (tester) async {
       billing.answerWith(StorePurchaseStatus.error);
       await pumpWallet(tester, api: api, billing: billing);
-      await buy100(tester);
+      await buy120(tester);
       expect(
         find.text(
           'Google Play could not complete this purchase. Please try again.',
@@ -372,7 +391,7 @@ void main() {
     ) async {
       billing.opens = false;
       await pumpWallet(tester, api: api, billing: billing);
-      await buy100(tester);
+      await buy120(tester);
       expect(
         find.text('Google Play could not open. Please try again.'),
         findsOneWidget,
@@ -392,7 +411,7 @@ void main() {
         ),
       );
       await pumpWallet(tester, api: api, billing: billing);
-      await buy100(tester);
+      await buy120(tester);
       expect(
         find.text(
           'Adding money is not available right now. Please try again soon.',
@@ -407,7 +426,7 @@ void main() {
     ) async {
       api.onError('POST', '/api/hf/tokens/play/prepare', ApiError.network());
       await pumpWallet(tester, api: api, billing: billing);
-      await buy100(tester);
+      await buy120(tester);
       expect(find.text('No internet. Check your connection.'), findsOneWidget);
     });
 
@@ -425,7 +444,7 @@ void main() {
         );
         billing.answerWith(StorePurchaseStatus.purchased);
         await pumpWallet(tester, api: api, billing: billing);
-        await buy100(tester);
+        await buy120(tester);
         expect(
           find.textContaining("We're still confirming your payment"),
           findsOneWidget,
@@ -444,7 +463,7 @@ void main() {
         );
         billing.answerWith(StorePurchaseStatus.purchased);
         await pumpWallet(tester, api: api, billing: billing);
-        await buy100(tester);
+        await buy120(tester);
         expect(
           find.text(
             'This purchase was made with a different account, so we cannot add it here.',
@@ -463,7 +482,7 @@ void main() {
       });
       billing.answerWith(StorePurchaseStatus.purchased);
       await pumpWallet(tester, api: api, billing: billing);
-      await buy100(tester);
+      await buy120(tester);
       expect(
         find.text('Google refunded this payment, so no money was added.'),
         findsOneWidget,
@@ -473,7 +492,7 @@ void main() {
     testWidgets('the notice can be dismissed', (tester) async {
       billing.answerWith(StorePurchaseStatus.canceled);
       await pumpWallet(tester, api: api, billing: billing);
-      await buy100(tester);
+      await buy120(tester);
       expect(
         find.byKey(const ValueKey<String>('purchase-notice')),
         findsOneWidget,
@@ -488,8 +507,16 @@ void main() {
   });
 
   group('Are you sure?', () {
-    Future<void> buy1000(WidgetTester tester) async {
-      await selectAndPay(tester, 'hf_tokens_1000');
+    setUp(() {
+      api.on('POST', '/api/hf/tokens/play/prepare', (call) => {
+        ...prepareAnswer('${(call.body as Map)['productId']}'),
+        // The server owns the threshold, even when the fixed catalogue changes.
+        'confirmAbovePaise': 50000,
+      });
+    });
+
+    Future<void> buy500(WidgetTester tester) async {
+      await selectAndPay(tester, 'hf_rupees_500');
       // Not pumpAndSettle: "Getting ready" shows a spinner while the question is open, and it never settles.
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 400));
@@ -503,17 +530,17 @@ void main() {
           'POST',
           '/api/hf/tokens/play/verify',
           verifyAnswer(
-            productId: 'hf_tokens_1000',
-            paidPaise: 120000,
-            gstPaise: 18305,
-            walletPaise: 101695,
+            productId: 'hf_rupees_500',
+            paidPaise: 50000,
+            gstPaise: 7627,
+            walletPaise: 42373,
           ),
         );
         await pumpWallet(tester, api: api, billing: billing);
-        await buy1000(tester);
+        await buy500(tester);
         expect(find.text('Are you sure?'), findsOneWidget);
         expect(
-          find.textContaining('₹1,200.00'),
+          find.textContaining('₹500.00'),
           findsWidgets,
         ); // Play's price string is in the question
         expect(
@@ -523,14 +550,14 @@ void main() {
         );
         await tester.tap(find.text('Yes, buy'));
         await tester.pumpAndSettle();
-        expect(billing.boughtProductIds, ['hf_tokens_1000']);
-        expect(find.textContaining('₹1,016.95 added to your wallet.'), findsOneWidget);
+        expect(billing.boughtProductIds, ['hf_rupees_500']);
+        expect(find.textContaining('₹423.73 added to your wallet.'), findsOneWidget);
       },
     );
 
     testWidgets('No stops it: Play never opens', (tester) async {
       await pumpWallet(tester, api: api, billing: billing);
-      await buy1000(tester);
+      await buy500(tester);
       await tester.tap(find.text('Cancel'));
       await tester.pumpAndSettle();
       expect(billing.boughtProductIds, isEmpty);
@@ -540,9 +567,9 @@ void main() {
     testWidgets('a smaller pack buys straight away', (tester) async {
       billing.answerWith(StorePurchaseStatus.purchased);
       await pumpWallet(tester, api: api, billing: billing);
-      await buy100(tester);
+      await buy120(tester);
       expect(find.text('Are you sure?'), findsNothing);
-      expect(billing.boughtProductIds, ['hf_tokens_100']);
+      expect(billing.boughtProductIds, ['hf_rupees_120']);
     });
   });
 
@@ -689,7 +716,7 @@ void main() {
         expect(api.callsTo('POST', '/api/hf/tokens/play/verify'), hasLength(1));
         expect(
           container.read(purchaseControllerProvider).notice?.message,
-          _play100Success,
+          _play120Success,
         );
       },
     );

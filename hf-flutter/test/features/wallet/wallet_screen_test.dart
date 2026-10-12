@@ -31,7 +31,7 @@ class _RecordingLinks extends LinkOpener {
 void main() {
   late FakeBillingAdapter billing;
 
-  setUp(() => billing = FakeBillingAdapter());
+  setUp(() => billing = walletBilling());
 
   testWidgets(
     'a Wallet detour retains context but cannot unlock a call with zero funds',
@@ -418,7 +418,7 @@ void main() {
         );
         expect(find.text('Adding money is coming soon'), findsOneWidget);
         expect(
-          find.byKey(const ValueKey<String>('buy-hf_tokens_100')),
+          buyButton('hf_rupees_120'),
           findsNothing,
         );
       },

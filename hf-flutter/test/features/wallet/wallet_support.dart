@@ -5,6 +5,7 @@ import 'package:hf_app/core/auth/session.dart';
 import 'package:hf_app/core/format/money.dart';
 import 'package:hf_app/core/theme/hf_theme.dart';
 import 'package:hf_app/core/storage/secure_store.dart';
+import 'package:hf_app/features/wallet/billing/billing_adapter.dart';
 import 'package:hf_app/features/wallet/ui/wallet_screen.dart';
 import 'package:hf_app/features/wallet/wallet_providers.dart';
 
@@ -131,22 +132,40 @@ Map<String, Object?> productsAnswer({bool enabled = true}) => {
   'products': enabled
       ? [
           {
-            'productId': 'hf_tokens_100',
+            'productId': 'hf_rupees_120',
             'pricePaise': 12000,
             'gstPaise': 1831,
             'walletPaise': 10169,
             'creditPaise': 10169,
           },
           {
-            'productId': 'hf_tokens_1000',
-            'pricePaise': 120000,
-            'gstPaise': 18305,
-            'walletPaise': 101695,
-            'creditPaise': 101695,
+            'productId': 'hf_rupees_500',
+            'pricePaise': 50000,
+            'gstPaise': 7627,
+            'walletPaise': 42373,
+            'creditPaise': 42373,
           },
         ]
       : <Object?>[],
 };
+
+/// Approved live catalogue subset; legacy recovery tests keep the generic fake.
+FakeBillingAdapter walletBilling() => FakeBillingAdapter(
+  products: const {
+    'hf_rupees_120': StoreProduct(
+      productId: 'hf_rupees_120',
+      priceText: '₹120.00',
+      currencyCode: 'INR',
+      priceMicros: 120000000,
+    ),
+    'hf_rupees_500': StoreProduct(
+      productId: 'hf_rupees_500',
+      priceText: '₹500.00',
+      currencyCode: 'INR',
+      priceMicros: 500000000,
+    ),
+  },
+);
 
 Map<String, Object?> prepareAnswer(String productId) => {
   'ok': true,
@@ -210,7 +229,11 @@ FakeApiClient walletApi({
       '/api/hf/tokens/play/prepare',
       (c) => prepareAnswer('${(c.body as Map)['productId']}'),
     )
-    ..onJson('POST', '/api/hf/tokens/play/verify', verifyAnswer());
+    ..on(
+      'POST',
+      '/api/hf/tokens/play/verify',
+      (c) => verifyAnswer(productId: '${(c.body as Map)['productId']}'),
+    );
 }
 
 /// Pumps the Wallet screen alone, signed in, with a fake API and a fake Play. Failed providers do not retry.
