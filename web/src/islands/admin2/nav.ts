@@ -8,7 +8,7 @@ import {
 export type AdminKey = 'overview' | 'events' | 'bookings' | 'payments' | 'refunds' | 'customers' | 'wallets' | 'prices' | 'chadhava' | 'upi' | 'verify' | 'ai' | 'knowledge' | 'voice-guides' | 'freevideos'
   | 'shop-orders' | 'shop-studio' | 'shop-partner' | 'shop-editor' | 'shop-products' | 'shop-collections' | 'shop-promote' | 'shop-coupons' | 'shop-settings'
   | 'consultants' | 'consultant-bookings' | 'consultant-reviews'
-  | 'host-review' | 'host-avatars' | 'host-reviews' | 'host-calls' | 'host-payouts' | 'host-refunds' | 'host-reconciliation' | 'host-phone-costs'
+  | 'host-review' | 'host-kyc' | 'host-avatars' | 'host-reviews' | 'host-calls' | 'host-payouts' | 'host-refunds' | 'host-reconciliation' | 'host-phone-costs'
   | 'preview-help' | 'preview-legal';
 
 export interface AdminNavItem { key: AdminKey; label: string; short: string; href: string; icon: LucideIcon; /** Optional group heading shown above the first item of a run (e.g. "Shop"). */ group?: string; /** [AUMFE-POD-FULFIL-1] Small gold pill after the label (e.g. "New"). */ pill?: string }
@@ -45,6 +45,7 @@ export const ADMIN_NAV: AdminNavItem[] = [
   { key: 'consultant-reviews', label: 'Consultant reviews', short: 'Reviews', href: '/admin/consultant-reviews', icon: Star, group: 'Consultants' },
   // [HF-HOST-PLATFORM-1] Hosts group. Keep contiguous.
   { key: 'host-review', label: 'Host review', short: 'Hosts', href: '/admin/hosts', icon: UserCheck, group: 'Hosts' },
+  { key: 'host-kyc', label: 'Video KYC reviews', short: 'KYC', href: '/admin/hosts/kyc', icon: ShieldCheck, group: 'Hosts' },
   { key: 'host-avatars', label: 'Avatars', short: 'Avatars', href: '/admin/hosts/avatars', icon: Images, group: 'Hosts' },
   // [HF-CALLS-1] call reviews + calls/test credits
   { key: 'host-reviews', label: 'Call reviews', short: 'Call reviews', href: '/admin/hosts/reviews', icon: MessageSquareQuote, group: 'Hosts' },

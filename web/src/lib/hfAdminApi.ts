@@ -26,7 +26,11 @@ export interface AdminHostDetail {
     payout: { nameMatch: boolean; upiVerified: boolean; accountLast4: string | null } | null;
   };
 }
-export interface KycItem { selfieId: string; uid: string; selfieUrl: string; photoUrl: string | null; urlExpiresInS: number }
+export interface KycItem {
+  selfieId: string; uid: string; email?: string | null; selfieUrl: string; photoUrl: string | null; urlExpiresInS: number;
+  code?: string; createdAt?: number; bytes?: number; mime?: string; status?: 'pending' | 'approved' | 'rejected'; reason?: string | null;
+  aadhaar?: { name: string | null; gender: string; last4: string | null; role: string | null } | null;
+}
 export interface AdminAvatar { id: string; url: string; gender: string; age: string; look: string; status: 'active' | 'retired'; taken: boolean; createdAt: number }
 export interface AvatarJob { id: string; status: string; error: string | null; created_at: number }
 
@@ -73,6 +77,8 @@ export const hfAdminApi = {
   /** Signed selfie video + Aadhaar photo URLs (5 min). Find the host by uid in the status the selfie is in. */
   kycMedia: async (uid: string, status: 'pending' | 'approved' | 'rejected') =>
     ((await adminCall<{ items: KycItem[] }>(`/api/admin/hf/kyc?status=${status}`)).items ?? []).find((i) => i.uid === uid) ?? null,
+  kycList: async (status: 'pending' | 'approved' | 'rejected') =>
+    (await adminCall<{ items: KycItem[] }>(`/api/admin/hf/kyc?status=${status}`)).items ?? [],
   selfieDecision: (uid: string, decision: 'approve' | 'reject', reason = '', selfieId?: string) =>
     adminCall<{ ok: true }>(`/api/admin/hf/kyc/${e(uid)}/selfie`, { method: 'POST', body: { decision, reason, selfieId } }),
   avatars: () => adminCall<{ items: AdminAvatar[]; jobs: AvatarJob[] }>('/api/admin/hf/avatars'),
