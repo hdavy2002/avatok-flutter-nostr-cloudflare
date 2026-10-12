@@ -7,7 +7,8 @@
 // and attributes and are deliberately NOT scanned here — renaming those needs an
 // app build (see the SEO rebrand plan, phase 5).
 //
-// When this fails: fix the page copy. Do not add an allowlist.
+// When this fails: fix the page copy. The sole owner-approved exception is the
+// exact corporate copyright inside the shared footer (HF-HOME-POLISH-1).
 import { readFileSync, readdirSync, statSync, existsSync } from 'node:fs';
 import { resolve, join, relative } from 'node:path';
 
@@ -22,6 +23,15 @@ function walk(dir, out = []) {
     else if (name.endsWith('.html')) out.push(p);
   }
   return out;
+}
+
+// Remove only the exact legal notice from its shared-footer copyright element.
+// Other footer text, SEO metadata, scripts, bundles and standalone files retain
+// their existing scans; the company words remain banned everywhere else.
+function withoutApprovedFooterCopyright(html) {
+  return html.replace(/<footer\b[^>]*\bdata-callvaal-chrome(?:=""|(?=\s|>))[^>]*>[\s\S]*?<\/footer>/g, footer =>
+    footer.replace(/<p\b[^>]*\bclass="cv-footer-copyright footer-copyright"[^>]*>\s*© \d{4} Ava Global International Inc\. · Delaware, USA\s*<\/p>/g, ' ')
+  );
 }
 
 const failures = [];
@@ -48,7 +58,7 @@ for (const file of walk(root)) {
     html.match(/<meta name="description" content="([^"]*)"/i)?.[1] ?? '',
     ...[...html.matchAll(/<script type="application\/ld\+json"[^>]*>([\s\S]*?)<\/script>/gi)].map((m) => m[1]),
   ].join(' ');
-  const visible = html
+  const visible = withoutApprovedFooterCopyright(html)
     .replace(/<script[\s\S]*?<\/script>/gi, ' ')
     .replace(/<style[\s\S]*?<\/style>/gi, ' ')
     .replace(/<[^>]+>/g, ' ');

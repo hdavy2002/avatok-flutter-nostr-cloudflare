@@ -29,7 +29,8 @@ assert(visibleText.includes(identity.name), 'Planned public brand is visible');
 const plainText = value => value.replace(/<[^>]*>/g, ' ').replaceAll('&amp;', '&').replace(/&#(?:39|x27);/g, "'").replace(/&#(?:8217|x2019);/g, '’').replace(/\s+/g, ' ').trim();
 const main = bodyHtml.match(/<main\b[^>]*>([\s\S]*?)<\/main>/)?.[1] || '';
 const mainText = plainText(main);
-assert(visibleText.includes('INVITE ONLY · BETA PHASE'), 'Reference beta ribbon is visible');
+assert(!visibleText.includes('INVITE ONLY · BETA PHASE'), 'Retired beta ribbon is absent');
+assert.doesNotMatch(bodyHtml, /class="[^"]*\bhfh-beta\b[^"]*"/, 'No beta ribbon element');
 for (const copy of [
   'Talk to your favourite social media influencers over a private phone call.',
   'Book a time. We call you, call the host, and connect both calls. Neither of you sees the other’s personal number.',
@@ -51,7 +52,7 @@ assert.match(mainText, /No audio plays and no call or payment is made/);
 assert.match(mainText, /Video KYC verifies the person, not their gender or sexual orientation/);
 const sectionOrder = [...main.matchAll(/data-home-section="([^"]+)"/g)].map(match => match[1]);
 assert.deepEqual(sectionOrder, ['hero', 'creators', 'privacy', 'lanes', 'how-it-works', 'host-cta']);
-assert(bodyHtml.indexOf('INVITE ONLY') < bodyHtml.indexOf('<header'), 'Reference beta ribbon precedes the homepage header');
+assert(bodyHtml.indexOf('<header') >= 0 && bodyHtml.indexOf('</header>') > bodyHtml.indexOf('<header') && bodyHtml.indexOf('</header>') < bodyHtml.indexOf('<main'), 'Homepage header precedes main content');
 assert.match(main, /<em>over a private phone call\.<\/em>/);
 const allIds = [...html.matchAll(/\bid="([^"]+)"/g)].map(match => match[1]);
 const ids = new Set(allIds);
@@ -92,6 +93,8 @@ assert.equal((main.match(/class="hfh-kyc"/g) || []).length, 2);
 const footer = bodyHtml.match(/<footer\b[^>]*\bdata-callvaal-chrome(?:="")?[^>]*>([\s\S]*?)<\/footer>/)?.[1] || '';
 assert.equal((footer.match(/data-callvaal-footer-group(?:="")?/g) || []).length, 5, 'Five footer groups');
 assert.equal((footer.match(/<li[ >]/g) || []).length, 37, 'Complete five-column content footer');
+const copyright = footer.match(/<p\b[^>]*class="cv-footer-copyright footer-copyright"[^>]*>([^<]*)<\/p>/)?.[1] ?? '';
+assert.equal(copyright.trim(), `© ${new Date().getFullYear()} Ava Global International Inc. · Delaware, USA`, 'Owner-approved footer copyright uses the current year');
 assert.deepEqual([...footer.matchAll(/<summary\b[^>]*>([\s\S]*?)<\/summary>/g)].map(m => plainText(m[1])), footerGroups, 'Footer groups keep the requested order');
 assert.deepEqual([...footer.matchAll(/<li\b[^>]*>\s*<a\b[^>]*href="([^"]+)"/g)].map(m => m[1].replaceAll('&amp;', '&')), footerRoutes, 'Every requested footer route in column order');
 checkHelloFraandsPages(root, identity);
