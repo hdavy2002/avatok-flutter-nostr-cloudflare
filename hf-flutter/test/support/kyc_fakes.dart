@@ -178,21 +178,34 @@ Future<void> settle(WidgetTester tester, [int times = 6]) async {
   }
 }
 
-/// Scrolls a keyed widget into view, taps it, and lets the app react.
-Future<void> tapKey(WidgetTester tester, String key) async {
+/// Reveals keyed controls, including children not yet built by a lazy ListView.
+Future<void> revealKey(WidgetTester tester, String key) async {
   final f = find.byKey(ValueKey<String>(key));
+  if (f.evaluate().isEmpty) {
+    await tester.scrollUntilVisible(
+      f,
+      250,
+      scrollable: find.byType(Scrollable).last,
+      maxScrolls: 30,
+    );
+  }
   expect(f, findsOneWidget, reason: 'no widget with key $key');
   await tester.ensureVisible(f);
   await tester.pump();
+}
+
+/// Scrolls a keyed widget into view, taps it, and lets the app react.
+Future<void> tapKey(WidgetTester tester, String key) async {
+  await revealKey(tester, key);
+  final f = find.byKey(ValueKey<String>(key));
   await tester.tap(f);
   await settle(tester);
 }
 
 /// Types into a keyed text field.
 Future<void> typeKey(WidgetTester tester, String key, String text) async {
+  await revealKey(tester, key);
   final f = find.byKey(ValueKey<String>(key));
-  expect(f, findsOneWidget, reason: 'no field with key $key');
-  await tester.ensureVisible(f);
   await tester.enterText(f, text);
   await settle(tester);
 }

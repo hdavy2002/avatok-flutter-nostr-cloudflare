@@ -108,6 +108,7 @@ void main() {
       expect(find.text(LaneCopy.tapToJoin), findsOneWidget);
       await tapKey(tester, 'choose-lgbtq');
       expect(find.text(LaneCopy.titleOf(Lane.lgbtq)), findsWidgets);
+      await revealKey(tester, 'lane-declare');
       expect(
         find.byKey(const ValueKey<String>('lane-declare')),
         findsOneWidget,
@@ -514,6 +515,7 @@ void main() {
         );
         api.onJson('POST', '/api/hosts/kyc/selfie/code', {'code': '123456'});
         await open(tester, lane: 'lgbtq');
+        await revealKey(tester, 'lane-video-rejected');
         expect(
           find.byKey(const ValueKey<String>('lane-video-rejected')),
           findsOneWidget,

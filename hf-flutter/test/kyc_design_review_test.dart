@@ -94,7 +94,7 @@ Map<String, Object?> _laneStatus({
   },
 };
 
-Future<ProviderContainer> _pumpProduction(
+Future<void> _pumpProduction(
   WidgetTester tester,
   Widget screen,
   FakeApiClient api, {
@@ -102,15 +102,16 @@ Future<ProviderContainer> _pumpProduction(
 }) async {
   final session = signedInState();
   AccountScope.id = session.me!.uid;
-  final container = ProviderContainer(overrides: <Override>[
-    sessionProvider.overrideWith(() => StubSession(session)),
-    apiClientProvider.overrideWithValue(api),
-    secureStoreProvider.overrideWithValue(MemoryKeyValueStore()),
-    ...overrides,
-  ]);
-  addTearDown(container.dispose);
-  await tester.pumpWidget(UncontrolledProviderScope(
-    container: container,
+  // Each capture scenario owns fresh widget state and provider lifetime. Reusing
+  // the previous screen preserves its KYC step and leaves old providers alive.
+  await tester.pumpWidget(ProviderScope(
+    key: UniqueKey(),
+    overrides: <Override>[
+      sessionProvider.overrideWith(() => StubSession(session)),
+      apiClientProvider.overrideWithValue(api),
+      secureStoreProvider.overrideWithValue(MemoryKeyValueStore()),
+      ...overrides,
+    ],
     child: MaterialApp(
       theme: buildHfTheme(),
       home: RepaintBoundary(
@@ -120,7 +121,6 @@ Future<ProviderContainer> _pumpProduction(
     ),
   ));
   await _settle(tester);
-  return container;
 }
 
 Future<void> _pumpIdentity(
@@ -132,7 +132,7 @@ Future<void> _pumpIdentity(
   const IdentityKycScreen(),
   api,
   overrides: overrides,
-).then((_) {});
+);
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -287,6 +287,10 @@ void main() {
     ];
     for (final state in states) {
       final api = FakeApiClient()..onJson('GET', _lanesPath, state.$3);
+      if (state.$1 == '17-lane-record-again-live-page') {
+        api.onJson('POST', '/api/hosts/kyc/selfie/code',
+          const <String, Object?>{'code': '482913'});
+      }
       await _pumpProduction(tester, LanesScreen(lane: state.$2), api);
       await _capture(tester, state.$1);
     }
@@ -300,10 +304,20 @@ void main() {
       addTearDown(tester.view.resetDevicePixelRatio);
       final kycApi = FakeApiClient()..onJson('GET', _statusPath, _kycStatus());
       await _pumpIdentity(tester, kycApi);
+      await revealKey(tester, 'kyc-start');
+      expect(
+        find.byKey(const ValueKey<String>('kyc-start')).hitTestable(),
+        findsOneWidget,
+      );
       expect(tester.takeException(), isNull);
       final laneApi = FakeApiClient()
         ..onJson('GET', _lanesPath, _laneStatus(declared: true, selfie: 'pending'));
       await _pumpProduction(tester, const LanesScreen(lane: 'lgbtq'), laneApi);
+      await revealKey(tester, 'lane-video-pending');
+      expect(
+        find.byKey(const ValueKey<String>('lane-video-pending')).hitTestable(),
+        findsOneWidget,
+      );
       expect(tester.takeException(), isNull);
     });
   }
