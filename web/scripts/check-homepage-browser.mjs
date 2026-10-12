@@ -172,7 +172,8 @@ try {
         return {
           hero: columns('.hfh-hero'), creators: columns('.hfh-creator-grid'), privacy: columns('.hfh-privacy'),
           lanes: columns('.hfh-lanes'), steps: columns('.hfh-steps'),
-          ribbonTop: document.querySelector('.hfh-beta').getBoundingClientRect().top,
+          ribbonBottom: document.querySelector('.hfh-beta').getBoundingClientRect().bottom,
+          headerTop: document.querySelector('header').getBoundingClientRect().top,
           headerBottom: document.querySelector('header').getBoundingClientRect().bottom,
           smallControls: [...document.querySelectorAll('.hfh-home button, .hfh-home a')].filter(el => el.getClientRects().length && el.getBoundingClientRect().height < 43.9).map(el => el.textContent),
           ids: [...document.querySelectorAll('[id]')].map(el => el.id),
@@ -183,7 +184,7 @@ try {
       assert.equal(geometry.privacy, width >= 1024 ? 2 : 1, name + ': privacy columns');
       assert.equal(geometry.lanes, width >= 1024 ? 2 : 1, name + ': lane columns');
       assert.equal(geometry.steps, width >= 768 ? 3 : 1, name + ': steps columns');
-      assert(geometry.ribbonTop >= geometry.headerBottom - 1, name + ': beta ribbon below existing header');
+      assert(geometry.ribbonBottom <= geometry.headerTop + 1, name + ': reference beta ribbon above header');
       assert.deepEqual(geometry.smallControls, [], name + ': 44px minimum control height');
       assert.equal(new Set(geometry.ids).size, geometry.ids.length, name + ': IDs unique');
       const readability = await inspectReadability(page);

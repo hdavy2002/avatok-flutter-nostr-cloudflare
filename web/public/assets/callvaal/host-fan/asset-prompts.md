@@ -18,3 +18,12 @@ Common photo prompt: “Use case: photorealistic-natural. Asset type: single pho
 | host.webp | Recreate JUST the smiling man in the hero video call inset, wearing a dark olive overshirt over white T-shirt, wavy dark hair, light beard, looking at camera with hand raised in friendly wave. Young adult Indian man. Waist-up camera view in soft warm studio, bookcase blurred. Portrait 4:5. Realistic editorial photograph. No interface, no buttons, no text, no logos, no watermark. No paper border. The actual phone controls will be added with HTML. |
 
 Delivery: hero 1000×1250 WebP plus JPEG social fallback; creator and community photographs 800×600 WebP; host 600×750 WebP. Encoded with Sharp (quality 86 WebP, 88 JPEG). Full-resolution generated originals remain in the tool’s generated-images directory. No original reference screenshot is shipped.
+
+## Reference fidelity update — HF-HOME-REFERENCE-2
+
+Built-in image generation, using the supplied complete landing-page image as the visual reference; no paid CLI/API fallback. Existing eight separately generated photos remain in use.
+
+- `host-pointing.webp`: Separate transparent collage of the bottom-left host, smiling adult Indian man with wavy dark hair and light beard, olive overshirt and white T-shirt, pointing both hands right; yellow/teal/coral torn paper and botanical leaves. No text, notes, UI or logo. Generated transparent PNG, trimmed and resized to 900px wide WebP, quality 86.
+- `hero-paper.webp`: Separate transparent hero backplate only: face-on layered teal, marigold, coral and cream handmade paper, fibrous irregular torn edges, tiny pink scraps and green botanical cutouts at lower corners. No people, UI, objects, notes or text. Generated transparent PNG, trimmed and resized to 1200px wide WebP, quality 82.
+
+The header, cards, labels, booking illustration, privacy diagram and section text remain native accessible HTML/SVG. The original reference screenshot is not shipped. Artwork recreates the reference composition; generated faces and paper fibers are not pixel-identical source assets.

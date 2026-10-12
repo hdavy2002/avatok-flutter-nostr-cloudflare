@@ -29,8 +29,8 @@ assert(visibleText.includes(identity.name), 'Planned public brand is visible');
 const plainText = value => value.replace(/<[^>]*>/g, ' ').replaceAll('&amp;', '&').replace(/&#(?:39|x27);/g, "'").replace(/&#(?:8217|x2019);/g, '’').replace(/\s+/g, ' ').trim();
 const main = bodyHtml.match(/<main\b[^>]*>([\s\S]*?)<\/main>/)?.[1] || '';
 const mainText = plainText(main);
+assert(visibleText.includes('INVITE ONLY · BETA PHASE'), 'Reference beta ribbon is visible');
 for (const copy of [
-  'INVITE ONLY · BETA PHASE',
   'Talk to your favourite social media influencers over a private phone call.',
   'Book a time. We call you, call the host, and connect both calls. Neither of you sees the other’s personal number.',
   'Full KYC', 'Private numbers', 'Secure payments',
@@ -51,7 +51,7 @@ assert.match(mainText, /No audio plays and no call or payment is made/);
 assert.match(mainText, /Video KYC verifies the person, not their gender or sexual orientation/);
 const sectionOrder = [...main.matchAll(/data-home-section="([^"]+)"/g)].map(match => match[1]);
 assert.deepEqual(sectionOrder, ['hero', 'creators', 'privacy', 'lanes', 'how-it-works', 'host-cta']);
-assert(bodyHtml.indexOf('</header>') < bodyHtml.indexOf('INVITE ONLY'), 'Beta ribbon follows the preserved header');
+assert(bodyHtml.indexOf('INVITE ONLY') < bodyHtml.indexOf('<header'), 'Reference beta ribbon precedes the homepage header');
 assert.match(main, /<em>over a private phone call\.<\/em>/);
 const allIds = [...html.matchAll(/\bid="([^"]+)"/g)].map(match => match[1]);
 const ids = new Set(allIds);

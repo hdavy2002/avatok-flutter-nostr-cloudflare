@@ -1,4 +1,19 @@
 {
+  "HF-HOME-REFERENCE-2": {
+    "description": "Match the supplied homepage reference navigation, ribbon order, typography, compact section proportions and separate paper/host collage graphics while retaining the shared footer and truthful creator previews.",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [],
+    "success": [
+      {
+        "event": "homepage_section_view",
+        "property": "surface",
+        "equals": "host-fan-home",
+        "min_events": 1,
+        "note": "Existing homepage telemetry remains intact. The release browser contract verifies responsive geometry and accessible preview controls."
+      }
+    ]
+  },
   "HF-HOME-DEPLOY-CI-2": {
     "description": "Align the final Hello Fraands rates-page release contract with the already-live Standard-host and influencer earnings copy so the production web gate verifies current pricing instead of a retired ₹5 split example.",
     "two_sided": false,
