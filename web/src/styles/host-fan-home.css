@@ -361,3 +361,9 @@
 .hfh-reference-page .hfh-secure:before{inset:8% -16% 48%;background:url('/assets/callvaal/host-fan/pen-brackets.svg') center/100% 100% no-repeat}
 .hfh-reference-page .hfh-host-art:after{width:7%;right:1%;height:30%;transform:rotate(180deg)}
 @media(min-width:1024px){.hfh-reference-page .hfh-lane--women .hfh-lane-art>.hfh-note{top:-6%;right:5%}}
+
+/* Measured at 320px / 200% text: allow arrow tracks to shrink before portrait labels. */
+@container home-reference (max-width:40rem){
+ .hfh-reference-page .hfh-connection{grid-template-columns:minmax(0,1fr) minmax(0,.25fr) minmax(0,1.1fr) minmax(0,.25fr) minmax(0,1fr)}
+ .hfh-reference-page .hfh-person>strong{max-width:100%;padding:.25rem .1rem;transform:none;overflow-wrap:anywhere}
+}
