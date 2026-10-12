@@ -251,3 +251,96 @@
 
 /* Keep each handwritten label above the cutout faces and inside its paper panel. */
 @media(min-width:1024px){.hfh-reference-page .hfh-lane-art>.hfh-note{top:-.65rem;right:.25rem;width:clamp(5.4rem,8.5vw,9rem);font-size:clamp(.8125rem,1.25vw,1.3rem);padding:.3rem;line-height:1.05;letter-spacing:-.02em;transform:rotate(-10deg);overflow-wrap:anywhere}.hfh-reference-page .hfh-lane-art>.hfh-note>span{font-size:1.15em;line-height:1}}
+
+/* [HF-REFERENCE-DETAIL-1] Reference letterforms, fibers and hand-drawn details. */
+@font-face{font-family:ReferenceHeading;src:url('/fonts/LilitaOne-Regular.ttf') format('truetype');font-weight:400;font-display:swap}
+@font-face{font-family:ReferenceHand;src:url('/fonts/PatrickHand-Regular.ttf') format('truetype');font-weight:400;font-display:swap}
+.hfh-reference-page .hfh-home :is(h1,h2),.hfh-reference-page .hfh-home :is(h1,h2) *:not(svg,svg *){font-family:ReferenceHeading,sans-serif!important;font-weight:400!important;letter-spacing:-.025em}
+.hfh-reference-page .hfh-home .hfh-note,.hfh-reference-page .hfh-home .hfh-note *,.hfh-reference-page .hfh-connection figcaption{font-family:ReferenceHand,cursive!important;font-weight:400;font-style:normal}
+.hfh-reference-page .hfh-torn:before{clip-path:none;mask:url('/assets/callvaal/host-fan/torn-fiber-mask.svg') 0 0/100% 100% no-repeat;background-image:url('/assets/callvaal/host-fan/paper-texture.svg'),radial-gradient(ellipse at 20% 30%,#fff7 0,transparent 57%),radial-gradient(ellipse at 80% 70%,#9867890a 0,transparent 52%)}
+.hfh-reference-page .hfh-note{clip-path:none;mask:url('/assets/callvaal/host-fan/torn-fiber-mask.svg') 0 0/100% 100% no-repeat}
+.hfh-reference-page .hfh-button{font-weight:400}
+.hfh-reference-page .hfh-kyc{font-weight:600;gap:.4rem}
+.hfh-reference-page .hfh-kyc .modern-icon{width:1.2rem;height:1.2rem;stroke-width:1.6}
+.hfh-reference-page .hfh-eligibility.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+.hfh-reference-page .hfh-connection{position:relative}
+.hfh-reference-page .hfh-person>strong{max-width:75%;border-radius:0;transform:rotate(.7deg)}
+.hfh-reference-page .hfh-secure{position:relative}
+.hfh-reference-page .hfh-secure:before{content:"";position:absolute;inset:-6% -25% 55%;background:url('/assets/callvaal/host-fan/pen-rays.svg') center/100% 100% no-repeat;z-index:-1}
+.hfh-reference-page .hfh-secure>strong{border-radius:0;clip-path:polygon(1% 3%,99% 0,100% 96%,0 100%);font-weight:700}
+.hfh-reference-page .hfh-secure>svg{transform:rotate(-6deg);width:74%}
+.hfh-reference-page .hfh-connector-arrow{align-self:center;transform:translateY(-.6rem);font-weight:400}
+.hfh-reference-page .hfh-connection figcaption{position:relative;line-height:1.15;transform:rotate(-1deg);background:transparent;isolation:isolate}
+.hfh-reference-page .hfh-connection figcaption:before{content:"";position:absolute;inset:0;z-index:-1;background:#ffd151;mask:url('/assets/callvaal/host-fan/torn-fiber-mask.svg') 0 0/100% 100%}
+.hfh-reference-page .hfh-connection figcaption:after{content:"";position:absolute;inset:-.2rem -1.8rem;background:url('/assets/callvaal/host-fan/pen-rays.svg') left center/1.4rem 2rem no-repeat,url('/assets/callvaal/host-fan/pen-rays.svg') right center/1.4rem 2rem no-repeat;pointer-events:none}
+.hfh-reference-page .hfh-reference-break{display:none}
+
+.hfh-reference-page .hfh-lane-art:after{content:"";position:absolute;left:0;top:8%;width:20%;height:35%;background:url('/assets/callvaal/host-fan/pen-rays.svg') center/100% 100%;filter:sepia(1) saturate(6) hue-rotate(305deg);pointer-events:none}
+.hfh-reference-page .hfh-lane--community .hfh-lane-art:after{top:23%;height:32%;filter:none}
+.hfh-reference-page .hfh-step-number{background:radial-gradient(circle at 30% 25%,#ffda58,#ffc12a);font-weight:700}
+.hfh-reference-page .hfh-steps li{position:relative}
+.hfh-reference-page .hfh-steps li:first-child:after,.hfh-reference-page .hfh-steps li:last-child:after{content:"";position:absolute;width:1.6rem;height:2rem;background:linear-gradient(150deg,transparent 46%,#ffbe28 48% 51%,transparent 53%) left top/70% 35% no-repeat,linear-gradient(160deg,transparent 46%,#ffbe28 48% 51%,transparent 53%) left bottom/70% 35% no-repeat;pointer-events:none}
+.hfh-reference-page .hfh-steps li:first-child:after{left:0;bottom:-.4rem;transform:rotate(-13deg)}
+.hfh-reference-page .hfh-steps li:last-child:after{right:0;top:0;transform:rotate(-12deg)}
+.hfh-reference-page .hfh-host-art:after{content:"";position:absolute;right:1%;top:30%;width:12%;height:32%;background:url('/assets/callvaal/host-fan/pen-rays.svg') center/100% 100%;pointer-events:none}
+.hfh-reference-page .hfh-host-note{position:relative;z-index:1}
+.hfh-reference-page .hfh-host-note:after{content:"";display:block;position:absolute;left:15%;right:15%;bottom:23%;height:1px;background:#341230;transform:rotate(-7deg)}
+@media(min-width:1024px){
+ .hfh-reference-page .hfh-privacy{grid-template-columns:48% 1fr;gap:1%;padding:1rem 1rem .6rem}
+ .hfh-reference-page .hfh-privacy h2{font-size:clamp(2rem,3.2vw,3.5rem)}
+ .hfh-reference-page .hfh-privacy p{max-width:34em;font-size:clamp(1rem,1.45vw,1.5rem);line-height:1.4}
+ .hfh-reference-page .hfh-connection{grid-template-columns:1fr .75fr 1.1fr .75fr 1fr;gap:0;align-items:start}
+ .hfh-reference-page .hfh-person img{max-width:96%;margin:auto;border-width:3px}
+ .hfh-reference-page .hfh-person>strong{font-size:clamp(.875rem,1.3vw,1.15rem);padding:.3rem .35rem;margin-top:-.45rem}
+ .hfh-reference-page .hfh-secure>strong{font-size:clamp(.875rem,1.3vw,1.15rem);padding:.25rem .1rem}
+ .hfh-reference-page .hfh-secure>svg{max-width:none;width:74%;height:auto}
+ .hfh-reference-page .hfh-connection figcaption{font-size:clamp(1rem,1.65vw,1.5rem);margin:-.3rem 0 0;padding:.2rem .75rem}
+ .hfh-reference-page .hfh-lanes{margin-top:.4rem;gap:1.4%}
+ .hfh-reference-page .hfh-lane{grid-template-columns:52% 48%;gap:0;padding:.75rem .85rem .3rem;align-items:start;min-height:clamp(195px,19vw,315px)}
+ .hfh-reference-page .hfh-lane h2{font-size:clamp(1.5rem,2.6vw,2.75rem);line-height:1.06;margin-bottom:.4rem;letter-spacing:-.025em}
+ .hfh-reference-page .hfh-lane-copy>p:not(.hfh-kyc){font-size:1rem;line-height:1.25;margin:.35rem 0 0}
+ .hfh-reference-page .hfh-kyc{padding:.25rem .4rem;margin:.6rem 0 .4rem;font-size:.875rem}
+ .hfh-reference-page .hfh-lane .hfh-button{font-size:1rem;padding:.35rem 1rem;min-height:44px}
+ .hfh-reference-page .hfh-lane-art{padding:0;align-self:stretch;margin-left:-3%;margin-bottom:-.3rem}
+ .hfh-reference-page .hfh-lane-art>img{width:100%;height:100%;max-height:none;object-fit:contain;object-position:center bottom}
+}
+
+@media(min-width:1024px){
+ .hfh-reference-page .hfh-lane-art>.hfh-note{top:-2%;right:5%;width:42%;padding:.4rem .3rem;font-size:clamp(.875rem,1.35vw,1.4rem);line-height:1.03;transform:rotate(-12deg);letter-spacing:0;overflow-wrap:normal}
+ .hfh-reference-page .hfh-lane--community .hfh-lane-art>.hfh-note{width:35%;right:2%;top:0;transform:rotate(-11deg)}
+ .hfh-reference-page .hfh-lane-art>.hfh-note>span{font-size:1.3em;line-height:.8}
+ .hfh-reference-page .hfh-how{padding:.15rem 0 1rem}
+ .hfh-reference-page .hfh-how h2{font-size:clamp(2rem,3.25vw,3.5rem)}
+ .hfh-reference-page .hfh-steps{gap:1.5rem;margin:.4rem 0 .25rem}
+ .hfh-reference-page .hfh-steps li{gap:clamp(.65rem,1.55vw,1.6rem);align-items:start}
+ .hfh-reference-page .hfh-steps li+li{padding-left:1.5rem}
+ .hfh-reference-page .hfh-step-number{width:clamp(2rem,3.1vw,3rem);height:clamp(2rem,3.1vw,3rem);font-size:clamp(1rem,1.8vw,1.7rem)}
+ .hfh-reference-page .hfh-steps svg,.hfh-reference-page .hfh-steps .modern-icon{width:clamp(2rem,3.7vw,3.5rem);height:clamp(2rem,3.7vw,3.5rem);stroke-width:2.2}
+ .hfh-reference-page .hfh-steps h3{font-family:Arial,sans-serif!important;font-weight:700;letter-spacing:-.03em;font-size:clamp(1rem,1.55vw,1.4rem)}
+ .hfh-reference-page .hfh-steps p{font-size:1rem;line-height:1.25;max-width:18em;margin-top:.2rem}
+ .hfh-reference-page .hfh-reference-break{display:block}
+ .hfh-reference-page .hfh-host-cta{grid-template-columns:38% minmax(0,1fr) 17%;gap:0;padding:.1rem .25rem;min-height:clamp(150px,14.2vw,235px);margin-top:.2rem}
+ .hfh-reference-page .hfh-host-art{min-height:0;margin-left:-.25rem;margin-top:-1rem;margin-bottom:-.2rem}
+ .hfh-reference-page .hfh-host-art>img{position:absolute;inset:0;width:100%;height:100%;max-height:none;object-fit:contain;object-position:left bottom;margin:0}
+ .hfh-reference-page .hfh-host-art .hfh-note{top:10%;left:6%;width:30%;padding:.5rem .3rem;background:#80c5c1;font-size:clamp(.875rem,1.55vw,1.55rem);line-height:1.02;transform:rotate(-10deg);outline:1px solid #306e72;outline-offset:-.35rem}
+ .hfh-reference-page .hfh-host-copy{padding:.7rem 0}
+ .hfh-reference-page .hfh-host-copy h2{font-size:clamp(1.35rem,2.03vw,2.2rem);letter-spacing:-.035em;line-height:1.05}
+ .hfh-reference-page .hfh-host-copy p{font-size:1rem;line-height:1.25;margin:.3rem auto;max-width:35em}
+ .hfh-reference-page .hfh-host-copy .hfh-button{font-size:1rem;padding:.45rem 1.4rem;margin:.3rem 0 0;min-height:44px}
+ .hfh-reference-page .hfh-host-note{justify-self:start;width:80%;padding:.5rem .3rem;margin-left:10%;font-size:clamp(1rem,1.8vw,1.8rem);line-height:1.04;transform:rotate(-7deg)}
+ .hfh-reference-page .hfh-host-note>span{font-size:1.5rem}
+ .hfh-reference-page .hfh-host-cta:after{content:"";position:absolute;z-index:-1;right:0;top:3%;bottom:0;width:10%;background:url('/assets/callvaal/host-fan/cta-foliage.webp') right bottom/contain no-repeat}
+}
+
+@media(min-width:1024px){.hfh-reference-page .hfh-host-art .hfh-note{left:10%;top:16%;width:25%;background:transparent;mask:none;outline:none;padding:.15rem;font-size:clamp(.875rem,1.5vw,1.5rem)}}
+.hfh-reference-page .hfh-secure{z-index:0}
+.hfh-reference-page .hfh-secure>svg,.hfh-reference-page .hfh-secure>strong{position:relative}
+@container home-reference (max-width:40rem){
+ .hfh-reference-page .hfh-lane{min-height:0}
+ .hfh-reference-page .hfh-lane-art{margin:0}
+ .hfh-reference-page .hfh-reference-break{display:none}
+ .hfh-reference-page .hfh-host-art{min-height:10rem;margin:0;width:100%}
+ .hfh-reference-page .hfh-host-art>img{position:static;width:100%;height:auto}
+ .hfh-reference-page .hfh-host-art .hfh-note{left:10%;top:15%;width:25%;font-size:clamp(.875rem,2.5vw,1.25rem);background:transparent;mask:none;outline:none}
+ .hfh-reference-page .hfh-host-cta:after{display:none}
+}

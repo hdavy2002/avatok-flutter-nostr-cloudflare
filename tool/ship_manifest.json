@@ -1,4 +1,11 @@
 {
+  "HF-REFERENCE-DETAIL-1": {
+    "description": "Correct all audited reference typography, diagram, community collage, steps and host CTA details; preserve existing footer and accessible truthful previews.",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [],
+    "success": [{"event":"homepage_section_view","property":"surface","equals":"host-fan-home","min_events":1,"note":"Immutable CI visual matrix and explicit reference checklist cover this design correction."}]
+  },
   "HF-HOME-REFERENCE-2": {
     "description": "Match the supplied homepage reference navigation, ribbon order, typography, compact section proportions and separate paper/host collage graphics while retaining the shared footer and truthful creator previews.",
     "two_sided": false,

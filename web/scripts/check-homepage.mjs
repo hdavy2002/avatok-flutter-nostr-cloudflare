@@ -105,7 +105,7 @@ for (const photo of homepagePhotos) {
   assert((srcset.match(/\s\d+w(?:,|$)/g) || []).length >= 2, 'Homepage photo has responsive width variants');
   assert.match(photo, /\bsizes="[^"]+"/, 'Homepage photo declares its display sizes');
 }
-for (const name of ['hero', 'host', 'neha', 'arjun', 'meera', 'rohit', 'women', 'community', 'hero-cutout', 'women-cutout', 'community-cutout']) {
+for (const name of ['hero', 'host', 'neha', 'arjun', 'meera', 'rohit', 'women', 'community', 'hero-cutout', 'women-cutout', 'community-cutout', 'fan-call', 'host-call', 'women-reference', 'community-reference']) {
   const file = resolve(root, 'assets/callvaal/host-fan', name + '.webp');
   const bytes = readFileSync(file);
   const art = await sharp(bytes).metadata();

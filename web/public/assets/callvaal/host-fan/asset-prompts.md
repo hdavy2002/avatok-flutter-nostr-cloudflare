@@ -31,3 +31,18 @@ The header, cards, labels, booking illustration, privacy diagram and section tex
 Reference refinement cutouts (built-in image generation, background extraction): `hero-cutout.webp`, `women-cutout.webp`, `community-cutout.webp`. Each source photograph above was supplied as an edit target. Prompt: preserve exact subjects, clothes, poses, hands and phones; remove the rectangular backdrop to genuine transparency with delicate hair edges. Hero retains only the woman. Women/community retain the two people and a small irregular silhouette of paper scraps/leaves; community retains the rainbow flag. No UI, letters, labels, logos, frames or rectangular matte. Outputs inspected, encoded quality 82 WebP at 1000×1250 (hero) and 800×600 (community pairs). Originals are preserved.
 
 Handwritten notes use self-hosted Kalam Regular from the official Google Fonts repository (`ofl/kalam/Kalam-Regular.ttf`), with its SIL Open Font License in `web/public/fonts/Kalam-OFL.txt`. This removes platform-dependent serif fallbacks.
+
+## HF-REFERENCE-DETAIL-1 · 2026-10-12
+Built-in image_gen, original 745px screenshot as sole design reference; no API-key fallback.
+- fan-call.webp: faithful square portrait of reference fan, cream kurta, phone held to ear, peach room.
+- host-call.webp: faithful square portrait of reference curly-haired navy-shirt host, phone to ear, lavender backdrop.
+- women-reference.webp: higher pink-kurta caller and lower curly-haired caller, yellow/teal/mesh scraps.
+- community-reference.webp: rainbow-paper caller pair; right caller corrected to dark vertical-striped shirt.
+- host-reference.webp: wide edge-bleeding paper/leaf/mesh collage, olive-shirt host pointing across and up.
+- cta-foliage.webp: independent far-right coral/yellow/teal paper, leaves and mesh cluster.
+Full collage prompt set: reference-detail-prompts.json. Originals: /tmp/hf-detail-art/ (also retained by built-in tool under Codex generated_images).
+Portrait originals: exec-d4d50347-5aec-4067-9e87-716a48088226.png and exec-a9d33e87-3d95-4fbd-81a9-7f78bec28ed3.png in /Users/davy/.codex/generated_images/01a130e0-58ce-70b2-9286-d5e371988a00/.
+Portrait prompt invariants: recreate only corresponding tiny top circle from original, same appearance, phone-to-ear gesture, tight head/shoulders square, no circle mask, labels or other people.
+Images optimized with Sharp resize/WebP; alpha preserved for collage assets.
+Lilita One and Patrick Hand downloaded from official google/fonts repository; each SIL OFL license bundled in /fonts/.
+Torn fiber mask and pen rays are editable native SVG, not flattened screenshot content.
