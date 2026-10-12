@@ -20,6 +20,7 @@ import '../../features/host_profile/ui/host_profile_screen.dart';
 import '../../features/lanes/ui/lanes_screen.dart';
 import '../../features/me/ui/delete_account_screen.dart';
 import '../../features/me/ui/me_screen.dart';
+import '../../features/notifications/ui/notifications_screen.dart';
 import '../../features/kyc/ui/identity_kyc_screen.dart';
 import '../../features/review/ui/review_screen.dart';
 import '../../features/splash/ui/splash_screen.dart';
@@ -163,6 +164,10 @@ GoRouter createAppRouter({
       GoRoute(path: Routes.identityKyc, builder: (_, state) => IdentityKycScreen(
         creator: state.uri.queryParameters['creator'] == '1',
         digiLockerReturn: state.uri.queryParameters['dl'] == 'return')),
+      GoRoute(
+        path: Routes.notifications,
+        builder: (_, __) => const NotificationsScreen(),
+      ),
       StatefulShellRoute.indexedStack(
         builder: (_, __, shell) => HfTabShell(navigationShell: shell),
         branches: [

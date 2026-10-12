@@ -18,6 +18,7 @@ abstract final class Routes {
   static const String me = '/me';
   static const String meDelete = '/me/delete';
   static const String identityKyc = '/me/verification';
+  static const String notifications = '/notifications';
 
   // Builders: always use these, never string-concatenate a route in a screen.
 
@@ -98,7 +99,8 @@ abstract final class Routes {
         path == welcome ||
         path == wallet ||
         path == host ||
-        path == me) {
+        path == me ||
+        path == notifications) {
       return true;
     }
     if (path.startsWith('$host/')) return true; // /host/onboarding
@@ -146,6 +148,7 @@ abstract final class Routes {
           me,
           meDelete,
           identityKyc,
+          notifications,
         }.contains(path) ||
         RegExp(r'^/h/[^/]+$').hasMatch(path) ||
         RegExp(r'^/call/[^/]+$').hasMatch(path) ||

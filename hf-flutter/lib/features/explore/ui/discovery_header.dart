@@ -10,6 +10,7 @@ import '../../../core/theme/hf_theme.dart';
 import '../../../core/widgets/widgets.dart';
 import '../../home/data/home_balance.dart';
 import '../../home/ui/home_copy.dart';
+import '../../notifications/data/notifications_api.dart';
 import '../data/host_filters.dart';
 import '../data/host_options.dart';
 import 'explore_copy.dart';
@@ -109,6 +110,8 @@ class DiscoveryHeader extends ConsumerWidget {
                 children: [
                   Expanded(child: texts),
                   const SizedBox(width: HfSpacing.lg),
+                  const _NotificationBell(),
+                  const SizedBox(width: HfSpacing.sm),
                   const _WalletPill(),
                 ],
               );
@@ -256,6 +259,27 @@ class DiscoveryHeader extends ConsumerWidget {
                   onTap: onTap,
                 );
         },
+      ),
+    );
+  }
+}
+
+class _NotificationBell extends ConsumerWidget {
+  const _NotificationBell();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    if (!ref.watch(sessionProvider.select((state) => state.isSignedIn))) {
+      return const SizedBox.shrink();
+    }
+    final unread = ref.watch(unreadNotificationsProvider).value ?? 0;
+    return IconButton(
+      tooltip: 'Notifications',
+      onPressed: () => context.push(Routes.notifications),
+      icon: Badge(
+        isLabelVisible: unread > 0,
+        label: Text(unread > 99 ? '99+' : '$unread'),
+        child: const Icon(Icons.notifications_none_rounded),
       ),
     );
   }
