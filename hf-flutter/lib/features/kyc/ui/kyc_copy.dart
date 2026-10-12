@@ -34,7 +34,7 @@ abstract final class KycCopy {
   static const String digiLockerConsent =
       'I agree that DigiLocker can share my Aadhaar details with us: my name, date of birth, gender, address and photo. '
       'Only the last 4 digits of my Aadhaar number are kept. This is used only to confirm that I am 18 or older and who I am.';
-  static const String verifyWithDigiLocker = 'Verify with DigiLocker';
+  static const String verifyWithDigiLocker = 'Continue to DigiLocker';
   static const String backToOtp = 'Back to Aadhaar OTP';
   static const String digiLockerNotOpened =
       'We could not open DigiLocker right now. Please try again.';

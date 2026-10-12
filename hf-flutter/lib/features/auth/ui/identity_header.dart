@@ -5,12 +5,16 @@ import '../../../core/theme/hf_theme.dart';
 /// then the form. The illustration never represents a signed-in account.
 class IdentityHeader extends StatelessWidget {
   const IdentityHeader({super.key, required this.title, required this.subtitle,
-    this.step, this.total = 7, this.imageHeight = 190});
+    this.step, this.total = 7, this.imageHeight = 190,
+    this.imageAsset = 'assets/images/hero_collage.webp',
+    this.imageAlignment = Alignment.center});
   final String title;
   final String subtitle;
   final int? step;
   final int total;
   final double imageHeight;
+  final String imageAsset;
+  final Alignment imageAlignment;
 
   @override
   Widget build(BuildContext context) => Column(
@@ -31,10 +35,17 @@ class IdentityHeader extends StatelessWidget {
       const SizedBox(height: 8),
       Text(subtitle, textAlign: TextAlign.center, style: HfText.of(context, HfText.body)),
       const SizedBox(height: 16),
-      if (imageHeight > 0) ExcludeSemantics(child: ClipRRect(
-        borderRadius: BorderRadius.circular(24),
-        child: Image.asset('assets/images/hero_collage.webp', height: imageHeight,
-          width: double.infinity, fit: BoxFit.cover),
+      if (imageHeight > 0) ExcludeSemantics(child: LayoutBuilder(
+        builder: (context, constraints) {
+          final compactHeight = constraints.maxWidth <= 425
+              ? imageHeight
+              : imageHeight.clamp(190, 250).toDouble();
+          return ClipRRect(
+            borderRadius: BorderRadius.circular(24),
+            child: Image.asset(imageAsset, height: compactHeight,
+              width: double.infinity, fit: BoxFit.cover, alignment: imageAlignment),
+          );
+        },
       )),
       const SizedBox(height: 16),
     ],

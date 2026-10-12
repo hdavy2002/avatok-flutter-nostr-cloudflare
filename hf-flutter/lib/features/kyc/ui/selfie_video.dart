@@ -15,6 +15,7 @@ import '../data/permission_service.dart';
 import '../data/selfie_recorder.dart';
 import 'kyc_copy.dart';
 import 'kyc_parts.dart';
+import 'kyc_visuals.dart';
 import 'permission_gate.dart';
 import 'selfie_review_player.dart';
 
@@ -236,10 +237,12 @@ class _SelfieVideoState extends ConsumerState<SelfieVideoWidget> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         const IdentityHeader(title: 'Allow camera & microphone',
-          subtitle: 'We need a short video to confirm it is really you.', step: 5, total: 8),
+          subtitle: 'We need a short video to confirm it is really you.', step: 5, total: 8,
+          imageAsset: KycVisualAsset.selfiePermission, imageHeight: 230,
+          imageAlignment: Alignment(0.12, -0.1)),
         const HfCard(child: Column(children: [
           ListTile(leading: Icon(Icons.camera_alt_outlined), title: Text('Camera'), subtitle: Text('Record your face')),
-          ListTile(leading: Icon(Icons.mic_none), title: Text('Microphone'), subtitle: Text('Hear the verification code')),
+          ListTile(leading: Icon(Icons.mic_none), title: Text('Microphone'), subtitle: Text('Record your voice saying the code')),
         ])),
         const SizedBox(height: 16),
         HfCard(
@@ -558,7 +561,9 @@ class _CameraStageState extends ConsumerState<_CameraStage> {
             child: Stack(
               fit: StackFit.expand,
               children: [
-                const ColoredBox(color: HfColors.ink),
+                Image.asset(KycVisualAsset.selfieRecord, fit: BoxFit.cover,
+                  alignment: const Alignment(0, -0.2)),
+                ColoredBox(color: HfColors.ink.withValues(alpha: 0.14)),
                 if (_cam != _Cam.opening)
                   Center(child: _recorder.buildPreview(context)),
                 if (_cam == _Cam.opening)

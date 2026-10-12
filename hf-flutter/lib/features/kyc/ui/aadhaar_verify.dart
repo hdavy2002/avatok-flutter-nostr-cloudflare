@@ -19,6 +19,7 @@ import '../data/kyc_models.dart';
 import '../data/kyc_telemetry.dart';
 import 'kyc_copy.dart';
 import 'kyc_parts.dart';
+import 'kyc_visuals.dart';
 
 /// How often to ask again while DigiLocker answers `202 pending`, and how many times (spec 2.13: every 3 s, up to 10).
 const Duration kDigiLockerPollInterval = Duration(seconds: 3);
@@ -518,7 +519,9 @@ class AadhaarVerifyState extends ConsumerState<AadhaarVerifyWidget>
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        const IdentityHeader(title: KycCopy.otpTitle, subtitle: KycCopy.otpLead, step: 2, total: 8),
+        const IdentityHeader(title: 'Verify your Aadhaar', subtitle: 'We use it to confirm your age and identity.',
+          step: 2, total: 8, imageAsset: KycVisualAsset.phoneMan, imageHeight: 205,
+          imageAlignment: Alignment(0, -0.12)),
         TextField(
           key: const ValueKey<String>('aadhaar-number'),
           controller: _aadhaar,
@@ -575,7 +578,9 @@ class AadhaarVerifyState extends ConsumerState<AadhaarVerifyWidget>
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        const IdentityHeader(title: KycCopy.codeTitle, subtitle: KycCopy.codeLead, step: 3, total: 8),
+        const IdentityHeader(title: 'Enter Aadhaar OTP', subtitle: 'Sent to the mobile linked with Aadhaar.',
+          step: 3, total: 8, imageAsset: KycVisualAsset.phonePink, imageHeight: 205,
+          imageAlignment: Alignment(0.12, -0.12)),
         CodeBoxes(fieldKey: const ValueKey<String>('otp-code'), controller: _otp,
           focusNode: _otpFocus, sourceLabel: 'Aadhaar', enabled: !_busy, hasError: _codeError != null,
           onCompleted: () => setState(() => _codeError = null)),
@@ -633,16 +638,24 @@ class AadhaarVerifyState extends ConsumerState<AadhaarVerifyWidget>
   Widget _digiLocker() {
     switch (_dl) {
       case _Dl.checking:
-        return const Padding(
-          padding: EdgeInsets.symmetric(vertical: 24),
-          child: LoadingPanel(message: KycCopy.checkingDigiLocker),
+        return const Column(
+          key: ValueKey<String>('dl-checking'),
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            IdentityHeader(title: 'Checking your details', subtitle: 'Waiting for DigiLocker. This can take a few seconds.',
+              step: 3, total: 8, imageAsset: KycVisualAsset.phonePink, imageHeight: 220,
+              imageAlignment: Alignment(0.12, -0.12)),
+            LoadingPanel(message: KycCopy.checkingDigiLocker),
+          ],
         );
       case _Dl.waiting:
         return Column(
           key: const ValueKey<String>('dl-waiting'),
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            const IdentityHeader(title: KycCopy.waitingTitle, subtitle: KycCopy.waitingLead, step: 3, total: 8),
+            const IdentityHeader(title: 'Checking your details', subtitle: 'Waiting for DigiLocker. This can take a few seconds.',
+              step: 3, total: 8, imageAsset: KycVisualAsset.phonePink, imageHeight: 220,
+              imageAlignment: Alignment(0.12, -0.12)),
             if (_error != null) InlineError(_error!),
             const SizedBox(height: 16),
             HfButton(
@@ -682,8 +695,22 @@ class AadhaarVerifyState extends ConsumerState<AadhaarVerifyWidget>
             ),
           ],
         );
-      case _Dl.consent:
       case _Dl.starting:
+        return Column(
+          key: const ValueKey<String>('dl-handoff-screen'),
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const IdentityHeader(title: 'Continue in DigiLocker',
+              subtitle: 'DigiLocker will open securely, then return you to this app.', step: 2, total: 8,
+              imageAsset: KycVisualAsset.phoneMan, imageHeight: 230,
+              imageAlignment: Alignment(0, -0.14)),
+            const InfoBox(title: 'Opening DigiLocker securely',
+              body: 'Complete the steps there. We will check your details when you return.'),
+            const SizedBox(height: 16),
+            const Center(child: CircularProgressIndicator()),
+          ],
+        );
+      case _Dl.consent:
         return Column(
           key: const ValueKey<String>('dl-consent-screen'),
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -696,7 +723,15 @@ class AadhaarVerifyState extends ConsumerState<AadhaarVerifyWidget>
               ),
               const SizedBox(height: 16),
             ],
-            const IdentityHeader(title: KycCopy.digiLockerTitle, subtitle: KycCopy.digiLockerLead, step: 2, total: 8),
+            const IdentityHeader(title: 'Verify with DigiLocker', subtitle: 'A secure alternative to Aadhaar OTP.',
+              step: 2, total: 8, imageAsset: KycVisualAsset.phoneLavender, imageHeight: 210,
+              imageAlignment: Alignment(0.12, -0.1)),
+            const HfCard(child: Column(children: [
+              ListTile(dense: true, leading: Icon(Icons.badge_outlined), title: Text('Sign in to DigiLocker')),
+              ListTile(dense: true, leading: Icon(Icons.verified_user_outlined), title: Text('Approve sharing your Aadhaar')),
+              ListTile(dense: true, leading: Icon(Icons.sync_rounded), title: Text('Return here automatically')),
+            ])),
+            const SizedBox(height: 10),
             ConsentRow(
               key: const ValueKey<String>('dl-consent'),
               value: _dlConsent,

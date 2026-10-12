@@ -2,6 +2,9 @@ import 'dart:typed_data';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hf_app/core/api/api_error.dart';
 import 'package:hf_app/features/kyc/data/kyc_api.dart';
+import 'package:hf_app/features/kyc/kyc.dart';
+import 'package:hf_app/features/lanes/data/lanes_api.dart';
+import 'package:hf_app/features/lanes/ui/lanes_screen.dart';
 import '../../support/fake_api_client.dart';
 
 void main() {
@@ -21,5 +24,12 @@ void main() {
   test('Aadhaar cannot succeed on an empty 2xx response', () async {
     final client = FakeApiClient()..onJson('POST', '/api/hosts/kyc/aadhaar/verify', {});
     await expectLater(KycApi(client).aadhaarVerify('123456'), throwsA(isA<ApiError>()));
+  });
+
+  test('visual refresh preserves the canonical selfie and declaration truths', () {
+    expect(kSelfieSeconds, 10);
+    expect(LaneCopy.declare, contains('I identify as LGBTQ+'));
+    expect(LaneCopy.leadOf(Lane.lgbtq), isNot(contains('verifies your orientation')));
+    expect(KycVisualAsset.selfieRecord, endsWith('.webp'));
   });
 }

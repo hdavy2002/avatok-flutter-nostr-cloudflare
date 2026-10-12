@@ -44,6 +44,7 @@ flutter:
   assets:
     - assets/images/
     - assets/images/auth/
+    - assets/images/kyc/
 
   fonts:
     - family: Nunito

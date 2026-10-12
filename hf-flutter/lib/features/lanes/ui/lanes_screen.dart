@@ -317,6 +317,17 @@ class _LaneFlowState extends ConsumerState<_LaneFlow> {
   bool get _declared => !_left && _status.lgbtqDeclared;
   String get _selfieStatus => _videoUploaded ? 'pending' : _status.selfieStatus;
 
+  String get _heroAsset {
+    if (_notEligible != null || !_eligible) return KycVisualAsset.laneIneligible;
+    if (_inLane) return KycVisualAsset.verifiedCouple;
+    if (_lane == Lane.lgbtq) {
+      if (_selfieStatus == 'pending') return KycVisualAsset.reviewTeam;
+      if (_selfieStatus == 'rejected') return KycVisualAsset.selfieRejected;
+      return KycVisualAsset.lgbtqCouple;
+    }
+    return KycVisualAsset.phoneLavender;
+  }
+
   Future<void> _checkStatus() async {
     try {
       final fresh = await ref.read(lanesApiProvider).me();
@@ -442,9 +453,12 @@ class _LaneFlowState extends ConsumerState<_LaneFlow> {
     return ListView(
       padding: const EdgeInsets.all(HfSpacing.page),
       children: [
-        HfCluster(
-          kind: _lane == Lane.women ? HfClusterKind.women : HfClusterKind.lgbtq,
-          height: 150,
+        KycPhoto(
+          asset: _heroAsset,
+          height: 205,
+          alignment: _selfieStatus == 'rejected'
+              ? const Alignment(0, -0.22)
+              : Alignment.center,
         ),
         const SizedBox(height: 20),
         if (!_inLane) ...[
@@ -713,7 +727,7 @@ abstract final class LaneCopy {
   static const String ack18 =
       'I am 18 or older, and I will follow the community guidelines.';
   static const String declare =
-      'This space is right for me. I understand it is private, and I am choosing to join myself.';
+      'I identify as LGBTQ+ and want to join this private space.';
 
   static String titleOf(Lane l) =>
       l == Lane.women ? 'Women-only space' : 'LGBTQ+ space';

@@ -1,4 +1,11 @@
 {
+  "HF-EXACT-KYC-1": {
+    "description": "Exact 425x916 photo-led Flutter KYC visual system for the eight-step Aadhaar and real 10-second selfie flow, DigiLocker consent/handoff/checking, and protected-lane approved, pending, retry and unavailable outcomes. Uses original project-bound WebP photography with no UI text baked into pixels; existing KYC APIs, privacy controls, six-digit code, video-review approval gate and telemetry are unchanged.",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [],
+    "no_telemetry": "Visual-only Flutter presentation and deterministic capture coverage; existing hf_app_kyc_step, hf_app_permission and hf_app_lane_join events remain the behavioral authorities."
+  },
   "LISTENER-PHOTO-CARDS-1": {
     "description": "Shared photo-first design for all eight public sample profile cards: rectangular photos, status overlay, rating, relationship stats, demo voice introduction with waveform and 0:20 duration, language/style panels, topics and estimated ten-minute price. Existing filters, favourites and preview actions are preserved.",
     "two_sided": false,

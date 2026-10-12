@@ -13,5 +13,6 @@ export 'data/selfie_recorder.dart';
 export 'ui/aadhaar_verify.dart';
 export 'ui/kyc_copy.dart';
 export 'ui/kyc_parts.dart';
+export 'ui/kyc_visuals.dart';
 export 'ui/permission_gate.dart';
 export 'ui/selfie_video.dart';

@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:video_player/video_player.dart';
 import '../../../core/storage/account_storage.dart';
 import '../data/selfie_recorder.dart';
+import 'kyc_visuals.dart';
 
 final selfieReviewBuilderProvider = Provider<Widget Function(SelfieClip)>(
   (ref) => (clip) => SelfieReviewPlayer(clip: clip),
@@ -65,9 +66,13 @@ class _SelfieReviewPlayerState extends State<SelfieReviewPlayer> {
   @override
   Widget build(BuildContext context) {
     final player = _player;
-    if (_failed) return const Padding(padding: EdgeInsets.all(24),
-      child: Text('The video preview could not open. You can record again before submitting.'));
-    if (player == null) return const SizedBox(height: 240, child: Center(child: CircularProgressIndicator()));
+    if (_failed) return const Column(children: [
+      KycPhoto(asset: KycVisualAsset.selfieReview, height: 240),
+      Padding(padding: EdgeInsets.all(16),
+        child: Text('The video preview could not open. You can record again before submitting.')),
+    ]);
+    if (player == null) return const KycPhoto(asset: KycVisualAsset.selfieReview, height: 240,
+      overlay: Center(child: CircularProgressIndicator(color: Colors.white)));
     return ClipRRect(borderRadius: BorderRadius.circular(20), child: ColoredBox(color: Colors.black,
       child: ValueListenableBuilder<VideoPlayerValue>(valueListenable: player, builder: (_, value, __) =>
         Stack(alignment: Alignment.center, children: [
