@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   validateReviewInput, roundRating, buildAggregate, tokenExpired, reviewWindowOpen, isRegular, firstNameOf, canNotifyAgain,
-  callDateIst, toMs, REVIEW_WINDOW_MS, NOTIFY_WINDOW_MS,
+  callDateIst, toMs, hasPositiveCallDuration, REVIEW_WINDOW_MS, NOTIFY_WINDOW_MS,
 } from "./hf_reviews_pure";
 import { TOPICS } from "./hf_options";
 
@@ -66,6 +66,20 @@ describe("review validation", () => {
     const r = validateReviewInput({ stars: 5, topic: "nope" });
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.error).toBe("bad_topic");
+  });
+});
+
+describe("positive-duration eligibility", () => {
+  it("accepts whole-minute and exact-second connected calls", () => {
+    expect(hasPositiveCallDuration({ billed_minutes: 1, billable_seconds: 11 })).toBe(true);
+    expect(hasPositiveCallDuration({ billed_minutes: 0, billable_seconds: 11 })).toBe(true);
+    expect(hasPositiveCallDuration({ billed_minutes: 1, billable_seconds: null })).toBe(true);
+  });
+
+  it("rejects zero and missing duration", () => {
+    expect(hasPositiveCallDuration({ billed_minutes: 0, billable_seconds: 0 })).toBe(false);
+    expect(hasPositiveCallDuration({ billed_minutes: 0, billable_seconds: null })).toBe(false);
+    expect(hasPositiveCallDuration({})).toBe(false);
   });
 });
 

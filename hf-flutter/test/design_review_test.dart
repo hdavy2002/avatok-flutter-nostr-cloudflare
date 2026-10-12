@@ -8,11 +8,16 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:hf_app/core/theme/hf_theme.dart';
 import 'package:hf_app/core/widgets/widgets.dart';
+import 'package:hf_app/features/call/data/call_models.dart';
+import 'package:hf_app/features/call/ui/call_live_view.dart';
+import 'package:hf_app/features/call/ui/call_summary.dart';
 import 'package:hf_app/features/wallet/billing/billing_adapter.dart';
 
+import 'features/call/call_harness.dart';
 import 'features/explore/explore_test_support.dart';
 import 'features/wallet/wallet_support.dart';
 import 'support/fake_billing.dart';
+import 'support/fake_api_client.dart';
 
 /// Review captures are opt-in and generated only in the authorized CI runtime.
 /// No checked-in bitmap is treated as proof that an unexecuted layout passed.
@@ -54,11 +59,48 @@ Future<void> _capture(WidgetTester tester, String name) async {
   });
 }
 
+void _setSize(WidgetTester tester, Size size) {
+  tester.view.physicalSize = size;
+  tester.view.devicePixelRatio = 1;
+}
+
+FakeApiClient _callReferenceApi() => FakeApiClient()
+  ..onJson('GET', '/api/config', {'hfCallsEnabled': true})
+  ..onJson('GET', '/api/hosts/public/asha', {
+    'slug': 'asha',
+    'displayName': 'Asha Verma',
+    'topics': ['stress', 'career'],
+  })
+  ..onJson('GET', '/api/hf/options', {
+    'topics': [
+      {'slug': 'stress', 'label': 'Tension'},
+      {'slug': 'career', 'label': 'Career'},
+    ],
+  })
+  ..onJson('GET', '/api/hf/wallet/estimate', {
+    'mode': 'tokens',
+    'ratePerMinRupees': 3.99,
+    'aboutText': 'about 42 min',
+    'affordableSeconds': 2520,
+    'canStart': true,
+    'hasDebt': false,
+    'balance': '168.34',
+    'plan': 'standard',
+    'priceTiers': [
+      {'fromMin': 0, 'toMin': 30, 'paisePerMin': 399},
+      {'fromMin': 30, 'toMin': 60, 'paisePerMin': 350},
+      {'fromMin': 60, 'paisePerMin': 325},
+    ],
+  });
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   setUpAll(_loadFonts);
   setUp(() => SharedPreferences.setMockInitialValues({}));
-  for (final size in [const Size(320, 640), const Size(412, 915)]) {
+  for (final size in [
+    const Size(320, 640),
+    const Size(425, 916),
+  ]) {
     for (final scale in [1.0, 2.0]) {
       final label = '${size.width.toInt()}x${size.height.toInt()}-${scale}x';
       testWidgets('guest marketplace layout $label', (tester) async {
@@ -80,6 +122,24 @@ void main() {
         await pumpScreen(tester, api: api, location: '/', size: size);
         expect(tester.takeException(), isNull);
         await _capture(tester, 'browse-$label');
+        if (size == const Size(425, 916) && scale == 1) {
+          await tester.scrollUntilVisible(
+            find.text('Communities'),
+            320,
+            scrollable: find.byType(Scrollable).first,
+          );
+          await tester.pump();
+          expect(tester.takeException(), isNull);
+          await _capture(tester, 'browse-communities-425x916');
+          await tester.scrollUntilVisible(
+            find.text('Services for you'),
+            240,
+            scrollable: find.byType(Scrollable).first,
+          );
+          await tester.pump();
+          expect(tester.takeException(), isNull);
+          await _capture(tester, 'browse-services-425x916');
+        }
       });
       testWidgets('wallet layout $label', (tester) async {
         tester.platformDispatcher.textScaleFactorTestValue = scale;
@@ -89,27 +149,75 @@ void main() {
         addTearDown(
           tester.platformDispatcher.clearAccessibilityFeaturesTestValue,
         );
+        final api = walletApi()
+          ..onJson('GET', '/api/hf/tokens/products', {
+            'ok': true,
+            'enabled': true,
+            'gstBps': 1800,
+            'products': [
+              {
+                'productId': 'hf_rupees_120',
+                'pricePaise': 12000,
+                'gstPaise': 1831,
+                'walletPaise': 10169,
+                'creditPaise': 10169,
+              },
+              {
+                'productId': 'hf_rupees_240',
+                'pricePaise': 24000,
+                'gstPaise': 3661,
+                'walletPaise': 20339,
+                'creditPaise': 20339,
+              },
+              {
+                'productId': 'hf_rupees_360',
+                'pricePaise': 36000,
+                'gstPaise': 5492,
+                'walletPaise': 30508,
+                'creditPaise': 30508,
+              },
+              {
+                'productId': 'hf_rupees_500',
+                'pricePaise': 50000,
+                'gstPaise': 7627,
+                'walletPaise': 42373,
+                'creditPaise': 42373,
+              },
+            ],
+          });
         await pumpWallet(
           tester,
-          api: walletApi(),
+          api: api,
           billing: FakeBillingAdapter(
             products: const {
-              'hf_tokens_100': StoreProduct(
-                productId: 'hf_tokens_100',
+              'hf_rupees_120': StoreProduct(
+                productId: 'hf_rupees_120',
                 priceText: '₹120.00',
                 currencyCode: 'INR',
                 priceMicros: 120000000,
               ),
-              'hf_tokens_1000': StoreProduct(
-                productId: 'hf_tokens_1000',
-                priceText: '₹1,200.00',
+              'hf_rupees_240': StoreProduct(
+                productId: 'hf_rupees_240',
+                priceText: '₹240.00',
                 currencyCode: 'INR',
-                priceMicros: 1200000000,
+                priceMicros: 240000000,
+              ),
+              'hf_rupees_360': StoreProduct(
+                productId: 'hf_rupees_360',
+                priceText: '₹360.00',
+                currencyCode: 'INR',
+                priceMicros: 360000000,
+              ),
+              'hf_rupees_500': StoreProduct(
+                productId: 'hf_rupees_500',
+                priceText: '₹500.00',
+                currencyCode: 'INR',
+                priceMicros: 500000000,
               ),
             },
           ),
         );
-        tester.view.physicalSize = Size(size.width * 3, size.height * 3);
+        _setSize(tester, size);
         await tester.pumpAndSettle();
         expect(tester.takeException(), isNull);
         await _capture(tester, 'wallet-$label');
@@ -149,4 +257,158 @@ void main() {
       }
     }
   }
+
+  const referenceSize = Size(425, 916);
+
+  testWidgets('call confirmation reference 425x916', (tester) async {
+    prepareStorage();
+    _setSize(tester, referenceSize);
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    await pumpCallApp(
+      tester,
+      api: _callReferenceApi(),
+      location: '/call/new?host=asha',
+    );
+    _setSize(tester, referenceSize);
+    await tester.pump();
+    expect(tester.takeException(), isNull);
+    await _capture(tester, 'call-confirm-425x916');
+    await closeApp(tester);
+  });
+
+  testWidgets('connected call reference 425x916', (tester) async {
+    _setSize(tester, referenceSize);
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    tester.platformDispatcher.accessibilityFeaturesTestValue =
+        const FakeAccessibilityFeatures(disableAnimations: true);
+    addTearDown(
+      tester.platformDispatcher.clearAccessibilityFeaturesTestValue,
+    );
+    final info = CallInfo.fromJson({
+      'id': 'c1',
+      'status': 'connected',
+      'hostSlug': 'asha',
+      'hostName': 'Asha Verma',
+      'plan': 'standard',
+      'rate': 3.99,
+      'rateTiers': [
+        {'fromMin': 0, 'toMin': 30, 'paisePerMin': 399},
+        {'fromMin': 30, 'toMin': 60, 'paisePerMin': 350},
+        {'fromMin': 60, 'paisePerMin': 325},
+      ],
+    });
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: buildHfTheme(),
+        home: Scaffold(
+          body: SafeArea(
+            child: SingleChildScrollView(
+              child: CallLiveView(
+                info: info,
+                elapsedSeconds: 724,
+                currentRatePaise: 399,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+    expect(tester.takeException(), isNull);
+    await _capture(tester, 'call-live-425x916');
+  });
+
+  testWidgets('call summary reference 425x916', (tester) async {
+    _setSize(tester, referenceSize);
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final info = CallInfo.fromJson({
+      'id': 'c1',
+      'status': 'completed',
+      'hostSlug': 'asha',
+      'hostName': 'Asha Verma',
+      'plan': 'standard',
+      'billableSeconds': 724,
+      'billedMinutes': 13,
+      'chargedPaise': 5187,
+      'charged': '₹51.87',
+      'canReview': true,
+      'tiers': [
+        {
+          'fromMin': 0,
+          'toMin': 30,
+          'paisePerMin': 399,
+          'seconds': 724,
+          'amountPaise': 5187,
+        },
+      ],
+    });
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: buildHfTheme(),
+        home: Scaffold(
+          body: SafeArea(
+            child: ListView(
+              padding: const EdgeInsets.all(HfSpacing.pageWide),
+              children: [
+                CallSummary(
+                  info: info,
+                  cancelledByMe: false,
+                  onRate: () {},
+                  onDone: () {},
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+    expect(tester.takeException(), isNull);
+    await _capture(tester, 'call-summary-425x916');
+  });
+
+  testWidgets('review form and thanks references 425x916', (tester) async {
+    prepareStorage();
+    tester.platformDispatcher.accessibilityFeaturesTestValue =
+        const FakeAccessibilityFeatures(disableAnimations: true);
+    addTearDown(
+      tester.platformDispatcher.clearAccessibilityFeaturesTestValue,
+    );
+    final api = _callReferenceApi()
+      ..onJson('GET', '/api/hf/calls/c1', {
+        'id': 'c1',
+        'status': 'completed',
+        'hostSlug': 'asha',
+        'hostName': 'Asha Verma',
+        'billableSeconds': 724,
+        'billedMinutes': 13,
+        'chargedPaise': 5187,
+        'canReview': true,
+      })
+      ..onJson('POST', '/api/hf/calls/c1/review', {'ok': true});
+    await pumpCallApp(tester, api: api, location: '/review/call/c1');
+    _setSize(tester, referenceSize);
+    await tester.pump();
+    expect(tester.takeException(), isNull);
+    await _capture(tester, 'review-form-425x916');
+
+    await tester.tap(find.byIcon(Icons.star_outline_rounded).at(4));
+    await tester.pump();
+    await tester.scrollUntilVisible(
+      find.text('Send review'),
+      300,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.tap(find.text('Send review'));
+    await tester.pump();
+    await tester.pump();
+    await tester.ensureVisible(find.text('Your review was sent'));
+    await tester.pump();
+    expect(tester.takeException(), isNull);
+    await _capture(tester, 'review-thanks-425x916');
+    await closeApp(tester);
+  });
 }

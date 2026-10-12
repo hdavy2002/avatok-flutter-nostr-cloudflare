@@ -7,6 +7,17 @@ export const REVIEW_MIN_TEXT = 3;
 export const REGULAR_CALLS = 3; // "Regular" = caller has >= 3 completed calls with that host
 export const NOTIFY_WINDOW_MS = 24 * 3600_000; // at most one notify-me WhatsApp per subscriber per 24 h
 
+export type CallDuration = {
+  billed_minutes?: number | null;
+  billable_seconds?: number | null;
+};
+
+/** One authority for notification, status and submission review eligibility. */
+export function hasPositiveCallDuration(call: CallDuration): boolean {
+  return Number(call.billable_seconds ?? 0) > 0 ||
+    Number(call.billed_minutes ?? 0) >= 1;
+}
+
 export type ReviewInput = { ok: true; stars: number; text: string; topic: string | null } | { ok: false; status: number; error: string; message: string };
 
 /** Validates a review body (token and signed-in routes share it). */

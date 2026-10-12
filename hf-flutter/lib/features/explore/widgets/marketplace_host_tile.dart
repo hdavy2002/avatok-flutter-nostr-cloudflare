@@ -7,7 +7,9 @@ import '../data/host_card.dart';
 import 'host_card_view.dart';
 import 'host_image.dart';
 
-/// Compact marketplace card used by the horizontal Explore rails.
+/// Dense portrait card used by the marketplace rails.
+///
+/// The portrait, identity, rating, presence and price all remain server-owned.
 class MarketplaceHostTile extends ConsumerWidget {
   const MarketplaceHostTile({
     super.key,
@@ -24,9 +26,17 @@ class MarketplaceHostTile extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final dark = HfBrightness.isDark(context);
     final muted = dark ? HfColors.mutedSoft : HfColors.muted;
-    final open = () =>
-        openHostProfile(context, ref, host, from: from, lane: lane);
-    final wave = hostWaveHeights(host.slug, count: 15);
+    final wave = hostWaveHeights(host.slug, count: 9);
+    final statusLabel = switch (host.status) {
+      HostPresence.online => 'Online',
+      HostPresence.busy => 'Busy',
+      HostPresence.offline => 'Offline',
+    };
+    final statusColor = switch (host.status) {
+      HostPresence.online => const Color(0xff24b06b),
+      HostPresence.busy => const Color(0xffff9a3e),
+      HostPresence.offline => muted,
+    };
 
     return Semantics(
       button: true,
@@ -38,115 +48,155 @@ class MarketplaceHostTile extends ConsumerWidget {
         shadowColor: HfColors.ink.withValues(alpha: 0.08),
         clipBehavior: Clip.antiAlias,
         child: InkWell(
-          onTap: open,
-          child: Padding(
-            padding: const EdgeInsets.all(HfSpacing.md),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Stack(
-                  children: [
-                    HostAvatar(
-                      url: host.avatarUrl,
-                      size: 154,
-                      radius: HfRadius.cardInner,
-                      aiLabel: host.isAiAvatar ? kAiPictureLabel : null,
-                    ),
-                    Positioned(
-                      top: HfSpacing.sm,
-                      left: HfSpacing.sm,
-                      child: HfStatusPill(
-                        status: switch (host.status) {
-                          HostPresence.online => HfPresence.online,
-                          HostPresence.busy => HfPresence.busy,
-                          HostPresence.offline => HfPresence.offline,
-                        },
+          onTap: () =>
+              openHostProfile(context, ref, host, from: from, lane: lane),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Stack(
+                children: [
+                  AspectRatio(
+                    aspectRatio: 1.18,
+                    child: LayoutBuilder(
+                      builder: (context, constraints) => HostAvatar(
+                        url: host.avatarUrl,
+                        size: constraints.maxWidth,
+                        radius: 0,
+                        aiLabel: host.isAiAvatar ? kAiPictureLabel : null,
                       ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: HfSpacing.md),
-                Row(
-                  children: [
-                    Expanded(
-                      child: Text(
-                        host.displayName,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: HfText.of(context, HfText.subsection),
-                      ),
-                    ),
-                    const SizedBox(width: HfSpacing.xs),
-                    const HfVerifiedBadge(size: 18),
-                  ],
-                ),
-                if (host.tagline != null) ...[
-                  const SizedBox(height: 3),
-                  Text(
-                    host.tagline!,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: HfText.label.copyWith(
-                      color: muted,
-                      fontWeight: FontWeight.w400,
                     ),
                   ),
-                ],
-                const Spacer(),
-                if (host.hasIntro) ...[
-                  Row(
-                    children: [
-                      IntroPlayButton(host: host, from: from),
-                      const SizedBox(width: HfSpacing.sm),
-                      Expanded(
-                        child: SizedBox(
-                          height: 30,
+                  if (host.reviewCount > 0 && host.rating != null)
+                    Positioned(
+                      top: 8,
+                      right: 8,
+                      child: DecoratedBox(
+                        decoration: BoxDecoration(
+                          color: HfColors.white.withValues(alpha: 0.93),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 7,
+                            vertical: 4,
+                          ),
+                          child: Text(
+                            '★ ${host.rating!.toStringAsFixed(1)}',
+                            style: HfText.badge.copyWith(color: HfColors.ink),
+                          ),
+                        ),
+                      ),
+                    ),
+                  if (host.hasIntro)
+                    Positioned(
+                      left: 7,
+                      right: 7,
+                      bottom: 7,
+                      child: DecoratedBox(
+                        decoration: BoxDecoration(
+                          color: HfColors.white.withValues(alpha: 0.92),
+                          borderRadius: BorderRadius.circular(18),
+                        ),
+                        child: Padding(
+                          padding: const EdgeInsets.fromLTRB(4, 3, 8, 3),
                           child: Row(
-                            crossAxisAlignment: CrossAxisAlignment.center,
                             children: [
-                              for (final height in wave)
-                                Expanded(
-                                  child: Align(
-                                    alignment: Alignment.center,
-                                    child: Container(
-                                      width: 2,
-                                      height: 6 + (height * 0.16),
-                                      decoration: BoxDecoration(
-                                        color: muted.withValues(alpha: 0.55),
-                                        borderRadius: BorderRadius.circular(2),
-                                      ),
-                                    ),
+                              IntroPlayButton(
+                                host: host,
+                                from: from,
+                                compact: true,
+                              ),
+                              const SizedBox(width: 5),
+                              Expanded(
+                                child: SizedBox(
+                                  height: 20,
+                                  child: Row(
+                                    children: [
+                                      for (final height in wave)
+                                        Expanded(
+                                          child: Align(
+                                            alignment: Alignment.center,
+                                            child: Container(
+                                              width: 2,
+                                              height: 4 + (height * 0.10),
+                                              decoration: BoxDecoration(
+                                                color: HfColors.muted
+                                                    .withValues(alpha: 0.55),
+                                                borderRadius:
+                                                    BorderRadius.circular(2),
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                    ],
                                   ),
                                 ),
+                              ),
                             ],
                           ),
                         ),
                       ),
-                    ],
-                  ),
-                  const SizedBox(height: HfSpacing.sm),
+                    ),
                 ],
-                Row(
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(10, 9, 10, 10),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Expanded(
-                      child: Text(
-                        host.priceLabel,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: HfText.bodyStrong.copyWith(
-                          color: dark ? HfColors.darkText : HfColors.ink,
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            host.displayName,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: HfText.label.copyWith(
+                              color: dark ? HfColors.darkText : HfColors.ink,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
                         ),
+                        const SizedBox(width: 3),
+                        const HfVerifiedBadge(size: 15),
+                      ],
+                    ),
+                    const SizedBox(height: 5),
+                    Row(
+                      children: [
+                        Container(
+                          width: 7,
+                          height: 7,
+                          decoration: BoxDecoration(
+                            color: statusColor,
+                            shape: BoxShape.circle,
+                          ),
+                        ),
+                        const SizedBox(width: 5),
+                        Expanded(
+                          child: Text(
+                            statusLabel,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: HfText.badge.copyWith(color: muted),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      host.priceLabel,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: HfText.badge.copyWith(
+                        color: dark ? HfColors.darkText : HfColors.ink,
+                        fontWeight: FontWeight.w800,
                       ),
                     ),
-                    if (host.reviewCount > 0 && host.rating != null)
-                      Text(
-                        '★ ${host.rating!.toStringAsFixed(1)}',
-                        style: HfText.badge.copyWith(color: HfColors.star),
-                      ),
                   ],
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
         ),
       ),

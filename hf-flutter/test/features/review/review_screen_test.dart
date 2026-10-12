@@ -159,12 +159,12 @@ void main() {
         'topic': 'stress',
       });
       expect(posts.first.auth, isTrue);
-      expect(find.text('Thank you!'), findsOneWidget);
+      expect(find.text('Your review was sent'), findsOneWidget);
       expect(
         find.textContaining('Only your first name is shown.'),
         findsOneWidget,
       );
-      expect(find.text("See Asha's page"), findsOneWidget);
+      expect(find.text('Back to marketplace'), findsOneWidget);
       await closeApp(tester);
     });
 
@@ -176,7 +176,7 @@ void main() {
       await _tapStar(tester, 5);
       await _send(tester);
       expect(api.callsTo('POST', '$_callPath/review').first.body, {'stars': 5});
-      expect(find.text('Thank you!'), findsOneWidget);
+      expect(find.text('Your review was sent'), findsOneWidget);
       await closeApp(tester);
     });
 
@@ -278,7 +278,7 @@ void main() {
           scrollable: find.byType(Scrollable).first,
         );
         expect(find.text('Send review'), findsOneWidget);
-        expect(find.text('Thank you!'), findsNothing);
+        expect(find.text('Your review was sent'), findsNothing);
         await closeApp(tester);
       },
     );
@@ -341,7 +341,7 @@ void main() {
       await closeApp(tester);
     });
 
-    testWidgets('after thanks, See the page opens the host profile', (
+    testWidgets('after thanks, Back to marketplace opens Explore', (
       tester,
     ) async {
       prepareStorage();
@@ -350,10 +350,10 @@ void main() {
       await pumpCallApp(tester, api: api, location: '/review/call/c1');
       await _tapStar(tester, 5);
       await _send(tester);
-      await tester.tap(find.text("See Asha's page"));
+      await tester.tap(find.text('Back to marketplace'));
       await tester.pump();
       await tester.pump();
-      expect(find.text('PROFILE asha'), findsOneWidget);
+      expect(find.text('EXPLORE PAGE'), findsOneWidget);
       await closeApp(tester);
     });
   });
@@ -402,7 +402,7 @@ void main() {
           'stars': 5,
           'text': 'Gentle and wise, thank you',
         });
-        expect(find.text('Thank you!'), findsOneWidget);
+        expect(find.text('Your review was sent'), findsOneWidget);
         await closeApp(tester);
       },
     );

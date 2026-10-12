@@ -292,8 +292,11 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
       if (browse)
         SliverToBoxAdapter(
           child: _ServerHostRail(
-            title: 'Popular conversations',
-            filters: base.copyWith(sort: HostSort.popular),
+            title: 'Popular influencers',
+            filters: base.copyWith(
+              category: HostCategoryFilter.influencer,
+              sort: HostSort.popular,
+            ),
             from: 'explore_popular',
           ),
         ),
@@ -392,7 +395,7 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
     if (f.category == HostCategoryFilter.celebrity) return 'Celebrities';
     if (f.category == HostCategoryFilter.creators) return 'Influencers & creators';
     if (f.online) return 'Online now';
-    if (f.sort == HostSort.popular) return 'Popular conversations';
+    if (f.sort == HostSort.popular) return 'Popular influencers';
     return 'Hosts for you';
   }
 }
@@ -402,6 +405,17 @@ class _CommunityServicesCard extends StatelessWidget {
 
   final HostFilters base;
   final HostOptions? options;
+
+  String _communityAsset(String id) => switch (id) {
+    'celebrity' => 'assets/images/marketplace_celebrities.png',
+    _ => 'assets/images/marketplace_influencers.png',
+  };
+
+  String _serviceAsset(String id) => switch (id) {
+    'career' => 'assets/images/service_career_guidance.png',
+    'learning' => 'assets/images/service_learning_skills.png',
+    _ => 'assets/images/service_mental_wellness.png',
+  };
 
   void _service(BuildContext context, MarketplaceService service) =>
       GoRouter.of(context).go(base.copyWith(topics: service.topics).toLocation());
@@ -436,7 +450,7 @@ class _CommunityServicesCard extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.fromLTRB(
         HfSpacing.pageWide,
-        HfSpacing.xxl,
+        HfSpacing.xl,
         HfSpacing.pageWide,
         0,
       ),
@@ -447,7 +461,7 @@ class _CommunityServicesCard extends StatelessWidget {
             title: 'Communities',
             onSeeAll: communities.isEmpty ? null : () => GoRouter.of(context).go(base.copyWith(category: HostCategoryFilter.creators).toLocation()),
           ),
-          const SizedBox(height: HfSpacing.lg),
+          const SizedBox(height: HfSpacing.sm),
           LayoutBuilder(builder: (context, c) {
             final columns = c.maxWidth >= 280 && MediaQuery.textScalerOf(context).scale(16) <= 24 ? 2 : 1;
             return Wrap(spacing: HfSpacing.lg, runSpacing: HfSpacing.lg, children: [
@@ -457,26 +471,47 @@ class _CommunityServicesCard extends StatelessWidget {
                   child: _DiscoveryActionCard(
                     key: ValueKey('community-${community.id}'),
                     title: community.label,
-                    illustrated: true,
+                    asset: _communityAsset(community.id),
+                    tint: community.id == 'celebrity'
+                        ? HfTint.butter
+                        : HfTint.lavender,
                     onTap: () => GoRouter.of(context).go(base.copyWith(category: community.category).toLocation()),
                   ),
                 ),
             ]);
           }),
-          const SizedBox(height: HfSpacing.xxl),
+          const SizedBox(height: HfSpacing.xl),
           _SectionTitle(title: 'Services for you', onSeeAll: services.isEmpty ? null : () => _allServices(context)),
-          const SizedBox(height: HfSpacing.lg),
+          const SizedBox(height: HfSpacing.sm),
           if (services.isEmpty)
             const Text('Services are not available yet.')
           else LayoutBuilder(builder: (context, c) {
-            final columns = MediaQuery.textScalerOf(context).scale(16) > 24 ? 1 : c.maxWidth >= 720 ? 3 : c.maxWidth >= 280 ? 2 : 1;
-            return Wrap(spacing: HfSpacing.lg, runSpacing: HfSpacing.lg, children: [
-              for (final service in services)
-                SizedBox(
-                  width: (c.maxWidth - (columns - 1) * HfSpacing.lg) / columns,
-                  child: _DiscoveryActionCard(key: ValueKey('service-${service.id}'), title: service.label, onTap: () => _service(context, service)),
-                ),
-            ]);
+            final large = c.maxWidth >= 720;
+            final cardWidth = large
+                ? (c.maxWidth - HfSpacing.lg * 2) / 3
+                : (c.maxWidth * 0.44).clamp(142.0, 176.0).toDouble();
+            return SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(children: [
+                for (var i = 0; i < services.length; i++) ...[
+                  if (i > 0) const SizedBox(width: HfSpacing.lg),
+                  SizedBox(
+                    width: cardWidth,
+                    child: _DiscoveryActionCard(
+                      key: ValueKey('service-${services[i].id}'),
+                      title: services[i].label,
+                      asset: _serviceAsset(services[i].id),
+                      tint: switch (services[i].id) {
+                        'career' => HfTint.sky,
+                        'learning' => HfTint.butter,
+                        _ => HfTint.peach,
+                      },
+                      onTap: () => _service(context, services[i]),
+                    ),
+                  ),
+                ],
+              ]),
+            );
           }),
         ],
       ),
@@ -485,31 +520,41 @@ class _CommunityServicesCard extends StatelessWidget {
 }
 
 class _DiscoveryActionCard extends StatelessWidget {
-  const _DiscoveryActionCard({super.key, required this.title, required this.onTap, this.illustrated = false});
+  const _DiscoveryActionCard({
+    super.key,
+    required this.title,
+    required this.asset,
+    required this.tint,
+    required this.onTap,
+  });
   final String title;
+  final String asset;
+  final HfTint tint;
   final VoidCallback onTap;
-  final bool illustrated;
 
   @override
   Widget build(BuildContext context) {
     final dark = HfBrightness.isDark(context);
     return Material(
-      color: dark ? HfColors.darkCard : HfColors.surfaceSoft,
+      color: dark ? HfColors.darkCard : tint.bg(context),
       borderRadius: BorderRadius.circular(HfRadius.card),
       clipBehavior: Clip.antiAlias,
       child: InkWell(
         onTap: onTap,
         child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          if (illustrated) SizedBox(
-            height: 92,
-            child: Image.asset('assets/images/community_services_card.png', fit: BoxFit.cover, excludeFromSemantics: true),
+          SizedBox(
+            height: 88,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(12, 6, 12, 0),
+              child: Image.asset(asset, fit: BoxFit.contain, excludeFromSemantics: true),
+            ),
           ),
           Padding(
-            padding: const EdgeInsets.all(HfSpacing.lg),
+            padding: const EdgeInsets.fromLTRB(12, 8, 10, 12),
             child: Row(children: [
-              Expanded(child: Text(title, style: HfText.of(context, HfText.label))),
+              Expanded(child: Text(title, maxLines: 2, overflow: TextOverflow.ellipsis, style: HfText.of(context, HfText.label))),
               const SizedBox(width: HfSpacing.sm),
-              const Icon(Icons.arrow_forward_rounded, size: 18),
+              Icon(Icons.arrow_forward_rounded, size: 18, color: dark ? HfColors.darkText : tint.ink(context)),
             ]),
           ),
         ]),
@@ -574,7 +619,7 @@ class _HostRail extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.only(top: HfSpacing.xxl),
+      padding: const EdgeInsets.only(top: HfSpacing.xl),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -584,11 +629,15 @@ class _HostRail extends StatelessWidget {
             ),
             child: _SectionTitle(title: title, onSeeAll: onSeeAll),
           ),
-          const SizedBox(height: HfSpacing.lg),
+          const SizedBox(height: HfSpacing.sm),
           if (hosts.isEmpty)
             Padding(padding: const EdgeInsets.symmetric(horizontal: HfSpacing.pageWide), child: Text(empty, style: HfText.of(context, HfText.note)))
           else SizedBox(
-            height: 360 + (MediaQuery.textScalerOf(context).scale(14) - 14).clamp(0, 80).toDouble() * 5,
+            height: 216 +
+                (MediaQuery.textScalerOf(context).scale(14) - 14)
+                    .clamp(0, 32)
+                    .toDouble() *
+                    3,
             child: ListView.separated(
               scrollDirection: Axis.horizontal,
               padding: const EdgeInsets.symmetric(
@@ -596,9 +645,9 @@ class _HostRail extends StatelessWidget {
               ),
               itemCount: hosts.length,
               separatorBuilder: (_, __) =>
-                  const SizedBox(width: HfSpacing.lg),
+                  const SizedBox(width: HfSpacing.md),
               itemBuilder: (context, index) => SizedBox(
-                width: 182,
+                width: 136,
                 child: MarketplaceHostTile(
                   host: hosts[index],
                   from: from,

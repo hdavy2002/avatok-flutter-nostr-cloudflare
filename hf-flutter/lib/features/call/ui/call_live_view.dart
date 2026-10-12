@@ -53,13 +53,13 @@ class CallLiveView extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
           const _PrivacyChip(),
-          const SizedBox(height: 44),
+          const SizedBox(height: HfSpacing.xl),
           _Rings(
             name: info.hostFirstName == 'your host' ? '' : info.hostFirstName,
             pulsing: info.status.isRinging,
             photoUrl: photoUrl,
           ),
-          const SizedBox(height: HfSpacing.section),
+          const SizedBox(height: HfSpacing.xl),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 28),
             child: Column(
@@ -112,9 +112,9 @@ class CallLiveView extends StatelessWidget {
               ],
             ),
           ),
-          const SizedBox(height: 28),
+          const SizedBox(height: HfSpacing.xl),
           _Progress(name: name, step: step),
-          const SizedBox(height: HfSpacing.xxl),
+          const SizedBox(height: HfSpacing.xl),
           const Padding(
             padding: EdgeInsets.symmetric(horizontal: 28),
             child: CallSafetyCard(),
@@ -184,7 +184,7 @@ class _PrivacyChip extends StatelessWidget {
   }
 }
 
-/// Three lavender rings (300 / 240 / 180), the 132 px avatar with a white border and the ink phone badge. The
+/// Three lavender rings, a portrait with a white border and the ink phone badge. The
 /// rings breathe while the phone is ringing and stay still on reduced motion.
 class _Rings extends StatefulWidget {
   const _Rings({
@@ -253,8 +253,8 @@ class _RingsState extends State<_Rings> with SingleTickerProviderStateMixin {
       child: LayoutBuilder(
         builder: (context, constraints) {
           final double size = constraints.maxWidth.isFinite
-              ? (constraints.maxWidth - 40).clamp(200.0, 300.0).toDouble()
-              : 300.0;
+              ? (constraints.maxWidth - 72).clamp(184.0, 240.0).toDouble()
+              : 240.0;
           final k = size / 300;
           Widget ring(double diameter, Color color, double phase) {
             return AnimatedBuilder(

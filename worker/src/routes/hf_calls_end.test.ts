@@ -51,10 +51,28 @@ describe("caller End call", () => {
   it("ends eleven connected seconds, settles once, and permits review", async () => {
     expect((await endpoint("/end")).status).toBe(200);
     const result = await (await endpoint("", "GET")).json();
-    expect(result).toMatchObject({ status: "completed", billableSeconds: 11, chargedPaise: 367, canReview: true, plan: "creator" });
+    expect(result).toMatchObject({ status: "completed", billableSeconds: 11, billedMinutes: 1, chargedPaise: 367, canReview: true, plan: "creator" });
     expect((await endpoint("/end")).status).toBe(200);
     expect(requests).toBe(1);
     expect((await balanceSummary(env, "caller")).totalPaise).toBe(9633);
+  });
+  it("uses exact seconds for review eligibility even without a token amount", async () => {
+    const now = Date.now();
+    env.DB_META._raw.prepare(
+      "UPDATE hf_calls SET status='completed', ended_at=?, billed_minutes=0, billable_seconds=11, tokens_spent_micro=NULL WHERE id=?",
+    ).run(now, id);
+    expect(await (await endpoint("", "GET")).json()).toMatchObject({
+      status: "completed",
+      canReview: true,
+    });
+
+    env.DB_META._raw.prepare(
+      "UPDATE hf_calls SET billed_minutes=0, billable_seconds=0 WHERE id=?",
+    ).run(id);
+    expect(await (await endpoint("", "GET")).json()).toMatchObject({
+      status: "completed",
+      canReview: false,
+    });
   });
   it("does not expose or end somebody else's call", async () => {
     auth.uid = "stranger";

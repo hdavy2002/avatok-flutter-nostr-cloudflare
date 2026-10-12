@@ -39,6 +39,7 @@ import {
 } from "../lib/hf_calls_store";
 import { reserveTestCredits, settleTestCredits, grantTestCredits, getTestBalance } from "../lib/hf_credits";
 import { maxMinutesFor, START_RESERVE_MINUTES, MAX_CALL_MINUTES, paidShortfall, hangupXml, callerDidntPickUpXml, callerHandle } from "../lib/hf_call_math";
+import { hasPositiveCallDuration } from "../lib/hf_reviews_pure";
 
 const err = (status: number, error: string, message: string, extra: Record<string, unknown> = {}) => json({ error, message, ...extra }, status);
 const UNAVAILABLE = () => err(409, "host_unavailable", "This host isn't available right now.");
@@ -223,8 +224,9 @@ async function startTokenCall(env: Env, a: { uid: string; hostUid: string; lane:
 
 // ── GET /api/hf/calls/:id ────────────────────────────────────────────────────
 const tokCall = (c: HfCallRow): { micro: number; secs: number } | null => {
-  const x = c as unknown as { tokens_spent_micro?: number | null; billable_seconds?: number | null };
-  return x.tokens_spent_micro == null ? null : { micro: Number(x.tokens_spent_micro), secs: Number(x.billable_seconds ?? 0) };
+  return c.tokens_spent_micro == null
+    ? null
+    : { micro: Number(c.tokens_spent_micro), secs: Number(c.billable_seconds ?? 0) };
 };
 async function getCall(req: Request, env: Env, id: string): Promise<Response> {
   if (!(await callsOn(env))) return NOT_ENABLED();
@@ -238,7 +240,7 @@ async function getCall(req: Request, env: Env, id: string): Promise<Response> {
   let frozenCreator = false;
   try { frozenCreator = validCreatorSnapshot(JSON.parse(pricingRaw ?? "null")); } catch { /* legacy snapshot */ }
   let canReview = false;
-  if (c.caller_uid === u.uid && c.status === "completed" && Number(c.billed_minutes) >= 1 && Date.now() - Number(c.ended_at ?? c.created_at) < REVIEW_WINDOW_MS) {
+  if (c.caller_uid === u.uid && c.status === "completed" && hasPositiveCallDuration(c) && Date.now() - Number(c.ended_at ?? c.created_at) < REVIEW_WINDOW_MS) {
     const rv = await env.DB_META.prepare("SELECT 1 AS x FROM hf_reviews WHERE call_id=?1").bind(id).first().catch(() => null);
     canReview = !rv;
   }

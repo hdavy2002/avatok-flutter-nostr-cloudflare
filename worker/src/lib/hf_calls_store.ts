@@ -15,6 +15,7 @@ export interface HfCallRow {
   id: string; caller_uid: string; host_uid: string; rate_paise: number; status: string; lane: string | null;
   created_at: number; host_answered_at: number | null; connected_at: number | null; ended_at: number | null;
   billed_minutes: number; charged_paise: number; host_earning_paise: number; host_earned_tokens: number;
+  billable_seconds: number | null; tokens_spent_micro: number | null;
   end_reason: string | null; host_leg_uuid: string | null; caller_leg_uuid: string | null; conference_name: string | null;
 }
 

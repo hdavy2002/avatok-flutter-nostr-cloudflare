@@ -529,10 +529,8 @@ export class HfCallDO {
     await this.save(s);
     const billed = s.bill.plan?.billedMinutes ?? 0;
     this.emit(s.callerUid, "hf_call_ended", { call_id: s.callId, billed_minutes: billed, end_reason: s.endReason ?? s.finalStatus });
-    if (billed >= 1) {
-      const row = await this.db().prepare("SELECT * FROM hf_calls WHERE id=?1").bind(s.callId).first<HfCallRow>().catch(() => null);
-      if (row) await onCallCompleted(this.env, undefined, row).catch(() => undefined);
-    }
+    const row = await this.db().prepare("SELECT * FROM hf_calls WHERE id=?1").bind(s.callId).first<HfCallRow>().catch(() => null);
+    if (row) await onCallCompleted(this.env, undefined, row).catch(() => undefined);
   }
 
   // [HF-TOK-CALLS-1] Token calls: per-second billing over the caller's lots, split from the START snapshot, host paid in paise.

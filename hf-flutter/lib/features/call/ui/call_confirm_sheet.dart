@@ -146,7 +146,7 @@ class CallConfirmSheet extends ConsumerStatefulWidget {
 }
 
 class _CallConfirmSheetState extends ConsumerState<CallConfirmSheet> {
-  static const SizedBox _gap = SizedBox(height: HfSpacing.xxl);
+  static const SizedBox _gap = SizedBox(height: HfSpacing.xl);
 
   bool _starting = false;
   CallStartProblem? _problem;
@@ -428,7 +428,7 @@ class _HostStrip extends StatelessWidget {
         HfCallAvatar(
           name: name == 'your host' ? '' : name,
           size: 64,
-          radius: HfRadius.tile,
+          radius: 32,
           photoUrl: photoUrl,
         ),
         const SizedBox(width: HfSpacing.xl),
@@ -530,15 +530,31 @@ class _Tiles extends StatelessWidget {
       value: wv,
       valueColor: butter.valueInk(context),
     );
-    return IntrinsicHeight(
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Expanded(child: rateTile),
-          const SizedBox(width: HfSpacing.md),
-          Expanded(child: walletTile),
-        ],
-      ),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final stacked = constraints.maxWidth < 280 ||
+            MediaQuery.textScalerOf(context).scale(16) > 23;
+        if (stacked) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              rateTile,
+              const SizedBox(height: HfSpacing.md),
+              walletTile,
+            ],
+          );
+        }
+        return IntrinsicHeight(
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Expanded(child: rateTile),
+              const SizedBox(width: HfSpacing.md),
+              Expanded(child: walletTile),
+            ],
+          ),
+        );
+      },
     );
   }
 }
@@ -561,7 +577,7 @@ class _Tile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.all(HfSpacing.xl),
+      padding: const EdgeInsets.all(HfSpacing.lg),
       decoration: BoxDecoration(
         color: bg,
         borderRadius: BorderRadius.circular(HfRadius.control),

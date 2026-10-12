@@ -125,7 +125,7 @@ class DiscoveryHeader extends ConsumerWidget {
             },
           ),
         ),
-        const SizedBox(height: HfSpacing.xxl),
+        const SizedBox(height: HfSpacing.lg),
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: HfSpacing.pageWide),
           child: _SearchBar(
@@ -142,7 +142,7 @@ class DiscoveryHeader extends ConsumerWidget {
             child: Text(ExploreCopy.sameRate, style: HfText.note),
           ),
         ],
-        const SizedBox(height: HfSpacing.xxl),
+        const SizedBox(height: HfSpacing.lg),
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: HfSpacing.pageWide),
           child: HfSegmented(
@@ -162,7 +162,7 @@ class DiscoveryHeader extends ConsumerWidget {
             },
           ),
         ),
-        const SizedBox(height: HfSpacing.xl),
+        const SizedBox(height: HfSpacing.md),
         _moodRow(context),
         if (showListTitle)
           Padding(

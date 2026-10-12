@@ -38,9 +38,9 @@ abstract final class ReviewStrings {
   static const String noContact =
       'Please do not share phone numbers, emails or links.';
   static const String send = 'Send review';
-  static const String thanks = 'Thank you!';
+  static const String thanks = 'Your review was sent';
   static const String thanksBody =
-      'Your review will show once our team has checked it.';
+      'Thank you for helping us keep conversations useful and welcoming.';
   static const String alreadyDone = 'Thanks, you already reviewed this call.';
   static const String cannotReview =
       'This call can no longer be reviewed. It may already have a review, or it is too old.';
@@ -56,8 +56,6 @@ abstract final class ReviewStrings {
     'Good',
     'Really good',
   ];
-
-  static String seeProfile(String name) => "See $name's page";
 }
 
 class _ReviewScreenState extends ConsumerState<ReviewScreen> {
@@ -203,15 +201,27 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
   }
 
   Widget _loaded(ReviewTarget t) {
+    final hostVisual = t.hostSlug == null
+        ? null
+        : ref.watch(callHostVisualProvider(t.hostSlug!));
+    final photoUrl = hostVisual != null && hostVisual.hasValue
+        ? hostVisual.requireValue.photoUrl
+        : null;
     if (_sent) {
-      return _Thanks(target: t, onDone: _back, onProfile: _openProfile(t));
+      return _Thanks(
+        target: t,
+        photoUrl: photoUrl,
+        onDone: _back,
+        onMarketplace: () => GoRouter.of(context).go(Routes.explore),
+      );
     }
     if (_alreadyDone || t.alreadyReviewed) {
       return _Thanks(
         target: t,
+        photoUrl: photoUrl,
         already: true,
         onDone: _back,
-        onProfile: _openProfile(t),
+        onMarketplace: () => GoRouter.of(context).go(Routes.explore),
       );
     }
     if (_expired) {
@@ -229,12 +239,6 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
       );
     }
     return _form(t);
-  }
-
-  VoidCallback? _openProfile(ReviewTarget t) {
-    final slug = t.hostSlug;
-    if (slug == null) return null;
-    return () => GoRouter.of(context).go(Routes.hostProfileOf(slug));
   }
 
   Widget _form(ReviewTarget t) {
@@ -264,27 +268,12 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
         HfSpacing.section,
       ),
       children: [
-        Center(
-          child: HfCallAvatar(
-            name: name,
-            size: 92,
-            radius: 46,
-            photoUrl: photoUrl,
-            borderColor: HfColors.white,
-            borderWidth: 4,
-          ),
+        _ReviewHero(
+          name: name,
+          photoUrl: photoUrl,
+          detail: detail,
         ),
-        const SizedBox(height: HfSpacing.xl),
-        Text(
-          'How was your call with $name?',
-          textAlign: TextAlign.center,
-          style: HfText.of(context, HfText.headline),
-        ),
-        if (detail.isNotEmpty) ...[
-          const SizedBox(height: HfSpacing.xs),
-          Text(detail, style: HfText.of(context, HfText.note)),
-        ],
-        const SizedBox(height: HfSpacing.section),
+        const SizedBox(height: HfSpacing.xxl),
         Semantics(
           label: 'Star rating',
           child: _StarRow(
@@ -406,6 +395,70 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
     return OutlineInputBorder(
       borderRadius: BorderRadius.circular(HfRadius.input),
       borderSide: BorderSide(color: color, width: width),
+    );
+  }
+}
+
+class _ReviewHero extends StatelessWidget {
+  const _ReviewHero({
+    required this.name,
+    required this.photoUrl,
+    required this.detail,
+  });
+
+  final String name;
+  final String? photoUrl;
+  final String detail;
+
+  @override
+  Widget build(BuildContext context) {
+    final avatar = HfCallAvatar(
+      name: name,
+      size: 86,
+      radius: 43,
+      photoUrl: photoUrl,
+      borderColor: HfBrightness.isDark(context)
+          ? HfColors.darkBg
+          : HfColors.white,
+      borderWidth: 4,
+    );
+    final copy = Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'How was your call with $name?',
+          style: HfText.of(context, HfText.headline),
+        ),
+        if (detail.isNotEmpty) ...[
+          const SizedBox(height: HfSpacing.xs),
+          Text(detail, style: HfText.of(context, HfText.note)),
+        ],
+      ],
+    );
+    return HfCard(
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final stack = constraints.maxWidth < 280 ||
+              MediaQuery.textScalerOf(context).scale(16) > 23;
+          if (stack) {
+            return Column(
+              children: [
+                avatar,
+                const SizedBox(height: HfSpacing.lg),
+                copy,
+              ],
+            );
+          }
+          return Row(
+            children: [
+              avatar,
+              const SizedBox(width: HfSpacing.xl),
+              Expanded(child: copy),
+            ],
+          );
+        },
+      ),
     );
   }
 }
@@ -572,15 +625,17 @@ class _StarButton extends StatelessWidget {
 class _Thanks extends StatelessWidget {
   const _Thanks({
     required this.target,
+    required this.photoUrl,
     required this.onDone,
-    required this.onProfile,
+    required this.onMarketplace,
     this.already = false,
   });
 
   final ReviewTarget target;
+  final String? photoUrl;
   final bool already;
   final VoidCallback onDone;
-  final VoidCallback? onProfile;
+  final VoidCallback onMarketplace;
 
   @override
   Widget build(BuildContext context) {
@@ -588,7 +643,12 @@ class _Thanks extends StatelessWidget {
       padding: const EdgeInsets.all(HfSpacing.pageWide),
       children: [
         const SizedBox(height: HfSpacing.section),
-        const Center(child: _CheckBurst()),
+        Center(
+          child: _CheckBurst(
+            name: target.hostFirstName,
+            photoUrl: photoUrl,
+          ),
+        ),
         const SizedBox(height: HfSpacing.xxl),
         Semantics(
           liveRegion: true,
@@ -601,25 +661,21 @@ class _Thanks extends StatelessWidget {
         if (!already) ...[
           const SizedBox(height: HfSpacing.sm),
           Text(
-            '${ReviewStrings.thanksBody} Only your first name is shown.',
+            '${ReviewStrings.thanksBody} Your review will show after it is checked.',
             style: HfText.of(context, HfText.note),
             textAlign: TextAlign.center,
           ),
         ],
         const SizedBox(height: HfSpacing.section),
-        if (onProfile != null) ...[
-          HfButton(
-            label: ReviewStrings.seeProfile(target.hostFirstName),
-            onPressed: onProfile,
-          ),
-          const SizedBox(height: HfSpacing.sm),
-          HfButton(
-            label: ReviewStrings.done,
-            kind: HfButtonKind.secondary,
-            onPressed: onDone,
-          ),
-        ] else
-          HfButton(label: ReviewStrings.done, onPressed: onDone),
+        const _CheckedNote(),
+        const SizedBox(height: HfSpacing.xxl),
+        HfButton(label: 'Back to marketplace', onPressed: onMarketplace),
+        const SizedBox(height: HfSpacing.sm),
+        HfButton(
+          label: ReviewStrings.done,
+          kind: HfButtonKind.secondary,
+          onPressed: onDone,
+        ),
       ],
     );
   }
@@ -627,7 +683,10 @@ class _Thanks extends StatelessWidget {
 
 /// A lavender disc that pops in with a check mark. Reduced motion shows it at full size at once.
 class _CheckBurst extends StatefulWidget {
-  const _CheckBurst();
+  const _CheckBurst({required this.name, this.photoUrl});
+
+  final String name;
+  final String? photoUrl;
 
   @override
   State<_CheckBurst> createState() => _CheckBurstState();
@@ -670,19 +729,48 @@ class _CheckBurstState extends State<_CheckBurst>
           return Transform.scale(
             scale: 0.4 + 0.6 * t,
             child: Container(
-              width: 96,
-              height: 96,
+              width: 166,
+              height: 166,
               decoration: BoxDecoration(
                 color: dark ? HfColors.darkTile : HfColors.lavender,
                 shape: BoxShape.circle,
               ),
-              child: Opacity(
-                opacity: _c.value.clamp(0.0, 1.0),
-                child: Icon(
-                  Icons.check_rounded,
-                  size: 52,
-                  color: dark ? HfColors.lavenderLight : HfColors.lavenderDeep,
-                ),
+              child: Stack(
+                alignment: Alignment.center,
+                children: [
+                  HfCallAvatar(
+                    name: widget.name,
+                    photoUrl: widget.photoUrl,
+                    size: 104,
+                    radius: 52,
+                    borderColor: dark ? HfColors.darkBg : HfColors.white,
+                    borderWidth: 4,
+                  ),
+                  Positioned(
+                    right: 18,
+                    bottom: 22,
+                    child: Opacity(
+                      opacity: _c.value.clamp(0.0, 1.0),
+                      child: Container(
+                        width: 46,
+                        height: 46,
+                        decoration: BoxDecoration(
+                          color: dark ? HfColors.lavenderLight : HfColors.ink,
+                          shape: BoxShape.circle,
+                          border: Border.all(
+                            color: dark ? HfColors.darkBg : HfColors.white,
+                            width: 3,
+                          ),
+                        ),
+                        child: Icon(
+                          Icons.check_rounded,
+                          size: 27,
+                          color: dark ? HfColors.ink : HfColors.white,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ),
           );

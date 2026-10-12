@@ -54,6 +54,6 @@ with a fresh confirmation; they never automatically start a paid call. Host onbo
 Women-only access retains the existing Aadhaar eligibility policy. LGBTQ+ access requires a private declaration,
 verified Aadhaar and approved video KYC; pending or rejected video never unlocks browsing or calling.
 
-`test/design_review_test.dart` prepares real-font review captures at 320×640 and 412×915 with normal and 2× text,
-including reduced-motion scenes. Captures are opt-in through `EXPORT_DESIGN_REVIEW` in an authorized CI run;
+`test/design_review_test.dart` prepares real-font review captures at 320×640 and the reference 425×916 with normal and 2× text,
+including reduced-motion scenes plus call confirmation, connected, summary, review and thanks states. Captures are opt-in through `EXPORT_DESIGN_REVIEW` in an authorized CI run;
 source inspection alone does not verify Flutter compilation or rendered layout.

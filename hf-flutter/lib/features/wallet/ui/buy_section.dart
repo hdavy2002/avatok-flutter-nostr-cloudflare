@@ -22,6 +22,8 @@ abstract final class BuyCopy {
   static const String noPrices =
       'We could not load the prices from Google Play.';
   static const String unavailable = 'Not available';
+  static const String approvedUnavailable =
+      'The approved fixed packs are not available right now.';
   static const String loading = 'Loading packs…';
   static const String preparing = 'Getting ready…';
   static const String verifying = 'Confirming your payment…';
@@ -42,7 +44,7 @@ const double _gridGap = 10;
 /// Width / height of a pack tile (mockup grid). The tile is never shorter than 108.
 const double _tileAspect = 1.42;
 
-/// Tile colours in mockup order: sky, butter, peach, lavender.
+/// Tile colours in the fixed reference order: ₹120, ₹240, ₹360 and ₹500.
 const List<HfTint> _tileTints = [
   HfTint.sky,
   HfTint.butter,
@@ -50,27 +52,28 @@ const List<HfTint> _tileTints = [
   HfTint.lavender,
 ];
 
-/// Marks the pack the mockup calls "Popular" (the one that adds Rs 204). A badge only: it never decides a price.
-bool _isPopular(PackOffer o) =>
-    o.pack.creditPaise == 20400 || o.store?.priceMicros == 240000000;
+const List<String> _catalogueProductIds = <String>[
+  'hf_rupees_120',
+  'hf_rupees_240',
+  'hf_rupees_360',
+  'hf_rupees_500',
+];
 
-const List<int> _cataloguePricesPaise = <int>[12000, 24000, 36000, 50000];
+bool _isPopular(PackOffer offer) => offer.productId == 'hf_rupees_240';
 
-/// The approved four-pack catalogue in visual order. Values still come from
-/// the live server/Play join; an unavailable configured pack is never invented.
+/// The only approved catalogue, in visual order. Values still come from the
+/// live server/Play join; missing products stay missing and are never invented.
 List<PackOffer> _catalogueOffers(List<PackOffer> all) {
   final ordered = <PackOffer>[];
-  for (final amount in _cataloguePricesPaise) {
+  for (final productId in _catalogueProductIds) {
     for (final offer in all) {
-      final paid = offer.breakdown?.paidPaise ?? offer.pack.pricePaise;
-      if (paid == amount && !ordered.contains(offer)) {
+      if (offer.productId == productId) {
         ordered.add(offer);
         break;
       }
     }
   }
-  if (ordered.length == _cataloguePricesPaise.length) return ordered;
-  return all.take(4).toList();
+  return ordered;
 }
 
 /// "Add money": the packs as 2x2 tiles with Google Play's own price, one Pay button, and the whole buy flow.
@@ -131,14 +134,6 @@ class _PacksSkeleton extends StatelessWidget {
       label: BuyCopy.loading,
       child: Column(
         children: [
-          Row(
-            children: [
-              tile(),
-              const SizedBox(width: HfSpacing.md),
-              tile(),
-            ],
-          ),
-          const SizedBox(height: HfSpacing.md),
           Row(
             children: [
               tile(),
@@ -211,7 +206,7 @@ class _PacksState extends ConsumerState<_Packs> {
   /// Double-tap guard: true from the tap until the buy flow has handed over to Play.
   bool _starting = false;
 
-  /// The tapped pack; else the popular one; else the first one Play can sell; else the first.
+  /// The tapped pack; else the Popular pack; else the first Play can sell.
   PackOffer? _selected(List<PackOffer> all) {
     if (all.isEmpty) return null;
     for (final o in all) {
@@ -299,6 +294,9 @@ class _PacksState extends ConsumerState<_Packs> {
     };
     final working = _starting || purchase.phase != PurchasePhase.idle;
     final catalogue = _catalogueOffers(offers.offers);
+    if (catalogue.isEmpty) {
+      return const _Message(text: BuyCopy.approvedUnavailable);
+    }
     final selected = _selected(catalogue);
     final price = selected?.priceText;
     final canPay =
@@ -312,6 +310,7 @@ class _PacksState extends ConsumerState<_Packs> {
           tint: _tileTints[i % _tileTints.length],
           selected: catalogue[i].productId == selected?.productId,
           popular: _isPopular(catalogue[i]),
+          referenceCustomStyle: catalogue[i].productId == 'hf_rupees_500',
           onTap: tilesEnabled
               ? () {
                   HapticFeedback.selectionClick();
@@ -335,8 +334,7 @@ class _PacksState extends ConsumerState<_Packs> {
           ),
           const SizedBox(height: 16),
         ],
-        // Room for the "Popular" badge that overlaps the top edge of its tile.
-        const SizedBox(height: 6),
+        const SizedBox(height: 2),
         for (var i = 0; i < tiles.length; i += 2) ...[
           if (i > 0) const SizedBox(height: _gridGap),
           Row(
@@ -392,6 +390,7 @@ class _PackTile extends StatelessWidget {
     required this.tint,
     required this.selected,
     required this.popular,
+    required this.referenceCustomStyle,
     required this.onTap,
   });
 
@@ -399,6 +398,7 @@ class _PackTile extends StatelessWidget {
   final HfTint tint;
   final bool selected;
   final bool popular;
+  final bool referenceCustomStyle;
   final VoidCallback? onTap;
 
   @override
@@ -435,9 +435,18 @@ class _PackTile extends StatelessWidget {
               curve: HfMotion.curve,
               constraints: const BoxConstraints(minHeight: 108),
               decoration: BoxDecoration(
-                color: tint.bg(context),
+                color: referenceCustomStyle
+                    ? (dark ? HfColors.darkCard : HfColors.white)
+                    : tint.bg(context),
                 borderRadius: radius,
-                border: Border.all(color: border, width: 3),
+                border: Border.all(
+                  color: selected
+                      ? border
+                      : referenceCustomStyle
+                      ? (dark ? HfColors.darkLine : HfColors.line)
+                      : Colors.transparent,
+                  width: selected ? 3 : 1,
+                ),
               ),
               child: Material(
                 type: MaterialType.transparency,
@@ -462,6 +471,27 @@ class _PackTile extends StatelessWidget {
                                 color: tint.valueInk(context),
                               ),
                             ),
+                            if (referenceCustomStyle) ...[
+                              const SizedBox(height: 4),
+                              Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(
+                                    Icons.lock_outline_rounded,
+                                    size: 14,
+                                    color: tint.ink(context),
+                                  ),
+                                  const SizedBox(width: 4),
+                                  Text(
+                                    'Fixed pack',
+                                    style: HfText.note.copyWith(
+                                      color: tint.ink(context),
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
                             if (breakdown != null) ...[
                               const SizedBox(height: 4),
                               Text(

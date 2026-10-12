@@ -92,15 +92,28 @@ class CallSummary extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Center(
-          child: HfCallAvatar(
-            name: info.hostFirstName == 'your host' ? '' : info.hostFirstName,
-            size: 96,
-            radius: 48,
-            photoUrl: photoUrl,
-            borderColor: HfBrightness.isDark(context)
-                ? HfColors.darkBg
-                : HfColors.white,
-            borderWidth: 4,
+          child: Container(
+            width: 142,
+            height: 142,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: HfTint.lavender.bg(context),
+              shape: BoxShape.circle,
+              border: Border.all(
+                color: HfTint.lavender.ink(context).withValues(alpha: 0.12),
+                width: 12,
+              ),
+            ),
+            child: HfCallAvatar(
+              name: info.hostFirstName == 'your host' ? '' : info.hostFirstName,
+              size: 96,
+              radius: 48,
+              photoUrl: photoUrl,
+              borderColor: HfBrightness.isDark(context)
+                  ? HfColors.darkBg
+                  : HfColors.white,
+              borderWidth: 4,
+            ),
           ),
         ),
         const SizedBox(height: HfSpacing.xl),

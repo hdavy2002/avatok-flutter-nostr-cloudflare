@@ -76,10 +76,12 @@ class IntroPlayButton extends ConsumerWidget {
     required this.host,
     required this.from,
     this.dark = false,
+    this.compact = false,
   });
 
   final HostCard host;
   final bool dark;
+  final bool compact;
 
   /// Where the card sits (`explore`, `home`, `profile`): telemetry `hf_app_intro_played {slug, from}`.
   final String from;
@@ -95,6 +97,7 @@ class IntroPlayButton extends ConsumerWidget {
         ? 'Pause voice intro of ${host.displayName}'
         : 'Play voice intro of ${host.displayName}';
     final muted = dark ? HfColors.mutedSoft : HfColors.muted;
+    final buttonSize = compact ? 34.0 : HfSpacing.tap;
     return Wrap(
       crossAxisAlignment: WrapCrossAlignment.center,
       runSpacing: 6,
@@ -109,24 +112,32 @@ class IntroPlayButton extends ConsumerWidget {
                 .read(introPlayerProvider.notifier)
                 .toggle(slug: host.slug, url: url, from: from),
             radius: 28,
-            child: Container(
+            child: SizedBox(
               width: HfSpacing.tap,
               height: HfSpacing.tap,
-              decoration: BoxDecoration(
-                color: dark ? HfColors.peachLight : HfColors.ink,
-                shape: BoxShape.circle,
-              ),
-              child: Icon(
-                playing ? Icons.pause_rounded : Icons.play_arrow_rounded,
-                size: 28,
-                color: dark ? HfColors.ink : HfColors.white,
+              child: Center(
+                child: Container(
+                  width: buttonSize,
+                  height: buttonSize,
+                  decoration: BoxDecoration(
+                    color: dark ? HfColors.peachLight : HfColors.ink,
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(
+                    playing ? Icons.pause_rounded : Icons.play_arrow_rounded,
+                    size: compact ? 20 : 28,
+                    color: dark ? HfColors.ink : HfColors.white,
+                  ),
+                ),
               ),
             ),
           ),
         ),
         const SizedBox(width: 6),
         Text(
-          '${host.previewSeconds}s',
+          compact
+              ? '0:${host.previewSeconds.toString().padLeft(2, '0')}'
+              : '${host.previewSeconds}s',
           style: HfText.badge.copyWith(color: muted),
         ),
         if (failed) ...[

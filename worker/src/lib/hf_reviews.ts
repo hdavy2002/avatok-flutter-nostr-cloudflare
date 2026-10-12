@@ -1,5 +1,5 @@
 // [HF-CALLS-1] HF reviews (rulebook HF-REV-1..4).
-//   onCallCompleted(env, ctx, call)             called by the calls agent when a call ends with billed_minutes >= 1: review token (7 days) + WhatsApp link
+//   onCallCompleted(env, ctx, call)             called by the calls agent after any positive-duration connected call: review token (7 days) + WhatsApp link
 //   GET  /api/hf/review/:token                  (no sign-in) -> { hostName, hostSlug, callDate, minutes, alreadyReviewed }
 //   POST /api/hf/review/:token                  (no sign-in) { stars 1..5, text? <=500, topic? } -> { ok }
 //   POST /api/hf/calls/:id/review               (signed-in caller of a completed call, within 7 days) same body
@@ -17,7 +17,7 @@ import { sendWhatsAppText } from "./whatsapp_send";
 import { verifiedWhatsAppNumber } from "./whatsapp_notify";
 import { pushReviewRequest } from "./hf_push"; // [HF-APP-4]
 import {
-  validateReviewInput, tokenExpired, reviewWindowOpen, isRegular, buildAggregate, firstNameOf, callDateIst, toMs,
+  validateReviewInput, tokenExpired, reviewWindowOpen, isRegular, buildAggregate, firstNameOf, callDateIst, toMs, hasPositiveCallDuration,
   REVIEW_WINDOW_MS, REGULAR_CALLS, EMPTY_AGG, type HostAggregate, type StarRow,
 } from "./hf_reviews_pure";
 
@@ -36,7 +36,7 @@ export type HfCallLike = { id: string; caller_uid: string; host_uid: string; bil
 
 type CallRow = { id: string; caller_uid: string; host_uid: string; status: string; billed_minutes: number | null; billable_seconds: number | null; ended_at: number | null; created_at: number | null };
 const CALL_SQL = "SELECT id, caller_uid, host_uid, status, billed_minutes, billable_seconds, ended_at, created_at FROM hf_calls WHERE id=?1";
-const COMPLETED_PAID = "status='completed' AND billed_minutes >= 1";
+const COMPLETED_PAID = "status='completed' AND (COALESCE(billable_seconds,0) > 0 OR COALESCE(billed_minutes,0) >= 1)";
 
 function newToken(): string {
   const b = crypto.getRandomValues(new Uint8Array(32));
@@ -50,7 +50,7 @@ export async function onCallCompleted(env: Env, ctx: ExecutionContext | undefine
   const work = (async () => {
     try {
       if (!call?.id || !call.caller_uid || !call.host_uid) return;
-      if (call.billed_minutes != null && Number(call.billed_minutes) < 1) return;
+      if (!hasPositiveCallDuration(call)) return;
       const now = Date.now();
       const token = newToken();
       const ins = await env.DB_META.prepare("INSERT OR IGNORE INTO hf_review_tokens (token, call_id, expires_at, created_at) VALUES (?1,?2,?3,?4)")
@@ -74,7 +74,7 @@ export async function onCallCompleted(env: Env, ctx: ExecutionContext | undefine
 async function submit(env: Env, call: CallRow, body: unknown): Promise<Response> {
   const v = validateReviewInput(body);
   if (!v.ok) return err(v.status, v.error, v.message);
-  if (!(call.status === "completed" && Number(call.billed_minutes) >= 1)) return err(409, "not_reviewable", "Only completed calls can be reviewed.");
+  if (!(call.status === "completed" && hasPositiveCallDuration(call))) return err(409, "not_reviewable", "Only completed calls can be reviewed.");
   if (!reviewWindowOpen(call.ended_at, call.created_at, Date.now())) return err(410, "expired", "The review window for this call has closed.");
   const u = await env.DB_META.prepare("SELECT display_name FROM users WHERE uid=?1").bind(call.caller_uid).first<{ display_name: string | null }>().catch(() => null);
   const id = "hr_" + crypto.randomUUID().replace(/-/g, "").slice(0, 20);
