@@ -82,6 +82,7 @@ class ReviewTarget {
     required this.hostName,
     this.hostSlug,
     this.minutes = 0,
+    this.durationSeconds,
     this.callDate,
     this.alreadyReviewed = false,
     this.canReview = true,
@@ -90,6 +91,7 @@ class ReviewTarget {
   final String hostName;
   final String? hostSlug;
   final int minutes;
+  final int? durationSeconds;
 
   /// A date the worker wrote (token path only).
   final String? callDate;
@@ -157,6 +159,7 @@ class ReviewApi {
       hostName: info.hostName ?? '',
       hostSlug: info.hostSlug,
       minutes: info.billedMinutes,
+      durationSeconds: info.billableSeconds,
       canReview: info.canReview,
     );
   }
@@ -168,6 +171,13 @@ class ReviewApi {
       body: d.toJson(),
     );
   }
+}
+
+String reviewDurationLabel(int seconds) {
+  if (seconds < 60) return '$seconds s';
+  final minutes = seconds ~/ 60;
+  final remainder = seconds % 60;
+  return remainder == 0 ? '$minutes min' : '$minutes min $remainder s';
 }
 
 final reviewApiProvider = Provider<ReviewApi>(

@@ -73,6 +73,25 @@ Future<void> _send(WidgetTester tester) async {
 
 void main() {
   group('signed-in path (from the call screen)', () {
+    testWidgets('shows an eleven-second connected call honestly', (tester) async {
+      prepareStorage();
+      final api = _callApi();
+      api.onJson(
+        'GET',
+        _callPath,
+        callJson(
+          'completed',
+          billedMinutes: 1,
+          canReview: true,
+          extra: {'billableSeconds': 11},
+        ),
+      );
+      await pumpCallApp(tester, api: api, location: '/review/call/c1');
+      expect(find.text('11 s'), findsOneWidget);
+      expect(find.text('1 min'), findsNothing);
+      await closeApp(tester);
+    });
+
     testWidgets(
       'shows stars, text, host topics only, and the checked-first-name note',
       (tester) async {

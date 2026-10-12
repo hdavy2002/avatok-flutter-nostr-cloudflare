@@ -251,7 +251,10 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
               const <ReviewTopic>[]);
     final detail = [
       if (t.callDate != null) t.callDate!,
-      if (t.minutes > 0) '${t.minutes} min',
+      if (t.durationSeconds != null && t.durationSeconds! > 0)
+        reviewDurationLabel(t.durationSeconds!)
+      else if (t.minutes > 0)
+        '${t.minutes} min',
     ].join(' · ');
     return ListView(
       padding: const EdgeInsets.fromLTRB(
