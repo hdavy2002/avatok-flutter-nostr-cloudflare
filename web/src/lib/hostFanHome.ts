@@ -4,6 +4,7 @@ import { initImageTelemetry } from './imageTelemetry';
 initAnalytics();
 initImageTelemetry();
 const surface = 'host-fan-home';
+const design_version = 'editorial-v2';
 const dialog = document.querySelector<HTMLDialogElement>('#preview-dialog');
 let trigger: HTMLButtonElement | null = null;
 
@@ -19,7 +20,7 @@ document.querySelectorAll<HTMLButtonElement>('[data-preview-action]').forEach(bu
       ? 'This sample shows a 20-second voice introduction. No recording is playing. Explore hosts to see real profiles and availability.'
       : 'This is an illustrative sample profile. No call has been booked and no payment is made. Explore hosts to see real profiles and availability.';
     dialog.showModal();
-    capture('cta_click', { surface, section: 'creators', action: voice ? 'voice_preview' : 'booking_preview', sample_profiles: true });
+    capture('cta_click', { surface, design_version, section: 'creators', action: voice ? 'voice_preview' : 'booking_preview', sample_profiles: true });
   });
 });
 dialog?.querySelector<HTMLButtonElement>('[data-close-preview]')?.addEventListener('click', () => dialog.close());
@@ -28,17 +29,25 @@ dialog?.addEventListener('close', () => { trigger?.focus(); trigger = null; });
 
 document.querySelectorAll<HTMLAnchorElement>('[data-home-cta]').forEach(link => {
   link.addEventListener('click', () => capture('cta_click', {
-    surface, section: link.closest<HTMLElement>('[data-home-section]')?.dataset.homeSection,
+    surface, design_version, section: link.closest<HTMLElement>('[data-home-section]')?.dataset.homeSection,
     action: link.dataset.homeCta,
   }));
 });
 if ('IntersectionObserver' in window) {
   const observer = new IntersectionObserver(entries => {
     for (const entry of entries) if (entry.isIntersecting) {
-      capture('homepage_section_view', { surface, section: (entry.target as HTMLElement).dataset.homeSection });
+      capture('homepage_section_view', { surface, design_version, section: (entry.target as HTMLElement).dataset.homeSection });
       observer.unobserve(entry.target);
     }
   }, { threshold: 0.15 });
   document.querySelectorAll('[data-home-section]').forEach(section => observer.observe(section));
 }
 document.documentElement.dataset.homepageReady = 'true';
+
+// [HF-HOME-REDESIGN-2] Keep anchor destinations clear of the responsive sticky header.
+const header = document.querySelector<HTMLElement>('.cv-header');
+if (header && 'ResizeObserver' in window) {
+  const syncHeaderOffset = () => document.documentElement.style.setProperty('--hfh-header-offset', `${Math.ceil(header.getBoundingClientRect().height) + 24}px`);
+  new ResizeObserver(syncHeaderOffset).observe(header);
+  syncHeaderOffset();
+}

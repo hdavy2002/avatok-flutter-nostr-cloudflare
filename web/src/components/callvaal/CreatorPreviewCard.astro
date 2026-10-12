@@ -3,9 +3,13 @@ import type { CreatorPreview } from '../../lib/hostFanHomeReference';
 import { publicImage, publicImageSrcSet } from '../../lib/config';
 interface Props { profile: CreatorPreview; }
 const { profile } = Astro.props;
-const portrait = `/assets/callvaal/host-fan/${profile.id}.webp`;
+const portrait = profile.portrait ?? `/assets/callvaal/host-fan/${profile.id}.webp`;
 const wave = [4,8,13,7,18,11,23,15,27,19,10,24,16,30,18,9,21,14,25,19,11,17,7,12,4];
 const categoryPaths = {
+  travel: 'M3 11 21 3l-8 18-2-8-8-2Zm8 2 10-10',
+  music: 'M9 18V5l11-2v13M9 7l11-2M9 18a3 3 0 1 1-3-3h3m11 1a3 3 0 1 1-3-3h3',
+  food: 'M4 3v6q0 3 3 3t3-3V3M7 3v18M18 21V3q-5 3-5 9h5',
+  camera: 'M3 7h4l2-3h6l2 3h4v14H3ZM8 14a4 4 0 1 0 8 0 4 4 0 0 0-8 0',
   beauty: 'M8 10a4 4 0 1 0 8 0 4 4 0 0 0-8 0M7 16h10v4H7zM10 20v3m4-3v3M12 2v2',
   gaming: 'M7 7h10q3 0 4 4l2 7q0 4-4 2l-4-3H9l-4 3q-4 2-4-2l2-7q1-4 4-4M5 12h6m-3-3v6m8-4h.1m3 3h.1',
   fitness: 'M2 9v6m3-9v12m3-8v4h8v-4H8m11-4v12m3-9v6',
@@ -13,11 +17,13 @@ const categoryPaths = {
 };
 ---
 <article class="hfh-creator-card" data-creator-preview={profile.id} aria-describedby="sample-disclosure">
-  <div class="hfh-portrait"><img src={publicImage(portrait, { width: 640 })} srcset={publicImageSrcSet(portrait, [256, 420, 640, 900, 1280])} sizes="(max-width: 767px) min(calc(100vw - 45px), 500px), (max-width: 1023px) 46vw, (min-width: 1824px) 414px, 23vw" width="800" height="600" loading="lazy" alt={`Illustrative portrait of ${profile.name}`} /><span class="hfh-rating" aria-label={`Sample rating ${profile.rating} out of 5`}><span aria-hidden="true">★</span> {profile.rating}</span></div>
+  <div class="hfh-portrait"><img src={publicImage(portrait, { width: 640 })} srcset={publicImageSrcSet(portrait, [256, 420, 640, 900, 1280])} sizes="(max-width: 767px) min(calc(100vw - 45px), 500px), (max-width: 1023px) 46vw, (min-width: 1824px) 414px, 23vw" width={profile.portrait ? 1536 : 800} height={profile.portrait ? 1024 : 600} loading="lazy" alt={`Illustrative portrait of ${profile.name}`} /><span class="hfh-rating" aria-label={`Sample rating ${profile.rating} out of 5`}><span aria-hidden="true">★</span> {profile.rating}</span></div>
   <div class="hfh-card-copy"><div class="hfh-card-heading"><h3>{profile.name}</h3><span class="hfh-verified" aria-label="Illustrative verification badge">✓</span><span class:list={['hfh-availability', { 'hfh-availability--later': profile.availability === 'In 30 mins' }]}>{profile.availability}</span></div>
-    <p class="hfh-category"><svg viewBox="0 0 24 24" aria-hidden="true"><path d={categoryPaths[profile.icon]}/></svg><span>{profile.category}</span><span class:list={['hfh-platform', { 'hfh-platform--instagram': profile.platform === 'Instagram' }]} aria-label={`Sample ${profile.platform} creator`}>{profile.platform === 'Instagram' ? <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="5"/><circle cx="12" cy="12" r="4"/><circle cx="17.5" cy="6.5" r="1" fill="currentColor" stroke="none"/></svg> : '▶'}</span></p>
+    <p class="hfh-category"><svg viewBox="0 0 24 24" aria-hidden="true"><path d={categoryPaths[profile.icon]}/></svg><span>{profile.category}</span><span class:list={['hfh-platform', { 'hfh-platform--instagram': profile.platform === 'Instagram' }]} aria-label={`Sample ${profile.platform} creator`}>{profile.platform === 'Instagram' ? <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="5"/><circle cx="12" cy="12" r="4"/><circle cx="17.5" cy="6.5" r="1" fill="currentColor" stroke="none"/></svg> : <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="1" y="4" width="22" height="16" rx="5" fill="currentColor"/><path d="m10 8 6 4-6 4Z" fill="white"/></svg>}</span></p>
+    <p class="hfh-card-topics">{profile.topics}</p><p class="hfh-card-languages">{profile.languages}</p>
     <button class="hfh-voice" type="button" data-preview-action="voice" data-preview-label={profile.name} aria-label={`Preview ${profile.name}’s illustrative voice introduction`} aria-haspopup="dialog"><span class="hfh-play" aria-hidden="true">▶</span><svg viewBox="0 0 104 32" class="hfh-wave" aria-hidden="true">{wave.map((height, index) => <path d={`M${index * 4 + 2} ${16 - height / 2}v${height}`} />)}</svg><span>0:20</span></button>
-    <p class="hfh-rate">₹{profile.rate}/min</p>
+    <div class="hfh-card-footer"><p class="hfh-rate">₹{profile.rate}/min</p>
     <button class="hfh-button hfh-book" type="button" data-preview-action="call" data-preview-label={profile.name} aria-label={`Book a call with ${profile.name} — illustrative preview`} aria-haspopup="dialog">Book a call <span aria-hidden="true">→</span></button>
+    </div>
   </div>
 </article>

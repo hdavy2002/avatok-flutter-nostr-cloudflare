@@ -35,9 +35,9 @@ async function inspectReadability(page) {
   return page.evaluate(() => {
     const visible = el => el.getClientRects().length > 0 && getComputedStyle(el).visibility !== 'hidden';
     const groups = [
-      [16, '.hfh-hero-copy>p, .hfh-button, .hfh-section-heading p, .hfh-card-heading h3, .hfh-rate, .hfh-privacy p, .hfh-lane-copy>p:not(.hfh-kyc), .hfh-steps p, .hfh-host-copy p, [data-callvaal-footer-group] summary, [data-callvaal-footer-group] a, [data-callvaal-footer-group] button'],
+      [16, '.hfh-hero-copy>p:not(.hfh-eyebrow), .hfh-button, .hfh-section-heading p, .hfh-card-heading h3, .hfh-rate, .hfh-privacy p:not(.hfh-eyebrow), .hfh-lane-copy>p:not(.hfh-kyc):not(.hfh-eyebrow), .hfh-steps p, .hfh-host-copy p:not(.hfh-eyebrow), [data-callvaal-footer-group] summary, [data-callvaal-footer-group] a, [data-callvaal-footer-group] button'],
       [15, 'footer[data-callvaal-chrome] .cv-footer-brand p, footer[data-callvaal-chrome] .cv-footer-copyright'],
-      [14, '.hfh-sample-label, .hfh-disclosure, .hfh-eligibility, .hfh-availability, .hfh-category, .hfh-rating, .hfh-voice, .hfh-kyc, .hfh-picker, .hfh-share, .hfh-proof li'],
+      [14, '.hfh-sample-label, .hfh-disclosure, .hfh-eligibility, .hfh-availability, .hfh-category, .hfh-rating, .hfh-voice, .hfh-kyc, .hfh-picker, .hfh-share, .hfh-proof li, .hfh-eyebrow, .hfh-photo-caption div>span, .hfh-photo-tag'],
     ];
     const fontFailures = [];
     const fontCounts = [];
@@ -111,7 +111,7 @@ async function inspectReadability(page) {
 try {
   await new Promise(done => server.listen(4179, '127.0.0.1', done));
   browser = await chromium.launch();
-  for (const width of [320, 390, 767, 768, 820, 1023, 1024, 1440, 1920]) {
+  for (const width of [320, 390, 767, 768, 820, 1023, 1024, 1440, 1920, 2560, 3440]) {
     const name = `home-${width}`;
     const page = await browser.newPage({ viewport: { width, height: 1000 }, deviceScaleFactor: 1, reducedMotion: 'reduce' });
     const mutations = [];
@@ -145,12 +145,19 @@ try {
       await expect(page.locator('meta[property="og:url"]')).toHaveAttribute('content', `https://${homepageIdentity.domain}/`);
       await expect(page.locator('h1')).toHaveText('Talk to your favourite social media influencers over a private phone call.');
       await expect(page.locator('.hfh-beta')).toHaveCount(0);
-      await expect(page.locator('.hfh-creator-card')).toHaveCount(4);
-      await expect(page.locator('.hfh-card-heading h3')).toHaveText(['Neha', 'Arjun', 'Meera', 'Rohit']);
-      await expect(page.locator('.hfh-rate')).toHaveText(['₹3.99/min', '₹4.50/min', '₹3.50/min', '₹3.25/min']);
-      await expect(page.locator('.hfh-availability')).toHaveText(['Online now', 'Online now', 'In 30 mins', 'Online now']);
-      await expect(page.locator('.hfh-category>span:first-of-type')).toHaveText(['Beauty & Style', 'Gaming', 'Fitness', 'Film & Culture']);
+      await expect(page.locator('.hfh-creator-card')).toHaveCount(8);
+      await expect(page.locator('.hfh-card-heading h3')).toHaveText(['Neha', 'Arjun', 'Meera', 'Rohit', 'Isha', 'Kabir', 'Sana', 'Dev']);
+      await expect(page.locator('.hfh-rate')).toHaveText(['₹3.99/min', '₹4.50/min', '₹3.50/min', '₹3.25/min', '₹5.50/min', '₹4.75/min', '₹4.25/min', '₹5.00/min']);
+      await expect(page.locator('.hfh-availability')).toHaveText(['Online now', 'Online now', 'In 30 mins', 'Online now', 'Online now', 'In 30 mins', 'Online now', 'Online now']);
+      await expect(page.locator('.hfh-category>span:first-of-type')).toHaveText(['Beauty & Style', 'Gaming', 'Fitness', 'Film & Culture', 'Travel', 'Music', 'Food & Lifestyle', 'Photography']);
       await expect(page.locator('#people-title')).toHaveText('Book time with creators you follow');
+      await expect(page.locator('[data-home-cta="explore-hosts"]')).toHaveText('Explore influencers →');
+      await expect(page.locator('.cv-footer-brand p')).toHaveCount(0);
+      const typography = await page.evaluate(() => ({
+        headings: [...document.querySelectorAll('h1,h2,h3,h4,h5,h6,.cv-footer-group>summary')].filter(el => el.getClientRects().length).every(el => getComputedStyle(el).fontFamily.includes('HomeNunito')),
+        body: [...document.querySelectorAll('main p,main a,main button,header a,footer p,footer a')].filter(el => el.getClientRects().length).every(el => getComputedStyle(el).fontFamily.includes('HomeComfortaa')),
+      }));
+      assert(typography.headings && typography.body, name + ': Nunito headings and Comfortaa body text');
       await expect(page.locator('#privacy-title')).toHaveText('Your number stays yours.');
       await expect(page.locator('.hfh-connection')).toContainText(homepageIdentity.name);
       await expect(page.locator('.hfh-connection figcaption')).toHaveText('Two private calls. One conversation.');
@@ -192,11 +199,18 @@ try {
       assert.deepEqual(readability.clipping, [], name + ': unclipped content');
       assert.deepEqual(readability.overlaps, [], name + ': controls and text do not overlap');
       assert(readability.viewportOverflow.content <= width + 1, name + ': no horizontal overflow');
+      await page.evaluate(() => window.scrollTo(0, 700));
+      const stickyHeader = await page.locator('header').evaluate(el => ({
+        position: getComputedStyle(el).position, top: el.getBoundingClientRect().top,
+      }));
+      assert.equal(stickyHeader.position, 'sticky', name + ': sticky header');
+      assert(Math.abs(stickyHeader.top) <= 1, name + ': header remains at the top on scroll');
+      await page.evaluate(() => window.scrollTo(0, 0));
       const imageGeometry = await page.locator('main img').evaluateAll(images => images.filter(image => image.getClientRects().length).map(image => ({
         alt: image.alt, loaded: image.complete && image.naturalWidth > 0,
         width: image.getBoundingClientRect().width, height: image.getBoundingClientRect().height,
       })));
-      assert(imageGeometry.length === 11 && imageGeometry.every(image => image.loaded && image.alt && image.width > 0 && image.height > 0), name + ': all separate photographic assets load');
+      assert(imageGeometry.length === 17 && imageGeometry.every(image => image.loaded && image.alt && image.width > 0 && image.height > 0), name + ': all separate photographic assets load');
       await page.screenshot({ path: 'homepage-review/' + name + '.png', fullPage: true });
       const dialog = page.locator('#preview-dialog');
       for (const trigger of await page.locator('.hfh-creator-card [data-preview-action]').all()) {

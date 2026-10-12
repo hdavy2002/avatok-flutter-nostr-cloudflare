@@ -34,13 +34,13 @@ assert.doesNotMatch(bodyHtml, /class="[^"]*\bhfh-beta\b[^"]*"/, 'No beta ribbon 
 for (const copy of [
   'Talk to your favourite social media influencers over a private phone call.',
   'Book a time. We call you, call the host, and connect both calls. Neither of you sees the other’s personal number.',
-  'Full KYC', 'Private numbers', 'Secure payments',
+  'Verified influencers', 'Your number stays private', 'Secure payments',
   'Book time with creators you follow',
   'Verified hosts. Real conversations. Pick a time that works.',
   'Your number stays yours.',
   'Our system calls the fan and the host separately, then securely connects the calls. We never reveal either person’s personal phone number.',
   'Two private calls. One conversation.',
-  'Women with women', 'LGBTQ+ with LGBTQ+',
+  'Women talking to women', 'Connect within the LGBTQ+ community',
   'A private space for women to book conversations with verified women hosts.',
   'A respectful space for LGBTQ+ fans to book conversations with hosts from the community.',
   'Video KYC required', 'Choose a host', 'Book and pay', 'Talk privately',
@@ -71,12 +71,16 @@ assert(meta(html, 'og:title')?.includes(identity.name), 'Share title uses homepa
 assert(meta(html, 'og:description'), 'Share description exists');
 assert.match(bodyHtml, /<dialog\b[^>]*id="preview-dialog"[^>]*aria-labelledby="preview-title"[^>]*aria-describedby="preview-description"/);
 const cards = [...main.matchAll(/<article\b[^>]*data-creator-preview="[^"]+"[^>]*>[\s\S]*?<\/article>/g)].map(match => match[0]);
-assert.equal(cards.length, 4, 'Four illustrative creators');
+assert.equal(cards.length, 8, 'Eight illustrative creators');
 const expected = [
   ['neha', 'Neha', 'Beauty & Style', '4.9', 'Online now', '3.99'],
   ['arjun', 'Arjun', 'Gaming', '4.8', 'Online now', '4.50'],
   ['meera', 'Meera', 'Fitness', '4.9', 'In 30 mins', '3.50'],
   ['rohit', 'Rohit', 'Film & Culture', '4.7', 'Online now', '3.25'],
+  ['isha', 'Isha', 'Travel', '4.9', 'Online now', '5.50'],
+  ['kabir', 'Kabir', 'Music', '4.8', 'In 30 mins', '4.75'],
+  ['sana', 'Sana', 'Food & Lifestyle', '4.9', 'Online now', '4.25'],
+  ['dev', 'Dev', 'Photography', '4.8', 'Online now', '5.00'],
 ];
 for (const [index, [id, name, category, rating, availability, rate]] of expected.entries()) {
   const card = cards[index];
@@ -89,6 +93,8 @@ assert.doesNotMatch(main, /data-live-host|<astro-island|id="mood-filter"|data-pe
 // A discretionary line-break element does not change the displayed URL.
 assert(main.replace(/<wbr\s*\/?>/gi, '').includes(identity.domain + '/yourname'), 'Sample share URL uses central identity');
 assert(main.includes(identity.name), 'Private connector uses central identity');
+assert.match(mainText, /Explore influencers/);
+assert.doesNotMatch(bodyHtml, /Real people\. Naye dost\./, 'Homepage footer tagline removed');
 assert.equal((main.match(/class="hfh-kyc"/g) || []).length, 2);
 const footer = bodyHtml.match(/<footer\b[^>]*\bdata-callvaal-chrome(?:="")?[^>]*>([\s\S]*?)<\/footer>/)?.[1] || '';
 assert.equal((footer.match(/data-callvaal-footer-group(?:="")?/g) || []).length, 5, 'Five footer groups');
@@ -102,7 +108,7 @@ checkHelloFraandsPages(root, identity);
 // Inspect emitted URLs before normalization restores their source asset names.
 const emittedMain = emittedHtml.match(/<main\b[^>]*>([\s\S]*?)<\/main>/)?.[1] || '';
 const homepagePhotos = [...emittedMain.matchAll(/<img\b[^>]*>/g)].map(match => match[0]);
-assert.equal(homepagePhotos.length, 11, 'All approved homepage photo placements render');
+assert.equal(homepagePhotos.length, 17, 'All approved homepage photo placements render');
 for (const photo of homepagePhotos) {
   assert.match(photo, /\bsrc="\/cdn-cgi\/image\/format=avif,quality=60,width=\d+,fit=cover\//, 'Homepage photo uses the public-image pipeline');
   const srcset = photo.match(/\bsrcset="([^"]+)"/)?.[1] || '';
@@ -117,9 +123,16 @@ for (const name of ['hero', 'host', 'neha', 'arjun', 'meera', 'rohit', 'women', 
   assert(art.width >= 600 && art.height >= 600, 'Adequate source resolution: ' + name);
   assert(bytes.length <= (name.startsWith('hero') ? 400000 : 160000), 'Optimized asset budget: ' + name);
 }
-assert(meta(html, 'og:image').endsWith('/host-fan/hero.jpg'), 'New hero share fallback');
+for (const name of ['hero', 'women', 'community', 'host', 'isha', 'kabir', 'sana', 'dev', 'step-choose-audio', 'step-book-audio', 'step-talk-audio']) {
+  const bytes = readFileSync(resolve(root, 'assets/callvaal/host-fan/redesign', name + '.webp'));
+  const art = await sharp(bytes).metadata();
+  assert.equal(art.format, 'webp', 'New editorial artwork is WebP: ' + name);
+  assert(art.width >= 1200 && art.height >= 800, 'Responsive source resolution: ' + name);
+  assert(bytes.length <= 300000, 'Optimized artwork budget: ' + name);
+}
+assert(meta(html, 'og:image').endsWith('/host-fan/redesign/hero.jpg'), 'New hero share fallback');
 assert.equal((main.match(/fetchpriority="high"/g) || []).length, 1, 'Only hero is high priority');
-assert.match(main, /class="hfh-hero-photo"[^>]*width="1000"[^>]*height="1250"/);
+assert.match(main, /class="hfh-hero-photo"[^>]*width="1536"[^>]*height="1024"/);
 for (const href of ['/privacy', '/terms', '/refunds']) assert(footer.includes(`href="${href}"`), 'Published service policy is linked: ' + href);
 assert.doesNotMatch(plainText(footer), /CallVaal|Doctors|Tax & money|Career|Relationships|Counsellor|Listener|Practice/, 'Footer has no retired brand or professional categories');
 const talkSafely = readFileSync(resolve(root, 'talk-safely/index.html'), 'utf8');
