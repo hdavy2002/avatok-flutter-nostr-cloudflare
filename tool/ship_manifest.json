@@ -1,4 +1,11 @@
 {
+  "HF-EXACT-MARKET-1": {
+    "description": "Exact 425x916 marketplace, fixed-pack wallet, connected-call and review presentation using live backend values. Keeps the four Play-authoritative fixed packs, the Standard call tariff, 20-second voice previews, and permits review after any completed positive-duration call.",
+    "two_sided": true,
+    "min_devices_on_build": 2,
+    "flags": ["hfCallsEnabled", "hfTokensEnabled"],
+    "success": [{ "event": "hf_review_submitted", "property": "stars", "gt": 0, "note": "A genuinely connected positive-duration call exposed the review flow and accepted one pending review." }]
+  },
   "HF-EXACT-KYC-1": {
     "description": "Exact 425x916 photo-led Flutter KYC visual system for the eight-step Aadhaar and real 10-second selfie flow, DigiLocker consent/handoff/checking, and protected-lane approved, pending, retry and unavailable outcomes. Uses original project-bound WebP photography with no UI text baked into pixels; existing KYC APIs, privacy controls, six-digit code, video-review approval gate and telemetry are unchanged.",
     "two_sided": false,
