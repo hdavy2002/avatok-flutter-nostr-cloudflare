@@ -1,4 +1,11 @@
 {
+  "HF-HOME-DEPLOY-CI-2": {
+    "description": "Align the final Hello Fraands rates-page release contract with the already-live Standard-host and influencer earnings copy so the production web gate verifies current pricing instead of a retired ₹5 split example.",
+    "two_sided": false,
+    "min_devices_on_build": 0,
+    "flags": [],
+    "no_telemetry": "CI-only assertion correction. It changes no page, price, API response or runtime behavior; success is the homepage/archive release contract completing against the existing rates page."
+  },
   "HF-HOME-DEPLOY-CI-1": {
     "description": "Make the approved host/fan homepage deployable by routing its photography through the bounded public-image pipeline, aligning stale release contracts with current host earnings and profile discovery, and listing the existing Rules of Engagement page in the static sitemap.",
     "two_sided": false,

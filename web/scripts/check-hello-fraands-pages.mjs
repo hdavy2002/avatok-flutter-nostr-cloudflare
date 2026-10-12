@@ -58,7 +58,15 @@ export function checkHelloFraandsPages(root, identity) {
     'Being online does not guarantee calls.',
     'Amounts below are before TDS or your own taxes.',
   ]) assert(hostJoin.includes(copy), 'Current host earnings contract: ' + copy);
-  for (const amount of ['₹5 minute', '₹5 − ₹2 = ₹3', '40% of ₹3 = ₹1.20', '₹2 + ₹1.20 = ₹3.20', '₹5 − ₹3.20 = ₹1.80']) assert(text(pages.get('/hosts/rates')).includes(amount), '₹5 split: ' + amount);
+  const hostRates = text(pages.get('/hosts/rates'));
+  for (const copy of [
+    'Standard conversation hosts use the Standard call tariff and do not set a price.',
+    'You earn ₹2.00 for every connected minute, paid by the second.',
+    'A 30-second conversation earns ₹1.00.',
+    'You choose a whole-rupee fan price from ₹5 to ₹1,000 per minute.',
+    'Your earnings are 60% of the connected-call charge, minus ₹2.00 for each connected minute to cover the telephone call.',
+    'Example at ₹20 per minute for a one-minute connected call: the fan pays ₹20, your earning is ₹10, ₹2 covers the call, and the platform share is ₹8.',
+  ]) assert(hostRates.includes(copy), 'Current host rates contract: ' + copy);
   assert(text(faq).includes('starting from ₹5/min'), 'FAQ minimum rate');
   const wallet = text(pages.get('/wallet-terms'));
   for (const copy of ['general-lane floor of ₹5/minute', '61 connected seconds at ₹5/minute costs ₹10', '₹3.20 for the platform and ₹1.80 for the host']) assert(wallet.includes(copy), 'Wallet ₹5 example: ' + copy);
