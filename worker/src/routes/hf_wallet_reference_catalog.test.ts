@@ -1,11 +1,14 @@
-import { describe, expect, it } from "vitest";
-import { readFileSync } from "node:fs";
+import { beforeAll, describe, expect, it, vi } from "vitest";
 
 describe("HF reference wallet catalogue migration", () => {
-  const sql = readFileSync(
-    new URL("../../migrations/2026-10-12-hf-wallet-reference-packs.sql", import.meta.url),
-    "utf8",
-  );
+  let sql: string;
+  beforeAll(async () => {
+    // Vite loads the actual migration as text without adding Node types to the Worker.
+    const migration = await vi.importActual<{ default: string }>(
+      "../../migrations/2026-10-12-hf-wallet-reference-packs.sql?raw",
+    );
+    sql = migration.default;
+  });
 
   it("adds fixed 360 and 500 rupee Play products", () => {
     expect(sql).toContain("'hf_rupees_360', 360, 'gp-r2', 1, 36000");

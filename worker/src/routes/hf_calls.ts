@@ -259,10 +259,8 @@ async function getCall(req: Request, env: Env, id: string): Promise<Response> {
           const x = c as unknown as { consumed_value_paise?: number | null; pricing_snapshot?: string | null };
           const charged = Math.max(0, Math.trunc(Number(x.consumed_value_paise ?? c.charged_paise ?? 0)));
           const t = stdTariffOf(x.pricing_snapshot);
-          let creator = false;
-          try { creator = validCreatorSnapshot(JSON.parse(x.pricing_snapshot ?? "null")); } catch { /* legacy snapshot */ }
           return {
-            billableSeconds: tokCall(c)!.secs, chargedPaise: charged, charged: formatRupees(charged), plan: creator ? "creator" : t ? "standard" : "host_rate",
+            billableSeconds: tokCall(c)!.secs, chargedPaise: charged, charged: formatRupees(charged),
             ...(t ? { tiers: tierBreakdown(t, tokCall(c)!.secs) } : {}),
           };
         })()
