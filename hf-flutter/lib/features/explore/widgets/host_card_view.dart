@@ -227,7 +227,7 @@ class HostCardView extends ConsumerWidget {
                     HostPresence.busy => HfPresence.busy,
                     HostPresence.offline => HfPresence.offline,
                   },
-                  aiLabel: kAiPictureLabel,
+                  aiLabel: host.isAiAvatar ? kAiPictureLabel : null,
                   saved: saved,
                   tint: tint,
                   animatePill: animate,
@@ -807,7 +807,7 @@ class HostMiniCard extends ConsumerWidget {
               child: HostAvatar(
                 url: host.avatarUrl,
                 size: 96,
-                aiLabel: kAiPictureLabel,
+                aiLabel: host.isAiAvatar ? kAiPictureLabel : null,
               ),
             ),
             const SizedBox(height: 10),

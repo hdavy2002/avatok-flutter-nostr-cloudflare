@@ -104,7 +104,7 @@ describe("creator draft administration", () => {
   });
   it("saves encrypted private phone, exposes it only to the admin, and keeps empty drafts unpublished", async () => {
     await call("", "POST", { uid: "creator", category: "influencer" });
-    const saved = await call("/creator", "PUT", { displayName: "Example", privatePhone: "+919876543210", pricePerMin: 20 });
+    const saved = await call("/creator", "PUT", { expectedRevision: 1, displayName: "Example", privatePhone: "+919876543210", pricePerMin: 20 });
     expect(saved.status).toBe(200);
     expect((await saved.json()).listing.privatePhone).toBe("+919876543210");
     const row = env.DB_META._raw.prepare("SELECT * FROM hf_hosts WHERE uid='creator'").get();
@@ -114,6 +114,14 @@ describe("creator draft administration", () => {
     const publish = await call("/creator/publish", "POST", { verified: true, status: "live" });
     expect(publish.status).toBe(422);
     expect((await publish.json()).missing).toEqual(expect.arrayContaining(["video_kyc", "identity_verification", "voice"]));
+  });
+  it("rejects a stale admin editor revision instead of overwriting a newer save", async () => {
+    await call("", "POST", { uid: "creator", category: "influencer" });
+    expect((await call("/creator", "PUT", { expectedRevision: 1, displayName: "First save", pricePerMin: 20 })).status).toBe(200);
+    const stale = await call("/creator", "PUT", { expectedRevision: 1, displayName: "Stale save", pricePerMin: 30 });
+    expect(stale.status).toBe(409);
+    expect(await stale.json()).toMatchObject({ error: "listing_changed", currentRevision: 2 });
+    expect(env.DB_META._raw.prepare("SELECT display_name,price_per_min FROM hf_hosts WHERE uid='creator'").get()).toMatchObject({ display_name: "First save", price_per_min: 20 });
   });
   it("rejects undersized MP3 duration and invalid audio bytes before storage", async () => {
     await call("", "POST", { uid: "creator", category: "celebrity" });

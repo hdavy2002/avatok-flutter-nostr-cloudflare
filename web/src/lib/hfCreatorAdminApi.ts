@@ -7,6 +7,7 @@ import { captureException } from './analytics';
 export interface CreatorListing {
   uid: string; slug: string | null; status: string; category: 'standard' | 'influencer' | 'celebrity';
   displayName: string | null; tagline: string | null; about: string | null; pricePerMin: number;
+  listingRevision: number;
   languages: string[]; topics: string[]; privatePhone?: string | null;
   voice: { status: string; seconds: number | null; mime: string | null };
   media?: { id: string; kind: string; url: string }[];
@@ -20,7 +21,7 @@ export const creatorAdminApi = {
   list: () => adminCall<{ items: CreatorListing[] }>(base),
   get: (uid: string) => adminCall<{ listing: CreatorListing }>(path(uid)),
   create: (uid: string, category: 'influencer' | 'celebrity') => adminCall<{ listing: CreatorListing }>(base, { method: 'POST', body: { uid, category } }),
-  save: (uid: string, body: Record<string, unknown>) => adminCall<{ listing: CreatorListing }>(path(uid), { method: 'PUT', body }),
+  save: (uid: string, expectedRevision: number, body: Record<string, unknown>) => adminCall<{ listing: CreatorListing }>(path(uid), { method: 'PUT', body: { ...body, expectedRevision } }),
   publish: (uid: string) => adminCall<{ listing: CreatorListing }>(`${path(uid)}/publish`, { method: 'POST', body: {} }),
   archive: (uid: string) => adminCall<{ ok: true }>(path(uid), { method: 'DELETE' }),
   removeVoice: (uid: string) => adminCall<{ listing: CreatorListing }>(`${path(uid)}/voice`, { method: 'DELETE' }),

@@ -61,6 +61,7 @@ class _RefreshNotifier extends ChangeNotifier {
 /// arrives early waits for boot).
 String? hfRedirect(SessionState session, Uri uri) {
   if (session.isLoading) return null;
+  if (session.isSignedIn && uri.path == Routes.signIn) return Routes.home;
   if (!session.isSignedIn && Routes.needsSignIn(uri.path)) {
     return Routes.signInTo(uri.toString());
   }

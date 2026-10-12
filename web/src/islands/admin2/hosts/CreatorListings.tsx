@@ -66,7 +66,7 @@ export default function CreatorListings() {
         <label>Tagline<input style={field} maxLength={120} value={listing.tagline ?? ''} onChange={e => change({ tagline: e.target.value })} /></label>
         <label>About<textarea style={field} rows={4} maxLength={600} value={listing.about ?? ''} onChange={e => change({ about: e.target.value })} /></label>
         <label>Languages (comma separated)<input style={field} value={listing.languages.join(', ')} onChange={e => change({ languages: e.target.value.split(',').map(s => s.trim()) })} /></label>
-        <button className="btn" style={{ marginTop: 12 }} onClick={() => void run(async () => { const r = await creatorAdminApi.save(listing.uid, { category: listing.category, pricePerMin: listing.pricePerMin, displayName: listing.displayName ?? '', tagline: listing.tagline ?? '', about: listing.about ?? '', languages: listing.languages.filter(Boolean), privatePhone: listing.privatePhone ?? null }); setListing(r.listing); }, 'Draft saved.')}>Save draft</button>
+        <button className="btn" style={{ marginTop: 12 }} onClick={() => void run(async () => { const r = await creatorAdminApi.save(listing.uid, listing.listingRevision, { category: listing.category, pricePerMin: listing.pricePerMin, displayName: listing.displayName ?? '', tagline: listing.tagline ?? '', about: listing.about ?? '', languages: listing.languages.filter(Boolean), privatePhone: listing.privatePhone ?? null }); setListing(r.listing); }, 'Draft saved.')}>Save draft</button>
       </fieldset>
       <h3>Profile image</h3>
       {listing.media?.filter(m => m.kind === 'profile').map(m => <img key={m.id} src={m.url} alt="Profile preview" width={140} height={170} style={{ objectFit: 'cover', borderRadius: 12 }} />)}

@@ -106,6 +106,11 @@ class SessionController extends Notifier<SessionState> {
 
   /// Redeem the WhatsApp ticket (HF-NATIVE-2 calls this after `/api/auth/whatsapp/verify`).
   Future<ClerkStep> signInWithTicket(String ticket, {String? phone}) async {
+    if (state.isSignedIn) {
+      return ClerkStep.error(
+        'Finish the current account session before using another account.',
+      );
+    }
     final step = await _clerk.signInWithTicket(ticket);
     final user = step.user;
     if (user != null) await _adopt(user, phone: phone);
@@ -113,6 +118,11 @@ class SessionController extends Notifier<SessionState> {
   }
 
   Future<ClerkStep> signInWithEmailCode(EmailChallenge challenge, String code) async {
+    if (state.isSignedIn) {
+      return ClerkStep.error(
+        'Finish the current account session before using another account.',
+      );
+    }
     final clerk = _clerk;
     if (clerk is! ClerkEmailApi) return ClerkStep.error('Email sign-in is unavailable. Please use WhatsApp.');
     final step = await clerk.verifyEmailCode(challenge, code);

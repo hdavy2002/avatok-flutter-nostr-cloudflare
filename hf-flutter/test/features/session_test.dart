@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:hf_app/core/api/api_error.dart';
+import 'package:hf_app/core/auth/clerk_client.dart';
 import 'package:hf_app/core/auth/session.dart';
 import 'package:hf_app/core/storage/account_storage.dart';
 import 'package:hf_app/core/storage/secure_store.dart';
@@ -96,5 +97,23 @@ void main() {
     await c.read(sessionProvider.notifier).signInWithTicket('t');
     await c.read(sessionProvider.notifier).signOut();
     expect(c.read(sessionProvider).isSignedIn, isFalse);
+  });
+
+  test('a second ticket cannot replace a signed-in account', () async {
+    final api = FakeApiClient()
+      ..onJson('GET', '/api/hf/me', {'uid': 'user_test'});
+    final clerk = FakeClerk();
+    final c = containerWith(clerk, api);
+    await c.read(sessionProvider.notifier).signInWithTicket('first');
+    clerk.signInAs = const ClerkUser(id: 'other_user');
+
+    final blocked = await c
+        .read(sessionProvider.notifier)
+        .signInWithTicket('second');
+
+    expect(blocked.isComplete, isFalse);
+    expect(clerk.tickets, ['first']);
+    expect(c.read(sessionProvider).user?.id, 'user_test');
+    expect(AccountScope.id, 'user_test');
   });
 }

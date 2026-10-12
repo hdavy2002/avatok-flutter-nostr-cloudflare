@@ -57,6 +57,18 @@ export const STYLES = ["warm", "playful", "calm", "thoughtful", "energetic", "st
 export const PRICE_MIN = 5;
 export const PRICE_MAX = 100;
 
+/** Marketplace navigation is served by the backend so the app never invents
+ * communities or relabels arbitrary topics as product sections. */
+export const MARKETPLACE_COMMUNITIES = [
+  { id: "influencer", label: "Influencers", category: "influencer" },
+  { id: "celebrity", label: "Celebrities", category: "celebrity" },
+] as const;
+export const MARKETPLACE_SERVICES = [
+  { id: "wellness", label: "Mental wellness", topics: ["mann-bhaari-hai", "sehat-ki-chinta", "aaj-akela-lag-raha-hai"] },
+  { id: "career", label: "Career guidance", topics: ["naukri-ki-chinta", "interview-se-darr", "naya-sheher-nayi-job"] },
+  { id: "learning", label: "Learning & skills", topics: ["exam-ki-tension", "english-mein-casual-chat", "kisi-topic-pe-baat"] },
+] as const;
+
 const APP_NAMES = "whats\\s*app|watsapp|wa\\.me|telegram|insta(?:gram)?|snap\\s*chat|signal|facebook|messenger|youtube|skype|imo|viber|wechat|hike|truecaller|paytm|gpay|google\\s*pay|phone\\s*pe|phonepe|upi|tinder|hangout";
 const LEAK_RES: RegExp[] = [
   /@/,
@@ -97,6 +109,8 @@ export function buildHfOptions() {
     moodGroups: MOOD_GROUPS.map((g) => ({ slug: g.slug, label: g.label })),
     languages: LANGUAGES.map((label) => ({ code: LANGUAGE_TO_CODE[label], label })),
     styles: STYLES.map((slug) => ({ slug, label: slug.charAt(0).toUpperCase() + slug.slice(1) })),
+    communities: MARKETPLACE_COMMUNITIES.map((item) => ({ ...item })),
+    services: MARKETPLACE_SERVICES.map((item) => ({ ...item, topics: [...item.topics] })),
     priceMin: PRICE_MIN,
     priceMax: PRICE_MAX,
   };

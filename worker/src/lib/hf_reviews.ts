@@ -32,10 +32,10 @@ export async function hfCallsOn(env: Env): Promise<boolean> {
   try { return ((await readConfig(env)) as unknown as Record<string, unknown>).hfCallsEnabled === true; } catch { return false; }
 }
 
-export type HfCallLike = { id: string; caller_uid: string; host_uid: string; billed_minutes?: number | null };
+export type HfCallLike = { id: string; caller_uid: string; host_uid: string; billed_minutes?: number | null; billable_seconds?: number | null };
 
-type CallRow = { id: string; caller_uid: string; host_uid: string; status: string; billed_minutes: number | null; ended_at: number | null; created_at: number | null };
-const CALL_SQL = "SELECT id, caller_uid, host_uid, status, billed_minutes, ended_at, created_at FROM hf_calls WHERE id=?1";
+type CallRow = { id: string; caller_uid: string; host_uid: string; status: string; billed_minutes: number | null; billable_seconds: number | null; ended_at: number | null; created_at: number | null };
+const CALL_SQL = "SELECT id, caller_uid, host_uid, status, billed_minutes, billable_seconds, ended_at, created_at FROM hf_calls WHERE id=?1";
 const COMPLETED_PAID = "status='completed' AND billed_minutes >= 1";
 
 function newToken(): string {
@@ -109,7 +109,9 @@ async function tokenRoute(req: Request, env: Env, token: string): Promise<Respon
     const h = await env.DB_META.prepare("SELECT display_name, slug FROM hf_hosts WHERE uid=?1").bind(call.host_uid).first<{ display_name: string | null; slug: string | null }>().catch(() => null);
     return json({
       hostName: h?.display_name ?? "your host", hostSlug: h?.slug ?? null, callDate: callDateIst(toMs(call.ended_at) || toMs(call.created_at)),
-      minutes: Math.max(0, Number(call.billed_minutes) | 0), alreadyReviewed: !!done,
+      minutes: Math.max(0, Number(call.billed_minutes) | 0),
+      billableSeconds: call.billable_seconds == null ? null : Math.max(0, Number(call.billable_seconds) | 0),
+      alreadyReviewed: !!done,
     });
   }
   if (done) return err(409, "already_reviewed", "You already reviewed this call.");

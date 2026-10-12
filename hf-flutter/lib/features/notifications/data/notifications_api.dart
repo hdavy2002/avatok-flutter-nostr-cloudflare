@@ -71,7 +71,12 @@ final notificationsApiProvider = Provider<NotificationsApi>(
 );
 
 final unreadNotificationsProvider = FutureProvider.autoDispose<int>((ref) {
-  if (!ref.watch(sessionProvider.select((value) => value.isSignedIn))) {
+  final uid = ref.watch(
+    sessionProvider.select(
+      (value) => value.isSignedIn ? value.user?.id ?? value.me?.uid : null,
+    ),
+  );
+  if (uid == null || uid.isEmpty) {
     return 0;
   }
   return ref.watch(notificationsApiProvider).unread();

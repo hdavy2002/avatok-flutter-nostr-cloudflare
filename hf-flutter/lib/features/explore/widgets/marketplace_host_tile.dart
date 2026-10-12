@@ -50,7 +50,7 @@ class MarketplaceHostTile extends ConsumerWidget {
                       url: host.avatarUrl,
                       size: 154,
                       radius: HfRadius.cardInner,
-                      aiLabel: kAiPictureLabel,
+                      aiLabel: host.isAiAvatar ? kAiPictureLabel : null,
                     ),
                     Positioned(
                       top: HfSpacing.sm,

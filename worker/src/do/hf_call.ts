@@ -45,6 +45,7 @@ interface Bill {
   tokSettled?: boolean;
   funds?: number; plan?: Plan; consumed?: number; released?: boolean; earned?: boolean; saved?: boolean; post?: boolean; attempts: number;
   testSettled?: boolean; testEarned?: boolean;
+  hostReleased?: boolean;
 }
 interface FinishRequest {
   status: string;
@@ -54,6 +55,8 @@ interface FinishRequest {
   skipCallerLeg: boolean;
   tellHost: boolean;
   attempts: number;
+  hostDone: boolean;
+  callerDone: boolean;
 }
 interface S {
   callId: string; callerUid: string; hostUid: string;
@@ -259,7 +262,8 @@ export class HfCallDO {
       else await this.save(s);
     } else if (action === "exit" || action.includes("exit")) {
       s.inRoom[role] = false;
-      if (s.connectedAt) await this.finish(s, "completed", role === "host" ? "host_hangup" : "caller_hangup");
+      if (s.connectedAt) await this.finish(s, "completed", role === "host" ? "host_hangup" : "caller_hangup",
+        role === "host" ? { skipHostLeg: true } : { skipCallerLeg: true });
       else await this.save(s);
     }
     return xmlRes(emptyXml());
@@ -285,7 +289,18 @@ export class HfCallDO {
       if (typeof st.waitUntil === "function") st.waitUntil(rec);
     }
     if (s.finalized) return xmlRes(emptyXml());
-    if (s.connectedAt) { await this.finish(s, "completed", role === "host" ? "host_hangup" : "caller_hangup"); return xmlRes(emptyXml()); }
+    if (s.finishing) {
+      if (role === "host") s.finishing.hostDone = true;
+      else s.finishing.callerDone = true;
+      await this.save(s);
+      await this.disconnectAndFinalize(s);
+      return xmlRes(emptyXml());
+    }
+    if (s.connectedAt) {
+      await this.finish(s, "completed", role === "host" ? "host_hangup" : "caller_hangup",
+        role === "host" ? { skipHostLeg: true } : { skipCallerLeg: true });
+      return xmlRes(emptyXml());
+    }
     if (role === "host") {
       // Before accepting: unanswered / no digit pressed within 10 s. After accepting but before connecting: the host walked away.
       if (!s.hostAccepted) await this.finish(s, "no_answer", null, { skipHostLeg: true });
@@ -307,7 +322,14 @@ export class HfCallDO {
 
   private async watchdog(s: S): Promise<Response> {
     const now = Date.now();
-    if (s.finalized) { if (!s.bill.post) await this.settleAndPost(s); return jsonRes({ ok: true, finalized: true }); }
+    if (s.finalized) {
+      if (!s.bill.post) {
+        s.tasks.retry = now + 30_000;
+        await this.save(s);
+        await this.settleAndPost(s);
+      }
+      return jsonRes({ ok: true, finalized: true });
+    }
     if (!s.connectedAt && now - s.createdAt > 3 * 60_000) await this.finish(s, s.status === "ringing_caller" ? "caller_no_answer" : "no_answer", null, { tellHost: s.status === "ringing_caller" });
     else if (s.connectedAt && now > s.connectedAt + (this.maxSec(s) + 120) * 1000) await this.finish(s, "completed", s.limitReason);
     return jsonRes({ ok: true });
@@ -321,7 +343,11 @@ export class HfCallDO {
     const due = (k: keyof S["tasks"]) => typeof s.tasks[k] === "number" && (s.tasks[k] as number) <= now + 250;
     try {
       if (s.finalized) {
-        if (due("retry")) { delete s.tasks.retry; await this.save(s); await this.settleAndPost(s); }
+        if (due("retry")) {
+          s.tasks.retry = now + 30_000;
+          await this.save(s);
+          await this.settleAndPost(s);
+        }
         return;
       }
       if (due("disconnect")) { delete s.tasks.disconnect; await this.save(s); await this.disconnectAndFinalize(s); return; }
@@ -364,6 +390,8 @@ export class HfCallDO {
         skipCallerLeg: o.skipCallerLeg === true,
         tellHost: o.tellHost === true,
         attempts: 0,
+        hostDone: o.skipHostLeg === true || !s.hostLeg,
+        callerDone: o.skipCallerLeg === true || !s.callerLeg,
       };
       s.status = "ending";
       s.tasks = {};
@@ -376,20 +404,51 @@ export class HfCallDO {
   private async disconnectAndFinalize(s: S): Promise<boolean> {
     const request = s.finishing;
     if (!request) return s.finalized;
+    // Durable backstop before provider I/O. If this invocation is terminated,
+    // the alarm resumes only the legs that have not been acknowledged.
+    s.tasks.disconnect = Date.now() + 30_000;
+    await this.save(s);
     const provider = getTelephonyProvider(this.env);
-    const legs: Promise<unknown>[] = [];
-    if (request.tellHost && s.hostLeg) {
-      legs.push(provider.transferCall({ callUuid: s.hostLeg, legs: "aleg", alegUrl: this.urls(s).hostNoPickup }).catch(() => provider.hangupCall(s.hostLeg as string)));
-    } else if (s.hostLeg && !request.skipHostLeg) legs.push(provider.hangupCall(s.hostLeg));
-    if (s.callerLeg && !request.skipCallerLeg) legs.push(provider.hangupCall(s.callerLeg));
+    const disconnect = async (role: Role, callUuid: string): Promise<void> => {
+      try {
+        if (role === "host" && request.tellHost) {
+          await provider.transferCall({ callUuid, legs: "aleg", alegUrl: this.urls(s).hostNoPickup })
+            .catch(() => provider.hangupCall(callUuid));
+        } else await provider.hangupCall(callUuid);
+        if (role === "host") request.hostDone = true;
+        else request.callerDone = true;
+      } catch (error) {
+        // A provider can reject DELETE after the leg has already ended. Resolve
+        // that ambiguity before retrying so a successful leg is never targeted
+        // again and one late webhook cannot strand the host reservation.
+        try {
+          const state = await provider.getCallState(callUuid);
+          const status = state.status.trim().toLowerCase();
+          const terminal = !!state.endedAt || !!state.hangupCause
+            || ["completed", "ended", "failed", "cancelled", "canceled", "busy", "no-answer", "no_answer"].includes(status);
+          if (terminal) {
+            if (role === "host") request.hostDone = true;
+            else request.callerDone = true;
+            return;
+          }
+        } catch { /* unresolved: retain the leg for the alarm retry */ }
+        throw error;
+      }
+    };
+    const legs: Promise<void>[] = [];
+    if (s.hostLeg && !request.hostDone) legs.push(disconnect("host", s.hostLeg));
+    if (s.callerLeg && !request.callerDone) legs.push(disconnect("caller", s.callerLeg));
     const results = await Promise.allSettled(legs);
+    // Persist successful per-leg acknowledgements even when the other leg
+    // failed, otherwise the next alarm would repeat an already-complete DELETE.
+    await this.save(s);
     const failure = results.find((result) => result.status === "rejected");
-    if (failure) {
+    if (failure || !request.hostDone || !request.callerDone) {
       request.attempts += 1;
       s.status = "ending";
       s.tasks.disconnect = Date.now() + Math.min(MAX_RETRY_DELAY_MS, 5_000 * request.attempts);
       await this.save(s);
-      await trackException(this.env, (failure as PromiseRejectedResult).reason, {
+      await trackException(this.env, failure && (failure as PromiseRejectedResult).reason || new Error("provider disconnect unresolved"), {
         route: "hf_call.disconnect", handled: true, app_name: HF_CALL_APP,
         extra: { area: "hf_calls", attempt: request.attempts, call: s.callId },
       });
@@ -399,14 +458,15 @@ export class HfCallDO {
     delete s.finishing;
     s.finalized = true;
     s.status = "finalizing";
-    s.tasks = {};
+    delete s.tasks.disconnect;
+    // Keep a recovery path throughout D1 finalization, host release and
+    // settlement. settleAndPost clears this only after bill.post is durable.
+    s.tasks.retry = Date.now() + 20_000;
     await this.save(s);
 
     await this.db().prepare("UPDATE hf_calls SET status=?1, ended_at=?2, end_reason=?3, host_leg_uuid=?4, caller_leg_uuid=?5 WHERE id=?6")
       .bind("finalizing", s.endedAt, request.endReason, s.hostLeg, s.callerLeg, s.callId).run()
       .catch((e) => trackException(this.env, e, { route: "hf_call.finish", handled: true, app_name: HF_CALL_APP, extra: { area: "hf_calls", step: "row" } }));
-    await releaseHost(this.env, s.hostUid).catch(() => undefined);
-
     if (request.hashBy) await this.recordBlock(s, request.hashBy);
     await this.settleAndPost(s);
     return true;
@@ -428,6 +488,19 @@ export class HfCallDO {
 
   // ── billing (idempotent steps, persisted; failures retry from the alarm) ──────────────────────────────────────
   private async settleAndPost(s: S): Promise<void> {
+    if (!s.bill.hostReleased) {
+      try {
+        await releaseHost(this.env, s.hostUid);
+        s.bill.hostReleased = true;
+        await this.save(s);
+      } catch (e) {
+        s.bill.attempts += 1;
+        s.tasks.retry = Date.now() + Math.min(MAX_RETRY_DELAY_MS, 20_000 * s.bill.attempts);
+        await this.save(s);
+        await trackException(this.env, e, { route: "hf_call.settle", handled: true, app_name: HF_CALL_APP, extra: { area: "hf_calls", step: "release_host", attempt: s.bill.attempts, call: s.callId } });
+        return;
+      }
+    }
     const ok = await this.settle(s);
     if (!ok || s.bill.post) return;
     const finalStatus = s.finalStatus ?? "completed";

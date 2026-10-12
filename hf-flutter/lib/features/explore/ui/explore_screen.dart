@@ -137,7 +137,9 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
   }
 
   Future<void> _openFilters(HostFilters current) async {
-    final standardPlan = (await ref.read(flagsProvider.future)).hfStdPlanEnabled;
+    final standardPlan =
+        (await ref.read(flagsProvider.future)).hfStdPlanEnabled &&
+        current.category == HostCategoryFilter.standard;
     if (!mounted) return;
     final result = await showFilterSheet(
       context,
@@ -404,22 +406,25 @@ class _CommunityServicesCard extends StatelessWidget {
   void _topic(BuildContext context, HostTopic topic) =>
       GoRouter.of(context).go(base.copyWith(topics: [topic.slug]).toLocation());
 
-  void _allTopics(BuildContext context) {
-    final topics = options?.topics ?? const <HostTopic>[];
+  void _service(BuildContext context, MarketplaceService service) =>
+      GoRouter.of(context).go(base.copyWith(topics: service.topics).toLocation());
+
+  void _allServices(BuildContext context) {
+    final services = options?.services ?? const <MarketplaceService>[];
     showModalBottomSheet<void>(
       context: context,
       showDragHandle: true,
       builder: (sheetContext) => SafeArea(
         child: ListView.builder(
-          itemCount: topics.length + 1,
+          itemCount: services.length + 1,
           itemBuilder: (_, i) => i == 0
               ? const Padding(padding: EdgeInsets.all(HfSpacing.page), child: Text('Services for you', style: HfText.section))
               : ListTile(
-                  title: Text(topics[i - 1].label),
+                  title: Text(services[i - 1].label),
                   trailing: const Icon(Icons.chevron_right_rounded),
                   onTap: () {
                     Navigator.of(sheetContext).pop();
-                    _topic(context, topics[i - 1]);
+                    _service(context, services[i - 1]);
                   },
                 ),
         ),
@@ -429,7 +434,8 @@ class _CommunityServicesCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final topics = options?.topics ?? const <HostTopic>[];
+    final communities = options?.communities ?? const <MarketplaceCommunity>[];
+    final services = options?.services ?? const <MarketplaceService>[];
     return Padding(
       padding: const EdgeInsets.fromLTRB(
         HfSpacing.pageWide,
@@ -442,36 +448,36 @@ class _CommunityServicesCard extends StatelessWidget {
         children: [
           _SectionTitle(
             title: 'Communities',
-            onSeeAll: () => GoRouter.of(context).go(base.copyWith(category: HostCategoryFilter.creators).toLocation()),
+            onSeeAll: communities.isEmpty ? null : () => GoRouter.of(context).go(base.copyWith(category: HostCategoryFilter.creators).toLocation()),
           ),
           const SizedBox(height: HfSpacing.lg),
           LayoutBuilder(builder: (context, c) {
             final columns = c.maxWidth >= 280 && MediaQuery.textScalerOf(context).scale(16) <= 24 ? 2 : 1;
             return Wrap(spacing: HfSpacing.lg, runSpacing: HfSpacing.lg, children: [
-              for (final entry in (const {'influencer': 'Influencers', 'celebrity': 'Celebrities'}).entries)
+              for (final community in communities)
                 SizedBox(
                   width: (c.maxWidth - (columns - 1) * HfSpacing.lg) / columns,
                   child: _DiscoveryActionCard(
-                    key: ValueKey('community-${entry.key}'),
-                    title: entry.value,
+                    key: ValueKey('community-${community.id}'),
+                    title: community.label,
                     illustrated: true,
-                    onTap: () => GoRouter.of(context).go(base.copyWith(category: entry.key).toLocation()),
+                    onTap: () => GoRouter.of(context).go(base.copyWith(category: community.category).toLocation()),
                   ),
                 ),
             ]);
           }),
           const SizedBox(height: HfSpacing.xxl),
-          _SectionTitle(title: 'Services for you', onSeeAll: topics.isEmpty ? null : () => _allTopics(context)),
+          _SectionTitle(title: 'Services for you', onSeeAll: services.isEmpty ? null : () => _allServices(context)),
           const SizedBox(height: HfSpacing.lg),
-          if (topics.isEmpty)
-            const Text('Conversation topics are not available yet.')
+          if (services.isEmpty)
+            const Text('Services are not available yet.')
           else LayoutBuilder(builder: (context, c) {
             final columns = MediaQuery.textScalerOf(context).scale(16) > 24 ? 1 : c.maxWidth >= 720 ? 3 : c.maxWidth >= 280 ? 2 : 1;
             return Wrap(spacing: HfSpacing.lg, runSpacing: HfSpacing.lg, children: [
-              for (final topic in topics.take(6))
+              for (final service in services)
                 SizedBox(
                   width: (c.maxWidth - (columns - 1) * HfSpacing.lg) / columns,
-                  child: _DiscoveryActionCard(key: ValueKey('service-${topic.slug}'), title: topic.label, onTap: () => _topic(context, topic)),
+                  child: _DiscoveryActionCard(key: ValueKey('service-${service.id}'), title: service.label, onTap: () => _service(context, service)),
                 ),
             ]);
           }),

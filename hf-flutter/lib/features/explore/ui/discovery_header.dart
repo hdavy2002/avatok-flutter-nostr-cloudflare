@@ -59,7 +59,9 @@ class DiscoveryHeader extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final dark = HfBrightness.isDark(context);
-    final standardPlan = hfStdPlanOn(ref.watch(flagsProvider));
+    final standardPlan =
+        hfStdPlanOn(ref.watch(flagsProvider)) &&
+        filters.category == HostCategoryFilter.standard;
     final laneIndex = filters.lane == HostLane.women
         ? 1
         : filters.lane == HostLane.lgbtq
@@ -101,7 +103,12 @@ class DiscoveryHeader extends ConsumerWidget {
                   children: [
                     texts,
                     const SizedBox(height: HfSpacing.sm),
-                    const _WalletPill(),
+                    const Wrap(
+                      spacing: HfSpacing.sm,
+                      runSpacing: HfSpacing.sm,
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      children: [_NotificationBell(), _WalletPill()],
+                    ),
                   ],
                 );
               }

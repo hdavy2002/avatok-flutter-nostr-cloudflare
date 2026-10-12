@@ -10321,6 +10321,49 @@
       }
     ]
   },
+  "HF-REFERENCE-SCREENS-1": {
+    "description": "[HF-REFERENCE-SCREENS-1 2026-10-12] Exact-reference native registration, KYC, discovery, wallet, masked-call and review surfaces with honest backend values. Adds verified same-account email registration, six-digit selfie video KYC, 20-second voice introductions, backend-owned influencer/celebrity communities and service navigation, private creator sample drafts, creator pricing (fan rate; creator 60% minus Rs 2 per connected minute; platform 40% with its GST absorbed), real notification inbox, exact short-call reviews, and fixed Google Play Rs 360/Rs 500 catalogue rows. Standard calls remain Rs 3.99/3.50/3.25. Apply worker/migrations/2026-10-12-hf-registration.sql, 2026-10-12-hf-registration-progress.sql, 2026-10-12-hf-creator-price-alters.sql and 2026-10-12-hf-wallet-reference-packs.sql before the Worker. Play Console products hf_rupees_360 and hf_rupees_500 must exist and be active before their rows are exposed. No sample listing can publish or call until linked to a real account that passes the publication blockers.",
+    "two_sided": true,
+    "min_devices_on_build": 2,
+    "flags": [
+      "hfCallsEnabled",
+      "hfStdPlanEnabled",
+      "hfTokensEnabled"
+    ],
+    "success": [
+      {
+        "event": "hf_registration_completed",
+        "property": "username_length",
+        "gt": 0,
+        "note": "A real account completed authoritative WhatsApp/email verification, profile, username and all five current policy receipts."
+      },
+      {
+        "event": "hf_creator_listing_published",
+        "property": "price_per_min",
+        "gt": 0,
+        "note": "An administrator published a real-account influencer or celebrity only after full identity/video KYC and all publication blockers passed."
+      },
+      {
+        "event": "hf_call_ended",
+        "property": "billed_minutes",
+        "gt": 0,
+        "note": "A consenting real two-phone call disconnected and finalized; audit hf_call_settled for exact billable_seconds and the frozen tariff."
+      },
+      {
+        "event": "hf_review_submitted",
+        "property": "stars",
+        "gt": 0,
+        "note": "A positive-duration completed call created one pending moderated review; the client showed success only after acknowledgement."
+      },
+      {
+        "event": "hf_token_purchase_verified",
+        "where": { "duplicate": false, "paid_paise": 36000 },
+        "property": "wallet_paise",
+        "gt": 0,
+        "note": "The Play-authoritative Rs 360 product credited once. Repeat for paid_paise 50000 before declaring both new packs ready."
+      }
+    ]
+  },
   "HF-PRESENCE-NUDGE-1": {
     "description": "[HF-PRESENCE-NUDGE-1 2026-10-11] 3-hourly WhatsApp (plus push when she has the app) reminder to a LIVE host who is showing offline, only 08:00-23:00 IST, pausable (PUT /api/hosts/me/presence/nudges; GET presence gains nudgesPaused). Worker: lib/hf_presence_nudge.ts run from the 5-minute cron in index.ts; D1 hf_hosts.nudge_last_at / nudge_paused (migration 2026-10-11-hf-presence-nudge.sql, ALTER only, apply BEFORE the worker deploy); push kind presence_nudge (path /host). Rulebook HF-HOST-NUDGE-1. Dark behind hfPresenceNudgeEnabled. Replying STOP is not wired yet.",
     "two_sided": false,

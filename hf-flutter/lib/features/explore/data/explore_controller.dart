@@ -158,7 +158,9 @@ class ExploreController extends Notifier<ExploreState> {
 
   Future<HostFilters> _forPlan(HostFilters filters) async {
     final flags = await ref.read(flagsProvider.future);
-    if (!flags.hfStdPlanEnabled) return filters;
+    if (!flags.hfStdPlanEnabled || filters.category != HostCategoryFilter.standard) {
+      return filters;
+    }
     return filters.copyWith(
       minPrice: null,
       maxPrice: null,

@@ -1,11 +1,18 @@
 // @ts-nocheck -- SQLite + Durable Object storage adapter for endpoint/settlement regression coverage.
 import { beforeEach, afterEach, describe, expect, it, vi } from "vitest";
 const auth = vi.hoisted(() => ({ uid: "caller" }));
-const phone = vi.hoisted(() => ({ fail: false, hangups: 0 }));
+const phone = vi.hoisted(() => ({ fail: false, failLegs: new Set<string>(), ended: new Set<string>(), hangups: [] as string[] }));
 vi.mock("../authz", () => ({ requireUser: async () => auth.uid ? { uid: auth.uid } : { error: "unauthorized", status: 401 }, isFail: (x: any) => !!x.error }));
 vi.mock("./config", () => ({ readConfig: async () => ({ hfCallsEnabled: true, hfTokensEnabled: true }) }));
 vi.mock("../hooks", () => ({ track: async () => {}, trackException: async () => {} }));
-vi.mock("../lib/telephony_provider", () => ({ getTelephonyProvider: () => ({ hangupCall: async () => { phone.hangups++; if (phone.fail) throw new Error("provider unavailable"); } }) }));
+vi.mock("../lib/telephony_provider", () => ({ getTelephonyProvider: () => ({
+  hangupCall: async (leg: string) => {
+    phone.hangups.push(leg);
+    if (phone.fail || phone.failLegs.has(leg)) throw new Error("provider unavailable");
+    phone.ended.add(leg);
+  },
+  getCallState: async (leg: string) => ({ callUuid: leg, status: phone.ended.has(leg) ? "completed" : "in-progress", endedAt: phone.ended.has(leg) ? new Date().toISOString() : null }),
+}) }));
 vi.mock("../lib/hf_reviews", () => ({ onCallCompleted: async () => {} }));
 import { makeDb } from "../lib/hf_token_d1_shim";
 import { HfCallDO } from "../do/hf_call";
@@ -24,7 +31,7 @@ const endpoint = (suffix = "", method = "POST") => {
 };
 beforeEach(async () => {
   vi.spyOn(Date, "now").mockReturnValue(Date.UTC(2026, 9, 12));
-  auth.uid = "caller"; requests = 0; phone.fail = false; phone.hangups = 0;
+  auth.uid = "caller"; requests = 0; phone.fail = false; phone.failLegs.clear(); phone.ended.clear(); phone.hangups = [];
   env = { DB_META: makeDb(["2026-10-10-hf-tokens.sql", "2026-10-09-hf-calls.sql", "2026-10-09-hf-payouts.sql", "2026-10-10-hf-calls-token-snapshot.sql", "2026-10-09-hf-hosts.sql", "2026-10-09-hf-presence.sql", "2026-10-09-hf-reviews.sql"], { alters: true }) };
   await creditLot(env, "caller", { kind: "purchase", pricingVersion: "gp-r2", valuePaisePerToken: 100, micro: paiseToMicro(10000), paidPaise: 10000, provider: "google_play", providerRef: "end-fixture" }, "end-fixture");
   const creator = creatorSnapshotFor("influencer", 20);
@@ -72,7 +79,20 @@ describe("caller End call", () => {
 
     phone.fail = false;
     expect((await endpoint("/end")).status).toBe(200);
-    expect(phone.hangups).toBe(4);
+    expect(phone.hangups).toHaveLength(4);
+    expect(await (await endpoint("", "GET")).json()).toMatchObject({ status: "completed", billableSeconds: 11 });
+  });
+  it("persists each disconnected leg and does not retry the successful leg", async () => {
+    stored.get("s").hostLeg = "host-leg";
+    stored.get("s").callerLeg = "caller-leg";
+    phone.failLegs.add("caller-leg");
+    expect((await endpoint("/end")).status).toBe(503);
+    expect(phone.hangups).toEqual(["host-leg", "caller-leg"]);
+    expect(stored.get("s").finishing).toMatchObject({ hostDone: true, callerDone: false });
+
+    phone.failLegs.clear();
+    expect((await endpoint("/end")).status).toBe(200);
+    expect(phone.hangups).toEqual(["host-leg", "caller-leg", "caller-leg"]);
     expect(await (await endpoint("", "GET")).json()).toMatchObject({ status: "completed", billableSeconds: 11 });
   });
 });

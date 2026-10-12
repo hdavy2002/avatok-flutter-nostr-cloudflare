@@ -14,6 +14,7 @@ class HostCard {
     required this.displayName,
     this.tagline,
     this.avatarUrl,
+    this.imageProvenance,
     this.languages = const <String>[],
     this.style,
     this.topics = const <String>[],
@@ -39,6 +40,7 @@ class HostCard {
   final String displayName;
   final String? tagline;
   final String? avatarUrl;
+  final String? imageProvenance;
   final List<String> languages;
   final String? style;
   final List<String> topics;
@@ -66,6 +68,7 @@ class HostCard {
   final String? gender;
 
   bool get isOnline => status == HostPresence.online;
+  bool get isAiAvatar => imageProvenance == 'ai';
   bool get hasIntro => introAudioUrl != null && introAudioUrl!.isNotEmpty;
 
   /// Marketplace previews are deliberately capped at twenty seconds. A shorter
@@ -100,6 +103,7 @@ class HostCard {
       displayName: _str(j['displayName']) ?? '',
       tagline: _str(j['tagline']),
       avatarUrl: _str(j['avatarUrl']),
+      imageProvenance: _str(j['imageProvenance']),
       languages: _strList(j['languages']),
       style: _str(j['style']),
       topics: _strList(j['topics']),
@@ -128,6 +132,7 @@ class HostCard {
     'displayName': displayName,
     'tagline': tagline,
     'avatarUrl': avatarUrl,
+    'imageProvenance': imageProvenance,
     'languages': languages,
     'style': style,
     'topics': topics,

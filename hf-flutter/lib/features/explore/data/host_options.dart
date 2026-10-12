@@ -33,11 +33,27 @@ class HostLanguage {
   final String label;
 }
 
+class MarketplaceCommunity {
+  const MarketplaceCommunity({required this.id, required this.label, required this.category});
+  final String id;
+  final String label;
+  final String category;
+}
+
+class MarketplaceService {
+  const MarketplaceService({required this.id, required this.label, required this.topics});
+  final String id;
+  final String label;
+  final List<String> topics;
+}
+
 class HostOptions {
   const HostOptions({
     required this.topics,
     required this.moodGroups,
     required this.languages,
+    this.communities = const <MarketplaceCommunity>[],
+    this.services = const <MarketplaceService>[],
     required this.priceMin,
     required this.priceMax,
   });
@@ -45,6 +61,8 @@ class HostOptions {
   final List<HostTopic> topics;
   final List<MoodGroup> moodGroups;
   final List<HostLanguage> languages;
+  final List<MarketplaceCommunity> communities;
+  final List<MarketplaceService> services;
   final int priceMin;
   final int priceMax;
 
@@ -106,6 +124,26 @@ class HostOptions {
         for (final m in maps(j['languages']))
           if (s(m['code']).isNotEmpty)
             HostLanguage(code: s(m['code']), label: s(m['label'])),
+      ],
+      communities: [
+        for (final m in maps(j['communities']))
+          if (s(m['id']).isNotEmpty && s(m['category']).isNotEmpty)
+            MarketplaceCommunity(
+              id: s(m['id']),
+              label: s(m['label']),
+              category: s(m['category']),
+            ),
+      ],
+      services: [
+        for (final m in maps(j['services']))
+          if (s(m['id']).isNotEmpty)
+            MarketplaceService(
+              id: s(m['id']),
+              label: s(m['label']),
+              topics: m['topics'] is List
+                  ? [for (final topic in m['topics'] as List) s(topic) if (s(topic).isNotEmpty)]
+                  : const <String>[],
+            ),
       ],
       priceMin: min,
       priceMax: max > min ? max : min + 1,

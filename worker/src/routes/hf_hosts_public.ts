@@ -16,11 +16,12 @@ const CACHE = { "cache-control": "public, max-age=60" };
 const err = (status: number, error: string) => json({ error }, status);
 const parse = <T>(s: string | null | undefined, fb: T): T => { try { return s ? (JSON.parse(s) as T) : fb; } catch { return fb; } };
 
-export type LiveRow = HostRow & { presence?: string | null; image_key: string | null; audio_key: string | null; audio_caption: string | null };
+export type LiveRow = HostRow & { presence?: string | null; image_key: string | null; image_source: "uploaded" | "ai" | null; audio_key: string | null; audio_caption: string | null };
 import { readHfStdPlan, type HfStdPlan } from "../lib/hf_token_config"; // [HF-STD-PLAN-1]
 import { formatRupees } from "../lib/hf_token_math";
 import { isCreatorCategory, CREATOR_VERSION } from "../lib/hf_creator_pricing";
 export const SEL = `SELECT h.*, COALESCE((SELECT r2_key FROM hf_host_media m WHERE m.uid=h.uid AND m.kind='profile' AND m.status='active' ORDER BY m.created_at DESC LIMIT 1), a.image_key) AS image_key,
+  CASE WHEN EXISTS (SELECT 1 FROM hf_host_media m WHERE m.uid=h.uid AND m.kind='profile' AND m.status='active') THEN 'uploaded' WHEN a.image_key IS NOT NULL THEN 'ai' ELSE NULL END AS image_source,
   (SELECT r2_key FROM hf_host_media m WHERE m.uid=h.uid AND m.kind='intro_audio' AND m.status='active' ORDER BY m.created_at DESC LIMIT 1) AS audio_key,
   (SELECT caption FROM hf_host_media m WHERE m.uid=h.uid AND m.kind='intro_audio' AND m.status='active' ORDER BY m.created_at DESC LIMIT 1) AS audio_caption
   FROM hf_hosts h LEFT JOIN hf_avatars a ON a.id = h.avatar_id`;
@@ -51,6 +52,7 @@ export function priceFields(r: { price_per_min: number; category?: string }, std
 export function card(env: Env, r: LiveRow, agg?: HostAggregate, std?: HfStdPlan | null) {
   return {
     slug: r.slug, displayName: r.display_name, tagline: r.tagline, avatarUrl: r.image_key ? mediaUrl(env, r.image_key) : null,
+    imageProvenance: r.image_source,
     category: r.category ?? "standard", listingRevision: r.listing_revision ?? 1,
     languages: parse<string[]>(r.languages_json, []), style: r.style, topics: parse<string[]>(r.topics_json, []), ...priceFields(r, std),
     ...aggregateFields(agg), lgbtqFriendly: r.lgbtq_lane === 1 && r.lgbtq_public === 1, womenOnly: r.women_lane === 1,

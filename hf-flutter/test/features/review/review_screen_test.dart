@@ -35,13 +35,14 @@ FakeApiClient _callApi({bool canReview = true, bool topics = true}) {
   return api;
 }
 
-FakeApiClient _tokenApi({bool already = false}) {
+FakeApiClient _tokenApi({bool already = false, int? billableSeconds}) {
   final api = FakeApiClient()
     ..onJson('GET', _tokenPath, {
       'hostName': 'Asha Verma',
       'hostSlug': 'asha',
       'callDate': '9 Oct',
       'minutes': 5,
+      if (billableSeconds != null) 'billableSeconds': billableSeconds,
       'alreadyReviewed': already,
     })
     ..onJson('GET', '/api/hosts/public/asha', {'topics': <String>[]})
@@ -355,6 +356,21 @@ void main() {
       expect(find.text('PROFILE asha'), findsOneWidget);
       await closeApp(tester);
     });
+  });
+
+  testWidgets('token review link shows the exact short-call duration', (
+    tester,
+  ) async {
+    prepareStorage();
+    await pumpCallApp(
+      tester,
+      api: _tokenApi(billableSeconds: 11),
+      location: '/review/$_token',
+      session: signedOutState(),
+    );
+    expect(find.text('9 Oct · 11 s'), findsOneWidget);
+    expect(find.text('9 Oct · 5 min'), findsNothing);
+    await closeApp(tester);
   });
 
   group('WhatsApp link path (no sign-in)', () {

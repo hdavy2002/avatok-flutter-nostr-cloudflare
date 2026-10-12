@@ -118,8 +118,12 @@ export async function hfCreatorListingsAdminRoute(req: Request, env: Env, ctx?: 
     if (!action && req.method === "PUT") {
       if (!EDITABLE.has(h.status)) return fail(409, "listing_locked");
       const input = await body(req); if (!input) return fail(400, "invalid_json");
+      const expectedRevision = input.expectedRevision;
+      if (!Number.isInteger(expectedRevision) || expectedRevision !== (h.listing_revision ?? 1)) {
+        return fail(409, "listing_changed", { currentRevision: h.listing_revision ?? 1 });
+      }
       const patch: HostPatch = {};
-      const allowed = new Set(["category", "pricePerMin", "displayName", "tagline", "about", "languages", "topics", "privatePhone", "avatarId"]);
+      const allowed = new Set(["expectedRevision", "category", "pricePerMin", "displayName", "tagline", "about", "languages", "topics", "privatePhone", "avatarId"]);
       for (const key of Object.keys(input)) if (!allowed.has(key)) return fail(400, "invalid_field", { field: key });
       if ("category" in input) {
         if (!isHostCategory(input.category)) return fail(400, "invalid_field", { field: "category" });
@@ -149,8 +153,8 @@ export async function hfCreatorListingsAdminRoute(req: Request, env: Env, ctx?: 
         if (typeof input.avatarId !== "string" || !(await env.DB_META.prepare("SELECT id FROM hf_avatars WHERE id=?1 AND status='active' AND (taken_by_uid IS NULL OR taken_by_uid=?2)").bind(input.avatarId, uid).first())) return fail(400, "invalid_field", { field: "avatarId" });
         patch.avatar_id = input.avatarId;
       }
-      await upsertHost(env, uid, patch, { revision: h.listing_revision ?? 1, statuses: [...EDITABLE] });
-      await emit(env, user.uid, uid, "saved", { fields: Object.keys(input) });
+      await upsertHost(env, uid, patch, { revision: expectedRevision as number, statuses: [...EDITABLE] });
+      await emit(env, user.uid, uid, "saved", { fields: Object.keys(input).filter(key => key !== "expectedRevision") });
       return reply({ listing: await detail(env, uid) });
     }
     if (action === "publish" && req.method === "POST") {

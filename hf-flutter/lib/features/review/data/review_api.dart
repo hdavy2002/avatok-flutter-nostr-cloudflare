@@ -113,6 +113,9 @@ class ReviewTarget {
       hostName: '${j['hostName'] ?? ''}'.trim(),
       hostSlug: slug.isEmpty ? null : slug,
       minutes: j['minutes'] is num ? (j['minutes'] as num).toInt() : 0,
+      durationSeconds: j['billableSeconds'] is num
+          ? (j['billableSeconds'] as num).toInt()
+          : null,
       callDate: date.isEmpty ? null : date,
       alreadyReviewed: j['alreadyReviewed'] == true,
     );

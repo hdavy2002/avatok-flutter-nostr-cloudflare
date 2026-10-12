@@ -27,12 +27,13 @@ abstract final class HostLane {
 }
 
 abstract final class HostCategoryFilter {
+  static const String standard = 'standard';
   static const String influencer = 'influencer';
   static const String celebrity = 'celebrity';
   static const String creators = 'creators';
 
   static String? clean(String? value) =>
-      value == influencer || value == celebrity || value == creators ? value : null;
+      value == standard || value == influencer || value == celebrity || value == creators ? value : null;
 }
 
 /// Everything the person can filter by. Immutable; [copyWith] makes the next one.

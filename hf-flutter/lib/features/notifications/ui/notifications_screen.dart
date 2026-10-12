@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/api/api_error.dart';
+import '../../../core/auth/session.dart';
 import '../../../core/router/routes.dart';
 import '../../../core/theme/hf_theme.dart';
 import '../../../core/widgets/widgets.dart';
@@ -21,6 +22,15 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
   List<AppNotification>? _items;
   ApiError? _error;
   bool _clearing = false;
+  int _epoch = 0;
+
+  String? get _uid {
+    final session = ref.read(sessionProvider);
+    return session.isSignedIn ? session.user?.id ?? session.me?.uid : null;
+  }
+
+  bool _owns(String? uid, int epoch) =>
+      mounted && uid != null && uid == _uid && epoch == _epoch;
 
   @override
   void initState() {
@@ -29,34 +39,47 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
   }
 
   Future<void> _load() async {
+    final uid = _uid;
+    final epoch = ++_epoch;
+    if (uid == null) return;
     try {
       final api = ref.read(notificationsApiProvider);
       final items = await api.list();
-      if (!mounted) return;
+      if (!_owns(uid, epoch)) return;
       setState(() {
         _items = items;
         _error = null;
       });
-      if (items.any((item) => !item.read)) await api.markAllRead();
+      if (items.any((item) => !item.read)) {
+        if (!_owns(uid, epoch)) return;
+        await api.markAllRead();
+        if (!_owns(uid, epoch)) return;
+      }
       ref.invalidate(unreadNotificationsProvider);
     } on ApiError catch (error) {
-      if (mounted) setState(() => _error = error);
+      if (_owns(uid, epoch)) setState(() => _error = error);
     }
   }
 
   Future<void> _clear() async {
     if (_clearing) return;
     setState(() => _clearing = true);
+    final uid = _uid;
+    final epoch = ++_epoch;
+    if (uid == null) {
+      if (mounted) setState(() => _clearing = false);
+      return;
+    }
     try {
       await ref.read(notificationsApiProvider).clear();
-      if (!mounted) return;
+      if (!_owns(uid, epoch)) return;
       setState(() {
         _items = const <AppNotification>[];
         _clearing = false;
       });
       ref.invalidate(unreadNotificationsProvider);
     } on ApiError catch (error) {
-      if (!mounted) return;
+      if (!_owns(uid, epoch)) return;
       setState(() {
         _error = error;
         _clearing = false;

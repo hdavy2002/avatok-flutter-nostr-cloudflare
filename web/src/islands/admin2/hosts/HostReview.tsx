@@ -141,7 +141,7 @@ function Drawer({ uid, standard, onClose, onChanged }: { uid: string; standard: 
               </div>
             </>)}
 
-            <p style={label}>Voice introduction (recorded by the host)</p>
+            <p style={label}>Voice introduction</p>
             {intro ? (
               <div className="card" style={{ padding: 12, marginBottom: 16, background: '#fff' }}>
                 <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 8 }}>

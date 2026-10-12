@@ -101,7 +101,7 @@ describe("GET /api/hf/hosts", () => {
     expect(b.items.map((i: any) => i.slug)).not.toContain("fay-ffff");
     expect(Object.keys(b.items[0]).sort()).toEqual(
       // [HF-STD-PLAN-1] cards now carry the Standard-plan price block (plan, pricePaisePerMin, priceLabel, priceTiers) next to pricePerMin
-      ["avatarUrl", "category", "displayName", "introAudioUrl", "introMime", "introSeconds", "languages", "lgbtqFriendly", "listingRevision", "plan", "priceLabel", "pricePaisePerMin", "pricePerMin", "priceTiers", "rating", "ratingBreakdown", "regulars", "reviewCount", "slug", "status", "style", "tagline", "talkedTo", "topics", "womenOnly"],
+      ["avatarUrl", "category", "displayName", "imageProvenance", "introAudioUrl", "introMime", "introSeconds", "languages", "lgbtqFriendly", "listingRevision", "plan", "priceLabel", "pricePaisePerMin", "pricePerMin", "priceTiers", "rating", "ratingBreakdown", "regulars", "reviewCount", "slug", "status", "style", "tagline", "talkedTo", "topics", "womenOnly"],
     );
     expect(b.items[0]).toMatchObject({ plan: "standard", pricePerMin: 3.99, pricePaisePerMin: 399, priceLabel: "₹3.99/min" });
     expect(b.items[0].priceTiers).toEqual([{ fromMin: 0, toMin: 30, paisePerMin: 399 }, { fromMin: 30, toMin: 60, paisePerMin: 350 }, { fromMin: 60, toMin: null, paisePerMin: 325 }]);
@@ -313,7 +313,7 @@ describe("GET /api/hf/options", () => {
     expect(r.status).toBe(200);
     expect(r.headers.get("cache-control")).toBe("public, max-age=3600");
     const b: any = await r.json();
-    expect(Object.keys(b).sort()).toEqual(["languages", "moodGroups", "priceMax", "priceMin", "styles", "topics"]);
+    expect(Object.keys(b).sort()).toEqual(["communities", "languages", "moodGroups", "priceMax", "priceMin", "services", "styles", "topics"]);
     expect(b.topics).toHaveLength(TOPICS.length);
     expect(b.topics[0]).toEqual({ slug: "roz-thodi-baat", label: "roz thodi baat", group: "Naye dost" });
     expect(b.moodGroups).toEqual([
@@ -324,6 +324,11 @@ describe("GET /api/hf/options", () => {
     expect(b.languages).toHaveLength(LANGUAGES.length);
     expect(b.styles[0]).toEqual({ slug: "warm", label: "Warm" });
     expect(b.styles).toHaveLength(STYLES.length);
+    expect(b.communities).toEqual([
+      { id: "influencer", label: "Influencers", category: "influencer" },
+      { id: "celebrity", label: "Celebrities", category: "celebrity" },
+    ]);
+    expect(b.services.map((service: any) => service.id)).toEqual(["wellness", "career", "learning"]);
     expect([b.priceMin, b.priceMax]).toEqual([5, 100]);
   });
   it("every topic belongs to a listed mood group and every language code resolves in the host-list filter", () => {
