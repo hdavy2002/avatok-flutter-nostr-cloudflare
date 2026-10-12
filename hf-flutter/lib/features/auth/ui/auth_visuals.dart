@@ -1,6 +1,5 @@
 import 'dart:ui' as ui;
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../../../core/theme/hf_theme.dart';
@@ -278,77 +277,4 @@ class AuthCallout extends StatelessWidget {
       ],
     ),
   );
-}
-
-@visibleForTesting
-enum AuthVisualState {
-  welcome,
-  login,
-  secondWhatsapp,
-  whatsappOtp,
-  email,
-  emailOtp,
-  name,
-  username,
-  kyc,
-  policies,
-}
-
-/// A deterministic render target for CI visual capture. It deliberately uses
-/// the same primitives and assets as the live forms while avoiding network and
-/// timers; interaction behavior remains covered by the controller tests.
-@visibleForTesting
-class AuthVisualCaptureFrame extends StatelessWidget {
-  const AuthVisualCaptureFrame({super.key, required this.state});
-
-  final AuthVisualState state;
-
-  @override
-  Widget build(BuildContext context) {
-    final photo = AuthPhotoKind.values[state.index];
-    final title = switch (state) {
-      AuthVisualState.welcome => 'Find people, services and conversations that fit you',
-      AuthVisualState.login => 'Welcome back',
-      AuthVisualState.secondWhatsapp => 'Add your second WhatsApp number',
-      AuthVisualState.whatsappOtp => 'Verify WhatsApp',
-      AuthVisualState.email => 'Verify your email',
-      AuthVisualState.emailOtp => 'Enter email code',
-      AuthVisualState.name => 'What should we call you?',
-      AuthVisualState.username => 'Choose your username',
-      AuthVisualState.kyc => 'Unlock more conversations',
-      AuthVisualState.policies => 'Review and accept',
-    };
-    return Material(
-      child: AuthViewport(
-        child: ListView(
-          key: ValueKey('auth-capture-${state.name}'),
-          padding: const EdgeInsets.all(20),
-          children: [
-            if (state != AuthVisualState.welcome)
-              AuthBackRow(onBack: () {}, step: state.index >= 3 ? state.index - 2 : null),
-            AuthIdentityHero(
-              title: title,
-              subtitle: 'A clear, secure step in your account journey.',
-              photo: photo,
-              photoHeight: state == AuthVisualState.welcome ? 310 : 190,
-            ),
-            const AuthSurfaceCard(
-              child: SizedBox(
-                height: 172,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Text('Account details', style: HfText.subsection),
-                    SizedBox(height: 12),
-                    TextField(decoration: InputDecoration(labelText: 'Information')),
-                    SizedBox(height: 12),
-                  ],
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
 }
