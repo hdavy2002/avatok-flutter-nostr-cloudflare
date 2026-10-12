@@ -19,6 +19,7 @@ import '../data/host_card.dart';
 import '../data/host_filters.dart';
 import '../data/host_options.dart';
 import '../widgets/host_card_view.dart';
+import '../widgets/marketplace_host_tile.dart';
 import 'explore_copy.dart';
 import 'filter_sheet.dart';
 import 'discovery_header.dart';
@@ -159,8 +160,6 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
     });
     WidgetsBinding.instance.addPostFrameCallback((_) => _fillViewport());
     final f = st.filters;
-    final listShown = st.status == ExploreStatus.ready && st.items.isNotEmpty;
-    final onlineShown = st.items.where((h) => h.isOnline).length;
     return Scaffold(
       body: SafeArea(
         top: true,
@@ -180,13 +179,7 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
                       setState(() => _searchText = value.trim().toLowerCase()),
                   onFilters: () => _openFilters(f),
                   onApply: _chooseFilters,
-                  showListTitle:
-                      listShown || st.status == ExploreStatus.loading,
-                  trailing: !listShown
-                      ? null
-                      : (_searchText.isEmpty
-                            ? ExploreCopy.onlineCount(onlineShown)
-                            : '${_visible(st, options).length} matches ${ExploreCopy.searchMatchesNote}'),
+                  showListTitle: false,
                 ),
               ),
               if (st.status == ExploreStatus.ready && st.showSavedPill)
@@ -293,6 +286,13 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
   List<Widget> _list(ExploreState st, HostOptions? options) {
     final labels = options?.topicLabels ?? const <String, String>{};
     final items = _visible(st, options);
+    final popular = [...items]
+      ..sort((a, b) {
+        final talked = b.talkedTo.compareTo(a.talkedTo);
+        if (talked != 0) return talked;
+        return (b.rating ?? 0).compareTo(a.rating ?? 0);
+      });
+    final online = items.where((host) => host.isOnline).toList();
     return [
       if (items.isEmpty && _searchText.isNotEmpty)
         SliverToBoxAdapter(
@@ -318,6 +318,38 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
               onPressed: () =>
                   unawaited(_controller.loadMore(retry: st.loadMoreFailed)),
             ),
+          ),
+        ),
+      if (_searchText.isEmpty && popular.length >= 4)
+        SliverToBoxAdapter(
+          child: _HostRail(
+            title: 'Popular conversations',
+            hosts: popular.take(5).toList(),
+            lane: st.filters.lane,
+            from: 'explore_popular',
+          ),
+        ),
+      if (_searchText.isEmpty && online.length >= 3)
+        SliverToBoxAdapter(
+          child: _HostRail(
+            title: 'Online now',
+            hosts: online.take(5).toList(),
+            lane: st.filters.lane,
+            from: 'explore_online',
+          ),
+        ),
+      if (_searchText.isEmpty)
+        const SliverToBoxAdapter(child: _CommunityServicesCard()),
+      if (_searchText.isEmpty)
+        const SliverToBoxAdapter(
+          child: Padding(
+            padding: EdgeInsets.fromLTRB(
+              HfSpacing.pageWide,
+              HfSpacing.xxl,
+              HfSpacing.pageWide,
+              0,
+            ),
+            child: Text('All hosts', style: HfText.section),
           ),
         ),
       SliverPadding(
@@ -372,6 +404,134 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
         ),
       ),
     ];
+  }
+}
+
+class _CommunityServicesCard extends StatelessWidget {
+  const _CommunityServicesCard();
+
+  @override
+  Widget build(BuildContext context) {
+    final dark = HfBrightness.isDark(context);
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(
+        HfSpacing.pageWide,
+        HfSpacing.xxl,
+        HfSpacing.pageWide,
+        0,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            'Communities & services',
+            style: HfText.of(context, HfText.section),
+          ),
+          const SizedBox(height: HfSpacing.lg),
+          Container(
+            height: 154,
+            clipBehavior: Clip.antiAlias,
+            decoration: BoxDecoration(
+              color: dark ? HfColors.darkCard : HfColors.surfaceSoft,
+              borderRadius: BorderRadius.circular(HfRadius.card),
+              border: Border.all(
+                color: dark ? HfColors.darkLine : HfColors.line,
+              ),
+            ),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Padding(
+                    padding: const EdgeInsets.all(HfSpacing.xl),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'More ways to connect',
+                          style: HfText.of(context, HfText.subsection),
+                        ),
+                        const SizedBox(height: HfSpacing.xs),
+                        Text(
+                          'Community and service listings will appear here when they are available.',
+                          style: HfText.of(context, HfText.note),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                SizedBox(
+                  width: 152,
+                  height: 154,
+                  child: Image.asset(
+                    'assets/images/community_services_card.png',
+                    fit: BoxFit.cover,
+                    alignment: Alignment.center,
+                    semanticLabel: 'Conversation community illustration',
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _HostRail extends StatelessWidget {
+  const _HostRail({
+    required this.title,
+    required this.hosts,
+    required this.from,
+    this.lane,
+  });
+
+  final String title;
+  final List<HostCard> hosts;
+  final String from;
+  final String? lane;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(top: HfSpacing.xxl),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Padding(
+            padding: const EdgeInsets.symmetric(
+              horizontal: HfSpacing.pageWide,
+            ),
+            child: Text(
+              title,
+              style: HfText.of(context, HfText.section),
+            ),
+          ),
+          const SizedBox(height: HfSpacing.lg),
+          SizedBox(
+            height: 360,
+            child: ListView.separated(
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.symmetric(
+                horizontal: HfSpacing.pageWide,
+              ),
+              itemCount: hosts.length,
+              separatorBuilder: (_, __) =>
+                  const SizedBox(width: HfSpacing.lg),
+              itemBuilder: (context, index) => SizedBox(
+                width: 182,
+                child: MarketplaceHostTile(
+                  host: hosts[index],
+                  from: from,
+                  lane: lane,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }
 

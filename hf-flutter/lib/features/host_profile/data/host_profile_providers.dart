@@ -9,7 +9,6 @@ import '../../../core/api/api_error.dart';
 import '../../../core/auth/session.dart';
 import '../../../core/router/routes.dart';
 import '../../../core/storage/cache.dart';
-import '../../demo/demo_data.dart'; // [HF-DEMO] remove with lib/features/demo
 import 'host_profile.dart';
 
 /// Profiles are public data, so the saved copy uses the plain (unscoped) cache key.
@@ -42,9 +41,6 @@ Future<HostProfileResult> _readProfile(
   String slug, {
   String? lane,
 }) async {
-  // [HF-DEMO] remove with lib/features/demo: demo hosts have no server row.
-  final demo = demoProfileFor(slug);
-  if (demo != null) return HostProfileResult(profile: demo);
   final session = ref.watch(sessionProvider);
   final api = ref.watch(apiClientProvider);
   final cache = ref.watch(jsonCacheProvider);
@@ -152,8 +148,6 @@ String topicLabel(Map<String, String> labels, String slug) {
 /// (the estimate is extra detail, the price per minute is always shown).
 final hostEstimateProvider = FutureProvider.autoDispose
     .family<HostEstimate?, String>((ref, slug) async {
-      // [HF-DEMO] remove with lib/features/demo
-      if (isDemoSlug(slug)) return null;
       final signedIn = ref.watch(sessionProvider.select((s) => s.isSignedIn));
       if (!signedIn) return null;
       final api = ref.watch(apiClientProvider);
@@ -173,7 +167,6 @@ final notifyStatusProvider = FutureProvider.autoDispose.family<bool, String>((
   ref,
   slug,
 ) async {
-  if (isDemoSlug(slug)) return false; // [HF-DEMO] remove with lib/features/demo
   final signedIn = ref.watch(sessionProvider.select((s) => s.isSignedIn));
   if (!signedIn) return false;
   final api = ref.watch(apiClientProvider);
@@ -191,7 +184,6 @@ String _notifyPath(String slug) =>
 /// Turn Notify me on (`POST`, needs a verified WhatsApp) or off (`DELETE`). Returns the new `subscribed`.
 /// Throws [ApiError] (`not_verified`, `own_profile`, `not_found`, ...): show `userMessage`.
 Future<bool> setNotifyMe(ApiClient api, String slug, {required bool on}) async {
-  if (isDemoSlug(slug)) return on; // [HF-DEMO] remove with lib/features/demo
   final json = on
       ? await api.postJson(_notifyPath(slug))
       : await api.deleteJson(_notifyPath(slug));

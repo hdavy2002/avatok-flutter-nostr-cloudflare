@@ -66,6 +66,10 @@ class HostCard {
   bool get isOnline => status == HostPresence.online;
   bool get hasIntro => introAudioUrl != null && introAudioUrl!.isNotEmpty;
 
+  /// Marketplace previews are deliberately capped at twenty seconds. A shorter
+  /// server clip keeps its honest duration; an unknown duration uses the cap.
+  int get previewSeconds => (introSeconds ?? 20).clamp(1, 20).toInt();
+
   /// The words on the voice bar: "Her voice", "His voice", else "Voice intro". A women-only host is a woman.
   String get voiceTitle {
     final g = gender ?? (womenOnly ? 'female' : null);

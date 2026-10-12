@@ -43,7 +43,7 @@ void main() {
         tester
             .widget<Text>(find.byKey(const ValueKey<String>('gst-hf_tokens_100')))
             .data,
-        _play100Breakdown,
+        '+ ₹101.69 to wallet',
       );
       expect(find.text('Paid via Google Play'), findsWidgets);
     },
@@ -77,7 +77,7 @@ void main() {
                 find.byKey(const ValueKey<String>('gst-hf_tokens_100')),
               )
               .data,
-          _play100Breakdown,
+          '+ ₹101.69 to wallet',
         );
 
         await buy100(tester);
@@ -133,18 +133,14 @@ void main() {
           ),
         };
         await pumpWallet(tester, api: api, billing: billing);
-        expect(find.text('Pay Rs 99.99 (from Play)'), findsOneWidget);
-        expect(find.text('Pay Rs 999.99 (from Play)'), findsOneWidget);
+        expect(find.text('Rs 99.99 (from Play)'), findsOneWidget);
+        expect(find.text('Rs 999.99 (from Play)'), findsOneWidget);
         expect(
-          find.text(
-            'Total ₹99.99 · GST included ₹15.25 · Added to wallet ₹84.74',
-          ),
+          find.text('+ ₹84.74 to wallet'),
           findsOneWidget,
         );
         expect(
-          find.text(
-            'Total ₹999.99 · GST included ₹152.54 · Added to wallet ₹847.45',
-          ),
+          find.text('+ ₹847.45 to wallet'),
           findsOneWidget,
         );
         expect(
@@ -190,17 +186,56 @@ void main() {
         'ok': true,
         'enabled': true,
         'products': [
-          {'productId': 'hf_tokens_100', 'tokens': 102, 'creditPaise': 10200},
-          {'productId': 'hf_tokens_240', 'tokens': 204, 'creditPaise': 20400},
+          {
+            'productId': 'hf_tokens_120',
+            'tokens': 102,
+            'pricePaise': 12000,
+            'creditPaise': 10200,
+          },
+          {
+            'productId': 'hf_tokens_240',
+            'tokens': 204,
+            'pricePaise': 24000,
+            'creditPaise': 20400,
+          },
+          {
+            'productId': 'hf_tokens_360',
+            'tokens': 305,
+            'pricePaise': 36000,
+            'creditPaise': 30500,
+          },
+          {
+            'productId': 'hf_tokens_500',
+            'tokens': 424,
+            'pricePaise': 50000,
+            'creditPaise': 42400,
+          },
         ],
       });
       billing.products = {
-        ...billing.products,
+        'hf_tokens_120': const StoreProduct(
+          productId: 'hf_tokens_120',
+          priceText: '₹120.00',
+          currencyCode: 'INR',
+          priceMicros: 120000000,
+        ),
         'hf_tokens_240': const StoreProduct(
           productId: 'hf_tokens_240',
           priceText: '₹240.00',
           currencyCode: 'INR',
           priceMicros: 240000000,
+        ),
+        'hf_tokens_360': const StoreProduct(
+          productId: 'hf_tokens_360',
+          priceText: '₹360.00',
+          currencyCode: 'INR',
+          priceMicros: 360000000,
+        ),
+        'hf_tokens_500': const StoreProduct(
+          productId: 'hf_tokens_500',
+          priceText: '₹500.00',
+          currencyCode: 'INR',
+          priceMicros: 500000000,
         ),
       };
       await pumpWallet(tester, api: api, billing: billing);
@@ -213,6 +248,14 @@ void main() {
         findsNothing,
       );
       expect(find.text('Pay ₹240.00 with Google Play'), findsOneWidget);
+      for (final id in const [
+        'hf_tokens_120',
+        'hf_tokens_240',
+        'hf_tokens_360',
+        'hf_tokens_500',
+      ]) {
+        expect(find.byKey(ValueKey<String>('buy-$id')), findsOneWidget);
+      }
     });
 
     testWidgets('Pay is disabled while a purchase is pending (no double tap)', (

@@ -1,6 +1,7 @@
 /// Copy of the Explore screen and its filter sheet (English only; one file so translation can come later).
 abstract final class ExploreCopy {
   static const String title = 'Explore';
+  static const String tagline = 'Real people. Real conversations.';
   static const String filters = 'Filters';
   static const String showResults = 'Show results';
   static const String clearAll = 'Clear all';

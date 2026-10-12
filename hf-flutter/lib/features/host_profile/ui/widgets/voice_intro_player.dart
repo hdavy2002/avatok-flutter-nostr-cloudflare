@@ -70,7 +70,10 @@ class VoiceIntroPlayer extends ConsumerStatefulWidget {
 }
 
 class _VoiceIntroPlayerState extends ConsumerState<VoiceIntroPlayer> {
+  static const Duration _previewLimit = Duration(seconds: 20);
+
   IntroPlayer? _player;
+  Timer? _previewTimer;
   final List<StreamSubscription<Object?>> _subs =
       <StreamSubscription<Object?>>[];
   _Phase _phase = _Phase.idle;
@@ -100,6 +103,7 @@ class _VoiceIntroPlayerState extends ConsumerState<VoiceIntroPlayer> {
 
   void _onState(IntroPlayerState s) {
     if (!mounted) return;
+    if (s != IntroPlayerState.playing) _previewTimer?.cancel();
     setState(() {
       switch (s) {
         case IntroPlayerState.playing:
@@ -116,21 +120,42 @@ class _VoiceIntroPlayerState extends ConsumerState<VoiceIntroPlayer> {
     });
   }
 
+  void _startPreviewDeadline(IntroPlayer player) {
+    _previewTimer?.cancel();
+    final remaining = _previewLimit - _position;
+    _previewTimer = Timer(
+      remaining > Duration.zero ? remaining : Duration.zero,
+      () {
+        unawaited(player.pause());
+        unawaited(player.seek(Duration.zero));
+        if (!mounted) return;
+        setState(() {
+          _phase = _Phase.idle;
+          _started = false;
+          _position = Duration.zero;
+        });
+      },
+    );
+  }
+
   Future<void> _toggle() async {
     if (_phase == _Phase.loading) return;
     final p = _ensurePlayer();
     try {
       if (_phase == _Phase.playing) {
+        _previewTimer?.cancel();
         await p.pause();
         return;
       }
       setState(() => _error = null);
       if (_started) {
         await p.resume();
+        _startPreviewDeadline(p);
       } else {
         setState(() => _phase = _Phase.loading);
         await p.play(widget.url);
         _started = true;
+        _startPreviewDeadline(p);
       }
     } catch (_) {
       if (!mounted) return;
@@ -144,6 +169,7 @@ class _VoiceIntroPlayerState extends ConsumerState<VoiceIntroPlayer> {
 
   @override
   void dispose() {
+    _previewTimer?.cancel();
     for (final s in _subs) {
       unawaited(s.cancel());
     }
@@ -155,9 +181,13 @@ class _VoiceIntroPlayerState extends ConsumerState<VoiceIntroPlayer> {
   @override
   Widget build(BuildContext context) {
     final dark = HfBrightness.isDark(context);
-    final totalSeconds =
-        (_length?.inMilliseconds ?? ((widget.introSeconds ?? 0) * 1000)) /
-        1000.0;
+    final reportedLength = _length ??
+        Duration(
+          seconds: (widget.introSeconds ?? 20).clamp(1, 20).toInt(),
+        );
+    final totalSeconds = reportedLength > _previewLimit
+        ? _previewLimit.inSeconds.toDouble()
+        : reportedLength.inMilliseconds / 1000.0;
     final max = totalSeconds > 0 ? totalSeconds : 1.0;
     final shown = (_position.inMilliseconds / 1000.0)
         .clamp(0.0, max)

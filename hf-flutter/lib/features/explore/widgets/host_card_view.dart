@@ -14,8 +14,6 @@ import '../../../core/router/nav.dart';
 import '../../../core/router/routes.dart';
 import '../../../core/theme/hf_theme.dart';
 import '../../../core/widgets/widgets.dart';
-import '../../demo/demo_data.dart'; // [HF-DEMO] remove with lib/features/demo
-import '../../demo/demo_widgets.dart'; // [HF-DEMO] remove with lib/features/demo
 import '../../host_profile/data/host_profile_providers.dart';
 import '../../host_profile/host_profile_strings.dart';
 import '../data/favourites.dart';
@@ -126,13 +124,11 @@ class IntroPlayButton extends ConsumerWidget {
             ),
           ),
         ),
-        if (host.introSeconds != null) ...[
-          const SizedBox(width: 6),
-          Text(
-            '${host.introSeconds}s',
-            style: HfText.badge.copyWith(color: muted),
-          ),
-        ],
+        const SizedBox(width: 6),
+        Text(
+          '${host.previewSeconds}s',
+          style: HfText.badge.copyWith(color: muted),
+        ),
         if (failed) ...[
           const SizedBox(width: 6),
           Text(
@@ -223,7 +219,9 @@ class HostCardView extends ConsumerWidget {
                 onTap: open,
                 child: HfPhotoCard(
                   imageUrl: photo,
-                  height: 380,
+                  height: (MediaQuery.sizeOf(context).width * 0.72)
+                      .clamp(260.0, 340.0)
+                      .toDouble(),
                   status: switch (host.status) {
                     HostPresence.online => HfPresence.online,
                     HostPresence.busy => HfPresence.busy,
@@ -400,11 +398,6 @@ class _PanelContent extends ConsumerWidget {
             ),
             const SizedBox(width: HfSpacing.xs),
             const HfVerifiedBadge(size: 20),
-            if (isDemoSlug(host.slug)) ...[
-              // [HF-DEMO] remove with lib/features/demo
-              const SizedBox(width: HfSpacing.xs),
-              const DemoChip(),
-            ],
             Expanded(
               child: Align(
                 alignment: Alignment.centerRight,
@@ -454,9 +447,7 @@ class _CardVoiceState extends ConsumerState<_CardVoice>
     super.initState();
     _progress = AnimationController(
       vsync: this,
-      duration: Duration(
-        seconds: (widget.host.introSeconds ?? 20).clamp(1, 600),
-      ),
+      duration: Duration(seconds: widget.host.previewSeconds),
     );
     // A recycled card whose clip is still playing picks the fill up again.
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -507,9 +498,7 @@ class _CardVoiceState extends ConsumerState<_CardVoice>
             key: ValueKey<String>('intro-${host.slug}'),
             compact: true,
             title: host.voiceTitle,
-            durationLabel: host.introSeconds == null
-                ? '–'
-                : _clock(host.introSeconds!),
+            durationLabel: _clock(host.previewSeconds),
             // HfVoiceBar's 2 px gaps overflow when a big system font leaves the waveform a few pixels.
             heights: hostWaveHeights(host.slug, count: bigText ? 6 : 20),
             progress: _progress.value,
@@ -575,13 +564,11 @@ class _PriceBarState extends ConsumerState<_PriceBar> {
       );
       return;
     }
-    // [HF-DEMO] remove with lib/features/demo: no sign-in gate for demo hosts.
-    if (!isDemoSlug(_h.slug) &&
-        !await requireSignIn(
-          context,
-          ref,
-          next: Routes.callConfirmOf(_h.slug, lane: widget.lane),
-        )) {
+    if (!await requireSignIn(
+      context,
+      ref,
+      next: Routes.callConfirmOf(_h.slug, lane: widget.lane),
+    )) {
       return;
     }
     if (!mounted) return;
@@ -592,14 +579,6 @@ class _PriceBarState extends ConsumerState<_PriceBar> {
   Future<void> _toggleNotify(bool subscribed) async {
     if (_busy) return;
     final turnOn = !subscribed;
-    // [HF-DEMO] remove with lib/features/demo: a snackbar, no sign-in, no request.
-    if (isDemoSlug(_h.slug)) {
-      unawaited(HapticFeedback.selectionClick());
-      ScaffoldMessenger.maybeOf(context)
-        ?..hideCurrentSnackBar()
-        ..showSnackBar(const SnackBar(content: Text(kDemoNotifyMessage)));
-      return;
-    }
     final next = Uri(
       path: Routes.hostProfileOf(_h.slug),
       queryParameters: <String, String>{
@@ -660,15 +639,13 @@ class _PriceBarState extends ConsumerState<_PriceBar> {
   @override
   Widget build(BuildContext context) {
     final dark = HfBrightness.isDark(context);
-    final callsOn =
-        ref
-            .watch(flagsProvider)
-            .when(
-              data: (f) => f.hfCallsEnabled,
-              loading: () => true,
-              error: (_, __) => true,
-            ) ||
-        isDemoSlug(_h.slug); // [HF-DEMO] remove with lib/features/demo
+    final callsOn = ref
+        .watch(flagsProvider)
+        .when(
+          data: (f) => f.hfCallsEnabled,
+          loading: () => true,
+          error: (_, __) => true,
+        );
     final online = _h.isOnline;
     final bool subscribed = online
         ? false

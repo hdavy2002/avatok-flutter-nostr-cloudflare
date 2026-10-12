@@ -4,7 +4,6 @@ import '../../../core/analytics/analytics.dart';
 import '../../../core/api/api_error.dart';
 import '../../../core/auth/session.dart';
 import '../../../core/config/flags.dart';
-import '../../demo/demo_data.dart'; // [HF-DEMO] remove with lib/features/demo
 import 'host_card.dart';
 import 'host_filters.dart';
 import 'hosts_repository.dart';
@@ -218,10 +217,7 @@ class ExploreController extends Notifier<ExploreState> {
         state = ExploreState(
           filters: f,
           status: ExploreStatus.ready,
-          items: withDemoHosts(
-            f,
-            u.page.items,
-          ), // [HF-DEMO] remove with lib/features/demo
+          items: u.page.items,
           nextOffset: u.page.nextOffset,
           total: u.page.total,
           fromCache: u.fromCache,

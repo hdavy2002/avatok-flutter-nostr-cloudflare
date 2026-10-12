@@ -39,8 +39,8 @@ abstract final class BuyCopy {
 /// Gap between pack tiles (mockup: 10).
 const double _gridGap = 10;
 
-/// Width / height of a pack tile (mockup grid). The tile is never shorter than 84.
-const double _tileAspect = 1.9;
+/// Width / height of a pack tile (mockup grid). The tile is never shorter than 108.
+const double _tileAspect = 1.42;
 
 /// Tile colours in mockup order: sky, butter, peach, lavender.
 const List<HfTint> _tileTints = [
@@ -53,6 +53,25 @@ const List<HfTint> _tileTints = [
 /// Marks the pack the mockup calls "Popular" (the one that adds Rs 204). A badge only: it never decides a price.
 bool _isPopular(PackOffer o) =>
     o.pack.creditPaise == 20400 || o.store?.priceMicros == 240000000;
+
+const List<int> _cataloguePricesPaise = <int>[12000, 24000, 36000, 50000];
+
+/// The approved four-pack catalogue in visual order. Values still come from
+/// the live server/Play join; an unavailable configured pack is never invented.
+List<PackOffer> _catalogueOffers(List<PackOffer> all) {
+  final ordered = <PackOffer>[];
+  for (final amount in _cataloguePricesPaise) {
+    for (final offer in all) {
+      final paid = offer.breakdown?.paidPaise ?? offer.pack.pricePaise;
+      if (paid == amount && !ordered.contains(offer)) {
+        ordered.add(offer);
+        break;
+      }
+    }
+  }
+  if (ordered.length == _cataloguePricesPaise.length) return ordered;
+  return all.take(4).toList();
+}
 
 /// "Add money": the packs as 2x2 tiles with Google Play's own price, one Pay button, and the whole buy flow.
 class BuySection extends ConsumerWidget {
@@ -279,23 +298,24 @@ class _PacksState extends ConsumerState<_Packs> {
       _ => null,
     };
     final working = _starting || purchase.phase != PurchasePhase.idle;
-    final selected = _selected(offers.offers);
+    final catalogue = _catalogueOffers(offers.offers);
+    final selected = _selected(catalogue);
     final price = selected?.priceText;
     final canPay =
         selected != null && price != null && offers.storeAvailable && !working;
     final tilesEnabled = offers.storeAvailable && !working;
 
     final tiles = <Widget>[
-      for (var i = 0; i < offers.offers.length; i++)
+      for (var i = 0; i < catalogue.length; i++)
         _PackTile(
-          offer: offers.offers[i],
+          offer: catalogue[i],
           tint: _tileTints[i % _tileTints.length],
-          selected: offers.offers[i].productId == selected?.productId,
-          popular: _isPopular(offers.offers[i]),
+          selected: catalogue[i].productId == selected?.productId,
+          popular: _isPopular(catalogue[i]),
           onTap: tilesEnabled
               ? () {
                   HapticFeedback.selectionClick();
-                  setState(() => _picked = offers.offers[i].productId);
+                  setState(() => _picked = catalogue[i].productId);
                 }
               : null,
         ),
@@ -390,7 +410,7 @@ class _PackTile extends StatelessWidget {
     final border = selected
         ? (dark ? HfColors.lavenderLight : HfColors.ink)
         : Colors.transparent;
-    final label = price == null ? BuyCopy.unavailable : 'Pay $price';
+    final label = price == null ? BuyCopy.unavailable : price;
     final semantic = [
       label,
       if (breakdown != null) breakdown.line,
@@ -413,7 +433,7 @@ class _PackTile extends StatelessWidget {
               key: ValueKey<String>('buy-${offer.productId}'),
               duration: HfMotion.of(context, HfMotion.fast),
               curve: HfMotion.curve,
-              constraints: const BoxConstraints(minHeight: 84),
+              constraints: const BoxConstraints(minHeight: 108),
               decoration: BoxDecoration(
                 color: tint.bg(context),
                 borderRadius: radius,
@@ -437,18 +457,19 @@ class _PackTile extends StatelessWidget {
                           children: [
                             Text(
                               label,
-                              style: HfText.label.copyWith(
-                                fontWeight: FontWeight.w600,
-                                color: tint.ink(context),
+                              style: HfText.stat.copyWith(
+                                fontSize: 24,
+                                color: tint.valueInk(context),
                               ),
                             ),
                             if (breakdown != null) ...[
                               const SizedBox(height: 4),
                               Text(
-                                breakdown.line,
+                                '+ ${breakdown.wallet} to wallet',
                                 key: ValueKey<String>('gst-${offer.productId}'),
                                 style: HfText.note.copyWith(
-                                  color: tint.valueInk(context),
+                                  color: tint.ink(context),
+                                  fontWeight: FontWeight.w600,
                                 ),
                               ),
                             ] else if (legacyCredit != null) ...[

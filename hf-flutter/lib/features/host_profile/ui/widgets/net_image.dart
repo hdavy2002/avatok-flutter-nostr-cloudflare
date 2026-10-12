@@ -3,8 +3,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/theme/hf_tokens.dart';
-import '../../../demo/demo_data.dart'; // [HF-DEMO] remove with lib/features/demo
-import '../../../demo/demo_widgets.dart'; // [HF-DEMO] remove with lib/features/demo
 
 /// Draws a picture from a URL. The default uses `cached_network_image` (7-day disk cache, memory cache sized
 /// to the screen). Widget tests override [hostImageBuilderProvider] with a plain box, so no test needs
@@ -21,8 +19,6 @@ Widget _cachedImage(
   String url, {
   BoxFit fit = BoxFit.cover,
 }) {
-  // [HF-DEMO] remove with lib/features/demo
-  if (demoAssetPath(url) != null) return DemoAssetImage(url, fit: fit);
   return CachedNetworkImage(
     imageUrl: url,
     fit: fit,

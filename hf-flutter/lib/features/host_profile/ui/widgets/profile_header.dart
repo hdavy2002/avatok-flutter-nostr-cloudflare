@@ -2,8 +2,6 @@ import 'package:flutter/material.dart';
 
 import '../../../../core/theme/hf_theme.dart';
 import '../../../../core/widgets/widgets.dart';
-import '../../../demo/demo_data.dart'; // [HF-DEMO] remove with lib/features/demo
-import '../../../demo/demo_widgets.dart'; // [HF-DEMO] remove with lib/features/demo
 import '../../data/host_profile.dart';
 import '../../host_profile_strings.dart';
 import 'profile_common.dart';
@@ -33,8 +31,6 @@ class ProfileHeader extends StatelessWidget {
           ),
         ),
         const HfVerifiedBadge(size: 24),
-        if (isDemoSlug(profile.slug))
-          const DemoChip(), // [HF-DEMO] remove with lib/features/demo
       ],
     );
     final pill = HfStatusPill(status: HfPresence.fromApi(profile.status.name));

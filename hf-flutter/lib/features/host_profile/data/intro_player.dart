@@ -3,8 +3,6 @@ import 'dart:async';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../demo/demo_audio.dart'; // [HF-DEMO] remove with lib/features/demo
-
 enum IntroPlayerState { playing, paused, stopped, completed }
 
 /// The little audio surface the voice intro needs. Screens depend on this, never on `audioplayers`,
@@ -68,7 +66,5 @@ class AudioplayersIntroPlayer implements IntroPlayer {
 
 /// Makes one player per voice-intro widget, on its first tap. Tests override this with a fake.
 final introPlayerFactoryProvider = Provider<IntroPlayer Function()>(
-  // [HF-DEMO] remove with lib/features/demo: use `AudioplayersIntroPlayer.new` alone.
-  (ref) =>
-      () => DemoAwareIntroPlayer(AudioplayersIntroPlayer.new),
+  (ref) => AudioplayersIntroPlayer.new,
 );

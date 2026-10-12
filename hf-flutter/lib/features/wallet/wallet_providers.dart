@@ -40,9 +40,10 @@ final lastCallRateProvider = FutureProvider.autoDispose<num?>(
   (ref) => const LastCallRateStore().read(),
 );
 
-/// The rate the Wallet uses for "About N minutes at Rs R/min": the last call's rate, else the cheapest host
-/// in the saved host lists, else Rs 10. Always a positive number.
-final walletRateProvider = FutureProvider.autoDispose<num>((ref) async {
+/// The rate the Wallet uses for "About N minutes at Rs R/min": the last
+/// call's rate, else the cheapest host in the saved live host lists. It stays
+/// null when the app has no observed rate; the UI then omits the estimate.
+final walletRateProvider = FutureProvider.autoDispose<num?>((ref) async {
   final last = await ref.watch(lastCallRateProvider.future);
   if (last != null && last > 0) return last;
   final cache = ref.watch(jsonCacheProvider);
@@ -57,11 +58,8 @@ final walletRateProvider = FutureProvider.autoDispose<num>((ref) async {
       }
     }
   }
-  return cheapest ?? kDefaultRatePerMin;
+  return cheapest;
 });
-
-/// The rate assumed when the app knows nothing else.
-const num kDefaultRatePerMin = 10;
 
 final refundsProvider = FutureProvider.autoDispose<RefundsInfo>(
   (ref) => ref.watch(walletApiProvider).refunds(),

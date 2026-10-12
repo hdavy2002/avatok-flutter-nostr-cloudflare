@@ -9,7 +9,6 @@ import 'package:hf_app/core/theme/theme_mode_store.dart';
 import 'package:hf_app/core/boot.dart';
 import 'package:hf_app/core/storage/cache.dart';
 import 'package:hf_app/core/storage/secure_store.dart';
-import 'package:hf_app/features/demo/demo_data.dart'; // [HF-DEMO] remove with lib/features/demo
 import 'package:hf_app/features/explore/widgets/intro_player.dart';
 
 import '../../support/app_harness.dart';
@@ -143,13 +142,9 @@ Future<ProviderContainer> pumpScreen(
   MemoryJsonCache? cache,
   FakeIntroAudio? audio,
   Size size = const Size(360, 800),
-  bool demoHosts = false,
   ThemeMode? themeMode,
   bool settle = true,
 }) async {
-  // [HF-DEMO] remove with lib/features/demo: these tests count real hosts only.
-  demoHostsInLists = demoHosts;
-  addTearDown(() => demoHostsInLists = kDemoEnabled);
   tester.view.physicalSize = Size(size.width * 3, size.height * 3);
   tester.view.devicePixelRatio = 3.0;
   addTearDown(tester.view.resetPhysicalSize);

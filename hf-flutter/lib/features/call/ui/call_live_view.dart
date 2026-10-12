@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 import '../../../core/format/money.dart';
 import '../../../core/theme/hf_theme.dart';
 import '../data/call_models.dart';
-import '../../demo/demo_data.dart'; // [HF-DEMO] remove with lib/features/demo
 import 'call_avatar.dart';
 import 'call_confirm_sheet.dart';
 
@@ -15,6 +14,7 @@ class CallLiveView extends StatelessWidget {
     required this.info,
     required this.elapsedSeconds,
     this.currentRatePaise,
+    this.photoUrl,
     this.notice,
     this.showConnectionTrouble = false,
   });
@@ -22,6 +22,7 @@ class CallLiveView extends StatelessWidget {
   final CallInfo info;
   final int elapsedSeconds;
   final int? currentRatePaise;
+  final String? photoUrl;
   final String? notice;
   final bool showConnectionTrouble;
 
@@ -56,7 +57,7 @@ class CallLiveView extends StatelessWidget {
           _Rings(
             name: info.hostFirstName == 'your host' ? '' : info.hostFirstName,
             pulsing: info.status.isRinging,
-            slug: info.hostSlug ?? '',
+            photoUrl: photoUrl,
           ),
           const SizedBox(height: HfSpacing.section),
           Padding(
@@ -186,10 +187,14 @@ class _PrivacyChip extends StatelessWidget {
 /// Three lavender rings (300 / 240 / 180), the 132 px avatar with a white border and the ink phone badge. The
 /// rings breathe while the phone is ringing and stay still on reduced motion.
 class _Rings extends StatefulWidget {
-  const _Rings({required this.name, required this.pulsing, this.slug = ''});
+  const _Rings({
+    required this.name,
+    required this.pulsing,
+    this.photoUrl,
+  });
 
   final String name;
-  final String slug;
+  final String? photoUrl;
   final bool pulsing;
 
   @override
@@ -283,9 +288,7 @@ class _RingsState extends State<_Rings> with SingleTickerProviderStateMixin {
                 ring(180, c3, 0),
                 HfCallAvatar(
                   name: widget.name,
-                  photoUrl: demoAvatarFor(
-                    widget.slug,
-                  ), // [HF-DEMO] remove with lib/features/demo
+                  photoUrl: widget.photoUrl,
                   size: 132 * k,
                   radius: 66 * k,
                   borderColor: dark ? HfColors.darkBg : HfColors.white,

@@ -89,45 +89,77 @@ final callApiProvider = Provider<CallApi>(
   (ref) => CallApi(ref.watch(apiClientProvider)),
 );
 
-/// A host's display name for the confirm page (`GET /api/hosts/public/:slug`, public). A host that cannot be
-/// read just gives an empty name: the confirm step still works, it says "your host".
-final callHostNameProvider = FutureProvider.autoDispose.family<String, String>(
+class CallHostVisual {
+  const CallHostVisual({
+    required this.name,
+    this.photoUrl,
+    this.status,
+  });
+
+  final String name;
+  final String? photoUrl;
+  final String? status;
+
+  factory CallHostVisual.fromJson(Map<String, dynamic> json) {
+    final rawPhoto = '${json['avatarUrl'] ?? ''}'.trim();
+    final rawStatus = '${json['status'] ?? ''}'.trim();
+    return CallHostVisual(
+      name: '${json['displayName'] ?? ''}'.trim(),
+      photoUrl: rawPhoto.isEmpty ? null : rawPhoto,
+      status: rawStatus.isEmpty ? null : rawStatus,
+    );
+  }
+}
+
+/// Public host identity for call surfaces. A read failure returns an empty,
+/// honest fallback instead of inventing a name, presence, or portrait.
+final callHostVisualProvider =
+    FutureProvider.autoDispose.family<CallHostVisual, String>(
   retry: (_, __) => null,
   (ref, slug) async {
     try {
-      final json = await ref
-          .watch(apiClientProvider)
-          .getJson(
-            '/api/hosts/public/${Uri.encodeComponent(slug)}',
-            auth: false,
-          );
-      return '${json['displayName'] ?? ''}'.trim();
+      final json = await ref.watch(apiClientProvider).getJson(
+        '/api/hosts/public/${Uri.encodeComponent(slug)}',
+        auth: false,
+      );
+      return CallHostVisual.fromJson(json);
     } catch (_) {
-      return '';
+      return const CallHostVisual(name: '');
     }
   },
 );
 
-/// Protected-profile names are fetched with the same explicit lane context as
-/// discovery. Family data is refreshed when the authenticated account changes.
+/// Protected-lane identity uses the same explicit lane context as discovery.
+final callHostVisualInLaneProvider = FutureProvider.autoDispose
+    .family<CallHostVisual, ({String slug, String lane})>(
+  retry: (_, __) => null,
+  (ref, key) async {
+    ref.watch(sessionProvider.select((s) => s.user?.id ?? s.me?.uid));
+    try {
+      final json = await ref.watch(apiClientProvider).getJson(
+        '/api/hosts/public/${Uri.encodeComponent(key.slug)}',
+        query: {'lane': key.lane},
+      );
+      return CallHostVisual.fromJson(json);
+    } catch (_) {
+      return const CallHostVisual(name: '');
+    }
+  },
+);
+
+/// Kept as a narrow compatibility provider for existing callers and tests.
+final callHostNameProvider = FutureProvider.autoDispose.family<String, String>(
+  retry: (_, __) => null,
+  (ref, slug) =>
+      ref.watch(callHostVisualProvider(slug).future).then((v) => v.name),
+);
+
 final callHostNameInLaneProvider = FutureProvider.autoDispose
-    .family<String, ({String slug, String lane})>(retry: (_, __) => null, (
-      ref,
-      key,
-    ) async {
-      ref.watch(sessionProvider.select((s) => s.user?.id ?? s.me?.uid));
-      try {
-        final json = await ref
-            .watch(apiClientProvider)
-            .getJson(
-              '/api/hosts/public/${Uri.encodeComponent(key.slug)}',
-              query: {'lane': key.lane},
-            );
-        return '${json['displayName'] ?? ''}'.trim();
-      } catch (_) {
-        return '';
-      }
-    });
+    .family<String, ({String slug, String lane})>(
+  retry: (_, __) => null,
+  (ref, key) =>
+      ref.watch(callHostVisualInLaneProvider(key).future).then((v) => v.name),
+);
 
 /// "Now", replaceable in tests so the connected timer is exact.
 final callClockProvider = Provider<DateTime Function()>((ref) => DateTime.now);

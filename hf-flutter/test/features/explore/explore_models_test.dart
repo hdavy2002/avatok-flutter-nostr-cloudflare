@@ -121,6 +121,18 @@ void main() {
       expect(c.rating, 4.8);
       expect(c.hasIntro, isTrue);
       expect(c.introSeconds, 12);
+      expect(c.previewSeconds, 12);
+    });
+
+    test('voice previews never advertise more than 20 seconds', () {
+      const long = HostCard(
+        slug: 'long',
+        displayName: 'Long clip',
+        introSeconds: 65,
+      );
+      const unknown = HostCard(slug: 'unknown', displayName: 'Unknown');
+      expect(long.previewSeconds, 20);
+      expect(unknown.previewSeconds, 20);
     });
 
     test('the Standard plan keeps fractional price and rate bands', () {

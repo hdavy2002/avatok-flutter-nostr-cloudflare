@@ -23,6 +23,7 @@ class CallSummary extends StatelessWidget {
     this.notified = false,
     this.notifyMessage,
     this.onNotify,
+    this.photoUrl,
   });
 
   final CallInfo info;
@@ -41,6 +42,7 @@ class CallSummary extends StatelessWidget {
   final bool notified;
   final String? notifyMessage;
   final VoidCallback? onNotify;
+  final String? photoUrl;
 
   String get _headline {
     final name = info.hostFirstName;
@@ -92,6 +94,7 @@ class CallSummary extends StatelessWidget {
             name: info.hostFirstName == 'your host' ? '' : info.hostFirstName,
             size: 96,
             radius: 48,
+            photoUrl: photoUrl,
             borderColor: HfBrightness.isDark(context)
                 ? HfColors.darkBg
                 : HfColors.white,

@@ -9,7 +9,6 @@ import '../../../core/router/routes.dart';
 import '../../../core/router/pending_intent.dart';
 import '../../../core/strings.dart';
 import '../../../core/widgets/widgets.dart';
-import '../../demo/demo_data.dart'; // [HF-DEMO] remove with lib/features/demo
 import '../data/call_api.dart';
 import 'call_confirm_sheet.dart';
 
@@ -61,31 +60,36 @@ class CallConfirmPage extends ConsumerWidget {
     String slug,
     String? lane,
   ) {
-    // [HF-DEMO] remove with lib/features/demo: a demo host has no server row to read the name from.
-    if (isDemoSlug(slug)) {
-      return _sheet(
+    final visual = lane == null
+        ? ref.watch(callHostVisualProvider(slug))
+        : ref.watch(callHostVisualInLaneProvider((slug: slug, lane: lane)));
+    return visual.when(
+      loading: () => const LoadingPanel(),
+      error: (_, __) => _sheet(
         context,
         slug,
-        slug == kDemoNehaSlug ? 'Neha' : 'Rohan',
+        const CallHostVisual(name: ''),
         lane,
-      );
-    }
-    final name = lane == null
-        ? ref.watch(callHostNameProvider(slug))
-        : ref.watch(callHostNameInLaneProvider((slug: slug, lane: lane)));
-    return name.when(
-      loading: () => const LoadingPanel(),
-      error: (_, __) => _sheet(context, slug, '', lane),
-      data: (n) => _sheet(context, slug, n, lane),
+      ),
+      data: (v) => _sheet(context, slug, v, lane),
     );
   }
 
-  Widget _sheet(BuildContext context, String slug, String name, String? lane) {
+  Widget _sheet(
+    BuildContext context,
+    String slug,
+    CallHostVisual visual,
+    String? lane,
+  ) {
     final router = GoRouter.of(context);
     return CallConfirmSheet(
       slug: slug,
-      hostName: name,
+      hostName: visual.name,
       lane: lane,
+      presence: visual.status == null
+          ? null
+          : HfPresence.fromApi(visual.status!),
+      photoUrl: visual.photoUrl,
       showHandle: false,
       onOutcome: (o) {
         if (o.action == CallSheetAction.close) {

@@ -737,7 +737,7 @@ void main() {
         player: player,
       );
       expect(find.text('Recorded by the host'), findsOneWidget);
-      expect(find.text('0:00 / 0:30'), findsOneWidget);
+      expect(find.text('0:00 / 0:20'), findsOneWidget);
       await tester.ensureVisible(find.byTooltip('Play introduction'));
       await tester.pump();
       expect(find.text('Hear Asha first'), findsOneWidget);
@@ -747,7 +747,7 @@ void main() {
       expect(find.byTooltip('Pause introduction'), findsOneWidget);
       player.emitPosition(const Duration(seconds: 12));
       await tester.pump();
-      expect(find.text('0:12 / 0:30'), findsOneWidget);
+      expect(find.text('0:12 / 0:20'), findsOneWidget);
       await tester.tap(find.byTooltip('Pause introduction'));
       await tester.pumpAndSettle();
       expect(player.paused, 1);

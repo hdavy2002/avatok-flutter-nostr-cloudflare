@@ -8,7 +8,8 @@ import '../../../core/router/routes.dart';
 import '../../../core/strings.dart';
 import '../../../core/theme/hf_theme.dart';
 import '../../../core/widgets/widgets.dart';
-import '../../demo/demo_data.dart'; // [HF-DEMO] remove with lib/features/demo
+import '../../call/data/call_api.dart';
+import '../../call/ui/call_avatar.dart';
 import '../data/review_api.dart';
 
 /// `/review/call/:id` (signed in, from the call screen) and `/review/:token` (no sign-in, from a push or a
@@ -99,17 +100,6 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
       _error = null;
     });
     final draft = ReviewDraft(stars: _stars, text: _text.text, topic: _topic);
-    // [HF-DEMO] remove with lib/features/demo: the demo call takes any valid review, sends nothing.
-    if (isDemoCallId(widget.callId)) {
-      demoStep('review_submitted');
-      await Future<void>.delayed(const Duration(milliseconds: 500));
-      if (!mounted) return;
-      setState(() {
-        _sending = false;
-        _sent = true;
-      });
-      return;
-    }
     final api = ref.read(reviewApiProvider);
     final sw = Stopwatch()..start();
     try {
@@ -176,10 +166,7 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
   }
 
   Widget _body() {
-    // [HF-DEMO] remove with lib/features/demo
-    final target = isDemoCallId(widget.callId)
-        ? const AsyncData<ReviewTarget>(kDemoReviewTarget)
-        : ref.watch(reviewTargetProvider(_key));
+    final target = ref.watch(reviewTargetProvider(_key));
     return target.when(
       loading: () => const LoadingPanel(skeleton: _ReviewSkeleton()),
       error: (e, _) => _loadError(e),
@@ -252,10 +239,13 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
 
   Widget _form(ReviewTarget t) {
     final name = t.hostFirstName;
-    final topics =
-        isDemoCallId(widget.callId) // [HF-DEMO] remove with lib/features/demo
-        ? kDemoReviewTopics
-        : t.hostSlug == null
+    final hostVisual = t.hostSlug == null
+        ? null
+        : ref.watch(callHostVisualProvider(t.hostSlug!));
+    final photoUrl = hostVisual != null && hostVisual.hasValue
+        ? hostVisual.requireValue.photoUrl
+        : null;
+    final topics = t.hostSlug == null
         ? const <ReviewTopic>[]
         : (ref.watch(reviewTopicsProvider(t.hostSlug!)).value ??
               const <ReviewTopic>[]);
@@ -271,8 +261,20 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
         HfSpacing.section,
       ),
       children: [
+        Center(
+          child: HfCallAvatar(
+            name: name,
+            size: 92,
+            radius: 46,
+            photoUrl: photoUrl,
+            borderColor: HfColors.white,
+            borderWidth: 4,
+          ),
+        ),
+        const SizedBox(height: HfSpacing.xl),
         Text(
           'How was your call with $name?',
+          textAlign: TextAlign.center,
           style: HfText.of(context, HfText.headline),
         ),
         if (detail.isNotEmpty) ...[

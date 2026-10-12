@@ -154,8 +154,8 @@ void main() {
       ]);
       expect(find.text('Her voice'), findsOneWidget);
       expect(find.text('His voice'), findsOneWidget);
-      expect(find.text('0:20'), findsOneWidget);
-      expect(find.text('1:05'), findsOneWidget);
+      expect(find.text('0:20'), findsNWidgets(2));
+      expect(find.text('1:05'), findsNothing);
       expect(hostWaveHeights('her'), hostWaveHeights('her'));
       expect(hostWaveHeights('her'), isNot(hostWaveHeights('him')));
       expect(hostWaveHeights('her'), hasLength(20));

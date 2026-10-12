@@ -59,12 +59,6 @@ class DiscoveryHeader extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final dark = HfBrightness.isDark(context);
     final standardPlan = hfStdPlanOn(ref.watch(flagsProvider));
-    final name = ref.watch(
-      sessionProvider.select((s) {
-        final raw = (s.user?.firstName ?? s.me?.displayName ?? '').trim();
-        return raw.isEmpty ? null : raw.split(RegExp(r'\s+')).first;
-      }),
-    );
     final laneIndex = filters.lane == HostLane.women
         ? 1
         : filters.lane == HostLane.lgbtq
@@ -86,16 +80,13 @@ class DiscoveryHeader extends ConsumerWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    HomeCopy.greeting(name, now: now),
-                    style: HfText.of(
-                      context,
-                      HfText.note,
-                    ).copyWith(fontWeight: FontWeight.w600),
+                    ExploreCopy.title,
+                    style: HfText.of(context, HfText.hero),
                   ),
                   const SizedBox(height: HfSpacing.xs),
                   Text(
-                    HomeCopy.hero,
-                    style: HfText.of(context, HfText.headline),
+                    ExploreCopy.tagline,
+                    style: HfText.of(context, HfText.body),
                   ),
                 ],
               );

@@ -4,7 +4,6 @@ import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/analytics/analytics.dart';
-import '../../demo/demo_audio.dart'; // [HF-DEMO] remove with lib/features/demo
 
 /// The one speaker for host voice intros. An interface, so widget tests swap in a fake with no platform channel.
 abstract class IntroAudio {
@@ -57,8 +56,7 @@ class AudioplayersIntroAudio implements IntroAudio {
 }
 
 final introAudioProvider = Provider<IntroAudio>((ref) {
-  // [HF-DEMO] remove with lib/features/demo: wrap with `AudioplayersIntroAudio()` alone.
-  final audio = DemoAwareIntroAudio(AudioplayersIntroAudio());
+  final audio = AudioplayersIntroAudio();
   ref.onDispose(audio.dispose);
   return audio;
 });
@@ -81,11 +79,17 @@ final introPlayerProvider =
     );
 
 class IntroPlayerController extends Notifier<IntroPlayerState> {
+  static const Duration previewLimit = Duration(seconds: 20);
+
   StreamSubscription<void>? _sub;
+  Timer? _previewTimer;
 
   @override
   IntroPlayerState build() {
-    ref.onDispose(() => unawaited(_sub?.cancel()));
+    ref.onDispose(() {
+      _previewTimer?.cancel();
+      unawaited(_sub?.cancel());
+    });
     return const IntroPlayerState();
   }
 
@@ -99,6 +103,7 @@ class IntroPlayerController extends Notifier<IntroPlayerState> {
     required String from,
   }) async {
     if (state.isPlaying(slug)) {
+      _previewTimer?.cancel();
       state = const IntroPlayerState();
       try {
         await _audio.pause();
@@ -107,11 +112,20 @@ class IntroPlayerController extends Notifier<IntroPlayerState> {
       }
       return;
     }
-    _sub ??= _audio.onComplete.listen((_) => state = const IntroPlayerState());
+    _sub ??= _audio.onComplete.listen((_) {
+      _previewTimer?.cancel();
+      state = const IntroPlayerState();
+    });
+    _previewTimer?.cancel();
     // Claim the speaker first, so the previous card's button flips back at once.
     state = IntroPlayerState(playingSlug: slug);
     try {
       await _audio.play(url);
+      _previewTimer = Timer(previewLimit, () {
+        if (!state.isPlaying(slug)) return;
+        state = const IntroPlayerState();
+        unawaited(_audio.stop());
+      });
       unawaited(
         Analytics.capture('hf_app_intro_played', <String, Object>{
           'slug': slug,
@@ -119,6 +133,7 @@ class IntroPlayerController extends Notifier<IntroPlayerState> {
         }),
       );
     } catch (e, st) {
+      _previewTimer?.cancel();
       if (state.playingSlug == slug) state = IntroPlayerState(failedSlug: slug);
       unawaited(
         Analytics.captureException(
@@ -134,6 +149,7 @@ class IntroPlayerController extends Notifier<IntroPlayerState> {
 
   /// Stops whatever plays (leaving the screen, opening a profile).
   Future<void> stop() async {
+    _previewTimer?.cancel();
     if (state.playingSlug == null) return;
     state = const IntroPlayerState();
     try {

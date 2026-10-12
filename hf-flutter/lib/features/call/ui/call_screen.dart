@@ -11,8 +11,6 @@ import '../../../core/router/routes.dart';
 import '../../../core/strings.dart';
 import '../../../core/theme/hf_theme.dart';
 import '../../../core/widgets/widgets.dart';
-import '../../demo/demo_call.dart'; // [HF-DEMO] remove with lib/features/demo
-import '../../demo/demo_data.dart'; // [HF-DEMO] remove with lib/features/demo
 import '../data/call_api.dart';
 import '../data/call_models.dart';
 import '../data/call_telemetry.dart';
@@ -47,8 +45,6 @@ class CallScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // [HF-DEMO] remove with lib/features/demo
-    if (isDemoCallId(id)) return const DemoCallScreen();
     return id == newCallId ? const CallConfirmPage() : CallFollower(id: id);
   }
 }
@@ -315,6 +311,13 @@ class _CallFollowerState extends ConsumerState<CallFollower>
     );
   }
 
+  String? _hostPhotoUrl(CallInfo info) {
+    final slug = info.hostSlug;
+    if (slug == null) return null;
+    final visual = ref.watch(callHostVisualProvider(slug));
+    return visual.hasValue ? visual.requireValue.photoUrl : null;
+  }
+
   Widget _content(CallInfo? info) {
     final fatal = _fatal;
     if (fatal != null) {
@@ -354,6 +357,7 @@ class _CallFollowerState extends ConsumerState<CallFollower>
               children: [
                 CallSummary(
                   info: info,
+                  photoUrl: _hostPhotoUrl(info),
                   cancelledByMe: _cancelledByMe,
                   reviewed: _reviewed,
                   notifying: _notifying,
@@ -378,16 +382,19 @@ class _CallFollowerState extends ConsumerState<CallFollower>
     final connected = info.status == CallStatus.connected;
     final slug = info.hostSlug;
     int? currentRate;
-    if (connected && slug != null) {
-      final estimateValue = ref.watch(callEstimateProvider(slug));
-      final estimate = estimateValue.hasValue
-          ? estimateValue.requireValue
-          : null;
-      if (estimate != null) {
-        currentRate = currentRatePaise(
-          estimate.tiers,
-          _elapsedSeconds(info),
-        );
+    final photoUrl = _hostPhotoUrl(info);
+    if (slug != null) {
+      if (connected) {
+        final estimateValue = ref.watch(callEstimateProvider(slug));
+        final estimate = estimateValue.hasValue
+            ? estimateValue.requireValue
+            : null;
+        if (estimate != null) {
+          currentRate = currentRatePaise(
+            estimate.tiers,
+            _elapsedSeconds(info),
+          );
+        }
       }
     }
     return Column(
@@ -399,6 +406,7 @@ class _CallFollowerState extends ConsumerState<CallFollower>
               info: info,
               elapsedSeconds: connected ? _elapsedSeconds(info) : 0,
               currentRatePaise: currentRate,
+              photoUrl: photoUrl,
               notice: _notice,
               showConnectionTrouble: _failures >= 3,
             ),
