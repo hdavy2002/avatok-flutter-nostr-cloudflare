@@ -13,10 +13,11 @@ import 'code_boxes.dart';
 
 class EmailCodeForm extends ConsumerStatefulWidget {
   const EmailCodeForm({super.key, required this.onVerified, this.verification = false,
-    this.enabled = true, this.onBusyChanged, this.onChallengeChanged, this.initialEmail, this.challengeExpiresAt});
+    this.enabled = true, this.showHeading = true, this.onBusyChanged, this.onChallengeChanged, this.initialEmail, this.challengeExpiresAt});
   final Future<void> Function() onVerified;
   final bool verification;
   final bool enabled;
+  final bool showHeading;
   final ValueChanged<bool>? onBusyChanged;
   final ValueChanged<bool>? onChallengeChanged;
   final String? initialEmail;
@@ -117,9 +118,11 @@ class _EmailCodeFormState extends ConsumerState<EmailCodeForm> {
 
   @override
   Widget build(BuildContext context) => Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-    Text(_sent ? 'Enter email code' : widget.verification ? 'Verify your email' : 'Log in with email',
-      style: HfText.of(context, HfText.section)),
-    const SizedBox(height: 12),
+    if (widget.showHeading) ...[
+      Text(_sent ? 'Enter email code' : widget.verification ? 'Verify your email' : 'Log in with email',
+        style: HfText.of(context, HfText.section)),
+      const SizedBox(height: 12),
+    ],
     if (!_sent) TextField(key: const ValueKey('identity-email'), controller: _email,
       enabled: widget.enabled && !_busy, keyboardType: TextInputType.emailAddress, autofillHints: const [AutofillHints.email],
       decoration: const InputDecoration(labelText: 'Email address', prefixIcon: Icon(Icons.mail_outline)),

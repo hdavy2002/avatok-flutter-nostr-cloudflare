@@ -8,7 +8,7 @@ import '../../../core/analytics/analytics.dart';
 import '../../../core/auth/session.dart';
 import '../../../core/router/pending_intent.dart';
 import '../../../core/router/routes.dart';
-import '../../../core/theme/hf_theme.dart';
+import 'auth_visuals.dart';
 import 'registration_form.dart';
 import '../data/registration_progress.dart';
 
@@ -88,19 +88,8 @@ class _CompleteProfileScreenState extends ConsumerState<CompleteProfileScreen> {
       if (!didPop) _cancel();
     },
     child: Scaffold(
-      appBar: AppBar(
-        title: const Text('Create your account'),
-        leading: IconButton(
-          tooltip: 'Keep browsing',
-          icon: const Icon(Icons.arrow_back_rounded),
-          onPressed: _cancel,
-        ),
-      ),
-      body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.only(top: HfSpacing.gap),
-          child: RegistrationForm(onSaved: _saved),
-        ),
+      body: AuthViewport(
+        child: RegistrationForm(onSaved: _saved, onCancel: _cancel),
       ),
     ),
   );

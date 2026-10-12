@@ -10,12 +10,13 @@ import '../../../core/theme/hf_theme.dart';
 import '../../../core/widgets/widgets.dart';
 import '../../kyc/ui/identity_kyc_screen.dart';
 import '../data/identity_api.dart';
+import 'auth_visuals.dart';
 import 'email_code_form.dart';
-import 'identity_header.dart';
 
 class RegistrationForm extends ConsumerStatefulWidget {
-  const RegistrationForm({super.key, required this.onSaved});
+  const RegistrationForm({super.key, required this.onSaved, required this.onCancel});
   final Future<void> Function(String) onSaved;
+  final VoidCallback onCancel;
   @override
   ConsumerState<RegistrationForm> createState() => _RegistrationFormState();
 }
@@ -159,20 +160,29 @@ class _RegistrationFormState extends ConsumerState<RegistrationForm> {
     ]));
     if (_step == 1) return const Center(child: Text('Verify your WhatsApp number by signing in again to continue registration.'));
     if (_step == 8) return const Center(child: Text('Your account has been created.'));
-    final (title, subtitle) = switch (_step) {
-      2 => ('Verify your email', "Enter your email address and we'll send a verification code."),
-      4 => ('What should we call you?', "This is how you'll appear on your profile."),
-      5 => ('Choose your username', 'This will be your unique identity on the app.'),
-      6 => ('Verify your identity', 'Complete verification for protected spaces or to publish a creator profile.'),
-      _ => ('Review and accept', 'Please read and agree to continue.'),
+    final (title, subtitle, photo) = switch (_step) {
+      2 => (_emailCodeSent ? 'Enter email code' : 'Verify your email',
+        _emailCodeSent ? 'We sent a 6-digit code to your email address.' : "Enter your email address and we'll send a verification code.",
+        _emailCodeSent ? AuthPhotoKind.emailOtp : AuthPhotoKind.email),
+      4 => ('What should we call you?', "This is how you'll appear on your profile.", AuthPhotoKind.name),
+      5 => ('Choose your username', 'This will be your unique identity on the app.', AuthPhotoKind.username),
+      6 => ('Unlock more conversations', 'Complete KYC for protected spaces and creator publishing.', AuthPhotoKind.kyc),
+      _ => ('Review and accept', 'Please read and agree to continue.', AuthPhotoKind.policies),
     };
-    return Center(child: ConstrainedBox(constraints: const BoxConstraints(maxWidth: 520),
-      child: ListView(padding: const EdgeInsets.fromLTRB(20, 4, 20, 32), children: [
-        IdentityHeader(title: _step == 2 && _emailCodeSent ? 'Enter email code' : title,
-          subtitle: _step == 2 && _emailCodeSent ? 'Verify the code sent to your email address.' : subtitle,
-          step: _step == 2 && _emailCodeSent ? 3 : _step),
-        HfCard(child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+    final visualStep = _step == 2 && _emailCodeSent ? 3 : _step;
+    return ListView(padding: const EdgeInsets.fromLTRB(20, 8, 20, 28), children: [
+        AuthBackRow(onBack: _busy ? () {} : _step > 2 ? () => setState(() {
+          _step = _step == 4 ? 2 : _step - 1; _error = null;
+        }) : widget.onCancel, step: visualStep),
+        AuthIdentityHero(title: title, subtitle: subtitle, photo: photo,
+          photoHeight: _step == 6 || _step == 7 ? 176 : 188,
+          sticker: _step == 4 ? const AuthSticker('Nice to\nmeet you!')
+            : _step == 5 ? const AuthSticker('Be\nyou', color: HfColors.blush)
+            : _step == 7 ? const AuthSticker("Let's get\nstarted!", color: HfColors.blush)
+            : null),
+        AuthSurfaceCard(child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
           if (_step == 2) EmailCodeForm(verification: true,
+            showHeading: false,
             initialEmail: _email, challengeExpiresAt: _emailExpiresAt,
             onChallengeChanged: (sent) { if (mounted) setState(() => _emailCodeSent = sent); },
             onVerified: _load),
@@ -189,7 +199,8 @@ class _RegistrationFormState extends ConsumerState<RegistrationForm> {
             const SizedBox(height: 16), HfButton(label: 'Continue', loading: _busy, onPressed: _busy ? null : _nameNext),
           ],
           if (_step == 5) ...[
-            const Text('Your username cannot be changed later.'),
+            const AuthCallout(icon: Icons.info_outline, title: 'Choose carefully',
+              body: 'Your username cannot be changed later.', tint: HfColors.butter),
             const SizedBox(height: 16),
             TextField(key: const ValueKey('registration-username'), controller: _username,
               enabled: !_busy, autocorrect: false, maxLength: 30,
@@ -198,22 +209,33 @@ class _RegistrationFormState extends ConsumerState<RegistrationForm> {
               onChanged: (_) => setState(() { _availableUsername = null; _error = null; })),
             if (_availableUsername != null) const Text('Available'),
             HfButton(label: 'Check availability', kind: HfButtonKind.secondary, loading: _busy, onPressed: _checkUsername),
+            const SizedBox(height: 10),
+            Text('Suggestions for you', style: HfText.of(context, HfText.badge)),
+            const SizedBox(height: 8),
+            Wrap(spacing: 8, runSpacing: 8, children: [
+              for (final suggestion in const ['maya', 'maya.connect', 'maya_27'])
+                ActionChip(label: Text(suggestion), onPressed: _busy ? null : () {
+                  _username.text = suggestion;
+                  setState(() { _availableUsername = null; _error = null; });
+                }),
+            ]),
             const SizedBox(height: 12),
             HfButton(label: 'Continue', onPressed: _busy || _availableUsername == null ? null
               : () => _persist('username', {'username': _availableUsername}, next: 6)),
           ],
           if (_step == 6) ...[
-            const Text('Protected women-only and LGBTQ+ spaces have identity and eligibility checks. Full video KYC is required to publish an Influencer or Celebrity profile. Fans do not need creator KYC to call creators. Your identity details stay private.'),
+            const AuthCallout(icon: Icons.lock_outline, title: 'Private by design',
+              body: 'Women-only, LGBTQ+, and some influencer conversations require full KYC. Your identity details stay private.'),
             const SizedBox(height: 16),
-            const ListTile(leading: Icon(Icons.lock_outline), title: Text('Verified once. Stored securely.'),
-              subtitle: Text('Verification opens after you finish accepting the account policies.')),
+            const ListTile(leading: Icon(Icons.verified_user_outlined), title: Text('Verified once. Stored securely.'),
+              subtitle: Text('We use industry-standard encryption to protect your information.')),
             HfButton(label: 'Do KYC now', loading: _busy,
               onPressed: _busy ? null : () => _persist('kyc', {'kycNow': true}, next: 7)),
             HfButton(label: 'Maybe later', kind: HfButtonKind.secondary,
               onPressed: _busy ? null : () => _persist('kyc', {'kycNow': false}, next: 7)),
           ],
           if (_step == 7) ...[
-            for (final policy in _legal) Row(children: [
+            for (final policy in _legal) Column(children: [Row(children: [
               Checkbox(value: _accepted.contains(policy.$1), onChanged: _busy ? null : (v) {
                 final accepted = {..._accepted};
                 if (v == true) { accepted.add(policy.$1); } else { accepted.remove(policy.$1); }
@@ -224,17 +246,14 @@ class _RegistrationFormState extends ConsumerState<RegistrationForm> {
               Expanded(child: Text('I agree to the ${policy.$2}', style: HfText.of(context, HfText.note))),
               IconButton(tooltip: 'Read ${policy.$2}', icon: const Icon(Icons.chevron_right),
                 onPressed: () => LinkOpener.instance.site(policy.$3)),
-            ]),
+            ]), const Divider()]),
             const SizedBox(height: 16),
-            HfButton(key: const ValueKey('registration-create'), label: 'Finish creating account', loading: _busy,
+            HfButton(key: const ValueKey('registration-create'), label: 'Create account', loading: _busy,
               onPressed: _accepted.length == _legal.length ? _save : null),
           ],
           if (_error != null) Padding(padding: const EdgeInsets.only(top: 12),
             child: Semantics(liveRegion: true, child: Text(_error!))),
         ])),
-        if (_step > 2) HfButton(label: 'Back', kind: HfButtonKind.text, onPressed: _busy ? null : () => setState(() {
-          _step = _step == 4 ? 2 : _step - 1; _error = null;
-        })),
-      ])));
+      ]);
   }
 }
