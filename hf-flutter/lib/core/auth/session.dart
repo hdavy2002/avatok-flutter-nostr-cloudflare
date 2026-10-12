@@ -125,7 +125,7 @@ class SessionController extends Notifier<SessionState> {
     }
     final clerk = _clerk;
     if (clerk is! ClerkEmailApi) return ClerkStep.error('Email sign-in is unavailable. Please use WhatsApp.');
-    final step = await clerk.verifyEmailCode(challenge, code);
+    final step = await (clerk as ClerkEmailApi).verifyEmailCode(challenge, code);
     if (step.isComplete && step.user != null) await _adopt(step.user!);
     return step;
   }

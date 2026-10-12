@@ -61,6 +61,8 @@ class CallSummary extends StatelessWidget {
       case CallStatus.ringingHost:
       case CallStatus.ringingCaller:
       case CallStatus.connected:
+      case CallStatus.ending:
+      case CallStatus.finalizing:
       case CallStatus.unknown:
         return CallStrings.callEnded;
     }

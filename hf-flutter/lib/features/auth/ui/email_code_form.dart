@@ -69,7 +69,7 @@ class _EmailCodeFormState extends ConsumerState<EmailCodeForm> {
       } else {
         final clerk = ref.read(clerkProvider);
         if (clerk is! ClerkEmailApi) throw StateError('Email sign-in is unavailable. Please use WhatsApp.');
-        _challenge = await clerk.startEmailCode(_email.text);
+        _challenge = await (clerk as ClerkEmailApi).startEmailCode(_email.text);
       }
       if (!mounted || (widget.verification && AccountScope.id != owner)) return;
       setState(() { _sent = true; _remaining = gap; });
