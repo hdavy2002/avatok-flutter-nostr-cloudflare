@@ -1,0 +1,31 @@
+---
+import HelloFraandsPage from '../layouts/HelloFraandsPage.astro';
+export const prerender = true;
+---
+<HelloFraandsPage
+  title="Rules of engagement"
+  summary="Clear boundaries for respectful, private conversations."
+  related={[
+    { href: '/community-guidelines', label: 'Community guidelines' },
+    { href: '/privacy', label: 'Privacy policy' },
+    { href: '/recording-policy', label: 'Recording & AI safety' },
+  ]}
+>
+  <h2>Be respectful</h2>
+  <p>Speak to every person with dignity. Harassment, threats, hateful conduct, sexual pressure and abusive language are not allowed.</p>
+
+  <h2>Keep personal contact details private</h2>
+  <p>Do not ask for or share phone numbers, email addresses, social handles, home addresses or off-platform meeting details during a marketplace call.</p>
+
+  <h2>Respect consent and boundaries</h2>
+  <p>Either person may end a call at any time. A host may decline a call, and a caller may choose not to continue. Do not pressure someone to stay.</p>
+
+  <h2>Use the service for conversation</h2>
+  <p>Marketplace calls are conversations, not medical, legal, financial or emergency services. Do not promise diagnoses, guaranteed outcomes or emergency response.</p>
+
+  <h2>Protect call privacy</h2>
+  <p>Do not record or redistribute a call. Follow the published recording and AI-safety policy, and report conduct that breaks these rules.</p>
+
+  <h2>Reviews must be genuine</h2>
+  <p>Only review a call you genuinely joined. Describe your own experience without contact details, private information or abuse.</p>
+</HelloFraandsPage>
