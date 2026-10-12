@@ -1,4 +1,11 @@
 {
+  "HF-WORKER-CI-GATE-1": {
+    "description": "Repair three TypeScript diagnostics that blocked the shared production web-deployment safety gate: remove a duplicate call-plan response field and keep the wallet migration catalogue assertions Vite-native without Node runtime types.",
+    "two_sided": false,
+    "min_devices_on_build": 0,
+    "flags": [],
+    "no_telemetry": "CI-only correction. Runtime call-plan behavior and wallet catalogue values are unchanged; success is the HDFC worker typecheck-delta job completing without these three diagnostics."
+  },
   "HF-EXACT-MARKET-1": {
     "description": "Exact 425x916 marketplace, fixed-pack wallet, connected-call and review presentation using live backend values. Keeps the four Play-authoritative fixed packs, the Standard call tariff, 20-second voice previews, and permits review after any completed positive-duration call.",
     "two_sided": true,
