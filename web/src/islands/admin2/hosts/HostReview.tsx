@@ -8,6 +8,7 @@ import { request } from '../../../lib/apiClient';
 import '../../../styles/profile-card.css';
 
 const TABS: { key: HostStatus; label: string }[] = [
+  { key: 'draft', label: 'Drafts' },
   { key: 'pending_review', label: 'Pending review' }, { key: 'live', label: 'Live' }, { key: 'paused', label: 'Paused' }, { key: 'rejected', label: 'Rejected' },
 ];
 const T14 = { fontSize: 14 } as const;
@@ -47,7 +48,7 @@ export default function HostReview() {
                   <td>{h.avatarUrl && <img src={h.avatarUrl} alt="" width={48} height={48} style={{ borderRadius: 10, objectFit: 'cover' }} />}</td>
                   <td><strong>{h.displayName || 'No name'}</strong><div className="muted" style={T14}>{h.tagline || ''}</div></td>
                   <td>{h.languages.join(', ') || '—'}</td>
-                  <td>{standard ? 'Standard plan' : `₹${h.pricePerMin}/min`}</td>
+                  <td>{standard && (!h.category || h.category === 'standard') ? 'Standard plan' : `₹${h.pricePerMin}/min`}</td>
                   <td>{dateIST(h.submittedAt ?? h.updatedAt)}</td>
                   <td><button type="button" className="btn small" style={T14} onClick={() => setOpenUid(h.uid)} aria-label={`Open ${h.displayName || 'host'}`}>Open</button></td>
                 </tr>
@@ -128,7 +129,7 @@ function Drawer({ uid, standard, onClose, onChanged }: { uid: string; standard: 
                     <div><dt>Style</dt><dd>{h.style || '—'}</dd></div>
                   </dl>
                   {h.topics.length > 0 && <ul className="person-moods">{h.topics.map((t) => <li key={t}>{t}</li>)}</ul>}
-                  <div className="person-actions"><span className="person-price">{standard ? 'Standard plan' : `₹${h.pricePerMin}/min`}</span></div>
+                  <div className="person-actions"><span className="person-price">{standard && (!h.category || h.category === 'standard') ? 'Standard plan' : `₹${h.pricePerMin}/min`}</span></div>
                 </div>
               </article>
             </div>

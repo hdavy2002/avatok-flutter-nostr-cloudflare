@@ -15,6 +15,8 @@ import { readHfStdPlan } from "../lib/hf_token_config"; // [HF-STD-PLAN-1]
 import { getHost, upsertHost, listMedia, hostToJson, mediaToJson, mediaUrl, avatarUrlFor, type HostPatch } from "../lib/hf_host_store";
 import { normalizeIntroMime, validateIntro, INTRO_ACCEPTED_TYPES, INTRO_MAX_BYTES } from "../lib/hf_intro";
 import { transcribeAndFlag } from "../lib/hf_intro_check";
+import { isHostCategory, isCreatorCategory, validCreatorRate, CREATOR_MIN_RUPEES, CREATOR_MAX_RUPEES } from "../lib/hf_creator_pricing";
+import { encryptPii } from "../lib/pii_crypto";
 import { TOPIC_SLUGS, LANGUAGES, LANGUAGE_CODE_SET, STYLES, PRICE_MIN, PRICE_MAX, contactLeak } from "../lib/hf_options";
 
 const APP = BRAND.slug;
@@ -89,6 +91,16 @@ async function putMe(req: Request, env: Env, ctx: ExecutionContext | undefined):
   const changed: string[] = [];
   const has = (k: string) => Object.prototype.hasOwnProperty.call(b, k);
   const locked = (k: string) => priceHoursOnly && has(k);
+  if (has("category")) {
+    if (locked("category")) return err(409, "locked", { field: "category" });
+    if (!isHostCategory(b.category)) return bad("category", "Choose standard, influencer or celebrity.");
+    patch.category = b.category; changed.push("category");
+  }
+  if (has("privatePhone")) {
+    if (b.privatePhone !== null && (typeof b.privatePhone !== "string" || !/^\+[1-9]\d{7,14}$/.test(b.privatePhone))) return bad("privatePhone", "Use an international phone number or clear the field.");
+    patch.private_phone_enc = b.privatePhone ? await encryptPii(env, b.privatePhone as string) : null;
+    changed.push("privatePhone");
+  }
 
   if (has("displayName")) {
     if (locked("displayName")) return err(409, "locked", { field: "displayName" });
@@ -129,10 +141,11 @@ async function putMe(req: Request, env: Env, ctx: ExecutionContext | undefined):
   // [HF-STD-PLAN-1] Standard plan: hosts no longer set a price; one rate card applies to every call. An older app still sending
   // pricePerMin is ignored (never an error, so onboarding is not blocked).
   const stdOn = readHfStdPlan((await readConfig(env).catch(() => ({}))) as unknown as Record<string, unknown>).enabled;
-  if (has("pricePerMin") && !stdOn) {
+  const creator = isCreatorCategory(patch.category ?? cur?.category);
+  if (has("pricePerMin") && (creator || !stdOn)) {
     const n = b.pricePerMin;
-    if (typeof n !== "number" || !Number.isInteger(n) || n < PRICE_MIN || n > PRICE_MAX) return bad("pricePerMin", `Price must be a whole number from ₹${PRICE_MIN} to ₹${PRICE_MAX} per minute.`);
-    patch.price_per_min = n; changed.push("pricePerMin");
+    if (creator ? !validCreatorRate(n) : typeof n !== "number" || !Number.isInteger(n) || n < PRICE_MIN || n > PRICE_MAX) return bad("pricePerMin", `Price must be a whole number from ₹${creator ? CREATOR_MIN_RUPEES : PRICE_MIN} to ₹${creator ? CREATOR_MAX_RUPEES : PRICE_MAX} per minute.`);
+    patch.price_per_min = n as number; changed.push("pricePerMin");
   }
   if (has("hours")) {
     const h = b.hours as { days?: unknown; from?: unknown; to?: unknown } | null;
@@ -231,7 +244,7 @@ async function claimAvatar(req: Request, env: Env, ctx: ExecutionContext | undef
 }
 
 // ── PUT /api/hosts/me/voice  (alias: POST /api/hosts/voice) ──────────────────
-// [HF-VOICE-INTRO-1] The host's OWN voice introduction (30 s - 5 min). Private copy in VERIFICATION until an admin approves it.
+// [HF-VOICE-INTRO-1] The host's OWN voice introduction (20 s - 5 min). Private copy in VERIFICATION until an admin approves it.
 // A live/paused host may re-record: the profile stays online and the old approved intro keeps playing until the new one is approved.
 async function uploadVoice(req: Request, env: Env, ctx: ExecutionContext | undefined): Promise<Response> {
   const u = await requireUser(req, env);

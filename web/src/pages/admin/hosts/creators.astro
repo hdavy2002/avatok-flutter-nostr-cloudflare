@@ -1,0 +1,8 @@
+---
+export const prerender = false;
+import Admin2 from '../../../layouts/Admin2.astro';
+import CreatorListings from '../../../islands/admin2/hosts/CreatorListings.tsx';
+---
+<Admin2 title="Creator listings" active="host-review" subtitle="Prepare and review influencer and celebrity listings.">
+  <CreatorListings client:load />
+</Admin2>

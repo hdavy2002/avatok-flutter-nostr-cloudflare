@@ -11,6 +11,7 @@ import {
   PRICING_GP_R1, chargePaise, stdSplit, formatRupees, rateAtSecond, STD_TECH_MAX_SECONDS, type Lot, type Price, type Tariff,
 } from "./hf_token_math";
 import type { HfTokenConfig, HfStdPlan } from "./hf_token_config";
+import { creatorCallSplit, validCreatorSnapshot, type CreatorSnapshot } from "./hf_creator_pricing";
 
 export const SPLIT_RULE = "split-v1"; // C prorated, H floored, P remainder (hf_token_math.callSplit)
 export const STD_SPLIT_RULE = "std-split-v1"; // [HF-STD-PLAN-1] tiered V, host per minute floored, phone estimate, platform remainder (stdSplit)
@@ -29,6 +30,7 @@ export interface CallSnapshot {
   ratePaise: number; callCostPaisePerMin: number; hostShareBps: number; taxMode: string; splitRuleVersion: string;
   /** [HF-STD-PLAN-1] Standard plan: the tiers, host pay and phone-cost estimate in force when the call started. Absent = old host-rate call. */
   std?: StdSnapshot;
+  creator?: CreatorSnapshot;
 }
 export interface StdSnapshot { plan: "std"; tariff: Tariff; hostPaisePerMin: number; phoneCostPaisePerMin: number }
 
@@ -45,7 +47,7 @@ export function stdSnapshotFor(std: HfStdPlan): CallSnapshot {
   };
 }
 /** Price used for maths: the tariff of a Standard call, else the flat host rate. */
-export const priceOf = (snap: { ratePaise: number; std?: StdSnapshot | null }): Price => (snap.std ? snap.std.tariff : snap.ratePaise);
+export const priceOf = (snap: { ratePaise: number; std?: StdSnapshot | null; creator?: CreatorSnapshot | null }): Price => (snap.creator ? snap.creator.ratePaise : snap.std ? snap.std.tariff : snap.ratePaise);
 
 /** Value (paise per token) a NEW token would have: used to say how many tokens a top-up must add. */
 async function activeValue(env: Env, tk: HfTokenConfig): Promise<number> {
@@ -66,14 +68,17 @@ export async function startShortfall(env: Env, tk: HfTokenConfig, lots: Lot[], r
  * Start gate for a token call: open debt blocks, the balance must cover 2 whole minutes (shortfall reported in tokens), then the lots are
  * reserved for up to 60 minutes (or what they can pay for). On refusal nothing stays reserved.
  */
-export async function prepareTokenStart(env: Env, a: { uid: string; callId: string; ratePaise: number; tk: HfTokenConfig; std?: HfStdPlan | null }): Promise<StartCheck> {
+export async function prepareTokenStart(env: Env, a: { uid: string; callId: string; ratePaise: number; tk: HfTokenConfig; std?: HfStdPlan | null; creator?: CreatorSnapshot }): Promise<StartCheck> {
   const { uid, callId, tk } = a;
   // [HF-STD-PLAN-1] Standard plan: one tariff and no shorter commercial cap — reserve what the whole balance can pay for
   // (up to the explicit 24 h operational safety ceiling), so hang-up or wallet exhaustion normally ends it. Old host-rate calls keep 60 min.
-  const std = a.std && a.std.enabled ? a.std : null;
-  const ratePaise: Price = std ? std.tariff : a.ratePaise;
+  if (a.creator && !validCreatorSnapshot(a.creator)) return { ok: false, status: 409, error: "invalid_pricing", message: "This listing's price is unavailable." };
+  const std = !a.creator && a.std && a.std.enabled ? a.std : null;
+  const ratePaise: Price = a.creator ? a.creator.ratePaise : std ? std.tariff : a.ratePaise;
   const cap = std ? STD_TECH_MAX_SECONDS : MAX_CALL_SECONDS;
-  const snapshot = std ? stdSnapshotFor(std) : snapshotFor(a.ratePaise, tk);
+  const snapshot: CallSnapshot = a.creator ? { ratePaise: a.creator.ratePaise, callCostPaisePerMin: a.creator.callCostPaisePerMin,
+    hostShareBps: a.creator.hostShareBps, taxMode: a.creator.taxMode, splitRuleVersion: `${a.creator.version}/gross-share-less-cost-v1`, creator: { ...a.creator } }
+    : std ? stdSnapshotFor(std) : snapshotFor(a.ratePaise, tk);
   if (await hasOpenDebt(env, uid)) return { ok: false, status: 409, error: "debt_open", message: DEBT_MESSAGE, extra: { reason: "debt_open" } };
   const low = async (lots: Lot[]): Promise<StartCheck> => {
     const s = await startShortfall(env, tk, lots, ratePaise);
@@ -118,6 +123,7 @@ export interface TokenSettleInput {
   connectedSeconds: number; maxSeconds: number; endedAt: number;
   /** [HF-STD-PLAN-1] Standard plan snapshot from the call row; when present it replaces ratePaise / hostShareBps / callCostPaisePerMin. */
   std?: StdSnapshot | null;
+  creator?: CreatorSnapshot | null;
 }
 export interface TokenSettleOutput {
   billableSeconds: number; billedMinutes: number; shortfall: boolean;
@@ -130,6 +136,7 @@ export interface TokenSettleOutput {
  * can simply call it again until it returns. Throws when the ledger cannot settle (conflict) so the DO retries from its alarm.
  */
 export async function settleTokenCall(env: Env, i: TokenSettleInput): Promise<TokenSettleOutput> {
+  if (i.creator && !validCreatorSnapshot(i.creator)) throw new RangeError("Invalid creator snapshot");
   const want = Math.max(0, Math.min(Math.trunc(i.connectedSeconds), Math.trunc(i.maxSeconds)));
   const price = priceOf(i);
   const s = await settleCall(env, i.callerUid, i.callId, price, want);
@@ -137,7 +144,7 @@ export async function settleTokenCall(env: Env, i: TokenSettleInput): Promise<To
   if (s.ok) { billable = s.billableSeconds; lots = s.lots; shortfall = s.shortfall; micro = s.totalMicro; }
   else if (s.reason !== "released") throw new Error(`hf_token settle ${s.reason}`);
   // "released" = the reservation was given back before connect: nothing was consumed.
-  const split = i.std
+  const split = i.creator ? creatorCallSplit(i.creator, billable) : i.std
     ? (() => { const x = stdSplit({ tariff: i.std!.tariff, billableSeconds: billable, hostPaisePerMin: i.std!.hostPaisePerMin, phoneCostPaisePerMin: i.std!.phoneCostPaisePerMin });
       return { valuePaise: x.valuePaise, callCostPaise: x.phoneCostPaise, hostPaise: x.hostPaise, platformPaise: x.platformPaise }; })()
     : callSplit({ ratePaise: i.ratePaise, billableSeconds: billable, callCostPaisePerMin: i.callCostPaisePerMin, hostShareBps: i.hostShareBps });

@@ -1,6 +1,7 @@
 // [HF-NATIVE-S2] Pure parsing + SQL building for GET /api/hf/hosts (native app host list). No env / network here.
-import { TOPIC_SLUGS, LANGUAGE_CODES, LANGUAGES, PRICE_MIN, PRICE_MAX } from "./hf_options";
+import { TOPIC_SLUGS, LANGUAGE_CODES, LANGUAGES } from "./hf_options";
 import { parseLane, type Lane } from "./hf_lanes";
+import { isHostCategory, CREATOR_MAX_RUPEES, type HostCategory } from "./hf_creator_pricing";
 
 export const LIST_DEFAULT_LIMIT = 24;
 export const LIST_MAX_LIMIT = 48;
@@ -11,6 +12,7 @@ export type HostSort = (typeof SORTS)[number];
 export interface HostListQuery {
   topics: string[]; langs: string[]; minPrice: number | null; maxPrice: number | null;
   online: boolean; lane: Lane | null; sort: HostSort; limit: number; offset: number;
+  category?: HostCategory | null;
 }
 export type ParsedHostList = { ok: true; q: HostListQuery } | { ok: false; status: 400; error: string };
 
@@ -38,6 +40,8 @@ export function parseHostList(sp: URLSearchParams): ParsedHostList {
   const lane = parseLane(laneRaw);
   if (laneRaw && !lane) return { ok: false, status: 400, error: "bad_lane" };
   const sortRaw = sp.get("sort");
+  const category = sp.get("category");
+  if (category && !isHostCategory(category)) return { ok: false, status: 400, error: "bad_category" };
   if (sortRaw && !(SORTS as readonly string[]).includes(sortRaw)) return { ok: false, status: 400, error: "bad_sort" };
   const mx = num(sp.get("maxPrice")), mn = num(sp.get("minPrice"));
   const lim = num(sp.get("limit")), off = num(sp.get("offset"));
@@ -45,8 +49,9 @@ export function parseHostList(sp: URLSearchParams): ParsedHostList {
     ok: true,
     q: {
       topics, langs,
-      maxPrice: mx == null ? null : clamp(Math.floor(mx), PRICE_MIN, PRICE_MAX),
-      minPrice: mn == null ? null : clamp(Math.floor(mn), PRICE_MIN, PRICE_MAX),
+      maxPrice: mx == null ? null : clamp(mx, 0, CREATOR_MAX_RUPEES),
+      minPrice: mn == null ? null : clamp(mn, 0, CREATOR_MAX_RUPEES),
+      ...(category ? { category: category as HostCategory } : {}),
       online: sp.get("online") === "1" || sp.get("online") === "true",
       lane,
       sort: (sortRaw as HostSort) || "online_first",
@@ -64,6 +69,7 @@ export function listCacheKey(q: HostListQuery): string {
   if (q.minPrice != null) p.set("minPrice", String(q.minPrice));
   if (q.maxPrice != null) p.set("maxPrice", String(q.maxPrice));
   if (q.online) p.set("online", "1");
+  if (q.category) p.set("category", q.category);
   p.set("sort", q.sort); p.set("limit", String(q.limit)); p.set("offset", String(q.offset));
   return p.toString();
 }
@@ -81,10 +87,12 @@ const ORDER: Record<HostSort, string> = {
 const marks = (n: number, from: number) => Array.from({ length: n }, (_, i) => `?${from + i}`).join(",");
 
 /** WHERE clause + bind values (published, approved = status 'live' only). */
-export function buildWhere(q: HostListQuery): { where: string; binds: (string | number)[] } {
+export function buildWhere(q: HostListQuery, standardPaise?: number): { where: string; binds: (string | number)[] } {
   const binds: (string | number)[] = [];
   const w = ["h.status='live'", "h.slug IS NOT NULL"];
   const add = (v: string | number) => { binds.push(v); return binds.length; };
+  if (q.category) w.push(`h.category=?${add(q.category)}`);
+  const price = effectivePriceSql(standardPaise);
   if (q.lane) w.push(q.lane === "women" ? "h.women_lane=1" : "h.lgbtq_lane=1");
   if (q.topics.length) {
     const from = binds.length + 1; binds.push(...q.topics);
@@ -94,18 +102,22 @@ export function buildWhere(q: HostListQuery): { where: string; binds: (string | 
     const from = binds.length + 1; binds.push(...q.langs);
     w.push(`EXISTS (SELECT 1 FROM json_each(h.languages_json) l WHERE l.value IN (${marks(q.langs.length, from)}))`);
   }
-  if (q.maxPrice != null) w.push(`h.price_per_min <= ?${add(q.maxPrice)}`);
-  if (q.minPrice != null) w.push(`h.price_per_min >= ?${add(q.minPrice)}`);
+  if (q.maxPrice != null) w.push(`${price} <= ?${add(q.maxPrice)}`);
+  if (q.minPrice != null) w.push(`${price} >= ?${add(q.minPrice)}`);
   if (q.online) w.push("h.presence='online'");
   return { where: w.join(" AND "), binds };
 }
 
-export function buildListSql(sel: string, q: HostListQuery): { sql: string; binds: (string | number)[]; countSql: string; countBinds: (string | number)[] } {
-  const { where, binds } = buildWhere(q);
+function effectivePriceSql(standardPaise?: number): string {
+  return Number.isInteger(standardPaise) && standardPaise! >= 0
+    ? `(CASE WHEN h.category='standard' THEN ${Math.trunc(standardPaise!)} / 100.0 ELSE h.price_per_min END)` : "h.price_per_min";
+}
+export function buildListSql(sel: string, q: HostListQuery, standardPaise?: number): { sql: string; binds: (string | number)[]; countSql: string; countBinds: (string | number)[] } {
+  const { where, binds } = buildWhere(q, standardPaise);
   const n = binds.length;
   return {
     // sel already carries `FROM hf_hosts h LEFT JOIN hf_avatars a ...`; the ratings join is appended before WHERE.
-    sql: `${sel} ${RATING_JOIN} WHERE ${where} ORDER BY ${ORDER[q.sort]} LIMIT ?${n + 1} OFFSET ?${n + 2}`,
+    sql: `${sel} ${RATING_JOIN} WHERE ${where} ORDER BY ${ORDER[q.sort].replace("h.price_per_min", effectivePriceSql(standardPaise))} LIMIT ?${n + 1} OFFSET ?${n + 2}`,
     binds: [...binds, q.limit, q.offset],
     countSql: `SELECT COUNT(*) AS c FROM hf_hosts h WHERE ${where}`,
     countBinds: binds,

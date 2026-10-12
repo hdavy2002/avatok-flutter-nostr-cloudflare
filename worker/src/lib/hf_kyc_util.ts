@@ -1,4 +1,12 @@
 // [HF-HOST-KYC-1 2026-10-09] Pure helpers for HF host KYC (no I/O — unit-testable).
+export const validSelfieCode = (code: unknown): code is string => typeof code === "string" && /^\d{6}$/.test(code);
+/** Rejection sampling keeps every six-digit challenge equally likely, including leading zeroes. */
+export function newSelfieCode(): string {
+  const limit = Math.floor(0x1_0000_0000 / 1_000_000) * 1_000_000;
+  let n: number;
+  do { n = crypto.getRandomValues(new Uint32Array(1))[0]; } while (n >= limit);
+  return String(n % 1_000_000).padStart(6, "0");
+}
 
 // ── Aadhaar number checksum (Verhoeff) — rejects typos before we pay Sandbox ~₹1 for a doomed OTP ──
 const D = [

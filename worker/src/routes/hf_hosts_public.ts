@@ -19,7 +19,8 @@ const parse = <T>(s: string | null | undefined, fb: T): T => { try { return s ? 
 export type LiveRow = HostRow & { presence?: string | null; image_key: string | null; audio_key: string | null; audio_caption: string | null };
 import { readHfStdPlan, type HfStdPlan } from "../lib/hf_token_config"; // [HF-STD-PLAN-1]
 import { formatRupees } from "../lib/hf_token_math";
-export const SEL = `SELECT h.*, a.image_key AS image_key,
+import { isCreatorCategory, CREATOR_VERSION } from "../lib/hf_creator_pricing";
+export const SEL = `SELECT h.*, COALESCE((SELECT r2_key FROM hf_host_media m WHERE m.uid=h.uid AND m.kind='profile' AND m.status='active' ORDER BY m.created_at DESC LIMIT 1), a.image_key) AS image_key,
   (SELECT r2_key FROM hf_host_media m WHERE m.uid=h.uid AND m.kind='intro_audio' AND m.status='active' ORDER BY m.created_at DESC LIMIT 1) AS audio_key,
   (SELECT caption FROM hf_host_media m WHERE m.uid=h.uid AND m.kind='intro_audio' AND m.status='active' ORDER BY m.created_at DESC LIMIT 1) AS audio_caption
   FROM hf_hosts h LEFT JOIN hf_avatars a ON a.id = h.avatar_id`;
@@ -34,8 +35,8 @@ function intro(env: Env, r: LiveRow) {
  * [HF-STD-PLAN-1] Price block on every card. Standard plan on: every host shows the same rate card (first band, e.g. ₹3.99/min, lower on
  * long calls) and the host's own price_per_min is ignored. Off: the host's own whole-rupee rate as before.
  */
-export function priceFields(r: { price_per_min: number }, std?: HfStdPlan | null) {
-  if (std && std.enabled) {
+export function priceFields(r: { price_per_min: number; category?: string }, std?: HfStdPlan | null) {
+  if (std && std.enabled && !isCreatorCategory(r.category)) {
     const t = std.tariff.tiers;
     return {
       plan: "standard" as const, pricePerMin: t[0].paisePerMin / 100, pricePaisePerMin: t[0].paisePerMin, priceLabel: `${formatRupees(t[0].paisePerMin)}/min`,
@@ -43,12 +44,14 @@ export function priceFields(r: { price_per_min: number }, std?: HfStdPlan | null
     };
   }
   const paise = Math.max(0, Math.trunc(Number(r.price_per_min))) * 100;
-  return { plan: "host_rate" as const, pricePerMin: r.price_per_min, pricePaisePerMin: paise, priceLabel: `${formatRupees(paise)}/min`, priceTiers: [{ fromMin: 0, toMin: null, paisePerMin: paise }] };
+  return { plan: isCreatorCategory(r.category) ? "creator" as const : "host_rate" as const, pricingVersion: isCreatorCategory(r.category) ? CREATOR_VERSION : null,
+    pricePerMin: r.price_per_min, pricePaisePerMin: paise, priceLabel: `${formatRupees(paise)}/min`, priceTiers: [{ fromMin: 0, toMin: null, paisePerMin: paise }] };
 }
 
 export function card(env: Env, r: LiveRow, agg?: HostAggregate, std?: HfStdPlan | null) {
   return {
     slug: r.slug, displayName: r.display_name, tagline: r.tagline, avatarUrl: r.image_key ? mediaUrl(env, r.image_key) : null,
+    category: r.category ?? "standard", listingRevision: r.listing_revision ?? 1,
     languages: parse<string[]>(r.languages_json, []), style: r.style, topics: parse<string[]>(r.topics_json, []), ...priceFields(r, std),
     ...aggregateFields(agg), lgbtqFriendly: r.lgbtq_lane === 1 && r.lgbtq_public === 1, womenOnly: r.women_lane === 1,
     ...intro(env, r), status: (r.presence === "online" || r.presence === "busy" ? r.presence : "offline") as "online" | "busy" | "offline",

@@ -25,14 +25,15 @@ describe("normalizeIntroMime", () => {
 
 describe("validateIntro", () => {
   const okBytes = 500_000;
-  it("accepts 30..300 seconds and rounds", () => {
+  it("accepts 20..300 seconds and rounds", () => {
+    expect(validateIntro(20, okBytes)).toEqual({ ok: true, seconds: 20 });
     expect(validateIntro(30, okBytes)).toEqual({ ok: true, seconds: 30 });
     expect(validateIntro("300", okBytes)).toEqual({ ok: true, seconds: 300 });
     expect(validateIntro("45.6", okBytes)).toEqual({ ok: true, seconds: 46 });
   });
   it("too short / too long -> 422 with the owner messages", () => {
-    const s = validateIntro(29.4, okBytes);
-    expect(s).toMatchObject({ ok: false, status: 422, error: "too_short", message: "Please record at least 30 seconds." });
+    const s = validateIntro(19.99, okBytes);
+    expect(s).toMatchObject({ ok: false, status: 422, error: "too_short", message: "Please record at least 20 seconds." });
     const l = validateIntro(301, okBytes);
     expect(l).toMatchObject({ ok: false, status: 422, error: "too_long", message: "Please keep it under 5 minutes." });
   });

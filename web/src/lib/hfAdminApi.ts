@@ -5,6 +5,7 @@ import { adminCall } from '../islands/admin2/peopleKit';
 
 export type HostStatus = 'draft' | 'generating' | 'pending_host' | 'pending_review' | 'live' | 'paused' | 'rejected';
 export interface AdminHost {
+  category?: 'standard' | 'influencer' | 'celebrity';
   uid: string; slug: string | null; status: HostStatus; displayName: string | null; about: string | null; tagline: string | null; quote: string | null;
   aboutPolished: string | null; languages: string[]; style: string | null; topics: string[]; conversationLang: string | null; pricePerMin: number; plan?: string;
   hours: { days?: string[]; from?: string; to?: string }; healthConsent: boolean; womenLane: boolean; lgbtqLane: boolean; lgbtqPublic: boolean;

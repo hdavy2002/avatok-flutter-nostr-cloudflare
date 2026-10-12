@@ -1143,7 +1143,7 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
         const r = (await hfHostsPublicRoute(req, env, ctx)) ?? (await hfHostGenerateRoute(req, env, ctx)) ?? (await hfHostsRoute(req, env, ctx));
         if (r) return r;
       }
-      if (p.startsWith("/api/admin/hf/hosts") || p.startsWith("/api/admin/hf/avatars")) { const r = await hfHostsAdminRoute(req, env, ctx); if (r) return r; } // [HF-HOST-PLATFORM-1]
+      if (p.startsWith("/api/admin/hf/hosts") || p.startsWith("/api/admin/hf/avatars") || p.startsWith("/api/admin/hf/listings")) { const r = await hfHostsAdminRoute(req, env, ctx); if (r) return r; } // [HF-HOST-PLATFORM-1]
       if (p.startsWith("/api/hf/") || p.startsWith("/api/admin/hf/reviews")) { const r = (await hfReviewsRoute(req, env, ctx)) ?? (await hfNotifyRoute(req, env, ctx)); if (r) return r; } // [HF-CALLS-1]
       if (p.startsWith("/api/me/push/")) { const r = await mePushRoute(req, env, p); if (r) return r; } // [DASH2-PUSH]
       if (p.startsWith("/api/me/") || p.startsWith("/api/admin/refunds/") || p === "/api/admin/refunds"

@@ -25,7 +25,7 @@ const mig = (f: string) => readFileSync(new URL(`../../migrations/${f}`, import.
 let prepares = 0;
 function makeEnv() {
   const db = new DatabaseSync(":memory:");
-  for (const f of ["2026-10-09-hf-hosts.sql", "2026-10-09-hf-presence.sql", "2026-10-09-hf-reviews.sql", "2026-10-09-hf-lane-access.sql", "2026-10-10-hf-hosts-list-idx.sql"]) db.exec(mig(f));
+  for (const f of ["2026-10-09-hf-hosts.sql", "2026-10-09-hf-presence.sql", "2026-10-09-hf-reviews.sql", "2026-10-09-hf-lane-access.sql", "2026-10-10-hf-hosts-list-idx.sql", "2026-10-12-hf-creator-price-alters.sql"]) db.exec(mig(f));
   db.exec(`CREATE TABLE hf_kyc (uid TEXT PRIMARY KEY, gender TEXT, verified_at INTEGER);
     CREATE TABLE hf_selfie (id TEXT PRIMARY KEY, uid TEXT, created_at INTEGER, review_status TEXT, review_reason TEXT);`);
   const stmt = (q: string, args: unknown[] = []) => ({
@@ -65,6 +65,16 @@ beforeEach(() => { E = makeEnv(); seed(E.db); cfg = { hostsPublicEnabled: true, 
 afterEach(() => { delete (globalThis as any).caches; });
 
 describe("GET /api/hf/hosts", () => {
+  it("creator categories retain their host rate with Standard enabled and never reveal private phone ciphertext", async () => {
+    E.db.prepare("UPDATE hf_hosts SET category='influencer', private_phone_enc='private-ciphertext' WHERE uid='u2'").run();
+    E.db.prepare("UPDATE hf_hosts SET category='celebrity' WHERE uid='u3'").run();
+    const result = await (await get("category=influencer&minPrice=10&maxPrice=25"))!.json();
+    expect(result.total).toBe(1);
+    expect(result.items[0]).toMatchObject({ category: "influencer", plan: "creator", pricingVersion: "creator-r1", pricePerMin: 20, status: "busy", reviewCount: 2 });
+    expect(JSON.stringify(result)).not.toMatch(/privatePhone|private_phone|private-ciphertext/);
+    expect((await get("category=made-up"))!.status).toBe(400);
+    expect(await slugs("sort=price_low")).toEqual(["ana", "esha", "dev", "bina", "chit"]);
+  });
   it("returns published hosts only, in the public card shape, with total", async () => {
     const res = (await get())!;
     expect(res.status).toBe(200);
@@ -74,7 +84,7 @@ describe("GET /api/hf/hosts", () => {
     expect(b.items.map((i: any) => i.slug)).not.toContain("fay-ffff");
     expect(Object.keys(b.items[0]).sort()).toEqual(
       // [HF-STD-PLAN-1] cards now carry the Standard-plan price block (plan, pricePaisePerMin, priceLabel, priceTiers) next to pricePerMin
-      ["avatarUrl", "displayName", "introAudioUrl", "introMime", "introSeconds", "languages", "lgbtqFriendly", "plan", "priceLabel", "pricePaisePerMin", "pricePerMin", "priceTiers", "rating", "ratingBreakdown", "regulars", "reviewCount", "slug", "status", "style", "tagline", "talkedTo", "topics", "womenOnly"],
+      ["avatarUrl", "category", "displayName", "introAudioUrl", "introMime", "introSeconds", "languages", "lgbtqFriendly", "listingRevision", "plan", "priceLabel", "pricePaisePerMin", "pricePerMin", "priceTiers", "rating", "ratingBreakdown", "regulars", "reviewCount", "slug", "status", "style", "tagline", "talkedTo", "topics", "womenOnly"],
     );
     expect(b.items[0]).toMatchObject({ plan: "standard", pricePerMin: 3.99, pricePaisePerMin: 399, priceLabel: "₹3.99/min" });
     expect(b.items[0].priceTiers).toEqual([{ fromMin: 0, toMin: 30, paisePerMin: 399 }, { fromMin: 30, toMin: 60, paisePerMin: 350 }, { fromMin: 60, toMin: null, paisePerMin: 325 }]);
@@ -92,10 +102,10 @@ describe("GET /api/hf/hosts", () => {
     expect(await slugs()).toEqual(["ana", "esha", "dev", "bina", "chit"]);
     expect(await slugs("sort=online_first")).toEqual(["ana", "esha", "dev", "bina", "chit"]);
   });
-  it("[HF-STD-PLAN-1] price filters and price_low are ignored under the Standard plan (every host has the same price)", async () => {
+  it("price filters use the effective Standard tariff while leaving the tariff unchanged", async () => {
     expect(await slugs("sort=price_low")).toEqual(["ana", "esha", "dev", "bina", "chit"]); // falls back to online_first
     expect(await slugs("maxPrice=20")).toEqual(["ana", "esha", "dev", "bina", "chit"]);
-    expect(await slugs("minPrice=40&maxPrice=60")).toEqual(["ana", "esha", "dev", "bina", "chit"]);
+    expect(await slugs("minPrice=40&maxPrice=60")).toEqual([]);
     const items: any[] = ((await (await get())!.json()) as any).items;
     expect(new Set(items.map((i) => i.pricePaisePerMin))).toEqual(new Set([399])); // host-set prices (10..50) never reach the card
   });
@@ -153,9 +163,9 @@ describe("GET /api/hf/hosts", () => {
     expect(q("").limit).toBe(24);
     expect(q("offset=-3").offset).toBe(0);
     expect(q("offset=99999999").offset).toBe(10_000);
-    expect(q("maxPrice=1").maxPrice).toBe(5);
-    expect(q("maxPrice=9999").maxPrice).toBe(100);
-    expect(q("minPrice=0").minPrice).toBe(5);
+    expect(q("maxPrice=1").maxPrice).toBe(1);
+    expect(q("maxPrice=9999").maxPrice).toBe(1000);
+    expect(q("minPrice=0").minPrice).toBe(0);
     expect(q("maxPrice=x").maxPrice).toBeNull();
     expect(q("online=0").online).toBe(false);
     expect(((await (await get("limit=0"))!.json()) as any).items).toHaveLength(1);

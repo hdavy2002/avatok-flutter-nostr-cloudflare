@@ -21,6 +21,8 @@ import { verifiedWhatsAppNumber } from "../lib/whatsapp_notify";
 import { piiKeyBytes, piiKeyConfigured } from "../lib/pii_crypto";
 import { pushHostDecision } from "../lib/hf_push"; // [HF-APP-4]
 import { parseStoredFlags, introStatusOf, introCaption, INTRO_MEDIA_KIND } from "../lib/hf_intro";
+import { creatorPublicationBlockers } from "../lib/hf_creator_publication";
+import { hfCreatorListingsAdminRoute } from "./hf_creator_listings_admin";
 
 
 const APP = BRAND.slug;
@@ -56,6 +58,7 @@ async function readJson(req: Request): Promise<Record<string, unknown>> {
 
 type HostRow = {
   uid: string; slug: string | null; status: string; display_name: string | null; about: string | null; tagline: string | null; quote: string | null;
+  category?: string;
   about_polished: string | null; languages_json: string; style: string | null; topics_json: string; conversation_lang: string | null;
   price_per_min: number; hours_json: string; health_consent: number; women_lane: number; lgbtq_lane: number; lgbtq_public: number;
   avatar_id: string | null; voice_seconds: number | null; voice_sample_r2: string | null; intro_mime: string | null; intro_status: string | null;
@@ -67,6 +70,7 @@ const HOST_SQL = `SELECT h.*, a.image_key AS avatar_key FROM hf_hosts h LEFT JOI
 function hostJson(env: Env, h: HostRow) {
   return {
     uid: h.uid, slug: h.slug, status: h.status, displayName: h.display_name, about: h.about, tagline: h.tagline, quote: h.quote,
+    category: h.category ?? "standard",
     aboutPolished: h.about_polished, languages: arr(h.languages_json), style: h.style, topics: arr(h.topics_json), conversationLang: h.conversation_lang,
     pricePerMin: h.price_per_min, hours: obj(h.hours_json), healthConsent: !!h.health_consent, womenLane: !!h.women_lane, lgbtqLane: !!h.lgbtq_lane,
     lgbtqPublic: !!h.lgbtq_public, avatarId: h.avatar_id, avatarUrl: h.avatar_key ? `${mediaBase(env)}/${h.avatar_key}` : null,
@@ -268,7 +272,7 @@ async function decide(req: Request, env: Env, uid: string): Promise<Response> {
   const reason = typeof b.reason === "string" ? b.reason.trim().slice(0, 500) : "";
   if (!["approve", "reject", "pause"].includes(decision)) return err(400, "bad_decision");
   if (decision !== "approve" && !reason) return err(400, "reason_required");
-  const h = await env.DB_META.prepare("SELECT uid, slug, status, display_name FROM hf_hosts WHERE uid=?1").bind(uid).first<{ uid: string; slug: string | null; status: string; display_name: string | null }>();
+  const h = await env.DB_META.prepare("SELECT uid, slug, status, display_name, listing_revision FROM hf_hosts WHERE uid=?1").bind(uid).first<{ uid: string; slug: string | null; status: string; display_name: string | null; listing_revision: number }>();
   if (!h) return err(404, "not_found");
   const now = Date.now();
   let msg = "";
@@ -292,9 +296,12 @@ async function decide(req: Request, env: Env, uid: string): Promise<Response> {
       if (!ir.ok) return err(ir.error === "intro_file_missing" ? 410 : 409, ir.error);
       await audit(env, a.uid, "intro_approve", uid, { via: "profile_approve" });
     }
+    const creatorMissing = await creatorPublicationBlockers(env, uid);
+    if (creatorMissing.length) return err(409, "not_ready", { missing: creatorMissing });
     const slug = h.slug || (await uniqueSlug(env, h.display_name || "host", uid));
-    await env.DB_META.prepare("UPDATE hf_hosts SET status='live', slug=?2, live_at=COALESCE(live_at,?3), review_note=NULL, reviewed_by=?4, reviewed_at=?3, updated_at=?3 WHERE uid=?1")
-      .bind(uid, slug, now, a.uid).run();
+    const published = await env.DB_META.prepare("UPDATE hf_hosts SET status='live', slug=?2, live_at=COALESCE(live_at,?3), review_note=NULL, reviewed_by=?4, reviewed_at=?3, updated_at=?3, listing_revision=listing_revision+1 WHERE uid=?1 AND listing_revision=?5 AND status IN ('pending_review','paused','rejected')")
+      .bind(uid, slug, now, a.uid, h.listing_revision).run();
+    if (!published.meta?.changes) return err(409, "listing_changed");
     msg = "Good news! Your profile is now live. People can find you and talk to you. Thank you for joining us.";
   } else {
     const to = decision === "reject" ? "rejected" : "paused";
@@ -398,6 +405,8 @@ async function retireAvatar(req: Request, env: Env, id: string): Promise<Respons
 }
 
 export async function hfHostsAdminRoute(req: Request, env: Env, ctx?: ExecutionContext): Promise<Response | null> {
+  const creatorResponse = await hfCreatorListingsAdminRoute(req, env, ctx);
+  if (creatorResponse) return creatorResponse;
   const p = new URL(req.url).pathname, m = req.method;
   if (!p.startsWith("/api/admin/hf/hosts") && !p.startsWith("/api/admin/hf/avatars")) return null;
   try {

@@ -1,8 +1,8 @@
 // [HF-VOICE-INTRO-1 2026-10-09] Host voice introduction: pure helpers (no I/O, no env) so vitest can import them.
-// The host records their OWN voice (30 s - 5 min); Gemini transcribes it and flags contact details for the admin reviewer.
+// The host records their OWN voice (20 s - 5 min); Gemini transcribes it and flags contact details for the admin reviewer.
 import { contactLeak } from "./hf_options";
 
-export const INTRO_MIN_SECONDS = 30;
+export const INTRO_MIN_SECONDS = 20;
 export const INTRO_MAX_SECONDS = 300;
 export const INTRO_MIN_BYTES = 20 * 1024;
 export const INTRO_MAX_BYTES = 15 * 1024 * 1024;
@@ -44,7 +44,7 @@ export function validateIntro(secondsRaw: unknown, bytes: number): IntroCheck {
     return { ok: false, status: 400, error: "bad_duration", message: "We couldn’t read the length of your recording. Please record again." };
   }
   const seconds = Math.round(n);
-  if (seconds < INTRO_MIN_SECONDS) return { ok: false, status: 422, error: "too_short", message: "Please record at least 30 seconds." };
+  if (n < INTRO_MIN_SECONDS) return { ok: false, status: 422, error: "too_short", message: "Please record at least 20 seconds." };
   if (seconds > INTRO_MAX_SECONDS) return { ok: false, status: 422, error: "too_long", message: "Please keep it under 5 minutes." };
   if (bytes > INTRO_MAX_BYTES) return { ok: false, status: 413, error: "too_large", message: "That recording is too large. Please record a shorter one." };
   if (bytes < INTRO_MIN_BYTES) return { ok: false, status: 422, error: "too_small", message: "That recording looks empty. Please record again." };

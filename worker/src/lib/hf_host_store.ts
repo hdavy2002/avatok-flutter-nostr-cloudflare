@@ -5,6 +5,7 @@ import { introStatusOf, INTRO_MEDIA_KIND } from "./hf_intro";
 
 export interface HostRow {
   uid: string; slug: string | null; status: string;
+  category?: string; private_phone_enc?: string | null; listing_revision?: number;
   display_name: string | null; about: string | null; tagline: string | null; quote: string | null; about_polished: string | null;
   languages_json: string; style: string | null; topics_json: string; conversation_lang: string | null;
   price_per_min: number; hours_json: string; health_consent: number; women_lane: number; lgbtq_lane: number; lgbtq_public: number;
@@ -28,6 +29,7 @@ export async function avatarUrlFor(env: Env, avatarId: string | null): Promise<s
 export function hostToJson(env: Env, r: HostRow, avatarUrl: string | null = null) {
   return {
     uid: r.uid, slug: r.slug, status: r.status, displayName: r.display_name, about: r.about, tagline: r.tagline, quote: r.quote,
+    category: r.category ?? "standard", listingRevision: r.listing_revision ?? 1, hasPrivatePhone: !!r.private_phone_enc,
     aboutPolished: r.about_polished, languages: parse<string[]>(r.languages_json, []), style: r.style, topics: parse<string[]>(r.topics_json, []),
     conversationLang: r.conversation_lang, pricePerMin: r.price_per_min, hours: parse<Record<string, unknown>>(r.hours_json, {}),
     healthConsent: r.health_consent === 1, womenLane: r.women_lane === 1, lgbtqLane: r.lgbtq_lane === 1, lgbtqPublic: r.lgbtq_public === 1,
@@ -57,21 +59,27 @@ export async function listMedia(env: Env, uid: string): Promise<MediaRow[]> {
 /** Column -> value patch (snake_case column names; values already validated/serialised). Creates the row on first call. */
 export type HostPatch = Partial<Omit<HostRow, "uid" | "created_at" | "updated_at">>;
 const COLS = new Set(["slug", "status", "display_name", "about", "tagline", "quote", "about_polished", "languages_json", "style", "topics_json", "conversation_lang",
+  "category", "private_phone_enc", "listing_revision",
   "price_per_min", "hours_json", "health_consent", "women_lane", "lgbtq_lane", "lgbtq_public", "avatar_id", "voice_sample_r2", "voice_seconds", "voice_consent_at",
   "intro_mime", "intro_status", "intro_transcript", "intro_flags_json", "intro_uploaded_at",
   "gen_attempts", "agreements_at", "review_note", "reviewed_by", "reviewed_at", "submitted_at", "live_at"]);
 
-export async function upsertHost(env: Env, uid: string, patch: HostPatch): Promise<HostRow> {
+export class HostWriteConflict extends Error {}
+export async function upsertHost(env: Env, uid: string, patch: HostPatch, guard?: { revision: number; statuses: readonly string[] }): Promise<HostRow> {
   const now = Date.now();
-  const keys = Object.keys(patch).filter((k) => COLS.has(k) && k !== "slug");
+  const keys = Object.keys(patch).filter((k) => COLS.has(k) && k !== "slug" && k !== "listing_revision");
   const existing = await getHost(env, uid);
   if (!existing) {
+    if (guard) throw new HostWriteConflict("Listing changed; reload before saving.");
     await env.DB_META.prepare("INSERT OR IGNORE INTO hf_hosts (uid, created_at, updated_at) VALUES (?1,?2,?2)").bind(uid, now).run();
   }
   if (keys.length) {
     const sets = keys.map((k, i) => `${k}=?${i + 2}`).join(", ");
     const vals = keys.map((k) => (patch as Record<string, unknown>)[k] ?? null);
-    await env.DB_META.prepare(`UPDATE hf_hosts SET ${sets}, updated_at=?${keys.length + 2} WHERE uid=?1`).bind(uid, ...vals, now).run();
+    const tail: unknown[] = guard ? [guard.revision, ...guard.statuses] : [];
+    const where = guard ? ` AND listing_revision=?${keys.length + 3} AND status IN (${guard.statuses.map((_, i) => `?${keys.length + 4 + i}`).join(",")})` : "";
+    const result = await env.DB_META.prepare(`UPDATE hf_hosts SET ${sets}, listing_revision=listing_revision+1, updated_at=?${keys.length + 2} WHERE uid=?1${where}`).bind(uid, ...vals, now, ...tail).run();
+    if (guard && !result.meta?.changes) throw new HostWriteConflict("Listing changed; reload before saving.");
   }
   const cur = (await getHost(env, uid))!;
   if (!cur.slug && cur.display_name) await ensureSlug(env, uid, cur.display_name);

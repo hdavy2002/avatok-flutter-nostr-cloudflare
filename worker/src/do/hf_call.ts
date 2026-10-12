@@ -25,6 +25,8 @@ import {
   LIMIT_WARNING_TEXT, WARN_BEFORE_LIMIT_SEC,
 } from "../lib/hf_call_math";
 
+import { validCreatorSnapshot, type CreatorSnapshot } from "../lib/hf_creator_pricing";
+
 type Role = "host" | "caller";
 const HOST_RING_SEC = 30, CALLER_RING_SEC = 35;
 const HOST_PHASE_MS = 90_000;      // ring + announcement + digit wait
@@ -38,7 +40,7 @@ interface Plan {
   testUsed?: number; paidUsed?: number; hostPaid?: number; hostTest?: number;
 }
 // [HF-TOK-CALLS-1] Token-mode call: the snapshot taken at start (never live config) + the call's own time limit in seconds.
-interface TokenSnap { ratePaise: number; callCostPaisePerMin: number; hostShareBps: number; maxSeconds: number; std?: StdSnapshot | null }
+interface TokenSnap { ratePaise: number; callCostPaisePerMin: number; hostShareBps: number; maxSeconds: number; std?: StdSnapshot | null; creator?: CreatorSnapshot }
 interface Bill {
   tokSettled?: boolean;
   funds?: number; plan?: Plan; consumed?: number; released?: boolean; earned?: boolean; saved?: boolean; post?: boolean; attempts: number;
@@ -106,6 +108,9 @@ export class HfCallDO {
         case "conf": return await this.conf(s, body.role as Role, body.fields ?? {});
         case "hangup": return await this.hangup(s, body.role as Role, body.fields ?? {});
         case "cancel": return await this.cancel(s);
+        case "end":
+          if (!s.finalized) await this.finish(s, s.connectedAt != null ? "completed" : "failed", "caller_hangup");
+          return jsonRes({ ok: true, status: s.status });
         case "watchdog": return await this.watchdog(s);
         default: return jsonRes({ ok: false, error: "not_found" }, 404);
       }
@@ -135,6 +140,10 @@ export class HfCallDO {
         ratePaise: Math.trunc(Number(t.ratePaise)), callCostPaisePerMin: Math.trunc(Number(t.callCostPaisePerMin)),
         hostShareBps: Math.trunc(Number(t.hostShareBps)), maxSeconds: Math.max(0, Math.trunc(Number(t.maxSeconds))),
       };
+      if (t.creator != null) {
+        if (!validCreatorSnapshot(t.creator)) throw new Error("Invalid creator pricing snapshot");
+        s.tok.creator = { ...t.creator };
+      }
       // [HF-STD-PLAN-1] Standard plan snapshot (tiers + host pay + phone estimate), frozen for the life of this call.
       const sd = t.std as StdSnapshot | null | undefined;
       if (sd && sd.plan === "std" && validTariff(sd.tariff)) {
@@ -384,7 +393,7 @@ export class HfCallDO {
         const seconds = s.connectedAt ? Math.floor((endedAt - s.connectedAt) / 1000) : 0;
         const out = await settleTokenCall(this.env, {
           callId: s.callId, callerUid: s.callerUid, hostUid: s.hostUid, ratePaise: t.ratePaise, callCostPaisePerMin: t.callCostPaisePerMin,
-          hostShareBps: t.hostShareBps, connectedSeconds: seconds, maxSeconds: t.maxSeconds, endedAt, std: t.std ?? null,
+          hostShareBps: t.hostShareBps, connectedSeconds: seconds, maxSeconds: t.maxSeconds, endedAt, std: t.std ?? null, creator: t.creator,
         });
         b.plan = { billedMinutes: out.billedMinutes, chargeRupees: 0, hostEarningPaise: out.hostPaise, hostTokens: 0, capped: out.shortfall };
         b.tokSettled = true; b.saved = true;
@@ -392,7 +401,7 @@ export class HfCallDO {
         this.emit(s.callerUid, "hf_call_settled", {
           call_id: s.callId, consumed_value_paise: out.consumedValuePaise, host_earning_paise: out.hostPaise, lots: out.lots.length,
           billable_seconds: out.billableSeconds, tokens_spent_micro: out.tokensSpentMicro,
-          plan: t.std ? "standard" : "host_rate", charge_paise: out.consumedValuePaise, phone_cost_est_paise: out.callCostPaise, platform_paise: out.platformPaise, shortfall: out.shortfall,
+          plan: t.creator ? "creator" : t.std ? "standard" : "host_rate", charge_paise: out.consumedValuePaise, phone_cost_est_paise: out.callCostPaise, platform_paise: out.platformPaise, shortfall: out.shortfall,
         });
       }
       return true;

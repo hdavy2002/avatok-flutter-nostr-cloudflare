@@ -31,8 +31,7 @@ export async function hfHostsListRoute(req: Request, env: Env, ctx?: ExecutionCo
     const parsed = parseHostList(url.searchParams);
     if (!parsed.ok) return err(parsed.status, parsed.error);
     const std = readHfStdPlan(cfgAll as unknown as Record<string, unknown>); // [HF-STD-PLAN-1]
-    // Standard plan: every host has the same price, so price filters and the price sort would only reorder by a stale host column.
-    const q = std.enabled ? { ...parsed.q, minPrice: null, maxPrice: null, sort: parsed.q.sort === "price_low" ? "online_first" as const : parsed.q.sort } : parsed.q;
+    const q = parsed.q;
     const authed = req.headers.has("authorization");
     if (q.lane) {
       const u = await requireUser(req, env);
@@ -41,12 +40,12 @@ export async function hfHostsListRoute(req: Request, env: Env, ctx?: ExecutionCo
     }
     // Edge cache: anonymous, non-lane only. Key is the validated, canonically ordered query, so junk params cannot fragment it.
     const cacheable = !q.lane && !authed && typeof caches !== "undefined";
-    const key = cacheable ? new Request(`https://hf-hosts.cache.invalid/api/hf/hosts?${listCacheKey(q)}`) : null;
+    const key = cacheable ? new Request(`https://hf-hosts.cache.invalid/api/hf/hosts?${listCacheKey(q)}&pricing=creator-r1&std=${std.enabled ? std.tariff.tiers[0].paisePerMin : "off"}`) : null;
     if (cacheable && key) {
       const hit = await caches.default.match(key).catch(() => undefined);
       if (hit) return hit;
     }
-    const b = buildListSql(SEL, q);
+    const b = buildListSql(SEL, q, std.enabled ? std.tariff.tiers[0].paisePerMin : undefined);
     const rows = (await env.DB_META.prepare(b.sql).bind(...b.binds).all<LiveRow>()).results ?? [];
     const total = Number((await env.DB_META.prepare(b.countSql).bind(...b.countBinds).first<{ c: number }>())?.c ?? 0);
     const aggs = await hostAggregates(env, rows.map((r) => r.uid));

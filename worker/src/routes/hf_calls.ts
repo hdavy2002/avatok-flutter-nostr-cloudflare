@@ -30,6 +30,7 @@ import { formatTokens, formatDuration, formatRupees, tierBreakdown, chargePaise,
 import { hfStdPlanPublic } from "../lib/hf_token_config";
 import { balanceSummary, availableLots, getLots, release as releaseTokenLots } from "../lib/hf_token_ledger";
 import { prepareTokenStart, estimateForHost, activeValuePaise } from "../lib/hf_token_calls";
+import { creatorSnapshotFor, isCreatorCategory, validCreatorRate, validCreatorSnapshot, type CreatorSnapshot } from "../lib/hf_creator_pricing";
 import { hostSummary, listCallEarnings } from "../lib/hf_host_ledger";
 import { correctCallCharge } from "../lib/hf_call_corrections"; // [HF-STD-PLAN-1] rule 6
 import { grantTestLot, migrateTestCreditsToLots } from "../lib/hf_token_test_credits";
@@ -89,8 +90,8 @@ async function startCall(req: Request, env: Env): Promise<Response> {
   const limited = await rateLimit(env, `hfcall:${uid}`, 10, 600);
   if (limited) return limited;
 
-  const host = await env.DB_META.prepare("SELECT uid, display_name, price_per_min, women_lane, lgbtq_lane, presence, status FROM hf_hosts WHERE slug=?1")
-    .bind(slug).first<{ uid: string; display_name: string | null; price_per_min: number; women_lane: number; lgbtq_lane: number; presence: string | null; status: string }>();
+  const host = await env.DB_META.prepare("SELECT uid, display_name, price_per_min, category, women_lane, lgbtq_lane, presence, status FROM hf_hosts WHERE slug=?1")
+    .bind(slug).first<{ uid: string; display_name: string | null; price_per_min: number; category: string; women_lane: number; lgbtq_lane: number; presence: string | null; status: string }>();
   if (!host || host.status !== "live" || host.uid === uid || host.presence !== "online") return UNAVAILABLE();
   if (await isClosing(env, host.uid)) return UNAVAILABLE(); // [HF-WALLET-EXIT-1] a host who is closing their account takes no calls
   if (await isBlockedEitherWay(env, uid, host.uid)) return UNAVAILABLE();
@@ -115,6 +116,10 @@ async function startCall(req: Request, env: Env): Promise<Response> {
   const rawCfg = (await readConfig(env).catch(() => ({}))) as Record<string, unknown>;
   const tk = readHfTokenConfig(rawCfg);
   const std = readHfStdPlan(rawCfg);
+  if (isCreatorCategory(host.category)) {
+    if (!validCreatorRate(rate)) return UNAVAILABLE();
+    return await startTokenCall(env, { uid, hostUid: host.uid, lane, rate, callId, tk, creator: creatorSnapshotFor(host.category, rate) });
+  }
   if (std.enabled) return await startTokenCall(env, { uid, hostUid: host.uid, lane, rate: std.tariff.tiers[0].paisePerMin / 100, callId, tk, std });
   if (!(rate > 0)) return UNAVAILABLE();
   if (tk.enabled) return await startTokenCall(env, { uid, hostUid: host.uid, lane, rate, callId, tk });
@@ -174,10 +179,10 @@ async function startCall(req: Request, env: Env): Promise<Response> {
 
 // [HF-TOK-CALLS-1] Token-mode start. Debt and balance gates + lot reservation happen in prepareTokenStart; the hf_calls row carries the
 // pricing snapshot (rate, call cost per minute, host share, versions) so a later config change never alters this call.
-async function startTokenCall(env: Env, a: { uid: string; hostUid: string; lane: string | null; rate: number; callId: string; tk: ReturnType<typeof readHfTokenConfig>; std?: HfStdPlan }): Promise<Response> {
+async function startTokenCall(env: Env, a: { uid: string; hostUid: string; lane: string | null; rate: number; callId: string; tk: ReturnType<typeof readHfTokenConfig>; std?: HfStdPlan; creator?: CreatorSnapshot }): Promise<Response> {
   const { uid, hostUid, lane, rate, callId, tk } = a;
   const ratePaise = Math.round(rate * 100);
-  const chk = await prepareTokenStart(env, { uid, callId, ratePaise, tk, std: a.std ?? null });
+  const chk = await prepareTokenStart(env, { uid, callId, ratePaise, tk, std: a.std ?? null, creator: a.creator });
   if (!chk.ok) return err(chk.status, chk.error, chk.message, chk.extra ?? {});
   const undo = async (claimed: boolean) => {
     if (claimed) await releaseHost(env, hostUid).catch(() => undefined);
@@ -190,7 +195,7 @@ async function startTokenCall(env: Env, a: { uid: string; hostUid: string; lane:
       `INSERT INTO hf_calls (id, caller_uid, host_uid, rate_paise, status, lane, created_at, conference_name, call_cost_paise_per_min, host_share_bps, tax_mode, split_rule_version, pricing_snapshot)
        VALUES (?1,?2,?3,?4,'ringing_host',?5,?6,?7,?8,?9,?10,?11,?12)`,
     ).bind(callId, uid, hostUid, chk.snapshot.ratePaise, lane, Date.now(), `hf_${callId.replace(/-/g, "")}`, chk.snapshot.callCostPaisePerMin, chk.snapshot.hostShareBps, chk.snapshot.taxMode, chk.snapshot.splitRuleVersion,
-      chk.snapshot.std ? JSON.stringify(chk.snapshot.std) : null).run();
+      chk.snapshot.creator ? JSON.stringify(chk.snapshot.creator) : chk.snapshot.std ? JSON.stringify(chk.snapshot.std) : null).run();
   } catch (e) {
     await undo(true);
     await trackException(env, e, { uid, route: "/api/hf/calls", handled: true, app_name: HF_CALL_APP, extra: { area: "hf_calls", step: "insert_tokens" } });
@@ -201,7 +206,7 @@ async function startTokenCall(env: Env, a: { uid: string; hostUid: string; lane:
       method: "POST",
       body: JSON.stringify({
         callId, callerUid: uid, hostUid, rateRupees: rate, reservedRupees: 0, testReservedRupees: 0, fundsRupees: 0, maxMinutes, limitReason: chk.limitReason,
-        tokens: { ratePaise: chk.snapshot.ratePaise, callCostPaisePerMin: chk.snapshot.callCostPaisePerMin, hostShareBps: chk.snapshot.hostShareBps, maxSeconds: chk.maxSeconds, std: chk.snapshot.std ?? null },
+        tokens: { ratePaise: chk.snapshot.ratePaise, callCostPaisePerMin: chk.snapshot.callCostPaisePerMin, hostShareBps: chk.snapshot.hostShareBps, maxSeconds: chk.maxSeconds, std: chk.snapshot.std ?? null, creator: chk.snapshot.creator },
       }),
     });
     if (!r.ok) throw new Error(`init ${r.status}`);
@@ -211,8 +216,9 @@ async function startTokenCall(env: Env, a: { uid: string; hostUid: string; lane:
     await trackException(env, e, { uid, route: "/api/hf/calls", handled: true, app_name: HF_CALL_APP, extra: { area: "hf_calls", step: "init_tokens" } });
     return err(502, "call_failed", "We couldn't place the call. Please try again.");
   }
-  void track(env, uid, "hf_call_started", HF_CALL_APP, { area: "hf_call", call_id: callId, rate_rupees: rate, lane, max_minutes: maxMinutes, max_seconds: chk.maxSeconds, mode: "tokens", plan: chk.snapshot.std ? "standard" : "host_rate" }).catch(() => undefined);
-  return json({ ok: true, callId, status: "ringing_host", rate, maxMinutes, maxSeconds: chk.maxSeconds, mode: "tokens", plan: chk.snapshot.std ? "standard" : "host_rate" });
+  const plan = chk.snapshot.creator ? "creator" : chk.snapshot.std ? "standard" : "host_rate";
+  void track(env, uid, "hf_call_started", HF_CALL_APP, { area: "hf_call", call_id: callId, rate_rupees: rate, lane, max_minutes: maxMinutes, max_seconds: chk.maxSeconds, mode: "tokens", plan, pricing_version: chk.snapshot.splitRuleVersion }).catch(() => undefined);
+  return json({ ok: true, callId, status: "ringing_host", rate, maxMinutes, maxSeconds: chk.maxSeconds, mode: "tokens", plan });
 }
 
 // ── GET /api/hf/calls/:id ────────────────────────────────────────────────────
@@ -243,8 +249,10 @@ async function getCall(req: Request, env: Env, id: string): Promise<Response> {
           const x = c as unknown as { consumed_value_paise?: number | null; pricing_snapshot?: string | null };
           const charged = Math.max(0, Math.trunc(Number(x.consumed_value_paise ?? c.charged_paise ?? 0)));
           const t = stdTariffOf(x.pricing_snapshot);
+          let creator = false;
+          try { creator = validCreatorSnapshot(JSON.parse(x.pricing_snapshot ?? "null")); } catch { /* legacy snapshot */ }
           return {
-            billableSeconds: tokCall(c)!.secs, chargedPaise: charged, charged: formatRupees(charged), plan: t ? "standard" : "host_rate",
+            billableSeconds: tokCall(c)!.secs, chargedPaise: charged, charged: formatRupees(charged), plan: creator ? "creator" : t ? "standard" : "host_rate",
             ...(t ? { tiers: tierBreakdown(t, tokCall(c)!.secs) } : {}),
           };
         })()
@@ -265,6 +273,19 @@ async function cancelCall(req: Request, env: Env, id: string): Promise<Response>
   const out = (await r.json().catch(() => ({}))) as { ok?: boolean; status?: string };
   if (r.status === 409) return err(409, "already_connected", "The call is already connected.");
   return json({ ok: true, status: out.status ?? "failed" });
+}
+
+/** Caller-owned end is valid before or after connect. The DO owns the end timestamp and idempotent settlement. */
+async function endCall(req: Request, env: Env, id: string): Promise<Response> {
+  if (!(await callsOn(env))) return NOT_ENABLED();
+  const u = await requireUser(req, env);
+  if (isFail(u)) return err(u.status, u.error, u.error);
+  const c = await env.DB_META.prepare("SELECT caller_uid, status FROM hf_calls WHERE id=?1").bind(id).first<{ caller_uid: string; status: string }>();
+  if (!c || c.caller_uid !== u.uid) return err(404, "not_found", "Call not found.");
+  if (!["ringing_host", "ringing_caller", "connected"].includes(c.status)) return json({ ok: true, status: c.status });
+  const response = await callStub(env, id).fetch("https://hfcall/end", { method: "POST", body: "{}" });
+  if (!response.ok) return err(502, "end_failed", "We couldn't end the call. Please try again.");
+  return json(await response.json(), 200, { "cache-control": "private, no-store" });
 }
 
 async function walletGet(req: Request, env: Env): Promise<Response> {
@@ -475,12 +496,24 @@ async function walletEstimate(req: Request, env: Env): Promise<Response> {
   if (isFail(u)) return err(u.status, u.error, u.error);
   const slug = String(new URL(req.url).searchParams.get("host") ?? "").trim().toLowerCase();
   if (!/^[a-z0-9-]{3,40}$/.test(slug)) return err(404, "not_found", "Host not found.");
-  const h = await env.DB_META.prepare("SELECT price_per_min FROM hf_hosts WHERE slug=?1 AND status='live'").bind(slug).first<{ price_per_min: number }>().catch(() => null);
+  const h = await env.DB_META.prepare("SELECT price_per_min, category FROM hf_hosts WHERE slug=?1 AND status='live'").bind(slug).first<{ price_per_min: number; category: string }>().catch(() => null);
   if (!h) return err(404, "not_found", "Host not found.");
   const rate = Math.trunc(Number(h.price_per_min));
   const cfgAll = (await readConfig(env).catch(() => ({}))) as Record<string, unknown>;
   const tk = readHfTokenConfig(cfgAll);
   const std = readHfStdPlan(cfgAll);
+  if (isCreatorCategory(h.category)) {
+    if (!validCreatorRate(rate)) return err(409, "invalid_pricing", "This listing's price is unavailable.");
+    const [lots, v, sum] = await Promise.all([availableLots(env, u.uid), activeValuePaise(env, tk), balanceSummary(env, u.uid)]);
+    const snapshot = creatorSnapshotFor(h.category, rate);
+    const e = estimateForHost(lots, snapshot.ratePaise, v);
+    return json({ mode: "rupees", plan: "creator", pricingVersion: snapshot.version, category: snapshot.category,
+      ratePerMinRupees: e.ratePerMinRupees, ratePaisePerMin: e.ratePaise, aboutText: e.aboutText,
+      affordableSeconds: e.affordableSeconds, affordableChargePaise: e.affordableChargePaise, operationalMaxSeconds: MAX_CALL_MINUTES * 60,
+      canStart: e.canStart && sum.debtValuePaise <= 0 && sum.debtMicro <= 0, startNeedPaise: snapshot.ratePaise * TOK_START_MINUTES,
+      balancePaise: sum.availablePaise, balance: formatRupees(sum.availablePaise), hasDebt: sum.debtValuePaise > 0 || sum.debtMicro > 0,
+      tokensPerMinute: e.ratePerMinRupees, taxMode: snapshot.taxMode }, 200, { "cache-control": "private, no-store" });
+  }
   if (std.enabled) {
     // [HF-STD-PLAN-1] Same rate card for every host. Wallet affordability is uncapped; the separate 24 h ceiling is operational only.
     const [lots, v, sum] = await Promise.all([availableLots(env, u.uid), activeValuePaise(env, tk), balanceSummary(env, u.uid)]);
@@ -779,6 +812,8 @@ export async function hfCallsRoute(req: Request, env: Env, p: string, ctx?: Exec
     if (one && m === "GET") return await getCall(req, env, one[1]);
     const cancel = p.match(/^\/api\/hf\/calls\/([A-Za-z0-9_-]{8,64})\/cancel$/);
     if (cancel && m === "POST") return await cancelCall(req, env, cancel[1]);
+    const end = p.match(/^\/api\/hf\/calls\/([A-Za-z0-9_-]{8,64})\/end$/);
+    if (end && m === "POST") return await endCall(req, env, end[1]);
     if (p === "/api/hf/wallet" && m === "GET") return await walletGet(req, env);
     if (p === "/api/hf/wallet/estimate" && m === "GET") return await walletEstimate(req, env);
     if (p === "/api/hosts/me/presence" && (m === "PUT" || m === "GET")) return await presenceRoute(req, env, p, ctx);

@@ -36,6 +36,7 @@ import { requireUser, isFail } from "../authz";
 import { rateLimit } from "../money";
 import { trackUser, trackException } from "../hooks";
 import { BRAND, brandUrl } from "../lib/brand";
+import { newSelfieCode, validSelfieCode } from "../lib/hf_kyc_util";
 import { emailFor } from "../lib/identity";
 import { isAdminUid } from "../lib/preview";
 import { readConfig } from "./config";
@@ -420,8 +421,7 @@ async function selfieCode(req: Request, env: Env, ctx: ExecutionContext | undefi
   if (isFail(u)) return err(u.status, u.error);
   const lim = await limited(env, `hfkyc_code:${u.uid}`, 10, 3600, "Too many attempts. Please try again later.");
   if (lim) return lim;
-  const n = crypto.getRandomValues(new Uint32Array(1))[0] % 10000;
-  const code = String(n).padStart(4, "0");
+  const code = newSelfieCode();
   await env.TOKENS.put(codeKey(u.uid), code, { expirationTtl: CODE_TTL_S });
   void ctx;
   return json({ code, expires_in_s: CODE_TTL_S });
@@ -436,7 +436,7 @@ async function selfieUpload(req: Request, env: Env, ctx: ExecutionContext | unde
   const sent = (req.headers.get("x-selfie-code") || "").trim();
   const want = await env.TOKENS.get(codeKey(uid)).catch(() => null);
   if (!want) return err(400, "code_expired", { message: "That code has expired. Get a new code and record again.", field: "code" });
-  if (sent !== want) { emit("hf_kyc_failed", { step: "selfie", reason: "code_mismatch" }); return err(400, "code_mismatch", { message: "The code doesn’t match. Record again.", field: "code" }); }
+  if (!validSelfieCode(sent) || !validSelfieCode(want) || sent !== want) { emit("hf_kyc_failed", { step: "selfie", reason: "code_mismatch" }); return err(400, "code_mismatch", { message: "Use the six-digit code shown and record again.", field: "code" }); }
 
   const lim = await limited(env, `hfkyc_selfie:${uid}`, 8, 3600, "Too many uploads. Please try again later.");
   if (lim) return lim;
