@@ -3081,10 +3081,13 @@ export async function getConfig(env: Env): Promise<Response> {
   // [HF-TOPUP-1] The browser gets only a derived `hfTopup` block (enabled already means "flag on + gateway chosen + adapter has keys").
   const merged: Record<string, unknown> = { ...enforcePermanentFreeCommunication({ ...DEFAULTS, ...stored }) };
   merged.hfTopup = { ...hfTopupPublic(env, merged as any), confirmAboveRupees: Number(merged.hfTopupConfirmAboveRupees ?? 1000) }; // [HF-WALLET-LIMITS-1] confirm step threshold
+  // Derive the public Standard-plan contract while its private rollout inputs
+  // are still present. Removing hfTokensEnabled first makes the interlock read
+  // as disabled even when production has armed every required gate.
+  merged.hfStdPlan = hfStdPlanPublic(merged);
   delete merged.hfTopupGateway; delete merged.hfTopupPacks; delete merged.hfTopupMinRupees; delete merged.hfTopupMaxRupees; delete merged.hfTopupEnabled;
   delete merged.hfTokensEnabled; delete merged.hfCheckoutProvider; delete merged.hfPricingVersion; delete merged.hfCallCostPaisePerMin; delete merged.hfHostShareBps; delete merged.hfPlayPackageId; // [HF-TOK-MATH-1] not public
   // [HF-STD-PLAN-1] Public clients get only the standard rate card and GST treatment. Host pay/cost inputs remain private.
-  merged.hfStdPlan = hfStdPlanPublic(merged);
   for (const k of ["hfStdPlanEnabled", "hfStdTier1PaisePerMin", "hfStdTier2PaisePerMin", "hfStdTier3PaisePerMin", "hfStdTier1EndMin", "hfStdTier2EndMin",
     "hfStdHostPaisePerMin", "hfStdPhoneCostPaisePerMin", "hfTopupGstBps", "hfTopupGstInclusive"]) delete merged[k];
   delete merged.hfPushEnabled; // [HF-APP-4] server-only
