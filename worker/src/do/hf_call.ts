@@ -32,7 +32,7 @@ const HOST_RING_SEC = 30, CALLER_RING_SEC = 35;
 const HOST_PHASE_MS = 90_000;      // ring + announcement + digit wait
 const CALLER_PHASE_MS = 70_000;    // caller ring + safety notice
 const CONNECT_GUESS_MS = 25_000;   // only used when Vobiz sends no conference "enter" events at all
-const MAX_BILL_ATTEMPTS = 8;
+const MAX_RETRY_DELAY_MS = 5 * 60_000;
 
 // [HF-WALLET-1] testUsed/paidUsed split the caller's charge; hostPaid/hostTest split the host's share the same way (test part is never withdrawable).
 interface Plan {
@@ -46,6 +46,15 @@ interface Bill {
   funds?: number; plan?: Plan; consumed?: number; released?: boolean; earned?: boolean; saved?: boolean; post?: boolean; attempts: number;
   testSettled?: boolean; testEarned?: boolean;
 }
+interface FinishRequest {
+  status: string;
+  endReason: string | null;
+  hashBy: Role | null;
+  skipHostLeg: boolean;
+  skipCallerLeg: boolean;
+  tellHost: boolean;
+  attempts: number;
+}
 interface S {
   callId: string; callerUid: string; hostUid: string;
   // reservedRupees = PAID rupees reserved in the wallet at start; testReservedRupees = test credits held for this call; fundsRupees = test + paid available at start.
@@ -55,7 +64,7 @@ interface S {
   hostPicked: boolean; hostAccepted: boolean; callerPicked: boolean; callerPickedAt: number | null;
   inRoom: Record<Role, boolean>; member: Partial<Record<Role, string>>; anyEnter: boolean;
   connectedAt: number | null; endedAt: number | null; endReason: string | null; finalStatus: string | null; hashBy: Role | null;
-  finalized: boolean; tasks: Partial<Record<"ring" | "warn" | "limit" | "retry" | "guess", number>>; bill: Bill;
+  finalized: boolean; finishing?: FinishRequest; tasks: Partial<Record<"ring" | "warn" | "limit" | "retry" | "guess" | "disconnect", number>>; bill: Bill;
   tok?: TokenSnap; // present only for calls started with hfTokensEnabled on
 }
 
@@ -109,7 +118,10 @@ export class HfCallDO {
         case "hangup": return await this.hangup(s, body.role as Role, body.fields ?? {});
         case "cancel": return await this.cancel(s);
         case "end":
-          if (!s.finalized) await this.finish(s, s.connectedAt != null ? "completed" : "failed", "caller_hangup");
+          if (!s.finalized) {
+            const disconnected = await this.finish(s, s.connectedAt != null ? "completed" : "failed", "caller_hangup");
+            if (!disconnected) return jsonRes({ ok: false, error: "disconnect_pending", status: s.status }, 503);
+          }
           return jsonRes({ ok: true, status: s.status });
         case "watchdog": return await this.watchdog(s);
         default: return jsonRes({ ok: false, error: "not_found" }, 404);
@@ -287,7 +299,9 @@ export class HfCallDO {
   private async cancel(s: S): Promise<Response> {
     if (s.finalized) return jsonRes({ ok: true, status: s.finalStatus });
     if (s.connectedAt) return jsonRes({ ok: false, error: "connected" }, 409);
-    await this.finish(s, "failed", "caller_hangup");
+    if (!(await this.finish(s, "failed", "caller_hangup"))) {
+      return jsonRes({ ok: false, error: "disconnect_pending", status: s.status }, 503);
+    }
     return jsonRes({ ok: true, status: "failed" });
   }
 
@@ -310,6 +324,7 @@ export class HfCallDO {
         if (due("retry")) { delete s.tasks.retry; await this.save(s); await this.settleAndPost(s); }
         return;
       }
+      if (due("disconnect")) { delete s.tasks.disconnect; await this.save(s); await this.disconnectAndFinalize(s); return; }
       if (due("limit")) { await this.finish(s, "completed", s.limitReason); return; }
       if (due("warn")) {
         delete s.tasks.warn; await this.save(s);
@@ -334,27 +349,67 @@ export class HfCallDO {
   }
 
   // ── finish: hang up, record, free the host, bill, announce ───────────────────────────────────────────────────
-  private async finish(s: S, status: string, endReason: string | null, o: { hashBy?: Role; skipHostLeg?: boolean; skipCallerLeg?: boolean; tellHost?: boolean } = {}): Promise<void> {
-    if (s.finalized) return;
-    s.finalized = true; s.endedAt = Date.now(); s.finalStatus = status; s.endReason = endReason; s.hashBy = o.hashBy ?? null; s.tasks = {};
-    s.status = status;
-    await this.save(s);
+  private async finish(s: S, status: string, endReason: string | null, o: { hashBy?: Role; skipHostLeg?: boolean; skipCallerLeg?: boolean; tellHost?: boolean } = {}): Promise<boolean> {
+    if (s.finalized) return true;
+    if (!s.finishing) {
+      s.endedAt = Date.now();
+      s.finalStatus = status;
+      s.endReason = endReason;
+      s.hashBy = o.hashBy ?? null;
+      s.finishing = {
+        status,
+        endReason,
+        hashBy: o.hashBy ?? null,
+        skipHostLeg: o.skipHostLeg === true,
+        skipCallerLeg: o.skipCallerLeg === true,
+        tellHost: o.tellHost === true,
+        attempts: 0,
+      };
+      s.status = "ending";
+      s.tasks = {};
+      await this.save(s);
+    }
+    return this.disconnectAndFinalize(s);
+  }
 
+  /** Do not claim a call ended until every still-live provider leg accepted a disconnect. */
+  private async disconnectAndFinalize(s: S): Promise<boolean> {
+    const request = s.finishing;
+    if (!request) return s.finalized;
     const provider = getTelephonyProvider(this.env);
     const legs: Promise<unknown>[] = [];
-    if (o.tellHost && s.hostLeg) {
-      legs.push(provider.transferCall({ callUuid: s.hostLeg, legs: "aleg", alegUrl: this.urls(s).hostNoPickup }).catch(() => provider.hangupCall(s.hostLeg as string).catch(() => undefined)));
-    } else if (s.hostLeg && !o.skipHostLeg) legs.push(provider.hangupCall(s.hostLeg).catch(() => undefined));
-    if (s.callerLeg && !o.skipCallerLeg) legs.push(provider.hangupCall(s.callerLeg).catch(() => undefined));
-    await Promise.allSettled(legs);
+    if (request.tellHost && s.hostLeg) {
+      legs.push(provider.transferCall({ callUuid: s.hostLeg, legs: "aleg", alegUrl: this.urls(s).hostNoPickup }).catch(() => provider.hangupCall(s.hostLeg as string)));
+    } else if (s.hostLeg && !request.skipHostLeg) legs.push(provider.hangupCall(s.hostLeg));
+    if (s.callerLeg && !request.skipCallerLeg) legs.push(provider.hangupCall(s.callerLeg));
+    const results = await Promise.allSettled(legs);
+    const failure = results.find((result) => result.status === "rejected");
+    if (failure) {
+      request.attempts += 1;
+      s.status = "ending";
+      s.tasks.disconnect = Date.now() + Math.min(MAX_RETRY_DELAY_MS, 5_000 * request.attempts);
+      await this.save(s);
+      await trackException(this.env, (failure as PromiseRejectedResult).reason, {
+        route: "hf_call.disconnect", handled: true, app_name: HF_CALL_APP,
+        extra: { area: "hf_calls", attempt: request.attempts, call: s.callId },
+      });
+      return false;
+    }
+
+    delete s.finishing;
+    s.finalized = true;
+    s.status = "finalizing";
+    s.tasks = {};
+    await this.save(s);
 
     await this.db().prepare("UPDATE hf_calls SET status=?1, ended_at=?2, end_reason=?3, host_leg_uuid=?4, caller_leg_uuid=?5 WHERE id=?6")
-      .bind(status, s.endedAt, endReason, s.hostLeg, s.callerLeg, s.callId).run()
+      .bind("finalizing", s.endedAt, request.endReason, s.hostLeg, s.callerLeg, s.callId).run()
       .catch((e) => trackException(this.env, e, { route: "hf_call.finish", handled: true, app_name: HF_CALL_APP, extra: { area: "hf_calls", step: "row" } }));
     await releaseHost(this.env, s.hostUid).catch(() => undefined);
 
-    if (o.hashBy) await this.recordBlock(s, o.hashBy);
+    if (request.hashBy) await this.recordBlock(s, request.hashBy);
     await this.settleAndPost(s);
+    return true;
   }
 
   private async recordBlock(s: S, by: Role): Promise<void> {
@@ -375,7 +430,21 @@ export class HfCallDO {
   private async settleAndPost(s: S): Promise<void> {
     const ok = await this.settle(s);
     if (!ok || s.bill.post) return;
-    s.bill.post = true; await this.save(s);
+    const finalStatus = s.finalStatus ?? "completed";
+    try {
+      await this.db().prepare("UPDATE hf_calls SET status=?1, ended_at=?2, end_reason=?3, host_leg_uuid=?4, caller_leg_uuid=?5 WHERE id=?6")
+        .bind(finalStatus, s.endedAt, s.endReason, s.hostLeg, s.callerLeg, s.callId).run();
+    } catch (e) {
+      s.bill.attempts += 1;
+      s.tasks.retry = Date.now() + Math.min(MAX_RETRY_DELAY_MS, 20_000 * s.bill.attempts);
+      await this.save(s);
+      await trackException(this.env, e, { route: "hf_call.settle", handled: true, app_name: HF_CALL_APP, extra: { area: "hf_calls", step: "final_row", attempt: s.bill.attempts, call: s.callId } });
+      return;
+    }
+    s.bill.post = true;
+    s.status = finalStatus;
+    delete s.tasks.retry;
+    await this.save(s);
     const billed = s.bill.plan?.billedMinutes ?? 0;
     this.emit(s.callerUid, "hf_call_ended", { call_id: s.callId, billed_minutes: billed, end_reason: s.endReason ?? s.finalStatus });
     if (billed >= 1) {
@@ -408,7 +477,7 @@ export class HfCallDO {
     } catch (e) {
       b.attempts += 1;
       await trackException(this.env, e, { route: "hf_call.settle", handled: true, app_name: HF_CALL_APP, extra: { area: "hf_calls", step: "billing_tokens", attempt: b.attempts, call: s.callId } });
-      if (b.attempts < MAX_BILL_ATTEMPTS) s.tasks.retry = Date.now() + 20_000 * b.attempts;
+      s.tasks.retry = Date.now() + Math.min(MAX_RETRY_DELAY_MS, 20_000 * b.attempts);
       await this.save(s);
       return false;
     }
@@ -491,7 +560,7 @@ export class HfCallDO {
     } catch (e) {
       b.attempts += 1;
       await trackException(this.env, e, { route: "hf_call.settle", handled: true, app_name: HF_CALL_APP, extra: { area: "hf_calls", step: "billing", attempt: b.attempts, call: s.callId } });
-      if (b.attempts < MAX_BILL_ATTEMPTS) s.tasks.retry = Date.now() + 20_000 * b.attempts;
+      s.tasks.retry = Date.now() + Math.min(MAX_RETRY_DELAY_MS, 20_000 * b.attempts);
       await this.save(s);
       return false;
     }

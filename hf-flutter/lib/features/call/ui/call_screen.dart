@@ -67,6 +67,7 @@ class _CallFollowerState extends ConsumerState<CallFollower>
   bool _inFlight = false;
   bool _foreground = true;
   bool _cancelling = false;
+  bool _ending = false;
   bool _cancelledByMe = false;
   bool _notifying = false;
   bool _notified = false;
@@ -222,6 +223,29 @@ class _CallFollowerState extends ConsumerState<CallFollower>
     await _poll();
   }
 
+  Future<void> _end() async {
+    if (_ending) return;
+    setState(() {
+      _ending = true;
+      _notice = null;
+    });
+    try {
+      await ref.read(callApiProvider).end(widget.id);
+      if (!mounted) return;
+      setState(() => _ending = false);
+    } on ApiError catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _ending = false;
+        _notice = e.code == 'end_pending'
+            ? CallStrings.endPending
+            : CallStrings.endFailed;
+      });
+    }
+    _pollTimer?.cancel();
+    await _poll();
+  }
+
   Future<void> _notify(CallInfo info) async {
     final slug = info.hostSlug;
     if (_notifying || _notified || slug == null) return;
@@ -343,6 +367,10 @@ class _CallFollowerState extends ConsumerState<CallFollower>
         skeleton: _CallSkeleton(),
       );
     }
+    if (info.status == CallStatus.ending ||
+        info.status == CallStatus.finalizing) {
+      return const LoadingPanel(message: CallStrings.finalizingCall);
+    }
     if (info.status.isTerminal) {
       return LayoutBuilder(
         builder: (context, constraints) => SingleChildScrollView(
@@ -380,22 +408,13 @@ class _CallFollowerState extends ConsumerState<CallFollower>
 
   Widget _live(CallInfo info) {
     final connected = info.status == CallStatus.connected;
-    final slug = info.hostSlug;
     int? currentRate;
     final photoUrl = _hostPhotoUrl(info);
-    if (slug != null) {
-      if (connected) {
-        final estimateValue = ref.watch(callEstimateProvider(slug));
-        final estimate = estimateValue.hasValue
-            ? estimateValue.requireValue
-            : null;
-        if (estimate != null) {
-          currentRate = currentRatePaise(
-            estimate.tiers,
-            _elapsedSeconds(info),
-          );
-        }
-      }
+    if (connected && info.rateTiers.isNotEmpty) {
+      currentRate = currentRatePaise(
+        info.rateTiers,
+        _elapsedSeconds(info),
+      );
     }
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -437,10 +456,23 @@ class _CallFollowerState extends ConsumerState<CallFollower>
               HfSpacing.pageWide,
               34,
             ),
-            child: Text(
-              CallStrings.endFromPhone,
-              textAlign: TextAlign.center,
-              style: HfText.of(context, HfText.note),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                HfButton(
+                  label: _ending
+                      ? CallStrings.endingCall
+                      : CallStrings.endCall,
+                  loading: _ending,
+                  onPressed: _end,
+                ),
+                const SizedBox(height: HfSpacing.sm),
+                Text(
+                  CallStrings.endFromPhone,
+                  textAlign: TextAlign.center,
+                  style: HfText.of(context, HfText.note),
+                ),
+              ],
             ),
           ),
       ],

@@ -51,6 +51,14 @@ class CallApi {
     return CallStatus.parse(json['status']);
   }
 
+  /// `POST /api/hf/calls/:id/end` asks the authoritative call room to disconnect both legs.
+  Future<CallStatus> end(String id) async {
+    final json = await _api.postJson(
+      '/api/hf/calls/${Uri.encodeComponent(id)}/end',
+    );
+    return CallStatus.parse(json['status']);
+  }
+
   /// `POST /api/hf/hosts/:slug/notify` (needs a verified WhatsApp number).
   Future<void> notifyMe(String slug) async {
     await _api.postJson('/api/hf/hosts/${Uri.encodeComponent(slug)}/notify');

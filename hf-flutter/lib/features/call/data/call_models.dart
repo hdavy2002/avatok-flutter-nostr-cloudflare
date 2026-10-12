@@ -9,6 +9,8 @@ enum CallStatus {
   ringingHost('ringing_host'),
   ringingCaller('ringing_caller'),
   connected('connected'),
+  ending('ending'),
+  finalizing('finalizing'),
   completed('completed'),
   hostDeclined('host_declined'),
   noAnswer('no_answer'),
@@ -74,6 +76,7 @@ class CallInfo {
     this.chargedPaise,
     this.chargedLabel,
     this.plan,
+    this.rateTiers = const <PriceTier>[],
     this.tiers = const <CallTierLine>[],
     this.earningPaise,
     this.earningLabel,
@@ -103,6 +106,8 @@ class CallInfo {
   final int? chargedPaise;
   final String? chargedLabel;
   final String? plan;
+  /// Price bands frozen when this call started. Live call screens never re-read a changed listing.
+  final List<PriceTier> rateTiers;
   final List<CallTierLine> tiers;
   final int? earningPaise;
   final String? earningLabel;
@@ -148,6 +153,7 @@ class CallInfo {
           : null,
       chargedLabel: s(j['charged']),
       plan: s(j['plan']),
+      rateTiers: PriceTier.listFrom(j['rateTiers']),
       tiers: CallTierLine.listFrom(j['tiers']),
       earningPaise: j['earningPaise'] is num
           ? (j['earningPaise'] as num).round()
@@ -468,6 +474,13 @@ abstract final class CallStrings {
       "It's too late to cancel: you are already connected.";
   static const String cancelFailed =
       "We couldn't cancel the call. Please try again.";
+  static const String endCall = 'End call';
+  static const String endingCall = 'Ending call…';
+  static const String endPending =
+      "We're still ending the phone connection. Hang up on your phone too, and we'll keep checking.";
+  static const String endFailed =
+      "We couldn't end the call just now. Hang up on your phone, then try again.";
+  static const String finalizingCall = 'Finalizing your call…';
   static const String connected = 'Connected';
   static const String endWithHash =
       'Press # on your phone to end the call and block.';
@@ -520,7 +533,8 @@ abstract final class CallStrings {
       'Your phone will ring now.\nPick it up.';
   static const String billingStarts =
       'Billing starts only once you are connected.';
-  static const String endFromPhone = 'End the call from your phone';
+  static const String endFromPhone =
+      'You can also hang up from your phone.';
 
   /// "Ringing {name}… If they don't pick up, you won't be charged."
   static String ringingHost(String name) =>

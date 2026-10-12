@@ -75,7 +75,8 @@ void main() {
         findsNothing,
         reason: 'cancel is only offered before the call connects',
       );
-      expect(find.text('End the call from your phone'), findsOneWidget);
+      expect(find.text('End call'), findsOneWidget);
+      expect(find.text('You can also hang up from your phone.'), findsOneWidget);
       expect(find.text('Talking'), findsOneWidget);
       expect(find.byKey(const ValueKey<String>('call-clock')), findsOneWidget);
       expect(
@@ -342,6 +343,28 @@ void main() {
       await closeApp(tester);
     },
   );
+
+  testWidgets('End call posts the real end action and shows finalizing state', (
+    tester,
+  ) async {
+    prepareStorage();
+    final api = FakeApiClient();
+    var status = 'connected';
+    api.on('GET', _statusPath, (_) => callJson(status));
+    api.on('POST', '$_statusPath/end', (_) {
+      status = 'finalizing';
+      return {'ok': true, 'status': status};
+    });
+    await pumpCallApp(tester, api: api);
+
+    await tester.tap(find.text('End call'));
+    await tester.pump();
+    await tester.pump();
+
+    expect(api.callsTo('POST', '$_statusPath/end'), hasLength(1));
+    expect(find.text(CallStrings.finalizingCall), findsOneWidget);
+    await closeApp(tester);
+  });
 
   testWidgets(
     'polling pauses in the background and polls again at once on resume',

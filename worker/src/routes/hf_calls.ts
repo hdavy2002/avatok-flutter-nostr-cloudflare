@@ -233,6 +233,10 @@ async function getCall(req: Request, env: Env, id: string): Promise<Response> {
   const c = await env.DB_META.prepare("SELECT * FROM hf_calls WHERE id=?1").bind(id).first<HfCallRow>();
   if (!c || (c.caller_uid !== u.uid && c.host_uid !== u.uid)) return err(404, "not_found", "Call not found.");
   const h = await env.DB_META.prepare("SELECT slug, display_name FROM hf_hosts WHERE uid=?1").bind(c.host_uid).first<{ slug: string | null; display_name: string | null }>().catch(() => null);
+  const pricingRaw = (c as unknown as { pricing_snapshot?: string | null }).pricing_snapshot;
+  const frozenStandard = stdTariffOf(pricingRaw);
+  let frozenCreator = false;
+  try { frozenCreator = validCreatorSnapshot(JSON.parse(pricingRaw ?? "null")); } catch { /* legacy snapshot */ }
   let canReview = false;
   if (c.caller_uid === u.uid && c.status === "completed" && Number(c.billed_minutes) >= 1 && Date.now() - Number(c.ended_at ?? c.created_at) < REVIEW_WINDOW_MS) {
     const rv = await env.DB_META.prepare("SELECT 1 AS x FROM hf_reviews WHERE call_id=?1").bind(id).first().catch(() => null);
@@ -241,6 +245,10 @@ async function getCall(req: Request, env: Env, id: string): Promise<Response> {
   return json({
     id: c.id, status: c.status, hostSlug: h?.slug ?? null, hostName: h?.display_name ?? null, rate: rupees(c.rate_paise),
     connectedAt: c.connected_at, endedAt: c.ended_at, billedMinutes: c.billed_minutes, chargedRupees: rupees(c.charged_paise), endReason: c.end_reason, canReview,
+    plan: frozenCreator ? "creator" : frozenStandard ? "standard" : "host_rate",
+    rateTiers: frozenStandard
+      ? frozenStandard.tiers.map((tier, index) => ({ fromMin: tier.fromSec / 60, toMin: index + 1 < frozenStandard.tiers.length ? frozenStandard.tiers[index + 1].fromSec / 60 : null, paisePerMin: tier.paisePerMin }))
+      : [{ fromMin: 0, toMin: null, paisePerMin: Math.max(0, Math.trunc(Number(c.rate_paise ?? 0))) }],
     // [HF-TOK-CALLS-1] token calls: seconds billed for both; [HF-STD-PLAN-1] the CALLER sees the rupee charge (and the per-band breakdown on a
     // Standard call), the HOST sees only his rupee earnings. Margins and phone costs are admin-only.
     ...(tokCall(c)
@@ -272,6 +280,7 @@ async function cancelCall(req: Request, env: Env, id: string): Promise<Response>
   const r = await callStub(env, id).fetch("https://hfcall/cancel", { method: "POST", body: "{}" });
   const out = (await r.json().catch(() => ({}))) as { ok?: boolean; status?: string };
   if (r.status === 409) return err(409, "already_connected", "The call is already connected.");
+  if (!r.ok) return err(503, "cancel_pending", "We're still stopping the call. Please hang up on your phone too.");
   return json({ ok: true, status: out.status ?? "failed" });
 }
 
@@ -284,6 +293,7 @@ async function endCall(req: Request, env: Env, id: string): Promise<Response> {
   if (!c || c.caller_uid !== u.uid) return err(404, "not_found", "Call not found.");
   if (!["ringing_host", "ringing_caller", "connected"].includes(c.status)) return json({ ok: true, status: c.status });
   const response = await callStub(env, id).fetch("https://hfcall/end", { method: "POST", body: "{}" });
+  if (response.status === 503) return err(503, "end_pending", "We're still ending the phone connection. Hang up on your phone too, and we'll keep checking.");
   if (!response.ok) return err(502, "end_failed", "We couldn't end the call. Please try again.");
   return json(await response.json(), 200, { "cache-control": "private, no-store" });
 }
