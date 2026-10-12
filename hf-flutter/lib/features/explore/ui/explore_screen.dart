@@ -403,9 +403,6 @@ class _CommunityServicesCard extends StatelessWidget {
   final HostFilters base;
   final HostOptions? options;
 
-  void _topic(BuildContext context, HostTopic topic) =>
-      GoRouter.of(context).go(base.copyWith(topics: [topic.slug]).toLocation());
-
   void _service(BuildContext context, MarketplaceService service) =>
       GoRouter.of(context).go(base.copyWith(topics: service.topics).toLocation());
 
