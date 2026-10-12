@@ -10465,6 +10465,12 @@
       }
     ]
   },
+  "HF-HOME-BROWSER-1": {
+    "description": "Keep homepage torn-paper sections and community-card copy within the viewport at mobile, tablet, desktop, and 200% text zoom; align the browser guard with reviewed-policy dates.",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "no_telemetry": "Responsive CSS and browser-contract correction; it changes no tracked runtime interaction and emits no event."
+  },
   "HF-HOME-DEPLOY-CI-3": {
     "description": "Align the homepage release guard with the published Standard-call FAQ and wallet pricing, exact-second billing, start balance, and host earnings contracts.",
     "two_sided": false,

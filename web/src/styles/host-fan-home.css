@@ -59,3 +59,13 @@
 @container (max-width:40rem){.hfh-lane{grid-template-columns:1fr}.hfh-lane h2{margin-right:0}.hfh-steps{grid-template-columns:1fr}.hfh-steps li{grid-template-columns:auto auto minmax(0,1fr)}.hfh-steps li+li{border-left:0;border-top:1px solid #e3dce4;padding:1rem 0 0}.hfh-steps li>svg,.hfh-steps li>div{grid-row:auto;grid-column:auto}}
 @media(prefers-reduced-motion:reduce){.hfh-home{scroll-behavior:auto}}
 @media(max-width:767px){.hfh-beta>span{display:none}}
+/* Keep the torn-paper bleed inside the notebook's fixed gutters at text zoom. */
+.hfh-home{--hfh-page-gutter:32px;--hfh-panel-bleed:1rem}
+@media(max-width:899px){.hfh-home{--hfh-page-gutter:20px}}
+@media(max-width:767px){.hfh-home{--hfh-panel-bleed:.75rem}}
+@media(max-width:599px){.hfh-home{--hfh-page-gutter:16px}}
+.hfh-creators,.hfh-privacy,.hfh-host-cta{margin-inline:calc(-1 * min(var(--hfh-panel-bleed),var(--hfh-page-gutter)))}
+/* Include the heading's intentional 30% extension in the copy panel's box.
+   Matching padding preserves the existing paragraph/button widths and artwork. */
+@media(min-width:1024px){.hfh-lane-copy{margin-right:-30%;padding-right:30%}}
+@container (max-width:40rem){.hfh-lane-copy{margin-right:0;padding-right:0}}
