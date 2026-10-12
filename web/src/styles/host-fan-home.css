@@ -344,3 +344,11 @@
  .hfh-reference-page .hfh-host-art .hfh-note{left:10%;top:15%;width:25%;font-size:clamp(.875rem,2.5vw,1.25rem);background:transparent;mask:none;outline:none}
  .hfh-reference-page .hfh-host-cta:after{display:none}
 }
+
+/* Rotated strokes retain their painted appearance without expanding a layout box. */
+.hfh-reference-page .hfh-steps li:first-child:after{left:.4rem;bottom:0;transform:none}
+.hfh-reference-page .hfh-steps li:last-child:after{right:.5rem;top:.1rem;transform:none}
+@media(min-width:1024px){
+ .hfh-reference-page .hfh-lane-art>img{transform:scale(1.1);transform-origin:right bottom}
+ .hfh-reference-page .hfh-host-art>img{object-fit:fill}
+}
