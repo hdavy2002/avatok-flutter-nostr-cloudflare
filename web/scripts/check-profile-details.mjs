@@ -5,7 +5,6 @@ import { resolve } from 'node:path';
 import { normalizeBuiltImages } from './built-image-source.mjs';
 
 const root = resolve('dist');
-const home = readFileSync(resolve(root, 'index.html'), 'utf8');
 const brand = JSON.parse(readFileSync(resolve('../Specs/brand.json'), 'utf8'));
 const identity = brand.homepageIdentity;
 const profiles = [
@@ -27,7 +26,9 @@ const decodeEntities = value => value
   .replaceAll('&lt;', '<')
   .replaceAll('&gt;', '>');
 const text = html => decodeEntities(html.replace(/<script\b[\s\S]*?<\/script>/g, '').replace(/<[^>]*>/g, ' ')).replace(/\s+/g, ' ').trim();
-const cards = [...home.matchAll(/<article\b[^>]*\bdata-person(?:="")?[^>]*>[\s\S]*?<\/article>/g)].map(match => match[0]);
+// The approved homepage has four independent creator illustrations, covered by
+// check-homepage.mjs. These eight legacy detail previews retain their own identity,
+// pricing and safety contract without requiring retired homepage discovery cards.
 for (const [id, name, rate, languages, portrait] of profiles) {
   const path = `/people/${id}`;
   // Reverse CI's immutable image URLs through its generated manifest, validating
@@ -78,7 +79,7 @@ for (const [id, name, rate, languages, portrait] of profiles) {
   assert.equal((main.match(/<ul\b[^>]*class="cv-rating-bars"[^>]*>[\s\S]*?<\/ul>/)?.[0].match(/<li\b/g) || []).length, 5, `${id}: 5-to-1 star breakdown`);
   assert(html.includes('id="cv-review-dialog"') && main.includes('data-review-open') && html.includes('data-review-form'), `${id}: write-a-review demo`);
   assert.match(text(html.match(/<dialog\b[^>]*id="cv-review-dialog"[^>]*>[\s\S]*?<\/dialog>/)?.[0] || ''), /not saved/, `${id}: review form says it is a demo`);
-  // [HF-PROFILE-DETAIL-2] every card field also appears on the detail page.
+  // [HF-PROFILE-DETAIL-2] detailed sample profile fields remain complete.
   assert(main.includes('data-voice') && /Hear my introduction/.test(text(main)), `${id}: voice introduction`);
   assert(text(main).includes(`have talked to ${name}`), `${id}: talked-to count`);
   assert(/Conversation style/.test(text(main)) && !/Details coming soon/.test(text(main)), `${id}: conversation style filled`);
@@ -95,21 +96,14 @@ for (const [id, name, rate, languages, portrait] of profiles) {
   assert(!main.includes('id="gallery"'), `${id}: no empty gallery section`);
   assert(existsSync(resolve(root, `assets/callvaal/scrapbook/${portrait}.png`)), `${id}: approved portrait ships`);
   assert(main.includes(`/assets/callvaal/scrapbook/${portrait}.png`), `${id}: correct host portrait`);
-  const card = cards.find(card => card.includes(`href="${path}"`));
-  assert(card, `${id}: homepage discovery card`);
-  // [PROFILE-CARD-CHECK-1 2026-10-08] The approved photo cards ([LISTENER-PHOTO-CARDS-1]) link the name AND a
-  // "View full profile" line to the detail page; the primary button still follows availability (next check).
-  assert.equal((card.match(new RegExp(`href="${path}"`, 'g')) || []).length, 2, `${id}: name and View full profile reach detail while primary button follows availability`);
-  assert.match(card, /data-preview-action="(?:call|notify)"/, `${id}: truthful preview action`);
   if (id === 'kavya') assert.doesNotMatch(text(main), /kundli|horoscope|tarot|Taare/i, 'Kavya now offers everyday conversation topics');
-  assert(card.includes('data-moods=') && text(card).includes(`₹${rate}/min`) && text(card).includes(languages), `${id}: homepage mood/rate/languages agree`);
   const detailMoods = [...main.matchAll(/<ul\b[^>]*class="cv-detail-topics"[^>]*>([\s\S]*?)<\/ul>/g)].flatMap(match => [...match[1].matchAll(/<li\b[^>]*>([\s\S]*?)<\/li>/g)].map(item => text(item[1])));
   assert(detailMoods.length >= 2, `${id}: everyday conversation topics`);
-  for (const mood of detailMoods) assert(text(card).includes(mood), `${id}: mood agrees with homepage: ${mood}`);
+  assert(detailMoods.every(mood => mood.length > 0), `${id}: conversation topics are nonempty`);
   assert.doesNotMatch(main, /Dr\. Ananya|General physician|NMC|RCI|doctor-notes|doctor-consultation|lab reports|prescriptions|years experience|id="services"/i, `${id}: no professional framing`);
   assert.equal((main.match(/Illustrative review/g) || []).length, reviewCount, `${id}: each fictional review labelled`);
   const preview = text(html.match(/<dialog\b[^>]*id="cv-profile-preview"[^>]*>[\s\S]*?<\/dialog>/)?.[0] || '');
   for (const boundary of ['No medical, legal or money advice.', 'No miracles, no guaranteed results.', '18+ only.']) assert(text(main).includes(boundary) && preview.includes(boundary), `${id}: page and call disclaimer: ${boundary}`);
   assert.match(html, /data-disclaimer-ack/, `${id}: explicit disclaimer acknowledgement`);
 }
-console.log(`${profiles.length} mood-led sample profile contracts passed: discovery, identity, prices, topics and safety boundaries.`);
+console.log(`${profiles.length} sample profile detail contracts passed: identity, prices, topics, preview interactions and safety boundaries.`);

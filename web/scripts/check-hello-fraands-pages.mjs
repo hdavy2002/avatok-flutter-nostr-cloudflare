@@ -50,13 +50,25 @@ export function checkHelloFraandsPages(root, identity) {
   assert((faq.match(/<details\b[^>]*class="faq-item"/g) || []).length >= 15, 'FAQ has at least 15 accessible accordions');
   assert((pages.get('/faq').match(/"@type":"FAQPage"/g) || []).length === 1, 'FAQ emits FAQPage structured data once');
   assert.equal((pages.get('/how-it-works').match(/class="phone-frame"/g) || []).length, 3, 'Three masked-call steps');
-  for (const amount of ['₹5,400', '₹41,400', '₹50,400']) assert(text(pages.get('/hosts/join')).includes(amount), 'Net illustrative earnings: ' + amount);
+  const hostJoin = text(pages.get('/hosts/join'));
+  for (const copy of [
+    'A Standard host earns ₹2.00 for every connected minute, paid by the second.',
+    'Influencers and celebrities complete full video KYC and choose a fan price from ₹5 to ₹1,000 per minute',
+    'they receive 60% of the connected-call charge minus ₹2.00 per connected minute for the telephone call.',
+    'Being online does not guarantee calls.',
+    'Amounts below are before TDS or your own taxes.',
+  ]) assert(hostJoin.includes(copy), 'Current host earnings contract: ' + copy);
   for (const amount of ['₹5 minute', '₹5 − ₹2 = ₹3', '40% of ₹3 = ₹1.20', '₹2 + ₹1.20 = ₹3.20', '₹5 − ₹3.20 = ₹1.80']) assert(text(pages.get('/hosts/rates')).includes(amount), '₹5 split: ' + amount);
   assert(text(faq).includes('starting from ₹5/min'), 'FAQ minimum rate');
   const wallet = text(pages.get('/wallet-terms'));
   for (const copy of ['general-lane floor of ₹5/minute', '61 connected seconds at ₹5/minute costs ₹10', '₹3.20 for the platform and ₹1.80 for the host']) assert(wallet.includes(copy), 'Wallet ₹5 example: ' + copy);
-  const firstEarningsRow = pages.get('/hosts/join').match(/<tbody>\s*<tr>([\s\S]*?)<\/tr>/)?.[1] || '';
-  assert.deepEqual([...firstEarningsRow.matchAll(/<td>([^<]+)<\/td>/g)].map(m => m[1]), ['₹5/min', '₹1.80', '₹5,400'], 'First earnings row follows the ₹5 minimum');
+  const earningsTable = pages.get('/hosts/join').match(/<tbody>([\s\S]*?)<\/tbody>/)?.[1] || '';
+  const earningsRows = [...earningsTable.matchAll(/<tr>([\s\S]*?)<\/tr>/g)].map(row => [...row[1].matchAll(/<td>([^<]+)<\/td>/g)].map(cell => cell[1]));
+  assert.deepEqual(earningsRows, [
+    ['1 hour', '₹2.00', '₹120'],
+    ['1,000 minutes', '₹2.00', '₹2,000'],
+    ['3,000 minutes', '₹2.00', '₹6,000'],
+  ], 'Illustrative Standard earnings follow ₹2.00 per connected minute');
   for (const [route, phones] of [['/emergency', ['14416', '112', '9152987821', '18602662345']], ['/hosts/crisis-script', ['14416', '112']]]) {
     const links = [...pages.get(route).matchAll(/href="tel:([^"]+)"/g)].map(m => m[1].replace(/[^\d]/g, ''));
     for (const phone of phones) assert(links.includes(phone), `${route}: tap-to-call ${phone}`);

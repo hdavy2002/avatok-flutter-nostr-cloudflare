@@ -17,7 +17,8 @@ function meta(page, key) {
 
 const root = resolve('dist');
 validateBuiltImageSources(root);
-const html = normalizeBuiltImages(readFileSync(resolve(root, 'index.html'), 'utf8'), { root });
+const emittedHtml = readFileSync(resolve(root, 'index.html'), 'utf8');
+const html = normalizeBuiltImages(emittedHtml, { root });
 const bodyHtml = html.match(/<body[^>]*>([\s\S]*)<\/body>/)?.[1] ?? html;
 const visibleText = bodyHtml.replace(/<script\b[\s\S]*?<\/script>/g, '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ');
 const identity = JSON.parse(readFileSync(resolve('../Specs/brand.json'), 'utf8')).homepageIdentity;
@@ -94,6 +95,16 @@ assert.deepEqual([...footer.matchAll(/<summary\b[^>]*>([\s\S]*?)<\/summary>/g)].
 assert.deepEqual([...footer.matchAll(/<li\b[^>]*>\s*<a\b[^>]*href="([^"]+)"/g)].map(m => m[1].replaceAll('&amp;', '&')), footerRoutes, 'Every requested footer route in column order');
 checkHelloFraandsPages(root, identity);
 // HFHOME-08: separate optimized photos, never a screenshot of the page.
+// Inspect emitted URLs before normalization restores their source asset names.
+const emittedMain = emittedHtml.match(/<main\b[^>]*>([\s\S]*?)<\/main>/)?.[1] || '';
+const homepagePhotos = [...emittedMain.matchAll(/<img\b[^>]*>/g)].map(match => match[0]);
+assert.equal(homepagePhotos.length, 11, 'All approved homepage photo placements render');
+for (const photo of homepagePhotos) {
+  assert.match(photo, /\bsrc="\/cdn-cgi\/image\/format=avif,quality=60,width=\d+,fit=cover\//, 'Homepage photo uses the public-image pipeline');
+  const srcset = photo.match(/\bsrcset="([^"]+)"/)?.[1] || '';
+  assert((srcset.match(/\s\d+w(?:,|$)/g) || []).length >= 2, 'Homepage photo has responsive width variants');
+  assert.match(photo, /\bsizes="[^"]+"/, 'Homepage photo declares its display sizes');
+}
 for (const name of ['hero', 'host', 'neha', 'arjun', 'meera', 'rohit', 'women', 'community']) {
   const file = resolve(root, 'assets/callvaal/host-fan', name + '.webp');
   const bytes = readFileSync(file);
