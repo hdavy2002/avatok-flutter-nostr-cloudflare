@@ -10321,6 +10321,58 @@
       }
     ]
   },
+  "HF-CREATOR-PRICE-1": {
+    "description": "Creator listing, full-video-KYC publication and creator-r1 settlement contract. See HF-REFERENCE-SCREENS-1 for rollout prerequisites.",
+    "two_sided": true,
+    "min_devices_on_build": 2,
+    "flags": ["hfCallsEnabled", "hfTokensEnabled"],
+    "success": [{ "event": "hf_creator_listing_published", "property": "price_per_min", "gt": 0, "note": "A real-account creator listing passed every publication blocker with a server-authoritative price." }]
+  },
+  "HF-CREATOR-PRICE-2": {
+    "description": "Creator account ownership and listing-write authorization guards.",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "no_telemetry": "Authorization and stale-write refusals deliberately do not emit customer success events; source guards and bounded route regressions define success."
+  },
+  "HF-REF-AUTH-1": {
+    "description": "Immutable native registration foundation. See HF-REFERENCE-SCREENS-1 for migrations and rollout.",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "success": [{ "event": "hf_registration_completed", "property": "username_length", "gt": 0, "note": "The server stored the completed verified registration and current policy receipts." }]
+  },
+  "HF-REF-AUTH-COMPLETE-1": {
+    "description": "Authoritative contact verification, same-subject Clerk email linking, durable resume and safe account replacement.",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "success": [{ "event": "hf_registration_completed", "property": "username_length", "gt": 0, "note": "A registration completed only after authoritative WhatsApp and email proof." }]
+  },
+  "HF-REF-CALL-1": {
+    "description": "Truthful connected End call with durable per-leg disconnect and finalization recovery.",
+    "two_sided": true,
+    "min_devices_on_build": 2,
+    "flags": ["hfCallsEnabled"],
+    "success": [{ "event": "hf_call_ended", "property": "billed_minutes", "gt": 0, "note": "A connected call ended and the durable final bill was posted exactly once." }]
+  },
+  "HF-REF-FINAL-1": {
+    "description": "Integration corrections for account isolation, notification scope, discovery pricing, review duration, media provenance and call recovery.",
+    "two_sided": true,
+    "min_devices_on_build": 2,
+    "flags": ["hfCallsEnabled"],
+    "success": [{ "event": "hf_review_submitted", "property": "stars", "gt": 0, "note": "A real short or long connected call submitted one acknowledged pending review." }]
+  },
+  "HF-REF-MARK-COMPLETE-1": {
+    "description": "Backend-owned marketplace navigation, creator listing editor, private sample drafts and voice controls.",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "success": [{ "event": "hf_creator_listing_published", "property": "price_per_min", "gt": 0, "note": "A non-sample creator listing was published after all real-account checks." }]
+  },
+  "HF-REF-WALLET-1": {
+    "description": "Fixed Google Play Rs 360 and Rs 500 catalogue rows; products must exist in Play Console before exposure.",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": ["hfTokensEnabled"],
+    "success": [{ "event": "hf_token_purchase_verified", "where": { "duplicate": false, "paid_paise": 36000 }, "property": "wallet_paise", "gt": 0, "note": "The Play-authoritative Rs 360 pack credited once; repeat the operational check for paid_paise 50000." }]
+  },
   "HF-REFERENCE-SCREENS-1": {
     "description": "[HF-REFERENCE-SCREENS-1 2026-10-12] Exact-reference native registration, KYC, discovery, wallet, masked-call and review surfaces with honest backend values. Adds verified same-account email registration, six-digit selfie video KYC, 20-second voice introductions, backend-owned influencer/celebrity communities and service navigation, private creator sample drafts, creator pricing (fan rate; creator 60% minus Rs 2 per connected minute; platform 40% with its GST absorbed), real notification inbox, exact short-call reviews, and fixed Google Play Rs 360/Rs 500 catalogue rows. Standard calls remain Rs 3.99/3.50/3.25. Apply worker/migrations/2026-10-12-hf-registration.sql, 2026-10-12-hf-registration-progress.sql, 2026-10-12-hf-creator-price-alters.sql and 2026-10-12-hf-wallet-reference-packs.sql before the Worker. Play Console products hf_rupees_360 and hf_rupees_500 must exist and be active before their rows are exposed. No sample listing can publish or call until linked to a real account that passes the publication blockers.",
     "two_sided": true,
