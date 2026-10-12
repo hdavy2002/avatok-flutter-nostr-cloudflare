@@ -579,6 +579,43 @@ class _PurchaseRow extends StatelessWidget {
 
   final PurchaseRecord record;
 
+  void _showDetails(BuildContext context) {
+    final amounts = record.amounts;
+    showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (context) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(
+            HfSpacing.pageWide,
+            HfSpacing.sm,
+            HfSpacing.pageWide,
+            HfSpacing.section,
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text('Google Play purchase', style: HfText.of(context, HfText.section)),
+              const SizedBox(height: HfSpacing.xl),
+              _PurchaseDetailLine('Paid', record.grossPaidLabel ?? 'Not available'),
+              if (amounts != null) ...[
+                _PurchaseDetailLine('GST included', formatPaise(amounts.gstPaise)),
+                _PurchaseDetailLine('Added to wallet', formatPaise(amounts.walletPaise)),
+              ],
+              if (record.orderId != null)
+                _PurchaseDetailLine('Google Play order', record.orderId!),
+              if (record.at != null)
+                _PurchaseDetailLine('Date', shortDate(record.at)),
+              if (record.state != null)
+                _PurchaseDetailLine('Status', record.state!),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final sub = [
@@ -593,9 +630,35 @@ class _PurchaseRow extends StatelessWidget {
       ),
       title: record.label,
       subtitle: sub,
-      trailing: record.added ?? '',
+      trailing: record.grossPaidLabel ?? 'Details',
+      showChevron: true,
+      onTap: () => _showDetails(context),
     );
   }
+}
+
+class _PurchaseDetailLine extends StatelessWidget {
+  const _PurchaseDetailLine(this.label, this.value);
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.symmetric(vertical: HfSpacing.sm),
+    child: Row(
+      children: [
+        Expanded(child: Text(label, style: HfText.of(context, HfText.body))),
+        const SizedBox(width: HfSpacing.lg),
+        Flexible(
+          child: Text(
+            value,
+            textAlign: TextAlign.end,
+            style: HfText.of(context, HfText.bodyStrong),
+          ),
+        ),
+      ],
+    ),
+  );
 }
 
 class _HistoryList extends StatelessWidget {

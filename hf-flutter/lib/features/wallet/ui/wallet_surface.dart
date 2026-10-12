@@ -69,6 +69,8 @@ class WalletRow extends StatelessWidget {
     this.subtitle = '',
     this.trailing = '',
     this.trailingColor,
+    this.onTap,
+    this.showChevron = false,
   });
 
   final Widget leading;
@@ -76,13 +78,19 @@ class WalletRow extends StatelessWidget {
   final String subtitle;
   final String trailing;
   final Color? trailingColor;
+  final VoidCallback? onTap;
+  final bool showChevron;
 
   @override
   Widget build(BuildContext context) {
     final strong = HfText.of(context, HfText.bodyStrong).copyWith(fontSize: 15);
-    return ConstrainedBox(
-      constraints: const BoxConstraints(minHeight: HfSpacing.tap),
-      child: Padding(
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(minHeight: HfSpacing.tap),
+          child: Padding(
         padding: const EdgeInsets.symmetric(
           horizontal: HfSpacing.xl,
           vertical: HfSpacing.lg,
@@ -117,7 +125,13 @@ class WalletRow extends StatelessWidget {
                 ),
               ),
             ],
+            if (showChevron) ...[
+              const SizedBox(width: HfSpacing.sm),
+              const Icon(Icons.chevron_right_rounded, size: 22),
+            ],
           ],
+        ),
+      ),
         ),
       ),
     );

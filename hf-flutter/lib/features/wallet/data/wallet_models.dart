@@ -191,6 +191,10 @@ class PurchaseRecord {
   final DateTime? at;
   final String? state;
 
+  int? get grossPaidPaise => paidPaise ?? amounts?.paidPaise;
+  String? get grossPaidLabel =>
+      grossPaidPaise == null ? null : formatPaise(grossPaidPaise!);
+
   factory PurchaseRecord.fromJson(Map<String, dynamic> j) {
     final amounts = PurchaseAmounts.tryParse(j);
     final t = _num(j['tokens']);

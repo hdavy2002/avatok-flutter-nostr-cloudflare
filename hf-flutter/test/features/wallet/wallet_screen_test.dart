@@ -324,6 +324,42 @@ void main() {
       );
     });
 
+    testWidgets('purchase row shows gross paid and opens real charge details', (
+      tester,
+    ) async {
+      final w = tokenWallet(
+        purchases: [
+          {
+            'orderId': 'GPA.240-1',
+            'productId': 'hf_rupees_240',
+            'paidPaise': 24000,
+            'gstPaise': 3661,
+            'walletPaise': 20339,
+            'at': 1760000000000,
+            'state': 'consumed',
+          },
+        ],
+      );
+      await pumpWallet(tester, api: walletApi(wallet: w), billing: billing);
+      final section = find.byKey(const ValueKey<String>('purchases'));
+      expect(
+        find.descendant(of: section, matching: find.text('₹240.00')),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(of: section, matching: find.text('₹203.39')),
+        findsNothing,
+      );
+
+      await tester.tap(find.descendant(of: section, matching: find.text('Paid via Google Play')));
+      await tester.pumpAndSettle();
+      expect(find.text('Google Play purchase'), findsOneWidget);
+      expect(find.text('GST included'), findsOneWidget);
+      expect(find.text('₹36.61'), findsOneWidget);
+      expect(find.text('Added to wallet'), findsOneWidget);
+      expect(find.text('₹203.39'), findsOneWidget);
+    });
+
     testWidgets('the wallet is read live every time it opens: no cache', (
       tester,
     ) async {
