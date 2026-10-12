@@ -67,12 +67,18 @@ void main() {
       expect(HostFilters.none.toLocation(), '/explore');
     });
 
-    test('the sort is local: the route cannot carry it', () {
+    test('search, creator category and sort round-trip for section See all', () {
       const a = HostFilters(online: true);
-      final b = a.copyWith(sort: HostSort.rating);
-      expect(a.sameAsRoute(b), isTrue);
+      final b = a.copyWith(sort: HostSort.popular, category: HostCategoryFilter.creators, search: 'Anya');
+      expect(a.sameAsRoute(b), isFalse);
       expect(a.sameRequest(b), isFalse);
-      expect(b.toRouteQuery().containsKey('sort'), isFalse);
+      expect(b.toRouteQuery()['sort'], 'popular');
+      expect(HostFilters.fromRouteQuery(b.toRouteQuery()).sameRequest(b), isTrue);
+      expect(b.toApiQuery(limit: 6, offset: 0), containsPair('q', 'Anya'));
+      expect(b.toApiQuery(limit: 6, offset: 0), containsPair('category', 'creators'));
+      expect(b.cacheKey, isNot(b.copyWith(search: '').cacheKey));
+      expect(b.toTelemetry(), isNot(contains('q')));
+      expect(b.toTelemetry()['has_search'], isTrue);
     });
 
     test('copyWith can clear a price and the lane', () {

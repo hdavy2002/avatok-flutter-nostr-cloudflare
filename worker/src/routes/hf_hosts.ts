@@ -12,7 +12,7 @@ import { BRAND } from "../lib/brand";
 import { emailFor } from "../lib/identity";
 import { readConfig } from "./config";
 import { readHfStdPlan } from "../lib/hf_token_config"; // [HF-STD-PLAN-1]
-import { getHost, upsertHost, listMedia, hostToJson, mediaToJson, mediaUrl, avatarUrlFor, type HostPatch } from "../lib/hf_host_store";
+import { getHost, upsertHost, listMedia, hostToJson, mediaToJson, mediaUrl, avatarUrlFor, HostWriteConflict, type HostPatch } from "../lib/hf_host_store";
 import { normalizeIntroMime, validateIntro, INTRO_ACCEPTED_TYPES, INTRO_MAX_BYTES } from "../lib/hf_intro";
 import { transcribeAndFlag } from "../lib/hf_intro_check";
 import { isHostCategory, isCreatorCategory, validCreatorRate, CREATOR_MIN_RUPEES, CREATOR_MAX_RUPEES } from "../lib/hf_creator_pricing";
@@ -85,7 +85,7 @@ async function putMe(req: Request, env: Env, ctx: ExecutionContext | undefined):
   const cur = await getHost(env, uid);
   const status = cur?.status ?? "draft";
   const priceHoursOnly = status === "live";
-  if (status === "generating" || status === "pending_review") return err(409, "locked", { message: "Your profile is being prepared or reviewed — you can edit it once that finishes." });
+  if (!["draft", "pending_host", "paused", "rejected", "live"].includes(status)) return err(409, "locked", { message: "Your profile is locked for editing right now." });
 
   const patch: HostPatch = {};
   const changed: string[] = [];
@@ -97,6 +97,7 @@ async function putMe(req: Request, env: Env, ctx: ExecutionContext | undefined):
     patch.category = b.category; changed.push("category");
   }
   if (has("privatePhone")) {
+    if (locked("privatePhone")) return err(409, "locked", { field: "privatePhone" });
     if (b.privatePhone !== null && (typeof b.privatePhone !== "string" || !/^\+[1-9]\d{7,14}$/.test(b.privatePhone))) return bad("privatePhone", "Use an international phone number or clear the field.");
     patch.private_phone_enc = b.privatePhone ? await encryptPii(env, b.privatePhone as string) : null;
     changed.push("privatePhone");
@@ -182,13 +183,15 @@ async function putMe(req: Request, env: Env, ctx: ExecutionContext | undefined):
     patch.lgbtq_public = b.lgbtqPublic ? 1 : 0; changed.push("lgbtqPublic");
   }
   if (has("agreements")) {
+    if (locked("agreements")) return err(409, "locked", { field: "agreements" });
     if (b.agreements !== true) return bad("agreements", "You need to accept the host agreements to continue.");
     patch.agreements_at = Date.now(); changed.push("agreements");
   }
 
   try {
-    await upsertHost(env, uid, patch);
+    await upsertHost(env, uid, patch, { revision: cur ? cur.listing_revision ?? 1 : 0, statuses: [status] });
   } catch (e) {
+    if (e instanceof HostWriteConflict) return err(409, "listing_changed", { message: e.message });
     await trackException(env, e, { uid, route: "/api/hosts/me", method: "PUT", handled: true, app_name: APP, extra: { area: "hf_host" } });
     return err(500, "save_failed", { message: "We couldn’t save that. Please try again." });
   }
@@ -258,7 +261,7 @@ async function uploadVoice(req: Request, env: Env, ctx: ExecutionContext | undef
   const declared = Number(req.headers.get("content-length") || 0);
   if (declared > INTRO_MAX_BYTES) return err(413, "too_large", { message: "That recording is too large. Please record a shorter one.", max_bytes: INTRO_MAX_BYTES });
   const cur = await getHost(env, uid);
-  if (cur && ["generating", "pending_review"].includes(cur.status)) return err(409, "locked", { message: "Your profile is being prepared or reviewed — you can record again once that finishes." });
+  if (cur && !["draft", "pending_host", "paused", "rejected", "live"].includes(cur.status)) return err(409, "locked", { message: "Your profile is locked for recording right now." });
   const lim = await rateLimit(env, `hf_intro:${uid}`, 6, 3600);
   if (lim) return lim;
 
@@ -268,17 +271,18 @@ async function uploadVoice(req: Request, env: Env, ctx: ExecutionContext | undef
   if (!chk.ok) return err(chk.status, chk.error, { message: chk.message });
 
   const now = Date.now();
-  const key = `hf/intro/${uid}/${now}.${nm.ext}`;
+  const key = `hf/intro/${uid}/${now}-${crypto.randomUUID()}.${nm.ext}`;
   try {
     await env.VERIFICATION.put(key, buf, { httpMetadata: { contentType: nm.mime } });
     await upsertHost(env, uid, {
       voice_sample_r2: key, voice_seconds: chk.seconds, voice_consent_at: now,
       intro_mime: nm.mime, intro_status: "pending", intro_transcript: null, intro_flags_json: null, intro_uploaded_at: now,
-    });
+    }, { revision: cur ? cur.listing_revision ?? 1 : 0, statuses: [cur?.status ?? "draft"] });
     // The approved public copy lives in BLOBS, so the superseded private source can go.
     if (cur?.voice_sample_r2 && cur.voice_sample_r2 !== key) await env.VERIFICATION.delete(cur.voice_sample_r2).catch(() => {});
   } catch (e) {
     await env.VERIFICATION.delete(key).catch(() => {});
+    if (e instanceof HostWriteConflict) return err(409, "listing_changed", { message: e.message });
     await trackException(env, e, { uid, route: "/api/hosts/me/voice", method: "PUT", handled: true, app_name: APP, extra: { area: "hf_host" } });
     return err(500, "store_failed", { message: "We couldn’t save your recording. Please try again." });
   }
@@ -336,7 +340,7 @@ async function putGenerated(req: Request, env: Env, ctx: ExecutionContext | unde
     if (contactLeak(v)) return bad(k, "Please don’t put phone numbers, links, @handles or app names here.", 422);
     patch[col] = v; changed.push(k);
   }
-  await upsertHost(env, u.uid, patch);
+  await upsertHost(env, u.uid, patch, { revision: cur.listing_revision ?? 1, statuses: [cur.status] });
   makeEmit(env, ctx, u.uid)("hf_host_profile_saved", { fields: changed.join(","), generated: true });
   return json({ host: await hostJson(env, u.uid) });
 }
@@ -360,7 +364,7 @@ async function submit(req: Request, env: Env, ctx: ExecutionContext | undefined)
   if (!cur.voice_sample_r2 || (cur.intro_status !== "pending" && cur.intro_status !== "approved")) missing.push("voice");
   if (missing.length) return err(422, "incomplete", { missing, message: "A few steps are still missing." });
   const now = Date.now();
-  const r = await env.DB_META.prepare("UPDATE hf_hosts SET status='pending_review', submitted_at=?2, updated_at=?2 WHERE uid=?1 AND status IN ('pending_host','rejected','paused')").bind(uid, now).run();
+  const r = await env.DB_META.prepare("UPDATE hf_hosts SET status='pending_review', submitted_at=?2, updated_at=?2, listing_revision=listing_revision+1 WHERE uid=?1 AND listing_revision=?3 AND status IN ('pending_host','rejected','paused')").bind(uid, now, cur.listing_revision ?? 1).run();
   if (!r.meta?.changes) return err(409, "bad_status");
   makeEmit(env, ctx, uid)("hf_host_submitted", { media: media.length });
   return json({ ok: true });
@@ -386,6 +390,7 @@ export async function hfHostsRoute(req: Request, env: Env, ctx?: ExecutionContex
     if (p === "/api/hosts/submit" && m === "POST") return await submit(req, env, ctx);
     return null;
   } catch (e) {
+    if (e instanceof HostWriteConflict) return err(409, "listing_changed", { message: e.message });
     await trackException(env, e, { route: p, method: m, handled: true, app_name: APP, extra: { area: "hf_host" } });
     return err(500, "internal_error");
   }

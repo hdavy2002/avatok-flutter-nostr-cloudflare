@@ -2,9 +2,11 @@ import type { Env } from "../types";
 import { getHost, listMedia } from "./hf_host_store";
 import { isCreatorCategory, validCreatorRate } from "./hf_creator_pricing";
 import { INTRO_MIN_SECONDS } from "./hf_intro";
+import { isCreatorFixture } from "./hf_creator_fixtures";
 
 /** No inferred verification: requires the actual latest approved video and authoritative identity/payout records. */
 export async function creatorPublicationBlockers(env: Env, uid: string): Promise<string[]> {
+  if (isCreatorFixture(uid)) return ["sample_data"];
   const h = await getHost(env, uid);
   if (!h) return ["listing_missing"];
   if (!isCreatorCategory(h.category)) return [];

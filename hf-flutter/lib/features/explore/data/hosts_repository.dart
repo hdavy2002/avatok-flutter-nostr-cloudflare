@@ -186,3 +186,11 @@ final hostsRepositoryProvider = Provider<HostsRepository>(
     ref.watch(jsonCacheProvider),
   ),
 );
+
+/// Each marketplace rail asks the server for its own first page. A category or
+/// online section never depends on who happened to be in the all-hosts page.
+final marketplaceSectionProvider = FutureProvider.autoDispose
+    .family<HostsPage, String>(retry: (_, __) => null, (ref, location) {
+      final filters = HostFilters.fromRouteQuery(Uri.parse(location).queryParameters);
+      return ref.watch(hostsRepositoryProvider).fetch(filters, limit: 6);
+    });

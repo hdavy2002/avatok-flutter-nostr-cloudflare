@@ -10,6 +10,8 @@ import 'package:hf_app/core/boot.dart';
 import 'package:hf_app/core/storage/cache.dart';
 import 'package:hf_app/core/storage/secure_store.dart';
 import 'package:hf_app/features/explore/widgets/intro_player.dart';
+import 'package:hf_app/features/explore/data/host_card.dart';
+import 'package:hf_app/features/explore/data/hosts_repository.dart';
 
 import '../../support/app_harness.dart';
 import '../../support/fake_api_client.dart';
@@ -144,6 +146,7 @@ Future<ProviderContainer> pumpScreen(
   Size size = const Size(360, 800),
   ThemeMode? themeMode,
   bool settle = true,
+  bool liveSections = false,
 }) async {
   tester.view.physicalSize = Size(size.width * 3, size.height * 3);
   tester.view.devicePixelRatio = 3.0;
@@ -158,6 +161,9 @@ Future<ProviderContainer> pumpScreen(
         () => StubSession(session ?? signedOutState()),
       ),
       apiClientProvider.overrideWithValue(api),
+      // Existing pagination/cache tests isolate the main feed. Section tests opt
+      // into real repository requests explicitly below.
+      if (!liveSections) marketplaceSectionProvider.overrideWith((ref, location) async => HostsPage.empty),
       secureStoreProvider.overrideWithValue(MemoryKeyValueStore()),
       jsonCacheProvider.overrideWithValue(cache ?? MemoryJsonCache()),
       introAudioProvider.overrideWithValue(audio ?? FakeIntroAudio()),

@@ -65,6 +65,23 @@ beforeEach(() => { E = makeEnv(); seed(E.db); cfg = { hostsPublicEnabled: true, 
 afterEach(() => { delete (globalThis as any).caches; });
 
 describe("GET /api/hf/hosts", () => {
+  it("searches all published rows before pagination and treats wildcard characters literally", async () => {
+    expect(await slugs("q=Chitra&limit=1")).toEqual(["chit"]);
+    expect(await slugs("q=Tamil")).toEqual(["chit"]);
+    expect(await slugs("q=Fay")).toEqual([]);
+    expect(await slugs("q=%25")).toEqual([]);
+    expect(await slugs("q=_")).toEqual([]);
+    const a = (parseHostList(new URLSearchParams("q=Chitra")) as any).q;
+    const b = (parseHostList(new URLSearchParams("q=Ana")) as any).q;
+    expect(listCacheKey(a)).not.toBe(listCacheKey(b));
+    expect((await get(`q=${"a".repeat(81)}`))!.status).toBe(400);
+  });
+  it("queries both creator categories and ranks popular hosts using approved reviews", async () => {
+    E.db.exec("UPDATE hf_hosts SET category='influencer' WHERE uid='u2'; UPDATE hf_hosts SET category='celebrity' WHERE uid='u3'");
+    expect(await slugs("category=creators")).toEqual(["bina", "chit"]);
+    expect(await slugs("category=creators&q=Tamil")).toEqual(["chit"]);
+    expect(await slugs("sort=popular")).toEqual(["ana", "esha", "bina", "dev", "chit"]);
+  });
   it("creator categories retain their host rate with Standard enabled and never reveal private phone ciphertext", async () => {
     E.db.prepare("UPDATE hf_hosts SET category='influencer', private_phone_enc='private-ciphertext' WHERE uid='u2'").run();
     E.db.prepare("UPDATE hf_hosts SET category='celebrity' WHERE uid='u3'").run();

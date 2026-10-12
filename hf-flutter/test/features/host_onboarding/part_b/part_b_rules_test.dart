@@ -43,11 +43,11 @@ void main() {
   });
 
   group('voice length', () {
-    test('30 seconds to 5 minutes', () {
+    test('20 seconds to 5 minutes, matching the server minimum', () {
       expect(checkVoiceSeconds(0), VoiceLength.tooShort);
-      expect(checkVoiceSeconds(29), VoiceLength.tooShort);
-      expect(checkVoiceSeconds(29.4), VoiceLength.tooShort);
-      expect(checkVoiceSeconds(30), VoiceLength.ok);
+      expect(checkVoiceSeconds(19), VoiceLength.tooShort);
+      expect(checkVoiceSeconds(19.99), VoiceLength.tooShort);
+      expect(checkVoiceSeconds(20), VoiceLength.ok);
       expect(checkVoiceSeconds(300), VoiceLength.ok);
       expect(checkVoiceSeconds(300.4), VoiceLength.ok);
       expect(checkVoiceSeconds(301), VoiceLength.tooLong);
@@ -61,6 +61,11 @@ void main() {
   });
 
   group('price', () {
+    test('creator share deducts ₹2 after the 60 percent split', () {
+      expect(creatorSharePaise(5), 100);
+      expect(creatorSharePaise(20), 1000);
+      expect(creatorSharePaise(1000), 59800);
+    });
     test('legacy flag-off host share and paise display', () {
       expect(hostSharePaise(20), 1080);
       expect(hostSharePaise(2), 0);

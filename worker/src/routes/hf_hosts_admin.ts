@@ -135,34 +135,42 @@ async function introMedia(req: Request, env: Env): Promise<Response> {
 }
 
 /** Copies a PENDING private intro to the public BLOBS bucket and makes it the host's active intro_audio. */
-async function approvePendingIntro(env: Env, uid: string): Promise<{ ok: true } | { ok: false; error: string }> {
-  const h = await env.DB_META.prepare("SELECT voice_sample_r2, intro_mime, intro_status, voice_seconds FROM hf_hosts WHERE uid=?1")
-    .bind(uid).first<{ voice_sample_r2: string | null; intro_mime: string | null; intro_status: string | null; voice_seconds: number | null }>().catch(() => null);
+type IntroReviewRow = { voice_sample_r2: string | null; intro_mime: string | null; intro_status: string | null; voice_seconds: number | null; listing_revision: number };
+type IntroReviewResult = { ok: true; revision: number } | { ok: false; error: string };
+async function approvePendingIntro(env: Env, uid: string, expectedRevision: number): Promise<IntroReviewResult> {
+  const h = await env.DB_META.prepare("SELECT voice_sample_r2, intro_mime, intro_status, voice_seconds, listing_revision FROM hf_hosts WHERE uid=?1")
+    .bind(uid).first<IntroReviewRow>().catch(() => null);
+  if (h?.listing_revision !== expectedRevision) return { ok: false, error: "listing_changed" };
   return approveIntroRow(env, uid, h);
 }
-async function approveIntroRow(env: Env, uid: string, h: { voice_sample_r2: string | null; intro_mime: string | null; intro_status: string | null; voice_seconds: number | null } | null): Promise<{ ok: true } | { ok: false; error: string }> {
+export async function approveIntroRow(env: Env, uid: string, h: IntroReviewRow | null): Promise<IntroReviewResult> {
   if (!h || h.intro_status !== "pending" || !h.voice_sample_r2) return { ok: false, error: "no_pending_intro" };
   const src = await env.VERIFICATION.get(h.voice_sample_r2);
   if (!src) return { ok: false, error: "intro_file_missing" };
   const mime = h.intro_mime || src.httpMetadata?.contentType || "audio/mp4";
   const ext = h.voice_sample_r2.split(".").pop() || "m4a";
   const now = Date.now();
-  const pubKey = `hf/hosts/${uid}/intro-${now}.${ext}`;
+  const pubKey = `hf/hosts/${uid}/intro-${now}-${crypto.randomUUID()}.${ext}`;
+  const mediaId = crypto.randomUUID();
   await env.BLOBS.put(pubKey, await src.arrayBuffer(), { httpMetadata: { contentType: mime, cacheControl: "public, max-age=3600" } });
   const prev = (await env.DB_META.prepare("SELECT r2_key FROM hf_host_media WHERE uid=?1 AND kind=?2 AND status='active'").bind(uid, INTRO_MEDIA_KIND).all<{ r2_key: string }>()).results ?? [];
   try {
-    await env.DB_META.batch([
-      env.DB_META.prepare("UPDATE hf_host_media SET status='superseded' WHERE uid=?1 AND kind=?2 AND status='active'").bind(uid, INTRO_MEDIA_KIND),
-      env.DB_META.prepare("INSERT INTO hf_host_media (id, uid, kind, r2_key, caption, sort, status, created_at) VALUES (?1,?2,?3,?4,?5,0,'active',?6)")
-        .bind(crypto.randomUUID(), uid, INTRO_MEDIA_KIND, pubKey, introCaption(h.voice_seconds, mime), now),
-      env.DB_META.prepare("UPDATE hf_hosts SET intro_status='approved', updated_at=?3 WHERE uid=?1 AND voice_sample_r2=?2 AND intro_status='pending'").bind(uid, h.voice_sample_r2, now),
+    const result = await env.DB_META.batch([
+      env.DB_META.prepare("UPDATE hf_hosts SET intro_status='approved', updated_at=?3, listing_revision=listing_revision+1 WHERE uid=?1 AND voice_sample_r2=?2 AND intro_status='pending' AND listing_revision=?4 AND status<>'archived'").bind(uid, h.voice_sample_r2, now, h.listing_revision),
+      env.DB_META.prepare("INSERT INTO hf_host_media (id, uid, kind, r2_key, caption, sort, status, created_at) SELECT ?1,?2,?3,?4,?5,0,'active',?6 WHERE changes()=1")
+        .bind(mediaId, uid, INTRO_MEDIA_KIND, pubKey, introCaption(h.voice_seconds, mime), now),
+      env.DB_META.prepare("UPDATE hf_host_media SET status='superseded' WHERE uid=?1 AND kind=?2 AND status='active' AND id<>?3 AND EXISTS (SELECT 1 FROM hf_host_media WHERE id=?3)").bind(uid, INTRO_MEDIA_KIND, mediaId),
     ]);
+    if (!result[0]?.meta?.changes) {
+      await env.BLOBS.delete(pubKey).catch(() => {});
+      return { ok: false, error: "listing_changed" };
+    }
   } catch (e) {
     await env.BLOBS.delete(pubKey).catch(() => {});
     throw e;
   }
   for (const r of prev) if (r.r2_key !== pubKey) await env.BLOBS.delete(r.r2_key).catch(() => {});
-  return { ok: true };
+  return { ok: true, revision: h.listing_revision + 1 };
 }
 
 async function notifyHost(env: Env, adminUid: string, uid: string, msg: string, route: string): Promise<boolean> {
@@ -183,8 +191,8 @@ async function decideIntro(req: Request, env: Env, uid: string): Promise<Respons
   const reason = typeof b.reason === "string" ? b.reason.trim().slice(0, 500) : "";
   if (decision !== "approve" && decision !== "reject") return err(400, "bad_decision");
   if (decision === "reject" && !reason) return err(400, "reason_required");
-  const h = await env.DB_META.prepare("SELECT voice_sample_r2, intro_mime, intro_status, voice_seconds FROM hf_hosts WHERE uid=?1")
-    .bind(uid).first<{ voice_sample_r2: string | null; intro_mime: string | null; intro_status: string | null; voice_seconds: number | null }>();
+  const h = await env.DB_META.prepare("SELECT voice_sample_r2, intro_mime, intro_status, voice_seconds, listing_revision FROM hf_hosts WHERE uid=?1")
+    .bind(uid).first<IntroReviewRow>();
   if (!h) return err(404, "not_found");
   if (h.intro_status !== "pending") return err(409, "bad_state", { introStatus: h.intro_status });
   const now = Date.now();
@@ -193,7 +201,7 @@ async function decideIntro(req: Request, env: Env, uid: string): Promise<Respons
     const r = await approveIntroRow(env, uid, h);
     if (!r.ok) return err(r.error === "intro_file_missing" ? 410 : 409, r.error);
   } else {
-    const r = await env.DB_META.prepare("UPDATE hf_hosts SET intro_status='rejected', updated_at=?3 WHERE uid=?1 AND voice_sample_r2=?2 AND intro_status='pending'").bind(uid, h.voice_sample_r2, now).run();
+    const r = await env.DB_META.prepare("UPDATE hf_hosts SET intro_status='rejected', updated_at=?3, listing_revision=listing_revision+1 WHERE uid=?1 AND voice_sample_r2=?2 AND intro_status='pending' AND listing_revision=?4").bind(uid, h.voice_sample_r2, now, h.listing_revision).run();
     if (!r.meta?.changes) return err(409, "bad_state");
     notified = await notifyHost(env, a.uid, uid, `Please re-record your introduction: ${reason}`, "/api/admin/hf/hosts/intro");
   }
@@ -292,8 +300,9 @@ async function decide(req: Request, env: Env, uid: string): Promise<Response> {
     if (missing.length) return err(409, "not_ready", { missing });
     // [HF-VOICE-INTRO-1] approving the profile also approves a pending voice intro (rejecting the profile leaves it as is)
     if (ih?.intro_status === "pending") {
-      const ir = await approvePendingIntro(env, uid);
+      const ir = await approvePendingIntro(env, uid, h.listing_revision);
       if (!ir.ok) return err(ir.error === "intro_file_missing" ? 410 : 409, ir.error);
+      h.listing_revision = ir.revision;
       await audit(env, a.uid, "intro_approve", uid, { via: "profile_approve" });
     }
     const creatorMissing = await creatorPublicationBlockers(env, uid);

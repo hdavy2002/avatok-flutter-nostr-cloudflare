@@ -44,8 +44,11 @@ class HostOnboardingScreen extends ConsumerStatefulWidget {
 class _HostOnboardingScreenState extends ConsumerState<HostOnboardingScreen> {
   String? _key;
 
-  bool get _standardPlan =>
-      hfStdPlanOn(ref.read(flagsProvider));
+  bool get _standardPlan {
+    final state = ref.read(onboardingStateProvider);
+    final creator = state.hasValue && state.value?.isCreator == true;
+    return hfStdPlanOn(ref.read(flagsProvider)) && !creator;
+  }
 
   List<OnboardingStepDef> get _steps =>
       onboardingSteps(standardPlan: _standardPlan);
@@ -181,6 +184,7 @@ class _HostOnboardingScreenState extends ConsumerState<HostOnboardingScreen> {
   }
 
   Widget _body(OnboardingServerState state, bool standardPlan) {
+    standardPlan = standardPlan && !state.isCreator;
     final steps = onboardingSteps(standardPlan: standardPlan);
     if (_key == null || onboardingStepIndex(_key, standardPlan: standardPlan) < 0) {
       _key = startStepKey(

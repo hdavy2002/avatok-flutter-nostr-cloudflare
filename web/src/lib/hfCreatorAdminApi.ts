@@ -11,7 +11,9 @@ export interface CreatorListing {
   voice: { status: string; seconds: number | null; mime: string | null };
   media?: { id: string; kind: string; url: string }[];
   publicationBlockers?: string[];
+  sampleData?: boolean;
 }
+export interface CreatorPreview { displayName: string; tagline: string | null; avatarUrl: string | null; priceLabel: string; status: 'offline'; introAudioUrl: string | null; languages: string[] }
 const base = '/api/admin/hf/listings';
 const path = (uid: string) => `${base}/${encodeURIComponent(uid)}`;
 export const creatorAdminApi = {
@@ -21,6 +23,9 @@ export const creatorAdminApi = {
   save: (uid: string, body: Record<string, unknown>) => adminCall<{ listing: CreatorListing }>(path(uid), { method: 'PUT', body }),
   publish: (uid: string) => adminCall<{ listing: CreatorListing }>(`${path(uid)}/publish`, { method: 'POST', body: {} }),
   archive: (uid: string) => adminCall<{ ok: true }>(path(uid), { method: 'DELETE' }),
+  removeVoice: (uid: string) => adminCall<{ listing: CreatorListing }>(`${path(uid)}/voice`, { method: 'DELETE' }),
+  seed: () => adminCall<{ items: CreatorListing[] }>(`${base}/seed`, { method: 'POST', body: { mode: 'private_drafts' } }),
+  preview: (uid: string) => adminCall<{ item: CreatorPreview }>(`${path(uid)}/preview`),
   async upload(uid: string, kind: 'voice' | 'profile' | 'gallery', file: File, seconds?: number): Promise<{ listing: CreatorListing }> {
     const endpoint = `${path(uid)}/${kind === 'voice' ? 'voice' : `media?kind=${kind}`}`;
     try {
@@ -28,7 +33,7 @@ export const creatorAdminApi = {
         const token = await getActiveTokenWaited(5000, { skipCache: attempt > 0 });
         if (!token) throw new Error('Sign in to upload.');
         const response = await fetch(`${API_BASE}${endpoint}`, { method: 'PUT', body: file,
-          headers: { Authorization: `Bearer ${token}`, 'Content-Type': kind === 'voice' ? 'audio/mpeg' : file.type,
+          headers: { Authorization: `Bearer ${token}`, 'Content-Type': file.type || (kind === 'voice' ? 'audio/mpeg' : 'application/octet-stream'),
             ...(kind === 'voice' ? { 'x-duration-seconds': String(seconds), 'x-voice-consent': 'v1' } : {}) },
           signal: AbortSignal.timeout(60000) });
         if (response.status === 401 && attempt === 0) continue;

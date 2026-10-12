@@ -190,7 +190,7 @@ class _PreviewStepState extends ConsumerState<PreviewStep> {
     final voiceSeconds = (s.hostMap('voice')['seconds'] as num?)?.toInt() ?? 0;
     final note = s.hostString('reviewNote');
     final price = s.hostNum('pricePerMin')?.toInt();
-    final standardPlan = hfStdPlanOn(ref.watch(flagsProvider));
+    final standardPlan = hfStdPlanOn(ref.watch(flagsProvider)) && !s.isCreator;
 
     return PartBStep(
       scene: HfClusterKind.profile,

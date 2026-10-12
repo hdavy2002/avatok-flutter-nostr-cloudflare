@@ -23,10 +23,10 @@ import 'explore_test_support.dart';
 Uri location(ProviderContainer c) =>
     c.read(appRouterProvider).routeInformationProvider.value.uri;
 
-/// The list requests. The filter sheet's live count asks the same endpoint with `limit: 1`; those are not the list.
+/// Main-feed requests. Counts use limit 1 and independently queried rails use 6.
 List<RecordedCall> listCalls(FakeApiClient api) => api
     .callsTo('GET', '/api/hf/hosts')
-    .where((c) => c.query!['limit'] != 1)
+    .where((c) => c.query!['limit'] != 1 && c.query!['limit'] != 6)
     .toList();
 
 /// A `/api/hf/options` answer with [n] mood topics, to test the "+N more" chip.
@@ -82,6 +82,48 @@ Future<void> returnToHeader(WidgetTester tester) async {
 }
 
 void main() {
+  group('server marketplace sections', () {
+    testWidgets('search queries the server instead of filtering the loaded page', (tester) async {
+      final api = fakeApi()..on('GET', '/api/hf/hosts', (call) =>
+        call.query?['q'] == 'Distant creator'
+          ? pageJson([hostJson('distant', name: 'Distant creator')])
+          : pageJson([hostJson('first', name: 'First host')]));
+      final container = await pumpScreen(tester, api: api);
+      await tester.enterText(find.byType(TextField).first, 'Distant creator');
+      await tester.pump(const Duration(milliseconds: 400));
+      await tester.pumpAndSettle();
+      expect(listCalls(api).last.query?['q'], 'Distant creator');
+      expect(location(container).queryParameters['q'], 'Distant creator');
+      expect(container.read(exploreControllerProvider).items.single.slug, 'distant');
+    });
+    testWidgets('communities, topics and See all open server-backed filters', (tester) async {
+      final api = fakeApi()..onJson('GET', '/api/hf/hosts', pageJson([]));
+      final container = await pumpScreen(tester, api: api, liveSections: true);
+      await revealResult(tester, find.byKey(const ValueKey('see-all-Influencers & creators')));
+      await tester.pumpAndSettle();
+      final requests = api.callsTo('GET', '/api/hf/hosts');
+      expect(requests.any((c) => c.query?['sort'] == 'popular' && c.query?['limit'] == 6), isTrue);
+      expect(requests.any((c) => c.query?['online'] == '1' && c.query?['limit'] == 6), isTrue);
+      expect(requests.any((c) => c.query?['category'] == 'creators' && c.query?['limit'] == 6), isTrue);
+      await tester.tap(find.byKey(const ValueKey('see-all-Influencers & creators')));
+      await tester.pumpAndSettle();
+      expect(location(container).queryParameters['category'], 'creators');
+      expect(listCalls(api).last.query?['category'], 'creators');
+      container.read(appRouterProvider).go('/explore');
+      await tester.pumpAndSettle();
+      await revealResult(tester, find.byKey(const ValueKey('community-celebrity')));
+      await tester.tap(find.byKey(const ValueKey('community-celebrity')));
+      await tester.pumpAndSettle();
+      expect(listCalls(api).last.query?['category'], 'celebrity');
+      container.read(appRouterProvider).go('/explore');
+      await tester.pumpAndSettle();
+      await revealResult(tester, find.byKey(const ValueKey('service-tension-a')));
+      await tester.tap(find.byKey(const ValueKey('service-tension-a')));
+      await tester.pumpAndSettle();
+      expect(listCalls(api).last.query?['topic'], 'tension-a');
+      expect(tester.takeException(), isNull);
+    });
+  });
   group('cached then fresh', () {
     testWidgets(
       'an old saved list shows at once with the pill, then the fresh list replaces it',

@@ -17,9 +17,9 @@ import 'part_b_widgets.dart';
 /// The recorder of the voice step. The microphone is already allowed (the step wraps this in `PermissionGate`).
 ///
 /// idle -> recording -> review -> uploading:
-/// - **recording**: a live timer, a level meter and a length bar. Stop stays off until 30 s are recorded
+/// - **recording**: a live timer, a level meter and a length bar. Stop stays off until 20 s are recorded
 ///   ([kVoiceMinSeconds]); at 5:00 ([kVoiceMaxSeconds]) it stops by itself. "Start over" throws it away.
-/// - **review**: the clip is measured on the phone and checked again (a clip under 30 s or over 5 min is refused
+/// - **review**: the clip is measured on the phone and checked again (a clip under 20 s or over 5 min is refused
 ///   here and never uploaded). The host listens to it, then saves it or records again.
 /// - **uploading**: `PUT /api/hosts/me/voice` with a progress bar. The worker's message shows if it refuses.
 class VoiceRecorderPanel extends ConsumerStatefulWidget {

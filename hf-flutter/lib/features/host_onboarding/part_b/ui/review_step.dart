@@ -107,7 +107,7 @@ class _ReviewStepState extends ConsumerState<ReviewStep> {
   Widget build(BuildContext context) {
     final s = ctx.state;
     final options = optionsOf(ref.watch(hostOptionsProvider));
-    final standardPlan = hfStdPlanOn(ref.watch(flagsProvider));
+    final standardPlan = hfStdPlanOn(ref.watch(flagsProvider)) && !ctx.state.isCreator;
     final lock = EditLock.of(s.hostStatus);
     final missing = _missing(standardPlan);
     final generating = s.hostStatus == 'generating';
@@ -281,7 +281,7 @@ class _ReviewStepState extends ConsumerState<ReviewStep> {
     final price = s.hostNum('pricePerMin')?.toInt();
     if (price == null) return Text('-', style: HfText.of(context, HfText.body));
     return Text(
-      '${rupeesText(price)} per minute. You get ${rupeesFromPaise(hostSharePaise(price))}.',
+      '${s.isCreator ? '${s.hostString('category')} · ' : ''}${rupeesText(price)} per minute. You get ${rupeesFromPaise(s.isCreator ? creatorSharePaise(price) : hostSharePaise(price))}.',
       style: HfText.of(context, HfText.body),
     );
   }

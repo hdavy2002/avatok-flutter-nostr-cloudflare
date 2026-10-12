@@ -66,6 +66,7 @@ class OnboardingServerState {
   /// `draft | generating | pending_host | pending_review | live | rejected | paused`. Null: no host row yet.
   String? get hostStatus => _s(host?['status']);
   bool get hasHost => host != null;
+  bool get isCreator => hostString('category') == 'influencer' || hostString('category') == 'celebrity';
 
   String? hostString(String key) => _s(host?[key]);
 
@@ -212,7 +213,10 @@ final List<OnboardingStepDef> kOnboardingSteps = <OnboardingStepDef>[
     OnboardingKeys.price,
     OnboardingGroup.profile,
     'Your price',
-    (s) => s.hostNum('pricePerMin') != null,
+    (s) {
+      final price = s.hostNum('pricePerMin');
+      return price != null && (!s.isCreator || (price >= 5 && price <= 1000 && price == price.round()));
+    },
   ),
   OnboardingStepDef(
     OnboardingKeys.hours,
@@ -261,15 +265,16 @@ final List<OnboardingStepDef> kOnboardingSteps = <OnboardingStepDef>[
   ),
 ];
 
-List<OnboardingStepDef> onboardingSteps({required bool standardPlan}) =>
-    standardPlan
+List<OnboardingStepDef> onboardingSteps({required bool standardPlan, bool creator = false}) =>
+    standardPlan && !creator
     ? [for (final step in kOnboardingSteps) if (step.key != OnboardingKeys.price) step]
     : kOnboardingSteps;
 
 /// Position of [key] in the active step list, or -1.
-int onboardingStepIndex(String? key, {bool standardPlan = false}) =>
+int onboardingStepIndex(String? key, {bool standardPlan = false, bool creator = false}) =>
     onboardingSteps(
       standardPlan: standardPlan,
+      creator: creator,
     ).indexWhere((s) => s.key == key);
 
 /// The step to resume at, from what the server knows.
@@ -289,7 +294,7 @@ String resumeStepKey(OnboardingServerState s, {bool standardPlan = false}) {
     case 'paused':
       return OnboardingKeys.preview;
   }
-  for (final step in onboardingSteps(standardPlan: standardPlan)) {
+  for (final step in onboardingSteps(standardPlan: standardPlan, creator: s.isCreator)) {
     if (!step.isDone(s)) return step.key;
   }
   return OnboardingKeys.done;
@@ -303,9 +308,9 @@ String startStepKey(
   bool standardPlan = false,
 }) {
   final resume = resumeStepKey(s, standardPlan: standardPlan);
-  final ri = onboardingStepIndex(requested, standardPlan: standardPlan);
+  final ri = onboardingStepIndex(requested, standardPlan: standardPlan, creator: s.isCreator);
   if (requested == null || ri < 0) return resume;
-  return ri <= onboardingStepIndex(resume, standardPlan: standardPlan)
+  return ri <= onboardingStepIndex(resume, standardPlan: standardPlan, creator: s.isCreator)
       ? requested
       : resume;
 }

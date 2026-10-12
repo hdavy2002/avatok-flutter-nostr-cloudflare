@@ -35,7 +35,7 @@ export function makeDb(migrations: string[] = ["2026-10-10-hf-tokens.sql"], o: {
   });
   return {
     prepare: (q: string) => stmt(q),
-    batch: async (list: any[]) => { db.exec("BEGIN"); try { for (const s of list) s._run(); db.exec("COMMIT"); } catch (e) { db.exec("ROLLBACK"); throw e; } return []; },
+    batch: async (list: any[]) => { db.exec("BEGIN"); const results = []; try { for (const s of list) { const r = s._run(); results.push({ meta: { changes: Number(r.changes) } }); } db.exec("COMMIT"); } catch (e) { db.exec("ROLLBACK"); throw e; } return results; },
     _raw: db,
   };
 }

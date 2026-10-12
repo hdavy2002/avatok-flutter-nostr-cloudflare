@@ -18,7 +18,7 @@ import 'part_b_copy.dart';
 import 'part_b_widgets.dart';
 import 'voice_recorder_panel.dart';
 
-/// Step `voice`: the host records their OWN introduction, 30 seconds to 5 minutes (about a minute is suggested).
+/// Step `voice`: the host records their OWN introduction, 20 seconds to 5 minutes (about a minute is suggested).
 /// No voice copying and no AI voice. A person on our team listens before it plays on the card and the profile.
 ///
 /// - Hindi and English example scripts, tips and the "please do not say" note (copied from the website).

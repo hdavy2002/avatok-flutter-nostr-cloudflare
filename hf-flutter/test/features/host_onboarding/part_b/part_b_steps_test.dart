@@ -19,6 +19,7 @@ import 'package:hf_app/features/host_onboarding/part_b/ui/done_step.dart';
 import 'package:hf_app/features/host_onboarding/part_b/ui/generating_step.dart';
 import 'package:hf_app/features/host_onboarding/part_b/ui/part_b_copy.dart';
 import 'package:hf_app/features/host_onboarding/part_b/ui/preview_step.dart';
+import 'package:hf_app/features/host_onboarding/part_b/ui/price_step.dart';
 import 'package:hf_app/features/host_onboarding/part_b/ui/voice_step.dart';
 import 'package:hf_app/features/host_profile/ui/widgets/net_image.dart';
 import 'package:hf_app/features/kyc/kyc.dart';
@@ -255,6 +256,17 @@ void main() {
     });
   });
 
+  testWidgets('creator price exposes its category and full fan-price range', (tester) async {
+    api.onJson('PUT', _me, <String, Object?>{'host': <String, Object?>{}});
+    final log = CtxLog(const {'status': 'draft', 'category': 'celebrity', 'pricePerMin': 200});
+    await pumpStep(tester, PriceStep(ctx: log.ctx));
+    expect(find.byKey(const ValueKey('creator-category')), findsOneWidget);
+    final slider = tester.widget<Slider>(find.byKey(const ValueKey('price-slider')));
+    expect(slider.max, 1000);
+    expect(slider.value, 200);
+    await leave(tester);
+  });
+
   group('voice introduction', () {
     List<Override> mic(int seconds) => [
       permissionServiceProvider.overrideWithValue(
@@ -268,11 +280,11 @@ void main() {
     Future<void> record(WidgetTester tester) async {
       await tapKey(tester, 'voice-record');
       expect(has('voice-timer'), isTrue);
-      await tester.pump(const Duration(seconds: 31));
+      await tester.pump(const Duration(seconds: 21));
       await settle(tester);
     }
 
-    testWidgets('Stop is off until 30 seconds have been recorded', (
+    testWidgets('Stop is off until 20 seconds have been recorded', (
       tester,
     ) async {
       final log = CtxLog(const <String, Object?>{'status': 'draft'});
@@ -285,7 +297,7 @@ void main() {
             .onPressed,
         isNull,
       );
-      await tester.pump(const Duration(seconds: 26));
+      await tester.pump(const Duration(seconds: 15));
       await settle(tester);
       expect(
         tester
@@ -297,7 +309,7 @@ void main() {
     });
 
     testWidgets(
-      'a clip under 30 seconds is refused on the phone and never uploaded',
+      'a clip under 20 seconds is refused on the phone and never uploaded',
       (tester) async {
         final log = CtxLog(const <String, Object?>{'status': 'draft'});
         await pumpStep(tester, VoiceStep(ctx: log.ctx), overrides: mic(12));

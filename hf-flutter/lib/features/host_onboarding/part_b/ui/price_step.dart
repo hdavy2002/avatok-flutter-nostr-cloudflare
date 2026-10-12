@@ -15,7 +15,7 @@ import '../data/profile_saver.dart';
 import 'part_b_copy.dart';
 import 'part_b_widgets.dart';
 
-/// Legacy flag-off step: one price for every topic, in whole rupees per minute.
+/// Creator pricing always remains available; standard hosts use this only with the Standard flag off.
 class PriceStep extends ConsumerStatefulWidget {
   const PriceStep({super.key, required this.ctx});
 
@@ -28,6 +28,7 @@ class PriceStep extends ConsumerStatefulWidget {
 class _PriceStepState extends ConsumerState<PriceStep> {
   late final ProfileSaver _saver;
   late int _price;
+  late String _category;
   bool _busy = false;
 
   OnboardingStepContext get ctx => widget.ctx;
@@ -40,6 +41,9 @@ class _PriceStepState extends ConsumerState<PriceStep> {
     _saver.seed('pricePerMin', server);
     final value = _saver.valueOf('pricePerMin', server);
     _price = value is int ? value : kDefaultPrice;
+    _category = ctx.state.hostString('category') ?? 'standard';
+    _saver.seed('category', _category);
+    _category = _saver.valueOf('category', _category) as String;
     _saver.addListener(_changed);
   }
 
@@ -68,7 +72,7 @@ class _PriceStepState extends ConsumerState<PriceStep> {
     }
     setState(() => _busy = true);
     _saver.set('pricePerMin', _price);
-    final ok = await _saver.flush(fields: const <String>['pricePerMin']);
+    final ok = await _saver.flush(fields: const <String>['pricePerMin', 'category']);
     if (!mounted) return;
     setState(() => _busy = false);
     if (!ok) {
@@ -86,14 +90,15 @@ class _PriceStepState extends ConsumerState<PriceStep> {
   @override
   Widget build(BuildContext context) {
     final options = optionsOf(ref.watch(hostOptionsProvider));
-    final min = options?.priceMin ?? 5;
-    final max = options?.priceMax ?? 100;
+    final creator = ctx.state.isCreator;
+    final min = creator ? 5 : options?.priceMin ?? 5;
+    final max = creator ? 1000 : options?.priceMax ?? 100;
     final lock = EditLock.of(ctx.state.hostStatus);
     final locked = lock.priceHoursLocked;
     final banner = lock.banner(editableWhenLive: true);
     final price = _price < min ? min : (_price > max ? max : _price);
-    final mine = hostSharePaise(price);
-    final platform = price * 100 - mine;
+    final mine = creator ? creatorSharePaise(price) : hostSharePaise(price);
+    final platform = creator ? price * 40 : price * 100 - mine;
     final monthlyPaise = mine * 60 * 25;
     final problem = _saver.saveProblem;
     final fieldError = _saver.errorOf('pricePerMin');
@@ -103,6 +108,7 @@ class _PriceStepState extends ConsumerState<PriceStep> {
       lead: PartBCopy.priceLead,
       bottom: [
         if (fieldError != null) InlineError(fieldError),
+        if (_saver.errorOf('category') != null) InlineError(_saver.errorOf('category')!),
         if (problem != null) InlineError(problem),
         const SizedBox(height: 4),
         HfButton(
@@ -114,6 +120,25 @@ class _PriceStepState extends ConsumerState<PriceStep> {
       ],
       children: [
         if (banner != null) LockBanner(banner),
+        if (creator) ...[
+          DropdownButtonFormField<String>(
+            key: const ValueKey<String>('creator-category'),
+            initialValue: _category,
+            decoration: const InputDecoration(labelText: 'Creator category'),
+            items: const [
+              DropdownMenuItem(value: 'influencer', child: Text('Influencer')),
+              DropdownMenuItem(value: 'celebrity', child: Text('Celebrity')),
+            ],
+            onChanged: lock.profileLocked ? null : (value) {
+              if (value == null) return;
+              setState(() => _category = value);
+              _saver.set('category', value);
+            },
+          ),
+          const SizedBox(height: 16),
+          Text('You receive 60% of the fan price minus ₹2 per connected minute. Platform commission is 40% and includes GST.', style: HfText.of(context, HfText.note)),
+          const SizedBox(height: 16),
+        ],
         HfCard(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -232,6 +257,7 @@ class _PriceStepState extends ConsumerState<PriceStep> {
                 lineKey: 'price-you-get',
               ),
               _Line(PartBCopy.platformGets, rupeesFromPaise(platform)),
+              if (creator) _Line('Call connection cost', rupeesFromPaise(200)),
               const SizedBox(height: 8),
               Text(
                 PartBCopy.priceExample(rupeesFromPaise(monthlyPaise)),

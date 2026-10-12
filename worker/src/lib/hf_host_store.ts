@@ -69,14 +69,16 @@ export async function upsertHost(env: Env, uid: string, patch: HostPatch, guard?
   const now = Date.now();
   const keys = Object.keys(patch).filter((k) => COLS.has(k) && k !== "slug" && k !== "listing_revision");
   const existing = await getHost(env, uid);
+  if (guard?.revision === 0 && existing) throw new HostWriteConflict("Listing changed; reload before saving.");
   if (!existing) {
-    if (guard) throw new HostWriteConflict("Listing changed; reload before saving.");
-    await env.DB_META.prepare("INSERT OR IGNORE INTO hf_hosts (uid, created_at, updated_at) VALUES (?1,?2,?2)").bind(uid, now).run();
+    if (guard && guard.revision !== 0) throw new HostWriteConflict("Listing changed; reload before saving.");
+    const inserted = await env.DB_META.prepare("INSERT OR IGNORE INTO hf_hosts (uid, created_at, updated_at) VALUES (?1,?2,?2)").bind(uid, now).run();
+    if (guard && !inserted.meta?.changes) throw new HostWriteConflict("Listing changed; reload before saving.");
   }
   if (keys.length) {
     const sets = keys.map((k, i) => `${k}=?${i + 2}`).join(", ");
     const vals = keys.map((k) => (patch as Record<string, unknown>)[k] ?? null);
-    const tail: unknown[] = guard ? [guard.revision, ...guard.statuses] : [];
+    const tail: unknown[] = guard ? [guard.revision === 0 ? 1 : guard.revision, ...guard.statuses] : [];
     const where = guard ? ` AND listing_revision=?${keys.length + 3} AND status IN (${guard.statuses.map((_, i) => `?${keys.length + 4 + i}`).join(",")})` : "";
     const result = await env.DB_META.prepare(`UPDATE hf_hosts SET ${sets}, listing_revision=listing_revision+1, updated_at=?${keys.length + 2} WHERE uid=?1${where}`).bind(uid, ...vals, now, ...tail).run();
     if (guard && !result.meta?.changes) throw new HostWriteConflict("Listing changed; reload before saving.");

@@ -97,6 +97,9 @@ const List<int> kQuickPrices = <int>[10, 15, 20, 25, 30];
 int hostSharePaise(int pricePerMin) =>
     pricePerMin <= 2 ? 0 : (pricePerMin - 2) * 60;
 
+/// Creator fan pricing: 60% of the rate, then the ₹2 connection cost.
+int creatorSharePaise(int pricePerMin) => (pricePerMin * 60 - 200).clamp(0, 100000).toInt();
+
 /// Paise as rupees text: `1080` -> `Rs 10.80`, `1000` -> `Rs 10`. Uses the rupee sign.
 String rupeesFromPaise(int paise) {
   final whole = paise ~/ 100;
@@ -123,17 +126,17 @@ String validHhmm(Object? v, String fallback) {
 // Voice introduction
 // ---------------------------------------------------------------------------------------------
 
-const int kVoiceMinSeconds = 30;
+const int kVoiceMinSeconds = 20;
 const int kVoiceMaxSeconds = 300;
 const int kVoiceSuggestSeconds = 60;
 
 enum VoiceLength { ok, tooShort, tooLong }
 
-/// The worker rounds the length to whole seconds and wants 30 to 300. The phone checks first, so a clip the
+/// The worker wants at least 20 seconds and rounds the upper limit to 300. The phone checks first, so a clip the
 /// server would refuse is never uploaded.
 VoiceLength checkVoiceSeconds(num seconds) {
+  if (!seconds.isFinite || seconds < kVoiceMinSeconds) return VoiceLength.tooShort;
   final s = seconds.round();
-  if (s < kVoiceMinSeconds) return VoiceLength.tooShort;
   if (s > kVoiceMaxSeconds) return VoiceLength.tooLong;
   return VoiceLength.ok;
 }

@@ -218,6 +218,13 @@ void main() {
       final ready = state(host: host, kyc: payoutDone, phone: true);
       expect(resumeStepKey(ready, standardPlan: false), 'price');
       expect(resumeStepKey(ready, standardPlan: true), 'review');
+      for (final category in ['influencer', 'celebrity']) {
+        final creator = state(host: {...host, 'category': category}, kyc: payoutDone, phone: true);
+        expect(creator.isCreator, isTrue);
+        expect(resumeStepKey(creator, standardPlan: true), 'price');
+        expect(startStepKey(creator, requested: 'price', standardPlan: true), 'price');
+        expect(onboardingSteps(standardPlan: true, creator: true).map((s) => s.key), contains('price'));
+      }
     });
   });
 

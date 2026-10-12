@@ -115,7 +115,7 @@ abstract final class PartBCopy {
   // Voice
   static const String voiceTitle = 'Record your introduction';
   static const String voiceLead =
-      'Say hello in your own voice. About a minute is perfect (at least 30 seconds, at most 5 minutes). '
+      'Say hello in your own voice. About a minute is perfect (at least 20 seconds, at most 5 minutes). '
       'Callers can hear it on your card and your profile, labelled "Recorded by the host".';
   static const String voiceIdeasTitle = 'What can I say?';
   static const String voiceTips = 'Tips';
@@ -133,7 +133,7 @@ abstract final class PartBCopy {
   static const String voiceTapMic = 'Tap the microphone to start';
   static const String voiceRecording = 'Recording…';
   static const String voiceKeepGoing =
-      'Keep going. At least 30 seconds, please.';
+      'Keep going. At least 20 seconds, please.';
   static const String voiceNiceStop =
       'Nice. You can stop any time now, or keep talking.';
   static const String voiceCanStop = 'You can stop now.';
@@ -166,7 +166,7 @@ abstract final class PartBCopy {
       'We could not play that. Please try again.';
   static const String voiceLoading = 'Getting your recording…';
   static String voiceTooShort(int s) =>
-      'That is only $s seconds. Please record at least 30 seconds.';
+      'That is only $s seconds. Please record at least 20 seconds.';
   static const String voiceTooLong =
       'That is longer than 5 minutes. Please keep it under 5 minutes.';
   static String voiceLength(String clock) => 'Length $clock';

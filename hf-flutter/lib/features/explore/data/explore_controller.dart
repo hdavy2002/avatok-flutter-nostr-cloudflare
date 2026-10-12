@@ -121,11 +121,9 @@ class ExploreController extends Notifier<ExploreState> {
 
   HostsRepository get _repo => ref.read(hostsRepositoryProvider);
 
-  /// The route's filters arrived (first build, a Home tile, a deep link). The local sort is kept.
+  /// The route's filters arrived (first build, a Home tile, a deep link).
   Future<void> applyRoute(HostFilters fromRoute) async {
-    final next = await _forPlan(
-      fromRoute.copyWith(sort: state.filters.sort),
-    );
+    final next = await _forPlan(fromRoute);
     if (_started && state.filters.sameRequest(next)) {
       return;
     }
@@ -164,7 +162,7 @@ class ExploreController extends Notifier<ExploreState> {
     return filters.copyWith(
       minPrice: null,
       maxPrice: null,
-      sort: HostSort.onlineFirst,
+      sort: filters.sort == HostSort.priceLow ? HostSort.onlineFirst : filters.sort,
     );
   }
 

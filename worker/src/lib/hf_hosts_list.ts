@@ -1,18 +1,19 @@
 // [HF-NATIVE-S2] Pure parsing + SQL building for GET /api/hf/hosts (native app host list). No env / network here.
-import { TOPIC_SLUGS, LANGUAGE_CODES, LANGUAGES } from "./hf_options";
+import { TOPICS, TOPIC_SLUGS, LANGUAGE_CODES, LANGUAGES } from "./hf_options";
 import { parseLane, type Lane } from "./hf_lanes";
 import { isHostCategory, CREATOR_MAX_RUPEES, type HostCategory } from "./hf_creator_pricing";
 
 export const LIST_DEFAULT_LIMIT = 24;
 export const LIST_MAX_LIMIT = 48;
 export const LIST_MAX_OFFSET = 10_000;
-export const SORTS = ["online_first", "price_low", "rating"] as const;
+export const SORTS = ["online_first", "price_low", "rating", "popular"] as const;
 export type HostSort = (typeof SORTS)[number];
 
 export interface HostListQuery {
   topics: string[]; langs: string[]; minPrice: number | null; maxPrice: number | null;
   online: boolean; lane: Lane | null; sort: HostSort; limit: number; offset: number;
-  category?: HostCategory | null;
+  category?: HostCategory | "creators" | null;
+  search?: string;
 }
 export type ParsedHostList = { ok: true; q: HostListQuery } | { ok: false; status: 400; error: string };
 
@@ -41,7 +42,9 @@ export function parseHostList(sp: URLSearchParams): ParsedHostList {
   if (laneRaw && !lane) return { ok: false, status: 400, error: "bad_lane" };
   const sortRaw = sp.get("sort");
   const category = sp.get("category");
-  if (category && !isHostCategory(category)) return { ok: false, status: 400, error: "bad_category" };
+  if (category && category !== "creators" && !isHostCategory(category)) return { ok: false, status: 400, error: "bad_category" };
+  const search = (sp.get("q") ?? "").trim().replace(/\s+/g, " ");
+  if (search.length > 80) return { ok: false, status: 400, error: "bad_search" };
   if (sortRaw && !(SORTS as readonly string[]).includes(sortRaw)) return { ok: false, status: 400, error: "bad_sort" };
   const mx = num(sp.get("maxPrice")), mn = num(sp.get("minPrice"));
   const lim = num(sp.get("limit")), off = num(sp.get("offset"));
@@ -51,7 +54,8 @@ export function parseHostList(sp: URLSearchParams): ParsedHostList {
       topics, langs,
       maxPrice: mx == null ? null : clamp(mx, 0, CREATOR_MAX_RUPEES),
       minPrice: mn == null ? null : clamp(mn, 0, CREATOR_MAX_RUPEES),
-      ...(category ? { category: category as HostCategory } : {}),
+      ...(category ? { category: category as HostCategory | "creators" } : {}),
+      ...(search ? { search } : {}),
       online: sp.get("online") === "1" || sp.get("online") === "true",
       lane,
       sort: (sortRaw as HostSort) || "online_first",
@@ -70,6 +74,7 @@ export function listCacheKey(q: HostListQuery): string {
   if (q.maxPrice != null) p.set("maxPrice", String(q.maxPrice));
   if (q.online) p.set("online", "1");
   if (q.category) p.set("category", q.category);
+  if (q.search) p.set("q", q.search);
   p.set("sort", q.sort); p.set("limit", String(q.limit)); p.set("offset", String(q.offset));
   return p.toString();
 }
@@ -82,6 +87,7 @@ const ORDER: Record<HostSort, string> = {
   online_first: `${PRESENCE_RANK}, ${RATING_ORDER}, h.live_at DESC, h.uid`,
   price_low: `h.price_per_min ASC, ${PRESENCE_RANK}, ${RATING_ORDER}, h.live_at DESC, h.uid`,
   rating: `${RATING_ORDER}, ${PRESENCE_RANK}, h.live_at DESC, h.uid`,
+  popular: `COALESCE(rv.n_stars,0) DESC, ${RATING_ORDER}, ${PRESENCE_RANK}, h.live_at DESC, h.uid`,
 };
 
 const marks = (n: number, from: number) => Array.from({ length: n }, (_, i) => `?${from + i}`).join(",");
@@ -91,7 +97,17 @@ export function buildWhere(q: HostListQuery, standardPaise?: number): { where: s
   const binds: (string | number)[] = [];
   const w = ["h.status='live'", "h.slug IS NOT NULL"];
   const add = (v: string | number) => { binds.push(v); return binds.length; };
-  if (q.category) w.push(`h.category=?${add(q.category)}`);
+  if (q.category === "creators") w.push("h.category IN ('influencer','celebrity')");
+  else if (q.category) w.push(`h.category=?${add(q.category)}`);
+  if (q.search) {
+    const needle = q.search.toLowerCase();
+    const text = `instr(lower(COALESCE(h.display_name,'') || ' ' || COALESCE(h.tagline,'') || ' ' || h.languages_json || ' ' || h.topics_json), ?${add(needle)})>0`;
+    const matches = TOPICS.filter(t => t.label.toLowerCase().includes(needle)).map(t => t.slug);
+    if (matches.length) {
+      const from = binds.length + 1; binds.push(...matches);
+      w.push(`(${text} OR EXISTS (SELECT 1 FROM json_each(h.topics_json) t WHERE t.value IN (${marks(matches.length, from)})))`);
+    } else w.push(text);
+  }
   const price = effectivePriceSql(standardPaise);
   if (q.lane) w.push(q.lane === "women" ? "h.women_lane=1" : "h.lgbtq_lane=1");
   if (q.topics.length) {

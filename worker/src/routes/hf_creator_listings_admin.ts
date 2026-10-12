@@ -13,6 +13,8 @@ import { isHostCategory, isCreatorCategory, validCreatorRate, CREATOR_MIN_RUPEES
 import { LANGUAGES, TOPIC_SLUGS, contactLeak } from "../lib/hf_options";
 import { normalizeIntroMime, validateIntro, INTRO_ACCEPTED_TYPES, INTRO_MIN_SECONDS, INTRO_MAX_BYTES, INTRO_MAX_SECONDS } from "../lib/hf_intro";
 import { transcribeAndFlag } from "../lib/hf_intro_check";
+import { CREATOR_FIXTURES, isCreatorFixture } from "../lib/hf_creator_fixtures";
+import { card, SEL, type LiveRow } from "./hf_hosts_public";
 
 const headers = { "cache-control": "private, no-store" };
 const reply = (body: unknown, status = 200) => json(body, status, headers);
@@ -46,6 +48,7 @@ async function detail(env: Env, uid: string) {
   const h = await getHost(env, uid);
   if (!h) return null;
   return { ...hostToJson(env, h, await avatarUrlFor(env, h.avatar_id)),
+    sampleData: isCreatorFixture(uid),
     privatePhone: await tryDecryptPii(env, h.private_phone_enc),
     media: (await listMedia(env, uid)).map(m => mediaToJson(env, m)),
     publicationBlockers: await creatorPublicationBlockers(env, uid),
@@ -61,12 +64,23 @@ async function emit(env: Env, actor: string, uid: string, action: string, props:
 
 export async function hfCreatorListingsAdminRoute(req: Request, env: Env, ctx?: ExecutionContext): Promise<Response | null> {
   const url = new URL(req.url);
-  const match = url.pathname.match(/^\/api\/admin\/hf\/listings(?:\/([A-Za-z0-9._:-]{1,128})(?:\/(publish|voice|media))?)?$/);
+  const match = url.pathname.match(/^\/api\/admin\/hf\/listings(?:\/([A-Za-z0-9._:-]{1,128})(?:\/(publish|voice|media|preview))?)?$/);
   if (!match) return null;
   const user = await requireUser(req, env); if (isFail(user)) return fail(user.status, user.error);
   if (!isAdminUid(env, user.uid)) return fail(403, "forbidden");
   const uid = match[1], action = match[2];
   try {
+    if (uid === "seed" && !action && req.method === "POST") {
+      const input = await body(req);
+      if (input?.mode !== "private_drafts") return fail(400, "private_drafts_required");
+      const now = Date.now();
+      // Idempotent, explicit admin action. Existing fixture edits are never overwritten.
+      await env.DB_META.batch(CREATOR_FIXTURES.map(f => env.DB_META.prepare(
+        "INSERT OR IGNORE INTO hf_hosts (uid,slug,status,presence,category,display_name,tagline,about,price_per_min,languages_json,topics_json,created_at,updated_at) VALUES (?1,?2,'draft','offline',?3,?4,?5,'A fictional profile for private layout review.',?6,?7,?8,?9,?9)"
+      ).bind(f.uid, f.slug, f.category, f.name, f.tagline, f.price, JSON.stringify(f.languages), JSON.stringify(f.topics), now)));
+      await emit(env, user.uid, user.uid, "fixtures_seeded", { count: CREATOR_FIXTURES.length, sample_data: true });
+      return reply({ items: await Promise.all(CREATOR_FIXTURES.map(f => detail(env, f.uid))) });
+    }
     if (!uid && req.method === "GET") {
       const rows = (await env.DB_META.prepare("SELECT * FROM hf_hosts WHERE category IN ('influencer','celebrity') AND status<>'archived' ORDER BY updated_at DESC LIMIT 100").all<HostRow>()).results ?? [];
       return reply({ items: rows.map(h => hostToJson(env, h)) });
@@ -78,12 +92,19 @@ export async function hfCreatorListingsAdminRoute(req: Request, env: Env, ctx?: 
       if (!account) return fail(404, "account_not_found", { field: "uid" });
       if (await getHost(env, input.uid)) return fail(409, "listing_exists");
       // Draft creation does not fabricate an identity, verified phone, KYC, media or public availability.
-      await upsertHost(env, input.uid, { category: input.category, status: "draft" });
+      if (isCreatorFixture(input.uid)) return fail(400, "reserved_uid");
+      await upsertHost(env, input.uid, { category: input.category, status: "draft" }, { revision: 0, statuses: ["draft"] });
       await emit(env, user.uid, input.uid, "created", { category: input.category });
       return reply({ listing: await detail(env, input.uid) }, 201);
     }
     if (!uid) return fail(405, "method_not_allowed");
     const h = await getHost(env, uid); if (!h) return fail(404, "not_found");
+    if (action === "preview" && req.method === "GET") {
+      const row = await env.DB_META.prepare(`${SEL} WHERE h.uid=?1`).bind(uid).first<LiveRow>();
+      if (!row) return fail(404, "not_found");
+      // Private preview uses the real public card mapping, always offline and with no invented aggregates.
+      return reply({ item: card(env, { ...row, presence: "offline" }), sampleData: isCreatorFixture(uid), publicationStatus: h.status });
+    }
     if (!action && req.method === "GET") {
       await emit(env, user.uid, uid, "viewed");
       return reply({ listing: await detail(env, uid) });
@@ -156,9 +177,24 @@ export async function hfCreatorListingsAdminRoute(req: Request, env: Env, ctx?: 
       await env.VERIFICATION.put(key, bytes, { httpMetadata: { contentType: mime.mime } });
       try { await upsertHost(env, uid, { voice_sample_r2: key, voice_seconds: check.seconds, voice_consent_at: now, intro_mime: mime.mime, intro_status: "pending", intro_uploaded_at: now, intro_transcript: null, intro_flags_json: null }, { revision: h.listing_revision ?? 1, statuses: [...EDITABLE] }); }
       catch (e) { await env.VERIFICATION.delete(key); throw e; }
+      if (h.voice_sample_r2) await env.VERIFICATION.delete(h.voice_sample_r2).catch(() => {});
       const job = transcribeAndFlag(env, uid, key, mime.mime, now);
       if (ctx) ctx.waitUntil(job); else await job;
       await emit(env, user.uid, uid, "voice_uploaded", { seconds: check.seconds, mime: mime.mime });
+      return reply({ listing: await detail(env, uid) });
+    }
+    if (action === "voice" && req.method === "DELETE") {
+      if (!EDITABLE.has(h.status)) return fail(409, "listing_locked");
+      const now = Date.now(), revision = h.listing_revision ?? 1;
+      const previous = (await listMedia(env, uid)).filter(m => m.kind === "intro_audio");
+      const result = await env.DB_META.batch([
+        env.DB_META.prepare("UPDATE hf_hosts SET voice_sample_r2=NULL, voice_seconds=NULL, voice_consent_at=NULL, intro_mime=NULL, intro_status=NULL, intro_transcript=NULL, intro_flags_json=NULL, intro_uploaded_at=NULL, listing_revision=listing_revision+1, updated_at=?2 WHERE uid=?1 AND listing_revision=?3 AND status IN ('draft','pending_host','paused','rejected')").bind(uid, now, revision),
+        env.DB_META.prepare("UPDATE hf_host_media SET status='superseded' WHERE uid=?1 AND kind='intro_audio' AND status='active' AND changes()=1").bind(uid),
+      ]);
+      if (!result[0]?.meta?.changes) throw new HostWriteConflict("Listing changed; reload before saving.");
+      if (h.voice_sample_r2) await env.VERIFICATION.delete(h.voice_sample_r2).catch(() => {});
+      await Promise.all(previous.map(m => env.BLOBS.delete(m.r2_key).catch(() => {})));
+      await emit(env, user.uid, uid, "voice_removed");
       return reply({ listing: await detail(env, uid) });
     }
     if (action === "media" && req.method === "PUT") {

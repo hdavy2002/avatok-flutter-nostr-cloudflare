@@ -6,21 +6,89 @@ vi.mock("../lib/preview", () => ({ isAdminUid: (_e: any, uid: string) => uid ===
 vi.mock("../lib/identity", () => ({ emailFor: async () => "fixture@example.invalid" }));
 vi.mock("../hooks", () => ({ trackUser: async () => {}, trackException: async () => {} }));
 vi.mock("../lib/hf_intro_check", () => ({ transcribeAndFlag: async () => {} }));
+vi.mock("../money", () => ({ rateLimit: async () => null }));
+vi.mock("./config", () => ({ readConfig: async () => ({ hostOnboardingEnabled: true, hfStdPlanEnabled: false }) }));
 import { makeDb } from "../lib/hf_token_d1_shim";
 import { hfCreatorListingsAdminRoute } from "./hf_creator_listings_admin";
 import { creatorPublicationBlockers } from "../lib/hf_creator_publication";
 import { card } from "./hf_hosts_public";
+import { hfHostsRoute } from "./hf_hosts";
+import { approveIntroRow } from "./hf_hosts_admin";
 
 let env: any;
 const call = (suffix: string, method = "GET", data?: unknown) => hfCreatorListingsAdminRoute(new Request(`https://api.test/api/admin/hf/listings${suffix}`, { method, ...(data ? { body: JSON.stringify(data), headers: { "content-type": "application/json" } } : {}) }), env);
 beforeEach(async () => {
   auth.uid = "admin";
-  const db = makeDb(["2026-10-09-hf-hosts.sql", "2026-10-09-hf-host-kyc.sql", "2026-10-09-hf-voice-intro.sql", "2026-10-12-hf-creator-price-alters.sql"], { alters: true });
+  const db = makeDb(["2026-10-09-hf-hosts.sql", "2026-10-09-hf-presence.sql", "2026-10-09-hf-host-kyc.sql", "2026-10-09-hf-voice-intro.sql", "2026-10-12-hf-creator-price-alters.sql"], { alters: true });
   db._raw.exec("CREATE TABLE users(uid TEXT PRIMARY KEY); INSERT INTO users(uid) VALUES ('creator')");
   db._raw.exec("CREATE TABLE admin_audit(id TEXT PRIMARY KEY,admin_id TEXT,action TEXT,target TEXT,meta TEXT,created_at INTEGER)");
-  env = { DB_META: db, DB_WALLET: db, HF_PII_KEY: btoa("t".repeat(32)), BLOSSOM_BASE_URL: "https://media.example.invalid", VERIFICATION: { put: vi.fn(), delete: vi.fn() } };
+  env = { DB_META: db, DB_WALLET: db, HF_PII_KEY: btoa("t".repeat(32)), BLOSSOM_BASE_URL: "https://media.example.invalid", VERIFICATION: { put: vi.fn(), delete: vi.fn().mockResolvedValue(undefined), get: vi.fn() }, BLOBS: { put: vi.fn(), delete: vi.fn().mockResolvedValue(undefined) } };
 });
 describe("creator draft administration", () => {
+  it("seeds only private offline drafts, preserves edits, and never permits fixture publication", async () => {
+    auth.uid = "host";
+    expect((await call("/seed", "POST", { mode: "private_drafts" })).status).toBe(403);
+    auth.uid = "admin";
+    expect((await call("/seed", "POST", {})).status).toBe(400);
+    expect((await call("/seed", "POST", { mode: "private_drafts" })).status).toBe(200);
+    const rows = env.DB_META._raw.prepare("SELECT * FROM hf_hosts").all();
+    expect(rows).toHaveLength(3);
+    expect(rows.every(r => r.status === "draft" && r.presence === "offline" && !r.voice_sample_r2 && !r.agreements_at)).toBe(true);
+    env.DB_META._raw.exec("UPDATE hf_hosts SET display_name='Edited' WHERE uid='fixture_creator_anya'");
+    await call("/seed", "POST", { mode: "private_drafts" });
+    const preview = await call("/fixture_creator_anya/preview");
+    expect(preview.headers.get("cache-control")).toBe("private, no-store");
+    expect((await preview.json()).item).toMatchObject({ displayName: "Edited", status: "offline", rating: null, reviewCount: 0, talkedTo: 0 });
+    expect((await call("/fixture_creator_anya/publish", "POST", {})).status).toBe(422);
+    expect(env.DB_META._raw.prepare("SELECT COUNT(*) AS n FROM users").get().n).toBe(1);
+  });
+  it("removes pending and approved voice references, but refuses a live listing", async () => {
+    await call("", "POST", { uid: "creator", category: "influencer" });
+    const db = env.DB_META._raw;
+    db.exec("UPDATE hf_hosts SET voice_sample_r2='private/voice',voice_seconds=20,intro_status='pending' WHERE uid='creator'");
+    db.exec("INSERT INTO hf_host_media(id,uid,kind,r2_key,created_at) VALUES('voice','creator','intro_audio','public/voice',1)");
+    expect((await call("/creator/voice", "DELETE")).status).toBe(200);
+    expect(db.prepare("SELECT voice_sample_r2,voice_seconds,intro_status FROM hf_hosts").get()).toMatchObject({ voice_sample_r2: null, voice_seconds: null, intro_status: null });
+    expect(db.prepare("SELECT status FROM hf_host_media WHERE id='voice'").get().status).toBe("superseded");
+    expect(env.VERIFICATION.delete).toHaveBeenCalledWith("private/voice");
+    expect(env.BLOBS.delete).toHaveBeenCalledWith("public/voice");
+    db.exec("UPDATE hf_hosts SET status='live' WHERE uid='creator'");
+    expect((await call("/creator/voice", "DELETE")).status).toBe(409);
+  });
+  it("cannot resurrect voice media when removal races an approval", async () => {
+    await call("", "POST", { uid: "creator", category: "celebrity" });
+    env.DB_META._raw.exec("UPDATE hf_hosts SET voice_sample_r2='private/voice',voice_seconds=20,intro_mime='audio/mpeg',intro_status='pending' WHERE uid='creator'");
+    const snapshot = env.DB_META._raw.prepare("SELECT * FROM hf_hosts").get();
+    env.VERIFICATION.get.mockResolvedValue({ arrayBuffer: async () => new ArrayBuffer(22000), httpMetadata: { contentType: "audio/mpeg" } });
+    env.BLOBS.put.mockImplementationOnce(async () => { expect((await call("/creator/voice", "DELETE")).status).toBe(200); });
+    expect(await approveIntroRow(env, "creator", snapshot)).toMatchObject({ ok: false, error: "listing_changed" });
+    expect(env.DB_META._raw.prepare("SELECT COUNT(*) AS n FROM hf_host_media WHERE status='active'").get().n).toBe(0);
+  });
+  it("rejects a self-service category edit if publication wins the write race", async () => {
+    await call("", "POST", { uid: "creator", category: "influencer" });
+    auth.uid = "creator";
+    const prepare = env.DB_META.prepare;
+    let raced = false;
+    env.DB_META.prepare = (sql: string) => {
+      if (!raced && sql.startsWith("UPDATE hf_hosts SET category=")) {
+        raced = true;
+        env.DB_META._raw.exec("UPDATE hf_hosts SET status='live',listing_revision=listing_revision+1 WHERE uid='creator'");
+      }
+      return prepare(sql);
+    };
+    const response = await hfHostsRoute(new Request("https://api.test/api/hosts/me", { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ category: "celebrity" }) }), env);
+    expect(response.status).toBe(409);
+    expect(env.DB_META._raw.prepare("SELECT category,status FROM hf_hosts").get()).toMatchObject({ category: "influencer", status: "live" });
+  });
+  it("cleans a self-service upload if publication races storage", async () => {
+    await call("", "POST", { uid: "creator", category: "celebrity" });
+    auth.uid = "creator";
+    env.VERIFICATION.put.mockImplementationOnce(async () => env.DB_META._raw.exec("UPDATE hf_hosts SET status='live',listing_revision=listing_revision+1 WHERE uid='creator'"));
+    const response = await hfHostsRoute(new Request("https://api.test/api/hosts/me/voice", { method: "PUT", body: new Uint8Array(22000), headers: { "content-type": "audio/webm", "x-duration-seconds": "20", "x-voice-consent": "v1" } }), env);
+    expect(response.status).toBe(409);
+    expect(env.VERIFICATION.delete).toHaveBeenCalledOnce();
+    expect(env.DB_META._raw.prepare("SELECT voice_sample_r2 FROM hf_hosts").get().voice_sample_r2).toBeNull();
+  });
   it("requires admin and a declared creator category", async () => {
     auth.uid = "host";
     expect((await call("", "POST", { uid: "creator", category: "celebrity" })).status).toBe(403);

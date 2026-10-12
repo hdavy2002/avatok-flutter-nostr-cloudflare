@@ -18,6 +18,7 @@ import '../data/explore_controller.dart';
 import '../data/host_card.dart';
 import '../data/host_filters.dart';
 import '../data/host_options.dart';
+import '../data/hosts_repository.dart';
 import '../widgets/host_card_view.dart';
 import '../widgets/marketplace_host_tile.dart';
 import 'explore_copy.dart';
@@ -42,7 +43,7 @@ class ExploreScreen extends ConsumerStatefulWidget {
 class _ExploreScreenState extends ConsumerState<ExploreScreen> {
   final ScrollController _scroll = ScrollController();
   final TextEditingController _search = TextEditingController();
-  String _searchText = '';
+  Timer? _searchDebounce;
 
   ExploreController get _controller =>
       ref.read(exploreControllerProvider.notifier);
@@ -52,6 +53,7 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
     super.initState();
     _scroll.addListener(_onScroll);
     final fromRoute = HostFilters.fromRouteQuery(widget.query);
+    _search.text = fromRoute.search;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       Analytics.capture('hf_app_explore_viewed', <String, Object>{
@@ -67,6 +69,7 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
     super.didUpdateWidget(old);
     if (!mapEquals(old.query, widget.query)) {
       final fromRoute = HostFilters.fromRouteQuery(widget.query);
+      if (_search.text.trim() != fromRoute.search) _search.text = fromRoute.search;
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) unawaited(_controller.applyRoute(fromRoute));
       });
@@ -75,6 +78,7 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
 
   @override
   void dispose() {
+    _searchDebounce?.cancel();
     _scroll.dispose();
     _search.dispose();
     super.dispose();
@@ -96,8 +100,20 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
 
   /// Applies filters and keeps the route in step, so `/explore?...` always describes what is on screen.
   void _apply(HostFilters f, FilterSource source) {
+    _searchDebounce?.cancel();
+    if (_search.text.trim() != f.search) _search.text = f.search;
     unawaited(_controller.setFilters(f, source: source));
     GoRouter.of(context).go(f.toLocation());
+  }
+
+  void _searchHosts(String value) {
+    _searchDebounce?.cancel();
+    _searchDebounce = Timer(const Duration(milliseconds: 350), () {
+      if (!mounted) return;
+      _apply(ref.read(exploreControllerProvider).filters.copyWith(
+        search: HostFilters.cleanSearch(value),
+      ), FilterSource.sheet);
+    });
   }
 
   void _chooseFilters(HostFilters next) {
@@ -145,6 +161,7 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
 
   Future<void> _refresh() {
     ref.invalidate(homeBalanceProvider);
+    ref.invalidate(marketplaceSectionProvider);
     return _controller.refresh();
   }
 
@@ -175,8 +192,7 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
                   filters: f,
                   options: options,
                   search: _search,
-                  onSearch: (value) =>
-                      setState(() => _searchText = value.trim().toLowerCase()),
+                  onSearch: _searchHosts,
                   onFilters: () => _openFilters(f),
                   onApply: _chooseFilters,
                   showListTitle: false,
@@ -247,20 +263,17 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
           ),
         ];
       case ExploreStatus.ready:
-        if (st.items.isEmpty) {
-          final narrowed = f.activeCount > 0;
+        if (st.items.isEmpty && f.activeCount > 0) {
           return [
             fill(
-              narrowed
-                  ? EmptyPanel(
+              EmptyPanel(
                       message: ExploreCopy.emptyFiltered,
                       actionLabel: ExploreCopy.clearFilters,
                       onAction: () => _apply(
                         HostFilters.none.copyWith(lane: f.lane),
                         FilterSource.clear,
                       ),
-                    )
-                  : const EmptyPanel(message: ExploreCopy.emptyAll),
+                    ),
             ),
           ];
         }
@@ -268,90 +281,55 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
     }
   }
 
-  List<HostCard> _visible(ExploreState st, HostOptions? options) {
-    if (_searchText.isEmpty) return st.items;
-    final labels = options?.topicLabels ?? const <String, String>{};
-    return st.items
-        .where(
-          (h) => [
-            h.displayName,
-            h.tagline ?? '',
-            ...h.languages,
-            ...h.topics.map((t) => labels[t] ?? t),
-          ].join(' ').toLowerCase().contains(_searchText),
-        )
-        .toList();
-  }
-
   List<Widget> _list(ExploreState st, HostOptions? options) {
     final labels = options?.topicLabels ?? const <String, String>{};
-    final items = _visible(st, options);
-    final popular = [...items]
-      ..sort((a, b) {
-        final talked = b.talkedTo.compareTo(a.talkedTo);
-        if (talked != 0) return talked;
-        return (b.rating ?? 0).compareTo(a.rating ?? 0);
-      });
-    final online = items.where((host) => host.isOnline).toList();
+    final items = st.items;
+    final browse = st.filters.activeCount == 0;
+    final base = HostFilters.none.copyWith(lane: st.filters.lane);
     return [
-      if (items.isEmpty && _searchText.isNotEmpty)
+      if (browse)
         SliverToBoxAdapter(
-          child: Padding(
-            padding: const EdgeInsets.all(HfSpacing.page),
-            child: EmptyPanel(
-              message: 'No matching hosts shown yet.',
-              actionLabel: 'Clear search',
-              onAction: () => setState(() {
-                _search.clear();
-                _searchText = '';
-              }),
-            ),
-          ),
-        ),
-      if (_searchText.isNotEmpty && st.hasMore && !st.loadingMore)
-        SliverToBoxAdapter(
-          child: Padding(
-            padding: const EdgeInsets.all(HfSpacing.page),
-            child: HfButton(
-              label: 'Search more hosts',
-              kind: HfButtonKind.secondary,
-              onPressed: () =>
-                  unawaited(_controller.loadMore(retry: st.loadMoreFailed)),
-            ),
-          ),
-        ),
-      if (_searchText.isEmpty && popular.length >= 4)
-        SliverToBoxAdapter(
-          child: _HostRail(
+          child: _ServerHostRail(
             title: 'Popular conversations',
-            hosts: popular.take(5).toList(),
-            lane: st.filters.lane,
+            filters: base.copyWith(sort: HostSort.popular),
             from: 'explore_popular',
           ),
         ),
-      if (_searchText.isEmpty && online.length >= 3)
+      if (browse)
         SliverToBoxAdapter(
-          child: _HostRail(
+          child: _ServerHostRail(
             title: 'Online now',
-            hosts: online.take(5).toList(),
-            lane: st.filters.lane,
+            filters: base.copyWith(online: true),
             from: 'explore_online',
           ),
         ),
-      if (_searchText.isEmpty)
-        const SliverToBoxAdapter(child: _CommunityServicesCard()),
-      if (_searchText.isEmpty)
-        const SliverToBoxAdapter(
+      if (browse) ...[
+        SliverToBoxAdapter(child: _CommunityServicesCard(base: base, options: options)),
+        SliverToBoxAdapter(child: _ServerHostRail(
+          title: 'Influencers & creators',
+          filters: base.copyWith(category: HostCategoryFilter.creators),
+          from: 'explore_creators',
+        )),
+      ],
+      SliverToBoxAdapter(
           child: Padding(
-            padding: EdgeInsets.fromLTRB(
+            padding: const EdgeInsets.fromLTRB(
               HfSpacing.pageWide,
               HfSpacing.xxl,
               HfSpacing.pageWide,
               0,
             ),
-            child: Text('All hosts', style: HfText.section),
+            child: Row(children: [
+              Expanded(child: Text(browse ? 'All hosts' : _resultsTitle(st.filters), style: HfText.section)),
+              if (!browse) TextButton(onPressed: () => _apply(base, FilterSource.clear), child: const Text('Clear filters')),
+            ]),
           ),
         ),
+      if (items.isEmpty)
+        const SliverToBoxAdapter(child: Padding(
+          padding: EdgeInsets.all(HfSpacing.page),
+          child: Text(ExploreCopy.emptyAll),
+        )),
       SliverPadding(
         padding: const EdgeInsets.fromLTRB(
           HfSpacing.page,
@@ -405,14 +383,53 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
       ),
     ];
   }
+
+  String _resultsTitle(HostFilters f) {
+    if (f.search.isNotEmpty) return 'Search results';
+    if (f.category == HostCategoryFilter.influencer) return 'Influencers';
+    if (f.category == HostCategoryFilter.celebrity) return 'Celebrities';
+    if (f.category == HostCategoryFilter.creators) return 'Influencers & creators';
+    if (f.online) return 'Online now';
+    if (f.sort == HostSort.popular) return 'Popular conversations';
+    return 'Hosts for you';
+  }
 }
 
 class _CommunityServicesCard extends StatelessWidget {
-  const _CommunityServicesCard();
+  const _CommunityServicesCard({required this.base, required this.options});
+
+  final HostFilters base;
+  final HostOptions? options;
+
+  void _topic(BuildContext context, HostTopic topic) =>
+      GoRouter.of(context).go(base.copyWith(topics: [topic.slug]).toLocation());
+
+  void _allTopics(BuildContext context) {
+    final topics = options?.topics ?? const <HostTopic>[];
+    showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (sheetContext) => SafeArea(
+        child: ListView.builder(
+          itemCount: topics.length + 1,
+          itemBuilder: (_, i) => i == 0
+              ? const Padding(padding: EdgeInsets.all(HfSpacing.page), child: Text('Services for you', style: HfText.section))
+              : ListTile(
+                  title: Text(topics[i - 1].label),
+                  trailing: const Icon(Icons.chevron_right_rounded),
+                  onTap: () {
+                    Navigator.of(sheetContext).pop();
+                    _topic(context, topics[i - 1]);
+                  },
+                ),
+        ),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
-    final dark = HfBrightness.isDark(context);
+    final topics = options?.topics ?? const <HostTopic>[];
     return Padding(
       padding: const EdgeInsets.fromLTRB(
         HfSpacing.pageWide,
@@ -423,58 +440,113 @@ class _CommunityServicesCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text(
-            'Communities & services',
-            style: HfText.of(context, HfText.section),
+          _SectionTitle(
+            title: 'Communities',
+            onSeeAll: () => GoRouter.of(context).go(base.copyWith(category: HostCategoryFilter.creators).toLocation()),
           ),
           const SizedBox(height: HfSpacing.lg),
-          Container(
-            height: 154,
-            clipBehavior: Clip.antiAlias,
-            decoration: BoxDecoration(
-              color: dark ? HfColors.darkCard : HfColors.surfaceSoft,
-              borderRadius: BorderRadius.circular(HfRadius.card),
-              border: Border.all(
-                color: dark ? HfColors.darkLine : HfColors.line,
-              ),
-            ),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Padding(
-                    padding: const EdgeInsets.all(HfSpacing.xl),
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'More ways to connect',
-                          style: HfText.of(context, HfText.subsection),
-                        ),
-                        const SizedBox(height: HfSpacing.xs),
-                        Text(
-                          'Community and service listings will appear here when they are available.',
-                          style: HfText.of(context, HfText.note),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
+          LayoutBuilder(builder: (context, c) {
+            final columns = c.maxWidth >= 280 && MediaQuery.textScalerOf(context).scale(16) <= 24 ? 2 : 1;
+            return Wrap(spacing: HfSpacing.lg, runSpacing: HfSpacing.lg, children: [
+              for (final entry in (const {'influencer': 'Influencers', 'celebrity': 'Celebrities'}).entries)
                 SizedBox(
-                  width: 152,
-                  height: 154,
-                  child: Image.asset(
-                    'assets/images/community_services_card.png',
-                    fit: BoxFit.cover,
-                    alignment: Alignment.center,
-                    semanticLabel: 'Conversation community illustration',
+                  width: (c.maxWidth - (columns - 1) * HfSpacing.lg) / columns,
+                  child: _DiscoveryActionCard(
+                    key: ValueKey('community-${entry.key}'),
+                    title: entry.value,
+                    illustrated: true,
+                    onTap: () => GoRouter.of(context).go(base.copyWith(category: entry.key).toLocation()),
                   ),
                 ),
-              ],
-            ),
-          ),
+            ]);
+          }),
+          const SizedBox(height: HfSpacing.xxl),
+          _SectionTitle(title: 'Services for you', onSeeAll: topics.isEmpty ? null : () => _allTopics(context)),
+          const SizedBox(height: HfSpacing.lg),
+          if (topics.isEmpty)
+            const Text('Conversation topics are not available yet.')
+          else LayoutBuilder(builder: (context, c) {
+            final columns = MediaQuery.textScalerOf(context).scale(16) > 24 ? 1 : c.maxWidth >= 720 ? 3 : c.maxWidth >= 280 ? 2 : 1;
+            return Wrap(spacing: HfSpacing.lg, runSpacing: HfSpacing.lg, children: [
+              for (final topic in topics.take(6))
+                SizedBox(
+                  width: (c.maxWidth - (columns - 1) * HfSpacing.lg) / columns,
+                  child: _DiscoveryActionCard(key: ValueKey('service-${topic.slug}'), title: topic.label, onTap: () => _topic(context, topic)),
+                ),
+            ]);
+          }),
         ],
       ),
+    );
+  }
+}
+
+class _DiscoveryActionCard extends StatelessWidget {
+  const _DiscoveryActionCard({super.key, required this.title, required this.onTap, this.illustrated = false});
+  final String title;
+  final VoidCallback onTap;
+  final bool illustrated;
+
+  @override
+  Widget build(BuildContext context) {
+    final dark = HfBrightness.isDark(context);
+    return Material(
+      color: dark ? HfColors.darkCard : HfColors.surfaceSoft,
+      borderRadius: BorderRadius.circular(HfRadius.card),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onTap,
+        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          if (illustrated) SizedBox(
+            height: 92,
+            child: Image.asset('assets/images/community_services_card.png', fit: BoxFit.cover, excludeFromSemantics: true),
+          ),
+          Padding(
+            padding: const EdgeInsets.all(HfSpacing.lg),
+            child: Row(children: [
+              Expanded(child: Text(title, style: HfText.of(context, HfText.label))),
+              const SizedBox(width: HfSpacing.sm),
+              const Icon(Icons.arrow_forward_rounded, size: 18),
+            ]),
+          ),
+        ]),
+      ),
+    );
+  }
+}
+
+class _SectionTitle extends StatelessWidget {
+  const _SectionTitle({required this.title, this.onSeeAll});
+  final String title;
+  final VoidCallback? onSeeAll;
+
+  @override
+  Widget build(BuildContext context) => Row(children: [
+    Expanded(child: Text(title, style: HfText.of(context, HfText.section))),
+    if (onSeeAll != null) TextButton(key: ValueKey('see-all-$title'), onPressed: onSeeAll, child: const Text('See all')),
+  ]);
+}
+
+class _ServerHostRail extends ConsumerWidget {
+  const _ServerHostRail({required this.title, required this.filters, required this.from});
+  final String title;
+  final HostFilters filters;
+  final String from;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final location = filters.toLocation();
+    final page = ref.watch(marketplaceSectionProvider(location));
+    return _HostRail(
+      title: title,
+      hosts: page.asData?.value.items ?? const [],
+      from: from,
+      lane: filters.lane,
+      onSeeAll: () => GoRouter.of(context).go(location),
+      empty: page.isLoading ? 'Loading conversations…'
+          : page.hasError ? 'Could not load this section. Open See all to retry.'
+          : filters.online ? 'No hosts are online right now.'
+          : 'No published hosts in this section yet.',
     );
   }
 }
@@ -484,6 +556,8 @@ class _HostRail extends StatelessWidget {
     required this.title,
     required this.hosts,
     required this.from,
+    required this.onSeeAll,
+    required this.empty,
     this.lane,
   });
 
@@ -491,6 +565,8 @@ class _HostRail extends StatelessWidget {
   final List<HostCard> hosts;
   final String from;
   final String? lane;
+  final VoidCallback onSeeAll;
+  final String empty;
 
   @override
   Widget build(BuildContext context) {
@@ -503,14 +579,13 @@ class _HostRail extends StatelessWidget {
             padding: const EdgeInsets.symmetric(
               horizontal: HfSpacing.pageWide,
             ),
-            child: Text(
-              title,
-              style: HfText.of(context, HfText.section),
-            ),
+            child: _SectionTitle(title: title, onSeeAll: onSeeAll),
           ),
           const SizedBox(height: HfSpacing.lg),
-          SizedBox(
-            height: 360,
+          if (hosts.isEmpty)
+            Padding(padding: const EdgeInsets.symmetric(horizontal: HfSpacing.pageWide), child: Text(empty, style: HfText.of(context, HfText.note)))
+          else SizedBox(
+            height: 360 + (MediaQuery.textScalerOf(context).scale(14) - 14).clamp(0, 80).toDouble() * 5,
             child: ListView.separated(
               scrollDirection: Axis.horizontal,
               padding: const EdgeInsets.symmetric(

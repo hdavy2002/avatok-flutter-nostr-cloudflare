@@ -17,7 +17,7 @@ class WelcomeStep extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final standardPlan = hfStdPlanOn(ref.watch(flagsProvider));
+    final standardPlan = hfStdPlanOn(ref.watch(flagsProvider)) && !ctx.state.isCreator;
     return OnboardingStepPage(
       scene: HfClusterKind.welcome,
       title: OnboardingCopy.welcomeTitle,
