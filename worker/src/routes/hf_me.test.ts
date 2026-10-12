@@ -26,6 +26,7 @@ function makeEnv() {
     CREATE TABLE phone_otp (id INTEGER PRIMARY KEY AUTOINCREMENT, uid TEXT, phone_hash TEXT, e164 TEXT, status TEXT, verified_at INTEGER);
     CREATE TABLE hf_age_confirm (uid TEXT PRIMARY KEY, confirmed_at INTEGER NOT NULL, source TEXT NOT NULL);
     CREATE TABLE hf_user_ack (uid TEXT NOT NULL, version TEXT NOT NULL, at INTEGER NOT NULL, PRIMARY KEY (uid, version));
+    CREATE TABLE hf_user_registration (uid TEXT PRIMARY KEY, username TEXT NOT NULL UNIQUE);
     CREATE TABLE hf_hosts (uid TEXT PRIMARY KEY, slug TEXT, status TEXT NOT NULL DEFAULT 'draft');
     CREATE TABLE hf_kyc (uid TEXT PRIMARY KEY, gender TEXT, verified_at INTEGER);
     CREATE TABLE hf_lane_access (uid TEXT NOT NULL, lane TEXT NOT NULL, verified_at INTEGER NOT NULL, declared_at INTEGER, PRIMARY KEY (uid, lane));
@@ -56,7 +57,7 @@ describe("GET /api/hf/me", () => {
     const r = await call(req("GET"));
     expect(r.status).toBe(200);
     expect(await r.json()).toEqual({
-      uid: "u1", displayName: null, phoneMasked: null, whatsappVerified: false, ackVersion: null, age18ConfirmedAt: null,
+      uid: "u1", displayName: null, username: null, registrationComplete: false, phoneMasked: null, whatsappVerified: false, ackVersion: null, age18ConfirmedAt: null,
       isHost: false, host: null, lanes: { women: false, lgbtq: false }, closing: false, tokensMode: false,
     });
   });
@@ -69,6 +70,7 @@ describe("GET /api/hf/me", () => {
     db.prepare("INSERT INTO hf_age_confirm VALUES ('u1',1234,'android')").run();
     db.prepare("INSERT INTO hf_user_ack VALUES ('u1','2026-10-01',10)").run();
     db.prepare("INSERT INTO hf_user_ack VALUES ('u1','2026-10-10',20)").run();
+    db.prepare("INSERT INTO hf_user_registration VALUES ('u1','meena')").run();
     db.prepare("INSERT INTO hf_hosts (uid, slug, status) VALUES ('u1','meena','live')").run();
     db.prepare("INSERT INTO hf_kyc VALUES ('u1','F',99)").run();
     db.prepare("INSERT INTO hf_lane_access VALUES ('u1','women',99,NULL)").run();
@@ -76,7 +78,7 @@ describe("GET /api/hf/me", () => {
     cfg = { hfTokensEnabled: true };
     const b = await (await call(req("GET"))).json();
     expect(b).toEqual({
-      uid: "u1", displayName: "Meena", phoneMasked: "******3210", whatsappVerified: true, ackVersion: "2026-10-10", age18ConfirmedAt: 1234,
+      uid: "u1", displayName: "Meena", username: "meena", registrationComplete: true, phoneMasked: "******3210", whatsappVerified: true, ackVersion: "2026-10-10", age18ConfirmedAt: 1234,
       isHost: true, host: { status: "live", slug: "meena" }, lanes: { women: true, lgbtq: false }, closing: true, tokensMode: true,
     });
     expect(JSON.stringify(b)).not.toContain("98765");

@@ -62,7 +62,7 @@ export async function hfMeRoute(req: Request, env: Env, p: string): Promise<Resp
 
 async function getMe(env: Env, uid: string): Promise<Response> {
   // One joined read for the profile facts, plus the ack, lane and closing checks and the (KV-cached) config, all in parallel.
-  const [row, ack, lanes, closing, cfg] = await Promise.all([
+  const [row, ack, registration, lanes, closing, cfg] = await Promise.all([
     env.DB_META.prepare(
       `SELECT u.display_name AS display_name,
               cv.phone_verified AS phone_verified,
@@ -76,6 +76,9 @@ async function getMe(env: Env, uid: string): Promise<Response> {
     ).bind(uid).first<MeRow>().catch(() => null),
     // [HF-NATIVE-S4] Kept apart so a missing table (migration not applied yet) can never blank the rest of the answer.
     env.DB_META.prepare("SELECT version FROM hf_user_ack WHERE uid=?1 ORDER BY at DESC LIMIT 1").bind(uid).first<{ version: string }>().catch(() => null),
+    // [HF-REF-AUTH-1] Registration is a separate immutable record. Keep this
+    // read failure-isolated so an unapplied migration does not break sign-in.
+    env.DB_META.prepare("SELECT username FROM hf_user_registration WHERE uid=?1").bind(uid).first<{ username: string }>().catch(() => null),
     getLaneAccess(env, uid).catch(() => ({ women: false, lgbtq: false })),
     isClosing(env, uid),
     readConfig(env).catch(() => null),
@@ -84,6 +87,8 @@ async function getMe(env: Env, uid: string): Promise<Response> {
   const body = {
     uid,
     displayName: row?.display_name?.trim() ? row.display_name : null,
+    username: registration?.username ?? null,
+    registrationComplete: !!registration?.username,
     phoneMasked: maskPhoneLast4(row?.e164),
     whatsappVerified: Number(row?.phone_verified) === 1,
     ackVersion: ack?.version ?? null,
