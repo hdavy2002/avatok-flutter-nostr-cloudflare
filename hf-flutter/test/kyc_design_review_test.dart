@@ -8,7 +8,6 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/misc.dart' show Override;
 import 'package:flutter_test/flutter_test.dart';
-import 'package:hf_app/core/api/api_client.dart';
 import 'package:hf_app/core/auth/session.dart';
 import 'package:hf_app/core/links.dart';
 import 'package:hf_app/core/storage/account_storage.dart';
