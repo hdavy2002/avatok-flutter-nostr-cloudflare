@@ -312,7 +312,7 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
     return [
       if (widget.secondNumber) ...[
         const AuthCallout(
-          icon: Icons.sim_card_outlined,
+          icon: Icons.phone_in_talk_outlined,
           title: 'A second number, a separate account',
           body: 'Enter another WhatsApp number you can access. We send a verification code; the app does not detect or verify a physical SIM in this phone.',
           tint: HfColors.butter,

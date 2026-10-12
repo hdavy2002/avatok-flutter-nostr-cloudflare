@@ -30,7 +30,7 @@ extension on AuthPhotoKind {
     AuthPhotoKind.username => 'username',
     AuthPhotoKind.kyc => 'kyc',
     AuthPhotoKind.policies => 'policies',
-  }}.png';
+  }}.webp';
 }
 
 /// The auth storyboards are 425 logical pixels wide. On larger windows the
