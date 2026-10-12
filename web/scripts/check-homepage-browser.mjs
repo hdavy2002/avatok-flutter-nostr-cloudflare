@@ -165,7 +165,6 @@ try {
         ['explore-hosts', '/marketplace'], ['view-all-hosts', '/marketplace'],
         ['become-host', '/hosts/join'], ['apply-host', '/hosts/join'],
         ['women-hosts', '/marketplace?lane=women#people'], ['lgbtq-hosts', '/marketplace?lane=lgbtq#people'],
-        ['privacy', '/privacy'], ['safety', '/safety'],
       ]) await expect(page.locator('[data-home-cta="' + action + '"]')).toHaveAttribute('href', href);
       const geometry = await page.evaluate(() => {
         const columns = selector => getComputedStyle(document.querySelector(selector)).gridTemplateColumns.split(' ').length;

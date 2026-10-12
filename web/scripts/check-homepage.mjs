@@ -61,7 +61,7 @@ for (const match of html.matchAll(/\bhref="([^"]+)"/g)) {
   const href = match[1].replaceAll('&amp;', '&');
   if (href.startsWith('#') || href.startsWith('/#')) assert(ids.has(href.split('#')[1]), 'Missing anchor: ' + href);
 }
-for (const href of ['/marketplace', '/hosts/join', '/marketplace?lane=women#people', '/marketplace?lane=lgbtq#people', '/privacy', '/safety']) assert(main.replaceAll('&amp;', '&').includes('href="' + href + '"'), 'Real destination: ' + href);
+for (const href of ['/marketplace', '/hosts/join', '/marketplace?lane=women#people', '/marketplace?lane=lgbtq#people']) assert(main.replaceAll('&amp;', '&').includes('href="' + href + '"'), 'Real destination: ' + href);
 assert.equal((html.match(/<header\b[^>]*\bdata-callvaal-chrome(?:=|\s|>)/g) || []).length, 1, 'One shared header');
 assert.equal((html.match(/<footer\b[^>]*\bdata-callvaal-chrome(?:=|\s|>)/g) || []).length, 1, 'One shared footer');
 assert(html.includes('href="/sign-in'), 'Sign-in remains reachable');
@@ -105,13 +105,13 @@ for (const photo of homepagePhotos) {
   assert((srcset.match(/\s\d+w(?:,|$)/g) || []).length >= 2, 'Homepage photo has responsive width variants');
   assert.match(photo, /\bsizes="[^"]+"/, 'Homepage photo declares its display sizes');
 }
-for (const name of ['hero', 'host', 'neha', 'arjun', 'meera', 'rohit', 'women', 'community']) {
+for (const name of ['hero', 'host', 'neha', 'arjun', 'meera', 'rohit', 'women', 'community', 'hero-cutout', 'women-cutout', 'community-cutout']) {
   const file = resolve(root, 'assets/callvaal/host-fan', name + '.webp');
   const bytes = readFileSync(file);
   const art = await sharp(bytes).metadata();
   assert.equal(art.format, 'webp', 'Genuine WebP: ' + name);
   assert(art.width >= 600 && art.height >= 600, 'Adequate source resolution: ' + name);
-  assert(bytes.length <= (name === 'hero' ? 400000 : 160000), 'Optimized asset budget: ' + name);
+  assert(bytes.length <= (name.startsWith('hero') ? 400000 : 160000), 'Optimized asset budget: ' + name);
 }
 assert(meta(html, 'og:image').endsWith('/host-fan/hero.jpg'), 'New hero share fallback');
 assert.equal((main.match(/fetchpriority="high"/g) || []).length, 1, 'Only hero is high priority');

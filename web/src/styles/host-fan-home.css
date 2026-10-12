@@ -215,3 +215,36 @@
  .hfh-reference-page .hfh-picker,.hfh-reference-page .hfh-share,.hfh-reference-page .hfh-call-photo{position:relative;left:auto;right:auto;top:auto;bottom:auto;width:100%;margin:0;transform:none;grid-column:1;grid-row:auto}
  .hfh-reference-page .hfh-call-photo{width:60%;justify-self:center}
 }
+
+@font-face{font-family:HomeHand;src:url('/fonts/Kalam-Regular.ttf') format('truetype');font-weight:400;font-display:swap}
+.hfh-reference-page .hfh-home .hfh-note,.hfh-reference-page .hfh-home .hfh-note *{font-family:HomeHand,cursive!important;font-weight:400;line-height:1.12;overflow-wrap:normal}
+.hfh-reference-page .hfh-collage{width:100%}
+.hfh-reference-page .hfh-title-line,.hfh-reference-page .hfh-hero h1 em,.hfh-reference-page .hfh-lane h2{white-space:normal}
+.hfh-reference-page .hfh-card-heading{flex-wrap:wrap}
+.hfh-reference-page .hfh-picker>strong>svg{width:1rem;height:1rem;flex:none}
+.hfh-reference-page .hfh-share strong>svg{width:1.6rem;height:1.6rem;display:inline-block;vertical-align:middle;margin-right:.3rem}
+.hfh-reference-page .hfh-platform>svg{width:100%;height:100%}
+@media(min-width:1024px){
+ .hfh-reference-page .hfh-hero{padding-bottom:0}
+ .hfh-reference-page .hfh-hero-copy>p{font-size:clamp(1.125rem,1.72vw,1.85rem);line-height:1.27}
+ .hfh-reference-page .hfh-note--same{width:25%;font-size:clamp(1rem,1.65vw,1.7rem)}
+ .hfh-reference-page .hfh-note--time{font-size:clamp(1rem,1.6vw,1.7rem)}
+ .hfh-reference-page .hfh-note--real{font-size:clamp(1rem,1.5vw,1.6rem)}
+ .hfh-reference-page .hfh-creators{padding-top:.6rem;padding-bottom:.3rem}
+ .hfh-reference-page .hfh-creator-card{padding:.35rem}
+ .hfh-reference-page .hfh-portrait img{aspect-ratio:1.7}
+ .hfh-reference-page .hfh-section-heading{margin-bottom:.35rem}
+ .hfh-reference-page .hfh-card-copy{padding:.2rem .3rem}
+ .hfh-reference-page .hfh-sample-label{margin-top:.2rem}
+ .hfh-reference-page .hfh-privacy{padding-top:.5rem;padding-bottom:.35rem}
+ .hfh-reference-page .hfh-lane{padding-top:.65rem;padding-bottom:.65rem}
+ .hfh-reference-page .hfh-lane-art{padding-top:0}
+ .hfh-reference-page .hfh-lane-art>img{object-fit:contain;object-position:bottom;clip-path:none}
+ .hfh-reference-page .hfh-lane-art>.hfh-note{font-size:1rem;top:-.3rem;width:6.1rem;right:-.7rem}
+
+ .hfh-reference-page .hfh-host-art .hfh-note{font-size:clamp(1rem,1.5vw,1.6rem);width:35%}
+ .hfh-reference-page .hfh-host-note{font-size:clamp(1rem,1.5vw,1.6rem)}
+ .hfh-reference-page .hfh-hero-photo{clip-path:none;object-fit:contain;object-position:center bottom}
+}
+
+.hfh-reference-page .hfh-torn:before{clip-path:polygon(0% 4px,1% 2px,2% 5px,3% 3px,4% 6px,5% 2px,6% 4px,7% 1px,8% 3px,9% 5px,10% 2px,11% 4px,12% 2px,13% 5px,14% 3px,15% 6px,16% 2px,17% 4px,18% 1px,19% 3px,20% 5px,21% 2px,22% 4px,23% 2px,24% 5px,25% 3px,26% 6px,27% 2px,28% 4px,29% 1px,30% 3px,31% 5px,32% 2px,33% 4px,34% 2px,35% 5px,36% 3px,37% 6px,38% 2px,39% 4px,40% 1px,41% 3px,42% 5px,43% 2px,44% 4px,45% 2px,46% 5px,47% 3px,48% 6px,49% 2px,50% 4px,51% 1px,52% 3px,53% 5px,54% 2px,55% 4px,56% 2px,57% 5px,58% 3px,59% 6px,60% 2px,61% 4px,62% 1px,63% 3px,64% 5px,65% 2px,66% 4px,67% 2px,68% 5px,69% 3px,70% 6px,71% 2px,72% 4px,73% 1px,74% 3px,75% 5px,76% 2px,77% 4px,78% 2px,79% 5px,80% 3px,81% 6px,82% 2px,83% 4px,84% 1px,85% 3px,86% 5px,87% 2px,88% 4px,89% 2px,90% 5px,91% 3px,92% 6px,93% 2px,94% 4px,95% 1px,96% 3px,97% 5px,98% 2px,99% 4px,100% 2px,100% calc(100% - 5px),99% calc(100% - 3px),98% calc(100% - 2px),97% calc(100% - 4px),96% calc(100% - 5px),95% calc(100% - 2px),94% calc(100% - 3px),93% calc(100% - 6px),92% calc(100% - 1px),91% calc(100% - 4px),90% calc(100% - 2px),89% calc(100% - 5px),88% calc(100% - 3px),87% calc(100% - 2px),86% calc(100% - 4px),85% calc(100% - 5px),84% calc(100% - 2px),83% calc(100% - 3px),82% calc(100% - 6px),81% calc(100% - 1px),80% calc(100% - 4px),79% calc(100% - 2px),78% calc(100% - 5px),77% calc(100% - 3px),76% calc(100% - 2px),75% calc(100% - 4px),74% calc(100% - 5px),73% calc(100% - 2px),72% calc(100% - 3px),71% calc(100% - 6px),70% calc(100% - 1px),69% calc(100% - 4px),68% calc(100% - 2px),67% calc(100% - 5px),66% calc(100% - 3px),65% calc(100% - 2px),64% calc(100% - 4px),63% calc(100% - 5px),62% calc(100% - 2px),61% calc(100% - 3px),60% calc(100% - 6px),59% calc(100% - 1px),58% calc(100% - 4px),57% calc(100% - 2px),56% calc(100% - 5px),55% calc(100% - 3px),54% calc(100% - 2px),53% calc(100% - 4px),52% calc(100% - 5px),51% calc(100% - 2px),50% calc(100% - 3px),49% calc(100% - 6px),48% calc(100% - 1px),47% calc(100% - 4px),46% calc(100% - 2px),45% calc(100% - 5px),44% calc(100% - 3px),43% calc(100% - 2px),42% calc(100% - 4px),41% calc(100% - 5px),40% calc(100% - 2px),39% calc(100% - 3px),38% calc(100% - 6px),37% calc(100% - 1px),36% calc(100% - 4px),35% calc(100% - 2px),34% calc(100% - 5px),33% calc(100% - 3px),32% calc(100% - 2px),31% calc(100% - 4px),30% calc(100% - 5px),29% calc(100% - 2px),28% calc(100% - 3px),27% calc(100% - 6px),26% calc(100% - 1px),25% calc(100% - 4px),24% calc(100% - 2px),23% calc(100% - 5px),22% calc(100% - 3px),21% calc(100% - 2px),20% calc(100% - 4px),19% calc(100% - 5px),18% calc(100% - 2px),17% calc(100% - 3px),16% calc(100% - 6px),15% calc(100% - 1px),14% calc(100% - 4px),13% calc(100% - 2px),12% calc(100% - 5px),11% calc(100% - 3px),10% calc(100% - 2px),9% calc(100% - 4px),8% calc(100% - 5px),7% calc(100% - 2px),6% calc(100% - 3px),5% calc(100% - 6px),4% calc(100% - 1px),3% calc(100% - 4px),2% calc(100% - 2px),1% calc(100% - 5px),0% calc(100% - 3px))}
