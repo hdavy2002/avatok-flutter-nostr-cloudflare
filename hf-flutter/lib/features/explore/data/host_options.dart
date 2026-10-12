@@ -6,7 +6,7 @@ import '../../../core/auth/session.dart';
 import 'hosts_repository.dart';
 
 /// `GET /api/hf/options` (public, cached 1 h by the server):
-/// `{topics:[{slug,label,group}], moodGroups:[{slug,label}], languages:[{code,label}], styles, priceMin, priceMax}`.
+/// `{topics:[{slug,label,group}], moodGroups:[{slug,label}], languages:[{code,label}], styles, priceMin, hostPriceMax, priceMax}`.
 /// The app keeps NO copy of these lists: topic labels, mood groups, languages and the price range all come from here.
 class HostTopic {
   const HostTopic({
@@ -55,6 +55,7 @@ class HostOptions {
     this.communities = const <MarketplaceCommunity>[],
     this.services = const <MarketplaceService>[],
     required this.priceMin,
+    this.hostPriceMax = 100,
     required this.priceMax,
   });
 
@@ -64,6 +65,7 @@ class HostOptions {
   final List<MarketplaceCommunity> communities;
   final List<MarketplaceService> services;
   final int priceMin;
+  final int hostPriceMax;
   final int priceMax;
 
   /// The label for a topic slug; an unknown slug is shown as readable words.
@@ -104,6 +106,7 @@ class HostOptions {
     String s(Object? v) => (v ?? '').toString();
     int n(Object? v, int fallback) => v is num ? v.toInt() : fallback;
     final min = n(j['priceMin'], 5);
+    final hostMax = n(j['hostPriceMax'], 100);
     final max = n(j['priceMax'], 100);
     return HostOptions(
       topics: [
@@ -141,11 +144,12 @@ class HostOptions {
               id: s(m['id']),
               label: s(m['label']),
               topics: m['topics'] is List
-                  ? [for (final topic in m['topics'] as List) s(topic) if (s(topic).isNotEmpty)]
+                  ? [for (final topic in m['topics'] as List) if (s(topic).isNotEmpty) s(topic)]
                   : const <String>[],
             ),
       ],
       priceMin: min,
+      hostPriceMax: hostMax > min ? hostMax : min + 1,
       priceMax: max > min ? max : min + 1,
     );
   }

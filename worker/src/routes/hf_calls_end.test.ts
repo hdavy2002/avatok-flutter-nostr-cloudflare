@@ -32,12 +32,12 @@ const endpoint = (suffix = "", method = "POST") => {
 beforeEach(async () => {
   vi.spyOn(Date, "now").mockReturnValue(Date.UTC(2026, 9, 12));
   auth.uid = "caller"; requests = 0; phone.fail = false; phone.failLegs.clear(); phone.ended.clear(); phone.hangups = [];
-  env = { DB_META: makeDb(["2026-10-10-hf-tokens.sql", "2026-10-09-hf-calls.sql", "2026-10-09-hf-payouts.sql", "2026-10-10-hf-calls-token-snapshot.sql", "2026-10-09-hf-hosts.sql", "2026-10-09-hf-presence.sql", "2026-10-09-hf-reviews.sql"], { alters: true }) };
+  env = { DB_META: makeDb(["2026-10-10-hf-tokens.sql", "2026-10-09-hf-calls.sql", "2026-10-09-hf-payouts.sql", "2026-10-10-hf-calls-token-snapshot.sql", "2026-10-09-hf-hosts.sql", "2026-10-09-hf-presence.sql", "2026-10-09-hf-reviews.sql", "2026-10-12-hf-call-presence-owner.sql"], { alters: true }) };
   await creditLot(env, "caller", { kind: "purchase", pricingVersion: "gp-r2", valuePaisePerToken: 100, micro: paiseToMicro(10000), paidPaise: 10000, provider: "google_play", providerRef: "end-fixture" }, "end-fixture");
   const creator = creatorSnapshotFor("influencer", 20);
   const start = await prepareTokenStart(env, { uid: "caller", callId: id, ratePaise: 2000, tk: readHfTokenConfig({ hfTokensEnabled: true }), creator });
   const now = Date.now();
-  env.DB_META._raw.prepare("INSERT INTO hf_hosts(uid,slug,display_name,status,presence,created_at,updated_at) VALUES ('host','host-aaaa','Host','live','busy',?,?)").run(now, now);
+  env.DB_META._raw.prepare("INSERT INTO hf_hosts(uid,slug,display_name,status,presence,presence_call_id,created_at,updated_at) VALUES ('host','host-aaaa','Host','live','busy',?,?,?)").run(id, now, now);
   env.DB_META._raw.prepare("INSERT INTO hf_calls(id,caller_uid,host_uid,rate_paise,status,created_at,connected_at,pricing_snapshot) VALUES (?,'caller','host',2000,'connected',?,?,?)").run(id, now - 20000, now - 11000, JSON.stringify(creator));
   stored = new Map([["s", { callId: id, callerUid: "caller", hostUid: "host", status: "connected", createdAt: now - 20000, connectedAt: now - 11000, endedAt: null,
     finalized: false, finalStatus: null, tasks: {}, bill: { attempts: 0 }, hostLeg: null, callerLeg: null,

@@ -8,7 +8,7 @@ import { trackException } from "../hooks";
 
 export const HF_CALL_APP = BRAND.slug;
 export const WALLET_APP = "hf_call";
-export const ACTIVE_STATUSES = ["ringing_host", "ringing_caller", "connected"] as const;
+export const ACTIVE_STATUSES = ["ringing_host", "ringing_caller", "connected", "ending", "finalizing"] as const;
 export const PRESENCE_TTL_MS = 8 * 3600_000; // no heartbeat for 8 h -> offline
 
 export interface HfCallRow {
@@ -67,14 +67,14 @@ export async function hfEarn(env: Env, hostUid: string, rupees: number, callId: 
 }
 
 // ── presence ─────────────────────────────────────────────────────────────────
-/** online -> busy, atomically. False when someone else got the host first or the host is not online. */
-export async function claimHost(env: Env, hostUid: string): Promise<boolean> {
-  const r = await env.DB_META.prepare("UPDATE hf_hosts SET presence='busy', presence_at=?1 WHERE uid=?2 AND presence='online' AND status='live'").bind(Date.now(), hostUid).run();
+/** online -> busy, atomically, and record which call owns that busy state. */
+export async function claimHost(env: Env, hostUid: string, callId: string): Promise<boolean> {
+  const r = await env.DB_META.prepare("UPDATE hf_hosts SET presence='busy', presence_at=?1, presence_call_id=?3 WHERE uid=?2 AND presence='online' AND status='live'").bind(Date.now(), hostUid, callId).run();
   return Number(r.meta?.changes ?? 0) === 1;
 }
-/** busy -> online (a host who went offline during the call stays offline). */
-export async function releaseHost(env: Env, hostUid: string): Promise<void> {
-  await env.DB_META.prepare("UPDATE hf_hosts SET presence='online', presence_at=?1 WHERE uid=?2 AND presence='busy'").bind(Date.now(), hostUid).run();
+/** Release only the call that owns the busy state; an old retry cannot clear a newer call. */
+export async function releaseHost(env: Env, hostUid: string, callId: string): Promise<void> {
+  await env.DB_META.prepare("UPDATE hf_hosts SET presence=CASE WHEN presence='busy' THEN 'online' ELSE presence END, presence_at=CASE WHEN presence='busy' THEN ?1 ELSE presence_at END, presence_call_id=NULL WHERE uid=?2 AND presence_call_id=?3").bind(Date.now(), hostUid, callId).run();
 }
 
 /** Calls use the same current Aadhaar/declaration/video authority as discovery. */
@@ -97,11 +97,11 @@ export async function runHfCallsCron(env: Env): Promise<void> {
     await env.DB_META.prepare("UPDATE hf_hosts SET presence='offline', presence_at=?1 WHERE presence='online' AND (presence_at IS NULL OR presence_at < ?2)").bind(now, now - PRESENCE_TTL_MS).run();
     // A host marked busy with no live call behind it (e.g. a lost DO) must not stay busy forever.
     await env.DB_META.prepare(
-      `UPDATE hf_hosts SET presence='online', presence_at=?1 WHERE presence='busy' AND presence_at < ?2
-         AND NOT EXISTS (SELECT 1 FROM hf_calls c WHERE c.host_uid = hf_hosts.uid AND c.status IN ('ringing_host','ringing_caller','connected','finalizing') AND c.created_at > ?3)`,
+      `UPDATE hf_hosts SET presence='online', presence_at=?1, presence_call_id=NULL WHERE presence='busy' AND presence_at < ?2
+         AND NOT EXISTS (SELECT 1 FROM hf_calls c WHERE c.host_uid = hf_hosts.uid AND c.status IN ('ringing_host','ringing_caller','connected','ending','finalizing') AND c.created_at > ?3)`,
     ).bind(now, now - 10 * 60_000, now - 25 * 3600_000).run(); // [HF-STD-PLAN-1] cover the explicit 24 h operational safety ceiling
     const stuck = await env.DB_META.prepare(
-      "SELECT id FROM hf_calls WHERE status IN ('ringing_host','ringing_caller','connected','finalizing') AND created_at < ?1 AND created_at > ?2 LIMIT 20",
+      "SELECT id FROM hf_calls WHERE status IN ('ringing_host','ringing_caller','connected','ending','finalizing') AND created_at < ?1 AND created_at > ?2 LIMIT 20",
     ).bind(now - 3 * 60_000, now - 25 * 3600_000).all<{ id: string }>(); // [HF-STD-PLAN-1] watchdog covers calls up to the 24 h bound
     for (const r of stuck.results ?? []) {
       try { await env.HF_CALL.get(env.HF_CALL.idFromName(r.id)).fetch("https://hfcall/watchdog", { method: "POST", body: "{}" }); } catch { /* next tick */ }

@@ -1,5 +1,7 @@
 // [HF-HOST-PLATFORM-1] HF host options + pure validators. Worker-side mirror of web/src/lib/callvaalHomeReference.ts moods.
 // Keep TOPICS in sync with that file (slug is the stored value).
+import { CREATOR_MAX_RUPEES } from "./hf_creator_pricing";
+
 export type MoodGroupLabel = "Naye dost" | "Mann ki baat" | "Tension" | "Zindagi ki baatein";
 export interface Topic { slug: string; label: string; group: MoodGroupLabel }
 export const TOPICS: readonly Topic[] = [
@@ -112,6 +114,7 @@ export function buildHfOptions() {
     communities: MARKETPLACE_COMMUNITIES.map((item) => ({ ...item })),
     services: MARKETPLACE_SERVICES.map((item) => ({ ...item, topics: [...item.topics] })),
     priceMin: PRICE_MIN,
-    priceMax: PRICE_MAX,
+    hostPriceMax: PRICE_MAX,
+    priceMax: CREATOR_MAX_RUPEES,
   };
 }

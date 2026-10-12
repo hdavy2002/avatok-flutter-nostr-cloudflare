@@ -92,7 +92,7 @@ class _PriceStepState extends ConsumerState<PriceStep> {
     final options = optionsOf(ref.watch(hostOptionsProvider));
     final creator = ctx.state.isCreator;
     final min = creator ? 5 : options?.priceMin ?? 5;
-    final max = creator ? 1000 : options?.priceMax ?? 100;
+    final max = creator ? 1000 : options?.hostPriceMax ?? 100;
     final lock = EditLock.of(ctx.state.hostStatus);
     final locked = lock.priceHoursLocked;
     final banner = lock.banner(editableWhenLive: true);

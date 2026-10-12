@@ -21,7 +21,9 @@ import { readHfStdPlan, type HfStdPlan } from "../lib/hf_token_config"; // [HF-S
 import { formatRupees } from "../lib/hf_token_math";
 import { isCreatorCategory, CREATOR_VERSION } from "../lib/hf_creator_pricing";
 export const SEL = `SELECT h.*, COALESCE((SELECT r2_key FROM hf_host_media m WHERE m.uid=h.uid AND m.kind='profile' AND m.status='active' ORDER BY m.created_at DESC LIMIT 1), a.image_key) AS image_key,
-  CASE WHEN EXISTS (SELECT 1 FROM hf_host_media m WHERE m.uid=h.uid AND m.kind='profile' AND m.status='active') THEN 'uploaded' WHEN a.image_key IS NOT NULL THEN 'ai' ELSE NULL END AS image_source,
+  CASE WHEN EXISTS (SELECT 1 FROM hf_host_media m WHERE m.uid=h.uid AND m.kind='profile' AND m.status='active')
+    THEN CASE WHEN (SELECT job_id FROM hf_host_media m WHERE m.uid=h.uid AND m.kind='profile' AND m.status='active' ORDER BY m.created_at DESC LIMIT 1) IS NOT NULL THEN 'ai' ELSE 'uploaded' END
+    WHEN a.image_key IS NOT NULL THEN 'ai' ELSE NULL END AS image_source,
   (SELECT r2_key FROM hf_host_media m WHERE m.uid=h.uid AND m.kind='intro_audio' AND m.status='active' ORDER BY m.created_at DESC LIMIT 1) AS audio_key,
   (SELECT caption FROM hf_host_media m WHERE m.uid=h.uid AND m.kind='intro_audio' AND m.status='active' ORDER BY m.created_at DESC LIMIT 1) AS audio_caption
   FROM hf_hosts h LEFT JOIN hf_avatars a ON a.id = h.avatar_id`;
@@ -88,7 +90,7 @@ export async function hfHostsPublicRoute(req: Request, env: Env, ctx?: Execution
       return json({
         protectedLane: lane,
         ...card(env, r, (await hostAggregates(env, [r.uid])).get(r.uid), std), reviews: await hostReviews(env, r.uid, 10), aboutPolished: r.about_polished, quote: r.quote,
-        gallery: gal.map((m) => { const j = mediaToJson(env, m); return { url: j.url, caption: j.caption }; }),
+        gallery: gal.map((m) => { const j = mediaToJson(env, m); return { url: j.url, caption: j.caption, imageProvenance: m.job_id ? "ai" : "uploaded" }; }),
       }, 200, lane ? { "cache-control": "private, no-store" } : CACHE);
     }
     const limit = Math.min(48, Math.max(1, Math.floor(Number(url.searchParams.get("limit") || 24)) || 24));

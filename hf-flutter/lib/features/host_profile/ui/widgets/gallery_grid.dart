@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../../../core/strings.dart';
 import '../../../../core/theme/hf_theme.dart';
 import '../../../../core/widgets/widgets.dart';
 import '../../data/host_profile.dart';
@@ -11,7 +10,7 @@ import 'profile_common.dart';
 
 /// The profile gallery: a two-column grid, the first picture spanning both columns (200 tall), then 150 px
 /// tiles. With more than two pictures the second slot is a lavender "+N more" tile. Any tile opens the lightbox.
-/// Every picture carries its own "AI image" label (HF-AVA-1).
+/// AI-generated pictures are labelled individually; uploaded photos are never mislabelled.
 class GalleryGrid extends ConsumerWidget {
   const GalleryGrid({super.key, required this.items});
 
@@ -21,6 +20,7 @@ class GalleryGrid extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     if (items.isEmpty) return const SizedBox.shrink();
     final image = ref.watch(hostImageBuilderProvider);
+    final hasAi = items.any((item) => item.isAi);
     void open(int index) => showGalleryLightbox(
       context,
       items: items,
@@ -30,10 +30,13 @@ class GalleryGrid extends ConsumerWidget {
 
     Widget picture(int i, double height) {
       final item = items[i];
+      final provenance = item.isAi
+          ? HostProfileStrings.aiGalleryImage
+          : HostProfileStrings.galleryImage;
       return Semantics(
         button: true,
         label:
-            '${HostProfileStrings.openPicture(i + 1)}: ${item.caption ?? HostProfileStrings.galleryImage}',
+            '${HostProfileStrings.openPicture(i + 1)}: ${item.caption ?? provenance}',
         excludeSemantics: true,
         child: GestureDetector(
           key: ValueKey('gallery-tile-$i'),
@@ -49,10 +52,10 @@ class GalleryGrid extends ConsumerWidget {
                 children: [
                   ColoredBox(color: HfTint.peach.bg(context)),
                   image(context, item.url, fit: BoxFit.cover),
-                  const Positioned(
+                  Positioned(
                     left: 8,
                     bottom: 8,
-                    child: AiLabel(text: HostProfileStrings.galleryImage),
+                    child: AiLabel(text: provenance),
                   ),
                 ],
               ),
@@ -123,7 +126,7 @@ class GalleryGrid extends ConsumerWidget {
             children: [
               const Flexible(child: SectionTitle(HostProfileStrings.gallery)),
               const SizedBox(width: HfSpacing.sm),
-              Container(
+              if (hasAi) Container(
                 padding: const EdgeInsets.symmetric(
                   horizontal: 10,
                   vertical: 5,
@@ -135,7 +138,7 @@ class GalleryGrid extends ConsumerWidget {
                   borderRadius: BorderRadius.circular(10),
                 ),
                 child: Text(
-                  Strings.aiImagesLabel,
+                  HostProfileStrings.aiImagesMarked,
                   style: HfText.badge.copyWith(color: profileSoftInk(context)),
                 ),
               ),
@@ -208,7 +211,7 @@ class _LightboxState extends State<_Lightbox> {
               itemBuilder: (context, i) => Semantics(
                 image: true,
                 label:
-                    'Picture ${i + 1} of ${items.length}: ${items[i].caption ?? HostProfileStrings.galleryImage}',
+                    'Picture ${i + 1} of ${items.length}: ${items[i].caption ?? (items[i].isAi ? HostProfileStrings.aiGalleryImage : HostProfileStrings.galleryImage)}',
                 excludeSemantics: true,
                 child: InteractiveViewer(
                   child: Center(
@@ -249,7 +252,11 @@ class _LightboxState extends State<_Lightbox> {
                         '${_page + 1} / ${items.length}',
                         style: HfText.badge.copyWith(color: HfColors.white),
                       ),
-                      const AiLabel(text: HostProfileStrings.galleryImage),
+                      AiLabel(
+                        text: items[_page].isAi
+                            ? HostProfileStrings.aiGalleryImage
+                            : HostProfileStrings.galleryImage,
+                      ),
                     ],
                   ),
                 ],

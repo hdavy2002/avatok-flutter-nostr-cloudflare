@@ -1,15 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../../../core/strings.dart';
 import '../../../../core/theme/hf_tokens.dart';
 import '../../../../core/widgets/widgets.dart';
 import '../../data/host_profile.dart';
 import '../../host_profile_strings.dart';
 import 'net_image.dart';
 
-/// Swipeable gallery. The section says "AI images" and every picture carries its own "AI image" label
-/// (HF-AVA-1): the photos are made by AI from the avatar the host chose.
+/// Swipeable gallery with per-image provenance labels.
 class GalleryPager extends ConsumerStatefulWidget {
   const GalleryPager({super.key, required this.items});
 
@@ -33,6 +31,7 @@ class _GalleryPagerState extends ConsumerState<GalleryPager> {
   Widget build(BuildContext context) {
     final image = ref.watch(hostImageBuilderProvider);
     final items = widget.items;
+    final hasAi = items.any((item) => item.isAi);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -48,8 +47,10 @@ class _GalleryPagerState extends ConsumerState<GalleryPager> {
                 style: HfText.title,
               ),
             ),
-            const SizedBox(width: 12),
-            const AiLabel(text: Strings.aiImagesLabel),
+            if (hasAi) ...[
+              const SizedBox(width: 12),
+              const AiLabel(text: HostProfileStrings.aiImagesMarked),
+            ],
           ],
         ),
         const SizedBox(height: HfSpacing.gap),
@@ -61,12 +62,15 @@ class _GalleryPagerState extends ConsumerState<GalleryPager> {
             onPageChanged: (i) => setState(() => _page = i),
             itemBuilder: (context, i) {
               final item = items[i];
+              final provenance = item.isAi
+                  ? HostProfileStrings.aiGalleryImage
+                  : HostProfileStrings.galleryImage;
               return Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 2),
                 child: Semantics(
                   image: true,
                   label:
-                      'Picture ${i + 1} of ${items.length}: ${item.caption ?? HostProfileStrings.galleryImage}',
+                      'Picture ${i + 1} of ${items.length}: ${item.caption ?? provenance}',
                   excludeSemantics: true,
                   child: ClipRRect(
                     borderRadius: BorderRadius.circular(HfRadius.card),
@@ -74,10 +78,10 @@ class _GalleryPagerState extends ConsumerState<GalleryPager> {
                       fit: StackFit.expand,
                       children: [
                         image(context, item.url, fit: BoxFit.cover),
-                        const Positioned(
+                        Positioned(
                           left: 10,
                           bottom: 10,
-                          child: AiLabel(text: HostProfileStrings.galleryImage),
+                          child: AiLabel(text: provenance),
                         ),
                       ],
                     ),

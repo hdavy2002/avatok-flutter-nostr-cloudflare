@@ -147,11 +147,11 @@ async function startCall(req: Request, env: Env): Promise<Response> {
   const limitReason: "time_limit" | "balance" = Math.floor(fundsRupees / rate) >= MAX_CALL_MINUTES ? "time_limit" : "balance";
 
   const freeAll = async () => { await hfRelease(env, uid, callId).catch(() => false); await settleTestCredits(env, uid, callId, 0).catch(() => 0); };
-  if (!(await claimHost(env, host.uid))) {
+  if (!(await claimHost(env, host.uid, callId))) {
     await freeAll();
     return UNAVAILABLE();
   }
-  const undo = async () => { await releaseHost(env, host.uid).catch(() => undefined); await freeAll(); };
+  const undo = async () => { await releaseHost(env, host.uid, callId).catch(() => undefined); await freeAll(); };
   try {
     await env.DB_META.prepare(
       "INSERT INTO hf_calls (id, caller_uid, host_uid, rate_paise, status, lane, created_at, conference_name) VALUES (?1,?2,?3,?4,'ringing_host',?5,?6,?7)",
@@ -185,10 +185,10 @@ async function startTokenCall(env: Env, a: { uid: string; hostUid: string; lane:
   const chk = await prepareTokenStart(env, { uid, callId, ratePaise, tk, std: a.std ?? null, creator: a.creator });
   if (!chk.ok) return err(chk.status, chk.error, chk.message, chk.extra ?? {});
   const undo = async (claimed: boolean) => {
-    if (claimed) await releaseHost(env, hostUid).catch(() => undefined);
+    if (claimed) await releaseHost(env, hostUid, callId).catch(() => undefined);
     await releaseTokenLots(env, callId).catch(() => undefined);
   };
-  if (!(await claimHost(env, hostUid))) { await undo(false); return UNAVAILABLE(); }
+  if (!(await claimHost(env, hostUid, callId))) { await undo(false); return UNAVAILABLE(); }
   const maxMinutes = Math.floor(chk.maxSeconds / 60);
   try {
     await env.DB_META.prepare(
@@ -581,7 +581,7 @@ async function presenceRoute(req: Request, env: Env, p: string, ctx?: ExecutionC
   if (body.online) {
     if (await isClosing(env, u.uid)) { await forceHostOffline(env, u.uid); return err(409, "account_closing", CLOSING_MESSAGE, { reason: "account_closing" }); } // [HF-WALLET-EXIT-1]
     if (!(await verifiedWhatsAppNumber(env, u.uid))) return err(403, "not_verified", "Verify your WhatsApp number to take calls.");
-    await env.DB_META.prepare("UPDATE hf_hosts SET presence=CASE WHEN presence='busy' THEN 'busy' ELSE 'online' END, presence_at=?1 WHERE uid=?2").bind(now, u.uid).run();
+    await env.DB_META.prepare("UPDATE hf_hosts SET presence=CASE WHEN presence='busy' OR presence_call_id IS NOT NULL THEN 'busy' ELSE 'online' END, presence_at=?1 WHERE uid=?2").bind(now, u.uid).run();
   } else {
     await env.DB_META.prepare("UPDATE hf_hosts SET presence='offline', presence_at=?1 WHERE uid=?2").bind(now, u.uid).run();
   }

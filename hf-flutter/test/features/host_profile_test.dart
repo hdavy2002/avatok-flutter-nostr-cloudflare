@@ -42,6 +42,7 @@ Map<String, dynamic> profileJson({
   'displayName': 'Asha',
   'tagline': 'A warm listener',
   'avatarUrl': 'https://media.example.test/a.webp',
+  'imageProvenance': 'ai',
   'languages': ['Hindi', 'English'],
   'style': 'calm',
   'topics': ['naye-dost', 'tension'],
@@ -54,7 +55,7 @@ Map<String, dynamic> profileJson({
   'lgbtqFriendly': lgbtq,
   'womenOnly': womenOnly,
   'introAudioUrl': intro ? 'https://media.example.test/intro.m4a' : null,
-  'introSeconds': intro ? 30 : null,
+  'introSeconds': intro ? 20 : null,
   'status': status,
   'aboutPolished': 'I like a calm chat about everyday life.',
   'quote': quote,
@@ -64,6 +65,7 @@ Map<String, dynamic> profileJson({
             {
               'url': 'https://media.example.test/g$i.webp',
               'caption': i == 1 ? 'Morning chai' : null,
+              'imageProvenance': 'ai',
             },
         ]
       : [],
@@ -360,7 +362,7 @@ void main() {
         );
         for (final label in [
           'AI avatar chosen by the host',
-          'AI images',
+          'AI images are marked',
           'AI image',
           'Recorded by the host',
         ]) {
@@ -397,7 +399,7 @@ void main() {
         final aiDisclosure = const {
           'AI avatar chosen by the host',
           'AI image',
-          'AI images',
+          'AI images are marked',
         }.contains(t.data);
         if (size != null) {
           expect(
@@ -932,6 +934,25 @@ void main() {
       expect(p.reviews, isEmpty);
       expect(p.pricePerMin, 0);
       expect(p.hasIntro, isFalse);
+    });
+
+    test('avatar provenance distinguishes AI and uploaded photos', () {
+      expect(
+        HostProfile.fromJson({
+          'slug': 'ai',
+          'displayName': 'AI',
+          'imageProvenance': 'ai',
+        }).isAiAvatar,
+        isTrue,
+      );
+      expect(
+        HostProfile.fromJson({
+          'slug': 'photo',
+          'displayName': 'Photo',
+          'imageProvenance': 'upload',
+        }).isAiAvatar,
+        isFalse,
+      );
     });
 
     test('review dates read ISO text and epoch milliseconds', () {

@@ -357,7 +357,7 @@ export const realApi: OnboardingApi = {
       const msg = typeof r.body.message === 'string' && r.body.message.trim() ? r.body.message : '';
       const byCode: Record<string, string> = {
         consent_required: 'Please tick the box to say this is your own voice.',
-        too_short: 'Your introduction is too short. Please record at least 30 seconds.',
+        too_short: 'Your introduction is too short. Please record at least 20 seconds.',
         too_long: 'Your introduction is too long. Please keep it under 5 minutes.',
         too_large: 'That recording is too big. Please record a shorter one.',
         locked: 'Your introduction cannot be changed right now.',

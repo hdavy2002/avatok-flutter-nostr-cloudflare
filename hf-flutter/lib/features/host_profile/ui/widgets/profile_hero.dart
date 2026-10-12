@@ -38,18 +38,31 @@ class _ProfileHeroState extends ConsumerState<ProfileHero> {
     final p = widget.profile;
     final avatar = p.avatarUrl;
     final hasAvatar = avatar != null && avatar.isNotEmpty;
+    final avatarAlt = p.isAiAvatar
+        ? HostProfileStrings.aiAvatarAlt
+        : HostProfileStrings.profilePhoto;
     final pictures = <(String, String)>[
       if (hasAvatar)
-        (avatar, '${p.displayName}, ${HostProfileStrings.aiAvatarAlt}'),
+        (avatar, '${p.displayName}, $avatarAlt'),
       for (var i = 0; i < p.gallery.length; i++)
         (
           p.gallery[i].url,
-          'Picture ${i + 1}: ${p.gallery[i].caption ?? HostProfileStrings.galleryImage}',
+          'Picture ${i + 1}: ${p.gallery[i].caption ?? (p.gallery[i].isAi ? HostProfileStrings.aiGalleryImage : HostProfileStrings.galleryImage)}',
         ),
     ];
     final showingAvatar = hasAvatar && _page == 0;
-    final label = showingAvatar || pictures.isEmpty
-        ? HostProfileStrings.aiAvatarChosen
+    final galleryIndex = _page - (hasAvatar ? 1 : 0);
+    final showingAiGallery = galleryIndex >= 0 &&
+        galleryIndex < p.gallery.length &&
+        p.gallery[galleryIndex].isAi;
+    final label = pictures.isEmpty
+        ? HostProfileStrings.noProfilePhoto
+        : showingAvatar
+        ? (p.isAiAvatar
+              ? HostProfileStrings.aiAvatarChosen
+              : HostProfileStrings.profilePhotoChosen)
+        : showingAiGallery
+        ? HostProfileStrings.aiGalleryImage
         : HostProfileStrings.galleryImage;
     final placeholder = ColoredBox(
       color: HfTint.lavender.bg(context),

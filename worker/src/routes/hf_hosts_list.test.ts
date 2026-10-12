@@ -313,7 +313,7 @@ describe("GET /api/hf/options", () => {
     expect(r.status).toBe(200);
     expect(r.headers.get("cache-control")).toBe("public, max-age=3600");
     const b: any = await r.json();
-    expect(Object.keys(b).sort()).toEqual(["communities", "languages", "moodGroups", "priceMax", "priceMin", "services", "styles", "topics"]);
+    expect(Object.keys(b).sort()).toEqual(["communities", "hostPriceMax", "languages", "moodGroups", "priceMax", "priceMin", "services", "styles", "topics"]);
     expect(b.topics).toHaveLength(TOPICS.length);
     expect(b.topics[0]).toEqual({ slug: "roz-thodi-baat", label: "roz thodi baat", group: "Naye dost" });
     expect(b.moodGroups).toEqual([
@@ -329,7 +329,8 @@ describe("GET /api/hf/options", () => {
       { id: "celebrity", label: "Celebrities", category: "celebrity" },
     ]);
     expect(b.services.map((service: any) => service.id)).toEqual(["wellness", "career", "learning"]);
-    expect([b.priceMin, b.priceMax]).toEqual([5, 100]);
+    expect([b.priceMin, b.priceMax]).toEqual([5, 1000]);
+    expect(b.hostPriceMax).toBe(100);
   });
   it("every topic belongs to a listed mood group and every language code resolves in the host-list filter", () => {
     const o = buildHfOptions();

@@ -29,13 +29,17 @@ abstract final class HostProfileStrings {
   static const String languages = 'Languages';
   static const String style = 'Conversation style';
   static const String gallery = 'Gallery';
-  static const String galleryImage = 'AI image';
+  static const String galleryImage = 'Gallery photo';
+  static const String aiGalleryImage = 'AI image';
+  static const String aiImagesMarked = 'AI images are marked';
+  static const String profilePhoto = 'Profile photo';
+  static const String noProfilePhoto = 'No profile photo';
   static const String reviews = 'What callers say';
   static const String noReviews = 'No reviews yet.';
   static const String regular = 'Regular';
   static const String beforeYouCall = 'Before you call';
   static const String disclosure =
-      'The pictures on a profile are made by AI from an avatar the host chose. The voice introduction is the host’s own recording. '
+      'AI-generated pictures are clearly marked. Other profile photos are provided for the listing. The voice introduction is the host’s own recording. '
       'The person you talk to on a call is a real, identity-checked host.';
 
   /// Order and titles follow the Profile mockup: private number, respect, not therapy.
@@ -72,6 +76,7 @@ abstract final class HostProfileStrings {
 
   // Profile redesign (HF-UI-5)
   static const String aiAvatarChosen = 'AI avatar chosen by the host';
+  static const String profilePhotoChosen = 'Profile photo';
   static const String backLabel = 'Back';
   static const String saveLabel = 'Save profile';
   static const String unsaveLabel = 'Remove from saved';

@@ -330,6 +330,10 @@ export class HfCallDO {
       }
       return jsonRes({ ok: true, finalized: true });
     }
+    if (s.finishing) {
+      await this.disconnectAndFinalize(s);
+      return jsonRes({ ok: true, finishing: true });
+    }
     if (!s.connectedAt && now - s.createdAt > 3 * 60_000) await this.finish(s, s.status === "ringing_caller" ? "caller_no_answer" : "no_answer", null, { tellHost: s.status === "ringing_caller" });
     else if (s.connectedAt && now > s.connectedAt + (this.maxSec(s) + 120) * 1000) await this.finish(s, "completed", s.limitReason);
     return jsonRes({ ok: true });
@@ -350,7 +354,12 @@ export class HfCallDO {
         }
         return;
       }
-      if (due("disconnect")) { delete s.tasks.disconnect; await this.save(s); await this.disconnectAndFinalize(s); return; }
+      if (due("disconnect")) {
+        s.tasks.disconnect = now + 30_000;
+        await this.save(s);
+        await this.disconnectAndFinalize(s);
+        return;
+      }
       if (due("limit")) { await this.finish(s, "completed", s.limitReason); return; }
       if (due("warn")) {
         delete s.tasks.warn; await this.save(s);
@@ -394,7 +403,7 @@ export class HfCallDO {
         callerDone: o.skipCallerLeg === true || !s.callerLeg,
       };
       s.status = "ending";
-      s.tasks = {};
+      s.tasks = { disconnect: Date.now() + 30_000 };
       await this.save(s);
     }
     return this.disconnectAndFinalize(s);
@@ -490,7 +499,7 @@ export class HfCallDO {
   private async settleAndPost(s: S): Promise<void> {
     if (!s.bill.hostReleased) {
       try {
-        await releaseHost(this.env, s.hostUid);
+        await releaseHost(this.env, s.hostUid, s.callId);
         s.bill.hostReleased = true;
         await this.save(s);
       } catch (e) {

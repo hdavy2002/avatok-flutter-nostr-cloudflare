@@ -11,6 +11,7 @@ class HostProfile {
     required this.displayName,
     this.tagline,
     this.avatarUrl,
+    this.imageProvenance,
     this.languages = const <String>[],
     this.style,
     this.topics = const <String>[],
@@ -39,6 +40,7 @@ class HostProfile {
   final String displayName;
   final String? tagline;
   final String? avatarUrl;
+  final String? imageProvenance;
   final List<String> languages;
 
   /// Conversation style key (`warm`, `calm`, ...). Show with [styleLabel].
@@ -70,6 +72,7 @@ class HostProfile {
   final List<HostReview> reviews;
 
   bool get hasIntro => (introAudioUrl ?? '').isNotEmpty;
+  bool get isAiAvatar => imageProvenance == 'ai';
 
   String get priceLabel {
     final fromServer = serverPriceLabel;
@@ -112,6 +115,7 @@ class HostProfile {
       displayName: _s(j['displayName']) ?? '',
       tagline: _s(j['tagline']),
       avatarUrl: _s(j['avatarUrl']),
+      imageProvenance: _s(j['imageProvenance']),
       languages: _strings(j['languages']),
       style: _s(j['style']),
       topics: _strings(j['topics']),
@@ -165,16 +169,19 @@ class HostProfile {
 }
 
 class GalleryImage {
-  const GalleryImage({required this.url, this.caption});
+  const GalleryImage({required this.url, this.caption, this.imageProvenance});
 
   final String url;
   final String? caption;
+  final String? imageProvenance;
+  bool get isAi => imageProvenance == 'ai';
 
   factory GalleryImage.fromJson(Map<String, dynamic> j) {
     final c = (j['caption'] ?? '').toString().trim();
     return GalleryImage(
       url: (j['url'] ?? '').toString(),
       caption: c.isEmpty ? null : c,
+      imageProvenance: HostProfile._s(j['imageProvenance']),
     );
   }
 }

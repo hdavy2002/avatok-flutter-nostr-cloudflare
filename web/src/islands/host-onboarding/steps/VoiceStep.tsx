@@ -1,4 +1,4 @@
-/* [HF-VOICE-INTRO-1] The host records their OWN voice introduction (30 s minimum, about 1 min suggested, 5 min max).
+/* [HF-VOICE-INTRO-1] The host records their OWN voice introduction (20 s minimum, about 1 min suggested, 5 min max).
  * No voice copying, no AI voice. An admin listens before it goes live on the card and profile. */
 import { useCallback, useEffect, useRef, useState } from 'react';
 import Icon from '../Icon';

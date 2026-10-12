@@ -72,7 +72,7 @@ export const SELFIE_SEC = 10;
 export const UPI_RE = /^[a-zA-Z0-9._-]{2,256}@[a-zA-Z][a-zA-Z0-9.-]{1,63}$/;
 export const IFSC_RE = /^[A-Z]{4}0[A-Z0-9]{6}$/;
 
-export const VOICE_MIN_SEC = 30;
+export const VOICE_MIN_SEC = 20;
 export const VOICE_MAX_SEC = 300;
 export const VOICE_SUGGEST_SEC = 60;
 
