@@ -156,10 +156,11 @@ void main() {
       expect(minutesText(tester), 'About 6 minutes at ₹7.00/min');
     });
 
-    testWidgets('with nothing known, the rate is Rs 10', (tester) async {
+    testWidgets('an unknown rate does not invent a minutes estimate', (tester) async {
       SharedPreferences.setMockInitialValues(<String, Object>{});
       await pumpWallet(tester, api: walletApi(), billing: billing);
-      expect(minutesText(tester), 'About 4 minutes at ₹10.00/min');
+      expect(find.text('₹45.20'), findsOneWidget);
+      expect(find.byKey(const ValueKey<String>('balance-minutes')), findsNothing);
     });
 
     testWidgets('a zero balance says how to start', (tester) async {
@@ -175,7 +176,12 @@ void main() {
         ),
         billing: billing,
       );
-      expect(minutesText(tester), 'Add money to start talking');
+      expect(find.text('₹0.00'), findsOneWidget);
+      expect(find.byKey(const ValueKey<String>('balance-minutes')), findsNothing);
+      expect(
+        find.text('No money in your wallet yet. Add money below to start calling.'),
+        findsOneWidget,
+      );
     });
 
     testWidgets(

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hf_app/core/router/app_router.dart';
 import 'package:hf_app/features/auth/ui/sign_in_screen.dart';
+import 'package:hf_app/features/explore/data/explore_controller.dart';
 import 'package:hf_app/features/explore/ui/explore_screen.dart';
 import 'package:hf_app/features/explore/widgets/host_card_view.dart';
 import 'package:hf_app/features/welcome/ui/welcome_screen.dart';
@@ -55,7 +56,8 @@ void main() {
     expect(find.byType(ExploreScreen), findsOneWidget);
     expect(find.byType(SignInScreen), findsNothing);
     expect(find.byType(WelcomeScreen), findsNothing);
-    expect(find.text('Who would you like to talk to?'), findsOneWidget);
+    expect(find.text('Explore'), findsWidgets);
+    expect(find.text('Real people. Real conversations.'), findsOneWidget);
     expect(find.text('Mood, language or name'), findsOneWidget);
     expect(find.text('Everyone'), findsOneWidget);
     expect(find.text('Women-only'), findsOneWidget);
@@ -66,15 +68,12 @@ void main() {
   });
 
   testWidgets(
-    'guest header: greeting without a name, wallet pill says Sign in and opens the wallet',
+    'guest header shows discovery copy and a Sign in wallet pill',
     (tester) async {
       final api = fakeApi()
         ..onJson('GET', '/api/hf/hosts', pageJson([hostJson('asha')]));
       await pumpScreen(tester, api: api, location: '/');
-      expect(
-        find.textContaining(RegExp(r'^Good (morning|afternoon|evening)$')),
-        findsOneWidget,
-      );
+      expect(find.text('Real people. Real conversations.'), findsOneWidget);
       expect(
         find.descendant(
           of: find.byKey(const ValueKey<String>('wallet-pill')),
@@ -87,7 +86,7 @@ void main() {
   );
 
   testWidgets(
-    'signed in: greeting with the first name and the rupee balance on the pill',
+    'signed-in discovery shows the live rupee balance on the wallet pill',
     (tester) async {
       final api = fakeApi()
         ..onJson('GET', '/api/hf/hosts', pageJson([hostJson('asha')]))
@@ -101,12 +100,7 @@ void main() {
         session: signedInState(),
         location: '/',
       );
-      expect(
-        find.textContaining(
-          RegExp(r'^Good (morning|afternoon|evening), Asha$'),
-        ),
-        findsOneWidget,
-      );
+      expect(find.text('Real people. Real conversations.'), findsOneWidget);
       expect(
         find.descendant(
           of: find.byKey(const ValueKey<String>('wallet-pill')),
@@ -144,34 +138,41 @@ void main() {
     );
   });
 
-  testWidgets('search honestly filters loaded profiles and can be cleared', (
+  testWidgets('search uses server results and clearing restores the feed', (
     tester,
   ) async {
     final api = fakeApi()
-      ..onJson(
+      ..on(
         'GET',
         '/api/hf/hosts',
-        pageJson([
-          hostJson('asha', name: 'Asha'),
-          hostJson('bela', name: 'Bela'),
-        ]),
+        (call) => switch (call.query?['q']) {
+          'Bela' => pageJson([hostJson('bela', name: 'Bela')]),
+          'no match' => pageJson([]),
+          _ => pageJson([hostJson('asha', name: 'Asha')]),
+        },
       );
-    await pumpScreen(tester, api: api, location: '/');
+    final container = await pumpScreen(tester, api: api, location: '/');
     await tester.enterText(find.byType(TextField), 'Bela');
+    await tester.pump(const Duration(milliseconds: 400));
     await tester.pumpAndSettle();
+    expect(container.read(exploreControllerProvider).filters.search, 'Bela');
+    expect(api.callsTo('GET', '/api/hf/hosts').last.query?['q'], 'Bela');
     await revealHome(tester, hostNamed('Bela'));
     expect(hostNamed('Bela'), findsOneWidget);
     expect(find.text('Asha'), findsNothing);
     await returnToHeader(tester);
     await tester.ensureVisible(find.byType(TextField));
     await tester.enterText(find.byType(TextField), 'no match');
+    await tester.pump(const Duration(milliseconds: 400));
     await tester.pumpAndSettle();
-    await revealHome(tester, find.text('No matching hosts shown yet.'));
-    expect(find.text('No matching hosts shown yet.'), findsOneWidget);
+    await revealHome(tester, find.text('No one matches. Try fewer filters.'));
+    expect(find.text('No one matches. Try fewer filters.'), findsOneWidget);
     await returnToHeader(tester);
     await tester.ensureVisible(find.byTooltip('Clear search'));
     await tester.tap(find.byTooltip('Clear search'));
+    await tester.pump(const Duration(milliseconds: 400));
     await tester.pumpAndSettle();
+    expect(api.callsTo('GET', '/api/hf/hosts').last.query?['q'], isNull);
     await revealHome(tester, hostNamed('Asha'));
     expect(hostNamed('Asha'), findsOneWidget);
   });
@@ -210,7 +211,7 @@ void main() {
       location: '/',
       size: const Size(320, 800),
     );
-    expect(find.text('Who would you like to talk to?'), findsOneWidget);
+    expect(find.text('Real people. Real conversations.'), findsOneWidget);
     await revealHome(tester, hostNamed('Asha with a long name'));
     expect(hostNamed('Asha with a long name'), findsOneWidget);
     expect(tester.takeException(), isNull);

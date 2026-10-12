@@ -12,6 +12,7 @@ HostCard card(
   String slug, {
   String status = 'online',
   String? intro,
+  String? imageProvenance,
   double? rating = 4.5,
   int reviews = 3,
 }) => HostCard.tryParse(
@@ -19,6 +20,7 @@ HostCard card(
     slug,
     status: status,
     intro: intro,
+    imageProvenance: imageProvenance,
     rating: rating,
     reviews: reviews,
   ),
@@ -271,11 +273,17 @@ void main() {
   });
 
   testWidgets(
-    'rating shows stars and count, or New for an unrated host; the AI avatar label is always there',
+    'rating shows stars and count, or New; AI avatars keep their disclosure',
     (tester) async {
       await pumpCards(tester, [
-        HostCardView(host: card('a', rating: 4.5, reviews: 3), animate: false),
-        HostCardView(host: card('b', rating: null, reviews: 0), animate: false),
+        HostCardView(
+          host: card('a', rating: 4.5, reviews: 3, imageProvenance: 'ai'),
+          animate: false,
+        ),
+        HostCardView(
+          host: card('b', rating: null, reviews: 0, imageProvenance: 'ai'),
+          animate: false,
+        ),
       ]);
       expect(find.textContaining('4.5'), findsOneWidget);
       expect(find.text('New'), findsOneWidget);
@@ -286,13 +294,30 @@ void main() {
   testWidgets(
     'the mini card (Online now strip) shows name, price, status and the AI avatar label',
     (tester) async {
-      await pumpCards(tester, [HostMiniCard(host: card('a'), animate: false)]);
+      await pumpCards(tester, [
+        HostMiniCard(host: card('a', imageProvenance: 'ai'), animate: false),
+      ]);
       expect(find.text('Host a'), findsOneWidget);
-    expect(find.text('₹10.00/min'), findsOneWidget);
+      expect(find.text('₹10.00/min'), findsOneWidget);
       expect(find.text('Online now'), findsOneWidget);
       expect(find.text('AI avatar'), findsOneWidget);
     },
   );
+
+  testWidgets('uploaded and unknown avatars are not labelled as AI', (
+    tester,
+  ) async {
+    await pumpCards(tester, [
+      HostCardView(
+        host: card('uploaded', imageProvenance: 'upload'),
+        animate: false,
+      ),
+      HostMiniCard(host: card('unknown'), animate: false),
+    ]);
+    expect(find.text('Host uploaded'), findsOneWidget);
+    expect(find.text('Host unknown'), findsOneWidget);
+    expect(find.text('AI avatar'), findsNothing);
+  });
 
   testWidgets('tap on a card runs onTap', (tester) async {
     var taps = 0;

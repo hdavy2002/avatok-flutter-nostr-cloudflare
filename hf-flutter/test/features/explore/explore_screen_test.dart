@@ -97,7 +97,17 @@ void main() {
       expect(container.read(exploreControllerProvider).items.single.slug, 'distant');
     });
     testWidgets('communities, topics and See all open server-backed filters', (tester) async {
-      final api = fakeApi()..onJson('GET', '/api/hf/hosts', pageJson([]));
+      final api = fakeApi()
+        ..onJson('GET', '/api/hf/hosts', pageJson([]))
+        ..onJson('GET', '/api/hf/options', {
+          ...optionsJson(),
+          'communities': [
+            {'id': 'celebrity', 'label': 'Celebrities', 'category': 'celebrity'},
+          ],
+          'services': [
+            {'id': 'tension-a', 'label': 'Exam tension', 'topics': ['tension-a']},
+          ],
+        });
       final container = await pumpScreen(tester, api: api, liveSections: true);
       await revealResult(tester, find.byKey(const ValueKey('see-all-Influencers & creators')));
       await tester.pumpAndSettle();
@@ -471,18 +481,42 @@ void main() {
       expect(api.callsTo('GET', '/api/hf/hosts').last.query!['limit'], 1);
     });
 
-    testWidgets('there is no price filter or price sort under the standard plan', (
+    testWidgets('Standard hosts have no price filter or price sort', (
       tester,
     ) async {
       final api = fakeApi()
         ..onJson('GET', '/api/hf/hosts', pageJson([hostJson('asha')]));
-      await pumpScreen(tester, api: api);
+      await pumpScreen(tester, api: api, location: '/explore?category=standard');
+      expect(find.text(ExploreCopy.sameRate), findsOneWidget);
       await tester.tap(find.byKey(const ValueKey<String>('open-filters')));
       await tester.pumpAndSettle();
       expect(find.byKey(const ValueKey<String>('filter-price')), findsNothing);
       expect(find.text('Price per minute'), findsNothing);
       expect(find.text('Price: low to high'), findsNothing);
     });
+
+    for (final category in <String?>[null, 'influencer', 'celebrity', 'creators']) {
+      testWidgets('${category ?? 'mixed'} feed retains creator price controls', (
+        tester,
+      ) async {
+        final api = fakeApi()
+          ..onJson('GET', '/api/hf/hosts', pageJson([hostJson('asha')]));
+        await pumpScreen(
+          tester,
+          api: api,
+          location: category == null ? '/explore' : '/explore?category=$category',
+        );
+        expect(find.text(ExploreCopy.sameRate), findsNothing);
+        await tester.tap(find.byKey(const ValueKey<String>('open-filters')));
+        await tester.pumpAndSettle();
+        expect(find.byKey(const ValueKey<String>('filter-price')), findsOneWidget);
+        await tapInSheet(tester, find.text('Price: low to high'));
+        await tester.tap(find.byKey(const ValueKey<String>('filter-show')));
+        await tester.pumpAndSettle();
+        expect(listCalls(api).last.query?['sort'], 'price_low');
+        expect(listCalls(api).last.query?['category'], category);
+      });
+    }
 
     testWidgets('flag off restores price filter, sort, and request state', (
       tester,
@@ -554,9 +588,11 @@ void main() {
       await pumpScreen(
         tester,
         api: api,
-        location: '/explore?topics=tension-a&max=20',
+        location: '/explore?category=standard&topics=tension-a'
+            '&min=5&max=20&sort=price_low',
       );
       expect(listCalls(api).first.query, {
+        'category': 'standard',
         'topic': 'tension-a',
         'limit': 24,
         'offset': 0,
@@ -782,7 +818,15 @@ void main() {
         ..onJson(
           'GET',
           '/api/hf/hosts',
-          pageJson([hostJson('asha', name: 'Asha', price: 12, status: 'busy')]),
+          pageJson([
+            hostJson(
+              'asha',
+              name: 'Asha',
+              price: 12,
+              status: 'busy',
+              imageProvenance: 'ai',
+            ),
+          ]),
         );
       await pumpScreen(tester, api: api);
       await revealResult(tester, find.text('Asha'));

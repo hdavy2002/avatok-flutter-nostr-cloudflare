@@ -121,11 +121,13 @@ class GalleryGrid extends ConsumerWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          Wrap(
+            alignment: WrapAlignment.spaceBetween,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            spacing: HfSpacing.sm,
+            runSpacing: HfSpacing.sm,
             children: [
-              const Flexible(child: SectionTitle(HostProfileStrings.gallery)),
-              const SizedBox(width: HfSpacing.sm),
+              const SectionTitle(HostProfileStrings.gallery),
               if (hasAi) Container(
                 padding: const EdgeInsets.symmetric(
                   horizontal: 10,
