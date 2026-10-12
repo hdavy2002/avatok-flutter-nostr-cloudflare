@@ -84,6 +84,8 @@ Future<void> _pumpScreen(
 }) async {
   await tester.pumpWidget(
     ProviderScope(
+      // Each independent screen has its own API/session overrides and state.
+      key: boundaryKey,
       overrides: [
         apiClientProvider.overrideWithValue(api),
         clerkProvider.overrideWithValue(clerk ?? _FakeEmailClerk()),
@@ -101,8 +103,11 @@ Future<void> _pumpScreen(
 }
 
 Future<void> _tapVisible(WidgetTester tester, Finder finder) async {
-  await tester.ensureVisible(finder);
-  await tester.pump();
+  // Finish the text field's pending caret scroll before revealing the action.
+  FocusManager.instance.primaryFocus?.unfocus();
+  await _settle(tester);
+  await Scrollable.ensureVisible(tester.element(finder), alignment: 0.5);
+  await _settle(tester);
   expect(finder.hitTestable(), findsOneWidget);
   await tester.tap(finder);
   await _settle(tester);
