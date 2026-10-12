@@ -74,6 +74,8 @@ export async function hfCreatorListingsAdminRoute(req: Request, env: Env, ctx?: 
     if (!uid && req.method === "POST") {
       const input = await body(req);
       if (!input || typeof input.uid !== "string" || !/^[A-Za-z0-9._:-]{1,128}$/.test(input.uid) || !isCreatorCategory(input.category)) return fail(400, "invalid_field", { field: "uid_or_category" });
+      const account = await env.DB_META.prepare("SELECT uid FROM users WHERE uid=?1").bind(input.uid).first<{ uid: string }>();
+      if (!account) return fail(404, "account_not_found", { field: "uid" });
       if (await getHost(env, input.uid)) return fail(409, "listing_exists");
       // Draft creation does not fabricate an identity, verified phone, KYC, media or public availability.
       await upsertHost(env, input.uid, { category: input.category, status: "draft" });

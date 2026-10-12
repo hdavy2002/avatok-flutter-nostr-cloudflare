@@ -16,6 +16,7 @@ const call = (suffix: string, method = "GET", data?: unknown) => hfCreatorListin
 beforeEach(async () => {
   auth.uid = "admin";
   const db = makeDb(["2026-10-09-hf-hosts.sql", "2026-10-09-hf-host-kyc.sql", "2026-10-09-hf-voice-intro.sql", "2026-10-12-hf-creator-price-alters.sql"], { alters: true });
+  db._raw.exec("CREATE TABLE users(uid TEXT PRIMARY KEY); INSERT INTO users(uid) VALUES ('creator')");
   db._raw.exec("CREATE TABLE admin_audit(id TEXT PRIMARY KEY,admin_id TEXT,action TEXT,target TEXT,meta TEXT,created_at INTEGER)");
   env = { DB_META: db, DB_WALLET: db, HF_PII_KEY: btoa("t".repeat(32)), BLOSSOM_BASE_URL: "https://media.example.invalid", VERIFICATION: { put: vi.fn(), delete: vi.fn() } };
 });
@@ -27,6 +28,11 @@ describe("creator draft administration", () => {
     expect((await call("", "POST", { uid: "creator", category: "typo" })).status).toBe(400);
     expect((await call("", "POST", { uid: "creator", category: "celebrity" })).status).toBe(201);
     expect((await call("", "POST", { uid: "creator", category: "celebrity" })).status).toBe(409);
+  });
+  it("cannot create a listing for an account that does not exist", async () => {
+    const response = await call("", "POST", { uid: "missing", category: "influencer" });
+    expect(response.status).toBe(404);
+    expect(await response.json()).toMatchObject({ error: "account_not_found", field: "uid" });
   });
   it("saves encrypted private phone, exposes it only to the admin, and keeps empty drafts unpublished", async () => {
     await call("", "POST", { uid: "creator", category: "influencer" });
