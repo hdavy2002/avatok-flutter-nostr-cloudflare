@@ -46,12 +46,12 @@ FakeApiClient okApi({
   ..onJson('GET', '/api/hf/me', me)
   ..onJson('POST', '/api/hf/me/ack', {'ok': true});
 
-GoRouter signInRouter() => GoRouter(
+GoRouter signInRouter({String? next = '/me'}) => GoRouter(
   initialLocation: '/sign-in',
   routes: [
     GoRoute(
       path: '/sign-in',
-      builder: (_, __) => const SignInScreen(next: '/me'),
+      builder: (_, __) => SignInScreen(next: next),
     ),
     GoRoute(
       path: '/me',
@@ -69,15 +69,24 @@ Future<void> enterNumber(
   WidgetTester tester, [
   String number = '9876543210',
 ]) async {
+  await tester.ensureVisible(find.byKey(_phoneKey));
+  await tester.pump();
   await tester.enterText(find.byKey(_phoneKey), number);
   await tester.pump();
 }
 
-Future<void> tapSend(WidgetTester tester) async {
-  await tester.ensureVisible(find.text(SignInCopy.sendCode));
-  await tester.tap(find.text(SignInCopy.sendCode));
+Future<void> tapVisible(WidgetTester tester, Finder finder) async {
+  await tester.ensureVisible(finder);
+  // Scrolling changes the layout on the next frame. Tapping before that frame
+  // still uses the old, off-screen position in the taller identity layout.
+  await tester.pump();
+  expect(finder.hitTestable(), findsOneWidget);
+  await tester.tap(finder);
   await settle(tester);
 }
+
+Future<void> tapSend(WidgetTester tester) =>
+    tapVisible(tester, find.text(SignInCopy.sendCode));
 
 Future<void> toCodeStep(WidgetTester tester) async {
   await enterNumber(tester);
@@ -85,6 +94,8 @@ Future<void> toCodeStep(WidgetTester tester) async {
 }
 
 Future<void> enterCode(WidgetTester tester, [String code = '123456']) async {
+  await tester.ensureVisible(find.byKey(_codeKey));
+  await tester.pump();
   await tester.enterText(find.byKey(_codeKey), code);
   await settle(tester);
 }
@@ -109,6 +120,44 @@ void main() {
     }),
   );
   tearDown(() => AccountScope.id = null);
+
+  group('landing', () {
+    testWidgets('Log in opens email and WhatsApp without registration consent', (
+      tester,
+    ) async {
+      final api = okApi();
+      await pumpRouter(tester, signInRouter(next: null), api: api);
+      expect(find.byKey(_phoneKey), findsNothing);
+      await tapVisible(tester, find.text('Log in'));
+      expect(find.byKey(const ValueKey('identity-email')), findsOneWidget);
+      expect(find.byKey(_phoneKey), findsOneWidget);
+      expect(find.text(SignInCopy.ageTick), findsNothing);
+      expect(api.callsTo('POST', _sendPath), isEmpty);
+    });
+
+    testWidgets('Sign up requires fresh consent before sending a WhatsApp code', (
+      tester,
+    ) async {
+      final api = okApi();
+      await pumpRouter(tester, signInRouter(next: null), api: api);
+      await tapVisible(tester, find.text('Sign up'));
+      expect(find.byKey(const ValueKey('identity-email')), findsNothing);
+      expect(find.text(SignInCopy.ageTick), findsOneWidget);
+      await enterNumber(tester);
+      expect(isEnabled(tester, SignInCopy.sendCode), isFalse);
+      expect(api.callsTo('POST', _sendPath), isEmpty);
+      await tapVisible(
+        tester,
+        find.byKey(const ValueKey<String>('signin-age-tick')),
+      );
+      await tapSend(tester);
+      expect(api.callsTo('POST', _sendPath).single.body, {
+        'phone': '+919876543210',
+        'client': 'android',
+      });
+      expect(find.byKey(_codeKey), findsOneWidget);
+    });
+  });
 
   group('number step', () {
     testWidgets(
@@ -238,16 +287,14 @@ void main() {
         SharedPreferences.setMockInitialValues(<String, Object>{});
         final api = okApi();
         await pumpRouter(tester, signInRouter(), api: api);
-        await tester.tap(find.text('Create account'));
-        await tester.pump();
+        await tapVisible(tester, find.text('Create account'));
         expect(find.text(SignInCopy.ageTick), findsOneWidget);
         await enterNumber(tester);
         expect(isEnabled(tester, SignInCopy.sendCode), isFalse);
-        await tester.ensureVisible(
+        await tapVisible(
+          tester,
           find.byKey(const ValueKey<String>('signin-age-tick')),
         );
-        await tester.tap(find.byKey(const ValueKey<String>('signin-age-tick')));
-        await tester.pump();
         expect(isEnabled(tester, SignInCopy.sendCode), isTrue);
       },
     );
@@ -321,14 +368,12 @@ void main() {
       final api = okApi();
       final router = signInRouter();
       await pumpRouter(tester, router, api: api);
-      await tester.tap(find.text('Create account'));
-      await tester.pump();
+      await tapVisible(tester, find.text('Create account'));
       await enterNumber(tester);
-      await tester.ensureVisible(
+      await tapVisible(
+        tester,
         find.byKey(const ValueKey<String>('signin-age-tick')),
       );
-      await tester.tap(find.byKey(const ValueKey<String>('signin-age-tick')));
-      await tester.pump();
       await tapSend(tester);
       await enterCode(tester);
       expect(
@@ -501,8 +546,7 @@ void main() {
           await tester.pump(const Duration(seconds: 1));
         }
         expect(find.text(SignInCopy.resend), findsOneWidget);
-        await tester.tap(find.text(SignInCopy.resend));
-        await settle(tester);
+        await tapVisible(tester, find.text(SignInCopy.resend));
         expect(api.callsTo('POST', _sendPath), hasLength(2));
         expect(find.text(SignInCopy.resendIn(30)), findsOneWidget);
       },
@@ -511,8 +555,7 @@ void main() {
     testWidgets('Change number goes back and keeps the digits', (tester) async {
       await pumpRouter(tester, signInRouter(), api: okApi());
       await toCodeStep(tester);
-      await tester.tap(find.text(SignInCopy.changeNumber));
-      await settle(tester);
+      await tapVisible(tester, find.text(SignInCopy.changeNumber));
       expect(find.text(SignInCopy.sendCode), findsOneWidget);
       expect(
         tester.widget<TextField>(find.byKey(_phoneKey)).controller!.text,
@@ -571,6 +614,7 @@ void main() {
       await pumpRouter(tester, router, api: okApi());
       await tester.tap(find.text('open'));
       await settle(tester);
+      await tapVisible(tester, find.text('Log in'));
       await toCodeStep(tester);
       await enterCode(tester);
       expect(find.text('result: true'), findsOneWidget);
