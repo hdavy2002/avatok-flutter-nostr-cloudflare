@@ -1,0 +1,20 @@
+# Host/fan homepage asset provenance
+
+Issue: HF-HOME-HOST-FAN-1. Generated with the built-in `image_gen` tool, not a paid CLI/API fallback. Each photo was generated separately using the approved homepage mock as a visual reference. All generated images were inspected before use. No source photo contains UI, copy, names, domains, prices, buttons or logos; those are accessible HTML/SVG. The SVG paper texture is code-native.
+
+Reference: `hello-fraands-host-fan-homepage-mock-v2.png` (approved 2026-10-12).
+
+Common photo prompt: “Use case: photorealistic-natural. Asset type: single photographic website asset. Use supplied website mock as visual reference for the people and warm editorial photographic impression. Reconstruct [subject below]. No UI, no text, no letters, no names, no logos, no watermarks, no cards, no buttons. Single finished high quality photo, fill frame.”
+
+| Asset | Subject prompt |
+| --- | --- |
+| hero.webp / hero.jpg | Reconstruct JUST the smiling adult Indian woman in the top hero wearing a vibrant embroidered coral and cream kurta and silver jhumka earrings, looking at a black phone held in her right hand. Long dark wavy hair, warm natural light. Frame head to waist, composition centered, teal and warm ochre textured paper background, tactile subtle torn paper collage edge. Keep the same warm human editorial photographic impression. No interface, no other people, no text, no letters, no logos, no watermarks, no cards, no buttons. Portrait 4:5; suitable for HTML overlays. |
+| neha.webp | Just the first creator card photo: young adult Indian woman with long dark wavy hair, rose-pink top, chin resting on hand and smiling at camera, softly blurred warm room with plants. Head and shoulders. Landscape 4:3. |
+| arjun.webp | Just the second creator card photo: smiling young adult Indian man with curly dark hair, glasses, short beard and black hoodie in gaming chair, softly blurred purple blue gaming room. Head and shoulders. Landscape 4:3. |
+| meera.webp | Just the third creator card photo: young adult Indian woman with dark ponytail, black sleeveless athletic top, head resting lightly on hand, warm friendly smile, softly blurred light gym with plants. Head and shoulders. Landscape 4:3. |
+| rohit.webp | Just the fourth creator card photo and male host: young adult Indian man with dark curly wavy hair, short beard, printed indigo and coral shirt, friendly thoughtful smile and head tilted slightly, softly blurred studio room and film posters. Head and shoulders. Landscape 4:3. |
+| women.webp | Just the women community photo: two smiling adult Indian women chatting on their own phones, one in a rose kurta with long straight dark hair on the left, one with shoulder-length curls and cream printed top on the right. Warm coral and cream paper collage background. Half length side by side. Landscape 4:3. No paper notes. |
+| community.webp | Just the LGBTQ community photo: two smiling young adult Indian people talking on their own phones, person on left curly hair and glasses wearing rainbow checked shirt, person on right with short dark hair wearing denim shirt. Warm lavender paper collage background with a small rainbow flag behind. Half length side by side. Landscape 4:3. No paper notes. |
+| host.webp | Recreate JUST the smiling man in the hero video call inset, wearing a dark olive overshirt over white T-shirt, wavy dark hair, light beard, looking at camera with hand raised in friendly wave. Young adult Indian man. Waist-up camera view in soft warm studio, bookcase blurred. Portrait 4:5. Realistic editorial photograph. No interface, no buttons, no text, no logos, no watermark. No paper border. The actual phone controls will be added with HTML. |
+
+Delivery: hero 1000×1250 WebP plus JPEG social fallback; creator and community photographs 800×600 WebP; host 600×750 WebP. Encoded with Sharp (quality 86 WebP, 88 JPEG). Full-resolution generated originals remain in the tool’s generated-images directory. No original reference screenshot is shipped.

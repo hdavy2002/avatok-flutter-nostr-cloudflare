@@ -1,21 +1,18 @@
 ---
 export const prerender = true;
 import brandConfig from '../../../Specs/brand.json';
-import { publicImage } from '../lib/config';
-import { moodGroups, moods, profiles } from '../lib/callvaalHomeReference';
 import ModernIcon from '../components/home/ModernIcon.astro';
-import '../styles/callvaal-notebook.css';
-import ProfileCard from '../components/callvaal/ProfileCard.astro';
-import LiveHostCards from '../islands/hosts/LiveHostCards';
 import HelloFraandsHeader from '../components/callvaal/Header.astro';
 import HelloFraandsFooter from '../components/callvaal/Footer.astro';
-import WomenOnlySection from '../components/callvaal/WomenOnlySection.astro';
-import SafetySection from '../components/callvaal/SafetySection.astro';
-import HomePrivacySteps from '../components/callvaal/HomePrivacySteps.astro';
+import CreatorPreviewCard from '../components/callvaal/CreatorPreviewCard.astro';
+import { creatorPreviews, homeCopy } from '../lib/hostFanHomeReference';
+import '../styles/callvaal-notebook.css';
+import '../styles/host-fan-home.css';
 const identity = brandConfig.homepageIdentity;
-const title = `Baat karo. Dil halka karo. | ${identity.name}`;
-const description = 'Talk to a real person in your language, right now. Your number stays private. Pay per minute. 18+.';
+const title = `${homeCopy.heroTitle} | ${identity.name}`;
+const description = homeCopy.heroDescription;
 const canonical = `https://${identity.domain}/`;
+const assets = '/assets/callvaal/host-fan/';
 ---
 <!doctype html>
 <html lang="en-IN">
@@ -24,68 +21,65 @@ const canonical = `https://${identity.domain}/`;
   <title>{title}</title><meta name="description" content={description} /><link rel="canonical" href={canonical} /><meta name="theme-color" content="#46113e" /><meta name="robots" content="index,follow" />
   <script type="application/ld+json" set:html={JSON.stringify({ '@context': 'https://schema.org', '@type': 'WebPage', name: title, description, url: canonical, inLanguage: 'en-IN' })} />
   <meta property="og:type" content="website" /><meta property="og:site_name" content={identity.name} /><meta property="og:title" content={title} /><meta property="og:description" content={description} /><meta property="og:url" content={canonical} />
-  <meta property="og:image" content={`${canonical}assets/callvaal/scrapbook/hero-collage-friendship.jpg`} /><meta property="og:image:alt" content={`${identity.name}: a man and woman on calls, a friendship checklist and everyday Indian keepsakes on colourful paper.`} />
-  <meta name="twitter:card" content="summary_large_image" /><meta name="twitter:title" content={title} /><meta name="twitter:description" content={description} /><meta name="twitter:image" content={`${canonical}assets/callvaal/scrapbook/hero-collage-friendship.jpg`} />
+  <meta property="og:image" content={`${canonical}assets/callvaal/host-fan/hero.jpg`} /><meta property="og:image:alt" content="An illustrative creator smiling at her phone against teal and yellow scrapbook paper." />
+  <meta name="twitter:card" content="summary_large_image" /><meta name="twitter:title" content={title} /><meta name="twitter:description" content={description} /><meta name="twitter:image" content={`${canonical}assets/callvaal/host-fan/hero.jpg`} />
   <link rel="icon" href="/assets/callvaal/notebook/favicon.svg" type="image/svg+xml" />
   <link data-site-fonts rel="preload" href="/fonts/Comfortaa-Bold.ttf" as="font" type="font/ttf" crossorigin /><link rel="preload" href="/fonts/Nunito-Black.woff2" as="font" type="font/woff2" crossorigin />
+  <link rel="preload" href="/fonts/Fredoka-Bold.woff2" as="font" type="font/woff2" crossorigin />
 </head>
 <body>
 <div class="notebook-site" data-design="callvaal-scrapbook">
   <a class="skip-link" href="#main-content">Skip to main content</a>
   <HelloFraandsHeader />
-  <main id="main-content">
-    <section class="notebook-hero" aria-labelledby="hero-title">
-      <div class="hero-copy"><h1 id="hero-title">Baat karo.<br/><mark><em>Dil halka karo.</em></mark></h1><p class="hero-promise">Real people. Make a friend. Your number stays private.</p><p class="hero-subtitle">Someone to talk to in your language, right now — and someone to call again tomorrow. Pay per minute. Nobody sees your phone number.</p>
-        <div class="hero-actions"><a class="hero-primary" href="#people">Kisi se baat karo</a><a class="hero-secondary" href="#earn">Earn by talking</a></div>
-        <div class="trust-chips"><span><ModernIcon name="lock" />Number kabhi share nahi hota</span><span><ModernIcon name="user" />Har host video-KYC verified</span><span><ModernIcon name="clock" />From ₹5/min</span></div>
+  <main id="main-content" class="hfh-home">
+    <aside class="hfh-beta"><span aria-hidden="true">⌁</span> INVITE ONLY · BETA PHASE <span aria-hidden="true">⌁</span></aside>
+    <section class="hfh-hero" aria-labelledby="hero-title" data-home-section="hero">
+      <div class="hfh-hero-copy">
+        <h1 id="hero-title">Talk to your favourite social media influencers <em>over a private phone call.</em></h1>
+        <p>{homeCopy.heroDescription}</p>
+        <div class="hfh-actions"><a class="hfh-button" href="/marketplace" data-home-cta="explore-hosts">Explore hosts <span aria-hidden="true">→</span></a><a class="hfh-button hfh-button--outline" href="/hosts/join" data-home-cta="become-host">Become a host</a></div>
+        <ul class="hfh-proof" aria-label="Call safeguards"><li><ModernIcon name="user" />Full KYC</li><li><ModernIcon name="lock" />Private numbers</li><li><ModernIcon name="payment" />Secure payments</li></ul>
       </div>
-      <div class="hero-art"><picture><source srcset="/assets/callvaal/scrapbook/hero-collage-friendship.avif" type="image/avif" /><source srcset="/assets/callvaal/scrapbook/hero-collage-friendship.webp" type="image/webp" /><img src="/assets/callvaal/scrapbook/hero-collage-friendship.jpg" alt="Terracotta, mustard and teal paper collage: a man and woman on calls, a handwritten Aaj kis se baat karein checklist with Neha, exam ki tension and bas baat, chai and everyday Indian keepsakes." fetchpriority="high" width="1254" height="1254" /></picture></div>
-    </section>
-    <aside class="service-disclaimer" aria-label="Service disclaimer">Yahan sirf baat hoti hai. No medical, legal or money advice. No miracles, no guaranteed results. Not a replacement for a doctor or counsellor. 18+ only.</aside>
-    <section class="social-proof-section" aria-labelledby="social-proof-title">
-      <div class="social-proof-heading"><div><p class="preview-kicker">Illustrative preview</p><h2 id="social-proof-title">Bharat bhar mein, <em>baat kaam ki.</em></h2></div></div>
-      <div class="activity-preview">
-        <div class="activity-preview-label"><strong>Sample activity</strong><span>Live updates coming later</span></div>
-        <div class="activity-ticker" role="group" tabindex="0" aria-label="Illustrative sample activity from fictional people. Live activity updates are not available yet.">
-          <div class="activity-track">
-            <div class="activity-sequence">
-              <span><b>Rohit from Pune</b> called Neha again · 4th call this week</span><span><b>Ananya from Guwahati</b> just talked to Priya · 32 min</span><span><b>Arjun from Kochi</b> called Sana again · 12 min</span><span><b>Meera from Jaipur</b> found a new dost · Kavya</span>
-            </div>
-            <div class="activity-sequence" aria-hidden="true">
-              <span><b>Rohit from Pune</b> called Neha again · 4th call this week</span><span><b>Ananya from Guwahati</b> just talked to Priya · 32 min</span><span><b>Arjun from Kochi</b> called Sana again · 12 min</span><span><b>Meera from Jaipur</b> found a new dost · Kavya</span>
-            </div>
-          </div>
-        </div>
+      <div class="hfh-collage" aria-label="Illustrative private call and booking preview">
+        <img class="hfh-hero-photo" src={`${assets}hero.webp`} width="1000" height="1250" fetchpriority="high" alt="Illustrative creator in a colourful kurta smiling at her phone" />
+        <p class="hfh-note hfh-note--same">Same people.<br/>Deeper conversations.<span aria-hidden="true">♡</span></p>
+        <p class="hfh-note hfh-note--time">You<br/>set the time.</p>
+        <div class="hfh-picker" aria-label="Sample booking times, illustration only"><strong><ModernIcon name="clock" />Pick a time</strong><div class="hfh-week" aria-hidden="true"><span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span></div><div class="hfh-times"><span>11:00 AM</span><span class="hfh-time-selected">12:30 PM</span><span>4:00 PM</span><span>7:00 PM</span></div></div>
+        <div class="hfh-share"><strong><span aria-hidden="true">↗</span> Your link</strong><span class="hfh-share-url">{identity.domain}/yourname</span><span class="hfh-share-caption">♧&nbsp; Share with your fans</span></div>
+        <div class="hfh-call-photo"><img src={`${assets}host.webp`} width="600" height="750" alt="Illustrative host waving hello on a private call" /><div class="hfh-call-controls" aria-hidden="true"><span>♩</span><span><ModernIcon name="phone" /></span><span>▣</span></div></div>
+        <p class="hfh-note hfh-note--real">Real people.<br/>Real talks.</p>
       </div>
     </section>
-    <section class="mood-section" id="moods" aria-labelledby="moods-title"><p class="preview-kicker">Find your kind of conversation</p><h2 id="moods-title">Aaj kya <em>mood hai?</em></h2>
-      <div class="mood-grid">{moodGroups.map((group, index) => <div id={group === 'Naye dost' ? 'naye-dost' : undefined} class:list={['mood-group', `mood-group--${index + 1}`]}><div class="mood-group-head"><span class="mood-doodle" aria-hidden="true">{['❋','✳','✷','❖'][index]}</span><h3>{group}</h3></div><div class="mood-chips">{moods.filter(mood => mood.group === group).map(mood => <a class="mood-chip" href={`/?mood=${encodeURIComponent(mood.slug)}#people`}>{mood.label}<span aria-hidden="true">↗</span></a>)}</div>{group === 'Naye dost' && <p class="mood-note">Make a friend. Rules are the same for everyone — see <a href="#safety">Kaise safe hai</a>.</p>}{group === 'Tension' && <p class="crisis-note">If you're in crisis, call <a href="tel:14416">Tele-MANAS 14416</a> (free, 24×7) or <a href="tel:112">112</a>.</p>}{group === 'Zindagi ki baatein' && <p class="mood-note">Talk and share — not medical, legal or money advice.</p>}</div>)}</div>
+    <section class="hfh-creators hfh-torn" id="people" aria-labelledby="people-title" data-home-section="creators">
+      <span id="moods" class="hfh-anchor" aria-hidden="true"></span><span id="naye-dost" class="hfh-anchor" aria-hidden="true"></span>
+      <div class="hfh-section-heading"><div><h2 id="people-title">Book time with creators you follow</h2><p>Verified hosts. Real conversations. Pick a time that works.</p></div><a href="/marketplace" data-home-cta="view-all-hosts">View all hosts <span aria-hidden="true">→</span></a></div>
+      <p class="hfh-sample-label" id="sample-disclosure">Sample profiles · Illustrative names, photos, verification badges, ratings, availability and prices.</p>
+      <div class="hfh-creator-grid">{creatorPreviews.map(profile => <CreatorPreviewCard profile={profile} />)}</div>
+      <p class="hfh-disclosure">These are illustrative previews. No audio plays and no call or payment is made. Explore hosts to see real profiles and availability.</p>
     </section>
-    <WomenOnlySection />
-    <section class="home-privacy-band" id="privacy-note" aria-labelledby="privacy-title"><div class="home-privacy-frame">
-      <span class="home-privacy-corner home-privacy-corner--top-left" aria-hidden="true">✦</span>
-      <span class="home-privacy-corner home-privacy-corner--top-right" aria-hidden="true">✦</span>
-      <span class="home-privacy-corner home-privacy-corner--bottom-left" aria-hidden="true">✦</span>
-      <span class="home-privacy-corner home-privacy-corner--bottom-right" aria-hidden="true">✦</span>
-      <h2 id="privacy-title">Aapka number. <em>Sirf aapka.</em></h2><p class="privacy-intro">Neither person sees the other’s personal phone number. Your privacy is protected. Your phone number stays hidden behind our masked line. Hosts appear only as an AI avatar they chose — never their real photo.</p>
-      <HomePrivacySteps />
-      <div class="home-privacy-notes"><div class="paper-note">Number private.<br/>Baat apni.</div><div class="paper-note">People.<br/>Conversations.<br/>A brighter you.</div></div><p class="home-privacy-bottom">No need to exchange personal numbers.<br/><button type="button" data-preview-action="privacy" data-preview-label="Number privacy">Learn about number privacy →</button></p>
-    </div></section>
-    <SafetySection />
-    <section class="people-section" id="people" aria-labelledby="people-title"><p class="preview-kicker">Sample profiles · Illustrative</p><h2 id="people-title">Apna dost dhundo.<em>Aur kal phir call karo.</em></h2>
-      <div class="people-toolbar"><div class="people-filters"><button type="button" class="filter-all" data-reset-filters>All</button><label for="mood-filter">Mood</label><select id="mood-filter"><option value="">All moods</option>{moods.map(mood => <option value={mood.slug}>{mood.label}</option>)}</select><label for="language-filter">Language</label><select id="language-filter"><option value="">Any language</option>{['Hindi','English','Kannada','Marathi'].map(language => <option>{language}</option>)}</select><label for="price-filter">Price</label><select id="price-filter"><option value="">Any price</option>{[5,20,25,30].map(value => <option value={value}>₹{value}/min or less</option>)}</select><label class="online-toggle"><input id="online-filter" type="checkbox" /> Online now</label></div><button class="view-all" type="button" data-reset-filters>View all people →</button></div>
-      <p class="sr-only" data-favourites-status role="status" aria-live="polite"></p>
-      <p class="selected-category-label" data-selected-mood-label hidden></p><p class="sample-label">Sample profiles · Illustrative names, KYC badges, ratings, conversation counts and prices</p><p class="sr-only" id="filter-status" role="status" aria-live="polite"></p>
-      <LiveHostCards client:visible /><div class="people-grid">{profiles.map(profile => <ProfileCard profile={profile} />)}</div>
-      <div class="no-results" hidden><p>No sample profiles match those filters.</p><button type="button" data-reset-filters>Show all sample profiles</button></div><p class="profile-disclosure">All profiles, video-KYC badges, ratings and conversation counts shown here are illustrative. Availability, regulars, hours and conversation styles are samples too. Voice introductions are illustrative demo previews. Calls and payments are unavailable in this preview.</p>
+    <section class="hfh-privacy hfh-torn" id="safety" aria-labelledby="privacy-title" data-home-section="privacy">
+      <div id="privacy-note"><h2 id="privacy-title">Your number stays yours.</h2><p>Our system calls the fan and the host separately, then securely connects the calls. We never reveal either person’s personal phone number.</p><div class="hfh-privacy-links"><a href="/privacy" data-home-cta="privacy">How we protect your privacy →</a><a href="/safety" data-home-cta="safety">Safety →</a></div></div>
+      <figure class="hfh-connection" aria-label={`Fan and host connect through ${identity.name}. Both personal phone numbers stay private.`}>
+        <div class="hfh-person"><img src={`${assets}hero.webp`} width="1000" height="1250" loading="lazy" alt="Illustrative fan on her phone" /><strong>Fan</strong></div>
+        <span class="hfh-connector-arrow" aria-hidden="true">⇢</span>
+        <div class="hfh-secure"><svg viewBox="0 0 80 88" aria-hidden="true"><path d="M40 3 73 15l-3 28Q64 70 40 84 15 70 10 43L7 15Z" fill="#116b70"/><path d="m25 24 9-2 5 12-6 5q5 10 15 13l5-7 12 6-1 9q-1 8-14 5Q21 54 19 32q-1-6 6-8" fill="white"/><path d="M46 20q14 4 17 17M46 28q7 2 9 9" fill="none" stroke="white" stroke-width="3" stroke-linecap="round"/></svg><strong>{identity.name}<br/>connects</strong></div>
+        <span class="hfh-connector-arrow" aria-hidden="true">⇠</span>
+        <div class="hfh-person"><img src={`${assets}arjun.webp`} width="800" height="600" loading="lazy" alt="Illustrative host" /><strong>Host</strong></div>
+        <figcaption>Two private calls. One conversation.</figcaption>
+      </figure>
     </section>
-    <section class="earn-section" id="earn" aria-labelledby="earn-title"><img class="earn-art" src={publicImage('/assets/callvaal/scrapbook/earn-art-moods.png', { width: 900 })} alt="Torn-paper notebook with phone conversation doodles, pencil and chai" loading="lazy" width="1254" height="1254" /><div class="earn-copy"><h2 id="earn-title">Baatein karo. <em>Paise kamao.</em></h2><p>Good on the phone? Set your rate and talk from home on your own hours. At a ₹5/min caller rate, the planned host share is ₹1.80/min before tax; paid calls are not guaranteed. Your number stays private. You can end and report an abusive call, and confirmed abuse can lead to a ban.</p><p>Good hosts build regulars — people who call them every week. Regulars are where the steady earnings are.</p><ol class="earn-steps"><li><ModernIcon name="user" /><span>Sign up with WhatsApp OTP</span></li><li><ModernIcon name="lock" /><span>Video KYC + Aadhaar</span></li><li><ModernIcon name="clock" /><span>Pick your moods, languages and price</span></li><li><ModernIcon name="tax" /><span>Go online, get paid via UPI</span></li><li><ModernIcon name="user" /><span>Keep your regulars coming back</span></li></ol><button type="button" class="join-button" data-preview-action="join">Join &amp; earn →</button></div><div class="earn-note paper-note">More conversations.<br/>A brighter tomorrow.</div></section>
-    <aside class="phone-strip">Planned for launch: no app needed. Calls will come to your normal number.</aside>
+    <div class="hfh-lanes" data-home-section="lanes">
+      <section class="hfh-lane hfh-lane--women hfh-torn" id="women-only" aria-labelledby="women-title"><div class="hfh-lane-copy"><h2 id="women-title">Women with women</h2><p>A private space for women to book conversations with verified women hosts.</p><p class="hfh-kyc"><ModernIcon name="lock" />Video KYC required</p><a class="hfh-button" href="/marketplace?lane=women#people" data-home-cta="women-hosts">Explore women hosts <span aria-hidden="true">→</span></a></div><div class="hfh-lane-art"><img src={`${assets}women.webp`} width="800" height="600" loading="lazy" alt="Two illustrative women enjoying phone conversations" /><p class="hfh-note">More women.<br/>More conversations.<span aria-hidden="true">♡</span></p></div></section>
+      <section class="hfh-lane hfh-lane--community hfh-torn" id="lgbtq" aria-labelledby="lgbtq-title"><div class="hfh-lane-copy"><h2 id="lgbtq-title">LGBTQ+ with LGBTQ+</h2><p>A respectful space for LGBTQ+ fans to book conversations with hosts from the community.</p><p class="hfh-kyc"><ModernIcon name="lock" />Video KYC required</p><a class="hfh-button" href="/marketplace?lane=lgbtq#people" data-home-cta="lgbtq-hosts">Explore LGBTQ+ hosts <span aria-hidden="true">→</span></a></div><div class="hfh-lane-art"><img src={`${assets}community.webp`} width="800" height="600" loading="lazy" alt="Two illustrative community members enjoying phone conversations beside a rainbow flag" /><p class="hfh-note">Different stories.<br/>Same respect.</p></div></section>
+    </div>
+    <p class="hfh-eligibility">Video KYC verifies the person, not their gender or sexual orientation. Community access follows each space’s eligibility and safety rules.</p>
+    <section class="hfh-how" id="how-it-works" aria-labelledby="how-title" data-home-section="how-it-works"><h2 id="how-title">How it works</h2><ol class="hfh-steps"><li><span class="hfh-step-number">1</span><svg viewBox="0 0 48 48" aria-hidden="true"><circle cx="20" cy="20" r="14"/><path d="m30 30 13 13"/></svg><div><h3>Choose a host</h3><p>Find creators you follow and like.</p></div></li><li><span class="hfh-step-number">2</span><svg viewBox="0 0 48 48" aria-hidden="true"><rect x="7" y="9" width="34" height="33" rx="3"/><path d="M7 20h34M16 4v12M32 4v12M16 27h1m7 0h1m7 0h1M16 34h1m7 0h1m7 0h1"/></svg><div><h3>Book and pay</h3><p>Pick a time, complete payment, get confirmation.</p></div></li><li><span class="hfh-step-number">3</span><ModernIcon name="phone" /><div><h3>Talk privately</h3><p>Join the call at your booked time.</p></div></li></ol></section>
+    <section class="hfh-host-cta hfh-torn" id="earn" aria-labelledby="earn-title" data-home-section="host-cta"><div class="hfh-host-art"><img src={`${assets}host.webp`} width="600" height="750" loading="lazy" alt="Illustrative host welcoming his audience" /><p class="hfh-note">Create conversations.<br/>Build your community.</p></div><div class="hfh-host-copy"><h2 id="earn-title">Turn your audience into real conversations.</h2><p>Influencer or not, any adult can apply. Complete full KYC, create your page, set your rate, and share your link.</p><a class="hfh-button" href="/hosts/join" data-home-cta="apply-host">Apply to become a host <span aria-hidden="true">→</span></a></div><p class="hfh-note hfh-host-note">More than followers.<br/>Real people.<span aria-hidden="true">♡</span></p></section>
   </main>
   <HelloFraandsFooter />
-  <nav class="mobile-bottom-nav" aria-label="Quick navigation">{[['home','#main-content','Home'],['grid','#moods','Moods'],['user','#people','People'],['lock','#safety','Safety'],['tax','#earn','Earn']].map(([icon,href,label]) => <a href={href}><ModernIcon name={icon}/><span>{label}</span></a>)}</nav>
+  <nav class="mobile-bottom-nav" aria-label="Quick navigation">{[['home','#main-content','Home'],['grid','#people','Hosts'],['phone','#how-it-works','How'],['lock','#safety','Safety'],['user','#earn','Host']].map(([icon,href,label]) => <a href={href}><ModernIcon name={icon}/><span>{label}</span></a>)}</nav>
 </div>
-<dialog id="preview-dialog" aria-labelledby="preview-title" aria-describedby="preview-description"><h2 id="preview-title">Preview only</h2><p id="preview-description">Calls and joining are not available yet.</p><button type="button" data-close-preview>Close</button></dialog>
-<script>import '../lib/notebookHome';</script>
+<dialog id="preview-dialog" class="hfh-preview-dialog" aria-labelledby="preview-title" aria-describedby="preview-description"><h2 id="preview-title">Illustrative preview</h2><p id="preview-description">This sample profile is an illustration. No call or payment is made.</p><a class="hfh-button" href="/marketplace">Explore real hosts →</a><button type="button" data-close-preview autofocus>Close</button></dialog>
+<script>import '../lib/hostFanHome';</script>
 </body>
 </html>

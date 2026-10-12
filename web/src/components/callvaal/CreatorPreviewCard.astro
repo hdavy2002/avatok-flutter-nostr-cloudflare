@@ -1,0 +1,21 @@
+---
+import type { CreatorPreview } from '../../lib/hostFanHomeReference';
+interface Props { profile: CreatorPreview; }
+const { profile } = Astro.props;
+const wave = [4,8,13,7,18,11,23,15,27,19,10,24,16,30,18,9,21,14,25,19,11,17,7,12,4];
+const categoryPaths = {
+  beauty: 'M8 10a4 4 0 1 0 8 0 4 4 0 0 0-8 0M7 16h10v4H7zM10 20v3m4-3v3M12 2v2',
+  gaming: 'M7 7h10q3 0 4 4l2 7q0 4-4 2l-4-3H9l-4 3q-4 2-4-2l2-7q1-4 4-4M5 12h6m-3-3v6m8-4h.1m3 3h.1',
+  fitness: 'M2 9v6m3-9v12m3-8v4h8v-4H8m11-4v12m3-9v6',
+  film: 'M3 9h18v12H3zM3 9 2 5l18-3 1 4-18 3m3-5 3 3m3-4 3 3m2-4 3 3M8 13h8m-8 4h5',
+};
+---
+<article class="hfh-creator-card" data-creator-preview={profile.id} aria-describedby="sample-disclosure">
+  <div class="hfh-portrait"><img src={`/assets/callvaal/host-fan/${profile.id}.webp`} width="800" height="600" loading="lazy" alt={`Illustrative portrait of ${profile.name}`} /><span class="hfh-rating" aria-label={`Sample rating ${profile.rating} out of 5`}><span aria-hidden="true">★</span> {profile.rating}</span></div>
+  <div class="hfh-card-copy"><div class="hfh-card-heading"><h3>{profile.name}</h3><span class="hfh-verified" aria-label="Illustrative verification badge">✓</span><span class:list={['hfh-availability', { 'hfh-availability--later': profile.availability === 'In 30 mins' }]}>{profile.availability}</span></div>
+    <p class="hfh-category"><svg viewBox="0 0 24 24" aria-hidden="true"><path d={categoryPaths[profile.icon]}/></svg><span>{profile.category}</span><span class:list={['hfh-platform', { 'hfh-platform--instagram': profile.platform === 'Instagram' }]} aria-label={`Sample ${profile.platform} creator`}>{profile.platform === 'Instagram' ? '◎' : '▶'}</span></p>
+    <button class="hfh-voice" type="button" data-preview-action="voice" data-preview-label={profile.name} aria-label={`Preview ${profile.name}’s illustrative voice introduction`} aria-haspopup="dialog"><span class="hfh-play" aria-hidden="true">▶</span><svg viewBox="0 0 104 32" class="hfh-wave" aria-hidden="true">{wave.map((height, index) => <path d={`M${index * 4 + 2} ${16 - height / 2}v${height}`} />)}</svg><span>0:20</span></button>
+    <p class="hfh-rate">₹{profile.rate}/min</p>
+    <button class="hfh-button hfh-book" type="button" data-preview-action="call" data-preview-label={profile.name} aria-label={`Book a call with ${profile.name} — illustrative preview`} aria-haspopup="dialog">Book a call <span aria-hidden="true">→</span></button>
+  </div>
+</article>

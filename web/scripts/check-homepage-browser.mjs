@@ -1,4 +1,4 @@
-// Owner-approved mood-led conversation homepage. Run only in manually dispatched GitHub CI.
+// [HF-HOME-HOST-FAN-1] Owner-approved host/fan homepage. Run only in manually dispatched GitHub CI.
 import { chromium, expect } from '@playwright/test';
 import { createServer } from 'node:http';
 import { readFile, mkdir, writeFile } from 'node:fs/promises';
@@ -35,10 +35,9 @@ async function inspectReadability(page) {
   return page.evaluate(() => {
     const visible = el => el.getClientRects().length > 0 && getComputedStyle(el).visibility !== 'hidden';
     const groups = [
-      [16, '.social-proof-section h2, .activity-preview-label strong, .activity-sequence>span, #privacy-note h2, .privacy-intro, .home-privacy-step>p, .home-privacy-bottom, .home-privacy-bottom button, .people-toolbar button, .people-toolbar select, .person-copy h3, .person-copy p:not(.person-talks):not(.person-topic):not(.verification-badge), .person-price, .sample-call, #earn h2, .earn-copy>p, .earn-steps li, .earn-steps span, .join-button, .mood-group h3, [data-callvaal-footer-group] summary, [data-callvaal-footer-group] a, [data-callvaal-footer-group] button'],
-      [15, '.safety-links a, .sample-label, .profile-disclosure, .selected-category-label, .person-rating small, .person-talks, .person-topic, .earn-copy>small, .mood-chip, .crisis-note, footer[data-callvaal-chrome] .cv-footer-brand p, footer[data-callvaal-chrome] .cv-footer-copyright'],
-      [11, '.verification-badge, .person-moods li'],
-      [14, '.preview-kicker, .activity-preview-label span, .service-disclaimer, .home-privacy-step>h3'],
+      [16, '.hfh-hero-copy>p, .hfh-button, .hfh-section-heading p, .hfh-card-heading h3, .hfh-rate, .hfh-privacy p, .hfh-lane-copy>p:not(.hfh-kyc), .hfh-steps p, .hfh-host-copy p, [data-callvaal-footer-group] summary, [data-callvaal-footer-group] a, [data-callvaal-footer-group] button'],
+      [15, 'footer[data-callvaal-chrome] .cv-footer-brand p, footer[data-callvaal-chrome] .cv-footer-copyright'],
+      [14, '.hfh-sample-label, .hfh-disclosure, .hfh-eligibility, .hfh-availability, .hfh-category, .hfh-rating, .hfh-voice, .hfh-kyc, .hfh-picker, .hfh-share, .hfh-proof li'],
     ];
     const fontFailures = [];
     const fontCounts = [];
@@ -51,7 +50,7 @@ async function inspectReadability(page) {
       }
     }
     const clipping = [];
-    const panels = '.social-proof-section, .activity-preview, #women-only, #privacy-note, .people-toolbar, .person-copy, .earn-copy, #moods, #safety, .mood-group, [data-callvaal-footer-group][open]';
+    const panels = '.hfh-hero-copy, .hfh-picker, .hfh-share, .hfh-card-copy, #women-only, #privacy-note, .hfh-host-copy, #safety, .hfh-lane-copy, .hfh-steps, [data-callvaal-footer-group][open]';
     for (const panel of document.querySelectorAll(panels)) {
       if (!visible(panel)) continue;
       if (panel.scrollWidth > panel.clientWidth + 2) clipping.push({ panel: panel.className, reason: 'horizontal overflow' });
@@ -84,16 +83,7 @@ async function inspectReadability(page) {
         }
       }
     };
-    checkSiblings('.home-privacy-steps, .home-privacy-notes, .people-toolbar, .people-filters, .person-heading, .person-actions, .earn-copy, .earn-steps, footer[data-callvaal-chrome] nav[aria-label="Footer"], .mood-grid, .mood-chips, .safety-grid');
-    const badges = [...document.querySelectorAll('.verification-badge')].map(el => {
-      const rect = el.getBoundingClientRect();
-      const card = el.closest('.profile-card').getBoundingClientRect();
-      const style = getComputedStyle(el);
-      const range = document.createRange();
-      range.selectNodeContents(el);
-      const textFits = [...range.getClientRects()].every(text => text.left >= rect.left - 2 && text.right <= rect.right + 2 && text.top >= rect.top - 2 && text.bottom <= rect.bottom + 2);
-      return { text: el.textContent.trim(), visible: visible(el), wraps: style.whiteSpace !== 'nowrap', fits: textFits && rect.left >= card.left - 2 && rect.right <= card.right + 2 && rect.top >= card.top - 2 && rect.bottom <= card.bottom + 2 };
-    });
+    checkSiblings('.hfh-actions, .hfh-proof, .hfh-card-heading, .hfh-category, .hfh-creator-grid, .hfh-steps, .hfh-host-copy, footer[data-callvaal-chrome] nav[aria-label="Footer"]');
     const viewportOverflow = {
       viewport: innerWidth,
       content: document.documentElement.scrollWidth,
@@ -111,17 +101,17 @@ async function inspectReadability(page) {
     };
     const contractCoverage = {
       footerGroups: document.querySelectorAll('[data-callvaal-footer-group]').length,
-      moodChips: document.querySelectorAll('.mood-chip').length,
+      creatorPreviews: document.querySelectorAll('[data-creator-preview]').length,
       navigation: document.querySelectorAll('[data-callvaal-navigation]').length,
       menuToggles: document.querySelectorAll('[data-callvaal-menu-toggle]').length,
     };
-    return { fontFailures, fontCounts, clipping, overlaps, badges, viewportOverflow, contractCoverage };
+    return { fontFailures, fontCounts, clipping, overlaps, viewportOverflow, contractCoverage };
   });
 }
 try {
   await new Promise(done => server.listen(4179, '127.0.0.1', done));
   browser = await chromium.launch();
-  for (const width of [320, 360, 390, 452, 599, 600, 699, 700, 899, 900, 1024, 1440, 1920, 2560]) {
+  for (const width of [320, 390, 767, 768, 820, 1023, 1024, 1440, 1920]) {
     const name = `home-${width}`;
     const page = await browser.newPage({ viewport: { width, height: 1000 }, deviceScaleFactor: 1, reducedMotion: 'reduce' });
     const mutations = [];
@@ -153,72 +143,51 @@ try {
       });
       await expect(page.locator('link[rel="canonical"]')).toHaveAttribute('href', `https://${homepageIdentity.domain}/`);
       await expect(page.locator('meta[property="og:url"]')).toHaveAttribute('content', `https://${homepageIdentity.domain}/`);
-      await expect(page.locator('h1')).toHaveText(/Baat karo\.\s*Dil halka karo\./);
-      await expect(page.locator('[data-person]')).toHaveCount(8);
-      await expect(page.locator('.mood-group')).toHaveCount(4);
-      await expect(page.locator('.mood-chip')).toHaveCount(31);
-      await expect(page.locator('.mood-group h3')).toHaveText(['Naye dost', 'Mann ki baat', 'Tension', 'Zindagi ki baatein']);
-      await expect(page.locator('#people-title')).toHaveText('Apna dost dhundo.Aur kal phir call karo.');
-      await expect(page.locator('.proof-card')).toHaveCount(0);
-      await expect(page.locator('[data-profile-id="neha"] .sample-call')).toHaveText('Call');
-      await expect(page.locator('[data-profile-id="rohan"] .sample-call')).toHaveText('Notify me when free');
-      await expect(page.locator('[data-profile-id="priya"] .sample-call')).toHaveText('Notify me when online');
-      await expect(page.locator('.mood-group').filter({ has: page.locator('h3', { hasText: 'Mann ki baat' }) }).locator('.mood-chip')).toHaveCount(11);
-      await expect(page.locator('[data-your-people], [data-saved-person], .saved-call, [data-favourites-empty]')).toHaveCount(0);
-      await expect(page.locator('.home-privacy-steps picture')).toHaveCount(3);
-      await expect(page.locator('.home-privacy-steps h3')).toHaveText(['Tap Call', 'We ring the host first', 'Connected. Numbers hidden.']);
-      await expect(page.locator('.home-step-number')).toHaveText(['1', '2', '3']);
-      await expect(page.locator('.home-step-art')).toHaveCount(0);
-      await expect(page.locator('.home-privacy-step--private .home-step-connector .home-step-lock')).toHaveCount(1);
-      const privacyPhotos = await page.locator('.home-privacy-steps img').evaluateAll(images => images.map(image => ({
-        alt: image.alt, width: image.naturalWidth, height: image.naturalHeight,
-        sources: [...image.parentElement.querySelectorAll('source')].map(source => ({ src: source.getAttribute('srcset'), type: source.type })),
-        src: image.getAttribute('src'), declaredWidth: image.getAttribute('width'), declaredHeight: image.getAttribute('height'),
-      })));
-      for (const [index, photo] of privacyPhotos.entries()) {
-        assert(photo.alt && photo.width === 1200 && photo.height === 900, name + ': loaded 4:3 photograph');
-        assert.deepEqual(photo.sources, [{ src: `/assets/privacy/step-${index + 1}.avif`, type: 'image/avif' }, { src: `/assets/privacy/step-${index + 1}.webp`, type: 'image/webp' }]);
-        assert.equal(photo.src, `/assets/privacy/step-${index + 1}.jpg`);
-        assert.equal(photo.declaredWidth, '1200'); assert.equal(photo.declaredHeight, '900');
-      }
-      const photoStyles = await page.evaluate(() => {
-        const styles = selector => [...document.querySelectorAll(selector)].map(element => {
-          const style = getComputedStyle(element);
-          return { radius: style.borderRadius, overflow: style.overflow, clip: style.clipPath };
-        });
+      await expect(page.locator('h1')).toHaveText('Talk to your favourite social media influencers over a private phone call.');
+      await expect(page.locator('.hfh-beta')).toContainText('INVITE ONLY · BETA PHASE');
+      await expect(page.locator('.hfh-creator-card')).toHaveCount(4);
+      await expect(page.locator('.hfh-card-heading h3')).toHaveText(['Neha', 'Arjun', 'Meera', 'Rohit']);
+      await expect(page.locator('.hfh-rate')).toHaveText(['₹3.99/min', '₹4.50/min', '₹3.50/min', '₹3.25/min']);
+      await expect(page.locator('.hfh-availability')).toHaveText(['Online now', 'Online now', 'In 30 mins', 'Online now']);
+      await expect(page.locator('.hfh-category>span:first-of-type')).toHaveText(['Beauty & Style', 'Gaming', 'Fitness', 'Film & Culture']);
+      await expect(page.locator('#people-title')).toHaveText('Book time with creators you follow');
+      await expect(page.locator('#privacy-title')).toHaveText('Your number stays yours.');
+      await expect(page.locator('.hfh-connection')).toContainText(homepageIdentity.name);
+      await expect(page.locator('.hfh-connection figcaption')).toHaveText('Two private calls. One conversation.');
+      await expect(page.locator('.hfh-kyc')).toHaveText(['Video KYC required', 'Video KYC required']);
+      await expect(page.locator('.hfh-eligibility')).toContainText('not their gender or sexual orientation');
+      await expect(page.locator('.hfh-steps h3')).toHaveText(['Choose a host', 'Book and pay', 'Talk privately']);
+      await expect(page.locator('.hfh-share-url')).toHaveText(homepageIdentity.domain + '/yourname');
+      await expect(page.locator('#sample-disclosure')).toBeVisible();
+      await expect(page.locator('.hfh-disclosure')).toContainText('No audio plays and no call or payment is made.');
+      await expect(page.locator('.hfh-collage button, .hfh-collage a')).toHaveCount(0);
+      for (const [action, href] of [
+        ['explore-hosts', '/marketplace'], ['view-all-hosts', '/marketplace'],
+        ['become-host', '/hosts/join'], ['apply-host', '/hosts/join'],
+        ['women-hosts', '/marketplace?lane=women#people'], ['lgbtq-hosts', '/marketplace?lane=lgbtq#people'],
+        ['privacy', '/privacy'], ['safety', '/safety'],
+      ]) await expect(page.locator('[data-home-cta="' + action + '"]')).toHaveAttribute('href', href);
+      const geometry = await page.evaluate(() => {
+        const columns = selector => getComputedStyle(document.querySelector(selector)).gridTemplateColumns.split(' ').length;
         return {
-          privacy: styles('.home-step-photo'), women: styles('#women-only .hf-women-photo, #women-only .hf-women-photo img'),
-          safetyFrames: styles('#safety .hf-safety-photo'), safetyPhotos: styles('#safety .hf-safety-photo picture, #safety .hf-safety-photo img'),
-          portraits: [...document.querySelectorAll('.people-grid .person-portrait')].map(image => ({ radius: getComputedStyle(image).borderRadius, width: image.getBoundingClientRect().width, height: image.getBoundingClientRect().height, frameWidth: image.closest('.portrait-wrap').getBoundingClientRect().width })),
-          connector: getComputedStyle(document.querySelector('.home-step-connector')).backgroundColor,
-          safetyTape: getComputedStyle(document.querySelector('.hf-safety-photo'), '::before').content,
+          hero: columns('.hfh-hero'), creators: columns('.hfh-creator-grid'), privacy: columns('.hfh-privacy'),
+          lanes: columns('.hfh-lanes'), steps: columns('.hfh-steps'),
+          ribbonTop: document.querySelector('.hfh-beta').getBoundingClientRect().top,
+          headerBottom: document.querySelector('header').getBoundingClientRect().bottom,
+          smallControls: [...document.querySelectorAll('.hfh-home button, .hfh-home a')].filter(el => el.getClientRects().length && el.getBoundingClientRect().height < 43.9).map(el => el.textContent),
+          ids: [...document.querySelectorAll('[id]')].map(el => el.id),
         };
       });
-      assert(photoStyles.privacy.length === 3 && photoStyles.privacy.every(style => style.radius === '18px' && style.overflow === 'hidden'), name + ': rounded privacy viewport');
-      assert(photoStyles.women.length === 4 && photoStyles.women.every(style => style.radius === '14px' && style.overflow === 'hidden' && style.clip === 'none'), name + ': rounded women polaroids');
-      assert(photoStyles.safetyFrames.length === 3 && photoStyles.safetyFrames.every(style => style.radius === '14px' && style.overflow === 'visible'), name + ': safety tape and shadows stay outside the frame');
-      assert(photoStyles.safetyPhotos.length === 6 && photoStyles.safetyPhotos.every(style => style.radius === '14px'), name + ': rounded safety pictures and images');
-      assert(photoStyles.safetyPhotos.filter((_, index) => index % 2 === 0).every(style => style.overflow === 'hidden'), name + ': inner safety picture clips the image');
-      assert(photoStyles.safetyTape !== 'none' && photoStyles.connector !== 'rgba(0, 0, 0, 0)', name + ': tape and soft connector remain');
-      assert(photoStyles.portraits.length === 8 && photoStyles.portraits.every(photo => photo.radius === '0px' && photo.width > photo.height && Math.abs(photo.width - photo.frameWidth) < 1), name + ': full-width rectangular main host portraits');
-      const womenHeading = await page.locator('#hf-women-title').evaluate(h2 => {
-        const first = h2.querySelector('span'); const second = h2.querySelector('em');
-        return { firstDisplay: getComputedStyle(first).display, secondDisplay: getComputedStyle(second).display,
-          gap: second.getBoundingClientRect().top - first.getBoundingClientRect().bottom };
-      });
-      assert(womenHeading.firstDisplay === 'block' && womenHeading.secondDisplay === 'block' && womenHeading.gap > 0, name + ': distinct women headline lines');
-      await expect(page.locator('#women-only')).toBeVisible();
-      await expect(page.locator('#women-only')).toContainText('A public preview of a private lane.');
-      await expect(page.locator('#women-only .hf-women-proof li')).toHaveCount(2);
-      await expect(page.locator('#women-only [data-women-preview]')).toBeEnabled();
-      await expect(page.locator('.cv-navigation a[href="/#women-only"]')).toHaveCount(1);
-      await expect(page.locator('#safety .hf-safety-rule')).toHaveCount(4);
-      await expect(page.locator('#earn .earn-steps li')).toHaveCount(5);
-      await expect(page.locator('#safety a[href="#women-only"]')).toBeVisible();
-      await expect(page.locator('#safety .hf-safety-photo img')).toHaveCount(3);
-      await expect(page.locator('.service-disclaimer')).toContainText('18+ only.');
+      assert.equal(geometry.hero, width >= 768 ? 2 : 1, name + ': hero columns');
+      assert.equal(geometry.creators, width >= 1024 ? 4 : width >= 768 ? 2 : 1, name + ': creator columns');
+      assert.equal(geometry.privacy, width >= 1024 ? 2 : 1, name + ': privacy columns');
+      assert.equal(geometry.lanes, width >= 1024 ? 2 : 1, name + ': lane columns');
+      assert.equal(geometry.steps, width >= 768 ? 3 : 1, name + ': steps columns');
+      assert(geometry.ribbonTop >= geometry.headerBottom - 1, name + ': beta ribbon below existing header');
+      assert.deepEqual(geometry.smallControls, [], name + ': 44px minimum control height');
+      assert.equal(new Set(geometry.ids).size, geometry.ids.length, name + ': IDs unique');
       const readability = await inspectReadability(page);
-      metrics.push({ name, readability });
+      metrics.push({ name, readability, geometry });
       assert.deepEqual(readability.fontFailures, [], name + ': readable fonts');
       assert.deepEqual(readability.clipping, [], name + ': unclipped content');
       assert.deepEqual(readability.overlaps, [], name + ': controls and text do not overlap');
@@ -227,72 +196,14 @@ try {
         alt: image.alt, loaded: image.complete && image.naturalWidth > 0,
         width: image.getBoundingClientRect().width, height: image.getBoundingClientRect().height,
       })));
-      assert(imageGeometry.length === 18 && imageGeometry.every(image => image.loaded && image.alt && image.width > 0 && image.height > 0), name + ': hero, women photo collage, three safety photos, eight portraits, three privacy photos and earn art load');
-      await page.screenshot({ path: `homepage-review/${name}.png`, fullPage: true });
-      const roster = await page.locator('[data-person]').evaluateAll(cards => cards.map(card => ({
-        moods: card.dataset.moods.split(' '), languages: card.dataset.languages.split(', '),
-        price: Number(card.dataset.price), online: card.dataset.online === 'true', gender: card.dataset.gender,
-      })));
-      const moodOptions = await page.locator('#mood-filter option').evaluateAll(options => options.filter(option => option.value).map(option => ({ slug: option.value, label: option.textContent })));
-      assert.equal(moodOptions.length, 31);
-      for (const { slug } of moodOptions.slice(0, 8)) {
-        const genders = new Set(roster.filter(person => person.moods.includes(slug)).map(person => person.gender));
-        assert.deepEqual([...genders].sort(), ['man', 'woman'], name + ': mixed-gender friendship chip ' + slug);
-      }
-      for (const { slug, label } of moodOptions) {
-        await page.locator('#mood-filter').selectOption(slug);
-        await expect(page.locator('[data-person]:visible')).toHaveCount(roster.filter(person => person.moods.includes(slug)).length);
-        await expect(page.locator('[data-selected-mood-label]')).toHaveText(`Mood: ${label}`);
-      }
-      const reset = page.locator('[data-reset-filters]').first();
-      await reset.click();
-      for (const [selector, value, predicate] of [
-        ['#language-filter', 'Kannada', person => person.languages.includes('Kannada')],
-        ['#price-filter', '5', person => person.price <= 5],
-        ['#price-filter', '20', person => person.price <= 20],
-      ]) {
-        await page.locator(selector).selectOption(value);
-        await expect(page.locator('[data-person]:visible')).toHaveCount(roster.filter(predicate).length);
-        await reset.click();
-      }
-      await page.locator('#online-filter').check();
-      await expect(page.locator('[data-person]:visible')).toHaveCount(roster.filter(person => person.online).length);
-      await page.locator('#mood-filter').selectOption('maa-baap-ki-sehat');
-      await page.locator('#language-filter').selectOption('Kannada');
-      await page.locator('#price-filter').selectOption('30');
-      await expect(page.locator('[data-person]:visible')).toHaveCount(1);
-      await page.locator('#price-filter').selectOption('20');
-      await expect(page.locator('.no-results')).toBeVisible();
-      await page.locator('.no-results [data-reset-filters]').click();
-      await expect(page.locator('[data-person]:visible')).toHaveCount(8);
-      for (const selector of ['#mood-filter', '#language-filter', '#price-filter']) await expect(page.locator(selector)).toHaveValue('');
-      await expect(page.locator('#online-filter')).not.toBeChecked();
-      await expect(page.locator('[data-selected-mood-label]')).not.toBeVisible();
-      // Exercise a real mood link and its query-driven initialization.
-      await page.locator('.mood-chip[href="/?mood=maa-baap-ki-sehat#people"]').click();
-      await page.locator('html[data-homepage-ready="true"]').waitFor({ state: 'attached' });
-      await expect(page.locator('#mood-filter')).toHaveValue('maa-baap-ki-sehat');
-      await expect(page.locator('[data-person]:visible')).toHaveCount(1);
-      await reset.click();
-      const womenEntry = page.locator('#women-only [data-women-preview]');
-      await womenEntry.click();
-      const womenDialog = page.locator('#hf-women-dialog');
-      await expect(womenDialog).toBeVisible();
-      await expect(womenDialog.getByRole('link', { name: 'Start verification' })).toHaveAttribute('href', '/verify/lane?lane=women'); // [HF-LANE-VERIFY-1]
-      await womenDialog.getByRole('button', { name: 'Later' }).click();
-      await expect(womenDialog).not.toBeVisible();
-      await expect(womenEntry).toBeFocused();
-      await womenEntry.press('Enter');
-      await expect(womenDialog).toBeVisible();
-      await page.keyboard.press('Escape');
-      await expect(womenDialog).not.toBeVisible();
-      await expect(womenEntry).toBeFocused();
+      assert(imageGeometry.length === 11 && imageGeometry.every(image => image.loaded && image.alt && image.width > 0 && image.height > 0), name + ': all separate photographic assets load');
+      await page.screenshot({ path: 'homepage-review/' + name + '.png', fullPage: true });
       const dialog = page.locator('#preview-dialog');
-      for (const selector of ['.profile-card [data-preview-action="call"]', '#earn [data-preview-action="join"]', '#privacy-note [data-preview-action="privacy"]']) {
-        const trigger = page.locator(selector).first();
+      for (const trigger of await page.locator('.hfh-creator-card [data-preview-action]').all()) {
         await trigger.click();
         await expect(dialog).toBeVisible();
-        if (selector.includes('data-preview-action="call"')) await expect(dialog).toContainText('Calls and payments are unavailable');
+        const voice = await trigger.getAttribute('data-preview-action') === 'voice';
+        await expect(dialog).toContainText(voice ? 'No recording is playing.' : 'No call has been booked and no payment is made.');
         assert(await dialog.evaluate(element => element.contains(document.activeElement)), name + ': modal receives focus');
         await dialog.locator('[data-close-preview]').press('Enter');
         await waitForPreviewClose(dialog, trigger, name);
@@ -301,30 +212,6 @@ try {
         await page.keyboard.press('Escape');
         await waitForPreviewClose(dialog, trigger, name);
       }
-      const favourite = page.locator('[data-favourite="neha"]');
-      await expect(favourite).toHaveAttribute('aria-pressed', 'true');
-      await favourite.press('Enter');
-      await expect(favourite).toHaveAttribute('aria-pressed', 'false');
-      await expect(favourite).toHaveAttribute('aria-label', 'Favourite Neha for this visit');
-      await expect(page.locator('[data-favourites-status]')).toContainText('Neha removed');
-      await favourite.press('Space');
-      await expect(favourite).toHaveAttribute('aria-pressed', 'true');
-      await expect(favourite).toHaveAttribute('aria-label', 'Unfavourite Neha for this visit');
-      await expect(page.locator('[data-favourites-status]')).toContainText('Neha added');
-      for (const selector of [
-        '[data-profile-id="rohan"] [data-preview-action="notify"]',
-        '[data-profile-id="priya"] [data-preview-action="notify"]',
-      ]) {
-        const notify = page.locator(selector);
-        await notify.click();
-        await expect(dialog).toContainText('No notification has been set.');
-        await page.keyboard.press('Escape');
-        await waitForPreviewClose(dialog, notify, name);
-      }
-      await favourite.click();
-      await page.reload({ waitUntil: 'domcontentloaded' });
-      await page.locator('html[data-homepage-ready="true"]').waitFor({ state: 'attached' });
-      await expect(favourite).toHaveAttribute('aria-pressed', 'true');
       const menu = page.locator('[data-callvaal-menu-toggle]');
       if (await menu.isVisible()) {
         await menu.click();
@@ -343,15 +230,13 @@ try {
       await expect(privacy).toBeVisible();
       await expect(privacy).toHaveAttribute('href', '/privacy');
       await expect(page.locator('[data-footer-preview]')).toHaveCount(0);
-      if ([320, 452, 1024].includes(width)) {
+      if ([320, 390, 768, 1024, 1440].includes(width)) {
         await page.evaluate(() => { document.documentElement.style.fontSize = '200%'; });
         const enlarged = await inspectReadability(page);
         metrics.at(-1).enlarged = enlarged;
         assert.deepEqual(enlarged.clipping, [], name + ': 200% text unclipped');
         assert.deepEqual(enlarged.overlaps, [], name + ': 200% text does not overlap');
         assert(enlarged.viewportOverflow.content <= width + 1, name + ': 200% text no horizontal overflow');
-        await page.locator('#mood-filter').selectOption('maa-baap-ki-sehat');
-        await expect(page.locator('[data-person]:visible')).toHaveCount(1);
         await page.screenshot({ path: `homepage-review/${name}-text-200.png`, fullPage: true });
       }
       const missingAnchors = await page.locator('a[href^="#"]:visible').evaluateAll(links => links.map(a => a.hash.slice(1)).filter(id => id && !document.getElementById(id)));
