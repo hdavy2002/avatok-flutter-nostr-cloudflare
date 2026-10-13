@@ -12,6 +12,7 @@ import '../../../core/router/routes.dart';
 import '../../../core/router/tab_shell.dart';
 import '../../../core/strings.dart';
 import '../../../core/theme/hf_theme.dart';
+import '../../../core/theme/hf_explore_style.dart';
 import '../../../core/widgets/widgets.dart';
 import '../../home/data/home_balance.dart';
 import '../data/explore_controller.dart';
@@ -20,7 +21,6 @@ import '../data/host_filters.dart';
 import '../data/host_options.dart';
 import '../data/hosts_repository.dart';
 import '../widgets/host_card_view.dart';
-import '../widgets/marketplace_host_tile.dart';
 import 'explore_copy.dart';
 import 'filter_sheet.dart';
 import 'discovery_header.dart';
@@ -42,6 +42,9 @@ class ExploreScreen extends ConsumerStatefulWidget {
 
 class _ExploreScreenState extends ConsumerState<ExploreScreen> {
   final ScrollController _scroll = ScrollController();
+  final ScrollController _allHostsScroll = ScrollController(keepScrollOffset: false);
+  String? _allHostsFilterKey;
+  String? _underfillRequestKey;
   final TextEditingController _search = TextEditingController();
   Timer? _searchDebounce;
 
@@ -51,7 +54,7 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
   @override
   void initState() {
     super.initState();
-    _scroll.addListener(_onScroll);
+    _allHostsScroll.addListener(_onAllHostsScroll);
     final fromRoute = HostFilters.fromRouteQuery(widget.query);
     _search.text = fromRoute.search;
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -80,22 +83,34 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
   void dispose() {
     _searchDebounce?.cancel();
     _scroll.dispose();
+    _allHostsScroll.dispose();
     _search.dispose();
     super.dispose();
   }
 
-  void _onScroll() {
-    if (!_scroll.hasClients) return;
-    final p = _scroll.position;
-    if (p.pixels >= p.maxScrollExtent - 600) unawaited(_controller.loadMore());
-  }
-
-  /// A short first page on a tall screen cannot scroll, so no scroll event would ask for more.
-  void _fillViewport() {
-    if (!mounted || !_scroll.hasClients) return;
-    if (_scroll.position.maxScrollExtent <= 0) {
+  void _onAllHostsScroll() {
+    if (!_allHostsScroll.hasClients) return;
+    final st = ref.read(exploreControllerProvider);
+    if (st.filters.cacheKey != _allHostsFilterKey || st.status != ExploreStatus.ready) return;
+    if (_allHostsScroll.position.extentAfter < 360) {
       unawaited(_controller.loadMore());
     }
+  }
+
+  /// Fill only an underfull horizontal rail, once per request generation and
+  /// next offset. Duplicate-only pages can advance; refreshes can reuse an
+  /// offset. Vertical page height and scrolling never request another page.
+  void _fillAllHostsRail() {
+    if (!mounted || !_allHostsScroll.hasClients) return;
+    final st = ref.read(exploreControllerProvider);
+    if (st.status != ExploreStatus.ready || st.filters.cacheKey != _allHostsFilterKey ||
+        st.awaitingFresh || st.loadingMore || st.loadMoreFailed || !st.hasMore) return;
+    final position = _allHostsScroll.position;
+    if (!position.hasContentDimensions || position.maxScrollExtent > 0) return;
+    final pageKey = '${st.loadGeneration}:${st.filters.cacheKey}:${st.nextOffset}';
+    if (_underfillRequestKey == pageKey) return;
+    _underfillRequestKey = pageKey;
+    unawaited(_controller.loadMore());
   }
 
   /// Applies filters and keeps the route in step, so `/explore?...` always describes what is on screen.
@@ -177,9 +192,18 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
         unawaited(_controller.reload());
       }
     });
-    WidgetsBinding.instance.addPostFrameCallback((_) => _fillViewport());
     final f = st.filters;
+    if (_allHostsFilterKey != f.cacheKey) {
+      _allHostsFilterKey = f.cacheKey;
+      _underfillRequestKey = null;
+      // The rail key also creates a fresh scroll position for this filter.
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && _allHostsScroll.hasClients) _allHostsScroll.jumpTo(0);
+      });
+    }
+    WidgetsBinding.instance.addPostFrameCallback((_) => _fillAllHostsRail());
     return Scaffold(
+      backgroundColor: HfExploreStyle.of(context).page,
       body: SafeArea(
         top: true,
         bottom: false,
@@ -325,7 +349,7 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
               0,
             ),
             child: Row(children: [
-              Expanded(child: Text(browse ? 'All hosts' : _resultsTitle(st.filters), style: HfText.section)),
+              Expanded(child: Text(browse ? 'All hosts' : _resultsTitle(st.filters), style: HfText.section.copyWith(color: HfExploreStyle.of(context).ink))),
               if (!browse) TextButton(onPressed: () => _apply(base, FilterSource.clear), child: const Text('Clear filters')),
             ]),
           ),
@@ -335,45 +359,19 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
           padding: EdgeInsets.all(HfSpacing.page),
           child: Text(ExploreCopy.emptyAll),
         )),
-      SliverPadding(
-        padding: const EdgeInsets.fromLTRB(
-          HfSpacing.page,
-          14,
-          HfSpacing.page,
-          0,
+      if (items.isNotEmpty)
+        SliverToBoxAdapter(
+          child: _HostCarousel(
+            key: ValueKey('all-hosts-${st.filters.cacheKey}'),
+            scrollKey: const ValueKey('all-hosts-carousel'),
+            controller: _allHostsScroll,
+            onMetrics: _fillAllHostsRail,
+            hosts: items,
+            labels: labels,
+            from: 'explore',
+            lane: st.filters.lane,
+          ),
         ),
-        sliver: SliverLayoutBuilder(
-          builder: (context, c) {
-            // Full width on a phone; two columns once the screen is wide (tablet, foldable).
-            final columns = c.crossAxisExtent >= 720 ? 2 : 1;
-            final rows = (items.length / columns).ceil();
-            return SliverList.separated(
-              itemCount: rows,
-              separatorBuilder: (_, __) => const SizedBox(height: 22),
-              itemBuilder: (context, row) {
-                Widget cardAt(int idx) => idx < items.length
-                    ? HostCardView(
-                        host: items[idx],
-                        topicLabels: labels,
-                        from: 'explore',
-                        lane: st.filters.lane,
-                      )
-                    : const SizedBox.shrink();
-                if (columns == 1) return cardAt(row);
-                final cells = <Widget>[];
-                for (var i = 0; i < columns; i++) {
-                  cells.add(Expanded(child: cardAt(row * columns + i)));
-                  if (i < columns - 1) cells.add(const SizedBox(width: 22));
-                }
-                return Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: cells,
-                );
-              },
-            );
-          },
-        ),
-      ),
       SliverToBoxAdapter(
         child: _Footer(
           st: st,
@@ -534,30 +532,39 @@ class _DiscoveryActionCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final dark = HfBrightness.isDark(context);
-    return Material(
-      color: dark ? HfColors.darkCard : tint.bg(context),
+    final style = HfExploreStyle.of(context);
+    return Container(
+      decoration: style.card,
+      child: Material(
+      color: style.surface,
       borderRadius: BorderRadius.circular(HfRadius.card),
       clipBehavior: Clip.antiAlias,
       child: InkWell(
         onTap: onTap,
         child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          SizedBox(
-            height: 88,
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(12, 6, 12, 0),
-              child: Image.asset(asset, fit: BoxFit.contain, excludeFromSemantics: true),
+          Container(
+            height: 100,
+            margin: const EdgeInsets.fromLTRB(10, 10, 10, 0),
+            decoration: style.imageFrame,
+            padding: const EdgeInsets.all(4),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(24),
+              child: ColoredBox(
+                color: tint.bg(context),
+                child: Image.asset(asset, fit: BoxFit.contain, excludeFromSemantics: true),
+              ),
             ),
           ),
           Padding(
             padding: const EdgeInsets.fromLTRB(12, 8, 10, 12),
             child: Row(children: [
-              Expanded(child: Text(title, maxLines: 2, overflow: TextOverflow.ellipsis, style: HfText.of(context, HfText.label))),
+              Expanded(child: Text(title, maxLines: 2, overflow: TextOverflow.ellipsis, style: HfText.label.copyWith(color: style.ink))),
               const SizedBox(width: HfSpacing.sm),
-              Icon(Icons.arrow_forward_rounded, size: 18, color: dark ? HfColors.darkText : tint.ink(context)),
+              Icon(Icons.arrow_forward_rounded, size: 18, color: style.ink),
             ]),
           ),
         ]),
+      ),
       ),
     );
   }
@@ -570,7 +577,7 @@ class _SectionTitle extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Row(children: [
-    Expanded(child: Text(title, style: HfText.of(context, HfText.section))),
+    Expanded(child: Text(title, style: HfText.section.copyWith(color: HfExploreStyle.of(context).ink))),
     if (onSeeAll != null) TextButton(key: ValueKey('see-all-$title'), onPressed: onSeeAll, child: const Text('See all')),
   ]);
 }
@@ -632,34 +639,72 @@ class _HostRail extends StatelessWidget {
           const SizedBox(height: HfSpacing.sm),
           if (hosts.isEmpty)
             Padding(padding: const EdgeInsets.symmetric(horizontal: HfSpacing.pageWide), child: Text(empty, style: HfText.of(context, HfText.note)))
-          else SizedBox(
-            height: 216 +
-                (MediaQuery.textScalerOf(context).scale(14) - 14)
-                    .clamp(0, 32)
-                    .toDouble() *
-                    3,
-            child: ListView.separated(
-              scrollDirection: Axis.horizontal,
-              padding: const EdgeInsets.symmetric(
-                horizontal: HfSpacing.pageWide,
-              ),
-              itemCount: hosts.length,
-              separatorBuilder: (_, __) =>
-                  const SizedBox(width: HfSpacing.md),
-              itemBuilder: (context, index) => SizedBox(
-                width: 136,
-                child: MarketplaceHostTile(
-                  host: hosts[index],
-                  from: from,
-                  lane: lane,
-                ),
-              ),
-            ),
-          ),
+          else _HostCarousel(hosts: hosts, from: from, lane: lane),
         ],
       ),
     );
   }
+}
+
+/// A single naturally sized row: long names, language lists and system text
+/// scaling may grow cards without clipping them into a fixed-height viewport.
+class _HostCarousel extends StatelessWidget {
+  const _HostCarousel({
+    super.key,
+    required this.hosts,
+    required this.from,
+    this.lane,
+    this.labels = const {},
+    this.controller,
+    this.scrollKey,
+    this.onMetrics,
+  });
+
+  final List<HostCard> hosts;
+  final String from;
+  final String? lane;
+  final Map<String, String> labels;
+  final ScrollController? controller;
+  final Key? scrollKey;
+  final VoidCallback? onMetrics;
+
+  @override
+  Widget build(BuildContext context) => LayoutBuilder(builder: (context, c) {
+    // Leave a glimpse of the next portrait, including on a 320 dp phone.
+    final width = (c.maxWidth - 56).clamp(220.0, HostCardView.width).toDouble();
+    return NotificationListener<ScrollMetricsNotification>(
+      onNotification: (notification) {
+        if (notification.metrics.axis == Axis.horizontal && onMetrics != null) {
+          WidgetsBinding.instance.addPostFrameCallback((_) => onMetrics?.call());
+        }
+        return false;
+      },
+      child: SingleChildScrollView(
+        key: scrollKey,
+        controller: controller,
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.fromLTRB(HfSpacing.pageWide, 14, HfSpacing.pageWide, 20),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            for (var i = 0; i < hosts.length; i++) ...[
+              if (i > 0) const SizedBox(width: 16),
+              SizedBox(
+                width: width,
+                child: HostCardView(
+                  key: ValueKey(hosts[i].slug),
+                  host: hosts[i],
+                  topicLabels: labels,
+                  from: from,
+                  lane: lane,
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  });
 }
 
 /// "Showing saved list": the list on screen is an old copy.
@@ -713,12 +758,24 @@ class _LoadingCards extends StatelessWidget {
     return Semantics(
       liveRegion: true,
       label: Strings.loadingPeople,
-      child: const Column(
-        children: [
-          HfSkeleton.hostCard(),
-          SizedBox(height: 22),
-          HfSkeleton.hostCard(),
-        ],
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            for (var i = 0; i < 2; i++) ...[
+              if (i > 0) const SizedBox(width: 16),
+              SizedBox(
+                width: 300,
+                child: Container(
+                  decoration: HfExploreStyle.of(context).card,
+                  padding: const EdgeInsets.all(8),
+                  child: const HfSkeleton.hostCard(),
+                ),
+              ),
+            ],
+          ],
+        ),
       ),
     );
   }

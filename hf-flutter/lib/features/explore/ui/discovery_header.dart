@@ -7,6 +7,7 @@ import '../../../core/auth/session.dart';
 import '../../../core/config/flags.dart';
 import '../../../core/router/routes.dart';
 import '../../../core/theme/hf_theme.dart';
+import '../../../core/theme/hf_explore_style.dart';
 import '../../../core/widgets/widgets.dart';
 import '../../home/data/home_balance.dart';
 import '../../home/ui/home_copy.dart';
@@ -58,7 +59,7 @@ class DiscoveryHeader extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final dark = HfBrightness.isDark(context);
+    final style = HfExploreStyle.of(context);
     final standardPlan =
         hfStdPlanOn(ref.watch(flagsProvider)) &&
         filters.category == HostCategoryFilter.standard;
@@ -84,12 +85,12 @@ class DiscoveryHeader extends ConsumerWidget {
                 children: [
                   Text(
                     ExploreCopy.title,
-                    style: HfText.of(context, HfText.hero),
+                    style: HfText.hero.copyWith(color: style.ink),
                   ),
                   const SizedBox(height: HfSpacing.xs),
                   Text(
                     ExploreCopy.tagline,
-                    style: HfText.of(context, HfText.body),
+                    style: HfText.body.copyWith(color: style.muted),
                   ),
                 ],
               );
@@ -139,13 +140,13 @@ class DiscoveryHeader extends ConsumerWidget {
           const SizedBox(height: HfSpacing.sm),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: HfSpacing.pageWide),
-            child: Text(ExploreCopy.sameRate, style: HfText.note),
+            child: Text(ExploreCopy.sameRate, style: HfText.note.copyWith(color: style.muted)),
           ),
         ],
         const SizedBox(height: HfSpacing.lg),
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: HfSpacing.pageWide),
-          child: HfSegmented(
+          child: _ExploreLanes(
             options: _lanes,
             selected: laneIndex,
             onChanged: (i) {
@@ -179,7 +180,7 @@ class DiscoveryHeader extends ConsumerWidget {
                 Expanded(
                   child: Text(
                     ExploreCopy.listTitle,
-                    style: HfText.of(context, HfText.section),
+                    style: HfText.section.copyWith(color: style.ink),
                   ),
                 ),
                 if (trailing != null) ...[
@@ -189,7 +190,7 @@ class DiscoveryHeader extends ConsumerWidget {
                       trailing!,
                       textAlign: TextAlign.end,
                       style: HfText.label.copyWith(
-                        color: dark ? HfColors.mutedSoft : HfColors.muted,
+                        color: style.muted,
                         fontWeight: FontWeight.w400,
                       ),
                     ),
@@ -282,6 +283,11 @@ class _NotificationBell extends ConsumerWidget {
     final unread = ref.watch(unreadNotificationsProvider).value ?? 0;
     return IconButton(
       tooltip: 'Notifications',
+      style: IconButton.styleFrom(
+        foregroundColor: HfExploreStyle.of(context).ink,
+        backgroundColor: HfExploreStyle.of(context).soft,
+        minimumSize: const Size(48, 48),
+      ),
       onPressed: () => context.push(Routes.notifications),
       icon: Badge(
         isLabelVisible: unread > 0,
@@ -298,7 +304,7 @@ class _WalletPill extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final dark = HfBrightness.isDark(context);
+    final style = HfExploreStyle.of(context);
     final signedIn = ref.watch(sessionProvider.select((s) => s.isSignedIn));
     final wallet = signedIn ? ref.watch(homeBalanceProvider) : null;
     final balance = (wallet != null && wallet.hasValue)
@@ -307,8 +313,8 @@ class _WalletPill extends ConsumerWidget {
     final label = !signedIn
         ? HomeCopy.walletSignIn
         : (balance ?? HomeCopy.walletFallback);
-    final bg = HfTint.lavender.bg(context);
-    final fg = HfTint.lavender.ink(context);
+    final bg = style.soft;
+    final fg = style.accent;
     return Semantics(
       button: true,
       label: signedIn
@@ -328,6 +334,7 @@ class _WalletPill extends ConsumerWidget {
               padding: const EdgeInsets.symmetric(horizontal: HfSpacing.xl),
               decoration: BoxDecoration(
                 color: bg,
+                border: Border.all(color: style.line),
                 borderRadius: BorderRadius.circular(22),
               ),
               child: Row(
@@ -339,14 +346,10 @@ class _WalletPill extends ConsumerWidget {
                     color: fg,
                   ),
                   const SizedBox(width: HfSpacing.sm),
-                  Text(
+                  Flexible(child: Text(
                     label,
-                    style: HfText.buttonSmall.copyWith(
-                      color: dark
-                          ? HfColors.lavenderLight
-                          : HfColors.lavenderDeep,
-                    ),
-                  ),
+                    style: HfText.buttonSmall.copyWith(color: fg),
+                  )),
                 ],
               ),
             ),
@@ -373,16 +376,16 @@ class _SearchBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final dark = HfBrightness.isDark(context);
-    final muted = dark ? HfColors.mutedSoft : HfColors.muted;
+    final style = HfExploreStyle.of(context);
+    final muted = style.muted;
     return Container(
       constraints: const BoxConstraints(minHeight: 54),
       padding: const EdgeInsets.fromLTRB(16, 0, 8, 0),
       decoration: BoxDecoration(
-        color: dark ? HfColors.darkCard : HfColors.white,
+        color: style.surface,
         borderRadius: BorderRadius.circular(HfRadius.input),
-        border: Border.all(color: dark ? HfColors.darkLine : HfColors.line),
-        boxShadow: dark ? null : HfShadows.field,
+        border: Border.all(color: style.line),
+        boxShadow: style.shadows,
       ),
       child: Row(
         children: [
@@ -395,7 +398,7 @@ class _SearchBar extends StatelessWidget {
               textInputAction: TextInputAction.search,
               style: HfText.body.copyWith(
                 fontSize: 15,
-                color: dark ? HfColors.darkText : HfColors.ink,
+                color: style.ink,
               ),
               decoration: InputDecoration(
                 isDense: true,
@@ -436,22 +439,22 @@ class _SearchBar extends StatelessWidget {
                     width: 40,
                     height: 40,
                     decoration: BoxDecoration(
-                      color: dark ? HfColors.darkBar : HfColors.surfaceSoft,
+                      color: style.soft,
                       borderRadius: BorderRadius.circular(HfRadius.segmentItem),
                     ),
                     child: Badge(
                       isLabelVisible: activeCount > 0,
-                      backgroundColor: dark ? HfColors.lavender : HfColors.ink,
+                      backgroundColor: style.accent,
                       label: Text(
                         '$activeCount',
                         style: HfText.badge.copyWith(
-                          color: dark ? HfColors.ink : HfColors.white,
+                          color: style.page,
                         ),
                       ),
                       child: Icon(
                         Icons.tune_rounded,
                         size: 18,
-                        color: dark ? HfColors.darkText : HfColors.ink,
+                        color: style.ink,
                       ),
                     ),
                   ),
@@ -461,6 +464,58 @@ class _SearchBar extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+/// The lane choices use the Explore surfaces and wrap at large system sizes.
+class _ExploreLanes extends StatelessWidget {
+  const _ExploreLanes({required this.options, required this.selected, required this.onChanged});
+  final List<String> options;
+  final int selected;
+  final ValueChanged<int> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final style = HfExploreStyle.of(context);
+    Widget option(int i) => Semantics(
+      button: true,
+      selected: selected == i,
+      label: options[i],
+      excludeSemantics: true,
+      child: Material(
+        color: selected == i ? style.surface : style.soft,
+        borderRadius: BorderRadius.circular(14),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(14),
+          onTap: () { if (i != selected) onChanged(i); },
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(minHeight: 48),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
+              child: Center(child: Text(options[i], textAlign: TextAlign.center,
+                style: HfText.badge.copyWith(color: selected == i ? style.ink : style.muted))),
+            ),
+          ),
+        ),
+      ),
+    );
+    return Container(
+      decoration: BoxDecoration(color: style.soft, border: Border.all(color: style.line),
+        borderRadius: BorderRadius.circular(18)),
+      padding: const EdgeInsets.all(4),
+      child: LayoutBuilder(builder: (context, c) {
+        if (c.maxWidth < 280 || MediaQuery.textScalerOf(context).scale(14) > 20) {
+          return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            for (var i = 0; i < options.length; i++) ...[
+              if (i > 0) const SizedBox(height: 4), option(i),
+            ],
+          ]);
+        }
+        return Row(children: [
+          for (var i = 0; i < options.length; i++) Expanded(child: option(i)),
+        ]);
+      }),
     );
   }
 }

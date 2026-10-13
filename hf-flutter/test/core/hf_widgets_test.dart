@@ -212,13 +212,27 @@ void main() {
       expect(taps, [1, 2]);
     });
 
-    testWidgets('only the selected item shows its label', (tester) async {
+    testWidgets('all items are icon-only with accessible names and selection', (tester) async {
+      final semantics = tester.ensureSemantics();
+      addTearDown(semantics.dispose);
       await tester.pumpWidget(
         _host(HfFloatingNav(items: items, selected: 1, onTap: (_) {})),
       );
-      expect(find.text('Wallet'), findsOneWidget);
-      expect(find.text('Discover'), findsNothing);
-      expect(find.text('Me'), findsNothing);
+      for (var i = 0; i < items.length; i++) {
+        final item = items[i];
+        final target = find.byKey(ValueKey<String>(item.keyName!));
+        expect(find.text(item.label), findsNothing);
+        expect(find.byTooltip(item.label), findsOneWidget);
+        expect(find.bySemanticsLabel(item.label), findsOneWidget);
+        final semanticsWidget = tester.widget<Semantics>(find.descendant(
+          of: target, matching: find.byType(Semantics),
+        ).first);
+        expect(semanticsWidget.properties.selected, i == 1);
+      }
+      expect(find.descendant(
+        of: find.byKey(const ValueKey<String>('nav-wallet')),
+        matching: find.byKey(const ValueKey<String>('nav-selected')),
+      ), findsOneWidget);
     });
 
     testWidgets('survives the largest system font without overflow', (
@@ -233,7 +247,7 @@ void main() {
       expect(tester.takeException(), isNull);
     });
 
-    testWidgets('selected item goes icon-only at 2.0x on a 320 phone', (
+    testWidgets('icon-only items stay accessible at 2.0x on a 320 phone', (
       tester,
     ) async {
       tester.view.physicalSize = const Size(320, 640);
@@ -259,12 +273,23 @@ void main() {
       expect(find.bySemanticsLabel('Discover'), findsOneWidget);
     });
 
-    testWidgets('keeps the label at normal scale', (tester) async {
+    testWidgets('normal scale keeps large icons, tooltips and touch targets', (tester) async {
       await tester.pumpWidget(
         _host(HfFloatingNav(items: items, selected: 0, onTap: (_) {})),
       );
-      final text = tester.widget<Text>(find.text('Discover'));
-      expect(text.overflow, TextOverflow.ellipsis);
+      for (final item in items) {
+        final target = find.byKey(ValueKey<String>(item.keyName!));
+        expect(find.text(item.label), findsNothing);
+        expect(find.byTooltip(item.label), findsOneWidget);
+        final icon = tester.widget<Icon>(find.descendant(
+          of: target, matching: find.byIcon(item.icon),
+        ));
+        expect(icon.size, 32);
+        expect(icon.color, isNotNull);
+        final size = tester.getSize(target);
+        expect(size.width, greaterThanOrEqualTo(48));
+        expect(size.height, greaterThanOrEqualTo(48));
+      }
       expect(tester.takeException(), isNull);
     });
   });

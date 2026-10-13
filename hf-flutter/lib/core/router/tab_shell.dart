@@ -28,11 +28,12 @@ double hfNavPadding(BuildContext c) =>
     kHfNavReserved + MediaQuery.paddingOf(c).bottom + 12;
 
 class _TabSpec {
-  const _TabSpec(this.branch, this.label, this.icon, this.tint, this.key);
+  const _TabSpec(this.branch, this.label, this.icon, this.tint, this.color, this.key);
   final int branch;
   final String label;
   final IconData icon;
   final HfTint tint;
+  final Color color;
   final String key;
 }
 
@@ -42,6 +43,7 @@ const List<_TabSpec> _allTabs = [
     Strings.tabHome,
     Icons.search_rounded,
     HfTint.lavender,
+    Color(0xFF7841BD),
     'tab-home',
   ),
   _TabSpec(
@@ -49,6 +51,7 @@ const List<_TabSpec> _allTabs = [
     Strings.tabWallet,
     Icons.account_balance_wallet_rounded,
     HfTint.butter,
+    Color(0xFFB95A13),
     'tab-wallet',
   ),
   _TabSpec(
@@ -56,6 +59,7 @@ const List<_TabSpec> _allTabs = [
     Strings.tabHost,
     Icons.mic_rounded,
     HfTint.blush,
+    Color(0xFFC34079),
     'tab-host',
   ),
   _TabSpec(
@@ -63,6 +67,7 @@ const List<_TabSpec> _allTabs = [
     Strings.tabMe,
     Icons.person_rounded,
     HfTint.sky,
+    Color(0xFF16877D),
     'tab-me',
   ),
 ];
@@ -114,7 +119,7 @@ class HfTabShell extends ConsumerWidget {
       child: Scaffold(
         extendBody: true,
         // The body's bottom padding would include the nav height with extendBody; screens add [hfNavPadding]
-        // themselves. Me receives the actual nav inset so its padding grows with labels.
+        // themselves. Me receives the actual full-width nav inset, including the system safe area.
         body: Builder(
           builder: (inner) {
             final media = MediaQuery.of(inner);
@@ -136,6 +141,7 @@ class HfTabShell extends ConsumerWidget {
                 icon: t.icon,
                 label: t.label,
                 tint: t.tint,
+                color: t.color,
                 keyName: t.key,
               ),
           ],

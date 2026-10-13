@@ -32,6 +32,7 @@ class ExploreState {
   const ExploreState({
     required this.filters,
     required this.status,
+    this.loadGeneration = 0,
     this.items = const <HostCard>[],
     this.nextOffset,
     this.total = 0,
@@ -46,6 +47,9 @@ class ExploreState {
 
   final HostFilters filters;
   final ExploreStatus status;
+
+  /// Identifies the first-page request across refreshes, reloads and filters.
+  final int loadGeneration;
   final List<HostCard> items;
   final int? nextOffset;
   final int total;
@@ -55,7 +59,7 @@ class ExploreState {
   final bool stale;
   final bool refreshFailed;
 
-  /// Only the saved copy is here so far; the fresh page is still on its way.
+  /// A cached or retained list is visible while its fresh first page is pending.
   final bool awaitingFresh;
   final bool loadingMore;
   final bool loadMoreFailed;
@@ -69,6 +73,7 @@ class ExploreState {
   ExploreState copyWith({
     HostFilters? filters,
     ExploreStatus? status,
+    int? loadGeneration,
     List<HostCard>? items,
     Object? nextOffset = _keep,
     int? total,
@@ -83,6 +88,7 @@ class ExploreState {
   }) => ExploreState(
     filters: filters ?? this.filters,
     status: status ?? this.status,
+    loadGeneration: loadGeneration ?? this.loadGeneration,
     items: items ?? this.items,
     nextOffset: identical(nextOffset, _keep)
         ? this.nextOffset
@@ -191,7 +197,7 @@ class ExploreController extends Notifier<ExploreState> {
     _started = true;
     final signedIn = ref.read(sessionProvider).isSignedIn;
     if (f.lane != null && !signedIn) {
-      state = ExploreState(filters: f, status: ExploreStatus.signInNeeded);
+      state = ExploreState(filters: f, loadGeneration: gen, status: ExploreStatus.signInNeeded);
       return;
     }
     final keep =
@@ -201,11 +207,13 @@ class ExploreController extends Notifier<ExploreState> {
     state = keep
         ? state.copyWith(
             filters: f,
+            loadGeneration: gen,
+            awaitingFresh: true,
             loadMoreFailed: false,
             loadingMore: false,
             refreshFailed: false,
           )
-        : ExploreState(filters: f, status: ExploreStatus.loading);
+        : ExploreState(filters: f, loadGeneration: gen, status: ExploreStatus.loading);
     try {
       await for (final u in _repo.firstPage(
         f,
@@ -216,6 +224,7 @@ class ExploreController extends Notifier<ExploreState> {
         if (gen != _gen) return;
         state = ExploreState(
           filters: f,
+          loadGeneration: gen,
           status: ExploreStatus.ready,
           items: u.page.items,
           nextOffset: u.page.nextOffset,
@@ -229,12 +238,13 @@ class ExploreController extends Notifier<ExploreState> {
     } on ApiError catch (e) {
       if (gen != _gen) return;
       if (f.lane != null && e.isUnauthorized) {
-        state = ExploreState(filters: f, status: ExploreStatus.signInNeeded);
+        state = ExploreState(filters: f, loadGeneration: gen, status: ExploreStatus.signInNeeded);
       } else if (f.lane != null && e.code == 'lane_required') {
-        state = ExploreState(filters: f, status: ExploreStatus.laneRequired);
+        state = ExploreState(filters: f, loadGeneration: gen, status: ExploreStatus.laneRequired);
       } else if (e.isNotEnabled) {
         state = ExploreState(
           filters: f,
+          loadGeneration: gen,
           status: ExploreStatus.comingSoon,
           error: e,
         );
@@ -247,7 +257,7 @@ class ExploreController extends Notifier<ExploreState> {
           error: e,
         );
       } else {
-        state = ExploreState(filters: f, status: ExploreStatus.error, error: e);
+        state = ExploreState(filters: f, loadGeneration: gen, status: ExploreStatus.error, error: e);
       }
     }
   }

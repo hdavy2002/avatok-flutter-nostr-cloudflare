@@ -65,6 +65,16 @@ Future<void> revealResult(WidgetTester tester, Finder target) async {
   await tester.pump();
 }
 
+Finder allHostsCarousel() => find.byKey(const ValueKey('all-hosts-carousel'));
+
+Future<void> scrollHostsToEnd(WidgetTester tester) async {
+  await revealResult(tester, allHostsCarousel());
+  final scrollable = find.descendant(of: allHostsCarousel(), matching: find.byType(Scrollable));
+  final position = tester.state<ScrollableState>(scrollable).position;
+  position.jumpTo(position.maxScrollExtent);
+  await tester.pumpAndSettle();
+}
+
 Future<void> returnToHeader(WidgetTester tester) async {
   // The header has been disposed when the lazy viewport is down in the list.
   tester
@@ -658,7 +668,7 @@ void main() {
 
   group('pagination', () {
     testWidgets(
-      'scrolling to the end asks for the next page at nextOffset and appends it',
+      'only horizontal scrolling asks for the next page at nextOffset and appends it',
       (tester) async {
         final api = fakeApi()
           ..on('GET', '/api/hf/hosts', (call) {
@@ -676,17 +686,11 @@ void main() {
         expect(listCalls(api), hasLength(1));
         expect(c.read(exploreControllerProvider).items, hasLength(4));
 
-        // The cards are tall and built lazily, so the first drag only gets near the end; the second reaches it.
-        await tester.drag(
-          find.byType(CustomScrollView),
-          const Offset(0, -3000),
-        );
+        // Reaching the bottom of the page must not drain the horizontal feed.
+        await tester.drag(find.byType(CustomScrollView), const Offset(0, -3000));
         await tester.pumpAndSettle();
-        await tester.drag(
-          find.byType(CustomScrollView),
-          const Offset(0, -3000),
-        );
-        await tester.pumpAndSettle();
+        expect(listCalls(api), hasLength(1));
+        await scrollHostsToEnd(tester);
 
         expect(listCalls(api), hasLength(2));
         expect(listCalls(api).last.query!['offset'], 4);
@@ -701,18 +705,14 @@ void main() {
         ]);
         expect(st.hasMore, isFalse);
 
-        // No more pages: more scrolling asks for nothing.
-        await tester.drag(
-          find.byType(CustomScrollView),
-          const Offset(0, -3000),
-        );
-        await tester.pumpAndSettle();
+        // No more pages: more horizontal scrolling asks for nothing.
+        await scrollHostsToEnd(tester);
         expect(listCalls(api), hasLength(2));
       },
     );
 
     testWidgets(
-      'a short first page on a tall screen still loads the next page',
+      'an underfull horizontal first page loads enough hosts to become scrollable',
       (tester) async {
         final api = fakeApi()
           ..on('GET', '/api/hf/hosts', (call) {
@@ -726,6 +726,8 @@ void main() {
           api: api,
           size: const Size(360, 2400),
         );
+        await revealResult(tester, allHostsCarousel());
+        await tester.pumpAndSettle();
         expect(listCalls(api), hasLength(2));
         expect(c.read(exploreControllerProvider).items.map((h) => h.slug), [
           'a',
@@ -733,6 +735,69 @@ void main() {
         ]);
       },
     );
+
+    testWidgets('refresh with a same-length first page fills the horizontal rail again', (tester) async {
+      var firstPages = 0;
+      final refreshed = Completer<Object?>();
+      final api = fakeApi()..on('GET', '/api/hf/hosts', (call) {
+        final offset = call.query!['offset'] as int;
+        if (offset == 0) {
+          firstPages++;
+          return firstPages == 2
+              ? refreshed.future
+              : pageJson([hostJson('a')], next: 1, total: 2);
+        }
+        return firstPages == 1
+            ? pageJson([], total: 1)
+            : pageJson([hostJson('b')], total: 2);
+      });
+      final c = await pumpScreen(tester, api: api, size: const Size(360, 2400));
+      await revealResult(tester, allHostsCarousel());
+      await tester.pumpAndSettle();
+      expect(listCalls(api).map((call) => call.query!['offset']), [0, 1]);
+      expect(c.read(exploreControllerProvider).items, hasLength(1));
+
+      final refresh = c.read(exploreControllerProvider.notifier).refresh();
+      await tester.pump();
+      expect(c.read(exploreControllerProvider).awaitingFresh, isTrue);
+      expect(listCalls(api).map((call) => call.query!['offset']), [0, 1, 0]);
+      refreshed.complete(pageJson([hostJson('a')], next: 1, total: 2));
+      await refresh;
+      await tester.pumpAndSettle();
+
+      expect(listCalls(api).map((call) => call.query!['offset']), [0, 1, 0, 1]);
+      expect(c.read(exploreControllerProvider).items.map((host) => host.slug), ['a', 'b']);
+    });
+
+    testWidgets('an underfull duplicate-only page advances to its next offset', (tester) async {
+      final api = fakeApi()..on('GET', '/api/hf/hosts', (call) {
+        final offset = call.query!['offset'] as int;
+        return switch (offset) {
+          0 => pageJson([hostJson('a')], next: 1, total: 2),
+          1 => pageJson([hostJson('a')], next: 2, total: 2),
+          _ => pageJson([hostJson('b')], total: 2),
+        };
+      });
+      final c = await pumpScreen(tester, api: api, size: const Size(360, 2400));
+      await revealResult(tester, allHostsCarousel());
+      await tester.pumpAndSettle();
+      expect(listCalls(api).map((call) => call.query!['offset']), [0, 1, 2]);
+      expect(c.read(exploreControllerProvider).items.map((host) => host.slug), ['a', 'b']);
+    });
+
+    testWidgets('changing filters resets the horizontal result position', (tester) async {
+      final api = fakeApi()..onJson('GET', '/api/hf/hosts', pageJson([
+        for (var i = 0; i < 6; i++) hostJson('host-$i'),
+      ]));
+      final c = await pumpScreen(tester, api: api);
+      await scrollHostsToEnd(tester);
+      c.read(appRouterProvider).go('/explore?online=1');
+      await tester.pumpAndSettle();
+      await revealResult(tester, allHostsCarousel());
+      final scrollable = find.descendant(of: allHostsCarousel(), matching: find.byType(Scrollable));
+      expect(tester.state<ScrollableState>(scrollable).position.pixels, 0);
+      expect(listCalls(api).last.query!['online'], '1');
+    });
 
     testWidgets(
       'a failed next page shows Try again under the list and keeps the list',
@@ -752,16 +817,8 @@ void main() {
             return pageJson([hostJson('p2-1')], total: 5);
           });
         final c = await pumpScreen(tester, api: api);
-        await tester.drag(
-          find.byType(CustomScrollView),
-          const Offset(0, -3000),
-        );
-        await tester.pumpAndSettle();
-        await tester.drag(
-          find.byType(CustomScrollView),
-          const Offset(0, -3000),
-        );
-        await tester.pumpAndSettle();
+        await scrollHostsToEnd(tester);
+        await revealResult(tester, find.text('Could not load more people.'));
         expect(find.text('Could not load more people.'), findsOneWidget);
         expect(c.read(exploreControllerProvider).items, hasLength(4));
 
@@ -812,7 +869,7 @@ void main() {
   });
 
   testWidgets(
-    'a card shows name, tagline, languages, topic label, price, rating, status and the AI picture label',
+    'a card shows identity, two stats, price, rating, status and AI disclosure',
     (tester) async {
       final api = fakeApi()
         ..onJson(
@@ -833,7 +890,9 @@ void main() {
       expect(find.text('Asha'), findsOneWidget);
       expect(find.text('Tagline of asha'), findsOneWidget);
       expect(find.text('Hindi, English'), findsOneWidget);
-      expect(find.text('Exam tension'), findsOneWidget);
+      expect(find.text('People talked to'), findsOneWidget);
+      expect(find.text('Languages'), findsOneWidget);
+      expect(find.text('Exam tension'), findsNothing);
       expect(find.text('₹12.00/min'), findsOneWidget);
       expect(find.text('10 min ≈ ₹120.00'), findsOneWidget);
       expect(find.text('On a call'), findsOneWidget);
@@ -873,7 +932,7 @@ void main() {
           ),
         ]),
       );
-    await pumpScreen(tester, api: api, size: const Size(360, 800));
+    await pumpScreen(tester, api: api, size: const Size(320, 800));
     await revealResult(
       tester,
       find.text('Asha with a rather long name indeed'),

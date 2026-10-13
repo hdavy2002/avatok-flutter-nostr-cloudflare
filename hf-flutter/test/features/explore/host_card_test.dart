@@ -102,6 +102,7 @@ void main() {
     final audio = await pumpCards(tester, [
       HostCardView(host: card('a', intro: 'https://x/a.m4a'), animate: false),
     ]);
+    await tester.ensureVisible(find.byKey(const ValueKey<String>('intro-a')));
     await tester.tap(find.byKey(const ValueKey<String>('intro-a')));
     await tester.pump();
     expect(find.byIcon(Icons.pause_rounded), findsOneWidget);
@@ -166,7 +167,7 @@ void main() {
   );
 
   testWidgets(
-    'a card has four tiles, topic chips with a +N chip, the price bar and the right action',
+    'a card has two information blocks, no host topic chips, and the right action',
     (tester) async {
       final many = HostCard.tryParse(
         hostJson('many', status: 'online', topics: ['a', 'b', 'c', 'd', 'e']),
@@ -176,18 +177,20 @@ void main() {
         HostCardView(host: card('busy', status: 'busy'), animate: false),
         HostCardView(host: card('off', status: 'offline'), animate: false),
       ]);
-      expect(find.byType(HfTile), findsNWidgets(12));
-      expect(find.text('talked to'), findsNWidgets(3));
-      expect(find.text('regulars'), findsNWidgets(3));
+      expect(find.byType(HfTile), findsNothing);
+      expect(find.text('Languages'), findsNWidgets(3));
+      expect(find.text('People talked to'), findsNWidgets(3));
+      expect(find.text('regulars'), findsNothing);
       expect(find.text('Hindi, English'), findsNWidgets(3));
-      expect(find.text('Warm'), findsNWidgets(3));
-      expect(find.text('+2'), findsOneWidget);
+      expect(find.text('Warm'), findsNothing);
+      expect(find.text('+2'), findsNothing);
+      expect(find.byType(HfChip), findsNothing);
       expect(
         find.text('₹10'),
         findsNothing,
       ); // the rupee amount and "/min" are one rich text
       expect(find.textContaining('10 min ≈ ₹100'), findsNWidgets(3));
-      // Online: the dark Call now. Busy and offline: the white Notify me with a bell.
+      // Online: the orange Call now. Busy and offline: Notify me with a bell.
       expect(find.text('Call now'), findsOneWidget);
       expect(find.text('Notify me'), findsNWidgets(2));
       expect(find.byIcon(Icons.call_rounded), findsOneWidget);
@@ -286,6 +289,7 @@ void main() {
         ),
       ]);
       expect(find.textContaining('4.5'), findsOneWidget);
+      expect(find.text('(3 reviews)'), findsOneWidget);
       expect(find.text('New'), findsOneWidget);
       expect(find.text('AI avatar'), findsNWidgets(2));
     },
@@ -324,6 +328,7 @@ void main() {
     await pumpCards(tester, [
       HostCardView(host: card('a'), animate: false, onTap: () => taps++),
     ]);
+    await tester.ensureVisible(find.text('Host a'));
     await tester.tap(find.text('Host a'));
     expect(taps, 1);
   });

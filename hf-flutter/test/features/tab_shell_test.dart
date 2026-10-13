@@ -18,7 +18,7 @@ import '../support/fake_api_client.dart';
 Finder tabLabel(String label) =>
     find.descendant(of: find.byType(HfFloatingNav), matching: find.text(label));
 
-/// A nav item by its key (idle items show only an icon; their name is the semantics label).
+/// Every nav item is icon-only; its name remains available to assistive technology.
 Finder tabItem(String key) => find.byKey(ValueKey<String>(key));
 
 void main() {
@@ -32,8 +32,9 @@ void main() {
       expect(tabItem(k), findsOneWidget, reason: k);
     }
     expect(tabItem('tab-host'), findsNothing);
-    // The selected item (Browse) is the tinted pill with its label; the others are icon buttons.
-    expect(tabLabel('Discover'), findsOneWidget);
+    // The selected icon has a tinted background; all labels are accessible names.
+    expect(tabLabel('Discover'), findsNothing);
+    expect(find.byTooltip('Discover'), findsOneWidget);
     expect(find.byKey(const ValueKey<String>('nav-selected')), findsOneWidget);
     expect(tabLabel('Wallet'), findsNothing);
   });
@@ -190,7 +191,7 @@ void main() {
   });
 
   for (final host in [false, true]) {
-    testWidgets('Me shows all labels at 320 px and 2x text (host: $host)', (tester) async {
+    testWidgets('Me keeps icon-only accessible tabs at 320 px and 2x text (host: $host)', (tester) async {
       tester.platformDispatcher.textScaleFactorTestValue = 2;
       addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
       final c = await pumpApp(tester, location: '/me', session: signedInState(host: host),
@@ -203,8 +204,8 @@ void main() {
       await tester.pumpAndSettle();
       expect(tester.widget<HfFloatingNav>(find.byType(HfFloatingNav)).profileStyle, isTrue);
       for (final label in ['Discover', 'Wallet', 'Me', if (host) 'Host']) {
-        expect(tabLabel(label), findsOneWidget);
-        expect(tester.widget<Text>(tabLabel(label)).maxLines, isNull);
+        expect(tabLabel(label), findsNothing);
+        expect(find.byTooltip(label), findsOneWidget);
       }
       for (final key in ['tab-home', 'tab-wallet', 'tab-me', if (host) 'tab-host']) {
         expect(tester.getSize(tabItem(key)).height, greaterThanOrEqualTo(48));
@@ -219,16 +220,22 @@ void main() {
     });
   }
 
-  testWidgets('the selected tab label is at least 14 sp', (tester) async {
+  testWidgets('nav icons are 32 dp with accessible labels and visible destination colours', (tester) async {
+    final semantics = tester.ensureSemantics();
+    addTearDown(semantics.dispose);
     await pumpApp(tester, session: signedInState(host: true));
-    // The test font (Ahem) is far wider than the real one; give the bar room so the label is not swapped
-    // for the icon-only pill that HfFloatingNav uses when a label would not fit.
-    tester.view.physicalSize = const Size(1800, 2400);
-    await tester.pump();
-    final text = tester.widget<Text>(tabLabel('Discover'));
-    final style = DefaultTextStyle.of(
-      tester.element(tabLabel('Discover')),
-    ).style.merge(text.style);
-    expect(style.fontSize, greaterThanOrEqualTo(14));
+    final colours = <Color>{};
+    for (final entry in {
+      'tab-home': 'Discover', 'tab-wallet': 'Wallet', 'tab-host': 'Host', 'tab-me': 'Me',
+    }.entries) {
+      expect(tabLabel(entry.value), findsNothing);
+      expect(find.byTooltip(entry.value), findsOneWidget);
+      expect(tester.getSemantics(tabItem(entry.key)).label, entry.value);
+      final icon = tester.widget<Icon>(find.descendant(of: tabItem(entry.key), matching: find.byType(Icon)));
+      expect(icon.size, 32);
+      colours.add(icon.color!);
+      expect(tester.getSize(tabItem(entry.key)).height, greaterThanOrEqualTo(48));
+    }
+    expect(colours, hasLength(4));
   });
 }

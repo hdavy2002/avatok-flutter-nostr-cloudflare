@@ -13,6 +13,7 @@ import '../../../core/format/money.dart';
 import '../../../core/router/nav.dart';
 import '../../../core/router/routes.dart';
 import '../../../core/theme/hf_theme.dart';
+import '../../../core/theme/hf_explore_style.dart';
 import '../../../core/widgets/widgets.dart';
 import '../../host_profile/data/host_profile_providers.dart';
 import '../../host_profile/host_profile_strings.dart';
@@ -59,12 +60,6 @@ List<int> hostWaveHeights(String slug, {int count = 20}) {
 String _clock(int seconds) {
   final s = seconds < 0 ? 0 : seconds;
   return '${s ~/ 60}:${(s % 60).toString().padLeft(2, '0')}';
-}
-
-/// "calm_and-warm" to "Calm and warm".
-String _prettyStyle(String? raw) {
-  final s = (raw ?? '').replaceAll('_', ' ').replaceAll('-', ' ').trim();
-  return s.isEmpty ? '—' : '${s[0].toUpperCase()}${s.substring(1)}';
 }
 
 /// Play / pause for a host's voice intro, inline. One speaker for the whole app: starting one intro stops
@@ -152,11 +147,8 @@ class IntroPlayButton extends ConsumerWidget {
   }
 }
 
-/// A host on Discover (mockup `Main`): the photo card with the frosted name panel and voice bar, a 2x2 grid of
-/// tiles, up to three topic chips and the price bar with the Call now / Notify me action.
-///
-/// [topicLabels] maps a topic slug to its label (`HostOptions.topicLabels`); an unknown slug shows as words.
-/// Pass [onTap] to replace the default (open the profile). Tapping the photo or the name opens the profile.
+/// A portrait-led Explore card. Topic labels remain a compatible constructor
+/// input; topics are chosen in the discovery filters instead of shown on cards.
 class HostCardView extends ConsumerWidget {
   const HostCardView({
     super.key,
@@ -173,268 +165,181 @@ class HostCardView extends ConsumerWidget {
   final String from;
   final String? lane;
   final VoidCallback? onTap;
-
-  /// False in widget tests (the online dot pulses forever, which never settles).
   final bool animate;
 
-  static const int _maxTopics = 3;
+  static const double width = 300;
   static const List<HfTint> _photoTints = <HfTint>[
-    HfTint.lavender,
-    HfTint.peach,
-    HfTint.sky,
-    HfTint.butter,
-    HfTint.blush,
+    HfTint.lavender, HfTint.peach, HfTint.sky, HfTint.butter, HfTint.blush,
   ];
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final dark = HfBrightness.isDark(context);
-    final open =
-        onTap ??
+    final style = HfExploreStyle.of(context);
+    final open = onTap ??
         () => openHostProfile(context, ref, host, from: from, lane: lane);
     final saved = ref.watch(
       favouriteHostsProvider.select((s) => s.contains(host.slug)),
     );
-    final tint =
-        _photoTints[host.slug.codeUnits.fold<int>(0, (a, b) => a + b) %
-            _photoTints.length];
-    final dpr = MediaQuery.devicePixelRatioOf(context);
-    final photo = host.avatarUrl == null
-        ? null
-        : resizedImageUrl(
-            host.avatarUrl!,
-            width: (MediaQuery.sizeOf(context).width - 12) * dpr,
-            quality: 70,
-          );
-    final tags = <String>[
-      for (final t in host.topics.take(_maxTopics))
-        topicLabels[t] ?? t.replaceAll('-', ' '),
+    final tint = _photoTints[
+      host.slug.codeUnits.fold<int>(0, (a, b) => a + b) % _photoTints.length
     ];
-    final moreTopics = host.topics.length - _maxTopics;
-    return Container(
-      decoration: BoxDecoration(
-        color: dark ? HfColors.darkCard : HfColors.white,
-        borderRadius: BorderRadius.circular(HfRadius.card),
-        boxShadow: dark ? null : HfShadows.card,
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(6, 6, 6, 0),
-            child: Semantics(
-              container: true,
-              button: true,
-              label: 'Open ${host.displayName}’s profile',
-              child: GestureDetector(
-                onTap: open,
-                child: HfPhotoCard(
-                  imageUrl: photo,
-                  height: (MediaQuery.sizeOf(context).width * 0.72)
-                      .clamp(260.0, 340.0)
-                      .toDouble(),
-                  status: switch (host.status) {
-                    HostPresence.online => HfPresence.online,
-                    HostPresence.busy => HfPresence.busy,
-                    HostPresence.offline => HfPresence.offline,
-                  },
-                  aiLabel: host.isAiAvatar ? kAiPictureLabel : null,
-                  saved: saved,
-                  tint: tint,
-                  animatePill: animate,
-                  onSave: () {
-                    HapticFeedback.selectionClick();
-                    unawaited(
-                      ref
-                          .read(favouriteHostsProvider.notifier)
-                          .toggle(host.slug),
-                    );
-                  },
-                  child: _PanelContent(host: host, from: from),
+    return LayoutBuilder(builder: (context, constraints) {
+      final photoWidth = (constraints.maxWidth - 16).clamp(1.0, double.infinity).toDouble();
+      final largePhotoLabels = MediaQuery.textScalerOf(context).scale(14) > 20;
+      final presence = switch (host.status) {
+        HostPresence.online => HfPresence.online,
+        HostPresence.busy => HfPresence.busy,
+        HostPresence.offline => HfPresence.offline,
+      };
+      final photo = host.avatarUrl == null ? null : resizedImageUrl(
+        host.avatarUrl!,
+        width: photoWidth * MediaQuery.devicePixelRatioOf(context),
+        quality: 70,
+      );
+      return Container(
+        decoration: style.card,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(6, 6, 6, 0),
+              child: Semantics(
+                container: true,
+                button: true,
+                label: 'Open ${host.displayName}’s profile',
+                child: GestureDetector(
+                  onTap: open,
+                  child: Container(
+                    decoration: style.imageFrame,
+                    padding: const EdgeInsets.all(2),
+                    child: Stack(children: [
+                    HfPhotoCard(
+                      imageUrl: photo,
+                      height: 340,
+                      status: largePhotoLabels ? null : presence,
+                      aiLabel: !largePhotoLabels && host.isAiAvatar ? kAiPictureLabel : null,
+                      saved: saved,
+                      tint: tint,
+                      animatePill: animate,
+                      onSave: () {
+                        HapticFeedback.selectionClick();
+                        unawaited(ref.read(favouriteHostsProvider.notifier).toggle(host.slug));
+                      },
+                    ),
+                    if (largePhotoLabels)
+                      Positioned(
+                        left: 12, right: 12, bottom: 12,
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            HfStatusPill(status: presence, animate: animate),
+                            if (host.isAiAvatar) ...[
+                              const SizedBox(height: 8),
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                                decoration: BoxDecoration(color: const Color(0xF2FFFFFF),
+                                  borderRadius: BorderRadius.circular(12)),
+                                child: Text(kAiPictureLabel,
+                                  style: HfText.label.copyWith(color: HfColors.inkSoft)),
+                              ),
+                            ],
+                          ],
+                        ),
+                      ),
+                    ]),
+                  ),
                 ),
               ),
             ),
-          ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                _tiles(),
-                if (tags.isNotEmpty) ...[
-                  // The chips are 40 high inside a 48 tap area, so 10 here is the mockup's 14 gap.
-                  const SizedBox(height: HfSpacing.md),
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: open,
+                    child: Semantics(
+                      button: true,
+                      child: Row(children: [
+                        Expanded(child: Text(
+                          host.displayName,
+                          style: HfText.title.copyWith(color: style.ink),
+                        )),
+                        const SizedBox(width: 6),
+                        const HfVerifiedBadge(size: 20),
+                      ]),
+                    ),
+                  ),
+                  const SizedBox(height: 6),
                   Wrap(
-                    spacing: HfSpacing.sm,
+                    spacing: 6,
+                    runSpacing: 4,
+                    crossAxisAlignment: WrapCrossAlignment.center,
                     children: [
-                      for (final t in tags) HfChip.outline(label: t),
-                      if (moreTopics > 0) _MoreChip(count: moreTopics),
+                      HostRating(host: host),
+                      if (host.rating != null && host.reviewCount > 0)
+                        Text('(${host.reviewCount} reviews)',
+                          style: HfText.label.copyWith(color: style.muted)),
                     ],
                   ),
-                  const SizedBox(height: HfSpacing.md),
-                ] else
-                  const SizedBox(height: HfSpacing.xl),
-                _PriceBar(host: host, lane: lane, onOpen: open),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _tiles() {
-    final langs = host.languages.isEmpty ? '—' : host.languages.join(', ');
-    const gap = SizedBox(width: HfSpacing.sm);
-    final textTile = HfText.badge.copyWith(height: 1.35);
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        IntrinsicHeight(
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Expanded(
-                child: HfTile(
-                  tint: HfTint.lavender,
-                  icon: Icons.groups_rounded,
-                  value: '${host.talkedTo}',
-                  caption: 'talked to',
-                  compact: true,
-                ),
-              ),
-              gap,
-              Expanded(
-                child: HfTile(
-                  tint: HfTint.sky,
-                  icon: Icons.sync_rounded,
-                  value: '${host.regulars}',
-                  caption: 'regulars',
-                  compact: true,
-                ),
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(height: HfSpacing.sm),
-        IntrinsicHeight(
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Expanded(
-                child: HfTile(
-                  tint: HfTint.butter,
-                  icon: Icons.language_rounded,
-                  value: langs,
-                  compact: true,
-                  valueStyle: textTile,
-                ),
-              ),
-              gap,
-              Expanded(
-                child: HfTile(
-                  tint: HfTint.blush,
-                  icon: Icons.auto_awesome_rounded,
-                  value: _prettyStyle(host.style),
-                  compact: true,
-                  valueStyle: textTile,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-/// "+2": the topics that did not fit.
-class _MoreChip extends StatelessWidget {
-  const _MoreChip({required this.count});
-
-  final int count;
-
-  @override
-  Widget build(BuildContext context) {
-    final dark = HfBrightness.isDark(context);
-    return ConstrainedBox(
-      constraints: const BoxConstraints(minHeight: HfSpacing.tap),
-      child: Center(
-        widthFactor: 1,
-        child: Container(
-          height: 40,
-          padding: const EdgeInsets.symmetric(horizontal: 16),
-          decoration: BoxDecoration(
-            color: dark ? HfColors.darkBar : HfColors.surfaceSoft,
-            borderRadius: BorderRadius.circular(HfRadius.control),
-          ),
-          child: Center(
-            widthFactor: 1,
-            child: Text(
-              '+$count',
-              style: HfText.badge.copyWith(
-                color: dark ? HfColors.mutedSoft : HfColors.muted,
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-/// What sits in the frosted panel over the photo: name, verified badge, rating, tagline and the voice bar.
-class _PanelContent extends ConsumerWidget {
-  const _PanelContent({required this.host, required this.from});
-
-  final HostCard host;
-  final String from;
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final dark = HfBrightness.isDark(context);
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Row(
-          children: [
-            Flexible(
-              child: Text(
-                host.displayName,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: HfText.of(context, HfText.title),
-              ),
-            ),
-            const SizedBox(width: HfSpacing.xs),
-            const HfVerifiedBadge(size: 20),
-            Expanded(
-              child: Align(
-                alignment: Alignment.centerRight,
-                child: HostRating(host: host),
+                  if (host.tagline?.trim().isNotEmpty == true) ...[
+                    const SizedBox(height: 8),
+                    Text(host.tagline!, style: HfText.body.copyWith(color: style.muted)),
+                  ],
+                  if (host.hasIntro) ...[
+                    const SizedBox(height: 12),
+                    _CardVoice(host: host, from: from),
+                  ],
+                  const SizedBox(height: 14),
+                  _stats(context),
+                  const SizedBox(height: 14),
+                  _PriceBar(host: host, lane: lane, onOpen: open),
+                ],
               ),
             ),
           ],
         ),
-        if (host.tagline != null) ...[
+      );
+    });
+  }
+
+  Widget _stats(BuildContext context) {
+    final style = HfExploreStyle.of(context);
+    Widget block(IconData icon, String value, String caption) => Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: style.soft,
+        border: Border.all(color: style.line),
+        borderRadius: BorderRadius.circular(18),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, size: 22, color: style.accent),
+          const SizedBox(height: 8),
+          Text(value, style: HfText.bodyStrong.copyWith(color: style.ink)),
           const SizedBox(height: 3),
-          Text(
-            host.tagline!,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: HfText.label.copyWith(
-              fontWeight: FontWeight.w400,
-              color: dark ? HfColors.mutedSoft : HfColors.inkTagline,
-            ),
-          ),
+          Text(caption, style: HfText.label.copyWith(color: style.muted)),
         ],
-        if (host.hasIntro) ...[
-          const SizedBox(height: HfSpacing.md),
-          _CardVoice(host: host, from: from),
-        ],
-      ],
+      ),
     );
+    final people = block(Icons.groups_rounded, '${host.talkedTo}', 'People talked to');
+    final languages = block(Icons.language_rounded,
+      host.languages.isEmpty ? 'Not listed' : host.languages.join(', '), 'Languages');
+    return LayoutBuilder(builder: (context, c) {
+      if (c.maxWidth < 250 || MediaQuery.textScalerOf(context).scale(14) > 20) {
+        return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          people, const SizedBox(height: 8), languages,
+        ]);
+      }
+      return Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Expanded(child: people), const SizedBox(width: 8), Expanded(child: languages),
+      ]);
+    });
   }
 }
 
@@ -500,10 +405,43 @@ class _CardVoiceState extends ConsumerState<_CardVoice>
     final url = host.introAudioUrl!;
     final failed = player.failedSlug == host.slug;
     final bigText = MediaQuery.textScalerOf(context).scale(16) > 22;
-    return Column(
+    final style = HfExploreStyle.of(context);
+    void toggle() => unawaited(ref.read(introPlayerProvider.notifier)
+        .toggle(slug: host.slug, url: url, from: widget.from));
+    return LayoutBuilder(builder: (context, constraints) => Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        AnimatedBuilder(
+        if (bigText || constraints.maxWidth < 250)
+          Semantics(
+            button: true,
+            label: '${playing ? 'Pause' : 'Play'} ${host.voiceTitle}, ${_clock(host.previewSeconds)}',
+            excludeSemantics: true,
+            child: Material(
+              color: style.soft,
+              borderRadius: BorderRadius.circular(18),
+              child: InkWell(
+                key: ValueKey<String>('intro-${host.slug}'),
+                onTap: toggle,
+                borderRadius: BorderRadius.circular(18),
+                child: Padding(
+                  padding: const EdgeInsets.all(12),
+                  child: Row(children: [
+                    Icon(playing ? Icons.pause_rounded : Icons.play_arrow_rounded,
+                      size: 32, color: style.accent),
+                    const SizedBox(width: 10),
+                    Expanded(child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(host.voiceTitle, style: HfText.badge.copyWith(color: style.ink)),
+                        Text(_clock(host.previewSeconds), style: HfText.label.copyWith(color: style.muted)),
+                      ],
+                    )),
+                  ]),
+                ),
+              ),
+            ),
+          )
+        else AnimatedBuilder(
           animation: _progress,
           builder: (context, _) => HfVoiceBar(
             key: ValueKey<String>('intro-${host.slug}'),
@@ -528,7 +466,7 @@ class _CardVoiceState extends ConsumerState<_CardVoice>
             ),
           ),
       ],
-    );
+    ));
   }
 }
 
@@ -649,7 +587,7 @@ class _PriceBarState extends ConsumerState<_PriceBar> {
 
   @override
   Widget build(BuildContext context) {
-    final dark = HfBrightness.isDark(context);
+    final style = HfExploreStyle.of(context);
     final callsOn = ref
         .watch(flagsProvider)
         .when(
@@ -678,14 +616,14 @@ class _PriceBarState extends ConsumerState<_PriceBar> {
     if (!callsOn) {
       label = HostProfileStrings.callsSoon;
       icon = Icons.call_rounded;
-      bg = dark ? HfColors.darkTile : HfColors.handle;
-      fg = dark ? HfColors.mutedSoft : HfColors.muted;
+      bg = style.soft;
+      fg = style.muted;
       action = null;
     } else if (online) {
       label = 'Call now';
       icon = Icons.call_rounded;
-      bg = dark ? HfColors.lavender : HfColors.ink;
-      fg = dark ? HfColors.ink : HfColors.white;
+      bg = HfExploreStyle.call;
+      fg = const Color(0xFF231407);
       action = _call;
     } else {
       label = subscribed ? 'Notifying' : 'Notify me';
@@ -693,96 +631,72 @@ class _PriceBarState extends ConsumerState<_PriceBar> {
       icon = subscribed
           ? Icons.notifications_active_rounded
           : Icons.notifications_none_rounded;
-      bg = dark ? HfColors.darkCard : HfColors.white;
-      fg = dark ? HfColors.darkText : HfColors.ink;
+      bg = style.surface;
+      fg = style.ink;
       action = _busy ? null : () => _toggleNotify(subscribed);
     }
 
-    final muted = dark ? HfColors.mutedSoft : HfColors.muted;
-    return Container(
-      constraints: const BoxConstraints(minHeight: 60),
-      padding: const EdgeInsets.all(5),
-      decoration: BoxDecoration(
-        color: dark ? HfColors.darkBar : HfColors.surfaceSoft,
-        borderRadius: BorderRadius.circular(HfRadius.tile),
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
-          Expanded(
+    final price = Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(_h.priceLabel, style: HfText.section.copyWith(color: style.ink)),
+        const SizedBox(height: 3),
+        Text(
+          _h.plan == 'standard' || _h.priceTiers.isNotEmpty
+              ? 'Lower rates after 30 min'
+              : '10 min ≈ ${formatRupees(_h.pricePerMin * 10)}',
+          style: HfText.label.copyWith(color: style.muted, fontWeight: FontWeight.w400),
+        ),
+      ],
+    );
+    final button = Semantics(
+      button: true,
+      enabled: action != null,
+      label: semantics ?? label,
+      excludeSemantics: true,
+      child: Material(
+        color: bg,
+        borderRadius: BorderRadius.circular(16),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(16),
+          onTap: action,
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(minHeight: 52),
             child: Padding(
-              padding: const EdgeInsets.symmetric(
-                horizontal: HfSpacing.lg,
-                vertical: 2,
-              ),
-              child: Column(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
                 mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    _h.priceLabel,
-                    style: HfText.of(context, HfText.section),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  Text(
-                    _h.plan == 'standard' || _h.priceTiers.isNotEmpty
-                        ? 'Lower rates after 30 min'
-                        : '10 min ≈ ${formatRupees(_h.pricePerMin * 10)}',
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: HfText.label.copyWith(
-                      color: muted,
-                      fontWeight: FontWeight.w400,
-                    ),
-                  ),
+                  Icon(icon, size: 22, color: fg),
+                  const SizedBox(width: 8),
+                  Flexible(child: Text(label, style: HfText.buttonSmall.copyWith(color: fg))),
                 ],
               ),
             ),
           ),
-          Flexible(
-            fit: FlexFit.loose,
-            child: Semantics(
-              button: true,
-              enabled: action != null,
-              label: semantics ?? label,
-              excludeSemantics: true,
-              child: Material(
-                color: bg,
-                borderRadius: BorderRadius.circular(HfRadius.tileSmall),
-                child: InkWell(
-                  borderRadius: BorderRadius.circular(HfRadius.tileSmall),
-                  onTap: action,
-                  child: ConstrainedBox(
-                    constraints: const BoxConstraints(minHeight: HfSpacing.tap),
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: HfSpacing.xxl,
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(icon, size: 17, color: fg),
-                          const SizedBox(width: HfSpacing.sm),
-                          Flexible(
-                            child: Text(
-                              label,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: HfText.buttonSmall.copyWith(color: fg),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ],
+        ),
       ),
     );
+    return LayoutBuilder(builder: (context, c) {
+      final stacked = c.maxWidth < 320 || MediaQuery.textScalerOf(context).scale(14) > 20;
+      return Container(
+        padding: const EdgeInsets.all(10),
+        decoration: BoxDecoration(
+          color: style.soft,
+          border: Border.all(color: style.line),
+          borderRadius: BorderRadius.circular(20),
+        ),
+        child: stacked
+            ? Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                price, const SizedBox(height: 10), button,
+              ])
+            : Row(children: [
+                Expanded(child: price), const SizedBox(width: 12), Flexible(child: button),
+              ]),
+      );
+    });
   }
 }
 
