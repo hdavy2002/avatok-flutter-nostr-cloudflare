@@ -1,4 +1,11 @@
 {
+  "HF-DESIGN-RELEASE-CI-1": {
+    "description": "Restore the missing login consent check-mark import and clear two bounded analyzer diagnostics in the approved Explore and profile designs.",
+    "two_sided": false,
+    "min_devices_on_build": 0,
+    "flags": [],
+    "no_telemetry": "Release correction only: the consent widget, Explore pagination guard and profile sign-out behavior are unchanged. Success is the Hello Fraands Flutter analysis and test job completing before the signed Play build."
+  },
   "HF-FRESH-ONBOARD-1": {
     "description": "Show three photo-led onboarding pages once per fresh Android installation, then land guests on Explore while retaining sign-in gates for calls, wallet and profile.",
     "two_sided": false,

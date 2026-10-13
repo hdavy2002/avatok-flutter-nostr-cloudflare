@@ -104,7 +104,9 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
     if (!mounted || !_allHostsScroll.hasClients) return;
     final st = ref.read(exploreControllerProvider);
     if (st.status != ExploreStatus.ready || st.filters.cacheKey != _allHostsFilterKey ||
-        st.awaitingFresh || st.loadingMore || st.loadMoreFailed || !st.hasMore) return;
+        st.awaitingFresh || st.loadingMore || st.loadMoreFailed || !st.hasMore) {
+      return;
+    }
     final position = _allHostsScroll.position;
     if (!position.hasContentDimensions || position.maxScrollExtent > 0) return;
     final pageKey = '${st.loadGeneration}:${st.filters.cacheKey}:${st.nextOffset}';

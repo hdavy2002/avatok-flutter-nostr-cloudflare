@@ -324,7 +324,7 @@ class _MeScreenState extends ConsumerState<MeScreen>
           return;
         }
       }
-      if (!sameAccount()) return;
+      if (!mounted || !sameAccount()) return;
       if (purchases.hasActivePurchase) {
         _snack('Finish your purchase before leaving this account.');
         return;

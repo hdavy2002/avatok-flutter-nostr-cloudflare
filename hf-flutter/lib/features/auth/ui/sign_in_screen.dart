@@ -13,6 +13,7 @@ import '../data/registration_progress.dart';
 import '../../../core/router/routes.dart';
 import '../../../core/theme/hf_theme.dart';
 import '../../../core/widgets/widgets.dart';
+import '../../../core/widgets/hf_page_header.dart' show HfCheckMark;
 import '../../welcome/data/ack_service.dart';
 import '../data/auth_messages.dart';
 import '../data/sign_in_controller.dart';
