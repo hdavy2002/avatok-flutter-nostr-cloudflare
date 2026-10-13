@@ -18,6 +18,7 @@ GoRouter welcomeRouter() => GoRouter(
   initialLocation: '/welcome',
   routes: [
     GoRoute(path: '/welcome', builder: (_, __) => const WelcomeScreen()),
+    GoRoute(path: '/h/:slug', builder: (_, __) => const Scaffold(body: Text('LINKED PROFILE'))),
     GoRoute(
       path: '/explore',
       builder: (_, __) => const Scaffold(body: Text('BROWSE PAGE')),
@@ -247,7 +248,7 @@ void main() {
         .read(pendingLinkProvider.notifier)
         .set(
           const PendingLinkData(
-            input: '/explore',
+            input: '/h/asha',
             source: 'link',
             launch: 'cold',
           ),
@@ -261,7 +262,8 @@ void main() {
     await settle(tester);
     expect(container.read(bootDoneProvider), isTrue);
     expect(container.read(pendingLinkProvider), isNull);
-    // The link opened instead of Home.
+    // A distinct destination proves the queued link won over Explore fallback.
+    expect(find.text('LINKED PROFILE'), findsOneWidget);
     expect(find.text('BROWSE PAGE'), findsNothing);
   });
 

@@ -69,7 +69,7 @@ class HfFloatingNav extends StatelessWidget {
           top: false,
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-            child: _items(context),
+            child: SizedBox(height: 48, child: _items(context)),
           ),
         ),
       );
@@ -112,6 +112,7 @@ class _NavButton extends StatelessWidget {
       button: true,
       selected: selected,
       label: item.label,
+      onTap: onTap,
       excludeSemantics: true,
       child: Tooltip(
         message: item.label,

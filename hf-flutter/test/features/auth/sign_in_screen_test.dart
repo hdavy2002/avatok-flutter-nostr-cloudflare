@@ -79,10 +79,14 @@ Future<void> enterNumber(
 }
 
 Future<void> tapVisible(WidgetTester tester, Finder finder) async {
-  await tester.ensureVisible(finder);
-  // Scrolling changes the layout on the next frame. Tapping before that frame
-  // still uses the old, off-screen position in the taller identity layout.
-  await tester.pump();
+  // Login's ListView builds its lower account actions lazily. First materialize
+  // the requested control, then place it clear of the viewport edges.
+  if (finder.evaluate().isEmpty) {
+    await tester.scrollUntilVisible(finder, 180,
+      scrollable: find.byType(Scrollable).first, maxScrolls: 30);
+  }
+  await Scrollable.ensureVisible(tester.element(finder), alignment: .5);
+  await settle(tester);
   expect(finder.hitTestable(), findsOneWidget);
   await tester.tap(finder);
   await settle(tester);

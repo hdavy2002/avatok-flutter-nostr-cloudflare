@@ -4,6 +4,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:hf_app/features/host_profile/ui/host_profile_screen.dart';
 import 'package:hf_app/features/review/ui/review_screen.dart';
 import 'package:hf_app/core/router/app_router.dart';
+import 'package:hf_app/core/router/routes.dart';
+import 'package:hf_app/features/explore/ui/explore_screen.dart';
 import 'package:hf_app/core/router/tab_shell.dart';
 import 'package:hf_app/core/widgets/hf_floating_nav.dart';
 import 'package:hf_app/features/me/data/notification_control.dart';
@@ -86,11 +88,12 @@ void main() {
   );
 
   testWidgets('tapping a tab opens its screen', (tester) async {
-    await pumpApp(tester);
+    final c = await pumpApp(tester);
     await tester.tap(find.byKey(const ValueKey<String>('tab-home')));
     await tester.pumpAndSettle();
     expect(find.byKey(const ValueKey<String>('open-filters')), findsOneWidget);
-    expect(find.text('Discover'), findsWidgets);
+    expect(find.byType(ExploreScreen), findsOneWidget);
+    expect(c.read(appRouterProvider).routeInformationProvider.value.uri.path, Routes.explore);
   });
 
   testWidgets('Wallet needs sign-in: a guest lands on sign-in with next', (
@@ -99,7 +102,8 @@ void main() {
     final c = await pumpApp(tester);
     await tester.tap(find.byKey(const ValueKey<String>('tab-wallet')));
     await tester.pumpAndSettle();
-    expect(find.text(SignInCopy.numberHint), findsOneWidget);
+    expect(find.byType(SignInScreen), findsOneWidget);
+    expect(find.byKey(const ValueKey('identity-email')), findsOneWidget);
     final uri = c.read(appRouterProvider).routeInformationProvider.value.uri;
     expect(uri.path, '/sign-in');
     expect(uri.queryParameters['next'], '/wallet');
@@ -160,7 +164,8 @@ void main() {
       final c = await pumpApp(tester);
       c.read(appRouterProvider).go('/call/abc');
       await tester.pumpAndSettle();
-      expect(find.text(SignInCopy.numberHint), findsOneWidget);
+      expect(find.byType(SignInScreen), findsOneWidget);
+      expect(find.byKey(const ValueKey('identity-email')), findsOneWidget);
       expect(
         c
             .read(appRouterProvider)
@@ -222,20 +227,23 @@ void main() {
 
   testWidgets('nav icons are 32 dp with accessible labels and visible destination colours', (tester) async {
     final semantics = tester.ensureSemantics();
-    addTearDown(semantics.dispose);
-    await pumpApp(tester, session: signedInState(host: true));
-    final colours = <Color>{};
-    for (final entry in {
-      'tab-home': 'Discover', 'tab-wallet': 'Wallet', 'tab-host': 'Host', 'tab-me': 'Me',
-    }.entries) {
-      expect(tabLabel(entry.value), findsNothing);
-      expect(find.byTooltip(entry.value), findsOneWidget);
-      expect(tester.getSemantics(tabItem(entry.key)).label, entry.value);
-      final icon = tester.widget<Icon>(find.descendant(of: tabItem(entry.key), matching: find.byType(Icon)));
-      expect(icon.size, 32);
-      colours.add(icon.color!);
-      expect(tester.getSize(tabItem(entry.key)).height, greaterThanOrEqualTo(48));
+    try {
+      await pumpApp(tester, session: signedInState(host: true));
+      final colours = <Color>{};
+      for (final entry in {
+        'tab-home': 'Discover', 'tab-wallet': 'Wallet', 'tab-host': 'Host', 'tab-me': 'Me',
+      }.entries) {
+        expect(tabLabel(entry.value), findsNothing);
+        expect(find.byTooltip(entry.value), findsOneWidget);
+        expect(tester.getSemantics(tabItem(entry.key)).label, entry.value);
+        final icon = tester.widget<Icon>(find.descendant(of: tabItem(entry.key), matching: find.byType(Icon)));
+        expect(icon.size, 32);
+        colours.add(icon.color!);
+        expect(tester.getSize(tabItem(entry.key)).height, greaterThanOrEqualTo(48));
+      }
+      expect(colours, hasLength(4));
+    } finally {
+      semantics.dispose();
     }
-    expect(colours, hasLength(4));
   });
 }

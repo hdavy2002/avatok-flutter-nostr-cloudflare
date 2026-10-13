@@ -156,8 +156,11 @@ Future<void> pumpFor(WidgetTester tester, [int ms = 500]) async {
 Future<void> tapKeyed(WidgetTester tester, String key, {int ms = 500}) async {
   final f = find.byKey(ValueKey<String>(key));
   expect(f, findsOneWidget, reason: 'no widget with key $key');
-  await tester.ensureVisible(f);
+  // Center controls between the pinned app bar and the floating navigation.
+  // Merely making the leading edge visible can leave the tap beneath an overlay.
+  await Scrollable.ensureVisible(tester.element(f), alignment: .5);
   await tester.pump();
+  expect(f.hitTestable(), findsOneWidget, reason: '$key is obscured after scrolling');
   await tester.tap(f);
   await pumpFor(tester, ms);
 }

@@ -51,8 +51,7 @@ void main() {
     );
     expect(switchOn(tester), isTrue);
 
-    await tester.ensureVisible(find.byKey(row));
-    await tester.tap(find.byKey(row));
+    await tapKeyed(tester, 'me-offline-reminders');
     await tester.pumpAndSettle();
 
     final puts = api.callsTo('PUT', '/api/hosts/me/presence/nudges');
@@ -85,8 +84,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(switchOn(tester), isFalse);
 
-    await tester.ensureVisible(find.byKey(row));
-    await tester.tap(find.byKey(row));
+    await tapKeyed(tester, 'me-offline-reminders');
     await tester.pumpAndSettle();
 
     expect(switchOn(tester), isFalse);

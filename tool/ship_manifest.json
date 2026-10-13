@@ -26,7 +26,15 @@
     "two_sided": false,
     "min_devices_on_build": 1,
     "flags": [],
-    "success": [{"event":"homepage_section_view","property":"surface","equals":"host-fan-home","min_events":1,"note":"Immutable CI visual matrix and explicit reference checklist cover this design correction."}]
+    "success": [
+      {
+        "event": "homepage_section_view",
+        "property": "surface",
+        "equals": "host-fan-home",
+        "min_events": 1,
+        "note": "Immutable CI visual matrix and explicit reference checklist cover this design correction."
+      }
+    ]
   },
   "HF-HOME-REFERENCE-2": {
     "description": "Match the supplied homepage reference navigation, ribbon order, typography, compact section proportions and separate paper/host collage graphics while retaining the shared footer and truthful creator previews.",
@@ -76,8 +84,18 @@
     "description": "Exact 425x916 marketplace, fixed-pack wallet, connected-call and review presentation using live backend values. Keeps the four Play-authoritative fixed packs, the Standard call tariff, 20-second voice previews, and permits review after any completed positive-duration call.",
     "two_sided": true,
     "min_devices_on_build": 2,
-    "flags": ["hfCallsEnabled", "hfTokensEnabled"],
-    "success": [{ "event": "hf_review_submitted", "property": "stars", "gt": 0, "note": "A genuinely connected positive-duration call exposed the review flow and accepted one pending review." }]
+    "flags": [
+      "hfCallsEnabled",
+      "hfTokensEnabled"
+    ],
+    "success": [
+      {
+        "event": "hf_review_submitted",
+        "property": "stars",
+        "gt": 0,
+        "note": "A genuinely connected positive-duration call exposed the review flow and accepted one pending review."
+      }
+    ]
   },
   "HF-EXACT-KYC-1": {
     "description": "Exact 425x916 photo-led Flutter KYC visual system for the eight-step Aadhaar and real 10-second selfie flow, DigiLocker consent/handoff/checking, and protected-lane approved, pending, retry and unavailable outcomes. Uses original project-bound WebP photography with no UI text baked into pixels; existing KYC APIs, privacy controls, six-digit code, video-review approval gate and telemetry are unchanged.",
@@ -10340,42 +10358,58 @@
     "success": [
       {
         "event": "hf_call_settled",
-        "where": { "plan": "standard" },
+        "where": {
+          "plan": "standard"
+        },
         "property": "billable_seconds",
         "gt": 0,
         "note": "A real two-phone Standard-plan call settled with positive connected time; both caller and host must be represented by the separate newest-build gate."
       },
       {
         "event": "hf_call_settled",
-        "where": { "plan": "standard", "billable_seconds": 60 },
+        "where": {
+          "plan": "standard",
+          "billable_seconds": 60
+        },
         "property": "charge_paise",
         "equals": 399,
         "note": "Known-duration audit sample: exactly 60 billable seconds must charge the caller Rs 3.99 after cumulative half-up rounding once."
       },
       {
         "event": "hf_call_settled",
-        "where": { "plan": "standard", "billable_seconds": 60 },
+        "where": {
+          "plan": "standard",
+          "billable_seconds": 60
+        },
         "property": "host_earning_paise",
         "equals": 200,
         "note": "The same known-duration sample must credit the host Rs 2.00, prorated by connected seconds and floored once."
       },
       {
         "event": "hf_token_purchase_verified",
-        "where": { "duplicate": false, "paid_paise": 12000 },
+        "where": {
+          "duplicate": false,
+          "paid_paise": 12000
+        },
         "property": "wallet_paise",
         "equals": 10169,
         "note": "A newly credited verified Rs 120 Play purchase must add Rs 101.69 to the wallet; paid_paise is the Play-authoritative price."
       },
       {
         "event": "hf_token_purchase_verified",
-        "where": { "duplicate": false, "paid_paise": 12000 },
+        "where": {
+          "duplicate": false,
+          "paid_paise": 12000
+        },
         "property": "gst_paise",
         "equals": 1831,
         "note": "The same purchase must record Rs 18.31 GST, so this known pack reconciles paid = wallet + GST (12000 = 10169 + 1831 paise)."
       },
       {
         "event": "hf_app_update_prompt",
-        "where": { "kind": "forced" },
+        "where": {
+          "kind": "forced"
+        },
         "property": "action",
         "equals": "shown",
         "note": "Before enabling the Standard plan, a deliberately old supported client must receive the forced minimum-build gate so it cannot show legacy token or host-rate behavior."
@@ -10389,19 +10423,28 @@
       {
         "event": "hf_call_charge_corrected",
         "property": "host_reversal",
-        "in": ["reversed", "after_hold_platform_absorbs", "none"],
+        "in": [
+          "reversed",
+          "after_hold_platform_absorbs",
+          "none"
+        ],
         "note": "The correction outcome records whether the held host earning was reversed or, after the hold, the platform absorbed the correction; retention is never described as profit."
       },
       {
         "event": "hf_std_migration_batch",
-        "where": { "phase": "apply" },
+        "where": {
+          "phase": "apply"
+        },
         "property": "outcome",
         "equals": "done",
         "note": "The applied lot migration reached a completed batch. Operations must also inspect migrated_count, repaired_count, remaining_count, skipped_reserved and before_paise/after_paise before enabling the Standard plan."
       },
       {
         "event": "hf_std_migration_batch",
-        "where": { "phase": "apply", "outcome": "done" },
+        "where": {
+          "phase": "apply",
+          "outcome": "done"
+        },
         "property": "remaining_count",
         "equals": 0,
         "note": "No eligible legacy lot remains after the final crash-safe migration pass; reserved or conflicting lots stay visible in the event's separate skip counters for manual review."
@@ -10412,8 +10455,18 @@
     "description": "Creator listing, full-video-KYC publication and creator-r1 settlement contract. See HF-REFERENCE-SCREENS-1 for rollout prerequisites.",
     "two_sided": true,
     "min_devices_on_build": 2,
-    "flags": ["hfCallsEnabled", "hfTokensEnabled"],
-    "success": [{ "event": "hf_creator_listing_published", "property": "price_per_min", "gt": 0, "note": "A real-account creator listing passed every publication blocker with a server-authoritative price." }]
+    "flags": [
+      "hfCallsEnabled",
+      "hfTokensEnabled"
+    ],
+    "success": [
+      {
+        "event": "hf_creator_listing_published",
+        "property": "price_per_min",
+        "gt": 0,
+        "note": "A real-account creator listing passed every publication blocker with a server-authoritative price."
+      }
+    ]
   },
   "HF-CREATOR-PRICE-2": {
     "description": "Creator account ownership and listing-write authorization guards.",
@@ -10425,40 +10478,92 @@
     "description": "Immutable native registration foundation. See HF-REFERENCE-SCREENS-1 for migrations and rollout.",
     "two_sided": false,
     "min_devices_on_build": 1,
-    "success": [{ "event": "hf_registration_completed", "property": "username_length", "gt": 0, "note": "The server stored the completed verified registration and current policy receipts." }]
+    "success": [
+      {
+        "event": "hf_registration_completed",
+        "property": "username_length",
+        "gt": 0,
+        "note": "The server stored the completed verified registration and current policy receipts."
+      }
+    ]
   },
   "HF-REF-AUTH-COMPLETE-1": {
     "description": "Authoritative contact verification, same-subject Clerk email linking, durable resume and safe account replacement.",
     "two_sided": false,
     "min_devices_on_build": 1,
-    "success": [{ "event": "hf_registration_completed", "property": "username_length", "gt": 0, "note": "A registration completed only after authoritative WhatsApp and email proof." }]
+    "success": [
+      {
+        "event": "hf_registration_completed",
+        "property": "username_length",
+        "gt": 0,
+        "note": "A registration completed only after authoritative WhatsApp and email proof."
+      }
+    ]
   },
   "HF-REF-CALL-1": {
     "description": "Truthful connected End call with durable per-leg disconnect and finalization recovery.",
     "two_sided": true,
     "min_devices_on_build": 2,
-    "flags": ["hfCallsEnabled"],
-    "success": [{ "event": "hf_call_ended", "property": "billed_minutes", "gt": 0, "note": "A connected call ended and the durable final bill was posted exactly once." }]
+    "flags": [
+      "hfCallsEnabled"
+    ],
+    "success": [
+      {
+        "event": "hf_call_ended",
+        "property": "billed_minutes",
+        "gt": 0,
+        "note": "A connected call ended and the durable final bill was posted exactly once."
+      }
+    ]
   },
   "HF-REF-FINAL-1": {
     "description": "Integration corrections for account isolation, notification scope, discovery pricing, review duration, media provenance and call recovery.",
     "two_sided": true,
     "min_devices_on_build": 2,
-    "flags": ["hfCallsEnabled"],
-    "success": [{ "event": "hf_review_submitted", "property": "stars", "gt": 0, "note": "A real short or long connected call submitted one acknowledged pending review." }]
+    "flags": [
+      "hfCallsEnabled"
+    ],
+    "success": [
+      {
+        "event": "hf_review_submitted",
+        "property": "stars",
+        "gt": 0,
+        "note": "A real short or long connected call submitted one acknowledged pending review."
+      }
+    ]
   },
   "HF-REF-MARK-COMPLETE-1": {
     "description": "Backend-owned marketplace navigation, creator listing editor, private sample drafts and voice controls.",
     "two_sided": false,
     "min_devices_on_build": 1,
-    "success": [{ "event": "hf_creator_listing_published", "property": "price_per_min", "gt": 0, "note": "A non-sample creator listing was published after all real-account checks." }]
+    "success": [
+      {
+        "event": "hf_creator_listing_published",
+        "property": "price_per_min",
+        "gt": 0,
+        "note": "A non-sample creator listing was published after all real-account checks."
+      }
+    ]
   },
   "HF-REF-WALLET-1": {
     "description": "Fixed Google Play Rs 360 and Rs 500 catalogue rows; products must exist in Play Console before exposure.",
     "two_sided": false,
     "min_devices_on_build": 1,
-    "flags": ["hfTokensEnabled"],
-    "success": [{ "event": "hf_token_purchase_verified", "where": { "duplicate": false, "paid_paise": 36000 }, "property": "wallet_paise", "gt": 0, "note": "The Play-authoritative Rs 360 pack credited once; repeat the operational check for paid_paise 50000." }]
+    "flags": [
+      "hfTokensEnabled"
+    ],
+    "success": [
+      {
+        "event": "hf_token_purchase_verified",
+        "where": {
+          "duplicate": false,
+          "paid_paise": 36000
+        },
+        "property": "wallet_paise",
+        "gt": 0,
+        "note": "The Play-authoritative Rs 360 pack credited once; repeat the operational check for paid_paise 50000."
+      }
+    ]
   },
   "HF-REF-MANIFEST-1": {
     "description": "Ship-readiness definitions for the exact-reference implementation.",
@@ -10502,7 +10607,10 @@
       },
       {
         "event": "hf_token_purchase_verified",
-        "where": { "duplicate": false, "paid_paise": 36000 },
+        "where": {
+          "duplicate": false,
+          "paid_paise": 36000
+        },
         "property": "wallet_paise",
         "gt": 0,
         "note": "The Play-authoritative Rs 360 product credited once. Repeat for paid_paise 50000 before declaring both new packs ready."
@@ -10536,5 +10644,11 @@
         "note": "A live host left offline between 08:00 and 23:00 IST received the reminder (WhatsApp and/or push). 'skipped' = no verified number / not on WhatsApp; 'failed' = provider error (retried next tick)."
       }
     ]
+  },
+  "HF-DESIGN-TEST-CI-1": {
+    "description": "Bound the approved icon-only profile navigation bar so it cannot intercept profile-page taps, and align Flutter tests with the approved Explore, email-first sign-in, profile, and fresh-install onboarding behavior.",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "no_telemetry": "Navigation hit-area correction and test-contract maintenance; existing destination and onboarding events cover runtime behavior."
   }
 }

@@ -214,25 +214,45 @@ void main() {
 
     testWidgets('all items are icon-only with accessible names and selection', (tester) async {
       final semantics = tester.ensureSemantics();
-      addTearDown(semantics.dispose);
-      await tester.pumpWidget(
-        _host(HfFloatingNav(items: items, selected: 1, onTap: (_) {})),
-      );
-      for (var i = 0; i < items.length; i++) {
-        final item = items[i];
-        final target = find.byKey(ValueKey<String>(item.keyName!));
-        expect(find.text(item.label), findsNothing);
-        expect(find.byTooltip(item.label), findsOneWidget);
-        expect(find.bySemanticsLabel(item.label), findsOneWidget);
-        final semanticsWidget = tester.widget<Semantics>(find.descendant(
-          of: target, matching: find.byType(Semantics),
-        ).first);
-        expect(semanticsWidget.properties.selected, i == 1);
+      try {
+        await tester.pumpWidget(
+          _host(HfFloatingNav(items: items, selected: 1, onTap: (_) {})),
+        );
+        for (var i = 0; i < items.length; i++) {
+          final item = items[i];
+          final target = find.byKey(ValueKey<String>(item.keyName!));
+          expect(find.text(item.label), findsNothing);
+          expect(find.byTooltip(item.label), findsOneWidget);
+          expect(find.bySemanticsLabel(item.label), findsOneWidget);
+          final semanticsWidget = tester.widget<Semantics>(find.descendant(
+            of: target, matching: find.byType(Semantics),
+          ).first);
+          expect(semanticsWidget.properties.selected, i == 1);
+          expect(semanticsWidget.properties.onTap, isNotNull,
+            reason: 'icon-only destinations must expose the activation action');
+        }
+        expect(find.descendant(
+          of: find.byKey(const ValueKey<String>('nav-wallet')),
+          matching: find.byKey(const ValueKey<String>('nav-selected')),
+        ), findsOneWidget);
+      } finally {
+        semantics.dispose();
       }
-      expect(find.descendant(
-        of: find.byKey(const ValueKey<String>('nav-wallet')),
-        matching: find.byKey(const ValueKey<String>('nav-selected')),
-      ), findsOneWidget);
+    });
+
+    testWidgets('profile bar is bounded and leaves the body tappable', (tester) async {
+      var bodyTaps = 0;
+      await tester.pumpWidget(MaterialApp(theme: buildHfTheme(), home: Scaffold(
+        body: Center(child: TextButton(
+          onPressed: () => bodyTaps++, child: const Text('Body action'))),
+        bottomNavigationBar: HfFloatingNav(
+          items: items, selected: 2, onTap: (_) {}, profileStyle: true),
+      )));
+      expect(tester.getSize(find.byType(HfFloatingNav)).height, 64);
+      expect(tester.getSize(find.byKey(const ValueKey<String>('nav-me'))).height, 48);
+      await tester.tap(find.text('Body action'));
+      expect(bodyTaps, 1);
+      expect(tester.takeException(), isNull);
     });
 
     testWidgets('survives the largest system font without overflow', (

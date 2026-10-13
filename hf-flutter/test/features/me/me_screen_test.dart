@@ -3,6 +3,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hf_app/core/api/api_error.dart';
 import 'package:hf_app/core/auth/session.dart';
+import 'package:hf_app/core/router/app_router.dart';
+import 'package:hf_app/core/router/routes.dart';
+import 'package:hf_app/features/welcome/data/ack_service.dart';
 import 'package:hf_app/core/auth/hf_me.dart';
 import 'package:hf_app/core/auth/clerk_client.dart';
 import 'package:hf_app/core/theme/theme_mode_store.dart';
@@ -256,6 +259,11 @@ void main() {
     });
 
     testWidgets('missing session profile uses an honest fallback', (tester) async {
+      // Consent is account-bound; a missing profile must not fabricate it.
+      // This account accepted earlier, so the router may open Me while /me is unavailable.
+      SharedPreferences.setMockInitialValues({
+        '${AckService.storageKey}_profile-missing': 'hf-ack-v1',
+      });
       await pumpMe(tester, api: api, session: const SessionState(
         status: SessionStatus.signedIn,
         user: ClerkUser(id: 'profile-missing'),
@@ -535,13 +543,15 @@ void main() {
   });
 
   group('sign out and delete', () {
-    testWidgets('Sign out goes Home and signs out', (tester) async {
+    testWidgets('Sign out goes to Explore and signs out', (tester) async {
       final container = await pumpMe(tester, session: meSession(), api: api);
       await tapKeyed(tester, 'me-sign-out', ms: 600);
       final session =
           container.read(sessionProvider.notifier) as RecordingSession;
       expect(session.signOuts, 1);
       expect(container.read(sessionProvider).isSignedIn, isFalse);
+      expect(container.read(appRouterProvider).routeInformationProvider.value.uri.path,
+        Routes.explore);
       expect(_key('me-sign-out'), findsNothing);
     });
 
