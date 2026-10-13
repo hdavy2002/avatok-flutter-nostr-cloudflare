@@ -1,0 +1,196 @@
+import 'dart:async';
+
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:go_router/go_router.dart';
+import 'package:hf_app/core/router/app_router.dart';
+import 'package:hf_app/core/router/deep_link_handler.dart';
+import 'package:hf_app/core/router/pending_intent.dart';
+import 'package:hf_app/core/router/routes.dart';
+import 'package:hf_app/core/router/startup_navigation.dart';
+import 'package:hf_app/core/storage/secure_store.dart';
+import 'package:hf_app/core/theme/hf_theme.dart';
+import 'package:hf_app/features/call/data/call_api.dart';
+import 'package:hf_app/features/intro/ui/intro_screen.dart';
+
+Future<ProviderContainer> pumpIntro(WidgetTester tester, {bool dark = false, String? activeCall, Future<String?> Function()? resume}) async {
+  final router = GoRouter(initialLocation: Routes.intro, routes: [
+    GoRoute(path: Routes.intro, builder: (_, __) => const IntroScreen()),
+    for (final path in [Routes.explore, Routes.wallet, '/call/active'])
+      GoRoute(path: path, builder: (_, __) => Scaffold(body: Text('LANDED $path'))),
+  ]);
+  final container = ProviderContainer(overrides: [
+    appRouterProvider.overrideWithValue(router),
+    pendingIntentProvider.overrideWithValue(PendingIntentStore(MemoryKeyValueStore())),
+    activeCallResumeProvider.overrideWith((_) => resume?.call() ?? Future.value(activeCall)),
+  ]);
+  addTearDown(() { router.dispose(); container.dispose(); });
+  await tester.pumpWidget(UncontrolledProviderScope(container: container,
+    child: MaterialApp.router(theme: dark ? buildHfDarkTheme() : buildHfTheme(), routerConfig: router)));
+  await tester.pumpAndSettle();
+  return container;
+}
+
+Future<void> tapIntro(WidgetTester tester, String key) async {
+  final target = find.byKey(ValueKey(key));
+  await tester.ensureVisible(target);
+  await tester.pumpAndSettle();
+  await tester.tap(target);
+  await tester.pumpAndSettle();
+}
+
+void main() {
+  const channel = MethodChannel('hf/install_intro');
+  setUp(() {
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+      .setMockMethodCallHandler(channel, (_) async => true);
+  });
+  tearDown(() {
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+      .setMockMethodCallHandler(channel, null);
+  });
+
+  testWidgets('Back navigates previous pages, then exits without completing intro', (tester) async {
+    var writes = 0;
+    var exits = 0;
+    final messenger = TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+    messenger.setMockMethodCallHandler(channel, (call) async {
+      if (call.method == 'complete') writes++;
+      return false;
+    });
+    messenger.setMockMethodCallHandler(SystemChannels.platform, (call) async {
+      if (call.method == 'SystemNavigator.pop') exits++;
+      return null;
+    });
+    addTearDown(() => messenger.setMockMethodCallHandler(SystemChannels.platform, null));
+    final c = await pumpIntro(tester);
+    await tapIntro(tester, 'intro-next');
+    await tapIntro(tester, 'intro-next');
+    for (final expectedPage in [2, 1]) {
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+      expect(find.text('Page $expectedPage of 3'), findsOneWidget);
+      expect(exits, 0);
+    }
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+    expect(exits, 1);
+    expect(writes, 0);
+    expect(c.read(bootDoneProvider), isFalse);
+    expect(c.read(appRouterProvider).routeInformationProvider.value.uri.path, Routes.intro);
+  });
+
+  testWidgets('a queued explicit link never starts slow call recovery', (tester) async {
+    final recovery = Completer<String?>();
+    var recoveryReads = 0;
+    final c = await pumpIntro(tester, resume: () {
+      recoveryReads++;
+      return recovery.future;
+    });
+    await c.read(deepLinkHandlerProvider).handle('/wallet', source: 'push');
+    await c.read(startupNavigationProvider).openLanding();
+    await tester.pumpAndSettle();
+    expect(find.text('LANDED /wallet'), findsOneWidget);
+    expect(c.read(bootDoneProvider), isTrue);
+    expect(recoveryReads, 0);
+    recovery.complete(null);
+  });
+
+  testWidgets('slow recovery times out to Explore and a late result cannot navigate', (tester) async {
+    final recovery = Completer<String?>();
+    final c = await pumpIntro(tester, resume: () => recovery.future);
+    final landing = c.read(startupNavigationProvider).openLanding();
+    await tester.pump();
+    await tester.pump(StartupNavigation.recoveryTimeout + const Duration(milliseconds: 100));
+    await landing;
+    await tester.pumpAndSettle();
+    expect(find.text('LANDED /explore'), findsOneWidget);
+    recovery.complete('active');
+    await tester.pumpAndSettle();
+    expect(find.text('LANDED /explore'), findsOneWidget);
+  });
+
+  testWidgets('a link arriving during recovery wins over active call and stored intent', (tester) async {
+    final recovery = Completer<String?>();
+    final c = await pumpIntro(tester, resume: () => recovery.future);
+    await c.read(pendingIntentProvider).save('/explore');
+    final landing = c.read(startupNavigationProvider).openLanding();
+    await tester.pump();
+    await c.read(deepLinkHandlerProvider).handle('/wallet', source: 'push');
+    recovery.complete('active');
+    await landing;
+    await tester.pumpAndSettle();
+    expect(find.text('LANDED /wallet'), findsOneWidget);
+  });
+
+  testWidgets('active-call recovery wins over stored pending intent', (tester) async {
+    final c = await pumpIntro(tester, activeCall: 'active');
+    await c.read(pendingIntentProvider).save('/wallet');
+    await c.read(startupNavigationProvider).openLanding();
+    await tester.pumpAndSettle();
+    expect(find.text('LANDED /call/active'), findsOneWidget);
+  });
+
+  testWidgets('three pages explain browsing and pricing, then open Explore', (tester) async {
+    final c = await pumpIntro(tester);
+    expect(find.text('Page 1 of 3'), findsOneWidget);
+    expect(c.read(bootDoneProvider), isFalse);
+    await tapIntro(tester, 'intro-next');
+    expect(find.text('Listen before you connect'), findsOneWidget);
+    expect(find.text('You are charged only while connected.'), findsOneWidget);
+    await tapIntro(tester, 'intro-next');
+    expect(find.text('Page 3 of 3'), findsOneWidget);
+    expect(find.text('Start exploring'), findsOneWidget);
+    await tapIntro(tester, 'intro-next');
+    expect(find.text('LANDED /explore'), findsOneWidget);
+    expect(c.read(bootDoneProvider), isTrue);
+  });
+
+  testWidgets('links stay queued until Skip and a valid explicit target wins', (tester) async {
+    final c = await pumpIntro(tester);
+    await c.read(deepLinkHandlerProvider).handle('/wallet', source: 'push');
+    expect(c.read(pendingLinkProvider), isNotNull);
+    expect(find.byType(IntroScreen), findsOneWidget);
+    await tapIntro(tester, 'intro-skip');
+    expect(find.text('LANDED /wallet'), findsOneWidget);
+  });
+
+  testWidgets('an ignored pending link still lands on Explore', (tester) async {
+    final c = await pumpIntro(tester);
+    await c.read(deepLinkHandlerProvider).handle('https://example.test/private', source: 'link');
+    await tapIntro(tester, 'intro-skip');
+    expect(find.text('LANDED /explore'), findsOneWidget);
+  });
+
+  testWidgets('an active call is resumed after the intro', (tester) async {
+    await pumpIntro(tester, activeCall: 'active');
+    await tapIntro(tester, 'intro-skip');
+    expect(find.text('LANDED /call/active'), findsOneWidget);
+  });
+
+  for (final dark in [false, true]) {
+    testWidgets('photos retain white frames at 320px with 2x text, dark=$dark', (tester) async {
+      tester.view.physicalSize = const Size(320, 568);
+      tester.view.devicePixelRatio = 1;
+      tester.platformDispatcher.textScaleFactorTestValue = 2;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+      await pumpIntro(tester, dark: dark);
+      for (final photo in ['find-person', 'listen-first', 'explore-freely']) {
+        final frame = tester.widget<Container>(find.byKey(ValueKey('intro-photo-$photo')));
+        final decoration = frame.decoration! as BoxDecoration;
+        expect(decoration.color, Colors.white);
+        expect(decoration.boxShadow, isNotEmpty);
+        expect(tester.takeException(), isNull);
+        await tester.ensureVisible(find.byKey(const ValueKey('intro-next')));
+        await tester.pumpAndSettle();
+        expect(tester.getSize(find.byKey(const ValueKey('intro-next'))).height,
+          greaterThanOrEqualTo(48));
+        if (photo != 'explore-freely') await tapIntro(tester, 'intro-next');
+      }
+    });
+  }
+}

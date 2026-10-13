@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
@@ -17,11 +18,12 @@ import '../auth/auth_harness.dart';
 GoRouter splashRouter() => GoRouter(
   initialLocation: '/splash',
   routes: [
+    GoRoute(path: '/intro', builder: (_, __) => const Scaffold(body: Text('INTRO PAGE'))),
     GoRoute(path: '/splash', builder: (_, __) => const SplashScreen()),
     GoRoute(path: '/welcome', builder: (_, __) => const WelcomeScreen()),
     GoRoute(
-      path: '/',
-      builder: (_, __) => const Scaffold(body: Text('HOME PAGE')),
+      path: '/explore',
+      builder: (_, __) => const Scaffold(body: Text('EXPLORE PAGE')),
     ),
   ],
 );
@@ -46,25 +48,36 @@ Future<void> runSplash(
 }
 
 void main() {
-  setUp(() => SharedPreferences.setMockInitialValues(<String, Object>{}));
+  const introChannel = MethodChannel('hf/install_intro');
+  setUp(() {
+    SharedPreferences.setMockInitialValues(<String, Object>{});
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+      .setMockMethodCallHandler(introChannel, (_) async => true);
+  });
+  tearDown(() => TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+    .setMockMethodCallHandler(introChannel, null));
   tearDown(() => AccountScope.id = null);
 
-  testWidgets('a fresh guest goes directly to marketplace without onboarding', (
+  testWidgets('a fresh installation opens intro before browsing', (
     tester,
   ) async {
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+      .setMockMethodCallHandler(introChannel, (_) async => false);
     await runSplash(tester, splashRouter(), api: configApi());
     expect(find.text(WelcomeCopy.title), findsNothing);
-    expect(find.text('HOME PAGE'), findsOneWidget);
+    expect(find.text('INTRO PAGE'), findsOneWidget);
+    final c = ProviderScope.containerOf(tester.element(find.text('INTRO PAGE')));
+    expect(c.read(bootDoneProvider), isFalse);
   });
 
-  testWidgets('a device that accepted the current version goes Home', (
+  testWidgets('a device that accepted the current version goes to Explore', (
     tester,
   ) async {
     SharedPreferences.setMockInitialValues({
       AckService.storageKey: '2026-10-10',
     });
     await runSplash(tester, splashRouter(), api: configApi());
-    expect(find.text('HOME PAGE'), findsOneWidget);
+    expect(find.text('EXPLORE PAGE'), findsOneWidget);
   });
 
   testWidgets('new safety terms do not gate public browsing', (tester) async {
@@ -75,14 +88,14 @@ void main() {
     expect(find.text(WelcomeCopy.title), findsNothing);
   });
 
-  testWidgets('offline (no config), an earlier acceptance still opens Home', (
+  testWidgets('offline (no config), an earlier acceptance still opens Explore', (
     tester,
   ) async {
     SharedPreferences.setMockInitialValues({
       AckService.storageKey: 'hf-ack-v0',
     });
     await runSplash(tester, splashRouter(), api: configApi(ackVersion: null));
-    expect(find.text('HOME PAGE'), findsOneWidget);
+    expect(find.text('EXPLORE PAGE'), findsOneWidget);
   });
 
   testWidgets('offline and never accepted: browse', (tester) async {
@@ -91,7 +104,7 @@ void main() {
   });
 
   testWidgets(
-    'a signed-in account that accepted on another phone goes Home and fills the device copy',
+    'a signed-in account that accepted on another phone goes to Explore and fills the device copy',
     (tester) async {
       final api = configApi()
         ..onJson('GET', '/api/hf/me', {
@@ -100,7 +113,7 @@ void main() {
         });
       final clerk = FakeClerk(user: const ClerkUser(id: 'user_1'));
       await runSplash(tester, splashRouter(), api: api, clerk: clerk);
-      expect(find.text('HOME PAGE'), findsOneWidget);
+      expect(find.text('EXPLORE PAGE'), findsOneWidget);
       final prefs = await SharedPreferences.getInstance();
       expect(prefs.getString(AckService.storageKey), isNull);
     },
@@ -117,7 +130,7 @@ void main() {
         ..onJson('POST', '/api/hf/me/ack', {'ok': true});
       final clerk = FakeClerk(user: const ClerkUser(id: 'user_1'));
       await runSplash(tester, splashRouter(), api: api, clerk: clerk);
-      expect(find.text('HOME PAGE'), findsOneWidget);
+      expect(find.text('EXPLORE PAGE'), findsOneWidget);
       expect(api.callsTo('POST', '/api/hf/me/ack'), isEmpty);
     },
   );
@@ -129,7 +142,7 @@ void main() {
     final router = splashRouter();
     await runSplash(tester, router, api: configApi());
     final container = ProviderScope.containerOf(
-      tester.element(find.text('HOME PAGE')),
+      tester.element(find.text('EXPLORE PAGE')),
     );
     expect(container.read(bootDoneProvider), isTrue);
   });

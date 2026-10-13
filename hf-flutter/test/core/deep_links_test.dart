@@ -21,9 +21,9 @@ void expectTab(String input, String path) {
 
 void main() {
   group('path table (spec 3.3)', () {
-    test('/ -> Home', () {
-      expectRoute(site('/'), '/');
-      expectRoute(site(''), '/');
+    test('/ -> Explore', () {
+      expectRoute(site('/'), '/explore');
+      expectRoute(site(''), '/explore');
     });
     test('/marketplace and /talk -> Explore, filters kept', () {
       expectRoute(site('/marketplace'), '/explore');

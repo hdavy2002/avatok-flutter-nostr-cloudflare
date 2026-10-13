@@ -39,7 +39,7 @@ class _TabSpec {
 
 const List<_TabSpec> _allTabs = [
   _TabSpec(
-    TabBranch.home,
+    TabBranch.explore,
     Strings.tabHome,
     Icons.search_rounded,
     HfTint.lavender,
@@ -72,7 +72,7 @@ const List<_TabSpec> _allTabs = [
   ),
 ];
 
-/// The bottom-tab shell with the floating nav. Back from a tab other than Home goes to Home; back from Home
+/// The bottom-tab shell with the floating nav. Back from a tab other than Explore goes to Explore; back from Explore
 /// asks to exit. Screens scroll under the bar (`extendBody`); use [hfNavPadding] as their bottom padding.
 class HfTabShell extends ConsumerWidget {
   const HfTabShell({super.key, required this.navigationShell});
@@ -80,8 +80,8 @@ class HfTabShell extends ConsumerWidget {
   final StatefulNavigationShell navigationShell;
 
   Future<void> _onBack(BuildContext context) async {
-    if (navigationShell.currentIndex != TabBranch.home) {
-      navigationShell.goBranch(TabBranch.home);
+    if (navigationShell.currentIndex != TabBranch.explore) {
+      navigationShell.goBranch(TabBranch.explore);
       return;
     }
     final leave = await showDialog<bool>(
@@ -148,16 +148,12 @@ class HfTabShell extends ConsumerWidget {
           selected: tabs.indexWhere(
             (t) =>
                 t.branch ==
-                (navigationShell.currentIndex == TabBranch.explore
-                    ? TabBranch.home
+                (navigationShell.currentIndex == TabBranch.home
+                    ? TabBranch.explore
                     : navigationShell.currentIndex),
           ),
           onTap: (i) async {
             final branch = tabs[i].branch;
-            if (branch == TabBranch.home &&
-                navigationShell.currentIndex == TabBranch.explore) {
-              return;
-            }
             await ref.read(pendingIntentProvider).clear();
             if (!context.mounted) return;
             navigationShell.goBranch(

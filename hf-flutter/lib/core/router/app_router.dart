@@ -24,6 +24,7 @@ import '../../features/notifications/ui/notifications_screen.dart';
 import '../../features/kyc/ui/identity_kyc_screen.dart';
 import '../../features/review/ui/review_screen.dart';
 import '../../features/splash/ui/splash_screen.dart';
+import '../../features/intro/ui/intro_screen.dart';
 import '../../features/wallet/ui/wallet_screen.dart';
 import '../../features/welcome/ui/welcome_screen.dart';
 import '../../features/welcome/data/ack_service.dart';
@@ -61,7 +62,8 @@ class _RefreshNotifier extends ChangeNotifier {
 /// arrives early waits for boot).
 String? hfRedirect(SessionState session, Uri uri) {
   if (session.isLoading) return null;
-  if (session.isSignedIn && uri.path == Routes.signIn) return Routes.home;
+  // The mounted sign-in screen owns completion, including consent/profile and
+  // returning true to a pushed auth gate. Redirecting on session refresh races OTP.
   if (!session.isSignedIn && Routes.needsSignIn(uri.path)) {
     return Routes.signInTo(uri.toString());
   }
@@ -75,6 +77,7 @@ GoRouter createAppRouter({
 }) {
   final router = GoRouter(
     initialLocation: initialLocation,
+    overridePlatformDefaultLocation: true,
     refreshListenable: refreshListenable,
     redirect: (context, state) async {
       final session = ref.read(sessionProvider);
@@ -107,6 +110,7 @@ GoRouter createAppRouter({
           next: Routes.safeNext(state.uri.queryParameters['next']),
         ),
       ),
+      GoRoute(path: Routes.intro, builder: (_, __) => const IntroScreen()),
       GoRoute(path: Routes.splash, builder: (_, __) => const SplashScreen()),
       GoRoute(
         path: Routes.welcome,
@@ -250,7 +254,7 @@ class _NotFoundScreen extends StatelessWidget {
             const SizedBox(height: HfSpacing.gapLarge),
             HfButton(
               label: Strings.goHome,
-              onPressed: () => GoRouter.of(context).go(Routes.home),
+              onPressed: () => GoRouter.of(context).go(Routes.explore),
             ),
           ],
         ),

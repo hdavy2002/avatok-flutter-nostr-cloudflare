@@ -2,6 +2,7 @@
 /// A screen is added by replacing the stub widget in `lib/features/<x>/ui/`: the route already exists.
 abstract final class Routes {
   static const String splash = '/splash';
+  static const String intro = '/intro';
   static const String home = '/';
   static const String welcome = '/welcome';
   static const String signIn = '/sign-in';

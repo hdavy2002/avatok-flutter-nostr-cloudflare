@@ -152,8 +152,8 @@ abstract final class DeepLinks {
       final browse = Uri.parse(_exploreFrom(q));
       return OpenRoute(
         browse.hasQuery
-            ? Uri(path: Routes.home, query: browse.query).toString()
-            : Routes.home,
+            ? Uri(path: Routes.explore, query: browse.query).toString()
+            : Routes.explore,
       );
     }
 

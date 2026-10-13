@@ -22,10 +22,6 @@ GoRouter welcomeRouter() => GoRouter(
       path: '/explore',
       builder: (_, __) => const Scaffold(body: Text('BROWSE PAGE')),
     ),
-    GoRoute(
-      path: '/',
-      builder: (_, __) => const Scaffold(body: Text('HOME PAGE')),
-    ),
   ],
 );
 
@@ -120,7 +116,7 @@ void main() {
       await reveal(tester, find.text(WelcomeCopy.button));
       await tester.tap(find.text(WelcomeCopy.button));
       await settle(tester);
-      expect(find.text('HOME PAGE'), findsOneWidget);
+      expect(find.text('BROWSE PAGE'), findsOneWidget);
       expect(
         api.callsTo('POST', '/api/hf/me/ack'),
         isEmpty,
@@ -151,7 +147,7 @@ void main() {
       await reveal(tester, find.text(WelcomeCopy.button));
       await tester.tap(find.text(WelcomeCopy.button));
       await settle(tester);
-      expect(find.text('HOME PAGE'), findsOneWidget);
+      expect(find.text('BROWSE PAGE'), findsOneWidget);
       expect(api.callsTo('POST', '/api/hf/me/ack').single.body, {
         'version': kFallbackAckVersion,
         'ack18': true,
@@ -181,7 +177,7 @@ void main() {
     await reveal(tester, find.text(WelcomeCopy.button));
     await tester.tap(find.text(WelcomeCopy.button));
     await settle(tester);
-    expect(find.text('HOME PAGE'), findsOneWidget);
+    expect(find.text('BROWSE PAGE'), findsOneWidget);
     final prefs = await SharedPreferences.getInstance();
     expect(prefs.getString('${AckService.storageKey}_user_test'), isNotNull);
   });
@@ -266,7 +262,7 @@ void main() {
     expect(container.read(bootDoneProvider), isTrue);
     expect(container.read(pendingLinkProvider), isNull);
     // The link opened instead of Home.
-    expect(find.text('HOME PAGE'), findsNothing);
+    expect(find.text('BROWSE PAGE'), findsNothing);
   });
 
   testWidgets('the rule rows are in place after the staggered intro', (

@@ -45,7 +45,7 @@ abstract final class SignInCopy {
 }
 
 /// `/sign-in?next=`: email or WhatsApp, then the 6-digit code. Opened by `requireSignIn` (pushed: closes with
-/// `true`) or by the router's sign-in rule (replaces the stack: goes to `next`, else Home).
+/// `true`) or by the router's sign-in rule (replaces the stack: goes to `next`, else Explore).
 class SignInScreen extends ConsumerStatefulWidget {
   const SignInScreen({super.key, this.next, this.secondNumber = false});
 
@@ -65,6 +65,7 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
   List<RememberedAccount> _accounts = [];
   bool _emailSelected = true;
   bool _emailBusy = false;
+  bool _finishingSignIn = false;
   RememberedAccounts get _remembered => RememberedAccounts(ref.read(secureStoreProvider));
 
   @override
@@ -89,6 +90,23 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
     if (next != null) unawaited(ref.read(pendingIntentProvider).save(next));
     _c.trackStarted(next == null ? 'direct' : DeepLinks.telemetryPath(next));
     _c.addListener(_onChange);
+    // Restore can finish after a cold auth route mounts. Only loading -> signedIn
+    // belongs here: signedOut -> signedIn OTP completion stays with the form.
+    ref.listenManual<SessionState>(sessionProvider, (previous, next) {
+      if (previous?.isLoading == true && next.isSignedIn) {
+        _finishRestoredSession();
+      }
+    });
+    if (ref.read(sessionProvider).isSignedIn) _finishRestoredSession();
+  }
+
+  void _finishRestoredSession() {
+    if (widget.secondNumber) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && ref.read(sessionProvider).isSignedIn) {
+        unawaited(_finishSignIn());
+      }
+    });
   }
 
   SignInStep _lastStep = SignInStep.number;
@@ -145,6 +163,16 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
   }
 
   Future<void> _finishSignIn() async {
+    if (!mounted || _finishingSignIn) return;
+    _finishingSignIn = true;
+    try {
+      await _completeSignIn();
+    } finally {
+      _finishingSignIn = false;
+    }
+  }
+
+  Future<void> _completeSignIn() async {
     if (!mounted) return;
     final router = GoRouter.of(context);
     final next = Routes.safeNext(widget.next);
@@ -156,7 +184,7 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
       if (!mounted) return;
       if (accepted != true) {
         await ref.read(pendingIntentProvider).clear();
-        if (mounted) router.go(Routes.home);
+        if (mounted) router.go(Routes.explore);
         return;
       }
     }
@@ -166,7 +194,7 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
       if (!mounted) return;
       if (named != true) {
         await ref.read(pendingIntentProvider).clear();
-        if (mounted) router.go(Routes.home);
+        if (mounted) router.go(Routes.explore);
         return;
       }
     }
@@ -175,7 +203,7 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
     if (router.canPop()) {
       router.pop(true);
     } else {
-      router.go(next ?? Routes.home);
+      router.go(next ?? Routes.explore);
     }
   }
 

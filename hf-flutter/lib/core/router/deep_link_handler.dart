@@ -65,18 +65,18 @@ class DeepLinkHandler {
   }
 
   /// Called by the splash screen after boot: opens a link that arrived while the app was starting.
-  /// Returns true when it did, so the splash does not also go Home.
+  /// Returns true only when an in-app route opened. Ignored links and Custom Tabs
+  /// still need a usable landing screen underneath.
   Future<bool> flushPending() async {
     final pending = _ref.read(pendingLinkProvider);
     if (pending == null) return false;
     _ref.read(pendingLinkProvider.notifier).set(null);
-    await _apply(pending.input, pending.source, pending.launch);
-    return true;
+    return _apply(pending.input, pending.source, pending.launch);
   }
 
-  Future<void> _apply(String input, String source, String launch) async {
+  Future<bool> _apply(String input, String source, String launch) async {
     final target = DeepLinks.resolve(input);
-    if (target is IgnoreLink) return;
+    if (target is IgnoreLink) return false;
     // Telemetry never carries a slug, an id or a token: the path is templated and the query dropped.
     await Analytics.capture('hf_app_deeplink_opened', {
       'path': DeepLinks.telemetryPath(input),
@@ -87,6 +87,7 @@ class DeepLinkHandler {
     switch (target) {
       case OpenRoute(:final location):
         router.go(location);
+        return true;
       case DigiLockerReturn(:final location):
         // The onboarding and lane screens run `digilocker/complete` when they see `dl=return` (HF-NATIVE-8).
         final pending = await _ref.read(digiLockerPendingStoreProvider).read();
@@ -107,10 +108,12 @@ class DeepLinkHandler {
         } else {
           router.go(location);
         }
+        return true;
       case OpenCustomTab(:final uri):
         await LinkOpener.instance.customTab(uri);
+        return false;
       case IgnoreLink():
-        break;
+        return false;
     }
   }
 }

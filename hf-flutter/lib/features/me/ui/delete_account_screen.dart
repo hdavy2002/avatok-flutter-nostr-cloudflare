@@ -305,7 +305,7 @@ class _DeleteAccountScreenState extends ConsumerState<DeleteAccountScreen> {
   }
 
   Future<void> _signOut() async {
-    GoRouter.of(context).go(Routes.home);
+    GoRouter.of(context).go(Routes.explore);
     await ref.read(sessionProvider.notifier).signOut();
   }
 

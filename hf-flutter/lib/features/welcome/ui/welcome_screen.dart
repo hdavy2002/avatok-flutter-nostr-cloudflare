@@ -134,7 +134,7 @@ class _WelcomeScreenState extends ConsumerState<WelcomeScreen>
         } else {
           final next = Routes.safeNext(widget.next);
           await ref.read(pendingIntentProvider).clear();
-          if (mounted) router.go(next ?? Routes.home);
+          if (mounted) router.go(next ?? Routes.explore);
         }
       }
     } catch (_) {

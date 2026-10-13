@@ -7,14 +7,14 @@ import 'routes.dart';
 import '../../features/welcome/data/ack_service.dart';
 import '../../features/auth/data/registration_progress.dart';
 
-/// Back: pop when there is something to pop, else go Home. Screens opened by a deep link (`go`) have
+/// Back: pop when there is something to pop, else go to Explore. Screens opened by a deep link (`go`) have
 /// no history, and a plain `pop()` there would do nothing.
 void popOrHome(BuildContext context) {
   final router = GoRouter.of(context);
   if (router.canPop()) {
     router.pop();
   } else {
-    router.go(Routes.home);
+    router.go(Routes.explore);
   }
 }
 
@@ -52,7 +52,7 @@ Future<bool> requireSignIn(
       Routes.safeNext(
         next ?? router.routeInformationProvider.value.uri.toString(),
       ) ??
-      Routes.home;
+      Routes.explore;
   if (!ref.read(sessionProvider).isSignedIn) {
     final result = await router.push<bool>(Routes.signInTo(where));
     if (result != true ||

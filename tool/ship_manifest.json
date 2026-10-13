@@ -1,4 +1,19 @@
 {
+  "HF-FRESH-ONBOARD-1": {
+    "description": "Show three photo-led onboarding pages once per fresh Android installation, then land guests on Explore while retaining sign-in gates for calls, wallet and profile.",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [],
+    "success": [
+      {
+        "event": "hf_app_intro_completed",
+        "property": "persisted",
+        "equals": true,
+        "min_events": 1,
+        "note": "Confirms that a fresh-install intro was completed or skipped and its install-level no-backup marker was saved successfully."
+      }
+    ]
+  },
   "HF-REFERENCE-DETAIL-1": {
     "description": "Correct all audited reference typography, diagram, community collage, steps and host CTA details; preserve existing footer and accessible truthful previews.",
     "two_sided": false,

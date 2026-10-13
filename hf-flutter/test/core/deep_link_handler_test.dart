@@ -161,4 +161,15 @@ void main() {
     expect(opener.opened, isEmpty);
     expect(where(c), '/');
   });
+  testWidgets('ignored and browser-only queued links do not claim a native landing', (tester) async {
+    LinkOpener.instance = _RecordingOpener();
+    final c = await pumpDeepLinkApp(tester);
+    final handler = c.read(deepLinkHandlerProvider);
+    for (final input in ['https://example.test/wallet', '/terms']) {
+      await handler.handle(input, source: 'link', launch: 'cold');
+      expect(await handler.flushPending(), isFalse);
+      expect(c.read(pendingLinkProvider), isNull);
+    }
+  });
+
 }

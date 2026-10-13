@@ -108,13 +108,13 @@ void main() {
     await closeApp(tester);
   });
 
-  testWidgets('Back goes home', (tester) async {
+  testWidgets('Back goes to Explore', (tester) async {
     prepareStorage();
     await pumpCallApp(tester, api: _api(), location: '/call/new?host=asha');
     await tester.tap(find.byTooltip('Back'));
     await tester.pump();
     await tester.pump();
-    expect(find.text('HOME PAGE'), findsOneWidget);
+    expect(find.text('EXPLORE PAGE'), findsOneWidget);
     await closeApp(tester);
   });
 

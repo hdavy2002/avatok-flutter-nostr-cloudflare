@@ -215,7 +215,7 @@ void main() {
       await tester.tap(tabItem(host ? 'tab-host' : 'tab-home'));
       await tester.pumpAndSettle();
       expect(c.read(appRouterProvider).routeInformationProvider.value.uri.path,
-          host ? '/host' : '/');
+          host ? '/host' : '/explore');
       expect(tester.widget<HfFloatingNav>(find.byType(HfFloatingNav)).profileStyle, isFalse);
     });
   }

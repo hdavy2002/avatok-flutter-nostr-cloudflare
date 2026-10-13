@@ -331,7 +331,7 @@ class _MeScreenState extends ConsumerState<MeScreen>
       }
       final navigator = Navigator.of(context);
       final controller = ref.read(sessionProvider.notifier);
-      GoRouter.of(context).go(Routes.home);
+      GoRouter.of(context).go(Routes.explore);
       await controller.signOut();
       if (switchAccount && navigator.mounted) {
         await navigator.push<void>(MaterialPageRoute(builder: (_) => const SignInScreen(secondNumber: true)));

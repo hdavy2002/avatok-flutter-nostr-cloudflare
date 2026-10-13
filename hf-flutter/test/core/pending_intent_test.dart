@@ -19,6 +19,8 @@ void main() {
         '/sign-in',
         '/welcome',
         '/splash',
+        '/intro',
+        '/wallet?next=%2Fintro',
         '//evil.test',
         'https://evil.test',
         '/admin',

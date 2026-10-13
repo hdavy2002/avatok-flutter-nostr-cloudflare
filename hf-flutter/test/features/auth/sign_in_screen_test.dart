@@ -59,7 +59,7 @@ GoRouter signInRouter({String? next = '/me'}) => GoRouter(
     ),
     GoRoute(path: '/welcome', builder: (_, __) => const WelcomeScreen()),
     GoRoute(
-      path: '/',
+      path: '/explore',
       builder: (_, __) => const Scaffold(body: Text('HOME PAGE')),
     ),
   ],

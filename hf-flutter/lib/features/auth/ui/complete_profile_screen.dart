@@ -58,7 +58,7 @@ class _CompleteProfileScreenState extends ConsumerState<CompleteProfileScreen> {
     if (router.canPop()) {
       router.pop(false);
     } else {
-      router.go(Routes.home);
+      router.go(Routes.explore);
     }
   }
 
@@ -77,7 +77,7 @@ class _CompleteProfileScreenState extends ConsumerState<CompleteProfileScreen> {
     if (router.canPop()) {
       router.pop(true);
     } else {
-      router.go(Routes.safeNext(widget.next) ?? Routes.home);
+      router.go(Routes.safeNext(widget.next) ?? Routes.explore);
     }
   }
 
