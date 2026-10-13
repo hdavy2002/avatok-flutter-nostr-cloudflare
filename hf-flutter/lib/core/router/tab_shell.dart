@@ -104,6 +104,7 @@ class HfTabShell extends ConsumerWidget {
     final tabs = _allTabs
         .where((t) => t.branch != TabBranch.host || hasHost)
         .toList();
+    final profileStyle = navigationShell.currentIndex == TabBranch.me;
     final systemBottom = MediaQuery.paddingOf(context).bottom;
     return PopScope(
       canPop: false,
@@ -113,19 +114,22 @@ class HfTabShell extends ConsumerWidget {
       child: Scaffold(
         extendBody: true,
         // The body's bottom padding would include the nav height with extendBody; screens add [hfNavPadding]
-        // themselves, so give them the system inset only.
+        // themselves. Me receives the actual nav inset so its padding grows with labels.
         body: Builder(
           builder: (inner) {
             final media = MediaQuery.of(inner);
             return MediaQuery(
               data: media.copyWith(
-                padding: media.padding.copyWith(bottom: systemBottom),
+                padding: media.padding.copyWith(
+                  bottom: profileStyle ? media.padding.bottom : systemBottom,
+                ),
               ),
               child: navigationShell,
             );
           },
         ),
         bottomNavigationBar: HfFloatingNav(
+          profileStyle: profileStyle,
           items: [
             for (final t in tabs)
               HfNavItem(

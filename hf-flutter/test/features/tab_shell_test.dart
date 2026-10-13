@@ -6,7 +6,11 @@ import 'package:hf_app/features/review/ui/review_screen.dart';
 import 'package:hf_app/core/router/app_router.dart';
 import 'package:hf_app/core/router/tab_shell.dart';
 import 'package:hf_app/core/widgets/hf_floating_nav.dart';
+import 'package:hf_app/features/me/data/notification_control.dart';
+
 import 'package:hf_app/features/auth/ui/sign_in_screen.dart';
+
+import 'me/me_test_support.dart' show FakeNotificationControl;
 
 import '../support/app_harness.dart';
 import '../support/fake_api_client.dart';
@@ -184,6 +188,36 @@ void main() {
     expect(tester.takeException(), isNull);
     expect(find.byType(HfFloatingNav), findsOneWidget);
   });
+
+  for (final host in [false, true]) {
+    testWidgets('Me shows all labels at 320 px and 2x text (host: $host)', (tester) async {
+      tester.platformDispatcher.textScaleFactorTestValue = 2;
+      addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+      final c = await pumpApp(tester, location: '/me', session: signedInState(host: host),
+        overrides: [notificationControlProvider.overrideWithValue(FakeNotificationControl())]);
+      tester.view.physicalSize = const Size(960, 2400);
+      tester.view.viewPadding = const FakeViewPadding(bottom: 72);
+      tester.view.padding = const FakeViewPadding(bottom: 72);
+      addTearDown(tester.view.resetViewPadding);
+      addTearDown(tester.view.resetPadding);
+      await tester.pumpAndSettle();
+      expect(tester.widget<HfFloatingNav>(find.byType(HfFloatingNav)).profileStyle, isTrue);
+      for (final label in ['Discover', 'Wallet', 'Me', if (host) 'Host']) {
+        expect(tabLabel(label), findsOneWidget);
+        expect(tester.widget<Text>(tabLabel(label)).maxLines, isNull);
+      }
+      for (final key in ['tab-home', 'tab-wallet', 'tab-me', if (host) 'tab-host']) {
+        expect(tester.getSize(tabItem(key)).height, greaterThanOrEqualTo(48));
+      }
+      expect(tabItem('tab-host'), host ? findsOneWidget : findsNothing);
+      expect(tester.takeException(), isNull);
+      await tester.tap(tabItem(host ? 'tab-host' : 'tab-home'));
+      await tester.pumpAndSettle();
+      expect(c.read(appRouterProvider).routeInformationProvider.value.uri.path,
+          host ? '/host' : '/');
+      expect(tester.widget<HfFloatingNav>(find.byType(HfFloatingNav)).profileStyle, isFalse);
+    });
+  }
 
   testWidgets('the selected tab label is at least 14 sp', (tester) async {
     await pumpApp(tester, session: signedInState(host: true));

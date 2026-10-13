@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -13,7 +14,7 @@ import '../../../core/links.dart';
 import '../../../core/router/nav.dart';
 import '../../../core/router/routes.dart';
 import '../../../core/theme/theme_mode_store.dart';
-import '../../../core/theme/hf_theme.dart';
+import '../../../core/theme/hf_profile_style.dart';
 import '../../../core/widgets/widgets.dart';
 import '../../host_dashboard/host_dashboard_providers.dart';
 import '../../lanes/data/lanes_api.dart';
@@ -33,7 +34,7 @@ abstract final class MeCopy {
       'Sign in with your WhatsApp number to call, add money and manage your account.';
   static const String signInButton = 'Sign in';
   static const String noName = 'Add your name';
-  static const String editName = 'Change name';
+  static const String editName = 'Edit profile';
   static const String whatsapp = 'WhatsApp';
   static const String closingTitle = 'Your account is being closed';
   static const String closingBody = 'See where it stands, or change your mind.';
@@ -136,6 +137,9 @@ class _MeScreenState extends ConsumerState<MeScreen>
   bool? _nudgesOn;
   bool _nudgesBusy = false;
   bool _leavingAccount = false;
+  final GlobalKey _appearanceKey = GlobalKey();
+
+  HfProfileStyle get _style => HfProfileStyle.of(context);
 
   @override
   void initState() {
@@ -335,536 +339,488 @@ class _MeScreenState extends ConsumerState<MeScreen>
     } finally { if (mounted) setState(() => _leavingAccount = false); }
   }
 
+  void _showAppearance() {
+    final target = _appearanceKey.currentContext;
+    if (target == null) return;
+    unawaited(Scrollable.ensureVisible(
+      target,
+      alignment: 0.05,
+      duration: MediaQuery.disableAnimationsOf(context)
+          ? Duration.zero : const Duration(milliseconds: 250),
+    ));
+  }
+
   @override
   Widget build(BuildContext context) {
     final session = ref.watch(sessionProvider);
-    return Scaffold(
-      appBar: AppBar(
-        automaticallyImplyLeading: false,
-        title: const Text(MeCopy.title),
-      ),
-      body: SafeArea(
-        child: session.isLoading
-            ? const LoadingPanel()
-            : SingleChildScrollView(
-                padding: const EdgeInsets.fromLTRB(
-                  HfSpacing.page,
-                  0,
-                  HfSpacing.page,
-                  120,
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: session.isSignedIn
-                      ? _signedIn(context, session)
-                      : _signedOut(context),
-                ),
-              ),
-      ),
+    final style = _style;
+    final buttonStyle = OutlinedButton.styleFrom(
+      foregroundColor: style.ink,
+      backgroundColor: style.soft,
+      side: BorderSide(color: style.line),
+      minimumSize: const Size(48, 48),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      textStyle: style.body.copyWith(fontWeight: FontWeight.w500),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
     );
-  }
-
-  // ---- building blocks ------------------------------------------------------------------------------
-
-  Widget _heading(String text) => Padding(
-    padding: const EdgeInsets.fromLTRB(4, 0, 4, HfSpacing.sm),
-    child: Semantics(
-      header: true,
-      child: Text(text, style: HfText.of(context, HfText.subsection)),
-    ),
-  );
-
-  /// A grouped list card: radius 22, 1 px line border, rows divided by hairlines.
-  Widget _group(List<Widget> rows, {Key? key}) {
-    final dark = HfBrightness.isDark(context);
-    return Container(
-      key: key,
-      clipBehavior: Clip.antiAlias,
-      decoration: BoxDecoration(
-        color: dark ? HfColors.darkCard : HfColors.white,
-        borderRadius: BorderRadius.circular(HfRadius.tile),
-        border: Border.all(color: dark ? HfColors.darkLine : HfColors.line),
+    return Theme(
+      data: Theme.of(context).copyWith(
+        outlinedButtonTheme: OutlinedButtonThemeData(style: buttonStyle),
+        switchTheme: SwitchThemeData(
+          thumbColor: WidgetStateProperty.resolveWith((states) =>
+              states.contains(WidgetState.selected) ? style.selectedInk : style.muted),
+          trackColor: WidgetStateProperty.resolveWith((states) =>
+              states.contains(WidgetState.selected) ? style.selected : style.soft),
+          trackOutlineColor: WidgetStatePropertyAll(style.line),
+          materialTapTargetSize: MaterialTapTargetSize.padded,
+        ),
       ),
-      child: Material(
-        type: MaterialType.transparency,
-        child: Column(
-          children: [
-            for (var i = 0; i < rows.length; i++) ...[
-              if (i > 0)
-                Divider(
-                  height: 1,
-                  color: dark ? HfColors.darkLine : HfColors.line,
-                ),
-              rows[i],
-            ],
+      child: Scaffold(
+        backgroundColor: style.page,
+        appBar: AppBar(
+          automaticallyImplyLeading: false,
+          toolbarHeight: 24 + MediaQuery.textScalerOf(context).scale(24) * 1.4,
+          backgroundColor: style.page,
+          foregroundColor: style.ink,
+          surfaceTintColor: Colors.transparent,
+          title: Text(MeCopy.title, style: style.title),
+          actions: [
+            IconButton(
+              key: const ValueKey<String>('me-appearance-settings'),
+              tooltip: 'Appearance settings',
+              onPressed: session.isLoading ? null : _showAppearance,
+              icon: const Icon(Icons.settings_outlined),
+            ),
+            const SizedBox(width: 8),
           ],
+        ),
+        body: SafeArea(
+          bottom: false,
+          child: session.isLoading
+              ? const LoadingPanel()
+              : SingleChildScrollView(
+                  padding: EdgeInsets.fromLTRB(20, 12, 20,
+                      MediaQuery.paddingOf(context).bottom + 24),
+                  child: Center(
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 640),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: session.isSignedIn
+                            ? _signedIn(context, session) : _signedOut(context),
+                      ),
+                    ),
+                  ),
+                ),
         ),
       ),
     );
   }
 
-  Widget _iconSquare(IconData icon, HfTint tint, {Color? color}) => Container(
+  Widget _heading(String text) => Padding(
+    padding: const EdgeInsets.fromLTRB(4, 0, 4, 10),
+    child: Semantics(header: true, child: Text(text, style: _style.heading)),
+  );
+
+  Widget _card({Key? key, required Widget child}) => Container(
+    key: key,
+    decoration: _style.card,
+    padding: const EdgeInsets.all(20),
+    child: child,
+  );
+
+  Widget _group(List<Widget> rows, {Key? key}) => Container(
+    key: key,
+    decoration: _style.card,
+    child: ClipRRect(
+      borderRadius: BorderRadius.circular(24),
+      child: Material(
+        type: MaterialType.transparency,
+        child: Column(children: [
+          for (var i = 0; i < rows.length; i++) ...[
+            if (i > 0) Divider(height: 1, color: _style.line),
+            rows[i],
+          ],
+        ]),
+      ),
+    ),
+  );
+
+  Widget _iconSquare(IconData icon, {Color? color}) => Container(
     width: 40,
     height: 40,
     decoration: BoxDecoration(
-      color: tint.bg(context),
+      color: _style.iconTint,
       borderRadius: BorderRadius.circular(12),
     ),
-    child: Icon(icon, size: 20, color: color ?? tint.ink(context)),
+    child: Icon(icon, size: 20, color: color ?? _style.ink),
   );
 
   Widget _row({
     Key? key,
     required IconData icon,
-    required HfTint tint,
     required String title,
     String? subtitle,
     Widget? trailing,
+    bool actionBelowWhenNarrow = false,
     VoidCallback? onTap,
     Color? titleColor,
     Color? iconColor,
   }) {
-    final content = ConstrainedBox(
-      constraints: const BoxConstraints(minHeight: 60),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-        child: Row(
-          children: [
-            _iconSquare(icon, tint, color: iconColor),
-            const SizedBox(width: HfSpacing.lg),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    title,
-                    style: HfText.of(
-                      context,
-                      HfText.bodyStrong,
-                    ).copyWith(color: titleColor),
-                  ),
-                  if (subtitle != null) ...[
-                    const SizedBox(height: 2),
-                    Text(subtitle, style: HfText.of(context, HfText.note)),
-                  ],
-                ],
-              ),
-            ),
-            if (trailing != null) ...[
-              const SizedBox(width: HfSpacing.sm),
+    final content = LayoutBuilder(builder: (context, constraints) {
+      final stackAction = actionBelowWhenNarrow &&
+          (constraints.maxWidth < 280 || MediaQuery.textScalerOf(context).scale(16) > 24);
+      final text = Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(title, style: _style.body.copyWith(color: titleColor)),
+          if (subtitle != null) ...[
+            const SizedBox(height: 2),
+            Text(subtitle, style: _style.note),
+          ],
+          if (stackAction && trailing != null) ...[
+            const SizedBox(height: 8),
+            trailing,
+          ],
+        ],
+      );
+      return ConstrainedBox(
+        constraints: const BoxConstraints(minHeight: 64),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+          child: Row(children: [
+            _iconSquare(icon, color: iconColor),
+            const SizedBox(width: 12),
+            Expanded(child: text),
+            if (!stackAction && trailing != null) ...[
+              const SizedBox(width: 8),
               trailing,
             ],
-          ],
+          ]),
         ),
-      ),
-    );
+      );
+    });
     if (onTap == null) return KeyedSubtree(key: key, child: content);
     return InkWell(key: key, onTap: onTap, child: content);
   }
 
-  Widget _chevron() => Icon(
-    Icons.chevron_right_rounded,
-    color: HfText.of(context, HfText.note).color,
-  );
-
-  // ---- signed out -----------------------------------------------------------------------------------
+  Widget _chevron() => Icon(Icons.chevron_right_rounded, color: _style.muted);
 
   List<Widget> _signedOut(BuildContext context) => [
-    const HfCluster(kind: HfClusterKind.profile, height: 150),
-    const SizedBox(height: 16),
-    HfCard(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(MeCopy.signInTitle, style: HfText.of(context, HfText.title)),
-          const SizedBox(height: 8),
-          Text(MeCopy.signInBody, style: HfText.of(context, HfText.body)),
-          const SizedBox(height: 16),
-          HfButton(
-            key: const ValueKey<String>('me-sign-in'),
-            label: MeCopy.signInButton,
-            onPressed: () =>
-                unawaited(requireSignIn(context, ref, next: Routes.me)),
-          ),
-        ],
+    _card(child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      Text(MeCopy.signInTitle, style: _style.title),
+      const SizedBox(height: 8),
+      Text(MeCopy.signInBody, style: _style.body),
+      const SizedBox(height: 16),
+      HfButton(
+        key: const ValueKey<String>('me-sign-in'),
+        label: MeCopy.signInButton,
+        kind: HfButtonKind.secondary,
+        onPressed: () => unawaited(requireSignIn(context, ref, next: Routes.me)),
       ),
-    ),
-    const SizedBox(height: HfSpacing.section),
+    ])),
+    const SizedBox(height: 28),
     ..._appearanceSection(),
-    const SizedBox(height: HfSpacing.section),
+    const SizedBox(height: 28),
     ..._helpSection(),
-    const SizedBox(height: HfSpacing.section),
+    const SizedBox(height: 28),
     const CrisisStrip(),
-    const SizedBox(height: HfSpacing.section),
+    const SizedBox(height: 28),
     _versionLine(),
   ];
-
-  // ---- signed in ------------------------------------------------------------------------------------
 
   List<Widget> _signedIn(BuildContext context, SessionState session) {
     final me = session.me;
     final name = _savedName ?? me?.displayName;
     return [
-      _profileCard(name, me),
-      if (me?.username != null) Padding(padding: const EdgeInsets.all(12),
-        child: Text('@${me!.username} · permanent username', style: HfText.of(context, HfText.note))),
-      const SizedBox(height: 16),
-      HfCard(child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        ListTile(leading: const Icon(Icons.verified_user_outlined), title: const Text('Identity verification'),
-          subtitle: const Text('View your Aadhaar and video review status'),
-          trailing: const Icon(Icons.chevron_right), onTap: () => Navigator.of(context).push<void>(
-            MaterialPageRoute(builder: (_) => const IdentityKycScreen()))),
-        ListTile(leading: const Icon(Icons.stars_outlined), title: const Text('Influencer or Celebrity'),
-          subtitle: const Text('Full identity and video verification is required. The team confirms eligibility after review.'),
-          trailing: const Icon(Icons.chevron_right), onTap: () => Navigator.of(context).push<void>(
-            MaterialPageRoute(builder: (_) => const IdentityKycScreen(creator: true)))),
-        ListTile(key: const ValueKey('me-switch-account'), leading: const Icon(Icons.switch_account_outlined), title: const Text('Use another account'),
-          subtitle: const Text('Sign out, then verify another WhatsApp number. No physical SIM detection.'),
-          trailing: const Icon(Icons.chevron_right), onTap: _leavingAccount ? null : () => _signOut(switchAccount: true)),
-      ])),
+      _profileCard(name, me, session.user?.imageUrl, session.user?.id ?? me?.uid),
       if (me?.closing ?? false) ...[
-        const SizedBox(height: HfSpacing.lg),
-        HfCard(
+        const SizedBox(height: 16),
+        _card(
           key: const ValueKey<String>('me-closing'),
-          color: HfBrightness.isDark(context)
-              ? HfColors.darkTileBlush
-              : HfColors.blush,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                MeCopy.closingTitle,
-                style: HfText.of(
-                  context,
-                  HfText.subsection,
-                ).copyWith(color: HfTint.blush.valueInk(context)),
-              ),
-              const SizedBox(height: 6),
-              Text(
-                MeCopy.closingBody,
-                style: HfText.body.copyWith(color: HfTint.blush.ink(context)),
-              ),
-              const SizedBox(height: 12),
-              HfButton(
-                key: const ValueKey<String>('me-closing-status'),
-                label: MeCopy.closingButton,
-                kind: HfButtonKind.secondary,
-                onPressed: () => unawaited(context.push(Routes.meDelete)),
-              ),
-            ],
-          ),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            Text(MeCopy.closingTitle, style: _style.heading),
+            const SizedBox(height: 6),
+            Text(MeCopy.closingBody, style: _style.body),
+            const SizedBox(height: 12),
+            HfButton(
+              key: const ValueKey<String>('me-closing-status'),
+              label: MeCopy.closingButton,
+              kind: HfButtonKind.secondary,
+              onPressed: () => unawaited(context.push(Routes.meDelete)),
+            ),
+          ]),
         ),
       ],
-      const SizedBox(height: HfSpacing.section),
-      _notificationsCard(),
-      const SizedBox(height: HfSpacing.section),
+      const SizedBox(height: 28),
+      _heading('My preferences'),
+      _preferencesCard(session.hasHostTab),
+      const SizedBox(height: 28),
+      ..._appearanceSection(),
+      const SizedBox(height: 28),
       _heading(MeCopy.spacesTitle),
       _group([
         _laneRow(Lane.women, MeCopy.womenSpace, me),
         _laneRow(Lane.lgbtq, MeCopy.lgbtqSpace, me),
       ]),
-      const SizedBox(height: HfSpacing.section),
+      const SizedBox(height: 28),
       _heading(MeCopy.hostTitle),
       _hostCard(context, me),
-      const SizedBox(height: HfSpacing.section),
-      ..._appearanceSection(),
-      const SizedBox(height: HfSpacing.section),
+      const SizedBox(height: 28),
       ..._helpSection(),
-      const SizedBox(height: HfSpacing.section),
+      const SizedBox(height: 28),
       const CrisisStrip(),
-      const SizedBox(height: HfSpacing.section),
+      const SizedBox(height: 28),
       _group([
         _row(
           key: const ValueKey<String>('me-sign-out'),
           icon: Icons.logout_rounded,
-          tint: HfTint.sky,
           title: MeCopy.signOut,
           onTap: () => unawaited(_signOut()),
         ),
         _row(
           key: const ValueKey<String>('me-delete'),
           icon: Icons.delete_outline_rounded,
-          tint: HfTint.blush,
           title: MeCopy.deleteAccount,
-          titleColor: HfBrightness.isDark(context)
-              ? HfColors.blushLight
-              : HfColors.accent,
-          iconColor: HfBrightness.isDark(context)
-              ? HfColors.blushLight
-              : HfColors.accent,
+          titleColor: _style.accent,
+          iconColor: _style.accent,
           onTap: () => unawaited(context.push(Routes.meDelete)),
         ),
       ]),
-      const SizedBox(height: HfSpacing.lg),
+      const SizedBox(height: 20),
       _versionLine(),
     ];
   }
 
-  Widget _profileCard(String? name, HfMe? me) {
-    final shownName = (name == null || name.trim().isEmpty)
-        ? null
-        : name.trim();
-    final phone = me?.phoneMasked;
-    return HfCard(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Row(
-            children: [
-              Container(
-                width: 60,
-                height: 60,
-                decoration: BoxDecoration(
-                  color: HfTint.lavender.bg(context),
-                  borderRadius: BorderRadius.circular(HfRadius.tile),
-                ),
-                child: Icon(
-                  Icons.person_rounded,
-                  color: HfTint.lavender.ink(context),
-                  size: 32,
-                ),
-              ),
-              const SizedBox(width: 14),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      shownName ?? MeCopy.noName,
-                      key: const ValueKey<String>('me-name'),
-                      style: HfText.of(context, HfText.title),
-                    ),
-                    if (phone != null) ...[
-                      const SizedBox(height: 2),
-                      Text(
-                        '${MeCopy.whatsapp} $phone',
-                        key: const ValueKey<String>('me-phone'),
-                        style: HfText.of(context, HfText.note),
-                      ),
-                    ],
-                  ],
-                ),
-              ),
-            ],
+  Widget _profileCard(String? name, HfMe? me, String? imageUrl, String? accountId) {
+    final shownName = name?.trim();
+    final phone = me?.phoneMasked?.trim();
+    final username = me?.username?.trim();
+    final photo = imageUrl?.trim();
+    return _card(
+      key: const ValueKey<String>('me-summary'),
+      child: LayoutBuilder(builder: (context, constraints) {
+        final narrow = constraints.maxWidth < 320;
+        final avatarSize = narrow ? 74.0 : 84.0;
+        final fallback = ColoredBox(
+          key: const ValueKey<String>('me-avatar-fallback'),
+          color: _style.iconTint,
+          child: Center(child: Icon(Icons.person_rounded, size: 36, color: _style.ink)),
+        );
+        final avatar = Container(
+          width: avatarSize,
+          height: avatarSize,
+          padding: const EdgeInsets.all(4),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(24),
+            boxShadow: _style.avatarShadows,
           ),
-          const SizedBox(height: 16),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(20),
+            child: photo == null || photo.isEmpty || accountId == null || accountId.isEmpty
+                ? fallback
+                : CachedNetworkImage(
+                    key: ValueKey<String>('me-avatar:$accountId:$photo'),
+                    cacheKey: 'hf-profile:$accountId:$photo',
+                    imageUrl: photo,
+                    fit: BoxFit.cover,
+                    placeholder: (_, _) => fallback,
+                    errorWidget: (_, _, _) => fallback,
+                  ),
+          ),
+        );
+        final identity = Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(shownName == null || shownName.isEmpty ? MeCopy.noName : shownName,
+                key: const ValueKey<String>('me-name'), style: _style.title),
+            if (username != null && username.isNotEmpty) ...[
+              const SizedBox(height: 4),
+              Text('@$username', key: const ValueKey<String>('me-username'), style: _style.note),
+            ],
+            if (phone != null && phone.isNotEmpty) ...[
+              const SizedBox(height: 4),
+              Text('${MeCopy.whatsapp} $phone',
+                  key: const ValueKey<String>('me-phone'), style: _style.note),
+            ],
+            if (me?.whatsappVerified ?? false) ...[
+              const SizedBox(height: 6),
+              Text('WhatsApp verified', style: _style.note),
+            ],
+          ],
+        );
+        return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          if (constraints.maxWidth < 240 || MediaQuery.textScalerOf(context).scale(16) > 24) ...[
+            Align(alignment: Alignment.centerLeft, child: avatar),
+            const SizedBox(height: 16),
+            identity,
+          ] else
+            Row(children: [avatar, const SizedBox(width: 18), Expanded(child: identity)]),
+          const SizedBox(height: 20),
           HfButton(
             key: const ValueKey<String>('me-edit-name'),
             label: MeCopy.editName,
             kind: HfButtonKind.secondary,
-            icon: Icons.edit_rounded,
+            icon: Icons.edit_outlined,
             onPressed: () => unawaited(_editName(shownName)),
           ),
-        ],
-      ),
+        ]);
+      }),
     );
   }
 
   Widget _laneRow(Lane lane, String label, HfMe? me) {
     final inLane = _inLane(lane, me);
-    final busy = _leaving == lane;
     return _row(
       key: ValueKey<String>('me-lane-${lane.wire}'),
-      icon: lane == Lane.women
-          ? Icons.favorite_rounded
-          : Icons.diversity_1_rounded,
-      tint: lane == Lane.women ? HfTint.blush : HfTint.lavender,
+      icon: lane == Lane.women ? Icons.favorite_rounded : Icons.diversity_1_rounded,
       title: label,
       subtitle: inLane ? MeCopy.youAreIn : MeCopy.notJoined,
-      trailing: inLane
-          ? HfButton(
-              key: ValueKey<String>('me-lane-${lane.wire}-leave'),
-              label: MeCopy.leave,
-              kind: HfButtonKind.secondary,
-              expand: false,
-              loading: busy,
-              onPressed: () => unawaited(_leaveLane(lane)),
-            )
-          : HfButton(
-              key: ValueKey<String>('me-lane-${lane.wire}-join'),
-              label: MeCopy.join,
-              kind: HfButtonKind.secondary,
-              expand: false,
-              onPressed: () =>
-                  unawaited(context.push(Routes.lanesOf(lane.wire))),
-            ),
+      actionBelowWhenNarrow: true,
+      trailing: HfButton(
+        key: ValueKey<String>('me-lane-${lane.wire}-${inLane ? 'leave' : 'join'}'),
+        label: inLane ? MeCopy.leave : MeCopy.join,
+        kind: HfButtonKind.secondary,
+        expand: false,
+        loading: inLane && _leaving == lane,
+        onPressed: () => inLane
+            ? unawaited(_leaveLane(lane))
+            : unawaited(context.push(Routes.lanesOf(lane.wire))),
+      ),
     );
   }
 
   Widget _hostCard(BuildContext context, HfMe? me) {
     final host = me?.host;
-    if (host != null) {
-      return _group([
-        _row(
-          key: const ValueKey<String>('me-host'),
-          icon: Icons.storefront_rounded,
-          tint: HfTint.lavender,
-          title: MeCopy.hostDashboard,
-          subtitle: MeCopy.hostStatusLine(host.status),
-          trailing: _chevron(),
-          onTap: () => context.go(Routes.host),
-        ),
-      ]);
-    }
-    final dark = HfBrightness.isDark(context);
-    return Container(
-      decoration: BoxDecoration(
-        color: HfTint.lavender.bg(context),
-        borderRadius: BorderRadius.circular(HfRadius.tile),
-      ),
-      child: Material(
-        type: MaterialType.transparency,
-        child: InkWell(
-          key: const ValueKey<String>('me-become-host'),
-          borderRadius: BorderRadius.circular(HfRadius.tile),
-          onTap: () => unawaited(context.push(Routes.hostOnboarding)),
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(minHeight: 72),
-            child: Padding(
-              padding: const EdgeInsets.all(14),
-              child: Row(
-                children: [
-                  Container(
-                    width: 40,
-                    height: 40,
-                    decoration: BoxDecoration(
-                      color: dark ? HfColors.darkCard : HfColors.white,
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Icon(
-                      Icons.mic_rounded,
-                      size: 20,
-                      color: HfTint.lavender.ink(context),
-                    ),
-                  ),
-                  const SizedBox(width: HfSpacing.lg),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          MeCopy.becomeHost,
-                          style: HfText.bodyStrong.copyWith(
-                            color: HfTint.lavender.valueInk(context),
-                          ),
-                        ),
-                        const SizedBox(height: 2),
-                        Text(
-                          MeCopy.becomeHostBody,
-                          style: HfText.note.copyWith(
-                            color: HfTint.lavender.ink(context),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  Icon(
-                    Icons.chevron_right_rounded,
-                    color: HfTint.lavender.ink(context),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _notificationsCard() {
-    final on = _notificationsOn ?? false;
-    final isHost = ref.watch(sessionProvider.select((s) => s.hasHostTab));
     return _group([
       _row(
-        icon: Icons.notifications_rounded,
-        tint: HfTint.blush,
-        title: MeCopy.notificationsTitle,
-        subtitle: MeCopy.notificationsBody,
-        trailing: Switch(
-          key: const ValueKey<String>('me-notifications'),
-          value: on,
-          onChanged: (_notificationsOn == null || _notificationsBusy)
-              ? null
-              : (v) {
-                  HapticFeedback.selectionClick();
-                  unawaited(_toggleNotifications(v));
-                },
-        ),
+        key: ValueKey<String>(host == null ? 'me-become-host' : 'me-host'),
+        icon: host == null ? Icons.mic_rounded : Icons.storefront_rounded,
+        title: host == null ? MeCopy.becomeHost : MeCopy.hostDashboard,
+        subtitle: host == null ? MeCopy.becomeHostBody : MeCopy.hostStatusLine(host.status),
+        trailing: _chevron(),
+        onTap: () => host == null
+            ? unawaited(context.push(Routes.hostOnboarding)) : context.go(Routes.host),
       ),
-      if (isHost)
-        _row(
-          icon: Icons.notifications_paused_rounded,
-          tint: HfTint.blush,
-          title: MeCopy.nudgeTitle,
-          subtitle: MeCopy.nudgeBody,
-          trailing: Switch(
-            key: const ValueKey<String>('me-offline-reminders'),
-            value: _nudgesOn ?? false,
-            onChanged: (_nudgesOn == null || _nudgesBusy)
-                ? null
-                : (v) {
-                    HapticFeedback.selectionClick();
-                    unawaited(_toggleNudges(v));
-                  },
-          ),
-        ),
     ]);
   }
 
-  // ---- shared ---------------------------------------------------------------------------------------
+  Widget _preferencesCard(bool isHost) => _group([
+    _row(
+      icon: Icons.notifications_outlined,
+      title: MeCopy.notificationsTitle,
+      subtitle: MeCopy.notificationsBody,
+      actionBelowWhenNarrow: true,
+      trailing: Switch(
+        key: const ValueKey<String>('me-notifications'),
+        value: _notificationsOn ?? false,
+        onChanged: (_notificationsOn == null || _notificationsBusy) ? null : (v) {
+          HapticFeedback.selectionClick();
+          unawaited(_toggleNotifications(v));
+        },
+      ),
+    ),
+    _row(
+      icon: Icons.verified_user_outlined,
+      title: 'Identity verification',
+      subtitle: 'View your Aadhaar and video review status',
+      trailing: _chevron(),
+      onTap: () => Navigator.of(context).push<void>(
+          MaterialPageRoute(builder: (_) => const IdentityKycScreen())),
+    ),
+    _row(
+      key: const ValueKey<String>('me-switch-account'),
+      icon: Icons.switch_account_outlined,
+      title: 'Use another account',
+      subtitle: 'Sign out, then verify another WhatsApp number. No physical SIM detection.',
+      trailing: _chevron(),
+      onTap: _leavingAccount ? null : () => _signOut(switchAccount: true),
+    ),
+    _row(
+      icon: Icons.stars_outlined,
+      title: 'Influencer or Celebrity',
+      subtitle: 'Full identity and video verification is required. The team confirms eligibility after review.',
+      trailing: _chevron(),
+      onTap: () => Navigator.of(context).push<void>(
+          MaterialPageRoute(builder: (_) => const IdentityKycScreen(creator: true))),
+    ),
+    if (isHost)
+      _row(
+        icon: Icons.notifications_paused_rounded,
+        title: MeCopy.nudgeTitle,
+        subtitle: MeCopy.nudgeBody,
+        actionBelowWhenNarrow: true,
+        trailing: Switch(
+          key: const ValueKey<String>('me-offline-reminders'),
+          value: _nudgesOn ?? false,
+          onChanged: (_nudgesOn == null || _nudgesBusy) ? null : (v) {
+            HapticFeedback.selectionClick();
+            unawaited(_toggleNudges(v));
+          },
+        ),
+      ),
+  ]);
 
-  /// Light / Dark / System, saved on the device (not per account).
+  /// Uses the existing device preference, including System and saved choices.
   List<Widget> _appearanceSection() {
     final mode = ref.watch(themeModeProvider);
-    const modes = [ThemeMode.light, ThemeMode.dark, ThemeMode.system];
+    const options = [
+      (ThemeMode.light, MeCopy.appearanceLight, Icons.light_mode_outlined),
+      (ThemeMode.dark, MeCopy.appearanceDark, Icons.dark_mode_outlined),
+      (ThemeMode.system, MeCopy.appearanceSystem, Icons.phone_android_outlined),
+    ];
     return [
-      _heading(MeCopy.appearanceTitle),
-      HfCard(
+      KeyedSubtree(key: _appearanceKey, child: _heading(MeCopy.appearanceTitle)),
+      _card(
         key: const ValueKey<String>('me-appearance'),
-        padding: const EdgeInsets.all(14),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Row(
-              children: [
-                _iconSquare(
-                  mode == ThemeMode.dark
-                      ? Icons.dark_mode_rounded
-                      : mode == ThemeMode.system
-                      ? Icons.phone_android_rounded
-                      : Icons.light_mode_rounded,
-                  mode == ThemeMode.dark
-                      ? HfTint.lavender
-                      : mode == ThemeMode.system
-                      ? HfTint.sky
-                      : HfTint.butter,
-                ),
-                const SizedBox(width: HfSpacing.lg),
-                Expanded(
-                  child: Text(
-                    MeCopy.appearanceBody,
-                    style: HfText.of(context, HfText.note),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          Text(MeCopy.appearanceBody, style: _style.note),
+          const SizedBox(height: 14),
+          LayoutBuilder(builder: (context, constraints) {
+            final stack = constraints.maxWidth < 220 ||
+                MediaQuery.textScalerOf(context).scale(14) > 20;
+            final controls = [
+              for (final option in options)
+                Semantics(
+                  selected: option.$1 == mode,
+                  child: OutlinedButton(
+                    key: ValueKey<String>('me-appearance-${option.$1.name}'),
+                    style: OutlinedButton.styleFrom(
+                      backgroundColor: option.$1 == mode ? _style.selected : _style.soft,
+                      foregroundColor: option.$1 == mode ? _style.selectedInk : _style.ink,
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 12),
+                    ),
+                    onPressed: () {
+                      HapticFeedback.selectionClick();
+                      unawaited(ref.read(themeModeProvider.notifier).set(option.$1));
+                    },
+                    child: Column(mainAxisSize: MainAxisSize.min, children: [
+                      Icon(option.$3, size: 22),
+                      const SizedBox(height: 6),
+                      Text(option.$2, textAlign: TextAlign.center),
+                    ]),
                   ),
                 ),
-              ],
-            ),
-            const SizedBox(height: HfSpacing.lg),
-            HfSegmented(
+            ];
+            return KeyedSubtree(
               key: const ValueKey<String>('me-appearance-mode'),
-              options: const [
-                MeCopy.appearanceLight,
-                MeCopy.appearanceDark,
-                MeCopy.appearanceSystem,
-              ],
-              tints: const [HfTint.butter, HfTint.lavender, HfTint.sky],
-              selected: modes.indexOf(mode),
-              onChanged: (i) {
-                HapticFeedback.selectionClick();
-                unawaited(ref.read(themeModeProvider.notifier).set(modes[i]));
-              },
-            ),
-          ],
-        ),
+              child: stack
+                  ? Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                      for (var i = 0; i < controls.length; i++) ...[
+                        if (i > 0) const SizedBox(height: 8),
+                        controls[i],
+                      ],
+                    ])
+                  : Row(children: [
+                      for (var i = 0; i < controls.length; i++) ...[
+                        if (i > 0) const SizedBox(width: 8),
+                        Expanded(child: controls[i]),
+                      ],
+                    ]),
+            );
+          }),
+        ]),
       ),
     ];
   }
@@ -874,34 +830,20 @@ class _MeScreenState extends ConsumerState<MeScreen>
     _group([for (final l in MeCopy.links) _linkRow(l.$1, l.$2, l.$3)]),
   ];
 
-  Widget _linkRow(String key, String label, String path) {
-    return _row(
-      key: ValueKey<String>('me-link-$key'),
-      icon: key == 'help' ? Icons.help_outline_rounded : Icons.article_outlined,
-      tint: HfTint.sky,
-      title: label,
-      trailing: Icon(
-        Icons.open_in_new_rounded,
-        size: 20,
-        color: HfText.of(context, HfText.note).color,
-      ),
-      onTap: () => unawaited(_openPage(path)),
-    );
-  }
+  Widget _linkRow(String key, String label, String path) => _row(
+    key: ValueKey<String>('me-link-$key'),
+    icon: key == 'help' ? Icons.help_outline_rounded : Icons.article_outlined,
+    title: label,
+    trailing: Icon(Icons.open_in_new_rounded, size: 20, color: _style.muted),
+    onTap: () => unawaited(_openPage(path)),
+  );
 
-  /// `Version 2.5.0 (2005)`, or nothing while the build is unknown.
   Widget _versionLine() {
     final v = Analytics.appVersion;
     if (v.isEmpty || v == 'unresolved') return const SizedBox.shrink();
     final parts = v.split('+');
-    final text = parts.length == 2
-        ? 'Version ${parts[0]} (${parts[1]})'
-        : 'Version $v';
-    return Text(
-      text,
-      key: const ValueKey<String>('me-version'),
-      style: HfText.of(context, HfText.label),
-      textAlign: TextAlign.center,
-    );
+    final text = parts.length == 2 ? 'Version ${parts[0]} (${parts[1]})' : 'Version $v';
+    return Text(text, key: const ValueKey<String>('me-version'),
+        style: _style.note, textAlign: TextAlign.center);
   }
 }

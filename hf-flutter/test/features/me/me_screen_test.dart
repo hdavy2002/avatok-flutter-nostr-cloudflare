@@ -3,6 +3,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hf_app/core/api/api_error.dart';
 import 'package:hf_app/core/auth/session.dart';
+import 'package:hf_app/core/auth/hf_me.dart';
+import 'package:hf_app/core/auth/clerk_client.dart';
+import 'package:hf_app/core/theme/theme_mode_store.dart';
+import 'package:hf_app/core/widgets/hf_floating_nav.dart';
 import 'package:hf_app/core/theme/hf_theme.dart';
 import 'package:hf_app/features/me/data/notification_control.dart';
 import 'package:hf_app/features/me/ui/me_screen.dart';
@@ -174,6 +178,96 @@ void main() {
       await pumpMe(tester, session: meSession(closing: true), api: api);
       expect(_key('me-closing'), findsOneWidget);
       expect(find.text(MeCopy.closingTitle), findsOneWidget);
+    });
+  });
+
+  group('profile presentation', () {
+    for (final mode in [ThemeMode.light, ThemeMode.dark]) {
+      testWidgets('320 px and 2x text keeps long identity and actions usable in $mode', (tester) async {
+        tester.platformDispatcher.textScaleFactorTestValue = 2;
+        addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+        const name = 'Asha With A Long Family Name That Wraps';
+        const username = 'a_very_long_permanent_username_for_this_account';
+        final c = await pumpMe(tester, api: api, session: const SessionState(
+          status: SessionStatus.signedIn,
+          me: HfMe(uid: 'profile-long', displayName: name, username: username,
+              ackVersion: 'hf-ack-v1'),
+        ));
+        tester.view.physicalSize = const Size(960, 2400);
+        await c.read(themeModeProvider.notifier).set(mode);
+        await tester.pumpAndSettle();
+
+        expect(tester.takeException(), isNull);
+        expect(find.text(name), findsOneWidget);
+        expect(find.text('@$username'), findsOneWidget);
+        expect(_key('me-phone'), findsNothing);
+        expect(_key('me-avatar-fallback'), findsOneWidget);
+        expect(find.text('Identity verified'), findsNothing);
+        expect(find.text('WhatsApp verified'), findsNothing);
+        final page = tester.widget<Scaffold>(find.descendant(
+          of: find.byType(MeScreen), matching: find.byType(Scaffold)).first);
+        expect(page.backgroundColor,
+            mode == ThemeMode.dark ? const Color(0xFF000000) : const Color(0xFFF6F3EE));
+        final summary = tester.widget<Container>(_key('me-summary'));
+        expect((summary.decoration! as BoxDecoration).color,
+            mode == ThemeMode.dark ? const Color(0xFF343438) : const Color(0xFFFFFDF9));
+
+        await tester.tap(_key('me-appearance-settings'));
+        await tester.pumpAndSettle();
+        expect(tester.getTopLeft(find.text(MeCopy.appearanceTitle)).dy, greaterThan(0));
+        await tester.ensureVisible(_key('me-appearance-dark'));
+        await tester.pumpAndSettle();
+        expect(tester.getSize(_key('me-appearance-dark')).height, greaterThanOrEqualTo(48));
+        await tester.ensureVisible(_key('me-delete'));
+        await tester.pumpAndSettle();
+        final scrollable = tester.state<ScrollableState>(find.descendant(
+          of: find.byType(MeScreen), matching: find.byType(Scrollable)).first);
+        scrollable.position.jumpTo(scrollable.position.maxScrollExtent);
+        await tester.pump();
+        expect(tester.getBottomLeft(_key('me-delete')).dy,
+            lessThanOrEqualTo(tester.getTopLeft(find.byType(HfFloatingNav)).dy));
+        expect(tester.takeException(), isNull);
+      });
+    }
+
+    testWidgets('Appearance uses the saved provider and System follows the phone', (tester) async {
+      var c = await pumpMe(tester, session: meSession(), api: api);
+      expect(c.read(themeModeProvider), ThemeMode.light);
+      await tester.tap(_key('me-appearance-settings'));
+      await tester.pumpAndSettle();
+      await tapKeyed(tester, 'me-appearance-dark');
+      expect(c.read(themeModeProvider), ThemeMode.dark);
+      expect((await SharedPreferences.getInstance()).getString(kThemeModePrefKey), 'dark');
+      final selected = tester.widget<OutlinedButton>(_key('me-appearance-dark'));
+      expect(selected.style!.backgroundColor!.resolve({}), const Color(0xFFE7E1FF));
+      expect(selected.style!.foregroundColor!.resolve({}), const Color(0xFF1D1A33));
+
+      c = await pumpMe(tester, session: meSession(), api: api);
+      expect(c.read(themeModeProvider), ThemeMode.dark);
+
+      tester.platformDispatcher.platformBrightnessTestValue = Brightness.dark;
+      addTearDown(tester.platformDispatcher.clearPlatformBrightnessTestValue);
+      await tapKeyed(tester, 'me-appearance-system');
+      expect(c.read(themeModeProvider), ThemeMode.system);
+      expect(Theme.of(tester.element(_key('me-name'))).brightness, Brightness.dark);
+      tester.platformDispatcher.platformBrightnessTestValue = Brightness.light;
+      await tester.pumpAndSettle();
+      expect(Theme.of(tester.element(_key('me-name'))).brightness, Brightness.light);
+    });
+
+    testWidgets('missing session profile uses an honest fallback', (tester) async {
+      await pumpMe(tester, api: api, session: const SessionState(
+        status: SessionStatus.signedIn,
+        user: ClerkUser(id: 'profile-missing'),
+      ));
+      expect(find.text(MeCopy.noName), findsOneWidget);
+      expect(_key('me-avatar-fallback'), findsOneWidget);
+      expect(_key('me-phone'), findsNothing);
+      expect(_key('me-username'), findsNothing);
+      expect(find.text('Identity verified'), findsNothing);
+      expect(find.text('WhatsApp verified'), findsNothing);
+      expect(_key('me-appearance'), findsOneWidget);
+      expect(tester.takeException(), isNull);
     });
   });
 

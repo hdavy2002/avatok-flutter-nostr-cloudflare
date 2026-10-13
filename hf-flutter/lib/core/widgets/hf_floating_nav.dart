@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../theme/hf_theme.dart';
+import '../theme/hf_profile_style.dart';
 
 /// One destination of [HfFloatingNav].
 class HfNavItem {
@@ -36,11 +37,14 @@ class HfFloatingNav extends StatelessWidget {
     required this.items,
     required this.selected,
     required this.onTap,
+    this.profileStyle = false,
   });
 
   final List<HfNavItem> items;
   final int selected;
   final ValueChanged<int> onTap;
+  /// Full-width, labeled presentation used only while Me is selected.
+  final bool profileStyle;
 
   /// True when the selected item's label cannot be shown in full (large text, or measured wider than the pill).
   bool _labelWontFit(BuildContext context, double rowWidth) {
@@ -62,6 +66,7 @@ class HfFloatingNav extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (profileStyle) return _profileBar(context);
     final media = MediaQuery.of(context);
     final dark = HfBrightness.isDark(context);
     final extra = (media.textScaler.scale(14) - 14).clamp(0.0, 40.0) * 2;
@@ -100,6 +105,66 @@ class HfFloatingNav extends StatelessWidget {
               ],
             );
           },
+        ),
+      ),
+    );
+  }
+
+  Widget _profileBar(BuildContext context) {
+    final style = HfProfileStyle.of(context);
+    return Container(
+      key: const ValueKey<String>('profile-nav'),
+      decoration: BoxDecoration(color: style.surface, boxShadow: style.navShadows),
+      child: SafeArea(
+        top: false,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              for (var i = 0; i < items.length; i++)
+                Expanded(
+                  child: Semantics(
+                    key: items[i].keyName == null
+                        ? null : ValueKey<String>(items[i].keyName!),
+                    button: true,
+                    selected: i == selected,
+                    label: items[i].label,
+                    excludeSemantics: true,
+                    child: Material(
+                      color: Colors.transparent,
+                      child: InkWell(
+                        borderRadius: BorderRadius.circular(16),
+                        onTap: () {
+                          if (i != selected) HapticFeedback.selectionClick();
+                          onTap(i);
+                        },
+                        child: ConstrainedBox(
+                          key: ValueKey<String>(i == selected ? 'nav-selected' : 'nav-idle'),
+                          constraints: const BoxConstraints(minHeight: 48),
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(items[i].icon, size: 24,
+                                    color: i == selected ? style.accent : style.muted),
+                                const SizedBox(height: 4),
+                                Text(items[i].label, textAlign: TextAlign.center,
+                                    style: style.note.copyWith(
+                                      color: i == selected ? style.accent : style.muted,
+                                      fontWeight: i == selected ? FontWeight.w500 : FontWeight.w400,
+                                    )),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+            ],
+          ),
         ),
       ),
     );
