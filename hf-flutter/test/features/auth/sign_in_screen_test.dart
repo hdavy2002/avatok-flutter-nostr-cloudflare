@@ -69,6 +69,9 @@ Future<void> enterNumber(
   WidgetTester tester, [
   String number = '9876543210',
 ]) async {
+  if (find.byKey(_phoneKey).evaluate().isEmpty) {
+    await tapVisible(tester, find.text('WhatsApp'));
+  }
   await tester.ensureVisible(find.byKey(_phoneKey));
   await tester.pump();
   await tester.enterText(find.byKey(_phoneKey), number);
@@ -85,8 +88,10 @@ Future<void> tapVisible(WidgetTester tester, Finder finder) async {
   await settle(tester);
 }
 
-Future<void> tapSend(WidgetTester tester) =>
-    tapVisible(tester, find.text(SignInCopy.sendCode));
+Finder sendButton() => find.text('Send WhatsApp code').evaluate().isNotEmpty
+    ? find.text('Send WhatsApp code') : find.text(SignInCopy.sendCode);
+
+Future<void> tapSend(WidgetTester tester) => tapVisible(tester, sendButton());
 
 Future<void> toCodeStep(WidgetTester tester) async {
   await enterNumber(tester);
@@ -103,7 +108,7 @@ Future<void> enterCode(WidgetTester tester, [String code = '123456']) async {
 bool isEnabled(WidgetTester tester, String label) {
   final button = tester.widget<ElevatedButton>(
     find.ancestor(
-      of: find.text(label),
+      of: label == SignInCopy.sendCode ? sendButton() : find.text(label),
       matching: find.bySubtype<ElevatedButton>(),
     ),
   );
@@ -121,18 +126,24 @@ void main() {
   );
   tearDown(() => AccountScope.id = null);
 
-  group('landing', () {
-    testWidgets('Log in opens email and WhatsApp without registration consent', (
+  group('login entry', () {
+    testWidgets('opens directly on email and can select WhatsApp without consent', (
       tester,
     ) async {
       final api = okApi();
       await pumpRouter(tester, signInRouter(next: null), api: api);
       expect(find.byKey(_phoneKey), findsNothing);
-      await tapVisible(tester, find.text('Log in'));
+      expect(find.text('Welcome back.'), findsOneWidget);
       expect(find.byKey(const ValueKey('identity-email')), findsOneWidget);
+      await tester.enterText(find.byKey(const ValueKey('identity-email')), 'asha@example.test');
+      await tapVisible(tester, find.text('WhatsApp'));
+      expect(find.byKey(const ValueKey('identity-email')), findsNothing);
       expect(find.byKey(_phoneKey), findsOneWidget);
       expect(find.text(SignInCopy.ageTick), findsNothing);
       expect(api.callsTo('POST', _sendPath), isEmpty);
+      await tapVisible(tester, find.text('Email'));
+      expect(tester.widget<TextField>(find.byKey(const ValueKey('identity-email'))).controller!.text,
+        'asha@example.test');
     });
 
     testWidgets('Sign up requires fresh consent before sending a WhatsApp code', (
@@ -140,7 +151,7 @@ void main() {
     ) async {
       final api = okApi();
       await pumpRouter(tester, signInRouter(next: null), api: api);
-      await tapVisible(tester, find.text('Sign up'));
+      await tapVisible(tester, find.text('Create an account'));
       expect(find.byKey(const ValueKey('identity-email')), findsNothing);
       expect(find.text(SignInCopy.ageTick), findsOneWidget);
       await enterNumber(tester);
@@ -164,8 +175,9 @@ void main() {
       'shows +91, the hint and a Send button that waits for 10 digits',
       (tester) async {
         await pumpRouter(tester, signInRouter(), api: okApi());
+        await tapVisible(tester, find.text('WhatsApp'));
         expect(find.text(SignInCopy.prefix), findsOneWidget);
-        expect(find.text(SignInCopy.numberHint), findsOneWidget);
+        expect(find.text("We'll send a 6-digit code on WhatsApp."), findsOneWidget);
         expect(isEnabled(tester, SignInCopy.sendCode), isFalse);
         await enterNumber(tester, '98765');
         expect(isEnabled(tester, SignInCopy.sendCode), isFalse);
@@ -252,7 +264,7 @@ void main() {
           await pumpRouter(tester, signInRouter(), api: api);
           await toCodeStep(tester);
           expect(find.text(c.$2), findsOneWidget);
-          expect(find.text(SignInCopy.sendCode), findsOneWidget);
+          expect(sendButton(), findsOneWidget);
           expect(find.byKey(_codeKey), findsNothing);
         },
       );
@@ -287,7 +299,7 @@ void main() {
         SharedPreferences.setMockInitialValues(<String, Object>{});
         final api = okApi();
         await pumpRouter(tester, signInRouter(), api: api);
-        await tapVisible(tester, find.text('Create account'));
+        await tapVisible(tester, find.text('Create an account'));
         expect(find.text(SignInCopy.ageTick), findsOneWidget);
         await enterNumber(tester);
         expect(isEnabled(tester, SignInCopy.sendCode), isFalse);
@@ -368,7 +380,7 @@ void main() {
       final api = okApi();
       final router = signInRouter();
       await pumpRouter(tester, router, api: api);
-      await tapVisible(tester, find.text('Create account'));
+      await tapVisible(tester, find.text('Create an account'));
       await enterNumber(tester);
       await tapVisible(
         tester,
@@ -556,7 +568,7 @@ void main() {
       await pumpRouter(tester, signInRouter(), api: okApi());
       await toCodeStep(tester);
       await tapVisible(tester, find.text(SignInCopy.changeNumber));
-      expect(find.text(SignInCopy.sendCode), findsOneWidget);
+      expect(sendButton(), findsOneWidget);
       expect(
         tester.widget<TextField>(find.byKey(_phoneKey)).controller!.text,
         '9876543210',
@@ -574,7 +586,7 @@ void main() {
           .position.jumpTo(0);
       await tester.pump();
       await tapVisible(tester, find.byTooltip('Back'));
-      expect(find.text(SignInCopy.sendCode), findsOneWidget);
+      expect(sendButton(), findsOneWidget);
       expect(locationOf(router), '/sign-in');
     });
 
@@ -617,7 +629,6 @@ void main() {
       await pumpRouter(tester, router, api: okApi());
       await tester.tap(find.text('open'));
       await settle(tester);
-      await tapVisible(tester, find.text('Log in'));
       await toCodeStep(tester);
       await enterCode(tester);
       expect(find.text('result: true'), findsOneWidget);
@@ -637,7 +648,7 @@ void main() {
     await pumpRouter(tester, router, api: okApi());
     await tester.tap(find.text('open'));
     await settle(tester);
-    // The welcome screen uses Android/system Back to dismiss the pushed route.
+    // The login screen uses Android/system Back to dismiss the pushed route.
     await tester.binding.handlePopRoute();
     await settle(tester);
     expect(find.text('result: null'), findsOneWidget);

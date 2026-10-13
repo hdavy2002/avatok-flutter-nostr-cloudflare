@@ -12,7 +12,6 @@ import '../../../core/router/pending_intent.dart';
 import '../data/registration_progress.dart';
 import '../../../core/router/routes.dart';
 import '../../../core/theme/hf_theme.dart';
-import '../../../core/widgets/hf_page_header.dart';
 import '../../../core/widgets/widgets.dart';
 import '../../welcome/data/ack_service.dart';
 import '../data/auth_messages.dart';
@@ -20,9 +19,10 @@ import '../data/sign_in_controller.dart';
 import 'auth_visuals.dart';
 import 'code_boxes.dart';
 import 'email_code_form.dart';
+import 'login_visuals.dart';
 import '../data/remembered_accounts.dart';
 
-/// Copy of the sign-in screens. Matches the website's WhatsApp sign-in, in simple English.
+/// Shared copy for WhatsApp registration and verification.
 abstract final class SignInCopy {
   static const String title = 'Your next hello';
   static const String numberHint = "We'll send a code on WhatsApp.";
@@ -44,7 +44,7 @@ abstract final class SignInCopy {
   static const String changeNumber = 'Change number';
 }
 
-/// `/sign-in?next=`: WhatsApp number, then the 6-digit code. Opened by `requireSignIn` (pushed: closes with
+/// `/sign-in?next=`: email or WhatsApp, then the 6-digit code. Opened by `requireSignIn` (pushed: closes with
 /// `true`) or by the router's sign-in rule (replaces the stack: goes to `next`, else Home).
 class SignInScreen extends ConsumerStatefulWidget {
   const SignInScreen({super.key, this.next, this.secondNumber = false});
@@ -63,7 +63,7 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
   final FocusNode _phoneFocus = FocusNode();
   final FocusNode _codeFocus = FocusNode();
   List<RememberedAccount> _accounts = [];
-  bool _landing = true;
+  bool _emailSelected = true;
   bool _emailBusy = false;
   RememberedAccounts get _remembered => RememberedAccounts(ref.read(secureStoreProvider));
 
@@ -83,7 +83,6 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
       readAcked: () async => (await ack.readLocal()) != null,
     );
     unawaited(_c.init());
-    _landing = widget.next == null && !widget.secondNumber;
     if (widget.secondNumber) _c.setRegistration(true);
     unawaited(_loadAccounts());
     final next = Routes.safeNext(widget.next);
@@ -183,6 +182,8 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
   void _back() {
     if (_c.step == SignInStep.code) {
       _c.changeNumber();
+    } else if (_c.registration && !widget.secondNumber) {
+      _c.setRegistration(false);
     } else {
       unawaited(ref.read(pendingIntentProvider).clear());
       popOrHome(context);
@@ -195,6 +196,7 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
       listenable: _c,
       builder: (context, _) {
         final onCode = _c.step == SignInStep.code;
+        final login = !onCode && !_c.registration && !widget.secondNumber;
         return PopScope(
           canPop: !onCode,
           onPopInvokedWithResult: (didPop, result) {
@@ -205,9 +207,10 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
             }
           },
           child: Scaffold(
-            body: AuthViewport(
-              child: _landing ? _welcome() : _form(onCode),
-            ),
+            backgroundColor: login ? LoginColors.of(context).background : null,
+            body: login
+                ? LoginViewport(child: _login())
+                : AuthViewport(child: _form(onCode)),
           ),
         );
       },
@@ -240,22 +243,7 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
               subtitle: 'Start with a WhatsApp number you control.',
               photo: AuthPhotoKind.whatsappOtp,
               photoHeight: 180,
-            )
-          else ...[
-            const AuthPhoto(kind: AuthPhotoKind.login, height: 156),
-            const SizedBox(height: 12),
-            Text('Welcome back', style: HfText.of(context, HfText.headline)),
-            Text('Log in to continue your journey.', style: HfText.of(context, HfText.note)),
-            const SizedBox(height: 14),
-          ],
-          if (!onCode && !_c.registration && !widget.secondNumber) ...[
-            AuthSurfaceCard(child: EmailCodeForm(onVerified: _finishSignIn,
-              enabled: !_c.sending && !_c.verifying,
-              onBusyChanged: (busy) { if (mounted) setState(() => _emailBusy = busy); })),
-            const Padding(padding: EdgeInsets.symmetric(vertical: 16), child: Row(children: [
-              Expanded(child: Divider()), Padding(padding: EdgeInsets.symmetric(horizontal: 16), child: Text('OR')), Expanded(child: Divider()),
-            ])),
-          ],
+            ),
           HfCard(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -263,20 +251,7 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
             ),
           ),
           const SizedBox(height: 16),
-          if (!onCode && _accounts.length > 1) ...[
-            Text('Your accounts', style: HfText.of(context, HfText.section)),
-            const Text('Choose an account, then verify its WhatsApp code.'),
-            for (final account in _accounts) Card(child: ListTile(
-              leading: const CircleAvatar(child: Icon(Icons.person_outline)),
-              title: Text(account.label), subtitle: Text(account.masked),
-              onTap: _emailBusy || _c.sending ? null : () { _phone.text = normalizeIndianMobile(account.phone); _c.setDigits(_phone.text); _c.setRegistration(false); },
-              trailing: IconButton(tooltip: 'Forget this account', icon: const Icon(Icons.close), onPressed: () async {
-                await _remembered.forget(account.uid); await _loadAccounts();
-              }),
-            )),
-          ],
-          if (!onCode && !widget.secondNumber) HfButton(label: 'Add another WhatsApp number', kind: HfButtonKind.text,
-            onPressed: _emailBusy || _c.sending ? null : () => Navigator.of(context).push<void>(MaterialPageRoute(builder: (_) => SignInScreen(next: widget.next, secondNumber: true)))),
+          if (!onCode) ..._accountOptions(),
           Text(
             'Your number stays private from other people.',
             style: HfText.of(context, HfText.note),
@@ -287,24 +262,128 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
     );
   }
 
-  Widget _welcome() => ListView(padding: const EdgeInsets.fromLTRB(20, 40, 20, 28), children: [
-    Text('Find people, services\nand conversations\nthat fit you',
-      textAlign: TextAlign.center, style: HfText.of(context, HfText.hero)),
-    const SizedBox(height: 12),
-    Text('A safer, kinder place to talk,\nlearn and get support.',
-      textAlign: TextAlign.center, style: HfText.of(context, HfText.body)),
-    const SizedBox(height: 18),
-    const AuthPhoto(kind: AuthPhotoKind.welcome, height: 300,
-      sticker: AuthSticker('Good people\nbrighter days')),
-    const SizedBox(height: 18),
-    HfButton(label: 'Log in', icon: Icons.arrow_forward, onPressed: () => setState(() { _landing = false; _c.setRegistration(false); })),
-    const SizedBox(height: 12),
-    HfButton(label: 'Sign up', kind: HfButtonKind.secondary, icon: Icons.arrow_forward,
-      onPressed: () => setState(() { _landing = false; _c.setRegistration(true); })),
-    const SizedBox(height: 20),
-    const AuthCallout(icon: Icons.verified_user_outlined, title: 'Safe and trusted',
-      body: 'Your privacy matters. Conversations stay private and people are verified.'),
-  ]);
+  Widget _login() {
+    final colors = LoginColors.of(context);
+    final busy = _emailBusy || _c.sending || _c.verifying;
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(24, 28, 24, 100),
+      children: [
+        const LoginHero(),
+        LoginMethodSelector(
+          email: _emailSelected,
+          onChanged: busy ? null : (email) {
+            FocusManager.instance.primaryFocus?.unfocus();
+            setState(() => _emailSelected = email);
+          },
+        ),
+        const SizedBox(height: 22),
+        // Keep the email challenge/timer alive when choosing another method.
+        Offstage(
+          offstage: !_emailSelected,
+          child: TickerMode(
+            enabled: _emailSelected,
+            child: EmailCodeForm(
+              showHeading: false,
+              loginEntry: true,
+              enabled: !_c.sending && !_c.verifying,
+              onVerified: _finishSignIn,
+              onBusyChanged: (busy) {
+                if (mounted) setState(() => _emailBusy = busy);
+              },
+            ),
+          ),
+        ),
+        if (!_emailSelected) ...[
+          Text(SignInCopy.numberLabel,
+            style: colors.text(15, weight: FontWeight.w500)),
+          const SizedBox(height: 9),
+          TextField(
+            key: const ValueKey<String>('signin-phone'),
+            controller: _phone,
+            focusNode: _phoneFocus,
+            enabled: !busy,
+            keyboardType: TextInputType.phone,
+            textInputAction: TextInputAction.done,
+            autofillHints: const [AutofillHints.telephoneNumberNational],
+            inputFormatters: const [IndianMobileFormatter()],
+            style: colors.text(16),
+            decoration: colors.input(
+              hint: SignInCopy.numberPlaceholder,
+              error: _c.errorField == 'phone' ? _c.error : null,
+              prefix: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 10, 0),
+                child: Row(mainAxisSize: MainAxisSize.min, children: [
+                  Text(SignInCopy.prefix, style: colors.text(15)),
+                  const SizedBox(width: 10),
+                  Container(width: 1, height: 24, color: colors.line),
+                ]),
+              ),
+            ),
+            onChanged: _c.setDigits,
+            onSubmitted: (_) {
+              if (!busy && _c.canSend) _c.sendCode();
+            },
+          ),
+          const SizedBox(height: 10),
+          Text("We'll send a 6-digit code on WhatsApp.",
+            style: colors.text(15).copyWith(color: colors.muted)),
+          const SizedBox(height: 18),
+          LoginPrimaryButton(
+            label: 'Send WhatsApp code',
+            loading: _c.sending,
+            onPressed: !busy && _c.canSend ? _c.sendCode : null,
+          ),
+        ],
+        const SizedBox(height: 16),
+        Wrap(
+          alignment: WrapAlignment.center,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          spacing: 6,
+          children: [
+            Text('New here?', style: colors.text(16).copyWith(color: colors.muted)),
+            TextButton(
+              onPressed: busy ? null : () => _c.setRegistration(true),
+              style: TextButton.styleFrom(
+                foregroundColor: colors.link,
+                textStyle: colors.text(16),
+                minimumSize: const Size(0, 48),
+                padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 7),
+              ),
+              child: const Text('Create an account'),
+            ),
+          ],
+        ),
+        ..._accountOptions(login: true),
+      ],
+    );
+  }
+
+  List<Widget> _accountOptions({bool login = false}) => [
+    if (_accounts.length > 1) ...[
+      const SizedBox(height: 16),
+      Text('Your accounts', style: HfText.of(context, HfText.section)),
+      const Text('Choose an account, then verify its WhatsApp code.'),
+      for (final account in _accounts) Card(child: ListTile(
+        leading: const CircleAvatar(child: Icon(Icons.person_outline)),
+        title: Text(account.label), subtitle: Text(account.masked),
+        onTap: _emailBusy || _c.sending ? null : () {
+          setState(() => _emailSelected = false);
+          _phone.text = normalizeIndianMobile(account.phone);
+          _c.setDigits(_phone.text);
+          _c.setRegistration(false);
+        },
+        trailing: IconButton(tooltip: 'Forget this account',
+          icon: const Icon(Icons.close), onPressed: () async {
+            await _remembered.forget(account.uid);
+            await _loadAccounts();
+          }),
+      )),
+    ],
+    if (!widget.secondNumber && (!login || _accounts.isNotEmpty))
+      HfButton(label: 'Add another WhatsApp number', kind: HfButtonKind.text,
+        onPressed: _emailBusy || _c.sending ? null : () => Navigator.of(context).push<void>(
+          MaterialPageRoute(builder: (_) => SignInScreen(next: widget.next, secondNumber: true)))),
+  ];
 
   // ----------------------------------------------------------- number step
 

@@ -10,14 +10,16 @@ import '../../../core/theme/hf_theme.dart';
 import '../../../core/widgets/widgets.dart';
 import '../data/identity_api.dart';
 import 'code_boxes.dart';
+import 'login_visuals.dart';
 
 class EmailCodeForm extends ConsumerStatefulWidget {
   const EmailCodeForm({super.key, required this.onVerified, this.verification = false,
-    this.enabled = true, this.showHeading = true, this.onBusyChanged, this.onChallengeChanged, this.initialEmail, this.challengeExpiresAt});
+    this.enabled = true, this.showHeading = true, this.loginEntry = false, this.onBusyChanged, this.onChallengeChanged, this.initialEmail, this.challengeExpiresAt});
   final Future<void> Function() onVerified;
   final bool verification;
   final bool enabled;
   final bool showHeading;
+  final bool loginEntry;
   final ValueChanged<bool>? onBusyChanged;
   final ValueChanged<bool>? onChallengeChanged;
   final String? initialEmail;
@@ -118,15 +120,25 @@ class _EmailCodeFormState extends ConsumerState<EmailCodeForm> {
 
   @override
   Widget build(BuildContext context) => Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-    if (widget.showHeading) ...[
+    if (widget.showHeading || (widget.loginEntry && _sent)) ...[
       Text(_sent ? 'Enter email code' : widget.verification ? 'Verify your email' : 'Log in with email',
         style: HfText.of(context, HfText.section)),
       const SizedBox(height: 12),
     ],
-    if (!_sent) TextField(key: const ValueKey('identity-email'), controller: _email,
-      enabled: widget.enabled && !_busy, keyboardType: TextInputType.emailAddress, autofillHints: const [AutofillHints.email],
-      decoration: const InputDecoration(labelText: 'Email address', prefixIcon: Icon(Icons.mail_outline)),
-      onSubmitted: (_) => _send())
+    if (!_sent && widget.loginEntry) ...[
+      Text('Email address', style: LoginColors.of(context).text(15, weight: FontWeight.w500)),
+      const SizedBox(height: 9),
+    ],
+    if (!_sent) Semantics(
+      label: widget.loginEntry ? 'Email address' : null,
+      child: TextField(key: const ValueKey('identity-email'), controller: _email,
+        enabled: widget.enabled && !_busy, keyboardType: TextInputType.emailAddress, autofillHints: const [AutofillHints.email],
+        style: widget.loginEntry ? LoginColors.of(context).text(16) : null,
+        decoration: widget.loginEntry
+            ? LoginColors.of(context).input(hint: 'you@example.com')
+            : const InputDecoration(labelText: 'Email address', prefixIcon: Icon(Icons.mail_outline)),
+        onSubmitted: (_) => _send()),
+    )
     else ...[
       Text('We sent a 6-digit code to ${_email.text.trim()}.', style: HfText.of(context, HfText.note)),
       const SizedBox(height: 12),
@@ -134,12 +146,21 @@ class _EmailCodeFormState extends ConsumerState<EmailCodeForm> {
         sourceLabel: 'email', fieldKey: const ValueKey('identity-email-code'),
         hasError: _error != null, onCompleted: _verify),
     ],
+    if (!_sent && widget.loginEntry) Padding(
+      padding: const EdgeInsets.only(top: 10),
+      child: Text("We'll email you a 6-digit code. No password needed.",
+        style: LoginColors.of(context).text(15).copyWith(color: LoginColors.of(context).muted)),
+    ),
     if (_error != null) Padding(padding: const EdgeInsets.only(top: 10),
       child: Semantics(liveRegion: true, child: Text(_error!, style: HfText.of(context, HfText.note)))),
     const SizedBox(height: 14),
     if (!_sent && _remaining > 0) Text('You can request a new code in ${_remaining}s.'),
-    HfButton(label: _sent ? 'Verify and continue' : 'Send email OTP', loading: _busy,
-      onPressed: _busy || !widget.enabled || (!_sent && _remaining > 0) ? null : _sent ? _verify : _send),
+    if (!_sent && widget.loginEntry)
+      LoginPrimaryButton(label: 'Send email code', loading: _busy,
+        onPressed: _busy || !widget.enabled || _remaining > 0 ? null : _send)
+    else
+      HfButton(label: _sent ? 'Verify and continue' : 'Send email OTP', loading: _busy,
+        onPressed: _busy || !widget.enabled || (!_sent && _remaining > 0) ? null : _sent ? _verify : _send),
     if (_sent) ...[
       HfButton(label: _remaining > 0 ? 'Resend in ${_remaining}s' : 'Resend code',
         kind: HfButtonKind.text, onPressed: _remaining > 0 || _busy ? null : _send),

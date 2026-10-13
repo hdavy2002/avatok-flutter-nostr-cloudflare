@@ -28,8 +28,8 @@ const _phoneKey = ValueKey<String>('signin-phone');
 const _sendPath = '/api/auth/whatsapp/send';
 
 enum _AuthCaptureState {
-  welcome,
   login,
+  whatsappLogin,
   secondWhatsapp,
   whatsappOtp,
   email,
@@ -238,7 +238,7 @@ void main() {
 
     AccountScope.id = null;
     var api = _signInApi();
-    var key = const ValueKey<String>('auth-live-welcome');
+    var key = const ValueKey<String>('auth-live-login');
     await _pumpScreen(
       tester,
       screen: const SignInScreen(),
@@ -246,20 +246,22 @@ void main() {
       boundaryKey: key,
     );
     expect(find.byType(SignInScreen), findsOneWidget);
-    expect(find.textContaining('Find people, services'), findsOneWidget);
-    byteCounts[_AuthCaptureState.welcome] = await _capture(
-      tester,
-      _AuthCaptureState.welcome,
-      key,
-    );
-
-    await _tapVisible(tester, find.text('Log in'));
-    await _scrollToTop(tester);
+    expect(find.text('Welcome back.'), findsOneWidget);
     expect(find.byKey(const ValueKey('identity-email')), findsOneWidget);
-    expect(find.byKey(_phoneKey), findsOneWidget);
+    expect(find.byKey(_phoneKey), findsNothing);
     byteCounts[_AuthCaptureState.login] = await _capture(
       tester,
       _AuthCaptureState.login,
+      key,
+    );
+
+    await _tapVisible(tester, find.text('WhatsApp'));
+    await _scrollToTop(tester);
+    expect(find.byKey(const ValueKey('identity-email')), findsNothing);
+    expect(find.byKey(_phoneKey), findsOneWidget);
+    byteCounts[_AuthCaptureState.whatsappLogin] = await _capture(
+      tester,
+      _AuthCaptureState.whatsappLogin,
       key,
     );
 
