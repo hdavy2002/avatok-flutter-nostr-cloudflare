@@ -44,3 +44,4 @@ a.hfd-avatar{text-decoration:none}a.hfd-avatar:hover{border-color:#e2d5f8}
 .hfd-fr-card .hfc-btn{align-self:flex-start;text-decoration:none}
 .hfd-empty-card{text-align:center}.hfd-empty-card .hfd-actions{justify-content:center}
 .hfd-stat-tile h3 a{color:inherit;text-decoration:none}.hfd-stat-tile h3 a:hover{text-decoration:underline}
+.hfd-content .hfc-calls strong a{color:#5b2a86;text-decoration:none}.hfd-content .hfc-calls strong a:hover{text-decoration:underline}

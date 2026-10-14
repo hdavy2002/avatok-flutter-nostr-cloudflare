@@ -3,7 +3,7 @@
  * island with that section, so deep links, reloads and new tabs work. A plain click on any /dashboard link inside the
  * shell switches the screen in place (history.pushState), so the sidebar never disappears.
  * Identity: GET /api/hf/me once, shared by every screen; reloaded on site:active-session-changed. */
-import { useCallback, useEffect, useRef, useState, type MouseEvent } from 'react';
+import { Component, useCallback, useEffect, useRef, useState, type MouseEvent, type ReactNode } from 'react';
 import SessionBridge from '../calls/SessionBridge';
 import DashboardNav, { type DashboardAccount } from '../../components/account/DashboardNav';
 import { DashboardEmbed } from '../../components/account/dashboardEmbed';
@@ -29,6 +29,17 @@ import '../../styles/hf-bookings.css';
 import '../../styles/hf-account.css';
 
 type Phase = 'boot' | 'signedout' | 'error' | 'ready';
+
+/** [HF-DASH-SHELL-2] One broken screen must never blank the whole dashboard: the sidebar stays and the screen offers a retry. */
+class SectionBoundary extends Component<{ section: string; children: ReactNode }, { failed: boolean }> {
+  state = { failed: false };
+  static getDerivedStateFromError() { return { failed: true }; }
+  componentDidCatch(error: unknown) { captureException(error, { area: 'hf_dashboard', section: this.props.section }); }
+  render() {
+    if (!this.state.failed) return this.props.children;
+    return <section className="hfc-card" role="alert"><h2>Something went wrong on this screen</h2><p>Please try again. The rest of your dashboard still works.</p><div className="hfd-actions"><button type="button" className="hfc-btn hfc-primary" onClick={() => this.setState({ failed: false })}>Try again</button></div></section>;
+  }
+}
 
 export default function DashboardApp({ section: initial }: { section: DashSection }) {
   return <><SessionBridge on /><Shell initial={initial} /></>;
@@ -124,7 +135,7 @@ function Shell({ initial }: { initial: DashSection }) {
   return <main className="hfc-page hfd-page">
     <div className="hfd-layout" onClick={go}>
       <DashboardNav account={account} bookingOn={bookingOn} favouritesOn={favouritesOn} active={section} />
-      <div className="hfd-content"><DashboardEmbed.Provider value={true}>{body}</DashboardEmbed.Provider></div>
+      <div className="hfd-content"><DashboardEmbed.Provider value={true}><SectionBoundary key={key} section={section}>{body}</SectionBoundary></DashboardEmbed.Provider></div>
     </div>
   </main>;
 }
