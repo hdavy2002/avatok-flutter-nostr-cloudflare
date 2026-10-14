@@ -65,9 +65,9 @@ abstract final class PartBCopy {
   static const String styleLegend = 'Your conversation style';
 
   // Topics
-  static const String topicsTitle = 'What do you like to talk about?';
+  static const String topicsTitle = 'What do you enjoy talking about?';
   static const String topicsLead =
-      'Callers search by these. Pick only topics you are comfortable with.';
+      'Choose up to 6 topics you feel comfortable talking about—from everyday life and shared interests to creating content.';
   static String topicsCount(int n) => '$n of 6 chosen';
   static const String topicsFull =
       ' That is the most. Remove one to pick another.';

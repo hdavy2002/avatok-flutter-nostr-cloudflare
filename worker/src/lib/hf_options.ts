@@ -2,10 +2,16 @@
 // Keep TOPICS in sync with that file (slug is the stored value).
 import { CREATOR_MAX_RUPEES } from "./hf_creator_pricing";
 
-export type MoodGroupLabel = "Naye dost" | "Mann ki baat" | "Tension" | "Zindagi ki baatein";
+export type MoodGroupLabel = "Naye dost" | "Mann ki baat" | "Tension" | "Zindagi ki baatein" | "Creator life" | "Interests & hobbies";
 export interface Topic { slug: string; label: string; group: MoodGroupLabel }
+// The first six balance creator life, everyday conversation and shared interests.
 export const TOPICS: readonly Topic[] = [
+  { slug: "content-creation", label: "Content creation", group: "Creator life" },
+  { slug: "bas-baat-karni-hai", label: "bas baat karni hai", group: "Mann ki baat" },
+  { slug: "music-and-movies", label: "Music & movies", group: "Interests & hobbies" },
+  { slug: "behind-the-scenes", label: "Behind the scenes", group: "Creator life" },
   { slug: "roz-thodi-baat", label: "roz thodi baat", group: "Naye dost" },
+  { slug: "travel-and-food", label: "Travel & food", group: "Interests & hobbies" },
   { slug: "koi-jo-mujhe-jaane", label: "koi jo mujhe jaane", group: "Naye dost" },
   { slug: "shaam-ka-saathi", label: "shaam ka saathi", group: "Naye dost" },
   { slug: "ek-dost-jo-sune", label: "ek dost jo sune", group: "Naye dost" },
@@ -13,7 +19,6 @@ export const TOPICS: readonly Topic[] = [
   { slug: "kisi-topic-pe-baat", label: "kisi topic pe baat (cricket, films, books)", group: "Naye dost" },
   { slug: "apni-bhasha-mein-baat", label: "apni bhasha mein baat (Garhwali, Kumaoni, Bhojpuri, Tamil…)", group: "Naye dost" },
   { slug: "english-mein-casual-chat", label: "English mein casual chat", group: "Naye dost" },
-  { slug: "bas-baat-karni-hai", label: "bas baat karni hai", group: "Mann ki baat" },
   { slug: "aaj-akela-lag-raha-hai", label: "aaj akela lag raha hai", group: "Mann ki baat" },
   { slug: "din-kharab-tha", label: "din kharab tha", group: "Mann ki baat" },
   { slug: "raat-ko-neend-nahi-aati", label: "raat ko neend nahi aati", group: "Mann ki baat" },
@@ -36,6 +41,14 @@ export const TOPICS: readonly Topic[] = [
   { slug: "bachchon-ki-padhai", label: "bachchon ki padhai", group: "Zindagi ki baatein" },
   { slug: "maa-baap-ki-sehat", label: "maa-baap ki sehat", group: "Zindagi ki baatein" },
   { slug: "sehat-ki-chinta", label: "sehat ki chinta", group: "Zindagi ki baatein" },
+  { slug: "creator-journey", label: "My creator journey", group: "Creator life" },
+  { slug: "social-media-growth", label: "Growing on social media", group: "Creator life" },
+  { slug: "creator-collaborations", label: "Creator collaborations", group: "Creator life" },
+  { slug: "fan-conversations", label: "Fan conversations", group: "Creator life" },
+  { slug: "gaming-and-esports", label: "Gaming & esports", group: "Interests & hobbies" },
+  { slug: "fashion-and-beauty", label: "Fashion & beauty", group: "Interests & hobbies" },
+  { slug: "fitness-and-hobbies", label: "Fitness & hobbies", group: "Interests & hobbies" },
+  { slug: "books-and-pop-culture", label: "Books & pop culture", group: "Interests & hobbies" },
 ];
 /** [HF-NATIVE-S3] Mood groups, in display order (web twin: moodGroups in web/src/lib/callvaalHomeReference.ts). */
 export const MOOD_GROUPS: readonly { slug: string; label: MoodGroupLabel }[] = [
@@ -43,6 +56,8 @@ export const MOOD_GROUPS: readonly { slug: string; label: MoodGroupLabel }[] = [
   { slug: "mann-ki-baat", label: "Mann ki baat" },
   { slug: "tension", label: "Tension" },
   { slug: "zindagi-ki-baatein", label: "Zindagi ki baatein" },
+  { slug: "creator-life", label: "Creator life" },
+  { slug: "interests-and-hobbies", label: "Interests & hobbies" },
 ];
 export const TOPIC_SLUGS: ReadonlySet<string> = new Set(TOPICS.map((t) => t.slug));
 

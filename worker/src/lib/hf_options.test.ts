@@ -16,6 +16,25 @@ describe("hf_options", () => {
     expect(slugBase("मीना")).toBe("host");
     expect(makeSlug("A")).not.toBe(makeSlug("A") + "x");
   });
+  it("keeps legacy topics and balances creator, everyday and interest starters", () => {
+    expect(TOPICS).toHaveLength(43);
+    expect(TOPICS.slice(0, 6).map((t) => t.slug)).toEqual([
+      "content-creation", "bas-baat-karni-hai", "music-and-movies",
+      "behind-the-scenes", "roz-thodi-baat", "travel-and-food",
+    ]);
+    expect(TOPICS.filter((t) => t.group === "Creator life")).toHaveLength(6);
+    expect(TOPICS.filter((t) => t.group === "Interests & hobbies")).toHaveLength(6);
+    for (const slug of [
+      "roz-thodi-baat", "koi-jo-mujhe-jaane", "shaam-ka-saathi", "ek-dost-jo-sune",
+      "apni-bhasha-mein-dost", "kisi-topic-pe-baat", "apni-bhasha-mein-baat", "english-mein-casual-chat",
+      "bas-baat-karni-hai", "aaj-akela-lag-raha-hai", "din-kharab-tha", "raat-ko-neend-nahi-aati",
+      "shaam-ki-company", "ghar-ki-yaad-aa-rahi-hai", "kisi-se-share-karna-hai", "bore-ho-raha-hoon",
+      "raat-ki-shift-koi-jaga-hai", "subah-ki-chai-thodi-baat", "mann-bhaari-hai", "exam-ki-tension",
+      "interview-se-darr", "shaadi-ka-pressure", "ghar-waalon-se-jhagda", "naukri-ki-chinta", "breakup",
+      "shaadi-ki-baatein", "naya-sheher-nayi-job", "paise-ki-tension", "bachchon-ki-padhai",
+      "maa-baap-ki-sehat", "sehat-ki-chinta",
+    ]) expect(TOPIC_SLUGS.has(slug)).toBe(true);
+  });
   it("option tables are consistent", () => {
     expect(TOPIC_SLUGS.size).toBe(TOPICS.length);
     expect(Object.keys(LANGUAGE_CODES).length).toBe(LANGUAGES.length);

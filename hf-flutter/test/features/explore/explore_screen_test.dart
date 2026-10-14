@@ -29,7 +29,7 @@ List<RecordedCall> listCalls(FakeApiClient api) => api
     .where((c) => c.query!['limit'] != 1 && c.query!['limit'] != 6)
     .toList();
 
-/// A `/api/hf/options` answer with [n] mood topics, to test the "+N more" chip.
+/// A `/api/hf/options` answer with [n] mood topics, to test the "Show all topics" chip.
 Map<String, Object?> manyTopicsOptions(int n) => <String, Object?>{
   ...optionsJson(),
   'topics': [
@@ -435,7 +435,7 @@ void main() {
         await tester.pumpAndSettle();
         expect(find.byType(FilterSheet), findsOneWidget);
         expect(find.text('Find your person'), findsOneWidget);
-        expect(find.text('How are you feeling?'), findsOneWidget);
+        expect(find.text('What would you like to talk about?'), findsOneWidget);
 
         await tapInSheet(tester, find.text('Exam tension'));
         await tapInSheet(tester, find.text('Hindi'));
@@ -545,7 +545,36 @@ void main() {
       expect(listCalls(api).last.query?['sort'], 'price_low');
     });
 
-    testWidgets('mood chips show six and a +N more chip opens the rest', (
+    testWidgets('creator topics from the server apply alongside everyday topics', (
+      tester,
+    ) async {
+      final api = fakeApi()
+        ..onJson('GET', '/api/hf/options', {
+          ...optionsJson(),
+          'topics': [
+            {'slug': 'content-creation', 'label': 'Content creation', 'group': 'Creator life'},
+            {'slug': 'bas-baat-karni-hai', 'label': 'bas baat karni hai', 'group': 'Mann ki baat'},
+          ],
+          'moodGroups': [
+            {'slug': 'creator-life', 'label': 'Creator life'},
+            {'slug': 'mann-ki-baat', 'label': 'Mann ki baat'},
+          ],
+        })
+        ..onJson('GET', '/api/hf/hosts', pageJson([hostJson('asha')]));
+      await pumpScreen(tester, api: api);
+      await tester.tap(find.byKey(const ValueKey<String>('open-filters')));
+      await tester.pumpAndSettle();
+      await tapInSheet(tester, find.text('Content creation'));
+      await tapInSheet(tester, find.text('bas baat karni hai'));
+      await tester.tap(find.byKey(const ValueKey<String>('filter-show')));
+      await tester.pumpAndSettle();
+      expect(
+        (listCalls(api).last.query?['topic'] as String).split(','),
+        unorderedEquals(['content-creation', 'bas-baat-karni-hai']),
+      );
+    });
+
+    testWidgets('mood chips show six and a Show all topics chip opens the rest', (
       tester,
     ) async {
       final api = fakeApi()
@@ -556,11 +585,19 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('Mood 6'), findsOneWidget);
       expect(find.text('Mood 7'), findsNothing);
-      expect(find.text('+3 more'), findsOneWidget);
-      await tapInSheet(tester, find.text('+3 more'));
+      expect(find.text('Show all topics'), findsOneWidget);
+      await tapInSheet(tester, find.text('Show all topics'));
       await tester.pumpAndSettle();
       expect(find.text('Mood 9'), findsOneWidget);
       expect(find.text('Show fewer'), findsOneWidget);
+      await tapInSheet(tester, find.text('Mood 9'));
+      await tapInSheet(tester, find.text('Show fewer'));
+      await tester.pumpAndSettle();
+      expect(find.text('Mood 9'), findsOneWidget);
+      expect(find.text('Mood 7'), findsNothing);
+      await tester.tap(find.byKey(const ValueKey<String>('filter-show')));
+      await tester.pumpAndSettle();
+      expect(listCalls(api).last.query?['topic'], 't9');
     });
 
     testWidgets(
@@ -626,7 +663,7 @@ void main() {
     });
 
     testWidgets(
-      'the mood chips on the page are a topic filter; All moods clears it',
+      'the mood chips on the page are a topic filter; All topics clears it',
       (tester) async {
         final api = fakeApi()
           ..onJson('GET', '/api/hf/hosts', pageJson([hostJson('asha')]));

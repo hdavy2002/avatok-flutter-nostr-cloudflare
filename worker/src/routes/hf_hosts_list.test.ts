@@ -141,6 +141,20 @@ describe("GET /api/hf/hosts", () => {
     expect(items.find((i) => i.slug === "esha-eeee").rating).toBe(4.5);
   });
 
+  it("matches new and legacy topics with OR semantics without imposing a creator category", async () => {
+    E.db.prepare("UPDATE hf_hosts SET topics_json=? WHERE uid='u2'").run(JSON.stringify(["content-creation"]));
+    E.db.prepare("UPDATE hf_hosts SET topics_json=?, category='influencer' WHERE uid='u4'").run(JSON.stringify(["music-and-movies"]));
+    expect(await slugs("topic=content-creation")).toEqual(["bina"]);
+    expect(await slugs("topic=content-creation,music-and-movies,breakup")).toEqual(["ana", "esha", "dev", "bina", "chit"]);
+    expect(await slugs("topic=content-creation&category=standard")).toEqual(["bina"]);
+    expect(await slugs("topic=content-creation&category=creators")).toEqual([]);
+    expect(await slugs("q=Content%20creation")).toEqual(["bina"]);
+    expect((await get("topic=unknown-creator-topic"))!.status).toBe(400);
+    for (const topic of TOPICS) {
+      expect(parseHostList(new URLSearchParams({ topic: topic.slug })).ok).toBe(true);
+    }
+  });
+
   it("filters by topic (any of), language (codes or names), price range and online", async () => {
     cfg = { hostsPublicEnabled: true, hfStdPlanEnabled: false }; // [HF-STD-PLAN-1] price range only filters on the old host-rate path
     expect(await slugs("topic=breakup")).toEqual(["ana", "esha", "chit"]);
@@ -315,10 +329,11 @@ describe("GET /api/hf/options", () => {
     const b: any = await r.json();
     expect(Object.keys(b).sort()).toEqual(["communities", "hostPriceMax", "languages", "moodGroups", "priceMax", "priceMin", "services", "styles", "topics"]);
     expect(b.topics).toHaveLength(TOPICS.length);
-    expect(b.topics[0]).toEqual({ slug: "roz-thodi-baat", label: "roz thodi baat", group: "Naye dost" });
+    expect(b.topics[0]).toEqual({ slug: "content-creation", label: "Content creation", group: "Creator life" });
     expect(b.moodGroups).toEqual([
       { slug: "naye-dost", label: "Naye dost" }, { slug: "mann-ki-baat", label: "Mann ki baat" },
       { slug: "tension", label: "Tension" }, { slug: "zindagi-ki-baatein", label: "Zindagi ki baatein" },
+      { slug: "creator-life", label: "Creator life" }, { slug: "interests-and-hobbies", label: "Interests & hobbies" },
     ]);
     expect(b.languages[0]).toEqual({ code: "hi", label: "Hindi" });
     expect(b.languages).toHaveLength(LANGUAGES.length);

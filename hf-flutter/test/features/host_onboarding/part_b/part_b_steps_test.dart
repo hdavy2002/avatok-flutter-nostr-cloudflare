@@ -18,6 +18,8 @@ import 'package:hf_app/features/host_onboarding/part_b/ui/about_step.dart';
 import 'package:hf_app/features/host_onboarding/part_b/ui/done_step.dart';
 import 'package:hf_app/features/host_onboarding/part_b/ui/generating_step.dart';
 import 'package:hf_app/features/host_onboarding/part_b/ui/part_b_copy.dart';
+import 'package:hf_app/features/host_onboarding/part_b/ui/part_b_widgets.dart';
+import 'package:hf_app/features/host_onboarding/part_b/ui/topics_step.dart';
 import 'package:hf_app/features/host_onboarding/part_b/ui/preview_step.dart';
 import 'package:hf_app/features/host_onboarding/part_b/ui/price_step.dart';
 import 'package:hf_app/features/host_onboarding/part_b/ui/voice_step.dart';
@@ -95,6 +97,7 @@ void main() {
     WidgetTester tester,
     Widget step, {
     List<Override> overrides = const <Override>[],
+    HostOptions? options,
   }) async {
     usePhoneScreen(tester);
     final container = ProviderContainer(
@@ -102,7 +105,7 @@ void main() {
         apiClientProvider.overrideWithValue(api),
         secureStoreProvider.overrideWithValue(MemoryKeyValueStore()),
         hostOptionsProvider.overrideWith(
-          (ref) async => const HostOptions(
+          (ref) async => options ?? const HostOptions(
             topics: [
               HostTopic(
                 slug: 'loneliness',
@@ -150,6 +153,73 @@ void main() {
     'displayName': '',
     'about': '',
   };
+
+  group('creator and everyday onboarding topics', () {
+    const selected = [
+      'content-creation', 'behind-the-scenes', 'creator-journey',
+      'music-and-movies', 'bas-baat-karni-hai', 'roz-thodi-baat',
+    ];
+    final topicOptions = HostOptions.fromJson({
+      'topics': [
+        {'slug': 'content-creation', 'label': 'Content creation', 'group': 'Creator life'},
+        {'slug': 'behind-the-scenes', 'label': 'Behind the scenes', 'group': 'Creator life'},
+        {'slug': 'creator-journey', 'label': 'My creator journey', 'group': 'Creator life'},
+        {'slug': 'music-and-movies', 'label': 'Music & movies', 'group': 'Interests & hobbies'},
+        {'slug': 'travel-and-food', 'label': 'Travel & food', 'group': 'Interests & hobbies'},
+        {'slug': 'bas-baat-karni-hai', 'label': 'bas baat karni hai', 'group': 'Mann ki baat'},
+        {'slug': 'roz-thodi-baat', 'label': 'roz thodi baat', 'group': 'Naye dost'},
+      ],
+      'moodGroups': [
+        {'slug': 'creator-life', 'label': 'Creator life'},
+        {'slug': 'interests-and-hobbies', 'label': 'Interests & hobbies'},
+        {'slug': 'mann-ki-baat', 'label': 'Mann ki baat'},
+        {'slug': 'naye-dost', 'label': 'Naye dost'},
+      ],
+      'languages': <Object?>[],
+      'priceMin': 5,
+      'priceMax': 1000,
+    });
+
+    testWidgets('requires a selection and saves a creator topic unchanged', (tester) async {
+      api.onJson('PUT', _me, {'host': <String, Object?>{}});
+      final log = CtxLog({...draftHost, 'topics': <String>[]});
+      await pumpStep(tester, TopicsStep(ctx: log.ctx), options: topicOptions);
+      expect(find.text(PartBCopy.topicsTitle), findsOneWidget);
+      expect(find.text('Creator life'), findsOneWidget);
+      expect(find.text('Interests & hobbies'), findsOneWidget);
+      expect(
+        tester.widget<HfButton>(find.byKey(const ValueKey<String>('topics-continue'))).onPressed,
+        isNull,
+      );
+      await tapKey(tester, 'topic-content-creation');
+      await tapKey(tester, 'topics-continue');
+      expect(api.callsTo('PUT', _me).last.body, {
+        'topics': ['content-creation'],
+      });
+      expect(log.nexts, 1);
+      await leave(tester);
+    });
+
+    testWidgets('keeps six selected topics and allows replacement across groups', (tester) async {
+      api.onJson('PUT', _me, {'host': <String, Object?>{}});
+      final log = CtxLog({...draftHost, 'topics': selected});
+      await pumpStep(tester, TopicsStep(ctx: log.ctx), options: topicOptions);
+      final extra = find.byKey(const ValueKey<String>('topic-travel-and-food'));
+      expect(tester.widget<ChoiceTile>(extra).onTap, isNull);
+      await tapKey(tester, 'topic-creator-journey');
+      expect(tester.widget<ChoiceTile>(extra).onTap, isNotNull);
+      await tapKey(tester, 'topic-travel-and-food');
+      await tapKey(tester, 'topics-continue');
+      expect(api.callsTo('PUT', _me).last.body, {
+        'topics': [
+          'content-creation', 'behind-the-scenes', 'music-and-movies',
+          'bas-baat-karni-hai', 'roz-thodi-baat', 'travel-and-food',
+        ],
+      });
+      expect(log.nexts, 1);
+      await leave(tester);
+    });
+  });
 
   group('field errors sit under the field', () {
     testWidgets(

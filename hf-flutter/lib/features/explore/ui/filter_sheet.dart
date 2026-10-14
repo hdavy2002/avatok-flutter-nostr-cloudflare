@@ -240,7 +240,7 @@ class _FilterSheetState extends ConsumerState<FilterSheet> {
         if (hidden > 0)
           _SoftChip(
             key: const ValueKey<String>('topics-more'),
-            label: ExploreCopy.moreTopics(hidden),
+            label: ExploreCopy.moreTopics,
             onTap: () => setState(() => _allTopics = true),
           )
         else if (_allTopics && o.topics.length > _collapsedTopics)

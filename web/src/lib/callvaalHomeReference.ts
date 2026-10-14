@@ -1,7 +1,13 @@
 export type ReferenceRect = readonly [number, number, number, number];
 export interface Mood { slug: string; label: string; group: string }
+// Keep this order aligned with the Worker: the first six are the Explore starter topics.
 export const moods: Mood[] = [
+  { group: 'Creator life', slug: 'content-creation', label: 'Content creation' },
+  { group: 'Mann ki baat', slug: 'bas-baat-karni-hai', label: 'bas baat karni hai' },
+  { group: 'Interests & hobbies', slug: 'music-and-movies', label: 'Music & movies' },
+  { group: 'Creator life', slug: 'behind-the-scenes', label: 'Behind the scenes' },
   { group: 'Naye dost', slug: 'roz-thodi-baat', label: 'roz thodi baat' },
+  { group: 'Interests & hobbies', slug: 'travel-and-food', label: 'Travel & food' },
   { group: 'Naye dost', slug: 'koi-jo-mujhe-jaane', label: 'koi jo mujhe jaane' },
   { group: 'Naye dost', slug: 'shaam-ka-saathi', label: 'shaam ka saathi' },
   { group: 'Naye dost', slug: 'ek-dost-jo-sune', label: 'ek dost jo sune' },
@@ -9,7 +15,6 @@ export const moods: Mood[] = [
   { group: 'Naye dost', slug: 'kisi-topic-pe-baat', label: 'kisi topic pe baat (cricket, films, books)' },
   { group: 'Naye dost', slug: 'apni-bhasha-mein-baat', label: 'apni bhasha mein baat (Garhwali, Kumaoni, Bhojpuri, Tamil…)' },
   { group: 'Naye dost', slug: 'english-mein-casual-chat', label: 'English mein casual chat' },
-  { group: 'Mann ki baat', slug: 'bas-baat-karni-hai', label: 'bas baat karni hai' },
   { group: 'Mann ki baat', slug: 'aaj-akela-lag-raha-hai', label: 'aaj akela lag raha hai' },
   { group: 'Mann ki baat', slug: 'din-kharab-tha', label: 'din kharab tha' },
   { group: 'Mann ki baat', slug: 'raat-ko-neend-nahi-aati', label: 'raat ko neend nahi aati' },
@@ -32,8 +37,16 @@ export const moods: Mood[] = [
   { group: 'Zindagi ki baatein', slug: 'bachchon-ki-padhai', label: 'bachchon ki padhai' },
   { group: 'Zindagi ki baatein', slug: 'maa-baap-ki-sehat', label: 'maa-baap ki sehat' },
   { group: 'Zindagi ki baatein', slug: 'sehat-ki-chinta', label: 'sehat ki chinta' },
+  { group: 'Creator life', slug: 'creator-journey', label: 'My creator journey' },
+  { group: 'Creator life', slug: 'social-media-growth', label: 'Growing on social media' },
+  { group: 'Creator life', slug: 'creator-collaborations', label: 'Creator collaborations' },
+  { group: 'Creator life', slug: 'fan-conversations', label: 'Fan conversations' },
+  { group: 'Interests & hobbies', slug: 'gaming-and-esports', label: 'Gaming & esports' },
+  { group: 'Interests & hobbies', slug: 'fashion-and-beauty', label: 'Fashion & beauty' },
+  { group: 'Interests & hobbies', slug: 'fitness-and-hobbies', label: 'Fitness & hobbies' },
+  { group: 'Interests & hobbies', slug: 'books-and-pop-culture', label: 'Books & pop culture' },
 ];
-export const moodGroups = ['Naye dost', 'Mann ki baat', 'Tension', 'Zindagi ki baatein'] as const;
+export const moodGroups = ['Naye dost', 'Mann ki baat', 'Tension', 'Zindagi ki baatein', 'Creator life', 'Interests & hobbies'] as const;
 // Optional tagline and conversationStyle are editable sample copy; omitted values show placeholders.
 export interface SampleProfile { id: string; detailPath?: string; name: string; tagline?: string; conversationStyle?: string; gender: 'woman' | 'man'; moods: string[]; languages: string; availability: 'online' | 'busy' | 'offline'; regulars: string; previewFavourite?: boolean; price: number; rating: number; talkedTo: number; portrait: string; videoKyc?: boolean }
 export const availabilityLabel = { online: 'Online now', busy: 'On a call', offline: 'Offline' } as const;

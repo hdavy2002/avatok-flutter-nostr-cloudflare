@@ -14,8 +14,8 @@ export default function TopicsStep({ draft, update, setAction }: StepProps) {
 
   return (
     <div className="hob-p-step">
-      <h1 className="hob-h1">What do you like to talk about?</h1>
-      <p className="hob-lead">Callers search by these. Pick only topics you are comfortable with.</p>
+      <h1 className="hob-h1">What do you enjoy talking about?</h1>
+      <p className="hob-lead">Choose up to 6 topics you feel comfortable talking about—from everyday life and shared interests to creating content.</p>
 
       <div className="hob-p-sticky" aria-live="polite">
         <strong>{n} of {MAX_TOPICS} chosen</strong>

@@ -27,7 +27,7 @@ abstract final class ExploreCopy {
   static const String endOfList = 'That is everyone for now.';
 
   static const String sort = 'Sort by';
-  static const String mood = 'Mood';
+  static const String mood = 'Topics';
   static const String language = 'Language';
   static const String price = 'Price per minute';
   static const String anyPrice = 'Any price';
@@ -37,17 +37,17 @@ abstract final class ExploreCopy {
   static const String optionsFailed = 'We could not load the filter choices.';
 
   // Discover header and list (mockup Main)
-  static const String searchHint = 'Mood, language or name';
+  static const String searchHint = 'Topic, language or name';
   static const String segmentEveryone = 'Everyone';
-  static const String allMoods = 'All moods';
+  static const String allMoods = 'All topics';
   static const String listTitle = 'Good listeners for you';
   static String onlineCount(int n) => '$n online';
   static const String searchMatchesNote = 'in the hosts shown';
 
   // Filter sheet (mockup Explore)
   static const String sheetTitle = 'Find your person';
-  static const String feeling = 'How are you feeling?';
-  static String moreTopics(int n) => '+$n more';
+  static const String feeling = 'What would you like to talk about?';
+  static const String moreTopics = 'Show all topics';
   static const String fewerTopics = 'Show fewer';
   static String upTo(int rupees) => 'Up to ₹$rupees';
   static const String onlineOnlyBody = 'Hosts you can call this minute';
