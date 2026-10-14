@@ -10747,5 +10747,19 @@
         "equals": 0
       }
     ]
+  },
+  "HF-DASH-CALLS-1": {
+    "description": "The dashboard Calls screen lists calls you made and calls you received, every outcome (completed, missed, declined, cancelled), paginated, from GET /api/hf/calls.",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [],
+    "success": [
+      {
+        "event": "hf_calls_list_load",
+        "property": "count",
+        "min_events": 1,
+        "note": "A signed-in person opened the Calls screen and the list loaded (count is the rows in that page; 0 is valid for a new account)."
+      }
+    ]
   }
 }

@@ -1274,3 +1274,8 @@ Web events (flag `hfFavouritesEnabled`). Never in any prop: the person's name, p
 | `$exception` (web) | `area: 'hf_dash_summary'`, `status` | The whole summary call failed; tiles show a dash and a Retry. |
 | `$exception` (worker) | `extra.area: 'hf_dash_summary'`, `extra.part` (`role`, `calls_made`, `calls_received`, `appointments`, `expected`, `fraands_saved`, `fraands_new`, `recent_made`) | One part of `GET /api/hf/me/summary` could not be read; it is returned as null and the answer is still 200. `fraands_saved` fails until the favourites table exists. |
 
+## Hello Fraands dashboard Calls screen (`[HF-DASH-CALLS-1]`, web, 2026-10-14)
+
+| Event | Props | Note |
+|---|---|---|
+| `hf_calls_list_load` | `role: 'caller' \| 'host'`, `status: 'all' \| 'completed' \| 'missed'`, `count`, `ms` | One per page of calls loaded in the dashboard Calls screen (first load, tab or filter change, Load more). **Success value:** `count >= 0` with the event present. Failures go through `captureException` with `area: 'hf_dashboard'`, `step: 'calls_list'`. |

@@ -1,6 +1,7 @@
 // [HF-CALLS-1] HF masked paid calls: start/status/cancel, wallet read, admin test credits, host presence, host call list,
 // admin call list and the Vobiz webhooks. Contract: Specs/HF-CALLS-CONTRACT.md. Dark behind hfCallsEnabled.
 //   POST /api/hf/calls {hostSlug, lane?}              -> {ok, callId, status:"ringing_host", rate, maxMinutes}
+//   GET  /api/hf/calls?role=caller|host&status=all|completed|missed&cursor=&limit=   -> {ok, items:[{id,status,otherHandle,hostSlug,at,seconds,amountPaise,endReason}], nextCursor}   [HF-DASH-CALLS-1]
 //   GET  /api/hf/calls/:id                            -> {id,status,hostSlug,hostName,rate,connectedAt,endedAt,billedMinutes,chargedRupees,endReason,canReview}
 //   POST /api/hf/calls/:id/cancel                     (caller, before connect)
 //   GET  /api/hf/wallet                               -> {paidBalance, testBalance, spendable, host?, history[], balanceRupees (legacy)}   [HF-WALLET-1]
@@ -636,6 +637,77 @@ async function presenceRoute(req: Request, env: Env, p: string, ctx?: ExecutionC
   return json({ ok: true, presence: after });
 }
 
+// ── GET /api/hf/calls (role=caller|host) ─────────────────────────────────────
+// [HF-DASH-CALLS-1] Paginated history of calls you made or received, every outcome. Handles only; scoped to the signed-in uid.
+const LIVE_STATUSES = "'connected','ringing_host','ringing_caller'";
+function b64uEnc(s: string): string { return btoa(s).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, ""); }
+function decodeCursor(c: string): { at: number; id: string } | null {
+  try {
+    const raw = atob(c.replace(/-/g, "+").replace(/_/g, "/"));
+    const i = raw.indexOf(":");
+    const at = Number(raw.slice(0, i)), id = raw.slice(i + 1);
+    return i > 0 && Number.isFinite(at) && at >= 0 && ID_RE.test(id) ? { at, id } : null;
+  } catch { return null; }
+}
+async function listCalls(req: Request, env: Env): Promise<Response> {
+  if (!(await callsOn(env))) return NOT_ENABLED();
+  const u = await requireUser(req, env);
+  if (isFail(u)) return err(u.status, u.error, u.error);
+  const q = new URL(req.url).searchParams;
+  const role = q.get("role") ?? "caller";
+  const status = q.get("status") ?? "all";
+  if (role !== "caller" && role !== "host") return err(400, "invalid_field", "role must be caller or host.", { field: "role" });
+  if (status !== "all" && status !== "completed" && status !== "missed") return err(400, "invalid_field", "status must be all, completed or missed.", { field: "status" });
+  const limRaw = q.get("limit");
+  let limit = 20;
+  if (limRaw != null && limRaw !== "") {
+    limit = Number(limRaw);
+    if (!Number.isInteger(limit) || limit < 1 || limit > 50) return err(400, "invalid_field", "limit must be 1 to 50.", { field: "limit" });
+  }
+  const curRaw = q.get("cursor");
+  const cur = curRaw ? decodeCursor(curRaw) : null;
+  if (curRaw && !cur) return err(400, "invalid_field", "cursor is not valid.", { field: "cursor" });
+  const noStore = { "cache-control": "private, no-store" };
+  try {
+    if (role === "host") {
+      const h = await env.DB_META.prepare("SELECT 1 AS x FROM hf_hosts WHERE uid=?1").bind(u.uid).first();
+      if (!h) return json({ ok: true, items: [], nextCursor: null }, 200, noStore);
+    }
+    const mine = role === "host" ? "c.host_uid" : "c.caller_uid";
+    const binds: unknown[] = [u.uid];
+    let where = `${mine}=?1`;
+    if (status === "completed") where += " AND c.status='completed'";
+    else if (status === "missed") where += ` AND c.status NOT IN ('completed',${LIVE_STATUSES})`;
+    if (cur) { binds.push(cur.at, cur.id); where += " AND (c.created_at<?2 OR (c.created_at=?2 AND c.id<?3))"; }
+    binds.push(limit + 1);
+    const other = role === "host"
+      ? "(SELECT display_name FROM users x WHERE x.uid=c.caller_uid) AS other_name, NULL AS host_slug"
+      : "(SELECT display_name FROM hf_hosts h WHERE h.uid=c.host_uid) AS other_name, (SELECT slug FROM hf_hosts h WHERE h.uid=c.host_uid) AS host_slug";
+    const rows = (await env.DB_META.prepare(
+      `SELECT c.id, c.status, c.created_at, c.connected_at, c.billed_minutes, c.billable_seconds, c.charged_paise, c.consumed_value_paise, c.host_earning_paise, c.end_reason, ${other}
+         FROM hf_calls c WHERE ${where} ORDER BY c.created_at DESC, c.id DESC LIMIT ?${binds.length}`,
+    ).bind(...binds).all<{ id: string; status: string; created_at: number; connected_at: number | null; billed_minutes: number | null; billable_seconds: number | null; charged_paise: number | null; consumed_value_paise: number | null; host_earning_paise: number | null; end_reason: string | null; other_name: string | null; host_slug: string | null }>()).results ?? [];
+    const page = rows.slice(0, limit);
+    const items = page.map((r) => {
+      const secs = r.billable_seconds != null ? Math.max(0, Math.trunc(Number(r.billable_seconds))) : Math.max(0, Math.trunc(Number(r.billed_minutes ?? 0))) * 60;
+      const paise = role === "host" ? Number(r.host_earning_paise ?? 0) : Number(r.consumed_value_paise ?? r.charged_paise ?? 0);
+      return {
+        id: r.id, status: r.status,
+        otherHandle: role === "host" ? callerHandle(r.other_name) : (r.other_name || "A host"),
+        hostSlug: role === "host" ? null : r.host_slug,
+        at: Number(r.connected_at ?? r.created_at), seconds: secs,
+        amountPaise: paise > 0 ? Math.trunc(paise) : null, endReason: r.end_reason,
+      };
+    });
+    const last = page[page.length - 1];
+    const nextCursor = rows.length > limit && last ? b64uEnc(`${last.created_at}:${last.id}`) : null;
+    return json({ ok: true, items, nextCursor }, 200, noStore);
+  } catch (e) {
+    await trackException(env, e, { uid: u.uid, route: "/api/hf/calls", handled: true, app_name: HF_CALL_APP, extra: { area: "hf_calls", step: "list", role } });
+    return err(500, "internal_error", "Something went wrong.");
+  }
+}
+
 // ── host dashboard calls (handles only) ──────────────────────────────────────
 async function hostCalls(req: Request, env: Env): Promise<Response> {
   if (!(await callsOn(env))) return NOT_ENABLED();
@@ -869,6 +941,7 @@ export async function hfCallsRoute(req: Request, env: Env, p: string, ctx?: Exec
   try {
     if (p.startsWith("/api/hf/vobiz/")) return await vobizWebhook(req, env, p);
     if (p === "/api/hf/calls" && m === "POST") return await startCall(req, env);
+    if (p === "/api/hf/calls" && m === "GET") return await listCalls(req, env); // [HF-DASH-CALLS-1]
     const one = p.match(/^\/api\/hf\/calls\/([A-Za-z0-9_-]{8,64})$/);
     if (one && m === "GET") return await getCall(req, env, one[1]);
     const cancel = p.match(/^\/api\/hf\/calls\/([A-Za-z0-9_-]{8,64})\/cancel$/);

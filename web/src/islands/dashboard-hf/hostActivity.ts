@@ -28,7 +28,7 @@ function normRow(x: Record<string, unknown>): Row {
     at: toMs((x.connectedAt ?? x.createdAt ?? x.startedAt ?? null) as number | string | null),
     minutes: num(x.billedMinutes) ?? 0,
     seconds: num(x.billableSeconds) ?? undefined,
-    earned: num(x.hostEarningRupees) ?? num(x.earnedRupees) ?? (paise != null ? paise / 100 : null),
+    earned: num(x.hostEarningRupees) ?? num(x.earnedRupees) ?? num(x.earningRupees) ?? (paise != null ? paise / 100 : null),
   };
 }
 export function parseCalls(d: unknown): { rows: Row[]; today: Today } {
