@@ -10704,13 +10704,15 @@
         "event": "hf_dash_nav",
         "property": "to",
         "min_events": 1,
-        "note": "A signed-in person switched dashboard screens in place (no page reload)."
+        "note": "A signed-in person switched dashboard screens in place (no page reload).",
+        "exists": true
       },
       {
         "event": "hf_dash_view",
         "property": "section",
         "min_events": 1,
-        "note": "Dashboard screens render inside the shell."
+        "note": "Dashboard screens render inside the shell.",
+        "exists": true
       }
     ]
   },
@@ -10741,7 +10743,8 @@
         "event": "hf_dash_summary_load",
         "property": "parts_failed",
         "min_events": 1,
-        "note": "The Overview summary loaded. parts_failed = 0 is success; a value above 0 means some numbers came back empty (see the hf_dash_summary exceptions)."
+        "note": "The Overview summary loaded. parts_failed = 0 is success; a value above 0 means some numbers came back empty (see the hf_dash_summary exceptions).",
+        "equals": 0
       }
     ]
   }

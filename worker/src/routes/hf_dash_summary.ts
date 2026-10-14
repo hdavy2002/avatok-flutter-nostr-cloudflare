@@ -48,19 +48,19 @@ export async function hfDashSummaryRoute(req: Request, env: Env): Promise<Respon
     ).bind(uid, istStart, istEnd).first<{ n: number }>())?.n ?? 0)),
     isHost ? part(env, uid, "expected", () => hostExpectedNetPaise(env, uid)) : Promise.resolve(null),
     // hf_favourites is created by another change; until it exists this part is simply null.
-    part(env, uid, "fraands_saved", async () => Number((await db.prepare("SELECT COUNT(*) AS n FROM hf_favourites WHERE uid=?1").bind(uid).first<{ n: number }>())?.n ?? 0)),
+    part(env, uid, "fraands_saved", async () => Number((await db.prepare("SELECT COUNT(*) AS n FROM hf_favourites f JOIN hf_hosts h ON h.uid=f.host_uid WHERE f.uid=?1 AND h.status='live'").bind(uid).first<{ n: number }>())?.n ?? 0)),
     isHost ? part(env, uid, "fraands_new", async () => Number((await db.prepare(
       "SELECT COUNT(*) AS n FROM (SELECT caller_uid FROM hf_calls WHERE host_uid=?1 AND status='completed' AND billed_minutes>=1 GROUP BY caller_uid HAVING MIN(created_at)>=?2)",
     ).bind(uid, now - WEEK_MS).first<{ n: number }>())?.n ?? 0)) : Promise.resolve(null),
     part(env, uid, "recent_made", async (): Promise<RecentMade[]> => {
       const rows = (await db.prepare(
-        `SELECT c.id, c.status, c.created_at, c.connected_at, c.ended_at, c.billed_minutes, c.charged_paise,
+        `SELECT c.id, c.status, c.created_at, c.connected_at, c.ended_at, c.billable_seconds, c.billed_minutes, COALESCE(c.consumed_value_paise, c.charged_paise) AS charged_paise,
                 (SELECT display_name FROM hf_hosts h WHERE h.uid=c.host_uid) AS host_name
            FROM hf_calls c WHERE c.caller_uid=?1 ORDER BY c.created_at DESC LIMIT 3`,
-      ).bind(uid).all<{ id: string; status: string; created_at: number; connected_at: number | null; ended_at: number | null; billed_minutes: number; charged_paise: number; host_name: string | null }>()).results ?? [];
+      ).bind(uid).all<{ id: string; status: string; created_at: number; connected_at: number | null; ended_at: number | null; billable_seconds: number | null; billed_minutes: number; charged_paise: number; host_name: string | null }>()).results ?? [];
       return rows.map((r) => {
         const done = r.status === "completed" && Number(r.billed_minutes) >= 1;
-        const secs = r.connected_at && r.ended_at ? Math.max(0, Math.round((Number(r.ended_at) - Number(r.connected_at)) / 1000)) : 0;
+        const secs = r.billable_seconds != null ? Math.max(0, Math.trunc(Number(r.billable_seconds))) : r.connected_at && r.ended_at ? Math.max(0, Math.round((Number(r.ended_at) - Number(r.connected_at)) / 1000)) : 0;
         return { id: r.id, otherHandle: (r.host_name ?? "").trim() || "Host", status: r.status, at: Number(r.created_at), seconds: secs, amountPaise: done ? Math.round(Number(r.charged_paise ?? 0)) : null };
       });
     }),
