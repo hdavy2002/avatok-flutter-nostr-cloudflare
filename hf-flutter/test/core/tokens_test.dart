@@ -92,7 +92,7 @@ void main() {
   });
 
   test('key colours match the approved mockups', () {
-    expect(HfColors.ink, const Color(0xFF17131F));
+    expect(HfColors.ink, const Color(0xFF000000));
     expect(HfColors.page, const Color(0xFFF6F3EE));
     expect(HfColors.surface, const Color(0xFFFFFDF9));
     expect(HfColors.darkCard, const Color(0xFF343438));

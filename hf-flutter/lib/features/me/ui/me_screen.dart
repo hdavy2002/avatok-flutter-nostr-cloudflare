@@ -58,7 +58,7 @@ abstract final class MeCopy {
       'Talk to people and earn. It takes about 10 minutes to set up.';
   static const String appearanceTitle = 'Appearance';
   static const String appearanceBody =
-      'Light is the default. System follows your phone.';
+      'Dark is the default. System follows your phone’s light or dark setting.';
   static const String appearanceLight = 'Light';
   static const String appearanceDark = 'Dark';
   static const String appearanceSystem = 'System';

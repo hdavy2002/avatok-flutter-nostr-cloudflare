@@ -7,7 +7,7 @@ import 'package:flutter/material.dart';
 abstract final class HfColors {
   // ---- Core -------------------------------------------------------------------------------------------
   /// Deep ink for text and monochrome artwork.
-  static const Color ink = Color(0xFF17131F);
+  static const Color ink = Color(0xFF000000);
 
   /// Page background.
   static const Color page = Color(0xFFF6F3EE);

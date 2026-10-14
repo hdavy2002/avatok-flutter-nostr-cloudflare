@@ -54,41 +54,56 @@ class _GalleryPagerState extends ConsumerState<GalleryPager> {
           ],
         ),
         const SizedBox(height: HfSpacing.gap),
-        SizedBox(
-          height: 260,
-          child: PageView.builder(
-            controller: _controller,
-            itemCount: items.length,
-            onPageChanged: (i) => setState(() => _page = i),
-            itemBuilder: (context, i) {
-              final item = items[i];
-              final provenance = item.isAi
-                  ? HostProfileStrings.aiGalleryImage
-                  : HostProfileStrings.galleryImage;
-              return Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 2),
-                child: Semantics(
-                  image: true,
-                  label:
-                      'Picture ${i + 1} of ${items.length}: ${item.caption ?? provenance}',
-                  excludeSemantics: true,
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(HfRadius.card),
-                    child: Stack(
-                      fit: StackFit.expand,
-                      children: [
-                        image(context, item.url, fit: BoxFit.cover),
-                        Positioned(
-                          left: 10,
-                          bottom: 10,
-                          child: AiLabel(text: provenance),
+        // Paint the shadow outside the pager's clip while each photo keeps its
+        // foreground frame. Neither decoration changes the gallery's layout.
+        DecoratedBox(
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(HfRadius.card),
+            boxShadow: HfShadows.cardFor(context),
+          ),
+          child: SizedBox(
+            height: 260,
+            child: PageView.builder(
+              controller: _controller,
+              itemCount: items.length,
+              onPageChanged: (i) => setState(() => _page = i),
+              itemBuilder: (context, i) {
+                final item = items[i];
+                final provenance = item.isAi
+                    ? HostProfileStrings.aiGalleryImage
+                    : HostProfileStrings.galleryImage;
+                return Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 2),
+                  child: Semantics(
+                    image: true,
+                    label:
+                        'Picture ${i + 1} of ${items.length}: ${item.caption ?? provenance}',
+                    excludeSemantics: true,
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(HfRadius.card),
+                      child: DecoratedBox(
+                        position: DecorationPosition.foreground,
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(HfRadius.card),
+                          border: Border.all(color: HfColors.white, width: 2),
                         ),
-                      ],
+                        child: Stack(
+                          fit: StackFit.expand,
+                          children: [
+                            image(context, item.url, fit: BoxFit.cover),
+                            Positioned(
+                              left: 10,
+                              bottom: 10,
+                              child: AiLabel(text: provenance),
+                            ),
+                          ],
+                        ),
+                      ),
                     ),
                   ),
-                ),
-              );
-            },
+                );
+              },
+            ),
           ),
         ),
         const SizedBox(height: 10),

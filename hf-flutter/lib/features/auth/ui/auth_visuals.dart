@@ -137,6 +137,10 @@ class AuthPhoto extends StatelessWidget {
           color: HfColors.lavender,
           boxShadow: HfShadows.cardFor(context),
         ),
+        foregroundDecoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(44),
+          border: Border.all(color: HfColors.white, width: 2),
+        ),
         clipBehavior: Clip.antiAlias,
         child: Image.asset(
           kind.asset,
