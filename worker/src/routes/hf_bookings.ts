@@ -227,7 +227,7 @@ function laneGuardSql(customerParam: number, hostParam: number, lane: string | n
   ];
   if (lane === "lgbtq") gates.push(
     `EXISTS (SELECT 1 FROM hf_lane_access WHERE uid=?${customerParam} AND lane='lgbtq' AND declared_at IS NOT NULL)`,
-    `(SELECT review_status FROM hf_selfie WHERE uid=?${customerParam} ORDER BY created_at DESC,id DESC LIMIT 1)='approved'`, 
+    `(SELECT review_status FROM hf_selfie WHERE uid=?${customerParam} ORDER BY created_at DESC,id DESC LIMIT 1)='approved'`,
   );
   return gates.join(" AND ");
 }
