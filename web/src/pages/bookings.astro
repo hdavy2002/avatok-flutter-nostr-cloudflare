@@ -2,7 +2,7 @@
 export const prerender = false;
 import Base from '../layouts/Base.astro';
 import HostBookings from '../islands/host-bookings/HostBookings';
-import '../../styles/hf-bookings.css';
+import '../styles/hf-bookings.css';
 import { BRAND } from '../lib/brand';
 Astro.response.headers.set('Cache-Control', 'private, no-store');
 const role = Astro.url.searchParams.get('role') === 'host' ? 'host' : 'customer';
