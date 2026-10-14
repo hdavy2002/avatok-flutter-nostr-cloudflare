@@ -6,7 +6,6 @@ import '../../styles/callvaal-chrome.css';
 interface Props { hideTagline?: boolean; }
 const { hideTagline = false } = Astro.props;
 const identity = brandConfig.homepageIdentity;
-const currentYear = new Date().getFullYear();
 const groups = [
   ['Company', [
     ['About us', '/about'], ['How it works', '/how-it-works'], ['FAQs', '/faq'], ['Help centre', '/help'], ['Contact us', '/contact'], ['Press', '/press'],
@@ -33,7 +32,6 @@ const groups = [
   <div class="cv-footer-bottom">
     <p class="cv-footer-disclaimer">{identity.name} is a preview of a planned place to talk. Hosts will be real people, not doctors, lawyers, therapists, counsellors or financial advisors, and nothing said on a call is professional advice. Sexual harassment, threats and abuse are prohibited; reports are reviewed and serious or repeated violations can lead to removal. Calls are not recorded; AI keeps an eye on every live call and ends abusive or scam calls. 18+ only. In crisis, call <a href="tel:14416">Tele-MANAS 14416</a> or <a href="tel:112">112</a>.</p>
     <div class="cv-footer-credits">
-      <p class="cv-footer-copyright footer-copyright">© {currentYear} Ava Global International Inc. · Delaware, USA</p>
       <p class="cv-footer-made">Developed in India with <span class="cv-footer-heart" role="img" aria-label="love">♥</span></p>
     </div>
   </div>

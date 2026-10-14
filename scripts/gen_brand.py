@@ -45,7 +45,7 @@ CONSUMERS_WRANGLER = ROOT / "consumers" / "wrangler.toml"
 REQUIRED = ["name", "nameUpper", "nameCompact", "slug", "nameHindi", "slogan",
             "domain", "hosts", "emails", "emailFromName", "playPackageId"]
 REQUIRED_HOSTS = ["api", "media", "auth", "mail"]
-REQUIRED_EMAILS = ["support", "noreply", "hello"]
+REQUIRED_EMAILS = ["support", "grievance", "noreply", "hello"]
 
 HEADER = ("GENERATED FROM Specs/brand.json by scripts/gen_brand.py — DO NOT EDIT.\n"
           "To change the brand name or domain, edit Specs/brand.json and re-run the script.")
@@ -125,6 +125,7 @@ def render_ts(b: dict, client: bool = False) -> str:
     ]) + [
         "  emails: {",
         f"    support: {js(e['support'])},",
+        f"    grievance: {js(e['grievance'])},",
         f"    noreply: {js(e['noreply'])},",
         f"    hello: {js(e['hello'])},",
         "  },",
@@ -211,6 +212,7 @@ def render_dart(b: dict, hf: bool = False) -> str:
         f"  static const List<String> legacyMediaHosts = {dart_list(['media.' + d for d in legacy])};",
         f"  static const List<String> legacyApiHosts = {dart_list(['api.' + d for d in legacy])};",
         f"  static const String supportEmail = {dart(e['support'])};",
+        f"  static const String grievanceEmail = {dart(e['grievance'])};",
         f"  static const String noreplyEmail = {dart(e['noreply'])};",
         f"  static const String helloEmail = {dart(e['hello'])};",
         "  /// PERMANENT — a Play package id can never change.",

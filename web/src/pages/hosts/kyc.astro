@@ -3,7 +3,7 @@ import HelloFraandsPage from '../../layouts/HelloFraandsPage.astro';
 import { BRAND } from '../../lib/brand';
 export const prerender = true;
 ---
-<HelloFraandsPage title="How we verify hosts, and how we protect your data" summary="Host verification aur aapke data ki suraksha, saaf shabdon mein.">
+<HelloFraandsPage updated="2026-10-14" title="How we verify hosts, and how we protect your data" summary="Host verification aur aapke data ki suraksha, saaf shabdon mein.">
 <p><strong>Your privacy is protected.</strong> Your phone number stays hidden behind our masked line. Hosts appear only as an AI avatar they chose — never their real photo.</p>
 <p>This page explains the checks every host on {BRAND.name} goes through, what we keep, and your rights. We follow India's Digital Personal Data Protection (DPDP) Act, 2023 and the DPDP Rules, 2025. See also our <a href="/privacy">privacy policy</a>.</p>
 <h2>What we check</h2>
@@ -46,10 +46,10 @@ export const prerender = true;
 <li>Delete your account and your data, except records the law tells us to keep.</li>
 <li>Withdraw your consent, by stopping hosting at any time.</li>
 <li>Nominate someone to act for you if you cannot.</li>
-<li>Complain to our <a href="/grievance">Grievance Officer</a>. We reply as fast as we can, and always within the time the law allows (90 days). If you are not satisfied, you can approach the Data Protection Board of India.</li>
+<li>Complain to our <a href="/grievance">grievance contact</a>. We reply as fast as we can, and always within the time the law allows (90 days). If you are not satisfied, you can approach the Data Protection Board of India.</li>
 </ul>
 <h2>If something goes wrong</h2>
 <p>If a data breach ever affects you, we will tell you and the Data Protection Board of India, as the law requires.</p>
 <h2>If verification fails</h2>
-<p>Check your internet, lighting and that your details match your Aadhaar and bank account, then try again when the flow allows. If you stay stuck, contact {'{{CONTACT_EMAIL}}'}. Do not send Aadhaar numbers, document images or OTPs by email. DigiLocker sign-in happens only on the DigiLocker page.</p>
+<p>Check your internet, lighting and that your details match your Aadhaar and bank account, then try again when the flow allows. If you stay stuck, contact <a href={`mailto:${BRAND.emails.support}`}>{BRAND.emails.support}</a>. Do not send Aadhaar numbers, document images or OTPs by email. DigiLocker sign-in happens only on the DigiLocker page.</p>
 </HelloFraandsPage>

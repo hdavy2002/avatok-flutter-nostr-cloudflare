@@ -35,6 +35,7 @@ export const BRAND = {
   legacyApiHosts: ["api.saathum.com", "api.aumfe.com"] as readonly string[],
   emails: {
     support: "support@hellofraands.com",
+    grievance: "sunita.singh@hellofraands.com",
     noreply: "noreply@aumfe.com",
     hello: "hello@aumfe.com",
   },

@@ -1,4 +1,11 @@
 {
+  "SAATHUM-LEGAL-CONTACT-1": {
+    "description": "Publish confirmed business and contact details across footer-linked pages and simplify the footer credit.",
+    "two_sided": false,
+    "min_devices_on_build": 0,
+    "flags": [],
+    "no_telemetry": "App and Worker changes only add generated, currently unused grievance email constants. User-facing web content and contact links are verified by page review and emit no suitable behavioral telemetry."
+  },
   "HF-BOOKING-RECOVERY-1": {
     "description": "Reconcile a booking-linked call from durable D1 booking and wallet evidence after its Durable Object state is lost.",
     "two_sided": false,

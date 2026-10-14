@@ -1,8 +1,13 @@
 ---
+import { BUSINESS_CONTACT } from '../lib/businessContact';
 import HelloFraandsPage from '../layouts/HelloFraandsPage.astro';
 import { BRAND } from '../lib/brand';
 ---
-<HelloFraandsPage updated="2026-10-12" title="Terms of use" summary="Yeh seva sirf baat-cheet ke liye hai; istemal se pehle niyam padhein." review={true} related={[{"href":"/wallet-terms","label":"Wallet terms"},{"href":"/community-guidelines","label":"Community guidelines"},{"href":"/recording-policy","label":"Recording & AI safety"},{"href":"/disclaimer","label":"Service disclaimer"},{"href":"/privacy","label":"Privacy policy"}]}>
+<HelloFraandsPage updated="2026-10-14" title="Terms of use" summary="Yeh seva sirf baat-cheet ke liye hai; istemal se pehle niyam padhein." review={true} related={[{"href":"/wallet-terms","label":"Wallet terms"},{"href":"/community-guidelines","label":"Community guidelines"},{"href":"/recording-policy","label":"Recording & AI safety"},{"href":"/disclaimer","label":"Service disclaimer"},{"href":"/privacy","label":"Privacy policy"}]}>
+<h2>Business and contact details</h2>
+<p>The public business name for {BRAND.name} is {BUSINESS_CONTACT.name}.</p>
+<p>Public postal address: {BUSINESS_CONTACT.postalAddress}.</p>
+<p>For complaints, use the <a href="/grievance">grievance process</a> or email <a href={`mailto:${BRAND.emails.grievance}`}>{BRAND.emails.grievance}</a>.</p>
 <h2>Using the service</h2>
 <p>Read these terms before creating a {BRAND.name} account or starting a paid conversation. Check the price, availability and eligibility requirements shown before starting a call.</p>
 <h2>Account and eligibility</h2>

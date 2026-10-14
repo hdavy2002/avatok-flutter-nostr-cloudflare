@@ -31,6 +31,7 @@ export const BRAND = {
   mailHost: "mail.aumfe.com",
   emails: {
     support: "support@hellofraands.com",
+    grievance: "sunita.singh@hellofraands.com",
     noreply: "noreply@aumfe.com",
     hello: "hello@aumfe.com",
   },

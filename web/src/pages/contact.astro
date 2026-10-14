@@ -1,10 +1,12 @@
 ---
+import { BRAND } from '../lib/brand';
+import { BUSINESS_CONTACT } from '../lib/businessContact';
 import HelloFraandsPage from '../layouts/HelloFraandsPage.astro';
 export const prerender = true;
 ---
-<HelloFraandsPage title="Contact us" summary="Sawaal ya madad ke liye humse sampark karein.">
-<h2>Get in touch</h2><p>Email: {'{{CONTACT_EMAIL}}'}. We aim to reply within 2 working days.</p>
-<p>Registered address: {'{{REG_ADDRESS}}'}.</p>
+<HelloFraandsPage updated="2026-10-14" title="Contact us" summary="Sawaal ya madad ke liye humse sampark karein.">
+<h2>Get in touch</h2><p>Email: <a href={`mailto:${BRAND.emails.support}`}>{BRAND.emails.support}</a>. We aim to reply within 2 working days.</p>
+<p>Public postal address: {BUSINESS_CONTACT.postalAddress}.</p>
 <p>Include the page or call ID involved and a short description. Do not send passwords, OTPs, Aadhaar numbers or bank details.</p>
 <h2>Complaints and safety reports</h2><p>Use <a href="/grievance">grievance redressal</a> for a complaint or <a href="/report">report a user</a> for a safety issue.</p>
 <p>This inbox is not an emergency service. See <a href="/emergency">emergency support</a> if you need urgent help.</p>

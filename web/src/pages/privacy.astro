@@ -2,7 +2,7 @@
 import HelloFraandsPage from '../layouts/HelloFraandsPage.astro';
 import { BRAND } from '../lib/brand';
 ---
-<HelloFraandsPage updated="2026-10-12" title="Privacy policy" summary="Aapki jaankari ka istemal kaise hota hai, yahan jaanein." review={true} related={[{"href":"/recording-policy","label":"Recording & AI safety"},{"href":"/terms","label":"Terms of use"},{"href":"/grievance","label":"Grievance redressal"},{"href":"/intermediary-policy","label":"Intermediary & content policy"}]}>
+<HelloFraandsPage updated="2026-10-14" title="Privacy policy" summary="Aapki jaankari ka istemal kaise hota hai, yahan jaanein." review={true} related={[{"href":"/recording-policy","label":"Recording & AI safety"},{"href":"/terms","label":"Terms of use"},{"href":"/grievance","label":"Grievance redressal"},{"href":"/intermediary-policy","label":"Intermediary & content policy"}]}>
 <h2>Your account and privacy</h2>
 <p>This page describes how account, verification, payment and conversation information is used by {BRAND.name}. Only provide information needed for the feature you choose to use.</p>
 <h2>Privacy questions</h2>
@@ -34,9 +34,9 @@ import { BRAND } from '../lib/brand';
 <h2>How long we keep data</h2>
 <p>We keep host verification data while the person is a host and for 1 year after, unless another law requires longer. Call details are kept as described in the retention section below. Call audio is never kept, because calls are not recorded.</p>
 <h2>Your rights</h2>
-<p>You can see your data, correct it, delete it, withdraw your consent, and nominate someone to act for you. Use the <a href="/data-deletion">deletion page</a> or write to our Grievance Officer. We reply within the time the law allows, which is 90 days at most.</p>
+<p>You can see your data, correct it, delete it, withdraw your consent, and nominate someone to act for you. Use the <a href="/data-deletion">deletion page</a> or write to our <a href={`mailto:${BRAND.emails.grievance}`}>grievance contact</a>. We reply within the time the law allows, which is 90 days at most.</p>
 <h2>Data breaches</h2>
 <p>If a data breach affects you, we will tell you and the Data Protection Board of India, as the law requires.</p>
-<h2>Grievance Officer</h2>
-<p>To complain about how we handle your data, contact our <a href="/grievance">Grievance Officer</a>. If you are not satisfied, you can approach the Data Protection Board of India.</p>
+<h2>Grievance contact</h2>
+<p>To complain about how we handle your data, contact our <a href="/grievance">grievance contact</a> at <a href={`mailto:${BRAND.emails.grievance}`}>{BRAND.emails.grievance}</a>. If you are not satisfied, you can approach the Data Protection Board of India.</p>
 </HelloFraandsPage>
