@@ -234,6 +234,7 @@ void main() {
     }
 
     testWidgets('Appearance uses the saved provider and System follows the phone', (tester) async {
+      SharedPreferences.setMockInitialValues({kThemeModePrefKey: 'light'});
       var c = await pumpMe(tester, session: meSession(), api: api);
       expect(c.read(themeModeProvider), ThemeMode.light);
       await tester.tap(_key('me-appearance-settings'));

@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:hf_app/core/router/app_router.dart';
 import 'package:hf_app/features/auth/ui/sign_in_screen.dart';
 import 'package:hf_app/features/explore/data/explore_controller.dart';
+import 'package:hf_app/features/explore/ui/discovery_header.dart';
 import 'package:hf_app/features/explore/ui/explore_screen.dart';
 import 'package:hf_app/features/explore/widgets/host_card_view.dart';
 import 'package:hf_app/features/welcome/ui/welcome_screen.dart';
@@ -42,6 +43,30 @@ Future<void> returnToHeader(WidgetTester tester) async {
   await tester.pump();
 }
 
+/// Reveal a lazy topic chip by scrolling its horizontal list.
+Future<void> revealMood(
+  WidgetTester tester,
+  Finder target, {
+  double delta = 120,
+}) async {
+  final list = find.descendant(
+    of: find.byType(DiscoveryHeader),
+    matching: find.byWidgetPredicate(
+      (widget) => widget is ListView &&
+          widget.scrollDirection == Axis.horizontal,
+    ),
+  );
+  await tester.scrollUntilVisible(
+    target,
+    delta,
+    scrollable: find.descendant(
+      of: list,
+      matching: find.byType(Scrollable),
+    ),
+  );
+  await tester.pump();
+}
+
 void main() {
   testWidgets('guest home is the marketplace without account onboarding', (
     tester,
@@ -58,7 +83,7 @@ void main() {
     expect(find.byType(WelcomeScreen), findsNothing);
     expect(find.text('Explore'), findsWidgets);
     expect(find.text('Real people. Real conversations.'), findsOneWidget);
-    expect(find.text('Mood, language or name'), findsOneWidget);
+    expect(find.text('Topic, language or name'), findsOneWidget);
     expect(find.text('Everyone'), findsOneWidget);
     expect(find.text('Women-only'), findsOneWidget);
     expect(find.text('LGBTQ+'), findsOneWidget);
@@ -115,10 +140,10 @@ void main() {
     final api = fakeApi()
       ..onJson('GET', '/api/hf/hosts', pageJson([hostJson('asha')]));
     final container = await pumpScreen(tester, api: api, location: '/');
-    await tester.ensureVisible(
+    await revealMood(
+      tester,
       find.byKey(const ValueKey<String>('mood-tension')),
     );
-    await tester.pump();
     await tester.tap(find.byKey(const ValueKey<String>('mood-tension')));
     await tester.pumpAndSettle();
     expect(

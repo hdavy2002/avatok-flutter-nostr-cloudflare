@@ -7,6 +7,7 @@ import 'package:hf_app/core/api/api_error.dart';
 import 'package:hf_app/core/router/app_router.dart';
 import 'package:hf_app/core/widgets/widgets.dart';
 import 'package:hf_app/features/explore/data/explore_controller.dart';
+import 'package:hf_app/features/explore/ui/discovery_header.dart';
 import 'package:hf_app/features/explore/data/host_filters.dart';
 import 'package:hf_app/features/explore/data/hosts_repository.dart';
 import 'package:hf_app/core/auth/session.dart';
@@ -88,6 +89,30 @@ Future<void> returnToHeader(WidgetTester tester) async {
       )
       .position
       .jumpTo(0);
+  await tester.pump();
+}
+
+/// Reveal a lazy topic chip by scrolling its horizontal list.
+Future<void> revealMood(
+  WidgetTester tester,
+  Finder target, {
+  double delta = 120,
+}) async {
+  final list = find.descendant(
+    of: find.byType(DiscoveryHeader),
+    matching: find.byWidgetPredicate(
+      (widget) => widget is ListView &&
+          widget.scrollDirection == Axis.horizontal,
+    ),
+  );
+  await tester.scrollUntilVisible(
+    target,
+    delta,
+    scrollable: find.descendant(
+      of: list,
+      matching: find.byType(Scrollable),
+    ),
+  );
   await tester.pump();
 }
 
@@ -668,18 +693,19 @@ void main() {
         final api = fakeApi()
           ..onJson('GET', '/api/hf/hosts', pageJson([hostJson('asha')]));
         final c = await pumpScreen(tester, api: api);
-        await tester.ensureVisible(
+        await revealMood(
+          tester,
           find.byKey(const ValueKey<String>('mood-tension')),
         );
-        await tester.pump();
         await tester.tap(find.byKey(const ValueKey<String>('mood-tension')));
         await tester.pumpAndSettle();
         expect(location(c).queryParameters['topics'], 'tension-a');
         expect(listCalls(api).last.query!['topic'], 'tension-a');
-        await tester.ensureVisible(
+        await revealMood(
+          tester,
           find.byKey(const ValueKey<String>('mood-all')),
+          delta: -120,
         );
-        await tester.pump();
         await tester.tap(find.byKey(const ValueKey<String>('mood-all')));
         await tester.pumpAndSettle();
         expect(location(c).toString(), '/explore');

@@ -125,6 +125,7 @@ void main() {
           return const SizedBox();
         },
       )));
+      await tester.pumpAndSettle();
       expect(card.padding, EdgeInsets.zero);
       expect(card.boxShadow, isNotEmpty);
       expect(card.color, theme.colorScheme.surface);
