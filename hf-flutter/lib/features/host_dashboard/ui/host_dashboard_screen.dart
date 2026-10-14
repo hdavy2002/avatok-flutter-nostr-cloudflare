@@ -7,6 +7,7 @@ import 'package:go_router/go_router.dart';
 import '../../../core/analytics/analytics.dart';
 import '../../../core/api/api_error.dart';
 import '../../../core/auth/session.dart';
+import '../../../core/config/flags.dart';
 import '../../../core/router/nav.dart';
 import '../../../core/router/routes.dart';
 import '../../../core/router/tab_shell.dart';
@@ -19,6 +20,8 @@ import 'dash_surface.dart';
 import 'earnings_card.dart';
 import 'host_dashboard_copy.dart';
 import 'payouts_section.dart';
+import '../../bookings/ui/host_booking_summary_card.dart';
+import '../../bookings/data/hf_bookings_providers.dart';
 import 'presence_card.dart';
 import 'status_banner.dart';
 
@@ -45,6 +48,7 @@ class _HostDashboardScreenState extends ConsumerState<HostDashboardScreen> {
     ref.invalidate(hostCallsProvider);
     ref.invalidate(hostEarningsProvider);
     ref.invalidate(hostPayoutsProvider);
+    ref.invalidate(hostBookingSummaryProvider);
     try {
       await ref.read(hostProfileStatusProvider.future);
     } catch (_) {
@@ -114,6 +118,7 @@ class _HostDashboardScreenState extends ConsumerState<HostDashboardScreen> {
             onAction: () => _openOnboarding(null),
           );
         }
+        final bookingsOn = ref.watch(flagsProvider).valueOrNull?.hfBookingsEnabled == true;
         final sections = <Widget>[
           _Header(
             name: s.displayName ?? sessionName ?? HostCopy.hostFallbackName,
@@ -125,6 +130,8 @@ class _HostDashboardScreenState extends ConsumerState<HostDashboardScreen> {
           if (s.isLive) const TodayCard(),
           if (s.showsMoney) EarningsCard(onFinishSetup: _openOnboarding),
           if (s.isLive) const CallsSection(),
+          if (s.isLive && bookingsOn) const HostBookingSummaryCard(),
+          if (s.isLive && bookingsOn) _BookingLinks(),
           if (s.showsMoney) const PayoutsSection(),
         ];
         // A plain scroll view with a Column, not a lazy list: every section stays built, so the online
@@ -271,7 +278,30 @@ class _Avatar extends StatelessWidget {
   }
 }
 
-/// Placeholder with the shape of the dashboard (header, online card, three tiles, earnings, a call row).
+/// Host availability and booking entry points.
+class _BookingLinks extends StatelessWidget {
+  const _BookingLinks();
+
+  @override
+  Widget build(BuildContext context) => Card(
+    child: Column(children: [
+      ListTile(
+        leading: const Icon(Icons.event_available_outlined),
+        title: const Text('Manage availability'),
+        trailing: const Icon(Icons.chevron_right),
+        onTap: () => GoRouter.of(context).push(Routes.hostAvailability),
+      ),
+      const Divider(height: 1),
+      ListTile(
+        leading: const Icon(Icons.calendar_month_outlined),
+        title: const Text('All bookings'),
+        trailing: const Icon(Icons.chevron_right),
+        onTap: () => GoRouter.of(context).push(Routes.hostBookings),
+      ),
+    ]),
+  );
+}
+
 class _DashboardSkeleton extends StatelessWidget {
   const _DashboardSkeleton();
 

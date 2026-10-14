@@ -233,6 +233,19 @@ abstract final class DeepLinks {
         }
         if (s.length == 2) return OpenRoute(Routes.reviewTokenOf(s[1]));
         break;
+      case 'book':
+        if (s.length == 2) {
+          final duration = int.tryParse(q['duration'] ?? '');
+          return OpenRoute(Routes.bookingFor(
+            s[1], date: q['date'], duration: duration,
+            startUtc: DateTime.tryParse(q['start'] ?? ''),
+          ));
+        }
+        break;
+      case 'bookings':
+        if (s.length == 1) return const OpenRoute(Routes.customerBookings);
+        if (s.length == 2) return OpenRoute(Routes.bookingDetailOf(s[1]));
+        break;
       case 'hosts':
         return _resolveHosts(s, uri);
       case 'verify':
@@ -271,6 +284,10 @@ abstract final class DeepLinks {
       switch (s[1]) {
         case 'dashboard':
           return const OpenRoute(Routes.host);
+        case 'bookings':
+          return const OpenRoute(Routes.hostBookings);
+        case 'availability':
+          return const OpenRoute(Routes.hostAvailability);
         case 'onboarding':
           if (q['dl'] == 'return') {
             return DigiLockerReturn(_digiLockerLocation(q));

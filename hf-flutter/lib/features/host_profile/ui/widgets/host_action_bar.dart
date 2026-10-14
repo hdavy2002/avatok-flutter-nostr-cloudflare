@@ -158,10 +158,16 @@ class _HostActionBarState extends ConsumerState<HostActionBar> {
 
   @override
   Widget build(BuildContext context) {
-    final callsOn = ref.watch(flagsProvider).when(
+    final flags = ref.watch(flagsProvider);
+    final callsOn = flags.when(
       data: (f) => f.hfCallsEnabled,
       loading: () => true,
       error: (_, __) => true,
+    );
+    final bookingsOn = flags.when(
+      data: (f) => f.hfBookingsEnabled,
+      loading: () => false,
+      error: (_, __) => false,
     );
     final inWomenLane = ref.watch(
       sessionProvider.select((s) => s.me?.womenLane ?? false),
@@ -320,6 +326,19 @@ class _HostActionBarState extends ConsumerState<HostActionBar> {
                         ),
                         textAlign: TextAlign.center,
                       ),
+                    ),
+                  ),
+                if (!pendingNotify && bookingsOn)
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(HfSpacing.sm, 0, HfSpacing.sm, HfSpacing.sm),
+                    child: _BarPill(
+                      label: 'Book a time',
+                      icon: Icons.event_available_outlined,
+                      outlined: true,
+                      onPressed: () {
+                        unawaited(Analytics.capture('hf_app_booking_entry_tapped', {'source': 'host_profile'}));
+                        GoRouter.of(context).push(Routes.bookingFor(_p.slug));
+                      },
                     ),
                   ),
                 LayoutBuilder(

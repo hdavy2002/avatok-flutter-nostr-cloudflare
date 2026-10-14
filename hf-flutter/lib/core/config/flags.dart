@@ -14,6 +14,7 @@ class HfFlags {
   const HfFlags({
     required this.hostsPublicEnabled,
     required this.hfCallsEnabled,
+    required this.hfBookingsEnabled,
     required this.hfTokensEnabled,
     required this.hostOnboardingEnabled,
     required this.hostKycEnabled,
@@ -32,6 +33,7 @@ class HfFlags {
 
   final bool hostsPublicEnabled;
   final bool hfCallsEnabled;
+  final bool hfBookingsEnabled;
   final bool hfTokensEnabled;
   final bool hostOnboardingEnabled;
   final bool hostKycEnabled;
@@ -48,6 +50,7 @@ class HfFlags {
   static const HfFlags unknown = HfFlags(
     hostsPublicEnabled: true,
     hfCallsEnabled: true,
+    hfBookingsEnabled: false,
     hfTokensEnabled: true,
     hostOnboardingEnabled: true,
     hostKycEnabled: true,
@@ -63,6 +66,7 @@ class HfFlags {
   static const HfFlags allOff = HfFlags(
     hostsPublicEnabled: false,
     hfCallsEnabled: false,
+    hfBookingsEnabled: false,
     hfTokensEnabled: false,
     hostOnboardingEnabled: false,
     hostKycEnabled: false,
@@ -87,6 +91,7 @@ class HfFlags {
     return HfFlags(
       hostsPublicEnabled: b('hostsPublicEnabled'),
       hfCallsEnabled: b('hfCallsEnabled'),
+      hfBookingsEnabled: b('hfBookingsEnabled'),
       hfTokensEnabled: b('hfTokensEnabled'),
       hostOnboardingEnabled: b('hostOnboardingEnabled'),
       hostKycEnabled: b('hostKycEnabled'),

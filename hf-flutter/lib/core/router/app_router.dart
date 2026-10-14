@@ -15,6 +15,11 @@ import '../../features/call/ui/call_screen.dart';
 import '../../features/explore/ui/explore_screen.dart';
 import '../../features/home/ui/home_screen.dart';
 import '../../features/host_dashboard/ui/host_dashboard_screen.dart';
+import '../../features/bookings/ui/host_availability_screen.dart';
+import '../../features/bookings/ui/host_bookings_screen.dart';
+import '../../features/bookings/ui/customer_booking_screen.dart';
+import '../../features/bookings/ui/customer_bookings_screen.dart';
+import '../../features/bookings/ui/booking_detail_screen.dart';
 import '../../features/host_onboarding/ui/host_onboarding_screen.dart';
 import '../../features/host_profile/ui/host_profile_screen.dart';
 import '../../features/lanes/ui/lanes_screen.dart';
@@ -173,6 +178,20 @@ GoRouter createAppRouter({
         path: Routes.notifications,
         builder: (_, __) => const NotificationsScreen(),
       ),
+      GoRoute(
+        path: Routes.booking,
+        builder: (_, state) => CustomerBookingScreen(
+          hostSlug: state.pathParameters['slug'] ?? '',
+          initialDate: DateTime.tryParse(state.uri.queryParameters['date'] ?? ''),
+          initialDuration: int.tryParse(state.uri.queryParameters['duration'] ?? ''),
+          initialStartUtc: DateTime.tryParse(state.uri.queryParameters['start'] ?? ''),
+        ),
+      ),
+      GoRoute(path: Routes.customerBookings, builder: (_, __) => const CustomerBookingsScreen()),
+      GoRoute(
+        path: Routes.bookingDetail,
+        builder: (_, state) => BookingDetailScreen(bookingId: state.pathParameters['id'] ?? ''),
+      ),
       StatefulShellRoute.indexedStack(
         builder: (_, __, shell) => HfTabShell(navigationShell: shell),
         branches: [
@@ -208,6 +227,10 @@ GoRouter createAppRouter({
               GoRoute(
                 path: Routes.host,
                 builder: (_, __) => const HostDashboardScreen(),
+                routes: [
+                  GoRoute(path: 'bookings', builder: (_, __) => const HostBookingsScreen()),
+                  GoRoute(path: 'availability', builder: (_, __) => const HostAvailabilityScreen()),
+                ],
               ),
             ],
           ),

@@ -16,6 +16,11 @@ abstract final class Routes {
   static const String lanes = '/lanes';
   static const String host = '/host';
   static const String hostOnboarding = '/host/onboarding';
+  static const String hostBookings = '/host/bookings';
+  static const String hostAvailability = '/host/availability';
+  static const String customerBookings = '/bookings';
+  static const String booking = '/book/:slug';
+  static const String bookingDetail = '/bookings/:id';
   static const String me = '/me';
   static const String meDelete = '/me/delete';
   static const String identityKyc = '/me/verification';
@@ -37,6 +42,18 @@ abstract final class Routes {
   }
 
   static String callOf(String id) => '/call/${Uri.encodeComponent(id)}';
+  static String hostBookingsOf() => hostBookings;
+  static String hostAvailabilityOf() => hostAvailability;
+  static String customerBookingsOf() => customerBookings;
+  static String bookingFor(String slug, {String? date, int? duration, DateTime? startUtc}) => Uri(
+    path: '/book/${Uri.encodeComponent(slug)}',
+    queryParameters: {
+      if (date != null) 'date': date,
+      if (duration != null) 'duration': '$duration',
+      if (startUtc != null) 'start': startUtc.toUtc().toIso8601String(),
+    },
+  ).toString();
+  static String bookingDetailOf(String id) => '/bookings/${Uri.encodeComponent(id)}';
   static String reviewCallOf(String id) =>
       '/review/call/${Uri.encodeComponent(id)}';
   static String reviewTokenOf(String token) =>
@@ -101,10 +118,14 @@ abstract final class Routes {
         path == wallet ||
         path == host ||
         path == me ||
-        path == notifications) {
+        path == notifications ||
+        path == customerBookings ||
+        path == hostBookings ||
+        path == hostAvailability) {
       return true;
     }
     if (path.startsWith('$host/')) return true; // /host/onboarding
+    if (path.startsWith('/bookings/')) return true;
     if (path.startsWith('$me/')) return true; // /me/delete
     if (path.startsWith('/call/')) return true;
     if (path.startsWith('/review/call/')) return true;
@@ -146,12 +167,17 @@ abstract final class Routes {
           lanes,
           host,
           hostOnboarding,
+          hostBookings,
+          hostAvailability,
+          customerBookings,
           me,
           meDelete,
           identityKyc,
           notifications,
         }.contains(path) ||
         RegExp(r'^/h/[^/]+$').hasMatch(path) ||
+        RegExp(r'^/book/[^/]+$').hasMatch(path) ||
+        RegExp(r'^/bookings/[^/]+$').hasMatch(path) ||
         RegExp(r'^/call/[^/]+$').hasMatch(path) ||
         RegExp(r'^/review/(call/)?[^/]+$').hasMatch(path);
     if (!known ||
@@ -162,6 +188,7 @@ abstract final class Routes {
     }
     final allowedKeys = switch (path) {
       home || explore => <String>{'lane', 'topics', 'lang', 'max', 'online'},
+      _ when path.startsWith('/book/') => <String>{'date', 'duration', 'start'},
       wallet => <String>{'next', 'topup'},
       lanes => <String>{'lane', 'next', 'dl'},
       hostOnboarding => <String>{'step', 'dl'},
