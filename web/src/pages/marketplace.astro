@@ -56,7 +56,7 @@ const languages = [...new Set(profiles.flatMap(p => p.languages.split(/,\s*|\s*�
 
     <section class="explore-moods" aria-labelledby="explore-moods-title">
       <h2 id="explore-moods-title" class="explore-h2">Aaj kya <em>mood hai?</em></h2>
-      <div class="mood-grid">{moodGroups.map((group, index) => <div class:list={['mood-group', `mood-group--${index + 1}`]}><div class="mood-group-head"><span class="mood-doodle" aria-hidden="true">{['❋','✳','✷','❖'][index]}</span><h3>{group}</h3></div><div class="mood-chips">{moods.filter(mood => mood.group === group).map(mood => <a class="mood-chip" href={`/marketplace?mood=${encodeURIComponent(mood.slug)}#people`}>{mood.label}<span aria-hidden="true">↗</span></a>)}</div>{group === 'Tension' && <p class="crisis-note">If you're in crisis, call <a href="tel:14416">Tele-MANAS 14416</a> (free, 24×7) or <a href="tel:112">112</a>.</p>}</div>)}</div>
+      <div class="mood-grid">{moodGroups.map((group, index) => <div class:list={['mood-group', `mood-group--${index + 1}`]}><div class="mood-group-head"><span class="mood-doodle" aria-hidden="true">{['❋','✳','✷','❖','✦','✿'][index]}</span><h3>{group}</h3></div><div class="mood-chips">{moods.filter(mood => mood.group === group).map(mood => <a class="mood-chip" href={`/marketplace?mood=${encodeURIComponent(mood.slug)}#people`}>{mood.label}<span aria-hidden="true">↗</span></a>)}</div>{group === 'Tension' && <p class="crisis-note">If you're in crisis, call <a href="tel:14416">Tele-MANAS 14416</a> (free, 24×7) or <a href="tel:112">112</a>.</p>}</div>)}</div>
     </section>
 
     <section class="people-section" id="people" aria-labelledby="people-title"><p class="preview-kicker">All hosts · Sample profiles</p><h2 id="people-title">Sab log. <em>Ek jagah.</em></h2>
