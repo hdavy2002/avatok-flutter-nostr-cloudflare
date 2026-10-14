@@ -137,8 +137,9 @@ export async function confirmBooking(quoteId: string, idempotencyKey: string): P
     throw error;
   }
 }
-export async function listBookings(role: BookingRole, from?: string, to?: string): Promise<BookingPage> {
-  return request<BookingPage>('/api/hf/bookings', { auth: await auth(), query: { role, from, to } });
+/** A calendar pins one token across all pages so an account switch cannot mix results. */
+export async function listBookings(role: BookingRole, from?: string, to?: string, cursor?: string, token?: string): Promise<BookingPage> {
+  return request<BookingPage>('/api/hf/bookings', { auth: token ?? await auth(), query: { role, from, to, cursor } });
 }
 export async function getBooking(id: string): Promise<HfBooking> {
   const data = await request<Envelope<HfBooking, 'booking'>>('/api/hf/bookings/' + encodeURIComponent(id), { auth: await auth() });

@@ -177,13 +177,13 @@ export default function HostDashboard() {
       </section>
 
       {bookingOn && <section className="hfc-card hfb-card" aria-labelledby="hfb-on-hold">
-        <div className="hfb-section-head"><h2 id="hfb-on-hold">Expected earnings on hold</h2><a className="hfb-button hfb-small" href="/hosts/bookings">View bookings</a></div>
+        <div className="hfb-section-head"><h2 id="hfb-on-hold">Expected earnings on hold</h2><a className="hfb-button hfb-small" href="/hosts/bookings">View calendar</a></div>
         {bookingSummary ? <>
           <div className="hfc-stats"><div className="hfc-stat"><strong>{money(bookingSummary.expectedHostNetPaise)}</strong><span>estimated host earnings</span></div><div className="hfc-stat"><strong>{bookingSummary.upcomingCount}</strong><span>upcoming bookings</span></div></div>
           {bookingSummary.nextBooking ? <p className="hfb-muted">Next: {dateLabel(bookingSummary.nextBooking.startUtc, bookingSummary.nextBooking.hostTimezone)} · {bookingSummary.nextBooking.hostTimezone}</p> : <p className="hfb-muted">No upcoming bookings yet.</p>}
         </> : bookingErrorText ? <p role="status" className="hfb-muted">{bookingErrorText} <button className="hfb-text-button" type="button" onClick={() => void loadCalls()}>Retry</button></p> : <p role="status">Loading booking summary…</p>}
         <p className="hfb-muted">This estimate is separate from earned wallet money. Completed calls move actual earnings to your wallet; withdrawal timing is shown there.</p>
-        <div className="hfb-actions"><a className="hfb-button" href="/hosts/availability">Manage availability</a><a className="hfb-button" href="/hosts/bookings">All bookings</a></div>
+        <div className="hfb-actions"><a className="hfb-button" href="/hosts/availability">Manage availability</a><a className="hfb-button" href="/hosts/bookings">Appointment calendar</a></div>
       </section>}
 
       <section className="hfc-card" aria-labelledby="hfc-today">

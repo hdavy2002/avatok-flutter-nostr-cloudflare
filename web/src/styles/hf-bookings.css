@@ -74,3 +74,26 @@
 .hfb-check{display:flex;align-items:flex-start;gap:10px;line-height:1.5}
 .hfb-check input{width:22px;height:22px;flex:0 0 auto;accent-color:#46113e;margin-top:1px}
 .hfb-time-cell:active{background:#e8dff4}
+
+/* The appointments calendar is separate from the availability editor above. */
+.hfb-appointments{max-width:1080px!important;gap:24px}
+.hfb-appointment-month{padding:24px;background:linear-gradient(145deg,#fff 65%,#faf5fc);gap:18px}
+.hfb-appointment-month h2{font-size:clamp(1.4rem,4vw,2rem);letter-spacing:-.03em}
+.hfb-calendar-scroll{min-width:0;overflow-x:auto;padding:4px;overscroll-behavior-x:contain;border-radius:12px}
+.hfb-calendar-scroll:focus-visible{outline:3px solid #8a4393;outline-offset:2px}
+.hfb-appointment-grid{min-width:344px;display:grid;grid-template-columns:repeat(7,minmax(44px,1fr));gap:6px}
+.hfb-appointment-date{position:relative;min-width:0;min-height:100px;padding:12px;border:1px solid #eadfea;border-radius:16px;background:#fff;color:#46113e;cursor:pointer;text-align:left;font:inherit;transition:background .16s ease,box-shadow .16s ease,transform .16s ease}
+.hfb-appointment-date:hover{background:#f6edf8;transform:translateY(-2px);box-shadow:0 5px 14px #46113e12}
+.hfb-appointment-date:focus-visible{outline:3px solid #8a4393;outline-offset:2px;z-index:1}
+.hfb-appointment-date.is-outside{background:#f8f5f9;color:#806c80}
+.hfb-appointment-date.is-selected{background:#46113e;color:#fff;border-color:#46113e;box-shadow:0 5px 16px #46113e22}
+.hfb-day-number{display:inline-flex;align-items:center;justify-content:center;min-width:28px;min-height:28px;font-weight:750}
+.hfb-appointment-date[aria-current=date] .hfb-day-number{border:2px solid currentColor;border-radius:50%}
+.hfb-day-count{float:right;font-size:.75rem;background:#f0e1f2;color:#46113e;border-radius:20px;min-width:22px;line-height:22px;text-align:center}
+.hfb-day-preview{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:.75rem;margin-top:12px}
+.hfb-agenda{display:grid;gap:14px}
+.hfb-agenda h2{margin:0;font-size:clamp(1.2rem,3vw,1.5rem)}
+.hfb-agenda h3{margin:9px 0 5px}
+.hfb-agenda .hfb-booking-row{animation:hfb-agenda-in .2s ease-out}
+@keyframes hfb-agenda-in{from{opacity:.6;transform:translateY(4px)}to{opacity:1;transform:translateY(0)}}
+@media(max-width:600px){.hfb-appointment-month{padding:12px;gap:14px}.hfb-appointment-grid{min-width:326px;gap:3px}.hfb-appointment-date{min-height:62px;padding:5px 2px;border-radius:10px;text-align:center}.hfb-day-number{min-width:25px;min-height:25px}.hfb-day-count{display:block;float:none;width:max-content;min-width:18px;line-height:18px;margin:3px auto 0;font-size:.6875rem}.hfb-day-preview{display:none}.hfb-appointment-month .hfb-month-controls{gap:6px}.hfb-calendar-label{font-size:.75rem}.hfb-appointments .hfb-heading .hfb-actions{gap:16px}}

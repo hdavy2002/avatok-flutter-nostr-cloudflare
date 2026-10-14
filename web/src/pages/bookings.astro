@@ -7,6 +7,6 @@ import { BRAND } from '../lib/brand';
 Astro.response.headers.set('Cache-Control', 'private, no-store');
 const role = Astro.url.searchParams.get('role') === 'host' ? 'host' : 'customer';
 ---
-<Base title={`Bookings · ${BRAND.name}`} description="View your appointments." noindex keywords="">
+<Base title={`Appointment calendar · ${BRAND.name}`} description="View your appointments." noindex keywords="">
   <HostBookings client:only="react" role={role} />
 </Base>
