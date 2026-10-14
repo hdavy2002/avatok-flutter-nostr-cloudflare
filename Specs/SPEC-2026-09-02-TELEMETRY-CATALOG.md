@@ -1256,3 +1256,13 @@ Server events (`app_name = hello-fraands` brand slug, `service_name` as every wo
 |---|---|---|
 | `hf_presence_nudge_sent` | `area: 'hf_presence_nudge'`, `outcome: 'ok' \| 'skipped' \| 'failed'`, `reason` | One per host per reminder attempt, from the 5-minute cron (flag `hfPresenceNudgeEnabled`). `ok`: `reason` = `whatsapp`, `push` or `whatsapp_push` (what was delivered). `skipped`: `no_verified_whatsapp`, `not_on_whatsapp`, `unconfigured` or `account_closing` (nothing delivered, next try in 3 h). `failed`: `provider_error`, `rate_limited` or `exception` (the slot is handed back, the next tick retries). **Success value:** `outcome = ok`. |
 | `hf_presence_nudge_paused` | `area`, `paused: boolean` | The host paused or resumed the reminders (`PUT /api/hosts/me/presence/nudges`). |
+
+## Hello Fraands saved hosts (`[HF-DASH-FRAANDS-1]`, web, 2026-10-14)
+
+Web events (flag `hfFavouritesEnabled`). Never in any prop: the person's name, phone number or uid.
+
+| Event | Props | Note |
+|---|---|---|
+| `hf_favourite_toggle` | `host_slug`, `on: boolean`, `surface: 'profile' \| 'explore' \| 'dashboard'` | A signed-in person saved (`on = true`) or removed (`on = false`) a host with the heart, only after the server confirmed. **Success value:** `on = true`. |
+| `$exception` | `area: 'hf_favourites'`, `step: 'save' \| 'unsave' \| 'list'`, `status`, `host_slug` | Saving, removing or listing failed (the heart rolls back). |
+

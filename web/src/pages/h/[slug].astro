@@ -12,6 +12,7 @@ import brandConfig from '../../../../Specs/brand.json';
 import { API_BASE } from '../../lib/config';
 import { moods } from '../../lib/callvaalHomeReference';
 import HostCallActions from '../../islands/calls/HostCallActions';
+import SaveHostButton from '../../components/hosts/SaveHostButton';
 import { relDate } from '../../lib/hfCallsApi';
 import { SAME_RATE_LINE, chargeForSeconds, stdRateLabel, type PriceTier } from '../../lib/hfStdPlan';
 import { formatPaise } from '../../lib/money';
@@ -96,6 +97,7 @@ const galleryJson = JSON.stringify(gallery.map(g => ({ src: g.url, alt: g.captio
               </div>
               <div class="cv-identity">
                 <div class="cv-name-row"><div><h1 id="profile-name">{name}</h1>{host.tagline && <p class="cv-role">{host.tagline}</p>}</div></div>
+                <div class="hf-save-row"><SaveHostButton client:only="react" slug={host.slug} name={host.displayName} surface="profile" variant="pill" /></div>
                 <p class="hfc-rate hfc-rate-lg">{reviewCount > 0 && rating != null ? <><span aria-hidden="true">★</span> <strong>{rating.toFixed(1)}</strong> <a href="#reviews">({reviewCount} {reviewCount === 1 ? 'review' : 'reviews'})</a></> : <span class="hfc-new">New host</span>}</p>
                 <span class="cv-verified" role="img" aria-label="Identity checked by our team"><span aria-hidden="true">ID-verified host ✓</span></span>
                 {audioUrl && (

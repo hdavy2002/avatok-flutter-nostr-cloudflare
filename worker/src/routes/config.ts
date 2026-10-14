@@ -2150,6 +2150,7 @@ export interface PlatformConfig {
   hfPhoneOnlySignupEnabled: boolean; // [HF-AUTH-WA-1] a brand-new WhatsApp number can sign up with no email (routes/whatsapp_auth.ts). Server-only: not in the public config.
   hfCallsEnabled: boolean; // [HF-CALLS-1] masked paid calls, host presence, test credits (routes/hf_calls.ts). Start answers 503 calls_not_ready while HF_CALL_DID / Vobiz secrets are missing.
   hfBookingsEnabled: boolean; // [HF-BOOKING-CALENDAR-1] host booking calendar; keep off until the full reservation and settlement path is ready.
+  hfFavouritesEnabled: boolean; // [HF-DASH-FRAANDS-1] save ("heart") hosts + My Fraands dashboard screen; dark until switched on.
   // [AUMFE-PANDIT-COST-1] Pandit ji cost controls. NUMERIC -> they MUST also appear in `numericKeys` below or
   // `flags.sh set panditTopicMaxTurns=15` 400s `bad type`.
   // Messages (customer + Pandit ji) sent verbatim each turn; older ones live in a rolling summary.
@@ -2909,6 +2910,7 @@ const DEFAULTS: PlatformConfig = {
   hfAppMinBuild: 0, // [HF-NATIVE-S7] oldest build still allowed; below it the app shows a blocking update screen. 0 = never block.
   hfCallsEnabled: false, // [HF-CALLS-1] dark until the owner flips it
   hfBookingsEnabled: false, // [HF-BOOKING-CALENDAR-1] dark until booking money and call lifecycle are verified
+  hfFavouritesEnabled: false, // [HF-DASH-FRAANDS-1] dark until the owner switches it on
   hfTopupEnabled: false, // [HF-TOPUP-1] dark until a gateway is configured and the owner flips it
   hfTopupGateway: "none",
   hfTopupPacks: "100,200,500,1000",

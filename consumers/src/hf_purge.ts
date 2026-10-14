@@ -89,6 +89,7 @@ export function hfPurgeTables(scope: HfPurgeScope, includeSafetyRecords = false)
     { table: "hf_user_ack", cols: ["uid"] }, // [HF-NATIVE-S4] terms/safety acknowledgements
     { table: "hf_age_confirm", cols: ["uid"] }, // [HF-AUTH-WA-1] "I am 18 or over" confirmation (S4 writes it too)
     { table: "hf_notify", cols: ["uid", "caller_uid", "host_uid", "recipient_uid"] },
+    { table: "hf_favourites", cols: ["uid", "host_uid"] }, // [HF-DASH-FRAANDS-1] saved hosts: rows saved by the account and rows saving the account as a host
     { table: "hf_reviews", cols: ["caller_uid", "host_uid", "reviewer_uid", "uid"] },
     { table: "hf_calls", cols: ["caller_uid", "host_uid"], safety: true },
     { table: "hf_incidents", cols: ["caller_uid", "host_uid", "reporter_uid", "reported_uid", "subject_uid", "uid"], safety: true },

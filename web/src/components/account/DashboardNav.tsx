@@ -28,16 +28,16 @@ export function DashboardIcon({ name }: { name: string }) {
   };
   return <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d={paths[name] ?? paths.profile} /></svg>;
 }
-export interface NavState { account: DashboardAccount; bookingOn: boolean; active: DashSection }
+export interface NavState { account: DashboardAccount; bookingOn: boolean; favouritesOn?: boolean; active: DashSection }
 
 /** [HF-DASH-SHELL-2] Sidebar built from DASH_ROUTES. Hosts see a host group; everyone else sees "Become a host".
  * Links are real URLs (deep links and new tabs work); the dashboard router turns a plain click into an in-place switch. */
-export default function DashboardNav({ account, bookingOn, active }: NavState) {
+export default function DashboardNav({ account, bookingOn, favouritesOn = false, active }: NavState) {
   const hostReady = account.host?.status === 'live' && !account.closing;
   const [open, setOpen] = useState(false);
   const route = (s: DashSection) => DASH_ROUTES.find(r => r.section === s)!;
   type Item = { href: string; label: string; icon: string; key?: DashSection; divider?: boolean; disabled?: boolean; note?: string; heading?: string };
-  const me: Item[] = DASH_ROUTES.filter(r => r.group === 'me').map(r => ({
+  const me: Item[] = DASH_ROUTES.filter(r => r.group === 'me' && !(r.needsFavourites && !favouritesOn)).map(r => ({
     href: r.path, label: r.label, icon: r.icon, key: r.section,
     disabled: !!r.needsBookings && !bookingOn, note: 'Opens soon',
   }));

@@ -10713,5 +10713,21 @@
         "note": "Dashboard screens render inside the shell."
       }
     ]
+  },
+  "HF-DASH-FRAANDS-1": {
+    "description": "People can heart hosts (public host page and Explore cards) and see them on the dashboard screen My Fraands; behind hfFavouritesEnabled.",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [
+      "hfFavouritesEnabled"
+    ],
+    "success": [
+      {
+        "event": "hf_favourite_toggle",
+        "property": "on",
+        "min_events": 1,
+        "note": "A signed-in person saved a host (on = true); removing a heart sends on = false."
+      }
+    ]
   }
 }

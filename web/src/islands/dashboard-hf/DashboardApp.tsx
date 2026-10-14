@@ -9,6 +9,7 @@ import DashboardNav, { type DashboardAccount } from '../../components/account/Da
 import { DashboardEmbed } from '../../components/account/dashboardEmbed';
 import { hfCall, signInUrl } from '../../lib/hfCallsApi';
 import { bookingsEnabled } from '../../lib/hfBookingsApi';
+import { favouritesEnabled } from '../../lib/hfFavouritesApi';
 import { capture, captureException } from '../../lib/analytics';
 import { BRAND } from '../../lib/brand';
 import { DASH_ROUTES, dashRouteFor, type DashSection } from '../../lib/dashboardRoutes';
@@ -17,6 +18,7 @@ import Calls from './sections/Calls';
 import Earnings from './sections/Earnings';
 import HostProfile from './sections/HostProfile';
 import Support from './sections/Support';
+import Fraands from './sections/Fraands';
 import HfAccount from '../account/HfAccount';
 import HfWallet from '../wallet/HfWallet';
 import HostBookings from '../host-bookings/HostBookings';
@@ -38,6 +40,7 @@ function Shell({ initial }: { initial: DashSection }) {
   const [phase, setPhase] = useState<Phase>('boot');
   const [account, setAccount] = useState<DashboardAccount | null>(null);
   const [bookingOn, setBookingOn] = useState(false);
+  const [favouritesOn, setFavouritesOn] = useState(false);
   const [retry, setRetry] = useState(0);
   const generation = useRef(0);
 
@@ -51,9 +54,9 @@ function Shell({ initial }: { initial: DashSection }) {
         const me = await hfCall<DashboardAccount>('GET', '/api/hf/me');
         if (!current()) return;
         if (!me.ok) { setPhase(me.status === 401 ? 'signedout' : 'error'); return; }
-        const enabled = await bookingsEnabled();
+        const [enabled, favs] = await Promise.all([bookingsEnabled(), favouritesEnabled()]);
         if (!current()) return;
-        setAccount(me.data); setBookingOn(enabled); setPhase('ready');
+        setAccount(me.data); setBookingOn(enabled); setFavouritesOn(favs); setPhase('ready');
       } catch (e) {
         captureException(e, { area: 'hf_dashboard', step: 'identity' });
         if (current()) setPhase('error');
@@ -99,7 +102,7 @@ function Shell({ initial }: { initial: DashSection }) {
   if (phase === 'error' || !account) return <main className="hfc-page"><h1>Dashboard</h1><p>We could not load your dashboard. Please check your internet and try again.</p><button type="button" className="hfc-btn hfc-primary" onClick={() => setRetry(n => n + 1)}>Try again</button></main>;
 
   const hostReady = account.host?.status === 'live' && !account.closing;
-  const blocked = (route.hostOnly && !hostReady) || (route.needsBookings && !bookingOn);
+  const blocked = (route.hostOnly && !hostReady) || (route.needsBookings && !bookingOn) || (route.needsFavourites && !favouritesOn);
   const key = `${section}:${nav}:${account.uid}`;
   let body;
   if (blocked) {
@@ -110,6 +113,7 @@ function Shell({ initial }: { initial: DashSection }) {
     case 'wallet': body = <HfWallet key={key} />; break;
     case 'calls': body = <Calls key={key} account={account} />; break;
     case 'appointments': body = <HostBookings key={key} role="customer" />; break;
+    case 'fraands': body = <Fraands key={key} />; break;
     case 'host': body = <HostProfile key={key} account={account} />; break;
     case 'host-calendar': body = <HostBookings key={key} role="host" />; break;
     case 'availability': body = <HostAvailability key={key} />; break;
@@ -119,7 +123,7 @@ function Shell({ initial }: { initial: DashSection }) {
   }
   return <main className="hfc-page hfd-page">
     <div className="hfd-layout" onClick={go}>
-      <DashboardNav account={account} bookingOn={bookingOn} active={section} />
+      <DashboardNav account={account} bookingOn={bookingOn} favouritesOn={favouritesOn} active={section} />
       <div className="hfd-content"><DashboardEmbed.Provider value={true}>{body}</DashboardEmbed.Provider></div>
     </div>
   </main>;

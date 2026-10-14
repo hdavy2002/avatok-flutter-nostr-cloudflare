@@ -1,7 +1,7 @@
 /* [HF-DASH-SHELL-2] One route table for every signed-in account screen. The sidebar, the mobile menu and the
  * in-dashboard router all read this list, so a screen is added in exactly one place. Paths live under /dashboard. */
 export type DashSection =
-  | 'overview' | 'profile' | 'wallet' | 'calls' | 'appointments'
+  | 'overview' | 'profile' | 'wallet' | 'calls' | 'appointments' | 'fraands'
   | 'host' | 'host-calendar' | 'availability' | 'earnings'
   | 'support' | 'close';
 
@@ -17,6 +17,8 @@ export interface DashRoute {
   hostOnly?: boolean;
   /** Needs the appointments feature (hfBookingsEnabled). */
   needsBookings?: boolean;
+  /** Needs the saved-hosts feature (hfFavouritesEnabled). Hidden from the menu while it is off. */
+  needsFavourites?: boolean;
   title: string;
 }
 
@@ -26,6 +28,7 @@ export const DASH_ROUTES: DashRoute[] = [
   { section: 'wallet', path: '/dashboard/wallet', label: 'Wallet', icon: 'wallet', group: 'me', title: 'Wallet' },
   { section: 'calls', path: '/dashboard/calls', label: 'Calls', icon: 'calls', group: 'me', title: 'Calls' },
   { section: 'appointments', path: '/dashboard/appointments', label: 'My appointments', icon: 'calendar', group: 'me', needsBookings: true, title: 'My appointments' },
+  { section: 'fraands', path: '/dashboard/fraands', label: 'My Fraands', icon: 'heart', group: 'me', needsFavourites: true, title: 'My Fraands' },
   { section: 'host', path: '/dashboard/host', label: 'Host profile', icon: 'star', group: 'host', title: 'Host profile' },
   { section: 'host-calendar', path: '/dashboard/host/calendar', label: 'Host calendar', icon: 'calendar', group: 'host', hostOnly: true, needsBookings: true, title: 'Host calendar' },
   { section: 'availability', path: '/dashboard/host/availability', label: 'Availability', icon: 'clock', group: 'host', hostOnly: true, needsBookings: true, title: 'Availability' },

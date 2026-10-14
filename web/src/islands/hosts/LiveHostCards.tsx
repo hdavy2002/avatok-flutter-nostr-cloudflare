@@ -11,6 +11,7 @@ import { request } from '../../lib/apiClient';
 import { moods } from '../../lib/callvaalHomeReference';
 import Icon from '../host-onboarding/Icon';
 import HostCallActions from '../calls/HostCallActions';
+import SaveHostButton from '../../components/hosts/SaveHostButton';
 import { callsEnabled, type HostPresence } from '../../lib/hfCallsApi';
 import { chargeForSeconds, stdRateLabel, type PriceTier } from '../../lib/hfStdPlan';
 import { formatPaise } from '../../lib/money';
@@ -107,6 +108,7 @@ function Card({ h, lane, callsOn }: { h: HostCard; lane?: LaneName | null; calls
       <div className="portrait-wrap">
         {h.avatarUrl && <img className="person-portrait" src={h.avatarUrl} alt={`${h.displayName}, an AI avatar chosen by the host`} width={1254} height={1254} loading="lazy" />}
         <span className="hf-live-ai">AI avatar chosen by the host</span>
+        <SaveHostButton slug={h.slug} name={h.displayName} surface="explore" />
         {callsOn
           ? <p className={`person-status ${status === 'online' ? '' : status === 'busy' ? 'is-busy' : 'is-offline'}`}><span aria-hidden="true" />{STATUS_TEXT[status]}</p>
           : <p className="person-status is-offline"><span aria-hidden="true" />Calls open soon</p>}
