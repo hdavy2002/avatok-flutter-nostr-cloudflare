@@ -12,6 +12,7 @@
 //    real listings; avoid presenting sample profile counts as verified facts.
 export const prerender = true;
 import brandConfig from '../../../Specs/brand.json';
+import { publicImage } from '../lib/config';
 import { marketplaceCategories, profiles } from '../lib/callvaalHomeReference';
 import ProfileCard from '../components/callvaal/ProfileCard.astro';
 import LiveHostCards from '../islands/hosts/LiveHostCards';
@@ -62,7 +63,7 @@ const languages = [...new Set(profiles.flatMap(p => p.languages.split(/,\s*|\s*Â
         { title: 'Social media creators', category: 'social-media-influencers', image: '/assets/marketplace/call-category-creators.jpg', alt: 'Two different young adult women creators in separate studios, each on a phone call', tone: 'lilac' },
         { title: 'Uncensored talk', category: 'uncensored-talk', image: '/assets/marketplace/call-category-uncensored.jpg', alt: 'A young adult man and woman having a candid phone conversation from separate homes', tone: 'paper' },
       ].map(item => <a class:list={['category-story-card', `category-story-card--${item.tone}`]} href={`/marketplace?category=${encodeURIComponent(item.category)}#people`} aria-label={`Browse ${item.title}`}>
-        <img src={item.image} alt={item.alt} loading="lazy" />
+        <img src={publicImage(item.image, { width: 900 })} alt={item.alt} loading="lazy" />
         <span class="category-story-card__label">{item.title}<span aria-hidden="true">â†—</span></span>
       </a>)}</div>
     </section>
