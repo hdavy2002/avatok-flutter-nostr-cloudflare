@@ -563,9 +563,7 @@ async function cancelRoute(req: Request, env: Env, id: string): Promise<Response
   const role = row.host_uid === auth.uid ? "host" : "customer";
   if (row.status === "cancelled") return json({ booking: bookingPublic(row, role) }, 200, { "cache-control": "private, no-store" });
   if (row.status !== "confirmed" || !row.call_id) return err(409, "booking_not_cancellable");
-  const callId = row.call_id;
-  if (!callId) return err(409, "reservation_unavailable");
-  const reservation = await getReservation(env, callId);
+  const reservation = await getReservation(env, row.call_id);
   if (!reservation || reservation.secondsCovered !== Number(row.duration_min) * 60 || !reservation.lots.length) return err(409, "booking_hold_unavailable");
   const now = Date.now();
   const nonce = crypto.randomUUID();
@@ -627,7 +625,9 @@ async function startBookingRoute(req: Request, env: Env, bookingId: string): Pro
   if (row.status !== "confirmed" || row.settlement_status !== "held") return err(409, "booking_not_startable");
   if (now < Number(row.starts_at) - 5 * 60_000 || now >= Number(row.ends_at)) return err(409, "outside_start_window");
   if (await isClosing(env, row.customer_uid) || await isClosing(env, row.host_uid)) return err(409, "account_closing");
-  const reservation = await getReservation(env, row.call_id);
+  const callId = row.call_id;
+  if (!callId) return err(409, "reservation_unavailable");
+  const reservation = await getReservation(env, callId);
   if (!reservation || reservation.secondsCovered !== Number(row.duration_min) * 60 || reservation.lots.length === 0) {
     return err(409, "reservation_unavailable");
   }
