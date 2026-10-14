@@ -8,7 +8,7 @@ import ReceiptsPanel from './ReceiptsPanel'; // [HF-WALLET-LIMITS-1]
 import SessionBridge from '../calls/SessionBridge';
 import { isAppMode } from '../../lib/nativeBridge';
 import { fetchWallet, hostPaise, inr, inr2, looksSignedOut, relDate, signInUrl, type WalletInfo } from '../../lib/hfCallsApi';
-import { formatPaise } from '../../lib/money';
+import { formatPaise, topupKeptLabel } from '../../lib/money';
 import RateCard from '../calls/RateCard';
 import '../../styles/hf-calls.css';
 
@@ -169,7 +169,7 @@ export default function HfWallet() {
                 <span>{h.amount ?? formatPaise(h.amountPaise)}</span>
                 <small>
                   {relDate(h.at)}
-                  {h.purchase && <> · Paid {formatPaise(h.purchase.paidPaise)} · GST {formatPaise(h.purchase.gstPaise)} · Added {formatPaise(h.purchase.walletPaise)}</>}
+                  {h.purchase && <> · Paid {formatPaise(h.purchase.paidPaise)} · {topupKeptLabel(h.purchase.paidPaise, h.purchase.gstPaise, h.purchase.walletPaise)} · Added {formatPaise(h.purchase.walletPaise)}</>}
                   {h.kind === 'call_refund' && h.callId && (spentIds.has(h.callId) ? <> · <a href={`#hfw-call-${h.callId}`}>See the call</a></> : <> · {h.label}</>)}
                 </small>
               </li>

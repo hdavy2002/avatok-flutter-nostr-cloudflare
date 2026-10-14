@@ -248,6 +248,12 @@ export function renderReceiptHtml(r: ReceiptRow, sup: Supplier, customerName: st
   const supplierBlock = `<p><strong>${legal}</strong><br>${esc(sup.address).replace(/\n/g, "<br>")}${isInvoice && r.gstin ? `<br>GSTIN: ${esc(r.gstin)}` : ""}</p>`;
   const title = isInvoice ? "Tax invoice" : (data as Record<string, unknown>).type === "play_purchase" ? "Payment receipt — paid via Google Play" : "Payment receipt";
   const isPlay = !isInvoice && data.type === "play_purchase";
+  // [HF-WALLET-HELD-LABEL-1] Current purchases record the 18% as GST; older (gp-r1) purchases kept the same share as part of the price, GST 0.
+  const keptRow = (paid: number, gst: number, added: number): string => {
+    if (gst > 0) return `<tr><td>GST included (18%)</td><td class="n">${inr(gst)}</td></tr>`;
+    const kept = Math.max(0, paid - added);
+    return kept > 0 ? `<tr><td>Held back (${added > 0 ? Math.round((kept / added) * 100) : 0}%)</td><td class="n">${inr(kept)}</td></tr>` : "";
+  };
   let body: string;
   if (isPlay) {
     // [HF-TOPUP-NOTIFY-1] The wallet holds rupees (HF-WALLET-RUPEES): show what was added, not tokens. Paid includes 18% GST (HF-PAY-19).
@@ -256,7 +262,8 @@ export function renderReceiptHtml(r: ReceiptRow, sup: Supplier, customerName: st
     body = `<table><thead><tr><th>Description</th><th class="n">Detail</th></tr></thead><tbody>
       <tr><td>Google Play order</td><td class="n">${esc(data.orderId ?? "")}</td></tr>
       <tr><td>Added to your wallet</td><td class="n">${inr(added)}</td></tr>
-      <tr class="t"><td>Paid (includes 18% GST)</td><td class="n">${inr(paid)}</td></tr></tbody></table>
+      ${keptRow(paid, Number(data.gstPaise ?? 0), added)}
+      <tr class="t"><td>Paid</td><td class="n">${inr(paid)}</td></tr></tbody></table>
       <p class="muted">You paid through Google Play, which sends its own payment receipt. This is a payment receipt, not a tax invoice.</p>`;
   } else if (isInvoice) {
     const cgst = Number(data.cgstPaise ?? 0), sgst = Number(data.sgstPaise ?? 0), igst = Number(data.igstPaise ?? 0);

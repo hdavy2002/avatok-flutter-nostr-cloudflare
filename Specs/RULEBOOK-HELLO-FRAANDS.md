@@ -308,6 +308,7 @@ else, or come back later."
 
 | Date | Change |
 |---|---|
+| 2026-10-15 | HF-WALLET-HELD-LABEL-1: purchases made under the older pricing (gp-r1) kept 18% as part of the price and recorded GST 0; the wallet history, receipt list and printable receipt now show that share as "held back" instead of "GST ₹0.00", and the receipt list shows the exact amount paid (₹120.36, not ₹120.00). No money changed. |
 | 2026-10-14 | New rule HF-SITE-8 (HF-DASH-FRAANDS-1): people can heart live hosts and see them in a new dashboard screen, My Fraands; up to 500 per person, removed with the account, hidden until the owner switches it on. |
 | 2026-10-14 | HF-DASH-SUMMARY-1: the dashboard Overview now shows true numbers for everyone, not dashes. Hosts see calls received today, appointments today, first-time callers this week and expected earnings; everyone else sees calls they made today, appointments today, how many hosts they saved, and their last three calls (host name only, never a number), plus a Wallet shortcut. One summary call feeds it; if a number cannot be read it shows a dash and the rest still loads. |
 | 2026-10-14 | HF-DASH-CALLS-1: the dashboard Calls screen now shows every call you made and every call you received, including missed, declined and cancelled ones, newest first with a Load more button. Handles only, never phone numbers. Host per-call earnings now show in the received list. |

@@ -1,7 +1,7 @@
 /* [HF-WALLET-LIMITS-1] "Receipts" card on /wallet: every paid top-up has a numbered receipt; once GST invoicing is on, monthly tax invoices appear here too.
  * "View / print" opens the printable page in a new tab. */
 import { useEffect, useState } from 'react';
-import { formatPaise } from '../../lib/money';
+import { formatPaise, topupKeptLabel } from '../../lib/money';
 import { fetchReceipts, openReceipt, receiptSplit, type ReceiptItem } from '../../lib/hfReceiptsApi';
 
 const day = (ms: number) => new Date(ms).toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata', day: 'numeric', month: 'short', year: 'numeric' });
@@ -35,7 +35,7 @@ export default function ReceiptsPanel({ reloadKey = 0 }: { reloadKey?: number })
             <strong>{r.number}</strong>
             <span>{formatPaise(sp ? sp.paid : Math.round(r.amountRupees * 100))}</span>
             <small>{r.kind === 'tax_invoice' ? 'Tax invoice' : r.source === 'play_purchase' ? 'Purchase record, paid via Google Play' : 'Payment receipt'} · {day(r.issuedAt)}</small>
-            {sp && <small>Total paid {formatPaise(sp.paid)} · GST included (18%) {formatPaise(sp.gst)} · Added to your wallet {formatPaise(sp.wallet)}</small>}
+            {sp && <small>Total paid {formatPaise(sp.paid)} · {topupKeptLabel(sp.paid, sp.gst, sp.wallet)} · Added to your wallet {formatPaise(sp.wallet)}</small>}
             <button type="button" className="hfc-btn" style={{ minHeight: 44 }} disabled={busy === r.id} onClick={() => view(r.id)}>{busy === r.id ? 'Opening…' : 'View / print'}</button>
           </li>
         ); })}

@@ -38,6 +38,18 @@ async function audit(env: Env, adminUid: string, action: string, target: string,
   }
 }
 
+// [HF-WALLET-HELD-LABEL-1] amount_rupees is whole rupees (Rs 120.36 was listed as Rs 120.00): a Google Play purchase record carries the exact
+// paise split in its data, so the list sends that and the wallet shows the real amount.
+function receiptSplitOf(r: { source: string; data: string | null }): { paidPaise?: number; gstPaise?: number; walletPaise?: number } {
+  if (r.source !== "play_purchase" || !r.data) return {};
+  try {
+    const d = JSON.parse(r.data) as Record<string, unknown>;
+    const n = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? Math.max(0, Math.trunc(v)) : null);
+    const paid = n(d.paidPaise), wallet = n(d.walletPaise), gst = n(d.gstPaise) ?? 0;
+    return paid != null && wallet != null ? { paidPaise: paid, gstPaise: gst, walletPaise: wallet } : {};
+  } catch { return {}; }
+}
+
 // ── receipts ─────────────────────────────────────────────────────────────────
 async function receiptList(req: Request, env: Env): Promise<Response> {
   const u = await requireUser(req, env);
@@ -48,7 +60,7 @@ async function receiptList(req: Request, env: Env): Promise<Response> {
   const rows = await listReceipts(env, u.uid);
   return json({
     ok: true, invoicing: invoicingOn(supplierFrom(cfg)),
-    receipts: rows.map((r) => ({ id: r.id, number: r.number, kind: r.kind, source: r.source, amountRupees: r.amount_rupees, issuedAt: r.issued_at })),
+    receipts: rows.map((r) => ({ id: r.id, number: r.number, kind: r.kind, source: r.source, amountRupees: r.amount_rupees, issuedAt: r.issued_at, ...receiptSplitOf(r) })),
   }, 200, NO_STORE);
 }
 async function receiptView(req: Request, env: Env, id: string): Promise<Response> {

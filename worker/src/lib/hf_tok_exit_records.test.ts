@@ -56,7 +56,7 @@ describe("purchase records", () => {
     const html = renderReceiptHtml(a, supplierFrom({}), null);
     expect(html).toContain("Payment receipt");
     expect(html).toContain("Added to your wallet");
-    expect(html).toContain("includes 18% GST");
+    expect(html).toContain("Held back"); // [HF-WALLET-HELD-LABEL-1] no GST recorded: the share kept back is shown instead
     expect(html).not.toContain("Tokens bought");
     expect(html).toContain("paid via Google Play");
     expect(html).toContain("GPA.3300-1");

@@ -10769,5 +10769,12 @@
         "gte": 0
       }
     ]
+  },
+  "HF-WALLET-HELD-LABEL-1": {
+    "description": "Wallet history, receipt list and printable receipt show what was kept back from a top-up: GST when recorded, otherwise the older pricing's 18% held back; receipt list shows exact paise.",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [],
+    "no_telemetry": "Display-only labelling of existing wallet records; no new behaviour or events."
   }
 }
