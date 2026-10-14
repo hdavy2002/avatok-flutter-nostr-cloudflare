@@ -147,6 +147,7 @@ class _CustomerBookingScreenState extends ConsumerState<CustomerBookingScreen> {
         'reserved_paise': booking.reservedPaise,
       });
       ref.invalidate(customerBookingsProvider);
+      ref.invalidate(bookingCalendarProvider);
       if (!mounted) return;
       await showDialog<void>(context: context, barrierDismissible: false, builder: (context) => AlertDialog(
         title: const Text('Booking confirmed'),
@@ -163,6 +164,7 @@ class _CustomerBookingScreenState extends ConsumerState<CustomerBookingScreen> {
         : 'Booking confirmation is still unknown. Your booking list will show the server status.'; });
       await Analytics.capture('hf_app_booking_conflict', {'stage': 'confirm', if (e is ApiError) 'status_code': e.status});
       ref.invalidate(customerBookingsProvider);
+      ref.invalidate(bookingCalendarProvider);
     }
   }
 

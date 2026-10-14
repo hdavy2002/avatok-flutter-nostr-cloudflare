@@ -31,3 +31,27 @@ final customerBookingsProvider = FutureProvider.autoDispose<List<BookingRecord>>
 final bookingDetailProvider = FutureProvider.autoDispose.family<BookingRecord, String>(
   (ref, id) { ref.watch(bookingAccountScopeProvider); return ref.watch(hfBookingsApiProvider).detail(id); },
 );
+
+/// Account, role and month form the cache identity. Disposed requests stop paging.
+typedef BookingCalendarQuery = ({String account, String role, DateTime month});
+final bookingCalendarProvider = FutureProvider.autoDispose
+    .family<List<BookingRecord>, BookingCalendarQuery>((ref, query) {
+  final account = ref.watch(bookingAccountScopeProvider);
+  if (account == null || account != query.account) return const [];
+  var active = true;
+  ref.onDispose(() => active = false);
+  return ref.watch(hfBookingsApiProvider).calendar(
+    role: query.role,
+    from: query.month,
+    to: DateTime(query.month.year, query.month.month + 1),
+    isCurrent: () => active && ref.read(bookingAccountScopeProvider) == query.account,
+  );
+});
+
+/// Half-open intervals prevent an appointment ending at midnight from occupying
+/// the following day. Civil midnights also handle daylight-saving transitions.
+bool bookingOverlapsDay(BookingRecord booking, DateTime day) {
+  final start = DateTime(day.year, day.month, day.day);
+  final end = DateTime(day.year, day.month, day.day + 1);
+  return booking.startUtc.isBefore(end) && booking.endUtc.isAfter(start);
+}

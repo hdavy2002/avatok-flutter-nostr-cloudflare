@@ -1,4 +1,5 @@
 import '../../../core/api/api_client.dart';
+import '../../../core/api/api_error.dart';
 import 'hf_booking_models.dart';
 
 class HfBookingsApi {
@@ -63,6 +64,43 @@ class HfBookingsApi {
     final json = await _api.getJson('/api/hf/bookings', query: {'role': role});
     final rows = json['bookings'];
     return rows is List ? [for (final row in rows) if (row is Map) BookingRecord.fromJson(Map<String, dynamic>.from(row))] : const [];
+  }
+
+  /// Fetch the complete overlapping range, never silently display a partial month.
+  Future<List<BookingRecord>> calendar({
+    required String role, required DateTime from, required DateTime to,
+    required bool Function() isCurrent,
+  }) async {
+    final records = <String, BookingRecord>{};
+    final cursors = <String>{};
+    String? cursor;
+    for (var page = 0; page < 100; page++) {
+      if (!isCurrent()) return const [];
+      final json = await _api.getJson('/api/hf/bookings', query: {
+        'role': role, 'from': from.toUtc().toIso8601String(),
+        'to': to.toUtc().toIso8601String(),
+        if (cursor != null) 'cursor': cursor,
+      });
+      if (!isCurrent()) return const [];
+      final rows = json['bookings'];
+      if (rows is! List) throw ApiError.badResponse(200);
+      for (final row in rows) {
+        if (row is! Map) throw ApiError.badResponse(200);
+        final booking = BookingRecord.fromJson(Map<String, dynamic>.from(row));
+        records[booking.id] = booking;
+      }
+      final next = json['nextCursor'];
+      if (next == null || next == '') {
+        return records.values.toList()..sort((a, b) {
+          final byTime = a.startUtc.compareTo(b.startUtc);
+          return byTime == 0 ? a.id.compareTo(b.id) : byTime;
+        });
+      }
+      if (next is! String || !cursors.add(next)) throw ApiError.badResponse(200);
+      cursor = next;
+    }
+    throw const ApiError(status: 0, code: 'calendar_limit',
+      message: 'This month has too many bookings to load. Please try again later.');
   }
 
   Future<BookingRecord> detail(String id) async =>

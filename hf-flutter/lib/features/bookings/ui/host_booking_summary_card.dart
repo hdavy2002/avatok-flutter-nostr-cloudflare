@@ -7,17 +7,20 @@ import '../../../core/router/routes.dart';
 import '../data/hf_bookings_providers.dart';
 
 class HostBookingSummaryCard extends ConsumerWidget {
-  const HostBookingSummaryCard({super.key});
+  const HostBookingSummaryCard({super.key, this.openCalendarOnTap = true});
+  final bool openCalendarOnTap;
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final summary = ref.watch(hostBookingSummaryProvider);
     return Card(
       child: InkWell(
         borderRadius: BorderRadius.circular(16),
-        onTap: () => context.push(Routes.hostBookings),
+        onTap: openCalendarOnTap ? () => context.push(Routes.hostBookings) : null,
         child: Padding(
           padding: const EdgeInsets.all(16),
           child: summary.when(
+            skipLoadingOnRefresh: false,
+            skipLoadingOnReload: false,
             loading: () => const Row(children: [
               Expanded(child: Text('Expected earnings on hold')),
               SizedBox(width: 18,height: 18,child: CircularProgressIndicator(strokeWidth: 2)),
@@ -27,10 +30,8 @@ class HostBookingSummaryCard extends ConsumerWidget {
               TextButton(onPressed: () => ref.invalidate(hostBookingSummaryProvider), child: const Text('Retry')),
             ]),
             data: (s) => Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Row(children: [
-                const Expanded(child: Text('Expected earnings on hold')),
-                Text(formatPaise(s.expectedHostNetPaise), style: Theme.of(context).textTheme.titleLarge),
-              ]),
+              const Text('Expected earnings on hold'),
+              Text(formatPaise(s.expectedHostNetPaise), style: Theme.of(context).textTheme.titleLarge),
               const SizedBox(height: 4),
               Text('${s.upcomingCount} upcoming ${s.upcomingCount == 1 ? 'booking' : 'bookings'}'),
               if (s.nextBooking != null)

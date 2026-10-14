@@ -56,6 +56,7 @@ class BookingDetailScreen extends ConsumerWidget {
                     await Analytics.capture('hf_app_booking_started', {'booking_id': b.id});
                     ref.invalidate(hostBookingsProvider);
                     ref.invalidate(customerBookingsProvider);
+                    ref.invalidate(bookingCalendarProvider);
                     if (started.callId != null && context.mounted) context.go(Routes.callOf(started.callId!));
                   } catch (_) {
                     if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('The call could not start. Refresh the booking and try again.')));
@@ -95,6 +96,7 @@ class BookingDetailScreen extends ConsumerWidget {
       ref.invalidate(bookingDetailProvider(booking.id));
       ref.invalidate(hostBookingsProvider);
       ref.invalidate(customerBookingsProvider);
+      ref.invalidate(bookingCalendarProvider);
       ref.invalidate(hostBookingSummaryProvider);
       if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Booking cancelled')));
     } catch (error) {
