@@ -8,9 +8,11 @@ import { API_BASE } from '../../lib/env';
 import { callsEnabled, fetchWallet, hfCall, hostPaise, relDate, signInUrl, toMs, type HostPresence, type WalletInfo } from '../../lib/hfCallsApi';
 import { formatPaise } from '../../lib/money';
 import '../../styles/hf-calls.css';
-import { bookingError, bookingsEnabled, dateLabel, getBookingSummary, money, type BookingSummary } from '../../lib/hfBookingsApi';
+import { bookingError, bookingsEnabled, getBookingSummary, money, type BookingSummary } from '../../lib/hfBookingsApi';
 import '../../styles/hf-bookings.css';
 import DashboardNav, { retiredDashboardNotices, type DashboardAccount } from '../../components/account/DashboardNav';
+import DashboardCalendar from '../../components/account/DashboardCalendar';
+import { DashboardIcon } from '../../components/account/DashboardNav';
 import { BRAND } from '../../lib/brand';
 
 const BEAT_MS = 5 * 60_000;
@@ -44,6 +46,7 @@ function normRow(x: Record<string, unknown>): Row {
 }
 function parseCalls(d: unknown): { rows: Row[]; today: Today } {
   const obj = (Array.isArray(d) ? { items: d } : (d ?? {})) as Record<string, unknown>;
+  if (!Array.isArray(obj.items) && !Array.isArray(obj.calls)) throw new Error('Invalid call response');
   const list = (Array.isArray(obj.items) ? obj.items : Array.isArray(obj.calls) ? obj.calls : []) as Record<string, unknown>[];
   const rows = list.map(normRow);
   const t = obj.today as Record<string, unknown> | undefined;
@@ -80,7 +83,9 @@ export default function HostDashboard() {
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState('');
   const [rows, setRows] = useState<Row[]>([]);
-  const [today, setToday] = useState<Today>({ calls: 0, minutes: 0, earned: 0 });
+  const [today, setToday] = useState<Today | null>(null);
+  const [callsError, setCallsError] = useState('');
+  const [appointmentsToday, setAppointmentsToday] = useState<number | null>(null);
   const [wallet, setWallet] = useState<WalletInfo | null>(null);
   const [bookingSummary, setBookingSummary] = useState<BookingSummary | null>(null);
   const [bookingOn, setBookingOn] = useState(false);
@@ -94,7 +99,8 @@ export default function HostDashboard() {
     try {
       const r = await hfCall<unknown>('GET', '/api/hosts/me/calls');
       if (!current()) return;
-      if (r.ok) { const p = parseCalls(r.data); setRows(p.rows); setToday(p.today); }
+      if (r.ok) { const p = parseCalls(r.data); setRows(p.rows); setToday(p.today); setCallsError(''); }
+      else { setToday(null); setRows([]); setCallsError('We could not load your calls.'); }
       const w = await fetchWallet();
       if (!current()) return;
       if (w.ok) setWallet(w.data);
@@ -105,8 +111,8 @@ export default function HostDashboard() {
       try {
         const summary = await getBookingSummary();
         if (current()) { setBookingSummary(summary); setBookingErrorText(''); }
-      } catch (error) { if (current()) setBookingErrorText(bookingError(error).message); }
-    } catch { if (current()) setMsg('We could not refresh your activity. Please try again.'); }
+      } catch (error) { if (current()) { setBookingSummary(null); setBookingErrorText(bookingError(error).message); } }
+    } catch { if (current()) { setToday(null); setRows([]); setCallsError('We could not refresh your activity. Please try again.'); } }
   }, []);
 
   useEffect(() => {
@@ -116,7 +122,7 @@ export default function HostDashboard() {
       const current = () => !disposed && run === generation.current;
       eligible.current = false; presenceRef.current = 'offline';
       setPhase('boot'); setAccount(null); setHost(null); setHostUnavailable(false); setOn(false); setPresence('offline');
-      setBusy(false); setMsg(''); setRows([]); setToday({ calls: 0, minutes: 0, earned: 0 });
+      setBusy(false); setMsg(''); setRows([]); setToday(null); setCallsError(''); setAppointmentsToday(null);
       setWallet(null); setBookingSummary(null); setBookingOn(false); setBookingErrorText('');
       let loadedIdentity = false;
       try {
@@ -125,6 +131,9 @@ export default function HostDashboard() {
         if (!identity.ok) { setPhase(identity.status === 401 ? 'signedout' : 'error'); return; }
         setAccount(identity.data);
         loadedIdentity = true;
+        const appointmentsEnabled = await bookingsEnabled();
+        if (!current()) return;
+        setBookingOn(appointmentsEnabled);
         // A host lookup is only needed for an existing host; customers never invoke host APIs.
         if (identity.data.host && !identity.data.closing) {
           const me = await hfCall<{ host: MeHost | null }>('GET', '/api/hosts/me');
@@ -216,47 +225,38 @@ export default function HostDashboard() {
   const notice = retiredDashboardNotices[new URLSearchParams(window.location.search).get('retired') ?? ''];
   const hostStatus = host?.status ?? account.host?.status;
   const session = generation.current;
+  const initials = (account.displayName || '').trim().split(/\s+/).filter(Boolean).slice(0, 2).map(part => Array.from(part)[0]).join('').toLocaleUpperCase();
   return (
     <main className="hfc-page hfd-page">
       <SessionBridge on />
-      <header className="hfd-heading"><p>{BRAND.name}</p><h1>Hi {account.displayName || 'there'}</h1><p>Your calls, appointments and account in one place.</p></header>
-      {notice && <aside className="hfd-notice" role="status">{notice} <a href="/help">Contact support</a> if you need help with an earlier record.</aside>}
       <div className="hfd-layout"><DashboardNav account={account} bookingOn={bookingOn} active="overview" /><div className="hfd-content">
+      <header className="hfd-heading"><div><p className="hfd-greeting">Hi, {account.displayName || 'there'}</p><h1>Your dashboard</h1><p>Here’s what’s happening with your {BRAND.name} space today.</p></div><div className="hfd-welcome"><span className="hfd-host-badge">{isLive ? '★ You’re a host' : '♡ Your space'}</span><small>{isLive ? 'Your host profile is live.' : 'Real people. Meaningful conversations.'}</small></div><div className="hfd-avatar" aria-label={account.displayName ? `${account.displayName} profile` : 'Your profile'}>{initials || <DashboardIcon name="profile" />}</div><div className="hfd-kindness">Same people.<br />Brighter tomorrows. <span aria-hidden="true">♥</span></div></header>
+      {notice && <aside className="hfd-notice" role="status">{notice} <a href="/help">Contact support</a> if you need help with an earlier record.</aside>}
       {account.closing && <aside className="hfd-notice" role="status"><strong>Your account is being closed.</strong> Hosting and profile editing are paused. <a href="/account/close">Manage account closure</a></aside>}
-      <section className="hfc-card"><h2>Your account</h2><p>Keep up with your conversations and the appointments you book.</p><div className="hfd-actions"><a className="hfc-btn" href="/wallet">Open wallet</a><a className="hfc-btn" href="/bookings">My appointments</a><a className="hfc-btn" href="/dashboard/profile">View profile</a></div></section>
       {hostUnavailable && <aside className="hfd-notice" role="status">Your account is available, but we could not load your host activity. <button type="button" className="hfb-text-button" onClick={() => setRetry(value => value + 1)}>Retry host activity</button></aside>}
+      <div className="hfd-top-grid">
       {!isLive && !hostUnavailable && !account.closing && <section className="hfc-card"><h2>{hostStatus ? 'Your host profile' : 'Share your time as a host'}</h2><p>{hostStatus ? (STATUS_NOTE[hostStatus] ?? 'Your profile is not live yet.') : 'Create a host profile when you’re ready to take calls. You can keep exploring and booking appointments anytime.'}</p><a className="hfc-btn hfc-primary" href="/hosts/onboarding">{hostStatus ? 'Continue my profile' : 'Become a host'}</a></section>}
-      {isLive && <>
-      <section className="hfc-card hfc-switch-wrap" aria-labelledby="hfc-state">
+      {isLive && <section className="hfc-card hfc-switch-wrap hfd-status" aria-labelledby="hfc-state"><h2>Host status</h2>
         <button type="button" role="switch" aria-checked={online} aria-labelledby="hfc-state" className="hfc-switch" onClick={toggle} disabled={busy || !on} />
-        <p className="hfc-state" id="hfc-state">{!on ? 'Calls open soon' : online ? 'You’re online' : 'You’re offline'}</p>
+        <p className="hfc-state" id="hfc-state">{!on ? 'Calls open soon' : online ? 'Online' : 'Offline'}</p>
         <p className="hfc-sub" style={{ margin: 0, color: '#785979' }}>
           {!on ? 'Calling isn’t switched on yet. We’ll tell you on WhatsApp when it is.'
             : online ? (presence === 'busy' ? 'You’re on a call right now.' : 'Callers can call you now. Keep this page open, or switch off when you’re done.')
               : 'Switch on when you’re ready to take calls. People who asked to be told will get a WhatsApp.'}
         </p>
+        <p className="hfd-gentle-note">🌿 Take a break anytime. Switch offline when you don’t want to receive new calls.</p>
         {msg && <p className="hfc-err" role="alert">{msg}</p>}
-      </section>
-
-      {bookingOn && <section className="hfc-card hfb-card" aria-labelledby="hfb-on-hold">
-        <div className="hfb-section-head"><h2 id="hfb-on-hold">Expected earnings on hold</h2><a className="hfb-button hfb-small" href="/hosts/bookings">View calendar</a></div>
-        {bookingSummary ? <>
-          <div className="hfc-stats"><div className="hfc-stat"><strong>{money(bookingSummary.expectedHostNetPaise)}</strong><span>estimated host earnings</span></div><div className="hfc-stat"><strong>{bookingSummary.upcomingCount}</strong><span>upcoming bookings</span></div></div>
-          {bookingSummary.nextBooking ? <p className="hfb-muted">Next: {dateLabel(bookingSummary.nextBooking.startUtc, bookingSummary.nextBooking.hostTimezone)} · {bookingSummary.nextBooking.hostTimezone}</p> : <p className="hfb-muted">No upcoming bookings yet.</p>}
-        </> : bookingErrorText ? <p role="status" className="hfb-muted">{bookingErrorText} <button className="hfb-text-button" type="button" onClick={() => void loadCalls()}>Retry</button></p> : <p role="status">Loading booking summary…</p>}
-        <p className="hfb-muted">This estimate is separate from earned wallet money. Completed calls move actual earnings to your wallet; withdrawal timing is shown there.</p>
-        <div className="hfb-actions"><a className="hfb-button" href="/hosts/availability">Manage availability</a><a className="hfb-button" href="/hosts/bookings">Appointment calendar</a></div>
       </section>}
+      <section className="hfc-card hfd-glance"><h2>Today at a glance</h2><div className="hfd-stat-grid"><div className="hfd-stat-tile"><span className="hfd-icon-circle"><DashboardIcon name="calls" /></span><div><h3>Calls today</h3><strong>{today?.calls ?? '—'}</strong><p>{isLive ? 'Moments of meaningful conversation.' : 'Your call history is in your wallet.'}</p></div></div><div className="hfd-stat-tile hfd-peach"><span className="hfd-icon-circle"><DashboardIcon name="calendar" /></span><div><h3>Appointments today</h3><strong>{appointmentsToday ?? '—'}</strong><p>Scheduled time to connect.</p></div></div><div className="hfd-stat-tile"><span className="hfd-icon-circle"><DashboardIcon name="profile" /></span><div><h3>New Fraands</h3><strong>—</strong><p>Not available yet.</p></div></div></div>{callsError && <p className="hfc-err" role="status">{callsError} <button type="button" className="hfb-text-button" onClick={() => void loadCalls()}>Retry</button></p>}</section>
+      </div><div className="hfd-main-grid"><DashboardCalendar key={`${account.uid}:${session}`} uid={account.uid} host={isLive} enabled={bookingOn && !account.closing} onTodayCount={setAppointmentsToday} /><div className="hfd-summary-stack">
+      <section className="hfc-card hfd-expected"><div className="hfd-card-head"><h2>Expected earnings</h2><span>Upcoming bookings</span></div><strong className="hfd-amount">{isLive && bookingSummary ? money(bookingSummary.expectedHostNetPaise) : '—'}</strong><p className="hfd-muted">{isLive ? 'Estimated earnings on hold. Final amounts depend on completed calls and platform fees.' : 'Become a host to earn from your conversations.'}</p>{bookingErrorText && <p role="status">{bookingErrorText} <button type="button" className="hfb-text-button" onClick={() => void loadCalls()}>Retry</button></p>}<div className="hfd-encouragement">Keep going! Meaningful conversations create real impact.</div></section>
+      <section className="hfc-card hfd-recent" aria-labelledby="hfc-recent"><div className="hfd-card-head"><h2 id="hfc-recent">Recent calls</h2><a href="/wallet#hfw-hist">View all →</a></div>{!isLive ? <p className="hfd-muted">Find your calls in <a href="/wallet#hfw-hist">wallet history</a>.</p> : callsError ? <p role="status">{callsError}</p> : !today ? <p role="status">Loading calls…</p> : rows.length === 0 ? <div className="hfd-recent-empty"><span className="hfd-icon-circle"><DashboardIcon name="calls" /></span><div><strong>No calls yet</strong><p>Your recent calls will appear here.</p></div></div> : <ul className="hfc-calls">{rows.slice(0, 3).map(r => <li key={r.id}><strong>{r.handle}</strong><span>{rowText(r)}</span>{r.at && <small>{relDate(r.at)}</small>}</li>)}</ul>}<p className="hfd-call-privacy">You only see a caller’s handle, never their number. Calls are not recorded.</p></section>
+      </div></div>
+      <footer className="hfd-footer"><span aria-hidden="true">♥</span> Meaningful conversations. A kinder, brighter world.</footer>
+      {isLive && <div className="hfd-finances">
 
-      <section className="hfc-card" aria-labelledby="hfc-today">
-        <h2 id="hfc-today">Today</h2>
-        <div className="hfc-stats">
-          <div className="hfc-stat"><strong>{today.calls}</strong><span>calls</span></div>
-          <div className="hfc-stat"><strong>{today.minutes}</strong><span>minutes</span></div>
-          <div className="hfc-stat"><strong>{formatPaise(Math.round(today.earned * 100))}</strong><span>earned today</span></div>
-        </div>
-      </section>
 
+      <section className="hfc-card"><h2>Today’s earnings</h2><div className="hfc-stats"><div className="hfc-stat"><strong>{today ? formatPaise(Math.round(today.earned * 100)) : '—'}</strong><span>earned today</span></div><div className="hfc-stat"><strong>{today?.minutes ?? '—'}</strong><span>connected minutes</span></div></div></section>
       {wallet?.host && (() => { const hp = hostPaise(wallet.host); return (
         <section className="hfc-card" aria-labelledby="hfc-earn">
           <h2 id="hfc-earn">Your earnings</h2>
@@ -281,18 +281,7 @@ export default function HostDashboard() {
 
       <WithdrawPanel key={`${account.uid}:${session}`} isCurrent={() => session === generation.current && eligible.current} onChanged={() => { if (session === generation.current) void loadCalls(session); }} />
 
-      <section className="hfc-card" aria-labelledby="hfc-recent">
-        <h2 id="hfc-recent">Recent calls</h2>
-        {rows.length === 0 ? <p>No calls yet. They’ll show up here.</p> : (
-          <ul className="hfc-calls">
-            {rows.map(r => (
-              <li key={r.id}><strong>{r.handle}</strong><span>{rowText(r)}</span>{r.at && <small>{relDate(r.at)}</small>}</li>
-            ))}
-          </ul>
-        )}
-        <p className="hfc-sub" style={{ margin: 0, color: '#785979', fontSize: '.875rem' }}>You only see a caller’s handle, never their number. Calls are not recorded.</p>
-      </section>
-      </>}
+      </div>}
       </div></div>
     </main>
   );
