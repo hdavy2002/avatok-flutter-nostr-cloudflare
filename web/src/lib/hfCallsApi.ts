@@ -38,13 +38,14 @@ export function signInUrl(back?: string): string {
 }
 
 /** JSON call to the worker. `auth` (default true) attaches the Clerk bearer token; a missing session answers 401 `no_session`. */
-export async function hfCall<T>(method: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH', path: string, body?: unknown, opts: { auth?: boolean; timeoutMs?: number } = {}): Promise<HfResult<T>> {
+export async function hfCall<T>(method: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH', path: string, body?: unknown, opts: { auth?: boolean; timeoutMs?: number; isCurrent?: () => boolean } = {}): Promise<HfResult<T>> {
   let auth: string | null = null;
   if (opts.auth !== false) {
     const { getActiveTokenWaited } = await import('./clerk');
     auth = await getActiveTokenWaited(6000);
     if (!auth) return { ok: false, status: 401, code: 'no_session', message: 'Please sign in to continue.', body: {} };
   }
+  if (opts.isCurrent && !opts.isCurrent()) return { ok: false, status: 0, code: 'stale_session', message: '', body: {} };
   try {
     const data = await request<T>(path, { method, auth, body, timeoutMs: opts.timeoutMs ?? 20_000 });
     return { ok: true, data };

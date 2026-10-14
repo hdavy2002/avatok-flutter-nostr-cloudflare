@@ -1,15 +1,17 @@
-/* [HF-CALLS-1] /hosts/dashboard: Online/Offline switch (+ heartbeat every 5 min while this tab is visible), today's numbers, recent calls.
+/* [HF-CALLS-1] Shared /dashboard: Online/Offline switch (+ heartbeat every 5 min while this tab is visible), today's numbers, recent calls.
  * Worker: GET /api/hosts/me, PUT /api/hosts/me/presence {online}, POST /api/hosts/me/presence/beat, GET /api/hosts/me/calls.
  * Calls list is read defensively (array, or {items|calls, today?}); see the report for the assumed row fields. */
 import { useCallback, useEffect, useRef, useState } from 'react';
 import SessionBridge from './SessionBridge';
 import WithdrawPanel from './WithdrawPanel'; // [HF-PAYOUT-1]
 import { API_BASE } from '../../lib/env';
-import { callsEnabled, fetchWallet, hfCall, hostPaise, looksSignedOut, relDate, signInUrl, toMs, type HostPresence, type WalletInfo } from '../../lib/hfCallsApi';
+import { callsEnabled, fetchWallet, hfCall, hostPaise, relDate, signInUrl, toMs, type HostPresence, type WalletInfo } from '../../lib/hfCallsApi';
 import { formatPaise } from '../../lib/money';
 import '../../styles/hf-calls.css';
 import { bookingError, bookingsEnabled, dateLabel, getBookingSummary, money, type BookingSummary } from '../../lib/hfBookingsApi';
 import '../../styles/hf-bookings.css';
+import DashboardNav, { retiredDashboardNotices, type DashboardAccount } from '../../components/account/DashboardNav';
+import { BRAND } from '../../lib/brand';
 
 const BEAT_MS = 5 * 60_000;
 const REFRESH_MS = 60_000;
@@ -67,6 +69,11 @@ function rowText(r: Row): string {
 
 export default function HostDashboard() {
   const [phase, setPhase] = useState<'boot' | 'signedout' | 'error' | 'ready'>('boot');
+  const [account, setAccount] = useState<DashboardAccount | null>(null);
+  const [hostUnavailable, setHostUnavailable] = useState(false);
+  const [retry, setRetry] = useState(0);
+  const generation = useRef(0);
+  const eligible = useRef(false);
   const [host, setHost] = useState<MeHost | null>(null);
   const [on, setOn] = useState(false);
   const [presence, setPresence] = useState<HostPresence>('offline');
@@ -81,90 +88,145 @@ export default function HostDashboard() {
   const presenceRef = useRef(presence);
   presenceRef.current = presence;
 
-  const loadCalls = useCallback(async () => {
-    const r = await hfCall<unknown>('GET', '/api/hosts/me/calls');
-    if (r.ok) { const p = parseCalls(r.data); setRows(p.rows); setToday(p.today); }
-    const w = await fetchWallet(); // [HF-WALLET-1] earnings breakdown
-    if (w.ok) setWallet(w.data);
-    const enabled = await bookingsEnabled(); setBookingOn(enabled);
-    if (!enabled) { setBookingSummary(null); setBookingErrorText(''); return; }
-    try { setBookingSummary(await getBookingSummary()); setBookingErrorText(''); }
-    catch (error) { setBookingErrorText(bookingError(error).message); }
+  const loadCalls = useCallback(async (run = generation.current) => {
+    const current = () => run === generation.current && eligible.current;
+    if (!current()) return;
+    try {
+      const r = await hfCall<unknown>('GET', '/api/hosts/me/calls');
+      if (!current()) return;
+      if (r.ok) { const p = parseCalls(r.data); setRows(p.rows); setToday(p.today); }
+      const w = await fetchWallet();
+      if (!current()) return;
+      if (w.ok) setWallet(w.data);
+      const enabled = await bookingsEnabled();
+      if (!current()) return;
+      setBookingOn(enabled);
+      if (!enabled) { setBookingSummary(null); setBookingErrorText(''); return; }
+      try {
+        const summary = await getBookingSummary();
+        if (current()) { setBookingSummary(summary); setBookingErrorText(''); }
+      } catch (error) { if (current()) setBookingErrorText(bookingError(error).message); }
+    } catch { if (current()) setMsg('We could not refresh your activity. Please try again.'); }
   }, []);
 
   useEffect(() => {
-    if (looksSignedOut()) { setPhase('signedout'); return; }
-    let live = true;
-    (async () => {
-      setOn(await callsEnabled());
-      const me = await hfCall<{ host: MeHost | null }>('GET', '/api/hosts/me');
-      if (!live) return;
-      if (!me.ok) { setPhase(me.status === 401 ? 'signedout' : 'error'); return; }
-      const h = me.data.host;
-      setHost(h);
-      if (h && h.status === 'live') {
-        let p: string | null | undefined = h.presence;
-        if (!p && h.slug) {
-          try { const res = await fetch(`${API_BASE}/api/hosts/public/${encodeURIComponent(h.slug)}`, { cache: 'no-store' }); if (res.ok) p = ((await res.json()) as { status?: string }).status; } catch { /* default offline */ }
+    let disposed = false;
+    async function load() {
+      const run = ++generation.current;
+      const current = () => !disposed && run === generation.current;
+      eligible.current = false; presenceRef.current = 'offline';
+      setPhase('boot'); setAccount(null); setHost(null); setHostUnavailable(false); setOn(false); setPresence('offline');
+      setBusy(false); setMsg(''); setRows([]); setToday({ calls: 0, minutes: 0, earned: 0 });
+      setWallet(null); setBookingSummary(null); setBookingOn(false); setBookingErrorText('');
+      let loadedIdentity = false;
+      try {
+        const identity = await hfCall<DashboardAccount>('GET', '/api/hf/me');
+        if (!current()) return;
+        if (!identity.ok) { setPhase(identity.status === 401 ? 'signedout' : 'error'); return; }
+        setAccount(identity.data);
+        loadedIdentity = true;
+        // A host lookup is only needed for an existing host; customers never invoke host APIs.
+        if (identity.data.host && !identity.data.closing) {
+          const me = await hfCall<{ host: MeHost | null }>('GET', '/api/hosts/me');
+          if (!current()) return;
+          if (!me.ok) {
+            if (me.status === 401) { setAccount(null); setPhase('signedout'); }
+            else { setHostUnavailable(true); setPhase('ready'); }
+            return;
+          }
+          const h = me.data.host;
+          setHost(h);
+          setAccount({ ...identity.data, host: h });
+          if (h?.status === 'live') {
+            eligible.current = true;
+            const enabled = await callsEnabled();
+            if (!current()) return;
+            setOn(enabled);
+            let p = h.presence;
+            if (!p && h.slug) {
+              try {
+                const res = await fetch(`${API_BASE}/api/hosts/public/${encodeURIComponent(h.slug)}`, { cache: 'no-store' });
+                if (res.ok) p = ((await res.json()) as { status?: string }).status;
+              } catch { /* default offline */ }
+            }
+            if (!current()) return;
+            setPresence(p === 'online' || p === 'busy' ? p : 'offline');
+            await loadCalls(run);
+          }
         }
-        if (live) setPresence(p === 'online' || p === 'busy' ? p : 'offline');
-        await loadCalls();
+        if (current()) setPhase('ready');
+      } catch {
+        if (current()) {
+          // Identity already loaded: keep common account actions available when hosting is unreachable.
+          if (loadedIdentity) { eligible.current = false; setHost(null); setHostUnavailable(true); setPhase('ready'); }
+          else setPhase('error');
+        }
       }
-      if (live) setPhase('ready');
-    })();
-    return () => { live = false; };
-  }, [loadCalls]);
+    }
+    void load();
+    const changed = () => { void load(); };
+    window.addEventListener('site:active-session-changed', changed);
+    return () => {
+      disposed = true; ++generation.current; eligible.current = false; presenceRef.current = 'offline';
+      window.removeEventListener('site:active-session-changed', changed);
+    };
+  }, [loadCalls, retry]);
 
-  const isLive = host?.status === 'live';
+  const isLive = host?.status === 'live' && !account?.closing;
   const online = presence === 'online' || presence === 'busy';
-
-  // heartbeat while this tab is visible and the host is online; recent calls refresh on the same rhythm
   useEffect(() => {
     if (phase !== 'ready' || !isLive) return;
-    const beat = () => { if (document.visibilityState === 'visible' && presenceRef.current !== 'offline') void hfCall('POST', '/api/hosts/me/presence/beat'); };
-    const refresh = () => { if (document.visibilityState === 'visible') void loadCalls(); };
+    const run = generation.current;
+    const current = () => run === generation.current && eligible.current;
+    const beat = () => {
+      if (current() && on && document.visibilityState === 'visible' && presenceRef.current !== 'offline') {
+        void hfCall('POST', '/api/hosts/me/presence/beat', undefined, { isCurrent: current }).catch(() => {});
+      }
+    };
+    const refresh = () => { if (current() && document.visibilityState === 'visible') void loadCalls(run); };
     const b = setInterval(beat, BEAT_MS);
     const r = setInterval(refresh, REFRESH_MS);
     const vis = () => { if (document.visibilityState === 'visible') { beat(); refresh(); } };
     document.addEventListener('visibilitychange', vis);
     return () => { clearInterval(b); clearInterval(r); document.removeEventListener('visibilitychange', vis); };
-  }, [phase, isLive, loadCalls]);
+  }, [phase, isLive, on, loadCalls]);
 
   const toggle = async () => {
+    if (!eligible.current || !on || busy) return;
+    const run = generation.current;
     setBusy(true); setMsg('');
-    const goOnline = !online;
-    const r = await hfCall<{ ok: boolean; presence: string }>('PUT', '/api/hosts/me/presence', { online: goOnline });
-    setBusy(false);
-    if (r.ok) { const p = r.data.presence; setPresence(p === 'online' || p === 'busy' ? p : 'offline'); return; }
-    setMsg(r.status === 401 ? 'Please sign in again.' : r.message || 'We could not change that. Please try again.');
+    try {
+      const r = await hfCall<{ ok: boolean; presence: string }>('PUT', '/api/hosts/me/presence', { online: !online }, { isCurrent: () => run === generation.current && eligible.current });
+      if (run !== generation.current || !eligible.current) return;
+      if (r.ok) { const p = r.data.presence; setPresence(p === 'online' || p === 'busy' ? p : 'offline'); }
+      else setMsg(r.status === 401 ? 'Please sign in again.' : r.message || 'We could not change that. Please try again.');
+    } catch { if (run === generation.current) setMsg('We could not reach the server. Please try again.'); }
+    finally { if (run === generation.current) setBusy(false); }
   };
 
   if (phase === 'boot') return <main className="hfc-page"><p role="status">Loading your dashboard…</p></main>;
   if (phase === 'signedout') {
-    return <main className="hfc-page"><h1>Host dashboard</h1><p>Please sign in to see your calls.</p><a className="hfc-btn hfc-primary" href={signInUrl('/hosts/dashboard')}>Sign in</a></main>;
+    return <main className="hfc-page"><h1>Dashboard</h1><p>Please sign in to see your dashboard.</p><a className="hfc-btn hfc-primary" href={signInUrl('/dashboard')}>Sign in</a></main>;
   }
   if (phase === 'error') {
-    return <main className="hfc-page"><h1>Host dashboard</h1><p>We could not load your dashboard. Please check your internet and try again.</p><button type="button" className="hfc-btn hfc-primary" onClick={() => window.location.reload()}>Try again</button></main>;
+    return <main className="hfc-page"><h1>Dashboard</h1><p>We could not load your dashboard. Please check your internet and try again.</p><button type="button" className="hfc-btn hfc-primary" onClick={() => window.location.reload()}>Try again</button></main>;
   }
 
-  if (!host || !isLive) {
-    return (
-      <main className="hfc-page">
-        <SessionBridge on />
-        <h1>Host dashboard</h1>
-        <div className="hfc-card">
-          <h2>{host ? 'You’re not live yet' : 'You’re not a host yet'}</h2>
-          <p>{host ? (STATUS_NOTE[host.status] ?? 'Your profile is not live yet.') : 'Set up your host profile to start taking calls.'}</p>
-          <a className="hfc-btn hfc-primary" href="/hosts/onboarding">{host ? 'Continue my profile' : 'Become a host'}</a>
-        </div>
-      </main>
-    );
-  }
-
+  if (!account) return null;
+  const notice = retiredDashboardNotices[new URLSearchParams(window.location.search).get('retired') ?? ''];
+  const hostStatus = host?.status ?? account.host?.status;
+  const session = generation.current;
   return (
-    <main className="hfc-page">
+    <main className="hfc-page hfd-page">
       <SessionBridge on />
-      <h1>Hi {(host.displayName || '').split(/\s+/)[0] || 'there'}</h1>
+      <header className="hfd-heading"><p>{BRAND.name}</p><h1>Hi {account.displayName || 'there'}</h1><p>Your calls, appointments and account in one place.</p></header>
+      {notice && <aside className="hfd-notice" role="status">{notice} <a href="/help">Contact support</a> if you need help with an earlier record.</aside>}
+      <div className="hfd-layout"><DashboardNav account={account} bookingOn={bookingOn} active="overview" /><div className="hfd-content">
+      {account.closing && <aside className="hfd-notice" role="status"><strong>Your account is being closed.</strong> Hosting and profile editing are paused. <a href="/account/close">Manage account closure</a></aside>}
+      <section className="hfc-card"><h2>Your account</h2><p>Keep up with your conversations and the appointments you book.</p><div className="hfd-actions"><a className="hfc-btn" href="/wallet">Open wallet</a><a className="hfc-btn" href="/bookings">My appointments</a><a className="hfc-btn" href="/dashboard/profile">View profile</a></div></section>
+      {hostUnavailable && <aside className="hfd-notice" role="status">Your account is available, but we could not load your host activity. <button type="button" className="hfb-text-button" onClick={() => setRetry(value => value + 1)}>Retry host activity</button></aside>}
+      {!isLive && !hostUnavailable && !account.closing && <section className="hfc-card"><h2>{hostStatus ? 'Your host profile' : 'Share your time as a host'}</h2><p>{hostStatus ? (STATUS_NOTE[hostStatus] ?? 'Your profile is not live yet.') : 'Create a host profile when you’re ready to take calls. You can keep exploring and booking appointments anytime.'}</p><a className="hfc-btn hfc-primary" href="/hosts/onboarding">{hostStatus ? 'Continue my profile' : 'Become a host'}</a></section>}
+      {isLive && <>
       <section className="hfc-card hfc-switch-wrap" aria-labelledby="hfc-state">
         <button type="button" role="switch" aria-checked={online} aria-labelledby="hfc-state" className="hfc-switch" onClick={toggle} disabled={busy || !on} />
         <p className="hfc-state" id="hfc-state">{!on ? 'Calls open soon' : online ? 'You’re online' : 'You’re offline'}</p>
@@ -217,7 +279,7 @@ export default function HostDashboard() {
         </section>
       ); })()}
 
-      <WithdrawPanel onChanged={() => void loadCalls()} />
+      <WithdrawPanel key={`${account.uid}:${session}`} isCurrent={() => session === generation.current && eligible.current} onChanged={() => { if (session === generation.current) void loadCalls(session); }} />
 
       <section className="hfc-card" aria-labelledby="hfc-recent">
         <h2 id="hfc-recent">Recent calls</h2>
@@ -230,6 +292,8 @@ export default function HostDashboard() {
         )}
         <p className="hfc-sub" style={{ margin: 0, color: '#785979', fontSize: '.875rem' }}>You only see a caller’s handle, never their number. Calls are not recorded.</p>
       </section>
+      </>}
+      </div></div>
     </main>
   );
 }

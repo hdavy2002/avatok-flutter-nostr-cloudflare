@@ -79,7 +79,7 @@ export default function HostBookings({ role = 'customer' }: { role?: BookingRole
       <p className="hfb-eyebrow">{BRAND.name} · {role === 'host' ? 'Host calendar' : 'Appointment calendar'}</p>
       <h1>{role === 'host' ? 'Your host calendar' : 'Your appointments'}</h1>
       <p>{role === 'host' ? 'Your booked conversations, together in one calendar.' : 'Make time for your next conversation. Select a day to see your appointments.'}</p>
-      <div className="hfb-actions"><a className="hfb-back" href={role === 'host' ? '/hosts/dashboard' : '/dashboard'}>← {role === 'host' ? 'Host dashboard' : 'My account'}</a>{role === 'host' && <a className="hfb-back" href="/hosts/availability">Manage availability</a>}</div>
+      <div className="hfb-actions"><a className="hfb-back" href="/dashboard">← Dashboard</a>{role === 'host' && <a className="hfb-back" href="/hosts/availability">Manage availability</a>}</div>
     </header>
     {signedOut ? <section className="hfb-card"><h2>Sign in to see your calendar</h2><p>Your appointments are private to your account.</p><a className="hfb-button hfb-primary" href={signInUrl(role === 'host' ? '/hosts/bookings' : '/bookings')}>Sign in</a></section> : <>
       <section className="hfb-card hfb-appointment-month" aria-labelledby="hfb-month-title" aria-busy={loading}>

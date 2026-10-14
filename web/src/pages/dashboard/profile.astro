@@ -7,5 +7,5 @@ import { BRAND } from '../../lib/brand';
 Astro.response.headers.set('Cache-Control', 'private, no-store');
 ---
 <Base title={`Profile | ${BRAND.name}`} description="Your profile, wallet, calls and bookings." noindex keywords="">
-  <HfAccount client:only="react" profile={true} />
+  <HfAccount client:only="react" />
 </Base>

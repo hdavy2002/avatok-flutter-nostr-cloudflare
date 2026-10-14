@@ -28,10 +28,11 @@ const ERRORS: Record<string, string> = {
   invalid_amount: 'Enter a whole number of rupees.',
 };
 
-async function api<T>(method: 'GET' | 'POST', path: string, body?: unknown, headers?: Record<string, string>): Promise<{ ok: true; data: T } | { ok: false; code: string; message: string }> {
+async function api<T>(method: 'GET' | 'POST', path: string, body?: unknown, headers?: Record<string, string>, isCurrent?: () => boolean): Promise<{ ok: true; data: T } | { ok: false; code: string; message: string }> {
   try {
     const { getActiveTokenWaited } = await import('../../lib/clerk');
     const auth = await getActiveTokenWaited(6000);
+    if (isCurrent && !isCurrent()) return { ok: false, code: 'stale_session', message: '' };
     if (!auth) return { ok: false, code: 'no_session', message: 'Please sign in again.' };
     return { ok: true, data: await request<T>(path, { method, auth, body, headers, timeoutMs: 20_000 }) };
   } catch (e) {
@@ -43,7 +44,11 @@ async function api<T>(method: 'GET' | 'POST', path: string, body?: unknown, head
   }
 }
 
-export default function WithdrawPanel({ onChanged }: { onChanged?: () => void }) {
+export default function WithdrawPanel({ onChanged, isCurrent }: { onChanged?: () => void; isCurrent?: () => boolean }) {
+  const mounted = useRef(true);
+  const currentSession = useRef(isCurrent);
+  currentSession.current = isCurrent;
+  const current = useCallback(() => mounted.current && (currentSession.current?.() ?? true), []);
   const [info, setInfo] = useState<Info | null>(null);
   const [failed, setFailed] = useState(false);
   const [amount, setAmount] = useState('');
@@ -53,10 +58,12 @@ export default function WithdrawPanel({ onChanged }: { onChanged?: () => void })
   const attemptKey = useRef<{ amount: string; key: string } | null>(null);
 
   const load = useCallback(async () => {
-    const r = await api<Info>('GET', '/api/hosts/me/payouts');
+    if (!current()) return;
+    const r = await api<Info>('GET', '/api/hosts/me/payouts', undefined, undefined, current);
+    if (!current()) return;
     if (r.ok) { setInfo(r.data); setFailed(false); } else setFailed(true);
-  }, []);
-  useEffect(() => { void load(); }, [load]);
+  }, [current]);
+  useEffect(() => { mounted.current = true; void load(); return () => { mounted.current = false; }; }, [load]);
 
   if (failed && !info) {
     return <section className="hfc-card" aria-labelledby="hfc-wd"><h2 id="hfc-wd">Withdraw</h2><p>We could not load this right now.</p><button type="button" className="hfc-btn" onClick={() => void load()}>Try again</button></section>;
@@ -74,15 +81,16 @@ export default function WithdrawPanel({ onChanged }: { onChanged?: () => void })
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (busy || blocker || !validAmount) return;
+    if (!current() || busy || blocker || !validAmount) return;
     setBusy(true); setMsg(null);
     if (!attemptKey.current || attemptKey.current.amount !== amount) attemptKey.current = { amount, key: crypto.randomUUID() };
-    const r = await api<{ ok: true }>('POST', '/api/hosts/me/payouts', { amount: n }, { 'Idempotency-Key': attemptKey.current.key });
+    const r = await api<{ ok: true }>('POST', '/api/hosts/me/payouts', { amount: n }, { 'Idempotency-Key': attemptKey.current.key }, current);
+    if (!current()) return;
     setBusy(false);
     if (r.ok) {
       attemptKey.current = null; setAmount('');
       setMsg({ tone: 'ok', text: `Request sent for ${inr(n)}. We will check it and pay your bank account.` });
-      await load(); onChanged?.();
+      await load(); if (current()) onChanged?.();
     } else {
       if (r.code !== 'network') attemptKey.current = null;
       setMsg({ tone: 'err', text: ERRORS[r.code] ?? (r.message || 'We could not send that. Please try again.') });
@@ -91,11 +99,13 @@ export default function WithdrawPanel({ onChanged }: { onChanged?: () => void })
   };
 
   const cancel = async (id: string) => {
+    if (!current() || busy) return;
     setBusy(true); setMsg(null);
-    const r = await api<{ ok: true }>('POST', `/api/hosts/me/payouts/${encodeURIComponent(id)}/cancel`);
+    const r = await api<{ ok: true }>('POST', `/api/hosts/me/payouts/${encodeURIComponent(id)}/cancel`, undefined, undefined, current);
+    if (!current()) return;
     setBusy(false);
     if (!r.ok) setMsg({ tone: 'err', text: r.message || 'We could not cancel that.' });
-    await load(); onChanged?.();
+    await load(); if (current()) onChanged?.();
   };
 
   return (

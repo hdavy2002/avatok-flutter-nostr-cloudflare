@@ -2,10 +2,10 @@
 // [HF-DASHBOARD-SHELL-1] Current account surface; legacy dashboard data stays untouched.
 export const prerender = false;
 import Base from '../layouts/Base.astro';
-import HfAccount from '../islands/account/HfAccount';
+import HostDashboard from '../islands/calls/HostDashboard';
 import { BRAND } from '../lib/brand';
 Astro.response.headers.set('Cache-Control', 'private, no-store');
 ---
-<Base title={`My account | ${BRAND.name}`} description="Your profile, wallet, calls and bookings." noindex keywords="">
-  <HfAccount client:only="react" profile={false} />
+<Base title={`Dashboard | ${BRAND.name}`} description="Your profile, wallet, calls and bookings." noindex keywords="">
+  <HostDashboard client:only="react" />
 </Base>
