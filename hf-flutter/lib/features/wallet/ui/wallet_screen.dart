@@ -37,9 +37,6 @@ abstract final class WalletCopy {
   static const String signInBody = 'Please sign in to see your wallet.';
 }
 
-/// Muted text on the ink balance card (mockup `#D6D1EE`).
-const Color _onInkMuted = Color(0xFFD6D1EE);
-
 /// Tab 3 (needs sign-in). Both wallet shapes render. Money is read live every time: nothing here is cached.
 class WalletScreen extends ConsumerStatefulWidget {
   const WalletScreen({super.key, this.query = const <String, String>{}});
@@ -100,7 +97,10 @@ class _WalletScreenState extends ConsumerState<WalletScreen> {
         next: Routes.safeNext(widget.query['next']),
       );
     }
-    return Scaffold(body: SafeArea(bottom: false, child: body));
+    return Scaffold(
+      backgroundColor: WalletStyle.of(context).page,
+      body: SafeArea(bottom: false, child: body),
+    );
   }
 }
 
@@ -110,7 +110,7 @@ class _Header extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Semantics(
     header: true,
-    child: Text(WalletCopy.title, style: HfText.of(context, HfText.headline)),
+    child: Text(WalletCopy.title, style: HfText.headline.copyWith(color: WalletStyle.of(context).ink)),
   );
 }
 
@@ -358,7 +358,7 @@ String _minutesLine(int minutes, num rate) => minutes <= 0
     ? 'Add money to start talking'
     : 'About $minutes ${minutes == 1 ? 'minute' : 'minutes'} at ${formatRupees(rate)}/min';
 
-/// The ink balance card: radius 28, two decorative circles, the balance in Nunito 44.
+/// The balance card: radius 28, two decorative circles, the balance in Nunito 44.
 class _BalanceCard extends StatelessWidget {
   const _BalanceCard({required this.data, required this.rate});
 
@@ -375,6 +375,7 @@ class _BalanceCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final style = WalletStyle.of(context);
     final tokens = data.tokenMode;
     final amount = tokens
         ? formatPaise(data.balancePaise)
@@ -382,17 +383,20 @@ class _BalanceCard extends StatelessWidget {
     final minutes = _minutes;
     final small = HfText.body.copyWith(
       fontSize: 14,
-      color: _onInkMuted,
+      color: style.muted,
       height: 1.4,
     );
-    return ClipRRect(
+    return Container(
       key: ValueKey<String>(tokens ? 'token-balance' : 'legacy-balance'),
-      borderRadius: BorderRadius.circular(HfRadius.cardInner),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(HfRadius.cardInner),
+        border: Border.all(color: style.line),
+        boxShadow: style.shadows,
+      ),
+      clipBehavior: Clip.antiAlias,
       child: DecoratedBox(
         decoration: BoxDecoration(
-          color: HfBrightness.isDark(context)
-              ? HfColors.darkTile
-              : HfColors.ink,
+          color: style.card,
         ),
         child: Stack(
           clipBehavior: Clip.hardEdge,
@@ -404,9 +408,9 @@ class _BalanceCard extends StatelessWidget {
                 child: Container(
                   width: 130,
                   height: 130,
-                  decoration: const BoxDecoration(
+                  decoration: BoxDecoration(
                     shape: BoxShape.circle,
-                    color: HfColors.lavenderDeep,
+                    color: style.inset,
                   ),
                 ),
               ),
@@ -418,9 +422,9 @@ class _BalanceCard extends StatelessWidget {
                 child: Container(
                   width: 120,
                   height: 120,
-                  decoration: const BoxDecoration(
+                  decoration: BoxDecoration(
                     shape: BoxShape.circle,
-                    color: HfColors.blushDeep,
+                    color: style.inset,
                   ),
                 ),
               ),
@@ -445,7 +449,7 @@ class _BalanceCard extends StatelessWidget {
                       style: HfText.hero.copyWith(
                         fontSize: 44,
                         height: 1.1,
-                        color: HfColors.white,
+                        color: style.ink,
                       ),
                     ),
                   ),

@@ -3,7 +3,32 @@ import 'package:flutter/material.dart';
 import '../../../core/theme/hf_theme.dart';
 import '../data/wallet_models.dart';
 
-/// The Wallet's one surface: white, radius 22, 1 px hairline (the mockup's "Recent" list). Dark-aware.
+/// Wallet-only palette; inherited typography and the floating navigation stay intact.
+class WalletStyle {
+  const WalletStyle._(this.dark);
+  factory WalletStyle.of(BuildContext context) =>
+      WalletStyle._(HfBrightness.isDark(context));
+
+  final bool dark;
+  Color get page => dark ? const Color(0xFF000000) : const Color(0xFFF6F3EE);
+  Color get card => dark ? const Color(0xFF343438) : const Color(0xFFFFFDF9);
+  Color get inset => dark ? const Color(0xFF484850) : const Color(0xFFE8E2DA);
+  Color get ink => dark ? const Color(0xFFF8F6FF) : const Color(0xFF000000);
+  Color get muted => dark ? const Color(0xFFE0DBEB) : const Color(0xFF4C4740);
+  Color get line => dark ? const Color(0xFF5C5C66) : const Color(0xFFD8D1C9);
+  static const primary = Color(0xFFF28C28);
+
+  List<BoxShadow> get shadows => [
+    BoxShadow(
+      color: Colors.black.withValues(alpha: dark ? 0.55 : 0.14),
+      blurRadius: 18,
+      offset: const Offset(0, 6),
+    ),
+    if (dark) const BoxShadow(color: Color(0x245C5C66), blurRadius: 8),
+  ];
+}
+
+/// The Wallet's neutral surface: radius 22, visible hairline and soft shadow.
 class WalletSurface extends StatelessWidget {
   const WalletSurface({
     super.key,
@@ -20,12 +45,13 @@ class WalletSurface extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final dark = HfBrightness.isDark(context);
+    final style = WalletStyle.of(context);
     return Container(
       decoration: BoxDecoration(
-        color: color ?? (dark ? HfColors.darkCard : HfColors.white),
+        color: color ?? style.card,
         borderRadius: BorderRadius.circular(HfRadius.tile),
-        border: Border.all(color: dark ? HfColors.darkLine : HfColors.line),
+        border: Border.all(color: style.line),
+        boxShadow: style.shadows,
       ),
       child: Material(
         type: MaterialType.transparency,
@@ -44,7 +70,7 @@ class WalletSectionTitle extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Semantics(
     header: true,
-    child: Text(text, style: HfText.of(context, HfText.section)),
+    child: Text(text, style: HfText.section.copyWith(color: WalletStyle.of(context).ink)),
   );
 }
 
@@ -83,7 +109,8 @@ class WalletRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final strong = HfText.of(context, HfText.bodyStrong).copyWith(fontSize: 15);
+    final style = WalletStyle.of(context);
+    final strong = HfText.bodyStrong.copyWith(fontSize: 15, color: style.ink);
     return Material(
       color: Colors.transparent,
       child: InkWell(
@@ -110,7 +137,7 @@ class WalletRow extends StatelessWidget {
                       style: HfText.of(
                         context,
                         HfText.label,
-                      ).copyWith(fontWeight: FontWeight.w400),
+                      ).copyWith(fontWeight: FontWeight.w400, color: style.muted),
                     ),
                 ],
               ),
@@ -153,14 +180,14 @@ class WalletRowTile extends StatelessWidget {
       height: 40,
       alignment: Alignment.center,
       decoration: BoxDecoration(
-        color: tint.bg(context),
+        color: WalletStyle.of(context).inset,
         borderRadius: BorderRadius.circular(HfRadius.chip),
       ),
       child: icon != null
-          ? Icon(icon, size: 18, color: tint.ink(context))
+          ? Icon(icon, size: 18, color: WalletStyle.of(context).ink)
           : Text(
               text ?? '',
-              style: HfText.subsection.copyWith(color: tint.valueInk(context)),
+              style: HfText.subsection.copyWith(color: WalletStyle.of(context).ink),
             ),
     );
   }
@@ -189,7 +216,7 @@ class _WalletRowsCardState extends State<WalletRowsCard> {
 
   @override
   Widget build(BuildContext context) {
-    final dark = HfBrightness.isDark(context);
+    final style = WalletStyle.of(context);
     final rows = widget.rows;
     if (rows.isEmpty) {
       return WalletSurface(
@@ -201,7 +228,7 @@ class _WalletRowsCardState extends State<WalletRowsCard> {
     }
     final long = rows.length > widget.limit;
     final shown = (!long || _all) ? rows : rows.sublist(0, widget.limit);
-    final line = dark ? HfColors.darkLine : HfColors.line;
+    final line = style.line;
     return WalletSurface(
       padding: EdgeInsets.zero,
       child: Column(

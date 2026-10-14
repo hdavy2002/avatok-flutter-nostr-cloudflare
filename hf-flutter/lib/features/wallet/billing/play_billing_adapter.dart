@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:in_app_purchase/in_app_purchase.dart';
 
+import '../../../core/analytics/analytics.dart';
 import 'billing_adapter.dart';
 
 /// The real adapter: `in_app_purchase` on Google Play.
@@ -88,7 +89,23 @@ class PlayBillingAdapter implements BillingAdapter {
     Set<String> productIds,
   ) async {
     if (productIds.isEmpty) return const <String, StoreProduct>{};
+    final sw = Stopwatch()..start();
     final resp = await _iap.queryProductDetails(productIds);
+    final requested = productIds.where(
+      (id) => RegExp(r'^hf_(rupees|tokens)_[0-9]+$').hasMatch(id),
+    ).toSet();
+    final returned = resp.productDetails.map((d) => d.id).toSet();
+    final missing = requested.difference(returned).toList()..sort();
+    unawaited(Analytics.capture('hf_app_wallet_products_queried', {
+      'outcome': resp.error != null ? 'error' : (missing.isEmpty ? 'ok' : 'partial'),
+      'reason': resp.error != null ? 'play_query_error' : (missing.isEmpty ? 'none' : 'missing_products'),
+      'status': resp.error == null ? 'completed' : 'failed',
+      'ms': sw.elapsedMilliseconds,
+      'requested_product_ids': requested.toList()..sort(),
+      'returned_product_ids': requested.intersection(returned).toList()..sort(),
+      'missing_product_ids': missing,
+      'not_found_product_ids': resp.notFoundIDs.where(requested.contains).toList()..sort(),
+    }));
     if (resp.error != null && resp.productDetails.isEmpty) {
       throw StateError(resp.error!.message);
     }

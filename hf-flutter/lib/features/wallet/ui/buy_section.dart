@@ -22,6 +22,8 @@ abstract final class BuyCopy {
   static const String noPrices =
       'We could not load the prices from Google Play.';
   static const String unavailable = 'Not available';
+  static const String partialPrices =
+      'Some packs are unavailable on Google Play. Try loading them again.';
   static const String approvedUnavailable =
       'The approved fixed packs are not available right now.';
   static const String loading = 'Loading packs…';
@@ -43,14 +45,6 @@ const double _gridGap = 10;
 
 /// Width / height of a pack tile (mockup grid). The tile is never shorter than 108.
 const double _tileAspect = 1.42;
-
-/// Tile colours in the fixed reference order: ₹120, ₹240, ₹360 and ₹500.
-const List<HfTint> _tileTints = [
-  HfTint.sky,
-  HfTint.butter,
-  HfTint.peach,
-  HfTint.lavender,
-];
 
 const List<String> _catalogueProductIds = <String>[
   'hf_rupees_120',
@@ -115,7 +109,7 @@ class BuySection extends ConsumerWidget {
                 : 'We could not load the packs. Please try again.',
             onRetry: () => ref.invalidate(packOffersProvider),
           ),
-          data: (o) => _Packs(offers: o),
+          data: (o) => _Packs(offers: o, refreshing: offers.isLoading),
         ),
       ],
     );
@@ -192,9 +186,10 @@ class _Message extends StatelessWidget {
 }
 
 class _Packs extends ConsumerStatefulWidget {
-  const _Packs({required this.offers});
+  const _Packs({required this.offers, required this.refreshing});
 
   final PackOffers offers;
+  final bool refreshing;
 
   @override
   ConsumerState<_Packs> createState() => _PacksState();
@@ -210,7 +205,7 @@ class _PacksState extends ConsumerState<_Packs> {
   PackOffer? _selected(List<PackOffer> all) {
     if (all.isEmpty) return null;
     for (final o in all) {
-      if (o.productId == _picked) return o;
+      if (o.productId == _picked && o.store != null) return o;
     }
     for (final o in all) {
       if (_isPopular(o) && o.store != null) return o;
@@ -218,11 +213,11 @@ class _PacksState extends ConsumerState<_Packs> {
     for (final o in all) {
       if (o.store != null) return o;
     }
-    return all.first;
+    return null;
   }
 
   Future<void> _pay(PackOffer offer) async {
-    if (_starting) return;
+    if (_starting || offer.store == null) return;
     setState(() => _starting = true);
     try {
       await ref
@@ -292,7 +287,7 @@ class _PacksState extends ConsumerState<_Packs> {
       PurchasePhase.verifying => BuyCopy.verifying,
       _ => null,
     };
-    final working = _starting || purchase.phase != PurchasePhase.idle;
+    final working = widget.refreshing || _starting || purchase.phase != PurchasePhase.idle;
     final catalogue = _catalogueOffers(offers.offers);
     if (catalogue.isEmpty) {
       return const _Message(text: BuyCopy.approvedUnavailable);
@@ -307,11 +302,10 @@ class _PacksState extends ConsumerState<_Packs> {
       for (var i = 0; i < catalogue.length; i++)
         _PackTile(
           offer: catalogue[i],
-          tint: _tileTints[i % _tileTints.length],
           selected: catalogue[i].productId == selected?.productId,
           popular: _isPopular(catalogue[i]),
           referenceCustomStyle: catalogue[i].productId == 'hf_rupees_500',
-          onTap: tilesEnabled
+          onTap: tilesEnabled && catalogue[i].store != null
               ? () {
                   HapticFeedback.selectionClick();
                   setState(() => _picked = catalogue[i].productId);
@@ -327,10 +321,10 @@ class _PacksState extends ConsumerState<_Packs> {
           const _Message(text: BuyCopy.noStore),
           const SizedBox(height: 16),
         ],
-        if (offers.storeError) ...[
+        if (offers.storeError || offers.missingProductIds.isNotEmpty) ...[
           _Message(
-            text: BuyCopy.noPrices,
-            onRetry: () => ref.invalidate(packOffersProvider),
+            text: offers.storeError ? BuyCopy.noPrices : BuyCopy.partialPrices,
+            onRetry: working ? null : () => ref.invalidate(packOffersProvider),
           ),
           const SizedBox(height: 16),
         ],
@@ -361,13 +355,29 @@ class _PacksState extends ConsumerState<_Packs> {
           const SizedBox(height: HfSpacing.sm),
         ],
         // The label carries Play's own price string. No price is ever typed or taken from our server.
-        HfButton(
-          key: const ValueKey<String>('pay-button'),
-          label: price == null
-              ? 'Pay with Google Play'
-              : 'Pay $price with Google Play',
-          loading: working,
-          onPressed: canPay ? () => _pay(selected) : null,
+        Theme(
+          data: Theme.of(context).copyWith(
+            elevatedButtonTheme: ElevatedButtonThemeData(
+              style: (Theme.of(context).elevatedButtonTheme.style ?? const ButtonStyle()).copyWith(
+                backgroundColor: WidgetStateProperty.resolveWith((states) =>
+                    states.contains(WidgetState.disabled)
+                        ? WalletStyle.of(context).inset
+                        : WalletStyle.primary),
+                foregroundColor: WidgetStateProperty.resolveWith((states) =>
+                    states.contains(WidgetState.disabled)
+                        ? WalletStyle.of(context).muted
+                        : Colors.black),
+              ),
+            ),
+          ),
+          child: HfButton(
+            key: const ValueKey<String>('pay-button'),
+            label: price == null
+                ? 'Pay with Google Play'
+                : 'Pay $price with Google Play',
+            loading: working,
+            onPressed: canPay ? () => _pay(selected) : null,
+          ),
         ),
         const SizedBox(height: HfSpacing.md),
         Text(
@@ -387,7 +397,6 @@ class _PacksState extends ConsumerState<_Packs> {
 class _PackTile extends StatelessWidget {
   const _PackTile({
     required this.offer,
-    required this.tint,
     required this.selected,
     required this.popular,
     required this.referenceCustomStyle,
@@ -395,7 +404,6 @@ class _PackTile extends StatelessWidget {
   });
 
   final PackOffer offer;
-  final HfTint tint;
   final bool selected;
   final bool popular;
   final bool referenceCustomStyle;
@@ -403,13 +411,11 @@ class _PackTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final dark = HfBrightness.isDark(context);
+    final style = WalletStyle.of(context);
     final price = offer.priceText;
     final breakdown = offer.breakdown;
     final legacyCredit = offer.pack.creditPaise;
-    final border = selected
-        ? (dark ? HfColors.lavenderLight : HfColors.ink)
-        : Colors.transparent;
+    final border = selected ? WalletStyle.primary : style.line;
     final label = price == null ? BuyCopy.unavailable : price;
     final semantic = [
       label,
@@ -435,18 +441,13 @@ class _PackTile extends StatelessWidget {
               curve: HfMotion.curve,
               constraints: const BoxConstraints(minHeight: 108),
               decoration: BoxDecoration(
-                color: referenceCustomStyle
-                    ? (dark ? HfColors.darkCard : HfColors.white)
-                    : tint.bg(context),
+                color: style.card,
                 borderRadius: radius,
                 border: Border.all(
-                  color: selected
-                      ? border
-                      : referenceCustomStyle
-                      ? (dark ? HfColors.darkLine : HfColors.line)
-                      : Colors.transparent,
+                  color: border,
                   width: selected ? 3 : 1,
                 ),
+                boxShadow: style.shadows,
               ),
               child: Material(
                 type: MaterialType.transparency,
@@ -468,7 +469,7 @@ class _PackTile extends StatelessWidget {
                               label,
                               style: HfText.stat.copyWith(
                                 fontSize: 24,
-                                color: tint.valueInk(context),
+                                color: style.ink,
                               ),
                             ),
                             if (referenceCustomStyle) ...[
@@ -479,13 +480,13 @@ class _PackTile extends StatelessWidget {
                                   Icon(
                                     Icons.lock_outline_rounded,
                                     size: 14,
-                                    color: tint.ink(context),
+                                    color: style.muted,
                                   ),
                                   const SizedBox(width: 4),
                                   Text(
                                     'Fixed pack',
                                     style: HfText.note.copyWith(
-                                      color: tint.ink(context),
+                                      color: style.muted,
                                       fontWeight: FontWeight.w700,
                                     ),
                                   ),
@@ -498,7 +499,7 @@ class _PackTile extends StatelessWidget {
                                 '+ ${breakdown.wallet} to wallet',
                                 key: ValueKey<String>('gst-${offer.productId}'),
                                 style: HfText.note.copyWith(
-                                  color: tint.ink(context),
+                                  color: style.muted,
                                   fontWeight: FontWeight.w600,
                                 ),
                               ),
@@ -507,7 +508,7 @@ class _PackTile extends StatelessWidget {
                               Text(
                                 'Added to wallet ${formatPaise(legacyCredit)}',
                                 style: HfText.note.copyWith(
-                                  color: tint.valueInk(context),
+                                  color: style.ink,
                                 ),
                               ),
                             ],
@@ -534,13 +535,13 @@ class _PackTile extends StatelessWidget {
                     vertical: 3,
                   ),
                   decoration: BoxDecoration(
-                    color: dark ? HfColors.lavenderLight : HfColors.ink,
+                    color: WalletStyle.primary,
                     borderRadius: BorderRadius.circular(10),
                   ),
                   child: Text(
                     BuyCopy.popular,
                     style: HfText.badge.copyWith(
-                      color: dark ? HfColors.ink : HfColors.white,
+                      color: Colors.black,
                     ),
                   ),
                 ),

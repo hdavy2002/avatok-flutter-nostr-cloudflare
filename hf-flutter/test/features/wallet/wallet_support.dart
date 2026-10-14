@@ -243,6 +243,7 @@ Future<ProviderContainer> pumpWallet(
   required FakeBillingAdapter billing,
   SessionState? session,
   Map<String, String> query = const {},
+  bool dark = false,
 }) async {
   // A tall phone so the whole list is built and nothing needs scrolling.
   tester.view.physicalSize = const Size(1080, 7000);
@@ -266,7 +267,7 @@ Future<ProviderContainer> pumpWallet(
     UncontrolledProviderScope(
       container: container,
       child: MaterialApp(
-        theme: buildHfTheme(),
+        theme: dark ? buildHfDarkTheme() : buildHfTheme(),
         home: WalletScreen(query: query),
       ),
     ),

@@ -29,6 +29,25 @@ class _RecordingLinks extends LinkOpener {
 }
 
 void main() {
+  for (final dark in [false, true]) {
+    testWidgets('wallet palette preserves type sizes (${dark ? 'dark' : 'light'})', (tester) async {
+      await pumpWallet(tester, api: walletApi(), billing: walletBilling(), dark: dark);
+      expect(tester.widget<Scaffold>(find.byType(Scaffold)).backgroundColor,
+          dark ? const Color(0xFF000000) : const Color(0xFFF6F3EE));
+      final balance = tester.widget<Text>(find.byKey(const ValueKey<String>('balance-total')));
+      expect(balance.style?.fontSize, 44);
+      expect(balance.style?.color, dark ? const Color(0xFFF8F6FF) : Colors.black);
+      final price = tester.widget<Text>(find.text('₹120.00').first);
+      expect(price.style?.fontSize, 24);
+      final button = tester.widget<ElevatedButton>(
+        find.descendant(of: payButton, matching: find.byType(ElevatedButton)),
+      );
+      final buttonContext = tester.element(find.descendant(of: payButton, matching: find.byType(ElevatedButton)));
+      expect(Theme.of(buttonContext).elevatedButtonTheme.style?.backgroundColor?.resolve({}), const Color(0xFFF28C28));
+      expect(button.onPressed, isNotNull);
+    });
+  }
+
   late FakeBillingAdapter billing;
 
   setUp(() => billing = walletBilling());

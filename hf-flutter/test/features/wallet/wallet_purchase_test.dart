@@ -165,10 +165,82 @@ void main() {
         final b = tester.widget<ElevatedButton>(
           find.descendant(of: payButton, matching: find.byType(ElevatedButton)),
         );
-        expect(b.onPressed, isNull);
+        expect(b.onPressed, isNotNull);
+        expect(find.text('Pay ₹120.00 with Google Play'), findsOneWidget);
+        expect(api.callsTo('POST', '/api/hf/tokens/play/prepare'), isEmpty);
         expect(billing.boughtProductIds, isEmpty);
       },
     );
+
+    testWidgets('partial Play catalogue keeps missing packs disabled and recovers on retry', (
+      tester,
+    ) async {
+      api.onJson('GET', '/api/hf/tokens/products', {
+        'ok': true,
+        'enabled': true,
+        'products': [
+          for (final amount in [120, 240, 360, 500])
+            {'productId': 'hf_rupees_$amount', 'pricePaise': amount * 100},
+        ],
+      });
+      billing.products = {
+        for (final amount in [360, 500])
+          'hf_rupees_$amount': StoreProduct(
+            productId: 'hf_rupees_$amount',
+            priceText: '₹$amount.00',
+            currencyCode: 'INR',
+            priceMicros: amount * 1000000,
+          ),
+      };
+      final container = await pumpWallet(tester, api: api, billing: billing);
+      final offers = container.read(packOffersProvider).requireValue;
+      expect(offers.missingProductIds, ['hf_rupees_120', 'hf_rupees_240']);
+      expect(find.text('Not available'), findsNWidgets(2));
+      expect(find.text('Pay ₹360.00 with Google Play'), findsOneWidget);
+      for (final id in offers.missingProductIds) {
+        final tile = find.descendant(of: buyButton(id), matching: find.byType(InkWell));
+        expect(tester.widget<InkWell>(tile).onTap, isNull);
+        await tester.tap(buyButton(id));
+        await tester.pump();
+      }
+      expect(find.text('Pay ₹360.00 with Google Play'), findsOneWidget);
+      // Defence in depth: direct controller calls still cannot prepare a missing product.
+      await container.read(purchaseControllerProvider.notifier).buy(
+        offers.offers.first,
+        confirm: (_, __) async => true,
+      );
+      expect(api.callsTo('POST', '/api/hf/tokens/play/prepare'), isEmpty);
+      expect(billing.boughtProductIds, isEmpty);
+      container.read(purchaseControllerProvider.notifier).dismissNotice();
+      await tester.tap(buyButton('hf_rupees_500'));
+      await tester.pumpAndSettle();
+      expect(find.text('Pay ₹500.00 with Google Play'), findsOneWidget);
+      billing.products = {'hf_rupees_360': billing.products['hf_rupees_360']!};
+      await tester.tap(find.text('Try again'));
+      await tester.pumpAndSettle();
+      expect(find.text('Pay ₹360.00 with Google Play'), findsOneWidget,
+          reason: 'a previously selected pack lost from Play cannot remain selected');
+
+      billing.products = {
+        for (final amount in [120, 240, 360, 500])
+          'hf_rupees_$amount': StoreProduct(
+            productId: 'hf_rupees_$amount',
+            priceText: '₹$amount.00',
+            currencyCode: 'INR',
+            priceMicros: amount * 1000000,
+          ),
+      };
+      await tester.tap(find.text('Try again'));
+      await tester.pumpAndSettle();
+      expect(container.read(packOffersProvider).requireValue.missingProductIds, isEmpty);
+      expect(find.text('Not available'), findsNothing);
+      expect(find.text('Pay ₹500.00 with Google Play'), findsOneWidget,
+          reason: 'the user choice can return when Play makes it available again');
+      await selectAndPay(tester, 'hf_rupees_120');
+      await tester.pumpAndSettle();
+      expect(billing.boughtProductIds, ['hf_rupees_120']);
+      expect((api.callsTo('POST', '/api/hf/tokens/play/prepare').single.body as Map)['productId'], 'hf_rupees_120');
+    });
 
     testWidgets('selecting another pack changes the Pay label', (tester) async {
       await pumpWallet(tester, api: api, billing: billing);

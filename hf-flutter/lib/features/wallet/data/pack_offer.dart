@@ -76,6 +76,7 @@ class PackOffers {
     required this.offers,
     this.storeAvailable = true,
     this.storeError = false,
+    this.missingProductIds = const <String>[],
   });
 
   /// False when the products route says purchases are off ("Adding money is coming soon").
@@ -87,6 +88,9 @@ class PackOffers {
 
   /// True when Play could not be reached to read the prices.
   final bool storeError;
+
+  /// Requested catalogue IDs absent from Play; identifiers only, never billing tokens/errors.
+  final List<String> missingProductIds;
 
   static const PackOffers off = PackOffers(
     enabled: false,

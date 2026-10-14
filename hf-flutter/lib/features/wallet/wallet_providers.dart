@@ -89,6 +89,12 @@ final packOffersProvider = FutureProvider.autoDispose<PackOffers>((ref) async {
     });
     return PackOffers(
       enabled: true,
+      missingProductIds: [
+        for (final p in catalog.packs)
+          if (!found.containsKey(p.productId) &&
+              RegExp(r'^hf_(rupees|tokens)_[0-9]+$').hasMatch(p.productId))
+            p.productId,
+      ],
       offers: [
         for (final p in catalog.packs)
           PackOffer(pack: p, store: found[p.productId]),
