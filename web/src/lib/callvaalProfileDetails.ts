@@ -8,7 +8,7 @@ import { profiles, type SampleProfile } from './callvaalHomeReference';
 export type ProfileDetailId = 'neha' | 'priya' | 'sana' | 'kavya' | 'dr-ananya' | 'rohan' | 'arjun' | 'dev';
 export interface ProfilePhoto { path: string; width: number; height: number; alt: string; }
 export interface ProfileTip { icon: 'notes' | 'pill' | 'user' | 'chat'; title: string; text: string; }
-export interface ProfileBenefit { icon: 'lock' | 'shield' | 'chat'; title: string; text: string; }
+export interface ProfileBenefit { icon: 'lock' | 'shield' | 'chat' | 'sparkle'; title: string; text: string; }
 export interface SampleReview { name: string; initials: string; text: string; date: string; iso: string; rating: 1 | 2 | 3 | 4 | 5; mood?: string; minutes?: number; regular?: boolean; }
 /** Star counts, 5★ first. Their weighted average matches the card's rating. */
 export type RatingBreakdown = [number, number, number, number, number];
@@ -46,7 +46,7 @@ const sampleDisclosure = 'Sample profile · Illustrative. Images, availability, 
 const previewDisclosure = 'Preview only. Calls, bookings and payments are unavailable.';
 const preparationTips: ProfileTip[] = [
   { icon: 'chat', title: 'Just a conversation', text: 'Talk and share at your own pace. No professional advice or promised results.' },
-  { icon: 'user', title: 'Keep it respectful', text: '18+ only. You can end a call at any time. Sexual or abusive talk is prohibited. End and report the call if you feel unsafe.' },
+  { icon: 'user', title: 'Keep it respectful', text: 'Report the call if you feel unsafe. 18+ only. You can end a call at any time. Sexual or abusive talk is prohibited.' },
   { icon: 'notes', title: 'Know before you start', text: 'Calls are not recorded; AI keeps an eye on every live call for safety. In crisis, call Tele-MANAS 14416 or 112.' },
 ];
 const benefits: ProfileBenefit[] = [

@@ -55,6 +55,47 @@ document.querySelectorAll<HTMLButtonElement>('[data-profile-preview]').forEach(b
   record(`${action}_preview`);
 }));
 
+// Neha's profile controls are browser-local preview interactions; they never reserve a real slot.
+const availability = document.querySelector<HTMLElement>('.hf-availability');
+availability?.querySelectorAll<HTMLButtonElement>('[data-hf-status]').forEach(button => button.addEventListener('click', () => {
+  const selected = button.dataset.hfStatus || 'online';
+  availability.querySelectorAll<HTMLButtonElement>('[data-hf-status]').forEach(option => option.setAttribute('aria-pressed', String(option === button)));
+  const badge = document.querySelector<HTMLElement>('.cv-profile-photo .cv-online');
+  if (badge) { badge.classList.toggle('cv-status-offline', selected === 'offline'); badge.classList.toggle('cv-status-online', selected === 'online'); badge.setAttribute('aria-label', `Illustrative availability: ${selected === 'online' ? 'online now' : 'offline'}`); const label = badge.lastChild; if (label?.nodeType === Node.TEXT_NODE) label.textContent = selected === 'online' ? 'Online now' : 'Offline'; }
+}));
+const calendarSelection = document.querySelector<HTMLElement>('.hf-calendar-selection');
+const timeSelection = document.querySelector<HTMLElement>('.hf-time-selection');
+const calendarDays = [...document.querySelectorAll<HTMLButtonElement>('[data-hf-day]')];
+calendarDays.forEach(button => button.addEventListener('click', () => {
+  calendarDays.forEach(day => { const chosen = day === button; day.classList.toggle('is-selected', chosen); day.setAttribute('aria-pressed', String(chosen)); });
+  const day = Number(button.dataset.hfDay);
+  const date = new Date(Date.UTC(2026, 9, day));
+  if (calendarSelection) calendarSelection.textContent = `${new Intl.DateTimeFormat('en-IN', { weekday: 'long', timeZone: 'UTC' }).format(date)}, October ${day} selected`;
+}));
+document.querySelectorAll<HTMLButtonElement>('[data-hf-time]').forEach(button => button.addEventListener('click', () => {
+  document.querySelectorAll<HTMLButtonElement>('[data-hf-time]').forEach(option => { const chosen = option === button; option.classList.toggle('is-selected', chosen); option.setAttribute('aria-pressed', String(chosen)); });
+  if (timeSelection) timeSelection.textContent = `Selected time: ${button.dataset.hfTime}`;
+}));
+
+const profilePagination = document.querySelector<HTMLElement>('.hf-profile-pagination');
+if (profilePagination) {
+  const sectionTargets = ['#about', '#reviews', '#before-heading'];
+  const count = profilePagination.querySelector<HTMLElement>('[data-hf-page-count]');
+  const previous = profilePagination.querySelector<HTMLAnchorElement>('[data-hf-page-nav="previous"]');
+  const next = profilePagination.querySelector<HTMLAnchorElement>('[data-hf-page-nav="next"]');
+  const pageLinks = [...profilePagination.querySelectorAll<HTMLAnchorElement>('[data-hf-page-index]')];
+  const setPage = (index: number) => {
+    const page = Math.max(0, Math.min(sectionTargets.length - 1, index));
+    if (count) count.textContent = `Section ${page + 1} of ${sectionTargets.length}`;
+    pageLinks.forEach((link, linkIndex) => { if (linkIndex === page) link.setAttribute('aria-current', 'location'); else link.removeAttribute('aria-current'); });
+    if (previous) { previous.href = sectionTargets[Math.max(page - 1, 0)]; previous.setAttribute('aria-disabled', String(page === 0)); }
+    if (next) { next.href = sectionTargets[Math.min(page + 1, sectionTargets.length - 1)]; next.setAttribute('aria-disabled', String(page === sectionTargets.length - 1)); }
+  };
+  pageLinks.forEach((link, index) => link.addEventListener('click', () => setPage(index)));
+  previous?.addEventListener('click', event => { const current = pageLinks.findIndex(link => link.getAttribute('aria-current') === 'location'); if (current <= 0) { event.preventDefault(); return; } setPage(current - 1); });
+  next?.addEventListener('click', event => { const current = pageLinks.findIndex(link => link.getAttribute('aria-current') === 'location'); if (current >= sectionTargets.length - 1) { event.preventDefault(); return; } setPage(current + 1); });
+}
+
 interface GalleryPhoto { src: string; srcset: string; alt: string; width: number; height: number; }
 const galleryData = document.querySelector('#cv-gallery-data');
 const photos: GalleryPhoto[] = JSON.parse(galleryData?.textContent || '[]');

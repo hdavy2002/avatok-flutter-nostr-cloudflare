@@ -10677,5 +10677,21 @@
     "two_sided": false,
     "min_devices_on_build": 1,
     "no_telemetry": "Navigation hit-area correction and test-contract maintenance; existing destination and onboarding events cover runtime behavior."
+  },
+  "HF-NEHA-PROFILE-WEB-1": {
+    "description": "Publish the reviewed Neha profile layout and conversation categories: responsive calendar and time choices, availability actions, updated privacy and verification copy, AI avatar assurance, and section navigation. Call and booking controls remain preview-only.",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [],
+    "success": [
+      {
+        "event": "profile_section_view",
+        "property": "profile_id",
+        "equals": "neha",
+        "min_events": 0,
+        "note": "Existing profile view telemetry identifies visits to this sample profile. The web release browser checks validate the responsive page and selector/navigation contracts; no new production booking behavior is introduced."
+      }
+    ],
+    "_verified_at": "Existing profile_section_view capture includes profile_id metadata in web/src/components/callvaal/profileDetail.ts and web/src/components/callvaal/ProfileDetail.astro."
   }
 }
