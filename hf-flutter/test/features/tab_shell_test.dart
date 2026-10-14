@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:hf_app/features/host_profile/ui/host_profile_screen.dart';
+import 'package:hf_app/features/bookings/ui/customer_bookings_screen.dart';
 import 'package:hf_app/features/review/ui/review_screen.dart';
 import 'package:hf_app/core/router/app_router.dart';
 import 'package:hf_app/core/router/routes.dart';
@@ -30,7 +31,7 @@ void main() {
   ) async {
     await pumpApp(tester);
     expect(find.byType(HfFloatingNav), findsOneWidget);
-    for (final k in ['tab-home', 'tab-wallet', 'tab-me']) {
+    for (final k in ['tab-home', 'tab-wallet', 'tab-me', 'tab-more']) {
       expect(tabItem(k), findsOneWidget, reason: k);
     }
     expect(tabItem('tab-host'), findsNothing);
@@ -39,6 +40,77 @@ void main() {
     expect(find.byTooltip('Discover'), findsOneWidget);
     expect(find.byKey(const ValueKey<String>('nav-selected')), findsOneWidget);
     expect(tabLabel('Wallet'), findsNothing);
+  });
+
+  testWidgets('More opens Calendar and Back dismisses the menu', (tester) async {
+    final container = await pumpApp(tester);
+    final before = container.read(appRouterProvider).routeInformationProvider.value.uri;
+    expect(find.byTooltip('More'), findsOneWidget);
+    await tester.tap(tabItem('tab-more'));
+    await tester.pumpAndSettle();
+    expect(find.text('Calendar'), findsOneWidget);
+    expect(find.byKey(const ValueKey<String>('menu-host-bookings')), findsNothing);
+    expect(find.byKey(const ValueKey<String>('menu-availability')), findsNothing);
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+    expect(find.text('Calendar'), findsNothing);
+    expect(find.text('Exit?'), findsNothing);
+    expect(container.read(appRouterProvider).routeInformationProvider.value.uri, before);
+  });
+
+  testWidgets('Calendar keeps the sign-in destination for guests', (tester) async {
+    await pumpApp(tester);
+    await tester.tap(tabItem('tab-more'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey<String>('menu-calendar')));
+    await tester.pumpAndSettle();
+    expect(find.byType(SignInScreen), findsOneWidget);
+    expect(tester.widget<SignInScreen>(find.byType(SignInScreen)).next,
+        Routes.customerBookings);
+  });
+
+  testWidgets('Calendar opens bookings and app-bar Back restores the footer', (tester) async {
+    await pumpApp(tester, location: Routes.explore, session: signedInState());
+    await tester.tap(tabItem('tab-more'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey<String>('menu-calendar')));
+    await tester.pumpAndSettle();
+    expect(find.byType(CustomerBookingsScreen), findsOneWidget);
+    expect(find.byType(BackButton), findsOneWidget);
+    await tester.tap(find.byType(BackButton));
+    await tester.pumpAndSettle();
+    expect(find.byType(CustomerBookingsScreen), findsNothing);
+    expect(find.byType(ExploreScreen), findsOneWidget);
+    expect(tabItem('tab-more'), findsOneWidget);
+  });
+
+  testWidgets('host menu and five footer targets fit at 320 dp and 2x text', (tester) async {
+    tester.platformDispatcher.textScaleFactorTestValue = 2;
+    addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+    final semantics = tester.ensureSemantics();
+    addTearDown(semantics.dispose);
+    tester.view.devicePixelRatio = 3;
+    addTearDown(tester.view.resetDevicePixelRatio);
+    tester.view.physicalSize = const Size(960, 2400);
+    addTearDown(tester.view.resetPhysicalSize);
+    await pumpApp(tester, session: signedInState(host: true));
+    await tester.pumpAndSettle();
+    for (final key in ['tab-home', 'tab-wallet', 'tab-host', 'tab-me', 'tab-more']) {
+      final size = tester.getSize(tabItem(key));
+      expect(size.width, greaterThanOrEqualTo(48));
+      expect(size.height, greaterThanOrEqualTo(48));
+    }
+    expect(tester.getSemantics(tabItem('tab-more')).label, 'More');
+    expect(tester.takeException(), isNull);
+    await tester.tap(tabItem('tab-more'));
+    await tester.pumpAndSettle();
+    expect(find.text('Calendar'), findsOneWidget);
+    expect(find.text('Host bookings'), findsOneWidget);
+    expect(find.text('Availability'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+    await tester.tap(find.byTooltip('Close menu'));
+    await tester.pumpAndSettle();
+    expect(find.text('Calendar'), findsNothing);
   });
 
   testWidgets('a person with a host profile also sees the Host tab', (
@@ -208,11 +280,11 @@ void main() {
       addTearDown(tester.view.resetPadding);
       await tester.pumpAndSettle();
       expect(tester.widget<HfFloatingNav>(find.byType(HfFloatingNav)).profileStyle, isTrue);
-      for (final label in ['Discover', 'Wallet', 'Me', if (host) 'Host']) {
+      for (final label in ['Discover', 'Wallet', 'Me', 'More', if (host) 'Host']) {
         expect(tabLabel(label), findsNothing);
         expect(find.byTooltip(label), findsOneWidget);
       }
-      for (final key in ['tab-home', 'tab-wallet', 'tab-me', if (host) 'tab-host']) {
+      for (final key in ['tab-home', 'tab-wallet', 'tab-me', 'tab-more', if (host) 'tab-host']) {
         expect(tester.getSize(tabItem(key)).height, greaterThanOrEqualTo(48));
       }
       expect(tabItem('tab-host'), host ? findsOneWidget : findsNothing);

@@ -8,6 +8,7 @@ import '../strings.dart';
 import '../theme/hf_theme.dart';
 import '../widgets/hf_floating_nav.dart';
 import 'pending_intent.dart';
+import 'routes.dart';
 
 /// Branch indexes of the shell, in router order. The Host tab always has a branch (so `/host` works as a
 /// deep link) but its button shows only when the person has a host profile.
@@ -103,6 +104,64 @@ class HfTabShell extends ConsumerWidget {
     if (leave == true) await SystemNavigator.pop();
   }
 
+  Future<void> _openMenu(
+    BuildContext context,
+    WidgetRef ref, {
+    required bool hasHost,
+  }) async {
+    final destination = await showModalBottomSheet<String>(
+      context: context,
+      useRootNavigator: true,
+      useSafeArea: true,
+      isScrollControlled: true,
+      builder: (sheetContext) => SafeArea(
+        top: false,
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListTile(
+                title: const Text('More'),
+                trailing: IconButton(
+                  tooltip: 'Close menu',
+                  icon: const Icon(Icons.close),
+                  onPressed: () => Navigator.of(sheetContext).pop(),
+                ),
+              ),
+              ListTile(
+                key: const ValueKey<String>('menu-calendar'),
+                leading: const Icon(Icons.calendar_month_rounded),
+                title: const Text('Calendar'),
+                subtitle: const Text('Your booked appointments'),
+                onTap: () => Navigator.of(sheetContext).pop(Routes.customerBookings),
+              ),
+              if (hasHost) ...[
+                ListTile(
+                  key: const ValueKey<String>('menu-host-bookings'),
+                  leading: const Icon(Icons.event_note_rounded),
+                  title: const Text('Host bookings'),
+                  onTap: () => Navigator.of(sheetContext).pop(Routes.hostBookings),
+                ),
+                ListTile(
+                  key: const ValueKey<String>('menu-availability'),
+                  leading: const Icon(Icons.event_available_rounded),
+                  title: const Text('Availability'),
+                  onTap: () => Navigator.of(sheetContext).pop(Routes.hostAvailability),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+    if (destination == null || !context.mounted) return;
+    await ref.read(pendingIntentProvider).clear();
+    if (!context.mounted) return;
+    // Push the existing booking screen so its app-bar and system Back return
+    // to the tab the person opened the menu from.
+    context.push(destination);
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final hasHost = ref.watch(sessionProvider.select((s) => s.hasHostTab));
@@ -144,6 +203,12 @@ class HfTabShell extends ConsumerWidget {
                 color: t.color,
                 keyName: t.key,
               ),
+            const HfNavItem(
+              icon: Icons.menu_rounded,
+              label: 'More',
+              tint: HfTint.lavender,
+              keyName: 'tab-more',
+            ),
           ],
           selected: tabs.indexWhere(
             (t) =>
@@ -153,6 +218,10 @@ class HfTabShell extends ConsumerWidget {
                     : navigationShell.currentIndex),
           ),
           onTap: (i) async {
+            if (i == tabs.length) {
+              await _openMenu(context, ref, hasHost: hasHost);
+              return;
+            }
             final branch = tabs[i].branch;
             await ref.read(pendingIntentProvider).clear();
             if (!context.mounted) return;

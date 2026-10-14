@@ -19,13 +19,13 @@ const retired: Record<string, string> = {
   billing: 'The previous billing screen has been retired. Previous receipts have not been moved into this wallet.',
   orders: 'The previous shop orders screen has been retired. Shop orders are not listed in this account.',
   wishlist: 'The previous shop wishlist has been retired.',
-  events: 'The previous events screen has been retired. Your current host appointments are in Bookings.',
-  consultations: 'The previous consultations screen has been retired. Your current host appointments are in Bookings.',
+  events: 'The previous events screen has been retired. Your current host appointments are in Calendar.',
+  consultations: 'The previous consultations screen has been retired. Your current host appointments are in Calendar.',
 };
 const links = [
   { href: '/wallet', title: 'Wallet', detail: 'Balance, payments and wallet activity', icon: '₹' },
   { href: '/wallet#hfw-hist', title: 'Calls', detail: 'Your recent calls and their charges', icon: '↗' },
-  { href: '/bookings', title: 'Bookings', detail: 'View your host appointments', icon: '▦' },
+  { href: '/bookings', title: 'Calendar', detail: 'View your booked host appointments', icon: '▦' },
   { href: '/marketplace', title: 'Explore hosts', detail: 'Find someone to talk to', icon: '✦' },
 ];
 
