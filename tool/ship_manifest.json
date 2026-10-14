@@ -10758,7 +10758,8 @@
         "event": "hf_calls_list_load",
         "property": "count",
         "min_events": 1,
-        "note": "A signed-in person opened the Calls screen and the list loaded (count is the rows in that page; 0 is valid for a new account)."
+        "note": "A signed-in person opened the Calls screen and the list loaded (count is the rows in that page; 0 is valid for a new account).",
+        "gte": 0
       }
     ]
   }
