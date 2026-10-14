@@ -60,7 +60,7 @@ class PurchaseNoticeCard extends StatelessWidget {
                   child: Icon(icon, color: fg, size: 28),
                 ),
                 const SizedBox(width: 12),
-                Expanded(child: Text(notice.message, style: HfText.bodyStrong)),
+                Expanded(child: Text(notice.message, style: HfText.bodyStrong.copyWith(color: WalletStyle.of(context).ink))),
               ],
             ),
             Align(

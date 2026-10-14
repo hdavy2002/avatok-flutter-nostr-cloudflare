@@ -53,7 +53,7 @@ class _RefundSectionState extends ConsumerState<RefundSection> {
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text(RefundCopy.confirmTitle),
-        content: Text(confirmText, style: HfText.bodyText),
+        content: Text(confirmText, style: HfText.of(ctx, HfText.bodyText)),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(false),
@@ -161,17 +161,17 @@ class _RefundSectionState extends ConsumerState<RefundSection> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Wrap(
+              Wrap(
                 spacing: 8,
                 children: [
-                  Icon(Icons.receipt_long_rounded, color: HfColors.ink),
-                  Text('Payments & refunds', style: HfText.subtitle),
+                  Icon(Icons.receipt_long_rounded, color: WalletStyle.of(context).ink),
+                  Text('Payments & refunds', style: HfText.subtitle.copyWith(color: WalletStyle.of(context).ink)),
                 ],
               ),
               const SizedBox(height: 12),
-              const Text(
+              Text(
                 '${RefundCopy.viaGoogle}${Brand.supportEmail}.',
-                style: HfText.bodyText,
+                style: HfText.bodyText.copyWith(color: WalletStyle.of(context).ink),
               ),
               const SizedBox(height: 12),
               HfButton(
@@ -189,8 +189,8 @@ class _RefundSectionState extends ConsumerState<RefundSection> {
           const SizedBox(height: HfSpacing.gap),
           WalletSurface(
             key: const ValueKey<String>('refund-message'),
-            color: _messageIsError ? HfColors.blush : HfColors.lavender,
-            child: Text(_message!, style: HfText.bodyStrong),
+            color: (_messageIsError ? HfTint.blush : HfTint.lavender).bg(context),
+            child: Text(_message!, style: HfText.bodyStrong.copyWith(color: WalletStyle.of(context).ink)),
           ),
         ],
         if (info.enabled && info.tokenMode) ..._lots(info),
@@ -205,14 +205,14 @@ class _RefundSectionState extends ConsumerState<RefundSection> {
     if (info.lots.isEmpty) {
       return [
         const SizedBox(height: HfSpacing.gap),
-        const Text(RefundCopy.nothing, style: HfText.note),
+        Text(RefundCopy.nothing, style: HfText.note.copyWith(color: WalletStyle.of(context).muted)),
       ];
     }
     return [
       const SizedBox(height: HfSpacing.gap),
       Text(
         'You can ask for a refund of unused wallet money within ${info.windowDays} days of buying them.',
-        style: HfText.note,
+        style: HfText.note.copyWith(color: WalletStyle.of(context).muted),
       ),
       for (final l in info.lots) ...[
         const SizedBox(height: HfSpacing.gap),
@@ -221,16 +221,16 @@ class _RefundSectionState extends ConsumerState<RefundSection> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Icon(Icons.replay_rounded, color: HfColors.ink),
+              Icon(Icons.replay_rounded, color: WalletStyle.of(context).ink),
               const SizedBox(height: 12),
-              Text('Bought ${shortDate(l.boughtAt)}', style: HfText.bodyStrong),
+              Text('Bought ${shortDate(l.boughtAt)}', style: HfText.bodyStrong.copyWith(color: WalletStyle.of(context).ink)),
               const SizedBox(height: 4),
-              Text('₹${l.tokens} unused', style: HfText.bodyText),
+              Text('₹${l.tokens} unused', style: HfText.bodyText.copyWith(color: WalletStyle.of(context).ink)),
               Text(
                 l.wholeOrder
                     ? 'You paid ${formatRupees(l.paidRupees)}. Refund: ${formatRupees(l.refundRupees)}'
                     : 'You paid ${formatRupees(l.paidRupees)}. Refund for the unused part: ${formatRupees(l.refundRupees)}',
-                style: HfText.note,
+                style: HfText.note.copyWith(color: WalletStyle.of(context).muted),
               ),
               const SizedBox(height: 12),
               HfButton(
@@ -261,7 +261,7 @@ class _RefundSectionState extends ConsumerState<RefundSection> {
         children: [
           Text(
             'Unused money that can go back: ${formatRupees(info.refundableRupees)}',
-            style: HfText.bodyStrong,
+            style: HfText.bodyStrong.copyWith(color: WalletStyle.of(context).ink),
           ),
           const SizedBox(height: 12),
           HfButton(
@@ -283,7 +283,7 @@ class _RefundSectionState extends ConsumerState<RefundSection> {
 
   List<Widget> _requests(RefundsInfo info) => [
     const SizedBox(height: HfSpacing.gapLarge),
-    const Text('Your refund requests', style: HfText.subtitle),
+    Text('Your refund requests', style: HfText.subtitle.copyWith(color: WalletStyle.of(context).ink)),
     for (final r in info.requests) ...[
       const SizedBox(height: HfSpacing.gap),
       WalletSurface(
@@ -293,11 +293,11 @@ class _RefundSectionState extends ConsumerState<RefundSection> {
           children: [
             Text(
               '${formatRupees(r.amountRupees)} · ${r.statusText}',
-              style: HfText.bodyStrong,
+              style: HfText.bodyStrong.copyWith(color: WalletStyle.of(context).ink),
             ),
             if (r.createdAt != null)
-              Text('Asked on ${shortDate(r.createdAt)}', style: HfText.note),
-            if (r.reason != null) Text(r.reason!, style: HfText.note),
+              Text('Asked on ${shortDate(r.createdAt)}', style: HfText.note.copyWith(color: WalletStyle.of(context).muted)),
+            if (r.reason != null) Text(r.reason!, style: HfText.note.copyWith(color: WalletStyle.of(context).muted)),
             if (r.canCancel) ...[
               const SizedBox(height: 8),
               HfButton(

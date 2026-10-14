@@ -235,7 +235,7 @@ class _PacksState extends ConsumerState<_Packs> {
                         ? 'You are about to add ${offer.breakdown!.wallet} to your wallet.\n\n${offer.breakdown!.lines}\n\nYou pay through Google Play.'
                         : 'You are about to add money to your wallet. You pay ${offer.priceText ?? ''} (includes 18% GST) through Google Play.',
                     key: const ValueKey<String>('confirm-breakdown'),
-                    style: HfText.body,
+                    style: HfText.of(ctx, HfText.body),
                   ),
                   actions: [
                     TextButton(
@@ -357,6 +357,9 @@ class _PacksState extends ConsumerState<_Packs> {
         // The label carries Play's own price string. No price is ever typed or taken from our server.
         Theme(
           data: Theme.of(context).copyWith(
+            colorScheme: Theme.of(context).colorScheme.copyWith(
+              onPrimary: working ? WalletStyle.of(context).ink : Colors.black,
+            ),
             elevatedButtonTheme: ElevatedButtonThemeData(
               style: (Theme.of(context).elevatedButtonTheme.style ?? const ButtonStyle()).copyWith(
                 backgroundColor: WidgetStateProperty.resolveWith((states) =>

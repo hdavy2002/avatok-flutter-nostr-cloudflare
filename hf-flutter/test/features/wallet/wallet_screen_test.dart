@@ -31,7 +31,8 @@ class _RecordingLinks extends LinkOpener {
 void main() {
   for (final dark in [false, true]) {
     testWidgets('wallet palette preserves type sizes (${dark ? 'dark' : 'light'})', (tester) async {
-      await pumpWallet(tester, api: walletApi(), billing: walletBilling(), dark: dark);
+      final billing = walletBilling();
+      await pumpWallet(tester, api: walletApi(), billing: billing, dark: dark);
       expect(tester.widget<Scaffold>(find.byType(Scaffold)).backgroundColor,
           dark ? const Color(0xFF000000) : const Color(0xFFF6F3EE));
       final balance = tester.widget<Text>(find.byKey(const ValueKey<String>('balance-total')));
@@ -45,6 +46,30 @@ void main() {
       final buttonContext = tester.element(find.descendant(of: payButton, matching: find.byType(ElevatedButton)));
       expect(Theme.of(buttonContext).elevatedButtonTheme.style?.backgroundColor?.resolve({}), const Color(0xFFF28C28));
       expect(button.onPressed, isNotNull);
+      final refundTitle = tester.widget<Text>(find.text('Payments & refunds'));
+      expect(refundTitle.style?.color, dark ? const Color(0xFFF8F6FF) : Colors.black);
+      final refundIcon = tester.widget<Icon>(find.byIcon(Icons.receipt_long_rounded));
+      expect(refundIcon.color, dark ? const Color(0xFFF8F6FF) : Colors.black);
+      // Hold the fake Play sheet open only long enough to inspect the loading state.
+      await selectAndPay(tester, 'hf_rupees_120');
+      await tester.pump(const Duration(milliseconds: 100));
+      final spinner = tester.widget<CircularProgressIndicator>(
+        find.descendant(of: payButton, matching: find.byType(CircularProgressIndicator)),
+      );
+      expect(spinner.color, dark ? const Color(0xFFF8F6FF) : Colors.black);
+      expect(billing.boughtProductIds, ['hf_rupees_120']);
+      billing.emit(const StorePurchase(
+        productId: 'hf_rupees_120',
+        purchaseToken: '',
+        status: StorePurchaseStatus.canceled,
+      ));
+      await tester.pumpAndSettle();
+      expect(find.byType(CircularProgressIndicator), findsNothing);
+      final notice = tester.widget<Text>(find.descendant(
+        of: find.byKey(const ValueKey<String>('purchase-notice')),
+        matching: find.byType(Text),
+      ).first);
+      expect(notice.style?.color, dark ? const Color(0xFFF8F6FF) : Colors.black);
     });
   }
 

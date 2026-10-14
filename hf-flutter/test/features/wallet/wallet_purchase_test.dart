@@ -236,10 +236,13 @@ void main() {
       expect(find.text('Not available'), findsNothing);
       expect(find.text('Pay ₹500.00 with Google Play'), findsOneWidget,
           reason: 'the user choice can return when Play makes it available again');
+      billing.answerWith(StorePurchaseStatus.canceled);
       await selectAndPay(tester, 'hf_rupees_120');
       await tester.pumpAndSettle();
       expect(billing.boughtProductIds, ['hf_rupees_120']);
       expect((api.callsTo('POST', '/api/hf/tokens/play/prepare').single.body as Map)['productId'], 'hf_rupees_120');
+      expect(api.callsTo('POST', '/api/hf/tokens/play/verify'), isEmpty);
+      expect(find.byType(CircularProgressIndicator), findsNothing);
     });
 
     testWidgets('selecting another pack changes the Pay label', (tester) async {
