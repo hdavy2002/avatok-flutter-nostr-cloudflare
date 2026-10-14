@@ -38,7 +38,10 @@ void main() {
       final balance = tester.widget<Text>(find.byKey(const ValueKey<String>('balance-total')));
       expect(balance.style?.fontSize, 44);
       expect(balance.style?.color, dark ? const Color(0xFFF8F6FF) : Colors.black);
-      final price = tester.widget<Text>(find.text('₹120.00').first);
+      final price = tester.widget<Text>(find.descendant(
+        of: buyButton('hf_rupees_120'),
+        matching: find.text('₹120.00'),
+      ));
       expect(price.style?.fontSize, 24);
       final button = tester.widget<ElevatedButton>(
         find.descendant(of: payButton, matching: find.byType(ElevatedButton)),
@@ -48,7 +51,14 @@ void main() {
       expect(button.onPressed, isNotNull);
       final refundTitle = tester.widget<Text>(find.text('Payments & refunds'));
       expect(refundTitle.style?.color, dark ? const Color(0xFFF8F6FF) : Colors.black);
-      final refundIcon = tester.widget<Icon>(find.byIcon(Icons.receipt_long_rounded));
+      final refundHeading = find.ancestor(
+        of: find.text('Payments & refunds'),
+        matching: find.byType(Wrap),
+      );
+      final refundIcon = tester.widget<Icon>(find.descendant(
+        of: refundHeading,
+        matching: find.byIcon(Icons.receipt_long_rounded),
+      ));
       expect(refundIcon.color, dark ? const Color(0xFFF8F6FF) : Colors.black);
       // Hold the fake Play sheet open only long enough to inspect the loading state.
       await selectAndPay(tester, 'hf_rupees_120');
