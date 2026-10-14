@@ -252,7 +252,7 @@ class _HostActionBarState extends ConsumerState<HostActionBar> {
       );
     }
 
-    final onInk = HfText.note.copyWith(fontSize: 14, color: HfColors.mutedSoft);
+    final onInk = HfText.of(context, HfText.note).copyWith(fontSize: 14);
     final estimateText = estimate?.aboutText;
     final safeEstimateText = estimateText != null &&
             RegExp(r'\b(tokens?|coins?)\b', caseSensitive: false)
@@ -275,9 +275,10 @@ class _HostActionBarState extends ConsumerState<HostActionBar> {
         padding: const EdgeInsets.all(HfSpacing.lg),
         child: DecoratedBox(
           decoration: BoxDecoration(
-            color: HfColors.ink,
+            color: Theme.of(context).colorScheme.surface,
             borderRadius: BorderRadius.circular(HfRadius.cardInner),
-            boxShadow: HfShadows.nav,
+            border: Border.all(color: Theme.of(context).colorScheme.outline),
+            boxShadow: HfShadows.cardFor(context),
           ),
           child: Padding(
             padding: const EdgeInsets.all(HfSpacing.sm),
@@ -314,8 +315,8 @@ class _HostActionBarState extends ConsumerState<HostActionBar> {
                         style: HfText.bodyStrong.copyWith(
                           fontSize: 15,
                           color: _messageIsError
-                              ? HfColors.blushLight
-                              : HfColors.white,
+                              ? Theme.of(context).colorScheme.error
+                              : Theme.of(context).colorScheme.onSurface,
                         ),
                         textAlign: TextAlign.center,
                       ),
@@ -395,19 +396,19 @@ class _PriceBlock extends StatelessWidget {
           style: HfText.stat.copyWith(
             fontSize: 21,
             height: 1.1,
-            color: HfColors.white,
+            color: Theme.of(context).colorScheme.onSurface,
           ),
         ),
         Text(
           about ?? HostProfileStrings.sameRate,
-          style: HfText.note.copyWith(fontSize: 14, color: HfColors.mutedSoft),
+          style: HfText.of(context, HfText.note).copyWith(fontSize: 14),
         ),
       ],
     );
   }
 }
 
-/// The white pill on the ink bar (56 tall, radius 22). Disabled when [onPressed] is null.
+/// The primary pill on the surface bar (56 tall, radius 22). Disabled when [onPressed] is null.
 class _BarPill extends StatelessWidget {
   const _BarPill({
     required this.label,
@@ -426,18 +427,18 @@ class _BarPill extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final enabled = onPressed != null && !loading;
-    final fg = outlined ? HfColors.white : HfColors.ink;
+    final fg = outlined ? Theme.of(context).colorScheme.onSurface : HfColors.onPrimary;
     final bg = outlined
         ? Colors.transparent
         : (onPressed == null && !loading
-              ? HfColors.white.withValues(alpha: 0.5)
-              : HfColors.white);
+              ? HfColors.primary.withValues(alpha: 0.5)
+              : HfColors.primary);
     return Material(
       color: bg,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(HfRadius.tile),
         side: outlined
-            ? const BorderSide(color: HfColors.white, width: 2)
+            ? BorderSide(color: Theme.of(context).colorScheme.onSurface, width: 2)
             : BorderSide.none,
       ),
       child: InkWell(

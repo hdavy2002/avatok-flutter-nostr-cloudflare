@@ -356,11 +356,11 @@ class _AvatarTile extends StatelessWidget {
         onTap: enabled ? onTap : null,
         child: Container(
           decoration: BoxDecoration(
-            color: dark ? HfColors.darkCard : HfColors.white,
+            color: dark ? HfColors.darkCard : HfColors.surface,
             borderRadius: radius,
             border: Border.all(
               color: selected
-                  ? (dark ? HfColors.lavenderLight : HfColors.ink)
+                  ? HfColors.primary
                   : (dark ? HfColors.darkLine : HfColors.line),
               width: selected ? 2 : 1,
             ),
@@ -406,11 +406,11 @@ class _AvatarTile extends StatelessWidget {
                     right: 8,
                     child: CircleAvatar(
                       radius: 16,
-                      backgroundColor: HfColors.ink,
+                      backgroundColor: HfColors.primary,
                       child: Icon(
                         Icons.check_rounded,
                         size: 20,
-                        color: HfColors.white,
+                        color: HfColors.onPrimary,
                       ),
                     ),
                   ),

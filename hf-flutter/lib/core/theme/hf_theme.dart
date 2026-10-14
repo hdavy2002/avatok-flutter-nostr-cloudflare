@@ -10,6 +10,23 @@ abstract final class HfBrightness {
       Theme.of(context).brightness == Brightness.dark;
 }
 
+/// Neutral card decoration. The border paints outside the box so adding it to an
+/// existing panel does not change its padding, size or content layout.
+abstract final class HfSurfaces {
+  static BoxDecoration card(BuildContext context, {required double radius}) {
+    final dark = HfBrightness.isDark(context);
+    return BoxDecoration(
+      color: dark ? HfColors.darkCard : HfColors.surface,
+      borderRadius: BorderRadius.circular(radius),
+      border: Border.all(
+        color: dark ? HfColors.darkLine : HfColors.line,
+        strokeAlign: BorderSide.strokeAlignOutside,
+      ),
+      boxShadow: HfShadows.cardFor(context),
+    );
+  }
+}
+
 /// The five pastel tints shared by tiles, chips, nav items and status surfaces.
 enum HfTint {
   lavender,
@@ -80,15 +97,13 @@ ThemeData buildHfDarkTheme() => _build(Brightness.dark);
 ThemeData _build(Brightness brightness) {
   final dark = brightness == Brightness.dark;
   final Color page = dark ? HfColors.darkBg : HfColors.page;
-  final Color card = dark ? HfColors.darkCard : HfColors.white;
+  final Color card = dark ? HfColors.darkCard : HfColors.surface;
   final Color text = dark ? HfColors.darkText : HfColors.ink;
   final Color muted = dark ? HfColors.mutedSoft : HfColors.muted;
   final Color line = dark ? HfColors.darkLine : HfColors.line;
   final Color linkColor = dark ? HfColors.lavenderLight : HfColors.link;
-  // Primary buttons are ink with white text; in dark mode they flip to lavenderLight with ink text
-  // (mockup HomeDark "Call now").
-  final Color primary = dark ? HfColors.lavenderLight : HfColors.ink;
-  final Color onPrimary = dark ? HfColors.ink : HfColors.white;
+  const Color primary = HfColors.primary;
+  const Color onPrimary = HfColors.onPrimary;
 
   final scheme = ColorScheme(
     brightness: brightness,
@@ -104,7 +119,7 @@ ThemeData _build(Brightness brightness) {
     onError: dark ? HfColors.ink : HfColors.white,
     surface: card,
     onSurface: text,
-    surfaceContainerHighest: dark ? HfColors.darkTile : HfColors.segmentTrack,
+    surfaceContainerHighest: dark ? HfColors.darkBar : HfColors.surfaceSoft,
     outline: line,
     outlineVariant: line,
   );
@@ -149,6 +164,16 @@ ThemeData _build(Brightness brightness) {
     fontFamily: HfText.bodyFamily,
     textTheme: textTheme,
     primaryTextTheme: textTheme,
+    cardTheme: CardThemeData(
+      color: card,
+      surfaceTintColor: Colors.transparent,
+      elevation: 3,
+      shadowColor: Colors.black.withValues(alpha: dark ? 0.55 : 0.14),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: BorderSide(color: line),
+      ),
+    ),
     visualDensity: VisualDensity.standard,
     materialTapTargetSize: MaterialTapTargetSize.padded,
     appBarTheme: AppBarTheme(
@@ -222,7 +247,7 @@ ThemeData _build(Brightness brightness) {
       errorStyle: c(HfText.badge, dark ? HfColors.blushLight : HfColors.accent),
       border: border(line, 1),
       enabledBorder: border(line, 1),
-      focusedBorder: border(dark ? HfColors.lavenderLight : HfColors.ink, 2),
+      focusedBorder: border(primary, 2),
       errorBorder: border(dark ? HfColors.blushLight : HfColors.accent, 1),
       focusedErrorBorder: border(
         dark ? HfColors.blushLight : HfColors.accent,
@@ -231,7 +256,7 @@ ThemeData _build(Brightness brightness) {
     ),
     dividerTheme: DividerThemeData(color: line, thickness: 1, space: 1),
     progressIndicatorTheme: ProgressIndicatorThemeData(
-      color: dark ? HfColors.lavenderLight : HfColors.ink,
+      color: primary,
     ),
     snackBarTheme: SnackBarThemeData(
       behavior: SnackBarBehavior.floating,

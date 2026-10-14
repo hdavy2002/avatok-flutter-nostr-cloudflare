@@ -422,7 +422,7 @@ class _RuleRow extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(HfSpacing.lg),
       decoration: BoxDecoration(
-        color: dark ? HfColors.darkCard : HfColors.white,
+        color: dark ? HfColors.darkCard : HfColors.surface,
         borderRadius: BorderRadius.circular(HfRadius.tileSmall),
         border: Border.all(color: dark ? HfColors.darkLine : HfColors.line),
       ),

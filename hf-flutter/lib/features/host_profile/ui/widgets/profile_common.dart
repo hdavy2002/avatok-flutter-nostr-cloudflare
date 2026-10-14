@@ -10,7 +10,7 @@ const double kProfileGap = 16;
 
 /// Dark-aware surfaces and text used across the profile sections.
 Color profileSurface(BuildContext context) =>
-    HfBrightness.isDark(context) ? HfColors.darkCard : HfColors.white;
+    HfBrightness.isDark(context) ? HfColors.darkCard : HfColors.surface;
 Color profileLine(BuildContext context) =>
     HfBrightness.isDark(context) ? HfColors.darkLine : HfColors.line;
 Color profilePage(BuildContext context) =>
@@ -32,6 +32,7 @@ BoxDecoration profileBox(
   color: profileSurface(context),
   borderRadius: BorderRadius.circular(radius),
   border: Border.all(color: profileLine(context)),
+  boxShadow: HfShadows.cardFor(context),
 );
 
 /// Section heading, Nunito 20/800.

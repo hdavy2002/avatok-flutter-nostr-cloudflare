@@ -42,9 +42,9 @@ class _GalleryPagerState extends ConsumerState<GalleryPager> {
           children: [
             Semantics(
               header: true,
-              child: const Text(
+              child: Text(
                 HostProfileStrings.gallery,
-                style: HfText.title,
+                style: HfText.of(context, HfText.title),
               ),
             ),
             if (hasAi) ...[
@@ -93,7 +93,7 @@ class _GalleryPagerState extends ConsumerState<GalleryPager> {
         ),
         const SizedBox(height: 10),
         if (items[_page].caption != null)
-          Text(items[_page].caption!, style: HfText.note),
+          Text(items[_page].caption!, style: HfText.of(context, HfText.note)),
         if (items.length > 1) ...[
           const SizedBox(height: 10),
           Row(

@@ -154,9 +154,7 @@ class ChoiceTile extends StatelessWidget {
         label: help == null ? title : '$title. $help',
         excludeSemantics: true,
         child: Material(
-          color: selected
-              ? HfTint.lavender.bg(context)
-              : (dark ? HfColors.darkCard : HfColors.white),
+          color: dark ? HfColors.darkCard : HfColors.surface,
           borderRadius: radius,
           child: InkWell(
             borderRadius: radius,
@@ -168,7 +166,7 @@ class ChoiceTile extends StatelessWidget {
                 borderRadius: radius,
                 border: Border.all(
                   color: selected
-                      ? (dark ? HfColors.lavenderLight : HfColors.ink)
+                      ? HfColors.primary
                       : (dark ? HfColors.darkLine : HfColors.line),
                   width: selected ? 2 : 1,
                 ),
@@ -181,8 +179,8 @@ class ChoiceTile extends StatelessWidget {
                         : Icons.circle_outlined,
                     size: 26,
                     color: selected
-                        ? (dark ? HfColors.lavenderLight : HfColors.ink)
-                        : HfColors.mutedSoft,
+                        ? HfColors.primary
+                        : (dark ? HfColors.mutedSoft : HfColors.muted),
                   ),
                   const SizedBox(width: 12),
                   Expanded(

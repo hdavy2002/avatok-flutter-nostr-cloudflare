@@ -1,16 +1,19 @@
 import 'package:flutter/material.dart';
 
-/// Pastel design system approved 2026-10-11 (mockups: Main, Profile, Explore, CallSheet, Calling, Wallet,
-/// Host, Welcome, HomeDark). Every value below is lifted from those mockups.
-/// Soft colour is decoration; ink and the `*Ink` / `*Deep` colours carry readable text.
+/// Neutral app surfaces with orange primary actions; pastel tints remain for
+/// small decorative and status accents. Typography and geometry retain the approved sizes.
+/// Ink and the `*Ink` / `*Deep` colours carry readable text.
 /// NO GREEN anywhere (owner rule): `test/core/tokens_test.dart` fails on a green hue.
 abstract final class HfColors {
   // ---- Core -------------------------------------------------------------------------------------------
-  /// Deep ink: text, primary buttons, the call slider track.
-  static const Color ink = Color(0xFF1D1A33);
+  /// Deep ink for text and monochrome artwork.
+  static const Color ink = Color(0xFF17131F);
 
   /// Page background.
-  static const Color page = Color(0xFFFAF8FD);
+  static const Color page = Color(0xFFF6F3EE);
+  static const Color surface = Color(0xFFFFFDF9);
+  static const Color primary = Color(0xFFF28C28);
+  static const Color onPrimary = Color(0xFF231407);
   static const Color white = Color(0xFFFFFFFF);
 
   // ---- Pastel tints: bg, the ink used for big numbers, the deep colour used for icons / pill text ------
@@ -53,34 +56,34 @@ abstract final class HfColors {
   static const Color accent = Color(0xFFBD2740);
 
   // ---- Neutrals ----------------------------------------------------------------------------------------
-  static const Color muted = Color(0xFF5E5A78); // secondary text
+  static const Color muted = Color(0xFF4C4740); // secondary text
   static const Color mutedSoft = Color(
-    0xFFABA6C6,
+    0xFFE0DBEB,
   ); // secondary text on dark; grey presence dot
-  static const Color line = Color(0xFFECE8F4); // hairlines and card borders
+  static const Color line = Color(0xFFD8D1C9); // hairlines and card borders
   static const Color surfaceSoft = Color(
-    0xFFF3F0FA,
+    0xFFE8E2DA,
   ); // price bar, offline pill, search button
   static const Color segmentTrack = Color(
-    0xFFEFEBF7,
+    0xFFE8E2DA,
   ); // segmented control track, skeleton blocks
-  static const Color handle = Color(0xFFD6D0E4); // sheet drag handle
+  static const Color handle = Color(0xFFD8D1C9); // sheet drag handle
 
-  /// Caption on a tinted tile, tag text (mockup `#3D3858`).
-  static const Color inkSoft = Color(0xFF3D3858);
+  /// Caption on a light tinted tile and tag text.
+  static const Color inkSoft = Color(0xFF4C4740);
 
-  /// Tagline on the frosted photo panel (mockup `#4A4664`).
-  static const Color inkTagline = Color(0xFF4A4664);
+  /// Tagline on a light frosted photo panel.
+  static const Color inkTagline = Color(0xFF4C4740);
 
-  /// Outline of an unselected mood tag (mockup `#E2DCF0`).
-  static const Color outlineChip = Color(0xFFE2DCF0);
+  /// Outline of an unselected mood tag.
+  static const Color outlineChip = Color(0xFFD8D1C9);
 
   /// Big number on a butter tile (mockup `#3D2D00`).
   static const Color butterValue = Color(0xFF3D2D00);
 
   // ---- Dark mode ---------------------------------------------------------------------------------------
-  static const Color darkBg = Color(0xFF14121F);
-  static const Color darkCard = Color(0xFF1F1C2E);
+  static const Color darkBg = Color(0xFF000000);
+  static const Color darkCard = Color(0xFF343438);
   static const Color darkTile = Color(
     0xFF2E2852,
   ); // lavender tile, chips, photo placeholder
@@ -90,20 +93,20 @@ abstract final class HfColors {
   static const Color darkTileButter = Color(0xFF3A3120);
   static const Color darkNav = Color(0xFF262238);
   static const Color darkSelected = Color(
-    0xFF3A3460,
-  ); // selected segment / nav item
-  static const Color darkText = Color(0xFFF3F0FF);
+    0xFF5C5C66,
+  ); // selected segment and neutral control states
+  static const Color darkText = Color(0xFFF8F6FF);
   static const Color lavenderLight = Color(0xFFCFC4FF);
   static const Color peachLight = Color(0xFFFFC9AE);
   static const Color blushLight = Color(0xFFFFB3CB);
   static const Color skyLight = Color(0xFFA9CCFF);
   static const Color butterLight = Color(0xFFFFE08A);
 
-  /// Price bar in dark mode (mockup `#2A2640`); also the dark butter tile.
-  static const Color darkBar = Color(0xFF2A2640);
+  /// Secondary neutral surface and price bar in dark mode.
+  static const Color darkBar = Color(0xFF484850);
 
   /// Hairline in dark mode.
-  static const Color darkLine = Color(0xFF2E2B46);
+  static const Color darkLine = Color(0xFF5C5C66);
 
   /// Online dot in dark mode (mockup `#FF7DA6`).
   static const Color blushDot = Color(0xFFFF7DA6);
@@ -112,6 +115,9 @@ abstract final class HfColors {
   static const List<Color> all = [
     ink,
     page,
+    surface,
+    primary,
+    onPrimary,
     white,
     lavender,
     lavenderInk,
@@ -233,10 +239,17 @@ abstract final class HfSpacing {
 }
 
 abstract final class HfShadows {
-  /// `0 12 34 rgba(29,26,51,0.09)`: host cards and cards.
+  /// Neutral card elevation in light and dark mode.
   static const List<BoxShadow> card = [
-    BoxShadow(color: Color(0x171D1A33), offset: Offset(0, 12), blurRadius: 34),
+    BoxShadow(color: Color(0x24000000), offset: Offset(0, 6), blurRadius: 18),
   ];
+  static const List<BoxShadow> cardDark = [
+    BoxShadow(color: Color(0x8C000000), offset: Offset(0, 6), blurRadius: 18),
+    BoxShadow(color: Color(0x245C5C66), blurRadius: 8),
+  ];
+
+  static List<BoxShadow> cardFor(BuildContext context) =>
+      Theme.of(context).brightness == Brightness.dark ? cardDark : card;
 
   /// `0 12 32 rgba(29,26,51,0.16)`: floating nav.
   static const List<BoxShadow> nav = [

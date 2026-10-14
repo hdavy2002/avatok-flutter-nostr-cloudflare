@@ -12,12 +12,12 @@ class LoginColors {
   Color get ink => dark ? const Color(0xFFF3F0FF) : Colors.black;
   Color get muted => dark ? const Color(0xFFABA6C6) : Colors.black;
   Color get brand => dark ? const Color(0xFFFFB3CB) : const Color(0xFFB1325F);
-  Color get field => dark ? const Color(0xFF1A1A1A) : const Color(0xFFE8E2DA);
-  Color get line => dark ? const Color(0xFF2E2B46) : const Color(0xFFD8D1C9);
+  Color get field => dark ? HfColors.darkCard : HfColors.surface;
+  Color get line => dark ? HfColors.darkLine : HfColors.line;
   Color get track => dark ? const Color(0xFF343438) : const Color(0xFFD8D2CA);
   Color get selected => dark ? const Color(0xFFE7E1FF) : const Color(0xFFF1ECE5);
-  Color get action => dark ? const Color(0xFFCFC4FF) : const Color(0xFF1D1A33);
-  Color get onAction => dark ? const Color(0xFF1D1A33) : Colors.white;
+  Color get action => HfColors.primary;
+  Color get onAction => HfColors.onPrimary;
   Color get link => dark ? const Color(0xFFCFC4FF) : Colors.black;
 
   static LoginColors of(BuildContext context) =>

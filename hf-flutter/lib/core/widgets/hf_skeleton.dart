@@ -143,7 +143,7 @@ class _HostCardSkeleton extends StatelessWidget {
         const Expanded(child: _Block(height: 56, radius: HfRadius.tileSmall));
     return Container(
       decoration: BoxDecoration(
-        color: dark ? HfColors.darkCard : HfColors.white,
+        color: dark ? HfColors.darkCard : HfColors.surface,
         borderRadius: BorderRadius.circular(HfRadius.card),
         boxShadow: HfShadows.card,
       ),

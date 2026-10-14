@@ -203,10 +203,7 @@ class _VoiceIntroPlayerState extends ConsumerState<VoiceIntroPlayer> {
         : HostProfileStrings.playIntro;
     return Container(
       padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: HfTint.peach.bg(context),
-        borderRadius: BorderRadius.circular(26),
-      ),
+      decoration: HfSurfaces.card(context, radius: 26),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [

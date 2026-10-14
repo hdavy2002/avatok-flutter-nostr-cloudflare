@@ -318,12 +318,7 @@ class _CallFollowerState extends ConsumerState<CallFollower>
     final live = _fatal == null && info != null && !info.status.isTerminal;
     final dark = HfBrightness.isDark(context);
     return Scaffold(
-      // The live view is a full-bleed lavender page (mockup `Calling`); the other states use the app page.
-      backgroundColor: live
-          ? (dark
-                ? HfColors.darkBg
-                : Color.lerp(HfColors.page, HfColors.lavender, 0.45))
-          : null,
+      backgroundColor: dark ? HfColors.darkBg : HfColors.page,
       appBar: live
           ? null
           : AppBar(
@@ -463,6 +458,7 @@ class _CallFollowerState extends ConsumerState<CallFollower>
                   label: _ending
                       ? CallStrings.endingCall
                       : CallStrings.endCall,
+                  kind: HfButtonKind.destructive,
                   loading: _ending,
                   onPressed: _end,
                 ),

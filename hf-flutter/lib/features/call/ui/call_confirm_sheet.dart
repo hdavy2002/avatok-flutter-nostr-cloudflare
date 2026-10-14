@@ -475,7 +475,7 @@ class _PresenceLine extends StatelessWidget {
         text = dark ? HfColors.star : HfColors.butterDeep;
       case HfPresence.offline:
       case HfPresence.away:
-        dot = HfColors.mutedSoft;
+        dot = dark ? HfColors.mutedSoft : HfColors.muted;
         text = dark ? HfColors.mutedSoft : HfColors.muted;
     }
     return Row(
@@ -522,13 +522,12 @@ class _Tiles extends StatelessWidget {
     );
     final wv = walletValue;
     if (wv == null) return rateTile;
-    const butter = HfTint.butter;
     final walletTile = _Tile(
-      bg: butter.bg(context),
+      bg: dark ? HfColors.darkCard : HfColors.surface,
       caption: walletCaption,
-      captionColor: dark ? HfColors.star : HfColors.butterInk,
+      captionColor: dark ? HfColors.mutedSoft : HfColors.muted,
       value: wv,
-      valueColor: butter.valueInk(context),
+      valueColor: dark ? HfColors.darkText : HfColors.ink,
     );
     return LayoutBuilder(
       builder: (context, constraints) {
@@ -581,6 +580,11 @@ class _Tile extends StatelessWidget {
       decoration: BoxDecoration(
         color: bg,
         borderRadius: BorderRadius.circular(HfRadius.control),
+        border: Border.all(
+          color: Theme.of(context).colorScheme.outline,
+          strokeAlign: BorderSide.strokeAlignOutside,
+        ),
+        boxShadow: HfShadows.cardFor(context),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -732,7 +736,7 @@ class _Step extends StatelessWidget {
   }
 }
 
-/// The ink slide track. While the start request is in flight the knob turns into a spinner and the track is
+/// The orange slide track. While the start request is in flight the knob turns into a spinner and the track is
 /// inert, so a second start cannot be sent.
 class _SlideToCall extends StatelessWidget {
   const _SlideToCall({
@@ -747,7 +751,6 @@ class _SlideToCall extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final dark = HfBrightness.isDark(context);
     return Stack(
       children: [
         HfSlideToConfirm(
@@ -768,7 +771,7 @@ class _SlideToCall extends StatelessWidget {
                 height: 56,
                 alignment: Alignment.center,
                 decoration: BoxDecoration(
-                  color: dark ? HfColors.lavender : HfColors.white,
+                  color: HfColors.white,
                   shape: BoxShape.circle,
                   boxShadow: HfShadows.knob,
                 ),

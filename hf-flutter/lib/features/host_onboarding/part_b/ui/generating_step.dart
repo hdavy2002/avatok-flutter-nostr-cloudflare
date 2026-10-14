@@ -375,11 +375,11 @@ class _StageRow extends StatelessWidget {
       case 'done':
       case 'skipped':
         icon = _Dot(
-          color: dark ? HfColors.lavenderLight : HfColors.lavenderDeep,
+          color: HfColors.primary,
           child: const Icon(
             Icons.check_rounded,
             size: 14,
-            color: HfColors.white,
+            color: HfColors.onPrimary,
           ),
         );
       case 'working':
@@ -403,7 +403,7 @@ class _StageRow extends StatelessWidget {
           child: Icon(Icons.close_rounded, size: 14, color: HfColors.white),
         );
       default:
-        icon = const _Dot(color: HfColors.mutedSoft);
+        icon = _Dot(color: dark ? HfColors.mutedSoft : HfColors.muted);
     }
     return Semantics(
       label: '$label, $_word',

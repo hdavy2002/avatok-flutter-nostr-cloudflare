@@ -179,10 +179,7 @@ class _PresenceCardState extends ConsumerState<PresenceCard>
     return Container(
       key: const ValueKey<String>('presence-card'),
       padding: const EdgeInsets.all(HfSpacing.xxl),
-      decoration: BoxDecoration(
-        color: HfTint.blush.bg(context),
-        borderRadius: BorderRadius.circular(HfRadius.cardInner),
-      ),
+      decoration: HfSurfaces.card(context, radius: HfRadius.cardInner),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [

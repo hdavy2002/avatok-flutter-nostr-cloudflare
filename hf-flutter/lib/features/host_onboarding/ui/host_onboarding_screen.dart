@@ -261,7 +261,7 @@ class _ProgressHeader extends StatelessWidget {
     final deep = dark ? HfColors.lavenderLight : HfColors.lavenderDeep;
     // The pill is lavender; on a lavender strip it flips to the card colour so it stays visible.
     final pillBg = tint == HfTint.lavender
-        ? (dark ? HfColors.darkCard : HfColors.white)
+        ? (dark ? HfColors.darkCard : HfColors.surface)
         : HfTint.lavender.bg(context);
     return Container(
       width: double.infinity,
@@ -275,10 +275,7 @@ class _ProgressHeader extends StatelessWidget {
         horizontal: HfSpacing.pageWide,
         vertical: 16,
       ),
-      decoration: BoxDecoration(
-        color: tint.bg(context),
-        borderRadius: BorderRadius.circular(HfRadius.tile),
-      ),
+      decoration: HfSurfaces.card(context, radius: HfRadius.tile),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -327,7 +324,7 @@ class _ProgressHeader extends StatelessWidget {
                 backgroundColor: dark
                     ? HfColors.darkCard
                     : HfColors.segmentTrack,
-                color: deep,
+                color: HfColors.primary,
               ),
             ),
           ),

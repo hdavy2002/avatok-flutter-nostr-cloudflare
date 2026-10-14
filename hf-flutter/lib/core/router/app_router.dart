@@ -246,9 +246,9 @@ class _NotFoundScreen extends StatelessWidget {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            const Text(
+            Text(
               Strings.notFoundBody,
-              style: HfText.bodyText,
+              style: HfText.of(context, HfText.bodyText),
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: HfSpacing.gapLarge),

@@ -117,7 +117,7 @@ class StepFooter extends StatelessWidget {
   }
 }
 
-/// A step's white workspace: radius 22, 1 px `line` (light) / `darkLine` (dark) border, no heavy shadow.
+/// A step's neutral workspace: radius 22, with a visible border and card shadow.
 class _StepCard extends StatelessWidget {
   const _StepCard({required this.child});
 
@@ -128,9 +128,10 @@ class _StepCard extends StatelessWidget {
     final dark = HfBrightness.isDark(context);
     return Container(
       decoration: BoxDecoration(
-        color: dark ? HfColors.darkCard : HfColors.white,
+        color: dark ? HfColors.darkCard : HfColors.surface,
         borderRadius: BorderRadius.circular(HfRadius.tile),
         border: Border.all(color: dark ? HfColors.darkLine : HfColors.line),
+        boxShadow: HfShadows.cardFor(context),
       ),
       child: Material(
         type: MaterialType.transparency,

@@ -1,8 +1,13 @@
 import 'package:flutter/material.dart';
 
+import '../theme/hf_tokens.dart';
+
 enum HfButtonKind {
-  /// Ink fill, white text: the one main action of a screen.
+  /// Orange fill, dark text: the one main action of a screen.
   primary,
+
+  /// Red fill, white text for ending a call or another destructive action.
+  destructive,
 
   /// 2 px ink outline.
   secondary,
@@ -34,7 +39,9 @@ class HfButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final VoidCallback? action = loading ? null : onPressed;
-    final spinnerColor = kind == HfButtonKind.primary
+    final spinnerColor = kind == HfButtonKind.destructive
+        ? HfColors.white
+        : kind == HfButtonKind.primary
         ? Theme.of(context).colorScheme.onPrimary
         : Theme.of(context).colorScheme.onSurface;
     final Widget content = loading
@@ -51,10 +58,18 @@ class HfButton extends StatelessWidget {
     final Widget button;
     switch (kind) {
       case HfButtonKind.primary:
+      case HfButtonKind.destructive:
+        final style = kind == HfButtonKind.destructive
+            ? ElevatedButton.styleFrom(
+                backgroundColor: HfColors.accent,
+                foregroundColor: HfColors.white,
+              )
+            : null;
         button = icon == null || loading
-            ? ElevatedButton(onPressed: action, child: content)
+            ? ElevatedButton(onPressed: action, style: style, child: content)
             : ElevatedButton.icon(
                 onPressed: action,
+                style: style,
                 icon: Icon(icon),
                 label: content,
               );

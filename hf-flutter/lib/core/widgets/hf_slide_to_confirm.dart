@@ -3,7 +3,7 @@ import 'package:flutter/services.dart';
 
 import '../theme/hf_theme.dart';
 
-/// "Slide to call" control (mockup `CallSheet`): a 68 px ink track (radius 34, padding 6) with a 56 px white
+/// "Slide to call" control: a 68 px orange track (radius 34, padding 6) with a 56 px white
 /// knob carrying [icon]. Dragging the knob past 90% of the track gives a `mediumImpact` haptic and calls
 /// [onConfirm]; a shorter drag springs back (instant on reduced motion). Below the track there is ALWAYS a
 /// text button [fallbackLabel] (for example "Or tap here to call", min 44 px high) that calls [onFallback], so
@@ -76,9 +76,8 @@ class _HfSlideToConfirmState extends State<HfSlideToConfirm>
 
   @override
   Widget build(BuildContext context) {
-    final dark = HfBrightness.isDark(context);
-    final trackColor = dark ? HfColors.darkSelected : HfColors.ink;
-    final knobColor = dark ? HfColors.lavender : HfColors.white;
+    const trackColor = HfColors.primary;
+    const knobColor = HfColors.white;
     return Opacity(
       opacity: widget.enabled ? 1 : 0.5,
       child: Column(
@@ -119,9 +118,7 @@ class _HfSlideToConfirmState extends State<HfSlideToConfirm>
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                                 style: HfText.button.copyWith(
-                                  color: dark
-                                      ? HfColors.darkText
-                                      : HfColors.white,
+                                  color: HfColors.onPrimary,
                                 ),
                               ),
                             ),

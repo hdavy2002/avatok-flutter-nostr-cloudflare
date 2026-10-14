@@ -429,7 +429,7 @@ class _CommunityServicesCard extends StatelessWidget {
         child: ListView.builder(
           itemCount: services.length + 1,
           itemBuilder: (_, i) => i == 0
-              ? const Padding(padding: EdgeInsets.all(HfSpacing.page), child: Text('Services for you', style: HfText.section))
+              ? Padding(padding: const EdgeInsets.all(HfSpacing.page), child: Text('Services for you', style: HfText.of(context, HfText.section)))
               : ListTile(
                   title: Text(services[i - 1].label),
                   trailing: const Icon(Icons.chevron_right_rounded),

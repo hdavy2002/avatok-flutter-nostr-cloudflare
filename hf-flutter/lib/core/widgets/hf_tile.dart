@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../theme/hf_theme.dart';
 
-/// Pastel stat tile (Main host card "talked to / regulars", CallSheet "Rate", Wallet balance).
+/// Neutral stat tile with tinted icons and values (host stats, call rate, wallet balance).
 ///
 /// An optional 36 px white rounded square holds [icon]; [value] is a bold Nunito number or short phrase;
 /// [caption] is a 14 sp line under it (leave it empty for a value-only tile such as a language list).
@@ -51,10 +51,7 @@ class HfTile extends StatelessWidget {
       excludeSemantics: true,
       child: Container(
         padding: EdgeInsets.all(compact ? 10 : 12),
-        decoration: BoxDecoration(
-          color: tint.bg(context),
-          borderRadius: BorderRadius.circular(HfRadius.tileSmall),
-        ),
+        decoration: HfSurfaces.card(context, radius: HfRadius.tileSmall),
         child: Row(
           children: [
             if (icon != null) ...[
@@ -62,7 +59,7 @@ class HfTile extends StatelessWidget {
                 width: 36,
                 height: 36,
                 decoration: BoxDecoration(
-                  color: dark ? HfColors.darkCard : HfColors.white,
+                  color: tint.bg(context),
                   borderRadius: BorderRadius.circular(HfRadius.segmentItem),
                 ),
                 child: Icon(icon, size: 18, color: tint.ink(context)),

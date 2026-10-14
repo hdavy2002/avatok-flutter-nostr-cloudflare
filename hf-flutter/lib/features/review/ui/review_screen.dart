@@ -390,7 +390,7 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
   OutlineInputBorder _fieldBorder(BuildContext context, double width) {
     final dark = HfBrightness.isDark(context);
     final color = width > 1
-        ? (dark ? HfColors.lavenderLight : HfColors.ink)
+        ? HfColors.primary
         : (dark ? HfColors.darkLine : HfColors.line);
     return OutlineInputBorder(
       borderRadius: BorderRadius.circular(HfRadius.input),

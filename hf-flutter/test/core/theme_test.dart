@@ -75,6 +75,63 @@ void main() {
     expect(light.useMaterial3, isTrue);
   });
 
+  test('neutral surfaces and primary actions agree in both themes', () {
+    for (final theme in [buildHfTheme(), buildHfDarkTheme()]) {
+      final dark = theme.brightness == Brightness.dark;
+      expect(theme.colorScheme.surface,
+          dark ? const Color(0xFF343438) : const Color(0xFFFFFDF9));
+      expect(theme.colorScheme.outline,
+          dark ? const Color(0xFF5C5C66) : const Color(0xFFD8D1C9));
+      expect(theme.colorScheme.primary, const Color(0xFFF28C28));
+      expect(theme.colorScheme.onPrimary, const Color(0xFF231407));
+      expect(theme.colorScheme.surface, isNot(theme.scaffoldBackgroundColor));
+      expect(theme.cardTheme.color, theme.colorScheme.surface);
+      expect(theme.cardTheme.elevation, greaterThan(0));
+      for (final button in [theme.elevatedButtonTheme.style!,
+          theme.filledButtonTheme.style!]) {
+        expect(button.backgroundColor!.resolve({}), theme.colorScheme.primary);
+        expect(button.foregroundColor!.resolve({}), theme.colorScheme.onPrimary);
+      }
+      expect(theme.bottomSheetTheme.backgroundColor, theme.colorScheme.surface);
+      expect(theme.dialogTheme.backgroundColor, theme.colorScheme.surface);
+    }
+  });
+
+  test('the palette sweep preserves every app text size and font family', () {
+    final originalSizes = <String, double>{
+      'displayLarge': 30, 'displayMedium': 30, 'displaySmall': 27,
+      'headlineLarge': 27, 'headlineMedium': 24, 'headlineSmall': 24,
+      'titleLarge': 24, 'titleMedium': 17, 'titleSmall': 16,
+      'bodyLarge': 16, 'bodyMedium': 16, 'bodySmall': 15,
+      'labelLarge': 16, 'labelMedium': 14, 'labelSmall': 14,
+      'appBarTitle': 24, 'snackBar': 16, 'chipLabel': 14,
+      'inputLabel': 14, 'inputHint': 15, 'inputError': 14,
+      'dialogTitle': 24, 'dialogContent': 16,
+    };
+    for (final theme in [buildHfTheme(), buildHfDarkTheme()]) {
+      for (final entry in _themeStyles(theme).entries) {
+        expect(entry.value!.fontSize, originalSizes[entry.key], reason: entry.key);
+        expect(entry.value!.fontFamily, anyOf('Nunito', 'Comfortaa'));
+      }
+    }
+  });
+
+  testWidgets('new card borders and shadows do not add content padding', (tester) async {
+    for (final theme in [buildHfTheme(), buildHfDarkTheme()]) {
+      late BoxDecoration card;
+      await tester.pumpWidget(MaterialApp(theme: theme, home: Builder(
+        builder: (context) {
+          card = HfSurfaces.card(context, radius: 24);
+          return const SizedBox();
+        },
+      )));
+      expect(card.padding, EdgeInsets.zero);
+      expect(card.boxShadow, isNotEmpty);
+      expect(card.color, theme.colorScheme.surface);
+      expect(card.border!.top.color, theme.colorScheme.outline);
+    }
+  });
+
   test('every HfText style is at least 14 sp', () {
     for (final s in [
       HfText.hero,
@@ -114,6 +171,10 @@ void main() {
       (HfColors.blush, HfColors.blushInk),
       (HfColors.page, HfColors.ink),
       (HfColors.white, HfColors.ink),
+      (HfColors.surface, HfColors.ink),
+      (HfColors.darkCard, HfColors.darkText),
+      (HfColors.darkCard, HfColors.mutedSoft),
+      (HfColors.primary, HfColors.onPrimary),
     ]) {
       final lighter = pair.$1.computeLuminance() > pair.$2.computeLuminance()
           ? pair.$1
@@ -132,6 +193,7 @@ void main() {
     }
     expect(HfColors.white, isNot(HfColors.page));
     expect(HfShadows.card, isNotEmpty);
+    expect(HfShadows.cardDark, isNotEmpty);
   });
 
   testWidgets('HfMotion.of is zero when animations are disabled', (

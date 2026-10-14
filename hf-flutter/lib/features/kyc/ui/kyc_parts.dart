@@ -118,10 +118,7 @@ class InfoBox extends StatelessWidget {
       child: Container(
         width: double.infinity,
         padding: const EdgeInsets.all(HfSpacing.xxl),
-        decoration: BoxDecoration(
-          color: tint.bg(context),
-          borderRadius: BorderRadius.circular(HfRadius.tile),
-        ),
+        decoration: HfSurfaces.card(context, radius: HfRadius.tile),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [

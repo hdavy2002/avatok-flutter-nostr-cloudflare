@@ -35,10 +35,10 @@ class HfCard extends StatelessWidget {
     return Container(
       margin: margin,
       decoration: BoxDecoration(
-        color: color ?? (dark ? HfColors.darkCard : HfColors.white),
+        color: color ?? (dark ? HfColors.darkCard : HfColors.surface),
         borderRadius: radius,
         border: Border.all(color: dark ? HfColors.darkLine : HfColors.line),
-        boxShadow: dark ? null : HfShadows.card,
+        boxShadow: HfShadows.cardFor(context),
       ),
       child: onTap == null
           ? body

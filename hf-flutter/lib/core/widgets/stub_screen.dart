@@ -39,24 +39,24 @@ class StubScreen extends StatelessWidget {
           padding: const EdgeInsets.all(HfSpacing.pageWide),
           children: [
             HfCard(
-              color: HfColors.lavender,
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
                     title,
-                    style: HfText.title.copyWith(color: HfColors.ink),
+                    style: HfText.of(context, HfText.title),
                   ),
                   const SizedBox(height: 8),
                   Text(
                     'This screen is built in $issue.',
-                    style: HfText.body.copyWith(color: HfColors.ink),
+                    style: HfText.of(context, HfText.body),
                   ),
                   for (final e in details.entries) ...[
                     const SizedBox(height: 8),
                     Text(
                       '${e.key}: ${e.value}',
-                      style: HfText.note.copyWith(color: HfColors.inkSoft),
+                      style: HfText.note.copyWith(color: HfBrightness.isDark(context)
+                          ? HfColors.darkText : HfColors.inkSoft),
                     ),
                   ],
                 ],

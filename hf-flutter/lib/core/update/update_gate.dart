@@ -145,7 +145,7 @@ class UpdateBanner extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: HfColors.white,
+      color: Theme.of(context).colorScheme.surface,
       child: SafeArea(
         bottom: false,
         child: Padding(
@@ -155,12 +155,12 @@ class UpdateBanner extends StatelessWidget {
             children: [
               Row(
                 children: [
-                  const Icon(Icons.system_update_rounded, color: HfColors.ink),
+                  Icon(Icons.system_update_rounded, color: Theme.of(context).colorScheme.onSurface),
                   const SizedBox(width: 12),
-                  const Expanded(
+                  Expanded(
                     child: Text(
                       UpdateCopy.bannerText,
-                      style: HfText.bodyStrong,
+                      style: HfText.of(context, HfText.bodyStrong),
                     ),
                   ),
                   TextButton(
@@ -179,18 +179,18 @@ class UpdateBanner extends StatelessWidget {
                       minHeight: HfSpacing.tap,
                     ),
                     onPressed: onClose,
-                    icon: const Icon(
+                    icon: Icon(
                       Icons.close_rounded,
-                      color: HfColors.plum,
+                      color: Theme.of(context).colorScheme.onSurface,
                       semanticLabel: UpdateCopy.bannerClose,
                     ),
                   ),
                 ],
               ),
               if (openFailed)
-                const Padding(
-                  padding: EdgeInsets.only(bottom: 8),
-                  child: Text(UpdateCopy.couldNotOpen, style: HfText.note),
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: Text(UpdateCopy.couldNotOpen, style: HfText.of(context, HfText.note)),
                 ),
             ],
           ),
@@ -216,7 +216,7 @@ class UpdateRequiredScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       key: const ValueKey<String>('update-required'),
-      backgroundColor: HfColors.cream,
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       body: SafeArea(
         child: Center(
           child: SingleChildScrollView(
@@ -226,16 +226,16 @@ class UpdateRequiredScreen extends StatelessWidget {
               children: [
                 const HfCluster(kind: HfClusterKind.success, height: 160),
                 const SizedBox(height: 16),
-                const Text(
+                Text(
                   UpdateCopy.forcedTitle,
-                  style: HfText.title,
+                  style: HfText.of(context, HfText.title),
                   textAlign: TextAlign.center,
                 ),
                 const SizedBox(height: 12),
-                const HfCard(
+                HfCard(
                   child: Text(
                     UpdateCopy.forcedBody,
-                    style: HfText.bodyText,
+                    style: HfText.of(context, HfText.bodyText),
                     textAlign: TextAlign.center,
                   ),
                 ),
@@ -248,9 +248,9 @@ class UpdateRequiredScreen extends StatelessWidget {
                 ),
                 if (openFailed) ...[
                   const SizedBox(height: 12),
-                  const Text(
+                  Text(
                     UpdateCopy.couldNotOpen,
-                    style: HfText.note,
+                    style: HfText.of(context, HfText.note),
                     textAlign: TextAlign.center,
                   ),
                 ],

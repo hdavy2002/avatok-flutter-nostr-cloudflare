@@ -100,11 +100,7 @@ class PushBanner extends StatelessWidget {
         liveRegion: true,
         container: true,
         child: DecoratedBox(
-          decoration: BoxDecoration(
-            color: HfColors.ink,
-            borderRadius: BorderRadius.circular(HfRadius.tile),
-            boxShadow: HfShadows.nav,
-          ),
+          decoration: HfSurfaces.card(context, radius: HfRadius.tile),
           child: Material(
             type: MaterialType.transparency,
             child: Padding(
@@ -135,17 +131,13 @@ class PushBanner extends StatelessWidget {
                             padding: const EdgeInsets.only(top: 2),
                             child: Text(
                               message.title,
-                              style: HfText.bodyStrong.copyWith(
-                                color: HfColors.white,
-                              ),
+                              style: HfText.of(context, HfText.bodyStrong),
                             ),
                           ),
                         if (message.body.isNotEmpty)
                           Text(
                             message.body,
-                            style: HfText.note.copyWith(
-                              color: HfColors.mutedSoft,
-                            ),
+                            style: HfText.of(context, HfText.note),
                           ),
                         if (canOpen)
                           Align(
@@ -156,7 +148,7 @@ class PushBanner extends StatelessWidget {
                                   HfSpacing.tap,
                                   HfSpacing.tap,
                                 ),
-                                foregroundColor: HfColors.lavenderLight,
+                                foregroundColor: Theme.of(context).colorScheme.secondary,
                                 textStyle: HfText.button,
                                 padding: const EdgeInsets.only(right: 16),
                               ),
@@ -175,9 +167,9 @@ class PushBanner extends StatelessWidget {
                         minWidth: HfSpacing.tap,
                         minHeight: HfSpacing.tap,
                       ),
-                      icon: const Icon(
+                      icon: Icon(
                         Icons.close_rounded,
-                        color: HfColors.mutedSoft,
+                        color: Theme.of(context).colorScheme.onSurface,
                       ),
                       onPressed: onClose,
                     ),

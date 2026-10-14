@@ -503,7 +503,6 @@ class _LaneFlowState extends ConsumerState<_LaneFlow> {
   List<Widget> _inBlock() => [
     HfCard(
       key: const ValueKey<String>('lane-in'),
-      color: HfTint.lavender.bg(context),
       child: const DoneRow(LaneCopy.youAreIn),
     ),
     const SizedBox(height: 16),
@@ -660,7 +659,7 @@ class _LaneFlowState extends ConsumerState<_LaneFlow> {
   ];
 }
 
-/// The tinted explanation card under a lane headline.
+/// The neutral explanation card under a lane headline.
 class _Explainer extends StatelessWidget {
   const _Explainer(this.text);
 
@@ -671,8 +670,13 @@ class _Explainer extends StatelessWidget {
     width: double.infinity,
     padding: const EdgeInsets.all(HfSpacing.xxl),
     decoration: BoxDecoration(
-      color: HfTint.lavender.bg(context),
+      color: Theme.of(context).colorScheme.surface,
       borderRadius: BorderRadius.circular(HfRadius.tile),
+      border: Border.all(
+        color: Theme.of(context).colorScheme.outline,
+        strokeAlign: BorderSide.strokeAlignOutside,
+      ),
+      boxShadow: HfShadows.cardFor(context),
     ),
     child: Text(
       text,

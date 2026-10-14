@@ -70,7 +70,7 @@ class HfChip extends StatelessWidget {
         bg = tint.bg(context);
         fg = tint.ink(context);
       case _HfChipVariant.outline:
-        bg = dark ? HfColors.darkCard : HfColors.white;
+        bg = dark ? HfColors.darkCard : HfColors.surface;
         fg = dark ? HfColors.darkText : HfColors.inkSoft;
         border = Border.all(
           color: dark ? HfColors.darkLine : HfColors.outlineChip,

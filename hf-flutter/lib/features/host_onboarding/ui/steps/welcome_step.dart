@@ -139,7 +139,7 @@ class _NeedRow extends StatelessWidget {
       margin: const EdgeInsets.only(bottom: HfSpacing.md),
       padding: const EdgeInsets.all(HfSpacing.lg),
       decoration: BoxDecoration(
-        color: dark ? HfColors.darkCard : HfColors.white,
+        color: dark ? HfColors.darkCard : HfColors.surface,
         borderRadius: BorderRadius.circular(HfRadius.tileSmall),
         border: Border.all(color: dark ? HfColors.darkLine : HfColors.line),
       ),

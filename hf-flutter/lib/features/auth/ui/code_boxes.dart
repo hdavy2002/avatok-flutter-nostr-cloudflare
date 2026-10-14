@@ -131,7 +131,7 @@ class _Box extends StatelessWidget {
           (MediaQuery.textScalerOf(context).scale(22) - 22),
       alignment: Alignment.center,
       decoration: BoxDecoration(
-        color: dark ? HfColors.darkCard : HfColors.white,
+        color: dark ? HfColors.darkCard : HfColors.surface,
         borderRadius: BorderRadius.circular(HfRadius.chip),
         border: Border.all(color: border, width: active || hasError ? 2 : 1),
       ),

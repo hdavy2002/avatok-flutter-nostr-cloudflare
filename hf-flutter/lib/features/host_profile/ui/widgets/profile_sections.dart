@@ -10,7 +10,7 @@ import '../../data/host_profile_providers.dart';
 import '../../host_profile_strings.dart';
 import 'profile_common.dart';
 
-/// Lavender quote card. Shown only when the host has a quote.
+/// Neutral quote card. Shown only when the host has a quote.
 class QuoteCard extends StatelessWidget {
   const QuoteCard({super.key, required this.quote, required this.name});
 
@@ -26,10 +26,7 @@ class QuoteCard extends StatelessWidget {
       excludeSemantics: true,
       child: Container(
         padding: const EdgeInsets.all(HfSpacing.xxl),
-        decoration: BoxDecoration(
-          color: HfTint.lavender.bg(context),
-          borderRadius: BorderRadius.circular(24),
-        ),
+        decoration: HfSurfaces.card(context, radius: 24),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -180,10 +177,7 @@ class _FactTile extends StatelessWidget {
       excludeSemantics: true,
       child: Container(
         padding: const EdgeInsets.all(HfSpacing.lg),
-        decoration: BoxDecoration(
-          color: fact.tint.bg(context),
-          borderRadius: BorderRadius.circular(HfRadius.tileSmall),
-        ),
+        decoration: HfSurfaces.card(context, radius: HfRadius.tileSmall),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisSize: MainAxisSize.min,

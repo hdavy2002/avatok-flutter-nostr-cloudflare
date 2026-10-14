@@ -44,7 +44,7 @@ class StatusBanner extends StatelessWidget {
               width: 44,
               height: 44,
               decoration: BoxDecoration(
-                color: dark ? HfColors.darkCard : HfColors.white,
+                color: dark ? HfColors.darkCard : HfColors.surface,
                 borderRadius: BorderRadius.circular(HfRadius.chip),
               ),
               child: Icon(

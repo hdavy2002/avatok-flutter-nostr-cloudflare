@@ -71,7 +71,12 @@ class _HfSheetBody extends StatelessWidget {
         12;
     return Container(
       decoration: BoxDecoration(
-        color: dark ? HfColors.darkCard : HfColors.white,
+        color: dark ? HfColors.darkCard : HfColors.surface,
+        border: Border.all(
+          color: dark ? HfColors.darkLine : HfColors.line,
+          strokeAlign: BorderSide.strokeAlignOutside,
+        ),
+        boxShadow: HfShadows.cardFor(context),
         borderRadius: const BorderRadius.vertical(
           top: Radius.circular(HfRadius.sheet),
         ),

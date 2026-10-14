@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import '../../../core/theme/hf_theme.dart';
 
 /// White (dark: card) surface with a 1 px hairline, the Host mockup's earnings card (radius 26) and call
-/// rows (radius 20). No shadow, as in the mockup.
+/// rows (radius 20), with the shared neutral card shadow.
 class DashSurface extends StatelessWidget {
   const DashSurface({
     super.key,
@@ -26,8 +26,9 @@ class DashSurface extends StatelessWidget {
     return Container(
       padding: padding,
       decoration: BoxDecoration(
-        color: dark ? HfColors.darkCard : HfColors.white,
+        color: dark ? HfColors.darkCard : HfColors.surface,
         borderRadius: BorderRadius.circular(radius),
+        boxShadow: HfShadows.cardFor(context),
         border: Border.all(
           color: borderColor ?? (dark ? HfColors.darkLine : HfColors.line),
         ),

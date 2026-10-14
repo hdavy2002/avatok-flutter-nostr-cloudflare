@@ -10,6 +10,9 @@ void main() {
   final colours = <String, Color>{
     'ink': HfColors.ink,
     'page': HfColors.page,
+    'surface': HfColors.surface,
+    'primary': HfColors.primary,
+    'onPrimary': HfColors.onPrimary,
     'white': HfColors.white,
     'lavender': HfColors.lavender,
     'lavenderInk': HfColors.lavenderInk,
@@ -89,10 +92,14 @@ void main() {
   });
 
   test('key colours match the approved mockups', () {
-    expect(HfColors.ink, const Color(0xFF1D1A33));
-    expect(HfColors.page, const Color(0xFFFAF8FD));
+    expect(HfColors.ink, const Color(0xFF17131F));
+    expect(HfColors.page, const Color(0xFFF6F3EE));
+    expect(HfColors.surface, const Color(0xFFFFFDF9));
+    expect(HfColors.darkCard, const Color(0xFF343438));
+    expect(HfColors.primary, const Color(0xFFF28C28));
+    expect(HfColors.onPrimary, const Color(0xFF231407));
     expect(HfColors.lavender, const Color(0xFFE7E1FF));
-    expect(HfColors.darkBg, const Color(0xFF14121F));
+    expect(HfColors.darkBg, const Color(0xFF000000));
     expect(HfColors.butterDeep, const Color(0xFF6E4F00));
   });
 

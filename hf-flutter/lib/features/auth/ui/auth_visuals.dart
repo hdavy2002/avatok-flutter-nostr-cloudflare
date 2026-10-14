@@ -44,14 +44,6 @@ class AuthViewport extends StatelessWidget {
   Widget build(BuildContext context) => DecoratedBox(
     decoration: BoxDecoration(
       color: HfBrightness.isDark(context) ? HfColors.darkBg : HfColors.page,
-      gradient: HfBrightness.isDark(context)
-          ? null
-          : const RadialGradient(
-              center: Alignment(0.78, 0.82),
-              radius: 1.18,
-              colors: [Color(0xFFE4DDFF), Color(0xFFF9F7FF), Color(0xFFFFFFFF)],
-              stops: [0, .55, 1],
-            ),
     ),
     child: SafeArea(
       child: LayoutBuilder(
@@ -108,7 +100,7 @@ class AuthProgress extends StatelessWidget {
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(99),
               color: i < step
-                  ? HfColors.lavenderDeep
+                  ? HfColors.primary
                   : (HfBrightness.isDark(context)
                         ? HfColors.darkSelected
                         : HfColors.lavender),
@@ -143,7 +135,7 @@ class AuthPhoto extends StatelessWidget {
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(44),
           color: HfColors.lavender,
-          boxShadow: HfBrightness.isDark(context) ? null : HfShadows.card,
+          boxShadow: HfShadows.cardFor(context),
         ),
         clipBehavior: Clip.antiAlias,
         child: Image.asset(
@@ -228,13 +220,13 @@ class AuthSurfaceCard extends StatelessWidget {
       child: Container(
         padding: padding,
         decoration: BoxDecoration(
-          color: (HfBrightness.isDark(context) ? HfColors.darkCard : HfColors.white)
+          color: (HfBrightness.isDark(context) ? HfColors.darkCard : HfColors.surface)
               .withValues(alpha: .92),
           borderRadius: BorderRadius.circular(18),
           border: Border.all(
             color: HfBrightness.isDark(context) ? HfColors.darkLine : HfColors.line,
           ),
-          boxShadow: HfBrightness.isDark(context) ? null : HfShadows.field,
+          boxShadow: HfShadows.cardFor(context),
         ),
         child: child,
       ),
@@ -253,14 +245,14 @@ class AuthCallout extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Container(
     padding: const EdgeInsets.all(14),
-    decoration: BoxDecoration(color: tint, borderRadius: BorderRadius.circular(18)),
+    decoration: HfSurfaces.card(context, radius: 18),
     child: Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Container(
           width: 42,
           height: 42,
-          decoration: const BoxDecoration(color: HfColors.white, shape: BoxShape.circle),
+          decoration: BoxDecoration(color: tint, shape: BoxShape.circle),
           child: Icon(icon, color: HfColors.lavenderDeep),
         ),
         const SizedBox(width: 12),
@@ -268,9 +260,10 @@ class AuthCallout extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(title, style: HfText.bodyStrong.copyWith(color: HfColors.ink)),
+              Text(title, style: HfText.of(context, HfText.bodyStrong)),
               const SizedBox(height: 2),
-              Text(body, style: HfText.note.copyWith(color: HfColors.inkSoft)),
+              Text(body, style: HfText.note.copyWith(color: HfBrightness.isDark(context)
+                  ? HfColors.darkText : HfColors.inkSoft)),
             ],
           ),
         ),

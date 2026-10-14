@@ -164,7 +164,7 @@ class _PrivacyChip extends StatelessWidget {
         vertical: HfSpacing.sm,
       ),
       decoration: BoxDecoration(
-        color: dark ? HfColors.darkCard : HfColors.white,
+        color: dark ? HfColors.darkCard : HfColors.surface,
         borderRadius: BorderRadius.circular(16),
       ),
       child: Row(
@@ -244,11 +244,9 @@ class _RingsState extends State<_Rings> with SingleTickerProviderStateMixin {
   @override
   Widget build(BuildContext context) {
     final dark = HfBrightness.isDark(context);
-    final c1 = dark ? HfColors.darkCard : HfColors.lavender;
-    final c2 = dark
-        ? HfColors.darkTile
-        : Color.lerp(HfColors.lavender, HfColors.lavenderLight, 0.5)!;
-    final c3 = dark ? HfColors.darkSelected : HfColors.lavenderLight;
+    final c1 = dark ? HfColors.darkCard : HfColors.surface;
+    final c2 = dark ? HfColors.darkBar : HfColors.surfaceSoft;
+    final c3 = dark ? HfColors.darkSelected : HfColors.line;
     return ExcludeSemantics(
       child: LayoutBuilder(
         builder: (context, constraints) {
@@ -301,7 +299,7 @@ class _RingsState extends State<_Rings> with SingleTickerProviderStateMixin {
                     width: 44,
                     height: 44,
                     decoration: BoxDecoration(
-                      color: dark ? HfColors.lavender : HfColors.ink,
+                      color: HfColors.primary,
                       shape: BoxShape.circle,
                       border: Border.all(
                         color: dark ? HfColors.darkBg : HfColors.white,
@@ -311,7 +309,7 @@ class _RingsState extends State<_Rings> with SingleTickerProviderStateMixin {
                     child: Icon(
                       Icons.call_rounded,
                       size: 18,
-                      color: dark ? HfColors.ink : HfColors.white,
+                      color: HfColors.onPrimary,
                     ),
                   ),
                 ),
@@ -335,7 +333,7 @@ class _Progress extends StatelessWidget {
   Widget build(BuildContext context) {
     final dark = HfBrightness.isDark(context);
     final line = dark ? HfColors.darkLine : HfColors.handle;
-    final done = dark ? HfColors.lavender : HfColors.ink;
+    const done = HfColors.primary;
     Widget connector(bool filled) =>
         Container(width: 18, height: 2, color: filled ? done : line);
     return Semantics(
@@ -388,13 +386,13 @@ class _StepChip extends StatelessWidget {
     var weight = FontWeight.w700;
     switch (state) {
       case _StepState.done:
-        bg = dark ? HfColors.lavender : HfColors.ink;
-        fg = dark ? HfColors.ink : HfColors.white;
+        bg = HfColors.primary;
+        fg = HfColors.onPrimary;
       case _StepState.current:
         bg = HfTint.peach.bg(context);
         fg = HfTint.peach.valueInk(context);
       case _StepState.todo:
-        bg = dark ? HfColors.darkCard : HfColors.white;
+        bg = dark ? HfColors.darkCard : HfColors.surface;
         fg = dark ? HfColors.mutedSoft : HfColors.muted;
         weight = FontWeight.w600;
     }

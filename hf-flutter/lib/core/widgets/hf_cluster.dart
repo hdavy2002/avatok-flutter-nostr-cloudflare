@@ -150,7 +150,7 @@ class HfCluster extends StatelessWidget {
                           top: 92 * s,
                           child: DecoratedBox(
                             decoration: BoxDecoration(
-                              color: dark ? HfColors.darkCard : HfColors.white,
+                              color: dark ? HfColors.darkCard : HfColors.surface,
                               borderRadius: BorderRadius.circular(14),
                               boxShadow: const [
                                 BoxShadow(

@@ -5,7 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 /// SharedPreferences key of the saved appearance (device level, shared by every account on the phone).
 const String kThemeModePrefKey = 'hf.theme_mode.v1';
 
-/// The app's [ThemeMode]. Light by default (the approved look); the person can pick Dark or System in
+/// The app's [ThemeMode]. Dark by default; the person can pick Light or System in
 /// Me > Appearance. The choice is saved on the device, not per account, and read back at launch.
 class ThemeModeNotifier extends Notifier<ThemeMode> {
   bool _touched = false;
@@ -13,7 +13,7 @@ class ThemeModeNotifier extends Notifier<ThemeMode> {
   @override
   ThemeMode build() {
     _load();
-    return ThemeMode.light;
+    return ThemeMode.dark;
   }
 
   Future<void> _load() async {
@@ -23,7 +23,7 @@ class ThemeModeNotifier extends Notifier<ThemeMode> {
       // A tap that landed before the read finished wins over the stored value.
       if (!_touched && saved != null && ref.mounted) state = saved;
     } catch (_) {
-      // Storage unavailable: stay on light.
+      // Storage unavailable: stay on dark.
     }
   }
 

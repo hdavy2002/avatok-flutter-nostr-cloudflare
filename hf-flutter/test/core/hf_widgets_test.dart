@@ -26,6 +26,29 @@ void main() {
         .setMockMethodCallHandler(SystemChannels.platform, null);
   });
 
+  testWidgets('hang-up keeps red styling and the shared button behavior', (tester) async {
+    var taps = 0;
+    for (final theme in [buildHfTheme(), buildHfDarkTheme()]) {
+      await tester.pumpWidget(_host(HfButton(
+        label: 'End call', kind: HfButtonKind.destructive,
+        onPressed: () => taps++,
+      ), theme: theme));
+      final button = tester.widget<ElevatedButton>(find.byType(ElevatedButton));
+      expect(button.style!.backgroundColor!.resolve({}), HfColors.accent);
+      expect(button.style!.foregroundColor!.resolve({}), HfColors.white);
+      await tester.tap(find.text('End call'));
+    }
+    expect(taps, 2);
+    await tester.pumpWidget(_host(HfButton(
+      label: 'End call', kind: HfButtonKind.destructive, loading: true,
+      onPressed: () => taps++,
+    )));
+    expect(tester.widget<ElevatedButton>(find.byType(ElevatedButton)).onPressed, isNull);
+    expect(tester.widget<CircularProgressIndicator>(
+      find.byType(CircularProgressIndicator)).color, HfColors.white);
+    expect(taps, 2);
+  });
+
   group('HfSegmented', () {
     testWidgets('tapping an option changes the selection', (tester) async {
       var selected = 0;
@@ -291,6 +314,48 @@ void main() {
       expect(tester.getSize(pill).height, 48);
       expect(find.byIcon(Icons.search_rounded), findsOneWidget);
       expect(find.bySemanticsLabel('Discover'), findsOneWidget);
+    });
+
+    testWidgets('theme refresh preserves footer surfaces, geometry and selection', (tester) async {
+      for (final dark in [false, true]) {
+        final theme = dark ? buildHfDarkTheme() : buildHfTheme();
+        for (final profile in [false, true]) {
+          await tester.pumpWidget(MaterialApp(theme: theme, home: Scaffold(
+            bottomNavigationBar: HfFloatingNav(
+              items: items, selected: 0, onTap: (_) {}, profileStyle: profile),
+          )));
+          await tester.pumpAndSettle();
+          final BoxDecoration surface;
+          if (profile) {
+            surface = tester.widget<Container>(find.byKey(
+              const ValueKey<String>('profile-nav'))).decoration! as BoxDecoration;
+            expect(tester.getSize(find.byType(HfFloatingNav)).height, 64);
+          } else {
+            surface = tester.widgetList<Container>(find.descendant(
+              of: find.byType(HfFloatingNav), matching: find.byType(Container),
+            )).map((c) => c.decoration).whereType<BoxDecoration>().singleWhere(
+              (d) => d.borderRadius == BorderRadius.circular(26));
+            expect((surface.border! as Border).top.color,
+              dark ? const Color(0xFF5C5C66) : const Color(0xFFD8D1C9));
+            expect(tester.getSize(find.byType(HfFloatingNav)).height, 88);
+          }
+          expect(surface.color,
+            dark ? const Color(0xFF343438) : const Color(0xFFFFFDF9));
+          expect(surface.boxShadow!.single.blurRadius, 20);
+          expect(surface.boxShadow!.single.offset, const Offset(0, -4));
+          final selected = tester.widget<AnimatedContainer>(find.byKey(
+            const ValueKey<String>('nav-selected')));
+          final base = dark ? const Color(0xFFCFC4FF) : const Color(0xFF3A2F99);
+          expect((selected.decoration! as BoxDecoration).color,
+            base.withValues(alpha: dark ? 0.30 : 0.14));
+          expect(selected.duration, const Duration(milliseconds: 220));
+          expect(tester.getSize(find.byKey(
+            const ValueKey<String>('nav-selected'))), const Size(56, 48));
+          final icon = tester.widget<Icon>(find.byIcon(Icons.search_rounded));
+          expect(icon.size, 32);
+          expect(icon.color, dark ? Color.lerp(base, Colors.white, 0.38) : base);
+        }
+      }
     });
 
     testWidgets('normal scale keeps large icons, tooltips and touch targets', (tester) async {
