@@ -65,8 +65,46 @@ try {
   assert.equal(view.getUint32(20), 630, 'OG runtime image height mismatch');
   console.log(`OG workerd endpoint OK: ${bytes.byteLength} bytes.`);
 
-  // [HELLO-FRAANDS-ARCHIVE-1 2026-10-08] The ritual guide is archived (noindex), so its OG
-  // article cards are no longer served; the [SEO-OG-ART-1] artwork check is in git history.
+  // Exercise SSR pages too: static output checks cannot see this route family.
+  const index = await runtime.dispatchFetch(BRAND.webOrigin + '/blog/');
+  assert.equal(index.status, 200);
+  const indexHtml = await index.text();
+  assert.equal((indexHtml.match(/data-idea-card/g) || []).length, 20);
+  const links = [...new Set([...indexHtml.matchAll(/href="(\/blog\/[a-z0-9-]+\/)"/g)].map(match => match[1]))];
+  assert.equal(links.length, 20, 'Exactly 20 published articles');
+  const sitemap = readFileSync(resolve('dist/sitemap-pages.xml'), 'utf8');
+  const titles = new Set();
+  for (const path of ['/blog/', ...links]) {
+    const response = await runtime.dispatchFetch(BRAND.webOrigin + path);
+    assert.equal(response.status, 200, path);
+    const html = await response.text();
+    assert.match(html, /name="robots" content="index, follow/);
+    assert(html.includes('href="' + BRAND.webOrigin + path + '"'), 'Canonical matches ' + path);
+    assert(sitemap.includes('<loc>' + BRAND.webOrigin + path + '</loc>'), 'Sitemap includes ' + path);
+    assert.match(html, /data-callvaal-chrome/);
+    assert.doesNotMatch(html, /assets\/rituals|Puja &amp; Havan|prasad|temple priests/i);
+    assert.match(html, /application\/ld\+json/);
+    const title = html.match(/<title[^>]*>([^<]+)<\/title>/)?.[1];
+    assert(title && !titles.has(title), 'Unique title: ' + path);
+    titles.add(title);
+    if (path !== '/blog/') {
+      assert.match(html, /data-blog-article/);
+      assert.match(html, /guide-sidebar/);
+      assert.match(html, /BreadcrumbList/);
+      assert.match(html, /property="og:type" content="article"/);
+    }
+  }
+  for (const path of ['/blog/never-miss-a-call', '/blog/creator-ideas/old-post', '/blog/unknown-retired-post/', '/rituals/ganapati-havan/', '/rituals/navagraha-havan', '/rituals/unknown/nested', '/llms-rituals.txt']) {
+    const response = await runtime.dispatchFetch(BRAND.webOrigin + path);
+    assert.equal(response.status, 410, path);
+    assert.match(response.headers.get('x-robots-tag') ?? '', /noindex/);
+  }
+  for (const path of ['/rituals', '/rituals/']) {
+    const response = await runtime.dispatchFetch(BRAND.webOrigin + path, { redirect: 'manual' });
+    assert.equal(response.status, 301, path);
+    assert.equal(new URL(response.headers.get('location'), BRAND.webOrigin).pathname, '/blog/');
+  }
+  console.log('Blog runtime contract OK: 20 articles, metadata, discovery and retired routes.');
 } finally {
   await runtime.dispose();
 }

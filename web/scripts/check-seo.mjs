@@ -60,7 +60,7 @@ for (const file of htmlFiles(dist)) {
 }
 
 assert(indexable > 0, 'No indexable HTML pages found');
-for (const output of ['sitemap-pages.xml', 'llms.txt', 'llms-rituals.txt']) {
+for (const output of ['sitemap-pages.xml', 'llms.txt']) {
   assert(existsSync(join(dist, output)), `Missing discovery output: ${output}`);
 }
 const sitemapPages = readFileSync(join(dist, 'sitemap-pages.xml'), 'utf8');
@@ -77,6 +77,8 @@ assert(directorySitemapSource.includes('/marketplace/page/'), 'Directory sitemap
 // registration an explicit CI contract. Any future SSR page using Base content
 // fails until its crawl feed/static sitemap coverage is declared here.
 const dynamicCoverage = new Map([
+  ['src/pages/blog/index.astro', 'sitemap-pages.xml'],
+  ['src/pages/blog/[slug].astro', 'sitemap-pages.xml'],
   ['src/pages/marketplace.astro', 'sitemap-pages.xml'],
   ['src/pages/l/[id].astro', 'sitemap-listings.xml'],
   ['src/pages/[username]/[slug].astro', 'sitemap-listings.xml'],

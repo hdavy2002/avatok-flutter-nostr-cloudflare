@@ -17,8 +17,8 @@
 /videos                       /marketplace   301
 /video-sessions/*             /marketplace   301
 /live-events/*                /marketplace   301
-/creator-resources            /rituals         301
-/creator-resources/*          /rituals         301
+/creator-resources            /blog/         301
+/creator-resources/*          /blog/         301
 /coming-soon                  /              301
 
 # [WEB-INDIA-HOME-1] One canonical creator homepage.
@@ -59,11 +59,3 @@
 # listing URLs moved from /<old-handle>/<slug> to the new handle.
 /humphrey/*   /saathum/:splat   301
 # [WEB-REFRAME-1 2026-09-29] Rituals removed under the positive-temple policy.
-/rituals/navagraha-havan/*   /rituals/  301
-/rituals/navagraha-havan     /rituals/  301
-/rituals/lalita-havan/*      /rituals/  301
-/rituals/lalita-havan        /rituals/  301
-/rituals/navagraha-puja/*    /rituals/  301
-/rituals/navagraha-puja      /rituals/  301
-/rituals/shani-shanti-puja/* /rituals/  301
-/rituals/shani-shanti-puja   /rituals/  301

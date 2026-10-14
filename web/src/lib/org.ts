@@ -96,18 +96,16 @@ export const ORG: OrgConstants = {
   // [SAATHUM-ENTITY-1 2026-09-25] Owner: no legal-entity info published on saathum.com.
   legalName: null,
   url: brandUrl('/'),
-  // [BRAND-LOGO-1 2026-09-27] Square diya mark for Google's Organization logo.
+  // Use the same identity mark as the shared page chrome.
   logo: {
-    url: brandUrl('/assets/logo/favicon-512.png'),
+    url: brandUrl('/assets/callvaal/notebook/favicon.svg'),
     width: 512,
     height: 512,
   },
   // rebrand: reviewed — [SAATHUM-REBRAND-1 2026-09-25]
   // [WEB-SEO-REBRAND-1 2026-09-27] Same wording as /about and /llms.txt.
-  description:
-    // [WEB-REFRAME-1 2026-09-29] OWNER: Himalayan temple havans, positive temples only, supporting mountain pujaris.
-    `${BRAND.name} (${BRAND.domain}) arranges havans and pujas online, performed in your name at remote Himalayan temples in Uttarakhand and Himachal. Each ritual is led by the temple's own pujari while our travelling crew films it: streamed live when the mountain network holds, and always recorded in full for you to watch or download. Dry prasad is couriered from the temple. We partner only with positive temples of Shiva and Parvati, Vishnu, Ram and Sita, Krishna and the gentle Himalayan Devis, and each booking helps the pujaris and villages who care for them.`,
-  slogan: 'Faith, brought home to you.',
+  description: BRAND.nameMeaningLong,
+  slogan: BRAND.slogan,
   foundersDescription: '',
   foundingDate: '2025',
   // [SAATHUM-BRAND-1 2026-09-20] Left as the avatok.ai mailbox on purpose —
@@ -213,9 +211,8 @@ export function orgJsonLd({ canonical, title, description, ogImage }: PageLdInpu
     // applies under the Saa Thum name — no known collision exists, so this is
     // now a plain entity description rather than a "not to be confused with"
     // claim. Mirrors the visible FAQ on /about (components/EntityFaq.astro).
-    disambiguatingDescription:
-      `An online havan and puja service at ${BRAND.domain}, based in Dehradun, Uttarakhand — its crew travels to positive Himalayan temples where local pujaris perform havans in the devotee's name, filmed for families in India and abroad.`,
-    knowsAbout: ['havan', 'puja', 'sankalp', 'Himalayan temples', 'Uttarakhand temples', 'online havan', 'puja video', 'prasad delivery'],
+    disambiguatingDescription: BRAND.nameMeaningLong,
+    knowsAbout: ['everyday conversations', 'shared interests', 'listening', 'conversation boundaries'],
     slogan: ORG.slogan,
     foundingDate: ORG.foundingDate,
     areaServed: 'Worldwide',

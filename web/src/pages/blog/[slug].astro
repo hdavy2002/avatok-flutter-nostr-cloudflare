@@ -1,0 +1,31 @@
+---
+import Base from '../../layouts/Base.astro';
+import TruckBorder from '../../components/TruckBorder.astro';
+import { publicImage, publicImageSrcSet } from '../../lib/config';
+import { blogBySlug, blogContent, blogHref, relatedBlogArticles } from '../../lib/fraandsBlogSeo';
+import { removedBlogPage } from '../../lib/removedBlogPage';
+import { BRAND } from '../../lib/brand';
+import '../../styles/creator-ideas.css';
+import '../../styles/creator-guide.css';
+export const prerender = false;
+const article = blogBySlug(Astro.params.slug ?? '');
+if (!article) return removedBlogPage();
+const content = blogContent(article);
+const related = relatedBlogArticles(article);
+---
+<Base content={content} keywords={article.tags.join(', ')}>
+  <main class="idea-page creator-guide" id="main-content" data-blog-article={article.slug}>
+    <div class="guide-shell">
+      <nav class="guide-breadcrumb" aria-label="Breadcrumb"><a href="/blog/">Blog</a><span aria-hidden="true">/</span><a href={'/blog/?category=' + encodeURIComponent(article.category) + '#idea-catalogue'}>{article.category}</a></nav>
+      <header class="guide-heading"><p class="idea-kicker">Everyday connection</p><div class="idea-chips"><span class="idea-format live">{article.category}</span></div><h1>{article.title}</h1><p class="guide-lead">{article.summary}</p><p class="guide-byline">By {BRAND.name} · Ideas for your everyday conversations</p></header>
+      <figure class="guide-hero"><img src={publicImage(article.image, { width: 900, fit: 'scale-down' })} srcset={publicImageSrcSet(article.image, [420, 640, 900, 1600], { fit: 'scale-down' })} sizes="(max-width:699px) 90vw, (max-width:1440px) 92vw, 1320px" alt={article.imageAlt} width="1536" height="1024" fetchpriority="high" /><figcaption>{article.imageAlt}</figcaption></figure>
+      <div class="guide-layout"><aside class="guide-sidebar" aria-label="Article navigation"><p class="idea-kicker">In this article</p><nav><a href="#begin">A place to begin</a>{article.sections.map((section, index) => <a href={'#section-' + (index + 1)}>{section.heading}</a>)}<a href="#takeaway">Take it with you</a></nav><p class="guide-note">Make room.<br />Stay curious.</p></aside>
+        <div class="guide-body"><section id="begin"><p class="idea-kicker">A place to begin</p><h2>Start where you are</h2><p>{article.lead}</p></section>{article.sections.map((section, index) => <section id={'section-' + (index + 1)}><p class="idea-kicker">{String(index + 1).padStart(2, '0')} · {article.category}</p><h2>{section.heading}</h2>{section.paragraphs.map(paragraph => <p>{paragraph}</p>)}{section.steps && <ol class="guide-steps">{section.steps.map(step => <li>{step}</li>)}</ol>}</section>)}<section id="takeaway"><h2>Take it with you</h2><div class="guide-audience"><strong>One thing to remember</strong><p>{article.takeaway}</p></div></section>
+        <div class="guide-ticket"><p class="guide-note">A conversation has two people in it.</p><h2>Keep curiosity and boundaries together</h2><p>These ideas are for everyday relationships. {BRAND.name} is a preview of paid host conversations for adults 18+. Paying for time does not buy friendship, emotional care or professional support.</p><a class="idea-button" href="/safety">Safety and boundaries ↗</a><a class="guide-back" href="/blog/">Explore more articles</a></div></div>
+      </div>
+    </div>
+    <TruckBorder kind="chai" />
+    <section class="guide-shell guide-related" aria-labelledby="related-title"><p class="idea-kicker">Keep exploring</p><h2 id="related-title">You might also like</h2><div class="idea-grid">{related.map(item => <article class="idea-card"><a class="idea-card-link" href={blogHref(item)}><div class="idea-picture"><img src={publicImage(item.image, { width: 900, fit: 'scale-down' })} width="1536" height="1024" alt="" loading="lazy" decoding="async" /></div><div class="idea-card-copy"><span class="idea-format live">{item.category}</span><h3>{item.title}</h3><p>{item.summary}</p><span class="idea-read-guide">Read more ↗</span></div></a></article>)}</div></section>
+  </main>
+  <script>import { capture } from '../../lib/analytics'; const article = document.querySelector<HTMLElement>('[data-blog-article]'); if (article) capture('blog_article_view', { article: article.dataset.blogArticle });</script>
+</Base>

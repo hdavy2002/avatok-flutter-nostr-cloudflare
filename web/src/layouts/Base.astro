@@ -69,7 +69,7 @@ const {
   // listening, chatting, being a home friend or live streaming. Every page that
   // does not set its own description inherits this, so it is worth getting right.
   // rebrand: reviewed — [SAATHUM-REBRAND-1] brief §5.1
-  description = 'Book a sacred ritual for exams, home, health, prosperity or peace. Our priests perform it for you at a real altar and we send you the video, wherever you are. Prasad delivered to your door.',
+  description = ORG.description,
   image,
   imageAlt = title,
   imageWidth,
@@ -81,7 +81,7 @@ const {
   navStatic = false,
   noindex: noindexProp = false,
   hideNavCtas = false,
-  keywords = `${ORG.name}, online puja, book a puja, havan online, puja in your name, gotra sankalp, puja video, prasad delivery`,
+  keywords = `${ORG.name}, conversations, shared interests, listening, boundaries`,
   lang = 'en',
   dir = 'ltr',
   indiaLandingLanguage = true,
@@ -95,8 +95,7 @@ const {
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     {/* [BRAND-LOGO-1 2026-09-27] Diya-in-white-circle favicon. */}
-    <link rel="icon" href="/assets/logo/favicon-512.png" type="image/png" sizes="512x512" />
-    <link rel="icon" href="/assets/logo/favicon-32.png" type="image/png" sizes="32x32" />
+    <link rel="icon" href="/assets/callvaal/notebook/favicon.svg" type="image/svg+xml" />
     {/* [WEB-SEO-AUTO-1] One resolver emits the complete metadata set. New
         public routes pass ordinary content data; unclassified routes fail
         closed to noindex instead of inheriting misleading homepage metadata. */}

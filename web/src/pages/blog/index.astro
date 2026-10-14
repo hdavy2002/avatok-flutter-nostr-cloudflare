@@ -1,0 +1,35 @@
+---
+import Base from '../../layouts/Base.astro';
+import TruckBorder from '../../components/TruckBorder.astro';
+import { publicImage, publicImageSrcSet } from '../../lib/config';
+import { blogArticles } from '../../lib/fraandsBlog';
+import { blogHref, blogCategories, BLOG_CONTENT } from '../../lib/fraandsBlogSeo';
+import { BRAND, brandUrl } from '../../lib/brand';
+import '../../styles/creator-ideas.css';
+export const prerender = false;
+const content = BLOG_CONTENT;
+const collection = { '@context': 'https://schema.org', '@type': 'ItemList', numberOfItems: blogArticles.length,
+  itemListElement: blogArticles.map((article, index) => ({ '@type': 'ListItem', position: index + 1, url: brandUrl(blogHref(article)), name: article.title })) };
+---
+<Base content={content} keywords="friendship, conversation, listening, shared interests, boundaries">
+  <script slot="head" type="application/ld+json" set:html={JSON.stringify(collection)} />
+  <main class="idea-page fraands-blog-page" id="main-content">
+    <section class="idea-hero idea-shell" aria-labelledby="idea-title">
+      <div class="idea-hero-copy"><p class="idea-kicker">The {BRAND.name} blog</p><h1 id="idea-title"><span class="idea-title-line">Start with hello.</span><span class="idea-title-line idea-title-line--accent">Make room to listen.</span></h1><p>Ideas for everyday conversations, shared interests and friendships that have room for both people.</p><a class="idea-button" href="#idea-catalogue">Explore the articles <span aria-hidden="true">↓</span></a><p class="idea-handwritten">A little curiosity.<br />A little kindness.</p></div>
+      <div class="idea-hero-art" aria-hidden="true">{[blogArticles[0], blogArticles[11]].map((article, index) => <div class="idea-postcard"><div class="idea-picture"><img src={publicImage(article.image, { width: 900, fit: 'scale-down' })} width="1536" height="1024" alt="" fetchpriority={index === 0 ? 'high' : 'auto'} /></div><span>{index === 0 ? 'Every conversation starts somewhere.' : 'Find a story to share.'}</span></div>)}<div class="idea-stamp">Listen.<br />Share. Connect.</div></div>
+    </section>
+    <section class="idea-shell idea-intro" aria-label="About the blog"><div style="grid-column:1/-1"><h2>There is no script for friendship</h2><p>A good question can open a door. Listening, respecting a boundary and making time can help keep it open. These articles offer things to try in your own relationships, with examples you can adapt to your life.</p></div></section>
+    <TruckBorder kind="chai" />
+    <section class="idea-shell idea-intro" aria-label="What you can explore"><div><span class="idea-format live">Start</span><p>Find a first question, a shared interest or a comfortable way to pick up a conversation.</p></div><div><span class="idea-format private">Listen</span><p>Make space for another person's story without rushing to fix it or taking it over.</p></div><div><span class="idea-format group">Respect</span><p>Keep room for privacy, different needs and a clear no. Connection grows at its own pace.</p></div></section>
+    <section class="idea-shell idea-daily" aria-labelledby="daily-title"><span class="idea-daily-label">One small step</span><div><h2 id="daily-title">Ask. Listen. Leave room.</h2><p>Try one idea today. A thoughtful message or an unhurried question is enough to begin.</p></div><a href="/rules-of-engagement">Conversation boundaries <span aria-hidden="true">↗</span></a></section>
+    <section class="idea-shell idea-catalogue" id="idea-catalogue" aria-labelledby="catalogue-title">
+      <div class="idea-section-heading"><div><p class="idea-kicker">Everyday connection</p><h2 id="catalogue-title">What is on your mind?</h2></div><p>{blogArticles.length} articles<br />Read at your own pace.</p></div>
+      <div class="idea-controls" data-idea-controls hidden><div class="idea-format-filters" role="group" aria-label="Filter articles by category"><button type="button" data-category="all" aria-pressed="true">All articles</button>{blogCategories.map(category => <button type="button" data-category={category} aria-pressed="false">{category}</button>)}</div><div class="idea-search-row"><label class="idea-search">Search<input id="idea-search" type="search" placeholder="Try listening, films, boundaries…" autocomplete="off" /></label></div><p class="idea-result-count" id="idea-results" aria-live="polite"></p></div>
+      <div class="idea-grid">{blogArticles.map(article => <article class="idea-card" id={article.slug} data-idea-card data-category={article.category} data-tags={article.tags.join(' ')}><a class="idea-card-link" href={blogHref(article)} aria-labelledby={`${article.slug}-title`} data-blog-open={article.slug}><div class="idea-picture" aria-hidden="true"><img src={publicImage(article.image, { width: 900, fit: 'scale-down' })} srcset={publicImageSrcSet(article.image, [420, 640, 900, 1600], { fit: 'scale-down' })} sizes="(max-width:699px) 90vw, (max-width:1100px) 44vw, 29vw" alt="" width="1536" height="1024" loading="lazy" decoding="async" /></div><div class="idea-card-copy"><div class="idea-chips"><span class="idea-format live">{article.category}</span></div><h3 id={`${article.slug}-title`}>{article.title}</h3><p>{article.summary}</p><span class="idea-read-guide">Read more <span aria-hidden="true">↗</span></span></div></a></article>)}</div>
+      <div class="idea-empty" hidden><h3>Nothing matches that yet.</h3><p>Try another word or category.</p><button type="button" id="idea-reset">Show all articles</button></div><div class="idea-more-row"><button class="idea-button idea-more" type="button" hidden>Show more articles</button></div><noscript><p class="idea-result-count">All {blogArticles.length} articles are shown. Browser JavaScript enables search and filters.</p></noscript>
+    </section>
+    <section class="idea-shell idea-closing"><p class="idea-handwritten">People, with room to be themselves.</p><h2>Curious about {BRAND.name}?</h2><p>We are preparing paid conversations with hosts, with clear per-minute prices and private phone numbers. This site is a preview. A paid call does not promise friendship, care or professional support. For adults 18+.</p><div><a class="idea-button" href="/how-it-works">How it works</a><a class="idea-market-link" href="/safety">Read our safety guidance ↗</a></div></section>
+  </main>
+  <script>import '../../lib/fraandsBlogPage';</script>
+</Base>
+<style>.fraands-blog-page .idea-hero h1{white-space:normal}.fraands-blog-page .idea-format-filters{flex-wrap:wrap}</style>

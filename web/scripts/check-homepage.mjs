@@ -158,75 +158,27 @@ console.log('Host/fan homepage checks passed: approved composition, four preview
 assert(!existsSync(resolve(root, 'archive/home-2026-09-09/index.html')), 'Deleted archive page is not rebuilt');
 assert(!existsSync(resolve(root, 'global-ideas/index.html')), 'Deleted /global-ideas page is not rebuilt');
 
-// [SAATHUM-GUIDE-1 2026-09-25] The creator /ideas page (and its /blog/creator-ideas
-// articles) was replaced by the Puja & Havan Guide at /rituals. /ideas is now an
-// SSR 301 → /rituals, so it has no prerendered file. The creator checks that
-// stood here are in git history (c32524ca) for restore.
+// Blog SSR content and retired routes are checked in check-og-runtime.mjs.
 assert(!existsSync(resolve(root, 'ideas/index.html')), '/ideas is a redirect, not a prerendered page');
-// [SAATHUM-GUIDE-2] Articles 404'd in prod when /rituals/* overflowed the 100-rule _routes.json.
+const sitemapIndexSource = readFileSync(resolve('src/pages/sitemap.xml.ts'), 'utf8');
+assert.match(sitemapIndexSource, /<sitemapindex/, 'sitemap.xml is a sitemap index');
+assert(sitemapIndexSource.includes('/sitemap-pages.xml'), 'Index lists sitemap-pages.xml');
 const routesJson = JSON.parse(readFileSync(resolve(root, '_routes.json'), 'utf8'));
-assert(routesJson.exclude.includes('/rituals/*'), '_routes.json must exclude /rituals/* (else articles hit the Function and 404)');
-assert(routesJson.exclude.includes('/.well-known/*'), '_routes.json must exclude /.well-known/* (else assetlinks.json hits the [username]/[slug] Function and 404s)');
-assert(routesJson.include.length + routesJson.exclude.length <= 100, 'Cloudflare 100-rule _routes.json ceiling');
+assert(routesJson.exclude.includes('/.well-known/*'), 'App Links stay static');
+assert(!routesJson.exclude.includes('/rituals/*'), 'Retired articles reach the 410 handler');
+assert(!routesJson.exclude.includes('/blog/*'), 'Unknown blog slugs reach the 410 handler');
+assert(routesJson.include.length + routesJson.exclude.length <= 100, 'Cloudflare 100-rule ceiling');
 for (const list of [routesJson.include, routesJson.exclude]) {
   const splats = list.filter(rule => rule.endsWith('/*')).map(rule => rule.slice(0, -1));
-  for (const rule of list) assert(!splats.some(prefix => rule !== prefix + '*' && (rule.startsWith(prefix) || rule + '/' === prefix)), 'Cloudflare rejects overlapping _routes.json rules: ' + rule);
+  for (const rule of list) assert(!splats.some(prefix => rule !== prefix + '*' && (rule.startsWith(prefix) || rule + '/' === prefix)), 'Overlapping route rule: ' + rule);
 }
-const guide = normalizeBuiltImages(readFileSync(resolve(root, 'rituals/index.html'), 'utf8'), { root });
-// [WEB-REFRAME-1 2026-09-29] Navagraha Havan/Puja, Lalita Havan and Shani Shanti Puja removed (temple policy).
-assert.equal((guide.match(/data-idea-card/g) || []).length, 51, 'All 51 rituals (28 havans + 23 pujas) are in the guide');
-assert.equal((guide.match(/data-format="havan"/g) || []).length, 29, '28 havan cards + the Havans filter');
-assert.equal((guide.match(/data-format="puja"/g) || []).length, 24, '23 puja cards + the Pujas filter');
-assert.equal((guide.match(/<h1[ >]/g) || []).length, 1, 'Guide has one main heading');
-assert.match(guide, /<footer\b[^>]*\bdata-callvaal-chrome(?:=|\s|>)/, 'Guide uses shared Hello Fraands footer');
-assert.match(guide, /<header\b[^>]*\bdata-callvaal-chrome(?:=|\s|>)/, 'Guide uses shared Hello Fraands header');
-assert.match(guide, /id="idea-search"/, 'Guide search has an accessible input');
-// [HELLO-FRAANDS-ARCHIVE-1] archived (noindex) pages carry no structured data: assert.match(guide, /CollectionPage/);
-// [HELLO-FRAANDS-ARCHIVE-1] archived (noindex) pages carry no structured data: assert.match(guide, /ItemList/);
-assert(meta(guide, 'og:title') && meta(guide, 'og:description'));
-const ritualLinks = [...new Set([...guide.matchAll(/href="(\/rituals\/[a-z0-9-]+)\/"/g)].map(m => m[1]))];
-assert.equal(ritualLinks.length, 51, 'Every ritual has its own article');
-const sitemap = readFileSync(resolve(root,'sitemap-pages.xml'),'utf8');
-const sitemapIndexSource = readFileSync(resolve('src/pages/sitemap.xml.ts'),'utf8');
-assert.match(sitemapIndexSource,/<sitemapindex/,'sitemap.xml is implemented as a sitemap index');
-assert(sitemapIndexSource.includes('/sitemap-pages.xml'),'Index lists sitemap-pages.xml');
-// [HELLO-FRAANDS-ARCHIVE-1] The guide is archived: still built, but noindex and out of the sitemap.
-assert(!sitemap.includes(`<loc>${BRAND.webOrigin}/rituals/</loc>`), 'Archived guide stays out of the sitemap');
-assert(!sitemap.includes(`${BRAND.webOrigin}/ideas<`), 'Retired /ideas is out of the sitemap');
-assert(!sitemap.includes(`${BRAND.webOrigin}/blog/creator-ideas/`), 'Archived creator guides stay out of the sitemap');
-assert(!sitemap.includes(`${BRAND.webOrigin}/organisers`), '/organisers archived: not in sitemap');
-const ritualImages = new Set();
-for (const href of ritualLinks) {
- const slug = href.split('/').pop();
- const article = normalizeBuiltImages(readFileSync(resolve(root, href.slice(1), 'index.html'), 'utf8'), { root });
- assert.equal((article.match(/<h1[ >]/g) || []).length, 1, 'One article heading: ' + href);
- assert.match(article, new RegExp('data-ritual-article="' + slug + '"'), 'Article identity: ' + href);
- for (const section of ['about','why-deity','blessings','who','when','altar','value','from-home','prasad','good-to-know']) assert(article.includes('id="' + section + '"'), 'Missing ' + section + ' in ' + href);
- assert.match(article, /<header\b[^>]*\bdata-callvaal-chrome(?:=|\s|>)/, 'Shared Hello Fraands article header: ' + href);
- assert.match(article, /<footer\b[^>]*\bdata-callvaal-chrome(?:=|\s|>)/, 'Shared Hello Fraands article footer: ' + href);
- assert.match(article, /href="\/marketplace\?q=/, 'Article booking CTA: ' + href);
- // [SAATHUM-GUIDE-2] Havans are open shared events (power of many); pujas are private.
-  // [PRICING-1] The price is a live [data-site-price] span fed by /api/pricing — never a hardcoded figure.
- if (slug.endsWith('-havan')) { assert(article.includes('id="together"'), 'Havan explains joining together: ' + href); assert.match(article, /from <span data-site-price="[a-z0-9-]+" data-site-type="havan">₹\d[\d,]*<\/span>/, 'Havan price anchor (live from /api/pricing, [PRICING-1]): ' + href); }
- assert.match(article, /The story behind it/, 'Deity story: ' + href);
- assert.match(article, /temple priests/, 'Temple priests explained: ' + href);
- assert.match(article, /href="\/refunds"/, 'Refund policy link: ' + href);
- assert.match(article, /internationally/, 'International prasad courier explained: ' + href);
- assert.doesNotMatch(article, /guarantee(?:d|s)? (?:to|that|result|success|cure)|will cure|cures /i, 'No guaranteed outcomes or cures: ' + href);
- assert.equal(meta(article, 'og:type'), 'article');
-// [HELLO-FRAANDS-ARCHIVE-1] archived (noindex) pages carry no structured data: assert.match(article, /BreadcrumbList/);
- assert(!sitemap.includes(BRAND.webOrigin + href + '/<'), 'Archived article stays out of the sitemap: ' + href);
- // Artwork: one file per ritual at /assets/rituals/<slug>.png, landscape, unique.
- const file = resolve(root, 'assets/rituals', slug + '.png');
- assert(existsSync(file), 'Ritual artwork missing (see Specs/saathum-ritual-images/IMAGE-PROMPTS.md): ' + slug + '.png');
- const art = await sharp(file).metadata();
- assert(art.width > art.height, 'Ritual artwork is landscape: ' + slug + '.png');
- const hash = createHash('sha256').update(readFileSync(file)).digest('hex');
- assert(!ritualImages.has(hash), 'Duplicate ritual artwork bytes: ' + slug + '.png');
- ritualImages.add(hash);
- assert(article.includes('rituals/' + slug + '.png'), 'Article shows its own artwork: ' + href);
-}
-console.log('Puja & Havan Guide checks passed: 51 articles, sections, sitemap, sharing and unique artwork.');
+assert(!existsSync(resolve(root, 'rituals/index.html')), 'Retired index is not prerendered');
+const sitemap = readFileSync(resolve(root, 'sitemap-pages.xml'), 'utf8');
+assert(!sitemap.includes(BRAND.webOrigin + '/ideas<'), 'Retired ideas stay out of sitemap');
+assert(!sitemap.includes(BRAND.webOrigin + '/organisers'), 'Archived organisers stay out of sitemap');
+assert(!sitemap.includes(BRAND.webOrigin + '/rituals'), 'Retired rituals stay out of sitemap');
+assert(sitemap.includes(BRAND.webOrigin + '/blog/'), 'Blog appears in sitemap');
+assert(!sitemap.includes(BRAND.webOrigin + '/blog/creator-ideas/'), 'Retired blog articles stay out of sitemap');
 
 // The promoted homepage has one accurate share preview and canonical URL (A4).
 assert(meta(html, 'og:title').includes(identity.name), 'Homepage share identity follows the approved brand');

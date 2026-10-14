@@ -30,12 +30,8 @@ export default defineConfig({
   markdown: { remarkPlugins: [remarkBrand, remarkUiCopy] },
   adapter: cloudflare({
     imageService: 'passthrough',
-    // [SAATHUM-GUIDE-2 2026-09-25] The site sits at Cloudflare's 100-rule
-    // _routes.json ceiling, so Astro's per-page excludes overflowed and every
-    // prerendered /rituals/<slug> article went to the Function — which 404s.
-    // One wildcard keeps all 55 guide articles on the static asset path.
-    // Keep this; check-homepage.mjs asserts it.
-    routes: { extend: { exclude: [{ pattern: '/rituals/*' }, { pattern: '/.well-known/*' }] } }, // [HF-APP-LINKS-1] /.well-known/* must stay static: without it assetlinks.json hit the [username]/[slug] Function and 404'd (App Links never verified). Keep; check-homepage.mjs + check-assetlinks.mjs assert it. // [WEB-BLOG-RITUALS-1 2026-09-27] /blog/creator-ideas/* exclude removed: those guides were deleted and /blog/* is now an SSR 410 route, so it must reach the worker
+    // Unknown and retired blog paths need SSR 410 responses.
+    routes: { extend: { exclude: [{ pattern: '/.well-known/*' }] } },
   }),
   integrations: [
     react(),

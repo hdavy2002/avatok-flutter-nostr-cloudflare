@@ -30,7 +30,8 @@
 // getHelpEntries()/helpUrl() (src/lib/help.ts) and are appended in GET
 // below, alongside the static '/help' landing-page entry.
 import type { APIRoute } from 'astro';
-import { rituals } from '../lib/ritualGuides';
+import { blogArticles } from '../lib/fraandsBlog';
+import { blogHref, BLOG_DATE } from '../lib/fraandsBlogSeo';
 // [WEB-HELP-1 2026-09-11] Help routes: '/help' plus one entry per
 // non-draft help article, appended in GET() since collection reads are async.
 import { getHelpEntries, helpUrl } from '../lib/help';
@@ -60,8 +61,8 @@ const BASE_ROUTES: Array<[string, string, string, string?]> = [
   ['/', 'daily', '1.0'],
   ['/marketplace', 'daily', '0.9'],
   ['/free-videos', 'daily', '0.7'], // [SAATHUM-FREEVIDEOS-WEB-1]
-  ['/rituals/', 'weekly', '0.9'],
-  ...rituals.map(ritual => [ritual.href, 'monthly', '0.8'] as [string, string, string]),
+  ['/blog/', 'weekly', '0.9'],
+  ...blogArticles.map(article => [blogHref(article), 'monthly', '0.8', BLOG_DATE] as [string, string, string, string]),
   ['/how-it-works', 'monthly', '0.8'],
   ['/temples', 'monthly', '0.8'],
   // [SAATHUM-SHOP-WEB-STORE-1 2026-10-01] The Shop. Product and collection pages are crawled from these two hubs

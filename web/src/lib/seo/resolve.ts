@@ -2,9 +2,7 @@ import { ORG } from '../org';
 import { SHARE_IMAGE, shareImage } from '../config';
 import { ApiError, getCreator, getListing } from '../apiClient';
 import { creatorOg, listingOg } from '../og';
-import { ritualBySlug, ritualArticleTitle, ritualArticleSummary } from '../ritualGuides';
-import { ritualAd } from '../ritualAdHooks';
-import { fetchPricing } from '../pricing';
+import { blogBySlug, blogContent, BLOG_CONTENT } from '../fraandsBlogSeo';
 import { getHelpEntries, helpUrl, SECTIONS, type HelpSectionId } from '../help';
 import { plainText, stableRevision, truncateAtWord } from './normalize';
 import { buildSeoGraph } from './schema';
@@ -185,22 +183,13 @@ export async function resolveOgRecord(kind: string, key: string): Promise<OgReso
       const collections: Record<string, PublicContent> = {
         marketplace: MARKETPLACE_SEO,
         help: HELP_SEO,
-        rituals: { kind: 'collection', key: 'rituals', canonicalPath: '/rituals', title: 'Havan & Puja Guide: Meanings, Blessings, Dates', summary: 'Learn what each traditional havan and puja is for, which deity it honours, the best time to hold it, and how families abroad can take part online.', visibility: 'public' },
+        blog: BLOG_CONTENT,
       };
       return collections[key] ? publicContentRecord(collections[key]) : { status: 'not-found' };
     }
     if (kind === 'article') {
-      const ritual = ritualBySlug(key);
-      if (!ritual) return { status: 'not-found' };
-      return publicContentRecord({
-        kind: 'article', key: ritual.slug, canonicalPath: ritual.href,
-        title: ritualArticleTitle(ritual),
-        summary: ritualArticleSummary(ritual),
-        visibility: 'public', publishedAt: '2026-09-25', modifiedAt: '2026-09-25',
-        image: { url: ritual.image, alt: ritual.imageAlt, revision: ritual.slug },
-        article: { authorName: ORG.name, section: ritual.type === 'havan' ? 'Havans' : 'Pujas', keywords: ritual.tags },
-        ad: ritualAd(ritual, await fetchPricing()),
-      });
+      const article = blogBySlug(key);
+      return article ? publicContentRecord(blogContent(article)) : { status: 'not-found' };
     }
     if (kind === 'help') {
       const entry = (await getHelpEntries()).find((item) => item.id === key);

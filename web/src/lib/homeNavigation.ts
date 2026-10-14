@@ -35,7 +35,7 @@ export const HOME_HEADER_LINKS = [
   { href: '/temples', label: 'Our temples' },
   // [WEB-BLOG-RITUALS-1 2026-09-27] OWNER DECISION: "Blog" menu item = the Puja &
   // Havan Guide at /rituals (the new blog). The old /blog articles were removed.
-  { href: '/rituals/', label: 'Blog' },
+  { href: '/blog/', label: 'Blog' },
   // [WEB-HIW-2 2026-09-27] OWNER DECISION: Help centre is a header menu item, after How it works.
   { href: '/help', label: 'Help centre' },
   // [WEB-ABOUT-FOLK-1 2026-09-27] OWNER DECISION: "About us" is back in the header
@@ -50,7 +50,7 @@ export const HOME_FOOTER_COLUMNS = [
     { href: '/marketplace', label: 'Explore' },
     // [SAATHUM-SHOP-WEB-STORE-1 2026-10-01] Shop after Explore in the footer too.
     { href: '/shop', label: 'Shop' },
-    { href: '/rituals/', label: 'Blog' },
+    { href: '/blog/', label: 'Blog' },
   ] },
   { title: 'Company', links: [
     { href: '/how-it-works', label: 'How it works' },

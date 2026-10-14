@@ -95,6 +95,10 @@ function cacheable(res: Response): boolean {
 }
 
 export const onRequest = defineMiddleware(async (context, next) => {
+  // Both legacy index spellings have the same deliberate permanent redirect.
+  if (context.url.pathname === '/rituals' || context.url.pathname === '/rituals/') {
+    return new Response(null, { status: 301, headers: { Location: '/blog/' } });
+  }
   const cache = context.request.method === 'GET' && EDGE_CACHE_PATH.test(context.url.pathname) ? edgeCache() : null;
   if (cache) {
     // Keyed by build: a cached page from the previous deploy would point at

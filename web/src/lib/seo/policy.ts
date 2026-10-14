@@ -29,7 +29,7 @@ const PRIVATE_EXACT = new Set([
 
 const PUBLIC_EXACT = new Set([
   '/', '/marketplace', '/help', '/how-it-works', '/temples', '/privacy',
-  '/terms', '/cookies', '/refunds', '/contact', '/rituals', '/disclaimer', '/grievance',
+  '/terms', '/cookies', '/refunds', '/contact', '/blog', '/disclaimer', '/grievance',
   // [SAATHUM-SHOP-WEB-STORE-1 2026-10-01] Shop home and the all-T-shirts listing. Collection and product pages
   // (/shop/c/<slug>, /shop/p/<slug>) provide PublicContent from the live catalogue, so they are not listed here.
   '/shop', '/shop/all',
@@ -48,12 +48,8 @@ function prefixed(path: string, prefix: string): boolean {
 
 export function canonicalUrl(pathname: string): string {
   const path = normalizePath(pathname);
-  // [WEB-SEO-REBRAND-1 2026-09-27] /rituals/* is excluded from the worker
-  // (astro.config.mjs routes.extend.exclude) and served as static assets, and
-  // Cloudflare Pages answers /rituals/x with a 308 to /rituals/x/. The canonical
-  // (and the sitemap) must name the URL that answers 200, not the one that
-  // redirects — otherwise Google sees canonical -> redirect -> canonical.
-  if (path === '/rituals' || path.startsWith('/rituals/')) {
+  // Blog discovery and internal links use one trailing-slash canonical.
+  if (path === '/blog' || path.startsWith('/blog/')) {
     return new URL(path + '/', BRAND.webOrigin).toString();
   }
   return new URL(path === '/' ? '/' : path, BRAND.webOrigin).toString();
@@ -90,7 +86,7 @@ export function resolveRoutePolicy(
     };
   }
 
-  if (PUBLIC_EXACT.has(path) || prefixed(path, '/help') || prefixed(path, '/rituals')) {
+  if (PUBLIC_EXACT.has(path) || prefixed(path, '/help')) {
     return { indexable: true, canonicalPath: path };
   }
 
