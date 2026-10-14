@@ -28,16 +28,157 @@ class _RecordingLinks extends LinkOpener {
   }
 }
 
+const _packColors = <int, ({Color fill, Color value, Color ink})>{
+  120: (
+    fill: Color(0xFFDCEBFF),
+    value: Color(0xFF1D3F6E),
+    ink: Color(0xFF1D3F6E),
+  ),
+  240: (
+    fill: Color(0xFFFFF1C7),
+    value: Color(0xFF3D2D00),
+    ink: Color(0xFF5C4300),
+  ),
+  360: (
+    fill: Color(0xFFFFE3D3),
+    value: Color(0xFF6B2C12),
+    ink: Color(0xFF6B2C12),
+  ),
+  500: (
+    fill: Color(0xFFE7E1FF),
+    value: Color(0xFF2C2477),
+    ink: Color(0xFF2C2477),
+  ),
+};
+
+Map<String, Object?> _paletteCatalogue(List<int> amounts) => {
+  'ok': true,
+  'enabled': true,
+  'gstBps': 1800,
+  'products': [
+    for (final amount in amounts)
+      {'productId': 'hf_rupees_$amount', 'pricePaise': amount * 100},
+  ],
+};
+
+FakeBillingAdapter _paletteBilling(List<int> amounts) => FakeBillingAdapter(
+  products: {
+    for (final amount in amounts)
+      'hf_rupees_$amount': StoreProduct(
+        productId: 'hf_rupees_$amount',
+        priceText: '₹$amount.00',
+        currencyCode: 'INR',
+        priceMicros: amount * 1000000,
+      ),
+  },
+);
+
+double _contrast(Color foreground, Color background) {
+  final a = foreground.computeLuminance();
+  final b = background.computeLuminance();
+  return a > b ? (a + 0.05) / (b + 0.05) : (b + 0.05) / (a + 0.05);
+}
+
+void _expectPackPalette(
+  WidgetTester tester,
+  int amount, {
+  required bool dark,
+  required bool selected,
+  bool available = true,
+}) {
+  final tile = buyButton('hf_rupees_$amount');
+  final colors = _packColors[amount]!;
+  final decoration = tester.widget<AnimatedContainer>(tile).decoration! as BoxDecoration;
+  expect(decoration.color, colors.fill);
+  expect(decoration.borderRadius, BorderRadius.circular(22));
+  final border = decoration.border! as Border;
+  expect(border.top.width, selected ? 3 : 1);
+  expect(border.top.color, selected
+      ? Colors.black
+      : dark ? const Color(0xFF5C5C66) : const Color(0xFFD8D1C9));
+  final aspect = tester.widget<AspectRatio>(find.ancestor(
+    of: tile,
+    matching: find.byType(AspectRatio),
+  ));
+  expect(aspect.aspectRatio, 1.42);
+  final semantics = tester.widget<Semantics>(find.ancestor(
+    of: tile,
+    matching: find.byWidgetPredicate((w) => w is Semantics && w.properties.button == true),
+  ).first);
+  expect(semantics.properties.selected, selected);
+  expect(semantics.properties.enabled, available);
+  final price = tester.widget<Text>(find.descendant(
+    of: tile,
+    matching: find.text(available ? '₹$amount.00' : 'Not available'),
+  ));
+  expect(price.style?.fontSize, 24);
+  expect(price.style?.color, colors.value);
+  expect(_contrast(price.style!.color!, decoration.color!), greaterThanOrEqualTo(3));
+  final notes = tester.widgetList<Text>(find.descendant(
+    of: tile,
+    matching: find.byType(Text),
+  )).where((text) => text != price);
+  expect(notes, isNotEmpty);
+  for (final note in notes) {
+    expect(note.style?.color, colors.ink);
+    expect(_contrast(note.style!.color!, decoration.color!), greaterThanOrEqualTo(4.5));
+  }
+  if (amount == 500) {
+    expect(find.descendant(of: tile, matching: find.text('Fixed pack')), findsOneWidget);
+    final lock = tester.widget<Icon>(find.descendant(
+      of: tile,
+      matching: find.byIcon(Icons.lock_outline_rounded),
+    ));
+    expect(lock.color, colors.ink);
+  }
+}
+
 void main() {
   for (final dark in [false, true]) {
     testWidgets('wallet palette preserves type sizes (${dark ? 'dark' : 'light'})', (tester) async {
-      final billing = walletBilling();
-      await pumpWallet(tester, api: walletApi(), billing: billing, dark: dark);
+      const amounts = [120, 240, 360, 500];
+      final billing = _paletteBilling(amounts);
+      final api = walletApi()
+        ..onJson('GET', '/api/hf/tokens/products', _paletteCatalogue(amounts));
+      await pumpWallet(tester, api: api, billing: billing, dark: dark);
       expect(tester.widget<Scaffold>(find.byType(Scaffold)).backgroundColor,
           dark ? const Color(0xFF000000) : const Color(0xFFF6F3EE));
       final balance = tester.widget<Text>(find.byKey(const ValueKey<String>('balance-total')));
       expect(balance.style?.fontSize, 44);
-      expect(balance.style?.color, dark ? const Color(0xFFF8F6FF) : Colors.black);
+      expect(balance.style?.color, Colors.white);
+      final balanceCard = find.byKey(const ValueKey<String>('token-balance'));
+      final base = dark ? const Color(0xFF2E2852) : Colors.black;
+      final artwork = tester.widgetList<DecoratedBox>(find.descendant(
+        of: balanceCard,
+        matching: find.byType(DecoratedBox),
+      )).map((box) => box.decoration).whereType<BoxDecoration>();
+      expect(artwork.where((box) => box.shape == BoxShape.rectangle)
+          .map((box) => box.color), contains(base));
+      expect(artwork.where((box) => box.shape == BoxShape.circle)
+          .map((box) => box.color), [const Color(0xFF3A2F99), const Color(0xFF9C2853)]);
+      final supporting = tester.widgetList<Text>(find.descendant(
+        of: balanceCard,
+        matching: find.byType(Text),
+      )).where((text) => text != balance);
+      expect(supporting, isNotEmpty);
+      for (final text in supporting) {
+        expect(text.style?.fontSize, 14);
+        expect(text.style?.color, const Color(0xFFD6D1EE));
+        for (final background in [base, const Color(0xFF3A2F99), const Color(0xFF9C2853)]) {
+          expect(_contrast(text.style!.color!, background), greaterThanOrEqualTo(4.5));
+          expect(_contrast(balance.style!.color!, background), greaterThanOrEqualTo(3));
+        }
+      }
+      for (final amount in amounts) {
+        _expectPackPalette(tester, amount, dark: dark, selected: amount == 240);
+      }
+      final popular = tester.widget<Text>(find.text('Popular'));
+      expect(popular.style?.color, Colors.black);
+      final badge = tester.widget<Container>(find.ancestor(
+        of: find.text('Popular'),
+        matching: find.byType(Container),
+      ).first);
+      expect((badge.decoration! as BoxDecoration).color, const Color(0xFFF28C28));
       final price = tester.widget<Text>(find.descendant(
         of: buyButton('hf_rupees_120'),
         matching: find.text('₹120.00'),
@@ -49,6 +190,12 @@ void main() {
       final buttonContext = tester.element(find.descendant(of: payButton, matching: find.byType(ElevatedButton)));
       expect(Theme.of(buttonContext).elevatedButtonTheme.style?.backgroundColor?.resolve({}), const Color(0xFFF28C28));
       expect(button.onPressed, isNotNull);
+      final refundSurface = tester.widget<Container>(find.ancestor(
+        of: find.text('Payments & refunds'),
+        matching: find.byWidgetPredicate((w) => w is Container && w.decoration is BoxDecoration),
+      ).first);
+      expect((refundSurface.decoration! as BoxDecoration).color,
+          dark ? const Color(0xFF343438) : const Color(0xFFFFFDF9));
       final refundTitle = tester.widget<Text>(find.text('Payments & refunds'));
       expect(refundTitle.style?.color, dark ? const Color(0xFFF8F6FF) : Colors.black);
       final refundHeading = find.ancestor(
@@ -80,6 +227,19 @@ void main() {
         matching: find.byType(Text),
       ).first);
       expect(notice.style?.color, dark ? const Color(0xFFF8F6FF) : Colors.black);
+    });
+  }
+
+  for (final dark in [false, true]) {
+    testWidgets('pack colors survive reordered and omitted catalogue entries (${dark ? 'dark' : 'light'})', (tester) async {
+      final api = walletApi()
+        ..onJson('GET', '/api/hf/tokens/products', _paletteCatalogue([500, 360, 240]));
+      await pumpWallet(tester, api: api, billing: _paletteBilling([360, 500]), dark: dark);
+      expect(buyButton('hf_rupees_120'), findsNothing);
+      _expectPackPalette(tester, 240, dark: dark, selected: false, available: false);
+      _expectPackPalette(tester, 360, dark: dark, selected: true);
+      _expectPackPalette(tester, 500, dark: dark, selected: false);
+      expect(find.text('Pay ₹360.00 with Google Play'), findsOneWidget);
     });
   }
 

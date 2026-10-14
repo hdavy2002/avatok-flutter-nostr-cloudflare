@@ -383,7 +383,7 @@ class _BalanceCard extends StatelessWidget {
     final minutes = _minutes;
     final small = HfText.body.copyWith(
       fontSize: 14,
-      color: style.muted,
+      color: const Color(0xFFD6D1EE),
       height: 1.4,
     );
     return Container(
@@ -396,7 +396,7 @@ class _BalanceCard extends StatelessWidget {
       clipBehavior: Clip.antiAlias,
       child: DecoratedBox(
         decoration: BoxDecoration(
-          color: style.card,
+          color: style.dark ? HfColors.darkTile : HfColors.ink,
         ),
         child: Stack(
           clipBehavior: Clip.hardEdge,
@@ -410,7 +410,7 @@ class _BalanceCard extends StatelessWidget {
                   height: 130,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
-                    color: style.inset,
+                    color: HfColors.lavenderDeep,
                   ),
                 ),
               ),
@@ -424,7 +424,7 @@ class _BalanceCard extends StatelessWidget {
                   height: 120,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
-                    color: style.inset,
+                    color: HfColors.blushDeep,
                   ),
                 ),
               ),
@@ -449,7 +449,7 @@ class _BalanceCard extends StatelessWidget {
                       style: HfText.hero.copyWith(
                         fontSize: 44,
                         height: 1.1,
-                        color: style.ink,
+                        color: Colors.white,
                       ),
                     ),
                   ),

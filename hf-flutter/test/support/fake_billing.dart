@@ -42,6 +42,7 @@ class FakeBillingAdapter implements BillingAdapter {
   /// Called when the buy sheet opens: script the outcome by calling [emit].
   void Function(StoreProduct product, String obfuscatedAccountId)? onBuy;
 
+  final List<Set<String>> queriedProductIds = <Set<String>>[];
   final List<String> boughtProductIds = <String>[];
   final List<String> accountIdsSent = <String>[];
   int recoverCalls = 0;
@@ -76,6 +77,7 @@ class FakeBillingAdapter implements BillingAdapter {
   Future<Map<String, StoreProduct>> queryProducts(
     Set<String> productIds,
   ) async {
+    queriedProductIds.add(Set<String>.of(productIds));
     final e = queryError;
     if (e != null) throw e;
     return {

@@ -141,87 +141,91 @@ void main() {
           await _capture(tester, 'browse-services-425x916');
         }
       });
-      testWidgets('wallet layout $label', (tester) async {
-        tester.platformDispatcher.textScaleFactorTestValue = scale;
-        addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
-        tester.platformDispatcher.accessibilityFeaturesTestValue =
-            const FakeAccessibilityFeatures(disableAnimations: true);
-        addTearDown(
-          tester.platformDispatcher.clearAccessibilityFeaturesTestValue,
-        );
-        final api = walletApi()
-          ..onJson('GET', '/api/hf/tokens/products', {
-            'ok': true,
-            'enabled': true,
-            'gstBps': 1800,
-            'products': [
-              {
-                'productId': 'hf_rupees_120',
-                'pricePaise': 12000,
-                'gstPaise': 1831,
-                'walletPaise': 10169,
-                'creditPaise': 10169,
+      for (final dark in [false, true]) {
+        final walletLabel = dark ? '$label-dark' : label;
+        testWidgets('wallet layout $walletLabel', (tester) async {
+          tester.platformDispatcher.textScaleFactorTestValue = scale;
+          addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+          tester.platformDispatcher.accessibilityFeaturesTestValue =
+              const FakeAccessibilityFeatures(disableAnimations: true);
+          addTearDown(
+            tester.platformDispatcher.clearAccessibilityFeaturesTestValue,
+          );
+          final api = walletApi()
+            ..onJson('GET', '/api/hf/tokens/products', {
+              'ok': true,
+              'enabled': true,
+              'gstBps': 1800,
+              'products': [
+                {
+                  'productId': 'hf_rupees_120',
+                  'pricePaise': 12000,
+                  'gstPaise': 1831,
+                  'walletPaise': 10169,
+                  'creditPaise': 10169,
+                },
+                {
+                  'productId': 'hf_rupees_240',
+                  'pricePaise': 24000,
+                  'gstPaise': 3661,
+                  'walletPaise': 20339,
+                  'creditPaise': 20339,
+                },
+                {
+                  'productId': 'hf_rupees_360',
+                  'pricePaise': 36000,
+                  'gstPaise': 5492,
+                  'walletPaise': 30508,
+                  'creditPaise': 30508,
+                },
+                {
+                  'productId': 'hf_rupees_500',
+                  'pricePaise': 50000,
+                  'gstPaise': 7627,
+                  'walletPaise': 42373,
+                  'creditPaise': 42373,
+                },
+              ],
+            });
+          await pumpWallet(
+            tester,
+            api: api,
+            dark: dark,
+            billing: FakeBillingAdapter(
+              products: const {
+                'hf_rupees_120': StoreProduct(
+                  productId: 'hf_rupees_120',
+                  priceText: '₹120.00',
+                  currencyCode: 'INR',
+                  priceMicros: 120000000,
+                ),
+                'hf_rupees_240': StoreProduct(
+                  productId: 'hf_rupees_240',
+                  priceText: '₹240.00',
+                  currencyCode: 'INR',
+                  priceMicros: 240000000,
+                ),
+                'hf_rupees_360': StoreProduct(
+                  productId: 'hf_rupees_360',
+                  priceText: '₹360.00',
+                  currencyCode: 'INR',
+                  priceMicros: 360000000,
+                ),
+                'hf_rupees_500': StoreProduct(
+                  productId: 'hf_rupees_500',
+                  priceText: '₹500.00',
+                  currencyCode: 'INR',
+                  priceMicros: 500000000,
+                ),
               },
-              {
-                'productId': 'hf_rupees_240',
-                'pricePaise': 24000,
-                'gstPaise': 3661,
-                'walletPaise': 20339,
-                'creditPaise': 20339,
-              },
-              {
-                'productId': 'hf_rupees_360',
-                'pricePaise': 36000,
-                'gstPaise': 5492,
-                'walletPaise': 30508,
-                'creditPaise': 30508,
-              },
-              {
-                'productId': 'hf_rupees_500',
-                'pricePaise': 50000,
-                'gstPaise': 7627,
-                'walletPaise': 42373,
-                'creditPaise': 42373,
-              },
-            ],
-          });
-        await pumpWallet(
-          tester,
-          api: api,
-          billing: FakeBillingAdapter(
-            products: const {
-              'hf_rupees_120': StoreProduct(
-                productId: 'hf_rupees_120',
-                priceText: '₹120.00',
-                currencyCode: 'INR',
-                priceMicros: 120000000,
-              ),
-              'hf_rupees_240': StoreProduct(
-                productId: 'hf_rupees_240',
-                priceText: '₹240.00',
-                currencyCode: 'INR',
-                priceMicros: 240000000,
-              ),
-              'hf_rupees_360': StoreProduct(
-                productId: 'hf_rupees_360',
-                priceText: '₹360.00',
-                currencyCode: 'INR',
-                priceMicros: 360000000,
-              ),
-              'hf_rupees_500': StoreProduct(
-                productId: 'hf_rupees_500',
-                priceText: '₹500.00',
-                currencyCode: 'INR',
-                priceMicros: 500000000,
-              ),
-            },
-          ),
-        );
-        _setSize(tester, size);
-        await tester.pumpAndSettle();
-        expect(tester.takeException(), isNull);
-        await _capture(tester, 'wallet-$label');
-      });
+            ),
+          );
+          _setSize(tester, size);
+          await tester.pumpAndSettle();
+          expect(tester.takeException(), isNull);
+          await _capture(tester, 'wallet-$walletLabel');
+        });
+      }
       for (final kind in HfClusterKind.values) {
         testWidgets('decorative scene ${kind.name} $label', (tester) async {
           tester.view.physicalSize = size;

@@ -53,6 +53,31 @@ const List<String> _catalogueProductIds = <String>[
   'hf_rupees_500',
 ];
 
+// Keep each pack's artwork stable when the catalogue omits or reorders products.
+// These pastel surfaces intentionally use the same dark ink in both themes.
+const _packPalettes = <String, ({Color fill, Color value, Color ink})>{
+  'hf_rupees_120': (
+    fill: HfColors.sky,
+    value: HfColors.skyInk,
+    ink: HfColors.skyInk,
+  ),
+  'hf_rupees_240': (
+    fill: HfColors.butter,
+    value: HfColors.butterValue,
+    ink: HfColors.butterInk,
+  ),
+  'hf_rupees_360': (
+    fill: HfColors.peach,
+    value: HfColors.peachInk,
+    ink: HfColors.peachInk,
+  ),
+  'hf_rupees_500': (
+    fill: HfColors.lavender,
+    value: HfColors.lavenderInk,
+    ink: HfColors.lavenderInk,
+  ),
+};
+
 bool _isPopular(PackOffer offer) => offer.productId == 'hf_rupees_240';
 
 /// The only approved catalogue, in visual order. Values still come from the
@@ -415,10 +440,11 @@ class _PackTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final style = WalletStyle.of(context);
+    final palette = _packPalettes[offer.productId]!;
     final price = offer.priceText;
     final breakdown = offer.breakdown;
     final legacyCredit = offer.pack.creditPaise;
-    final border = selected ? WalletStyle.primary : style.line;
+    final border = selected ? HfColors.ink : style.line;
     final label = price == null ? BuyCopy.unavailable : price;
     final semantic = [
       label,
@@ -444,7 +470,7 @@ class _PackTile extends StatelessWidget {
               curve: HfMotion.curve,
               constraints: const BoxConstraints(minHeight: 108),
               decoration: BoxDecoration(
-                color: style.card,
+                color: palette.fill,
                 borderRadius: radius,
                 border: Border.all(
                   color: border,
@@ -472,7 +498,7 @@ class _PackTile extends StatelessWidget {
                               label,
                               style: HfText.stat.copyWith(
                                 fontSize: 24,
-                                color: style.ink,
+                                color: palette.value,
                               ),
                             ),
                             if (referenceCustomStyle) ...[
@@ -483,13 +509,13 @@ class _PackTile extends StatelessWidget {
                                   Icon(
                                     Icons.lock_outline_rounded,
                                     size: 14,
-                                    color: style.muted,
+                                    color: palette.ink,
                                   ),
                                   const SizedBox(width: 4),
                                   Text(
                                     'Fixed pack',
                                     style: HfText.note.copyWith(
-                                      color: style.muted,
+                                      color: palette.ink,
                                       fontWeight: FontWeight.w700,
                                     ),
                                   ),
@@ -502,7 +528,7 @@ class _PackTile extends StatelessWidget {
                                 '+ ${breakdown.wallet} to wallet',
                                 key: ValueKey<String>('gst-${offer.productId}'),
                                 style: HfText.note.copyWith(
-                                  color: style.muted,
+                                  color: palette.ink,
                                   fontWeight: FontWeight.w600,
                                 ),
                               ),
@@ -511,7 +537,7 @@ class _PackTile extends StatelessWidget {
                               Text(
                                 'Added to wallet ${formatPaise(legacyCredit)}',
                                 style: HfText.note.copyWith(
-                                  color: style.ink,
+                                  color: palette.value,
                                 ),
                               ),
                             ],

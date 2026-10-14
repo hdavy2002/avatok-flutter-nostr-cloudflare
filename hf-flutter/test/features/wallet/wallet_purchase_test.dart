@@ -175,6 +175,12 @@ void main() {
     testWidgets('partial Play catalogue keeps missing packs disabled and recovers on retry', (
       tester,
     ) async {
+      const requestedIds = {
+        'hf_rupees_120',
+        'hf_rupees_240',
+        'hf_rupees_360',
+        'hf_rupees_500',
+      };
       api.onJson('GET', '/api/hf/tokens/products', {
         'ok': true,
         'enabled': true,
@@ -193,6 +199,7 @@ void main() {
           ),
       };
       final container = await pumpWallet(tester, api: api, billing: billing);
+      expect(billing.queriedProductIds, [requestedIds]);
       final offers = container.read(packOffersProvider).requireValue;
       expect(offers.missingProductIds, ['hf_rupees_120', 'hf_rupees_240']);
       expect(find.text('Not available'), findsNWidgets(2));
@@ -218,6 +225,7 @@ void main() {
       billing.products = {'hf_rupees_360': billing.products['hf_rupees_360']!};
       await tester.tap(find.text('Try again'));
       await tester.pumpAndSettle();
+      expect(billing.queriedProductIds, [requestedIds, requestedIds]);
       expect(find.text('Pay ₹360.00 with Google Play'), findsOneWidget,
           reason: 'a previously selected pack lost from Play cannot remain selected');
 
@@ -232,15 +240,34 @@ void main() {
       };
       await tester.tap(find.text('Try again'));
       await tester.pumpAndSettle();
+      expect(billing.queriedProductIds, [requestedIds, requestedIds, requestedIds]);
       expect(container.read(packOffersProvider).requireValue.missingProductIds, isEmpty);
       expect(find.text('Not available'), findsNothing);
       expect(find.text('Pay ₹500.00 with Google Play'), findsOneWidget,
           reason: 'the user choice can return when Play makes it available again');
+      final boughtPrices = <String>[];
       billing.answerWith(StorePurchaseStatus.canceled);
+      final cancelPurchase = billing.onBuy!;
+      billing.onBuy = (product, accountId) {
+        expect(product, same(billing.products[product.productId]));
+        boughtPrices.add(product.priceText);
+        cancelPurchase(product, accountId);
+      };
       await selectAndPay(tester, 'hf_rupees_120');
       await tester.pumpAndSettle();
       expect(billing.boughtProductIds, ['hf_rupees_120']);
       expect((api.callsTo('POST', '/api/hf/tokens/play/prepare').single.body as Map)['productId'], 'hf_rupees_120');
+      expect(boughtPrices, ['₹120.00']);
+      await tester.tap(buyButton('hf_rupees_240'));
+      await tester.pumpAndSettle();
+      expect(find.text('Pay ₹240.00 with Google Play'), findsOneWidget);
+      await tester.tap(payButton);
+      await tester.pumpAndSettle();
+      expect(billing.boughtProductIds, ['hf_rupees_120', 'hf_rupees_240']);
+      expect(boughtPrices, ['₹120.00', '₹240.00']);
+      expect(api.callsTo('POST', '/api/hf/tokens/play/prepare').map(
+        (call) => (call.body as Map)['productId'],
+      ), ['hf_rupees_120', 'hf_rupees_240']);
       expect(api.callsTo('POST', '/api/hf/tokens/play/verify'), isEmpty);
       expect(find.byType(CircularProgressIndicator), findsNothing);
     });
