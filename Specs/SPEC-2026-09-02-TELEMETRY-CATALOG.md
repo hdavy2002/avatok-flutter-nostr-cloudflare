@@ -1266,3 +1266,11 @@ Web events (flag `hfFavouritesEnabled`). Never in any prop: the person's name, p
 | `hf_favourite_toggle` | `host_slug`, `on: boolean`, `surface: 'profile' \| 'explore' \| 'dashboard'` | A signed-in person saved (`on = true`) or removed (`on = false`) a host with the heart, only after the server confirmed. **Success value:** `on = true`. |
 | `$exception` | `area: 'hf_favourites'`, `step: 'save' \| 'unsave' \| 'list'`, `status`, `host_slug` | Saving, removing or listing failed (the heart rolls back). |
 
+## Hello Fraands dashboard Overview summary (`[HF-DASH-SUMMARY-1]`, web + worker, 2026-10-14)
+
+| Event | Props | Note |
+|---|---|---|
+| `hf_dash_summary_load` | `ms` (load time), `parts_failed` (numbers this role shows that came back empty), `role: 'host' \| 'customer'` | Web, once per Overview summary load (on open and on each 60 s refresh for live hosts). **Success value:** `parts_failed = 0`. |
+| `$exception` (web) | `area: 'hf_dash_summary'`, `status` | The whole summary call failed; tiles show a dash and a Retry. |
+| `$exception` (worker) | `extra.area: 'hf_dash_summary'`, `extra.part` (`role`, `calls_made`, `calls_received`, `appointments`, `expected`, `fraands_saved`, `fraands_new`, `recent_made`) | One part of `GET /api/hf/me/summary` could not be read; it is returned as null and the answer is still 200. `fraands_saved` fails until the favourites table exists. |
+

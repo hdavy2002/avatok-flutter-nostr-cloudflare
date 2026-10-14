@@ -1,15 +1,28 @@
 /* [HF-DASH-SHELL-2] Overview screen of the dashboard (was the body of islands/calls/HostDashboard.tsx).
  * Identity comes from the shell (DashboardApp); this screen loads host presence, today's calls and the booking summary.
  * Worker: GET /api/hosts/me, PUT /api/hosts/me/presence {online}, POST /api/hosts/me/presence/beat, GET /api/hosts/me/calls,
- * GET /api/hf/wallet, GET /api/hosts/me/bookings/summary. Host earnings and withdrawals now live on /dashboard/host/earnings. */
+ * GET /api/hf/wallet. [HF-DASH-SUMMARY-1] The tiles, expected earnings and a customer's recent calls come from ONE call: GET /api/hf/me/summary.
+ * Host earnings and withdrawals now live on /dashboard/host/earnings. */
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { API_BASE } from '../../../lib/env';
 import { callsEnabled, hfCall, relDate, type HostPresence } from '../../../lib/hfCallsApi';
-import { bookingError, getBookingSummary, money, type BookingSummary } from '../../../lib/hfBookingsApi';
+import { formatPaise } from '../../../lib/money';
+import { getDashSummary, partsFailed, type DashSummary } from '../../../lib/hfDashApi';
+import { capture, captureException } from '../../../lib/analytics';
 import { retiredDashboardNotices, DashboardIcon, type DashboardAccount } from '../../../components/account/DashboardNav';
 import DashboardCalendar from '../../../components/account/DashboardCalendar';
 import { BRAND } from '../../../lib/brand';
 import { BEAT_MS, REFRESH_MS, STATUS_NOTE, parseCalls, rowText, type MeHost, type Row, type Today } from '../hostActivity';
+
+const MADE_STATUS: Record<string, string> = {
+  host_declined: 'Declined', no_answer: 'No answer', caller_no_answer: 'Not connected', failed: 'Could not connect', blocked: 'Blocked',
+  ringing_host: 'Ringing', ringing_caller: 'Ringing', connected: 'On a call now',
+};
+function madeCallText(r: { status: string; seconds: number; amountPaise: number | null }): string {
+  if (r.status !== 'completed') return MADE_STATUS[r.status] ?? 'Call';
+  const dur = r.seconds >= 60 ? `${Math.floor(r.seconds / 60)} min ${r.seconds % 60} s` : `${r.seconds} s`;
+  return `Completed · ${dur}${r.amountPaise != null ? ` · ${formatPaise(r.amountPaise)}` : ''}`;
+}
 
 export default function Overview({ account, bookingOn, onAccountChanged }: { account: DashboardAccount; bookingOn: boolean; onAccountChanged: (a: DashboardAccount) => void }) {
   const [host, setHost] = useState<MeHost | null>(null);
@@ -25,8 +38,9 @@ export default function Overview({ account, bookingOn, onAccountChanged }: { acc
   const [today, setToday] = useState<Today | null>(null);
   const [callsError, setCallsError] = useState('');
   const [appointmentsToday, setAppointmentsToday] = useState<number | null>(null);
-  const [bookingSummary, setBookingSummary] = useState<BookingSummary | null>(null);
-  const [bookingErrorText, setBookingErrorText] = useState('');
+  const [summary, setSummary] = useState<DashSummary | null>(null);
+  const [summaryFailed, setSummaryFailed] = useState(false);
+  const summaryRun = useRef(0);
   const presenceRef = useRef(presence);
   presenceRef.current = presence;
 
@@ -38,13 +52,26 @@ export default function Overview({ account, bookingOn, onAccountChanged }: { acc
       if (!current()) return;
       if (r.ok) { const p = parseCalls(r.data); setRows(p.rows); setToday(p.today); setCallsError(''); }
       else { setToday(null); setRows([]); setCallsError('We could not load your calls.'); }
-      if (!bookingOn) { setBookingSummary(null); setBookingErrorText(''); return; }
-      try {
-        const summary = await getBookingSummary();
-        if (current()) { setBookingSummary(summary); setBookingErrorText(''); }
-      } catch (error) { if (current()) { setBookingSummary(null); setBookingErrorText(bookingError(error).message); } }
     } catch { if (current()) { setToday(null); setRows([]); setCallsError('We could not refresh your activity. Please try again.'); } }
-  }, [bookingOn]);
+  }, []);
+
+  // [HF-DASH-SUMMARY-1] One summary read on mount and (for live hosts) on the same 60 s refresh. It never blanks the page: on failure tiles show "—" and a Retry.
+  const loadSummary = useCallback(async () => {
+    const run = ++summaryRun.current;
+    const t0 = performance.now();
+    try {
+      const r = await getDashSummary({ isCurrent: () => run === summaryRun.current });
+      if (run !== summaryRun.current) return;
+      if (r.ok) {
+        setSummary(r.data); setSummaryFailed(false);
+        capture('hf_dash_summary_load', { ms: Math.round(performance.now() - t0), parts_failed: partsFailed(r.data), role: r.data.role });
+      } else if (r.status !== 0) {
+        setSummaryFailed(true);
+        captureException(new Error(`dash summary ${r.status} ${r.code}`), { area: 'hf_dash_summary', status: r.status });
+      }
+    } catch (e) { if (run === summaryRun.current) { setSummaryFailed(true); captureException(e, { area: 'hf_dash_summary' }); } }
+  }, []);
+  useEffect(() => { setSummary(null); setSummaryFailed(false); void loadSummary(); return () => { ++summaryRun.current; }; }, [account.uid, loadSummary]);
 
   useEffect(() => {
     let disposed = false;
@@ -95,13 +122,13 @@ export default function Overview({ account, bookingOn, onAccountChanged }: { acc
         void hfCall('POST', '/api/hosts/me/presence/beat', undefined, { isCurrent: current }).catch(() => {});
       }
     };
-    const refresh = () => { if (current() && document.visibilityState === 'visible') void loadCalls(run); };
+    const refresh = () => { if (current() && document.visibilityState === 'visible') { void loadCalls(run); void loadSummary(); } };
     const b = setInterval(beat, BEAT_MS);
     const r = setInterval(refresh, REFRESH_MS);
     const vis = () => { if (document.visibilityState === 'visible') { beat(); refresh(); } };
     document.addEventListener('visibilitychange', vis);
     return () => { clearInterval(b); clearInterval(r); document.removeEventListener('visibilitychange', vis); };
-  }, [isLive, on, loadCalls]);
+  }, [isLive, on, loadCalls, loadSummary]);
 
   const toggle = async () => {
     if (!eligible.current || !on || busy) return;
@@ -118,6 +145,8 @@ export default function Overview({ account, bookingOn, onAccountChanged }: { acc
 
   const notice = retiredDashboardNotices[new URLSearchParams(window.location.search).get('retired') ?? ''];
   const hostStatus = host?.status ?? account.host?.status;
+  const callsTodayValue = isLive ? (summary?.callsToday.received ?? today?.calls ?? null) : (summary?.callsToday.made ?? null);
+  const fraandsValue = isLive ? (summary?.fraands.newThisWeek ?? null) : (summary?.fraands.saved ?? null);
   const initials = (account.displayName || '').trim().split(/\s+/).filter(Boolean).slice(0, 2).map(part => Array.from(part)[0]).join('').toLocaleUpperCase();
   return <>
     <header className="hfd-heading"><div><p className="hfd-greeting">Hi, {account.displayName || 'there'}</p><h1>Your dashboard</h1><p>Here’s what’s happening with your {BRAND.name} space today.</p></div><div className="hfd-welcome"><span className="hfd-host-badge">{isLive ? '★ You’re a host' : '♡ Your space'}</span><small>{isLive ? 'Your host profile is live.' : 'Real people. Meaningful conversations.'}</small></div><a className="hfd-avatar" href="/dashboard/profile" aria-label={account.displayName ? `${account.displayName} profile` : 'Your profile'}>{initials || <DashboardIcon name="profile" />}</a><div className="hfd-kindness">Same people.<br />Brighter tomorrows. <span aria-hidden="true">♥</span></div></header>
@@ -137,11 +166,12 @@ export default function Overview({ account, bookingOn, onAccountChanged }: { acc
         <p className="hfd-gentle-note">🌿 Take a break anytime. Switch offline when you don’t want to receive new calls.</p>
         {msg && <p className="hfc-err" role="alert">{msg}</p>}
       </section>}
-      <section className="hfc-card hfd-glance"><h2>Today at a glance</h2><div className="hfd-stat-grid"><div className="hfd-stat-tile"><span className="hfd-icon-circle"><DashboardIcon name="calls" /></span><div><h3>Calls today</h3><strong>{today?.calls ?? '—'}</strong><p>{isLive ? 'Moments of meaningful conversation.' : 'Your calls are in Calls.'}</p></div></div><div className="hfd-stat-tile hfd-peach"><span className="hfd-icon-circle"><DashboardIcon name="calendar" /></span><div><h3>Appointments today</h3><strong>{appointmentsToday ?? '—'}</strong><p>Scheduled time to connect.</p></div></div><div className="hfd-stat-tile"><span className="hfd-icon-circle"><DashboardIcon name="profile" /></span><div><h3>New Fraands</h3><strong>—</strong><p>Not available yet.</p></div></div></div>{callsError && <p className="hfc-err" role="status">{callsError} <button type="button" className="hfb-text-button" onClick={() => void loadCalls()}>Retry</button></p>}</section>
+      <section className="hfc-card hfd-glance"><h2>Today at a glance</h2><div className="hfd-stat-grid"><div className="hfd-stat-tile"><span className="hfd-icon-circle"><DashboardIcon name="calls" /></span><div><h3>Calls today</h3><strong>{callsTodayValue ?? '—'}</strong><p>{isLive ? 'Moments of meaningful conversation.' : 'Calls you made today.'}</p></div></div><div className="hfd-stat-tile hfd-peach"><span className="hfd-icon-circle"><DashboardIcon name="calendar" /></span><div><h3>Appointments today</h3><strong>{appointmentsToday ?? summary?.appointmentsToday ?? '—'}</strong><p>Scheduled time to connect.</p></div></div><div className="hfd-stat-tile"><span className="hfd-icon-circle"><DashboardIcon name="profile" /></span><div><h3>{isLive ? 'New Fraands' : <a href="/dashboard/fraands">My Fraands</a>}</h3><strong>{fraandsValue ?? '—'}</strong><p>{fraandsValue == null ? 'Coming soon.' : isLive ? 'First-time callers this week.' : 'Hosts you saved.'}</p></div></div></div>{callsError && <p className="hfc-err" role="status">{callsError} <button type="button" className="hfb-text-button" onClick={() => void loadCalls()}>Retry</button></p>}{summaryFailed && <p className="hfc-err" role="status">We could not load your summary. <button type="button" className="hfb-text-button" onClick={() => void loadSummary()}>Retry</button></p>}</section>
     </div>
     <div className="hfd-main-grid"><DashboardCalendar key={account.uid} uid={account.uid} host={isLive} enabled={bookingOn && !account.closing} onTodayCount={setAppointmentsToday} /><div className="hfd-summary-stack">
-      <section className="hfc-card hfd-expected"><div className="hfd-card-head"><h2>Expected earnings</h2>{isLive ? <a href="/dashboard/host/earnings">Earnings →</a> : <span>Upcoming bookings</span>}</div><strong className="hfd-amount">{isLive && bookingSummary ? money(bookingSummary.expectedHostNetPaise) : '—'}</strong><p className="hfd-muted">{isLive ? 'Estimated earnings on hold. Final amounts depend on completed calls and platform fees.' : 'Become a host to earn from your conversations.'}</p>{bookingErrorText && <p role="status">{bookingErrorText} <button type="button" className="hfb-text-button" onClick={() => void loadCalls()}>Retry</button></p>}<div className="hfd-encouragement">Keep going! Meaningful conversations create real impact.</div></section>
-      <section className="hfc-card hfd-recent" aria-labelledby="hfc-recent"><div className="hfd-card-head"><h2 id="hfc-recent">Recent calls</h2><a href="/dashboard/calls">View all →</a></div>{!isLive ? <p className="hfd-muted">Find all your calls in <a href="/dashboard/calls">Calls</a>.</p> : callsError ? <p role="status">{callsError}</p> : !today ? <p role="status">Loading calls…</p> : rows.length === 0 ? <div className="hfd-recent-empty"><span className="hfd-icon-circle"><DashboardIcon name="calls" /></span><div><strong>No calls yet</strong><p>Your recent calls will appear here.</p></div></div> : <ul className="hfc-calls">{rows.slice(0, 3).map(r => <li key={r.id}><strong>{r.handle}</strong><span>{rowText(r)}</span>{r.at && <small>{relDate(r.at)}</small>}</li>)}</ul>}<p className="hfd-call-privacy">You only see a caller’s handle, never their number. Calls are not recorded.</p></section>
+      {isLive ? <section className="hfc-card hfd-expected"><div className="hfd-card-head"><h2>Expected earnings</h2><a href="/dashboard/host/earnings">Earnings →</a></div><strong className="hfd-amount">{summary?.expectedHostNetPaise != null ? formatPaise(summary.expectedHostNetPaise) : '—'}</strong><p className="hfd-muted">Estimated earnings on hold. Final amounts depend on completed calls and platform fees.</p><div className="hfd-encouragement">Keep going! Meaningful conversations create real impact.</div></section>
+      : <section className="hfc-card"><div className="hfd-card-head"><h2>Wallet</h2><a href="/dashboard/wallet">Open wallet →</a></div><p className="hfd-muted">See your balance and history</p></section>}
+      <section className="hfc-card hfd-recent" aria-labelledby="hfc-recent"><div className="hfd-card-head"><h2 id="hfc-recent">Recent calls</h2><a href="/dashboard/calls">View all →</a></div>{!isLive ? (summaryFailed ? <p role="status">We could not load your recent calls.</p> : !summary ? <p role="status">Loading calls…</p> : !summary.recentMade ? <p className="hfd-muted">—</p> : summary.recentMade.length === 0 ? <div className="hfd-recent-empty"><span className="hfd-icon-circle"><DashboardIcon name="calls" /></span><div><strong>No calls yet</strong><p>Your recent calls will appear here.</p></div></div> : <ul className="hfc-calls">{summary.recentMade.map(r => <li key={r.id}><strong>{r.otherHandle}</strong><span>{madeCallText(r)}</span>{r.at > 0 && <small>{relDate(r.at)}</small>}</li>)}</ul>) : callsError ? <p role="status">{callsError}</p> : !today ? <p role="status">Loading calls…</p> : rows.length === 0 ? <div className="hfd-recent-empty"><span className="hfd-icon-circle"><DashboardIcon name="calls" /></span><div><strong>No calls yet</strong><p>Your recent calls will appear here.</p></div></div> : <ul className="hfc-calls">{rows.slice(0, 3).map(r => <li key={r.id}><strong>{r.handle}</strong><span>{rowText(r)}</span>{r.at && <small>{relDate(r.at)}</small>}</li>)}</ul>}<p className="hfd-call-privacy">You only see a caller’s handle, never their number. Calls are not recorded.</p></section>
     </div></div>
     <footer className="hfd-footer"><span aria-hidden="true">♥</span> Meaningful conversations. A kinder, brighter world.</footer>
   </>;

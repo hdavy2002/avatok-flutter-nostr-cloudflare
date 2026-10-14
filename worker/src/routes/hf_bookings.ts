@@ -689,6 +689,15 @@ async function startBookingRoute(req: Request, env: Env, bookingId: string): Pro
   }
 }
 
+/** [HF-DASH-SUMMARY-1] Host net earnings still on hold for upcoming/in-progress bookings, in paise. Shared with GET /api/hf/me/summary. */
+export async function hostExpectedNetPaise(env: Env, hostUid: string): Promise<number> {
+  const r = await env.DB_META.prepare(
+    "SELECT COALESCE(SUM(expected_host_net_paise),0) AS expected FROM hf_bookings WHERE host_uid=?1 " +
+    "AND status IN ('confirmed','starting','active','settling') AND settlement_status='held'",
+  ).bind(hostUid).first<{ expected: number }>();
+  return Number(r?.expected ?? 0);
+}
+
 async function hostSummaryRoute(req: Request, env: Env): Promise<Response> {
   const auth = await requireUser(req, env);
   if (isFail(auth)) return err(auth.status, auth.error);
@@ -697,15 +706,13 @@ async function hostSummaryRoute(req: Request, env: Env): Promise<Response> {
   const now = Date.now();
   const summary = await env.DB_META.prepare(
     "SELECT (SELECT COUNT(*) FROM hf_bookings WHERE host_uid=?1 AND status='confirmed' AND starts_at>?2) AS upcoming_count, " +
-    "(SELECT COALESCE(SUM(expected_host_net_paise),0) FROM hf_bookings WHERE host_uid=?1 " +
-    "AND status IN ('confirmed','starting','active','settling') AND settlement_status='held') AS expected, " +
     "(SELECT MIN(starts_at) FROM hf_bookings WHERE host_uid=?1 AND status='confirmed' AND starts_at>?2) AS next_start",
-  ).bind(auth.uid, now).first<{ upcoming_count: number; expected: number; next_start: number | null }>();
+  ).bind(auth.uid, now).first<{ upcoming_count: number; next_start: number | null }>();
   const next = summary?.next_start == null ? null : await env.DB_META.prepare("SELECT * FROM hf_bookings WHERE host_uid=?1 AND status='confirmed' AND starts_at=?2 ORDER BY id LIMIT 1")
     .bind(auth.uid, summary.next_start).first<BookingRow>();
   return json({ summary: {
     upcomingCount: Number(summary?.upcoming_count ?? 0),
-    expectedHostNetPaise: Number(summary?.expected ?? 0),
+    expectedHostNetPaise: await hostExpectedNetPaise(env, auth.uid),
     nextBooking: next ? bookingPublic(next, "host") : null,
   } }, 200, { "cache-control": "private, no-store" });
 }
