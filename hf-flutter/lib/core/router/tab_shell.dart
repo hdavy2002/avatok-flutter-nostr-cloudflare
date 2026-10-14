@@ -159,7 +159,7 @@ class HfTabShell extends ConsumerWidget {
     if (!context.mounted) return;
     // Push the existing booking screen so its app-bar and system Back return
     // to the tab the person opened the menu from.
-    context.push(destination);
+    await context.push<void>(destination);
   }
 
   @override

@@ -13,7 +13,7 @@ class HostBookingsScreen extends ConsumerWidget {
   const HostBookingsScreen({super.key});
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    if (ref.watch(flagsProvider).valueOrNull?.hfBookingsEnabled != true) {
+    if (ref.watch(flagsProvider).asData?.value.hfBookingsEnabled != true) {
       return const BookingUnavailableScreen(title: 'Bookings');
     }
     final summary = ref.watch(hostBookingSummaryProvider);

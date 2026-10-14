@@ -8,7 +8,6 @@ import 'package:go_router/go_router.dart';
 
 import '../../../core/analytics/analytics.dart';
 import '../../../core/api/api_error.dart';
-import '../../../core/auth/session.dart';
 import '../../../core/format/money.dart';
 import '../../../core/router/nav.dart';
 import '../../../core/router/routes.dart';
@@ -121,7 +120,7 @@ class _CustomerBookingScreenState extends ConsumerState<CustomerBookingScreen> {
       setState(() { _busy = false; _quote = null; _error = e is ApiError && e.status == 409
         ? 'That time was just taken. Choose another time.'
         : 'Price could not be confirmed. Refresh the available times and try again.'; });
-      await Analytics.capture('hf_app_booking_conflict', {'status_code': e is ApiError ? e.status : null});
+      await Analytics.capture('hf_app_booking_conflict', {if (e is ApiError) 'status_code': e.status});
       await _loadSlots();
     }
   }
@@ -162,7 +161,7 @@ class _CustomerBookingScreenState extends ConsumerState<CustomerBookingScreen> {
       setState(() { _busy = false; _error = e is ApiError && e.status == 409
         ? 'That quote or time has expired. Refresh the times before confirming.'
         : 'Booking confirmation is still unknown. Your booking list will show the server status.'; });
-      await Analytics.capture('hf_app_booking_conflict', {'stage': 'confirm', 'status_code': e is ApiError ? e.status : null});
+      await Analytics.capture('hf_app_booking_conflict', {'stage': 'confirm', if (e is ApiError) 'status_code': e.status});
       ref.invalidate(customerBookingsProvider);
     }
   }
@@ -184,7 +183,7 @@ class _CustomerBookingScreenState extends ConsumerState<CustomerBookingScreen> {
       });
       _loadSlots();
     });
-    if (ref.watch(flagsProvider).valueOrNull?.hfBookingsEnabled != true) {
+    if (ref.watch(flagsProvider).asData?.value.hfBookingsEnabled != true) {
       return const BookingUnavailableScreen(title: 'Book a time');
     }
     final money = Theme.of(context).textTheme;

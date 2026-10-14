@@ -118,7 +118,7 @@ class _HostDashboardScreenState extends ConsumerState<HostDashboardScreen> {
             onAction: () => _openOnboarding(null),
           );
         }
-        final bookingsOn = ref.watch(flagsProvider).valueOrNull?.hfBookingsEnabled == true;
+        final bookingsOn = ref.watch(flagsProvider).asData?.value.hfBookingsEnabled == true;
         final sections = <Widget>[
           _Header(
             name: s.displayName ?? sessionName ?? HostCopy.hostFallbackName,

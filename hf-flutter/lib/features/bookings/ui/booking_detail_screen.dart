@@ -18,7 +18,7 @@ class BookingDetailScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    if (ref.watch(flagsProvider).valueOrNull?.hfBookingsEnabled != true) {
+    if (ref.watch(flagsProvider).asData?.value.hfBookingsEnabled != true) {
       return const BookingUnavailableScreen(title: 'Booking details');
     }
     final booking = ref.watch(bookingDetailProvider(bookingId));
@@ -100,7 +100,7 @@ class BookingDetailScreen extends ConsumerWidget {
     } catch (error) {
       await Analytics.capture('hf_app_booking_conflict', {
         'stage': 'cancel', 'booking_id': booking.id,
-        'status_code': error is ApiError ? error.status : null,
+        if (error is ApiError) 'status_code': error.status,
       });
       if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Could not cancel this booking. Refresh and try again.')));
     }

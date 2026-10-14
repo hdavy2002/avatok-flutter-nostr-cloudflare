@@ -12,7 +12,7 @@ class CustomerBookingsScreen extends ConsumerWidget {
   const CustomerBookingsScreen({super.key});
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    if (ref.watch(flagsProvider).valueOrNull?.hfBookingsEnabled != true) {
+    if (ref.watch(flagsProvider).asData?.value.hfBookingsEnabled != true) {
       return const BookingUnavailableScreen(title: 'My bookings');
     }
     final rows = ref.watch(customerBookingsProvider);

@@ -123,7 +123,7 @@ bool hfStdPlanOn(AsyncValue<HfFlags>? flags) {
 const String _flagsCacheKey = 'hf.cache.config.v1';
 
 /// `GET /api/config`, cached. Never errors: network failure falls back to the cached copy, then to
-/// [HfFlags.unknown]. Read it with `ref.watch(flagsProvider)` and `valueOrNull`/`when`.
+/// [HfFlags.unknown]. Read it with `ref.watch(flagsProvider)` and `asData?.value`/`when`.
 final flagsProvider = FutureProvider<HfFlags>((ref) async {
   final api = ref.watch(apiClientProvider);
   final cache = ref.watch(jsonCacheProvider);

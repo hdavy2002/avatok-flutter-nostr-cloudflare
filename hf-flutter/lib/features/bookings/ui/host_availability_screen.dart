@@ -360,7 +360,7 @@ class _HostAvailabilityScreenState extends ConsumerState<HostAvailabilityScreen>
 
   @override
   Widget build(BuildContext context) {
-    if (ref.watch(flagsProvider).valueOrNull?.hfBookingsEnabled != true) {
+    if (ref.watch(flagsProvider).asData?.value.hfBookingsEnabled != true) {
       return const BookingUnavailableScreen(title: 'Availability');
     }
     final value = ref.watch(hostAvailabilityProvider);
