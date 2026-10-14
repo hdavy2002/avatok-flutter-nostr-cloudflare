@@ -71,6 +71,15 @@ function rowText(r: Row): string {
 }
 
 export default function HostDashboard() {
+  return (
+    <>
+      <SessionBridge on />
+      <DashboardContent />
+    </>
+  );
+}
+
+function DashboardContent() {
   const [phase, setPhase] = useState<'boot' | 'signedout' | 'error' | 'ready'>('boot');
   const [account, setAccount] = useState<DashboardAccount | null>(null);
   const [hostUnavailable, setHostUnavailable] = useState(false);
@@ -228,7 +237,6 @@ export default function HostDashboard() {
   const initials = (account.displayName || '').trim().split(/\s+/).filter(Boolean).slice(0, 2).map(part => Array.from(part)[0]).join('').toLocaleUpperCase();
   return (
     <main className="hfc-page hfd-page">
-      <SessionBridge on />
       <div className="hfd-layout"><DashboardNav account={account} bookingOn={bookingOn} active="overview" /><div className="hfd-content">
       <header className="hfd-heading"><div><p className="hfd-greeting">Hi, {account.displayName || 'there'}</p><h1>Your dashboard</h1><p>Here’s what’s happening with your {BRAND.name} space today.</p></div><div className="hfd-welcome"><span className="hfd-host-badge">{isLive ? '★ You’re a host' : '♡ Your space'}</span><small>{isLive ? 'Your host profile is live.' : 'Real people. Meaningful conversations.'}</small></div><div className="hfd-avatar" aria-label={account.displayName ? `${account.displayName} profile` : 'Your profile'}>{initials || <DashboardIcon name="profile" />}</div><div className="hfd-kindness">Same people.<br />Brighter tomorrows. <span aria-hidden="true">♥</span></div></header>
       {notice && <aside className="hfd-notice" role="status">{notice} <a href="/help">Contact support</a> if you need help with an earlier record.</aside>}
