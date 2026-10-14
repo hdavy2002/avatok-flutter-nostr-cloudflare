@@ -29,15 +29,15 @@ export interface Props {
   /** Set false to hide the nav/footer chrome (e.g. immersive viewer pages). */
   chrome?: boolean;
   /**
-   * Shared chrome uses plain links without an auth island. 'auto' uses the
-   * existing client-side session hint; 'in' and 'static' explicitly choose
-   * account/sign-out links or the public sign-in link respectively.
+   * Shared chrome uses plain links without an auth island. 'auto' and 'static'
+   * use the existing client-side session hint to choose Sign in or Dashboards /
+   * Sign out; 'in' explicitly shows the signed-in links.
    */
   headerAuth?: 'auto' | 'in' | 'static';
   /**
-   * Render header CTAs as static Log in / Sign up links (no Clerk island).
-   * REQUIRED on pages whose body mounts its own Clerk island, to avoid the
-   * "multiple <ClerkProvider>" crash. See Nav.astro.
+   * Legacy compatibility flag for static header links (no Clerk island).
+   * The shared header is always island-free, including pages whose body mounts
+   * Clerk. Session hints still select the appropriate navigation links.
    */
   navStatic?: boolean;
   /**
