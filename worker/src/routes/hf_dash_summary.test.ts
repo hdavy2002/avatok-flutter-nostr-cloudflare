@@ -25,7 +25,7 @@ function makeEnv(withFav: boolean) {
   db.exec(`
     CREATE TABLE hf_hosts (uid TEXT PRIMARY KEY, slug TEXT, status TEXT NOT NULL DEFAULT 'draft', display_name TEXT);
     CREATE TABLE hf_calls (id TEXT PRIMARY KEY, caller_uid TEXT, host_uid TEXT, status TEXT, created_at INTEGER, connected_at INTEGER, ended_at INTEGER,
-      billed_minutes INTEGER DEFAULT 0, charged_paise INTEGER DEFAULT 0, host_earning_paise INTEGER DEFAULT 0);
+      billed_minutes INTEGER DEFAULT 0, billable_seconds INTEGER, charged_paise INTEGER DEFAULT 0, consumed_value_paise INTEGER, host_earning_paise INTEGER DEFAULT 0);
     CREATE TABLE hf_bookings (id TEXT PRIMARY KEY, host_uid TEXT, customer_uid TEXT, starts_at INTEGER, status TEXT, cancelled_at INTEGER,
       expected_host_net_paise INTEGER DEFAULT 0, settlement_status TEXT DEFAULT 'held');
     CREATE TABLE users (uid TEXT PRIMARY KEY, display_name TEXT, e164 TEXT);
