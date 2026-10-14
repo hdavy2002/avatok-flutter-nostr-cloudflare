@@ -381,7 +381,7 @@ export function buildReleaseStatements(
        SELECT ?1,?2,'release',?3,?4,0,?5,NULL,?6,NULL,?7
         WHERE EXISTS (SELECT 1 FROM hf_token_ledger WHERE op_id=?8 AND note=?9)
           AND EXISTS (SELECT 1 FROM hf_token_lots WHERE id=?3 AND uid=?2 AND tokens_reserved_micro>=?10)`,
-    ).bind(crypto.randomUUID(), uid, lot.lotId, -Math.trunc(lot.micro), callId, sub(gate, lot.lotId), now, gate, nonce, Math.trunc(lot.micro))));
+    ).bind(crypto.randomUUID(), uid, lot.lotId, -Math.trunc(lot.micro), callId, sub(gate, lot.lotId), now, gate, nonce, Math.trunc(lot.micro)));
     statements.push(db.prepare(
       `UPDATE hf_token_lots SET tokens_reserved_micro=tokens_reserved_micro-?1 WHERE id=?2 AND uid=?3
         AND EXISTS (SELECT 1 FROM hf_token_ledger WHERE op_id=?4 AND note=?5)
