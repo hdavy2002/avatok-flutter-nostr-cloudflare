@@ -177,7 +177,7 @@ type BookingRow = {
   id: string; host_uid: string; customer_uid: string; starts_at: number; ends_at: number; host_timezone: string;
   schedule_version: number; quote_id: string; idempotency_key: string; status: BookingStatus; duration_min: number;
   reserved_paise: number; expected_host_net_paise: number; expected_host_paid_net_paise: number; expected_host_test_net_paise: number;
-  price_snapshot_json: string; policy_snapshot_json: string; reservation_snapshot_json: string; call_id: string | null;
+  price_snapshot_json: string; policy_snapshot_json: string; reservation_snapshot_json: string; call_id: string | null; settlement_status: string;
 };
 type BookingQuoteRow = {
   id: string; customer_uid: string; host_uid: string; starts_at: number; ends_at: number; duration_min: number;
@@ -563,7 +563,9 @@ async function cancelRoute(req: Request, env: Env, id: string): Promise<Response
   const role = row.host_uid === auth.uid ? "host" : "customer";
   if (row.status === "cancelled") return json({ booking: bookingPublic(row, role) }, 200, { "cache-control": "private, no-store" });
   if (row.status !== "confirmed" || !row.call_id) return err(409, "booking_not_cancellable");
-  const reservation = await getReservation(env, row.call_id);
+  const callId = row.call_id;
+  if (!callId) return err(409, "reservation_unavailable");
+  const reservation = await getReservation(env, callId);
   if (!reservation || reservation.secondsCovered !== Number(row.duration_min) * 60 || !reservation.lots.length) return err(409, "booking_hold_unavailable");
   const now = Date.now();
   const nonce = crypto.randomUUID();
@@ -641,7 +643,6 @@ async function startBookingRoute(req: Request, env: Env, bookingId: string): Pro
   const ratePaise = Math.trunc(Number(priceSnapshot.ratePaise));
   const maxSeconds = Number(row.duration_min) * 60;
   if (!(ratePaise > 0) || !Number.isInteger(maxSeconds)) return err(409, "pricing_snapshot_invalid");
-  const callId = row.call_id;
   if (!(await claimHost(env, row.host_uid, callId))) return err(409, "host_unavailable");
   const conferenceName = `hf_${callId.replace(/-/g, "")}`;
   try {
