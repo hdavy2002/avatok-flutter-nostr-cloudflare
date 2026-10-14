@@ -10776,5 +10776,12 @@
     "min_devices_on_build": 1,
     "flags": [],
     "no_telemetry": "Display-only labelling of existing wallet records; no new behaviour or events."
+  },
+  "HF-WALLET-HELD-LABEL-2": {
+    "description": "Receipt list derives the exact paid/added split for older purchase records that stored tokens and value per token instead of the split.",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [],
+    "no_telemetry": "Display-only fix of existing receipt records."
   }
 }

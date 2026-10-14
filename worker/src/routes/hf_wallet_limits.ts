@@ -45,7 +45,10 @@ function receiptSplitOf(r: { source: string; data: string | null }): { paidPaise
   try {
     const d = JSON.parse(r.data) as Record<string, unknown>;
     const n = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? Math.max(0, Math.trunc(v)) : null);
-    const paid = n(d.paidPaise), wallet = n(d.walletPaise), gst = n(d.gstPaise) ?? 0;
+    const paid = n(d.paidPaise), gst = n(d.gstPaise) ?? 0;
+    // Records issued before the split was stored carry tokens and value per token instead: wallet = tokens x value.
+    const micro = n(d.tokensMicro), v = n(d.valuePaisePerToken);
+    const wallet = n(d.walletPaise) ?? (micro != null && v != null ? Math.floor((micro * v) / 1_000_000) : null);
     return paid != null && wallet != null ? { paidPaise: paid, gstPaise: gst, walletPaise: wallet } : {};
   } catch { return {}; }
 }
