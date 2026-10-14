@@ -88,7 +88,6 @@ void main() {
     tester.platformDispatcher.textScaleFactorTestValue = 2;
     addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
     final semantics = tester.ensureSemantics();
-    addTearDown(semantics.dispose);
     tester.view.devicePixelRatio = 3;
     addTearDown(tester.view.resetDevicePixelRatio);
     tester.view.physicalSize = const Size(960, 2400);
@@ -111,6 +110,7 @@ void main() {
     await tester.tap(find.byTooltip('Close menu'));
     await tester.pumpAndSettle();
     expect(find.text('Calendar'), findsNothing);
+    semantics.dispose();
   });
 
   testWidgets('a person with a host profile also sees the Host tab', (
