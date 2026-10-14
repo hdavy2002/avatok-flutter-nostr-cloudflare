@@ -9,10 +9,10 @@
 //    #people section, so a card change lands here too. The element ids (#mood-filter, #people …)
 //    are what the script reads — keep them.
 //  - Profiles are the illustrative samples from lib/callvaalHomeReference until the backend lists
-//    real hosts; the sample disclosure must stay.
+//    real listings; avoid presenting sample profile counts as verified facts.
 export const prerender = true;
 import brandConfig from '../../../Specs/brand.json';
-import { moodGroups, moods, profiles } from '../lib/callvaalHomeReference';
+import { marketplaceCategories, profiles } from '../lib/callvaalHomeReference';
 import ProfileCard from '../components/callvaal/ProfileCard.astro';
 import LiveHostCards from '../islands/hosts/LiveHostCards';
 import ModernIcon from '../components/home/ModernIcon.astro';
@@ -22,8 +22,8 @@ import '../styles/callvaal-notebook.css';
 import '../styles/hello-fraands-pages.css';
 
 const identity = brandConfig.homepageIdentity;
-const title = `Explore — find someone to talk to | ${identity.name}`;
-const description = 'Browse real people by mood, language and price. Your number stays private. Pay per minute. 18+.';
+const title = `Find an influencer. Start a conversation. | ${identity.name}`;
+const description = 'Find someone to talk to in your language. Explore influencers by category, language and price. Your number stays private. 18+.';
 const canonical = `https://${identity.domain}/marketplace`;
 const languages = [...new Set(profiles.flatMap(p => p.languages.split(/,\s*|\s*·\s*/)).map(s => s.trim()).filter(Boolean))];
 ---
@@ -47,42 +47,72 @@ const languages = [...new Set(profiles.flatMap(p => p.languages.split(/,\s*|\s*�
     <header class="hfp-hero">
       <div class="hfp-hero-copy">
         <nav class="hf-breadcrumb" aria-label="Breadcrumb"><a href="/">Home</a><span aria-hidden="true">/</span><span aria-current="page">Explore</span></nav>
-        <h1>Apna dost dhundo.</h1>
-        <p class="hf-hindi"><em>Pick a mood, a language and a price — then call. Your number stays private.</em></p>
-        <div class="trust-chips"><span><ModernIcon name="lock" />Number kabhi share nahi hota</span><span><ModernIcon name="user" />Har host video-KYC verified</span><span><ModernIcon name="clock" />From ₹5/min</span></div>
+        <h1>Baat karne ka mann hai?</h1>
+        <p class="hf-hindi"><em>A little company, a good laugh, or someone to hear you out. Find an influencer who speaks your language, check their price, and start a conversation.</em></p>
+        <div class="trust-chips"><span><ModernIcon name="lock" />Number kabhi share nahi hota</span><span><ModernIcon name="user" />Har influencer video verified hai</span><span><ModernIcon name="clock" />From ₹5/min</span></div>
       </div>
-      <div class="hfp-hero-note paper-note" aria-hidden="true">Aaj kis se<br />baat karein?</div>
+      <div class="hfp-hero-note paper-note" aria-hidden="true">Tumhari vibe.<br />Tumhari baat.</div>
     </header>
 
     <section class="explore-moods" aria-labelledby="explore-moods-title">
-      <h2 id="explore-moods-title" class="explore-h2">Aaj kya <em>mood hai?</em></h2>
-      <div class="mood-grid">{moodGroups.map((group, index) => <div class:list={['mood-group', `mood-group--${index + 1}`]}><div class="mood-group-head"><span class="mood-doodle" aria-hidden="true">{['❋','✳','✷','❖','✦','✿'][index]}</span><h3>{group}</h3></div><div class="mood-chips">{moods.filter(mood => mood.group === group).map(mood => <a class="mood-chip" href={`/marketplace?mood=${encodeURIComponent(mood.slug)}#people`}>{mood.label}<span aria-hidden="true">↗</span></a>)}</div>{group === 'Tension' && <p class="crisis-note">If you're in crisis, call <a href="tel:14416">Tele-MANAS 14416</a> (free, 24×7) or <a href="tel:112">112</a>.</p>}</div>)}</div>
+      <h2 id="explore-moods-title" class="explore-h2">Ajj kis topic per baat karni hai?</h2>
+      <div class="category-story-grid" aria-label="Browse influencer categories">{[
+        { title: 'LGBTQ+ conversations', category: 'lgbtq', image: '/assets/marketplace/call-category-lgbtq.jpg', alt: 'Two distinct young adult women in separate rooms, each smiling on a phone call', tone: 'cream' },
+        { title: 'Celebrity chats', category: 'celebrity-chat', image: '/assets/marketplace/call-category-celebrities.jpg', alt: 'A young adult performer and listener talking by phone from separate places', tone: 'pink' },
+        { title: 'Social media creators', category: 'social-media-influencers', image: '/assets/marketplace/call-category-creators.jpg', alt: 'Two different young adult women creators in separate studios, each on a phone call', tone: 'lilac' },
+        { title: 'Uncensored talk', category: 'uncensored-talk', image: '/assets/marketplace/call-category-uncensored.jpg', alt: 'A young adult man and woman having a candid phone conversation from separate homes', tone: 'paper' },
+      ].map(item => <a class:list={['category-story-card', `category-story-card--${item.tone}`]} href={`/marketplace?category=${encodeURIComponent(item.category)}#people`} aria-label={`Browse ${item.title}`}>
+        <img src={item.image} alt={item.alt} loading="lazy" />
+        <span class="category-story-card__label">{item.title}<span aria-hidden="true">↗</span></span>
+      </a>)}</div>
     </section>
 
-    <section class="people-section" id="people" aria-labelledby="people-title"><p class="preview-kicker">All hosts · Sample profiles</p><h2 id="people-title">Sab log. <em>Ek jagah.</em></h2>
-      <div class="people-toolbar"><div class="people-filters"><button type="button" class="filter-all" data-reset-filters>All</button><label for="mood-filter">Mood</label><select id="mood-filter"><option value="">All moods</option>{moods.map(mood => <option value={mood.slug}>{mood.label}</option>)}</select><label for="language-filter">Language</label><select id="language-filter"><option value="">Any language</option>{(languages.length ? languages : ['Hindi','English','Kannada','Marathi']).map(language => <option>{language}</option>)}</select><label for="price-filter">Price</label><select id="price-filter"><option value="">Any price</option>{[5,10,20,25,30].map(value => <option value={value}>₹{value}/min or less</option>)}</select><label class="online-toggle"><input id="online-filter" type="checkbox" /> Online now</label></div><button class="view-all" type="button" data-reset-filters>Show everyone →</button></div>
+    <section class="people-section" id="people" aria-labelledby="people-title"><h2 id="people-title">Apni vibe ka influencer dhundo</h2>
+      <div class="people-toolbar"><div class="people-filters"><button type="button" class="filter-all" data-reset-filters>All</button><label for="category-filter">Categories</label><select id="category-filter"><option value="">All categories</option>{marketplaceCategories.map(category => <option value={category.slug}>{category.label}</option>)}</select><label for="language-filter">Language</label><select id="language-filter"><option value="">Any language</option>{(languages.length ? languages : ['Hindi','English','Kannada','Marathi']).map(language => <option>{language}</option>)}</select><label for="price-filter">Price</label><select id="price-filter"><option value="">Any price</option>{[5,10,20,25,30].map(value => <option value={value}>₹{value}/min or less</option>)}</select><label class="online-toggle"><input id="online-filter" type="checkbox" /> Online now</label></div><button class="view-all" type="button" data-reset-filters>Show everyone →</button></div>
       <p class="sr-only" data-favourites-status role="status" aria-live="polite"></p>
-      <p class="selected-category-label" data-selected-mood-label hidden></p><p class="sample-label">Sample profiles · Illustrative names, KYC badges, ratings, conversation counts and prices</p><p class="sr-only" id="filter-status" role="status" aria-live="polite"></p>
-      <LiveHostCards client:visible /><div class="people-grid">{profiles.map(profile => <ProfileCard profile={profile} />)}</div>
-      <div class="no-results" hidden><p>No sample profiles match those filters.</p><button type="button" data-reset-filters>Show all sample profiles</button></div><p class="profile-disclosure">All profiles, video-KYC badges, ratings and conversation counts shown here are illustrative. Availability, regulars, hours and conversation styles are samples too. Calls and payments are unavailable in this preview.</p>
+      <p class="selected-category-label" data-selected-category-label hidden></p><p class="sample-label" aria-hidden="true" style="visibility:hidden">Sample profiles · Illustrative names, KYC badges, ratings, conversation counts and prices</p><p class="sr-only" id="filter-status" role="status" aria-live="polite"></p>
+      <LiveHostCards client:visible /><div class="people-grid">{profiles.map(profile => <ProfileCard profile={profile} marketplace />)}</div>
+      <div class="no-results" hidden><p>No sample profiles match those filters.</p><button type="button" data-reset-filters>Show all sample profiles</button></div>
     </section>
 
     <section class="explore-help" aria-label="Before you call">
-      <a class="tone-cream" href="/help/getting-started/how-a-call-works"><strong>How a call works</strong><span>The host rings first, then you. Numbers stay hidden.</span></a>
-      <a class="tone-pink" href="/help/calling/price-and-minutes"><strong>What a call costs</strong><span>From ₹5/min, billed per minute you are connected.</span></a>
-      <a class="tone-lilac" href="/safety"><strong>Kaise safe hai</strong><span>AI ends bad calls. No recording. # ends and blocks.</span></a>
-      <a class="tone-paper" href="/hosts/join"><strong>Baatein karo, paise kamao</strong><span>Become a verified host and earn from home.</span></a>
+      <a class="tone-cream" href="/help/getting-started/how-a-call-works"><strong>How a call works</strong><span>We ring the influencer and announce you. If they accept, we call you back and merge the call. We never listen to your calls.</span></a>
+      <a class="tone-pink" href="/help/calling/price-and-minutes"><strong>What a call costs</strong><span>Rates start at ₹5/min; each influencer sets their own price.</span></a>
+      <a class="tone-lilac" href="/safety"><strong>Kaise safe hai</strong><span>AI checks calls for threats, sexual misconduct and spam, and automatically blocks participants who violate the rules.</span></a>
+      <a class="tone-paper" href="/hosts/join"><strong>Achhi baat kar lete ho?</strong><span>Become an influencer host. Welcome new people, share your interests, and earn through conversation.</span></a>
     </section>
   </main>
-  <Footer />
+  <Footer hideTagline />
 </div>
 <dialog id="preview-dialog" aria-labelledby="preview-title" aria-describedby="preview-description"><h2 id="preview-title">Preview only</h2><p id="preview-description">Calls and joining are not available yet.</p><button type="button" data-close-preview>Close</button></dialog>
 <style>
   .explore-page .trust-chips{margin-top:20px}
+  .explore-page .people-section h2{white-space:nowrap;font-size:clamp(1.5rem,3.5vw,3rem)}
+  .explore-page .sample-label{visibility:hidden}
+  .explore-page .profile-disclosure{display:none}
+  .explore-page :global(.people-grid .profile-card-facts){grid-template-columns:1fr}
+  .explore-page :global(.people-grid .profile-card-facts>div:nth-child(2)){display:none}
+  .explore-page :global(.people-grid .profile-card-facts>div:first-child){padding:8px 12px}
+  .explore-page :global(.people-grid .profile-card-facts>div:first-child dd){font-size:1rem}
+  .explore-page :global(.people-grid .profile-card-stats .modern-icon){display:none}
+  .explore-page :global(.people-grid .profile-card-stats p>span){font-size:.75rem;line-height:1.25}
+  .explore-page :global(.people-grid .profile-card-stats strong){font-size:1.125rem}
+  .explore-page :global(.people-grid .profile-card-topics .person-moods){display:flex;flex-wrap:nowrap;overflow-x:auto;overscroll-behavior-inline:contain;scroll-snap-type:x proximity;padding-bottom:4px}
+  .explore-page :global(.people-grid .profile-card-topics .person-moods li){flex:0 0 auto;white-space:nowrap;scroll-snap-align:start}
+  @media(max-width:599px){.explore-page .people-section h2{white-space:normal;font-size:clamp(1.5rem,7vw,2rem)}}
   .explore-moods{margin:clamp(40px,6vw,72px) 0}
   .explore-h2{margin-bottom:26px}
   .explore-h2 em,.explore-page .people-section h2 em{color:#A52E67}
   .explore-page .people-section{margin-top:0}
+  .explore-page :global(.people-grid .profile-card){border:5px solid #fff;border-radius:24px;overflow:hidden;box-shadow:0 4px 10px #46113e10,0 18px 36px #46113e18;transition:transform .2s ease,box-shadow .2s ease}
+  .explore-page :global(.people-grid .profile-card:hover){transform:translateY(-4px);box-shadow:0 8px 16px #46113e14,0 24px 42px #46113e20}
+  .category-story-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px}
+  .category-story-card{position:relative;display:block;min-height:220px;aspect-ratio:1.9/1;overflow:hidden;border:6px solid #fff;border-radius:24px;background:#f4eaff;box-shadow:0 5px 12px #46113e12,0 18px 34px #46113e18;transition:transform .2s ease,box-shadow .2s ease}
+  .category-story-card:hover,.category-story-card:focus-visible{transform:translateY(-4px);box-shadow:0 9px 18px #46113e16,0 24px 42px #46113e20}
+  .category-story-card img{display:block;width:100%;height:100%;object-fit:cover}
+  .category-story-card__label{position:absolute;inset:auto 12px 12px 12px;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:13px 17px;border:1px solid #ffffffc7;border-radius:16px;background:#fffF;color:#46113e;font-family:Nunito,sans-serif;font-size:clamp(1rem,2vw,1.3rem);font-weight:900;box-shadow:0 5px 15px #270d2526}
+  @media(max-width:599px){.category-story-grid{grid-template-columns:1fr;gap:14px}.category-story-card{min-height:190px;aspect-ratio:1.55/1}}
+  @media(prefers-reduced-motion:reduce){.category-story-card,.explore-page :global(.people-grid .profile-card){transition:none}.category-story-card:hover,.category-story-card:focus-visible,.explore-page :global(.people-grid .profile-card:hover){transform:none}}
   .explore-help{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:16px;margin-top:clamp(40px,6vw,72px)}
   .explore-help a{display:grid;gap:8px;padding:22px;border-radius:22px;text-decoration:none;box-shadow:0 5px 16px #46113e0d}
   .explore-help strong{font-family:Nunito,sans-serif;font-weight:900;font-size:1.25rem}

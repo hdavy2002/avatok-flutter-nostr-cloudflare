@@ -4,6 +4,9 @@ initAnalytics();
 initImageTelemetry();
 const surface = 'scrapbook-home';
 const mood = document.querySelector<HTMLSelectElement>('#mood-filter');
+const category = document.querySelector<HTMLSelectElement>('#category-filter');
+let requestedMood = new URLSearchParams(location.search).get('mood');
+let requestedCategory = new URLSearchParams(location.search).get('category');
 const language = document.querySelector<HTMLSelectElement>('#language-filter');
 const price = document.querySelector<HTMLSelectElement>('#price-filter');
 const online = document.querySelector<HTMLInputElement>('#online-filter');
@@ -21,6 +24,7 @@ function renderFavouriteButtons() {
 }
 renderFavouriteButtons();
 const label = document.querySelector<HTMLElement>('[data-selected-mood-label]');
+const categoryLabel = document.querySelector<HTMLElement>('[data-selected-category-label]');
 const status = document.querySelector<HTMLElement>('#filter-status');
 const noResults = document.querySelector<HTMLElement>('.no-results');
 const noResultsText = noResults?.querySelector<HTMLElement>('p');
@@ -32,11 +36,14 @@ function filterPeople() {
   let count = 0;
   let liveShown = 0;
   let liveExists = false;
+  const selectedMood = mood?.value || requestedMood;
+  const selectedCategory = category?.value || requestedCategory;
   for (const card of getCards()) {
     const isLive = card.hasAttribute('data-live-host');
     if (isLive) liveExists = true;
     // In a lane, only cards fetched for a verified member (data-lane-host) are shown; the other filters still apply to them.
-    const match = (!laneMode || card.hasAttribute('data-lane-host')) && (!mood?.value || card.dataset.moods?.split(' ').includes(mood.value))
+    const match = (!laneMode || card.hasAttribute('data-lane-host')) && (!selectedMood || card.dataset.moods?.split(' ').includes(selectedMood))
+      && (!selectedCategory || !card.dataset.categories || card.dataset.categories.split(' ').includes(selectedCategory))
       && (!language?.value || card.dataset.languages?.split(', ').includes(language.value))
       && (!price?.value || Number(card.dataset.price) <= Number(price.value))
       && (!online?.checked || card.dataset.online === 'true');
@@ -44,28 +51,31 @@ function filterPeople() {
     if (match) { count++; if (isLive) liveShown++; }
   }
   const laneState = document.documentElement.dataset.laneState || 'checking'; // set by LiveHostCards: checking | locked | granted | error
-  if (label) { label.hidden = !laneMode && !mood?.value; label.textContent = laneMode ? laneTitle[laneMode] : mood?.value ? `Mood: ${mood.selectedOptions[0]?.textContent ?? ''}` : ''; }
+  if (label) { label.hidden = !laneMode && !selectedMood; label.textContent = laneMode ? laneTitle[laneMode] : selectedMood ? `Mood: ${mood?.selectedOptions[0]?.textContent ?? selectedMood}` : ''; }
+  if (categoryLabel) { categoryLabel.hidden = !category?.value; categoryLabel.textContent = category?.selectedOptions[0]?.textContent ?? ''; }
   // While locked, LiveHostCards shows its own "Verify to see this space" panel instead of an empty-results message.
   if (noResults) noResults.hidden = count > 0 || (!!laneMode && (laneState === 'locked' || laneState === 'checking'));
   if (noResultsText) noResultsText.textContent = laneMode ? (laneState === 'error' ? 'We could not load this space just now. Please try again.' : 'No hosts are in this space yet. Please check back soon.') : liveExists ? 'No profiles match those filters.' : 'No sample profiles match those filters.';
   if (status) status.textContent = laneMode ? (laneState === 'locked' ? 'Verify to see this space.' : `${count} ${count === 1 ? 'host' : 'hosts'} shown.`) : liveShown > 0 ? `${count} ${count === 1 ? 'person' : 'people'} shown.` : `${count} sample ${count === 1 ? 'profile' : 'profiles'} shown.`;
 }
-for (const select of [mood, language, price]) select?.addEventListener('change', filterPeople);
+for (const select of [mood, category, language, price]) select?.addEventListener('change', filterPeople);
 online?.addEventListener('change', filterPeople);
 document.addEventListener('hf:people-changed', filterPeople);
 document.querySelectorAll<HTMLButtonElement>('[data-reset-filters]').forEach(button => button.addEventListener('click', () => {
-  for (const select of [mood, language, price]) if (select) select.value = '';
+  for (const select of [mood, category, language, price]) if (select) select.value = '';
+  requestedMood = null;
+  requestedCategory = null;
   if (online) online.checked = false;
-  if (laneMode) {
-    laneMode = null;
-    const url = new URL(location.href);
-    url.searchParams.delete('lane');
-    history.replaceState(null, '', url);
-  }
+  if (laneMode) laneMode = null;
+  const url = new URL(location.href);
+  url.searchParams.delete('lane');
+  url.searchParams.delete('mood');
+  url.searchParams.delete('category');
+  history.replaceState(null, '', url);
   filterPeople();
 }));
-const requestedMood = new URLSearchParams(location.search).get('mood');
 if (mood && requestedMood && [...mood.options].some(option => option.value === requestedMood)) mood.value = requestedMood;
+if (category && requestedCategory && [...category.options].some(option => option.value === requestedCategory)) category.value = requestedCategory;
 filterPeople();
 const dialog = document.querySelector<HTMLDialogElement>('#preview-dialog');
 let dialogTrigger: HTMLButtonElement | null = null;

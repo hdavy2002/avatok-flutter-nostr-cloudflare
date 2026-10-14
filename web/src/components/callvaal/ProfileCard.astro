@@ -4,13 +4,16 @@ import { availabilityLabel, callActionLabel, moods, type SampleProfile } from '.
 import ModernIcon from '../home/ModernIcon.astro';
 import DetailIcon from './DetailIcon.astro';
 import '../../styles/profile-card.css';
-interface Props { profile: SampleProfile }
-const { profile } = Astro.props;
+interface Props { profile: SampleProfile; marketplace?: boolean }
+const { profile, marketplace = false } = Astro.props;
+const regularCount = profile.regularCount ?? 0;
 const moodLabel = (slug: string) => moods.find(mood => mood.slug === slug)?.label ?? slug;
+const languageNames = profile.languages.split(/,\s*|\s*·\s*/).filter(Boolean);
+const languageLabel = languageNames.length > 1 ? `${languageNames.slice(0, -1).join(', ')} and ${languageNames[languageNames.length - 1]}` : profile.languages;
 const photo = `/assets/callvaal/scrapbook/${profile.portrait}`;
 const waveform = [20, 35, 55, 30, 65, 90, 50, 35, 70, 45, 25, 55, 80, 40, 65, 100, 70, 45, 30, 60, 80, 50, 35, 65, 40, 25, 50, 75, 45, 30];
 ---
-<article class="profile-card" data-person data-profile-id={profile.id} data-gender={profile.gender} data-availability={profile.availability} data-preview-favourite={String(!!profile.previewFavourite)} data-moods={profile.moods.join(' ')} data-languages={profile.languages} data-price={profile.price} data-online={String(profile.availability === 'online')} data-search={`${profile.name} ${profile.languages} ${profile.moods.map(moodLabel).join(' ')}`}>
+<article class="profile-card" data-marketplace={String(marketplace)} data-person data-profile-id={profile.id} data-gender={profile.gender} data-availability={profile.availability} data-preview-favourite={String(!!profile.previewFavourite)} data-moods={profile.moods.join(' ')} data-categories={profile.categories.join(' ')} data-languages={profile.languages} data-price={profile.price} data-online={String(profile.availability === 'online')} data-search={`${profile.name} ${profile.languages} ${profile.moods.map(moodLabel).join(' ')}`}>
   <div class="portrait-wrap">
     <img class="person-portrait" src={publicImage(photo, { width: 900 })} srcset={publicImageSrcSet(photo, [420, 640, 900])} sizes="(max-width: 599px) calc(100vw - 32px), (max-width: 899px) calc((100vw - 60px) / 2), (max-width: 1824px) calc((100vw - 112px) / 3), 571px" alt={`Illustrative portrait of ${profile.name}`} width="1254" height="1254" loading="lazy" />
     <button type="button" class="favourite-button" data-favourite={profile.id} data-profile-name={profile.name} aria-pressed={String(!!profile.previewFavourite)} aria-label={`${profile.previewFavourite ? 'Unfavourite' : 'Favourite'} ${profile.name} for this visit`}><span aria-hidden="true">♥</span></button>
@@ -23,8 +26,8 @@ const waveform = [20, 35, 55, 30, 65, 90, 50, 35, 70, 45, 25, 55, 80, 40, 65, 10
     </div>
     <p class="person-tagline">{profile.tagline || 'A little time for a good conversation'}</p>
     <div class="profile-card-stats">
-      <div><ModernIcon name="user" /><p class="person-talks"><strong>{profile.talkedTo} people</strong><span>have talked to {profile.name}</span></p></div>
-      <div><ModernIcon name={profile.regulars.startsWith('Regulars:') ? 'user' : 'clock'} /><p class="person-regulars"><strong>{profile.regulars}</strong><span>{profile.regulars.startsWith('Regulars:') ? 'keep coming back' : 'sample availability'}</span></p></div>
+      <div><ModernIcon name="user" /><p class="person-talks">{marketplace && <span>Talked to how many people</span>}<strong>{marketplace ? profile.talkedTo : `${profile.talkedTo} people`}</strong>{!marketplace && <span>have talked to {profile.name}</span>}</p></div>
+      <div><ModernIcon name={profile.regulars.startsWith('Regulars:') ? 'user' : 'clock'} /><p class="person-regulars">{marketplace && <span>People who came back to talk</span>}<strong>{marketplace ? regularCount : profile.regulars}</strong>{!marketplace && <span>{profile.regulars.startsWith('Regulars:') ? 'keep coming back' : 'sample availability'}</span>}</p></div>
     </div>
     <div class="profile-card-voice" aria-label={`Demo voice introduction for ${profile.name}`}>
       <button type="button" data-preview-action="voice" data-preview-label={`${profile.name}’s introduction`} aria-label={`Play ${profile.name}’s introduction`}><ModernIcon name="play" /></button>
@@ -32,7 +35,7 @@ const waveform = [20, 35, 55, 30, 65, 90, 50, 35, 70, 45, 25, 55, 80, 40, 65, 10
       <small>0:20</small>
     </div>
     <dl class="profile-card-facts">
-      <div><dt><ModernIcon name="globe" />Languages</dt><dd>{profile.languages}</dd></div>
+      <div class="profile-card-language"><dt><ModernIcon name="globe" />Languages:</dt><dd>{languageLabel}</dd></div>
       <div><dt><ModernIcon name="sparkle" />Conversation style</dt><dd>{profile.conversationStyle || 'Details coming soon'}</dd></div>
     </dl>
     <div class="profile-card-topics"><h4>Let’s talk about</h4><ul class="person-moods">{profile.moods.map(slug => <li><DetailIcon name="chat" /><span>{moodLabel(slug)}</span></li>)}</ul></div>
