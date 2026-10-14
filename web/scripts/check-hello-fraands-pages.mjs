@@ -22,9 +22,12 @@ export function checkHelloFraandsPages(root, identity) {
     if (route !== '/faq') {
       assert.match(body, /class="hf-hindi"[^>]*>\s*<em\b/, `${route}: italic Hindi summary`);
       const registrationPolicies = new Set(['/terms', '/privacy', '/disclaimer', '/community-guidelines']);
-      if (registrationPolicies.has(route)) {
-        assert.match(text(body), /Last updated: \d{4}-\d{2}-\d{2}/, `${route}: dated registration policy`);
-        assert(!/\{\{|\bpreview\b|\bplaceholder\b/i.test(text(body)), `${route}: no draft placeholders`);
+      const datedContentPages = new Set(['/about', '/contact', '/cookies', '/data-deletion', '/grievance', '/intermediary-policy', '/press', '/report', '/hosts/agreement', '/hosts/kyc']);
+      if (registrationPolicies.has(route) || datedContentPages.has(route)) {
+        assert.match(text(body), /Last updated: \d{4}-\d{2}-\d{2}/, `${route}: dated published page`);
+        if (registrationPolicies.has(route)) {
+          assert(!/\{\{|\bpreview\b|\bplaceholder\b/i.test(text(body)), `${route}: no draft placeholders`);
+        }
       } else {
         assert(text(body).includes('Last updated: {{DATE}}'), `${route}: date placeholder`);
       }
