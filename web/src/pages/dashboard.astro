@@ -1,11 +1,11 @@
 ---
-// [HF-DASHBOARD-SHELL-1] Current account surface; legacy dashboard data stays untouched.
+// [HF-DASH-SHELL-2] Dashboard screen "overview": one shell for every account screen (lib/dashboardRoutes.ts).
 export const prerender = false;
 import Base from '../layouts/Base.astro';
-import HostDashboard from '../islands/calls/HostDashboard';
+import DashboardApp from '../islands/dashboard-hf/DashboardApp';
 import { BRAND } from '../lib/brand';
 Astro.response.headers.set('Cache-Control', 'private, no-store');
 ---
-<Base title={`Dashboard | ${BRAND.name}`} description="Your profile, wallet, calls and bookings." noindex keywords="">
-  <HostDashboard client:only="react" />
+<Base title={`Dashboard | ${BRAND.name}`} description="Your profile, wallet, calls and appointments." noindex keywords="">
+  <DashboardApp client:only="react" section="overview" />
 </Base>

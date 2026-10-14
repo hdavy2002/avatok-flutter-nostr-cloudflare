@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { PageShell, useEmbedded, useIntoDashboard } from '../../components/account/dashboardEmbed';
 import { signInUrl } from '../../lib/hfCallsApi';
 import { ACTIVE_SESSION_CHANGED, getActiveTokenWaited } from '../../lib/clerk';
 import { BRAND } from '../../lib/brand';
@@ -13,6 +14,8 @@ const person = (row: HfBooking, role: BookingRole) => role === 'host' ? row.cust
 
 export default function HostBookings({ role = 'customer' }: { role?: BookingRole }) {
   const feature = useBookingFeature();
+  const embedded = useEmbedded();
+  useIntoDashboard(role === 'host' ? '/dashboard/host/calendar' : '/dashboard/appointments');
   const [month, setMonth] = useState(() => calendarMonth(new Date()));
   const [selected, setSelected] = useState(() => new Date());
   const [rows, setRows] = useState<HfBooking[]>([]);
@@ -74,14 +77,14 @@ export default function HostBookings({ role = 'customer' }: { role?: BookingRole
   }
   if (feature === 'checking') return <BookingFeatureLoading />;
   if (feature === 'disabled') return <BookingUnavailable />;
-  return <main className="hfb-page hfb-wide hfb-appointments">
+  return <PageShell className="hfb-page hfb-wide hfb-appointments">
     <header className="hfb-heading">
       <p className="hfb-eyebrow">{BRAND.name} · {role === 'host' ? 'Host calendar' : 'Appointment calendar'}</p>
       <h1>{role === 'host' ? 'Your host calendar' : 'Your appointments'}</h1>
       <p>{role === 'host' ? 'Your booked conversations, together in one calendar.' : 'Make time for your next conversation. Select a day to see your appointments.'}</p>
-      <div className="hfb-actions"><a className="hfb-back" href="/dashboard">← Dashboard</a>{role === 'host' && <a className="hfb-back" href="/hosts/availability">Manage availability</a>}</div>
+      <div className="hfb-actions">{!embedded && <a className="hfb-back" href="/dashboard">← Dashboard</a>}{role === 'host' && <a className="hfb-back" href="/dashboard/host/availability">Manage availability</a>}</div>
     </header>
-    {signedOut ? <section className="hfb-card"><h2>Sign in to see your calendar</h2><p>Your appointments are private to your account.</p><a className="hfb-button hfb-primary" href={signInUrl(role === 'host' ? '/hosts/bookings' : '/bookings')}>Sign in</a></section> : <>
+    {signedOut ? <section className="hfb-card"><h2>Sign in to see your calendar</h2><p>Your appointments are private to your account.</p><a className="hfb-button hfb-primary" href={signInUrl(role === 'host' ? '/dashboard/host/calendar' : '/dashboard/appointments')}>Sign in</a></section> : <>
       <section className="hfb-card hfb-appointment-month" aria-labelledby="hfb-month-title" aria-busy={loading}>
         <div className="hfb-section-head">
           <div><p className="hfb-eyebrow">Your month</p><h2 id="hfb-month-title" aria-live="polite">{month.toLocaleDateString('en-IN', { month: 'long', year: 'numeric' })}</h2></div>
@@ -118,5 +121,5 @@ export default function HostBookings({ role = 'customer' }: { role?: BookingRole
         </ul>}
       </section>
     </>}
-  </main>;
+  </PageShell>;
 }

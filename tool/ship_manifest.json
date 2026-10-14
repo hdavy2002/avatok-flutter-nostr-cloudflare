@@ -10693,5 +10693,25 @@
       }
     ],
     "_verified_at": "Existing profile_section_view capture includes profile_id metadata in web/src/components/callvaal/profileDetail.ts and web/src/components/callvaal/ProfileDetail.astro."
+  },
+  "HF-DASH-SHELL-2": {
+    "description": "Every signed-in account screen (wallet, calls, appointments, host calendar, availability, earnings, host profile, support, close account) opens inside one dashboard shell under /dashboard/*; old standalone URLs move web visitors into it.",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [],
+    "success": [
+      {
+        "event": "hf_dash_nav",
+        "property": "to",
+        "min_events": 1,
+        "note": "A signed-in person switched dashboard screens in place (no page reload)."
+      },
+      {
+        "event": "hf_dash_view",
+        "property": "section",
+        "min_events": 1,
+        "note": "Dashboard screens render inside the shell."
+      }
+    ]
   }
 }

@@ -1,0 +1,11 @@
+---
+// [HF-DASH-SHELL-2] Dashboard screen "appointments": one shell for every account screen (lib/dashboardRoutes.ts).
+export const prerender = false;
+import Base from '../../layouts/Base.astro';
+import DashboardApp from '../../islands/dashboard-hf/DashboardApp';
+import { BRAND } from '../../lib/brand';
+Astro.response.headers.set('Cache-Control', 'private, no-store');
+---
+<Base title={`My appointments | ${BRAND.name}`} description="Your profile, wallet, calls and appointments." noindex keywords="">
+  <DashboardApp client:only="react" section="appointments" />
+</Base>

@@ -1,6 +1,7 @@
 /* [HF-WALLET-EXIT-1] /account/close: pay-out-first account closure. Shows what happens to the user's money, starts the exit
  * (refund of unused top-ups + final host payout), tracks progress, and closes the account once everything is settled.
  * Worker: GET/POST/DELETE /api/hf/account/exit, POST /api/account/delete (no-money case). Rulebook HF-PAY-14. */
+import { PageShell, useEmbedded, useIntoDashboard } from '../../components/account/dashboardEmbed';
 import { useEffect, useState } from 'react';
 import SessionBridge from '../calls/SessionBridge';
 import { looksSignedOut, signInUrl } from '../../lib/hfCallsApi';
@@ -12,6 +13,8 @@ const PAY: Record<string, string> = { requested: 'Waiting for approval', approve
 const REF: Record<string, string> = { requested: 'Waiting for approval', processing: 'Being sent back', refunded: 'Sent back', rejected: 'Not processed', cancelled: 'Cancelled' };
 
 export default function AccountClose() {
+  const embedded = useEmbedded();
+  useIntoDashboard('/dashboard/close');
   const [phase, setPhase] = useState<'boot' | 'signedout' | 'error' | 'ready'>('boot');
   const [info, setInfo] = useState<ExitInfo | null>(null);
   const [agree, setAgree] = useState(false);
@@ -55,10 +58,10 @@ export default function AccountClose() {
     setBusy(false);
   }
 
-  if (phase === 'boot') return <main className="hfc-page"><p role="status">Loading…</p></main>;
-  if (phase === 'signedout') return <main className="hfc-page"><h1>Close my account</h1><p>Please sign in to close your account.</p><a className="hfc-btn hfc-primary" href={signInUrl('/account/close')}>Sign in</a></main>;
+  if (phase === 'boot') return <PageShell className="hfc-page"><p role="status">Loading…</p></PageShell>;
+  if (phase === 'signedout') return <PageShell className="hfc-page"><h1>Close my account</h1><p>Please sign in to close your account.</p><a className="hfc-btn hfc-primary" href={signInUrl('/dashboard/close')}>Sign in</a></PageShell>;
   if (phase === 'error' || !info) {
-    return <main className="hfc-page"><h1>Close my account</h1><p>We could not load your account. Please check your internet and try again.</p><button type="button" className="hfc-btn hfc-primary" onClick={() => window.location.reload()}>Try again</button></main>;
+    return <PageShell className="hfc-page"><h1>Close my account</h1><p>We could not load your account. Please check your internet and try again.</p><button type="button" className="hfc-btn hfc-primary" onClick={() => window.location.reload()}>Try again</button></PageShell>;
   }
 
   const ex = info.exit && ['waiting_hold', 'waiting_payouts', 'ready'].includes(info.exit.status) ? info.exit : null;
@@ -68,8 +71,8 @@ export default function AccountClose() {
   const scheduled = info.deletion?.scheduledAt ?? closedAt;
 
   return (
-    <main className="hfc-page">
-      <SessionBridge on />
+    <PageShell className="hfc-page">
+      <SessionBridge on={!embedded} />
       <h1>Close my account</h1>
 
       {scheduled && !ex && (
@@ -116,7 +119,7 @@ export default function AccountClose() {
           {info.held > 0 && <p className="hfc-note">Held earnings are paid after the hold ends, so closing will wait until then.</p>}
           {info.manualRefund > 0 && <p className="hfc-sub" style={{ margin: 0 }}>{tk ? `${m(info.manualRefund)} is part of a purchase where some of the money was already used. Our team refunds that part for you in Google Play.` : `${m(info.manualRefund)} is old enough that the payment provider may not take it back. In that case our team pays it to you by bank transfer.`}</p>}
           {!info.bankOk && (info.withdrawable > 0 || info.held > 0) && (
-            <p className="hfc-note">To receive your earnings you need a verified bank account (<a href="/hosts/dashboard">add it on your host dashboard</a>). If you would rather not, you can give up those earnings below.</p>
+            <p className="hfc-note">To receive your earnings you need a verified bank account (<a href="/dashboard/host/earnings">add it on your Earnings page</a>). If you would rather not, you can give up those earnings below.</p>
           )}
           {info.forfeitRupees > 0 && (
             <label style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
@@ -141,6 +144,6 @@ export default function AccountClose() {
 
       {msg && <p role="status" className={msg.kind === 'err' ? 'hfc-err' : 'hfc-note'}>{msg.text}</p>}
       <p className="hfc-sub">See <a href="/data-deletion">how deletion works</a> and what we keep.</p>
-    </main>
+    </PageShell>
   );
 }

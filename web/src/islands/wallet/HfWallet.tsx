@@ -1,5 +1,6 @@
 /* [HF-WALLET-1] /wallet: Paid balance (real money) and Test credits (spend-only, never withdrawable), plus recent history.
  * Worker: GET /api/hf/wallet. [HF-TOPUP-1] TopupPanel (add money) mounts below the balance. */
+import { PageShell, useEmbedded, useIntoDashboard } from '../../components/account/dashboardEmbed';
 import { useEffect, useState } from 'react';
 import TokensPanel from './TokensPanel'; // [HF-APP-3] replaces TopupPanel (kept in the repo, dark behind its flags)
 import RefundPanel from './RefundPanel'; // [HF-WALLET-EXIT-1]
@@ -16,6 +17,8 @@ const signed = (n: number): string => `${n < 0 ? '-' : '+'}${inr(Math.abs(n))}`;
 export default function HfWallet() {
   const [phase, setPhase] = useState<'boot' | 'signedout' | 'error' | 'ready'>('boot');
   const [w, setW] = useState<WalletInfo | null>(null);
+  const embedded = useEmbedded();
+  useIntoDashboard(typeof location !== 'undefined' && location.hash === '#hfw-hist' ? '/dashboard/calls#' : '/dashboard/wallet');
   const [rcptKey] = useState(0); // [HF-WALLET-LIMITS-1] reload key for receipts (was bumped by the web top-up, now unused: [HF-APP-3])
 
   useEffect(() => {
@@ -42,12 +45,12 @@ export default function HfWallet() {
     if (id) document.getElementById(id)?.scrollIntoView();
   }, [phase, w]);
 
-  if (phase === 'boot') return <main className="hfc-page"><p role="status">Loading your wallet…</p></main>;
+  if (phase === 'boot') return <PageShell className="hfc-page"><p role="status">Loading your wallet…</p></PageShell>;
   if (phase === 'signedout') {
-    return <main className="hfc-page"><h1>Wallet</h1><p>Please sign in to see your wallet.</p><a className="hfc-btn hfc-primary" href={signInUrl('/wallet')}>Sign in</a></main>;
+    return <PageShell className="hfc-page"><h1>Wallet</h1><p>Please sign in to see your wallet.</p><a className="hfc-btn hfc-primary" href={signInUrl('/dashboard/wallet')}>Sign in</a></PageShell>;
   }
   if (phase === 'error' || !w) {
-    return <main className="hfc-page"><h1>Wallet</h1><p>We could not load your wallet. Please check your internet and try again.</p><button type="button" className="hfc-btn hfc-primary" onClick={() => window.location.reload()}>Try again</button></main>;
+    return <PageShell className="hfc-page"><h1>Wallet</h1><p>We could not load your wallet. Please check your internet and try again.</p><button type="button" className="hfc-btn hfc-primary" onClick={() => window.location.reload()}>Try again</button></PageShell>;
   }
 
   const rupees = w.mode === 'rupees' && !!w.wallet; // [HF-STD-PLAN-1] plain rupees, no tokens
@@ -56,8 +59,8 @@ export default function HfWallet() {
   const hp = w.host ? hostPaise(w.host) : null;
   const spentIds = new Set(w.history.filter(h => h.kind === 'call_spent' && h.callId).map(h => h.callId));
   return (
-    <main className="hfc-page">
-      <SessionBridge on />
+    <PageShell className="hfc-page">
+      <SessionBridge on={!embedded} />
       <h1>Wallet</h1>
       <section className="hfc-card" aria-labelledby="hfw-bal">
         <h2 id="hfw-bal">Balance</h2>
@@ -176,7 +179,7 @@ export default function HfWallet() {
           </ul>
         )}
       </section>
-      <p className="hfc-sub"><a href="/account/close">Close my account</a></p>
-    </main>
+      {!embedded && <p className="hfc-sub"><a href="/account/close">Close my account</a></p>}
+    </PageShell>
   );
 }

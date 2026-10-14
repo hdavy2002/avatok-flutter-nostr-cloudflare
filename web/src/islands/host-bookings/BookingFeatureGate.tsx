@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { bookingsEnabled } from '../../lib/hfBookingsApi';
+import { PageShell } from '../../components/account/dashboardEmbed';
 
 export type BookingFeatureState = 'checking' | 'enabled' | 'disabled';
 
@@ -14,15 +15,15 @@ export function useBookingFeature(): BookingFeatureState {
 }
 
 export function BookingUnavailable() {
-  return <main className="hfb-page">
+  return <PageShell className="hfb-page">
     <section className="hfb-card" role="status">
       <h1>Booking is unavailable</h1>
       <p>Appointments are not available right now. Please check back later.</p>
       <a className="hfb-button" href="/marketplace">Explore hosts</a>
     </section>
-  </main>;
+  </PageShell>;
 }
 
 export function BookingFeatureLoading() {
-  return <main className="hfb-page"><p className="hfb-card" role="status">Checking appointment availability…</p></main>;
+  return <PageShell className="hfb-page"><p className="hfb-card" role="status">Checking appointment availability…</p></PageShell>;
 }

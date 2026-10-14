@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { PageShell, useIntoDashboard } from '../../components/account/dashboardEmbed';
 import { bookingError, getHostSchedule, legacyHoursToRules, normalizeAvailabilitySchedule, saveHostSchedule, type AvailabilitySchedule, type DateException, type LegacyAvailabilityPreview, type WindowRule } from '../../lib/hfBookingsApi';
 import '../../styles/hf-bookings.css';
 import { BookingFeatureLoading, BookingUnavailable, useBookingFeature } from './BookingFeatureGate';
@@ -14,6 +15,7 @@ const blank = (): AvailabilitySchedule => ({
   horizonDays: 60, rules: [], exceptions: [],
 });
 export default function HostAvailability() {
+  useIntoDashboard('/dashboard/host/availability');
   const feature = useBookingFeature();
   const [schedule, setSchedule] = useState<AvailabilitySchedule>(blank);
   const [saved, setSaved] = useState<AvailabilitySchedule | null>(null);
@@ -113,7 +115,7 @@ export default function HostAvailability() {
 
   if (feature === 'checking') return <BookingFeatureLoading />;
   if (feature === 'disabled') return <BookingUnavailable />;
-  return <main className="hfb-page hfb-wide">
+  return <PageShell className="hfb-page hfb-wide">
     <header className="hfb-heading"><p className="hfb-eyebrow">Host calendar</p><h1>Availability</h1><p>Set recurring hours and date exceptions. Saving checks confirmed appointments on the server. Paid appointments cannot be moved here.</p></header>
     {loading && <p className="hfb-card" role="status">Loading your schedule…</p>}
     {!loading && !saved && message && <section className="hfb-card"><p role="alert">{message}</p><button className="hfb-button" type="button" onClick={() => void load()}>Try again</button></section>}
@@ -186,5 +188,5 @@ export default function HostAvailability() {
       <div className="hfb-actions"><button type="button" className="hfb-button hfb-primary" onClick={() => void save()} disabled={saving || stale}>{saving ? 'Saving…' : 'Save availability'}</button><button type="button" className="hfb-button" disabled={saving || !saved} onClick={() => { if (saved) { setSchedule(saved); setMessage('Unsaved changes reverted.'); } }}>Undo unsaved changes</button></div>
       <p className="hfb-muted">Version {schedule.version}. Saved appointments are never moved by calendar edits.</p>
     </section>}
-  </main>;
+  </PageShell>;
 }

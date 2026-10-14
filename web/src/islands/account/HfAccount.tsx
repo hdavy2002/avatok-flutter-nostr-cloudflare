@@ -5,6 +5,7 @@ import { hfCall, signInUrl } from '../../lib/hfCallsApi';
 import { BRAND } from '../../lib/brand';
 import '../../styles/hf-account.css';
 import DashboardNav from '../../components/account/DashboardNav';
+import { useEmbedded } from '../../components/account/dashboardEmbed';
 import { bookingsEnabled } from '../../lib/hfBookingsApi';
 
 interface Account {
@@ -27,6 +28,7 @@ export default function HfAccount() {
   const [retry, setRetry] = useState(0);
   const generation = useRef(0);
   const back = '/dashboard/profile';
+  const embedded = useEmbedded();
   const [bookingOn, setBookingOn] = useState(false);
 
   useEffect(() => {
@@ -77,8 +79,9 @@ export default function HfAccount() {
     }
   }
 
-  return <main className="hfa-page hfd-page">
-    <SessionBridge on />
+  const Wrap = embedded ? 'div' : 'main';
+  return <Wrap className={embedded ? 'hfa-page hfd-embedded' : 'hfa-page hfd-page'}>
+    {!embedded && <SessionBridge on />}
     <header className="hfa-heading">
       <p className="hfa-eyebrow">{BRAND.name}</p>
       <h1>Your profile</h1>
@@ -88,8 +91,8 @@ export default function HfAccount() {
     {phase === 'signedout' && <section className="hfa-card"><h2>Sign in to your account</h2><p>See your profile, wallet and bookings after signing in.</p><a className="hfa-button" href={signInUrl(back)}>Sign in</a></section>}
     {phase === 'error' && <section className="hfa-card"><h2>Account unavailable</h2><p role="alert">We could not load your account. Check your connection and try again.</p><button className="hfa-button" type="button" onClick={() => setRetry(value => value + 1)}>Try again</button></section>}
     {phase === 'ready' && account && <>
-      <div className="hfd-layout"><DashboardNav account={account} bookingOn={bookingOn} active="profile" /><div className="hfd-content">
-      {account.closing && <aside className="hfa-notice" role="status"><strong>Your account is being closed.</strong> Profile editing is paused. <a href="/account/close">Manage account closure</a></aside>}
+      <div className={embedded ? undefined : 'hfd-layout'}>{!embedded && <DashboardNav account={account} bookingOn={bookingOn} active="profile" />}<div className={embedded ? undefined : 'hfd-content'}>
+      {account.closing && <aside className="hfa-notice" role="status"><strong>Your account is being closed.</strong> Profile editing is paused. <a href="/dashboard/close">Manage account closure</a></aside>}
       <section className="hfa-card">
         <h2>Profile details</h2>
         <form onSubmit={save}>
@@ -111,5 +114,5 @@ export default function HfAccount() {
       </section>
       </div></div>
     </>}
-  </main>;
+  </Wrap>;
 }
