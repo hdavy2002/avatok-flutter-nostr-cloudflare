@@ -1,4 +1,13 @@
 {
+  "HF-BOOKING-RECOVERY-1": {
+    "description": "Reconcile a booking-linked call from durable D1 booking and wallet evidence after its Durable Object state is lost.",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [
+      "hfBookingsEnabled"
+    ],
+    "no_telemetry": "Rare internal Durable Object loss recovery emits no new dedicated event; existing call settlement and exception telemetry remains in place, and the recovery contract test verifies D1 and wallet outcomes."
+  },
   "HF-BOOKING-CALENDAR-1": {
     "description": "Add host availability, customer booking, guarded wallet reservation and scheduled call lifecycle on web and Worker.",
     "two_sided": true,

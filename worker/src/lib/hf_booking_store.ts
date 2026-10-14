@@ -226,7 +226,7 @@ export async function runHfBookingsCron(env: Env, now = Date.now()): Promise<{ e
   let recovered = 0, recoveryBlocked = 0;
   for (const row of stuck.slice(0, 50)) {
     const response = await env.HF_CALL.get(env.HF_CALL.idFromName(row.call_id))
-      .fetch("https://hfcall/recover", { method: "POST", body: "{}" }).catch(() => null);
+      .fetch("https://hfcall/recover", { method: "POST", body: JSON.stringify({ callId: row.call_id }) }).catch(() => null);
     if (response?.ok) recovered++;
     else recoveryBlocked++;
   }

@@ -20,6 +20,8 @@ import {
 import { settleTestCredits } from "../lib/hf_credits";
 import { settleTokenCall, type StdSnapshot } from "../lib/hf_token_calls"; // [HF-TOK-CALLS-1]
 import { validTariff } from "../lib/hf_token_math"; // [HF-STD-PLAN-1]
+import { getCdr, parseTimeMs } from "../lib/hf_vobiz_api";
+import { relOpId } from "../lib/hf_token_ledger";
 import {
   settleCall, billedMinutes, hostTokensToCredit, splitCharge, splitHostShare, paidStillNeeded, callerHandle, hostAnnounceXml, noticeAndConferenceXml, hangupXml, emptyXml,
   LIMIT_WARNING_TEXT, WARN_BEFORE_LIMIT_SEC,
@@ -119,7 +121,7 @@ export class HfCallDO {
       if (path === "init") return await this.init(body);
       if (path === "recover") {
         const recovered = await this.load();
-        if (!recovered) return jsonRes({ ok: false, error: "do_state_missing", manualRecoveryRequired: true }, 410);
+        if (!recovered) return await this.recoverMissingState(body);
         if (recovered.finalized && recovered.bill.post) return jsonRes({ ok: true, status: recovered.status, finalized: true });
         if (recovered.finalized) {
           recovered.tasks.retry = Date.now() + 200;
@@ -154,6 +156,93 @@ export class HfCallDO {
       await trackException(this.env, e, { route: `hf_call.${path}`, handled: true, app_name: HF_CALL_APP, extra: { area: "hf_calls" } });
       return path === "host-answer" || path === "host-digits" || path === "caller-answer" ? xmlRes(hangupXml("Sorry, something went wrong. Goodbye.")) : jsonRes({ ok: false, error: "internal" }, 500);
     }
+  }
+
+  /** Rebuild a booked call only from linked D1 rows and provider terminal evidence. */
+  private async recoverMissingState(body: Record<string, any>): Promise<Response> {
+    const callId = typeof body.callId === "string" ? body.callId : "";
+    if (!/^[a-f0-9-]{36}$/i.test(callId)) return jsonRes({ ok: false, error: "do_state_missing", manualRecoveryRequired: true }, 410);
+    const rows = await this.db().prepare(
+      "SELECT c.id,c.booking_id,c.caller_uid,c.host_uid,c.status AS call_status,c.connected_at,c.host_leg_uuid,c.caller_leg_uuid," +
+      "b.status AS booking_status,b.settlement_status,b.updated_at AS booking_updated_at,b.ends_at,b.duration_min,b.price_snapshot_json,b.call_id AS booking_call_id " +
+      "FROM hf_calls c JOIN hf_bookings b ON b.id=c.booking_id WHERE c.id=?1 AND b.call_id=c.id AND c.caller_uid=b.customer_uid AND c.host_uid=b.host_uid")
+      .bind(callId).first<any>();
+    if (!rows || !["starting", "active", "settling"].includes(rows.booking_status) || rows.settlement_status !== "held" ||
+      !["starting", "ringing_host", "ringing_caller", "connected", "ending", "finalizing", "settling", "recovering"].includes(rows.call_status)) {
+      return jsonRes({ ok: false, error: "booking_link_or_state_invalid", manualRecoveryRequired: true }, 409);
+    }
+    if (!rows.host_leg_uuid || !rows.caller_leg_uuid) return jsonRes({ ok: false, error: "provider_leg_identity_missing", retryScheduled: true }, 503);
+    // D1 lease prevents concurrent recovery; the five-minute expiry permits retry after a DO eviction.
+    const now = Date.now();
+    const claim = await this.db().batch([
+      this.db().prepare("UPDATE hf_bookings SET updated_at=?1 WHERE id=?2 AND call_id=?3 AND status IN ('starting','active','settling') AND settlement_status='held' AND ((?4<>'recovering' AND updated_at=?5) OR (?4='recovering' AND updated_at<?6))")
+        .bind(now, rows.booking_id, callId, rows.call_status, Number(rows.booking_updated_at), now - 5 * 60_000),
+      this.db().prepare("UPDATE hf_calls SET status='recovering' WHERE id=?1 AND status=?2 AND EXISTS (SELECT 1 FROM hf_bookings WHERE id=?3 AND call_id=?1 AND updated_at=?4 AND settlement_status='held')")
+        .bind(callId, rows.call_status, rows.booking_id, now),
+    ]);
+    if ((claim[0]?.meta?.changes ?? 0) === 0 || (claim[1]?.meta?.changes ?? 0) === 0)
+      return jsonRes({ ok: false, error: "recovery_in_progress", retryScheduled: true }, 503);
+    const provider = getTelephonyProvider(this.env);
+    let [hostState, callerState] = await Promise.all([provider.getCallState(rows.host_leg_uuid), provider.getCallState(rows.caller_leg_uuid)]);
+    if (hostState.callUuid !== rows.host_leg_uuid || callerState.callUuid !== rows.caller_leg_uuid) throw new Error("provider_call_identity_mismatch");
+    const terminal = (x: typeof hostState) => ["completed", "ended", "failed", "cancelled", "canceled", "busy", "no-answer", "no_answer"].includes(x.status.trim().toLowerCase());
+    if (!terminal(hostState)) await provider.hangupCall(rows.host_leg_uuid).catch(() => undefined);
+    if (!terminal(callerState)) await provider.hangupCall(rows.caller_leg_uuid).catch(() => undefined);
+    [hostState, callerState] = await Promise.all([provider.getCallState(rows.host_leg_uuid), provider.getCallState(rows.caller_leg_uuid)]);
+    if (hostState.callUuid !== rows.host_leg_uuid || callerState.callUuid !== rows.caller_leg_uuid) throw new Error("provider_call_identity_mismatch");
+    const hostEnd = parseTimeMs(hostState.endedAt);
+    const callerEnd = parseTimeMs(callerState.endedAt);
+    if (!terminal(hostState) || !terminal(callerState) || hostEnd == null || callerEnd == null) {
+      return jsonRes({ ok: false, error: "provider_state_unresolved", retryScheduled: true }, 503);
+    }
+    const released = await this.db().prepare("SELECT 1 AS x FROM hf_token_ledger WHERE op_id=?1").bind(relOpId(callId)).first();
+    if (released) return jsonRes({ ok: false, error: "booking_reservation_already_released", manualRecoveryRequired: true }, 409);
+    const connectedAt = Number(rows.connected_at) > 0 ? Number(rows.connected_at) : null;
+    const noAnswerEvidence = connectedAt == null ? await Promise.all([getCdr(this.env, rows.host_leg_uuid), getCdr(this.env, rows.caller_leg_uuid)]) : [null, null];
+    const provesNoAnswer = (cdr: Awaited<ReturnType<typeof getCdr>>, uuid: string) => !!cdr && cdr.uuid === uuid && cdr.answerAt == null && cdr.billsec === 0 &&
+      /no[ _-]?answer/i.test(String(cdr.hangupCause ?? ""));
+    const neverAnswered = connectedAt == null && (provesNoAnswer(noAnswerEvidence[0], rows.host_leg_uuid) || provesNoAnswer(noAnswerEvidence[1], rows.caller_leg_uuid));
+    const callCreated = await this.db().prepare("SELECT created_at FROM hf_calls WHERE id=?1").bind(callId).first<{ created_at: number }>();
+    if (connectedAt != null && (connectedAt < Number(callCreated?.created_at ?? 0) || connectedAt > Math.min(hostEnd, callerEnd, Number(rows.ends_at)))) {
+      return jsonRes({ ok: false, error: "connected_at_outside_provider_window", retryScheduled: true }, 503);
+    }
+    const price = JSON.parse(String(rows.price_snapshot_json)) as Record<string, any>;
+    const ratePaise = Number(price.ratePaise);
+    const callCostPaisePerMin = Number(price.callCostPaisePerMin);
+    const hostShareBps = Number(price.hostShareBps);
+    const std = price.std ?? null;
+    const creator = price.creator ?? null;
+    if (!Number.isSafeInteger(ratePaise) || ratePaise <= 0 || !Number.isSafeInteger(callCostPaisePerMin) || callCostPaisePerMin < 0 ||
+      !Number.isSafeInteger(hostShareBps) || hostShareBps < 0 || hostShareBps > 10_000 ||
+      (std !== null && (std.plan !== "std" || !validTariff(std.tariff) || !Number.isFinite(Number(std.hostPaisePerMin)) || Number(std.hostPaisePerMin) < 0 || !Number.isFinite(Number(std.phoneCostPaisePerMin)) || Number(std.phoneCostPaisePerMin) < 0)) ||
+      (creator !== null && !validCreatorSnapshot(creator))) {
+      return jsonRes({ ok: false, error: "booking_price_snapshot_invalid", manualRecoveryRequired: true }, 409);
+    }
+    const seconds = connectedAt ? Math.max(0, Math.floor((Math.min(hostEnd, callerEnd, Number(rows.ends_at)) - connectedAt) / 1000)) : 0;
+    if (connectedAt && seconds <= 0) return jsonRes({ ok: false, error: "connected_duration_unverified", retryScheduled: true }, 503);
+    if (!connectedAt && !neverAnswered) {
+      return jsonRes({ ok: false, error: "answer_evidence_ambiguous", retryScheduled: true }, 503);
+    }
+    const maxSeconds = Math.max(0, Math.floor(Number(rows.duration_min) * 60));
+    const s: S = {
+      callId, callerUid: rows.caller_uid, hostUid: rows.host_uid, bookingId: rows.booking_id,
+      bookedEndsAt: Number(rows.ends_at), hardEndsAt: Number(rows.ends_at), rateRupees: ratePaise / 100,
+      reservedRupees: 0, testReservedRupees: 0, fundsRupees: 0, maxMinutes: Number(rows.duration_min), limitReason: "time_limit",
+      status: "finalizing", createdAt: Date.now(), hostLeg: rows.host_leg_uuid, callerLeg: rows.caller_leg_uuid,
+      hostPicked: !!hostState.answeredAt, hostAccepted: false, callerPicked: !!callerState.answeredAt, callerPickedAt: null,
+      inRoom: { host: false, caller: false }, member: {}, anyEnter: false, connectedAt, endedAt: Math.min(hostEnd, callerEnd),
+      endReason: neverAnswered ? "no_answer" : "recovered_provider_end", finalStatus: neverAnswered ? "failed" : "completed", hashBy: null,
+      finalized: true, finishing: { status: neverAnswered ? "failed" : "completed", endReason: neverAnswered ? "no_answer" : "recovered_provider_end", hashBy: null,
+        skipHostLeg: true, skipCallerLeg: true, tellHost: false, attempts: 0, hostDone: true, callerDone: true },
+      tasks: { retry: Date.now() + 20_000 }, bill: { attempts: 0 },
+      tok: { ratePaise, callCostPaisePerMin, hostShareBps, maxSeconds,
+        booked: true, std, creator },
+    };
+    await this.save(s);
+    await this.db().prepare("UPDATE hf_calls SET connected_at=COALESCE(connected_at,?1),status='finalizing',ended_at=?2,end_reason=?3 WHERE id=?4 AND status='recovering'")
+      .bind(connectedAt, s.endedAt, s.endReason, callId).run();
+    await this.settleAndPost(s);
+    return jsonRes({ ok: true, status: s.status, finalized: s.bill.post === true });
   }
 
   // ── start: the host rings first ───────────────────────────────────────────────────────────────────────────────
@@ -530,7 +619,7 @@ export class HfCallDO {
 
   // ── billing (idempotent steps, persisted; failures retry from the alarm) ──────────────────────────────────────
   private async settleAndPost(s: S): Promise<void> {
-    if (!s.bill.hostReleased) {
+    if (!s.bookingId && !s.bill.hostReleased) {
       try {
         await releaseHost(this.env, s.hostUid, s.callId);
         s.bill.hostReleased = true;
@@ -545,6 +634,19 @@ export class HfCallDO {
     }
     const ok = await this.settle(s);
     if (!ok || s.bill.post) return;
+    if (s.bookingId && !s.bill.hostReleased) {
+      try {
+        await releaseHost(this.env, s.hostUid, s.callId);
+        s.bill.hostReleased = true;
+        await this.save(s);
+      } catch (e) {
+        s.bill.attempts += 1;
+        s.tasks.retry = Date.now() + Math.min(MAX_RETRY_DELAY_MS, 20_000 * s.bill.attempts);
+        await this.save(s);
+        await trackException(this.env, e, { route: "hf_call.settle", handled: true, app_name: HF_CALL_APP, extra: { area: "hf_calls", step: "release_host", attempt: s.bill.attempts, call: s.callId } });
+        return;
+      }
+    }
     const finalStatus = s.finalStatus ?? "completed";
     try {
       await this.db().prepare("UPDATE hf_calls SET status=?1, ended_at=?2, end_reason=?3, host_leg_uuid=?4, caller_leg_uuid=?5 WHERE id=?6")

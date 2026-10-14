@@ -611,9 +611,8 @@ async function startBookingRoute(req: Request, env: Env, bookingId: string): Pro
     const existing = await env.DB_META.prepare("SELECT id,status FROM hf_calls WHERE booking_id=?1").bind(bookingId)
       .first<{ id: string; status: string }>();
     if (existing) {
-      if (now >= Number(row.ends_at)) return err(409, "booking_start_recovery_pending");
       const response = await env.HF_CALL.get(env.HF_CALL.idFromName(existing.id)).fetch("https://hfcall/recover", {
-        method: "POST", body: "{}",
+        method: "POST", body: JSON.stringify({ callId: existing.id }),
       }).catch(() => null);
       if (!response?.ok) {
         if (response?.status === 409 || response?.status === 410) return err(409, "booking_call_manual_recovery");

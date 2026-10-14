@@ -40,6 +40,7 @@ import {
 import { reserveTestCredits, settleTestCredits, grantTestCredits, getTestBalance } from "../lib/hf_credits";
 import { maxMinutesFor, START_RESERVE_MINUTES, MAX_CALL_MINUTES, paidShortfall, hangupXml, callerDidntPickUpXml, callerHandle } from "../lib/hf_call_math";
 import { hasPositiveCallDuration } from "../lib/hf_reviews_pure";
+import { recordLegFromWebhook } from "../lib/hf_vobiz_ledger";
 
 const err = (status: number, error: string, message: string, extra: Record<string, unknown> = {}) => json({ error, message, ...extra }, status);
 const UNAVAILABLE = () => err(409, "host_unavailable", "This host isn't available right now.");
@@ -814,6 +815,15 @@ async function vobizWebhook(req: Request, env: Env, p: string): Promise<Response
   const forward = async (op: string, id: string, role?: "host" | "caller"): Promise<Response> => {
     if (!ID_RE.test(id)) return xml(hangupXml());
     const fields = req.method === "POST" ? await parseForm(req) : Object.fromEntries(new URL(req.url).searchParams.entries());
+    if ((op === "host-answer" || op === "caller-answer" || op === "hangup") && role && fields.CallUUID) {
+      const column = role === "host" ? "host_leg_uuid" : "caller_leg_uuid";
+      // Capture provider identity in D1 before the DO forward; only an existing linked call may claim it.
+      const linked = await env.DB_META.prepare(`UPDATE hf_calls SET ${column}=COALESCE(${column},?1) WHERE id=?2 AND booking_id IS NOT NULL AND (${column} IS NULL OR ${column}=?1) AND EXISTS (SELECT 1 FROM hf_bookings b WHERE b.id=hf_calls.booking_id AND b.call_id=hf_calls.id AND b.status IN ('starting','active','settling'))`)
+        .bind(fields.CallUUID, id).run().catch(() => null);
+      if ((linked?.meta?.changes ?? 0) > 0 && op === "hangup") {
+        await recordLegFromWebhook(env, { callId: id, role, legUuid: fields.CallUUID, fields }).catch(() => undefined);
+      }
+    }
     try {
       return await callStub(env, id).fetch(`https://hfcall/${op}`, { method: "POST", body: JSON.stringify({ role, fields }) });
     } catch (e) {
