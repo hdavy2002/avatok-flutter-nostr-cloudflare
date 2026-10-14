@@ -1,10 +1,11 @@
 ---
-// /dashboard — [SAATHUM-BOOK-TO-MARKETPLACE-1 2026-09-29, owner decision] The Dashboard 2
-// "Book events" page is removed: browsing and booking happen on the public /marketplace.
-// A link that carries a filter (?cat=, ?q=) goes to /marketplace with it; a bare /dashboard
-// (the header "Dashboard" button) lands on My events.
+// [HF-DASHBOARD-SHELL-1] Current account surface; legacy dashboard data stays untouched.
 export const prerender = false;
-const search = Astro.url.search;
-// [HELLO-FRAANDS-DASH-SHELL-1] Landing screen is Profile until the new overview exists.
-return Astro.redirect(search ? `/marketplace${search}` : '/dashboard/profile', 302);
+import Base from '../layouts/Base.astro';
+import HfAccount from '../islands/account/HfAccount';
+import { BRAND } from '../lib/brand';
+Astro.response.headers.set('Cache-Control', 'private, no-store');
 ---
+<Base title={`My account | ${BRAND.name}`} description="Your profile, wallet, calls and bookings." noindex keywords="">
+  <HfAccount client:only="react" profile={false} />
+</Base>

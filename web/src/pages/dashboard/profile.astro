@@ -1,10 +1,11 @@
 ---
-// /dashboard/profile — [DASH2-FOUNDATION 2026-09-25] Dashboard 2 "Profile".
-
+// [HF-DASHBOARD-SHELL-1] Current account surface; legacy dashboard data stays untouched.
 export const prerender = false;
-import Dashboard2 from '../../layouts/Dashboard2.astro';
-import Profile from '../../islands/dashboard2/Profile.tsx';
+import Base from '../../layouts/Base.astro';
+import HfAccount from '../../islands/account/HfAccount';
+import { BRAND } from '../../lib/brand';
+Astro.response.headers.set('Cache-Control', 'private, no-store');
 ---
-<Dashboard2 title="Profile" active="profile" subtitle="Your details, family, phone and UPI IDs.">
-  <Profile client:load />
-</Dashboard2>
+<Base title={`Profile | ${BRAND.name}`} description="Your profile, wallet, calls and bookings." noindex keywords="">
+  <HfAccount client:only="react" profile={true} />
+</Base>

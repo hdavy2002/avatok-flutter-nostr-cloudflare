@@ -1,12 +1,5 @@
 ---
-// /dashboard/my-events — [DASH2-FOUNDATION 2026-09-25] Dashboard 2 "My events".
-
+// [HF-DASHBOARD-SHELL-1] Retired dashboard presentation; no legacy data is changed.
 export const prerender = false;
-import Dashboard2 from '../../layouts/Dashboard2.astro';
-import MyEvents from '../../islands/dashboard2/MyEvents.tsx';
-import PushReminderPrompt from '../../islands/dashboard2/PushReminderPrompt.tsx'; // [DASH2-PUSH]
+return Astro.redirect('/dashboard?retired=events', 302);
 ---
-<Dashboard2 title="My events" active="my-events" subtitle="Upcoming and live pujas you have booked.">
-  <PushReminderPrompt client:idle />
-  <MyEvents client:load />
-</Dashboard2>

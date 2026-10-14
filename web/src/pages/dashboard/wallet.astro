@@ -1,11 +1,5 @@
 ---
-// /dashboard/wallet — [AUMFE-WALLET-WEB-1 2026-10-02] Dashboard 2 customer Wallet, ADMIN-PREVIEW ONLY.
-// Previewers see the Wallet island; the island sends everyone else to /dashboard/billing
-// client-side (the old 301 behaviour) because preview status is only known per signed-in user.
+// [HF-DASHBOARD-SHELL-1] Retired dashboard presentation; no legacy data is changed.
 export const prerender = false;
-import Dashboard2 from '../../layouts/Dashboard2.astro';
-import Wallet from '../../islands/dashboard2/Wallet.tsx';
+return Astro.redirect('/wallet', 302);
 ---
-<Dashboard2 title="Wallet" active="wallet" subtitle="Your balance and wallet activity.">
-  <Wallet client:load />
-</Dashboard2>

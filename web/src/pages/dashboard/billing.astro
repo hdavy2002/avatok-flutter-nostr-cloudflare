@@ -1,10 +1,5 @@
 ---
-// /dashboard/billing — [DASH2-FOUNDATION 2026-09-25] Dashboard 2 "Billing".
-// REMOVED [DASH2-ARCHIVE-1 2026-09-25] the v1 'Billing' stub is at archive/dashboard-v1/billing.astro.
+// [HF-DASHBOARD-SHELL-1] Retired dashboard presentation; no legacy data is changed.
 export const prerender = false;
-import Dashboard2 from '../../layouts/Dashboard2.astro';
-import Billing from '../../islands/dashboard2/Billing.tsx';
+return Astro.redirect('/dashboard?retired=billing', 302);
 ---
-<Dashboard2 title="Billing" active="billing" subtitle="Payments, receipts and refunds.">
-  <Billing client:load />
-</Dashboard2>

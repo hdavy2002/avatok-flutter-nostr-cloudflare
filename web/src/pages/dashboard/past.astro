@@ -1,10 +1,5 @@
 ---
-// /dashboard/past — [DASH2-FOUNDATION 2026-09-25] Dashboard 2 "Past events".
-
+// [HF-DASHBOARD-SHELL-1] Retired dashboard presentation; no legacy data is changed.
 export const prerender = false;
-import Dashboard2 from '../../layouts/Dashboard2.astro';
-import PastEvents from '../../islands/dashboard2/PastEvents.tsx';
+return Astro.redirect('/dashboard?retired=events', 302);
 ---
-<Dashboard2 title="Past events" active="past" subtitle="Watch the pujas you attended again.">
-  <PastEvents client:load />
-</Dashboard2>
