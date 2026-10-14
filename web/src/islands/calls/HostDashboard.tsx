@@ -8,6 +8,8 @@ import { API_BASE } from '../../lib/env';
 import { callsEnabled, fetchWallet, hfCall, hostPaise, looksSignedOut, relDate, signInUrl, toMs, type HostPresence, type WalletInfo } from '../../lib/hfCallsApi';
 import { formatPaise } from '../../lib/money';
 import '../../styles/hf-calls.css';
+import { bookingError, bookingsEnabled, dateLabel, getBookingSummary, money, type BookingSummary } from '../../lib/hfBookingsApi';
+import '../../styles/hf-bookings.css';
 
 const BEAT_MS = 5 * 60_000;
 const REFRESH_MS = 60_000;
@@ -73,6 +75,9 @@ export default function HostDashboard() {
   const [rows, setRows] = useState<Row[]>([]);
   const [today, setToday] = useState<Today>({ calls: 0, minutes: 0, earned: 0 });
   const [wallet, setWallet] = useState<WalletInfo | null>(null);
+  const [bookingSummary, setBookingSummary] = useState<BookingSummary | null>(null);
+  const [bookingOn, setBookingOn] = useState(false);
+  const [bookingErrorText, setBookingErrorText] = useState('');
   const presenceRef = useRef(presence);
   presenceRef.current = presence;
 
@@ -81,6 +86,10 @@ export default function HostDashboard() {
     if (r.ok) { const p = parseCalls(r.data); setRows(p.rows); setToday(p.today); }
     const w = await fetchWallet(); // [HF-WALLET-1] earnings breakdown
     if (w.ok) setWallet(w.data);
+    const enabled = await bookingsEnabled(); setBookingOn(enabled);
+    if (!enabled) { setBookingSummary(null); setBookingErrorText(''); return; }
+    try { setBookingSummary(await getBookingSummary()); setBookingErrorText(''); }
+    catch (error) { setBookingErrorText(bookingError(error).message); }
   }, []);
 
   useEffect(() => {
@@ -166,6 +175,16 @@ export default function HostDashboard() {
         </p>
         {msg && <p className="hfc-err" role="alert">{msg}</p>}
       </section>
+
+      {bookingOn && <section className="hfc-card hfb-card" aria-labelledby="hfb-on-hold">
+        <div className="hfb-section-head"><h2 id="hfb-on-hold">Expected earnings on hold</h2><a className="hfb-button hfb-small" href="/hosts/bookings">View bookings</a></div>
+        {bookingSummary ? <>
+          <div className="hfc-stats"><div className="hfc-stat"><strong>{money(bookingSummary.expectedHostNetPaise)}</strong><span>estimated host earnings</span></div><div className="hfc-stat"><strong>{bookingSummary.upcomingCount}</strong><span>upcoming bookings</span></div></div>
+          {bookingSummary.nextBooking ? <p className="hfb-muted">Next: {dateLabel(bookingSummary.nextBooking.startUtc, bookingSummary.nextBooking.hostTimezone)} · {bookingSummary.nextBooking.hostTimezone}</p> : <p className="hfb-muted">No upcoming bookings yet.</p>}
+        </> : bookingErrorText ? <p role="status" className="hfb-muted">{bookingErrorText} <button className="hfb-text-button" type="button" onClick={() => void loadCalls()}>Retry</button></p> : <p role="status">Loading booking summary…</p>}
+        <p className="hfb-muted">This estimate is separate from earned wallet money. Completed calls move actual earnings to your wallet; withdrawal timing is shown there.</p>
+        <div className="hfb-actions"><a className="hfb-button" href="/hosts/availability">Manage availability</a><a className="hfb-button" href="/hosts/bookings">All bookings</a></div>
+      </section>}
 
       <section className="hfc-card" aria-labelledby="hfc-today">
         <h2 id="hfc-today">Today</h2>

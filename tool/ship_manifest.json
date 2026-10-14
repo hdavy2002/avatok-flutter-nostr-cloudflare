@@ -1,4 +1,22 @@
 {
+  "HF-BOOKING-CALENDAR-1": {
+    "description": "Add host availability, customer booking, guarded wallet reservation and scheduled call lifecycle on web and Worker.",
+    "two_sided": true,
+    "min_devices_on_build": 2,
+    "flags": [
+      "hfBookingsEnabled",
+      "hfCallsEnabled"
+    ],
+    "success": [
+      {
+        "event": "hf_booking_quote_created",
+        "property": "duration_minutes",
+        "gt": 0,
+        "min_events": 1,
+        "note": "A customer reached a priced available slot and received a bounded booking quote."
+      }
+    ]
+  },
   "HF-DESIGN-RELEASE-CI-1": {
     "description": "Restore the missing login consent check-mark import and clear two bounded analyzer diagnostics in the approved Explore and profile designs.",
     "two_sided": false,

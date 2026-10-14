@@ -1,0 +1,12 @@
+---
+export const prerender = false;
+import Base from '../../layouts/Base.astro';
+import BookingDetails from '../../islands/host-bookings/BookingDetails';
+import '../../styles/hf-bookings.css';
+import { BRAND } from '../../lib/brand';
+Astro.response.headers.set('Cache-Control', 'private, no-store');
+const id = Astro.params.id ?? '';
+---
+<Base title={`Booking details · ${BRAND.name}`} description="View your appointment details." noindex keywords="">
+  <BookingDetails client:only="react" id={id} />
+</Base>

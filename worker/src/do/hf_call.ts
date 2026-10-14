@@ -40,7 +40,7 @@ interface Plan {
   testUsed?: number; paidUsed?: number; hostPaid?: number; hostTest?: number;
 }
 // [HF-TOK-CALLS-1] Token-mode call: the snapshot taken at start (never live config) + the call's own time limit in seconds.
-interface TokenSnap { ratePaise: number; callCostPaisePerMin: number; hostShareBps: number; maxSeconds: number; std?: StdSnapshot | null; creator?: CreatorSnapshot }
+interface TokenSnap { ratePaise: number; callCostPaisePerMin: number; hostShareBps: number; maxSeconds: number; booked?: boolean; std?: StdSnapshot | null; creator?: CreatorSnapshot }
 interface Bill {
   tokSettled?: boolean;
   funds?: number; plan?: Plan; consumed?: number; released?: boolean; earned?: boolean; saved?: boolean; post?: boolean; attempts: number;
@@ -59,7 +59,7 @@ interface FinishRequest {
   callerDone: boolean;
 }
 interface S {
-  callId: string; callerUid: string; hostUid: string;
+  callId: string; callerUid: string; hostUid: string; bookingId?: string; bookedEndsAt?: number; hardEndsAt?: number;
   // reservedRupees = PAID rupees reserved in the wallet at start; testReservedRupees = test credits held for this call; fundsRupees = test + paid available at start.
   rateRupees: number; reservedRupees: number; testReservedRupees?: number; fundsRupees: number; maxMinutes: number; limitReason: "time_limit" | "balance";
   status: string; createdAt: number;
@@ -102,7 +102,13 @@ export class HfCallDO {
   /** The call's time limit in seconds: exact for token calls, whole minutes for the old path. */
   private maxSec(s: S) { return s.tok ? s.tok.maxSeconds : s.maxMinutes * 60; }
   // [HF-STD-PLAN-1] provider backstop never above 24 h (Standard calls are sized up to STD_TECH_MAX_SECONDS); the DO alarm is the real limit.
-  private backstopSec(s: S) { return Math.min(this.maxSec(s) + 90, 86_400); }
+  private backstopSec(s: S) {
+    const scheduledRemaining = s.hardEndsAt == null ? Infinity : Math.max(1, Math.ceil((s.hardEndsAt - Date.now()) / 1000));
+    return Math.min(this.maxSec(s) + 90, scheduledRemaining, 86_400);
+  }
+  private ringTimeoutSec(s: S, normal: number) {
+    return Math.min(normal, s.hardEndsAt == null ? normal : Math.max(1, Math.ceil((s.hardEndsAt - Date.now()) / 1000)));
+  }
 
   // ── HTTP entry (internal: only routes/hf_calls.ts and the cron call this) ───────────────────────────────────────
   async fetch(req: Request): Promise<Response> {
@@ -111,6 +117,21 @@ export class HfCallDO {
     try { body = (await req.json()) as Record<string, any>; } catch { body = {}; }
     try {
       if (path === "init") return await this.init(body);
+      if (path === "recover") {
+        const recovered = await this.load();
+        if (!recovered) return jsonRes({ ok: false, error: "do_state_missing", manualRecoveryRequired: true }, 410);
+        if (recovered.finalized && recovered.bill.post) return jsonRes({ ok: true, status: recovered.status, finalized: true });
+        if (recovered.finalized) {
+          recovered.tasks.retry = Date.now() + 200;
+          await this.save(recovered);
+          await this.settleAndPost(recovered);
+          return jsonRes({ ok: true, status: recovered.status, retryScheduled: !recovered.bill.post });
+        }
+        const taskTimes = Object.values(recovered.tasks).filter((t): t is number => typeof t === "number");
+        if (!taskTimes.length) return jsonRes({ ok: false, error: "do_state_has_no_recovery_task", manualRecoveryRequired: true }, 409);
+        await this.reschedule(recovered);
+        return jsonRes({ ok: true, status: recovered.status, retryScheduled: true });
+      }
       const s = await this.load();
       if (!s) return path === "host-answer" || path === "host-digits" || path === "caller-answer" ? xmlRes(hangupXml()) : jsonRes({ ok: false, error: "unknown_call" }, 404);
       switch (path) {
@@ -141,19 +162,23 @@ export class HfCallDO {
     const now = Date.now();
     const s: S = {
       callId: String(b.callId), callerUid: String(b.callerUid), hostUid: String(b.hostUid),
+      ...(typeof b.bookingId === "string" ? { bookingId: b.bookingId } : {}),
+      ...(Number.isSafeInteger(b.bookedEndsAt) ? { bookedEndsAt: Number(b.bookedEndsAt) } : {}),
+      ...(Number.isSafeInteger(b.hardEndsAt) ? { hardEndsAt: Number(b.hardEndsAt) } : {}),
       rateRupees: Math.trunc(Number(b.rateRupees)), reservedRupees: Math.trunc(Number(b.reservedRupees)), testReservedRupees: Math.max(0, Math.trunc(Number(b.testReservedRupees ?? 0))), fundsRupees: Math.trunc(Number(b.fundsRupees)),
       maxMinutes: Math.trunc(Number(b.maxMinutes)), limitReason: b.limitReason === "balance" ? "balance" : "time_limit",
       status: "ringing_host", createdAt: now, hostLeg: null, callerLeg: null,
       hostPicked: false, hostAccepted: false, callerPicked: false, callerPickedAt: null,
       inRoom: { host: false, caller: false }, member: {}, anyEnter: false,
       connectedAt: null, endedAt: null, endReason: null, finalStatus: null, hashBy: null,
-      finalized: false, tasks: { ring: now + HOST_PHASE_MS }, bill: { attempts: 0 },
+      finalized: false, tasks: { ring: Math.min(now + HOST_PHASE_MS, Number(b.hardEndsAt ?? Infinity)) }, bill: { attempts: 0 },
     };
     if (b.tokens && typeof b.tokens === "object") {
       const t = b.tokens as Record<string, unknown>;
       s.tok = {
         ratePaise: Math.trunc(Number(t.ratePaise)), callCostPaisePerMin: Math.trunc(Number(t.callCostPaisePerMin)),
         hostShareBps: Math.trunc(Number(t.hostShareBps)), maxSeconds: Math.max(0, Math.trunc(Number(t.maxSeconds))),
+        booked: t.booked === true,
       };
       if (t.creator != null) {
         if (!validCreatorSnapshot(t.creator)) throw new Error("Invalid creator pricing snapshot");
@@ -173,7 +198,7 @@ export class HfCallDO {
       if (!to) throw new Error("host has no verified number");
       const u = this.urls(s);
       const r = await getTelephonyProvider(this.env).makeCall({
-        from: this.env.HF_CALL_DID || "", to, answerUrl: u.answer("host"), hangupUrl: u.hangup("host"), ringTimeoutSec: HOST_RING_SEC,
+        from: this.env.HF_CALL_DID || "", to, answerUrl: u.answer("host"), hangupUrl: u.hangup("host"), ringTimeoutSec: this.ringTimeoutSec(s, HOST_RING_SEC),
       });
       s.hostLeg = r.callUuid; // provisional; the answer webhook's CallUUID replaces it
       await this.save(s);
@@ -189,6 +214,7 @@ export class HfCallDO {
   // ── host leg ──────────────────────────────────────────────────────────────────────────────────────────────────
   private async hostAnswer(s: S, f: Record<string, string>): Promise<Response> {
     if (s.finalized || s.status !== "ringing_host") return xmlRes(hangupXml());
+    if (s.hardEndsAt != null && Date.now() >= s.hardEndsAt) { await this.finish(s, "failed", "booking_window_ended"); return xmlRes(hangupXml()); }
     s.hostPicked = true;
     if (f.CallUUID) s.hostLeg = f.CallUUID;
     await this.save(s);
@@ -205,11 +231,12 @@ export class HfCallDO {
   private async hostDigits(s: S, f: Record<string, string>): Promise<Response> {
     if (s.finalized || s.status !== "ringing_host") return xmlRes(hangupXml());
     const digit = String(f.Digits ?? "").trim();
+    if (s.hardEndsAt != null && Date.now() >= s.hardEndsAt) { await this.finish(s, "failed", "booking_window_ended"); return xmlRes(hangupXml()); }
     if (digit !== "1") {
       await this.finish(s, "host_declined", null, { skipHostLeg: true });
       return xmlRes(hangupXml("Okay. Goodbye."));
     }
-    s.hostAccepted = true; s.status = "ringing_caller"; s.tasks.ring = Date.now() + CALLER_PHASE_MS;
+    s.hostAccepted = true; s.status = "ringing_caller"; s.tasks.ring = Math.min(Date.now() + CALLER_PHASE_MS, Number(s.hardEndsAt ?? Infinity));
     await this.save(s);
     await this.db().prepare("UPDATE hf_calls SET status='ringing_caller' WHERE id=?1").bind(s.callId).run().catch(() => undefined);
     try {
@@ -217,7 +244,7 @@ export class HfCallDO {
       if (!to) throw new Error("caller has no verified number");
       const u = this.urls(s);
       const r = await getTelephonyProvider(this.env).makeCall({
-        from: this.env.HF_CALL_DID || "", to, answerUrl: u.answer("caller"), hangupUrl: u.hangup("caller"), ringTimeoutSec: CALLER_RING_SEC,
+        from: this.env.HF_CALL_DID || "", to, answerUrl: u.answer("caller"), hangupUrl: u.hangup("caller"), ringTimeoutSec: this.ringTimeoutSec(s, CALLER_RING_SEC),
       });
       s.callerLeg = r.callUuid;
       await this.save(s);
@@ -237,6 +264,7 @@ export class HfCallDO {
   // ── caller leg ────────────────────────────────────────────────────────────────────────────────────────────────
   private async callerAnswer(s: S, f: Record<string, string>): Promise<Response> {
     if (s.finalized || s.status !== "ringing_caller") return xmlRes(hangupXml());
+    if (s.hardEndsAt != null && Date.now() >= s.hardEndsAt) { await this.finish(s, "failed", "booking_window_ended"); return xmlRes(hangupXml()); }
     s.callerPicked = true; s.callerPickedAt = Date.now();
     if (f.CallUUID) s.callerLeg = f.CallUUID;
     s.tasks.guess = Date.now() + CONNECT_GUESS_MS;
@@ -271,8 +299,13 @@ export class HfCallDO {
 
   private async connect(s: S, guessed: boolean): Promise<void> {
     const now = Date.now();
+    if (s.hardEndsAt != null && now >= s.hardEndsAt) {
+      await this.finish(s, "failed", "booking_window_ended");
+      return;
+    }
     s.connectedAt = now; s.status = "connected"; delete s.tasks.ring; delete s.tasks.guess;
-    const limitMs = this.maxSec(s) * 1000;
+    const scheduledRemainingMs = s.hardEndsAt != null ? Math.max(0, s.hardEndsAt - now) : Infinity;
+    const limitMs = Math.min(this.maxSec(s) * 1000, scheduledRemainingMs);
     s.tasks.limit = now + limitMs;
     if (limitMs > (WARN_BEFORE_LIMIT_SEC + 5) * 1000) s.tasks.warn = now + limitMs - WARN_BEFORE_LIMIT_SEC * 1000;
     await this.save(s);
@@ -516,6 +549,28 @@ export class HfCallDO {
     try {
       await this.db().prepare("UPDATE hf_calls SET status=?1, ended_at=?2, end_reason=?3, host_leg_uuid=?4, caller_leg_uuid=?5 WHERE id=?6")
         .bind(finalStatus, s.endedAt, s.endReason, s.hostLeg, s.callerLeg, s.callId).run();
+      if (s.bookingId) {
+        const bookingStatus = finalStatus === "completed" ? "completed" : "failed";
+        const occupancyStatus = bookingStatus === "completed" ? "completed" : "cancelled";
+        const settlementStatus = bookingStatus === "completed" ? "settled" : "released";
+        const now = Date.now();
+        await this.db().batch([
+          this.db().prepare("UPDATE hf_bookings SET status=?1,settlement_status=?2,completed_at=?3,updated_at=?3 WHERE id=?4 AND call_id=?5 AND status IN ('starting','active','settling')")
+            .bind(bookingStatus, settlementStatus, now, s.bookingId, s.callId),
+          this.db().prepare("INSERT OR IGNORE INTO hf_booking_events(id,booking_id,operation_id,actor_uid,from_status,to_status,details_json,created_at) " +
+            "SELECT ?1,?2,?3,NULL,NULL,?4,?5,?6 WHERE EXISTS (SELECT 1 FROM hf_bookings WHERE id=?2 AND call_id=?7 AND status=?4)")
+            .bind(crypto.randomUUID(), s.bookingId, "call-final:" + s.callId, bookingStatus, JSON.stringify({ callId: s.callId, endReason: s.endReason }), now, s.callId),
+          this.db().prepare("UPDATE hf_booking_occupancy SET status=?1,updated_at=?2 WHERE booking_id=?3")
+            .bind(occupancyStatus, now, s.bookingId),
+          this.db().prepare("UPDATE calendar_blocks SET status=?1 WHERE source_app='hf_booking' AND source_ref=?2")
+            .bind(occupancyStatus, s.bookingId),
+        ]);
+        const savedBooking = await this.db().prepare("SELECT status,settlement_status,call_id FROM hf_bookings WHERE id=?1")
+          .bind(s.bookingId).first<{ status: string; settlement_status: string; call_id: string }>();
+        if (!savedBooking || savedBooking.call_id !== s.callId || savedBooking.status !== bookingStatus || savedBooking.settlement_status !== settlementStatus) {
+          throw new Error("booking finalization did not persist");
+        }
+      }
     } catch (e) {
       s.bill.attempts += 1;
       s.tasks.retry = Date.now() + Math.min(MAX_RETRY_DELAY_MS, 20_000 * s.bill.attempts);
@@ -539,10 +594,13 @@ export class HfCallDO {
     try {
       if (!b.tokSettled) {
         const endedAt = s.endedAt ?? Date.now();
-        const seconds = s.connectedAt ? Math.floor((endedAt - s.connectedAt) / 1000) : 0;
+        const rawSeconds = s.connectedAt ? Math.floor((endedAt - s.connectedAt) / 1000) : 0;
+        const seconds = s.hardEndsAt != null && s.connectedAt != null
+          ? Math.max(0, Math.min(rawSeconds, Math.floor((s.hardEndsAt - s.connectedAt) / 1000)))
+          : rawSeconds;
         const out = await settleTokenCall(this.env, {
           callId: s.callId, callerUid: s.callerUid, hostUid: s.hostUid, ratePaise: t.ratePaise, callCostPaisePerMin: t.callCostPaisePerMin,
-          hostShareBps: t.hostShareBps, connectedSeconds: seconds, maxSeconds: t.maxSeconds, endedAt, std: t.std ?? null, creator: t.creator,
+          hostShareBps: t.hostShareBps, connectedSeconds: seconds, maxSeconds: t.maxSeconds, endedAt, std: t.std ?? null, creator: t.creator, booked: t.booked === true,
         });
         b.plan = { billedMinutes: out.billedMinutes, chargeRupees: 0, hostEarningPaise: out.hostPaise, hostTokens: 0, capped: out.shortfall };
         b.tokSettled = true; b.saved = true;

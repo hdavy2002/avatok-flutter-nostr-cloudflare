@@ -19,9 +19,10 @@ import { getTestBalance } from "./hf_credits";
 import { hfTokensOn, tokenExitSummary, createExitPayoutTokens, cancelExitPayoutTokens, finishTokenExit, refundIdsOf, type TokenExitExtra } from "./hf_exit_tokens"; // [HF-TOK-EXIT-1]
 import { requestPlayRefunds, cancelPlayRefund, hasActiveCall } from "./hf_play_refunds"; // [HF-TOK-EXIT-1]
 import { hostSummary, wholeRupees, isHostLedgerRef } from "./hf_host_ledger"; // [HF-TOK-EXIT-1]
+import { drainHfBookingHolds } from "./hf_booking_store";
 
-export type ExitStatus = "waiting_hold" | "waiting_payouts" | "ready" | "done" | "cancelled";
-export const ACTIVE_EXIT: ExitStatus[] = ["waiting_hold", "waiting_payouts", "ready"];
+export type ExitStatus = "booking_cleanup" | "waiting_hold" | "waiting_payouts" | "ready" | "done" | "cancelled";
+export const ACTIVE_EXIT: ExitStatus[] = ["booking_cleanup", "waiting_hold", "waiting_payouts", "ready"];
 export const isActiveExit = (s: string | null | undefined) => (ACTIVE_EXIT as string[]).includes(String(s));
 
 export interface ExitFlags { refundsEnabled: boolean; windowDays: number; gateEnabled: boolean }
@@ -109,6 +110,7 @@ export async function hasHfFootprint(env: Env, uid: string): Promise<boolean> {
     "SELECT 1 FROM hf_payout_requests WHERE host_uid=?1 LIMIT 1",
     "SELECT 1 FROM hf_refund_requests WHERE uid=?1 LIMIT 1",
     "SELECT 1 FROM hf_exit_requests WHERE uid=?1 LIMIT 1",
+    "SELECT 1 FROM hf_bookings WHERE host_uid=?1 OR customer_uid=?1 LIMIT 1",
   ];
   for (const q of checks) if (await anyRow(env, q, uid)) return true;
   return false;
@@ -157,18 +159,40 @@ export async function exitSummary(env: Env, uid: string, now = Date.now()): Prom
   };
 }
 
+/** Drain booking holds before closure begins or account deletion runs. Any still-held row blocks finalization. */
+async function drainBookingHolds(env: Env, uid: string): Promise<boolean> {
+  return drainHfBookingHolds(env, uid, "account_exit").catch(() => false);
+}
+
 /** Called by the deletion request path. Throws when an HF user's wallet cannot be read: the caller must then refuse (503), not delete. */
 export async function exitGate(env: Env, uid: string): Promise<{ deferred: false } | { deferred: true; exitStatus: string | null }> {
+  if (!(await hasHfFootprint(env, uid))) return { deferred: false };
+  const prior = await getExitRow(env, uid);
+  if (!prior || !isActiveExit(prior.status)) await upsertExit(env, uid, "booking_cleanup", null, null, "booking_cleanup");
+  if (!(await drainBookingHolds(env, uid))) throw new Error("HF booking holds could not be drained");
   const f = await exitFlags(env);
-  if (!f.gateEnabled) return { deferred: false };
   const s = await exitSummary(env, uid);
-  const d = decideDeletion({ gateEnabled: f.gateEnabled, isHfUser: s.isHfUser, hasMoney: s.hasMoney, exitStatus: s.exit?.status ?? null });
-  return d === "exit" ? { deferred: true, exitStatus: s.exit?.status ?? null } : { deferred: false };
+  const row = await getExitRow(env, uid);
+  if (row?.status === "booking_cleanup" && (!f.gateEnabled || !s.isHfUser || !s.hasMoney)) {
+    await env.DB_META.prepare("DELETE FROM hf_exit_requests WHERE uid=?1 AND status='booking_cleanup'").bind(uid).run();
+  }
+  const effectiveExitStatus = row?.status === "booking_cleanup" && (!f.gateEnabled || !s.isHfUser || !s.hasMoney)
+    ? null
+    : row?.status ?? null;
+  const decision = decideDeletion({
+    gateEnabled: f.gateEnabled,
+    isHfUser: s.isHfUser,
+    hasMoney: s.hasMoney,
+    exitStatus: effectiveExitStatus,
+  });
+  return decision === "exit"
+    ? { deferred: true, exitStatus: effectiveExitStatus }
+    : { deferred: false };
 }
 
 // ── closing guards ───────────────────────────────────────────────────────────
 export const CLOSING_MESSAGE = "Your account is being closed, so this is paused until the closure is finished. You can cancel the closure on the Close my account page.";
-/** True while this user has an open closure (hf_exit_requests waiting_hold / waiting_payouts / ready). Fails open: no table = not closing. */
+/** True while an exit or booking-cleanup fence is active. Fails open only when the exit table is unavailable. */
 export async function isClosing(env: Env, uid: string): Promise<boolean> {
   try {
     const r = await env.DB_META.prepare("SELECT status FROM hf_exit_requests WHERE uid=?1").bind(uid).first<{ status: string }>();
@@ -241,7 +265,12 @@ async function upsertExit(env: Env, uid: string, status: ExitStatus, payoutId: s
 export async function startExit(env: Env, uid: string, o: { forfeit: boolean; trigger: Trigger }): Promise<StartResult> {
   const no = (status: number, error: string, message: string, extra: { forfeitRupees?: number } = {}): StartResult => ({ ok: false, status, error, message, ...extra });
   const existing = await getExitRow(env, uid);
-  if (existing && isActiveExit(existing.status)) return { ok: true, status: existing.status, payoutId: existing.payout_id, refundId: existing.refund_id, replay: true };
+  if (existing && isActiveExit(existing.status) && existing.status !== "booking_cleanup") return { ok: true, status: existing.status, payoutId: existing.payout_id, refundId: existing.refund_id, replay: true };
+  if (await hasActiveCall(env, uid)) return no(409, "active_call", "You have a call in progress. Please finish it before closing your account.");
+  if (!existing || !isActiveExit(existing.status)) await upsertExit(env, uid, "booking_cleanup", null, null, "booking_cleanup");
+  if (!(await drainBookingHolds(env, uid))) return no(409, "booking_cleanup_pending", "A scheduled call is still being settled. Please try again shortly.");
+  const afterDrain = await getExitRow(env, uid);
+  if (afterDrain?.status !== "booking_cleanup") return no(409, "exit_state_changed", "Your account closure changed. Please try again.");
   const flags = await exitFlags(env);
   if (await hfTokensOn(env)) return startTokenExit(env, uid, o, flags); // [HF-TOK-EXIT-1]
   let s: ExitSummary;
@@ -249,7 +278,10 @@ export async function startExit(env: Env, uid: string, o: { forfeit: boolean; tr
     await trackException(env, e, { uid, route: "hf_exit.start", handled: true, app_name: PAYOUT_APP, extra: { area: "hf_exit", step: "summary" } });
     return no(502, "wallet_error", "We couldn't check your balance. Please try again.");
   }
-  if (!s.hasMoney) return no(409, "nothing_to_settle", "You have no money to settle. You can close your account now.");
+  if (!s.hasMoney) {
+    await env.DB_META.prepare("DELETE FROM hf_exit_requests WHERE uid=?1 AND status='booking_cleanup'").bind(uid).run();
+    return no(409, "nothing_to_settle", "You have no money to settle. You can close your account now.");
+  }
   if (s.forfeitRupees > 0 && !o.forfeit) {
     return no(409, "forfeit_required", s.bankOk ? "Some money cannot be paid out." : "Add and verify your bank account to receive your earnings, or choose to give them up.", { forfeitRupees: s.forfeitRupees });
   }
@@ -290,7 +322,10 @@ async function startTokenExit(env: Env, uid: string, o: { forfeit: boolean; trig
     await trackException(env, e, { uid, route: "hf_exit.start", handled: true, app_name: PAYOUT_APP, extra: { area: "hf_exit", step: "summary", mode: "tokens" } });
     return no(502, "wallet_error", "We couldn't check your balance. Please try again.");
   }
-  if (!s.hasMoney) return no(409, "nothing_to_settle", "You have no money to settle. You can close your account now.");
+  if (!s.hasMoney) {
+    await env.DB_META.prepare("DELETE FROM hf_exit_requests WHERE uid=?1 AND status='booking_cleanup'").bind(uid).run();
+    return no(409, "nothing_to_settle", "You have no money to settle. You can close your account now.");
+  }
   if (s.forfeitRupees > 0 && !o.forfeit) {
     return no(409, "forfeit_required", s.bankOk ? "Some money cannot be paid out." : "Add and verify your bank account to receive your earnings, or choose to give them up.", { forfeitRupees: s.forfeitRupees });
   }
@@ -343,6 +378,13 @@ async function cancelTokenExit(env: Env, uid: string, row: ExitRow): Promise<{ o
 export async function cancelExit(env: Env, uid: string): Promise<{ ok: true } | { ok: false; status: number; error: string; message: string }> {
   const row = await getExitRow(env, uid);
   if (!row || !isActiveExit(row.status)) return { ok: false, status: 404, error: "no_exit", message: "There is nothing to cancel." };
+  if (row.status === "booking_cleanup") {
+    if (row.payout_id || row.refund_id || row.refund_ids != null) return { ok: false, status: 409, error: "cannot_cancel", message: "A financial closure has already started." };
+    if (!(await drainBookingHolds(env, uid))) return { ok: false, status: 409, error: "booking_cleanup_pending", message: "Scheduled calls are still being released. Please try again shortly." };
+    const changed = await env.DB_META.prepare("UPDATE hf_exit_requests SET status='cancelled',updated_at=?2 WHERE uid=?1 AND status='booking_cleanup' AND payout_id IS NULL AND refund_id IS NULL")
+      .bind(uid, Date.now()).run();
+    return changed.meta?.changes ? { ok: true } : { ok: false, status: 409, error: "exit_state_changed", message: "Your account closure changed. Please try again." };
+  }
   if (row.refund_ids != null) return cancelTokenExit(env, uid, row); // [HF-TOK-EXIT-1] decided by the row itself, so a flag flip never strands a closure
   const p = row.payout_id ? await env.DB_META.prepare("SELECT status FROM hf_payout_requests WHERE id=?1").bind(row.payout_id).first<{ status: string }>().catch(() => null) : null;
   const rf = row.refund_id ? await env.DB_META.prepare("SELECT status FROM hf_refund_requests WHERE id=?1").bind(row.refund_id).first<{ status: string }>().catch(() => null) : null;
@@ -360,6 +402,16 @@ export async function cancelExit(env: Env, uid: string): Promise<{ ok: true } | 
 // ── cron ─────────────────────────────────────────────────────────────────────
 /** Advance one exit row by one step (a row may take several ticks: hold, payout, then settle). Never throws. */
 export async function advanceExit(env: Env, row: ExitRow, trigger: Trigger, now = Date.now()): Promise<ExitStatus> {
+  // Cleanup rows have no payout consent. Retry the bounded drain, and clear only
+  // an empty, money-free fence; a user must start or cancel any financial exit.
+  if (row.status === "booking_cleanup") {
+    if (!(await drainBookingHolds(env, row.uid))) return row.status;
+    const summary = await exitSummary(env, row.uid, now).catch(() => null);
+    if (summary && (!summary.isHfUser || !summary.hasMoney)) {
+      await env.DB_META.prepare("DELETE FROM hf_exit_requests WHERE uid=?1 AND status='booking_cleanup'").bind(row.uid).run();
+    }
+    return row.status;
+  }
   let status = row.status, payoutId = row.payout_id, note = row.note;
   await forceHostOffline(env, row.uid); // the calls cron can put a "busy" host back online; keep them off while closing
   try {
@@ -391,6 +443,7 @@ export async function advanceExit(env: Env, row: ExitRow, trigger: Trigger, now 
     }
     if (step === "wait_hold") return status;
     if (step === "trigger_deletion") {
+      if (!(await drainBookingHolds(env, row.uid))) return status;
       if (tokenMode) await finishTokenExit(env, row.uid); // [HF-TOK-EXIT-1] test lots removed, open debts written off (recorded) just before deleting
       await trigger(env, row.uid);
       status = "done";
@@ -409,7 +462,7 @@ export async function advanceExit(env: Env, row: ExitRow, trigger: Trigger, now 
 export async function runHfExitCron(env: Env, trigger: Trigger, now = Date.now()): Promise<{ scanned: number; done: number }> {
   let rows: ExitRow[] = [];
   try {
-    rows = (await env.DB_META.prepare("SELECT * FROM hf_exit_requests WHERE status IN ('waiting_hold','waiting_payouts','ready') ORDER BY updated_at ASC LIMIT 50").all<ExitRow>()).results ?? [];
+    rows = (await env.DB_META.prepare("SELECT * FROM hf_exit_requests WHERE status IN ('booking_cleanup','waiting_hold','waiting_payouts','ready') ORDER BY updated_at ASC LIMIT 50").all<ExitRow>()).results ?? [];
   } catch { return { scanned: 0, done: 0 }; }
   let done = 0;
   for (const r of rows) if ((await advanceExit(env, r, trigger, now)) === "done") done++;

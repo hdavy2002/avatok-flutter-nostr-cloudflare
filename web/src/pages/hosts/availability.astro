@@ -1,0 +1,11 @@
+---
+export const prerender = false;
+import Base from '../../layouts/Base.astro';
+import HostAvailability from '../../islands/host-bookings/HostAvailability';
+import '../../styles/hf-bookings.css';
+import { BRAND } from '../../lib/brand';
+Astro.response.headers.set('Cache-Control', 'private, no-store');
+---
+<Base title={`Availability · ${BRAND.name}`} description="Manage your host availability." noindex keywords="" chrome={false}>
+  <HostAvailability client:only="react" />
+</Base>

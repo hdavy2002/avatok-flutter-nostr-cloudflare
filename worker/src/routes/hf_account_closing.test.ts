@@ -16,7 +16,7 @@ vi.mock("../lib/hf_topup_config", () => ({ hfTopupFlags: () => ({ enabled: true,
 
 import { hfCallsRoute } from "./hf_calls";
 import { hfTopupRoute } from "./hf_topup";
-import { isClosing, forceHostOffline } from "../lib/hf_exit";
+import { decideDeletion, isClosing, forceHostOffline } from "../lib/hf_exit";
 
 const require_ = createRequire(import.meta.url);
 const { DatabaseSync } = require_("node:sqlite");
@@ -50,9 +50,13 @@ beforeEach(() => {
 });
 
 describe("closure guards", () => {
+  it("defers deletion for an active financial exit even when no balance remains", () => {
+    expect(decideDeletion({ gateEnabled: true, isHfUser: true, hasMoney: false, exitStatus: "waiting_payouts" })).toBe("exit");
+  });
+
   it("isClosing is true only for open closures", async () => {
     expect(await isClosing(env, "u1")).toBe(false);
-    for (const [uid, st, want] of [["a", "waiting_hold", true], ["b", "waiting_payouts", true], ["c", "ready", true], ["d", "done", false], ["e", "cancelled", false]]) {
+    for (const [uid, st, want] of [["a", "booking_cleanup", true], ["b", "waiting_hold", true], ["c", "waiting_payouts", true], ["d", "ready", true], ["e", "done", false], ["f", "cancelled", false]]) {
       exit(uid, st); expect(await isClosing(env, uid)).toBe(want);
     }
   });

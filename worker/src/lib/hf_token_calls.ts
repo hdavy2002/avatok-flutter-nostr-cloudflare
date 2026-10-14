@@ -124,6 +124,7 @@ export interface TokenSettleInput {
   /** [HF-STD-PLAN-1] Standard plan snapshot from the call row; when present it replaces ratePaise / hostShareBps / callCostPaisePerMin. */
   std?: StdSnapshot | null;
   creator?: CreatorSnapshot | null;
+  booked?: boolean;
 }
 export interface TokenSettleOutput {
   billableSeconds: number; billedMinutes: number; shortfall: boolean;
@@ -139,7 +140,7 @@ export async function settleTokenCall(env: Env, i: TokenSettleInput): Promise<To
   if (i.creator && !validCreatorSnapshot(i.creator)) throw new RangeError("Invalid creator snapshot");
   const want = Math.max(0, Math.min(Math.trunc(i.connectedSeconds), Math.trunc(i.maxSeconds)));
   const price = priceOf(i);
-  const s = await settleCall(env, i.callerUid, i.callId, price, want);
+  const s = await settleCall(env, i.callerUid, i.callId, price, want, { reservedLotsOnly: i.booked === true });
   let billable = 0, lots: SettleLotUse[] = [], shortfall = false, micro = 0;
   if (s.ok) { billable = s.billableSeconds; lots = s.lots; shortfall = s.shortfall; micro = s.totalMicro; }
   else if (s.reason !== "released") throw new Error(`hf_token settle ${s.reason}`);

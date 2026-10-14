@@ -53,8 +53,31 @@ async function readJson(req: Request): Promise<Record<string, unknown>> {
   try { const v = JSON.parse(t); return v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : {}; } catch { return {}; }
 }
 const callStub = (env: Env, id: string) => env.HF_CALL.get(env.HF_CALL.idFromName(id));
+export function instantBookingOverlapGuardSql(first: number): string {
+  if (!Number.isInteger(first) || first < 1) throw new Error("invalid booking guard parameter index");
+  const enabled = first, caller = first + 1, host = first + 2, start = first + 3, end = first + 4;
+  return ` WHERE ?${enabled}=0 OR NOT EXISTS (SELECT 1 FROM hf_bookings b WHERE b.status IN ('confirmed','starting','active','settling') ` +
+    `AND (b.host_uid IN (?${caller},?${host}) OR b.customer_uid IN (?${caller},?${host})) ` +
+    `AND b.starts_at-COALESCE((SELECT buffer_min*60000 FROM hf_availability_schedules s WHERE s.host_uid=b.host_uid),600000)<?${end} ` +
+    `AND b.ends_at+COALESCE((SELECT buffer_min*60000 FROM hf_availability_schedules s WHERE s.host_uid=b.host_uid),600000)>?${start})`;
+}
 async function callsOn(env: Env): Promise<boolean> {
   try { return (await readConfig(env)).hfCallsEnabled === true; } catch { return false; }
+}
+async function nextBookingCutoff(env: Env, callerUid: string, hostUid: string, now: number): Promise<number | null> {
+  const parties = [callerUid, hostUid];
+  const active = await env.DB_META.prepare(
+    "SELECT 1 AS x FROM hf_bookings b WHERE b.status IN ('confirmed','starting','active','settling') " +
+    "AND (b.host_uid IN (?1,?2) OR b.customer_uid IN (?1,?2)) AND b.starts_at<=?3 " +
+    "AND b.ends_at+COALESCE((SELECT buffer_min*60000 FROM hf_availability_schedules s WHERE s.host_uid=b.host_uid),600000)>?3 LIMIT 1",
+  ).bind(...parties, now).first();
+  if (active) return now;
+  const next = await env.DB_META.prepare(
+    "SELECT MIN(b.starts_at-COALESCE((SELECT buffer_min*60000 FROM hf_availability_schedules s WHERE s.host_uid=b.host_uid),600000)) AS cutoff " +
+    "FROM hf_bookings b WHERE b.status IN ('confirmed','starting','active','settling') " +
+    "AND (b.host_uid IN (?1,?2) OR b.customer_uid IN (?1,?2)) AND b.starts_at>?3",
+  ).bind(...parties, now).first<{ cutoff: number | null }>();
+  return next?.cutoff == null ? null : Number(next.cutoff);
 }
 async function adminCtx(req: Request, env: Env): Promise<{ uid: string } | Response> {
   const u = await requireUser(req, env);
@@ -115,15 +138,18 @@ async function startCall(req: Request, env: Env): Promise<Response> {
   // [HF-TOK-CALLS-1] hfTokensEnabled on: the whole call runs on token lots (reserve, per-second billing, host paid in paise). Flag off: old path below.
   // [HF-STD-PLAN-1] Standard plan on: the host's own price is ignored; every call uses the Standard tariff on the rupee wallet (always the lot path).
   const rawCfg = (await readConfig(env).catch(() => ({}))) as Record<string, unknown>;
+  const now = Date.now();
+  const bookingCutoff = rawCfg.hfBookingsEnabled === true ? await nextBookingCutoff(env, uid, host.uid, now) : null;
+  if (bookingCutoff != null && bookingCutoff <= now) return err(409, "booking_window_conflict", "A scheduled booking is too close to start another call.");
   const tk = readHfTokenConfig(rawCfg);
   const std = readHfStdPlan(rawCfg);
   if (isCreatorCategory(host.category)) {
     if (!validCreatorRate(rate)) return UNAVAILABLE();
-    return await startTokenCall(env, { uid, hostUid: host.uid, lane, rate, callId, tk, creator: creatorSnapshotFor(host.category, rate) });
+    return await startTokenCall(env, { uid, hostUid: host.uid, lane, rate, callId, tk, hardEndsAt: bookingCutoff ?? undefined, bookingGuard: rawCfg.hfBookingsEnabled === true, creator: creatorSnapshotFor(host.category, rate) });
   }
-  if (std.enabled) return await startTokenCall(env, { uid, hostUid: host.uid, lane, rate: std.tariff.tiers[0].paisePerMin / 100, callId, tk, std });
+  if (std.enabled) return await startTokenCall(env, { uid, hostUid: host.uid, lane, rate: std.tariff.tiers[0].paisePerMin / 100, callId, tk, hardEndsAt: bookingCutoff ?? undefined, bookingGuard: rawCfg.hfBookingsEnabled === true, std });
   if (!(rate > 0)) return UNAVAILABLE();
-  if (tk.enabled) return await startTokenCall(env, { uid, hostUid: host.uid, lane, rate, callId, tk });
+  if (tk.enabled) return await startTokenCall(env, { uid, hostUid: host.uid, lane, rate, callId, tk, hardEndsAt: bookingCutoff ?? undefined, bookingGuard: rawCfg.hfBookingsEnabled === true });
   const needed = rate * START_RESERVE_MINUTES;
 
   // [HF-WALLET-1] Test credits are held first (up to a full-length call); the paid wallet reserves only what they do not cover.
@@ -154,9 +180,17 @@ async function startCall(req: Request, env: Env): Promise<Response> {
   }
   const undo = async () => { await releaseHost(env, host.uid, callId).catch(() => undefined); await freeAll(); };
   try {
-    await env.DB_META.prepare(
-      "INSERT INTO hf_calls (id, caller_uid, host_uid, rate_paise, status, lane, created_at, conference_name) VALUES (?1,?2,?3,?4,'ringing_host',?5,?6,?7)",
-    ).bind(callId, uid, host.uid, rate * 100, lane, Date.now(), `hf_${callId.replace(/-/g, "")}`).run();
+    const insertNow = Date.now();
+    const plannedEnd = Math.min(bookingCutoff ?? Number.MAX_SAFE_INTEGER, insertNow + maxMinutes * 60_000);
+    const inserted = await env.DB_META.prepare(
+      "INSERT INTO hf_calls (id, caller_uid, host_uid, rate_paise, status, lane, created_at, conference_name) " +
+      "SELECT ?1,?2,?3,?4,'ringing_host',?5,?6,?7" + instantBookingOverlapGuardSql(8),
+    ).bind(callId, uid, host.uid, rate * 100, lane, insertNow, `hf_${callId.replace(/-/g, "")}`,
+      rawCfg.hfBookingsEnabled === true ? 1 : 0, uid, host.uid, insertNow, plannedEnd).run();
+    if (Number(inserted.meta?.changes ?? 0) !== 1) {
+      await undo();
+      return err(409, "booking_window_conflict", "A scheduled booking overlaps this call window.");
+    }
   } catch (e) {
     await undo();
     await trackException(env, e, { uid, route: "/api/hf/calls", handled: true, app_name: HF_CALL_APP, extra: { area: "hf_calls", step: "insert" } });
@@ -165,7 +199,7 @@ async function startCall(req: Request, env: Env): Promise<Response> {
   try {
     const r = await callStub(env, callId).fetch("https://hfcall/init", {
       method: "POST",
-      body: JSON.stringify({ callId, callerUid: uid, hostUid: host.uid, rateRupees: rate, reservedRupees: paidReserved, testReservedRupees: testReserved, fundsRupees, maxMinutes, limitReason }),
+      body: JSON.stringify({ callId, callerUid: uid, hostUid: host.uid, ...(bookingCutoff != null ? { hardEndsAt: bookingCutoff } : {}), rateRupees: rate, reservedRupees: paidReserved, testReservedRupees: testReserved, fundsRupees, maxMinutes, limitReason }),
     });
     if (!r.ok) return err(502, "call_failed", "We couldn't place the call. Please try again.");
   } catch (e) {
@@ -180,8 +214,8 @@ async function startCall(req: Request, env: Env): Promise<Response> {
 
 // [HF-TOK-CALLS-1] Token-mode start. Debt and balance gates + lot reservation happen in prepareTokenStart; the hf_calls row carries the
 // pricing snapshot (rate, call cost per minute, host share, versions) so a later config change never alters this call.
-async function startTokenCall(env: Env, a: { uid: string; hostUid: string; lane: string | null; rate: number; callId: string; tk: ReturnType<typeof readHfTokenConfig>; std?: HfStdPlan; creator?: CreatorSnapshot }): Promise<Response> {
-  const { uid, hostUid, lane, rate, callId, tk } = a;
+async function startTokenCall(env: Env, a: { uid: string; hostUid: string; lane: string | null; rate: number; callId: string; tk: ReturnType<typeof readHfTokenConfig>; hardEndsAt?: number; bookingGuard?: boolean; std?: HfStdPlan; creator?: CreatorSnapshot }): Promise<Response> {
+  const { uid, hostUid, lane, rate, callId, tk, hardEndsAt, bookingGuard } = a;
   const ratePaise = Math.round(rate * 100);
   const chk = await prepareTokenStart(env, { uid, callId, ratePaise, tk, std: a.std ?? null, creator: a.creator });
   if (!chk.ok) return err(chk.status, chk.error, chk.message, chk.extra ?? {});
@@ -192,11 +226,18 @@ async function startTokenCall(env: Env, a: { uid: string; hostUid: string; lane:
   if (!(await claimHost(env, hostUid, callId))) { await undo(false); return UNAVAILABLE(); }
   const maxMinutes = Math.floor(chk.maxSeconds / 60);
   try {
-    await env.DB_META.prepare(
+    const insertNow = Date.now();
+    const plannedEnd = Math.min(hardEndsAt ?? Number.MAX_SAFE_INTEGER, insertNow + chk.maxSeconds * 1000);
+    const inserted = await env.DB_META.prepare(
       `INSERT INTO hf_calls (id, caller_uid, host_uid, rate_paise, status, lane, created_at, conference_name, call_cost_paise_per_min, host_share_bps, tax_mode, split_rule_version, pricing_snapshot)
-       VALUES (?1,?2,?3,?4,'ringing_host',?5,?6,?7,?8,?9,?10,?11,?12)`,
-    ).bind(callId, uid, hostUid, chk.snapshot.ratePaise, lane, Date.now(), `hf_${callId.replace(/-/g, "")}`, chk.snapshot.callCostPaisePerMin, chk.snapshot.hostShareBps, chk.snapshot.taxMode, chk.snapshot.splitRuleVersion,
-      chk.snapshot.creator ? JSON.stringify(chk.snapshot.creator) : chk.snapshot.std ? JSON.stringify(chk.snapshot.std) : null).run();
+       SELECT ?1,?2,?3,?4,'ringing_host',?5,?6,?7,?8,?9,?10,?11,?12` + instantBookingOverlapGuardSql(13),
+    ).bind(callId, uid, hostUid, chk.snapshot.ratePaise, lane, insertNow, `hf_${callId.replace(/-/g, "")}`, chk.snapshot.callCostPaisePerMin, chk.snapshot.hostShareBps, chk.snapshot.taxMode, chk.snapshot.splitRuleVersion,
+      chk.snapshot.creator ? JSON.stringify(chk.snapshot.creator) : chk.snapshot.std ? JSON.stringify(chk.snapshot.std) : null,
+      bookingGuard === true ? 1 : 0, uid, hostUid, insertNow, plannedEnd).run();
+    if (Number(inserted.meta?.changes ?? 0) !== 1) {
+      await undo(true);
+      return err(409, "booking_window_conflict", "A scheduled booking overlaps this call window.");
+    }
   } catch (e) {
     await undo(true);
     await trackException(env, e, { uid, route: "/api/hf/calls", handled: true, app_name: HF_CALL_APP, extra: { area: "hf_calls", step: "insert_tokens" } });
@@ -206,7 +247,7 @@ async function startTokenCall(env: Env, a: { uid: string; hostUid: string; lane:
     const r = await callStub(env, callId).fetch("https://hfcall/init", {
       method: "POST",
       body: JSON.stringify({
-        callId, callerUid: uid, hostUid, rateRupees: rate, reservedRupees: 0, testReservedRupees: 0, fundsRupees: 0, maxMinutes, limitReason: chk.limitReason,
+        callId, callerUid: uid, hostUid, ...(hardEndsAt != null ? { hardEndsAt } : {}), rateRupees: rate, reservedRupees: 0, testReservedRupees: 0, fundsRupees: 0, maxMinutes, limitReason: chk.limitReason,
         tokens: { ratePaise: chk.snapshot.ratePaise, callCostPaisePerMin: chk.snapshot.callCostPaisePerMin, hostShareBps: chk.snapshot.hostShareBps, maxSeconds: chk.maxSeconds, std: chk.snapshot.std ?? null, creator: chk.snapshot.creator },
       }),
     });

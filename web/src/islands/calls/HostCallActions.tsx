@@ -17,6 +17,7 @@ import {
   type CallInfo, type HostPresence,
 } from '../../lib/hfCallsApi';
 import '../../styles/hf-calls.css';
+import { bookingsEnabled } from '../../lib/hfBookingsApi';
 
 /** [HF-STD-PLAN-1] pricePerMin may be fractional (3.99); pricePaisePerMin / priceTiers come from the worker's host card. */
 export interface CallHost { slug: string; displayName: string; pricePerMin: number; pricePaisePerMin?: number; priceTiers?: PriceTier[]; plan?: string; status?: HostPresence; womenOnly?: boolean }
@@ -329,6 +330,7 @@ function webHasTestCredits(): Promise<boolean> {
 /* ── Public component ──────────────────────────────────────────────────── */
 export default function HostCallActions({ host, variant, refresh }: { host: CallHost; variant: Variant; refresh?: boolean }) {
   const [on, setOn] = useState<boolean | null>(null);
+  const [bookingOn, setBookingOn] = useState(false);
   const [status, setStatus] = useState<HostPresence>(host.status ?? 'offline');
   const [womenOnly, setWomenOnly] = useState(!!host.womenOnly);
   const [open, setOpen] = useState(false);
@@ -337,7 +339,7 @@ export default function HostCallActions({ host, variant, refresh }: { host: Call
   const [subscribed, setSubscribed] = useState<boolean | undefined>(undefined);
   const [gate, setGate] = useState<'pending' | 'open' | 'app'>('pending'); // [HF-APP-3] starts 'pending' on server and client alike (no hydration mismatch)
 
-  useEffect(() => { let live = true; void callsEnabled().then(v => { if (live) setOn(v); }); return () => { live = false; }; }, []);
+  useEffect(() => { let live = true; void callsEnabled().then(v => { if (live) setOn(v); }); void bookingsEnabled().then(v => { if (live) setBookingOn(v); }); return () => { live = false; }; }, []);
 
   // /h/<slug> is cached for a minute at the edge: ask for the live status, and mirror it on the page badge.
   useEffect(() => {
@@ -380,24 +382,23 @@ export default function HostCallActions({ host, variant, refresh }: { host: Call
   }, [on, status]);
 
   const h: CallHost = { ...host, status, womenOnly };
+  const bookingHref = `/bookings?host=${encodeURIComponent(host.slug)}`;
   const onClose = useCallback(() => setOpen(false), []);
 
   if (!on) {
-    return (
-      <button type="button" className={btnClass(variant, variant === 'card' ? 'hf-call-soon' : 'hf-call-off')} disabled aria-disabled="true">
-        <Icon name="bell" size={22} />Calls open soon
-      </button>
-    );
+    return <>
+      <button type="button" className={btnClass(variant, variant === 'card' ? 'hf-call-soon' : 'hf-call-off')} disabled aria-disabled="true"><Icon name="bell" size={22} />Calls open soon</button>
+      {bookingOn && <a className={`${btnClass(variant)} hfc-book-time`} href={bookingHref}>Book a time</a>}
+    </>;
   }
   if (status !== 'online') {
-    return <NotifyButton host={h} variant={variant} prefix={status === 'busy' ? 'On a call' : 'Offline'} initial={subscribed} />;
+    return <><NotifyButton host={h} variant={variant} prefix={status === 'busy' ? 'On a call' : 'Offline'} initial={subscribed} />{bookingOn && <a className={`${btnClass(variant)} hfc-book-time`} href={bookingHref}>Book a time</a>}</>;
   }
   if (gate === 'app') {
-    return (
-      <a className={btnClass(variant, 'hfc-call hf-call-app')} href={HF_PLAY_URL} target="_blank" rel="noopener noreferrer" onClick={() => trackWebBlocked('call')}>
-        <Icon name="phone" size={22} />Open the app to call
-      </a>
-    );
+    return <>
+      <a className={btnClass(variant, 'hfc-call hf-call-app')} href={HF_PLAY_URL} target="_blank" rel="noopener noreferrer" onClick={() => trackWebBlocked('call')}><Icon name="phone" size={22} />Open the app to call</a>
+      {bookingOn && <a className={`${btnClass(variant)} hfc-book-time`} href={bookingHref}>Book a time</a>}
+    </>;
   }
   return (
     <>
@@ -405,9 +406,8 @@ export default function HostCallActions({ host, variant, refresh }: { host: Call
       <button type="button" className={btnClass(variant, 'hfc-call')} disabled={gate === 'pending'} onClick={() => {
         if (looksSignedOut()) { window.location.assign(signInUrl()); return; }
         setBridge(true); setEverOpen(true); setOpen(true);
-      }}>
-        <Icon name="phone" size={22} />Call {hostRateLabel(host)}
-      </button>
+      }}><Icon name="phone" size={22} />Call {hostRateLabel(host)}</button>
+      {bookingOn && <a className={`${btnClass(variant)} hfc-book-time`} href={bookingHref}>Book a time</a>}
       {everOpen && <CallSheet host={h} open={open} onClose={onClose} />}
     </>
   );

@@ -254,7 +254,14 @@ export async function revokeLot(env: Env, lotId: string, opId: string): Promise<
       const prior = await db.prepare("SELECT delta_micro AS d FROM hf_token_ledger WHERE op_id=?1").bind(opId).first<{ d: number }>();
       return { ...none, found: true, removedMicro: prior ? -Number(prior.d) : 0 };
     }
-    const l = toLot(lot);
+    let currentLot = lot;
+    if (Number(lot.tokens_reserved_micro) > 0) {
+      await releaseFutureBookingsForLot(env, lotId, lot.uid);
+      const refreshed = await db.prepare("SELECT * FROM hf_token_lots WHERE id=?1").bind(lotId).first<LotRow>();
+      if (!refreshed || Number(refreshed.tokens_reserved_micro) > 0) return { ...none, found: true };
+      currentLot = refreshed;
+    }
+    const l = toLot(currentLot);
     const plan = applyRefund({ grantedMicro: l.grantedMicro, leftMicro: l.leftMicro, reservedMicro: l.reservedMicro, valuePaisePerToken: l.valuePaisePerToken });
     const now = Date.now(), nonce = crypto.randomUUID();
     const stmts = [
@@ -296,6 +303,131 @@ export interface ReservedLot { lotId: string; micro: number; valuePaise: number 
 export type ReserveResult =
   | { ok: true; again: boolean; secondsCovered: number; reservedMicro: number; lots: ReservedLot[] }
   | { ok: false; reason: "insufficient" | "conflict" | "invalid" };
+
+/** Build the exact per-lot reserve ledger mutations for a caller-owned atomic D1 batch.
+ * The supplied gate predicate is evaluated in the same INSERT that claims the reservation op.
+ * Callers must make their preceding domain insert use equivalent guards and condition every
+ * following domain write on the returned reservation gate row. */
+export function buildReservationStatements(
+  env: Env,
+  input: {
+    uid: string;
+    callId: string;
+    plan: { uses: Array<{ lotId: string; micro: number; valuePaise: number }>; totalValuePaise: number; secondsCovered: number };
+    now: number;
+    nonce: string;
+    gatePredicate: (firstParamIndex: number) => { sql: string; values: unknown[] };
+  },
+): Array<ReturnType<Env["DB_META"]["prepare"]>> {
+  const { uid, callId, plan, now, nonce } = input;
+  const gate = resOpId(callId);
+  const params: unknown[] = [crypto.randomUUID(), uid, plan.totalValuePaise, callId, gate, nonce, now];
+  const guards = plan.uses.map((u) => {
+    const a = params.length + 1, b = params.length + 2;
+    params.push(u.lotId, u.micro);
+    return `(SELECT COUNT(*) FROM hf_token_lots WHERE id=?${a} AND uid=?2 AND status='active' AND tokens_left_micro - tokens_reserved_micro >= ?${b})=1`;
+  });
+  const external = input.gatePredicate(params.length + 1);
+  params.push(...external.values);
+  const gateSql = [...guards, external.sql].filter(Boolean).join(" AND ");
+  const db = env.DB_META;
+  const statements: Array<ReturnType<Env["DB_META"]["prepare"]>> = [db.prepare(
+    `INSERT OR IGNORE INTO hf_token_ledger (id, uid, kind, lot_id, delta_micro, rupee_value_paise, call_id, purchase_id, op_id, note, created_at)
+     SELECT ?1,?2,'reserve',NULL,0,?3,?4,NULL,?5,?6,?7 WHERE ${gateSql}`,
+  ).bind(...params)];
+  for (const use of plan.uses) {
+    statements.push(db.prepare("UPDATE hf_token_lots SET tokens_reserved_micro=tokens_reserved_micro+?1 WHERE id=?2 AND EXISTS (SELECT 1 FROM hf_token_ledger WHERE op_id=?3 AND note=?4)")
+      .bind(use.micro, use.lotId, gate, nonce));
+    statements.push(db.prepare(
+      `INSERT OR IGNORE INTO hf_token_ledger (id,uid,kind,lot_id,delta_micro,rupee_value_paise,call_id,purchase_id,op_id,note,created_at)
+       SELECT ?1,?2,'reserve',?3,?4,?5,?6,NULL,?7,NULL,?8 WHERE EXISTS (SELECT 1 FROM hf_token_ledger WHERE op_id=?9 AND note=?10)`,
+    ).bind(crypto.randomUUID(), uid, use.lotId, use.micro, use.valuePaise, callId, sub(gate, use.lotId), now, gate, nonce));
+  }
+  statements.push(db.prepare("UPDATE hf_token_ledger SET note=?1 WHERE op_id=?2 AND note=?3")
+    .bind(`secs:${plan.secondsCovered}`, gate, nonce));
+  return statements;
+}
+
+export function buildReleaseStatements(
+  env: Env,
+  input: {
+    uid: string;
+    callId: string;
+    lots: ReservedLot[];
+    now: number;
+    nonce: string;
+    gatePredicate: (firstParamIndex: number) => { sql: string; values: unknown[] };
+  },
+): Array<ReturnType<Env["DB_META"]["prepare"]>> {
+  const { uid, callId, lots, now, nonce } = input;
+  const gate = relOpId(callId);
+  const params: unknown[] = [crypto.randomUUID(), uid, callId, gate, nonce, now, setOpId(callId)];
+  const lotGuards = lots.map((lot) => {
+    const idParam = params.length + 1;
+    const microParam = params.length + 2;
+    params.push(lot.lotId, Math.trunc(lot.micro));
+    return `(SELECT COUNT(*) FROM hf_token_lots WHERE id=?${idParam} AND uid=?2 AND tokens_reserved_micro>=?${microParam})=1`;
+  });
+  const predicate = input.gatePredicate(params.length + 1);
+  params.push(...predicate.values);
+  const db = env.DB_META;
+  const statements: Array<ReturnType<Env["DB_META"]["prepare"]>> = [db.prepare(
+    `INSERT OR IGNORE INTO hf_token_ledger (id,uid,kind,lot_id,delta_micro,rupee_value_paise,call_id,purchase_id,op_id,note,created_at)
+     SELECT ?1,?2,'release',NULL,0,0,?3,NULL,?4,?5,?6 WHERE NOT EXISTS (SELECT 1 FROM hf_token_ledger WHERE op_id=?7) AND (${[...lotGuards, predicate.sql].filter(Boolean).join(" AND ")})`,
+  ).bind(...params)];
+  for (const lot of lots) {
+    statements.push(db.prepare(
+      `INSERT OR IGNORE INTO hf_token_ledger (id,uid,kind,lot_id,delta_micro,rupee_value_paise,call_id,purchase_id,op_id,note,created_at)
+       SELECT ?1,?2,'release',?3,?4,0,?5,NULL,?6,NULL,?7
+        WHERE EXISTS (SELECT 1 FROM hf_token_ledger WHERE op_id=?8 AND note=?9)
+          AND EXISTS (SELECT 1 FROM hf_token_lots WHERE id=?3 AND uid=?2 AND tokens_reserved_micro>=?10)`,
+    ).bind(crypto.randomUUID(), uid, lot.lotId, -Math.trunc(lot.micro), callId, sub(gate, lot.lotId), now, gate, nonce, Math.trunc(lot.micro))));
+    statements.push(db.prepare(
+      `UPDATE hf_token_lots SET tokens_reserved_micro=tokens_reserved_micro-?1 WHERE id=?2 AND uid=?3
+        AND EXISTS (SELECT 1 FROM hf_token_ledger WHERE op_id=?4 AND note=?5)
+        AND EXISTS (SELECT 1 FROM hf_token_ledger WHERE op_id=?6)`,
+    ).bind(Math.trunc(lot.micro), lot.lotId, uid, gate, nonce, sub(gate, lot.lotId)));
+  }
+  statements.push(db.prepare("UPDATE hf_token_ledger SET note=NULL WHERE op_id=?1 AND note=?2").bind(gate, nonce));
+  return statements;
+}
+
+async function releaseFutureBookingsForLot(env: Env, lotId: string, uid: string): Promise<boolean> {
+  const rows = (await env.DB_META.prepare(
+    "SELECT DISTINCT b.id,b.call_id FROM hf_bookings b JOIN hf_token_ledger l ON l.call_id=b.call_id " +
+    "WHERE b.customer_uid=?1 AND b.status='confirmed' AND l.kind='reserve' AND l.lot_id=?2 ORDER BY b.starts_at,b.id LIMIT 501",
+  ).bind(uid, lotId).all<{ id: string; call_id: string }>()).results ?? [];
+  if (rows.length > 500) return false;
+  for (const booking of rows) {
+    const reservation = await getReservation(env, booking.call_id);
+    if (!reservation || reservation.lots.length === 0) return false;
+    const nonce = crypto.randomUUID(), now = Date.now(), gate = relOpId(booking.call_id);
+    const releaseStatements = buildReleaseStatements(env, {
+      uid, callId: booking.call_id, lots: reservation.lots, now, nonce,
+      gatePredicate: (first) => ({
+        sql: "EXISTS (SELECT 1 FROM hf_bookings WHERE id=?" + first + " AND call_id=?" + (first + 1) + " AND status='confirmed' AND settlement_status='held')",
+        values: [booking.id, booking.call_id],
+      }),
+    });
+    await env.DB_META.batch([
+      releaseStatements[0],
+      env.DB_META.prepare("UPDATE hf_bookings SET status='cancelled',settlement_status='released',cancelled_at=?1,updated_at=?1 WHERE id=?2 AND call_id=?3 AND status='confirmed' AND EXISTS (SELECT 1 FROM hf_token_ledger WHERE op_id=?4 AND note=?5)")
+        .bind(now, booking.id, booking.call_id, gate, nonce),
+      ...releaseStatements.slice(1, -1),
+      env.DB_META.prepare("UPDATE hf_booking_occupancy SET status='cancelled',updated_at=?1 WHERE booking_id=?2 AND EXISTS (SELECT 1 FROM hf_bookings WHERE id=?2 AND status='cancelled')")
+        .bind(now, booking.id),
+      env.DB_META.prepare("UPDATE calendar_blocks SET status='cancelled' WHERE source_app='hf_booking' AND source_ref=?1 AND EXISTS (SELECT 1 FROM hf_bookings WHERE id=?1 AND status='cancelled')")
+        .bind(booking.id),
+      env.DB_META.prepare("INSERT OR IGNORE INTO hf_booking_events(id,booking_id,operation_id,actor_uid,from_status,to_status,details_json,created_at) SELECT ?1,?2,?3,NULL,'confirmed','cancelled',?4,?5 WHERE EXISTS (SELECT 1 FROM hf_bookings WHERE id=?2 AND status='cancelled')")
+        .bind(crypto.randomUUID(), booking.id, "refund-revoke:" + lotId, JSON.stringify({ reason: "purchase_revoked" }), now),
+      releaseStatements[releaseStatements.length - 1],
+    ]);
+    const saved = await env.DB_META.prepare("SELECT status,settlement_status FROM hf_bookings WHERE id=?1").bind(booking.id)
+      .first<{ status: string; settlement_status: string }>();
+    if (saved?.status !== "cancelled" || saved.settlement_status !== "released") return false;
+  }
+  return true;
+}
 
 interface Reservation { uid: string; secondsCovered: number; lots: ReservedLot[] }
 /** Reads what was reserved for a call from the ledger (gate row + per-lot rows). Null when this call never reserved. */
@@ -425,7 +557,14 @@ async function readSettlement(env: Env, callId: string): Promise<Extract<SettleR
  * this call, oldest first, plus further available lots if the reservation was too small; the unspent reservation is released. One batch.
  * Idempotent (op `hftset:<callId>`): a retry returns the first result. A call that never reserved can still settle from available lots.
  */
-export async function settleCall(env: Env, uid: string, callId: string, ratePaise: Price, billableSeconds: number): Promise<SettleResult> {
+export async function settleCall(
+  env: Env,
+  uid: string,
+  callId: string,
+  ratePaise: Price,
+  billableSeconds: number,
+  options: { reservedLotsOnly?: boolean } = {},
+): Promise<SettleResult> {
   if (!priceValid(ratePaise) || !(billableSeconds >= 0)) return { ok: false, reason: "invalid" };
   const db = env.DB_META;
   const done = await readSettlement(env, callId);
@@ -434,11 +573,18 @@ export async function settleCall(env: Env, uid: string, callId: string, ratePais
   const gate = setOpId(callId);
   for (let attempt = 0; attempt < 2; attempt++) {
     const rsv = await readReservation(env, callId);
+    if (options.reservedLotsOnly && (!rsv || rsv.uid !== uid || rsv.secondsCovered < Math.trunc(billableSeconds))) {
+      return { ok: false, reason: "conflict" };
+    }
     const held = new Map((rsv?.lots ?? []).map((x) => [x.lotId, x.micro]));
     const all = await getLots(env, uid);
-    // Per lot: what the maths may spend = its reservation for this call + whatever is free beyond ALL reservations on it.
+    // Ordinary calls may use newly available lots when a hold was short. A booked call must
+    // settle only from the lots reserved when it was confirmed, even after later top-ups.
     const planLots: Lot[] = all
-      .map((l) => ({ id: l.id, valuePaisePerToken: l.valuePaisePerToken, leftMicro: Math.min(l.leftMicro, (held.get(l.id) ?? 0) + Math.max(0, l.leftMicro - l.reservedMicro)) }))
+      .map((l) => ({ id: l.id, valuePaisePerToken: l.valuePaisePerToken,
+        leftMicro: options.reservedLotsOnly
+          ? Math.min(l.leftMicro, held.get(l.id) ?? 0)
+          : Math.min(l.leftMicro, (held.get(l.id) ?? 0) + Math.max(0, l.leftMicro - l.reservedMicro)) }))
       .filter((l) => l.leftMicro > 0);
     const plan = planSpend(planLots, ratePaise, Math.trunc(billableSeconds));
     const spend = new Map(plan.uses.map((u) => [u.lotId, u]));

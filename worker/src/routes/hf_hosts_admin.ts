@@ -23,6 +23,7 @@ import { pushHostDecision } from "../lib/hf_push"; // [HF-APP-4]
 import { parseStoredFlags, introStatusOf, introCaption, INTRO_MEDIA_KIND } from "../lib/hf_intro";
 import { creatorPublicationBlockers } from "../lib/hf_creator_publication";
 import { hfCreatorListingsAdminRoute } from "./hf_creator_listings_admin";
+import { acquireHfScheduleWriteLock, drainHfBookingHolds, getHfBookingSchedule, releaseHfScheduleWriteLock } from "../lib/hf_booking_store";
 
 
 const APP = BRAND.slug;
@@ -313,12 +314,21 @@ async function decide(req: Request, env: Env, uid: string): Promise<Response> {
     if (!published.meta?.changes) return err(409, "listing_changed");
     msg = "Good news! Your profile is now live. People can find you and talk to you. Thank you for joining us.";
   } else {
-    const to = decision === "reject" ? "rejected" : "paused";
-    await env.DB_META.prepare("UPDATE hf_hosts SET status=?2, review_note=?3, reviewed_by=?4, reviewed_at=?5, updated_at=?5 WHERE uid=?1")
-      .bind(uid, to, reason, a.uid, now).run();
-    msg = decision === "reject"
-      ? `Your profile was not approved yet. Reason: ${reason}. You can fix this and send it again.`
-      : `Your profile is paused for now. Reason: ${reason}. Please write to our support team if you have questions.`;
+    const schedule = await getHfBookingSchedule(env, uid);
+    const lock = await acquireHfScheduleWriteLock(env, uid, schedule.version, now, 300_000);
+    if (!lock) return err(409, "booking_cleanup_pending");
+    try {
+      if (!(await drainHfBookingHolds(env, uid, "suspension", 1))) return err(409, "booking_cleanup_pending");
+      const to = decision === "reject" ? "rejected" : "paused";
+      const suspended = await env.DB_META.prepare("UPDATE hf_hosts SET status=?2, review_note=?3, reviewed_by=?4, reviewed_at=?5, updated_at=?5 WHERE uid=?1 AND status=?6")
+        .bind(uid, to, reason, a.uid, now, h.status).run();
+      if (!suspended.meta?.changes) return err(409, "listing_changed");
+      msg = decision === "reject"
+        ? `Your profile was not approved yet. Reason: ${reason}. You can fix this and send it again.`
+        : `Your profile is paused for now. Reason: ${reason}. Please write to our support team if you have questions.`;
+    } finally {
+      await releaseHfScheduleWriteLock(env, uid, lock).catch(() => undefined);
+    }
   }
   await audit(env, a.uid, decision, uid, { reason, from: h.status });
   const notified = await notifyHost(env, a.uid, uid, msg, "/api/admin/hf/hosts/decision");
