@@ -10867,6 +10867,6 @@
     "two_sided": false,
     "min_devices_on_build": 1,
     "flags": [],
-    "no_telemetry": "Visual motion only on existing screens: no new route, API call, user action or event; the existing hf_app_intro_viewed / hf_app_intro_completed / hf_app_welcome_accepted / sign-in events are unchanged (a swipe fires the same hf_app_intro_viewed page view as the Next button). Verified by the hf-flutter.yml check run (widget tests incl. reduced-motion and navigation-not-delayed tests, plus onboarding-*.png review captures)."
+    "no_telemetry": "Visual motion only on existing screens: no new route, API call, user action or event; the existing hf_app_intro_viewed / hf_app_intro_completed / hf_app_welcome_accepted / sign-in events are unchanged (a swipe fires the same hf_app_intro_viewed page view as the Next button). Verified by the hf-flutter.yml check run (widget tests incl. reduced-motion and navigation-not-delayed tests, plus onboarding-motion-*.png review captures)."
   }
 }

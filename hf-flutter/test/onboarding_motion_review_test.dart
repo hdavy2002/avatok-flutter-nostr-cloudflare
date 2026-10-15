@@ -207,7 +207,7 @@ void main() {
       await _frames(tester);
       expect(tester.takeException(), isNull);
       expect(find.byType(BeaverGuide), findsOneWidget);
-      await _capture(tester, 'onboarding-splash-$label');
+      await _capture(tester, 'onboarding-motion-splash-$label');
     });
 
     testWidgets('onboarding intro pages 1 and 3 $label', (tester) async {
@@ -227,7 +227,7 @@ void main() {
       ]);
       expect(tester.takeException(), isNull);
       expect(find.text('Page 1 of 3'), findsOneWidget);
-      await _capture(tester, 'onboarding-intro-1-$label');
+      await _capture(tester, 'onboarding-motion-intro-1-$label');
       for (var i = 0; i < 2; i++) {
         await _tapVisible(tester, find.byKey(const ValueKey('intro-next')));
       }
@@ -235,7 +235,7 @@ void main() {
       await _frames(tester);
       expect(tester.takeException(), isNull);
       expect(find.text('Page 3 of 3'), findsOneWidget);
-      await _capture(tester, 'onboarding-intro-3-$label');
+      await _capture(tester, 'onboarding-motion-intro-3-$label');
     });
 
     testWidgets('onboarding sign-in and OTP success $label', (tester) async {
@@ -266,7 +266,7 @@ void main() {
       ]);
       expect(tester.takeException(), isNull);
       expect(find.text('Welcome back.'), findsOneWidget);
-      await _capture(tester, 'onboarding-signin-$label');
+      await _capture(tester, 'onboarding-motion-signin-$label');
 
       await _tapVisible(tester, find.text('WhatsApp'));
       final phone = find.byKey(const ValueKey<String>('signin-phone'));
@@ -286,7 +286,7 @@ void main() {
       );
       await _scrollToTop(tester);
       expect(tester.takeException(), isNull);
-      await _capture(tester, 'onboarding-otp-success-$label');
+      await _capture(tester, 'onboarding-motion-otp-success-$label');
     });
 
     testWidgets('onboarding welcome all ticked $label', (tester) async {
@@ -317,7 +317,7 @@ void main() {
             .pose,
         BeaverPose.celebrate,
       );
-      await _capture(tester, 'onboarding-welcome-ticked-$label');
+      await _capture(tester, 'onboarding-motion-welcome-ticked-$label');
     });
   }
 }
