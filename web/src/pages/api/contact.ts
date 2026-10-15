@@ -195,7 +195,7 @@ export const POST: APIRoute = async (context) => {
         subject: subjectLine,
         html: htmlContent,
         text: textContent,
-        from: { name: env.BREVO_SENDER_NAME || `${ORG.name} Support`, email: env.BREVO_SENDER_EMAIL || BRAND.emails.hello },
+        from: { name: env.BREVO_SENDER_NAME || `${ORG.name} Support`, email: env.BREVO_SENDER_EMAIL || BRAND.emails.noreply },
         replyTo: { email, name },
         tags: ['website-contact'],
       },

@@ -25,10 +25,10 @@
   "emails": {
     "support": "support@hellofraands.com",
     "grievance": "sunita.singh@hellofraands.com",
-    "noreply": "noreply@aumfe.com",
+    "noreply": "no-reply@hellofraands.com",
     "hello": "hello@aumfe.com"
   },
-  "emailFromName": "Aum Fe",
+  "emailFromName": "Hello Fraands",
   "_permanent": "Values below are NOT rebrandable: Google Play never lets a package id change. Listed here only so code reads them from one place.",
   "playPackageId": "com.saathum.app",
   "hfPlayPackageId": "com.hellofraands.app"

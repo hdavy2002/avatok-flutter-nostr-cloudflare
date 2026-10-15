@@ -61,7 +61,7 @@ export type MailResult =
 // until it is onboarded in Cloudflare Email Sending AND verified as a Brevo
 // sender — see Specs/PLAN-2026-09-20-SAATHUM-EMAIL-DOMAIN-CUTOVER.md.
 const DEFAULT_SENDER_NAME = `${BRAND.name} Support`;
-const DEFAULT_SENDER_EMAIL = BRAND.emails.hello;
+const DEFAULT_SENDER_EMAIL = BRAND.emails.noreply; // [HF-EMAIL-SENDER-1] every outgoing mail from the brand domain
 
 function defaultSender(env: MailEnv): { name: string; email: string } {
   return {

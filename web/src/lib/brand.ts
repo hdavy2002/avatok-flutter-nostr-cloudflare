@@ -32,10 +32,10 @@ export const BRAND = {
   emails: {
     support: "support@hellofraands.com",
     grievance: "sunita.singh@hellofraands.com",
-    noreply: "noreply@aumfe.com",
+    noreply: "no-reply@hellofraands.com",
     hello: "hello@aumfe.com",
   },
-  emailFromName: "Aum Fe",
+  emailFromName: "Hello Fraands",
   /** PERMANENT — a Play package id can never change. */
   playPackageId: "com.saathum.app",
   /** PERMANENT — package id of the native HF Android app (hf-flutter/). */

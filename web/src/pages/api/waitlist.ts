@@ -46,7 +46,7 @@ function welcomeHtml(): string {
 async function sendWelcome(env: Record<string, string | undefined>, email: string) {
   const sender = {
     name: env.BREVO_SENDER_NAME || `${ORG.name} Support`,
-    email: env.BREVO_SENDER_EMAIL || BRAND.emails.hello,
+    email: env.BREVO_SENDER_EMAIL || BRAND.emails.noreply,
   };
   try {
     const out = await sendMail(
@@ -55,7 +55,7 @@ async function sendWelcome(env: Record<string, string | undefined>, email: strin
         subject: `You're on the ${ORG.name} waitlist 🎉`,
         html: welcomeHtml(),
         from: sender,
-        replyTo: { email: BRAND.emails.hello, name: ORG.name },
+        replyTo: { email: BRAND.emails.support, name: ORG.name },
       },
       env,
     );

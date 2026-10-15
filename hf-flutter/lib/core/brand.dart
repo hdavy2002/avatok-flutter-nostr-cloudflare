@@ -25,7 +25,7 @@ abstract final class Brand {
   static const List<String> legacyApiHosts = <String>['api.saathum.com', 'api.aumfe.com'];
   static const String supportEmail = 'support@hellofraands.com';
   static const String grievanceEmail = 'sunita.singh@hellofraands.com';
-  static const String noreplyEmail = 'noreply@aumfe.com';
+  static const String noreplyEmail = 'no-reply@hellofraands.com';
   static const String helloEmail = 'hello@aumfe.com';
   /// PERMANENT — a Play package id can never change.
   static const String playPackageId = 'com.saathum.app';
