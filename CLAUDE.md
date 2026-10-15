@@ -751,8 +751,10 @@ India money-in flow goes through Cashfree — do not wire Razorpay, Paytm or Str
 
 - Keys: production App ID + Secret live in `secrets/cashfree.env` on the owner's Mac
   (gitignored — never commit, never paste into code or `wrangler.toml`). The worker reads
-  them as secrets `CASHFREE_APP_ID`, `CASHFREE_SECRET_KEY`, `CASHFREE_WEBHOOK_SECRET`
-  (= the secret key: Cashfree signs webhooks with it) and `CASHFREE_ENV=production`.
+  them as secrets `CASHFREE_APP_ID` and `CASHFREE_SECRET_KEY` ONLY. The worker is at Cloudflare's
+  128 text-binding limit, so there is no `CASHFREE_ENV` / `CASHFREE_WEBHOOK_SECRET`: production is
+  read from the key prefix (`cfsk_ma_prod_`) and webhooks are verified with the secret key
+  (`lib/cashfree.ts cashfreeIsProduction`, `[HF-CASHFREE-TOPUP-2]`).
 - Client: `worker/src/lib/cashfree.ts`; adapter: `worker/src/lib/payments/cashfree_adapter.ts`.
 - Hello Fraands wallet top-up (`[HF-CASHFREE-TOPUP-1]`): `hfTopupGateway=cashfree`,
   `hfTopupEnabled=true`. Any whole amount the caller types (no packs-as-products). The price

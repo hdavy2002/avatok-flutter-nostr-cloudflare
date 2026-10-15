@@ -10,7 +10,7 @@
 // So for this adapter, gateway_order_id and our_order_id are the same string.
 import type { Env } from "../../types";
 import {
-  cashfreeConfigured, createCashfreeOrder, fetchCashfreeOrder, refundCashfreeOrder, findCashfreeRefund,
+  cashfreeConfigured, cashfreeIsProduction, createCashfreeOrder, fetchCashfreeOrder, refundCashfreeOrder, findCashfreeRefund,
   verifyCashfreeSignature,
 } from "../cashfree";
 import type { GatewayAdapter, GatewayOrder } from "./types";
@@ -33,8 +33,8 @@ export const cashfreeAdapter: GatewayAdapter = {
   },
 
   testMode(env) {
-    // [BETA-TESTMODE-1] CASHFREE_ENV is "sandbox" | "production" (types.ts).
-    return String(env.CASHFREE_ENV ?? "sandbox").toLowerCase() !== "production";
+    // [BETA-TESTMODE-1] [HF-CASHFREE-TOPUP-2] CASHFREE_ENV if set, else the key prefix (lib/cashfree.ts cashfreeIsProduction).
+    return !cashfreeIsProduction(env);
   },
 
   async createOrder(env, a) {

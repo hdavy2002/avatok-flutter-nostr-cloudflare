@@ -22,16 +22,25 @@ export type CashfreeOrder = {
   order_status: string;
 };
 
+/** [HF-CASHFREE-TOPUP-2] The worker is at Cloudflare's 128 text-binding limit, so CASHFREE_ENV and CASHFREE_WEBHOOK_SECRET are
+ *  optional: the environment follows the secret key itself (Cashfree production keys start `cfsk_ma_prod_`, test keys
+ *  `cfsk_ma_test_`), and webhooks are signed with the secret key (PG 2023-08-01), so that is the default webhook secret. An explicit
+ *  CASHFREE_ENV still wins. */
+export function cashfreeIsProduction(env: Env): boolean {
+  const explicit = String(env.CASHFREE_ENV ?? "").trim().toLowerCase();
+  if (explicit) return explicit === "production";
+  return String(env.CASHFREE_SECRET_KEY ?? "").startsWith("cfsk_ma_prod_");
+}
+const webhookSecret = (env: Env): string => String(env.CASHFREE_WEBHOOK_SECRET || env.CASHFREE_SECRET_KEY || "");
+
 function baseUrl(env: Env): string {
-  return String(env.CASHFREE_ENV ?? "sandbox").toLowerCase() === "production"
-    ? "https://api.cashfree.com/pg"
-    : "https://sandbox.cashfree.com/pg";
+  return cashfreeIsProduction(env) ? "https://api.cashfree.com/pg" : "https://sandbox.cashfree.com/pg";
 }
 
-/** Configured means ALL THREE secrets. A partial config is a misconfiguration, not a
+/** Configured means the App ID and the secret key (which also signs webhooks). A partial config is a misconfiguration, not a
  *  degraded mode — half-configured payments must never half-work. */
 export function cashfreeConfigured(env: Env): boolean {
-  return Boolean(env.CASHFREE_APP_ID && env.CASHFREE_SECRET_KEY && env.CASHFREE_WEBHOOK_SECRET);
+  return Boolean(env.CASHFREE_APP_ID && env.CASHFREE_SECRET_KEY && webhookSecret(env));
 }
 
 function headers(env: Env): Record<string, string> {
@@ -127,11 +136,11 @@ export async function verifyCashfreeSignature(
   signature: string | null,
   timestamp: string | null,
 ): Promise<boolean> {
-  if (!signature || !timestamp || !env.CASHFREE_WEBHOOK_SECRET) return false;
+  if (!signature || !timestamp || !webhookSecret(env)) return false;
   try {
     const key = await crypto.subtle.importKey(
       "raw",
-      new TextEncoder().encode(String(env.CASHFREE_WEBHOOK_SECRET)),
+      new TextEncoder().encode(webhookSecret(env)),
       { name: "HMAC", hash: "SHA-256" },
       false,
       ["sign"],

@@ -7,7 +7,7 @@
 > (`wallet_paise`, `gst_paise`, `lot_id`, migration `2026-10-15-hf-topups-rupee-wallet.sql`). ₹2 → ₹1.69 + ₹0.31 GST.
 > Any whole amount from `hfTopupMinRupees` (code floor now ₹1). Cashfree orders carry their own `notify_url`
 > (`<apiOrigin>/api/hf/wallet/topup/webhook/cashfree`) and `return_url` (`/wallet?topup={order_id}`), so no dashboard webhook is
-> required; the /wallet status poll is the backstop. `CASHFREE_WEBHOOK_SECRET` = the Cashfree secret key (that is what signs webhooks).
+> required; the /wallet status poll is the backstop. Only `CASHFREE_APP_ID` + `CASHFREE_SECRET_KEY` are set (binding limit): webhooks verify with the secret key, production comes from the `cfsk_ma_prod_` prefix (HF-CASHFREE-TOPUP-2).
 > /wallet shows this card on the plain website only; inside the Android app the Google Play panel stays.
 > Production checkout needs the site domain whitelisted in the Cashfree dashboard.
 
