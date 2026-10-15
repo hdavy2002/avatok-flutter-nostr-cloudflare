@@ -310,6 +310,7 @@ import { hfBookingsRoute } from "./routes/hf_bookings"; // [HF-BOOKING-CALENDAR-
 import { runHfCallsCron } from "./lib/hf_calls_store"; // [HF-CALLS-1] 8 h auto-offline + stuck-call sweep
 import { runHfBookingsCron } from "./lib/hf_booking_store"; // [HF-BOOKING-CALENDAR-1] bounded no-show and hold cleanup
 import { runHfPresenceNudge } from "./lib/hf_presence_nudge"; // [HF-PRESENCE-NUDGE-1] 3-hourly "you're offline" reminder (flag hfPresenceNudgeEnabled)
+import { cashfreeCheckoutHost } from "./routes/cashfree_checkout_host"; // [HF-CASHFREE-CHECKOUT-HOST-1]
 import { hfTopupRoute } from "./routes/hf_topup"; // [HF-TOPUP-1] wallet top-up, any gateway (flags hfTopupEnabled + hfTopupGateway)
 import { expireHfTopups } from "./lib/hf_topup"; // [HF-TOPUP-1] close unpaid top-ups after 24 h
 import { hfRefundsRoute } from "./routes/hf_refunds"; // [HF-WALLET-EXIT-1] refunds of unused top-up money (flag hfRefundsEnabled)
@@ -666,6 +667,7 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
     if (req.method === "OPTIONS") return preflight();
     const url = new URL(req.url);
     const p = url.pathname;
+    { const ch = cashfreeCheckoutHost(req, env); if (ch) return ch; } // [HF-CASHFREE-CHECKOUT-HOST-1] avatok.ai/pay/cashfree*
 
     if (p.startsWith("/i18n/")) return uiLocalization(req, env, ctx);
 

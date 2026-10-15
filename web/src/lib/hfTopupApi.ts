@@ -84,6 +84,13 @@ const LOADERS: Record<string, Loader> = {
     });
   },
   cashfree: async (p, o) => {
+    // [HF-CASHFREE-CHECKOUT-HOST-1] Cashfree only opens on its whitelisted domain. When the worker sends checkout_url, hand the buyer
+    // to that page (full-page); Cashfree returns him to /wallet?topup=<id>, where the status poll confirms the credit.
+    const cu = String(p.checkout_url ?? '');
+    if (/^https:\/\/[a-z0-9.-]+\/pay\/cashfree\?/.test(cu)) {
+      location.assign(cu);
+      await new Promise<void>(() => { /* page navigates away */ });
+    }
     await loadScript('https://sdk.cashfree.com/js/v3/cashfree.js');
     const CF = (window as unknown as { Cashfree?: (c: { mode: string }) => { checkout(o: unknown): Promise<unknown> } }).Cashfree;
     if (!CF) throw new Error('script_failed');

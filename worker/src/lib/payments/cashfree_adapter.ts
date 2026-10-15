@@ -15,6 +15,7 @@ import {
 } from "../cashfree";
 import type { GatewayAdapter, GatewayOrder } from "./types";
 import { BRAND, brandUrl } from "../brand";
+import { cashfreeCheckoutUrl, cashfreeReturnUrl } from "../../routes/cashfree_checkout_host";
 
 function mapStatus(type: string | undefined, orderStatus: string | undefined): "paid" | "failed" | "refunded" | "pending" {
   const t = String(type ?? "").toUpperCase();
@@ -46,7 +47,7 @@ export const cashfreeAdapter: GatewayAdapter = {
       // anyone pasting a webhook into the Cashfree dashboard. {order_id} is Cashfree's own placeholder. The status poll on
       // /wallet is the backstop if a webhook is ever lost.
       returnUrl: a.kind === "wallet_topup"
-        ? (env.CASHFREE_RETURN_URL ?? brandUrl("/wallet?topup={order_id}"))
+        ? (env.CASHFREE_RETURN_URL ?? cashfreeReturnUrl() ?? brandUrl("/wallet?topup={order_id}"))
         : (env.CASHFREE_RETURN_URL ?? null),
       notifyUrl: a.kind === "wallet_topup" ? `${BRAND.apiOrigin}/api/hf/wallet/topup/webhook/cashfree` : null,
     });
@@ -56,7 +57,12 @@ export const cashfreeAdapter: GatewayAdapter = {
       gateway_order_id: created.order_id,
       amount_paise: a.amountPaise,
       currency: a.currency || "INR",
-      client_payload: { payment_session_id: created.payment_session_id, order_id: created.order_id },
+      client_payload: {
+        payment_session_id: created.payment_session_id, order_id: created.order_id,
+        // [HF-CASHFREE-CHECKOUT-HOST-1] Present = open the checkout on the whitelisted domain (full-page hand-off), not as a modal here.
+        ...(a.kind === "wallet_topup" && cashfreeCheckoutUrl(created.payment_session_id, a.orderId)
+          ? { checkout_url: cashfreeCheckoutUrl(created.payment_session_id, a.orderId)! } : {}),
+      },
     };
     return order;
   },

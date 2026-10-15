@@ -10816,5 +10816,22 @@
         "note": "Copy-only web change; success = the rebuilt FAQ is served (pageviews keep arriving after deploy) and the live page text says influencer, not host."
       }
     ]
+  },
+  "HF-CASHFREE-CHECKOUT-HOST-1": {
+    "description": "[HF-CASHFREE-CHECKOUT-HOST-1 2026-10-15] Cashfree whitelists avatok.ai only: wallet top-up hands off to avatok.ai/pay/cashfree (Worker route) and returns via avatok.ai/pay/cashfree/done to /wallet?topup=<id>.",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [
+      "hfTopupEnabled",
+      "hfTopupGateway"
+    ],
+    "success": [
+      {
+        "event": "hf_topup_paid",
+        "property": "wallet",
+        "equals": "rupee_lots",
+        "note": "Owner's Rs 2 test completes through the avatok.ai hand-off: wallet_paise=169, gst_paise=31."
+      }
+    ]
   }
 }

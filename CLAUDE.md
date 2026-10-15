@@ -762,6 +762,12 @@ India money-in flow goes through Cashfree — do not wire Razorpay, Paytm or Str
   GST is stored on the lot. Spec: `Specs/HF-WALLET-TOPUP.md`; rules HF-PAY-1/9/11/20.
 - Production checkout only opens on a domain whitelisted in the Cashfree dashboard
   (Developers → Whitelisting). localhost is refused ("Broken Link").
+  **The whitelisted domain is avatok.ai (hellofraands.com is NOT approved yet).** So the
+  wallet hands the buyer to `https://avatok.ai/pay/cashfree?s=<session>&t=<hftop_id>`
+  (served by the API Worker via the route `avatok.ai/pay/cashfree*`,
+  `worker/src/routes/cashfree_checkout_host.ts`) and Cashfree returns him through
+  `avatok.ai/pay/cashfree/done` to `/wallet?topup=<id>` (`[HF-CASHFREE-CHECKOUT-HOST-1]`).
+  When hellofraands.com is approved, set `CASHFREE_CHECKOUT_ORIGIN = null` there.
 - Payment-link API (`/pg/links`) is NOT enabled on this account.
 
 The reviewer-onboarding allowlist `reviewerEmails` is still the single address

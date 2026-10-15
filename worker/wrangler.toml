@@ -43,6 +43,12 @@ custom_domain = true
 pattern = "api.aumfe.com"
 custom_domain = true
 
+# [HF-CASHFREE-CHECKOUT-HOST-1 2026-10-15] Cashfree's production checkout only opens from a whitelisted domain, and the approved one
+# is avatok.ai. This route serves ONLY avatok.ai/pay/cashfree* (routes/cashfree_checkout_host.ts); the rest of avatok.ai is untouched.
+[[routes]]
+pattern = "avatok.ai/pay/cashfree*"
+zone_name = "avatok.ai"
+
 [vars]
 # Cloudflare AI Gateway (2026-06-18) — routes ALL AI (Workers-AI binding + Gemini
 # image) through the 'avatok-ai' gateway for per-user metering, caching, and a
