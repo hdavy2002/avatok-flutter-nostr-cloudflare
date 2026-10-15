@@ -18,6 +18,7 @@ import 'package:hf_app/features/host_profile/data/host_profile_providers.dart';
 import 'package:hf_app/features/auth/ui/sign_in_screen.dart';
 import 'package:hf_app/features/host_profile/data/intro_player.dart';
 import 'package:hf_app/features/lanes/ui/lanes_screen.dart';
+import 'package:hf_app/features/host_profile/ui/widgets/call_glow.dart';
 import 'package:hf_app/features/host_profile/ui/widgets/net_image.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -754,6 +755,74 @@ void main() {
       await tester.pumpAndSettle();
       expect(player.paused, 1);
       expect(find.byTooltip('Play introduction'), findsOneWidget);
+    });
+
+    testWidgets('live primary bars show only while the intro plays', (
+      tester,
+    ) async {
+      const bars = ValueKey<String>('intro-live-bars');
+      final player = FakeIntroPlayer();
+      await _pumpProfile(
+        tester,
+        api: apiWith(profileJson(intro: true)),
+        player: player,
+      );
+      expect(find.byKey(bars), findsNothing);
+      await tester.ensureVisible(find.byTooltip('Play introduction'));
+      await tester.pump();
+      await tester.tap(find.byTooltip('Play introduction'));
+      await tester.pumpAndSettle();
+      expect(find.byKey(bars), findsOneWidget);
+      await tester.tap(find.byTooltip('Pause introduction'));
+      await tester.pumpAndSettle();
+      expect(find.byKey(bars), findsNothing);
+    });
+  });
+
+  group('motion (HF-MOTION-B)', () {
+    testWidgets('online: the Call button glows; warm sun hero; sections reveal', (
+      tester,
+    ) async {
+      await _pumpProfile(tester, api: apiWith(profileJson()));
+      expect(find.byKey(CallGlow.glowKey), findsOneWidget);
+      expect(
+        find.ancestor(
+          of: find.text('Call Asha'),
+          matching: find.byType(CallGlow),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const ValueKey<String>('profile-hero-sun')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const ValueKey<String>('profile-sections-reveal')),
+        findsOneWidget,
+      );
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('busy: no glowing Call', (tester) async {
+      await _pumpProfile(tester, api: apiWith(profileJson(status: 'busy')));
+      expect(find.byType(CallGlow), findsNothing);
+    });
+
+    testWidgets('error panel shows the oops beaver and Try again', (
+      tester,
+    ) async {
+      final api = FakeApiClient()
+        ..onError(
+          'GET',
+          _profilePath,
+          const ApiError(status: 500, code: 'http_500'),
+        );
+      await _pumpProfile(tester, api: api);
+      expect(
+        tester.widget<BeaverGuide>(find.byKey(kStatePanelBeaverKey)).pose,
+        BeaverPose.oops,
+      );
+      expect(find.text('Try again'), findsOneWidget);
     });
   });
 

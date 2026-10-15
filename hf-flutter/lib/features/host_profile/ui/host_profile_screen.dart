@@ -379,7 +379,7 @@ class _ProfileBodyState extends ConsumerState<_ProfileBody> {
                     left: 0,
                     right: 0,
                     height: kHeroOverlap,
-                    child: ColoredBox(color: HfTint.lavender.bg(context)),
+                    child: const ColoredBox(color: ProfileSunBandsPainter.base),
                   ),
                   Container(
                     decoration: BoxDecoration(
@@ -392,8 +392,11 @@ class _ProfileBodyState extends ConsumerState<_ProfileBody> {
                       top: 22,
                       bottom: HfSpacing.section,
                     ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                    // HF-MOTION-B: the sections rise in one after another on first load only (the
+                    // state survives rebuilds, so scrolling and refreshes do not replay it).
+                    child: StaggeredReveal(
+                      key: const ValueKey<String>('profile-sections-reveal'),
+                      stagger: const Duration(milliseconds: 45),
                       children: [
                         if (widget.result.fromCache) ...[
                           const Padding(

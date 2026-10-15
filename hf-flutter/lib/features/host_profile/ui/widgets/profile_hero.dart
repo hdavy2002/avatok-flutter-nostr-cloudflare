@@ -64,13 +64,18 @@ class _ProfileHeroState extends ConsumerState<ProfileHero> {
         : showingAiGallery
         ? HostProfileStrings.aiGalleryImage
         : HostProfileStrings.galleryImage;
-    final placeholder = ColoredBox(
-      color: HfTint.lavender.bg(context),
-      child: Center(
-        child: Icon(
+    final placeholder = Center(
+      child: Container(
+        width: 132,
+        height: 132,
+        decoration: BoxDecoration(
+          color: HfColors.white.withValues(alpha: 0.55),
+          shape: BoxShape.circle,
+        ),
+        child: const Icon(
           Icons.person_rounded,
           size: 72,
-          color: HfTint.lavender.ink(context),
+          color: HfColors.deepOrange,
         ),
       ),
     );
@@ -79,11 +84,19 @@ class _ProfileHeroState extends ConsumerState<ProfileHero> {
       duration: HfMotion.of(context, HfMotion.slow),
       curve: HfMotion.curve,
       builder: (context, v, child) => Opacity(opacity: v, child: child),
-      child: ColoredBox(
-        color: HfTint.lavender.bg(context),
+      // HF-MOTION-B: a warm banded sun sits behind the photo (seen while it loads, around a transparent
+      // picture and when there is none); a soft orange glow warms the bottom of the photo.
+      child: DecoratedBox(
+        key: const ValueKey<String>('profile-hero-sun'),
+        decoration: const BoxDecoration(color: HfColors.sunshine),
         child: Stack(
           fit: StackFit.expand,
           children: [
+            const Positioned.fill(
+              child: RepaintBoundary(
+                child: CustomPaint(painter: ProfileSunBandsPainter()),
+              ),
+            ),
             if (pictures.isEmpty)
               placeholder
             else
@@ -100,6 +113,23 @@ class _ProfileHeroState extends ConsumerState<ProfileHero> {
                   ),
                 ),
               ),
+            const Positioned(
+              left: 0,
+              right: 0,
+              bottom: 0,
+              height: 150,
+              child: IgnorePointer(
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [Color(0x00F28C28), Color(0x4DF28C28)],
+                    ),
+                  ),
+                ),
+              ),
+            ),
             Positioned(
               left: HfSpacing.page,
               right: HfSpacing.page,
@@ -163,6 +193,44 @@ class _ProfileHeroState extends ConsumerState<ProfileHero> {
       ),
     );
   }
+}
+
+/// The warm banded sun behind the profile photo: a sunshine-to-orange sky with soft concentric bands that
+/// radiate from a sun low in the middle. Static (no animation), so it is cheap and reduced-motion safe.
+class ProfileSunBandsPainter extends CustomPainter {
+  const ProfileSunBandsPainter();
+
+  /// Bottom colour of the bands (the strip behind the sheet's rounded corners matches it).
+  static const Color base = HfColors.primary;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (size.isEmpty) return;
+    final rect = Offset.zero & size;
+    canvas.drawRect(
+      rect,
+      Paint()
+        ..shader = const LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [HfColors.butterLight, HfColors.sunshine, base],
+          stops: [0, 0.45, 1],
+        ).createShader(rect),
+    );
+    final sun = Offset(size.width / 2, size.height * 0.62);
+    final step = size.shortestSide * 0.16;
+    final band = Paint()..style = PaintingStyle.fill;
+    // Outer bands first, each a little whiter towards the sun.
+    for (var i = 6; i >= 1; i--) {
+      band.color = HfColors.white.withValues(alpha: 0.05 + 0.025 * (6 - i));
+      canvas.drawCircle(sun, step * i, band);
+    }
+    band.color = HfColors.white.withValues(alpha: 0.35);
+    canvas.drawCircle(sun, step * 0.7, band);
+  }
+
+  @override
+  bool shouldRepaint(ProfileSunBandsPainter oldDelegate) => false;
 }
 
 /// A 48 px white circle over the photo (back, save, share).

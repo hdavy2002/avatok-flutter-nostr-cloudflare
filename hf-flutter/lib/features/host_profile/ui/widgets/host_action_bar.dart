@@ -17,6 +17,7 @@ import '../../../../core/theme/hf_theme.dart';
 import '../../data/host_profile.dart';
 import '../../data/host_profile_providers.dart';
 import '../../host_profile_strings.dart';
+import 'call_glow.dart';
 
 /// The sticky bottom action of the profile: an ink bar (radius 28) with the price on the left and a white pill on
 /// the right.
@@ -235,10 +236,13 @@ class _HostActionBarState extends ConsumerState<HostActionBar> {
         onPressed: _verifyToCall,
       );
     } else if (_p.status == HostPresence.online) {
-      pill = _BarPill(
-        label: HostProfileStrings.callName(name),
-        icon: Icons.call_rounded,
-        onPressed: _call,
+      // HF-MOTION-B: the live Call button breathes, glows and shines so it feels alive.
+      pill = CallGlow(
+        child: _BarPill(
+          label: HostProfileStrings.callName(name),
+          icon: Icons.call_rounded,
+          onPressed: _call,
+        ),
       );
     } else {
       note = _p.status == HostPresence.busy

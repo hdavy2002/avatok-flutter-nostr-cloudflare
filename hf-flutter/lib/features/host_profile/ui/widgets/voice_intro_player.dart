@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -69,8 +70,54 @@ class VoiceIntroPlayer extends ConsumerStatefulWidget {
   ConsumerState<VoiceIntroPlayer> createState() => _VoiceIntroPlayerState();
 }
 
-class _VoiceIntroPlayerState extends ConsumerState<VoiceIntroPlayer> {
+class _VoiceIntroPlayerState extends ConsumerState<VoiceIntroPlayer>
+    with SingleTickerProviderStateMixin {
   static const Duration _previewLimit = Duration(seconds: 20);
+
+  /// HF-MOTION-B: drives the live waveform and the small primary bars while the intro plays (only then).
+  late final AnimationController _wave = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 1100),
+  );
+
+  /// Runs [_wave] while playing (and the phone allows animation), otherwise parks it.
+  void _syncWave() {
+    if (!mounted) return;
+    final run = _phase == _Phase.playing && !hfReduceMotion(context);
+    if (run) {
+      if (!_wave.isAnimating) _wave.repeat();
+    } else if (_wave.isAnimating || _wave.value != 0) {
+      _wave.stop();
+      _wave.value = 0;
+    }
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _syncWave();
+  }
+
+  @override
+  void setState(VoidCallback fn) {
+    super.setState(fn);
+    _syncWave();
+  }
+
+  /// The mockup waveform, gently moving while [_wave] runs.
+  List<int> _liveHeights() {
+    if (!_wave.isAnimating) return _kWave;
+    final t = _wave.value;
+    return [
+      for (var i = 0; i < _kWave.length; i++)
+        (_kWave[i] *
+                (0.55 +
+                    0.45 * math.sin(math.pi * ((t * 2 + i * 0.137) % 1.0)).abs()))
+            .round()
+            .clamp(15, 100)
+            .toInt(),
+    ];
+  }
 
   IntroPlayer? _player;
   Timer? _previewTimer;
@@ -169,6 +216,7 @@ class _VoiceIntroPlayerState extends ConsumerState<VoiceIntroPlayer> {
 
   @override
   void dispose() {
+    _wave.dispose();
     _previewTimer?.cancel();
     for (final s in _subs) {
       unawaited(s.cancel());
@@ -220,6 +268,12 @@ class _VoiceIntroPlayerState extends ConsumerState<VoiceIntroPlayer> {
                   style: HfText.subsection.copyWith(color: ink),
                 ),
               ),
+              if (playing)
+                LiveBars(
+                  key: const ValueKey<String>('intro-live-bars'),
+                  animation: _wave,
+                  moving: !hfReduceMotion(context),
+                ),
               Container(
                 padding: const EdgeInsets.symmetric(
                   horizontal: 10,
@@ -250,13 +304,16 @@ class _VoiceIntroPlayerState extends ConsumerState<VoiceIntroPlayer> {
                 child: Tooltip(
                   message: tooltip,
                   excludeFromSemantics: true,
-                  child: HfVoiceBar(
-                    title: '',
-                    durationLabel: label,
-                    heights: heights,
-                    progress: totalSeconds > 0 ? shown / max : 0,
-                    playing: playing,
-                    onTap: _toggle,
+                  child: AnimatedBuilder(
+                    animation: _wave,
+                    builder: (context, _) => HfVoiceBar(
+                      title: '',
+                      durationLabel: label,
+                      heights: playing ? _liveHeights() : heights,
+                      progress: totalSeconds > 0 ? shown / max : 0,
+                      playing: playing,
+                      onTap: _toggle,
+                    ),
                   ),
                 ),
               );
@@ -275,6 +332,64 @@ class _VoiceIntroPlayerState extends ConsumerState<VoiceIntroPlayer> {
             ),
           ],
         ],
+      ),
+    );
+  }
+}
+
+/// Four small rounded bars in the primary orange that dance while the intro plays ("live"). With reduced
+/// motion they stand still at different heights, so "playing" still reads at a glance. Decorative only.
+class LiveBars extends StatelessWidget {
+  const LiveBars({
+    super.key,
+    required this.animation,
+    this.moving = true,
+    this.height = 18,
+  });
+
+  final Animation<double> animation;
+
+  /// False draws the still bars (reduced motion).
+  final bool moving;
+  final double height;
+
+  static const List<double> _rest = [0.55, 0.9, 0.7, 0.4];
+
+  @override
+  Widget build(BuildContext context) {
+    return ExcludeSemantics(
+      child: SizedBox(
+        width: 4 * 4 + 3 * 3,
+        height: height,
+        child: AnimatedBuilder(
+          animation: animation,
+          builder: (context, _) {
+            final t = animation.value;
+            return Row(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                for (var i = 0; i < 4; i++) ...[
+                  if (i > 0) const SizedBox(width: 3),
+                  Container(
+                    width: 4,
+                    height: height *
+                        (moving
+                            ? 0.3 +
+                                0.7 *
+                                    math
+                                        .sin(math.pi * ((t * 2 + i * 0.29) % 1.0))
+                                        .abs()
+                            : _rest[i]),
+                    decoration: BoxDecoration(
+                      color: i.isEven ? HfColors.primary : HfColors.deepOrange,
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                ],
+              ],
+            );
+          },
+        ),
       ),
     );
   }

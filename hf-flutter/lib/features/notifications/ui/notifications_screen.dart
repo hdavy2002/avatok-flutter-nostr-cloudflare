@@ -10,6 +10,7 @@ import '../../../core/router/nav.dart';
 import '../../../core/router/routes.dart';
 import '../../../core/theme/hf_theme.dart';
 import '../../../core/widgets/widgets.dart';
+import '../../explore/widgets/browse_motion.dart';
 import '../data/notifications_api.dart';
 
 class NotificationsScreen extends ConsumerStatefulWidget {
@@ -24,6 +25,10 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
   ApiError? _error;
   bool _clearing = false;
   int _epoch = 0;
+
+  /// HF-MOTION-B: ids already shown, so a row slides in only the first time it appears (not when it is
+  /// scrolled back into view or the list is refreshed).
+  final Set<String> _seen = <String>{};
 
   String? get _uid {
     final session = ref.read(sessionProvider);
@@ -106,7 +111,12 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
           ),
       ],
     ),
-    body: RefreshIndicator(onRefresh: _load, child: _body()),
+    body: RefreshIndicator(
+      onRefresh: _load,
+      color: HfColors.deepOrange,
+      backgroundColor: HfColors.butter,
+      child: _body(),
+    ),
   );
 
   Widget _body() {
@@ -135,18 +145,59 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
       itemBuilder: (context, index) {
         final item = items[index];
         final actionable = item.path != null && Routes.isSafeNext(item.path!);
-        return Card(
-          child: ListTile(
-            leading: Icon(
-              item.read ? Icons.notifications_none_rounded : Icons.notifications_rounded,
+        final rowKey = item.id.isEmpty ? 'row-$index' : item.id;
+        final fresh = _seen.add(rowKey);
+        return RiseIn(
+          key: ValueKey<String>('notification-$rowKey'),
+          index: index,
+          animate: fresh,
+          child: Card(
+            child: ListTile(
+              leading: _NotificationIcon(read: item.read),
+              title: Text(item.title.isEmpty ? 'Update' : item.title),
+              subtitle: Text(item.body),
+              trailing: actionable ? const Icon(Icons.chevron_right_rounded) : null,
+              onTap: actionable ? () => _open(item) : null,
             ),
-            title: Text(item.title.isEmpty ? 'Update' : item.title),
-            subtitle: Text(item.body),
-            trailing: actionable ? const Icon(Icons.chevron_right_rounded) : null,
-            onTap: actionable ? () => _open(item) : null,
           ),
         );
       },
+    );
+  }
+}
+
+/// The bell; an unread one wears a pulsing orange dot (still with reduced motion).
+class _NotificationIcon extends StatelessWidget {
+  const _NotificationIcon({required this.read});
+
+  final bool read;
+
+  @override
+  Widget build(BuildContext context) {
+    final bell = Icon(
+      read ? Icons.notifications_none_rounded : Icons.notifications_rounded,
+    );
+    if (read) return bell;
+    return SizedBox(
+      width: 32,
+      height: 32,
+      child: Stack(
+        clipBehavior: Clip.none,
+        alignment: Alignment.center,
+        children: [
+          bell,
+          const Positioned(
+            top: -6,
+            right: -8,
+            child: PulseDot(
+              key: ValueKey<String>('unread-pulse'),
+              color: HfColors.deepOrange,
+              size: 9,
+              semanticLabel: 'Unread',
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

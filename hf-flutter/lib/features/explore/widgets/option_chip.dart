@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../core/theme/hf_theme.dart';
+import 'browse_motion.dart';
 
 /// A choice chip for the filter sheet and the lane tabs. Like the shared `HfChip`, but a long label
 /// (some topics are a whole sentence) wraps onto a second line instead of running off the screen.
@@ -30,7 +31,7 @@ class OptionChip extends StatelessWidget {
       selected: selected,
       label: label,
       excludeSemantics: true,
-      child: ConstrainedBox(
+      child: TapBounce(child: ConstrainedBox(
         constraints: BoxConstraints(
           maxWidth: maxWidth,
           minHeight: HfSpacing.tap,
@@ -74,7 +75,7 @@ class OptionChip extends StatelessWidget {
             ),
           ),
         ),
-      ),
+      )),
     );
   }
 }

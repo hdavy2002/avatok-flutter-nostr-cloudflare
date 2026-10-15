@@ -14,6 +14,7 @@ import '../../home/ui/home_copy.dart';
 import '../../notifications/data/notifications_api.dart';
 import '../data/host_filters.dart';
 import '../data/host_options.dart';
+import '../widgets/browse_motion.dart';
 import 'explore_copy.dart';
 
 /// The top of Discover (mockup `Main`, dark: `HomeDark`): greeting, the question, the wallet pill, the search
@@ -228,7 +229,7 @@ class DiscoveryHeader extends ConsumerWidget {
               onApply(filters.copyWith(topics: const <String>[]));
             }
 
-            return allSelected
+            return TapBounce(child: allSelected
                 ? HfChip.dark(
                     key: const ValueKey<String>('mood-all'),
                     label: ExploreCopy.allMoods,
@@ -238,7 +239,7 @@ class DiscoveryHeader extends ConsumerWidget {
                     key: const ValueKey<String>('mood-all'),
                     label: ExploreCopy.allMoods,
                     onTap: resetMoods,
-                  );
+                  ));
           }
           final g = groups[i - 1];
           final tint = _moodTints[(i - 1) % _moodTints.length];
@@ -253,7 +254,7 @@ class DiscoveryHeader extends ConsumerWidget {
           }
 
           final key = ValueKey<String>('mood-${g.slug}');
-          return picked
+          return TapBounce(child: picked
               ? HfChip.selected(
                   key: key,
                   label: g.label,
@@ -265,7 +266,7 @@ class DiscoveryHeader extends ConsumerWidget {
                   label: g.label,
                   tint: tint,
                   onTap: onTap,
-                );
+                ));
         },
       ),
     );

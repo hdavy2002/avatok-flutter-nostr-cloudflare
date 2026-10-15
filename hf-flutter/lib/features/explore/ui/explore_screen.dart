@@ -20,6 +20,7 @@ import '../data/host_card.dart';
 import '../data/host_filters.dart';
 import '../data/host_options.dart';
 import '../data/hosts_repository.dart';
+import '../widgets/browse_motion.dart';
 import '../widgets/host_card_view.dart';
 import 'explore_copy.dart';
 import 'filter_sheet.dart';
@@ -211,19 +212,23 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
         bottom: false,
         child: RefreshIndicator(
           onRefresh: _refresh,
+          color: HfColors.deepOrange,
+          backgroundColor: HfColors.butter,
           child: CustomScrollView(
             controller: _scroll,
             physics: const AlwaysScrollableScrollPhysics(),
             slivers: [
               SliverToBoxAdapter(
-                child: DiscoveryHeader(
-                  filters: f,
-                  options: options,
-                  search: _search,
-                  onSearch: _searchHosts,
-                  onFilters: () => _openFilters(f),
-                  onApply: _chooseFilters,
-                  showListTitle: false,
+                child: WarmHeaderGlow(
+                  child: DiscoveryHeader(
+                    filters: f,
+                    options: options,
+                    search: _search,
+                    onSearch: _searchHosts,
+                    onFilters: () => _openFilters(f),
+                    onApply: _chooseFilters,
+                    showListTitle: false,
+                  ),
                 ),
               ),
               if (st.status == ExploreStatus.ready && st.showSavedPill)
@@ -573,12 +578,17 @@ class _DiscoveryActionCard extends StatelessWidget {
 }
 
 class _SectionTitle extends StatelessWidget {
-  const _SectionTitle({required this.title, this.onSeeAll});
+  const _SectionTitle({required this.title, this.onSeeAll, this.live = false});
   final String title;
   final VoidCallback? onSeeAll;
 
+  /// "Online now": a pulsing dot before the title (still with reduced motion).
+  final bool live;
+
   @override
   Widget build(BuildContext context) => Row(children: [
+    if (live) const PulseDot(key: ValueKey<String>('online-now-pulse'), size: 10),
+    if (live) const SizedBox(width: 2),
     Expanded(child: Text(title, style: HfText.section.copyWith(color: HfExploreStyle.of(context).ink))),
     if (onSeeAll != null) TextButton(key: ValueKey('see-all-$title'), onPressed: onSeeAll, child: const Text('See all')),
   ]);
@@ -596,6 +606,7 @@ class _ServerHostRail extends ConsumerWidget {
     final page = ref.watch(marketplaceSectionProvider(location));
     return _HostRail(
       title: title,
+      live: filters.online,
       hosts: page.asData?.value.items ?? const [],
       from: from,
       lane: filters.lane,
@@ -616,9 +627,11 @@ class _HostRail extends StatelessWidget {
     required this.onSeeAll,
     required this.empty,
     this.lane,
+    this.live = false,
   });
 
   final String title;
+  final bool live;
   final List<HostCard> hosts;
   final String from;
   final String? lane;
@@ -636,7 +649,12 @@ class _HostRail extends StatelessWidget {
             padding: const EdgeInsets.symmetric(
               horizontal: HfSpacing.pageWide,
             ),
-            child: _SectionTitle(title: title, onSeeAll: onSeeAll),
+            // The dot pulses only when someone is actually online in this row.
+            child: _SectionTitle(
+              title: title,
+              onSeeAll: onSeeAll,
+              live: live && hosts.isNotEmpty,
+            ),
           ),
           const SizedBox(height: HfSpacing.sm),
           if (hosts.isEmpty)
@@ -691,14 +709,20 @@ class _HostCarousel extends StatelessWidget {
           children: [
             for (var i = 0; i < hosts.length; i++) ...[
               if (i > 0) const SizedBox(width: 16),
-              SizedBox(
-                width: width,
-                child: HostCardView(
-                  key: ValueKey(hosts[i].slug),
-                  host: hosts[i],
-                  topicLabels: labels,
-                  from: from,
-                  lane: lane,
+              // Rises in once, the first time this host appears in this row (keyed by slug, so
+              // rebuilds, refreshes and scrolling do not replay it).
+              RiseIn(
+                key: ValueKey('rise-${hosts[i].slug}'),
+                index: i,
+                child: SizedBox(
+                  width: width,
+                  child: HostCardView(
+                    key: ValueKey(hosts[i].slug),
+                    host: hosts[i],
+                    topicLabels: labels,
+                    from: from,
+                    lane: lane,
+                  ),
                 ),
               ),
             ],

@@ -10847,5 +10847,12 @@
     "min_devices_on_build": 1,
     "flags": [],
     "no_telemetry": "Shared UI building blocks and a font switch only: no new screen, route, API call or user action, so there is no event to emit. The screens that adopt the kit (HF-MOTION-2+) carry their own telemetry. Verified by the hf-flutter.yml check run (widget tests + the motion-kit design review capture)."
+  },
+  "HF-MOTION-B": {
+    "description": "[HF-MOTION-B 2026-10-15] Native app (hf-flutter/) browse screens come alive with the HF-MOTION-1 kit: Explore/Home host cards rise in with a stagger on first appearance only (keyed by slug, no replay on rebuild/scroll/refresh), the Online now row title carries a PulseDot when someone is online, mood and option chips bounce on press, a warm sun glow sits behind the header, pull-to-refresh is deep orange on butter. Host profile: warm banded sun behind the photo with a soft orange glow at its foot, live primary bars and a moving waveform while the voice intro plays (only then), the online Call button breathes with a soft glow pulse and a slow shine, sections reveal in a stagger on first load. Notifications: rows slide/fade in once, unread rows wear a pulsing dot, warm pull-to-refresh. Shared state panels (core/widgets/state_panels.dart): loading uses HfLoader dots, empty shows the sleepy beaver with the message in a SpeechBubble, error shows the oops beaver with the same message and Try again; public APIs, copy and retry unchanged. Reduced motion shows the final state everywhere. No routing, API, telemetry or money change.",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [],
+    "no_telemetry": "Visual motion only on existing screens: no new screen, route, API call or user action, so there is no new event; existing Explore/profile/notification telemetry is unchanged. Verified by the hf-flutter.yml check run (widget tests incl. reduced-motion and 320 px / 2x text layouts, plus the browse-motion review captures)."
   }
 }
