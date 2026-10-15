@@ -124,3 +124,6 @@ html{font-size:16px;scroll-padding-top:var(--hfh-header-offset,130px)}
 .hfh-reference-page .notebook-site .hfh-photo-caption strong{font-family:HomeNunito,Nunito,sans-serif!important;font-weight:800}
 .hfh-step-art{aspect-ratio:1.5;object-fit:contain!important;background:#f5eee5}
 @media(max-width:359px){.hfh-card-footer{flex-wrap:wrap}.hfh-card-footer .hfh-book{flex-basis:100%}}
+
+/* [HF-INFLUENCER-PIVOT-6] Long words such as "influencers" may wrap at 320px / 200% text instead of overflowing. */
+.hfh-reference-page .hfh-section-heading h2{overflow-wrap:anywhere}
