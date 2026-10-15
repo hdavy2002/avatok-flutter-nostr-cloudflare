@@ -10861,5 +10861,12 @@
     "min_devices_on_build": 1,
     "flags": [],
     "no_telemetry": "Animation-only change on existing screens: no new route, API call, user action or decision, so there is no event to emit; the existing call, review and purchase telemetry is untouched. Verified by the hf-flutter.yml check run (widget tests incl. test/call_wallet_motion_review_test.dart and the callwallet-*.png captures)."
+  },
+  "HF-MOTION-A": {
+    "description": "[HF-MOTION-A 2026-10-15] Native app (hf-flutter/) onboarding brought to life with the HF-MOTION-1 kit. Splash: the sun hill rises while the beaver waves up from behind it under the brand mark (decoration only; routing still starts the moment boot restoration is ready, no added delay). Intro (3 pages): the beaver guide (wave, point, thumbs) says each page's existing note in a speech bubble over a sunshine-to-orange blob that drifts between pages, copy reveals in a stagger, page dots stretch into a pill, horizontal swipe moves a page. Sign-in / OTP / complete profile: warm cream sky with a low sun hill (light mode), small beaver guide with the step's existing subtitle in a bubble (oops pose on errors), OTP digits pop in, a verified code shows a self-drawing tick with a confetti puff and a thumbs-up beaver while navigation continues immediately (nothing waits for the animation). Welcome (18+ rules): namaste beaver with the existing intro line in a bubble on a sun hill, each rule's tick draws itself with a small sparkle while the beaver nods, ticking the required box fires confetti and the beaver celebrates, Continue warms with a fill sweep; Tele-MANAS/112 crisis info unchanged and never hidden. Reduced motion shows every final state at once. No routing, API, copy-meaning or telemetry change.",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [],
+    "no_telemetry": "Visual motion only on existing screens: no new route, API call, user action or event; the existing hf_app_intro_viewed / hf_app_intro_completed / hf_app_welcome_accepted / sign-in events are unchanged (a swipe fires the same hf_app_intro_viewed page view as the Next button). Verified by the hf-flutter.yml check run (widget tests incl. reduced-motion and navigation-not-delayed tests, plus onboarding-*.png review captures)."
   }
 }

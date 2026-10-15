@@ -1,9 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'dart:async';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:hf_app/core/auth/clerk_client.dart';
+import 'package:hf_app/core/boot.dart';
+import 'package:hf_app/core/theme/hf_theme.dart';
+import 'package:hf_app/core/widgets/widgets.dart';
 import 'package:hf_app/core/router/deep_link_handler.dart';
 import 'package:hf_app/core/storage/account_storage.dart';
 import 'package:hf_app/features/splash/ui/splash_screen.dart';
@@ -145,5 +150,64 @@ void main() {
       tester.element(find.text('EXPLORE PAGE')),
     );
     expect(container.read(bootDoneProvider), isTrue);
+  });
+
+  group('HF-MOTION-A motion', () {
+    const beaverKey = ValueKey<String>('splash-beaver');
+
+    Future<void> pumpHeldSplash(WidgetTester tester) async {
+      // Boot never finishes, so the splash stays on screen.
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            appBootProvider.overrideWith((ref) => Completer<void>().future),
+          ],
+          child: MaterialApp(theme: buildHfTheme(), home: const SplashScreen()),
+        ),
+      );
+    }
+
+    double beaverBottom(WidgetTester tester) =>
+        tester.widget<Positioned>(find.byKey(beaverKey)).bottom!;
+
+    testWidgets('the hill rises and the beaver waves up from behind it', (
+      tester,
+    ) async {
+      await pumpHeldSplash(tester);
+      expect(find.byType(HfBrandMark), findsOneWidget);
+      expect(
+        tester.widget<BeaverGuide>(find.byType(BeaverGuide)).pose,
+        BeaverPose.wave,
+      );
+      final start = beaverBottom(tester);
+      await tester.pump(SplashScreen.riseDuration);
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(beaverBottom(tester), greaterThan(start));
+    });
+
+    testWidgets('reduced motion shows the risen hill and beaver at once', (
+      tester,
+    ) async {
+      tester.platformDispatcher.accessibilityFeaturesTestValue =
+          const FakeAccessibilityFeatures(disableAnimations: true);
+      addTearDown(
+        tester.platformDispatcher.clearAccessibilityFeaturesTestValue,
+      );
+      await pumpHeldSplash(tester);
+      final first = beaverBottom(tester);
+      await tester.pump(SplashScreen.riseDuration);
+      expect(beaverBottom(tester), first, reason: 'already at the final place');
+      expect(first, greaterThan(0));
+    });
+
+    testWidgets('routing never waits for the rise to finish', (tester) async {
+      SharedPreferences.setMockInitialValues({
+        AckService.storageKey: '2026-10-10',
+      });
+      await pumpRouter(tester, splashRouter(), api: configApi());
+      // pumpRouter plus these frames is about 360 ms, well under the 1.1 s rise.
+      await settle(tester, 6);
+      expect(find.text('EXPLORE PAGE'), findsOneWidget);
+    });
   });
 }

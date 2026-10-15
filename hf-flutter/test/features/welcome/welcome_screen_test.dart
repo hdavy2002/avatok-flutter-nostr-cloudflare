@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import 'package:hf_app/core/api/api_error.dart';
 import 'package:hf_app/core/brand.dart';
 import 'package:hf_app/core/links.dart';
+import 'package:hf_app/core/motion/motion.dart';
 import 'package:hf_app/core/router/deep_link_handler.dart';
 import 'package:hf_app/features/welcome/data/ack_service.dart';
 import 'package:hf_app/features/welcome/ui/welcome_screen.dart';
@@ -302,5 +303,74 @@ void main() {
       WelcomeCopy.tick,
       startsWith('I understand ${Brand.name} is friendly conversation'),
     );
+  });
+
+  group('HF-MOTION-A motion', () {
+    const beaverKey = ValueKey<String>('welcome-beaver');
+    const fillKey = ValueKey<String>('welcome-continue-fill');
+
+    BeaverPose pose(WidgetTester tester) =>
+        tester.widget<BeaverGuide>(find.byKey(beaverKey)).pose;
+    double fill(WidgetTester tester) =>
+        tester.widget<FractionallySizedBox>(find.byKey(fillKey)).widthFactor!;
+
+    testWidgets('the beaver says the welcome line and nods while the rule ticks draw', (
+      tester,
+    ) async {
+      await pumpRouter(tester, welcomeRouter(), api: FakeApiClient());
+      expect(find.text(WelcomeCopy.intro), findsOneWidget);
+      expect(pose(tester), BeaverPose.nod);
+      for (var i = 0; i < 3; i++) {
+        expect(
+          find.byKey(ValueKey<String>('welcome-rule-tick-$i')),
+          findsOneWidget,
+        );
+      }
+      await tester.pumpAndSettle();
+      expect(pose(tester), BeaverPose.namaste);
+    });
+
+    testWidgets('ticking fires confetti, the beaver celebrates and Continue fills', (
+      tester,
+    ) async {
+      await pumpRouter(tester, welcomeRouter(), api: FakeApiClient());
+      await tester.pumpAndSettle();
+      expect(fill(tester), 0);
+      await reveal(tester, find.byKey(_tickKey));
+      await tester.tap(find.byKey(_tickKey));
+      await tester.pump();
+      expect(find.byKey(ConfettiBurst.paintKey), findsOneWidget);
+      expect(pose(tester), BeaverPose.celebrate);
+      await tester.pumpAndSettle();
+      expect(fill(tester), 1);
+      expect(continueEnabled(tester), isTrue);
+      await reveal(tester, find.byKey(_tickKey));
+      await tester.tap(find.byKey(_tickKey));
+      await tester.pumpAndSettle();
+      expect(pose(tester), BeaverPose.namaste);
+      expect(fill(tester), 0);
+    });
+
+    testWidgets('reduced motion: crisis lines and ticks at once, no confetti, instant fill', (
+      tester,
+    ) async {
+      tester.platformDispatcher.accessibilityFeaturesTestValue =
+          const FakeAccessibilityFeatures(disableAnimations: true);
+      addTearDown(
+        tester.platformDispatcher.clearAccessibilityFeaturesTestValue,
+      );
+      await pumpRouter(tester, welcomeRouter(), api: FakeApiClient());
+      expect(pose(tester), BeaverPose.namaste);
+      await reveal(tester, find.text('Tele-MANAS 14416'));
+      expect(find.text('Tele-MANAS 14416'), findsOneWidget);
+      expect(find.text('Emergency 112'), findsOneWidget);
+      await reveal(tester, find.byKey(_tickKey));
+      await tester.tap(find.byKey(_tickKey));
+      await tester.pump();
+      expect(find.byKey(ConfettiBurst.paintKey), findsNothing);
+      expect(pose(tester), BeaverPose.celebrate);
+      await tester.pump();
+      expect(fill(tester), 1);
+    });
   });
 }

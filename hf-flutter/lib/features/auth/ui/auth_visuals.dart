@@ -2,6 +2,7 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 
+import '../../../core/motion/motion.dart';
 import '../../../core/theme/hf_theme.dart';
 
 enum AuthPhotoKind {
@@ -41,10 +42,7 @@ class AuthViewport extends StatelessWidget {
   final Widget child;
 
   @override
-  Widget build(BuildContext context) => DecoratedBox(
-    decoration: BoxDecoration(
-      color: HfBrightness.isDark(context) ? HfColors.darkBg : HfColors.page,
-    ),
+  Widget build(BuildContext context) => AuthBackdrop(
     child: SafeArea(
       child: LayoutBuilder(
         builder: (context, constraints) => Center(
@@ -162,6 +160,7 @@ class AuthIdentityHero extends StatelessWidget {
     required this.photo,
     this.photoHeight = 188,
     this.sticker,
+    this.guide,
   });
 
   final String title;
@@ -170,13 +169,19 @@ class AuthIdentityHero extends StatelessWidget {
   final double photoHeight;
   final Widget? sticker;
 
+  /// When set, the beaver guide (in this pose) says [subtitle] in a speech bubble instead of a plain line.
+  final BeaverPose? guide;
+
   @override
   Widget build(BuildContext context) => Column(
     crossAxisAlignment: CrossAxisAlignment.stretch,
     children: [
       Text(title, textAlign: TextAlign.center, style: HfText.of(context, HfText.headline)),
       const SizedBox(height: 6),
-      Text(subtitle, textAlign: TextAlign.center, style: HfText.of(context, HfText.note)),
+      if (guide case final pose?)
+        AuthGuide(pose: pose, message: subtitle)
+      else
+        Text(subtitle, textAlign: TextAlign.center, style: HfText.of(context, HfText.note)),
       const SizedBox(height: 14),
       AuthPhoto(kind: photo, height: photoHeight, sticker: sticker),
       const SizedBox(height: 14),
@@ -274,4 +279,83 @@ class AuthCallout extends StatelessWidget {
       ],
     ),
   );
+}
+
+/// Calm warm page behind the auth screens (HF-MOTION-A): the cream-to-butter sky with a low sun hill. In dark
+/// mode the plain dark page stays (light text on the orange hill would be hard to read).
+class AuthBackdrop extends StatelessWidget {
+  const AuthBackdrop({super.key, required this.child});
+
+  /// Hill height as a fraction of the screen. Low, so form text never sits on it for long.
+  static const double rise = 0.07;
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    if (HfBrightness.isDark(context)) {
+      return ColoredBox(color: HfColors.darkBg, child: child);
+    }
+    return SunHill(riseFrom: 0, riseTo: rise, child: child);
+  }
+}
+
+/// The small beaver guide at the top of an auth step, with [message] in its speech bubble. The bubble sits
+/// beside the beaver when there is room, above it on narrow screens or with large text.
+class AuthGuide extends StatelessWidget {
+  const AuthGuide({super.key, required this.pose, required this.message, this.size = 88});
+
+  /// Key of the guide (for tests).
+  static const Key guideKey = ValueKey<String>('auth-guide');
+
+  final BeaverPose pose;
+  final String message;
+  final double size;
+
+  @override
+  Widget build(BuildContext context) {
+    final scale = MediaQuery.textScalerOf(context).scale(1);
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final beside = constraints.maxWidth - size >= 180 * scale;
+        return Align(
+          alignment: beside ? Alignment.centerLeft : Alignment.center,
+          child: BeaverGuide(
+            key: guideKey,
+            pose: pose,
+            size: size,
+            message: message,
+            bubbleSide: beside ? BeaverBubbleSide.beside : BeaverBubbleSide.above,
+          ),
+        );
+      },
+    );
+  }
+}
+
+/// Verified! A tick that draws itself with a small confetti puff, over a soft cream veil. Decoration only:
+/// it never takes touches and navigation never waits for it.
+class AuthSuccessBurst extends StatelessWidget {
+  const AuthSuccessBurst({super.key});
+
+  /// Key of the burst (for tests).
+  static const Key burstKey = ValueKey<String>('auth-success');
+
+  @override
+  Widget build(BuildContext context) {
+    final dark = HfBrightness.isDark(context);
+    return IgnorePointer(
+      child: ColoredBox(
+        color: (dark ? HfColors.darkBg : HfColors.page).withValues(alpha: 0.72),
+        child: const Center(
+          child: DrawnCheck(
+            key: burstKey,
+            size: 104,
+            confetti: true,
+            semanticLabel: 'Verified',
+          ),
+        ),
+      ),
+    );
+  }
 }

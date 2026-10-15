@@ -12,6 +12,7 @@ import 'package:hf_app/core/router/routes.dart';
 import 'package:hf_app/core/router/startup_navigation.dart';
 import 'package:hf_app/core/storage/secure_store.dart';
 import 'package:hf_app/core/theme/hf_theme.dart';
+import 'package:hf_app/core/widgets/widgets.dart';
 import 'package:hf_app/features/call/data/call_api.dart';
 import 'package:hf_app/features/intro/ui/intro_screen.dart';
 
@@ -193,4 +194,58 @@ void main() {
       }
     });
   }
+
+  group('HF-MOTION-A motion', () {
+    BeaverPose pose(WidgetTester tester) => tester
+        .widget<BeaverGuide>(find.byKey(const ValueKey('intro-beaver')))
+        .pose;
+    double pillWidth(WidgetTester tester, int i) =>
+        tester.getSize(find.byKey(ValueKey('intro-dot-pill-$i'))).width;
+
+    testWidgets('the beaver guides each page (wave, point, thumbs) and the active dot is a pill', (tester) async {
+      await pumpIntro(tester);
+      expect(pose(tester), BeaverPose.wave);
+      expect(find.text('Your language. Your mood. Your choice.'), findsOneWidget);
+      expect(pillWidth(tester, 0), greaterThan(pillWidth(tester, 1)));
+      await tapIntro(tester, 'intro-next');
+      expect(pose(tester), BeaverPose.point);
+      expect(pillWidth(tester, 1), greaterThan(pillWidth(tester, 0)));
+      await tapIntro(tester, 'intro-next');
+      expect(pose(tester), BeaverPose.thumbs);
+      expect(pillWidth(tester, 2), greaterThan(pillWidth(tester, 1)));
+      expect(find.byKey(const ValueKey('intro-blob')), findsOneWidget);
+    });
+
+    testWidgets('a horizontal swipe moves one page either way and never completes the intro', (tester) async {
+      final c = await pumpIntro(tester);
+      final title = find.text('Find the right person to talk to');
+      await tester.fling(title, const Offset(-300, 0), 1200);
+      await tester.pumpAndSettle();
+      expect(find.text('Page 2 of 3'), findsOneWidget);
+      await tester.fling(find.text('Listen before you connect'), const Offset(300, 0), 1200);
+      await tester.pumpAndSettle();
+      expect(find.text('Page 1 of 3'), findsOneWidget);
+      await tapIntro(tester, 'intro-next');
+      await tapIntro(tester, 'intro-next');
+      await tester.fling(find.text('Explore freely'), const Offset(-300, 0), 1200);
+      await tester.pumpAndSettle();
+      expect(find.text('Page 3 of 3'), findsOneWidget);
+      expect(c.read(bootDoneProvider), isFalse);
+    });
+
+    testWidgets('reduced motion shows every page in its final state at once', (tester) async {
+      tester.platformDispatcher.accessibilityFeaturesTestValue =
+          const FakeAccessibilityFeatures(disableAnimations: true);
+      addTearDown(tester.platformDispatcher.clearAccessibilityFeaturesTestValue);
+      await pumpIntro(tester);
+      await tapIntro(tester, 'intro-next');
+      // No fade or rise wraps the copy, and the whole bubble is readable straight away.
+      final heading = find.text('Listen before you connect');
+      expect(find.ancestor(of: heading, matching: find.byType(Opacity)), findsNothing);
+      final bubble = tester.widget<Text>(find.byKey(SpeechBubble.textKey));
+      final shown = (bubble.textSpan! as TextSpan).children!.first as TextSpan;
+      expect(shown.text, 'You are charged only while connected.');
+      expect(pillWidth(tester, 1), greaterThan(pillWidth(tester, 0)));
+    });
+  });
 }

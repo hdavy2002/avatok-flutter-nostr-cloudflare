@@ -60,18 +60,50 @@ class WelcomeScreen extends ConsumerStatefulWidget {
 }
 
 class _WelcomeScreenState extends ConsumerState<WelcomeScreen>
-    with SingleTickerProviderStateMixin {
+    with TickerProviderStateMixin {
   /// Each rule row fades and slides in over 220 ms, 120 ms after the one before it.
   static const int _rowMs = 220;
   static const int _gapMs = 120;
   static const int _totalMs = _rowMs + 2 * _gapMs;
 
+  /// After the rows are in, each rule's tick draws itself (500 ms), 350 ms after the one before it.
+  static const int _tickStartMs = _totalMs + 150;
+  static const int _tickGapMs = 350;
+  static const int _tickMs = 500;
+  static const int _ticksTotalMs = _tickStartMs + 2 * _tickGapMs + _tickMs;
+
   late final AnimationController _intro;
+
+  /// Runs while the rule ticks draw; the beaver nods along, then goes back to namaste.
+  late final AnimationController _ticks;
+  final ConfettiController _confetti = ConfettiController();
 
   @override
   void initState() {
     super.initState();
     _intro = AnimationController(vsync: this);
+    _ticks = AnimationController(vsync: this)
+      ..addStatusListener((_) {
+        if (mounted) setState(() {});
+      });
+  }
+
+  /// Namaste to greet, nod while the rule ticks draw, celebrate once the person has ticked.
+  BeaverPose get _pose => _ticked
+      ? BeaverPose.celebrate
+      : _ticks.isAnimating
+      ? BeaverPose.nod
+      : BeaverPose.namaste;
+
+  /// Starts rule [i]'s tick after the rows are in (zero with reduced motion).
+  Duration _tickDelay(int i) => HfMotion.of(
+    context,
+    Duration(milliseconds: _tickStartMs + i * _tickGapMs),
+  );
+
+  void _onTick(bool value) {
+    setState(() => _ticked = value);
+    if (value) _confetti.fire();
   }
 
   bool _introStarted = false;
@@ -88,15 +120,20 @@ class _WelcomeScreenState extends ConsumerState<WelcomeScreen>
     final d = HfMotion.of(context, const Duration(milliseconds: _totalMs));
     if (d == Duration.zero) {
       _intro.value = 1;
+      _ticks.value = 1;
     } else {
       _intro.duration = d;
       _intro.forward();
+      _ticks.duration = const Duration(milliseconds: _ticksTotalMs);
+      _ticks.forward();
     }
   }
 
   @override
   void dispose() {
     _intro.dispose();
+    _ticks.dispose();
+    _confetti.dispose();
     super.dispose();
   }
 
@@ -164,7 +201,10 @@ class _WelcomeScreenState extends ConsumerState<WelcomeScreen>
         }
       },
       child: Scaffold(
-        body: SafeArea(
+        body: ConfettiBurst(
+          controller: _confetti,
+          origin: const Alignment(0, 0.25),
+          child: SafeArea(
           top: false,
           child: CustomScrollView(
             slivers: [
@@ -173,7 +213,7 @@ class _WelcomeScreenState extends ConsumerState<WelcomeScreen>
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    const _ShapeCluster(),
+                    _WelcomeHeader(pose: _pose),
                     Padding(
                       padding: const EdgeInsets.symmetric(
                         horizontal: HfSpacing.section,
@@ -196,14 +236,6 @@ class _WelcomeScreenState extends ConsumerState<WelcomeScreen>
                               HfText.hero,
                             ).copyWith(height: 1.12, letterSpacing: 0.3),
                           ),
-                          const SizedBox(height: HfSpacing.lg),
-                          Text(
-                            WelcomeCopy.intro,
-                            style: HfText.of(
-                              context,
-                              HfText.note,
-                            ).copyWith(height: 1.5),
-                          ),
                         ],
                       ),
                     ),
@@ -216,28 +248,43 @@ class _WelcomeScreenState extends ConsumerState<WelcomeScreen>
                         children: [
                           _StaggerIn(
                             animation: _rows[0],
-                            child: const _RuleRow(
+                            child: _RuleRow(
                               tint: HfTint.lavender,
                               icon: Icons.lock_outline_rounded,
-                              child: Text(WelcomeCopy.rule1Title),
+                              tick: _RuleTick(
+                                index: 0,
+                                delay: _tickDelay(0),
+                                progress: _ticks,
+                              ),
+                              child: const Text(WelcomeCopy.rule1Title),
                             ),
                           ),
                           const SizedBox(height: HfSpacing.md),
                           _StaggerIn(
                             animation: _rows[1],
-                            child: const _RuleRow(
+                            child: _RuleRow(
                               tint: HfTint.peach,
                               glyph: '#',
-                              child: Text(WelcomeCopy.rule2Title),
+                              tick: _RuleTick(
+                                index: 1,
+                                delay: _tickDelay(1),
+                                progress: _ticks,
+                              ),
+                              child: const Text(WelcomeCopy.rule2Title),
                             ),
                           ),
                           const SizedBox(height: HfSpacing.md),
                           _StaggerIn(
                             animation: _rows[2],
-                            child: const _RuleRow(
+                            child: _RuleRow(
                               tint: HfTint.sky,
                               icon: Icons.favorite_border_rounded,
-                              child: _CrisisRuleText(),
+                              tick: _RuleTick(
+                                index: 2,
+                                delay: _tickDelay(2),
+                                progress: _ticks,
+                              ),
+                              child: const _CrisisRuleText(),
                             ),
                           ),
                         ],
@@ -264,7 +311,7 @@ class _WelcomeScreenState extends ConsumerState<WelcomeScreen>
                           _AcceptPanel(
                             ticked: _ticked,
                             busy: _busy,
-                            onTick: (v) => setState(() => _ticked = v),
+                            onTick: _onTick,
                             onContinue: _continue,
                           ),
                           if (_error != null) ...[
@@ -288,6 +335,7 @@ class _WelcomeScreenState extends ConsumerState<WelcomeScreen>
               ),
             ],
           ),
+        ),
         ),
       ),
     );
@@ -315,86 +363,154 @@ class _StaggerIn extends StatelessWidget {
   );
 }
 
-/// The pastel picture at the top: five soft shapes, an ink phone circle and a white chip with the masked line.
-/// Coordinates are the mockup's (390 wide); on other widths the cluster stays centred.
-class _ShapeCluster extends StatelessWidget {
-  const _ShapeCluster();
+/// The warm top of the page: a cream sky with a low sun hill, the beaver guide standing on it with the
+/// welcome bubble, and the white chip with the masked line (never a real number).
+class _WelcomeHeader extends StatelessWidget {
+  const _WelcomeHeader({required this.pose});
+
+  final BeaverPose pose;
+
+  /// Height of the hill at the bottom of the header, as a fraction of the header.
+  static const double hill = 0.30;
 
   @override
   Widget build(BuildContext context) {
     final dark = HfBrightness.isDark(context);
-    final dx = (MediaQuery.sizeOf(context).width - 390) / 2;
-    Widget shape(
-      double left,
-      double top,
-      double size,
-      double radius,
-      HfTint tint, [
-      double deg = 0,
-    ]) => Positioned(
-      left: left + dx,
-      top: top,
-      child: Transform.rotate(
-        angle: deg * math.pi / 180,
-        child: Container(
-          width: size,
-          height: size,
-          decoration: BoxDecoration(
-            color: tint.bg(context),
-            borderRadius: BorderRadius.circular(radius),
+    final top = MediaQuery.paddingOf(context).top;
+    final width = MediaQuery.sizeOf(context).width;
+    final beaver = math.min(150.0, width * 0.38);
+    return Stack(
+      children: [
+        Positioned.fill(
+          child: ExcludeSemantics(
+            child: RepaintBoundary(
+              child: CustomPaint(
+                painter: SunHillPainter(
+                  rise: hill,
+                  sky: dark ? HfColors.darkBg : null,
+                ),
+              ),
+            ),
           ),
         ),
-      ),
-    );
-    return ExcludeSemantics(
-      child: ClipRect(
-        child: SizedBox(
-          height: 250,
-          child: Stack(
-            clipBehavior: Clip.none,
+        Padding(
+          padding: EdgeInsets.fromLTRB(
+            HfSpacing.section,
+            top + HfSpacing.lg,
+            HfSpacing.section,
+            0,
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              shape(34, 70, 150, 48, HfTint.lavender, -8),
-              shape(150, 52, 120, 60, HfTint.peach),
-              shape(236, 120, 110, 36, HfTint.sky, 10),
-              shape(118, 150, 76, 38, HfTint.butter),
-              Positioned(
-                left: 76 + dx,
-                top: 108,
-                child: Container(
-                  width: 66,
-                  height: 66,
-                  decoration: BoxDecoration(
-                    color: dark ? HfColors.darkSelected : HfColors.ink,
-                    borderRadius: BorderRadius.circular(22),
-                  ),
-                  child: const Icon(
-                    Icons.phone_outlined,
-                    size: 30,
-                    color: HfColors.white,
+              Align(
+                alignment: Alignment.centerRight,
+                child: ExcludeSemantics(
+                  child: PopIn(
+                    delay: const Duration(milliseconds: 250),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 8,
+                      ),
+                      decoration: BoxDecoration(
+                        color: dark ? HfColors.darkNav : HfColors.white,
+                        borderRadius: BorderRadius.circular(HfRadius.chip),
+                        boxShadow: dark ? null : HfShadows.card,
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            Icons.phone_outlined,
+                            size: 18,
+                            color: dark ? HfColors.darkText : HfColors.ink,
+                          ),
+                          const SizedBox(width: HfSpacing.xs),
+                          Text(
+                            WelcomeCopy.maskedLine,
+                            style: HfText.of(context, HfText.badge),
+                          ),
+                        ],
+                      ),
+                    ),
                   ),
                 ),
               ),
-              Positioned(
-                left: 196 + dx,
-                top: 92,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 12,
-                    vertical: 8,
-                  ),
-                  decoration: BoxDecoration(
-                    color: dark ? HfColors.darkNav : HfColors.white,
-                    borderRadius: BorderRadius.circular(HfRadius.chip),
-                    boxShadow: dark ? null : HfShadows.card,
-                  ),
-                  child: Text(
-                    WelcomeCopy.maskedLine,
-                    style: HfText.of(context, HfText.badge),
-                  ),
+              const SizedBox(height: HfSpacing.sm),
+              Center(
+                child: BeaverGuide(
+                  key: const ValueKey<String>('welcome-beaver'),
+                  pose: pose,
+                  size: beaver,
+                  message: WelcomeCopy.intro,
                 ),
               ),
             ],
           ),
+        ),
+      ],
+    );
+  }
+}
+
+/// A rule's tick: it draws itself in turn after the rows are in, with a tiny sparkle as it lands.
+/// Reduced motion: the finished tick at once, no sparkle.
+class _RuleTick extends StatelessWidget {
+  const _RuleTick({
+    required this.index,
+    required this.delay,
+    required this.progress,
+  });
+
+  final int index;
+  final Duration delay;
+
+  /// The screen's tick timeline (0..1 over [_WelcomeScreenState._ticksTotalMs]).
+  final Animation<double> progress;
+
+  static const double size = 26;
+
+  @override
+  Widget build(BuildContext context) {
+    const total = _WelcomeScreenState._ticksTotalMs;
+    final landsAt =
+        (_WelcomeScreenState._tickStartMs +
+            index * _WelcomeScreenState._tickGapMs +
+            _WelcomeScreenState._tickMs * 0.7) /
+        total;
+    final reduced = hfReduceMotion(context);
+    return ExcludeSemantics(
+      child: SizedBox.square(
+        dimension: size,
+        child: Stack(
+          clipBehavior: Clip.none,
+          alignment: Alignment.center,
+          children: [
+            DrawnCheck(
+              key: ValueKey<String>('welcome-rule-tick-$index'),
+              size: size,
+              delay: delay,
+              duration: const Duration(
+                milliseconds: _WelcomeScreenState._tickMs,
+              ),
+            ),
+            if (!reduced)
+              Positioned(
+                left: -14,
+                top: -14,
+                width: size + 28,
+                height: size + 28,
+                child: IgnorePointer(
+                  child: AnimatedBuilder(
+                    animation: progress,
+                    builder: (context, _) => progress.value >= landsAt
+                        ? const HfLottie(HfLottieAssets.sparkleBurst)
+                        : const SizedBox.shrink(),
+                  ),
+                ),
+              ),
+          ],
         ),
       ),
     );
@@ -408,12 +524,16 @@ class _RuleRow extends StatelessWidget {
     required this.child,
     this.icon,
     this.glyph,
+    this.tick,
   });
 
   final HfTint tint;
   final IconData? icon;
   final String? glyph;
   final Widget child;
+
+  /// Drawn at the end of the row (the rule's self-drawing tick).
+  final Widget? tick;
 
   @override
   Widget build(BuildContext context) {
@@ -453,6 +573,10 @@ class _RuleRow extends StatelessWidget {
               child: child,
             ),
           ),
+          if (tick != null) ...[
+            const SizedBox(width: HfSpacing.md),
+            tick!,
+          ],
         ],
       ),
     );
@@ -602,8 +726,15 @@ class _AcceptPanel extends StatelessWidget {
           enabled: ticked && !busy,
           label: busy ? '${WelcomeCopy.button}, loading' : WelcomeCopy.button,
           excludeSemantics: true,
-          child: FilledButton(
+          child: _WarmFill(
+            on: ticked,
+            child: FilledButton(
             onPressed: ticked && !busy ? onContinue : null,
+            style: FilledButton.styleFrom(
+              backgroundColor: Colors.transparent,
+              disabledBackgroundColor: Colors.transparent,
+              shadowColor: Colors.transparent,
+            ),
             child: busy
                 ? SizedBox(
                     height: 22,
@@ -627,8 +758,59 @@ class _AcceptPanel extends StatelessWidget {
                     ],
                   ),
           ),
+          ),
         ),
       ],
+    );
+  }
+}
+
+/// Behind the Continue button: a muted track that a sunshine-to-deep-orange fill sweeps across, left to
+/// right, when [on] turns true (and back when it turns false). With reduced motion it jumps.
+class _WarmFill extends StatelessWidget {
+  const _WarmFill({required this.on, required this.child});
+
+  final bool on;
+  final Widget child;
+
+  static const Key fillKey = ValueKey<String>('welcome-continue-fill');
+
+  @override
+  Widget build(BuildContext context) {
+    final dark = HfBrightness.isDark(context);
+    final track = Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.12);
+    return TweenAnimationBuilder<double>(
+      tween: Tween<double>(end: on ? 1 : 0),
+      duration: HfMotion.of(context, const Duration(milliseconds: 420)),
+      curve: Curves.easeOutCubic,
+      child: child,
+      builder: (context, t, child) => ClipRRect(
+        borderRadius: BorderRadius.circular(HfRadius.control),
+        child: Stack(
+          children: [
+            Positioned.fill(child: ColoredBox(color: track)),
+            Positioned.fill(
+              child: FractionallySizedBox(
+                key: fillKey,
+                alignment: Alignment.centerLeft,
+                widthFactor: t,
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    gradient: dark
+                        ? const LinearGradient(
+                            colors: [HfColors.primary, HfColors.deepOrange],
+                          )
+                        : const LinearGradient(
+                            colors: [HfColors.sunshine, HfColors.primary],
+                          ),
+                  ),
+                ),
+              ),
+            ),
+            child!,
+          ],
+        ),
+      ),
     );
   }
 }

@@ -67,6 +67,10 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
   bool _emailSelected = true;
   bool _emailBusy = false;
   bool _finishingSignIn = false;
+
+  /// True from a verified code until navigation moves on: the tick and confetti show, the beaver gives a
+  /// thumbs up. Decoration only; navigation never waits for it.
+  bool _celebrating = false;
   RememberedAccounts get _remembered => RememberedAccounts(ref.read(secureStoreProvider));
 
   @override
@@ -153,6 +157,7 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
       });
       return;
     }
+    setState(() => _celebrating = true);
     final account = ref.read(sessionProvider);
     if (account.user != null) {
       try {
@@ -160,8 +165,28 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
           label: account.me?.displayName ?? account.user!.label, phone: _c.e164));
       } catch (_) { /* Remembering a choice never blocks a verified sign-in. */ }
     }
-    await _finishSignIn();
+    await _celebrateAndFinish();
   }
+
+  /// Shows the success tick and carries on at once (no added delay).
+  Future<void> _celebrateAndFinish() async {
+    if (mounted && !_celebrating) setState(() => _celebrating = true);
+    try {
+      await _finishSignIn();
+    } finally {
+      // Still on this screen (for example Welcome was declined and we stayed): put the form back.
+      if (mounted && _celebrating && (ModalRoute.of(context)?.isCurrent ?? false)) {
+        setState(() => _celebrating = false);
+      }
+    }
+  }
+
+  /// The beaver's pose: thumbs up once verified, oops after an error, otherwise calm.
+  BeaverPose get _pose => _celebrating
+      ? BeaverPose.thumbs
+      : _c.error != null
+      ? BeaverPose.oops
+      : BeaverPose.idle;
 
   Future<void> _finishSignIn() async {
     if (!mounted || _finishingSignIn) return;
@@ -237,9 +262,15 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
           },
           child: Scaffold(
             backgroundColor: login ? LoginColors.of(context).background : null,
-            body: login
-                ? LoginViewport(child: _login())
-                : AuthViewport(child: _form(onCode)),
+            body: Stack(
+              fit: StackFit.expand,
+              children: [
+                login
+                    ? LoginViewport(child: _login())
+                    : AuthViewport(child: _form(onCode)),
+                if (_celebrating) const AuthSuccessBurst(),
+              ],
+            ),
           ),
         );
       },
@@ -258,20 +289,23 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
               subtitle: SignInCopy.sentTo(_c.phoneMasked ?? ''),
               photo: AuthPhotoKind.whatsappOtp,
               sticker: const _WhatsAppBadge(),
+              guide: _pose,
             )
           else if (widget.secondNumber)
-            const AuthIdentityHero(
+            AuthIdentityHero(
               title: 'Add your second WhatsApp number',
               subtitle: 'Create a separate account with another WhatsApp number you control.',
               photo: AuthPhotoKind.secondWhatsapp,
               photoHeight: 200,
+              guide: _pose,
             )
           else if (_c.registration)
-            const AuthIdentityHero(
+            AuthIdentityHero(
               title: 'Create your account',
               subtitle: 'Start with a WhatsApp number you control.',
               photo: AuthPhotoKind.whatsappOtp,
               photoHeight: 180,
+              guide: _pose,
             ),
           HfCard(
             child: Column(
@@ -297,7 +331,7 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
     return ListView(
       padding: const EdgeInsets.fromLTRB(24, 28, 24, 100),
       children: [
-        const LoginHero(),
+        LoginHero(pose: _pose),
         LoginMethodSelector(
           email: _emailSelected,
           onChanged: busy ? null : (email) {
@@ -315,7 +349,7 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
               showHeading: false,
               loginEntry: true,
               enabled: !_c.sending && !_c.verifying,
-              onVerified: _finishSignIn,
+              onVerified: _celebrateAndFinish,
               onBusyChanged: (busy) {
                 if (mounted) setState(() => _emailBusy = busy);
               },

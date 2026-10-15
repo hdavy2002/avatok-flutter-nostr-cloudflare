@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 
 import '../../../core/brand.dart';
+import '../../../core/motion/motion.dart';
 import '../../../core/theme/hf_theme.dart';
+import 'auth_visuals.dart';
 
 /// Styling belongs only to the returning-user login entry screen.
 class LoginColors {
@@ -54,8 +56,7 @@ class LoginViewport extends StatelessWidget {
   final Widget child;
 
   @override
-  Widget build(BuildContext context) => ColoredBox(
-    color: LoginColors.of(context).background,
+  Widget build(BuildContext context) => AuthBackdrop(
     child: SafeArea(
       child: LayoutBuilder(
         builder: (context, constraints) => Center(
@@ -71,34 +72,28 @@ class LoginViewport extends StatelessWidget {
 }
 
 class LoginHero extends StatelessWidget {
-  const LoginHero({super.key});
+  const LoginHero({super.key, this.pose = BeaverPose.idle});
+
+  /// The beaver guide's pose: idle, oops after an error, thumbs once verified.
+  final BeaverPose pose;
+
+  /// What the beaver says on the login entry (the screen's own welcome-back line).
+  static const String bubble =
+      'Pick up where you left off. A good conversation is waiting.';
 
   @override
   Widget build(BuildContext context) {
     final colors = LoginColors.of(context);
     return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      Container(
-        padding: const EdgeInsets.all(4),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(28),
-          boxShadow: [
-            BoxShadow(
-              color: colors.dark ? const Color(0x33ABA6C6) : const Color(0x2633291D),
-              blurRadius: 24, offset: const Offset(0, 10)),
-          ],
-        ),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(24),
-          child: AspectRatio(
-            aspectRatio: 3 / 2,
-            child: Image.asset('assets/images/auth/login.webp',
-              fit: BoxFit.contain, alignment: Alignment.topCenter,
-              excludeFromSemantics: true, filterQuality: FilterQuality.high),
-          ),
+      Center(
+        child: BeaverGuide(
+          key: AuthGuide.guideKey,
+          pose: pose,
+          size: 120,
+          message: bubble,
         ),
       ),
-      const SizedBox(height: 22),
+      const SizedBox(height: 18),
       Text(Brand.nameUpper, textAlign: TextAlign.center,
         style: colors.text(16, weight: FontWeight.w700).copyWith(
           color: colors.brand, letterSpacing: 1.3)),
@@ -106,10 +101,6 @@ class LoginHero extends StatelessWidget {
       Text('Welcome back.', textAlign: TextAlign.center,
         style: colors.text(34, weight: FontWeight.w500).copyWith(
           height: 1.12, letterSpacing: -1)),
-      const SizedBox(height: 10),
-      Text('Pick up where you left off.\nA good conversation is waiting.',
-        textAlign: TextAlign.center,
-        style: colors.text(16).copyWith(color: colors.muted, height: 1.5)),
       const SizedBox(height: 22),
     ]);
   }

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../../../core/motion/motion.dart';
 import '../../../core/theme/hf_theme.dart';
 
 /// Six boxes for the WhatsApp code. A real [TextField] (transparent) sits over the boxes, so the number keyboard,
@@ -50,6 +51,7 @@ class CodeBoxes extends StatelessWidget {
                         for (var i = 0; i < length; i++) ...[
                           if (i > 0) const SizedBox(width: gap),
                           _Box(
+                            index: i,
                             width: width,
                             digit: i < text.length ? text[i] : '',
                             active:
@@ -105,12 +107,14 @@ class CodeBoxes extends StatelessWidget {
 
 class _Box extends StatelessWidget {
   const _Box({
+    required this.index,
     required this.width,
     required this.digit,
     required this.active,
     required this.hasError,
   });
 
+  final int index;
   final double width;
   final String digit;
   final bool active;
@@ -135,10 +139,18 @@ class _Box extends StatelessWidget {
         borderRadius: BorderRadius.circular(HfRadius.chip),
         border: Border.all(color: border, width: active || hasError ? 2 : 1),
       ),
-      child: FittedBox(
-        fit: BoxFit.scaleDown,
-        child: Text(digit, style: HfText.of(context, HfText.title)),
-      ),
+      // Each new digit pops in (HF-MOTION-A); reduced motion shows it at once.
+      child: digit.isEmpty
+          ? const SizedBox.shrink()
+          : PopIn(
+              key: ValueKey<String>('code-digit-$index-$digit'),
+              beginScale: 0.55,
+              duration: const Duration(milliseconds: 220),
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Text(digit, style: HfText.of(context, HfText.title)),
+              ),
+            ),
     );
   }
 }

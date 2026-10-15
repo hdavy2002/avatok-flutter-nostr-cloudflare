@@ -175,6 +175,7 @@ class _RegistrationFormState extends ConsumerState<RegistrationForm> {
           _step = _step == 4 ? 2 : _step - 1; _error = null;
         }) : widget.onCancel, step: visualStep),
         AuthIdentityHero(title: title, subtitle: subtitle, photo: photo,
+          guide: _error != null ? BeaverPose.oops : BeaverPose.idle,
           photoHeight: _step == 6 || _step == 7 ? 176 : 188,
           sticker: _step == 4 ? const AuthSticker('Nice to\nmeet you!')
             : _step == 5 ? const AuthSticker('Be\nyou', color: HfColors.blush)

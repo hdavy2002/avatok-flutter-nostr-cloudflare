@@ -6,6 +6,9 @@ import 'package:hf_app/core/widgets/hf_card.dart';
 import 'package:hf_app/core/auth/clerk_client.dart';
 import 'package:hf_app/core/storage/account_storage.dart';
 import 'package:hf_app/features/auth/data/auth_messages.dart';
+import 'package:hf_app/core/motion/motion.dart';
+import 'package:hf_app/features/auth/ui/auth_visuals.dart';
+import 'package:hf_app/features/auth/ui/login_visuals.dart';
 import 'package:hf_app/features/auth/ui/sign_in_screen.dart';
 import 'package:hf_app/features/welcome/data/ack_service.dart';
 import 'package:hf_app/features/welcome/ui/welcome_screen.dart';
@@ -618,6 +621,88 @@ void main() {
         expect(field.hitTestable(), findsOneWidget);
       },
     );
+  });
+
+  group('HF-MOTION-A motion', () {
+    BeaverPose guidePose(WidgetTester tester) => tester
+        .widget<BeaverGuide>(
+          find.byKey(AuthGuide.guideKey, skipOffstage: false),
+        )
+        .pose;
+
+    testWidgets('login: the beaver greets with the welcome-back line', (
+      tester,
+    ) async {
+      await pumpRouter(tester, signInRouter(next: null), api: okApi());
+      expect(find.text(LoginHero.bubble), findsOneWidget);
+      expect(guidePose(tester), BeaverPose.idle);
+      expect(find.byKey(AuthSuccessBurst.burstKey), findsNothing);
+    });
+
+    testWidgets(
+      'a verified code shows the drawn tick and a thumbs up while navigation carries on',
+      (tester) async {
+        // No acceptance yet on this phone or account: sign-in moves straight on to Welcome.
+        SharedPreferences.setMockInitialValues(<String, Object>{});
+        final api = okApi(me: const {'uid': 'user_test'});
+        await pumpRouter(tester, signInRouter(), api: api);
+        await toCodeStep(tester);
+        expect(guidePose(tester), BeaverPose.idle);
+        await enterCode(tester);
+        expect(find.byType(WelcomeScreen), findsOneWidget);
+        expect(
+          find.byKey(AuthSuccessBurst.burstKey, skipOffstage: false),
+          findsOneWidget,
+        );
+        expect(guidePose(tester), BeaverPose.thumbs);
+      },
+    );
+
+    testWidgets('a wrong code turns the beaver to oops with the usual message', (
+      tester,
+    ) async {
+      final api = okApi()
+        ..onError(
+          'POST',
+          _verifyPath,
+          const ApiError(status: 400, code: 'wrong_code'),
+        );
+      await pumpRouter(tester, signInRouter(), api: api);
+      await toCodeStep(tester);
+      await enterCode(tester);
+      expect(find.text(AuthCopy.wrongCode), findsOneWidget);
+      expect(guidePose(tester), BeaverPose.oops);
+      expect(find.byKey(AuthSuccessBurst.burstKey), findsNothing);
+    });
+
+    testWidgets('code digits pop in, and show at once with reduced motion', (
+      tester,
+    ) async {
+      tester.platformDispatcher.accessibilityFeaturesTestValue =
+          const FakeAccessibilityFeatures(disableAnimations: true);
+      addTearDown(
+        tester.platformDispatcher.clearAccessibilityFeaturesTestValue,
+      );
+      final api = okApi();
+      await pumpRouter(tester, signInRouter(), api: api);
+      await toCodeStep(tester);
+      await tester.ensureVisible(find.byKey(_codeKey));
+      await tester.enterText(find.byKey(_codeKey), '12');
+      await tester.pump();
+      expect(find.text('1'), findsOneWidget);
+      expect(
+        find.ancestor(of: find.text('2'), matching: find.byType(PopIn)),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(
+          of: find.ancestor(of: find.text('2'), matching: find.byType(PopIn)),
+          matching: find.byType(ScaleTransition),
+        ),
+        findsNothing,
+        reason: 'reduced motion: the digit is shown at full size at once',
+      );
+    });
   });
 
   testWidgets(
