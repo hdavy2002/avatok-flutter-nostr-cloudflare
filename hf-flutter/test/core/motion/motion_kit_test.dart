@@ -45,13 +45,21 @@ void main() {
   group('assets', () {
     test('every beaver pose has an animated clip and a still', () {
       for (final pose in BeaverPose.values) {
-        expect(File(pose.animatedAsset).existsSync(), isTrue,
-            reason: pose.animatedAsset);
-        expect(File(pose.stillAsset).existsSync(), isTrue,
-            reason: pose.stillAsset);
+        expect(
+          File(pose.animatedAsset).existsSync(),
+          isTrue,
+          reason: pose.animatedAsset,
+        );
+        expect(
+          File(pose.stillAsset).existsSync(),
+          isTrue,
+          reason: pose.stillAsset,
+        );
       }
-      expect(BeaverPose.phoneTalk.animatedAsset,
-          'assets/beaver/beaver_phone_talk.webp');
+      expect(
+        BeaverPose.phoneTalk.animatedAsset,
+        'assets/beaver/beaver_phone_talk.webp',
+      );
       expect(BeaverPose.values, hasLength(12));
     });
 
@@ -66,10 +74,7 @@ void main() {
       await _pump(tester, const BeaverGuide(pose: BeaverPose.wave));
       await tester.pump(const Duration(milliseconds: 600));
       expect(_assetNames(tester), contains(BeaverPose.wave.animatedAsset));
-      expect(
-        _assetNames(tester),
-        isNot(contains(BeaverPose.wave.stillAsset)),
-      );
+      expect(_assetNames(tester), isNot(contains(BeaverPose.wave.stillAsset)));
       expect(
         find.byWidgetPredicate(
           (w) =>
@@ -183,9 +188,7 @@ void main() {
       expect(find.text('42 min'), findsOneWidget);
     });
 
-    testWidgets('reduced motion shows the final value at once', (
-      tester,
-    ) async {
+    testWidgets('reduced motion shows the final value at once', (tester) async {
       await _pump(
         tester,
         CountUpText(value: 10, from: 0, formatter: (v) => '$v'),
@@ -295,11 +298,7 @@ void main() {
     testWidgets('PopIn shows its child unchanged with reduced motion', (
       tester,
     ) async {
-      await _pump(
-        tester,
-        const PopIn(child: Text('Hello')),
-        reduced: true,
-      );
+      await _pump(tester, const PopIn(child: Text('Hello')), reduced: true);
       expect(find.text('Hello'), findsOneWidget);
       expect(
         find.descendant(

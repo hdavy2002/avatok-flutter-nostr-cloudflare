@@ -82,10 +82,7 @@ class _DrawnCheckState extends State<DrawnCheck>
 
   @override
   Widget build(BuildContext context) {
-    final start = motionFraction(
-      widget.delay,
-      widget.delay + widget.duration,
-    );
+    final start = motionFraction(widget.delay, widget.delay + widget.duration);
     Widget check = SizedBox.square(
       dimension: widget.size,
       child: RepaintBoundary(
@@ -137,9 +134,7 @@ class _CheckPainter extends CustomPainter {
         .toDouble();
     if (active <= 0) return;
     final center = size.center(Offset.zero);
-    final circleT = Curves.easeOutBack.transform(
-      math.min(1.0, active / 0.4),
-    );
+    final circleT = Curves.easeOutBack.transform(math.min(1.0, active / 0.4));
     canvas.drawCircle(
       center,
       size.shortestSide / 2 * circleT,

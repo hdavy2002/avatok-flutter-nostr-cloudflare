@@ -123,8 +123,7 @@ class _RibbonPainter extends CustomPainter {
     final length = metric.length;
     final head = length * Curves.easeInOutCubic.transform(v);
     final tailT = stay ? 0.0 : math.max(0.0, (v - 0.35) / 0.65);
-    final tail =
-        length * Curves.easeInCubic.transform(math.min(1.0, tailT));
+    final tail = length * Curves.easeInCubic.transform(math.min(1.0, tailT));
     if (head - tail <= 0.5) return;
     final paint = Paint()
       ..style = PaintingStyle.stroke

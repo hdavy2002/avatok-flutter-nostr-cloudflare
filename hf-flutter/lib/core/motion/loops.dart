@@ -143,7 +143,10 @@ class _PulseDotState extends State<PulseDot>
     );
     final label = widget.semanticLabel;
     if (label == null) return ExcludeSemantics(child: dot);
-    return Semantics(label: label, child: ExcludeSemantics(child: dot));
+    return Semantics(
+      label: label,
+      child: ExcludeSemantics(child: dot),
+    );
   }
 }
 
@@ -177,9 +180,7 @@ class _PulseDotPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(_PulseDotPainter old) =>
-      old.animation != animation ||
-      old.color != color ||
-      old.radius != radius;
+      old.animation != animation || old.color != color || old.radius != radius;
 }
 
 /// Expanding, fading rings around [child] (the calling screen).
@@ -276,9 +277,7 @@ class _RipplePainter extends CustomPainter {
 
   @override
   bool shouldRepaint(_RipplePainter old) =>
-      old.animation != animation ||
-      old.count != count ||
-      old.colors != colors;
+      old.animation != animation || old.count != count || old.colors != colors;
 }
 
 /// Three bouncing dots (primary, sunshine, deep orange) to use instead of a
@@ -313,10 +312,7 @@ class _HfLoaderState extends State<HfLoader>
           height: d * 2.2,
           child: RepaintBoundary(
             child: CustomPaint(
-              painter: _LoaderPainter(
-                animation: running ? loop : null,
-                dot: d,
-              ),
+              painter: _LoaderPainter(animation: running ? loop : null, dot: d),
             ),
           ),
         ),

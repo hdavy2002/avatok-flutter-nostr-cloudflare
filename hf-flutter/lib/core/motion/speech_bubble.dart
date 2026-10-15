@@ -173,9 +173,7 @@ class _BubbleShape extends ShapeBorder {
       SpeechBubbleTail.none => rect,
     };
     final path = Path()
-      ..addRRect(
-        RRect.fromRectAndRadius(body, const Radius.circular(_radius)),
-      );
+      ..addRRect(RRect.fromRectAndRadius(body, const Radius.circular(_radius)));
     switch (tail) {
       case SpeechBubbleTail.bottom:
         final cx = body.center.dx;

@@ -71,7 +71,7 @@ class BeaverGuide extends StatefulWidget {
   final BeaverBubbleSide bubbleSide;
   final bool entrance;
 
-  /// Defaults to "<brand name> beaver".
+  /// Defaults to [defaultSemanticLabel] (the brand name, then "beaver").
   final String? semanticLabel;
 
   /// Default screen-reader label of the beaver image.

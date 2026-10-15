@@ -103,13 +103,10 @@ class SunHillPainter extends CustomPainter {
     canvas.drawPath(
       hill,
       Paint()
-        ..shader = HfGradients.sun.createShader(
-          Rect.fromLTRB(0, crest, w, h),
-        ),
+        ..shader = HfGradients.sun.createShader(Rect.fromLTRB(0, crest, w, h)),
     );
   }
 
   @override
-  bool shouldRepaint(SunHillPainter old) =>
-      old.rise != rise || old.sky != sky;
+  bool shouldRepaint(SunHillPainter old) => old.rise != rise || old.sky != sky;
 }
