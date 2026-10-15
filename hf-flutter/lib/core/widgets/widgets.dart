@@ -1,5 +1,8 @@
-// Shared widgets. `import '.../core/widgets/widgets.dart';` gives a screen all of them.
+// Shared widgets. `import '.../core/widgets/widgets.dart';` gives a screen all of them,
+// plus the motion kit (core/motion/motion.dart).
+export '../motion/motion.dart';
 export 'ai_label.dart';
+export 'hf_brand_mark.dart';
 export 'crisis_strip.dart';
 export 'hf_button.dart';
 export 'hf_card.dart';

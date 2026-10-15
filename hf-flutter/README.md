@@ -17,6 +17,7 @@ lib/core/
   analytics/, config/            PostHog wrapper; /api/config flags
   router/                        routes.dart, deep_links.dart (path table), app_router.dart, tab_shell.dart, nav.dart
   theme/, format/, widgets/      tokens + theme, Money, shared widgets (import widgets/widgets.dart)
+  motion/                        motion kit: beaver guide, confetti, count-up, sun hill... (see motion/README.md)
 lib/features/<x>/ui/             one folder per feature; every route already has a stub screen here
 test/                            core/ (pure), features/ (widget), support/ (FakeApiClient, FakeClerk, app_harness)
 ```
@@ -39,7 +40,7 @@ expect(api.callsTo('GET', '/api/hf/hosts'), hasLength(1));
 
 ## Rules
 
-Nunito headlines and Comfortaa text are bundled. The native design uses off-white pages, white cards with soft
+Nunito (all text) and Comfortaa (the brand wordmark only) are bundled. The native design uses off-white pages, white cards with soft
 shadows, pill controls and mint, sky, lavender, yellow, pink and coral decoration. Dark ink keeps text readable.
 Body text is at least 14 sp; the owner-approved discreet AI avatar disclosure is the only smaller caption.
 Layouts fill the available width, respect large text and safe areas, and keep touch targets at least 48 dp.

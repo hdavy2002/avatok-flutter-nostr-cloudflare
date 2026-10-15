@@ -10840,5 +10840,12 @@
     "min_devices_on_build": 0,
     "flags": [],
     "no_telemetry": "Sender-address change only; verified by reading the From header of a real receipt email after deploy, plus email_outbox provider acceptance. No new behaviour to assert in PostHog."
+  },
+  "HF-MOTION-1": {
+    "description": "[HF-MOTION-1 2026-10-15] Native app (hf-flutter/) shared motion foundation for the screen agents: lib/core/motion/ (BeaverGuide mascot with 12 animated WebP poses + still PNGs, word-by-word SpeechBubble, PopIn, StaggeredReveal, Breathing, PulseDot, RippleRings, HfLoader, CountUpText (display-only, money still through Money), ConfettiBurst/ConfettiController, SunHill, RibbonSweep, DrawnCheck, HfLottie), HfBrandMark (logo2 sticker via kLogoAsset, Comfortaa wordmark), tokens sunshine/deepOrange + HfGradients.sun/sunDeep + HfConfetti.palette, Nunito as the body font (Comfortaa only for the wordmark), lottie package (owner-approved 2026-10-15) and three generated Lottie files (tool/gen_lottie.py). Every widget honours reduced motion (final state at once). No screen uses the kit yet; launcher icon and brand.dart unchanged.",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [],
+    "no_telemetry": "Shared UI building blocks and a font switch only: no new screen, route, API call or user action, so there is no event to emit. The screens that adopt the kit (HF-MOTION-2+) carry their own telemetry. Verified by the hf-flutter.yml check run (widget tests + the motion-kit design review capture)."
   }
 }

@@ -7,9 +7,12 @@ version: 2.0.0+2000
 environment:
   sdk: '>=3.9.0 <4.0.0'
 
-# Seventeen runtime packages, on purpose (spec section 5.1). Left out: google_fonts (fonts are bundled),
-# flutter_local_notifications (the channel is made in Kotlin), dio, intl, image_picker, in_app_update,
-# any code generation. Upgrading a package is its own issue, with pubspec.lock regenerated in CI.
+# Nineteen runtime packages, on purpose (spec section 5.1; the old comment said seventeen but eighteen
+# were listed). The newest, lottie, was owner-approved on 2026-10-15 (HF-MOTION-1) for the mascot and
+# celebration motion; everything else in the motion kit is plain Flutter. Left out: google_fonts (fonts
+# are bundled), flutter_local_notifications (the channel is made in Kotlin), dio, intl, image_picker,
+# in_app_update, any code generation. Upgrading a package is its own issue, with pubspec.lock
+# regenerated in CI.
 dependencies:
   flutter:
     sdk: flutter
@@ -32,6 +35,7 @@ dependencies:
   url_launcher: ^6.3.0               # Custom Tabs, tel:, Play link
   app_links: ^6.3.2                  # App Links + custom scheme
   package_info_plus: ^9.0.1          # version for the update check
+  lottie: ^3.3.1                     # mascot and celebration motion (HF-MOTION-1)
 
 dev_dependencies:
   flutter_test:
@@ -46,6 +50,9 @@ flutter:
     - assets/images/intro/
     - assets/images/auth/
     - assets/images/kyc/
+    - assets/beaver/
+    - assets/brand/
+    - assets/lottie/
 
   fonts:
     - family: Nunito

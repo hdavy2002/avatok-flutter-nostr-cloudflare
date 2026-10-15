@@ -6,6 +6,7 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:hf_app/core/format/money.dart';
 import 'package:hf_app/core/theme/hf_theme.dart';
 import 'package:hf_app/core/widgets/widgets.dart';
 import 'package:hf_app/features/call/data/call_models.dart';
@@ -260,6 +261,72 @@ void main() {
         });
       }
     }
+  }
+
+  // HF-MOTION-1: the motion kit's resting state (reduced motion shows the final frame of everything),
+  // so the owner can see the beaver guide, bubble, sun hill and brand mark together.
+  for (final size in [const Size(320, 640), const Size(425, 916)]) {
+    final label = '${size.width.toInt()}x${size.height.toInt()}';
+    testWidgets('motion kit scene $label', (tester) async {
+      _setSize(tester, size);
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      tester.platformDispatcher.accessibilityFeaturesTestValue =
+          const FakeAccessibilityFeatures(disableAnimations: true);
+      addTearDown(
+        tester.platformDispatcher.clearAccessibilityFeaturesTestValue,
+      );
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: buildHfTheme(),
+          home: Scaffold(
+            body: SunHill(
+              riseTo: 0.36,
+              child: SafeArea(
+                child: Padding(
+                  padding: const EdgeInsets.all(HfSpacing.pageWide),
+                  child: Column(
+                    children: [
+                      const HfBrandMark(size: 72, showWordmark: true),
+                      const Spacer(),
+                      const BeaverGuide(
+                        pose: BeaverPose.wave,
+                        size: 190,
+                        message:
+                            'Namaste! I am your guide. Let me show you around.',
+                      ),
+                      const SizedBox(height: HfSpacing.section),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                        children: [
+                          const DrawnCheck(size: 56),
+                          const HfLoader(),
+                          const PulseDot(size: 12),
+                          CountUpText(
+                            value: 5187,
+                            formatter: (v) => Money.paise(v.round()),
+                            style: HfText.stat,
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      final context = tester.element(find.byType(Scaffold));
+      await tester.runAsync(() async {
+        await precacheImage(AssetImage(BeaverPose.wave.stillAsset), context);
+        await precacheImage(const AssetImage(kLogoAsset), context);
+      });
+      await tester.pump();
+      await tester.pump(const Duration(seconds: 1));
+      expect(tester.takeException(), isNull);
+      await _capture(tester, 'motion-kit-$label');
+    });
   }
 
   const referenceSize = Size(425, 916);

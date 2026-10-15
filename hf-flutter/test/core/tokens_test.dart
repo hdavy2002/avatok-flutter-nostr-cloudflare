@@ -14,6 +14,8 @@ void main() {
     'primary': HfColors.primary,
     'onPrimary': HfColors.onPrimary,
     'white': HfColors.white,
+    'sunshine': HfColors.sunshine,
+    'deepOrange': HfColors.deepOrange,
     'lavender': HfColors.lavender,
     'lavenderInk': HfColors.lavenderInk,
     'lavenderDeep': HfColors.lavenderDeep,
@@ -101,6 +103,19 @@ void main() {
     expect(HfColors.lavender, const Color(0xFFE7E1FF));
     expect(HfColors.darkBg, const Color(0xFF000000));
     expect(HfColors.butterDeep, const Color(0xFF6E4F00));
+    expect(HfColors.sunshine, const Color(0xFFFFC93C));
+    expect(HfColors.deepOrange, const Color(0xFFE8641B));
+  });
+
+  test('motion gradients and the confetti palette use the warm tokens', () {
+    expect(HfGradients.sun.colors, [HfColors.sunshine, HfColors.primary]);
+    expect(HfGradients.sunDeep.colors, [HfColors.primary, HfColors.deepOrange]);
+    expect(HfConfetti.palette, [
+      HfColors.primary,
+      HfColors.sunshine,
+      HfColors.blush,
+      HfColors.lavender,
+    ]);
   });
 
   test('deprecated aliases point at non-green colours', () {

@@ -16,6 +16,12 @@ abstract final class HfColors {
   static const Color onPrimary = Color(0xFF231407);
   static const Color white = Color(0xFFFFFFFF);
 
+  /// Warm yellow: the light end of the sun gradient, confetti and loader dots.
+  static const Color sunshine = Color(0xFFFFC93C);
+
+  /// Deep orange: the dark end of the ribbon gradient and loader dots.
+  static const Color deepOrange = Color(0xFFE8641B);
+
   // ---- Pastel tints: bg, the ink used for big numbers, the deep colour used for icons / pill text ------
   static const Color lavender = Color(0xFFE7E1FF);
   static const Color lavenderInk = Color(0xFF2C2477);
@@ -119,6 +125,8 @@ abstract final class HfColors {
     primary,
     onPrimary,
     white,
+    sunshine,
+    deepOrange,
     lavender,
     lavenderInk,
     lavenderDeep,
@@ -189,6 +197,33 @@ abstract final class HfColors {
   static const Color coral = rose;
   @Deprecated('HF-UI-1: use HfColors.ink (no green in the design)')
   static const Color forest = ink;
+}
+
+/// Warm gradients for the motion kit (sun hill, ribbon, celebration surfaces).
+abstract final class HfGradients {
+  /// Top to bottom: sunshine into the primary orange.
+  static const LinearGradient sun = LinearGradient(
+    begin: Alignment.topCenter,
+    end: Alignment.bottomCenter,
+    colors: [HfColors.sunshine, HfColors.primary],
+  );
+
+  /// Left to right: the primary orange into deep orange.
+  static const LinearGradient sunDeep = LinearGradient(
+    begin: Alignment.centerLeft,
+    end: Alignment.centerRight,
+    colors: [HfColors.primary, HfColors.deepOrange],
+  );
+}
+
+/// Colours of confetti pieces.
+abstract final class HfConfetti {
+  static const List<Color> palette = [
+    HfColors.primary,
+    HfColors.sunshine,
+    HfColors.blush,
+    HfColors.lavender,
+  ];
 }
 
 /// Radii. Cards 32, photo/inner 28, tiles 22/18, controls 20, chips 14, sheets 32.
@@ -289,13 +324,16 @@ abstract final class HfMotion {
       MediaQuery.disableAnimationsOf(context) ? Duration.zero : d;
 }
 
-/// Text styles. Nunito for display, Comfortaa for everything else. Nothing is below 14 sp.
-/// Nunito 900 and Comfortaa 600 are not bundled (see pubspec fonts), so every "900" display style is
-/// declared w800 (ExtraBold) and Comfortaa 600 renders as the nearest bundled weight.
+/// Text styles. Nunito everywhere (owner preference, 2026-10-15); Comfortaa is used only for the brand
+/// wordmark ([wordmark]). Nothing is below 14 sp. Nunito 900 is not bundled (see pubspec fonts), so every
+/// "900" display style is declared w800 (ExtraBold).
 abstract final class HfText {
   /// Font family names.
   static const String displayFamily = 'Nunito';
-  static const String bodyFamily = 'Comfortaa';
+  static const String bodyFamily = 'Nunito';
+
+  /// Brand wordmark only.
+  static const String wordmarkFamily = 'Comfortaa';
 
   /// Smallest allowed font size. A lint-style test walks both themes and fails below this.
   static const double minSize = 14;
@@ -371,7 +409,27 @@ abstract final class HfText {
     color: HfColors.ink,
   );
 
-  // ---- Body (Comfortaa) --------------------------------------------------------------------------------
+  // ---- Brand ---------------------------------------------------------------------------------------------
+  /// Brand wordmark 26/700 in Comfortaa (the only Comfortaa text in the app).
+  static const TextStyle wordmark = TextStyle(
+    fontFamily: wordmarkFamily,
+    fontSize: 26,
+    fontWeight: FontWeight.w700,
+    height: 1.2,
+    letterSpacing: 0.2,
+    color: HfColors.ink,
+  );
+
+  // ---- Body (Nunito) -------------------------------------------------------------------------------------
+  /// Speech bubble text 15/600.
+  static const TextStyle bubble = TextStyle(
+    fontFamily: bodyFamily,
+    fontSize: 15,
+    fontWeight: FontWeight.w600,
+    height: 1.35,
+    color: HfColors.ink,
+  );
+
   /// Paragraph 16/400.
   static const TextStyle body = TextStyle(
     fontFamily: bodyFamily,

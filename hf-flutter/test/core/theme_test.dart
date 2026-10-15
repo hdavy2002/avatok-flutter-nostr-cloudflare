@@ -111,7 +111,7 @@ void main() {
     for (final theme in [buildHfTheme(), buildHfDarkTheme()]) {
       for (final entry in _themeStyles(theme).entries) {
         expect(entry.value!.fontSize, originalSizes[entry.key], reason: entry.key);
-        expect(entry.value!.fontFamily, anyOf('Nunito', 'Comfortaa'));
+        expect(entry.value!.fontFamily, 'Nunito', reason: entry.key);
       }
     }
   });
@@ -149,9 +149,20 @@ void main() {
       HfText.label,
       HfText.button,
       HfText.buttonSmall,
+      HfText.bubble,
+      HfText.wordmark,
     ]) {
       expect(s.fontSize, greaterThanOrEqualTo(HfText.minSize));
     }
+  });
+
+  test('Nunito is the body family; Comfortaa is only the wordmark', () {
+    expect(HfText.bodyFamily, 'Nunito');
+    expect(HfText.displayFamily, 'Nunito');
+    expect(HfText.body.fontFamily, 'Nunito');
+    expect(HfText.bubble.fontFamily, 'Nunito');
+    expect(HfText.wordmark.fontFamily, 'Comfortaa');
+    expect(buildHfTheme().textTheme.bodyMedium!.fontFamily, 'Nunito');
   });
 
   test('HfText.onDark recolours ink and muted only', () {

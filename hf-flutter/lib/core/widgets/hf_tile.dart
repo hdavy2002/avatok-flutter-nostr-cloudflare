@@ -7,7 +7,7 @@ import '../theme/hf_theme.dart';
 /// An optional 36 px white rounded square holds [icon]; [value] is a bold Nunito number or short phrase;
 /// [caption] is a 14 sp line under it (leave it empty for a value-only tile such as a language list).
 /// [compact] is the host-card size (padding 10, value 18); the default is the larger sheet size
-/// (padding 12, value 22). Pass [valueStyle] for a text-only tile (for example Comfortaa 14/700).
+/// (padding 12, value 22). Pass [valueStyle] for a text-only tile (for example Nunito 14/700).
 class HfTile extends StatelessWidget {
   const HfTile({
     super.key,
