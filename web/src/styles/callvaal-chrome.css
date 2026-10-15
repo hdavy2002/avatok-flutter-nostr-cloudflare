@@ -4,6 +4,9 @@
 .notebook-site>.cv-header,.notebook-site>.cv-footer{width:100%}
 .cv-header *,.cv-footer *{box-sizing:border-box;min-width:0}
 .cv-header{position:relative;display:flex;align-items:center;justify-content:space-between;gap:24px;flex-wrap:wrap;padding:28px 0;z-index:30}
+/* [HF-LOGO-1 2026-10-15] Owner: a little shadow under the header, edge to edge (the bar itself is centred, so the
+   ivory fill and shadow are spread to the viewport edges and clipped below). */
+.cv-header{background:#fffdf7f5;box-shadow:0 -100vmax 0 100vmax #fffdf7f5,0 -100vmax 18px calc(100vmax - 4px) #46113e24;clip-path:inset(0 -100vmax -40px)}
 .cv-wordmark{position:relative;display:inline-flex;align-items:center;width:auto;max-width:100%;flex-shrink:0;min-height:44px;line-height:1;text-decoration:none}
 .cv-brand-logo{display:block;height:84px;width:84px;object-fit:contain}
 .cv-footer-brand .cv-wordmark{width:auto}.cv-footer-brand .cv-brand-logo{height:132px;width:132px}

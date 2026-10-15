@@ -4,7 +4,7 @@
 html{font-size:16px;scroll-padding-top:var(--hfh-header-offset,130px)}
 .hfh-reference-page{background:#fffdf7}
 .hfh-reference-page .notebook-site{width:calc(100% - 64px);max-width:1760px;overflow:visible}
-.hfh-reference-page .cv-header[data-home-reference]{position:sticky;top:0;z-index:40;max-width:1560px;padding:15px 0;gap:20px;flex-wrap:wrap;background:#fffdf7f5;backdrop-filter:blur(16px);box-shadow:0 1px 0 #46113e12}
+.hfh-reference-page .cv-header[data-home-reference]{position:sticky;top:0;z-index:40;max-width:1560px;padding:15px 0;gap:20px;flex-wrap:wrap;background:#fffdf7f5;backdrop-filter:blur(16px);box-shadow:0 -100vmax 0 100vmax #fffdf7f5,0 -100vmax 18px calc(100vmax - 4px) #46113e24;clip-path:inset(0 -100vmax -40px)}
 .hfh-reference-page .cv-header .cv-wordmark{width:auto}
 .hfh-reference-page .cv-header .cv-navigation{gap:clamp(20px,2.7vw,48px);font-size:1rem}
 .hfh-reference-page .cv-header .cv-navigation a{font-weight:400}
