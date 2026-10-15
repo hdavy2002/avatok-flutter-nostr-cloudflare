@@ -127,6 +127,8 @@ void main() {
       final gesture = await tester.startGesture(
         tester.getCenter(find.byKey(const Key('chip'))),
       );
+      // The first frame starts the ticker; the next one is 100 ms into the squeeze.
+      await tester.pump();
       await tester.pump(const Duration(milliseconds: 100));
       expect(
         _scaleAbove(tester, find.byKey(const Key('chip'))),
