@@ -76,6 +76,8 @@ Future<_Sheet> _pumpSheet(
   );
   await tester.pump();
   await tester.pump();
+  // HF-MOTION-C: let the sheet's spring and the display-only count-ups settle on their final text.
+  await tester.pump(const Duration(seconds: 1));
   return _Sheet(api, outcomes);
 }
 
@@ -396,6 +398,7 @@ void main() {
     );
     expect(find.text('No internet. Check your connection.'), findsOneWidget);
     await _tapText(tester, 'Try again');
+    await tester.pump(const Duration(seconds: 1));
     expect(find.text('₹12.00/min'), findsOneWidget);
   });
 

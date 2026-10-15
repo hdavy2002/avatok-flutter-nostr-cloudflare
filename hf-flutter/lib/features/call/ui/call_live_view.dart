@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../../core/format/money.dart';
 import '../../../core/theme/hf_theme.dart';
+import '../../../core/widgets/widgets.dart';
 import '../data/call_models.dart';
 import 'call_avatar.dart';
 import 'call_confirm_sheet.dart';
@@ -57,6 +58,7 @@ class CallLiveView extends StatelessWidget {
           _Rings(
             name: info.hostFirstName == 'your host' ? '' : info.hostFirstName,
             pulsing: info.status.isRinging,
+            saidYes: callerRinging,
             photoUrl: photoUrl,
           ),
           const SizedBox(height: HfSpacing.xl),
@@ -84,10 +86,8 @@ class CallLiveView extends StatelessWidget {
                 ),
                 if (connected) ...[
                   const SizedBox(height: HfSpacing.md),
-                  Text(
-                    Money.clock(elapsedSeconds),
-                    key: const ValueKey<String>('call-clock'),
-                    textAlign: TextAlign.center,
+                  _RollingClock(
+                    text: Money.clock(elapsedSeconds),
                     style: HfText.of(
                       context,
                       HfText.hero.copyWith(fontSize: 44, height: 1.1),
@@ -112,7 +112,22 @@ class CallLiveView extends StatelessWidget {
               ],
             ),
           ),
-          const SizedBox(height: HfSpacing.xl),
+          const SizedBox(height: HfSpacing.lg),
+          // HF-MOTION-C: the one beaver on this screen, on the phone while it rings, laughing once connected.
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: HfSpacing.page),
+            child: BeaverGuide(
+              pose: connected ? BeaverPose.phoneLaugh : BeaverPose.phoneTalk,
+              size: 84,
+              bubbleSide: BeaverBubbleSide.beside,
+              message: connected
+                  ? CallStrings.beaverConnected
+                  : (callerRinging
+                        ? CallStrings.beaverSaidYes
+                        : CallStrings.yourPhoneWillRing),
+            ),
+          ),
+          const SizedBox(height: HfSpacing.lg),
           _Progress(name: name, step: step),
           const SizedBox(height: HfSpacing.xl),
           const Padding(
@@ -184,69 +199,55 @@ class _PrivacyChip extends StatelessWidget {
   }
 }
 
-/// Three lavender rings, a portrait with a white border and the ink phone badge. The
-/// rings breathe while the phone is ringing and stay still on reduced motion.
+/// The host's portrait on warm halos with the phone badge (HF-MOTION-C). While the phone rings, [RippleRings]
+/// in primary and sunshine spread out from it; when the host says yes ([saidYes] turns true) a warm yellow
+/// burst flashes once behind the portrait. Reduced motion: still halos, no ripples, no flash.
 class _Rings extends StatefulWidget {
   const _Rings({
     required this.name,
     required this.pulsing,
+    this.saidYes = false,
     this.photoUrl,
   });
 
   final String name;
   final String? photoUrl;
   final bool pulsing;
+  final bool saidYes;
 
   @override
   State<_Rings> createState() => _RingsState();
 }
 
 class _RingsState extends State<_Rings> with SingleTickerProviderStateMixin {
-  late final AnimationController _pulse;
+  late final AnimationController _flash;
 
   @override
   void initState() {
     super.initState();
-    _pulse = AnimationController(
+    _flash = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 1800),
+      duration: const Duration(milliseconds: 560),
     );
-  }
-
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    _sync();
   }
 
   @override
   void didUpdateWidget(_Rings old) {
     super.didUpdateWidget(old);
-    _sync();
-  }
-
-  void _sync() {
-    final run = widget.pulsing && !MediaQuery.disableAnimationsOf(context);
-    if (run) {
-      if (!_pulse.isAnimating) _pulse.repeat(reverse: true);
-    } else {
-      _pulse.stop();
-      _pulse.value = 0;
+    if (widget.saidYes && !old.saidYes && !hfReduceMotion(context)) {
+      _flash.forward(from: 0);
     }
   }
 
   @override
   void dispose() {
-    _pulse.dispose();
+    _flash.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     final dark = HfBrightness.isDark(context);
-    final c1 = dark ? HfColors.darkCard : HfColors.surface;
-    final c2 = dark ? HfColors.darkBar : HfColors.surfaceSoft;
-    final c3 = dark ? HfColors.darkSelected : HfColors.line;
     return ExcludeSemantics(
       child: LayoutBuilder(
         builder: (context, constraints) {
@@ -254,69 +255,119 @@ class _RingsState extends State<_Rings> with SingleTickerProviderStateMixin {
               ? (constraints.maxWidth - 72).clamp(184.0, 240.0).toDouble()
               : 240.0;
           final k = size / 300;
-          Widget ring(double diameter, Color color, double phase) {
-            return AnimatedBuilder(
-              animation: _pulse,
-              builder: (context, _) {
-                final t = phase == 0 ? _pulse.value : 1 - _pulse.value;
-                return Transform.scale(
-                  scale: 1 + 0.035 * t,
-                  child: Container(
-                    width: diameter * k,
-                    height: diameter * k,
-                    decoration: BoxDecoration(
-                      color: color,
-                      shape: BoxShape.circle,
-                    ),
-                  ),
-                );
-              },
-            );
-          }
-
-          return SizedBox(
-            width: size,
-            height: size,
-            child: Stack(
-              alignment: Alignment.center,
-              clipBehavior: Clip.none,
-              children: [
-                ring(300, c1, 0),
-                ring(240, c2, 1),
-                ring(180, c3, 0),
-                HfCallAvatar(
-                  name: widget.name,
-                  photoUrl: widget.photoUrl,
-                  size: 132 * k,
-                  radius: 66 * k,
-                  borderColor: dark ? HfColors.darkBg : HfColors.white,
-                  borderWidth: 4,
-                ),
-                Positioned(
-                  right: 70 * k,
-                  bottom: 74 * k,
-                  child: Container(
-                    width: 44,
-                    height: 44,
-                    decoration: BoxDecoration(
-                      color: HfColors.primary,
-                      shape: BoxShape.circle,
-                      border: Border.all(
-                        color: dark ? HfColors.darkBg : HfColors.white,
-                        width: 3,
+          Widget disc(double diameter, Color color) => Container(
+            width: diameter * k,
+            height: diameter * k,
+            decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+          );
+          final portrait = Stack(
+            alignment: Alignment.center,
+            clipBehavior: Clip.none,
+            children: [
+              disc(
+                236,
+                dark
+                    ? HfColors.darkCard
+                    : HfColors.sunshine.withValues(alpha: 0.22),
+              ),
+              disc(184, dark ? HfColors.darkBar : HfColors.butter),
+              AnimatedBuilder(
+                animation: _flash,
+                builder: (context, _) {
+                  final t = _flash.value;
+                  if (t <= 0 || t >= 1) return const SizedBox.shrink();
+                  return Opacity(
+                    opacity: (1 - t) * 0.95,
+                    child: Transform.scale(
+                      scale: 0.7 + 0.6 * Curves.easeOutCubic.transform(t),
+                      child: Container(
+                        width: 240 * k,
+                        height: 240 * k,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          gradient: RadialGradient(
+                            colors: [
+                              HfColors.sunshine,
+                              HfColors.sunshine.withValues(alpha: 0),
+                            ],
+                            stops: const [0.55, 1],
+                          ),
+                        ),
                       ),
                     ),
-                    child: Icon(
-                      Icons.call_rounded,
-                      size: 18,
-                      color: HfColors.onPrimary,
+                  );
+                },
+              ),
+              HfCallAvatar(
+                name: widget.name,
+                photoUrl: widget.photoUrl,
+                size: 132 * k,
+                radius: 66 * k,
+                borderColor: dark ? HfColors.darkBg : HfColors.white,
+                borderWidth: 4,
+              ),
+              Positioned(
+                right: 70 * k,
+                bottom: 74 * k,
+                child: Container(
+                  width: 44,
+                  height: 44,
+                  decoration: BoxDecoration(
+                    color: HfColors.primary,
+                    shape: BoxShape.circle,
+                    border: Border.all(
+                      color: dark ? HfColors.darkBg : HfColors.white,
+                      width: 3,
                     ),
                   ),
+                  child: Icon(
+                    Icons.call_rounded,
+                    size: 18,
+                    color: HfColors.onPrimary,
+                  ),
                 ),
-              ],
-            ),
+              ),
+            ],
+          );
+          return RippleRings(
+            size: size,
+            enabled: widget.pulsing,
+            colors: const [HfColors.primary, HfColors.sunshine],
+            child: SizedBox.square(dimension: size, child: portrait),
           );
         },
+      ),
+    );
+  }
+}
+
+/// The running clock (HF-MOTION-C): each new value rolls up a few pixels and fades in. Only ONE Text exists,
+/// keyed `call-clock`, always holding the current value. Reduced motion: no roll.
+class _RollingClock extends StatelessWidget {
+  const _RollingClock({required this.text, required this.style});
+
+  final String text;
+  final TextStyle style;
+
+  @override
+  Widget build(BuildContext context) {
+    return TweenAnimationBuilder<double>(
+      key: ValueKey<String>('clock-roll-$text'),
+      tween: Tween<double>(begin: 0, end: 1),
+      duration: HfMotion.of(context, const Duration(milliseconds: 260)),
+      curve: Curves.easeOutCubic,
+      builder: (context, t, child) => Opacity(
+        opacity: 0.35 + 0.65 * t,
+        child: Transform.translate(
+          offset: Offset(0, (1 - t) * 10),
+          child: child,
+        ),
+      ),
+      child: Text(
+        text,
+        key: const ValueKey<String>('call-clock'),
+        textAlign: TextAlign.center,
+        style: style,
       ),
     );
   }

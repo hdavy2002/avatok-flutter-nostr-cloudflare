@@ -96,6 +96,8 @@ void main() {
       );
 
       await pollOnce(tester);
+      // HF-MOTION-C: let the display-only count-ups settle on their final text.
+      await tester.pump(const Duration(seconds: 1));
       expect(find.text('Call ended'), findsOneWidget);
       expect(find.text('You ended the call.'), findsOneWidget);
       expect(find.text('3 min'), findsOneWidget);
@@ -131,6 +133,8 @@ void main() {
         ),
       );
     await pumpCallApp(tester, api: api);
+    // HF-MOTION-C: let the display-only count-ups settle on their final text.
+    await tester.pump(const Duration(seconds: 1));
     expect(find.text('1 min 12 s'), findsOneWidget);
     expect(find.text('₹1.20'), findsOneWidget);
     expect(find.text('Asha ended the call.'), findsOneWidget);

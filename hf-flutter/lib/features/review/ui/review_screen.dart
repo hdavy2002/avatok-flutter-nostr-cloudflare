@@ -68,12 +68,16 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
   bool _expired = false;
   String? _error;
 
+  /// Five stars fire a confetti burst over the form (HF-MOTION-C). Draws nothing with reduced motion.
+  final ConfettiController _confetti = ConfettiController();
+
   String get _via => widget.token != null ? 'token' : 'call';
   ReviewKey get _key => (callId: widget.callId, token: widget.token);
 
   @override
   void dispose() {
     _text.dispose();
+    _confetti.dispose();
     super.dispose();
   }
 
@@ -260,7 +264,10 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
       else if (t.minutes > 0)
         '${t.minutes} min',
     ].join(' · ');
-    return ListView(
+    return ConfettiBurst(
+      controller: _confetti,
+      origin: const Alignment(0, -0.45),
+      child: ListView(
       padding: const EdgeInsets.fromLTRB(
         HfSpacing.pageWide,
         HfSpacing.sm,
@@ -279,10 +286,13 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
           child: _StarRow(
             stars: _stars,
             enabled: !_sending,
-            onChanged: (n) => setState(() {
-              _stars = n;
-              _error = null;
-            }),
+            onChanged: (n) {
+              if (n == 5 && _stars != 5) _confetti.fire();
+              setState(() {
+                _stars = n;
+                _error = null;
+              });
+            },
           ),
         ),
         Padding(
@@ -384,6 +394,7 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
           onPressed: _sending ? null : _submit,
         ),
       ],
+      ),
     );
   }
 
@@ -497,8 +508,10 @@ class _CheckedNote extends StatelessWidget {
   }
 }
 
-/// Five 48 px stars in the star colour. The tapped star bounces (scale 1 to 1.3 and back); reduced motion
-/// skips the bounce.
+/// Five 48 px stars in the star colour (HF-MOTION-C). Tapping a higher star fills the new stars one by one,
+/// each with a pop (0.6 to 1.3 to 1) and a sparkle burst; tapping a lower star pops just that one. The icons
+/// switch to filled at once (one Icon per star, in order), only their colour and size animate. Reduced motion:
+/// filled at once, no pop, no sparkles.
 class _StarRow extends StatefulWidget {
   const _StarRow({
     required this.stars,
@@ -516,65 +529,108 @@ class _StarRow extends StatefulWidget {
 
 class _StarRowState extends State<_StarRow>
     with SingleTickerProviderStateMixin {
-  late final AnimationController _bounce;
+  /// Gap between two stars starting to fill.
+  static const int _stepMs = 90;
 
-  @override
-  void initState() {
-    super.initState();
-    _bounce = AnimationController(vsync: this, duration: HfMotion.base);
-  }
+  /// One star's pop.
+  static const int _popMs = 420;
 
-  late final Animation<double> _scale = TweenSequence<double>([
+  /// How long a star's sparkle stays after its pop starts.
+  static const int _sparkleMs = 900;
+
+  late final AnimationController _sweep;
+  int _from = 0;
+  int _to = 0;
+  int _generation = 0;
+
+  static final Animatable<double> _pop = TweenSequence<double>([
     TweenSequenceItem(
       tween: Tween<double>(
-        begin: 1,
+        begin: 0.6,
         end: 1.3,
-      ).chain(CurveTween(curve: HfMotion.curve)),
+      ).chain(CurveTween(curve: Curves.easeOutCubic)),
       weight: 45,
     ),
     TweenSequenceItem(
       tween: Tween<double>(
         begin: 1.3,
         end: 1,
-      ).chain(CurveTween(curve: Curves.easeInCubic)),
+      ).chain(CurveTween(curve: Curves.easeInOutCubic)),
       weight: 55,
     ),
-  ]).animate(_bounce);
-  int _last = 0;
+  ]);
+
+  @override
+  void initState() {
+    super.initState();
+    _sweep = AnimationController(vsync: this);
+  }
 
   @override
   void dispose() {
-    _bounce.dispose();
+    _sweep.dispose();
     super.dispose();
   }
 
   void _tap(int n) {
     if (!widget.enabled) return;
     HapticFeedback.selectionClick();
+    final before = widget.stars;
     widget.onChanged(n);
-    if (MediaQuery.disableAnimationsOf(context)) return;
-    _last = n;
-    _bounce.forward(from: 0);
+    if (hfReduceMotion(context)) return;
+    _from = n > before ? before : n - 1;
+    _to = n;
+    _generation++;
+    final count = _to - _from;
+    _sweep.duration = Duration(milliseconds: _stepMs * (count - 1) + _sparkleMs);
+    _sweep.forward(from: 0);
+  }
+
+  /// Milliseconds since star [n] started to fill, or null when it is not part of the running sweep.
+  double? _sinceStart(int n) {
+    if (!_sweep.isAnimating || n <= _from || n > _to) return null;
+    final total = _sweep.duration?.inMilliseconds ?? 0;
+    return _sweep.value * total - _stepMs * (n - _from - 1);
   }
 
   @override
   Widget build(BuildContext context) {
     final dark = HfBrightness.isDark(context);
-    return Row(
-      children: [
-        for (var n = 1; n <= 5; n++)
-          Expanded(
-            child: _StarButton(
-              value: n,
-              selected: n <= widget.stars,
-              scale: n == _last
-                  ? _scale
-                  : const AlwaysStoppedAnimation<double>(1),
-              emptyColor: dark ? HfColors.darkSelected : HfColors.handle,
-              onTap: widget.enabled ? () => _tap(n) : null,
-            ),
-          ),
-      ],
+    final emptyColor = dark ? HfColors.darkSelected : HfColors.handle;
+    return AnimatedBuilder(
+      animation: _sweep,
+      builder: (context, _) => Row(
+        children: [
+          for (var n = 1; n <= 5; n++)
+            Expanded(child: _star(n, emptyColor)),
+        ],
+      ),
+    );
+  }
+
+  Widget _star(int n, Color emptyColor) {
+    final selected = n <= widget.stars;
+    final since = _sinceStart(n);
+    var scale = 1.0;
+    var color = selected ? HfColors.star : emptyColor;
+    var sparkle = false;
+    if (since != null && selected) {
+      if (since < 0) {
+        // Waiting for its turn: still grey.
+        color = emptyColor;
+      } else {
+        final t = (since / _popMs).clamp(0.0, 1.0);
+        scale = _pop.transform(t);
+        sparkle = since < _sparkleMs;
+      }
+    }
+    return _StarButton(
+      value: n,
+      selected: selected,
+      scale: scale,
+      color: color,
+      sparkleKey: sparkle ? ValueKey<String>('sparkle-$_generation-$n') : null,
+      onTap: widget.enabled ? () => _tap(n) : null,
     );
   }
 }
@@ -584,18 +640,23 @@ class _StarButton extends StatelessWidget {
     required this.value,
     required this.selected,
     required this.scale,
-    required this.emptyColor,
+    required this.color,
+    required this.sparkleKey,
     required this.onTap,
   });
 
   final int value;
   final bool selected;
-  final Animation<double> scale;
-  final Color emptyColor;
+  final double scale;
+  final Color color;
+
+  /// Non-null while this star's sparkle burst plays.
+  final Key? sparkleKey;
   final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
+    final key = sparkleKey;
     return Semantics(
       button: true,
       selected: selected,
@@ -606,15 +667,29 @@ class _StarButton extends StatelessWidget {
         onTap: onTap,
         child: SizedBox(
           height: 56,
-          child: Center(
-            child: ScaleTransition(
-              scale: scale,
-              child: Icon(
-                selected ? Icons.star_rounded : Icons.star_outline_rounded,
-                size: 48,
-                color: selected ? HfColors.star : emptyColor,
+          child: Stack(
+            alignment: Alignment.center,
+            clipBehavior: Clip.none,
+            children: [
+              if (key != null)
+                Positioned(
+                  left: -20,
+                  right: -20,
+                  top: -26,
+                  bottom: -26,
+                  child: IgnorePointer(
+                    child: HfLottie(HfLottieAssets.sparkleBurst, key: key),
+                  ),
+                ),
+              Transform.scale(
+                scale: scale,
+                child: Icon(
+                  selected ? Icons.star_rounded : Icons.star_outline_rounded,
+                  size: 48,
+                  color: color,
+                ),
               ),
-            ),
+            ],
           ),
         ),
       ),
@@ -643,10 +718,37 @@ class _Thanks extends StatelessWidget {
       padding: const EdgeInsets.all(HfSpacing.pageWide),
       children: [
         const SizedBox(height: HfSpacing.section),
+        // HF-MOTION-C: the avatar disc with a heart popping over it, and the celebrating beaver beside it.
         Center(
-          child: _CheckBurst(
-            name: target.hostFirstName,
-            photoUrl: photoUrl,
+          child: FittedBox(
+            fit: BoxFit.scaleDown,
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Stack(
+                  clipBehavior: Clip.none,
+                  children: [
+                    _CheckBurst(
+                      name: target.hostFirstName,
+                      photoUrl: photoUrl,
+                    ),
+                    if (!already)
+                      const Positioned(
+                        top: -34,
+                        right: -30,
+                        width: 110,
+                        height: 110,
+                        child: IgnorePointer(
+                          child: HfLottie(HfLottieAssets.heartPop),
+                        ),
+                      ),
+                  ],
+                ),
+                const SizedBox(width: HfSpacing.sm),
+                const BeaverGuide(pose: BeaverPose.celebrate, size: 104),
+              ],
+            ),
           ),
         ),
         const SizedBox(height: HfSpacing.xxl),

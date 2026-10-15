@@ -33,6 +33,8 @@ void main() {
       prepareStorage();
       final api = _api();
       await pumpCallApp(tester, api: api, location: '/call/new?host=asha');
+      // HF-MOTION-C: let the display-only count-ups settle on their final text.
+      await tester.pump(const Duration(seconds: 1));
       expect(find.text('Call Asha Verma'), findsOneWidget);
       expect(find.text('₹12.00/min'), findsOneWidget);
       expect(find.text('about 3 min'), findsOneWidget);

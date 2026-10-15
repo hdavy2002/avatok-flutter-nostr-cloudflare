@@ -411,14 +411,80 @@ class _CallFollowerState extends ConsumerState<CallFollower>
         _elapsedSeconds(info),
       );
     }
-    return Column(
+    final elapsed = connected ? _elapsedSeconds(info) : 0;
+    final dark = HfBrightness.isDark(context);
+    // HF-MOTION-C: a warm sun hill behind the call. Low while ringing, a little higher once the host said yes,
+    // then it rises slowly with the call (capped) so a long chat glows warmer. Purely decorative.
+    final double rise = connected
+        ? 0.18 + 0.12 * (elapsed.clamp(0, 900) / 900)
+        : (info.status == CallStatus.ringingCaller ? 0.14 : 0.10);
+    final controls = <Widget>[
+      if (info.status.isRinging)
+        Padding(
+          padding: const EdgeInsets.fromLTRB(
+            HfSpacing.pageWide,
+            HfSpacing.sm,
+            HfSpacing.pageWide,
+            34,
+          ),
+          child: HfButton(
+            label: _cancelling
+                ? CallStrings.cancelling
+                : CallStrings.cancelCall,
+            kind: HfButtonKind.secondary,
+            loading: _cancelling,
+            onPressed: _cancel,
+          ),
+        )
+      else if (connected)
+        Padding(
+          padding: const EdgeInsets.fromLTRB(
+            HfSpacing.pageWide,
+            HfSpacing.sm,
+            HfSpacing.pageWide,
+            34,
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              HfButton(
+                label: _ending
+                    ? CallStrings.endingCall
+                    : CallStrings.endCall,
+                kind: HfButtonKind.destructive,
+                loading: _ending,
+                onPressed: _end,
+              ),
+              const SizedBox(height: HfSpacing.sm),
+              Text(
+                CallStrings.endFromPhone,
+                textAlign: TextAlign.center,
+                style: HfText.of(context, HfText.note),
+              ),
+            ],
+          ),
+        ),
+    ];
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        Positioned.fill(
+          child: ExcludeSemantics(
+            child: SunHill(
+              riseFrom: 0,
+              riseTo: rise,
+              duration: const Duration(milliseconds: 1200),
+            ),
+          ),
+        ),
+        Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Expanded(
           child: SingleChildScrollView(
             child: CallLiveView(
               info: info,
-              elapsedSeconds: connected ? _elapsedSeconds(info) : 0,
+              elapsedSeconds: elapsed,
               currentRatePaise: currentRate,
               photoUrl: photoUrl,
               notice: _notice,
@@ -426,51 +492,22 @@ class _CallFollowerState extends ConsumerState<CallFollower>
             ),
           ),
         ),
-        if (info.status.isRinging)
-          Padding(
-            padding: const EdgeInsets.fromLTRB(
-              HfSpacing.pageWide,
-              HfSpacing.sm,
-              HfSpacing.pageWide,
-              34,
-            ),
-            child: HfButton(
-              label: _cancelling
-                  ? CallStrings.cancelling
-                  : CallStrings.cancelCall,
-              kind: HfButtonKind.secondary,
-              loading: _cancelling,
-              onPressed: _cancel,
-            ),
-          )
-        else if (connected)
-          Padding(
-            padding: const EdgeInsets.fromLTRB(
-              HfSpacing.pageWide,
-              HfSpacing.sm,
-              HfSpacing.pageWide,
-              34,
+        if (controls.isNotEmpty)
+          // The controls sit on a solid panel above the hill: never animated, always readable and tappable.
+          DecoratedBox(
+            decoration: BoxDecoration(
+              color: dark ? HfColors.darkBg : HfColors.page,
+              borderRadius: const BorderRadius.vertical(
+                top: Radius.circular(28),
+              ),
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                HfButton(
-                  label: _ending
-                      ? CallStrings.endingCall
-                      : CallStrings.endCall,
-                  kind: HfButtonKind.destructive,
-                  loading: _ending,
-                  onPressed: _end,
-                ),
-                const SizedBox(height: HfSpacing.sm),
-                Text(
-                  CallStrings.endFromPhone,
-                  textAlign: TextAlign.center,
-                  style: HfText.of(context, HfText.note),
-                ),
-              ],
+              children: controls,
             ),
           ),
+      ],
+        ),
       ],
     );
   }

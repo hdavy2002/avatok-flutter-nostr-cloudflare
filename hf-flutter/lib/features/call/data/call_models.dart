@@ -536,6 +536,13 @@ abstract final class CallStrings {
   static const String endFromPhone =
       'You can also hang up from your phone.';
 
+  // ---- Motion layer (HF-MOTION-C): the beaver's bubbles and the summary ribbon ----
+  /// Screen-reader label while the confirmed slide waits for the start request.
+  static const String startingCall = 'Starting your call';
+  static const String beaverSaidYes = 'Pick up when it rings!';
+  static const String beaverConnected = 'Enjoy your chat!';
+  static const String greatChat = 'Great chat!';
+
   /// "Ringing {name}… If they don't pick up, you won't be charged."
   static String ringingHost(String name) =>
       "Ringing $name… If they don't pick up, you won't be charged.";

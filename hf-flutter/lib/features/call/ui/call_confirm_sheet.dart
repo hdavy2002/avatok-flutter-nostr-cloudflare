@@ -264,7 +264,8 @@ class _CallConfirmSheetState extends ConsumerState<CallConfirmSheet> {
         HfSpacing.pageWide,
         30 + bottomInset,
       ),
-      child: Column(
+      child: _SpringUp(
+        child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -303,6 +304,7 @@ class _CallConfirmSheetState extends ConsumerState<CallConfirmSheet> {
               data: _body,
             ),
         ],
+        ),
       ),
     );
   }
@@ -334,15 +336,39 @@ class _CallConfirmSheetState extends ConsumerState<CallConfirmSheet> {
         : parsedBalance == null
         ? rawBalance
         : formatRupees(parsedBalance);
+    // Display-only count-ups (HF-MOTION-C): every end value is what the API returned, formatted exactly as
+    // before; the phone never computes money, it only animates the numbers on their way to that text.
+    final aboutText = est.isMetered ? _aboutMinutes(est) : null;
+    final affordableMinutes = (est.affordableSeconds ?? 0) ~/ 60;
+    final aboutCounts = aboutText != null &&
+        affordableMinutes >= 1 &&
+        aboutText == 'about $affordableMinutes min';
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         _Tiles(
           rate: formatPaiseRate(est.ratePaise),
+          rateCount: _Count(
+            est.ratePaise,
+            (v) => v == est.ratePaise
+                ? formatPaiseRate(est.ratePaise)
+                : formatPaiseRate(v.round()),
+          ),
           walletCaption: walletLabel == null
               ? CallStrings.yourWalletPlain
               : CallStrings.yourWalletAmount(walletLabel),
-          walletValue: est.isMetered ? _aboutMinutes(est) : null,
+          walletCaptionCount: walletLabel == null || parsedBalance == null
+              ? null
+              : _Count(
+                  parsedBalance,
+                  (v) => v == parsedBalance
+                      ? CallStrings.yourWalletAmount(walletLabel)
+                      : CallStrings.yourWalletAmount(formatRupees(v)),
+                ),
+          walletValue: aboutText,
+          walletValueCount: aboutCounts
+              ? _Count(affordableMinutes, (v) => 'about ${v.round()} min')
+              : null,
         ),
         if (est.tiers.isNotEmpty) ...[
           const SizedBox(height: HfSpacing.md),
@@ -504,11 +530,17 @@ class _Tiles extends StatelessWidget {
     required this.rate,
     required this.walletCaption,
     required this.walletValue,
+    this.rateCount,
+    this.walletCaptionCount,
+    this.walletValueCount,
   });
 
   final String rate;
   final String walletCaption;
   final String? walletValue;
+  final _Count? rateCount;
+  final _Count? walletCaptionCount;
+  final _Count? walletValueCount;
 
   @override
   Widget build(BuildContext context) {
@@ -518,6 +550,7 @@ class _Tiles extends StatelessWidget {
       caption: CallStrings.rateLabel,
       captionColor: dark ? HfColors.mutedSoft : HfColors.muted,
       value: rate,
+      valueCount: rateCount,
       valueColor: dark ? HfColors.darkText : HfColors.ink,
     );
     final wv = walletValue;
@@ -525,8 +558,10 @@ class _Tiles extends StatelessWidget {
     final walletTile = _Tile(
       bg: dark ? HfColors.darkCard : HfColors.surface,
       caption: walletCaption,
+      captionCount: walletCaptionCount,
       captionColor: dark ? HfColors.mutedSoft : HfColors.muted,
       value: wv,
+      valueCount: walletValueCount,
       valueColor: dark ? HfColors.darkText : HfColors.ink,
     );
     return LayoutBuilder(
@@ -565,6 +600,8 @@ class _Tile extends StatelessWidget {
     required this.captionColor,
     required this.value,
     required this.valueColor,
+    this.captionCount,
+    this.valueCount,
   });
 
   final Color bg;
@@ -572,9 +609,18 @@ class _Tile extends StatelessWidget {
   final Color captionColor;
   final String value;
   final Color valueColor;
+  final _Count? captionCount;
+  final _Count? valueCount;
 
   @override
   Widget build(BuildContext context) {
+    final captionStyle = HfText.badge.copyWith(
+      fontWeight: FontWeight.w400,
+      color: captionColor,
+    );
+    final valueStyle = HfText.stat.copyWith(color: valueColor);
+    final cc = captionCount;
+    final vc = valueCount;
     return Container(
       padding: const EdgeInsets.all(HfSpacing.lg),
       decoration: BoxDecoration(
@@ -590,15 +636,25 @@ class _Tile extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
         children: [
-          Text(
-            caption,
-            style: HfText.badge.copyWith(
-              fontWeight: FontWeight.w400,
-              color: captionColor,
+          if (cc == null)
+            Text(caption, style: captionStyle)
+          else
+            CountUpText(
+              value: cc.value,
+              from: 0,
+              formatter: cc.format,
+              style: captionStyle,
             ),
-          ),
           const SizedBox(height: 4),
-          Text(value, style: HfText.stat.copyWith(color: valueColor)),
+          if (vc == null)
+            Text(value, style: valueStyle)
+          else
+            CountUpText(
+              value: vc.value,
+              from: 0,
+              formatter: vc.format,
+              style: valueStyle,
+            ),
         ],
       ),
     );
@@ -761,32 +817,108 @@ class _SlideToCall extends StatelessWidget {
           onFallback: onStart,
           enabled: !starting,
         ),
+        // HF-MOTION-C: once the slide is confirmed the track fills warm yellow from the left and a tick draws
+        // itself in the knob's end spot while the start request is in flight. The track stays inert.
         if (starting)
-          Positioned(
-            left: 6,
-            top: 6,
-            child: IgnorePointer(
-              child: Container(
-                width: 56,
-                height: 56,
-                alignment: Alignment.center,
-                decoration: BoxDecoration(
-                  color: HfColors.white,
-                  shape: BoxShape.circle,
-                  boxShadow: HfShadows.knob,
-                ),
-                child: const SizedBox(
-                  width: 22,
-                  height: 22,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2.5,
-                    color: HfColors.ink,
-                  ),
-                ),
-              ),
-            ),
+          const Positioned(
+            left: 0,
+            right: 0,
+            top: 0,
+            height: 68,
+            child: IgnorePointer(child: _ConfirmedFill()),
           ),
       ],
+    );
+  }
+}
+
+/// The yellow "confirmed" fill over the slide track, with a [DrawnCheck] at the far end. Reduced motion shows
+/// the full fill and the finished tick at once.
+class _ConfirmedFill extends StatelessWidget {
+  const _ConfirmedFill();
+
+  static const double _knob = 56;
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      liveRegion: true,
+      label: CallStrings.startingCall,
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final width = constraints.maxWidth;
+          final minFactor = width <= 0 ? 1.0 : (68 / width).clamp(0.0, 1.0);
+          return TweenAnimationBuilder<double>(
+            tween: Tween<double>(begin: 0, end: 1),
+            duration: HfMotion.of(context, const Duration(milliseconds: 380)),
+            curve: Curves.easeOutCubic,
+            builder: (context, t, _) => Stack(
+              children: [
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: FractionallySizedBox(
+                    widthFactor: t < minFactor ? minFactor : t,
+                    heightFactor: 1,
+                    child: const DecoratedBox(
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          colors: [HfColors.sunshine, HfColors.primary],
+                        ),
+                        borderRadius: BorderRadius.all(Radius.circular(34)),
+                      ),
+                    ),
+                  ),
+                ),
+                const Positioned(
+                  right: 6,
+                  top: 6,
+                  child: DrawnCheck(
+                    size: _knob,
+                    color: HfColors.white,
+                    checkColor: HfColors.deepOrange,
+                    delay: Duration(milliseconds: 220),
+                    semanticLabel: CallStrings.startingCall,
+                  ),
+                ),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+  }
+}
+
+/// A number a tile counts up to, and how to show it. The formatter returns the API's own text at the end.
+class _Count {
+  const _Count(this.value, this.format);
+
+  final num value;
+  final String Function(num value) format;
+}
+
+/// The sheet content rises a little and fades in with a soft spring when it opens. Reduced motion: no
+/// movement, shown at once.
+class _SpringUp extends StatelessWidget {
+  const _SpringUp({required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    if (hfReduceMotion(context)) return child;
+    return TweenAnimationBuilder<double>(
+      tween: Tween<double>(begin: 0, end: 1),
+      duration: const Duration(milliseconds: 520),
+      curve: Curves.easeOutBack,
+      child: child,
+      builder: (context, t, child) => Opacity(
+        opacity: t.clamp(0.0, 1.0),
+        child: Transform.translate(
+          offset: Offset(0, (1 - t) * 48),
+          child: child,
+        ),
+      ),
     );
   }
 }

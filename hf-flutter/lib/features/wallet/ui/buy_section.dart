@@ -354,19 +354,27 @@ class _PacksState extends ConsumerState<_Packs> {
           const SizedBox(height: 16),
         ],
         const SizedBox(height: 2),
-        for (var i = 0; i < tiles.length; i += 2) ...[
-          if (i > 0) const SizedBox(height: _gridGap),
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Expanded(child: tiles[i]),
-              const SizedBox(width: _gridGap),
-              Expanded(
-                child: i + 1 < tiles.length ? tiles[i + 1] : const SizedBox(),
+        // HF-MOTION-C: the pack rows fade in and rise one after another when the Wallet opens.
+        StaggeredReveal(
+          stagger: const Duration(milliseconds: 90),
+          itemDuration: const Duration(milliseconds: 320),
+          spacing: _gridGap,
+          children: [
+            for (var i = 0; i < tiles.length; i += 2)
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(child: tiles[i]),
+                  const SizedBox(width: _gridGap),
+                  Expanded(
+                    child: i + 1 < tiles.length
+                        ? tiles[i + 1]
+                        : const SizedBox(),
+                  ),
+                ],
               ),
-            ],
-          ),
-        ],
+          ],
+        ),
         const SizedBox(height: 16),
         if (phaseText != null) ...[
           Semantics(

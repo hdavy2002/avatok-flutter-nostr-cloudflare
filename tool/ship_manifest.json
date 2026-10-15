@@ -10854,5 +10854,12 @@
     "min_devices_on_build": 1,
     "flags": [],
     "no_telemetry": "Visual motion only on existing screens: no new screen, route, API call or user action, so there is no new event; existing Explore/profile/notification telemetry is unchanged. Verified by the hf-flutter.yml check run (widget tests incl. reduced-motion and 320 px / 2x text layouts, plus the browse-motion review captures)."
+  },
+  "HF-MOTION-C": {
+    "description": "[HF-MOTION-C 2026-10-15] Native app (hf-flutter/) motion for the emotional peaks, built on the HF-MOTION-1 kit, display only: call confirm sheet springs up, rate / wallet balance / minutes count up to the API's exact text, a confirmed slide fills warm yellow with a drawn tick; call screen rings with primary+sunshine RippleRings, a one-shot yellow flash when the host says yes, a SunHill that rises slowly with the connected call (capped), a rolling clock and one BeaverGuide (phoneTalk -> phoneLaugh) with a status bubble, Cancel/End and the hang-up note on a solid never-animated panel; summary of a talked call gets a RibbonSweep 'Great chat!', a thumbs-up beaver and minutes/amount CountUp; review stars fill one by one with a pop and a Lottie sparkle, five stars fire confetti, thanks shows a celebrating beaver and a heart pop; Wallet balance counts up (and from old to new on a top-up), pack rows StaggeredReveal, a successful top-up flashes warm yellow + confetti + a cheering beaver, low balance glows amber and breathes three times. Reduced motion shows final states with no flashes. No change to call/billing logic, polling, API, telemetry or Money formatting.",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [],
+    "no_telemetry": "Animation-only change on existing screens: no new route, API call, user action or decision, so there is no event to emit; the existing call, review and purchase telemetry is untouched. Verified by the hf-flutter.yml check run (widget tests incl. test/call_wallet_motion_review_test.dart and the callwallet-*.png captures)."
   }
 }

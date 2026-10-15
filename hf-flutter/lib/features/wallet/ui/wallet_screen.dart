@@ -35,6 +35,9 @@ abstract final class WalletCopy {
   static const String receipts = 'Receipts';
   static const String signIn = 'Sign in';
   static const String signInBody = 'Please sign in to see your wallet.';
+
+  /// The beaver's bubble after a successful top-up (HF-MOTION-C).
+  static const String topUpCheer = 'Yay! You are all set for your next chat.';
 }
 
 /// Tab 3 (needs sign-in). Both wallet shapes render. Money is read live every time: nothing here is cached.
@@ -248,7 +251,7 @@ class _WalletBodyState extends ConsumerState<_WalletBody> {
   }
 }
 
-class _WalletList extends ConsumerWidget {
+class _WalletList extends ConsumerStatefulWidget {
   const _WalletList({required this.data, required this.onRefresh, this.next});
 
   final String? next;
@@ -257,13 +260,58 @@ class _WalletList extends ConsumerWidget {
   final Future<void> Function() onRefresh;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<_WalletList> createState() => _WalletListState();
+}
+
+class _WalletListState extends ConsumerState<_WalletList>
+    with SingleTickerProviderStateMixin {
+  /// HF-MOTION-C: a successful top-up flashes warm yellow and throws confetti (display only).
+  final ConfettiController _confetti = ConfettiController();
+  late final AnimationController _flash = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 520),
+  );
+
+  @override
+  void dispose() {
+    _confetti.dispose();
+    _flash.dispose();
+    super.dispose();
+  }
+
+  void _celebrate() {
+    if (!mounted || hfReduceMotion(context)) return;
+    _flash.forward(from: 0);
+    _confetti.fire();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final data = widget.data;
+    final next = widget.next;
+    final onRefresh = widget.onRefresh;
+    ref.listen<PurchaseNotice?>(
+      purchaseControllerProvider.select((s) => s.notice),
+      (prev, notice) {
+        if (notice != null &&
+            notice.kind == NoticeKind.success &&
+            notice.id != prev?.id) {
+          _celebrate();
+        }
+      },
+    );
     final notice = ref.watch(
       purchaseControllerProvider.select((s) => s.notice),
     );
     final rate = valueOf(ref.watch(walletRateProvider));
     const gap = SizedBox(height: 16);
-    return RefreshIndicator(
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        ConfettiBurst(
+          controller: _confetti,
+          origin: const Alignment(0, -0.6),
+          child: RefreshIndicator(
       onRefresh: onRefresh,
       child: ListView(
         physics: const AlwaysScrollableScrollPhysics(),
@@ -301,13 +349,13 @@ class _WalletList extends ConsumerWidget {
                             notice?.kind != NoticeKind.pending
                         ? () async {
                             final slug = Uri.parse(
-                              next!,
+                              next,
                             ).queryParameters['host'];
                             if (slug != null) {
                               ref.invalidate(callEstimateProvider(slug));
                             }
                             await ref.read(pendingIntentProvider).clear();
-                            if (context.mounted) context.go(next!);
+                            if (context.mounted) context.go(next);
                           }
                         : null,
                   ),
@@ -325,6 +373,19 @@ class _WalletList extends ConsumerWidget {
             gap,
           ],
           if (notice != null) ...[
+            if (notice.kind == NoticeKind.success) ...[
+              // The one beaver on the Wallet, only after money was added.
+              const Align(
+                alignment: Alignment.centerLeft,
+                child: BeaverGuide(
+                  pose: BeaverPose.celebrate,
+                  size: 96,
+                  bubbleSide: BeaverBubbleSide.beside,
+                  message: WalletCopy.topUpCheer,
+                ),
+              ),
+              const SizedBox(height: 8),
+            ],
             PurchaseNoticeCard(
               notice: notice,
               onDismiss: () =>
@@ -349,6 +410,10 @@ class _WalletList extends ConsumerWidget {
           const RefundSection(),
         ],
       ),
+          ),
+        ),
+        Positioned.fill(child: _TopUpFlash(animation: _flash)),
+      ],
     );
   }
 }
@@ -381,12 +446,17 @@ class _BalanceCard extends StatelessWidget {
         ? formatPaise(data.balancePaise)
         : formatRupees(data.paidBalance);
     final minutes = _minutes;
+    final low =
+        !data.hasDebt &&
+        (data.spendablePaise <= 0 || (minutes != null && minutes < 5));
     final small = HfText.body.copyWith(
       fontSize: 14,
       color: const Color(0xFFD6D1EE),
       height: 1.4,
     );
-    return Container(
+    return _LowBalanceGlow(
+      low: low,
+      child: Container(
       key: ValueKey<String>(tokens ? 'token-balance' : 'legacy-balance'),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(HfRadius.cardInner),
@@ -443,9 +513,12 @@ class _BalanceCard extends StatelessWidget {
                   FittedBox(
                     fit: BoxFit.scaleDown,
                     alignment: Alignment.centerLeft,
-                    child: Text(
-                      amount,
-                      key: const ValueKey<String>('balance-total'),
+                    child: _CountingBalance(
+                      value: tokens ? data.balancePaise : data.paidBalance,
+                      text: amount,
+                      format: tokens
+                          ? (v) => formatPaise(v.round())
+                          : (v) => formatRupees(v),
                       style: HfText.hero.copyWith(
                         fontSize: 44,
                         height: 1.1,
@@ -493,6 +566,7 @@ class _BalanceCard extends StatelessWidget {
             ),
           ],
         ),
+      ),
       ),
     );
   }
@@ -779,6 +853,214 @@ class _Receipts extends ConsumerWidget {
             ],
           ),
         ],
+      ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------------------------------------
+// HF-MOTION-C: the Wallet's motion layer. Display only: every number ends on the exact text the screen showed
+// before (formatted by Money); the phone never computes money, it only animates on the way there.
+
+/// The balance figure: counts up from zero when the Wallet opens, and from the old value to the new one when
+/// it changes (a top-up). Exactly ONE Text, keyed `balance-total`, always present. Reduced motion: final text
+/// at once. Screen readers hear only [text].
+class _CountingBalance extends StatefulWidget {
+  const _CountingBalance({
+    required this.value,
+    required this.text,
+    required this.format,
+    required this.style,
+  });
+
+  /// The number behind [text] (paise in token mode, rupees in the old mode).
+  final num value;
+
+  /// The final text, exactly as before.
+  final String text;
+  final String Function(num value) format;
+  final TextStyle style;
+
+  @override
+  State<_CountingBalance> createState() => _CountingBalanceState();
+}
+
+class _CountingBalanceState extends State<_CountingBalance>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _c;
+  num _begin = 0;
+  bool _started = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _c = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 900),
+    );
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_started) return;
+    _started = true;
+    if (widget.value == 0 || hfReduceMotion(context)) {
+      _c.value = 1;
+    } else {
+      _c.forward(from: 0);
+    }
+  }
+
+  @override
+  void didUpdateWidget(_CountingBalance old) {
+    super.didUpdateWidget(old);
+    if (old.value != widget.value) {
+      _begin = _current(old.value);
+      if (hfReduceMotion(context)) {
+        _c.value = 1;
+      } else {
+        _c.forward(from: 0);
+      }
+    }
+  }
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  num _current(num end) {
+    if (_c.value >= 1) return end;
+    final t = Curves.easeOutCubic.transform(_c.value);
+    final v = _begin + (end - _begin) * t;
+    return (_begin is int && end is int) ? v.round() : v;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      label: widget.text,
+      excludeSemantics: true,
+      child: AnimatedBuilder(
+        animation: _c,
+        builder: (context, _) => Text(
+          _c.value >= 1 ? widget.text : widget.format(_current(widget.value)),
+          key: const ValueKey<String>('balance-total'),
+          style: widget.style,
+        ),
+      ),
+    );
+  }
+}
+
+/// Low balance: a gentle amber glow around the balance card that breathes a few times, then rests (still
+/// glowing). Never red. Reduced motion: the glow only.
+class _LowBalanceGlow extends StatefulWidget {
+  const _LowBalanceGlow({required this.low, required this.child});
+
+  final bool low;
+  final Widget child;
+
+  @override
+  State<_LowBalanceGlow> createState() => _LowBalanceGlowState();
+}
+
+class _LowBalanceGlowState extends State<_LowBalanceGlow> {
+  /// Three slow breaths (Breathing's 2.4 s period), then still.
+  static const Duration _breatheFor = Duration(milliseconds: 7200);
+
+  Timer? _stop;
+  bool _breathing = false;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _sync();
+  }
+
+  @override
+  void didUpdateWidget(_LowBalanceGlow old) {
+    super.didUpdateWidget(old);
+    if (old.low != widget.low) _sync();
+  }
+
+  void _sync() {
+    if (widget.low && !hfReduceMotion(context)) {
+      if (_stop != null) return;
+      _breathing = true;
+      _stop = Timer(_breatheFor, () {
+        if (mounted) setState(() => _breathing = false);
+      });
+    } else if (!widget.low) {
+      _stop?.cancel();
+      _stop = null;
+      _breathing = false;
+    }
+  }
+
+  @override
+  void dispose() {
+    _stop?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (!widget.low) return widget.child;
+    return Breathing(
+      enabled: _breathing,
+      maxScale: 1.02,
+      child: DecoratedBox(
+        key: const ValueKey<String>('low-balance-glow'),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(HfRadius.cardInner + 2),
+          boxShadow: [
+            BoxShadow(
+              color: HfColors.sunshine.withValues(alpha: 0.55),
+              blurRadius: 22,
+              spreadRadius: 1,
+            ),
+          ],
+        ),
+        child: widget.child,
+      ),
+    );
+  }
+}
+
+/// A short, full-width warm yellow flash over the Wallet after a successful top-up. Never takes touches.
+class _TopUpFlash extends StatelessWidget {
+  const _TopUpFlash({required this.animation});
+
+  final Animation<double> animation;
+
+  @override
+  Widget build(BuildContext context) {
+    return IgnorePointer(
+      child: AnimatedBuilder(
+        animation: animation,
+        builder: (context, _) {
+          final t = animation.value;
+          if (t <= 0 || t >= 1) return const SizedBox.shrink();
+          // Up fast, down slow: peaks at 45% opacity a quarter of the way in.
+          final o = t < 0.25 ? t / 0.25 : 1 - (t - 0.25) / 0.75;
+          return Opacity(
+            opacity: (o * 0.45).clamp(0.0, 1.0),
+            child: const DecoratedBox(
+              key: ValueKey<String>('top-up-flash'),
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [HfColors.sunshine, HfColors.primary],
+                ),
+              ),
+              child: SizedBox.expand(),
+            ),
+          );
+        },
       ),
     );
   }
