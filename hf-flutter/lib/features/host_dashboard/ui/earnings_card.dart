@@ -92,7 +92,7 @@ class EarningsCard extends ConsumerWidget {
                         Text(HostCopy.earningsReady, style: muted),
                         MoneyCountUp(
                           e.available,
-                          key: const ValueKey<String>('earn-available'),
+                          textKey: const ValueKey<String>('earn-available'),
                           style: big,
                         ),
                       ],
@@ -106,7 +106,7 @@ class EarningsCard extends ConsumerWidget {
                         Text(HostCopy.earningsHold(holdDays), style: muted),
                         MoneyCountUp(
                           e.pending,
-                          key: const ValueKey<String>('earn-pending'),
+                          textKey: const ValueKey<String>('earn-pending'),
                           style: big.copyWith(color: muted.color),
                         ),
                       ],

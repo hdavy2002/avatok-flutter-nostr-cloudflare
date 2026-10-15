@@ -1,6 +1,7 @@
 // HF-MOTION-D: behaviour tests and review captures for the host side (onboarding incl. part B, dashboard,
 // bookings, identity KYC, lanes, Me). Captures are written only in the CI check run
-// (--dart-define=EXPORT_DESIGN_REVIEW=true) to test_output/design_review/host-*.png.
+// (--dart-define=EXPORT_DESIGN_REVIEW=true) to test_output/design_review/host-motion-*.png.
+import 'dart:async';
 import 'dart:io';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
@@ -157,14 +158,35 @@ Future<void> _pump(
 /// Decodes the beaver poses (still or animated) so captures show the mascot.
 Future<void> _precacheBeaver(WidgetTester tester, {bool animated = false}) async {
   final context = tester.element(find.byKey(_captureKey));
+  if (!animated) {
+    await tester.runAsync(() async {
+      for (final pose in BeaverPose.values) {
+        await precacheImage(AssetImage(pose.stillAsset), context);
+      }
+    });
+    await tester.pump();
+    return;
+  }
+  // An animated image hands out its first frame from a scheduler frame callback, so awaiting it inside
+  // runAsync (where no frames are pumped) never completes. Start the decodes, then alternate real-time
+  // waits with frames, bounded so a missing asset can never hang the test.
+  var pending = BeaverPose.values.length;
   await tester.runAsync(() async {
     for (final pose in BeaverPose.values) {
-      await precacheImage(
-        AssetImage(animated ? pose.animatedAsset : pose.stillAsset),
-        context,
+      unawaited(
+        precacheImage(
+          AssetImage(pose.animatedAsset),
+          context,
+        ).whenComplete(() => pending--),
       );
     }
   });
+  for (var i = 0; i < 60 && pending > 0; i++) {
+    await tester.runAsync(
+      () => Future<void>.delayed(const Duration(milliseconds: 50)),
+    );
+    await tester.pump(const Duration(milliseconds: 16));
+  }
   await tester.pump();
 }
 
@@ -500,9 +522,15 @@ void main() {
 
     testWidgets('money counts up and lands on the server text', (tester) async {
       _view(tester, const Size(425, 916), reduced: false);
-      await _pump(tester, const Scaffold(body: Center(child: MoneyCountUp('₹1,200.50'))));
+      const amount = ValueKey<String>('amount');
+      await _pump(
+        tester,
+        const Scaffold(body: Center(child: MoneyCountUp('₹1,200.50', textKey: amount))),
+      );
+      expect(tester.widget<Text>(find.byKey(amount)).data, isNot('₹1,200.50'));
       await tester.pump(const Duration(seconds: 1));
       expect(find.text('₹1,200.50'), findsOneWidget);
+      expect(tester.widget<Text>(find.byKey(amount)).data, '₹1,200.50');
       await _pump(tester, const Scaffold(body: Center(child: MoneyCountUp('soon'))));
       expect(find.text('soon'), findsOneWidget);
     });
@@ -646,7 +674,7 @@ void main() {
           ),
         );
         await _precacheBeaver(tester);
-        if (shoot) await _capture(tester, 'host-onboarding-step-$label');
+        if (shoot) await _capture(tester, 'host-motion-onboarding-step-$label');
         expect(tester.takeException(), isNull);
         await _leave(tester);
       });
@@ -659,7 +687,7 @@ void main() {
           overrides: _mic,
         );
         await _precacheBeaver(tester);
-        if (shoot) await _capture(tester, 'host-voice-$label');
+        if (shoot) await _capture(tester, 'host-motion-voice-$label');
         expect(tester.takeException(), isNull);
         await _leave(tester);
       });
@@ -672,7 +700,7 @@ void main() {
           api: _generatingApi(),
         );
         await _precacheBeaver(tester);
-        if (shoot) await _capture(tester, 'host-generating-$label');
+        if (shoot) await _capture(tester, 'host-motion-generating-$label');
         expect(tester.takeException(), isNull);
         await _leave(tester);
         await _pump(
@@ -688,7 +716,7 @@ void main() {
           ),
         );
         await _precacheBeaver(tester);
-        if (shoot) await _capture(tester, 'host-avatar-ready-$label');
+        if (shoot) await _capture(tester, 'host-motion-avatar-ready-$label');
         expect(tester.takeException(), isNull);
         await _leave(tester);
       });
@@ -700,7 +728,7 @@ void main() {
           Scaffold(body: DoneStep(ctx: _ctx({'status': 'pending_review'}))),
         );
         await _precacheBeaver(tester);
-        if (shoot) await _capture(tester, 'host-done-$label');
+        if (shoot) await _capture(tester, 'host-motion-done-$label');
         expect(tester.takeException(), isNull);
         await _leave(tester);
       });
@@ -709,7 +737,7 @@ void main() {
         _view(tester, size, scale: scale);
         await _pumpDashboard(tester);
         expect(find.byKey(const ValueKey<String>('presence-pulse')), findsOneWidget);
-        if (shoot) await _capture(tester, 'host-dashboard-online-$label');
+        if (shoot) await _capture(tester, 'host-motion-dashboard-online-$label');
         expect(tester.takeException(), isNull);
         await _leave(tester);
       });
@@ -717,7 +745,7 @@ void main() {
       testWidgets('bookings $suffix', (tester) async {
         _view(tester, size, scale: scale);
         await _pumpCalendar(tester);
-        if (shoot) await _capture(tester, 'host-bookings-$label');
+        if (shoot) await _capture(tester, 'host-motion-bookings-$label');
         expect(tester.takeException(), isNull);
         await _leave(tester);
       });
@@ -730,7 +758,7 @@ void main() {
           api: FakeApiClient()
             ..onJson('GET', '/api/hosts/kyc/status', _kycStatus(selfie: 'pending')),
         );
-        if (shoot) await _capture(tester, 'host-kyc-review-$label');
+        if (shoot) await _capture(tester, 'host-motion-kyc-review-$label');
         expect(tester.takeException(), isNull);
         await _leave(tester);
         await _pump(
@@ -739,7 +767,7 @@ void main() {
           api: FakeApiClient()
             ..onJson('GET', '/api/hosts/kyc/status', _kycStatus(selfie: 'approved')),
         );
-        if (shoot) await _capture(tester, 'host-kyc-approved-$label');
+        if (shoot) await _capture(tester, 'host-motion-kyc-approved-$label');
         expect(tester.takeException(), isNull);
         await _leave(tester);
       });
@@ -751,7 +779,7 @@ void main() {
           const LanesScreen(lane: 'women'),
           api: FakeApiClient()..onJson('GET', '/api/hf/lanes/me', _laneIn()),
         );
-        if (shoot) await _capture(tester, 'host-lanes-in-$label');
+        if (shoot) await _capture(tester, 'host-motion-lanes-in-$label');
         expect(tester.takeException(), isNull);
         await _leave(tester);
       });
@@ -768,7 +796,7 @@ void main() {
     );
     await _precacheBeaver(tester, animated: true);
     await tester.pump(const Duration(milliseconds: 900));
-    await _capture(tester, 'host-generating-live-425x916');
+    await _capture(tester, 'host-motion-generating-live-425x916');
     await _leave(tester);
 
     await _pump(
@@ -776,7 +804,7 @@ void main() {
       Scaffold(body: DoneStep(ctx: _ctx({'status': 'pending_review'}))),
     );
     await _precacheBeaver(tester, animated: true);
-    await _capture(tester, 'host-done-live-425x916');
+    await _capture(tester, 'host-motion-done-live-425x916');
     await tester.pump(const Duration(seconds: 2));
     await _leave(tester);
     imageCache.clear();

@@ -10874,6 +10874,6 @@
     "two_sided": false,
     "min_devices_on_build": 1,
     "flags": [],
-    "no_telemetry": "Visual motion only on existing screens: no new screen, route, API call or user action, so there is no new event; the existing onboarding, presence, payout, booking, KYC and lane events are unchanged. Verified by the hf-flutter.yml check run (widget tests incl. test/host_motion_review_test.dart and its host-*.png review captures)."
+    "no_telemetry": "Visual motion only on existing screens: no new screen, route, API call or user action, so there is no new event; the existing onboarding, presence, payout, booking, KYC and lane events are unchanged. Verified by the hf-flutter.yml check run (widget tests incl. test/host_motion_review_test.dart and its host-motion-*.png review captures)."
   }
 }
