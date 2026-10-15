@@ -3,6 +3,7 @@ import '../../../core/config/flags.dart';
 import 'booking_unavailable_screen.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/widgets/widgets.dart';
 import '../data/hf_booking_models.dart';
 import '../data/hf_bookings_providers.dart';
 import '../../../core/analytics/analytics.dart';
@@ -499,12 +500,15 @@ class _HostAvailabilityScreenState extends ConsumerState<HostAvailabilityScreen>
                     onToggle: () => _toggleDay(day),
                   ),
                   const SizedBox(height: 8),
-                  for (var i = 0; i < s.rules.length; i++) _WindowTile(
-                    title: '${_days[s.rules[i].weekday - 1]} availability',
-                    row: s.rules[i], onStart: () => _editTime(i, start: true),
-                    onEnd: () => _editTime(i, start: false),
-                    onRemove: () { final rows = [...s.rules]..removeAt(i); setState(() => _draft = _copy(s, rules: rows)); },
-                  ),
+                  // Time windows rise in one after another when the page opens (HF-MOTION-D).
+                  StaggeredReveal(children: [
+                    for (var i = 0; i < s.rules.length; i++) _WindowTile(
+                      title: '${_days[s.rules[i].weekday - 1]} availability',
+                      row: s.rules[i], onStart: () => _editTime(i, start: true),
+                      onEnd: () => _editTime(i, start: false),
+                      onRemove: () { final rows = [...s.rules]..removeAt(i); setState(() => _draft = _copy(s, rules: rows)); },
+                    ),
+                  ]),
                   PopupMenuButton<int>(
                     tooltip: 'Add a weekly time window',
                     onSelected: (weekday) => _addWindow(weekday: weekday),

@@ -129,15 +129,19 @@ class _CallsSectionState extends ConsumerState<CallsSection> {
                 ),
               )
             else
-              for (var i = 0; i < shown.length; i++) ...[
-                if (i > 0) const SizedBox(height: HfSpacing.sm),
-                CallRow(
-                  call: shown[i],
-                  earning: byCall[shown[i].id],
-                  index: i,
-                  now: now,
-                ),
-              ],
+              StaggeredReveal(
+                key: const ValueKey<String>('calls-reveal'),
+                spacing: HfSpacing.sm,
+                children: [
+                  for (var i = 0; i < shown.length; i++)
+                    CallRow(
+                      call: shown[i],
+                      earning: byCall[shown[i].id],
+                      index: i,
+                      now: now,
+                    ),
+                ],
+              ),
           ],
         );
       },

@@ -10,6 +10,7 @@ import '../data/host_dashboard_models.dart';
 import '../host_dashboard_providers.dart';
 import 'dash_surface.dart';
 import 'host_dashboard_copy.dart';
+import 'money_count_up.dart';
 import 'payouts_section.dart';
 import 'section_async.dart';
 
@@ -89,7 +90,7 @@ class EarningsCard extends ConsumerWidget {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(HostCopy.earningsReady, style: muted),
-                        Text(
+                        MoneyCountUp(
                           e.available,
                           key: const ValueKey<String>('earn-available'),
                           style: big,
@@ -103,7 +104,7 @@ class EarningsCard extends ConsumerWidget {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(HostCopy.earningsHold(holdDays), style: muted),
-                        Text(
+                        MoneyCountUp(
                           e.pending,
                           key: const ValueKey<String>('earn-pending'),
                           style: big.copyWith(color: muted.color),

@@ -13,6 +13,7 @@ import '../../../core/auth/session.dart';
 import '../../../core/links.dart';
 import '../../../core/router/nav.dart';
 import '../../../core/router/routes.dart';
+import '../../../core/theme/hf_theme.dart';
 import '../../../core/theme/theme_mode_store.dart';
 import '../../../core/theme/hf_profile_style.dart';
 import '../../../core/widgets/widgets.dart';
@@ -404,8 +405,10 @@ class _MeScreenState extends ConsumerState<MeScreen>
                   child: Center(
                     child: ConstrainedBox(
                       constraints: const BoxConstraints(maxWidth: 640),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                      // Sections rise in one after another (HF-MOTION-D, light touch).
+                      child: StaggeredReveal(
+                        key: const ValueKey<String>('me-sections'),
+                        stagger: const Duration(milliseconds: 40),
                         children: session.isSignedIn
                             ? _signedIn(context, session) : _signedOut(context),
                       ),
@@ -614,7 +617,16 @@ class _MeScreenState extends ConsumerState<MeScreen>
           decoration: BoxDecoration(
             color: Colors.white,
             borderRadius: BorderRadius.circular(24),
-            boxShadow: _style.avatarShadows,
+            // A subtle warm ring glow around the photo (HF-MOTION-D). Still, never looping.
+            border: Border.all(color: HfColors.sunshine.withValues(alpha: 0.85), width: 2),
+            boxShadow: [
+              ..._style.avatarShadows,
+              BoxShadow(
+                color: HfColors.sunshine.withValues(alpha: 0.45),
+                blurRadius: 18,
+                spreadRadius: 1,
+              ),
+            ],
           ),
           child: ClipRRect(
             borderRadius: BorderRadius.circular(20),

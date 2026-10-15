@@ -104,6 +104,8 @@ class _VoiceStepState extends ConsumerState<VoiceStep> {
       scene: HfClusterKind.call,
       title: PartBCopy.voiceTitle,
       lead: PartBCopy.voiceLead,
+      beaverPose: BeaverPose.nod,
+      celebrate: showSaved && !rejected,
       bottom: [
         const SizedBox(height: 4),
         HfButton(

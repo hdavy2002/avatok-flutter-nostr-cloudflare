@@ -6,11 +6,13 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/api/api_error.dart';
 import '../../../../core/theme/hf_theme.dart';
 import '../../../../core/widgets/widgets.dart';
+import '../../../host_profile/ui/widgets/net_image.dart';
 import '../../../kyc/kyc.dart';
 import '../../flow/onboarding_context.dart';
 import '../../flow/onboarding_steps.dart';
 import '../data/host_setup_api.dart';
 import '../data/part_b_telemetry.dart';
+import 'glow_orb.dart';
 import 'part_b_copy.dart';
 import 'part_b_widgets.dart';
 
@@ -231,12 +233,52 @@ class _GeneratingStepState extends ConsumerState<GeneratingStep> {
     );
   }
 
+  /// Share of the three stages that are finished (done or skipped), for the orb's glow. Display only.
+  double get _orbProgress {
+    final st = _status;
+    if (st == null) return 0;
+    var n = 0;
+    for (final id in const ['text', 'images', 'safety']) {
+      final s = st.stage(id);
+      if (s == 'done' || s == 'skipped') n++;
+    }
+    return n / 3;
+  }
+
+  Widget _orb({bool resolved = false}) {
+    final url = ctx.state.hostString('avatarUrl');
+    final image = ref.watch(hostImageBuilderProvider);
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Center(
+        child: GlowOrb(
+          progress: resolved ? 1 : _orbProgress,
+          resolved: resolved,
+          child: url == null
+              ? const ColoredBox(
+                  color: HfColors.butter,
+                  child: Center(
+                    child: Icon(
+                      Icons.person_rounded,
+                      size: 64,
+                      color: HfColors.deepOrange,
+                    ),
+                  ),
+                )
+              : image(context, url, fit: BoxFit.cover),
+        ),
+      ),
+    );
+  }
+
   Widget _following() {
     return PartBStep(
       scene: HfClusterKind.profile,
       title: PartBCopy.generatingTitle,
       lead: PartBCopy.generatingLead,
+      beaverPose: BeaverPose.idle,
       children: [
+        _orb(),
         if (_phase == _Phase.starting && _status == null)
           Padding(
             padding: const EdgeInsets.only(bottom: 12),
@@ -315,6 +357,7 @@ class _GeneratingStepState extends ConsumerState<GeneratingStep> {
       scene: HfClusterKind.profile,
       title: PartBCopy.generatingReadyTitle,
       lead: PartBCopy.generatingReadyBody,
+      beaverPose: BeaverPose.happy,
       bottom: [
         HfButton(
           key: const ValueKey<String>('gen-see'),
@@ -332,7 +375,10 @@ class _GeneratingStepState extends ConsumerState<GeneratingStep> {
             onPressed: _start,
           ),
       ],
-      children: const [DoneRow(PartBCopy.generatingReadyTitle)],
+      children: [
+        _orb(resolved: true),
+        const DoneRow(PartBCopy.generatingReadyTitle),
+      ],
     );
   }
 

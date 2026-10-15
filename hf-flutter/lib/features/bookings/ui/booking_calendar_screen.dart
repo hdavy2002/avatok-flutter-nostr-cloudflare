@@ -177,15 +177,40 @@ class _CalendarBodyState extends ConsumerState<_CalendarBody> {
       // Large text expands the grid instead of truncating day numbers.
       final cellWidth = math.max(48.0, MediaQuery.textScalerOf(context).scale(28) + 16);
       final width = math.max(constraints.maxWidth, cellWidth * 7);
+      final column = width / 7;
+      final rowHeight = cellWidth + 12;
+      final headerHeight = MediaQuery.textScalerOf(context).scale(16) * 1.6 + 8;
+      // The selected day's place in the grid, for the indicator that slides between days (HF-MOTION-D).
+      final selectedIndex = _selected.year == _month.year && _selected.month == _month.month
+          ? offset + _selected.day - 1 : -1;
+      final reduced = MediaQuery.disableAnimationsOf(context);
       return SingleChildScrollView(scrollDirection: Axis.horizontal,
-        child: SizedBox(width: width, child: Column(children: [
-          Row(children: [for (var i = 0; i < 7; i++) Expanded(child: Center(
-            child: Text(loc.narrowWeekdays[(firstWeekday + i) % 7])))]),
+        child: SizedBox(width: width, child: Stack(children: [
+          if (selectedIndex >= 0)
+            AnimatedPositioned(
+              key: const ValueKey<String>('calendar-selected-indicator'),
+              duration: reduced ? Duration.zero : const Duration(milliseconds: 320),
+              curve: Curves.easeOutBack,
+              left: (selectedIndex % 7) * column + 2,
+              top: headerHeight + (selectedIndex ~/ 7) * rowHeight + 2,
+              width: column - 4,
+              height: rowHeight - 4,
+              child: IgnorePointer(child: DecoratedBox(decoration: BoxDecoration(
+                color: Theme.of(context).colorScheme.primaryContainer,
+                borderRadius: BorderRadius.circular(16),
+                boxShadow: [BoxShadow(
+                  color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.25),
+                  blurRadius: 10, offset: const Offset(0, 3))],
+              ))),
+            ),
+          Column(children: [
+          SizedBox(height: headerHeight, child: Row(children: [for (var i = 0; i < 7; i++) Expanded(child: Center(
+            child: Text(loc.narrowWeekdays[(firstWeekday + i) % 7])))])),
           for (var week = 0; week < cellCount ~/ 7; week++)
-            Row(children: [for (var col = 0; col < 7; col++) Expanded(child: Builder(
+            SizedBox(height: rowHeight, child: Row(children: [for (var col = 0; col < 7; col++) Expanded(child: Builder(
               builder: (context) {
                 final dayNumber = week * 7 + col - offset + 1;
-                if (dayNumber < 1 || dayNumber > days) return SizedBox(height: cellWidth + 12);
+                if (dayNumber < 1 || dayNumber > days) return SizedBox(height: rowHeight);
                 final day = DateTime(_month.year, _month.month, dayNumber);
                 final selected = day == _selected;
                 final today = DateUtils.isSameDay(day, DateTime.now());
@@ -194,30 +219,25 @@ class _CalendarBodyState extends ConsumerState<_CalendarBody> {
                   label: '${loc.formatFullDate(day)}${today ? ', today' : ''}, ${unknown ? 'appointments not loaded' : '$count appointments'}',
                   selected: selected, button: true,
                   onTap: () => setState(() => _selected = day),
-                  child: ExcludeSemantics(child: AnimatedContainer(
-                    duration: MediaQuery.disableAnimationsOf(context)
-                        ? Duration.zero : const Duration(milliseconds: 180),
-                    curve: Curves.easeOut,
-                    decoration: BoxDecoration(
-                      color: selected ? Theme.of(context).colorScheme.primaryContainer : Colors.transparent,
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-                    child: TextButton(
+                  child: ExcludeSemantics(child: TextButton(
                     style: TextButton.styleFrom(
-                      minimumSize: Size(48, cellWidth + 12), padding: EdgeInsets.zero,
+                      minimumSize: Size(48, rowHeight), padding: EdgeInsets.zero,
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                       side: today ? BorderSide(color: Theme.of(context).colorScheme.primary) : null,
                     ),
                     onPressed: () => setState(() => _selected = day),
                     child: Column(mainAxisSize: MainAxisSize.min, children: [
-                      Text('$dayNumber'),
+                      Text('$dayNumber', style: selected
+                          ? const TextStyle(fontWeight: FontWeight.w800) : null),
                       SizedBox(height: 10, child: count > 0
                         ? const Icon(Icons.circle, size: 6) : null),
                     ]),
-                  ))),
+                  )),
                 );
               },
-            ))]),
+            ))])),
+          ]),
         ])),
       );
     });

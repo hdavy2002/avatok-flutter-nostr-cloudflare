@@ -19,6 +19,11 @@ class PartBStep extends StatelessWidget {
     this.title,
     this.lead,
     this.scene = HfClusterKind.profile,
+    this.tip,
+    this.beaverPose = BeaverPose.point,
+    this.celebrate = false,
+    this.warm = false,
+    this.heroTitle = false,
     required this.children,
     this.bottom = const <Widget>[],
   });
@@ -26,6 +31,13 @@ class PartBStep extends StatelessWidget {
   final String? title;
   final String? lead;
   final HfClusterKind scene;
+
+  /// Passed to [OnboardingStepPage]: the beaver's tip, pose and thumbs up, and the warm "done" page.
+  final String? tip;
+  final BeaverPose beaverPose;
+  final bool celebrate;
+  final bool warm;
+  final bool heroTitle;
   final List<Widget> children;
 
   /// Widgets pinned at the bottom (usually an error line and the button).
@@ -44,6 +56,11 @@ class PartBStep extends StatelessWidget {
             title: title,
             lead: lead,
             scene: scene,
+            tip: tip,
+            beaverPose: beaverPose,
+            celebrate: celebrate,
+            warm: warm,
+            heroTitle: heroTitle,
             children: [
               ...children,
               if (bottom.isNotEmpty) const SizedBox(height: 20),
@@ -59,10 +76,15 @@ class PartBStep extends StatelessWidget {
                 title: title,
                 lead: lead,
                 scene: scene,
+                tip: tip,
+                beaverPose: beaverPose,
+                celebrate: celebrate,
+                warm: warm,
+                heroTitle: heroTitle,
                 children: children,
               ),
             ),
-            if (bottom.isNotEmpty) PinnedBar(children: bottom),
+            if (bottom.isNotEmpty) PinnedBar(warm: warm, children: bottom),
           ],
         );
       },
@@ -72,12 +94,14 @@ class PartBStep extends StatelessWidget {
 
 /// The sticky bar under a step (see [StepFooter]).
 class PinnedBar extends StatelessWidget {
-  const PinnedBar({super.key, required this.children});
+  const PinnedBar({super.key, required this.children, this.warm = false});
 
   final List<Widget> children;
+  final bool warm;
 
   @override
-  Widget build(BuildContext context) => StepFooter(children: children);
+  Widget build(BuildContext context) =>
+      StepFooter(warm: warm, children: children);
 }
 
 /// The calm note at the top of a step that cannot be edited now (profile with the team, or live).

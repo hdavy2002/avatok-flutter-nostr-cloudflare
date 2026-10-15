@@ -44,6 +44,16 @@ class HostOnboardingScreen extends ConsumerStatefulWidget {
 class _HostOnboardingScreenState extends ConsumerState<HostOnboardingScreen> {
   String? _key;
 
+  /// Whether the last step change moved forward (the new step slides in from the right) or back.
+  bool _forward = true;
+
+  void _setKey(String key) {
+    final from = onboardingStepIndex(_key, standardPlan: _standardPlan);
+    final to = onboardingStepIndex(key, standardPlan: _standardPlan);
+    _forward = from < 0 || to >= from;
+    _key = key;
+  }
+
   bool get _standardPlan {
     final state = ref.read(onboardingStateProvider);
     final creator = state.hasValue && state.value?.isCreator == true;
@@ -112,12 +122,12 @@ class _HostOnboardingScreenState extends ConsumerState<HostOnboardingScreen> {
     final steps = _steps;
     final i = onboardingStepIndex(_key, standardPlan: _standardPlan);
     if (i < 0 || i >= steps.length - 1) return;
-    setState(() => _key = steps[i + 1].key);
+    setState(() => _setKey(steps[i + 1].key));
   }
 
   void _goTo(String key) {
     if (onboardingStepIndex(key, standardPlan: _standardPlan) >= 0) {
-      setState(() => _key = key);
+      setState(() => _setKey(key));
     }
   }
 
@@ -129,7 +139,7 @@ class _HostOnboardingScreenState extends ConsumerState<HostOnboardingScreen> {
     if (_atFirstStep) {
       popOrHome(context);
     } else {
-      setState(() => _key = _steps[_index - 1].key);
+      setState(() => _setKey(_steps[_index - 1].key));
     }
   }
 
@@ -216,9 +226,12 @@ class _HostOnboardingScreenState extends ConsumerState<HostOnboardingScreen> {
         Expanded(
           child: KeyedSubtree(
             key: ValueKey<String>('onboarding-step-$key'),
-            child: builder == null
-                ? const _ComingStep()
-                : builder(context, ctx),
+            child: StepEntrance(
+              forward: _forward,
+              child: builder == null
+                  ? const _ComingStep()
+                  : builder(context, ctx),
+            ),
           ),
         ),
       ],
@@ -312,23 +325,128 @@ class _ProgressHeader extends StatelessWidget {
             ],
           ),
           const SizedBox(height: HfSpacing.xl),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(3),
-            child: TweenAnimationBuilder<double>(
-              tween: Tween<double>(end: (index + 1) / total),
-              duration: HfMotion.of(context, HfMotion.base),
-              curve: HfMotion.curve,
-              builder: (context, value, _) => LinearProgressIndicator(
-                value: value,
-                minHeight: 6,
-                backgroundColor: dark
-                    ? HfColors.darkCard
-                    : HfColors.segmentTrack,
-                color: HfColors.primary,
-              ),
+          TweenAnimationBuilder<double>(
+            tween: Tween<double>(end: (index + 1) / total),
+            duration: HfMotion.of(context, const Duration(milliseconds: 600)),
+            curve: Curves.easeOutBack,
+            builder: (context, value, _) => ProgressRibbon(
+              value: value,
+              track: dark ? HfColors.darkCard : HfColors.segmentTrack,
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// The onboarding progress as a growing ribbon: a rounded orange to deep-orange bar with a soft glow and a bright
+/// tip. [value] is 0..1 (it may overshoot a little while it springs; it is clamped).
+class ProgressRibbon extends StatelessWidget {
+  const ProgressRibbon({super.key, required this.value, required this.track});
+
+  final double value;
+  final Color track;
+
+  @override
+  Widget build(BuildContext context) {
+    final v = value.clamp(0.0, 1.0).toDouble();
+    return Semantics(
+      value: '${(v * 100).round()}%',
+      child: Container(
+        key: const ValueKey<String>('onboarding-ribbon'),
+        height: 10,
+        decoration: BoxDecoration(
+          color: track,
+          borderRadius: BorderRadius.circular(5),
+        ),
+        alignment: Alignment.centerLeft,
+        child: FractionallySizedBox(
+          widthFactor: v,
+          heightFactor: 1,
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              gradient: HfGradients.sunDeep,
+              borderRadius: BorderRadius.circular(5),
+              boxShadow: [
+                BoxShadow(
+                  color: HfColors.primary.withValues(alpha: 0.35),
+                  blurRadius: 8,
+                  offset: const Offset(0, 2),
+                ),
+              ],
+            ),
+            child: Align(
+              alignment: Alignment.centerRight,
+              child: Container(
+                width: 6,
+                height: 6,
+                margin: const EdgeInsets.only(right: 2),
+                decoration: const BoxDecoration(
+                  color: HfColors.sunshine,
+                  shape: BoxShape.circle,
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Each new step slides in (from the right going forward, from the left going back) and fades in, 320 ms.
+/// Only the incoming step animates: the old one is gone at once, so two steps are never on screen together.
+class StepEntrance extends StatefulWidget {
+  const StepEntrance({super.key, required this.forward, required this.child});
+
+  final bool forward;
+  final Widget child;
+
+  @override
+  State<StepEntrance> createState() => _StepEntranceState();
+}
+
+class _StepEntranceState extends State<StepEntrance>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _c = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 320),
+  );
+  late final CurvedAnimation _curved = CurvedAnimation(
+    parent: _c,
+    curve: Curves.easeOutCubic,
+  );
+  bool _started = false;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_started) return;
+    _started = true;
+    if (hfReduceMotion(context)) {
+      _c.value = 1;
+    } else {
+      _c.forward();
+    }
+  }
+
+  @override
+  void dispose() {
+    _curved.dispose();
+    _c.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final curved = _curved;
+    final from = Offset(widget.forward ? 0.12 : -0.12, 0);
+    return FadeTransition(
+      opacity: curved,
+      child: SlideTransition(
+        position: Tween<Offset>(begin: from, end: Offset.zero).animate(curved),
+        child: widget.child,
       ),
     );
   }

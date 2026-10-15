@@ -8,6 +8,7 @@ import '../../../../core/theme/hf_theme.dart';
 import '../../../../core/widgets/widgets.dart';
 import '../../../kyc/kyc.dart';
 import '../../flow/onboarding_context.dart';
+import '../widgets/beaver_tip.dart';
 import '../widgets/step_page.dart';
 import 'onboarding_copy.dart';
 
@@ -110,6 +111,8 @@ class _AadhaarStepState extends ConsumerState<AadhaarStep> {
       return OnboardingStepPage(
         scene: HfClusterKind.verify,
         title: OnboardingCopy.aadhaarDoneTitle,
+        tip: tipFromLead(OnboardingCopy.aadhaarKeep),
+        celebrate: true,
         footer: [
           if (_upgradeError != null)
             HfButton(
@@ -173,6 +176,7 @@ class _AadhaarStepState extends ConsumerState<AadhaarStep> {
     }
     return OnboardingStepPage(
       scene: HfClusterKind.verify,
+      tip: tipFromLead(OnboardingCopy.aadhaarKeep),
       children: [
         AadhaarVerifyWidget(
           role: KycRole.host,

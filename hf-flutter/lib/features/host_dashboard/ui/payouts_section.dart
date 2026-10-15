@@ -91,6 +91,8 @@ class WithdrawArea extends ConsumerWidget {
     PayoutsData p,
   ) async {
     final messenger = ScaffoldMessenger.of(context);
+    final overlay = Overlay.maybeOf(context, rootOverlay: true);
+    final reduced = hfReduceMotion(context);
     final done = await showHfSheet<bool>(
       context,
       title: HostCopy.requestTitle,
@@ -102,8 +104,67 @@ class WithdrawArea extends ConsumerWidget {
       messenger
         ..hideCurrentSnackBar()
         ..showSnackBar(const SnackBar(content: Text(HostCopy.requested)));
+      if (overlay != null && !reduced) showPayoutSparkle(overlay);
     }
   }
+}
+
+/// The "money on its way" moment after a withdrawal request is accepted (HF-MOTION-D): a coin and a sparkle
+/// burst over the screen for about 1.6 s, never blocking taps. Only after the server said yes; skipped with
+/// reduced motion.
+void showPayoutSparkle(OverlayState overlay) {
+  late final OverlayEntry entry;
+  var removed = false;
+  void remove() {
+    if (removed) return;
+    removed = true;
+    entry.remove();
+  }
+
+  entry = OverlayEntry(
+    builder: (context) => IgnorePointer(
+      child: Center(
+        key: const ValueKey<String>('payout-sparkle'),
+        child: Stack(
+          alignment: Alignment.center,
+          children: [
+            PopIn(
+              beginScale: 0.3,
+              duration: const Duration(milliseconds: 420),
+              child: Container(
+                width: 72,
+                height: 72,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  gradient: HfGradients.sun,
+                  boxShadow: [
+                    BoxShadow(
+                      color: HfColors.sunshine.withValues(alpha: 0.6),
+                      blurRadius: 20,
+                    ),
+                  ],
+                ),
+                child: const Icon(
+                  Icons.currency_rupee_rounded,
+                  color: HfColors.onPrimary,
+                  size: 40,
+                ),
+              ),
+            ),
+            HfLottie(
+              HfLottieAssets.sparkleBurst,
+              width: 260,
+              height: 260,
+              onFinished: remove,
+            ),
+          ],
+        ),
+      ),
+    ),
+  );
+  overlay.insert(entry);
+  // Safety net: the entry always goes, even if the animation never reports its end.
+  unawaited(Future<void>.delayed(const Duration(milliseconds: 2200), remove));
 }
 
 /// "Your withdrawals": the history with status and bank reference (UTR), cancel while still requested, and

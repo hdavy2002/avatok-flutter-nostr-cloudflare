@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -501,9 +502,17 @@ class _LaneFlowState extends ConsumerState<_LaneFlow> {
   }
 
   List<Widget> _inBlock() => [
-    HfCard(
-      key: const ValueKey<String>('lane-in'),
-      child: const DoneRow(LaneCopy.youAreIn),
+    // Calm and private (HF-MOTION-D): a soft lavender-and-blush glow that breathes, and a gentle pop.
+    // No confetti and no mascot here.
+    PopIn(
+      beginScale: 0.92,
+      duration: const Duration(milliseconds: 420),
+      child: LaneInGlow(
+        child: HfCard(
+          key: const ValueKey<String>('lane-in'),
+          child: const DoneRow(LaneCopy.youAreIn),
+        ),
+      ),
     ),
     const SizedBox(height: 16),
     HfButton(
@@ -660,6 +669,90 @@ class _LaneFlowState extends ConsumerState<_LaneFlow> {
 }
 
 /// The neutral explanation card under a lane headline.
+/// A soft lavender-and-blush glow behind the "You're in" card that takes two slow breaths and then rests
+/// (finite on purpose: a private space stays calm, and nothing keeps moving). Decoration only; with reduced
+/// motion the glow is shown still at once.
+class LaneInGlow extends StatefulWidget {
+  const LaneInGlow({super.key, required this.child});
+
+  final Widget child;
+
+  @override
+  State<LaneInGlow> createState() => _LaneInGlowState();
+}
+
+class _LaneInGlowState extends State<LaneInGlow>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _c = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 4800),
+  );
+  bool _started = false;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_started) return;
+    _started = true;
+    if (hfReduceMotion(context)) {
+      _c.value = 1;
+    } else {
+      _c.forward();
+    }
+  }
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => Stack(
+    clipBehavior: Clip.none,
+    children: [
+      Positioned.fill(
+        child: IgnorePointer(
+          child: AnimatedBuilder(
+            key: const ValueKey<String>('lane-in-glow'),
+            animation: _c,
+            builder: (context, child) {
+              final t = _c.value;
+              // Fade in over the first fifth, then two slow breaths that end at rest.
+              final fadeIn = (t * 5).clamp(0.0, 1.0).toDouble();
+              final breath = 0.5 - 0.5 * math.cos(2 * math.pi * 2 * t);
+              return Opacity(
+                opacity: fadeIn,
+                child: Transform.scale(scale: 1 + 0.04 * breath, child: child),
+              );
+            },
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(HfRadius.card),
+                boxShadow: [
+                  BoxShadow(
+                    color: HfColors.lavender.withValues(alpha: 0.9),
+                    blurRadius: 28,
+                    spreadRadius: 4,
+                    offset: const Offset(-8, 0),
+                  ),
+                  BoxShadow(
+                    color: HfColors.blush.withValues(alpha: 0.9),
+                    blurRadius: 28,
+                    spreadRadius: 4,
+                    offset: const Offset(8, 4),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+      widget.child,
+    ],
+  );
+}
+
 class _Explainer extends StatelessWidget {
   const _Explainer(this.text);
 

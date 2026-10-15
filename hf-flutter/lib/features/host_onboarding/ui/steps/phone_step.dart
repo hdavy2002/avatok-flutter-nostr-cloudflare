@@ -7,6 +7,7 @@ import '../../../../core/theme/hf_theme.dart';
 import '../../../../core/widgets/widgets.dart';
 import '../../../kyc/kyc.dart';
 import '../../flow/onboarding_context.dart';
+import '../widgets/beaver_tip.dart';
 import '../widgets/step_page.dart';
 import 'onboarding_copy.dart';
 
@@ -26,6 +27,8 @@ class PhoneStep extends StatelessWidget {
       return OnboardingStepPage(
         scene: HfClusterKind.verify,
         title: OnboardingCopy.phoneVerifiedTitle,
+        tip: tipFromLead(OnboardingCopy.phoneVerifiedBody),
+        celebrate: true,
         footer: [
           HfButton(
             key: const ValueKey<String>('phone-continue'),

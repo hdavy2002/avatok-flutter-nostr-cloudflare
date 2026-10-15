@@ -165,21 +165,16 @@ class _PresenceCardState extends ConsumerState<PresenceCard>
   Widget _card(BuildContext context, String current) {
     final online = _isOnline(current);
     final busy = current == 'busy';
-    final title = HfText.of(
-      context,
-      HfText.stat.copyWith(color: HfTint.blush.valueInk(context)),
-    );
+    // Online is a "sunrise": the card warms into the sun gradient and the ink turns dark brown on it.
+    final ink = online ? HfColors.onPrimary : HfTint.blush.valueInk(context);
+    final title = HfText.of(context, HfText.stat).copyWith(color: ink);
     final sub = HfText.of(
       context,
-      HfText.label.copyWith(
-        color: HfTint.blush.valueInk(context),
-        fontWeight: FontWeight.w400,
-      ),
-    );
-    return Container(
+      HfText.label,
+    ).copyWith(color: ink, fontWeight: FontWeight.w400);
+    return SunriseSurface(
       key: const ValueKey<String>('presence-card'),
-      padding: const EdgeInsets.all(HfSpacing.xxl),
-      decoration: HfSurfaces.card(context, radius: HfRadius.cardInner),
+      risen: online,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -189,9 +184,25 @@ class _PresenceCardState extends ConsumerState<PresenceCard>
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      online ? HostCopy.onlineTitle : HostCopy.offlineTitle,
-                      style: title,
+                    Row(
+                      children: [
+                        if (online && !busy) ...[
+                          const PulseDot(
+                            key: ValueKey<String>('presence-pulse'),
+                            color: HfColors.white,
+                            size: 10,
+                          ),
+                          const SizedBox(width: 4),
+                        ],
+                        Flexible(
+                          child: Text(
+                            online
+                                ? HostCopy.onlineTitle
+                                : HostCopy.offlineTitle,
+                            style: title,
+                          ),
+                        ),
+                      ],
                     ),
                     const SizedBox(height: 2),
                     Text(
@@ -227,6 +238,67 @@ class _PresenceCardState extends ConsumerState<PresenceCard>
             key: const ValueKey<String>('presence-note'),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// The presence card's surface (HF-MOTION-D). Offline it is the plain card. Going online is a sunrise: the sun
+/// gradient fades in (700 ms) and a soft sun disc rises from below the bottom edge; going offline is the sunset in
+/// reverse. Display only: the heartbeat and the switch logic live in [PresenceCard] and are not touched.
+class SunriseSurface extends StatelessWidget {
+  const SunriseSurface({super.key, required this.risen, required this.child});
+
+  final bool risen;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final d = HfMotion.of(context, const Duration(milliseconds: 700));
+    return Container(
+      decoration: HfSurfaces.card(context, radius: HfRadius.cardInner),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(HfRadius.cardInner),
+        child: Stack(
+          children: [
+            Positioned.fill(
+              child: AnimatedOpacity(
+                key: const ValueKey<String>('presence-sun'),
+                opacity: risen ? 1 : 0,
+                duration: d,
+                curve: Curves.easeInOut,
+                child: const DecoratedBox(
+                  decoration: BoxDecoration(gradient: HfGradients.sun),
+                ),
+              ),
+            ),
+            AnimatedPositioned(
+              duration: d,
+              curve: Curves.easeOutCubic,
+              right: 24,
+              bottom: risen ? -36 : -140,
+              child: IgnorePointer(
+                child: Container(
+                  width: 120,
+                  height: 120,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    gradient: RadialGradient(
+                      colors: [
+                        HfColors.white.withValues(alpha: 0.55),
+                        HfColors.sunshine.withValues(alpha: 0),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.all(HfSpacing.xxl),
+              child: child,
+            ),
+          ],
+        ),
       ),
     );
   }

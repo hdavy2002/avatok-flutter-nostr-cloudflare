@@ -127,6 +127,8 @@ class _PayoutStepState extends ConsumerState<PayoutStep> {
       return OnboardingStepPage(
         scene: HfClusterKind.wallet,
         title: OnboardingCopy.payoutDoneTitle,
+        tip: OnboardingCopy.payoutKeep,
+        celebrate: true,
         footer: [
           HfButton(
             key: const ValueKey<String>('payout-continue'),

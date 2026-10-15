@@ -266,16 +266,21 @@ class _VoiceRecorderPanelState extends ConsumerState<VoiceRecorderPanel> {
                   padding: EdgeInsets.all(20),
                   child: CircularProgressIndicator(strokeWidth: 3),
                 )
-              : IconButton.filled(
-                  key: const ValueKey<String>('voice-record'),
-                  tooltip: PartBCopy.voiceTapMic,
-                  style: IconButton.styleFrom(
-                    backgroundColor: HfColors.rose,
-                    foregroundColor: HfColors.white,
+              : Breathing(
+                  key: const ValueKey<String>('voice-record-breathing'),
+                  maxScale: 1.08,
+                  period: const Duration(milliseconds: 1800),
+                  child: IconButton.filled(
+                    key: const ValueKey<String>('voice-record'),
+                    tooltip: PartBCopy.voiceTapMic,
+                    style: IconButton.styleFrom(
+                      backgroundColor: HfColors.rose,
+                      foregroundColor: HfColors.white,
+                    ),
+                    iconSize: 36,
+                    onPressed: _start,
+                    icon: const Icon(Icons.mic_rounded),
                   ),
-                  iconSize: 36,
-                  onPressed: _start,
-                  icon: const Icon(Icons.mic_rounded),
                 ),
         ),
         if (_error != null)
@@ -303,6 +308,8 @@ class _VoiceRecorderPanelState extends ConsumerState<VoiceRecorderPanel> {
             textAlign: TextAlign.center,
           ),
         ),
+        const SizedBox(height: 14),
+        VoiceBars(level: _level),
         const SizedBox(height: 14),
         ClipRRect(
           borderRadius: BorderRadius.circular(6),
@@ -406,6 +413,50 @@ class _VoiceRecorderPanelState extends ConsumerState<VoiceRecorderPanel> {
         ),
         if (_error != null) InlineError(_error!),
       ],
+    );
+  }
+}
+
+/// Live voice bars while recording: nine rounded bars in the sun colours whose heights follow the recorder's
+/// level (0..1), each with its own weight so the row looks like a voice, not a meter. Display only.
+class VoiceBars extends StatelessWidget {
+  const VoiceBars({super.key, required this.level});
+
+  final double level;
+
+  static const List<double> _weights = <double>[
+    0.35, 0.6, 0.85, 0.7, 1, 0.75, 0.9, 0.55, 0.4,
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    final l = level.clamp(0.0, 1.0).toDouble();
+    final d = HfMotion.of(context, const Duration(milliseconds: 120));
+    return ExcludeSemantics(
+      child: SizedBox(
+        key: const ValueKey<String>('voice-bars'),
+        height: 56,
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            for (var i = 0; i < _weights.length; i++)
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 3),
+                child: AnimatedContainer(
+                  duration: d,
+                  curve: Curves.easeOut,
+                  width: 8,
+                  height: 8 + 48 * l * _weights[i],
+                  decoration: BoxDecoration(
+                    gradient: HfGradients.sun,
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                ),
+              ),
+          ],
+        ),
+      ),
     );
   }
 }

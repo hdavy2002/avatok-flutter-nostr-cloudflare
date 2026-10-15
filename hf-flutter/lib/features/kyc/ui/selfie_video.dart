@@ -570,6 +570,18 @@ class _CameraStageState extends ConsumerState<_CameraStage> {
                   const Center(
                     child: CircularProgressIndicator(color: HfColors.white),
                   ),
+                // The face guide: a soft oval that breathes slowly so the eye finds it (HF-MOTION-D).
+                if (_cam != _Cam.opening && _cam != _Cam.countdown)
+                  const Center(
+                    child: IgnorePointer(
+                      child: Breathing(
+                        key: ValueKey<String>('selfie-oval'),
+                        period: Duration(milliseconds: 2600),
+                        maxScale: 1.04,
+                        child: SelfieOvalGuide(),
+                      ),
+                    ),
+                  ),
                 Positioned(
                   left: 12,
                   right: 12,
@@ -727,4 +739,26 @@ class _RecordButton extends StatelessWidget {
       ),
     );
   }
+}
+
+/// The oval the face should fill: a white outline with a warm glow. Decoration only.
+class SelfieOvalGuide extends StatelessWidget {
+  const SelfieOvalGuide({super.key});
+
+  @override
+  Widget build(BuildContext context) => Container(
+    width: 196,
+    height: 256,
+    decoration: BoxDecoration(
+      borderRadius: const BorderRadius.all(Radius.elliptical(98, 128)),
+      border: Border.all(color: HfColors.white.withValues(alpha: 0.9), width: 3),
+      boxShadow: [
+        BoxShadow(
+          color: HfColors.sunshine.withValues(alpha: 0.45),
+          blurRadius: 18,
+          spreadRadius: 1,
+        ),
+      ],
+    ),
+  );
 }

@@ -78,6 +78,11 @@ class _IdentityKycScreenState extends ConsumerState<IdentityKycScreen> {
           constraints.maxWidth <= 425 ? 14 : 20, 32), children: [
           if (_loading) const LinearProgressIndicator(),
           if (_error != null) ...[Text(_error!), HfButton(label: 'Check again', onPressed: _refresh)],
+          // Server-confirmed progress only (HF-MOTION-D): the line draws as each step is confirmed.
+          KycStepLine(
+            aadhaarDone: s?.aadhaarDone == true,
+            videoSent: s?.selfieStatus == 'pending' || approved,
+            approved: approved),
           if (_step == 1) ...[
             IdentityHeader(title: widget.creator ? 'Become an Influencer or Celebrity' : 'Complete your KYC',
               subtitle: 'Verify once to unlock more conversations and protected spaces.', step: 1, total: 8,
@@ -130,8 +135,9 @@ class _IdentityKycScreenState extends ConsumerState<IdentityKycScreen> {
                 : rejected ? KycVisualAsset.selfieRejected : KycVisualAsset.reviewTeam,
               height: 235,
               alignment: rejected ? const Alignment(0, -0.25) : Alignment.center,
-              overlay: approved ? const Stack(children: [KycShieldBadge()]) : null,
+              overlay: approved ? const Stack(children: [KycApprovedBadge()]) : null,
             ),
+            if (!approved && !rejected) const KycReviewWait(),
             const SizedBox(height: 14),
             HfCard(child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
               ListTile(leading: Icon(approved ? Icons.verified_user : rejected ? Icons.error_outline : Icons.schedule),

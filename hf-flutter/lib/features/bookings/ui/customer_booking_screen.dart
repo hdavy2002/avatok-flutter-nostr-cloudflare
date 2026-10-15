@@ -11,6 +11,7 @@ import '../../../core/api/api_error.dart';
 import '../../../core/format/money.dart';
 import '../../../core/router/nav.dart';
 import '../../../core/router/routes.dart';
+import '../../../core/widgets/widgets.dart';
 import '../data/hf_booking_models.dart';
 import '../data/hf_bookings_providers.dart';
 
@@ -151,7 +152,12 @@ class _CustomerBookingScreenState extends ConsumerState<CustomerBookingScreen> {
       if (!mounted) return;
       await showDialog<void>(context: context, barrierDismissible: false, builder: (context) => AlertDialog(
         title: const Text('Booking confirmed'),
-        content: Text('Your appointment is ${MaterialLocalizations.of(context).formatMediumDate(booking.startUtc.toLocal())} at ${MaterialLocalizations.of(context).formatTimeOfDay(TimeOfDay.fromDateTime(booking.startUtc.toLocal()))}.'),
+        content: Column(mainAxisSize: MainAxisSize.min, children: [
+          // Only reached after the server confirmed the booking (status checked above).
+          const BookingConfirmedMark(),
+          const SizedBox(height: 12),
+          Text('Your appointment is ${MaterialLocalizations.of(context).formatMediumDate(booking.startUtc.toLocal())} at ${MaterialLocalizations.of(context).formatTimeOfDay(TimeOfDay.fromDateTime(booking.startUtc.toLocal()))}.'),
+        ]),
         actions: [
           TextButton(onPressed: () { Navigator.pop(context); context.go(Routes.customerBookings); }, child: const Text('View my bookings')),
           FilledButton(onPressed: () { Navigator.pop(context); context.pop(); }, child: const Text('Done')),
@@ -226,11 +232,16 @@ class _CustomerBookingScreenState extends ConsumerState<CustomerBookingScreen> {
             const SizedBox(height: 12),
             Text('Available times', style: money.titleLarge),
             const SizedBox(height: 8),
+            // Time slots appear one after another (HF-MOTION-D); the list itself is the server's.
             Wrap(spacing: 8, runSpacing: 8, children: [
-              for (final slot in _slots) ChoiceChip(
-                label: Text('${slot.hostLocalLabel ?? MaterialLocalizations.of(context).formatTimeOfDay(TimeOfDay.fromDateTime(slot.startUtc.toLocal()))}${slot.offsetLabel == null ? '' : ' ${slot.offsetLabel}'}'),
-                selected: _selected == slot,
-                onSelected: (_) => setState(() { _selected = slot; _quote = null; }),
+              for (var i = 0; i < _slots.length; i++) PopIn(
+                key: ValueKey<String>('slot-${_slots[i].startUtc.toIso8601String()}'),
+                delay: Duration(milliseconds: 40 * (i < 12 ? i : 12)),
+                child: ChoiceChip(
+                  label: Text('${_slots[i].hostLocalLabel ?? MaterialLocalizations.of(context).formatTimeOfDay(TimeOfDay.fromDateTime(_slots[i].startUtc.toLocal()))}${_slots[i].offsetLabel == null ? '' : ' ${_slots[i].offsetLabel}'}'),
+                  selected: _selected == _slots[i],
+                  onSelected: (_) => setState(() { _selected = _slots[i]; _quote = null; }),
+                ),
               ),
             ]),
           ] else if (!_loadingSlots && _error == null)
@@ -275,4 +286,45 @@ class _CustomerBookingScreenState extends ConsumerState<CustomerBookingScreen> {
       )),
     );
   }
+}
+
+/// The confirmed-booking mark (HF-MOTION-D): a tick that draws itself with a confetti burst around it.
+/// Shown only once the server has confirmed the booking. Reduced motion: the finished tick, no confetti.
+class BookingConfirmedMark extends StatefulWidget {
+  const BookingConfirmedMark({super.key});
+
+  @override
+  State<BookingConfirmedMark> createState() => _BookingConfirmedMarkState();
+}
+
+class _BookingConfirmedMarkState extends State<BookingConfirmedMark> {
+  final ConfettiController _confetti = ConfettiController();
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _confetti.fire();
+    });
+  }
+
+  @override
+  void dispose() {
+    _confetti.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => ConfettiBurst(
+    controller: _confetti,
+    particleCount: 40,
+    origin: Alignment.center,
+    child: const Center(
+      child: DrawnCheck(
+        key: ValueKey<String>('booking-confirmed-check'),
+        size: 80,
+        semanticLabel: 'Booking confirmed',
+      ),
+    ),
+  );
 }

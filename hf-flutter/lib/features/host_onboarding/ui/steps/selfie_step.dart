@@ -7,6 +7,7 @@ import '../../../../core/theme/hf_theme.dart';
 import '../../../../core/widgets/widgets.dart';
 import '../../../kyc/kyc.dart';
 import '../../flow/onboarding_context.dart';
+import '../widgets/beaver_tip.dart';
 import '../widgets/step_page.dart';
 import 'onboarding_copy.dart';
 
@@ -46,6 +47,9 @@ class _SelfieStepState extends State<SelfieStep> {
     if (sent) {
       return OnboardingStepPage(
         scene: HfClusterKind.verify,
+        // Sent is not approved: the beaver nods, it never cheers before the team has checked the video.
+        tip: tipFromLead(OnboardingCopy.selfieSentBody),
+        beaverPose: BeaverPose.nod,
         footer: [
           HfButton(
             key: const ValueKey<String>('selfie-continue'),
