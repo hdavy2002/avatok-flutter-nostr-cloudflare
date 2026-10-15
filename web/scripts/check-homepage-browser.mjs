@@ -235,7 +235,7 @@ try {
         await expect(menu).toBeFocused();
       }
       await expect(page.locator('[data-callvaal-footer-group]')).toHaveCount(5);
-      await expect(page.locator('[data-callvaal-footer-group] li')).toHaveCount(37);
+      await expect(page.locator('[data-callvaal-footer-group] li')).toHaveCount(36);
       for (const group of await page.locator('[data-callvaal-footer-group]').all()) {
         if (!(await group.evaluate(element => element.open))) await group.locator('summary').click();
       }
@@ -321,7 +321,7 @@ try {
         const datedPolicies = new Set(['/terms', '/privacy', '/disclaimer', '/community-guidelines', '/about', '/contact', '/press', '/hosts/agreement', '/hosts/kyc', '/report', '/grievance', '/cookies', '/data-deletion', '/intermediary-policy']);
         await expect(page.locator('.hf-date')).toHaveText(datedPolicies.has(path) ? /^Last updated: \d{4}-\d{2}-\d{2}$/ : 'Last updated: {{DATE}}');
       }
-      await expect(page.locator('[data-callvaal-footer-group] li')).toHaveCount(37);
+      await expect(page.locator('[data-callvaal-footer-group] li')).toHaveCount(36);
       await page.evaluate(() => { document.documentElement.style.fontSize = '200%'; });
       assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), `${path}: 200% narrow text has no page overflow`);
       if (path === '/faq') {
