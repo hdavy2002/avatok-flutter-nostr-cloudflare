@@ -29,6 +29,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../../
 import { Skeleton } from '../../components/ui/skeleton';
 import { useDashNav, DASH_LOGOUT, type DashKey } from './nav';
 import { BRAND } from '../../lib/brand';
+import { publicImage } from '../../lib/config';
 
 const GUEST_JWT_KEY = 'saathum_guest_jwt';
 const GUEST_HANDLE_KEY = 'saathum_guest_handle';
@@ -124,7 +125,7 @@ function Logo({ compact = false }: { compact?: boolean }) {
     <a href="/" className="flex items-center gap-2.5 no-underline" aria-label={`${BRAND.name} home`}>
       {/* [SAATHUM-DASH-LOGO-1 2026-10-01] Lotus emblem (same art as the site header), no wordmark. */}
       {/* [HELLO-FRAANDS-DASH-SHELL-1] Site logo mark + name, as in the site header. */}
-      <img src="/assets/branding/hf-mark.png" alt="" width={40} height={40} className="h-10 w-10 object-contain" />
+      <img src={publicImage('/assets/branding/hf-mark.png', { width: 128, fit: 'scale-down' })} alt="" width={40} height={40} className="h-10 w-10 object-contain" />
       {!compact && <span className="font-dash text-[20px] font-black leading-none text-foreground">{BRAND.name}</span>}
     </a>
   );

@@ -64,7 +64,7 @@ void main() {
     });
 
     test('the brand logo constant points at a bundled sticker', () {
-      expect(kLogoAsset, 'assets/brand/logo2.png');
+      expect(kLogoAsset, 'assets/brand/hf_logo.png');
       expect(File(kLogoAsset).existsSync(), isTrue);
     });
   });
