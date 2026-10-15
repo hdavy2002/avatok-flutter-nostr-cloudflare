@@ -421,3 +421,6 @@
  .hfh-reference-page .hfh-hero{gap:2rem}
  .hfh-reference-page .hfh-lanes{row-gap:var(--hfh-section-space)}
 }
+
+/* [HF-INFLUENCER-PIVOT-5] Long words such as "influencers" may wrap at 320px / 200% text instead of overflowing. */
+.hfh-reference-page .hfh-section-heading h2{overflow-wrap:anywhere}
