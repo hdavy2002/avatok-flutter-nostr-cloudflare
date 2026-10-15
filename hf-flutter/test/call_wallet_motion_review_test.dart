@@ -528,14 +528,12 @@ void main() {
       final billing = walletBilling()
         ..answerWith(StorePurchaseStatus.purchased, token: 'tok-abc');
       await pumpWallet(tester, api: walletApi(), billing: billing);
+      await _precacheBeavers(tester, [BeaverPose.celebrate]);
+      // Pay on the tall test phone (every tile on screen), then shrink to the capture size.
+      await selectAndPay(tester, 'hf_rupees_120');
       _setSize(tester, size);
       addTearDown(tester.view.resetPhysicalSize);
       addTearDown(tester.view.resetDevicePixelRatio);
-      await tester.pumpAndSettle();
-      await _precacheBeavers(tester, [BeaverPose.celebrate]);
-      await tester.ensureVisible(find.byKey(const ValueKey<String>('pay-button')));
-      await tester.pumpAndSettle();
-      await selectAndPay(tester, 'hf_rupees_120');
       // Catch the moment the yellow flash and the confetti are on screen.
       var caught = false;
       for (var i = 0; i < 80 && !caught; i++) {
@@ -545,11 +543,12 @@ void main() {
             .evaluate()
             .isNotEmpty;
       }
-      await tester.scrollUntilVisible(
-        find.byKey(const ValueKey<String>('purchase-notice')),
-        -200,
-        scrollable: find.byType(Scrollable).first,
-      );
+      expect(caught, isTrue, reason: 'the top-up flash played');
+      // Back to the top: the cheering beaver sits above the notice.
+      tester
+          .state<ScrollableState>(find.byType(Scrollable).first)
+          .position
+          .jumpTo(0);
       await tester.pump(const Duration(milliseconds: 60));
       expect(tester.takeException(), isNull);
       await _capture(tester, 'wallet-topup-$label');
