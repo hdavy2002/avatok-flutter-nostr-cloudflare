@@ -107,6 +107,9 @@ max-width:100%;padding:.625rem 1rem;line-height:1.5}
 .download-button .platform-logo{display:block;flex:none;width:38px;height:38px;shape-rendering:geometricPrecision}
 .download-button strong,.download-button small{line-height:1.6}
 .mobile-bottom-nav a{min-width:0;text-align:center;overflow-wrap:anywhere}
+/* [HF-LOGO-1] Icons sit on one line: labels start at the top and never wrap. */
+.mobile-bottom-nav a{justify-content:flex-start}
+.mobile-bottom-nav a span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%;line-height:1.3}
 
 @media(min-width:1400px){
 .earn-section{grid-template-columns:minmax(0,28%) minmax(0,1fr) minmax(8rem,12rem)}
