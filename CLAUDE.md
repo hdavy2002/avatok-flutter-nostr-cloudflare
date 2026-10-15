@@ -744,18 +744,26 @@ live. **Before real money-in: a LIVE Stripe account that can actually charge INR
 Stripe India requires a registered business — which avaTOK is not (see the no-company
 section).
 
-🚨 **THE PROVIDER IS AN OPEN QUESTION — DO NOT ASSUME ONE (owner decision 2026-09-02).**
-This paragraph used to say "the real rail is expected to be **Cashfree**, not Stripe".
-**Cashfree is ruled out — they never replied to the application.** Nothing has replaced
-it. So: do not write Cashfree (or any other provider) into a spec, a route, a config key
-or this file, and do not tell the owner what the rail "will be" — ASK HIM. Wiring
-whichever provider is chosen is a separate project; the INR change above only makes the
-currency honest on the rail that exists.
+🟢 **THE INDIA PAYMENT GATEWAY IS CASHFREE (owner decision 2026-10-15). USE CASHFREE.**
+Cashfree approved the merchant account (brand name requested: Hello Fraands). Every new
+India money-in flow goes through Cashfree — do not wire Razorpay, Paytm or Stripe India for it.
+(History: on 2026-09-02 Cashfree was ruled out because they never replied; that is over.)
 
-Two leftovers still name the dead provider: the reviewer-onboarding allowlist
-`reviewerEmails` is the single address `cashfree@avatok.ai` (moot for now — the gate was
-switched off in prod KV on 2026-09-02, `reviewerModeEnabled=false`), and the
-company-registration note below. Point both at the real provider once there is one.
+- Keys: production App ID + Secret live in `secrets/cashfree.env` on the owner's Mac
+  (gitignored — never commit, never paste into code or `wrangler.toml`). The worker reads
+  them as secrets `CASHFREE_APP_ID`, `CASHFREE_SECRET_KEY`, `CASHFREE_WEBHOOK_SECRET`
+  (= the secret key: Cashfree signs webhooks with it) and `CASHFREE_ENV=production`.
+- Client: `worker/src/lib/cashfree.ts`; adapter: `worker/src/lib/payments/cashfree_adapter.ts`.
+- Hello Fraands wallet top-up (`[HF-CASHFREE-TOPUP-1]`): `hfTopupGateway=cashfree`,
+  `hfTopupEnabled=true`. Any whole amount the caller types (no packs-as-products). The price
+  includes **18% GST**: the rupee wallet gets `paid ÷ 1.18` to the paisa (₹2 → ₹1.69), the
+  GST is stored on the lot. Spec: `Specs/HF-WALLET-TOPUP.md`; rules HF-PAY-1/9/11/20.
+- Production checkout only opens on a domain whitelisted in the Cashfree dashboard
+  (Developers → Whitelisting). localhost is refused ("Broken Link").
+- Payment-link API (`/pg/links`) is NOT enabled on this account.
+
+The reviewer-onboarding allowlist `reviewerEmails` is still the single address
+`cashfree@avatok.ai` (gate off in prod KV since 2026-09-02, `reviewerModeEnabled=false`).
 
 Marketplace listings keep their own genuinely multi-currency unit (`ListingTile.tsx`,
 `intent_theme.dart`) and are NOT part of this.
@@ -827,7 +835,7 @@ correct phrasing for an unregistered business under the IT Rules 2021. Do not re
 
 **When the company is actually registered**, update `LegalStatus.astro`,
 `BetaBanner.astro` and `SiteFooter.astro`, publish CIN/GSTIN, and tell the payment
-provider (whichever it turns out to be — Cashfree is OUT, see the payments section):
+provider (Cashfree — see the payments section):
 an unregistered merchant must update its business information with the provider once
 it incorporates.
 

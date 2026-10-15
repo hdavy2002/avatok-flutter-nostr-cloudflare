@@ -88,7 +88,9 @@ export async function issueDocument(env: Env, a: {
   return (await db.prepare(`SELECT ${RCOLS} FROM hf_receipts WHERE kind=?1 AND source=?2 AND source_id=?3`).bind(a.kind, a.source, a.sourceId).first<ReceiptRow>()) ?? null;
 }
 
-export interface TopupForReceipt { id: string; uid: string; amount_rupees: number; gateway: string; gateway_payment_id?: string | null; paid_at: number | null }
+export interface TopupForReceipt { id: string; uid: string; amount_rupees: number; gateway: string; gateway_payment_id?: string | null; paid_at: number | null;
+  /** [HF-CASHFREE-TOPUP-1] rupee-wallet top-ups: paid = wallet + GST (18% inclusive). Absent on legacy whole-rupee top-ups. */
+  paid_paise?: number | null; wallet_paise?: number | null; gst_paise?: number | null }
 
 /** Called by settleHfTopup right after the wallet credit succeeded. Never throws (a receipt problem must not fail a credit). */
 export async function issueTopupReceipt(env: Env, cfg: Record<string, unknown>, t: TopupForReceipt): Promise<ReceiptRow | null> {
@@ -96,7 +98,8 @@ export async function issueTopupReceipt(env: Env, cfg: Record<string, unknown>, 
     const sup = supplierFrom(cfg);
     return await issueDocument(env, {
       prefix: sup.prefix, kind: "receipt", uid: t.uid, source: "topup", sourceId: t.id, amountRupees: t.amount_rupees, now: t.paid_at ?? Date.now(),
-      data: { topupId: t.id, gateway: t.gateway, gatewayPaymentId: t.gateway_payment_id ?? null, paidAt: t.paid_at ?? Date.now() },
+      data: { topupId: t.id, gateway: t.gateway, gatewayPaymentId: t.gateway_payment_id ?? null, paidAt: t.paid_at ?? Date.now(),
+        ...(t.wallet_paise != null ? { paidPaise: t.paid_paise ?? t.amount_rupees * 100, walletPaise: t.wallet_paise, gstPaise: t.gst_paise ?? 0 } : {}) },
     });
   } catch (e) {
     console.warn("[hf-receipt] issue failed", t.id, String(e));
@@ -108,7 +111,7 @@ export async function issueTopupReceipt(env: Env, cfg: Record<string, unknown>, 
 export async function backfillTopupReceipts(env: Env, cfg: Record<string, unknown>, uid: string): Promise<void> {
   try {
     const rows = (await env.DB_META.prepare(
-      `SELECT t.id, t.uid, t.amount_rupees, t.gateway, t.gateway_payment_id, t.paid_at FROM hf_topups t
+      `SELECT t.id, t.uid, t.amount_rupees, t.gateway, t.gateway_payment_id, t.paid_at, t.amount_rupees * 100 AS paid_paise, t.wallet_paise, t.gst_paise FROM hf_topups t
         WHERE t.uid=?1 AND t.status='paid' AND t.credited=1
           AND NOT EXISTS (SELECT 1 FROM hf_receipts r WHERE r.kind='receipt' AND r.source='topup' AND r.source_id=t.id)
         ORDER BY t.paid_at LIMIT 20`,
@@ -273,6 +276,17 @@ export function renderReceiptHtml(r: ReceiptRow, sup: Supplier, customerName: st
       ${igst > 0 ? `<tr><td>IGST @ 18%</td><td class="n">${inr(igst)}</td></tr>` : `<tr><td>CGST @ 9%</td><td class="n">${inr(cgst)}</td></tr><tr><td>SGST @ 9%</td><td class="n">${inr(sgst)}</td></tr>`}
       <tr class="t"><td>Total</td><td class="n">${inr(taxable + gst)}</td></tr></tbody></table>
       <p class="muted">GST is included in the platform fee you paid. Host charges are not part of this invoice. ${esc(data.placeOfSupplyNote ?? "")}</p>`;
+  } else if (data.walletPaise != null) {
+    // [HF-CASHFREE-TOPUP-1] Website top-up into the rupee wallet: paid = added + 18% GST.
+    const paid = Number(data.paidPaise ?? r.amount_rupees * 100), added = Number(data.walletPaise), gst = Number(data.gstPaise ?? 0);
+    const via = data.gateway === "cashfree" ? "Cashfree" : String(data.gateway ?? "");
+    body = `<table><thead><tr><th>Description</th><th class="n">Detail</th></tr></thead><tbody>
+      <tr><td>Order</td><td class="n">${esc(data.topupId ?? r.source_id)}</td></tr>
+      <tr><td>Added to your wallet</td><td class="n">${inr(added)}</td></tr>
+      ${keptRow(paid, gst, added)}
+      <tr class="t"><td>Paid${via ? ` via ${esc(via)}` : ""}</td><td class="n">${inr(paid)}</td></tr></tbody></table>
+      ${data.gatewayPaymentId ? `<p class="muted">Payment reference: ${esc(data.gatewayPaymentId)}</p>` : ""}
+      <p class="muted">This is a payment receipt, not a tax invoice.</p>`;
   } else {
     body = `<table><thead><tr><th>Description</th><th class="n">Amount</th></tr></thead><tbody>
       <tr><td>Money added to your ${esc(BRAND.name)} wallet${data.gateway ? ` (paid via ${esc(data.gateway)})` : ""}</td><td class="n">${inr(r.amount_rupees * 100)}</td></tr>

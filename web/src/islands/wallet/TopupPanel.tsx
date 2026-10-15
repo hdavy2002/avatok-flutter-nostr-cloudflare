@@ -1,13 +1,20 @@
 /* [HF-TOPUP-1] "Add money" card on /wallet. Off (default): a calm note and nothing clickable. On: packs + custom amount, then the
  * gateway's own checkout (src/lib/hfTopupApi.ts), then a status poll and onPaid() so the balance refreshes. */
 import { useEffect, useState } from 'react';
-import { inr } from '../../lib/hfCallsApi';
+import { inr, inr2 } from '../../lib/hfCallsApi';
 import { BRAND } from '../../lib/brand';
 import {
-  fetchTopupConfig, gatewaySupported, openCheckout, startTopup, topupErrorMessage, waitForTopup, type TopupConfig,
+  fetchTopupConfig, gatewaySupported, openCheckout, startTopup, topupErrorMessage, waitForTopup, topupPreview, type TopupConfig, type TopupStatus,
 } from '../../lib/hfTopupApi';
 
 type Phase = 'idle' | 'starting' | 'paying' | 'confirming';
+
+/** [HF-CASHFREE-TOPUP-1] "₹2.00 paid · GST ₹0.31 · ₹1.69 added to your wallet" from the server's own numbers. */
+function paidText(r: TopupStatus): string {
+  if (r.walletPaise == null) return `${inr(r.amountRupees)} added to your wallet.`;
+  const paid = (r.paidPaise ?? r.amountRupees * 100) / 100;
+  return `${inr2(paid)} paid. GST ${inr2((r.gstPaise ?? 0) / 100)} included, ${inr2(r.walletPaise / 100)} added to your wallet.`;
+}
 
 export default function TopupPanel({ onPaid }: { onPaid: () => void }) {
   const [cfg, setCfg] = useState<TopupConfig | null>(null);
@@ -26,7 +33,7 @@ export default function TopupPanel({ onPaid }: { onPaid: () => void }) {
       waitForTopup(back).then(r => {
         if (!live) return;
         setPhase('idle');
-        if (r?.credited) { setMsg({ kind: 'ok', text: `${inr(r.amountRupees)} added to your wallet.` }); onPaid(); }
+        if (r?.credited) { setMsg({ kind: 'ok', text: paidText(r) }); onPaid(); }
         else setMsg({ kind: 'info', text: 'We have not received the payment yet. If money was taken it will show up here shortly.' });
         history.replaceState(null, '', location.pathname);
       });
@@ -71,7 +78,7 @@ export default function TopupPanel({ onPaid }: { onPaid: () => void }) {
     setPhase('confirming'); setMsg({ kind: 'info', text: 'Confirming your payment…' });
     const r = await waitForTopup(order.topupId);
     setPhase('idle');
-    if (r?.credited) { setMsg({ kind: 'ok', text: `${inr(order.amountRupees)} added to your wallet.` }); setCustom(''); onPaid(); }
+    if (r?.credited) { setMsg({ kind: 'ok', text: paidText(r) }); setCustom(''); onPaid(); }
     else if (r?.status === 'failed') setMsg({ kind: 'err', text: 'The payment did not go through. Nothing was charged.' });
     else setMsg({ kind: 'info', text: 'We have not received the payment yet. If money was taken it will show up here shortly.' });
   }
@@ -89,6 +96,9 @@ export default function TopupPanel({ onPaid }: { onPaid: () => void }) {
         <label htmlFor="hft-custom">Or enter an amount ({inr(cfg.minRupees)} to {inr(cfg.maxRupees)})</label>
         <input id="hft-custom" inputMode="numeric" pattern="[0-9]*" value={custom} disabled={busy}
           onChange={e => setCustom(e.target.value.replace(/[^0-9]/g, '').slice(0, 6))} style={{ minHeight: 48, padding: '0 14px', borderRadius: 12, border: '1px solid #cdbbd0', font: 'inherit' }} />
+        {customOk && cfg.gstBps > 0 && (() => { const p = topupPreview(customAmount, cfg.gstBps); return (
+          <p className="hfc-sub" style={{ margin: 0 }} aria-live="polite">You pay {inr2(p.paidPaise / 100)}. GST ({(cfg.gstBps / 100).toFixed(0)}%) {inr2(p.gstPaise / 100)} is included, so {inr2(p.walletPaise / 100)} goes into your wallet.</p>
+        ); })()}
         <button type="submit" className="hfc-btn hfc-primary" disabled={busy || !customOk}>
           {phase === 'starting' ? 'Starting…' : phase === 'confirming' ? 'Confirming…' : customOk ? `Add ${inr(customAmount)}` : 'Add money'}
         </button>

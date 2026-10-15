@@ -315,6 +315,12 @@ export const PRICING_GP_R2: PricingVersion = {
   id: "gp-r2", provider: "google_play", purchasePaisePerToken: 100, redemptionPaisePerToken: RUPEE_LOT_VALUE_PAISE, providerFeeBps: 1500, taxMode: "none_unregistered",
 };
 
+/** [HF-CASHFREE-TOPUP-1] Rupee wallet credits bought on the website through Cashfree (any amount, GST-inclusive, credit = paid / 1.18).
+ *  providerFeeBps is 0 here on purpose: the gateway fee is paid by the platform, it never reduces the buyer's credit. */
+export const PRICING_CF_R1: PricingVersion = {
+  id: "cf-r1", provider: "cashfree", purchasePaisePerToken: 100, redemptionPaisePerToken: RUPEE_LOT_VALUE_PAISE, providerFeeBps: 0, taxMode: "none_unregistered",
+};
+
 /**
  * Top-up with GST INCLUDED in the price: wallet = paid / (1 + gst), rounded half up to the paisa; GST = paid - wallet.
  * Rs 120.00 -> Rs 101.69 + GST Rs 18.31; Rs 118.00 -> Rs 100.00 + GST Rs 18.00. With gstInclusive=false nothing is deducted.

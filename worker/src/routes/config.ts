@@ -3085,6 +3085,8 @@ export async function getConfig(env: Env): Promise<Response> {
   // [HF-TOPUP-1] The browser gets only a derived `hfTopup` block (enabled already means "flag on + gateway chosen + adapter has keys").
   const merged: Record<string, unknown> = { ...enforcePermanentFreeCommunication({ ...DEFAULTS, ...stored }) };
   merged.hfTopup = { ...hfTopupPublic(env, merged as any), confirmAboveRupees: Number(merged.hfTopupConfirmAboveRupees ?? 1000) }; // [HF-WALLET-LIMITS-1] confirm step threshold
+  // [HF-CASHFREE-TOPUP-1] GST taken out of a website top-up (basis points, GST-inclusive). 0 = whole amount reaches the wallet (legacy wallet).
+  { const std = hfStdPlanPublic(merged); (merged.hfTopup as Record<string, unknown>).gstBps = merged.hfTokensEnabled === true && std.gstInclusive ? std.gstBps : 0; }
   // Derive the public Standard-plan contract while its private rollout inputs
   // are still present. Removing hfTokensEnabled first makes the interlock read
   // as disabled even when production has armed every required gate.

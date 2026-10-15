@@ -10783,5 +10783,24 @@
     "min_devices_on_build": 1,
     "flags": [],
     "no_telemetry": "Display-only fix of existing receipt records."
+  },
+  "HF-CASHFREE-TOPUP-1": {
+    "description": "[HF-CASHFREE-TOPUP-1 2026-10-15] Cashfree (production) is the India gateway. Website /wallet top-up of any whole amount; with hfTokensEnabled the credit is a rupee lot (pricing cf-r1) of paid/1.18 to the paisa, GST stored on the lot and the hf_topups row (wallet_paise, gst_paise, lot_id), once per top-up (op hftop:<id>). Same receipt + WhatsApp/email as Play, labelled 'via Cashfree'. Per-order notify_url + return_url. Rulebook HF-PAY-1/9/11/20.",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [
+      "hfTopupEnabled",
+      "hfTopupGateway",
+      "hfTopupMinRupees",
+      "hfTokensEnabled"
+    ],
+    "success": [
+      {
+        "event": "hf_topup_paid",
+        "property": "wallet",
+        "equals": "rupee_lots",
+        "note": "Owner's Rs 2 live test: wallet_paise=169, gst_paise=31, duplicate=false. A second event for the same top-up must say duplicate=true, never a second credit."
+      }
+    ]
   }
 }

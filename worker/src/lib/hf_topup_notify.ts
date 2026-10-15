@@ -30,17 +30,20 @@ export interface TopupNotice {
   /** The receipt number from hf_receipts (e.g. HF/R/2026-27/12), when it was issued. */
   receiptNumber?: string | null;
   at?: number;
+  /** [HF-CASHFREE-TOPUP-1] How it was paid, for the message ("Google Play" when absent; "Cashfree" for website top-ups). */
+  via?: string;
 }
 
 /** [HF-STD-PLAN-1] Always two decimals, Indian grouping: "₹120.00", "₹101.69", "₹1,016.95". */
 export function rupeesText(paise: number): string {
   return formatRupees(Math.max(0, Math.round(Number(paise) || 0)));
 }
+const viaOf = (n: TopupNotice): string => n.via || "Google Play";
 const gstOf = (n: TopupNotice): number => Math.max(0, Math.round(n.gstPaise ?? (n.paidPaise - n.creditPaise)));
 
 export function topupWhatsAppText(n: TopupNotice, balancePaise: number | null): string {
   const bal = balancePaise == null ? "" : ` Your wallet balance is now ${rupeesText(balancePaise)}.`;
-  return `${BRAND.name}: ${rupeesText(n.creditPaise)} has been added to your wallet. You paid ${rupeesText(n.paidPaise)} via Google Play, including ${rupeesText(gstOf(n))} GST. Order ${n.orderId}.${bal}`;
+  return `${BRAND.name}: ${rupeesText(n.creditPaise)} has been added to your wallet. You paid ${rupeesText(n.paidPaise)} via ${viaOf(n)}, including ${rupeesText(gstOf(n))} GST. Order ${n.orderId}.${bal}`;
 }
 
 const esc = (s: unknown) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]!));
@@ -81,13 +84,13 @@ export function topupEmailHtml(n: TopupNotice, balancePaise: number | null): str
     ${row("Total paid", esc(rupeesText(n.paidPaise)), true)}
     ${row("GST included (18%)", esc(rupeesText(gstOf(n))))}
     ${row("Added to your wallet", esc(rupeesText(n.creditPaise)), true)}
-    ${row("Paid via", "Google Play")}
-    ${row("Google Play order", esc(n.orderId))}
+    ${row("Paid via", esc(viaOf(n)))}
+    ${row(`${viaOf(n)} order`, esc(n.orderId))}
     ${balancePaise == null ? "" : row("Wallet balance now", esc(rupeesText(balancePaise)))}
   </table>
 </td></tr>
 <tr><td style="padding:16px 28px 28px">
-  <div style="${body};font-size:15px;color:${mauve}">This is a payment receipt, not a tax invoice. Google Play also sends its own receipt for this payment. You can see all your receipts in the Wallet tab of the ${esc(BRAND.name)} app.</div>
+  <div style="${body};font-size:15px;color:${mauve}">This is a payment receipt, not a tax invoice.${viaOf(n) === "Google Play" ? " Google Play also sends its own receipt for this payment." : ""} You can see all your receipts in the Wallet tab of the ${esc(BRAND.name)} app.</div>
   <div style="${body};font-size:15px;color:${mauve};margin-top:12px">Questions? Write to <a href="mailto:${esc(BRAND.emails.support)}" style="color:${plum}">${esc(BRAND.emails.support)}</a>.</div>
 </td></tr>
 </table>

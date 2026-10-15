@@ -3,18 +3,18 @@
  * here = one entry in LOADERS. Nothing loads until a signed-in buyer taps an amount. */
 import { ApiError, request } from './apiClient';
 
-export interface TopupConfig { enabled: boolean; gateway: string; packs: number[]; minRupees: number; maxRupees: number; testMode: boolean; confirmAboveRupees: number }
-export interface TopupStatus { id: string; status: 'created' | 'paid' | 'failed' | 'refunded' | 'expired'; credited: boolean; amountRupees: number }
+export interface TopupConfig { enabled: boolean; gateway: string; packs: number[]; minRupees: number; maxRupees: number; testMode: boolean; confirmAboveRupees: number; gstBps: number }
+export interface TopupStatus { id: string; status: 'created' | 'paid' | 'failed' | 'refunded' | 'expired'; credited: boolean; amountRupees: number; paidPaise?: number; walletPaise?: number | null; gstPaise?: number | null }
 export interface TopupOrder { topupId: string; gateway: string; client_payload: Record<string, string | number>; testMode: boolean; amountRupees: number }
 
-const OFF: TopupConfig = { enabled: false, gateway: 'none', packs: [], minRupees: 0, maxRupees: 0, testMode: false, confirmAboveRupees: 0 };
+const OFF: TopupConfig = { enabled: false, gateway: 'none', packs: [], minRupees: 0, maxRupees: 0, testMode: false, confirmAboveRupees: 0, gstBps: 0 };
 
 export async function fetchTopupConfig(): Promise<TopupConfig> {
   try {
     const c = await request<{ hfTopup?: Partial<TopupConfig> }>('/api/config', { timeoutMs: 8000 });
     const t = c?.hfTopup;
     if (!t || t.enabled !== true || !t.gateway || t.gateway === 'none') return OFF;
-    return { enabled: true, gateway: String(t.gateway), packs: Array.isArray(t.packs) ? t.packs.map(Number).filter(n => n > 0) : [], minRupees: Number(t.minRupees) || 0, maxRupees: Number(t.maxRupees) || 0, testMode: t.testMode === true, confirmAboveRupees: Number.isFinite(Number(t.confirmAboveRupees)) ? Number(t.confirmAboveRupees) : 1000 };
+    return { enabled: true, gateway: String(t.gateway), packs: Array.isArray(t.packs) ? t.packs.map(Number).filter(n => n > 0) : [], minRupees: Number(t.minRupees) || 0, maxRupees: Number(t.maxRupees) || 0, testMode: t.testMode === true, confirmAboveRupees: Number.isFinite(Number(t.confirmAboveRupees)) ? Number(t.confirmAboveRupees) : 1000, gstBps: Math.max(0, Math.min(5000, Math.trunc(Number(t.gstBps) || 0))) };
   } catch { return OFF; }
 }
 
@@ -23,6 +23,15 @@ async function authed<T>(method: 'GET' | 'POST', path: string, body?: unknown, h
   const token = await getActiveTokenWaited(6000);
   if (!token) throw new ApiError(401, 'no_session');
   return request<T>(path, { method, auth: token, body, headers, timeoutMs: 25_000 });
+}
+
+/** [HF-CASHFREE-TOPUP-1] Preview of the server's split (lib/hf_token_math.ts topupSplit): wallet = paid / (1 + GST), half up to the paisa. */
+export function topupPreview(rupees: number, gstBps: number): { paidPaise: number; walletPaise: number; gstPaise: number } {
+  const paid = Math.max(0, Math.trunc(rupees)) * 100;
+  if (gstBps <= 0) return { paidPaise: paid, walletPaise: paid, gstPaise: 0 };
+  const den = 10_000 + gstBps;
+  const wallet = Math.floor((paid * 10_000 * 2 + den) / (den * 2));
+  return { paidPaise: paid, walletPaise: wallet, gstPaise: paid - wallet };
 }
 
 export const startTopup = (amount: number): Promise<TopupOrder> =>

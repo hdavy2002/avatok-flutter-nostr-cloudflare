@@ -1,5 +1,16 @@
 # HF-WALLET-TOPUP — add money to the HF wallet through any payment gateway
 
+> **2026-10-15 — LIVE ON CASHFREE (HF-CASHFREE-TOPUP-1, owner decision).** Cashfree is the India gateway, production keys.
+> With `hfTokensEnabled` on (prod), a paid top-up becomes a **rupee lot** in `hf_token_lots` (pricing `cf-r1`, provider `cashfree`,
+> provider_ref = our `hftop_` id), the same wallet calls spend from — not the legacy WalletDO. GST: the price includes 18%, so
+> wallet = paid ÷ 1.18 rounded half up to the paisa (`topupSplit`), GST = the rest; both stored on the lot and on `hf_topups`
+> (`wallet_paise`, `gst_paise`, `lot_id`, migration `2026-10-15-hf-topups-rupee-wallet.sql`). ₹2 → ₹1.69 + ₹0.31 GST.
+> Any whole amount from `hfTopupMinRupees` (code floor now ₹1). Cashfree orders carry their own `notify_url`
+> (`<apiOrigin>/api/hf/wallet/topup/webhook/cashfree`) and `return_url` (`/wallet?topup={order_id}`), so no dashboard webhook is
+> required; the /wallet status poll is the backstop. `CASHFREE_WEBHOOK_SECRET` = the Cashfree secret key (that is what signs webhooks).
+> /wallet shows this card on the plain website only; inside the Android app the Google Play panel stays.
+> Production checkout needs the site domain whitelisted in the Cashfree dashboard.
+
 Issue HF-TOPUP-1. Real money stays OFF until the owner picks a gateway and flips two flags. Nothing here changes the main app's
 retired payment rails (`MONEY_IN_DISABLED`, `PERMANENTLY_DISABLED_PAYMENT_FLAGS` are untouched and not consulted).
 

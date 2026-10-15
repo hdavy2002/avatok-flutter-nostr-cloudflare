@@ -14,6 +14,7 @@ import {
   verifyCashfreeSignature,
 } from "../cashfree";
 import type { GatewayAdapter, GatewayOrder } from "./types";
+import { BRAND, brandUrl } from "../brand";
 
 function mapStatus(type: string | undefined, orderStatus: string | undefined): "paid" | "failed" | "refunded" | "pending" {
   const t = String(type ?? "").toUpperCase();
@@ -41,12 +42,13 @@ export const cashfreeAdapter: GatewayAdapter = {
       orderId: a.orderId,
       amountPaise: a.amountPaise,
       customerId: a.uid,
-      returnUrl: env.CASHFREE_RETURN_URL ?? null,
-      // Cashfree's webhook URL is configured in the merchant dashboard, not per-order —
-      // the existing dedicated route (routes/cashfree.ts) passes a per-request notifyUrl
-      // because it has a `req` to derive an origin from; this adapter's createOrder
-      // signature (spec §2.3) does not carry one, so it relies on the dashboard config.
-      notifyUrl: null,
+      // [HF-CASHFREE-TOPUP-1] Wallet top-ups get their own return + notify URLs per order, so the live rail works without
+      // anyone pasting a webhook into the Cashfree dashboard. {order_id} is Cashfree's own placeholder. The status poll on
+      // /wallet is the backstop if a webhook is ever lost.
+      returnUrl: a.kind === "wallet_topup"
+        ? (env.CASHFREE_RETURN_URL ?? brandUrl("/wallet?topup={order_id}"))
+        : (env.CASHFREE_RETURN_URL ?? null),
+      notifyUrl: a.kind === "wallet_topup" ? `${BRAND.apiOrigin}/api/hf/wallet/topup/webhook/cashfree` : null,
     });
     if ("error" in created) return created;
     const order: GatewayOrder = {

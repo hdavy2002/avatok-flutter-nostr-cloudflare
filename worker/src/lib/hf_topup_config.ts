@@ -11,7 +11,7 @@ export const HF_TOPUP_GATEWAYS: readonly GatewayId[] = ["razorpay", "cashfree", 
 export type HfTopupGateway = "none" | GatewayId;
 
 export const HF_TOPUP_DEFAULT_PACKS = [100, 200, 500, 1000];
-const ABS_MIN = 10;
+const ABS_MIN = 1; // [HF-CASHFREE-TOPUP-1] owner wants any amount (a ₹2 live test); the real floor is the hfTopupMinRupees flag.
 const ABS_MAX = 50_000;
 
 export interface HfTopupFlags {

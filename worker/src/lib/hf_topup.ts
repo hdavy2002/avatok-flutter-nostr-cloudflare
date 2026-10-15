@@ -11,6 +11,14 @@ import { BRAND } from "./brand";
 import { noteGatewayRefund } from "./hf_refunds"; // [HF-WALLET-EXIT-1]
 import { readConfig } from "../routes/config";
 import { issueTopupReceipt } from "./hf_receipts"; // [HF-WALLET-LIMITS-1]
+import { creditLot } from "./hf_token_ledger"; // [HF-CASHFREE-TOPUP-1]
+import { topupSplit, paiseToMicro, microToPaise, RUPEE_LOT_VALUE_PAISE, PRICING_CF_R1 } from "./hf_token_math";
+import { readHfStdPlan } from "./hf_token_config";
+import { notifyTopupCredited } from "./hf_topup_notify";
+
+/** [HF-CASHFREE-TOPUP-1] Pricing version stamped on the rupee lot of a website top-up, per gateway. Only Cashfree is live. */
+const PRICING_BY_GATEWAY: Record<string, string> = { cashfree: PRICING_CF_R1.id };
+const GATEWAY_LABEL: Record<string, string> = { cashfree: "Cashfree", razorpay: "Razorpay", paytm: "Paytm" };
 
 export const TOPUP_PREFIX = "hftop_";
 export const TOPUP_EXPIRE_MS = 24 * 3600_000;
@@ -25,8 +33,10 @@ export interface HfTopupRow {
   id: string; uid: string; amount_rupees: number; gateway: string; gateway_order_id: string | null;
   status: "created" | "paid" | "failed" | "refunded" | "expired"; credited: number; raw_status: string | null;
   gateway_payment_id?: string | null; created_at: number; updated_at: number; paid_at: number | null;
+  /** [HF-CASHFREE-TOPUP-1] Rupee-wallet top-ups only: paise that reached the wallet and the GST taken out (paid = wallet + GST). */
+  wallet_paise?: number | null; gst_paise?: number | null;
 }
-const COLS = "id,uid,amount_rupees,gateway,gateway_order_id,status,credited,raw_status,gateway_payment_id,created_at,updated_at,paid_at";
+const COLS = "id,uid,amount_rupees,gateway,gateway_order_id,status,credited,raw_status,gateway_payment_id,created_at,updated_at,paid_at,wallet_paise,gst_paise";
 
 export async function getTopup(env: Env, id: string): Promise<HfTopupRow | null> {
   return (await env.DB_META.prepare(`SELECT ${COLS} FROM hf_topups WHERE id=?1`).bind(id).first<HfTopupRow>().catch(() => null)) ?? null;
@@ -85,6 +95,46 @@ export async function settleHfTopup(
     return { result: "ignored", reason: isPaidStatus(truth.status) ? "amount_mismatch" : "not_paid_at_gateway" };
   }
 
+  const cfg = (await readConfig(env).catch(() => ({}))) as Record<string, unknown>;
+
+  // [HF-CASHFREE-TOPUP-1] With the rupee wallet on (hfTokensEnabled), the money goes into a rupee lot — the same wallet calls spend from
+  // and Google Play top-ups land in — with GST taken out: wallet = paid / 1.18 to the paisa, GST = the rest (HF-PAY-1, owner 2026-10-15).
+  // Idempotent by the ledger op id hftop:<id>. With the flag off, the legacy whole-rupee WalletDO credit below is unchanged.
+  if (cfg.hfTokensEnabled === true) {
+    const paidPaise = expectedPaise;
+    const std = readHfStdPlan(cfg);
+    const split = topupSplit(paidPaise, std.gstBps, std.gstInclusive);
+    const micro = paiseToMicro(split.walletPaise);
+    if (!Number.isSafeInteger(micro) || micro <= 0) return { result: "ignored", reason: "amount_too_small" };
+    let credit: { applied: boolean; lotId: string | null };
+    try {
+      credit = await creditLot(env, row.uid, {
+        kind: "purchase", pricingVersion: PRICING_BY_GATEWAY[row.gateway] ?? PRICING_CF_R1.id, valuePaisePerToken: RUPEE_LOT_VALUE_PAISE,
+        micro, paidPaise, provider: row.gateway, providerRef: row.id, note: `topup:${row.gateway}`, gstPaise: split.gstPaise,
+      }, topupOpId(row.id));
+    } catch (e) {
+      await trackException(env, e, { uid: row.uid, route: "hf_topup.settle", handled: true, app_name: WALLET_APP, extra: { topup: row.id, step: "credit_lot" } });
+      return { result: "retry", reason: "wallet_error" };
+    }
+    if (!credit.lotId) return { result: "retry", reason: "wallet_error" };
+    // A concurrent path may have credited first: record what the lot actually holds, never this run's numbers.
+    const lot = await db.prepare("SELECT tokens_granted_micro AS m, gst_paise AS g FROM hf_token_lots WHERE id=?1").bind(credit.lotId).first<{ m: number; g: number }>().catch(() => null);
+    const walletPaise = lot ? microToPaise(Number(lot.m)) : split.walletPaise;
+    const gstPaise = lot ? Number(lot.g ?? 0) : split.gstPaise;
+    await db.prepare("UPDATE hf_topups SET status='paid', credited=1, raw_status=?2, gateway_payment_id=COALESCE(?3,gateway_payment_id), paid_at=COALESCE(paid_at,?4), updated_at=?4, wallet_paise=?5, gst_paise=?6, lot_id=?7 WHERE id=?1")
+      .bind(row.id, String(truth.status).slice(0, 40), evidence.gatewayPaymentId, now, walletPaise, gstPaise, credit.lotId).run();
+    if (credit.applied) {
+      let receiptNumber: string | null = null;
+      try {
+        const rec = await issueTopupReceipt(env, cfg, { id: row.id, uid: row.uid, amount_rupees: row.amount_rupees, gateway: row.gateway, gateway_payment_id: evidence.gatewayPaymentId ?? row.gateway_payment_id ?? null, paid_at: now, paid_paise: paidPaise, wallet_paise: walletPaise, gst_paise: gstPaise });
+        receiptNumber = rec?.number ?? null;
+      } catch { /* best-effort */ }
+      try { await notifyTopupCredited(env, { uid: row.uid, orderId: row.id, paidPaise, creditPaise: walletPaise, gstPaise, receiptNumber, via: GATEWAY_LABEL[row.gateway] ?? row.gateway }); } catch { /* best-effort */ }
+    }
+    void track(env, row.uid, "hf_topup_paid", WALLET_APP, { area: "hf_topup", rupees: row.amount_rupees, gateway: row.gateway, paid_paise: paidPaise, wallet_paise: walletPaise, gst_paise: gstPaise, wallet: "rupee_lots", duplicate: !credit.applied }).catch(() => undefined);
+    return credit.applied ? { result: "credited" } : { result: "duplicate" };
+  }
+
   const r = await walletOp(env, row.uid, {
     op: "credit", uid: row.uid, amount: row.amount_rupees, type: "hf_topup", app_name: WALLET_APP,
     ref: topupOpId(row.id), op_id: topupOpId(row.id), category: "topup", context: `${BRAND.name} wallet top-up`,
@@ -96,7 +146,7 @@ export async function settleHfTopup(
   await db.prepare("UPDATE hf_topups SET status='paid', credited=1, raw_status=?2, gateway_payment_id=COALESCE(?3,gateway_payment_id), paid_at=COALESCE(paid_at,?4), updated_at=?4 WHERE id=?1")
     .bind(row.id, String(truth.status).slice(0, 40), evidence.gatewayPaymentId, now).run();
   // [HF-WALLET-LIMITS-1] Payment receipt (HF-PAY-16), idempotent by top-up id; never fails the credit. A miss is healed when the caller opens /wallet.
-  try { await issueTopupReceipt(env, (await readConfig(env).catch(() => ({}))) as Record<string, unknown>, { id: row.id, uid: row.uid, amount_rupees: row.amount_rupees, gateway: row.gateway, gateway_payment_id: evidence.gatewayPaymentId ?? row.gateway_payment_id ?? null, paid_at: now }); } catch { /* best-effort */ }
+  try { await issueTopupReceipt(env, cfg, { id: row.id, uid: row.uid, amount_rupees: row.amount_rupees, gateway: row.gateway, gateway_payment_id: evidence.gatewayPaymentId ?? row.gateway_payment_id ?? null, paid_at: now }); } catch { /* best-effort */ }
   void track(env, row.uid, "hf_topup_paid", WALLET_APP, { area: "hf_topup", rupees: row.amount_rupees, gateway: row.gateway }).catch(() => undefined);
   return { result: "credited", balanceAfter: Math.trunc(Number(r.body?.balance ?? NaN)) || undefined };
 }

@@ -16,6 +16,7 @@ function makeEnv() {
   const db = new DatabaseSync(":memory:");
   db.exec(`CREATE TABLE hf_calls (id TEXT PRIMARY KEY, caller_uid TEXT, host_uid TEXT, status TEXT, created_at INTEGER, ended_at INTEGER, billed_minutes INTEGER, paid_rupees INTEGER, test_rupees INTEGER, host_paid_rupees INTEGER);
            CREATE TABLE hf_topups (id TEXT PRIMARY KEY, uid TEXT, amount_rupees INTEGER, gateway TEXT, status TEXT, credited INTEGER, gateway_payment_id TEXT, paid_at INTEGER, created_at INTEGER);`);
+  db.exec(readFileSync(new URL("../../migrations/2026-10-15-hf-topups-rupee-wallet.sql", import.meta.url), "utf8")); // [HF-CASHFREE-TOPUP-1]
   // the migration's last statement is an ALTER on hf_calls (needs the column absent): run all but that line
   const sql = readFileSync(new URL("../../migrations/2026-10-10-hf-wallet-limits.sql", import.meta.url), "utf8").replace(/^ALTER TABLE.*$/m, "");
   db.exec(sql);
@@ -71,8 +72,8 @@ describe("numbering", () => {
     expect(JSON.parse(r.data)).toMatchObject({ gateway: "razorpay", gatewayPaymentId: "pay_1" });
   });
   it("backfill gives credited top-ups their receipt once", async () => {
-    h.db.prepare("INSERT INTO hf_topups VALUES ('hftop_a','u1',200,'razorpay','paid',1,'p',?,?)").run(T("2026-10-01T00:00:00Z"), T("2026-10-01T00:00:00Z"));
-    h.db.prepare("INSERT INTO hf_topups VALUES ('hftop_b','u1',200,'razorpay','created',0,NULL,NULL,?)").run(T("2026-10-02T00:00:00Z"));
+    h.db.prepare("INSERT INTO hf_topups (id,uid,amount_rupees,gateway,status,credited,gateway_payment_id,paid_at,created_at) VALUES ('hftop_a','u1',200,'razorpay','paid',1,'p',?,?)").run(T("2026-10-01T00:00:00Z"), T("2026-10-01T00:00:00Z"));
+    h.db.prepare("INSERT INTO hf_topups (id,uid,amount_rupees,gateway,status,credited,gateway_payment_id,paid_at,created_at) VALUES ('hftop_b','u1',200,'razorpay','created',0,NULL,NULL,?)").run(T("2026-10-02T00:00:00Z"));
     await backfillTopupReceipts(h.env, {}, "u1");
     await backfillTopupReceipts(h.env, {}, "u1");
     const list = await listReceipts(h.env, "u1");

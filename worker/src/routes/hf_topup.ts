@@ -69,7 +69,11 @@ async function createTopup(req: Request, env: Env): Promise<Response> {
   });
 }
 
-const publicRow = (r: HfTopupRow) => ({ ok: true, id: r.id, status: r.status, credited: r.credited === 1, amountRupees: r.amount_rupees, gateway: r.gateway });
+// [HF-CASHFREE-TOPUP-1] paidPaise / walletPaise / gstPaise: what was paid, what reached the wallet, the 18% GST taken out (null on legacy rows).
+const publicRow = (r: HfTopupRow) => ({
+  ok: true, id: r.id, status: r.status, credited: r.credited === 1, amountRupees: r.amount_rupees, gateway: r.gateway,
+  paidPaise: r.amount_rupees * 100, walletPaise: r.wallet_paise ?? null, gstPaise: r.gst_paise ?? null,
+});
 
 async function topupStatus(req: Request, env: Env, id: string): Promise<Response> {
   const u = await requireUser(req, env);
@@ -125,7 +129,7 @@ async function adminList(req: Request, env: Env): Promise<Response> {
   const limit = Math.min(200, Math.max(1, Math.trunc(Number(q.get("limit") ?? 50)) || 50));
   const offset = Math.max(0, Math.trunc(Number(q.get("offset") ?? 0)) || 0);
   const where = ["created", "paid", "failed", "refunded", "expired"].includes(status) ? "WHERE status=?1" : "";
-  const sql = `SELECT id,uid,amount_rupees,gateway,gateway_order_id,status,credited,raw_status,gateway_payment_id,created_at,updated_at,paid_at FROM hf_topups ${where} ORDER BY created_at DESC LIMIT ${limit} OFFSET ${offset}`;
+  const sql = `SELECT id,uid,amount_rupees,gateway,gateway_order_id,status,credited,raw_status,gateway_payment_id,created_at,updated_at,paid_at,wallet_paise,gst_paise FROM hf_topups ${where} ORDER BY created_at DESC LIMIT ${limit} OFFSET ${offset}`;
   const st = env.DB_META.prepare(sql);
   const rows = (await (where ? st.bind(status) : st).all<HfTopupRow>()).results ?? [];
   const f = hfTopupFlags((await readConfig(env).catch(() => ({}))) as never);

@@ -3,6 +3,8 @@
 import { PageShell, useEmbedded, useIntoDashboard } from '../../components/account/dashboardEmbed';
 import { useEffect, useState } from 'react';
 import TokensPanel from './TokensPanel'; // [HF-APP-3] replaces TopupPanel (kept in the repo, dark behind its flags)
+import TopupPanel from './TopupPanel'; // [HF-CASHFREE-TOPUP-1] website top-up through Cashfree, when live
+import { fetchTopupConfig } from '../../lib/hfTopupApi';
 import RefundPanel from './RefundPanel'; // [HF-WALLET-EXIT-1]
 import ReceiptsPanel from './ReceiptsPanel'; // [HF-WALLET-LIMITS-1]
 import SessionBridge from '../calls/SessionBridge';
@@ -19,7 +21,11 @@ export default function HfWallet() {
   const [w, setW] = useState<WalletInfo | null>(null);
   const embedded = useEmbedded();
   useIntoDashboard(typeof location !== 'undefined' && location.hash === '#hfw-hist' ? '/dashboard/calls#' : '/dashboard/wallet');
-  const [rcptKey] = useState(0); // [HF-WALLET-LIMITS-1] reload key for receipts (was bumped by the web top-up, now unused: [HF-APP-3])
+  const [rcptKey, setRcptKey] = useState(0); // [HF-WALLET-LIMITS-1] reload key for receipts, bumped after a web top-up
+  // [HF-CASHFREE-TOPUP-1] On the plain website, a live gateway (hfTopup.enabled) shows the Add money card; inside the Android app the
+  // Google Play panel stays (Play policy: in-app digital top-ups go through Play Billing).
+  const [webTopup, setWebTopup] = useState(false);
+  useEffect(() => { if (!isAppMode()) fetchTopupConfig().then(c => setWebTopup(c.enabled)).catch(() => undefined); }, []);
 
   useEffect(() => {
     if (looksSignedOut()) { setPhase('signedout'); return; }
@@ -101,7 +107,7 @@ export default function HfWallet() {
       </section>
 
       {rupees && <RateCard surface="wallet" tiers={w.plan?.tiers} />}
-      <TokensPanel />
+      {webTopup ? <TopupPanel onPaid={() => { fetchWallet().then(r => { if (r.ok) setW(r.data); }); setRcptKey(k => k + 1); }} /> : <TokensPanel />}
       <ReceiptsPanel reloadKey={rcptKey} />
 
       <RefundPanel onChanged={() => { fetchWallet().then(r => { if (r.ok) setW(r.data); }); }} />

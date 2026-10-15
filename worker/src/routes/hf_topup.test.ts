@@ -16,6 +16,16 @@ vi.mock("./wallet", () => ({
     return { status: 200, body: { ok: true } };
   },
 }));
+const lots = new Map<string, any>(); // op_id -> creditLot args (the ledger dedupes by op_id)
+const notices: any[] = [];
+vi.mock("../lib/hf_token_ledger", () => ({
+  creditLot: async (_env: unknown, uid: string, a: any, opId: string) => {
+    if (lots.has(opId)) return { applied: false, lotId: lots.get(opId).lotId };
+    lots.set(opId, { ...a, uid, lotId: `lot_${lots.size + 1}` });
+    return { applied: true, lotId: `lot_${lots.size}` };
+  },
+}));
+vi.mock("../lib/hf_topup_notify", () => ({ notifyTopupCredited: async (_e: unknown, n: any) => { notices.push(n); return {}; } }));
 vi.mock("../hooks", () => ({ track: async () => undefined, trackException: async () => undefined }));
 vi.mock("./config", () => ({ readConfig: async () => cfg }));
 vi.mock("../authz", () => ({
@@ -46,6 +56,7 @@ const { DatabaseSync } = require_("node:sqlite");
 function makeDb() {
   const db = new DatabaseSync(":memory:");
   db.exec(readFileSync(new URL("../../migrations/2026-10-09-hf-topups.sql", import.meta.url), "utf8"));
+  db.exec(readFileSync(new URL("../../migrations/2026-10-15-hf-topups-rupee-wallet.sql", import.meta.url), "utf8"));
   const stmt = (q: string, args: unknown[] = []) => ({
     bind: (...a: unknown[]) => stmt(q, a),
     run: async () => { const r = db.prepare(q).run(...args); return { meta: { changes: Number(r.changes) } }; },
@@ -69,7 +80,7 @@ const webhook = (body: unknown, sig = "good") =>
 
 beforeEach(() => {
   env = { DB_META: makeDb(), TOKENS: makeKv() };
-  credits.clear(); cfg = { ...ON }; fakeOrderPaid = true; fakePaidPaise = 0; idem = 0;
+  credits.clear(); lots.clear(); notices.length = 0; cfg = { ...ON }; fakeOrderPaid = true; fakePaidPaise = 0; idem = 0;
 });
 
 async function newTopup(amount = 200) {
@@ -166,5 +177,32 @@ describe("hf top-up", () => {
     const rec = await post(`/api/admin/hf/topups/${topupId}/reconcile`, {}, { "x-test-uid": "admin" });
     expect((await rec.json()).status).toBe("paid");
     expect(credits.get(`hftop:${topupId}`)).toBe(200);
+  });
+
+  // [HF-CASHFREE-TOPUP-1] Rupee wallet on: the credit is a rupee lot with 18% GST taken out, once, and the legacy WalletDO is not touched.
+  it("rupee wallet: Rs 2 paid -> Rs 1.69 into a lot, Rs 0.31 GST, exactly once", async () => {
+    cfg = { ...ON, hfTokensEnabled: true, hfTopupMinRupees: 1 };
+    const { topupId } = await newTopup(2);
+    const a = await (await webhook(paidEvent(topupId, 200))).json();
+    const b = await (await webhook(paidEvent(topupId, 200))).json();
+    expect(a.credited).toBe(true);
+    expect(b.duplicate).toBe(true);
+    expect(credits.size).toBe(0);
+    expect(lots.size).toBe(1);
+    const lot = lots.get(`hftop:${topupId}`);
+    expect(lot).toMatchObject({ kind: "purchase", paidPaise: 200, gstPaise: 31, micro: 169 * 10_000, valuePaisePerToken: 100, provider: "razorpay", providerRef: topupId });
+    const row = env.DB_META.raw.prepare("SELECT status, credited, wallet_paise, gst_paise, lot_id FROM hf_topups WHERE id=?").get(topupId);
+    expect(row).toEqual({ status: "paid", credited: 1, wallet_paise: 169, gst_paise: 31, lot_id: "lot_1" });
+    expect(notices).toHaveLength(1);
+    expect(notices[0]).toMatchObject({ paidPaise: 200, creditPaise: 169, gstPaise: 31 });
+    const st = await hfTopupRoute(new Request(`https://x/api/hf/wallet/topup/${topupId}`), env, `/api/hf/wallet/topup/${topupId}`);
+    expect(await st.json()).toMatchObject({ credited: true, paidPaise: 200, walletPaise: 169, gstPaise: 31 });
+  });
+
+  it("rupee wallet: Rs 120 -> Rs 101.69 + GST Rs 18.31", async () => {
+    cfg = { ...ON, hfTokensEnabled: true };
+    const { topupId } = await newTopup(120);
+    await webhook(paidEvent(topupId, 12000));
+    expect(lots.get(`hftop:${topupId}`)).toMatchObject({ paidPaise: 12000, gstPaise: 1831, micro: 10169 * 10_000 });
   });
 });
