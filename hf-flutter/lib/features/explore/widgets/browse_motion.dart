@@ -80,20 +80,24 @@ class _RiseInState extends State<RiseIn> with SingleTickerProviderStateMixin {
 
   @override
   Widget build(BuildContext context) {
-    return AnimatedBuilder(
-      animation: _t,
-      child: widget.child,
-      builder: (context, child) {
-        final t = _t.value;
-        if (t >= 1) return child!;
-        return Opacity(
-          opacity: t.clamp(0.0, 1.0).toDouble(),
-          child: Transform.translate(
-            offset: Offset(0, widget.rise * (1 - t)),
-            child: Transform.scale(scale: 0.96 + 0.04 * t, child: child),
-          ),
-        );
-      },
+    // The wrapper shape never changes (fade + transform, identity once done), so the card's own state
+    // (images, voice player) is never rebuilt from scratch when the entrance ends.
+    return FadeTransition(
+      opacity: _t,
+      child: AnimatedBuilder(
+        animation: _t,
+        child: widget.child,
+        builder: (context, child) {
+          final t = _t.value.clamp(0.0, 1.0).toDouble();
+          final s = 0.96 + 0.04 * t;
+          return Transform(
+            alignment: Alignment.center,
+            transform: Matrix4.translationValues(0, widget.rise * (1 - t), 0)
+              ..multiply(Matrix4.diagonal3Values(s, s, 1)),
+            child: child,
+          );
+        },
+      ),
     );
   }
 }
@@ -147,11 +151,9 @@ class _TapBounceState extends State<TapBounce>
       child: AnimatedBuilder(
         animation: _c,
         child: widget.child,
-        builder: (context, child) {
-          final s = _scale(_c.value);
-          if (s == 1) return child!;
-          return Transform.scale(scale: s, child: child);
-        },
+        // Always a Transform (identity at rest), so the chip is never rebuilt mid-gesture.
+        builder: (context, child) =>
+            Transform.scale(scale: _scale(_c.value), child: child),
       ),
     );
   }

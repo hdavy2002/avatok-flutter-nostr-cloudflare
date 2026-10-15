@@ -99,24 +99,21 @@ void main() {
     await tester.pump(const Duration(milliseconds: 50));
     final row = find.byKey(const ValueKey<String>('notification-a'));
     expect(row, findsOneWidget);
-    expect(
-      find.descendant(of: row, matching: find.byType(Opacity)),
-      findsWidgets,
-    );
+    double fade() => tester
+        .widget<FadeTransition>(
+          find.descendant(of: row, matching: find.byType(FadeTransition)).first,
+        )
+        .opacity
+        .value;
+    expect(fade(), lessThan(1));
     await tester.pump(const Duration(milliseconds: 900));
-    expect(
-      find.descendant(of: row, matching: find.byType(Opacity)),
-      findsNothing,
-    );
+    expect(fade(), 1);
     // Pull to refresh: same ids, no replay.
     await tester.drag(find.byType(ListView), const Offset(0, 300));
     await tester.pump();
     await tester.pump(const Duration(seconds: 1));
     await tester.pump(const Duration(seconds: 1));
-    expect(
-      find.descendant(of: row, matching: find.byType(Opacity)),
-      findsNothing,
-    );
+    expect(fade(), 1);
     expect(api.callsTo('GET', '/api/notifications').length, greaterThan(1));
     await tester.pumpWidget(const SizedBox());
   });

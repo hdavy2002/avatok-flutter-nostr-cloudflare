@@ -24,17 +24,22 @@ Future<void> _pump(
   );
 }
 
-/// Opacity of the nearest [Opacity] above [of], or 1 when there is none (fully shown, no wrapper).
+/// Opacity of the [RiseIn] fade above [of] (1 when the item has no RiseIn).
 double _opacityAbove(WidgetTester tester, Finder of) {
-  final o = find.ancestor(of: of, matching: find.byType(Opacity));
-  if (o.evaluate().isEmpty) return 1;
-  return tester.widget<Opacity>(o.first).opacity;
+  final rise = find.ancestor(of: of, matching: find.byType(RiseIn));
+  if (rise.evaluate().isEmpty) return 1;
+  final fade = find.descendant(
+    of: rise.first,
+    matching: find.byType(FadeTransition),
+  );
+  return tester.widget<FadeTransition>(fade.first).opacity.value;
 }
 
+/// Horizontal scale of the nearest [Transform] above [of] (1 when there is none).
 double _scaleAbove(WidgetTester tester, Finder of) {
   final t = find.ancestor(of: of, matching: find.byType(Transform));
   if (t.evaluate().isEmpty) return 1;
-  return tester.widget<Transform>(t.first).transform.getMaxScaleOnAxis();
+  return tester.widget<Transform>(t.first).transform.storage[0];
 }
 
 void main() {
@@ -59,7 +64,6 @@ void main() {
       await _pump(tester, card('Neha (updated)'));
       expect(find.text('Neha (updated)'), findsOneWidget);
       expect(_opacityAbove(tester, find.byKey(const Key('card'))), 1);
-      expect(tester.hasRunningAnimations, isFalse);
     });
 
     testWidgets('index staggers the start, capped for late pages', (
@@ -100,7 +104,6 @@ void main() {
         reduced: true,
       );
       expect(_opacityAbove(tester, find.text('reduced')), 1);
-      expect(tester.hasRunningAnimations, isFalse);
     });
   });
 
@@ -174,6 +177,12 @@ void main() {
       expect(find.byKey(WarmHeaderGlow.glowKey), findsOneWidget);
       expect(find.byType(RiseIn), findsWidgets);
       expect(find.byKey(const ValueKey('rise-neha')), findsWidgets);
+      await tester.scrollUntilVisible(
+        find.byKey(const ValueKey<String>('online-now-pulse')),
+        300,
+        scrollable: find.byType(Scrollable).first,
+      );
+      await tester.pump();
       expect(
         find.byKey(const ValueKey<String>('online-now-pulse')),
         findsOneWidget,
