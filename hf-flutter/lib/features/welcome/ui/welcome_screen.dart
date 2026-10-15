@@ -432,9 +432,11 @@ class _WelcomeHeader extends StatelessWidget {
                             color: dark ? HfColors.darkText : HfColors.ink,
                           ),
                           const SizedBox(width: HfSpacing.xs),
-                          Text(
-                            WelcomeCopy.maskedLine,
-                            style: HfText.of(context, HfText.badge),
+                          Flexible(
+                            child: Text(
+                              WelcomeCopy.maskedLine,
+                              style: HfText.of(context, HfText.badge),
+                            ),
                           ),
                         ],
                       ),
