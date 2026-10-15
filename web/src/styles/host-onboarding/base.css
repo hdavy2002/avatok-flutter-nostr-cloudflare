@@ -12,7 +12,7 @@
 .hob-top{background:#fffdf7;border-bottom:1px solid var(--hob-line);padding-top:env(safe-area-inset-top)}
 .hob-top-row{display:flex;align-items:center;gap:12px;padding-block:10px}
 .hob-brand{display:block;min-height:44px;flex:none}
-.hob-brand img{height:40px;width:auto;max-width:180px;object-fit:contain}
+.hob-brand img{height:56px;width:56px;object-fit:contain}
 .hob-stepcount{margin:0 auto 0 0;font-size:.9375rem;font-weight:700;color:var(--hob-muted)}
 .hob-exit{display:inline-flex;align-items:center;min-height:44px;padding:0 6px;font-size:1rem;font-weight:700;color:var(--hob-plum);text-decoration:underline}
 .hob-progress{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(4,1fr);gap:8px}

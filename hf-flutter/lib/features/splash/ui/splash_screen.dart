@@ -157,9 +157,9 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
                             fit: BoxFit.scaleDown,
                             child: PopIn(
                               duration: const Duration(milliseconds: 420),
+                              // [HF-LOGO-1] The badge carries the name itself.
                               child: HfBrandMark(
-                                size: math.min(112.0, h * 0.15),
-                                showWordmark: true,
+                                size: math.min(176.0, h * 0.24),
                               ),
                             ),
                           ),

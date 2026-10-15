@@ -308,7 +308,7 @@ export default function HostOnboarding() {
       <header className="hob-top">
         <div className="hob-wrap">
           <div className="hob-top-row">
-            <a className="hob-brand" href="/"><img src={publicImage('/assets/branding/friendship-wordmark.png', { width: 640, fit: 'scale-down' })} alt={BRAND.name} height={40} /></a>
+            <a className="hob-brand" href="/"><img src={publicImage('/assets/branding/hf-logo.png', { width: 192, fit: 'scale-down' })} alt={BRAND.name} width={56} height={56} /></a>
             <p className="hob-stepcount">Step {index + 1} of {KEYS.length}</p>
             <a className="hob-exit" href="/hosts/join">Exit</a>
           </div>

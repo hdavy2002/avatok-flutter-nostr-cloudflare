@@ -3,9 +3,10 @@ import 'package:flutter/material.dart';
 import '../brand.dart';
 import '../theme/hf_theme.dart';
 
-/// The 3D sticker logo in use. The owner has not picked between logo1 and
-/// logo2 yet: switching is this one line.
-const String kLogoAsset = 'assets/brand/logo2.png';
+/// The brand logo in use: the owner's badge logo (turbaned uncle,
+/// name on the ribbon) from design/hf logo/ — [HF-LOGO-1 2026-10-15].
+/// The art already carries the name, so callers should not add the wordmark.
+const String kLogoAsset = 'assets/brand/hf_logo.png';
 
 /// The brand logo sticker, optionally with the wordmark (Comfortaa) under it.
 ///

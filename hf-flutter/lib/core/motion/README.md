@@ -87,7 +87,7 @@ Plays a bundled Lottie file; with reduced motion it shows the last frame and doe
 re-run it, never the JSON by hand).
 
 **HfBrandMark** (in `core/widgets/`) - `HfBrandMark({size = 96, showWordmark = false, wordmarkStyle})`.
-The 3D sticker logo (`kLogoAsset`, currently `assets/brand/logo2.png`; the owner has not chosen between
+The brand logo (`kLogoAsset`, currently `assets/brand/hf_logo.png` — the owner's badge from design/hf logo/, chosen 2026-10-15; earlier
 logo1 and logo2, so switching is that one constant) with an optional Comfortaa wordmark (`HfText.wordmark`).
 It does not change the launcher icon or `brand.dart`.
 

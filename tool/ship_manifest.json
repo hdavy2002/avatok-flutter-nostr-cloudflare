@@ -10875,5 +10875,12 @@
     "min_devices_on_build": 1,
     "flags": [],
     "no_telemetry": "Visual motion only on existing screens: no new screen, route, API call or user action, so there is no new event; the existing onboarding, presence, payout, booking, KYC and lane events are unchanged. Verified by the hf-flutter.yml check run (widget tests incl. test/host_motion_review_test.dart and its host-motion-*.png review captures)."
+  },
+  "HF-LOGO-1": {
+    "description": "[HF-LOGO-1 2026-10-15] Owner's new brand logo + favicon (design/hf logo/) everywhere. Web: header/footer badge (BrandLogo.astro, sized by height), legacy SiteHeader/SiteFooter/GlobalHeader, host onboarding + lane verify, dashboard/admin nav marks, every rel=icon -> /assets/branding/hf-favicon.png, favicon.ico, PWA icons, apple-touch-icon, Organization schema logo. App (hf-flutter): kLogoAsset -> assets/brand/hf_logo.png, splash shows the badge without the duplicate text wordmark, launcher icons (all densities, adaptive fg/bg, cream background, monochrome themed layer removed because a full-colour badge renders as a blank disc).",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [],
+    "no_telemetry": "Image assets only: no new screen, route, API call or user action, so there is no new event."
   }
 }

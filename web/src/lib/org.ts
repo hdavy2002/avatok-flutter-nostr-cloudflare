@@ -98,9 +98,9 @@ export const ORG: OrgConstants = {
   url: brandUrl('/'),
   // Use the same identity mark as the shared page chrome.
   logo: {
-    url: brandUrl('/assets/callvaal/notebook/favicon.svg'),
-    width: 512,
-    height: 512,
+    url: brandUrl('/assets/branding/hf-logo.png'),
+    width: 1024,
+    height: 1024,
   },
   // rebrand: reviewed — [SAATHUM-REBRAND-1 2026-09-25]
   // [WEB-SEO-REBRAND-1 2026-09-27] Same wording as /about and /llms.txt.

@@ -124,7 +124,7 @@ function Logo({ compact = false }: { compact?: boolean }) {
     <a href="/" className="flex items-center gap-2.5 no-underline" aria-label={`${BRAND.name} home`}>
       {/* [SAATHUM-DASH-LOGO-1 2026-10-01] Lotus emblem (same art as the site header), no wordmark. */}
       {/* [HELLO-FRAANDS-DASH-SHELL-1] Site logo mark + name, as in the site header. */}
-      <img src="/assets/callvaal/notebook/favicon.svg" alt="" width={40} height={40} className="h-10 w-10 object-contain" />
+      <img src="/assets/branding/hf-mark.png" alt="" width={40} height={40} className="h-10 w-10 object-contain" />
       {!compact && <span className="font-dash text-[20px] font-black leading-none text-foreground">{BRAND.name}</span>}
     </a>
   );

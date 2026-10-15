@@ -6,8 +6,4 @@
     <foreground>
         <inset android:drawable="@mipmap/ic_launcher_foreground" android:inset="16.7%" />
     </foreground>
-    <!-- Themed icon (Android 13+): the white phone glyph, alpha only -->
-    <monochrome>
-        <inset android:drawable="@mipmap/ic_launcher_foreground" android:inset="16.7%" />
-    </monochrome>
 </adaptive-icon>
