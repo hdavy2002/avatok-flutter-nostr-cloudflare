@@ -1,9 +1,9 @@
 ---
 title: "What if a caller is rude or tries to scam me?"
-description: "Learn how to end bad calls fast, how the AI helps, and the common tricks scammers use."
+description: "Learn how to end bad calls fast, how to report and block, and the common tricks scammers use."
 section: hosts
 order: 4
-updated: 2026-10-08
+updated: 2026-10-15
 keywords: ["rude caller", "scam call", "hash key", "block caller", "otp fraud", "sextortion", "gaali", "fraud caller"]
 audience: creator
 faq:
@@ -11,8 +11,8 @@ faq:
     a: "Press the # (hash) key at any time. It ends the call, blocks that person and reports what happened."
   - q: "Do I need to explain why I hung up?"
     a: "No. You never owe an explanation for hanging up."
-  - q: "Will I be punished if the AI ends a call?"
-    a: "The AI ends calls where the caller breaks the rules. The call is flagged, and our team reviews it before any strike is confirmed."
+  - q: "Will I be punished if I report a caller?"
+    a: "No. Reporting a bad caller never gets you punished. Strikes and bans are given only after our team reviews a report."
 draft: false
 ---
 <!-- rebrand: reviewed -->
@@ -29,15 +29,13 @@ At any time during a call, press the **# (hash) key**. This does three things at
 
 You do not need to say anything first. You never owe an explanation for hanging up.
 
-## The AI also helps
+## Our team reviews reports
 
-AI follows every live call in real time. It does not look for a list of bad words. It tries to understand what the caller means. It knows the difference between someone describing a bad day and someone being abusive.
+When a call is reported, our team reviews the report before any strike or ban is given. No person listens to your calls, so a report is based on what you and the other person tell us.
 
-If it finds harassment, abuse, threats, sexual pressure or a scam, **the call ends by itself** and the account is flagged. No person listens to your calls, and we do not record them.
+## Scam awareness
 
-## Scam awareness training
-
-We give hosts regular training on spotting spam, scam and fraud calls. Here are some common tricks:
+Here are some common tricks to watch for:
 
 - **OTP asks.** "Please read me the code that came on your phone." Never share it.
 - **"KYC update" tricks.** Someone says your account will close unless you update your KYC. Or they send a link to "verify your account".
@@ -51,6 +49,6 @@ Priya gets a call from a man who says he is from the bank. He slowly asks for he
 
 ## After a bad call
 
-If something upset you, you can also [report it](/report). Our trust and safety team reviews it. Scammers are blocked across the whole platform.
+If something upset you, you can also [report it](/report). Our team reviews it.
 
 If you feel low or unsafe, read [need urgent help](/help/account-and-help/need-urgent-help).

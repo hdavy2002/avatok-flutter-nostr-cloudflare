@@ -55,8 +55,8 @@ function filterPeople() {
   if (categoryLabel) { categoryLabel.hidden = !category?.value; categoryLabel.textContent = category?.selectedOptions[0]?.textContent ?? ''; }
   // While locked, LiveHostCards shows its own "Verify to see this space" panel instead of an empty-results message.
   if (noResults) noResults.hidden = count > 0 || (!!laneMode && (laneState === 'locked' || laneState === 'checking'));
-  if (noResultsText) noResultsText.textContent = laneMode ? (laneState === 'error' ? 'We could not load this space just now. Please try again.' : 'No hosts are in this space yet. Please check back soon.') : liveExists ? 'No profiles match those filters.' : 'No sample profiles match those filters.';
-  if (status) status.textContent = laneMode ? (laneState === 'locked' ? 'Verify to see this space.' : `${count} ${count === 1 ? 'host' : 'hosts'} shown.`) : liveShown > 0 ? `${count} ${count === 1 ? 'person' : 'people'} shown.` : `${count} sample ${count === 1 ? 'profile' : 'profiles'} shown.`;
+  if (noResultsText) noResultsText.textContent = laneMode ? (laneState === 'error' ? 'We could not load this space just now. Please try again.' : 'No influencers are in this space yet. Please check back soon.') : liveExists ? 'No profiles match those filters.' : 'No sample profiles match those filters.';
+  if (status) status.textContent = laneMode ? (laneState === 'locked' ? 'Verify to see this space.' : `${count} ${count === 1 ? 'influencer' : 'influencers'} shown.`) : liveShown > 0 ? `${count} ${count === 1 ? 'person' : 'people'} shown.` : `${count} sample ${count === 1 ? 'profile' : 'profiles'} shown.`;
 }
 for (const select of [mood, category, language, price]) select?.addEventListener('change', filterPeople);
 online?.addEventListener('change', filterPeople);
@@ -91,9 +91,9 @@ document.querySelectorAll<HTMLButtonElement>('[data-preview-action]').forEach(bu
   }
   const descriptions: Record<string, string> = {
     call: 'Yahan sirf baat hoti hai. No medical, legal or money advice. 18+ only. Calls and payments are unavailable in this illustrative preview.',
-    voice: 'This sample profile demonstrates a 20-second voice introduction. This is a visual demo; no recording is playing.',
+    voice: 'This sample profile demonstrates a 20-second voice introduction. This is a visual demo; nothing is playing.',
     notify: 'This is an illustrative preview. No notification has been set. Availability alerts are not available yet.',
-    join: 'Host registration is coming at launch. Your number stays private.',
+    join: 'Influencer registration is coming at launch. Your number stays private.',
     privacy: 'Calls are bridged so neither person sees the other’s number. Calling is unavailable in this preview.',
     page: `${label} is not published for this service yet.`,
   };

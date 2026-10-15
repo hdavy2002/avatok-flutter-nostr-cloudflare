@@ -10,27 +10,27 @@ const groups = [
   ['Company', [
     ['About us', '/about'], ['How it works', '/how-it-works'], ['FAQs', '/faq'], ['Help centre', '/help'], ['Contact us', '/contact'], ['Press', '/press'],
   ]],
-  ['Hosts', [
-    ['Join & earn', '/hosts/join'], ['Host requirements', '/hosts/requirements'], ['Host rules', '/hosts/rules'], ['Welfare & crisis guide', '/hosts/crisis-script'], ['Rates & payouts', '/hosts/rates'], ['Host agreement', '/hosts/agreement'], ['KYC guide', '/hosts/kyc'],
+  ['Influencers', [
+    ['Join & earn', '/hosts/join'], ['Influencer requirements', '/hosts/requirements'], ['Influencer rules', '/hosts/rules'], ['Welfare & crisis guide', '/hosts/crisis-script'], ['Rates & payouts', '/hosts/rates'], ['Influencer agreement', '/hosts/agreement'], ['KYC guide', '/hosts/kyc'],
   ]],
   ['Trust & Safety', [
-    ['Safety centre', '/safety'], ['Community guidelines', '/community-guidelines'], ['Talk safely', '/talk-safely'], ['Recording & AI safety', '/recording-policy'], ['Report a user', '/report'], ['Grievance redressal', '/grievance'], ['Emergency support', '/emergency'], ['Women-only space', '/women-only'], ['LGBTQ+ space', '/lgbtq'], ['Age policy', '/age-policy'],
+    ['Safety centre', '/safety'], ['Community guidelines', '/community-guidelines'], ['Talk safely', '/talk-safely'], ['Report a user', '/report'], ['Grievance redressal', '/grievance'], ['Emergency support', '/emergency'], ['Women-only space', '/women-only'], ['LGBTQ+ space', '/lgbtq'], ['Age policy', '/age-policy'],
   ]],
   ['Legal & Payments', [
     ['Terms of use', '/terms'], ['Service disclaimer', '/disclaimer'], ['Privacy policy', '/privacy'], ['Wallet terms', '/wallet-terms'], ['Refunds', '/refunds'], ['Cookies', '/cookies'], ['Data deletion', '/data-deletion'], ['Intermediary policy', '/intermediary-policy'],
   ]],
   ['Explore', [
-    ['Explore all hosts', '/marketplace'], ['Naye dost', '/#naye-dost'], ['All moods', '/#moods'], ['Apna dost dhundo', '/#people'], ['Sirf ladkiyon ke liye', '/#women-only'], ['Earn with us', '/#earn'],
+    ['Explore all influencers', '/marketplace'], ['Find an influencer', '/#naye-dost'], ['Popular topics', '/#moods'], ['Influencers you follow', '/#people'], ['Women-only lane', '/#women-only'], ['Earn with us', '/#earn'],
   ]],
 ] as const;
 ---
 <footer class="cv-footer notebook-footer" data-callvaal-chrome>
-  <div class="cv-footer-brand footer-brand"><a class="cv-wordmark" href="/" aria-label={`${identity.name} home`}><BrandLogo /></a>{!hideTagline && <p>Real people. Naye dost.<br/>Baat se baat banti hai.</p>}</div>
+  <div class="cv-footer-brand footer-brand"><a class="cv-wordmark" href="/" aria-label={`${identity.name} home`}><BrandLogo /></a>{!hideTagline && <p>Your favourite influencers.<br/>One private call away.</p>}</div>
   <nav class="cv-footer-columns footer-columns" aria-label="Footer">
     {groups.map(([heading, links]) => <details class="cv-footer-group footer-group" data-callvaal-footer-group open><summary>{heading}</summary><ul>{links.map(([label, href]) => <li><a href={href}>{label}</a></li>)}</ul></details>)}
   </nav>
   <div class="cv-footer-bottom">
-    <p class="cv-footer-disclaimer">{identity.name} is a preview of a planned place to talk. Hosts will be real people, not doctors, lawyers, therapists, counsellors or financial advisors, and nothing said on a call is professional advice. Sexual harassment, threats and abuse are prohibited; reports are reviewed and serious or repeated violations can lead to removal. Calls are not recorded; AI keeps an eye on every live call and ends abusive or scam calls. 18+ only. In crisis, call <a href="tel:14416">Tele-MANAS 14416</a> or <a href="tel:112">112</a>.</p>
+    <p class="cv-footer-disclaimer">{identity.name} connects you with the social media influencers you follow over private phone calls, with both phone numbers kept private. It is a preview: calling and verification are being prepared. Influencers are real people, not doctors, lawyers, therapists, counsellors or financial advisors, and nothing said on a call is professional advice. Sexual harassment, threats and abuse are prohibited; reports are reviewed and serious or repeated violations can lead to removal. No human listens in. Spammy, sexual or threatening behaviour is not allowed, and you can press # to end a call and block the person. 18+ only. In crisis, call <a href="tel:14416">Tele-MANAS 14416</a> or <a href="tel:112">112</a>.</p>
     <div class="cv-footer-credits">
       <p class="cv-footer-made">Developed in India with <span class="cv-footer-heart" role="img" aria-label="love">♥</span></p>
     </div>

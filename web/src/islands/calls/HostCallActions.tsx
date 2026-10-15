@@ -161,14 +161,14 @@ function CallSheet({ host, open, onClose }: { host: CallHost; open: boolean; onC
     const lane = typeof r.body.lane === 'string' ? r.body.lane : host.womenOnly ? 'women' : '';
     let p: Problem;
     if (r.code === 'not_verified') p = { text: 'Please verify your WhatsApp number first. We use it to ring you.', link: { href: '/sign-up?finish=1', label: 'Verify my number' } };
-    else if (r.code === 'lane_required') p = { text: lane === 'lgbtq' ? 'This is an LGBTQ+ space host. Verify to call.' : 'This is a women-only space host. Verify to call.', link: { href: `/verify/lane?lane=${encodeURIComponent(lane || 'women')}`, label: 'Verify to call' } };
+    else if (r.code === 'lane_required') p = { text: lane === 'lgbtq' ? 'This is an LGBTQ+ space influencer. Verify to call.' : 'This is a women-only space influencer. Verify to call.', link: { href: `/verify/lane?lane=${encodeURIComponent(lane || 'women')}`, label: 'Verify to call' } };
     else if (r.code === 'low_balance' && (typeof r.body.shortfallRupees === 'string' || typeof r.body.shortfallTokens === 'string')) {
       const short = typeof r.body.shortfallRupees === 'string' ? r.body.shortfallRupees : typeof r.body.shortfallPaise === 'number' ? formatPaise(r.body.shortfallPaise) : '';
       p = { text: short ? `You need ${short} more to start this call.` : (r.message || 'You need more money in your wallet to start this call.'), addMoney: true };
     }
     else if (r.code === 'debt_open') p = { text: r.message || 'Please clear the amount owed before calling' };
     else if (r.code === 'low_balance') { const b = Number(r.body.balance); if (Number.isFinite(b)) setBalance(b); p = { text: `You need at least ${inr(Number(r.body.needed) || rate * 2)} to start a call.`, balance: true }; }
-    else if (r.code === 'host_unavailable') p = { text: r.message || 'This host isn’t available right now.', notify: true };
+    else if (r.code === 'host_unavailable') p = { text: r.message || 'This influencer isn’t available right now.', notify: true };
     else if (r.code === 'call_in_progress') p = { text: 'You already have a call going. Finish that one first.' };
     else if (r.code === 'calls_not_ready') p = { text: 'Calls open soon. Please check back in a little while.' };
     else p = { text: r.message || 'We could not start the call. Please try again.' };
@@ -209,7 +209,7 @@ function CallSheet({ host, open, onClose }: { host: CallHost; open: boolean; onC
           <p className="hfc-chip" aria-live="polite">Your balance: <strong>{balanceText}</strong>{!tok && <> <span>Test credits only for now</span></>}</p>
           <ul className="hfc-facts">
             {tok?.standard ? (
-              <li><Icon name="rupee" size={22} /><span><strong>Standard plan · {hostRateLabel(host)}</strong> to start. <RateLines tiers={tiers} />Same rate for every host · billed per second. Ringing or no answer costs nothing.</span></li>
+              <li><Icon name="rupee" size={22} /><span><strong>Standard plan · {hostRateLabel(host)}</strong> to start. <RateLines tiers={tiers} />Same rate for every influencer · billed per second. Ringing or no answer costs nothing.</span></li>
             ) : tok ? (
               <li><Icon name="rupee" size={22} /><span><strong>{tok.est?.tokensPerMinute ?? '—'} tokens/min</strong> · billed per started minute. Ringing or no answer costs nothing.</span></li>
             ) : (
@@ -220,7 +220,7 @@ function CallSheet({ host, open, onClose }: { host: CallHost; open: boolean; onC
             <li><Icon name="lock" size={22} /><span><strong>Your number stays hidden.</strong> We ring your phone and {name}’s phone, then connect you.</span></li>
             <li><Icon name="shield" size={22} /><span>{SAFETY}</span></li>
           </ul>
-          {host.womenOnly && <p className="hfc-note">This is a women-only space host. You may be asked to verify.</p>}
+          {host.womenOnly && <p className="hfc-note">This is a women-only space influencer. You may be asked to verify.</p>}
           {lowBalance && tok && (
             <div className="hfc-note hfc-warn" role="status">
               {tok.hasDebt

@@ -9,8 +9,8 @@ audience: both
 faq:
   - q: "What should I do before I delete my account?"
     a: "Close your account from the account page. Unused wallet money are refunded through Google Play first."
-  - q: "Do you keep recordings of my calls?"
-    a: "No. We do not record calls, so no audio or transcript exists."
+  - q: "What call details do you keep?"
+    a: "Only simple call details such as who called whom, the time, the length and the price. See the list on this page."
   - q: "Do you sell my data?"
     a: "No. We never sell personal data."
 draft: false
@@ -29,7 +29,7 @@ Unused wallet money can be refunded on request through Google Play within 180 da
 
 Doing this first keeps your money safe. Read [refund your unused wallet money](/help/wallet-and-payments/withdraw-your-balance) for the full steps.
 
-If you are a host, withdraw your earnings too. See [getting paid](/help/hosts/getting-paid).
+If you are an influencer, withdraw your earnings too. See [getting paid](/help/hosts/getting-paid).
 
 ## Step 2: Follow the delete steps
 
@@ -39,16 +39,14 @@ You can sign in with a one-time code (OTP). There is no password to remember.
 
 ## What we keep
 
-We never recorded your calls. **No call audio and no transcripts exist**, so there is nothing to delete there.
-
 We keep only simple call details:
 
 - Who called whom (as account IDs)
 - The time and the duration
 - The price
-- Whether a person or a safety action ended the call
+- How the call ended
 
-We keep these for billing and for checking complaints. They have no audio and no words from your talk.
+We keep these for billing and for checking complaints. They do not include anything you said on the call.
 
 We never sell personal data. To know more, read our [privacy page](/privacy).
 
@@ -56,7 +54,7 @@ We never sell personal data. To know more, read our [privacy page](/privacy).
 
 - Your legal name, Aadhaar details and phone number were never shown on your profile or shared with other people.
 - A banned account cannot re-register with the same phone number.
-- If you only want a break, you do not have to delete. You can just stop calling, or go offline if you are a host.
+- If you only want a break, you do not have to delete. You can just stop calling, or go offline if you are an influencer.
 
 ## Need help?
 

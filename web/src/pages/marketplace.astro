@@ -24,7 +24,7 @@ import '../styles/hello-fraands-pages.css';
 
 const identity = brandConfig.homepageIdentity;
 const title = `Find an influencer. Start a conversation. | ${identity.name}`;
-const description = 'Find someone to talk to in your language. Explore influencers by category, language and price. Your number stays private. 18+.';
+const description = 'Find your favourite influencer and book a private phone call. Explore influencers by category, language and price. Your number stays private. 18+.';
 const canonical = `https://${identity.domain}/marketplace`;
 const languages = [...new Set(profiles.flatMap(p => p.languages.split(/,\s*|\s*Â·\s*/)).map(s => s.trim()).filter(Boolean))];
 ---
@@ -49,7 +49,7 @@ const languages = [...new Set(profiles.flatMap(p => p.languages.split(/,\s*|\s*Â
       <div class="hfp-hero-copy">
         <nav class="hf-breadcrumb" aria-label="Breadcrumb"><a href="/">Home</a><span aria-hidden="true">/</span><span aria-current="page">Explore</span></nav>
         <h1>Baat karne ka mann hai?</h1>
-        <p class="hf-hindi"><em>A little company, a good laugh, or someone to hear you out. Find an influencer who speaks your language, check their price, and start a conversation.</em></p>
+        <p class="hf-hindi"><em>Talk to the influencers you follow on YouTube, Instagram and Facebook over a private phone call. Find an influencer who speaks your language, check their price, and start a call.</em></p>
         <div class="trust-chips"><span><ModernIcon name="lock" />Number kabhi share nahi hota</span><span><ModernIcon name="user" />Har influencer video verified hai</span><span><ModernIcon name="clock" />From â‚¹5/min</span></div>
       </div>
       <div class="hfp-hero-note paper-note" aria-hidden="true">Tumhari vibe.<br />Tumhari baat.</div>
@@ -77,10 +77,10 @@ const languages = [...new Set(profiles.flatMap(p => p.languages.split(/,\s*|\s*Â
     </section>
 
     <section class="explore-help" aria-label="Before you call">
-      <a class="tone-cream" href="/help/getting-started/how-a-call-works"><strong>How a call works</strong><span>We ring the influencer and announce you. If they accept, we call you back and merge the call. We never listen to your calls.</span></a>
+      <a class="tone-cream" href="/help/getting-started/how-a-call-works"><strong>How a call works</strong><span>We call the influencer first and announce you. If they accept, we call you and join the two calls. No one listens to your calls.</span></a>
       <a class="tone-pink" href="/help/calling/price-and-minutes"><strong>What a call costs</strong><span>Rates start at â‚¹5/min; each influencer sets their own price.</span></a>
-      <a class="tone-lilac" href="/safety"><strong>Kaise safe hai</strong><span>AI checks calls for threats, sexual misconduct and spam, and automatically blocks participants who violate the rules.</span></a>
-      <a class="tone-paper" href="/hosts/join"><strong>Achhi baat kar lete ho?</strong><span>Become an influencer host. Welcome new people, share your interests, and earn through conversation.</span></a>
+      <a class="tone-lilac" href="/safety"><strong>Kaise safe hai</strong><span>Your number stays hidden. Press # to end a call and block the person. Report anyone; our team reviews reports before strikes and bans.</span></a>
+      <a class="tone-paper" href="/hosts/join"><strong>Kya aap influencer hain?</strong><span>Become an influencer. Talk to your fans, share your interests, and earn through conversation.</span></a>
     </section>
   </main>
   <Footer hideTagline />

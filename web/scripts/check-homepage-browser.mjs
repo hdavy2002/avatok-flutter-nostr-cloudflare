@@ -150,7 +150,7 @@ try {
       await expect(page.locator('.hfh-rate')).toHaveText(['₹3.99/min', '₹4.50/min', '₹3.50/min', '₹3.25/min', '₹5.50/min', '₹4.75/min', '₹4.25/min', '₹5.00/min']);
       await expect(page.locator('.hfh-availability')).toHaveText(['Online now', 'Online now', 'In 30 mins', 'Online now', 'Online now', 'In 30 mins', 'Online now', 'Online now']);
       await expect(page.locator('.hfh-category>span:first-of-type')).toHaveText(['Beauty & Style', 'Gaming', 'Fitness', 'Film & Culture', 'Travel', 'Music', 'Food & Lifestyle', 'Photography']);
-      await expect(page.locator('#people-title')).toHaveText('Book time with creators you follow');
+      await expect(page.locator('#people-title')).toHaveText('Talk to influencers you follow');
       await expect(page.locator('[data-home-cta="explore-hosts"]')).toHaveText('Explore influencers →');
       await expect(page.locator('.cv-footer-brand p')).toHaveCount(0);
       const typography = await page.evaluate(() => ({
@@ -163,7 +163,7 @@ try {
       await expect(page.locator('.hfh-connection figcaption')).toHaveText('Two private calls. One conversation.');
       await expect(page.locator('.hfh-kyc')).toHaveText(['Video KYC required', 'Video KYC required']);
       await expect(page.locator('.hfh-eligibility')).toContainText('not their gender or sexual orientation');
-      await expect(page.locator('.hfh-steps h3')).toHaveText(['Choose a host', 'Book and pay', 'Talk privately']);
+      await expect(page.locator('.hfh-steps h3')).toHaveText(['Choose an influencer', 'Start the call', 'Talk privately']);
       await expect(page.locator('.hfh-share-url')).toHaveText(homepageIdentity.domain + '/yourname');
       await expect(page.locator('#sample-disclosure')).toBeVisible();
       await expect(page.locator('.hfh-disclosure')).toContainText('No audio plays and no call or payment is made.');
@@ -217,7 +217,7 @@ try {
         await trigger.click();
         await expect(dialog).toBeVisible();
         const voice = await trigger.getAttribute('data-preview-action') === 'voice';
-        await expect(dialog).toContainText(voice ? 'No recording is playing.' : 'No call has been booked and no payment is made.');
+        await expect(dialog).toContainText(voice ? 'Nothing is playing.' : 'No call has been booked and no payment is made.');
         assert(await dialog.evaluate(element => element.contains(document.activeElement)), name + ': modal receives focus');
         await dialog.locator('[data-close-preview]').press('Enter');
         await waitForPreviewClose(dialog, trigger, name);
@@ -283,9 +283,9 @@ try {
         viewportWidth: innerWidth,
         fonts: [...document.querySelectorAll('.safety-guide__status, .safety-guide li, .safety-guide__home')].map(element => parseFloat(getComputedStyle(element).fontSize)),
       }));
-      assert.equal(await page.title(), `Talking safely with strangers | ${homepageIdentity.name}`, name + ': title uses configured homepage identity');
+      assert.equal(await page.title(), `Talking safely on a call | ${homepageIdentity.name}`, name + ': title uses configured homepage identity');
       assert(guide.bodyText.includes(homepageIdentity.name), name + ': visible chrome uses configured homepage identity');
-      assert.match(guide.bodyText, /Rules for talking safely with strangers/, name + ': guide heading is visible');
+      assert.match(guide.bodyText, /Rules for talking safely on a call/, name + ': guide heading is visible');
       for (const baseline of ['OTPs', 'passwords', 'financial details', 'home address', 'end it', 'Report the call']) assert(guide.bodyText.includes(baseline), name + ': interim rule is visible: ' + baseline);
       assert.equal(await page.locator('meta[name="robots"]').getAttribute('content'), 'noindex,nofollow', name + ': placeholder is noindex');
       assert.equal(await page.locator('.notebook-site[data-design="callvaal-scrapbook"]').count(), 1, name + ': guide uses notebook chrome');

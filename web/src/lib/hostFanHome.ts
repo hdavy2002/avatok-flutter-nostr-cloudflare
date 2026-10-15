@@ -17,8 +17,8 @@ document.querySelectorAll<HTMLButtonElement>('[data-preview-action]').forEach(bu
     const description = dialog.querySelector('#preview-description');
     if (title) title.textContent = `${button.dataset.previewLabel} · illustrative ${voice ? 'voice' : 'booking'} preview`;
     if (description) description.textContent = voice
-      ? 'This sample shows a 20-second voice introduction. No recording is playing. Explore hosts to see real profiles and availability.'
-      : 'This is an illustrative sample profile. No call has been booked and no payment is made. Explore hosts to see real profiles and availability.';
+      ? 'This sample shows a 20-second voice introduction. Nothing is playing. Explore influencers to see real profiles and availability.'
+      : 'This is an illustrative sample profile. No call has been booked and no payment is made. Explore influencers to see real profiles and availability.';
     dialog.showModal();
     capture('cta_click', { surface, design_version, section: 'creators', action: voice ? 'voice_preview' : 'booking_preview', sample_profiles: true });
   });

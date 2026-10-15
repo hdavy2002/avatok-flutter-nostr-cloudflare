@@ -29,7 +29,7 @@ export default function AboutStep({ draft, update, setAction, errors }: StepProp
   return (
     <div className="hob-p-step">
       <h1 className="hob-h1">About you</h1>
-      <p className="hob-lead">Callers pick a host by reading this. Keep it warm and simple.</p>
+      <p className="hob-lead">Callers pick an influencer by reading this. Keep it warm and simple.</p>
 
       <div className="hob-field">
         <label className="hob-label" htmlFor="hob-name">First name</label>

@@ -69,11 +69,11 @@ export default function ReviewStep({ draft, update, goTo, avatars, setAction }: 
       <div className="hob-f-agree">
         <label className="hob-card hob-f-consent">
           <input type="checkbox" checked={a.rules} onChange={e => set('rules', e.target.checked)} />
-          <span>I have read the <a href="/hosts/rules">host rules</a>.</span>
+          <span>I have read the <a href="/hosts/rules">influencer rules</a>.</span>
         </label>
         <label className="hob-card hob-f-consent">
           <input type="checkbox" checked={a.agreement} onChange={e => set('agreement', e.target.checked)} />
-          <span>I accept the <a href="/hosts/agreement">host agreement</a>.</span>
+          <span>I accept the <a href="/hosts/agreement">influencer agreement</a>.</span>
         </label>
         <label className="hob-card hob-f-consent">
           <input type="checkbox" checked={a.welfare} onChange={e => set('welfare', e.target.checked)} />

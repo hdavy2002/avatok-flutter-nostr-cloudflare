@@ -59,3 +59,9 @@
 # listing URLs moved from /<old-handle>/<slug> to the new handle.
 /humphrey/*   /saathum/:splat   301
 # [WEB-REFRAME-1 2026-09-29] Rituals removed under the positive-temple policy.
+
+# Hello Fraands: call recording page retired; safety info lives on /safety.
+/recording-policy /safety 301
+/recording-policy/ /safety 301
+/help/safety-and-privacy/no-recording-no-listening /help/safety-and-privacy/how-ai-keeps-calls-safe 301
+/help/safety-and-privacy/no-recording-no-listening/ /help/safety-and-privacy/how-ai-keeps-calls-safe 301

@@ -2,15 +2,15 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-export const footerGroups = ['Company', 'Hosts', 'Trust & Safety', 'Legal & Payments', 'Explore'];
-export const contentRoutes = ['/about', '/how-it-works', '/faq', '/contact', '/press', '/hosts/join', '/hosts/requirements', '/hosts/rules', '/hosts/crisis-script', '/hosts/rates', '/hosts/agreement', '/hosts/kyc', '/safety', '/community-guidelines', '/recording-policy', '/report', '/grievance', '/emergency', '/women-only', '/lgbtq', '/age-policy', '/terms', '/disclaimer', '/privacy', '/wallet-terms', '/refunds', '/cookies', '/data-deletion', '/intermediary-policy'];
+export const footerGroups = ['Company', 'Influencers', 'Trust & Safety', 'Legal & Payments', 'Explore'];
+export const contentRoutes = ['/about', '/how-it-works', '/faq', '/contact', '/press', '/hosts/join', '/hosts/requirements', '/hosts/rules', '/hosts/crisis-script', '/hosts/rates', '/hosts/agreement', '/hosts/kyc', '/safety', '/community-guidelines', '/report', '/grievance', '/emergency', '/women-only', '/lgbtq', '/age-policy', '/terms', '/disclaimer', '/privacy', '/wallet-terms', '/refunds', '/cookies', '/data-deletion', '/intermediary-policy'];
 export const footerRoutes = [...contentRoutes.slice(0, 3), '/help', ...contentRoutes.slice(3, 14), '/talk-safely', ...contentRoutes.slice(14), '/marketplace', '/#naye-dost', '/#moods', '/#people', '/#women-only', '/#earn'];
-const reviewRoutes = new Set(['/hosts/requirements', '/hosts/rules', '/hosts/crisis-script', '/hosts/agreement', '/community-guidelines', '/recording-policy', '/women-only', '/lgbtq', '/grievance', '/emergency', '/terms', '/disclaimer', '/privacy', '/wallet-terms', '/refunds', '/intermediary-policy']);
+const reviewRoutes = new Set(['/hosts/requirements', '/hosts/rules', '/hosts/crisis-script', '/hosts/agreement', '/community-guidelines', '/women-only', '/lgbtq', '/grievance', '/emergency', '/terms', '/disclaimer', '/privacy', '/wallet-terms', '/refunds', '/intermediary-policy']);
 const text = html => html.replace(/<script\b[\s\S]*?<\/script>/g, '').replace(/<[^>]*>/g, ' ').replaceAll('&amp;', '&').replace(/\s+/g, ' ').trim();
 export function checkHelloFraandsPages(root, identity) {
   assert.equal(identity.name, 'Hello Fraands', 'Requested public identity');
   assert.equal(identity.domain, 'hellofraands.com', 'Requested canonical domain');
-  assert.equal(contentRoutes.length, 29, 'All 29 requested content pages');
+  assert.equal(contentRoutes.length, 28, 'All 28 requested content pages');
   const pages = new Map();
   for (const route of contentRoutes) {
     const html = readFileSync(resolve(root, route.slice(1), 'index.html'), 'utf8');
@@ -55,17 +55,14 @@ export function checkHelloFraandsPages(root, identity) {
   assert.equal((pages.get('/how-it-works').match(/class="phone-frame"/g) || []).length, 3, 'Three masked-call steps');
   const hostJoin = text(pages.get('/hosts/join'));
   for (const copy of [
-    'A Standard host earns ₹2.00 for every connected minute, paid by the second.',
-    'Influencers and celebrities complete full video KYC and choose a fan price from ₹5 to ₹1,000 per minute',
+    'Influencers complete full video KYC and choose a fan price from ₹5 to ₹1,000 per minute',
     'they receive 60% of the connected-call charge minus ₹2.00 per connected minute for the telephone call.',
     'Being online does not guarantee calls.',
     'Amounts below are before TDS or your own taxes.',
   ]) assert(hostJoin.includes(copy), 'Current host earnings contract: ' + copy);
   const hostRates = text(pages.get('/hosts/rates'));
   for (const copy of [
-    'Standard conversation hosts use the Standard call tariff and do not set a price.',
-    'You earn ₹2.00 for every connected minute, paid by the second.',
-    'A 30-second conversation earns ₹1.00.',
+    'Earnings are paid by the second, only for connected time.',
     'You choose a whole-rupee fan price from ₹5 to ₹1,000 per minute.',
     'Your earnings are 60% of the connected-call charge, minus ₹2.00 for each connected minute to cover the telephone call.',
     'Example at ₹20 per minute for a one-minute connected call: the fan pays ₹20, your earning is ₹10, ₹2 covers the call, and the platform share is ₹8.',
@@ -74,35 +71,31 @@ export function checkHelloFraandsPages(root, identity) {
   // earnings are covered separately by the host join/rates contracts above.
   const faqText = text(faq);
   for (const copy of [
-    '₹3.99 a minute for the first 30 minutes, ₹3.50 for the next 30 minutes and ₹3.25 after 60 minutes.',
-    'Only once both of you are connected. Ringing, a host declining, or a call that never connects costs nothing.',
+    'at the per-minute rate set by the influencer, which you see before you call.',
+    'Only once both of you are connected. Ringing, an influencer declining, or a call that never connects costs nothing.',
     'By the second of connected time, with no rounding up to a full minute.',
-    'A 30-minute call costs ₹119.70 and a 60-minute call costs ₹224.70.',
-    'You need at least ₹7.98 (two minutes) in your wallet to start a call.',
-    'you earn ₹2.00 for every connected minute, paid by the second.',
-    'A 15-minute call earns ₹30.00.',
+    "You need at least two minutes of balance at the influencer's rate in your wallet to start a call.",
+    'Your earnings are 60% of the connected-call charge, minus ₹2.00 for each connected minute to cover the telephone call.',
   ]) assert(faqText.includes(copy), 'FAQ Standard call contract: ' + copy);
   const wallet = text(pages.get('/wallet-terms'));
   for (const copy of [
-    'A call costs ₹3.99 a minute for the first 30 minutes, ₹3.50 a minute for the next 30 minutes, and ₹3.25 a minute after 60 minutes.',
-    'The lower price applies only to the time after each mark.',
+    'Each influencer sets their own per-minute rate, and you see it before you call.',
     'Minutes you have already talked are never charged again at a new price.',
-    '30 minutes cost ₹119.70.', '60 minutes cost ₹224.70.',
-    '90 minutes cost ₹322.20.', '120 minutes cost ₹419.70.',
-    'A new call starts again at ₹3.99 a minute.',
-    'You need at least ₹7.98 (two minutes) in your wallet to start a call.',
-    'Billing starts only when host and caller are connected, not while a phone rings or the host decides.',
+    'The rate is shown before you start a call.',
+    'You pay only for the seconds you are connected.',
+    "You need at least two minutes of balance at the influencer's rate in your wallet to start a call.",
+    'Billing starts only when influencer and caller are connected, not while a phone rings or the influencer decides.',
     'You are billed for the exact seconds you are connected, with no rounding up to a full minute.',
     'Ringing, a declined or missed call, a failed connection and waiting all cost ₹0.',
-    'Hosts earn ₹2.00 for every connected minute of every call, paid by the second.',
+    'Influencers earn a share of the rate for every connected minute, paid by the second.',
   ]) assert(wallet.includes(copy), 'Wallet Standard call contract: ' + copy);
   const earningsTable = pages.get('/hosts/join').match(/<tbody>([\s\S]*?)<\/tbody>/)?.[1] || '';
   const earningsRows = [...earningsTable.matchAll(/<tr>([\s\S]*?)<\/tr>/g)].map(row => [...row[1].matchAll(/<td>([^<]+)<\/td>/g)].map(cell => cell[1]));
   assert.deepEqual(earningsRows, [
-    ['1 hour', '₹2.00', '₹120'],
-    ['1,000 minutes', '₹2.00', '₹2,000'],
-    ['3,000 minutes', '₹2.00', '₹6,000'],
-  ], 'Illustrative Standard earnings follow ₹2.00 per connected minute');
+    ['1 hour', '₹10.00', '₹600'],
+    ['1,000 minutes', '₹10.00', '₹10,000'],
+    ['3,000 minutes', '₹10.00', '₹30,000'],
+  ], 'Illustrative earnings follow ₹10.00 per connected minute at a ₹20 fan price');
   for (const [route, phones] of [['/emergency', ['14416', '112', '9152987821', '18602662345']], ['/hosts/crisis-script', ['14416', '112']]]) {
     const links = [...pages.get(route).matchAll(/href="tel:([^"]+)"/g)].map(m => m[1].replace(/[^\d]/g, ''));
     for (const phone of phones) assert(links.includes(phone), `${route}: tap-to-call ${phone}`);
@@ -110,5 +103,5 @@ export function checkHelloFraandsPages(root, identity) {
   // The older downloadable card predates the reviewed welfare guidance and is
   // intentionally unlinked until its text is updated to match this page.
   assert(!pages.get('/hosts/crisis-script').includes('href="/hosts/crisis-script.pdf"'), 'Unreviewed crisis PDF is not promoted');
-  console.log('Hello Fraands content contracts passed: 29 pages, shared chrome, metadata, review notes, earnings and crisis links.');
+  console.log('Hello Fraands content contracts passed: 28 pages, shared chrome, metadata, review notes, earnings and crisis links.');
 }

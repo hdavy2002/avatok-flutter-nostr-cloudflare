@@ -28,13 +28,13 @@ export default function Fraands() {
   }, [retry]);
 
   return <div className="hfd-section">
-    <header className="hfd-section-head"><h1>My Fraands</h1><p>The hosts you’ve saved, so they’re always one tap away.</p></header>
+    <header className="hfd-section-head"><h1>My Fraands</h1><p>The influencers you’ve saved, so they’re always one tap away.</p></header>
     {error && <section className="hfc-card" role="alert"><p>{error}</p><div className="hfd-actions"><button type="button" className="hfc-btn hfc-primary" onClick={() => setRetry(n => n + 1)}>Try again</button></div></section>}
     {!error && items === null && <p role="status">Loading your Fraands…</p>}
     {items && items.length === 0 && <section className="hfc-card hfd-empty-card">
-      <h2>No saved hosts yet</h2>
-      <p>Tap the heart on a host you like and they’ll show up here.</p>
-      <div className="hfd-actions"><a className="hfc-btn hfc-primary" href="/marketplace">Explore hosts →</a></div>
+      <h2>No saved influencers yet</h2>
+      <p>Tap the heart on an influencer you like and they’ll show up here.</p>
+      <div className="hfd-actions"><a className="hfc-btn hfc-primary" href="/marketplace">Explore influencers →</a></div>
     </section>}
     {items && items.length > 0 && <ul className="hfd-fr-grid">
       {items.map(h => {

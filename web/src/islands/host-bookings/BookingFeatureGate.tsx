@@ -19,7 +19,7 @@ export function BookingUnavailable() {
     <section className="hfb-card" role="status">
       <h1>Booking is unavailable</h1>
       <p>Appointments are not available right now. Please check back later.</p>
-      <a className="hfb-button" href="/marketplace">Explore hosts</a>
+      <a className="hfb-button" href="/marketplace">Explore influencers</a>
     </section>
   </PageShell>;
 }

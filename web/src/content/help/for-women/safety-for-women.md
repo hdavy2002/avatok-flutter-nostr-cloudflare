@@ -11,8 +11,8 @@ faq:
     a: "Press # to end the call, block him and report. You do not need to explain why you hung up."
   - q: "Does payment give a caller the right to say anything?"
     a: "No. Payment never buys permission to cross a boundary. You can hang up at any time."
-  - q: "Will the AI also help?"
-    a: "Yes. The AI ends calls with harassment, abuse, threats or sexual pressure, and flags the account."
+  - q: "What happens to a man who crosses the line?"
+    a: "Press # and report. Our team reviews the report. He can get a strike or an immediate ban."
 draft: false
 ---
 
@@ -23,10 +23,10 @@ draft: false
 ## What protects you
 
 - **Your number is masked.** The other person never sees your real phone number. See [How your number stays private](/help/safety-and-privacy/your-number-stays-private).
-- **Hosts are checked.** Hosts are verified adults who have done video KYC. KYC means we check that a person is real and is who they say they are.
-- **AI follows live calls.** It ends abusive calls on its own.
+- **Influencers are checked.** Influencers are verified adults who have done video KYC. KYC means we check that a person is real and is who they say they are.
+- **Strikes and bans.** Our team reviews every report. Confirmed strikes can lead to a permanent ban.
 - **The # key.** Press it any time. It ends the call, blocks the other person and reports the incident.
-- **No recording and no listening.** See [No recording, no listening](/help/safety-and-privacy/no-recording-no-listening).
+- **No one listens in.** No human monitors your call. See [How we keep calls safe](/help/safety-and-privacy/how-ai-keeps-calls-safe).
 
 ## If a man flirts or says sexual things
 
@@ -38,7 +38,7 @@ You do not have to be polite. You do not have to argue. Do this:
 2. Or simply hang up.
 3. That is all. **You never owe an explanation for hanging up.**
 
-Our AI may also end the call by itself. It looks for harassment, abuse, threats and sexual pressure. When it acts, the account is flagged. After a review by our team, he can get a strike or an immediate ban. Read more in [Strikes and bans](/help/safety-and-privacy/strikes-and-bans).
+Your report goes to our team. After a review, he can get a strike or an immediate ban. Read more in [Strikes and bans](/help/safety-and-privacy/strikes-and-bans).
 
 ## Payment does not buy permission
 
@@ -48,7 +48,7 @@ Some people think, "I am paying per minute, so I can say anything." This is wron
 
 ## An example
 
-Kavya is a host. A caller starts with normal chat. After a few minutes he says, "You have a sweet voice. Why don't we talk about something more private?" Kavya does not reply. She presses #. The call ends, he is blocked and the incident is reported. She did not have to say a word.
+Kavya is an influencer. A caller starts with normal chat. After a few minutes he says, "You have a sweet voice. Why don't we talk about something more private?" Kavya does not reply. She presses #. The call ends, he is blocked and the incident is reported. She did not have to say a word.
 
 ## Want a space with only women?
 

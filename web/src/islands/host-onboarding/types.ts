@@ -24,7 +24,7 @@ export interface Avatar {
   gender: Gender;
   age: AgeBand;
   style: AvatarStyle;
-  takenBy?: string | null; // locked to another host (exclusive avatars)
+  takenBy?: string | null; // locked to another influencer (exclusive avatars)
 }
 
 export interface GeneratedProfile {

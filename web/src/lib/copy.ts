@@ -78,7 +78,7 @@ export const promiseBand = {
   numberTitle: 'NUMBER SAFE',
   numberBody: 'Your real number is never shown to anyone',
   hostTitle: 'HOST VERIFIED',
-  hostBody: 'Every host completes a liveness check',
+  hostBody: 'Every influencer completes a liveness check',
   supportTitle: 'REAL SUPPORT',
   supportBody: 'Something wrong? Report it and we will look into it',
   reviewsTitle: 'VERIFIED REVIEWS',
@@ -91,7 +91,7 @@ export const promiseBand = {
 export const houseRules = {
   title: 'HOUSE RULES',
   platformBaseline: 'The platform rule is the same for everyone: respect everyone, zero tolerance for harassment.',
-  empty: 'This host has not added any rules yet — normal courtesy applies.',
+  empty: 'This influencer has not added any rules yet — normal courtesy applies.',
 } as const;
 
 /** Reviews section — empty state and pagination labels. */
@@ -175,7 +175,7 @@ export const bookingBox = {
 /** Copy for the free-entry lane (§2.4, §3.4) — the creator pays, not the buyer. */
 export const freeBox = {
   /** Replaces the price breakdown entirely on a free listing's booking box. */
-  hostPays: 'Host is paying for this one — show up and say thanks',
+  hostPays: 'The influencer is paying for this one — show up and say thanks',
   /** The free session hit its cap (`content_free_cap_tokens` / 409 `free_session_full`). */
   full: 'This free session is full',
   /** `12 spots left` — the free-lane seats-left line, cap-derived. */

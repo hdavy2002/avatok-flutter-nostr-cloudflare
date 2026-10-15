@@ -1,7 +1,7 @@
 // [HF-HOME-HOST-FAN-1] Marketing samples only; never used for live booking or billing.
 export const homeCopy = {
   heroTitle: 'Talk to your favourite social media influencers over a private phone call.',
-  heroDescription: 'Book a time. We call you, call the host, and connect both calls. Neither of you sees the other’s personal number.',
+  heroDescription: 'Book a time. We call the influencer first. If they accept, we call you and connect both calls. Neither of you sees the other’s personal number.',
 } as const;
 export interface CreatorPreview {
   id: string;

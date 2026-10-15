@@ -43,15 +43,15 @@ export const SECTIONS: Record<
   },
   'safety-and-privacy': {
     label: 'Safety & privacy', hindi: 'Number private, baat safe', icon: '✦', order: 3, tone: 'peach',
-    blurb: 'Your private number, how AI keeps calls safe, no recordings, OTP scams, strikes and bans.',
+    blurb: 'Your private number, how we keep calls safe, OTP scams, strikes and bans.',
   },
   'for-women': {
     label: 'For women', hindi: 'Mahilaon ke liye', icon: '♥', order: 4, tone: 'lilac',
     blurb: 'Staying safe as a woman, the women-only space and talking about health.',
   },
   hosts: {
-    label: 'For hosts', hindi: 'Baatein karo, paise kamao', icon: '☀', order: 5, tone: 'cream',
-    blurb: 'Becoming a host, what you earn, taking calls, handling bad callers and getting paid.',
+    label: 'For influencers', hindi: 'Baatein karo, paise kamao', icon: '☀', order: 5, tone: 'cream',
+    blurb: 'Becoming an influencer, what you earn, taking calls, handling bad callers and getting paid.',
   },
   'wallet-and-payments': {
     label: 'Wallet & payments', hindi: 'Paisa aur wallet', icon: '₹', order: 6, tone: 'paper',

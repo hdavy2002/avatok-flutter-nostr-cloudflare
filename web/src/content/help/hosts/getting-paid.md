@@ -1,17 +1,17 @@
 ---
-title: "How do I get paid as a host?"
+title: "How do I get paid as an influencer?"
 description: "Learn when your earnings are credited and how to withdraw them to your own bank account or UPI ID."
 section: hosts
 order: 5
-updated: 2026-10-08
-keywords: ["host payout", "withdraw earnings", "upi withdraw", "paise kaise milenge", "get paid", "host payment", "outside payment", "removal"]
+updated: 2026-10-15
+keywords: ["influencer payout", "withdraw earnings", "upi withdraw", "paise kaise milenge", "get paid", "influencer payment", "outside payment", "removal"]
 audience: creator
 faq:
   - q: "When are my earnings added?"
     a: "Your earnings are credited after each completed call. You can see them in your dashboard."
   - q: "Can I withdraw to someone else's UPI ID?"
     a: "No. You can only withdraw to a UPI ID in your own name."
-  - q: "Can a caller pay me directly?"
+  - q: "Can a fan pay me directly?"
     a: "No. Taking money outside the platform leads to removal, and you lose all protection."
 draft: false
 ---
@@ -23,7 +23,7 @@ Your money is simple to follow. You earn after each call, and you can send it to
 
 After each **completed call**, your earnings for that call are credited to your account. You can see each call and its amount in your wallet history.
 
-You earn ₹2.00 for every connected minute. To learn more, read [how much you will earn](/help/hosts/host-earnings).
+Your fan pays per minute at the rate you have set. To learn more, read [how much you will earn](/help/hosts/host-earnings).
 
 ## How to withdraw
 
@@ -36,14 +36,14 @@ The minimum payout is **₹500**. New earnings are held for **7 days** first. Ou
 
 ## Never take money outside the platform
 
-Some callers may say, "I will pay you directly, give me your UPI ID." Do not do this.
+Some fans may say, "I will pay you directly, give me your UPI ID." Do not do this.
 
 **Taking money outside the platform is not allowed.** If you do, you can be removed from the platform. You also lose all protection. That means we cannot help you if something goes wrong, because the call was not through us.
 
 Also do not:
 
-- Ask callers for money or gifts.
-- Share your UPI ID, phone number, WhatsApp or Instagram with a caller.
+- Ask fans for money or gifts.
+- Share your UPI ID, phone number, WhatsApp or Instagram DM with a caller.
 - Sell anything to a caller, such as products, tips, loans or remedies.
 
 If a caller asks you to move to WhatsApp or to take money directly, say no. You can press # to end the call, block the caller and report it.

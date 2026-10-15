@@ -3,12 +3,12 @@ title: "How does {{brand.name}} keep my phone number private?"
 description: "Your real phone number is never shown to the other person. Here is how number masking works in simple words."
 section: safety-and-privacy
 order: 1
-updated: 2026-10-08
+updated: 2026-10-15
 keywords: ["number chhupa", "number private", "masking", "phone number safe", "number hide", "privacy", "mera number"]
 audience: both
 faq:
   - q: "Can the other person see my phone number?"
-    a: "No. Neither person ever sees the other's personal phone number. Both phones are joined through a platform number."
+    a: "No. Neither person ever sees the other's personal phone number. Both calls come from our platform number and are joined together."
   - q: "Will my name or Aadhaar details show on my profile?"
     a: "No. Your legal name, Aadhaar details and phone number are never shown on a profile or shared with the other person."
   - q: "Can I still give away my number by mistake?"
@@ -24,10 +24,10 @@ When you talk to someone on {{brand.name}}, they never get your real phone numbe
 
 We are like a switch in the middle. You do not call the other person directly. The call goes through us.
 
-1. The caller picks an online host and taps call.
-2. The host's phone rings first. The host hears the caller's display handle, not a number.
-3. If the host presses 1 to accept, the caller's phone rings.
-4. The two calls are joined through a platform number.
+1. The caller picks an online influencer and taps call.
+2. Our system calls the influencer first and announces that a fan wants to talk. The influencer hears the caller's display handle, not a number.
+3. If the influencer presses 1 to accept, we call the caller.
+4. We merge the two calls. Both calls come from our platform number.
 
 **Neither person ever sees the other's personal phone number.**
 
@@ -55,12 +55,12 @@ If you tell someone your full name, your address or your workplace, they will kn
 
 ## An example
 
-Rohit from Pune calls a host to talk about his exam tension. The call goes well. He calls again the next week. All this time, the host never sees his number. The host only sees his display handle and how many times he has called before.
+Rohit from Pune calls his favourite YouTuber. The call goes well. He calls again the next week. All this time, the influencer never sees his number. The influencer only sees his display handle and how many times he has called before.
 
-Then, one day, Rohit says, "Let me give you my WhatsApp number." Now the host can see it, because Rohit said it. Sharing numbers on a call is also against our rules. See [Community Guidelines](/community-guidelines).
+Then, one day, Rohit says, "Let me give you my WhatsApp number." Now the influencer can see it, because Rohit said it. Sharing numbers on a call is also against our rules. See [Community Guidelines](/community-guidelines).
 
 ## Need more help?
 
-- How we keep calls safe: [How does AI keep my calls safe?](/help/safety-and-privacy/how-ai-keeps-calls-safe)
+- [How we keep calls safe](/help/safety-and-privacy/how-ai-keeps-calls-safe)
 - Our privacy page: [Privacy](/privacy)
 - Tips for safe calls: [Talk safely: simple tips](/help/safety-and-privacy/talk-safely-tips)

@@ -17,7 +17,7 @@ export default function RateCard({ surface, tiers }: { surface: string; tiers?: 
       <ul className="hfc-calls">
         {rateCardLines(tiers).map(l => <li key={l}><strong>{l}</strong></li>)}
       </ul>
-      <p className="hfc-sub" style={{ margin: 0 }}>{RATE_CARD_NOTE} The same rate for every host.</p>
+      <p className="hfc-sub" style={{ margin: 0 }}>{RATE_CARD_NOTE} The same rate for every influencer.</p>
     </section>
   );
 }

@@ -14,7 +14,7 @@ export interface DashNavItem { key: DashKey; label: string; short: string; href:
 // items (my-events, past, orders) are off the menu; their pages stay until the new
 // screens (wallet, favourites, call history, host earnings) are built with the backend.
 const ALL_NAV: DashNavItem[] = [
-  { key: 'book', label: 'Explore hosts', short: 'Explore', href: '/marketplace', icon: CalendarPlus },
+  { key: 'book', label: 'Explore influencers', short: 'Explore', href: '/marketplace', icon: CalendarPlus },
   { key: 'wishlist', label: 'Favourites', short: 'Favourites', href: '/dashboard/wishlist', icon: Heart },
   { key: 'wallet', label: 'Wallet', short: 'Wallet', href: '/dashboard/wallet', icon: Wallet },
   { key: 'billing', label: 'Billing', short: 'Billing', href: '/dashboard/billing', icon: Receipt },

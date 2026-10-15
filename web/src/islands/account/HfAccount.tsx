@@ -109,7 +109,7 @@ export default function HfAccount() {
           {account.username && <div><dt>Username</dt><dd>{account.username}</dd></div>}
           <div><dt>Phone</dt><dd>{account.phoneMasked || 'Not available'}</dd></div>
           <div><dt>WhatsApp verification</dt><dd>{account.whatsappVerified ? 'Verified' : 'Not verified'}</dd></div>
-          {account.isHost && <div><dt>Host status</dt><dd>{account.host?.status?.replaceAll('_', ' ') || 'Not available'}</dd></div>}
+          {account.isHost && <div><dt>Influencer status</dt><dd>{account.host?.status?.replaceAll('_', ' ') || 'Not available'}</dd></div>}
         </dl>
       </section>
       </div></div>

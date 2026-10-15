@@ -13,11 +13,11 @@ export const BRAND = {
   /** Lowercase, no spaces — hashtags, file names, UA markers. */
   slug: "aumfe",
   nameHindi: "हेलो फ़्रैंड्स",
-  slogan: "Real people. Baat se baat banti hai.",
+  slogan: "Your favourite influencer, one private call away.",
   /** One-sentence meaning of the name (front page). */
-  nameMeaningShort: "Hello Fraands is a friendly hello and an invitation to talk to a real person in your language.",
+  nameMeaningShort: "Hello Fraands connects you with your favourite social media influencers over a private phone call, with both phone numbers kept hidden.",
   /** Full story of the name (About page, help). */
-  nameMeaningLong: "Hello Fraands is our way of saying you can start a conversation. Talk to a real person in your language about everyday life, with a clear per-minute price and a call connection that keeps personal phone numbers private. The site is a preview while calling and verification are being prepared.",
+  nameMeaningLong: "Hello Fraands is a friendly hello to the influencers you follow. Book a private phone call with your favourite YouTube, Instagram or Facebook influencer: we call the influencer first, and if they accept we call you and join the two calls. Both calls come from a Hello Fraands number, so neither of you sees the other's real number. You pay a per-minute rate set by the influencer. The site is a preview while calling and verification are being prepared.",
   /** Bare host, no scheme. */
   domain: "hellofraands.com",
   /** https://<domain> — no trailing slash. */

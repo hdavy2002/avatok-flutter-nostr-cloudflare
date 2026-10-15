@@ -4,7 +4,7 @@ description: "Learn how to block a person during a call with the # key, or later
 section: account-and-help
 order: 2
 updated: 2026-10-08
-keywords: ["block", "block caller", "block host", "hash key", "band karo", "unblock", "call history", "stop calls"]
+keywords: ["block", "block caller", "block influencer", "hash key", "band karo", "unblock", "call history", "stop calls"]
 audience: both
 faq:
   - q: "How do I block someone during a call?"

@@ -1,9 +1,9 @@
 ---
-title: "Talk safely: simple tips for callers and hosts"
-description: "A short checklist to stay safe on every call, for both callers and hosts."
+title: "Talk safely: simple tips for callers and influencers"
+description: "A short checklist to stay safe on every call, for both callers and influencers."
 section: safety-and-privacy
 order: 6
-updated: 2026-10-08
+updated: 2026-10-15
 keywords: ["safety tips", "safe call", "talk safely", "suraksha", "checklist", "dont share", "hash key"]
 audience: both
 faq:
@@ -24,27 +24,26 @@ Most calls on {{brand.name}} are friendly and simple. These tips help you keep i
 - **Never share OTP, UPI PIN, passwords or bank details.** We will never ask for them. See [How do I spot OTP and bank scams?](/help/safety-and-privacy/spot-otp-and-bank-scams).
 - **Do not swap numbers.** Do not ask for or give a phone number, WhatsApp, Instagram or UPI ID.
 - **Do not plan to meet.** Stay on the call.
-- **Do not record the other person.**
 - **Press # if you feel unsafe.** It ends the call, blocks the other person and reports the incident. You do not need to explain.
 
 ## For callers
 
-- Pick a host by mood, language and price. Look at the rating and the topics they agreed to talk about.
-- Do not pay anyone outside the platform. Never send money to a host.
-- Do not buy anything a host offers. Hosts must not sell products, tips or remedies.
-- Remember that hosts are not doctors, lawyers, counsellors or financial advisors. This is not therapy.
+- Pick the influencer you want to talk to. Look at their rate, rating and the topics they agreed to talk about.
+- Do not pay anyone outside the platform. Never send money to an influencer.
+- Do not buy anything an influencer offers. Influencers must not sell products, tips or remedies.
+- Remember that influencers are not doctors, lawyers, counsellors or financial advisors. This is not therapy.
 
-## For hosts
+## For influencers
 
 - You can decline any call. Press 2 when you hear the announcement.
 - If a caller asks for your number or says anything that feels wrong, press #.
 - Never ask a caller for money outside the platform. That can get you removed.
-- Watch for OTP asks, "KYC update" tricks, sextortion attempts and emotional manipulation. Your training covers these.
+- Watch for OTP asks, "KYC update" tricks, sextortion attempts and emotional manipulation. Our tips for influencers cover these.
 - Do not act as a doctor, lawyer, counsellor, CA or financial advisor.
 
 ## A quick example
 
-Rohit is a caller. A host he just met asks, "Send me ₹500 on UPI and I will give you a lucky remedy." Rohit says no and presses #. The call ends, the host is blocked and the incident is reported.
+Rohit is a caller. An influencer he just met asks, "Send me ₹500 on UPI and I will give you a lucky remedy." Rohit says no and presses #. The call ends, the influencer is blocked and the incident is reported.
 
 ## In an emergency
 

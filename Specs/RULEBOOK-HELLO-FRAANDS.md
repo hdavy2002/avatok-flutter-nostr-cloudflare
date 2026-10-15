@@ -35,7 +35,9 @@ works; the backend must be built to match these rules before calls go live.
 |---|---|---|---|---|
 | HF-PROD-1 | Brand is **Hello Fraands** at hellofraands.com (from 2026-10-08). Earlier names CallVaal, Aum Fe (aumfe.com), Saa Thum (saathum.com) are retired; never shown on the site. | ADOPTED | DONE | N/A |
 | HF-PROD-2 | India only: Indian numbers, UPI, Indian KYC, Indian languages. | ADOPTED | DONE | TODO |
-| HF-PROD-3 | One product: "talk to someone" — real people, per-minute phone calls, mood-based (exam ki tension, can't sleep, naye dost, bas baat…). No service categories. | ADOPTED | DONE | TODO |
+| HF-PROD-3 | ~~One product: "talk to someone" — real people, per-minute phone calls, mood-based (exam ki tension, can't sleep, naye dost, bas baat…). No service categories.~~ **DROPPED 2026-10-15 (owner): replaced by HF-PROD-7 (influencer calls).** The mood pitch is removed from about-type text on the site. | DROPPED | REMOVED | N/A |
+| HF-PROD-7 | **Hello Fraands connects you to your favourite social media influencer (YouTube, Instagram, Facebook…) over a private phone call** (owner 2026-10-15, HF-INFLUENCER-PIVOT-1). Both numbers are masked. We call the influencer first and announce that you want to talk; if they accept, we call you and merge the calls. Both calls come from a Hello Fraands number. The caller pays per minute at the rate the influencer sets. | ADOPTED | DONE (home, about, how-it-works, FAQ, help centre, blog, legal and /hosts pages, footer, brand.json) | TODO (backend still has the standard plan tariff in places — align before launch) |
+| HF-PROD-8 | **The people callers talk to are called "influencers" in all visible text** (was "hosts"; owner 2026-10-15). URLs (/hosts/*), code identifiers, API fields, flags and table names keep "host". | ADOPTED | DONE (public pages, help, FAQ, blog, dashboard labels) | N/A |
 | HF-PROD-4 | Friendship and "regulars" (calling the same host again) is part of the offer — but it is friendship, never romance. See HF-WELL-5. | ADOPTED | DONE | TODO |
 | HF-PROD-5 | Not therapy, counselling, crisis line, dating, adult chat or professional (medical, legal, money) advice. Said on the home page, FAQ, help centre and terms. | ADOPTED | DONE | N/A |
 | HF-PROD-6 | 18+ only, for callers and hosts. | ADOPTED | DONE | TODO (caller age gate, see HF-WELL-10) |
@@ -55,7 +57,7 @@ works; the backend must be built to match these rules before calls go live.
 
 | ID | Rule | Decision | Pages | Backend |
 |---|---|---|---|---|
-| HF-PRIV-1 | **No call recording. No stored call audio. No transcripts.** | ADOPTED | DONE (all policy pages updated 2026-10-08) | TODO |
+| HF-PRIV-1 | **No call recording. No stored call audio. No transcripts.** **Owner 2026-10-15: the site must not mention call recording at all** — no "we don't record" lines, no recording policy page (/recording-policy now 301s to /safety; help article no-recording-no-listening removed and redirected). | ADOPTED | DONE (no mention on site, HF-NO-RECORDING-MENTION-1) | TODO |
 | HF-PRIV-2 | **No human monitors or listens** to live calls. | ADOPTED | DONE | N/A |
 | HF-PRIV-3 | We keep only call metadata: account IDs, time, duration, price, how the call ended (person or safety action). | ADOPTED | DONE | TODO |
 | HF-PRIV-4 | We keep a **safety log** without audio: AI flags, welfare flags, crisis numbers shown, strikes, blocks — each with a time. This is our proof that the safety system worked. | PROPOSED | TODO | TODO |
@@ -63,14 +65,16 @@ works; the backend must be built to match these rules before calls go live.
 
 ## 4. AI safety and spam
 
+> **2026-10-15 (owner): there is NO AI monitoring of calls.** Safety on the site = masked numbers, verified influencers, # ends and blocks, report/block, strikes after team review, never asking for OTP/PIN/bank details, no human listens. Never write "AI-powered" or "AI ends/blocks calls" on any page.
+
 | ID | Rule | Decision | Pages | Backend |
 |---|---|---|---|---|
-| HF-AI-1 | AI follows every live call and understands **intention**, not keywords. No word triggers. | ADOPTED | DONE | TODO |
-| HF-AI-2 | AI ends the call automatically on harassment, abuse, threats, sexual pressure, or scams (OTP, UPI PIN, card, bank, Aadhaar, "verify" links, fake bank/police/courier, loans, investments, remedies). | ADOPTED | DONE | TODO |
-| HF-AI-3 | Spammers and scammers are blocked **across the whole platform**; repeat attempts from new accounts are matched and blocked. | ADOPTED | DONE | TODO |
+| HF-AI-1 | ~~AI follows every live call and understands **intention**, not keywords. No word triggers.~~ **DROPPED 2026-10-15 (owner): no AI monitoring of calls; "AI-powered safety" removed from the whole site.** | DROPPED | REMOVED | N/A |
+| HF-AI-2 | ~~AI ends the call automatically on harassment, abuse, threats, sexual pressure, or scams (OTP, UPI PIN, card, bank, Aadhaar, "verify" links, fake bank/police/courier, loans, investments, remedies).~~ **DROPPED 2026-10-15 (owner): no AI monitoring of calls; "AI-powered safety" removed from the whole site.** | DROPPED | REMOVED | N/A |
+| HF-AI-3 | Spammers and scammers are blocked **across the whole platform**; repeat attempts from new accounts are matched and blocked. **Changed 2026-10-15:** based on reports and # blocks reviewed by the team, not AI. | ADOPTED | DONE | TODO |
 | HF-AI-4 | The platform never asks for OTP, UPI PIN, password or bank details — on any channel. | ADOPTED | DONE | N/A |
-| HF-AI-5 | Women-only lane: AI is tuned so health and intimate-wellness talk, or describing a bad experience, is never treated as misconduct. | ADOPTED | DONE | TODO |
-| HF-AI-6 | Self-harm mentions are **never a strike** — they go to welfare follow-up (HF-WELL-2). | ADOPTED | DONE | TODO |
+| HF-AI-5 | ~~Women-only lane: AI is tuned so health and intimate-wellness talk, or describing a bad experience, is never treated as misconduct.~~ **DROPPED 2026-10-15 (owner): no AI monitoring of calls; "AI-powered safety" removed from the whole site.** | DROPPED | REMOVED | N/A |
+| HF-AI-6 | ~~Self-harm mentions are **never a strike** — they go to welfare follow-up (HF-WELL-2).~~ **DROPPED 2026-10-15 (owner): no AI monitoring of calls; "AI-powered safety" removed from the whole site.** | DROPPED | REMOVED | N/A |
 
 ## 5. Conduct
 
@@ -308,6 +312,7 @@ else, or come back later."
 
 | Date | Change |
 |---|---|
+| 2026-10-15 | HF-INFLUENCER-PIVOT-1 (owner): product is now private calls with your favourite social media influencer (HF-PROD-7, HF-PROD-3 DROPPED); "host" is "influencer" in all visible text (HF-PROD-8); no AI monitoring — HF-AI-1/2/5/6 DROPPED, HF-AI-3 now report-based; the site no longer mentions call recording (HF-PRIV-1): /recording-policy → /safety, help article no-recording-no-listening removed. Fixed standard-tariff prices removed from public copy; the rate is set by the influencer. |
 | 2026-10-15 | HF-WALLET-HELD-LABEL-1: purchases made under the older pricing (gp-r1) kept 18% as part of the price and recorded GST 0; the wallet history, receipt list and printable receipt now show that share as "held back" instead of "GST ₹0.00", and the receipt list shows the exact amount paid (₹120.36, not ₹120.00). No money changed. |
 | 2026-10-14 | New rule HF-SITE-8 (HF-DASH-FRAANDS-1): people can heart live hosts and see them in a new dashboard screen, My Fraands; up to 500 per person, removed with the account, hidden until the owner switches it on. |
 | 2026-10-14 | HF-DASH-SUMMARY-1: the dashboard Overview now shows true numbers for everyone, not dashes. Hosts see calls received today, appointments today, first-time callers this week and expected earnings; everyone else sees calls they made today, appointments today, how many hosts they saved, and their last three calls (host name only, never a number), plus a Wallet shortcut. One summary call feeds it; if a number cannot be read it shows a dash and the rest still loads. |

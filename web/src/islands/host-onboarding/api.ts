@@ -85,7 +85,7 @@ export const mockApi: OnboardingApi = {
     const av = SAMPLE_AVATARS.find(a => a.id === draft.avatarId);
     const img = av?.image ?? SAMPLE_AVATARS[0].image;
     const idx = Math.max(0, STYLES.indexOf(draft.style ?? ''));
-    const name = draft.displayName.trim() || 'Your host';
+    const name = draft.displayName.trim() || 'Your influencer';
     const topic = TOPICS.find(t => t.slug === draft.topics[0])?.label;
     const quote = topic
       ? `Aaram se baithiye, chai lijiye, aur ${topic} ke baare mein jo bhi mann mein hai, bol dijiye. Main sun rahi hoon.`

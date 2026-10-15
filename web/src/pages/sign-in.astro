@@ -24,7 +24,7 @@ const clerkHost = clerkFapiHost();
 
 <Base
   title={`Log in · ${BRAND.name}`}
-  description={`Log in to ${BRAND.name} — talk to a real person in your language. Your number stays private.`}
+  description={`Log in to ${BRAND.name} — talk to your favourite influencer on a private call. Your number stays private.`}
   chrome={false}
 >
   <Fragment slot="head">
@@ -51,9 +51,9 @@ const clerkHost = clerkFapiHost();
       <!-- Decorative left panel — desktop (>=1280px) only. Hidden, never
            shrunk, below that (README §Responsive). -->
       <aside class="auth-panel auth-panel--hf-cream" aria-hidden="true">
-        <span class="auth-rail">Real people · Naye dost</span>
+        <span class="auth-rail">Your favourite influencers</span>
         <img src={publicImage('/assets/callvaal/scrapbook/hero-collage-moods.png', { width: 900, fit: 'scale-down' })} alt="" width="1254" height="1254" />
-        <p class="auth-aside">Baat karo.<br />Dil halka karo.</p>
+        <p class="auth-aside">Apne favourite<br />influencer se baat karo.</p>
         <span class="auth-stamp">Number kabhi share nahi hota</span>
       </aside>
 
@@ -62,7 +62,7 @@ const clerkHost = clerkFapiHost();
              its own copies for >=1280; these two are hidden there. Duplicated
              rather than shared because the panel is display:none below 1280,
              which would take the ornaments with it. -->
-        <span class="auth-rail">Real people · Naye dost</span>
+        <span class="auth-rail">Your favourite influencers</span>
         <div class="auth-card">
           <header class="auth-head">
             <p class="auth-hindi" lang="hi">We've been waiting for you</p>

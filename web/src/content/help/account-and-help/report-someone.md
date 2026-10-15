@@ -1,10 +1,10 @@
 ---
 title: "How do I report someone?"
-description: "Learn when to report a caller or host, how to do it, and what happens after you report."
+description: "Learn when to report a caller or influencer, how to do it, and what happens after you report."
 section: account-and-help
 order: 1
 updated: 2026-10-08
-keywords: ["report", "report host", "report caller", "complaint", "shikayat", "abuse", "strike", "call id"]
+keywords: ["report", "report influencer", "report caller", "complaint", "shikayat", "abuse", "strike", "call id"]
 audience: both
 faq:
   - q: "What should I include in my report?"
@@ -32,7 +32,7 @@ Please report if someone:
 - Tries to sell you something, such as products, loans or remedies.
 - Wants to meet you, or says they are under 18.
 
-A call that was just boring or not your type is not a rule break. You can rate the host and try someone else.
+A call that was just boring or not your type is not a rule break. You can rate the influencer and try someone else.
 
 ## How to report
 
@@ -46,12 +46,12 @@ If you are on a call and feel unsafe, you do not have to wait. Press **#** on yo
 ## What happens next
 
 - Our **trust and safety team reviews** your report.
-- AI flags and reports are checked by a person before a strike is confirmed.
+- A person checks every report before a strike is confirmed.
 - **Three confirmed strikes** lead to a permanent ban.
 - Threats, sexual harassment or fraud can lead to an immediate ban.
 - Scammers are blocked across the whole platform.
 
-We keep the call details that help us check. These are who called whom, the time, the duration, and whether a person or a safety action ended the call. We do not record calls, so there is no audio to listen to.
+We keep the call details that help us check. These are who called whom, the time, the duration, and how the call ended.
 
 ## What we cannot do
 

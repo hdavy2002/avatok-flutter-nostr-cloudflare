@@ -24,7 +24,7 @@ const ERRORS: Record<string, string> = {
   weekly_limit: 'You have made the most requests allowed this week. Please try again later.',
   kyc_required: 'Please finish your identity check first.',
   bank_required: 'Please add and verify your bank account first.',
-  not_live: 'Only live hosts can withdraw.',
+  not_live: 'Only live influencers can withdraw.',
   invalid_amount: 'Enter a whole number of rupees.',
 };
 
@@ -74,7 +74,7 @@ export default function WithdrawPanel({ onChanged, isCurrent }: { onChanged?: ()
   const validAmount = Number.isInteger(n) && n >= info.minRupees && n <= info.withdrawable;
   const blocker =
     !info.enabled ? 'Withdrawals open soon.'
-      : info.hostStatus !== 'live' ? 'Only live hosts can withdraw.'
+      : info.hostStatus !== 'live' ? 'Only live influencers can withdraw.'
         : !info.kycOk || !info.bankOk ? 'Finish your identity check and bank details to withdraw.'
           : info.withdrawable < info.minRupees ? `You can withdraw once you have at least ${inr(info.minRupees)} available.`
             : null;

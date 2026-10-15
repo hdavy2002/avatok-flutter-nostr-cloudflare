@@ -10802,5 +10802,19 @@
         "note": "Owner's Rs 2 live test: wallet_paise=169, gst_paise=31, duplicate=false. A second event for the same top-up must say duplicate=true, never a second credit."
       }
     ]
+  },
+  "HF-INFLUENCER-PIVOT-1": {
+    "description": "[HF-INFLUENCER-PIVOT-1 2026-10-15] Copy-only: public site repositioned to private calls with your favourite social media influencer; 'host' -> 'influencer' in visible text; AI-safety and call-recording mentions removed; /recording-policy 301 -> /safety. brand.json slogan/meaning changed (mirrors in worker/app regenerated, strings only). No logic change.",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [],
+    "success": [
+      {
+        "event": "$pageview",
+        "property": "$pathname",
+        "equals": "/faq",
+        "note": "Copy-only web change; success = the rebuilt FAQ is served (pageviews keep arriving after deploy) and the live page text says influencer, not host."
+      }
+    ]
   }
 }

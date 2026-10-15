@@ -84,7 +84,7 @@ function IntroButton({ h }: { h: HostCard }) {
         <Icon name={playing ? 'pause' : 'play'} size={22} />
         <span>{playing ? 'Pause' : 'Hear'} {first}{h.introSeconds ? ` · ${mmss(h.introSeconds)}` : ''}</span>
       </button>
-      <small className="hf-live-clip-label">{failed ? 'This recording would not play. Please try again.' : 'Recorded by the host'}</small>
+      <small className="hf-live-clip-label">{failed ? 'This recording would not play. Please try again.' : 'Recorded by the influencer'}</small>
     </div>
   );
 }
@@ -106,8 +106,8 @@ function Card({ h, lane, callsOn }: { h: HostCard; lane?: LaneName | null; calls
       data-search={`${h.displayName} ${h.languages.join(' ')} ${h.topics.map(moodLabel).join(' ')}`}
     >
       <div className="portrait-wrap">
-        {h.avatarUrl && <img className="person-portrait" src={h.avatarUrl} alt={`${h.displayName}, an AI avatar chosen by the host`} width={1254} height={1254} loading="lazy" />}
-        <span className="hf-live-ai">AI avatar chosen by the host</span>
+        {h.avatarUrl && <img className="person-portrait" src={h.avatarUrl} alt={`${h.displayName}, an AI avatar chosen by the influencer`} width={1254} height={1254} loading="lazy" />}
+        <span className="hf-live-ai">AI avatar chosen by the influencer</span>
         <SaveHostButton slug={h.slug} name={h.displayName} surface="explore" />
         {callsOn
           ? <p className={`person-status ${status === 'online' ? '' : status === 'busy' ? 'is-busy' : 'is-offline'}`}><span aria-hidden="true" />{STATUS_TEXT[status]}</p>

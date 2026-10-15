@@ -21,11 +21,11 @@ export default function ReviewPage({ token }: { token: string }) {
     return () => { live = false; };
   }, [token]);
 
-  const name = (info?.hostName || '').split(/\s+/)[0] || 'your host';
+  const name = (info?.hostName || '').split(/\s+/)[0] || 'your influencer';
   return (
     <main className="hfc-page">
       {state === 'loading' && <p role="status">Loading…</p>}
-      {state === 'gone' && <><h1>This link has expired</h1><p>Review links work for 7 days after a call. You can still visit the host’s page to see how others found their calls.</p><a className="hfc-btn hfc-primary" href="/marketplace">Explore hosts</a></>}
+      {state === 'gone' && <><h1>This link has expired</h1><p>Review links work for 7 days after a call. You can still visit the influencer’s page to see how others found their calls.</p><a className="hfc-btn hfc-primary" href="/marketplace">Explore influencers</a></>}
       {state === 'error' && <><h1>Something went wrong</h1><p>We could not open this page. Please check your internet and try again.</p><button type="button" className="hfc-btn hfc-primary" onClick={() => window.location.reload()}>Try again</button></>}
       {state === 'ok' && info && (
         <>

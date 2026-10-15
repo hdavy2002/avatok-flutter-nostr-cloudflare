@@ -1,13 +1,14 @@
 ---
+import { BRAND } from '../lib/brand';
 import HelloFraandsPage from '../layouts/HelloFraandsPage.astro';
 import MaskedCallSteps from '../components/callvaal/MaskedCallSteps.astro';
 export const prerender = true;
 ---
 <HelloFraandsPage title="How it works" summary="Teen aasaan kadam, bina apna number share kiye.">
-<h2>Your number stays yours</h2><p>At launch, the host is called first and can accept or decline. Only after the host accepts will the caller be dialled and the two legs connected. Neither person is shown the other's personal phone number; please do not share yours on the call.</p>
+<h2>Your number stays yours</h2><p>When you start a call, we call the influencer first and say that you want to talk. The influencer can accept or decline. Only if the influencer accepts do we call you and join the two calls. Both calls come from a {BRAND.name} number, so neither person is shown the other's personal phone number. Please do not share yours on the call.</p>
 <MaskedCallSteps />
 <h2>Add money to your wallet</h2><p>Sign in, open your wallet and choose an amount to add. The price of the pack includes 18% GST, and your wallet gets the amount without GST. For example, pay ₹120 and ₹101.69 goes into your wallet. You see the total, the GST and the amount added before you pay. Money is added only after Google Play confirms your payment.</p>
-<h2>Pay by the second</h2><p>Every host has the same price. A call costs ₹3.99 a minute for the first 30 minutes, ₹3.50 a minute for the next 30 minutes, and ₹3.25 a minute after 60 minutes. A 30-minute call costs ₹119.70 and a 60-minute call costs ₹224.70. You pay only for the seconds you are connected. Ringing, a declined call or a failed connection costs ₹0. You need ₹7.98 (two minutes) in your wallet to start. The call runs until either person hangs up or your wallet money ends, and you hear "one minute left" before that. See <a href="/wallet-terms">wallet terms</a> for details.</p>
-<h2>Want to keep talking?</h2><p>Open your wallet again, add money and wait for Google Play to confirm it. Then start a new call with an available host. See <a href="/wallet-terms">wallet terms</a> and <a href="/refunds">refunds</a> for billing details.</p>
+<h2>Pay by the second</h2><p>Each influencer sets their own per-minute rate, and you see it on their profile before you call. You pay only for the seconds you are connected. Ringing, a declined call or a failed connection costs ₹0. You need enough money in your wallet to start the call. The call runs until either person hangs up or your wallet money ends, and you hear "one minute left" before that. See <a href="/wallet-terms">wallet terms</a> for details.</p>
+<h2>Want to keep talking?</h2><p>Open your wallet again, add money and wait for Google Play to confirm it. Then start a new call with an available influencer. See <a href="/wallet-terms">wallet terms</a> and <a href="/refunds">refunds</a> for billing details.</p>
 <p>The current site is a preview with illustrative profiles. Calls and payments are unavailable in the preview.</p>
 </HelloFraandsPage>

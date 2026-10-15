@@ -68,7 +68,7 @@ export function dateLabel(d: Date): string {
 
 export const AUDIENCE_LABEL: Record<'buyer' | 'creator' | 'both', string> = {
   buyer: 'For callers',
-  creator: 'For hosts',
+  creator: 'For influencers',
   both: 'For everyone',
 };
 

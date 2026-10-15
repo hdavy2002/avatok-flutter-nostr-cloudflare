@@ -2,7 +2,7 @@ export type BlogSection = { heading: string; paragraphs: string[]; steps?: strin
 export type BlogArticle = { slug: string; title: string; category: string; summary: string; lead: string; tags: string[]; image: string; imageAlt: string; sections: BlogSection[]; takeaway: string };
 
 export const blogCategories = ['Naye dost', 'Mann ki baat', 'Tension', 'Zindagi ki baatein', 'Creator life', 'Interests & hobbies'] as const;
-export const blogPreviewNote = 'This site is a preview for adults aged 18 and over. Calling and verification are being prepared. Planned host conversations are paid by the minute; they do not promise friendship, professional care or contact outside the booked time.';
+export const blogPreviewNote = 'This site is a preview for adults aged 18 and over. Calling and verification are being prepared. Planned influencer calls are paid by the minute; they do not promise friendship, professional care or contact outside the booked time.';
 
 export const blogArticles: BlogArticle[] = [
   {
@@ -46,7 +46,7 @@ export const blogArticles: BlogArticle[] = [
       {
         "heading": "Understand what a paid conversation means",
         "paragraphs": [
-          "A host can be warm, attentive and interested while providing a paid service. That does not make the exchange false, but it does set a different expectation from a mutual personal friendship. Do not interpret a good call as a promise of free messages, private contact or future availability. The site is currently a preview for adults 18 and over, with calling and verification being prepared. If calls become available, read the price and session terms before deciding whether the conversation fits your budget."
+          "An influencer can be warm, attentive and interested while providing a paid service. That does not make the exchange false, but it does set a different expectation from a mutual personal friendship. Do not interpret a good call as a promise of free messages, private contact or future availability. The site is currently a preview for adults 18 and over, with calling and verification being prepared. If calls become available, read the price and session terms before deciding whether the conversation fits your budget."
         ]
       }
     ],
@@ -93,7 +93,7 @@ export const blogArticles: BlogArticle[] = [
       {
         "heading": "Keep the relationship within its limits",
         "paragraphs": [
-          "Friendship does not require you to become someone's only source of support. If a topic exceeds what either of you can handle, it is reasonable to suggest an appropriate qualified professional or trusted local support. A paid host conversation also has an agreed scope and ending; warmth does not create an obligation to continue afterwards. On this preview site, calling and verification are still being prepared, and the service is intended for adults 18 and over. A friendly exchange should never be presented as professional treatment."
+          "Friendship does not require you to become someone's only source of support. If a topic exceeds what either of you can handle, it is reasonable to suggest an appropriate qualified professional or trusted local support. A paid influencer conversation also has an agreed scope and ending; warmth does not create an obligation to continue afterwards. On this preview site, calling and verification are still being prepared, and the service is intended for adults 18 and over. A friendly exchange should never be presented as professional treatment."
         ]
       }
     ],
@@ -140,7 +140,7 @@ export const blogArticles: BlogArticle[] = [
       {
         "heading": "Plan the ending as carefully as the beginning",
         "paragraphs": [
-          "For a paid call, decide on a spending limit and intended duration before starting; review the actual rate and terms when booking is available. A simple closing such as 'I have a couple of minutes left, so let's finish this story' avoids a rushed goodbye. Thank the host for the conversation without assuming further contact is included. This site is an 18+ preview, with calling and verification being prepared. These prompts can also be used in ordinary conversations, without needing to book anything."
+          "For a paid call, decide on a spending limit and intended duration before starting; review the actual rate and terms when booking is available. A simple closing such as 'I have a couple of minutes left, so let's finish this story' avoids a rushed goodbye. Thank the influencer for the conversation without assuming further contact is included. This site is an 18+ preview, with calling and verification being prepared. These prompts can also be used in ordinary conversations, without needing to book anything."
         ]
       }
     ],
@@ -187,7 +187,7 @@ export const blogArticles: BlogArticle[] = [
       {
         "heading": "Choose a shared subject for next time",
         "paragraphs": [
-          "If both people want another personal conversation, choose something small to revisit: a dish, a local place or a story mentioned earlier. There is no need to manufacture a deep bond after one exchange. With a paid host, an enjoyable discussion remains a paid session and does not guarantee future availability or friendship. The current site is a preview for adults 18 and over; calling and verification are being prepared. Choose interests and languages as starting points, not as promises that two people will automatically connect."
+          "If both people want another personal conversation, choose something small to revisit: a dish, a local place or a story mentioned earlier. There is no need to manufacture a deep bond after one exchange. With a paid influencer, an enjoyable discussion remains a paid session and does not guarantee future availability or friendship. The current site is a preview for adults 18 and over; calling and verification are being prepared. Choose interests and languages as starting points, not as promises that two people will automatically connect."
         ]
       }
     ],
@@ -234,7 +234,7 @@ export const blogArticles: BlogArticle[] = [
       {
         "heading": "Keep regular contact voluntary",
         "paragraphs": [
-          "A recurring chat should remain something both people choose. Review the rhythm if it begins to feel like homework, and allow lighter periods without treating them as failure. Paid host conversations follow different terms: a previous booking does not reserve someone's future time or include free check-ins between calls. Check current availability and pricing when the service becomes available. This site is an adult-only preview while calling and verification are being prepared, so sample schedules should not be treated as live commitments."
+          "A recurring chat should remain something both people choose. Review the rhythm if it begins to feel like homework, and allow lighter periods without treating them as failure. Paid influencer conversations follow different terms: a previous booking does not reserve someone's future time or include free check-ins between calls. Check current availability and pricing when the service becomes available. This site is an adult-only preview while calling and verification are being prepared, so sample schedules should not be treated as live commitments."
         ]
       }
     ],
@@ -281,7 +281,7 @@ export const blogArticles: BlogArticle[] = [
       {
         "heading": "End with a choice, not an assignment",
         "paragraphs": [
-          "Near the end, ask whether they want to leave the topic there, think about one next step or finish with something lighter. Do not require them to sound cheerful before you say goodbye. A paid host's listening time also ends with the agreed session; it is not ongoing care or a promise of later contact. This site is currently an 18+ preview, with calling and verification being prepared. If someone's needs go beyond an everyday conversation, a suitable professional source of help may be more appropriate."
+          "Near the end, ask whether they want to leave the topic there, think about one next step or finish with something lighter. Do not require them to sound cheerful before you say goodbye. A paid influencer's listening time also ends with the agreed session; it is not ongoing care or a promise of later contact. This site is currently an 18+ preview, with calling and verification being prepared. If someone's needs go beyond an everyday conversation, a suitable professional source of help may be more appropriate."
         ]
       }
     ],
@@ -299,7 +299,7 @@ export const blogArticles: BlogArticle[] = [
       "behind-the-scenes"
     ],
     "image": "/assets/callvaal/host-fan/host-call.webp",
-    "imageAlt": "Lifestyle image of a host speaking on a phone",
+    "imageAlt": "Lifestyle image of an influencer speaking on a phone",
     "sections": [
       {
         "heading": "Understand why you want to tell it",
@@ -375,7 +375,7 @@ export const blogArticles: BlogArticle[] = [
       {
         "heading": "Separate warmth from entitlement",
         "paragraphs": [
-          "A friendly conversation can feel personal while still having a defined scope. A host is not obliged to give a private number, disclose personal relationships or remain available outside paid time. Likewise, a caller can decline a topic and end an uncomfortable interaction. This site is an 18+ preview while calling and verification are being prepared. Read the current terms when considering a future booking, and do not treat sample profiles or verification plans as guarantees about a person or a service that is already live."
+          "A friendly conversation can feel personal while still having a defined scope. An influencer is not obliged to give a private number, disclose personal relationships or remain available outside paid time. Likewise, a caller can decline a topic and end an uncomfortable interaction. This site is an 18+ preview while calling and verification are being prepared. Read the current terms when considering a future booking, and do not treat sample profiles or verification plans as guarantees about a person or a service that is already live."
         ]
       }
     ],
@@ -420,9 +420,9 @@ export const blogArticles: BlogArticle[] = [
         ]
       },
       {
-        "heading": "Distinguish a friend from a previous host",
+        "heading": "Distinguish a friend from a previous influencer",
         "paragraphs": [
-          "A paid host's time and availability are governed by the service and their current choices. A good earlier session does not establish a personal friendship or a right to contact them elsewhere. If booking becomes available, use the supported route and check the current terms rather than searching for private contact details. This site is currently an adult-only preview, with calling and verification being prepared. Sample availability should not be read as a promise that a particular person is ready for a call."
+          "A paid influencer's time and availability are governed by the service and their current choices. A good earlier session does not establish a personal friendship or a right to contact them elsewhere. If booking becomes available, use the supported route and check the current terms rather than searching for private contact details. This site is currently an adult-only preview, with calling and verification being prepared. Sample availability should not be read as a promise that a particular person is ready for a call."
         ]
       }
     ],
@@ -516,7 +516,7 @@ export const blogArticles: BlogArticle[] = [
       {
         "heading": "Keep availability and payment expectations clear",
         "paragraphs": [
-          "Someone being awake in your time zone does not mean they are available to talk. For paid host calls, rely on current booking information and session terms when those features are available, and set a budget independently of how long you miss having company. A host is not a standing late-night contact or an emergency service. This site remains a preview for adults aged 18 and over, with calling and verification being prepared. Sample profiles describe possible experiences rather than guaranteed availability."
+          "Someone being awake in your time zone does not mean they are available to talk. For paid influencer calls, rely on current booking information and session terms when those features are available, and set a budget independently of how long you miss having company. An influencer is not a standing late-night contact or an emergency service. This site remains a preview for adults aged 18 and over, with calling and verification being prepared. Sample profiles describe possible experiences rather than guaranteed availability."
         ]
       }
     ],
@@ -563,7 +563,7 @@ export const blogArticles: BlogArticle[] = [
       {
         "heading": "Close with a small recommendation",
         "paragraphs": [
-          "Offer one recommendation and explain the connection: a similar mood, a theme or a style of humour. Leave the person free to ignore it, and do not make the next conversation a test of whether they watched. In a paid host session, choosing one film can help keep the discussion within your intended time and budget. The site is currently an 18+ preview with calling and verification being prepared; interest labels such as Music & movies describe topics, not a promise of expert criticism or future access."
+          "Offer one recommendation and explain the connection: a similar mood, a theme or a style of humour. Leave the person free to ignore it, and do not make the next conversation a test of whether they watched. In a paid influencer session, choosing one film can help keep the discussion within your intended time and budget. The site is currently an 18+ preview with calling and verification being prepared; interest labels such as Music & movies describe topics, not a promise of expert criticism or future access."
         ]
       }
     ],
@@ -610,7 +610,7 @@ export const blogArticles: BlogArticle[] = [
       {
         "heading": "Keep conversation and services distinct",
         "paragraphs": [
-          "A gaming interest on a host profile can be a starting point for a discussion. It does not automatically include playing together, coaching, account access, boosting or an invitation to a private group. Never share account passwords to prove a point or arrange a friendly activity. If paid conversations become available, check the actual session description and price first. The site is an 18+ preview while calling and verification are being prepared. Enjoying the same game is an invitation to talk, not a promise of a team or friendship."
+          "A gaming interest on an influencer profile can be a starting point for a discussion. It does not automatically include playing together, coaching, account access, boosting or an invitation to a private group. Never share account passwords to prove a point or arrange a friendly activity. If paid conversations become available, check the actual session description and price first. The site is an 18+ preview while calling and verification are being prepared. Enjoying the same game is an invitation to talk, not a promise of a team or friendship."
         ]
       }
     ],
@@ -657,7 +657,7 @@ export const blogArticles: BlogArticle[] = [
       {
         "heading": "Let the conversation have its own ending",
         "paragraphs": [
-          "You can close by naming one discovery or one song you might revisit. There is no need to turn a shared taste into a commitment to exchange playlists forever. A host who discusses music is not automatically offering a performance, a lesson or access to an artist. Any paid session should follow its stated topic, time and price when booking is available. This site remains a preview for adults 18 and over while calling and verification are being prepared, so sample interests are starting points for exploration."
+          "You can close by naming one discovery or one song you might revisit. There is no need to turn a shared taste into a commitment to exchange playlists forever. An influencer who discusses music is not automatically offering a performance, a lesson or access to an artist. Any paid session should follow its stated topic, time and price when booking is available. This site remains a preview for adults 18 and over while calling and verification are being prepared, so sample interests are starting points for exploration."
         ]
       }
     ],
@@ -704,7 +704,7 @@ export const blogArticles: BlogArticle[] = [
       {
         "heading": "Leave room for a small discovery",
         "paragraphs": [
-          "At the end, each person might name one dish they would like to learn about or one local food story they enjoyed. There is no requirement to buy ingredients, visit a restaurant or send photographs afterwards. A paid host conversation about Travel & Food is also limited to the agreed session; it does not automatically include meal planning or cooking lessons. This site is currently an 18+ preview, with calling and verification being prepared. Treat a shared food interest as an invitation to exchange stories at a comfortable pace."
+          "At the end, each person might name one dish they would like to learn about or one local food story they enjoyed. There is no requirement to buy ingredients, visit a restaurant or send photographs afterwards. A paid influencer conversation about Travel & Food is also limited to the agreed session; it does not automatically include meal planning or cooking lessons. This site is currently an 18+ preview, with calling and verification being prepared. Treat a shared food interest as an invitation to exchange stories at a comfortable pace."
         ]
       }
     ],
@@ -751,7 +751,7 @@ export const blogArticles: BlogArticle[] = [
       {
         "heading": "Finish with curiosity that costs nothing",
         "paragraphs": [
-          "A shared travel interest does not have to produce a purchase or a plan. You might end by choosing a place to read about, a local walk to consider or a question to explore another time. A host discussing travel is not automatically acting as a travel agent or taking responsibility for bookings. Paid conversations follow their stated scope when available. This site remains an adult-only preview with calling and verification being prepared; use its interest categories to explore possible topics rather than to assume professional services."
+          "A shared travel interest does not have to produce a purchase or a plan. You might end by choosing a place to read about, a local walk to consider or a question to explore another time. An influencer discussing travel is not automatically acting as a travel agent or taking responsibility for bookings. Paid conversations follow their stated scope when available. This site remains an adult-only preview with calling and verification being prepared; use its interest categories to explore possible topics rather than to assume professional services."
         ]
       }
     ],
@@ -875,7 +875,7 @@ export const blogArticles: BlogArticle[] = [
       {
         "heading": "Do not turn one person into a representative",
         "paragraphs": [
-          "A host or friend can describe their own experience, but they cannot speak for every woman or every LGBTQ+ person. Ask 'How has that been for you?' rather than demanding an explanation of what a whole community believes. Avoid making someone defend their identity before you will listen to them. If you want broad educational information, seek appropriate resources separately. A paid conversation can be a personal exchange within agreed limits, rather than an obligation to provide a complete lesson or answer every question you have."
+          "An influencer or friend can describe their own experience, but they cannot speak for every woman or every LGBTQ+ person. Ask 'How has that been for you?' rather than demanding an explanation of what a whole community believes. Avoid making someone defend their identity before you will listen to them. If you want broad educational information, seek appropriate resources separately. A paid conversation can be a personal exchange within agreed limits, rather than an obligation to provide a complete lesson or answer every question you have."
         ]
       },
       {
@@ -893,7 +893,7 @@ export const blogArticles: BlogArticle[] = [
       {
         "heading": "Keep community connection free of pressure",
         "paragraphs": [
-          "A shared identity does not create a duty to disclose trauma, offer unpaid emotional support or become a personal friend. A host can welcome a conversation while keeping their private life and time outside the session separate. This site is currently a preview for adults aged 18 and over; calling and verification are being prepared. Community categories describe intended interests and spaces, not a promise of friendship, professional care or guaranteed safety. When booking becomes available, review the specific scope and price before choosing a call."
+          "A shared identity does not create a duty to disclose trauma, offer unpaid emotional support or become a personal friend. An influencer can welcome a conversation while keeping their private life and time outside the session separate. This site is currently a preview for adults aged 18 and over; calling and verification are being prepared. Community categories describe intended interests and spaces, not a promise of friendship, professional care or guaranteed safety. When booking becomes available, review the specific scope and price before choosing a call."
         ]
       }
     ],
@@ -934,13 +934,13 @@ export const blogArticles: BlogArticle[] = [
       {
         "heading": "Do not use a social call as urgent assistance",
         "paragraphs": [
-          "If there is immediate danger or an urgent need for help, an ordinary host call is not the right route. Contact appropriate local emergency assistance rather than waiting for a booking, a reply or a particular person to become available. The exact route depends on the situation and location. Do not imply that a preview website monitors callers, provides emergency response or can guarantee intervention. Keeping that distinction clear matters especially when someone is tempted to rely on a familiar voice as their only source of help."
+          "If there is immediate danger or an urgent need for help, an ordinary influencer call is not the right route. Contact appropriate local emergency assistance rather than waiting for a booking, a reply or a particular person to become available. The exact route depends on the situation and location. Do not imply that a preview website monitors callers, provides emergency response or can guarantee intervention. Keeping that distinction clear matters especially when someone is tempted to rely on a familiar voice as their only source of help."
         ]
       },
       {
         "heading": "End with clear expectations about contact",
         "paragraphs": [
-          "In a personal friendship, say honestly when you can next speak, if you wish to make that arrangement. Do not promise constant availability. A paid host is also entitled to end at the agreed time and is not required to provide support between sessions. This site is an 18+ preview while calling and verification are being prepared; its planned everyday conversations are not professional care. Paying for extra minutes should never be presented as the necessary way to obtain safety, resolve a crisis or secure someone's continued concern."
+          "In a personal friendship, say honestly when you can next speak, if you wish to make that arrangement. Do not promise constant availability. A paid influencer is also entitled to end at the agreed time and is not required to provide support between sessions. This site is an 18+ preview while calling and verification are being prepared; its planned everyday conversations are not professional care. Paying for extra minutes should never be presented as the necessary way to obtain safety, resolve a crisis or secure someone's continued concern."
         ]
       }
     ],

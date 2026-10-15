@@ -3,7 +3,7 @@ title: "What if I was charged by mistake?"
 description: "Learn what counts as a billing error, how to report it, and how the money comes back to your wallet."
 section: wallet-and-payments
 order: 4
-updated: 2026-10-08
+updated: 2026-10-15
 keywords: ["billing error", "wrong charge", "double charge", "charged twice", "call not connected", "paisa kat gaya", "complaint", "call id"]
 audience: buyer
 faq:
@@ -26,13 +26,13 @@ These are billing errors:
 - You were **charged for a call that never connected**.
 - You were **charged twice**.
 
-You should pay nothing when a call is ringing, when the host declines, when time runs out, or when a call never connects. Charging starts only when you are both connected.
+You should pay nothing when a call is ringing, when the influencer declines, when time runs out, or when a call never connects. Charging starts only when you are both connected.
 
 ## What is not a billing error
 
 If a call did connect and you simply did not enjoy it, that is not a billing error. Connected calls are not refunded. Read [why there are no refunds](/help/wallet-and-payments/no-refunds) to understand why.
 
-Also remember that you pay for the exact seconds you are connected, at the standard price. For example, 5 minutes cost ₹19.95 and 30 minutes cost ₹119.70. That is correct billing. If we find a mistake, the wrong amount is put back in your wallet and linked to that call.
+Also remember that you pay for the exact seconds you are connected, at the influencer's per-minute rate shown before you call. If the charge matches that rate and the connected seconds, it is correct billing. If we find a mistake, the wrong amount is put back in your wallet and linked to that call.
 
 ## How to report it
 
@@ -49,7 +49,7 @@ A clear report helps us fix it faster.
 
 We look at it. If it is a real billing error, **the wrong amount is put back in your wallet**. It is not a refund. It is just fixing our mistake.
 
-Rohit sees two charges of ₹11.97 for one 3-minute call. He writes to support with the call ID, the time and the amount. The extra ₹11.97 goes back to his wallet.
+Rohit sees two charges of the same amount for one 3-minute call. He writes to support with the call ID, the time and the amount. The extra charge goes back to his wallet.
 
 ## Stay safe
 

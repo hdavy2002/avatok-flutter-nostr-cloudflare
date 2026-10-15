@@ -13,8 +13,8 @@ export const retiredDashboardNotices: Record<string, string> = {
   billing: 'The previous billing screen has been retired. Previous receipts have not been moved into this wallet.',
   orders: 'The previous shop orders screen has been retired. Shop orders are not listed in this account.',
   wishlist: 'The previous shop wishlist has been retired.',
-  events: 'The previous events screen has been retired. Your current host appointments are in My appointments.',
-  consultations: 'The previous consultations screen has been retired. Your current host appointments are in My appointments.',
+  events: 'The previous events screen has been retired. Your current influencer appointments are in My appointments.',
+  consultations: 'The previous consultations screen has been retired. Your current influencer appointments are in My appointments.',
 };
 export function DashboardIcon({ name }: { name: string }) {
   const paths: Record<string, string> = {
@@ -46,10 +46,10 @@ export default function DashboardNav({ account, bookingOn, favouritesOn = false,
       href: r.path, label: r.label, icon: r.icon, key: r.section, divider: i === 0, heading: i === 0 ? 'Hosting' : undefined,
       disabled: (r.hostOnly && !hostReady) || (!!r.needsBookings && !bookingOn), note: r.hostOnly && !hostReady ? 'When your profile is live' : 'Opens soon',
     }))
-    : [{ href: '/hosts/onboarding', label: 'Become a host', icon: 'star', divider: true, disabled: account.closing, note: 'Account closing' }];
+    : [{ href: '/hosts/onboarding', label: 'Become an influencer', icon: 'star', divider: true, disabled: account.closing, note: 'Account closing' }];
   const items: Item[] = [
     ...me,
-    { href: '/marketplace', label: 'Explore hosts', icon: 'search', divider: true },
+    { href: '/marketplace', label: 'Explore influencers', icon: 'search', divider: true },
     ...host,
     { ...{ href: route('support').path, label: route('support').label, icon: route('support').icon, key: 'support' as DashSection }, divider: true },
     { href: route('close').path, label: route('close').label, icon: route('close').icon, key: 'close' },

@@ -222,7 +222,7 @@ export type Role = 'friend' | 'creator';
 
 const ROLES: { id: Role; title: string; sub: string }[] = [
   { id: 'friend', title: 'Customer', sub: 'Book sessions and consultations.' },
-  { id: 'creator', title: 'Creator', sub: 'Host sessions, get paid.' },
+  { id: 'creator', title: 'Creator', sub: 'Take calls, get paid.' },
 ];
 
 export function RolePicker({ value, onChange }: { value: Role; onChange: (r: Role) => void }) {

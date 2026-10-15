@@ -3,7 +3,7 @@ title: "What are strikes and bans?"
 description: "How strikes work, when an account is banned, and how a banned user can still take their wallet money."
 section: safety-and-privacy
 order: 5
-updated: 2026-10-08
+updated: 2026-10-15
 keywords: ["strike", "ban", "account blocked", "banned wallet", "3 strikes", "suspend", "account ban"]
 audience: both
 faq:
@@ -22,11 +22,11 @@ draft: false
 
 ## How a strike happens
 
-1. The AI flags a call, or a person reports it.
-2. Our trust and safety team reviews it.
+1. A person reports a call.
+2. Our team reviews the report.
 3. Only after that review is a strike confirmed.
 
-**A flag is not a strike. A strike is confirmed only after a person reviews it.**
+**A report is not a strike. A strike is confirmed only after our team reviews it.**
 
 ## Three strikes
 
@@ -63,15 +63,15 @@ A banned account:
 
 ## What if there was a mistake?
 
-AI can make mistakes. If you think a strike or ban is wrong, go to [grievance page](/grievance). A person will review it.
+We can make mistakes. If you think a strike or ban is wrong, go to [grievance page](/grievance). A person will review it.
 
 Mentioning self-harm is never a strike. We only do a welfare follow-up. If you need help right now, see [emergency help](/emergency).
 
 ## An example
 
-Sameer keeps asking a host for her WhatsApp number. The host says no. He still asks again. The AI flags the call and the host reports it. Our team reviews it and confirms a strike. If this happens two more times, his account will be banned for good.
+Sameer keeps asking an influencer for her WhatsApp number. She says no. He still asks again. She presses # and reports him. Our team reviews it and confirms a strike. If this happens two more times, his account will be banned for good.
 
 ## Read next
 
-- [How does AI keep my calls safe?](/help/safety-and-privacy/how-ai-keeps-calls-safe)
+- [How we keep calls safe](/help/safety-and-privacy/how-ai-keeps-calls-safe)
 - [Terms](/terms)

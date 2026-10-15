@@ -76,7 +76,7 @@ const galleryJson = JSON.stringify(gallery.map(photo => ({ src: publicImage(phot
               <div><span>Hear my introduction</span><div class="cv-voice-wave" aria-hidden="true">{waveform.map(height => <i style={`height:${height}%`}></i>)}</div></div>
               <small data-voice-time>0:20</small>
             </div>
-            <p class="cv-voice-caption" data-voice-caption hidden>{profile.intro} <span>(Demo — no recording is playing.)</span></p>
+            <p class="cv-voice-caption" data-voice-caption hidden>{profile.intro} <span>(Demo — nothing is playing.)</span></p>
             <blockquote class="cv-profile-quote"><p>“{profile.personalQuote}”</p><cite>– {profile.displayName}</cite></blockquote>
           </div>
           <div class="cv-profile-actions"><button type="button" data-profile-save aria-pressed="false" aria-label={`Save ${profile.displayName} for this visit`}><ModernIcon name="bookmark"/><span data-save-label>Save</span></button><button type="button" data-profile-share aria-label={`Share ${profile.displayName}'s sample profile`}><DetailIcon name="share"/><span>Share</span></button></div>

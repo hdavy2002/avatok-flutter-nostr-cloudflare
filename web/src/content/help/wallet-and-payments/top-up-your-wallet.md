@@ -3,7 +3,7 @@ title: "How do I top up my wallet?"
 description: "Learn how to add money to your prepaid talk-time wallet and see your history."
 section: wallet-and-payments
 order: 1
-updated: 2026-10-08
+updated: 2026-10-15
 keywords: ["wallet top up", "add money", "gst", "recharge", "talk time", "paise daalo", "wallet history", "receipt"]
 audience: buyer
 faq:
@@ -24,7 +24,7 @@ On {{brand.name}}, you pay for calls from a prepaid talk-time wallet. You add mo
 
 ## What is the wallet?
 
-The wallet holds your talk-time money in rupees. When you call a host, the cost of the call is taken from it second by second. You can only use what you have added, so there are no surprise bills. Joining is free. There is no subscription.
+The wallet holds your talk-time money in rupees. When you call an influencer, the cost of the call is taken from it second by second. You can only use what you have added, so there are no surprise bills. Joining is free. There is no subscription.
 
 ## How to add money
 
@@ -32,7 +32,7 @@ The wallet holds your talk-time money in rupees. When you call a host, the cost 
 2. Choose how much to add.
 3. Pay through **Google Play**.
 
-Money is added only after Google Play confirms your payment, and only once. Then you can call any host who is online.
+Money is added only after Google Play confirms your payment, and only once. Then you can call any influencer who is online.
 
 ## GST and what reaches your wallet
 
@@ -49,9 +49,9 @@ No GST is charged again when you spend wallet money on calls.
 
 ## How much should I add?
 
-Every host has the same price: ₹3.99 a minute for the first 30 minutes, then ₹3.50, then ₹3.25 after 60 minutes. To start a call, you need at least ₹7.98 in your wallet.
+Each influencer sets their own per-minute rate, and you see it before you call. You need enough money in your wallet to start a call at that rate.
 
-Rohit from Pune wants a quick chat. He adds the ₹120 pack, so ₹101.69 goes into his wallet. That is enough for about 25 minutes of talking.
+Rohit from Pune wants a quick chat. He adds the ₹120 pack, so ₹101.69 goes into his wallet. He can now call an influencer whose rate fits his wallet.
 
 ## Your wallet history
 
@@ -59,7 +59,7 @@ Every addition and every call charge shows in your wallet history. For each line
 
 ## Good to know
 
-- Charging starts only when both of you are connected. Ringing, a host declining, or a call that never connects costs ₹0.
+- Charging starts only when both of you are connected. Ringing, an influencer declining, or a call that never connects costs ₹0.
 - Unused wallet money can be [refunded](/help/wallet-and-payments/withdraw-your-balance) on request through Google Play within 180 days.
 - Read the full [wallet terms](/wallet-terms) if you want every detail.
 

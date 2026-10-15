@@ -97,7 +97,7 @@ export default function HostAvailability() {
   const save = async () => {
     if (schedule.rules.some(r => r.startMin === r.endMin) || schedule.exceptions.some(e => e.startMin === e.endMin)) { setMessage('Check each time window. Start and end cannot match.'); return; }
     const needsConfirmation = legacyNeedsConfirmation && schedule.version === 0;
-    if (needsConfirmation && !legacyAcknowledged) { setMessage('Confirm the host timezone for these legacy hours before saving.'); return; }
+    if (needsConfirmation && !legacyAcknowledged) { setMessage('Confirm the influencer timezone for these legacy hours before saving.'); return; }
     const normalized = normalizeAvailabilitySchedule(schedule);
     setSaving(true); setMessage(''); setStale(false);
     try {
@@ -116,7 +116,7 @@ export default function HostAvailability() {
   if (feature === 'checking') return <BookingFeatureLoading />;
   if (feature === 'disabled') return <BookingUnavailable />;
   return <PageShell className="hfb-page hfb-wide">
-    <header className="hfb-heading"><p className="hfb-eyebrow">Host calendar</p><h1>Availability</h1><p>Set recurring hours and date exceptions. Saving checks confirmed appointments on the server. Paid appointments cannot be moved here.</p></header>
+    <header className="hfb-heading"><p className="hfb-eyebrow">Influencer calendar</p><h1>Availability</h1><p>Set recurring hours and date exceptions. Saving checks confirmed appointments on the server. Paid appointments cannot be moved here.</p></header>
     {loading && <p className="hfb-card" role="status">Loading your schedule…</p>}
     {!loading && !saved && message && <section className="hfb-card"><p role="alert">{message}</p><button className="hfb-button" type="button" onClick={() => void load()}>Try again</button></section>}
     {!loading && saved && message && <p className={stale ? 'hfb-message hfb-warn' : 'hfb-message'} role={stale ? 'alert' : 'status'}>{message}</p>}
@@ -129,7 +129,7 @@ export default function HostAvailability() {
         <h3 id="hfb-legacy-title">Review your existing hours before first save</h3>
         <p>These hours came from your existing profile and are shown here as an editable draft. They have not been saved to the booking calendar.</p>
         <p><strong>Legacy hours:</strong> {legacyHoursToRules(legacyPreview.hours).map(rule => DAYS[rule.weekday]).join(', ') || 'No valid days'} · {String(legacyPreview.hours.from ?? '')}–{String(legacyPreview.hours.to ?? '')}</p>
-        <label className="hfb-check"><input type="checkbox" checked={legacyAcknowledged} onChange={e => setLegacyAcknowledged(e.target.checked)} /><span>I confirm these existing hours use the host timezone <strong>{schedule.timezone}</strong>.</span></label>
+        <label className="hfb-check"><input type="checkbox" checked={legacyAcknowledged} onChange={e => setLegacyAcknowledged(e.target.checked)} /><span>I confirm these existing hours use the influencer timezone <strong>{schedule.timezone}</strong>.</span></label>
       </div>}
     </section>}
     {!loading && saved && <section className="hfb-card" aria-labelledby="hfb-weekly">

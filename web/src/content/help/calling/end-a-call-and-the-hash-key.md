@@ -22,7 +22,7 @@ You are always in control of a call. You can end it at any second. If something 
 
 ## Hang up any time
 
-Just hang up your phone, like any normal call. The host can do the same.
+Just hang up your phone, like any normal call. The influencer can do the same.
 
 - You do not need a reason.
 - You do not need to say sorry.
@@ -54,13 +54,13 @@ You do not need to speak to anyone after. One key press does all three.
 
 ## Example
 
-Priya gets a call from a host who begins to talk well. After 5 minutes he says he is from her bank. He asks her to "verify" her account with an OTP. Priya knows that is a scam. She presses #. The call ends. He is blocked and reported. The AI had also seen this, and the account was flagged.
+Priya is on a call. After 5 minutes the other person says he is from her bank. He asks her to "verify" her account with an OTP. Priya knows that is a scam. She presses #. The call ends. He is blocked and reported.
 
 ## Good to know
 
-- AI also follows every live call. It can end a call by itself if it finds abuse or a scam.
+- No human monitors your call. So if something feels wrong, press # yourself.
 - Three confirmed strikes lead to a permanent ban. Serious cases can be banned at once.
-- If the AI made a mistake, tell us at [grievance page](/grievance). A person will look at it.
+- If you think a strike or ban was a mistake, tell us at [grievance page](/grievance). A person will look at it.
 - You can also report later at [report form](/report).
 
 In real danger, call 112. See [emergency help](/emergency) and [safety centre](/safety).

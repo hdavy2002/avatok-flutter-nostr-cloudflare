@@ -46,7 +46,7 @@ const HELLO_SITE = `https://${brandConfig.homepageIdentity.domain}`;
 const HELLO_ROUTES = new Set([
   '/', '/about', '/how-it-works', '/faq', '/contact', '/press',
   '/hosts/join', '/hosts/requirements', '/hosts/rules', '/hosts/crisis-script', '/hosts/rates', '/hosts/agreement', '/hosts/kyc',
-  '/safety', '/community-guidelines', '/rules-of-engagement', '/recording-policy', '/report', '/grievance', '/emergency', '/women-only', '/lgbtq', '/age-policy', '/wellbeing',
+  '/safety', '/community-guidelines', '/rules-of-engagement', '/report', '/grievance', '/emergency', '/women-only', '/lgbtq', '/age-policy', '/wellbeing',
   '/terms', '/disclaimer', '/privacy', '/wallet-terms', '/refunds', '/cookies', '/data-deletion', '/intermediary-policy',
 ]);
 

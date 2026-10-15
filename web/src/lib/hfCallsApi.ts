@@ -80,7 +80,7 @@ export const soFar = (sec: number, rate: number): number => Math.max(1, Math.cei
 export const inr = (n: number): string => `₹${Math.round(n).toLocaleString('en-IN')}`;
 /** [HF-TOK-CALLS-1] rupees with paise, for host earnings in token mode (Rs 10.80 a minute must not show as Rs 11). */
 export const inr2 = (n: number): string => `₹${Number(n).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-export const firstName = (n: string | null | undefined): string => (n || '').trim().split(/\s+/)[0] || 'the host';
+export const firstName = (n: string | null | undefined): string => (n || '').trim().split(/\s+/)[0] || 'the influencer';
 
 export function relDate(v: number | string | null | undefined): string {
   const ms = toMs(v); if (!ms) return '';

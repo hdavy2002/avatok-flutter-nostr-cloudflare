@@ -8,9 +8,9 @@ abstract final class Brand {
   static const String nameCompact = 'Hello Fraands';
   static const String slug = 'aumfe';
   static const String nameHindi = 'हेलो फ़्रैंड्स';
-  static const String slogan = 'Real people. Baat se baat banti hai.';
-  static const String nameMeaningShort = 'Hello Fraands is a friendly hello and an invitation to talk to a real person in your language.';
-  static const String nameMeaningLong = 'Hello Fraands is our way of saying you can start a conversation. Talk to a real person in your language about everyday life, with a clear per-minute price and a call connection that keeps personal phone numbers private. The site is a preview while calling and verification are being prepared.';
+  static const String slogan = 'Your favourite influencer, one private call away.';
+  static const String nameMeaningShort = 'Hello Fraands connects you with your favourite social media influencers over a private phone call, with both phone numbers kept hidden.';
+  static const String nameMeaningLong = 'Hello Fraands is a friendly hello to the influencers you follow. Book a private phone call with your favourite YouTube, Instagram or Facebook influencer: we call the influencer first, and if they accept we call you and join the two calls. Both calls come from a Hello Fraands number, so neither of you sees the other\'s real number. You pay a per-minute rate set by the influencer. The site is a preview while calling and verification are being prepared.';
   static const String domain = 'hellofraands.com';
   static const String webOrigin = 'https://hellofraands.com';
   static const String apiHost = 'api.hellofraands.com';

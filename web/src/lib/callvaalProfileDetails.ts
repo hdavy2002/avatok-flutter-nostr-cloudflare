@@ -47,10 +47,10 @@ const previewDisclosure = 'Preview only. Calls, bookings and payments are unavai
 const preparationTips: ProfileTip[] = [
   { icon: 'chat', title: 'Just a conversation', text: 'Talk and share at your own pace. No professional advice or promised results.' },
   { icon: 'user', title: 'Keep it respectful', text: 'Report the call if you feel unsafe. 18+ only. You can end a call at any time. Sexual or abusive talk is prohibited.' },
-  { icon: 'notes', title: 'Know before you start', text: 'Calls are not recorded; AI keeps an eye on every live call for safety. In crisis, call Tele-MANAS 14416 or 112.' },
+  { icon: 'notes', title: 'Know before you start', text: 'No human monitors your call, and your number stays masked. In crisis, call Tele-MANAS 14416 or 112.' },
 ];
 const benefits: ProfileBenefit[] = [
-  { icon: 'lock', title: 'Your number stays private', text: `Your number is masked: calls are bridged through ${brandConfig.homepageIdentity.name}. Hosts appear only as an AI avatar they chose, never a real photo.` },
+  { icon: 'lock', title: 'Your number stays private', text: `Your number is masked: calls are bridged through ${brandConfig.homepageIdentity.name}. Influencers appear only as an AI avatar they chose, never a real photo.` },
   { icon: 'shield', title: 'Video-KYC badge', text: 'Illustrative badge; this sample is not verified' },
   { icon: 'chat', title: 'Your pace, your choice', text: 'Share only what feels comfortable' },
 ];
@@ -177,7 +177,7 @@ function build(id: ProfileDetailId): CallvaalProfileDetail {
   const extra = extras[id];
   return {
     id, card, displayName: card.name, roleLabel: 'Someone to talk to', isSample: true,
-    description: `Talk to ${card.name} — an illustrative sample host. Your number stays private. Preview only; calls and payments are unavailable.`,
+    description: `Talk to ${card.name} — an illustrative sample influencer. Your number stays private. Preview only; calls and payments are unavailable.`,
     portrait: { path: `/assets/callvaal/scrapbook/${card.portrait}`, width: 1254, height: 1254, alt: `Illustrative portrait of ${card.name}` },
     gallery: [],
     online: card.availability === 'online', availabilityLabel: availabilityLabel[card.availability],

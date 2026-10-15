@@ -6,7 +6,7 @@ const photos = [
   { name: 'safety-3', alt: 'Man talking calmly on the phone', className: 'hf-safety-photo--three' },
 ];
 const rules = [
-  { title: 'Spam & fraud', text: "OTP maangna, link bhejna, 'account verify karo' — turant band.", color: 'pink', icon: 'phone' },
+  { title: 'Spam & fraud', text: "OTP maangna, link bhejna, 'account verify karo' — allowed nahi. Hum kabhi OTP, UPI PIN ya bank details nahi maangte.", color: 'pink', icon: 'phone' },
   { title: 'Harassment & gaali', text: 'Threats, abuse, or not stopping when asked.', color: 'lilac', icon: 'hand' },
   { title: 'Buying & selling', text: 'No products, remedies, tips, or asking for money.', color: 'mint', icon: 'tag' },
   { title: 'Number & social exchange', text: 'No WhatsApp, Instagram, UPI IDs or meeting requests.', color: 'yellow', icon: 'social' },
@@ -18,12 +18,12 @@ const rules = [
     <div class="hf-safety-intro">
       <div class="hf-safety-copy">
         <span class="hf-safety-eyebrow">KAISE SAFE HAI</span>
-        <h2 id="safety-title">Dil khol ke bolo.<br /><span class="hf-safety-headline"><em>AI dhyaan rakhta hai.</em><svg viewBox="0 0 440 20" preserveAspectRatio="none" aria-hidden="true"><path d="M4 13C126 3 244 21 435 7"/></svg></span></h2>
-        <p class="hf-safety-lead">AI-powered security on every call. Spam, abuse and fraud can end the call automatically. Your number stays private, always. Friendship here means respect — the same rules apply on the first call and the fiftieth.</p>
+        <h2 id="safety-title">Dil khol ke bolo.<br /><span class="hf-safety-headline"><em>Aapka number safe rehta hai.</em><svg viewBox="0 0 440 20" preserveAspectRatio="none" aria-hidden="true"><path d="M4 13C126 3 244 21 435 7"/></svg></span></h2>
+        <p class="hf-safety-lead">Both phone numbers stay masked, always. Spammy, sexual or threatening behaviour is not allowed, and you can press # to end any call and block the person. No human monitors your call. The same rules apply on the first call and the fiftieth.</p>
         <div class="hf-safety-chips" aria-label="Safety features">
           <span><svg viewBox="0 0 32 32" aria-hidden="true"><rect x="7" y="14" width="18" height="14" rx="3"/><path d="M11 14V9a5 5 0 0 1 10 0v5m-5 5v4"/></svg>Number kabhi share nahi hota</span>
-          <span><svg viewBox="0 0 32 32" aria-hidden="true"><path d="M16 2 28 7v8c0 8-5 13-12 16C9 28 4 23 4 15V7Z"/><path d="m10 16 4 4 8-9"/></svg>Har host video-KYC verified</span>
-          <span><svg viewBox="0 0 32 32" aria-hidden="true"><path d="M2 17h5l3-8 4 16 4-22 4 26 3-12h5"/><path d="M5 30 28 3"/></svg>Spam ya gaali — call khud band</span>
+          <span><svg viewBox="0 0 32 32" aria-hidden="true"><path d="M16 2 28 7v8c0 8-5 13-12 16C9 28 4 23 4 15V7Z"/><path d="m10 16 4 4 8-9"/></svg>Har influencer video-KYC verified</span>
+          <span><svg viewBox="0 0 32 32" aria-hidden="true"><path d="M2 17h5l3-8 4 16 4-22 4 26 3-12h5"/><path d="M5 30 28 3"/></svg>Report karo, block karo</span>
         </div>
       </div>
       <div class="hf-safety-collage" aria-label="Three people on private phone calls with safety stickers">
@@ -35,7 +35,7 @@ const rules = [
             <img src={`/assets/safety/${photo.name}.jpg`} alt={photo.alt} width="1200" height="1200" loading="lazy" decoding="async" />
           </picture>
         </figure>)}
-        <span class="hf-safety-sticker hf-safety-ai"><svg viewBox="0 0 32 32" aria-hidden="true"><path d="M16 2 28 7v8c0 8-5 13-12 16C9 28 4 23 4 15V7Z"/><path d="m10 16 4 4 8-9"/></svg>AI on duty</span>
+        <span class="hf-safety-sticker hf-safety-ai"><svg viewBox="0 0 32 32" aria-hidden="true"><path d="M16 2 28 7v8c0 8-5 13-12 16C9 28 4 23 4 15V7Z"/><path d="m10 16 4 4 8-9"/></svg>Verified influencers</span>
         <span class="hf-safety-hash-sticker"><b aria-hidden="true">#</b><span>dabao #</span></span>
         <span class="hf-safety-stamp">Call ended</span>
         <span class="hf-safety-round-sticker">24×7</span>
@@ -54,12 +54,12 @@ const rules = [
           {rule.icon === 'tag' && <><path d="M4 5h14l14 14-13 13L4 17zM10 11h.1M14 28l9-9M4 33 33 4"/></>}
           {rule.icon === 'social' && <><path d="M4 19a14 14 0 1 1 20 13H11l-7 2 2-7A14 14 0 0 1 4 19Z"/><path d="M15 23c-3-2-2-9 3-9 4 0 5 5 2 7-3 2-4-3-1-5M3 34 33 3"/></>}
         </svg>
-        <h3>{rule.title}</h3><p>{rule.text}</p><span class="hf-safety-sticker hf-safety-rule-sticker">Call ends</span>
+        <h3>{rule.title}</h3><p>{rule.text}</p><span class="hf-safety-sticker hf-safety-rule-sticker">Not allowed</span>
       </article>)}
     </div>
     <div class="hf-safety-trust">
-      <p><span aria-hidden="true">✓</span> AI monitors calls for safety; flagged moments can be checked by a person.</p>
-      <p><span aria-hidden="true">✓</span> Teen confirmed strikes, hamesha ke liye ban.</p>
+      <p><span aria-hidden="true">✓</span> No human listens in, and your number stays masked.</p>
+      <p><span aria-hidden="true">✓</span> Reports hamari team dekhti hai. Teen confirmed strikes par hamesha ke liye ban.</p>
       <span class="hf-safety-sticker hf-safety-trust-sticker">24×7</span>
       <a href="#women-only">Sirf ladkiyon ke liye <span aria-hidden="true">→</span></a>
     </div>

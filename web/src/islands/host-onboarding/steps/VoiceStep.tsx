@@ -172,7 +172,7 @@ export default function VoiceStep({ draft, update, api, setAction }: StepProps) 
   return (
     <div>
       <h1 className="hob-h1">Record your introduction</h1>
-      <p className="hob-lead">Say hello in your own voice. About a minute is perfect (at least {VOICE_MIN_SEC} seconds, at most 5 minutes). Callers can hear it on your card and your profile, labelled “Recorded by the host”.</p>
+      <p className="hob-lead">Say hello in your own voice. About a minute is perfect (at least {VOICE_MIN_SEC} seconds, at most 5 minutes). Callers can hear it on your card and your profile, labelled “Recorded by the influencer”.</p>
 
       <details className="hob-card hob-f-ideas">
         <summary>What can I say?</summary>

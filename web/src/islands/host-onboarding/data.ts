@@ -33,7 +33,7 @@ export const SAMPLE_AVATARS: Avatar[] = [
   { id: 'av-w-9', image: p('portrait-9.png'), gender: 'woman', age: '20s', style: 'casual' },
   { id: 'av-w-5', image: p('portrait-5.png'), gender: 'woman', age: '20s', style: 'casual' },
   { id: 'av-w-2', image: p('portrait-2.png'), gender: 'woman', age: '30s', style: 'office' },
-  { id: 'av-w-1', image: p('portrait-1.png'), gender: 'woman', age: '30s', style: 'office', takenBy: 'another host' },
+  { id: 'av-w-1', image: p('portrait-1.png'), gender: 'woman', age: '30s', style: 'office', takenBy: 'another influencer' },
   { id: 'av-w-6', image: p('portrait-6.png'), gender: 'woman', age: '30s', style: 'traditional' },
   { id: 'av-midage-1', image: p('women-photo-midage.png'), gender: 'woman', age: '50s+', style: 'traditional' },
   { id: 'av-w-ananya', image: p('portrait-ananya.png'), gender: 'woman', age: '50s+', style: 'casual' },
@@ -56,7 +56,7 @@ export const PRICE_MIN = 5;
 export const PRICE_MAX = 100;
 export const hostShare = (price: number) => Math.round(price * 0.60 * 100) / 100;
 /** [HF-STD-PLAN-1] Shown only after the runtime flag is enabled. */
-export const STD_PLAN_HOST_LINE = 'Standard plan · callers pay ₹3.99/min (less on long calls) · you earn ₹2.00 per connected minute';
+export const STD_PLAN_HOST_LINE = 'Callers pay the per-minute rate you set · you earn 60% of the connected-call charge, minus ₹2.00 per connected minute';
 export const rupees = (n: number) => `₹${Number.isInteger(n) ? n : n.toFixed(2)}`;
 
 /** Text a caller must never see: numbers, emails, links, social handles. */

@@ -10,7 +10,7 @@ import '../../styles/hf-bookings.css';
 
 const weekdays = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const dayLabel = (day: Date) => day.toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
-const person = (row: HfBooking, role: BookingRole) => role === 'host' ? row.customerHandle || 'A customer' : row.hostName || 'Your host';
+const person = (row: HfBooking, role: BookingRole) => role === 'host' ? row.customerHandle || 'A customer' : row.hostName || 'Your influencer';
 
 export default function HostBookings({ role = 'customer' }: { role?: BookingRole }) {
   const feature = useBookingFeature();
@@ -79,8 +79,8 @@ export default function HostBookings({ role = 'customer' }: { role?: BookingRole
   if (feature === 'disabled') return <BookingUnavailable />;
   return <PageShell className="hfb-page hfb-wide hfb-appointments">
     <header className="hfb-heading">
-      <p className="hfb-eyebrow">{BRAND.name} · {role === 'host' ? 'Host calendar' : 'Appointment calendar'}</p>
-      <h1>{role === 'host' ? 'Your host calendar' : 'Your appointments'}</h1>
+      <p className="hfb-eyebrow">{BRAND.name} · {role === 'host' ? 'Influencer calendar' : 'Appointment calendar'}</p>
+      <h1>{role === 'host' ? 'Your influencer calendar' : 'Your appointments'}</h1>
       <p>{role === 'host' ? 'Your booked conversations, together in one calendar.' : 'Make time for your next conversation. Select a day to see your appointments.'}</p>
       <div className="hfb-actions">{!embedded && <a className="hfb-back" href="/dashboard">← Dashboard</a>}{role === 'host' && <a className="hfb-back" href="/dashboard/host/availability">Manage availability</a>}</div>
     </header>
@@ -112,9 +112,9 @@ export default function HostBookings({ role = 'customer' }: { role?: BookingRole
       {message && <section className="hfb-note"><p role="alert">{message}</p><button className="hfb-button" type="button" onClick={retryLoad}>Try again</button></section>}
       <section className="hfb-agenda" aria-labelledby="hfb-agenda-title" aria-busy={loading}>
         <div className="hfb-section-head"><h2 id="hfb-agenda-title">{dayLabel(selected)}</h2><span className="hfb-muted">Daily agenda</span></div>
-        {loading ? <p className="hfb-card" role="status">Loading your agenda…</p> : dayRows.length === 0 ? <div className="hfb-card"><h3>{message ? 'Appointments may be missing' : 'No appointments on this day'}</h3><p className="hfb-muted">{message ? 'Try loading the calendar again to see the full day.' : 'Choose another day or return to today to see your booked conversations.'}</p>{role === 'customer' && !message && <a className="hfb-button" href="/marketplace">Explore hosts</a>}</div> : <ul className="hfb-booking-list">
+        {loading ? <p className="hfb-card" role="status">Loading your agenda…</p> : dayRows.length === 0 ? <div className="hfb-card"><h3>{message ? 'Appointments may be missing' : 'No appointments on this day'}</h3><p className="hfb-muted">{message ? 'Try loading the calendar again to see the full day.' : 'Choose another day or return to today to see your booked conversations.'}</p>{role === 'customer' && !message && <a className="hfb-button" href="/marketplace">Explore influencers</a>}</div> : <ul className="hfb-booking-list">
           {dayRows.map(row => <li className="hfb-card hfb-booking-row" key={row.id}>
-            <div><span className={'hfb-status hfb-status-' + row.status}>{row.status.replaceAll('_', ' ')}</span><h3>{person(row, role)}</h3><p><time dateTime={row.startUtc}>{dateLabel(row.startUtc, timezone)}</time> – <time dateTime={row.endUtc}>{dateLabel(row.endUtc, timezone)}</time></p><p className="hfb-muted">Host timezone: {row.hostTimezone}</p></div>
+            <div><span className={'hfb-status hfb-status-' + row.status}>{row.status.replaceAll('_', ' ')}</span><h3>{person(row, role)}</h3><p><time dateTime={row.startUtc}>{dateLabel(row.startUtc, timezone)}</time> – <time dateTime={row.endUtc}>{dateLabel(row.endUtc, timezone)}</time></p><p className="hfb-muted">Influencer timezone: {row.hostTimezone}</p></div>
             {role === 'host' && typeof row.expectedHostNetPaise === 'number' && row.status === 'confirmed' && <p className="hfb-money"><strong>{money(row.expectedHostNetPaise)}</strong><span>expected on hold</span></p>}
             <a className="hfb-button" href={'/bookings/' + encodeURIComponent(row.id)} aria-label={`View appointment with ${person(row, role)} on ${dateLabel(row.startUtc, timezone)}`}>View details</a>
           </li>)}

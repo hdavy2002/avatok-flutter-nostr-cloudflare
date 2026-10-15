@@ -23,7 +23,7 @@ We care about you. But we must be honest: {{brand.name}} is a place to talk, and
 
 **Call 112.** This is the emergency number in India. Use it if you or someone near you is in danger, being hurt, or in a crisis that cannot wait.
 
-Do not wait for us. Do not wait for a host. Call 112 first.
+Do not wait for us. Do not wait for an influencer. Call 112 first.
 
 ## If you feel very low or want mental-health support
 
@@ -31,19 +31,19 @@ Do not wait for us. Do not wait for a host. Call 112 first.
 
 Please also tell someone you trust, like a family member or a close friend. You do not have to carry it alone.
 
-## Hosts are not counsellors
+## Influencers are not counsellors
 
-Hosts on {{brand.name}} are friendly people for a normal talk, company, and being heard. They are not doctors, counsellors or crisis workers. This is not therapy. A host cannot give you the kind of help that a trained person can.
+Influencers on {{brand.name}} are creators. You talk to them about their work and their videos. They are not doctors, counsellors or crisis workers. This is not therapy. An influencer cannot give you the kind of help that a trained person can.
 
-If your talk gets very heavy, you may hear a host kindly point you to 112 or 14416. That is care, not rejection.
+If your talk gets very heavy, you may hear an influencer kindly point you to 112 or 14416. That is care, not rejection.
 
 ## If you mention self-harm
 
 If you say something about hurting yourself, **you will never get a strike for it**. We will only do a welfare follow-up. You are not in trouble.
 
-Priya has a rough night and tells a host she feels she cannot go on. The host listens, and gently points her to Tele-MANAS 14416. Priya is not punished in any way.
+Priya has a rough night and tells an influencer she feels she cannot go on. The influencer listens, and gently points her to Tele-MANAS 14416. Priya is not punished in any way.
 
-## Hosts: if a caller needs urgent help
+## Influencers: if a caller needs urgent help
 
 If a caller seems to be in danger, stay calm and kind. Suggest 112 or Tele-MANAS 14416. You do not need to solve it yourself. You can also end the call if you feel unsafe.
 

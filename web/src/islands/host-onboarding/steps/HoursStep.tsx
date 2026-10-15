@@ -46,7 +46,7 @@ export default function HoursStep({ draft, update, setAction }: StepProps) {
         <input type="checkbox" role="switch" checked={draft.lgbtqLane} onChange={(e) => update({ lgbtqLane: e.target.checked, ...(e.target.checked ? {} : { lgbtqShowOnProfile: false }) })} />
         <span>
           <strong>Join the LGBTQ+ space</strong>
-          <span className="hob-p-sub">A private lane where LGBTQ+ callers talk to LGBTQ+ hosts. Only verified callers can reach you there. This choice is private — we never guess, and you can change it any time. <a className="hob-p-link" href="/lgbtq" target="_blank" rel="noopener">Learn more</a></span>
+          <span className="hob-p-sub">A private lane where LGBTQ+ callers talk to LGBTQ+ influencers. Only verified callers can reach you there. This choice is private — we never guess, and you can change it any time. <a className="hob-p-link" href="/lgbtq" target="_blank" rel="noopener">Learn more</a></span>
         </span>
       </label>
       {draft.lgbtqLane && (

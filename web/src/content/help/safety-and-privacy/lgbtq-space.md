@@ -1,22 +1,22 @@
 ---
 title: "The LGBTQ+ space"
-description: "A private lane, coming at launch, where LGBTQ+ people can talk to LGBTQ+ hosts. What it is, how it stays private and safe."
+description: "A private lane, coming at launch, where LGBTQ+ people can talk to LGBTQ+ influencers. What it is, how it stays private and safe."
 section: safety-and-privacy
 order: 9
-updated: 2026-10-09
+updated: 2026-10-15
 keywords: ["LGBTQ", "LGBTQ+", "queer", "gay", "lesbian", "trans", "private lane", "pride", "safe space"]
 audience: both
 faq:
   - q: "Is the LGBTQ+ space private?"
     a: "Yes. Joining is optional and private. Showing it on your profile is a separate choice that you make."
   - q: "Who can call in the LGBTQ+ space?"
-    a: "Only verified callers. It is for friendship and conversation only."
+    a: "Only verified callers. It is for friendly conversation only."
 draft: false
 ---
 
 <!-- rebrand: reviewed -->
 
-The LGBTQ+ space is a private lane on {{brand.name}}. In it, LGBTQ+ people can talk to LGBTQ+ hosts. It is **coming at launch**. You can read more on the [LGBTQ+ space page](/lgbtq).
+The LGBTQ+ space is a private lane on {{brand.name}}. In it, LGBTQ+ people can talk to LGBTQ+ influencers. It is **coming at launch**. You can read more on the [LGBTQ+ space page](/lgbtq).
 
 ## Private by default
 
@@ -30,9 +30,9 @@ The LGBTQ+ space is a private lane on {{brand.name}}. In it, LGBTQ+ people can t
 
 Everyone who calls in this lane must be verified first. This keeps out fake accounts and people who want to cause harm.
 
-## Friendship and conversation only
+## Friendly conversation only
 
-The rules are the same as everywhere else. It is for friendship and talking. No flirting, no sexual talk, no asking for photos, and no meeting up. Read the [Community Guidelines](/community-guidelines).
+The rules are the same as everywhere else. It is for friendly talking. No flirting, no sexual talk, no asking for photos, and no meeting up. Read the [Community Guidelines](/community-guidelines).
 
 ## Stay safe: simple tips
 

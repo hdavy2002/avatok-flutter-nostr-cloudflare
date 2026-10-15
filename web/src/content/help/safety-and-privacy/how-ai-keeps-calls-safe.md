@@ -1,70 +1,53 @@
 ---
-title: "How does AI keep my calls safe?"
-description: "AI follows every live call and understands what a person means, not just the words. It ends calls that turn unsafe."
+title: "How we keep calls safe"
+description: "Masked numbers, verified influencers, a # key to end and block, reports reviewed by our team, and scam warnings. No human monitors your call."
 section: safety-and-privacy
 order: 2
-updated: 2026-10-08
-keywords: ["AI safety", "call ends automatically", "scam detection", "harassment", "call cut", "safe call", "AI galti"]
+updated: 2026-10-15
+keywords: ["safe call", "call safety", "press hash", "block", "report", "masked number", "scam warning", "safety"]
 audience: both
 faq:
-  - q: "Does AI listen for bad words?"
-    a: "No. It does not use word lists. It understands the intention behind what a person says."
-  - q: "What if the AI ends my call by mistake?"
-    a: "Tell us at /grievance. A person will review it."
-  - q: "Does a person listen to my call?"
-    a: "No. No human monitors or listens to live calls."
+  - q: "Does anyone listen to my call?"
+    a: "No. No human monitors or listens to your call."
+  - q: "How do I end a call that feels unsafe?"
+    a: "Press # at any time. It ends the call, blocks the other person and reports what happened."
+  - q: "What if someone breaks the rules?"
+    a: "Report them. Our team reviews the report. Strikes and bans are given only after that review."
 draft: false
 ---
 
 <!-- rebrand: reviewed -->
 
-On {{brand.name}}, AI follows every live call as it happens. Its job is simple: to end a call fast if it turns unsafe. No person listens to your call.
+On {{brand.name}}, you talk to your favourite influencer on a private phone call. Here is how we keep that safe. It is a short, honest list.
 
-## It understands intention, not keywords
+## Nobody listens in
 
-Many systems only look for bad words. Ours does not use word lists. It tries to understand what the person means.
+**No human monitors or listens to your call.** Safety on {{brand.name}} comes from the tools below and from you, not from anyone listening in.
 
-Here are two examples.
+## What keeps you safe
 
-- **Example 1.** Anita tells a host, "A man at my office said very bad things to me." She is describing a bad experience. This is fine. She is not flagged.
-- **Example 2.** A caller starts with friendly chat. Slowly he says, "You sound like a nice person. Just tell me the OTP on your phone, it is for a small check." This is a slow build-up to an OTP scam. The AI understands the intention, and acts.
+- **Masked numbers.** Both calls come from a {{brand.name}} number. Your phone number and the influencer's phone number are never shared with each other.
+- **Verified influencers.** Influencers finish video KYC and Aadhaar verification before they can take calls.
+- **Press # any time.** It ends the call, blocks the other person and reports what happened. You do not need to explain.
+- **Report and block.** You can [report](/report) anyone who breaks a rule. Our team reviews the report.
+- **Strikes and bans after team review.** A strike or ban is given only after our team has looked at a report. Read more in [Strikes and bans](/help/safety-and-privacy/strikes-and-bans).
+- **Scam warnings.** We tell you the common tricks. See [spot OTP and bank scams](/help/safety-and-privacy/spot-otp-and-bank-scams).
+- **We never ask for secrets.** {{brand.name}} never asks for your OTP, UPI PIN or passwords. If anyone does, it is a scam.
 
-The words are not the point. The intention is.
+## What to do if a call feels wrong
 
-## What makes the AI end a call
+1. Press **#**. The call ends and the person is blocked.
+2. [Report](/report) what happened, so our team can look at it.
+3. Do not send money, share an OTP or move to WhatsApp, whatever the reason.
 
-The call ends automatically if the AI sees:
+Example: Anita is on a call with a person who starts asking for her UPI PIN "for a small check". She presses #. The call ends, he is blocked, and the report goes to our team.
 
-- harassment or abuse
-- threats
-- sexual pressure
-- a scam, such as asking for an OTP, UPI PIN, card details, bank details or Aadhaar number
-- "verify your account" links
-- someone pretending to be from a bank, telecom, courier, police or government
-- pushing loans, investments, products or remedies
+## If we get something wrong
 
-**When the AI ends a call, the account is flagged.**
+If you think a strike or ban was a mistake, go to the [grievance page](/grievance). A person will review it.
 
-## What happens after
-
-1. The call ends right away.
-2. The account is flagged.
-3. Our trust and safety team reviews the flag. A strike is confirmed only after this review.
-4. If the person is a spammer or scammer, their account and phone number are blocked across the whole platform.
-
-Read more in [Strikes and bans](/help/safety-and-privacy/strikes-and-bans).
-
-## If the AI makes a mistake
-
-AI can be wrong sometimes. If your call was ended and you think it was a mistake, go to [grievance page](/grievance). A person will review it.
-
-If you talk about self-harm, that is never a strike. We only do a welfare follow-up.
-
-## You can also act yourself
-
-Either person can hang up at any time. Press # to end the call, block the other person and report the incident. You do not need to explain.
+If you talk about self-harm, that is never a strike. We only do a welfare follow-up, and the number to call is **Tele-MANAS 14416**.
 
 ## More to read
 
-- [No recording, no listening](/help/safety-and-privacy/no-recording-no-listening)
 - [Our safety page](/safety)

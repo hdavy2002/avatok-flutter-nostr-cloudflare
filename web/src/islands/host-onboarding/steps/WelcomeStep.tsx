@@ -18,10 +18,10 @@ export default function WelcomeStep({ setAction, goNext }: StepProps) {
 
   return (
     <div className="hob-v-welcome">
-      <p className="hob-v-eyebrow">{BRAND.name} hosts</p>
+      <p className="hob-v-eyebrow">{BRAND.name} influencers</p>
       <h1 className="hob-h1">Earn from home by talking to people</h1>
       <p className="hob-lead">
-        {isOnboardingStandardPlan() ? 'Listen, chat and be a friendly voice for people who want to talk. You pick your hours. Every call is on the Standard plan, and you earn ₹2.00 for every connected minute.' : 'Listen, chat and be a friendly voice for people who want to talk. You pick your hours and set your price.'}
+        {isOnboardingStandardPlan() ? 'Listen, chat and be a friendly voice for people who want to talk. You pick your hours and set your price.' : 'Listen, chat and be a friendly voice for people who want to talk. You pick your hours and set your price.'}
       </p>
       <p className="hob-lead hob-v-hinglish">Ghar baithe kamaayein — bas baat karke.</p>
 
@@ -46,12 +46,12 @@ export default function WelcomeStep({ setAction, goNext }: StepProps) {
 
       <ul className="hob-v-facts">
         <li><Icon name="check" /> 18+ only</li>
-        <li><Icon name="rupee" /> {isOnboardingStandardPlan() ? 'You earn ₹2.00 per connected minute' : 'You choose your per-minute price'}</li>
+        <li><Icon name="rupee" /> {isOnboardingStandardPlan() ? 'You choose your per-minute price' : 'You choose your per-minute price'}</li>
         <li><Icon name="phone" /> Calls come to your phone, no app needed</li>
       </ul>
 
       <button type="button" className="hob-btn hob-btn-primary hob-v-start" onClick={goNext}>Start</button>
-      <p className="hob-v-rules"><a href="/hosts/rules">Read host rules</a></p>
+      <p className="hob-v-rules"><a href="/hosts/rules">Read influencer rules</a></p>
     </div>
   );
 }

@@ -20,7 +20,7 @@ function outcome(i: Item, role: Role): string {
     }
     case 'connected': return 'On a call now';
     case 'ringing_host': case 'ringing_caller': return 'Ringing';
-    case 'host_declined': return role === 'host' ? 'You declined' : 'Declined by the host';
+    case 'host_declined': return role === 'host' ? 'You declined' : 'Declined by the influencer';
     case 'no_answer': return role === 'host' ? 'Missed' : 'Not answered';
     case 'caller_no_answer': return role === 'host' ? 'Caller didn’t pick up' : 'You didn’t pick up';
     case 'cancelled': return role === 'host' ? 'Cancelled by the caller' : 'You cancelled';
@@ -89,7 +89,7 @@ export default function Calls({ account }: { account: DashboardAccount }) {
         {loading ? <p role="status">Loading calls…</p>
           : items.length === 0 && !error ? <div className="hfd-empty"><span aria-hidden="true">♡</span>
             <p>{filter === 'all' ? (role === 'host' ? 'No calls received yet.' : 'No calls yet.') : `No ${filter} calls to show.`}</p>
-            {role === 'caller' && <a href="/marketplace">Explore hosts →</a>}</div>
+            {role === 'caller' && <a href="/marketplace">Explore influencers →</a>}</div>
           : <>
             <ul className="hfc-calls">{items.map(i => <li key={i.id}>
               <strong>{role === 'caller' && i.hostSlug ? <a href={`/h/${i.hostSlug}`}>{i.otherHandle}</a> : i.otherHandle}</strong>

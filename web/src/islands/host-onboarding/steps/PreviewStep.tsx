@@ -84,7 +84,7 @@ export default function PreviewStep({ draft, update, api, setAction, goTo, avata
       <section className="hob-card hob-f-profile">
         <div className="hob-f-hero">
           <img src={g.profileImage} alt={`${draft.displayName}, AI avatar`} />
-          <span className="hob-ai-label">AI avatar chosen by the host</span>
+          <span className="hob-ai-label">AI avatar chosen by the influencer</span>
         </div>
         <h3 className="hob-f-name">{draft.displayName}</h3>
 
@@ -152,7 +152,7 @@ export default function PreviewStep({ draft, update, api, setAction, goTo, avata
 
       <aside className="hob-card hob-f-privacy">
         <Icon name="shield" />
-        <p>To protect our hosts' privacy, the photos on host profiles are AI-generated from an avatar the host chose. The voice introduction is the host's own recording. The person callers talk to is the real, KYC-verified host.</p>
+        <p>To protect our influencers' privacy, the photos on influencer profiles are AI-generated from an avatar the influencer chose. The voice introduction is the influencer's own voice. The person callers talk to is the real, KYC-verified influencer.</p>
       </aside>
 
       {submitErr && <p className="hob-error" role="alert" aria-live="polite">{submitErr}</p>}

@@ -44,8 +44,8 @@ export default function RefundPanel({ onChanged }: { onChanged?: () => void }) {
       </div>
       <p className="hfc-sub" style={{ margin: 0 }}>
         {viaPlay
-          ? `Unused money you added goes back through Google Play, after a person approves it. Each purchase can be refunded for ${info.windowDays ?? 180} days after you bought it, and only the part you have not used. Money already used on calls and test credits cannot be refunded. Host earnings are withdrawn from the host dashboard instead.`
-          : `Unused money you added goes back to the payment you used, after a person approves it. Each top-up can be refunded for ${info.windowDays ?? 180} days after you paid, and only the part you have not spent. Money already spent on calls and test credits cannot be refunded. Host earnings are withdrawn from the host dashboard instead.`}
+          ? `Unused money you added goes back through Google Play, after a person approves it. Each purchase can be refunded for ${info.windowDays ?? 180} days after you bought it, and only the part you have not used. Money already used on calls and test credits cannot be refunded. Influencer earnings are withdrawn from the influencer dashboard instead.`
+          : `Unused money you added goes back to the payment you used, after a person approves it. Each top-up can be refunded for ${info.windowDays ?? 180} days after you paid, and only the part you have not spent. Money already spent on calls and test credits cannot be refunded. Influencer earnings are withdrawn from the influencer dashboard instead.`}
       </p>
       <button type="button" className="hfc-btn hfc-primary" disabled={busy || refundable <= 0 || open} onClick={() => void ask()}>
         {busy ? 'Working…' : refundable > 0 ? `Request ${money(refundable)} back` : 'Nothing to refund'}

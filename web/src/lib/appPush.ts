@@ -52,8 +52,8 @@ function showSheet(onAllow: () => void, onLater: () => void): void {
     '<h2 id="hf-push-title"></h2><p></p>' +
     '<div class="hf-exit-actions"><button type="button" class="hf-exit-yes hf-push-later">Not now</button><button type="button" class="hf-exit-stay hf-push-allow">Allow</button></div>' +
     '</div>';
-  wrap.querySelector('#hf-push-title')!.textContent = 'Know when your favourite host comes online';
-  wrap.querySelector('p')!.textContent = 'Turn on notifications and we will tell you when a host you follow is online. We only send things that matter to you.';
+  wrap.querySelector('#hf-push-title')!.textContent = 'Know when your favourite influencer comes online';
+  wrap.querySelector('p')!.textContent = 'Turn on notifications and we will tell you when an influencer you follow is online. We only send things that matter to you.';
   wrap.querySelector('.hf-push-allow')!.addEventListener('click', () => { closeSheet(); onAllow(); });
   wrap.querySelector('.hf-push-later')!.addEventListener('click', () => { closeSheet(); onLater(); });
   document.body.appendChild(wrap);
@@ -78,7 +78,7 @@ async function register(): Promise<void> {
   if (!p?.register || registering) return;
   registering = true;
   try {
-    try { await p.createChannel?.({ id: PUSH_CHANNEL_ID, name: 'Updates', description: 'Hosts coming online, your profile, payments and reviews', importance: 4, visibility: 1 }); } catch { /* older plugin: the manifest default channel is used */ }
+    try { await p.createChannel?.({ id: PUSH_CHANNEL_ID, name: 'Updates', description: 'Influencers coming online, your profile, payments and reviews', importance: 4, visibility: 1 }); } catch { /* older plugin: the manifest default channel is used */ }
     await p.register();
   } catch (err) {
     captureException(err, { where: 'hf_push_register' });

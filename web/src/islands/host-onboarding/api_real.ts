@@ -328,7 +328,7 @@ export const realApi: OnboardingApi = {
       id: a.id, image: a.url,
       gender: /^(f|w)/i.test(a.gender) ? 'woman' : 'man',
       age: a.age as AgeBand, style: a.look as AvatarStyle,
-      takenBy: a.taken && !a.mine ? 'another host' : null,
+      takenBy: a.taken && !a.mine ? 'another influencer' : null,
     }));
   },
 

@@ -49,7 +49,7 @@ export default function CustomerBooking() {
   };
   useEffect(() => {
     if (feature !== 'enabled') { setPhase(feature === 'checking' ? 'loading' : 'error'); if (feature === 'disabled') setMessage('Appointments are not available right now.'); return; }
-    if (!host) { setPhase('error'); setMessage('Choose a host from their profile to book a time.'); return; }
+    if (!host) { setPhase('error'); setMessage('Choose an influencer from their profile to book a time.'); return; }
     let nextDate = date;
     let nextDuration = duration;
     const intent = sessionStorage.getItem('hf_booking_intent');
@@ -136,8 +136,8 @@ export default function CustomerBooking() {
   if (feature === 'checking') return <BookingFeatureLoading />;
   if (feature === 'disabled') return <BookingUnavailable />;
   return <main className="hfb-page" aria-labelledby="hfb-title">
-    <header className="hfb-heading"><p className="hfb-eyebrow">Book a conversation</p><h1 id="hfb-title">Choose a time</h1><p>Call now stays available separately on the host’s profile. This booking is confirmed only after the server accepts your reservation.</p></header>
-    {!host && <section className="hfb-card"><p role="alert">{message}</p><a className="hfb-button" href="/marketplace">Explore hosts</a></section>}
+    <header className="hfb-heading"><p className="hfb-eyebrow">Book a conversation</p><h1 id="hfb-title">Choose a time</h1><p>Call now stays available separately on the influencer’s profile. This booking is confirmed only after the server accepts your reservation.</p></header>
+    {!host && <section className="hfb-card"><p role="alert">{message}</p><a className="hfb-button" href="/marketplace">Explore influencers</a></section>}
     {host && <>
       {looksSignedOut() && <section className="hfb-card"><h2>Sign in to book</h2><p>Your selected booking details will be kept when you return.</p><a className="hfb-button hfb-primary" href={signInUrl(back)}>Sign in</a></section>}
       <section className="hfb-card" aria-labelledby="hfb-options">
@@ -147,7 +147,7 @@ export default function CustomerBooking() {
         </div>
         <label className="hfb-label" htmlFor="hfb-date">Date</label>
         <input id="hfb-date" className="hfb-input" type="date" min={minDate} max={maxDate} value={date} onChange={e => { setDate(e.target.value); syncUrl(e.target.value, duration); setQuote(null); setSelected(null); void loadSlots(e.target.value, duration); }} />
-        <p className="hfb-muted">Times are shown in your device’s timezone. The host’s timezone and offset appear on each option.</p>
+        <p className="hfb-muted">Times are shown in your device’s timezone. The influencer’s timezone and offset appear on each option.</p>
       </section>
       <section className="hfb-card" aria-labelledby="hfb-times" aria-busy={phase === 'loading'}>
         <h2 id="hfb-times">Available times</h2>
@@ -156,14 +156,14 @@ export default function CustomerBooking() {
         {phase === 'ready' && slots.length === 0 && <p>No times are available for this date. Try another day.</p>}
         {phase === 'ready' && slots.length > 0 && <div className="hfb-slot-grid" role="group" aria-label="Available appointment times">
           {slots.map(slot => <button type="button" key={slot.startUtc} className={selected?.startUtc === slot.startUtc ? 'hfb-slot is-selected' : 'hfb-slot'} aria-pressed={selected?.startUtc === slot.startUtc} onClick={() => void choose(slot)} disabled={busy}>
-            <strong>{new Intl.DateTimeFormat(undefined, { hour: 'numeric', minute: '2-digit' }).format(new Date(slot.startUtc))}</strong><span>{slot.hostLocalLabel} host time</span><small>{slot.offsetLabel}</small>
+            <strong>{new Intl.DateTimeFormat(undefined, { hour: 'numeric', minute: '2-digit' }).format(new Date(slot.startUtc))}</strong><span>{slot.hostLocalLabel} influencer time</span><small>{slot.offsetLabel}</small>
           </button>)}
         </div>}
         {message && phase === 'ready' && !quote && <p role="status" className="hfb-message">{message}</p>}
       </section>
       {quote && selected && <section className="hfb-card hfb-quote" aria-labelledby="hfb-confirm">
         <h2 id="hfb-confirm">Review and confirm</h2>
-        <dl className="hfb-details"><div><dt>Date and time</dt><dd>{new Date(quote.startUtc).toLocaleString()} · {selected.hostLocalLabel} host time ({selected.offsetLabel})</dd></div><div><dt>Length</dt><dd>{quote.durationMinutes} minutes</dd></div><div><dt>Price to reserve</dt><dd><strong>{quote.priceRupees || money(quote.reservedPaise)}</strong></dd></div><div><dt>Quote expires</dt><dd>{new Date(quote.expiresAt).toLocaleTimeString()}</dd></div></dl>
+        <dl className="hfb-details"><div><dt>Date and time</dt><dd>{new Date(quote.startUtc).toLocaleString()} · {selected.hostLocalLabel} influencer time ({selected.offsetLabel})</dd></div><div><dt>Length</dt><dd>{quote.durationMinutes} minutes</dd></div><div><dt>Price to reserve</dt><dd><strong>{quote.priceRupees || money(quote.reservedPaise)}</strong></dd></div><div><dt>Quote expires</dt><dd>{new Date(quote.expiresAt).toLocaleTimeString()}</dd></div></dl>
         <p className="hfb-muted">Before the call connects, either person may cancel and the server releases the reservation. No cancellation penalty or no-show fee applies. After connection, the call charges only for verified connected time.</p>
         <label className="hfb-check"><input type="checkbox" checked={policyAccepted} onChange={e => setPolicyAccepted(e.target.checked)} /><span>I understand the reservation and cancellation policy.</span></label>
         {message && <p role="status" className="hfb-message">{message}</p>}

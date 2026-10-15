@@ -1,18 +1,18 @@
 ---
 title: "How does a call work?"
-description: "See each step of a call, from the host's phone ringing first to how your number stays private."
+description: "See each step of a call, from the influencer's phone ringing first to how your number stays private."
 section: getting-started
 order: 2
-updated: 2026-10-08
+updated: 2026-10-15
 keywords: ["how call works", "number chhupa", "private number", "press 1", "hash key", "call kaise hota hai", "masked number"]
 audience: both
 faq:
   - q: "Will the other person see my phone number?"
     a: "No. Your two phones are joined through a platform number. Neither person ever sees the other's personal number."
-  - q: "Why does the host's phone ring before mine?"
-    a: "The host may say yes or no first. You only get a ring after the host says yes. So you do not wait for nothing."
+  - q: "Why does the influencer's phone ring before mine?"
+    a: "The influencer may say yes or no first. You only get a ring after the influencer says yes. So you do not wait for nothing."
   - q: "Does anyone listen to my call?"
-    a: "No person listens to live calls. We do not record calls or keep call audio."
+    a: "No. No human monitors your call."
 draft: false
 ---
 
@@ -22,32 +22,32 @@ draft: false
 
 ## The steps
 
-1. **You pick an online host** and tap call on the website.
-2. **The host's phone rings first.** The host hears a private message. It says your display name and how many times you have called before. Your phone number is not said.
-3. **The host presses 1 to accept or 2 to decline.** If the host does not answer in 10 seconds, it counts as a decline.
-4. **Now your phone rings.** This happens only after the host says yes. You pick up.
+1. **You pick an influencer** and start a call on the website.
+2. **We call the influencer first.** A private message says that you want to talk. Your phone number is not said.
+3. **The influencer accepts or declines.** If the influencer does not answer in time, it counts as a decline.
+4. **Now we call you.** This happens only after the influencer says yes. You pick up.
 5. **Both of you hear a short safety notice.**
-6. **You are joined.** The two calls are connected through a platform number. You can talk.
+6. **We merge the two calls.** Both calls come from a {{brand.name}} number. Now you can talk.
 
 ## Your number stays private
 
-Neither of you ever sees the other's personal phone number. You see a platform number, and so does the host. This is the main reason the service is built this way.
+Neither of you ever sees the other's personal phone number. You see a {{brand.name}} number, and so does the influencer. This is the main reason the service is built this way.
 
 Masking hides your number. It does not hide what you say. So do not share your full name, address, workplace, social media or bank details.
 
-## What if the host says no?
+## What if the influencer says no?
 
-You pay nothing. Ringing, a decline, a timeout, or a call that never connects all cost ₹0. Charging starts only when both of you are connected. Try another host.
+You pay nothing. Ringing, a decline, a timeout, or a call that never connects all cost ₹0. Charging starts only when both of you are connected. Try another influencer.
 
-## AI keeps an eye on the call
+## How we keep the call safe
 
-AI follows every live call in real time. It does not look for bad words from a list. It understands what the person means.
+- Your phone number and the influencer's number are both hidden.
+- Influencers are verified adults who have done video KYC.
+- You can press # at any time to end the call and block the person.
+- You can report anyone. Our team reviews reports. They can give strikes or bans.
+- {{brand.name}} never asks for your OTP, PIN or password.
 
-- Telling a story about a bad day is fine.
-- Abuse, threats, sexual pressure or a scam is not fine.
-- A slow build-up to "just tell me the OTP" is a scam, and the AI can see it.
-
-If this happens, the call ends by itself and the account is flagged. No person listens to your live call. We do not record it.
+No human monitors your call.
 
 ## The # key
 
@@ -63,4 +63,3 @@ You can also just hang up. Either person can hang up at any second. See [End a c
 
 - [Price and minutes](/help/calling/price-and-minutes)
 - [Staying safe](/safety)
-- [Call recording policy](/recording-policy)

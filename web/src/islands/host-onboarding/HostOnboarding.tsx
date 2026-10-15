@@ -278,15 +278,15 @@ export default function HostOnboarding() {
     return (
       <div className="hob">
         <div className="hob-body hob-wrap">
-          <main className="hob-main" aria-label="Become a host">
+          <main className="hob-main" aria-label="Become an influencer">
             {phase === 'auth' && <Suspense fallback={null}><LazyClerkBridge /></Suspense>}
             {phase === 'gate' ? (
               <div className="hob-v-welcome">
-                <p className="hob-v-eyebrow">{BRAND.name} hosts</p>
+                <p className="hob-v-eyebrow">{BRAND.name} influencers</p>
                 <h1 className="hob-h1">Sign in with your WhatsApp number to start</h1>
                 <p className="hob-lead">We check your WhatsApp number first. It is the number your calls will come to, and we never show it to anyone.</p>
                 <a className="hob-btn hob-btn-primary hob-v-start" href={SIGN_IN_URL}>Sign in to start</a>
-                <p className="hob-v-rules"><a href="/hosts/join">Back to host info</a></p>
+                <p className="hob-v-rules"><a href="/hosts/join">Back to influencer info</a></p>
               </div>
             ) : phase === 'error' ? (
               <div>

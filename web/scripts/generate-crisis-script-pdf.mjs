@@ -27,7 +27,7 @@ const html = `<!doctype html><html lang="en-IN"><head><meta charset="utf-8"><sty
     .small{font-size:9pt}
     .foot{border-top:1px solid #ddd;margin-top:5mm;padding-top:2mm;color:#6c6269;font-size:8pt}
   </style></head><body>
-  <p class="brand">Hello Fraands · Host safety card</p>
+  <p class="brand">Hello Fraands · Influencer safety card</p>
   <h1>When a caller mentions self-harm</h1>
   <p class="lead">Stay calm. Do not argue or counsel. Say the words below, ask them to call now, then end and report the call.</p>
   <div class="grid">
@@ -39,7 +39,7 @@ const html = `<!doctype html><html lang="en-IN"><head><meta charset="utf-8"><sty
     </section>
   </div>
   <section class="next"><h2>Do not say</h2><p class="small">“You are overreacting.” “Just be positive.” “Promise me you will never do it.” “I can fix this.” “This will stay secret.”</p><p class="small">Do not ask for method details, offer a diagnosis, or charge for more conversation. Do not promise that emergency services have been contacted. Use end-and-report after giving the script.</p></section>
-  <p class="foot">Hello Fraands is not a crisis service. This host script is under legal review. More help: <a class="number" href="tel:9152987821">iCall 9152987821</a> · <a class="number" href="tel:18602662345">Vandrevala 1860-2662-345</a>.</p>
+  <p class="foot">Hello Fraands is not a crisis service. This influencer script is under legal review. More help: <a class="number" href="tel:9152987821">iCall 9152987821</a> · <a class="number" href="tel:18602662345">Vandrevala 1860-2662-345</a>.</p>
   </body></html>`;
 await writeFile(source, html);
 const binary = resolve(homedir(), 'Library/Caches/ms-playwright/chromium_headless_shell-1194/chrome-mac/headless_shell');

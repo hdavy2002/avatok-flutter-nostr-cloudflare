@@ -45,7 +45,7 @@ if (slug && /^[a-z0-9-]{3,40}$/.test(slug)) {
     const res = await fetch(`${API_BASE}/api/hosts/public/${slug}`, { headers: { accept: 'application/json' } });
     if (res.ok) host = (await res.json()) as Card;
   } catch (err) {
-    console.warn('[HF-HOST-PLATFORM-1] host profile fetch failed', err instanceof Error ? err.message : String(err));
+    console.warn('[HF-HOST-PLATFORM-1] influencer profile fetch failed', err instanceof Error ? err.message : String(err));
   }
 }
 if (!host) Astro.response.status = 404;
@@ -68,18 +68,18 @@ const regulars = host?.regulars ?? 0;
 const callHost = host ? { slug: host.slug, displayName: host.displayName, pricePerMin: host.pricePerMin, pricePaisePerMin: paisePerMin || undefined, priceTiers: host.priceTiers, plan: host.plan, status: host.status ?? 'offline', womenOnly: !!host.womenOnly } : null;
 const audioUrl = host?.introAudioUrl ?? null;
 const introLen = host?.introSeconds ? `${Math.floor(host.introSeconds / 60)}:${String(host.introSeconds % 60).padStart(2, '0')}` : '';
-const description = host ? `${name} on ${identity.name}. ${host.tagline ?? 'A real person to talk to, in your language.'} From ${rateLabel}. Your number stays private.` : 'This host page is not available.';
+const description = host ? `${name} on ${identity.name}. ${host.tagline ?? 'A real person to talk to, in your language.'} From ${rateLabel}. Your number stays private.` : 'This influencer page is not available.';
 const galleryJson = JSON.stringify(gallery.map(g => ({ src: g.url, alt: g.caption || 'AI image' }))).replace(/</g, '\\u003c');
 ---
-<Base title={host ? `${name} — talk to a real person | ${identity.name}` : `Host not found | ${identity.name}`} description={description} image={host?.avatarUrl ?? undefined} noindex={!host} keywords="" lang="en-IN">
+<Base title={host ? `${name} — talk to a real person | ${identity.name}` : `Influencer not found | ${identity.name}`} description={description} image={host?.avatarUrl ?? undefined} noindex={!host} keywords="" lang="en-IN">
   <Fragment slot="head"><meta name="theme-color" content="#fffdf7" /></Fragment>
   {!host ? (
     <main class="cv-detail-main" id="profile-main">
       <nav class="cv-breadcrumb" aria-label="Breadcrumb"><a href="/">Home</a><span aria-hidden="true">›</span><a href="/marketplace">Explore</a></nav>
       <section class="cv-info-card hf-missing" aria-labelledby="hf-missing-title">
-        <h1 id="hf-missing-title">We could not find this host</h1>
-        <p>The page may have moved, or the host is not taking calls right now. See everyone who is.</p>
-        <a class="cv-call-button hf-missing-link" href="/marketplace">Explore hosts</a>
+        <h1 id="hf-missing-title">We could not find this influencer</h1>
+        <p>The page may have moved, or the influencer is not taking calls right now. See everyone who is.</p>
+        <a class="cv-call-button hf-missing-link" href="/marketplace">Explore influencers</a>
       </section>
     </main>
   ) : (
@@ -91,26 +91,26 @@ const galleryJson = JSON.stringify(gallery.map(g => ({ src: g.url, alt: g.captio
           <div class="cv-detail-content">
             <section class="cv-profile-hero" aria-labelledby="profile-name">
               <div class="cv-profile-photo">
-                {host.avatarUrl && <img src={host.avatarUrl} width="1254" height="1254" alt={`${name}, an AI avatar chosen by the host`} fetchpriority="high" />}
-                <span class="hf-ai-label">AI avatar chosen by the host</span>
+                {host.avatarUrl && <img src={host.avatarUrl} width="1254" height="1254" alt={`${name}, an AI avatar chosen by the influencer`} fetchpriority="high" />}
+                <span class="hf-ai-label">AI avatar chosen by the influencer</span>
                 <span class="cv-online cv-status-offline"><span aria-hidden="true"></span>Calls open soon</span>
               </div>
               <div class="cv-identity">
                 <div class="cv-name-row"><div><h1 id="profile-name">{name}</h1>{host.tagline && <p class="cv-role">{host.tagline}</p>}</div></div>
                 <div class="hf-save-row"><SaveHostButton client:only="react" slug={host.slug} name={host.displayName} surface="profile" variant="pill" /></div>
-                <p class="hfc-rate hfc-rate-lg">{reviewCount > 0 && rating != null ? <><span aria-hidden="true">★</span> <strong>{rating.toFixed(1)}</strong> <a href="#reviews">({reviewCount} {reviewCount === 1 ? 'review' : 'reviews'})</a></> : <span class="hfc-new">New host</span>}</p>
-                <span class="cv-verified" role="img" aria-label="Identity checked by our team"><span aria-hidden="true">ID-verified host ✓</span></span>
+                <p class="hfc-rate hfc-rate-lg">{reviewCount > 0 && rating != null ? <><span aria-hidden="true">★</span> <strong>{rating.toFixed(1)}</strong> <a href="#reviews">({reviewCount} {reviewCount === 1 ? 'review' : 'reviews'})</a></> : <span class="hfc-new">New influencer</span>}</p>
+                <span class="cv-verified" role="img" aria-label="Identity checked by our team"><span aria-hidden="true">ID-verified influencer ✓</span></span>
                 {audioUrl && (
                   <div class="hf-clip">
                     <h2 class="hf-clip-title">Hear {name}’s introduction{introLen && <span> · {introLen}</span>}</h2>
                     <audio controls preload="none" src={audioUrl} aria-label={`Hear ${name}’s introduction`}></audio>
-                    <span class="hf-ai-chip">Recorded by the host</span>
+                    <span class="hf-ai-chip">Recorded by the influencer</span>
                   </div>
                 )}
                 {host.quote && <blockquote class="cv-profile-quote"><p>“{host.quote}”</p><cite>– {name}</cite></blockquote>}
               </div>
             </section>
-            <p class="cv-sample-disclosure">To protect our hosts’ privacy, the photos on host profiles are AI-generated from an avatar the host chose. The voice introduction is the host’s own recording. The person you talk to on a call is the real, ID-verified host.</p>
+            <p class="cv-sample-disclosure">To protect our influencers’ privacy, the photos on influencer profiles are AI-generated from an avatar the influencer chose. The voice introduction is the influencer’s own. The person you talk to on a call is the real, ID-verified influencer.</p>
             <nav class="cv-profile-tabs" aria-label="Profile sections"><a href="#about" aria-current="location">About</a><a href="#moods">Topics</a>{reviewCount > 0 && <a href="#reviews">Reviews</a>}{gallery.length > 0 && <a href="#gallery">Gallery</a>}</nav>
             <div class="cv-information-grid">
               <section class="cv-info-card" id="about" aria-labelledby="about-heading">
@@ -155,13 +155,13 @@ const galleryJson = JSON.stringify(gallery.map(g => ({ src: g.url, alt: g.captio
             <section class="cv-before-section" aria-labelledby="before-heading"><h2 id="before-heading">Before you call</h2><div class="cv-before-grid">
               <div class="cv-before-card"><DetailIcon name="chat" /><div><h3>Just a conversation</h3><p>Talk and share at your own pace. No professional advice or promised results.</p></div></div>
               <div class="cv-before-card"><ModernIcon name="user" /><div><h3>Keep it respectful</h3><p>18+ only. You can end a call at any time. Sexual or abusive talk is prohibited. End and report the call if you feel unsafe.</p></div></div>
-              <div class="cv-before-card"><DetailIcon name="notes" /><div><h3>Know before you start</h3><p>Calls are not recorded; AI keeps an eye on every live call for safety. In crisis, call Tele-MANAS 14416 or 112.</p></div></div>
+              <div class="cv-before-card"><DetailIcon name="notes" /><div><h3>Know before you start</h3><p>No human monitors your call, and your number stays masked. In crisis, call Tele-MANAS 14416 or 112.</p></div></div>
             </div></section>
           </div>
           <aside class="cv-booking-rail" aria-label="Call options">
             <div class="cv-booking-card"><strong class="cv-rate">{rateLabel}</strong>{tenMin && <p class="cv-rate-estimate">10 min ≈ {tenMin}</p>}{standard && <p class="cv-rate-estimate">{SAME_RATE_LINE}</p>}
               {callHost && <HostCallActions client:idle variant="rail" refresh host={callHost} />}
-              <ul class="cv-booking-benefits"><li><ModernIcon name="lock" /><div><strong>Your number stays private</strong><span>Calls are bridged through {identity.name}</span></div></li><li><DetailIcon name="shield" /><div><strong>ID-verified host</strong><span>Aadhaar and a live selfie, checked by our team</span></div></li></ul>
+              <ul class="cv-booking-benefits"><li><ModernIcon name="lock" /><div><strong>Your number stays private</strong><span>Calls are bridged through {identity.name}</span></div></li><li><DetailIcon name="shield" /><div><strong>ID-verified influencer</strong><span>Aadhaar and a live selfie, checked by our team</span></div></li></ul>
             </div>
           </aside>
         </div>

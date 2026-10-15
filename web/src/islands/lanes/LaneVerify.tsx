@@ -30,17 +30,17 @@ function looksSignedOut(): boolean {
 const COPY: Record<Lane, { name: string; intro: string; privacy: string; back: string; backHref: string; doneTitle: string; doneBody: string; browse: string }> = {
   women: {
     name: 'the women-only space',
-    intro: 'A calmer place to talk, open to callers whose Aadhaar shows female or transgender. You verify once, and the hosts in this space become visible to you.',
-    privacy: 'Only you and our safety team see your verification. Hosts and other callers never see it.',
+    intro: 'A calmer place to talk, open to callers whose Aadhaar shows female or transgender. You verify once, and the influencers in this space become visible to you.',
+    privacy: 'Only you and our safety team see your verification. Influencers and other callers never see it.',
     back: 'How the women-only space works', backHref: '/women-only',
-    doneTitle: "You're in", doneBody: "You'll now see women-only hosts.", browse: 'See women-only hosts',
+    doneTitle: "You're in", doneBody: "You'll now see women-only influencers.", browse: 'See women-only influencers',
   },
   lgbtq: {
     name: 'the LGBTQ+ space',
-    intro: 'A private space for LGBTQ+ people and allies who want a safer place to talk. You verify once, and the hosts in this space become visible to you.',
-    privacy: 'Only you and our safety team see this. It is private by default, and it is never shown on your profile or to hosts.',
+    intro: 'A private space for LGBTQ+ people and allies who want a safer place to talk. You verify once, and the influencers in this space become visible to you.',
+    privacy: 'Only you and our safety team see this. It is private by default, and it is never shown on your profile or to influencers.',
     back: 'How the LGBTQ+ space works', backHref: '/lgbtq',
-    doneTitle: "You're in", doneBody: "You'll now see LGBTQ+ space hosts.", browse: 'See LGBTQ+ space hosts',
+    doneTitle: "You're in", doneBody: "You'll now see LGBTQ+ space influencers.", browse: 'See LGBTQ+ space influencers',
   },
 };
 
@@ -297,7 +297,7 @@ export default function LaneVerify() {
         <h1 className="hob-h1">This space is not open to this account</h1>
         <p className="hob-lead">The women-only space is open to callers whose Aadhaar shows female or transgender. Thank you for understanding, and for checking.</p>
         <p className="hob-help">Everything else on {BRAND.name} is open to you.</p>
-        <p><a className="hob-btn hob-btn-primary hob-v-start" href="/marketplace">Browse all hosts</a></p>
+        <p><a className="hob-btn hob-btn-primary hob-v-start" href="/marketplace">Browse all influencers</a></p>
         <p className="hob-v-rules"><a href="/women-only">How the women-only space works</a></p>
       </div>,
     );

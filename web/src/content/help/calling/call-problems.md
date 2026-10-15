@@ -1,6 +1,6 @@
 ---
 title: "My call has a problem. What do I do?"
-description: "Fixes for a phone that did not ring, a dropped call, bad voice or a host who said no."
+description: "Fixes for a phone that did not ring, a dropped call, bad voice or an influencer who said no."
 section: calling
 order: 5
 updated: 2026-10-08
@@ -30,7 +30,7 @@ Check these things one by one:
 4. **Do you use a spam-blocker app?** Some apps block unknown numbers. Our call comes from a platform number, so it may look unknown. Allow unknown numbers for a while, or add the number to your contacts.
 5. **Is your phone on silent or flight mode?**
 
-If the host said yes but your phone did not ring, you pay ₹0. Nothing is charged until both of you are connected.
+If the influencer said yes but your phone did not ring, you pay ₹0. Nothing is charged until both of you are connected.
 
 ## My call dropped
 
@@ -45,11 +45,11 @@ Then call again. You need at least 2 minutes of balance to start. See [How much 
 - Check that your phone's speaker or mic is not blocked.
 - Try hanging up and calling again.
 
-If it stays bad, try another host and tell us the call ID.
+If it stays bad, try another influencer and tell us the call ID.
 
-## The host declined
+## The influencer declined
 
-If the host pressed 2, or did not answer in 10 seconds, you pay **₹0**. Hosts can decline any call. It is not about you. They may be busy. Try another host, or tap **Notify me** on a favourite. See [Favourites and calling again](/help/calling/favourites-and-calling-again).
+If the influencer pressed 2, or did not answer in 10 seconds, you pay **₹0**. Influencers can decline any call. It is not about you. They may be busy. Try another influencer, or tap **Notify me** on a favourite. See [Favourites and calling again](/help/calling/favourites-and-calling-again).
 
 ## Charged by mistake?
 

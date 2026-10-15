@@ -3,7 +3,7 @@ title: "How do I get a refund for my unused wallet money?"
 description: "Unused wallet money can be refunded on request through Google Play within 180 days."
 section: wallet-and-payments
 order: 3
-updated: 2026-10-08
+updated: 2026-10-15
 keywords: ["withdraw balance", "wallet money back", "transfer to upi", "balance nikalna", "paisa nikalo", "after ban", "delete account", "unused balance"]
 audience: both
 faq:
@@ -31,7 +31,7 @@ We will never take your money as a penalty. This is true even if something goes 
 2. Choose to request a refund.
 3. A person approves it, and the money goes back to you through Google Play.
 
-Only money you added and have not used can be refunded. Money already used on calls, and test credits, cannot. Hosts [withdraw their earnings](/help/hosts/getting-paid) from the host dashboard.
+Only money you added and have not used can be refunded. Money already used on calls, and test credits, cannot. Influencers [withdraw their earnings](/help/hosts/getting-paid) from the influencer dashboard.
 
 ## When to ask
 

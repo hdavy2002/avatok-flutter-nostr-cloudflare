@@ -3,14 +3,14 @@ title: "How do I spot OTP and bank scams on a call?"
 description: "Learn the common lines scammers use, our golden rule, and what to do if someone asks for your OTP or bank details."
 section: safety-and-privacy
 order: 4
-updated: 2026-10-08
+updated: 2026-10-15
 keywords: ["OTP scam", "bank fraud", "KYC expire", "UPI PIN", "fraud call", "thagi", "OTP mat batao"]
 audience: both
 faq:
   - q: "Will {{brand.name}} ever ask for my OTP?"
     a: "Never. We will never ask for your OTP, UPI PIN, password or bank details, on a call, WhatsApp or email."
   - q: "What happens to a person who asks for my OTP?"
-    a: "The AI ends the call. Their account and phone number are blocked across the whole platform."
+    a: "You can press # to end the call, block them and report them. Our team reviews the report, and scammers can be blocked across the whole platform."
   - q: "What should I do if I already shared an OTP?"
     a: "Call your bank right away and report the incident to us at /report. Never send an OTP or PIN to us."
 draft: false
@@ -43,16 +43,15 @@ They may also say your Aadhaar number or card number is needed. It is not.
 
 ## Slow build-up
 
-Not every scammer starts with a scam. Some are friendly for 10 minutes. Then they ask for "just one OTP". Our AI understands this slow build-up. It follows the intention, not only the words.
+Not every scammer starts with a scam. Some are friendly for 10 minutes. Then they ask for "just one OTP". Stay alert for the whole call. The moment anyone asks for an OTP or PIN, it is a scam.
 
-## What our AI does
+## What we do
 
-- It ends the call.
-- The account is flagged.
-- Spammers and scammers are blocked across the whole platform. They cannot call any other host.
-- If they try again from a new account, we match and block them.
+- When you press # and report, our team reviews it.
+- Spammers and scammers can be blocked across the whole platform.
+- Influencers also get tips to spot these tricks.
 
-Hosts also get regular training to spot these tricks.
+We do not listen to calls, so please report anything that feels wrong. Your report is how we find out.
 
 ## What you should do
 

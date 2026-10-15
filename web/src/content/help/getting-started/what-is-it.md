@@ -1,16 +1,16 @@
 ---
 title: "What is {{brand.name}}?"
-description: "{{brand.name}} lets you talk to a real person on a normal phone call, in your language, and pay per minute."
+description: "{{brand.name}} connects you to your favourite YouTube, Instagram or Facebook influencer on a private phone call. You pay per minute."
 section: getting-started
 order: 1
-updated: 2026-10-08
-keywords: ["what is", "kya hai", "talk to someone", "baat karo", "paid call", "dost", "phone call"]
+updated: 2026-10-15
+keywords: ["what is", "kya hai", "talk to influencer", "baat karo", "paid call", "youtuber", "phone call"]
 audience: both
 faq:
   - q: "Do I need to install an app?"
     a: "No. Calls come to your normal phone number. Your wallet, favourites and call history are on the website."
   - q: "Is this a therapy or counselling service?"
-    a: "No. Hosts are friendly people, not doctors or counsellors. They listen and talk, but they do not give professional advice."
+    a: "No. Influencers are creators, not doctors or counsellors. They talk with their fans, but they do not give professional advice."
   - q: "Who can use it?"
     a: "Anyone in India who is 18 or older. It is free to join, and you pay only for the minutes you talk."
 draft: false
@@ -18,23 +18,29 @@ draft: false
 
 <!-- rebrand: reviewed -->
 
-{{brand.name}} lets you talk to a real person on a normal phone call. You pick who to talk to, you talk in your own language, and you pay only for the seconds you talk. **Baat karo. Dil halka karo.**
+{{brand.name}} connects you to your favourite social media influencer on a private phone call. It can be a YouTuber, an Instagram creator or a Facebook creator. You talk in your own language, and you pay only for the seconds you talk. **Baat karo. Apne favourite creator se.**
 
 ## What it is
 
-Sometimes you just want someone to listen. Maybe you feel alone. Maybe you want a new friend. Maybe you want to talk about a subject you love.
+You watch their videos every day. Now you can talk to them.
 
-On {{brand.name}}, you choose a host by mood and language. A host is a real person who is 18 or older. Every host has been checked with a video check. Hosts earn from home by talking.
+On {{brand.name}}, you find an influencer you follow. You start a call. The influencer sets the price per minute, and you see it before you call.
 
 - You talk on a normal phone call. No app is needed.
-- Your phone number stays private. So does the host's.
+- Your phone number stays private. So does the influencer's.
 - It works in India only, with Indian numbers and UPI.
+
+## How it connects
+
+Here is the simple idea. First, we call the influencer and say that you want to talk. If the influencer accepts, we call you and join the two calls. Both calls come from a {{brand.name}} number. So your number is never shared, and neither is theirs.
 
 ## Who is it for?
 
-It is for anyone who wants company or wants to be heard. Many callers find a regular "dost" and call again and again.
+It is for any fan who wants to talk to a creator they like.
 
-**Example:** Rohit from Pune has an exam tomorrow. It is 11 at night and he cannot sleep. He feels his heart racing. He does not want to wake his family. He opens the website and picks the mood "exam ki tension". He chooses a host who speaks Hindi and is online now. They talk for 15 minutes. Rohit feels lighter and goes to sleep.
+**Example:** Rohit from Pune loves a fitness YouTuber. He wants to ask how to start gym with a small budget. He opens the website and finds the creator. He starts a call. The creator accepts. They talk for 10 minutes. Rohit gets his answer and a lot of motivation.
+
+You can ask about their videos, their travel, their cooking, their gaming, or how they built their channel.
 
 ## What it is not
 
@@ -45,13 +51,13 @@ Please read this part well.
 - It is **not** a place for doctor, lawyer, CA or money advice.
 - It is **not** a dating service or an adult service.
 
-Hosts must not act like doctors, lawyers, counsellors or financial advisors. If you are in danger, call 112. For mental health support, call Tele-MANAS on 14416. It is free and open 24 hours. See [emergency help](/emergency).
+Influencers must not act like doctors, lawyers, counsellors or financial advisors. If you are in danger, call 112. For mental health support, call Tele-MANAS on 14416. It is free and open 24 hours. See [emergency help](/emergency).
 
 ## How it keeps you safe
 
 - Your number is hidden. See [How does a call work?](/help/getting-started/how-a-call-works).
-- AI follows every live call and ends it if someone is abusive or tries a scam.
-- We do not record calls. No person listens to live calls.
+- Influencers are verified adults. They have done video KYC.
+- No human monitors your call.
 - You can press the # key at any time to end the call and block the person.
 
 Read more on [safety centre](/safety).

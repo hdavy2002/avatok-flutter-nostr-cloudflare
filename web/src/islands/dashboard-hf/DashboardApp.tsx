@@ -117,7 +117,7 @@ function Shell({ initial }: { initial: DashSection }) {
   const key = `${section}:${nav}:${account.uid}`;
   let body;
   if (blocked) {
-    body = <div className="hfd-section"><header className="hfd-section-head"><h1>{route.title}</h1></header><section className="hfc-card"><p>{route.hostOnly && !hostReady ? 'This opens once your host profile is live.' : 'This opens soon. We’ll let you know on WhatsApp.'}</p><div className="hfd-actions"><a className="hfc-btn hfc-primary" href="/dashboard">Back to overview</a></div></section></div>;
+    body = <div className="hfd-section"><header className="hfd-section-head"><h1>{route.title}</h1></header><section className="hfc-card"><p>{route.hostOnly && !hostReady ? 'This opens once your influencer profile is live.' : 'This opens soon. We’ll let you know on WhatsApp.'}</p><div className="hfd-actions"><a className="hfc-btn hfc-primary" href="/dashboard">Back to overview</a></div></section></div>;
   } else switch (section) {
     case 'overview': body = <Overview key={key} account={account} bookingOn={bookingOn} onAccountChanged={setAccount} />; break;
     case 'profile': body = <HfAccount key={key} />; break;

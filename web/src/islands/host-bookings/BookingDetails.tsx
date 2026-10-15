@@ -41,13 +41,13 @@ export default function BookingDetails({ id }: { id: string }) {
         <h2>{booking.hostName || 'Appointment'}</h2>
         <dl className="hfb-details">
           <div><dt>Your local time</dt><dd>{dateLabel(booking.startUtc)}</dd></div>
-          <div><dt>Host local time</dt><dd>{dateLabel(booking.startUtc, booking.hostTimezone)} · {booking.hostTimezone}</dd></div>
+          <div><dt>Influencer local time</dt><dd>{dateLabel(booking.startUtc, booking.hostTimezone)} · {booking.hostTimezone}</dd></div>
           <div><dt>Duration</dt><dd>{booking.durationMinutes || Math.round((Date.parse(booking.endUtc) - Date.parse(booking.startUtc)) / 60000)} minutes</dd></div>
           <div><dt>Reserved</dt><dd>{money(booking.reservedPaise)}</dd></div>
-          {typeof booking.expectedHostNetPaise === 'number' && <div><dt>Expected host earnings on hold</dt><dd>{money(booking.expectedHostNetPaise)}</dd></div>}
+          {typeof booking.expectedHostNetPaise === 'number' && <div><dt>Expected influencer earnings on hold</dt><dd>{money(booking.expectedHostNetPaise)}</dd></div>}
           {booking.callId && <div><dt>Call reference</dt><dd>{booking.callId}</dd></div>}
         </dl>
-        <p className="hfb-muted">The host’s timezone is shown separately so you can check the appointment across timezones.</p>
+        <p className="hfb-muted">The influencer’s timezone is shown separately so you can check the appointment across timezones.</p>
         {message && <p className="hfb-message" role="alert">{message}<button className="hfb-text-button" type="button" onClick={() => setRetry(n => n + 1)}>Reload</button></p>}
         {status === 'confirmed' && <div className="hfb-actions">{!confirming ? <button type="button" className="hfb-button" onClick={() => setConfirming(true)}>Cancel appointment</button> : <div className="hfb-note" role="alertdialog" aria-labelledby="hfb-cancel-title"><h3 id="hfb-cancel-title">Cancel this appointment?</h3><p>The reservation will be released if the server confirms cancellation. The slot may be taken by someone else if you book again.</p><button type="button" className="hfb-button hfb-danger" onClick={() => void cancel()} disabled={busy}>{busy ? 'Cancelling…' : 'Confirm cancellation'}</button><button type="button" className="hfb-button" onClick={() => setConfirming(false)} disabled={busy}>Keep appointment</button></div>}</div>}
       </section>

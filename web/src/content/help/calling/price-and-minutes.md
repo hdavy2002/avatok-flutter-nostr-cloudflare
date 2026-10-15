@@ -1,14 +1,14 @@
 ---
 title: "How much does a call cost?"
-description: "Learn the one standard call price, when charging starts, and how a call ends."
+description: "Learn how the price per minute is set, when charging starts, and how a call ends."
 section: calling
 order: 2
 updated: 2026-10-08
-keywords: ["price", "per minute", "kitna paisa", "charges", "billing", "minimum balance", "standard plan", "rate"]
+keywords: ["price", "per minute", "kitna paisa", "charges", "billing", "minimum balance", "rate"]
 audience: buyer
 faq:
   - q: "How much does a call cost?"
-    a: "Every host has the same price. It is ₹3.99 a minute for the first 30 minutes, ₹3.50 a minute for the next 30 minutes, and ₹3.25 a minute after 60 minutes."
+    a: "Each influencer sets their own price per minute. You see it on their profile before you call. You pay that rate for the seconds you are connected."
   - q: "Do I pay for a part of a minute?"
     a: "You pay for the exact seconds you are connected. There is no rounding up to a full minute."
   - q: "What is the longest a call can be?"
@@ -20,34 +20,25 @@ draft: false
 
 <!-- rebrand: reviewed -->
 
-You pay from your prepaid wallet. Every host has the same price. You see the price before you call.
+You pay from your prepaid wallet. Each influencer sets their own price per minute. You see the price before you call.
 
-## The standard price
+## The price
 
-- First 30 minutes: **₹3.99 a minute**.
-- Next 30 minutes (minute 30 to 60): **₹3.50 a minute**.
-- After 60 minutes: **₹3.25 a minute**.
-
-The lower price is only for the time after each mark. Minutes you have already talked are never charged again at a new price. A new call starts again at ₹3.99.
-
-| Talk time | You pay |
-|---|---|
-| 30 minutes | ₹119.70 |
-| 60 minutes | ₹224.70 |
-| 90 minutes | ₹322.20 |
-| 120 minutes | ₹419.70 |
+The price is the **rate per minute** that the influencer has set. Different influencers have different rates. Check the profile each time, because an influencer can change their rate.
 
 ## Billed by the second
 
 You pay for the exact seconds you are connected. There is no rounding up to a full minute.
 
-- 5 minutes cost **₹19.95**.
-- 45 seconds cost about **₹2.99**.
-- 3 minutes 20 seconds cost about **₹13.30**.
+**Example:** an influencer's rate is ₹10 a minute.
+
+- 5 minutes cost ₹50.
+- 45 seconds cost ₹7.50.
+- 3 minutes 20 seconds cost about ₹33.33.
 
 ## Minimum balance to start
 
-You need at least **₹7.98** in your wallet. That is 2 minutes at ₹3.99.
+You need enough in your wallet for at least **2 minutes** at the influencer's rate.
 
 If your balance is lower, add money first. See [Make your first call](/help/calling/make-your-first-call).
 
@@ -58,8 +49,8 @@ If your balance is lower, add money first. See [Make your first call](/help/call
 You pay ₹0 when:
 
 - the phone is only ringing,
-- the host declines or you miss the call,
-- the host does not answer, or
+- the influencer declines or you miss the call,
+- the influencer does not answer, or
 - the call never connects.
 
 ## How long can a call be?
@@ -74,7 +65,7 @@ Every addition to your wallet and every call charge shows in your wallet history
 
 ## Refunds and mistakes
 
-Connected calls are not refunded. You choose the host, you see the price, and you can hang up at any second. If a call was not what you hoped, rate the host and try someone else.
+Connected calls are not refunded. You choose the influencer, you see the price, and you can hang up at any second. If a call was not what you hoped, rate the influencer and try someone else.
 
 If we charged you for a call that never connected, or charged you twice, tell us. That is a billing error. The wrong amount is put back in your wallet and linked to that call. Read [refund policy](/refunds) and [wallet terms](/wallet-terms).
 

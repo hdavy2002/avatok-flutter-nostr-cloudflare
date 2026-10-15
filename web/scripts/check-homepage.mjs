@@ -33,19 +33,19 @@ assert(!visibleText.includes('INVITE ONLY · BETA PHASE'), 'Retired beta ribbon 
 assert.doesNotMatch(bodyHtml, /class="[^"]*\bhfh-beta\b[^"]*"/, 'No beta ribbon element');
 for (const copy of [
   'Talk to your favourite social media influencers over a private phone call.',
-  'Book a time. We call you, call the host, and connect both calls. Neither of you sees the other’s personal number.',
+  'Book a time. We call the influencer first. If they accept, we call you and connect both calls. Neither of you sees the other’s personal number.',
   'Verified influencers', 'Your number stays private', 'Secure payments',
-  'Book time with creators you follow',
-  'Verified hosts. Real conversations. Pick a time that works.',
+  'Talk to influencers you follow',
+  'Verified influencers. Real conversations. Private calls.',
   'Your number stays yours.',
-  'Our system calls the fan and the host separately, then securely connects the calls. We never reveal either person’s personal phone number.',
+  'Our system first calls the influencer. If they accept, we call you and merge the two calls. Both calls come from a ' + identity.name + ' number, so we never reveal either person’s personal phone number.',
   'Two private calls. One conversation.',
   'Women talking to women', 'Connect within the LGBTQ+ community',
-  'A private space for women to book conversations with verified women hosts.',
-  'A respectful space for LGBTQ+ fans to book conversations with hosts from the community.',
-  'Video KYC required', 'Choose a host', 'Book and pay', 'Talk privately',
+  'A private space for women to talk with verified women influencers.',
+  'A respectful space for LGBTQ+ fans to talk with influencers from the community.',
+  'Video KYC required', 'Choose an influencer', 'Start the call', 'Talk privately',
   'Turn your audience into real conversations.',
-  'Influencer or not, any adult can apply. Complete full KYC, create your page, set your rate, and share your link.',
+  'Are you an influencer? Complete full KYC, create your page, set your per-minute rate, and share your link.',
 ]) assert(mainText.includes(copy), 'Approved homepage copy: ' + copy);
 assert.match(mainText, /Sample profiles · Illustrative/);
 assert.match(mainText, /No audio plays and no call or payment is made/);
@@ -98,7 +98,7 @@ assert.doesNotMatch(bodyHtml, /Real people\. Naye dost\./, 'Homepage footer tagl
 assert.equal((main.match(/class="hfh-kyc"/g) || []).length, 2);
 const footer = bodyHtml.match(/<footer\b[^>]*\bdata-callvaal-chrome(?:="")?[^>]*>([\s\S]*?)<\/footer>/)?.[1] || '';
 assert.equal((footer.match(/data-callvaal-footer-group(?:="")?/g) || []).length, 5, 'Five footer groups');
-assert.equal((footer.match(/<li[ >]/g) || []).length, 37, 'Complete five-column content footer');
+assert.equal((footer.match(/<li[ >]/g) || []).length, 36, 'Complete five-column content footer');
 const credit = footer.match(/<p\b[^>]*class="cv-footer-made"[^>]*>([\s\S]*?)<\/p>/)?.[1] ?? '';
 assert.equal(plainText(credit), 'Developed in India with ♥', 'Owner-approved footer development credit');
 assert.match(credit, /<span\b[^>]*class="cv-footer-heart"[^>]*role="img"[^>]*aria-label="love"[^>]*>♥<\/span>/, 'Footer heart retains its red styling class and accessible label');
@@ -140,7 +140,7 @@ assert.doesNotMatch(plainText(footer), /CallVaal|Doctors|Tax & money|Career|Rela
 const talkSafely = readFileSync(resolve(root, 'talk-safely/index.html'), 'utf8');
 const talkSafelyText = talkSafely.replace(/<script\b[\s\S]*?<\/script>/g, '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ');
 assert(talkSafelyText.includes(identity.name), 'Safety guide uses the centrally configured homepage identity');
-assert(talkSafely.includes(`<title>Talking safely with strangers | ${identity.name}</title>`), 'Safety guide title uses the homepage identity');
+assert(talkSafely.includes(`<title>Talking safely on a call | ${identity.name}</title>`), 'Safety guide title uses the homepage identity');
 assert.match(talkSafely, /data-design="callvaal-scrapbook"/, 'Safety guide uses the CallVaal notebook chrome');
 assert.match(talkSafely, /<meta\b[^>]*name="robots"[^>]*content="noindex,nofollow"/, 'Interim safety guide stays out of search results');
 for (const baseline of ['OTPs', 'passwords', 'financial details', 'home address', 'end it', 'Report the call']) {
