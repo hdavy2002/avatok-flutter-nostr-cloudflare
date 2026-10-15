@@ -10833,5 +10833,12 @@
         "note": "Owner's Rs 2 test completes through the avatok.ai hand-off: wallet_paise=169, gst_paise=31."
       }
     ]
+  },
+  "HF-EMAIL-SENDER-1": {
+    "description": "Every outgoing system email (receipts, OTP-free notices, contact/waitlist) is sent as 'Hello Fraands Support <no-reply@hellofraands.com>' instead of Aum Fe / noreply@aumfe.com.",
+    "two_sided": false,
+    "min_devices_on_build": 0,
+    "flags": [],
+    "no_telemetry": "Sender-address change only; verified by reading the From header of a real receipt email after deploy, plus email_outbox provider acceptance. No new behaviour to assert in PostHog."
   }
 }
