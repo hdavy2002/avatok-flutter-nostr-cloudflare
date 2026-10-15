@@ -379,6 +379,11 @@ class _WelcomeHeader extends StatelessWidget {
     final top = MediaQuery.paddingOf(context).top;
     final width = MediaQuery.sizeOf(context).width;
     final beaver = math.min(150.0, width * 0.38);
+    // This page sizes itself from intrinsic heights (SliverFillRemaining), and a max-width box does not
+    // narrow its child's intrinsic height. Padding does, so the bubble is measured at the width it lays
+    // out at (BeaverGuide caps it at max(240, 1.8 x beaver)).
+    final bubbleMax = math.max(240.0, beaver * 1.8);
+    final side = math.max(0.0, (width - 2 * HfSpacing.section - bubbleMax) / 2);
     return Stack(
       children: [
         Positioned.fill(
@@ -438,12 +443,15 @@ class _WelcomeHeader extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: HfSpacing.sm),
-              Center(
-                child: BeaverGuide(
-                  key: const ValueKey<String>('welcome-beaver'),
-                  pose: pose,
-                  size: beaver,
-                  message: WelcomeCopy.intro,
+              Padding(
+                padding: EdgeInsets.symmetric(horizontal: side),
+                child: Center(
+                  child: BeaverGuide(
+                    key: const ValueKey<String>('welcome-beaver'),
+                    pose: pose,
+                    size: beaver,
+                    message: WelcomeCopy.intro,
+                  ),
                 ),
               ),
             ],
