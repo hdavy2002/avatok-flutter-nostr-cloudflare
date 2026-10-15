@@ -1,11 +1,11 @@
 // [HF-CASHFREE-CHECKOUT-HOST-1] Cashfree production checkout only opens from a domain whitelisted in the Cashfree dashboard.
-// The approved domain is avatok.ai (not hellofraands.com yet), so the Hello Fraands wallet hands the buyer to a tiny page on
+// The approved domain is avatok.ai (not the brand domain yet), so the brand-site wallet hands the buyer to a tiny page on
 // avatok.ai that opens Cashfree's checkout, and Cashfree returns him to avatok.ai, which forwards him to /wallet?topup=<id>.
 // Served by this Worker through the route `avatok.ai/pay/cashfree*` (wrangler.toml); the rest of avatok.ai is untouched.
 //   GET https://avatok.ai/pay/cashfree?s=<payment_session_id>&t=<hftop_id>   -> page that opens the Cashfree checkout
 //   GET https://avatok.ai/pay/cashfree/done?t=<hftop_id>                     -> 302 to the brand site /wallet?topup=<id>
 // Nothing here moves money: crediting is still only settleHfTopup (webhook / status poll / reconcile).
-// When hellofraands.com is whitelisted, set CHECKOUT_ORIGIN to null and the website opens the modal on its own domain again.
+// When the brand domain is whitelisted, set CHECKOUT_ORIGIN to null and the website opens the modal on its own domain again.
 import type { Env } from "../types";
 import { brandUrl } from "../lib/brand";
 import { cashfreeIsProduction } from "../lib/cashfree";
