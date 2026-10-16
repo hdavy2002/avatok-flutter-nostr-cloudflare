@@ -1,5 +1,6 @@
 // [HF-DASH-FRAANDS-1] Saved ("hearted") hosts, shown on the dashboard screen "My Fraands". Flag hfFavouritesEnabled (off -> 404 not_enabled).
-//   GET    /api/hf/favourites         -> { ok, items:[{ slug, displayName, photoUrl, headline, presence:'online'|'busy'|'offline', savedAt }], count }
+//   GET    /api/hf/favourites         -> { ok, items:[{ slug, displayName, photoUrl, headline, presence:'online'|'busy'|'offline', savedAt,
+//                                       languages, topics, plan, pricePerMin, pricePaisePerMin, priceLabel, priceTiers, womenOnly }], count }
 //   GET    /api/hf/favourites/:slug   -> { ok, saved }
 //   PUT    /api/hf/favourites/:slug   -> { ok, saved:true, count }    idempotent; 404 not a live host, 400 cannot_save_self, 409 limit_reached | account_closing
 //   DELETE /api/hf/favourites/:slug   -> { ok, saved:false, count }   idempotent
@@ -15,6 +16,7 @@ import { isClosing } from "../lib/hf_exit";
 import { getLaneAccess } from "../lib/hf_lanes";
 import { readConfig } from "./config";
 import { card, SEL, type LiveRow } from "./hf_hosts_public";
+import { readHfStdPlan } from "../lib/hf_token_config";
 
 export const MAX_FAVOURITES = 500;
 const err = (status: number, error: string, message?: string) => json({ ok: false, error, message: message ?? error }, status);
@@ -42,13 +44,16 @@ export async function hfFavouritesRoute(req: Request, env: Env, p: string): Prom
 
     if (!one) {
       const access = await getLaneAccess(env, uid);
+      const std = readHfStdPlan(cfg as unknown as Record<string, unknown>); // [HF-DASH-V3-1]
       const rows = (await env.DB_META.prepare(`${SEL} WHERE h.status='live' AND h.slug IS NOT NULL AND h.uid IN (SELECT host_uid FROM hf_favourites WHERE uid=?1)`)
         .bind(uid).all<LiveRow>()).results ?? [];
       const saved = new Map(((await env.DB_META.prepare("SELECT host_uid, created_at FROM hf_favourites WHERE uid=?1").bind(uid).all<{ host_uid: string; created_at: number }>()).results ?? [])
         .map((r) => [r.host_uid, Number(r.created_at)]));
       const items = rows.filter((r) => visible(r, access)).map((r) => {
-        const c = card(env, r);
-        return { slug: c.slug, displayName: c.displayName, photoUrl: c.avatarUrl, headline: c.tagline || null, presence: c.status, savedAt: saved.get(r.uid) ?? 0 };
+        const c = card(env, r, undefined, std);
+        // [HF-DASH-V3-1] + languages, topics and the price block so the dashboard card can start a real call (HostCallActions).
+        return { slug: c.slug, displayName: c.displayName, photoUrl: c.avatarUrl, headline: c.tagline || null, presence: c.status, savedAt: saved.get(r.uid) ?? 0,
+          languages: c.languages, topics: c.topics, plan: c.plan, pricePerMin: c.pricePerMin, pricePaisePerMin: c.pricePaisePerMin, priceLabel: c.priceLabel, priceTiers: c.priceTiers, womenOnly: c.womenOnly };
       }).sort((a, b) => b.savedAt - a.savedAt);
       return json({ ok: true, items, count: items.length }, 200, NO_STORE);
     }

@@ -320,6 +320,7 @@ import { hfReviewsRoute } from "./lib/hf_reviews"; // [HF-CALLS-1] reviews (toke
 import { hfPushRoute } from "./routes/hf_push"; // [HF-APP-4] push token register
 import { hfFavouritesRoute } from "./routes/hf_favourites"; // [HF-DASH-FRAANDS-1] saved hosts (flag hfFavouritesEnabled)
 import { hfDashSummaryRoute } from "./routes/hf_dash_summary"; // [HF-DASH-SUMMARY-1]
+import { hfDashV3Route, isDashV3Path } from "./routes/hf_dash_v3"; // [HF-DASH-V3-1] new customer dashboard
 import { hfMeRoute } from "./routes/hf_me"; // [HF-NATIVE-S1] native app: who am I (GET/PATCH /api/hf/me)
 import { hfRegistrationRoute } from "./routes/hf_registration"; // [HF-REF-AUTH-1] immutable native username + legal acceptance
 import { hfTokensPlayRoute, runHfPlayCron } from "./routes/hf_tokens_play"; // [HF-TOK-PLAY-1] Play Billing token purchases + RTDN + cron
@@ -1145,6 +1146,7 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
       if (p === "/api/hf/account/age-confirm" && req.method === "POST") return await hfAgeConfirm(req, env); // [HF-AUTH-WA-1]
       if (p === "/api/hf/account/exit") { const r = await hfExitRoute(req, env, p); if (r) return r; } // [HF-WALLET-EXIT-1]
       if (p === "/api/hf/wallet/receipts" || p.startsWith("/api/hf/wallet/receipts/") || p === "/api/admin/hf/reconciliation") { const r = await hfWalletLimitsRoute(req, env, p); if (r) return r; } // [HF-WALLET-LIMITS-1]
+      if (isDashV3Path(p)) { const r = await hfDashV3Route(req, env, p); if (r) return r; } // [HF-DASH-V3-1]
       if (p === "/api/hf/me" || p === "/api/hf/me/ack") { const r = await hfMeRoute(req, env, p); if (r) return r; } // [HF-NATIVE-S1] [HF-NATIVE-S4]
       if (p === "/api/hf/me/summary") { const r = await hfDashSummaryRoute(req, env); if (r) return r; } // [HF-DASH-SUMMARY-1]
       if (p === "/api/hf/me/registration" || p === "/api/hf/me/username") { const r = await hfRegistrationRoute(req, env, p); if (r) return r; } // [HF-REF-AUTH-1]

@@ -248,7 +248,7 @@ export function renderReceiptHtml(r: ReceiptRow, sup: Supplier, customerName: st
   const data = (() => { try { return JSON.parse(r.data ?? "{}") as Record<string, any>; } catch { return {} as Record<string, any>; } })();
   const isInvoice = r.kind === "tax_invoice";
   const legal = esc(sup.legalName || BRAND.name);
-  const supplierBlock = `<p><strong>${legal}</strong><br>${esc(sup.address).replace(/\n/g, "<br>")}${isInvoice && r.gstin ? `<br>GSTIN: ${esc(r.gstin)}` : ""}</p>`;
+  const supplierBlock = `<p><strong>${legal}</strong><br>${esc(sup.address).replace(/\n/g, "<br>")}${isInvoice && r.gstin ? `<br>GSTIN: ${esc(r.gstin)}` : !isInvoice && !sup.gstin ? "<br>GSTIN: applied for" : ""}</p>`; // [HF-DASH-V3-1] GST is charged now (HF-PAY-16); the number goes here once it arrives
   const title = isInvoice ? "Tax invoice" : (data as Record<string, unknown>).type === "play_purchase" ? "Payment receipt — paid via Google Play" : "Payment receipt";
   const isPlay = !isInvoice && data.type === "play_purchase";
   // [HF-WALLET-HELD-LABEL-1] Current purchases record the 18% as GST; older (gp-r1) purchases kept the same share as part of the price, GST 0.

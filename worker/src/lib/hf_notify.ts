@@ -9,6 +9,7 @@ import { BRAND, brandUrl } from "./brand";
 import { verifiedWhatsAppNumber } from "./whatsapp_notify";
 import { hfCallsOn } from "./hf_reviews";
 import { NOTIFY_WINDOW_MS, firstNameOf } from "./hf_reviews_pure";
+import { notifyWhatsappOn } from "../routes/hf_dash_v3"; // [HF-DASH-V3-1]
 
 const APP = BRAND.slug;
 const SAFETY_SWEEP_LIMIT = 200;
@@ -72,6 +73,8 @@ async function materializeCandidate(env: Env, row: NotifyCandidate, now: number)
     if (blocked) { await drop(env, row.caller_uid, row.host_uid); return "skipped"; }
     const e164 = await verifiedWhatsAppNumber(env, row.caller_uid);
     if (!e164) { await drop(env, row.caller_uid, row.host_uid); return "skipped"; }
+    // [HF-DASH-V3-1] The caller paused "Notify me on WhatsApp" on the dashboard: the one-shot subscription ends without a message.
+    if (!(await notifyWhatsappOn(env, row.caller_uid))) { await drop(env, row.caller_uid, row.host_uid); return "skipped"; }
 
     const name = firstNameOf(row.display_name);
     const message = `${name} is online now on ${BRAND.name}. Call: ${brandUrl("/h/" + row.slug)}`;
