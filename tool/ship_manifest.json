@@ -10970,5 +10970,12 @@
     "min_devices_on_build": 1,
     "flags": [],
     "no_telemetry": "Build/contract fix for HF-HOME-DESI-1; success is measured there."
+  },
+  "HF-HOME-REVERT-1": {
+    "description": "Roll the front page back to the host/fan design from before HF-HOME-DESI-1.",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [],
+    "no_telemetry": "Restores the previous page and its existing events."
   }
 }
