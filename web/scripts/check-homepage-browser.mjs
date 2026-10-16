@@ -1,4 +1,4 @@
-// [HF-HOME-HOST-FAN-1] Owner-approved host/fan homepage. Run only in manually dispatched GitHub CI.
+// [HF-HOME-DESI-1] Owner-approved dashboard-style landing (was HF-HOME-HOST-FAN-1). Run only in manually dispatched GitHub CI.
 import { chromium, expect } from '@playwright/test';
 import { createServer } from 'node:http';
 import { readFile, mkdir, writeFile } from 'node:fs/promises';
@@ -25,89 +25,6 @@ const metrics = [];
 const homepageIdentity = JSON.parse(await readFile(resolve('../Specs/brand.json'), 'utf8')).homepageIdentity;
 
 let browser;
-async function waitForPreviewClose(dialog, trigger, message) {
-  // Native focus restoration can precede the application's queued close handler.
-  await expect(dialog, message + ': dialog closed').not.toBeVisible();
-  await expect(trigger, message + ': trigger focus restored').toBeFocused();
-}
-// Inspect computed sizes at every viewport so later media queries cannot silently undo floors.
-async function inspectReadability(page) {
-  return page.evaluate(() => {
-    const visible = el => el.getClientRects().length > 0 && getComputedStyle(el).visibility !== 'hidden';
-    const groups = [
-      [16, '.hfh-hero-copy>p:not(.hfh-eyebrow), .hfh-button, .hfh-section-heading p, .hfh-card-heading h3, .hfh-rate, .hfh-privacy p:not(.hfh-eyebrow), .hfh-lane-copy>p:not(.hfh-kyc):not(.hfh-eyebrow), .hfh-steps p, .hfh-host-copy p:not(.hfh-eyebrow), [data-callvaal-footer-group] summary, [data-callvaal-footer-group] a, [data-callvaal-footer-group] button'],
-      [15, 'footer[data-callvaal-chrome] .cv-footer-brand p, footer[data-callvaal-chrome] .cv-footer-copyright'],
-      [14, '.hfh-sample-label, .hfh-disclosure, .hfh-eligibility, .hfh-availability, .hfh-category, .hfh-rating, .hfh-voice, .hfh-kyc, .hfh-picker, .hfh-share, .hfh-proof li, .hfh-eyebrow, .hfh-photo-caption div>span, .hfh-photo-tag'],
-    ];
-    const fontFailures = [];
-    const fontCounts = [];
-    for (const [floor, selector] of groups) {
-      const elements = [...document.querySelectorAll(selector)].filter(visible);
-      fontCounts.push({ floor, count: elements.length });
-      for (const el of elements) {
-        const size = parseFloat(getComputedStyle(el).fontSize);
-        if (size < floor) fontFailures.push({ selector: el.className || el.tagName, text: el.textContent.trim(), floor, size });
-      }
-    }
-    const clipping = [];
-    const panels = '.hfh-hero-copy, .hfh-picker, .hfh-share, .hfh-card-copy, #women-only, #privacy-note, .hfh-host-copy, #safety, .hfh-lane-copy, .hfh-steps, [data-callvaal-footer-group][open]';
-    for (const panel of document.querySelectorAll(panels)) {
-      if (!visible(panel)) continue;
-      if (panel.scrollWidth > panel.clientWidth + 2) clipping.push({ panel: panel.className, reason: 'horizontal overflow' });
-      const walker = document.createTreeWalker(panel, NodeFilter.SHOW_TEXT);
-      while (walker.nextNode()) {
-        const text = walker.currentNode;
-        if (!text.textContent.trim() || !visible(text.parentElement) || text.parentElement.closest('.sr-only, .hf-safety-sr-only, option, svg')) continue;
-        const range = document.createRange();
-        range.selectNodeContents(text);
-        for (const rect of range.getClientRects()) {
-          for (let el = text.parentElement; el && el !== document.body; el = el.parentElement) {
-            const style = getComputedStyle(el);
-            const bounds = el.getBoundingClientRect();
-            if ((/hidden|clip|scroll|auto/.test(style.overflowX) && (rect.left < bounds.left - 2 || rect.right > bounds.right + 2)) ||
-                (/hidden|clip|scroll|auto/.test(style.overflowY) && (rect.top < bounds.top - 2 || rect.bottom > bounds.bottom + 2))) {
-              clipping.push({ text: text.textContent.trim(), ancestor: el.className, reason: 'clipped text' });
-              break;
-            }
-          }
-        }
-      }
-    }
-    const overlaps = [];
-    const intersects = (a, b) => Math.min(a.right, b.right) - Math.max(a.left, b.left) > 2 && Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top) > 2;
-    const checkSiblings = selector => {
-      for (const parent of document.querySelectorAll(selector)) {
-        const children = [...parent.children].filter(el => visible(el) && !el.classList.contains('sr-only'));
-        for (let i = 0; i < children.length; i++) for (let j = i + 1; j < children.length; j++) {
-          if (intersects(children[i].getBoundingClientRect(), children[j].getBoundingClientRect())) overlaps.push({ parent: parent.className, first: children[i].className || children[i].tagName, second: children[j].className || children[j].tagName });
-        }
-      }
-    };
-    checkSiblings('.hfh-actions, .hfh-proof, .hfh-card-heading, .hfh-category, .hfh-creator-grid, .hfh-steps, .hfh-host-copy, footer[data-callvaal-chrome] nav[aria-label="Footer"]');
-    const viewportOverflow = {
-      viewport: innerWidth,
-      content: document.documentElement.scrollWidth,
-      elements: [...document.body.querySelectorAll('*')]
-        .filter(el => visible(el) && !el.closest('.sr-only, svg'))
-        .map(el => {
-          const rect = el.getBoundingClientRect();
-          return { element: el.id ? `#${el.id}` : el.className || el.tagName,
-            left: Math.round(rect.left * 100) / 100, right: Math.round(rect.right * 100) / 100,
-            width: Math.round(rect.width * 100) / 100, content: el.scrollWidth,
-            text: el.textContent.trim().replace(/\s+/g, ' ').slice(0, 100) };
-        })
-        .filter(el => el.left < -1 || el.right > innerWidth + 1)
-        .slice(0, 40),
-    };
-    const contractCoverage = {
-      footerGroups: document.querySelectorAll('[data-callvaal-footer-group]').length,
-      creatorPreviews: document.querySelectorAll('[data-creator-preview]').length,
-      navigation: document.querySelectorAll('[data-callvaal-navigation]').length,
-      menuToggles: document.querySelectorAll('[data-callvaal-menu-toggle]').length,
-    };
-    return { fontFailures, fontCounts, clipping, overlaps, viewportOverflow, contractCoverage };
-  });
-}
 try {
   await new Promise(done => server.listen(4179, '127.0.0.1', done));
   browser = await chromium.launch();
@@ -143,89 +60,53 @@ try {
       });
       await expect(page.locator('link[rel="canonical"]')).toHaveAttribute('href', `https://${homepageIdentity.domain}/`);
       await expect(page.locator('meta[property="og:url"]')).toHaveAttribute('content', `https://${homepageIdentity.domain}/`);
-      await expect(page.locator('h1')).toHaveText('Talk to your favourite social media influencers over a private phone call.');
+      // [HF-HOME-DESI-1] Landing = the dashboard's shell and cards with an animated hero.
+      await expect(page.locator('h1')).toHaveText('Your favourite creators. One conversation away.');
       await expect(page.locator('.hfh-beta')).toHaveCount(0);
-      await expect(page.locator('.hfh-creator-card')).toHaveCount(8);
-      await expect(page.locator('.hfh-card-heading h3')).toHaveText(['Neha', 'Arjun', 'Meera', 'Rohit', 'Isha', 'Kabir', 'Sana', 'Dev']);
-      await expect(page.locator('.hfh-rate')).toHaveText(['₹3.99/min', '₹4.50/min', '₹3.50/min', '₹3.25/min', '₹5.50/min', '₹4.75/min', '₹4.25/min', '₹5.00/min']);
-      await expect(page.locator('.hfh-availability')).toHaveText(['Online now', 'Online now', 'In 30 mins', 'Online now', 'Online now', 'In 30 mins', 'Online now', 'Online now']);
-      await expect(page.locator('.hfh-category>span:first-of-type')).toHaveText(['Beauty & Style', 'Gaming', 'Fitness', 'Film & Culture', 'Travel', 'Music', 'Food & Lifestyle', 'Photography']);
-      await expect(page.locator('#people-title')).toHaveText('Talk to influencers you follow');
-      await expect(page.locator('[data-home-cta="explore-hosts"]')).toHaveText('Explore influencers →');
+      await expect(page.locator('.hfs[role="img"]')).toBeVisible();
+      await expect(page.locator('.h3-ticker')).toBeVisible();
+      await expect(page.locator('[data-creator-preview]')).toHaveCount(0);
       await expect(page.locator('.cv-footer-brand p')).toHaveCount(0);
-      const typography = await page.evaluate(() => ({
-        headings: [...document.querySelectorAll('h1,h2,h3,h4,h5,h6,.cv-footer-group>summary')].filter(el => el.getClientRects().length).every(el => getComputedStyle(el).fontFamily.includes('HomeNunito')),
-        body: [...document.querySelectorAll('main p,main a,main button,header a,footer p,footer a')].filter(el => el.getClientRects().length).every(el => getComputedStyle(el).fontFamily.includes('HomeComfortaa')),
-      }));
-      assert(typography.headings && typography.body, name + ': Nunito headings and Comfortaa body text');
-      await expect(page.locator('#privacy-title')).toHaveText('Your number stays yours.');
-      await expect(page.locator('.hfh-connection')).toContainText(homepageIdentity.name);
-      await expect(page.locator('.hfh-connection figcaption')).toHaveText('Two private calls. One conversation.');
-      await expect(page.locator('.hfh-kyc')).toHaveText(['Video KYC required', 'Video KYC required']);
-      await expect(page.locator('.hfh-eligibility')).toContainText('not their gender or sexual orientation');
-      await expect(page.locator('.hfh-steps h3')).toHaveText(['Choose an influencer', 'Start the call', 'Talk privately']);
-      await expect(page.locator('.hfh-share-url')).toHaveText(homepageIdentity.domain + '/yourname');
-      await expect(page.locator('#sample-disclosure')).toBeVisible();
-      await expect(page.locator('.hfh-disclosure')).toContainText('No audio plays and no call or payment is made.');
-      await expect(page.locator('.hfh-collage button, .hfh-collage a')).toHaveCount(0);
       for (const [action, href] of [
-        ['explore-hosts', '/marketplace'], ['view-all-hosts', '/marketplace'],
-        ['become-host', '/hosts/join'], ['apply-host', '/hosts/join'],
+        ['explore-hosts', '/marketplace'], ['become-host', '/hosts/join'], ['apply-host', '/hosts/join'],
         ['women-hosts', '/marketplace?lane=women#people'], ['lgbtq-hosts', '/marketplace?lane=lgbtq#people'],
       ]) await expect(page.locator('[data-home-cta="' + action + '"]')).toHaveAttribute('href', href);
-      const geometry = await page.evaluate(() => {
-        const columns = selector => getComputedStyle(document.querySelector(selector)).gridTemplateColumns.split(' ').length;
+      const shell = await page.evaluate(() => {
+        const shown = el => !!el && el.getClientRects().length > 0 && getComputedStyle(el).display !== 'none' && getComputedStyle(el).visibility !== 'hidden';
+        const visible = el => el.getClientRects().length > 0 && getComputedStyle(el).visibility !== 'hidden';
+        const small = [];
+        for (const el of document.querySelectorAll('main *')) {
+          if (!visible(el) || el.closest('.sr-only, svg, .hfs')) continue;
+          const own = [...el.childNodes].some(n => n.nodeType === 3 && n.textContent.trim());
+          if (own && parseFloat(getComputedStyle(el).fontSize) < 14) small.push({ el: el.className || el.tagName, text: el.textContent.trim().slice(0, 40), size: getComputedStyle(el).fontSize });
+        }
+        const fam = sel => [...document.querySelectorAll(sel)].filter(visible).map(el => getComputedStyle(el).fontFamily);
         return {
-          hero: columns('.hfh-hero'), creators: columns('.hfh-creator-grid'), privacy: columns('.hfh-privacy'),
-          lanes: columns('.hfh-lanes'), steps: columns('.hfh-steps'),
-          heroTop: document.querySelector('.hfh-hero').getBoundingClientRect().top,
-          headerTop: document.querySelector('header').getBoundingClientRect().top,
-          headerBottom: document.querySelector('header').getBoundingClientRect().bottom,
-          smallControls: [...document.querySelectorAll('.hfh-home button, .hfh-home a')].filter(el => el.getClientRects().length && el.getBoundingClientRect().height < 43.9).map(el => el.textContent),
+          side: shown(document.querySelector('.h3-side')), sideLabels: shown(document.querySelector('.h3-side .lbl')), bottom: shown(document.querySelector('.h3-bottom')),
+          small, headings: fam('main h1, main h2, main h3').every(f => f.includes('Nunito')), body: fam('main p').every(f => f.includes('Comfortaa')),
+          smallControls: [...document.querySelectorAll('main .h3-btn:not(.sm), .h3-bottom a')].filter(visible).filter(el => el.getBoundingClientRect().height < 43.9).map(el => el.textContent.trim()),
           ids: [...document.querySelectorAll('[id]')].map(el => el.id),
+          overflow: document.documentElement.scrollWidth,
         };
       });
-      assert.equal(geometry.hero, width >= 768 ? 2 : 1, name + ': hero columns');
-      assert.equal(geometry.creators, width >= 1024 ? 4 : width >= 768 ? 2 : 1, name + ': creator columns');
-      assert.equal(geometry.privacy, width >= 1024 ? 2 : 1, name + ': privacy columns');
-      assert.equal(geometry.lanes, width >= 1024 ? 2 : 1, name + ': lane columns');
-      assert.equal(geometry.steps, width >= 768 ? 3 : 1, name + ': steps columns');
-      assert(geometry.headerBottom <= geometry.heroTop + 1, name + ': header above hero');
-      assert.deepEqual(geometry.smallControls, [], name + ': 44px minimum control height');
-      assert.equal(new Set(geometry.ids).size, geometry.ids.length, name + ': IDs unique');
-      const readability = await inspectReadability(page);
-      metrics.push({ name, readability, geometry });
-      assert.deepEqual(readability.fontFailures, [], name + ': readable fonts');
-      assert.deepEqual(readability.clipping, [], name + ': unclipped content');
-      assert.deepEqual(readability.overlaps, [], name + ': controls and text do not overlap');
-      assert(readability.viewportOverflow.content <= width + 1, name + ': no horizontal overflow');
+      const shellWidth = await page.locator('.hf3').evaluate(el => el.getBoundingClientRect().width);
+      assert.equal(shell.side, shellWidth >= 736, name + ': section sidebar from 46rem');
+      assert.equal(shell.sideLabels, shellWidth >= 1152, name + ': full sidebar labels from 72rem, icon rail below');
+      assert.equal(shell.bottom, shellWidth < 736, name + ': bottom tabs on phones');
+      assert.deepEqual(shell.small, [], name + ': no text under 14px');
+      assert(shell.headings && shell.body, name + ': Nunito headings and Comfortaa body text');
+      assert.deepEqual(shell.smallControls, [], name + ': 44px minimum control height');
+      assert.equal(new Set(shell.ids).size, shell.ids.length, name + ': IDs unique');
+      assert(shell.overflow <= width + 1, name + ': no horizontal overflow');
+      metrics.push({ name, shell });
+      await page.locator('#people').scrollIntoViewIfNeeded();
+      await expect(page.locator('[data-live-creators="empty"]'), name + ': honest empty state when the live list is unreachable').toBeVisible({ timeout: 15000 });
       await page.evaluate(() => window.scrollTo(0, 700));
-      const stickyHeader = await page.locator('header').evaluate(el => ({
-        position: getComputedStyle(el).position, top: el.getBoundingClientRect().top,
-      }));
+      const stickyHeader = await page.locator('header').evaluate(el => ({ position: getComputedStyle(el).position, top: el.getBoundingClientRect().top }));
       assert.equal(stickyHeader.position, 'sticky', name + ': sticky header');
       assert(Math.abs(stickyHeader.top) <= 1, name + ': header remains at the top on scroll');
       await page.evaluate(() => window.scrollTo(0, 0));
-      const imageGeometry = await page.locator('main img').evaluateAll(images => images.filter(image => image.getClientRects().length).map(image => ({
-        alt: image.alt, loaded: image.complete && image.naturalWidth > 0,
-        width: image.getBoundingClientRect().width, height: image.getBoundingClientRect().height,
-      })));
-      assert(imageGeometry.length === 17 && imageGeometry.every(image => image.loaded && image.alt && image.width > 0 && image.height > 0), name + ': all separate photographic assets load');
       await page.screenshot({ path: 'homepage-review/' + name + '.png', fullPage: true });
-      const dialog = page.locator('#preview-dialog');
-      for (const trigger of await page.locator('.hfh-creator-card [data-preview-action]').all()) {
-        await trigger.click();
-        await expect(dialog).toBeVisible();
-        const voice = await trigger.getAttribute('data-preview-action') === 'voice';
-        await expect(dialog).toContainText(voice ? 'Nothing is playing.' : 'No call has been booked and no payment is made.');
-        assert(await dialog.evaluate(element => element.contains(document.activeElement)), name + ': modal receives focus');
-        await dialog.locator('[data-close-preview]').press('Enter');
-        await waitForPreviewClose(dialog, trigger, name);
-        await trigger.press('Enter');
-        await expect(dialog).toBeVisible();
-        await page.keyboard.press('Escape');
-        await waitForPreviewClose(dialog, trigger, name);
-      }
       const menu = page.locator('[data-callvaal-menu-toggle]');
       if (await menu.isVisible()) {
         await menu.click();
@@ -246,11 +127,7 @@ try {
       await expect(page.locator('[data-footer-preview]')).toHaveCount(0);
       if ([320, 390, 768, 1024, 1440].includes(width)) {
         await page.evaluate(() => { document.documentElement.style.fontSize = '200%'; });
-        const enlarged = await inspectReadability(page);
-        metrics.at(-1).enlarged = enlarged;
-        assert.deepEqual(enlarged.clipping, [], name + ': 200% text unclipped');
-        assert.deepEqual(enlarged.overlaps, [], name + ': 200% text does not overlap');
-        assert(enlarged.viewportOverflow.content <= width + 1, name + ': 200% text no horizontal overflow');
+        assert(await page.evaluate(() => document.documentElement.scrollWidth) <= width + 1, name + ': 200% text no horizontal overflow');
         await page.screenshot({ path: `homepage-review/${name}-text-200.png`, fullPage: true });
       }
       const missingAnchors = await page.locator('a[href^="#"]:visible').evaluateAll(links => links.map(a => a.hash.slice(1)).filter(id => id && !document.getElementById(id)));

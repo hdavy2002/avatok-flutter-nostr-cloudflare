@@ -10948,5 +10948,20 @@
     "min_devices_on_build": 1,
     "flags": [],
     "no_telemetry": "Pure CSS change; screens keep emitting hf_dash_view."
+  },
+  "HF-HOME-DESI-1": {
+    "description": "New front page in the dashboard layout: section sidebar/rail/bottom tabs, animated hero, live creators, pricing tiles, privacy, earnings estimate, safe spaces, FAQ.",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [],
+    "success": [
+      {
+        "event": "homepage_section_view",
+        "property": "design_version",
+        "equals": "desi-v1",
+        "min_events": 1,
+        "note": "A visitor saw a section of the new dashboard-style landing page."
+      }
+    ]
   }
 }

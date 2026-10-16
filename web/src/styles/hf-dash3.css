@@ -327,6 +327,9 @@
 .hf3 a.h3-card,.hf3 a.h3-me,.hf3 .h3-nav a,.hf3 a.h3-who,.hf3 .h3-top a.brand,.hf3 .h3-bottom a{text-decoration:none;color:inherit}
 .hf3 a.h3-btn{text-decoration:none}
 .hf3 a.h3-btn.ghost{color:var(--plum)}
+/* [HF-HOME-DESI-1] `.hf3 a{color:inherit}` outranked the button and active-menu colours: link buttons showed dark text. */
+.hf3 a.h3-btn{color:#fff}.hf3 a.h3-btn.ghost{color:var(--plum)}.hf3 a.h3-btn.gold{color:#3b1600}
+.hf3 .h3-nav a.h3-item.on{color:#fff}
 .hf3 .h3-bottom a{appearance:none;border:0;background:none;display:flex;flex-direction:column;align-items:center;gap:2px;font-size:clamp(14px,13.32px + 0.181vw,16.8px);color:var(--muted);padding:6px 0;border-radius:12px;font-weight:700}
 .hf3 .h3-bottom a svg{width:22px;height:22px}
 .hf3 .h3-bottom a.on{color:var(--rani);background:var(--blush)}
