@@ -32,6 +32,7 @@ function makeEnv() {
     CREATE TABLE hf_user_registration (uid TEXT PRIMARY KEY, first_name TEXT, last_name TEXT, username TEXT, created_at INTEGER);
   `);
   db.exec(require_("node:fs").readFileSync(new URL("../../migrations/2026-10-16-hf-dash-v3.sql", import.meta.url), "utf8"));
+  db.exec(require_("node:fs").readFileSync(new URL("../../migrations/2026-10-16-hf-appt-reminders.sql", import.meta.url), "utf8"));
   kv = new Map();
   const stmt = (q: string, args: unknown[] = []) => ({
     bind: (...a: unknown[]) => stmt(q, a),
@@ -101,8 +102,11 @@ describe("profile, prefs, blocks, tickets", () => {
   });
   it("notify preference defaults on and can be paused", async () => {
     expect(await notifyWhatsappOn(env, "u1")).toBe(true);
-    expect((await call("PUT", "/api/hf/me/prefs", { notifyWhatsapp: false })).body).toEqual({ ok: true, notifyWhatsapp: false });
+    expect((await call("PUT", "/api/hf/me/prefs", { notifyWhatsapp: false })).body).toEqual({ ok: true, notifyWhatsapp: false, apptReminders: true });
     expect(await notifyWhatsappOn(env, "u1")).toBe(false);
+    expect((await call("PUT", "/api/hf/me/prefs", { apptReminders: false })).body).toEqual({ ok: true, notifyWhatsapp: false, apptReminders: false });
+    expect((await call("GET", "/api/hf/me/prefs")).body).toEqual({ ok: true, notifyWhatsapp: false, apptReminders: false });
+    expect((await call("PUT", "/api/hf/me/prefs", { apptReminders: "no" })).status).toBe(400);
   });
   it("blocks the other person of my call only, lists and unblocks", async () => {
     db.exec(`INSERT INTO hf_hosts VALUES ('h1','riya','Riya','live')`);

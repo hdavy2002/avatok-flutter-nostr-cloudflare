@@ -2116,6 +2116,8 @@ export interface PlatformConfig {
   hfPushEnabled: boolean;
   // [HF-PRESENCE-NUDGE-1] 3-hourly WhatsApp (+ push) reminder to a LIVE host who is offline, 08:00-23:00 IST (worker/src/lib/hf_presence_nudge.ts). Default OFF; server-only.
   hfPresenceNudgeEnabled: boolean;
+  // [HF-APPT-REMIND-1] WhatsApp (+ push) reminders 1 h and 10 min before a booked call, to both people (worker/src/lib/hf_booking_reminders.ts). Kill switch; server-only.
+  hfBookingRemindersEnabled: boolean;
   hfTokensEnabled: boolean;
   hfCheckoutProvider: string;
   hfPricingVersion: string;
@@ -2922,6 +2924,7 @@ const DEFAULTS: PlatformConfig = {
   hfTopupConfirmAboveRupees: 1000, // [HF-WALLET-LIMITS-1]
   hfPushEnabled: false, // [HF-APP-4] dark until tested on a phone and the owner flips it
   hfPresenceNudgeEnabled: false, // [HF-PRESENCE-NUDGE-1] dark until the owner flips it
+  hfBookingRemindersEnabled: true, // [HF-APPT-REMIND-1] owner asked for reminders to be built and live (2026-10-16)
   hfTokensEnabled: false, // [HF-TOK-MATH-1] dark until tested and the owner flips it
   hfCheckoutProvider: "google_play",
   hfPricingVersion: "gp-r1",
@@ -3098,6 +3101,7 @@ export async function getConfig(env: Env): Promise<Response> {
     "hfStdHostPaisePerMin", "hfStdPhoneCostPaisePerMin", "hfTopupGstBps", "hfTopupGstInclusive"]) delete merged[k];
   delete merged.hfPushEnabled; // [HF-APP-4] server-only
   delete merged.hfPresenceNudgeEnabled; // [HF-PRESENCE-NUDGE-1] server-only
+  delete merged.hfBookingRemindersEnabled; // [HF-APPT-REMIND-1] server-only
   delete merged.hfPhoneOnlySignupEnabled; // [HF-AUTH-WA-1] server-only
   return json({ ...merged, partyEnabled }, 200, {
     "cache-control": "public, max-age=60",

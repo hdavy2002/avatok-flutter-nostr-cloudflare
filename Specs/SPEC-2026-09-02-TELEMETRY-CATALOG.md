@@ -1308,3 +1308,13 @@ Web events (flag `hfFavouritesEnabled`). Never in any prop: the person's name, p
 | worker `hf_dash_unblock` | – | Unblocked from Profile. |
 | worker `hf_dash_ticket_created` | `topic`, `ticket_id` | Support question stored and emailed to the support inbox. |
 | worker `$exception` | `extra.area: 'hf_dash_v3'`, `extra.step` | Any failure in routes/hf_dash_v3.ts. |
+
+## Hello Fraands appointment reminders (`[HF-APPT-REMIND-1]`, worker + web, 2026-10-16)
+
+| Event | Props | Note |
+|---|---|---|
+| worker `hf_booking_reminder_queued` | `booking_id`, `role: 'customer' \| 'host'`, `window: 't60' \| 't10'`, `channel: 'whatsapp'` | A reminder joined the WhatsApp outbox (the drain then sends it, or cancels it as `ineligible_before_send` if the booking changed). |
+| worker `hf_push_sent` | `kind: 'booking_reminder'` | The app push that goes with it, when push is on. |
+| worker `hf_dash_prefs_saved` | `notify_whatsapp`, `appt_reminders` | Dashboard notification switches saved. |
+| web `hf_dash3_notify_pref` | `key: 'notifyWhatsapp' \| 'apptReminders'`, `on` | A switch changed on Profile → Notifications. |
+| worker `$exception` | `extra.area: 'hf_booking_reminders'`, `booking_id`, `window` | One booking failed to queue (others continue). |

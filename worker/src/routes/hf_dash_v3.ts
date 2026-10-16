@@ -4,8 +4,9 @@
 //                                            streakDays, pendingReviews:[{callId,hostName,hostSlug,at,seconds}], blockedCount }
 //   GET    /api/hf/me/profile           -> { ok, firstName, lastName, username, displayName, city, languages[], talkAbout, joinedAt }
 //   PUT    /api/hf/me/profile           { firstName?, lastName?, city?, languages?, talkAbout? } -> same as GET
-//   GET    /api/hf/me/prefs             -> { ok, notifyWhatsapp }
-//   PUT    /api/hf/me/prefs             { notifyWhatsapp:boolean } -> { ok, notifyWhatsapp }   (false pauses every "Notify me" WhatsApp)
+//   GET    /api/hf/me/prefs             -> { ok, notifyWhatsapp, apptReminders }
+//   PUT    /api/hf/me/prefs             { notifyWhatsapp?, apptReminders? } -> same   (notifyWhatsapp false pauses every "Notify me" WhatsApp;
+//                                         apptReminders false stops the 1 h / 10 min appointment reminders, HF-APPT-REMIND-1)
 //   POST   /api/hf/calls/:id/block      { reason } -> { ok }   the other person of one of your calls; also files an incident for the team
 //   GET    /api/hf/blocks               -> { ok, items:[{key,name,slug,at}] }
 //   DELETE /api/hf/blocks/:key          -> { ok }
@@ -165,15 +166,24 @@ async function putProfile(req: Request, env: Env, uid: string): Promise<Response
 
 async function prefs(req: Request, env: Env, uid: string): Promise<Response> {
   if (req.method === "PUT") {
-    const b = (await req.json().catch(() => null)) as { notifyWhatsapp?: unknown } | null;
-    if (!b || typeof b.notifyWhatsapp !== "boolean") return err(400, "invalid_field", "notifyWhatsapp must be true or false.", { field: "notifyWhatsapp" });
+    const b = (await req.json().catch(() => null)) as { notifyWhatsapp?: unknown; apptReminders?: unknown } | null;
+    const nw = b?.notifyWhatsapp, ar = b?.apptReminders;
+    if (!b || (nw === undefined && ar === undefined) || (nw !== undefined && typeof nw !== "boolean") || (ar !== undefined && typeof ar !== "boolean"))
+      return err(400, "invalid_field", "notifyWhatsapp and apptReminders must be true or false.");
+    const cur = await readPrefs(env, uid);
+    const next = { notifyWhatsapp: typeof nw === "boolean" ? nw : cur.notifyWhatsapp, apptReminders: typeof ar === "boolean" ? ar : cur.apptReminders };
     await env.DB_META.prepare(
-      "INSERT INTO hf_user_prefs (uid, notify_whatsapp, updated_at) VALUES (?1,?2,?3) ON CONFLICT(uid) DO UPDATE SET notify_whatsapp=excluded.notify_whatsapp, updated_at=excluded.updated_at",
-    ).bind(uid, b.notifyWhatsapp ? 1 : 0, Date.now()).run();
-    void track(env, uid, "hf_dash_prefs_saved", APP, { notify_whatsapp: b.notifyWhatsapp });
-    return json({ ok: true, notifyWhatsapp: b.notifyWhatsapp }, 200, NO_STORE);
+      `INSERT INTO hf_user_prefs (uid, notify_whatsapp, appt_reminders, updated_at) VALUES (?1,?2,?3,?4)
+       ON CONFLICT(uid) DO UPDATE SET notify_whatsapp=excluded.notify_whatsapp, appt_reminders=excluded.appt_reminders, updated_at=excluded.updated_at`,
+    ).bind(uid, next.notifyWhatsapp ? 1 : 0, next.apptReminders ? 1 : 0, Date.now()).run();
+    void track(env, uid, "hf_dash_prefs_saved", APP, { notify_whatsapp: next.notifyWhatsapp, appt_reminders: next.apptReminders });
+    return json({ ok: true, ...next }, 200, NO_STORE);
   }
-  return json({ ok: true, notifyWhatsapp: await notifyWhatsappOn(env, uid) }, 200, NO_STORE);
+  return json({ ok: true, ...(await readPrefs(env, uid)) }, 200, NO_STORE);
+}
+async function readPrefs(env: Env, uid: string): Promise<{ notifyWhatsapp: boolean; apptReminders: boolean }> {
+  const r = await env.DB_META.prepare("SELECT notify_whatsapp, appt_reminders FROM hf_user_prefs WHERE uid=?1").bind(uid).first<{ notify_whatsapp: number; appt_reminders: number | null }>().catch(() => null);
+  return { notifyWhatsapp: r ? Number(r.notify_whatsapp) === 1 : true, apptReminders: r ? Number(r.appt_reminders ?? 1) !== 0 : true };
 }
 /** [HF-DASH-V3-1] The caller's "Notify me on WhatsApp" switch. Default on; a missing table or row counts as on. */
 export async function notifyWhatsappOn(env: Env, uid: string): Promise<boolean> {

@@ -78,7 +78,7 @@ export default function Appointments({ enabled, uid }: { enabled: boolean; uid: 
     <Card title="Past" note="Completed and cancelled">{!rows ? <Skel h={120} /> : past.length ? past.map(b => row(b, false)) : <p className="small muted">Your past appointments show up here.</p>}</Card>
     <section className="h3-safe" style={{ background: 'var(--lavtint)', borderColor: 'var(--line2)' }}>
       <div style={{ flex: 1, minWidth: '16rem' }}><h3>How appointments work</h3>
-        <ul>{['Pick a free slot on an influencer’s profile', 'The amount is held from your wallet, not spent', 'Open the appointment a few minutes early', 'Your number stays hidden on the call', 'Cancellation rules are shown on each appointment'].map(t => <li key={t}>{t}</li>)}</ul></div>
+        <ul>{['Pick a free slot on an influencer’s profile', 'The amount is held from your wallet, not spent', 'We remind you on WhatsApp 1 hour and 10 minutes before', 'Open the appointment a few minutes early', 'Your number stays hidden on the call', 'Cancellation rules are shown on each appointment'].map(t => <li key={t}>{t}</li>)}</ul></div>
       <Sticker name="chai" w={96} rot={5} />
     </section>
   </>;

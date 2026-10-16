@@ -28,6 +28,7 @@
 // outbox key in sendSaathumVideoReadyEmails (routes/saathum_checkout.ts).
 import { BRAND } from "./brand";
 import type { Env } from "../types";
+import { REMIND_KIND, revalidateBookingReminder } from "./hf_booking_reminders"; // [HF-APPT-REMIND-1]
 import { sha256Hex } from "../util";
 import { track, trackException } from "../hooks";
 import { sendWhatsAppText } from "./whatsapp_send";
@@ -357,6 +358,13 @@ export async function runWhatsAppOutboxDrain(env: Env, limit = 25): Promise<{ sc
     if (!claim?.meta?.changes) continue;
     const attempt = row.attempts + 1;
     try {
+      // [HF-APPT-REMIND-1] An appointment reminder goes out only while the booking is still on, in the future and not blocked.
+      if (row.kind === REMIND_KIND && await revalidateBookingReminder(env, row) !== "eligible") {
+        await db.prepare(
+          "UPDATE whatsapp_outbox SET status='cancelled', error='ineligible_before_send', updated_at=?2 WHERE id=?1 AND status='sending'",
+        ).bind(row.id, Date.now()).run();
+        continue;
+      }
       if (row.kind === "hf_notify" && await revalidateHfNotify(env, row) !== "eligible") {
         await db.prepare(
           "UPDATE whatsapp_outbox SET status='cancelled', error='ineligible_before_send', updated_at=?2 WHERE id=?1 AND status='sending'",

@@ -10907,5 +10907,25 @@
         "note": "A signed-in person opened a screen of the new dashboard (DashboardApp emits hf_dash_view with the section)."
       }
     ]
+  },
+  "HF-APPT-REMIND-1": {
+    "description": "WhatsApp (+ push) appointment reminders 1 h and 10 min before every confirmed booking, to both customer and influencer (worker/src/lib/hf_booking_reminders.ts, cron), with an Appointment reminders switch on the dashboard.",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [
+      "hfBookingRemindersEnabled"
+    ],
+    "success": [
+      {
+        "event": "hf_booking_reminder_queued",
+        "property": "window",
+        "min_events": 1,
+        "in": [
+          "t60",
+          "t10"
+        ],
+        "note": "A reminder was queued for a real upcoming booking (worker event; role tells customer or host)."
+      }
+    ]
   }
 }

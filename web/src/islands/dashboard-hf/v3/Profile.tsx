@@ -97,19 +97,21 @@ export default function Profile({ account }: { account: DashboardAccount }) {
 
 function NotifyPref() {
   const toast = useToast();
-  const [on, setOn] = useState<boolean | null>(null);
+  const [p, setP] = useState<{ notifyWhatsapp: boolean; apptReminders: boolean } | null>(null);
   const [busy, setBusy] = useState(false);
-  useEffect(() => { void getPrefs().then(r => setOn(r.ok ? r.data.notifyWhatsapp : true)); }, []);
-  const flip = async (v: boolean) => {
-    setBusy(true); const r = await putPrefs(v); setBusy(false);
-    if (r.ok) { setOn(r.data.notifyWhatsapp); toast(v ? 'Notify me is on 🌼' : 'Notify me paused. Aram karo.'); capture('hf_dash3_notify_pref', { on: v }); }
+  useEffect(() => { void getPrefs().then(r => setP(r.ok ? r.data : { notifyWhatsapp: true, apptReminders: true })); }, []);
+  const flip = async (k: 'notifyWhatsapp' | 'apptReminders', v: boolean, on: string, off: string) => {
+    setBusy(true); const r = await putPrefs({ [k]: v }); setBusy(false);
+    if (r.ok) { setP({ notifyWhatsapp: r.data.notifyWhatsapp, apptReminders: r.data.apptReminders }); toast(v ? on : off); capture('hf_dash3_notify_pref', { key: k, on: v }); }
     else toast(r.message || 'We could not change that. Please try again.');
   };
+  const row = (k: 'notifyWhatsapp' | 'apptReminders', title: string, sub: string, on: string, off: string) => <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center', padding: '12px 0', borderBottom: '1px dashed var(--line)' }}>
+    <div><b>{title}</b><div className="small muted">{sub}</div></div>
+    <label className="h3-toggle"><span className="sr">{title}</span><input type="checkbox" role="switch" checked={!!p?.[k]} disabled={!p || busy} onChange={e => void flip(k, e.target.checked, on, off)} /></label>
+  </div>;
   return <div>
-    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center', padding: '12px 0', borderBottom: '1px dashed var(--line)' }}>
-      <div><b>Notify me on WhatsApp</b><div className="small muted">One message when an influencer you asked about is free. Off pauses them all.</div></div>
-      <label className="h3-toggle"><span className="sr">Notify me on WhatsApp</span><input type="checkbox" role="switch" checked={!!on} disabled={on === null || busy} onChange={e => void flip(e.target.checked)} /></label>
-    </div>
+    {row('notifyWhatsapp', 'Notify me on WhatsApp', 'One message when an influencer you asked about is free. Off pauses them all.', 'Notify me is on 🌼', 'Notify me paused. Aram karo.')}
+    {row('apptReminders', 'Appointment reminders', 'WhatsApp (and app) reminder 1 hour and 10 minutes before a booked call.', 'Reminders on ⏰', 'Appointment reminders off.')}
     <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center', padding: '12px 0', borderBottom: '1px dashed var(--line)' }}>
       <div><b>Top-up receipts</b><div className="small muted">Always sent on WhatsApp and email after you add money.</div></div><span className="h3-chip">Always on</span></div>
     <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center', padding: '12px 0' }}>

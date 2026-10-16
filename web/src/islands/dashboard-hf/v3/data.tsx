@@ -25,8 +25,10 @@ export type Fav = FavouriteHost & { languages?: string[]; topics?: string[]; pla
 export const getInsights = () => hfCall<Insights>('GET', '/api/hf/me/insights');
 export const getProfile = () => hfCall<DashProfile>('GET', '/api/hf/me/profile');
 export const putProfile = (body: Partial<{ firstName: string; lastName: string; city: string | null; languages: string[]; talkAbout: string | null }>) => hfCall<DashProfile>('PUT', '/api/hf/me/profile', body);
-export const getPrefs = () => hfCall<{ ok: boolean; notifyWhatsapp: boolean }>('GET', '/api/hf/me/prefs');
-export const putPrefs = (notifyWhatsapp: boolean) => hfCall<{ ok: boolean; notifyWhatsapp: boolean }>('PUT', '/api/hf/me/prefs', { notifyWhatsapp });
+export interface Prefs { ok: boolean; notifyWhatsapp: boolean; apptReminders: boolean }
+export const getPrefs = () => hfCall<Prefs>('GET', '/api/hf/me/prefs');
+/** [HF-APPT-REMIND-1] Send only the switch that changed. */
+export const putPrefs = (body: Partial<Pick<Prefs, 'notifyWhatsapp' | 'apptReminders'>>) => hfCall<Prefs>('PUT', '/api/hf/me/prefs', body);
 export interface BlockItem { key: string; name: string; slug: string | null; at: number }
 export const getBlocks = () => hfCall<{ ok: boolean; items: BlockItem[] }>('GET', '/api/hf/blocks');
 export const unblock = (key: string) => hfCall<{ ok: boolean }>('DELETE', `/api/hf/blocks/${encodeURIComponent(key)}`);

@@ -75,7 +75,7 @@ export default function Close() {
           {err && <p className="small" style={{ color: 'var(--bad)' }} role="alert">{err}</p>}
           <button type="button" className="h3-btn danger" disabled={!sure || busy || (info.forfeitRupees > 0 && !agree)} onClick={go}>{busy ? 'Working…' : hasMoney ? 'Pay out my money and close my account' : 'Close my account'}</button>
           <div style={{ padding: 14, borderRadius: 16, background: 'var(--goldtint)' }}><b>Bas thoda break chahiye?</b><p className="small muted">Pause the “Notify me” WhatsApps instead — your wallet and fraands stay safe.</p>
-            <button type="button" className="h3-btn sm gold" style={{ marginTop: 8 }} onClick={async () => { const r = await putPrefs(false); toast(r.ok ? 'Notifications paused. Aram karo 🌼' : 'We could not pause them. Please try again.'); }}>Pause notifications</button></div>
+            <button type="button" className="h3-btn sm gold" style={{ marginTop: 8 }} onClick={async () => { const r = await putPrefs({ notifyWhatsapp: false, apptReminders: false }); toast(r.ok ? 'Notifications paused. Aram karo 🌼' : 'We could not pause them. Please try again.'); }}>Pause notifications</button></div>
         </div>
       </Card>
     </section>}

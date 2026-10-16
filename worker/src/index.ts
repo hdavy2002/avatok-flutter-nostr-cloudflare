@@ -93,7 +93,8 @@ import {
   saathumCheckoutPaid, // [SAATHUM-UPI-3LAYER 2026-09-29]
 } from "./routes/saathum_checkout";
 import { runWhatsAppOutboxDrain } from "./lib/whatsapp_notify"; // [WA-NOTIFY-1]
-import { hfNotifyRoute, runHfNotifyMaterializer } from "./lib/hf_notify"; // [HF-CALLS-1 / HF-NOTIFY-DELIVERY-1]
+import { hfNotifyRoute, runHfNotifyMaterializer } from "./lib/hf_notify";
+import { runHfBookingReminders } from "./lib/hf_booking_reminders"; // [HF-APPT-REMIND-1] // [HF-CALLS-1 / HF-NOTIFY-DELIVERY-1]
 import { preetiRoute } from "./routes/preeti"; // [SAATHUM-PREETI-1]
 import { runPreetiDailyMaintenance } from "./lib/preeti/knowledge"; // [SAATHUM-PREETI-1]
 import { runPreetiChatMaintenance } from "./lib/preeti/maintenance"; // [SAATHUM-PREETI-1]
@@ -614,6 +615,10 @@ export default {
         runHfNotifyMaterializer(env)
           .then((r) => { if (r.scanned) console.log("[hf-notify-materialize]", JSON.stringify(r)); })
           .catch((e) => { console.error("[hf-notify-materialize] failed:", String(e)); })
+          // [HF-APPT-REMIND-1] Appointment reminders (1 h and 10 min before) join the same paced outbox before it drains.
+          .then(() => runHfBookingReminders(env))
+          .then((r) => { if (r && r.scanned) console.log("[hf-booking-reminders]", JSON.stringify(r)); })
+          .catch((e) => { console.error("[hf-booking-reminders] failed:", String(e)); })
           .then(() => runWhatsAppOutboxDrain(env))
           .then((r) => { if (r.scanned) console.log("[whatsapp-outbox-drain]", JSON.stringify(r)); })
           .catch((e) => { console.error("[whatsapp-outbox-drain] failed:", String(e)); }),
