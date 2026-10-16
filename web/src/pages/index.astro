@@ -4,39 +4,38 @@ import brandConfig from '../../../Specs/brand.json';
 import Header from '../components/callvaal/Header.astro';
 import Footer from '../components/callvaal/Footer.astro';
 import ModernIcon from '../components/home/ModernIcon.astro';
-import ScrapbookArt from '../components/home/ScrapbookArt.astro';
+import IndianMaxArt from '../components/home/IndianMaxArt.astro';
 import { publicImage, publicImageSrcSet, shareImage } from '../lib/config';
-import { APP_STORE_URL } from '../lib/env';
 import { HF_PLAY_URL } from '../lib/hfApp';
 import '../styles/callvaal-notebook.css';
 import '../styles/hello-fraands-pages.css';
-import '../styles/approved-scrapbook.css';
+import '../styles/native-creator-home.css';
 const identity = brandConfig.homepageIdentity;
-const title = `Your favorite creators. One conversation away. | ${identity.name}`;
-const description = 'Watch entertaining videos. Discover your kind of people. Book a private conversation.';
+const title = `From reels. To real talks. | ${identity.name}`;
+const description = 'Discover your favorite creators and book a private conversation. We call you both and connect the conversation, with both phone numbers kept private.';
 const canonical = `https://${identity.domain}/`;
 const assets = '/assets/hf-home-sharp/';
 const ogImage = shareImage(`${assets}meera.webp`);
 const imageWidths = [420, 640, 900, 1280, 1600, 2048];
 const creators = [
-  { id: 'meera', name: 'Meera', category: 'Lifestyle', alt: 'An illustrative young adult Indian lifestyle creator' },
-  { id: 'kabir', name: 'Kabir', category: 'Comedy', alt: 'An illustrative young adult Indian comedy creator' },
-  { id: 'ananya', name: 'Ananya', category: 'Music', alt: 'An illustrative young adult Indian music creator' },
-  { id: 'rohan', name: 'Rohan', category: 'Travel', alt: 'An illustrative young adult Indian travel creator' },
+  { id: 'meera', name: 'Meera', category: 'Lifestyle', line: 'Main character energy.', alt: 'An illustrative young adult Indian lifestyle creator' },
+  { id: 'kabir', name: 'Kabir', category: 'Comedy', line: 'A little less serious.', alt: 'An illustrative young adult Indian comedy creator' },
+  { id: 'ananya', name: 'Ananya', category: 'Music', line: 'Find your rhythm.', alt: 'An illustrative young adult Indian music creator' },
+  { id: 'rohan', name: 'Rohan', category: 'Travel', line: 'Stories from everywhere.', alt: 'An illustrative young adult Indian travel creator' },
 ];
 const steps = [
-  { id: 'watch', icon: 'play', title: 'Watch their videos', text: 'A feed full of personalities worth knowing.' },
-  { id: 'find', icon: 'user', title: 'Find your favorite', text: 'Explore their profile and book a call.' },
-  { id: 'connect', icon: 'phone', title: 'We connect you both', text: "We call both parties and merge the call. Neither sees the other's number." },
+  { title: 'Meet your next favorite.', text: 'Watch their videos. Find the personalities and stories that speak to you.', icon: 'play' },
+  { title: 'Make the first move.', text: 'Explore their profile, check their price and book a private call.', icon: 'user' },
+  { title: 'We make the connection.', text: "We call both parties and merge the call. Neither sees the other's number.", icon: 'phone' },
 ];
-const heroSizes = '(min-width: 1824px) 280px, (min-width: 1100px) 16vw, (min-width: 900px) 28vw, (min-width: 600px) 27vw, 26vw';
-const cardSizes = '(min-width: 1824px) 400px, (min-width: 1100px) 22vw, (min-width: 600px) 44vw, calc(100vw - 64px)';
+const heroSizes = '(min-width: 1824px) 475px, (min-width: 1100px) 27vw, (min-width: 600px) 43vw, calc((100vw - 80px) / 2)';
+const cardSizes = '(min-width: 1824px) 400px, (min-width: 1100px) 22vw, (min-width: 600px) 43vw, calc(100vw - 64px)';
 ---
 <!doctype html>
 <html lang="en-IN">
 <head>
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <title>{title}</title><meta name="description" content={description} /><link rel="canonical" href={canonical} /><meta name="theme-color" content="#fffdf7" /><meta name="robots" content="index,follow" />
+  <title>{title}</title><meta name="description" content={description} /><link rel="canonical" href={canonical} /><meta name="theme-color" content="#fff2cf" /><meta name="robots" content="index,follow" />
   <script type="application/ld+json" set:html={JSON.stringify({ '@context': 'https://schema.org', '@type': 'WebPage', name: title, description, url: canonical, inLanguage: 'en-IN' })} />
   <meta property="og:type" content="website" /><meta property="og:site_name" content={identity.name} /><meta property="og:title" content={title} /><meta property="og:description" content={description} /><meta property="og:url" content={canonical} />
   <meta property="og:image" content={ogImage} /><meta property="og:image:alt" content="An illustrative creator, ready for a conversation." />
@@ -44,72 +43,69 @@ const cardSizes = '(min-width: 1824px) 400px, (min-width: 1100px) 22vw, (min-wid
   <link rel="icon" href="/assets/branding/hf-favicon.png" type="image/png" />
   <link data-site-fonts rel="preload" href="/fonts/Comfortaa-Bold.ttf" as="font" type="font/ttf" crossorigin /><link rel="preload" href="/fonts/Nunito-Black.woff2" as="font" type="font/woff2" crossorigin />
 </head>
-<body class="approved-scrapbook-page">
-<div class="notebook-site hf-site approved-scrapbook" data-design="approved-scrapbook">
+<body class="native-creator-page">
+<div class="notebook-site hf-site native-homepage" data-native-home data-design="native-maximalist-v3">
   <a class="skip-link" href="#main-content">Skip to main content</a>
   <Header />
-  <main id="main-content" class="as-main">
-    <section class="as-hero" aria-labelledby="hero-title" data-home-section="hero">
-      <div class="as-hero-copy">
-        <p class="as-eyebrow">Scroll. Discover. Connect.</p>
-        <h1 id="hero-title"><span>Your favorite <br />creators.</span> <em>One conversation away.</em></h1>
-        <p class="as-hero-description">Watch entertaining videos. Discover your kind of people. Book a private conversation.</p>
-        <div class="as-actions" data-approved-actions><a class="as-button" href="/marketplace" data-home-cta="explore-feed">Explore the feed <span aria-hidden="true">→</span></a><a class="as-button as-button-outline" href="#how-it-works" data-home-cta="how-it-works">How it works</a></div>
-        <p class="as-platforms"><span class="as-social-icons" aria-hidden="true"><span class="as-youtube">▶</span><span class="as-instagram">◎</span><span class="as-facebook">f</span></span><span>YouTube · Instagram · Facebook creators</span></p>
-        <ScrapbookArt name="building" class="as-hero-building" />
-      </div>
-      <div class="as-hero-collage" aria-label="Illustrative lifestyle, comedy and music creators">
-        <ScrapbookArt name="arrow" class="as-hero-arrow" />
-        <div class="as-hero-portraits">{creators.slice(0, 3).map((creator, index) => <figure class={`as-portrait as-portrait-${creator.id}`}>
-          <div class="as-portrait-photo"><img src={publicImage(`${assets}${creator.id}.webp`, { width: 900 })} srcset={publicImageSrcSet(`${assets}${creator.id}.webp`, imageWidths)} sizes={heroSizes} width="1024" height="1536" fetchpriority={index === 0 ? 'high' : 'auto'} alt={creator.alt} />
-            <button type="button" class="as-hero-play" data-preview-action="video" data-preview-name={creator.name} aria-label={`Preview ${creator.name} sample video`} aria-haspopup="dialog" aria-controls="approved-preview-dialog"><ModernIcon name="play" /></button>
-          </div><figcaption>{creator.category}<span aria-hidden="true">↗</span></figcaption>
-        </figure>)}</div>
-        <ScrapbookArt name="flower" class="as-hero-flower" />
-        <ScrapbookArt name="auto" class="as-hero-auto" />
-        <p class="as-collage-note" aria-hidden="true">Your kind of people.</p>
-      </div>
-    </section>
-    <section class="as-privacy" id="safety" aria-labelledby="privacy-title" data-home-section="privacy">
-      <span id="women-only" class="as-anchor" aria-hidden="true"></span>
-      <span class="as-privacy-lock"><ModernIcon name="lock" /></span>
-      <div><h2 id="privacy-title">Your number stays private. The influencer’s does too.</h2><p>We call you both and connect the conversation.</p></div>
-      <ScrapbookArt name="flower" class="as-privacy-flower" />
-    </section>
-    <section class="as-how" id="how-it-works" aria-labelledby="how-title" data-home-section="how-it-works">
-      <div class="as-section-heading"><div><p class="as-eyebrow">A little scroll. A real hello.</p><h2 id="how-title">Watch. Discover. Say hello.</h2></div><ScrapbookArt name="chai" class="as-heading-chai" /></div>
-      <ol class="as-steps" data-approved-steps>{steps.map((step, index) => <li class={`as-step as-step-${step.id}`}>
-        <div class="as-step-top"><span class="as-step-number">{String(index + 1).padStart(2, '0')}</span><ModernIcon name={step.icon} /></div>
-        <h3>{step.title}</h3><p>{step.text}</p>
-      </li>)}</ol>
-      <p class="as-sr-only">The influencer receives the call first. If they accept, we call you and merge the calls. Both numbers stay private.</p>
-    </section>
-    <section class="as-creators" id="people" aria-labelledby="creators-title" data-home-section="creators">
-      <span id="moods" class="as-anchor" aria-hidden="true"></span><span id="naye-dost" class="as-anchor" aria-hidden="true"></span>
-      <div class="as-section-heading"><div><p class="as-eyebrow">Find your kind of energy</p><h2 id="creators-title">Big personalities. <br />Real conversations.</h2></div><ScrapbookArt name="leaves" class="as-heading-leaves" /></div>
-      <div class="as-creator-grid" data-approved-creator-grid>{creators.map(creator => <article class={`as-creator as-creator-${creator.id}`} data-approved-creator={creator.id} aria-label={`${creator.name}, illustrative ${creator.category.toLowerCase()} creator`}>
-        <div class="as-creator-photo"><img src={publicImage(`${assets}${creator.id}.webp`, { width: 900 })} srcset={publicImageSrcSet(`${assets}${creator.id}.webp`, imageWidths)} sizes={cardSizes} width="1024" height="1536" loading="lazy" alt={creator.alt} />
-          <button class="as-card-play" type="button" data-preview-action="video" data-preview-name={creator.name} aria-label={`Preview ${creator.name} sample video`} aria-haspopup="dialog" aria-controls="approved-preview-dialog"><ModernIcon name="play" /></button>
+  <main id="main-content" class="nh-main">
+    <section class="nh-hero" aria-labelledby="hero-title" data-home-section="hero">
+      <p class="nh-kicker nh-hero-kicker">Your feed. Your people. Your call.</p>
+      <h1 id="hero-title"><span>From reels.</span> <em>To real talks.</em></h1>
+      <div class="nh-hero-stage">
+        <figure class="nh-hero-portrait nh-hero-portrait-left">
+          <p class="nh-meme nh-meme-waah" data-meme-sticker>Arre waah!</p>
+          <div class="nh-photo nh-torn"><img src={publicImage(`${assets}meera.webp`, { width: 900 })} srcset={publicImageSrcSet(`${assets}meera.webp`, imageWidths)} sizes={heroSizes} width="1024" height="1536" fetchpriority="high" alt={creators[0].alt} />
+            <button type="button" class="nh-play" data-preview-action="video" data-preview-name="Meera" aria-label="Preview Meera sample video" aria-haspopup="dialog" aria-controls="approved-preview-dialog"><ModernIcon name="play" /></button>
+          </div><figcaption><span>Lifestyle</span><strong>Main character energy.</strong></figcaption>
+        </figure>
+        <div class="nh-hero-center">
+          <p class="nh-hero-promise">That creator you keep watching? <br />There’s a conversation waiting.</p>
+          <p class="nh-hero-description">Discover your favorite personalities. Book a private call. Say more than a comment.</p>
+          <div class="nh-actions" data-approved-actions><a class="nh-button" href="/marketplace" data-home-cta="explore-feed">Find your people <span aria-hidden="true">↗</span></a><a class="nh-text-link" href="#how-it-works" data-home-cta="how-it-works">How it works <span aria-hidden="true">↓</span></a></div>
+          <div class="nh-art nh-hero-auto"><IndianMaxArt name="auto" /></div>
+          <p class="nh-platforms">YouTube · Instagram · Facebook creators</p>
         </div>
-        <div class="as-creator-label"><h3>{creator.name}</h3><p>{creator.category}</p></div>
-        <button class="as-profile-button" type="button" data-preview-action="profile" data-preview-name={creator.name} aria-label={`View ${creator.name} sample profile`} aria-haspopup="dialog" aria-controls="approved-preview-dialog">View profile <span aria-hidden="true">→</span></button>
+        <figure class="nh-hero-portrait nh-hero-portrait-right">
+          <div class="nh-art nh-hero-floral"><IndianMaxArt name="floral" /></div>
+          <div class="nh-photo nh-torn"><img src={publicImage(`${assets}kabir.webp`, { width: 900 })} srcset={publicImageSrcSet(`${assets}kabir.webp`, imageWidths)} sizes={heroSizes} width="1024" height="1536" alt={creators[1].alt} />
+            <button type="button" class="nh-play" data-preview-action="video" data-preview-name="Kabir" aria-label="Preview Kabir sample video" aria-haspopup="dialog" aria-controls="approved-preview-dialog"><ModernIcon name="play" /></button>
+          </div><figcaption><span>Comedy</span><strong>A little less serious.</strong></figcaption>
+        </figure>
+      </div>
+    </section>
+    <section class="nh-discover" id="moods" aria-labelledby="discover-title" data-home-section="discover">
+      <div class="nh-discover-copy"><p class="nh-kicker">Same scroll. New possibilities.</p><h2 id="discover-title">Big energy. <br />Zero small talk.</h2><p>Music obsessives. Story collectors. The people who make you laugh out loud.</p><a class="nh-button nh-button-cream" href="/marketplace" data-home-cta="discover-influencers">Discover influencers <span aria-hidden="true">↗</span></a></div>
+      <div class="nh-discover-art"><p class="nh-meme nh-meme-power" data-meme-sticker>Full <br />power!</p><div class="nh-art nh-skyline"><IndianMaxArt name="skyline" /></div></div>
+    </section>
+    <section class="nh-privacy" id="safety" aria-labelledby="privacy-title" data-home-section="privacy">
+      <span id="women-only" class="nh-anchor" aria-hidden="true"></span>
+      <div class="nh-privacy-art"><div class="nh-art"><IndianMaxArt name="floral" /></div><span class="nh-lock"><ModernIcon name="lock" /></span><p class="nh-paper-label">Good conversations. <br />Private numbers.</p></div>
+      <div class="nh-privacy-copy"><p class="nh-kicker">A little mystery is a good thing</p><h2 id="privacy-title">Your number stays private. The influencer’s does too.</h2><p class="nh-privacy-promise">We call you both and connect the conversation.</p><p>We call the influencer first. If they accept, we call you and merge the calls. Both numbers stay private.</p></div>
+    </section>
+    <section class="nh-how" id="how-it-works" aria-labelledby="how-title" data-home-section="how-it-works">
+      <div class="nh-section-heading"><div><p class="nh-kicker">Less overthinking. More talking.</p><h2 id="how-title">Your next hello, <br />in three moves.</h2></div><div class="nh-art nh-how-burst"><IndianMaxArt name="burst" /></div></div>
+      <ol class="nh-steps" data-approved-steps>{steps.map((step, index) => <li><div class="nh-step-top"><span>{String(index + 1).padStart(2, '0')}</span><ModernIcon name={step.icon} /></div><h3>{step.title}</h3><p>{step.text}</p></li>)}</ol>
+    </section>
+    <section class="nh-creators" id="people" aria-labelledby="creators-title" data-home-section="creators">
+      <span id="naye-dost" class="nh-anchor" aria-hidden="true"></span><span id="earn" class="nh-anchor" aria-hidden="true"></span>
+      <div class="nh-section-heading"><div><p class="nh-kicker">No one does you like you</p><h2 id="creators-title">Pick your <br /><em>kind of chaos.</em></h2></div><a class="nh-text-link" href="/marketplace" data-home-cta="all-creators">Explore everyone <span aria-hidden="true">↗</span></a></div>
+      <div class="nh-creator-grid" data-approved-creator-grid>{creators.map(creator => <article class={`nh-creator nh-creator-${creator.id}`} data-approved-creator={creator.id} aria-label={`${creator.name}, illustrative ${creator.category.toLowerCase()} creator`}>
+        <div class="nh-photo nh-torn"><img src={publicImage(`${assets}${creator.id}.webp`, { width: 900 })} srcset={publicImageSrcSet(`${assets}${creator.id}.webp`, imageWidths)} sizes={cardSizes} width="1024" height="1536" loading="lazy" alt={creator.alt} /><button class="nh-play" type="button" data-preview-action="video" data-preview-name={creator.name} aria-label={`Preview ${creator.name} sample video`} aria-haspopup="dialog" aria-controls="approved-preview-dialog"><ModernIcon name="play" /></button></div>
+        <div class="nh-creator-copy"><p class="nh-category">{creator.category}</p><h3>{creator.name}</h3><p>{creator.line}</p></div>
+        <button class="nh-profile-button" type="button" data-preview-action="profile" data-preview-name={creator.name} aria-label={`View ${creator.name} sample profile`} aria-haspopup="dialog" aria-controls="approved-preview-dialog">View profile <span aria-hidden="true">↗</span></button>
       </article>)}</div>
     </section>
-    <section class="as-connect" id="earn" aria-labelledby="connect-title" data-home-section="connect">
-      <ScrapbookArt name="chai" class="as-connect-chai" /><div><h2 id="connect-title">Don’t just follow. <em>Connect.</em></h2><p>Watch what you love. Talk to who you love.</p><a class="as-button" href="/marketplace" data-home-cta="discover-influencers">Discover influencers <span aria-hidden="true">→</span></a></div><ScrapbookArt name="flower" class="as-connect-flower" />
-    </section>
-    <section class="as-download" id="download" aria-labelledby="download-title" data-home-section="download">
-      <div class="as-download-copy"><p class="as-eyebrow">Take your people with you</p><h2 id="download-title">Keep your favorites <br />one tap away.</h2><p>Make room on your home screen for {identity.name}.</p></div>
-      <div class="as-download-stores">
-        <a class="as-store-button" href={HF_PLAY_URL} data-home-cta="download-google-play"><ModernIcon name="android" /><span><small>Get it on</small><strong>Google Play</strong></span><span aria-hidden="true">↗</span></a>
-        {APP_STORE_URL ? <a class="as-store-button" href={APP_STORE_URL} data-home-cta="download-app-store"><ModernIcon name="apple" /><span><small>Download on the</small><strong>App Store</strong></span><span aria-hidden="true">↗</span></a> : <span class="as-store-button as-store-soon" data-app-store-status="coming-soon" aria-disabled="true"><ModernIcon name="apple" /><span><strong>iPhone app</strong><small>Coming soon</small></span></span>}
+    <section class="nh-download" id="download" aria-labelledby="download-title" data-home-section="download">
+      <div class="nh-download-art"><p class="nh-meme nh-meme-chai" data-meme-sticker>Chai pe <br />charcha?</p><div class="nh-art nh-chai"><IndianMaxArt name="chai" /></div></div>
+      <div class="nh-download-copy"><p class="nh-kicker">Carry the conversation</p><h2 id="download-title">Your people. <br />In your pocket.</h2><p>Keep your favorites one tap away. Make room on your home screen for {identity.name}.</p>
+        <div class="nh-store-links"><a class="nh-store" href={HF_PLAY_URL} data-home-cta="download-google-play"><ModernIcon name="android" /><span><small>Get it on</small><strong>Google Play</strong></span></a><span class="nh-store nh-store-soon" data-app-store-status="coming-soon" aria-disabled="true"><ModernIcon name="apple" /><span><strong>iPhone app</strong><small>Coming soon</small></span></span></div>
       </div>
     </section>
   </main>
   <Footer hideTagline />
-  <dialog id="approved-preview-dialog" class="as-preview-dialog" aria-labelledby="preview-title" aria-describedby="preview-description">
+  <dialog id="approved-preview-dialog" class="nh-preview-dialog" aria-labelledby="preview-title" aria-describedby="preview-description">
     <h2 id="preview-title">A preview of the experience</h2><p id="preview-description">This is an illustrative sample. No video plays, call is booked or payment is taken. Explore shows the available influencer directory.</p>
-    <div class="as-dialog-actions"><a class="as-button" href="/marketplace" data-home-cta="sample-explore">Explore influencers</a><button type="button" class="as-button as-button-outline" data-close-preview>Close preview</button></div>
+    <div class="nh-dialog-actions"><a class="nh-button" href="/marketplace" data-home-cta="sample-explore">Explore influencers</a><button type="button" class="nh-button nh-button-cream" data-close-preview>Close preview</button></div>
   </dialog>
 </div>
 <script>
@@ -123,7 +119,7 @@ const cardSizes = '(min-width: 1824px) 400px, (min-width: 1100px) 22vw, (min-wid
     if (title) title.textContent = `${button.dataset.previewName || 'Creator'} · sample ${button.dataset.previewAction}`;
     dialog.showModal();
     dialog.querySelector<HTMLButtonElement>('[data-close-preview]')?.focus();
-    capture('homepage_sample_open', { surface: 'approved-scrapbook', sample: button.dataset.previewName, action: button.dataset.previewAction });
+    capture('homepage_sample_open', { surface: 'native-maximalist-v3', sample: button.dataset.previewName, action: button.dataset.previewAction });
   }));
   document.addEventListener('keydown', event => {
     if (event.key !== 'Tab' || !dialog?.open) return;
@@ -133,22 +129,15 @@ const cardSizes = '(min-width: 1824px) 400px, (min-width: 1100px) 22vw, (min-wid
     const last = focusable[focusable.length - 1];
     if (!first || !last) { event.preventDefault(); return; }
     const active = document.activeElement;
-    if (!active || !dialog.contains(active)) {
-      event.preventDefault();
-      first.focus();
-    } else if (event.shiftKey && active === first) {
-      event.preventDefault();
-      last.focus();
-    } else if (!event.shiftKey && active === last) {
-      event.preventDefault();
-      first.focus();
-    }
+    if (!active || !dialog.contains(active)) { event.preventDefault(); first.focus(); }
+    else if (event.shiftKey && active === first) { event.preventDefault(); last.focus(); }
+    else if (!event.shiftKey && active === last) { event.preventDefault(); first.focus(); }
   });
   dialog?.querySelector('[data-close-preview]')?.addEventListener('click', () => dialog.close());
-  dialog?.addEventListener('close', () => { trigger?.focus(); capture('homepage_sample_close', { surface: 'approved-scrapbook' }); });
+  dialog?.addEventListener('close', () => { trigger?.focus(); capture('homepage_sample_close', { surface: 'native-maximalist-v3' }); });
   dialog?.addEventListener('click', event => { if (event.target !== dialog) return; const rect = dialog.getBoundingClientRect(); if (event.clientX < rect.left || event.clientX > rect.right || event.clientY < rect.top || event.clientY > rect.bottom) dialog.close(); });
-  document.querySelectorAll<HTMLAnchorElement>('[data-home-cta]').forEach(link => link.addEventListener('click', () => capture('homepage_cta_click', { surface: 'approved-scrapbook', cta: link.dataset.homeCta, href: link.getAttribute('href') })));
-  capture('homepage_impression', { surface: 'approved-scrapbook', design: 'sharp-native-scrapbook-v2' });
+  document.querySelectorAll<HTMLAnchorElement>('[data-home-cta]').forEach(link => link.addEventListener('click', () => capture('homepage_cta_click', { surface: 'native-maximalist-v3', cta: link.dataset.homeCta, href: link.getAttribute('href') })));
+  capture('homepage_impression', { surface: 'native-maximalist-v3', design: 'native-maximalist-v3' });
   document.documentElement.dataset.homepageReady = 'true';
 </script>
 </body>

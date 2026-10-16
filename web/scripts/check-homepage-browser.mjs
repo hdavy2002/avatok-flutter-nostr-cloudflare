@@ -1,4 +1,4 @@
-// [HF-HOME-SHARP-2] Sharp portraits, responsive layout and shared Explore chrome. Run only in manually dispatched GitHub CI.
+// [HF-HOME-NATIVE-3] Native Indian zine, responsive layout and shared Explore chrome. Run only in manually dispatched GitHub CI.
 import { chromium, expect } from '@playwright/test';
 import { createServer } from 'node:http';
 import { readFile, mkdir, writeFile } from 'node:fs/promises';
@@ -35,7 +35,7 @@ async function waitForPreviewClose(dialog, trigger, message) {
 async function inspectReadability(page) {
   return page.evaluate(() => {
     const visible = el => el.getClientRects().length > 0 && getComputedStyle(el).visibility !== 'hidden';
-    const groups = [[14,'main h1, main h2, main h3, main p, main a, main button, main li, main small, main figcaption, main [data-app-store-status], header a, header button, footer a, footer p, footer summary, dialog h2, dialog p, dialog a, dialog button']];
+    const groups = [[14,'main h1, main h2, main h3, main p, main a, main button, main li, main small, main figcaption, main [data-meme-sticker], main [data-app-store-status], header a, header button, footer a, footer p, footer summary, dialog h2, dialog p, dialog a, dialog button']];
     const fontFailures = [];
     const fontCounts = [];
     for (const [floor, selector] of groups) {
@@ -54,7 +54,7 @@ async function inspectReadability(page) {
       const walker = document.createTreeWalker(panel, NodeFilter.SHOW_TEXT);
       while (walker.nextNode()) {
         const text = walker.currentNode;
-        if (!text.textContent.trim() || !visible(text.parentElement) || text.parentElement.closest('.sr-only, .as-sr-only, .hf-safety-sr-only, option, svg')) continue;
+        if (!text.textContent.trim() || !visible(text.parentElement) || text.parentElement.closest('.sr-only, .hf-safety-sr-only, option, svg')) continue;
         const range = document.createRange();
         range.selectNodeContents(text);
         for (const rect of range.getClientRects()) {
@@ -98,16 +98,19 @@ async function inspectReadability(page) {
     };
     const contractCoverage = {
       footerGroups: document.querySelectorAll('[data-callvaal-footer-group]').length,
+      actionGroups: document.querySelectorAll('[data-approved-actions]').length,
+      creatorGrids: document.querySelectorAll('[data-approved-creator-grid]').length,
+      stepGroups: document.querySelectorAll('[data-approved-steps]').length,
       creatorPreviews: document.querySelectorAll('[data-approved-creator]').length,
       videoActions: document.querySelectorAll('[data-preview-action="video"]').length,
       profileActions: document.querySelectorAll('[data-preview-action="profile"]').length,
       footerLinks: document.querySelectorAll('[data-callvaal-footer-group] li a').length,
-      vectors: document.querySelectorAll('main svg.as-art').length,
+      vectors: document.querySelectorAll('main svg[data-indian-art]').length,
       navigation: document.querySelectorAll('[data-callvaal-navigation]').length,
       menuToggles: document.querySelectorAll('[data-callvaal-menu-toggle]').length,
     };
     const layout = {
-      shellWidth: document.querySelector('.approved-scrapbook')?.getBoundingClientRect().width,
+      shellWidth: document.querySelector('[data-native-home]')?.getBoundingClientRect().width,
       mainWidth: document.querySelector('#main-content')?.getBoundingClientRect().width,
       heroWidth: document.querySelector('[data-home-section="hero"]')?.getBoundingClientRect().width,
       headingSize: parseFloat(getComputedStyle(document.querySelector('h1')).fontSize),
@@ -143,14 +146,14 @@ try {
         }));
       });
       await expect(page.locator('h1')).toHaveCount(1);
-      await expect(page.locator('h1')).toHaveText('Your favorite creators. One conversation away.');
+      await expect(page.locator('h1')).toHaveText('From reels. To real talks.');
       await expect(page.locator('link[rel="canonical"]')).toHaveAttribute('href','https://'+homepageIdentity.domain+'/');
       await expect(page.locator('[data-approved-creator]')).toHaveCount(4);
       await expect(page.locator('main')).toContainText('Your number stays private. The influencer’s does too.');
       await expect(page.locator('main')).toContainText('We call you both and connect the conversation.');
       const textStructure=await page.evaluate(()=>({
         images:[...document.querySelectorAll('main img')].map(e=>({loaded:e.complete&&e.naturalWidth>0,width:e.width,height:e.height,naturalWidth:e.naturalWidth,naturalHeight:e.naturalHeight,srcset:e.srcset,sizes:e.sizes})),
-        imageEffects:[...document.querySelectorAll('main img, main svg.as-art')].flatMap(image=>{
+        imageEffects:[...document.querySelectorAll('main img, main svg[data-indian-art]')].flatMap(image=>{
           const failures=[];
           for(let element=image;element&&element!==document.body;element=element.parentElement){
             const style=getComputedStyle(element);
@@ -160,10 +163,10 @@ try {
         }),
         rasterInVector:document.querySelectorAll('main svg image, main svg foreignObject').length,
         headings:[...document.querySelectorAll('main h1,main h2,main h3')].every(e=>getComputedStyle(e).fontFamily.includes('Nunito')),
-        body:[...document.querySelectorAll('main p,main button,main a')].every(e=>getComputedStyle(e).fontFamily.includes('Comfortaa')),
+        body:[...document.querySelectorAll('main p,main button,main a')].filter(e=>!e.closest('[data-meme-sticker]')).every(e=>getComputedStyle(e).fontFamily.includes('Comfortaa')),
         gradients:[...document.querySelectorAll('main *,header,footer')].filter(e=>/gradient\(/.test(getComputedStyle(e).backgroundImage)).map(e=>e.className),
       }));
-      assert.equal(textStructure.images.length,7,name+': three hero portraits and four creator portraits');
+      assert(textStructure.images.length>=4,name+': distinct creator portraits are rendered as individual images');
       // naturalWidth is density-corrected for srcset; file resolution is checked by check-homepage.mjs.
       assert(textStructure.images.every(e=>e.loaded&&e.width>0&&e.height>0),name+': all individual portraits loaded');
       assert(textStructure.images.every(e=>/\b2048w\b/.test(e.srcset)&&e.sizes.length>0),name+': all photos have 2048px responsive candidates and sizes');
@@ -175,15 +178,24 @@ try {
       assert.deepEqual(textStructure.gradients,[],name+': no gradients');
       const readability=await inspectReadability(page);
       metrics.push({name,width,images:textStructure.images,...readability});
-      assert.deepEqual(readability.contractCoverage,{footerGroups:5,creatorPreviews:4,videoActions:7,profileActions:4,footerLinks:36,vectors:readability.contractCoverage.vectors,navigation:1,menuToggles:1},name+': expected interactive contract coverage');
-      assert(readability.contractCoverage.vectors>=5,name+': native decorative SVG coverage');
+      for(const [key,count] of Object.entries({footerGroups:5,actionGroups:1,creatorGrids:1,stepGroups:1,creatorPreviews:4,profileActions:4,footerLinks:36,navigation:1,menuToggles:1})) assert.equal(readability.contractCoverage[key],count,name+': expected '+key+' coverage');
+      assert(readability.contractCoverage.videoActions>=4,name+': each creator has a video sample');
+      assert(readability.contractCoverage.vectors>=3,name+': native decorative SVG coverage');
+      const artwork = await page.locator('main svg[data-indian-art]').evaluateAll(elements=>elements.filter(e=>e.getClientRects().length&&getComputedStyle(e).visibility!=='hidden').map(e=>({name:e.getAttribute('data-indian-art'),width:e.getBoundingClientRect().width,height:e.getBoundingClientRect().height})));
+      metrics.at(-1).artwork=artwork;
+      if(width>=1440) assert(artwork.filter(a=>a.width>=180&&a.height>=80).length>=2,name+': Indian art is a major visible part of the desktop composition');
+      if(width<=390) assert(artwork.filter(a=>a.width>=80&&a.height>=40).length>=2,name+': meaningful Indian art survives on mobile');
+      const stickers=await page.locator('main [data-meme-sticker]').evaluateAll(elements=>elements.map(e=>({tag:e.tagName,text:e.textContent.trim(),visible:e.getClientRects().length>0&&getComputedStyle(e).visibility!=='hidden,fontSize:parseFloat(getComputedStyle(e).fontSize),fontFamily:getComputedStyle(e).fontFamily})));
+      metrics.at(-1).stickers=stickers;
+      assert(stickers.filter(s=>s.visible&&s.text.length>=3&&s.fontSize>=14&&/Nunito/.test(s.fontFamily)&&!['IMG','SVG','IMAGE','CANVAS'].includes(s.tag)).length>=3,name+': at least three readable meme stickers are native HTML');
       assert(Math.abs(readability.layout.mainWidth-readability.layout.shellWidth)<=1,name+': main fills the shared Explore shell');
       if(width>=1440){
         assert(Math.abs(readability.layout.shellWidth-Math.min(width-64,1760))<=1,name+': fluid Explore gutters and 1760px maximum');
         assert(readability.layout.heroWidth>=readability.layout.mainWidth*.95,name+': hero fills the fluid page');
       }
       await expect(page.locator('[data-home-section]')).toHaveCount(6);
-      await expect(page.locator('.as-disclosure, .as-design-label, #sample-disclosure')).toHaveCount(0);
+      await expect(page.locator('#sample-disclosure')).toHaveCount(0);
+      await expect(page.locator('main [class^="as-"], main [class*=" as-"]')).toHaveCount(0);
       assert(!/Design concept|Design preview · Illustrative creators/i.test(await page.locator('body').innerText()),name+': obsolete design paragraph is absent');
       const download=page.locator('[data-home-section="download"]');
       await expect(download.locator('[data-home-cta="download-google-play"]')).toHaveAttribute('href',`https://play.google.com/store/apps/details?id=${brandConfig.hfPlayPackageId}`);
@@ -202,7 +214,7 @@ try {
       await page.screenshot({path:'homepage-review/'+name+'.png',fullPage:true});
       const dialog=page.locator('#approved-preview-dialog');
       const triggers=await page.locator('[data-preview-action]').all();
-      assert.equal(triggers.length,11,name+': every sample control is exercised');
+      assert(triggers.length>=8,name+': video and profile sample controls exist and are all exercised');
       for (const trigger of triggers) {
         await trigger.click();
         await expect(dialog).toBeVisible();

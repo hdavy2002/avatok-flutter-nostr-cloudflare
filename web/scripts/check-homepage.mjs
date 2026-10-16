@@ -1,4 +1,4 @@
-// [HF-HOME-SHARP-2] Separate high-resolution portraits, native art and shared Explore chrome. CI only.
+// [HF-HOME-NATIVE-3] Native Indian zine, high-resolution portraits and shared Explore chrome. CI only.
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { readFileSync, existsSync } from 'node:fs';
@@ -26,22 +26,17 @@ const identity = brandConfig.homepageIdentity;
 assert.equal((html.match(/<h1[ >]/g) || []).length, 1, 'One native H1');
 assert(bodyHtml.includes('aria-label="' + identity.name + ' home"') && bodyHtml.includes('logo.png'), 'Owner logo with central accessible brand identity');
 for (const copy of [
-  'Your favorite creators. One conversation away.',
-  'Watch entertaining videos. Discover your kind of people. Book a private conversation.',
+  'From reels. To real talks.',
   'Your number stays private. The influencer’s does too.',
   'We call you both and connect the conversation.',
-  'Watch. Discover. Say hello.',
-  'Watch their videos', 'Find your favorite', 'We connect you both',
-  'Big personalities. Real conversations.',
-  'Don’t just follow. Connect.',
-]) assert(mainText.includes(copy), 'Approved mock copy: ' + copy);
+]) assert(mainText.includes(copy), 'Native homepage copy: ' + copy);
 const dialog = bodyHtml.match(/<dialog\b[^>]*id="approved-preview-dialog"[^>]*>([\s\S]*?)<\/dialog>/)?.[1] || '';
 assert.match(plainText(dialog), /illustrative|sample/i, 'Sample disclosure remains inside the interactive dialog');
 assert.match(plainText(dialog), /no video plays/i, 'Dialog truthfully explains the video sample');
 assert.match(plainText(dialog), /no video plays, call is booked or payment is taken|no call or payment|no call.*no payment/i, 'Preview actions do not pretend to book or charge');
 assert.doesNotMatch(visibleText, /Design concept|Design preview · Illustrative creators/i, 'Removed design labels and disclosure paragraph stay removed');
 assert(!idsFromMarkup(bodyHtml).includes('sample-disclosure'), 'Removed standalone sample paragraph stays removed');
-assert.deepEqual([...main.matchAll(/data-home-section="([^"]+)"/g)].map(m => m[1]), ['hero','privacy','how-it-works','creators','connect','download'], 'Exact approved section order');
+assert.deepEqual([...main.matchAll(/data-home-section="([^"]+)"/g)].map(m => m[1]), ['hero','discover','privacy','how-it-works','creators','download'], 'Exact approved section order');
 assert.deepEqual([...main.matchAll(/data-approved-creator="([^"]+)"/g)].map(m => m[1]), ['meera','kabir','ananya','rohan'], 'Exact four illustrative creators');
 for (const name of ['Meera','Kabir','Ananya','Rohan','Lifestyle','Comedy','Music','Travel']) assert(mainText.includes(name), 'Approved creator label: ' + name);
 function idsFromMarkup(markup) { return [...markup.matchAll(/\bid="([^"]+)"/g)].map(m => m[1]); }
@@ -81,7 +76,11 @@ const footerItems = [...footer.matchAll(/<li\b[^>]*>([\s\S]*?)<\/li>/g)].flatMap
 assert.equal(footerItems.length, 36, 'All 36 grouped footer links');
 assert.deepEqual(footerItems.map(item => item.href), footerRoutes, 'Canonical footer link order');
 const source = readFileSync(resolve('src/pages/index.astro'), 'utf8');
-const css = readFileSync(resolve('src/styles/approved-scrapbook.css'), 'utf8');
+const css = readFileSync(resolve('src/styles/native-creator-home.css'), 'utf8');
+assert.match(source, /import\s+['"][^'"]*native-creator-home\.css['"]/, 'The redesigned homepage owns its new native stylesheet');
+assert.match(source, /import\s+IndianMaxArt\s+from\s+['"][^'"]*IndianMaxArt\.astro['"]/, 'Large Indian artwork uses the native vector component');
+assert.match(bodyHtml, /data-native-home/, 'Native homepage has its own layout shell');
+assert.doesNotMatch(source, /approved-scrapbook\.css|ScrapbookArt\.astro|class=["'][^"']*\bas-/, 'The rejected poster layout is not reused');
 assert.doesNotMatch(source + css + main, /hf-approved-scrapbook|approved-reference|ReferenceCrop|crop-manifest/, 'No screenshot crops or old raster decorations in the homepage');
 assert.doesNotMatch(css, /(?:linear|radial|conic)-gradient\(/i, 'No gradients in approved landing design');
 const portraitIds = ['meera', 'kabir', 'ananya', 'rohan'];
@@ -104,7 +103,7 @@ for (const id of portraitIds) {
 }
 assert.equal(hashes.size, 4, 'Four separately sourced portrait files');
 const photos = [...main.matchAll(/<img\b[^>]*>/g)].map(m => m[0]);
-assert(photos.length >= 7, 'Hero collage and creator cards contain separate photo elements');
+assert(photos.length >= 4, 'Separate portrait elements keep four creator identities in native HTML');
 for (const photo of photos) {
   assert.match(photo, /\balt="/);
   assert.match(photo, /\bwidth="\d+"/);
@@ -112,7 +111,14 @@ for (const photo of photos) {
   assert(portraitIds.some(id => photo.includes(`/assets/hf-home-sharp/${id}.webp`)), 'Homepage raster placements are individual fresh portraits');
 }
 const vectors = [...main.matchAll(/<svg\b[^>]*>[\s\S]*?<\/svg>/g)].map(m => m[0]);
-assert(vectors.filter(vector => /class="[^"]*\bas-art\b/.test(vector)).length >= 5, 'Indian decoration is native vector artwork');
+const indianVectors = vectors.filter(vector => /data-indian-art=/.test(vector));
+assert(indianVectors.length >= 3, 'Indian maximalist decoration is native vector artwork');
+const stickers = [...main.matchAll(/<([a-z][a-z0-9]*)\b[^>]*data-meme-sticker[^>]*>([\s\S]*?)<\/\1>/gi)];
+assert(stickers.length >= 3, 'At least three meme stickers are actual HTML elements');
+for (const [, tag, content] of stickers) {
+  assert(!['svg', 'img', 'image', 'canvas'].includes(tag.toLowerCase()), 'Meme copy is native HTML');
+  assert(plainText(content).length >= 3, 'Meme stickers contain readable text');
+}
 for (const vector of vectors) {
   assert.match(vector, /\bviewBox="/);
   assert.doesNotMatch(vector, /<(?:image|foreignObject)\b|data:image|approved-reference|hf-approved-scrapbook/i, 'Vector artwork cannot wrap a raster screenshot');
@@ -122,9 +128,9 @@ assert.match(source, /href=\{HF_PLAY_URL\}/, 'Canonical Google Play URL is used 
 const download = main.match(/<section\b[^>]*data-home-section="download"[^>]*>([\s\S]*?)<\/section>/)?.[1] || '';
 const playUrl = `https://play.google.com/store/apps/details?id=${brandConfig.hfPlayPackageId}`;
 assert(links(download).some(link => link.href === playUrl), 'Download targets the configured Hello Fraands Google Play package');
-assert.match(source, /\bAPP_STORE_URL\b/, 'Apple CTA uses configured listing availability');
 const appleLinks = links(download).filter(link => /apps\.apple\.com/.test(link.href || ''));
 if (appleLinks.length) {
+  assert.match(source, /href=\{APP_STORE_URL\}/, 'Available Apple CTA uses the configured listing URL');
   assert.equal(appleLinks.length, 1, 'One configured Apple listing');
   assert.match(appleLinks[0].href, /^https:\/\/apps\.apple\.com\/.*\/id\d+/);
 } else {
@@ -135,7 +141,7 @@ checkHelloFraandsPages(root, identity);
 const redirects = readFileSync(resolve(root, '_redirects'), 'utf8');
 assert.match(redirects, /^\/india\s+\/\s+301\s*$/m);
 assert.match(redirects, /^\/india\/\s+\/\s+301\s*$/m);
-console.log('Sharp homepage: distinct high-resolution portraits, native vectors, Explore chrome, download CTA, preview integrity and content contracts passed.');
+console.log('Native Indian zine homepage: distinct high-resolution portraits, native vectors, Explore chrome, download CTA, preview integrity and content contracts passed.');
 
 // [WEB-OLD-PAGES-GONE-1 2026-09-27] /archive/home-2026-09-09 and /global-ideas were DELETED
 // by owner decision (they now answer 410 via src/middleware.ts), so their archive and
