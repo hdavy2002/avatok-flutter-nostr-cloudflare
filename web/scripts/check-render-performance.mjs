@@ -22,14 +22,10 @@ assert.doesNotMatch(read('src/lib/railwayHome.ts'), /classList\.add\('is-shown'\
 // it to art that no longer exists.
 // The homepage uses separately authored portraits through the standard image
 // pipeline, with native inline vectors for decoration. No screenshot exception.
-assert.match(home, /publicImage\(/, 'Homepage portraits use the public-image pipeline');
-assert.match(home, /publicImageSrcSet\(/, 'Homepage portraits have responsive image candidates');
+assert.match(home, /publicImage\(/, 'Homepage artwork uses the public-image pipeline');
+assert.match(home, /publicImageSrcSet\(/, 'Homepage artwork has responsive image candidates');
 assert.doesNotMatch(home, /ReferenceCrop|approved-reference|hf-approved-scrapbook/, 'No cropped mock imagery on the homepage');
-const artworkSource = read('src/components/home/IndianMaxArt.astro');
-assert.match(artworkSource, /<svg\b/);
-assert.match(artworkSource, /data-indian-art/, 'Native Indian artwork is identifiable in emitted markup');
-assert.match(home, /native-creator-home\.css/, 'Homepage uses its redesigned native layout stylesheet');
-assert.doesNotMatch(artworkSource, /<(?:image|foreignObject)\b|data:image|hf-approved-scrapbook/i, 'Decorations are native vectors');
+assert.match(home, /desi-home\.css/, 'Homepage uses the desi layout stylesheet');
 // The locale-aware production branch may own fonts through its existing
 // header/layout path. Apply duplicate-owner assertions only when the shared
 // Fonts component is actually active in the current source tree.
@@ -55,7 +51,7 @@ if (built) {
   }
   const heading = html.match(/<h1\b[^>]*>([\s\S]*?)<\/h1>/)?.[1].replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
   const identity = JSON.parse(readFileSync(resolve(root, '../Specs/brand.json'), 'utf8')).homepageIdentity;
-  assert.equal(heading, 'From reels. To real talks.', 'Approved host/fan heading reaches the built page');
+  assert.equal(heading, 'From Reel se Real tak.', 'Approved desi heading reaches the built page');
 }
 const clientDir = ['dist/_astro', 'dist/client/_astro'].map((p) => resolve(root, p)).find(existsSync);
 assert(clientDir, 'built browser chunks required');

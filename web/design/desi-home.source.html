@@ -1,0 +1,383 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>From reels. To real talks. | Hello Fraands</title>
+<meta name="description" content="Hello Fraands connects you with the creators you follow over private phone calls. Desi design preview.">
+<link rel="icon" href="/img/logo.webp">
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Comfortaa:wght@500;700&family=Nunito:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#fff2cf}
+a{color:#30245f}a:hover{color:#be246e}
+.hf{font-family:'Nunito',system-ui,sans-serif;color:#30245f;background:#fff2cf;overflow-x:hidden}
+.disp{font-family:'Comfortaa',system-ui,sans-serif;font-weight:700;letter-spacing:-0.02em;line-height:0.98}
+.wrap{width:calc(100% - 64px);max-width:1760px;margin:0 auto;padding:0;box-sizing:border-box}
+.fade-tr{-webkit-mask-image:linear-gradient(to bottom,transparent 0,#000 16%),linear-gradient(to right,#000 82%,transparent 100%),linear-gradient(to left,#000 88%,transparent 100%);-webkit-mask-composite:source-in,source-in;mask-image:linear-gradient(to bottom,transparent 0,#000 16%),linear-gradient(to right,#000 82%,transparent 100%),linear-gradient(to left,#000 88%,transparent 100%);mask-composite:intersect}
+.foot a{text-decoration:none;font-weight:700;font-size:clamp(16px,1.1vw,19px)}
+.foot a:hover{text-decoration:underline}
+@media (min-width:1500px){.hf{font-size:clamp(18px,1.2vw,22px)}}
+.ph{position:relative;display:flex;align-items:center;justify-content:center;border:3px dashed #30245f;border-radius:18px;background:rgba(255,253,247,0.55);color:#30245f;font-size:clamp(14px,0.9vw,17px);font-weight:800;letter-spacing:0.06em;text-transform:uppercase;text-align:center;padding:12px;box-sizing:border-box}
+.ph span{background:#fbd447;border:2px solid #30245f;border-radius:999px;padding:6px 12px;box-shadow:3px 3px 0 #30245f}
+.btn{display:inline-flex;align-items:center;gap:10px;font-family:'Nunito',sans-serif;font-weight:800;font-size:clamp(17px,1.15vw,21px);padding:16px 26px;min-height:48px;border-radius:14px;border:3px solid #30245f;text-decoration:none;box-sizing:border-box;cursor:pointer}
+.btn-dark{background:#30245f;color:#fff2cf;box-shadow:6px 6px 0 #be246e}
+.btn-dark:hover{color:#fbd447}
+.btn-light{background:#fffdf7;color:#30245f;box-shadow:6px 6px 0 #30245f}
+.eyebrow{font-size:clamp(13px,0.8vw,16px);font-weight:800;letter-spacing:0.22em;text-transform:uppercase}
+.sticker{display:inline-block;transform:rotate(-6deg)}
+.photo-card{position:relative;border:3px solid #30245f;border-radius:22px;overflow:hidden;background:#fffdf7;box-shadow:8px 8px 0 #30245f}
+.photo-card img{display:block;width:100%;height:100%;object-fit:cover}
+.play{position:absolute;left:14px;bottom:14px;width:46px;height:46px;border-radius:50%;background:#30245f;border:3px solid #fff2cf;display:flex;align-items:center;justify-content:center}
+.bp-border{height:26px;background:url(/img/border-strip.webp) repeat-x center/auto 100%;border-top:2px solid #30245f;border-bottom:2px solid #30245f}
+.toran{background:url(/img/toran-marigold.webp) repeat-x center top/auto 100%}
+.bp-bg{position:absolute;inset:0;background:url(/img/block-print-tile.webp) repeat center/320px;opacity:0.18;pointer-events:none}
+.warli-strip{height:150px;background:url(/img/warli-friends.webp) repeat-x center bottom/auto 100%}
+.img-slot{max-width:100%}
+.store-btn{transition:transform .15s}.store-btn:hover{transform:translate(-2px,-2px)}
+@media (max-width:560px){.store-btn{width:100% !important;max-width:360px}}
+.marquee{display:flex;gap:48px;white-space:nowrap;animation:hf-scroll 28s linear infinite;will-change:transform}
+@keyframes hf-scroll{from{transform:translateX(0)}to{transform:translateX(-50%)}}
+.reason{position:relative;background:#fffdf7;border:3px solid #30245f;border-radius:22px;padding:26px 24px 24px;box-shadow:6px 6px 0 #30245f;outline:3px dashed #fbd447;outline-offset:-10px}
+.hero{position:relative}
+.halo{text-shadow:0 0 2px #fff2cf,0 0 8px #fff2cf,0 0 18px #fff2cf,0 0 30px #fff2cf,0 0 40px #fff2cf}
+@media (max-width:900px){
+ .wrap{width:calc(100% - 32px)}
+ .hero{min-height:0;padding-bottom:40px}
+ .hero-grid{grid-template-columns:minmax(0,1fr) !important}
+ .hero-art{margin:0 auto !important;max-width:520px !important}
+      .reasons-head{flex-wrap:nowrap !important;align-items:center !important}
+ .reasons-head img{width:96px !important;flex:none}
+ .rangoli{width:66% !important;max-width:320px !important;margin:0 auto !important;justify-self:center !important}
+ .sticker-float{position:static !important;width:min(260px, 70%) !important;margin:0 0 16px !important;transform:rotate(-3deg) !important}
+ .hero-copy{text-align:center !important;max-width:none !important;min-height:0 !important}
+ .hero-copy h1{white-space:normal !important;font-size:clamp(44px,13vw,64px) !important}
+ .hero-copy p,.hero-copy .cta{margin-left:auto !important;margin-right:auto !important;justify-content:center !important}
+ .two{grid-template-columns:minmax(0,1fr) !important}
+ .overlap-left{margin-left:0 !important}
+ .overlap-right{margin-right:0 !important}
+ .big-art{width:100% !important;max-width:520px;margin:0 auto}
+ .creators{grid-template-columns:repeat(2,minmax(0,1fr)) !important}
+ .reasons{grid-template-columns:repeat(2,minmax(0,1fr)) !important}
+ .foot{grid-template-columns:repeat(2,minmax(0,1fr)) !important}
+}
+@media (max-width:560px){
+ .reasons{grid-template-columns:minmax(0,1fr) !important}
+ .creators{gap:14px !important}
+ .creators article{padding:8px !important;border-radius:18px !important;outline-offset:-7px !important}
+ .creators article .btn{padding:10px 10px !important;font-size:14px !important;white-space:nowrap}
+ .foot{gap:22px 16px !important}
+}
+</style>
+
+</head>
+<body>
+
+
+
+<div class="hf" style="width: 100%; min-height: 100vh">
+
+<!-- ===== HEADER (kept as on the live site) ===== -->
+<header style="position: sticky; top: 0; z-index: 50; background: #fffdf7; border-bottom: 3px solid #30245f">
+  <div class="wrap" style="display: flex; align-items: center; justify-content: space-between; gap: 16px; height: 72px">
+    <a href="#top" aria-label="Hello Fraands home" style="display: flex; align-items: center; gap: 10px; text-decoration: none">
+      <img src="/img/logo.webp" alt="Hello Fraands" style="width: 54px; height: 54px; object-fit: contain">
+    </a>
+    <nav aria-label="Main" style="display: flex; align-items: center; gap: 28px; font-weight: 700; font-size: clamp(16px,1.1vw,19px)">
+      <a href="#explore" style="text-decoration: none">Explore</a>
+      <a href="#blog" style="text-decoration: none">Blog</a>
+      <a href="#signin" style="text-decoration: none; display: inline-flex; align-items: center; gap: 6px">
+        <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="4"></circle><path d="M4 21c0-4 4-6 8-6s8 2 8 6"></path></svg>
+        Sign in
+      </a>
+    </nav>
+  </div>
+</header>
+
+<!-- ===== TORAN (marigold garland hanging under the header) ===== -->
+<div class="toran" aria-hidden="true" style="height: 104px; margin: -6px 0 0"></div>
+
+<!-- ===== HERO ===== -->
+<section id="top" class="hero wrap" style="padding: 40px 0 56px">
+  <div class="hero-grid" style="display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); gap: 32px; align-items: center">
+    <div class="hero-copy" style="text-align: left; max-width: 900px">
+      <div class="eyebrow">Your feed. Your people. Your call.</div>
+      <h1 class="disp" style="margin: 18px 0 0; font-size: clamp(50px, 7vw, 120px); white-space: nowrap">
+        <span style="display: block">From Reel se</span>
+        <span style="display: block; color: #be246e">Real tak.</span>
+      </h1>
+      <p style="max-width: 560px; margin: 26px 0 0; font-size: clamp(18px, 1.5vw, 27px); font-weight: 700; line-height: 1.35">
+        That creator you keep watching? There&rsquo;s a conversation waiting. Book a private call. Say more than a comment.
+      </p>
+      <div class="cta" style="display: flex; flex-wrap: wrap; gap: 16px; justify-content: flex-start; margin-top: 28px">
+        <a href="#explore" class="btn btn-dark">Find your people
+          <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M7 17 17 7M9 7h8v8"></path></svg></a>
+        <a href="#how" class="btn btn-light">How it works
+          <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M12 5v14M6 13l6 6 6-6"></path></svg></a>
+      </div>
+      <div style="margin-top: 22px; font-size: clamp(14px,0.9vw,17px); font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; opacity: 0.8">YouTube &middot; Instagram &middot; Facebook creators</div>
+    </div>
+    <div style="position: relative">
+      <img class="img-slot sticker" src="/img/sticker-arre-waah.webp" role="img" aria-label="Arre waah!" style="position: absolute; left: 2%; top: -4%; width: clamp(130px, 24%, 320px); z-index: 2; transform: rotate(-8deg); display: block; height: auto">
+      <img class="hero-art" src="/img/hero-rickshaw-woman.webp" alt="Truck-art auto rickshaw with a smiling woman driver waving" style="display: block; width: 100%; max-width: 900px; height: auto; margin: 0 0 0 auto">
+    </div>
+  </div>
+</section>
+
+<!-- ===== DOWNLOAD THE APP ===== -->
+<section id="download" style="background: #fffdf7; border-top: 3px solid #30245f; border-bottom: 3px solid #30245f">
+  <div class="wrap" style="padding: 44px 0; display: flex; flex-direction: column; align-items: center; text-align: center; gap: 28px">
+    <div>
+      <div class="eyebrow" style="color: #be246e">Hello Fraands app</div>
+      <h2 class="disp" style="margin: 8px 0 0; font-size: clamp(26px, 2.6vw, 44px)">Apne phone mein. <span style="color: #ff793c">Abhi download karo.</span></h2>
+    </div>
+    <div class="hero-apps" style="display: flex; flex-wrap: wrap; gap: 24px; align-items: center; justify-content: center">
+      <a href="#play" class="store-btn" style="display: block; width: clamp(240px, 24vw, 420px);"><img src="/img/btn-google-play.webp" alt="Get it on Google Play" style="display: block; width: 100%; height: auto"></a>
+      <a href="#ios" class="store-btn" style="display: block; width: clamp(240px, 24vw, 420px);"><img src="/img/btn-app-store.webp" alt="Download on the App Store (coming soon)" style="display: block; width: 100%; height: auto"></a>
+    </div>
+  </div>
+</section>
+
+<!-- ===== TRUCK-ART MARQUEE ===== -->
+<div style="background: #30245f; border-top: 3px solid #30245f; border-bottom: 3px solid #30245f; overflow: hidden">
+  <div class="bp-border" style="background-image: radial-gradient(circle,#fbd447 1.6px,transparent 1.7px),radial-gradient(circle,#ff793c 1.6px,transparent 1.7px)"></div>
+  <div class="marquee disp" style="padding: 14px 0; color: #fbd447; font-size: clamp(20px, 2.6vw, 34px)">
+    <span>HORN OK PLEASE</span><span style="color: #efabd0">&#10041;</span><span>SCROLL. DISCOVER. CONNECT.</span><span style="color: #efabd0">&#10041;</span><span>EK CALL TOH BANTA HAI</span><span style="color: #efabd0">&#10041;</span><span>DON&rsquo;T JUST FOLLOW. CONNECT.</span><span style="color: #efabd0">&#10041;</span><span>BAAT KARO</span><span style="color: #efabd0">&#10041;</span>
+    <span>HORN OK PLEASE</span><span style="color: #efabd0">&#10041;</span><span>SCROLL. DISCOVER. CONNECT.</span><span style="color: #efabd0">&#10041;</span><span>EK CALL TOH BANTA HAI</span><span style="color: #efabd0">&#10041;</span><span>DON&rsquo;T JUST FOLLOW. CONNECT.</span><span style="color: #efabd0">&#10041;</span><span>BAAT KARO</span><span style="color: #efabd0">&#10041;</span>
+  </div>
+  <div class="bp-border" style="background-image: radial-gradient(circle,#fbd447 1.6px,transparent 1.7px),radial-gradient(circle,#ff793c 1.6px,transparent 1.7px)"></div>
+</div>
+
+<!-- ===== REELS -> REAL (new section, jhoola art with text overlapping) ===== -->
+<section class="wrap" style="padding: 96px 0 72px">
+  <div class="two" style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px; align-items: center">
+    <img class="img-slot big-art" src="/img/jhoola-women.webp" alt="Two women on a swing under a mango tree, one on a phone call" style="width: 100%; max-width: 820px;  z-index: 0; display: block; height: auto">
+    <div class="overlap-left" style="position: relative; z-index: 2; margin-left: 0; padding: 8px">
+      <img class="img-slot sticker sticker-float" src="/img/sticker-bas-karo-scroll.webp" role="img" aria-label="Bas karo scroll. Baat karo." style="width: clamp(240px, 20vw, 360px); aspect-ratio: 16/9; transform: rotate(-4deg); display: block; height: auto; margin: 0 0 20px">
+      <div class="eyebrow" style="color: #be246e">Reels se real tak</div>
+      <h2 class="disp" style="margin: 14px 0 0; font-size: clamp(40px, 5.6vw, 84px)">You see them on reels.<br>Now talk <span style="color: #ff793c">for real.</span></h2>
+      <p style="font-size: clamp(19px,1.35vw,25px); font-weight: 600; line-height: 1.5; max-width: 520px; margin: 22px 0 0">
+        Double-tap is cute. A phone call is better. Pick a creator, book a slot, and we connect you both on a private call &mdash; no numbers shown, no awkward DMs.
+      </p>
+      <div style="display: flex; flex-wrap: wrap; gap: 10px; margin-top: 22px">
+        <span style="background: #fbd447; border: 2px solid #30245f; border-radius: 999px; padding: 8px 14px; font-weight: 800; font-size: clamp(15px,1vw,18px)">Make new friends</span>
+        <span style="background: #efabd0; border: 2px solid #30245f; border-radius: 999px; padding: 8px 14px; font-weight: 800; font-size: clamp(15px,1vw,18px)">Get insider tips</span>
+        <span style="background: #bfc2ee; border: 2px solid #30245f; border-radius: 999px; padding: 8px 14px; font-weight: 800; font-size: clamp(15px,1vw,18px)">Get advice</span>
+        <span style="background: #ffa179; border: 2px solid #30245f; border-radius: 999px; padding: 8px 14px; font-weight: 800; font-size: clamp(15px,1vw,18px)">Just be yourself</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ===== BIG ENERGY (magenta band, train) ===== -->
+<section style="background: #be246e; color: #fff2cf; border-top: 3px solid #30245f; border-bottom: 3px solid #30245f; position: relative; overflow: hidden">
+  <div class="wrap" style="padding: 80px 0 0; position: relative; z-index: 2">
+    <img class="img-slot sticker sticker-float" src="/img/sticker-scene-on.webp" role="img" aria-label="Scene on hai" style="position: absolute; right: 2%; top: 50px; width: clamp(280px, 24vw, 420px); aspect-ratio: 16/9;    transform: rotate(-8deg); display: block; height: auto">
+    <div class="eyebrow" style="color: #fbd447">Same scroll. New possibilities.</div>
+    <h2 class="disp" style="margin: 14px 0 0; font-size: clamp(44px, 7vw, 108px); max-width: 900px">Big energy.<br>Zero small talk.</h2>
+    <p style="max-width: 520px; font-size: clamp(18px,1.3vw,24px); font-weight: 600; line-height: 1.5; margin: 22px 0 0">Music obsessives. Story collectors. The people who make you laugh out loud. All one call away.</p>
+    <a href="#explore" class="btn btn-light" style="margin-top: 28px">Discover influencers
+      <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M7 17 17 7M9 7h8v8"></path></svg></a>
+  </div>
+  <img class="img-slot" src="/img/train-creators.webp" alt="Indian Railways train with creators waving from the windows" style="margin: 36px auto -3px; width: 100%; max-width: 1400px; aspect-ratio: 3000/1100; display: block; height: auto">
+</section>
+
+<!-- ===== REASONS (Warli icons, block-print cards) ===== -->
+<section style="position: relative">
+<div class="bp-bg" aria-hidden="true"></div>
+<div class="wrap" style="position: relative; z-index: 1; padding: 96px 0 80px">
+  <div class="reasons-head" style="display: flex; flex-wrap: wrap; align-items: end; justify-content: space-between; gap: 24px">
+    <div>
+      <div class="eyebrow" style="color: #be246e">Ek call, kai wajah</div>
+      <h2 class="disp" style="margin: 14px 0 0; font-size: clamp(40px, 5.6vw, 84px)">One call.<br><span style="background: #fbd447; padding: 0 10px; border-radius: 10px">So many reasons.</span></h2>
+    </div>
+    <img class="img-slot" src="/img/dhol-wala.webp" alt="Dhol player jumping" style="width: clamp(200px, 17vw, 320px); aspect-ratio: 1/1; display: block; height: auto">
+  </div>
+
+  <div class="reasons" style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 28px; margin-top: 44px">
+    <div class="reason">
+      <svg role="img" aria-label="Two Warli figures holding hands" width="72" height="56" viewBox="0 0 72 56" fill="none" stroke="#30245f" stroke-width="3" stroke-linecap="round"><circle cx="20" cy="9" r="5"></circle><path d="M20 14 10 30h20zM20 30v10M14 52l6-12 6 12M30 22l6 6M10 22l-6 6"></path><circle cx="52" cy="9" r="5"></circle><path d="M52 14 42 30h20zM52 30v10M46 52l6-12 6 12M62 22l6 6M42 22l-6-6"></path></svg>
+      <h3 class="disp" style="margin: 16px 0 0; font-size: clamp(24px,1.9vw,34px)">Make new friends</h3>
+      <p style="margin: 10px 0 0; font-size: clamp(16px,1.1vw,19px); line-height: 1.5; font-weight: 600">Same humour, same playlists, same 2 a.m. thoughts. Call the people who get it.</p>
+    </div>
+    <div class="reason" style="background: #fbd447">
+      <svg role="img" aria-label="Warli figure whispering a tip" width="72" height="56" viewBox="0 0 72 56" fill="none" stroke="#30245f" stroke-width="3" stroke-linecap="round"><circle cx="30" cy="9" r="5"></circle><path d="M30 14 20 30h20zM30 30v10M24 52l6-12 6 12M40 22l10-6M20 22l-6 6"></path><path d="M52 10c6 0 10 4 10 8s-4 8-10 8" stroke-dasharray="3 4"></path></svg>
+      <h3 class="disp" style="margin: 16px 0 0; font-size: clamp(24px,1.9vw,34px)">Get insider tips</h3>
+      <p style="margin: 10px 0 0; font-size: clamp(16px,1.1vw,19px); line-height: 1.5; font-weight: 600">The camera gear, the recipe, the trek route, the audition hack. Straight from the source.</p>
+    </div>
+    <div class="reason" style="background: #efabd0">
+      <svg role="img" aria-label="Warli figure with a heart" width="72" height="56" viewBox="0 0 72 56" fill="none" stroke="#30245f" stroke-width="3" stroke-linecap="round"><circle cx="26" cy="9" r="5"></circle><path d="M26 14 16 30h20zM26 30v10M20 52l6-12 6 12M36 22l10-8M16 22l-6 6"></path><path d="M54 14c-3-4-9-2-9 3 0 4 9 10 9 10s9-6 9-10c0-5-6-7-9-3z" fill="#be246e" stroke="#30245f"></path></svg>
+      <h3 class="disp" style="margin: 16px 0 0; font-size: clamp(24px,1.9vw,34px)">Fall in love</h3>
+      <p style="margin: 10px 0 0; font-size: clamp(16px,1.1vw,19px); line-height: 1.5; font-weight: 600">With a city, a hobby, a sound &mdash; or a voice. Hum kuch nahi bolenge.</p>
+    </div>
+    <div class="reason" style="background: #bfc2ee">
+      <svg role="img" aria-label="Warli figure sitting and listening" width="72" height="56" viewBox="0 0 72 56" fill="none" stroke="#30245f" stroke-width="3" stroke-linecap="round"><circle cx="24" cy="12" r="5"></circle><path d="M24 17 14 33h20zM34 33h14l6 14M24 33v14M34 22l8 2M14 22l-6 6"></path><circle cx="56" cy="10" r="2" fill="#30245f"></circle><circle cx="62" cy="16" r="2" fill="#30245f"></circle><circle cx="52" cy="18" r="2" fill="#30245f"></circle></svg>
+      <h3 class="disp" style="margin: 16px 0 0; font-size: clamp(24px,1.9vw,34px)">Get advice</h3>
+      <p style="margin: 10px 0 0; font-size: clamp(16px,1.1vw,19px); line-height: 1.5; font-weight: 600">Career, college, content, confidence. A real human who has actually done it.</p>
+    </div>
+    <div class="reason" style="background: #ffa179">
+      <svg role="img" aria-label="Warli figure dancing freely" width="72" height="56" viewBox="0 0 72 56" fill="none" stroke="#30245f" stroke-width="3" stroke-linecap="round"><circle cx="36" cy="9" r="5"></circle><path d="M36 14 26 30h20zM36 30v10M28 52l8-12 8 10M46 22l10-10M26 22l-10-8"></path><path d="M10 40l4-4M62 40l-4-4M8 20l4 2M64 20l-4 2" stroke="#be246e"></path></svg>
+      <h3 class="disp" style="margin: 16px 0 0; font-size: clamp(24px,1.9vw,34px)">Just be yourself</h3>
+      <p style="margin: 10px 0 0; font-size: clamp(16px,1.1vw,19px); line-height: 1.5; font-weight: 600">No filters, no captions, no performing. Just a voice, a laugh, and twenty minutes.</p>
+    </div>
+    <div class="reason" style="background: #30245f; color: #fff2cf">
+      <svg role="img" aria-label="Warli figure on the phone" width="72" height="56" viewBox="0 0 72 56" fill="none" stroke="#fff2cf" stroke-width="3" stroke-linecap="round"><circle cx="30" cy="9" r="5"></circle><path d="M30 14 20 30h20zM30 30v10M24 52l6-12 6 12M40 22l-2-12 6-2M20 22l-6 6"></path><path d="M50 8c4 2 8 6 10 12M52 2c7 3 12 9 14 16" stroke="#fbd447"></path></svg>
+      <h3 class="disp" style="margin: 16px 0 0; font-size: clamp(24px,1.9vw,34px); color: #fbd447">Laugh till it hurts</h3>
+      <p style="margin: 10px 0 0; font-size: clamp(16px,1.1vw,19px); line-height: 1.5; font-weight: 600">The comedian you quote at every party? Now they&rsquo;re roasting you live.</p>
+    </div>
+  </div>
+</div>
+</section>
+
+<!-- ===== PRIVACY (elephant) ===== -->
+<section style="position: relative; overflow: hidden">
+  <div class="bp-border"></div>
+  <div class="wrap" style="padding: 72px 0">
+    <div class="two" style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0; align-items: center">
+      <div style="position: relative; z-index: 2">
+        <div class="eyebrow" style="color: #be246e">A little mystery is a good thing</div>
+        <h2 class="disp" style="margin: 14px 0 0; font-size: clamp(40px, 5.6vw, 84px)">Your number stays private.<br><span style="color: #ff793c">The influencer&rsquo;s does too.</span></h2>
+        <p style="font-size: clamp(20px,1.4vw,27px); font-weight: 700; margin: 22px 0 0; max-width: 520px">We call you both and connect the conversation.</p>
+        <p style="font-size: clamp(17px,1.15vw,21px); font-weight: 600; line-height: 1.55; margin: 12px 0 0; max-width: 520px; opacity: 0.9">We call the influencer first. If they accept, we call you and merge the calls. Both numbers stay private. Press # any time to end a call and block the person.</p>
+        <div style="display: inline-block; margin-top: 24px; background: #ff793c; border: 3px solid #30245f; border-radius: 14px; padding: 12px 18px; font-weight: 800; box-shadow: 6px 6px 0 #30245f">Good conversations. Private numbers.</div>
+      </div>
+      <img class="img-slot big-art overlap-right" src="/img/elephant-privacy.webp" alt="Decorated elephant holding a padlock" style="width: 100%; max-width: 760px; aspect-ratio: 1/1; margin-left: 0; z-index: 0; display: block; height: auto">
+    </div>
+  </div>
+  <div class="bp-border"></div>
+</section>
+
+<!-- ===== HOW IT WORKS (orange band, rangoli + fish) ===== -->
+<section id="how" style="background: #ff793c; border-top: 3px solid #30245f; border-bottom: 3px solid #30245f; position: relative; overflow: hidden">
+  <div class="wrap" style="padding: 88px 0 80px; position: relative; z-index: 2">
+    <div class="two" style="display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 420px); gap: 32px; align-items: center">
+      <div>
+        <div class="eyebrow">Less overthinking. More talking.</div>
+        <h2 class="disp" style="margin: 14px 0 0; font-size: clamp(44px, 6.4vw, 96px); max-width: 760px">Your next hello,<br>in three moves.</h2>
+      </div>
+      <img class="img-slot rangoli" src="/img/rangoli-mandala.webp" alt="Rangoli mandala" style="width: 100%; max-width: 420px; aspect-ratio: 1/1; display: block; height: auto; justify-self: end">
+    </div>
+    <div class="reasons" style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 32px; margin-top: 56px">
+      <div style="border-top: 3px solid #30245f; padding-top: 18px">
+        <div style="display: flex; justify-content: space-between; align-items: center"><span class="disp" style="font-size: clamp(40px,3.2vw,62px)">01</span><svg aria-hidden="true" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#30245f" stroke-width="2"><path d="M6 4v16l14-8z"></path></svg></div>
+        <h3 class="disp" style="margin: 12px 0 0; font-size: clamp(24px,1.9vw,34px)">Meet your next favorite.</h3>
+        <p style="margin: 10px 0 0; font-weight: 600; line-height: 1.5">Watch their videos. Find the personalities and stories that speak to you.</p>
+      </div>
+      <div style="border-top: 3px solid #30245f; padding-top: 18px">
+        <div style="display: flex; justify-content: space-between; align-items: center"><span class="disp" style="font-size: clamp(40px,3.2vw,62px)">02</span><svg aria-hidden="true" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#30245f" stroke-width="2"><circle cx="12" cy="8" r="4"></circle><path d="M4 21c0-4 4-6 8-6s8 2 8 6"></path></svg></div>
+        <h3 class="disp" style="margin: 12px 0 0; font-size: clamp(24px,1.9vw,34px)">Make the first move.</h3>
+        <p style="margin: 10px 0 0; font-weight: 600; line-height: 1.5">Explore their profile, check their price and book a private call.</p>
+      </div>
+      <div style="border-top: 3px solid #30245f; padding-top: 18px">
+        <div style="display: flex; justify-content: space-between; align-items: center"><span class="disp" style="font-size: clamp(40px,3.2vw,62px)">03</span><svg aria-hidden="true" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#30245f" stroke-width="2"><path d="M5 4h4l2 5-3 2a11 11 0 0 0 5 5l2-3 5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2z"></path></svg></div>
+        <h3 class="disp" style="margin: 12px 0 0; font-size: clamp(24px,1.9vw,34px)">We make the connection.</h3>
+        <p style="margin: 10px 0 0; font-weight: 600; line-height: 1.5">We call both parties and merge the call. Neither sees the other&rsquo;s number.</p>
+      </div>
+    </div>
+    <img class="img-slot" src="/img/fish-pair.webp" alt="Two Madhubani fish talking to each other" style="margin: 56px auto 0; width: 60%; max-width: 620px; aspect-ratio: 2048/1200; display: block; height: auto">
+  </div>
+  <div class="warli-strip" aria-hidden="true" style="position: relative; z-index: 2"></div>
+</section>
+
+<!-- ===== BOLLYWOOD POSTER (new) ===== -->
+<section class="wrap" style="padding: 96px 0 72px">
+  <div class="two" style="display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); gap: 0; align-items: center">
+    <div style="position: relative; z-index: 2">
+      <div class="eyebrow" style="color: #be246e">Picture abhi baaki hai</div>
+      <h2 class="disp" style="margin: 14px 0 0; font-size: clamp(44px, 6.4vw, 96px)">You&rsquo;ve seen the trailer.<br><span style="color: #be246e">Now the real scene.</span></h2>
+      <p style="font-size: clamp(18px,1.3vw,24px); font-weight: 600; line-height: 1.55; margin: 22px 0 0; max-width: 520px">Reels show you the highlight. A call gives you the whole picture &mdash; the pauses, the laughs, the &ldquo;achha, sach mein?&rdquo; moments.</p>
+      <div style="display: flex; flex-wrap: wrap; gap: 14px; margin-top: 26px; align-items: center">
+        <a href="#explore" class="btn btn-dark">Book a call</a>
+        <img class="img-slot sticker" src="/img/sticker-ek-call.webp" role="img" aria-label="Ek call toh banta hai" style="width: clamp(240px, 19vw, 340px); aspect-ratio: 16/9; display: block; height: auto">
+      </div>
+    </div>
+    <img class="img-slot big-art overlap-right" src="/img/bollywood-poster.webp" alt="Bollywood-poster style fan and influencer on a phone call" style="width: 100%; max-width: 640px;  margin-left: 0; z-index: 0; justify-self: end; display: block; height: auto">
+  </div>
+</section>
+
+<!-- ===== CREATORS (block-print framed cards) ===== -->
+<section id="explore" class="wrap" style="padding: 24px 0 96px">
+  <div style="display: flex; flex-wrap: wrap; align-items: end; justify-content: space-between; gap: 20px">
+    <div>
+      <div class="eyebrow">No one does you like you</div>
+      <h2 class="disp" style="margin: 14px 0 0; font-size: clamp(44px, 6.4vw, 96px)">Pick your<br><span style="background: #fbd447; padding: 0 12px; border-radius: 12px">kind of chaos.</span></h2>
+    </div>
+    <img class="img-slot sticker" src="/img/sticker-reels-se-real.webp" role="img" aria-label="Reels se real tak" style="width: clamp(260px, 22vw, 400px); transform: rotate(-5deg); display: block; height: auto">
+    <a href="#explore" style="font-weight: 800; display: inline-flex; align-items: center; gap: 8px; min-height: 44px">Explore everyone
+      <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M7 17 17 7M9 7h8v8"></path></svg></a>
+  </div>
+
+  <div class="creators" style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 28px; margin-top: 44px">
+    <article style="background: #ffdf89; border: 3px solid #30245f; border-radius: 24px; padding: 12px; box-shadow: 8px 8px 0 #30245f; outline: 3px dashed #be246e; outline-offset: -11px; position: relative">
+      <div class="photo-card" style="aspect-ratio: 2/3; box-shadow: none; border-radius: 16px"><img src="/img/meera.webp" alt="Meera"><div class="play" aria-hidden="true"><svg width="16" height="16" viewBox="0 0 24 24" fill="#fff2cf"><path d="M7 4v16l13-8z"></path></svg></div></div>
+      <div style="padding: 14px 6px 4px"><div class="eyebrow" style="font-size: clamp(12px,0.75vw,14px)">Lifestyle</div><h3 class="disp" style="margin: 6px 0 0; font-size: clamp(24px,1.9vw,34px)">Meera</h3><p style="margin: 6px 0 0; font-size: clamp(15px,1vw,18px); font-weight: 600">Main character energy.</p></div>
+      <a href="#meera" class="btn btn-dark" style="width: 100%; justify-content: space-between; margin-top: 12px; box-shadow: none; padding: 12px 16px">View profile <span aria-hidden="true">&#8599;</span></a>
+      <svg aria-hidden="true" style="position: absolute; right: -14px; top: -14px" width="44" height="44" viewBox="0 0 44 44"><circle cx="22" cy="22" r="20" fill="#ff793c" stroke="#30245f" stroke-width="2"></circle><circle cx="22" cy="22" r="12" fill="#fbd447" stroke="#30245f" stroke-width="2"></circle><circle cx="22" cy="22" r="5" fill="#be246e"></circle></svg>
+    </article>
+    <article style="background: #ffa179; border: 3px solid #30245f; border-radius: 24px; padding: 12px; box-shadow: 8px 8px 0 #30245f; outline: 3px dashed #30245f; outline-offset: -11px; position: relative">
+      <div class="photo-card" style="aspect-ratio: 2/3; box-shadow: none; border-radius: 16px"><img src="/img/kabir.webp" alt="Kabir"><div class="play" aria-hidden="true"><svg width="16" height="16" viewBox="0 0 24 24" fill="#fff2cf"><path d="M7 4v16l13-8z"></path></svg></div></div>
+      <div style="padding: 14px 6px 4px"><div class="eyebrow" style="font-size: clamp(12px,0.75vw,14px)">Comedy</div><h3 class="disp" style="margin: 6px 0 0; font-size: clamp(24px,1.9vw,34px)">Kabir</h3><p style="margin: 6px 0 0; font-size: clamp(15px,1vw,18px); font-weight: 600">A little less serious.</p></div>
+      <a href="#kabir" class="btn btn-dark" style="width: 100%; justify-content: space-between; margin-top: 12px; box-shadow: none; padding: 12px 16px">View profile <span aria-hidden="true">&#8599;</span></a>
+      <svg aria-hidden="true" style="position: absolute; right: -14px; top: -14px" width="44" height="44" viewBox="0 0 44 44"><circle cx="22" cy="22" r="20" fill="#ff793c" stroke="#30245f" stroke-width="2"></circle><circle cx="22" cy="22" r="12" fill="#fbd447" stroke="#30245f" stroke-width="2"></circle><circle cx="22" cy="22" r="5" fill="#be246e"></circle></svg>
+    </article>
+    <article style="background: #efabd0; border: 3px solid #30245f; border-radius: 24px; padding: 12px; box-shadow: 8px 8px 0 #30245f; outline: 3px dashed #30245f; outline-offset: -11px; position: relative">
+      <div class="photo-card" style="aspect-ratio: 2/3; box-shadow: none; border-radius: 16px"><img src="/img/ananya.webp" alt="Ananya"><div class="play" aria-hidden="true"><svg width="16" height="16" viewBox="0 0 24 24" fill="#fff2cf"><path d="M7 4v16l13-8z"></path></svg></div></div>
+      <div style="padding: 14px 6px 4px"><div class="eyebrow" style="font-size: clamp(12px,0.75vw,14px)">Music</div><h3 class="disp" style="margin: 6px 0 0; font-size: clamp(24px,1.9vw,34px)">Ananya</h3><p style="margin: 6px 0 0; font-size: clamp(15px,1vw,18px); font-weight: 600">Find your rhythm.</p></div>
+      <a href="#ananya" class="btn btn-dark" style="width: 100%; justify-content: space-between; margin-top: 12px; box-shadow: none; padding: 12px 16px">View profile <span aria-hidden="true">&#8599;</span></a>
+      <svg aria-hidden="true" style="position: absolute; right: -14px; top: -14px" width="44" height="44" viewBox="0 0 44 44"><circle cx="22" cy="22" r="20" fill="#ff793c" stroke="#30245f" stroke-width="2"></circle><circle cx="22" cy="22" r="12" fill="#fbd447" stroke="#30245f" stroke-width="2"></circle><circle cx="22" cy="22" r="5" fill="#be246e"></circle></svg>
+    </article>
+    <article style="background: #bfc2ee; border: 3px solid #30245f; border-radius: 24px; padding: 12px; box-shadow: 8px 8px 0 #30245f; outline: 3px dashed #30245f; outline-offset: -11px; position: relative">
+      <div class="photo-card" style="aspect-ratio: 2/3; box-shadow: none; border-radius: 16px"><img src="/img/rohan.webp" alt="Rohan"><div class="play" aria-hidden="true"><svg width="16" height="16" viewBox="0 0 24 24" fill="#fff2cf"><path d="M7 4v16l13-8z"></path></svg></div></div>
+      <div style="padding: 14px 6px 4px"><div class="eyebrow" style="font-size: clamp(12px,0.75vw,14px)">Travel</div><h3 class="disp" style="margin: 6px 0 0; font-size: clamp(24px,1.9vw,34px)">Rohan</h3><p style="margin: 6px 0 0; font-size: clamp(15px,1vw,18px); font-weight: 600">Stories from everywhere.</p></div>
+      <a href="#rohan" class="btn btn-dark" style="width: 100%; justify-content: space-between; margin-top: 12px; box-shadow: none; padding: 12px 16px">View profile <span aria-hidden="true">&#8599;</span></a>
+      <svg aria-hidden="true" style="position: absolute; right: -14px; top: -14px" width="44" height="44" viewBox="0 0 44 44"><circle cx="22" cy="22" r="20" fill="#ff793c" stroke="#30245f" stroke-width="2"></circle><circle cx="22" cy="22" r="12" fill="#fbd447" stroke="#30245f" stroke-width="2"></circle><circle cx="22" cy="22" r="5" fill="#be246e"></circle></svg>
+    </article>
+  </div>
+</section>
+
+<!-- ===== APP (yellow band, chai tapri) ===== -->
+<section style="background: #fbd447; border-top: 3px solid #30245f; border-bottom: 3px solid #30245f; position: relative; overflow: hidden">
+  <div class="wrap" style="padding: 72px 0">
+    <div class="two" style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 32px; align-items: center">
+      <div style="position: relative">
+        <img class="img-slot big-art" src="/img/chai-tapri.webp" alt="Roadside chai stall" style="width: 96%; max-width: 680px; aspect-ratio: 1/1; display: block; height: auto">
+      </div>
+      <div style="position: relative; z-index: 2; padding-left: 24px">
+        <img class="img-slot sticker" src="/img/sticker-chai-pe-charcha.webp" role="img" aria-label="Chai pe charcha?" style="width: clamp(260px, 22vw, 400px); aspect-ratio: 16/9; display: block; height: auto; margin-bottom: 18px; transform: rotate(-4deg)">
+        <div class="eyebrow">Carry the conversation</div>
+        <h2 class="disp" style="margin: 14px 0 0; font-size: clamp(44px, 6.4vw, 96px)">Your people.<br>In your pocket.</h2>
+        <p style="font-size: clamp(18px,1.2vw,22px); font-weight: 600; line-height: 1.5; margin: 20px 0 0; max-width: 480px">Keep your favorites one tap away. Make room on your home screen for Hello Fraands.</p>
+        <div style="display: flex; flex-wrap: wrap; gap: 14px; margin-top: 26px">
+          <a href="#play" class="btn btn-dark" style="box-shadow: none; flex-direction: column; align-items: flex-start; gap: 0; line-height: 1.15"><span style="font-size: clamp(12px,0.75vw,14px); font-weight: 700; opacity: 0.85">Get it on</span><span style="font-size: clamp(18px,1.3vw,24px)">Google Play</span></a>
+          <a href="#ios" class="btn btn-light" style="box-shadow: none; flex-direction: column; align-items: flex-start; gap: 0; line-height: 1.15"><span style="font-size: clamp(18px,1.3vw,24px)">iPhone app</span><span style="font-size: clamp(12px,0.75vw,14px); font-weight: 700; opacity: 0.85">Coming soon</span></a>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ===== FOOTER (kept as on the live site) ===== -->
+<footer style="background: #fff2cf; position: relative">
+  <div class="bp-bg" aria-hidden="true" style="opacity: 0.1"></div>
+  <div class="toran" aria-hidden="true" style="height: 72px; margin: 0; position: relative; z-index: 1"></div>
+  <div class="wrap" style="padding: 28px 0 40px; position: relative; z-index: 1">
+    <div class="foot" style="display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 32px; font-size: clamp(16px,1.1vw,19px); font-weight: 700">
+      <div><div class="disp" style="font-size: clamp(18px,1.2vw,22px); margin-bottom: 14px">Company</div><div style="display: flex; flex-direction: column; gap: 9px"><a href="#about">About us</a><a href="#how">How it works</a><a href="#faqs">FAQs</a><a href="#help">Help centre</a><a href="#contact">Contact us</a><a href="#press">Press</a></div></div>
+      <div><div class="disp" style="font-size: clamp(18px,1.2vw,22px); margin-bottom: 14px">Influencers</div><div style="display: flex; flex-direction: column; gap: 9px"><a href="#join">Join &amp; earn</a><a href="#req">Influencer requirements</a><a href="#rules">Influencer rules</a><a href="#welfare">Welfare &amp; crisis guide</a><a href="#rates">Rates &amp; payouts</a><a href="#agreement">Influencer agreement</a><a href="#kyc">KYC guide</a></div></div>
+      <div><div class="disp" style="font-size: clamp(18px,1.2vw,22px); margin-bottom: 14px">Trust &amp; Safety</div><div style="display: flex; flex-direction: column; gap: 9px"><a href="#safety">Safety centre</a><a href="#community">Community guidelines</a><a href="#talk">Talk safely</a><a href="#report">Report a user</a><a href="#grievance">Grievance redressal</a><a href="#emergency">Emergency support</a><a href="#women">Women-only space</a><a href="#lgbtq">LGBTQ+ space</a><a href="#age">Age policy</a></div></div>
+      <div><div class="disp" style="font-size: clamp(18px,1.2vw,22px); margin-bottom: 14px">Legal &amp; Payments</div><div style="display: flex; flex-direction: column; gap: 9px"><a href="#terms">Terms of use</a><a href="#disclaimer">Service disclaimer</a><a href="#privacy">Privacy policy</a><a href="#wallet">Wallet terms</a><a href="#refunds">Refunds</a><a href="#cookies">Cookies</a><a href="#deletion">Data deletion</a><a href="#intermediary">Intermediary policy</a></div></div>
+      <div><div class="disp" style="font-size: clamp(18px,1.2vw,22px); margin-bottom: 14px">Explore</div><div style="display: flex; flex-direction: column; gap: 9px"><a href="#explore">Explore all influencers</a><a href="#find">Find an influencer</a><a href="#topics">Popular topics</a><a href="#follow">Influencers you follow</a><a href="#womenlane">Women-only lane</a><a href="#earn">Earn with us</a></div></div>
+    </div>
+    <p style="margin: 40px auto 0; font-size: clamp(12px,0.75vw,14px); line-height: 1.65; font-weight: 600; opacity: 0.85; max-width: 980px; text-align: center"><strong>Disclaimer:</strong> Hello Fraands connects you with the social media influencers you follow over private phone calls, with both phone numbers kept private. Our platform is not for consultations with doctors, lawyers, therapists, counsellors or financial advisors, and nothing said on a call is professional advice. We are not responsible for the relationship or rapport you build with any influencer, or for any outcome of a call. Sexual harassment, threats and abuse are prohibited; reports are reviewed, and serious or repeated violations can lead to removal. No human listens in. Spammy, sexual or threatening behaviour is not allowed, and you can press # at any time to end a call and block the person. 18+ only. If you are in crisis, call <a href="#telemanas">Tele-MANAS 14416</a> or <a href="#112">112</a>.</p>
+    <div style="display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 12px; margin-top: 28px; padding-top: 20px; border-top: 2px solid #30245f; font-size: clamp(14px,0.9vw,17px); font-weight: 700">
+      <span style="display: inline-flex; align-items: center; gap: 10px"><img src="/img/diya-lotus.webp" alt="" aria-hidden="true" style="width: 44px; height: 44px; display: block">Developed in India with <span style="color: #be246e">&#9829;</span></span>
+      <span>&copy; Hello Fraands</span>
+    </div>
+  </div>
+</footer>
+
+</div>
+
+</body>
+</html>

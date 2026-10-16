@@ -1,4 +1,4 @@
-// [HF-HOME-NATIVE-3] Native Indian zine, high-resolution portraits and shared Explore chrome. CI only.
+// [HF-DESI-HOME-1] Desi homepage with the shared Explore header/footer. CI only.
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { readFileSync, existsSync } from 'node:fs';
@@ -23,39 +23,29 @@ const main = bodyHtml.match(/<main\b[^>]*>([\s\S]*?)<\/main>/)?.[1] || '';
 const mainText = plainText(main);
 const brandConfig = JSON.parse(readFileSync(resolve('../Specs/brand.json'), 'utf8'));
 const identity = brandConfig.homepageIdentity;
-assert.equal((html.match(/<h1[ >]/g) || []).length, 1, 'One native H1');
+assert.equal((html.match(/<h1[ >]/g) || []).length, 1, 'One H1');
 assert(bodyHtml.includes('aria-label="' + identity.name + ' home"') && bodyHtml.includes('logo.png'), 'Owner logo with central accessible brand identity');
-for (const copy of [
-  'From reels. To real talks.',
-  'Your number stays private. The influencer’s does too.',
-  'We call you both and connect the conversation.',
-]) assert(mainText.includes(copy), 'Native homepage copy: ' + copy);
-const dialog = bodyHtml.match(/<dialog\b[^>]*id="approved-preview-dialog"[^>]*>([\s\S]*?)<\/dialog>/)?.[1] || '';
-assert.match(plainText(dialog), /illustrative|sample/i, 'Sample disclosure remains inside the interactive dialog');
-assert.match(plainText(dialog), /no video plays/i, 'Dialog truthfully explains the video sample');
-assert.match(plainText(dialog), /no video plays, call is booked or payment is taken|no call or payment|no call.*no payment/i, 'Preview actions do not pretend to book or charge');
-assert.doesNotMatch(visibleText, /Design concept|Design preview · Illustrative creators/i, 'Removed design labels and disclosure paragraph stay removed');
-assert(!idsFromMarkup(bodyHtml).includes('sample-disclosure'), 'Removed standalone sample paragraph stays removed');
-assert.deepEqual([...main.matchAll(/data-home-section="([^"]+)"/g)].map(m => m[1]), ['hero','discover','privacy','how-it-works','creators','download'], 'Exact approved section order');
-assert.deepEqual([...main.matchAll(/data-approved-creator="([^"]+)"/g)].map(m => m[1]), ['meera','kabir','ananya','rohan'], 'Exact four illustrative creators');
-for (const name of ['Meera','Kabir','Ananya','Rohan','Lifestyle','Comedy','Music','Travel']) assert(mainText.includes(name), 'Approved creator label: ' + name);
+for (const copy of ['Your feed. Your people. Your call.', 'From Reel se', 'Real tak.', 'Your number stays private.', 'So many reasons.']) assert(mainText.includes(copy), 'Desi homepage copy: ' + copy);
+assert.deepEqual([...main.matchAll(/data-home-section="([^"]+)"/g)].map(m => m[1]), ['hero','download','reasons','privacy','how-it-works','creators'], 'Approved desi section order');
+for (const name of ['Meera','Kabir','Ananya','Rohan']) assert(mainText.includes(name), 'Illustrative creator: ' + name);
 function idsFromMarkup(markup) { return [...markup.matchAll(/\bid="([^"]+)"/g)].map(m => m[1]); }
 const allIds = idsFromMarkup(html);
 const ids = new Set(allIds);
 assert.equal(ids.size, allIds.length, 'No duplicate IDs');
-for (const id of ['main-content','people','moods','naye-dost','women-only','earn','how-it-works','safety','approved-preview-dialog']) assert(ids.has(id), 'Existing deep link: ' + id);
+// Shared header/footer deep links into the homepage (/#people, /#naye-dost, /#moods, #how-it-works).
+for (const id of ['main-content','people','moods','naye-dost','how-it-works','safety','download']) assert(ids.has(id), 'Existing deep link: ' + id);
 for (const m of html.matchAll(/\bhref="([^"]+)"/g)) {
   const href = m[1].replaceAll('&amp;', '&');
   if (href.startsWith('#') || href.startsWith('/#')) assert(ids.has(href.split('#')[1]), 'Resolvable anchor: ' + href);
 }
-for (const href of ['/marketplace','/hosts/join','/sign-in','/about','/help','/privacy','/terms']) assert(bodyHtml.includes('href="' + href), 'Working destination: ' + href);
+for (const href of ['/marketplace','/hosts/join','/sign-in','/about','/help','/privacy','/terms','/blog']) assert(bodyHtml.includes('href="' + href), 'Working destination: ' + href);
 assert.equal((html.match(/<header\b[^>]*data-callvaal-chrome/g) || []).length, 1, 'One shared header');
 assert.equal((html.match(/<footer\b[^>]*data-callvaal-chrome/g) || []).length, 1, 'One shared footer');
 assert(meta(html, 'description')?.length > 40);
 assert(meta(html, 'og:title')?.includes(identity.name));
 assert(meta(html, 'og:description'));
-// Compare emitted links, labels and auth classes with Explore, so using the
-// component name alone cannot hide a different home-only menu or footer branch.
+// Compare emitted footer links with Explore, so a home-only footer branch cannot drift. The home header is
+// Explore's plus the two home extras (How it works, Join us) from <Header homeReference />.
 const explore = normalizeBuiltImages(readFileSync(resolve(root, 'marketplace/index.html'), 'utf8'), { root });
 const chrome = (markup, tag) => markup.match(new RegExp(`<${tag}\\b[^>]*data-callvaal-chrome[^>]*>[\\s\\S]*?<\\/${tag}>`))?.[0] || '';
 const links = markup => [...markup.matchAll(/<a\b([^>]*)>([\s\S]*?)<\/a>/g)].map(([, attrs, label]) => ({
@@ -64,11 +54,12 @@ const links = markup => [...markup.matchAll(/<a\b([^>]*)>([\s\S]*?)<\/a>/g)].map
   ariaLabel: attrs.match(/\baria-label="([^"]+)"/)?.[1] || '',
   auth: attrs.match(/cv-auth-(?:in|out)/)?.[0] || '',
 }));
-for (const tag of ['header', 'footer']) {
-  assert(chrome(explore, tag), 'Explore shared ' + tag + ' exists');
-  assert.deepEqual(links(chrome(html, tag)), links(chrome(explore, tag)), 'Homepage ' + tag + ' matches Explore destinations, copy and session modes');
-  assert.doesNotMatch(chrome(html, tag), /data-scrapbook/, 'Homepage uses the default shared ' + tag);
-}
+assert(chrome(explore, 'footer'), 'Explore shared footer exists');
+assert.deepEqual(links(chrome(html, 'footer')), links(chrome(explore, 'footer')), 'Homepage footer matches Explore destinations and copy');
+const homeHeader = links(chrome(html, 'header'));
+const exploreHeader = links(chrome(explore, 'header'));
+for (const item of exploreHeader) assert(homeHeader.some(h => h.href === item.href && h.label === item.label && h.auth === item.auth), 'Homepage header keeps Explore link: ' + item.href);
+for (const href of ['/#how-it-works', '/hosts/join', '/blog', '/marketplace', '/sign-in', '/dashboard', '/sign-out']) assert(homeHeader.some(h => h.href === href), 'Homepage header link: ' + href);
 const footer = chrome(html, 'footer');
 assert.deepEqual([...footer.matchAll(/<summary\b[^>]*>([\s\S]*?)<\/summary>/g)].map(m => plainText(m[1])), footerGroups, 'Five canonical footer groups');
 assert.equal((footer.match(/data-callvaal-footer-group/g) || []).length, 5);
@@ -76,72 +67,25 @@ const footerItems = [...footer.matchAll(/<li\b[^>]*>([\s\S]*?)<\/li>/g)].flatMap
 assert.equal(footerItems.length, 36, 'All 36 grouped footer links');
 assert.deepEqual(footerItems.map(item => item.href), footerRoutes, 'Canonical footer link order');
 const source = readFileSync(resolve('src/pages/index.astro'), 'utf8');
-const css = readFileSync(resolve('src/styles/native-creator-home.css'), 'utf8');
-assert.match(source, /import\s+['"][^'"]*native-creator-home\.css['"]/, 'The redesigned homepage owns its new native stylesheet');
-assert.match(source, /import\s+IndianMaxArt\s+from\s+['"][^'"]*IndianMaxArt\.astro['"]/, 'Large Indian artwork uses the native vector component');
-assert.match(bodyHtml, /data-native-home/, 'Native homepage has its own layout shell');
-assert.doesNotMatch(source, /approved-scrapbook\.css|ScrapbookArt\.astro|class=["'][^"']*\bas-/, 'The rejected poster layout is not reused');
-assert.doesNotMatch(source + css + main, /hf-approved-scrapbook|approved-reference|ReferenceCrop|crop-manifest/, 'No screenshot crops or old raster decorations in the homepage');
-assert.doesNotMatch(css, /(?:linear|radial|conic)-gradient\(/i, 'No gradients in approved landing design');
-const portraitIds = ['meera', 'kabir', 'ananya', 'rohan'];
-const hashes = new Set();
-for (const id of portraitIds) {
-  const file = `assets/hf-home-sharp/${id}.webp`;
-  const bytes = readFileSync(resolve(root, file));
-  hashes.add(createHash('sha256').update(bytes).digest('hex'));
-  const metadata = await sharp(bytes).metadata();
-  assert(Math.min(metadata.width, metadata.height) >= 1024 && Math.max(metadata.width, metadata.height) >= 1536, 'Native high-resolution portrait: ' + id);
-  const placements = [...main.matchAll(/<img\b[^>]*>/g)].map(m => m[0]).filter(tag => tag.includes('/' + file));
-  assert(placements.length >= 1, 'Distinct portrait is actually rendered: ' + id);
-  for (const photo of placements) {
-    assert.match(photo, /\balt="[^"]+"/, 'Portrait has descriptive alternate text: ' + id);
-    assert.equal(Number(photo.match(/\bwidth="(\d+)"/)?.[1]), metadata.width, 'Intrinsic portrait width: ' + id);
-    assert.equal(Number(photo.match(/\bheight="(\d+)"/)?.[1]), metadata.height, 'Intrinsic portrait height: ' + id);
-    assert.match(photo, /\bsrcset="[^"]* 2048w(?:,|")/, 'Portrait serves a 2048px responsive candidate: ' + id);
-    assert.match(photo, /\bsizes="[^"]*(?:vw|calc\()[^"]*"/, 'Portrait has responsive sizes: ' + id);
-  }
-}
-assert.equal(hashes.size, 4, 'Four separately sourced portrait files');
-const photos = [...main.matchAll(/<img\b[^>]*>/g)].map(m => m[0]);
-assert(photos.length >= 4, 'Separate portrait elements keep four creator identities in native HTML');
-for (const photo of photos) {
-  assert.match(photo, /\balt="/);
-  assert.match(photo, /\bwidth="\d+"/);
-  assert.match(photo, /\bheight="\d+"/);
-  assert(portraitIds.some(id => photo.includes(`/assets/hf-home-sharp/${id}.webp`)), 'Homepage raster placements are individual fresh portraits');
-}
-const vectors = [...main.matchAll(/<svg\b[^>]*>[\s\S]*?<\/svg>/g)].map(m => m[0]);
-const indianVectors = vectors.filter(vector => /data-indian-art=/.test(vector));
-assert(indianVectors.length >= 3, 'Indian maximalist decoration is native vector artwork');
-const stickers = [...main.matchAll(/<([a-z][a-z0-9]*)\b[^>]*data-meme-sticker[^>]*>([\s\S]*?)<\/\1>/gi)];
-assert(stickers.length >= 3, 'At least three meme stickers are actual HTML elements');
-for (const [, tag, content] of stickers) {
-  assert(!['svg', 'img', 'image', 'canvas'].includes(tag.toLowerCase()), 'Meme copy is native HTML');
-  assert(plainText(content).length >= 3, 'Meme stickers contain readable text');
-}
-for (const vector of vectors) {
-  assert.match(vector, /\bviewBox="/);
-  assert.doesNotMatch(vector, /<(?:image|foreignObject)\b|data:image|approved-reference|hf-approved-scrapbook/i, 'Vector artwork cannot wrap a raster screenshot');
+assert.match(source, /desi-home-body\.html\?raw/, 'Homepage body comes from the generated desi design file');
+assert.match(bodyHtml, /data-desi-home/, 'Desi homepage has its own layout shell');
+assert.doesNotMatch(main, /href="#(?:explore|play|ios|meera|kabir|ananya|rohan|signin|blog|top|how)"/, 'No placeholder links from the design file survive');
+for (const img of [...main.matchAll(/<img\b[^>]*>/g)].map(m => m[0])) {
+  const src = img.match(/\bsrc="([^"]+)"/)?.[1] || '';
+  if (src.startsWith('/assets/')) assert(existsSync(resolve(root, src.slice(1).split('?')[0])), 'Homepage image is shipped: ' + src);
 }
 assert.match(source, /import\s*\{[^}]*HF_PLAY_URL[^}]*\}\s*from\s*['"][^'"]*hfApp['"]/, 'Google Play URL comes from canonical HF app configuration');
-assert.match(source, /href=\{HF_PLAY_URL\}/, 'Canonical Google Play URL is used by the CTA');
 const download = main.match(/<section\b[^>]*data-home-section="download"[^>]*>([\s\S]*?)<\/section>/)?.[1] || '';
 const playUrl = `https://play.google.com/store/apps/details?id=${brandConfig.hfPlayPackageId}`;
 assert(links(download).some(link => link.href === playUrl), 'Download targets the configured Hello Fraands Google Play package');
-const appleLinks = links(download).filter(link => /apps\.apple\.com/.test(link.href || ''));
-if (appleLinks.length) {
-  assert.match(source, /href=\{APP_STORE_URL\}/, 'Available Apple CTA uses the configured listing URL');
-  assert.equal(appleLinks.length, 1, 'One configured Apple listing');
-  assert.match(appleLinks[0].href, /^https:\/\/apps\.apple\.com\/.*\/id\d+/);
-} else {
-  assert.match(download, /<(?:button|span)\b[^>]*(?:disabled|aria-disabled="true")[^>]*>[\s\S]*?Coming soon/i, 'Unknown Apple listing has a truthful non-link Coming soon state');
-}
-assert(!/<video\b/.test(main), 'Illustrative video art does not pretend an actual feed exists');
+assert(!links(download).some(link => /apps\.apple\.com/.test(link.href || '')), 'No invented Apple listing');
+assert.match(download, /<span\b[^>]*aria-disabled="true"[^>]*>[\s\S]*?Coming soon/i, 'Unknown Apple listing has a truthful non-link Coming soon state');
+assert(!/<video\b/.test(main), 'Illustrative art does not pretend an actual feed exists');
 checkHelloFraandsPages(root, identity);
 const redirects = readFileSync(resolve(root, '_redirects'), 'utf8');
 assert.match(redirects, /^\/india\s+\/\s+301\s*$/m);
 assert.match(redirects, /^\/india\/\s+\/\s+301\s*$/m);
-console.log('Native Indian zine homepage: distinct high-resolution portraits, native vectors, Explore chrome, download CTA, preview integrity and content contracts passed.');
+console.log('Desi homepage: shared header/footer links, resolvable anchors, download CTA and content contracts passed.');
 
 // [WEB-OLD-PAGES-GONE-1 2026-09-27] /archive/home-2026-09-09 and /global-ideas were DELETED
 // by owner decision (they now answer 410 via src/middleware.ts), so their archive and
@@ -177,7 +121,7 @@ assert.equal(meta(html, 'twitter:title'), meta(html, 'og:title'));
 assert.equal(meta(html, 'description'), meta(html, 'og:description'));
 const ogImageUrl = meta(html, 'og:image');
 assert(ogImageUrl, 'Homepage has a share image');
-assert(ogImageUrl.includes('/assets/hf-home-sharp/'), 'Homepage shares its fresh high-resolution creator artwork');
+assert(ogImageUrl.includes('/assets/hf-desi/'), 'Homepage shares its desi artwork');
 assert.doesNotMatch(ogImageUrl, /avatok-creator-constellation/, 'Share image is not the retired creator hero (A4.1, D10)');
 assert.equal(meta(html, 'twitter:image'), ogImageUrl);
 assert.match(html, new RegExp('<link\\b[^>]*rel="canonical"[^>]*href="' + reEscape(`https://${identity.domain}/`) + '"'), 'Homepage canonical is the root URL');
