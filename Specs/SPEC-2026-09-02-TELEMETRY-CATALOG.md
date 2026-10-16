@@ -1279,3 +1279,32 @@ Web events (flag `hfFavouritesEnabled`). Never in any prop: the person's name, p
 | Event | Props | Note |
 |---|---|---|
 | `hf_calls_list_load` | `role: 'caller' \| 'host'`, `status: 'all' \| 'completed' \| 'missed'`, `count`, `ms` | One per page of calls loaded in the dashboard Calls screen (first load, tab or filter change, Load more). **Success value:** `count >= 0` with the event present. Failures go through `captureException` with `area: 'hf_dashboard'`, `step: 'calls_list'`. |
+
+
+## Hello Fraands new customer dashboard (`[HF-DASH-V3-1]`, web + worker, 2026-10-16)
+
+| Event | Props | Note |
+|---|---|---|
+| `hf_dash_view` | `section`, `role` | Unchanged: one per dashboard screen shown (DashboardApp). The ship-manifest success event. |
+| `hf_dash_summary_load` | `ms`, `parts_failed`, `role`, `surface: 'dash_v3'` | Now emitted by the shared dashboard data load (every screen), not only the Overview. |
+| `hf_calls_list_load` | `role`, `status`, `count`, `surface: 'dash_v3'` | Calls screen page loaded. |
+| `hf_dash3_cta` | `cta` | A hero button (e.g. `find_someone`). |
+| `hf_dash3_bell_open` | – | Notifications bell opened. |
+| `hf_dash3_signout` | – | "Haan, sign out" pressed in the sign-out dialog. |
+| `hf_dash3_call_open` | `role` | A call's detail sheet opened from Calls. |
+| `hf_dash3_review_sent` | `stars` | Rating sent from the dashboard (POST /api/hf/calls/:id/review). |
+| `hf_dash3_topup_start` / `hf_dash3_topup_credited` | `amount` (rupees) | Add money started / confirmed credited on the Wallet screen. |
+| `hf_dash3_refund_requested` | – | Refund requested from the Wallet screen. |
+| `hf_dash3_profile_saved` | `strength` | Profile saved. |
+| `hf_dash3_notify_pref` | `on` | "Notify me on WhatsApp" switch changed. |
+| `hf_dash3_appt_open` | `status` | An appointment opened from My appointments. |
+| `hf_dash3_become_start` | `step` | "Start now / Continue" on Become an influencer. |
+| `hf_dash3_ticket_sent` | `topic` | Support question sent. |
+| `hf_dash3_close_started` | `with_money` | Close-account confirmed. |
+| `$exception` (web) | `area: 'hf_dash_v3'`, `part` or `step` | A dashboard data part or the calls list failed. |
+| worker `hf_dash_profile_saved` | `fields` | PUT /api/hf/me/profile. |
+| worker `hf_dash_prefs_saved` | `notify_whatsapp` | PUT /api/hf/me/prefs. |
+| worker `hf_dash_block` | `reason`, `call_id` | Block & report from a call (also an `hf_incidents` row `dash_report:<reason>`). |
+| worker `hf_dash_unblock` | – | Unblocked from Profile. |
+| worker `hf_dash_ticket_created` | `topic`, `ticket_id` | Support question stored and emailed to the support inbox. |
+| worker `$exception` | `extra.area: 'hf_dash_v3'`, `extra.step` | Any failure in routes/hf_dash_v3.ts. |

@@ -10882,5 +10882,30 @@
     "min_devices_on_build": 1,
     "flags": [],
     "no_telemetry": "Image assets only: no new screen, route, API call or user action, so there is no new event."
+  },
+  "HF-DASH-V3-1": {
+    "description": "New customer dashboard (light, Indian-flower design, desi stickers) on /dashboard/*: Overview with insights, Profile, Wallet, Calls with rating and Block & report, Appointments, My Fraands, Become an influencer, Support tickets, Close my account; backend GET /api/hf/me/insights, profile, prefs, blocks, support tickets.",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [],
+    "success": [
+      {
+        "event": "hf_dash_view",
+        "property": "section",
+        "min_events": 1,
+        "in": [
+          "overview",
+          "calls",
+          "wallet",
+          "profile",
+          "fraands",
+          "appointments",
+          "become",
+          "support",
+          "close"
+        ],
+        "note": "A signed-in person opened a screen of the new dashboard (DashboardApp emits hf_dash_view with the section)."
+      }
+    ]
   }
 }
