@@ -10941,5 +10941,12 @@
     "min_devices_on_build": 1,
     "flags": [],
     "no_telemetry": "Pure CSS/markup change; screens keep emitting hf_dash_view."
+  },
+  "HF-DASH-FONT-1": {
+    "description": "Dashboard font sizes are fluid (1x at 375px up to 1.2x at 1920px), matching the Explore page.",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [],
+    "no_telemetry": "Pure CSS change; screens keep emitting hf_dash_view."
   }
 }
