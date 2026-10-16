@@ -185,7 +185,16 @@ try {
       metrics.at(-1).artwork=artwork;
       if(width>=1440) assert(artwork.filter(a=>a.width>=180&&a.height>=80).length>=2,name+': Indian art is a major visible part of the desktop composition');
       if(width<=390) assert(artwork.filter(a=>a.width>=80&&a.height>=40).length>=2,name+': meaningful Indian art survives on mobile');
-      const stickers=await page.locator('main [data-meme-sticker]').evaluateAll(elements=>elements.map(e=>({tag:e.tagName,text:e.textContent.trim(),visible:e.getClientRects().length>0&&getComputedStyle(e).visibility!=='hidden,fontSize:parseFloat(getComputedStyle(e).fontSize),fontFamily:getComputedStyle(e).fontFamily})));
+      const stickers = await page.locator('main [data-meme-sticker]').evaluateAll(elements => elements.map(element => {
+        const style = getComputedStyle(element);
+        return {
+          tag: element.tagName,
+          text: element.textContent.trim(),
+          visible: element.getClientRects().length > 0 && style.visibility !== 'hidden',
+          fontSize: parseFloat(style.fontSize),
+          fontFamily: style.fontFamily,
+        };
+      }));
       metrics.at(-1).stickers=stickers;
       assert(stickers.filter(s=>s.visible&&s.text.length>=3&&s.fontSize>=14&&/Nunito/.test(s.fontFamily)&&!['IMG','SVG','IMAGE','CANVAS'].includes(s.tag)).length>=3,name+': at least three readable meme stickers are native HTML');
       assert(Math.abs(readability.layout.mainWidth-readability.layout.shellWidth)<=1,name+': main fills the shared Explore shell');
