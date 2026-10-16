@@ -33,7 +33,8 @@ const REELS: [string, string, string, string][] = [
   ['girlboss', '@desi_diva', 'Sunday GRWM, desi style ✨', 'r3'],
   ['auto', '@auto_wala_comedy', 'Bhaiya, meter se chalo 😂', 'r4'],
 ];
-const st = (n: string) => `/hf/stickers/${n}.webp`;
+/** Sticker URL through the public-image pipeline (index.astro passes publicImage; raw paths fail the image-coverage contract). */
+let st = (n: string) => `/hf/stickers/${n}.webp`;
 
 /** The hero animation: phone scrolls short videos → heart → creator card pops out → call connects, numbers hidden (CSS in hf-landing.css). */
 function HeroStage() {
@@ -72,7 +73,8 @@ function HeroStage() {
   </div>;
 }
 
-export default function DesiLanding({ creators, calc }: { creators?: ReactNode; calc?: ReactNode }) {
+export default function DesiLanding({ creators, calc, stickerUrl }: { creators?: ReactNode; calc?: ReactNode; stickerUrl?: (name: string) => string }) {
+  if (stickerUrl) st = stickerUrl;
   const name = BRAND.name;
   const nav = <nav className="h3-nav" aria-label="On this page">
     <div className="h3-group"><Marigold size={14} tone={1} />Is page par</div>

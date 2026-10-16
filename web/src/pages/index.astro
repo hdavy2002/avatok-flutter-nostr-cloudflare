@@ -11,6 +11,7 @@ import HelloFraandsFooter from '../components/callvaal/Footer.astro';
 import DesiLanding, { FAQ } from '../islands/home/DesiLanding';
 import LiveCreators from '../islands/home/LiveCreators';
 import EarnCalc from '../islands/home/EarnCalc';
+import { publicImage } from '../lib/config';
 import '../styles/callvaal-notebook.css';
 import '../styles/host-fan-redesign.css';
 import '../styles/hf-dash3.css';
@@ -20,6 +21,7 @@ const name = identity.name;
 const title = `Your favourite creators. One conversation away. | ${name}`;
 const description = `Love their Reels and Shorts? Go beyond likes and comments: book a private one-on-one call with the creators you follow. Your number stays hidden. Pay only for connected time. 18+.`;
 const canonical = `https://${identity.domain}/`;
+const stickerUrl = (n: string) => publicImage(`/hf/stickers/${n}.webp`, { width: 256 });
 ---
 <!doctype html>
 <html lang="en-IN">
@@ -37,7 +39,7 @@ const canonical = `https://${identity.domain}/`;
 <div class="notebook-site" data-design="callvaal-scrapbook">
   <a class="skip-link" href="#main-content">Skip to main content</a>
   <HelloFraandsHeader homeReference />
-  <DesiLanding>
+  <DesiLanding stickerUrl={stickerUrl}>
     <LiveCreators slot="creators" client:visible />
     <EarnCalc slot="calc" client:visible />
   </DesiLanding>

@@ -86,7 +86,8 @@ assert.deepEqual([...footer.matchAll(/<li\b[^>]*>\s*<a\b[^>]*href="([^"]+)"/g)].
 checkHelloFraandsPages(root, identity);
 // [HF-HOME-DESI-1] Landing art is the owner's stickers (HF-SITE-11) through the public-image pipeline, plus SVG flowers.
 const emittedMain = emittedHtml.match(/<main\b[^>]*>([\s\S]*?)<\/main>/)?.[1] || '';
-assert((emittedMain.match(/\/hf\/stickers\/[a-z]+\.webp/g) || []).length >= 6, 'Landing uses the desi stickers');
+assert((main.match(/\/hf\/stickers\/[a-z]+\.webp/g) || []).length >= 6, 'Landing uses the desi stickers');
+assert((emittedMain.match(/<img\b[^>]*src="\/hf\/stickers\//g) || []).length === 0, 'Stickers go through the public-image pipeline');
 for (const stk of ['chai', 'girlboss', 'kachori', 'auto', 'yaari', 'peace', 'pco', 'kyabaat', 'mohmaya']) assert(existsSync(resolve(root, 'hf/stickers', stk + '.webp')), 'Sticker ships: ' + stk);
 for (const name of ['hero', 'host', 'neha', 'arjun', 'meera', 'rohit', 'women', 'community', 'hero-cutout', 'women-cutout', 'community-cutout', 'fan-call', 'host-call', 'women-reference', 'community-reference']) {
   const file = resolve(root, 'assets/callvaal/host-fan', name + '.webp');

@@ -10963,5 +10963,12 @@
         "note": "A visitor saw a section of the new dashboard-style landing page."
       }
     ]
+  },
+  "HF-HOME-DESI-2": {
+    "description": "Landing follow-up: hero stickers through the public-image pipeline; release contracts updated for the new heading.",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [],
+    "no_telemetry": "Build/contract fix for HF-HOME-DESI-1; success is measured there."
   }
 }
