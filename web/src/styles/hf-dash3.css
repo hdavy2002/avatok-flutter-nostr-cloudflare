@@ -96,9 +96,7 @@
   .h3-side .h3-me{justify-content:center;padding:6px}
   .h3-side .h3-item{justify-content:center;padding:12px 0}
   .h3-side .h3-item .flw{display:none}
-  .h3-side .h3-item::after{content:attr(data-tip);position:absolute;left:100%;margin-left:8px;background:var(--plum);color:#fff;font-size:14px;padding:6px 10px;
-    border-radius:10px;white-space:nowrap;opacity:0;pointer-events:none;transition:opacity .15s;z-index:30}
-  .h3-side .h3-item:hover::after{opacity:1}
+  /* [HF-DASH-TIP-1] no floating name labels here: on touch screens a tap left them stuck over the page */
   .h3-side .h3-item .pip{display:block;position:absolute;top:6px;right:14px;width:9px;height:9px;border-radius:50%;background:var(--rani);border:2px solid var(--cream)}
 }
 @container (min-width:72rem){

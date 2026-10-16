@@ -60,9 +60,9 @@ export default function Shell({ account, active, bookingOn, favouritesOn, childr
       {g.items.map(it => {
         const on = it.key === active;
         const badge = it.badge ? <span className={`bdg ${it.badgeTone ?? ''}`}>{it.badge}</span> : null;
-        if (it.disabled) return <span key={it.key} className="h3-item is-off" data-tip={`${it.label} · ${it.disabled}`} aria-disabled="true"><Ic name={it.icon} /><span className="lbl">{it.label}<small>{it.disabled}</small></span></span>;
-        if (it.key === 'signout') return <button key={it.key} type="button" className="h3-item" data-tip={it.label} onClick={() => { setDrawer(false); setBye(true); }}><Ic name={it.icon} /><span className="lbl">{it.label}</span></button>;
-        return <a key={it.key} href={it.href} className={`h3-item${on ? ' on' : ''}${it.key === 'close' ? ' danger' : ''}`} data-tip={it.label} aria-current={on ? 'page' : undefined} onClick={() => setDrawer(false)}>
+        if (it.disabled) return <span key={it.key} className="h3-item is-off" aria-label={`${it.label} · ${it.disabled}`} aria-disabled="true"><Ic name={it.icon} /><span className="lbl">{it.label}<small>{it.disabled}</small></span></span>;
+        if (it.key === 'signout') return <button key={it.key} type="button" className="h3-item" aria-label={it.label} onClick={() => { setDrawer(false); setBye(true); }}><Ic name={it.icon} /><span className="lbl">{it.label}</span></button>;
+        return <a key={it.key} href={it.href} className={`h3-item${on ? ' on' : ''}${it.key === 'close' ? ' danger' : ''}`} aria-label={it.label} aria-current={on ? 'page' : undefined} onClick={() => setDrawer(false)}>
           <Ic name={it.icon} /><span className="lbl">{it.label}</span>{badge}{it.badge ? <i className="pip" /> : null}{on && <span className="flw"><Marigold size={22} tone={1} /></span>}
         </a>;
       })}

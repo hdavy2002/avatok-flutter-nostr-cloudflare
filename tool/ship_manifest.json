@@ -10934,5 +10934,12 @@
     "min_devices_on_build": 1,
     "flags": [],
     "no_telemetry": "Pure CSS/markup layout change; dashboard screens keep emitting hf_dash_view."
+  },
+  "HF-DASH-TIP-1": {
+    "description": "Icon sidebar: removed floating menu-name tooltips that stuck over the page on touch screens; items get aria-labels.",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [],
+    "no_telemetry": "Pure CSS/markup change; screens keep emitting hf_dash_view."
   }
 }
