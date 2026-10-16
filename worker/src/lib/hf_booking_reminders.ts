@@ -1,4 +1,4 @@
-// [HF-APPT-REMIND-1] Appointment reminders for Hello Fraands bookings (rulebook HF-BOOK-REMIND-1).
+// [HF-APPT-REMIND-1] Appointment reminders for bookings (rulebook HF-SITE-13).
 //   runHfBookingReminders(env, now?)   cron (every 5 min, index.ts scheduled()): queues reminders into the paced whatsapp_outbox
 //   revalidateBookingReminder(env, row) the drain calls this just before sending: the booking must still be on and in the future
 // Two reminders per person per booking, to BOTH the customer and the influencer: about 1 hour before and about 10 minutes before.
