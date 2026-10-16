@@ -72,11 +72,11 @@
 .as-connect::before,.as-connect::after{content:'';position:absolute;height:.6rem;left:0;right:0;background:var(--as-yellow);clip-path:polygon(0 0,100% 0,100% 80%,93% 30%,83% 100%,71% 35%,63% 85%,52% 30%,41% 100%,29% 35%,18% 90%,9% 40%,0 100%)}.as-connect::before{top:-.5rem;transform:rotate(180deg)}.as-connect::after{bottom:-.5rem}
 .as-connect h2{font-size:clamp(2.2rem,1.2rem + 3vw,4.7rem);line-height:1.1}.as-connect p{margin-top:1rem;font-size:1rem;line-height:1.6}.as-connect .as-button{margin-top:1.6rem}
 .as-connect-chai{width:100%;max-width:12rem;transform:rotate(-13deg)}.as-connect-flower{width:100%;max-width:12rem;transform:rotate(14deg)}
-.as-download{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(0,.8fr);gap:clamp(2rem,6vw,6rem);align-items:center;padding:clamp(3.5rem,6vw,6rem) 0 2rem}
+.as-download{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,28rem),1fr));gap:clamp(2rem,6vw,6rem);align-items:center;padding:clamp(3.5rem,6vw,6rem) 0 2rem}
 .as-download-copy>p:last-child{font-size:1rem;line-height:1.7;margin-top:1.2rem;max-width:33rem}
-.as-download-stores{display:grid;gap:1rem;max-width:29rem;width:100%;justify-self:end}
-.as-store-button{display:flex;align-items:center;gap:1.2rem;min-width:0;max-width:100%;padding:1.1rem 1.5rem;background:var(--as-plum);color:white;text-decoration:none;border:2px solid var(--as-plum);border-radius:1rem}
-.as-store-button>.modern-icon{width:2.6rem;height:2.6rem;flex:none}.as-store-button>span:nth-child(2){flex:1;min-width:0}.as-store-button strong,.as-store-button small{display:block;line-height:1.4}.as-store-button strong{font-size:1.25rem}.as-store-button small{font-size:.875rem;margin-block:.2rem}.as-store-button>span:last-child:not(:nth-child(2)){font-size:1.7rem}.as-store-button[href]:hover{background:#53103c}
+.as-download-stores{display:grid;gap:1rem;min-width:0;max-width:29rem;width:100%;justify-self:end}
+.as-store-button{display:flex;align-items:center;gap:.75rem;min-width:0;max-width:100%;padding:.75rem;background:var(--as-plum);color:white;text-decoration:none;border:2px solid var(--as-plum);border-radius:1rem}
+.as-store-button>.modern-icon{width:2rem;height:2rem;flex:none}.as-store-button>span:nth-child(2){flex:1;min-width:0}.as-store-button strong,.as-store-button small{display:block;line-height:1.4}.as-store-button strong{font-size:1.25rem}.as-store-button small{font-size:.875rem;margin-block:.2rem}.as-store-button>span:last-child:not(:nth-child(2)){font-size:1.7rem}.as-store-button[href]:hover{background:#53103c}
 .as-store-soon{background:var(--as-paper);color:var(--as-plum);border-color:#d5c0cb}
 .as-preview-dialog{width:min(34rem,calc(100% - 2rem));max-width:calc(100% - 2rem);max-height:calc(100dvh - 2rem);overflow:auto;padding:clamp(1.25rem,3vw,2rem);border:2px solid #71134f;border-radius:1rem;background:#fffdf7;color:#35122f}
 .as-preview-dialog h2{font-size:1.7rem;line-height:1.2}.as-preview-dialog p{font-size:1rem;line-height:1.7;margin:1rem 0 0}.as-preview-dialog::backdrop{background:#35122fbb}.as-dialog-actions{display:flex;flex-wrap:wrap;gap:.75rem;margin-top:1.5rem}.as-preview-dialog .as-button{font-size:.875rem;padding:.75rem 1rem}
@@ -93,7 +93,7 @@
  .as-how,.as-creators{padding-top:3.2rem}.as-section-heading{margin-bottom:1.7rem;align-items:flex-end}.as-section-heading h2{font-size:2rem}.as-section-heading .as-eyebrow{font-size:.875rem}.as-heading-chai,.as-heading-leaves{width:4rem;margin:0;align-self:flex-start}.as-steps{grid-template-columns:1fr;gap:1.5rem}.as-step{padding:1.5rem}.as-step-top{margin-bottom:1rem}.as-step p{max-width:none}
  .as-creator-grid{gap:1.5rem 1rem}.as-creator-label{padding:.8rem .1rem 1rem}.as-creator-label h3{font-size:1.5rem}.as-creator-label p{font-size:.875rem}.as-profile-button{padding:.6rem;font-size:.875rem}
  .as-connect{grid-template-columns:1fr;margin-top:3.5rem;padding:2.5rem 1.2rem}.as-connect-chai,.as-connect-flower{display:none}.as-connect h2{font-size:2.4rem}
- .as-download{grid-template-columns:1fr;gap:1.7rem;padding:3.5rem 0 1rem}.as-download h2{font-size:2.3rem}.as-download-stores{justify-self:start;max-width:none}.as-store-button{padding:1rem 1.2rem}
+ .as-download{grid-template-columns:1fr;gap:1.7rem;padding:3.5rem 0 1rem}.as-download h2{font-size:2.3rem}.as-download-stores{justify-self:start;max-width:none}.as-store-button{padding:.75rem}
 }
 @media(max-width:599px){.as-creator-grid{grid-template-columns:1fr;gap:2rem}.as-creator{padding:1rem}.as-creator-label h3{font-size:1.8rem}.as-heading-chai,.as-heading-leaves{display:none}}
 /* Reflow with enlarged root text, including 200% text sizing on wide screens. */
@@ -102,3 +102,7 @@
 
 /* Small, irregular photo edges expose the paper beneath without clipping captions or actions. */
 .as-portrait-photo,.as-creator-photo{clip-path:polygon(1% 1%,12% 0,24% 1.1%,36% .2%,49% 1.3%,61% 0,73% .8%,87% .1%,99% 1%,100% 14%,98.8% 27%,99.8% 40%,98.9% 54%,100% 68%,99% 81%,100% 99%,86% 98.9%,73% 100%,59% 99%,46% 99.8%,32% 98.8%,18% 100%,.6% 99%,1.1% 84%,0 71%,1.2% 57%,.2% 43%,1% 29%,0 15%)}
+
+/* Download controls reflow with enlarged text; the outbound arrow is decorative. */
+.as-download-copy,.as-store-button>*{min-width:0}
+@media(max-width:599px){.as-store-button>span:last-child:not(:nth-child(2)){display:none}}
