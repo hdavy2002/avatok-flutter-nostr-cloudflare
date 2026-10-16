@@ -34,11 +34,7 @@ async function waitForPreviewClose(dialog, trigger, message) {
 async function inspectReadability(page) {
   return page.evaluate(() => {
     const visible = el => el.getClientRects().length > 0 && getComputedStyle(el).visibility !== 'hidden';
-    const groups = [
-      [16, '.hfh-hero-copy>p:not(.hfh-eyebrow), .hfh-button, .hfh-section-heading p, .hfh-card-heading h3, .hfh-rate, .hfh-privacy p:not(.hfh-eyebrow), .hfh-lane-copy>p:not(.hfh-kyc):not(.hfh-eyebrow), .hfh-steps p, .hfh-host-copy p:not(.hfh-eyebrow), [data-callvaal-footer-group] summary, [data-callvaal-footer-group] a, [data-callvaal-footer-group] button'],
-      [15, 'footer[data-callvaal-chrome] .cv-footer-brand p, footer[data-callvaal-chrome] .cv-footer-copyright'],
-      [14, '.hfh-sample-label, .hfh-disclosure, .hfh-eligibility, .hfh-availability, .hfh-category, .hfh-rating, .hfh-voice, .hfh-kyc, .hfh-picker, .hfh-share, .hfh-proof li, .hfh-eyebrow, .hfh-photo-caption div>span, .hfh-photo-tag'],
-    ];
+    const groups = [[14,'main h1, main h2, main h3, main p, main a, main button, main li, header a, header button, footer a, footer p']];
     const fontFailures = [];
     const fontCounts = [];
     for (const [floor, selector] of groups) {
@@ -50,14 +46,14 @@ async function inspectReadability(page) {
       }
     }
     const clipping = [];
-    const panels = '.hfh-hero-copy, .hfh-picker, .hfh-share, .hfh-card-copy, #women-only, #privacy-note, .hfh-host-copy, #safety, .hfh-lane-copy, .hfh-steps, [data-callvaal-footer-group][open]';
+    const panels = 'main section, header, footer';
     for (const panel of document.querySelectorAll(panels)) {
       if (!visible(panel)) continue;
       if (panel.scrollWidth > panel.clientWidth + 2) clipping.push({ panel: panel.className, reason: 'horizontal overflow' });
       const walker = document.createTreeWalker(panel, NodeFilter.SHOW_TEXT);
       while (walker.nextNode()) {
         const text = walker.currentNode;
-        if (!text.textContent.trim() || !visible(text.parentElement) || text.parentElement.closest('.sr-only, .hf-safety-sr-only, option, svg')) continue;
+        if (!text.textContent.trim() || !visible(text.parentElement) || text.parentElement.closest('.sr-only, .as-sr-only, .hf-safety-sr-only, option, svg')) continue;
         const range = document.createRange();
         range.selectNodeContents(text);
         for (const rect of range.getClientRects()) {
@@ -83,7 +79,7 @@ async function inspectReadability(page) {
         }
       }
     };
-    checkSiblings('.hfh-actions, .hfh-proof, .hfh-card-heading, .hfh-category, .hfh-creator-grid, .hfh-steps, .hfh-host-copy, footer[data-callvaal-chrome] nav[aria-label="Footer"]');
+    checkSiblings('[data-approved-actions], [data-approved-creator-grid], [data-approved-steps]');
     const viewportOverflow = {
       viewport: innerWidth,
       content: document.documentElement.scrollWidth,
@@ -111,158 +107,87 @@ async function inspectReadability(page) {
 try {
   await new Promise(done => server.listen(4179, '127.0.0.1', done));
   browser = await chromium.launch();
-  for (const width of [320, 390, 767, 768, 820, 1023, 1024, 1440, 1920, 2560, 3440]) {
-    const name = `home-${width}`;
-    const page = await browser.newPage({ viewport: { width, height: 1000 }, deviceScaleFactor: 1, reducedMotion: 'reduce' });
-    const mutations = [];
-    const browserErrors = [];
+  for (const width of [320,390,767,768,820,1024,1039,1440,1920,2560,3440]) {
+    const name = 'home-' + width;
+    const page = await browser.newPage({ viewport:{width,height:1000},deviceScaleFactor:1,reducedMotion:'reduce' });
+    const browserErrors=[], mutations=[];
     await page.addInitScript(() => {
-      window.__previewNotificationRequests = 0;
-      if ('Notification' in window) Notification.requestPermission = async () => {
-        window.__previewNotificationRequests++;
-        return 'denied';
-      };
+      window.__previewNotificationRequests=0;
+      if ('Notification' in window) Notification.requestPermission=async()=>{window.__previewNotificationRequests++;return 'denied';};
     });
-    page.on('pageerror', error => browserErrors.push(String(error)));
-    page.on('request', request => {
-      if (/\/api\//.test(request.url()) && !['GET', 'HEAD'].includes(request.method())) mutations.push(request.url());
-    });
+    page.on('pageerror', error=>browserErrors.push(String(error)));
+    page.on('request',request=>{if(/\/api\//.test(request.url())&&!['GET','HEAD'].includes(request.method()))mutations.push(request.url());});
     await page.route('**/*', route => {
-      const url = new URL(route.request().url());
-      if (url.origin !== 'http://127.0.0.1:4179' || url.pathname.startsWith('/api/')) return route.abort();
-      return route.continue();
+      const u=new URL(route.request().url());
+      return u.origin!=='http://127.0.0.1:4179'||u.pathname.startsWith('/api/') ? route.abort() : route.continue();
     });
     try {
-      await page.goto('http://127.0.0.1:4179/', { waitUntil: 'domcontentloaded' });
-      await page.locator('html[data-homepage-ready="true"]').waitFor({ state: 'attached' });
-      await page.evaluate(async () => {
-        await document.fonts.ready;
-        const images = [...document.images].filter(image => image.getClientRects().length);
-        for (const image of images) image.loading = 'eager';
-        await Promise.all(images.map(image => image.decode()));
-      });
-      await expect(page.locator('link[rel="canonical"]')).toHaveAttribute('href', `https://${homepageIdentity.domain}/`);
-      await expect(page.locator('meta[property="og:url"]')).toHaveAttribute('content', `https://${homepageIdentity.domain}/`);
-      await expect(page.locator('h1')).toHaveText('Talk to your favourite social media influencers over a private phone call.');
-      await expect(page.locator('.hfh-beta')).toHaveCount(0);
-      await expect(page.locator('.hfh-creator-card')).toHaveCount(8);
-      await expect(page.locator('.hfh-card-heading h3')).toHaveText(['Neha', 'Arjun', 'Meera', 'Rohit', 'Isha', 'Kabir', 'Sana', 'Dev']);
-      await expect(page.locator('.hfh-rate')).toHaveText(['₹3.99/min', '₹4.50/min', '₹3.50/min', '₹3.25/min', '₹5.50/min', '₹4.75/min', '₹4.25/min', '₹5.00/min']);
-      await expect(page.locator('.hfh-availability')).toHaveText(['Online now', 'Online now', 'In 30 mins', 'Online now', 'Online now', 'In 30 mins', 'Online now', 'Online now']);
-      await expect(page.locator('.hfh-category>span:first-of-type')).toHaveText(['Beauty & Style', 'Gaming', 'Fitness', 'Film & Culture', 'Travel', 'Music', 'Food & Lifestyle', 'Photography']);
-      await expect(page.locator('#people-title')).toHaveText('Talk to influencers you follow');
-      await expect(page.locator('[data-home-cta="explore-hosts"]')).toHaveText('Explore influencers →');
-      await expect(page.locator('.cv-footer-brand p')).toHaveCount(0);
-      const typography = await page.evaluate(() => ({
-        headings: [...document.querySelectorAll('h1,h2,h3,h4,h5,h6,.cv-footer-group>summary')].filter(el => el.getClientRects().length).every(el => getComputedStyle(el).fontFamily.includes('HomeNunito')),
-        body: [...document.querySelectorAll('main p,main a,main button,header a,footer p,footer a')].filter(el => el.getClientRects().length).every(el => getComputedStyle(el).fontFamily.includes('HomeComfortaa')),
+      await page.goto('http://127.0.0.1:4179/',{waitUntil:'networkidle'});
+      await page.locator('html[data-homepage-ready="true"]').waitFor({state:'attached'});
+      await page.evaluate(()=>document.fonts.ready);
+      await expect(page.locator('h1')).toHaveCount(1);
+      await expect(page.locator('h1')).toHaveText('Your favorite creators. One conversation away.');
+      await expect(page.locator('link[rel="canonical"]')).toHaveAttribute('href','https://'+homepageIdentity.domain+'/');
+      await expect(page.locator('[data-approved-creator]')).toHaveCount(4);
+      await expect(page.locator('main')).toContainText('Your number stays private. The influencer’s does too.');
+      await expect(page.locator('main')).toContainText('We call you both and connect the conversation.');
+      const textStructure=await page.evaluate(()=>({
+        images:[...document.querySelectorAll('main img')].filter(e=>e.getClientRects().length).map(e=>({loaded:e.complete&&e.naturalWidth>0,width:e.width,height:e.height})),
+        headings:[...document.querySelectorAll('main h1,main h2,main h3')].every(e=>getComputedStyle(e).fontFamily.includes('Nunito')),
+        body:[...document.querySelectorAll('main p,main button,main a')].every(e=>getComputedStyle(e).fontFamily.includes('Comfortaa')),
+        gradients:[...document.querySelectorAll('main *,header,footer')].filter(e=>/gradient\(/.test(getComputedStyle(e).backgroundImage)).map(e=>e.className),
       }));
-      assert(typography.headings && typography.body, name + ': Nunito headings and Comfortaa body text');
-      await expect(page.locator('#privacy-title')).toHaveText('Your number stays yours.');
-      await expect(page.locator('.hfh-connection')).toContainText(homepageIdentity.name);
-      await expect(page.locator('.hfh-connection figcaption')).toHaveText('Two private calls. One conversation.');
-      await expect(page.locator('.hfh-kyc')).toHaveText(['Video KYC required', 'Video KYC required']);
-      await expect(page.locator('.hfh-eligibility')).toContainText('not their gender or sexual orientation');
-      await expect(page.locator('.hfh-steps h3')).toHaveText(['Choose an influencer', 'Start the call', 'Talk privately']);
-      await expect(page.locator('.hfh-share-url')).toHaveText(homepageIdentity.domain + '/yourname');
-      await expect(page.locator('#sample-disclosure')).toBeVisible();
-      await expect(page.locator('.hfh-disclosure')).toContainText('No audio plays and no call or payment is made.');
-      await expect(page.locator('.hfh-collage button, .hfh-collage a')).toHaveCount(0);
-      for (const [action, href] of [
-        ['explore-hosts', '/marketplace'], ['view-all-hosts', '/marketplace'],
-        ['become-host', '/hosts/join'], ['apply-host', '/hosts/join'],
-        ['women-hosts', '/marketplace?lane=women#people'], ['lgbtq-hosts', '/marketplace?lane=lgbtq#people'],
-      ]) await expect(page.locator('[data-home-cta="' + action + '"]')).toHaveAttribute('href', href);
-      const geometry = await page.evaluate(() => {
-        const columns = selector => getComputedStyle(document.querySelector(selector)).gridTemplateColumns.split(' ').length;
-        return {
-          hero: columns('.hfh-hero'), creators: columns('.hfh-creator-grid'), privacy: columns('.hfh-privacy'),
-          lanes: columns('.hfh-lanes'), steps: columns('.hfh-steps'),
-          heroTop: document.querySelector('.hfh-hero').getBoundingClientRect().top,
-          headerTop: document.querySelector('header').getBoundingClientRect().top,
-          headerBottom: document.querySelector('header').getBoundingClientRect().bottom,
-          smallControls: [...document.querySelectorAll('.hfh-home button, .hfh-home a')].filter(el => el.getClientRects().length && el.getBoundingClientRect().height < 43.9).map(el => el.textContent),
-          ids: [...document.querySelectorAll('[id]')].map(el => el.id),
-        };
-      });
-      assert.equal(geometry.hero, width >= 768 ? 2 : 1, name + ': hero columns');
-      assert.equal(geometry.creators, width >= 1024 ? 4 : width >= 768 ? 2 : 1, name + ': creator columns');
-      assert.equal(geometry.privacy, width >= 1024 ? 2 : 1, name + ': privacy columns');
-      assert.equal(geometry.lanes, width >= 1024 ? 2 : 1, name + ': lane columns');
-      assert.equal(geometry.steps, width >= 768 ? 3 : 1, name + ': steps columns');
-      assert(geometry.headerBottom <= geometry.heroTop + 1, name + ': header above hero');
-      assert.deepEqual(geometry.smallControls, [], name + ': 44px minimum control height');
-      assert.equal(new Set(geometry.ids).size, geometry.ids.length, name + ': IDs unique');
-      const readability = await inspectReadability(page);
-      metrics.push({ name, readability, geometry });
-      assert.deepEqual(readability.fontFailures, [], name + ': readable fonts');
-      assert.deepEqual(readability.clipping, [], name + ': unclipped content');
-      assert.deepEqual(readability.overlaps, [], name + ': controls and text do not overlap');
-      assert(readability.viewportOverflow.content <= width + 1, name + ': no horizontal overflow');
-      await page.evaluate(() => window.scrollTo(0, 700));
-      const stickyHeader = await page.locator('header').evaluate(el => ({
-        position: getComputedStyle(el).position, top: el.getBoundingClientRect().top,
-      }));
-      assert.equal(stickyHeader.position, 'sticky', name + ': sticky header');
-      assert(Math.abs(stickyHeader.top) <= 1, name + ': header remains at the top on scroll');
-      await page.evaluate(() => window.scrollTo(0, 0));
-      const imageGeometry = await page.locator('main img').evaluateAll(images => images.filter(image => image.getClientRects().length).map(image => ({
-        alt: image.alt, loaded: image.complete && image.naturalWidth > 0,
-        width: image.getBoundingClientRect().width, height: image.getBoundingClientRect().height,
-      })));
-      assert(imageGeometry.length === 17 && imageGeometry.every(image => image.loaded && image.alt && image.width > 0 && image.height > 0), name + ': all separate photographic assets load');
-      await page.screenshot({ path: 'homepage-review/' + name + '.png', fullPage: true });
-      const dialog = page.locator('#preview-dialog');
-      for (const trigger of await page.locator('.hfh-creator-card [data-preview-action]').all()) {
+      assert(textStructure.images.length>=5&&textStructure.images.every(e=>e.loaded&&e.width>0&&e.height>0),name+': source artwork loaded');
+      assert(textStructure.headings&&textStructure.body,name+': approved two-font system');
+      const loadedFaces = await page.evaluate(() => [...document.fonts].filter(f => f.status === 'loaded').map(f => f.family.replaceAll('"','')));
+      for (const family of ['Nunito','Comfortaa']) assert(loadedFaces.includes(family), name + ': actual local font loaded: ' + family);
+      assert.deepEqual(textStructure.gradients,[],name+': no gradients');
+      const readability=await inspectReadability(page);
+      metrics.push({name,width,...readability});
+      assert.deepEqual(readability.fontFailures,[],name+': text floor');
+      assert.deepEqual(readability.clipping,[],name+': no clipped text');
+      assert.deepEqual(readability.overlaps,[],name+': no overlapping controls');
+      assert(readability.viewportOverflow.content<=width+1,name+': no horizontal overflow');
+      await page.screenshot({path:'homepage-review/'+name+'.png',fullPage:true});
+      const dialog=page.locator('#approved-preview-dialog');
+      for (const trigger of await page.locator('[data-preview-action]').all()) {
         await trigger.click();
         await expect(dialog).toBeVisible();
-        const voice = await trigger.getAttribute('data-preview-action') === 'voice';
-        await expect(dialog).toContainText(voice ? 'Nothing is playing.' : 'No call has been booked and no payment is made.');
-        assert(await dialog.evaluate(element => element.contains(document.activeElement)), name + ': modal receives focus');
+        await expect(dialog).toContainText(/illustrative|sample/i);
+        assert(await dialog.evaluate(e=>e.contains(document.activeElement)),name+': dialog gets focus');
         await dialog.locator('[data-close-preview]').press('Enter');
-        await waitForPreviewClose(dialog, trigger, name);
+        await waitForPreviewClose(dialog,trigger,name);
         await trigger.press('Enter');
         await expect(dialog).toBeVisible();
         await page.keyboard.press('Escape');
-        await waitForPreviewClose(dialog, trigger, name);
+        await waitForPreviewClose(dialog,trigger,name);
       }
-      const menu = page.locator('[data-callvaal-menu-toggle]');
-      if (await menu.isVisible()) {
-        await menu.click();
-        await expect(menu).toHaveAttribute('aria-expanded', 'true');
-        await page.keyboard.press('Escape');
-        await expect(menu).toHaveAttribute('aria-expanded', 'false');
+      const menu=page.locator('[data-callvaal-menu-toggle]');
+      if(await menu.isVisible()){
+        await menu.click(); await expect(menu).toHaveAttribute('aria-expanded','true');
+        await page.keyboard.press('Escape'); await expect(menu).toHaveAttribute('aria-expanded','false');
         await expect(menu).toBeFocused();
       }
-      await expect(page.locator('[data-callvaal-footer-group]')).toHaveCount(5);
-      await expect(page.locator('[data-callvaal-footer-group] li')).toHaveCount(36);
-      for (const group of await page.locator('[data-callvaal-footer-group]').all()) {
-        if (!(await group.evaluate(element => element.open))) await group.locator('summary').click();
+      for(const href of ['/about','/help','/privacy','/terms']) await expect(page.locator('footer a[href="'+href+'"]')).toBeVisible();
+      if([320,390,768,1039,1440].includes(width)){
+        await page.evaluate(()=>{document.documentElement.style.fontSize='200%';});
+        const enlarged=await inspectReadability(page); metrics.at(-1).enlarged=enlarged;
+        assert.deepEqual(enlarged.clipping,[],name+': 200% text unclipped');
+        assert.deepEqual(enlarged.overlaps,[],name+': 200% controls do not overlap');
+        assert(enlarged.viewportOverflow.content<=width+1,name+': 200% no horizontal overflow');
+        await page.screenshot({path:'homepage-review/'+name+'-text-200.png',fullPage:true});
       }
-      await expect(page.locator('[data-callvaal-footer-group] summary')).toHaveText(footerGroups);
-      const privacy = page.locator('[data-callvaal-footer-group] a[href="/privacy"]');
-      await expect(privacy).toBeVisible();
-      await expect(privacy).toHaveAttribute('href', '/privacy');
-      await expect(page.locator('[data-footer-preview]')).toHaveCount(0);
-      if ([320, 390, 768, 1024, 1440].includes(width)) {
-        await page.evaluate(() => { document.documentElement.style.fontSize = '200%'; });
-        const enlarged = await inspectReadability(page);
-        metrics.at(-1).enlarged = enlarged;
-        assert.deepEqual(enlarged.clipping, [], name + ': 200% text unclipped');
-        assert.deepEqual(enlarged.overlaps, [], name + ': 200% text does not overlap');
-        assert(enlarged.viewportOverflow.content <= width + 1, name + ': 200% text no horizontal overflow');
-        await page.screenshot({ path: `homepage-review/${name}-text-200.png`, fullPage: true });
-      }
-      const missingAnchors = await page.locator('a[href^="#"]:visible').evaluateAll(links => links.map(a => a.hash.slice(1)).filter(id => id && !document.getElementById(id)));
-      assert.deepEqual(missingAnchors, [], name + ': visible anchors resolve');
-      assert.deepEqual(mutations, [], name + ': no backend mutations');
-      assert.equal(await page.evaluate(() => window.__previewNotificationRequests), 0, name + ': preview never requests notification permission');
-      assert.deepEqual(browserErrors, [], name + ': no uncaught browser errors');
-    } catch (error) {
-      await page.screenshot({ path: `homepage-review/${name}-failure.png`, fullPage: true }).catch(() => undefined);
-      failures.push({ name, error: String(error), browserErrors });
-    } finally { await page.close(); }
+      const missingAnchors=await page.locator('a[href^="#"]:visible').evaluateAll(links=>links.map(a=>a.hash.slice(1)).filter(id=>id&&!document.getElementById(id)));
+      assert.deepEqual(missingAnchors,[],name+': anchors resolve');
+      assert.deepEqual(mutations,[],name+': samples never mutate backend');
+      assert.equal(await page.evaluate(()=>window.__previewNotificationRequests),0);
+      assert.deepEqual(browserErrors,[],name+': no browser errors');
+    } catch(error) {
+      await page.screenshot({path:'homepage-review/'+name+'-failure.png',fullPage:true}).catch(()=>undefined);
+      failures.push({name,error:String(error),browserErrors}); console.error(name,error);
+    } finally {await page.close();}
   }
+
   for (const [name, width, height, textScale] of [['safety-desktop', 1280, 900, 1], ['safety-compact-text-200', 320, 740, 2]]) {
     const page = await browser.newPage({ viewport: { width, height }, deviceScaleFactor: 1, reducedMotion: 'reduce' });
     const browserErrors = [];

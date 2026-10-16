@@ -1,0 +1,422 @@
+{
+  "source": "approved-reference.png",
+  "sourceSha256": "e70b996d45cd8557f07bbde3acbbbb8035669e71ef4589c9736d3fb6f6a2b312",
+  "sourceDimensions": {
+    "width": 1039,
+    "height": 1514
+  },
+  "method": "Deterministic sharp extraction; patches reuse only blank paper from the same approved source to make room for accessible live text. No generated replacement art.",
+  "crops": [
+    {
+      "file": "paper.webp",
+      "sourceRect": {
+        "left": 410,
+        "top": 0,
+        "width": 165,
+        "height": 39
+      },
+      "patches": [],
+      "polygon": null,
+      "width": 165,
+      "height": 39,
+      "sha256": "7d338b697072a7432f1d944030202ed4a56921590ce4eb4d1b52427e426ab54e"
+    },
+    {
+      "file": "hero-collage.webp",
+      "sourceRect": {
+        "left": 470,
+        "top": 96,
+        "width": 569,
+        "height": 474
+      },
+      "patches": [],
+      "polygon": "84,0 569,0 569,474 49,474 49,406 62,390 58,285 45,211 0,188 0,107 49,100",
+      "width": 569,
+      "height": 474,
+      "sha256": "3ba8cf777704f18390d7d2ba034d362a53bfbe7b70a51da9e422e861c1c82915"
+    },
+    {
+      "file": "header-doodle.webp",
+      "sourceRect": {
+        "left": 938,
+        "top": 12,
+        "width": 101,
+        "height": 106
+      },
+      "patches": [],
+      "polygon": null,
+      "width": 101,
+      "height": 106,
+      "sha256": "00e509dd16592af7c72143478f7280555ec083e30baba62b171dc39ce3daa5e1"
+    },
+    {
+      "file": "hero-doodle.webp",
+      "sourceRect": {
+        "left": 399,
+        "top": 109,
+        "width": 124,
+        "height": 90
+      },
+      "patches": [],
+      "polygon": null,
+      "width": 124,
+      "height": 90,
+      "sha256": "2ab6f4c0fa432fec4fa0c05a8dc8b8e6685bead8acc0f49cbde63338a69c1993"
+    },
+    {
+      "file": "building-top.webp",
+      "sourceRect": {
+        "left": 0,
+        "top": 59,
+        "width": 96,
+        "height": 160
+      },
+      "patches": [],
+      "polygon": null,
+      "width": 96,
+      "height": 160,
+      "sha256": "a044613eb6e0b837c81855a2a4153334c955e43507cb7e32ba96576df3c65fac"
+    },
+    {
+      "file": "building-side.webp",
+      "sourceRect": {
+        "left": 0,
+        "top": 306,
+        "width": 59,
+        "height": 241
+      },
+      "patches": [],
+      "polygon": null,
+      "width": 59,
+      "height": 241,
+      "sha256": "e2ad597773b2a8b4e5f1830795839874b88036376c478aa6b8af30156a900acd"
+    },
+    {
+      "file": "privacy-strip.webp",
+      "sourceRect": {
+        "left": 0,
+        "top": 544,
+        "width": 1039,
+        "height": 135
+      },
+      "patches": [
+        {
+          "source": {
+            "left": 219,
+            "top": 554,
+            "width": 110,
+            "height": 20
+          },
+          "left": 160,
+          "top": 29,
+          "width": 675,
+          "height": 81
+        }
+      ],
+      "polygon": null,
+      "width": 1039,
+      "height": 135,
+      "sha256": "d47cff329ec32b258b89059ea7f3e16ff1ce5aca6da243a30160fd2d6905869b"
+    },
+    {
+      "file": "step-watch.webp",
+      "sourceRect": {
+        "left": 34,
+        "top": 740,
+        "width": 321,
+        "height": 190
+      },
+      "patches": [
+        {
+          "source": {
+            "left": 266,
+            "top": 775,
+            "width": 44,
+            "height": 27
+          },
+          "left": 51,
+          "top": 77,
+          "width": 242,
+          "height": 91
+        }
+      ],
+      "polygon": null,
+      "width": 321,
+      "height": 190,
+      "sha256": "6e4f569736ed3d1845bcba1acaf25c9836138f4efb4eb0af59651012ee1f50cd"
+    },
+    {
+      "file": "step-find.webp",
+      "sourceRect": {
+        "left": 365,
+        "top": 740,
+        "width": 305,
+        "height": 190
+      },
+      "patches": [
+        {
+          "source": {
+            "left": 573,
+            "top": 776,
+            "width": 56,
+            "height": 30
+          },
+          "left": 57,
+          "top": 77,
+          "width": 220,
+          "height": 91
+        }
+      ],
+      "polygon": null,
+      "width": 305,
+      "height": 190,
+      "sha256": "037bdc47ff4c21514496c533c252bac97100713be177988f8b797da26b3d1a0b"
+    },
+    {
+      "file": "step-connect.webp",
+      "sourceRect": {
+        "left": 680,
+        "top": 740,
+        "width": 319,
+        "height": 190
+      },
+      "patches": [
+        {
+          "source": {
+            "left": 927,
+            "top": 775,
+            "width": 37,
+            "height": 29
+          },
+          "left": 46,
+          "top": 77,
+          "width": 253,
+          "height": 99
+        }
+      ],
+      "polygon": null,
+      "width": 319,
+      "height": 190,
+      "sha256": "492bc53d5db36ed653255d5ffe2c08b712c6d40ad11274813b68ca1f178bd00c"
+    },
+    {
+      "file": "step-doodle.webp",
+      "sourceRect": {
+        "left": 738,
+        "top": 674,
+        "width": 196,
+        "height": 73
+      },
+      "patches": [],
+      "polygon": null,
+      "width": 196,
+      "height": 73,
+      "sha256": "da88e0624781cddace7a745e376379b049ca32c4cf36cc8f882258c9b3a24716"
+    },
+    {
+      "file": "step-leaves.webp",
+      "sourceRect": {
+        "left": 0,
+        "top": 868,
+        "width": 80,
+        "height": 83
+      },
+      "patches": [],
+      "polygon": null,
+      "width": 80,
+      "height": 83,
+      "sha256": "11a181d2f24a672275f54ac98c1544aad51b879f087d6bc313abcf17801217c3"
+    },
+    {
+      "file": "step-flower.webp",
+      "sourceRect": {
+        "left": 945,
+        "top": 843,
+        "width": 90,
+        "height": 101
+      },
+      "patches": [],
+      "polygon": null,
+      "width": 90,
+      "height": 101,
+      "sha256": "4689bab670f0039622b6ff5fd1878a470e3b1f5dc82a5935c2d7cc588cc5fda0"
+    },
+    {
+      "file": "creator-doodle.webp",
+      "sourceRect": {
+        "left": 736,
+        "top": 950,
+        "width": 197,
+        "height": 55
+      },
+      "patches": [],
+      "polygon": null,
+      "width": 197,
+      "height": 55,
+      "sha256": "f43b9c867eb20c516b989fa4589fffee5c70da7ea9e4f729b7e6ebc3df46ca23"
+    },
+    {
+      "file": "creator-meera.webp",
+      "sourceRect": {
+        "left": 57,
+        "top": 1001,
+        "width": 225,
+        "height": 255
+      },
+      "patches": [
+        {
+          "source": {
+            "left": 185,
+            "top": 1190,
+            "width": 53,
+            "height": 14
+          },
+          "left": 12,
+          "top": 193,
+          "width": 200,
+          "height": 51
+        }
+      ],
+      "polygon": null,
+      "width": 225,
+      "height": 255,
+      "sha256": "c5b826b4839ef56d8d4113cc39f1a7405642f76f68410c5539b9076259f846d7"
+    },
+    {
+      "file": "creator-kabir.webp",
+      "sourceRect": {
+        "left": 289,
+        "top": 1001,
+        "width": 227,
+        "height": 255
+      },
+      "patches": [
+        {
+          "source": {
+            "left": 185,
+            "top": 1190,
+            "width": 53,
+            "height": 14
+          },
+          "left": 12,
+          "top": 193,
+          "width": 202,
+          "height": 51
+        }
+      ],
+      "polygon": null,
+      "width": 227,
+      "height": 255,
+      "sha256": "17f9dd11d793ae96bb714882fd7b22f53cc13a9524b80efcfdce0efcac806ab0"
+    },
+    {
+      "file": "creator-ananya.webp",
+      "sourceRect": {
+        "left": 519,
+        "top": 1001,
+        "width": 222,
+        "height": 255
+      },
+      "patches": [
+        {
+          "source": {
+            "left": 185,
+            "top": 1190,
+            "width": 53,
+            "height": 14
+          },
+          "left": 12,
+          "top": 193,
+          "width": 197,
+          "height": 51
+        }
+      ],
+      "polygon": null,
+      "width": 222,
+      "height": 255,
+      "sha256": "e9cb6b4cdfff8379f304dff9bb77776721e2c2e59eeea964e46f76f6504989e1"
+    },
+    {
+      "file": "creator-rohan.webp",
+      "sourceRect": {
+        "left": 748,
+        "top": 1001,
+        "width": 228,
+        "height": 255
+      },
+      "patches": [
+        {
+          "source": {
+            "left": 185,
+            "top": 1190,
+            "width": 53,
+            "height": 14
+          },
+          "left": 12,
+          "top": 193,
+          "width": 203,
+          "height": 51
+        }
+      ],
+      "polygon": null,
+      "width": 228,
+      "height": 255,
+      "sha256": "e12a09151c8987d46955b224f31265667b88d524059b405ee3414826b51f52e4"
+    },
+    {
+      "file": "creators-left.webp",
+      "sourceRect": {
+        "left": 0,
+        "top": 1058,
+        "width": 58,
+        "height": 207
+      },
+      "patches": [],
+      "polygon": null,
+      "width": 58,
+      "height": 207,
+      "sha256": "0533a27c9b84d2343d39bf23cfb61d5704f03120d77ec02419e5554ee58c2db9"
+    },
+    {
+      "file": "creators-right.webp",
+      "sourceRect": {
+        "left": 974,
+        "top": 1068,
+        "width": 65,
+        "height": 203
+      },
+      "patches": [],
+      "polygon": null,
+      "width": 65,
+      "height": 203,
+      "sha256": "3374828c8a01197f1fdb5052ff2aa19d5a7af53b4859706fee38166a9048159c"
+    },
+    {
+      "file": "connect-banner.webp",
+      "sourceRect": {
+        "left": 0,
+        "top": 1258,
+        "width": 1039,
+        "height": 213
+      },
+      "patches": [
+        {
+          "source": {
+            "left": 302,
+            "top": 1340,
+            "width": 70,
+            "height": 90
+          },
+          "left": 275,
+          "top": 27,
+          "width": 500,
+          "height": 157
+        }
+      ],
+      "polygon": null,
+      "width": 1039,
+      "height": 213,
+      "sha256": "59cf8f2636b9f3db2b6aca69a320718f40323e1aff09912f0c05db9511377bce"
+    }
+  ]
+}

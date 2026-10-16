@@ -1,80 +1,97 @@
 ---
 export const prerender = true;
 import brandConfig from '../../../Specs/brand.json';
-import ModernIcon from '../components/home/ModernIcon.astro';
-import HelloFraandsHeader from '../components/callvaal/Header.astro';
-import HelloFraandsFooter from '../components/callvaal/Footer.astro';
-import CreatorPreviewCard from '../components/callvaal/CreatorPreviewCard.astro';
-import { creatorPreviews, homeCopy } from '../lib/hostFanHomeReference';
+import Header from '../components/callvaal/Header.astro';
+import Footer from '../components/callvaal/Footer.astro';
 import { publicImage, publicImageSrcSet } from '../lib/config';
-import '../styles/callvaal-notebook.css';
-import '../styles/host-fan-redesign.css';
+import '../styles/approved-scrapbook.css';
 const identity = brandConfig.homepageIdentity;
-const title = `${homeCopy.heroTitle} | ${identity.name}`;
-const description = homeCopy.heroDescription;
+const title = `Your favorite creators. One conversation away. | ${identity.name}`;
+const description = 'Watch entertaining videos. Discover your kind of people. Book a private conversation.';
 const canonical = `https://${identity.domain}/`;
-const assets = '/assets/callvaal/host-fan/redesign/';
+const assets = '/assets/hf-approved-scrapbook/';
+const creators = [ { id: 'meera', name: 'Meera', category: 'Lifestyle', width: 225 }, { id: 'kabir', name: 'Kabir', category: 'Comedy', width: 227 }, { id: 'ananya', name: 'Ananya', category: 'Music', width: 222 }, { id: 'rohan', name: 'Rohan', category: 'Travel', width: 228 } ];
+const steps = [ { id: 'watch', title: 'Watch their videos', text: 'A feed full of personalities worth knowing.' }, { id: 'find', title: 'Find your favorite', text: 'Explore their profile and book a call.' }, { id: 'connect', title: 'We connect you both', text: "We call both parties and merge the call. Neither sees the other's number." } ];
 ---
 <!doctype html>
 <html lang="en-IN">
 <head>
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <title>{title}</title><meta name="description" content={description} /><link rel="canonical" href={canonical} /><meta name="theme-color" content="#46113e" /><meta name="robots" content="index,follow" />
+  <title>{title}</title><meta name="description" content={description} /><link rel="canonical" href={canonical} /><meta name="theme-color" content="#fbf8ef" /><meta name="robots" content="index,follow" />
   <script type="application/ld+json" set:html={JSON.stringify({ '@context': 'https://schema.org', '@type': 'WebPage', name: title, description, url: canonical, inLanguage: 'en-IN' })} />
   <meta property="og:type" content="website" /><meta property="og:site_name" content={identity.name} /><meta property="og:title" content={title} /><meta property="og:description" content={description} /><meta property="og:url" content={canonical} />
-  <meta property="og:image" content={`${canonical}assets/callvaal/host-fan/redesign/hero.jpg`} /><meta property="og:image:alt" content="Illustrative fan and creator enjoying a private phone conversation." />
-  <meta name="twitter:card" content="summary_large_image" /><meta name="twitter:title" content={title} /><meta name="twitter:description" content={description} /><meta name="twitter:image" content={`${canonical}assets/callvaal/host-fan/redesign/hero.jpg`} />
-  <link rel="icon" href="/assets/branding/hf-favicon.png" type="image/png" />
-  <link data-site-fonts rel="preload" href="/fonts/Comfortaa-Bold.ttf" as="font" type="font/ttf" crossorigin /><link rel="preload" href="/fonts/Nunito-Variable.ttf" as="font" type="font/ttf" crossorigin />
-  <link rel="preload" href="/fonts/Comfortaa-Variable.ttf" as="font" type="font/ttf" crossorigin />
+  <meta property="og:image" content={`${canonical}assets/hf-approved-scrapbook/approved-reference.png`} /><meta property="og:image:alt" content="Illustrative creator discovery and private conversation design." />
+  <meta name="twitter:card" content="summary_large_image" /><meta name="twitter:title" content={title} /><meta name="twitter:description" content={description} /><meta name="twitter:image" content={`${canonical}assets/hf-approved-scrapbook/approved-reference.png`} />
+  <link rel="icon" href="/assets/hf-approved-scrapbook/favicon.png" type="image/png" />
+  <link data-site-fonts rel="preload" href="/fonts/Comfortaa-Bold.ttf" as="font" type="font/ttf" crossorigin /><link rel="preload" href="/fonts/Nunito-Black.woff2" as="font" type="font/woff2" crossorigin />
 </head>
-<body class="hfh-reference-page">
-<div class="notebook-site" data-design="callvaal-scrapbook">
-  <a class="skip-link" href="#main-content">Skip to main content</a>
-  <HelloFraandsHeader homeReference />
-  <main id="main-content" class="hfh-home">
-    <section class="hfh-hero" aria-labelledby="hero-title" data-home-section="hero">
-      <div class="hfh-hero-copy"><p class="hfh-eyebrow"><span aria-hidden="true"></span> A little hello. A real connection.</p>
-        <h1 id="hero-title"><span class="hfh-title-line">Talk to your favourite</span> <span class="hfh-title-line">social media influencers</span> <em>over a private phone call.</em></h1>
-        <p>{homeCopy.heroDescription}</p>
-        <div class="hfh-actions"><a class="hfh-button" href="/marketplace" data-home-cta="explore-hosts">Explore influencers <span aria-hidden="true">→</span></a><a class="hfh-button hfh-button--outline" href="/hosts/join" data-home-cta="become-host">Join us</a></div>
-        <ul class="hfh-proof" aria-label="Call safeguards"><li><svg class="modern-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m12 2 9 4v6c0 5-5 8-9 10-4-2-9-5-9-10V6Z"/><path d="m8 12 3 3 5-6"/></svg>Verified influencers</li><li><ModernIcon name="lock" />Your number stays private</li><li><ModernIcon name="payment" />Secure payments</li></ul>
+<body class="approved-scrapbook-page">
+<div class="approved-scrapbook" data-design="approved-scrapbook">
+  <a class="as-skip" href="#main-content">Skip to main content</a>
+  <Header scrapbook />
+  <main id="main-content">
+    <section class="as-hero" aria-labelledby="hero-title" data-home-section="hero">
+      <div class="as-hero-copy"><p class="as-eyebrow">Scroll. Discover. Connect.</p>
+        <h1 id="hero-title"><span>Your favorite <br />creators.</span> <em>One conversation away.</em></h1>
+        <p class="as-hero-description">Watch entertaining videos. Discover your kind of people. Book a private conversation.</p>
+        <div class="as-actions" data-approved-actions><a class="as-button" href="/marketplace" data-home-cta="explore-feed">Explore the feed <span aria-hidden="true">→</span></a><a class="as-button as-button-outline" href="#how-it-works" data-home-cta="how-it-works">How it works</a></div>
+        <p class="as-platforms"><span class="as-social-icons" aria-hidden="true"><span class="as-youtube">▶</span><span class="as-instagram">◎</span><span class="as-facebook">f</span></span><span>YouTube <b>·</b> Instagram <b>·</b> Facebook creators</span></p>
       </div>
-      <div class="hfh-collage" aria-label="Illustrative private call preview">
-        <img class="hfh-hero-photo" src={publicImage(`${assets}hero.webp`, { width: 1280 })} srcset={publicImageSrcSet(`${assets}hero.webp`, [420, 640, 900, 1280, 1600])} sizes="(max-width: 767px) calc(100vw - 32px), (min-width: 1680px) 720px, 48vw" width="1536" height="1024" fetchpriority="high" alt="Illustrative fan and creator smiling during a private phone conversation" />
-        <div class="hfh-photo-caption"><span class="hfh-caption-icon"><ModernIcon name="phone" /></span><div><strong>From following to connecting.</strong><span>One private conversation at a time.</span></div></div>
-        <span class="hfh-photo-tag">Real people. Real talks.</span>
+      <div class="as-hero-collage" aria-label="Illustrative lifestyle, comedy and music creators">
+        <img src={publicImage(`${assets}hero-collage.webp`, { width: 900 })} srcset={publicImageSrcSet(`${assets}hero-collage.webp`, [420, 640, 900, 1280])} sizes="(max-width: 699px) 100vw, (min-width: 1600px) 876px, 55vw" width="569" height="474" fetchpriority="high" alt="Approved collage of a lifestyle creator, a comedian holding a microphone, and a musician playing guitar, with torn paper, marigolds and an auto rickshaw." />
+        {['Lifestyle', 'Comedy', 'Music'].map((category, index) => <button type="button" class={`as-hero-play as-hero-play-${index}`} data-preview-action="video" data-preview-name={category} aria-label={`Preview ${category.toLowerCase()} sample video`} aria-haspopup="dialog" aria-controls="approved-preview-dialog"><span class="as-sr-only">Preview {category} sample video</span></button>)}
       </div>
     </section>
-    <section class="hfh-creators hfh-torn" id="people" aria-labelledby="people-title" data-home-section="creators">
-      <span id="moods" class="hfh-anchor" aria-hidden="true"></span><span id="naye-dost" class="hfh-anchor" aria-hidden="true"></span>
-      <div class="hfh-section-heading"><div><h2 id="people-title">Talk to influencers you follow</h2><p>Verified influencers. Real conversations. Private calls.</p></div><a href="/marketplace" data-home-cta="view-all-hosts">View all influencers <span aria-hidden="true">→</span></a></div>
-      <div class="hfh-creator-grid">{creatorPreviews.map(profile => <CreatorPreviewCard profile={profile} />)}</div>
-      <p class="hfh-sample-label hfh-disclosure" id="sample-disclosure">Sample profiles · Illustrative photos, ratings, availability and prices. No audio plays and no call or payment is made.</p>
+    <section class="as-privacy" id="safety" aria-labelledby="privacy-title" data-home-section="privacy">
+      <span id="women-only" class="as-anchor" aria-hidden="true"></span>
+      <div><h2 id="privacy-title">Your number stays private. The influencer’s does too.</h2><p>We call you both and connect the conversation.</p></div>
     </section>
-    <section class="hfh-privacy hfh-torn" id="safety" aria-labelledby="privacy-title" data-home-section="privacy">
-      <div id="privacy-note"><p class="hfh-eyebrow">A conversation, with boundaries.</p><h2 id="privacy-title">Your number stays yours.</h2><p>Our system first calls the influencer. If they accept, we call you and merge the two calls. Both calls come from a {identity.name} number, so we never reveal either person’s personal phone number.</p></div>
-      <figure class="hfh-connection" aria-label={`Fan and influencer connect through ${identity.name}. Both personal phone numbers stay private.`}>
-        <div class="hfh-person"><img class="hfh-call-person hfh-call-person--fan" src={publicImage(`${assets}hero.webp`, { width: 640 })} srcset={publicImageSrcSet(`${assets}hero.webp`, [420, 640, 900, 1280, 1600])} sizes="(max-width: 699px) 80px, 140px" width="1536" height="1024" loading="lazy" alt="Illustrative fan speaking on a private phone call" /><strong>Fan</strong></div>
-        <span class="hfh-connector-arrow" aria-hidden="true">⇢</span>
-        <div class="hfh-secure"><svg viewBox="0 0 80 88" aria-hidden="true"><path d="M40 5C31 10 18 13 8 16L12 43C15 60 27 73 40 81C55 73 66 58 69 42L73 16C61 13 50 9 40 5Z" fill="#116b70"/><path d="M26 25Q21 23 20 29C18 42 34 59 47 62Q54 64 58 60L60 55Q61 52 57 50L50 46Q47 44 45 48L43 51Q33 46 30 38L33 35Q36 33 33 30L29 26Q28 24 26 25Z" fill="white"/><path d="M46 20q14 4 17 17M46 28q7 2 9 9" fill="none" stroke="white" stroke-width="3" stroke-linecap="round"/></svg><strong>{identity.name}<br/>connects</strong></div>
-        <span class="hfh-connector-arrow" aria-hidden="true">⇠</span>
-        <div class="hfh-person"><img class="hfh-call-person hfh-call-person--host" src={publicImage(`${assets}hero.webp`, { width: 640 })} srcset={publicImageSrcSet(`${assets}hero.webp`, [420, 640, 900, 1280, 1600])} sizes="(max-width: 699px) 80px, 140px" width="1536" height="1024" loading="lazy" alt="Illustrative influencer speaking on a private phone call" /><strong>Star</strong></div>
-        <figcaption>Two private calls. One conversation.</figcaption>
-      </figure>
+    <section class="as-how" id="how-it-works" aria-labelledby="how-title" data-home-section="how-it-works">
+      <h2 id="how-title">Watch. Discover. Say hello.</h2>
+      <ol class="as-steps" data-approved-steps>{steps.map((step, index) => <li class={`as-step as-step-${step.id}`}><span class="as-sr-only">{String(index + 1).padStart(2, '0')}</span><h3>{step.title}</h3><p>{step.text}</p></li>)}</ol>
+      <p class="as-sr-only">The influencer receives the call first. If they accept, we call you and merge the calls. Both numbers stay private.</p>
     </section>
-    <div class="hfh-lanes" data-home-section="lanes">
-      <section class="hfh-lane hfh-lane--women hfh-torn" id="women-only" aria-labelledby="women-title"><div class="hfh-lane-copy"><p class="hfh-eyebrow">Comfort in shared experiences</p><h2 id="women-title">Women talking to women</h2><p><strong>A private space</strong> for women to talk with verified women influencers.</p><p class="hfh-kyc" aria-describedby="community-eligibility"><svg class="modern-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m12 2 9 4v6c0 5-5 8-9 10-4-2-9-5-9-10V6Z"/><path d="m8 12 3 3 5-6"/></svg>Video KYC required</p><a class="hfh-button" href="/marketplace?lane=women#people" data-home-cta="women-hosts">Explore women influencers <span aria-hidden="true">→</span></a></div><div class="hfh-lane-art"><img src={publicImage(`${assets}women.webp`, { width: 640 })} srcset={publicImageSrcSet(`${assets}women.webp`, [420, 640, 900, 1280, 1600])} sizes="(max-width: 1023px) calc(100vw - 64px), (min-width: 1680px) 700px, 43vw" width="1536" height="1024" loading="lazy" alt="Two illustrative women sharing a warm conversation" /></div></section>
-      <section class="hfh-lane hfh-lane--community hfh-torn" id="lgbtq" aria-labelledby="lgbtq-title"><div class="hfh-lane-copy"><p class="hfh-eyebrow">Come as you are</p><h2 id="lgbtq-title">Connect within the LGBTQ+ community</h2><p><strong>A respectful space</strong> for LGBTQ+ fans to talk with influencers from the community.</p><p class="hfh-kyc" aria-describedby="community-eligibility"><svg class="modern-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m12 2 9 4v6c0 5-5 8-9 10-4-2-9-5-9-10V6Z"/><path d="m8 12 3 3 5-6"/></svg>Video KYC required</p><a class="hfh-button" href="/marketplace?lane=lgbtq#people" data-home-cta="lgbtq-hosts">Explore LGBTQ+ influencers <span aria-hidden="true">→</span></a></div><div class="hfh-lane-art"><img src={publicImage(`${assets}community.webp`, { width: 640 })} srcset={publicImageSrcSet(`${assets}community.webp`, [420, 640, 900, 1280, 1600])} sizes="(max-width: 1023px) calc(100vw - 64px), (min-width: 1680px) 700px, 43vw" width="1536" height="1024" loading="lazy" alt="Two illustrative community members sharing a friendly conversation" /></div></section>
-    </div>
-    <p class="hfh-eligibility sr-only" id="community-eligibility">Video KYC verifies the person, not their gender or sexual orientation. Community access follows each space’s eligibility and safety rules.</p>
-    <section class="hfh-how" id="how-it-works" aria-labelledby="how-title" data-home-section="how-it-works"><p class="hfh-eyebrow">Less scrolling. More talking.</p><h2 id="how-title">How it works</h2><ol class="hfh-steps"><li><span class="hfh-step-number">1</span><img class="hfh-step-art" src={publicImage(`${assets}step-choose-audio.webp`, { width: 640 })} srcset={publicImageSrcSet(`${assets}step-choose-audio.webp`, [420, 640, 900, 1280, 1600])} sizes="(max-width: 767px) calc(100vw - 80px), 30vw" width="1536" height="1024" loading="lazy" alt="Illustration of discovering creator profiles" /><div><h3>Choose an influencer</h3><p>Find the creators you follow<br class="hfh-reference-break"/> and like.</p></div></li><li><span class="hfh-step-number">2</span><img class="hfh-step-art" src={publicImage(`${assets}step-book-audio.webp`, { width: 640 })} srcset={publicImageSrcSet(`${assets}step-book-audio.webp`, [420, 640, 900, 1280, 1600])} sizes="(max-width: 767px) calc(100vw - 80px), 30vw" width="1536" height="1024" loading="lazy" alt="Illustration of starting a call with an influencer" /><div><h3>Start the call</h3><p>Tap Call. We ring the influencer first and ask if they will talk.</p></div></li><li><span class="hfh-step-number">3</span><img class="hfh-step-art" src={publicImage(`${assets}step-talk-audio.webp`, { width: 640 })} srcset={publicImageSrcSet(`${assets}step-talk-audio.webp`, [420, 640, 900, 1280, 1600])} sizes="(max-width: 767px) calc(100vw - 80px), 30vw" width="1536" height="1024" loading="lazy" alt="Illustration of two private audio calls connected phone to phone" /><div><h3>Talk privately</h3><p>If they accept, we call you<br class="hfh-reference-break"/> and merge the calls. You pay per minute at their rate.</p></div></li></ol></section>
-    <section class="hfh-host-cta hfh-torn" id="earn" aria-labelledby="earn-title" data-home-section="host-cta"><div class="hfh-host-art"><img src={publicImage(`${assets}host.webp`, { width: 420 })} srcset={publicImageSrcSet(`${assets}host.webp`, [420, 640, 900, 1280, 1600])} sizes="(max-width: 767px) calc(100vw - 32px), (min-width: 1680px) 630px, 40vw" width="1536" height="1024" loading="lazy" alt="Illustrative influencer welcoming their audience" /></div><div class="hfh-host-copy"><p class="hfh-eyebrow">For the people behind the posts</p><h2 id="earn-title">Turn your audience into real conversations.</h2><p>Are you an influencer? Complete full KYC, create your page, set your per-minute rate, and share your link.</p><a class="hfh-button" href="/hosts/join" data-home-cta="apply-host">Apply to become an influencer <span aria-hidden="true">→</span></a><div class="hfh-share"><span>Your personal page</span><strong class="hfh-share-url">{identity.domain}/<wbr />yourname</strong></div></div></section>
+    <section class="as-creators" id="people" aria-labelledby="creators-title" aria-describedby="sample-disclosure" data-home-section="creators">
+      <span id="moods" class="as-anchor" aria-hidden="true"></span><span id="naye-dost" class="as-anchor" aria-hidden="true"></span>
+      <h2 id="creators-title">Big personalities. Real conversations.</h2>
+      <div class="as-creator-grid" data-approved-creator-grid>{creators.map(creator => <article class={`as-creator as-creator-${creator.id}`} data-approved-creator={creator.id}>
+        <img src={publicImage(`${assets}creator-${creator.id}.webp`, { width: 640 })} srcset={publicImageSrcSet(`${assets}creator-${creator.id}.webp`, [420, 640, 900])} sizes="(max-width: 449px) calc(100vw - 48px), (max-width: 699px) 44vw, (min-width: 1600px) 340px, 22vw" width={creator.width} height="255" loading="lazy" alt={`Illustrative ${creator.category.toLowerCase()} creator ${creator.name}`} />
+        <button class="as-card-play" type="button" data-preview-action="video" data-preview-name={creator.name} aria-label={`Preview ${creator.name} sample video`} aria-haspopup="dialog" aria-controls="approved-preview-dialog"><span class="as-sr-only">Preview {creator.name} sample video</span></button>
+        <div class="as-creator-label"><h3>{creator.name}</h3><p>{creator.category}</p></div>
+        <button class="as-profile-button" type="button" data-preview-action="profile" data-preview-name={creator.name} aria-label={`View ${creator.name} sample profile`} aria-haspopup="dialog" aria-controls="approved-preview-dialog">View profile <span aria-hidden="true">→</span></button>
+      </article>)}</div>
+    </section>
+    <section class="as-connect" id="earn" aria-labelledby="connect-title" data-home-section="connect">
+      <h2 id="connect-title">Don’t just follow. <em>Connect.</em></h2><p>Watch what you love. Talk to who you love.</p>
+      <a class="as-button" href="/marketplace" data-home-cta="discover-influencers">Discover influencers <span aria-hidden="true">→</span></a>
+    </section>
   </main>
-  <HelloFraandsFooter hideTagline />
-  <nav class="mobile-bottom-nav" aria-label="Quick navigation">{[['home','#main-content','Home'],['grid','#people','Explore'],['phone','#how-it-works','How'],['lock','#safety','Safety'],['user','#earn','Earn']].map(([icon,href,label]) => <a href={href}><ModernIcon name={icon}/><span>{label}</span></a>)}</nav>
+  <Footer scrapbook />
+  <p class="as-disclosure" id="sample-disclosure">Design preview · Illustrative creators and videos. Samples open an explanation; no video plays, call is booked or payment is taken. Explore shows the available influencer directory. 18+ only. Friendly conversation, not therapy, dating or professional advice.</p>
+  <dialog id="approved-preview-dialog" class="as-preview-dialog" aria-labelledby="preview-title" aria-describedby="preview-description">
+    <h2 id="preview-title">A preview of the experience</h2><p id="preview-description">This is an illustrative sample. The creator feed and video booking journey shown here are a design preview. No video plays and no call or payment is made.</p>
+    <div class="as-dialog-actions"><a class="as-button" href="/marketplace" data-home-cta="sample-explore">Explore influencers</a><button type="button" class="as-button as-button-outline" data-close-preview>Close preview</button></div>
+  </dialog>
 </div>
-<dialog id="preview-dialog" class="hfh-preview-dialog" aria-labelledby="preview-title" aria-describedby="preview-description"><h2 id="preview-title">Illustrative preview</h2><p id="preview-description">This sample profile is an illustration. No call or payment is made.</p><a class="hfh-button" href="/marketplace">Explore real influencers →</a><button type="button" data-close-preview autofocus>Close</button></dialog>
-<script>import '../lib/hostFanHome';</script>
+<script>
+  import { capture } from '../lib/analytics';
+  const dialog = document.querySelector<HTMLDialogElement>('#approved-preview-dialog');
+  const title = document.querySelector<HTMLElement>('#preview-title');
+  let trigger: HTMLButtonElement | null = null;
+  document.querySelectorAll<HTMLButtonElement>('[data-preview-action]').forEach(button => button.addEventListener('click', () => {
+    if (!dialog) return;
+    trigger = button;
+    if (title) title.textContent = `${button.dataset.previewName || 'Creator'} · sample ${button.dataset.previewAction}`;
+    dialog.showModal();
+    dialog.querySelector<HTMLButtonElement>('[data-close-preview]')?.focus();
+    capture('homepage_sample_open', { surface: 'approved-scrapbook', sample: button.dataset.previewName, action: button.dataset.previewAction });
+  }));
+  dialog?.querySelector('[data-close-preview]')?.addEventListener('click', () => dialog.close());
+  dialog?.addEventListener('close', () => { trigger?.focus(); capture('homepage_sample_close', { surface: 'approved-scrapbook' }); });
+  dialog?.addEventListener('click', event => { if (event.target !== dialog) return; const rect = dialog.getBoundingClientRect(); if (event.clientX < rect.left || event.clientX > rect.right || event.clientY < rect.top || event.clientY > rect.bottom) dialog.close(); });
+  document.querySelectorAll<HTMLAnchorElement>('[data-home-cta]').forEach(link => link.addEventListener('click', () => capture('homepage_cta_click', { surface: 'approved-scrapbook', cta: link.dataset.homeCta, href: link.getAttribute('href') })));
+  capture('homepage_impression', { surface: 'approved-scrapbook', design: 'owner-approved-v1' });
+  document.documentElement.dataset.homepageReady = 'true';
+</script>
 </body>
 </html>

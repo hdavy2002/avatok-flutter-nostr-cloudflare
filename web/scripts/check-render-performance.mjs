@@ -52,7 +52,7 @@ if (built) {
   }
   const heading = html.match(/<h1\b[^>]*>([\s\S]*?)<\/h1>/)?.[1].replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
   const identity = JSON.parse(readFileSync(resolve(root, '../Specs/brand.json'), 'utf8')).homepageIdentity;
-  assert.equal(heading, 'Talk to your favourite social media influencers over a private phone call.', 'Approved host/fan heading reaches the built page');
+  assert.equal(heading, 'Your favorite creators. One conversation away.', 'Approved host/fan heading reaches the built page');
 }
 const clientDir = ['dist/_astro', 'dist/client/_astro'].map((p) => resolve(root, p)).find(existsSync);
 assert(clientDir, 'built browser chunks required');

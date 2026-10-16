@@ -2,8 +2,8 @@
 import brandConfig from '../../../../Specs/brand.json';
 import AppTabBar from './AppTabBar.astro';
 import '../../styles/callvaal-chrome.css';
-interface Props { hideTagline?: boolean; }
-const { hideTagline: _hideTagline = false } = Astro.props; // kept for callers; the footer no longer shows a tagline
+interface Props { hideTagline?: boolean; scrapbook?: boolean; }
+const { hideTagline: _hideTagline = false, scrapbook = false } = Astro.props; // kept for callers; the footer no longer shows a tagline
 const identity = brandConfig.homepageIdentity;
 const groups = [
   ['Company', [
@@ -23,7 +23,8 @@ const groups = [
   ]],
 ] as const;
 ---
-<footer class="cv-footer notebook-footer" data-callvaal-chrome>
+<footer class="cv-footer notebook-footer" data-callvaal-chrome data-scrapbook={scrapbook || undefined}>
+  {scrapbook ? <div class="as-footer-row" data-home-footer><nav aria-label="Footer"><a href="/about">About</a><a href="/help">Help</a><a href="/privacy">Privacy</a><a href="/terms">Terms</a></nav><p>Made for a more connected India <span aria-label="love" role="img">♡</span></p></div> : <>
   {/* [HF-DASH-LAYOUT-1] Owner 2026-10-16: no logo and no tagline in the footer (the header already carries the logo). */}
   <nav class="cv-footer-columns footer-columns" aria-label="Footer">
     {groups.map(([heading, links]) => <details class="cv-footer-group footer-group" data-callvaal-footer-group open><summary>{heading}</summary><ul>{links.map(([label, href]) => <li><a href={href}>{label}</a></li>)}</ul></details>)}
@@ -33,7 +34,7 @@ const groups = [
     <div class="cv-footer-credits">
       <p class="cv-footer-made">Developed in India with <span class="cv-footer-heart" role="img" aria-label="love">♥</span></p>
     </div>
-  </div>
+  </div></>}
 </footer>
 <AppTabBar />
 <script>
