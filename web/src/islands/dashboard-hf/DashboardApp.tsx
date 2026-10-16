@@ -5,7 +5,7 @@
  * Identity: GET /api/hf/me once, shared by every screen; reloaded on site:active-session-changed. */
 import { Component, useCallback, useEffect, useRef, useState, type MouseEvent, type ReactNode } from 'react';
 import SessionBridge from '../calls/SessionBridge';
-import DashboardNav, { type DashboardAccount } from '../../components/account/DashboardNav';
+import type { DashboardAccount } from '../../components/account/DashboardNav';
 import { DashboardEmbed } from '../../components/account/dashboardEmbed';
 import { hfCall, signInUrl } from '../../lib/hfCallsApi';
 import { bookingsEnabled } from '../../lib/hfBookingsApi';
@@ -13,20 +13,27 @@ import { favouritesEnabled } from '../../lib/hfFavouritesApi';
 import { capture, captureException } from '../../lib/analytics';
 import { BRAND } from '../../lib/brand';
 import { DASH_ROUTES, dashRouteFor, type DashSection } from '../../lib/dashboardRoutes';
-import Overview from './sections/Overview';
-import Calls from './sections/Calls';
 import Earnings from './sections/Earnings';
 import HostProfile from './sections/HostProfile';
-import Support from './sections/Support';
-import Fraands from './sections/Fraands';
-import HfAccount from '../account/HfAccount';
-import HfWallet from '../wallet/HfWallet';
 import HostBookings from '../host-bookings/HostBookings';
 import HostAvailability from '../host-bookings/HostAvailability';
-import AccountClose from '../wallet/AccountClose';
 import '../../styles/hf-calls.css';
 import '../../styles/hf-bookings.css';
 import '../../styles/hf-account.css';
+import '../../styles/hf-dashboard.css'; // host screens keep their existing look inside the new shell
+import '../../styles/hf-dash3.css'; // [HF-DASH-V3-1]
+import DashShell from './v3/Shell';
+import { DashDataProvider } from './v3/data';
+import { ToastProvider } from './v3/ui';
+import OverviewV3 from './v3/Overview';
+import CallsV3 from './v3/Calls';
+import WalletV3 from './v3/Wallet';
+import ProfileV3 from './v3/Profile';
+import AppointmentsV3 from './v3/Appointments';
+import FraandsV3 from './v3/Fraands';
+import BecomeV3 from './v3/Become';
+import SupportV3 from './v3/Support';
+import CloseV3 from './v3/Close';
 
 type Phase = 'boot' | 'signedout' | 'error' | 'ready';
 
@@ -119,23 +126,28 @@ function Shell({ initial }: { initial: DashSection }) {
   if (blocked) {
     body = <div className="hfd-section"><header className="hfd-section-head"><h1>{route.title}</h1></header><section className="hfc-card"><p>{route.hostOnly && !hostReady ? 'This opens once your influencer profile is live.' : 'This opens soon. We’ll let you know on WhatsApp.'}</p><div className="hfd-actions"><a className="hfc-btn hfc-primary" href="/dashboard">Back to overview</a></div></section></div>;
   } else switch (section) {
-    case 'overview': body = <Overview key={key} account={account} bookingOn={bookingOn} onAccountChanged={setAccount} />; break;
-    case 'profile': body = <HfAccount key={key} />; break;
-    case 'wallet': body = <HfWallet key={key} />; break;
-    case 'calls': body = <Calls key={key} account={account} />; break;
-    case 'appointments': body = <HostBookings key={key} role="customer" />; break;
-    case 'fraands': body = <Fraands key={key} />; break;
-    case 'host': body = <HostProfile key={key} account={account} />; break;
-    case 'host-calendar': body = <HostBookings key={key} role="host" />; break;
-    case 'availability': body = <HostAvailability key={key} />; break;
-    case 'earnings': body = <Earnings key={key} account={account} />; break;
-    case 'support': body = <Support key={key} />; break;
-    case 'close': body = <AccountClose key={key} />; break;
+    // [HF-DASH-V3-1] Customer screens are the new dashboard; influencer screens keep their existing components inside the new shell.
+    case 'overview': body = <OverviewV3 key={key} account={account} bookingOn={bookingOn} />; break;
+    case 'profile': body = <ProfileV3 key={key} account={account} />; break;
+    case 'wallet': body = <WalletV3 key={key} />; break;
+    case 'calls': body = <CallsV3 key={key} account={account} />; break;
+    case 'appointments': body = <AppointmentsV3 key={key} enabled={bookingOn && !account.closing} uid={account.uid} />; break;
+    case 'fraands': body = <FraandsV3 key={key} />; break;
+    case 'become': body = <BecomeV3 key={key} account={account} />; break;
+    case 'host': body = <div className="h3-legacy"><HostProfile key={key} account={account} /></div>; break;
+    case 'host-calendar': body = <div className="h3-legacy"><HostBookings key={key} role="host" /></div>; break;
+    case 'availability': body = <div className="h3-legacy"><HostAvailability key={key} /></div>; break;
+    case 'earnings': body = <div className="h3-legacy"><Earnings key={key} account={account} /></div>; break;
+    case 'support': body = <SupportV3 key={key} />; break;
+    case 'close': body = <CloseV3 key={key} />; break;
   }
-  return <main className="hfc-page hfd-page">
-    <div className="hfd-layout" onClick={go}>
-      <DashboardNav account={account} bookingOn={bookingOn} favouritesOn={favouritesOn} active={section} />
-      <div className="hfd-content"><DashboardEmbed.Provider value={true}><SectionBoundary key={key} section={section}>{body}</SectionBoundary></DashboardEmbed.Provider></div>
-    </div>
-  </main>;
+  return <div className="hfd-v3" onClick={go}>
+    <DashDataProvider uid={account.uid} favouritesOn={favouritesOn} nav={nav}>
+      <ToastProvider>
+        <DashShell account={account} active={section} bookingOn={bookingOn} favouritesOn={favouritesOn}>
+          <DashboardEmbed.Provider value={true}><SectionBoundary key={key} section={section}>{body}</SectionBoundary></DashboardEmbed.Provider>
+        </DashShell>
+      </ToastProvider>
+    </DashDataProvider>
+  </div>;
 }
