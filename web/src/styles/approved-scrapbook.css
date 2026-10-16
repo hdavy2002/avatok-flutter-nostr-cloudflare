@@ -80,4 +80,5 @@
 /* Match the reference overlap at the top; give the sticky navigation a paper backing only after scrolling. */
 .approved-scrapbook .cv-header[data-scrapbook]{background:transparent}
 .approved-scrapbook .cv-header[data-scrapbook][data-scrolled="true"]{background:#fbf8ef url('/assets/hf-approved-scrapbook/paper.webp') repeat}
-@media(min-width:900px){.as-hero-description{font-size:max(1rem,calc(16 * var(--as-unit)))}.as-step-connect{padding-right:calc(55 * var(--as-unit))}}
+@media(min-width:900px){.as-hero-description{font-size:max(1rem,calc(16 * var(--as-unit)))}.as-step-connect{padding-right:calc(70 * var(--as-unit))}}
+.as-step-connect p{position:relative;z-index:3}
