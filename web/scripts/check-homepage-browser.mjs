@@ -124,7 +124,13 @@ try {
     try {
       await page.goto('http://127.0.0.1:4179/',{waitUntil:'networkidle'});
       await page.locator('html[data-homepage-ready="true"]').waitFor({state:'attached'});
-      await page.evaluate(()=>document.fonts.ready);
+      await page.evaluate(async () => {
+        await document.fonts.ready;
+        await Promise.all([...document.querySelectorAll('main img')].map(image => {
+          image.loading = 'eager';
+          return image.complete ? Promise.resolve() : new Promise(done => { image.addEventListener('load', done, { once:true }); image.addEventListener('error', done, { once:true }); });
+        }));
+      });
       await expect(page.locator('h1')).toHaveCount(1);
       await expect(page.locator('h1')).toHaveText('Your favorite creators. One conversation away.');
       await expect(page.locator('link[rel="canonical"]')).toHaveAttribute('href','https://'+homepageIdentity.domain+'/');

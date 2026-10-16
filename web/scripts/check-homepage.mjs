@@ -23,7 +23,7 @@ const main = bodyHtml.match(/<main\b[^>]*>([\s\S]*?)<\/main>/)?.[1] || '';
 const mainText = plainText(main);
 const identity = JSON.parse(readFileSync(resolve('../Specs/brand.json'), 'utf8')).homepageIdentity;
 assert.equal((html.match(/<h1[ >]/g) || []).length, 1, 'One native H1');
-assert(visibleText.includes(identity.name), 'Central brand identity visible');
+assert(bodyHtml.includes('aria-label="' + identity.name + ' home"') && bodyHtml.includes('logo.png'), 'Owner logo with central accessible brand identity');
 for (const copy of [
   'Your favorite creators. One conversation away.',
   'Watch entertaining videos. Discover your kind of people. Book a private conversation.',

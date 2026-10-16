@@ -3,13 +3,14 @@ export const prerender = true;
 import brandConfig from '../../../Specs/brand.json';
 import Header from '../components/callvaal/Header.astro';
 import Footer from '../components/callvaal/Footer.astro';
-import { publicImage, publicImageSrcSet } from '../lib/config';
+import { publicImage, publicImageSrcSet, shareImage } from '../lib/config';
 import '../styles/approved-scrapbook.css';
 const identity = brandConfig.homepageIdentity;
 const title = `Your favorite creators. One conversation away. | ${identity.name}`;
 const description = 'Watch entertaining videos. Discover your kind of people. Book a private conversation.';
 const canonical = `https://${identity.domain}/`;
 const assets = '/assets/hf-approved-scrapbook/';
+const ogImage = shareImage(`${assets}hero-collage.webp`);
 const creators = [ { id: 'meera', name: 'Meera', category: 'Lifestyle', width: 225 }, { id: 'kabir', name: 'Kabir', category: 'Comedy', width: 227 }, { id: 'ananya', name: 'Ananya', category: 'Music', width: 222 }, { id: 'rohan', name: 'Rohan', category: 'Travel', width: 228 } ];
 const steps = [ { id: 'watch', title: 'Watch their videos', text: 'A feed full of personalities worth knowing.' }, { id: 'find', title: 'Find your favorite', text: 'Explore their profile and book a call.' }, { id: 'connect', title: 'We connect you both', text: "We call both parties and merge the call. Neither sees the other's number." } ];
 ---
@@ -20,8 +21,8 @@ const steps = [ { id: 'watch', title: 'Watch their videos', text: 'A feed full o
   <title>{title}</title><meta name="description" content={description} /><link rel="canonical" href={canonical} /><meta name="theme-color" content="#fbf8ef" /><meta name="robots" content="index,follow" />
   <script type="application/ld+json" set:html={JSON.stringify({ '@context': 'https://schema.org', '@type': 'WebPage', name: title, description, url: canonical, inLanguage: 'en-IN' })} />
   <meta property="og:type" content="website" /><meta property="og:site_name" content={identity.name} /><meta property="og:title" content={title} /><meta property="og:description" content={description} /><meta property="og:url" content={canonical} />
-  <meta property="og:image" content={`${canonical}assets/hf-approved-scrapbook/approved-reference.png`} /><meta property="og:image:alt" content="Illustrative creator discovery and private conversation design." />
-  <meta name="twitter:card" content="summary_large_image" /><meta name="twitter:title" content={title} /><meta name="twitter:description" content={description} /><meta name="twitter:image" content={`${canonical}assets/hf-approved-scrapbook/approved-reference.png`} />
+  <meta property="og:image" content={ogImage} /><meta property="og:image:alt" content="Illustrative creator discovery and private conversation design." />
+  <meta name="twitter:card" content="summary_large_image" /><meta name="twitter:title" content={title} /><meta name="twitter:description" content={description} /><meta name="twitter:image" content={ogImage} />
   <link rel="icon" href="/assets/hf-approved-scrapbook/favicon.png" type="image/png" />
   <link data-site-fonts rel="preload" href="/fonts/Comfortaa-Bold.ttf" as="font" type="font/ttf" crossorigin /><link rel="preload" href="/fonts/Nunito-Black.woff2" as="font" type="font/woff2" crossorigin />
 </head>
