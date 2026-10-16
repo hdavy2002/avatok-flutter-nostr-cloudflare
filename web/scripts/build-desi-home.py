@@ -56,6 +56,9 @@ for line in body.split('\n'):
     lines.append(line)
 body = '\n'.join(lines)
 
+# Brand name comes from Specs/brand.json at render time (CLAUDE.md brand rule).
+body = body.replace('Hello Fraands', '__BRAND_NAME__')
+
 left = re.findall(r'href="#[^"]*"', body)
 allowed = {'href="#people"', 'href="#how-it-works"'}
 if set(left) - allowed:

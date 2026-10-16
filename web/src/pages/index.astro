@@ -24,7 +24,7 @@ const publicDir = resolve(process.cwd(), 'public'); // astro build always runs f
 const naturalWidth = async (path: string) => (await sharp(readFileSync(publicDir + path)).metadata()).width ?? 900;
 const opts = { quality: ARTWORK_QUALITY, fit: 'scale-down' };
 const candidates = (w: number) => [420, 640, 900, 1280, 1600].filter(c => c <= w).concat(w < 420 ? [420] : []);
-let body = desiBody.replaceAll('__HF_PLAY_URL__', HF_PLAY_URL);
+let body = desiBody.replaceAll('__HF_PLAY_URL__', HF_PLAY_URL).replaceAll('__BRAND_NAME__', identity.name);
 const paths = [...new Set([...body.matchAll(/src="(\/assets\/hf-desi\/[a-z0-9-]+\.webp)"/g)].map(m => m[1]))];
 let index = 0;
 for (const path of paths) {
