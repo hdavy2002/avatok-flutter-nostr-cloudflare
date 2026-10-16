@@ -1,4 +1,4 @@
-// [HF-HOME-HOST-FAN-1] Owner-approved host/fan homepage. Run only in manually dispatched GitHub CI.
+// [HF-HOME-SHARP-2] Sharp portraits, responsive layout and shared Explore chrome. Run only in manually dispatched GitHub CI.
 import { chromium, expect } from '@playwright/test';
 import { createServer } from 'node:http';
 import { readFile, mkdir, writeFile } from 'node:fs/promises';
@@ -22,7 +22,8 @@ const server = createServer(async (request, response) => {
 await mkdir('homepage-review', { recursive: true });
 const failures = [];
 const metrics = [];
-const homepageIdentity = JSON.parse(await readFile(resolve('../Specs/brand.json'), 'utf8')).homepageIdentity;
+const brandConfig = JSON.parse(await readFile(resolve('../Specs/brand.json'), 'utf8'));
+const homepageIdentity = brandConfig.homepageIdentity;
 
 let browser;
 async function waitForPreviewClose(dialog, trigger, message) {
@@ -34,7 +35,7 @@ async function waitForPreviewClose(dialog, trigger, message) {
 async function inspectReadability(page) {
   return page.evaluate(() => {
     const visible = el => el.getClientRects().length > 0 && getComputedStyle(el).visibility !== 'hidden';
-    const groups = [[14,'main h1, main h2, main h3, main p, main a, main button, main li, header a, header button, footer a, footer p']];
+    const groups = [[14,'main h1, main h2, main h3, main p, main a, main button, main li, main small, main figcaption, main [data-app-store-status], header a, header button, footer a, footer p, footer summary, dialog h2, dialog p, dialog a, dialog button']];
     const fontFailures = [];
     const fontCounts = [];
     for (const [floor, selector] of groups) {
@@ -46,7 +47,7 @@ async function inspectReadability(page) {
       }
     }
     const clipping = [];
-    const panels = 'main section, header, footer';
+    const panels = 'main section, header, footer, dialog[open]';
     for (const panel of document.querySelectorAll(panels)) {
       if (!visible(panel)) continue;
       if (panel.scrollWidth > panel.clientWidth + 2) clipping.push({ panel: panel.className, reason: 'horizontal overflow' });
@@ -61,7 +62,7 @@ async function inspectReadability(page) {
             const style = getComputedStyle(el);
             const bounds = el.getBoundingClientRect();
             if ((/hidden|clip|scroll|auto/.test(style.overflowX) && (rect.left < bounds.left - 2 || rect.right > bounds.right + 2)) ||
-                (/hidden|clip|scroll|auto/.test(style.overflowY) && (rect.top < bounds.top - 2 || rect.bottom > bounds.bottom + 2))) {
+                (/hidden|clip|scroll|auto/.test(style.overflowY) && !(el.tagName === 'DIALOG' && /scroll|auto/.test(style.overflowY)) && (rect.top < bounds.top - 2 || rect.bottom > bounds.bottom + 2))) {
               clipping.push({ text: text.textContent.trim(), ancestor: el.className, reason: 'clipped text' });
               break;
             }
@@ -97,11 +98,21 @@ async function inspectReadability(page) {
     };
     const contractCoverage = {
       footerGroups: document.querySelectorAll('[data-callvaal-footer-group]').length,
-      creatorPreviews: document.querySelectorAll('[data-creator-preview]').length,
+      creatorPreviews: document.querySelectorAll('[data-approved-creator]').length,
+      videoActions: document.querySelectorAll('[data-preview-action="video"]').length,
+      profileActions: document.querySelectorAll('[data-preview-action="profile"]').length,
+      footerLinks: document.querySelectorAll('[data-callvaal-footer-group] li a').length,
+      vectors: document.querySelectorAll('main svg.as-art').length,
       navigation: document.querySelectorAll('[data-callvaal-navigation]').length,
       menuToggles: document.querySelectorAll('[data-callvaal-menu-toggle]').length,
     };
-    return { fontFailures, fontCounts, clipping, overlaps, viewportOverflow, contractCoverage };
+    const layout = {
+      shellWidth: document.querySelector('.approved-scrapbook')?.getBoundingClientRect().width,
+      mainWidth: document.querySelector('#main-content')?.getBoundingClientRect().width,
+      heroWidth: document.querySelector('[data-home-section="hero"]')?.getBoundingClientRect().width,
+      headingSize: parseFloat(getComputedStyle(document.querySelector('h1')).fontSize),
+    };
+    return { fontFailures, fontCounts, clipping, overlaps, viewportOverflow, contractCoverage, layout };
   });
 }
 try {
@@ -138,51 +149,117 @@ try {
       await expect(page.locator('main')).toContainText('Your number stays private. The influencer’s does too.');
       await expect(page.locator('main')).toContainText('We call you both and connect the conversation.');
       const textStructure=await page.evaluate(()=>({
-        images:[...document.querySelectorAll('main img')].filter(e=>e.getClientRects().length).map(e=>({loaded:e.complete&&e.naturalWidth>0,width:e.width,height:e.height})),
+        images:[...document.querySelectorAll('main img')].map(e=>({loaded:e.complete&&e.naturalWidth>0,width:e.width,height:e.height,naturalWidth:e.naturalWidth,naturalHeight:e.naturalHeight,srcset:e.srcset,sizes:e.sizes})),
+        imageEffects:[...document.querySelectorAll('main img, main svg.as-art')].flatMap(image=>{
+          const failures=[];
+          for(let element=image;element&&element!==document.body;element=element.parentElement){
+            const style=getComputedStyle(element);
+            if(style.filter!=='none'||Number(style.opacity)!==1||style.mixBlendMode!=='normal') failures.push({element:element.className.baseVal??element.className,filter:style.filter,opacity:style.opacity,blend:style.mixBlendMode});
+          }
+          return failures;
+        }),
+        rasterInVector:document.querySelectorAll('main svg image, main svg foreignObject').length,
         headings:[...document.querySelectorAll('main h1,main h2,main h3')].every(e=>getComputedStyle(e).fontFamily.includes('Nunito')),
         body:[...document.querySelectorAll('main p,main button,main a')].every(e=>getComputedStyle(e).fontFamily.includes('Comfortaa')),
         gradients:[...document.querySelectorAll('main *,header,footer')].filter(e=>/gradient\(/.test(getComputedStyle(e).backgroundImage)).map(e=>e.className),
       }));
-      assert(textStructure.images.length>=5&&textStructure.images.every(e=>e.loaded&&e.width>0&&e.height>0),name+': source artwork loaded');
+      assert.equal(textStructure.images.length,7,name+': three hero portraits and four creator portraits');
+      // naturalWidth is density-corrected for srcset; file resolution is checked by check-homepage.mjs.
+      assert(textStructure.images.every(e=>e.loaded&&e.width>0&&e.height>0),name+': all individual portraits loaded');
+      assert(textStructure.images.every(e=>/\b2048w\b/.test(e.srcset)&&e.sizes.length>0),name+': all photos have 2048px responsive candidates and sizes');
+      assert.deepEqual(textStructure.imageEffects,[],name+': photos and native art have no blur, fading or blend effects');
+      assert.equal(textStructure.rasterInVector,0,name+': native SVG art has no embedded raster');
       assert(textStructure.headings&&textStructure.body,name+': approved two-font system');
       const loadedFaces = await page.evaluate(() => [...document.fonts].filter(f => f.status === 'loaded').map(f => f.family.replaceAll('"','')));
       for (const family of ['Nunito','Comfortaa']) assert(loadedFaces.includes(family), name + ': actual local font loaded: ' + family);
       assert.deepEqual(textStructure.gradients,[],name+': no gradients');
       const readability=await inspectReadability(page);
-      metrics.push({name,width,...readability});
+      metrics.push({name,width,images:textStructure.images,...readability});
+      assert.deepEqual(readability.contractCoverage,{footerGroups:5,creatorPreviews:4,videoActions:7,profileActions:4,footerLinks:36,vectors:readability.contractCoverage.vectors,navigation:1,menuToggles:1},name+': expected interactive contract coverage');
+      assert(readability.contractCoverage.vectors>=5,name+': native decorative SVG coverage');
+      assert(Math.abs(readability.layout.mainWidth-readability.layout.shellWidth)<=1,name+': main fills the shared Explore shell');
+      if(width>=1440){
+        assert(Math.abs(readability.layout.shellWidth-Math.min(width-64,1760))<=1,name+': fluid Explore gutters and 1760px maximum');
+        assert(readability.layout.heroWidth>=readability.layout.mainWidth*.95,name+': hero fills the fluid page');
+      }
+      await expect(page.locator('[data-home-section]')).toHaveCount(6);
+      await expect(page.locator('.as-disclosure, .as-design-label, #sample-disclosure')).toHaveCount(0);
+      assert(!/Design concept|Design preview · Illustrative creators/i.test(await page.locator('body').innerText()),name+': obsolete design paragraph is absent');
+      const download=page.locator('[data-home-section="download"]');
+      await expect(download.locator('[data-home-cta="download-google-play"]')).toHaveAttribute('href',`https://play.google.com/store/apps/details?id=${brandConfig.hfPlayPackageId}`);
+      const apple=download.locator('[data-home-cta="download-app-store"]');
+      if(await apple.count()) await expect(apple).toHaveAttribute('href',/^https:\/\/apps\.apple\.com\/.*\/id\d+/);
+      else {
+        const comingSoon=download.locator('[data-app-store-status="coming-soon"]');
+        await expect(comingSoon).toContainText(/Coming soon/i);
+        await expect(comingSoon).toHaveAttribute('aria-disabled','true');
+        assert.notEqual(await comingSoon.evaluate(e=>e.tagName),'A',name+': unknown Apple listing cannot navigate');
+      }
       assert.deepEqual(readability.fontFailures,[],name+': text floor');
       assert.deepEqual(readability.clipping,[],name+': no clipped text');
       assert.deepEqual(readability.overlaps,[],name+': no overlapping controls');
       assert(readability.viewportOverflow.content<=width+1,name+': no horizontal overflow');
       await page.screenshot({path:'homepage-review/'+name+'.png',fullPage:true});
       const dialog=page.locator('#approved-preview-dialog');
-      for (const trigger of await page.locator('[data-preview-action]').all()) {
+      const triggers=await page.locator('[data-preview-action]').all();
+      assert.equal(triggers.length,11,name+': every sample control is exercised');
+      for (const trigger of triggers) {
         await trigger.click();
         await expect(dialog).toBeVisible();
         await expect(dialog).toContainText(/illustrative|sample/i);
+        await expect(dialog).toContainText(/no video plays/i);
+        await expect(dialog).toContainText(/no video plays, call is booked or payment is taken|no call or payment|no call.*no payment/i);
         assert(await dialog.evaluate(e=>e.contains(document.activeElement)),name+': dialog gets focus');
         await dialog.locator('[data-close-preview]').press('Enter');
         await waitForPreviewClose(dialog,trigger,name);
         await trigger.press('Enter');
         await expect(dialog).toBeVisible();
+        for(const key of ['Tab','Tab','Shift+Tab']){
+          await page.keyboard.press(key);
+          assert(await dialog.evaluate(e=>e.contains(document.activeElement)),name+': keyboard focus remains in the modal');
+        }
         await page.keyboard.press('Escape');
         await waitForPreviewClose(dialog,trigger,name);
       }
       const menu=page.locator('[data-callvaal-menu-toggle]');
-      if(await menu.isVisible()){
-        await menu.click(); await expect(menu).toHaveAttribute('aria-expanded','true');
-        await page.keyboard.press('Escape'); await expect(menu).toHaveAttribute('aria-expanded','false');
-        await expect(menu).toBeFocused();
+      const compactMenu=await menu.isVisible();
+      if(compactMenu){await menu.click();await expect(menu).toHaveAttribute('aria-expanded','true');}
+      const nav=page.locator('[data-callvaal-navigation]');
+      await expect(nav.locator('a:visible')).toHaveText(['Explore','Blog','Sign in']);
+      await page.evaluate(()=>{localStorage.setItem('saathum_guest_jwt','homepage-contract-session-hint');window.dispatchEvent(new Event('site:active-session-changed'));});
+      await expect(nav.locator('a:visible')).toHaveText(['Explore','Blog','Dashboard','Sign out']);
+      await page.evaluate(()=>{localStorage.removeItem('saathum_guest_jwt');window.dispatchEvent(new Event('site:active-session-changed'));});
+      if(compactMenu){
+        await page.keyboard.press('Escape');await expect(menu).toHaveAttribute('aria-expanded','false');await expect(menu).toBeFocused();
       }
-      for(const href of ['/about','/help','/privacy','/terms']) await expect(page.locator('footer a[href="'+href+'"]')).toBeVisible();
-      if([320,390,768,1039,1440].includes(width)){
-        await page.evaluate(()=>{document.documentElement.style.fontSize='200%';});
-        const enlarged=await inspectReadability(page); metrics.at(-1).enlarged=enlarged;
-        assert.deepEqual(enlarged.clipping,[],name+': 200% text unclipped');
-        assert.deepEqual(enlarged.overlaps,[],name+': 200% controls do not overlap');
-        assert(enlarged.viewportOverflow.content<=width+1,name+': 200% no horizontal overflow');
-        await page.screenshot({path:'homepage-review/'+name+'-text-200.png',fullPage:true});
+      const groups=page.locator('[data-callvaal-footer-group]');
+      await expect(groups).toHaveCount(5);
+      await expect(groups.locator('summary')).toHaveText(footerGroups);
+      await expect(groups.locator('li a')).toHaveCount(36);
+      for(const group of await groups.all()){
+        const summary=group.locator('summary');
+        const wasOpen=await group.evaluate(e=>e.open);
+        if(!wasOpen) await summary.click();
+        for(const link of await group.locator('li a').all()) await expect(link).toBeVisible();
+        if(!wasOpen) await summary.click();
       }
+      await page.evaluate(()=>{document.documentElement.style.fontSize='200%';document.querySelectorAll('[data-callvaal-footer-group]').forEach(group=>{group.open=true;});});
+      const enlarged=await inspectReadability(page);metrics.at(-1).enlarged=enlarged;
+      assert.deepEqual(enlarged.fontFailures,[],name+': 200% text floor');
+      assert.deepEqual(enlarged.clipping,[],name+': 200% text unclipped');
+      assert.deepEqual(enlarged.overlaps,[],name+': 200% controls do not overlap');
+      assert(enlarged.viewportOverflow.content<=width+1,name+': 200% no horizontal overflow');
+      await page.screenshot({path:'homepage-review/'+name+'-text-200.png',fullPage:true});
+      const enlargedTrigger=page.locator('[data-preview-action]').first();
+      await enlargedTrigger.click();
+      await expect(dialog).toBeVisible();
+      const enlargedDialog=await inspectReadability(page);metrics.at(-1).enlargedDialog=enlargedDialog;
+      assert.deepEqual(enlargedDialog.fontFailures,[],name+': enlarged modal text floor');
+      assert.deepEqual(enlargedDialog.clipping,[],name+': enlarged modal content is unclipped');
+      assert(enlargedDialog.viewportOverflow.content<=width+1,name+': enlarged modal has no horizontal overflow');
+      await page.screenshot({path:'homepage-review/'+name+'-dialog-text-200.png',fullPage:true});
+      await page.keyboard.press('Escape');
+      await waitForPreviewClose(dialog,enlargedTrigger,name+': enlarged dialog');
       const missingAnchors=await page.locator('a[href^="#"]:visible').evaluateAll(links=>links.map(a=>a.hash.slice(1)).filter(id=>id&&!document.getElementById(id)));
       assert.deepEqual(missingAnchors,[],name+': anchors resolve');
       assert.deepEqual(mutations,[],name+': samples never mutate backend');
@@ -193,6 +270,17 @@ try {
       failures.push({name,error:String(error),browserErrors}); console.error(name,error);
     } finally {await page.close();}
   }
+
+  // The 1760px desktop shell must grow beyond 1440, then stop growing on ultrawide screens.
+  // Compare measured geometry; fixed screenshot/poster containers cannot pass this check.
+  const wide=Object.fromEntries(metrics.filter(m=>[1440,1920,2560,3440].includes(m.width)).map(m=>[m.width,m.layout]));
+  if(Object.keys(wide).length===4){
+    try {
+      assert(wide[1920].mainWidth>wide[1440].mainWidth+300,'Main layout grows with the wider viewport');
+      for(const width of [2560,3440]) assert(Math.abs(wide[width].mainWidth-wide[1920].mainWidth)<=1,`${width}: page caps at Explore width`);
+      assert(wide[1920].headingSize>=wide[1440].headingSize,'Wide typography does not shrink');
+    }catch(error){failures.push({name:'wide-layout',error:String(error)});}
+  } else failures.push({name:'wide-layout',error:'Missing one or more required wide layout measurements'});
 
   for (const [name, width, height, textScale] of [['safety-desktop', 1280, 900, 1], ['safety-compact-text-200', 320, 740, 2]]) {
     const page = await browser.newPage({ viewport: { width, height }, deviceScaleFactor: 1, reducedMotion: 'reduce' });

@@ -1,0 +1,33 @@
+---
+interface Props { name: 'flower' | 'chai' | 'auto' | 'building' | 'arrow' | 'leaves'; class?: string; }
+const { name, class: className } = Astro.props;
+---
+<svg class:list={['as-art', className]} viewBox={name === 'auto' ? '0 0 200 140' : '0 0 160 160'} fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false">
+  {name === 'flower' && <g stroke="#7b174b" stroke-width="2.5">
+    <path d="M79 84c-34 9-52-12-36-26-26-19-7-44 13-34 3-30 34-31 39-3 25-18 48 5 30 27 31 10 21 39-5 40 14 27-13 45-33 26-13 29-43 15-35-8-24 6-30-17-13-27" fill="#f2a927"/>
+    <path d="M83 86c8 29 7 47 1 68M88 121c24-24 46-21 47-17-4 18-22 25-47 24M87 139c-21-24-44-20-44-15 6 16 23 21 44 20" fill="#a9ba83"/>
+    <circle cx="82" cy="61" r="23" fill="#ec653b"/><circle cx="82" cy="61" r="12" fill="#ffd768"/>
+    <path d="m74 53 3 2m12-2-3 2m-10 13 3-2m10 2-3-2" stroke-linecap="round"/>
+  </g>}
+  {name === 'chai' && <g stroke="#50123e" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M49 21c-14 16 16 17 1 33m26-39c-14 16 16 17 1 33m25-24c-14 16 16 17 1 33"/>
+    <ellipse cx="77" cy="134" rx="60" ry="10" fill="#edb4cf"/>
+    <path d="M35 64h82l-10 62c-1 14-61 14-63 0z" fill="#f7b955"/>
+    <ellipse cx="76" cy="64" rx="41" ry="10" fill="#fff6db"/><ellipse cx="76" cy="66" rx="31" ry="6" fill="#8d3d28"/>
+    <path d="M116 73h9c24 0 21 34-13 35M54 84l5 34m16-34v37m21-37-4 34"/>
+  </g>}
+  {name === 'auto' && <g stroke="#3c1736" stroke-width="3" stroke-linejoin="round">
+    <path d="m27 42 11-22h89l26 37-8 54H26z" fill="#efb42d"/><path d="M29 57h68v54H26zm68 0h55l28 25v29H96z" fill="#7f9d69"/>
+    <path d="M43 29h43v28H35zm54 0h25l19 28H97z" fill="#fff6df"/><path d="M39 65h43v35H39z" fill="#4b2a41"/>
+    <path d="M105 65h36l17 17h-53z" fill="#d6e6d0"/><path d="M109 89h20m43 5h8M28 46H13m116-14 8-10h10"/>
+    <circle cx="49" cy="113" r="16" fill="#3c1736"/><circle cx="49" cy="113" r="7" fill="#ffefd0"/><circle cx="151" cy="113" r="16" fill="#3c1736"/><circle cx="151" cy="113" r="7" fill="#ffefd0"/>
+    <path d="M6 131h184" stroke-linecap="round"/>
+  </g>}
+  {name === 'building' && <g stroke="#7b174b" stroke-width="2.3" stroke-linejoin="round">
+    <path d="M25 148V43l14-7V20h83v16l13 7v105z" fill="#f1c8d3"/><path d="M16 149h130M18 43h124M33 20h95M45 20V9h71v11M24 80h112M24 116h112"/>
+    <path d="M42 69V55h17v14zm31 0V55h17v14zm31 0V55h17v14zM42 105V91h17v14zm31 0V91h17v14zm31 0V91h17v14z" fill="#fff6db"/>
+    <path d="M66 149v-17a15 15 0 0 1 30 0v17" fill="#f5b34f"/><path d="M81 125v24M42 36h77"/>
+  </g>}
+  {name === 'arrow' && <g stroke="#df6238" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"><path d="M8 102c13-50 55-60 74-30 17 28-20 48-26 26-8-30 55-43 91-27"/><path d="m130 48 20 25-31 10"/></g>}
+  {name === 'leaves' && <g stroke="#4c633b" stroke-width="2.5" stroke-linejoin="round"><path d="M30 146C93 109 76 65 131 14" stroke-width="4"/><path d="M60 124c-41-5-49-31-40-35 23-2 40 13 40 35m15-28c37 4 57-18 51-25-24-7-42 7-51 25m14-28c-35-12-37-39-29-41 21 2 33 19 29 41m19-30c23 4 37-9 31-18-17-1-24 7-31 18" fill="#a9ba83"/></g>}
+</svg>

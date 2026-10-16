@@ -2,11 +2,10 @@
 import brandConfig from '../../../../Specs/brand.json';
 import ModernIcon from '../home/ModernIcon.astro';
 import BrandLogo from './BrandLogo.astro';
-import { publicImage, publicImageSrcSet } from '../../lib/config';
 import '../../styles/callvaal-chrome.css';
 import { APP_UA_MARKER } from '../../lib/nativeBridge';
-interface Props { hideAuth?: boolean; auth?: 'auto' | 'in' | 'static'; homeReference?: boolean; scrapbook?: boolean; }
-const { hideAuth = false, auth = 'auto', homeReference = false, scrapbook = false } = Astro.props;
+interface Props { hideAuth?: boolean; auth?: 'auto' | 'in' | 'static'; homeReference?: boolean; }
+const { hideAuth = false, auth = 'auto', homeReference = false } = Astro.props;
 // All modes keep plain links (no Clerk island); static pages still reflect the session hint.
 const authMode = auth === 'in' ? 'in' : 'auto';
 const onDashboard = Astro.url.pathname.replace(/\/$/, '') === '/dashboard';
@@ -49,11 +48,10 @@ const homeAnchor = (id: string) => `${Astro.url.pathname === '/' ? '' : '/'}#${i
     window.addEventListener('site:active-session-changed', syncAuthHint);
   })();
 </script>
-<header class="cv-header" data-callvaal-chrome data-auth-mode={authMode} data-home-reference={homeReference || undefined} data-scrapbook={scrapbook || undefined}>
-  {scrapbook && <span class="as-design-label">Design concept</span>}
-  <a class="cv-wordmark" href="/" aria-label={`${identity.name} home`}><>{scrapbook ? <img class="cv-brand-logo" src={publicImage('/assets/hf-approved-scrapbook/logo.png', { width: 320 })} srcset={publicImageSrcSet('/assets/hf-approved-scrapbook/logo.png', [160, 320, 640])} sizes="(max-width: 699px) 76px, (min-width: 1600px) 193px, 13vw" width="125" height="125" alt="" decoding="async" /> : <BrandLogo />}</></a>
+<header class="cv-header" data-callvaal-chrome data-auth-mode={authMode} data-home-reference={homeReference || undefined}>
+  <a class="cv-wordmark" href="/" aria-label={`${identity.name} home`}><BrandLogo /></a>
   <div class="cv-mobile-actions"><a href={homeAnchor('people')} aria-label="Who's online"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="10" cy="10" r="6.5"/><path d="m15 15 6 6"/></svg></a><button class="cv-menu-toggle menu-toggle" data-callvaal-menu-toggle type="button" aria-expanded="false" aria-controls="main-navigation" aria-label="Open navigation"><ModernIcon name="menu" /></button></div>
-  <nav class="cv-navigation notebook-nav" id="main-navigation" data-callvaal-navigation aria-label="Main navigation">{scrapbook ? <><a href="/marketplace" data-home-cta="header-discover">Discover</a><a href={homeAnchor('how-it-works')}>How it works</a><a href="/hosts/join">For influencers</a>{!hideAuth && <>{auth !== 'in' && <a class="cv-sign-in cv-auth-out" href="/sign-in">Log in</a>}<a class="cv-sign-in cv-auth-in cv-dashboards" href="/dashboard" aria-current={onDashboard ? 'page' : undefined}>Dashboard</a><a class="cv-auth-in" href="/sign-out">Sign out</a></>}<a class="as-header-start" href="/marketplace" data-home-cta="header-start">Start exploring</a></> : <>{/* [HF-LOGO-1 2026-10-15] Owner: header links are Explore, How it works (home), Blog. Help Center and Earn with us removed. */}{homeReference ? <><a href="/marketplace">Explore</a><a href={homeAnchor('how-it-works')}>How it works</a><a href="/blog">Blog</a></> : <><a href="/marketplace">Explore</a><a href="/blog">Blog</a></>}{!hideAuth && <>{auth !== 'in' && <a class="cv-sign-in cv-auth-out" href="/sign-in"><ModernIcon name="user" />Sign in</a>}<a class="cv-sign-in cv-auth-in cv-dashboards" href="/dashboard" aria-current={onDashboard ? 'page' : undefined}><ModernIcon name="user" />Dashboard</a><a class="cv-auth-in" href="/sign-out">Sign out</a></>}{homeReference && <a class="hfh-header-host" href="/hosts/join">Join us</a>}</>}</nav>
+  <nav class="cv-navigation notebook-nav" id="main-navigation" data-callvaal-navigation aria-label="Main navigation">{/* [HF-LOGO-1 2026-10-15] Owner: header links are Explore, How it works (home), Blog. Help Center and Earn with us removed. */}{homeReference ? <><a href="/marketplace">Explore</a><a href={homeAnchor('how-it-works')}>How it works</a><a href="/blog">Blog</a></> : <><a href="/marketplace">Explore</a><a href="/blog">Blog</a></>}{!hideAuth && <>{auth !== 'in' && <a class="cv-sign-in cv-auth-out" href="/sign-in"><ModernIcon name="user" />Sign in</a>}<a class="cv-sign-in cv-auth-in cv-dashboards" href="/dashboard" aria-current={onDashboard ? 'page' : undefined}><ModernIcon name="user" />Dashboard</a><a class="cv-auth-in" href="/sign-out">Sign out</a></>}{homeReference && <a class="hfh-header-host" href="/hosts/join">Join us</a>}</nav>
 </header>
 <script>
   import { capture } from '../../lib/analytics';

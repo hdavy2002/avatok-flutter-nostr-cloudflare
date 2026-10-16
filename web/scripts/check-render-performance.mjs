@@ -20,13 +20,14 @@ assert.doesNotMatch(read('src/lib/railwayHome.ts'), /classList\.add\('is-shown'\
 // contract. Keep the underlying intent — homepage imagery goes through
 // publicImage()/publicImageSrcSet(), not a raw literal path — without pinning
 // it to art that no longer exists.
-const artworkSource = home.includes('OriginalArtwork') ? read('src/components/OriginalArtwork.astro') : '';
-if (home.includes('ReferenceCrop')) {
-  assert.match(read('src/components/home/ReferenceCrop.astro'), /approved-reference\.png|REFERENCE/, 'Exact source art uses the reviewed reference component');
-  // check-image-coverage enforces a byte-pinned exception for this one sprite.
-} else {
-  assert.match(home + artworkSource, /publicImage(?:SrcSet)?\(/, 'Homepage imagery uses the public-image pipeline');
-}
+// The homepage uses separately authored portraits through the standard image
+// pipeline, with native inline vectors for decoration. No screenshot exception.
+assert.match(home, /publicImage\(/, 'Homepage portraits use the public-image pipeline');
+assert.match(home, /publicImageSrcSet\(/, 'Homepage portraits have responsive image candidates');
+assert.doesNotMatch(home, /ReferenceCrop|approved-reference|hf-approved-scrapbook/, 'No cropped mock imagery on the homepage');
+const artworkSource = read('src/components/home/ScrapbookArt.astro');
+assert.match(artworkSource, /<svg\b/);
+assert.doesNotMatch(artworkSource, /<(?:image|foreignObject)\b|data:image|hf-approved-scrapbook/i, 'Decorations are native vectors');
 // The locale-aware production branch may own fonts through its existing
 // header/layout path. Apply duplicate-owner assertions only when the shared
 // Fonts component is actually active in the current source tree.

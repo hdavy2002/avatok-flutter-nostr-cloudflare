@@ -1,0 +1,35 @@
+{
+  "issue": "HF-HOME-SHARP-2",
+  "created": "2026-10-16",
+  "provenance": "Independently generated fictional adult creator portraits using imagegen. Encoded at native dimensions without resizing or upscaling. Decorations are native SVG in ScrapbookArt.astro.",
+  "photos": {
+    "meera": {
+      "width": 1024,
+      "height": 1536,
+      "sourceSha256": "c937901098415308856939ee2dd1f3eb30462beb392b39d36c507109c7afafb6",
+      "webpSha256": "b014a0bcfa5c75b5a761ece70d0e0a978d1aa90201c2d9abbec63f038e4d150d",
+      "bytes": 412268
+    },
+    "kabir": {
+      "width": 1024,
+      "height": 1536,
+      "sourceSha256": "ad806dce9169bf8032593a4f4c0dfbd1ed573f23214ea1090e1e617bfc5886d6",
+      "webpSha256": "2daff491f0a9fe788a673e3f519dde53e53fe3140a9fc10abc19838c3b54e130",
+      "bytes": 248086
+    },
+    "ananya": {
+      "width": 1024,
+      "height": 1536,
+      "sourceSha256": "d6058c0094368e567aedb971d10501ed7f6208005b5ab4e9a52b56fb501d425e",
+      "webpSha256": "f966d05b264425febb60189e56c056ebf69c1fa79582ff063d9b51cbef793ac6",
+      "bytes": 433176
+    },
+    "rohan": {
+      "width": 1024,
+      "height": 1536,
+      "sourceSha256": "834495164f33591f53ecc9ed99797f612be68ef4a5988bd198f52d751fdc6e2f",
+      "webpSha256": "c434e30953175e3ba4601b0c88378f7bdd2996a9cf028f767d039e4ff7a2feaf",
+      "bytes": 360782
+    }
+  }
+}

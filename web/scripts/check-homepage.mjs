@@ -1,4 +1,4 @@
-// [HF-APPROVED-SCRAPBOOK-1] Approved source art + native HTML release contract. CI only.
+// [HF-HOME-SHARP-2] Separate high-resolution portraits, native art and shared Explore chrome. CI only.
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { readFileSync, existsSync } from 'node:fs';
@@ -7,7 +7,7 @@ import { resolve } from 'node:path';
 import sharp from 'sharp';
 import { normalizeBuiltImages, validateBuiltImageSources } from './built-image-source.mjs';
 import { BRAND, reEscape } from './brand.mjs';
-import { checkHelloFraandsPages } from './check-hello-fraands-pages.mjs';
+import { checkHelloFraandsPages, footerGroups, footerRoutes } from './check-hello-fraands-pages.mjs';
 function meta(page, key) {
   const tag = (page.match(/<meta\b[^>]*>/g) || []).find(t => t.includes('property="' + key + '"') || t.includes('name="' + key + '"'));
   return tag?.match(/content="([^"]*)"/)?.[1];
@@ -21,7 +21,8 @@ const plainText = value => value.replace(/<script\b[\s\S]*?<\/script>/g, '').rep
 const visibleText = plainText(bodyHtml);
 const main = bodyHtml.match(/<main\b[^>]*>([\s\S]*?)<\/main>/)?.[1] || '';
 const mainText = plainText(main);
-const identity = JSON.parse(readFileSync(resolve('../Specs/brand.json'), 'utf8')).homepageIdentity;
+const brandConfig = JSON.parse(readFileSync(resolve('../Specs/brand.json'), 'utf8'));
+const identity = brandConfig.homepageIdentity;
 assert.equal((html.match(/<h1[ >]/g) || []).length, 1, 'One native H1');
 assert(bodyHtml.includes('aria-label="' + identity.name + ' home"') && bodyHtml.includes('logo.png'), 'Owner logo with central accessible brand identity');
 for (const copy of [
@@ -34,12 +35,17 @@ for (const copy of [
   'Big personalities. Real conversations.',
   'Don’t just follow. Connect.',
 ]) assert(mainText.includes(copy), 'Approved mock copy: ' + copy);
-assert.match(visibleText, /illustrative|sample/i, 'Fictional creators are disclosed');
-assert.match(visibleText, /no call|no payment|not.*book/i, 'Preview actions do not pretend to book');
-assert.deepEqual([...main.matchAll(/data-home-section="([^"]+)"/g)].map(m => m[1]), ['hero','privacy','how-it-works','creators','connect'], 'Exact approved section order');
+const dialog = bodyHtml.match(/<dialog\b[^>]*id="approved-preview-dialog"[^>]*>([\s\S]*?)<\/dialog>/)?.[1] || '';
+assert.match(plainText(dialog), /illustrative|sample/i, 'Sample disclosure remains inside the interactive dialog');
+assert.match(plainText(dialog), /no video plays/i, 'Dialog truthfully explains the video sample');
+assert.match(plainText(dialog), /no video plays, call is booked or payment is taken|no call or payment|no call.*no payment/i, 'Preview actions do not pretend to book or charge');
+assert.doesNotMatch(visibleText, /Design concept|Design preview · Illustrative creators/i, 'Removed design labels and disclosure paragraph stay removed');
+assert(!idsFromMarkup(bodyHtml).includes('sample-disclosure'), 'Removed standalone sample paragraph stays removed');
+assert.deepEqual([...main.matchAll(/data-home-section="([^"]+)"/g)].map(m => m[1]), ['hero','privacy','how-it-works','creators','connect','download'], 'Exact approved section order');
 assert.deepEqual([...main.matchAll(/data-approved-creator="([^"]+)"/g)].map(m => m[1]), ['meera','kabir','ananya','rohan'], 'Exact four illustrative creators');
 for (const name of ['Meera','Kabir','Ananya','Rohan','Lifestyle','Comedy','Music','Travel']) assert(mainText.includes(name), 'Approved creator label: ' + name);
-const allIds = [...html.matchAll(/\bid="([^"]+)"/g)].map(m => m[1]);
+function idsFromMarkup(markup) { return [...markup.matchAll(/\bid="([^"]+)"/g)].map(m => m[1]); }
+const allIds = idsFromMarkup(html);
 const ids = new Set(allIds);
 assert.equal(ids.size, allIds.length, 'No duplicate IDs');
 for (const id of ['main-content','people','moods','naye-dost','women-only','earn','how-it-works','safety','approved-preview-dialog']) assert(ids.has(id), 'Existing deep link: ' + id);
@@ -53,43 +59,83 @@ assert.equal((html.match(/<footer\b[^>]*data-callvaal-chrome/g) || []).length, 1
 assert(meta(html, 'description')?.length > 40);
 assert(meta(html, 'og:title')?.includes(identity.name));
 assert(meta(html, 'og:description'));
-const reference = readFileSync(resolve(root, 'assets/hf-approved-scrapbook/approved-reference.png'));
-assert.equal(createHash('sha256').update(reference).digest('hex'), 'e70b996d45cd8557f07bbde3acbbbb8035669e71ef4589c9736d3fb6f6a2b312', 'Approved mock is byte-identical; no regenerated art');
-const refMeta = await sharp(reference).metadata();
-assert(refMeta.width > 1000 && refMeta.height > 1400, 'Full-resolution visual reference');
-const artRoot = resolve(root, 'assets/hf-approved-scrapbook');
-for (const [name, sha] of [['logo.png','4094f33216d4a333a2902f19e087a1224227cad2a1e66f6e4e3b387c0c273af4'], ['favicon.png','f45483b793af61ed73726854a456d2c0e5377cf35dbdcc6795e05920b8335103']]) {
-  assert.equal(createHash('sha256').update(readFileSync(resolve(artRoot, name))).digest('hex'), sha, 'Exact owner-supplied branding: ' + name);
+// Compare emitted links, labels and auth classes with Explore, so using the
+// component name alone cannot hide a different home-only menu or footer branch.
+const explore = normalizeBuiltImages(readFileSync(resolve(root, 'marketplace/index.html'), 'utf8'), { root });
+const chrome = (markup, tag) => markup.match(new RegExp(`<${tag}\\b[^>]*data-callvaal-chrome[^>]*>[\\s\\S]*?<\\/${tag}>`))?.[0] || '';
+const links = markup => [...markup.matchAll(/<a\b([^>]*)>([\s\S]*?)<\/a>/g)].map(([, attrs, label]) => ({
+  href: attrs.match(/\bhref="([^"]+)"/)?.[1].replaceAll('&amp;', '&').replace(/^#/, '/#'),
+  label: plainText(label),
+  ariaLabel: attrs.match(/\baria-label="([^"]+)"/)?.[1] || '',
+  auth: attrs.match(/cv-auth-(?:in|out)/)?.[0] || '',
+}));
+for (const tag of ['header', 'footer']) {
+  assert(chrome(explore, tag), 'Explore shared ' + tag + ' exists');
+  assert.deepEqual(links(chrome(html, tag)), links(chrome(explore, tag)), 'Homepage ' + tag + ' matches Explore destinations, copy and session modes');
+  assert.doesNotMatch(chrome(html, tag), /data-scrapbook/, 'Homepage uses the default shared ' + tag);
 }
-const provenance = JSON.parse(readFileSync(resolve(artRoot, 'crop-manifest.json'), 'utf8'));
-assert.equal(provenance.sourceSha256, createHash('sha256').update(reference).digest('hex'));
-assert(provenance.crops.length >= 10, 'Original photos and Indian artwork extracted separately');
-for (const crop of provenance.crops) {
-  assert(!crop.file.includes('/') && crop.file.endsWith('.webp'), 'Bounded art filename');
-  const bytes = readFileSync(resolve(artRoot, crop.file));
-  assert.equal(createHash('sha256').update(bytes).digest('hex'), crop.sha256, 'Source-derived artwork hash: ' + crop.file);
-  const rect = crop.sourceRect;
-  assert(rect.left >= 0 && rect.top >= 0 && rect.left + rect.width <= refMeta.width && rect.top + rect.height <= refMeta.height, 'Crop stays inside approved image: ' + crop.file);
-  const art = await sharp(bytes).metadata();
-  assert.equal(art.width, crop.width); assert.equal(art.height, crop.height);
-}
-const photos = [...main.matchAll(/<img\b[^>]*>/g)].map(m => m[0]);
-assert(photos.length >= 5, 'Separate art and photographic placements, not a page screenshot');
-for (const photo of photos) {
-  assert.match(photo, /\balt="/, 'Every art placement has alt, including empty decorative alt');
-  assert.match(photo, /\bwidth="/);
-  assert.match(photo, /\bheight="/);
-}
+const footer = chrome(html, 'footer');
+assert.deepEqual([...footer.matchAll(/<summary\b[^>]*>([\s\S]*?)<\/summary>/g)].map(m => plainText(m[1])), footerGroups, 'Five canonical footer groups');
+assert.equal((footer.match(/data-callvaal-footer-group/g) || []).length, 5);
+const footerItems = [...footer.matchAll(/<li\b[^>]*>([\s\S]*?)<\/li>/g)].flatMap(m => links(m[1]));
+assert.equal(footerItems.length, 36, 'All 36 grouped footer links');
+assert.deepEqual(footerItems.map(item => item.href), footerRoutes, 'Canonical footer link order');
 const source = readFileSync(resolve('src/pages/index.astro'), 'utf8');
-assert(!/<img[^>]*src=\{?[^>]*approved-reference/.test(source), 'Whole-page reference cannot replace accessible HTML');
 const css = readFileSync(resolve('src/styles/approved-scrapbook.css'), 'utf8');
+assert.doesNotMatch(source + css + main, /hf-approved-scrapbook|approved-reference|ReferenceCrop|crop-manifest/, 'No screenshot crops or old raster decorations in the homepage');
 assert.doesNotMatch(css, /(?:linear|radial|conic)-gradient\(/i, 'No gradients in approved landing design');
+const portraitIds = ['meera', 'kabir', 'ananya', 'rohan'];
+const hashes = new Set();
+for (const id of portraitIds) {
+  const file = `assets/hf-home-sharp/${id}.webp`;
+  const bytes = readFileSync(resolve(root, file));
+  hashes.add(createHash('sha256').update(bytes).digest('hex'));
+  const metadata = await sharp(bytes).metadata();
+  assert(Math.min(metadata.width, metadata.height) >= 1024 && Math.max(metadata.width, metadata.height) >= 1536, 'Native high-resolution portrait: ' + id);
+  const placements = [...main.matchAll(/<img\b[^>]*>/g)].map(m => m[0]).filter(tag => tag.includes('/' + file));
+  assert(placements.length >= 1, 'Distinct portrait is actually rendered: ' + id);
+  for (const photo of placements) {
+    assert.match(photo, /\balt="[^"]+"/, 'Portrait has descriptive alternate text: ' + id);
+    assert.equal(Number(photo.match(/\bwidth="(\d+)"/)?.[1]), metadata.width, 'Intrinsic portrait width: ' + id);
+    assert.equal(Number(photo.match(/\bheight="(\d+)"/)?.[1]), metadata.height, 'Intrinsic portrait height: ' + id);
+    assert.match(photo, /\bsrcset="[^"]* 2048w(?:,|")/, 'Portrait serves a 2048px responsive candidate: ' + id);
+    assert.match(photo, /\bsizes="[^"]*(?:vw|calc\()[^"]*"/, 'Portrait has responsive sizes: ' + id);
+  }
+}
+assert.equal(hashes.size, 4, 'Four separately sourced portrait files');
+const photos = [...main.matchAll(/<img\b[^>]*>/g)].map(m => m[0]);
+assert(photos.length >= 7, 'Hero collage and creator cards contain separate photo elements');
+for (const photo of photos) {
+  assert.match(photo, /\balt="/);
+  assert.match(photo, /\bwidth="\d+"/);
+  assert.match(photo, /\bheight="\d+"/);
+  assert(portraitIds.some(id => photo.includes(`/assets/hf-home-sharp/${id}.webp`)), 'Homepage raster placements are individual fresh portraits');
+}
+const vectors = [...main.matchAll(/<svg\b[^>]*>[\s\S]*?<\/svg>/g)].map(m => m[0]);
+assert(vectors.filter(vector => /class="[^"]*\bas-art\b/.test(vector)).length >= 5, 'Indian decoration is native vector artwork');
+for (const vector of vectors) {
+  assert.match(vector, /\bviewBox="/);
+  assert.doesNotMatch(vector, /<(?:image|foreignObject)\b|data:image|approved-reference|hf-approved-scrapbook/i, 'Vector artwork cannot wrap a raster screenshot');
+}
+assert.match(source, /import\s*\{[^}]*HF_PLAY_URL[^}]*\}\s*from\s*['"][^'"]*hfApp['"]/, 'Google Play URL comes from canonical HF app configuration');
+assert.match(source, /href=\{HF_PLAY_URL\}/, 'Canonical Google Play URL is used by the CTA');
+const download = main.match(/<section\b[^>]*data-home-section="download"[^>]*>([\s\S]*?)<\/section>/)?.[1] || '';
+const playUrl = `https://play.google.com/store/apps/details?id=${brandConfig.hfPlayPackageId}`;
+assert(links(download).some(link => link.href === playUrl), 'Download targets the configured Hello Fraands Google Play package');
+assert.match(source, /\bAPP_STORE_URL\b/, 'Apple CTA uses configured listing availability');
+const appleLinks = links(download).filter(link => /apps\.apple\.com/.test(link.href || ''));
+if (appleLinks.length) {
+  assert.equal(appleLinks.length, 1, 'One configured Apple listing');
+  assert.match(appleLinks[0].href, /^https:\/\/apps\.apple\.com\/.*\/id\d+/);
+} else {
+  assert.match(download, /<(?:button|span)\b[^>]*(?:disabled|aria-disabled="true")[^>]*>[\s\S]*?Coming soon/i, 'Unknown Apple listing has a truthful non-link Coming soon state');
+}
 assert(!/<video\b/.test(main), 'Illustrative video art does not pretend an actual feed exists');
 checkHelloFraandsPages(root, identity);
 const redirects = readFileSync(resolve(root, '_redirects'), 'utf8');
 assert.match(redirects, /^\/india\s+\/\s+301\s*$/m);
 assert.match(redirects, /^\/india\/\s+\/\s+301\s*$/m);
-console.log('Approved scrapbook homepage: source art, HTML copy, privacy, navigation, preview integrity and content contracts passed.');
+console.log('Sharp homepage: distinct high-resolution portraits, native vectors, Explore chrome, download CTA, preview integrity and content contracts passed.');
 
 // [WEB-OLD-PAGES-GONE-1 2026-09-27] /archive/home-2026-09-09 and /global-ideas were DELETED
 // by owner decision (they now answer 410 via src/middleware.ts), so their archive and
@@ -125,7 +171,7 @@ assert.equal(meta(html, 'twitter:title'), meta(html, 'og:title'));
 assert.equal(meta(html, 'description'), meta(html, 'og:description'));
 const ogImageUrl = meta(html, 'og:image');
 assert(ogImageUrl, 'Homepage has a share image');
-assert(ogImageUrl.includes('/assets/hf-approved-scrapbook/'), 'Homepage shares its new host/fan artwork');
+assert(ogImageUrl.includes('/assets/hf-home-sharp/'), 'Homepage shares its fresh high-resolution creator artwork');
 assert.doesNotMatch(ogImageUrl, /avatok-creator-constellation/, 'Share image is not the retired creator hero (A4.1, D10)');
 assert.equal(meta(html, 'twitter:image'), ogImageUrl);
 assert.match(html, new RegExp('<link\\b[^>]*rel="canonical"[^>]*href="' + reEscape(`https://${identity.domain}/`) + '"'), 'Homepage canonical is the root URL');

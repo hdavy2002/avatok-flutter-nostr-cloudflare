@@ -3,83 +3,117 @@ export const prerender = true;
 import brandConfig from '../../../Specs/brand.json';
 import Header from '../components/callvaal/Header.astro';
 import Footer from '../components/callvaal/Footer.astro';
+import ModernIcon from '../components/home/ModernIcon.astro';
+import ScrapbookArt from '../components/home/ScrapbookArt.astro';
 import { publicImage, publicImageSrcSet, shareImage } from '../lib/config';
+import { APP_STORE_URL } from '../lib/env';
+import { HF_PLAY_URL } from '../lib/hfApp';
+import '../styles/callvaal-notebook.css';
+import '../styles/hello-fraands-pages.css';
 import '../styles/approved-scrapbook.css';
 const identity = brandConfig.homepageIdentity;
 const title = `Your favorite creators. One conversation away. | ${identity.name}`;
 const description = 'Watch entertaining videos. Discover your kind of people. Book a private conversation.';
 const canonical = `https://${identity.domain}/`;
-const assets = '/assets/hf-approved-scrapbook/';
-const ogImage = shareImage(`${assets}hero-collage.webp`);
-const creators = [ { id: 'meera', name: 'Meera', category: 'Lifestyle', width: 225 }, { id: 'kabir', name: 'Kabir', category: 'Comedy', width: 227 }, { id: 'ananya', name: 'Ananya', category: 'Music', width: 222 }, { id: 'rohan', name: 'Rohan', category: 'Travel', width: 228 } ];
-const steps = [ { id: 'watch', title: 'Watch their videos', text: 'A feed full of personalities worth knowing.' }, { id: 'find', title: 'Find your favorite', text: 'Explore their profile and book a call.' }, { id: 'connect', title: 'We connect you both', text: "We call both parties and merge the call. Neither sees the other's number." } ];
+const assets = '/assets/hf-home-sharp/';
+const ogImage = shareImage(`${assets}meera.webp`);
+const imageWidths = [420, 640, 900, 1280, 1600, 2048];
+const creators = [
+  { id: 'meera', name: 'Meera', category: 'Lifestyle', alt: 'An illustrative young adult Indian lifestyle creator' },
+  { id: 'kabir', name: 'Kabir', category: 'Comedy', alt: 'An illustrative young adult Indian comedy creator' },
+  { id: 'ananya', name: 'Ananya', category: 'Music', alt: 'An illustrative young adult Indian music creator' },
+  { id: 'rohan', name: 'Rohan', category: 'Travel', alt: 'An illustrative young adult Indian travel creator' },
+];
+const steps = [
+  { id: 'watch', icon: 'play', title: 'Watch their videos', text: 'A feed full of personalities worth knowing.' },
+  { id: 'find', icon: 'user', title: 'Find your favorite', text: 'Explore their profile and book a call.' },
+  { id: 'connect', icon: 'phone', title: 'We connect you both', text: "We call both parties and merge the call. Neither sees the other's number." },
+];
+const heroSizes = '(min-width: 1824px) 280px, (min-width: 1100px) 16vw, (min-width: 900px) 28vw, (min-width: 600px) 27vw, 26vw';
+const cardSizes = '(min-width: 1824px) 400px, (min-width: 1100px) 22vw, (min-width: 600px) 44vw, calc(100vw - 64px)';
 ---
 <!doctype html>
 <html lang="en-IN">
 <head>
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <title>{title}</title><meta name="description" content={description} /><link rel="canonical" href={canonical} /><meta name="theme-color" content="#fbf8ef" /><meta name="robots" content="index,follow" />
+  <title>{title}</title><meta name="description" content={description} /><link rel="canonical" href={canonical} /><meta name="theme-color" content="#fffdf7" /><meta name="robots" content="index,follow" />
   <script type="application/ld+json" set:html={JSON.stringify({ '@context': 'https://schema.org', '@type': 'WebPage', name: title, description, url: canonical, inLanguage: 'en-IN' })} />
   <meta property="og:type" content="website" /><meta property="og:site_name" content={identity.name} /><meta property="og:title" content={title} /><meta property="og:description" content={description} /><meta property="og:url" content={canonical} />
-  <meta property="og:image" content={ogImage} /><meta property="og:image:alt" content="Illustrative creator discovery and private conversation design." />
+  <meta property="og:image" content={ogImage} /><meta property="og:image:alt" content="An illustrative creator, ready for a conversation." />
   <meta name="twitter:card" content="summary_large_image" /><meta name="twitter:title" content={title} /><meta name="twitter:description" content={description} /><meta name="twitter:image" content={ogImage} />
-  <link rel="icon" href="/assets/hf-approved-scrapbook/favicon.png" type="image/png" />
+  <link rel="icon" href="/assets/branding/hf-favicon.png" type="image/png" />
   <link data-site-fonts rel="preload" href="/fonts/Comfortaa-Bold.ttf" as="font" type="font/ttf" crossorigin /><link rel="preload" href="/fonts/Nunito-Black.woff2" as="font" type="font/woff2" crossorigin />
 </head>
 <body class="approved-scrapbook-page">
-<div class="approved-scrapbook" data-design="approved-scrapbook">
-  <a class="as-skip" href="#main-content">Skip to main content</a>
-  <Header scrapbook />
-  <main id="main-content">
+<div class="notebook-site hf-site approved-scrapbook" data-design="approved-scrapbook">
+  <a class="skip-link" href="#main-content">Skip to main content</a>
+  <Header />
+  <main id="main-content" class="as-main">
     <section class="as-hero" aria-labelledby="hero-title" data-home-section="hero">
-      <div class="as-hero-copy"><p class="as-eyebrow">Scroll. Discover. Connect.</p>
+      <div class="as-hero-copy">
+        <p class="as-eyebrow">Scroll. Discover. Connect.</p>
         <h1 id="hero-title"><span>Your favorite <br />creators.</span> <em>One conversation away.</em></h1>
         <p class="as-hero-description">Watch entertaining videos. Discover your kind of people. Book a private conversation.</p>
         <div class="as-actions" data-approved-actions><a class="as-button" href="/marketplace" data-home-cta="explore-feed">Explore the feed <span aria-hidden="true">→</span></a><a class="as-button as-button-outline" href="#how-it-works" data-home-cta="how-it-works">How it works</a></div>
-        <p class="as-platforms"><span class="as-social-icons" aria-hidden="true"><span class="as-youtube">▶</span><span class="as-instagram">◎</span><span class="as-facebook">f</span></span><span>YouTube <b>·</b> Instagram <b>·</b> Facebook creators</span></p>
+        <p class="as-platforms"><span class="as-social-icons" aria-hidden="true"><span class="as-youtube">▶</span><span class="as-instagram">◎</span><span class="as-facebook">f</span></span><span>YouTube · Instagram · Facebook creators</span></p>
+        <ScrapbookArt name="building" class="as-hero-building" />
       </div>
       <div class="as-hero-collage" aria-label="Illustrative lifestyle, comedy and music creators">
-        <img src={publicImage(`${assets}hero-collage.webp`, { width: 900 })} srcset={publicImageSrcSet(`${assets}hero-collage.webp`, [420, 640, 900, 1280])} sizes="(max-width: 699px) 100vw, (min-width: 1600px) 876px, 55vw" width="569" height="474" fetchpriority="high" alt="Approved collage of a lifestyle creator, a comedian holding a microphone, and a musician playing guitar, with torn paper, marigolds and an auto rickshaw." />
-        {['Lifestyle', 'Comedy', 'Music'].map((category, index) => <button type="button" class={`as-hero-play as-hero-play-${index}`} data-preview-action="video" data-preview-name={category} aria-label={`Preview ${category.toLowerCase()} sample video`} aria-haspopup="dialog" aria-controls="approved-preview-dialog"><span class="as-sr-only">Preview {category} sample video</span></button>)}
+        <ScrapbookArt name="arrow" class="as-hero-arrow" />
+        <div class="as-hero-portraits">{creators.slice(0, 3).map((creator, index) => <figure class={`as-portrait as-portrait-${creator.id}`}>
+          <div class="as-portrait-photo"><img src={publicImage(`${assets}${creator.id}.webp`, { width: 900 })} srcset={publicImageSrcSet(`${assets}${creator.id}.webp`, imageWidths)} sizes={heroSizes} width="1024" height="1536" fetchpriority={index === 0 ? 'high' : 'auto'} alt={creator.alt} />
+            <button type="button" class="as-hero-play" data-preview-action="video" data-preview-name={creator.name} aria-label={`Preview ${creator.name} sample video`} aria-haspopup="dialog" aria-controls="approved-preview-dialog"><ModernIcon name="play" /></button>
+          </div><figcaption>{creator.category}<span aria-hidden="true">↗</span></figcaption>
+        </figure>)}</div>
+        <ScrapbookArt name="flower" class="as-hero-flower" />
+        <ScrapbookArt name="auto" class="as-hero-auto" />
+        <p class="as-collage-note" aria-hidden="true">Your kind of people.</p>
       </div>
     </section>
     <section class="as-privacy" id="safety" aria-labelledby="privacy-title" data-home-section="privacy">
       <span id="women-only" class="as-anchor" aria-hidden="true"></span>
+      <span class="as-privacy-lock"><ModernIcon name="lock" /></span>
       <div><h2 id="privacy-title">Your number stays private. The influencer’s does too.</h2><p>We call you both and connect the conversation.</p></div>
+      <ScrapbookArt name="flower" class="as-privacy-flower" />
     </section>
     <section class="as-how" id="how-it-works" aria-labelledby="how-title" data-home-section="how-it-works">
-      <h2 id="how-title">Watch. Discover. Say hello.</h2>
-      <ol class="as-steps" data-approved-steps>{steps.map((step, index) => <li class={`as-step as-step-${step.id}`}><span class="as-sr-only">{String(index + 1).padStart(2, '0')}</span><h3>{step.title}</h3><p>{step.text}</p></li>)}</ol>
+      <div class="as-section-heading"><div><p class="as-eyebrow">A little scroll. A real hello.</p><h2 id="how-title">Watch. Discover. Say hello.</h2></div><ScrapbookArt name="chai" class="as-heading-chai" /></div>
+      <ol class="as-steps" data-approved-steps>{steps.map((step, index) => <li class={`as-step as-step-${step.id}`}>
+        <div class="as-step-top"><span class="as-step-number">{String(index + 1).padStart(2, '0')}</span><ModernIcon name={step.icon} /></div>
+        <h3>{step.title}</h3><p>{step.text}</p>
+      </li>)}</ol>
       <p class="as-sr-only">The influencer receives the call first. If they accept, we call you and merge the calls. Both numbers stay private.</p>
     </section>
-    <section class="as-creators" id="people" aria-labelledby="creators-title" aria-describedby="sample-disclosure" data-home-section="creators">
+    <section class="as-creators" id="people" aria-labelledby="creators-title" data-home-section="creators">
       <span id="moods" class="as-anchor" aria-hidden="true"></span><span id="naye-dost" class="as-anchor" aria-hidden="true"></span>
-      <h2 id="creators-title">Big personalities. Real conversations.</h2>
-      <div class="as-creator-grid" data-approved-creator-grid>{creators.map(creator => <article class={`as-creator as-creator-${creator.id}`} data-approved-creator={creator.id}>
-        <img src={publicImage(`${assets}creator-${creator.id}.webp`, { width: 640 })} srcset={publicImageSrcSet(`${assets}creator-${creator.id}.webp`, [420, 640, 900])} sizes="(max-width: 449px) calc(100vw - 48px), (max-width: 699px) 44vw, (min-width: 1600px) 340px, 22vw" width={creator.width} height="255" loading="lazy" alt={`Illustrative ${creator.category.toLowerCase()} creator ${creator.name}`} />
-        <button class="as-card-play" type="button" data-preview-action="video" data-preview-name={creator.name} aria-label={`Preview ${creator.name} sample video`} aria-haspopup="dialog" aria-controls="approved-preview-dialog"><span class="as-sr-only">Preview {creator.name} sample video</span></button>
+      <div class="as-section-heading"><div><p class="as-eyebrow">Find your kind of energy</p><h2 id="creators-title">Big personalities. <br />Real conversations.</h2></div><ScrapbookArt name="leaves" class="as-heading-leaves" /></div>
+      <div class="as-creator-grid" data-approved-creator-grid>{creators.map(creator => <article class={`as-creator as-creator-${creator.id}`} data-approved-creator={creator.id} aria-label={`${creator.name}, illustrative ${creator.category.toLowerCase()} creator`}>
+        <div class="as-creator-photo"><img src={publicImage(`${assets}${creator.id}.webp`, { width: 900 })} srcset={publicImageSrcSet(`${assets}${creator.id}.webp`, imageWidths)} sizes={cardSizes} width="1024" height="1536" loading="lazy" alt={creator.alt} />
+          <button class="as-card-play" type="button" data-preview-action="video" data-preview-name={creator.name} aria-label={`Preview ${creator.name} sample video`} aria-haspopup="dialog" aria-controls="approved-preview-dialog"><ModernIcon name="play" /></button>
+        </div>
         <div class="as-creator-label"><h3>{creator.name}</h3><p>{creator.category}</p></div>
         <button class="as-profile-button" type="button" data-preview-action="profile" data-preview-name={creator.name} aria-label={`View ${creator.name} sample profile`} aria-haspopup="dialog" aria-controls="approved-preview-dialog">View profile <span aria-hidden="true">→</span></button>
       </article>)}</div>
     </section>
     <section class="as-connect" id="earn" aria-labelledby="connect-title" data-home-section="connect">
-      <h2 id="connect-title">Don’t just follow. <em>Connect.</em></h2><p>Watch what you love. Talk to who you love.</p>
-      <a class="as-button" href="/marketplace" data-home-cta="discover-influencers">Discover influencers <span aria-hidden="true">→</span></a>
+      <ScrapbookArt name="chai" class="as-connect-chai" /><div><h2 id="connect-title">Don’t just follow. <em>Connect.</em></h2><p>Watch what you love. Talk to who you love.</p><a class="as-button" href="/marketplace" data-home-cta="discover-influencers">Discover influencers <span aria-hidden="true">→</span></a></div><ScrapbookArt name="flower" class="as-connect-flower" />
+    </section>
+    <section class="as-download" id="download" aria-labelledby="download-title" data-home-section="download">
+      <div class="as-download-copy"><p class="as-eyebrow">Take your people with you</p><h2 id="download-title">Keep your favorites <br />one tap away.</h2><p>Make room on your home screen for {identity.name}.</p></div>
+      <div class="as-download-stores">
+        <a class="as-store-button" href={HF_PLAY_URL} data-home-cta="download-google-play"><ModernIcon name="android" /><span><small>Get it on</small><strong>Google Play</strong></span><span aria-hidden="true">↗</span></a>
+        {APP_STORE_URL ? <a class="as-store-button" href={APP_STORE_URL} data-home-cta="download-app-store"><ModernIcon name="apple" /><span><small>Download on the</small><strong>App Store</strong></span><span aria-hidden="true">↗</span></a> : <span class="as-store-button as-store-soon" data-app-store-status="coming-soon" aria-disabled="true"><ModernIcon name="apple" /><span><strong>iPhone app</strong><small>Coming soon</small></span></span>}
+      </div>
     </section>
   </main>
-  <Footer scrapbook />
-  <p class="as-disclosure" id="sample-disclosure">Design preview · Illustrative creators and videos. Samples open an explanation; no video plays, call is booked or payment is taken. Explore shows the available influencer directory. 18+ only. Friendly conversation, not therapy, dating or professional advice.</p>
+  <Footer hideTagline />
   <dialog id="approved-preview-dialog" class="as-preview-dialog" aria-labelledby="preview-title" aria-describedby="preview-description">
-    <h2 id="preview-title">A preview of the experience</h2><p id="preview-description">This is an illustrative sample. The creator feed and video booking journey shown here are a design preview. No video plays and no call or payment is made.</p>
+    <h2 id="preview-title">A preview of the experience</h2><p id="preview-description">This is an illustrative sample. No video plays, call is booked or payment is taken. Explore shows the available influencer directory.</p>
     <div class="as-dialog-actions"><a class="as-button" href="/marketplace" data-home-cta="sample-explore">Explore influencers</a><button type="button" class="as-button as-button-outline" data-close-preview>Close preview</button></div>
   </dialog>
 </div>
 <script>
   import { capture } from '../lib/analytics';
-  const header = document.querySelector<HTMLElement>('.cv-header[data-scrapbook]');
-  const syncHeaderBackground = () => { if (header) header.dataset.scrolled = String(window.scrollY > 8); };
-  syncHeaderBackground();
-  window.addEventListener('scroll', syncHeaderBackground, { passive: true });
   const dialog = document.querySelector<HTMLDialogElement>('#approved-preview-dialog');
   const title = document.querySelector<HTMLElement>('#preview-title');
   let trigger: HTMLButtonElement | null = null;
@@ -95,7 +129,7 @@ const steps = [ { id: 'watch', title: 'Watch their videos', text: 'A feed full o
   dialog?.addEventListener('close', () => { trigger?.focus(); capture('homepage_sample_close', { surface: 'approved-scrapbook' }); });
   dialog?.addEventListener('click', event => { if (event.target !== dialog) return; const rect = dialog.getBoundingClientRect(); if (event.clientX < rect.left || event.clientX > rect.right || event.clientY < rect.top || event.clientY > rect.bottom) dialog.close(); });
   document.querySelectorAll<HTMLAnchorElement>('[data-home-cta]').forEach(link => link.addEventListener('click', () => capture('homepage_cta_click', { surface: 'approved-scrapbook', cta: link.dataset.homeCta, href: link.getAttribute('href') })));
-  capture('homepage_impression', { surface: 'approved-scrapbook', design: 'owner-approved-v1' });
+  capture('homepage_impression', { surface: 'approved-scrapbook', design: 'sharp-native-scrapbook-v2' });
   document.documentElement.dataset.homepageReady = 'true';
 </script>
 </body>
