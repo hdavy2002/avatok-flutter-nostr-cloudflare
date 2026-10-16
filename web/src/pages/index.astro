@@ -125,6 +125,25 @@ const cardSizes = '(min-width: 1824px) 400px, (min-width: 1100px) 22vw, (min-wid
     dialog.querySelector<HTMLButtonElement>('[data-close-preview]')?.focus();
     capture('homepage_sample_open', { surface: 'approved-scrapbook', sample: button.dataset.previewName, action: button.dataset.previewAction });
   }));
+  document.addEventListener('keydown', event => {
+    if (event.key !== 'Tab' || !dialog?.open) return;
+    const focusable = Array.from(dialog.querySelectorAll<HTMLElement>('a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'))
+      .filter(element => element.getAttribute('aria-disabled') !== 'true' && element.getClientRects().length > 0);
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    if (!first || !last) { event.preventDefault(); return; }
+    const active = document.activeElement;
+    if (!active || !dialog.contains(active)) {
+      event.preventDefault();
+      first.focus();
+    } else if (event.shiftKey && active === first) {
+      event.preventDefault();
+      last.focus();
+    } else if (!event.shiftKey && active === last) {
+      event.preventDefault();
+      first.focus();
+    }
+  });
   dialog?.querySelector('[data-close-preview]')?.addEventListener('click', () => dialog.close());
   dialog?.addEventListener('close', () => { trigger?.focus(); capture('homepage_sample_close', { surface: 'approved-scrapbook' }); });
   dialog?.addEventListener('click', event => { if (event.target !== dialog) return; const rect = dialog.getBoundingClientRect(); if (event.clientX < rect.left || event.clientX > rect.right || event.clientY < rect.top || event.clientY > rect.bottom) dialog.close(); });
