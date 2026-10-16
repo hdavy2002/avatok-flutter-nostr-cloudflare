@@ -74,3 +74,10 @@
 .as-profile-button{position:relative;left:auto;right:auto;bottom:auto;align-self:flex-end;margin-top:auto;min-width:72%;max-width:100%;flex-shrink:0;padding:5px 10px;overflow-wrap:normal}
 @media(max-width:699px){.as-design-label{display:none}.as-creator{padding:calc(68% + 1px) 12px 14px;min-height:0}.as-creator-label{left:auto;top:auto;min-width:0;padding:4px 9px}.as-profile-button{left:auto;right:auto;bottom:auto;width:100%;min-width:0}.as-hero-copy{overflow-wrap:break-word}.as-hero h1 em{overflow-wrap:normal}.as-connect h2{overflow-wrap:normal}}
 @media(max-width:449px){.as-creator{padding:67% 20px 18px}.as-creator-label{padding:7px 12px}.as-profile-button{width:74%}}
+/* Long words may wrap when a reader enlarges text on a narrow phone. */
+@media(max-width:699px){.approved-scrapbook :is(h1,h2,h3,p,a,button),.as-hero h1 em,.as-connect h2{overflow-wrap:anywhere}.as-button{max-width:100%}}
+@media(max-width:449px){.as-actions .as-button{flex:1 1 8rem;min-width:0}}
+/* Match the reference overlap at the top; give the sticky navigation a paper backing only after scrolling. */
+.approved-scrapbook .cv-header[data-scrapbook]{background:transparent}
+.approved-scrapbook .cv-header[data-scrapbook][data-scrolled="true"]{background:#fbf8ef url('/assets/hf-approved-scrapbook/paper.webp') repeat}
+@media(min-width:900px){.as-hero-description{font-size:max(1rem,calc(16 * var(--as-unit)))}.as-step-connect{padding-right:calc(55 * var(--as-unit))}}

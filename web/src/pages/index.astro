@@ -76,6 +76,10 @@ const steps = [ { id: 'watch', title: 'Watch their videos', text: 'A feed full o
 </div>
 <script>
   import { capture } from '../lib/analytics';
+  const header = document.querySelector<HTMLElement>('.cv-header[data-scrapbook]');
+  const syncHeaderBackground = () => { if (header) header.dataset.scrolled = String(window.scrollY > 8); };
+  syncHeaderBackground();
+  window.addEventListener('scroll', syncHeaderBackground, { passive: true });
   const dialog = document.querySelector<HTMLDialogElement>('#approved-preview-dialog');
   const title = document.querySelector<HTMLElement>('#preview-title');
   let trigger: HTMLButtonElement | null = null;
