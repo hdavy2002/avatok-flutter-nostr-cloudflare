@@ -10927,5 +10927,12 @@
         "note": "A reminder was queued for a real upcoming booking (worker event; role tells customer or host)."
       }
     ]
+  },
+  "HF-DASH-LAYOUT-1": {
+    "description": "Layout polish: site header hugs the logo, footer logo + tagline removed, dashboard full width, sidebar/profile overlap fixed on tablets and phones.",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [],
+    "no_telemetry": "Pure CSS/markup layout change; dashboard screens keep emitting hf_dash_view."
   }
 }

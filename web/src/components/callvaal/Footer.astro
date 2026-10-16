@@ -1,10 +1,9 @@
 ---
 import brandConfig from '../../../../Specs/brand.json';
-import BrandLogo from './BrandLogo.astro';
 import AppTabBar from './AppTabBar.astro';
 import '../../styles/callvaal-chrome.css';
 interface Props { hideTagline?: boolean; }
-const { hideTagline = false } = Astro.props;
+const { hideTagline: _hideTagline = false } = Astro.props; // kept for callers; the footer no longer shows a tagline
 const identity = brandConfig.homepageIdentity;
 const groups = [
   ['Company', [
@@ -25,7 +24,7 @@ const groups = [
 ] as const;
 ---
 <footer class="cv-footer notebook-footer" data-callvaal-chrome>
-  <div class="cv-footer-brand footer-brand"><a class="cv-wordmark" href="/" aria-label={`${identity.name} home`}><BrandLogo /></a>{!hideTagline && <p>Your favourite influencers.<br/>One private call away.</p>}</div>
+  {/* [HF-DASH-LAYOUT-1] Owner 2026-10-16: no logo and no tagline in the footer (the header already carries the logo). */}
   <nav class="cv-footer-columns footer-columns" aria-label="Footer">
     {groups.map(([heading, links]) => <details class="cv-footer-group footer-group" data-callvaal-footer-group open><summary>{heading}</summary><ul>{links.map(([label, href]) => <li><a href={href}>{label}</a></li>)}</ul></details>)}
   </nav>

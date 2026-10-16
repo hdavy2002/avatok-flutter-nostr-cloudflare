@@ -324,7 +324,7 @@
 
 /* ---------- page integration (real site) ---------- */
 .hfd-v3{background:var(--hf3-page,#fff8f0)}
-.hf3{border-radius:0;max-width:1680px;margin:0 auto;min-height:70vh}
+.hf3{border-radius:0;max-width:none;width:100%;margin:0;min-height:70vh} /* [HF-DASH-LAYOUT-1] full width like Explore, no boxed look */
 .hf3 [hidden]{display:none!important}
 .hf3 a.h3-card,.hf3 a.h3-me,.hf3 .h3-nav a,.hf3 a.h3-who,.hf3 .h3-top a.brand,.hf3 .h3-bottom a{text-decoration:none;color:inherit}
 .hf3 a.h3-btn{text-decoration:none}
@@ -354,3 +354,31 @@
 .hf3 .h3-hero .text{position:relative;z-index:2}
 .hf3 .h3-kpi{text-decoration:none;color:inherit}
 @media (prefers-reduced-motion:no-preference){.hf3 a.h3-kpi:hover{transform:translateY(-2px)}}
+
+/* [HF-DASH-LAYOUT-1] Every screen size. The mini profile is a CSS flex column (an inline style here used to beat the rail rule and
+   overlap the icons on iPad/phone). Long names truncate instead of spilling. */
+.hf3 .h3-me .who{display:flex;flex-direction:column;min-width:0;overflow:hidden}
+.hf3 .h3-me .who b,.hf3 .h3-me .who small{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.hf3 .h3-me{min-width:0;overflow:hidden}
+.hf3 .h3-nav .brand span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.hf3 .h3-item .lbl{overflow:hidden;text-overflow:ellipsis}
+@container (min-width:46rem) and (max-width:71.99rem){
+  .hf3 .h3-side .h3-me .who,.hf3 .h3-side .h3-me .bal{display:none!important}
+  .hf3 .h3-side .h3-me{width:56px;height:56px;margin:0 auto 8px;padding:4px;border-radius:16px}
+  .hf3 .h3-side .brand{justify-content:center}
+}
+.hf3 .h3-shell{min-height:calc(100vh - 92px)}
+.hf3 .h3-side{min-height:100%}
+@container (min-width:72rem){ .hf3 .h3-main{padding:28px clamp(24px,3vw,56px) 48px} }
+@container (min-width:110rem){
+  .hf3 .h3-row.c3{grid-template-columns:1.3fr 1fr 1fr}
+  .hf3 .h3-row.c21{grid-template-columns:1.6fr 1fr}
+  .hf3 .h3-kpis{grid-template-columns:repeat(5,minmax(0,1fr))}
+}
+@container (max-width:30rem){
+  .hf3 .h3-main{padding:12px 10px 20px}
+  .hf3 .h3-card{padding:16px}
+  .hf3 .h3-hero{padding:18px}
+  .hf3 .h3-table td,.hf3 .h3-table th{padding:9px 4px}
+  .hf3 .h3-top .h3-btn.sm{padding:6px 10px}
+}

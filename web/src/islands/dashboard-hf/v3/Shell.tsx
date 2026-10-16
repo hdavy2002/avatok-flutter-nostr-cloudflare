@@ -52,7 +52,7 @@ export default function Shell({ account, active, bookingOn, favouritesOn, childr
     <div className="tag">Real people. Kinder days.</div>
     <a className="h3-me" href="/dashboard/profile">
       <Avatar name={firstName} seed={handle || account.uid} />
-      <span className="who" style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}><b>{firstName || 'Your profile'}</b>{handle && <small className="muted small">@{handle}</small>}</span>
+      <span className="who"><b>{firstName || 'Your profile'}</b>{handle && <small className="muted small">@{handle}</small>}</span>
       <span className="bal">{bal == null ? '—' : formatPaise(bal)}</span>
     </a>
     {groups.map(g => <div key={g.title} style={{ display: 'contents' }}>

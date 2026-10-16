@@ -2,7 +2,7 @@
 html:has(.cv-detail-main){font-size:16px;scroll-behavior:smooth}
 body:has(.cv-detail-main){background:#fffdf9;color:#4c0d47;font-family:Nunito,Arial,sans-serif;line-height:1.5}
 body:has(.cv-detail-main)>.cv-header,body:has(.cv-detail-main)>.cv-footer{max-width:1440px}
-body:has(.cv-detail-main)>.cv-header{padding-block:22px}
+body:has(.cv-detail-main)>.cv-header{padding-block:4px}
 .cv-detail-main{box-sizing:border-box;max-width:1440px;width:calc(100% - 64px);margin:0 auto}
 .cv-detail-main *,.cv-detail-dialog *,.cv-mobile-booking *{box-sizing:border-box}
 .cv-detail-main h1,.cv-detail-main h2,.cv-detail-main h3,.cv-detail-main p,.cv-detail-main ul,.cv-detail-main blockquote{margin:0}
@@ -80,7 +80,7 @@ body:has(.cv-detail-main)>.cv-header{padding-block:22px}
 @media(max-width:899px){.cv-detail-main{width:calc(100% - 40px)}.cv-detail-layout{grid-template-columns:minmax(0,1fr) 310px;gap:16px}.cv-profile-hero{grid-template-columns:1fr}.cv-profile-photo>img{height:280px;min-height:0}.cv-profile-actions{left:auto;right:18px;top:18px;transform:none}.cv-identity{padding:6px}.cv-profile-facts{grid-template-columns:1fr 1fr;gap:10px;font-size:.9375rem}.cv-profile-quote{font-size:1.125rem}.cv-booking-card{padding:18px 13px}.cv-call-button,.cv-book-button{font-size:1.05rem!important}.cv-gallery-grid{gap:10px}.cv-gallery-grid img{aspect-ratio:1.1}.cv-reviews-grid{grid-template-columns:1fr}.cv-review-summary{grid-column:auto}.cv-before-grid{grid-template-columns:1fr}}
 @media(max-width:699px){
  body:has(.cv-detail-main){padding-bottom:calc(90px + env(safe-area-inset-bottom))}
- body:has(.cv-detail-main)>.cv-header{padding-block:12px}
+ body:has(.cv-detail-main)>.cv-header{padding-block:4px}
  .cv-detail-main{width:calc(100% - 32px)}.cv-breadcrumb{display:none}.cv-detail-layout{display:flex;flex-direction:column;gap:24px}.cv-detail-content{width:100%}
  .cv-profile-hero{display:block;padding:0;border:0;background:transparent;box-shadow:none}.cv-profile-photo>img{height:auto;min-height:0;aspect-ratio:1.58;object-position:50% 32%;border-radius:10px}
  .cv-profile-actions{top:10px;right:10px;gap:8px}.cv-profile-actions button{width:44px;height:44px;padding:10px;border:0;border-radius:8px;box-shadow:0 2px 8px #44123910}.cv-profile-actions button span{display:none}.cv-profile-actions .modern-icon{width:23px;height:23px}
