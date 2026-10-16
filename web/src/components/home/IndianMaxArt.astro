@@ -4,6 +4,11 @@ const { name } = Astro.props;
 const views = { auto: '0 0 480 360', chai: '0 0 440 440', floral: '0 0 440 440', burst: '0 0 440 440', skyline: '0 0 900 280' };
 const petals = Array.from({length: 12}, (_, i) => i * 30);
 const dots = Array.from({length: 16}, (_, i) => i * 22.5);
+const innerPetals = Array.from({length:8}, (_, i) => i * 45);
+const diamonds = Array.from({length:5}, (_, i) => 88 + i * 26);
+const windows = [72,110,181,219,291,329,584,622,706,744,816,854].map((x,i) => ({x, y: i < 2 || i > 9 ? 165 : i < 4 || i > 7 ? 113 : 145}));
+const upperWindows = [377,410,450,490,523];
+const burstPoints = Array.from({length:48},(_,i) => { const angle = (i * 7.5 - 90) * Math.PI / 180; const radius = i % 2 ? 164 : 207; return `${220 + Math.cos(angle) * radius},${220 + Math.sin(angle) * radius}`; }).join(' ');
 ---
 <svg class="indian-max-art" data-indian-art={name} viewBox={views[name]} xmlns="http://www.w3.org/2000/svg" fill="none" aria-hidden="true" focusable="false" style="display:block;width:100%;height:auto">
   {name === 'auto' && <g stroke="#34112e" stroke-width="5" stroke-linecap="round" stroke-linejoin="round">
@@ -26,10 +31,10 @@ const dots = Array.from({length: 16}, (_, i) => i * 22.5);
   {name === 'floral' && <g stroke="#4d153d" stroke-width="3.5" stroke-linejoin="round">
     <path d="M214 291q-39 51-17 129m18-68q-69-5-87-53 56-20 85 35m-7 47q75-8 102-66-66-23-101 47" fill="#449b74"/>
     <path d="M153 310q24 11 50 43m76-14q-35 14-67 43" stroke="#fff4d8"/>
-    {petals.map(angle => <g transform={`rotate(${angle} 220 190)`}><path d="M210 153q-35-47-9-99 42 17 43 68l-12 31z" fill="#f5a52e"/><path d="M219 130q-10-41-6-62" stroke="#c63b56" stroke-width="2.5"/></g>)}
+    {petals.map(angle => (<g transform={`rotate(${angle} 220 190)`}><path d="M210 153q-35-47-9-99 42 17 43 68l-12 31z" fill="#f5a52e"/><path d="M219 130q-10-41-6-62" stroke="#c63b56" stroke-width="2.5"/></g>))}
     <circle cx="220" cy="190" r="64" fill="#ce2c6a"/><circle cx="220" cy="190" r="49" fill="#fff3cf"/>
-    {dots.map(angle => <circle cx="220" cy="137" r="4" fill="#4d153d" stroke="none" transform={`rotate(${angle} 220 190)`}/>)}
-    {Array.from({length:8},(_,i)=><path d="M214 185q-30-21-12-39 29 10 24 34z" transform={`rotate(${i*45} 220 190)`} fill="#f36b3c" stroke-width="2"/>)}
+    {dots.map(angle => (<circle cx="220" cy="137" r="4" fill="#4d153d" stroke="none" transform={`rotate(${angle} 220 190)`}/>))}
+    {innerPetals.map(angle => (<path d="M214 185q-30-21-12-39 29 10 24 34z" transform={`rotate(${angle} 220 190)`} fill="#f36b3c" stroke-width="2"/>))}
     <circle cx="220" cy="190" r="17" fill="#f5cb38"/>
     <path d="M59 228q33-21 55 13-26 34-53 10m284-168q26-32 49-5-15 35-46 24M68 62l8 11-8 11-8-11zM344 272l8 11-8 11-8-11z" fill="#e869a4"/>
     <path d="M54 329q10 21 30 2m265-155q18 11 27-9" stroke="#d84e70" stroke-width="5" stroke-linecap="round"/>
@@ -40,14 +45,14 @@ const dots = Array.from({length: 16}, (_, i) => i * 22.5);
     <path d="M102 150q-1-35 53-35 54 0 56 35z" fill="#ffc62e"/><path d="M151 115V99h16v16" fill="#e46fa2"/>
     <path d="M232 169q107-44 95 54-4 36-92 55l5-31q65-12 64-37 0-32-62-8" fill="#d62b71"/>
     <path d="M78 218q78-28 154-1l-8 60q-73 31-149-3z" fill="#ffcf39"/>
-    {Array.from({length:5},(_,i)=><g transform={`translate(${88+i*26} 240)`}><path d="m0 0 10-12 10 12-10 14z" fill="#c72c6a" stroke-width="2"/><circle cx="10" cy="0" r="3" fill="#fff3d0" stroke="none"/></g>)}
+    {diamonds.map(x => (<g transform={`translate(${x} 240)`}><path d="m0 0 10-12 10 12-10 14z" fill="#c72c6a" stroke-width="2"/><circle cx="10" cy="0" r="3" fill="#fff3d0" stroke="none"/></g>))}
     <path d="m83 299 17 7m21 1 17 4m22 0 17-1m22-5 17-5" stroke="#fff5d8" stroke-width="4"/>
     <ellipse cx="297" cy="385" rx="119" ry="19" fill="#e477aa"/>
     <path d="m246 278 17 97q4 22 65 8l20-105z" fill="#eaaa70"/><ellipse cx="297" cy="278" rx="51" ry="13" fill="#fff5d8"/><ellipse cx="297" cy="279" rx="38" ry="7" fill="#8e4932" stroke="none"/>
     <path d="m269 306 8 60m19-60v62m22-62-7 58" stroke="#a34d3c" stroke-width="3"/><path d="m369 301 8 10 12-8m-5 28 12 3m-45-87 13-13" stroke="#c72c6a"/>
   </g>}
   {name === 'burst' && <g stroke="#441236" stroke-width="4" stroke-linejoin="round">
-    <polygon points={Array.from({length:48},(_,i)=>{const a=(i*7.5-90)*Math.PI/180;const r=i%2?164:207;return `${220+Math.cos(a)*r},${220+Math.sin(a)*r}`;}).join(' ')} fill="#ffd43b"/>
+    <polygon points={burstPoints} fill="#ffd43b"/>
     <circle cx="220" cy="220" r="143" fill="#ef7dad"/><circle cx="220" cy="220" r="124" fill="#fff4d8" stroke-dasharray="4 11"/>
     <path d="m121 186 10-13 10 13-10 14zm179 58 10-13 10 13-10 14z" fill="#e65c37" stroke-width="2"/>
     <path d="M192 138q28-16 56 0m-56 161q28 16 56 0" stroke="#c82b6b" stroke-linecap="round"/>
@@ -59,8 +64,8 @@ const dots = Array.from({length: 16}, (_, i) => i * 22.5);
     <path d="M561 252V106h27V73h44v33h27v146zm114 0V75h25V43h42v32h24v177zm105 0V123h27V90h44v33h28v129z" fill="#ef8e9b"/>
     <path d="M407 252v-62q43-81 86 0v62z" fill="#2f6864"/><path d="M425 252v-58q25-44 50 0v58z" fill="#fff2d1"/>
     <path d="M354 103h192M397 80h106M425 48h50M35 149h99m16-49h91m13 31h98m209 0h98m16-31h91m14 49h99M35 205h99m16-54h91m13 43h98m209 0h98m16-43h91m14 54h99"/>
-    {[72,110,181,219,291,329,584,622,706,744,816,854].map((x,i)=><g transform={`translate(${x} ${i<2||i>9?165:i<4||i>7?113:145})`}><path d="M-9 22V3Q0-18 9 3v19z" fill="#fff2d1"/><path d="M0 1v21" stroke-width="2"/></g>)}
-    {[377,410,450,490,523].map(x=><path d={`M${x-8} 141v-19q8-20 16 0v19z`} fill="#fff2d1"/>)}
+    {windows.map(window => (<g transform={`translate(${window.x} ${window.y})`}><path d="M-9 22V3Q0-18 9 3v19z" fill="#fff2d1"/><path d="M0 1v21" stroke-width="2"/></g>))}
+    {upperWindows.map(x => (<path d={`M${x-8} 141v-19q8-20 16 0v19z`} fill="#fff2d1"/>))}
     <path d="M445 23V9l35 4-35 9" fill="#c92b68"/>
     <path d="M61 90V72m46 18V72m68-29V25m43 18V25m64 48V55m44 18V55m261 18V55m44 18V55m69-12V25m43 18V25m63 47v18m44-18v18" stroke-linecap="round"/>
     <path d="M17 253v-41m0 10q-21-28-9-31 22 5 9 31m0 16q26-28 29-13-5 16-29 13m867 15v-41m0 10q-21-28-9-31 22 5 9 31m0 16q26-28 29-13-5 16-29 13" fill="#4d9b7b"/>
