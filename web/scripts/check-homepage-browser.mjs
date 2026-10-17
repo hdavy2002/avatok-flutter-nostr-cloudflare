@@ -65,7 +65,7 @@ try {
         await page.locator('[data-callvaal-menu-toggle]').click();
         await expect(nav).toBeVisible();
       }
-      for (const label of ['Explore', 'How it works', 'Blog', 'Sign in', 'Join us']) await expect(nav.getByRole('link', { name: label, exact: true }), name + ': header link ' + label).toBeVisible();
+      for (const label of ['Explore', 'How it works', 'Sign in', 'Join us'] /* [HF-BLOG-ARCHIVE-1] Blog archived, off the header */) await expect(nav.getByRole('link', { name: label, exact: true }), name + ': header link ' + label).toBeVisible();
       await nav.getByRole('link', { name: 'How it works', exact: true }).click();
       await page.waitForTimeout(200);
       const target = await page.evaluate(() => ({ t: document.getElementById('how-it-works').getBoundingClientRect().top, h: document.querySelector('.cv-header').getBoundingClientRect().bottom }));
