@@ -83,15 +83,13 @@ try {
     assert(!sitemap.includes('<loc>' + BRAND.webOrigin + path + '</loc>'), 'Archived blog out of sitemap: ' + path);
     assert.match(html, /data-callvaal-chrome/);
     assert.doesNotMatch(html, /assets\/rituals|Puja &amp; Havan|prasad|temple priests/i);
-    assert.match(html, /application\/ld\+json/);
+    // [HF-BLOG-ARCHIVE-1] archived (noindex) pages carry no JSON-LD, breadcrumbs or article OG data.
     const title = html.match(/<title[^>]*>([^<]+)<\/title>/)?.[1];
     assert(title && !titles.has(title), 'Unique title: ' + path);
     titles.add(title);
     if (path !== '/blog/') {
       assert.match(html, /data-blog-article/);
       assert.match(html, /guide-sidebar/);
-      assert.match(html, /BreadcrumbList/);
-      assert.match(html, /property="og:type" content="article"/);
     }
   }
   for (const path of ['/blog/never-miss-a-call', '/blog/creator-ideas/old-post', '/blog/unknown-retired-post/', '/rituals/ganapati-havan/', '/rituals/navagraha-havan', '/rituals/unknown/nested', '/llms-rituals.txt']) {
