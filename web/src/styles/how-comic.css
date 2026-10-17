@@ -187,5 +187,5 @@
 }
 @media (prefers-reduced-motion: reduce) { .hw .hw-btn { transition: none; } }
 /* shared chrome resets <b>/<small>; keep Nunito where it matters */
-.hw .hw-profile b, .hw .hw-wallet b, .hw .hw-rules li b, .hw .hw-chips a span, .hw .hw-strip li p b, .hw .hw-medal b, .hw .hw-receipt-head, .hw .hw-receipt dd, .hw .hw-receipt-foot, .hw .hw-kicker, .hw .hw-chips a b { font-family: var(--head) !important; font-weight: 900 !important; }
+.hw .hw-btn, .hw .hw-profile b, .hw .hw-wallet b, .hw .hw-rules li b, .hw .hw-chips a span, .hw .hw-strip li p b, .hw .hw-medal b, .hw .hw-receipt-head, .hw .hw-receipt dd, .hw .hw-receipt-foot, .hw .hw-kicker, .hw .hw-chips a b { font-family: var(--head) !important; font-weight: 900 !important; }
 @media (max-width: 900px) { .hw .hw-step-grid { row-gap: 72px; } }
