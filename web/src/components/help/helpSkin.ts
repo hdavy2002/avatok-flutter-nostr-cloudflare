@@ -9,7 +9,7 @@ import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 // [HF-HELP-GHAR-1 2026-10-17] "Gaon ka Ghar" help centre: a happy village home at Sankranti (owner-approved design
-// canvas "Hello Fraands Help Centre"). All art is owner-generated from the prompt pack (SaatHum project doc
+// canvas "Help Centre"). All art is owner-generated from the prompt pack (SaatHum project doc
 // claude/hello-fraands-help-artwork-prompts.md) and lives in /assets/hf-help/. Replaces the rejected Dak Ghar / Angan /
 // Haveli treatments. Raw paths: always serve through publicImage().
 const PUBLIC = resolve(process.cwd(), 'public');
