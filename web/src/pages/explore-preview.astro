@@ -23,9 +23,9 @@ const metas = [
 ];
 const creators = profiles.map((profile, index) => ({ profile, ...metas[index]! }));
 const heroPhoto = '/assets/callvaal/scrapbook/portrait-7.png';
-const toran = publicImage('/assets/hf-desi/toran-marigold.webp', { width: 1400, quality: 70, fit: 'scale-down' });
-const strip = publicImage('/assets/hf-desi/border-strip.webp', { width: 1400, quality: 70, fit: 'scale-down' });
-const tile = publicImage('/assets/hf-desi/block-print-tile.webp', { width: 420, quality: 70, fit: 'scale-down' });
+const toran = `url(${publicImage('/assets/hf-desi/toran-marigold.webp', { width: 1400, quality: 70, fit: 'scale-down' })})`;
+const strip = `url(${publicImage('/assets/hf-desi/border-strip.webp', { width: 1400, quality: 70, fit: 'scale-down' })})`;
+const tile = `url(${publicImage('/assets/hf-desi/block-print-tile.webp', { width: 420, quality: 70, fit: 'scale-down' })})`;
 ---
 <!doctype html>
 <html lang="en-IN">
