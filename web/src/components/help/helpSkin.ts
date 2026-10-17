@@ -8,17 +8,17 @@ import type { HelpEntry, HelpSectionId } from '../../lib/help';
 import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 
-// [HF-HELP-DESI-1 2026-10-17] Fresh "Dak Ghar" help-centre artwork lives in /assets/hf-help/ (prompt pack:
-// SaatHum project doc claude/hello-fraands-help-artwork-prompts.md). Each slot falls back to the older art
-// until the owner drops the new file in, so the page never shows a broken image. Build runs from web/.
+// [HF-HELP-DESI-2 2026-10-17] Fresh Indian "Angan" (courtyard) help-centre artwork lives in /assets/hf-help/
+// (prompt pack: SaatHum project doc claude/hello-fraands-help-artwork-prompts.md). Replaces the rejected "Dak Ghar"
+// postal look. Each slot falls back to older art (or a CSS ornament) until the owner drops the new file in, so the
+// page never shows a broken image. Build runs from web/.
 const PUBLIC = resolve(process.cwd(), 'public');
 export const hasArt = (path: string): boolean => existsSync(PUBLIC + path);
 export const pickArt = (fresh: string, fallback: string): string => (hasArt(fresh) ? fresh : fallback);
 const HELP = '/assets/hf-help';
+const optional = (path: string): string => (hasArt(path) ? path : '');
 
-/** Owner-approved tile art (web/public/help/art/help-tile-*.png). Raw paths —
- *  always serve through publicImage(). `creators` keeps the sankalp & prasad
- *  tile so the art is ready if that section is ever restored from draft. */
+/** Older tile art, used only until the fresh round topic icons arrive. Raw paths: always serve through publicImage(). */
 const OLD_SECTION_ART: Record<HelpSectionId, string> = {
   // [HELLO-FRAANDS-HELP-RESTORE-1] Current-brand photos/art replace the puja tiles.
   'getting-started': '/assets/callvaal/scrapbook/neha-conversation.png',
@@ -31,27 +31,37 @@ const OLD_SECTION_ART: Record<HelpSectionId, string> = {
 };
 
 export const SECTION_ART = Object.fromEntries(
-  (Object.keys(OLD_SECTION_ART) as HelpSectionId[]).map((id) => [id, pickArt(`${HELP}/topics/topic-${id}.png`, OLD_SECTION_ART[id])]),
+  (Object.keys(OLD_SECTION_ART) as HelpSectionId[]).map((id) => [id, pickArt(`${HELP}/topics/icon-${id}.png`, OLD_SECTION_ART[id])]),
 ) as Record<HelpSectionId, string>;
-/** True when the fresh (transparent) topic art is in, so tiles drop the photo frame. */
-export const FRESH_TOPICS = hasArt(`${HELP}/topics/topic-getting-started.png`);
+/** True when the fresh round topic icons are in (transparent medallions: shown whole, not cropped). */
+export const FRESH_TOPICS = hasArt(`${HELP}/topics/icon-getting-started.png`);
 
 export const HERO_ART = pickArt(`${HELP}/hero/hero-help.png`, '/assets/callvaal/scrapbook/hero-collage-friendship.jpg');
 export const FRESH_HERO = hasArt(`${HELP}/hero/hero-help.png`);
-export const CONTACT_ART = pickArt(`${HELP}/topics/topic-contact.png`, '/assets/branding/hf-mark.png');
+export const HERO_DOODLES = optional(`${HELP}/hero/hero-doodles.png`);
+export const CONTACT_ART = pickArt(`${HELP}/topics/icon-contact.png`, '/assets/branding/hf-mark.png');
 export const STUCK_ART = pickArt(`${HELP}/illustrations/still-stuck.png`, '/assets/callvaal/scrapbook/neha-tea.png');
-export const ARTICLE_CTA_ART = hasArt(`${HELP}/illustrations/article-cta.png`) ? `${HELP}/illustrations/article-cta.png` : '';
+export const ARTICLE_CTA_ART = optional(`${HELP}/illustrations/article-cta.png`);
 /** Optional stickers: shown only once the file exists. */
 export const HELP_STICKERS = {
-  hero: hasArt(`${HELP}/stickers/sticker-hum-hain-na.png`) ? `${HELP}/stickers/sticker-hum-hain-na.png` : '',
-  faq: hasArt(`${HELP}/stickers/sticker-seedha-jawab.png`) ? `${HELP}/stickers/sticker-seedha-jawab.png` : '',
-  stuck: hasArt(`${HELP}/stickers/sticker-chitthi-likho.png`) ? `${HELP}/stickers/sticker-chitthi-likho.png` : '',
+  hero: optional(`${HELP}/stickers/sticker-poocho-na.png`),
+  topics: optional(`${HELP}/stickers/sticker-sab-milega.png`),
+  faq: optional(`${HELP}/stickers/sticker-seedha-jawab.png`),
+  stuck: optional(`${HELP}/stickers/sticker-hum-hain-na.png`),
 } as const;
-/** Optional ornament art (CSS custom properties; each has a CSS-only fallback). */
-export const HELP_ORNAMENTS: Record<string, string> = Object.fromEntries(
-  [['airmail', 'airmail-strip.png'], ['postmark', 'postmark-wash.png'], ['bandhani', 'bandhani-tile.png'], ['jhalar', 'letter-jhalar.png']]
-    .filter(([, f]) => hasArt(`${HELP}/ornaments/${f}`)).map(([k, f]) => [k, `${HELP}/ornaments/${f}`]),
-);
+/** Optional ornament art → --hd-art-<key> custom properties, each a full background layer (url + position/size/repeat)
+ *  so it can replace the CSS-only fallback layers wholesale. [key, file, width, layer tail] */
+const ORNAMENT_FILES: [string, string, number, string][] = [
+  ['toran', 'toran-help.png', 1600, 'center top / auto 100% repeat-x'],
+  ['strip', 'blockprint-strip.png', 1600, 'center / auto 100% repeat-x'],
+  ['wash', 'rangoli-wash.png', 640, 'center / 260px repeat'],
+  ['bunting', 'bunting-help.png', 1600, 'center top / auto 100% repeat-x'],
+  ['fringe', 'jhalar-help.png', 1600, 'center top / auto 100% repeat-x'],
+  ['dots', 'diya-dot-strip.png', 1600, 'center / auto 100% repeat-x'],
+  ['paisley', 'paisley-corner.png', 400, 'center / 100% 100% no-repeat'],
+];
+export const HELP_ORNAMENTS = ORNAMENT_FILES.filter(([, f]) => hasArt(`${HELP}/ornaments/${f}`))
+  .map(([k, f, w, tail]) => ({ key: k, path: `${HELP}/ornaments/${f}`, width: w, tail }));
 
 /** FAQ-card pill modifier, as the mockup colours them. */
 export const SECTION_PILL: Record<HelpSectionId, string> = {

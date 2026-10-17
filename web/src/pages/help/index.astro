@@ -24,8 +24,10 @@
 //    since [WEB-HELP-1]); articles must never emit it (check-help.mjs).
 //  - Emails are plain text "name (@) <domain>", never mailto. Brand comes from BRAND only.
 //  - [HELLO-FRAANDS-HELP-RESTORE-1 2026-10-08] Restored for Hello Fraands: shared header/footer, Hello Fraands art and copy.
-//  - [HF-HELP-DESI-1 2026-10-17] Owner: fresh Indian "Dak Ghar" (post office) treatment in the desi design system.
-//    Styles: styles/help-desi.css (scoped `.hd`); art slots in components/help/helpSkin.ts fall back until new art lands.
+//  - [HF-HELP-DESI-2 2026-10-17] Owner rejected the postal "Dak Ghar" look: fresh Indian "Angan" (festive courtyard)
+//    treatment built like the Explore page (toran, block-print strips, round topic medallions, coloured full-width
+//    bands, stickers, marquee, bunting, jhalar). Styles: styles/help-desi.css (scoped `.hd`); art slots in
+//    components/help/helpSkin.ts fall back to older art / CSS ornaments until the new art lands.
 export const prerender = true;
 
 import Base from '../../layouts/Base.astro';
@@ -38,8 +40,8 @@ import { publicImage } from '../../lib/config';
 import { ORG } from '../../lib/org';
 import { HELP_SEO } from '../../lib/seo/catalog';
 import {
-  SECTION_ART, HERO_ART, FRESH_HERO, FRESH_TOPICS, CONTACT_ART, STUCK_ART, HELP_STICKERS, HELP_ORNAMENTS,
-  sectionMark, markSvg, MARK_TICKET, MARK_SEARCH, readMinutes, countLabel,
+  SECTION_ART, HERO_ART, FRESH_HERO, HERO_DOODLES, FRESH_TOPICS, CONTACT_ART, STUCK_ART, HELP_STICKERS, HELP_ORNAMENTS,
+  markSvg, MARK_TICKET, MARK_SEARCH, readMinutes, countLabel,
 } from '../../components/help/helpSkin';
 import { SECTIONS } from '../../lib/help';
 import '../../styles/desi-home-chrome.css';
@@ -96,14 +98,15 @@ const quick = QUICK.flatMap((c) => {
 });
 
 const n = tree.length;
-// [HELLO-FRAANDS-HELP-RESTORE-1] 7 topics + contact = 8 tiles → 4 per row; panels max 4 per row.
+// 7 topics + contact = 8 tiles → 4 per row on desktop.
 const gridVars = `--hd-tiles:${n + 1 > 6 ? 4 : n + 1}`;
-const ornaments = Object.entries(HELP_ORNAMENTS).map(([k, v]) => `--hd-art-${k}:url(${publicImage(v, { width: k === 'postmark' || k === 'bandhani' ? 640 : 1600, fit: 'scale-down' })})`).join(';');
-const STAMP_TONES = ['#ffdf89', '#efabd0', '#bfc2ee', '#ffa179'];
+const ornaments = HELP_ORNAMENTS.map((o) => `--hd-art-${o.key}:url(${publicImage(o.path, { width: o.width, fit: 'scale-down' })}) ${o.tail}`).join(';');
+const TONES = ['#ffdf89', '#efabd0', '#bfc2ee', '#ffa179'];
+const marquee = ['Number hamesha private', 'Seedha jawab', 'Hindi ya English', 'Koi OTP nahi maangega', 'Asli insaan se baat', 'Safe aur simple'];
 ---
 <Base content={HELP_SEO} chrome={false} indiaLandingLanguage={false}>
   <Fragment slot="head">
-    <meta name="theme-color" content="#fffdf7" />
+    <meta name="theme-color" content="#fff2cf" />
     <link rel="preload" as="style" onload="this.onload=null;this.rel='stylesheet'" href="https://fonts.googleapis.com/css2?family=Comfortaa:wght@500;600;700&family=Nunito:wght@700;800;900&display=swap" />
   </Fragment>
   {faqLd && <script type="application/ld+json" set:html={JSON.stringify(faqLd).replace(/</g, '\\u003c')} />}
@@ -111,75 +114,77 @@ const STAMP_TONES = ['#ffdf89', '#efabd0', '#bfc2ee', '#ffa179'];
     <a class="hd-skip" href="#main-content">Skip to main content</a>
     <SiteHeader />
     <main id="main-content" class="hs hd-home" style={gridVars}>
+      <div class="hd-toran" aria-hidden="true"></div>
 
-      <!-- ① Hero: the dak-ghar counter. Airmail stripe, one big search. -->
-      <div class="hd-airmail" aria-hidden="true"></div>
+      <!-- ① Hero: big namaste, one big search, popular questions -->
       <section class="hd-hero" aria-labelledby="help-title">
         <div class="hd-wrap hd-hero-grid">
           <div class="hd-hero-copy">
-            <p class="hd-eyebrow">{BRAND.name} help centre · Seedha jawab</p>
-            <h1 id="help-title">Namaste! How can we <span class="hd-hl">help you</span> today?</h1>
+            <p class="hd-eyebrow">Help centre · Hum hain na</p>
+            <h1 id="help-title"><span class="l">Namaste!</span><span class="l m">How can we</span><span class="l"><span class="hd-hl">help you?</span></span></h1>
             <p class="hd-lead">Calls, your private number, safety, the wallet or becoming an influencer. Clear, simple answers in easy English, with examples.</p>
             <HelpSearch id="hero" />
             {quick.length > 0 && (
               <div class="hd-quick" aria-label="Popular questions">
-                <span>Popular:</span>
+                <span>Log poochte hain:</span>
                 {quick.map((c) => <a href={c.href}>{c.label}</a>)}
               </div>
             )}
           </div>
           <div class:list={['hd-hero-art', { 'is-photo': !FRESH_HERO }]}>
-            {HELP_STICKERS.hero && <img class="hd-sticker hd-hero-sticker" src={publicImage(HELP_STICKERS.hero, { width: 520, fit: 'scale-down' })} alt="Hum hain na!" width="420" height="245" />}
-            <img class="hd-hero-img" src={publicImage(HERO_ART, { width: 1100, fit: 'scale-down' })} alt="" width="900" height={FRESH_HERO ? 900 : 600} fetchpriority="high" decoding="async" />
-            {!FRESH_HERO && <span class="hd-postmark" aria-hidden="true"><b>{BRAND.name}</b><i>HELP DESK</i></span>}
+            {HERO_DOODLES && <img class="hd-doodles" src={publicImage(HERO_DOODLES, { width: 640, fit: 'scale-down' })} alt="" width="640" height="640" aria-hidden="true" />}
+            <img class="hd-hero-img" src={publicImage(HERO_ART, { width: 1280, fit: 'scale-down' })} alt={FRESH_HERO ? 'Illustration of a smiling young woman on a decorated charpai with a phone and a cup of chai, ready to help' : ''} width="1000" height={FRESH_HERO ? 1000 : 667} fetchpriority="high" decoding="async" />
+            {HELP_STICKERS.hero && <img class="hd-sticker hd-hero-sticker" src={publicImage(HELP_STICKERS.hero, { width: 640, fit: 'scale-down' })} alt="Poocho na!" width="420" height="245" />}
           </div>
         </div>
       </section>
+      <div class="hd-strip" aria-hidden="true"></div>
 
-      <!-- ② Topics as postage stamps -->
-      <section class="hd-band hd-band--ink hd-topics" aria-labelledby="topics-title">
+      <!-- ② Topics: round medallions on coloured tiles -->
+      <section class="hd-band hd-topics" aria-labelledby="topics-title">
         <div class="hd-wrap">
           <div class="hd-head">
-            <div><p class="hd-eyebrow">Apna sawaal chuno</p><h2 id="topics-title">Choose a topic.</h2></div>
+            <div><p class="hd-eyebrow">Apna sawaal chuno</p><h2 id="topics-title">Pick a <span class="hd-hl">topic.</span></h2></div>
+            {HELP_STICKERS.topics && <img class="hd-sticker" src={publicImage(HELP_STICKERS.topics, { width: 640, fit: 'scale-down' })} alt="Sab milega yahan" width="420" height="245" loading="lazy" />}
             <a class="hd-link" href="#every-article">Every article <span aria-hidden="true">→</span></a>
           </div>
-          <div class="hd-stamps">
+          <div class="hd-tiles">
             {tree.map((s, i) => (
-              <a class:list={['hd-stamp', { 'is-photo': !FRESH_TOPICS }]} href={`#${s.id}`} style={`--stamp:${STAMP_TONES[i % 4]}`}>
-                <span class="hd-stamp-face">
-                  <img src={publicImage(SECTION_ART[s.id], { width: 420, fit: 'scale-down' })} alt="" width="200" height="200" loading="lazy" decoding="async" />
-                  <span class="hd-stamp-value" aria-hidden="true">{s.entries.length}</span>
-                </span>
-                <span class="hd-stamp-copy"><b>{s.label}</b><small>{SECTIONS[s.id].hindi}</small><em>{countLabel(s.entries.length)}</em></span>
+              <a class:list={['hd-tile', { 'is-photo': !FRESH_TOPICS }]} href={`#${s.id}`} style={`--tone:${TONES[i % 4]}`}>
+                <span class="hd-medal"><img src={publicImage(SECTION_ART[s.id], { width: 400, fit: 'scale-down' })} alt="" width="200" height="200" loading="lazy" decoding="async" /></span>
+                <b>{s.label}</b>
+                <small>{SECTIONS[s.id].hindi}</small>
+                <em>{countLabel(s.entries.length)}</em>
               </a>
             ))}
-            <a class="hd-stamp hd-stamp--contact" href="/contact">
-              <span class="hd-stamp-face"><img src={publicImage(CONTACT_ART, { width: 320, fit: 'scale-down' })} alt="" width="160" height="160" loading="lazy" decoding="async" /></span>
-              <span class="hd-stamp-copy"><b>Still need help?</b><small>Chitthi likho, hum jawab denge</small><em>A real person replies</em></span>
+            <a class="hd-tile hd-tile--contact" href="/contact">
+              <span class="hd-medal"><img src={publicImage(CONTACT_ART, { width: 400, fit: 'scale-down' })} alt="" width="200" height="200" loading="lazy" decoding="async" /></span>
+              <b>Still need help?</b>
+              <small>Likho, hum jawab denge</small>
+              <em>A real person replies</em>
             </a>
           </div>
         </div>
       </section>
-      <div class="hd-airmail" aria-hidden="true"></div>
 
-      <!-- ③ What people ask most: postcards -->
+      <div class="hd-marq" aria-hidden="true"><div class="hd-dots"></div><div class="hd-track">{[...marquee, ...marquee].map((t) => <><span>{t}</span><i>✹</i></>)}</div><div class="hd-dots"></div></div>
+
+      <!-- ③ What people ask most -->
       {faqCards.length > 0 && (
-        <section class="hd-band hd-faq" id="faq" aria-labelledby="faq-title">
+        <section class="hd-band hd-band--magenta hd-faq" id="faq" aria-labelledby="faq-title">
           <div class="hd-wrap">
             <div class="hd-head">
-              <div><p class="hd-eyebrow">Sabse zyada pucha gaya</p><h2 id="faq-title">What people ask us <span class="hd-hl">most.</span></h2></div>
-              {HELP_STICKERS.faq && <img class="hd-sticker" src={publicImage(HELP_STICKERS.faq, { width: 520, fit: 'scale-down' })} alt="Seedha jawab" width="420" height="245" loading="lazy" />}
+              <div><p class="hd-eyebrow">Sabse zyada poocha gaya</p><h2 id="faq-title">What people ask us most.</h2></div>
+              {HELP_STICKERS.faq && <img class="hd-sticker" src={publicImage(HELP_STICKERS.faq, { width: 640, fit: 'scale-down' })} alt="Seedha jawab" width="420" height="245" loading="lazy" />}
             </div>
-            <div class="hd-postcards">
-              {faqCards.map((f) => (
-                <article class="hd-postcard">
-                  <div class="hd-postcard-msg">
-                    <span class="hd-pill">{f.section}</span>
-                    <h3>{f.q}</h3>
-                    <p>{f.a}</p>
-                    <div class="hd-postcard-foot"><span>Read in {readMinutes(f.entry)} min</span><a href={helpUrl(f.entry)} aria-label={`Read more: ${f.entry.data.title}`}>Read more →</a></div>
-                  </div>
-                  <div class="hd-postcard-side" aria-hidden="true"><span class="hd-postcard-stamp"><Fragment set:html={sectionMark(f.sectionId)} /></span><i></i><i></i><i></i></div>
+            <div class="hd-qas">
+              {faqCards.map((f, i) => (
+                <article class="hd-qa" style={`--tone:${TONES[i % 4]}`}>
+                  <span class="hd-qa-n" aria-hidden="true">{i + 1}</span>
+                  <span class="hd-pill">{f.section}</span>
+                  <h3>{f.q}</h3>
+                  <p>{f.a}</p>
+                  <div class="hd-qa-foot"><span>Read in {readMinutes(f.entry)} min</span><a href={helpUrl(f.entry)} aria-label={`Read more: ${f.entry.data.title}`}>Read more →</a></div>
                 </article>
               ))}
             </div>
@@ -188,14 +193,14 @@ const STAMP_TONES = ['#ffdf89', '#efabd0', '#bfc2ee', '#ffa179'];
         </section>
       )}
 
-      <!-- ④ Every article, by topic: inland letters -->
+      <!-- ④ Every article, by topic -->
       <section class="hd-band hd-band--paper hd-all" id="every-article" aria-labelledby="all-title">
         <div class="hd-wrap">
-          <div class="hd-head"><div><p class="hd-eyebrow">Poori dak</p><h2 id="all-title">All articles, by topic.</h2></div></div>
-          <div class="hd-letters">
+          <div class="hd-head"><div><p class="hd-eyebrow">Poori jaankari</p><h2 id="all-title">All articles, <span class="hd-hl">by topic.</span></h2></div></div>
+          <div class="hd-groups">
             {tree.map((s, i) => (
-              <div class="hd-letter" id={s.id} style={`--stamp:${STAMP_TONES[i % 4]}`}>
-                <div class="hd-letter-top"><img src={publicImage(SECTION_ART[s.id], { width: 128, fit: 'scale-down' })} alt="" width="56" height="56" loading="lazy" decoding="async" /><h3>{s.label}<small>{countLabel(s.entries.length)}</small></h3></div>
+              <div class="hd-group" id={s.id} style={`--tone:${TONES[i % 4]}`}>
+                <div class="hd-group-top"><span class="hd-medal hd-medal--sm"><img src={publicImage(SECTION_ART[s.id], { width: 160, fit: 'scale-down' })} alt="" width="64" height="64" loading="lazy" decoding="async" /></span><h3>{s.label}<small>{SECTIONS[s.id].hindi} · {countLabel(s.entries.length)}</small></h3></div>
                 <ul>
                   {s.entries.map((e) => <li><a href={helpUrl(e)}>{e.data.title}<i aria-hidden="true">→</i></a></li>)}
                 </ul>
@@ -205,16 +210,19 @@ const STAMP_TONES = ['#ffdf89', '#efabd0', '#bfc2ee', '#ffa179'];
         </div>
       </section>
 
-      <!-- ⑤ Still stuck: write to us -->
-      <section class="hd-band hd-band--yellow hd-stuck" aria-labelledby="stuck-title">
+      <!-- ⑤ Still stuck: talk to a real person -->
+      <section class="hd-band hd-band--orange hd-stuck" aria-labelledby="stuck-title">
+        <div class="hd-bunting" aria-hidden="true"></div>
         <div class="hd-wrap hd-stuck-grid">
-          <div class="hd-stuck-art"><img src={publicImage(STUCK_ART, { width: 720, fit: 'scale-down' })} alt="" width="360" height="300" loading="lazy" decoding="async" /></div>
+          <div class="hd-stuck-art"><img src={publicImage(STUCK_ART, { width: 900, fit: 'scale-down' })} alt="" width="450" height="360" loading="lazy" decoding="async" /></div>
           <div class="hd-stuck-copy">
-            {HELP_STICKERS.stuck && <img class="hd-sticker" src={publicImage(HELP_STICKERS.stuck, { width: 520, fit: 'scale-down' })} alt="Chitthi likho!" width="420" height="245" loading="lazy" />}
             <p class="hd-eyebrow">Jawab nahi mila?</p>
             <h2 id="stuck-title">No answer here?<br />Ask a real person.</h2>
             <p>Email us in Hindi or English. For a call or billing question, add your call ID, date and time. Never send an OTP or UPI PIN. We will never ask for them.</p>
-            <a class="hd-btn" href="/contact">Contact the team <span aria-hidden="true">→</span></a>
+            <div class="hd-stuck-cta">
+              <a class="hd-btn" href="/contact">Contact the team <span aria-hidden="true">→</span></a>
+              {HELP_STICKERS.stuck && <img class="hd-sticker" src={publicImage(HELP_STICKERS.stuck, { width: 640, fit: 'scale-down' })} alt="Hum hain na!" width="420" height="245" loading="lazy" />}
+            </div>
           </div>
           <ul class="hd-ways" aria-label="Ways to reach us">
             <li><Fragment set:html={markSvg(MARK_TICKET, '')} /><div><b>Help desk</b><span><code>support (@) {BRAND.domain}</code></span></div></li>
@@ -223,7 +231,7 @@ const STAMP_TONES = ['#ffdf89', '#efabd0', '#bfc2ee', '#ffa179'];
           </ul>
         </div>
       </section>
-      <div class="hd-jhalar" aria-hidden="true"></div>
+      <div class="hd-fringe" aria-hidden="true"></div>
 
       <p class="hd-booking-note">{BRAND.name} connects you with your favourite influencers for private phone calls, paid per minute. Calls are not refunded; see our <a href="/refunds">refund policy</a>. Not medical, legal or money advice. In crisis, call <a href="tel:14416">Tele-MANAS 14416</a> or <a href="tel:112">112</a>.</p>
     </main>
