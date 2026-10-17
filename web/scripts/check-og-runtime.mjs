@@ -78,9 +78,9 @@ try {
     const response = await runtime.dispatchFetch(BRAND.webOrigin + path);
     assert.equal(response.status, 200, path);
     const html = await response.text();
-    assert.match(html, /name="robots" content="index, follow/);
+    assert.match(html, /name="robots" content="noindex/); // [HF-BLOG-ARCHIVE-1] blog archived
     assert(html.includes('href="' + BRAND.webOrigin + path + '"'), 'Canonical matches ' + path);
-    assert(sitemap.includes('<loc>' + BRAND.webOrigin + path + '</loc>'), 'Sitemap includes ' + path);
+    assert(!sitemap.includes('<loc>' + BRAND.webOrigin + path + '</loc>'), 'Archived blog out of sitemap: ' + path);
     assert.match(html, /data-callvaal-chrome/);
     assert.doesNotMatch(html, /assets\/rituals|Puja &amp; Havan|prasad|temple priests/i);
     assert.match(html, /application\/ld\+json/);

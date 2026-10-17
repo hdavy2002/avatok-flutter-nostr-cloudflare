@@ -32,9 +32,10 @@ import { SECTIONS, helpUrl, type HelpEntry, type HelpTreeSection, type HelpSecti
 import { publicImage } from '../lib/config';
 import { ORG } from '../lib/org';
 import type { PublicContent } from '../lib/seo/types';
-import { readMinutes, dateLabel, AUDIENCE_LABEL } from '../components/help/helpSkin';
-import '../styles/saathum-folk.css';
-import '../styles/help-skin.css';
+import { readMinutes, dateLabel, AUDIENCE_LABEL, ARTICLE_CTA_ART } from '../components/help/helpSkin';
+// [HF-HELP-DESI-1 2026-10-17] Fresh "Dak Ghar" treatment (styles/help-desi.css, scoped `.hd`).
+import '../styles/desi-home-chrome.css';
+import '../styles/help-desi.css';
 
 export interface Props {
   entry: HelpEntry;
@@ -73,13 +74,14 @@ const content: PublicContent = {
 ---
 <Base content={content} chrome={false} indiaLandingLanguage={false}>
   <Fragment slot="head">
-    <meta name="theme-color" content="#fff8e8" />
+    <meta name="theme-color" content="#fffdf7" />
     <link rel="preload" as="style" onload="this.onload=null;this.rel='stylesheet'" href="https://fonts.googleapis.com/css2?family=Comfortaa:wght@400;500;600;700&family=Nunito:wght@400;600;700;800;900&display=swap" />
   </Fragment>
-  <div class="folk-site" data-design="reference-v5" style={`--folk-border-url:url(${publicImage('/assets/bright/border.png', { width: 640, fit: 'scale-down' })})`}>
-    <a class="folk-skip" href="#main-content">Skip to main content</a>
+  <div class="hd desi-home">
+    <a class="hd-skip" href="#main-content">Skip to main content</a>
     <SiteHeader />
     <main id="main-content" class="hs hs-article-page">
+      <div class="hd-airmail" aria-hidden="true"></div>
       <section class="hs-aband" aria-labelledby="art-title">
         <div class="hs-aband-inner">
           <div>
@@ -91,7 +93,7 @@ const content: PublicContent = {
           <HelpSearch id="band" compact label="Search help" button="Go" placeholder={`Search all ${articleCount} articles…`} />
         </div>
       </section>
-      <div class="grand-divider" aria-hidden="true"></div>
+      <div class="hd-airmail" aria-hidden="true"></div>
 
       <div class="hs-wrap hs-article-wrap">
         <HelpRailNav tree={tree} entry={entry} />
@@ -122,7 +124,7 @@ const content: PublicContent = {
 
         <aside class="hs-toc-col" aria-label="Page tools">
           <HelpOnThisPage headings={headings}>
-            <div class="hs-toc-cta"><b>Want to talk?</b><span>Your favourite influencer. Your number stays private.</span><a href="/#people">Find an influencer →</a></div>
+            <div class="hs-toc-cta">{ARTICLE_CTA_ART && <img src={publicImage(ARTICLE_CTA_ART, { width: 420, fit: 'scale-down' })} alt="" width="200" height="200" loading="lazy" decoding="async" />}<b>Want to talk?</b><span>Your favourite influencer. Your number stays private.</span><a href="/marketplace">Find an influencer →</a></div>
           </HelpOnThisPage>
         </aside>
       </div>

@@ -32,6 +32,8 @@ export const ARCHIVED_PAGES: ReadonlyArray<{ path: string; label: string; reason
   { path: '/watch', label: 'Free videos watch', reason: 'Old page from the previous brand — archived (owner 2026-10-08); kept for possible reuse', prefix: true },
   { path: '/book', label: 'Book a ritual', reason: 'Old page from the previous brand — archived (owner 2026-10-08); kept for possible reuse', prefix: true },
   { path: '/free-videos', label: 'Free videos', reason: 'Old page from the previous brand — archived (owner 2026-10-08); kept for possible reuse' },
+  // [HF-BLOG-ARCHIVE-1 2026-10-17] OWNER DECISION: blog taken off the header and archived (noindex, out of the sitemap); pages still resolve.
+  { path: '/blog', label: 'Blog', reason: 'Archived by the owner 2026-10-17; removed from the header and from search', prefix: true },
   { path: '/marketplace/page', label: 'Marketplace directory', reason: 'Old page from the previous brand — archived (owner 2026-10-08); kept for possible reuse', prefix: true },
 ];
 

@@ -38,7 +38,7 @@ for (const m of html.matchAll(/\bhref="([^"]+)"/g)) {
   const href = m[1].replaceAll('&amp;', '&');
   if (href.startsWith('#') || href.startsWith('/#')) assert(ids.has(href.split('#')[1]), 'Resolvable anchor: ' + href);
 }
-for (const href of ['/marketplace','/hosts/join','/sign-in','/about','/help','/privacy','/terms','/blog']) assert(bodyHtml.includes('href="' + href), 'Working destination: ' + href);
+for (const href of ['/marketplace','/hosts/join','/sign-in','/about','/help','/privacy','/terms']) assert(bodyHtml.includes('href="' + href), 'Working destination: ' + href);
 assert.equal((html.match(/<header\b[^>]*data-callvaal-chrome/g) || []).length, 1, 'One shared header');
 assert.equal((html.match(/<footer\b[^>]*data-callvaal-chrome/g) || []).length, 1, 'One shared footer');
 assert(meta(html, 'description')?.length > 40);
@@ -59,7 +59,7 @@ assert.deepEqual(links(chrome(html, 'footer')), links(chrome(explore, 'footer'))
 const homeHeader = links(chrome(html, 'header'));
 const exploreHeader = links(chrome(explore, 'header'));
 for (const item of exploreHeader) assert(homeHeader.some(h => h.href === item.href && h.label === item.label && h.auth === item.auth), 'Homepage header keeps Explore link: ' + item.href);
-for (const href of ['/#how-it-works', '/hosts/join', '/blog', '/marketplace', '/sign-in', '/dashboard', '/sign-out']) assert(homeHeader.some(h => h.href === href), 'Homepage header link: ' + href);
+for (const href of ['/#how-it-works', '/hosts/join', '/marketplace', '/sign-in', '/dashboard', '/sign-out']) assert(homeHeader.some(h => h.href === href), 'Homepage header link: ' + href);
 const footer = chrome(html, 'footer');
 assert.deepEqual([...footer.matchAll(/<summary\b[^>]*>([\s\S]*?)<\/summary>/g)].map(m => plainText(m[1])), footerGroups, 'Five canonical footer groups');
 assert.equal((footer.match(/data-callvaal-footer-group/g) || []).length, 5);
@@ -112,7 +112,7 @@ const sitemap = readFileSync(resolve(root, 'sitemap-pages.xml'), 'utf8');
 assert(!sitemap.includes(BRAND.webOrigin + '/ideas<'), 'Retired ideas stay out of sitemap');
 assert(!sitemap.includes(BRAND.webOrigin + '/organisers'), 'Archived organisers stay out of sitemap');
 assert(!sitemap.includes(BRAND.webOrigin + '/rituals'), 'Retired rituals stay out of sitemap');
-assert(sitemap.includes(BRAND.webOrigin + '/blog/'), 'Blog appears in sitemap');
+assert(!sitemap.includes(BRAND.webOrigin + '/blog/'), 'Archived blog stays out of sitemap'); // [HF-BLOG-ARCHIVE-1]
 assert(!sitemap.includes(BRAND.webOrigin + '/blog/creator-ideas/'), 'Retired blog articles stay out of sitemap');
 
 // The promoted homepage has one accurate share preview and canonical URL (A4).
