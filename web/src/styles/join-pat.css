@@ -37,7 +37,7 @@
 .jp .jp-btn--blue { background: linear-gradient(90deg, var(--rani) 0 12px, var(--haldi) 12px 18px, transparent 18px calc(100% - 18px), var(--haldi) calc(100% - 18px) calc(100% - 12px), var(--rani) calc(100% - 12px)), var(--sky); }
 .jp .jp-btn:hover { transform: translateY(-2px); }
 .jp[data-skins~="btn"] .jp-btn:not(.jp-btn--blue) { border-style: solid; border-width: 0 70px; border-radius: 0; border-image: var(--jp-btn, none) 0 220 fill / 0 70px stretch; background: none; box-shadow: none; padding: 0 4px; }
-.jp[data-skins~="btn2"] .jp-btn--blue { border-style: solid; border-width: 0 70px; border-radius: 0; border-image: var(--jp-btn2, none) 0 220 fill / 0 70px stretch; background: none; box-shadow: none; padding: 0 4px; }
+.jp[data-skins~="btn2"] .jp-btn--blue { border-style: solid; border-width: 0 70px; border-radius: 0; border-image: var(--jp-btn2, none) 19 220 18 220 fill / 0 70px stretch; background: none; box-shadow: none; padding: 0 4px; }
 
 /* ---------- HERO on Bandhani ---------- */
 .jp .jp-hero { color: #fff; background: var(--jp-bandhani, radial-gradient(circle, rgba(255,255,255,.28) 0 2px, transparent 2.5px) 0 0 / 20px 20px, radial-gradient(circle, rgba(246,185,19,.32) 0 2px, transparent 2.5px) 10px 10px / 20px 20px, var(--lac)); }
@@ -193,6 +193,7 @@
   .jp .jp-hero-grid, .jp .jp-intro-grid, .jp .jp-pat, .jp .jp-ledger-grid, .jp .jp-close-grid.has-art { grid-template-columns: minmax(0, 1fr); }
   .jp .jp-hero-copy, .jp .jp-intro-copy, .jp .jp-card, .jp .jp-close-copy, .jp .jp-ledger { text-align: center; }
   .jp .jp-hero-art { order: -1; }
+  .jp .jp-hero-copy, .jp .jp-close-copy { padding: 22px 14px; }
   .jp .jp-masthead { flex-direction: column; border-radius: 14px; font-size: 12px; letter-spacing: .1em; }
   .jp .jp-hero-art img, .jp .jp-css-hero { width: min(100%, 380px); }
   .jp .jp-facts { grid-template-columns: minmax(0, 1fr); max-width: 360px; margin-left: auto; margin-right: auto; }
@@ -218,7 +219,7 @@
   .jp .jp-table td:last-child { font-size: 15px; }
   .jp .jp-table caption { padding: 12px 10px 4px; font-size: 14px; }
   .jp .jp-ctas { flex-direction: column; align-items: stretch; max-width: 360px; margin-left: auto; margin-right: auto; }
-  .jp .jp-btn { min-height: 52px; font-size: 16px !important; line-height: 1.15; }
+  .jp .jp-btn { min-height: 52px; font-size: 15px !important; line-height: 1.15; }
   .jp[data-skins~="btn"] .jp-btn:not(.jp-btn--blue), .jp[data-skins~="btn2"] .jp-btn--blue { min-height: 48px; border-width: 0 56px; border-image-width: 0 56px; }
   .jp .jp-roller { width: calc(100% + 16px); margin-left: -8px; }
 }
