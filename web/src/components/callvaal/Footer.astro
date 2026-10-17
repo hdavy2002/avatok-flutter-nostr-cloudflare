@@ -24,12 +24,13 @@ const groups = [
 ] as const;
 ---
 <footer class="cv-footer notebook-footer" data-callvaal-chrome>
+  {/* [HF-DESI-HOME-MOBILE-1] 2026-10-17: disclaimer is the owner's own wording from the desi design footer. */}
   {/* [HF-DASH-LAYOUT-1] Owner 2026-10-16: no logo and no tagline in the footer (the header already carries the logo). */}
   <nav class="cv-footer-columns footer-columns" aria-label="Footer">
     {groups.map(([heading, links]) => <details class="cv-footer-group footer-group" data-callvaal-footer-group open><summary>{heading}</summary><ul>{links.map(([label, href]) => <li><a href={href}>{label}</a></li>)}</ul></details>)}
   </nav>
   <div class="cv-footer-bottom">
-    <p class="cv-footer-disclaimer">{identity.name} connects you with the social media influencers you follow over private phone calls, with both phone numbers kept private. It is a preview: calling and verification are being prepared. Influencers are real people, not doctors, lawyers, therapists, counsellors or financial advisors, and nothing said on a call is professional advice. Sexual harassment, threats and abuse are prohibited; reports are reviewed and serious or repeated violations can lead to removal. No human listens in. Spammy, sexual or threatening behaviour is not allowed, and you can press # to end a call and block the person. 18+ only. In crisis, call <a href="tel:14416">Tele-MANAS 14416</a> or <a href="tel:112">112</a>.</p>
+    <p class="cv-footer-disclaimer"><strong>Disclaimer:</strong> {identity.name} connects you with the social media influencers you follow over private phone calls, with both phone numbers kept private. Our platform is not for consultations with doctors, lawyers, therapists, counsellors or financial advisors, and nothing said on a call is professional advice. We are not responsible for the relationship or rapport you build with any influencer, or for any outcome of a call. Sexual harassment, threats and abuse are prohibited; reports are reviewed, and serious or repeated violations can lead to removal. No human listens in. Spammy, sexual or threatening behaviour is not allowed, and you can press # at any time to end a call and block the person. 18+ only. If you are in crisis, call <a href="tel:14416">Tele-MANAS 14416</a> or <a href="tel:112">112</a>.</p>
     <div class="cv-footer-credits">
       <p class="cv-footer-made">Developed in India with <span class="cv-footer-heart" role="img" aria-label="love">♥</span></p>
     </div>

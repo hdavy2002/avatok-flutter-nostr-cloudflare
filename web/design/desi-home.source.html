@@ -69,6 +69,31 @@ a{color:#30245f}a:hover{color:#be246e}
  .creators article .btn{padding:10px 10px !important;font-size:14px !important;white-space:nowrap}
  .foot{gap:22px 16px !important}
 }
+
+/* [HF-DESI-HOME-MOBILE-1] owner fixes 2026-10-17 */
+.toran{background-size:auto 120.2%;background-position:center bottom}
+.dhol{transform:scaleX(-1)}
+.title-2l .line{display:block}
+.nowrap-hl{white-space:nowrap}
+@media (max-width:900px){
+ .hero-sticker{display:none !important}
+ .center-m{text-align:center !important;margin-left:auto !important;margin-right:auto !important;padding-left:0 !important}
+ .center-m p,.center-m h2{margin-left:auto !important;margin-right:auto !important;max-width:none}
+ .center-m p{max-width:600px !important}
+ .center-m .sticker,.center-m .sticker-float{margin-left:auto !important;margin-right:auto !important}
+ .center-m .chips,.center-m .cta-row,.center-m .store-row{justify-content:center !important}
+ .title-2l{font-size:clamp(26px,7vw,52px) !important}
+ .title-2l .line{white-space:nowrap}
+ .reasons-head{flex-direction:column !important;align-items:center !important}
+ .reasons-head>.center-m{width:100%}
+ .dhol{display:none !important}
+ .reasons-title{font-size:clamp(30px,8.6vw,60px) !important}
+ .rangoli{width:86% !important;max-width:440px !important}
+ .fish{width:92% !important}
+ .creators-head{flex-direction:column !important;align-items:center !important;text-align:center}
+ .creators-head>.center-m{width:100%}
+ .sticker-big{width:min(380px,88%) !important}
+}
 </style>
 
 </head>
@@ -119,7 +144,7 @@ a{color:#30245f}a:hover{color:#be246e}
       <div style="margin-top: 22px; font-size: clamp(14px,0.9vw,17px); font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; opacity: 0.8">YouTube &middot; Instagram &middot; Facebook creators</div>
     </div>
     <div style="position: relative">
-      <img class="img-slot sticker" src="/img/sticker-arre-waah.webp" role="img" aria-label="Arre waah!" style="position: absolute; left: 2%; top: -4%; width: clamp(130px, 24%, 320px); z-index: 2; transform: rotate(-8deg); display: block; height: auto">
+      <img class="img-slot sticker hero-sticker" src="/img/sticker-arre-waah.webp" role="img" aria-label="Arre waah!" style="position: absolute; left: 2%; top: -4%; width: clamp(130px, 24%, 320px); z-index: 2; transform: rotate(-8deg); display: block; height: auto">
       <img class="hero-art" src="/img/hero-rickshaw-woman.webp" alt="Truck-art auto rickshaw with a smiling woman driver waving" style="display: block; width: 100%; max-width: 900px; height: auto; margin: 0 0 0 auto">
     </div>
   </div>
@@ -153,14 +178,14 @@ a{color:#30245f}a:hover{color:#be246e}
 <section class="wrap" style="padding: 96px 0 72px">
   <div class="two" style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px; align-items: center">
     <img class="img-slot big-art" src="/img/jhoola-women.webp" alt="Two women on a swing under a mango tree, one on a phone call" style="width: 100%; max-width: 820px;  z-index: 0; display: block; height: auto">
-    <div class="overlap-left" style="position: relative; z-index: 2; margin-left: 0; padding: 8px">
+    <div class="overlap-left center-m" style="position: relative; z-index: 2; margin-left: 0; padding: 8px">
       <img class="img-slot sticker sticker-float" src="/img/sticker-bas-karo-scroll.webp" role="img" aria-label="Bas karo scroll. Baat karo." style="width: clamp(240px, 20vw, 360px); aspect-ratio: 16/9; transform: rotate(-4deg); display: block; height: auto; margin: 0 0 20px">
       <div class="eyebrow" style="color: #be246e">Reels se real tak</div>
-      <h2 class="disp" style="margin: 14px 0 0; font-size: clamp(40px, 5.6vw, 84px)">You see them on reels.<br>Now talk <span style="color: #ff793c">for real.</span></h2>
+      <h2 class="disp title-2l" style="margin: 14px 0 0; font-size: clamp(40px, 5.6vw, 84px)"><span class="line">You see them on reels.</span><span class="line">Now talk <span style="color: #ff793c">for real.</span></span></h2>
       <p style="font-size: clamp(19px,1.35vw,25px); font-weight: 600; line-height: 1.5; max-width: 520px; margin: 22px 0 0">
         Double-tap is cute. A phone call is better. Pick a creator, book a slot, and we connect you both on a private call &mdash; no numbers shown, no awkward DMs.
       </p>
-      <div style="display: flex; flex-wrap: wrap; gap: 10px; margin-top: 22px">
+      <div class="chips" style="display: flex; flex-wrap: wrap; gap: 10px; margin-top: 22px">
         <span style="background: #fbd447; border: 2px solid #30245f; border-radius: 999px; padding: 8px 14px; font-weight: 800; font-size: clamp(15px,1vw,18px)">Make new friends</span>
         <span style="background: #efabd0; border: 2px solid #30245f; border-radius: 999px; padding: 8px 14px; font-weight: 800; font-size: clamp(15px,1vw,18px)">Get insider tips</span>
         <span style="background: #bfc2ee; border: 2px solid #30245f; border-radius: 999px; padding: 8px 14px; font-weight: 800; font-size: clamp(15px,1vw,18px)">Get advice</span>
@@ -172,8 +197,8 @@ a{color:#30245f}a:hover{color:#be246e}
 
 <!-- ===== BIG ENERGY (magenta band, train) ===== -->
 <section style="background: #be246e; color: #fff2cf; border-top: 3px solid #30245f; border-bottom: 3px solid #30245f; position: relative; overflow: hidden">
-  <div class="wrap" style="padding: 80px 0 0; position: relative; z-index: 2">
-    <img class="img-slot sticker sticker-float" src="/img/sticker-scene-on.webp" role="img" aria-label="Scene on hai" style="position: absolute; right: 2%; top: 50px; width: clamp(280px, 24vw, 420px); aspect-ratio: 16/9;    transform: rotate(-8deg); display: block; height: auto">
+  <div class="wrap center-m" style="padding: 80px 0 0; position: relative; z-index: 2">
+    <img class="img-slot sticker sticker-float" src="/img/sticker-kya-scene-hai.webp" role="img" aria-label="Kya scene hai" style="position: absolute; right: 2%; top: 50px; width: clamp(280px, 24vw, 420px); aspect-ratio: 16/9;    transform: rotate(-8deg); display: block; height: auto">
     <div class="eyebrow" style="color: #fbd447">Same scroll. New possibilities.</div>
     <h2 class="disp" style="margin: 14px 0 0; font-size: clamp(44px, 7vw, 108px); max-width: 900px">Big energy.<br>Zero small talk.</h2>
     <p style="max-width: 520px; font-size: clamp(18px,1.3vw,24px); font-weight: 600; line-height: 1.5; margin: 22px 0 0">Music obsessives. Story collectors. The people who make you laugh out loud. All one call away.</p>
@@ -188,11 +213,11 @@ a{color:#30245f}a:hover{color:#be246e}
 <div class="bp-bg" aria-hidden="true"></div>
 <div class="wrap" style="position: relative; z-index: 1; padding: 96px 0 80px">
   <div class="reasons-head" style="display: flex; flex-wrap: wrap; align-items: end; justify-content: space-between; gap: 24px">
-    <div>
+    <div class="center-m">
       <div class="eyebrow" style="color: #be246e">Ek call, kai wajah</div>
-      <h2 class="disp" style="margin: 14px 0 0; font-size: clamp(40px, 5.6vw, 84px)">One call.<br><span style="background: #fbd447; padding: 0 10px; border-radius: 10px">So many reasons.</span></h2>
+      <h2 class="disp reasons-title" style="margin: 14px 0 0; font-size: clamp(40px, 5.6vw, 84px)">One call.<br><span class="nowrap-hl" style="background: #fbd447; padding: 0 10px; border-radius: 10px">So many reasons.</span></h2>
     </div>
-    <img class="img-slot" src="/img/dhol-wala.webp" alt="Dhol player jumping" style="width: clamp(200px, 17vw, 320px); aspect-ratio: 1/1; display: block; height: auto">
+    <img class="img-slot dhol" src="/img/dhol-wala.webp" alt="Dhol player jumping" style="width: clamp(200px, 17vw, 320px); aspect-ratio: 1/1; display: block; height: auto">
   </div>
 
   <div class="reasons" style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 28px; margin-top: 44px">
@@ -252,7 +277,7 @@ a{color:#30245f}a:hover{color:#be246e}
 <section id="how" style="background: #ff793c; border-top: 3px solid #30245f; border-bottom: 3px solid #30245f; position: relative; overflow: hidden">
   <div class="wrap" style="padding: 88px 0 80px; position: relative; z-index: 2">
     <div class="two" style="display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 420px); gap: 32px; align-items: center">
-      <div>
+      <div class="center-m">
         <div class="eyebrow">Less overthinking. More talking.</div>
         <h2 class="disp" style="margin: 14px 0 0; font-size: clamp(44px, 6.4vw, 96px); max-width: 760px">Your next hello,<br>in three moves.</h2>
       </div>
@@ -275,7 +300,7 @@ a{color:#30245f}a:hover{color:#be246e}
         <p style="margin: 10px 0 0; font-weight: 600; line-height: 1.5">We call both parties and merge the call. Neither sees the other&rsquo;s number.</p>
       </div>
     </div>
-    <img class="img-slot" src="/img/fish-pair.webp" alt="Two Madhubani fish talking to each other" style="margin: 56px auto 0; width: 60%; max-width: 620px; aspect-ratio: 2048/1200; display: block; height: auto">
+    <img class="img-slot fish" src="/img/fish-pair.webp" alt="Two Madhubani fish talking to each other" style="margin: 56px auto 0; width: 60%; max-width: 620px; aspect-ratio: 2048/1200; display: block; height: auto">
   </div>
   <div class="warli-strip" aria-hidden="true" style="position: relative; z-index: 2"></div>
 </section>
@@ -283,13 +308,13 @@ a{color:#30245f}a:hover{color:#be246e}
 <!-- ===== BOLLYWOOD POSTER (new) ===== -->
 <section class="wrap" style="padding: 96px 0 72px">
   <div class="two" style="display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); gap: 0; align-items: center">
-    <div style="position: relative; z-index: 2">
+    <div class="center-m" style="position: relative; z-index: 2">
       <div class="eyebrow" style="color: #be246e">Picture abhi baaki hai</div>
       <h2 class="disp" style="margin: 14px 0 0; font-size: clamp(44px, 6.4vw, 96px)">You&rsquo;ve seen the trailer.<br><span style="color: #be246e">Now the real scene.</span></h2>
       <p style="font-size: clamp(18px,1.3vw,24px); font-weight: 600; line-height: 1.55; margin: 22px 0 0; max-width: 520px">Reels show you the highlight. A call gives you the whole picture &mdash; the pauses, the laughs, the &ldquo;achha, sach mein?&rdquo; moments.</p>
-      <div style="display: flex; flex-wrap: wrap; gap: 14px; margin-top: 26px; align-items: center">
+      <div class="cta-row" style="display: flex; flex-wrap: wrap; gap: 14px; margin-top: 26px; align-items: center">
         <a href="#explore" class="btn btn-dark">Book a call</a>
-        <img class="img-slot sticker" src="/img/sticker-ek-call.webp" role="img" aria-label="Ek call toh banta hai" style="width: clamp(240px, 19vw, 340px); aspect-ratio: 16/9; display: block; height: auto">
+        <img class="img-slot sticker sticker-big" src="/img/sticker-ek-call.webp" role="img" aria-label="Ek call toh banta hai" style="width: clamp(240px, 19vw, 340px); aspect-ratio: 16/9; display: block; height: auto">
       </div>
     </div>
     <img class="img-slot big-art overlap-right" src="/img/bollywood-poster.webp" alt="Bollywood-poster style fan and influencer on a phone call" style="width: 100%; max-width: 640px;  margin-left: 0; z-index: 0; justify-self: end; display: block; height: auto">
@@ -298,12 +323,12 @@ a{color:#30245f}a:hover{color:#be246e}
 
 <!-- ===== CREATORS (block-print framed cards) ===== -->
 <section id="explore" class="wrap" style="padding: 24px 0 96px">
-  <div style="display: flex; flex-wrap: wrap; align-items: end; justify-content: space-between; gap: 20px">
-    <div>
+  <div class="creators-head" style="display: flex; flex-wrap: wrap; align-items: end; justify-content: space-between; gap: 20px">
+    <div class="center-m">
       <div class="eyebrow">No one does you like you</div>
       <h2 class="disp" style="margin: 14px 0 0; font-size: clamp(44px, 6.4vw, 96px)">Pick your<br><span style="background: #fbd447; padding: 0 12px; border-radius: 12px">kind of chaos.</span></h2>
     </div>
-    <img class="img-slot sticker" src="/img/sticker-reels-se-real.webp" role="img" aria-label="Reels se real tak" style="width: clamp(260px, 22vw, 400px); transform: rotate(-5deg); display: block; height: auto">
+    <img class="img-slot sticker sticker-big" src="/img/sticker-reels-se-real.webp" role="img" aria-label="Reels se real tak" style="width: clamp(260px, 22vw, 400px); transform: rotate(-5deg); display: block; height: auto">
     <a href="#explore" style="font-weight: 800; display: inline-flex; align-items: center; gap: 8px; min-height: 44px">Explore everyone
       <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M7 17 17 7M9 7h8v8"></path></svg></a>
   </div>
@@ -343,14 +368,14 @@ a{color:#30245f}a:hover{color:#be246e}
       <div style="position: relative">
         <img class="img-slot big-art" src="/img/chai-tapri.webp" alt="Roadside chai stall" style="width: 96%; max-width: 680px; aspect-ratio: 1/1; display: block; height: auto">
       </div>
-      <div style="position: relative; z-index: 2; padding-left: 24px">
+      <div class="center-m" style="position: relative; z-index: 2; padding-left: 24px">
         <img class="img-slot sticker" src="/img/sticker-chai-pe-charcha.webp" role="img" aria-label="Chai pe charcha?" style="width: clamp(260px, 22vw, 400px); aspect-ratio: 16/9; display: block; height: auto; margin-bottom: 18px; transform: rotate(-4deg)">
         <div class="eyebrow">Carry the conversation</div>
         <h2 class="disp" style="margin: 14px 0 0; font-size: clamp(44px, 6.4vw, 96px)">Your people.<br>In your pocket.</h2>
         <p style="font-size: clamp(18px,1.2vw,22px); font-weight: 600; line-height: 1.5; margin: 20px 0 0; max-width: 480px">Keep your favorites one tap away. Make room on your home screen for Hello Fraands.</p>
-        <div style="display: flex; flex-wrap: wrap; gap: 14px; margin-top: 26px">
-          <a href="#play" class="btn btn-dark" style="box-shadow: none; flex-direction: column; align-items: flex-start; gap: 0; line-height: 1.15"><span style="font-size: clamp(12px,0.75vw,14px); font-weight: 700; opacity: 0.85">Get it on</span><span style="font-size: clamp(18px,1.3vw,24px)">Google Play</span></a>
-          <a href="#ios" class="btn btn-light" style="box-shadow: none; flex-direction: column; align-items: flex-start; gap: 0; line-height: 1.15"><span style="font-size: clamp(18px,1.3vw,24px)">iPhone app</span><span style="font-size: clamp(12px,0.75vw,14px); font-weight: 700; opacity: 0.85">Coming soon</span></a>
+        <div class="store-row" style="display: flex; flex-wrap: wrap; gap: 18px; margin-top: 26px; align-items: center">
+          <a href="#play" class="store-btn" style="display: block; width: clamp(220px, 15vw, 300px);"><img src="/img/btn-google-play.webp" alt="Get it on Google Play" style="display: block; width: 100%; height: auto"></a>
+          <a href="#ios" class="store-btn" style="display: block; width: clamp(220px, 15vw, 300px);"><img src="/img/btn-app-store.webp" alt="Download on the App Store (coming soon)" style="display: block; width: 100%; height: auto"></a>
         </div>
       </div>
     </div>

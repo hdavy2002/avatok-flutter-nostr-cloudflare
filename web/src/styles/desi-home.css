@@ -57,3 +57,28 @@ a{color:#30245f}a:hover{color:#be246e}
  .creators article .btn{padding:10px 10px !important;font-size:14px !important;white-space:nowrap}
  .foot{gap:22px 16px !important}
 }
+
+/* [HF-DESI-HOME-MOBILE-1] owner fixes 2026-10-17 */
+.toran{background-size:auto 120.2%;background-position:center bottom}
+.dhol{transform:scaleX(-1)}
+.title-2l .line{display:block}
+.nowrap-hl{white-space:nowrap}
+@media (max-width:900px){
+ .hero-sticker{display:none !important}
+ .center-m{text-align:center !important;margin-left:auto !important;margin-right:auto !important;padding-left:0 !important}
+ .center-m p,.center-m h2{margin-left:auto !important;margin-right:auto !important;max-width:none}
+ .center-m p{max-width:600px !important}
+ .center-m .sticker,.center-m .sticker-float{margin-left:auto !important;margin-right:auto !important}
+ .center-m .chips,.center-m .cta-row,.center-m .store-row{justify-content:center !important}
+ .title-2l{font-size:clamp(26px,7vw,52px) !important}
+ .title-2l .line{white-space:nowrap}
+ .reasons-head{flex-direction:column !important;align-items:center !important}
+ .reasons-head>.center-m{width:100%}
+ .dhol{display:none !important}
+ .reasons-title{font-size:clamp(30px,8.6vw,60px) !important}
+ .rangoli{width:86% !important;max-width:440px !important}
+ .fish{width:92% !important}
+ .creators-head{flex-direction:column !important;align-items:center !important;text-align:center}
+ .creators-head>.center-m{width:100%}
+ .sticker-big{width:min(380px,88%) !important}
+}
