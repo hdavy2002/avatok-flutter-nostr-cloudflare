@@ -70,10 +70,10 @@
 .auth.auth--pco .auth-inline-btn--ghost { background: var(--haldi); }
 
 /* buttons — owner keypad-key artwork (ends keep their drawing, the middle stretches) */
-.auth--pco[data-skins~="primary"] .auth-btn:not(.auth-btn--ink):not(.auth-btn--ghost) { border-style: solid; border-width: 0 52px; border-radius: 0; border-image: var(--au-btn-primary, none) 40 170 15 170 fill / 0 52px stretch; background: none; box-shadow: none; color: var(--cream); padding-inline: 4px; }
-.auth--pco[data-skins~="dark"] .auth-btn--ink { border-style: solid; border-width: 0 44px; border-radius: 0; border-image: var(--au-btn-dark, none) 31 150 36 150 fill / 0 44px stretch; background: none; box-shadow: none; color: var(--cream); padding-inline: 4px; }
-.auth--pco[data-skins~="light"] .auth-btn--ghost { border-style: solid; border-width: 0 44px; border-radius: 0; border-image: var(--au-btn-light, none) 17 150 46 150 fill / 0 44px stretch; background: none; box-shadow: none; color: var(--ink); padding-inline: 4px; }
-.auth--pco[data-skins~="small"] .auth-inline-btn { border-style: solid; border-width: 0 24px; border-radius: 0; border-image: var(--au-btn-small, none) 33 110 33 110 fill / 0 24px stretch; background: none; box-shadow: none; padding-inline: 2px; }
+.auth--pco[data-skins~="primary"] .auth-btn:not(.auth-btn--ink):not(.auth-btn--ghost) { border-style: solid; border-width: 0 52px; border-radius: 0; border-image: var(--au-btn-primary, none) 44 170 52 170 fill / 0 52px stretch; background: none; box-shadow: none; color: var(--cream); padding-inline: 4px; }
+.auth--pco[data-skins~="dark"] .auth-btn--ink { border-style: solid; border-width: 0 44px; border-radius: 0; border-image: var(--au-btn-dark, none) 35 150 43 150 fill / 0 44px stretch; background: none; box-shadow: none; color: var(--cream); padding-inline: 4px; }
+.auth--pco[data-skins~="light"] .auth-btn--ghost { border-style: solid; border-width: 0 44px; border-radius: 0; border-image: var(--au-btn-light, none) 55 150 60 150 fill / 0 44px stretch; background: none; box-shadow: none; color: var(--ink); padding-inline: 4px; }
+.auth--pco[data-skins~="small"] .auth-inline-btn { border-style: solid; border-width: 0 24px; border-radius: 0; border-image: var(--au-btn-small, none) 40 110 43 110 fill / 0 24px stretch; background: none; box-shadow: none; padding-inline: 2px; }
 .auth--pco[data-skins] .auth-btn:not(:disabled):hover, .auth--pco[data-skins] .auth-btn:not(:disabled):active { box-shadow: none; }
 
 /* sign-up role cards */
@@ -133,3 +133,12 @@
   .auth--pco .auth-row[role="tablist"] > .auth-btn { flex: 1 1 0; min-width: 0; }
 }
 @media (max-width: 767px) { .auth--pco[data-skins~="primary"] .auth-btn:not(.auth-btn--ink):not(.auth-btn--ghost) { font-size: 16px; white-space: nowrap; } }
+
+/* [HF-AUTH-PCO-5] Keys are sliced to their face only (the drawn "depth" below the face put the label off-centre);
+   the depth comes back as a shape-following drop shadow. Labels are centred both ways. */
+.auth--pco[data-skins] .auth-btn, .auth--pco[data-skins] .auth-inline-btn { display: flex; align-items: center; justify-content: center; text-align: center; line-height: 1.2; padding-top: 0; padding-bottom: 0; filter: drop-shadow(0 4px 0 #2a1f5c); }
+.auth--pco[data-skins] .auth-btn:not(:disabled):active { transform: translateY(3px); filter: drop-shadow(0 1px 0 #2a1f5c); }
+@media (max-width: 767px) {
+  .auth--pco[data-skins] .auth-row[role="tablist"] > .auth-btn { font-size: 13px; line-height: 1.15; min-height: 58px; }
+  .auth--pco[data-skins~="primary"] .auth-btn:not(.auth-btn--ink):not(.auth-btn--ghost) { font-size: 15px; border-width: 0 40px; border-image-width: 0 40px; }
+}

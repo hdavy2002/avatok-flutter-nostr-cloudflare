@@ -4,6 +4,7 @@
 // artwork made for these pages (/assets/hf-auth/) — never art from another page. Layout: ≥1280px the booth picture
 // panel beside the form; below that the form stands alone, centred. The form is the booth: a glowing yellow
 // "STD · ISD · PCO" board on top, a cream counter below, keypad-key buttons, a coin-slot divider.
+// [HF-AUTH-PCO-5 2026-10-18] Owner removed all stickers from these two pages (panel top + under the form).
 // Art + slots: components/auth/authSkin.ts. Styles: styles/auth-ghar.css (scoped `.auth--pco`).
 import BrandLogo from '../callvaal/BrandLogo.astro';
 import { publicImage } from '../../lib/config';
@@ -17,7 +18,6 @@ const TAIL: Record<string, string> = { wall: 'center / 400px repeat', coins: 'ce
 const vars = [...AUTH_BG.map((o) => `--au-${o.key}:url(${img(o.path, o.width)}) ${TAIL[o.key] ?? ''}`), ...AUTH_SKINS.map((o) => `--au-btn-${o.key}:url(${img(o.path, o.width)})`)].join(';');
 const skins = AUTH_SKINS.map((o) => o.key).join(' ');
 const hero = variant === 'in' ? AUTH_ART.signInHero : AUTH_ART.signUpHero;
-const sticker = variant === 'in' ? { src: AUTH_ART.stickerSignIn, alt: 'Hello? Kaun? Aap!' } : { src: AUTH_ART.stickerSignUp, alt: 'Pehli call pe swagat!' };
 const caption = variant === 'in' ? ['Hello? Kaun? Aap!', 'Your favourite influencers are one call away.'] : ['Pehli call pe swagat!', 'Join free. Talk to the influencers you love.'];
 ---
 <div class:list={['auth', 'auth--pco', { 'au-noboard': !AUTH_ART.board }]} style={vars} data-skins={skins || undefined}>
@@ -28,7 +28,6 @@ const caption = variant === 'in' ? ['Hello? Kaun? Aap!', 'Your favourite influen
   <div class="auth-shell">
     <aside class="auth-panel au-panel" aria-hidden="true">
       <div class="au-panel-inner">
-        {sticker.src && <img class="au-sticker" src={img(sticker.src, 640)} alt="" width="420" height="245" />}
         {hero
           ? <div class="au-hero-crop"><img class="au-hero" src={img(hero, 1100)} alt="" width="1100" height="1375" fetchpriority="high" decoding="async" /></div>
           : <div class="au-booth-css"><span class="au-booth-sign">STD · ISD · PCO</span><span class="au-booth-phone"><svg viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 22c0-6 10-10 22-10s22 4 22 10l-6 6-8-4v-4c-5-2-11-2-16 0v4l-8 4z"/><path d="M18 30h28l6 22H12z"/><circle cx="32" cy="41" r="6"/></svg></span></div>}
@@ -46,9 +45,6 @@ const caption = variant === 'in' ? ['Hello? Kaun? Aap!', 'Your favourite influen
           <slot />
         </div>
       </div>
-      {AUTH_ART.stickerPrivate
-        ? <img class="au-private" src={img(AUTH_ART.stickerPrivate, 640)} alt="Number kabhi share nahi hota" width="360" height="210" loading="lazy" />
-        : <p class="au-private-text">Number kabhi share nahi hota</p>}
     </main>
   </div>
 </div>
