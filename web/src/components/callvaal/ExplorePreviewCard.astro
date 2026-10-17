@@ -1,0 +1,25 @@
+---
+import { publicImage, publicImageSrcSet } from '../../lib/config';
+import type { SampleProfile } from '../../lib/callvaalHomeReference';
+interface Props { profile: SampleProfile; platform: string; topic: string; handle: string; label?: string; }
+const { profile, platform, topic, handle, label } = Astro.props;
+const portrait = `/assets/callvaal/scrapbook/${profile.portrait}`;
+const search = [profile.name, handle, platform, topic, profile.languages, profile.tagline ?? ''].join(' ').toLowerCase();
+---
+<article class="ex-card" data-ex-card data-name={profile.name} data-search={search} data-platform={platform.toLowerCase()} data-category={topic.toLowerCase()} data-language={profile.languages.toLowerCase()} data-gender={profile.gender} data-availability={profile.availability} data-price={profile.price} data-id={profile.id}>
+  <div class="ex-card-frame">
+    <div class="ex-card-media">
+      <img src={publicImage(portrait, { width: 640 })} srcset={publicImageSrcSet(portrait, [320, 480, 640])} sizes="(max-width: 650px) 80vw, (max-width: 1100px) 33vw, 22vw" alt={`Illustrative portrait for sample creator ${profile.name}`} width="640" height="640" loading="lazy" />
+      <span class="ex-platform">{platform} · demo clip</span>
+      <button type="button" class="ex-play" data-demo-video={profile.name} aria-label={`About ${profile.name}'s sample video preview`}>▶</button>
+      <span class:list={['ex-status', `ex-status--${profile.availability}`]}>{profile.availability === 'online' ? 'Online now' : profile.availability === 'busy' ? 'On a call' : 'Offline'}</span>
+    </div>
+    <div class="ex-card-body">
+      {label && <span class="ex-card-ribbon">{label}</span>}
+      <h3>{profile.name}</h3>
+      <p class="ex-handle">{handle} · {platform}</p>
+      <div class="ex-chips"><span>{topic}</span><span>{profile.languages.split(',')[0]}</span></div>
+      <div class="ex-card-bottom"><strong>₹{profile.price}<small>/min</small></strong><button type="button" data-book={profile.id} data-name={profile.name} data-price={profile.price} data-availability={profile.availability}>{profile.availability === 'online' ? 'Book call' : 'Plan a call'} <span aria-hidden="true">↗</span></button></div>
+    </div>
+  </div>
+</article>
