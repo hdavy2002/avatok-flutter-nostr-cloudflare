@@ -18,7 +18,7 @@ const hero = variant === 'in' ? AUTH_ART.signInHero : AUTH_ART.signUpHero;
 const sticker = variant === 'in' ? { src: AUTH_ART.stickerSignIn, alt: 'Wapas aa gaye? Waah!' } : { src: AUTH_ART.stickerSignUp, alt: 'Aapka swagat hai!' };
 const caption = variant === 'in' ? ['Wapas aa gaye!', 'Your favourite influencers are a call away.'] : ['Aao, ghar mein swagat hai.', 'Join free. Talk to the influencers you love.'];
 ---
-<div class="auth auth--ghar" style={vars} data-skins={skins || undefined}>
+<div class:list={['auth', 'auth--ghar', { 'au-noroof': !AUTH_ART.roof }]} style={vars} data-skins={skins || undefined}>
   <div class="au-top">
     <a class="au-logo" href="/" aria-label="Home"><BrandLogo /></a>
     <a class="au-help" href="/help">Need help?</a>
@@ -27,10 +27,10 @@ const caption = variant === 'in' ? ['Wapas aa gaye!', 'Your favourite influencer
     <aside class="auth-panel au-panel" aria-hidden="true">
       <div class="au-panel-inner">
         {sticker.src && <img class="au-sticker" src={img(sticker.src, 640)} alt="" width="420" height="245" />}
-        <div class="au-hero">
+        {hero && <div class="au-hero">
           <img class="au-hero-art" src={img(hero, 1000)} alt="" width="1000" height="1000" fetchpriority="high" decoding="async" />
-          <img class="au-hero-ring" src={img(AUTH_ART.heroRing, 1024)} alt="" width="1024" height="1024" />
-        </div>
+          {AUTH_ART.heroRing && <img class="au-hero-ring" src={img(AUTH_ART.heroRing, 1024)} alt="" width="1024" height="1024" />}
+        </div>}
         <p class="au-caption"><b>{caption[0]}</b><span>{caption[1]}</span></p>
       </div>
       <div class="au-rangoli"></div>
@@ -38,7 +38,7 @@ const caption = variant === 'in' ? ['Wapas aa gaye!', 'Your favourite influencer
 
     <main class:list={['auth-main', 'au-main', { 'auth-main--signup': variant === 'up' }]}>
       <div class="au-house">
-        <img class="au-roof" src={img(AUTH_ART.roof, 1400)} alt="" width="2000" height="300" aria-hidden="true" />
+        {AUTH_ART.roof && <img class="au-roof" src={img(AUTH_ART.roof, 1400)} alt="" width="2000" height="300" aria-hidden="true" />}
         <div class="auth-card au-card">
           <slot />
         </div>

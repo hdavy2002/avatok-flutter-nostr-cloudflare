@@ -112,3 +112,6 @@
 .auth--ghar .au-caption b { font-family: var(--f-display) !important; font-weight: 900 !important; }
 .auth.auth--ghar .auth-hindi { display: none; }
 @media (max-width: 767px) { .auth.auth--ghar .auth-btn--ink, .auth.auth--ghar .auth-btn--ghost { font-size: 14px; padding: 10px 8px; } }
+
+/* no art yet (owner: never borrow other pages' art): plain card */
+.auth.auth--ghar.au-noroof .auth-card { border-top: 3px solid var(--ink); border-radius: 26px; }
