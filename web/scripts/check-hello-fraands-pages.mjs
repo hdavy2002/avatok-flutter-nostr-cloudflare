@@ -21,7 +21,8 @@ export function checkHelloFraandsPages(root, identity) {
     // [HELLO-FRAANDS-FAQ-1] /faq is a standalone help page (topic tiles, search,
     // accordions), not the HelloFraandsPage legal layout, so it has no summary/date line.
     // [HF-HOW-COMIC-1 2026-10-18] /how-it-works is a standalone comic page (owner redesign), not the legal layout.
-    if (route !== '/faq' && route !== '/how-it-works') {
+    // [HF-JOIN-PAT-1 2026-10-18] /hosts/join is a standalone Pat-Katha scroll page (owner redesign), not the legal layout.
+    if (route !== '/faq' && route !== '/how-it-works' && route !== '/hosts/join') {
       assert.match(body, /class="hf-hindi"[^>]*>\s*<em\b/, `${route}: italic Hindi summary`);
       const registrationPolicies = new Set(['/terms', '/privacy', '/disclaimer', '/community-guidelines']);
       const datedContentPages = new Set(['/about', '/contact', '/cookies', '/data-deletion', '/grievance', '/intermediary-policy', '/press', '/report', '/hosts/agreement', '/hosts/kyc']);
@@ -57,6 +58,9 @@ export function checkHelloFraandsPages(root, identity) {
   // [HF-HOW-COMIC-1] The comic page tells the masked call in a three-panel strip; billing is by the minute.
   assert.equal((pages.get('/how-it-works').match(/<ol class="hw-strip"[\s\S]*?<\/ol>/)?.[0].match(/<li\b/g) || []).length, 3, 'Three masked-call steps');
   assert(!/by the second|Google Play|Razorpay|Cashfree/i.test(text(pages.get('/how-it-works').match(/<main\b[^>]*>[\s\S]*?<\/main>/)?.[0] || '')), 'How it works: per-minute billing, no payment-gateway names');
+  // [HF-JOIN-PAT-1] The join page tells one creator's story in four scroll panels; billing is by the minute.
+  assert.equal((pages.get('/hosts/join').match(/<ol class="jp-pats"[\s\S]*?<\/ol>/)?.[0].match(/<li class="jp-pat\b/g) || []).length, 4, 'Join: four scroll panels');
+  assert(!/by the second|exact seconds|Google Play|Razorpay|Cashfree/i.test(text(pages.get('/hosts/join').match(/<main\b[^>]*>[\s\S]*?<\/main>/)?.[0] || '')), 'Join: per-minute billing, no payment-provider names');
   const hostJoin = text(pages.get('/hosts/join'));
   for (const copy of [
     'Influencers complete full video KYC and choose a fan price from ₹5 to ₹1,000 per minute',

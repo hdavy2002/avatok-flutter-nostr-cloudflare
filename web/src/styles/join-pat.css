@@ -1,0 +1,209 @@
+/* [HF-JOIN-PAT-1 2026-10-18] /hosts/join "Pat-Katha": a Bengal Patachitra story scroll unrolled panel by panel.
+   Hero on Bandhani, intro on handmade paper, the scroll on a Gond-dot ground between Channapatna lacquer rollers,
+   earnings on Bidri (silver inlay on gunmetal), privacy on Ikat, the close on Kalamkari; Kantha / Patachitra-flower /
+   Bidri / Ikat borders between sections. Owner art (/assets/hf-join/) arrives as --jp-* layers; every one has a CSS
+   stand-in. Nunito + Comfortaa only. Scoped `.jp`. Phones: everything centred. */
+.jp {
+  --ink: #1d1a2b; --paper: #fbf3e2; --conch: #fffaf0;
+  --sindoor: #d7263d; --haldi: #f6b913; --saffron: #f07f19; --rani: #e0418f; --lac: #8f1240;
+  --sky: #2479c9; --indigo: #26306e; --ikat: #5b3a9b; --gunmetal: #23252c; --silver: #d6dae2; --madder: #a3322a;
+  --head: 'Nunito', system-ui, sans-serif; --body: 'Comfortaa', system-ui, sans-serif;
+  --gut: max(32px, env(safe-area-inset-left, 0px)); --gut-r: max(32px, env(safe-area-inset-right, 0px));
+  background: var(--paper); color: var(--ink); font-family: var(--body); font-weight: 600; font-size: clamp(16px, 1.1vw, 19px); line-height: 1.55; overflow-x: clip;
+}
+.jp *, .jp *::before, .jp *::after { box-sizing: border-box; }
+.jp h1, .jp h2, .jp h3 { font-family: var(--head); font-weight: 900; margin: 0; line-height: 1.05; text-wrap: balance; }
+.jp p { margin: 0; }
+.jp img { max-width: 100%; height: auto; }
+.jp a { color: inherit; }
+.jp :focus-visible { outline: 3px solid var(--haldi); outline-offset: 3px; }
+.jp .jp-skip { position: fixed; top: -100px; left: 20px; z-index: 100; background: var(--conch); padding: 12px; border: 3px solid var(--ink); }
+.jp .jp-skip:focus { top: 10px; }
+.jp .jp-wrap { width: 100%; max-width: 1440px; margin: 0 auto; padding-left: var(--gut); padding-right: var(--gut-r); }
+.jp .jp-kicker { font: 800 clamp(13px, .85vw, 15px) var(--head); letter-spacing: .2em; text-transform: uppercase; color: var(--sindoor); }
+.jp section { padding-block: clamp(56px, 6vw, 104px); }
+
+/* ---------- borders (drawn 20:1; shown at height × 20 so motifs keep their shape) ---------- */
+.jp .jp-band { height: clamp(28px, 2.6vw, 44px); border-block: 3px solid var(--ink); }
+.jp .jp-band--kantha { background: var(--jp-kantha, repeating-linear-gradient(90deg, #fff 0 9px, transparent 9px 16px) 0 30% / 100% 3px no-repeat, repeating-linear-gradient(90deg, var(--haldi) 0 9px, transparent 9px 16px) 8px 50% / 100% 3px no-repeat, repeating-linear-gradient(90deg, #fff 0 9px, transparent 9px 16px) 0 70% / 100% 3px no-repeat, var(--sindoor)); }
+.jp .jp-band--bidri { background: var(--jp-bidriband, radial-gradient(circle, var(--silver) 0 3px, transparent 3.5px) 0 50% / 26px 100% repeat-x, linear-gradient(var(--silver), var(--silver)) 0 20% / 100% 1px no-repeat, linear-gradient(var(--silver), var(--silver)) 0 80% / 100% 1px no-repeat, var(--gunmetal)); }
+.jp .jp-band--ikat { background: var(--jp-ikatband, linear-gradient(45deg, transparent 35%, var(--rani) 35% 65%, transparent 65%) 0 50% / 32px 100% repeat-x, linear-gradient(-45deg, transparent 35%, var(--haldi) 35% 65%, transparent 65%) 0 50% / 32px 100% repeat-x, var(--ikat)); }
+.jp .jp-band--flower { background: var(--jp-patflower, radial-gradient(circle, var(--haldi) 0 5px, var(--sindoor) 5.5px 8px, transparent 8.5px) 0 50% / 30px 100% repeat-x, var(--ink)); }
+
+/* ---------- Channapatna lacquer buttons (owner skins: 9-slice ends 220 of 900, middle stretches) ---------- */
+.jp .jp-ctas { display: flex; flex-wrap: wrap; gap: 16px; margin-top: 28px; }
+.jp .jp-btn { display: inline-flex; align-items: center; justify-content: center; text-align: center; min-height: 58px; padding: 0 30px; border-radius: 999px; border: 3px solid var(--ink); color: #fff; font: 900 clamp(17px, 1.2vw, 20px) var(--head) !important; text-decoration: none; box-shadow: 0 6px 0 var(--ink); transition: transform .12s;
+  background: linear-gradient(90deg, var(--haldi) 0 12px, var(--sky) 12px 18px, transparent 18px calc(100% - 18px), var(--sky) calc(100% - 18px) calc(100% - 12px), var(--haldi) calc(100% - 12px)), var(--sindoor); }
+.jp .jp-btn--blue { background: linear-gradient(90deg, var(--rani) 0 12px, var(--haldi) 12px 18px, transparent 18px calc(100% - 18px), var(--haldi) calc(100% - 18px) calc(100% - 12px), var(--rani) calc(100% - 12px)), var(--sky); }
+.jp .jp-btn:hover { transform: translateY(-2px); }
+.jp[data-skins~="btn"] .jp-btn:not(.jp-btn--blue) { border-style: solid; border-width: 0 70px; border-radius: 0; border-image: var(--jp-btn, none) 0 220 fill / 0 70px stretch; background: none; box-shadow: none; padding: 0 4px; }
+.jp[data-skins~="btn2"] .jp-btn--blue { border-style: solid; border-width: 0 70px; border-radius: 0; border-image: var(--jp-btn2, none) 0 220 fill / 0 70px stretch; background: none; box-shadow: none; padding: 0 4px; }
+
+/* ---------- HERO on Bandhani ---------- */
+.jp .jp-hero { color: #fff; background: var(--jp-bandhani, radial-gradient(circle, rgba(255,255,255,.28) 0 2px, transparent 2.5px) 0 0 / 20px 20px, radial-gradient(circle, rgba(246,185,19,.32) 0 2px, transparent 2.5px) 10px 10px / 20px 20px, var(--lac)); }
+.jp .jp-hero-grid { display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(0, .95fr); gap: clamp(28px, 4vw, 72px); align-items: center; }
+.jp .jp-hero-copy { background: rgba(29, 26, 43, .55); border: 3px solid var(--haldi); border-radius: 28px; padding: clamp(24px, 3vw, 44px); box-shadow: 0 10px 0 var(--ink); }
+.jp .jp-masthead { display: inline-flex; border: 3px solid var(--ink); border-radius: 999px; overflow: hidden; font: 900 13px var(--head); letter-spacing: .16em; text-transform: uppercase; margin-bottom: 18px; }
+.jp .jp-masthead span { padding: 6px 14px; background: var(--haldi); color: var(--ink); }
+.jp .jp-masthead span + span { background: var(--sky); color: #fff; }
+.jp h1 { font-size: clamp(40px, 5vw, 82px); letter-spacing: -.02em; }
+.jp .jp-pop { display: block; color: var(--haldi); }
+.jp .jp-hindi { margin-top: 16px; font-size: clamp(17px, 1.3vw, 22px); }
+.jp .jp-facts { list-style: none; margin: 24px 0 0; padding: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.jp .jp-facts li { border-radius: 18px; padding: 12px 14px; border: 3px solid var(--ink); color: var(--ink); box-shadow: 0 5px 0 var(--ink); }
+.jp .jp-facts li[data-tone="haldi"] { background: var(--haldi); }
+.jp .jp-facts li[data-tone="sky"] { background: #bfe0ff; }
+.jp .jp-facts li[data-tone="rani"] { background: #ffc4df; }
+.jp .jp-facts b { display: block; font: 900 clamp(17px, 1.25vw, 21px) var(--head); }
+.jp .jp-facts span { font-size: .88em; }
+.jp .jp-hero-art { text-align: center; }
+.jp .jp-hero-art img { width: min(100%, 620px); filter: drop-shadow(0 12px 0 rgba(29,26,43,.45)); }
+.jp .jp-css-hero { margin: 0 auto; width: min(100%, 480px); aspect-ratio: 11 / 13; display: grid; grid-template-rows: repeat(4, 1fr); gap: 10px; padding: 34px 24px; border-radius: 22px; background: var(--paper); border: 4px solid var(--ink); box-shadow: inset 0 0 0 10px var(--haldi), inset 0 0 0 13px var(--ink), 0 12px 0 var(--ink); }
+.jp .jp-css-hero span { display: grid; place-items: center; border: 3px solid var(--ink); border-radius: 12px; font: 900 40px var(--head); color: #fff; }
+.jp .jp-css-hero span:nth-child(1) { background: var(--sindoor); } .jp .jp-css-hero span:nth-child(2) { background: var(--sky); }
+.jp .jp-css-hero span:nth-child(3) { background: var(--rani); } .jp .jp-css-hero span:nth-child(4) { background: var(--saffron); }
+
+/* ---------- START HERE + MEET NEHA (handmade paper) ---------- */
+.jp .jp-intro { background: var(--jp-paper, var(--paper)); }
+.jp .jp-intro-grid { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, .8fr); gap: clamp(28px, 4vw, 64px); align-items: center; }
+.jp .jp-intro h2 { font-size: clamp(32px, 3.4vw, 56px); margin: 10px 0 18px; }
+.jp .jp-intro-copy p:not(.jp-kicker) { max-width: 62ch; }
+.jp .jp-neha { position: relative; background: var(--conch); border-radius: 24px; padding: 30px 28px 26px; border: 3px solid var(--ink); box-shadow: 0 8px 0 var(--ink); outline: 2px dashed var(--sindoor); outline-offset: -12px; }
+.jp .jp-neha-tag { position: absolute; top: -16px; left: 24px; background: var(--sky); color: #fff; border: 3px solid var(--ink); border-radius: 999px; padding: 2px 14px; font: 900 13px var(--head); letter-spacing: .14em; text-transform: uppercase; }
+.jp .jp-neha-name { font: 900 clamp(26px, 2.2vw, 36px) var(--head); color: var(--lac); margin-bottom: 8px; }
+
+/* ---------- THE SCROLL ---------- */
+.jp .jp-scroll { background: var(--jp-gonddots, radial-gradient(circle, rgba(246,185,19,.5) 0 2px, transparent 2.5px) 0 0 / 22px 22px, radial-gradient(circle, rgba(224,65,143,.45) 0 1.6px, transparent 2px) 11px 11px / 22px 22px, var(--indigo)); }
+.jp .jp-scroll-head { text-align: center; color: #fff; margin-bottom: 34px; }
+.jp .jp-scroll-head .jp-kicker { color: var(--haldi); }
+.jp .jp-scroll-head h2 { font-size: clamp(34px, 3.6vw, 60px); margin-top: 10px; }
+.jp .jp-scroll-body { max-width: 1240px; margin: 0 auto; }
+.jp .jp-roller { display: block; width: calc(100% + 40px); max-width: none; margin-left: -20px; position: relative; z-index: 2; }
+.jp .jp-css-roller { height: 34px; border-radius: 20px; border: 3px solid var(--ink); background: repeating-linear-gradient(90deg, var(--sindoor) 0 26px, var(--haldi) 26px 34px, var(--sky) 34px 40px, var(--haldi) 40px 48px); box-shadow: 0 6px 0 var(--ink); }
+.jp .jp-pats { list-style: none; margin: -6px 0; padding: clamp(28px, 3vw, 48px) clamp(18px, 3vw, 48px); background: var(--jp-paper, var(--paper)); border-inline: 3px solid var(--ink); display: grid; gap: 0; }
+.jp .jp-pat { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: clamp(22px, 3vw, 48px); align-items: center; padding-block: clamp(28px, 3vw, 44px); }
+.jp .jp-pat + .jp-pat { position: relative; padding-top: calc(clamp(28px, 3vw, 44px) + 30px); }
+.jp .jp-pat + .jp-pat::before { content: ""; position: absolute; top: 0; left: 0; right: 0; height: 30px; border-block: 3px solid var(--ink); background: var(--jp-patflower, radial-gradient(circle, var(--haldi) 0 5px, var(--sindoor) 5.5px 8px, transparent 8.5px) 0 50% / 30px 100% repeat-x, var(--ink)); }
+.jp[data-skins~="patflower"] .jp-pat + .jp-pat::before { background-size: 600px 100%; }
+.jp .jp-pat--flip .jp-frame { order: 2; }
+.jp .jp-frame { margin: 0; border: 8px solid var(--conch); border-radius: 18px; box-shadow: 0 0 0 3px var(--ink), 0 0 0 10px var(--sindoor), 0 0 0 13px var(--ink), 0 18px 0 6px rgba(29,26,43,.25); overflow: hidden; background: var(--conch); }
+.jp .jp-pat[data-pat="2"] .jp-frame { box-shadow: 0 0 0 3px var(--ink), 0 0 0 10px var(--sky), 0 0 0 13px var(--ink), 0 18px 0 6px rgba(29,26,43,.25); }
+.jp .jp-pat[data-pat="3"] .jp-frame { box-shadow: 0 0 0 3px var(--ink), 0 0 0 10px var(--rani), 0 0 0 13px var(--ink), 0 18px 0 6px rgba(29,26,43,.25); }
+.jp .jp-pat[data-pat="4"] .jp-frame { box-shadow: 0 0 0 3px var(--ink), 0 0 0 10px var(--haldi), 0 0 0 13px var(--ink), 0 18px 0 6px rgba(29,26,43,.25); }
+.jp .jp-frame img { display: block; width: 100%; aspect-ratio: 4 / 3; object-fit: cover; border-radius: 10px; }
+.jp .jp-css-pat { aspect-ratio: 4 / 3; display: grid; place-items: center; border-radius: 10px; font: 900 clamp(26px, 2.6vw, 42px) var(--head); color: #fff; text-shadow: 0 3px 0 var(--ink);
+  background: radial-gradient(circle at 50% 50%, transparent 0 34%, rgba(255,255,255,.18) 34% 36%, transparent 36%), repeating-conic-gradient(from 0deg, rgba(255,255,255,.12) 0 10deg, transparent 10deg 20deg), var(--sindoor); }
+.jp .jp-pat[data-pat="2"] .jp-css-pat { background-color: var(--sky); }
+.jp .jp-pat[data-pat="3"] .jp-css-pat { background-color: var(--rani); }
+.jp .jp-pat[data-pat="4"] .jp-css-pat { background-color: var(--saffron); }
+.jp .jp-card { position: relative; background: var(--conch); border: 3px solid var(--ink); border-radius: 22px; padding: 52px clamp(20px, 2.4vw, 34px) 26px; box-shadow: 0 8px 0 var(--ink); }
+.jp .jp-card h3 { font-size: clamp(25px, 2.2vw, 36px); margin: 8px 0 12px; }
+.jp .jp-medal { position: absolute; top: -38px; left: 26px; width: 76px; height: 76px; display: grid; place-items: center; border-radius: 50%; border: 3px solid var(--ink); color: #fff;
+  background: radial-gradient(circle, transparent 0 22px, rgba(255,255,255,.9) 22px 23.5px, transparent 24px), repeating-conic-gradient(rgba(255,255,255,.75) 0 4deg, transparent 4deg 15deg), var(--sindoor); }
+.jp .jp-medal[data-pat="2"] { background-color: var(--sky); }
+.jp .jp-medal[data-pat="3"] { background-color: var(--rani); }
+.jp .jp-medal[data-pat="4"] { background-color: var(--saffron); }
+.jp .jp-medal img { position: absolute; inset: -10px; width: calc(100% + 20px); height: calc(100% + 20px); max-width: none; }
+.jp .jp-medal:has(img) { border: 0; background: none; }
+.jp .jp-medal b { position: relative; font: 900 32px var(--head) !important; text-shadow: 0 2px 0 var(--ink); }
+.jp .jp-ticks { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.jp .jp-ticks li { position: relative; padding-left: 38px; }
+.jp .jp-ticks li::before { content: "✓"; position: absolute; left: 0; top: 0; width: 26px; height: 26px; display: grid; place-items: center; border-radius: 50%; background: var(--sky); color: #fff; border: 2px solid var(--ink); font: 900 14px var(--head); }
+.jp .jp-example { margin-top: 18px; padding: 12px 16px; border-radius: 14px; border: 2px dashed var(--lac); background: #fff0f6; }
+.jp .jp-example b { color: var(--lac); font-family: var(--head); font-weight: 900; }
+.jp .jp-profile { margin-top: 18px; display: flex; align-items: center; gap: 12px; padding: 12px 14px; border: 3px solid var(--ink); border-radius: 16px; background: #fff; box-shadow: 0 5px 0 var(--ink); text-align: left; }
+.jp .jp-avatar { flex: none; width: 46px; height: 46px; display: grid; place-items: center; border-radius: 50%; background: var(--rani); color: #fff; border: 3px solid var(--ink); font: 900 22px var(--head); }
+.jp .jp-profile-who { flex: 1; min-width: 0; }
+.jp .jp-profile-who b { display: block; font: 900 18px var(--head); }
+.jp .jp-profile-who small { font-size: 14px; }
+.jp .jp-rate { flex: none; background: var(--haldi); border: 2px solid var(--ink); border-radius: 999px; padding: 4px 12px; font: 900 16px var(--head); }
+.jp .jp-keys { margin-top: 18px; display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
+.jp .jp-keys-say { flex-basis: 100%; font-style: italic; font-weight: 700; }
+.jp .jp-key { display: inline-flex; align-items: center; gap: 10px; padding: 6px 16px 6px 6px; border: 3px solid var(--ink); border-radius: 999px; font: 900 17px var(--head); box-shadow: 0 4px 0 var(--ink); }
+.jp .jp-key b { width: 36px; height: 36px; display: grid; place-items: center; border-radius: 50%; border: 2px solid var(--ink); background: #fff; font-size: 20px; }
+.jp .jp-key--yes { background: var(--haldi); }
+.jp .jp-key--no { background: #ffd0d6; }
+
+/* ---------- EARNINGS on Bidri ---------- */
+.jp .jp-ledger { color: #fff; background: var(--jp-bidri, radial-gradient(circle, rgba(214,218,226,.22) 0 1.6px, transparent 2px) 0 0 / 24px 24px, radial-gradient(circle, rgba(214,218,226,.12) 0 6px, transparent 6.5px) 12px 12px / 24px 24px, var(--gunmetal)); }
+.jp .jp-ledger .jp-kicker { color: var(--haldi); }
+.jp .jp-ledger h2 { font-size: clamp(34px, 3.6vw, 60px); margin: 10px 0 16px; }
+.jp .jp-ledger-lead { max-width: 70ch; }
+.jp .jp-split { list-style: none; margin: 30px 0; padding: 0; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; }
+.jp .jp-split li { position: relative; text-align: center; padding: 18px 10px; border-radius: 18px; border: 2px solid var(--silver); background: rgba(255,255,255,.06); }
+.jp .jp-split li + li::before { content: "→"; position: absolute; left: -15px; top: 50%; transform: translateY(-50%); font: 900 20px var(--head); color: var(--haldi); }
+.jp .jp-split small { display: block; font-size: 14px; color: var(--silver); }
+.jp .jp-split b { display: block; font: 900 clamp(28px, 2.6vw, 42px) var(--head); }
+.jp .jp-split .jp-split-you { background: var(--haldi); color: var(--ink); border-color: var(--ink); box-shadow: 0 6px 0 #000; }
+.jp .jp-split .jp-split-you small { color: var(--ink); }
+.jp .jp-ledger-grid { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, .9fr); gap: clamp(20px, 3vw, 44px); align-items: start; }
+.jp .jp-table { overflow-x: auto; border-radius: 20px; border: 3px solid var(--silver); background: var(--conch); color: var(--ink); }
+.jp .jp-table table { width: 100%; border-collapse: collapse; }
+.jp .jp-table caption { caption-side: top; text-align: left; padding: 14px 18px 4px; font: 900 16px var(--head); }
+.jp .jp-table th, .jp .jp-table td { padding: 12px 18px; text-align: left; border-bottom: 1px dashed rgba(29,26,43,.3); }
+.jp .jp-table th { font: 900 15px var(--head); }
+.jp .jp-table td:last-child { font: 900 18px var(--head); color: var(--lac); }
+.jp .jp-calc { border-radius: 20px; padding: 22px; background: var(--sky); border: 3px solid var(--ink); box-shadow: 0 8px 0 #000; display: grid; gap: 14px; }
+.jp .jp-calc-title { font: 900 22px var(--head); }
+.jp .jp-calc label { display: grid; gap: 6px; font-weight: 700; }
+.jp .jp-calc input { font: 800 20px var(--head); padding: 10px 14px; border-radius: 12px; border: 3px solid var(--ink); background: #fff; color: var(--ink); width: 100%; }
+.jp .jp-calc-out { font-weight: 700; padding: 12px 14px; border-radius: 14px; background: var(--ink); }
+.jp .jp-calc-out output { font: 900 22px var(--head); color: var(--haldi); }
+.jp .jp-calc-note { font-size: 14px; }
+.jp .jp-ledger-more { margin-top: 22px; }
+.jp .jp-ledger a { color: var(--haldi); font-weight: 800; }
+
+/* ---------- PRIVACY on Ikat ---------- */
+.jp .jp-promise { background: var(--jp-ikat, linear-gradient(45deg, transparent 40%, rgba(224,65,143,.35) 40% 60%, transparent 60%) 0 0 / 46px 46px, linear-gradient(-45deg, transparent 40%, rgba(246,185,19,.28) 40% 60%, transparent 60%) 0 0 / 46px 46px, var(--ikat)); text-align: center; }
+.jp .jp-promise .jp-kicker { color: var(--haldi); }
+.jp .jp-promise h2 { color: #fff; font-size: clamp(34px, 3.6vw, 60px); margin: 10px 0 34px; }
+.jp .jp-promises { list-style: none; margin: 0 auto; padding: 0; max-width: 1240px; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: clamp(16px, 2vw, 28px); }
+.jp .jp-promises li { background: var(--conch); border: 3px solid var(--ink); border-radius: 26px; padding: 22px 22px 26px; box-shadow: 0 8px 0 var(--ink); }
+.jp .jp-promises img, .jp .jp-css-promise { display: block; width: 132px; height: 132px; margin: 0 auto 10px; }
+.jp .jp-css-promise { display: grid; place-items: center; border-radius: 50%; border: 3px solid var(--ink); font-size: 54px; color: var(--ink); background: radial-gradient(circle, transparent 0 46px, rgba(29,26,43,.5) 46px 48px, transparent 48px), repeating-conic-gradient(rgba(29,26,43,.35) 0 3deg, transparent 3deg 12deg), var(--haldi); }
+.jp .jp-promises li[data-tone="rani"] .jp-css-promise { background-color: #ffb3d4; }
+.jp .jp-promises li[data-tone="sky"] .jp-css-promise { background-color: #a9d3ff; }
+.jp .jp-promises h3 { font-size: clamp(22px, 1.8vw, 28px); margin-bottom: 8px; }
+
+/* ---------- CLOSE on Kalamkari ---------- */
+.jp .jp-close { background: var(--jp-kalamkari, radial-gradient(circle, rgba(163,50,42,.28) 0 7px, transparent 7.5px) 0 0 / 40px 40px, radial-gradient(circle, rgba(38,48,110,.25) 0 4px, transparent 4.5px) 20px 20px / 40px 40px, #f3e2c3); }
+.jp .jp-close-grid { display: grid; justify-items: center; text-align: center; }
+.jp .jp-close-grid.has-art { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: clamp(28px, 4vw, 64px); align-items: center; justify-items: stretch; text-align: left; }
+.jp .jp-close-art { display: block; width: min(100%, 580px); margin: 0 auto; border: 8px solid #fff; border-radius: 24px; box-shadow: 0 0 0 3px var(--ink), 0 10px 0 3px var(--ink); }
+.jp .jp-close-copy { background: var(--conch); border: 3px solid var(--ink); border-radius: 26px; padding: clamp(24px, 3vw, 40px); box-shadow: 0 8px 0 var(--ink); max-width: 720px; }
+.jp .jp-close h2 { font-size: clamp(34px, 3.6vw, 60px); margin: 10px 0 14px; }
+.jp .jp-close-copy a:not(.jp-btn) { color: var(--lac); font-weight: 800; }
+.jp .jp-close-grid:not(.has-art) .jp-ctas { justify-content: center; }
+
+/* ---------- phones + small tablets: one column, everything centred ---------- */
+@media (max-width: 900px) {
+  .jp { --gut: max(16px, env(safe-area-inset-left, 0px)); --gut-r: max(16px, env(safe-area-inset-right, 0px)); }
+  .jp .jp-hero-grid, .jp .jp-intro-grid, .jp .jp-pat, .jp .jp-ledger-grid, .jp .jp-close-grid.has-art { grid-template-columns: minmax(0, 1fr); }
+  .jp .jp-hero-copy, .jp .jp-intro-copy, .jp .jp-card, .jp .jp-close-copy, .jp .jp-ledger { text-align: center; }
+  .jp .jp-hero-art { order: -1; }
+  .jp .jp-hero-art img, .jp .jp-css-hero { width: min(100%, 380px); }
+  .jp .jp-facts { grid-template-columns: minmax(0, 1fr); max-width: 360px; margin-left: auto; margin-right: auto; }
+  .jp .jp-intro-copy p:not(.jp-kicker), .jp .jp-ledger-lead { margin-left: auto; margin-right: auto; }
+  .jp .jp-pat--flip .jp-frame { order: 0; }
+  .jp .jp-scroll .jp-wrap { padding-left: 8px; padding-right: 8px; }
+  .jp .jp-pats { padding-inline: 12px; }
+  .jp .jp-pat { gap: 52px; }
+  .jp .jp-card { padding: 54px 16px 22px; }
+  .jp .jp-profile { flex-wrap: wrap; justify-content: center; text-align: center; }
+  .jp .jp-profile-who { flex-basis: calc(100% - 60px); text-align: left; }
+  .jp .jp-medal { left: 50%; transform: translateX(-50%); }
+  .jp .jp-ticks, .jp .jp-example, .jp .jp-calc { text-align: left; }
+  .jp .jp-keys { justify-content: center; }
+  .jp .jp-split { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .jp .jp-split li:nth-child(3)::before { content: none; }
+  .jp .jp-promises { grid-template-columns: minmax(0, 1fr); max-width: 420px; }
+  .jp .jp-table th, .jp .jp-table td { padding: 10px 8px; font-size: 14px; }
+  .jp .jp-table td:last-child { font-size: 15px; }
+  .jp .jp-table caption { padding: 12px 10px 4px; font-size: 14px; }
+  .jp .jp-ctas { flex-direction: column; align-items: stretch; max-width: 360px; margin-left: auto; margin-right: auto; }
+  .jp .jp-btn { min-height: 52px; font-size: 16px !important; line-height: 1.15; }
+  .jp[data-skins~="btn"] .jp-btn:not(.jp-btn--blue), .jp[data-skins~="btn2"] .jp-btn--blue { min-height: 48px; border-width: 0 56px; border-image-width: 0 56px; }
+  .jp .jp-roller { width: calc(100% + 16px); margin-left: -8px; }
+}
+@media (prefers-reduced-motion: reduce) { .jp .jp-btn { transition: none; } }
+.jp .jp-facts b, .jp .jp-split b, .jp .jp-neha-name, .jp .jp-calc-title, .jp .jp-calc-out output, .jp .jp-profile-who b, .jp .jp-rate, .jp .jp-key, .jp .jp-avatar, .jp .jp-kicker, .jp .jp-masthead { font-family: var(--head) !important; font-weight: 900 !important; }
