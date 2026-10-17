@@ -20,7 +20,8 @@ export function checkHelloFraandsPages(root, identity) {
     assert.equal((html.match(/<h1[ >]/g) || []).length, 1, `${route}: one H1`);
     // [HELLO-FRAANDS-FAQ-1] /faq is a standalone help page (topic tiles, search,
     // accordions), not the HelloFraandsPage legal layout, so it has no summary/date line.
-    if (route !== '/faq') {
+    // [HF-HOW-COMIC-1 2026-10-18] /how-it-works is a standalone comic page (owner redesign), not the legal layout.
+    if (route !== '/faq' && route !== '/how-it-works') {
       assert.match(body, /class="hf-hindi"[^>]*>\s*<em\b/, `${route}: italic Hindi summary`);
       const registrationPolicies = new Set(['/terms', '/privacy', '/disclaimer', '/community-guidelines']);
       const datedContentPages = new Set(['/about', '/contact', '/cookies', '/data-deletion', '/grievance', '/intermediary-policy', '/press', '/report', '/hosts/agreement', '/hosts/kyc']);
@@ -53,7 +54,9 @@ export function checkHelloFraandsPages(root, identity) {
   const faq = pages.get('/faq').match(/<main\b[^>]*>[\s\S]*?<\/main>/)?.[0] || '';
   assert((faq.match(/<details\b[^>]*class="faq-item"/g) || []).length >= 15, 'FAQ has at least 15 accessible accordions');
   assert((pages.get('/faq').match(/"@type":"FAQPage"/g) || []).length === 1, 'FAQ emits FAQPage structured data once');
-  assert.equal((pages.get('/how-it-works').match(/class="phone-frame"/g) || []).length, 3, 'Three masked-call steps');
+  // [HF-HOW-COMIC-1] The comic page tells the masked call in a three-panel strip; billing is by the minute.
+  assert.equal((pages.get('/how-it-works').match(/<ol class="hw-strip"[\s\S]*?<\/ol>/)?.[0].match(/<li\b/g) || []).length, 3, 'Three masked-call steps');
+  assert(!/by the second|Google Play|Razorpay|Cashfree/i.test(text(pages.get('/how-it-works').match(/<main\b[^>]*>[\s\S]*?<\/main>/)?.[0] || '')), 'How it works: per-minute billing, no payment-gateway names');
   const hostJoin = text(pages.get('/hosts/join'));
   for (const copy of [
     'Influencers complete full video KYC and choose a fan price from ₹5 to ₹1,000 per minute',

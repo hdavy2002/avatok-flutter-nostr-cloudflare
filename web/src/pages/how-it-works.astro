@@ -1,14 +1,210 @@
 ---
-import { BRAND } from '../lib/brand';
-import HelloFraandsPage from '../layouts/HelloFraandsPage.astro';
-import MaskedCallSteps from '../components/callvaal/MaskedCallSteps.astro';
+// [HF-HOW-KALA-1 2026-10-18] /how-it-works — "Teen Kadam, Teen Kala" (three steps, three art forms). Owner: an Indian
+// theme with borders, blocks, prints, Warli, Rajasthani and Kashmiri art; brand-new layout and artwork found nowhere
+// else on the site; a worked example so the 1-2-3 steps are easy to follow. Each step is painted in its own folk art:
+//   1 Dhoondo (find)        → Warli, Maharashtra (white figures on mud red)
+//   2 Wallet bharo (top up) → Phad, Rajasthan (bold scroll painting on leheriya)
+//   3 Baat karo (talk)      → Kashmiri papier-mache (gold and jewel colours on lacquer blue)
+// stitched together with Ajrakh, Sozni and Phulkari borders; the bill sits on Dabu indigo print.
+// Art: /assets/hf-how/ (slots + CSS stand-ins in components/how/howSkin.ts). Prompt pack: SaatHum project doc
+// claude/hello-fraands-how-it-works-artwork-prompts.md. Styles: styles/how-comic.css (scoped `.hw`).
+// Billing copy (owner 2026-10-18): fans pay BY THE MINUTE at the influencer's rate. Never describe per-second billing or
+// rounding, and never name the payment gateway / app store.
 export const prerender = true;
+
+import Base from '../layouts/Base.astro';
+import SiteHeader from '../components/callvaal/Header.astro';
+import SiteFooter from '../components/callvaal/Footer.astro';
+import { publicImage } from '../lib/config';
+import { BRAND } from '../lib/brand';
+import type { PublicContent } from '../lib/seo/types';
+import { HOW_ART, HOW_BG, HOW_SKINS } from '../components/how/howSkin';
+import '../styles/desi-home-chrome.css';
+import '../styles/how-comic.css';
+
+const content: PublicContent = {
+  kind: 'collection',
+  key: 'how-it-works',
+  canonicalPath: '/how-it-works',
+  title: 'How it works: find, top up, talk',
+  summary: `How ${BRAND.name} works in three easy steps: find your favourite influencer, add money to your wallet, and talk on a private call. You pay by the minute at the influencer's rate, and your number stays private.`,
+  visibility: 'public',
+};
+const img = (p: string, w: number) => publicImage(p, { width: w, fit: 'scale-down' });
+const vars = [
+  ...HOW_BG.map((o) => `--hw-${o.key}:url(${img(o.path, o.width)}) ${o.tail}`),
+  ...HOW_SKINS.map((o) => `--hw-${o.key}:url(${img(o.path, o.width)})`),
+].join(';');
+const skins = [...HOW_BG, ...HOW_SKINS].map((o) => o.key).join(' ');
+const rate = 20; const mins = 10; const wallet = 300;
 ---
-<HelloFraandsPage title="How it works" summary="Teen aasaan kadam, bina apna number share kiye.">
-<h2>Your number stays yours</h2><p>When you start a call, we call the influencer first and say that you want to talk. The influencer can accept or decline. Only if the influencer accepts do we call you and join the two calls. Both calls come from a {BRAND.name} number, so neither person is shown the other's personal phone number. Please do not share yours on the call.</p>
-<MaskedCallSteps />
-<h2>Add money to your wallet</h2><p>Sign in, open your wallet and choose an amount to add. The price of the pack includes 18% GST, and your wallet gets the amount without GST. For example, pay ₹120 and ₹101.69 goes into your wallet. You see the total, the GST and the amount added before you pay. Money is added only after Google Play confirms your payment.</p>
-<h2>Pay by the second</h2><p>Each influencer sets their own per-minute rate, and you see it on their profile before you call. You pay only for the seconds you are connected. Ringing, a declined call or a failed connection costs ₹0. You need enough money in your wallet to start the call. The call runs until either person hangs up or your wallet money ends, and you hear "one minute left" before that. See <a href="/wallet-terms">wallet terms</a> for details.</p>
-<h2>Want to keep talking?</h2><p>Open your wallet again, add money and wait for Google Play to confirm it. Then start a new call with an available influencer. See <a href="/wallet-terms">wallet terms</a> and <a href="/refunds">refunds</a> for billing details.</p>
-<p>The current site is a preview with illustrative profiles. Calls and payments are unavailable in the preview.</p>
-</HelloFraandsPage>
+<Base content={content} chrome={false} indiaLandingLanguage={false}>
+  <Fragment slot="head">
+    <meta name="theme-color" content="#fff3dc" />
+    <link rel="preload" as="style" onload="this.onload=null;this.rel='stylesheet'" href="https://fonts.googleapis.com/css2?family=Comfortaa:wght@500;600;700&family=Nunito:wght@700;800;900&display=swap" />
+  </Fragment>
+  <div class="hw desi-home" style={vars} data-skins={skins || undefined}>
+    <a class="hw-skip" href="#main-content">Skip to main content</a>
+    <SiteHeader />
+    <main id="main-content" class="hw-main">
+
+      <!-- COVER: Sanganeri print ground -->
+      <section class="hw-cover" aria-labelledby="hw-title">
+        <div class="hw-wrap hw-cover-grid">
+          <div class="hw-cover-copy">
+            <p class="hw-masthead"><span>Teen kadam</span><span>Teen kala</span></p>
+            <h1 id="hw-title">How it <span class="hw-pop">works</span></h1>
+            <p class="hf-hindi hw-hindi"><em>Teen aasaan kadam, bina apna number share kiye.</em></p>
+            <p class="hw-lead">Find your favourite influencer, add money to your wallet, and talk on a private call. You pay by the minute, at the rate the influencer sets.</p>
+            <nav class="hw-chips" aria-label="The three steps">
+              <a href="#step-1" data-craft="warli"><b>1</b><span>Dhoondo<small>Warli</small></span></a>
+              <a href="#step-2" data-craft="phad"><b>2</b><span>Wallet bharo<small>Phad</small></span></a>
+              <a href="#step-3" data-craft="kashmir"><b>3</b><span>Baat karo<small>Kashmiri</small></span></a>
+            </nav>
+          </div>
+          <div class="hw-cover-art">
+            {HOW_ART.cover
+              ? <img src={img(HOW_ART.cover, 1100)} alt="Illustration of Riya holding her phone, surrounded by Warli, Rajasthani and Kashmiri folk-art scenes" width="1100" height="1100" fetchpriority="high" decoding="async" />
+              : <div class="hw-css-cover" aria-hidden="true"><span data-craft="warli">1</span><span data-craft="phad">2</span><span data-craft="kashmir">3</span></div>}
+          </div>
+        </div>
+      </section>
+      <div class="hw-band hw-band--ajrakh" aria-hidden="true"></div>
+
+      <!-- MEET RIYA -->
+      <section class="hw-intro" aria-labelledby="hw-meet">
+        <div class="hw-wrap">
+          <div class="hw-intro-card">
+            <h2 id="hw-meet">Meet Riya.</h2>
+            <p>Riya has watched Kabir's travel reels for two years. Today she wants to actually talk to him. Follow her through three steps, each one painted in a different Indian art. You can do the same with any influencer on {BRAND.name}.</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- STEP 1 · WARLI -->
+      <div class="hw-band hw-band--warli" aria-hidden="true"></div>
+      <section class="hw-step" data-craft="warli" id="step-1" aria-labelledby="hw-s1">
+        <div class="hw-wrap hw-step-grid">
+          <figure class="hw-frame">
+            {HOW_ART.warli ? <img src={img(HOW_ART.warli, 1000)} alt="Warli-style painting: Riya scrolling Explore on her phone and finding Kabir among many influencers" width="1000" height="750" loading="lazy" decoding="async" /> : <div class="hw-css-panel" aria-hidden="true"><svg viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><circle cx="28" cy="28" r="16"/><path d="m40 40 14 14"/></svg></div>}
+            <figcaption>Warli · Maharashtra</figcaption>
+          </figure>
+          <div class="hw-card">
+            <span class="hw-medal">{HOW_ART.medal1 && <img src={img(HOW_ART.medal1, 300)} alt="" width="150" height="150" aria-hidden="true" />}<b>1</b></span>
+            <p class="hw-kicker">Kadam ek · Dhoondo</p>
+            <h2 id="hw-s1">Find your influencer.</h2>
+            <p>Open <a href="/marketplace">Explore</a> and search by name, topic or language. Every profile shows the influencer's <strong>per-minute rate</strong> before you call, and whether they are online now.</p>
+            <div class="hw-example" aria-label="Example profile">
+              <span class="hw-example-tag">Example</span>
+              <div class="hw-profile"><span class="hw-avatar" aria-hidden="true">K</span><div><b>Kabir</b><small>Travel · Hindi, English</small></div><span class="hw-rate">₹{rate}/min</span></div>
+              <p class="hw-online"><i aria-hidden="true"></i>Online now</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- STEP 2 · PHAD -->
+      <div class="hw-band hw-band--phad" aria-hidden="true"></div>
+      <section class="hw-step" data-craft="phad" id="step-2" aria-labelledby="hw-s2">
+        <div class="hw-wrap hw-step-grid hw-step-grid--flip">
+          <figure class="hw-frame">
+            {HOW_ART.phad ? <img src={img(HOW_ART.phad, 1000)} alt="Rajasthani Phad-style painting: Riya adding money to her wallet on her phone" width="1000" height="750" loading="lazy" decoding="async" /> : <div class="hw-css-panel" aria-hidden="true"><svg viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-width="3" stroke-linejoin="round"><rect x="8" y="16" width="48" height="36" rx="5"/><path d="M8 26h48M40 38h8"/></svg></div>}
+            <figcaption>Phad · Rajasthan</figcaption>
+          </figure>
+          <div class="hw-card">
+            <span class="hw-medal">{HOW_ART.medal2 && <img src={img(HOW_ART.medal2, 300)} alt="" width="150" height="150" aria-hidden="true" />}<b>2</b></span>
+            <p class="hw-kicker">Kadam do · Wallet bharo</p>
+            <h2 id="hw-s2">Add money to your wallet.</h2>
+            <p>Sign in, open your wallet and choose an amount. The price includes 18% GST, and you see the total, the GST and the amount that goes into your wallet <strong>before you pay</strong>. The money is added as soon as your payment is confirmed.</p>
+            <div class="hw-example" aria-label="Example wallet">
+              <span class="hw-example-tag">Example</span>
+              <div class="hw-wallet"><span>Riya's wallet</span><b>₹{wallet}</b></div>
+              <p class="hw-note">Enough for a {wallet / rate}-minute chat with Kabir at ₹{rate}/min.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- STEP 3 · KASHMIRI -->
+      <div class="hw-band hw-band--sozni" aria-hidden="true"></div>
+      <section class="hw-step" data-craft="kashmir" id="step-3" aria-labelledby="hw-s3">
+        <div class="hw-wrap">
+          <div class="hw-step-grid">
+            <figure class="hw-frame">
+              {HOW_ART.kashmir ? <img src={img(HOW_ART.kashmir, 1000)} alt="Kashmiri papier-mache style painting: Riya and Kabir talking on their phones, chinar leaves between them" width="1000" height="750" loading="lazy" decoding="async" /> : <div class="hw-css-panel" aria-hidden="true"><svg viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-width="3" stroke-linejoin="round"><path d="M14 10h12l4 12-7 5c4 8 8 12 16 16l5-7 12 4v12c0 3-2 5-5 5C26 56 8 38 8 15c0-3 3-5 6-5Z"/></svg></div>}
+              <figcaption>Papier-mâché · Kashmir</figcaption>
+            </figure>
+            <div class="hw-card">
+              <span class="hw-medal">{HOW_ART.medal3 && <img src={img(HOW_ART.medal3, 300)} alt="" width="150" height="150" aria-hidden="true" />}<b>3</b></span>
+              <p class="hw-kicker">Kadam teen · Baat karo</p>
+              <h2 id="hw-s3">Tap Call and talk.</h2>
+              <p>When you tap Call, we ring the influencer first. Only if they accept do we ring you and join the two calls. Both calls come from a {BRAND.name} number, so <strong>neither of you sees the other's personal number</strong>. Please do not share yours on the call.</p>
+            </div>
+          </div>
+          <ol class="hw-strip" aria-label="What happens when Riya taps Call">
+            <li data-craft="warli">
+              {HOW_ART.call1 ? <img src={img(HOW_ART.call1, 600)} alt="" width="600" height="600" loading="lazy" decoding="async" /> : <div class="hw-css-tile" aria-hidden="true">Call</div>}
+              <p><b>1</b><span>Riya taps <strong>Call</strong> on Kabir's profile.</span></p>
+            </li>
+            <li data-craft="phad">
+              {HOW_ART.call2 ? <img src={img(HOW_ART.call2, 600)} alt="" width="600" height="600" loading="lazy" decoding="async" /> : <div class="hw-css-tile" aria-hidden="true">Accept?</div>}
+              <p><b>2</b><span>We ring Kabir first. He taps <strong>accept</strong>.</span></p>
+            </li>
+            <li data-craft="kashmir">
+              {HOW_ART.call3 ? <img src={img(HOW_ART.call3, 600)} alt="" width="600" height="600" loading="lazy" decoding="async" /> : <div class="hw-css-tile" aria-hidden="true">Hello!</div>}
+              <p><b>3</b><span>We ring Riya and join the calls. <strong>Numbers stay private.</strong></span></p>
+            </li>
+          </ol>
+        </div>
+      </section>
+
+      <!-- HISAAB on Dabu indigo -->
+      <div class="hw-band hw-band--ajrakh" aria-hidden="true"></div>
+      <section class="hw-bill" id="how-you-pay" aria-labelledby="hw-pay">
+        <div class="hw-wrap hw-bill-grid">
+          <div class="hw-bill-copy">
+            <p class="hw-kicker">Seedha hisaab</p>
+            <h2 id="hw-pay">How you pay.</h2>
+            <ul class="hw-rules">
+              <li><b>By the minute.</b> Each influencer sets their own per-minute rate, shown on their profile.</li>
+              <li><b>₹0 if you don't connect.</b> Ringing, a declined call or a call that never connects costs nothing.</li>
+              <li><b>A heads-up before you run out.</b> You need enough money in your wallet to start. You hear "one minute left" before your balance ends, and the call ends when either of you hangs up or your wallet runs out.</li>
+              <li><b>Want to keep talking?</b> Add money and call again.</li>
+            </ul>
+            <p class="hw-small">Billing details: <a href="/wallet-terms">wallet terms</a> and <a href="/refunds">refunds</a>.</p>
+          </div>
+          <div class="hw-receipt" aria-label="Example bill">
+            <p class="hw-receipt-head">Riya's call with Kabir</p>
+            <dl>
+              <div><dt>Kabir's rate</dt><dd>₹{rate} / min</dd></div>
+              <div><dt>Call length</dt><dd>{mins} min</dd></div>
+              <div class="hw-receipt-sum"><dt>From wallet</dt><dd>₹{rate * mins}</dd></div>
+              <div><dt>Wallet before</dt><dd>₹{wallet}</dd></div>
+              <div class="hw-receipt-left"><dt>Wallet left</dt><dd>₹{wallet - rate * mins}</dd></div>
+            </dl>
+            <p class="hw-receipt-foot">{mins} min × ₹{rate} = ₹{rate * mins}</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- CTA on Phulkari -->
+      <div class="hw-band hw-band--phulkari" aria-hidden="true"></div>
+      <section class="hw-next" aria-labelledby="hw-next">
+        <div class:list={['hw-wrap', 'hw-next-grid', { 'has-art': HOW_ART.cta }]}>
+          {HOW_ART.cta && <img class="hw-next-art" src={img(HOW_ART.cta, 900)} alt="Phulkari-style illustration of Riya waving, with influencers waving from phone screens around her" width="900" height="720" loading="lazy" decoding="async" />}
+          <div class="hw-next-copy">
+            <p class="hw-kicker">Ab aapki baari</p>
+            <h2 id="hw-next">Your turn.</h2>
+            <p>Find someone you love watching and say hello. Your number stays private, always.</p>
+            <div class="hw-ctas">
+              <a class="hw-btn" href="/marketplace">Find an influencer →</a>
+              <a class="hw-btn hw-btn--light" href="/hosts/join">Become an influencer</a>
+            </div>
+          </div>
+        </div>
+      </section>
+      <p class="hw-fine">The current site is a preview with illustrative profiles. Calls and payments are unavailable in the preview.</p>
+    </main>
+    <SiteFooter />
+  </div>
+</Base>
