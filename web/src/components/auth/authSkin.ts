@@ -31,6 +31,9 @@ const SKINS: [string, string, number][] = [
   ['dark', `${A}/buttons/key-dark.png`, 900],
   ['light', `${A}/buttons/key-light.png`, 900],
   ['small', `${A}/buttons/key-small.png`, 500],
+  ['field', `${A}/fields/field-frame.png`, 600],
+  ['fieldfocus', `${A}/fields/field-frame-focus.png`, 600],
+  ['tick', `${A}/fields/field-tick.png`, 600],
 ];
 export const AUTH_BG = BG.filter(([, p]) => has(p)).map(([key, path, width]) => ({ key, path, width }));
 export const AUTH_SKINS = SKINS.filter(([, p]) => has(p)).map(([key, path, width]) => ({ key, path, width }));
