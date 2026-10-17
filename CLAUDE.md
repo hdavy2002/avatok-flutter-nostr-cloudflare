@@ -13,6 +13,16 @@ reason.
 
 ---
 
+## 🎨 HELLO FRAANDS DESIGN SYSTEM — `Specs/HF-DESIGN-SYSTEM.md` (owner decision 2026-10-17)
+
+The desi homepage (truck art, toran, Warli, block print, Hinglish stickers) IS the site's design
+system: colour tokens, Nunito/Comfortaa type, hard-shadow buttons and cards, artwork library,
+section bands and phone/tablet rules. **Every new Hello Fraands page and every page you modify
+follows it.** Read it before any page, component or artwork work; when the homepage changes the
+design, update the file in the same commit.
+
+---
+
 ## 🌐 DEPLOY TARGET IS aumfe.com (owner decision 2026-10-01)
 
 The brand is now **Aum Fe** at **aumfe.com** (formerly Saa Thum / saathum.com).

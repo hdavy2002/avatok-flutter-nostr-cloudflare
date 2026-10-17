@@ -37,7 +37,7 @@ def sub1(old, new):
 sub1('href="#explore" class="btn btn-dark">Find your people', 'href="#people" class="btn btn-dark" data-home-cta="find-people">Find your people')
 sub1('<a href="#how" class="btn btn-light">', '<a href="#how-it-works" class="btn btn-light" data-home-cta="how-it-works">')
 sub1('<section id="how" ', '<section id="how-it-works" data-home-section="how-it-works" ')
-sub1('<section id="explore" class="wrap" style="padding: 24px 0 96px">', '<section id="people" data-home-section="creators" class="wrap" style="padding: 24px 0 96px"><span id="naye-dost" class="dh-anchor"></span>')
+sub1('<section id="explore" class="wrap creators-sec" style="padding: 88px 0 96px">', '<section id="people" data-home-section="creators" class="wrap creators-sec" style="padding: 88px 0 96px"><span id="naye-dost" class="dh-anchor"></span>')
 sub1('<!-- ===== REASONS (Warli icons, block-print cards) ===== -->\n<section style="position: relative">', '<!-- ===== REASONS (Warli icons, block-print cards) ===== -->\n<section id="moods" data-home-section="reasons" style="position: relative">')
 sub1('<!-- ===== PRIVACY (elephant) ===== -->\n<section style="position: relative; overflow: hidden">', '<!-- ===== PRIVACY (elephant) ===== -->\n<section id="safety" data-home-section="privacy" style="position: relative; overflow: hidden">')
 sub1('<section id="top" class="hero wrap"', '<section id="top" data-home-section="hero" class="hero wrap"')

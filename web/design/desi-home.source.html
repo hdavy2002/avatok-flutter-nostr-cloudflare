@@ -70,6 +70,12 @@ a{color:#30245f}a:hover{color:#be246e}
  .foot{gap:22px 16px !important}
 }
 
+/* [HF-DESIGN-SYSTEM-1] creators band: full-width paper + block-print wash so it reads as its own section */
+.creators-sec{position:relative;isolation:isolate}
+.creators-sec::before,.creators-sec::after{content:"";position:absolute;top:0;bottom:0;left:50%;width:100vw;transform:translateX(-50%);z-index:-1}
+.creators-sec::before{background:#fffdf7}
+.creators-sec::after{background:var(--dh-block-print-tile) repeat center/320px;opacity:.12}
+@media (max-width:900px){.creators-sec{padding-top:64px !important;padding-bottom:72px !important}}
 /* [HF-HOME-POLISH-2] the yellow highlight is its own box under the line above, so it never covers that line */
 .hl{display:inline-block;line-height:1.06;margin-top:.12em;padding-bottom:.02em}
 @media (min-width:901px){
@@ -328,7 +334,8 @@ a{color:#30245f}a:hover{color:#be246e}
 </section>
 
 <!-- ===== CREATORS (block-print framed cards) ===== -->
-<section id="explore" class="wrap" style="padding: 24px 0 96px">
+<div class="bp-border" aria-hidden="true"></div>
+<section id="explore" class="wrap creators-sec" style="padding: 88px 0 96px">
   <div class="creators-head" style="display: flex; flex-wrap: wrap; align-items: end; justify-content: space-between; gap: 20px">
     <div class="center-m">
       <div class="eyebrow">No one does you like you</div>

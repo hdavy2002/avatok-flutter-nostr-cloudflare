@@ -26,7 +26,7 @@ html[data-site-auth=in] .cv-header[data-auth-mode=auto] .cv-auth-out{display:non
 .cv-footer-brand{display:flex;justify-content:space-between;align-items:flex-start;gap:20px;flex-wrap:wrap;margin-bottom:28px}
 .cv-footer-brand p{margin:0;color:#785979}
 .cv-footer-columns{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:28px}
-.cv-footer-group summary{min-height:44px;font-weight:700;list-style:none;line-height:1.5;cursor:default}
+.cv-footer-group summary{min-height:44px;font-family:Nunito,system-ui,sans-serif!important;font-weight:900;font-size:1.25rem;color:#30245f;letter-spacing:.01em;list-style:none;line-height:1.5;cursor:default}/* [HF-DESIGN-SYSTEM-1] column headers read as headers, not links */
 .cv-footer-group summary::-webkit-details-marker{display:none}
 .cv-footer-group ul{padding:0;margin:8px 0 0;list-style:none}
 .cv-footer-group li{margin:0}
