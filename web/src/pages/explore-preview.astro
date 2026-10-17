@@ -73,18 +73,6 @@ const marquee = ['HORN OK PLEASE', 'REEL SE REAL TAK', 'EK CALL TOH BANTA HAI', 
             </form>
             <div class="suggest" id="suggest" role="listbox" hidden></div>
           </div>
-          <div class="trend"><span class="lbl">Trending:</span>
-            <button class="skin-chip" type="button" data-q="Sonali">Sonali</button>
-            <button class="skin-chip" type="button" data-q="Pahadi">Pahadi food</button>
-            <button class="skin-chip" type="button" data-q="Tamil">Tamil</button>
-            <button class="skin-chip" type="button" data-q="Comedy">Comedy</button>
-          </div>
-          <div class="stats">
-            <div><b>1,240</b>creators to call</div>
-            <div><b><span class="pulse"></span><span id="onlineCt">312</span></b>online right now</div>
-            <div><b>₹10</b>calls from, per min</div>
-            <img class="hero-sticker" src={sticker('phone-karo-na')} alt="Phone karo na!" width="420" height="245" />
-          </div>
         </div>
         <div class="art">
           <img class="doodles" src={img('hero/hero-doodles.png', 640)} alt="" width="640" height="640" aria-hidden="true" />
@@ -143,7 +131,8 @@ const marquee = ['HORN OK PLEASE', 'REEL SE REAL TAK', 'EK CALL TOH BANTA HAI', 
       <section class="sec paper">
         <div class="wrap">
           <div class="shead">
-            <div><span class="eyebrow">Phone uthao</span><h2>Available for <span class="hl">calls.</span></h2><p>Online now or free later today. Tap Book call and pick Call now or a time that suits you.</p></div>
+            <div><span class="eyebrow">Phone uthao</span><h2>Available for <span class="hl">calls.</span></h2><p>Online now or free later today. Tap Book call and pick Call now or a time that suits you.</p>
+              <div class="stats"><div><b><span class="pulse"></span><span id="onlineCt">312</span></b>online right now</div><div><b>1,240</b>creators to call</div><div><b>₹10</b>calls from, per min</div></div></div>
             <img class="sticker" src={sticker('abhi-free-hai')} alt="Abhi free hai!" width="420" height="245" loading="lazy" />
             <a class="seeall" href="#results" data-quick="online">See everyone online <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" aria-hidden="true"><path d="M7 17 17 7M9 7h8v8"/></svg></a>
           </div>
@@ -164,7 +153,7 @@ const marquee = ['HORN OK PLEASE', 'REEL SE REAL TAK', 'EK CALL TOH BANTA HAI', 
 
       <section class="sec orange">
         <div class="wrap">
-          <div class="shead"><div><span class="eyebrow">Apna scene chuno</span><h2>Browse by category.</h2></div></div>
+          <div class="shead"><div><span class="eyebrow">Apna scene chuno</span><h2>Browse by category.</h2></div><img class="sticker" src={sticker('phone-karo-na')} alt="Phone karo na!" width="420" height="245" loading="lazy" /></div>
           <div class="tiles" id="tiles"></div>
         </div>
       </section>

@@ -241,9 +241,10 @@ function update(keepPop){
 /* ---------- search + autocomplete ---------- */
 const q=$('#q'),sg=$('#suggest');let sel=-1,items=[];
 function avatar(c){return `<span class="av">${smallImg(c)}</span>`}
+const TRENDING=[['Sonali','Sonali'],['Pahadi','Pahadi food'],['Tamil','Tamil creators'],['Comedy','Comedy']];
 function suggest(){
  const v=q.value.trim();
- if(!v){sg.hidden=true;q.setAttribute('aria-expanded','false');return}
+ if(!v){items=TRENDING.map(t=>({t:'q',v:t[0]}));sg.innerHTML='<h4>Trending searches</h4>'+TRENDING.map(([t,l],i)=>`<button class="sg" type="button" role="option" data-i="${i}"><span class="av" style="display:grid;place-items:center;background:#fbd447;font-weight:900">#</span><span class="who"><b>${esc(l)}</b><span>Popular this week</span></span></button>`).join('');sg.hidden=false;q.setAttribute('aria-expanded','true');sel=-1;return}
  const reg=C.filter(c=>matchQ(c,v)).slice(0,5),dis=D.filter(d=>matchQ(d,v)).slice(0,3);
  const topics=[...Object.keys(CAT),...LANGS].filter(t=>t.toLowerCase().startsWith(v.toLowerCase())).slice(0,3);
  items=[];let h='';
@@ -256,7 +257,8 @@ function suggest(){
 function pick(i){
  const it=items[i];if(!it)return;sg.hidden=true;
  if(it.t==='c'){openBooking(it.c.id);return}
- if(it.t==='d'){S.q=it.d.name;q.value=it.d.name}
+ if(it.t==='q'){S.q=it.v;q.value=it.v}
+ else if(it.t==='d'){S.q=it.d.name;q.value=it.d.name}
  else if(it.t==='topic'){q.value='';S.q='';(CAT[it.v]?S.category:S.language).add(it.v)}
  else S.q=q.value.trim();
  update();scrollToResults();
@@ -379,7 +381,7 @@ const setH=()=>ROOT.style.setProperty('--hdr',hdrH()+'px');
 const hdr=$('.cv-header');if(hdr)new ResizeObserver(setH).observe(hdr);setH();
 
 /* live-ish online counter */
-setInterval(()=>{const el=$('#onlineCt');el.textContent=300+Math.floor(Math.random()*30)},4000);
+setInterval(()=>{const el=$('#onlineCt');if(el)el.textContent=300+Math.floor(Math.random()*30)},4000);
 
 renderAll();
 
