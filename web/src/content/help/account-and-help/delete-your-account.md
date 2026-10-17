@@ -8,7 +8,7 @@ keywords: ["delete account", "account delete", "data deletion", "account band ka
 audience: both
 faq:
   - q: "What should I do before I delete my account?"
-    a: "Close your account from the account page. Unused wallet money are refunded through Google Play first."
+    a: "Close your account from the account page. Unused wallet money is refunded to you first."
   - q: "What call details do you keep?"
     a: "Only simple call details such as who called whom, the time, the length and the price. See the list on this page."
   - q: "Do you sell my data?"
@@ -21,10 +21,10 @@ You can delete your {{brand.name}} account if you want to leave. Please do one i
 
 ## Step 1: Get your unused wallet money refunded
 
-Unused wallet money can be refunded on request through Google Play within 180 days. Closing your account from the account page does this for you first.
+Unused wallet money can be refunded on request within 180 days. Closing your account from the account page does this for you first.
 
 1. Sign in and open the close-account page.
-2. Start the closure. Your unused wallet money are sent back through Google Play after a person approves it.
+2. Start the closure. Your unused wallet money is refunded to you after a person approves it.
 3. Your account is deleted once everything is settled.
 
 Doing this first keeps your money safe. Read [refund your unused wallet money](/help/wallet-and-payments/withdraw-your-balance) for the full steps.

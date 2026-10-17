@@ -107,9 +107,9 @@ export default function Calls({ account }: { account: DashboardAccount }) {
           </div>
         </>}
       </Card>
-      <Card title="How calls are billed" note="Simple, fair, per second" tone={1}>
+      <Card title="How calls are billed" note="Simple and fair, by the minute" tone={1}>
         <div style={{ display: 'grid', gap: 10 }}>
-          {[['⏱️', 'Billed per second of connected time, at the influencer’s rate.'], ['🔔', 'Ringing, declined, missed or a failed connection costs ₹0.'],
+          {[['⏱️', 'Billed by the minute of connected time, at the influencer’s rate.'], ['🔔', 'Ringing, declined, missed or a failed connection costs ₹0.'],
             ['💰', 'You need 2 minutes of balance to start a call.'], ['⌛', 'A call can last up to 60 minutes; you hear a heads-up near the end.'],
             ['#️⃣', 'Press # any time to end the call, block the person and report it.'], ['🧾', 'Charged for a call that never connected? It comes back to your wallet.']]
             .map(([e, t]) => <div key={t} style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}><span style={{ fontSize: 20 }} aria-hidden="true">{e}</span><span>{t}</span></div>)}

@@ -18,7 +18,7 @@ draft: false
 
 <!-- rebrand: reviewed -->
 
-{{brand.name}} connects you to your favourite social media influencer on a private phone call. It can be a YouTuber, an Instagram creator or a Facebook creator. You talk in your own language, and you pay only for the seconds you talk. **Baat karo. Apne favourite creator se.**
+{{brand.name}} connects you to your favourite social media influencer on a private phone call. It can be a YouTuber, an Instagram creator or a Facebook creator. You talk in your own language, and you pay by the minute, at the rate the influencer sets. **Baat karo. Apne favourite creator se.**
 
 ## What it is
 

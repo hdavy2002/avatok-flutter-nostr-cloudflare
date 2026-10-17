@@ -8,7 +8,7 @@ keywords: ["first call", "pehli call", "top up", "wallet", "how to call", "call 
 audience: buyer
 faq:
   - q: "How do I add money?"
-    a: "Add money to your prepaid talk-time wallet through Google Play in the Android app. You pay only for the seconds you talk."
+    a: "Add money to your prepaid talk-time wallet. You pay by the minute, at the rate the influencer sets."
   - q: "How much balance do I need?"
     a: "You need enough in your wallet for at least 2 minutes at the influencer's price per minute. Each influencer sets their own price, and you see it before you call."
   - q: "Will I be charged if the influencer does not pick up?"
@@ -23,7 +23,7 @@ Your first call takes only a few minutes to set up. Here is the whole way, step 
 ## Before you call
 
 1. [Create your account](/help/getting-started/create-your-account) if you have not yet.
-2. **Top up your wallet.** Open your wallet and pay through Google Play. Your wallet holds your talk-time money in rupees.
+2. **Top up your wallet.** Open your wallet and add money. Your wallet holds your talk-time money in rupees.
 3. Make sure you have enough balance. You need enough for at least 2 minutes at the influencer's price per minute.
 
 ## Pick an influencer and check the price

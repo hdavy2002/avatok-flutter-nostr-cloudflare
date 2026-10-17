@@ -66,7 +66,7 @@ export function checkHelloFraandsPages(root, identity) {
   ]) assert(hostJoin.includes(copy), 'Current host earnings contract: ' + copy);
   const hostRates = text(pages.get('/hosts/rates'));
   for (const copy of [
-    'Earnings are paid by the second, only for connected time.',
+    'Earnings are paid by the minute, only for connected time.', // [HF-BILL-MINUTE-1 2026-10-18] owner: billing is by the minute
     'You choose a whole-rupee fan price from ₹5 to ₹1,000 per minute.',
     'Your earnings are 60% of the connected-call charge, minus ₹2.00 for each connected minute to cover the telephone call.',
     'Example at ₹20 per minute for a one-minute connected call: the fan pays ₹20, your earning is ₹10, ₹2 covers the call, and the platform share is ₹8.',
@@ -77,7 +77,7 @@ export function checkHelloFraandsPages(root, identity) {
   for (const copy of [
     'at the per-minute rate set by the influencer, which you see before you call.',
     'Only once both of you are connected. Ringing, an influencer declining, or a call that never connects costs nothing.',
-    'By the second of connected time, with no rounding up to a full minute.',
+    "By the minute of connected time, at the influencer's rate.",
     "You need at least two minutes of balance at the influencer's rate in your wallet to start a call.",
     'Your earnings are 60% of the connected-call charge, minus ₹2.00 for each connected minute to cover the telephone call.',
   ]) assert(faqText.includes(copy), 'FAQ Standard call contract: ' + copy);
@@ -86,13 +86,18 @@ export function checkHelloFraandsPages(root, identity) {
     'Each influencer sets their own per-minute rate, and you see it before you call.',
     'Minutes you have already talked are never charged again at a new price.',
     'The rate is shown before you start a call.',
-    'You pay only for the seconds you are connected.',
+    'You pay by the minute while you are connected.',
     "You need at least two minutes of balance at the influencer's rate in your wallet to start a call.",
     'Billing starts only when influencer and caller are connected, not while a phone rings or the influencer decides.',
-    'You are billed for the exact seconds you are connected, with no rounding up to a full minute.',
+    "You are billed by the minute for connected time, at the influencer's rate.",
     'Ringing, a declined or missed call, a failed connection and waiting all cost ₹0.',
-    'Influencers earn a share of the rate for every connected minute, paid by the second.',
+    'Influencers earn a share of the rate for every connected minute.',
   ]) assert(wallet.includes(copy), 'Wallet Standard call contract: ' + copy);
+  // [HF-BILL-MINUTE-1 2026-10-18] Owner: per-minute billing, and public pages never name the payment provider.
+  for (const route of ['/faq', '/wallet-terms', '/refunds', '/terms', '/hosts/rates', '/data-deletion', '/community-guidelines', '/how-it-works']) {
+    const body = text(pages.get(route).match(/<main\b[^>]*>[\s\S]*?<\/main>/)?.[0] || '');
+    assert(!/by the second|exact seconds|Google Play|Razorpay|Cashfree/i.test(body), route + ': per-minute billing, no payment-provider names');
+  }
   const earningsTable = pages.get('/hosts/join').match(/<tbody>([\s\S]*?)<\/tbody>/)?.[1] || '';
   const earningsRows = [...earningsTable.matchAll(/<tr>([\s\S]*?)<\/tr>/g)].map(row => [...row[1].matchAll(/<td>([^<]+)<\/td>/g)].map(cell => cell[1]));
   assert.deepEqual(earningsRows, [

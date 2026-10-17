@@ -32,7 +32,7 @@ You should pay nothing when a call is ringing, when the influencer declines, whe
 
 If a call did connect and you simply did not enjoy it, that is not a billing error. Connected calls are not refunded. Read [why there are no refunds](/help/wallet-and-payments/no-refunds) to understand why.
 
-Also remember that you pay for the exact seconds you are connected, at the influencer's per-minute rate shown before you call. If the charge matches that rate and the connected seconds, it is correct billing. If we find a mistake, the wrong amount is put back in your wallet and linked to that call.
+Also remember that you pay by the minute while you are connected, at the influencer's per-minute rate shown before you call. If the charge matches that rate and the connected minutes, it is correct billing. If we find a mistake, the wrong amount is put back in your wallet and linked to that call.
 
 ## How to report it
 

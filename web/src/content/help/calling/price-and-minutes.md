@@ -8,9 +8,9 @@ keywords: ["price", "per minute", "kitna paisa", "charges", "billing", "minimum 
 audience: buyer
 faq:
   - q: "How much does a call cost?"
-    a: "Each influencer sets their own price per minute. You see it on their profile before you call. You pay that rate for the seconds you are connected."
+    a: "Each influencer sets their own price per minute. You see it on their profile before you call. You pay that rate for every minute you are connected."
   - q: "Do I pay for a part of a minute?"
-    a: "You pay for the exact seconds you are connected. There is no rounding up to a full minute."
+    a: "You pay by the minute while you are connected, at the influencer's rate."
   - q: "What is the longest a call can be?"
     a: "There is no fixed limit. The call runs until either person hangs up or your wallet money ends. You hear \"one minute left\" before that."
   - q: "Can my balance go below zero?"
@@ -26,15 +26,14 @@ You pay from your prepaid wallet. Each influencer sets their own price per minut
 
 The price is the **rate per minute** that the influencer has set. Different influencers have different rates. Check the profile each time, because an influencer can change their rate.
 
-## Billed by the second
+## Billed by the minute
 
-You pay for the exact seconds you are connected. There is no rounding up to a full minute.
+You pay by the minute while you are connected, at the influencer's per-minute rate.
 
 **Example:** an influencer's rate is ₹10 a minute.
 
-- 5 minutes cost ₹50.
-- 45 seconds cost ₹7.50.
-- 3 minutes 20 seconds cost about ₹33.33.
+- A 5-minute call costs ₹50.
+- A 12-minute call costs ₹120.
 
 ## Minimum balance to start
 
@@ -69,4 +68,4 @@ Connected calls are not refunded. You choose the influencer, you see the price, 
 
 If we charged you for a call that never connected, or charged you twice, tell us. That is a billing error. The wrong amount is put back in your wallet and linked to that call. Read [refund policy](/refunds) and [wallet terms](/wallet-terms).
 
-Unused wallet money can be refunded on request through Google Play within 180 days.
+Unused wallet money can be refunded on request within 180 days.

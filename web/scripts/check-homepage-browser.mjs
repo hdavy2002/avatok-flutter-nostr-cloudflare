@@ -66,10 +66,8 @@ try {
         await expect(nav).toBeVisible();
       }
       for (const label of ['Explore', 'How it works', 'Sign in', 'Join us'] /* [HF-BLOG-ARCHIVE-1] Blog archived, off the header */) await expect(nav.getByRole('link', { name: label, exact: true }), name + ': header link ' + label).toBeVisible();
-      await nav.getByRole('link', { name: 'How it works', exact: true }).click();
-      await page.waitForTimeout(200);
-      const target = await page.evaluate(() => ({ t: document.getElementById('how-it-works').getBoundingClientRect().top, h: document.querySelector('.cv-header').getBoundingClientRect().bottom }));
-      assert(target.t >= target.h - 2, name + ': How it works is not hidden under the sticky header');
+      // [HF-HOW-NAV-1 2026-10-18] Owner: the header's How it works opens the /how-it-works page (not the home section).
+      assert.equal(await nav.getByRole('link', { name: 'How it works', exact: true }).getAttribute('href'), '/how-it-works', name + ': How it works links to the page');
       await page.evaluate(() => window.scrollTo(0, 0));
       await expect(page.locator('[data-callvaal-footer-group] li')).toHaveCount(30);
       assert.deepEqual(browserErrors, [], name + ': no browser errors');

@@ -59,7 +59,7 @@ assert.deepEqual(links(chrome(html, 'footer')), links(chrome(explore, 'footer'))
 const homeHeader = links(chrome(html, 'header'));
 const exploreHeader = links(chrome(explore, 'header'));
 for (const item of exploreHeader) assert(homeHeader.some(h => h.href === item.href && h.label === item.label && h.auth === item.auth), 'Homepage header keeps Explore link: ' + item.href);
-for (const href of ['/#how-it-works', '/hosts/join', '/marketplace', '/sign-in', '/dashboard', '/sign-out']) assert(homeHeader.some(h => h.href === href), 'Homepage header link: ' + href);
+for (const href of ['/how-it-works', '/hosts/join', '/marketplace', '/sign-in', '/dashboard', '/sign-out']) assert(homeHeader.some(h => h.href === href), 'Homepage header link: ' + href);
 const footer = chrome(html, 'footer');
 assert.deepEqual([...footer.matchAll(/<summary\b[^>]*>([\s\S]*?)<\/summary>/g)].map(m => plainText(m[1])), footerGroups, 'Five canonical footer groups');
 assert.equal((footer.match(/data-callvaal-footer-group/g) || []).length, 5);

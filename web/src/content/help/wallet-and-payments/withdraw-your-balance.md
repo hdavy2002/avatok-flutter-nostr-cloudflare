@@ -1,6 +1,6 @@
 ---
 title: "How do I get a refund for my unused wallet money?"
-description: "Unused wallet money can be refunded on request through Google Play within 180 days."
+description: "Unused wallet money can be refunded on request within 180 days."
 section: wallet-and-payments
 order: 3
 updated: 2026-10-15
@@ -8,9 +8,9 @@ keywords: ["withdraw balance", "wallet money back", "transfer to upi", "balance 
 audience: both
 faq:
   - q: "Can I take out my balance whenever I want?"
-    a: "Unused wallet money can be refunded on request through Google Play within 180 days of buying them."
+    a: "Unused wallet money can be refunded on request within 180 days of adding it."
   - q: "Can I still withdraw if my account is banned?"
-    a: "Yes. A banned account can still sign in and request a refund of unused wallet money through Google Play within 180 days."
+    a: "Yes. A banned account can still sign in and request a refund of unused wallet money within 180 days."
   - q: "Will you keep my wallet money as a penalty?"
     a: "No. Your money is never taken as a penalty."
 draft: false
@@ -21,7 +21,7 @@ Money you added to your wallet and have not used can be refunded. This page show
 
 ## Your balance is yours
 
-**Unused wallet money can be refunded on request through Google Play within 180 days.** There is no need to spend them.
+**Unused wallet money can be refunded on request within 180 days.** There is no need to spend them.
 
 We will never take your money as a penalty. This is true even if something goes wrong with your account.
 
@@ -29,7 +29,7 @@ We will never take your money as a penalty. This is true even if something goes 
 
 1. Sign in and open your wallet.
 2. Choose to request a refund.
-3. A person approves it, and the money goes back to you through Google Play.
+3. A person approves it, and the money goes back to you the way you paid.
 
 Only money you added and have not used can be refunded. Money already used on calls, and test credits, cannot. Influencers [withdraw their earnings](/help/hosts/getting-paid) from the influencer dashboard.
 
@@ -41,11 +41,11 @@ You can ask within 180 days of adding the money. These are common times:
 - **Before you delete your account.** Close your account from the account page; unused wallet money are refunded first. Then follow the steps in [delete your account](/help/account-and-help/delete-your-account).
 - **After a ban.** If your account is banned, you cannot make calls. But you can still sign in and request a refund of unused wallet money.
 
-Meera adds money to her wallet and talks for ₹60 worth. Then she decides to stop. She asks for a refund within 180 days, and the part she did not use goes back to her through Google Play.
+Meera adds money to her wallet and talks for ₹60 worth. Then she decides to stop. She asks for a refund within 180 days, and the part she did not use goes back to her the way she paid.
 
 ## Things to remember
 
-- Refunds go back through Google Play, never to a UPI ID you type in.
+- Refunds go back the way you paid, never to a UPI ID you type in.
 - Your money is never taken as a penalty.
 - Your wallet history shows every purchase and charge, with the date, duration and amount.
 

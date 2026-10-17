@@ -9,7 +9,7 @@ import { Card, Ic, PageHead, Sticker, istDay, useToast } from './ui';
 const FAQ: [string, string, string][] = [
   ['wallet', 'How do I add money?', 'Go to Wallet → Add money, type any whole amount and pay with UPI, card or netbanking. The price includes 18% GST, and the receipt comes on WhatsApp and email.'],
   ['wallet', 'Can I get my money back?', 'Unused top-up money can go back to the original payment within 180 days of paying, after our team approves it. Money spent on connected calls is not refundable.'],
-  ['calls', 'How am I charged for a call?', 'Per second of connected time, at the influencer’s rate. Ringing, declined, missed or failed calls cost ₹0. You need 2 minutes of balance to start.'],
+  ['calls', 'How am I charged for a call?', 'By the minute of connected time, at the influencer’s rate. Ringing, declined, missed or failed calls cost ₹0. You need 2 minutes of balance to start.'],
   ['calls', 'I was charged for a call that never connected', 'That is a billing error and the money goes back to your wallet. Ask us below with the call time.'],
   ['safety', 'Will the influencer see my number?', 'Never. Both numbers are masked and calls are not recorded. Influencers only see your handle.'],
   ['safety', 'Someone made me uncomfortable', 'Press # during the call to end it, block them and report it. You can also block from a call’s details in Calls. Our team reviews every report.'],

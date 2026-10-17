@@ -45,7 +45,7 @@ You can start a new call if you add more money and the influencer is still onlin
 
 ## How billing works
 
-You pay for the exact seconds you are connected, at the influencer's per-minute rate.
+You pay by the minute while you are connected, at the influencer's per-minute rate.
 
 You pay only when both of you are connected. Ringing or a call that never connects costs ₹0.
 

@@ -9,8 +9,8 @@ audience: creator
 faq:
   - q: "Can I set my own price?"
     a: "Yes. You set the per-minute rate your fans pay to talk to you. You earn your share of every connected minute."
-  - q: "Is it paid by the second?"
-    a: "Yes. Your earnings are worked out for the exact seconds you are connected."
+  - q: "How is the time counted?"
+    a: "By the minute of connected time. Ringing, missed calls and calls that never connect earn ₹0."
   - q: "Will I get calls every day?"
     a: "Calls are not guaranteed. How many calls you get depends on your fans choosing to call you."
 draft: false
@@ -22,7 +22,7 @@ Your fans pay per minute, at the rate you set. You earn your share of each conne
 
 ## The simple rule
 
-The caller is charged per minute at **your rate**. {{brand.name}} works this out for the exact seconds you are connected. Your earnings for each call are shown in rupees, with the payout status. You can see your current rate and your share in your dashboard.
+The caller is charged per minute at **your rate**, only for connected time. Your earnings for each call are shown in rupees, with the payout status. You can see your current rate and your share in your dashboard.
 
 ## A simple example
 

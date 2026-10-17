@@ -8,7 +8,7 @@ keywords: ["wallet top up", "add money", "gst", "recharge", "talk time", "paise 
 audience: buyer
 faq:
   - q: "How do I pay to add money?"
-    a: "You pay through Google Play in the Android app. The money goes into your prepaid talk-time wallet in rupees."
+    a: "You pay on the wallet page. You see the total, the GST and the amount added before you pay, and the money goes into your prepaid talk-time wallet in rupees."
   - q: "Is GST charged on the money I add?"
     a: "The price of each pack includes 18% GST. Your wallet gets the amount without GST. If you pay ₹120, the GST is ₹18.31 and ₹101.69 is added to your wallet."
   - q: "Where can I see my top-ups and calls?"
@@ -30,9 +30,9 @@ The wallet holds your talk-time money in rupees. When you call an influencer, th
 
 1. Open your wallet.
 2. Choose how much to add.
-3. Pay through **Google Play**.
+3. Pay on the secure payment page.
 
-Money is added only after Google Play confirms your payment, and only once. Then you can call any influencer who is online.
+Money is added only after your payment is confirmed, and only once. Then you can call any influencer who is online.
 
 ## GST and what reaches your wallet
 
@@ -60,7 +60,7 @@ Every addition and every call charge shows in your wallet history. For each line
 ## Good to know
 
 - Charging starts only when both of you are connected. Ringing, an influencer declining, or a call that never connects costs ₹0.
-- Unused wallet money can be [refunded](/help/wallet-and-payments/withdraw-your-balance) on request through Google Play within 180 days.
+- Unused wallet money can be [refunded](/help/wallet-and-payments/withdraw-your-balance) on request within 180 days.
 - Read the full [wallet terms](/wallet-terms) if you want every detail.
 
 ## Stay safe

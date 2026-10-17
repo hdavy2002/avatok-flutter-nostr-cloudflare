@@ -41,7 +41,7 @@ export function rateCardLines(tiers?: PriceTier[] | null): string[] {
     return `${rate} for the ${i === 0 ? 'first' : 'next'} ${b.toMin - b.fromMin} minutes`;
   });
 }
-export const RATE_CARD_NOTE = 'Billed per second of connected time. Ringing or no answer costs nothing.';
+export const RATE_CARD_NOTE = 'Billed by the minute of connected time. Ringing or no answer costs nothing.';
 export const SAME_RATE_LINE = 'Same rate for every influencer · lower on long calls';
 /** Safe build-time fallback only. Runtime/API plan fields are authoritative; never enable Standard by baking it into the web bundle. */
 export const STD_PLAN_ON = false;
