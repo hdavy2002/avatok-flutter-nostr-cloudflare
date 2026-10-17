@@ -4,7 +4,8 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 export const footerGroups = ['Company', 'Influencers', 'Trust & Safety', 'Legal & Payments', 'Explore'];
 export const contentRoutes = ['/about', '/how-it-works', '/faq', '/contact', '/press', '/hosts/join', '/hosts/requirements', '/hosts/rules', '/hosts/crisis-script', '/hosts/rates', '/hosts/agreement', '/hosts/kyc', '/safety', '/community-guidelines', '/report', '/grievance', '/emergency', '/women-only', '/lgbtq', '/age-policy', '/terms', '/disclaimer', '/privacy', '/wallet-terms', '/refunds', '/cookies', '/data-deletion', '/intermediary-policy'];
-export const footerRoutes = [...contentRoutes.slice(0, 3), '/help', ...contentRoutes.slice(3, 14), '/talk-safely', ...contentRoutes.slice(14), '/marketplace', '/#naye-dost', '/#moods', '/#people', '/women-only', '/hosts/join'];
+// [HF-HOME-POLISH-2] six links per footer column; the dropped pages are linked from their related pages instead.
+export const footerRoutes = ['/about', '/how-it-works', '/faq', '/help', '/contact', '/press', '/hosts/join', '/hosts/requirements', '/hosts/rules', '/hosts/crisis-script', '/hosts/rates', '/hosts/agreement', '/safety', '/community-guidelines', '/report', '/grievance', '/emergency', '/women-only', '/terms', '/disclaimer', '/privacy', '/wallet-terms', '/refunds', '/data-deletion', '/marketplace', '/#naye-dost', '/#moods', '/#people', '/women-only', '/hosts/join'];
 const reviewRoutes = new Set(['/hosts/requirements', '/hosts/rules', '/hosts/crisis-script', '/hosts/agreement', '/community-guidelines', '/women-only', '/lgbtq', '/grievance', '/emergency', '/terms', '/disclaimer', '/privacy', '/wallet-terms', '/refunds', '/intermediary-policy']);
 const text = html => html.replace(/<script\b[\s\S]*?<\/script>/g, '').replace(/<[^>]*>/g, ' ').replaceAll('&amp;', '&').replace(/\s+/g, ' ').trim();
 export function checkHelloFraandsPages(root, identity) {

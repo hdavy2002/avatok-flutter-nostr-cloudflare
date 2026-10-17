@@ -71,7 +71,7 @@ try {
       const target = await page.evaluate(() => ({ t: document.getElementById('how-it-works').getBoundingClientRect().top, h: document.querySelector('.cv-header').getBoundingClientRect().bottom }));
       assert(target.t >= target.h - 2, name + ': How it works is not hidden under the sticky header');
       await page.evaluate(() => window.scrollTo(0, 0));
-      await expect(page.locator('[data-callvaal-footer-group] li')).toHaveCount(36);
+      await expect(page.locator('[data-callvaal-footer-group] li')).toHaveCount(30);
       assert.deepEqual(browserErrors, [], name + ': no browser errors');
       metrics.push({ name, ...top });
       await page.screenshot({ path: `homepage-review/${name}.png`, fullPage: width <= 1440 });
@@ -138,7 +138,7 @@ try {
         const datedPolicies = new Set(['/terms', '/privacy', '/disclaimer', '/community-guidelines', '/about', '/contact', '/press', '/hosts/agreement', '/hosts/kyc', '/report', '/grievance', '/cookies', '/data-deletion', '/intermediary-policy']);
         await expect(page.locator('.hf-date')).toHaveText(datedPolicies.has(path) ? /^Last updated: \d{4}-\d{2}-\d{2}$/ : 'Last updated: {{DATE}}');
       }
-      await expect(page.locator('[data-callvaal-footer-group] li')).toHaveCount(36);
+      await expect(page.locator('[data-callvaal-footer-group] li')).toHaveCount(30);
       await page.evaluate(() => { document.documentElement.style.fontSize = '200%'; });
       assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), `${path}: 200% narrow text has no page overflow`);
       if (path === '/faq') {

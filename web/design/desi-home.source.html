@@ -70,6 +70,12 @@ a{color:#30245f}a:hover{color:#be246e}
  .foot{gap:22px 16px !important}
 }
 
+/* [HF-HOME-POLISH-2] the yellow highlight is its own box under the line above, so it never covers that line */
+.hl{display:inline-block;line-height:1.06;margin-top:.12em;padding-bottom:.02em}
+@media (min-width:901px){
+ .cta-row{justify-content:space-between;flex-wrap:nowrap !important}
+ .cta-row .sticker-big{width:clamp(300px,24vw,470px) !important;margin-right:2%}
+}
 /* [HF-DESI-HOME-MOBILE-1] owner fixes 2026-10-17 */
 .toran{background-size:auto 120.2%;background-position:center bottom}
 .dhol{transform:scaleX(-1)}
@@ -215,7 +221,7 @@ a{color:#30245f}a:hover{color:#be246e}
   <div class="reasons-head" style="display: flex; flex-wrap: wrap; align-items: end; justify-content: space-between; gap: 24px">
     <div class="center-m">
       <div class="eyebrow" style="color: #be246e">Ek call, kai wajah</div>
-      <h2 class="disp reasons-title" style="margin: 14px 0 0; font-size: clamp(40px, 5.6vw, 84px)">One call.<br><span class="nowrap-hl" style="background: #fbd447; padding: 0 10px; border-radius: 10px">So many reasons.</span></h2>
+      <h2 class="disp reasons-title" style="margin: 14px 0 0; font-size: clamp(40px, 5.6vw, 84px)">One call.<br><span class="nowrap-hl hl" style="background: #fbd447; padding: 0 10px; border-radius: 10px">So many reasons.</span></h2>
     </div>
     <img class="img-slot dhol" src="/img/dhol-wala.webp" alt="Dhol player jumping" style="width: clamp(200px, 17vw, 320px); aspect-ratio: 1/1; display: block; height: auto">
   </div>
@@ -326,7 +332,7 @@ a{color:#30245f}a:hover{color:#be246e}
   <div class="creators-head" style="display: flex; flex-wrap: wrap; align-items: end; justify-content: space-between; gap: 20px">
     <div class="center-m">
       <div class="eyebrow">No one does you like you</div>
-      <h2 class="disp" style="margin: 14px 0 0; font-size: clamp(44px, 6.4vw, 96px)">Pick your<br><span style="background: #fbd447; padding: 0 12px; border-radius: 12px">kind of chaos.</span></h2>
+      <h2 class="disp" style="margin: 14px 0 0; font-size: clamp(44px, 6.4vw, 96px)">Pick your<br><span class="hl" style="background: #fbd447; padding: 0 12px; border-radius: 12px">kind of chaos.</span></h2>
     </div>
     <img class="img-slot sticker sticker-big" src="/img/sticker-reels-se-real.webp" role="img" aria-label="Reels se real tak" style="width: clamp(260px, 22vw, 400px); transform: rotate(-5deg); display: block; height: auto">
     <a href="#explore" style="font-weight: 800; display: inline-flex; align-items: center; gap: 8px; min-height: 44px">Explore everyone

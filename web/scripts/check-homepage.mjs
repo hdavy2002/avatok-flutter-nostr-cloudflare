@@ -64,7 +64,7 @@ const footer = chrome(html, 'footer');
 assert.deepEqual([...footer.matchAll(/<summary\b[^>]*>([\s\S]*?)<\/summary>/g)].map(m => plainText(m[1])), footerGroups, 'Five canonical footer groups');
 assert.equal((footer.match(/data-callvaal-footer-group/g) || []).length, 5);
 const footerItems = [...footer.matchAll(/<li\b[^>]*>([\s\S]*?)<\/li>/g)].flatMap(m => links(m[1]));
-assert.equal(footerItems.length, 36, 'All 36 grouped footer links');
+assert.equal(footerItems.length, 30, 'All 30 grouped footer links (six per column)');
 assert.deepEqual(footerItems.map(item => item.href), footerRoutes, 'Canonical footer link order');
 const source = readFileSync(resolve('src/pages/index.astro'), 'utf8');
 assert.match(source, /desi-home-body\.html\?raw/, 'Homepage body comes from the generated desi design file');
