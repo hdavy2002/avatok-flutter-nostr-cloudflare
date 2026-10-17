@@ -102,10 +102,9 @@
 
 /* ---------- category rail ---------- */
 .xp .cats{display:flex;gap:clamp(12px,1.4vw,26px);overflow-x:auto;padding:28px 10px 26px;scrollbar-width:thin;scroll-snap-type:x proximity}
-.xp .cat{flex:none;display:flex;flex-direction:column;align-items:center;gap:14px;padding-top:6px;background:none;border:0;cursor:pointer;width:clamp(88px,6.8vw,124px);font-weight:700;font-size:var(--fs-small);text-align:center;scroll-snap-align:start}
-.xp .cat img{width:clamp(78px,6.2vw,112px);height:auto;aspect-ratio:1;border-radius:50%;transition:transform .15s;filter:drop-shadow(4px 4px 0 var(--ink))}
+.xp .cat{flex:none;display:flex;flex-direction:column;align-items:center;gap:14px;padding-top:6px;background:none;border:0;cursor:pointer;width:clamp(104px,8vw,148px);font-weight:700;font-size:var(--fs-small);text-align:center;scroll-snap-align:start}
+.xp .cat img{width:clamp(96px,7.6vw,140px);height:auto;aspect-ratio:1;border-radius:50%;transition:transform .15s}
 .xp .cat:hover img{transform:translate(-2px,-2px) rotate(-4deg)}
-.xp .cat[aria-pressed=true] img{outline:4px solid var(--magenta);outline-offset:3px}
 .xp .cat span{display:inline-block;padding:2px 12px;border-radius:999px;line-height:1.4}
 .xp .cat[aria-pressed=true] span{background:var(--ink);color:var(--yellow)}
 
@@ -311,6 +310,12 @@
   .xp .views{order:1;margin-left:auto}
   .xp .fbar .wrap::before{content:'Filters';order:0;font:900 18px var(--head);align-self:center}
   .xp .tiles{grid-template-columns:repeat(2,minmax(0,1fr))}
+  /* [HF-EXPLORE-V2-4] owner phone fixes 2026-10-17: bigger stickers, icons and centred hero art */
+  .xp .shead .sticker{width:min(400px,94%)}
+  .xp .join-cta .sticker{width:min(340px,84%)}
+  .xp .art .main{transform:translateX(-5%)}
+  .xp .tile img{width:104px;height:104px}
+  .xp .tile{padding:12px 18px 12px 12px}
 }
 @media (max-width:699px){
   .xp{--hdr:76px}
@@ -333,6 +338,8 @@
   .xp .reels{grid-auto-flow:row;grid-auto-columns:auto;grid-template-columns:minmax(0,1fr);overflow:visible;scroll-snap-type:none}
   .xp .reels .card .vid{aspect-ratio:auto;height:min(78vh,calc((100vw - 50px)*16/9))}
   .xp .tiles{grid-template-columns:minmax(0,1fr)}
+  .xp .cat{width:118px}
+  .xp .cat img{width:112px}
   .xp .skin-chip{border-width:0 28px;border-image-width:0 28px;min-height:38px}
   .xp-drawer{top:auto;width:100%;max-height:92vh;border-left:0;border-top:3px solid #30245f;border-radius:24px 24px 0 0;padding-left:env(safe-area-inset-left,0px);animation:xp-slup .22s ease-out}
   .xp-drawer .dh{border-radius:22px 22px 0 0}
