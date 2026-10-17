@@ -26,11 +26,11 @@ export const HOW_ART = {
 
 /** Background/skin art → --hw-<key>: a full background layer (url + position/size/repeat). [key, path, width, tail] */
 const BG: [string, string, number, string][] = [
-  ['ajrakh', `${H}/borders/border-ajrakh.png`, 1600, 'center / auto 100% repeat-x'],
-  ['warliband', `${H}/borders/border-warli.png`, 1600, 'center / auto 100% repeat-x'],
-  ['phadband', `${H}/borders/border-phad.png`, 1600, 'center / auto 100% repeat-x'],
-  ['sozni', `${H}/borders/border-sozni.png`, 1600, 'center / auto 100% repeat-x'],
-  ['phulkari', `${H}/borders/border-phulkari.png`, 1600, 'center / auto 100% repeat-x'],
+  ['ajrakh', `${H}/borders/border-ajrakh.png`, 1600, 'center / clamp(280px, 26vw, 440px) 100% repeat-x'],
+  ['warliband', `${H}/borders/border-warli.png`, 1600, 'center / clamp(280px, 26vw, 440px) 100% repeat-x'],
+  ['phadband', `${H}/borders/border-phad.png`, 1600, 'center / clamp(280px, 26vw, 440px) 100% repeat-x'],
+  ['sozni', `${H}/borders/border-sozni.png`, 1600, 'center / clamp(280px, 26vw, 440px) 100% repeat-x'],
+  ['phulkari', `${H}/borders/border-phulkari.png`, 1600, 'center / clamp(280px, 26vw, 440px) 100% repeat-x'],
   ['mud', `${H}/tiles/tile-warli-mud.png`, 600, 'center / 320px repeat'],
   ['leheriya', `${H}/tiles/tile-leheriya.png`, 600, 'center / 320px repeat'],
   ['lacquer', `${H}/tiles/tile-kashmiri-lacquer.png`, 600, 'center / 320px repeat'],
