@@ -104,3 +104,8 @@ html.hf-app .hf-tabbar{display:flex;position:fixed;left:0;right:0;bottom:0;z-ind
 .hf-exit-yes{background:#fff;color:#46113e;border:2px solid #46113e!important}
 .hf-push-sheet p{margin:0 0 20px;font:400 1.125rem/1.5 Comfortaa,sans-serif;color:#46113e}
 .hf-exit-actions button:focus-visible{outline:3px solid #7b388c;outline-offset:3px}
+
+/* [HF-FOOTER-CENTRE-1 2026-10-17] Owner: the disclaimer under the footer must be centred on every page. Some page
+   stylesheets reset <p> margins/alignment, so pin it here with enough specificity. */
+footer.cv-footer .cv-footer-bottom .cv-footer-disclaimer{display:block;box-sizing:border-box;width:auto;max-width:min(1150px,calc(100% - 32px));margin-left:auto!important;margin-right:auto!important;text-align:center!important}
+footer.cv-footer .cv-footer-credits,footer.cv-footer .cv-footer-credits p{text-align:center!important;margin-left:auto;margin-right:auto}
