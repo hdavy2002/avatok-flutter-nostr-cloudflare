@@ -7,7 +7,9 @@
 // Astro page shell + ONE React island for the form. The shell is server-rendered
 // so the artwork, wordmark and layout paint immediately; only the interactive
 // form hydrates. `chrome={false}` keeps Base's footer disabled. [HF-AUTH-GHAR-1] No site header either (owner).
-export const prerender = false;
+// [HF-AUTH-PCO-3 2026-10-17] Prerendered: the page is the same for everyone (the Clerk island does the work in the
+// browser), and the art-slot check in components/auth/authSkin.ts needs build-time file access.
+export const prerender = true;
 
 import Base from '../layouts/Base.astro';
 import AuthGhar from '../components/auth/AuthGhar.astro';
@@ -16,7 +18,6 @@ import { clerkFapiHost } from '../lib/config';
 import '../styles/auth.css';
 import { BRAND } from '../lib/brand';
 
-Astro.response.headers.set('Cache-Control', 'private, no-store');
 
 const clerkHost = clerkFapiHost();
 ---

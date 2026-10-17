@@ -2,6 +2,7 @@
 // pages use ONLY their own fresh artwork — never art from any other page). Prompt pack: SaatHum project doc
 // claude/hello-fraands-auth-artwork-prompts.md. Files live in /assets/hf-auth/; a slot with no file renders nothing and
 // the CSS-drawn booth stands in. Build runs from web/.
+// /sign-in and /sign-up are PRERENDERED ([HF-AUTH-PCO-3]) so this filesystem check runs at build time only.
 import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 
