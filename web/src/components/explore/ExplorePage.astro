@@ -8,7 +8,7 @@ const { canonical, indexable = false } = Astro.props;
 import brandConfig from '../../../../Specs/brand.json';
 import Header from '../callvaal/Header.astro';
 import Footer from '../callvaal/Footer.astro';
-import { publicImage } from '../../lib/config';
+import { publicImage, shareImage } from '../../lib/config';
 import '../../styles/desi-home-chrome.css';
 import '../../styles/explore-preview.css';
 
@@ -50,7 +50,7 @@ const marquee = ['HORN OK PLEASE', 'REEL SE REAL TAK', 'EK CALL TOH BANTA HAI', 
   <title>{title}</title><meta name="description" content={description} /><meta name="robots" content={indexable ? 'index,follow' : 'noindex,nofollow'} />
   {canonical && <link rel="canonical" href={canonical} />}
   {indexable && canonical && <script type="application/ld+json" set:html={JSON.stringify({ '@context': 'https://schema.org', '@type': 'CollectionPage', name: title, description, url: canonical, inLanguage: 'en-IN' })} />}
-  {indexable && canonical && <><meta property="og:type" content="website" /><meta property="og:site_name" content={identity.name} /><meta property="og:title" content={title} /><meta property="og:description" content={description} /><meta property="og:url" content={canonical} /><meta name="twitter:card" content="summary_large_image" /></>}<meta name="theme-color" content="#fffdf7" />
+  {indexable && canonical && <><meta property="og:type" content="website" /><meta property="og:site_name" content={identity.name} /><meta property="og:title" content={title} /><meta property="og:description" content={description} /><meta property="og:url" content={canonical} /><meta name="twitter:card" content="summary_large_image" /><meta property="og:image" content={shareImage('/assets/hf-explore/hero/hero-creator.png')} /><meta property="og:image:alt" content="Illustration of a young creator making a heart with her hands, with phone screens playing reels around her." /><meta name="twitter:image" content={shareImage('/assets/hf-explore/hero/hero-creator.png')} /></>}<meta name="theme-color" content="#fffdf7" />
   <link rel="icon" href="/assets/branding/hf-favicon.png" type="image/png" />
   <link rel="preconnect" href="https://fonts.googleapis.com" /><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Comfortaa:wght@500;600;700&family=Nunito:wght@700;800;900&display=swap" />
