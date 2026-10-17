@@ -42,7 +42,6 @@ You pay nothing. Ringing, a decline, a timeout, or a call that never connects al
 ## How we keep the call safe
 
 - Your phone number and the influencer's number are both hidden.
-- Influencers are verified adults who have done video KYC.
 - You can press # at any time to end the call and block the person.
 - You can report anyone. Our team reviews reports. They can give strikes or bans.
 - {{brand.name}} never asks for your OTP, PIN or password.

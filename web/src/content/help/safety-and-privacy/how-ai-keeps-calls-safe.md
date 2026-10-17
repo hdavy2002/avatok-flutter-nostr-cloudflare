@@ -1,6 +1,6 @@
 ---
 title: "How we keep calls safe"
-description: "Masked numbers, verified influencers, a # key to end and block, reports reviewed by our team, and scam warnings. No human monitors your call."
+description: "Masked numbers, a # key to end and block, reports reviewed by our team, and scam warnings. No human monitors your call."
 section: safety-and-privacy
 order: 2
 updated: 2026-10-15
@@ -27,7 +27,6 @@ On {{brand.name}}, you talk to your favourite influencer on a private phone call
 ## What keeps you safe
 
 - **Masked numbers.** Both calls come from a {{brand.name}} number. Your phone number and the influencer's phone number are never shared with each other.
-- **Verified influencers.** Influencers finish video KYC and Aadhaar verification before they can take calls.
 - **Press # any time.** It ends the call, blocks the other person and reports what happened. You do not need to explain.
 - **Report and block.** You can [report](/report) anyone who breaks a rule. Our team reviews the report.
 - **Strikes and bans after team review.** A strike or ban is given only after our team has looked at a report. Read more in [Strikes and bans](/help/safety-and-privacy/strikes-and-bans).

@@ -9,8 +9,8 @@ audience: both
 faq:
   - q: "Can the other person see my phone number?"
     a: "No. Neither person ever sees the other's personal phone number. Both calls come from our platform number and are joined together."
-  - q: "Will my name or Aadhaar details show on my profile?"
-    a: "No. Your legal name, Aadhaar details and phone number are never shown on a profile or shared with the other person."
+  - q: "Will my real name show on my profile?"
+    a: "No. Your real name and phone number are never shown on a profile or shared with the other person."
   - q: "Can I still give away my number by mistake?"
     a: "Yes, if you say it out loud. Masking hides your number, not what you say. So do not share it on the call."
 draft: false
@@ -37,7 +37,6 @@ The other person sees only your display name or handle. They do not see:
 
 - your phone number
 - your legal name
-- your Aadhaar details
 
 These are never shown on a profile and never shared with the other person.
 

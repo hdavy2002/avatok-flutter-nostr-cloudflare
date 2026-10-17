@@ -4,13 +4,11 @@ description: "What data we keep, why, for how long, and your rights, in simple w
 section: safety-and-privacy
 order: 8
 updated: 2026-10-15
-keywords: ["DPDP", "data protection", "privacy", "Aadhaar", "delete data", "my data", "consent", "grievance officer", "data kitna rakhte ho"]
+keywords: ["DPDP", "data protection", "privacy", "delete data", "my data", "consent", "grievance officer", "data kitna rakhte ho"]
 audience: both
 faq:
   - q: "Do you sell my data?"
     a: "Never. We follow India's DPDP Act 2023. We use your data only to run the service, pay influencers, keep people safe and meet the law."
-  - q: "Do you keep my full Aadhaar number?"
-    a: "No. Influencers' Aadhaar is checked with an OTP sent to the mobile linked to it (or through DigiLocker if the OTP doesn't work). The number is used only to request the OTP. We never store the full number. We keep only the last 4 digits."
   - q: "Can I ask you to delete my data?"
     a: "Yes. Choose Delete my account, or write to the Grievance Officer. We delete it, except records the law says we must keep."
 draft: false
@@ -23,7 +21,7 @@ draft: false
 ## Your number and photos are protected
 
 - **Your number is masked.** The other person never sees your phone number. Both calls come from our platform number.
-- **Profile pictures can be AI-made avatars.** Influencers may not show their real photo on their profile. An influencer can also record a short voice introduction in their own voice. Our team listens to it before it goes live, and it is labelled "Recorded by the influencer". The person on the call is a real, verified influencer.
+- **Profile pictures can be AI-made avatars.** Influencers may not show their real photo on their profile. An influencer can also record a short voice introduction in their own voice. Our team listens to it before it goes live, and it is labelled "Recorded by the influencer". The person on the call is the real influencer.
 
 ## What we collect from callers
 
@@ -40,14 +38,14 @@ No human monitors your call. Influencers never see your number. They see only yo
 
 ## What we collect from influencers
 
-Influencers go through more checks, because they earn money and must be real adults. In short: a WhatsApp code, your Aadhaar with an OTP (or DigiLocker if OTP doesn't work), a 10-second selfie video, and a check of your UPI and bank account. We never store your full Aadhaar number. We keep **only the last 4 digits**. Read all the details on [how we verify influencers](/hosts/kyc).
+Influencers earn money, so we also keep what we need to pay you: the bank account or UPI ID you choose for payouts, and a record of your earnings.
 
 ## How we keep your data safe
 
 - We **never sell** your data. We never use it for advertising.
 - It is stored **encrypted**, in private storage.
 - Only a small, authorised team can open it, and **every access is written in a log**.
-- We share it only with the partners who help us run the service (for example the one that checks Aadhaar, and the one that pays influencers), or with a government authority when the law requires.
+- We share it only with the partners who help us run the service (for example the one that pays influencers), or with a government authority when the law requires.
 
 ## How long we keep it
 
@@ -79,7 +77,6 @@ Write to our Grievance Officer on the [grievance page](/grievance). To close you
 
 ## More
 
-- [How we verify influencers](/hosts/kyc)
 - [How we keep calls safe](/help/safety-and-privacy/how-ai-keeps-calls-safe)
 - [How your number stays private](/help/safety-and-privacy/your-number-stays-private)
 - [Privacy](/privacy)

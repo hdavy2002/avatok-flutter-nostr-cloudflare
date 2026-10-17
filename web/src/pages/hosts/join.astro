@@ -1,15 +1,17 @@
 ---
-// [HF-JOIN-PAT-1 2026-10-18] /hosts/join — "Pat-Katha" (the scroll story). Owner: a brand-new Indian layout and artwork
-// found nowhere else on the site, with an example so it is easy to follow. The page is a Bengal Patachitra scroll that a
-// patua unrolls panel by panel, telling one creator's story (Neha, a home-cooking creator from Indore):
-//   Pat 1 Pehchaan (sign up + verify) → Pat 2 Apna daam (profile + rate) → Pat 3 Phone bajega (take calls) → Pat 4 Kamaai (get paid)
+// [HF-JOIN-PAT-1/2 2026-10-18] /hosts/join — "Pat-Katha" (the scroll story). Owner: a brand-new Indian layout and
+// artwork found nowhere else on the site; little reading — the Indian art explains it. The page is a Bengal Patachitra
+// scroll a patua unrolls panel by panel, telling one creator's story (Neha, a home-cooking creator from Indore):
+//   Pat 1 Khaata (free account) → Pat 2 Upgrade (free, from the dashboard) → Pat 3 Apna daam (set your rate) → Pat 4 Phone bajega (take calls)
 // Crafts: Patachitra panels on handmade paper, Channapatna lacquer rollers and buttons, Kantha stitch borders, Gond
 // dot-art medallions and section ground, a Bandhani hero, a Bidri silver-inlay earnings ledger, Ikat privacy section and
 // a Kalamkari closing panel. Art: /assets/hf-join/ (slots + CSS stand-ins in components/join/joinSkin.ts). Prompt pack:
 // SaatHum project doc claude/hello-fraands-join-artwork-prompts.md. Styles: styles/join-pat.css (scoped `.jp`).
-// Contracts (scripts/check-hello-fraands-pages.mjs) read the earnings paragraph and the earnings <tbody> VERBATIM — keep
-// the sentences in one plain <p> and the table cells as bare <td>. Billing copy: by the minute; never per-second, never
-// the payment gateway / app store.
+// Owner model (2026-10-18): influencers create an account, then upgrade to influencer for FREE in the dashboard; they set
+// their own per-minute rate (no range shown); fans are charged per minute of the phone call; influencers receive 60% of
+// the connected-call charge minus ₹2.00 per connected minute; the 40% covers platform fees and GST; Indian influencers
+// only for now. Do not describe registration/verification steps. Never per-second billing, never the payment gateway.
+// Contracts (scripts/check-hello-fraands-pages.mjs) read the earnings paragraph verbatim and the .jp-coins list.
 export const prerender = true;
 
 import Base from '../../layouts/Base.astro';
@@ -27,7 +29,7 @@ const content: PublicContent = {
   key: 'hosts-join',
   canonicalPath: '/hosts/join',
   title: 'Join & earn',
-  summary: `Are you an influencer? On ${BRAND.name} your fans talk to you on a private phone call and you earn for every minute, at the rate you set. Your real number stays private.`,
+  summary: `Are you an influencer in India? Join ${BRAND.name} for free, set your own per-minute rate, and earn when your fans call you. Your real number stays private.`,
   visibility: 'public',
 };
 const img = (p: string, w: number) => publicImage(p, { width: w, fit: 'scale-down' });
@@ -36,8 +38,14 @@ const vars = [
   ...JOIN_SKINS.map((o) => `--jp-${o.key}:url(${img(o.path, o.width)})`),
 ].join(';');
 const skins = [...JOIN_BG, ...JOIN_SKINS].map((o) => o.key).join(' ');
-const rate = 20; const share = rate * 0.6; const callCost = 2; const perMin = share - callCost;
+const rate = 20; const share = rate * 0.6; const callCost = 2; const perMin = share - callCost; const kept = rate - share;
 const medals = [JOIN_ART.medal1, JOIN_ART.medal2, JOIN_ART.medal3, JOIN_ART.medal4];
+const pats = [
+  { n: 1, word: 'Khaata', title: 'Create your free account', alt: 'Patachitra-style painting: Neha opening a beautifully painted account book on her phone', art: JOIN_ART.pat1, css: 'Khaata' },
+  { n: 2, word: 'Upgrade', title: 'Become an influencer, free', alt: 'Patachitra-style painting: Neha stepping up onto a decorated stage, a garland placed around her neck', art: JOIN_ART.pat2, css: 'Upgrade' },
+  { n: 3, word: 'Apna daam', title: 'Set your own rate', alt: 'Patachitra-style painting: Neha writing her price on a slate, surrounded by her cooking pots', art: JOIN_ART.pat3, css: 'Apna daam' },
+  { n: 4, word: 'Phone bajega', title: 'Go online, take calls', alt: "Patachitra-style painting: Neha's phone ringing in her kitchen while a fan waits on a swing across a painted wall", art: JOIN_ART.pat4, css: 'Phone bajega' },
+];
 ---
 <Base content={content} chrome={false} indiaLandingLanguage={false}>
   <Fragment slot="head">
@@ -53,17 +61,17 @@ const medals = [JOIN_ART.medal1, JOIN_ART.medal2, JOIN_ART.medal3, JOIN_ART.meda
       <section class="jp-hero" aria-labelledby="jp-title">
         <div class="jp-wrap jp-hero-grid">
           <div class="jp-hero-copy">
-            <p class="jp-masthead"><span>Pat-katha</span><span>Aapki kahaani</span></p>
+            <p class="jp-masthead"><span>Pat-katha</span><span>For influencers in India</span></p>
             <h1 id="jp-title">Your fans want to talk. <span class="jp-pop">Get paid for every minute.</span></h1>
             <p class="hf-hindi jp-hindi"><em>Apne fans se private call par kamaayein, apna number private rakhkar.</em></p>
             <ul class="jp-facts" aria-label="At a glance">
-              <li data-tone="haldi"><b>₹5 – ₹1,000</b><span>a minute. You set the price.</span></li>
-              <li data-tone="sky"><b>Number hidden</b><span>Fans never see your phone number.</span></li>
-              <li data-tone="rani"><b>Your time</b><span>Go online only when you are free.</span></li>
+              <li data-tone="haldi"><b>Free to join</b><span>No fee, no subscription.</span></li>
+              <li data-tone="sky"><b>Your rate</b><span>You set your price per minute.</span></li>
+              <li data-tone="rani"><b>Number hidden</b><span>Fans never see it.</span></li>
             </ul>
             <div class="jp-ctas">
-              <a class="jp-btn" href="/sign-up">Sign up to become an influencer →</a>
-              <a class="jp-btn jp-btn--blue" href="#earn">See what you could earn</a>
+              <a class="jp-btn" href="/sign-up">Join for free →</a>
+              <a class="jp-btn jp-btn--blue" href="#earn">See what you earn</a>
             </div>
           </div>
           <div class="jp-hero-art">
@@ -75,93 +83,50 @@ const medals = [JOIN_ART.medal1, JOIN_ART.medal2, JOIN_ART.medal3, JOIN_ART.meda
       </section>
       <div class="jp-band jp-band--kantha" aria-hidden="true"></div>
 
-      <!-- START HERE + MEET NEHA -->
-      <section class="jp-intro" aria-labelledby="jp-start">
-        <div class="jp-wrap jp-intro-grid">
-          <div class="jp-intro-copy">
-            <p class="jp-kicker">Shuru yahan se</p>
-            <h2 id="jp-start">Are you an influencer? Start here.</h2>
-            <p>If you create content on YouTube, Instagram, Facebook or another social media platform, {BRAND.name} lets your fans talk to you on a private phone call, and you earn for every minute. Your real phone number stays private. Choose when to go online and which calls to accept. Calls are for conversation, not regulated advice.</p>
-          </div>
-          <aside class="jp-neha" aria-label="Our example">
-            <p class="jp-neha-tag">Our example</p>
-            <p class="jp-neha-name">Meet Neha.</p>
-            <p>Neha cooks home-style food from Indore for her Instagram followers. Fans keep asking her questions in the comments, and she would love to really talk to them. Follow her story down the scroll. You can do the same.</p>
-          </aside>
-        </div>
-      </section>
-
       <!-- THE SCROLL: four Patachitra panels on handmade paper, Gond-dot ground -->
       <section class="jp-scroll" aria-labelledby="jp-steps">
         <div class="jp-wrap">
           <header class="jp-scroll-head">
-            <p class="jp-kicker">Neha's scroll, panel by panel</p>
-            <h2 id="jp-steps">Steps to become an influencer</h2>
+            <p class="jp-kicker">Neha's scroll · 4 panels</p>
+            <h2 id="jp-steps">How to join</h2>
+            <p class="jp-scroll-sub">Neha cooks for her Instagram fans in Indore. This is how she started taking their calls.</p>
           </header>
           <div class="jp-scroll-body">
             {JOIN_ART.roller ? <img class="jp-roller jp-roller--top" src={img(JOIN_ART.roller, 1400)} alt="" width="1400" height="110" loading="lazy" decoding="async" /> : <div class="jp-roller jp-roller--top jp-css-roller" aria-hidden="true"></div>}
             <ol class="jp-pats">
-              <li class="jp-pat" id="pat-1" data-pat="1">
-                <figure class="jp-frame">
-                  {JOIN_ART.pat1 ? <img src={img(JOIN_ART.pat1, 1000)} alt="Patachitra-style painting: Neha holding up her phone for a selfie video while a scroll of ticks unrolls beside her" width="1000" height="750" loading="lazy" decoding="async" /> : <div class="jp-css-pat" aria-hidden="true">Pehchaan</div>}
-                </figure>
-                <div class="jp-card">
-                  <span class="jp-medal" data-pat="1">{medals[0] && <img src={img(medals[0], 300)} alt="" width="300" height="300" loading="lazy" decoding="async" />}<b>1</b></span>
-                  <p class="jp-kicker">Pat 1 · Pehchaan</p>
-                  <h3>Sign up and verify it's you</h3>
-                  <ul class="jp-ticks">
-                    <li>Sign up with your own phone number using WhatsApp OTP.</li>
-                    <li>Verify your Aadhaar with an OTP (or DigiLocker if OTP doesn't work).</li>
-                    <li>Record a 10-second selfie video.</li>
-                    <li>Pass a UPI or bank account check.</li>
-                  </ul>
-                  <p class="jp-example"><b>Neha:</b> signs up with her WhatsApp number, verifies her Aadhaar, records her selfie video and adds her UPI ID.</p>
-                </div>
-              </li>
-              <li class="jp-pat jp-pat--flip" id="pat-2" data-pat="2">
-                <figure class="jp-frame">
-                  {JOIN_ART.pat2 ? <img src={img(JOIN_ART.pat2, 1000)} alt="Patachitra-style painting: Neha choosing her painted avatar and writing her price on a slate" width="1000" height="750" loading="lazy" decoding="async" /> : <div class="jp-css-pat" aria-hidden="true">Apna daam</div>}
-                </figure>
-                <div class="jp-card">
-                  <span class="jp-medal" data-pat="2">{medals[1] && <img src={img(medals[1], 300)} alt="" width="300" height="300" loading="lazy" decoding="async" />}<b>2</b></span>
-                  <p class="jp-kicker">Pat 2 · Apna daam</p>
-                  <h3>Set up your profile and your rate</h3>
-                  <p>Add your languages and topics, and set your rate. You choose a fan price from ₹5 to ₹1,000 a minute. Fans see you only as an AI avatar you choose, never your real photo.</p>
-                  <div class="jp-profile" aria-label="Example profile">
-                    <span class="jp-avatar" aria-hidden="true">N</span>
-                    <span class="jp-profile-who"><b>Neha</b><small>Home cooking · Hindi, English</small></span>
-                    <span class="jp-rate">₹{rate}/min</span>
+              {pats.map((p) => (
+                <li class:list={['jp-pat', { 'jp-pat--flip': p.n % 2 === 0 }]} id={`pat-${p.n}`} data-pat={p.n}>
+                  <figure class="jp-frame">
+                    {p.art ? <img src={img(p.art, 1000)} alt={p.alt} width="1000" height="750" loading="lazy" decoding="async" /> : <div class="jp-css-pat" aria-hidden="true">{p.css}</div>}
+                  </figure>
+                  <div class="jp-card">
+                    <span class="jp-medal" data-pat={p.n}>{medals[p.n - 1] && <img src={img(medals[p.n - 1]!, 300)} alt="" width="300" height="300" loading="lazy" decoding="async" />}<b>{p.n}</b></span>
+                    <p class="jp-kicker">Pat {p.n} · {p.word}</p>
+                    <h3>{p.title}</h3>
+                    {p.n === 1 && <p>Sign up on {BRAND.name}. It's free.</p>}
+                    {p.n === 2 && <p>Open your dashboard and upgrade to influencer. That's free too.</p>}
+                    {p.n === 3 && (
+                      <>
+                        <p>Choose your price per minute, as you see fit.</p>
+                        <div class="jp-profile" aria-label="Example profile">
+                          <span class="jp-avatar" aria-hidden="true">N</span>
+                          <span class="jp-profile-who"><b>Neha</b><small>Home cooking · Hindi</small></span>
+                          <span class="jp-rate">₹{rate}/min</span>
+                        </div>
+                      </>
+                    )}
+                    {p.n === 4 && (
+                      <>
+                        <p>Go online when you are free. We ring you first. You choose.</p>
+                        <div class="jp-keys" aria-label="Example call">
+                          <span class="jp-key jp-key--yes"><b>1</b>Accept</span>
+                          <span class="jp-key jp-key--no"><b>2</b>Decline</span>
+                        </div>
+                      </>
+                    )}
                   </div>
-                </div>
-              </li>
-              <li class="jp-pat" id="pat-3" data-pat="3">
-                <figure class="jp-frame">
-                  {JOIN_ART.pat3 ? <img src={img(JOIN_ART.pat3, 1000)} alt="Patachitra-style painting: Neha's phone ringing in her kitchen while a fan waits on the other side of a painted wall" width="1000" height="750" loading="lazy" decoding="async" /> : <div class="jp-css-pat" aria-hidden="true">Phone bajega</div>}
-                </figure>
-                <div class="jp-card">
-                  <span class="jp-medal" data-pat="3">{medals[2] && <img src={img(medals[2], 300)} alt="" width="300" height="300" loading="lazy" decoding="async" />}<b>3</b></span>
-                  <p class="jp-kicker">Pat 3 · Phone bajega</p>
-                  <h3>Go online and take calls</h3>
-                  <p>How a call works: when a fan starts a call, we first call you and announce that the fan wants to talk. Press 1 to accept or 2 to decline. If you accept, we then call the fan and merge the two calls. Both calls come from a {BRAND.name} number, so neither real number is shared. The fan is charged per minute at the rate you set.</p>
-                  <div class="jp-keys" aria-label="Example call">
-                    <p class="jp-keys-say">"Sana wants to talk to you."</p>
-                    <span class="jp-key jp-key--yes"><b>1</b>Accept</span>
-                    <span class="jp-key jp-key--no"><b>2</b>Decline</span>
-                  </div>
-                </div>
-              </li>
-              <li class="jp-pat jp-pat--flip" id="pat-4" data-pat="4">
-                <figure class="jp-frame">
-                  {JOIN_ART.pat4 ? <img src={img(JOIN_ART.pat4, 1000)} alt="Patachitra-style painting: Neha smiling as coins flow from a painted phone into her bank passbook" width="1000" height="750" loading="lazy" decoding="async" /> : <div class="jp-css-pat" aria-hidden="true">Kamaai</div>}
-                </figure>
-                <div class="jp-card">
-                  <span class="jp-medal" data-pat="4">{medals[3] && <img src={img(medals[3], 300)} alt="" width="300" height="300" loading="lazy" decoding="async" />}<b>4</b></span>
-                  <p class="jp-kicker">Pat 4 · Kamaai</p>
-                  <h3>Get paid to your bank or UPI</h3>
-                  <p>Your earnings and payout status are shown in rupees in your dashboard. Payouts go to your own bank account or UPI ID.</p>
-                  <p class="jp-example"><b>Neha:</b> talks with fans for 1 hour this week at ₹{rate} a minute, so she earns ₹600 before TDS.</p>
-                </div>
-              </li>
+                </li>
+              ))}
             </ol>
             {JOIN_ART.roller ? <img class="jp-roller jp-roller--bottom" src={img(JOIN_ART.roller, 1400)} alt="" width="1400" height="110" loading="lazy" decoding="async" /> : <div class="jp-roller jp-roller--bottom jp-css-roller" aria-hidden="true"></div>}
           </div>
@@ -172,26 +137,29 @@ const medals = [JOIN_ART.medal1, JOIN_ART.medal2, JOIN_ART.medal3, JOIN_ART.meda
       <!-- EARNINGS: Bidri silver-inlay ledger -->
       <section class="jp-ledger" id="earn" aria-labelledby="jp-earn">
         <div class="jp-wrap">
-          <p class="jp-kicker">Seedha hisaab</p>
-          <h2 id="jp-earn">What could you earn?</h2>
-          <p class="jp-ledger-lead">Influencers complete full video KYC and choose a fan price from ₹5 to ₹1,000 per minute; they receive 60% of the connected-call charge minus ₹2.00 per connected minute for the telephone call. Being online does not guarantee calls. Amounts below are before TDS or your own taxes.</p>
+          <p class="jp-kicker">Har minute ka hisaab</p>
+          <h2 id="jp-earn">What you earn</h2>
+          <p class="jp-ledger-lead">Fans are charged per minute of the phone call. You receive 60% of the connected-call charge minus ₹2.00 per connected minute for the telephone call. The 40% includes platform fees and GST. Being online does not guarantee calls.</p>
           <ol class="jp-split" aria-label={`One connected minute at ₹${rate}`}>
             <li><small>Fan pays</small><b>₹{rate}</b></li>
-            <li><small>Your 60%</small><b>₹{share}</b></li>
-            <li><small>Telephone call</small><b>−₹{callCost}</b></li>
+            <li><small>Your 60%</small><b>₹{share}</b><em>₹{kept} platform fees &amp; GST</em></li>
+            <li><small>Phone call</small><b>−₹{callCost}</b></li>
             <li class="jp-split-you"><small>You earn</small><b>₹{perMin}</b></li>
           </ol>
           <div class="jp-ledger-grid">
-            <div class="table-scroll jp-table"><table><caption>Illustrative earnings at a fan price of ₹20 per minute</caption><thead><tr><th scope="col">Connected talk time</th><th scope="col">Earnings per minute</th><th scope="col">You earn</th></tr></thead><tbody><tr><td>1 hour</td><td>₹10.00</td><td>₹600</td></tr><tr><td>1,000 minutes</td><td>₹10.00</td><td>₹10,000</td></tr><tr><td>3,000 minutes</td><td>₹10.00</td><td>₹30,000</td></tr></tbody></table></div>
+            <ul class="jp-coins" aria-label={`At ₹${rate} a minute`}>
+              <li><small>1 hour</small><b>₹600</b></li>
+              <li><small>1,000 minutes</small><b>₹10,000</b></li>
+              <li><small>3,000 minutes</small><b>₹30,000</b></li>
+            </ul>
             <form class="jp-calc" aria-labelledby="jp-calc-title" onsubmit="return false">
-              <p class="jp-calc-title" id="jp-calc-title">Try your own numbers</p>
-              <label>Your fan price (₹ a minute)<input type="number" name="rate" min="5" max="1000" step="1" value={rate} inputmode="numeric" /></label>
-              <label>Connected minutes<input type="number" name="mins" min="1" max="100000" step="1" value="60" inputmode="numeric" /></label>
-              <p class="jp-calc-out" aria-live="polite">You earn <output name="per">₹10.00</output> a minute, so <output name="total">₹600</output> in all.</p>
-              <p class="jp-calc-note">Illustrative, before TDS or your own taxes.</p>
+              <p class="jp-calc-title" id="jp-calc-title">Try your numbers</p>
+              <label>Your rate (₹ a minute)<input type="number" name="rate" min="1" step="1" value={rate} inputmode="numeric" /></label>
+              <label>Minutes talked<input type="number" name="mins" min="1" max="100000" step="1" value="60" inputmode="numeric" /></label>
+              <p class="jp-calc-out" aria-live="polite">You earn <output name="total">₹600</output></p>
             </form>
           </div>
-          <p class="jp-ledger-more">See <a href="/hosts/rates">rates, payouts &amp; taxes</a>.</p>
+          <p class="jp-ledger-more">Before TDS or your own taxes. <a href="/hosts/rates">Rates &amp; payouts</a></p>
         </div>
       </section>
       <div class="jp-band jp-band--ikat" aria-hidden="true"></div>
@@ -200,22 +168,22 @@ const medals = [JOIN_ART.medal1, JOIN_ART.medal2, JOIN_ART.medal3, JOIN_ART.meda
       <section class="jp-promise" aria-labelledby="jp-private">
         <div class="jp-wrap">
           <p class="jp-kicker">Teen vaade</p>
-          <h2 id="jp-private">Your privacy is protected.</h2>
+          <h2 id="jp-private">Three promises</h2>
           <ul class="jp-promises">
             <li data-tone="haldi">
               {JOIN_ART.shield1 ? <img src={img(JOIN_ART.shield1, 400)} alt="" width="400" height="400" loading="lazy" decoding="async" /> : <span class="jp-css-promise" aria-hidden="true">☎</span>}
-              <h3>Your number stays hidden</h3>
-              <p>Your phone number stays hidden behind our masked line.</p>
+              <h3>Number hidden</h3>
+              <p>Calls go through our masked line.</p>
             </li>
             <li data-tone="rani">
               {JOIN_ART.shield2 ? <img src={img(JOIN_ART.shield2, 400)} alt="" width="400" height="400" loading="lazy" decoding="async" /> : <span class="jp-css-promise" aria-hidden="true">☺</span>}
-              <h3>An avatar, not your photo</h3>
-              <p>Influencers appear only as an AI avatar they chose — never their real photo.</p>
+              <h3>Avatar, not photo</h3>
+              <p>Fans see the avatar you choose.</p>
             </li>
             <li data-tone="sky">
               {JOIN_ART.shield3 ? <img src={img(JOIN_ART.shield3, 400)} alt="" width="400" height="400" loading="lazy" decoding="async" /> : <span class="jp-css-promise" aria-hidden="true">✓</span>}
               <h3>You decide</h3>
-              <p>Choose when to go online and which calls to accept. Press 2 to decline any call.</p>
+              <p>When to go online. Which calls to take.</p>
             </li>
           </ul>
         </div>
@@ -229,9 +197,9 @@ const medals = [JOIN_ART.medal1, JOIN_ART.medal2, JOIN_ART.medal3, JOIN_ART.meda
           <div class="jp-close-copy">
             <p class="jp-kicker">Ab aapki baari</p>
             <h2 id="jp-apply">Your scroll starts here.</h2>
-            <p>Read the <a href="/hosts/requirements">influencer requirements</a>, <a href="/hosts/rules">influencer rules</a> and <a href="/hosts/agreement">influencer agreement</a> before you apply.</p>
+            <p>Open to influencers in India. Calls are for conversation, not professional advice. Read the <a href="/hosts/rules">influencer rules</a> and <a href="/hosts/agreement">agreement</a>.</p>
             <div class="jp-ctas">
-              <a class="jp-btn" href="/sign-up">Sign up to become an influencer →</a>
+              <a class="jp-btn" href="/sign-up">Join for free →</a>
               <a class="jp-btn jp-btn--blue" href="/hosts/rates">Rates &amp; payouts</a>
             </div>
           </div>
@@ -243,16 +211,14 @@ const medals = [JOIN_ART.medal1, JOIN_ART.medal2, JOIN_ART.medal3, JOIN_ART.meda
 </Base>
 
 <script>
-  // Earnings calculator: 60% of the fan price minus ₹2 per connected minute (same rule as the paragraph above).
+  // Earnings calculator: 60% of the rate minus ₹2 per connected minute (same rule as the paragraph above).
   const form = document.querySelector<HTMLFormElement>('.jp-calc');
   if (form) {
-    const inr = (n: number, d = 0) => '₹' + n.toLocaleString('en-IN', { minimumFractionDigits: d, maximumFractionDigits: d });
     const update = () => {
-      const r = Math.min(1000, Math.max(5, Math.round(Number((form.elements.namedItem('rate') as HTMLInputElement).value) || 5)));
+      const r = Math.max(0, Math.round(Number((form.elements.namedItem('rate') as HTMLInputElement).value) || 0));
       const m = Math.max(0, Math.round(Number((form.elements.namedItem('mins') as HTMLInputElement).value) || 0));
-      const per = Math.max(0, r * 0.6 - 2);
-      (form.elements.namedItem('per') as HTMLOutputElement).value = inr(per, 2);
-      (form.elements.namedItem('total') as HTMLOutputElement).value = inr(Math.round(per * m));
+      const total = Math.max(0, Math.round((r * 0.6 - 2) * m));
+      (form.elements.namedItem('total') as HTMLOutputElement).value = '₹' + total.toLocaleString('en-IN');
     };
     form.addEventListener('input', update);
     update();

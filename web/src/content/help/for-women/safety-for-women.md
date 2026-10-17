@@ -23,7 +23,6 @@ draft: false
 ## What protects you
 
 - **Your number is masked.** The other person never sees your real phone number. See [How your number stays private](/help/safety-and-privacy/your-number-stays-private).
-- **Influencers are checked.** Influencers are verified adults who have done video KYC. KYC means we check that a person is real and is who they say they are.
 - **Strikes and bans.** Our team reviews every report. Confirmed strikes can lead to a permanent ban.
 - **The # key.** Press it any time. It ends the call, blocks the other person and reports the incident.
 - **No one listens in.** No human monitors your call. See [How we keep calls safe](/help/safety-and-privacy/how-ai-keeps-calls-safe).

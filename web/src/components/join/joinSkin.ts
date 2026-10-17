@@ -13,10 +13,10 @@ const J = '/assets/hf-join';
 
 export const JOIN_ART = {
   hero: opt(`${J}/hero/patua-hero.png`),
-  pat1: opt(`${J}/panels/pat-1-verify.png`),
-  pat2: opt(`${J}/panels/pat-2-profile.png`),
-  pat3: opt(`${J}/panels/pat-3-call.png`),
-  pat4: opt(`${J}/panels/pat-4-paid.png`),
+  pat1: opt(`${J}/panels/pat-1-account.png`),
+  pat2: opt(`${J}/panels/pat-2-upgrade.png`),
+  pat3: opt(`${J}/panels/pat-3-rate.png`),
+  pat4: opt(`${J}/panels/pat-4-call.png`),
   cta: opt(`${J}/panels/pat-cta-rollup.png`),
   roller: opt(`${J}/scroll/roller-channapatna.png`),
   medal1: opt(`${J}/medallions/gond-1-peacock.png`),

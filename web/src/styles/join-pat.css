@@ -153,6 +153,18 @@
 .jp .jp-ledger-more { margin-top: 22px; }
 .jp .jp-ledger a { color: var(--haldi); font-weight: 800; }
 
+/* intro line under the scroll heading; the 40% note under the split; three Bidri coins for the example totals */
+.jp .jp-scroll-sub { max-width: 52ch; margin: 12px auto 0; font-size: clamp(16px, 1.15vw, 19px); }
+.jp .jp-split em { display: block; margin-top: 6px; font-style: normal; font-size: 13px; color: var(--silver); }
+.jp .jp-coins { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; align-self: center; }
+.jp .jp-coins li { aspect-ratio: 1; display: grid; place-content: center; text-align: center; border-radius: 50%; color: var(--ink); border: 3px solid var(--ink); box-shadow: 0 0 0 6px var(--gunmetal), 0 0 0 8px var(--silver), 0 10px 0 8px #000;
+  background: radial-gradient(circle, transparent 0 58%, rgba(29,26,43,.18) 58% 60%, transparent 60%), repeating-conic-gradient(rgba(255,255,255,.35) 0 6deg, transparent 6deg 18deg), var(--haldi); }
+.jp .jp-coins li:nth-child(2) { background-color: #ffc4df; }
+.jp .jp-coins li:nth-child(3) { background-color: #bfe0ff; }
+.jp .jp-coins small { font-size: 14px; font-weight: 700; }
+.jp .jp-coins b { font: 900 clamp(22px, 2.2vw, 36px) var(--head) !important; }
+.jp .jp-calc-out output { font-size: 28px; }
+
 /* ---------- PRIVACY on Ikat ---------- */
 .jp .jp-promise { background: var(--jp-ikat, linear-gradient(45deg, transparent 40%, rgba(224,65,143,.35) 40% 60%, transparent 60%) 0 0 / 46px 46px, linear-gradient(-45deg, transparent 40%, rgba(246,185,19,.28) 40% 60%, transparent 60%) 0 0 / 46px 46px, var(--ikat)); text-align: center; }
 .jp .jp-promise .jp-kicker { color: var(--haldi); }
@@ -181,6 +193,7 @@
   .jp .jp-hero-grid, .jp .jp-intro-grid, .jp .jp-pat, .jp .jp-ledger-grid, .jp .jp-close-grid.has-art { grid-template-columns: minmax(0, 1fr); }
   .jp .jp-hero-copy, .jp .jp-intro-copy, .jp .jp-card, .jp .jp-close-copy, .jp .jp-ledger { text-align: center; }
   .jp .jp-hero-art { order: -1; }
+  .jp .jp-masthead { flex-direction: column; border-radius: 14px; font-size: 12px; letter-spacing: .1em; }
   .jp .jp-hero-art img, .jp .jp-css-hero { width: min(100%, 380px); }
   .jp .jp-facts { grid-template-columns: minmax(0, 1fr); max-width: 360px; margin-left: auto; margin-right: auto; }
   .jp .jp-intro-copy p:not(.jp-kicker), .jp .jp-ledger-lead { margin-left: auto; margin-right: auto; }
@@ -197,6 +210,10 @@
   .jp .jp-split { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .jp .jp-split li:nth-child(3)::before { content: none; }
   .jp .jp-promises { grid-template-columns: minmax(0, 1fr); max-width: 420px; }
+  .jp .jp-coins { grid-template-columns: minmax(0, 1fr); gap: 14px; max-width: 320px; margin: 8px auto 6px; width: 100%; }
+  .jp .jp-coins li { aspect-ratio: auto; display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 10px 20px; border-radius: 999px; box-shadow: 0 0 0 3px var(--gunmetal), 0 0 0 5px var(--silver), 0 6px 0 5px #000; }
+  .jp .jp-coins small { font-size: 14px; }
+  .jp .jp-coins b { font-size: 22px !important; }
   .jp .jp-table th, .jp .jp-table td { padding: 10px 8px; font-size: 14px; }
   .jp .jp-table td:last-child { font-size: 15px; }
   .jp .jp-table caption { padding: 12px 10px 4px; font-size: 14px; }

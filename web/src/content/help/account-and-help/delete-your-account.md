@@ -52,7 +52,7 @@ We never sell personal data. To know more, read our [privacy page](/privacy).
 
 ## Good to know
 
-- Your legal name, Aadhaar details and phone number were never shown on your profile or shared with other people.
+- Your real name and phone number were never shown on your profile or shared with other people.
 - A banned account cannot re-register with the same phone number.
 - If you only want a break, you do not have to delete. You can just stop calling, or go offline if you are an influencer.
 

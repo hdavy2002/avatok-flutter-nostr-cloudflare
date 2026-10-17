@@ -56,7 +56,6 @@ Influencers must not act like doctors, lawyers, counsellors or financial advisor
 ## How it keeps you safe
 
 - Your number is hidden. See [How does a call work?](/help/getting-started/how-a-call-works).
-- Influencers are verified adults. They have done video KYC.
 - No human monitors your call.
 - You can press the # key at any time to end the call and block the person.
 

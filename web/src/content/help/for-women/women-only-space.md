@@ -1,18 +1,16 @@
 ---
 title: "What is the women-only space?"
-description: "A separate lane where only women talk to women. Learn who can enter and why it is safe."
+description: "A separate lane where only women talk to women. Learn who it is for and how it stays safe."
 section: for-women
 order: 2
-updated: 2026-10-08
-keywords: ["women only", "mahila only", "ladies only", "women lane", "Aadhaar KYC", "video KYC", "only women"]
+updated: 2026-10-18
+keywords: ["women only", "mahila only", "ladies only", "women lane", "only women", "women influencer"]
 audience: both
 faq:
   - q: "Who can enter the women-only space?"
-    a: "Only women who have completed video KYC and Aadhaar KYC. This applies to both the caller and the influencer."
-  - q: "Can other people see that this space exists?"
-    a: "No. It is hidden from everyone else. Unverified accounts cannot see it or call into it."
-  - q: "Can a man pretend to be a woman and get in?"
-    a: "No. Both sides must pass video KYC and Aadhaar KYC that show they are women, before the lane even appears."
+    a: "Only women. This applies to both the caller and the influencer."
+  - q: "What if a man pretends to be a woman to get in?"
+    a: "It is against our rules. Press # to end the call and block, and report the account. Our team reviews every report, and anyone found pretending is banned."
 draft: false
 ---
 
@@ -22,35 +20,19 @@ The women-only space is a separate lane on {{brand.name}}. Only women talk to wo
 
 ## What it is
 
-It is a private lane inside the platform. The caller is a woman. The influencer is a woman. No man can be on either side.
+It is a private lane inside the platform. The caller is a woman. The influencer is a woman. No man is allowed on either side.
 
 It works like the rest of the platform: you pick an influencer, you see the price, you pay per minute. Your number stays masked. The difference is who can be there.
 
-## Who can enter
+## If someone breaks the rule
 
-**Both the caller and the influencer must complete two checks** before the lane even appears:
-
-1. **Video KYC.** KYC means "know your customer". You do a short live video so we can see you are a real person.
-2. **Aadhaar KYC.** You verify your Aadhaar with an OTP sent to the mobile linked to it (or with DigiLocker if the OTP doesn't work). This shows that you are a woman.
-
-Your Aadhaar details are never shown on your profile or shared with the other person.
-
-## It is hidden from others
-
-**Accounts that are not verified cannot see the lane or call into it.** It does not show up for them at all. A man cannot just click a button and enter.
-
-## Why a man cannot fake it
-
-- He needs to pass a live video check.
-- He needs Aadhaar verification that shows a woman.
-- This is checked on both sides, caller and influencer.
-- Until both are done, the lane does not appear.
-
-So there is no easy way to get in by pretending.
+- Press **#** at any time. The call ends and the person is blocked.
+- Report the account. Our team reviews every report.
+- Anyone found pretending to be a woman to get in is banned.
 
 ## An example
 
-Neha is a caller from Jaipur. She wants to talk about something personal. She finishes her video KYC and Aadhaar KYC. Now she sees the women-only lane. She picks an influencer who is also a verified woman and starts her call. Nobody else can see this lane.
+Neha is a caller from Jaipur. She wants to talk about something personal. She opens the women-only lane, picks a woman influencer and starts her call. Her number stays private, and she can end the call with # at any time.
 
 ## Rules still apply
 

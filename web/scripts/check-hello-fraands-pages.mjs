@@ -62,16 +62,20 @@ export function checkHelloFraandsPages(root, identity) {
   assert.equal((pages.get('/hosts/join').match(/<ol class="jp-pats"[\s\S]*?<\/ol>/)?.[0].match(/<li class="jp-pat\b/g) || []).length, 4, 'Join: four scroll panels');
   assert(!/by the second|exact seconds|Google Play|Razorpay|Cashfree/i.test(text(pages.get('/hosts/join').match(/<main\b[^>]*>[\s\S]*?<\/main>/)?.[0] || '')), 'Join: per-minute billing, no payment-provider names');
   const hostJoin = text(pages.get('/hosts/join'));
+  // [HF-JOIN-PAT-2 2026-10-18] Owner model: free account, free upgrade in the dashboard, own rate (no range), 60% minus ₹2, 40% = platform fees + GST, India only.
   for (const copy of [
-    'Influencers complete full video KYC and choose a fan price from ₹5 to ₹1,000 per minute',
-    'they receive 60% of the connected-call charge minus ₹2.00 per connected minute for the telephone call.',
+    'Fans are charged per minute of the phone call.',
+    'You receive 60% of the connected-call charge minus ₹2.00 per connected minute for the telephone call.',
+    'The 40% includes platform fees and GST.',
     'Being online does not guarantee calls.',
-    'Amounts below are before TDS or your own taxes.',
+    'Before TDS or your own taxes.',
+    'Open to influencers in India.',
   ]) assert(hostJoin.includes(copy), 'Current host earnings contract: ' + copy);
+  assert(!/video KYC|Aadhaar|DigiLocker|₹5 to ₹1,000/i.test(text(pages.get('/hosts/join').match(/<main\b[^>]*>[\s\S]*?<\/main>/)?.[0] || '')), 'Join: no registration-process details or price range');
   const hostRates = text(pages.get('/hosts/rates'));
   for (const copy of [
     'Earnings are paid by the minute, only for connected time.', // [HF-BILL-MINUTE-1 2026-10-18] owner: billing is by the minute
-    'You choose a whole-rupee fan price from ₹5 to ₹1,000 per minute.',
+    'You choose your own whole-rupee fan price per minute.', // [HF-JOIN-PAT-2 2026-10-18] owner: no price range
     'Your earnings are 60% of the connected-call charge, minus ₹2.00 for each connected minute to cover the telephone call.',
     'Example at ₹20 per minute for a one-minute connected call: the fan pays ₹20, your earning is ₹10, ₹2 covers the call, and the platform share is ₹8.',
   ]) assert(hostRates.includes(copy), 'Current host rates contract: ' + copy);
@@ -102,13 +106,8 @@ export function checkHelloFraandsPages(root, identity) {
     const body = text(pages.get(route).match(/<main\b[^>]*>[\s\S]*?<\/main>/)?.[0] || '');
     assert(!/by the second|exact seconds|Google Play|Razorpay|Cashfree/i.test(body), route + ': per-minute billing, no payment-provider names');
   }
-  const earningsTable = pages.get('/hosts/join').match(/<tbody>([\s\S]*?)<\/tbody>/)?.[1] || '';
-  const earningsRows = [...earningsTable.matchAll(/<tr>([\s\S]*?)<\/tr>/g)].map(row => [...row[1].matchAll(/<td>([^<]+)<\/td>/g)].map(cell => cell[1]));
-  assert.deepEqual(earningsRows, [
-    ['1 hour', '₹10.00', '₹600'],
-    ['1,000 minutes', '₹10.00', '₹10,000'],
-    ['3,000 minutes', '₹10.00', '₹30,000'],
-  ], 'Illustrative earnings follow ₹10.00 per connected minute at a ₹20 fan price');
+  const earningsCoins = [...(pages.get('/hosts/join').match(/<ul class="jp-coins"[\s\S]*?<\/ul>/)?.[0] || '').matchAll(/<small>([^<]+)<\/small><b>([^<]+)<\/b>/g)].map(m => [m[1], m[2]]);
+  assert.deepEqual(earningsCoins, [['1 hour', '₹600'], ['1,000 minutes', '₹10,000'], ['3,000 minutes', '₹30,000']], 'Illustrative earnings follow ₹10.00 per connected minute at a ₹20 fan price');
   for (const [route, phones] of [['/emergency', ['14416', '112', '9152987821', '18602662345']], ['/hosts/crisis-script', ['14416', '112']]]) {
     const links = [...pages.get(route).matchAll(/href="tel:([^"]+)"/g)].map(m => m[1].replace(/[^\d]/g, ''));
     for (const phone of phones) assert(links.includes(phone), `${route}: tap-to-call ${phone}`);

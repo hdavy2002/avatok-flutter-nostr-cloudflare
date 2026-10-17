@@ -3,12 +3,12 @@ title: "How much will I earn as an influencer?"
 description: "See how you earn as an influencer: your fans pay per minute at the rate you set, and you earn your share of every connected minute."
 section: hosts
 order: 2
-updated: 2026-10-15
+updated: 2026-10-18
 keywords: ["influencer earnings", "kitna kamayenge", "per minute", "paisa kamao", "influencer income", "set my rate"]
 audience: creator
 faq:
   - q: "Can I set my own price?"
-    a: "Yes. You set the per-minute rate your fans pay to talk to you. You earn your share of every connected minute."
+    a: "Yes. You set your own per-minute rate, as you see fit. You earn 60% of every connected minute, minus ₹2.00 a minute for the telephone call."
   - q: "How is the time counted?"
     a: "By the minute of connected time. Ringing, missed calls and calls that never connect earn ₹0."
   - q: "Will I get calls every day?"
@@ -22,11 +22,11 @@ Your fans pay per minute, at the rate you set. You earn your share of each conne
 
 ## The simple rule
 
-The caller is charged per minute at **your rate**, only for connected time. Your earnings for each call are shown in rupees, with the payout status. You can see your current rate and your share in your dashboard.
+The caller is charged per minute of the phone call at **your rate**, only for connected time. You receive **60% of the connected-call charge, minus ₹2.00 for each connected minute** to cover the telephone call. The other 40% covers platform fees and GST. Your earnings for each call are shown in rupees in your dashboard, with the payout status.
 
 ## A simple example
 
-Imagine your rate is a round number, ₹10 a minute, only to make the sum easy. Your fan Rohit from Pune calls you and you talk for 15 minutes. He is charged for 15 minutes at your rate. Your earnings for the call are your share of that amount. Your dashboard shows the exact figure after the call.
+Say your rate is ₹20 a minute. Your fan Rohit from Pune calls you and you talk for 15 minutes. He is charged ₹300 (15 × ₹20). For each minute you earn 60% of ₹20, which is ₹12, minus ₹2 for the call, so ₹10. For 15 minutes you earn **₹150**, before TDS or your own taxes.
 
 If the call never connects, nobody pays anything and nothing is earned.
 

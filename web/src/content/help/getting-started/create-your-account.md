@@ -12,7 +12,7 @@ faq:
   - q: "Is it free to join?"
     a: "Yes. It is free for callers and influencers. There is no subscription. You pay only for the minutes you talk."
   - q: "Can I be both a caller and an influencer?"
-    a: "Yes. One account can do both. Taking calls as an influencer opens after you finish video KYC and Aadhaar verification."
+    a: "Yes. One account can do both. Upgrade to influencer for free from your dashboard."
 draft: false
 ---
 
@@ -38,21 +38,14 @@ You must be 18 or older to join. Read our [age policy](/age-policy).
 ## Caller or influencer?
 
 - A **caller** is a fan who talks to influencers and pays per minute. You can start right after sign up.
-- An **influencer** takes calls from fans and earns money. Taking calls opens after extra checks.
+- An **influencer** takes calls from fans and earns money. Upgrade for free from your dashboard. For now, influencers must be based in India.
 - You can be **both** on one account.
 
-## Why influencers must verify who they are
-
-Influencers do two checks before they can take calls:
-
-- **Video KYC.** KYC means "know your customer". The influencer shows their face on a short video check.
-- **Aadhaar verification.** The influencer confirms their Aadhaar with an OTP sent to the mobile linked to it. If that doesn't work, they can use DigiLocker, a Government of India service, instead.
-
-This keeps the service safe. You know that an influencer with the badge is a real adult. If you want to join as an influencer, see [Join & earn](/hosts/join).
+If you want to join as an influencer, see [Join & earn](/hosts/join).
 
 ## What stays private
 
-An influencer's legal name, Aadhaar details and phone number are never shown on their profile. They are never shared with you. The same is true for you. Your name, number and details are not shown to the influencer.
+An influencer's real name and phone number are never shown on their profile. They are never shared with you. The same is true for you. Your name, number and details are not shown to the influencer.
 
 Your phone number is never shared with the other person on a call. See [How does a call work?](/help/getting-started/how-a-call-works).
 

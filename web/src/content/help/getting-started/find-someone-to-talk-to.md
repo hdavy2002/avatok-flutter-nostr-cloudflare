@@ -7,8 +7,6 @@ updated: 2026-10-15
 keywords: ["find influencer", "language filter", "online now", "favourite", "notify me", "profile", "kise baat karein"]
 audience: buyer
 faq:
-  - q: "What does the badge on a profile mean?"
-    a: "The video-KYC badge means the influencer has done a face check on video. It tells you the influencer is a real, verified adult."
   - q: "What are topics the influencer agreed to?"
     a: "Each influencer chooses what they are happy to talk about. These topics are shown on their profile. Pick an influencer whose topics match what you want to ask."
   - q: "What if my favourite influencer is offline?"
@@ -36,7 +34,6 @@ You can narrow the list with these filters:
 Each profile shows:
 
 - **Display name.** Not the influencer's real name.
-- **Video-KYC badge.** The influencer has done a face check on video.
 - **Languages.**
 - **Price per minute.** The influencer sets this. You see it before you call.
 - **Rating.** Marks from other callers.

@@ -10,7 +10,7 @@ faq:
   - q: "Is the LGBTQ+ space private?"
     a: "Yes. Joining is optional and private. Showing it on your profile is a separate choice that you make."
   - q: "Who can call in the LGBTQ+ space?"
-    a: "Only verified callers. It is for friendly conversation only."
+    a: "LGBTQ+ callers and influencers who choose to join it. It is for friendly conversation only."
 draft: false
 ---
 
@@ -26,9 +26,9 @@ The LGBTQ+ space is a private lane on {{brand.name}}. In it, LGBTQ+ people can t
 
 *Example: Arjun joins the lane to talk to someone who understands. His profile shows nothing about it. Later he decides to show it, and he turns that on himself.*
 
-## Only verified callers
+## Safe for everyone in it
 
-Everyone who calls in this lane must be verified first. This keeps out fake accounts and people who want to cause harm.
+The same safety rules apply here. Press # to end a call and block, and report anyone who causes harm. Our team reviews every report.
 
 ## Friendly conversation only
 
