@@ -70,10 +70,10 @@
 .auth.auth--pco .auth-inline-btn--ghost { background: var(--haldi); }
 
 /* buttons — owner keypad-key artwork (ends keep their drawing, the middle stretches) */
-.auth--pco[data-skins~="primary"] .auth-btn:not(.auth-btn--ink):not(.auth-btn--ghost) { border-style: solid; border-width: 0 52px; border-radius: 0; border-image: var(--au-btn-primary, none) 10 170 10 170 fill / 0 52px stretch; background: none; box-shadow: none; color: var(--cream); padding-inline: 4px; }
-.auth--pco[data-skins~="dark"] .auth-btn--ink { border-style: solid; border-width: 0 44px; border-radius: 0; border-image: var(--au-btn-dark, none) 10 170 10 170 fill / 0 44px stretch; background: none; box-shadow: none; color: var(--cream); padding-inline: 4px; }
-.auth--pco[data-skins~="light"] .auth-btn--ghost { border-style: solid; border-width: 0 44px; border-radius: 0; border-image: var(--au-btn-light, none) 10 170 10 170 fill / 0 44px stretch; background: none; box-shadow: none; color: var(--ink); padding-inline: 4px; }
-.auth--pco[data-skins~="small"] .auth-inline-btn { border-style: solid; border-width: 0 24px; border-radius: 0; border-image: var(--au-btn-small, none) 8 120 8 120 fill / 0 24px stretch; background: none; box-shadow: none; padding-inline: 2px; }
+.auth--pco[data-skins~="primary"] .auth-btn:not(.auth-btn--ink):not(.auth-btn--ghost) { border-style: solid; border-width: 0 52px; border-radius: 0; border-image: var(--au-btn-primary, none) 40 170 15 170 fill / 0 52px stretch; background: none; box-shadow: none; color: var(--cream); padding-inline: 4px; }
+.auth--pco[data-skins~="dark"] .auth-btn--ink { border-style: solid; border-width: 0 44px; border-radius: 0; border-image: var(--au-btn-dark, none) 31 150 36 150 fill / 0 44px stretch; background: none; box-shadow: none; color: var(--cream); padding-inline: 4px; }
+.auth--pco[data-skins~="light"] .auth-btn--ghost { border-style: solid; border-width: 0 44px; border-radius: 0; border-image: var(--au-btn-light, none) 17 150 46 150 fill / 0 44px stretch; background: none; box-shadow: none; color: var(--ink); padding-inline: 4px; }
+.auth--pco[data-skins~="small"] .auth-inline-btn { border-style: solid; border-width: 0 24px; border-radius: 0; border-image: var(--au-btn-small, none) 33 110 33 110 fill / 0 24px stretch; background: none; box-shadow: none; padding-inline: 2px; }
 .auth--pco[data-skins] .auth-btn:not(:disabled):hover, .auth--pco[data-skins] .auth-btn:not(:disabled):active { box-shadow: none; }
 
 /* sign-up role cards */
@@ -94,7 +94,9 @@
   .auth.auth--pco .auth-shell { display: grid; grid-template-columns: 46% 1fr; padding: 0; min-height: 100dvh; align-items: stretch; }
   .auth.auth--pco .au-panel { display: flex; flex-direction: column; justify-content: space-between; position: relative; background: var(--firozi); border-right: 4px solid var(--ink); padding: 0; }
   .auth--pco .au-panel-inner { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 20px; padding: 110px 40px 30px; }
-  .auth--pco .au-hero { display: block; width: min(100%, 560px); height: auto; max-width: none; }
+  /* the owner's hero PNGs carry wide transparent margins (content box 770x957 at 165,209 of 1100x1375): crop to it */
+  .auth--pco .au-hero-crop { position: relative; width: min(100%, 470px); aspect-ratio: 770 / 957; overflow: hidden; }
+  .auth--pco .au-hero { position: absolute; width: 142.86%; max-width: none; height: auto; left: -21.43%; top: -21.84%; }
   .auth--pco .au-sticker { position: absolute; top: 100px; right: 4%; z-index: 2; width: clamp(200px, 15vw, 300px); height: auto; transform: rotate(6deg); }
   .auth--pco .au-caption { margin: 0; text-align: center; display: flex; flex-direction: column; gap: 4px; }
   .auth--pco .au-caption b { font: 900 clamp(30px, 2.6vw, 44px)/1.05 var(--f-display) !important; color: var(--ink); }
@@ -124,3 +126,10 @@
 .auth--pco[data-skins~="field"] .auth-box { border-style: solid; border-width: 12px; border-radius: 0; border-image: var(--au-btn-field, none) 24 fill / 12px stretch; background: none; box-shadow: none; }
 .auth--pco[data-skins~="fieldfocus"] .auth-box:focus { border-image-source: var(--au-btn-fieldfocus, none); }
 .auth--pco[data-skins~="tick"] .auth-box.is-verified { border-image-source: var(--au-btn-tick, none); }
+/* phones: slimmer key ends so the two tab keys and the main key fit without sideways scroll */
+@media (max-width: 767px) {
+  .auth--pco[data-skins~="dark"] .auth-btn--ink, .auth--pco[data-skins~="light"] .auth-btn--ghost { border-width: 0 24px; border-image-width: 0 24px; min-width: 0; }
+  .auth--pco[data-skins~="primary"] .auth-btn:not(.auth-btn--ink):not(.auth-btn--ghost) { border-width: 0 36px; border-image-width: 0 36px; }
+  .auth--pco .auth-row[role="tablist"] > .auth-btn { flex: 1 1 0; min-width: 0; }
+}
+@media (max-width: 767px) { .auth--pco[data-skins~="primary"] .auth-btn:not(.auth-btn--ink):not(.auth-btn--ghost) { font-size: 16px; white-space: nowrap; } }

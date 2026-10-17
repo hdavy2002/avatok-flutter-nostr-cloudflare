@@ -30,7 +30,7 @@ const caption = variant === 'in' ? ['Hello? Kaun? Aap!', 'Your favourite influen
       <div class="au-panel-inner">
         {sticker.src && <img class="au-sticker" src={img(sticker.src, 640)} alt="" width="420" height="245" />}
         {hero
-          ? <img class="au-hero" src={img(hero, 1100)} alt="" width="1100" height="1375" fetchpriority="high" decoding="async" />
+          ? <div class="au-hero-crop"><img class="au-hero" src={img(hero, 1100)} alt="" width="1100" height="1375" fetchpriority="high" decoding="async" /></div>
           : <div class="au-booth-css"><span class="au-booth-sign">STD · ISD · PCO</span><span class="au-booth-phone"><svg viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 22c0-6 10-10 22-10s22 4 22 10l-6 6-8-4v-4c-5-2-11-2-16 0v4l-8 4z"/><path d="M18 30h28l6 22H12z"/><circle cx="32" cy="41" r="6"/></svg></span></div>}
         <p class="au-caption"><b>{caption[0]}</b><span>{caption[1]}</span></p>
       </div>
