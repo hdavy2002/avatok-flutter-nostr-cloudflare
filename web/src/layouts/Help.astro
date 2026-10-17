@@ -32,7 +32,7 @@ import { SECTIONS, helpUrl, type HelpEntry, type HelpTreeSection, type HelpSecti
 import { publicImage } from '../lib/config';
 import { ORG } from '../lib/org';
 import type { PublicContent } from '../lib/seo/types';
-import { readMinutes, dateLabel, AUDIENCE_LABEL, ARTICLE_CTA_ART, HELP_ORNAMENTS } from '../components/help/helpSkin';
+import { readMinutes, dateLabel, AUDIENCE_LABEL, ARTICLE_CTA_ART, HELP_ORNAMENTS, HELP_SKINS } from '../components/help/helpSkin';
 // [HF-HELP-DESI-2 2026-10-17] Fresh Indian "Angan" treatment (styles/help-desi.css, scoped `.hd`).
 import '../styles/desi-home-chrome.css';
 import '../styles/help-desi.css';
@@ -51,6 +51,8 @@ const section = SECTIONS[sectionId];
 const updated = dateLabel(entry.data.updated);
 const articleCount = tree.reduce((sum, s) => sum + s.entries.length, 0);
 const ornaments = HELP_ORNAMENTS.map((o) => `--hd-art-${o.key}:url(${publicImage(o.path, { width: o.width, fit: 'scale-down' })}) ${o.tail}`).join(';');
+const skinVars = HELP_SKINS.map((o) => `--hd-skin-${o.key}:url(${publicImage(o.path, { width: o.width, fit: 'scale-down' })})`).join(';');
+const skinKeys = HELP_SKINS.map((o) => o.key).join(' ');
 
 const canonicalPath = helpUrl(entry);
 const content: PublicContent = {
@@ -78,7 +80,7 @@ const content: PublicContent = {
     <meta name="theme-color" content="#fff2cf" />
     <link rel="preload" as="style" onload="this.onload=null;this.rel='stylesheet'" href="https://fonts.googleapis.com/css2?family=Comfortaa:wght@400;500;600;700&family=Nunito:wght@400;600;700;800;900&display=swap" />
   </Fragment>
-  <div class="hd desi-home" style={ornaments}>
+  <div class="hd desi-home" style={[ornaments, skinVars].filter(Boolean).join(';')} data-skins={skinKeys || undefined}>
     <a class="hd-skip" href="#main-content">Skip to main content</a>
     <SiteHeader />
     <main id="main-content" class="hs hs-article-page">

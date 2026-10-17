@@ -63,6 +63,17 @@ const ORNAMENT_FILES: [string, string, number, string][] = [
 export const HELP_ORNAMENTS = ORNAMENT_FILES.filter(([, f]) => hasArt(`${HELP}/ornaments/${f}`))
   .map(([k, f, w, tail]) => ({ key: k, path: `${HELP}/ornaments/${f}`, width: w, tail }));
 
+/** [HF-HELP-DESI-3] Optional Indian button skins and circle frames (buttons/ and frames/). Each one present adds its key
+ *  to the root's data-skins list and a --hd-skin-<key> url; help-desi.css only switches to the skin for keys that
+ *  are listed, otherwise the CSS-drawn button / ring stays. [key, file, width] */
+const SKIN_FILES: [string, string, number][] = [
+  ['btn', 'buttons/btn-primary-skin.png', 900], ['btn2', 'buttons/btn-secondary-skin.png', 900],
+  ['chip', 'buttons/chip-skin.png', 600], ['ring', 'frames/ring-medallion.png', 512],
+  ['ringsm', 'frames/ring-small.png', 256], ['rosette', 'frames/badge-rosette.png', 256],
+];
+export const HELP_SKINS = SKIN_FILES.filter(([, f]) => hasArt(`${HELP}/${f}`))
+  .map(([k, f, w]) => ({ key: k, path: `${HELP}/${f}`, width: w }));
+
 /** FAQ-card pill modifier, as the mockup colours them. */
 export const SECTION_PILL: Record<HelpSectionId, string> = {
   'getting-started': '',

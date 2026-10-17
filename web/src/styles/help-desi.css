@@ -128,7 +128,7 @@
 .hd .hd-tile:hover { transform: translate(-3px, -3px); box-shadow: 10px 10px 0 var(--ink); color: var(--ink); }
 .hd .hd-medal { display: block; width: clamp(120px, 9.6vw, 176px); aspect-ratio: 1; border-radius: 50%; overflow: hidden; margin-bottom: 10px; }
 .hd .hd-medal img { display: block; width: 100%; height: 100%; object-fit: contain; }
-.hd .is-photo .hd-medal, .hd .hd-tile--contact .hd-medal { border: 3px solid var(--ink); background: var(--paper); outline: 6px solid var(--paper); outline-offset: 0; box-shadow: 0 0 0 9px var(--ink); margin: 9px 0 18px; }
+.hd .hd-tile .hd-medal { border: 3px solid var(--ink); background: var(--paper); outline: 6px solid var(--paper); outline-offset: 0; box-shadow: 0 0 0 9px var(--ink); margin: 9px 0 18px; }
 .hd .is-photo .hd-medal img { object-fit: cover; }
 .hd .hd-tile b { font: 900 clamp(20px, 1.45vw, 26px)/1.15 var(--head); }
 .hd .hd-tile small { font-size: clamp(14px, .9vw, 16px); font-weight: 700; color: var(--magenta); }
@@ -322,3 +322,21 @@
 @media (prefers-reduced-motion: reduce) { .hd .hd-tile { transition: none; } .hd .hd-track { animation: none; } }
 /* shared chrome resets b/strong/small fonts; keep Nunito on tile, card and list titles */
 .hd .hd-tile b, .hd .hd-ways b, .hd .hs-toc-cta b, .hd .hs-prevnext b { font-family: var(--head) !important; font-weight: 900 !important; }
+
+/* [HF-HELP-DESI-3] Indian button skins and circle frames. Only active for the keys the page lists in data-skins
+   (components/help/helpSkin.ts HELP_SKINS), i.e. once the art file exists; until then the CSS buttons/rings above stay. */
+.hd[data-skins~="btn"] .hd-btn, .hd[data-skins~="btn"] .hs-search-btn { border-style: solid; border-width: 0 46px; border-radius: 0; border-image: var(--hd-skin-btn, none) 0 170 fill / 0 46px stretch; background: none; box-shadow: none; padding: 0 4px; min-height: 58px; color: var(--cream); transition: transform .15s; }
+.hd[data-skins~="btn"] .hd-btn:hover, .hd[data-skins~="btn"] .hs-search-btn:hover { background: none; box-shadow: none; color: var(--yellow); transform: translate(-2px, -2px); }
+.hd[data-skins~="btn2"] .hd-qa-foot a, .hd[data-skins~="btn2"] .hs-toc-cta a, .hd[data-skins~="btn2"] .hs-helpful button { border-style: solid; border-width: 0 34px; border-radius: 0; border-image: var(--hd-skin-btn2, none) 0 170 fill / 0 34px stretch; background: none; box-shadow: none; padding: 0 4px; color: var(--ink); transition: transform .15s; }
+.hd[data-skins~="btn2"] .hd-qa-foot a:hover, .hd[data-skins~="btn2"] .hs-toc-cta a:hover, .hd[data-skins~="btn2"] .hs-helpful button:hover { background: none; color: var(--magenta); transform: translate(-2px, -2px); }
+.hd[data-skins~="chip"] .hd-quick a, .hd[data-skins~="chip"] .hd-pill { border-style: solid; border-width: 0 28px; border-radius: 0; border-image: var(--hd-skin-chip, none) 0 120 fill / 0 28px stretch; background: none !important; box-shadow: none; padding: 0 4px; color: var(--ink); }
+.hd[data-skins~="chip"] .hd-quick a:hover { color: var(--magenta); }
+.hd[data-skins~="ring"] .hd-tile .hd-medal { position: relative; overflow: visible; border: 0; outline: 0; box-shadow: none; background: none; margin: 0 0 10px; }
+.hd[data-skins~="ring"] .hd-tile .hd-medal img { position: absolute; inset: 11%; width: 78%; height: 78%; border-radius: 50%; }
+.hd[data-skins~="ring"] .hd-tile .hd-medal::after { content: ""; position: absolute; inset: 0; background: var(--hd-skin-ring, none) center / 100% 100% no-repeat; pointer-events: none; }
+.hd[data-skins~="ring"] .hd-tile--contact .hd-medal img { padding: 10%; background: var(--magenta); }
+.hd[data-skins~="ringsm"] .hd-medal--sm { position: relative; overflow: visible; border: 0; background: none; }
+.hd[data-skins~="ringsm"] .hd-medal--sm img { position: absolute; inset: 13%; width: 74%; height: 74%; border-radius: 50%; }
+.hd[data-skins~="ringsm"] .hd-medal--sm::after { content: ""; position: absolute; inset: 0; background: var(--hd-skin-ringsm, none) center / 100% 100% no-repeat; pointer-events: none; }
+.hd[data-skins~="ringsm"] .hs-rail-head img { width: 38px; height: 38px; padding: 4px; border: 0; background: var(--hd-skin-ringsm, none) center / 100% 100% no-repeat; }
+.hd[data-skins~="rosette"] .hd-qa-n { width: 62px; height: 62px; top: -24px; border: 0; box-shadow: none; background: var(--hd-skin-rosette, none) center / 100% 100% no-repeat; }
