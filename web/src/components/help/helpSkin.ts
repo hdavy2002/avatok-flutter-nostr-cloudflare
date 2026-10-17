@@ -8,71 +8,64 @@ import type { HelpEntry, HelpSectionId } from '../../lib/help';
 import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 
-// [HF-HELP-DESI-2 2026-10-17] Fresh Indian "Angan" (courtyard) help-centre artwork lives in /assets/hf-help/
-// (prompt pack: SaatHum project doc claude/hello-fraands-help-artwork-prompts.md). Replaces the rejected "Dak Ghar"
-// postal look. Each slot falls back to older art (or a CSS ornament) until the owner drops the new file in, so the
-// page never shows a broken image. Build runs from web/.
+// [HF-HELP-GHAR-1 2026-10-17] "Gaon ka Ghar" help centre: a happy village home at Sankranti (owner-approved design
+// canvas "Hello Fraands Help Centre"). All art is owner-generated from the prompt pack (SaatHum project doc
+// claude/hello-fraands-help-artwork-prompts.md) and lives in /assets/hf-help/. Replaces the rejected Dak Ghar / Angan /
+// Haveli treatments. Raw paths: always serve through publicImage().
 const PUBLIC = resolve(process.cwd(), 'public');
 export const hasArt = (path: string): boolean => existsSync(PUBLIC + path);
-export const pickArt = (fresh: string, fallback: string): string => (hasArt(fresh) ? fresh : fallback);
 const HELP = '/assets/hf-help';
-const optional = (path: string): string => (hasArt(path) ? path : '');
 
-/** Older tile art, used only until the fresh round topic icons arrive. Raw paths: always serve through publicImage(). */
-const OLD_SECTION_ART: Record<HelpSectionId, string> = {
-  // [HELLO-FRAANDS-HELP-RESTORE-1] Current-brand photos/art replace the puja tiles.
-  'getting-started': '/assets/callvaal/scrapbook/neha-conversation.png',
-  calling: '/assets/callvaal/scrapbook/women-photo-young.png',
-  'safety-and-privacy': '/assets/safety/safety-2.jpg',
-  'for-women': '/assets/callvaal/scrapbook/sana-conversation.png',
-  hosts: '/assets/callvaal/scrapbook/priya-practice.png',
-  'wallet-and-payments': '/assets/callvaal/scrapbook/earn-art-moods.png',
-  'account-and-help': '/assets/callvaal/scrapbook/sana-notes.png',
+/** One kite per topic (1024×1280, transparent, tail included). */
+export const SECTION_ART: Record<HelpSectionId, string> = {
+  'getting-started': `${HELP}/kites/kite-getting-started.png`,
+  calling: `${HELP}/kites/kite-calling.png`,
+  'safety-and-privacy': `${HELP}/kites/kite-safety-and-privacy.png`,
+  'for-women': `${HELP}/kites/kite-for-women.png`,
+  hosts: `${HELP}/kites/kite-hosts.png`,
+  'wallet-and-payments': `${HELP}/kites/kite-wallet-and-payments.png`,
+  'account-and-help': `${HELP}/kites/kite-account-and-help.png`,
+};
+export const CONTACT_KITE = `${HELP}/kites/kite-contact.png`;
+/** Each topic's colour (kite paper) — tags, ledger dots and FAQ pills use it. [fill, text] */
+export const SECTION_TONE: Record<HelpSectionId, [string, string]> = {
+  'getting-started': ['#ff8c1a', '#2a1f5c'],
+  calling: ['#e0338a', '#fff4dc'],
+  'safety-and-privacy': ['#1565c0', '#fff4dc'],
+  'for-women': ['#6a3fc4', '#fff4dc'],
+  hosts: ['#ffc93c', '#2a1f5c'],
+  'wallet-and-payments': ['#d62839', '#fff4dc'],
+  'account-and-help': ['#19a7ce', '#2a1f5c'],
 };
 
-export const SECTION_ART = Object.fromEntries(
-  (Object.keys(OLD_SECTION_ART) as HelpSectionId[]).map((id) => [id, pickArt(`${HELP}/topics/icon-${id}.png`, OLD_SECTION_ART[id])]),
-) as Record<HelpSectionId, string>;
-/** True when the fresh round topic icons are in (transparent medallions: shown whole, not cropped). */
-export const FRESH_TOPICS = hasArt(`${HELP}/topics/icon-getting-started.png`);
-
-export const HERO_ART = pickArt(`${HELP}/hero/hero-help.png`, '/assets/callvaal/scrapbook/hero-collage-friendship.jpg');
-export const FRESH_HERO = hasArt(`${HELP}/hero/hero-help.png`);
-export const HERO_DOODLES = optional(`${HELP}/hero/hero-doodles.png`);
-export const CONTACT_ART = pickArt(`${HELP}/topics/icon-contact.png`, '/assets/branding/hf-mark.png');
-export const STUCK_ART = pickArt(`${HELP}/illustrations/still-stuck.png`, '/assets/callvaal/scrapbook/neha-tea.png');
-export const ARTICLE_CTA_ART = optional(`${HELP}/illustrations/article-cta.png`);
-/** Optional stickers: shown only once the file exists. */
-export const HELP_STICKERS = {
-  hero: optional(`${HELP}/stickers/sticker-poocho-na.png`),
-  topics: optional(`${HELP}/stickers/sticker-sab-milega.png`),
-  faq: optional(`${HELP}/stickers/sticker-seedha-jawab.png`),
-  stuck: optional(`${HELP}/stickers/sticker-hum-hain-na.png`),
+export const HELP_ART = {
+  hero: `${HELP}/hero/hero-help.png`,
+  heroRing: `${HELP}/frames/ring-medallion.png`,
+  roof: `${HELP}/ghar/roof-khaprail.png`,
+  stillStuck: `${HELP}/aangan/still-stuck.png`,
+  aanganRing: `${HELP}/aangan/aangan-rangoli-ring.png`,
+  articleCta: `${HELP}/aangan/article-cta.png`,
+  ribbons: `${HELP}/book/ribbon-bookmarks.png`,
+  rosette: `${HELP}/frames/badge-rosette.png`,
 } as const;
-/** Optional ornament art → --hd-art-<key> custom properties, each a full background layer (url + position/size/repeat)
- *  so it can replace the CSS-only fallback layers wholesale. [key, file, width, layer tail] */
-const ORNAMENT_FILES: [string, string, number, string][] = [
-  ['toran', 'toran-help.png', 1600, 'center top / auto 100% repeat-x'],
-  ['strip', 'blockprint-strip.png', 1600, 'center / auto 100% repeat-x'],
-  ['wash', 'rangoli-wash.png', 640, 'center / 260px repeat'],
-  ['bunting', 'bunting-help.png', 1600, 'center top / auto 100% repeat-x'],
-  ['fringe', 'jhalar-help.png', 1600, 'center top / auto 100% repeat-x'],
-  ['dots', 'diya-dot-strip.png', 1600, 'center / auto 100% repeat-x'],
-  ['paisley', 'paisley-corner.png', 400, 'center / 100% 100% no-repeat'],
-];
-export const HELP_ORNAMENTS = ORNAMENT_FILES.filter(([, f]) => hasArt(`${HELP}/ornaments/${f}`))
-  .map(([k, f, w, tail]) => ({ key: k, path: `${HELP}/ornaments/${f}`, width: w, tail }));
 
-/** [HF-HELP-DESI-3] Optional Indian button skins and circle frames (buttons/ and frames/). Each one present adds its key
- *  to the root's data-skins list and a --hd-skin-<key> url; help-desi.css only switches to the skin for keys that
- *  are listed, otherwise the CSS-drawn button / ring stays. [key, file, width] */
-const SKIN_FILES: [string, string, number][] = [
-  ['btn', 'buttons/btn-primary-skin.png', 900], ['btn2', 'buttons/btn-secondary-skin.png', 900],
-  ['chip', 'buttons/chip-skin.png', 600], ['ring', 'frames/ring-medallion.png', 512],
-  ['ringsm', 'frames/ring-small.png', 256], ['rosette', 'frames/badge-rosette.png', 256],
+export const HELP_STICKERS = {
+  hero: { src: `${HELP}/stickers/sticker-pucho-sharmao-mat.png`, alt: 'Pucho, sharmao mat!' },
+  kites: { src: `${HELP}/stickers/sticker-kai-po-che.png`, alt: 'Kai po che!' },
+  faq: { src: `${HELP}/stickers/sticker-seedhi-baat.png`, alt: 'Seedhi baat, no bakwaas' },
+  book: { src: `${HELP}/stickers/sticker-sab-likha-hai.png`, alt: 'Sab likha hai, padh lo' },
+  stuck: { src: `${HELP}/stickers/sticker-tension-mat-lo.png`, alt: 'Tension mat lo, hum hain na' },
+  article: { src: `${HELP}/stickers/sticker-ek-call-door.png`, alt: 'Bas ek call door!' },
+} as const;
+
+/** Background art → --gh-* custom properties on the page root (each a url()). [key, file, width] */
+const BG_FILES: [string, string, number][] = [
+  ['sky', 'ghar/sky-kites-strip.png', 2400], ['wall', 'ghar/wall-mandana.png', 640], ['mandana', 'ghar/mandana-strip.png', 1600],
+  ['rangoli', 'ghar/rangoli-strip.png', 1600], ['paper', 'book/bahikhata-paper.png', 800], ['cover', 'book/bahikhata-cover.png', 1600],
+  ['leaf', 'book/pothi-leaf.png', 2400], ['btn', 'buttons/btn-primary-skin.png', 900], ['btn2', 'buttons/btn-secondary-skin.png', 900],
+  ['chip', 'buttons/chip-skin.png', 600], ['rosette', 'frames/badge-rosette.png', 256], ['ringsm', 'frames/ring-small.png', 256],
 ];
-export const HELP_SKINS = SKIN_FILES.filter(([, f]) => hasArt(`${HELP}/${f}`))
-  .map(([k, f, w]) => ({ key: k, path: `${HELP}/${f}`, width: w }));
+export const HELP_BG = BG_FILES.map(([key, f, width]) => ({ key, path: `${HELP}/${f}`, width }));
 
 /** FAQ-card pill modifier, as the mockup colours them. */
 export const SECTION_PILL: Record<HelpSectionId, string> = {

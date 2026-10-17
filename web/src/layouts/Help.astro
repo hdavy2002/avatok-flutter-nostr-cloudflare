@@ -32,8 +32,8 @@ import { SECTIONS, helpUrl, type HelpEntry, type HelpTreeSection, type HelpSecti
 import { publicImage } from '../lib/config';
 import { ORG } from '../lib/org';
 import type { PublicContent } from '../lib/seo/types';
-import { readMinutes, dateLabel, AUDIENCE_LABEL, ARTICLE_CTA_ART, HELP_ORNAMENTS, HELP_SKINS } from '../components/help/helpSkin';
-// [HF-HELP-DESI-2 2026-10-17] Fresh Indian "Angan" treatment (styles/help-desi.css, scoped `.hd`).
+import { readMinutes, dateLabel, AUDIENCE_LABEL, HELP_ART, HELP_STICKERS, HELP_BG } from '../components/help/helpSkin';
+// [HF-HELP-GHAR-1 2026-10-17] "Gaon ka Ghar" help centre treatment (styles/help-desi.css, scoped `.gh`).
 import '../styles/desi-home-chrome.css';
 import '../styles/help-desi.css';
 
@@ -50,9 +50,7 @@ const sectionId = entry.data.section as HelpSectionId;
 const section = SECTIONS[sectionId];
 const updated = dateLabel(entry.data.updated);
 const articleCount = tree.reduce((sum, s) => sum + s.entries.length, 0);
-const ornaments = HELP_ORNAMENTS.map((o) => `--hd-art-${o.key}:url(${publicImage(o.path, { width: o.width, fit: 'scale-down' })}) ${o.tail}`).join(';');
-const skinVars = HELP_SKINS.map((o) => `--hd-skin-${o.key}:url(${publicImage(o.path, { width: o.width, fit: 'scale-down' })})`).join(';');
-const skinKeys = HELP_SKINS.map((o) => o.key).join(' ');
+const bgVars = HELP_BG.map((o) => `--gh-${o.key}:url(${publicImage(o.path, { width: o.width, fit: 'scale-down' })})`).join(';');
 
 const canonicalPath = helpUrl(entry);
 const content: PublicContent = {
@@ -77,15 +75,14 @@ const content: PublicContent = {
 ---
 <Base content={content} chrome={false} indiaLandingLanguage={false}>
   <Fragment slot="head">
-    <meta name="theme-color" content="#fff2cf" />
+    <meta name="theme-color" content="#8fd8f0" />
     <link rel="preload" as="style" onload="this.onload=null;this.rel='stylesheet'" href="https://fonts.googleapis.com/css2?family=Comfortaa:wght@400;500;600;700&family=Nunito:wght@400;600;700;800;900&display=swap" />
   </Fragment>
-  <div class="hd desi-home" style={[ornaments, skinVars].filter(Boolean).join(';')} data-skins={skinKeys || undefined}>
-    <a class="hd-skip" href="#main-content">Skip to main content</a>
+  <div class="gh desi-home" style={bgVars}>
+    <a class="gh-skip" href="#main-content">Skip to main content</a>
     <SiteHeader />
     <main id="main-content" class="hs hs-article-page">
       <section class="hs-aband" aria-labelledby="art-title">
-        <div class="hd-toran hd-toran--sm" aria-hidden="true"></div>
         <div class="hs-aband-inner">
           <div>
             <nav class="hs-crumbs" aria-label="Breadcrumb"><a href="/help">Help</a><i aria-hidden="true">/</i><a href={`/help#${sectionId}`}>{section.label}</a><i aria-hidden="true">/</i><span aria-current="page">{entry.data.title}</span></nav>
@@ -96,7 +93,7 @@ const content: PublicContent = {
           <HelpSearch id="band" compact label="Search help" button="Go" placeholder={`Search all ${articleCount} articles…`} />
         </div>
       </section>
-      <div class="hd-strip" aria-hidden="true"></div>
+      <div class="gh-mandana" aria-hidden="true"></div>
 
       <div class="hs-wrap hs-article-wrap">
         <HelpRailNav tree={tree} entry={entry} />
@@ -127,7 +124,7 @@ const content: PublicContent = {
 
         <aside class="hs-toc-col" aria-label="Page tools">
           <HelpOnThisPage headings={headings}>
-            <div class="hs-toc-cta">{ARTICLE_CTA_ART && <img src={publicImage(ARTICLE_CTA_ART, { width: 420, fit: 'scale-down' })} alt="" width="200" height="200" loading="lazy" decoding="async" />}<b>Want to talk?</b><span>Your favourite influencer. Your number stays private.</span><a href="/marketplace">Find an influencer →</a></div>
+            <div class="hs-toc-cta"><img src={publicImage(HELP_ART.articleCta, { width: 420, fit: 'scale-down' })} alt="" width="200" height="200" loading="lazy" decoding="async" /><img class="hs-toc-sticker" src={publicImage(HELP_STICKERS.article.src, { width: 520, fit: 'scale-down' })} alt={HELP_STICKERS.article.alt} width="260" height="152" loading="lazy" /><b>Want to talk?</b><span>Your favourite influencer. Your number stays private.</span><a href="/marketplace">Find an influencer →</a></div>
           </HelpOnThisPage>
         </aside>
       </div>

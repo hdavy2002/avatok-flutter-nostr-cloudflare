@@ -24,10 +24,11 @@
 //    since [WEB-HELP-1]); articles must never emit it (check-help.mjs).
 //  - Emails are plain text "name (@) <domain>", never mailto. Brand comes from BRAND only.
 //  - [HELLO-FRAANDS-HELP-RESTORE-1 2026-10-08] Restored for Hello Fraands: shared header/footer, Hello Fraands art and copy.
-//  - [HF-HELP-DESI-2 2026-10-17] Owner rejected the postal "Dak Ghar" look: fresh Indian "Angan" (festive courtyard)
-//    treatment built like the Explore page (toran, block-print strips, round topic medallions, coloured full-width
-//    bands, stickers, marquee, bunting, jhalar). Styles: styles/help-desi.css (scoped `.hd`); art slots in
-//    components/help/helpSkin.ts fall back to older art / CSS ornaments until the new art lands.
+//  - [HF-HELP-GHAR-1 2026-10-17] Owner-approved "Gaon ka Ghar" design (design canvas "Hello Fraands Help Centre"):
+//    a happy village home at Sankranti — tiled-roof house hero with a round window, rangoli doorstep, topics as kites,
+//    top questions as palm-leaf pothi (<details>), every article in a stitched bahi-khata, aangan for "talk to a person",
+//    meme stickers. Multi-colour palette (kumkum, saffron, haldi, peacock, firozi, jamuni, rani). Art: /assets/hf-help/
+//    via components/help/helpSkin.ts. Styles: styles/help-desi.css (scoped `.gh`). Phones: everything centred.
 export const prerender = true;
 
 import Base from '../../layouts/Base.astro';
@@ -40,8 +41,7 @@ import { publicImage } from '../../lib/config';
 import { ORG } from '../../lib/org';
 import { HELP_SEO } from '../../lib/seo/catalog';
 import {
-  SECTION_ART, HERO_ART, FRESH_HERO, HERO_DOODLES, FRESH_TOPICS, CONTACT_ART, STUCK_ART, HELP_STICKERS, HELP_ORNAMENTS, HELP_SKINS,
-  markSvg, MARK_TICKET, MARK_SEARCH, readMinutes, countLabel,
+  SECTION_ART, SECTION_TONE, CONTACT_KITE, HELP_ART, HELP_STICKERS, HELP_BG, readMinutes, countLabel,
 } from '../../components/help/helpSkin';
 import { SECTIONS } from '../../lib/help';
 import '../../styles/desi-home-chrome.css';
@@ -97,145 +97,155 @@ const quick = QUICK.flatMap((c) => {
   return e ? [{ href: helpUrl(e), label: c.label }] : [];
 });
 
-const n = tree.length;
-// 7 topics + contact = 8 tiles → 4 per row on desktop.
-const gridVars = `--hd-tiles:${n + 1 > 6 ? 4 : n + 1}`;
-const ornaments = HELP_ORNAMENTS.map((o) => `--hd-art-${o.key}:url(${publicImage(o.path, { width: o.width, fit: 'scale-down' })}) ${o.tail}`).join(';');
-const skinVars = HELP_SKINS.map((o) => `--hd-skin-${o.key}:url(${publicImage(o.path, { width: o.width, fit: 'scale-down' })})`).join(';');
-const skinKeys = HELP_SKINS.map((o) => o.key).join(' ');
-const TONES = ['#ffdf89', '#efabd0', '#bfc2ee', '#ffa179'];
-const marquee = ['Number hamesha private', 'Seedha jawab', 'Hindi ya English', 'Koi OTP nahi maangega', 'Asli insaan se baat', 'Safe aur simple'];
+const bgVars = HELP_BG.map((o) => `--gh-${o.key}:url(${publicImage(o.path, { width: o.width, fit: 'scale-down' })})`).join(';');
+const img = (path: string, width: number) => publicImage(path, { width, fit: 'scale-down' });
+const sticker = (s: { src: string; alt: string }, cls = '') => ({ src: img(s.src, 720), alt: s.alt, cls });
+const toneStyle = (id: HelpSectionId) => `--tone:${SECTION_TONE[id][0]};--tone-ink:${SECTION_TONE[id][1]}`;
+const pages = [tree.slice(0, 3), tree.slice(3)];
 ---
 <Base content={HELP_SEO} chrome={false} indiaLandingLanguage={false}>
   <Fragment slot="head">
-    <meta name="theme-color" content="#fff2cf" />
+    <meta name="theme-color" content="#8fd8f0" />
+    <link rel="preload" as="image" href={img(HELP_ART.hero, 1100)} fetchpriority="high" />
     <link rel="preload" as="style" onload="this.onload=null;this.rel='stylesheet'" href="https://fonts.googleapis.com/css2?family=Comfortaa:wght@500;600;700&family=Nunito:wght@700;800;900&display=swap" />
   </Fragment>
   {faqLd && <script type="application/ld+json" set:html={JSON.stringify(faqLd).replace(/</g, '\\u003c')} />}
-  <div class="hd desi-home" style={[ornaments, skinVars].filter(Boolean).join(';')} data-skins={skinKeys || undefined}>
-    <a class="hd-skip" href="#main-content">Skip to main content</a>
+  <div class="gh desi-home" style={bgVars}>
+    <a class="gh-skip" href="#main-content">Skip to main content</a>
     <SiteHeader />
-    <main id="main-content" class="hs hd-home" style={gridVars}>
-      <div class="hd-toran" aria-hidden="true"></div>
+    <main id="main-content" class="hs gh-home">
 
-      <!-- ① Hero: big namaste, one big search, popular questions -->
-      <section class="hd-hero" aria-labelledby="help-title">
-        <div class="hd-wrap hd-hero-grid">
-          <div class="hd-hero-copy">
-            <p class="hd-eyebrow">Help centre · Hum hain na</p>
-            <h1 id="help-title"><span class="l">Namaste!</span><span class="l m">How can we</span><span class="l"><span class="hd-hl">help you?</span></span></h1>
-            <p class="hd-lead">Calls, your private number, safety, the wallet or becoming an influencer. Clear, simple answers in easy English, with examples.</p>
-            <HelpSearch id="hero" />
-            {quick.length > 0 && (
-              <div class="hd-quick" aria-label="Popular questions">
-                <span>Log poochte hain:</span>
-                {quick.map((c) => <a href={c.href}>{c.label}</a>)}
+      <!-- ① Ghar: the happy village home -->
+      <section class="gh-hero" aria-labelledby="help-title">
+        <div class="gh-wrap gh-house-wrap">
+          <img class="gh-sticker gh-hero-sticker" src={sticker(HELP_STICKERS.hero).src} alt={HELP_STICKERS.hero.alt} width="420" height="245" />
+          <img class="gh-roof" src={img(HELP_ART.roof, 2000)} alt="" width="2000" height="300" aria-hidden="true" />
+          <div class="gh-wall">
+            <div class="gh-wall-inner">
+              <div class="gh-hero-copy">
+                <p class="gh-eyebrow">Help centre · Ghar jaisa, seedha jawab</p>
+                <h1 id="help-title">Namaste!<br />How can we <span class="gh-hl">help you?</span></h1>
+                <p class="gh-lead">Calls, your private number, safety, the wallet or becoming an influencer. Clear, simple answers in easy English, with examples.</p>
+                <HelpSearch id="hero" />
+                {quick.length > 0 && (
+                  <div class="gh-quick" aria-label="Popular questions">
+                    <span>Log poochte hain:</span>
+                    {quick.map((c) => <a href={c.href}>{c.label}</a>)}
+                  </div>
+                )}
               </div>
-            )}
-          </div>
-          <div class:list={['hd-hero-art', { 'is-photo': !FRESH_HERO }]}>
-            {HERO_DOODLES && <img class="hd-doodles" src={publicImage(HERO_DOODLES, { width: 640, fit: 'scale-down' })} alt="" width="640" height="640" aria-hidden="true" />}
-            <img class="hd-hero-img" src={publicImage(HERO_ART, { width: 1280, fit: 'scale-down' })} alt={FRESH_HERO ? 'Illustration of a smiling young woman on a decorated charpai with a phone and a cup of chai, ready to help' : ''} width="1000" height={FRESH_HERO ? 1000 : 667} fetchpriority="high" decoding="async" />
-            {HELP_STICKERS.hero && <img class="hd-sticker hd-hero-sticker" src={publicImage(HELP_STICKERS.hero, { width: 640, fit: 'scale-down' })} alt="Poocho na!" width="420" height="245" />}
+              <div class="gh-window">
+                <img class="gh-window-art" src={img(HELP_ART.hero, 1100)} alt="Illustration of a happy village home at Sankranti: two young women in kurtas and jeans fly kites on the rooftop while a rangoli brightens the doorstep" width="1100" height="1100" fetchpriority="high" decoding="async" />
+                <img class="gh-window-ring" src={img(HELP_ART.heroRing, 1024)} alt="" width="1024" height="1024" aria-hidden="true" />
+              </div>
+            </div>
           </div>
         </div>
+        <div class="gh-rangoli" aria-hidden="true"></div>
       </section>
-      <div class="hd-strip" aria-hidden="true"></div>
+      <div class="gh-mandana" aria-hidden="true"></div>
 
-      <!-- ② Topics: round medallions on coloured tiles -->
-      <section class="hd-band hd-topics" aria-labelledby="topics-title">
-        <div class="hd-wrap">
-          <div class="hd-head">
-            <div><p class="hd-eyebrow">Apna sawaal chuno</p><h2 id="topics-title">Pick a <span class="hd-hl">topic.</span></h2></div>
-            {HELP_STICKERS.topics && <img class="hd-sticker" src={publicImage(HELP_STICKERS.topics, { width: 640, fit: 'scale-down' })} alt="Sab milega yahan" width="420" height="245" loading="lazy" />}
-            <a class="hd-link" href="#every-article">Every article <span aria-hidden="true">→</span></a>
+      <!-- ② Topics as kites -->
+      <section class="gh-band gh-kites" aria-labelledby="topics-title">
+        <div class="gh-wrap">
+          <div class="gh-head">
+            <div><p class="gh-eyebrow">Apna sawaal chuno</p><h2 id="topics-title">Pick a kite. <span class="gh-blue">Every topic flies here.</span></h2></div>
+            <img class="gh-sticker" src={sticker(HELP_STICKERS.kites).src} alt={HELP_STICKERS.kites.alt} width="420" height="245" loading="lazy" />
           </div>
-          <div class="hd-tiles">
-            {tree.map((s, i) => (
-              <a class:list={['hd-tile', { 'is-photo': !FRESH_TOPICS }]} href={`#${s.id}`} style={`--tone:${TONES[i % 4]}`}>
-                <span class="hd-medal"><img src={publicImage(SECTION_ART[s.id], { width: 400, fit: 'scale-down' })} alt="" width="200" height="200" loading="lazy" decoding="async" /></span>
-                <b>{s.label}</b>
-                <small>{SECTIONS[s.id].hindi}</small>
-                <em>{countLabel(s.entries.length)}</em>
+          <div class="gh-kite-grid">
+            {tree.map((s) => (
+              <a class="gh-kite" href={`#${s.id}`} style={toneStyle(s.id)}>
+                <img src={img(SECTION_ART[s.id], 440)} alt="" width="220" height="275" loading="lazy" decoding="async" />
+                <span class="gh-tag"><b>{s.label}</b><small>{SECTIONS[s.id].hindi}</small><em>{countLabel(s.entries.length)}</em></span>
               </a>
             ))}
-            <a class="hd-tile hd-tile--contact" href="/contact">
-              <span class="hd-medal"><img src={publicImage(CONTACT_ART, { width: 400, fit: 'scale-down' })} alt="" width="200" height="200" loading="lazy" decoding="async" /></span>
-              <b>Still need help?</b>
-              <small>Likho, hum jawab denge</small>
-              <em>A real person replies</em>
+            <a class="gh-kite gh-kite--contact" href="/contact" style="--tone:#2a1f5c;--tone-ink:#fff4dc">
+              <img src={img(CONTACT_KITE, 440)} alt="" width="220" height="275" loading="lazy" decoding="async" />
+              <span class="gh-tag"><b>Still need help?</b><small>Likho, hum jawab denge</small><em>A real person replies</em></span>
             </a>
           </div>
         </div>
       </section>
 
-      <div class="hd-marq" aria-hidden="true"><div class="hd-dots"></div><div class="hd-track">{[...marquee, ...marquee].map((t) => <><span>{t}</span><i>✹</i></>)}</div><div class="hd-dots"></div></div>
-
-      <!-- ③ What people ask most -->
+      <!-- ③ Top questions: palm-leaf pothi -->
       {faqCards.length > 0 && (
-        <section class="hd-band hd-band--magenta hd-faq" id="faq" aria-labelledby="faq-title">
-          <div class="hd-wrap">
-            <div class="hd-head">
-              <div><p class="hd-eyebrow">Sabse zyada poocha gaya</p><h2 id="faq-title">What people ask us most.</h2></div>
-              {HELP_STICKERS.faq && <img class="hd-sticker" src={publicImage(HELP_STICKERS.faq, { width: 640, fit: 'scale-down' })} alt="Seedha jawab" width="420" height="245" loading="lazy" />}
+        <section class="gh-band gh-band--jamuni gh-faq" id="faq" aria-labelledby="faq-title">
+          <div class="gh-wrap">
+            <div class="gh-head">
+              <div><p class="gh-eyebrow">Sabse zyada poocha gaya</p><h2 id="faq-title">The six things people <span class="gh-yellow">ask us most.</span></h2></div>
+              <img class="gh-sticker" src={sticker(HELP_STICKERS.faq).src} alt={HELP_STICKERS.faq.alt} width="420" height="245" loading="lazy" />
             </div>
-            <div class="hd-qas">
+            <div class="gh-leaves">
               {faqCards.map((f, i) => (
-                <article class="hd-qa" style={`--tone:${TONES[i % 4]}`}>
-                  <span class="hd-qa-n" aria-hidden="true">{i + 1}</span>
-                  <span class="hd-pill">{f.section}</span>
-                  <h3>{f.q}</h3>
-                  <p>{f.a}</p>
-                  <div class="hd-qa-foot"><span>Read in {readMinutes(f.entry)} min</span><a href={helpUrl(f.entry)} aria-label={`Read more: ${f.entry.data.title}`}>Read more →</a></div>
-                </article>
+                <details class="gh-leaf" open={i === 0} style={toneStyle(f.sectionId)}>
+                  <summary>
+                    <span class="gh-num" aria-hidden="true">{i + 1}</span>
+                    <span class="gh-q"><span class="gh-pill">{f.section}</span><b>{f.q}</b></span>
+                    <svg class="gh-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" aria-hidden="true"><path d="m6 9 6 6 6-6" /></svg>
+                  </summary>
+                  <div class="gh-answer">
+                    <p>{f.a}</p>
+                    <div class="gh-answer-foot"><span>Read in {readMinutes(f.entry)} min</span><a class="gh-btn2" href={helpUrl(f.entry)} aria-label={`Read the full answer: ${f.entry.data.title}`}>Read the full answer →</a></div>
+                  </div>
+                </details>
               ))}
             </div>
-            <p class="hd-note">These answers explain how {BRAND.name} works. Conversations are friendly talk, not medical, legal or money advice, and no outcome is promised.</p>
+            <p class="gh-note">These answers explain how {BRAND.name} works. Conversations are friendly talk, not medical, legal or money advice, and no outcome is promised.</p>
           </div>
         </section>
       )}
 
-      <!-- ④ Every article, by topic -->
-      <section class="hd-band hd-band--paper hd-all" id="every-article" aria-labelledby="all-title">
-        <div class="hd-wrap">
-          <div class="hd-head"><div><p class="hd-eyebrow">Poori jaankari</p><h2 id="all-title">All articles, <span class="hd-hl">by topic.</span></h2></div></div>
-          <div class="hd-groups">
-            {tree.map((s, i) => (
-              <div class="hd-group" id={s.id} style={`--tone:${TONES[i % 4]}`}>
-                <div class="hd-group-top"><span class="hd-medal hd-medal--sm"><img src={publicImage(SECTION_ART[s.id], { width: 160, fit: 'scale-down' })} alt="" width="64" height="64" loading="lazy" decoding="async" /></span><h3>{s.label}<small>{SECTIONS[s.id].hindi} · {countLabel(s.entries.length)}</small></h3></div>
-                <ul>
-                  {s.entries.map((e) => <li><a href={helpUrl(e)}>{e.data.title}<i aria-hidden="true">→</i></a></li>)}
-                </ul>
-              </div>
-            ))}
+      <!-- ④ Every article: the bahi-khata -->
+      <section class="gh-band gh-books" id="every-article" aria-labelledby="all-title">
+        <div class="gh-wrap">
+          <div class="gh-head">
+            <div><p class="gh-eyebrow gh-eyebrow--blue">Bahi-khata · poora hisaab</p><h2 id="all-title">Every article, <span class="gh-red">in one book.</span></h2></div>
+            <img class="gh-sticker" src={sticker(HELP_STICKERS.book).src} alt={HELP_STICKERS.book.alt} width="420" height="245" loading="lazy" />
           </div>
-        </div>
-      </section>
-
-      <!-- ⑤ Still stuck: talk to a real person -->
-      <section class="hd-band hd-band--orange hd-stuck" aria-labelledby="stuck-title">
-        <div class="hd-bunting" aria-hidden="true"></div>
-        <div class="hd-wrap hd-stuck-grid">
-          <div class="hd-stuck-art"><img src={publicImage(STUCK_ART, { width: 900, fit: 'scale-down' })} alt="" width="450" height="360" loading="lazy" decoding="async" /></div>
-          <div class="hd-stuck-copy">
-            <p class="hd-eyebrow">Jawab nahi mila?</p>
-            <h2 id="stuck-title">No answer here?<br />Ask a real person.</h2>
-            <p>Email us in Hindi or English. For a call or billing question, add your call ID, date and time. Never send an OTP or UPI PIN. We will never ask for them.</p>
-            <div class="hd-stuck-cta">
-              <a class="hd-btn" href="/contact">Contact the team <span aria-hidden="true">→</span></a>
-              {HELP_STICKERS.stuck && <img class="hd-sticker" src={publicImage(HELP_STICKERS.stuck, { width: 640, fit: 'scale-down' })} alt="Hum hain na!" width="420" height="245" loading="lazy" />}
+          <div class="gh-book">
+            <img class="gh-ribbons" src={img(HELP_ART.ribbons, 300)} alt="" width="150" height="250" loading="lazy" aria-hidden="true" />
+            <div class="gh-spread">
+              {pages.map((pg) => (
+                <div class="gh-page">
+                  {pg.map((s) => (
+                    <div class="gh-ledger" id={s.id} style={toneStyle(s.id)}>
+                      <div class="gh-ledger-head"><img src={img(SECTION_ART[s.id], 120)} alt="" width="40" height="50" loading="lazy" decoding="async" /><h3>{s.label}</h3><small>{SECTIONS[s.id].hindi} · {countLabel(s.entries.length)}</small></div>
+                      <ul>
+                        {s.entries.map((e) => <li><a href={helpUrl(e)}>{e.data.title}<i aria-hidden="true">→</i></a></li>)}
+                      </ul>
+                    </div>
+                  ))}
+                </div>
+              ))}
             </div>
           </div>
-          <ul class="hd-ways" aria-label="Ways to reach us">
-            <li><Fragment set:html={markSvg(MARK_TICKET, '')} /><div><b>Help desk</b><span><code>support (@) {BRAND.domain}</code></span></div></li>
-            <li><Fragment set:html={markSvg(MARK_SEARCH, '')} /><div><b>Contact form</b><span>Rather use a form? Our <a href="/contact">contact page</a> goes to the same people.</span></div></li>
-            <li><Fragment set:html={markSvg('<path d="M20 77h60M28 74V47h44v27M24 47h52L50 27Z" fill="#ff793c"/><path d="M42 76V58a8 8 0 0 1 16 0v18" fill="#fff2cf"/>', '')} /><div><b>Grievance redressal</b><span>Support could not resolve it? See our <a href="/grievance">grievance redressal</a> page.</span></div></li>
-          </ul>
         </div>
       </section>
-      <div class="hd-fringe" aria-hidden="true"></div>
 
-      <p class="hd-booking-note">{BRAND.name} connects you with your favourite influencers for private phone calls, paid per minute. Calls are not refunded; see our <a href="/refunds">refund policy</a>. Not medical, legal or money advice. In crisis, call <a href="tel:14416">Tele-MANAS 14416</a> or <a href="tel:112">112</a>.</p>
+      <!-- ⑤ Aangan: talk to a real person -->
+      <section class="gh-band gh-band--peacock gh-aangan" aria-labelledby="stuck-title">
+        <div class="gh-wrap gh-aangan-grid">
+          <div class="gh-aangan-copy">
+            <p class="gh-eyebrow gh-eyebrow--yellow">Jawab nahi mila? Aangan mein aao</p>
+            <h2 id="stuck-title">No answer here?<br />Ask a <span class="gh-yellow">real person.</span></h2>
+            <p>Email us in Hindi or English. For a call or billing question, add your call ID, date and time. Never send an OTP or UPI PIN. We will never ask for them.</p>
+            <a class="gh-btn" href="/contact">Contact the team →</a>
+            <img class="gh-sticker" src={sticker(HELP_STICKERS.stuck).src} alt={HELP_STICKERS.stuck.alt} width="420" height="245" loading="lazy" />
+          </div>
+          <div class="gh-aangan-art">
+            <img class="gh-aangan-scene" src={img(HELP_ART.stillStuck, 900)} alt="Illustration of a friendly support helper with a laptop on a charpai under a neem tree, giving a thumbs up" width="900" height="900" loading="lazy" decoding="async" />
+            <img class="gh-aangan-ring" src={img(HELP_ART.aanganRing, 1200)} alt="" width="1200" height="1200" loading="lazy" aria-hidden="true" />
+          </div>
+        </div>
+        <ul class="gh-wrap gh-ways" aria-label="Ways to reach us">
+          <li><span class="gh-way-ico" style="background:#19a7ce"><svg viewBox="0 0 24 24" fill="none" stroke="#2a1f5c" stroke-width="2.4" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2" /><path d="m3 7 9 6 9-6" /></svg></span><div><b>Help desk</b><span><code>support (@) {BRAND.domain}</code></span></div></li>
+          <li><span class="gh-way-ico" style="background:#ffc93c"><svg viewBox="0 0 24 24" fill="none" stroke="#2a1f5c" stroke-width="2.4" aria-hidden="true"><path d="M4 4h16v12H8l-4 4z" /></svg></span><div><b>Contact form</b><span>Rather use a form? Our <a href="/contact">contact page</a> goes to the same people.</span></div></li>
+          <li><span class="gh-way-ico" style="background:#e0338a"><svg viewBox="0 0 24 24" fill="none" stroke="#2a1f5c" stroke-width="2.4" aria-hidden="true"><path d="M3 20h18M5 20V10h14v10M4 10l8-6 8 6" /></svg></span><div><b>Grievance redressal</b><span>Support could not resolve it? See our <a href="/grievance">grievance redressal</a> page.</span></div></li>
+        </ul>
+      </section>
+      <div class="gh-mandana" aria-hidden="true"></div>
+
+      <p class="gh-booking-note">{BRAND.name} connects you with your favourite influencers for private phone calls, paid per minute. Calls are not refunded; see our <a href="/refunds">refund policy</a>. Not medical, legal or money advice. In crisis, call <a href="tel:14416">Tele-MANAS 14416</a> or <a href="tel:112">112</a>.</p>
     </main>
     <SiteFooter />
   </div>
