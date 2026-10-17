@@ -305,6 +305,7 @@
   .xp .row{grid-template-columns:72px minmax(0,1fr) auto}
   .xp .row .row-chips,.xp .row .row-status{display:none}
   .xp .row .th{width:72px}
+  .xp .fbar{position:static}
   .xp .fbar .wrap{flex-wrap:wrap;gap:8px;padding-block:10px}
   .xp .frow{flex:1 1 100%;order:2;padding-bottom:6px}
   .xp .views{order:1;margin-left:auto}
