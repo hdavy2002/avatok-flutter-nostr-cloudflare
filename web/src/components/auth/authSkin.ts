@@ -1,7 +1,7 @@
-// [HF-AUTH-GHAR-1 2026-10-17] "Gaon ka Ghar" sign-in / create-account skin (owner: Indian treatment, no site header or
-// footer, same layout on both pages, new button artwork and graphics from a prompt pack — SaatHum project doc
-// claude/hello-fraands-auth-artwork-prompts.md). Art lives ONLY in /assets/hf-auth/. Owner rule (2026-10-17): these
-// pages must never reuse artwork from anywhere else on the site — a slot with no file simply renders nothing / CSS.
+// [HF-AUTH-PCO-1 2026-10-17] "STD-PCO booth" sign-in / create-account skin (owner-chosen concept; owner rule: these
+// pages use ONLY their own fresh artwork — never art from any other page). Prompt pack: SaatHum project doc
+// claude/hello-fraands-auth-artwork-prompts.md. Files live in /assets/hf-auth/; a slot with no file renders nothing and
+// the CSS-drawn booth stands in. Build runs from web/.
 import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 
@@ -11,27 +11,26 @@ const opt = (p: string): string => (has(p) ? p : '');
 const A = '/assets/hf-auth';
 
 export const AUTH_ART = {
-  signInHero: opt(`${A}/hero/signin-hero.png`),
-  signUpHero: opt(`${A}/hero/signup-hero.png`),
-  heroRing: opt(`${A}/frames/hero-ring.png`),
-  roof: opt(`${A}/ghar/roof-door.png`),
-  stickerSignIn: opt(`${A}/stickers/sticker-wapas-aa-gaye.png`),
-  stickerSignUp: opt(`${A}/stickers/sticker-swagat-hai.png`),
+  signInHero: opt(`${A}/hero/pco-signin.png`),
+  signUpHero: opt(`${A}/hero/pco-signup.png`),
+  board: opt(`${A}/booth/pco-board.png`),
+  stickerSignIn: opt(`${A}/stickers/sticker-hello-kaun.png`),
+  stickerSignUp: opt(`${A}/stickers/sticker-pehli-call.png`),
   stickerPrivate: opt(`${A}/stickers/sticker-number-private.png`),
 } as const;
 
 /** Background art → --au-<key> custom properties. [key, path, width] */
 const BG: [string, string, number][] = [
-  ['sky', opt(`${A}/ghar/sky-auth.png`), 2400],
-  ['rangoli', opt(`${A}/ghar/rangoli-doorstep.png`), 1600],
-  ['wall', opt(`${A}/ghar/wall-auth.png`), 640],
-  ];
-/** Button skins switch on per file (data-skins on the root); until then help-desi CSS buttons stay. [key, path, width] */
+  ['wall', `${A}/booth/booth-wall.png`, 800],
+  ['coins', `${A}/booth/coin-strip.png`, 1600],
+  ['tiles', `${A}/booth/floor-tiles.png`, 800],
+];
+/** Button skins (keypad keys) switch on per file via data-skins on the root. [key, path, width] */
 const SKINS: [string, string, number][] = [
-  ['primary', `${A}/buttons/btn-auth-primary.png`, 900],
-  ['dark', `${A}/buttons/btn-auth-dark.png`, 900],
-  ['light', `${A}/buttons/btn-auth-light.png`, 900],
-  ['small', `${A}/buttons/btn-auth-small.png`, 500],
+  ['primary', `${A}/buttons/key-primary.png`, 900],
+  ['dark', `${A}/buttons/key-dark.png`, 900],
+  ['light', `${A}/buttons/key-light.png`, 900],
+  ['small', `${A}/buttons/key-small.png`, 500],
 ];
 export const AUTH_BG = BG.filter(([, p]) => has(p)).map(([key, path, width]) => ({ key, path, width }));
 export const AUTH_SKINS = SKINS.filter(([, p]) => has(p)).map(([key, path, width]) => ({ key, path, width }));

@@ -1,117 +1,117 @@
-/* [HF-AUTH-GHAR-1 2026-10-17] "Gaon ka Ghar" skin for /sign-in and /sign-up (components/auth/AuthGhar.astro).
-   Same family as the help centre (styles/help-desi.css): sky, kites, tiled roof, rangoli doorstep, multi-colour palette,
-   Nunito headings + Comfortaa body only (owner rule). Overrides styles/auth.css; the auth islands are unchanged.
-   Button artwork switches on per file via [data-skins~=…]; until then the CSS buttons below are used. */
-.auth.auth--ghar {
+/* [HF-AUTH-PCO-1 2026-10-17] "STD-PCO booth" skin for /sign-in and /sign-up (components/auth/AuthGhar.astro).
+   Owner-chosen concept; owner rule: fresh artwork for these pages only (/assets/hf-auth/), never another page's art.
+   Until the owner's files land, the booth, board, keys and coins are drawn in CSS. Multi-colour palette; Nunito
+   headings + Comfortaa body only. Overrides styles/auth.css; the auth islands are unchanged.
+   Owner button artwork (keypad keys) switches on per file via [data-skins~=…]. */
+.auth.auth--pco {
   --ink: #2a1f5c; --cream: #fff4dc; --paper-w: #fffaf0;
   --kumkum: #d62839; --saffron: #ff8c1a; --haldi: #ffc93c; --peacock: #1565c0; --firozi: #19a7ce; --jamuni: #6a3fc4; --rani: #e0338a;
-  --sky: #8fd8f0;
   --paper: var(--paper-w); --bone: var(--paper-w); --signal: var(--kumkum); --butter: #ffe08a; --oat: #e9dcc0;
   --body-brown: #4a3f78; --label-brown: #4a3f78; --placeholder: #8a80ad; --error: #c21f33; --card-copy: #4a3f78;
   --f-display: 'Nunito', system-ui, sans-serif; --f-body: 'Comfortaa', system-ui, sans-serif; --f-label: 'Nunito', system-ui, sans-serif;
   --f-deva: 'Nunito', system-ui, sans-serif; --f-hand: 'Comfortaa', system-ui, sans-serif; --f-serif: 'Nunito', system-ui, sans-serif;
-  position: relative; isolation: isolate; background: var(--sky); color: var(--ink); font-family: var(--f-body); font-weight: 600;
+  position: relative; isolation: isolate; color: var(--ink); font-family: var(--f-body); font-weight: 600;
+  background: var(--peacock);
 }
-.auth.auth--ghar::before { content: ""; position: absolute; inset: 0 0 auto; height: min(60vh, 560px); z-index: -1; pointer-events: none; background: var(--au-sky, none) repeat-x center top / auto 100%; opacity: .9; }
+.auth.auth--pco::before { content: ""; position: absolute; inset: 0; z-index: -1; pointer-events: none; opacity: .35;
+  background: var(--au-wall, repeating-linear-gradient(90deg, transparent 0 46px, rgba(255, 255, 255, .08) 46px 48px)); }
 
-/* top bar: logo home + help (the site header is intentionally absent here) */
-.auth--ghar .au-top { position: absolute; top: 0; left: 0; right: 0; z-index: 5; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px clamp(16px, 3vw, 40px); pointer-events: none; }
-.auth--ghar .au-top a { pointer-events: auto; }
-.auth--ghar .au-logo { display: inline-flex; border-radius: 50%; }
-.auth--ghar .au-logo img { height: 68px; width: auto; display: block; filter: drop-shadow(3px 3px 0 rgba(42, 31, 92, .35)); }
-.auth--ghar .au-help { display: inline-flex; align-items: center; min-height: 44px; padding: 0 18px; border-radius: 999px; border: 3px solid var(--ink); background: var(--haldi); color: var(--ink); font: 800 15px var(--f-display); text-decoration: none; box-shadow: 4px 4px 0 var(--ink); }
-.auth--ghar .au-help:hover { background: var(--ink); color: var(--haldi); }
+/* top bar: logo home + help (no site header on these pages) */
+.auth--pco .au-top { position: absolute; top: 0; left: 0; right: 0; z-index: 5; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px clamp(16px, 3vw, 40px); pointer-events: none; }
+.auth--pco .au-top a { pointer-events: auto; }
+.auth--pco .au-logo { display: inline-flex; border-radius: 50%; }
+.auth--pco .au-logo img { height: 68px; width: auto; display: block; filter: drop-shadow(3px 3px 0 rgba(0, 0, 0, .3)); }
+.auth--pco .au-help { display: inline-flex; align-items: center; min-height: 44px; padding: 0 18px; border-radius: 12px; border: 3px solid var(--ink); background: var(--haldi); color: var(--ink); font: 900 15px var(--f-display); text-decoration: none; box-shadow: 0 5px 0 var(--ink); }
+.auth--pco .au-help:hover { background: var(--paper-w); color: var(--kumkum); }
 
-/* shell: phones/tablets = one centred house on the sky */
-.auth--ghar .auth-shell { min-height: 100dvh; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 104px 16px 40px; }
-.auth--ghar .au-panel { display: none; }
-.auth--ghar .au-main { width: 100%; display: flex; flex-direction: column; align-items: center; background: none; padding: 0; }
-.auth--ghar .au-house { width: min(100%, 580px); }
-.auth--ghar .au-roof { display: block; width: 108%; max-width: none; height: auto; margin: 0 -4% -1%; position: relative; z-index: 1; }
-.auth.auth--ghar .auth-card { width: 100%; max-width: none; background: var(--paper-w); border: 3px solid var(--ink); border-top: 0; border-radius: 0 0 26px 26px; box-shadow: 9px 9px 0 var(--ink); overflow: visible; padding: 22px 0 26px; }
-.auth--ghar .au-private-text { margin: 26px auto 0; padding: 8px 18px; border: 2.5px dashed var(--ink); border-radius: 999px; background: var(--paper-w); font: 800 14px var(--f-display); letter-spacing: .12em; text-transform: uppercase; text-align: center; }
-.auth--ghar .au-private { display: block; width: min(300px, 80%); height: auto; margin: 22px auto 0; transform: rotate(-3deg); }
+/* shell: phones/tablets = one centred booth */
+.auth--pco .auth-shell { min-height: 100dvh; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 104px 16px 40px; }
+.auth--pco .au-panel { display: none; }
+.auth--pco .au-main { width: 100%; display: flex; flex-direction: column; align-items: center; background: none; padding: 0; }
+.auth--pco .au-booth { width: min(100%, 580px); filter: drop-shadow(10px 10px 0 rgba(0, 0, 0, .28)); }
+.auth--pco .au-board { display: block; width: 100%; height: auto; position: relative; z-index: 1; margin-bottom: -2px; }
+/* CSS board until the owner's art lands: glowing yellow sign with red letters */
+.auth--pco .au-board-css { display: flex; align-items: center; justify-content: center; gap: clamp(10px, 2.5vw, 22px); background: var(--haldi); border: 4px solid var(--ink); border-radius: 18px 18px 0 0; padding: 14px 12px; box-shadow: inset 0 0 0 6px var(--kumkum), inset 0 0 0 9px var(--ink); }
+.auth--pco .au-board-css span { font: 900 clamp(26px, 5vw, 40px)/1 var(--f-display); color: var(--kumkum); letter-spacing: .06em; text-shadow: 0 0 10px rgba(255, 255, 255, .8); }
+.auth--pco .au-board-css i { width: 12px; height: 12px; border-radius: 50%; background: var(--jamuni); border: 2px solid var(--ink); }
+.auth.auth--pco .auth-card { width: 100%; max-width: none; background: var(--paper-w); border: 4px solid var(--ink); border-top: 0; border-radius: 0 0 22px 22px; box-shadow: inset 10px 0 0 var(--kumkum), inset -10px 0 0 var(--kumkum), inset 13px 0 0 var(--ink), inset -13px 0 0 var(--ink); overflow: visible; padding: 22px 12px 26px; }
+.auth--pco .au-private-text { margin: 26px auto 0; padding: 10px 18px; border: 3px solid var(--ink); border-radius: 12px; background: var(--rani); color: var(--cream); font: 900 14px var(--f-display); letter-spacing: .12em; text-transform: uppercase; text-align: center; box-shadow: 0 5px 0 var(--ink); }
+.auth--pco .au-private { display: block; width: min(300px, 80%); height: auto; margin: 22px auto 0; transform: rotate(-3deg); }
 
 /* type */
-.auth--ghar .auth-head { align-items: center; text-align: center; }
-.auth--ghar .auth-hindi { font: 900 22px var(--f-display); color: var(--kumkum); }
-.auth.auth--ghar .auth-desktop-head { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 6px; padding: 0 20px 6px; }
-.auth--ghar .auth-eyebrow { font: 800 13px var(--f-label); letter-spacing: .22em; text-transform: uppercase; color: var(--kumkum); margin: 0; }
-.auth--ghar .auth-h2 { font: 900 clamp(30px, 3vw, 42px)/1.04 var(--f-display); text-transform: none; letter-spacing: 0; margin: 0; color: var(--ink); white-space: normal; }
-.auth--ghar .auth-label { font: 800 13px var(--f-label); letter-spacing: .14em; text-transform: uppercase; color: var(--jamuni); }
-.auth--ghar .auth-footline, .auth--ghar .auth-hint, .auth--ghar .auth-row label { color: var(--body-brown); font-family: var(--f-body); }
-.auth--ghar .auth-footline a, .auth--ghar .auth-forgot, .auth--ghar .auth-terms a { color: var(--kumkum); font-family: var(--f-display); font-weight: 900; text-transform: none; letter-spacing: 0; }
-.auth.auth--ghar .auth-foot { align-items: center; text-align: center; }
+.auth--pco .auth-head { align-items: center; text-align: center; }
+.auth.auth--pco .auth-hindi { display: none; }
+.auth.auth--pco .auth-desktop-head { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 6px; padding: 0 20px 6px; }
+.auth--pco .auth-eyebrow { font: 800 13px var(--f-label); letter-spacing: .22em; text-transform: uppercase; color: var(--kumkum); margin: 0; }
+.auth--pco .auth-h2 { font: 900 clamp(30px, 3vw, 42px)/1.04 var(--f-display); text-transform: none; letter-spacing: 0; margin: 0; color: var(--ink); white-space: normal; }
+.auth--pco .auth-label { font: 800 13px var(--f-label); letter-spacing: .14em; text-transform: uppercase; color: var(--peacock); }
+.auth--pco .auth-footline, .auth--pco .auth-hint, .auth--pco .auth-row label { color: var(--body-brown); font-family: var(--f-body); }
+.auth--pco .auth-footline a, .auth--pco .auth-forgot, .auth--pco .auth-terms a { color: var(--kumkum); font-family: var(--f-display); font-weight: 900; text-transform: none; letter-spacing: 0; }
+.auth.auth--pco .auth-foot { align-items: center; text-align: center; }
 
-/* fields */
-.auth--ghar .auth-box { background: var(--paper-w); border: 3px solid var(--ink); border-radius: 16px; color: var(--ink); font-family: var(--f-body); font-weight: 700; }
-.auth--ghar .auth-box:focus-visible { outline: 3px solid var(--rani); outline-offset: 2px; }
-.auth--ghar .auth-prefix { font-family: var(--f-body); font-weight: 800; }
-.auth--ghar .auth-check { border-color: var(--ink); }
-.auth--ghar .auth-check:checked { background: var(--rani); }
-.auth--ghar .auth-divider::before, .auth--ghar .auth-divider::after { height: 0; border-top: 3px dotted var(--ink); background: none; opacity: .5; }
-.auth--ghar .auth-divider span { color: var(--jamuni); }
+/* fields: like the booth's printed number pad labels */
+.auth--pco .auth-box { background: #fff; border: 3px solid var(--ink); border-radius: 12px; color: var(--ink); font-family: var(--f-body); font-weight: 700; box-shadow: inset 0 3px 0 rgba(42, 31, 92, .12); }
+.auth--pco .auth-box:focus-visible { outline: 3px solid var(--rani); outline-offset: 2px; }
+.auth--pco .auth-prefix { font-family: var(--f-body); font-weight: 800; }
+.auth--pco .auth-check { border-color: var(--ink); }
+.auth--pco .auth-check:checked { background: var(--rani); }
+/* divider = coin slot */
+.auth--pco .auth-divider::before, .auth--pco .auth-divider::after { height: 10px; border-radius: 999px; background: var(--ink); opacity: .85; }
+.auth--pco .auth-divider span { color: var(--ink); font: 900 13px var(--f-label); letter-spacing: .14em; padding: 4px 10px; border-radius: 999px; background: var(--haldi); border: 2px solid var(--ink); }
 
-/* buttons — CSS versions (multi-colour, hard shadow) */
-.auth.auth--ghar .auth-btn { font-family: var(--f-display); font-weight: 900; text-transform: none; letter-spacing: .01em; border: 3px solid var(--ink); border-radius: 999px; background: var(--kumkum); color: var(--cream); box-shadow: 5px 5px 0 var(--ink); min-height: 56px; }
-.auth.auth--ghar .auth-btn--ink { background: var(--jamuni); color: var(--cream); box-shadow: 4px 4px 0 var(--ink); }
-.auth.auth--ghar .auth-btn--ghost { background: var(--haldi); color: var(--ink); box-shadow: 4px 4px 0 var(--ink); }
-.auth.auth--ghar .auth-btn:disabled { opacity: .55; cursor: not-allowed; }
-.auth.auth--ghar .auth-btn:not(:disabled):hover { transform: translate(-2px, -2px); box-shadow: 7px 7px 0 var(--ink); }
-.auth.auth--ghar .auth-inline-btn { font-family: var(--f-display); font-weight: 900; border: 2.5px solid var(--ink); border-radius: 999px; background: var(--saffron); color: var(--ink); text-transform: none; }
-.auth.auth--ghar .auth-inline-btn--ghost { background: var(--haldi); }
+/* buttons — CSS keypad keys */
+.auth.auth--pco .auth-btn { font-family: var(--f-display); font-weight: 900; text-transform: none; letter-spacing: .01em; border: 3px solid var(--ink); border-radius: 14px; background: var(--kumkum); color: var(--cream); box-shadow: 0 6px 0 var(--ink); min-height: 56px; transition: transform .1s, box-shadow .1s; }
+.auth.auth--pco .auth-btn--ink { background: var(--jamuni); color: var(--cream); }
+.auth.auth--pco .auth-btn--ghost { background: var(--paper-w); color: var(--ink); }
+.auth.auth--pco .auth-btn:disabled { opacity: .55; cursor: not-allowed; }
+.auth.auth--pco .auth-btn:not(:disabled):hover { transform: translateY(-2px); box-shadow: 0 8px 0 var(--ink); }
+.auth.auth--pco .auth-btn:not(:disabled):active { transform: translateY(4px); box-shadow: 0 2px 0 var(--ink); }
+.auth.auth--pco .auth-inline-btn { font-family: var(--f-display); font-weight: 900; border: 2.5px solid var(--ink); border-radius: 10px; background: var(--saffron); color: var(--ink); text-transform: none; box-shadow: 0 3px 0 var(--ink); }
+.auth.auth--pco .auth-inline-btn--ghost { background: var(--haldi); }
 
-/* buttons — owner artwork (ends keep their drawing, middle stretches) */
-.auth--ghar[data-skins~="primary"] .auth-btn:not(.auth-btn--ink):not(.auth-btn--ghost) { border-style: solid; border-width: 0 58px; border-radius: 0; border-image: var(--au-btn-primary, none) 8 170 8 170 fill / 0 58px stretch; background: none; box-shadow: none; color: var(--cream); padding-inline: 4px; }
-.auth--ghar[data-skins~="dark"] .auth-btn--ink { border-style: solid; border-width: 0 48px; border-radius: 0; border-image: var(--au-btn-dark, none) 8 170 8 170 fill / 0 48px stretch; background: none; box-shadow: none; color: var(--cream); padding-inline: 4px; }
-.auth--ghar[data-skins~="light"] .auth-btn--ghost { border-style: solid; border-width: 0 48px; border-radius: 0; border-image: var(--au-btn-light, none) 8 170 8 170 fill / 0 48px stretch; background: none; box-shadow: none; color: var(--ink); padding-inline: 4px; }
-.auth--ghar[data-skins~="small"] .auth-inline-btn { border-style: solid; border-width: 0 26px; border-radius: 0; border-image: var(--au-btn-small, none) 6 120 6 120 fill / 0 26px stretch; background: none; padding-inline: 2px; }
-.auth--ghar[data-skins] .auth-btn:not(:disabled):hover { box-shadow: none; }
+/* buttons — owner keypad-key artwork (ends keep their drawing, the middle stretches) */
+.auth--pco[data-skins~="primary"] .auth-btn:not(.auth-btn--ink):not(.auth-btn--ghost) { border-style: solid; border-width: 0 52px; border-radius: 0; border-image: var(--au-btn-primary, none) 10 170 10 170 fill / 0 52px stretch; background: none; box-shadow: none; color: var(--cream); padding-inline: 4px; }
+.auth--pco[data-skins~="dark"] .auth-btn--ink { border-style: solid; border-width: 0 44px; border-radius: 0; border-image: var(--au-btn-dark, none) 10 170 10 170 fill / 0 44px stretch; background: none; box-shadow: none; color: var(--cream); padding-inline: 4px; }
+.auth--pco[data-skins~="light"] .auth-btn--ghost { border-style: solid; border-width: 0 44px; border-radius: 0; border-image: var(--au-btn-light, none) 10 170 10 170 fill / 0 44px stretch; background: none; box-shadow: none; color: var(--ink); padding-inline: 4px; }
+.auth--pco[data-skins~="small"] .auth-inline-btn { border-style: solid; border-width: 0 24px; border-radius: 0; border-image: var(--au-btn-small, none) 8 120 8 120 fill / 0 24px stretch; background: none; box-shadow: none; padding-inline: 2px; }
+.auth--pco[data-skins] .auth-btn:not(:disabled):hover, .auth--pco[data-skins] .auth-btn:not(:disabled):active { box-shadow: none; }
 
-/* sign-up role cards (caller / influencer) */
-.auth--ghar .auth-role { border: 3px solid var(--ink); border-radius: 18px; background: var(--paper-w); color: var(--ink); }
-.auth--ghar .auth-role:nth-child(1)[aria-checked='true'] { background: var(--haldi); box-shadow: 5px 5px 0 var(--ink); }
-.auth--ghar .auth-role:nth-child(2)[aria-checked='true'] { background: #ffb3d4; box-shadow: 5px 5px 0 var(--ink); }
-.auth--ghar .auth-role-title { font: 900 20px var(--f-display); text-transform: none; letter-spacing: 0; }
-.auth--ghar .auth-role[aria-checked='true'] .auth-radio { background: var(--rani); }
+/* sign-up role cards */
+.auth--pco .auth-role { border: 3px solid var(--ink); border-radius: 14px; background: var(--paper-w); color: var(--ink); box-shadow: 0 5px 0 var(--ink); }
+.auth--pco .auth-role:nth-child(1)[aria-checked='true'] { background: var(--haldi); }
+.auth--pco .auth-role:nth-child(2)[aria-checked='true'] { background: #ffb3d4; }
+.auth--pco .auth-role-title { font: 900 20px var(--f-display); text-transform: none; letter-spacing: 0; }
+.auth--pco .auth-role[aria-checked='true'] .auth-radio { background: var(--rani); }
+.auth--pco .auth-rail, .auth--pco .auth-stamp { display: none !important; }
 
-/* hide the old rail/stamp ornaments */
-.auth--ghar .auth-rail, .auth--ghar .auth-stamp { display: none !important; }
-
-/* ≥768: a bit more room in the card */
 @media (min-width: 768px) {
-  .auth.auth--ghar .auth-card { padding: 28px 0 30px; }
-  .auth.auth--ghar .auth-form { padding: 0 34px 6px; }
+  .auth.auth--pco .auth-card { padding: 28px 18px 30px; }
+  .auth.auth--pco .auth-form { padding: 0 34px 6px; }
 }
 
-/* ≥1280: the sky panel with the picture beside the house */
+/* ≥1280: booth picture panel beside the form */
 @media (min-width: 1280px) {
-  .auth.auth--ghar .auth-shell { display: grid; grid-template-columns: 46% 1fr; padding: 0; min-height: 100dvh; align-items: stretch; }
-  .auth.auth--ghar .au-panel { display: flex; flex-direction: column; justify-content: space-between; position: relative; background: none; border-right: 3px solid var(--ink); padding: 0; }
-  .auth--ghar .au-panel-inner { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 22px; padding: 110px 40px 30px; }
-  .auth--ghar .au-hero { position: relative; width: min(100%, 560px); aspect-ratio: 1; }
-  .auth--ghar .au-hero-art { position: absolute; inset: 8.5%; width: 83%; height: 83%; max-width: none; border-radius: 50%; object-fit: cover; }
-  .auth--ghar .au-hero-ring { position: absolute; inset: 0; width: 100%; height: 100%; max-width: none; }
-  .auth--ghar .au-sticker { position: absolute; top: 96px; right: 4%; z-index: 2; width: clamp(200px, 15vw, 300px); height: auto; transform: rotate(6deg); }
-  .auth--ghar .au-caption { margin: 0; text-align: center; display: flex; flex-direction: column; gap: 4px; }
-  .auth--ghar .au-caption b { font: 900 clamp(28px, 2.4vw, 40px)/1.05 var(--f-display); color: var(--ink); }
-  .auth--ghar .au-caption span { font-size: 18px; font-weight: 700; color: var(--ink); }
-  .auth--ghar .au-rangoli { height: clamp(70px, 6vw, 110px); border-top: 3px solid var(--ink); background: var(--au-rangoli, var(--saffron)) repeat-x center / auto 100%; }
-  .auth.auth--ghar .au-main { position: relative; isolation: isolate; justify-content: center; padding: 110px 48px 48px; background: var(--haldi); }
-  .auth.auth--ghar .au-main::before { content: ""; position: absolute; inset: 0; z-index: -1; opacity: .14; background: var(--au-wall, none) repeat center / 300px; }
-  .auth--ghar .au-house { width: min(100%, 600px); }
-  .auth.auth--ghar .auth-head img, .auth.auth--ghar .auth-hindi { display: none; }
-  .auth.auth--ghar .auth-form { padding: 0 38px 4px; }
-  .auth.auth--ghar .auth-foot { padding: 0 38px; }
+  .auth.auth--pco .auth-shell { display: grid; grid-template-columns: 46% 1fr; padding: 0; min-height: 100dvh; align-items: stretch; }
+  .auth.auth--pco .au-panel { display: flex; flex-direction: column; justify-content: space-between; position: relative; background: var(--firozi); border-right: 4px solid var(--ink); padding: 0; }
+  .auth--pco .au-panel-inner { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 20px; padding: 110px 40px 30px; }
+  .auth--pco .au-hero { display: block; width: min(100%, 560px); height: auto; max-width: none; }
+  .auth--pco .au-sticker { position: absolute; top: 100px; right: 4%; z-index: 2; width: clamp(200px, 15vw, 300px); height: auto; transform: rotate(6deg); }
+  .auth--pco .au-caption { margin: 0; text-align: center; display: flex; flex-direction: column; gap: 4px; }
+  .auth--pco .au-caption b { font: 900 clamp(30px, 2.6vw, 44px)/1.05 var(--f-display) !important; color: var(--ink); }
+  .auth--pco .au-caption span { font-size: 18px; font-weight: 700; color: var(--ink); }
+  .auth--pco .au-coins { height: 64px; border-top: 4px solid var(--ink); background: var(--au-coins, radial-gradient(circle at 50% 50%, var(--haldi) 0 15px, var(--ink) 15px 18px, transparent 18.5px) 0 50% / 48px 100% repeat-x, var(--saffron)); }
+  /* CSS booth stand-in for the hero picture */
+  .auth--pco .au-booth-css { position: relative; width: min(100%, 380px); aspect-ratio: 3 / 4; border: 5px solid var(--ink); border-radius: 22px 22px 8px 8px; background: var(--kumkum); box-shadow: 14px 14px 0 rgba(0, 0, 0, .25); display: flex; flex-direction: column; align-items: center; padding: 16px; gap: 18px; }
+  .auth--pco .au-booth-sign { width: 100%; text-align: center; background: var(--haldi); border: 4px solid var(--ink); border-radius: 12px; padding: 12px 6px; font: 900 34px/1 var(--f-display); color: var(--kumkum); letter-spacing: .04em; }
+  .auth--pco .au-booth-phone { flex: 1; width: 100%; display: grid; place-items: center; background: var(--paper-w); border: 4px solid var(--ink); border-radius: 10px; color: var(--ink); }
+  .auth--pco .au-booth-phone svg { width: 55%; height: auto; }
+  .auth.auth--pco .au-main { justify-content: center; padding: 110px 48px 48px; background: var(--jamuni); }
+  .auth--pco .au-booth { width: min(100%, 600px); }
+  .auth.auth--pco .auth-head img { display: none; }
+  .auth.auth--pco .auth-form { padding: 0 38px 4px; }
+  .auth.auth--pco .auth-foot { padding: 0 38px; }
 }
-@media (max-width: 480px) {
-  .auth--ghar .au-logo img { height: 54px; }
-  .auth--ghar .auth-shell { padding-top: 92px; }
-}
-/* shared chrome resets <b>; keep Nunito on the caption. The eyebrow + heading already greet, so the old Hindi line goes. */
-.auth--ghar .au-caption b { font-family: var(--f-display) !important; font-weight: 900 !important; }
-.auth.auth--ghar .auth-hindi { display: none; }
-@media (max-width: 767px) { .auth.auth--ghar .auth-btn--ink, .auth.auth--ghar .auth-btn--ghost { font-size: 14px; padding: 10px 8px; } }
-
-/* no art yet (owner: never borrow other pages' art): plain card */
-.auth.auth--ghar.au-noroof .auth-card { border-top: 3px solid var(--ink); border-radius: 26px; }
+@media (max-width: 767px) { .auth.auth--pco .auth-btn--ink, .auth.auth--pco .auth-btn--ghost { font-size: 14px; padding: 10px 8px; } }
+@media (max-width: 480px) { .auth--pco .au-logo img { height: 54px; } .auth--pco .auth-shell { padding-top: 92px; } }
+@media (prefers-reduced-motion: reduce) { .auth.auth--pco .auth-btn { transition: none; } }
+.auth--pco .au-board-css span, .auth--pco .au-booth-sign { font-family: var(--f-display) !important; font-weight: 900 !important; }
