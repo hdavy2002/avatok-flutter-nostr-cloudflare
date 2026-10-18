@@ -137,6 +137,11 @@ a worked example (a named character, real rupee numbers) does the explaining.
     - **No cartoons.** No cartoon characters, chibi or big-head caricatures, comic or animated-movie styling.
       People are drawn in the craft's own painterly way (miniature painting, Patachitra, mural, embroidery),
       with natural proportions.
+    - **Exception: backgrounds behind text (owner 2026-10-18).** Background tiles, section grounds and any
+      image that text sits on top of must **not** be richly textured or dimensional, because realistic texture
+      fights the text and it can't be read. Make backgrounds however suits the design: calm, low-contrast, soft
+      pattern or near-plain colour. The textured, dimensional rule applies to everything else (hero art, story
+      panels, medallions, badges, stickers, buttons, borders, frames).
 14. **Mock first for big redesigns.** For "Indianize it", the 3-idea pitch is the approval step. Never change an
     approved design's look when only copy changes.
 
@@ -254,7 +259,8 @@ a worked example (a named character, real rupee numbers) does the explaining.
 2. **Characters block:** fixed looks (age, skin, hair, clothes colours, phone-case colour), so every image matches.
 3. **Style block** to paste before every prompt: the art form, a **multi-colour** palette, outlines, and always
    **"richly textured, dimensional, hand-crafted look: visible paper/cloth/brush texture, soft shading and depth,
-   layered relief"** (§2.13).
+   layered relief"** (§2.13). **Not** for background tiles and grounds: their block says "calm, low-contrast,
+   soft pattern, text must stay readable on top"; no realistic texture.
 4. **Negative prompt:**
    - Photo, 3D, gradient, watermark, brand or app-store or payment logos, misspellings, extra fingers.
    - **Flat vector illustration, flat colour fills, no texture, clip-art, cartoon, cartoon characters, chibi,
@@ -277,7 +283,7 @@ a worked example (a named character, real rupee numbers) does the explaining.
 | Medallions | 300×300, transparent | **Plain flat-colour centre (~50%) with nothing in it** |
 | Badges / icons | 400×400, transparent | — |
 | Borders | 1600×80, seamless horizontal repeat | **Generate wide, then crop or scale evenly; never squash.** Circles must stay round and figures keep their natural width |
-| Background tiles | 600×600 | Seamless both ways, **low contrast** (text sits on top) |
+| Background tiles | 600×600 | Seamless both ways, **low contrast, calm, not textured or dimensional** (text sits on top and must stay readable) |
 | Buttons | 900×180 | Fill the full height (no empty space above or below); decoration only in the **left and right 200px**; plain flat-colour middle; no text |
 | Rollers / rails | 1400×110, transparent | — |
 
@@ -293,7 +299,8 @@ a worked example (a named character, real rupee numbers) does the explaining.
   - medallion centres are empty;
   - characters are consistent;
   - nothing is one-tone;
-  - nothing looks flat or cartoonish (each image has texture and depth);
+  - nothing looks flat or cartoonish (each image has texture and depth), **except backgrounds**, which must be
+    calm enough for text to read on top;
   - there are no peacocks;
   - no theme is repeated.
 - **Restart the astro dev server** after the art lands. The `existsSync` results are cached, so new files don't
