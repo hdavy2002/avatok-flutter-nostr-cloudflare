@@ -1,14 +1,191 @@
 ---
+// [HF-ABOUT-GULLY-1 2026-10-18] /about Indianized as "Gully ka Scorecard" (owner pick): a Sunday street-cricket match.
+// Hero = Bunty batting in front of a sky-blue lime-washed wall with chalk stumps and a giant outline "HOWZAT" behind
+// him; "Ek over, chhe gend" = six balls, one fact each (the sixth is the sixer: numbers stay private); a painted tin
+// scoreboard with Meher the commentator = who runs it; the umpire's board = what this is not; close = evening gully.
+// Bands: ivory wall, brick, marigold, slate, sky-blue. Borders: chalk runs, bat grip, brick wall.
+// Art: /assets/hf-about/ (slots + CSS stand-ins in components/about/aboutSkin.ts). Prompt pack: SaatHum project doc
+// claude/hello-fraands-about-artwork-prompts.md. Styles: styles/about-gully.css (scoped `.gc`).
+// Copy contract: check-hello-fraands-pages.mjs keeps the Hindi line, the dated line, one H1 and H2s.
+export const prerender = true;
+
+import Base from '../layouts/Base.astro';
+import SiteHeader from '../components/callvaal/Header.astro';
+import SiteFooter from '../components/callvaal/Footer.astro';
+import { publicImage } from '../lib/config';
 import { BRAND } from '../lib/brand';
 import { BUSINESS_CONTACT } from '../lib/businessContact';
-import HelloFraandsPage from '../layouts/HelloFraandsPage.astro';
-export const prerender = true;
+import type { PublicContent } from '../lib/seo/types';
+import { ABOUT_ART, ABOUT_BG, ABOUT_SKINS } from '../components/about/aboutSkin';
+import '../styles/desi-home-chrome.css';
+import '../styles/about-gully.css';
+
+const UPDATED = '2026-10-18';
+const content: PublicContent = {
+  kind: 'collection',
+  key: 'about',
+  canonicalPath: '/about',
+  title: 'About us',
+  summary: `${BRAND.name} connects you to your favourite influencer over a private phone call, paid by the minute. Both numbers stay private.`,
+  visibility: 'public',
+};
+const mail = `mailto:${BRAND.emails.support}`;
+const img = (p: string, w: number) => publicImage(p, { width: w, fit: 'scale-down' });
+const vars = [
+  ...ABOUT_BG.map((o) => `--gc-${o.key}:url(${img(o.path, o.width)}) ${o.tail}`),
+  ...ABOUT_SKINS.map((o) => `--gc-${o.key}:url(${img(o.path, o.width)})`),
+].join(';');
+const skins = [...ABOUT_BG, ...ABOUT_SKINS].map((o) => o.key).join(' ');
+const balls = [
+  { n: 1, h: 'You book', t: 'Pick your favourite influencer and book a call.' },
+  { n: 2, h: 'We ring them first', t: 'We call the influencer and say that you want to talk.' },
+  { n: 3, h: 'They say yes', t: 'The influencer accepts the call.' },
+  { n: 4, h: 'We ring you', t: 'Then we call you.' },
+  { n: 5, h: 'Calls join', t: 'We join the two calls. You pay by the minute, at the rate the influencer sets.' },
+];
 ---
-<HelloFraandsPage updated="2026-10-14" title="About us" summary="Apne favourite influencer se private phone call, aapka number private.">
-<h2>Talk to your favourite influencer</h2>
-<p>{BRAND.name} connects you to your favourite social media influencer (YouTube, Instagram, Facebook and more) over a private phone call, paid by the minute. When you book a call, we first call the influencer and say that you want to talk. If the influencer accepts, we call you and join the two calls. Both calls come from a {BRAND.name} number, so your private number is never shared, and neither is the influencer's. The influencer sets the per-minute rate. No human monitors or listens to your call.</p>
-<p>This is not professional advice, dating, therapy or a crisis line. Influencers offer conversation, not professional advice. Read our <a href="/disclaimer">service disclaimer</a> and <a href="/safety">safety centre</a>.</p>
-<h2>Who runs {BRAND.name}</h2>
-<dl><dt>Business name</dt><dd>{BUSINESS_CONTACT.name}</dd><dt>Public postal address</dt><dd>{BUSINESS_CONTACT.postalAddress}</dd><dt>Support</dt><dd><a href={`mailto:${BRAND.emails.support}`}>{BRAND.emails.support}</a></dd></dl>
-<p>For complaints, use our <a href="/grievance">grievance process</a>.</p>
-</HelloFraandsPage>
+<Base content={content} chrome={false} indiaLandingLanguage={false}>
+  <Fragment slot="head">
+    <meta name="theme-color" content="#5aa6d4" />
+    <link rel="preload" as="style" onload="this.onload=null;this.rel='stylesheet'" href="https://fonts.googleapis.com/css2?family=Comfortaa:wght@500;600;700&family=Nunito:wght@700;800;900&display=swap" />
+  </Fragment>
+  <div class="gc desi-home" style={vars} data-skins={skins || undefined}>
+    <a class="gc-skip" href="#main-content">Skip to main content</a>
+    <SiteHeader />
+    <main id="main-content" class="gc-main">
+
+      <!-- HERO: the gully wall -->
+      <section class="gc-hero" aria-labelledby="about-title">
+        <div class="gc-wrap gc-hero-grid">
+          <div class="gc-hero-copy">
+            <p class="gc-stickers" aria-hidden="true"><span class="gc-stk gc-stk--yellow">Howzat!</span><span class="gc-stk gc-stk--pink">Bas ek over aur</span></p>
+            <p class="gc-kicker">About us · {BRAND.name}</p>
+            <h1 id="about-title"><span class="gc-h1-a">Fan ka shot,</span> <span class="gc-pop">seedha influencer tak.</span></h1>
+            <p class="hf-hindi"><em>Apne favourite influencer se private phone call, aapka number private.</em></p>
+            <p class="hf-date gc-date">Last updated: {UPDATED}</p>
+            <ul class="gc-chips" aria-label="Key facts">
+              <li>Paid by the minute</li><li>Both numbers private</li><li>No one listens in</li>
+            </ul>
+            <div class="gc-ctas">
+              <a class="gc-btn" href="/marketplace">Find your influencer</a>
+              <a class="gc-btn gc-btn--light" href="/how-it-works">How it works</a>
+            </div>
+          </div>
+          <div class="gc-hero-art">
+            <span class="gc-bigword" aria-hidden="true">HOWZAT</span>
+            {ABOUT_ART.hero
+              ? <img class="gc-hero-cut" src={img(ABOUT_ART.hero, 1200)} alt="Photo of Bunty, a young fan from Kanpur, hitting a tennis ball in a street-cricket game" width="1100" height="1300" fetchpriority="high" decoding="async" />
+              : <div class="gc-css-wall" aria-hidden="true">
+                  <span class="gc-css-stumps"><i></i><i></i><i></i></span>
+                  <span class="gc-css-bat"></span>
+                  <span class="gc-css-ball"></span>
+                </div>}
+          </div>
+        </div>
+      </section>
+      <div class="gc-band" data-border="chalk" aria-hidden="true"></div>
+
+      <!-- ONE OVER: six balls, one fact each -->
+      <section class="gc-over" aria-labelledby="gc-over-title">
+        <div class="gc-wrap gc-over-grid">
+          <div class="gc-over-head">
+            <p class="gc-kicker">Talk to your favourite influencer</p>
+            <h2 id="gc-over-title"><span class="gc-out">Ek over,</span> <span class="gc-pop">chhe gend.</span></h2>
+            <p>One over is all it takes to explain {BRAND.name}: a private phone call with your favourite YouTube, Instagram or Facebook influencer.</p>
+            <div class="gc-arch">
+              {ABOUT_ART.over
+                ? <img src={img(ABOUT_ART.over, 1000)} alt="Painting of a street-cricket game in a narrow lane, a bowler running in and neighbours watching from balconies" width="1000" height="1000" loading="lazy" decoding="async" />
+                : <div class="gc-css-lane" aria-hidden="true"><span></span><span></span><span></span></div>}
+            </div>
+          </div>
+          <ol class="gc-balls">
+            {balls.map((b) => (
+              <li class="gc-ball">
+                <span class="gc-ball-badge" aria-hidden="true">
+                  {ABOUT_ART.ball ? <img src={img(ABOUT_ART.ball, 300)} alt="" width="300" height="300" loading="lazy" decoding="async" /> : <span class="gc-css-tball"></span>}
+                  <b>{b.n}</b>
+                </span>
+                <div><h3>{b.h}</h3><p>{b.t}</p></div>
+              </li>))}
+            <li class="gc-ball gc-ball--six">
+              <span class="gc-ball-badge" aria-hidden="true">
+                {ABOUT_ART.six ? <img src={img(ABOUT_ART.six, 400)} alt="" width="400" height="400" loading="lazy" decoding="async" /> : <span class="gc-css-tball"></span>}
+                <b>6</b>
+              </span>
+              <div>
+                <h3>Sixer! Numbers stay private</h3>
+                <p>Both calls come from a {BRAND.name} number, so your private number is never shared, and neither is the influencer's.</p>
+                <p class="gc-ball-note">No human monitors or listens to your call.</p>
+              </div>
+            </li>
+          </ol>
+        </div>
+      </section>
+      <div class="gc-band" data-border="grip" aria-hidden="true"></div>
+
+      <!-- TIN SCOREBOARD: who runs it -->
+      <section class="gc-score" aria-labelledby="gc-score-title">
+        <div class="gc-wrap gc-score-grid">
+          <div class="gc-board">
+            <p class="gc-kicker">Scoreboard</p>
+            <h2 id="gc-score-title">Who runs <span class="gc-pop">{BRAND.name}</span></h2>
+            <dl class="gc-rows">
+              <div><dt>Business name</dt><dd>{BUSINESS_CONTACT.name}</dd></div>
+              <div><dt>Public postal address</dt><dd>{BUSINESS_CONTACT.postalAddress}</dd></div>
+              <div><dt>Support</dt><dd><a href={mail}>{BRAND.emails.support}</a></dd></div>
+            </dl>
+          </div>
+          <div class="gc-comm">
+            <span class="gc-comm-ring" aria-hidden="true"></span>
+            {ABOUT_ART.commentator
+              ? <img src={img(ABOUT_ART.commentator, 900)} alt="Photo of Meher, a cricket-commentary creator, speaking into a microphone with one hand raised" width="900" height="1100" loading="lazy" decoding="async" />
+              : <div class="gc-css-mic" aria-hidden="true"><span></span></div>}
+            <p class="gc-comm-bubble" aria-hidden="true">Kya shot hai!</p>
+          </div>
+        </div>
+      </section>
+      <div class="gc-band" data-border="bricks" aria-hidden="true"></div>
+
+      <!-- UMPIRE'S BOARD: what this is not -->
+      <section class="gc-ump" aria-labelledby="gc-ump-title">
+        <div class="gc-wrap gc-ump-grid">
+          <div class="gc-ump-art">
+            {ABOUT_ART.umpire
+              ? <img src={img(ABOUT_ART.umpire, 900)} alt="Painting of a neighbourhood umpire in a cap raising one finger at the end of the lane" width="900" height="1100" loading="lazy" decoding="async" />
+              : <div class="gc-css-finger" aria-hidden="true"><span></span></div>}
+          </div>
+          <div class="gc-ump-copy">
+            <p class="gc-kicker">Gully ke niyam</p>
+            <h2 id="gc-ump-title">Yeh <span class="gc-pop">kya nahi</span> hai</h2>
+            <ul class="gc-nos" aria-label="What this is not">
+              <li>Professional advice</li><li>Dating</li><li>Therapy</li><li>A crisis line</li>
+            </ul>
+            <p>This is not professional advice, dating, therapy or a crisis line. Influencers offer conversation, not professional advice.</p>
+            <p class="gc-ump-links">Read our <a href="/disclaimer">service disclaimer</a> and <a href="/safety">safety centre</a>.</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- CLOSE: next match -->
+      <section class="gc-close" aria-labelledby="gc-close-title">
+        <div class="gc-wrap gc-close-grid">
+          <div class="gc-close-copy">
+            <p class="gc-kicker">Agla match aapka</p>
+            <h2 id="gc-close-title">Batting <span class="gc-pop">aapki.</span></h2>
+            <p>For complaints, use our <a href="/grievance">grievance process</a>.</p>
+            <div class="gc-ctas">
+              <a class="gc-btn" href="/marketplace">Find your influencer</a>
+              <a class="gc-btn gc-btn--light" href="/contact">Contact us</a>
+            </div>
+          </div>
+          <div class="gc-close-art">
+            {ABOUT_ART.close
+              ? <img src={img(ABOUT_ART.close, 900)} alt="Painting of the lane at sunset, a bat and a tennis ball resting against chalk stumps on the wall" width="900" height="720" loading="lazy" decoding="async" />
+              : <div class="gc-css-sunset" aria-hidden="true"><span class="gc-css-stumps"><i></i><i></i><i></i></span></div>}
+          </div>
+        </div>
+      </section>
+    </main>
+    <SiteFooter />
+  </div>
+</Base>
