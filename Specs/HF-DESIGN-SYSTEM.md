@@ -301,6 +301,8 @@ a worked example (a named character, real rupee numbers) does the explaining.
 **Styles also used** (don't reuse as a page theme): comic-book halftone (rejected), postal / stamp look (rejected
 as "postal"), haveli (rejected), tombstone-like arched windows (rejected), scrapbook (old home).
 
+**Known peacocks to replace** (made before the no-peacock rule): `hf-how/panels/step-2-phad.png` (peacock at the right) and `hf-join/medallions/gond-1-peacock.png`. Regenerate without peacocks when the owner asks.
+
 ### 8.1 Theme ideas not used yet (pick from here or invent new)
 
 - **South:**
