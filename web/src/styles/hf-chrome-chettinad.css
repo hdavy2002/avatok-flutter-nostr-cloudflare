@@ -7,6 +7,7 @@
    Scoped to [data-hf-chrome=chettinad] so the older chrome rules (and page overrides) lose on specificity. */
 :root{
   --ct-ink:#30245f;--ct-red:#b8442c;--ct-ochre:#e8a62a;--ct-blue:#1f4f8a;--ct-rose:#e46f93;--ct-cream:#fff4dc;
+  --ct-band-h:30px;--ct-eave-h:24px;--ct-fband-h:36px;
   --ct-brass:#c9a24a;--ct-brass-dark:#8a6420;--ct-teak:#7a4325;--ct-max:1760px;
   /* Athangudi tile band (pinwheel tiles, alternating oxide-red / Prussian-blue grounds) */
   --ct-tile-band-stand-in:
@@ -31,14 +32,18 @@
 /* ---------- HEADER: verandah eave + tile band ---------- */
 header.cv-header[data-hf-chrome=chettinad]{
   width:100%!important;max-width:none!important;margin-inline:0!important;
-  padding-inline:max(32px,calc((100% - var(--ct-max)) / 2))!important;padding-bottom:0!important;margin-bottom:27px!important;
-  background:var(--ct-cream);box-shadow:0 10px 22px #30245f2e;clip-path:none;color:var(--ct-ink)
+  padding-inline:max(32px,calc((100% - var(--ct-max)) / 2))!important;padding-bottom:0!important;margin-bottom:calc(var(--ct-band-h) + var(--ct-eave-h) - 6px)!important;
+  background:var(--ct-cream);color:var(--ct-ink);
+  /* where a page boxes the header (notebook pages >1760px) the cream still reaches the viewport edges */
+  box-shadow:0 0 0 100vmax var(--ct-cream);
+  clip-path:polygon(-100vmax 0,calc(100% + 100vmax) 0,calc(100% + 100vmax) 100%,100% 100%,100% calc(100% + 60px),0 calc(100% + 60px),0 100%,-100vmax 100%)
 }
+header.cv-header[data-hf-chrome=chettinad]:has(.cv-navigation[data-open=true]){clip-path:none}
 /* [HF-CHROME-CHETTINAD-2] owner rule: no space above/below the logo — the tile band + eave hang in the header's
    bottom margin, outside its box, so they take layout space without padding the logo bar */
-header.cv-header[data-hf-chrome=chettinad]::after{content:"";position:absolute;left:0;right:0;top:100%;height:18px;
+header.cv-header[data-hf-chrome=chettinad]::after{content:"";position:absolute;left:0;right:0;top:100%;height:var(--ct-band-h);
   background:var(--ct-tile-band-art,var(--ct-tile-band-stand-in));border-top:3px solid var(--ct-ink);pointer-events:none}
-header.cv-header[data-hf-chrome=chettinad]::before{content:"";position:absolute;left:0;right:0;top:calc(100% + 18px);height:9px;
+header.cv-header[data-hf-chrome=chettinad]::before{content:"";position:absolute;left:0;right:0;top:calc(100% + var(--ct-band-h));height:var(--ct-eave-h);
   background:var(--ct-eave-art,var(--ct-eave-stand-in));pointer-events:none}
 header.cv-header[data-hf-chrome=chettinad] .cv-navigation{gap:clamp(.6rem,1.2vw,1.25rem)}
 /* nav links = small glossy hand-made tiles, each a different colour, with quarter-flower corners */
@@ -65,11 +70,12 @@ header.cv-header[data-hf-chrome=chettinad] .cv-navigation a.cv-sign-in:hover,
 header.cv-header[data-hf-chrome=chettinad] .cv-navigation a.hfh-header-host:hover{box-shadow:0 0 0 2.5px var(--ct-ink),6px 6px 0 2.5px var(--ct-ink)}
 header.cv-header[data-hf-chrome=chettinad] .cv-sign-in svg{width:18px;height:18px}
 @media(max-width:699px){
+  :root{--ct-band-h:22px;--ct-eave-h:18px;--ct-fband-h:26px}
   header.cv-header[data-hf-chrome=chettinad]{padding-inline:16px!important}
   header.cv-header[data-hf-chrome=chettinad] .cv-mobile-actions a,
   header.cv-header[data-hf-chrome=chettinad] .cv-menu-toggle{border:2.5px solid var(--ct-ink);border-radius:14px;background:#ffd98a;box-shadow:2px 2px 0 var(--ct-ink);color:var(--ct-ink)}
   header.cv-header[data-hf-chrome=chettinad] .cv-menu-toggle{background:#f9c2d1}
-  header.cv-header[data-hf-chrome=chettinad] .cv-navigation{left:16px;right:16px;top:calc(100% + 34px);padding:20px 16px;gap:12px;
+  header.cv-header[data-hf-chrome=chettinad] .cv-navigation{left:16px;right:16px;top:calc(100% + 40px);padding:20px 16px;gap:12px;
     background:var(--ct-floor-art,var(--ct-floor-stand-in));border:3px solid var(--ct-ink);border-radius:22px;box-shadow:6px 6px 0 var(--ct-ink)}
   header.cv-header[data-hf-chrome=chettinad] .cv-navigation[data-open=true]{align-items:stretch}
   header.cv-header[data-hf-chrome=chettinad] .cv-navigation a{justify-content:center;text-align:center;padding:10px 16px}
@@ -86,16 +92,17 @@ header.cv-header[data-hf-chrome=chettinad] .cv-sign-in svg{width:18px;height:18p
 footer.cv-footer[data-hf-chrome=chettinad]{
   position:relative;width:100%!important;max-width:none!important;margin-inline:0!important;
   padding:clamp(56px,5vw,76px) max(32px,calc((100% - var(--ct-max)) / 2)) 80px!important;border-top:0!important;
-  background:var(--ct-floor-art,var(--ct-floor-stand-in));color:var(--ct-ink)
+  background:var(--ct-floor-art,var(--ct-floor-stand-in));color:var(--ct-ink);
+  box-shadow:0 0 0 100vmax #fcecc8;clip-path:inset(0 -100vmax)
 }
-footer.cv-footer[data-hf-chrome=chettinad]::before{content:"";position:absolute;left:0;right:0;top:0;height:18px;
+footer.cv-footer[data-hf-chrome=chettinad]::before{content:"";position:absolute;left:0;right:0;top:0;height:var(--ct-fband-h);
   background:var(--ct-tile-band-art,var(--ct-tile-band-stand-in));border-bottom:3px solid var(--ct-ink)}
 /* kolam doorstep — replaces the old dotted line */
 footer.cv-footer[data-hf-chrome=chettinad]::after{content:"";position:absolute;left:0;right:0;bottom:0;height:44px;
   background:var(--ct-kolam-art,var(--ct-kolam-stand-in));border-top:3px solid var(--ct-ink)}
 /* hello row: kaapi sticker + loud greeting */
 footer.cv-footer[data-hf-chrome=chettinad] .ct-foot-hello{display:flex;align-items:center;justify-content:center;flex-wrap:wrap;gap:12px 20px;margin:0 0 clamp(28px,3vw,44px);text-align:center}
-footer.cv-footer[data-hf-chrome=chettinad] .ct-kaapi{flex:0 0 auto;width:clamp(64px,6vw,92px);aspect-ratio:80/92;background:var(--ct-kaapi-art,var(--ct-kaapi-stand-in));filter:drop-shadow(3px 4px 0 #30245f33)}
+footer.cv-footer[data-hf-chrome=chettinad] .ct-kaapi{flex:0 0 auto;width:clamp(64px,6vw,92px);aspect-ratio:1;background:var(--ct-kaapi-art,var(--ct-kaapi-stand-in));filter:drop-shadow(3px 4px 0 #30245f33)}
 footer.cv-footer[data-hf-chrome=chettinad] .ct-hello-big{font:900 clamp(2.4rem,5.2vw,4.6rem)/1.02 Nunito,sans-serif!important;letter-spacing:.04em;word-spacing:.2em;color:var(--ct-red);text-shadow:3px 3px 0 var(--ct-ochre),6px 6px 0 var(--ct-ink)}
 footer.cv-footer[data-hf-chrome=chettinad] .ct-hello-chip{display:inline-flex;align-items:center;min-height:44px;padding:8px 20px;border:3px solid var(--ct-ink);border-radius:999px;background:var(--ct-blue);color:#fff;font:900 1.0625rem/1.2 Nunito,sans-serif!important;letter-spacing:.04em;box-shadow:4px 4px 0 var(--ct-ink);transform:rotate(-3deg)}
 /* five columns = five different tiles */
