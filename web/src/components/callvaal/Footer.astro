@@ -1,18 +1,12 @@
 ---
 import brandConfig from '../../../../Specs/brand.json';
 import AppTabBar from './AppTabBar.astro';
-import { publicImage } from '../../lib/config';
 import '../../styles/callvaal-chrome.css';
-import '../../styles/hf-chrome-chettinad.css'; // [HF-CHROME-CHETTINAD-1] Chettinad tile chrome
 interface Props { hideTagline?: boolean; }
 const { hideTagline: _hideTagline = false } = Astro.props; // kept for callers; the footer no longer shows a tagline
 const identity = brandConfig.homepageIdentity;
 // [HF-HOME-POLISH-2] Owner 2026-10-17: six links per column so the desktop rows line up. KYC guide, Talk safely,
 // LGBTQ+ space, Age policy, Cookies and Intermediary policy moved into the related pages (requirements, safety centre, privacy).
-// [HF-CHROME-ART-1] owner's Chettinad art (web/public/assets/hf-chrome/), through the image pipeline.
-const chromeArt = (p: string, w: number) => `url(${publicImage(`/assets/hf-chrome/${p}`, { width: w, fit: 'scale-down' })})`;
-const chromeStyle = `--ct-tile-band-art:${chromeArt('bands/tile-band.png', 1200)} 0 0/calc(var(--ct-fband-h) * 20) var(--ct-fband-h) repeat-x;--ct-floor-art:${chromeArt('grounds/athangudi-floor.png', 600)} 0 0/360px 360px repeat,#fcecc8;--ct-kolam-art:${chromeArt('bands/kolam-doorstep.png', 1600)} 0 50%/880px 44px repeat-x,#b8442c;--ct-kaapi-art:${chromeArt('stickers/kaapi-davara.png', 200)} center/contain no-repeat`;
-const columnTiles = ['company', 'influencers', 'safety', 'legal', 'explore'];
 const groups = [
   ['Company', [
     ['About us', '/about'], ['How it works', '/how-it-works'], ['FAQs', '/faq'], ['Help centre', '/help'], ['Contact us', '/contact'], ['Press', '/press'],
@@ -31,13 +25,11 @@ const groups = [
   ]],
 ] as const;
 ---
-<footer class="cv-footer notebook-footer" data-callvaal-chrome data-hf-chrome="chettinad" style={chromeStyle}>
-  {/* [HF-CHROME-CHETTINAD-1 2026-10-18] Owner: Indianized footer — kaapi sticker + greeting over an Athangudi tile floor. */}
-  <p class="ct-foot-hello"><span class="ct-kaapi" aria-hidden="true"></span><span class="ct-hello-big">Vanakkam!</span><span class="ct-hello-chip">Ek call, ek kaapi</span></p>
+<footer class="cv-footer notebook-footer" data-callvaal-chrome>
   {/* [HF-DESI-HOME-MOBILE-1] 2026-10-17: disclaimer is the owner's own wording from the desi design footer. */}
   {/* [HF-DASH-LAYOUT-1] Owner 2026-10-16: no logo and no tagline in the footer (the header already carries the logo). */}
   <nav class="cv-footer-columns footer-columns" aria-label="Footer">
-    {groups.map(([heading, links], i) => <details class="cv-footer-group footer-group" data-callvaal-footer-group open style={`--ct-col-art:${chromeArt(`tiles/tile-${columnTiles[i]}.png`, 120)} center/cover`}><summary>{heading}</summary><ul>{links.map(([label, href]) => <li><a href={href}>{label}</a></li>)}</ul></details>)}
+    {groups.map(([heading, links]) => <details class="cv-footer-group footer-group" data-callvaal-footer-group open><summary>{heading}</summary><ul>{links.map(([label, href]) => <li><a href={href}>{label}</a></li>)}</ul></details>)}
   </nav>
   <div class="cv-footer-bottom">
     <p class="cv-footer-disclaimer"><strong>Disclaimer:</strong> {identity.name} connects you with the social media influencers you follow over private phone calls, with both phone numbers kept private. Our platform is not for consultations with doctors, lawyers, therapists, counsellors or financial advisors, and nothing said on a call is professional advice. We are not responsible for the relationship or rapport you build with any influencer, or for any outcome of a call. Sexual harassment, threats and abuse are prohibited; reports are reviewed, and serious or repeated violations can lead to removal. No human listens in. Spammy, sexual or threatening behaviour is not allowed, and you can press # at any time to end a call and block the person. 18+ only. If you are in crisis, call <a href="tel:14416">Tele-MANAS 14416</a> or <a href="tel:112">112</a>.</p>
