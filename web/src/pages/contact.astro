@@ -1,13 +1,210 @@
 ---
+// [HF-CONTACT-FARMAISH-1 2026-10-18] /contact Indianized as "Aapki Farmaish" (owner pick): a 70s radio request show.
+// Kamla writes her farmaish (an email), Rafiq-bhai reads it at the mic, the station replies within 2 working days.
+// Hero = studio with a big transistor; 3 steps = 3 records; the "Farmaish ke niyam" board says what to send and what
+// never to send; the tuning dial has 3 stations (Grievance, Report a user, Emergency SOS); the postal address sits on
+// the station nameplate. Bands: mustard, chocolate, cream, teal-blue, cherry. Borders: speaker grille, 70s waves,
+// record row, dial scale. Art: /assets/hf-contact/ (slots + CSS stand-ins in components/contact/contactSkin.ts).
+// Prompt pack: SaatHum project doc claude/hello-fraands-contact-artwork-prompts.md. Styles: styles/contact-farmaish.css
+// (scoped `.af`). Copy contract: check-hello-fraands-pages.mjs keeps the Hindi line, the dated line, one H1 and H2s.
+export const prerender = true;
+
+import Base from '../layouts/Base.astro';
+import SiteHeader from '../components/callvaal/Header.astro';
+import SiteFooter from '../components/callvaal/Footer.astro';
+import { publicImage } from '../lib/config';
 import { BRAND } from '../lib/brand';
 import { BUSINESS_CONTACT } from '../lib/businessContact';
-import HelloFraandsPage from '../layouts/HelloFraandsPage.astro';
-export const prerender = true;
+import type { PublicContent } from '../lib/seo/types';
+import { CONTACT_ART, CONTACT_BG, CONTACT_SKINS } from '../components/contact/contactSkin';
+import '../styles/desi-home-chrome.css';
+import '../styles/contact-farmaish.css';
+
+const UPDATED = '2026-10-18';
+const content: PublicContent = {
+  kind: 'collection',
+  key: 'contact',
+  canonicalPath: '/contact',
+  title: 'Contact us',
+  summary: `Email ${BRAND.name} support. We aim to reply within 2 working days. Complaints, safety reports and emergency help are linked here.`,
+  visibility: 'public',
+};
+const mail = `mailto:${BRAND.emails.support}`;
+const img = (p: string, w: number) => publicImage(p, { width: w, fit: 'scale-down' });
+const vars = [
+  ...CONTACT_BG.map((o) => `--af-${o.key}:url(${img(o.path, o.width)}) ${o.tail}`),
+  ...CONTACT_SKINS.map((o) => `--af-${o.key}:url(${img(o.path, o.width)})`),
+].join(';');
+const skins = [...CONTACT_BG, ...CONTACT_SKINS].map((o) => o.key).join(' ');
+const steps = [
+  { n: 1, art: CONTACT_ART.step1, tone: 'orange', h: 'Likhiye', t: 'Page or call ID, plus a short description.', chip: 'Page link · call ID', alt: 'Illustration of Kamla writing her message at home beside a transistor radio' },
+  { n: 2, art: CONTACT_ART.step2, tone: 'blue', h: 'Bhejiye', t: 'Send it to our support inbox.', chip: BRAND.emails.support, alt: 'Illustration of Kamla sending her message from her phone, the message flying towards the radio studio' },
+  { n: 3, art: CONTACT_ART.step3, tone: 'cherry', h: 'Jawaab paaiye', t: 'We aim to reply within 2 working days.', chip: '2 working days', alt: 'Illustration of the announcer at the studio microphone reading Kamla\'s message, with an ON AIR lamp lit' },
+];
+const stations = [
+  { key: 'grievance', art: CONTACT_ART.grievance, freq: '88', tone: 'mustard', h: 'Grievance', t: 'Raise a complaint', href: '/grievance', cta: 'Grievance redressal' },
+  { key: 'report', art: CONTACT_ART.report, freq: '98', tone: 'blue', h: 'Report a user', t: 'A safety issue on a call', href: '/report', cta: 'Report a user' },
+  { key: 'sos', art: CONTACT_ART.sos, freq: '108', tone: 'cherry', h: 'Emergency', t: 'This inbox is not an emergency service.', href: '/emergency', cta: 'Emergency support' },
+];
 ---
-<HelloFraandsPage updated="2026-10-14" title="Contact us" summary="Sawaal ya madad ke liye humse sampark karein.">
-<h2>Get in touch</h2><p>Email: <a href={`mailto:${BRAND.emails.support}`}>{BRAND.emails.support}</a>. We aim to reply within 2 working days.</p>
-<p>Public postal address: {BUSINESS_CONTACT.postalAddress}.</p>
-<p>Include the page or call ID involved and a short description. Do not send passwords, OTPs, Aadhaar numbers or bank details.</p>
-<h2>Complaints and safety reports</h2><p>Use <a href="/grievance">grievance redressal</a> for a complaint or <a href="/report">report a user</a> for a safety issue.</p>
-<p>This inbox is not an emergency service. See <a href="/emergency">emergency support</a> if you need urgent help.</p>
-</HelloFraandsPage>
+<Base content={content} chrome={false} indiaLandingLanguage={false}>
+  <Fragment slot="head">
+    <meta name="theme-color" content="#e8a628" />
+    <link rel="preload" as="style" onload="this.onload=null;this.rel='stylesheet'" href="https://fonts.googleapis.com/css2?family=Comfortaa:wght@500;600;700&family=Nunito:wght@700;800;900&display=swap" />
+  </Fragment>
+  <div class="af desi-home" style={vars} data-skins={skins || undefined}>
+    <a class="af-skip" href="#main-content">Skip to main content</a>
+    <SiteHeader />
+    <main id="main-content" class="af-main">
+
+      <!-- HERO: the radio studio -->
+      <section class="af-hero" aria-labelledby="contact-title">
+        <div class="af-plate" aria-hidden="true"><span class="af-onair">On air</span><b>Aapki Farmaish</b><span>Studio No. 1</span></div>
+        <div class="af-wrap af-hero-grid">
+          <div class="af-hero-copy">
+            <p class="af-stickers" aria-hidden="true"><span class="af-stk af-stk--mustard">Mere paas reply hai!</span><span class="af-stk af-stk--pink">Agli farmaish aapki</span></p>
+            <p class="af-kicker">Contact us · {BRAND.name}</p>
+            <h1 id="contact-title">Kuch kehna hai? <span class="af-pop">Farmaish bhejiye.</span></h1>
+            <p class="hf-hindi"><em>Sawaal ya madad ke liye humse sampark karein. Aapki chitthi, hamara jawaab.</em></p>
+            <p class="hf-date af-date">Last updated: {UPDATED}</p>
+            <ul class="af-chips" aria-label="Key facts">
+              <li>Reply within 2 working days</li><li>Never send OTPs</li><li>Safety desk always linked</li>
+            </ul>
+            <div class="af-ctas">
+              <a class="af-btn" href={mail}>Email us</a>
+              <a class="af-btn af-btn--light" href="/grievance">Raise a complaint</a>
+            </div>
+          </div>
+          <div class="af-hero-art">
+            {CONTACT_ART.hero
+              ? <img src={img(CONTACT_ART.hero, 1200)} alt="Illustration of a 1970s radio studio with a big wooden transistor radio, a microphone and vinyl records" width="1200" height="1200" fetchpriority="high" decoding="async" />
+              : <div class="af-css-radio" aria-hidden="true">
+                  <span class="af-css-handle"></span>
+                  <span class="af-css-grille"></span>
+                  <span class="af-css-dialwin"><i></i></span>
+                  <span class="af-css-knob"></span><span class="af-css-knob af-css-knob--2"></span>
+                  <span class="af-css-wave"></span>
+                </div>}
+          </div>
+        </div>
+      </section>
+      <div class="af-band" data-border="grille" aria-hidden="true"></div>
+
+      <!-- POSTCARD: the email address -->
+      <section class="af-post" id="email" aria-labelledby="af-post-title">
+        <div class="af-wrap af-post-grid">
+          <div class="af-post-head">
+            <p class="af-kicker">Farmaish ka postcard</p>
+            <h2 id="af-post-title">Get in <span class="af-pop">touch</span></h2>
+            <p>One email reaches the whole studio.</p>
+          </div>
+          <div class="af-card">
+            <span class="af-stamp" aria-hidden="true"><b>₹0</b><small>postage</small></span>
+            <p class="af-card-to">To</p>
+            <a class="af-card-mail" href={mail}>{BRAND.emails.support}</a>
+            <p class="af-card-line">We aim to reply within 2 working days.</p>
+            <a class="af-btn" href={mail}>Write your farmaish</a>
+          </div>
+        </div>
+      </section>
+      <div class="af-band" data-border="waves" aria-hidden="true"></div>
+
+      <!-- THREE RECORDS: how a farmaish travels -->
+      <section class="af-steps" aria-labelledby="af-steps-title">
+        <div class="af-wrap">
+          <div class="af-sec-head">
+            <p class="af-kicker">Kamla ki farmaish · 3 records</p>
+            <h2 id="af-steps-title">Likho, bhejo, <span class="af-pop">jawaab pao</span></h2>
+          </div>
+          <ol class="af-step-list">
+            {steps.map(s => (
+              <li class="af-step" data-tone={s.tone}>
+                <div class="af-frame">
+                  {s.art
+                    ? <img src={img(s.art, 1000)} alt={s.alt} width="1000" height="750" loading="lazy" decoding="async" />
+                    : <div class="af-css-panel" aria-hidden="true"><span class="af-css-disc"></span></div>}
+                </div>
+                <span class="af-num" aria-hidden="true">{s.n}</span>
+                <h3>{s.h}</h3>
+                <p>{s.t}</p>
+                <span class="af-chip">{s.chip}</span>
+              </li>))}
+          </ol>
+        </div>
+      </section>
+      <div class="af-band" data-border="records" aria-hidden="true"></div>
+
+      <!-- RULES BOARD: what to send, what never to send -->
+      <section class="af-rules" aria-labelledby="af-rules-title">
+        <div class="af-wrap">
+          <div class="af-sec-head">
+            <p class="af-kicker">Farmaish ke niyam</p>
+            <h2 id="af-rules-title">What to <span class="af-pop">send</span></h2>
+            <p>Include the page or call ID involved and a short description. Do not send passwords, OTPs, Aadhaar numbers or bank details.</p>
+          </div>
+          <div class="af-board">
+            <div class="af-col af-col--yes">
+              <span class="af-badge" aria-hidden="true">{CONTACT_ART.yes ? <img src={img(CONTACT_ART.yes, 400)} alt="" width="400" height="400" loading="lazy" decoding="async" /> : <span class="af-css-tick"></span>}</span>
+              <h3>Zaroor likhiye</h3>
+              <ul><li>The page link</li><li>The call ID</li><li>A short description</li></ul>
+            </div>
+            <div class="af-col af-col--no">
+              <span class="af-badge" aria-hidden="true">{CONTACT_ART.no ? <img src={img(CONTACT_ART.no, 400)} alt="" width="400" height="400" loading="lazy" decoding="async" /> : <span class="af-css-cross"></span>}</span>
+              <h3>Kabhi mat bhejiye</h3>
+              <ul><li>Passwords</li><li>OTPs</li><li>Aadhaar numbers</li><li>Bank details</li></ul>
+            </div>
+          </div>
+        </div>
+      </section>
+      <div class="af-band" data-border="dial" aria-hidden="true"></div>
+
+      <!-- TUNING DIAL: complaints, safety reports, emergency -->
+      <section class="af-tune" aria-labelledby="af-tune-title">
+        <div class="af-wrap">
+          <div class="af-sec-head">
+            <p class="af-kicker">Dial ghumaiye</p>
+            <h2 id="af-tune-title">Complaints and <span class="af-pop">safety reports</span></h2>
+            <p>Use grievance redressal for a complaint or report a user for a safety issue.</p>
+          </div>
+          <div class="af-stations">
+            {stations.map(s => (
+              <a class="af-station" data-tone={s.tone} href={s.href}>
+                <span class="af-medal" aria-hidden="true">
+                  <span class="af-medal-art">{s.art ? <img src={img(s.art, 300)} alt="" width="300" height="300" loading="lazy" decoding="async" /> : <span class="af-css-knobbig"></span>}</span>
+                  <b>{s.freq}</b>
+                </span>
+                <strong>{s.h}</strong>
+                <span class="af-station-t">{s.t}</span>
+                <span class="af-station-cta">{s.cta} →</span>
+              </a>))}
+          </div>
+        </div>
+      </section>
+      <div class="af-band" data-border="grille" aria-hidden="true"></div>
+
+      <!-- NAMEPLATE + CLOSE -->
+      <section class="af-close" aria-labelledby="af-close-title">
+        <div class="af-wrap af-close-grid">
+          <div class="af-frame">
+            {CONTACT_ART.close
+              ? <img src={img(CONTACT_ART.close, 900)} alt="Illustration of Kamla in a 1970s outfit on a scooter, a transistor radio hanging from the handlebar" width="900" height="720" loading="lazy" decoding="async" />
+              : <div class="af-css-scooter" aria-hidden="true"><span></span><span></span></div>}
+          </div>
+          <div class="af-close-copy">
+            <p class="af-kicker">Ab aapki baari</p>
+            <h2 id="af-close-title">Aapki farmaish, <span class="af-pop">hamara jawaab</span></h2>
+            <div class="af-nameplate">
+              <small>Public postal address</small>
+              <p>{BUSINESS_CONTACT.postalAddress}.</p>
+            </div>
+            <div class="af-ctas">
+              <a class="af-btn" href={mail}>Email us</a>
+              <a class="af-btn af-btn--light" href="/marketplace">Influencer se baat karo</a>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+    <SiteFooter />
+  </div>
+</Base>
