@@ -10,6 +10,11 @@ avoid repeating a theme, craft, motif or layout.
 
 ---
 
+> **⚠️ NON-NEGOTIABLE (owner, repeated 2026-10-18): before ANY push to the web or ANY app build, take a visual
+> look in the external browser (§9) and fix every issue first. Borders must never be squeezed or stretched,
+> buttons must never be stretched or distorted, text never overlaps, art never blends into the background.**
+> This applies to web pages, app screens (check the build/preview or screenshots), onboarding and animations.
+
 ## 0. The command: "Indianize it"
 
 When the owner says **"Indianize this page"** / **"please indianize <page or URL>"** (in any session), run this flow.
@@ -367,7 +372,11 @@ Load the page in the **external browser** (Chrome extension). Use iframes on a b
 - [ ] No art blending into its background. Add a white rounded frame (§6) where it does.
 - [ ] Button labels sit inside the face, clear of the end decoration, and fit on one line. Check with
   `range.getClientRects().length`.
-- [ ] Borders aren't squashed or stretched; medallion numbers are centred.
+- [ ] **Borders are not squeezed or stretched**: motifs look like the source (round circles stay round, figures
+  keep their width). Compare the rendered band against the PNG at the same height.
+- [ ] **Buttons are not stretched**: end caps keep their drawn shape (round ends stay round, no oval or squashed
+  decoration, no smeared middle); labels bold and centred inside the plain middle. Check desktop and phone widths.
+- [ ] Medallion numbers are centred.
 - [ ] No flat or cartoon-looking art (§2.13); nothing is one-tone; sections are visibly separate; there's space around things.
 - [ ] No horizontal scroll (`scrollWidth === clientWidth`) at 320 / 390.
 - [ ] Everything on phones is centred, header included.
