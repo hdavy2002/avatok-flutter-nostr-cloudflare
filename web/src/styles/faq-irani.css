@@ -28,7 +28,9 @@
 .ic .sr-only { position: absolute !important; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
 
 /* ---------- borders between bands (CSS stand-ins approximate each one) ---------- */
-.ic .ic-band { height: clamp(28px, 2.6vw, 44px); border-block: 3px solid var(--ink); }
+/* owner 2026-10-18: taller borders so the painted tiles read as tiles. Height H, tile repeat 16H wide
+   (the owner PNGs are 20:1 but drawn ~1.25x squashed, so 16:1 restores round motifs). */
+.ic .ic-band { height: clamp(52px, 4.6vw, 84px); border-block: 3px solid var(--ink); }
 /* kaali-peeli taxi checks */
 .ic .ic-band[data-border="taxi"] { background: var(--ic-taxi, conic-gradient(var(--ink) 25%, var(--taxi) 0 50%, var(--ink) 0 75%, var(--taxi) 0) 0 0 / 28px 50%); }
 /* café awning: maroon, cream and rose stripes with scallops */
@@ -83,7 +85,7 @@
 .ic .ic-chips li { display: inline-flex; align-items: center; gap: 9px; min-height: 44px; padding: 6px 16px; border: 3px solid var(--ink); border-radius: 999px; background: var(--paper); font: 800 clamp(14px, .95vw, 17px) var(--head); }
 .ic .ic-chips li::before { content: ""; flex: none; width: 12px; height: 12px; border-radius: 50%; background: var(--saffron); border: 2px solid var(--ink); }
 .ic .ic-chips li:nth-child(2)::before { background: var(--blue); } .ic .ic-chips li:nth-child(3)::before { background: var(--rose); }
-.ic .ic-ctas { display: flex; flex-wrap: wrap; gap: 16px; margin-top: 30px; }
+.ic .ic-ctas { display: flex; flex-wrap: wrap; gap: 14px; margin-top: 30px; }
 .ic .ic-hero-art { width: min(100%, 640px); margin: 0 auto; }
 .ic .ic-hero-art img { display: block; width: 100%; height: auto; }
 /* owner hero art has ~150px empty rows top and bottom: show only the painted 1200x800 band */
@@ -106,13 +108,14 @@
 .ic .ic-rack-head { max-width: 900px; margin: 0 auto clamp(30px, 3vw, 48px); padding: clamp(20px, 2.2vw, 32px); text-align: center; border: 3px solid var(--ink); border-radius: 28px; background: var(--paper); box-shadow: 0 8px 0 var(--ink); }
 .ic .ic-rack-head h2 { margin-top: 8px; font-size: clamp(36px, 4vw, 68px); }
 .ic .ic-rack-head p:last-child { margin-top: 10px; font-weight: 700; }
-.ic .ic-dabbas { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 210px), 1fr)); gap: clamp(14px, 1.4vw, 22px); }
-.ic .ic-dabba { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 16px 14px 18px; text-align: center; text-decoration: none; border: 3px solid var(--ink); border-radius: 26px; background: var(--paper); box-shadow: 0 7px 0 var(--ink); transition: transform .14s; }
+.ic .ic-dabbas { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr)); gap: clamp(18px, 2vw, 36px) clamp(10px, 1.2vw, 20px); }
+/* owner 2026-10-18: no card and no tinted square — the dabba itself, big, standing on the crate */
+.ic .ic-dabba { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 0; text-align: center; text-decoration: none; color: var(--ink); transition: transform .14s; }
 .ic .ic-dabba:hover { transform: translateY(-4px) rotate(-1deg); }
-.ic .ic-dabba strong { font: 900 clamp(18px, 1.25vw, 22px)/1.15 var(--head); }
-.ic .ic-dabba small { font: 800 14px var(--body); opacity: .8; }
-.ic .ic-dabba-art { display: grid; place-items: center; width: 100%; aspect-ratio: 1.15; border-radius: 20px; background: color-mix(in srgb, var(--d) 22%, #fff); }
-.ic .ic-dabba-art img { display: block; width: 86%; height: 86%; object-fit: contain; }
+.ic .ic-dabba strong { font: 900 clamp(19px, 1.4vw, 24px)/1.15 var(--head); text-shadow: 0 0 10px rgba(255,241,214,.9), 0 0 3px rgba(255,241,214,.9); }
+.ic .ic-dabba small { font: 800 15px var(--body); text-shadow: 0 0 8px rgba(255,241,214,.9); }
+.ic .ic-dabba-art { display: grid; place-items: center; width: 100%; aspect-ratio: 1; }
+.ic .ic-dabba-art img { display: block; width: 112%; max-width: none; height: 112%; margin: -6%; object-fit: contain; filter: drop-shadow(0 12px 10px rgba(29,24,48,.35)); }
 .ic .ic-code { display: inline-flex; padding: 4px 12px; border-radius: 999px; background: var(--ink); color: var(--taxi); font: 900 13px var(--head); letter-spacing: .12em; }
 /* tiffin stand-in: three tiers + handle, painted in the dabba colour */
 .ic .ic-tiffin { position: relative; width: 46%; aspect-ratio: .82; margin-top: 12%; border: 4px solid var(--ink); border-radius: 18px; background: linear-gradient(to bottom, var(--d) 0 30%, var(--ink) 30% 34%, var(--d) 34% 64%, var(--ink) 64% 68%, var(--d) 68%); }
@@ -160,7 +163,7 @@
 .ic .ic-sec-grid { display: grid; grid-template-columns: minmax(260px, 380px) minmax(0, 1fr); gap: clamp(28px, 3.6vw, 64px); align-items: start; }
 .ic .ic-sec-head { position: sticky; top: 96px; display: grid; grid-template-columns: auto minmax(0, 1fr); grid-template-rows: auto auto; column-gap: 16px; }
 .ic .ic-vert { grid-row: 1 / 3; writing-mode: vertical-rl; transform: rotate(180deg); align-self: stretch; text-align: center; font: 900 clamp(26px, 2.4vw, 42px) var(--head); letter-spacing: .14em; text-transform: uppercase; opacity: .85; color: var(--d); -webkit-text-stroke: 1.5px var(--ink); paint-order: stroke fill; }
-.ic .ic-sec-head .ic-dabba-art--big { border: 3px solid var(--ink); background: color-mix(in srgb, var(--d) 26%, #fff); box-shadow: 0 7px 0 var(--ink); }
+.ic .ic-sec-head .ic-dabba-art--big { width: 100%; }
 .ic .ic-sec-head > div { margin-top: 18px; }
 .ic .ic-sec-head h2 { margin-top: 10px; font-size: clamp(30px, 3vw, 52px); }
 .ic .ic-sec-hindi { margin-top: 6px; font-size: clamp(17px, 1.2vw, 21px); font-weight: 700; }
@@ -202,10 +205,11 @@
 .ic .ic-btn { display: inline-flex; align-items: center; justify-content: center; text-align: center; min-height: 58px; padding: 0 30px; border-radius: 999px; border: 3px solid var(--ink); background: var(--maroon); color: var(--cream); font: 900 clamp(17px, 1.2vw, 21px)/1.15 var(--head); text-decoration: none; box-shadow: 0 6px 0 var(--ink); transition: transform .12s; }
 .ic .ic-btn:hover { transform: translateY(-2px); }
 .ic .ic-btn--light { background: var(--paper); color: var(--ink); }
-/* menu-board key: face rows 7-150 of 180, awning + tea glasses in the outer 210px; caps scale with the face (58/143) */
-.ic[data-skins~="btn"] .ic-btn:not(.ic-btn--light) { border-style: solid; border-width: 0 84px; border-radius: 0; border-image: var(--ic-btn, none) 7 210 30 210 fill / 0 84px stretch; background: none; box-shadow: none; padding: 0 4px; color: var(--ink); filter: drop-shadow(0 4px 0 rgba(29,24,48,.55)); }
+/* menu-board key: face rows 7-150 of 180, decoration in the outer 200px. The owner PNGs were squashed ~1.25x vertically
+   (tiles and tea glasses wider than tall), so caps are drawn at height x 200/face / 1.25 to restore their shape. */
+.ic[data-skins~="btn"] .ic-btn:not(.ic-btn--light) { min-height: 80px; font-size: clamp(20px, 1.35vw, 24px); border-style: solid; border-width: 0 90px; border-radius: 0; border-image: var(--ic-btn, none) 7 200 30 200 fill / 0 90px stretch; background: none; box-shadow: none; padding: 0 4px; color: var(--ink); filter: drop-shadow(0 4px 0 rgba(29,24,48,.55)); }
 /* Minton-tile key: face rows 22-150 of 180, tiles + brass rim in the outer 220px */
-.ic[data-skins~="btn2"] .ic-btn--light { border-style: solid; border-width: 0 96px; border-radius: 0; border-image: var(--ic-btn2, none) 22 220 30 220 fill / 0 96px stretch; background: none; box-shadow: none; padding: 0 4px; filter: drop-shadow(0 4px 0 rgba(29,24,48,.55)); }
+.ic[data-skins~="btn2"] .ic-btn--light { min-height: 80px; font-size: clamp(20px, 1.35vw, 24px); border-style: solid; border-width: 0 100px; border-radius: 0; border-image: var(--ic-btn2, none) 22 200 30 200 fill / 0 100px stretch; background: none; box-shadow: none; padding: 0 4px; filter: drop-shadow(0 4px 0 rgba(29,24,48,.55)); }
 
 /* ---------- phones and tablets ---------- */
 @media (max-width: 1280px) { .ic .ic-list { grid-template-columns: minmax(0, 1fr); } }
@@ -216,29 +220,28 @@
   .ic .ic-sign span { display: none; }
   .ic .ic-stickers, .ic .ic-chips, .ic .ic-ctas { justify-content: center; }
   .ic .ic-search, .ic .ic-receipt, .ic .ic-bill-copy > p, .ic .ic-close-copy > p { margin-left: auto; margin-right: auto; }
-  .ic .ic-ctas { flex-direction: column; align-items: stretch; max-width: 360px; margin-left: auto; margin-right: auto; }
+  .ic .ic-ctas { flex-direction: column; align-items: stretch; max-width: 440px; margin-left: auto; margin-right: auto; }
   .ic .ic-board ol { grid-template-columns: minmax(0, 1fr); text-align: left; }
   .ic .ic-bill-grid > .ic-frame, .ic .ic-close-grid > .ic-frame, .ic .ic-rules-grid > .ic-frame { width: min(100%, 520px); margin-left: auto; margin-right: auto; }
   .ic .ic-sec-head { position: static; display: flex; flex-direction: column; align-items: center; }
   .ic .ic-vert { writing-mode: horizontal-tb; transform: none; font-size: 22px; }
-  .ic .ic-sec-head .ic-dabba-art--big { width: min(100%, 240px); margin-top: 10px; }
+  .ic .ic-sec-head .ic-dabba-art--big { width: min(100%, 320px); margin-top: 6px; }
   .ic .faq-item { text-align: left; border-left-width: 8px; }
   .ic .faq-item summary { padding: 14px 12px 14px 14px; }
   .ic .ic-a { margin: 0 12px 14px 14px; }
   .ic .ic-receipt dl div { text-align: left; }
-  .ic[data-skins~="btn"] .ic-btn:not(.ic-btn--light) { min-height: 50px; border-width: 0 72px; border-image-width: 0 72px; font-size: 15px; }
-  .ic[data-skins~="btn2"] .ic-btn--light { min-height: 50px; border-width: 0 84px; border-image-width: 0 84px; font-size: 15px; }
+  .ic[data-skins~="btn"] .ic-btn:not(.ic-btn--light) { min-height: 68px; border-width: 0 76px; border-image-width: 0 76px; font-size: 20px; }
+  .ic[data-skins~="btn2"] .ic-btn--light { min-height: 68px; border-width: 0 85px; border-image-width: 0 85px; font-size: 20px; }
 }
 @media (max-width: 420px) {
-  .ic[data-skins~="btn"] .ic-btn:not(.ic-btn--light) { border-width: 0 60px; border-image-width: 0 60px; }
-  .ic[data-skins~="btn2"] .ic-btn--light { border-width: 0 66px; border-image-width: 0 66px; }
+  .ic[data-skins~="btn"] .ic-btn:not(.ic-btn--light) { min-height: 62px; border-width: 0 69px; border-image-width: 0 69px; font-size: 18px; }
+  .ic[data-skins~="btn2"] .ic-btn--light { min-height: 62px; border-width: 0 78px; border-image-width: 0 78px; font-size: 18px; }
   .ic .ic-stk { font-size: 13px; padding: 6px 12px; }
   .ic .ic-btn { padding: 0 18px; font-size: 16px; }
   .ic .ic-dabbas { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
-  .ic .ic-dabba { padding: 10px 8px 14px; }
   .ic .ic-dabba strong { font-size: 16px; }
 }
-@media (max-width: 360px) { .ic[data-skins~="btn"] .ic-btn, .ic[data-skins~="btn2"] .ic-btn--light { font-size: 14px; } }
+@media (max-width: 360px) { .ic[data-skins~="btn"] .ic-btn:not(.ic-btn--light) { min-height: 56px; border-width: 0 63px; border-image-width: 0 63px; font-size: 16px; } .ic[data-skins~="btn2"] .ic-btn--light { min-height: 56px; border-width: 0 64px; border-image-width: 0 64px; font-size: 14px; } }
 @media (prefers-reduced-motion: reduce) { .ic .ic-btn, .ic .ic-dabba, .ic .ic-quick-grid a, .ic .faq-item summary b { transition: none; } }
 /* shared chrome resets <b>/<small>; keep Nunito where it matters */
 .ic .ic-btn, .ic .ic-code, .ic .ic-dabba strong, .ic .faq-item summary, .ic .faq-item summary b, .ic .ic-board li b, .ic .ic-board li strong, .ic .ic-receipt dd, .ic .ic-sec-head small, .ic .ic-quick-grid strong, .ic .ic-kicker, .ic .ic-stk, .ic .ic-sign b { font-family: var(--head) !important; }

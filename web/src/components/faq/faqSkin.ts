@@ -37,7 +37,7 @@ export const dabbaFor = (id: string): { code: string; colour: string; tone: Tone
 export const dabbaArt = (id: string): string => opt(`${F}/dabbas/dabba-${id}.png`);
 
 /** Background/skin art → --ic-<key>: a full background layer (url + position/size/repeat). [key, path, width, tail] */
-const BAND = 'center / clamp(560px, 52vw, 880px) 100% repeat-x';
+const BAND = 'center / clamp(832px, 73.6vw, 1344px) 100% repeat-x'; // 16 x band height (see faq-irani.css .ic-band)
 const BG: [string, string, number, string][] = [
   ['taxi', `${F}/borders/border-kaali-peeli.png`, 1600, BAND],
   ['awning', `${F}/borders/border-awning.png`, 1600, BAND],
