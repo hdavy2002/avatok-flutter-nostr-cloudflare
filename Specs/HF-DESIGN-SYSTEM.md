@@ -98,7 +98,7 @@ a worked example (a named character, real rupee numbers) does the explaining.
    - Vertical type where it fits (a vertical word down a band or beside art).
    - Oversized headlines.
    - Hinglish voice.
-   - Fun meme stickers where the theme allows.
+   - Fun meme stickers where the theme allows (textured, painterly, not cartoons).
    - Never a generic SaaS look.
 5. **No sharp edges anywhere.** Rounded corners on cards, images, frames, chips, listing cards, inputs and
    buttons (radius 14–28px; pills for buttons and chips).
@@ -126,7 +126,18 @@ a worked example (a named character, real rupee numbers) does the explaining.
     - Lists and form fields may stay left-aligned inside a centred card when centring would hurt reading.
     - No text overlapping text or art.
 12. **No preview or placeholder lines on public pages.** Remove "The current site is a preview…" when you meet it.
-13. **Mock first for big redesigns.** For "Indianize it", the 3-idea pitch is the approval step. Never change an
+13. **No flat illustrations (owner 2026-10-18).** Every image is **textured and dimensional**:
+    - Visible material texture: hand-made paper grain, cloth weave, embroidery stitches, brush strokes, lacquer
+      gloss, mud-wall or wood grain, metal inlay.
+    - Real depth: soft shading and highlights, layered relief (paper-cut, appliqué, carved or embossed layers),
+      cast shadows, objects that feel touchable, like a painted miniature or a handcrafted diorama.
+    - Still Indian folk-art in look and still multi-colour. It is **not** glossy plastic CGI, cartoon 3D or
+      photorealism.
+    - Never flat vector art, flat fills with no texture, or clip-art.
+    - **No cartoons.** No cartoon characters, chibi or big-head caricatures, comic or animated-movie styling.
+      People are drawn in the craft's own painterly way (miniature painting, Patachitra, mural, embroidery),
+      with natural proportions.
+14. **Mock first for big redesigns.** For "Indianize it", the 3-idea pitch is the approval step. Never change an
     approved design's look when only copy changes.
 
 ---
@@ -241,9 +252,13 @@ a worked example (a named character, real rupee numbers) does the explaining.
 
 1. Design idea: the story, a table of steps or sections against art forms, the crafts used.
 2. **Characters block:** fixed looks (age, skin, hair, clothes colours, phone-case colour), so every image matches.
-3. **Style block** to paste before every prompt: the art form, a **multi-colour** palette, outlines, no 3D.
+3. **Style block** to paste before every prompt: the art form, a **multi-colour** palette, outlines, and always
+   **"richly textured, dimensional, hand-crafted look: visible paper/cloth/brush texture, soft shading and depth,
+   layered relief"** (§2.13).
 4. **Negative prompt:**
    - Photo, 3D, gradient, watermark, brand or app-store or payment logos, misspellings, extra fingers.
+   - **Flat vector illustration, flat colour fills, no texture, clip-art, cartoon, cartoon characters, chibi,
+     caricature, comic style, animated-movie style**, glossy plastic 3D/CGI.
    - Green background, neon, gloomy mood, **peacocks**.
    - **Every theme already used** (from §8).
 5. **Text rule:** no words or numbers in pictures (the page adds them), except sticker lettering, which must be
@@ -278,6 +293,7 @@ a worked example (a named character, real rupee numbers) does the explaining.
   - medallion centres are empty;
   - characters are consistent;
   - nothing is one-tone;
+  - nothing looks flat or cartoonish (each image has texture and depth);
   - there are no peacocks;
   - no theme is repeated.
 - **Restart the astro dev server** after the art lands. The `existsSync` results are cached, so new files don't
@@ -344,7 +360,7 @@ Load the page in the **external browser** (Chrome extension). Use iframes on a b
 - [ ] Button labels sit inside the face, clear of the end decoration, and fit on one line. Check with
   `range.getClientRects().length`.
 - [ ] Borders aren't squashed or stretched; medallion numbers are centred.
-- [ ] Nothing is one-tone; sections are visibly separate; there's space around things.
+- [ ] No flat or cartoon-looking art (§2.13); nothing is one-tone; sections are visibly separate; there's space around things.
 - [ ] No horizontal scroll (`scrollWidth === clientWidth`) at 320 / 390.
 - [ ] Everything on phones is centred, header included.
 - [ ] Lazy images forced to eager when checking (`img.loading = 'eager'`).
