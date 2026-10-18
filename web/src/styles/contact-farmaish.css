@@ -40,12 +40,18 @@
 .af .af-post { background: var(--blue); color: #fff; }
 .af .af-post::before, .af .af-tune::before { background: var(--af-twall, radial-gradient(circle, transparent 0 18px, rgba(255,255,255,.12) 19px 23px, transparent 24px) 0 0 / 70px 70px); }
 .af .af-steps { background: var(--mustard); }
-.af .af-steps::before, .af .af-close::before { background: var(--af-tcurtain, radial-gradient(ellipse 14px 22px, rgba(29,24,48,.08) 0 98%, transparent) 0 0 / 60px 60px, repeating-linear-gradient(90deg, rgba(255,255,255,.1) 0 30px, transparent 30px 60px)); }
+.af .af-close::before { background: radial-gradient(ellipse 14px 22px, rgba(29,24,48,.08) 0 98%, transparent) 0 0 / 60px 60px, repeating-linear-gradient(90deg, rgba(255,255,255,.1) 0 30px, transparent 30px 60px); }
+.af .af-steps::before { background: var(--af-tcurtain, radial-gradient(ellipse 14px 22px, rgba(29,24,48,.08) 0 98%, transparent) 0 0 / 60px 60px, repeating-linear-gradient(90deg, rgba(255,255,255,.1) 0 30px, transparent 30px 60px)); }
 .af .af-rules { background: var(--choc); color: var(--cream); }
 .af .af-rules::before { background: var(--af-tveneer, repeating-linear-gradient(100deg, rgba(255,255,255,.04) 0 6px, transparent 6px 22px)); }
 .af .af-tune { background: var(--cream); }
 .af .af-tune::before { background: var(--af-twall, radial-gradient(circle, transparent 0 18px, rgba(217,98,43,.13) 19px 23px, transparent 24px) 0 0 / 70px 70px); }
 .af .af-close { background: var(--pink); }
+
+/* owner art grounds (HF-CONTACT-FARMAISH-2): the terrazzo tile is the full hero floor; the teal ring wallpaper is the
+   postcard band at full strength and only a faint echo on the cream dial band */
+.af[data-skins~="tterrazzo"] .af-hero::before { opacity: .45; }
+.af[data-skins~="twall"] .af-tune::before { opacity: .14; }
 
 /* ---------- hero: the studio ---------- */
 .af .af-plate { display: flex; flex-wrap: wrap; justify-content: center; align-items: stretch; margin-bottom: clamp(32px, 4vw, 64px); background: var(--choc); border-bottom: 3px solid var(--ink); }
@@ -83,8 +89,8 @@
 .af .af-btn { display: inline-flex; align-items: center; justify-content: center; text-align: center; min-height: 58px; padding: 0 30px; border-radius: 999px; border: 3px solid var(--ink); background: var(--cherry); color: #fff; font: 900 clamp(17px, 1.2vw, 21px)/1.15 var(--head); text-decoration: none; box-shadow: 0 6px 0 var(--ink); transition: transform .12s; }
 .af .af-btn:hover { transform: translateY(-2px); }
 .af .af-btn--light { background: var(--paper); color: var(--ink); }
-.af[data-skins~="btn"] .af-btn:not(.af-btn--light) { border-style: solid; border-width: 0 70px; border-radius: 0; border-image: var(--af-btn, none) 0 220 fill / 0 70px stretch; background: none; box-shadow: none; padding: 0 4px; color: #fff; }
-.af[data-skins~="btn2"] .af-btn--light { border-style: solid; border-width: 0 70px; border-radius: 0; border-image: var(--af-btn2, none) 0 220 fill / 0 70px stretch; background: none; box-shadow: none; padding: 0 4px; }
+.af[data-skins~="btn"] .af-btn:not(.af-btn--light) { min-height: 66px; border-style: solid; border-width: 0 58px; border-radius: 0; border-image: var(--af-btn, none) 0 160 fill / 0 58px stretch; background: none; box-shadow: none; padding: 0 4px; color: #fff; filter: drop-shadow(0 4px 0 rgba(29,24,48,.55)); }
+.af[data-skins~="btn2"] .af-btn--light { min-height: 66px; border-style: solid; border-width: 0 40px; border-radius: 0; border-image: var(--af-btn2, none) 0 110 fill / 0 40px stretch; background: none; box-shadow: none; padding: 0 4px; filter: drop-shadow(0 4px 0 rgba(29,24,48,.55)); }
 
 /* ---------- shared frames + section heads ---------- */
 .af .af-frame { overflow: hidden; border: 8px solid #fff; border-radius: 26px; box-shadow: 0 0 0 3px var(--ink), 0 12px 0 3px var(--ink); background: #fff; }
@@ -97,7 +103,7 @@
 .af .af-post .af-kicker, .af .af-post .af-pop { color: var(--mustard); }
 .af .af-post-grid { display: grid; grid-template-columns: minmax(0, .8fr) minmax(0, 1.2fr); gap: clamp(28px, 4vw, 80px); align-items: center; }
 .af .af-post-head > p:last-child { margin-top: 14px; font-size: clamp(18px, 1.3vw, 22px); }
-.af .af-card { position: relative; padding: clamp(28px, 3vw, 52px); border: 3px solid var(--ink); border-radius: 26px; color: var(--ink); background: var(--af-tpostcard, repeating-linear-gradient(135deg, var(--cherry) 0 14px, var(--paper) 14px 28px, var(--blue) 28px 42px, var(--paper) 42px 56px) 0 0 / 100% 14px no-repeat, var(--paper)); box-shadow: 0 10px 0 var(--ink); transform: rotate(-1.2deg); }
+.af .af-card { position: relative; padding: clamp(28px, 3vw, 52px); border: 3px solid var(--ink); border-radius: 26px; color: var(--ink); background: var(--af-tpostcard, repeating-linear-gradient(135deg, var(--cherry) 0 14px, var(--paper) 14px 28px, var(--blue) 28px 42px, var(--paper) 42px 56px) 0 0 / 100% 14px no-repeat); background-color: var(--paper); box-shadow: 0 10px 0 var(--ink); transform: rotate(-1.2deg); }
 .af .af-stamp { position: absolute; top: 26px; right: 26px; display: grid; place-items: center; width: 92px; height: 104px; padding: 6px; border: 3px dashed var(--ink); border-radius: 14px; background: var(--mustard); text-align: center; transform: rotate(4deg); }
 .af .af-stamp b { font: 900 30px/1 var(--head); }
 .af .af-stamp small { font: 800 13px/1 var(--head); text-transform: uppercase; letter-spacing: .08em; }
@@ -130,6 +136,7 @@
 .af .af-col--no li { background: var(--cherry); color: #fff; text-decoration: line-through; text-decoration-thickness: 2px; }
 .af .af-badge { display: block; width: clamp(96px, 8vw, 132px); aspect-ratio: 1; }
 .af .af-badge img { display: block; width: 100%; height: auto; }
+.af .af-col--no .af-badge img { transform: rotate(45deg); }
 .af .af-css-tick, .af .af-css-cross { position: relative; display: block; width: 100%; height: 100%; border: 4px solid var(--ink); border-radius: 50%; background: var(--paper); }
 .af .af-css-cross { background: var(--cherry); }
 .af .af-css-tick::after { content: ""; position: absolute; left: 30%; top: 22%; width: 26%; height: 44%; border: solid var(--blue); border-width: 0 10px 10px 0; transform: rotate(40deg); }
@@ -178,12 +185,15 @@
   .af .af-stamp { position: static; margin: 0 auto; width: 84px; height: 92px; }
   .af .af-card-mail { max-width: none; font-size: min(26px, 5.2vw); }
   .af .af-card .af-btn { width: 100%; max-width: 360px; }
-  .af[data-skins~="btn"] .af-btn:not(.af-btn--light), .af[data-skins~="btn2"] .af-btn--light { min-height: 48px; border-width: 0 56px; border-image-width: 0 56px; font-size: 15px; }
+  .af[data-skins~="btn"] .af-btn:not(.af-btn--light) { min-height: 58px; border-width: 0 52px; border-image-width: 0 52px; font-size: 16px; }
+  .af[data-skins~="btn2"] .af-btn--light { min-height: 58px; border-width: 0 36px; border-image-width: 0 36px; font-size: 16px; }
 }
 @media (max-width: 420px) {
   .af .af-stk { font-size: 13px; padding: 6px 12px; }
   .af .af-btn { padding: 0 18px; font-size: 16px; }
   .af .af-step, .af .af-col, .af .af-station { padding-left: 14px; padding-right: 14px; }
+  .af .af-card { padding-left: 12px; padding-right: 12px; }
+  .af[data-skins~="btn"] .af-btn:not(.af-btn--light) { border-width: 0 40px; border-image-width: 0 40px; font-size: 15px; }
 }
 @media (prefers-reduced-motion: reduce) { .af .af-btn, .af .af-station { transition: none; } }
 /* shared chrome resets <b>/<small>; keep Nunito where it matters */

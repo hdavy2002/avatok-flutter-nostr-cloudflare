@@ -30,12 +30,14 @@ const BG: [string, string, number, string][] = [
   ['grille', `${F}/borders/border-speaker-grille.png`, 1600, BAND],
   ['waves', `${F}/borders/border-70s-waves.png`, 1600, BAND],
   ['records', `${F}/borders/border-record-row.png`, 1600, BAND],
-  ['dial', `${F}/borders/border-dial-scale.png`, 1600, BAND],
+  // the owner's dial-scale PNG paints only rows 0-51 of 80 (white below): show it 80/51 tall, anchored top, so the
+  // painted strip fills the band at its true 31:1 ratio (no squash) and the white rows fall outside.
+  ['dial', `${F}/borders/border-dial-scale.png`, 1600, 'center top / clamp(879px, 81.6vw, 1380px) 157% repeat-x'],
   ['tterrazzo', `${F}/tiles/tile-terrazzo.png`, 600, 'center / 300px repeat'],
   ['tcurtain', `${F}/tiles/tile-70s-curtain.png`, 600, 'center / 300px repeat'],
   ['twall', `${F}/tiles/tile-wallpaper-circles.png`, 600, 'center / 300px repeat'],
   ['tveneer', `${F}/tiles/tile-radio-veneer.png`, 600, 'center / 300px repeat'],
-  ['tpostcard', `${F}/tiles/tile-postcard-paper.png`, 600, 'center / 300px repeat'],
+  ['tpostcard', `${F}/tiles/tile-postcard-paper.png`, 600, 'top center / 100% auto no-repeat'],
 ];
 const SKINS: [string, string, number][] = [
   ['btn', `${F}/buttons/btn-bakelite.png`, 900],
