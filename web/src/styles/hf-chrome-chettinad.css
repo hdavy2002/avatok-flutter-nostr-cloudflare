@@ -31,12 +31,14 @@
 /* ---------- HEADER: verandah eave + tile band ---------- */
 header.cv-header[data-hf-chrome=chettinad]{
   width:100%!important;max-width:none!important;margin-inline:0!important;
-  padding-inline:max(32px,calc((100% - var(--ct-max)) / 2))!important;padding-bottom:20px!important;
+  padding-inline:max(32px,calc((100% - var(--ct-max)) / 2))!important;padding-bottom:0!important;margin-bottom:27px!important;
   background:var(--ct-cream);box-shadow:0 10px 22px #30245f2e;clip-path:none;color:var(--ct-ink)
 }
-header.cv-header[data-hf-chrome=chettinad]::after{content:"";position:absolute;left:0;right:0;bottom:0;height:18px;
+/* [HF-CHROME-CHETTINAD-2] owner rule: no space above/below the logo — the tile band + eave hang in the header's
+   bottom margin, outside its box, so they take layout space without padding the logo bar */
+header.cv-header[data-hf-chrome=chettinad]::after{content:"";position:absolute;left:0;right:0;top:100%;height:18px;
   background:var(--ct-tile-band-art,var(--ct-tile-band-stand-in));border-top:3px solid var(--ct-ink);pointer-events:none}
-header.cv-header[data-hf-chrome=chettinad]::before{content:"";position:absolute;left:0;right:0;top:100%;height:9px;
+header.cv-header[data-hf-chrome=chettinad]::before{content:"";position:absolute;left:0;right:0;top:calc(100% + 18px);height:9px;
   background:var(--ct-eave-art,var(--ct-eave-stand-in));pointer-events:none}
 header.cv-header[data-hf-chrome=chettinad] .cv-navigation{gap:clamp(.6rem,1.2vw,1.25rem)}
 /* nav links = small glossy hand-made tiles, each a different colour, with quarter-flower corners */
@@ -63,14 +65,21 @@ header.cv-header[data-hf-chrome=chettinad] .cv-navigation a.cv-sign-in:hover,
 header.cv-header[data-hf-chrome=chettinad] .cv-navigation a.hfh-header-host:hover{box-shadow:0 0 0 2.5px var(--ct-ink),6px 6px 0 2.5px var(--ct-ink)}
 header.cv-header[data-hf-chrome=chettinad] .cv-sign-in svg{width:18px;height:18px}
 @media(max-width:699px){
-  header.cv-header[data-hf-chrome=chettinad]{padding-inline:16px!important;padding-bottom:18px!important}
+  header.cv-header[data-hf-chrome=chettinad]{padding-inline:16px!important}
   header.cv-header[data-hf-chrome=chettinad] .cv-mobile-actions a,
   header.cv-header[data-hf-chrome=chettinad] .cv-menu-toggle{border:2.5px solid var(--ct-ink);border-radius:14px;background:#ffd98a;box-shadow:2px 2px 0 var(--ct-ink);color:var(--ct-ink)}
   header.cv-header[data-hf-chrome=chettinad] .cv-menu-toggle{background:#f9c2d1}
-  header.cv-header[data-hf-chrome=chettinad] .cv-navigation{left:16px;right:16px;top:calc(100% + 6px);padding:20px 16px;gap:12px;
+  header.cv-header[data-hf-chrome=chettinad] .cv-navigation{left:16px;right:16px;top:calc(100% + 34px);padding:20px 16px;gap:12px;
     background:var(--ct-floor-art,var(--ct-floor-stand-in));border:3px solid var(--ct-ink);border-radius:22px;box-shadow:6px 6px 0 var(--ct-ink)}
   header.cv-header[data-hf-chrome=chettinad] .cv-navigation[data-open=true]{align-items:stretch}
   header.cv-header[data-hf-chrome=chettinad] .cv-navigation a{justify-content:center;text-align:center;padding:10px 16px}
+}
+
+@media(min-width:700px) and (max-width:1199px){
+  header.cv-header[data-hf-chrome=chettinad]{flex-wrap:nowrap}
+  header.cv-header[data-hf-chrome=chettinad] .cv-navigation{flex-wrap:nowrap;gap:.5rem}
+  header.cv-header[data-hf-chrome=chettinad] .cv-navigation a{padding:7px 11px;font-size:.9375rem!important}
+  header.cv-header[data-hf-chrome=chettinad] .cv-navigation a.cv-sign-in,header.cv-header[data-hf-chrome=chettinad] .cv-navigation a.hfh-header-host{padding:7px 14px}
 }
 
 /* ---------- FOOTER: Athangudi tile floor ---------- */
