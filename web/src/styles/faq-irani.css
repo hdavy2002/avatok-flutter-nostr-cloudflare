@@ -28,9 +28,9 @@
 .ic .sr-only { position: absolute !important; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
 
 /* ---------- borders between bands (CSS stand-ins approximate each one) ---------- */
-/* owner 2026-10-18: taller borders so the painted tiles read as tiles. Height H, tile repeat 16H wide
-   (the owner PNGs are 20:1 but drawn ~1.25x squashed, so 16:1 restores round motifs). */
-.ic .ic-band { height: clamp(52px, 4.6vw, 84px); border-block: 3px solid var(--ink); }
+/* owner 2026-10-18: taller borders so the painted tiles read as tiles. The v2 art (1600x160, whole motifs)
+   is drawn at its true 10:1 shape (`auto 100%`, set in faqSkin.ts), so nothing is stretched or cropped. */
+.ic .ic-band { height: clamp(66px, 5.8vw, 108px); border-block: 3px solid var(--ink); }
 /* kaali-peeli taxi checks */
 .ic .ic-band[data-border="taxi"] { background: var(--ic-taxi, conic-gradient(var(--ink) 25%, var(--taxi) 0 50%, var(--ink) 0 75%, var(--taxi) 0) 0 0 / 28px 50%); }
 /* café awning: maroon, cream and rose stripes with scallops */
