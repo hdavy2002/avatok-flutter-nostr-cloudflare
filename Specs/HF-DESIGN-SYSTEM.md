@@ -15,6 +15,10 @@ avoid repeating a theme, craft, motif or layout.
 > buttons must never be stretched or distorted, text never overlaps, art never blends into the background.**
 > This applies to web pages, app screens (check the build/preview or screenshots), onboarding and animations.
 
+> **★ Owner-approved art standards (2026-10-18, from the /faq work): §6.1 borders, §6.2 buttons, §6.3 object art and
+> heroes, §7.4 border prompt template, §12 mistakes not to repeat.** Read them before making or wiring any border,
+> button, hero or object image.
+
 ## ★ Design philosophy: art-directed, never boxy (owner, 2026-10-18; read first)
 
 **The owner is not looking for sloppy, boxy designs.** Every page and app screen must feel *deliberately designed
@@ -230,7 +234,14 @@ a worked example (a named character, real rupee numbers) does the explaining.
       fights the text and it can't be read. Make backgrounds however suits the design: calm, low-contrast, soft
       pattern or near-plain colour. The textured, dimensional rule applies to everything else (hero art, story
       panels, medallions, badges, stickers, buttons, borders, frames).
-14. **Mock first for big redesigns.** For "Indianize it", the 3-idea pitch is the approval step. Never change an
+14. **Objects stand on their own (owner 2026-10-18).** A drawn object that *is* the tile (a dabba, a kite, a record,
+    a ball) is shown **big, with no card, no box and no tinted square behind it**, standing on the section ground
+    with a soft drop shadow. Only its label sits under it. Small objects inside cards were rejected (§6.3).
+15. **Hero art is big.** The hero picture takes the wider column (about 55%) and grows up to ~1040px on large
+    screens; on phones it is full width. A hero picture that sits small beside the text was rejected (§6.3).
+16. **Chunky, never thin.** Buttons and borders must look generous: taller keys with bigger labels, taller borders
+    with whole motifs. Anything that reads as a thin strip or a squeezed pill was rejected (§6.1, §6.2).
+17. **Mock first for big redesigns.** For "Indianize it", the 3-idea pitch is the approval step. Never change an
     approved design's look when only copy changes.
 
 ---
@@ -311,21 +322,14 @@ a worked example (a named character, real rupee numbers) does the explaining.
   - Set width/height attributes. Use `loading="lazy"`, except for the hero (`fetchpriority="high"`).
 - **CSS stand-ins:** every slot has a drawn-in-CSS fallback in the same palette, so the page ships and passes
   tests before the art arrives.
-- **Buttons from art** use `border-image` 9-slice:
-  - **Measure** the PNG first: the opaque *face rows* (top/bottom transparent margins) and how far the end
-    decoration reaches.
-  - Slice to them, e.g. `0 220 fill / 0 70px` for a 900×180 key whose ends reach about 200px, or
-    `19 220 18 220 fill` when the face sits between rows 19 and 161.
-  - Phones: `border-image-width: 0 56px`, min-height 48px.
-  - Label centring: flex center + text-align center, Nunito 900.
-  - Add any drawn "key depth" back as `filter: drop-shadow(...)`, not as part of the slice. Otherwise the text
-    sits off-centre.
-- **Section borders:**
-  - Drawn 20:1 (1600×80). Show at `background-size: (height × 20) 100%` with `repeat-x`, e.g.
-    `clamp(560px, 52vw, 880px) 100%` for a `clamp(28px, 2.6vw, 44px)` band.
-  - **Never `auto 100%` on a squashed source, and never stretch.**
-  - If the owner's PNG was resized unevenly (motifs look squashed or stretched), compress it back via
-    background-size and tell him.
+- **Buttons from art:** see **§6.2** (owner-approved sizes, measuring and slicing).
+- **Section borders:** see **§6.1** (owner-approved v2 standard: 1600×160 art with whole motifs, `auto 100%`).
+- **Background tiles must match their band.** Before wiring, look at each tile's colour and put it only on bands of
+  the same colour family (a maroon tile on maroon bands, a cream tile on cream bands). An opaque tile replaces the
+  band's background colour, so a pale pink tile on a maroon band turns the band pink and breaks white text. If no
+  tile fits a band, leave that band on its CSS stand-in.
+- **Re-check contrast after art lands.** A tile is often lighter than its CSS stand-in. Cream or white accent text
+  that read well on the stand-in can vanish; switch the accent to an ink or maroon colour where it does.
 - **White rounded frames:** art laid over a busy or same-coloured background gets
   `border: 8px solid #fff; border-radius: 18–24px; box-shadow: 0 0 0 3px ink, 0 10px 0 3px ink`, so it never
   blends into the background. This has been used on the call strip and the closing art.
@@ -338,6 +342,68 @@ a worked example (a named character, real rupee numbers) does the explaining.
   - Update the copy contracts when the owner changes facts. Never delete a contract without replacing it.
 
 ---
+
+### 6.1 Section borders — the approved v2 standard (owner, 2026-10-18)
+
+The owner said of the /faq borders: *"I like the borders you have now made, record this for future use."* This is
+the standard for every page from now on.
+
+- **Art:** **1600×160 PNG (10:1)**, seamless left to right, every motif **whole** inside the frame (no tile, tiffin,
+  scallop or check cut by the top or bottom edge) with about 10px of the band's ground colour above and below. Each
+  repeat unit is about 140–160px tall, so 8–10 units span the 1600px. Prompt template: §7.4.
+- **Show it at its true shape:** `background: url(...) center / auto 100% repeat-x`. Set the size string once in the
+  page's skin file (e.g. `const BAND = 'center / auto 100% repeat-x'` in `components/faq/faqSkin.ts`).
+- **Band height:** `height: clamp(66px, 5.8vw, 108px); border-block: 3px solid var(--ink);` → about 66px on phones,
+  84px on a 1440 screen and 108px on large screens. Don't go lower: whole motifs at true shape look tiny under 60px.
+- **Never** squash, stretch or crop a border. Never set the repeat width by hand on art that already has the right
+  shape.
+- **History (so nobody repeats it):** v1 borders were 1600×80 crops whose motifs were cut inside the file (Minton
+  flowers without tops, tiffins without lids and bases). At 28–44px they looked like thin strips; made taller they
+  still looked "chopped", because no CSS can show what the file doesn't contain. The fix was new art, not CSS.
+- **Old 20:1 art** (other pages: `hf-how`, `hf-join`, `hf-help`, `hf-contact`…) keeps its measured
+  `(height × 20) 100%` sizing until it is regenerated to v2. If one looks squashed (round motifs come out oval),
+  draw the repeat narrower to restore round shapes and tell the owner; better still, ask for v2 art.
+- CSS stand-ins still draw a simple version of each border so the page works before the art arrives.
+
+### 6.2 Buttons from art — approved sizes (owner, 2026-10-18)
+
+Owner feedback on /faq: *"the buttons are looking squeezed — increase the text size, adjust the height and width"*,
+then *"they still seem squeezed height-wise"*. The fix that was approved:
+
+- **Measure the PNG first** (PIL): the opaque *face rows* (e.g. rows 7–150 of 180) and where the plain middle colour
+  starts (`flat cols` along the middle row, ~170–200px in). Slice with
+  `border-image: url(...) <top> <decor> <bottom> <decor> fill / 0 <cap> stretch`, e.g. `7 200 30 200 fill`.
+- **Cap width** = `height × decor ÷ faceRows`, so the ends keep their drawn shape. **Check the art for uneven
+  resizing:** if a drawn square (a tile, a glass) on the ends comes out wider than tall, the PNG was squashed when it
+  was saved; divide the cap by that factor (the /faq keys needed ÷1.25) and tell the owner.
+- **Approved sizes** (Nunito 900 labels):
+
+  | Width | Key height | Label |
+  |---|---|---|
+  | desktop | 80px | `clamp(20px, 1.35vw, 24px)` |
+  | ≤900px | 68px | 20px |
+  | ≤420px | 62px | 18px |
+  | ≤360px | 56px | 14–16px |
+
+- Every label fits on **one line** at 320px and at 200% root font (`range.getClientRects().length === 1`). If a long
+  label can't fit, shorten the wording (e.g. "Influencer dhoondo") rather than squeezing the key or the text.
+- On phones the button column is `max-width: 440px`, full width, stacked.
+- Key depth is a `filter: drop-shadow(0 4px 0 rgba(ink,.55))`, never part of the slice.
+
+### 6.3 Object art and hero art (owner, 2026-10-18)
+
+- **Objects as tiles** (dabbas, kites, records…): no card, no tinted square. Grid `repeat(auto-fill,
+  minmax(min(100%, 300px), 1fr))` on desktop (about 330px each), two per row on phones. The image fills its box
+  (`width: 112%; margin: -6%; object-fit: contain`) to use up the transparent margin, with
+  `filter: drop-shadow(0 12px 10px rgba(ink,.35))`. The label sits under it with a soft cream glow
+  (`text-shadow`) so it reads on any ground.
+- **The same object beside each section heading** is shown big too (the full width of the heading column, up to
+  ~380px; ~320px on phones), with no frame.
+- **Hero picture:** hero grid `minmax(0,.9fr) minmax(0,1.1fr)`, picture `width: 100%; max-width: 1040px`; on phones
+  `width: 100%; max-width: 720px`, placed first. Never let the picture bleed past the column with negative margins
+  (it gets clipped at 1100px).
+- **Transparent margins:** if the owner's transparent PNG has empty rows (e.g. 150px top and bottom), crop them in
+  CSS with `aspect-ratio: <painted band>; object-fit: cover` rather than editing the file.
 
 ## 7. Image prompt packs
 
@@ -381,9 +447,10 @@ a worked example (a named character, real rupee numbers) does the explaining.
 | Closing art | 900×720 | — |
 | Medallions | 300×300, transparent | **Plain flat-colour centre (~50%) with nothing in it** |
 | Badges / icons | 400×400, transparent | — |
-| Borders | 1600×80, seamless horizontal repeat | **Generate wide, then crop or scale evenly; never squash.** Circles must stay round and figures keep their natural width |
+| Borders | **1600×160**, seamless horizontal repeat | **v2 standard (§6.1, §7.4): every motif whole inside the frame with ~10px margin top and bottom.** Generate wide (3200×320), scale **evenly**. Never squash; circles stay round |
 | Background tiles | 600×600 | Seamless both ways, **low contrast, calm, not textured or dimensional** (text sits on top and must stay readable) |
-| Buttons | 900×180 | Fill the full height (no empty space above or below); decoration only in the **left and right 200px**; plain flat-colour middle; no text |
+| Buttons | 900×180 | Fill the full height (no empty space above or below); decoration only in the **left and right 200px**; plain flat-colour middle; no text. **Generate at the true aspect and scale evenly** (the /faq keys came squashed ~1.25× and had to be corrected in CSS) |
+| Object tiles (dabbas etc.) | 400×400, transparent | One object, centred, small margin, soft shadow; no background, no card |
 | Rollers / rails | 1400×110, transparent | — |
 
 - **File locations:** `web/public/assets/hf-<page>/<folder>/<exact-name>.png`. The owner generates the images and
@@ -401,11 +468,35 @@ a worked example (a named character, real rupee numbers) does the explaining.
   - nothing looks flat or cartoonish (each image has texture and depth), **except backgrounds**, which must be
     calm enough for text to read on top;
   - there are no peacocks;
-  - no theme is repeated.
+  - no theme is repeated;
+  - **borders: every motif whole** (nothing cut at the top or bottom), left and right edges join with no visible
+    seam;
+  - **no uneven resizing:** measure a drawn square (a tile, a check, a glass) in each border and button end; if its
+    width and height differ, the file was squashed. Correct in CSS and tell the owner;
+  - **each background tile's colour matches the band it will sit on** (§6).
 - **Restart the astro dev server** after the art lands. The `existsSync` results are cached, so new files don't
   show until you do.
 
 ---
+
+### 7.4 Border prompt template (owner-approved, 2026-10-18)
+
+Paste this block for every border, then add one line describing the page's motif:
+
+> Seamless horizontal border band, exactly **1600×160** (generate at 3200×320 and scale down evenly; never resize
+> width and height by different amounts). The right edge continues the left edge exactly. **Every motif is whole
+> inside the frame: nothing touches or crosses the top or bottom edge; leave about 10px of the ground colour above
+> and below.** Each repeat unit is about 140–160px tall, 8–10 units across. Painted, dimensional craft style (§2.13),
+> multi-colour. No text, no peacocks, no green ground.
+
+The approved /faq borders, as examples of the motif line:
+
+| File | Motif line |
+|---|---|
+| `border-kaali-peeli.png` | A Bombay kaali-peeli taxi's black-and-yellow check stripe: two neat rows of whole square checks, painted enamel with slight wear, thin chrome trim along the top and bottom, a small even margin of black above and below. |
+| `border-awning.png` | An Irani café awning seen straight on: vertical maroon, cream and rose stripes, a wooden rail along the top and fully rounded scallops along the bottom, every scallop complete, a thin strip of cream wall below. |
+| `border-minton-tiles.png` | A row of whole square Minton floor tiles, each complete with its four-petal flower (bottle blue, saffron and cream with yellow centres) and a thin grout line, with a narrow cream margin above and below. |
+| `border-tiffin-row.png` | A row of small complete three-tier tiffins (handle, lid, three tiers and base all visible), alternating rose, bottle blue, saffron and magenta, evenly spaced on a taxi-yellow ground, nothing cut. |
 
 ## 8. Theme registry (do not reuse; add every new page here)
 
@@ -476,6 +567,15 @@ Load the page in the **external browser** (Chrome extension). Use iframes on a b
 - [ ] No horizontal scroll (`scrollWidth === clientWidth`) at 320 / 390.
 - [ ] Everything on phones is centred, header included.
 - [ ] Lazy images forced to eager when checking (`img.loading = 'eager'`).
+- [ ] **Borders show whole motifs** at their true shape (§6.1) and the band is 66–108px tall, not a thin strip.
+- [ ] **Buttons look chunky** (§6.2): 56–80px tall, labels 14–24px on one line, ends not squashed.
+- [ ] **Objects and hero picture are big** (§6.3), with no cards or tinted squares around objects.
+- [ ] Accent text still readable on the real tile art (not only on the CSS stand-in).
+
+**Previewing owner art locally:** `astro dev` cannot show art that goes through `publicImage()` (the
+`/cdn-cgi/image/...` URLs only work on Cloudflare), so a dev-server check silently shows the CSS stand-ins. Run
+`npx astro build`, then serve `web/dist` with `python3 scripts/hf_preview_dist.py web/dist web/public` (port 4393),
+which maps `/cdn-cgi/image/<opts>/<path>` back to the file, and check `http://127.0.0.1:4393/<page>/` in iframes.
 
 **Then:**
 
@@ -490,6 +590,9 @@ Load the page in the **external browser** (Chrome extension). Use iframes on a b
    - Wait for build + browser-check (~8 min).
    - Approve the pending deployment (environment id 17866973083).
 5. Verify the **live** page in the browser.
+   - Several sessions deploy at once and a newer `web-deploy.yml` run **cancels** the older one. If yours is
+     cancelled, check that the newest run's commit includes yours (`git merge-base --is-ancestor`), wait for it,
+     approve it if it waits at the gate, then verify the live page actually shows your change.
 
 ---
 
@@ -534,3 +637,17 @@ The same rules apply to app screens, onboarding and animations:
 - Animations that move like the craft (a scroll unrolling, a kite rising, a coin dropping into a slot).
 
 Record app themes in §8 too.
+
+---
+
+## 12. Mistakes not to repeat (owner feedback log)
+
+| Date | What went wrong | What the owner wants instead |
+|---|---|---|
+| 2026-10-18 | /faq borders 28–44px tall, motifs cut inside 1600×80 files | v2 borders: 1600×160, whole motifs, `auto 100%`, bands 66–108px (§6.1, §7.4) |
+| 2026-10-18 | Made borders taller but kept the cropped art ("still chopping off") | Fix the art, not the CSS: ask for whole-motif files |
+| 2026-10-18 | Dabbas small inside cards with tinted squares | Objects big, no card, no square (§6.3) |
+| 2026-10-18 | Buttons thin and squeezed; labels small | Taller keys, bigger labels, caps at drawn shape, squash corrected (§6.2) |
+| 2026-10-18 | Hero café picture small beside the text | Hero picture in the wider column, up to 1040px; full width on phones (§6.3) |
+| 2026-10-18 | Pale pink tile on maroon bands; cream accent text vanished on light tile art | Match tiles to band colours; re-check contrast with the real art (§6) |
+| 2026-10-18 | Checked the page on `astro dev`, which never shows `publicImage()` art | Build + `scripts/hf_preview_dist.py` before judging art (§9) |

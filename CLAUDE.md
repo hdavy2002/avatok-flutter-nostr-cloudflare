@@ -27,6 +27,11 @@ wire the owner's art when saved → record the theme in §8. Every page is a *di
 region, daily life); fresh art only, never reused; multi-colour, bold, rounded, never boxy; no peacocks; no green UI;
 Nunito/Comfortaa only; phones centred. Read it before any page, component, artwork prompt or app screen.
 
+**Approved art standards (HF-DS-7, owner 2026-10-18):** borders are **1600×160 with every motif whole**, shown at
+`auto 100%` in 66–108px bands (prompt template §7.4); buttons 56–80px tall with 14–24px one-line labels, ends never
+squashed (§6.2); object tiles big with **no card or tinted square**, hero picture big (§6.3). Judge art on a build +
+`scripts/hf_preview_dist.py`, never on `astro dev` (it can't show `publicImage()` art). Mistakes log: §12.
+
 ---
 
 ## 🌐 DEPLOY TARGET IS aumfe.com (owner decision 2026-10-01)
