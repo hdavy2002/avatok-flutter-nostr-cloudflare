@@ -4,16 +4,14 @@ import { BUSINESS_CONTACT } from '../lib/businessContact';
 import HelloFraandsPage from '../layouts/HelloFraandsPage.astro';
 ---
 <HelloFraandsPage updated="2026-10-15" title="Grievance redressal" summary="Shikayat aur uski jaanch ka prastaavit tareeqa yahan padhein." review={true} related={[{"href":"/intermediary-policy","label":"Intermediary & content policy"},{"href":"/privacy","label":"Privacy policy"},{"href":"/terms","label":"Terms of use"}]}>
-<h2>Complaint process under preparation</h2>
-<p>This website is a preview. A published page or report form is not confirmation that a complaint has been submitted or received. You can email a complaint to the grievance contact below. The responsible officer and applicable response deadlines remain to be confirmed.</p>
+<h2>How to complain</h2>
+<p>A page or report form is not confirmation that a complaint has been submitted or received. You can email a complaint to the grievance contact below.</p>
 <h2>Grievance contact</h2>
 <p><strong>Business name:</strong> {BUSINESS_CONTACT.name}<br /><strong>Email:</strong> <a href={`mailto:${BRAND.emails.grievance}`}>{BRAND.emails.grievance}</a><br /><strong>Public postal address:</strong> {BUSINESS_CONTACT.postalAddress}</p>
-<p>The grievance mailbox is active. The grievance officer’s name has not yet been confirmed.</p>
 <h2>What a complaint should include</h2>
-<p>Include your registered contact details, the relevant profile, call ID or payment reference, date and time, the issue, and the outcome you are asking for. Do not send passwords, OTPs, UPI PINs, Aadhaar numbers, or KYC document images. The <a href="/report">report page</a> explains planned call-safety reporting.</p>
-<h2>Planned review</h2>
-<p>Complaints may concern conduct, a block or strike, a suspension or ban, charges, or deletion. The planned process checks the relevant call, billing, and moderation records and communicates the outcome. Pending reports are not the same as confirmed strikes. Self-harm mentions are for welfare follow-up, not a strike.</p>
-<p>The final complaint route must publish its acknowledgement, resolution, and escalation timelines under applicable law. An active mailbox does not confirm the final review or escalation process.</p>
+<p>Include your registered contact details, the relevant profile, call ID or payment reference, date and time, the issue, and the outcome you are asking for. Do not send passwords, OTPs, UPI PINs or Aadhaar numbers. The <a href="/report">report page</a> explains call-safety reporting.</p>
+<h2>How we review</h2>
+<p>Complaints may concern conduct, a block or strike, a suspension or ban, charges, or deletion. We check the relevant call, billing, and moderation records and communicate the outcome. Pending reports are not the same as confirmed strikes. Self-harm mentions are for welfare follow-up, not a strike.</p>
 <h2>Escalation and urgent help</h2>
-<p>The final process must explain how to request a second review using a complaint reference and how to use any applicable external complaint route. This preview does not limit legal remedies. For immediate danger, use the <a href="/emergency">emergency support page</a>; platform reports are not an emergency response service.</p>
+<p>Nothing here limits your legal remedies. For immediate danger, use the <a href="/emergency">emergency support page</a>; platform reports are not an emergency response service.</p>
 </HelloFraandsPage>

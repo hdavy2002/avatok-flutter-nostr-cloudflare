@@ -1,29 +1,46 @@
 ---
-// [HELLO-FRAANDS-WIDE-1 2026-10-08] Content/legal page layout with the FRONT-PAGE treatment:
-// same width and gutters as the home page (.notebook-site), a colourful hero band, a jump-chip
-// bar, and every `##` section turned into a full-width two-column card (heading left, text right)
-// so long pages fill large screens instead of sitting in a narrow box. Stacks on tablets/phones.
+// [HF-LEGAL-GHAT-1 2026-10-18] Shared policy/content layout, Indianized as "Ghat ki Seedhiyan" (owner pick): every rule
+// page is a walk down a Varanasi ghat. Hero = oversized title over a painted ghat with Bholu the boatman; the jump bar is
+// a row of bamboo chhatris; every `##` section is a sandstone step (brass-lota number), zig-zagging down to the river;
+// the close is the Ganga with a boat carrying the related pages. One template, three colour flavours chosen by footer
+// group (components/legal/legalSkin.ts). Art: /assets/hf-legal/ with CSS stand-ins; styles: styles/legal-ghat.css
+// (scoped `.lg`). Replaced the 2026-10-08 [HELLO-FRAANDS-WIDE-1] notebook layout.
 //
 // NOTE FOR AI:
 //  - Contracts in web/scripts/check-hello-fraands-pages.mjs read these hooks: `.hf-hindi > em`,
 //    `.hf-date` text "Last updated: <date>" (legacy pages use {{DATE}}), at least one <h2>, `.hf-review-note` with
-//    "This page is under legal review." and a related review link. Keep them.
+//    "This page is under legal review." and a related review link, one H1, the shared header/footer. Keep them.
 //  - Sections are split from the rendered slot at build time on each <h2>; text before the first
-//    <h2> becomes the intro card. Pages need no changes.
+//    <h2> becomes the intro step. Pages need no changes. /hosts/join, /faq, /how-it-works, /about, /contact
+//    have their own standalone designs and do NOT use this layout.
 import brandConfig from '../../../Specs/brand.json';
 import Header from '../components/callvaal/Header.astro';
 import Footer from '../components/callvaal/Footer.astro';
-import '../styles/callvaal-notebook.css';
-import '../styles/hello-fraands-pages.css';
+import { publicImage } from '../lib/config';
+import { LEGAL_ART, LEGAL_BG, LEGAL_SKINS, legalFlavour, FLAVOUR_COPY } from '../components/legal/legalSkin';
+import '../styles/legal-ghat.css';
 
+// [HF-LEGAL-GHAT-1] Owner: no placeholder lines on public pages. Pages without their own `updated` show the date of
+// the 2026-10-18 copy clean-up instead of the old literal "{{DATE}}". Bump it when the shared copy changes.
+const DEFAULT_UPDATED = '2026-10-18';
 interface Link { href: string; label: string }
 interface Props { title: string; summary: string; review?: boolean; related?: Link[]; description?: string; updated?: string }
-const { title, summary, review = false, related = [], description = summary, updated = '{{DATE}}' } = Astro.props;
+const { title, summary, review = false, related = [], description = summary, updated = DEFAULT_UPDATED } = Astro.props;
 const identity = brandConfig.homepageIdentity;
 const pathname = Astro.url.pathname.replace(/\/+$/, '') || '/';
 const canonical = `https://${identity.domain}${pathname}`;
 const pageTitle = `${title} | ${identity.name}`;
 const ogImage = `https://${identity.domain}/assets/callvaal/scrapbook/hero-collage-friendship.jpg`;
+const flavour = legalFlavour(pathname);
+const fc = FLAVOUR_COPY[flavour];
+const groupLabel = pathname === '/press' ? 'Company' : fc.group;
+
+const img = (p: string, w: number) => publicImage(p, { width: w, fit: 'scale-down' });
+const vars = [
+  ...LEGAL_BG.map((o) => `--lg-${o.key}:url(${img(o.path, o.width)}) ${o.tail}`),
+  ...LEGAL_SKINS.map((o) => `--lg-${o.key}:url(${img(o.path, o.width)})`),
+].join(';');
+const skins = [...LEGAL_BG, ...LEGAL_SKINS].map((o) => o.key).join(' ');
 
 const html = await Astro.slots.render('default');
 const strip = (s: string) => s.replace(/<[^>]+>/g, '').replace(/&amp;/g, '&').replace(/\s+/g, ' ').trim();
@@ -39,7 +56,7 @@ const sections = parts.slice(1).map((part, i) => {
   used.add(id);
   return { id, headHtml, label: strip(headHtml), body: m ? part.slice(m[0].length) : part };
 });
-const tones = ['cream', 'pink', 'lilac', 'paper'];
+const tones = ['ivory', 'stone', 'tint', 'ivory', 'river'];
 ---
 <!doctype html>
 <html lang="en-IN">
@@ -50,7 +67,7 @@ const tones = ['cream', 'pink', 'lilac', 'paper'];
     <meta name="description" content={description} />
     <link rel="canonical" href={canonical} />
     <meta name="robots" content="index,follow" />
-    <meta name="theme-color" content="#46113e" />
+    <meta name="theme-color" content="#f3cf98" />
     <meta property="og:type" content="article" />
     <meta property="og:site_name" content={identity.name} />
     <meta property="og:title" content={pageTitle} />
@@ -63,37 +80,106 @@ const tones = ['cream', 'pink', 'lilac', 'paper'];
     <link rel="icon" href="/assets/branding/hf-favicon.png" type="image/png" />
     <link data-site-fonts rel="preload" href="/fonts/Comfortaa-Bold.ttf" as="font" type="font/ttf" crossorigin />
     <link rel="preload" href="/fonts/Nunito-Black.woff2" as="font" type="font/woff2" crossorigin />
+    {LEGAL_ART.scene && <link rel="preload" as="image" href={img(LEGAL_ART.scene, 1100)} fetchpriority="high" />}
   </head>
-  <body>
-    <div class="notebook-site hf-site" data-design="callvaal-scrapbook">
-      <a class="skip-link" href="#main-content">Skip to main content</a>
+  <body class="lg-body">
+    <div class={`lg hf-site lg--${flavour}`} style={vars || undefined} data-skins={skins || undefined} data-flavour={flavour}>
+      <a class="lg-skip" href="#main-content">Skip to main content</a>
       <Header />
-      <main id="main-content" class="hf-content">
-        <header class="hfp-hero">
-          <div class="hfp-hero-copy">
-            <nav class="hf-breadcrumb" aria-label="Breadcrumb"><a href="/">Home</a><span aria-hidden="true">/</span><span aria-current="page">{title}</span></nav>
-            <h1>{title}</h1>
-            <p class="hf-hindi"><em>{summary}</em></p>
-            <p class="hf-date">Last updated: {updated}</p>
+      <main id="main-content" class="hf-content lg-main">
+
+        <!-- HERO: the ghat at sunrise -->
+        <header class="lg-hero">
+          <span class="lg-giant" aria-hidden="true">{fc.word}</span>
+          <div class="lg-wrap lg-hero-grid">
+            <div class="lg-hero-copy">
+              <nav class="hf-breadcrumb lg-crumb" aria-label="Breadcrumb"><a href="/">Home</a><span aria-hidden="true">/</span><span>{groupLabel}</span><span aria-hidden="true">/</span><span aria-current="page">{title}</span></nav>
+              <p class="lg-kicker">{fc.kicker}</p>
+              <h1>{title}</h1>
+              <p class="hf-hindi"><em>{summary}</em></p>
+              <div class="lg-hero-chips">
+                <p class="hf-date">Last updated: {updated}</p>
+                {sections.length > 0 && <span class="lg-chip">{sections.length} {sections.length === 1 ? 'seedhi' : 'seedhiyan'}</span>}
+                <span class="lg-chip lg-chip--stamp" aria-hidden="true">Seedhi baat · Saaf niyam</span>
+              </div>
+            </div>
+            <figure class="lg-scene" aria-hidden="true">
+              {LEGAL_ART.scene ? (
+                <img class="lg-scene-art" src={img(LEGAL_ART.scene, 1100)} alt="" width="1100" height="1100" fetchpriority="high" decoding="async" />
+              ) : (
+                <div class="lg-scene-css">
+                  <span class="lg-sun"></span>
+                  <span class="lg-temple"></span>
+                  <span class="lg-ghat"><i></i><i></i><i></i><i></i><i></i></span>
+                  <span class="lg-umb lg-umb--1"></span><span class="lg-umb lg-umb--2"></span><span class="lg-umb lg-umb--3"></span>
+                  <span class="lg-water"></span>
+                  <span class="lg-boat"></span>
+                </div>
+              )}
+              {LEGAL_ART.bholu && <img class="lg-bholu" src={img(LEGAL_ART.bholu, 700)} alt="" width="700" height="1000" decoding="async" />}
+            </figure>
           </div>
-          <div class="hfp-hero-note paper-note" aria-hidden="true">Seedhi baat.<br />Saaf niyam.</div>
         </header>
+        <div class="lg-band" data-border="diya" aria-hidden="true"></div>
+
         {sections.length >= 3 && (
-          <nav class="hfp-jump" aria-label="On this page">
-            <span>On this page</span>
-            {sections.map((s) => <a href={`#${s.id}`}>{s.label}</a>)}
+          <nav class="hfp-jump lg-jump" aria-label="On this page">
+            <div class="lg-wrap">
+              <p class="lg-kicker lg-jump-title">Ghat ke padaav · On this page</p>
+              <ol class="lg-umbrellas">
+                {sections.map((s, i) => (
+                  <li><a href={`#${s.id}`}>
+                    <span class="lg-chhatri" aria-hidden="true">{LEGAL_ART.chhatri && <img src={img(LEGAL_ART.chhatri, 200)} alt="" width="200" height="200" loading="lazy" decoding="async" />}</span>
+                    <b aria-hidden="true">{String(i + 1).padStart(2, '0')}</b>
+                    <span class="lg-umb-label">{s.label}</span>
+                  </a></li>
+                ))}
+              </ol>
+            </div>
           </nav>
         )}
-        <article class="hf-page">
-          {intro && <div class="hfp-intro hf-prose" set:html={intro} />}
-          {sections.map((s, i) => (
-            <section class={`hfp-sec tone-${tones[i % tones.length]}`} aria-labelledby={s.id}>
-              <div class="hfp-sec-head"><span class="hfp-num" aria-hidden="true">{String(i + 1).padStart(2, '0')}</span><h2 id={s.id} set:html={s.headHtml} /></div>
-              <div class="hf-prose" set:html={s.body} />
-            </section>
-          ))}
-          {review && <aside class="hf-review-note"><p>This page is under legal review.</p>{related.length > 0 && <p>Related pages: {related.map((link, index) => <>{index > 0 && ' · '}<a href={link.href}>{link.label}</a></>)}</p>}</aside>}
+        {sections.length >= 3 && <div class="lg-band" data-border="garland" aria-hidden="true"></div>}
+
+        <!-- THE STEPS: one sandstone step per section, zig-zagging down to the river -->
+        <article class="hf-page lg-steps">
+          <div class="lg-wrap lg-steps-wrap">
+            {intro && <div class="hfp-intro hf-prose lg-landing" set:html={intro} />}
+            {sections.map((s, i) => (
+              <section class={`hfp-sec lg-step tone-${tones[i % tones.length]}`} aria-labelledby={s.id}>
+                <div class="hfp-sec-head lg-step-head">
+                  <span class="hfp-num lg-lota" aria-hidden="true">
+                    {LEGAL_ART.lota && <img src={img(LEGAL_ART.lota, 300)} alt="" width="300" height="300" loading="lazy" decoding="async" />}
+                    <b>{String(i + 1).padStart(2, '0')}</b>
+                  </span>
+                  <h2 id={s.id} set:html={s.headHtml} />
+                </div>
+                <div class="hf-prose lg-prose" set:html={s.body} />
+              </section>
+            ))}
+          </div>
         </article>
+
+        <div class="lg-band" data-border="baluster" aria-hidden="true"></div>
+        <!-- THE RIVER: the boat carries the related pages -->
+        <section class="lg-river" aria-labelledby="lg-river-title">
+          <div class="lg-wrap lg-river-grid">
+            <figure class="lg-naav" aria-hidden="true">
+              {LEGAL_ART.close ? <img src={img(LEGAL_ART.close, 900)} alt="" width="900" height="720" loading="lazy" decoding="async" /> : (
+                <div class="lg-naav-css"><span class="lg-hull"></span><span class="lg-canopy"></span><span class="lg-diyas"><i></i><i></i><i></i><i></i><i></i></span></div>
+              )}
+            </figure>
+            <div class="lg-river-copy">
+              <p class="lg-kicker">Ghat yahin khatam</p>
+              <h2 id="lg-river-title" class="lg-river-title">Koi sawaal? <span>Naav taiyaar hai.</span></h2>
+              {review && <aside class="hf-review-note"><p>This page is under legal review.</p>{related.length > 0 && <p class="lg-related"><span>Related pages:</span> {related.map((link) => <a href={link.href}>{link.label}</a>)}</p>}</aside>}
+              {!review && related.length > 0 && <p class="lg-related lg-related--plain"><span>Related pages:</span> {related.map((link) => <a href={link.href}>{link.label}</a>)}</p>}
+              <div class="lg-oars">
+                <a class="lg-oar" href="/help">Help centre</a>
+                <a class="lg-oar lg-oar--alt" href="/contact">Contact us</a>
+              </div>
+            </div>
+          </div>
+        </section>
       </main>
       <Footer />
     </div>

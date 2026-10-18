@@ -134,7 +134,8 @@ try {
       if (path !== '/faq') { // [HF-HOW-KALA-1] /how-it-works is a standalone art page: Hindi line yes, no date line. [HELLO-FRAANDS-FAQ-1] /faq is a standalone help page without the legal summary/date line
         await expect(page.locator('.hf-hindi em')).toBeVisible();
         const datedPolicies = new Set(['/terms', '/privacy', '/disclaimer', '/community-guidelines', '/about', '/contact', '/press', '/hosts/agreement', '/hosts/kyc', '/report', '/grievance', '/cookies', '/data-deletion', '/intermediary-policy']);
-        if (path !== '/how-it-works' && path !== '/hosts/join') await expect(page.locator('.hf-date')).toHaveText(datedPolicies.has(path) ? /^Last updated: \d{4}-\d{2}-\d{2}$/ : 'Last updated: {{DATE}}');
+        if (path !== '/how-it-works' && path !== '/hosts/join') await expect(page.locator('.hf-date')).toHaveText(/^Last updated: \d{4}-\d{2}-\d{2}$/); // [HF-LEGAL-GHAT-1] every page dated (no {{DATE}} placeholder)
+        void datedPolicies;
       }
       await expect(page.locator('[data-callvaal-footer-group] li')).toHaveCount(30);
       await page.evaluate(() => { document.documentElement.style.fontSize = '200%'; });

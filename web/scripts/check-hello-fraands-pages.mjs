@@ -26,14 +26,11 @@ export function checkHelloFraandsPages(root, identity) {
       assert.match(body, /class="hf-hindi"[^>]*>\s*<em\b/, `${route}: italic Hindi summary`);
       const registrationPolicies = new Set(['/terms', '/privacy', '/disclaimer', '/community-guidelines']);
       const datedContentPages = new Set(['/about', '/contact', '/cookies', '/data-deletion', '/grievance', '/intermediary-policy', '/press', '/report', '/hosts/agreement', '/hosts/kyc']);
-      if (registrationPolicies.has(route) || datedContentPages.has(route)) {
-        assert.match(text(body), /Last updated: \d{4}-\d{2}-\d{2}/, `${route}: dated published page`);
-        if (registrationPolicies.has(route)) {
-          assert(!/\{\{|\bpreview\b|\bplaceholder\b/i.test(text(body)), `${route}: no draft placeholders`);
-        }
-      } else {
-        assert(text(body).includes('Last updated: {{DATE}}'), `${route}: date placeholder`);
-      }
+      // [HF-LEGAL-GHAT-1 2026-10-18] Owner: no placeholder lines on public pages — every page carries a real date
+      // (replaces the old `Last updated: {{DATE}}` placeholder contract) and none says "preview" or "placeholder".
+      assert.match(text(body), /Last updated: \d{4}-\d{2}-\d{2}/, `${route}: dated published page`);
+      assert(!/\{\{|\bpreview\b|\bplaceholder\b/i.test(text(body)), `${route}: no draft placeholders`);
+      void registrationPolicies; void datedContentPages;
     }
     assert.match(body, /<h2\b/, `${route}: real structured content`);
     assert.equal((html.match(/<header\b[^>]*data-callvaal-chrome/g) || []).length, 1, `${route}: shared header`);
