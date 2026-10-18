@@ -190,7 +190,9 @@ body.lg-body { margin: 0; background: #fff8ec; }
 .lg .lg-oar { display: inline-flex; align-items: center; justify-content: center; min-width: 220px; height: 80px; padding: 0 36px; border: 3px solid var(--ink); border-radius: 999px;
   background: linear-gradient(180deg, #e9b675, #c98d4e 60%, #a96c35); color: var(--ink); text-decoration: none; font: 900 clamp(20px, 1.35vw, 24px)/1 var(--head) !important; filter: drop-shadow(0 4px 0 rgba(42,29,58,.55)); }
 .lg .lg-oar--alt { background: linear-gradient(180deg, #ffd166, var(--mari) 60%, #d98a0a); }
-.lg[data-skins~="oar"] .lg-oar { border: 0; border-radius: 0; background: none; border-image: var(--lg-oar) 7 200 30 200 fill / 0 70px stretch; }
+/* oar art: face rows 19-167 of 180, plain wood from col 117 to 783 → slice 19 120 13 120; cap = height × 120 ÷ 148 */
+.lg[data-skins~="oar"] .lg-oar { --oar-h: 80px; height: var(--oar-h); min-width: 300px; padding: 0 calc(var(--oar-h) * .81 + 14px); border: 0; border-radius: 0; background: none;
+  border-image: var(--lg-oar) 19 120 13 120 fill / 0 calc(var(--oar-h) * .81) stretch; color: var(--ink); }
 .lg .lg-oar:hover { transform: translateY(-2px); }
 
 /* ---------- responsive ---------- */
@@ -223,4 +225,31 @@ body.lg-body { margin: 0; background: #fff8ec; }
 @media (max-width: 360px) {
   .lg .lg-oar { height: 56px; font-size: 16px !important; }
   .lg .lg-umbrellas { grid-template-columns: 1fr; }
+}
+
+/* ---------- [HF-LEGAL-ART-2 2026-10-18] owner art wired in ---------- */
+/* hero: the arch painting (opaque 139-962 of 1100 wide, full height) is capped so it never towers over the copy;
+   Bholu stands at the arch's lower left, gesturing into the ghat. */
+.lg .lg-scene:has(.lg-scene-art) { max-width: min(760px, 80vh); }
+.lg .lg-bholu { left: 0; bottom: 0; width: 36%; }
+.lg[data-skins~="tstone"] .lg-hero::before { opacity: 1; }
+.lg[data-skins~="tsteps"] .lg-steps::before { opacity: .75; }
+.lg[data-skins~="tganga"] .lg-river::before { opacity: 1; }
+/* chhatri art is square (umbrella + pole fill the 400px tile): no CSS dome, number disc sits on the pole foot */
+.lg[data-skins] .lg-umbrellas li .lg-chhatri:has(img) { border: 0; background: none; width: 64%; max-width: 150px; aspect-ratio: 1; }
+.lg[data-skins] .lg-chhatri:has(img) img { left: 0; bottom: 0; width: 100%; height: 100%; object-fit: contain; filter: drop-shadow(0 6px 5px rgba(42,29,58,.3)); }
+.lg .lg-umbrellas a:has(.lg-chhatri img) b { margin-top: -18px; }
+/* lota art: the plain disc is centred a little below the middle (about 57% down) */
+.lg[data-skins] .lg-lota:has(img) b { transform: translateY(12%); color: var(--ink); text-shadow: 0 1px 0 rgba(255,240,200,.8); }
+.lg[data-skins] .lg-lota:has(img) img { filter: drop-shadow(0 6px 5px rgba(42,29,58,.3)); }
+@media (max-width: 900px) {
+  .lg[data-skins~="oar"] .lg-oar { --oar-h: 68px; font-size: 20px !important; }
+  .lg .lg-scene:has(.lg-scene-art) { max-width: min(560px, 100%); }
+}
+@media (max-width: 600px) {
+  .lg[data-skins~="oar"] .lg-oar { --oar-h: 62px; min-width: 0; font-size: 18px !important; }
+  .lg .lg-bholu { width: 34%; left: -2%; }
+}
+@media (max-width: 360px) {
+  .lg[data-skins~="oar"] .lg-oar { --oar-h: 56px; font-size: 16px !important; }
 }
