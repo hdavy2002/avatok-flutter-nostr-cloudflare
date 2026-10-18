@@ -2,6 +2,7 @@
 import brandConfig from '../../../../Specs/brand.json';
 import AppTabBar from './AppTabBar.astro';
 import '../../styles/callvaal-chrome.css';
+import '../../styles/hf-chrome-chettinad.css'; // [HF-CHROME-CHETTINAD-1] Chettinad tile chrome
 interface Props { hideTagline?: boolean; }
 const { hideTagline: _hideTagline = false } = Astro.props; // kept for callers; the footer no longer shows a tagline
 const identity = brandConfig.homepageIdentity;
@@ -25,7 +26,9 @@ const groups = [
   ]],
 ] as const;
 ---
-<footer class="cv-footer notebook-footer" data-callvaal-chrome>
+<footer class="cv-footer notebook-footer" data-callvaal-chrome data-hf-chrome="chettinad">
+  {/* [HF-CHROME-CHETTINAD-1 2026-10-18] Owner: Indianized footer — kaapi sticker + greeting over an Athangudi tile floor. */}
+  <p class="ct-foot-hello"><span class="ct-kaapi" aria-hidden="true"></span><span class="ct-hello-big">Vanakkam!</span><span class="ct-hello-chip">Ek call, ek kaapi</span></p>
   {/* [HF-DESI-HOME-MOBILE-1] 2026-10-17: disclaimer is the owner's own wording from the desi design footer. */}
   {/* [HF-DASH-LAYOUT-1] Owner 2026-10-16: no logo and no tagline in the footer (the header already carries the logo). */}
   <nav class="cv-footer-columns footer-columns" aria-label="Footer">
