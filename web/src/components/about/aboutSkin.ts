@@ -22,7 +22,8 @@ export const ABOUT_ART = {
 } as const;
 
 /** Background/skin art → --gc-<key>: a full background layer (url + position/size/repeat). [key, path, width, tail] */
-const BAND = 'center / clamp(560px, 52vw, 880px) 100% repeat-x';
+// HF-DS-7 §6.1: borders at their true shape (the owner's art is 1600x80 with whole motifs), never squashed.
+const BAND = 'center / auto 100% repeat-x';
 const BG: [string, string, number, string][] = [
   ['chalk', `${F}/borders/border-chalk-runs.png`, 1600, BAND],
   ['grip', `${F}/borders/border-bat-grip.png`, 1600, BAND],
