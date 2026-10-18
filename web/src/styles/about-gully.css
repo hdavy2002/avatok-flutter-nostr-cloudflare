@@ -138,8 +138,9 @@
 .gc .gc-css-mic { position: relative; z-index: 1; width: 30%; aspect-ratio: 1 / 2.2; margin-bottom: 18%; }
 .gc .gc-css-mic::before { content: ""; position: absolute; left: 10%; right: 10%; top: 0; height: 46%; border: 4px solid var(--ink); border-radius: 999px; background: repeating-linear-gradient(90deg, var(--ink) 0 3px, #c9ced6 3px 9px); }
 .gc .gc-css-mic span { position: absolute; left: 38%; right: 38%; top: 44%; bottom: 0; border: 4px solid var(--ink); border-radius: 8px; background: var(--brick); }
-.gc .gc-comm-bubble { position: absolute; z-index: 2; top: 20%; left: -4%; padding: 10px 18px; border: 3px solid var(--ink); border-radius: 22px 22px 22px 4px; background: var(--chalk); font: 900 clamp(16px, 1.3vw, 22px) var(--head); box-shadow: 0 5px 0 var(--ink); transform: rotate(-4deg); }
+.gc .gc-comm-bubble { position: absolute; z-index: 2; bottom: 10%; left: -6%; padding: 10px 18px; border: 3px solid var(--ink); border-radius: 22px 22px 22px 4px; background: var(--chalk); font: 900 clamp(16px, 1.3vw, 22px) var(--head); box-shadow: 0 5px 0 var(--ink); transform: rotate(-4deg); }
 
+/* HF-ABOUT-GULLY-3: the bubble sits low-left on Meher's kurta, never over her face */
 /* ---------- umpire's board ---------- */
 .gc .gc-ump-grid { display: grid; grid-template-columns: minmax(0, .7fr) minmax(0, 1.3fr); gap: clamp(28px, 4vw, 80px); align-items: center; }
 .gc .gc-ump-art { width: min(100%, 420px); margin: 0 auto; overflow: hidden; aspect-ratio: 9 / 11; border: 8px solid #fff; border-radius: 32px; box-shadow: 0 0 0 3px var(--ink), 0 12px 0 3px var(--ink); background: var(--ivory); transform: rotate(2deg); }
@@ -190,7 +191,7 @@
   .gc .gc-board { transform: none; }
   .gc .gc-comm { width: min(100%, 320px); }
   .gc .gc-ump-art { width: min(100%, 300px); }
-  .gc .gc-comm-bubble { left: 0; top: 24%; }
+  .gc .gc-comm-bubble { left: -2%; bottom: 8%; }
 }
 @media (max-width: 480px) {
   .gc .gc-stk--pink { display: none; }
