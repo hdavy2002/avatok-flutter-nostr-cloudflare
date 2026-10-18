@@ -13,13 +13,14 @@ reason.
 
 ---
 
-## 🎨 HELLO FRAANDS DESIGN SYSTEM — `Specs/HF-DESIGN-SYSTEM.md` (owner decision 2026-10-17)
+## 🎨 HELLO FRAANDS DESIGN SYSTEM + "INDIANIZE IT" — `Specs/HF-DESIGN-SYSTEM.md` (owner, updated 2026-10-18)
 
-The desi homepage (truck art, toran, Warli, block print, Hinglish stickers) IS the site's design
-system: colour tokens, Nunito/Comfortaa type, hard-shadow buttons and cards, artwork library,
-section bands and phone/tablet rules. **Every new Hello Fraands page and every page you modify
-follows it.** Read it before any page, component or artwork work; when the homepage changes the
-design, update the file in the same commit.
+When the owner says **"Indianize this page"** (optionally "…with Bollywood memes / a 70s India look / Onam"),
+follow §0 of `Specs/HF-DESIGN-SYSTEM.md`: pitch 3 Indian theme ideas not in its theme registry (§8) → on approval
+build the page with CSS stand-ins + write the image prompt pack → visual check in the external browser → deploy →
+wire the owner's art when saved → record the theme in §8. Every page is a *different* India (art, craft, festival,
+region, daily life); fresh art only, never reused; multi-colour, bold, rounded, never boxy; no peacocks; no green UI;
+Nunito/Comfortaa only; phones centred. Read it before any page, component, artwork prompt or app screen.
 
 ---
 
