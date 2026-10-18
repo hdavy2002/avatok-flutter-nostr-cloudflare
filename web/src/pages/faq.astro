@@ -1,99 +1,239 @@
 ---
 // [HELLO-FRAANDS-FAQ-1] Full FAQ — topic index, accordions, search, partner section.
-import brandConfig from '../../../Specs/brand.json';
-import { BRAND } from '../lib/brand';
-import { faqSections, faqCount } from '../lib/faqData';
-import Header from '../components/callvaal/Header.astro';
-import Footer from '../components/callvaal/Footer.astro';
-import '../styles/callvaal-notebook.css';
-import '../styles/hello-fraands-faq.css';
+// [HF-FAQ-IRANI-1 2026-10-18] Indianized as "Irani Café Dabba" (owner pick): a Bombay Irani café with a dabbawala crate
+// at the door. 11 topics = 11 painted tiffin dabbas with dabbawala codes; questions are menu cards; Pooja's café bill
+// explains the money; the café rules board carries the safety basics. Bands: taxi yellow, maroon, cream, bottle blue,
+// rose; borders: kaali-peeli checks, awning, Minton tiles, tiffin row. Art: /assets/hf-faq/ (slots + CSS stand-ins in
+// components/faq/faqSkin.ts). Prompt pack: SaatHum project doc claude/hello-fraands-faq-artwork-prompts.md.
+// Styles: styles/faq-irani.css (scoped `.ic`). Questions and answers stay in lib/faqData.ts (copy contracts).
+// Billing copy: fans pay BY THE MINUTE at the influencer's rate. Never per-second, never the gateway / app store.
 export const prerender = true;
 
-const identity = brandConfig.homepageIdentity;
-const title = `FAQs — safety, privacy, payments | ${identity.name}`;
-const description = `Answers about ${identity.name}: private numbers, call safety, OTP and bank-scam warnings, the women-only space, influencer verification, wallet, influencer withdrawals and refunds.`;
-const canonical = `https://${identity.domain}/faq`;
+import Base from '../layouts/Base.astro';
+import SiteHeader from '../components/callvaal/Header.astro';
+import SiteFooter from '../components/callvaal/Footer.astro';
+import { publicImage } from '../lib/config';
+import { BRAND } from '../lib/brand';
+import type { PublicContent } from '../lib/seo/types';
+import { faqSections, faqCount } from '../lib/faqData';
+import { FAQ_ART, FAQ_BG, FAQ_SKINS, dabbaFor, dabbaArt } from '../components/faq/faqSkin';
+import '../styles/desi-home-chrome.css';
+import '../styles/faq-irani.css';
+
+const content: PublicContent = {
+  kind: 'collection',
+  key: 'faq',
+  canonicalPath: '/faq',
+  title: 'FAQs: safety, privacy, payments',
+  summary: `Answers about ${BRAND.name}: private numbers, call safety, OTP and bank-scam warnings, the women-only space, influencers, the wallet, influencer withdrawals and refunds.`,
+  visibility: 'public',
+};
 const plain = (html: string) => html.replace(/<[^>]+>/g, '').replace(/&amp;/g, '&');
 const jsonLd = {
-  '@context': 'https://schema.org', '@type': 'FAQPage', url: canonical, inLanguage: 'en-IN',
+  '@context': 'https://schema.org', '@type': 'FAQPage', url: BRAND.webOrigin + '/faq', inLanguage: 'en-IN',
   mainEntity: faqSections.flatMap(s => s.items.map(i => ({ '@type': 'Question', name: i.q, acceptedAnswer: { '@type': 'Answer', text: plain(i.a) } }))),
 };
+const img = (p: string, w: number) => publicImage(p, { width: w, fit: 'scale-down' });
+const vars = [
+  ...FAQ_BG.map((o) => `--ic-${o.key}:url(${img(o.path, o.width)}) ${o.tail}`),
+  ...FAQ_SKINS.map((o) => `--ic-${o.key}:url(${img(o.path, o.width)})`),
+].join(';');
+const skins = [...FAQ_BG, ...FAQ_SKINS].map((o) => o.key).join(' ');
+const borders = ['taxi', 'awning', 'minton', 'tiffins'];
+const rate = 20; const mins = 10;
+const rules = [
+  { b: 'No OTP sharing', t: 'We will never ask for it.' },
+  { b: 'No UPI PIN, no card details', t: 'Not on a call, not in chat, not to us.' },
+  { b: 'Number kabhi share nahi hota', t: 'Both calls come from our number.' },
+  { b: 'Press # to end and block', t: 'Any time, on any call.' },
+  { b: 'Report anything', t: 'Our team reviews every report.' },
+  { b: 'A lane just for women', t: 'Women talk only with women there.' },
+];
 const quickLinks = [
-  { href: '/safety', title: 'Safety centre', text: 'How calls are kept safe', tone: 'peach' },
-  { href: '/women-only', title: 'Women-only space', text: 'Verified women, both sides', tone: 'pink' },
-  { href: '/hosts/join', title: 'Join & earn', text: 'Become a verified influencer', tone: 'cream' },
-  { href: '/refunds', title: 'Refund policy', text: 'Wallet, charges, refunds', tone: 'lilac' },
-  { href: '/grievance', title: 'Grievance', text: 'Raise a complaint', tone: 'paper' },
-  { href: '/terms', title: 'Terms', text: 'The full rules', tone: 'cream' },
+  { href: '/safety', title: 'Safety centre', text: 'How calls are kept safe', tone: 'taxi' },
+  { href: '/women-only', title: 'Women-only space', text: 'A lane just for women', tone: 'rose' },
+  { href: '/hosts/join', title: 'Join & earn', text: 'Upgrade free, set your rate', tone: 'blue' },
+  { href: '/refunds', title: 'Refund policy', text: 'Wallet, charges, refunds', tone: 'maroon' },
+  { href: '/grievance', title: 'Grievance', text: 'Raise a complaint', tone: 'cream' },
+  { href: '/terms', title: 'Terms', text: 'The full rules', tone: 'saffron' },
 ];
 ---
-<!doctype html>
-<html lang="en-IN">
-<head>
-  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <title>{title}</title><meta name="description" content={description} /><link rel="canonical" href={canonical} />
-  <meta name="robots" content="index,follow" /><meta name="theme-color" content="#46113e" />
-  <meta property="og:type" content="website" /><meta property="og:site_name" content={identity.name} /><meta property="og:title" content={title} /><meta property="og:description" content={description} /><meta property="og:url" content={canonical} />
-  <meta property="og:image" content={`https://${identity.domain}/assets/callvaal/scrapbook/hero-collage-friendship.jpg`} /><meta name="twitter:card" content="summary_large_image" />
-  <script type="application/ld+json" set:html={JSON.stringify(jsonLd)} />
-  <link rel="icon" href="/assets/branding/hf-favicon.png" type="image/png" />
-  <link data-site-fonts rel="preload" href="/fonts/Comfortaa-Bold.ttf" as="font" type="font/ttf" crossorigin /><link rel="preload" href="/fonts/Nunito-Black.woff2" as="font" type="font/woff2" crossorigin />
-</head>
-<body>
-<div class="notebook-site faq-site" data-design="callvaal-scrapbook">
-  <a class="skip-link" href="#main-content">Skip to main content</a>
-  <Header />
-  <main id="main-content" class="faq-main">
-    <section class="faq-hero" aria-labelledby="faq-title">
-      <p class="preview-kicker">Help centre · {faqCount} answers</p>
-      <h1 id="faq-title"><span class="faq-h1-top">Yes, we have FAQs!</span>Sawaal hai?<br /><mark><em>Jawaab yahan hai.</em></mark></h1>
-      <p class="faq-hero-sub">Everything callers, influencers and partners ask us — your number, call safety, scams, the women-only space, payments and refunds. In plain words.</p>
-      <div class="faq-search">
-        <label for="faq-search-input" class="sr-only">Search the FAQs</label>
-        <span aria-hidden="true">⌕</span>
-        <input id="faq-search-input" type="search" placeholder="Search: OTP, refund, number, women…" autocomplete="off" />
-      </div>
-      <p class="sr-only" id="faq-search-status" role="status" aria-live="polite"></p>
-      <div class="faq-chips" aria-label="Key facts">
-        <span>Number kabhi share nahi hota</span><span>Press # to end &amp; block</span><span>No human listens to your call</span><span>Every influencer KYC-verified</span>
-      </div>
-      <div class="faq-hero-note paper-note" aria-hidden="true">Koi sawaal<br />chhota nahi hota.</div>
-    </section>
+<Base content={content} chrome={false} indiaLandingLanguage={false}>
+  <Fragment slot="head">
+    <meta name="theme-color" content="#ffc928" />
+    <script type="application/ld+json" set:html={JSON.stringify(jsonLd)} />
+    <link rel="preload" as="style" onload="this.onload=null;this.rel='stylesheet'" href="https://fonts.googleapis.com/css2?family=Comfortaa:wght@500;600;700&family=Nunito:wght@700;800;900&display=swap" />
+  </Fragment>
+  <div class="ic desi-home" style={vars} data-skins={skins || undefined}>
+    <a class="ic-skip" href="#main-content">Skip to main content</a>
+    <SiteHeader />
+    <main id="main-content" class="ic-main">
 
-    <nav class="faq-topics" aria-label="FAQ topics">
-      {faqSections.map(s => <a class={`faq-topic tone-${s.tone}`} href={`#${s.id}`}><span class="faq-topic-icon" aria-hidden="true">{s.icon}</span><strong>{s.title}</strong><small>{s.items.length} questions</small></a>)}
-    </nav>
-
-    <div class="faq-sections">
-      {faqSections.map(s => <section class={`faq-section tone-${s.tone}`} id={s.id} aria-labelledby={`${s.id}-title`} data-faq-section>
-        <header class="faq-section-head">
-          <span class="faq-section-icon" aria-hidden="true">{s.icon}</span>
-          <div><h2 id={`${s.id}-title`}>{s.title}</h2><p><em>{s.hindi}</em></p></div>
-        </header>
-        <div class="faq-list">
-          {s.items.map((item, i) => <details class="faq-item" id={`${s.id}-${i + 1}`} data-faq-item>
-            <summary><span>{item.q}</span><b aria-hidden="true">+</b></summary>
-            <div class="faq-answer"><p set:html={item.a} /></div>
-          </details>)}
+      <!-- HERO: the café front -->
+      <section class="ic-hero" aria-labelledby="faq-title">
+        <div class="ic-sign" aria-hidden="true"><span>{BRAND.name}</span><b>Irani Café</b><span>Sawaal-jawaab counter</span></div>
+        <div class="ic-wrap ic-hero-grid">
+          <div class="ic-hero-copy">
+            <p class="ic-stickers" aria-hidden="true"><span class="ic-stk ic-stk--yellow">Yes, we have FAQs!</span><span class="ic-stk ic-stk--rose">Bole toh simple</span></p>
+            <p class="ic-kicker">Help centre · {faqCount} answers</p>
+            <h1 id="faq-title">Sawaal hai? <span class="ic-pop">Jawaab yahan.</span></h1>
+            <p class="hf-hindi ic-hindi"><em>Ek cutting chai, ek sawaal. Sab ka jawaab, seedhe shabdon mein.</em></p>
+            <div class="ic-search">
+              <label for="faq-search-input" class="sr-only">Search the FAQs</label>
+              <span aria-hidden="true">⌕</span>
+              <input id="faq-search-input" type="search" placeholder="Search: OTP, refund, number, women…" autocomplete="off" />
+            </div>
+            <p class="sr-only" id="faq-search-status" role="status" aria-live="polite"></p>
+            <ul class="ic-chips" aria-label="Key facts">
+              <li>Number kabhi share nahi hota</li><li>Press # to end &amp; block</li><li>Ringing costs ₹0</li>
+            </ul>
+            <div class="ic-ctas">
+              <a class="ic-btn" href="#dabbas">Pick a dabba</a>
+              <a class="ic-btn ic-btn--light" href={`mailto:${BRAND.emails.support}`}>Email support</a>
+            </div>
+          </div>
+          <div class="ic-hero-art">
+            {FAQ_ART.hero
+              ? <img src={img(FAQ_ART.hero, 1200)} alt="Illustration of a Bombay Irani café: the owner at the counter with glass jars of biscuits, and a young woman with her phone at a marble table" width="1200" height="1100" fetchpriority="high" decoding="async" />
+              : <div class="ic-css-cafe" aria-hidden="true">
+                  <div class="ic-css-awning"></div>
+                  <div class="ic-css-shop">
+                    <div class="ic-css-jars"><i></i><i></i><i></i><i></i></div>
+                    <div class="ic-css-counter"><span class="ic-css-chai"></span><span class="ic-css-bun"></span><span class="ic-css-chai"></span></div>
+                  </div>
+                  <div class="ic-css-table"><span></span></div>
+                </div>}
+          </div>
         </div>
-      </section>)}
-      <p class="faq-empty" hidden data-faq-empty>No answer matches that search. Try another word, or write to <a href={`mailto:${BRAND.emails.support}`}>{BRAND.emails.support}</a>.</p>
-    </div>
+      </section>
+      <div class="ic-band" data-border="taxi" aria-hidden="true"></div>
 
-    <section class="faq-quick" aria-labelledby="faq-quick-title">
-      <h2 id="faq-quick-title">Quick <em>links</em></h2>
-      <div class="faq-quick-grid">{quickLinks.map(l => <a class={`tone-${l.tone}`} href={l.href}><strong>{l.title}</strong><span>{l.text} →</span></a>)}</div>
-    </section>
+      <!-- DABBA RACK: the topic index -->
+      <section class="ic-rack" id="dabbas" aria-labelledby="ic-rack-title">
+        <div class="ic-wrap">
+          <div class="ic-rack-head">
+            <p class="ic-kicker">Dabbawala delivery · {faqSections.length} topics</p>
+            <h2 id="ic-rack-title">Pick a <span class="ic-pop">dabba</span></h2>
+            <p>Every dabba carries the answers for one topic, delivered to the right table.</p>
+          </div>
+          <nav class="ic-dabbas" aria-label="FAQ topics">
+            {faqSections.map(s => { const d = dabbaFor(s.id); const art = dabbaArt(s.id); return (
+              <a class="ic-dabba" href={`#${s.id}`} style={`--d:${d.colour}`}>
+                <span class="ic-dabba-art" aria-hidden="true">{art ? <img src={img(art, 400)} alt="" width="400" height="400" loading="lazy" decoding="async" /> : <span class="ic-tiffin"></span>}</span>
+                <span class="ic-code">{d.code}</span>
+                <strong>{s.title}</strong>
+                <small>{s.items.length} sawaal</small>
+              </a>); })}
+          </nav>
+        </div>
+      </section>
+      <div class="ic-band" data-border="awning" aria-hidden="true"></div>
 
-    <section class="faq-cta" aria-labelledby="faq-cta-title">
-      <h2 id="faq-cta-title">Abhi bhi sawaal hai?</h2>
-      <p>Write to us and a real person will reply. Never send an OTP, UPI PIN or card details — we will never ask for them.</p>
-      <div class="faq-cta-actions"><a class="faq-btn faq-btn--primary" href={`mailto:${BRAND.emails.support}`}>Email support</a><a class="faq-btn faq-btn--ghost" href="/#people">Influencer se baat karo</a></div>
-      <p class="faq-crisis">In danger? Call <a href="tel:112">112</a>. Need mental-health support? Call <a href="tel:14416">Tele-MANAS 14416</a> (free, 24×7).</p>
-    </section>
-  </main>
-  <Footer />
-</div>
+      <!-- POOJA'S BILL: money as a café bill -->
+      <section class="ic-bill" id="pooja" aria-labelledby="ic-bill-title">
+        <div class="ic-wrap ic-bill-grid">
+          <div class="ic-frame">
+            {FAQ_ART.pooja
+              ? <img src={img(FAQ_ART.pooja, 900)} alt="Illustration of Pooja at an Irani café table, smiling on a phone call while the owner writes her bill" width="900" height="720" loading="lazy" decoding="async" />
+              : <div class="ic-css-pooja" aria-hidden="true"><span class="ic-css-phone"></span><span class="ic-css-glass"></span></div>}
+          </div>
+          <div class="ic-bill-copy">
+            <p class="ic-kicker">Worked example</p>
+            <h2 id="ic-bill-title">Pooja ka <span class="ic-pop">bill</span></h2>
+            <p>Pooja from Dadar calls her favourite cooking creator at ₹{rate} a minute and talks for {mins} minutes.</p>
+            <div class="ic-receipt" role="group" aria-label="Pooja's bill">
+              <p class="ic-receipt-head">Bill · Table 7</p>
+              <dl>
+                <div><dt>Phone ringing</dt><dd>₹0</dd></div>
+                <div><dt>Influencer declines</dt><dd>₹0</dd></div>
+                <div><dt>Call never connects</dt><dd>₹0</dd></div>
+                <div class="ic-receipt-main"><dt>Talked {mins} min × ₹{rate}</dt><dd>₹{rate * mins}</dd></div>
+                <div><dt>Her number shared</dt><dd>Never</dd></div>
+              </dl>
+              <p class="ic-receipt-foot">To start, keep 2 minutes in the wallet: ₹{rate * 2}</p>
+            </div>
+          </div>
+        </div>
+      </section>
+      <div class="ic-band" data-border="minton" aria-hidden="true"></div>
+
+      <!-- CAFÉ RULES BOARD: safety basics -->
+      <section class="ic-rules" aria-labelledby="ic-rules-title">
+        <div class="ic-wrap ic-rules-grid">
+          <div class="ic-board">
+            <h2 id="ic-rules-title">Café ke <span class="ic-pop">rules</span></h2>
+            <ol>{rules.map((r, i) => <li><b>{i + 1}</b><span><strong>{r.b}</strong>{r.t}</span></li>)}</ol>
+            <p class="ic-board-foot">By order, the management.</p>
+          </div>
+          <div class="ic-frame ic-frame--round">
+            {FAQ_ART.rules
+              ? <img src={img(FAQ_ART.rules, 900)} alt="Illustration of a café waiter carrying cutting chai past the rules board" width="900" height="720" loading="lazy" decoding="async" />
+              : <div class="ic-css-waiter" aria-hidden="true"><span></span><span></span><span></span></div>}
+          </div>
+        </div>
+      </section>
+
+      <!-- THE MENU: every topic, every question -->
+      <div class="ic-sections">
+        {faqSections.map((s, si) => { const d = dabbaFor(s.id); const art = dabbaArt(s.id); return (<>
+          <div class="ic-band" data-border={borders[si % borders.length]} aria-hidden="true"></div>
+          <section class="ic-sec" data-tone={d.tone} id={s.id} aria-labelledby={`${s.id}-title`} data-faq-section style={`--d:${d.colour}`}>
+            <div class="ic-wrap ic-sec-grid">
+              <header class="ic-sec-head">
+                <span class="ic-vert" aria-hidden="true">Dabba {String(si + 1).padStart(2, '0')}</span>
+                <span class="ic-dabba-art ic-dabba-art--big" aria-hidden="true">{art ? <img src={img(art, 400)} alt="" width="400" height="400" loading="lazy" decoding="async" /> : <span class="ic-tiffin"></span>}</span>
+                <div>
+                  <span class="ic-code">{d.code}</span>
+                  <h2 id={`${s.id}-title`}>{s.title}</h2>
+                  <p class="ic-sec-hindi"><em>{s.hindi}</em></p>
+                  <small>{s.items.length} sawaal</small>
+                </div>
+              </header>
+              <div class="ic-list">
+                {s.items.map((item, i) => <details class="faq-item ic-q" id={`${s.id}-${i + 1}`} data-faq-item>
+                  <summary><span>{item.q}</span><b aria-hidden="true">+</b></summary>
+                  <div class="ic-a"><p set:html={item.a} /></div>
+                </details>)}
+              </div>
+            </div>
+          </section>
+        </>); })}
+        <p class="ic-empty" hidden data-faq-empty>No answer matches that search. Try another word, or write to <a href={`mailto:${BRAND.emails.support}`}>{BRAND.emails.support}</a>.</p>
+      </div>
+      <div class="ic-band" data-border="taxi" aria-hidden="true"></div>
+
+      <!-- NEXT TABLE: quick links -->
+      <section class="ic-quick" aria-labelledby="ic-quick-title">
+        <div class="ic-wrap">
+          <h2 id="ic-quick-title">Next <span class="ic-pop">table</span></h2>
+          <div class="ic-quick-grid">{quickLinks.map(l => <a data-tone={l.tone} href={l.href}><strong>{l.title}</strong><span>{l.text} →</span></a>)}</div>
+        </div>
+      </section>
+      <div class="ic-band" data-border="tiffins" aria-hidden="true"></div>
+
+      <!-- CLOSE -->
+      <section class="ic-close" aria-labelledby="ic-close-title">
+        <div class="ic-wrap ic-close-grid">
+          <div class="ic-frame">
+            {FAQ_ART.close
+              ? <img src={img(FAQ_ART.close, 900)} alt="Illustration of a dabbawala on a bicycle outside the Irani café, waving" width="900" height="720" loading="lazy" decoding="async" />
+              : <div class="ic-css-cycle" aria-hidden="true"><span></span><span></span><i></i></div>}
+          </div>
+          <div class="ic-close-copy">
+            <h2 id="ic-close-title">Abhi bhi <span class="ic-pop">sawaal hai?</span></h2>
+            <p>Write to us and a real person will reply. Never send an OTP, UPI PIN or card details — we will never ask for them.</p>
+            <div class="ic-ctas">
+              <a class="ic-btn" href={`mailto:${BRAND.emails.support}`}>Email support</a>
+              <a class="ic-btn ic-btn--light" href="/marketplace">Influencer se baat karo</a>
+            </div>
+            <p class="ic-crisis">In danger? Call <a href="tel:112">112</a>. Need mental-health support? Call <a href="tel:14416">Tele-MANAS 14416</a> (free, 24×7).</p>
+          </div>
+        </div>
+      </section>
+    </main>
+    <SiteFooter />
+  </div>
+</Base>
 <script>
   const input = document.getElementById('faq-search-input') as HTMLInputElement | null;
   const status = document.getElementById('faq-search-status');
@@ -114,10 +254,13 @@ const quickLinks = [
       d.hidden = !hit; if (hit) shown++;
       d.open = hit && q.length > 2;
     });
-    sections.forEach(s => { s.hidden = !s.querySelector('[data-faq-item]:not([hidden])'); });
+    sections.forEach(s => {
+      const off = !s.querySelector('[data-faq-item]:not([hidden])');
+      s.hidden = off;
+      const band = s.previousElementSibling as HTMLElement | null;
+      if (band?.classList.contains('ic-band')) band.hidden = off;
+    });
     if (empty) empty.hidden = shown > 0;
     if (status) status.textContent = q ? `${shown} answers found` : '';
   });
 </script>
-</body>
-</html>

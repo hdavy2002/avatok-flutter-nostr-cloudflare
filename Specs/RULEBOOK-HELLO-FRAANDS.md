@@ -389,3 +389,4 @@ else, or come back later."
 | 2026-10-17 | HF-DESI-HOME-MOBILE-1 (owner): homepage phone/tablet fixes and footer disclaimer wording — new rule HF-SITE-21. |
 | 2026-10-17 | HF-HOME-POLISH-2 (owner): footer trimmed to six links per column (HF-SITE-22; supersedes the longer footer columns in HF-NAV-2), homepage highlight/sticker fixes, "Chai pe charcha?" sticker spelling. |
 | 2026-10-17 | HF-DESIGN-SYSTEM-1 (owner): desi design becomes the site design system (HF-DS-1, Specs/HF-DESIGN-SYSTEM.md); creators section separated; bold footer column headers. |
+| 2026-10-18 | HF-FAQ-IRANI-1 (owner): /faq Indianized as "Irani Café Dabba" under HF-DS-2 (theme recorded in HF-DESIGN-SYSTEM §8). No rule change; the hero chip "Every influencer KYC-verified" was dropped because KYC is no longer part of the influencer flow. |

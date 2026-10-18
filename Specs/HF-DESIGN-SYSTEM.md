@@ -295,7 +295,7 @@ a worked example (a named character, real rupee numbers) does the explaining.
 | `/sign-in`, `/sign-up` | **STD-PCO booth** (no header or footer) | Red STD·ISD·PCO booth, yellow signboard, rotary phone, coin slot, keypad-key buttons, painted-signboard input frames, coin strip, cement floor tiles | Booth picture + booth form | `hf-auth/` |
 | `/how-it-works` | **Teen Kadam, Teen Kala**: three steps, three paintings | Step 1 **Warli**, step 2 **Rajasthani Phad**, step 3 **Kashmiri papier-mâché**; borders **Ajrakh, Warli, Phad, Sozni, Phulkari**; grounds **Sanganeri, Warli mud, Leheriya, Kashmiri lacquer, Dabu indigo**; mirror-work and Sozni buttons; Riya (fan) and Ajay (influencer) | Cover medallion → 3 painted steps → 3-tile call strip → bill → CTA | `hf-how/` |
 | `/hosts/join` | **Pat-Katha**: a Bengal Patachitra story scroll (the owner calls it the "lac" page) | **Patachitra** panels, a patua (scroll singer), **Channapatna lacquer** rollers and buttons, **Kantha** borders, **Gond** medallions and dot ground, **Bandhani** hero, **Bidri** earnings ledger, **Ikat** privacy section, **Kalamkari** close; Neha (cooking creator, Indore), Sana (fan) | Unrolling vertical scroll of 4 panels → Bidri ledger with coins + calculator → 3 promises → close | `hf-join/` |
-| `/faq` | Notebook palette (no art theme yet; can be Indianized) | Yellow "Yes, we have FAQs!" badge | Search + accordions | — |
+| `/faq` | **Irani Café Dabba**: a Bombay Irani café with a dabbawala crate at the door | Café signboard, Farokh-uncle at the counter, glass biscuit jars, bun-maska, cutting chai, marble tables, **11 painted tiffin dabbas** with dabbawala codes (one per topic), café bill pad (Pooja, fan from Dadar, ₹20/min × 10 min), **Irani café rules board** for safety, dabbawala on a bicycle; borders **kaali-peeli taxi checks, striped awning, Minton tiles, tiffin row**; grounds **Minton floor, wooden crate, checked tablecloth, bentwood curls, glass jars, marble**; stickers "Yes, we have FAQs!", "Bole toh simple" | Café front → dabba rack (topic index) → bill → rules board → menu sections (sticky dabba + 2-col question cards) → next table → close | `hf-faq/` |
 | Legal / policy pages | Shared content layout (not yet Indianized) | — | Two-column cards | — |
 
 **Styles also used** (don't reuse as a page theme): comic-book halftone (rejected), postal / stamp look (rejected
@@ -315,7 +315,7 @@ as "postal"), haveli (rejected), tombstone-like arched windows (rejected), scrap
 - **West:**
   - Gujarat Navratri garba and dandiya, Rogan art, Kutch mirror and Lippan mud-mirror work.
   - Pushkar camel fair, Kathputli puppets.
-  - Mumbai dabbawalas, kaali-peeli taxi, Irani café, Ganesh Chaturthi.
+  - Mumbai Ganesh Chaturthi (dabbawalas, kaali-peeli taxi and the Irani café are taken by /faq).
   - Pichwai (Nathdwara) cows and lotus.
 - **North:**
   - Varanasi ghats and Dev Deepawali diyas, Holi, Lohri bonfire.
