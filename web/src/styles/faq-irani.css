@@ -163,13 +163,13 @@
 .ic .ic-sec-head small { display: inline-block; margin-top: 10px; padding: 4px 12px; border: 2px solid currentColor; border-radius: 999px; font: 900 14px var(--head); }
 .ic .ic-sec[data-tone="maroon"] .ic-vert, .ic .ic-sec[data-tone="blue"] .ic-vert { -webkit-text-stroke-color: var(--cream); }
 .ic .ic-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px 18px; align-items: start; }
-.ic .ic-q { border: 3px solid var(--ink); border-left: 12px solid var(--d); border-radius: 22px; background: var(--paper); color: var(--ink); box-shadow: 0 6px 0 var(--ink); }
-.ic .ic-q summary { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 16px 16px 16px 18px; list-style: none; cursor: pointer; font: 800 clamp(17px, 1.12vw, 20px)/1.3 var(--head); }
-.ic .ic-q summary::-webkit-details-marker { display: none; }
-.ic .ic-q summary b { flex: none; display: grid; place-items: center; width: 40px; height: 40px; border: 3px solid var(--ink); border-radius: 50%; background: var(--d); color: #fff; font: 900 24px/1 var(--head); transition: transform .18s; }
-.ic #ai-safety .ic-q summary b { color: var(--ink); }
-.ic .ic-q[open] summary b { transform: rotate(45deg); }
-.ic .ic-q[open] { background: #fff; }
+.ic .faq-item { border: 3px solid var(--ink); border-left: 12px solid var(--d); border-radius: 22px; background: var(--paper); color: var(--ink); box-shadow: 0 6px 0 var(--ink); }
+.ic .faq-item summary { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 16px 16px 16px 18px; list-style: none; cursor: pointer; font: 800 clamp(17px, 1.12vw, 20px)/1.3 var(--head); }
+.ic .faq-item summary::-webkit-details-marker { display: none; }
+.ic .faq-item summary b { flex: none; display: grid; place-items: center; width: 40px; height: 40px; border: 3px solid var(--ink); border-radius: 50%; background: var(--d); color: #fff; font: 900 24px/1 var(--head); transition: transform .18s; }
+.ic #ai-safety .faq-item summary b { color: var(--ink); }
+.ic .faq-item[open] summary b { transform: rotate(45deg); }
+.ic .faq-item[open] { background: #fff; }
 .ic .ic-a { margin: 0 16px 16px 18px; padding-top: 12px; border-top: 2px dashed rgba(29,24,48,.3); font-size: clamp(16px, 1.05vw, 18px); }
 .ic .ic-a a { color: var(--blue); font-weight: 800; }
 .ic .ic-empty { max-width: 720px; margin: clamp(40px, 5vw, 72px) auto; padding: 24px; text-align: center; border: 3px solid var(--ink); border-radius: 24px; background: var(--paper); box-shadow: 0 6px 0 var(--ink); font-weight: 700; }
@@ -216,8 +216,8 @@
   .ic .ic-sec-head { position: static; display: flex; flex-direction: column; align-items: center; }
   .ic .ic-vert { writing-mode: horizontal-tb; transform: none; font-size: 22px; }
   .ic .ic-sec-head .ic-dabba-art--big { width: min(100%, 240px); margin-top: 10px; }
-  .ic .ic-q { text-align: left; border-left-width: 8px; }
-  .ic .ic-q summary { padding: 14px 12px 14px 14px; }
+  .ic .faq-item { text-align: left; border-left-width: 8px; }
+  .ic .faq-item summary { padding: 14px 12px 14px 14px; }
   .ic .ic-a { margin: 0 12px 14px 14px; }
   .ic .ic-receipt dl div { text-align: left; }
   .ic[data-skins~="btn"] .ic-btn:not(.ic-btn--light), .ic[data-skins~="btn2"] .ic-btn--light { min-height: 48px; border-width: 0 56px; border-image-width: 0 56px; font-size: 15px; }
@@ -229,7 +229,7 @@
   .ic .ic-dabba { padding: 10px 8px 14px; }
   .ic .ic-dabba strong { font-size: 16px; }
 }
-@media (prefers-reduced-motion: reduce) { .ic .ic-btn, .ic .ic-dabba, .ic .ic-quick-grid a, .ic .ic-q summary b { transition: none; } }
+@media (prefers-reduced-motion: reduce) { .ic .ic-btn, .ic .ic-dabba, .ic .ic-quick-grid a, .ic .faq-item summary b { transition: none; } }
 /* shared chrome resets <b>/<small>; keep Nunito where it matters */
-.ic .ic-btn, .ic .ic-code, .ic .ic-dabba strong, .ic .ic-q summary, .ic .ic-q summary b, .ic .ic-board li b, .ic .ic-board li strong, .ic .ic-receipt dd, .ic .ic-sec-head small, .ic .ic-quick-grid strong, .ic .ic-kicker, .ic .ic-stk, .ic .ic-sign b { font-family: var(--head) !important; }
-.ic .ic-btn, .ic .ic-code, .ic .ic-dabba strong, .ic .ic-q summary b, .ic .ic-board li b, .ic .ic-board li strong, .ic .ic-receipt dd, .ic .ic-quick-grid strong, .ic .ic-stk, .ic .ic-sign b { font-weight: 900 !important; }
+.ic .ic-btn, .ic .ic-code, .ic .ic-dabba strong, .ic .faq-item summary, .ic .faq-item summary b, .ic .ic-board li b, .ic .ic-board li strong, .ic .ic-receipt dd, .ic .ic-sec-head small, .ic .ic-quick-grid strong, .ic .ic-kicker, .ic .ic-stk, .ic .ic-sign b { font-family: var(--head) !important; }
+.ic .ic-btn, .ic .ic-code, .ic .ic-dabba strong, .ic .faq-item summary b, .ic .ic-board li b, .ic .ic-board li strong, .ic .ic-receipt dd, .ic .ic-quick-grid strong, .ic .ic-stk, .ic .ic-sign b { font-weight: 900 !important; }

@@ -190,7 +190,7 @@ const quickLinks = [
                 </div>
               </header>
               <div class="ic-list">
-                {s.items.map((item, i) => <details class="faq-item ic-q" id={`${s.id}-${i + 1}`} data-faq-item>
+                {s.items.map((item, i) => <details class="faq-item" id={`${s.id}-${i + 1}`} data-faq-item>
                   <summary><span>{item.q}</span><b aria-hidden="true">+</b></summary>
                   <div class="ic-a"><p set:html={item.a} /></div>
                 </details>)}
