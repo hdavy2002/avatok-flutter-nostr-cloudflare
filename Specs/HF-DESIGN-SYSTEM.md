@@ -15,6 +15,85 @@ avoid repeating a theme, craft, motif or layout.
 > buttons must never be stretched or distorted, text never overlaps, art never blends into the background.**
 > This applies to web pages, app screens (check the build/preview or screenshots), onboarding and animations.
 
+## ★ Design philosophy: art-directed, never boxy (owner, 2026-10-18; read first)
+
+**The owner is not looking for sloppy, boxy designs.** Every page and app screen must feel *deliberately designed
+at every level*, from the overall composition to the crop of a portrait and the placement of a single word. This
+philosophy leads; the rest of this file says how we deliver it. Where an older rule below conflicts, **this section
+wins**.
+
+### The style
+Bold, expressive, **art-directed graphic design**, with the visual imagination of an advertising campaign carried
+through a usable website or app:
+- oversized typography;
+- cutout photography;
+- playful, layered compositions;
+- contemporary Indian character.
+
+### Compose text and images together
+- **Headlines become part of the artwork.**
+  - Dramatic scale, intentional line breaks, tightly composed lettering.
+  - Occasional combinations of **solid and outline type** (Nunito 900 with `-webkit-text-stroke` for the outline;
+    still only Nunito/Comfortaa).
+- **Interactions between people and type** must feel carefully composed and physically believable:
+  - a creator stands in front of a word while an arm passes behind another letter;
+  - a person leans against a geometric shape or emerges beyond a frame.
+- **Photography:**
+  - Expressive photographs of **Indian creators** with varied personalities, appearances and interests.
+  - Poses chosen to work with the design.
+  - Clean background removal that preserves natural hair and clothing edges.
+  - Mix full photographs with cutout portraits, oversized letters, circles, arches and selective illustrations.
+- **Headlines:** short and memorable, with personality. The words and their arrangement work together visually.
+  Supporting copy stays concise and readable.
+
+### Rhythm and personality
+- A **strong focal point in every section**.
+- Alternate bold compositions with quieter areas and **generous breathing room**.
+- Use asymmetry, deliberate overlaps, unexpected crops and changes in scale, while keeping clear alignment.
+- Each section has **its own composition** within one coherent visual language.
+
+### Contemporary Indian design
+- **Warm ivory base** with a **controlled selection** of vermilion, marigold, rani pink, indigo or leaf green.
+  Choose **a few colours that work together** per page or section rather than every colour everywhere.
+  - This refines the older "multi-colour" rule: rich, but curated.
+  - Leaf green is allowed here only as one of these chosen accents, never as a dominant UI colour.
+- Indian **block-print borders, botanical stamps, textile-inspired patterns and hand-drawn accents**, used
+  selectively. Each must have a clear role: framing imagery, separating sections or highlighting content.
+- The feeling: **youthful, welcoming, culturally rooted, polished.**
+
+### Applied to the marketplace (and every product page)
+- **Hero:** a memorable composition of oversized lettering and creator photography, with a **prominent, usable
+  search field**.
+- **Easy to scan:** search, category filters, creator names and actions.
+- **Creator cards:** distinctive image crops, subtle printed borders, thoughtful typography.
+- **Save the drama** (big overlaps, people breaking frames) for featured creators, category banners and promotional
+  sections.
+
+### Mobile
+Preserve the hierarchy and visual character. Reposition overlapping elements (don't just shrink them) and keep
+controls accessible and centred (§2.11).
+
+### Avoid these failures (check every design against this list)
+- Repeating the same rounded card layout throughout the page.
+- Placing every image inside a separate rectangular container.
+- Identical heading-and-three-card sections, repeated.
+- Random blobs, icons, gradients or shadows as substitutes for composition.
+- Shrinking all typography to safe, uniform sizes.
+- A polished hero followed by generic template sections.
+- Decoration that obscures essential text, faces or controls.
+
+### Building it (implementation notes)
+- **Cutouts:** transparent PNG/WebP cutouts layered with z-index over real HTML text.
+  - For "arm behind a letter", split the cutout into two layers: the body in front, the arm masked behind, or a
+    second masked copy above the word.
+  - Shapes come from CSS (`border-radius` arches, circles, `clip-path`).
+- **Text stays real HTML text**, never baked into images: it has to stay accessible, searchable and translatable.
+- **Overlaps** never cover a face, a control or the text a user needs. Verify this in the browser at every width.
+- **Reference images** from the owner guide typographic confidence, image-and-letter interaction, depth, colour
+  relationships and energy. Develop an **original** design from those principles; never copy a reference.
+
+---
+
 ## 0. The command: "Indianize it"
 
 When the owner says **"Indianize this page"** / **"please indianize <page or URL>"** (in any session), run this flow.
@@ -95,9 +174,9 @@ a worked example (a named character, real rupee numbers) does the explaining.
    - **Never reuse** another page's artwork, motifs, layout or concept, not even as a temporary placeholder.
    - Until the owner's art arrives, the stand-ins are drawn in CSS.
    - Before using a motif, check §8.
-3. **Multi-colour, never one-tone.** He loves the richness of a Rajasthani painting: many bold colours side by
+3. **Multi-colour, never one-tone (now: a curated few colours on warm ivory; see ★).** He loves the richness of a Rajasthani painting: many bold colours side by
    side. A page whose images all share one hue (all blue, all brown) is wrong. Vary the band colours section by
-   section. Green is allowed only inside artwork (leaves), **never as a UI colour**.
+   section. Green: only inside artwork, or leaf green as one chosen accent per the ★ brief, **never as a dominant UI colour**.
 4. **Bold and loud.** Go big:
    - Large graphics that blend into the type.
    - Vertical type where it fits (a vertical word down a band or beside art).
@@ -105,7 +184,7 @@ a worked example (a named character, real rupee numbers) does the explaining.
    - Hinglish voice.
    - Fun meme stickers where the theme allows (textured, painterly, not cartoons).
    - Never a generic SaaS look.
-5. **No sharp edges anywhere.** Rounded corners on cards, images, frames, chips, listing cards, inputs and
+5. **No sharp edges anywhere** (but vary the shapes and crops — arches, circles, cutouts — rather than one repeated rounded card; see ★). Rounded corners on cards, images, frames, chips, listing cards, inputs and
    buttons (radius 14–28px; pills for buttons and chips).
 6. **Never boxy.**
    - Bands run edge to edge, full width.
@@ -139,6 +218,10 @@ a worked example (a named character, real rupee numbers) does the explaining.
     - Still Indian folk-art in look and still multi-colour. It is **not** glossy plastic CGI, cartoon 3D or
       photorealism.
     - Never flat vector art, flat fills with no texture, or clip-art.
+    - **Photography is the exception (★ philosophy):** creator and people imagery for heroes, featured creators and
+      campaign sections should be **expressive photographs of Indian creators as clean cutouts** (natural hair and
+      clothing edges kept). The textured, painterly rule applies to the illustrations, craft accents, badges,
+      borders and stickers around them.
     - **No cartoons.** No cartoon characters, chibi or big-head caricatures, comic or animated-movie styling.
       People are drawn in the craft's own painterly way (miniature painting, Patachitra, mural, embroidery),
       with natural proportions.
@@ -267,7 +350,7 @@ a worked example (a named character, real rupee numbers) does the explaining.
    layered relief"** (§2.13). **Not** for background tiles and grounds: their block says "calm, low-contrast,
    soft pattern, text must stay readable on top"; no realistic texture.
 4. **Negative prompt:**
-   - Photo, 3D, gradient, watermark, brand or app-store or payment logos, misspellings, extra fingers.
+   - (For illustration and craft assets:) photo, 3D, gradient, watermark, brand or app-store or payment logos, misspellings, extra fingers.
    - **Flat vector illustration, flat colour fills, no texture, clip-art, cartoon, cartoon characters, chibi,
      caricature, comic style, animated-movie style**, glossy plastic 3D/CGI.
    - Green background, neon, gloomy mood, **peacocks**.
@@ -276,6 +359,17 @@ a worked example (a named character, real rupee numbers) does the explaining.
    spelled exactly.
 6. A table per folder: file name, size, transparency, prompt.
 7. A checklist at the end.
+
+### 7.1b Photographic creator prompts (★ philosophy)
+
+- Expressive photographic portraits of Indian creators with varied ages, looks, styles and interests (a cook, a
+  musician, a fitness coach, a comic, a traveller, a gamer…).
+- Poses chosen for the composition: leaning, pointing, reaching, laughing, arms out, looking at a word.
+- Shot against a plain studio backdrop for clean background removal, then delivered as **transparent PNG/WebP
+  cutouts** with natural hair and clothing edges.
+- Name the pose and crop needed (e.g. "arm raised to pass behind a letter", "leaning left against an arch").
+- These are **generated or model images for design**, never real influencers' photos. On the live product,
+  influencers appear as the AI avatar they chose (§1).
 
 ### 7.2 Size and format rules
 

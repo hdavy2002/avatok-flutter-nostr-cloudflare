@@ -15,6 +15,11 @@ reason.
 
 ## 🎨 HELLO FRAANDS DESIGN SYSTEM + "INDIANIZE IT" — `Specs/HF-DESIGN-SYSTEM.md` (owner, updated 2026-10-18)
 
+**Owner design philosophy (2026-10-18): art-directed, campaign-style, never boxy or sloppy** — oversized type that
+becomes artwork, cutout creator photography interacting with letters/arches/circles, layered asymmetric compositions
+with a focal point per section, warm ivory + a few curated Indian colours, selective block-print/textile accents,
+and none of the listed template failures. See the ★ section at the top of `Specs/HF-DESIGN-SYSTEM.md`.
+
 When the owner says **"Indianize this page"** (optionally "…with Bollywood memes / a 70s India look / Onam"),
 follow §0 of `Specs/HF-DESIGN-SYSTEM.md`: pitch 3 Indian theme ideas not in its theme registry (§8) → on approval
 build the page with CSS stand-ins + write the image prompt pack → visual check in the external browser → deploy →
