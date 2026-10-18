@@ -3,7 +3,7 @@ title: "How does {{brand.name}} keep women safe?"
 description: "Women's safety is the main reason {{brand.name}} is built this way. Learn what protects you and what to do if a man crosses a line."
 section: for-women
 order: 1
-updated: 2026-10-08
+updated: 2026-10-18
 keywords: ["women safety", "mahila suraksha", "flirt", "harassment", "ladies safe", "ladkiyon ke liye", "hash key"]
 audience: both
 faq:
@@ -49,9 +49,9 @@ Some people think, "I am paying per minute, so I can say anything." This is wron
 
 Kavya is an influencer. A caller starts with normal chat. After a few minutes he says, "You have a sweet voice. Why don't we talk about something more private?" Kavya does not reply. She presses #. The call ends, he is blocked and the incident is reported. She did not have to say a word.
 
-## Want a space with only women?
+## Want to choose who can call you?
 
-There is a separate lane where only women talk to women. See [The women-only space](/help/for-women/women-only-space) or visit [women-only space](/women-only).
+Influencers on the monthly influencer plan can take calls from verified customers only. See [Can I choose who calls me?](/help/for-women/women-only-space) or visit [women's safety](/women-only).
 
 ## If something goes wrong
 

@@ -1,45 +1,46 @@
 ---
-title: "What is the women-only space?"
-description: "A separate lane where only women talk to women. Learn who it is for and how it stays safe."
+title: "Can I choose who calls me?"
+description: "Influencers on the monthly influencer plan can take calls from verified customers only. Here is what that means for women and LGBTQ+ influencers."
 section: for-women
 order: 2
 updated: 2026-10-18
-keywords: ["women only", "mahila only", "ladies only", "women lane", "only women", "women influencer"]
+keywords: ["women only", "mahila only", "ladies only", "verified callers", "verified customers only", "kyc callers", "women influencer", "safe calls"]
 audience: both
 faq:
-  - q: "Who can enter the women-only space?"
-    a: "Only women. This applies to both the caller and the influencer."
-  - q: "What if a man pretends to be a woman to get in?"
-    a: "It is against our rules. Press # to end the call and block, and report the account. Our team reviews every report, and anyone found pretending is banned."
+  - q: "Can I take calls only from verified customers?"
+    a: "Yes, if you are on the monthly influencer plan. Turn on Verified customers only in your dashboard. Only customers who have completed full KYC can then call you."
+  - q: "Does verification check that the caller is a woman?"
+    a: "No. Full KYC confirms who the customer is. It does not check gender, and it does not guarantee how anyone will behave."
 draft: false
 ---
 
 <!-- rebrand: reviewed -->
 
-The women-only space is a separate lane on {{brand.name}}. Only women talk to women here. It is for women who want to talk to a woman influencer in a safe space.
+Every influencer on {{brand.name}} decides who they talk to. Influencers on the **monthly influencer plan** get one more control: **Verified customers only**.
 
-## What it is
+## What it does
 
-It is a private lane inside the platform. The caller is a woman. The influencer is a woman. No man is allowed on either side.
+When it is on, only customers who have completed full KYC can call you. Your profile shows **Verified customers only**, so customers know before they try. You can turn it on or off from your dashboard at any time.
 
-It works like the rest of the platform: you pick an influencer, you see the price, you pay per minute. Your number stays masked. The difference is who can be there.
+Verification confirms who the customer is. It does not check gender, and it does not guarantee behaviour. Your usual controls still work on every call.
 
-## If someone breaks the rule
+## Controls every influencer has
 
-- Press **#** at any time. The call ends and the person is blocked.
+- We ring you first. Press **1** to accept or **2** to decline.
+- Press **#** at any time. The call ends, the caller is blocked and the incident is flagged.
 - Report the account. Our team reviews every report.
-- Anyone found pretending to be a woman to get in is banned.
 
 ## An example
 
-Neha is a caller from Jaipur. She wants to talk about something personal. She opens the women-only lane, picks a woman influencer and starts her call. Her number stays private, and she can end the call with # at any time.
+Neha is a fitness influencer from Jaipur. She wants to talk only to callers whose identity is known. She is on the monthly influencer plan, so she turns on Verified customers only. Customers who have not completed full KYC see that they need to do it before they can call her.
 
 ## Rules still apply
 
-The rest of the safety system works here too. The # key ends the call and blocks, and no human monitors your call. Harassment and sexual pressure are still not allowed.
+Harassment and sexual pressure are never allowed, verified or not. No human monitors your call.
 
 ## Learn more
 
 - [Health topics and consent](/help/for-women/health-topics-and-consent)
 - [How {{brand.name}} keeps women safe](/help/for-women/safety-for-women)
-- [women-only space](/women-only)
+- [Women's safety](/women-only)
+- [LGBTQ+ safety](/lgbtq)

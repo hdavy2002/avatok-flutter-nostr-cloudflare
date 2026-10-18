@@ -54,7 +54,7 @@ export const faqSections: FaqSection[] = [
       { q: 'Are the profile photos real?', a: 'Profile pictures and gallery images may be AI-generated, and they are labelled as AI-generated when they are. The voice introduction you can play on a profile is the influencer\'s own recording, labelled "Recorded by the influencer". The person you talk to is the real influencer.' },
       { q: 'Will you ever sell my data?', a: 'Never. We follow India\'s Digital Personal Data Protection Act, 2023 and the DPDP Rules, 2025. Your data is used only to run the service, pay influencers, keep people safe and meet the law. Read <a href="/help/safety-and-privacy/how-we-protect-your-data">how we protect your data</a>.' },
       { q: 'How do I delete my data?', a: 'Go to your account and choose &ldquo;Delete my account&rdquo;, or write to our <a href="/grievance">Grievance Officer</a>. We delete your data, except records the law requires us to keep for a while. See <a href="/data-deletion">data deletion</a>.' },
-      { q: 'What is the LGBTQ+ space?', a: 'A private lane, coming at launch, where LGBTQ+ people can talk to LGBTQ+ influencers. Joining is optional and private. Showing it on your profile is a separate choice. It is for friendship and conversation only, with the same rules as everywhere else. Read more on <a href="/lgbtq">the LGBTQ+ space</a>.' },
+      { q: 'How do I find LGBTQ+ friendly influencers?', a: 'Influencers can choose to show <b>LGBTQ+ friendly</b> on their profile. Customers are never asked about their orientation. Influencers on the monthly influencer plan can also take calls from verified customers only. Read more on <a href="/lgbtq">LGBTQ+ safety</a>.' },
     ],
   },
   {
@@ -76,16 +76,16 @@ export const faqSections: FaqSection[] = [
     items: [
       { q: 'Is it safe for women to take or make calls?', a: 'Women’s safety is the main reason the platform is built the way it is: numbers are never shared, and a woman can end and block any caller instantly with <b>#</b>. Payment never buys permission to cross a boundary.' },
       { q: 'What if a man starts flirting or saying sexual things?', a: 'Press <b>#</b> or hang up — you owe nobody an explanation. Then <a href="/report">report</a> it. After our team reviews the report the caller can get a strike, and repeat offenders are banned.' },
-      { q: 'What is the women-only space?', a: 'A separate lane where only women talk to women. It is hidden from everyone else. Read more on <a href="/women-only">women-only space</a>.' },
-      { q: 'How do you make sure only women enter it?', a: 'The lane is only for women, on both sides of the call. Anyone found entering it while not a woman is reported to our team and banned.' },
-      { q: 'Can we talk about periods, PCOS, pregnancy or intimate health there?', a: 'Yes. In the women-only space, health and intimate-wellness conversations are normal. Harassment and sexual pressure are still not allowed.' },
-      { q: 'Can a man pretend to be a woman to get in?', a: 'It is against our rules. Press <b>#</b> to end the call and block, and report the account. Our team reviews every report, and anyone found pretending is banned.' },
+      { q: 'Can a woman influencer choose who calls her?', a: 'Yes. Influencers on the monthly influencer plan can turn on <b>Verified customers only</b>, so only customers who have completed full KYC can call them. Every influencer can decline any call and press <b>#</b> to end and block. Read more on <a href="/women-only">women&rsquo;s safety</a>.' },
+      { q: 'Does verification check that the caller is a woman?', a: 'No. Full KYC confirms who the customer is, not their gender, and it does not guarantee behaviour. All the usual safety rules still apply.' },
+      { q: 'Can we talk about periods, PCOS, pregnancy or intimate health?', a: 'Yes, with an influencer who lists women&rsquo;s health as a topic on their profile. Harassment and sexual pressure are still not allowed.' },
+      { q: 'What if a caller lies about who they are?', a: 'Press <b>#</b> to end the call and block, and report the account. Our team reviews every report, and anyone found misleading influencers is banned.' },
     ],
   },
   {
     id: 'conduct', title: 'What is allowed', hindi: 'Kya chalega, kya nahi', icon: '✿', tone: 'lilac',
     items: [
-      { q: 'Is sexual talk allowed?', a: 'No. Sexual or suggestive talk is not allowed anywhere on the platform. The only exception is a genuine medical or health conversation with an influencer who has specifically consented to that topic — for example in the women-only space, or with an influencer who lists sexual-health discussion as a topic on their profile. Even then, explicit or erotic talk is not allowed.' },
+      { q: 'Is sexual talk allowed?', a: 'No. Sexual or suggestive talk is not allowed anywhere on the platform. The only exception is a genuine medical or health conversation with an influencer who has specifically consented to that topic — for example an influencer who lists women&rsquo;s health or sexual-health discussion as a topic on their profile. Even then, explicit or erotic talk is not allowed.' },
       { q: 'Can an influencer be my girlfriend or boyfriend?', a: 'No. Influencers are independent people offering friendly conversation. This is not a dating or relationship service, and influencers will not flirt, share their number or meet you. See <a href="/wellbeing">use it in a healthy way</a>.' },
       { q: 'Is there a limit on how much I can call one influencer?', a: 'When calling launches there will be healthy-use limits: a daily time limit with the same influencer, and a short cooling-off gap. If a limit applies you see “This influencer isn’t available right now” — it is a platform rule, not a rejection by the influencer.' },
       { q: 'How do I know what an influencer is willing to talk about?', a: 'Every influencer chooses their topics and that consent is shown on their profile. Please stay within the topics they listed.' },
@@ -125,9 +125,9 @@ export const faqSections: FaqSection[] = [
   {
     id: 'partners', title: 'For payment & compliance partners', hindi: 'Gateway aur partners ke liye', icon: '◆', tone: 'peach',
     items: [
-      { q: 'What does the business sell?', a: 'Paid phone calls between adult influencers and adult fans in India, charged per minute at the influencer\'s rate. Customers add money to a rupee wallet and spend it on connected call time. There are no physical goods, subscriptions, digital downloads or adult content.' },
+      { q: 'What does the business sell?', a: 'Paid phone calls between adult influencers and adult fans in India, charged per minute at the influencer\'s rate. Customers add money to a rupee wallet and spend it on connected call time. Influencers can choose an optional monthly influencer plan with extra call controls. There are no physical goods, digital downloads or adult content.' },
       { q: 'Who are the service providers on the platform?', a: 'Influencers: independent adult individuals based in India. Earnings are paid out only to a bank account or UPI ID in the influencer’s own name.' },
-      { q: 'How do you prevent adult or prohibited content?', a: 'Sexual content is banned by our rules, influencer agreement and community guidelines. Reports are reviewed by our team, and violators receive strikes and bans. Limited, consented medical and intimate-health discussion is allowed only with influencers who opt in to that topic, and in the women-only space.' },
+      { q: 'How do you prevent adult or prohibited content?', a: 'Sexual content is banned by our rules, influencer agreement and community guidelines. Reports are reviewed by our team, and violators receive strikes and bans. Limited, consented medical and intimate-health discussion is allowed only with influencers who opt in to that topic on their profile.' },
       { q: 'How do you prevent fraud on the platform?', a: 'Masked numbers, OTP and bank-detail scam warnings, press-<b>#</b> blocking, bans after team review, regular influencer training on scam awareness, and a rule that no money moves outside the platform.' },
       { q: 'Does anyone monitor or store call content?', a: 'No human monitors live calls. We keep call details (participants as account IDs, time, duration, charge) for billing and dispute handling.' },
       { q: 'How are minors kept off the platform?', a: 'Accounts are 18+ only, and accounts that appear to belong to a minor are suspended.' },

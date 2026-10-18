@@ -2,11 +2,15 @@
 import { BRAND } from '../lib/brand';
 import HelloFraandsPage from '../layouts/HelloFraandsPage.astro';
 ---
-<HelloFraandsPage title="Women-only space" summary="Apni baat, apni marzi — pehle privacy aur safety ke niyam samjhein." review={true} related={[{href:'/safety',label:'Safety centre'},{href:'/community-guidelines',label:'Community guidelines'}]}>
-<p><a class="hf-lane-cta" href="/verify/lane?lane=women">Enter the women-only space</a>. Browsing this page does not give you access.</p>
-<h2>Who the lane is for</h2>
-<p>All participants must be 18 or older. Both the influencer and the caller must be eligible for this lane. An account that is not eligible cannot enter. This is an eligibility check, not a guarantee of anyone's behaviour.</p>
-<p>Women-lane influencers are marked as women-only, and only eligible callers can call them. Calls use a separate platform number. This page is not a private member area: do not upload private stories or identity documents here.</p>
+<HelloFraandsPage updated="2026-10-18" title="Women's safety" summary="Apni baat, apni marzi — aap tay karein kaun aapko call kar sakta hai." review={true} related={[{href:'/safety',label:'Safety centre'},{href:'/community-guidelines',label:'Community guidelines'},{href:'/lgbtq',label:'LGBTQ+ safety'}]}>
+<p>Women influencers decide who can call them. Your number is always masked, you can decline any call, and the <strong>#</strong> key ends a call and blocks the caller.</p>
+<h2 id="verified-only">Verified customers only</h2>
+<p>Influencers on the <strong>monthly influencer plan</strong> can choose to take calls only from customers who have completed full KYC. When it is on, their profile shows <strong>Verified customers only</strong>, and anyone who has not completed full KYC cannot call them.</p>
+<p>Verification confirms who the customer is. It does not check gender, and it does not guarantee how anyone will behave. Every safety rule below still applies.</p>
+<h2>Turning it on</h2>
+<p>Any influencer on the monthly influencer plan can turn <strong>Verified customers only</strong> on or off from their dashboard, whenever they like. Influencers without the plan take calls from any signed-in customer, with the same controls for declining, ending and blocking.</p>
+<h2>For customers</h2>
+<p>To call an influencer who takes verified customers only, you need to complete full KYC first. Everyone must be 18 or older. Never share your number, address or identity documents on a call, verified or not.</p>
 <h2>What you can talk about</h2>
 <p>Everyday life, work, family, relationships and personal experiences are welcome. You may discuss experiences such as periods, PCOS, pregnancy or menopause without being treated as making sexual conversation. Harassment, sexual pressure and abuse remain reportable. Influencers offer conversation, not diagnosis, treatment, therapy or counselling.</p>
 <h2>Your boundaries come first</h2>
@@ -32,7 +36,6 @@ import HelloFraandsPage from '../layouts/HelloFraandsPage.astro';
 </div>
 <p>These are separate services, not {BRAND.name} support. See <a href="/emergency">Emergency support</a> or the official <a href="https://112.gov.in/">112</a>, <a href="https://missionshakti.wcd.gov.in/">Mission Shakti</a>, <a href="https://dghs.mohfw.gov.in/national-mental-health-programme.php">Tele-MANAS</a> and <a href="https://www.cybercrime.gov.in/">Cyber Crime Portal</a> pages.</p>
 <style>
-.hf-lane-cta{font-weight:700}
 .hf-before-call{margin:1.5rem 0;padding:1.25rem 1.5rem;border:2px solid #b2367e;border-radius:24px;background:#f3eeff}
 .hf-before-call h2{margin:0 0 .6rem}
 .hf-before-call p{margin:0}

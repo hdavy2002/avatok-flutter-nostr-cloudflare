@@ -6,7 +6,8 @@ interface Props { hideTagline?: boolean; }
 const { hideTagline: _hideTagline = false } = Astro.props; // kept for callers; the footer no longer shows a tagline
 const identity = brandConfig.homepageIdentity;
 // [HF-HOME-POLISH-2] Owner 2026-10-17: six links per column so the desktop rows line up. KYC guide, Talk safely,
-// LGBTQ+ space, Age policy, Cookies and Intermediary policy moved into the related pages (requirements, safety centre, privacy).
+// Age policy, Cookies and Intermediary policy moved into the related pages (requirements, safety centre, privacy).
+// [HF-VERIFIED-ONLY-1] Owner 2026-10-18: the gated women-only / LGBTQ+ lanes ended; labels are "Women's safety" and "LGBTQ+ safety".
 const groups = [
   ['Company', [
     ['About us', '/about'], ['How it works', '/how-it-works'], ['FAQs', '/faq'], ['Help centre', '/help'], ['Contact us', '/contact'], ['Press', '/press'],
@@ -15,13 +16,13 @@ const groups = [
     ['Join & earn', '/hosts/join'], ['Influencer requirements', '/hosts/requirements'], ['Influencer rules', '/hosts/rules'], ['Welfare & crisis guide', '/hosts/crisis-script'], ['Rates & payouts', '/hosts/rates'], ['Influencer agreement', '/hosts/agreement'],
   ]],
   ['Trust & Safety', [
-    ['Safety centre', '/safety'], ['Community guidelines', '/community-guidelines'], ['Report a user', '/report'], ['Grievance redressal', '/grievance'], ['Emergency support', '/emergency'], ['Women-only space', '/women-only'],
+    ['Safety centre', '/safety'], ['Community guidelines', '/community-guidelines'], ['Report a user', '/report'], ['Grievance redressal', '/grievance'], ['Emergency support', '/emergency'], ["Women's safety", '/women-only'],
   ]],
   ['Legal & Payments', [
     ['Terms of use', '/terms'], ['Service disclaimer', '/disclaimer'], ['Privacy policy', '/privacy'], ['Wallet terms', '/wallet-terms'], ['Refunds', '/refunds'], ['Data deletion', '/data-deletion'],
   ]],
   ['Explore', [
-    ['Explore all influencers', '/marketplace'], ['Find an influencer', '/#naye-dost'], ['Popular topics', '/#moods'], ['Influencers you follow', '/#people'], ['Women-only lane', '/women-only'], ['Earn with us', '/hosts/join'],
+    ['Explore all influencers', '/marketplace'], ['Find an influencer', '/#naye-dost'], ['Popular topics', '/#moods'], ['Influencers you follow', '/#people'], ['LGBTQ+ safety', '/lgbtq'], ['Earn with us', '/hosts/join'],
   ]],
 ] as const;
 ---

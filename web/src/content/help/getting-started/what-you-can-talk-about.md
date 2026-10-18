@@ -47,7 +47,7 @@ If someone does these, press # to end the call and block them, and report it. Ou
 
 Sexual or suggestive talk is **not allowed**.
 
-There is one exception. It is a real health or medical talk with an influencer who has agreed to that topic. The topic is shown on the influencer's profile. Women's health talk in the [women-only space](/women-only) is one example. Explicit or erotic talk is never allowed, even then.
+There is one exception. It is a real health or medical talk with an influencer who has agreed to that topic. The topic is shown on the influencer's profile. Women's health talk with an influencer who lists it is one example (see [women's safety](/women-only)). Explicit or erotic talk is never allowed, even then.
 
 ## Not professional advice
 

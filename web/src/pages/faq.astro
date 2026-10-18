@@ -25,7 +25,7 @@ const content: PublicContent = {
   key: 'faq',
   canonicalPath: '/faq',
   title: 'FAQs: safety, privacy, payments',
-  summary: `Answers about ${BRAND.name}: private numbers, call safety, OTP and bank-scam warnings, the women-only space, influencers, the wallet, influencer withdrawals and refunds.`,
+  summary: `Answers about ${BRAND.name}: private numbers, call safety, OTP and bank-scam warnings, verified-only calls for women and LGBTQ+ influencers, influencers, the wallet, influencer withdrawals and refunds.`,
   visibility: 'public',
 };
 const plain = (html: string) => html.replace(/<[^>]+>/g, '').replace(/&amp;/g, '&');
@@ -47,11 +47,11 @@ const rules = [
   { b: 'Number kabhi share nahi hota', t: 'Both calls come from our number.' },
   { b: 'Press # to end and block', t: 'Any time, on any call.' },
   { b: 'Report anything', t: 'Our team reviews every report.' },
-  { b: 'A lane just for women', t: 'Women talk only with women there.' },
+  { b: 'Verified customers only', t: 'Influencers on the monthly plan can choose it.' },
 ];
 const quickLinks = [
   { href: '/safety', title: 'Safety centre', text: 'How calls are kept safe', tone: 'taxi' },
-  { href: '/women-only', title: 'Women-only space', text: 'A lane just for women', tone: 'rose' },
+  { href: '/women-only', title: "Women's safety", text: 'You decide who can call', tone: 'rose' },
   { href: '/hosts/join', title: 'Join & earn', text: 'Upgrade free, set your rate', tone: 'blue' },
   { href: '/refunds', title: 'Refund policy', text: 'Wallet, charges, refunds', tone: 'maroon' },
   { href: '/grievance', title: 'Grievance', text: 'Raise a complaint', tone: 'cream' },

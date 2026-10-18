@@ -2,18 +2,21 @@
 import HelloFraandsPage from '../layouts/HelloFraandsPage.astro';
 export const prerender = true;
 ---
-<HelloFraandsPage title="LGBTQ+ space" summary="Apne jaise logon se, bina darr ke baat." review={true} related={[{href:'/safety',label:'Safety centre'},{href:'/privacy',label:'Privacy policy'},{href:'/community-guidelines',label:'Community guidelines'}]}>
-<h2>What it is</h2>
-<p>This is a private lane where LGBTQ+ callers and allies who want a safer space talk to LGBTQ+ influencers. You can join through <a href="/verify/lane?lane=lgbtq">a private sign-up</a>.</p>
-<h2>Private by default</h2>
-<p>Joining this lane is your private choice. We never guess anything about you. Showing it on your profile is a separate choice, and you can change it anytime.</p>
+<HelloFraandsPage updated="2026-10-18" title="LGBTQ+ safety" summary="Apne jaise logon se, bina darr ke baat." review={true} related={[{href:'/safety',label:'Safety centre'},{href:'/privacy',label:'Privacy policy'},{href:'/community-guidelines',label:'Community guidelines'},{href:'/women-only',label:"Women's safety"}]}>
+<h2>LGBTQ+ friendly influencers</h2>
+<p>Influencers can choose to show <strong>LGBTQ+ friendly</strong> on their public profile, so you can find someone who understands. It is their own choice, off by default, and they can change it at any time. We never guess anything about anyone.</p>
+<h2 id="verified-only">Verified customers only</h2>
+<p>Influencers on the <strong>monthly influencer plan</strong> can choose to take calls only from customers who have completed full KYC. Their profile then shows <strong>Verified customers only</strong>, and customers who have not completed full KYC cannot call them.</p>
+<p>Verification confirms who the customer is. It does not check anyone's orientation or gender identity, and it does not guarantee how anyone will behave.</p>
+<h2>You never have to tell us</h2>
+<p>Customers are never asked about their orientation or gender identity to make a call. Share only what you are comfortable saying aloud.</p>
 <h2>Adults only</h2>
-<p>Everyone in this lane must be 18 or older.</p>
+<p>Everyone must be 18 or older.</p>
 <h2>Your safety</h2>
 <ul><li>Never share your phone number, photos or address.</li><li>Never pay anyone outside the platform.</li><li>Press <strong>#</strong> to end the call and block the caller.</li><li>Threats or demands for money are not allowed. If someone threatens to expose you or asks for money to keep a secret, that is extortion. Do not pay. End the call and report it.</li><li>No human monitors your call. Report anyone who breaks the rules; our team reviews reports before any strike or ban.</li></ul>
 <p>See <a href="/safety">the Safety centre</a> for how to report.</p>
 <h2>Friendship, not dating</h2>
 <p>The same conduct rules apply here as everywhere else. This is a place for friendship and conversation. Sexual talk is not allowed. Read the <a href="/community-guidelines">community guidelines</a>.</p>
 <h2>Your data</h2>
-<p>Sexual orientation is sensitive personal data. It is stored privately, never shown without your choice, and never sold. Read the <a href="/privacy">privacy policy</a> for details.</p>
+<p>An influencer's LGBTQ+ friendly label is shown only because they turned it on. We do not ask customers for their orientation, and we never sell personal data. Read the <a href="/privacy">privacy policy</a> for details.</p>
 </HelloFraandsPage>

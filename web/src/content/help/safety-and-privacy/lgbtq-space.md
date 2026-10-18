@@ -1,34 +1,38 @@
 ---
-title: "The LGBTQ+ space"
-description: "A private lane, coming at launch, where LGBTQ+ people can talk to LGBTQ+ influencers. What it is, how it stays private and safe."
+title: "LGBTQ+ safety"
+description: "How to find LGBTQ+ friendly influencers, and how influencers can take calls from verified customers only."
 section: safety-and-privacy
 order: 9
-updated: 2026-10-15
-keywords: ["LGBTQ", "LGBTQ+", "queer", "gay", "lesbian", "trans", "private lane", "pride", "safe space"]
+updated: 2026-10-18
+keywords: ["LGBTQ", "LGBTQ+", "queer", "gay", "lesbian", "trans", "LGBTQ+ friendly", "pride", "safe space", "verified customers only"]
 audience: both
 faq:
-  - q: "Is the LGBTQ+ space private?"
-    a: "Yes. Joining is optional and private. Showing it on your profile is a separate choice that you make."
-  - q: "Who can call in the LGBTQ+ space?"
-    a: "LGBTQ+ callers and influencers who choose to join it. It is for friendly conversation only."
+  - q: "How do I find LGBTQ+ friendly influencers?"
+    a: "Look for the LGBTQ+ friendly label on an influencer's profile. Influencers turn it on themselves."
+  - q: "Will I be asked about my orientation?"
+    a: "No. Customers are never asked about their orientation or gender identity to make a call."
 draft: false
 ---
 
 <!-- rebrand: reviewed -->
 
-The LGBTQ+ space is a private lane on {{brand.name}}. In it, LGBTQ+ people can talk to LGBTQ+ influencers. It is **coming at launch**. You can read more on the [LGBTQ+ space page](/lgbtq).
+{{brand.name}} wants LGBTQ+ people to talk without fear. You can read more on the [LGBTQ+ safety page](/lgbtq).
 
-## Private by default
+## LGBTQ+ friendly influencers
 
-- **Joining is your choice.** Nobody is put in this lane without saying yes.
-- **It is private.** Joining does not show anywhere on your profile by itself.
-- **Showing it on your profile is a separate choice.** You can join the lane and still keep it hidden. You can change your mind later.
+- Influencers can show **LGBTQ+ friendly** on their profile.
+- It is **their own choice**, off by default, and they can change it at any time.
+- We never guess anything about anyone.
 
-*Example: Arjun joins the lane to talk to someone who understands. His profile shows nothing about it. Later he decides to show it, and he turns that on himself.*
+## Verified customers only
 
-## Safe for everyone in it
+Influencers on the **monthly influencer plan** can take calls only from customers who have completed full KYC. Verification confirms who the customer is. It does not check orientation or gender identity, and it does not guarantee behaviour.
 
-The same safety rules apply here. Press # to end a call and block, and report anyone who causes harm. Our team reviews every report.
+*Example: Arjun is an LGBTQ+ friendly influencer. He turns on Verified customers only, so every caller's identity is known before they can ring him.*
+
+## You never have to tell us
+
+Customers are never asked about their orientation to make a call. Share only what you are comfortable saying aloud.
 
 ## Friendly conversation only
 
