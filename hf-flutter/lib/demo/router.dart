@@ -3,6 +3,7 @@ import 'package:go_router/go_router.dart';
 
 import 'screens/booking.dart';
 import 'screens/bookings_real.dart'; // [HF-WIRE-8]
+import '../data/models/channel.dart';
 import 'screens/channels.dart';
 import 'screens/call.dart';
 import 'screens/favourites.dart';
@@ -77,7 +78,7 @@ final router = GoRouter(
     GoRoute(
       parentNavigatorKey: rootKey,
       path: '/inf/channels/:id/checking',
-      builder: (_, s) => ChannelCheckingScreen(id: s.pathParameters['id']!, from: s.uri.queryParameters['from']),
+      builder: (_, s) => ChannelCheckingScreen(id: s.pathParameters['id']!, from: s.uri.queryParameters['from'], initial: s.extra is ChannelCheck ? s.extra as ChannelCheck : null),
     ),
     // The influencer's side has its own bottom bar (owner 2026-10-19).
     StatefulShellRoute.indexedStack(

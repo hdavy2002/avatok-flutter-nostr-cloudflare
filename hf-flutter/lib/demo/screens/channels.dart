@@ -9,11 +9,13 @@ import '../../data/models/channel.dart';
 import '../../data/repos/channels_repo.dart';
 import '../../data/services.dart';
 import '../../data/telemetry.dart';
+import '../../data/youtube_sign_in.dart';
 import '../../ui/async_view.dart';
 import '../theme.dart';
 import '../widgets.dart';
 
-// Influencer Channels (HF-WIRE-3, handover section 6). Instagram + YouTube; Facebook says "coming soon".
+// Influencer Channels (HF-WIRE-3, handover section 6). YouTube connects by signing in with Google (HF-REEL-33, HF-WIRE-14: no code);
+// Instagram keeps the handle + bio code and says "coming soon" while the provider is not switched on. Facebook says "coming soon".
 // Routes: /inf/channels, /inf/channels/add, /inf/channels/add/:platform, /inf/channels/:id/checking.
 // `?from=join` keeps the person inside "Join as influencer" (step 2 of 3) instead of the dashboard.
 
@@ -259,7 +261,7 @@ class ChannelPlatformScreen extends StatelessWidget {
                   Text('Pick one. You can add more later.', style: t(16, color: C.muted, w: FontWeight.w700)),
                   const SizedBox(height: 16),
                   _tile(context, icon: Icons.camera_alt_rounded, name: 'Instagram', sub: 'Your reels and public videos', platform: 'instagram'),
-                  _tile(context, icon: Icons.smart_display_rounded, name: 'YouTube', sub: 'Your Shorts and public videos', platform: 'youtube'),
+                  _tile(context, icon: Icons.smart_display_rounded, name: 'YouTube', sub: 'Sign in with YouTube. Your public videos', platform: 'youtube'),
                   _tile(context, icon: Icons.facebook_rounded, name: 'Facebook', sub: 'Coming soon', platform: null),
                 ],
               ),
@@ -314,11 +316,14 @@ class ChannelPlatformScreen extends StatelessWidget {
 
 /// `/inf/channels/add/:platform`: the @handle, four tick boxes, CONNECT, then the one-time code to put in the bio.
 class ChannelConsentScreen extends StatefulWidget {
-  const ChannelConsentScreen({super.key, required this.platform, this.from, this.repo});
+  const ChannelConsentScreen({super.key, required this.platform, this.from, this.repo, this.signIn});
 
   final String platform;
   final String? from;
   final ChannelsRepo? repo;
+
+  /// Google sign-in for YouTube. Tests pass a fake.
+  final YoutubeSignIn? signIn;
 
   @override
   State<ChannelConsentScreen> createState() => _ChannelConsentScreenState();
@@ -326,8 +331,10 @@ class ChannelConsentScreen extends StatefulWidget {
 
 class _ChannelConsentScreenState extends State<ChannelConsentScreen> {
   late final ChannelsRepo _repo = widget.repo ?? Services.instance.channelsRepo;
+  YoutubeSignIn get _signIn => widget.signIn ?? Services.instance.youtubeSignIn;
   final _handle = TextEditingController();
   final List<bool> _ticks = [false, false, false, false];
+  bool _ytTick = false;
   bool _busy = false;
   String? _error;
   AddedChannel? _added;
@@ -347,6 +354,44 @@ class _ChannelConsentScreenState extends State<ChannelConsentScreen> {
   void dispose() {
     _handle.dispose();
     super.dispose();
+  }
+
+  /// YouTube: Google sign-in proves the channel is hers; the server approves and brings in her public videos.
+  Future<void> _connectYoutube() async {
+    if (!_ytTick) {
+      setState(() => _error = 'Please tick the box so we can show your videos.');
+      return;
+    }
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+    Telemetry.event('hf_channel_add_start', {'platform': 'youtube', 'via': 'signin'});
+    try {
+      final token = await _signIn.accessToken();
+      final r = await _repo.connectYoutube(token);
+      await _signIn.signOut();
+      if (!mounted) return;
+      context.pushReplacement('/inf/channels/${r.channel.id}/checking${_fromQuery(widget.from)}', extra: r);
+    } on YoutubeSignInCancelled {
+      if (!mounted) return;
+      setState(() {
+        _busy = false;
+        _error = 'Sign-in was cancelled. Tap the button to try again.';
+      });
+    } on YoutubeSignInFailed catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _busy = false;
+        _error = e.message;
+      });
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _busy = false;
+        _error = e.userMessage;
+      });
+    }
   }
 
   Future<void> _connect() async {
@@ -373,7 +418,8 @@ class _ChannelConsentScreenState extends State<ChannelConsentScreen> {
     } on ApiException catch (e) {
       if (!mounted) return;
       setState(() {
-        _error = e.userMessage;
+        // The Instagram provider is not switched on yet: a friendly, honest answer instead of an error.
+        _error = e.code == 'provider_not_configured' && _ig ? 'Instagram is coming soon. Please connect YouTube for now.' : e.userMessage;
         _busy = false;
       });
     }
@@ -389,15 +435,60 @@ class _ChannelConsentScreenState extends State<ChannelConsentScreen> {
             Expanded(
               child: !_supported
                   ? Center(child: Padding(padding: const EdgeInsets.all(28), child: Text('That channel type is coming soon. Please use Instagram or YouTube for now.', textAlign: TextAlign.center, style: t(18, color: C.deep, h: 1.35))))
-                  : _added == null
-                      ? _form()
-                      : _codeStep(_added!),
+                  : !_ig
+                      ? _youtubeForm()
+                      : _added == null
+                          ? _form()
+                          : _codeStep(_added!),
             ),
           ],
         ),
       ),
     );
   }
+
+  static const String _ytLabel =
+      'I allow Hello Fraands to read my YouTube channel (read only) and show my public videos with the official YouTube player. This channel is mine.';
+
+  Widget _youtubeForm() => ListView(
+        padding: const EdgeInsets.fromLTRB(22, 8, 22, 24),
+        children: [
+          Text('Sign in with YouTube', style: t(26, color: C.maroon)),
+          const SizedBox(height: 8),
+          Text(
+            'Sign in with the Google account of your YouTube channel. That is how we know the channel is yours. We only read your channel and public videos: we never post, change or download anything.',
+            style: t(16, w: FontWeight.w700, h: 1.4),
+          ),
+          const SizedBox(height: 8),
+          Text('All your public videos are shown by default. You can hide any video later.', style: t(15, color: C.muted, w: FontWeight.w700, h: 1.4)),
+          const SizedBox(height: 16),
+          Semantics(
+            checked: _ytTick,
+            label: _ytLabel,
+            child: InkWell(
+              key: const ValueKey('yt-consent'),
+              onTap: _busy ? null : () => setState(() => _ytTick = !_ytTick),
+              child: Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(color: _ytTick ? C.butter : C.paper, borderRadius: BorderRadius.circular(14), border: Border.all(color: _ytTick ? C.marigold : C.sand, width: 2)),
+                child: Row(
+                  children: [
+                    Icon(_ytTick ? Icons.check_box_rounded : Icons.check_box_outline_blank_rounded, color: C.maroon, size: 28),
+                    const SizedBox(width: 10),
+                    Expanded(child: Text(_ytLabel, style: t(15, h: 1.35))),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          if (_error != null) ...[
+            const SizedBox(height: 10),
+            Text(_error!, style: t(15, color: C.ruby, h: 1.35)),
+          ],
+          const SizedBox(height: 14),
+          TicketButton(label: _busy ? 'CHECKING…' : 'SIGN IN WITH YOUTUBE', maroon: true, enabled: !_busy, stubIcon: Icons.arrow_forward_rounded, onTap: () => unawaited(_connectYoutube())),
+        ],
+      );
 
   Widget _form() => ListView(
         padding: const EdgeInsets.fromLTRB(22, 8, 22, 24),
@@ -509,9 +600,12 @@ class CodeBox extends StatelessWidget {
 
 /// `/inf/channels/:id/checking`: asks the server to re-read the bio and shows the result.
 class ChannelCheckingScreen extends StatefulWidget {
-  const ChannelCheckingScreen({super.key, required this.id, this.from, this.repo, this.onApprovedDone});
+  const ChannelCheckingScreen({super.key, required this.id, this.from, this.repo, this.onApprovedDone, this.initial});
 
   final String id;
+
+  /// The answer of "Sign in with YouTube": already checked by the server, so show it instead of asking again.
+  final ChannelCheck? initial;
   final String? from;
   final ChannelsRepo? repo;
 
@@ -532,7 +626,12 @@ class _ChannelCheckingScreenState extends State<ChannelCheckingScreen> {
   @override
   void initState() {
     super.initState();
-    unawaited(_go());
+    final first = widget.initial;
+    if (first != null) {
+      _state = AsyncData<ChannelCheck>(first);
+    } else {
+      unawaited(_go());
+    }
   }
 
   Future<void> _go() async {

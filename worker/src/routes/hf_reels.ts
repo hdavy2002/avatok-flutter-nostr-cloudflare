@@ -4,10 +4,11 @@
 //   POST  /api/hf/reels/:id/view          cheap counter, rate-limited per reel + IP -> { ok }
 //   GET   /api/hf/hosts/me/reels          the caller's own reels, hidden ones too -> { ok, reels:[mine], onFeed, hostStatus }
 //   PATCH /api/hf/reels/:id { visible }   owner only (404 for anyone else) -> { ok, reel:mine }
-// item = { id, host:{slug,name,handle,avatar,ratePaise,followers,presence}, platform, url, embedUrl, videoUrl, thumbUrl, caption, likes, comments, views, publishedAt }
-// mine = { id, channelId, platform, url, embedUrl, videoUrl, thumbUrl, caption, likes, comments, views, publishedAt, visible }
+// item = { id, host:{slug,name,handle,avatar,ratePaise,followers,presence}, platform, url, embedUrl, thumbUrl, title, caption, likes, comments, views, publishedAt }
+// mine = { id, channelId, platform, url, embedUrl, thumbUrl, title, caption, likes, comments, views, publishedAt, visible }
 // Demo (starter) hosts/reels are included only while hfDemoInfluencersVisible is true. Reels of a disconnected / unapproved channel never show.
-// Never returns uid, provider payload or secrets. videoUrl may be an expiring CDN link: the app falls back to embedUrl when it fails.
+// [HF-WIRE-14] Embeds only: no video file url is stored or returned; the app plays embedUrl in the official YouTube / Instagram player. title = caption.
+// Never returns uid, provider payload or secrets.
 import type { Env } from "../types";
 import { json } from "../util";
 import { requireUser, isFail } from "../authz";
@@ -76,7 +77,7 @@ async function toItems(env: Env, rows: FeedRow[], cfg: Record<string, unknown>) 
         ratePaise: priceFields({ price_per_min: r.price_per_min, category: r.category ?? undefined }, std).pricePaisePerMin, followers: f?.followers ?? 0,
         presence: r.presence === "online" || r.presence === "busy" ? r.presence : "offline",
       },
-      platform: r.platform, url: r.url, embedUrl: r.embed_url, videoUrl: r.video_url, thumbUrl: r.thumb_url, caption: r.caption ?? "",
+      platform: r.platform, url: r.url, embedUrl: r.embed_url, thumbUrl: r.thumb_url, title: r.caption ?? "", caption: r.caption ?? "",
       likes: Number(r.likes ?? 0), comments: Number(r.comments ?? 0), views: Number(r.views ?? 0), publishedAt: r.published_at ?? null,
     };
   });
@@ -84,8 +85,8 @@ async function toItems(env: Env, rows: FeedRow[], cfg: Record<string, unknown>) 
 
 interface MineRow { id: string; channel_id: string | null; platform: string; url: string | null; embed_url: string | null; video_url: string | null; thumb_url: string | null; caption: string | null; likes: number; comments: number; views: number; published_at: number | null; visible: number }
 const mineJson = (r: MineRow) => ({
-  id: r.id, channelId: r.channel_id, platform: r.platform, url: r.url, embedUrl: r.embed_url, videoUrl: r.video_url, thumbUrl: r.thumb_url,
-  caption: r.caption ?? "", likes: Number(r.likes ?? 0), comments: Number(r.comments ?? 0), views: Number(r.views ?? 0), publishedAt: r.published_at ?? null, visible: r.visible === 1,
+  id: r.id, channelId: r.channel_id, platform: r.platform, url: r.url, embedUrl: r.embed_url, thumbUrl: r.thumb_url,
+  title: r.caption ?? "", caption: r.caption ?? "", likes: Number(r.likes ?? 0), comments: Number(r.comments ?? 0), views: Number(r.views ?? 0), publishedAt: r.published_at ?? null, visible: r.visible === 1,
 });
 const MINE_COLS = "id, channel_id, platform, url, embed_url, video_url, thumb_url, caption, likes, comments, views, published_at, visible";
 

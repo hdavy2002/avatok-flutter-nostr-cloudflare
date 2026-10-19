@@ -8,6 +8,7 @@ import 'package:hf_app/data/api_client.dart';
 import 'package:hf_app/data/api_exception.dart';
 import 'package:hf_app/data/models/channel.dart';
 import 'package:hf_app/data/repos/channels_repo.dart';
+import 'package:hf_app/data/youtube_sign_in.dart';
 import 'package:hf_app/demo/screens/channels.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
@@ -27,6 +28,26 @@ Map<String, Object?> _ch(String id, String state, {String platform = 'instagram'
       'lastSyncAt': DateTime.now().millisecondsSinceEpoch,
       'createdAt': 1,
     };
+
+/// Google sign-in without Google. [result] is the token, or an exception to throw.
+class _FakeSignIn implements YoutubeSignIn {
+  _FakeSignIn([this.result = 'ya29.test-token']);
+
+  final Object result;
+  int taps = 0;
+  int signOuts = 0;
+
+  @override
+  Future<String> accessToken() async {
+    taps++;
+    final r = result;
+    if (r is Exception) throw r;
+    return r as String;
+  }
+
+  @override
+  Future<void> signOut() async => signOuts++;
+}
 
 /// The "fake API": the real ApiClient with a MockClient that records every call.
 class _Fake {
@@ -72,6 +93,14 @@ Future<void> _pump(WidgetTester tester, Widget home, {Map<String, Widget Functio
 
 void main() {
   group('ChannelsRepo', () {
+    test('connectYoutube posts only the access token to the sign-in route', () async {
+      final f = _Fake((_) => _json({'ok': true, 'result': 'needs_followers', 'message': 'm', 'channel': _ch('hfch_y', 'needs_followers', platform: 'youtube', followers: 3), 'minFollowers': 10, 'qualified': false}));
+      final r = await f.repo.connectYoutube('ya29.abc');
+      expect(r.result, CheckResult.needsFollowers);
+      expect(f.calls.single.url.path, '/api/hf/channels/youtube/connect');
+      expect(jsonDecode(f.calls.single.body), {'accessToken': 'ya29.abc'});
+    });
+
     test('list parses channels, the follower minimum and the qualified flag', () async {
       final f = _Fake((_) => _json({
             'ok': true,
@@ -262,7 +291,7 @@ void main() {
 
     testWidgets('a server refusal (channel already claimed) is shown in plain words', (tester) async {
       final f = _Fake((_) => _json({'ok': false, 'error': 'channel_claimed', 'message': 'That channel is already connected to another person.'}, 409));
-      await _pump(tester, ChannelConsentScreen(platform: 'youtube', repo: f.repo));
+      await _pump(tester, ChannelConsentScreen(platform: 'instagram', repo: f.repo));
       await tester.enterText(find.byType(TextField), '@maya');
       for (final i in [0, 1, 2, 3]) {
         await tester.tap(find.byIcon(Icons.check_box_outline_blank_rounded).first);
@@ -274,6 +303,69 @@ void main() {
       expect(find.text('That channel is already connected to another person.'), findsOneWidget);
     });
 
+    testWidgets('YouTube: sign in with Google, send the token, land on the result (no code, no handle field)', (tester) async {
+      final f = _Fake((_) => _json({'ok': true, 'result': 'approved', 'message': 'You\'re in! Your channel is confirmed.', 'channel': _ch('hfch_y', 'approved', platform: 'youtube', handle: '@maya', followers: 500), 'minFollowers': 10, 'qualified': true}));
+      final gs = _FakeSignIn();
+      await _pump(tester, ChannelConsentScreen(platform: 'youtube', from: 'join', repo: f.repo, signIn: gs));
+      expect(find.byType(TextField), findsNothing);
+      expect(find.text('SIGN IN WITH YOUTUBE'), findsOneWidget);
+      await tester.tap(find.text('SIGN IN WITH YOUTUBE'));
+      await tester.pump();
+      expect(find.textContaining('tick the box'), findsOneWidget);
+      expect(gs.taps, 0);
+      expect(f.calls, isEmpty);
+      await tester.tap(find.byKey(const ValueKey('yt-consent')));
+      await tester.pump();
+      await tester.tap(find.text('SIGN IN WITH YOUTUBE'));
+      await tester.pumpAndSettle();
+      final posts = f.to('POST', '/api/hf/channels/youtube/connect');
+      expect(posts.length, 1);
+      expect(jsonDecode(posts.single.body), {'accessToken': 'ya29.test-token'});
+      expect(f.to('POST', '/api/hf/channels'), isEmpty);
+      expect(gs.signOuts, 1); // the Google account is forgotten on the phone; the token was used once
+      expect(find.text('CHECKING hfch_y from=join'), findsOneWidget);
+    });
+
+    testWidgets('YouTube: cancelling the Google sheet and a Google failure show plain words and call nothing', (tester) async {
+      final f = _Fake((_) => _json({'ok': true}));
+      await _pump(tester, ChannelConsentScreen(platform: 'youtube', repo: f.repo, signIn: _FakeSignIn(const YoutubeSignInCancelled())));
+      await tester.tap(find.byKey(const ValueKey('yt-consent')));
+      await tester.pump();
+      await tester.tap(find.text('SIGN IN WITH YOUTUBE'));
+      await tester.pumpAndSettle();
+      expect(find.textContaining('cancelled'), findsOneWidget);
+      expect(f.calls, isEmpty);
+      await _pump(tester, ChannelConsentScreen(platform: 'youtube', repo: f.repo, signIn: _FakeSignIn(const YoutubeSignInFailed())));
+      await tester.tap(find.byKey(const ValueKey('yt-consent')));
+      await tester.pump();
+      await tester.tap(find.text('SIGN IN WITH YOUTUBE'));
+      await tester.pumpAndSettle();
+      expect(find.textContaining('could not sign in with Google'), findsOneWidget);
+    });
+
+    testWidgets('YouTube: a Google account without a channel shows the server text', (tester) async {
+      final f = _Fake((_) => _json({'ok': false, 'error': 'no_youtube_channel', 'message': 'This Google account has no YouTube channel. Create one on YouTube, then try again.'}, 404));
+      await _pump(tester, ChannelConsentScreen(platform: 'youtube', repo: f.repo, signIn: _FakeSignIn()));
+      await tester.tap(find.byKey(const ValueKey('yt-consent')));
+      await tester.pump();
+      await tester.tap(find.text('SIGN IN WITH YOUTUBE'));
+      await tester.pumpAndSettle();
+      expect(find.textContaining('has no YouTube channel'), findsOneWidget);
+    });
+
+    testWidgets('Instagram says "coming soon" when the provider is not switched on', (tester) async {
+      final f = _Fake((_) => _json({'ok': false, 'error': 'provider_not_configured', 'message': 'Instagram is coming soon.'}, 503));
+      await _pump(tester, ChannelConsentScreen(platform: 'instagram', repo: f.repo));
+      await tester.enterText(find.byType(TextField), '@maya');
+      for (var i = 0; i < 4; i++) {
+        await tester.tap(find.byIcon(Icons.check_box_outline_blank_rounded).first);
+        await tester.pump();
+      }
+      await tester.tap(find.text('CONNECT'));
+      await tester.pumpAndSettle();
+      expect(find.textContaining('Instagram is coming soon'), findsOneWidget);
+    });
+
     testWidgets('Facebook is not a connectable platform', (tester) async {
       await _pump(tester, const ChannelConsentScreen(platform: 'facebook'));
       expect(find.textContaining('coming soon'), findsOneWidget);
@@ -282,6 +374,15 @@ void main() {
   });
 
   group('ChannelCheckingScreen', () {
+    testWidgets('a result handed over by the YouTube sign-in is shown without asking the server again', (tester) async {
+      final f = _Fake((_) => _json({'ok': true}));
+      final first = ChannelCheck.fromJson({'result': 'approved', 'message': 'You\'re in!', 'channel': _ch('hfch_y', 'approved', platform: 'youtube'), 'minFollowers': 10, 'qualified': true});
+      await _pump(tester, ChannelCheckingScreen(id: 'hfch_y', initial: first, onApprovedDone: () {}, repo: f.repo));
+      await tester.pump();
+      expect(find.text("You're in!"), findsOneWidget);
+      expect(f.calls, isEmpty);
+    });
+
     ChannelsRepo repoFor(Map<String, Object?> body) => _Fake((_) => _json(body)).repo;
 
     testWidgets('approved: "You\'re in!" and a dashboard button', (tester) async {

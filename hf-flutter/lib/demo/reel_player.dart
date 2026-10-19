@@ -1,21 +1,23 @@
+import 'dart:convert' show HtmlEscape, HtmlEscapeMode;
+
 import 'package:flutter/material.dart';
-import 'package:video_player/video_player.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 import 'package:webview_flutter_android/webview_flutter_android.dart';
 
+import '../core/brand.dart';
 import '../data/models/reel.dart';
 import 'theme.dart';
 
-/// Plays one real reel (HF-WIRE-4): a direct file with `video_player` when the provider gave one, otherwise the
-/// official embed (YouTube / Instagram) in a WebView. A direct file that fails (Instagram links expire) falls back to
-/// the embed. The thumbnail shows until the video is ready. [active] plays; a page with [preload] only gets ready.
+/// Plays one real reel. EMBEDS ONLY (HF-REEL-32, HF-WIRE-14): we never download or host a video file. YouTube plays
+/// in the official YouTube player (its own controls and branding stay visible); Instagram plays in its official embed.
+/// The thumbnail shows until the player is up. [active] plays; a page with [preload] is only kept ready.
 class ReelPlayer extends StatefulWidget {
   const ReelPlayer({super.key, required this.reel, required this.active, this.preload = false, this.sound = true});
 
   final FeedReel reel;
   final bool active;
 
-  /// The next page: get the video ready but keep it paused.
+  /// The next page: keep it ready but do not start the player.
   final bool preload;
   final bool sound;
 
@@ -23,7 +25,8 @@ class ReelPlayer extends StatefulWidget {
   @visibleForTesting
   static Widget Function(FeedReel reel, bool active)? testPlayer;
 
-  /// The URL the embed WebView loads: autoplay, inline, no chrome, looping.
+  /// The URL of the embed. YouTube: autoplay, inline, loop, related videos limited to the same channel.
+  /// No `controls=0` and no `modestbranding`: the official player and its branding stay as YouTube ships them.
   @visibleForTesting
   static Uri embedUri(String embed) {
     final u = Uri.tryParse(embed);
@@ -34,14 +37,25 @@ class ReelPlayer extends StatefulWidget {
         ...u.queryParameters,
         'autoplay': '1',
         'playsinline': '1',
-        'controls': '0',
         'loop': '1',
         'rel': '0',
-        'modestbranding': '1',
+        'origin': Brand.webOrigin,
         'playlist': yt.group(1)!,
       });
     }
     return u;
+  }
+
+  /// A small page holding the official YouTube iframe. YouTube needs to know who embeds it (a page origin), so the page
+  /// is loaded with the site as its base URL instead of opening the embed address bare. Null for a non-YouTube embed.
+  @visibleForTesting
+  static String? youtubeHtml(String embed) {
+    final u = Uri.tryParse(embed);
+    if (u == null || !u.host.contains('youtube') || !RegExp(r'^/embed/[A-Za-z0-9_-]{6,20}$').hasMatch(u.path)) return null;
+    final src = const HtmlEscape(HtmlEscapeMode.attribute).convert(embedUri(embed).toString());
+    return '<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1">'
+        '<style>html,body{margin:0;height:100%;background:#000;overflow:hidden}iframe{position:absolute;inset:0;width:100%;height:100%;border:0}</style></head>'
+        '<body><iframe src="$src" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowfullscreen referrerpolicy="strict-origin-when-cross-origin"></iframe></body></html>';
   }
 
   @override
@@ -49,15 +63,10 @@ class ReelPlayer extends StatefulWidget {
 }
 
 class _ReelPlayerState extends State<ReelPlayer> {
-  VideoPlayerController? _video;
-  bool _failed = false;
-  bool _ready = false;
   WebViewController? _web;
   String? _webFor;
 
-  bool get _wantVideo => widget.reel.videoUrl != null && !_failed;
-  bool get _wantEmbed => !_wantVideo && widget.reel.embedUrl != null;
-  bool get _needLive => widget.active || widget.preload;
+  bool get _wantEmbed => widget.reel.embedUrl != null;
 
   @override
   void initState() {
@@ -71,74 +80,14 @@ class _ReelPlayerState extends State<ReelPlayer> {
     _sync();
   }
 
-  @override
-  void dispose() {
-    _video?.removeListener(_onVideo);
-    _video?.dispose();
-    super.dispose();
-  }
-
   void _sync() {
     if (ReelPlayer.testPlayer != null) return;
-    if (_wantVideo) {
-      if (_needLive) {
-        _startVideo();
-      } else {
-        _stopVideo();
-      }
-    } else {
-      _stopVideo();
-    }
     if (_wantEmbed && widget.active) {
       _startWeb();
     } else if (_web != null && !widget.active) {
       _web = null;
       _webFor = null;
     }
-  }
-
-  void _startVideo() {
-    final c = _video;
-    if (c == null) {
-      final ctrl = VideoPlayerController.networkUrl(Uri.parse(widget.reel.videoUrl!));
-      _video = ctrl;
-      ctrl.addListener(_onVideo);
-      ctrl.initialize().then((_) {
-        if (!mounted || _video != ctrl) return;
-        ctrl.setLooping(true);
-        ctrl.setVolume(widget.sound ? 1 : 0);
-        setState(() => _ready = true);
-        if (widget.active) ctrl.play();
-      }).catchError((Object _) {
-        if (mounted && _video == ctrl) _fail();
-      });
-    } else if (_ready) {
-      if (widget.active) {
-        c.play();
-      } else {
-        c.pause();
-      }
-    }
-  }
-
-  void _stopVideo() {
-    final c = _video;
-    if (c == null) return;
-    c.removeListener(_onVideo);
-    c.dispose();
-    _video = null;
-    _ready = false;
-  }
-
-  void _onVideo() {
-    final c = _video;
-    if (c != null && c.value.hasError && !_failed) _fail();
-  }
-
-  void _fail() {
-    _stopVideo();
-    if (mounted) setState(() => _failed = true);
-    _sync();
   }
 
   void _startWeb() {
@@ -148,16 +97,28 @@ class _ReelPlayerState extends State<ReelPlayer> {
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
       ..setBackgroundColor(const Color(0xFF000000))
       ..setNavigationDelegate(NavigationDelegate(
-        // The embed stays on its own page: no tapping out to other sites.
-        onNavigationRequest: (r) => r.isMainFrame && r.url != ReelPlayer.embedUri(embed).toString() && !r.url.startsWith('https://www.youtube.com/embed/') && !r.url.startsWith('https://www.instagram.com/reel/')
-            ? NavigationDecision.prevent
-            : NavigationDecision.navigate,
+        // The embed stays on its own page: no tapping out to other sites. Only YouTube / Instagram embeds and the
+        // first page itself may load (about:blank and the site base URL belong to the small page that holds the iframe).
+        onNavigationRequest: (r) {
+          if (!r.isMainFrame) return NavigationDecision.navigate;
+          final ok = r.url == 'about:blank' ||
+              r.url == ReelPlayer.embedUri(embed).toString() ||
+              r.url.startsWith('${Brand.webOrigin}/') ||
+              r.url.startsWith('https://www.youtube.com/embed/') ||
+              r.url.startsWith('https://www.instagram.com/reel/');
+          return ok ? NavigationDecision.navigate : NavigationDecision.prevent;
+        },
       ));
     final p = c.platform;
     if (p is AndroidWebViewController) {
       p.setMediaPlaybackRequiresUserGesture(false); // lets the embed autoplay
     }
-    c.loadRequest(ReelPlayer.embedUri(embed));
+    final html = ReelPlayer.youtubeHtml(embed);
+    if (html != null) {
+      c.loadHtmlString(html, baseUrl: Brand.webOrigin);
+    } else {
+      c.loadRequest(ReelPlayer.embedUri(embed));
+    }
     _web = c;
     _webFor = embed;
   }
@@ -172,21 +133,10 @@ class _ReelPlayerState extends State<ReelPlayer> {
   Widget build(BuildContext context) {
     final o = ReelPlayer.testPlayer;
     if (o != null) return o(widget.reel, widget.active);
-    final v = _video;
     return Stack(
       fit: StackFit.expand,
       children: [
         _thumb(),
-        if (_wantVideo && v != null && _ready)
-          Semantics(
-            button: true,
-            label: 'Play or pause the video',
-            child: GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onTap: () => v.value.isPlaying ? v.pause() : v.play(),
-              child: FittedBox(fit: BoxFit.cover, clipBehavior: Clip.hardEdge, child: SizedBox(width: v.value.size.width, height: v.value.size.height, child: VideoPlayer(v))),
-            ),
-          ),
         if (_wantEmbed && widget.active && _web != null) WebViewWidget(controller: _web!),
       ],
     );

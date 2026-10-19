@@ -16,9 +16,9 @@
     @android.webkit.JavascriptInterface <methods>;
 }
 
-# video_player (Media3 / ExoPlayer ships its own rules; these keep the plugin side)
--keep class io.flutter.plugins.videoplayer.** { *; }
--dontwarn androidx.media3.**
+# google_sign_in ([HF-WIRE-14] Sign in with YouTube; Play Services ships its own consumer rules)
+-keep class io.flutter.plugins.googlesignin.** { *; }
+-dontwarn com.google.android.gms.**
 
 # share_plus, url_launcher, package_info_plus: plugin classes are created by name from GeneratedPluginRegistrant
 -keep class dev.fluttercommunity.plus.share.** { *; }

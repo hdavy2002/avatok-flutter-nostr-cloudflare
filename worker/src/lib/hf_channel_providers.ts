@@ -22,7 +22,7 @@ export interface ChannelLookup {
   url: string;
 }
 
-export type ProviderErrorCode = "provider_not_configured" | "provider_unavailable" | "bad_handle";
+export type ProviderErrorCode = "provider_not_configured" | "provider_unavailable" | "bad_handle" | "token_invalid";
 
 export class ProviderError extends Error {
   code: ProviderErrorCode;
@@ -177,4 +177,27 @@ export function bioHasCode(bio: string, code: string): boolean {
   const squash = (x: string) => x.toUpperCase().replace(/[\s\-‐-―−]/g, "");
   const c = squash(code);
   return c.length >= 6 && squash(bio).includes(c);
+}
+
+/** [HF-WIRE-14] The channel that belongs to the person who owns `accessToken` (YouTube Data API channels.list?mine=true, scope youtube.readonly).
+ * Google only answers with the token holder's own channel, so a hit PROVES ownership. The token is used for this one call and is never stored or logged.
+ * Throws token_invalid when Google rejects the token (expired, wrong scope), provider_unavailable on any other failure. exists=false: no YouTube channel on that account. */
+export async function youtubeOwnChannel(accessToken: string, f: FetchLike = fetch): Promise<ChannelLookup> {
+  const tok = String(accessToken ?? "").trim();
+  if (!/^[A-Za-z0-9._~+/=-]{20,4096}$/.test(tok)) throw new ProviderError("token_invalid");
+  const res = await timedFetch(f, "https://www.googleapis.com/youtube/v3/channels?part=snippet,statistics&mine=true", { headers: { authorization: `Bearer ${tok}`, accept: "application/json" } });
+  if (res.status === 401 || res.status === 403) throw new ProviderError("token_invalid");
+  if (!res.ok) throw new ProviderError("provider_unavailable");
+  let body: any;
+  try { body = await res.json(); } catch { throw new ProviderError("provider_unavailable"); }
+  const it = Array.isArray(body?.items) ? body.items[0] : null;
+  const id = String(it?.id ?? "");
+  if (!/^UC[A-Za-z0-9_-]{20,24}$/.test(id)) return { exists: false, platformUserId: null, handle: "", followers: 0, bio: "", isPrivate: false, countHidden: false, url: "" };
+  const custom = String(it?.snippet?.customUrl ?? "").trim();
+  const hidden = it?.statistics?.hiddenSubscriberCount === true;
+  return {
+    exists: true, platformUserId: id, handle: custom ? (custom.startsWith("@") ? custom : "@" + custom) : String(it?.snippet?.title ?? id).slice(0, 80),
+    followers: Math.max(0, Math.trunc(Number(it?.statistics?.subscriberCount ?? 0)) || 0), bio: String(it?.snippet?.description ?? ""), isPrivate: false, countHidden: hidden,
+    url: `https://www.youtube.com/channel/${id}`,
+  };
 }

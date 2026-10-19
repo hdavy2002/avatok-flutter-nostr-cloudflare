@@ -31,12 +31,11 @@ class FakeApiClient extends ApiClient {
   }
 }
 
-Map<String, Object?> _item(String id, {String slug = 'maya', String name = 'Maya', String? video, String? embed}) => {
+Map<String, Object?> _item(String id, {String slug = 'maya', String name = 'Maya', String? embed}) => {
       'id': id,
       'host': {'slug': slug, 'name': name, 'handle': '@maya', 'avatar': null, 'ratePaise': 1200, 'followers': 5400, 'presence': 'online'},
       'platform': 'youtube',
       'embedUrl': embed ?? 'https://www.youtube.com/embed/abc12345',
-      'videoUrl': video,
       'thumbUrl': null,
       'caption': 'Caption $id',
       'likes': 12,
@@ -79,7 +78,7 @@ void main() {
     test('feed parses items, host and the next cursor, and asks without sign-in', () async {
       final api = FakeApiClient((m, p, q, b) => {
             'ok': true,
-            'items': [_item('hfrl_1'), _item('hfrl_2', video: 'https://cdn/v.mp4')],
+            'items': [_item('hfrl_1'), _item('hfrl_2')],
             'nextCursor': '5_hfrl_2',
           });
       final page = await ReelsRepo(api).feed(cursor: 'abc');
@@ -87,7 +86,7 @@ void main() {
       expect(page.nextCursor, '5_hfrl_2');
       expect(page.items.length, 2);
       expect(page.items.first.host, isA<ReelHost>().having((h) => h.rateRupees, 'rate', 12).having((h) => h.followers, 'followers', 5400));
-      expect(page.items[1].videoUrl, 'https://cdn/v.mp4');
+      expect(page.items[1].playable, isTrue); // embeds only: playable means it has an embed address
     });
 
     test('flag off becomes a friendly message; one() returns null on 404', () async {
@@ -124,10 +123,18 @@ void main() {
   });
 
   group('player url', () {
-    test('YouTube embeds autoplay inline and loop', () {
+    test('YouTube embeds autoplay inline and loop, and keep the official controls and branding', () {
       final u = ReelPlayer.embedUri('https://www.youtube.com/embed/abc12345');
       expect(u.queryParameters['autoplay'], '1');
       expect(u.queryParameters['playlist'], 'abc12345');
+      expect(u.queryParameters.containsKey('controls'), isFalse);
+      expect(u.queryParameters.containsKey('modestbranding'), isFalse);
+      expect(u.queryParameters['origin'], 'https://hellofraands.com');
+      final html = ReelPlayer.youtubeHtml('https://www.youtube.com/embed/abc12345')!;
+      expect(html, contains('<iframe'));
+      expect(html, contains('https://www.youtube.com/embed/abc12345?'));
+      expect(ReelPlayer.youtubeHtml('https://www.instagram.com/reel/Cx12345/embed'), isNull);
+      expect(ReelPlayer.youtubeHtml('https://evil.example/embed/abc12345'), isNull);
       expect(ReelPlayer.embedUri('https://www.instagram.com/reel/Cx12345/embed').toString(), 'https://www.instagram.com/reel/Cx12345/embed');
     });
   });

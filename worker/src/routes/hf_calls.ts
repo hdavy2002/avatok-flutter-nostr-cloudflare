@@ -12,6 +12,7 @@
 //   POST /api/admin/hf/wallet/credit {uid | phone, rupees 1..2000, note, opId?, via?}   GET /api/admin/hf/users/search?q=      GET /api/admin/hf/calls?status=&limit=&offset=
 //   POST /api/hf/vobiz/<VOBIZ_WEBHOOK_SECRET>/{answer/<host|caller>/<id> | digits/host/<id> | hangup/<host|caller>/<id> | conf/<id>/<host|caller> | notice/host-nopickup/<id>}
 // Phone numbers are never present in any response, log or event here; they are read from the verified-WhatsApp store only at dial time (do/hf_call.ts).
+import { isDemoHost, DEMO_MESSAGE } from "../lib/hf_demo"; // [HF-WIRE-14]
 import type { Env } from "../types";
 import { json } from "../util";
 import { requireUser, isFail } from "../authz";
@@ -122,6 +123,7 @@ async function startCall(req: Request, env: Env): Promise<Response> {
 
   const host = await env.DB_META.prepare("SELECT uid, display_name, price_per_min, category, women_lane, lgbtq_lane, presence, status FROM hf_hosts WHERE slug=?1")
     .bind(slug).first<{ uid: string; display_name: string | null; price_per_min: number; category: string; women_lane: number; lgbtq_lane: number; presence: string | null; status: string }>();
+  if (host && (await isDemoHost(env, host.uid))) return err(409, "demo_host", DEMO_MESSAGE, { reason: "demo_host" }); // [HF-WIRE-14] HF-REEL-34
   if (!host || host.status !== "live" || host.uid === uid || host.presence !== "online") return UNAVAILABLE();
   if (await isClosing(env, host.uid)) return UNAVAILABLE(); // [HF-WALLET-EXIT-1] a host who is closing their account takes no calls
   if (await isBlockedEitherWay(env, uid, host.uid)) return UNAVAILABLE();

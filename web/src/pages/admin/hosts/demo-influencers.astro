@@ -1,0 +1,10 @@
+---
+// [HF-WIRE-14] Admin: demo influencers from pasted YouTube links (HF-REEL-34).
+export const prerender = false;
+import Admin2 from '../../../layouts/Admin2.astro';
+import DemoInfluencers from '../../../islands/admin2/hosts/DemoInfluencers.tsx';
+---
+
+<Admin2 title="Demo influencers" active="host-demo" subtitle="Paste YouTube video links to make a demo influencer. Demo profiles never take calls or payments.">
+  <DemoInfluencers client:load />
+</Admin2>

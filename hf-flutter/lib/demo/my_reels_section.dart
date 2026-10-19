@@ -23,7 +23,7 @@ class MyReelsSection extends StatefulWidget {
   State<MyReelsSection> createState() => _MyReelsSectionState();
 }
 
-const String kPickReelsText = 'Pick the videos fans see in the feed.';
+const String kPickReelsText = 'All your public videos are shown. Hide any you do not want fans to see.';
 
 class _MyReelsSectionState extends State<MyReelsSection> {
   late final ReelsRepo _repo = widget.repo ?? Services.instance.reelsRepo;
@@ -95,7 +95,7 @@ class _MyReelsSectionState extends State<MyReelsSection> {
         else if (reels == null)
           const SizedBox(height: 60, child: Center(child: CircularProgressIndicator(color: C.maroon)))
         else if (reels.isEmpty)
-          Text('No videos yet. Connect a channel and we bring in your latest videos.', style: t(15, color: C.muted, w: FontWeight.w700, h: 1.35))
+          Text('No videos yet. Sign in with YouTube and we bring in your public videos.', style: t(15, color: C.muted, w: FontWeight.w700, h: 1.35))
         else
           SizedBox(
             height: 210,

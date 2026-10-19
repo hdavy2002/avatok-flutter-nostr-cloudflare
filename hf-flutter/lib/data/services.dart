@@ -11,6 +11,7 @@ import 'repos/auth_repo.dart';
 import 'repos/bookings_repo.dart';
 import 'repos/calls_repo.dart';
 import 'repos/channels_repo.dart';
+import 'youtube_sign_in.dart';
 import 'favourites_store.dart';
 import 'repos/config_repo.dart';
 import 'repos/favourites_repo.dart';
@@ -42,6 +43,7 @@ class Services {
   late final ChannelsRepo channelsRepo = ChannelsRepo(api); // [HF-WIRE-3]
   late final BookingsRepo bookingsRepo = BookingsRepo(api); // [HF-WIRE-8]
   late final ReelsRepo reelsRepo = ReelsRepo(api); // [HF-WIRE-4]
+  late final YoutubeSignIn youtubeSignIn = GoogleYoutubeSignIn(); // [HF-WIRE-14] created on first use
   late final WalletRepo walletRepo = WalletRepo(api); // [HF-WIRE-6]
   late final CallsRepo callsRepo = CallsRepo(api); // [HF-WIRE-7]
   late final PayoutsRepo payoutsRepo = PayoutsRepo(api); // [HF-WIRE-10]

@@ -1,4 +1,5 @@
 import type { Env } from "../types";
+import { isDemoHost, DEMO_MESSAGE } from "../lib/hf_demo"; // [HF-WIRE-14]
 import { isFail, requireUser } from "../authz";
 import { json } from "../util";
 import { track } from "../hooks";
@@ -302,6 +303,7 @@ export async function quoteRoute(req: Request, env: Env): Promise<Response> {
     "SELECT uid,slug,status,price_per_min,category,women_lane,lgbtq_lane FROM hf_hosts WHERE slug=?1",
   ).bind(slug).first<HfHostPricingRow>();
   if (!host) return err(404, "host_not_found");
+  if (await isDemoHost(env, host.uid)) return err(409, "demo_host", { message: DEMO_MESSAGE }); // [HF-WIRE-14] HF-REEL-34
   const eligibility = await bookingEligibility(env, auth.uid, host, lane);
   if (eligibility) return eligibility;
   const schedule = await getHfBookingSchedule(env, host.uid);
@@ -388,6 +390,7 @@ export async function confirmRoute(req: Request, env: Env): Promise<Response> {
   const host = await env.DB_META.prepare("SELECT uid,slug,status,price_per_min,category,women_lane,lgbtq_lane FROM hf_hosts WHERE uid=?1")
     .bind(quote.host_uid).first<HfHostPricingRow>();
   if (!host) return err(409, "host_unavailable");
+  if (await isDemoHost(env, host.uid)) return err(409, "demo_host", { message: DEMO_MESSAGE }); // [HF-WIRE-14]
   const policy = JSON.parse(quote.policy_snapshot_json) as { lane?: string | null };
   const eligibility = await bookingEligibility(env, auth.uid, host, policy.lane ?? null);
   if (eligibility) return eligibility;

@@ -30,14 +30,14 @@ dependencies:
   audioplayers: ^6.1.0               # host voice intro playback
   record: 6.2.1                      # voice intro recorder (exact: the version proven in the avaTOK CI)
   camera: ^0.11.0+2                  # selfie video for host KYC
-  video_player: ^2.9.2               # private, local KYC video review before upload
   permission_handler: ^12.0.1        # permission status, openAppSettings
   url_launcher: ^6.3.0               # Custom Tabs, tel:, Play link
   app_links: ^6.3.2                  # App Links + custom scheme
   package_info_plus: ^9.0.1          # version for the update check
   lottie: ^3.3.1                     # mascot and celebration motion (HF-MOTION-1)
-  webview_flutter: ^4.10.0           # [HF-WIRE-4] official YouTube / Instagram reel embeds (video_player plays direct files)
+  webview_flutter: ^4.10.0           # [HF-WIRE-4] official YouTube / Instagram reel embeds (embeds only, HF-REEL-32)
   webview_flutter_android: ^4.3.0    # [HF-WIRE-4] lets the embed autoplay
+  google_sign_in: ^6.3.0             # [HF-WIRE-14] "Sign in with YouTube": read-only channel scope proves she owns the channel (HF-REEL-33)
   share_plus: ^10.1.4                # [HF-WIRE-9] system share sheet for a reel link (Share.share)
 
 dev_dependencies:

@@ -12,6 +12,8 @@ export interface AdminHost {
   avatarId: string | null; avatarUrl: string | null; genAttempts: number; reviewNote: string | null; liveAt: number | null;
   submittedAt: number | null; updatedAt: number;
 }
+export interface DemoInfluencer { uid: string; slug: string | null; name: string; handle: string | null; followers: number; ratePaise: number; videos: number; createdAt: number }
+export interface DemoSaveResult { uid: string; slug: string | null; name: string; added: number; skipped: number; missing: string[]; bad: string[] }
 export interface AdminHostMedia { id: string; kind: 'profile' | 'gallery'; url: string; caption: string | null; sort: number }
 /** [HF-VOICE-INTRO-1] The host's own recorded introduction, as the reviewer sees it. `url` is signed (relative to the API origin). */
 export interface AdminIntro { url: string; seconds: number; mime: string; status: 'pending' | 'approved' | 'rejected'; transcript: string | null; flags: { type: string; text: string }[] }
@@ -87,6 +89,11 @@ export const hfAdminApi = {
   fillAvatars: (target = 4) =>
     adminCall<{ ok: true; jobId?: string; queued: number }>('/api/admin/hf/avatars/fill', { method: 'POST', body: { target } }),
   retireAvatar: (id: string) => adminCall<{ ok: true }>(`/api/admin/hf/avatars/${e(id)}/retire`, { method: 'POST', body: {} }),
+  // [HF-WIRE-14] demo influencers from pasted YouTube links
+  demoInfluencers: async () => (await adminCall<{ items: DemoInfluencer[] }>('/api/admin/hf/demo-influencers')).items ?? [],
+  saveDemoInfluencer: (b: { uid?: string; name: string; ratePaise: number; youtubeUrls: string[] }) =>
+    adminCall<{ ok: true; result: DemoSaveResult }>('/api/admin/hf/demo-influencers', { method: 'POST', body: b }),
+  deleteDemoInfluencer: (uid: string) => adminCall<{ ok: true }>(`/api/admin/hf/demo-influencers/${e(uid)}`, { method: 'DELETE' }),
   // [HF-CALLS-1]
   reviews: async (status: 'pending' | 'approved' | 'rejected' = 'pending') => (await adminCall<{ items: AdminReview[] }>(`/api/admin/hf/reviews?status=${e(status)}`)).items ?? [],
   decideReview: (id: string, decision: 'approve' | 'reject', reason = '') =>

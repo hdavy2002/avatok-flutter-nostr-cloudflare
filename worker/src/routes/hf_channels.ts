@@ -5,6 +5,10 @@
 //   POST   /api/hf/channels/:id/check  -> { ok, result, message, channel, minFollowers, hostStatus, qualified } re-reads the bio / description (no cache)
 //   POST   /api/hf/channels/:id/resync -> same shape as check (followers refresh for a verified channel)
 //   DELETE /api/hf/channels/:id        -> { ok, channel }  status 'disconnected' (idempotent)
+//   POST   /api/hf/channels/youtube/connect { accessToken }   [HF-WIRE-14, HF-REEL-33] sign in with YouTube (Google, scope youtube.readonly): the app sends the
+//                                      access token; channels.list?mine=true returns HER channel, which proves ownership (no bio code). Approves when subscribers
+//                                      >= minimum, imports the DETAILS of her public videos (embeds only, visible=1). The token is never stored.
+//                                      -> same shape as /check plus { imported:{fetched,inserted} }; errors: token_invalid 400 (not 401: the app would think the Hello Fraands session ended), no_youtube_channel 404, channel_claimed 409
 // channel = { id, platform, handle, url, followers, state:'checking'|'approved'|'needs_followers'|'disconnected', verified, needsCode,
 //             verifyCode (only while the code is still needed), lastSyncAt, createdAt }
 // result = 'approved' | 'needs_followers' | 'code_missing' | 'not_found' | 'private' | 'hidden_count'
@@ -21,9 +25,9 @@ import { BRAND } from "../lib/brand";
 import { emailFor } from "../lib/identity";
 import { readConfig } from "./config";
 import { ensureSlug } from "../lib/hf_host_store"; // [HF-WIRE-10]
-import { importChannelReels, importCountOf } from "../lib/hf_reels_import"; // [HF-WIRE-4]
+import { importChannelReels, importCountOf, refreshDemoReels } from "../lib/hf_reels_import"; // [HF-WIRE-4]
 import {
-  lookupChannel, makeVerifyCode, bioHasCode, ProviderError, type ChannelLookup, type ChannelPlatform,
+  lookupChannel, makeVerifyCode, bioHasCode, ProviderError, youtubeOwnChannel, type ChannelLookup, type ChannelPlatform,
 } from "../lib/hf_channel_providers";
 
 const APP = BRAND.slug;
@@ -67,7 +71,8 @@ function instructionsFor(platform: string, code: string): string {
 function providerFailure(e: ProviderError, platform: string): Response {
   const name = PLATFORM_NAME[platform] ?? "that site";
   if (e.code === "bad_handle") return err(400, "invalid_field", `That does not look like a ${name} ${platform === "youtube" ? "channel" : "username"}. Check the spelling.`, { field: "handleOrUrl" });
-  if (e.code === "provider_not_configured") return err(503, "provider_not_configured", "Channel checks are not switched on yet. Please try again later.");
+  if (e.code === "provider_not_configured") return err(503, "provider_not_configured", platform === "instagram" ? "Instagram is coming soon." : "Channel checks are not switched on yet. Please try again later.");
+  if (e.code === "token_invalid") return err(400, "token_invalid", "Google sign-in expired. Please sign in with YouTube again.");
   return err(503, "provider_unavailable", `We could not reach ${name} just now. Please try again in a minute.`);
 }
 
@@ -178,9 +183,10 @@ async function runCheck(env: Env, ch: ChRow, min: number, lookup?: ChannelLookup
 }
 
 /** [HF-WIRE-4] Import the latest reels of an approved channel; never throws (a provider outage must not break the channel check). */
-async function importForChannel(env: Env, ch: ChRow, n: number): Promise<void> {
-  try { await importChannelReels(env, ch, n); } catch (e) {
+async function importForChannel(env: Env, ch: ChRow, n: number, auth?: { bearer?: string }): Promise<{ fetched: number; inserted: number; updated: number } | null> {
+  try { return await importChannelReels(env, ch, n, auth ? { auth } : {}); } catch (e) {
     if (!(e instanceof ProviderError)) await trackException(env, e, { route: "hf_reels_import", method: "JOB", handled: true, app_name: APP, extra: { area: "hf_reels", platform: ch.platform } }).catch(() => {});
+    return null;
   }
 }
 
@@ -188,13 +194,14 @@ async function loadOwn(env: Env, uid: string, id: string): Promise<ChRow | null>
   return (await env.DB_META.prepare(`SELECT ${COLS} FROM hf_channels WHERE id=?1 AND host_uid=?2`).bind(id, uid).first<ChRow>()) ?? null;
 }
 
-export async function hfChannelsRoute(req: Request, env: Env, p: string, ctx?: ExecutionContext): Promise<Response | null> {
+export async function hfChannelsRoute(req: Request, env: Env, p: string, ctx?: ExecutionContext, ytFetch?: typeof fetch): Promise<Response | null> {
   const m = p.match(/^\/api\/hf\/channels(?:\/(hfch_[a-z0-9]{8,40}))?(?:\/(check|resync))?$/);
-  if (!m) return null;
-  const id = m[1] ?? null;
-  const action = m[2] ?? null;
+  const isConnect = p === "/api/hf/channels/youtube/connect";
+  if (!m && !isConnect) return null;
+  const id = m?.[1] ?? null;
+  const action = m?.[2] ?? null;
   const method = req.method;
-  const allowed = !id ? (method === "GET" || method === "POST") : action ? method === "POST" : method === "DELETE";
+  const allowed = isConnect ? method === "POST" : !id ? (method === "GET" || method === "POST") : action ? method === "POST" : method === "DELETE";
   if (!allowed) return err(405, "method_not_allowed");
   let uid = "";
   try {
@@ -205,6 +212,57 @@ export async function hfChannelsRoute(req: Request, env: Env, p: string, ctx?: E
     uid = u.uid;
     const min = minFollowersOf(cfg as unknown as Record<string, unknown>);
     const emit = makeEmit(env, ctx, uid);
+
+    // ── POST /api/hf/channels/youtube/connect  [HF-WIRE-14] ─────────────────────────────────────────────────────
+    if (isConnect) {
+      const lim = await rateLimit(env, `hfyt:${uid}`, 10, 3600);
+      if (lim) return lim;
+      const b = await readBody(req);
+      const token = typeof b?.accessToken === "string" ? b.accessToken : "";
+      if (!token) return err(400, "invalid_field", "Please sign in with YouTube.", { field: "accessToken" });
+      let lk: ChannelLookup;
+      try { lk = await youtubeOwnChannel(token, ytFetch ?? fetch); } catch (e) {
+        if (e instanceof ProviderError) { emit("hf_channel_added", { platform: "youtube", ok: false, code: e.code, via: "signin" }); return providerFailure(e, "youtube"); }
+        throw e;
+      }
+      if (!lk.exists || !lk.platformUserId) return err(404, "no_youtube_channel", "This Google account has no YouTube channel. Create one on YouTube, then try again.");
+      const active = Number((await env.DB_META.prepare("SELECT COUNT(*) AS c FROM hf_channels WHERE host_uid=?1 AND status!='disconnected'").bind(uid).first<{ c: number }>())?.c ?? 0);
+      const mine0 = await env.DB_META.prepare(`SELECT ${COLS} FROM hf_channels WHERE host_uid=?1 AND platform='youtube' AND platform_user_id=?2 AND status!='disconnected' LIMIT 1`).bind(uid, lk.platformUserId).first<ChRow>();
+      if (!mine0 && active >= MAX_CHANNELS) return err(409, "limit_reached", `You can connect up to ${MAX_CHANNELS} channels. Remove one first.`);
+      const claimed = await env.DB_META.prepare("SELECT id FROM hf_channels WHERE platform='youtube' AND platform_user_id=?1 AND verified_at IS NOT NULL AND status!='disconnected' AND host_uid!=?2 LIMIT 1").bind(lk.platformUserId, uid).first();
+      if (claimed) { emit("hf_channel_added", { platform: "youtube", ok: false, code: "channel_claimed", via: "signin" }); return err(409, "channel_claimed", RESULT_TEXT(min).claimed); }
+      const now = Date.now();
+      const status = !lk.countHidden && lk.followers >= min ? "approved" : "rejected";
+      let row: ChRow;
+      try {
+        if (mine0) {
+          row = { ...mine0, followers: lk.followers, verified_at: mine0.verified_at ?? now, status, handle: lk.handle || mine0.handle, url: lk.url || mine0.url, last_sync_at: now, verify_code: null };
+          await env.DB_META.prepare("UPDATE hf_channels SET followers=?2, verified_at=?3, status=?4, handle=?5, url=?6, last_sync_at=?7, verify_code=NULL WHERE id=?1")
+            .bind(row.id, row.followers, row.verified_at, row.status, row.handle, row.url, row.last_sync_at).run();
+        } else {
+          row = {
+            id: "hfch_" + crypto.randomUUID().replace(/-/g, "").slice(0, 20), host_uid: uid, platform: "youtube", handle: lk.handle, url: lk.url || null, platform_user_id: lk.platformUserId,
+            followers: lk.followers, verify_code: null, verified_at: now, status, consent_version: "google-signin-1", consent_at: now, provider_ref: "youtube-oauth", last_sync_at: now, created_at: now,
+          };
+          await env.DB_META.prepare(`INSERT INTO hf_channels (${COLS}) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15)`)
+            .bind(row.id, row.host_uid, row.platform, row.handle, row.url, row.platform_user_id, row.followers, row.verify_code, row.verified_at, row.status,
+              row.consent_version, row.consent_at, row.provider_ref, row.last_sync_at, row.created_at).run();
+        }
+      } catch (e) {
+        if (/UNIQUE|constraint/i.test(String((e as Error)?.message ?? e))) return err(409, "channel_claimed", RESULT_TEXT(min).claimed);
+        throw e;
+      }
+      await ensureHostRow(env, uid, now);
+      const st = await syncHostState(env, uid);
+      let imported: { fetched: number; inserted: number } | null = null;
+      if (status === "approved" && cfg.hfReelsEnabled === true) {
+        const r = await importForChannel(env, row, importCountOf(cfg as unknown as Record<string, unknown>), { bearer: token.trim() });
+        imported = r ? { fetched: r.fetched, inserted: r.inserted } : null;
+      }
+      const result: CheckResult = lk.countHidden ? "hidden_count" : status === "approved" ? "approved" : "needs_followers";
+      emit("hf_channel_added", { platform: "youtube", ok: true, via: "signin", result, followers: row.followers, qualified: st.qualified });
+      return json({ ok: true, result, message: RESULT_TEXT(min)[result], channel: channelJson(row), minFollowers: min, hostStatus: st.hostStatus, qualified: st.qualified, imported }, 200, NO_STORE);
+    }
 
     // ── GET /api/hf/channels ────────────────────────────────────────────────────────────────────────────────────
     if (!id && method === "GET") {
@@ -332,6 +390,7 @@ export async function recheckAllChannels(env: Env, batch = 25): Promise<{ scanne
       if (e instanceof ProviderError && e.code === "provider_not_configured") break;
     }
   }
+  try { await refreshDemoReels(env); } catch { /* demo details refresh is best effort */ } // [HF-WIRE-14]
   for (const uid of hosts) {
     try {
       const before = await env.DB_META.prepare("SELECT status FROM hf_hosts WHERE uid=?1").bind(uid).first<{ status: string }>();

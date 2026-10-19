@@ -41,6 +41,12 @@ class ChannelsRepo {
         return AddedChannel.fromJson(await _api.postJson('/api/hf/channels', body: body));
       });
 
+  /// [HF-WIRE-14] "Sign in with YouTube" (HF-REEL-33). [accessToken] comes from Google sign-in with the read-only YouTube scope. The server asks
+  /// YouTube whose channel it is (that proves ownership: no code), approves when she is over the minimum, and brings in the details of her public
+  /// videos (embeds only). The token is used once and never stored. Errors: `token_invalid`, `no_youtube_channel`, `channel_claimed`, `limit_reached`.
+  Future<ChannelCheck> connectYoutube(String accessToken) => _guard(
+      () async => ChannelCheck.fromJson(await _api.postJson('/api/hf/channels/youtube/connect', body: {'accessToken': accessToken})));
+
   /// Re-reads the bio or description (never cached) and decides.
   Future<ChannelCheck> check(String id) => _guard(() async => ChannelCheck.fromJson(await _api.postJson('/api/hf/channels/$id/check')));
 

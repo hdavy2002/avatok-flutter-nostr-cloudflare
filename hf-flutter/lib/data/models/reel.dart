@@ -55,7 +55,6 @@ class FeedReel {
     this.platform = 'youtube',
     this.url,
     this.embedUrl,
-    this.videoUrl,
     this.thumbUrl,
     this.caption = '',
     this.likes = 0,
@@ -69,18 +68,17 @@ class FeedReel {
   final String? url;
   final String? embedUrl;
 
-  /// A direct file when the provider gave one. It can EXPIRE: the player falls back to [embedUrl] when it fails.
-  final String? videoUrl;
   final String? thumbUrl;
   final String caption;
   final int likes;
   final int comments;
   final int views;
 
-  bool get playable => videoUrl != null || embedUrl != null;
+  /// Embeds only (HF-REEL-32): a reel plays from its official YouTube / Instagram embed, never from a file we hold.
+  bool get playable => embedUrl != null;
 
   FeedReel withHost(ReelHost h) => FeedReel(
-      id: id, host: h, platform: platform, url: url, embedUrl: embedUrl, videoUrl: videoUrl, thumbUrl: thumbUrl, caption: caption, likes: likes, comments: comments, views: views);
+      id: id, host: h, platform: platform, url: url, embedUrl: embedUrl, thumbUrl: thumbUrl, caption: caption, likes: likes, comments: comments, views: views);
 
   factory FeedReel.fromJson(Map<String, dynamic> j, {ReelHost? host}) => FeedReel(
         id: _str(j['id']) ?? '',
@@ -88,7 +86,6 @@ class FeedReel {
         platform: _str(j['platform']) ?? 'youtube',
         url: _str(j['url']),
         embedUrl: _str(j['embedUrl']),
-        videoUrl: _str(j['videoUrl']),
         thumbUrl: _str(j['thumbUrl']),
         caption: _str(j['caption']) ?? '',
         likes: _int(j['likes']),

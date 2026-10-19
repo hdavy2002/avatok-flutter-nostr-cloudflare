@@ -172,39 +172,43 @@ describe("importer", () => {
   const ch = { id: "hfch_x1", host_uid: "x", platform: "instagram", handle: "@x", platform_user_id: "9" };
   const fake = (likes: number) => ({
     instagram: async () => [
-      { platformVideoId: "AAAAAA", url: "u1", embedUrl: "e1", videoUrl: "https://cdn/1", thumbUrl: "t1", caption: "c1", likes, comments: 1, views: 10, publishedAt: 5 },
-      { platformVideoId: "BBBBBB", url: "u2", embedUrl: "e2", videoUrl: null, thumbUrl: null, caption: "c2", likes, comments: 0, views: 3, publishedAt: null },
+      { platformVideoId: "AAAAAA", url: "u1", embedUrl: "e1", thumbUrl: "t1", caption: "c1", likes, comments: 1, views: 10, publishedAt: 5 },
+      { platformVideoId: "BBBBBB", url: "u2", embedUrl: "e2", thumbUrl: null, caption: "c2", likes, comments: 0, views: 3, publishedAt: null },
     ],
   });
-  it("is idempotent, starts hidden and never flips visible back", async () => {
+  it("is idempotent, starts visible (HF-REEL-33), stores no video file and never flips visible back", async () => {
     host("x", { channel: false });
     db.prepare("INSERT INTO hf_channels (id, host_uid, platform, handle, followers, status, verified_at, created_at) VALUES ('hfch_x1','x','instagram','@x',50,'approved',1,1)").run();
     expect(await importChannelReels(env, ch, 20, fake(1))).toMatchObject({ fetched: 2, inserted: 2, updated: 0 });
-    expect(db.prepare("SELECT COUNT(*) c FROM hf_reels WHERE visible=0").get().c).toBe(2);
-    db.prepare("UPDATE hf_reels SET visible=1 WHERE platform_video_id='AAAAAA'").run();
+    expect(db.prepare("SELECT COUNT(*) c FROM hf_reels WHERE visible=1").get().c).toBe(2);
+    expect(db.prepare("SELECT COUNT(*) c FROM hf_reels WHERE video_url IS NOT NULL").get().c).toBe(0);
+    db.prepare("UPDATE hf_reels SET visible=0 WHERE platform_video_id='BBBBBB'").run();
     expect(await importChannelReels(env, ch, 20, fake(7))).toMatchObject({ inserted: 0, updated: 2 });
     expect(db.prepare("SELECT COUNT(*) c FROM hf_reels").get().c).toBe(2);
     const a = db.prepare("SELECT visible, likes FROM hf_reels WHERE platform_video_id='AAAAAA'").get();
     expect(a).toMatchObject({ visible: 1, likes: 7 });
+    expect(db.prepare("SELECT visible FROM hf_reels WHERE platform_video_id='BBBBBB'").get().visible).toBe(0); // she hid it: re-import keeps it hidden
   });
-  it("YouTube: prefers Shorts, builds embed urls", async () => {
+  it("YouTube: imports all public videos (not only Shorts), embed urls, title and description", async () => {
     const f = async (url: string) => {
       if (url.includes("/playlistItems")) return new Response(JSON.stringify({ items: [{ contentDetails: { videoId: "longvideo01" } }, { contentDetails: { videoId: "shortvideo1" } }] }));
       return new Response(JSON.stringify({ items: [
-        { id: "longvideo01", snippet: { title: "Long", publishedAt: "2026-10-01T00:00:00Z" }, contentDetails: { duration: "PT12M3S" }, statistics: { viewCount: "9" } },
+        { id: "longvideo01", snippet: { title: "Long", description: "about it", publishedAt: "2026-10-01T00:00:00Z" }, contentDetails: { duration: "PT12M3S" }, statistics: { viewCount: "9" } },
         { id: "shortvideo1", snippet: { title: "Short", publishedAt: "2026-10-02T00:00:00Z", thumbnails: { high: { url: "https://i/h.jpg" } } }, contentDetails: { duration: "PT45S" }, statistics: { viewCount: "5", likeCount: "2" } },
       ] }));
     };
     const out = await youtubeRecent({ YOUTUBE_API_KEY: "k" }, "UC1234567890123456789012", 5, f);
-    expect(out.map((r) => r.platformVideoId)).toEqual(["shortvideo1"]);
-    expect(out[0]).toMatchObject({ embedUrl: "https://www.youtube.com/embed/shortvideo1", thumbUrl: "https://i/h.jpg", likes: 2, views: 5 });
+    expect(out.map((r) => r.platformVideoId)).toEqual(["longvideo01", "shortvideo1"]);
+    expect(out[0]).toMatchObject({ caption: "Long", description: "about it" });
+    expect(out[1]).toMatchObject({ embedUrl: "https://www.youtube.com/embed/shortvideo1", thumbUrl: "https://i/h.jpg", likes: 2, views: 5 });
+    expect(out.some((r: any) => "videoUrl" in r)).toBe(false);
     expect(isoSeconds("PT1M5S")).toBe(65);
   });
   it("Instagram: maps the ScrapeCreators shape; provider outage is a ProviderError", async () => {
     const f = async () => new Response(JSON.stringify({ items: [{ media: { code: "CxYz123", caption: { text: "hi" }, like_count: 4, play_count: 99, taken_at: 1700000000,
       video_versions: [{ url: "https://cdn/v.mp4" }], image_versions2: { candidates: [{ url: "https://cdn/t.jpg" }] } } }] }));
     const out = await instagramRecent({ TREG_API_KEY: "t" }, "@maya", 5, f);
-    expect(out[0]).toMatchObject({ platformVideoId: "CxYz123", embedUrl: "https://www.instagram.com/reel/CxYz123/embed", videoUrl: "https://cdn/v.mp4", views: 99, publishedAt: 1700000000000 });
+    expect(out[0]).toMatchObject({ platformVideoId: "CxYz123", embedUrl: "https://www.instagram.com/reel/CxYz123/embed", views: 99, publishedAt: 1700000000000 });
     await expect(instagramRecent({ TREG_API_KEY: "t" }, "maya", 5, async () => new Response("x", { status: 500 }))).rejects.toMatchObject({ code: "provider_unavailable" });
     await expect(instagramRecent({}, "maya", 5, f)).rejects.toMatchObject({ code: "provider_not_configured" });
   });
