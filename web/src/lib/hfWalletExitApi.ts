@@ -3,7 +3,7 @@
 import { ApiError, request } from './apiClient';
 
 export interface RefundItem { id: string; amount: number; status: 'requested' | 'processing' | 'refunded' | 'rejected' | 'cancelled'; reason: string | null; utr: string | null; exit: boolean; createdAt: number; refundedAt: number | null }
-export interface RefundInfo { enabled: boolean; mode?: 'tokens' | 'rupees'; windowDays?: number; refundable?: number; eligible?: number; lots?: RefundLot[]; requests: RefundItem[] }
+export interface RefundInfo { enabled: boolean; walletOnly?: boolean; message?: string; mode?: 'tokens' | 'rupees'; windowDays?: number; refundable?: number; eligible?: number; lots?: RefundLot[]; requests: RefundItem[] }
 /** Token mode: one entry per Google Play purchase that still has unused tokens (money in rupees, fractional). */
 export interface RefundLot { lotId: string; tokens: string; paid: number; refund: number; wholeOrder: boolean; boughtAt: number }
 export interface TokenExitInfo { mode: 'tokens'; refundPaise: number; refundLots: number; partialLots: number; partialPaise: number; testValuePaise: number; debtValuePaise: number; availablePaise: number; pendingPaise: number }
@@ -40,9 +40,26 @@ export const cancelExit = () => authed<{ ok: true }>('DELETE', '/api/hf/account/
 /** Existing platform deletion request (30-day grace). Answers 409 {deferred:true} while real money still has to be paid out. */
 export const deleteAccountNow = () => authed<{ scheduled: boolean; grace_ends_at?: number }>('POST', '/api/account/delete', {});
 
+/** [HF-WIRE-16] Where money leaves the wallet. Influencers withdraw on the web; fans use Payout in the app (Me, then Payout). */
+export const PAYOUT_HREF = '/dashboard/host/earnings';
+
+/** The stable error code the worker sent (`withdraw_first`, `forfeit_required`, `refund_to_wallet_only`...), or ''. */
+export function walletExitCode(e: unknown): string {
+  if (e instanceof ApiError && e.body && typeof e.body === 'object') { const c = (e.body as { error?: unknown }).error; if (typeof c === 'string') return c; }
+  return '';
+}
+
+const CODE_TEXT: Record<string, string> = {
+  withdraw_first: 'Your wallet money does not go back to your card. Withdraw it to your UPI with Payout first, then close your account.',
+  forfeit_required: 'Your wallet holds less than the smallest withdrawal, so it cannot be paid out. Tick the box to give it up and close your account.',
+  refund_to_wallet_only: 'Refunds go to your wallet, not to your card. You can withdraw your wallet to your UPI with Payout.',
+};
+
 export function walletExitMessage(e: unknown): string {
   if (e instanceof ApiError) {
     const b = (e.body && typeof e.body === 'object' ? e.body : {}) as { message?: string };
+    const code = walletExitCode(e);
+    if (CODE_TEXT[code]) return CODE_TEXT[code];
     if (e.status === 401) return 'Please sign in to continue.';
     if (e.status === 429) return 'Too many attempts. Please try again in a while.';
     if (b.message) return b.message;

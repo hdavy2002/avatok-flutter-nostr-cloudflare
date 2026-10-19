@@ -58,7 +58,7 @@ describe("purchase records", () => {
     expect(html).toContain("Added to your wallet");
     expect(html).toContain("Held back"); // [HF-WALLET-HELD-LABEL-1] no GST recorded: the share kept back is shown instead
     expect(html).not.toContain("Tokens bought");
-    expect(html).toContain("paid via Google Play");
+    expect(html).not.toContain("Google Play");
     expect(html).toContain("GPA.3300-1");
     expect(html).not.toMatch(/CGST|SGST|IGST/);
   });

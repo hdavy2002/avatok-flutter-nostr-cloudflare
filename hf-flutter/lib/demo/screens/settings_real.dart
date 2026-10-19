@@ -284,6 +284,7 @@ class _DeleteAccountScreenState extends State<DeleteAccountScreen> {
   Object? _error;
   bool _busy = false;
   bool _giveUp = false;
+  double _smallLeft = 0; // [HF-WIRE-16] wallet money below the smallest withdrawal, set by the server's forfeit_required answer
 
   SettingsRepo get _repo => widget.repo ?? SettingsRepo(Services.instance.api);
 
@@ -324,8 +325,17 @@ class _DeleteAccountScreenState extends State<DeleteAccountScreen> {
       await job();
     } on ApiException catch (e) {
       if (!mounted) return;
-      if (e.code == 'forfeit_required') {
+      if (e.code == 'withdraw_first') {
+        // [HF-WIRE-16] Wallet money is never refunded to the card: take it out through Payout first.
+        await _load();
+        if (mounted) {
+          toast(context, e.userMessage);
+          unawaited(context.push('/payout'));
+        }
+      } else if (e.code == 'forfeit_required') {
         // The server says some money cannot be paid out; show it and ask for a clear yes before going on.
+        final r = e.extra['forfeitRupees'];
+        if (r is num && mounted) setState(() => _smallLeft = r.toDouble());
         await _load();
         if (mounted) toast(context, e.userMessage);
       } else {
@@ -363,7 +373,7 @@ class _DeleteAccountScreenState extends State<DeleteAccountScreen> {
   Future<void> _startClosure(CloseState s) async {
     final ok = await _confirm(
       'Close your account?',
-      'We will first pay out your earnings. Wallet money is never sent back to your card, so withdraw it to your UPI first. Once that is settled your account is deleted after a 30-day grace period. You can stop this until a payment is approved.',
+      'We will first pay out your earnings. Wallet money is never sent back to your card: withdraw it to your UPI with Payout first (one-time ID and UPI check). If what is left is below the smallest withdrawal, you can choose to give it up. Once that is settled your account is deleted after a 30-day grace period. You can stop this until a payment is approved.',
       'Yes, start',
     );
     if (!ok) return;
@@ -449,7 +459,7 @@ class _DeleteAccountScreenState extends State<DeleteAccountScreen> {
       const SizedBox(height: 10),
       _para(text),
       if (s.payout != null) _line('Earnings payout', s.payout!),
-      if (s.refund != null) _line('Refund to your original payment', s.refund!),
+      if (s.refund != null) _line('Refund (credited to your wallet)', s.refund!),
       const SizedBox(height: 20),
       ChunkyButton(label: 'STOP CLOSING MY ACCOUNT', filled: false, onTap: _busy ? null : _cancelClosure),
       const SizedBox(height: 8),
@@ -496,10 +506,11 @@ class _DeleteAccountScreenState extends State<DeleteAccountScreen> {
       out.add(_bullet('Earnings of ${_rupees(s.withdrawable + s.held)} are paid to your verified bank account${s.held > 0 ? ' (${_rupees(s.held)} is still in its 7-day hold and is paid when the hold ends)' : ''}.'));
     }
     if (s.refundable + s.manualRefund > 0) {
-      out.add(_bullet('Unused top-up money of ${_rupees(s.refundable + s.manualRefund)} stays in your wallet. Withdraw it to your UPI from Payouts before closing; it is never refunded to your card.'));
+      out.add(_bullet('Your wallet money of ${_rupees(s.refundable + s.manualRefund)} is never refunded to your card. Withdraw it to your UPI with Payout before closing (one-time ID and UPI check). If it is below the smallest withdrawal you can choose to give it up.'));
+      out.add(ChunkyButton(label: 'GO TO PAYOUT', filled: false, onTap: _busy ? null : () => context.push('/payout')));
     }
     out.add(_bullet('Test credits are dropped. They are never paid out.'));
-    if (s.forfeitRupees > 0) {
+    if (s.forfeitRupees > 0 || _smallLeft > 0) {
       out
         ..add(const SizedBox(height: 12))
         ..add(CheckboxListTile(
@@ -510,7 +521,9 @@ class _DeleteAccountScreenState extends State<DeleteAccountScreen> {
           value: _giveUp,
           onChanged: (v) => setState(() => _giveUp = v == true),
           title: Text(
-            s.bankOk
+            s.forfeitRupees <= 0
+                ? 'I understand that ${_rupees(_smallLeft)} in my wallet is below the smallest withdrawal and I give it up.'
+                : s.bankOk
                 ? 'I understand that ${_rupees(s.forfeitRupees)} cannot be paid out and will be lost.'
                 : 'I have no verified bank account. I give up ${_rupees(s.forfeitRupees)} of earnings.',
             style: t(14, w: FontWeight.w700, h: 1.35),
@@ -522,7 +535,7 @@ class _DeleteAccountScreenState extends State<DeleteAccountScreen> {
       ..add(ChunkyButton(
         label: 'START CLOSING MY ACCOUNT',
         dark: true,
-        onTap: (_busy || (s.forfeitRupees > 0 && !_giveUp)) ? null : () => _startClosure(s),
+        onTap: (_busy || ((s.forfeitRupees > 0 || _smallLeft > 0) && !_giveUp)) ? null : () => _startClosure(s),
       ));
     return out;
   }

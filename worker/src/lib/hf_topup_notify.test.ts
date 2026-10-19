@@ -36,7 +36,7 @@ describe("texts", () => {
     const t = topupWhatsAppText(notice, 10200);
     // [HF-STD-PLAN-1] new wording: wallet credit, total paid, GST included, order, balance - all as two-decimal rupees
     expect(t).toContain("₹102.00 has been added to your wallet");
-    expect(t).toContain("You paid ₹120.00 via Google Play, including ₹18.00 GST");
+    expect(t).toContain("You paid ₹120.00 by secure payment, including ₹18.00 GST");
     expect(t).toContain("GPA.1234-5678");
     expect(t).toContain("balance is now ₹102.00");
     expect(t).not.toMatch(/token/i);

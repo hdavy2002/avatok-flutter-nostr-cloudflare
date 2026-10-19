@@ -61,7 +61,7 @@ class Services {
 
   bool get isSignedIn => user != null;
 
-  /// Only influencers withdraw (HF-REEL-31). Fans' money only goes back to the original payment as a refund.
+  /// Influencer earnings and fans' wallet money both leave through Payout (HF-REEL-36); refunds only ever land in the wallet (HF-REEL-35).
   bool get viewerIsInfluencer => demo.influencerJoined || me?.hostStatus != null;
 
   Future<void> _sessionLost() async {

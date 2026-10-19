@@ -249,7 +249,7 @@ export function renderReceiptHtml(r: ReceiptRow, sup: Supplier, customerName: st
   const isInvoice = r.kind === "tax_invoice";
   const legal = esc(sup.legalName || BRAND.name);
   const supplierBlock = `<p><strong>${legal}</strong><br>${esc(sup.address).replace(/\n/g, "<br>")}${isInvoice && r.gstin ? `<br>GSTIN: ${esc(r.gstin)}` : !isInvoice && !sup.gstin ? "<br>GSTIN: applied for" : ""}</p>`; // [HF-DASH-V3-1] GST is charged now (HF-PAY-16); the number goes here once it arrives
-  const title = isInvoice ? "Tax invoice" : (data as Record<string, unknown>).type === "play_purchase" ? "Payment receipt — paid via Google Play" : "Payment receipt";
+  const title = isInvoice ? "Tax invoice" : "Payment receipt";
   const isPlay = !isInvoice && data.type === "play_purchase";
   // [HF-WALLET-HELD-LABEL-1] Current purchases record the 18% as GST; older (gp-r1) purchases kept the same share as part of the price, GST 0.
   const keptRow = (paid: number, gst: number, added: number): string => {
@@ -263,11 +263,11 @@ export function renderReceiptHtml(r: ReceiptRow, sup: Supplier, customerName: st
     const micro = Number(data.tokensMicro ?? 0), paid = Number(data.paidPaise ?? 0), v = Number(data.valuePaisePerToken ?? 0);
     const added = Math.round((micro / 1_000_000) * v);
     body = `<table><thead><tr><th>Description</th><th class="n">Detail</th></tr></thead><tbody>
-      <tr><td>Google Play order</td><td class="n">${esc(data.orderId ?? "")}</td></tr>
+      <tr><td>Order</td><td class="n">${esc(data.orderId ?? "")}</td></tr>
       <tr><td>Added to your wallet</td><td class="n">${inr(added)}</td></tr>
       ${keptRow(paid, Number(data.gstPaise ?? 0), added)}
       <tr class="t"><td>Paid</td><td class="n">${inr(paid)}</td></tr></tbody></table>
-      <p class="muted">You paid through Google Play, which sends its own payment receipt. This is a payment receipt, not a tax invoice.</p>`;
+      <p class="muted">This is a payment receipt, not a tax invoice.</p>`;
   } else if (isInvoice) {
     const cgst = Number(data.cgstPaise ?? 0), sgst = Number(data.sgstPaise ?? 0), igst = Number(data.igstPaise ?? 0);
     const taxable = Number(r.taxable_paise ?? 0), gst = Number(r.gst_paise ?? 0);
@@ -279,17 +279,16 @@ export function renderReceiptHtml(r: ReceiptRow, sup: Supplier, customerName: st
   } else if (data.walletPaise != null) {
     // [HF-CASHFREE-TOPUP-1] Website top-up into the rupee wallet: paid = added + 18% GST.
     const paid = Number(data.paidPaise ?? r.amount_rupees * 100), added = Number(data.walletPaise), gst = Number(data.gstPaise ?? 0);
-    const via = data.gateway === "cashfree" ? "Cashfree" : String(data.gateway ?? "");
     body = `<table><thead><tr><th>Description</th><th class="n">Detail</th></tr></thead><tbody>
       <tr><td>Order</td><td class="n">${esc(data.topupId ?? r.source_id)}</td></tr>
       <tr><td>Added to your wallet</td><td class="n">${inr(added)}</td></tr>
       ${keptRow(paid, gst, added)}
-      <tr class="t"><td>Paid${via ? ` via ${esc(via)}` : ""}</td><td class="n">${inr(paid)}</td></tr></tbody></table>
+      <tr class="t"><td>Paid (secure payment)</td><td class="n">${inr(paid)}</td></tr></tbody></table>
       ${data.gatewayPaymentId ? `<p class="muted">Payment reference: ${esc(data.gatewayPaymentId)}</p>` : ""}
       <p class="muted">This is a payment receipt, not a tax invoice.</p>`;
   } else {
     body = `<table><thead><tr><th>Description</th><th class="n">Amount</th></tr></thead><tbody>
-      <tr><td>Money added to your ${esc(BRAND.name)} wallet${data.gateway ? ` (paid via ${esc(data.gateway)})` : ""}</td><td class="n">${inr(r.amount_rupees * 100)}</td></tr>
+      <tr><td>Money added to your ${esc(BRAND.name)} wallet</td><td class="n">${inr(r.amount_rupees * 100)}</td></tr>
       <tr class="t"><td>Total received</td><td class="n">${inr(r.amount_rupees * 100)}</td></tr></tbody></table>
       ${data.gatewayPaymentId ? `<p class="muted">Payment reference: ${esc(data.gatewayPaymentId)}</p>` : ""}
       <p class="muted">${invoicingOn(sup) ? "This is a receipt for money added to your wallet. GST on the platform fee for your calls is shown on your monthly tax invoice." : "This is a payment receipt, not a tax invoice."}</p>`;

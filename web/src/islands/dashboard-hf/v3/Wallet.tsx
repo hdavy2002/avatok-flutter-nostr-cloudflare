@@ -9,7 +9,7 @@ import { BRAND } from '../../../lib/brand';
 import { capture } from '../../../lib/analytics';
 import { rateCardLines } from '../../../lib/hfStdPlan';
 import { fetchTopupConfig, gatewaySupported, openCheckout, startTopup, topupErrorMessage, topupPreview, waitForTopup, type TopupConfig, type TopupStatus } from '../../../lib/hfTopupApi';
-import { fetchRefunds, requestRefund, cancelRefund, walletExitMessage, type RefundInfo } from '../../../lib/hfWalletExitApi';
+import { fetchRefunds, requestRefund, cancelRefund, walletExitMessage, PAYOUT_HREF, type RefundInfo } from '../../../lib/hfWalletExitApi';
 import { fetchReceipts, openReceipt, receiptSplit, type ReceiptItem } from '../../../lib/hfReceiptsApi';
 import TokensPanel from '../../wallet/TokensPanel';
 import { useDash, spendablePaise } from './data';
@@ -173,11 +173,15 @@ function AddMoney({ onPaid }: { onPaid: (text: string) => void }) {
 function RefundBox({ onAsk }: { onAsk: () => void }) {
   const [info, setInfo] = useState<RefundInfo | null>(null);
   useEffect(() => { void fetchRefunds().then(setInfo).catch(() => setInfo(null)); }, []);
-  if (!info?.enabled) return null;
+  if (!info) return null;
+  if (!info.enabled) return info.walletOnly ? <div style={{ marginTop: 12, padding: 14, borderRadius: 16, background: 'var(--cream)', border: '1px dashed var(--line)' }}>
+    <p className="small muted">Refunds go to your wallet, never to your card or UPI. To take money out, use Payout (UPI, after a one-time ID and UPI check).</p>
+    <a className="h3-btn sm ghost" style={{ marginTop: 8 }} href={PAYOUT_HREF}>Go to Payout</a>
+  </div> : null;
   const open = info.requests.find(r => r.status === 'requested' || r.status === 'processing');
   return <div style={{ marginTop: 12, padding: 14, borderRadius: 16, background: 'var(--cream)', border: '1px dashed var(--line)' }}>
     <div className="small muted">Unused top-up money you can ask back</div><div className="num" style={{ fontSize: '1.5rem' }}>{formatPaise(Math.round((info.refundable ?? 0) * 100))}</div>
-    <p className="small muted" style={{ marginTop: 6 }}>Goes back to the original payment within {info.windowDays ?? 180} days of paying, after our team approves it. Money spent on connected calls is not refundable.</p>
+    <p className="small muted" style={{ marginTop: 6 }}>Refunds are credited to your wallet after our team approves them. Use Payout to withdraw to your UPI. Money spent on connected calls is not refundable.</p>
     {open ? <p className="small" style={{ marginTop: 8 }}>A refund of {formatPaise(Math.round(open.amount * 100))} is in progress.</p> : <button type="button" className="h3-btn sm ghost" style={{ marginTop: 10 }} onClick={onAsk}>Request refund</button>}
   </div>;
 }
@@ -193,8 +197,8 @@ function RefundDialog({ open, onClose, onDone }: { open: boolean; onClose: () =>
   const pending = info?.requests.some(r => r.status === 'requested' || r.status === 'processing');
   return <Dialog open={open} onClose={onClose} label="Ask for a refund">
     <h2>Ask for a refund</h2>
-    {!info ? <Skel h={120} /> : !info.enabled ? <p className="muted">Refunds are not open right now. Please write to us from Support.</p> : <>
-      <p className="small muted">Unused top-up money goes back to the original payment, newest top-up first, within {info.windowDays ?? 180} days of paying. Our team approves it first.</p>
+    {!info ? <Skel h={120} /> : !info.enabled ? <p className="muted">{info.walletOnly ? 'Refunds go to your wallet, not to your card. To take money out, use Payout.' : 'Refunds are not open right now. Please write to us from Support.'} {info.walletOnly && <a href={PAYOUT_HREF}>Go to Payout</a>}</p> : <>
+      <p className="small muted">Unused top-up money is credited to your wallet, never to your card or UPI. Our team approves it first. Use Payout to withdraw to your UPI.</p>
       <div className="h3-break" style={{ marginTop: 12 }}><div className="tot"><span>Can be refunded now</span><span>{formatPaise(Math.round(refundable * 100))}</span></div></div>
       {info.requests.length > 0 && <div style={{ marginTop: 10 }}>{info.requests.slice(0, 5).map(r => <div key={r.id} className="h3-rcpt"><span>{formatPaise(Math.round(r.amount * 100))} · {RLABEL[r.status] ?? r.status}{r.utr ? ` · ref ${r.utr}` : ''}</span>
         {r.status === 'requested' && !r.exit && <button type="button" className="h3-btn sm ghost" disabled={busy} onClick={async () => { setBusy(true); try { await cancelRefund(r.id); await load(); } catch (e) { setErr(walletExitMessage(e)); } setBusy(false); }}>Cancel</button>}</div>)}</div>}

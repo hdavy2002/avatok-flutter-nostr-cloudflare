@@ -1,5 +1,5 @@
 /* [HF-PAYOUT-1] Host withdrawals, shown inside HostDashboard. Worker: GET/POST /api/hosts/me/payouts, POST /api/hosts/me/payouts/:id/cancel.
- * Manual payouts: you ask, we check it, we pay your verified bank account and show the bank reference (UTR) here. Whole rupees. */
+ * Payouts: you ask, we pay your verified bank account and show the bank reference (UTR) here. Whole rupees. */
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ApiError, request } from '../../lib/apiClient';
 import { relDate } from '../../lib/hfCallsApi';
@@ -89,7 +89,7 @@ export default function WithdrawPanel({ onChanged, isCurrent }: { onChanged?: ()
     setBusy(false);
     if (r.ok) {
       attemptKey.current = null; setAmount('');
-      setMsg({ tone: 'ok', text: `Request sent for ${inr(n)}. We will check it and pay your bank account.` });
+      setMsg({ tone: 'ok', text: `Request sent for ${inr(n)}. We will pay your bank account and send you the payment reference.` });
       await load(); if (current()) onChanged?.();
     } else {
       if (r.code !== 'network') attemptKey.current = null;
@@ -133,7 +133,7 @@ export default function WithdrawPanel({ onChanged, isCurrent }: { onChanged?: ()
       </form>
       {msg && <p role={msg.tone === 'err' ? 'alert' : 'status'} className={msg.tone === 'err' ? 'hfc-err' : 'hfc-sub'} style={{ margin: '8px 0' }}>{msg.text}</p>}
       <p className="hfc-sub" style={{ margin: '8px 0', color: '#785979', fontSize: '.875rem' }}>
-        Earnings can be withdrawn {info.holdDays} days after the call. We pay by hand, usually within a few working days. You can ask for up to {info.maxPerWeek} withdrawals a week.
+        Earnings can be withdrawn {info.holdDays} days after the call. We pay it to your UPI or bank and send you the payment reference. You can ask for up to {info.maxPerWeek} withdrawals a week.
       </p>
       {info.requests.length > 0 && (
         <>

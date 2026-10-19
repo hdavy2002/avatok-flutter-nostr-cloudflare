@@ -575,7 +575,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
 // ---------------------------------------------------------------------------------------------- Payout
 
 /// Payout: withdraw to UPI (HF-WIRE-10). Open to everyone (HF-REEL-36): the minimum comes from the server (fans ₹100 by default; influencer
-/// earnings keep ₹500 and the 7-day hold), checked by hand, UTR on WhatsApp. The ID check happens once, before the first payout.
+/// earnings keep ₹500 and the 7-day hold), paid to UPI, UTR on WhatsApp. The ID check happens once, before the first payout.
 ///
 /// With [DemoMode.on] (and no [repo]) it shows the dummy numbers. Otherwise it reads `GET /api/hf/payouts/summary`.
 class PayoutScreen extends StatefulWidget {
@@ -830,7 +830,7 @@ class _PayoutScreenState extends State<PayoutScreen> {
                   ),
                   const SizedBox(height: 14),
                   for (final line in [
-                    'We check every request by hand and pay it to your UPI.',
+                    'We pay every request to your UPI.',
                     'You get the payment reference (UTR) on WhatsApp.',
                     'We check your ID once, before your first payout.',
                     'Test credits can be spent but not withdrawn.',

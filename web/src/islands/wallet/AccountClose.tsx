@@ -1,12 +1,13 @@
-/* [HF-WALLET-EXIT-1] /account/close: pay-out-first account closure. Shows what happens to the user's money, starts the exit
- * (refund of unused top-ups + final host payout), tracks progress, and closes the account once everything is settled.
+/* [HF-WALLET-EXIT-1] /account/close: pay-out-first account closure. [HF-WIRE-16] Wallet money is withdrawn to UPI via Payout BEFORE closing (never refunded
+ * to a card); a leftover below the smallest withdrawal can be given up. Shows what happens to the user's money, starts the exit
+ * (final host payout), tracks progress, and closes the account once everything is settled.
  * Worker: GET/POST/DELETE /api/hf/account/exit, POST /api/account/delete (no-money case). Rulebook HF-PAY-14. */
 import { PageShell, useEmbedded, useIntoDashboard } from '../../components/account/dashboardEmbed';
 import { useEffect, useState } from 'react';
 import SessionBridge from '../calls/SessionBridge';
 import { looksSignedOut, signInUrl } from '../../lib/hfCallsApi';
 import { formatPaise } from '../../lib/money';
-import { fetchExit, startExit, cancelExit, deleteAccountNow, walletExitMessage, ApiError, type ExitInfo } from '../../lib/hfWalletExitApi';
+import { fetchExit, startExit, cancelExit, deleteAccountNow, walletExitMessage, walletExitCode, PAYOUT_HREF, ApiError, type ExitInfo } from '../../lib/hfWalletExitApi';
 
 const dateIN = (ms: number | null | undefined): string => (ms ? new Date(ms).toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' }) : '');
 const PAY: Record<string, string> = { requested: 'Waiting for approval', approved: 'Approved, being paid', paid: 'Paid', rejected: 'Not paid', cancelled: 'Cancelled' };
@@ -21,6 +22,8 @@ export default function AccountClose() {
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null);
   const [closedAt, setClosedAt] = useState<number | null>(null);
+  const [withdrawFirst, setWithdrawFirst] = useState(false); // [HF-WIRE-16] server answered 409 withdraw_first
+  const [smallLeft, setSmallLeft] = useState(0); // [HF-WIRE-16] server answered 409 forfeit_required for a wallet leftover (rupees)
 
   async function load() {
     try { setInfo(await fetchExit()); setPhase('ready'); }
@@ -32,11 +35,17 @@ export default function AccountClose() {
   }, []);
 
   async function begin() {
-    setBusy(true); setMsg(null);
+    setBusy(true); setMsg(null); setWithdrawFirst(false);
     try { await startExit(agree); await load(); }
     catch (e) {
       const b = (e instanceof ApiError && e.body && typeof e.body === 'object' ? e.body : {}) as { error?: string; message?: string };
       if (b.error === 'nothing_to_settle') await load();
+      else if (b.error === 'withdraw_first') { setWithdrawFirst(true); setMsg({ kind: 'err', text: walletExitMessage(e) }); }
+      else if (b.error === 'forfeit_required') {
+        const r = (e instanceof ApiError && e.body && typeof e.body === 'object' ? (e.body as { forfeitRupees?: unknown }).forfeitRupees : 0);
+        if (typeof r === 'number' && r > 0) setSmallLeft(r);
+        setMsg({ kind: 'err', text: walletExitMessage(e) });
+      }
       else if (b.error === 'active_call') setMsg({ kind: 'err', text: 'You are on a call right now. Please finish the call and try again.' });
       else setMsg({ kind: 'err', text: walletExitMessage(e) });
     }
@@ -66,9 +75,10 @@ export default function AccountClose() {
 
   const ex = info.exit && ['waiting_hold', 'waiting_payouts', 'ready'].includes(info.exit.status) ? info.exit : null;
   const hasMoney = info.paidBalance > 0 || info.refund != null || info.payout != null;
-  const tk = info.mode === 'tokens' || info.mode === 'rupees'; // money came in through Google Play
   const m = (n: number) => formatPaise(Math.round(n * 100)); // [HF-STD-PLAN-1] rupees, two decimals
   const scheduled = info.deletion?.scheduledAt ?? closedAt;
+  const giveUpRupees = info.forfeitRupees + smallLeft; // earnings that cannot be paid + a wallet leftover below the smallest withdrawal
+  const walletMoney = info.refundable + info.manualRefund;
 
   return (
     <PageShell className="hfc-page">
@@ -93,7 +103,7 @@ export default function AccountClose() {
           {info.refund && (
             <div className="hfc-stat" style={{ textAlign: 'left' }}>
               <strong>{m(info.refund.amount)}</strong>
-              <span>{tk ? 'Refund of your unused wallet money through Google Play:' : 'Refund of unused top-ups to the payment you used:'} {REF[info.refund.status] ?? info.refund.status}{info.refund.reason ? ` (${info.refund.reason})` : ''}</span>
+              <span>Refund credited to your wallet: {REF[info.refund.status] ?? info.refund.status}{info.refund.reason ? ` (${info.refund.reason})` : ''}</span>
             </div>
           )}
           {info.payout && (
@@ -110,26 +120,28 @@ export default function AccountClose() {
       {!ex && !scheduled && info.decision === 'exit' && hasMoney && (
         <section className="hfc-card" aria-labelledby="hfx-sum">
           <h2 id="hfx-sum">Your money comes first</h2>
-          <p style={{ margin: 0 }}>You have money in your wallet, so we pay it out before deleting your account. Your account is deleted once it is paid. This can take a few days because people approve each payment.</p>
+          <p style={{ margin: 0 }}>You have money in your account, so it is settled before your account is deleted. Wallet money is never sent back to your card: you withdraw it to your UPI with Payout first (one-time ID and UPI check). Earnings are paid to your bank account for you. Your account is deleted once everything is paid.</p>
           <div className="hfc-stats">
-            <div className="hfc-stat"><strong>{m(info.refundable + info.manualRefund)}</strong><span>{tk ? 'unused wallet money, refunded through Google Play' : 'unused top-ups, refunded to the original payment'}</span></div>
+            <div className="hfc-stat"><strong>{m(info.refundable + info.manualRefund)}</strong><span>wallet money: withdraw it to your UPI with Payout before closing</span></div>
             <div className="hfc-stat"><strong>{m(info.withdrawable)}</strong><span>earnings, withdrawn to your bank</span></div>
             <div className="hfc-stat"><strong>{m(info.held)}</strong><span>earnings in the 7-day hold{info.heldReleaseAt ? `, until ${dateIN(info.heldReleaseAt)}` : ''}</span></div>
           </div>
           {info.held > 0 && <p className="hfc-note">Held earnings are paid after the hold ends, so closing will wait until then.</p>}
-          {info.manualRefund > 0 && <p className="hfc-sub" style={{ margin: 0 }}>{tk ? `${m(info.manualRefund)} is part of a purchase where some of the money was already used. Our team refunds that part for you in Google Play.` : `${m(info.manualRefund)} is old enough that the payment provider may not take it back. In that case our team pays it to you by bank transfer.`}</p>}
+          {walletMoney > 0 && (
+            <p className="hfc-note" role="status">{withdrawFirst ? 'Withdraw your wallet money first, then come back here to close your account. ' : ''}<a className="hfc-btn" href={PAYOUT_HREF}>Go to Payout</a> If what is left is below the smallest withdrawal, you can choose to give it up below.</p>
+          )}
           {!info.bankOk && (info.withdrawable > 0 || info.held > 0) && (
             <p className="hfc-note">To receive your earnings you need a verified bank account (<a href="/dashboard/host/earnings">add it on your Earnings page</a>). If you would rather not, you can give up those earnings below.</p>
           )}
-          {info.forfeitRupees > 0 && (
+          {giveUpRupees > 0 && (
             <label style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
               <input type="checkbox" checked={agree} onChange={e => setAgree(e.target.checked)} style={{ marginTop: 4, width: 20, height: 20 }} />
-              <span>I understand that {m(info.forfeitRupees)} cannot be paid out and will be lost when my account is deleted.</span>
+              <span>I understand that {m(giveUpRupees)} cannot be paid out and will be lost when my account is deleted.</span>
             </label>
           )}
           {(info.testCredits > 0 || info.testEarnings > 0) && <p className="hfc-sub" style={{ margin: 0 }}>Test credits ({m(info.testCredits)}) and earnings from test credits ({m(info.testEarnings)}) are not real money and are simply removed.</p>}
-          <button type="button" className="hfc-btn hfc-primary" disabled={busy || (info.forfeitRupees > 0 && !agree)} onClick={() => void begin()}>
-            {busy ? 'Working…' : 'Pay out my money and close my account'}
+          <button type="button" className="hfc-btn hfc-primary" disabled={busy || (giveUpRupees > 0 && !agree)} onClick={() => void begin()}>
+            {busy ? 'Working…' : 'Close my account'}
           </button>
         </section>
       )}

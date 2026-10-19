@@ -351,7 +351,7 @@ function drawBooking(){
   <div class="bill"><div><span>${B.mode==='now'?'Call now':`${DAYS[B.day][1]}, ${DAYS[B.day][2]} &middot; ${B.time}`}</span><span>${B.dur} min</span></div><div><span>Call charges</span><span>${money(sub)}</span></div><div><span>GST (18%)</span><span>${money(gst)}</span></div><div class="tot"><span>Total</span><span>${money(tot)}</span></div></div>
   <div class="pay"><div class="lbl2">Pay with</div>
    <label><input type="radio" name="pay" value="wallet" ${B.pay==='wallet'?'checked':''}>${BRAND} wallet<span class="cnt">Balance ₹480</span></label>
-   <label><input type="radio" name="pay" value="upi" ${B.pay==='upi'?'checked':''}>UPI (any app)<span class="cnt">via Cashfree</span></label>
+   <label><input type="radio" name="pay" value="upi" ${B.pay==='upi'?'checked':''}>UPI (any app)<span class="cnt">secure payment</span></label>
   </div>
   <div class="terms">Both phone numbers stay private. No one listens in. Press # any time to end the call and block.</div>`;
   foot=`<button class="back" type="button" id="bkBack">Back</button><button class="skin-btn" type="button" id="bkPay">${I.phone}Pay ${money(tot)} &amp; book</button>`;

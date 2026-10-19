@@ -1,12 +1,13 @@
-/* [HF-WALLET-EXIT-1] "Request a refund" card on /wallet: unused top-up money goes back to the ORIGINAL payment after a person approves it.
- * Hidden completely (renders nothing) while hfRefundsEnabled is off or the worker is unreachable. */
+/* [HF-WALLET-EXIT-1] "Request a refund" card on /wallet. [HF-WIRE-16] Refunds land in the WALLET only (HF-REEL-35); money leaves by Payout to UPI.
+ * While card refunds are off the worker answers {enabled:false, walletOnly:true}: show a short note with a Payout link instead of a form.
+ * Hidden completely (renders nothing) when the worker is unreachable. */
 import { useEffect, useState } from 'react';
 import { relDate } from '../../lib/hfCallsApi';
 import { formatPaise } from '../../lib/money';
 
 // [HF-STD-PLAN-1] Amounts here are rupees (maybe fractional): always two decimals, Indian grouping.
 const money = (n: number) => formatPaise(Math.round(n * 100));
-import { fetchRefunds, requestRefund, cancelRefund, walletExitMessage, type RefundInfo } from '../../lib/hfWalletExitApi';
+import { fetchRefunds, requestRefund, cancelRefund, walletExitMessage, walletExitCode, PAYOUT_HREF, type RefundInfo } from '../../lib/hfWalletExitApi';
 
 const LABEL: Record<string, string> = { requested: 'Waiting for approval', processing: 'Being sent back', refunded: 'Sent back', rejected: 'Not processed', cancelled: 'Cancelled' };
 
@@ -18,15 +19,24 @@ export default function RefundPanel({ onChanged }: { onChanged?: () => void }) {
   const load = () => fetchRefunds().then(setInfo).catch(() => setInfo(null));
   useEffect(() => { void load(); }, []);
 
-  if (!info || !info.enabled) return null;
-  const viaPlay = info.mode === 'tokens' || info.mode === 'rupees'; // money came in through Google Play
+  if (!info) return null;
+  if (!info.enabled) {
+    if (!info.walletOnly) return null;
+    return (
+      <section className="hfc-card" aria-labelledby="hfr-h">
+        <h2 id="hfr-h">Refunds and withdrawals</h2>
+        <p className="hfc-sub" style={{ margin: 0 }}>Every refund goes to your wallet, never back to your card or UPI. To take money out, use Payout: it pays to your UPI after a one-time ID and UPI check. Test credits cannot be withdrawn.</p>
+        <a className="hfc-btn hfc-primary" href={PAYOUT_HREF}>Go to Payout</a>
+      </section>
+    );
+  }
   const refundable = info.refundable ?? 0;
   const open = info.requests.some(r => r.status === 'requested' || r.status === 'processing');
 
   async function ask() {
     setBusy(true); setMsg(null);
-    try { const r = await requestRefund(); setMsg({ kind: 'ok', text: `Refund of ${money(r.amount)} requested. ${viaPlay ? 'We will send it back through Google Play once a person approves it.' : 'We will send it back to the payment you used.'}` }); await load(); onChanged?.(); }
-    catch (e) { setMsg({ kind: 'err', text: walletExitMessage(e) }); }
+    try { const r = await requestRefund(); setMsg({ kind: 'ok', text: `Refund of ${money(r.amount)} requested. It will be credited to your wallet once a person approves it.` }); await load(); onChanged?.(); }
+    catch (e) { setMsg({ kind: 'err', text: walletExitMessage(e) }); if (walletExitCode(e) === 'refund_to_wallet_only') await load(); }
     setBusy(false);
   }
   async function cancel(id: string) {
@@ -43,9 +53,7 @@ export default function RefundPanel({ onChanged }: { onChanged?: () => void }) {
         <div className="hfc-stat"><strong>{money(refundable)}</strong><span>can be refunded now</span></div>
       </div>
       <p className="hfc-sub" style={{ margin: 0 }}>
-        {viaPlay
-          ? `Unused money you added goes back through Google Play, after a person approves it. Each purchase can be refunded for ${info.windowDays ?? 180} days after you bought it, and only the part you have not used. Money already used on calls and test credits cannot be refunded. Influencer earnings are withdrawn from the influencer dashboard instead.`
-          : `Unused money you added goes back to the payment you used, after a person approves it. Each top-up can be refunded for ${info.windowDays ?? 180} days after you paid, and only the part you have not spent. Money already spent on calls and test credits cannot be refunded. Influencer earnings are withdrawn from the influencer dashboard instead.`}
+        Unused money you added is credited to your wallet, never to your card or UPI, after a person approves it. Only the part you have not used can be refunded. Money already used on calls and test credits cannot be refunded. To take money out, use Payout.
       </p>
       <button type="button" className="hfc-btn hfc-primary" disabled={busy || refundable <= 0 || open} onClick={() => void ask()}>
         {busy ? 'Working…' : refundable > 0 ? `Request ${money(refundable)} back` : 'Nothing to refund'}
