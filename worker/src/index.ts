@@ -1159,7 +1159,7 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
         if (bookingResponse) return bookingResponse;
       } // [HF-BOOKING-CALENDAR-1] feature stays dark until the booked-call settlement path is ready
       if (p.startsWith("/api/hf/lanes/")) { const r = await hfLanesRoute(req, env, p, ctx); if (r) return r; } // [HF-LANE-VERIFY-1]
-      if (p.startsWith("/api/hf/wallet/topup") || p.startsWith("/api/admin/hf/topups")) { const r = await hfTopupRoute(req, env, p); if (r) return r; } // [HF-TOPUP-1]
+      if (p.startsWith("/api/hf/wallet/topup") || p === "/api/hf/app/wallet" || p.startsWith("/api/admin/hf/topups")) { const r = await hfTopupRoute(req, env, p); if (r) return r; } // [HF-TOPUP-1]
       if (p === "/api/admin/hf/money-audit" || p.startsWith("/api/admin/hf/money-audit/")) { const r = await hfMoneyAuditRoute(req, env, p); if (r) return r; } // [HF-WIRE-13]
       if (p === "/api/hf/wallet/refunds" || p.startsWith("/api/hf/wallet/refunds/") || p === "/api/admin/hf/refunds" || p.startsWith("/api/admin/hf/refunds/")) { const r = await hfRefundsRoute(req, env, p); if (r) return r; } // [HF-WALLET-EXIT-1]
       if (p === "/api/hf/account/age-confirm" && req.method === "POST") return await hfAgeConfirm(req, env); // [HF-AUTH-WA-1]
