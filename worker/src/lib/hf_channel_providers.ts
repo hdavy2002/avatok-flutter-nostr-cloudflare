@@ -1,4 +1,4 @@
-// [HF-WIRE-3] Channel look-ups for the Hello Fraands Reels app (HF-REEL-26).
+// [HF-WIRE-3] Channel look-ups for the Reels app (HF-REEL-26).
 //   YouTube   -> official YouTube Data API v3 (secret YOUTUBE_API_KEY): channels.list part=snippet,statistics, forHandle / id.
 //   Instagram -> treg gateway (secret TREG_API_KEY, header X-Treg-Token) calling the ScrapeCreators profile endpoint.
 //                treg publishes no response schema, so the parser accepts the ScrapeCreators shapes (Specs/HF-TREG-JEV-RESEARCH.md §2).

@@ -1,4 +1,4 @@
-// [HF-WIRE-3] Influencer Channels for the Hello Fraands Reels app (HF-REEL-23/25/26). Flag hfChannelsEnabled (off -> 404 not_enabled).
+// [HF-WIRE-3] Influencer Channels for the Reels app (HF-REEL-23/25/26). Flag hfChannelsEnabled (off -> 404 not_enabled).
 //   POST   /api/hf/channels            { platform:'instagram'|'youtube', handleOrUrl, consent:{version, embeds, counts, ownChannel} }
 //                                      -> { ok, channel, verifyCode, instructions, minFollowers, hostStatus }
 //   GET    /api/hf/channels            -> { ok, channels:[channel], minFollowers, hostStatus, qualified }       (the caller's own only)
