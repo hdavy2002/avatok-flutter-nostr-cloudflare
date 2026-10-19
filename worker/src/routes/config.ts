@@ -2153,6 +2153,12 @@ export interface PlatformConfig {
   hfCallsEnabled: boolean; // [HF-CALLS-1] masked paid calls, host presence, test credits (routes/hf_calls.ts). Start answers 503 calls_not_ready while HF_CALL_DID / Vobiz secrets are missing.
   hfBookingsEnabled: boolean; // [HF-BOOKING-CALENDAR-1] host booking calendar; keep off until the full reservation and settlement path is ready.
   hfFavouritesEnabled: boolean; // [HF-DASH-FRAANDS-1] save ("heart") hosts + My Fraands dashboard screen; dark until switched on.
+  // [HF-WIRE-1B] Reels-app flags (Specs/HF-REELS-APP-HANDOVER.md 5.3). All dark by default except the demo-influencer switch. Public in /api/config.
+  hfReelsEnabled: boolean; // reels feed + profile videos
+  hfChannelsEnabled: boolean; // influencer Channels onboarding (treg follower check)
+  hfInvitesEnabled: boolean; // "Invite" votes for influencers not yet on the app
+  hfDemoInfluencersVisible: boolean; // default true; false hides every is_demo host and reel in one switch
+  hfInfluencerMinFollowers: number; // NUMERIC (numericKeys): followers/subscribers needed on one YouTube or Instagram channel; default 10
   // [AUMFE-PANDIT-COST-1] Pandit ji cost controls. NUMERIC -> they MUST also appear in `numericKeys` below or
   // `flags.sh set panditTopicMaxTurns=15` 400s `bad type`.
   // Messages (customer + Pandit ji) sent verbatim each turn; older ones live in a rolling summary.
@@ -2913,6 +2919,11 @@ const DEFAULTS: PlatformConfig = {
   hfCallsEnabled: false, // [HF-CALLS-1] dark until the owner flips it
   hfBookingsEnabled: false, // [HF-BOOKING-CALENDAR-1] dark until booking money and call lifecycle are verified
   hfFavouritesEnabled: false, // [HF-DASH-FRAANDS-1] dark until the owner switches it on
+  hfReelsEnabled: false, // [HF-WIRE-1B] dark until the reels backend ships
+  hfChannelsEnabled: false, // [HF-WIRE-1B]
+  hfInvitesEnabled: false, // [HF-WIRE-1B]
+  hfDemoInfluencersVisible: true, // [HF-WIRE-1B] seed influencers are shown until the owner hides them
+  hfInfluencerMinFollowers: 10, // [HF-WIRE-1B] owner 2026-10-19 (handover 10 asks whether 10 or 10,000)
   hfTopupEnabled: false, // [HF-TOPUP-1] dark until a gateway is configured and the owner flips it
   hfTopupGateway: "none",
   hfTopupPacks: "100,200,500,1000",
@@ -3144,7 +3155,7 @@ export async function putConfig(req: Request, env: Env): Promise<Response> {
     "sessionCreatorCheckInMin", "liveHostGraceMin",
     "commercialConsultExtensionMinutes", "commercialConsultExtensionRate",
     "commercialLiveBackstageEarlyMin", "commercialLiveStartGraceMin",
-    "minAppBuild", "latestAppBuild", "hfAppMinBuild", "hfAppLatestBuild", /* [HF-NATIVE-S7] */ "dailyAvaTurnLimit", "receptionistRings", "agentDailyCap", "livenessAuditSampleRate",
+    "minAppBuild", "latestAppBuild", "hfAppMinBuild", "hfAppLatestBuild", /* [HF-NATIVE-S7] */ "hfInfluencerMinFollowers", /* [HF-WIRE-1B] */ "dailyAvaTurnLimit", "receptionistRings", "agentDailyCap", "livenessAuditSampleRate",
     "receptWrapCueMs", "receptCloseMs", "receptHardCapMs",
     // [PA-GATE-1] PA stuck-session watchdog (spec §3.4) — numeric, so it must be here.
     "paWatchdogMs",
@@ -3383,6 +3394,9 @@ export async function putConfig(req: Request, env: Env): Promise<Response> {
     }
     if ((k === "hfAppLatestBuild" || k === "hfAppMinBuild") && (!Number.isInteger(v) || (v as number) < 0 || (v as number) > 100_000_000)) {
       return json({ error: `${k} must be a whole build number 0-100000000` }, 400); // [HF-NATIVE-S7]
+    }
+    if (k === "hfInfluencerMinFollowers" && (!Number.isInteger(v) || (v as number) < 0 || (v as number) > 100_000_000)) {
+      return json({ error: "hfInfluencerMinFollowers must be a whole number 0-100000000" }, 400); // [HF-WIRE-1B]
     }
     if (k === "hfInvoicePrefix" && !/^[A-Za-z0-9]{1,4}$/.test(String(v))) {
       return json({ error: "hfInvoicePrefix must be 1-4 letters or digits" }, 400);

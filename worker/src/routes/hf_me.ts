@@ -1,6 +1,9 @@
 // [HF-NATIVE-S1] The native app's "who am I" call: one cheap read for routing, tabs and the Me screen.
 //   GET   /api/hf/me   signed in -> { uid, displayName, phoneMasked, whatsappVerified, ackVersion, age18ConfirmedAt, isHost,
-//                                     host: {status, slug} | null, lanes: {women, lgbtq}, closing, tokensMode }
+//                                     host: {status, slug} | null, lanes: {women, lgbtq}, closing, tokensMode,
+//                                     [HF-WIRE-1B reels app, additive:] name, email|null, whatsapp (masked), role: 'fan'|'host' (host = live),
+//                                     hostStatus|null (raw hf_hosts.status), presence|null (hosts only), walletPaise|null, prefs:{notifyWhatsapp,apptReminders} }
+//        walletPaise is the caller's own spendable balance in paise, or null when it could not be read (use GET /api/hf/wallet for the breakdown).
 //   PATCH /api/hf/me   { displayName }   signed in -> { ok, displayName }   (2-40 chars, no digits, no contact details)
 //   POST  /api/hf/me/ack { version, ack18? }  signed in -> { ok, ackVersion, age18ConfirmedAt }   [HF-NATIVE-S4]
 //        stores hf_user_ack(uid, version, at) (first ack of a version wins) and, when ack18 is true, the existing hf_age_confirm row.
@@ -15,6 +18,9 @@ import { contactLeak } from "../lib/hf_options";
 import { getLaneAccess } from "../lib/hf_lanes";
 import { isClosing } from "../lib/hf_exit";
 import { readConfig } from "./config";
+import { emailFor } from "../lib/identity";
+import { walletOp } from "./wallet";
+import { balanceSummary } from "../lib/hf_token_ledger";
 
 const APP = BRAND.slug;
 const err = (status: number, error: string, message?: string, extra: Record<string, unknown> = {}) =>
@@ -42,7 +48,7 @@ export function validateDisplayName(raw: unknown): NameCheck {
 
 interface MeRow {
   display_name: string | null; phone_verified: number | null; e164: string | null;
-  age_at: number | null; host_status: string | null; host_slug: string | null;
+  age_at: number | null; host_status: string | null; host_slug: string | null; host_presence: string | null;
 }
 
 export async function hfMeRoute(req: Request, env: Env, p: string): Promise<Response | null> {
@@ -62,13 +68,13 @@ export async function hfMeRoute(req: Request, env: Env, p: string): Promise<Resp
 
 async function getMe(env: Env, uid: string): Promise<Response> {
   // One joined read for the profile facts, plus the ack, lane and closing checks and the (KV-cached) config, all in parallel.
-  const [row, ack, registration, registrationPending, lanes, closing, cfg] = await Promise.all([
+  const [row, ack, registration, registrationPending, lanes, closing, cfg, email, prefs] = await Promise.all([
     env.DB_META.prepare(
       `SELECT u.display_name AS display_name,
               cv.phone_verified AS phone_verified,
               (SELECT o.e164 FROM phone_otp o WHERE o.uid=?1 AND o.phone_hash=cv.phone_hash AND o.status='verified' ORDER BY o.verified_at DESC LIMIT 1) AS e164,
               (SELECT a.confirmed_at FROM hf_age_confirm a WHERE a.uid=?1) AS age_at,
-              h.status AS host_status, h.slug AS host_slug
+              h.status AS host_status, h.slug AS host_slug, h.presence AS host_presence
          FROM (SELECT ?1 AS uid) x
          LEFT JOIN users u ON u.uid=x.uid
          LEFT JOIN contact_verification cv ON cv.uid=x.uid
@@ -82,19 +88,26 @@ async function getMe(env: Env, uid: string): Promise<Response> {
     // Server-owned signup membership survives reinstalls, lost ticket responses,
     // and another device signing into an unfinished account.
     env.DB_META.prepare(`SELECT 1 AS x FROM hf_phone_signup WHERE uid=?1 AND state='done'
-      UNION SELECT 1 AS x FROM hf_registration_progress WHERE uid=?1 LIMIT 1`).bind(uid).first(),
+      UNION SELECT 1 AS x FROM hf_registration_progress WHERE uid=?1 LIMIT 1`).bind(uid).first().catch(() => null), // [HF-WIRE-1B] a missing table must not blank /me
     getLaneAccess(env, uid).catch(() => ({ women: false, lgbtq: false })),
     isClosing(env, uid),
     readConfig(env).catch(() => null),
+    // [HF-WIRE-1B] The caller's OWN email (KV-cached Clerk lookup); null if it cannot be read. Never another user's.
+    (async () => emailFor(env, uid))().catch(() => null),
+    (async () => env.DB_META.prepare("SELECT notify_whatsapp, appt_reminders FROM hf_user_prefs WHERE uid=?1").bind(uid)
+      .first<{ notify_whatsapp: number; appt_reminders: number | null }>())().catch(() => null),
   ]);
+  const walletPaise = await readWalletPaise(env, uid, cfg?.hfTokensEnabled === true);
   const host = row?.host_status ? { status: row.host_status, slug: row.host_slug ?? null } : null;
+  const displayName = row?.display_name?.trim() ? row.display_name : null;
+  const phoneMasked = maskPhoneLast4(row?.e164);
   const body = {
     uid,
-    displayName: row?.display_name?.trim() ? row.display_name : null,
+    displayName,
     username: registration?.username ?? null,
     registrationComplete: !!registration?.username,
     registrationRequired: !registration?.username && !!registrationPending,
-    phoneMasked: maskPhoneLast4(row?.e164),
+    phoneMasked,
     whatsappVerified: Number(row?.phone_verified) === 1,
     ackVersion: ack?.version ?? null,
     age18ConfirmedAt: row?.age_at ?? null,
@@ -103,8 +116,27 @@ async function getMe(env: Env, uid: string): Promise<Response> {
     lanes,
     closing,
     tokensMode: cfg?.hfTokensEnabled === true,
+    // [HF-WIRE-1B] Reels-app fields (additive; every field above is unchanged).
+    name: displayName,
+    email: email ?? null,
+    whatsapp: phoneMasked,
+    role: row?.host_status === "live" ? "host" : "fan",
+    hostStatus: row?.host_status ?? null,
+    presence: row?.host_status ? (row.host_presence ?? "offline") : null,
+    walletPaise,
+    prefs: { notifyWhatsapp: prefs ? Number(prefs.notify_whatsapp) === 1 : true, apptReminders: prefs ? Number(prefs.appt_reminders ?? 1) !== 0 : true },
   };
   return json(body, 200, { "cache-control": "private, no-store" });
+}
+
+/** [HF-WIRE-1B] Caller's own spendable balance in paise; null if unreadable. Token mode reads the lot ledger, the old mode the rupee WalletDO. */
+async function readWalletPaise(env: Env, uid: string, tokensMode: boolean): Promise<number | null> {
+  try {
+    if (tokensMode) return Math.max(0, Math.trunc((await balanceSummary(env, uid)).availablePaise));
+    const snap = await walletOp(env, uid, { op: "balance", uid });
+    if (snap.status !== 200) return null;
+    return Math.max(0, Math.trunc(Number(snap.body?.balance ?? 0))) * 100;
+  } catch { return null; }
 }
 
 async function patchMe(req: Request, env: Env, uid: string): Promise<Response> {

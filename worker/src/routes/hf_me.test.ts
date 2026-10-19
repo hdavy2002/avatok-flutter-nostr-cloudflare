@@ -12,6 +12,13 @@ vi.mock("../authz", () => ({
   isFail: (u: any) => !!u?.error,
 }));
 
+let emails: Record<string, string | null> = {};
+let walletBody: { status: number; body: any } = { status: 200, body: { balance: 0 } };
+let tokenAvail = 0;
+vi.mock("../lib/identity", () => ({ emailFor: async (_e: any, uid: string) => emails[uid] ?? null }));
+vi.mock("./wallet", () => ({ walletOp: async () => walletBody }));
+vi.mock("../lib/hf_token_ledger", () => ({ balanceSummary: async () => ({ availablePaise: tokenAvail }) }));
+
 import { hfMeRoute, maskPhoneLast4, validateDisplayName } from "./hf_me";
 
 const require_ = createRequire(import.meta.url);
@@ -29,7 +36,8 @@ function makeEnv() {
     CREATE TABLE hf_user_registration (uid TEXT PRIMARY KEY, username TEXT NOT NULL UNIQUE);
     CREATE TABLE hf_phone_signup (uid TEXT PRIMARY KEY, state TEXT);
     CREATE TABLE hf_registration_progress (uid TEXT PRIMARY KEY);
-    CREATE TABLE hf_hosts (uid TEXT PRIMARY KEY, slug TEXT, status TEXT NOT NULL DEFAULT 'draft');
+    CREATE TABLE hf_hosts (uid TEXT PRIMARY KEY, slug TEXT, status TEXT NOT NULL DEFAULT 'draft', presence TEXT NOT NULL DEFAULT 'offline');
+    CREATE TABLE hf_user_prefs (uid TEXT PRIMARY KEY, notify_whatsapp INTEGER NOT NULL DEFAULT 1, appt_reminders INTEGER NOT NULL DEFAULT 1, updated_at INTEGER);
     CREATE TABLE hf_kyc (uid TEXT PRIMARY KEY, gender TEXT, verified_at INTEGER);
     CREATE TABLE hf_lane_access (uid TEXT NOT NULL, lane TEXT NOT NULL, verified_at INTEGER NOT NULL, declared_at INTEGER, PRIMARY KEY (uid, lane));
     CREATE TABLE hf_exit_requests (uid TEXT PRIMARY KEY, status TEXT NOT NULL);
@@ -51,7 +59,7 @@ const req = (method: string, body?: unknown, uid = "u1") =>
   new Request("https://x/api/hf/me", { method, headers: { "content-type": "application/json", "x-test-uid": uid }, body: body === undefined ? undefined : JSON.stringify(body) });
 const call = (r: Request) => hfMeRoute(r, env, "/api/hf/me");
 
-beforeEach(() => { makeEnv(); cfg = {}; authFail = null; });
+beforeEach(() => { makeEnv(); cfg = {}; authFail = null; emails = {}; walletBody = { status: 200, body: { balance: 0 } }; tokenAvail = 0; });
 
 describe("GET /api/hf/me", () => {
   it('marks unfinished phone signups for completion on any device', async () => {
@@ -68,6 +76,8 @@ describe("GET /api/hf/me", () => {
     expect(await r.json()).toEqual({
       uid: "u1", displayName: null, username: null, registrationComplete: false, registrationRequired: false, phoneMasked: null, whatsappVerified: false, ackVersion: null, age18ConfirmedAt: null,
       isHost: false, host: null, lanes: { women: false, lgbtq: false }, closing: false, tokensMode: false,
+      name: null, email: null, whatsapp: null, role: "fan", hostStatus: null, presence: null, walletPaise: 0,
+      prefs: { notifyWhatsapp: true, apptReminders: true },
     });
   });
 
@@ -85,10 +95,16 @@ describe("GET /api/hf/me", () => {
     db.prepare("INSERT INTO hf_lane_access VALUES ('u1','women',99,NULL)").run();
     db.prepare("INSERT INTO hf_exit_requests VALUES ('u1','waiting_hold')").run();
     cfg = { hfTokensEnabled: true };
+    emails = { u1: "meena@example.com" };
+    tokenAvail = 4250;
+    db.prepare("UPDATE hf_hosts SET presence='online' WHERE uid='u1'").run();
+    db.prepare("INSERT INTO hf_user_prefs VALUES ('u1',0,1,5)").run();
     const b = await (await call(req("GET"))).json();
     expect(b).toEqual({
       uid: "u1", displayName: "Meena", username: "meena", registrationComplete: true, registrationRequired: false, phoneMasked: "******3210", whatsappVerified: true, ackVersion: "2026-10-10", age18ConfirmedAt: 1234,
       isHost: true, host: { status: "live", slug: "meena" }, lanes: { women: true, lgbtq: false }, closing: true, tokensMode: true,
+      name: "Meena", email: "meena@example.com", whatsapp: "******3210", role: "host", hostStatus: "live", presence: "online", walletPaise: 4250,
+      prefs: { notifyWhatsapp: false, apptReminders: true },
     });
     expect(JSON.stringify(b)).not.toContain("98765");
   });
@@ -116,6 +132,41 @@ describe("GET /api/hf/me", () => {
     authFail = null;
     expect((await call(req("DELETE"))).status).toBe(405);
     expect(await hfMeRoute(req("GET"), env, "/api/hf/meow")).toBeNull();
+  });
+});
+
+describe("GET /api/hf/me reels-app fields [HF-WIRE-1B]", () => {
+  it("old (rupee) wallet mode: walletPaise = rupees x 100; a failing wallet read is null, never a 500", async () => {
+    db.prepare("INSERT INTO users (uid, display_name) VALUES ('u1','A')").run();
+    walletBody = { status: 200, body: { balance: 423 } };
+    expect((await (await call(req("GET"))).json()).walletPaise).toBe(42300);
+    walletBody = { status: 502, body: {} };
+    const r = await call(req("GET"));
+    expect(r.status).toBe(200);
+    expect((await r.json()).walletPaise).toBeNull();
+  });
+  it("a draft host is still role fan, with hostStatus draft and presence offline", async () => {
+    db.prepare("INSERT INTO users (uid, display_name) VALUES ('u1','A')").run();
+    db.prepare("INSERT INTO hf_hosts (uid, status) VALUES ('u1','draft')").run();
+    expect(await (await call(req("GET"))).json()).toMatchObject({ role: "fan", hostStatus: "draft", presence: "offline" });
+  });
+  it("never returns another user's data (email, wallet, prefs, host, phone)", async () => {
+    db.prepare("INSERT INTO users (uid, display_name) VALUES ('u1','Mine'), ('u2','Other')").run();
+    db.prepare("INSERT INTO contact_verification VALUES ('u2',1,'h2')").run();
+    db.prepare("INSERT INTO phone_otp (uid, phone_hash, e164, status, verified_at) VALUES ('u2','h2','+919000011111','verified',5)").run();
+    db.prepare("INSERT INTO hf_hosts (uid, slug, status, presence) VALUES ('u2','other','live','online')").run();
+    db.prepare("INSERT INTO hf_user_prefs VALUES ('u2',0,0,5)").run();
+    emails = { u1: "mine@example.com", u2: "other@example.com" };
+    const text = JSON.stringify(await (await call(req("GET"))).json());
+    const b = JSON.parse(text);
+    expect(b).toMatchObject({ uid: "u1", name: "Mine", email: "mine@example.com", whatsapp: null, role: "fan", hostStatus: null, presence: null, prefs: { notifyWhatsapp: true, apptReminders: true } });
+    for (const leak of ["other@example.com", "Other", "u2", "11111", "other\""]) expect(text).not.toContain(leak);
+  });
+  it("signed out is 401 with no body fields leaked", async () => {
+    authFail = { status: 401, error: "unauthorized" };
+    const r = await call(req("GET"));
+    expect(r.status).toBe(401);
+    expect(Object.keys(await r.json()).sort()).toEqual(["error", "message"]);
   });
 });
 

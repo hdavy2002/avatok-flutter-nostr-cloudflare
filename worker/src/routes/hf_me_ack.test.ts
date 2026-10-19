@@ -13,6 +13,9 @@ vi.mock("../authz", () => ({
   isFail: (u: any) => !!u?.error,
 }));
 
+vi.mock("../lib/identity", () => ({ emailFor: async () => null }));
+vi.mock("./wallet", () => ({ walletOp: async () => ({ status: 200, body: { balance: 0 } }) }));
+vi.mock("../lib/hf_token_ledger", () => ({ balanceSummary: async () => ({ availablePaise: 0 }) }));
 import { hfMeRoute } from "./hf_me";
 
 let db: any, env: any, kv: Map<string, string>;
@@ -25,7 +28,7 @@ beforeEach(() => {
     CREATE TABLE users (uid TEXT PRIMARY KEY, display_name TEXT, updated_at INTEGER);
     CREATE TABLE contact_verification (uid TEXT PRIMARY KEY, phone_verified INTEGER, phone_hash TEXT);
     CREATE TABLE phone_otp (id INTEGER PRIMARY KEY AUTOINCREMENT, uid TEXT, phone_hash TEXT, e164 TEXT, status TEXT, verified_at INTEGER);
-    CREATE TABLE hf_hosts (uid TEXT PRIMARY KEY, slug TEXT, status TEXT NOT NULL DEFAULT 'draft');
+    CREATE TABLE hf_hosts (uid TEXT PRIMARY KEY, slug TEXT, status TEXT NOT NULL DEFAULT 'draft', presence TEXT NOT NULL DEFAULT 'offline');
     CREATE TABLE hf_kyc (uid TEXT PRIMARY KEY, gender TEXT, verified_at INTEGER);
     CREATE TABLE hf_lane_access (uid TEXT NOT NULL, lane TEXT NOT NULL, verified_at INTEGER NOT NULL, declared_at INTEGER, PRIMARY KEY (uid, lane));
     CREATE TABLE hf_exit_requests (uid TEXT PRIMARY KEY, status TEXT NOT NULL);
