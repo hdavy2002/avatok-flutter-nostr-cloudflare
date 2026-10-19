@@ -10,9 +10,10 @@ let cfg: Record<string, unknown> = {};
 let fakeOrderPaid = true;
 let fakePaidPaise = 0;
 let fakeOrderError: string | null = null; // [HF-WIRE-20] makes the fake gateway refuse the order
-let customerNow = { phone: "9876543210", email: "fan@example.com" as string | null } as { phone: string | null; email: string | null };
+let customerNow = { phone: "9876543210", email: "fan@example.com", name: "Asha Rao" } as { phone: string | null; email: string | null; name: string | null };
+const givenCalls: any[] = [];
 const orderCalls: any[] = [];
-vi.mock("../lib/hf_topup_customer", () => ({ topupCustomer: async () => customerNow }));
+vi.mock("../lib/hf_topup_customer", () => ({ topupCustomer: async (_e: unknown, _u: string, given: any) => (givenCalls.push(given), customerNow) }));
 
 vi.mock("./wallet", () => ({
   walletOp: async (_env: unknown, _uid: string, op: any) => {
@@ -84,7 +85,7 @@ const webhook = (body: unknown, sig = "good") =>
 
 beforeEach(() => {
   env = { DB_META: makeDb(), TOKENS: makeKv() };
-  orderCalls.length = 0; fakeOrderError = null; customerNow = { phone: "9876543210", email: "fan@example.com" };
+  orderCalls.length = 0; fakeOrderError = null; customerNow = { phone: "9876543210", email: "fan@example.com", name: "Asha Rao" }; givenCalls.length = 0;
   credits.clear(); lots.clear(); notices.length = 0; cfg = { ...ON }; fakeOrderPaid = true; fakePaidPaise = 0; idem = 0;
 });
 
@@ -130,8 +131,25 @@ describe("hf top-up", () => {
     expect((await post("/api/hf/wallet/topup", { amount: 100, client: "app" })).status).toBe(200);
     expect((await post("/api/hf/wallet/topup", { amount: 100 })).status).toBe(200);
     expect(orderCalls[0].client).toBe("app");
-    expect(orderCalls[0].customer).toEqual({ phone: "9876543210", email: "fan@example.com" });
+    expect(orderCalls[0].customer).toEqual({ phone: "9876543210", email: "fan@example.com", name: "Asha Rao" });
     expect(orderCalls[1].client).toBe("web");
+  });
+
+  // [HF-WIRE-21] Native in-app checkout is the default; the order says so and carries no hosted-page link.
+  it("order is native by default (no hosted link) and reports which details were known", async () => {
+    const res = await post("/api/hf/wallet/topup", { amount: 100, client: "app" });
+    const b: any = await res.json();
+    expect(orderCalls[0].checkoutMode).toBe("native");
+    expect(b.checkoutMode).toBe("native");
+    expect(b.checkoutUrl).toBeNull();
+    expect(b.customerReady).toEqual({ name: true, email: true, phone: true });
+  });
+
+  it("name and email the app asked for are validated and handed on; junk is dropped", async () => {
+    await post("/api/hf/wallet/topup", { amount: 100, client: "app", customer_name: "  Asha  Rao ", customer_email: "Asha@Example.com" });
+    expect(givenCalls[0]).toEqual({ name: "Asha Rao", email: "asha@example.com" });
+    await post("/api/hf/wallet/topup", { amount: 100, client: "app", customer_name: "A1", customer_email: "nope" });
+    expect(givenCalls[1]).toEqual({ name: null, email: null });
   });
 
   it("no verified number: 409 whatsapp_required in plain words, the row is marked failed, no gateway name", async () => {

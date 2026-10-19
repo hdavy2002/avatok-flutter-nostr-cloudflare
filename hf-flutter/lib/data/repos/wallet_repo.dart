@@ -41,14 +41,36 @@ class WalletRepo {
     }
   }
 
-  Future<TopupOrder> createTopup(int rupees) async {
+  /// [name] and [email] are what the payer typed on our "Your details" screen because the profile had none; the server hands them
+  /// to the payment provider for the receipt (used for this order only, and only if the profile has nothing).
+  Future<TopupOrder> createTopup(int rupees, {String? name, String? email}) async {
     final json = await _api.request(
       'POST',
       '/api/hf/wallet/topup',
-      body: {'amount': rupees, 'client': 'app'},
+      body: {
+        'amount': rupees,
+        'client': 'app',
+        if (name != null && name.trim().isNotEmpty) 'customer_name': name.trim(),
+        if (email != null && email.trim().isNotEmpty) 'customer_email': email.trim(),
+      },
       headers: {'Idempotency-Key': _key()},
     );
     return TopupOrder.fromJson(json is Map<String, dynamic> ? json : <String, dynamic>{});
+  }
+
+  /// Saves the details the payer just typed to the profile (`PATCH /api/hf/me`). Best effort: the order carries them anyway, so a
+  /// refusal (for example email saving not switched on yet) never blocks paying.
+  Future<void> saveDetails({String? name, String? email}) async {
+    for (final body in [
+      if (name != null && name.trim().isNotEmpty) {'displayName': name.trim()},
+      if (email != null && email.trim().isNotEmpty) {'email': email.trim()},
+    ]) {
+      try {
+        await _api.request('PATCH', '/api/hf/me', body: body);
+      } on ApiException {
+        // ignored on purpose, see above
+      }
+    }
   }
 
   Future<TopupStatus> status(String orderId) async =>
@@ -64,8 +86,9 @@ class WalletRepo {
   }
 }
 
-/// Opens the payment page. [inApp] is the checkout inside the app (the payment SDK); [open] is the hosted page in a Chrome Custom
-/// Tab, kept as the fallback when the SDK cannot start. Tests replace [inApp] and [launcher].
+/// [inApp] is the checkout inside the app (the payment SDK; UPI app, UPI ID, card). [open] opens a link in a browser view: it is used
+/// for the website KYC page and, only when the server flag `hfCheckoutMode` is "web", the hosted payment page. Tests replace
+/// [inApp] and [launcher]. [HF-WIRE-21]
 abstract final class Checkout {
   static InAppCheckout inApp = const CashfreeInAppCheckout();
   static Future<bool> Function(Uri url) launcher = _launch;

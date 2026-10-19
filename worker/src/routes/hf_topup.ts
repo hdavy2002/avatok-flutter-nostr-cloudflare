@@ -20,6 +20,7 @@ import { readHfStdPlan } from "../lib/hf_token_config";
 import { topupSplitFloor as topupSplit } from "../lib/hf_token_math";
 import { hfCallsRoute } from "./hf_calls";
 import { topupCustomer } from "../lib/hf_topup_customer"; // [HF-WIRE-20]
+import { validateDisplayName, validateEmail } from "./hf_me"; // [HF-WIRE-21]
 import { normalizeAppWallet } from "../lib/hf_app_wallet";
 import {
   newTopupId, getTopup, isHfTopupId, reconcileHfTopup, settleParsedWebhook, type HfTopupRow,
@@ -66,9 +67,14 @@ async function createTopup(req: Request, env: Env): Promise<Response> {
 
     // [HF-WIRE-20] The gateway order carries the payer's real verified number and email (never a placeholder), and an order started from the
     // native app (`client: "app"`) returns to the app, not the website.
-    const customer = await topupCustomer(env, u.uid).catch(() => ({ phone: null, email: null }));
+    // [HF-WIRE-21] The app asks for a missing name / email on its own screen and sends them with the order (used only when the profile has none).
+    const nm = b.customer_name === undefined ? null : validateDisplayName(b.customer_name);
+    const em = b.customer_email === undefined ? null : validateEmail(b.customer_email);
+    const given = { name: nm && nm.ok ? nm.name : null, email: em && em.ok ? em.email : null };
+    const customer = await topupCustomer(env, u.uid, given).catch(() => ({ phone: null, email: null, name: null }));
+    const checkoutMode = flags.checkoutMode;
     const client = b.client === "app" ? "app" : "web";
-    const order = await adapter.createOrder(env, { orderId: id, amountPaise: amount * 100, currency: "INR", uid: u.uid, listingId: "", kind: "wallet_topup", client, customer });
+    const order = await adapter.createOrder(env, { orderId: id, amountPaise: amount * 100, currency: "INR", uid: u.uid, listingId: "", kind: "wallet_topup", client, customer, checkoutMode });
     if ("error" in order) {
       await env.DB_META.prepare("UPDATE hf_topups SET status='failed', raw_status=?2, updated_at=?3 WHERE id=?1").bind(id, order.error.slice(0, 80), Date.now()).run();
       if (order.error === "customer_phone_required") {
@@ -86,7 +92,9 @@ async function createTopup(req: Request, env: Env): Promise<Response> {
       ok: true, topupId: id, orderId: id, gateway: adapter.id, client_payload: order.client_payload, testMode: live.testMode, amountRupees: amount,
       amountPaise: amount * 100, creditPaise: split.walletPaise, gstPaise: split.gstPaise,
       paymentSessionId: typeof cp.payment_session_id === "string" ? cp.payment_session_id : null,
-      checkoutUrl: typeof cp.checkout_url === "string" ? cp.checkout_url : null,
+      checkoutUrl: checkoutMode === "web" && typeof cp.checkout_url === "string" ? cp.checkout_url : null,
+      checkoutMode, // [HF-WIRE-21] "native" = the app pays on its own screens
+      customerReady: { name: !!customer.name, email: !!customer.email, phone: !!customer.phone },
       environment: live.testMode ? "sandbox" : "production",
     });
   });

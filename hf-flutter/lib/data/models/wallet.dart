@@ -83,6 +83,7 @@ class TopupOrder {
     required this.checkoutUrl,
     required this.paymentSessionId,
     required this.environment,
+    this.checkoutMode = 'native',
   });
 
   factory TopupOrder.fromJson(Map<String, dynamic> j) => TopupOrder(
@@ -93,6 +94,7 @@ class TopupOrder {
         checkoutUrl: j['checkoutUrl'] is String ? j['checkoutUrl'] as String : null,
         paymentSessionId: j['paymentSessionId'] is String ? j['paymentSessionId'] as String : null,
         environment: '${j['environment'] ?? 'production'}',
+        checkoutMode: j['checkoutMode'] == 'web' ? 'web' : 'native',
       );
 
   final String orderId;
@@ -106,6 +108,11 @@ class TopupOrder {
   final String? checkoutUrl;
   final String? paymentSessionId;
   final String environment;
+
+  /// [HF-WIRE-21] "native" (default): the app pays on its own screens. "web": the old hosted page (server flag `hfCheckoutMode`).
+  final String checkoutMode;
+
+  bool get isNative => checkoutMode != 'web';
 }
 
 enum TopupState { pending, paid, failed }

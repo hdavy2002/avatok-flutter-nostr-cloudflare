@@ -2102,6 +2102,8 @@ export interface PlatformConfig {
   hfTopupPacks: string;
   hfTopupMinRupees: number;
   hfTopupMaxRupees: number;
+  /** [HF-WIRE-21] "native" (default) = the app checks out on its own screens; "web" = the old hosted page (only if the seamless modes are not enabled for the merchant). */
+  hfCheckoutMode: string;
   // [HF-WALLET-EXIT-1] Refunds of unused top-up money (HF-PAY-15) and the pay-out-first account-closure gate (HF-PAY-14).
   // hfRefundsEnabled: dark until the owner flips it (the /wallet refund section shows nothing while off). hfRefundWindowDays: NUMERIC.
   // hfExitGateEnabled: default ON; it only acts when the user has real HF money, so it is safe even while money-in is off.
@@ -2947,6 +2949,7 @@ const DEFAULTS: PlatformConfig = {
   hfTopupPacks: "100,200,500,1000",
   hfTopupMinRupees: 10, // [HF-WIRE-6] owner: minimum top-up Rs 10
   hfTopupMaxRupees: 5000,
+  hfCheckoutMode: "native", // [HF-WIRE-21]
   hfRefundsEnabled: false, // [HF-WALLET-EXIT-1] dark until the owner flips it
   hfRefundWindowDays: 180,
   hfExitGateEnabled: true,
@@ -3132,7 +3135,7 @@ export async function getConfig(env: Env): Promise<Response> {
   // are still present. Removing hfTokensEnabled first makes the interlock read
   // as disabled even when production has armed every required gate.
   merged.hfStdPlan = hfStdPlanPublic(merged);
-  delete merged.hfTopupGateway; delete merged.hfTopupPacks; delete merged.hfTopupMinRupees; delete merged.hfTopupMaxRupees; delete merged.hfTopupEnabled;
+  delete merged.hfTopupGateway; delete merged.hfTopupPacks; delete merged.hfTopupMinRupees; delete merged.hfTopupMaxRupees; delete merged.hfTopupEnabled; delete merged.hfCheckoutMode;
   delete merged.hfTokensEnabled; delete merged.hfCheckoutProvider; delete merged.hfPricingVersion; delete merged.hfCallCostPaisePerMin; delete merged.hfHostShareBps; delete merged.hfPlayPackageId; // [HF-TOK-MATH-1] not public
   // [HF-STD-PLAN-1] Public clients get only the standard rate card and GST treatment. Host pay/cost inputs remain private.
   for (const k of ["hfStdPlanEnabled", "hfStdTier1PaisePerMin", "hfStdTier2PaisePerMin", "hfStdTier3PaisePerMin", "hfStdTier1EndMin", "hfStdTier2EndMin",
@@ -3325,7 +3328,7 @@ export async function putConfig(req: Request, env: Env): Promise<Response> {
     "shopPodProvider",
     // [AUMFE-VOICE-RUNTIME-1] string config — must be here or `flags.sh set voiceAgentModel=...` 400s `bad type`.
     "voiceAgentModel",
-    "hfTopupGateway", "hfTopupPacks", // [HF-TOPUP-1]
+    "hfTopupGateway", "hfTopupPacks", "hfCheckoutMode", // [HF-TOPUP-1] [HF-WIRE-21]
     "hfCheckoutProvider", "hfPricingVersion", "hfPlayPackageId", // [HF-TOK-MATH-1]
     "hfGstin", "hfLegalName", "hfLegalAddress", "hfStateCode", "hfInvoicePrefix", // [HF-WALLET-LIMITS-1]
     "hfAckVersion", // [HF-NATIVE-S4]
@@ -3370,6 +3373,9 @@ export async function putConfig(req: Request, env: Env): Promise<Response> {
     }
     if ((k === "hfTopupMinRupees" || k === "hfTopupMaxRupees") && (!Number.isInteger(v) || (v as number) < 10 || (v as number) > 50000)) {
       return json({ error: `${k} must be an integer 10-50000` }, 400);
+    }
+    if (k === "hfCheckoutMode" && v !== "native" && v !== "web") {
+      return json({ error: "hfCheckoutMode must be native or web" }, 400);
     }
     if (k === "hfTopupPacks" && (typeof v !== "string" || !/^\d+(\s*,\s*\d+){0,7}$/.test(v))) {
       return json({ error: "hfTopupPacks must be a comma list of up to 8 rupee amounts, e.g. 100,200,500" }, 400);

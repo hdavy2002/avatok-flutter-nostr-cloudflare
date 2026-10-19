@@ -74,6 +74,10 @@ export async function createCashfreeOrder(env: Env, args: {
   customerId: string;
   customerEmail?: string | null;
   customerPhone?: string | null;
+  /** [HF-WIRE-21] The payer's real name for the gateway's receipts. Omitted when unknown (never invented). */
+  customerName?: string | null;
+  /** [HF-WIRE-21] order_meta.payment_methods, e.g. "upi,cc,dc". Omitted = every mode the merchant has. */
+  paymentMethods?: string | null;
   returnUrl?: string | null;
   notifyUrl?: string | null;
   /** [HF-WIRE-20] true = never invent a number: with no valid 10-digit Indian mobile the order is refused (`customer_phone_required`)
@@ -94,10 +98,12 @@ export async function createCashfreeOrder(env: Env, args: {
       // and never reach this fallback.
       customer_phone: phone ?? "9999999999",
       ...(args.customerEmail ? { customer_email: args.customerEmail } : {}),
+      ...(args.customerName ? { customer_name: args.customerName.slice(0, 100) } : {}), // [HF-WIRE-21]
     },
     order_meta: {
       ...(args.returnUrl ? { return_url: args.returnUrl } : {}),
       ...(args.notifyUrl ? { notify_url: args.notifyUrl } : {}),
+      ...(args.paymentMethods ? { payment_methods: args.paymentMethods } : {}), // [HF-WIRE-21]
     },
   };
   let res: Response;

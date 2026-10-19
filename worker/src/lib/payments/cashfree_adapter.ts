@@ -57,6 +57,9 @@ export const cashfreeAdapter: GatewayAdapter = {
       // [HF-WIRE-20] The payer's real details only. A wallet top-up with no valid number is refused, never sent with a made-up one.
       customerPhone: a.customer?.phone ?? null,
       customerEmail: a.customer?.email ?? null,
+      customerName: a.customer?.name ?? null, // [HF-WIRE-21]
+      // [HF-WIRE-21] In-app checkout: only the modes the app's own screens offer (UPI apps, UPI ID, cards).
+      paymentMethods: a.kind === "wallet_topup" && a.checkoutMode === "native" ? "upi,cc,dc" : null,
       requirePhone: a.kind === "wallet_topup",
     });
     if ("error" in created) return created;
@@ -68,7 +71,7 @@ export const cashfreeAdapter: GatewayAdapter = {
       client_payload: {
         payment_session_id: created.payment_session_id, order_id: created.order_id,
         // [HF-CASHFREE-CHECKOUT-HOST-1] Present = open the checkout on the whitelisted domain (full-page hand-off), not as a modal here.
-        ...(a.kind === "wallet_topup" && cashfreeCheckoutUrl(created.payment_session_id, a.orderId)
+        ...(a.kind === "wallet_topup" && a.checkoutMode !== "native" && cashfreeCheckoutUrl(created.payment_session_id, a.orderId)
           ? { checkout_url: cashfreeCheckoutUrl(created.payment_session_id, a.orderId)! } : {}),
       },
     };

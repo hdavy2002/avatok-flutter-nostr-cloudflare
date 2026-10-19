@@ -48,4 +48,21 @@ describe("cashfree adapter, wallet top-up", () => {
     expect(o).toEqual({ error: "customer_phone_required", status: 422 });
     expect(sent).toHaveLength(0);
   });
+
+  // [HF-WIRE-21]
+  it("native in-app orders carry the payer's name, allow only upi/cc/dc and send no hosted-page link", async () => {
+    const sent = stub();
+    const o: any = await cashfreeAdapter.createOrder(env, { ...base, client: "app", checkoutMode: "native", customer: { phone: "9876543210", email: "fan@example.com", name: "Asha Rao" } });
+    expect(sent[0].customer_details.customer_name).toBe("Asha Rao");
+    expect(sent[0].order_meta.payment_methods).toBe("upi,cc,dc");
+    expect(o.client_payload).not.toHaveProperty("checkout_url");
+    expect(o.client_payload.payment_session_id).toBe("session_abcdefghij12");
+  });
+
+  it("web mode does not restrict modes; an unknown name is simply left out, never invented", async () => {
+    const sent = stub();
+    await cashfreeAdapter.createOrder(env, { ...base, client: "app", checkoutMode: "web", customer: { phone: "9876543210", email: "fan@example.com", name: null } });
+    expect(sent[0].order_meta).not.toHaveProperty("payment_methods");
+    expect(sent[0].customer_details).not.toHaveProperty("customer_name");
+  });
 });

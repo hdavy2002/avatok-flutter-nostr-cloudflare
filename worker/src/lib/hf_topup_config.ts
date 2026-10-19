@@ -16,8 +16,10 @@ const ABS_MAX = 50_000;
 
 export interface HfTopupFlags {
   enabled: boolean; gateway: HfTopupGateway; packs: number[]; minRupees: number; maxRupees: number;
+  /** [HF-WIRE-21] "native" (default; anything unknown) = the app pays on its own screens; "web" = hosted page. */
+  checkoutMode: "native" | "web";
 }
-type Raw = { hfTopupEnabled?: unknown; hfTopupGateway?: unknown; hfTopupPacks?: unknown; hfTopupMinRupees?: unknown; hfTopupMaxRupees?: unknown };
+type Raw = { hfTopupEnabled?: unknown; hfTopupGateway?: unknown; hfTopupPacks?: unknown; hfTopupMinRupees?: unknown; hfTopupMaxRupees?: unknown; hfCheckoutMode?: unknown };
 
 function int(v: unknown, fallback: number): number {
   const n = typeof v === "number" ? v : Number(v);
@@ -38,7 +40,7 @@ export function hfTopupFlags(config: Raw): HfTopupFlags {
   let maxRupees = Math.min(ABS_MAX, Math.max(ABS_MIN, int(config.hfTopupMaxRupees, 5000)));
   if (minRupees > maxRupees) { minRupees = 10; maxRupees = 5000; }
   const packs = parsePacks(config.hfTopupPacks).filter((p) => p >= minRupees && p <= maxRupees);
-  return { enabled: config.hfTopupEnabled === true, gateway, packs: packs.length ? packs : [minRupees], minRupees, maxRupees };
+  return { enabled: config.hfTopupEnabled === true, gateway, packs: packs.length ? packs : [minRupees], minRupees, maxRupees, checkoutMode: config.hfCheckoutMode === "web" ? "web" : "native" };
 }
 
 /** The ONE place that decides whether money can come in: flag on, a real gateway chosen, and that adapter holds its keys. */

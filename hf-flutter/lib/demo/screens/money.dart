@@ -15,6 +15,7 @@ import '../../ui/async_view.dart';
 import '../state.dart';
 import '../theme.dart';
 import '../widgets.dart';
+import 'checkout_flow.dart';
 import 'me.dart' show WalletTicket;
 
 // ---------------------------------------------------------------------------------------------- Wallet
@@ -241,12 +242,18 @@ class _WalletScreenState extends State<WalletScreen> {
 // ---------------------------------------------------------------------------------------------- Top up
 
 /// Top up: any whole amount; price includes 18% GST, wallet gets paid ÷ 1.18 (HF-PAY rules).
-/// The payment page itself is the gateway's; the app never names the gateway.
+/// The payment steps are our own screens (CheckoutFlow); the app never names the gateway.
 class TopUpScreen extends StatefulWidget {
-  const TopUpScreen({super.key, this.repo});
+  const TopUpScreen({super.key, this.repo, this.checkout, this.profile});
 
   /// Pass a repository to use the real server (tests do); otherwise real unless [DemoMode.on].
   final WalletRepo? repo;
+
+  /// [HF-WIRE-21] The in-app checkout to use (tests pass a fake); default is [Checkout.inApp].
+  final InAppCheckout? checkout;
+
+  /// The payer's profile (tests pass one); default reads the signed-in account.
+  final CheckoutProfile? profile;
 
   @override
   State<TopUpScreen> createState() => _TopUpScreenState();
@@ -254,7 +261,9 @@ class TopUpScreen extends StatefulWidget {
 
 class _TopUpScreenState extends State<TopUpScreen> {
   final _amount = TextEditingController(text: '500');
-  bool _busy = false;
+
+  /// Set once the payer pressed Pay: the amount screen is then replaced by the checkout flow.
+  int? _flowRupees;
 
   bool get _real => widget.repo != null || !DemoMode.on;
   WalletRepo get _repo => widget.repo ?? Services.instance.walletRepo;
@@ -279,7 +288,7 @@ class _TopUpScreenState extends State<TopUpScreen> {
         builder: (d) => AlertDialog(
           backgroundColor: C.ivory,
           title: Text('Pay ${inr(v, paise: false)}?', style: t(22, color: C.maroon)),
-          content: Text('That is ₹1,000 or more. Just checking before we open the payment page.', style: t(15, w: FontWeight.w700, h: 1.4)),
+          content: Text('That is ₹1,000 or more. Just checking before we go on.', style: t(15, w: FontWeight.w700, h: 1.4)),
           actions: [
             TextButton(onPressed: () => Navigator.of(d).pop(false), child: Text('Change', style: t(16, color: C.maroon))),
             TextButton(onPressed: () => Navigator.of(d).pop(true), child: Text('Yes, pay', style: t(16, color: C.maroon))),
@@ -293,44 +302,42 @@ class _TopUpScreenState extends State<TopUpScreen> {
       context.pushReplacement('/payment?amount=$v');
       return;
     }
-    if (_busy) return;
-    setState(() => _busy = true);
-    try {
-      final order = await _repo.createTopup(v);
-      Telemetry.event('hf_topup_started', {'amount_rupees': v, 'order': order.orderId});
-      if (order.orderId.isEmpty) {
-        if (mounted) toast(context, 'We could not open the payment page. Please try again.');
-        return;
-      }
-      final next = '/payment?amount=$v&order=${order.orderId}&credit=${order.creditPaise}';
-      // [HF-WIRE-20] The payment sheet opens INSIDE the app; UPI apps open from it and return to it. The server's webhook is the only
-      // thing that credits the wallet, so every outcome goes to the Payment screen, which asks the server.
-      final sessionId = order.paymentSessionId;
-      if (sessionId != null && sessionId.isNotEmpty) {
-        final out = await Checkout.inApp.pay(orderId: order.orderId, paymentSessionId: sessionId, sandbox: order.environment == 'sandbox');
-        Telemetry.event('hf_topup_checkout', {'order': order.orderId, 'result': out.result.name});
-        if (out.result != PayResult.unavailable) {
-          if (mounted) context.pushReplacement(out.result == PayResult.failed ? '$next&sdk=err' : next);
-          return;
-        }
-      }
-      // Fallback only when the in-app checkout cannot start on this phone: the hosted page in a browser tab. Its return page brings
-      // the payer back to the app (hellofraands://wallet/topup/<id>).
-      final url = order.checkoutUrl;
-      if (url == null || !await Checkout.open(url)) {
-        if (mounted) toast(context, 'We could not open the payment page. Please try again.');
-        return;
-      }
-      if (mounted) context.pushReplacement(next);
-    } on ApiException catch (e) {
-      if (mounted) toast(context, e.userMessage);
-    } finally {
-      if (mounted) setState(() => _busy = false);
-    }
+    // [HF-WIRE-21] The whole checkout runs on our own screens (CheckoutFlow): details, UPI apps / UPI ID / card, processing. The order is
+    // created there, once the payer has chosen a way to pay. The server's webhook is the only thing that credits the wallet, so every
+    // finished attempt ends on the Payment screen, which asks the server.
+    setState(() => _flowRupees = v);
+  }
+
+  CheckoutProfile _profile() {
+    if (widget.profile != null) return widget.profile!;
+    final m = Services.instance.me;
+    if (m == null) return const CheckoutProfile();
+    return CheckoutProfile(name: m.name, email: m.email, phoneVerified: m.whatsappVerified, phoneMasked: m.phoneMasked);
   }
 
   @override
   Widget build(BuildContext context) {
+    final flow = _flowRupees;
+    if (flow != null) {
+      return Scaffold(
+        body: SafeArea(
+          child: CheckoutFlow(
+            rupees: flow,
+            repo: _repo,
+            checkout: widget.checkout ?? Checkout.inApp,
+            profile: _profile(),
+            onFinish: (loc) {
+              if (mounted) context.pushReplacement(loc);
+            },
+            onClose: () {
+              if (mounted) setState(() => _flowRupees = null);
+            },
+            onProfileSaved: widget.profile == null ? () => unawaited(Services.instance.refreshMe()) : null,
+            onVerifyPhone: () => context.push('/settings'),
+          ),
+        ),
+      );
+    }
     final v = _value;
     final credit = DemoState.creditFor(v.toDouble());
     final gst = v - credit;
@@ -422,7 +429,7 @@ class _TopUpScreenState extends State<TopUpScreen> {
                     children: [
                       const Icon(Icons.lock_rounded, size: 18, color: C.muted),
                       const SizedBox(width: 6),
-                      Text('Secure payment · UPI, cards and netbanking', style: t(14, color: C.muted, w: FontWeight.w700)),
+                      Text('Secure payment · UPI apps, UPI ID and cards', style: t(14, color: C.muted, w: FontWeight.w700)),
                     ],
                   ),
                 ],
@@ -430,7 +437,7 @@ class _TopUpScreenState extends State<TopUpScreen> {
             ),
             Padding(
               padding: const EdgeInsets.fromLTRB(22, 0, 22, 20),
-              child: TicketButton(label: _busy ? 'PLEASE WAIT…' : 'PAY ${inr(v, paise: false)}', stubIcon: Icons.arrow_forward_rounded, onTap: _busy ? () {} : _pay),
+              child: TicketButton(label: 'PAY ${inr(v, paise: false)}', stubIcon: Icons.arrow_forward_rounded, onTap: _pay),
             ),
           ],
         ),
@@ -575,7 +582,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
                     _pay == _Pay.slow
                         ? 'We are still confirming your payment.'
                         : _real
-                            ? 'Finish paying on the payment page, then come back here.'
+                            ? 'This usually takes a few seconds. Please keep the app open.'
                             : 'Demo: no real money moves.',
                     textAlign: TextAlign.center,
                     style: t(15, color: C.cream, w: FontWeight.w700, h: 1.4),

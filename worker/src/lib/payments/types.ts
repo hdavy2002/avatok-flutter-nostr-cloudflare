@@ -46,7 +46,9 @@ export interface GatewayAdapter {
     /** [HF-WIRE-20] "app" = the order was started from the native app, so the gateway's return page must hand the buyer back to the app. */
     client?: "app" | "web";
     /** [HF-WIRE-20] The payer's REAL contact details (verified WhatsApp number, real email). Never a placeholder; null = unknown. */
-    customer?: { phone: string | null; email: string | null };
+    customer?: { phone: string | null; email: string | null; name?: string | null };
+    /** [HF-WIRE-21] "native" = the app pays on its own screens through the SDK (UPI app / UPI ID / card): the order allows only those modes and carries no hosted-page link. "web" = the old hosted page. */
+    checkoutMode?: "native" | "web";
   }): Promise<GatewayOrder | { error: string; status: number }>;
   /** Verify over the RAW body. Must not parse before verifying. */
   verifyWebhook(env: Env, raw: string, headers: Headers): Promise<boolean>;
