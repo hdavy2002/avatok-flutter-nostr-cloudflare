@@ -124,7 +124,7 @@ async function getMe(env: Env, uid: string): Promise<Response> {
     name: displayName,
     email: email ?? null,
     whatsapp: phoneMasked,
-    role: row?.host_status === "live" ? "host" : "fan",
+    role: row?.host_status === "live" || row?.host_status === "approved" ? "host" : "fan", // [HF-WIRE-3] Channels-approved influencers are hosts too
     hostStatus: row?.host_status ?? null,
     presence: row?.host_status ? (row.host_presence ?? "offline") : null,
     walletPaise,
