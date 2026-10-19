@@ -50,7 +50,18 @@ Legend: ⬜ not started · 🟨 in progress · ✅ done · ⛔ blocked (needs ow
 - Q8 Search: our network + exact handle lookup — HF-REEL-29.
 - Q4 Split text: follow server rule (₹2 + 40% above ₹2) — HF-REEL-30.
 - Q3/Q5 Payouts: KYC + UPI at first payout; fans refund only — HF-REEL-31.
-- Still open: Q9 demo influencer content (AI-made vs consenting creators).
+- Q9 Demo influencers: admin pastes YouTube links — HF-REEL-34.
+- NEW 2026-10-19: embeds only (HF-REEL-32); YouTube sign-in (HF-REEL-33); call money rules + monitor (HF-REEL-35); anyone can withdraw (HF-REEL-36).
+
+## 2b. Round 2 (owner 2026-10-19 evening) — rework after review
+| # | Stage | Status | Notes |
+|---|---|---|---|
+| R2-A | HF-WIRE-13 Money rules engine + monitor (HF-REEL-35/36): ₹20 minimum, ₹1 first-minute drop, wallet-only refunds, fan payouts, reconciliation cron | ⬜ | |
+| R2-B | HF-WIRE-14 Embeds only + YouTube sign-in + admin demo links (HF-REEL-32/33/34) | ⬜ | Needs Android OAuth client for com.hellofraands.app with youtube.readonly |
+| R2-C | HF-WIRE-15 Rewrite policies, web pages, help centre, FAQs, app help to match HF-REEL-35/36 | ⬜ | |
+| R2-D | Go live: migrations, deploy worker, flags, Clerk toggle, build demo=false | ⬜ | |
+
+Secrets found 2026-10-19: worker already has CASHFREE_APP_ID, CASHFREE_SECRET_KEY, HF_CALL_DID, VOBIZ_AUTH_ID, VOBIZ_AUTH_TOKEN, VOBIZ_WEBHOOK_SECRET, YOUTUBE_API_KEY, WASENDER_API_KEY. Local copies in gitignored `secrets/` (cashfree.env, secret-values.env incl. POSTHOG_API_KEY). **TREG_API_KEY is not saved anywhere — ask the owner.**
 
 ## 5. Go-live checklist (owner / last agent)
 1. Apply D1 migrations (worker/migrations/2026-10-19-*.sql) with `scripts/cf.sh worker d1 execute DB_META --remote --file=...` (ALTER files via d1_apply_alters.py).
@@ -79,3 +90,4 @@ Legend: ⬜ not started · 🟨 in progress · ✅ done · ⛔ blocked (needs ow
 - 2026-10-19 — Stage 12 merged. ALL 12 CODE STAGES DONE. Nothing deployed; the owner's phone still runs the demo.
   - What is left (in order): owner sets secrets + applies migrations + deploys worker + flips flags (§5); build with demo=false; run the closed test plan (two-phone call, Cashfree sandbox, booking auto-start, real IG/YT channel); fix what the tests find; Play closed test 12 testers × 14 days.
   - Known gaps: no influencer "today" summary route (tiles hidden); email/WhatsApp change goes through support; treg Instagram parameters unverified on live data; Crashlytics not added (PostHog only); Q9 demo influencer content still open; FAQ "within 180 days" refund wording needs owner OK.
+- 2026-10-19 — Owner round 2: new rules HF-REEL-32…36 recorded. Launching R2-A, R2-B, R2-C in parallel.
