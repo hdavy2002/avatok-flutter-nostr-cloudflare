@@ -180,7 +180,7 @@ class _WalletScreenState extends State<WalletScreen> {
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Text('YOUR BALANCE', style: t(13, color: C.gold, ls: 0.16)),
+                      Text('YOUR BALANCE', style: t(14, color: C.gold, ls: 0.16)),
                       FittedBox(child: Text(balance, style: t(44, color: C.ivory, h: 1.05))),
                     ],
                   ),
@@ -222,7 +222,7 @@ class _WalletScreenState extends State<WalletScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(title, maxLines: 1, overflow: TextOverflow.ellipsis, style: t(16)),
-                  Text(sub, maxLines: 1, overflow: TextOverflow.ellipsis, style: t(13, color: C.muted, w: FontWeight.w700)),
+                  Text(sub, maxLines: 1, overflow: TextOverflow.ellipsis, style: t(14, color: C.muted, w: FontWeight.w700)),
                 ],
               ),
             ),
@@ -812,14 +812,14 @@ class _PayoutScreenState extends State<PayoutScreen> {
                     decoration: BoxDecoration(color: C.paper, borderRadius: BorderRadius.circular(14), border: Border.all(color: C.brass, width: 2)),
                     child: Row(
                       children: [
-                        BrassKnob(label: 'UPI', size: 42, child: Text('UPI', style: t(12))),
+                        BrassKnob(label: 'UPI', size: 42, child: Text('UPI', style: t(14))),
                         const SizedBox(width: 12),
                         Expanded(
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(vpa ?? 'No UPI added yet', style: t(16)),
-                              if (checkedLine != null) Text(checkedLine, style: t(13, color: C.muted, w: FontWeight.w700)),
+                              if (checkedLine != null) Text(checkedLine, style: t(14, color: C.muted, w: FontWeight.w700)),
                             ],
                           ),
                         ),
@@ -842,7 +842,7 @@ class _PayoutScreenState extends State<PayoutScreen> {
                       child: Row(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text('●  ', style: t(13, color: C.ruby)),
+                          Text('●  ', style: t(14, color: C.ruby)),
                           Expanded(child: Text(line, style: t(14, color: C.deep, w: FontWeight.w700, h: 1.4))),
                         ],
                       ),
@@ -860,7 +860,7 @@ class _PayoutScreenState extends State<PayoutScreen> {
                           Container(
                             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
                             decoration: BoxDecoration(color: p.$4 ? C.deep : C.butter, borderRadius: BorderRadius.circular(999)),
-                            child: Text(p.$3, style: t(12, color: p.$4 ? C.gold : C.deep, ls: 0.06)),
+                            child: Text(p.$3, style: t(14, color: p.$4 ? C.gold : C.deep, ls: 0.06)),
                           ),
                         ],
                       ),
@@ -892,7 +892,7 @@ class _PayoutScreenState extends State<PayoutScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(label, style: t(11, color: dark ? C.gold : C.tan, ls: 0.12)),
+          Text(label, style: t(14, color: dark ? C.gold : C.tan, ls: 0.12)),
           const SizedBox(height: 4),
           FittedBox(child: Text(value, style: t(28, color: dark ? C.ivory : C.maroon))),
         ],
@@ -1011,7 +1011,7 @@ class PayoutKycScreen extends StatelessWidget {
                       child: Row(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text('●  ', style: t(13, color: C.ruby)),
+                          Text('●  ', style: t(14, color: C.ruby)),
                           Expanded(child: Text(line, style: t(15, color: C.deep, w: FontWeight.w700, h: 1.4))),
                         ],
                       ),

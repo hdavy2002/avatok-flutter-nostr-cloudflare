@@ -133,7 +133,7 @@ class _FavCard extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(host.name, style: t(16, color: C.ivory)),
-                  if (host.headline != null) Text(host.headline!, maxLines: 2, overflow: TextOverflow.ellipsis, style: t(13, color: C.cream, w: FontWeight.w600)),
+                  if (host.headline != null) Text(host.headline!, maxLines: 2, overflow: TextOverflow.ellipsis, style: t(14, color: C.cream, w: FontWeight.w600)),
                   const SizedBox(height: 6),
                   StatusPill(online: host.online),
                 ],

@@ -178,10 +178,14 @@ class _ReelPlayerState extends State<ReelPlayer> {
       children: [
         _thumb(),
         if (_wantVideo && v != null && _ready)
-          GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onTap: () => v.value.isPlaying ? v.pause() : v.play(),
-            child: FittedBox(fit: BoxFit.cover, clipBehavior: Clip.hardEdge, child: SizedBox(width: v.value.size.width, height: v.value.size.height, child: VideoPlayer(v))),
+          Semantics(
+            button: true,
+            label: 'Play or pause the video',
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: () => v.value.isPlaying ? v.pause() : v.play(),
+              child: FittedBox(fit: BoxFit.cover, clipBehavior: Clip.hardEdge, child: SizedBox(width: v.value.size.width, height: v.value.size.height, child: VideoPlayer(v))),
+            ),
           ),
         if (_wantEmbed && widget.active && _web != null) WebViewWidget(controller: _web!),
       ],

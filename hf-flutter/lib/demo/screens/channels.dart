@@ -108,12 +108,12 @@ class ChannelCard extends StatelessWidget {
               Row(
                 children: [
                   if (c.needsCode && onFinish != null)
-                    Expanded(child: ChunkyButton(label: 'FINISH CHECKING', height: 46, onTap: onFinish))
+                    Expanded(child: ChunkyButton(label: 'FINISH CHECKING', height: 48, onTap: onFinish))
                   else if (onResync != null)
-                    Expanded(child: ChunkyButton(label: 'RESYNC', height: 46, filled: false, onTap: onResync)),
+                    Expanded(child: ChunkyButton(label: 'RESYNC', height: 48, filled: false, onTap: onResync)),
                   if (onRemove != null) ...[
                     const SizedBox(width: 10),
-                    Expanded(child: ChunkyButton(label: 'REMOVE', height: 46, filled: false, onTap: onRemove)),
+                    Expanded(child: ChunkyButton(label: 'REMOVE', height: 48, filled: false, onTap: onRemove)),
                   ],
                 ],
               ),

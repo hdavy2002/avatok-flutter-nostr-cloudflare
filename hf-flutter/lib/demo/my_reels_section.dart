@@ -125,7 +125,7 @@ class _MyReelsSectionState extends State<MyReelsSection> {
                       ? const ColoredBox(color: C.cinema)
                       : Image.network(r.thumbUrl!, fit: BoxFit.cover, errorBuilder: (_, __, ___) => const ColoredBox(color: C.cinema)),
                   if (r.visible) const Positioned(top: 6, right: 6, child: Icon(Icons.check_circle_rounded, color: C.lemon, size: 22)),
-                  Positioned(left: 6, bottom: 6, child: Text('▶ ${compactCount(r.views)}', style: t(12, color: C.ivory))),
+                  Positioned(left: 6, bottom: 6, child: Text('▶ ${compactCount(r.views)}', style: t(14, color: C.ivory))),
                 ],
               ),
             ),
@@ -139,7 +139,7 @@ class _MyReelsSectionState extends State<MyReelsSection> {
               borderRadius: BorderRadius.circular(10),
               onTap: () => unawaited(_toggle(r)),
               child: Container(
-                height: 44,
+                height: 48,
                 alignment: Alignment.center,
                 decoration: BoxDecoration(
                   color: r.visible ? C.paper : C.marigold,

@@ -8,10 +8,23 @@ name: HF Flutter (native app)
 #   mode=apk       check + a signed release APK (arm64) as an artifact, for installing on a phone. main only.
 #   mode=aab       check + a signed release AAB as an artifact. main only.
 #   mode=internal  check + AAB + upload to the Play INTERNAL track. main only. Needs an explicit owner request.
+#   mode=buildcheck  check + an UNSIGNED release build (R8 shrinking, merged manifest, permission allow-list). Any branch.
+#                  Nothing is signed, uploaded or published; use it to prove a branch still builds as a release.
 #   mode=scaffold  one-off helper: runs `flutter create` in a temp folder, runs `pub get` with hf-flutter/pubspec.yaml
 #                  and uploads the generated android/ skeleton plus pubspec.lock as an artifact to commit.
 #
-# Magic words "ship hf": gh workflow run hf-flutter.yml --ref main -f mode=internal
+# DEMO SWITCH (input `demo`, default 'true'):
+#   demo=true   the app shows dummy data (reels, wallet, calls...). This is what the owner's phone runs until the backend is live.
+#   demo=false  LIVE: every screen reads the real server, no dummy data (`--dart-define=HF_DEMO=false`).
+# Only the apk / aab / internal / buildcheck builds read it; analyze and tests always run in the default demo mode.
+#
+# Optional secrets: HF_POSTHOG_KEY (PostHog project key; empty = events stay on the debug console),
+# HF_GOOGLE_SERVICES_JSON (push), HF_UPLOAD_* (signing), HF_PLAY_SERVICE_ACCOUNT_JSON (Play upload).
+#
+# Magic words "ship hf" (go LIVE, only when the owner asks; backend deployed and flags on first, see
+# Specs/HF-REELS-BUILD-PROGRESS.md section 5):
+#   gh workflow run hf-flutter.yml --ref main -f mode=internal -f demo=false
+# Keep the demo on the phone instead:  gh workflow run hf-flutter.yml --ref main -f mode=internal   (demo defaults to true)
 on:
   workflow_dispatch:
     inputs:
@@ -20,13 +33,20 @@ on:
         required: true
         default: check
         type: choice
-        options: [check, apk, aab, internal, scaffold]
+        options: [check, buildcheck, apk, aab, internal, scaffold]
+      demo:
+        description: "'true' = dummy data in the app (default); 'false' = LIVE, real server data only"
+        required: false
+        default: 'true'
+        type: choice
+        options: ['true', 'false']
 
 permissions:
   contents: read
 
 env:
   MODE: ${{ inputs.mode }}
+  HF_DEMO: ${{ inputs.demo || 'true' }}
   FLUTTER_VERSION: 3.41.x
 
 jobs:
@@ -38,6 +58,7 @@ jobs:
       HAS_UPLOAD_KEYSTORE: ${{ secrets.HF_UPLOAD_KEYSTORE_BASE64 != '' && 'true' || 'false' }}
       HAS_PLAY_SA: ${{ secrets.HF_PLAY_SERVICE_ACCOUNT_JSON != '' && 'true' || 'false' }}
       HAS_GOOGLE_SERVICES: ${{ secrets.HF_GOOGLE_SERVICES_JSON != '' && 'true' || 'false' }}
+      HF_POSTHOG_KEY: ${{ secrets.HF_POSTHOG_KEY }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -191,7 +212,9 @@ jobs:
         run: |
           flutter build apk --release --target-platform android-arm64 \
             --build-number="${HF_VERSION_CODE}" --build-name="${HF_VERSION_NAME}" \
-            --dart-define=GIT_SHA="${GITHUB_SHA}"
+            --dart-define=GIT_SHA="${GITHUB_SHA}" \
+            --dart-define=HF_DEMO="${HF_DEMO}" \
+            --dart-define=HF_POSTHOG_KEY="${HF_POSTHOG_KEY}"
 
       - name: Build AAB
         if: env.MODE == 'aab' || env.MODE == 'internal'
@@ -204,12 +227,35 @@ jobs:
         run: |
           flutter build appbundle --release \
             --build-number="${HF_VERSION_CODE}" --build-name="${HF_VERSION_NAME}" \
-            --dart-define=GIT_SHA="${GITHUB_SHA}"
+            --dart-define=GIT_SHA="${GITHUB_SHA}" \
+            --dart-define=HF_DEMO="${HF_DEMO}" \
+            --dart-define=HF_POSTHOG_KEY="${HF_POSTHOG_KEY}"
+
+      # Unsigned release build, any branch (no keystore needed).
+      - name: Build unsigned release (buildcheck)
+        if: env.MODE == 'buildcheck'
+        working-directory: hf-flutter
+        run: |
+          set +e
+          flutter build apk --release --target-platform android-arm64 \
+            --dart-define=GIT_SHA="${GITHUB_SHA}" \
+            --dart-define=HF_DEMO="${HF_DEMO}" \
+            --dart-define=HF_POSTHOG_KEY=""
+          rc=$?
+          set -e
+          # An unsigned release makes Flutter complain at the very end even though Gradle (R8 included) succeeded.
+          UNSIGNED=$(ls build/app/outputs/apk/release/*.apk 2>/dev/null | head -1)
+          if [ -z "${UNSIGNED}" ]; then
+            echo "::error::release build failed (flutter exit ${rc}); no APK under build/app/outputs/apk/release"
+            exit 1
+          fi
+          echo "unsigned release built: ${UNSIGNED} (flutter exit ${rc})"
+          ls -la build/app/outputs/mapping/release 2>/dev/null || true
 
       # Fails the job when the merged manifest asks for anything beyond the allow-list in
       # hf-flutter/tool/check_permissions.py (no phone, SMS, contacts, call log, location, media).
       - name: Permission allow-list guard
-        if: env.MODE == 'apk' || env.MODE == 'aab' || env.MODE == 'internal'
+        if: env.MODE == 'apk' || env.MODE == 'aab' || env.MODE == 'internal' || env.MODE == 'buildcheck'
         working-directory: hf-flutter
         run: |
           APK=build/app/outputs/flutter-apk/app-release.apk
@@ -276,6 +322,7 @@ jobs:
             echo "## HF Flutter"
             echo ""
             echo "- mode: ${MODE}"
+            echo "- demo data: ${HF_DEMO} (apk/aab/internal/buildcheck only)"
             echo "- versionCode: ${HF_VERSION_CODE:-n/a}"
             echo "- versionName: ${HF_VERSION_NAME:-n/a}"
             echo "- google-services.json: ${HAS_GOOGLE_SERVICES} (push needs it)"

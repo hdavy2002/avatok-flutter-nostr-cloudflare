@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../data/api_exception.dart';
 import '../../data/demo_mode.dart';
 import '../../data/models/channel.dart';
 import '../../data/repos/payouts_repo.dart';
@@ -36,6 +37,11 @@ class _InfluencerJoinScreenState extends State<InfluencerJoinScreen> {
   ChannelsList? _channels; // [HF-WIRE-3] what step 2 last loaded
   bool _codeSent = false;
   String? _error;
+  bool _busy = false;
+
+  /// [HF-WIRE-12] A live build: the person already signed in with a verified WhatsApp number, so step 3 only
+  /// confirms it. The dummy code ("type any 6 digits") and the fake sign-up exist in the demo build only.
+  bool get _live => !DemoMode.on;
 
   @override
   void dispose() {
@@ -45,12 +51,26 @@ class _InfluencerJoinScreenState extends State<InfluencerJoinScreen> {
     super.dispose();
   }
 
-  void _next() {
+  Future<void> _next() async {
+    if (_busy) return;
     setState(() => _error = null);
     if (_step == 0) {
       if (_name.text.trim().isEmpty || !_email.text.contains('@')) {
         setState(() => _error = 'Please fill your name and a real email.');
         return;
+      }
+      if (_live) {
+        setState(() => _busy = true);
+        try {
+          await Services.instance.authRepo.saveProfile(name: _name.text, email: _email.text);
+          await Services.instance.refreshMe();
+        } catch (e) {
+          if (mounted) setState(() => _error = e is ApiException ? e.userMessage : ApiException.genericText);
+          if (mounted) setState(() => _busy = false);
+          return;
+        }
+        if (!mounted) return;
+        setState(() => _busy = false);
       }
       setState(() => _step = 1);
     } else if (_step == 1) {
@@ -60,6 +80,12 @@ class _InfluencerJoinScreenState extends State<InfluencerJoinScreen> {
         return;
       }
       setState(() => _step = 2);
+    } else if (_live) {
+      setState(() => _busy = true);
+      await Services.instance.refreshMe();
+      if (!mounted) return;
+      setState(() => _busy = false);
+      context.go('/inf/home');
     } else {
       if (!_codeSent) {
         if (_wa.text.replaceAll(RegExp(r'\D'), '').length != 10) {
@@ -120,7 +146,19 @@ class _InfluencerJoinScreenState extends State<InfluencerJoinScreen> {
                       if (mounted) setState(() => _channels = l);
                     }),
                   ],
-                  if (_step == 2) ...[
+                  if (_step == 2 && _live) ...[
+                    Text('We send call alerts and booking reminders on WhatsApp. This is the number you signed in with.', style: t(16, w: FontWeight.w700, h: 1.4)),
+                    const SizedBox(height: 12),
+                    _label('WhatsApp number'),
+                    Container(
+                      height: 58,
+                      padding: const EdgeInsets.symmetric(horizontal: 14),
+                      alignment: Alignment.centerLeft,
+                      decoration: BoxDecoration(color: C.gold, borderRadius: BorderRadius.circular(14), border: Border.all(color: C.deep, width: 3)),
+                      child: Text(demo.whatsappDisplay.isEmpty ? 'Verified' : '${demo.whatsappDisplay}  ·  verified', style: t(17)),
+                    ),
+                  ],
+                  if (_step == 2 && !_live) ...[
                     Text('We send call alerts and booking reminders here.', style: t(16, w: FontWeight.w700, h: 1.4)),
                     const SizedBox(height: 12),
                     _label('WhatsApp number'),
@@ -160,7 +198,7 @@ class _InfluencerJoinScreenState extends State<InfluencerJoinScreen> {
             Padding(
               padding: const EdgeInsets.fromLTRB(22, 0, 22, 20),
               child: TicketButton(
-                label: _step < 2 ? 'NEXT' : (_codeSent ? 'VERIFY & FINISH' : 'SEND CODE'),
+                label: _busy ? 'PLEASE WAIT…' : (_step < 2 ? 'NEXT' : (_live ? 'FINISH' : (_codeSent ? 'VERIFY & FINISH' : 'SEND CODE'))),
                 maroon: true,
                 stubIcon: Icons.arrow_forward_rounded,
                 onTap: _next,
@@ -210,7 +248,7 @@ class InfluencerShell extends StatelessWidget {
                         child: Semantics(
                           button: true,
                           selected: shell.currentIndex == i,
-                          label: items[i].$2,
+                          label: i == 2 ? (myOnline ? 'You are online. Open the online and offline switch' : 'You are offline. Open the online and offline switch') : items[i].$2,
                           child: InkWell(
                             onTap: () => shell.goBranch(i, initialLocation: i == shell.currentIndex),
                             child: i == 2 ? _statusTab(shell.currentIndex == i) : _tab(items[i].$1, items[i].$2, shell.currentIndex == i),
@@ -239,7 +277,7 @@ class InfluencerShell extends StatelessWidget {
         children: [
           Icon(icon, size: 26, color: on ? C.maroon : C.muted),
           const SizedBox(height: 3),
-          Text(label, style: t(12, color: on ? C.maroon : C.muted, w: on ? FontWeight.w800 : FontWeight.w700)),
+          Text(label, style: t(14, color: on ? C.maroon : C.muted, w: on ? FontWeight.w800 : FontWeight.w700)),
         ],
       );
 
@@ -259,7 +297,7 @@ class InfluencerShell extends StatelessWidget {
             child: Icon(myOnline ? Icons.wifi_tethering_rounded : Icons.nightlight_round, color: C.paper, size: 22),
           ),
           const SizedBox(height: 2),
-          Text(myOnline ? 'Online' : 'Offline', style: t(12, color: myOnline ? C.rani : C.muted)),
+          Text(myOnline ? 'Online' : 'Offline', style: t(14, color: myOnline ? C.rani : C.muted)),
         ],
       );
 }
@@ -281,7 +319,7 @@ class InfluencerHomeScreen extends StatelessWidget {
             return ListView(
               padding: const EdgeInsets.fromLTRB(22, 16, 22, 24),
               children: [
-                Text('NAMASTE', style: t(13, color: C.ruby, ls: 0.14)),
+                Text('NAMASTE', style: t(14, color: C.ruby, ls: 0.14)),
                 Text(demo.name.isEmpty ? 'Influencer' : demo.name, style: t(30, color: C.maroon, h: 1.05)),
                 const SizedBox(height: 16),
                 GestureDetector(
@@ -315,16 +353,19 @@ class InfluencerHomeScreen extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: 18),
-                Row(
-                  children: [
-                    _stat('Calls today', '6'),
-                    const SizedBox(width: 10),
-                    _stat('Minutes', '41'),
-                    const SizedBox(width: 10),
-                    _stat('Earned today', inr(41 * demo.myRate * 0.6 - 41 * 2, paise: false)),
-                  ],
-                ),
-                const SizedBox(height: 18),
+                // [HF-WIRE-12] Dummy numbers: shown in the demo build only (no "today" summary route exists yet).
+                if (DemoMode.on) ...[
+                  Row(
+                    children: [
+                      _stat('Calls today', '6'),
+                      const SizedBox(width: 10),
+                      _stat('Minutes', '41'),
+                      const SizedBox(width: 10),
+                      _stat('Earned today', inr(41 * demo.myRate * 0.6 - 41 * 2, paise: false)),
+                    ],
+                  ),
+                  const SizedBox(height: 18),
+                ],
                 const _EarningsCard(), // [HF-WIRE-10]
                 const SizedBox(height: 22),
                 Row(
@@ -382,7 +423,7 @@ class InfluencerHomeScreen extends StatelessWidget {
           child: Column(
             children: [
               FittedBox(child: Text(b, style: t(22, color: C.gold))),
-              Text(a, textAlign: TextAlign.center, style: t(12, color: C.cream, w: FontWeight.w700)),
+              Text(a, textAlign: TextAlign.center, style: t(14, color: C.cream, w: FontWeight.w700)),
             ],
           ),
         ),
@@ -411,7 +452,7 @@ class BookingTile extends StatelessWidget {
             child: Column(
               children: [
                 Text(b.time.split(' ').first, style: t(16, color: C.maroon)),
-                Text(b.time.split(' ').last, style: t(11, color: C.tan)),
+                Text(b.time.split(' ').last, style: t(14, color: C.tan)),
               ],
             ),
           ),
@@ -422,7 +463,7 @@ class BookingTile extends StatelessWidget {
               children: [
                 Text(b.fan, style: t(16)),
                 Text('${showDay ? '${dayLabel(b.day)} · ' : ''}${b.minutes} min${b.note.isEmpty ? '' : ' · ${b.note}'}',
-                    maxLines: 2, overflow: TextOverflow.ellipsis, style: t(13, color: C.muted, w: FontWeight.w700)),
+                    maxLines: 2, overflow: TextOverflow.ellipsis, style: t(14, color: C.muted, w: FontWeight.w700)),
               ],
             ),
           ),
@@ -509,7 +550,10 @@ class InfluencerStatusScreen extends StatelessWidget {
                         const SizedBox(width: 10),
                         Expanded(
                           child: Text(
-                            '${demo.inBookings.length} bookings coming up. They ring you at the booked time, online or offline.',
+                            // [HF-WIRE-12] the count is the dummy list, so a live build says it without a number
+                            DemoMode.on
+                                ? '${demo.inBookings.length} bookings coming up. They ring you at the booked time, online or offline.'
+                                : 'Booked calls ring you at the booked time, online or offline.',
                             style: t(14, color: on ? C.deep : C.gold, h: 1.35),
                           ),
                         ),
@@ -658,7 +702,7 @@ class _AvailabilityScreenState extends State<AvailabilityScreen> {
                   decoration: BoxDecoration(color: C.deep, borderRadius: BorderRadius.circular(18)),
                   child: Column(
                     children: [
-                      Text('YOUR RATE', style: t(13, color: C.gold, ls: 0.14)),
+                      Text('YOUR RATE', style: t(14, color: C.gold, ls: 0.14)),
                       const SizedBox(height: 8),
                       Row(
                         children: [
@@ -747,9 +791,9 @@ class _EarningsCardState extends State<_EarningsCard> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text('READY TO WITHDRAW', style: t(12, color: C.tan, ls: 0.12)),
+                      Text('READY TO WITHDRAW', style: t(14, color: C.tan, ls: 0.12)),
                       Text(ready, style: t(30, color: C.maroon)),
-                      Text(hold, style: t(13, color: C.muted, w: FontWeight.w700)),
+                      Text(hold, style: t(14, color: C.muted, w: FontWeight.w700)),
                     ],
                   ),
                 ),
@@ -763,7 +807,7 @@ class _EarningsCardState extends State<_EarningsCard> {
           ),
         ),
         const SizedBox(height: 8),
-        Text('We keep ₹2 a minute plus 40% of your rate above ₹2. The rest is yours.', style: t(13, color: C.muted, w: FontWeight.w700)),
+        Text('We keep ₹2 a minute plus 40% of your rate above ₹2. The rest is yours.', style: t(14, color: C.muted, w: FontWeight.w700)),
       ],
     );
   }

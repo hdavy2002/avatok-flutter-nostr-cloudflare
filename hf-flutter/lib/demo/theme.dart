@@ -39,7 +39,7 @@ TextStyle t(
 }) {
   return TextStyle(
     fontFamily: 'Nunito',
-    fontSize: size,
+    fontSize: size < 14 ? 14 : size, // [HF-WIRE-12] nothing under 14 sp
     color: color,
     fontWeight: w,
     letterSpacing: size * ls,

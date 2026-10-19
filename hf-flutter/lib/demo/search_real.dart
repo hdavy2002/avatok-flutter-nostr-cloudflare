@@ -142,7 +142,7 @@ class _RealSearchState extends State<RealSearch> {
               Text('Try a topic', style: t(18, color: C.maroon)),
               const SizedBox(height: 10),
               SizedBox(
-                height: 44,
+                height: 48,
                 child: ListView(
                   scrollDirection: Axis.horizontal,
                   children: [
@@ -203,7 +203,7 @@ class _RealSearchState extends State<RealSearch> {
                         children: [
                           Avatar(influencerFromHost(h), size: 70),
                           const SizedBox(height: 6),
-                          Text(h.name.split(' ').first, style: t(13)),
+                          Text(h.name.split(' ').first, style: t(14)),
                         ],
                       ),
                     ),
@@ -294,12 +294,12 @@ class _RealSearchState extends State<RealSearch> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(c.handle, style: t(17)),
-                Text('Not on ${Brand.name} · $votes votes', style: t(13, color: C.muted, w: FontWeight.w700)),
+                Text('Not on ${Brand.name} · $votes votes', style: t(14, color: C.muted, w: FontWeight.w700)),
               ],
             ),
           ),
           SizedBox(
-            height: 44,
+            height: 48,
             child: FilledButton(
               style: FilledButton.styleFrom(backgroundColor: voted ? C.sand : C.marigold, foregroundColor: C.deep, shape: const StadiumBorder()),
               onPressed: voted ? null : () => requireAccount(context, () => unawaited(_vote(c)), reason: 'to vote'),

@@ -2,13 +2,18 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 
+import '../data/demo_mode.dart';
 import '../data/intro_store.dart';
 
 import 'data.dart';
 
 /// All demo state lives in memory. Restarting the app resets it. No backend, no storage.
+///
+/// [HF-WIRE-12] Every dummy seed below is built ONLY while [DemoMode.on]. A live build (HF_DEMO=false) starts with
+/// empty lists and zeros, so a screen that still read this object by mistake would show nothing, never fake data.
 class DemoState extends ChangeNotifier {
   DemoState() {
+    if (!DemoMode.on) return;
     final today = dayOnly(DateTime.now());
     // The influencer's own open days: the next 12 days except Sundays, four slots each.
     for (var i = 0; i < 12; i++) {
@@ -60,38 +65,38 @@ class DemoState extends ChangeNotifier {
 
   // Influencer side
   bool influencerJoined = false;
-  bool online = true;
+  bool online = DemoMode.on;
   int myRate = 20;
   final Set<int> availableDays = {0, 1, 2, 3, 4};
   String fromTime = '10:00 am';
   String toTime = '9:00 pm';
-  double earningsReady = 2340;
-  double earningsHold = 860;
+  double earningsReady = DemoMode.on ? 2340 : 0;
+  double earningsHold = DemoMode.on ? 860 : 0;
 
   // Money
-  double balance = 1240.50;
-  final List<Txn> txns = [
+  double balance = DemoMode.on ? 1240.50 : 0;
+  final List<Txn> txns = !DemoMode.on ? [] : [
     Txn('Call · Meera Joshi', 'Today, 6:42 pm · 3 min', -45),
     Txn('Top up', 'Today, 6:30 pm · ₹500 paid incl. GST', 423.72),
     Txn('Booking held · Arjun Rao', 'Thu 23, 4:00 pm · 10 min', -200),
     Txn('Call · Rohan Mehta', 'Mon, 9:10 pm · 7 min', -175),
     Txn('Top up', 'Mon, 9:02 pm · ₹1,200 paid incl. GST', 1016.95),
   ];
-  final List<PayoutReq> payouts = [
+  final List<PayoutReq> payouts = !DemoMode.on ? [] : [
     PayoutReq('12 Oct', 1500, 'PAID · UTR 4521…'),
   ];
 
   // Activity
-  final Set<String> favs = {'r3', 'r4'};
-  late final List<CallRecord> calls = [
+  final Set<String> favs = DemoMode.on ? {'r3', 'r4'} : <String>{};
+  late final List<CallRecord> calls = !DemoMode.on ? [] : [
     CallRecord(influencers[0], 'Today, 6:42 pm', 3, 45, stars: 5),
     CallRecord(influencers[3], 'Mon, 9:10 pm', 7, 175, stars: 4),
     CallRecord(influencers[2], 'Sat, 8:05 pm', 12, 216, stars: 5),
   ];
-  late final List<Booking> bookings = [
+  late final List<Booking> bookings = !DemoMode.on ? [] : [
     Booking(influencers[1], 'Thu 23', '4:00 pm', 200),
   ];
-  final Map<String, int> votes = {
+  final Map<String, int> votes = !DemoMode.on ? {} : {
     '@chai_with_chacha': 1240,
     '@desi.dance.didi': 860,
     '@techwithtanya': 412,

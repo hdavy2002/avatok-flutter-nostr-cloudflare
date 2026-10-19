@@ -1,8 +1,11 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/brand.dart';
 import '../../data/demo_mode.dart';
+import '../../data/models/wallet.dart';
 import '../../data/services.dart';
 import '../state.dart';
 import '../theme.dart';
@@ -65,12 +68,15 @@ class _Dashboard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // [HF-WIRE-12] The counts below are dummy numbers: a live build shows none (the screens behind them have the real ones).
+    final live = !DemoMode.on;
+    final isInfluencer = live ? Services.instance.me?.hostStatus != null : demo.influencerJoined;
     final items = <(IconData, String, String, String)>[
-      (Icons.call_rounded, 'Call records', '${demo.calls.length} calls', '/calls'),
-      (Icons.currency_rupee_rounded, 'Wallet', inr(demo.balance, paise: false), '/wallet'),
+      (Icons.call_rounded, 'Call records', live ? '' : '${demo.calls.length} calls', '/calls'),
+      (Icons.currency_rupee_rounded, 'Wallet', live ? '' : inr(demo.balance, paise: false), '/wallet'),
       if (Services.instance.viewerIsInfluencer) (Icons.north_east_rounded, 'Payout', '', '/payout'),
-      (Icons.event_rounded, 'My bookings', '${demo.bookings.length}', '/bookings'),
-      (Icons.favorite_rounded, 'Favourites', '${demo.favs.length}', 'tab:/favourites'),
+      (Icons.event_rounded, 'My bookings', live ? '' : '${demo.bookings.length}', '/bookings'),
+      (Icons.favorite_rounded, 'Favourites', live ? '' : '${demo.favs.length}', 'tab:/favourites'),
       (Icons.settings_rounded, 'Settings', '', '/settings'),
       (Icons.help_rounded, 'Help', '', '/help'),
     ];
@@ -94,7 +100,7 @@ class _Dashboard extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('NAMASTE', style: t(13, color: C.ruby, ls: 0.14)),
+                    Text('NAMASTE', style: t(14, color: C.ruby, ls: 0.14)),
                     Text(demo.name, style: t(30, color: C.maroon, h: 1.05)),
                   ],
                 ),
@@ -105,7 +111,7 @@ class _Dashboard extends StatelessWidget {
         const SizedBox(height: 18),
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 22),
-          child: GestureDetector(onTap: () => context.push('/wallet'), child: const WalletTicket()),
+          child: GestureDetector(onTap: () => unawaited(context.push('/wallet').then((_) => WalletTicket.refresh.value++)), child: const WalletTicket()),
         ),
         const SizedBox(height: 18),
         Padding(
@@ -121,9 +127,9 @@ class _Dashboard extends StatelessWidget {
                 ),
               _MenuRow(
                 icon: Icons.star_rounded,
-                label: demo.influencerJoined ? 'Influencer dashboard' : 'Join as an influencer',
-                meta: demo.influencerJoined ? (demo.online ? 'Online' : 'Offline') : 'Free',
-                onTap: () => demo.influencerJoined ? context.go('/inf/home') : context.push('/influencer/join'),
+                label: isInfluencer ? 'Influencer dashboard' : 'Join as an influencer',
+                meta: live ? (isInfluencer ? '' : 'Free') : (demo.influencerJoined ? (demo.online ? 'Online' : 'Offline') : 'Free'),
+                onTap: () => isInfluencer ? context.go('/inf/home') : context.push('/influencer/join'),
               ),
             ],
           ),
@@ -135,12 +141,64 @@ class _Dashboard extends StatelessWidget {
 }
 
 /// The big pink tag with the balance and a Top up end.
-class WalletTicket extends StatelessWidget {
+/// A live build reads the real balance from `GET /api/hf/app/wallet`; the dummy balance is for the demo build only.
+class WalletTicket extends StatefulWidget {
   const WalletTicket({super.key});
+
+  /// Bump after anything that can change the balance (top-up, call, booking) so the ticket reloads.
+  static final ValueNotifier<int> refresh = ValueNotifier<int>(0);
+
+  @override
+  State<WalletTicket> createState() => _WalletTicketState();
+}
+
+class _WalletTicketState extends State<WalletTicket> {
+  WalletSnapshot? _wallet;
+  bool _failed = false;
+
+  bool get _live => !DemoMode.on;
+
+  @override
+  void initState() {
+    super.initState();
+    WalletTicket.refresh.addListener(_load);
+    if (_live) unawaited(_load());
+  }
+
+  @override
+  void dispose() {
+    WalletTicket.refresh.removeListener(_load);
+    super.dispose();
+  }
+
+  Future<void> _load() async {
+    if (!_live) return;
+    try {
+      final w = await Services.instance.walletRepo.fetch(limit: 1);
+      if (mounted) setState(() {
+        _wallet = w;
+        _failed = false;
+      });
+    } catch (_) {
+      if (mounted) setState(() => _failed = true);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
-    final minutes = (demo.balance / 15).floor();
+    final w = _wallet;
+    final String amount;
+    final String caption;
+    if (!_live) {
+      amount = inr(demo.balance);
+      caption = '≈ ${(demo.balance / 15).floor()} minutes at ₹15/min';
+    } else if (w != null) {
+      amount = inr((w.balancePaise + w.testCreditPaise) / 100);
+      caption = w.heldPaise > 0 ? '${inr(w.heldPaise / 100)} set aside for a booking' : 'Ready for calls and bookings';
+    } else {
+      amount = '—';
+      caption = _failed ? 'Could not load your balance.' : 'Checking your balance…';
+    }
     return Container(
       height: 112,
       decoration: const BoxDecoration(boxShadow: [BoxShadow(color: C.deep, offset: Offset(6, 6))], borderRadius: BorderRadius.all(Radius.circular(18))),
@@ -156,9 +214,9 @@ class WalletTicket extends StatelessWidget {
                   mainAxisAlignment: MainAxisAlignment.center,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('WALLET BALANCE', style: t(12, color: C.gold, ls: 0.16)),
-                    FittedBox(child: Text(inr(demo.balance), style: t(36, color: C.ivory, h: 1.1))),
-                    Text('≈ $minutes minutes at ₹15/min', style: t(13, color: C.cream, w: FontWeight.w700)),
+                    Text('WALLET BALANCE', style: t(14, color: C.gold, ls: 0.16)),
+                    FittedBox(child: Text(amount, style: t(36, color: C.ivory, h: 1.1))),
+                    Text(caption, style: t(14, color: C.cream, w: FontWeight.w700)),
                   ],
                 ),
               ),
@@ -168,7 +226,7 @@ class WalletTicket extends StatelessWidget {
               button: true,
               label: 'Top up',
               child: GestureDetector(
-                onTap: () => context.push('/topup'),
+                onTap: () => unawaited(context.push('/topup').then((_) => WalletTicket.refresh.value++)),
                 child: Container(
                   width: 92,
                   color: C.marigold,
@@ -176,7 +234,7 @@ class WalletTicket extends StatelessWidget {
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       const Icon(Icons.add_rounded, color: C.deep, size: 30),
-                      Text('TOP UP', style: t(13, color: C.deep, ls: 0.08)),
+                      Text('TOP UP', style: t(14, color: C.deep, ls: 0.08)),
                     ],
                   ),
                 ),
@@ -250,7 +308,7 @@ class CallRecordsScreen extends StatelessWidget {
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 Text(c.who.name, style: t(16)),
-                                Text('${c.when} · ${c.minutes} min', style: t(13, color: C.muted, w: FontWeight.w700)),
+                                Text('${c.when} · ${c.minutes} min', style: t(14, color: C.muted, w: FontWeight.w700)),
                                 if (c.stars > 0) Text('★' * c.stars, style: t(14, color: C.marigold)),
                               ],
                             ),
@@ -262,7 +320,7 @@ class CallRecordsScreen extends StatelessWidget {
                               const SizedBox(height: 4),
                               GestureDetector(
                                 onTap: () => context.push('/profile/${c.who.id}'),
-                                child: Text('Call again', style: t(13, color: C.maroon)),
+                                child: Text('Call again', style: t(14, color: C.maroon)),
                               ),
                             ],
                           ),
@@ -321,7 +379,7 @@ class BookingsScreen extends StatelessWidget {
                                                 children: [
                                                   Text(b.who.name, style: t(17)),
                                                   Text('${b.day} · ${b.time}', style: t(15, color: C.maroon)),
-                                                  Text('${inr(b.hold, paise: false)} held · 10 min', style: t(13, color: C.muted, w: FontWeight.w700)),
+                                                  Text('${inr(b.hold, paise: false)} held · 10 min', style: t(14, color: C.muted, w: FontWeight.w700)),
                                                 ],
                                               ),
                                             ),

@@ -88,7 +88,7 @@ class _SearchScreenState extends State<SearchScreen> {
                               children: [
                                 Avatar(i, size: 70),
                                 const SizedBox(height: 6),
-                                Text(i.name.split(' ').first, style: t(13)),
+                                Text(i.name.split(' ').first, style: t(14)),
                               ],
                             ),
                           ),
@@ -174,12 +174,12 @@ class _SearchScreenState extends State<SearchScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(handle, style: t(17)),
-                Text('Not on ${Brand.name} · ${demo.votesFor(handle)} votes', style: t(13, color: C.muted, w: FontWeight.w700)),
+                Text('Not on ${Brand.name} · ${demo.votesFor(handle)} votes', style: t(14, color: C.muted, w: FontWeight.w700)),
               ],
             ),
           ),
           SizedBox(
-            height: 44,
+            height: 48,
             child: FilledButton(
               style: FilledButton.styleFrom(backgroundColor: voted ? C.sand : C.marigold, foregroundColor: C.deep, shape: const StadiumBorder()),
               onPressed: voted

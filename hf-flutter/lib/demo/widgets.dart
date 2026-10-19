@@ -55,7 +55,7 @@ class ArtStandIn extends StatelessWidget {
       ),
       alignment: Alignment.center,
       padding: const EdgeInsets.all(8),
-      child: Text('[ $label ]', textAlign: TextAlign.center, style: t(13, color: ink, ls: 0.06)),
+      child: Text('[ $label ]', textAlign: TextAlign.center, style: t(14, color: ink, ls: 0.06)),
     );
   }
 }
@@ -184,7 +184,7 @@ class TicketButton extends StatelessWidget {
                         : Column(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              if (stubTop != null) Text(stubTop!, style: t(11, color: stubInk, ls: 0.12)),
+                              if (stubTop != null) Text(stubTop!, style: t(14, color: stubInk, ls: 0.12)),
                               if (stubBottom != null) Text(stubBottom!, style: t(16, color: stubInk)),
                             ],
                           ),
@@ -254,7 +254,13 @@ class BrassKnob extends StatelessWidget {
       label: label,
       child: GestureDetector(
         onTap: onTap,
+        behavior: HitTestBehavior.opaque,
+        // [HF-WIRE-12] a tappable knob always has a 48 dp hit area, whatever its drawn size
         child: SizedBox(
+          width: onTap != null && size < 48 ? 48 : size,
+          height: onTap != null && size < 48 ? 48 : size,
+          child: Center(
+            child: SizedBox(
           width: size,
           height: size,
           child: Stack(
@@ -279,6 +285,8 @@ class BrassKnob extends StatelessWidget {
               ),
               child,
             ],
+          ),
+        ),
           ),
         ),
       ),
@@ -345,7 +353,7 @@ class StatusPill extends StatelessWidget {
             decoration: BoxDecoration(shape: BoxShape.circle, color: online ? C.rani : C.cream, boxShadow: online ? [BoxShadow(color: C.rani.withValues(alpha: 0.35), spreadRadius: 3)] : null),
           ),
           const SizedBox(width: 7),
-          Text(online ? 'ONLINE NOW' : 'OFFLINE', style: t(13, color: dark ? C.gold : C.muted, ls: 0.06)),
+          Text(online ? 'ONLINE NOW' : 'OFFLINE', style: t(14, color: dark ? C.gold : C.muted, ls: 0.06)),
         ],
       ),
     );
@@ -456,11 +464,19 @@ class BackBtn extends StatelessWidget {
       label: 'Back',
       child: GestureDetector(
         onTap: () => context.canPop() ? context.pop() : context.go('/reels'),
-        child: Container(
-          width: 44,
-          height: 44,
-          decoration: BoxDecoration(shape: BoxShape.circle, color: dark ? C.ivory.withValues(alpha: 0.15) : const Color(0xFFFFE3F0)),
-          child: Icon(Icons.arrow_back_rounded, color: dark ? C.gold : C.deep),
+        behavior: HitTestBehavior.opaque,
+        // [HF-WIRE-12] 48 dp tap target around the 44 dp circle
+        child: SizedBox(
+          width: 48,
+          height: 48,
+          child: Center(
+            child: Container(
+              width: 44,
+              height: 44,
+              decoration: BoxDecoration(shape: BoxShape.circle, color: dark ? C.ivory.withValues(alpha: 0.15) : const Color(0xFFFFE3F0)),
+              child: Icon(Icons.arrow_back_rounded, color: dark ? C.gold : C.deep),
+            ),
+          ),
         ),
       ),
     );
@@ -564,7 +580,7 @@ class MonthGrid extends StatelessWidget {
     final lead = first.weekday - 1; // Monday first
     final today = dayOnly(DateTime.now());
     final cells = <Widget>[
-      for (final w in weekdayShort) Center(child: Text(w.substring(0, 2), style: t(12, color: C.tan))),
+      for (final w in weekdayShort) Center(child: Text(w.substring(0, 2), style: t(14, color: C.tan))),
       for (var i = 0; i < lead; i++) const SizedBox.shrink(),
       for (var d = 1; d <= daysInMonth; d++) _day(DateTime(month.year, month.month, d), today),
     ];

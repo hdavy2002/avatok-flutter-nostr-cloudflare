@@ -149,7 +149,7 @@ class MainShell extends StatelessWidget {
                             const SizedBox(height: 3),
                             Text(
                               _items[i].$3,
-                              style: t(13, color: shell.currentIndex == i ? C.maroon : C.muted, w: shell.currentIndex == i ? FontWeight.w800 : FontWeight.w700),
+                              style: t(14, color: shell.currentIndex == i ? C.maroon : C.muted, w: shell.currentIndex == i ? FontWeight.w800 : FontWeight.w700),
                             ),
                           ],
                         ),

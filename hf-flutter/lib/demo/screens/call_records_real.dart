@@ -174,8 +174,8 @@ class _Row extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(c.hostName, style: t(16)),
-                if (c.didNotConnect) Text(callWhen(c.at), style: t(13, color: C.muted, w: FontWeight.w700)),
-                Text(_detail, style: t(13, color: C.muted, w: FontWeight.w700)),
+                if (c.didNotConnect) Text(callWhen(c.at), style: t(14, color: C.muted, w: FontWeight.w700)),
+                Text(_detail, style: t(14, color: C.muted, w: FontWeight.w700)),
                 if (c.stars > 0) Text('★' * c.stars, style: t(14, color: C.marigold)),
               ],
             ),
@@ -188,7 +188,7 @@ class _Row extends StatelessWidget {
               if (c.hostSlug != null)
                 GestureDetector(
                   onTap: () => context.push('/profile/${c.hostSlug}'),
-                  child: Text('Call again', style: t(13, color: C.maroon)),
+                  child: Text('Call again', style: t(14, color: C.maroon)),
                 ),
             ],
           ),

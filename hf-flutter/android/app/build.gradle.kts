@@ -59,6 +59,10 @@ android {
 
     buildTypes {
         release {
+            // [HF-WIRE-12] Flutter turns R8 (code shrinking) on for release builds. The keep / dontwarn rules for the
+            // packages we ship (webview, video_player, share_plus, url_launcher, package_info_plus, PostHog, billing,
+            // Firebase) live in proguard-rules.pro.
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
             if (hfSigned) {
                 signingConfig = signingConfigs.getByName("release")
             }

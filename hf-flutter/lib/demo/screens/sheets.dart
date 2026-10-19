@@ -110,7 +110,7 @@ class _DemoSignUpSheetState extends State<_DemoSignUpSheet> {
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
             children: [
-              Text('ONE STEP ${widget.reason == null ? 'TO CONTINUE' : widget.reason!.toUpperCase()}', style: t(13, color: C.ruby, ls: 0.14)),
+              Text('ONE STEP ${widget.reason == null ? 'TO CONTINUE' : widget.reason!.toUpperCase()}', style: t(14, color: C.ruby, ls: 0.14)),
               const SizedBox(height: 4),
               Text('Say hello!', style: t(32, color: C.maroon, ls: 0.03, h: 1.05)),
               const SizedBox(height: 4),
@@ -126,7 +126,7 @@ class _DemoSignUpSheetState extends State<_DemoSignUpSheet> {
               const SizedBox(height: 12),
               Text.rich(TextSpan(children: [
                 TextSpan(text: 'WhatsApp number  ', style: t(15)),
-                TextSpan(text: 'for call alerts and reminders', style: t(13, color: C.muted, w: FontWeight.w700)),
+                TextSpan(text: 'for call alerts and reminders', style: t(14, color: C.muted, w: FontWeight.w700)),
               ])),
               const SizedBox(height: 6),
               Row(

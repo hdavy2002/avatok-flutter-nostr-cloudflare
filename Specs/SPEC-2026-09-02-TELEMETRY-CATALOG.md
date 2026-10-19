@@ -1332,3 +1332,18 @@ Web events (flag `hfFavouritesEnabled`). Never in any prop: the person's name, p
 | worker `hf_channel_removed` | `platform` | DELETE /api/hf/channels/:id. |
 | worker `$exception` | `extra.area: 'hf_channels'` | Any failure in routes/hf_channels.ts. |
 | app `hf_channels_open` / `hf_channel_add_start` / `hf_channel_check_tap` | `platform`, `state` | Screens in Settings -> Channels and Join. |
+
+## Hello Fraands native app: hardening (`[HF-WIRE-12]`, `hf-flutter/lib/data/telemetry.dart`, 2026-10-19)
+
+Events go to PostHog (EU, project 139917) only in builds made with `--dart-define=HF_POSTHOG_KEY=<key>` (CI secret `HF_POSTHOG_KEY`; host override `HF_POSTHOG_HOST`). With no key the events stay on the debug console. The visitor is anonymous: no `identify()`, no person profile, no lifecycle auto-events. The app sends **only** the names in `Telemetry.catalogEvents` (same list as this section); everything else is dropped. Properties are scrubbed: keys containing phone, mobile, whatsapp, email, token, otp, secret, plus `name`, `uid`, `vpa`, `upi`, `utr`, `address`, `bio`, `message`, `note`, `caption`, and any value that looks like an email or a 10+ digit number, never leave the phone. Super properties added to every event: `platform: 'android-app'`, `service_name: 'hf-app'`, `app`, `release` (git SHA).
+
+| Event | Props | Note |
+|---|---|---|
+| `app_crash` | `source: 'flutter' \| 'platform' \| 'zone'`, `fatal: boolean`, `error_type`, `library` (flutter source only), `stack_top` (first 6 stack lines) | Uncaught error: `FlutterError.onError` (`flutter`), `PlatformDispatcher.onError` (`platform`), `runZonedGuarded` (`zone`). The error MESSAGE is never sent (it can hold typed text). De-duplicated per run (same error type + top frame) and capped at 10 per run. **Success value:** arrives with `platform = android-app` after a forced error on a test build. |
+| `hf_signup_code_sent` | none | `[HF-WIRE-2]` The WhatsApp code request was accepted (`POST /api/auth/whatsapp/send` answered 200). |
+| `hf_signup_verified` | `is_new: boolean` | `[HF-WIRE-2]` The code was right and a session is active. |
+| `hf_signup_age_confirmed` | none | `[HF-WIRE-2]` The person confirmed 18+ (`POST /api/hf/me/ack` answered). |
+| `hf_topup_started` | `amount_rupees` | `[HF-WIRE-6]` A top-up order was created and the payment page opened. |
+| `hf_topup_result` | `result: 'paid' \| 'failed' \| 'slow'`, `ms` (not on `slow`) | `[HF-WIRE-6]` What the app saw when it polled the order. `paid` = the server confirmed the credit; the payment provider's signed webhook is the only thing that adds money. |
+| `hf_channels_open` / `hf_channel_add_start` / `hf_channel_check_tap` | `platform` | `[HF-WIRE-3]` Already listed in the Channels section above. |
+| `hf_app_call_confirm_viewed` / `hf_app_call_started` / `hf_app_call_status` / `hf_app_call_ended` / `hf_app_call_cancelled` / `hf_app_call_cap_warning` / `hf_app_review_submitted` | see the native calls section | `[HF-WIRE-7]` Same events as the native calls section above. |

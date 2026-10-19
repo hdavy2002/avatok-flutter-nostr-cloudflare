@@ -323,7 +323,7 @@ class _IntroTwo extends StatelessWidget {
             decoration: BoxDecoration(color: C.maroon, borderRadius: BorderRadius.circular(16), border: Border.all(color: C.lemon, width: 2)),
             child: Row(
               children: [
-                const SizedBox(width: 46, height: 46, child: Art('intro/invite-vote-badge.webp', fallback: BrassKnob(label: 'Invite', size: 46, child: Icon(Icons.add_rounded, color: C.deep)))),
+                const SizedBox(width: 46, height: 48, child: Art('intro/invite-vote-badge.webp', fallback: BrassKnob(label: 'Invite', size: 46, child: Icon(Icons.add_rounded, color: C.deep)))),
                 const SizedBox(width: 12),
                 Expanded(
                   child: Text.rich(

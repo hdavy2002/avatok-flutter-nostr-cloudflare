@@ -96,7 +96,7 @@ class _BookScreenState extends State<BookScreen> {
                         GestureDetector(
                           onTap: () => setState(() => _slot = s),
                           child: Container(
-                            height: 46,
+                            height: 48,
                             padding: const EdgeInsets.symmetric(horizontal: 16),
                             decoration: BoxDecoration(
                               color: s == _slot ? C.maroon : C.paper,
@@ -141,7 +141,7 @@ class _BookScreenState extends State<BookScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(title, style: t(18, color: C.maroon)),
-                Text(sub, style: t(13, color: C.muted, w: FontWeight.w700)),
+                Text(sub, style: t(14, color: C.muted, w: FontWeight.w700)),
               ],
             ),
           ),

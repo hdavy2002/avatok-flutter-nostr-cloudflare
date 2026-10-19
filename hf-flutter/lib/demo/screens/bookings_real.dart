@@ -191,7 +191,7 @@ class _RealBookScreenState extends State<RealBookScreen> {
                 key: ValueKey('slot-$hhmm'),
                 onTap: () => setState(() => _slot = hhmm),
                 child: Container(
-                  height: 46,
+                  height: 48,
                   padding: const EdgeInsets.symmetric(horizontal: 16),
                   decoration: BoxDecoration(
                     color: hhmm == _slot ? C.maroon : C.paper,
@@ -634,7 +634,7 @@ class AppBookingTile extends StatelessWidget {
               child: Column(
                 children: [
                   Text(label.split(' ').first, style: t(16, color: C.maroon)),
-                  Text(label.split(' ').last, style: t(12, color: C.tan)),
+                  Text(label.split(' ').last, style: t(14, color: C.tan)),
                 ],
               ),
             ),
@@ -1027,7 +1027,7 @@ class _RealAvailabilityScreenState extends State<RealAvailabilityScreen> {
                 if (booked.isNotEmpty)
                   Padding(
                     padding: const EdgeInsets.only(top: 8),
-                    child: Text('A booked time can only be closed after you cancel that booking.', style: t(13, color: C.muted, w: FontWeight.w700)),
+                    child: Text('A booked time can only be closed after you cancel that booking.', style: t(14, color: C.muted, w: FontWeight.w700)),
                   ),
                 const SizedBox(height: 10),
                 Align(
@@ -1046,7 +1046,7 @@ class _RealAvailabilityScreenState extends State<RealAvailabilityScreen> {
                   decoration: BoxDecoration(color: C.deep, borderRadius: BorderRadius.circular(18)),
                   child: Column(
                     children: [
-                      Text('YOUR RATE', style: t(13, color: C.gold, ls: 0.14)),
+                      Text('YOUR RATE', style: t(14, color: C.gold, ls: 0.14)),
                       const SizedBox(height: 8),
                       Row(
                         children: [
@@ -1150,7 +1150,7 @@ class _RealProfileCalendarState extends State<RealProfileCalendar> {
                         child: Column(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
-                            Text(weekdayShort[d.weekday - 1], style: t(12, color: on ? C.gold : C.deep)),
+                            Text(weekdayShort[d.weekday - 1], style: t(14, color: on ? C.gold : C.deep)),
                             Text('${d.day}', style: t(20, color: on ? C.gold : C.deep)),
                           ],
                         ),

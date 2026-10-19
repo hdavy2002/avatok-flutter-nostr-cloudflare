@@ -350,7 +350,7 @@ class _ReelPageState extends State<ReelPage> with SingleTickerProviderStateMixin
                             child: Container(
                               padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 1),
                               decoration: BoxDecoration(color: C.rani, borderRadius: BorderRadius.circular(999), border: Border.all(color: C.cinema, width: 2)),
-                              child: Text('LIVE', style: t(11, color: C.ivory, ls: 0.06)),
+                              child: Text('LIVE', style: t(14, color: C.ivory, ls: 0.06)),
                             ),
                           ),
                         ],
@@ -370,7 +370,7 @@ class _ReelPageState extends State<ReelPage> with SingleTickerProviderStateMixin
                     child: Icon(faved ? Icons.favorite_rounded : Icons.favorite_border_rounded, color: faved ? C.rani : C.deep, size: 26),
                   ),
                   const SizedBox(height: 4),
-                  Text(_count(r.hearts + (faved ? 1 : 0)), style: t(13, color: C.ivory)),
+                  Text(_count(r.hearts + (faved ? 1 : 0)), style: t(14, color: C.ivory)),
                   const SizedBox(height: 14),
                   BrassKnob(
                     label: 'Share this reel',
@@ -404,7 +404,7 @@ class _ReelPageState extends State<ReelPage> with SingleTickerProviderStateMixin
                             Container(
                               padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
                               decoration: BoxDecoration(color: C.marigold, borderRadius: BorderRadius.circular(999)),
-                              child: Text('₹${who.rate}/min', style: t(13, color: C.deep)),
+                              child: Text('₹${who.rate}/min', style: t(14, color: C.deep)),
                             ),
                           ],
                         ),

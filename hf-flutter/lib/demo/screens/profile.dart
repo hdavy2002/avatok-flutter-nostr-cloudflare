@@ -65,7 +65,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
       itemCount: pp.reels.length,
       itemBuilder: (_, i) {
         final r = pp.reels[i];
-        return GestureDetector(
+        return Semantics(
+          button: true,
+          label: 'Watch video ${i + 1}',
+          child: GestureDetector(
           key: ValueKey('video-${r.id}'),
           onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(fullscreenDialog: true, builder: (_) => ReelViewer(reels: pp.reels, start: i))),
           child: ClipRRect(
@@ -76,9 +79,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 r.thumbUrl == null
                     ? const ColoredBox(color: C.cinema)
                     : Image.network(r.thumbUrl!, fit: BoxFit.cover, errorBuilder: (_, __, ___) => const ColoredBox(color: C.cinema)),
-                Positioned(left: 6, bottom: 6, child: Text('▶ ${compactCount(r.views)}', style: t(12, color: C.ivory))),
+                Positioned(left: 6, bottom: 6, child: Text('▶ ${compactCount(r.views)}', style: t(14, color: C.ivory))),
               ],
             ),
+          ),
           ),
         );
       },
@@ -167,7 +171,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   children: [
                     Text(who.name, style: t(32, color: C.maroon, ls: 0.03, h: 1.05)),
                     const SizedBox(height: 4),
-                    Text('${who.handle} · ${who.city} · ${who.niche}', style: t(15, color: C.tan)),
+                    Text([who.handle, who.city, who.niche].where((e) => e.isNotEmpty).join(' · '), style: t(15, color: C.tan)), // [HF-WIRE-12] a live profile has no city/niche
                     const SizedBox(height: 10),
                     Text(who.bio, style: t(16, w: FontWeight.w700, h: 1.45)),
                     const SizedBox(height: 16),
@@ -241,7 +245,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             ),
                             alignment: Alignment.bottomLeft,
                             padding: const EdgeInsets.all(6),
-                            child: Text('▶ ${[82, 41, 110, 23, 310, 9, 57, 64, 18][i]}K', style: t(12, color: C.ivory)),
+                            child: Text('▶ ${[82, 41, 110, 23, 310, 9, 57, 64, 18][i]}K', style: t(14, color: C.ivory)),
                           ),
                         ),
                     ],
@@ -278,7 +282,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                 child: Column(
                                   mainAxisAlignment: MainAxisAlignment.center,
                                   children: [
-                                    Text(weekdayShort[d.weekday - 1], style: t(12, color: on ? C.gold : C.deep)),
+                                    Text(weekdayShort[d.weekday - 1], style: t(14, color: on ? C.gold : C.deep)),
                                     Text('${d.day}', style: t(20, color: on ? C.gold : C.deep)),
                                   ],
                                 ),
@@ -320,7 +324,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         padding: const EdgeInsets.symmetric(vertical: 10),
         child: Column(
           children: [
-            Text(label, style: t(13, color: C.tan)),
+            Text(label, style: t(14, color: C.tan)),
             const SizedBox(height: 2),
             FittedBox(child: Text(value, style: t(22, color: C.maroon))),
           ],
