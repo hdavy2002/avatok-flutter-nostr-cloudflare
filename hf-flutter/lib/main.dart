@@ -1,7 +1,10 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import 'core/brand.dart';
+import 'core/deep_links.dart';
 import 'demo/router.dart';
 import 'demo/theme.dart';
 
@@ -19,6 +22,9 @@ Future<void> main() async {
   );
   await SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
   runApp(const HfDemoApp());
+  // Cold-start and running links (hellofraands:// and https app links). A link that lands during the
+  // splash waits until the splash hands over (DeepLinks.markReady).
+  unawaited(DeepLinks.start(router));
 }
 
 class HfDemoApp extends StatelessWidget {

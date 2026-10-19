@@ -1,4 +1,8 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
+
+import '../data/intro_store.dart';
 
 import 'data.dart';
 
@@ -97,6 +101,7 @@ class DemoState extends ChangeNotifier {
 
   void finishIntro() {
     introSeen = true;
+    unawaited(IntroStore.markSeen());
     notifyListeners();
   }
 

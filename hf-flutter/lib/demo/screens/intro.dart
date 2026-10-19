@@ -5,6 +5,10 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/brand.dart';
+import '../../core/deep_links.dart';
+import '../../data/repos/config_repo.dart';
+import '../../data/services.dart';
+import '../../ui/update_prompt.dart';
 import '../state.dart';
 import '../theme.dart';
 import '../widgets.dart';
@@ -21,18 +25,39 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
   late final AnimationController _sweep = AnimationController(vsync: this, duration: const Duration(milliseconds: 600))..repeat();
   int _n = 3;
   Timer? _timer;
+  Future<void> _boot = Future<void>.value();
 
   @override
   void initState() {
     super.initState();
+    // Real start-up work runs behind the countdown (HF-WIRE-1A): intro-seen flag, Clerk session restore,
+    // /api/hf/me and the app config. It is capped below the countdown and swallows its own failures, so a
+    // slow or missing network never blocks or crashes the splash; the demo flow carries on regardless.
+    _boot = Services.instance.boot().timeout(const Duration(milliseconds: 1500), onTimeout: () {}).catchError((Object _) {});
     _timer = Timer.periodic(const Duration(milliseconds: 600), (t) {
       if (_n > 1) {
         setState(() => _n--);
       } else {
         t.cancel();
-        if (mounted) context.go(demo.introSeen ? '/reels' : '/intro');
+        unawaited(_finish());
       }
     });
+  }
+
+  Future<void> _finish() async {
+    try {
+      await _boot;
+    } catch (_) {
+      // boot never throws; belt and braces
+    }
+    if (!mounted) return;
+    final status = Services.instance.updateStatus;
+    if (status != UpdateStatus.none) {
+      await showUpdatePrompt(context, status);
+      if (!mounted) return;
+    }
+    context.go(demo.introSeen ? '/reels' : '/intro');
+    DeepLinks.markReady();
   }
 
   @override

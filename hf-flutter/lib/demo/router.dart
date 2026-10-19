@@ -22,6 +22,9 @@ final router = GoRouter(
   routes: [
     GoRoute(path: '/splash', builder: (_, __) => const SplashScreen()),
     GoRoute(path: '/intro', builder: (_, __) => const IntroScreen()),
+    // Site links (`https://<domain>/h/<slug>`, `/r/<id>`): the same targets core/deep_links.dart opens for taps.
+    GoRoute(path: '/h/:slug', redirect: (_, s) => '/profile/${Uri.encodeComponent(s.pathParameters['slug'] ?? '')}'),
+    GoRoute(path: '/r/:id', redirect: (_, s) => '/reels?reel=${Uri.encodeQueryComponent(s.pathParameters['id'] ?? '')}'),
     StatefulShellRoute.indexedStack(
       builder: (context, state, shell) => MainShell(shell: shell),
       branches: [
