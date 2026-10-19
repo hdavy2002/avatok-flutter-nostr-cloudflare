@@ -146,6 +146,22 @@ python3 scripts/git_hygiene.py
   purpose. Also run it after finishing an issue, to confirm your own worktree and
   branch are gone.
 
+#### 📱 SIDELOAD A CI-BUILT APK + SEE/DRIVE THE PHONE (owner decision 2026-10-20, `[HF-SIDELOAD-1]`)
+
+The owner asked to live-test on his phone over USB. **Only `adb` and `scrcpy` are back** (Homebrew:
+`brew install --cask android-platform-tools`, `brew install scrcpy`, a few hundred MB). **Flutter, the
+Android SDK, Android Studio and emulators stay deleted** — CI still does every build.
+
+- Build: `gh workflow run hf-flutter.yml --ref main -f mode=apk -f demo=false` (owner request only).
+- Install: `scripts/hf_sideload.sh [run-id]` downloads the `hf-flutter-apk` artifact and `adb install -r`s it.
+  The first switch from the Play build needs `--fresh` (different signing key → uninstall → he is signed out; say so).
+- See the screen: `adb exec-out screencap -p > shot.png` (then view it); the owner can watch live with `scrcpy`.
+- Drive it: `adb shell input tap X Y` / `input swipe` / `input text` / `input keyevent 4` (back). Real money
+  (Pay buttons, payouts) and messages to real people need the owner's go-ahead first.
+- Logs: `adb logcat -d | grep -i flutter`.
+
+The 2026-09-10 note below still applies to everything except adb/scrcpy.
+
 #### 📲 ~~"ship local"~~ — **DEAD as of 2026-09-10. There is no adb and no local APK.**
 
 > 🚫 The whole local toolchain was deleted on 2026-09-10 (see the Tooling section
@@ -1261,7 +1277,7 @@ landed), so they were green on day one and fail only on NEW debt.
   | Command | Status |
   |---|---|
   | `flutter analyze` / `flutter build` / `flutter run` | ❌ gone — `flutter: command not found` |
-  | `adb` / `scripts/push_apk.sh` / **"ship local"** | ❌ gone — no `adb`, no SDK |
+  | `adb` / `scripts/push_apk.sh` / **"ship local"** | ⚠️ `adb` + `scrcpy` back 2026-10-20 for sideloading CI APKs (`scripts/hf_sideload.sh`); still no SDK |
   | emulator | ❌ gone — no binary, no AVD, no system image |
   | `gh workflow run android.yml` / **"ship it"** | ✅ **unchanged — this is the only way to build** |
   | `python3 tool/check_design_guard.py`, `tool/check_ship_readiness.py` | ✅ unchanged (plain python3, no toolchain) |
