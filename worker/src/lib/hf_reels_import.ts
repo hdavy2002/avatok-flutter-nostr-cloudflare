@@ -14,7 +14,7 @@ export interface ImportedReel {
   caption: string; description?: string; likes: number; comments: number; views: number; publishedAt: number | null;
 }
 
-export const TREG_IG_REELS = "scrapecreators.instagram.user.reels"; // treg publishes no schema: name follows its catalog naming (see HF-TREG-JEV-RESEARCH.md)
+export const TREG_IG_REELS = "scrapecreators.x.v1-instagram-user-reels"; // [HF-WIRE-18] verified live 2026-10-19 via the treg catalog: GET /v1/instagram/user/reels, params handle|user_id, max_id, trim; response {items:[{code,caption,like_count,comment_count,play_count,image_versions2,taken_at,...}], max_id}
 export const DEFAULT_IMPORT_COUNT = 50;
 export const MAX_IMPORT_COUNT = 200;
 
