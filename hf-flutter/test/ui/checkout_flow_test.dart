@@ -101,6 +101,13 @@ Future<_Harness> _pump(
   return h;
 }
 
+/// The flow's spinners animate forever, so `pumpAndSettle` would never return; give it a moment instead.
+Future<void> _settle(WidgetTester tester) async {
+  for (var i = 0; i < 8; i++) {
+    await tester.pump(const Duration(milliseconds: 100));
+  }
+}
+
 String _next(int rupees) => '/payment?amount=$rupees&order=$_orderId&credit=${(rupees * 100 * 10000) ~/ 11800}';
 
 void main() {
@@ -168,7 +175,7 @@ void main() {
       await tester.enterText(find.byKey(const Key('details-email')), 'Asha@Example.com');
       await tester.pump();
       await tester.tap(find.byKey(const Key('details-continue')));
-      await tester.pumpAndSettle();
+      await _settle(tester);
       expect(api.calls, ['PATCH /api/hf/me', 'PATCH /api/hf/me']);
       expect(api.bodies, [
         {'displayName': 'Asha Rao'},
@@ -178,7 +185,7 @@ void main() {
       expect(find.byKey(const Key('pay-amount')), findsOneWidget);
 
       await tester.tap(find.byKey(const Key('upi-app-com.phonepe.app')));
-      await tester.pumpAndSettle();
+      await _settle(tester);
       final create = api.bodies[api.calls.indexOf('POST /api/hf/wallet/topup')] as Map;
       expect(create['customer_name'], 'Asha Rao');
       expect(create['customer_email'], 'asha@example.com');
@@ -195,7 +202,7 @@ void main() {
       await tester.enterText(find.byKey(const Key('details-email')), 'asha@example.com');
       await tester.pump();
       await tester.tap(find.byKey(const Key('details-continue')));
-      await tester.pumpAndSettle();
+      await _settle(tester);
       expect(find.byKey(const Key('pay-amount')), findsOneWidget);
     });
 
@@ -217,7 +224,7 @@ void main() {
           ),
         ),
       ));
-      await tester.pumpAndSettle();
+      await _settle(tester);
       expect(find.textContaining('not verified yet'), findsOneWidget);
       await tester.tap(find.byKey(const Key('details-continue')));
       await tester.pump();
@@ -245,7 +252,7 @@ void main() {
       expect(find.text('PhonePe'), findsOneWidget);
       expect(find.text('Google Pay'), findsOneWidget);
       await tester.tap(find.byKey(const Key('upi-app-com.phonepe.app')));
-      await tester.pumpAndSettle();
+      await _settle(tester);
       expect(api.calls, ['POST /api/hf/wallet/topup']);
       expect(fake.calls, ['upi_app|$_orderId|session_1|true|com.phonepe.app']);
       expect(h.finished, [_next(500)]);
@@ -264,12 +271,12 @@ void main() {
       final fake = FakeCheckout(apps: _apps, upiAppOutcome: const PayOutcome(PayResult.failed, 'cancelled'));
       final h = await _pump(tester, api: api, checkout: fake);
       await tester.tap(find.byKey(const Key('upi-app-com.phonepe.app')));
-      await tester.pumpAndSettle();
+      await _settle(tester);
       expect(find.byKey(const Key('checkout-error')), findsOneWidget);
       expect(find.textContaining('not completed'), findsOneWidget);
       expect(h.finished, isEmpty);
       await tester.tap(find.byKey(const Key('check-payment')));
-      await tester.pumpAndSettle();
+      await _settle(tester);
       expect(h.finished, ['${_next(500)}&sdk=err']);
     });
 
@@ -278,9 +285,9 @@ void main() {
       final fake = FakeCheckout(apps: _apps, upiAppOutcome: const PayOutcome(PayResult.failed));
       await _pump(tester, api: api, checkout: fake);
       await tester.tap(find.byKey(const Key('upi-app-com.phonepe.app')));
-      await tester.pumpAndSettle();
+      await _settle(tester);
       await tester.tap(find.byKey(const Key('upi-app-com.google.android.apps.nbu.paisa.user')));
-      await tester.pumpAndSettle();
+      await _settle(tester);
       expect(api.count('POST'), 1);
       expect(fake.calls.length, 2);
     });
@@ -289,7 +296,7 @@ void main() {
       final fake = FakeCheckout(apps: _apps, upiAppOutcome: const PayOutcome(PayResult.notEnabled, 'UPI intent is not enabled'));
       final h = await _pump(tester, api: _api(), checkout: fake);
       await tester.tap(find.byKey(const Key('upi-app-com.phonepe.app')));
-      await tester.pumpAndSettle();
+      await _settle(tester);
       expect(find.textContaining('This payment method is not available right now'), findsOneWidget);
       expect(find.byKey(const Key('check-payment')), findsNothing);
       expect(find.textContaining('not enabled'), findsNothing);
@@ -371,7 +378,7 @@ void main() {
       final h = await _pump(tester, api: _api(), checkout: fake);
       await tester.enterText(find.byKey(const Key('upi-id-field')), 'asha@okhdfcbank');
       await tester.tap(find.byKey(const Key('send-request')));
-      await tester.pumpAndSettle();
+      await _settle(tester);
       expect(find.byKey(const Key('pay-amount')), findsOneWidget);
       expect(find.textContaining('declined or could not be sent'), findsOneWidget);
       expect(h.finished, isEmpty);
@@ -395,7 +402,7 @@ void main() {
   group('card', () {
     Future<void> openCard(WidgetTester tester) async {
       await tester.tap(find.byKey(const Key('pay-card-tile')));
-      await tester.pumpAndSettle();
+      await _settle(tester);
     }
 
     Future<void> fill(WidgetTester tester, {String number = '4111111111111111', String exp = '1230', String cvv = '123', String? holder}) async {
@@ -422,7 +429,7 @@ void main() {
       await fill(tester);
       expect(find.text('12/30'), findsOneWidget); // typed "1230"
       await tester.tap(find.byKey(const Key('card-pay')));
-      await tester.pumpAndSettle();
+      await _settle(tester);
       expect(fake.calls.last, 'card_pay|Asha Rao|12|30|cvv3');
       expect(h.finished, [_next(500)]);
     });
@@ -446,7 +453,7 @@ void main() {
       await openCard(tester);
       await fill(tester);
       await tester.tap(find.byKey(const Key('card-pay')));
-      await tester.pumpAndSettle();
+      await _settle(tester);
       expect(find.textContaining('Your card was not accepted'), findsOneWidget);
       expect(find.byKey(const Key('card-expiry')), findsOneWidget);
       expect(h.finished, isEmpty);
@@ -457,7 +464,7 @@ void main() {
       await tester.enterText(find.byKey(const Key('card-cvv')), '456');
       await tester.pump();
       await tester.tap(find.byKey(const Key('card-pay')));
-      await tester.pumpAndSettle();
+      await _settle(tester);
       expect(h.finished, [_next(500)]);
     });
 
@@ -467,7 +474,7 @@ void main() {
       await openCard(tester);
       await fill(tester);
       await tester.tap(find.byKey(const Key('card-pay')));
-      await tester.pumpAndSettle();
+      await _settle(tester);
       expect(find.textContaining('This payment method is not available right now'), findsOneWidget);
       expect(find.byKey(const Key('pay-amount')), findsOneWidget);
     });
@@ -487,7 +494,7 @@ void main() {
       await openCard(tester);
       await fill(tester);
       await tester.tap(find.byKey(const Key('card-pay')));
-      await tester.pumpAndSettle();
+      await _settle(tester);
       final sent = api.bodies.map((b) => '$b').join(' ');
       expect(sent.contains('4111'), isFalse);
       expect(sent.contains('cvv'), isFalse);
@@ -502,7 +509,7 @@ void main() {
       final fake = FakeCheckout(apps: _apps);
       await _pump(tester, api: api, checkout: fake);
       await tester.tap(find.byKey(const Key('upi-app-com.phonepe.app')));
-      await tester.pumpAndSettle();
+      await _settle(tester);
       expect(find.text('Verify your WhatsApp number in Settings before adding money.'), findsOneWidget);
       expect(fake.calls, isEmpty);
     });
@@ -512,7 +519,7 @@ void main() {
       final fake = FakeCheckout(apps: _apps);
       await _pump(tester, api: api, checkout: fake);
       await tester.tap(find.byKey(const Key('upi-app-com.phonepe.app')));
-      await tester.pumpAndSettle();
+      await _settle(tester);
       expect(find.textContaining('This payment method is not available right now'), findsOneWidget);
       expect(fake.calls, isEmpty);
     });
@@ -522,7 +529,7 @@ void main() {
       final fake = FakeCheckout(apps: _apps);
       final h = await _pump(tester, api: api, checkout: fake);
       await tester.tap(find.byKey(const Key('upi-app-com.phonepe.app')));
-      await tester.pumpAndSettle();
+      await _settle(tester);
       expect(fake.calls, ['hosted|$_orderId|session_1|true']);
       expect(h.finished, [_next(500)]);
     });
@@ -533,7 +540,7 @@ void main() {
       addTearDown(() => Checkout.launcher = (u) async => false);
       final h = await _pump(tester, api: _api(), checkout: FakeCheckout(apps: _apps));
       await tester.tap(find.byKey(const Key('upi-app-com.phonepe.app')));
-      await tester.pumpAndSettle();
+      await _settle(tester);
       expect(tab, isFalse);
       expect(h.finished, hasLength(1));
     });
@@ -543,13 +550,13 @@ void main() {
     testWidgets('back from the methods goes to the amount screen; back from the card form goes to the methods', (tester) async {
       final h = await _pump(tester, api: _api(), checkout: FakeCheckout(apps: _apps));
       await tester.tap(find.byKey(const Key('pay-card-tile')));
-      await tester.pumpAndSettle();
+      await _settle(tester);
       await tester.tap(find.byKey(const Key('checkout-back')));
-      await tester.pumpAndSettle();
+      await _settle(tester);
       expect(find.byKey(const Key('pay-amount')), findsOneWidget);
       expect(h.closed, isFalse);
       await tester.tap(find.byKey(const Key('checkout-back')));
-      await tester.pumpAndSettle();
+      await _settle(tester);
       expect(h.closed, isTrue);
     });
   });
