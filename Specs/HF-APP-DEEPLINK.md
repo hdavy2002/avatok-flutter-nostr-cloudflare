@@ -75,6 +75,7 @@ Owner decision: any https link to the site that is tapped on an Android phone wi
 | `/h/<slug>` | WhatsApp "is online now" (`lib/hf_notify.ts`), push `notify_me` | Host profile with the Call button |
 | `/review/<token>` | WhatsApp "How was your call" (`lib/hf_reviews.ts`), push `review_request` | Review screen for that call (token is the credential, no sign-in) |
 | `/wallet` | Push `low_balance`; Razorpay top-up return (`routes/hf_topup.ts`, `WALLET_RETURN_URL`); `wallet-terms` links | Wallet. A top-up return may carry query params; pass them through so the status check runs |
+| `/wallet/topup/<id>` | [HF-WIRE-20] Payment return page `avatok.ai/pay/cashfree/return?t=<id>` (Android `intent://wallet/topup/<id>#Intent;scheme=<scheme>;package=<hfPlayPackageId>;...;end`) | Payment screen for that top-up; it asks the server (`GET /api/hf/wallet/topup/:id`) and shows paid or still confirming. Custom scheme only (`<scheme>://wallet/topup/<id>`); not an App Link |
 | `/hosts/dashboard` | Push `host_approved`, `host_changes`, `withdrawal_approved`, `withdrawal_paid` | Host dashboard (earnings, profile status, withdrawals) |
 | `/hosts/onboarding?step=preview` | WhatsApp "profile is ready to check" (`workflows/host_media.ts`) | Host onboarding at the profile preview step |
 | `/hosts/onboarding?step=aadhaar&dl=return` | Custom scheme `<scheme>://hosts/onboarding?...` from the DigiLocker return page | Host onboarding, Aadhaar step runs its completion check |
