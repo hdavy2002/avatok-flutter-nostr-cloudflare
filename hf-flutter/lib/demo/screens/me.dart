@@ -9,6 +9,8 @@ import '../theme.dart';
 import '../widgets.dart';
 import 'call_real.dart';
 import 'call_records_real.dart';
+import 'settings_real.dart';
+import '../../ui/strings/help_strings.dart';
 
 /// Me — the customer dashboard: wallet ticket + menu (call records, wallet, payout, bookings…).
 class MeScreen extends StatelessWidget {
@@ -377,6 +379,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    if (SettingsBridge.real) return const RealSettingsScreen(); // [HF-WIRE-11]
     return Scaffold(
       body: SafeArea(
         child: Column(
@@ -457,26 +460,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
 class HelpScreen extends StatelessWidget {
   const HelpScreen({super.key});
 
-  static const _faq = <(String, String)>[
-    ('How does a call work?', 'Tap Call now on an online influencer. We ring them first; when they pick up we ring your phone and join the two calls. Neither of you sees the other\'s number.'),
-    ('How much does it cost?', 'Each influencer sets a per-minute rate, shown on their reel and profile. It comes out of your wallet as you talk.'),
-    ('My favourite influencer is not here.', 'Search for them and tap Invite. Every tap is a vote; we ask the most-wanted names to join.'),
-    ('What if they are offline?', 'Open their profile and book a time. We hold 10 minutes from your wallet and ring you both at that minute.'),
-    ('Can I get my money back?', 'Wallet money is for calls and bookings. If a refund is due it goes back to the payment you used. Test credits can be spent but not withdrawn.'),
-  ];
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       body: SafeArea(
         child: Column(
           children: [
-            const PageHeader(title: 'Help'),
+            const PageHeader(title: HelpStrings.title),
             Expanded(
               child: ListView(
                 padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
                 children: [
-                  for (final f in _faq)
+                  for (final f in HelpStrings.faq)
                     Card(
                       color: C.paper,
                       elevation: 0,
@@ -490,7 +485,20 @@ class HelpScreen extends StatelessWidget {
                       ),
                     ),
                   const SizedBox(height: 10),
-                  Text('Still stuck? Write to ${Brand.supportEmail}', textAlign: TextAlign.center, style: t(15, color: C.muted, w: FontWeight.w700)),
+                  InkWell(
+                    key: const Key('help-email'),
+                    onTap: () => openSupportMail(context),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      child: Text.rich(
+                        TextSpan(style: t(15, color: C.muted, w: FontWeight.w700), children: [
+                          const TextSpan(text: '${HelpStrings.stillStuck} '),
+                          TextSpan(text: HelpStrings.supportEmail, style: t(15, color: C.maroon, w: FontWeight.w800)),
+                        ]),
+                        textAlign: TextAlign.center,
+                      ),
+                    ),
+                  ),
                 ],
               ),
             ),
