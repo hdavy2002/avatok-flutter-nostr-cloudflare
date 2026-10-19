@@ -27,15 +27,15 @@ Legend: ⬜ not started · 🟨 in progress · ✅ done · ⛔ blocked (needs ow
 |---|---|---|---|---|
 | 0 | Progress log created | ✅ | (this commit) | 2026-10-19 |
 | 1 | HF-WIRE-1 Foundations (ApiClient, Clerk, /api/hf/me, config/update prompt, states, deep links, telemetry) | ✅ (code) | HF-WIRE-1A, 1B, 1C | CI mode=check green (run 39235025525). Worker change NOT deployed yet. Screens still on dummy data. |
-| 2 | HF-WIRE-2 Fan sign-up (WhatsApp OTP → account → resume action) | ⬜ | | Q2 answered: OTP |
-| 3 | HF-WIRE-3 Channels + treg (10-follower rule, approval) | ⬜ | | Q1=10, Q7=IG+YT. HF-REEL-26: YouTube Data API v3 + treg for Instagram, bio-code ownership. |
-| 4 | HF-WIRE-4 Reels import + jev face check, real feed, demo seed `is_demo` | ⬜ | | Open Q9. HF-REEL-27: no auto face check — influencer picks feed reels. |
-| 5 | HF-WIRE-5 Presence (Online/Offline, busy, Notify me) | ⬜ | | |
-| 6 | HF-WIRE-6 Wallet + Cashfree top-up (GST ÷1.18, webhook, receipts) | ⬜ | | Q10=Cashfree |
-| 7 | HF-WIRE-7 Instant calls (Vobiz live, call screen, reviews, records) | ⬜ | | |
-| 8 | HF-WIRE-8 Bookings (availability, holds, reminders, auto-start, calendars) | ⬜ | | Open Q6 |
-| 9 | HF-WIRE-9 Favourites, Search, Invite votes | ⬜ | | Open Q8 |
-| 10 | HF-WIRE-10 Payouts (request, admin UTR queue, WhatsApp) | ⬜ | | Open Q3, Q5 |
+| 2 | HF-WIRE-2 Fan sign-up (WhatsApp OTP → account → resume action) | ✅ (code) | HF-WIRE-2 | Flag hfFanSignupEnabled + hfPhoneOnlySignupEnabled; 2 migrations to apply. |
+| 3 | HF-WIRE-3 Channels + treg (10-follower rule, approval) | ✅ (code) | HF-WIRE-3 | Flag hfChannelsEnabled; migration hf-channels; secret TREG_API_KEY (YOUTUBE_API_KEY exists). treg params unverified on live data. |
+| 4 | HF-WIRE-4 Reels import + jev face check, real feed, demo seed `is_demo` | ✅ (code) | HF-WIRE-4 | Flag hfReelsEnabled; migrations hf-reels + hf-demo-hosts. GAP: approved influencers get no slug → feed skips them (fix in next batch). |
+| 5 | HF-WIRE-5 Presence (Online/Offline, busy, Notify me) | ✅ (code) | HF-WIRE-5 | Gated by hfCallsEnabled OR hfReelsEnabled. |
+| 6 | HF-WIRE-6 Wallet + Cashfree top-up (GST ÷1.18, webhook, receipts) | ✅ (code) | HF-WIRE-6 | Reuses POST /api/hf/wallet/topup + webhook; new GET /api/hf/app/wallet. Secrets CASHFREE_APP_ID/SECRET_KEY; flags hfTopupEnabled, hfTopupGateway=cashfree, hfTokensEnabled. Checkout on avatok.ai (Cashfree whitelist). |
+| 7 | HF-WIRE-7 Instant calls (Vobiz live, call screen, reviews, records) | ✅ (code) | HF-WIRE-7 | Needs hfCallsEnabled, HF_CALL_DID, VOBIZ_* secrets; two-phone test pending. |
+| 8 | HF-WIRE-8 Bookings (availability, holds, reminders, auto-start, calendars) | ⬜ | | Q6: free cancel until 1 h before (HF-REEL-28) |
+| 9 | HF-WIRE-9 Favourites, Search, Invite votes | ⬜ | | Q8: network + exact handle lookup (HF-REEL-29) |
+| 10 | HF-WIRE-10 Payouts (request, admin UTR queue, WhatsApp) | ⬜ | | Q3/Q5: KYC+UPI at first payout, fans refund only (HF-REEL-31) |
 | 11 | HF-WIRE-11 Settings (prefs, delete account, legal) | ⬜ | | |
 | 12 | HF-WIRE-12 Hardening (strip dummy data, analytics, crash, a11y, closed test) | ⬜ | | |
 
@@ -46,7 +46,19 @@ Legend: ⬜ not started · 🟨 in progress · ✅ done · ⛔ blocked (needs ow
 - Q10 Top-up payment: **Cashfree** (not Play Billing) — HF-REEL-25.
 - Channel data (after research): YouTube official API + treg for Instagram, bio-code ownership — HF-REEL-26.
 - Face check: none at launch; influencer picks her feed reels — HF-REEL-27.
-- Still open: Q3 fan withdrawals, Q4 revenue-split text, Q5 KYC at payout, Q6 booking cancellation cut-off, Q8 search source, Q9 demo influencer content. Ask before building those stages.
+- Q6 Booking cancel: free until 1 h before; influencer cancel always refunds — HF-REEL-28.
+- Q8 Search: our network + exact handle lookup — HF-REEL-29.
+- Q4 Split text: follow server rule (₹2 + 40% above ₹2) — HF-REEL-30.
+- Q3/Q5 Payouts: KYC + UPI at first payout; fans refund only — HF-REEL-31.
+- Still open: Q9 demo influencer content (AI-made vs consenting creators).
+
+## 5. Go-live checklist (owner / last agent)
+1. Apply D1 migrations (worker/migrations/2026-10-19-*.sql) with `scripts/cf.sh worker d1 execute DB_META --remote --file=...` (ALTER files via d1_apply_alters.py).
+2. Secrets: TREG_API_KEY, CASHFREE_APP_ID, CASHFREE_SECRET_KEY, HF_CALL_DID, VOBIZ_AUTH_ID, VOBIZ_AUTH_TOKEN, VOBIZ_WEBHOOK_SECRET (YOUTUBE_API_KEY exists).
+3. Deploy the worker.
+4. Flags: hfFanSignupEnabled, hfPhoneOnlySignupEnabled, hfChannelsEnabled, hfReelsEnabled, hfCallsEnabled, hfTopupEnabled, hfTopupGateway=cashfree, hfTokensEnabled (check), hfBookingsEnabled, hfFavouritesEnabled, hfInvitesEnabled, hfPayoutsEnabled.
+5. Clerk dashboard: "Require email address" OFF (Specs/HF-NATIVE-AUTH.md §4).
+6. Build the app with HF_DEMO=false (change the CI default) and run `mode=internal` only when the owner asks.
 
 ## 4. Log (newest last)
 - 2026-10-19 — Stage 0: progress log created on main. Next: Stage 1 (HF-WIRE-1).
@@ -57,3 +69,7 @@ Legend: ⬜ not started · 🟨 in progress · ✅ done · ⛔ blocked (needs ow
   - 1C Research: `Specs/HF-TREG-JEV-RESEARCH.md`. treg is a pay-per-call scraper gateway (~$0.0019/call); jev is text-only and cannot detect faces. Recommendation: YouTube Data API v3 + ScrapeCreators/treg for Instagram, Instagram Login OAuth or bio-code for ownership, Google Cloud Vision (or Workers AI) on thumbnails for the face check.
   - Next: Stage 2 (HF-WIRE-2 fan sign-up with WhatsApp OTP). Stages 3–4 blocked on owner decision about data source / face check.
 - 2026-10-19 — Owner decided HF-REEL-26/27. Launching in parallel: Stage 2 (fan sign-up), Stage 3 (Channels), Stage 5 (presence).
+- 2026-10-19 — Stages 2, 3, 5 merged (sign-up, Channels, presence). /api/hf/me role=host for approved too.
+- 2026-10-19 — Stages 4, 6, 7 merged (reels import + real feed, wallet + Cashfree top-up, instant calls). Integration CI green (run 39240200960). Owner answered Q3–Q6, Q8 (HF-REEL-28…31).
+  - IMPORTANT for anyone continuing: NOTHING is deployed. The app still runs dummy screens unless built with `--dart-define=HF_DEMO=false`. Go-live checklist is §5 below.
+  - Next batch: Stage 8 bookings, Stage 9 favourites/search/invites, Stage 10 payouts, Stage 11 settings, plus fix: assign a slug when Channels approves an influencer; replace the "60% minus ₹2" text.
