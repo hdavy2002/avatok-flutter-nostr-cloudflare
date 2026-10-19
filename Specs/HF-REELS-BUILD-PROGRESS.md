@@ -37,7 +37,7 @@ Legend: ⬜ not started · 🟨 in progress · ✅ done · ⛔ blocked (needs ow
 | 9 | HF-WIRE-9 Favourites, Search, Invite votes | ✅ (code) | HF-WIRE-9 | /api/hf/search, invite votes (migration hf-invite-votes), favourites store, share sheet (share_plus). Flags hfReelsEnabled, hfInvitesEnabled, hfFavouritesEnabled. |
 | 10 | HF-WIRE-10 Payouts (request, admin UTR queue, WhatsApp) | ✅ (code) | HF-WIRE-10 | /api/hf/payouts/* adapter (UPI, KYC only at first payout → website KYC page), split text per HF-REEL-30, slug assigned on Channels approval. Flag hfPayoutsEnabled. |
 | 11 | HF-WIRE-11 Settings (prefs, delete account, legal) | ✅ (code) | HF-WIRE-11 | Real prefs/name/version/legal links, delete account via /api/hf/account/exit. Email/WhatsApp change = write to support (no OTP-change route). Play data-safety draft: Specs/HF-PLAY-DATA-SAFETY.md. |
-| 12 | HF-WIRE-12 Hardening (strip dummy data, analytics, crash, a11y, closed test) | ⬜ | | |
+| 12 | HF-WIRE-12 Hardening (strip dummy data, analytics, crash, a11y, closed test) | ✅ (code) | HF-WIRE-12 | CI input `demo` (default true); PostHog via HF_POSTHOG_KEY secret (not set yet); app_crash to PostHog; a11y + 14 sp floor; R8 rules; test plan Specs/HF-CLOSED-TEST-PLAN.md. Live mode compiles but is untested on a device. |
 
 ## 3. Owner answers to the open questions (handover §10)
 - Q1 Min followers: **10** (confirmed, not 10,000) — HF-REEL-23.
@@ -58,7 +58,7 @@ Legend: ⬜ not started · 🟨 in progress · ✅ done · ⛔ blocked (needs ow
 3. Deploy the worker.
 4. Flags: hfFanSignupEnabled, hfPhoneOnlySignupEnabled, hfChannelsEnabled, hfReelsEnabled, hfCallsEnabled, hfTopupEnabled, hfTopupGateway=cashfree, hfTokensEnabled (check), hfBookingsEnabled, hfFavouritesEnabled, hfInvitesEnabled, hfPayoutsEnabled.
 5. Clerk dashboard: "Require email address" OFF (Specs/HF-NATIVE-AUTH.md §4).
-6. Build the app with HF_DEMO=false (change the CI default) and run `mode=internal` only when the owner asks.
+6. Add GitHub secret HF_POSTHOG_KEY. Go live on the phone with `gh workflow run hf-flutter.yml --ref main -f mode=internal -f demo=false` — only when the owner asks. Then run Specs/HF-CLOSED-TEST-PLAN.md.
 
 ## 4. Log (newest last)
 - 2026-10-19 — Stage 0: progress log created on main. Next: Stage 1 (HF-WIRE-1).
@@ -76,3 +76,6 @@ Legend: ⬜ not started · 🟨 in progress · ✅ done · ⛔ blocked (needs ow
 - 2026-10-19 — Stages 8, 9, 10, 11 merged. Integration CI green (runs 39258253758, 39258596466).
   - To check with owner: Help FAQ says refunds go to the original payment "within 180 days" (agent wording, not an owner rule).
   - Next: Stage 12 hardening (default HF_DEMO=false for release builds, remove dummy data from release, PostHog + crash reporting, TalkBack labels, closed test) and the go-live checklist in §5. Still open: Q9 demo influencer content.
+- 2026-10-19 — Stage 12 merged. ALL 12 CODE STAGES DONE. Nothing deployed; the owner's phone still runs the demo.
+  - What is left (in order): owner sets secrets + applies migrations + deploys worker + flips flags (§5); build with demo=false; run the closed test plan (two-phone call, Cashfree sandbox, booking auto-start, real IG/YT channel); fix what the tests find; Play closed test 12 testers × 14 days.
+  - Known gaps: no influencer "today" summary route (tiles hidden); email/WhatsApp change goes through support; treg Instagram parameters unverified on live data; Crashlytics not added (PostHog only); Q9 demo influencer content still open; FAQ "within 180 days" refund wording needs owner OK.
