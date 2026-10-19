@@ -7,6 +7,7 @@
 // the email (the chat path is never blocked or slowed by this).
 
 import type { Env } from "../types";
+import { isPlaceholderEmail, realEmailOrNull } from "./placeholder_email";
 
 const TTL_SECONDS = 6 * 60 * 60; // 6h — emails change rarely; keep Clerk load low
 const CACHE_PREFIX = "ph_email:"; // KV key namespace (uid → email, "" = none)
@@ -32,7 +33,7 @@ async function clerkEmail(env: Env, uid: string): Promise<string | null> {
   if (!u) return null;
   const addrs = (u.email_addresses ?? []) as any[];
   const primary = addrs.find((e) => e.id === u.primary_email_address_id) ?? addrs[0];
-  return primary?.email_address ?? null;
+  return realEmailOrNull(primary?.email_address); // [HF-WIRE-17]
 }
 
 /** Fetch the user's primary phone number from Clerk (E.164 raw — telemetry only). */
@@ -58,7 +59,7 @@ export async function primaryVerifiedEmailFor(env: Env, uid: string): Promise<st
   if (!u) return null;
   const addrs = (u.email_addresses ?? []) as any[];
   const primary = addrs.find((e) => e.id === u.primary_email_address_id) ?? addrs[0];
-  if (!primary?.email_address) return null;
+  if (!primary?.email_address || isPlaceholderEmail(primary.email_address)) return null; // [HF-WIRE-17]
   const verified = primary?.verification?.status === "verified";
   return verified ? String(primary.email_address) : null;
 }

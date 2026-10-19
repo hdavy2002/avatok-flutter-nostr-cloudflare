@@ -19,6 +19,7 @@ import { track, trackUser, metric, brainFact } from "../hooks";
 import { notifyUser } from "../notify";
 import { recordLivenessAudit, storeRekognitionAuditImages, deviceCtxFromBody, edgeCtx } from "./liveness_audit";
 import { attachVerifiedClerkEmail } from "../lib/clerk_verified_email";
+import { isPlaceholderEmail } from "../lib/placeholder_email";
 
 const MIN_CONFIDENCE = 90;        // §10.4 auto-approve threshold
 const MAX_ATTEMPTS_24H = 3;       // §10.4 retry cap
@@ -378,7 +379,7 @@ async function clerkPrimaryEmail(env: Env, uid: string): Promise<string | null> 
     const list: any[] = Array.isArray(j?.email_addresses) ? j.email_addresses : [];
     const primary = list.find((e) => e?.id === primaryId) || list[0];
     const email = primary?.email_address;
-    return typeof email === "string" && email ? email.toLowerCase() : null;
+    return typeof email === "string" && email && !isPlaceholderEmail(email) ? email.toLowerCase() : null; // [HF-WIRE-17]
   } catch {
     return null;
   }

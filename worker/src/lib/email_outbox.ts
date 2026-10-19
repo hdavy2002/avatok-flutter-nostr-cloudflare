@@ -1,4 +1,5 @@
 import type { Env } from "../types";
+import { isPlaceholderEmail } from "./placeholder_email";
 
 /**
  * Durable email hand-off shared by checkout, lifecycle mail and future reminder
@@ -148,7 +149,7 @@ export async function verifiedClerkEmail(env: Env, uid: string): Promise<string 
       };
       const addresses = user.email_addresses ?? [];
       const primary = addresses.find((item) => item.id === user.primary_email_address_id) ?? addresses[0];
-      if (primary?.email_address && primary.verification?.status === "verified") return primary.email_address;
+      if (primary?.email_address && primary.verification?.status === "verified" && !isPlaceholderEmail(primary.email_address)) return primary.email_address; // [HF-WIRE-17]
     }
     return null;
   } catch {

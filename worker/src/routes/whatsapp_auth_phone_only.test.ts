@@ -20,6 +20,7 @@ vi.mock("../lib/otp_sender", () => ({
 }));
 
 import { whatsappAuthSend, whatsappAuthVerify, hfAgeConfirm } from "./whatsapp_auth";
+import { isPlaceholderEmail } from "../lib/placeholder_email";
 
 const require_ = createRequire(import.meta.url);
 const { DatabaseSync } = require_("node:sqlite");
@@ -92,7 +93,9 @@ describe("phone-only sign-up (flag on)", () => {
     const c = clerkPosts[0];
     expect(c.external_id).toMatch(/^hfwa_[0-9a-f]{24}$/);
     expect(c.username).toMatch(/^hf[0-9a-f]{24}$/);
-    expect(c.email_address).toBeUndefined();
+    // [HF-WIRE-17] Clerk keeps email required: one internal placeholder address on the no-mail subdomain, never a real one.
+    expect(c.email_address).toHaveLength(1);
+    expect(isPlaceholderEmail(c.email_address[0])).toBe(true);
     expect(c.phone_number).toBeUndefined();
     expect(c.skip_password_requirement).toBe(true);
     const uid = `user_${c.external_id}`;

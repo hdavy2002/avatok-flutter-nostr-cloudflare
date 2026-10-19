@@ -61,6 +61,7 @@ import {
   phoneTakenByOther, verifiedAccountForPhone,
   OTP_TTL_MS, RESEND_GAP_MS, HOUR_MS, MAX_SENDS_GLOBAL_HOUR, MAX_VERIFY_ATTEMPTS,
 } from "./phone_otp";
+import { placeholderEmailFor } from "../lib/placeholder_email";
 
 const APP = "avatok";
 
@@ -357,6 +358,8 @@ async function createClerkPhoneUser(env: Env, extId: string): Promise<{ ok: true
     body: JSON.stringify({
       external_id: extId,
       username: `hf${extId.slice(5, 29)}`,
+      // [HF-WIRE-17] Clerk keeps "Require email address" on, so give it an internal placeholder (never mailed, filtered everywhere).
+      email_address: [placeholderEmailFor(extId)],
       first_name: "New", last_name: "User", // the instance requires names (2026-06-23 config); the person edits them later
       skip_password_checks: true, skip_password_requirement: true,
       public_metadata: { signup: "whatsapp_only" },
