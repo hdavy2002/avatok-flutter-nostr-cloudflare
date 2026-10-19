@@ -10977,5 +10977,24 @@
     "min_devices_on_build": 1,
     "flags": [],
     "no_telemetry": "Restores the previous page and its existing events."
+  },
+  "HF-WIRE-7": {
+    "description": "[HF-WIRE-7 2026-10-19] Reels app instant calls: real call confirm sheet (estimate + wallet, low balance -> TOP UP, CALL NOW -> POST /api/hf/calls), live call screen polling GET /api/hf/calls/:id (2 s, 5 s once connected) with phases ringing_host / host_accepted / dialing_fan / connected / ended, live cost + wallet, 60 s low-balance warning, END CALL = cancel or end, Busy right now (declined, missed, busy, offline) with Notify me + Book a time, final cost + stars + review, and the real Call records list with cursor. Worker: additive fields on GET /api/hf/calls/:id (phase, reason, costPaise, walletPaise, capAt, lowBalanceSeconds), GET /api/hf/calls rows (reason, myStars) and the estimate (lowBalanceSeconds); HfCallDO gets a read-only /info. Needs hfCallsEnabled, HF_CALL_DID and the Vobiz secrets.",
+    "two_sided": true,
+    "min_devices_on_build": 2,
+    "flags": [
+      "hfCallsEnabled"
+    ],
+    "success": [
+      {
+        "event": "hf_app_call_ended",
+        "where": {
+          "status": "completed"
+        },
+        "property": "seconds",
+        "exists": true,
+        "note": "On the owner's two-phone test the Reels app places a call, the influencer presses 1, the fan answers: hf_app_call_status shows ringing_host, ringing_caller, connected, completed and hf_app_call_ended arrives with status = completed and a seconds value; hf_app_review_submitted outcome = ok after the stars."
+      }
+    ]
   }
 }

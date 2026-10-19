@@ -8,6 +8,7 @@ import '../data.dart';
 import '../state.dart';
 import '../theme.dart';
 import '../widgets.dart';
+import 'call_real.dart';
 import 'signup_sheet.dart';
 
 /// Sheet top: bandhani border + drag handle.
@@ -164,7 +165,7 @@ Future<void> startCall(BuildContext context, Influencer who) {
       context: context,
       isScrollControlled: true,
       backgroundColor: C.clear,
-      builder: (_) => CallConfirmSheet(who: who),
+      builder: (_) => CallsBridge.real ? RealCallConfirmSheet(who: who) : CallConfirmSheet(who: who),
     );
   }, reason: 'to call ${who.name.split(' ').first}');
 }

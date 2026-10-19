@@ -66,7 +66,7 @@ describe("GET /api/hf/calls", () => {
     expect(r.status).toBe(200);
     expect(r.headers.get("cache-control")).toBe("private, no-store");
     expect(r.body.items.map((i: any) => i.id)).toEqual(["call_aaaa0002", "call_aaaa0001"]);
-    expect(r.body.items[1]).toEqual({ id: "call_aaaa0001", status: "completed", otherHandle: "Meena K", hostSlug: "meena-k", at: 1100, seconds: 170, amountPaise: 850, endReason: "hangup" });
+    expect(r.body.items[1]).toEqual({ id: "call_aaaa0001", status: "completed", otherHandle: "Meena K", hostSlug: "meena-k", at: 1100, seconds: 170, amountPaise: 850, endReason: "hangup", reason: "ended", myStars: null });
     expect(r.body.items[0].amountPaise).toBeNull();
     expect(r.body.nextCursor).toBeNull();
   });

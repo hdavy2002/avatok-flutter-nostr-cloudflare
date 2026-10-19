@@ -1140,6 +1140,10 @@ Native call confirm, call screen, summary and review (`hf-flutter/lib/features/c
 | `hf_app_call_cancelled` | `outcome: 'ok' \| 'too_late' \| 'failed'`, `reason` | Cancel call was tapped before the call connected. `too_late` = `409 already_connected`. |
 | `hf_app_call_ended` | `seconds`, `end_reason`, `status`, `mode` | Once per call, when the status turns terminal. `seconds` is the talked time (exact for token calls, billed minutes x 60 otherwise). `end_reason` is `caller_hangup \| host_hangup \| hash_block \| time_limit \| balance \| error \| spend_limit`, or `none`. **Success value:** `status = completed` with `seconds > 0` on the owner's two-phone test. |
 | `hf_app_review_submitted` | `stars`, `via: 'call' \| 'token'`, `outcome: 'ok' \| 'failed'`, `reason`, `status`, `ms` | A review was sent. `via = call` from the call summary (signed in), `via = token` from a WhatsApp or push link. `reason` is the worker code on failure (`contact_details`, `already_reviewed`, `expired`, ...). **Success value:** `outcome = ok`. |
+| `hf_app_call_confirm_viewed` | `slug`, `can_start: boolean`, `low: boolean` | `[HF-WIRE-7]` The Reels app's call confirm sheet loaded its estimate (`GET /api/hf/wallet/estimate`). `low` = fewer than `lowBalanceSeconds` (3 min) of talk time, so TOP UP replaces CALL NOW. No uid, number or call id. |
+| `hf_app_call_cap_warning` | — | `[HF-WIRE-7]` Once per call: the connected call screen showed "About 1 minute left. Top up to keep talking." (60 s before `capAt`). |
+
+`[HF-WIRE-7]` (Reels app, `hf-flutter/lib/demo/screens/call_real.dart`, `call_records_real.dart`) also emits the existing `hf_app_call_started` (`mode: 'inr'`), `hf_app_call_status`, `hf_app_call_cancelled`, `hf_app_call_ended` and `hf_app_review_submitted` (`via: 'call'`) with the props above. Worker side: `GET /api/hf/calls/:id` gained `phase`, `reason`, `costPaise`, `walletPaise`, `capAt`, `lowBalanceSeconds`; `GET /api/hf/calls` rows gained `reason`, `myStars`; the estimate gained `lowBalanceSeconds` (no new events).
 
 The earlier `hf_app_call_tapped` (host profile, HF-NATIVE-4) comes first in the funnel; `api_error` covers every failed request.
 

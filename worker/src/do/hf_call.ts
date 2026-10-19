@@ -150,6 +150,8 @@ export class HfCallDO {
           }
           return jsonRes({ ok: true, status: s.status });
         case "watchdog": return await this.watchdog(s);
+        // [HF-WIRE-7] read-only: how long this call may run and (old rupee path only) the funds it was sized to. Numbers only.
+        case "info": return jsonRes({ ok: true, maxSeconds: this.maxSec(s), hardEndsAt: s.hardEndsAt ?? null, fundsPaise: s.tok ? null : Math.max(0, Math.trunc(s.fundsRupees)) * 100 });
         default: return jsonRes({ ok: false, error: "not_found" }, 404);
       }
     } catch (e) {

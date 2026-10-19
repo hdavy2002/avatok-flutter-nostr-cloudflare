@@ -274,6 +274,51 @@ const tokCall = (c: HfCallRow): { micro: number; secs: number } | null => {
     ? null
     : { micro: Number(c.tokens_spent_micro), secs: Number(c.billable_seconds ?? 0) };
 };
+// [HF-WIRE-7] The caller is told to top up when fewer than this many seconds of funds remain (3 minutes). Served in the estimate and the status.
+export const LOW_BALANCE_SECONDS = 180;
+/** App-facing phase of a call row: ringing_host | host_accepted | dialing_fan | connected | ended. */
+export function callPhase(c: { status: string; host_answered_at?: number | null }): string {
+  if (c.status === "connected") return "connected";
+  if (c.status === "ringing_caller") return "dialing_fan";
+  if (c.status === "ringing_host") return c.host_answered_at ? "host_accepted" : "ringing_host";
+  return "ended"; // completed | host_declined | no_answer | caller_no_answer | failed | blocked
+}
+/** Why an ended call ended, in the app's words: declined | missed | busy | offline | no_balance | ended. null while it is still live. */
+export function callReason(c: { status: string; end_reason?: string | null }): string | null {
+  if (c.status === "host_declined") return "declined";
+  if (c.status === "no_answer" || c.status === "caller_no_answer") return "missed";
+  if (c.status === "blocked") return "busy";
+  if (c.status === "failed") return c.end_reason === "caller_hangup" ? "ended" : "offline"; // the caller cancelled: not the host's doing
+  if (c.status === "completed") return c.end_reason === "balance" ? "no_balance" : "ended";
+  return null;
+}
+/** Money fields for the call screen. Numbers only; never a phone number. */
+async function liveFields(env: Env, c: HfCallRow, pricingRaw: string | null | undefined, std: Tariff | null, isCaller: boolean): Promise<Record<string, unknown>> {
+  const phase = callPhase(c);
+  const reason = phase === "ended" ? callReason(c) : null;
+  const consumed = (c as unknown as { consumed_value_paise?: number | null }).consumed_value_paise;
+  // The caller sees what the call cost; the host never sees the caller's money (costPaise 0, walletPaise null).
+  const out: Record<string, unknown> = { phase, reason, lowBalanceSeconds: LOW_BALANCE_SECONDS, costPaise: isCaller ? Math.max(0, Math.trunc(Number(consumed ?? c.charged_paise ?? 0))) : 0, walletPaise: null, capAt: null };
+  if (phase !== "connected" || c.connected_at == null || !isCaller) return out;
+  const secs = Math.max(0, Math.floor((Date.now() - Number(c.connected_at)) / 1000));
+  let creatorRate: number | null = null;
+  try { const j = JSON.parse(pricingRaw ?? "null"); if (validCreatorSnapshot(j)) creatorRate = Number((j as CreatorSnapshot).ratePaise); } catch { /* legacy snapshot */ }
+  const costAt = (s: number): number => std ? chargePaise(std, s) : creatorRate != null ? chargePaise(creatorRate, s) : Math.ceil(s / 60) * Math.max(0, Math.trunc(Number(c.rate_paise ?? 0)));
+  out.costPaise = costAt(secs);
+  try {
+    const r = await callStub(env, c.id).fetch("https://hfcall/info", { method: "POST", body: "{}" });
+    if (r.ok) {
+      const i = (await r.json()) as { maxSeconds?: number; hardEndsAt?: number | null; fundsPaise?: number | null };
+      const maxMs = Math.max(0, Math.trunc(Number(i.maxSeconds ?? 0))) * 1000;
+      let capAt = Number(c.connected_at) + maxMs;
+      if (i.hardEndsAt != null) capAt = Math.min(capAt, Number(i.hardEndsAt));
+      out.capAt = maxMs > 0 ? capAt : null;
+      const funds = i.fundsPaise != null ? Number(i.fundsPaise) : costAt(Math.floor(maxMs / 1000));
+      out.walletPaise = Math.max(0, Math.trunc(funds - Number(out.costPaise)));
+    }
+  } catch { /* status still answers without the cap */ }
+  return out;
+}
 async function getCall(req: Request, env: Env, id: string): Promise<Response> {
   if (!(await callsOn(env))) return NOT_ENABLED();
   const u = await requireUser(req, env);
@@ -290,9 +335,11 @@ async function getCall(req: Request, env: Env, id: string): Promise<Response> {
     const rv = await env.DB_META.prepare("SELECT 1 AS x FROM hf_reviews WHERE call_id=?1").bind(id).first().catch(() => null);
     canReview = !rv;
   }
+  const live = await liveFields(env, c, pricingRaw, frozenStandard, c.caller_uid === u.uid);
   return json({
     id: c.id, status: c.status, hostSlug: h?.slug ?? null, hostName: h?.display_name ?? null, rate: rupees(c.rate_paise),
     connectedAt: c.connected_at, endedAt: c.ended_at, billedMinutes: c.billed_minutes, chargedRupees: rupees(c.charged_paise), endReason: c.end_reason, canReview,
+    ...live, // [HF-WIRE-7] additive: phase, reason, costPaise, walletPaise, capAt, lowBalanceSeconds
     plan: frozenCreator ? "creator" : frozenStandard ? "standard" : "host_rate",
     rateTiers: frozenStandard
       ? frozenStandard.tiers.map((tier, index) => ({ fromMin: tier.fromSec / 60, toMin: index + 1 < frozenStandard.tiers.length ? frozenStandard.tiers[index + 1].fromSec / 60 : null, paisePerMin: tier.paisePerMin }))
@@ -546,7 +593,15 @@ async function walletGetStandard(env: Env, uid: string, tk: ReturnType<typeof re
 }
 
 // GET /api/hf/wallet/estimate?host=<slug>  -> what a call with this host costs THIS caller, in tokens (token mode) or rupees (old mode)
+// [HF-WIRE-7] Adds the low-balance threshold (3 minutes) to every successful estimate so the app never hard-codes it.
 async function walletEstimate(req: Request, env: Env): Promise<Response> {
+  const res = await walletEstimateInner(req, env);
+  if (res.status !== 200) return res;
+  const body = (await res.json().catch(() => null)) as Record<string, unknown> | null;
+  if (!body) return res;
+  return json({ ...body, lowBalanceSeconds: LOW_BALANCE_SECONDS }, 200, { "cache-control": "private, no-store" });
+}
+async function walletEstimateInner(req: Request, env: Env): Promise<Response> {
   if (!(await callsOn(env))) return NOT_ENABLED();
   const u = await requireUser(req, env);
   if (isFail(u)) return err(u.status, u.error, u.error);
@@ -692,6 +747,14 @@ async function listCalls(req: Request, env: Env): Promise<Response> {
          FROM hf_calls c WHERE ${where} ORDER BY c.created_at DESC, c.id DESC LIMIT ?${binds.length}`,
     ).bind(...binds).all<{ id: string; status: string; created_at: number; connected_at: number | null; billed_minutes: number | null; billable_seconds: number | null; charged_paise: number | null; consumed_value_paise: number | null; host_earning_paise: number | null; end_reason: string | null; other_name: string | null; host_slug: string | null }>()).results ?? [];
     const page = rows.slice(0, limit);
+    // [HF-WIRE-7] the caller's own rating per call (separate, tolerant query: a missing reviews table just means no ratings)
+    const stars = new Map<string, number>();
+    if (role === "caller" && page.length) {
+      const ids = page.map((r) => r.id);
+      const rv = (await env.DB_META.prepare(`SELECT call_id, stars FROM hf_reviews WHERE caller_uid=?1 AND call_id IN (${ids.map((_, i) => `?${i + 2}`).join(",")})`)
+        .bind(u.uid, ...ids).all<{ call_id: string; stars: number }>().catch(() => ({ results: [] }))).results ?? [];
+      for (const x of rv) stars.set(x.call_id, Math.trunc(Number(x.stars)));
+    }
     const items = page.map((r) => {
       const secs = r.billable_seconds != null ? Math.max(0, Math.trunc(Number(r.billable_seconds))) : Math.max(0, Math.trunc(Number(r.billed_minutes ?? 0))) * 60;
       const paise = role === "host" ? Number(r.host_earning_paise ?? 0) : Number(r.consumed_value_paise ?? r.charged_paise ?? 0);
@@ -701,6 +764,9 @@ async function listCalls(req: Request, env: Env): Promise<Response> {
         hostSlug: role === "host" ? null : r.host_slug,
         at: Number(r.connected_at ?? r.created_at), seconds: secs,
         amountPaise: paise > 0 ? Math.trunc(paise) : null, endReason: r.end_reason,
+        // [HF-WIRE-7] additive: the app's words for why it ended, and the caller's own star rating (null if none)
+        reason: callReason({ status: r.status, end_reason: r.end_reason }),
+        myStars: stars.get(r.id) ?? null,
       };
     });
     const last = page[page.length - 1];

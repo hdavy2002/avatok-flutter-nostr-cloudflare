@@ -7,6 +7,8 @@ import '../../data/services.dart';
 import '../state.dart';
 import '../theme.dart';
 import '../widgets.dart';
+import 'call_real.dart';
+import 'call_records_real.dart';
 
 /// Me — the customer dashboard: wallet ticket + menu (call records, wallet, payout, bookings…).
 class MeScreen extends StatelessWidget {
@@ -221,6 +223,7 @@ class CallRecordsScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (CallsBridge.real) return const RealCallRecordsScreen(); // [HF-WIRE-7]
     return Scaffold(
       body: SafeArea(
         child: Column(

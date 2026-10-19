@@ -8,21 +8,33 @@ import '../data.dart';
 import '../state.dart';
 import '../theme.dart';
 import '../widgets.dart';
+import 'call_real.dart';
 
 enum _Stage { ringingThem, ringingYou, onCall, ended }
 
 /// The masked call: we ring the influencer, then the fan's phone, then they talk.
 /// In the demo the stages advance by themselves; End call shows the rating.
-class CallScreen extends StatefulWidget {
+/// `/call/:id`. In a real build [id] is the call id from `POST /api/hf/calls` (HF-WIRE-7, call_real.dart);
+/// in the demo it is the influencer id and the dummy stages below run.
+class CallScreen extends StatelessWidget {
   const CallScreen({super.key, required this.id});
 
   final String id;
 
   @override
-  State<CallScreen> createState() => _CallScreenState();
+  Widget build(BuildContext context) => CallsBridge.real ? RealCallScreen(callId: id) : _DemoCallScreen(id: id);
 }
 
-class _CallScreenState extends State<CallScreen> with SingleTickerProviderStateMixin {
+class _DemoCallScreen extends StatefulWidget {
+  const _DemoCallScreen({required this.id});
+
+  final String id;
+
+  @override
+  State<_DemoCallScreen> createState() => _CallScreenState();
+}
+
+class _CallScreenState extends State<_DemoCallScreen> with SingleTickerProviderStateMixin {
   late final AnimationController _pulse = AnimationController(vsync: this, duration: const Duration(milliseconds: 1200))..repeat();
   _Stage _stage = _Stage.ringingThem;
   int _seconds = 0;

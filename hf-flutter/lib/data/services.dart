@@ -8,6 +8,7 @@ import 'auth/clerk_client.dart';
 import 'intro_store.dart';
 import 'models/me.dart';
 import 'repos/auth_repo.dart';
+import 'repos/calls_repo.dart';
 import 'repos/channels_repo.dart';
 import 'repos/config_repo.dart';
 import 'repos/me_repo.dart';
@@ -36,6 +37,7 @@ class Services {
   late final ChannelsRepo channelsRepo = ChannelsRepo(api); // [HF-WIRE-3]
   late final ReelsRepo reelsRepo = ReelsRepo(api); // [HF-WIRE-4]
   late final WalletRepo walletRepo = WalletRepo(api); // [HF-WIRE-6]
+  late final CallsRepo callsRepo = CallsRepo(api); // [HF-WIRE-7]
 
   /// The signed-in Clerk user, or null (signed out, or no connection at start).
   ClerkUser? user;
