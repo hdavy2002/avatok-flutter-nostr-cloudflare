@@ -34,7 +34,7 @@ void main() {
     final stack = StackTrace.fromString('#0 main (package:hf_app/main.dart:1:1)\n#1 other (package:hf_app/x.dart:2:2)');
     Telemetry.crash(StateError('secret typed text'), stack, source: 'zone');
     Telemetry.crash(StateError('secret typed text again'), stack, source: 'zone'); // same type + top frame: de-duplicated
-    Telemetry.crash(FormatException('x'), stack, source: 'platform', fatal: true);
+    Telemetry.crash(const FormatException('x'), stack, source: 'platform', fatal: true);
     expect(seen, ['app_crash:zone:StateError', 'app_crash:platform:FormatException']);
   });
 }

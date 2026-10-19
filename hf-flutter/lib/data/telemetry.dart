@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:ui' show PlatformDispatcher;
 
 import 'package:flutter/foundation.dart';
 import 'package:posthog_flutter/posthog_flutter.dart';

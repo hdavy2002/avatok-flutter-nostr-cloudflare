@@ -69,7 +69,7 @@ class _Dashboard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     // [HF-WIRE-12] The counts below are dummy numbers: a live build shows none (the screens behind them have the real ones).
-    final live = !DemoMode.on;
+    const live = !DemoMode.on;
     final isInfluencer = live ? Services.instance.me?.hostStatus != null : demo.influencerJoined;
     final items = <(IconData, String, String, String)>[
       (Icons.call_rounded, 'Call records', live ? '' : '${demo.calls.length} calls', '/calls'),
@@ -175,10 +175,12 @@ class _WalletTicketState extends State<WalletTicket> {
     if (!_live) return;
     try {
       final w = await Services.instance.walletRepo.fetch(limit: 1);
-      if (mounted) setState(() {
-        _wallet = w;
-        _failed = false;
-      });
+      if (mounted) {
+        setState(() {
+          _wallet = w;
+          _failed = false;
+        });
+      }
     } catch (_) {
       if (mounted) setState(() => _failed = true);
     }
