@@ -12,6 +12,7 @@ import 'repos/channels_repo.dart';
 import 'repos/config_repo.dart';
 import 'repos/me_repo.dart';
 import 'repos/reels_repo.dart';
+import 'repos/wallet_repo.dart';
 import 'telemetry.dart';
 
 /// The app-wide singletons: Clerk, the API client and the repositories. Plain Dart (no provider tree)
@@ -34,6 +35,7 @@ class Services {
   );
   late final ChannelsRepo channelsRepo = ChannelsRepo(api); // [HF-WIRE-3]
   late final ReelsRepo reelsRepo = ReelsRepo(api); // [HF-WIRE-4]
+  late final WalletRepo walletRepo = WalletRepo(api); // [HF-WIRE-6]
 
   /// The signed-in Clerk user, or null (signed out, or no connection at start).
   ClerkUser? user;

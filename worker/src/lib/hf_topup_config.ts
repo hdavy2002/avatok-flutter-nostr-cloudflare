@@ -34,9 +34,9 @@ export function parsePacks(v: unknown): number[] {
 export function hfTopupFlags(config: Raw): HfTopupFlags {
   const g = String(config.hfTopupGateway ?? "none");
   const gateway: HfTopupGateway = (HF_TOPUP_GATEWAYS as readonly string[]).includes(g) ? (g as GatewayId) : "none";
-  let minRupees = Math.min(ABS_MAX, Math.max(ABS_MIN, int(config.hfTopupMinRupees, 50)));
+  let minRupees = Math.min(ABS_MAX, Math.max(ABS_MIN, int(config.hfTopupMinRupees, 10)));
   let maxRupees = Math.min(ABS_MAX, Math.max(ABS_MIN, int(config.hfTopupMaxRupees, 5000)));
-  if (minRupees > maxRupees) { minRupees = 50; maxRupees = 5000; }
+  if (minRupees > maxRupees) { minRupees = 10; maxRupees = 5000; }
   const packs = parsePacks(config.hfTopupPacks).filter((p) => p >= minRupees && p <= maxRupees);
   return { enabled: config.hfTopupEnabled === true, gateway, packs: packs.length ? packs : [minRupees], minRupees, maxRupees };
 }

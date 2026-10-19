@@ -12,7 +12,7 @@ import { noteGatewayRefund } from "./hf_refunds"; // [HF-WALLET-EXIT-1]
 import { readConfig } from "../routes/config";
 import { issueTopupReceipt } from "./hf_receipts"; // [HF-WALLET-LIMITS-1]
 import { creditLot } from "./hf_token_ledger"; // [HF-CASHFREE-TOPUP-1]
-import { topupSplit, paiseToMicro, microToPaise, RUPEE_LOT_VALUE_PAISE, PRICING_CF_R1 } from "./hf_token_math";
+import { topupSplitFloor as topupSplit, paiseToMicro, microToPaise, RUPEE_LOT_VALUE_PAISE, PRICING_CF_R1 } from "./hf_token_math";
 import { readHfStdPlan } from "./hf_token_config";
 import { notifyTopupCredited } from "./hf_topup_notify";
 

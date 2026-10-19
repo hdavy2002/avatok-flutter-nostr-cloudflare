@@ -333,6 +333,16 @@ export function topupSplit(paidPaise: number, gstBps: number, gstInclusive = tru
   return { walletPaise: num(wallet), gstPaise: num(paid - wallet) };
 }
 
+/** [HF-WIRE-6] Website/app Cashfree top-up (owner): wallet = FLOOR(paid / 1.18) to the paisa, GST = the rest. Rs 500 -> Rs 423.72 + GST Rs 76.28.
+ *  Google Play packs keep topupSplit (half up) because their tested figures are fixed. */
+export function topupSplitFloor(paidPaise: number, gstBps: number, gstInclusive = true): { walletPaise: number; gstPaise: number } {
+  const paid = nat(paidPaise);
+  const bps = BigInt(Math.max(0, Math.min(10_000, Math.trunc(Number.isFinite(gstBps) ? gstBps : 0))));
+  if (!gstInclusive || bps === 0n) return { walletPaise: num(paid), gstPaise: 0 };
+  const wallet = (paid * 10_000n) / (10_000n + bps);
+  return { walletPaise: num(wallet), gstPaise: num(paid - wallet) };
+}
+
 export interface StdPlanConfig {
   /** Paise per minute for each band. */ tier1PaisePerMin: number; tier2PaisePerMin: number; tier3PaisePerMin: number;
   /** Band ends in minutes of connected time. */ tier1EndMin: number; tier2EndMin: number;

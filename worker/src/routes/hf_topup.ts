@@ -16,6 +16,10 @@ import { BRAND } from "../lib/brand";
 import { resolveGateway } from "../lib/payments/registry";
 import { hfTopupFlags, hfTopupLive } from "../lib/hf_topup_config";
 import { isClosing, CLOSING_MESSAGE } from "../lib/hf_exit"; // [HF-WALLET-EXIT-1]
+import { readHfStdPlan } from "../lib/hf_token_config";
+import { topupSplitFloor as topupSplit } from "../lib/hf_token_math";
+import { hfCallsRoute } from "./hf_calls";
+import { normalizeAppWallet } from "../lib/hf_app_wallet";
 import {
   newTopupId, getTopup, isHfTopupId, reconcileHfTopup, settleParsedWebhook, type HfTopupRow,
 } from "../lib/hf_topup";
@@ -65,13 +69,25 @@ async function createTopup(req: Request, env: Env): Promise<Response> {
       return err(502, "gateway_error", "We could not start the payment. Please try again in a moment.");
     }
     await env.DB_META.prepare("UPDATE hf_topups SET gateway_order_id=?2, updated_at=?3 WHERE id=?1").bind(id, order.gateway_order_id, Date.now()).run();
-    return json({ ok: true, topupId: id, gateway: adapter.id, client_payload: order.client_payload, testMode: live.testMode, amountRupees: amount });
+    // [HF-WIRE-6] App-friendly extras. creditPaise is what reaches the wallet (paid / 1.18, floored) when the rupee wallet is on; else the whole amount.
+    const cfgAll = cfg as unknown as Record<string, unknown>;
+    const std = readHfStdPlan(cfgAll);
+    const split = cfgAll.hfTokensEnabled === true ? topupSplit(amount * 100, std.gstBps, std.gstInclusive) : { walletPaise: amount * 100, gstPaise: 0 };
+    const cp = (order.client_payload ?? {}) as Record<string, unknown>;
+    return json({
+      ok: true, topupId: id, orderId: id, gateway: adapter.id, client_payload: order.client_payload, testMode: live.testMode, amountRupees: amount,
+      amountPaise: amount * 100, creditPaise: split.walletPaise, gstPaise: split.gstPaise,
+      paymentSessionId: typeof cp.payment_session_id === "string" ? cp.payment_session_id : null,
+      checkoutUrl: typeof cp.checkout_url === "string" ? cp.checkout_url : null,
+      environment: live.testMode ? "sandbox" : "production",
+    });
   });
 }
 
 // [HF-CASHFREE-TOPUP-1] paidPaise / walletPaise / gstPaise: what was paid, what reached the wallet, the 18% GST taken out (null on legacy rows).
+const appState = (st: string): "pending" | "paid" | "failed" => (st === "paid" || st === "refunded" ? "paid" : st === "failed" || st === "expired" ? "failed" : "pending");
 const publicRow = (r: HfTopupRow) => ({
-  ok: true, id: r.id, status: r.status, credited: r.credited === 1, amountRupees: r.amount_rupees, gateway: r.gateway,
+  ok: true, id: r.id, orderId: r.id, state: appState(r.status), creditPaise: r.wallet_paise ?? (r.status === "paid" ? r.amount_rupees * 100 : null), status: r.status, credited: r.credited === 1, amountRupees: r.amount_rupees, gateway: r.gateway,
   paidPaise: r.amount_rupees * 100, walletPaise: r.wallet_paise ?? null, gstPaise: r.gst_paise ?? null,
 });
 
@@ -152,10 +168,23 @@ async function adminReconcile(req: Request, env: Env, id: string): Promise<Respo
   return json({ ...publicRow(fresh), result: out.result, reason: "reason" in out ? out.reason : undefined });
 }
 
+// [HF-WIRE-6] GET /api/hf/app/wallet: ONE shape for the app, whatever mode the wallet is in. Wraps the existing /api/hf/wallet reader.
+async function appWallet(req: Request, env: Env): Promise<Response> {
+  const u = await requireUser(req, env);
+  if (isFail(u)) return err(u.status, u.error, u.error);
+  const inner = await hfCallsRoute(new Request(new URL("/api/hf/wallet", req.url), { method: "GET", headers: req.headers }), env, "/api/hf/wallet");
+  if (!inner) return err(404, "not_found", "Not found.");
+  if (!inner.ok) return inner;
+  const q = new URL(req.url).searchParams;
+  const body = (await inner.json().catch(() => ({}))) as Record<string, unknown>;
+  return json(normalizeAppWallet(body, { cursor: q.get("cursor"), limit: Number(q.get("limit") ?? 20) }), 200, { "cache-control": "private, no-store" });
+}
+
 export async function hfTopupRoute(req: Request, env: Env, p: string): Promise<Response | null> {
   const m = req.method;
   try {
     if (p === "/api/hf/wallet/topup" && m === "POST") return await createTopup(req, env);
+    if (p === "/api/hf/app/wallet" && m === "GET") return await appWallet(req, env);
     let x = p.match(/^\/api\/hf\/wallet\/topup\/webhook\/([a-z_]+)$/);
     if (x && m === "POST") return await topupWebhook(req, env, x[1]);
     x = p.match(/^\/api\/hf\/wallet\/topup\/(hftop_[a-f0-9]{24})$/);

@@ -47,7 +47,11 @@ final router = GoRouter(
     GoRoute(
       parentNavigatorKey: rootKey,
       path: '/payment',
-      builder: (_, s) => PaymentScreen(amount: double.tryParse(s.uri.queryParameters['amount'] ?? '') ?? 500),
+      builder: (_, s) => PaymentScreen(
+        amount: double.tryParse(s.uri.queryParameters['amount'] ?? '') ?? 500,
+        orderId: s.uri.queryParameters['order'],
+        creditPaise: int.tryParse(s.uri.queryParameters['credit'] ?? ''),
+      ),
     ),
     GoRoute(parentNavigatorKey: rootKey, path: '/payout', builder: (_, __) => const PayoutScreen()),
     GoRoute(parentNavigatorKey: rootKey, path: '/calls', builder: (_, __) => const CallRecordsScreen()),

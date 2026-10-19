@@ -2931,7 +2931,7 @@ const DEFAULTS: PlatformConfig = {
   hfTopupEnabled: false, // [HF-TOPUP-1] dark until a gateway is configured and the owner flips it
   hfTopupGateway: "none",
   hfTopupPacks: "100,200,500,1000",
-  hfTopupMinRupees: 50,
+  hfTopupMinRupees: 10, // [HF-WIRE-6] owner: minimum top-up Rs 10
   hfTopupMaxRupees: 5000,
   hfRefundsEnabled: false, // [HF-WALLET-EXIT-1] dark until the owner flips it
   hfRefundWindowDays: 180,

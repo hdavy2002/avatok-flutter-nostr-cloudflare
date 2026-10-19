@@ -205,4 +205,21 @@ describe("hf top-up", () => {
     await webhook(paidEvent(topupId, 12000));
     expect(lots.get(`hftop:${topupId}`)).toMatchObject({ paidPaise: 12000, gstPaise: 1831, micro: 10169 * 10_000 });
   });
+
+  // [HF-WIRE-6]
+  it("create returns the app fields: Rs 500 -> credit Rs 423.72, GST Rs 76.28, sandbox in test mode", async () => {
+    cfg = { ...ON, hfTokensEnabled: true };
+    const b = await (await post("/api/hf/wallet/topup", { amount: 500 })).json();
+    expect(b).toMatchObject({ amountPaise: 50000, creditPaise: 42372, gstPaise: 7628, environment: "sandbox", orderId: b.topupId });
+  });
+
+  it("status gives pending -> paid state with creditPaise; min is Rs 10 by default", async () => {
+    cfg = { ...ON, hfTokensEnabled: true, hfTopupMinRupees: 10 };
+    expect((await post("/api/hf/wallet/topup", { amount: 9 })).status).toBe(400);
+    const { topupId } = await newTopup(500);
+    const get = async () => (await hfTopupRoute(new Request(`https://x/api/hf/wallet/topup/${topupId}`), env, `/api/hf/wallet/topup/${topupId}`)).json();
+    expect(await get()).toMatchObject({ state: "pending", creditPaise: null });
+    await webhook(paidEvent(topupId, 50000));
+    expect(await get()).toMatchObject({ state: "paid", creditPaise: 42372, gstPaise: 7628 });
+  });
 });
