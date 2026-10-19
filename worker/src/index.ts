@@ -324,6 +324,7 @@ import { hfFavouritesRoute } from "./routes/hf_favourites"; // [HF-DASH-FRAANDS-
 import { hfDashSummaryRoute } from "./routes/hf_dash_summary"; // [HF-DASH-SUMMARY-1]
 import { hfDashV3Route, isDashV3Path } from "./routes/hf_dash_v3"; // [HF-DASH-V3-1] new customer dashboard
 import { hfMeRoute } from "./routes/hf_me"; // [HF-NATIVE-S1] native app: who am I (GET/PATCH /api/hf/me)
+import { hfChannelsRoute, recheckAllChannels } from "./routes/hf_channels"; // [HF-WIRE-3] influencer Channels (flag hfChannelsEnabled)
 import { hfRegistrationRoute } from "./routes/hf_registration"; // [HF-REF-AUTH-1] immutable native username + legal acceptance
 import { hfTokensPlayRoute, runHfPlayCron } from "./routes/hf_tokens_play"; // [HF-TOK-PLAY-1] Play Billing token purchases + RTDN + cron
 import { consultWs } from "./routes/consultants/ws"; // [AUMFE-CONSULT-FOUNDATION-1] Real Consultants call WebSocket
@@ -516,6 +517,7 @@ export default {
           .then((r) => { if (r && (r.expiredQuotes || r.noShows.processed || r.noShows.blocked || r.recovery.processed || r.recovery.blocked)) console.log("[hf-bookings-cron]", JSON.stringify(r)); })
           .catch((e) => { console.error("[hf-bookings-cron] failed:", String(e)); }), // [HF-BOOKING-CALENDAR-1]
         runHfPresenceNudge(env).then((r) => { if (r.scanned) console.log("[hf-presence-nudge]", JSON.stringify(r)); }).catch((e) => { console.error("[hf-presence-nudge] failed:", String(e)); }), // [HF-PRESENCE-NUDGE-1]
+        recheckAllChannels(env).then((r) => { if (r.scanned) console.log("[hf-channels-recheck]", JSON.stringify(r)); }).catch((e) => { console.error("[hf-channels-recheck] failed:", String(e)); }), // [HF-WIRE-3] self-throttled: 20 h per channel, 25 per tick
         runVobizWatch(env).catch((e) => { console.error("[hf-vobiz-watch] failed:", String(e)); }), // [HF-VOBIZ-SPEND-2] every 5 min (a 1-min trigger halted all crons)
         expireHfTopups(env).catch((e) => { console.error("[hf-topup-expire] failed:", String(e)); }), // [HF-TOPUP-1]
         runHfPlayCron(env).then((r) => { if (r.consumeRetried || r.rechecked || r.swept) console.log("[hf-play-cron]", JSON.stringify(r)); }).catch((e) => { console.error("[hf-play-cron] failed:", String(e)); }), // [HF-TOK-PLAY-1]
@@ -1154,6 +1156,7 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
       if (p === "/api/hf/wallet/receipts" || p.startsWith("/api/hf/wallet/receipts/") || p === "/api/admin/hf/reconciliation") { const r = await hfWalletLimitsRoute(req, env, p); if (r) return r; } // [HF-WALLET-LIMITS-1]
       if (isDashV3Path(p)) { const r = await hfDashV3Route(req, env, p); if (r) return r; } // [HF-DASH-V3-1]
       if (p === "/api/hf/me" || p === "/api/hf/me/ack") { const r = await hfMeRoute(req, env, p); if (r) return r; } // [HF-NATIVE-S1] [HF-NATIVE-S4]
+      if (p === "/api/hf/channels" || p.startsWith("/api/hf/channels/")) { const r = await hfChannelsRoute(req, env, p, ctx); if (r) return r; } // [HF-WIRE-3]
       if (p === "/api/hf/me/summary") { const r = await hfDashSummaryRoute(req, env); if (r) return r; } // [HF-DASH-SUMMARY-1]
       if (p === "/api/hf/me/registration" || p === "/api/hf/me/username") { const r = await hfRegistrationRoute(req, env, p); if (r) return r; } // [HF-REF-AUTH-1]
       if (p === "/api/hf/push/register") { const r = await hfPushRoute(req, env, p); if (r) return r; } // [HF-APP-4]

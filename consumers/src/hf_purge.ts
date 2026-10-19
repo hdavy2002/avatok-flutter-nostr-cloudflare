@@ -91,6 +91,7 @@ export function hfPurgeTables(scope: HfPurgeScope, includeSafetyRecords = false)
     { table: "hf_notify", cols: ["uid", "caller_uid", "host_uid", "recipient_uid"] },
     { table: "hf_favourites", cols: ["uid", "host_uid"] }, // [HF-DASH-FRAANDS-1] saved hosts: rows saved by the account and rows saving the account as a host
     { table: "hf_user_profile", cols: ["uid"] }, // [HF-DASH-V3-1] city, languages, what they like to talk about
+    { table: "hf_channels", cols: ["host_uid"] }, // [HF-WIRE-3] influencer Instagram/YouTube channels
     { table: "hf_user_prefs", cols: ["uid"] }, // [HF-DASH-V3-1] notification preference
     { table: "hf_support_tickets", cols: ["uid"] }, // [HF-DASH-V3-1] questions sent from the dashboard
     { table: "hf_reviews", cols: ["caller_uid", "host_uid", "reviewer_uid", "uid"] },

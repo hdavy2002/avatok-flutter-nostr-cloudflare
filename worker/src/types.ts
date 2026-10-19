@@ -337,6 +337,8 @@ export interface Env {
   // Optional — unset skips the API check quietly and falls back to the clock
   // rule (starts_at + duration_min + 60min grace) in lib/saathum_stream_state.ts.
   YOUTUBE_API_KEY?: string;
+  // [HF-WIRE-3] treg gateway token (header X-Treg-Token) for the Instagram profile look-up behind influencer Channels. wrangler secret put TREG_API_KEY.
+  TREG_API_KEY?: string;
   JOIN_LINK_SECRET?: string;       // HMAC for https://avatok.ai/j/<token>
   // [AGENT-LIVE-1] OpenAI API key for the gpt-live-1 realtime WebSocket relay,
   // the gpt-6-astra backend/vision calls and the RAG Files/Vector Store APIs.

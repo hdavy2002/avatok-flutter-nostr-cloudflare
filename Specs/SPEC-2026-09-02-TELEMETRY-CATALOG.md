@@ -1318,3 +1318,13 @@ Web events (flag `hfFavouritesEnabled`). Never in any prop: the person's name, p
 | worker `hf_dash_prefs_saved` | `notify_whatsapp`, `appt_reminders` | Dashboard notification switches saved. |
 | web `hf_dash3_notify_pref` | `key: 'notifyWhatsapp' \| 'apptReminders'`, `on` | A switch changed on Profile → Notifications. |
 | worker `$exception` | `extra.area: 'hf_booking_reminders'`, `booking_id`, `window` | One booking failed to queue (others continue). |
+
+## Hello Fraands influencer Channels (`[HF-WIRE-3]`, worker + Flutter app, 2026-10-19)
+
+| Event | Props | Note |
+|---|---|---|
+| worker `hf_channel_added` | `platform`, `ok`, `followers`, `consent_version`, `code` (on failure: `provider_not_configured`, `provider_unavailable`, `channel_claimed`) | POST /api/hf/channels. |
+| worker `hf_channel_check` | `platform`, `action: 'check' \| 'resync'`, `ok`, `result`, `followers`, `qualified` | Check / resync of one channel. |
+| worker `hf_channel_removed` | `platform` | DELETE /api/hf/channels/:id. |
+| worker `$exception` | `extra.area: 'hf_channels'` | Any failure in routes/hf_channels.ts. |
+| app `hf_channels_open` / `hf_channel_add_start` / `hf_channel_check_tap` | `platform`, `state` | Screens in Settings -> Channels and Join. |
