@@ -687,6 +687,12 @@ changes on a phone.
   and the theme art carry the screen.
 - **Motion:** animations move like the craft (a scroll unrolling, a kite rising, a coin dropping into a slot),
   UI transitions last ≤400ms, and reduced motion is respected (`core/motion/reduced_motion.dart`).
+- **Motion tools (owner, 2026-10-19):** all four kinds of motion are used. Videos (intro, explainer, Play Store
+  promo, Reels/Shorts, website hero) → Remotion or HyperFrames MP4. Looping art moments in the app → the same
+  tools rendered to an animated WebP with alpha plus a `_still.png`, each ≤200 KB. Small UI moments → Lottie
+  (`hf-flutter/assets/lottie/`). Anything that reacts to taps or data → Flutter code in `core/motion/`. The tools
+  live in the local studio `/Users/davy/Documents/websites/hf-motion-studio` (outside this repo; read its
+  `CLAUDE.md`). Finished assets come into the app through a normal worktree and commit.
 - **Always:** no green (`test/core/tokens_test.dart` enforces it), no peacocks, Phosphor icons only, and the
   Android back gesture always works.
 
