@@ -10,6 +10,7 @@ import { parseLane, getLaneAccess } from "../lib/hf_lanes";
 import { parseIntroCaption } from "../lib/hf_intro";
 import { hostAggregates, hostReviews, aggregateFields } from "../lib/hf_reviews"; // [HF-CALLS-1] review aggregates
 import type { HostAggregate } from "../lib/hf_reviews_pure";
+import { profileReels, isHiddenDemoHost } from "./hf_reels"; // [HF-WIRE-4]
 import { mediaUrl, mediaToJson, type HostRow, type MediaRow } from "../lib/hf_host_store";
 
 const CACHE = { "cache-control": "public, max-age=60" };
@@ -83,13 +84,16 @@ export async function hfHostsPublicRoute(req: Request, env: Env, ctx?: Execution
       laneWhere = lane === "women" ? " AND h.women_lane=1" : " AND h.lgbtq_lane=1";
     }
     if (one) {
-      const r = await env.DB_META.prepare(`${SEL} WHERE h.slug=?1 AND h.status='live'`).bind(one[1]).first<LiveRow>();
+      const r = await env.DB_META.prepare(`${SEL} WHERE h.slug=?1 AND (h.status='live' OR (h.status='approved' AND ?2=1))`).bind(one[1], cfgAll.hfReelsEnabled === true ? 1 : 0).first<LiveRow>();
       if (!r) return err(404, "not_found");
+      if (await isHiddenDemoHost(env, r.uid, cfgAll as unknown as Record<string, unknown>)) return err(404, "not_found"); // [HF-WIRE-4]
+      const pr = await profileReels(env, r.uid, cfgAll as unknown as Record<string, unknown>); // [HF-WIRE-4] visible reels + followers (null while the flag is off)
       if ((lane === "women" && r.women_lane !== 1) || (lane === "lgbtq" && r.lgbtq_lane !== 1)) return err(404, "not_found");
       const gal = (await env.DB_META.prepare("SELECT * FROM hf_host_media WHERE uid=?1 AND kind='gallery' AND status='active' ORDER BY sort, created_at").bind(r.uid).all<MediaRow>()).results ?? [];
       return json({
         protectedLane: lane,
         ...card(env, r, (await hostAggregates(env, [r.uid])).get(r.uid), std), reviews: await hostReviews(env, r.uid, 10), aboutPolished: r.about_polished, quote: r.quote,
+        ...(pr ? { reels: pr.reels, followers: pr.followers, handle: pr.handle } : {}),
         gallery: gal.map((m) => { const j = mediaToJson(env, m); return { url: j.url, caption: j.caption, imageProvenance: m.job_id ? "ai" : "uploaded" }; }),
       }, 200, lane ? { "cache-control": "private, no-store" } : CACHE);
     }

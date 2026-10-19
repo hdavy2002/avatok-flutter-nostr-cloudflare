@@ -1,0 +1,252 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:go_router/go_router.dart';
+import 'package:hf_app/data/api_client.dart';
+import 'package:hf_app/data/api_exception.dart';
+import 'package:hf_app/data/models/reel.dart';
+import 'package:hf_app/data/repos/reels_repo.dart';
+import 'package:hf_app/demo/my_reels_section.dart';
+import 'package:hf_app/demo/presence_bridge.dart';
+import 'package:hf_app/demo/reel_player.dart';
+import 'package:hf_app/demo/screens/feed.dart';
+import 'package:hf_app/demo/screens/profile.dart';
+
+typedef Handler = Object? Function(String method, String path, Map<String, Object?>? query, Object? body);
+
+class FakeApiClient extends ApiClient {
+  FakeApiClient(this.handler) : super(origin: 'https://api.test');
+
+  Handler handler;
+  final List<String> calls = [];
+  final List<Object?> bodies = [];
+
+  @override
+  Future<Object?> request(String method, String path,
+      {Map<String, Object?>? query, Object? body, bool auth = true, Map<String, String>? headers}) async {
+    calls.add('$method $path');
+    bodies.add(body);
+    final out = handler(method, path, query, body);
+    if (out is ApiException) throw out;
+    return out;
+  }
+}
+
+Map<String, Object?> _item(String id, {String slug = 'maya', String name = 'Maya', String? video, String? embed}) => {
+      'id': id,
+      'host': {'slug': slug, 'name': name, 'handle': '@maya', 'avatar': null, 'ratePaise': 1200, 'followers': 5400, 'presence': 'online'},
+      'platform': 'youtube',
+      'embedUrl': embed ?? 'https://www.youtube.com/embed/abc12345',
+      'videoUrl': video,
+      'thumbUrl': null,
+      'caption': 'Caption $id',
+      'likes': 12,
+      'views': 3400,
+    };
+
+const _serverDown = ApiException(kind: ApiFailure.http, status: 503, code: 'unavailable', message: 'Try again in a little while.');
+
+/// Records which reels the (stubbed) player was told to play.
+Map<String, bool> _stubPlayer() {
+  final seen = <String, bool>{};
+  ReelPlayer.override = (reel, active) {
+    seen[reel.id] = active;
+    return Container(key: ValueKey('player-${reel.id}'), color: Colors.black);
+  };
+  return seen;
+}
+
+Future<void> _pump(WidgetTester tester, Widget home) async {
+  tester.view.physicalSize = const Size(900, 2000);
+  tester.view.devicePixelRatio = 1;
+  addTearDown(tester.view.reset);
+  final router = GoRouter(initialLocation: '/start', routes: [
+    GoRoute(path: '/start', builder: (_, __) => home),
+    GoRoute(path: '/inf/channels', builder: (_, __) => const Scaffold(body: Text('CHANNELS'))),
+  ]);
+  await tester.pumpWidget(MaterialApp.router(routerConfig: router));
+  await tester.pump();
+  await tester.pump();
+}
+
+void main() {
+  setUp(() => PresenceBridge.forceReal = true);
+  tearDown(() {
+    PresenceBridge.forceReal = false;
+    ReelPlayer.override = null;
+  });
+
+  group('ReelsRepo', () {
+    test('feed parses items, host and the next cursor, and asks without sign-in', () async {
+      final api = FakeApiClient((m, p, q, b) => {
+            'ok': true,
+            'items': [_item('hfrl_1'), _item('hfrl_2', video: 'https://cdn/v.mp4')],
+            'nextCursor': '5_hfrl_2',
+          });
+      final page = await ReelsRepo(api).feed(cursor: 'abc');
+      expect(api.calls, ['GET /api/hf/reels']);
+      expect(page.nextCursor, '5_hfrl_2');
+      expect(page.items.length, 2);
+      expect(page.items.first.host, isA<ReelHost>().having((h) => h.rateRupees, 'rate', 12).having((h) => h.followers, 'followers', 5400));
+      expect(page.items[1].videoUrl, 'https://cdn/v.mp4');
+    });
+
+    test('flag off becomes a friendly message; one() returns null on 404', () async {
+      final off = FakeApiClient((m, p, q, b) => const ApiException(kind: ApiFailure.http, status: 404, code: 'not_enabled', message: 'x'));
+      await expectLater(ReelsRepo(off).feed(), throwsA(isA<ApiException>().having((e) => e.message, 'message', ReelsRepo.notOpenText)));
+      final gone = FakeApiClient((m, p, q, b) => const ApiException(kind: ApiFailure.http, status: 404, code: 'not_found', message: 'x'));
+      expect(await ReelsRepo(gone).one('hfrl_x'), isNull);
+    });
+
+    test('mine and setVisible use the owner routes', () async {
+      final api = FakeApiClient((m, p, q, b) => m == 'GET'
+          ? {'ok': true, 'reels': [{'id': 'hfrl_1', 'visible': false, 'views': 7, 'platform': 'instagram'}]}
+          : {'ok': true, 'reel': {'id': 'hfrl_1', 'visible': true}});
+      final repo = ReelsRepo(api);
+      final mine = await repo.mine();
+      expect(mine.single.visible, isFalse);
+      final r = await repo.setVisible('hfrl_1', true);
+      expect(r.visible, isTrue);
+      expect(api.calls, ['GET /api/hf/hosts/me/reels', 'PATCH /api/hf/reels/hfrl_1']);
+      expect(api.bodies.last, {'visible': true});
+    });
+
+    test('profile parses reels and the host block', () async {
+      final api = FakeApiClient((m, p, q, b) => {
+            'slug': 'maya', 'displayName': 'Maya', 'status': 'online', 'pricePaisePerMin': 1500, 'followers': 900, 'handle': '@maya',
+            'aboutPolished': 'Hi', 'reels': [_item('hfrl_1')..remove('host')],
+          });
+      final p = await ReelsRepo(api).profile('maya');
+      expect(p.host.rateRupees, 15);
+      expect(p.host.online, isTrue);
+      expect(p.reels.single.host.slug, 'maya');
+      expect(p.likes, 12);
+    });
+  });
+
+  group('player url', () {
+    test('YouTube embeds autoplay inline and loop', () {
+      final u = ReelPlayer.embedUri('https://www.youtube.com/embed/abc12345');
+      expect(u.queryParameters['autoplay'], '1');
+      expect(u.queryParameters['playlist'], 'abc12345');
+      expect(ReelPlayer.embedUri('https://www.instagram.com/reel/Cx12345/embed').toString(), 'https://www.instagram.com/reel/Cx12345/embed');
+    });
+  });
+
+  group('RealFeed', () {
+    testWidgets('empty feed says nobody is online', (tester) async {
+      final api = FakeApiClient((m, p, q, b) => {'ok': true, 'items': <Object?>[], 'nextCursor': null});
+      await _pump(tester, FeedScreen(repo: ReelsRepo(api), onlineFetch: () async => 0));
+      expect(find.text(kFeedEmptyText), findsOneWidget);
+    });
+
+    testWidgets('failure shows Try again and retries', (tester) async {
+      var fail = true;
+      final api = FakeApiClient((m, p, q, b) => fail ? _serverDown : {'ok': true, 'items': [_item('hfrl_1')], 'nextCursor': null});
+      _stubPlayer();
+      await _pump(tester, FeedScreen(repo: ReelsRepo(api), onlineFetch: () async => 1));
+      expect(find.text('Try again'), findsOneWidget);
+      fail = false;
+      await tester.tap(find.text('Try again'));
+      await tester.pump();
+      await tester.pump();
+      expect(find.byKey(const ValueKey('player-hfrl_1')), findsOneWidget);
+    });
+
+    testWidgets('plays the visible reel only, pages on, and counts a view once', (tester) async {
+      final seen = _stubPlayer();
+      final api = FakeApiClient((m, p, q, b) {
+        if (p.endsWith('/view')) return {'ok': true};
+        return {'ok': true, 'items': [_item('hfrl_1'), _item('hfrl_2', name: 'Riya', slug: 'riya')], 'nextCursor': null};
+      });
+      await _pump(tester, FeedScreen(repo: ReelsRepo(api), onlineFetch: () async => 2));
+      expect(seen['hfrl_1'], isTrue);
+      expect(seen['hfrl_2'], isFalse); // readied, not playing
+      expect(find.text('Caption hfrl_1'), findsOneWidget);
+      expect(find.text('CALL NOW'), findsOneWidget);
+      await tester.fling(find.byType(PageView), const Offset(0, -900), 2000);
+      await tester.pumpAndSettle();
+      expect(seen['hfrl_1'], isFalse);
+      expect(seen['hfrl_2'], isTrue);
+      expect(find.text('Riya'), findsOneWidget);
+      expect(api.calls.where((c) => c.endsWith('/view')).toSet(), {'POST /api/hf/reels/hfrl_1/view', 'POST /api/hf/reels/hfrl_2/view'});
+    });
+
+    testWidgets('a shared reel opens first and is not repeated', (tester) async {
+      final seen = _stubPlayer();
+      final api = FakeApiClient((m, p, q, b) {
+        if (p.endsWith('/view')) return {'ok': true};
+        if (p == '/api/hf/reels/hfrl_2') return {'ok': true, 'item': _item('hfrl_2', name: 'Riya', slug: 'riya')};
+        return {'ok': true, 'items': [_item('hfrl_1'), _item('hfrl_2', name: 'Riya', slug: 'riya')], 'nextCursor': null};
+      });
+      await _pump(tester, FeedScreen(reelId: 'hfrl_2', repo: ReelsRepo(api), onlineFetch: () async => 2));
+      expect(seen['hfrl_2'], isTrue);
+      expect(seen['hfrl_1'], isFalse);
+      expect(find.text('Caption hfrl_2'), findsOneWidget);
+    });
+  });
+
+  group('MyReelsSection', () {
+    Map<String, Object?> mine(String id, bool visible) => {'id': id, 'visible': visible, 'views': 1200, 'platform': 'youtube', 'caption': 'c'};
+
+    testWidgets('shows the copy and toggles Show on feed / Hide with the real PATCH', (tester) async {
+      final api = FakeApiClient((m, p, q, b) {
+        if (m == 'GET') return {'ok': true, 'reels': [mine('hfrl_1', false), mine('hfrl_2', true)]};
+        return {'ok': true, 'reel': mine('hfrl_1', true)};
+      });
+      await _pump(tester, Scaffold(body: MyReelsSection(repo: ReelsRepo(api))));
+      expect(find.text(kPickReelsText), findsOneWidget);
+      expect(find.text('1 of 2 are in the feed.'), findsOneWidget);
+      expect(find.text('Show on feed'), findsOneWidget);
+      expect(find.text('Hide'), findsOneWidget);
+      await tester.tap(find.byKey(const ValueKey('toggle-hfrl_1')));
+      await tester.pump();
+      await tester.pump();
+      expect(api.calls.last, 'PATCH /api/hf/reels/hfrl_1');
+      expect(api.bodies.last, {'visible': true});
+      expect(find.text('2 of 2 are in the feed.'), findsOneWidget);
+    });
+
+    testWidgets('rolls back when the server says no', (tester) async {
+      final api = FakeApiClient((m, p, q, b) => m == 'GET' ? {'ok': true, 'reels': [mine('hfrl_1', false)]} : _serverDown);
+      await _pump(tester, Scaffold(body: MyReelsSection(repo: ReelsRepo(api))));
+      await tester.tap(find.byKey(const ValueKey('toggle-hfrl_1')));
+      await tester.pump();
+      await tester.pump();
+      expect(find.text('0 of 1 are in the feed.'), findsOneWidget);
+      expect(find.text('Show on feed'), findsOneWidget);
+    });
+
+    testWidgets('empty list explains what to do', (tester) async {
+      final api = FakeApiClient((m, p, q, b) => {'ok': true, 'reels': <Object?>[]});
+      await _pump(tester, Scaffold(body: MyReelsSection(repo: ReelsRepo(api))));
+      expect(find.textContaining('No videos yet'), findsOneWidget);
+    });
+  });
+
+  group('Profile videos', () {
+    testWidgets('real videos fill the grid and open the full-screen player', (tester) async {
+      final seen = _stubPlayer();
+      final api = FakeApiClient((m, p, q, b) => {
+            'slug': 'maya', 'displayName': 'Maya', 'status': 'online', 'pricePaisePerMin': 1500, 'followers': 900, 'handle': '@maya',
+            'reels': [_item('hfrl_1')..remove('host'), _item('hfrl_2')..remove('host')],
+          });
+      await _pump(tester, ProfileScreen(id: 'maya', repo: ReelsRepo(api)));
+      expect(find.text('Maya'), findsWidgets);
+      expect(find.byKey(const ValueKey('video-hfrl_1')), findsOneWidget);
+      expect(find.byKey(const ValueKey('video-hfrl_2')), findsOneWidget);
+      await tester.ensureVisible(find.byKey(const ValueKey('video-hfrl_2')));
+      await tester.tap(find.byKey(const ValueKey('video-hfrl_2')));
+      await tester.pumpAndSettle();
+      expect(seen['hfrl_2'], isTrue);
+      await tester.tap(find.byKey(const ValueKey('viewer-close')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('viewer-close')), findsNothing);
+    });
+
+    testWidgets('unavailable profile shows the error with Try again', (tester) async {
+      final api = FakeApiClient((m, p, q, b) => const ApiException(kind: ApiFailure.http, status: 404, code: 'not_found', message: 'Not here'));
+      await _pump(tester, ProfileScreen(id: 'nobody', repo: ReelsRepo(api)));
+      expect(find.text('Try again'), findsOneWidget);
+    });
+  });
+}

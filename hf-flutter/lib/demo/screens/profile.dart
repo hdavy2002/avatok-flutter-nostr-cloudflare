@@ -1,8 +1,17 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../data/models/reel.dart';
+import '../../data/repos/reels_repo.dart';
+import '../../data/services.dart';
+import '../../ui/async_view.dart';
 import '../data.dart';
 import '../notify_me_button.dart';
+import '../presence_bridge.dart';
+import '../reel_viewer.dart';
+import '../reels_real.dart';
 import '../state.dart';
 import '../theme.dart';
 import '../widgets.dart';
@@ -11,9 +20,13 @@ import 'sheets.dart';
 /// Public influencer profile (HF-REEL-8): likes, videos, rate, bio, Call now / Book,
 /// Online/Offline, and two tabs — Videos and Calendar.
 class ProfileScreen extends StatefulWidget {
-  const ProfileScreen({super.key, required this.id});
+  const ProfileScreen({super.key, required this.id, this.repo});
 
+  /// In demo mode a dummy influencer id; in real mode the host's slug.
   final String id;
+
+  /// Tests pass a repo on a fake API; the app uses [Services].
+  final ReelsRepo? repo;
 
   @override
   State<ProfileScreen> createState() => _ProfileScreenState();
@@ -22,11 +35,75 @@ class ProfileScreen extends StatefulWidget {
 class _ProfileScreenState extends State<ProfileScreen> {
   int _tab = 0;
   int _day = 0;
+  AsyncState<PublicProfile> _ps = const AsyncLoading();
 
+  @override
+  void initState() {
+    super.initState();
+    if (PresenceBridge.real) unawaited(_loadProfile());
+  }
+
+  Future<void> _loadProfile() async {
+    setState(() => _ps = const AsyncLoading());
+    try {
+      final p = await (widget.repo ?? Services.instance.reelsRepo).profile(widget.id);
+      if (mounted) setState(() => _ps = AsyncData(p));
+    } catch (e) {
+      if (mounted) setState(() => _ps = AsyncFailure(e));
+    }
+  }
+
+  Widget _realGrid(BuildContext context, PublicProfile pp) {
+    if (pp.reels.isEmpty) {
+      return SliverToBoxAdapter(child: Padding(padding: const EdgeInsets.only(top: 6), child: Text('No videos yet.', style: t(15, color: C.muted, w: FontWeight.w700))));
+    }
+    return SliverGrid.builder(
+      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 3, mainAxisSpacing: 6, crossAxisSpacing: 6, childAspectRatio: 0.62),
+      itemCount: pp.reels.length,
+      itemBuilder: (_, i) {
+        final r = pp.reels[i];
+        return GestureDetector(
+          key: ValueKey('video-${r.id}'),
+          onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(fullscreenDialog: true, builder: (_) => ReelViewer(reels: pp.reels, start: i))),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(10),
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                r.thumbUrl == null
+                    ? const ColoredBox(color: C.cinema)
+                    : Image.network(r.thumbUrl!, fit: BoxFit.cover, errorBuilder: (_, __, ___) => const ColoredBox(color: C.cinema)),
+                Positioned(left: 6, bottom: 6, child: Text('▶ ${compactCount(r.views)}', style: t(12, color: C.ivory))),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
-    final who = influencerById(widget.id);
+    PublicProfile? pp;
+    if (PresenceBridge.real) {
+      final s = _ps;
+      if (s is! AsyncData<PublicProfile>) {
+        return Scaffold(
+          backgroundColor: C.cream,
+          body: SafeArea(
+            child: Stack(
+              children: [
+                AsyncView<PublicProfile>(state: s, onRetry: () => unawaited(_loadProfile()), builder: (_, __) => const SizedBox.shrink()),
+                const Positioned(top: 10, left: 16, child: BackBtn()),
+              ],
+            ),
+          ),
+        );
+      }
+      pp = s.value;
+    }
+    final prof = pp;
+    final who = prof != null ? influencerFromHost(prof.host, bio: prof.about, likes: prof.likes, videos: prof.reels.length) : influencerById(widget.id);
     final mine = reels.where((r) => r.who.id == who.id).toList();
     final firstReel = mine.isEmpty ? null : mine.first;
     final today = dayOnly(DateTime.now());
@@ -138,7 +215,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               if (_tab == 0)
                 SliverPadding(
                   padding: const EdgeInsets.fromLTRB(22, 0, 22, 40),
-                  sliver: SliverGrid.count(
+                  sliver: prof != null ? _realGrid(context, prof) : SliverGrid.count(
                     crossAxisCount: 3,
                     mainAxisSpacing: 6,
                     crossAxisSpacing: 6,

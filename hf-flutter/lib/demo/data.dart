@@ -17,6 +17,7 @@ class Influencer {
     required this.online,
     required this.tones,
     this.portrait,
+    this.avatarUrl,
   });
 
   final String id;
@@ -34,6 +35,9 @@ class Influencer {
 
   /// Art path under assets/images/bazaar/ (optional).
   final String? portrait;
+
+  /// A real photo from the server (HF-WIRE-4); wins over [portrait].
+  final String? avatarUrl;
 
   String get initials =>
       name.split(' ').where((p) => p.isNotEmpty).map((p) => p[0]).take(2).join();

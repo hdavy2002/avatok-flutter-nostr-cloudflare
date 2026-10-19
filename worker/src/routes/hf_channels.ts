@@ -20,6 +20,7 @@ import { trackUser, trackException } from "../hooks";
 import { BRAND } from "../lib/brand";
 import { emailFor } from "../lib/identity";
 import { readConfig } from "./config";
+import { importChannelReels, importCountOf } from "../lib/hf_reels_import"; // [HF-WIRE-4]
 import {
   lookupChannel, makeVerifyCode, bioHasCode, ProviderError, type ChannelLookup, type ChannelPlatform,
 } from "../lib/hf_channel_providers";
@@ -156,6 +157,13 @@ async function runCheck(env: Env, ch: ChRow, min: number, lookup?: ChannelLookup
   }
 }
 
+/** [HF-WIRE-4] Import the latest reels of an approved channel; never throws (a provider outage must not break the channel check). */
+async function importForChannel(env: Env, ch: ChRow, n: number): Promise<void> {
+  try { await importChannelReels(env, ch, n); } catch (e) {
+    if (!(e instanceof ProviderError)) await trackException(env, e, { route: "hf_reels_import", method: "JOB", handled: true, app_name: APP, extra: { area: "hf_reels", platform: ch.platform } }).catch(() => {});
+  }
+}
+
 async function loadOwn(env: Env, uid: string, id: string): Promise<ChRow | null> {
   return (await env.DB_META.prepare(`SELECT ${COLS} FROM hf_channels WHERE id=?1 AND host_uid=?2`).bind(id, uid).first<ChRow>()) ?? null;
 }
@@ -265,6 +273,10 @@ export async function hfChannelsRoute(req: Request, env: Env, p: string, ctx?: E
     }
     if (out.result === "claimed") return err(409, "channel_claimed", RESULT_TEXT(min).claimed);
     const st = await syncHostState(env, uid);
+    if (out.result === "approved" && cfg.hfReelsEnabled === true) { // [HF-WIRE-4] first import on approval (and on every manual re-check)
+      const job = importForChannel(env, out.row, importCountOf(cfg as unknown as Record<string, unknown>));
+      if (ctx) ctx.waitUntil(job); else await job;
+    }
     emit("hf_channel_check", { platform: ch.platform, action, ok: true, result: out.result, followers: out.row.followers, qualified: st.qualified });
     return json({ ok: true, result: out.result, message: RESULT_TEXT(min)[out.result], channel: channelJson(out.row), minFollowers: min, hostStatus: st.hostStatus, qualified: st.qualified }, 200, NO_STORE);
   } catch (e) {
@@ -293,6 +305,7 @@ export async function recheckAllChannels(env: Env, batch = 25): Promise<{ scanne
     try {
       const r = await runCheck(env, ch, min);
       if (r.result !== "claimed") out.updated++;
+      if (r.result === "approved" && cfg.hfReelsEnabled === true) await importForChannel(env, r.row, importCountOf(cfg as unknown as Record<string, unknown>)); // [HF-WIRE-4] daily refresh
       hosts.add(ch.host_uid);
     } catch (e) {
       out.failed++;

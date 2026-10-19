@@ -3,6 +3,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../data/models/channel.dart';
 import '../data.dart';
+import '../my_reels_section.dart';
 import '../presence_bridge.dart';
 import '../state.dart';
 import '../theme.dart';
@@ -358,6 +359,7 @@ class InfluencerHomeScreen extends StatelessWidget {
                 if (todays.isEmpty) Text('No bookings today.', style: t(15, color: C.muted, w: FontWeight.w700)),
                 for (final b in todays) BookingTile(b),
                 const SizedBox(height: 22),
+                if (PresenceBridge.real) const MyReelsSection() else ...[
                 Row(
                   children: [
                     Expanded(child: Text('My reels', style: t(20, color: C.maroon))),
@@ -385,6 +387,7 @@ class InfluencerHomeScreen extends StatelessWidget {
                     ),
                   ),
                 ),
+                ],
               ],
             );
           },

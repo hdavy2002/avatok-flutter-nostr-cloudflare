@@ -2159,6 +2159,7 @@ export interface PlatformConfig {
   hfFanSignupEnabled: boolean; // [HF-WIRE-2] reels-app fan sign-up extras: store the typed email (PATCH /api/hf/me {email}) and the "new reels from favourites" switch (PATCH /api/hf/me/prefs). Name edits stay open either way.
   hfInvitesEnabled: boolean; // "Invite" votes for influencers not yet on the app
   hfDemoInfluencersVisible: boolean; // default true; false hides every is_demo host and reel in one switch
+  hfReelsImportCount: number; // [HF-WIRE-4] NUMERIC (numericKeys): latest videos imported per approved channel on approval and in the daily recheck; default 20, max 50
   hfInfluencerMinFollowers: number; // NUMERIC (numericKeys): followers/subscribers needed on one YouTube or Instagram channel; default 10
   // [AUMFE-PANDIT-COST-1] Pandit ji cost controls. NUMERIC -> they MUST also appear in `numericKeys` below or
   // `flags.sh set panditTopicMaxTurns=15` 400s `bad type`.
@@ -2925,6 +2926,7 @@ const DEFAULTS: PlatformConfig = {
   hfInvitesEnabled: false, // [HF-WIRE-1B]
   hfFanSignupEnabled: false, // [HF-WIRE-2] dark until the owner flips it
   hfDemoInfluencersVisible: true, // [HF-WIRE-1B] seed influencers are shown until the owner hides them
+  hfReelsImportCount: 20, // [HF-WIRE-4]
   hfInfluencerMinFollowers: 10, // [HF-WIRE-1B] owner 2026-10-19 (handover 10 asks whether 10 or 10,000)
   hfTopupEnabled: false, // [HF-TOPUP-1] dark until a gateway is configured and the owner flips it
   hfTopupGateway: "none",
@@ -3157,7 +3159,7 @@ export async function putConfig(req: Request, env: Env): Promise<Response> {
     "sessionCreatorCheckInMin", "liveHostGraceMin",
     "commercialConsultExtensionMinutes", "commercialConsultExtensionRate",
     "commercialLiveBackstageEarlyMin", "commercialLiveStartGraceMin",
-    "minAppBuild", "latestAppBuild", "hfAppMinBuild", "hfAppLatestBuild", /* [HF-NATIVE-S7] */ "hfInfluencerMinFollowers", /* [HF-WIRE-1B] */ "dailyAvaTurnLimit", "receptionistRings", "agentDailyCap", "livenessAuditSampleRate",
+    "minAppBuild", "latestAppBuild", "hfAppMinBuild", "hfAppLatestBuild", /* [HF-NATIVE-S7] */ "hfInfluencerMinFollowers", /* [HF-WIRE-1B] */ "hfReelsImportCount", /* [HF-WIRE-4] */ "dailyAvaTurnLimit", "receptionistRings", "agentDailyCap", "livenessAuditSampleRate",
     "receptWrapCueMs", "receptCloseMs", "receptHardCapMs",
     // [PA-GATE-1] PA stuck-session watchdog (spec §3.4) — numeric, so it must be here.
     "paWatchdogMs",

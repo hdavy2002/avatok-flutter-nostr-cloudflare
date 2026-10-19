@@ -302,7 +302,9 @@ class Avatar extends StatelessWidget {
       child: Text(who.initials, style: t(size * 0.36, color: C.gold)),
     );
     final face = ClipOval(
-      child: who.portrait == null
+      child: who.avatarUrl != null
+          ? Image.network(who.avatarUrl!, fit: BoxFit.cover, alignment: Alignment.topCenter, errorBuilder: (_, __, ___) => fallback)
+          : who.portrait == null
           ? fallback
           : Container(
               color: who.tones.first,

@@ -29,7 +29,7 @@ final router = GoRouter(
     StatefulShellRoute.indexedStack(
       builder: (context, state, shell) => MainShell(shell: shell),
       branches: [
-        StatefulShellBranch(routes: [GoRoute(path: '/reels', builder: (_, __) => const FeedScreen())]),
+        StatefulShellBranch(routes: [GoRoute(path: '/reels', builder: (_, s) => FeedScreen(reelId: s.uri.queryParameters['reel']))]),
         StatefulShellBranch(routes: [GoRoute(path: '/search', builder: (_, __) => const SearchScreen())]),
         StatefulShellBranch(routes: [GoRoute(path: '/favourites', builder: (_, __) => const FavouritesScreen())]),
         StatefulShellBranch(routes: [GoRoute(path: '/me', builder: (_, __) => const MeScreen())]),

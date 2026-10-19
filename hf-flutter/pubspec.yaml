@@ -36,6 +36,8 @@ dependencies:
   app_links: ^6.3.2                  # App Links + custom scheme
   package_info_plus: ^9.0.1          # version for the update check
   lottie: ^3.3.1                     # mascot and celebration motion (HF-MOTION-1)
+  webview_flutter: ^4.10.0           # [HF-WIRE-4] official YouTube / Instagram reel embeds (video_player plays direct files)
+  webview_flutter_android: ^4.3.0    # [HF-WIRE-4] lets the embed autoplay
 
 dev_dependencies:
   flutter_test:
