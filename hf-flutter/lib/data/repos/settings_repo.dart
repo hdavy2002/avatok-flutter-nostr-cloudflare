@@ -213,6 +213,8 @@ abstract final class ExternalLinks {
   static Uri get terms => Uri.parse(Brand.url('/terms'));
   static Uri get privacy => Uri.parse(Brand.url('/privacy'));
   static Uri get dataDeletion => Uri.parse(Brand.url('/data-deletion'));
+  static Uri get contact => Uri.parse(Brand.url('/contact')); // [HF-LEGAL-LINKS-1] payment provider app review
+  static Uri get refunds => Uri.parse(Brand.url('/refunds')); // [HF-LEGAL-LINKS-1]
   static Uri get supportMail => Uri(scheme: 'mailto', path: Brand.supportEmail);
 
   static Future<bool> open(Uri uri) async {

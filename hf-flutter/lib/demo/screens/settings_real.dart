@@ -204,6 +204,8 @@ class _RealSettingsScreenState extends State<RealSettingsScreen> {
                   _link('Help and FAQ', () => context.push('/help')),
                   _link('Terms of use', () => _openLink(ExternalLinks.terms)),
                   _link('Privacy policy', () => _openLink(ExternalLinks.privacy)),
+                  _link('Refunds and cancellations', () => _openLink(ExternalLinks.refunds)),
+                  _link('Contact us', () => _openLink(ExternalLinks.contact)),
                   _info('App version', _version.version.isEmpty ? '' : _version.label),
                   const SizedBox(height: 26),
                   ChunkyButton(label: 'SIGN OUT', filled: false, onTap: _signOut),

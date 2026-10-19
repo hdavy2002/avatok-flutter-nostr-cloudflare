@@ -180,6 +180,21 @@ void main() {
       expect(opened.map((u) => u.toString()), [Brand.url('/terms'), Brand.url('/privacy')]);
     });
 
+    testWidgets('Refunds and Contact us open the website pages (payment provider app review)', (tester) async {
+      final opened = <Uri>[];
+      ExternalLinks.launcher = (u) async {
+        opened.add(u);
+        return true;
+      };
+      final api = FakeApiClient((m, p, b) => _prefs());
+      await _pump(tester, RealSettingsScreen(repo: SettingsRepo(api), me: _me));
+      await tester.scrollUntilVisible(find.text('Contact us'), 200, scrollable: find.byType(Scrollable).first);
+      await tester.tap(find.text('Refunds and cancellations'));
+      await tester.tap(find.text('Contact us'));
+      await tester.pump();
+      expect(opened.map((u) => u.toString()), [Brand.url('/refunds'), Brand.url('/contact')]);
+    });
+
     testWidgets('SIGN OUT runs the sign-out and goes to the reels', (tester) async {
       var out = 0;
       final api = FakeApiClient((m, p, b) => _prefs());
