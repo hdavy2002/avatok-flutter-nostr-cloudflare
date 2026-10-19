@@ -216,7 +216,12 @@ class _CheckoutFlowState extends State<CheckoutFlow> {
     final sid = o.paymentSessionId;
     if (sid != null && sid.isNotEmpty) {
       final out = await widget.checkout.payHosted(orderId: o.orderId, paymentSessionId: sid, sandbox: o.environment == 'sandbox');
-      Telemetry.event('hf_topup_checkout', {'order': o.orderId, 'method': 'hosted', 'result': out.result.name});
+      Telemetry.event('hf_topup_result', {
+        'order': o.orderId,
+        'result': 'hosted_${out.result.name}',
+        'method': 'hosted',
+        if (out.message != null) 'detail': out.message!.length > 120 ? out.message!.substring(0, 120) : out.message!,
+      });
       if (out.result != PayResult.unavailable) {
         _go(out.result == PayResult.completed ? next : '$next&sdk=err');
         return;
@@ -272,7 +277,12 @@ class _CheckoutFlowState extends State<CheckoutFlow> {
     }
     final out = await widget.checkout.payHosted(orderId: o.orderId, paymentSessionId: sid, sandbox: o.environment == 'sandbox');
     if (!mounted) return;
-    Telemetry.event('hf_topup_result', {'order': o.orderId, 'result': 'hosted_${out.result.name}', 'method': 'hosted'});
+    Telemetry.event('hf_topup_result', {
+      'order': o.orderId,
+      'result': 'hosted_${out.result.name}',
+      'method': 'hosted',
+      if (out.message != null) 'detail': out.message!.length > 120 ? out.message!.substring(0, 120) : out.message!,
+    });
     switch (out.result) {
       case PayResult.completed:
         _go(_next(o));

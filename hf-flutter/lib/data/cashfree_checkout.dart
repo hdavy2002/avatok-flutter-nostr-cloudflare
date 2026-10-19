@@ -81,6 +81,8 @@ class CashfreeInAppCheckout implements InAppCheckout {
     service.setCallback(
       (String id) => finish(const PayOutcome(PayResult.completed)),
       (CFErrorResponse e, String id) {
+        // [HF-CF-ERRLOG-1] Print the provider's own words to logcat (tag "flutter") so a USB-connected test phone shows why.
+        debugPrint('[checkout] provider error order=$id code=${e.getCode()} message=${e.getMessage()}');
         final notEnabled = looksNotEnabled(e.getMessage(), e.getCode());
         finish(PayOutcome(notEnabled ? PayResult.notEnabled : PayResult.failed, e.getMessage()));
       },
