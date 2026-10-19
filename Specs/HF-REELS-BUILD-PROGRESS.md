@@ -26,10 +26,10 @@ Legend: ⬜ not started · 🟨 in progress · ✅ done · ⛔ blocked (needs ow
 | # | Stage (handover §9) | Status | Commit(s) | Notes |
 |---|---|---|---|---|
 | 0 | Progress log created | ✅ | (this commit) | 2026-10-19 |
-| 1 | HF-WIRE-1 Foundations (ApiClient, Clerk, /api/hf/me, config/update prompt, states, deep links, telemetry) | ⬜ | | |
+| 1 | HF-WIRE-1 Foundations (ApiClient, Clerk, /api/hf/me, config/update prompt, states, deep links, telemetry) | ✅ (code) | HF-WIRE-1A, 1B, 1C | CI mode=check green (run 39235025525). Worker change NOT deployed yet. Screens still on dummy data. |
 | 2 | HF-WIRE-2 Fan sign-up (WhatsApp OTP → account → resume action) | ⬜ | | Q2 answered: OTP |
-| 3 | HF-WIRE-3 Channels + treg (10-follower rule, approval) | ⬜ | | Q1=10, Q7=IG+YT; treg research first |
-| 4 | HF-WIRE-4 Reels import + jev face check, real feed, demo seed `is_demo` | ⬜ | | Open Q9; jev research first |
+| 3 | HF-WIRE-3 Channels + treg (10-follower rule, approval) | ⛔ | | Q1=10, Q7=IG+YT. Research done (Specs/HF-TREG-JEV-RESEARCH.md): treg = paid scraper proxy (ScrapeCreators). Needs owner OK on data source + ownership proof. |
+| 4 | HF-WIRE-4 Reels import + jev face check, real feed, demo seed `is_demo` | ⛔ | | Open Q9. jev CANNOT do faces (text-only). Need owner pick of face-check service. |
 | 5 | HF-WIRE-5 Presence (Online/Offline, busy, Notify me) | ⬜ | | |
 | 6 | HF-WIRE-6 Wallet + Cashfree top-up (GST ÷1.18, webhook, receipts) | ⬜ | | Q10=Cashfree |
 | 7 | HF-WIRE-7 Instant calls (Vobiz live, call screen, reviews, records) | ⬜ | | |
@@ -49,3 +49,8 @@ Legend: ⬜ not started · 🟨 in progress · ✅ done · ⛔ blocked (needs ow
 ## 4. Log (newest last)
 - 2026-10-19 — Stage 0: progress log created on main. Next: Stage 1 (HF-WIRE-1).
 - 2026-10-19 — Owner answered Q1, Q2, Q7, Q10 (rules HF-REEL-23…25). Starting Stage 1 with parallel agents: A = Flutter foundations, B = worker audit + /api/hf/me + flags, C = treg/jev research.
+- 2026-10-19 — Stage 1 DONE (code on main):
+  - 1A Flutter (`hf-flutter/lib/data/*`, `lib/ui/async_view.dart`, `lib/ui/update_prompt.dart`, `lib/core/deep_links.dart`; splash boots session + /me + config; intro-seen persisted; `DemoMode` dart-define HF_DEMO=true keeps dummy screens). Tests in `test/data`, `test/ui`. CI green.
+  - 1B Worker: `/api/hf/me` extended (name, email, whatsapp, role, hostStatus, presence, walletPaise, prefs); flags hfReelsEnabled, hfChannelsEnabled, hfInvitesEnabled (off), hfDemoInfluencersVisible (on), hfInfluencerMinFollowers=10. Full route gap list: `Specs/HF-REELS-BACKEND-AUDIT.md` — READ IT before stages 2–10 (real route paths differ from the handover, e.g. calls start = POST /api/hf/calls, estimate = /api/hf/wallet/estimate, presence = PUT /api/hosts/me/presence, top-up = POST /api/hf/wallet/topup {amount rupees}). Note: 24 pre-existing HF vitest failures on main (10 files, listed in the 1B report) — not caused by this work.
+  - 1C Research: `Specs/HF-TREG-JEV-RESEARCH.md`. treg is a pay-per-call scraper gateway (~$0.0019/call); jev is text-only and cannot detect faces. Recommendation: YouTube Data API v3 + ScrapeCreators/treg for Instagram, Instagram Login OAuth or bio-code for ownership, Google Cloud Vision (or Workers AI) on thumbnails for the face check.
+  - Next: Stage 2 (HF-WIRE-2 fan sign-up with WhatsApp OTP). Stages 3–4 blocked on owner decision about data source / face check.
