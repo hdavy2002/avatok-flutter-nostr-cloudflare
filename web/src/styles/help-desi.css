@@ -40,13 +40,13 @@
 .gh .gh-band--peacock { background: var(--peacock); color: var(--cream); border-top: 3px solid var(--ink); }
 .gh .gh-note { margin-top: 32px; text-align: center; font-size: clamp(14px, .85vw, 16px); opacity: .92; }
 /* buttons: owner's Indian skins (border-image; the ends keep their drawing, the middle stretches) */
-.gh .gh-btn { display: inline-flex; align-items: center; justify-content: center; gap: 10px; min-height: 60px; padding: 0 6px; border-style: solid; border-width: 0 58px; border-image: var(--gh-btn, linear-gradient(var(--saffron), var(--saffron))) 8 170 5 170 fill / 0 58px stretch; background: none; color: var(--ink); font: 900 clamp(17px, 1.2vw, 21px) var(--head); text-decoration: none; transition: transform .15s; }
+.gh .gh-btn { --bh: 80px; display: inline-flex; align-items: center; justify-content: center; gap: 10px; height: var(--bh); padding: 0 8px; border-style: solid; border-width: 0 calc(var(--bh) * 1.25); border-image: var(--gh-btn, linear-gradient(var(--saffron), var(--saffron))) 46 197 46 197 fill / 0 calc(var(--bh) * 1.25) stretch; background: none; color: var(--ink); font: 900 clamp(20px, 1.35vw, 24px)/1 var(--head); white-space: nowrap; text-decoration: none; filter: drop-shadow(0 4px 0 rgba(42, 31, 92, .55)); transition: transform .15s; }
 .gh .gh-btn:hover { transform: translate(-2px, -2px); color: var(--kumkum); }
-.gh .gh-btn2 { display: inline-flex; align-items: center; justify-content: center; min-height: 48px; padding: 0 4px; border-style: solid; border-width: 0 46px; border-image: var(--gh-btn2, linear-gradient(var(--haldi), var(--haldi))) 33 187 33 187 fill / 0 46px stretch; color: var(--ink); font: 900 16px var(--head); text-decoration: none; transition: transform .15s; }
+.gh .gh-btn2 { --bh: 62px; display: inline-flex; align-items: center; justify-content: center; height: var(--bh); padding: 0 6px; border-style: solid; border-width: 0 calc(var(--bh) * 1.3); border-image: var(--gh-btn2, linear-gradient(var(--haldi), var(--haldi))) 45 200 49 200 fill / 0 calc(var(--bh) * 1.3) stretch; color: var(--ink); font: 900 19px/1 var(--head); white-space: nowrap; text-decoration: none; filter: drop-shadow(0 4px 0 rgba(42, 31, 92, .55)); transition: transform .15s; }
 .gh .gh-btn2:hover { transform: translate(-2px, -2px); color: var(--kumkum); }
 /* ornaments */
-.gh .gh-mandana { height: clamp(22px, 2.4vw, 34px); background: var(--gh-mandana, var(--mud)) repeat-x center / auto 100%; border-block: 3px solid var(--ink); }
-.gh .gh-rangoli { height: clamp(64px, 7vw, 112px); margin-top: clamp(28px, 3vw, 48px); background: var(--gh-rangoli, var(--saffron)) repeat-x center / auto 100%; border-top: 3px solid var(--ink); }
+.gh .gh-mandana { height: clamp(66px, 5.8vw, 108px); background: var(--gh-rangoli, var(--saffron)) repeat-x center / auto 100%; border-block: 3px solid var(--ink); }
+.gh .gh-rangoli { height: clamp(66px, 5.8vw, 108px); margin-top: clamp(28px, 3vw, 48px); background: var(--gh-rangoli, var(--saffron)) repeat-x center / auto 100%; border-block: 3px solid var(--ink); }
 
 /* ---------- ① hero: the house ---------- */
 .gh .gh-hero { position: relative; isolation: isolate; background: var(--sky); padding-top: clamp(36px, 4vw, 72px); overflow: hidden; }
@@ -88,14 +88,15 @@
 .gh .gh-kite--contact .gh-tag em { background: var(--haldi); color: var(--ink); }
 
 /* ---------- ③ pothi FAQ ---------- */
-.gh .gh-leaves { display: flex; flex-direction: column; gap: 22px; max-width: 1240px; margin: 0 auto; }
+.gh .gh-leaves { display: flex; flex-direction: column; gap: 22px; max-width: 1440px; margin: 0 auto; }
 .gh .gh-leaf { color: var(--ink); }
 .gh .gh-leaf:nth-child(odd) { margin-right: clamp(0px, 3vw, 48px); } .gh .gh-leaf:nth-child(even) { margin-left: clamp(0px, 3vw, 48px); }
-.gh .gh-leaf summary { list-style: none; cursor: pointer; display: flex; align-items: center; gap: 18px; min-height: clamp(104px, 9vw, 128px); padding: 14px 4px; border-style: solid; border-width: 0 clamp(64px, 7vw, 120px); border-image: var(--gh-leaf, linear-gradient(var(--palm), var(--palm))) 83 330 95 330 fill / 0 clamp(64px, 7vw, 120px) stretch; filter: drop-shadow(6px 6px 0 #1a1340); }
+.gh .gh-leaf { --lh: clamp(92px, 7.4vw, 112px); container-type: inline-size; }
+.gh .gh-leaf summary { list-style: none; cursor: pointer; display: flex; align-items: center; gap: 16px; height: var(--lh); padding: 0 4px; border-style: solid; border-width: 0 calc(var(--lh) * 2.92); border-image: var(--gh-leaf, linear-gradient(var(--palm), var(--palm))) 83 356 95 356 fill / 0 calc(var(--lh) * 2.92) stretch; filter: drop-shadow(6px 6px 0 #1a1340); }
 .gh .gh-leaf summary::-webkit-details-marker { display: none; }
 .gh .gh-num { flex: none; display: grid; place-items: center; width: 60px; height: 60px; background: var(--gh-rosette, var(--haldi)) center / 100% 100% no-repeat; font: 900 22px var(--head); color: var(--ink); }
 .gh .gh-q { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 6px; }
-.gh .gh-q b { font: 900 clamp(19px, 1.5vw, 26px)/1.2 var(--head); }
+.gh .gh-q b { font: 900 clamp(18px, 1.3vw, 24px)/1.18 var(--head); }
 .gh .gh-pill { display: inline-block; padding: 2px 12px; border-radius: 999px; border: 2px solid var(--ink); background: var(--tone, var(--saffron)); color: var(--tone-ink, var(--ink)); font-size: 13px; font-weight: 800; }
 .gh .gh-chev { flex: none; width: 28px; height: 28px; transition: transform .15s; }
 .gh .gh-leaf[open] .gh-chev { transform: rotate(180deg); }
@@ -105,7 +106,7 @@
 
 /* ---------- ④ bahi-khata ---------- */
 .gh .gh-books { background: var(--cream); }
-.gh .gh-book { position: relative; max-width: 1500px; margin: 0 auto; border-style: solid; border-width: 62px 22px 66px 52px; border-image: var(--gh-cover, linear-gradient(var(--kumkum), var(--kumkum))) 259 80 273 213 / 62px 22px 66px 52px stretch; filter: drop-shadow(10px 10px 0 rgba(42, 31, 92, .9)); }
+.gh .gh-book { --bk: .3; position: relative; max-width: 1500px; margin: 0 auto; border-style: solid; border-width: calc(198px * var(--bk)) calc(205px * var(--bk)) calc(209px * var(--bk)); border-image: var(--gh-cover, linear-gradient(var(--kumkum), var(--kumkum))) 198 205 209 / calc(198px * var(--bk)) calc(205px * var(--bk)) calc(209px * var(--bk)) round; filter: drop-shadow(10px 10px 0 rgba(42, 31, 92, .9)); }
 .gh .gh-ribbons { position: absolute; right: 3%; top: -96px; width: clamp(70px, 6vw, 110px); height: auto; z-index: 2; pointer-events: none; }
 .gh .gh-spread { display: grid; grid-template-columns: 1fr 1fr; background: var(--gh-paper, var(--paper)) repeat center / 400px; }
 .gh .gh-page { padding: clamp(24px, 3vw, 48px) clamp(18px, 3vw, 48px); }
@@ -255,6 +256,13 @@
   .gh .hs-rail-head { border-bottom: 0; white-space: nowrap; }
   .gh .hs-rail-group:not(.is-closed) .hs-rail-head { background: var(--ink); color: var(--cream); }
 }
+@media (max-width: 1100px) {
+  .gh .gh-leaf:nth-child(n) { margin: 0; }
+  .gh .gh-leaf summary { --mh: min(52px, 12.5cqw); height: auto; flex-direction: column; text-align: center; gap: 8px; padding: 0 18px 18px; border: 3px solid var(--ink); border-image: none; border-radius: 22px; background: var(--palm); }
+  .gh .gh-leaf summary::before { content: ""; align-self: stretch; height: var(--mh); margin: 10px -12px 0; border-style: solid; border-width: 0 calc(var(--mh) * 2.92); border-image: var(--gh-leaf, linear-gradient(var(--saffron), var(--saffron))) 83 356 95 356 fill / 0 calc(var(--mh) * 2.92) stretch; }
+  .gh .gh-num { position: relative; margin-top: calc(-.5 * var(--mh) - 38px); }
+  .gh .gh-q { align-items: center; }
+}
 /* phones and small tablets: everything centred (owner rule) */
 @media (max-width: 900px) {
   .gh { --gut: max(16px, env(safe-area-inset-left, 0px)); --gut-r: max(16px, env(safe-area-inset-right, 0px)); }
@@ -269,12 +277,11 @@
   .gh .gh-hero-sticker { position: relative; right: auto; top: auto; margin: 0 auto 14px; transform: rotate(-3deg); }
   .gh .gh-roof { width: 108%; margin: 0 -4% -0.6%; }
   .gh .gh-kite-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .gh .gh-leaf:nth-child(n) { margin: 0; }
-  .gh .gh-leaf summary { flex-direction: column; text-align: center; gap: 8px; padding: 18px 0; }
-  .gh .gh-q { align-items: center; }
-  .gh .gh-answer { margin: 10px 0 0; text-align: center; }
+  .gh .gh-answer { margin: 10px 0 0; text-align: center; padding: 16px 14px; }
+  .gh .gh-btn { --bh: 68px; font-size: 20px; }
+  .gh .gh-btn2 { --bh: 58px; font-size: 17px; }
   .gh .gh-answer-foot { justify-content: center; flex-direction: column; }
-  .gh .gh-book { border-width: 34px 12px 36px 28px; border-image-width: 34px 12px 36px 28px; }
+  .gh .gh-book { --bk: .17; }
   .gh .gh-ribbons { top: -66px; right: 6%; width: 64px; }
   .gh .gh-spread { grid-template-columns: minmax(0, 1fr); }
   .gh .gh-page + .gh-page { border-left: 0; border-top: 3px solid var(--ink); box-shadow: none; }
@@ -293,8 +300,6 @@
   .gh .gh-tag { padding: 10px 8px 12px; }
   .gh .gh-tag b { font-size: 17px !important; }
   .gh .gh-tag small { font-size: 13px; }
-  .gh .gh-leaf summary { border-width: 0 40px; border-image-width: 0 40px; }
-  .gh .gh-btn { border-width: 0 48px; border-image-width: 0 48px; min-height: 54px; }
   .gh .hs-search { grid-template-columns: minmax(0, 1fr) auto; }
   .gh .hs-search-btn { padding: 0 16px; }
   .gh .hs-search-btn span { display: none; }
@@ -304,6 +309,9 @@
   .gh .hs-prose ol li { padding-left: 66px; }
   .gh .hs-prose ol li::before { width: 40px; height: 40px; font-size: 18px; }
 }
+@media (max-width: 600px) { .gh .gh-book { --bk: .12; margin-inline: calc(8px - var(--gut)); } .gh .gh-page { padding-inline: 12px; } }
+@media (max-width: 420px) { .gh .gh-btn { --bh: 62px; font-size: 18px; } .gh .gh-btn2 { --bh: 56px; font-size: 16px; } }
+@media (max-width: 360px) { .gh .gh-btn { --bh: 56px; font-size: 16px; } .gh .gh-btn2 { --bh: 52px; font-size: 14px; } }
 @media (prefers-reduced-motion: reduce) { .gh .gh-kite, .gh .gh-btn, .gh .gh-btn2 { transition: none; } }
 /* shared chrome resets b/strong fonts; keep Nunito on titles */
 .gh .hs-toc-cta b, .gh .hs-prevnext b, .gh .gh-q b { font-family: var(--head) !important; font-weight: 900 !important; }

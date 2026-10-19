@@ -390,6 +390,15 @@ then *"they still seem squeezed height-wise"*. The fix that was approved:
 - On phones the button column is `max-width: 440px`, full width, stacked.
 - Key depth is a `filter: drop-shadow(0 4px 0 rgba(ink,.55))`, never part of the slice.
 
+- **Leaves, scrolls and other wide art "keys" (owner, 2026-10-19, /help pothi):** same rule — cap = height × decor ÷
+  faceRows (the pothi leaf: `83 356 95 356`, cap = 2.92 × height). Give the element a **fixed height** so text can
+  never stretch the caps. Where the caps no longer fit beside the text (≤1100px), don't squeeze them: switch to a
+  card with the whole leaf at true shape as its header strip (`::before`, height `min(52px, 12.5cqw)`).
+- **Framed covers (books, ledgers):** a 9-slice frame must be **symmetric** and its sides must **repeat**
+  (`border-image-repeat: round`), never `stretch` — a tall page stretched the /help bahi-khata paisleys into stripes.
+  If the art has a one-sided extra (tassels), mirror the clean half into a new file (`bahikhata-frame.png`) rather
+  than slicing around it.
+
 ### 6.3 Object art and hero art (owner, 2026-10-18)
 
 - **Objects as tiles** (dabbas, kites, records…): no card, no tinted square. Grid `repeat(auto-fill,
@@ -650,4 +659,5 @@ Record app themes in §8 too.
 | 2026-10-18 | Buttons thin and squeezed; labels small | Taller keys, bigger labels, caps at drawn shape, squash corrected (§6.2) |
 | 2026-10-18 | Hero café picture small beside the text | Hero picture in the wider column, up to 1040px; full width on phones (§6.3) |
 | 2026-10-18 | Pale pink tile on maroon bands; cream accent text vanished on light tile art | Match tiles to band colours; re-check contrast with the real art (§6) |
+| 2026-10-19 | /help: pothi lotus ends, bahi-khata frame and Indian buttons squeezed; thin 40:1 mandana strip above the footer | Caps at drawn shape with fixed height, card + leaf header on phones, symmetric frame with `round` sides, buttons sliced to face rows (§6.2), rangoli border at v2 height |
 | 2026-10-18 | Checked the page on `astro dev`, which never shows `publicImage()` art | Build + `scripts/hf_preview_dist.py` before judging art (§9) |

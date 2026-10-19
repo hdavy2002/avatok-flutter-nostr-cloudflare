@@ -58,10 +58,12 @@ export const HELP_STICKERS = {
   article: { src: `${HELP}/stickers/sticker-ek-call-door.png`, alt: 'Bas ek call door!' },
 } as const;
 
+// [HF-HELP-SQUASH-1 2026-10-19] 'cover' is bahikhata-frame.png: the owner's bahikhata-cover.png with its left half
+// mirrored (tassels dropped) so the 9-slice frame is symmetric and its sides can repeat whole instead of stretching.
 /** Background art → --gh-* custom properties on the page root (each a url()). [key, file, width] */
 const BG_FILES: [string, string, number][] = [
   ['sky', 'ghar/sky-kites-strip.png', 2400], ['wall', 'ghar/wall-mandana.png', 640], ['mandana', 'ghar/mandana-strip.png', 1600],
-  ['rangoli', 'ghar/rangoli-strip.png', 1600], ['paper', 'book/bahikhata-paper.png', 800], ['cover', 'book/bahikhata-cover.png', 1600],
+  ['rangoli', 'ghar/rangoli-strip.png', 1600], ['paper', 'book/bahikhata-paper.png', 800], ['cover', 'book/bahikhata-frame.png', 1474],
   ['leaf', 'book/pothi-leaf.png', 2400], ['btn', 'buttons/btn-primary-skin.png', 900], ['btn2', 'buttons/btn-secondary-skin.png', 900],
   ['chip', 'buttons/chip-skin.png', 600], ['rosette', 'frames/badge-rosette.png', 256], ['ringsm', 'frames/ring-small.png', 256],
 ];
