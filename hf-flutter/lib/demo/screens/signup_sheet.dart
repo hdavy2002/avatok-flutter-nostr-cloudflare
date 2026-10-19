@@ -232,14 +232,15 @@ class _RealSignUpSheetState extends State<RealSignUpSheet> {
           decoration: const InputDecoration(hintText: '123456'),
         ),
         const SizedBox(height: 8),
-        Row(
+        Wrap(
+          alignment: WrapAlignment.spaceBetween,
+          crossAxisAlignment: WrapCrossAlignment.center,
           children: [
             TextButton(
               key: const Key('su-resend'),
               onPressed: (_resendIn > 0 || _busy) ? null : _resend,
               child: Text(_resendIn > 0 ? 'Send a new code in ${_resendIn}s' : 'Send a new code', style: t(15, color: _resendIn > 0 ? C.muted : C.ruby)),
             ),
-            const Spacer(),
             TextButton(
               key: const Key('su-change'),
               onPressed: _busy
