@@ -1,6 +1,7 @@
 import 'dart:typed_data';
 
-import 'package:flutter/widgets.dart';
+import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
 
 /// How an in-app payment attempt ended, as far as the phone can tell. The server alone decides whether money arrived:
 /// [completed] leads to the Payment screen, which asks `GET /api/hf/wallet/topup/:id`. [HF-WIRE-21]
