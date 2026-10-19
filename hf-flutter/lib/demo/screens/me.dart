@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/brand.dart';
+import '../../data/demo_mode.dart';
+import '../../data/services.dart';
 import '../state.dart';
 import '../theme.dart';
 import '../widgets.dart';
@@ -385,7 +387,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   const SizedBox(height: 8),
                   _info('Name', demo.name),
                   _info('Email', demo.email),
-                  _info('WhatsApp', demo.whatsapp.isEmpty ? '' : '+91 ${demo.whatsapp}'),
+                  _info('WhatsApp', demo.whatsappDisplay),
                   const SizedBox(height: 18),
                   Text('WhatsApp messages', style: t(18, color: C.maroon)),
                   _switch('Call alerts', _callAlerts, (v) => setState(() => _callAlerts = v)),
@@ -401,9 +403,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   ChunkyButton(
                     label: 'SIGN OUT',
                     filled: false,
-                    onTap: () {
-                      demo.signOut();
-                      context.go('/reels');
+                    onTap: () async {
+                      final go = GoRouter.of(context);
+                      // Real build: Clerk sign-out + forget the account (Services.signOut also resets the screen state).
+                      if (DemoMode.on) {
+                        demo.signOut();
+                      } else {
+                        await Services.instance.signOut();
+                      }
+                      go.go('/reels');
                     },
                   ),
                 ],

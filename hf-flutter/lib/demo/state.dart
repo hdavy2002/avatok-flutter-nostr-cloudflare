@@ -113,9 +113,24 @@ class DemoState extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// A real, signed-in account (HF-WIRE-2): the Me tab, Settings and every `demo.signedIn` check read these.
+  void applyAccount({required String name, required String email, required String whatsapp}) {
+    signedIn = true;
+    this.name = name.trim().isEmpty ? 'Friend' : name.trim();
+    this.email = email.trim();
+    this.whatsapp = whatsapp.trim();
+    notifyListeners();
+  }
+
+  /// "+91 98765 43210" for the demo's typed digits, the masked "******3210" as the server sends it.
+  String get whatsappDisplay => whatsapp.isEmpty ? '' : (whatsapp.contains('*') ? whatsapp : '+91 $whatsapp');
+
   void signOut() {
     signedIn = false;
     influencerJoined = false;
+    name = '';
+    email = '';
+    whatsapp = '';
     notifyListeners();
   }
 

@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
+import '../data/demo_mode.dart';
+import '../data/repos/auth_repo.dart';
+import '../data/services.dart';
 import 'data.dart';
 import 'screens/sheets.dart';
 import 'state.dart';
@@ -508,8 +511,10 @@ class PageHeader extends StatelessWidget {
 }
 
 /// Opens the sign-up sheet when the visitor has no account yet, then runs [then].
-Future<void> requireAccount(BuildContext context, VoidCallback then, {String? reason}) async {
-  if (demo.signedIn) {
+/// A real build (HF_DEMO=false) asks the server-backed session; a demo build keeps the dummy account.
+Future<void> requireAccount(BuildContext context, VoidCallback then, {String? reason, AuthRepo? repo}) async {
+  final real = repo != null || !DemoMode.on;
+  if (real ? Services.instance.isSignedIn : demo.signedIn) {
     then();
     return;
   }
@@ -517,7 +522,7 @@ Future<void> requireAccount(BuildContext context, VoidCallback then, {String? re
     context: context,
     isScrollControlled: true,
     backgroundColor: C.clear,
-    builder: (_) => SignUpSheet(reason: reason),
+    builder: (_) => SignUpSheet(reason: reason, repo: repo),
   );
   if (ok == true && context.mounted) then();
 }

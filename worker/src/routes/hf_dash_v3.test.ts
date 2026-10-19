@@ -8,6 +8,8 @@ vi.mock("../authz", () => ({
   requireUser: async (req: Request) => ({ uid: req.headers.get("x-test-uid") ?? "u1" }),
   isFail: (u: any) => !!u?.error,
 }));
+let cfg: Record<string, unknown> = {};
+vi.mock("./config", () => ({ readConfig: async () => cfg }));
 const emails: any[] = [];
 vi.mock("../lib/email_outbox", () => ({ enqueueEmail: async (_e: any, m: any) => { emails.push(m); return { status: "queued" }; } }));
 
@@ -33,6 +35,7 @@ function makeEnv() {
   `);
   db.exec(require_("node:fs").readFileSync(new URL("../../migrations/2026-10-16-hf-dash-v3.sql", import.meta.url), "utf8"));
   db.exec(require_("node:fs").readFileSync(new URL("../../migrations/2026-10-16-hf-appt-reminders.sql", import.meta.url), "utf8"));
+  db.exec(require_("node:fs").readFileSync(new URL("../../migrations/2026-10-19-hf-prefs-reel-alerts.sql", import.meta.url), "utf8"));
   kv = new Map();
   const stmt = (q: string, args: unknown[] = []) => ({
     bind: (...a: unknown[]) => stmt(q, a),
@@ -50,7 +53,7 @@ const req = (method: string, path: string, body?: unknown, uid = "u1") =>
   new Request("https://x" + path, { method, headers: { "content-type": "application/json", "x-test-uid": uid }, body: body === undefined ? undefined : JSON.stringify(body) });
 const call = async (method: string, path: string, body?: unknown, uid = "u1") => { const r = await hfDashV3Route(req(method, path, body, uid), env, path); return { status: r!.status, body: await r!.json() }; };
 
-beforeEach(() => { makeEnv(); emails.length = 0; });
+beforeEach(() => { makeEnv(); emails.length = 0; cfg = {}; });
 
 describe("pure helpers", () => {
   it("streak counts back from today, or from yesterday when today has no call yet", () => {
@@ -102,11 +105,21 @@ describe("profile, prefs, blocks, tickets", () => {
   });
   it("notify preference defaults on and can be paused", async () => {
     expect(await notifyWhatsappOn(env, "u1")).toBe(true);
-    expect((await call("PUT", "/api/hf/me/prefs", { notifyWhatsapp: false })).body).toEqual({ ok: true, notifyWhatsapp: false, apptReminders: true });
+    expect((await call("PUT", "/api/hf/me/prefs", { notifyWhatsapp: false })).body).toEqual({ ok: true, notifyWhatsapp: false, apptReminders: true, reelAlerts: true });
     expect(await notifyWhatsappOn(env, "u1")).toBe(false);
-    expect((await call("PUT", "/api/hf/me/prefs", { apptReminders: false })).body).toEqual({ ok: true, notifyWhatsapp: false, apptReminders: false });
-    expect((await call("GET", "/api/hf/me/prefs")).body).toEqual({ ok: true, notifyWhatsapp: false, apptReminders: false });
+    expect((await call("PUT", "/api/hf/me/prefs", { apptReminders: false })).body).toEqual({ ok: true, notifyWhatsapp: false, apptReminders: false, reelAlerts: true });
+    expect((await call("GET", "/api/hf/me/prefs")).body).toEqual({ ok: true, notifyWhatsapp: false, apptReminders: false, reelAlerts: true });
     expect((await call("PUT", "/api/hf/me/prefs", { apptReminders: "no" })).status).toBe(400);
+  });
+  it("[HF-WIRE-2] PATCH prefs and reelAlerts: flag off is 403, flag on works, own row only", async () => {
+    expect((await call("PATCH", "/api/hf/me/prefs", { notifyWhatsapp: false })).status).toBe(403);
+    expect((await call("PUT", "/api/hf/me/prefs", { reelAlerts: false })).status).toBe(403);
+    cfg = { hfFanSignupEnabled: true };
+    expect((await call("PATCH", "/api/hf/me/prefs", { reelAlerts: false })).body).toEqual({ ok: true, notifyWhatsapp: true, apptReminders: true, reelAlerts: false });
+    expect((await call("GET", "/api/hf/me/prefs")).body.reelAlerts).toBe(false);
+    expect((await call("GET", "/api/hf/me/prefs", undefined, "u2")).body.reelAlerts).toBe(true);
+    expect((await call("PATCH", "/api/hf/me/prefs", { reelAlerts: "x" })).status).toBe(400);
+    expect((await call("PATCH", "/api/hf/me/prefs", {})).status).toBe(400);
   });
   it("blocks the other person of my call only, lists and unblocks", async () => {
     db.exec(`INSERT INTO hf_hosts VALUES ('h1','riya','Riya','live')`);

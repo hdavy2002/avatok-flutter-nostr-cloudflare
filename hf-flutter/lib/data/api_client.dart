@@ -159,6 +159,9 @@ class ApiClient {
   Future<Map<String, dynamic>> postJson(String path, {Object? body, bool auth = true}) async =>
       asMap(await request('POST', path, body: body ?? const <String, Object?>{}, auth: auth));
 
+  Future<Map<String, dynamic>> patchJson(String path, {Object? body, bool auth = true}) async =>
+      asMap(await request('PATCH', path, body: body ?? const <String, Object?>{}, auth: auth));
+
   Future<Map<String, dynamic>> putJson(String path, {Object? body, bool auth = true}) async =>
       asMap(await request('PUT', path, body: body ?? const <String, Object?>{}, auth: auth));
 

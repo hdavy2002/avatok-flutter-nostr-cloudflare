@@ -7,6 +7,7 @@ import 'api_client.dart';
 import 'auth/clerk_client.dart';
 import 'intro_store.dart';
 import 'models/me.dart';
+import 'repos/auth_repo.dart';
 import 'repos/config_repo.dart';
 import 'repos/me_repo.dart';
 import 'telemetry.dart';
@@ -23,6 +24,12 @@ class Services {
   late final ApiClient api = ApiClient(tokens: clerk.sessionToken, onSessionLost: _sessionLost);
   late final MeRepo meRepo = MeRepo(api);
   late final ConfigRepo configRepo = ConfigRepo(api);
+  late final AuthRepo authRepo = AuthRepo(
+    api: api,
+    clerk: clerk,
+    onSignedIn: (u) => user = u,
+    refreshMe: refreshMe,
+  );
 
   /// The signed-in Clerk user, or null (signed out, or no connection at start).
   ClerkUser? user;
@@ -38,6 +45,7 @@ class Services {
   Future<void> _sessionLost() async {
     user = null;
     me = null;
+    demo.signOut();
   }
 
   /// Is there an active Clerk session on this device? Never throws.
@@ -55,17 +63,27 @@ class Services {
     if (!isSignedIn) return;
     try {
       me = await meRepo.fetch();
+      _syncDemoAccount();
     } catch (_) {
       // keep what we had; the api client already reported the failure
     }
   }
 
+  /// Mirror the real account into the screens' shared state (Me header, Settings, `requireAccount`).
+  void _syncDemoAccount() {
+    final m = me;
+    if (m == null) return;
+    demo.applyAccount(name: m.name ?? '', email: m.email ?? '', whatsapp: m.phoneMasked ?? '');
+  }
+
+  /// Clerk sign-out, then forget everything held for this person (account, cached /me, screen state).
   Future<void> signOut() async {
     try {
       await clerk.signOut();
     } catch (_) {}
     user = null;
     me = null;
+    demo.signOut();
   }
 
   /// Android versionCode, or 0 when unknown (never nag on a guess).

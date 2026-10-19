@@ -2,9 +2,10 @@
 //   GET   /api/hf/me   signed in -> { uid, displayName, phoneMasked, whatsappVerified, ackVersion, age18ConfirmedAt, isHost,
 //                                     host: {status, slug} | null, lanes: {women, lgbtq}, closing, tokensMode,
 //                                     [HF-WIRE-1B reels app, additive:] name, email|null, whatsapp (masked), role: 'fan'|'host' (host = live),
-//                                     hostStatus|null (raw hf_hosts.status), presence|null (hosts only), walletPaise|null, prefs:{notifyWhatsapp,apptReminders} }
+//                                     hostStatus|null (raw hf_hosts.status), presence|null (hosts only), walletPaise|null, prefs:{notifyWhatsapp,apptReminders,reelAlerts} }
 //        walletPaise is the caller's own spendable balance in paise, or null when it could not be read (use GET /api/hf/wallet for the breakdown).
-//   PATCH /api/hf/me   { displayName }   signed in -> { ok, displayName }   (2-40 chars, no digits, no contact details)
+//   PATCH /api/hf/me   { displayName?, email? }   signed in -> { ok, displayName, email }   (name: 2-40 chars, no digits, no contact details;
+//        [HF-WIRE-2] email: stored in hf_user_email, needs flag hfFanSignupEnabled else 403 feature_off; at least one field required)
 //   POST  /api/hf/me/ack { version, ack18? }  signed in -> { ok, ackVersion, age18ConfirmedAt }   [HF-NATIVE-S4]
 //        stores hf_user_ack(uid, version, at) (first ack of a version wins) and, when ack18 is true, the existing hf_age_confirm row.
 // Not avaTOK's /api/me (that one is avaTOK-shaped). Never returns a full phone number, an email or a Clerk id other than uid.
@@ -68,7 +69,7 @@ export async function hfMeRoute(req: Request, env: Env, p: string): Promise<Resp
 
 async function getMe(env: Env, uid: string): Promise<Response> {
   // One joined read for the profile facts, plus the ack, lane and closing checks and the (KV-cached) config, all in parallel.
-  const [row, ack, registration, registrationPending, lanes, closing, cfg, email, prefs] = await Promise.all([
+  const [row, ack, registration, registrationPending, lanes, closing, cfg, clerkEmail, prefs, typedEmail] = await Promise.all([
     env.DB_META.prepare(
       `SELECT u.display_name AS display_name,
               cv.phone_verified AS phone_verified,
@@ -94,10 +95,13 @@ async function getMe(env: Env, uid: string): Promise<Response> {
     readConfig(env).catch(() => null),
     // [HF-WIRE-1B] The caller's OWN email (KV-cached Clerk lookup); null if it cannot be read. Never another user's.
     (async () => emailFor(env, uid))().catch(() => null),
-    (async () => env.DB_META.prepare("SELECT notify_whatsapp, appt_reminders FROM hf_user_prefs WHERE uid=?1").bind(uid)
-      .first<{ notify_whatsapp: number; appt_reminders: number | null }>())().catch(() => null),
+    (async () => env.DB_META.prepare("SELECT * FROM hf_user_prefs WHERE uid=?1").bind(uid)
+      .first<{ notify_whatsapp: number; appt_reminders: number | null; reel_alerts?: number | null }>())().catch(() => null),
+    // [HF-WIRE-2] The email a fan typed at sign-up (phone-only accounts have no Clerk email). Failure-isolated.
+    env.DB_META.prepare("SELECT email FROM hf_user_email WHERE uid=?1").bind(uid).first<{ email: string }>().then((r) => r?.email ?? null).catch(() => null),
   ]);
   const walletPaise = await readWalletPaise(env, uid, cfg?.hfTokensEnabled === true);
+  const email = clerkEmail ?? typedEmail;
   const host = row?.host_status ? { status: row.host_status, slug: row.host_slug ?? null } : null;
   const displayName = row?.display_name?.trim() ? row.display_name : null;
   const phoneMasked = maskPhoneLast4(row?.e164);
@@ -124,7 +128,7 @@ async function getMe(env: Env, uid: string): Promise<Response> {
     hostStatus: row?.host_status ?? null,
     presence: row?.host_status ? (row.host_presence ?? "offline") : null,
     walletPaise,
-    prefs: { notifyWhatsapp: prefs ? Number(prefs.notify_whatsapp) === 1 : true, apptReminders: prefs ? Number(prefs.appt_reminders ?? 1) !== 0 : true },
+    prefs: { notifyWhatsapp: prefs ? Number(prefs.notify_whatsapp) === 1 : true, apptReminders: prefs ? Number(prefs.appt_reminders ?? 1) !== 0 : true, reelAlerts: prefs ? Number(prefs.reel_alerts ?? 1) !== 0 : true },
   };
   return json(body, 200, { "cache-control": "private, no-store" });
 }
@@ -139,17 +143,46 @@ async function readWalletPaise(env: Env, uid: string, tokensMode: boolean): Prom
   } catch { return null; }
 }
 
+const EMAIL_RE = /^[^\s@<>()\\,;:"]{1,64}@[A-Za-z0-9.-]{1,190}\.[A-Za-z]{2,24}$/;
+/** [HF-WIRE-2] Trimmed, lower-cased, <=254 chars, one "@", a dot in the domain. */
+export function validateEmail(raw: unknown): { ok: true; email: string } | { ok: false; message: string } {
+  const email = typeof raw === "string" ? raw.normalize("NFKC").trim().toLowerCase() : "";
+  if (!email || email.length > 254 || !EMAIL_RE.test(email) || email.includes("..")) return { ok: false, message: "Please enter a valid email address." };
+  return { ok: true, email };
+}
+
 async function patchMe(req: Request, env: Env, uid: string): Promise<Response> {
   const lim = await rateLimit(env, `hfme:${uid}`, 20, 3600);
   if (lim) return lim;
   const b = (await req.json().catch(() => null)) as Record<string, unknown> | null;
   if (!b || typeof b !== "object") return err(400, "invalid_body", "Please send your name.");
-  const v = validateDisplayName(b.displayName);
-  if (!v.ok) return err(400, "invalid_field", v.message, { field: "displayName" });
-  const r = await env.DB_META.prepare("UPDATE users SET display_name=?2, updated_at=?3 WHERE uid=?1").bind(uid, v.name, Date.now()).run();
-  if (!Number(r.meta?.changes ?? 0)) return err(404, "no_account", "We couldn't find your account. Please sign in again.");
-  void track(env, uid, "hf_me_name_updated", APP, { outcome: "ok", length: [...v.name].length });
-  return json({ ok: true, displayName: v.name });
+  const hasName = b.displayName !== undefined, hasEmail = b.email !== undefined;
+  if (!hasName && !hasEmail) return err(400, "invalid_body", "Please send your name or email.");
+  let name: string | null = null, email: string | null = null;
+  if (hasName) {
+    const v = validateDisplayName(b.displayName);
+    if (!v.ok) return err(400, "invalid_field", v.message, { field: "displayName" });
+    name = v.name;
+  }
+  if (hasEmail) {
+    if (!(await readConfig(env).catch(() => null))?.hfFanSignupEnabled) return err(403, "feature_off", "This isn\u2019t available yet.");
+    const v = validateEmail(b.email);
+    if (!v.ok) return err(400, "invalid_field", v.message, { field: "email" });
+    email = v.email;
+  }
+  const now = Date.now();
+  if (name !== null) {
+    const r = await env.DB_META.prepare("UPDATE users SET display_name=?2, updated_at=?3 WHERE uid=?1").bind(uid, name, now).run();
+    if (!Number(r.meta?.changes ?? 0)) return err(404, "no_account", "We couldn't find your account. Please sign in again.");
+    void track(env, uid, "hf_me_name_updated", APP, { outcome: "ok", length: [...name].length });
+  }
+  if (email !== null) {
+    await env.DB_META.prepare(
+      "INSERT INTO hf_user_email (uid, email, updated_at) VALUES (?1,?2,?3) ON CONFLICT(uid) DO UPDATE SET email=excluded.email, updated_at=excluded.updated_at",
+    ).bind(uid, email, now).run();
+    void track(env, uid, "hf_me_email_saved", APP, { outcome: "ok" });
+  }
+  return json({ ok: true, ...(name !== null ? { displayName: name } : {}), ...(email !== null ? { email } : {}) });
 }
 
 // ---------------------------------------------------------------------------

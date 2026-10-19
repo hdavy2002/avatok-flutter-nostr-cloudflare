@@ -5,7 +5,7 @@
 //   GET    /api/hf/me/profile           -> { ok, firstName, lastName, username, displayName, city, languages[], talkAbout, joinedAt }
 //   PUT    /api/hf/me/profile           { firstName?, lastName?, city?, languages?, talkAbout? } -> same as GET
 //   GET    /api/hf/me/prefs             -> { ok, notifyWhatsapp, apptReminders }
-//   PUT    /api/hf/me/prefs             { notifyWhatsapp?, apptReminders? } -> same   (notifyWhatsapp false pauses every "Notify me" WhatsApp;
+//   PUT|PATCH /api/hf/me/prefs          { notifyWhatsapp?, apptReminders?, reelAlerts? } -> same (+ reelAlerts, default on; [HF-WIRE-2] PATCH and reelAlerts need hfFanSignupEnabled, else 403 feature_off)   (notifyWhatsapp false pauses every "Notify me" WhatsApp;
 //                                         apptReminders false stops the 1 h / 10 min appointment reminders, HF-APPT-REMIND-1)
 //   POST   /api/hf/calls/:id/block      { reason } -> { ok }   the other person of one of your calls; also files an incident for the team
 //   GET    /api/hf/blocks               -> { ok, items:[{key,name,slug,at}] }
@@ -22,6 +22,7 @@ import { contactLeak } from "../lib/hf_options";
 import { callerHandle } from "../lib/hf_call_math";
 import { REVIEW_WINDOW_MS } from "../lib/hf_reviews_pure";
 import { enqueueEmail } from "../lib/email_outbox";
+import { readConfig } from "./config";
 
 const APP = BRAND.slug;
 const DAY_MS = 86_400_000;
@@ -165,25 +166,42 @@ async function putProfile(req: Request, env: Env, uid: string): Promise<Response
 }
 
 async function prefs(req: Request, env: Env, uid: string): Promise<Response> {
-  if (req.method === "PUT") {
-    const b = (await req.json().catch(() => null)) as { notifyWhatsapp?: unknown; apptReminders?: unknown } | null;
-    const nw = b?.notifyWhatsapp, ar = b?.apptReminders;
-    if (!b || (nw === undefined && ar === undefined) || (nw !== undefined && typeof nw !== "boolean") || (ar !== undefined && typeof ar !== "boolean"))
-      return err(400, "invalid_field", "notifyWhatsapp and apptReminders must be true or false.");
+  if (req.method === "PUT" || req.method === "PATCH") {
+    const b = (await req.json().catch(() => null)) as { notifyWhatsapp?: unknown; apptReminders?: unknown; reelAlerts?: unknown } | null;
+    const nw = b?.notifyWhatsapp, ar = b?.apptReminders, ra = b?.reelAlerts;
+    const bad = (v: unknown) => v !== undefined && typeof v !== "boolean";
+    if (!b || (nw === undefined && ar === undefined && ra === undefined) || bad(nw) || bad(ar) || bad(ra))
+      return err(400, "invalid_field", "notifyWhatsapp, apptReminders and reelAlerts must be true or false.");
+    if ((req.method === "PATCH" || ra !== undefined) && !(await readConfig(env).catch(() => null))?.hfFanSignupEnabled)
+      return err(403, "feature_off", "This isn\u2019t available yet.");
     const cur = await readPrefs(env, uid);
-    const next = { notifyWhatsapp: typeof nw === "boolean" ? nw : cur.notifyWhatsapp, apptReminders: typeof ar === "boolean" ? ar : cur.apptReminders };
-    await env.DB_META.prepare(
-      `INSERT INTO hf_user_prefs (uid, notify_whatsapp, appt_reminders, updated_at) VALUES (?1,?2,?3,?4)
-       ON CONFLICT(uid) DO UPDATE SET notify_whatsapp=excluded.notify_whatsapp, appt_reminders=excluded.appt_reminders, updated_at=excluded.updated_at`,
-    ).bind(uid, next.notifyWhatsapp ? 1 : 0, next.apptReminders ? 1 : 0, Date.now()).run();
-    void track(env, uid, "hf_dash_prefs_saved", APP, { notify_whatsapp: next.notifyWhatsapp, appt_reminders: next.apptReminders });
+    const next = {
+      notifyWhatsapp: typeof nw === "boolean" ? nw : cur.notifyWhatsapp,
+      apptReminders: typeof ar === "boolean" ? ar : cur.apptReminders,
+      reelAlerts: typeof ra === "boolean" ? ra : cur.reelAlerts,
+    };
+    // reel_alerts is a newer column; when the ALTER has not been applied yet, fall back to the two original switches.
+    const now = Date.now();
+    try {
+      await env.DB_META.prepare(
+        `INSERT INTO hf_user_prefs (uid, notify_whatsapp, appt_reminders, reel_alerts, updated_at) VALUES (?1,?2,?3,?4,?5)
+         ON CONFLICT(uid) DO UPDATE SET notify_whatsapp=excluded.notify_whatsapp, appt_reminders=excluded.appt_reminders, reel_alerts=excluded.reel_alerts, updated_at=excluded.updated_at`,
+      ).bind(uid, next.notifyWhatsapp ? 1 : 0, next.apptReminders ? 1 : 0, next.reelAlerts ? 1 : 0, now).run();
+    } catch (e) {
+      if (ra !== undefined) throw e;
+      await env.DB_META.prepare(
+        `INSERT INTO hf_user_prefs (uid, notify_whatsapp, appt_reminders, updated_at) VALUES (?1,?2,?3,?4)
+         ON CONFLICT(uid) DO UPDATE SET notify_whatsapp=excluded.notify_whatsapp, appt_reminders=excluded.appt_reminders, updated_at=excluded.updated_at`,
+      ).bind(uid, next.notifyWhatsapp ? 1 : 0, next.apptReminders ? 1 : 0, now).run();
+    }
+    void track(env, uid, "hf_dash_prefs_saved", APP, { notify_whatsapp: next.notifyWhatsapp, appt_reminders: next.apptReminders, reel_alerts: next.reelAlerts });
     return json({ ok: true, ...next }, 200, NO_STORE);
   }
   return json({ ok: true, ...(await readPrefs(env, uid)) }, 200, NO_STORE);
 }
-async function readPrefs(env: Env, uid: string): Promise<{ notifyWhatsapp: boolean; apptReminders: boolean }> {
-  const r = await env.DB_META.prepare("SELECT notify_whatsapp, appt_reminders FROM hf_user_prefs WHERE uid=?1").bind(uid).first<{ notify_whatsapp: number; appt_reminders: number | null }>().catch(() => null);
-  return { notifyWhatsapp: r ? Number(r.notify_whatsapp) === 1 : true, apptReminders: r ? Number(r.appt_reminders ?? 1) !== 0 : true };
+async function readPrefs(env: Env, uid: string): Promise<{ notifyWhatsapp: boolean; apptReminders: boolean; reelAlerts: boolean }> {
+  const r = await env.DB_META.prepare("SELECT * FROM hf_user_prefs WHERE uid=?1").bind(uid).first<{ notify_whatsapp: number; appt_reminders: number | null; reel_alerts?: number | null }>().catch(() => null);
+  return { notifyWhatsapp: r ? Number(r.notify_whatsapp) === 1 : true, apptReminders: r ? Number(r.appt_reminders ?? 1) !== 0 : true, reelAlerts: r ? Number(r.reel_alerts ?? 1) !== 0 : true };
 }
 /** [HF-DASH-V3-1] The caller's "Notify me on WhatsApp" switch. Default on; a missing table or row counts as on. */
 export async function notifyWhatsappOn(env: Env, uid: string): Promise<boolean> {
@@ -259,7 +277,7 @@ export function isDashV3Path(p: string): boolean {
 export async function hfDashV3Route(req: Request, env: Env, p: string): Promise<Response | null> {
   if (!isDashV3Path(p)) return null;
   const m = req.method;
-  const allowed = (p === "/api/hf/me/insights" && m === "GET") || ((p === "/api/hf/me/profile" || p === "/api/hf/me/prefs") && (m === "GET" || m === "PUT"))
+  const allowed = (p === "/api/hf/me/insights" && m === "GET") || (p === "/api/hf/me/profile" && (m === "GET" || m === "PUT")) || (p === "/api/hf/me/prefs" && (m === "GET" || m === "PUT" || m === "PATCH"))
     || (p === "/api/hf/blocks" && m === "GET") || (p === "/api/hf/support/tickets" && (m === "GET" || m === "POST"))
     || (CALL_BLOCK_RE.test(p) && m === "POST") || (BLOCK_KEY_RE.test(p) && m === "DELETE");
   if (!allowed) return err(405, "method_not_allowed");

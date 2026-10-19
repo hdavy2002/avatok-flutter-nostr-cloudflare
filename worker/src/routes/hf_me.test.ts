@@ -37,7 +37,8 @@ function makeEnv() {
     CREATE TABLE hf_phone_signup (uid TEXT PRIMARY KEY, state TEXT);
     CREATE TABLE hf_registration_progress (uid TEXT PRIMARY KEY);
     CREATE TABLE hf_hosts (uid TEXT PRIMARY KEY, slug TEXT, status TEXT NOT NULL DEFAULT 'draft', presence TEXT NOT NULL DEFAULT 'offline');
-    CREATE TABLE hf_user_prefs (uid TEXT PRIMARY KEY, notify_whatsapp INTEGER NOT NULL DEFAULT 1, appt_reminders INTEGER NOT NULL DEFAULT 1, updated_at INTEGER);
+    CREATE TABLE hf_user_prefs (uid TEXT PRIMARY KEY, notify_whatsapp INTEGER NOT NULL DEFAULT 1, appt_reminders INTEGER NOT NULL DEFAULT 1, reel_alerts INTEGER NOT NULL DEFAULT 1, updated_at INTEGER);
+    CREATE TABLE hf_user_email (uid TEXT PRIMARY KEY, email TEXT NOT NULL, updated_at INTEGER NOT NULL);
     CREATE TABLE hf_kyc (uid TEXT PRIMARY KEY, gender TEXT, verified_at INTEGER);
     CREATE TABLE hf_lane_access (uid TEXT NOT NULL, lane TEXT NOT NULL, verified_at INTEGER NOT NULL, declared_at INTEGER, PRIMARY KEY (uid, lane));
     CREATE TABLE hf_exit_requests (uid TEXT PRIMARY KEY, status TEXT NOT NULL);
@@ -77,7 +78,7 @@ describe("GET /api/hf/me", () => {
       uid: "u1", displayName: null, username: null, registrationComplete: false, registrationRequired: false, phoneMasked: null, whatsappVerified: false, ackVersion: null, age18ConfirmedAt: null,
       isHost: false, host: null, lanes: { women: false, lgbtq: false }, closing: false, tokensMode: false,
       name: null, email: null, whatsapp: null, role: "fan", hostStatus: null, presence: null, walletPaise: 0,
-      prefs: { notifyWhatsapp: true, apptReminders: true },
+      prefs: { notifyWhatsapp: true, apptReminders: true, reelAlerts: true },
     });
   });
 
@@ -98,13 +99,13 @@ describe("GET /api/hf/me", () => {
     emails = { u1: "meena@example.com" };
     tokenAvail = 4250;
     db.prepare("UPDATE hf_hosts SET presence='online' WHERE uid='u1'").run();
-    db.prepare("INSERT INTO hf_user_prefs VALUES ('u1',0,1,5)").run();
+    db.prepare("INSERT INTO hf_user_prefs (uid, notify_whatsapp, appt_reminders, updated_at) VALUES ('u1',0,1,5)").run();
     const b = await (await call(req("GET"))).json();
     expect(b).toEqual({
       uid: "u1", displayName: "Meena", username: "meena", registrationComplete: true, registrationRequired: false, phoneMasked: "******3210", whatsappVerified: true, ackVersion: "2026-10-10", age18ConfirmedAt: 1234,
       isHost: true, host: { status: "live", slug: "meena" }, lanes: { women: true, lgbtq: false }, closing: true, tokensMode: true,
       name: "Meena", email: "meena@example.com", whatsapp: "******3210", role: "host", hostStatus: "live", presence: "online", walletPaise: 4250,
-      prefs: { notifyWhatsapp: false, apptReminders: true },
+      prefs: { notifyWhatsapp: false, apptReminders: true, reelAlerts: true },
     });
     expect(JSON.stringify(b)).not.toContain("98765");
   });
@@ -155,11 +156,11 @@ describe("GET /api/hf/me reels-app fields [HF-WIRE-1B]", () => {
     db.prepare("INSERT INTO contact_verification VALUES ('u2',1,'h2')").run();
     db.prepare("INSERT INTO phone_otp (uid, phone_hash, e164, status, verified_at) VALUES ('u2','h2','+919000011111','verified',5)").run();
     db.prepare("INSERT INTO hf_hosts (uid, slug, status, presence) VALUES ('u2','other','live','online')").run();
-    db.prepare("INSERT INTO hf_user_prefs VALUES ('u2',0,0,5)").run();
+    db.prepare("INSERT INTO hf_user_prefs (uid, notify_whatsapp, appt_reminders, updated_at) VALUES ('u2',0,0,5)").run();
     emails = { u1: "mine@example.com", u2: "other@example.com" };
     const text = JSON.stringify(await (await call(req("GET"))).json());
     const b = JSON.parse(text);
-    expect(b).toMatchObject({ uid: "u1", name: "Mine", email: "mine@example.com", whatsapp: null, role: "fan", hostStatus: null, presence: null, prefs: { notifyWhatsapp: true, apptReminders: true } });
+    expect(b).toMatchObject({ uid: "u1", name: "Mine", email: "mine@example.com", whatsapp: null, role: "fan", hostStatus: null, presence: null, prefs: { notifyWhatsapp: true, apptReminders: true, reelAlerts: true } });
     for (const leak of ["other@example.com", "Other", "u2", "11111", "other\""]) expect(text).not.toContain(leak);
   });
   it("signed out is 401 with no body fields leaked", async () => {
@@ -232,5 +233,42 @@ describe("helpers", () => {
   });
   it("validateDisplayName returns the cleaned name", () => {
     expect(validateDisplayName(" Aarti  Sharma ")).toEqual({ ok: true, name: "Aarti Sharma" });
+  });
+});
+
+describe("PATCH /api/hf/me email [HF-WIRE-2]", () => {
+  beforeEach(() => { db.prepare("INSERT INTO users (uid) VALUES ('u1'), ('u2')").run(); });
+  it("flag off: email is 403 feature_off and nothing is stored; the name still works", async () => {
+    const r = await call(req("PATCH", { email: "a@b.com" }));
+    expect(r.status).toBe(403);
+    expect((await r.json()).error).toBe("feature_off");
+    expect(db.prepare("SELECT COUNT(*) AS n FROM hf_user_email").get().n).toBe(0);
+    expect((await call(req("PATCH", { displayName: "Meena" }))).status).toBe(200);
+  });
+  it("flag on: stores a trimmed lower-case email, name and email together, GET returns it for me only", async () => {
+    cfg = { hfFanSignupEnabled: true };
+    const r = await call(req("PATCH", { displayName: "Meena", email: "  Meena@Example.COM " }));
+    expect(r.status).toBe(200);
+    expect(await r.json()).toEqual({ ok: true, displayName: "Meena", email: "meena@example.com" });
+    expect((await (await call(req("GET"))).json()).email).toBe("meena@example.com");
+    expect((await (await call(req("GET", undefined, "u2"))).json()).email).toBeNull();
+    await call(req("PATCH", { email: "new@example.com" }));
+    expect(db.prepare("SELECT email FROM hf_user_email WHERE uid='u1'").get().email).toBe("new@example.com");
+  });
+  it("a Clerk email wins over the typed one", async () => {
+    cfg = { hfFanSignupEnabled: true };
+    await call(req("PATCH", { email: "typed@example.com" }));
+    emails = { u1: "clerk@example.com" };
+    expect((await (await call(req("GET"))).json()).email).toBe("clerk@example.com");
+  });
+  it.each(["", "nope", "a@b", "a b@c.com", "a@@c.com", "a@c..com", 5, null])("rejects %p", async (v) => {
+    cfg = { hfFanSignupEnabled: true };
+    const r = await call(req("PATCH", { email: v }));
+    expect(r.status).toBe(400);
+    expect(await r.json()).toMatchObject({ error: "invalid_field", field: "email" });
+  });
+  it("signed out is 401", async () => {
+    authFail = { status: 401, error: "unauthorized" };
+    expect((await call(req("PATCH", { email: "a@b.com" }))).status).toBe(401);
   });
 });

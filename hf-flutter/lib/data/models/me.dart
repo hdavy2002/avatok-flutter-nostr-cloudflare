@@ -18,6 +18,8 @@ class Me {
     this.whatsappVerified = false,
     this.ackVersion,
     this.closing = false,
+    this.email,
+    this.age18ConfirmedAt,
   });
 
   final String uid;
@@ -36,6 +38,12 @@ class Me {
   /// The account is being closed.
   final bool closing;
 
+  /// The person's own email (Clerk's, or the one typed at sign-up), or null.
+  final String? email;
+
+  /// Epoch ms of the 18+ confirmation, or null when not confirmed yet.
+  final int? age18ConfirmedAt;
+
   bool get isHost => role == UserRole.host;
 
   factory Me.fromJson(Map<String, dynamic> j) {
@@ -43,7 +51,7 @@ class Me {
     final host = hostRaw is Map ? Map<String, dynamic>.from(hostRaw) : null;
     return Me(
       uid: (j['uid'] ?? '').toString(),
-      name: _s(j['displayName']),
+      name: _s(j['displayName']) ?? _s(j['name']),
       role: (j['isHost'] == true || host != null) ? UserRole.host : UserRole.fan,
       hostStatus: host == null ? null : _s(host['status']),
       hostSlug: host == null ? null : _s(host['slug']),
@@ -51,6 +59,8 @@ class Me {
       whatsappVerified: j['whatsappVerified'] == true,
       ackVersion: _s(j['ackVersion']),
       closing: j['closing'] == true,
+      email: _s(j['email']),
+      age18ConfirmedAt: j['age18ConfirmedAt'] is num ? (j['age18ConfirmedAt'] as num).toInt() : null,
     );
   }
 

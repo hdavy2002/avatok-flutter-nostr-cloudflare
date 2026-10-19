@@ -1,10 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../data/demo_mode.dart';
+import '../../data/repos/auth_repo.dart';
+import '../../data/services.dart';
 import '../data.dart';
 import '../state.dart';
 import '../theme.dart';
 import '../widgets.dart';
+import 'signup_sheet.dart';
 
 /// Sheet top: bandhani border + drag handle.
 class SheetFrame extends StatelessWidget {
@@ -39,16 +43,30 @@ class SheetFrame extends StatelessWidget {
 }
 
 /// Fan sign-up: name, email, WhatsApp number (HF-REEL-1). Opens when a guest taps Call now, Book or ♥.
-class SignUpSheet extends StatefulWidget {
-  const SignUpSheet({super.key, this.reason});
+/// Real WhatsApp-code sign-up (HF-WIRE-2) unless this is a demo build; tests pass [repo] to force the real one.
+class SignUpSheet extends StatelessWidget {
+  const SignUpSheet({super.key, this.reason, this.repo});
+
+  final String? reason;
+  final AuthRepo? repo;
+
+  @override
+  Widget build(BuildContext context) {
+    if (repo == null && DemoMode.on) return _DemoSignUpSheet(reason: reason);
+    return RealSignUpSheet(repo: repo ?? Services.instance.authRepo, reason: reason);
+  }
+}
+
+class _DemoSignUpSheet extends StatefulWidget {
+  const _DemoSignUpSheet({this.reason});
 
   final String? reason;
 
   @override
-  State<SignUpSheet> createState() => _SignUpSheetState();
+  State<_DemoSignUpSheet> createState() => _DemoSignUpSheetState();
 }
 
-class _SignUpSheetState extends State<SignUpSheet> {
+class _DemoSignUpSheetState extends State<_DemoSignUpSheet> {
   final _name = TextEditingController();
   final _email = TextEditingController();
   final _wa = TextEditingController();
