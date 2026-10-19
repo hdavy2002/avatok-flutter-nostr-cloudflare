@@ -8,6 +8,7 @@
 //   GET  /api/admin/hf/payouts?status=requested|approved|paid|rejected|cancelled|all
 //   GET  /api/admin/hf/payouts/:id/destination     -> full account/UPI for paying (audit-logged)
 //   POST /api/admin/hf/payouts/:id/approve | /paid {utr} | /reject {reason}        (all idempotent)
+//   [HF-WIRE-10] Reels app adapter (paise): GET /api/hf/payouts/summary, PUT /api/hf/payouts/upi, POST /api/hf/payouts - see the block above the router.
 // Error codes (POST): not_enabled 404, not_live 403, kyc_required 409, bank_required 409, invalid_amount 400, below_minimum 400,
 //   weekly_limit 429, insufficient_withdrawable 402, wallet_error 502.
 import type { Env } from "../types";
@@ -15,9 +16,9 @@ import { json } from "../util";
 import { requireUser, isFail } from "../authz";
 import { withIdempotency, rateLimit } from "../money";
 import { trackException, track } from "../hooks";
-import { BRAND } from "../lib/brand";
+import { BRAND, brandUrl } from "../lib/brand";
 import { isAdminUid } from "../lib/preview";
-import { tryDecryptPii } from "../lib/pii_crypto";
+import { tryDecryptPii, encryptPii } from "../lib/pii_crypto";
 import { sendWhatsAppText } from "../lib/whatsapp_send";
 import { verifiedWhatsAppNumber } from "../lib/whatsapp_notify";
 import { pushWithdrawal } from "../lib/hf_push"; // [HF-APP-4]
@@ -122,7 +123,7 @@ async function hostGet(req: Request, env: Env): Promise<Response> {
   });
 }
 
-async function hostCreate(req: Request, env: Env): Promise<Response> {
+async function hostCreate(req: Request, env: Env, app = false): Promise<Response> {
   const u = await requireUser(req, env);
   if (isFail(u)) return err(u.status, u.error);
   const c = await cfg(env);
@@ -133,7 +134,21 @@ async function hostCreate(req: Request, env: Env): Promise<Response> {
   const body = await readJson(req);
   return withIdempotency(req, env, uid, async () => {
     const host = await env.DB_META.prepare("SELECT status FROM hf_hosts WHERE uid=?1").bind(uid).first<{ status: string }>().catch(() => null);
-    const ready = await hostPayoutReadiness(env, uid);
+    let ready = await hostPayoutReadiness(env, uid);
+    if (app) {
+      // [HF-WIRE-10] Reels-app flow (HF-REEL-31): influencers only; UPI is the destination; ID check only before the FIRST payout.
+      if (!isInfluencerStatus(host?.status)) return err(403, "influencers_only", FAN_MESSAGE);
+      const ap = appValidate(body);
+      if (!ap.ok) return err(400, ap.error, ap.message);
+      body.amount = ap.rupees;
+      const upiRow = await env.DB_META.prepare("SELECT upi_enc FROM hf_payout WHERE uid=?1").bind(uid).first<{ upi_enc: string | null }>().catch(() => null);
+      if (!upiRow?.upi_enc) return err(409, "upi_required", "Add your UPI ID first.");
+      if (!ready.kycOk) {
+        const paidBefore = await env.DB_META.prepare("SELECT 1 AS x FROM hf_payout_requests WHERE host_uid=?1 AND status='paid' LIMIT 1").bind(uid).first().catch(() => null);
+        if (!paidBefore) return err(409, "kyc_required", "We check your ID once, before your first payout.", { nextStep: kycNextStep() });
+      }
+      ready = { ...ready, kycOk: true, bankOk: true };
+    }
     let w: { withdrawable: number };
     try { w = c.tokens ? { withdrawable: wholeRupees((await hostSummary(env, uid)).availablePaise) } : await withdrawableFor(env, uid); }
     catch (e) {
@@ -141,7 +156,7 @@ async function hostCreate(req: Request, env: Env): Promise<Response> {
       return err(502, "wallet_error", "We couldn't check your balance. Please try again.");
     }
     const verdict = validatePayoutRequest({
-      enabled: c.enabled, hostStatus: host?.status ?? null, kycOk: ready.kycOk, bankOk: ready.bankOk, amount: body.amount,
+      enabled: c.enabled, hostStatus: app ? "live" : host?.status ?? null, kycOk: ready.kycOk, bankOk: ready.bankOk, amount: body.amount,
       minRupees: c.minRupees, withdrawable: w.withdrawable, recentCount: await recentRequestCount(env, uid), maxPerWeek: c.maxPerWeek,
     });
     if (!verdict.ok) return err(verdict.status, verdict.error, verdict.message, { withdrawable: w.withdrawable });
@@ -167,7 +182,7 @@ async function hostCreate(req: Request, env: Env): Promise<Response> {
       const rr = await reservePayout(env, uid, id, amount * 100, now);
       if (!rr.ok) return abort("insufficient_withdrawable", 402, "That amount is not available yet. Earnings are held for 7 days.");
       void track(env, uid, "hf_payout_requested", APP, { amount, mode: "inr_ledger" });
-      return json({ ok: true, id, status: "requested", amount });
+      return json({ ok: true, id, status: "requested", amount, amountPaise: amount * 100 });
     }
     const [matured, sums] = await Promise.all([sumMaturedCallRupees(env, uid, now), payoutSums(env, uid)]);
     if (sums.active > matured) return abort("insufficient_withdrawable", 402, `You can withdraw up to ₹${w.withdrawable} right now.`);
@@ -178,7 +193,7 @@ async function hostCreate(req: Request, env: Env): Promise<Response> {
         short ? "That amount is not available yet. Earnings are held for 7 days." : "We couldn't set that money aside. Please try again.");
     }
     void track(env, uid, "hf_payout_requested", APP, { amount });
-    return json({ ok: true, id, status: "requested", amount });
+    return json({ ok: true, id, status: "requested", amount, amountPaise: amount * 100 });
   });
 }
 
@@ -313,6 +328,78 @@ async function adminReject(req: Request, env: Env, ctx: ExecutionContext | undef
   return json({ ok: true, status: "rejected" });
 }
 
+// ── Reels app adapter [HF-WIRE-10] (paise on the wire; additive, the host routes above are unchanged) ─────────────────────────────
+//   GET  /api/hf/payouts/summary -> { readyPaise, onHoldPaise, minPaise, upi:{vpa,nameMatched}|null, kycStatus:'none'|'pending'|'verified',
+//                                     history:[{id,at,amountPaise,status:'checking'|'paid'|'rejected',utr?}] }
+//   PUT  /api/hf/payouts/upi {vpa} -> { ok, upi:{vpa,nameMatched} }
+//   POST /api/hf/payouts {amountPaise} + Idempotency-Key -> { ok, id, status:'requested', amountPaise }
+//        errors: 403 influencers_only, 409 upi_required, 409 kyc_required {nextStep}, 400 invalid_amount|below_minimum, 402 insufficient_withdrawable, 429 weekly_limit
+const FAN_MESSAGE = "Only influencers can withdraw. Your money comes back to your original payment if a refund is due.";
+const UPI_RE = /^[a-z0-9._-]{2,64}@[a-z][a-z0-9.-]{1,32}$/;
+const isInfluencerStatus = (s: string | null | undefined) => s === "live" || s === "approved";
+const kycNextStep = () => ({ type: "kyc", title: "We check your ID once, before your first payout.", url: brandUrl("/hosts/kyc") });
+const maskVpa = (v: string) => { const [n, h] = v.split("@"); return `${n.length <= 2 ? n[0] : n.slice(0, 2)}${"*".repeat(Math.max(2, n.length - 2))}@${h}`; };
+
+function appValidate(body: Record<string, unknown>): { ok: true; rupees: number } | { ok: false; error: string; message: string } {
+  const p = Number(body.amountPaise);
+  if (!Number.isInteger(p) || p <= 0 || p % 100 !== 0) return { ok: false, error: "invalid_amount", message: "Enter a whole number of rupees." };
+  return { ok: true, rupees: p / 100 };
+}
+
+async function appSummary(req: Request, env: Env): Promise<Response> {
+  const u = await requireUser(req, env);
+  if (isFail(u)) return err(u.status, u.error);
+  const c = await cfg(env);
+  if (!c.enabled) return err(404, "not_enabled", "Withdrawals open soon.");
+  const host = await env.DB_META.prepare("SELECT status FROM hf_hosts WHERE uid=?1").bind(u.uid).first<{ status: string }>().catch(() => null);
+  if (!isInfluencerStatus(host?.status)) return err(403, "influencers_only", FAN_MESSAGE);
+  let readyPaise = 0, onHoldPaise = 0;
+  try {
+    if (c.tokens) { const x = await hostSummary(env, u.uid); readyPaise = x.availablePaise; onHoldPaise = x.pendingPaise; }
+    else { const x = await withdrawableFor(env, u.uid); readyPaise = x.withdrawable * 100; onHoldPaise = x.held * 100; }
+  } catch (e) {
+    await trackException(env, e, { uid: u.uid, route: "/api/hf/payouts/summary", handled: true, app_name: APP, extra: { area: "hf_payout", step: "summary" } });
+    return err(502, "wallet_error", "We couldn't check your balance. Please try again.");
+  }
+  const [kyc, pay, hist] = await Promise.all([
+    env.DB_META.prepare("SELECT verified_at FROM hf_kyc WHERE uid=?1").bind(u.uid).first<{ verified_at: number | null }>().catch(() => null),
+    env.DB_META.prepare("SELECT upi_enc, upi_verified FROM hf_payout WHERE uid=?1").bind(u.uid).first<{ upi_enc: string | null; upi_verified: number }>().catch(() => null),
+    env.DB_META.prepare("SELECT * FROM hf_payout_requests WHERE host_uid=?1 ORDER BY created_at DESC LIMIT 50").bind(u.uid).all<PayoutRow>().catch(() => ({ results: [] as PayoutRow[] })),
+  ]);
+  const vpa = pay?.upi_enc ? await tryDecryptPii(env, pay.upi_enc) : null;
+  const kycStatus = kyc?.verified_at ? "verified" : kyc ? "pending" : "none";
+  const history = (hist.results ?? []).filter((r) => !isSystemRow(r) && r.status !== "cancelled").map((r) => ({
+    id: r.id, at: r.created_at, amountPaise: r.amount_rupees * 100,
+    status: r.status === "paid" ? "paid" : r.status === "rejected" ? "rejected" : "checking",
+    ...(r.status === "paid" && r.utr ? { utr: r.utr } : {}),
+  }));
+  return json({
+    readyPaise: Math.max(0, readyPaise), onHoldPaise: Math.max(0, onHoldPaise), minPaise: c.minRupees * 100,
+    upi: vpa ? { vpa, nameMatched: pay?.upi_verified === 1 ? true : null } : null, kycStatus, history,
+  }, 200, { "cache-control": "private, no-store" });
+}
+
+async function appPutUpi(req: Request, env: Env): Promise<Response> {
+  const u = await requireUser(req, env);
+  if (isFail(u)) return err(u.status, u.error);
+  const c = await cfg(env);
+  if (!c.enabled) return err(404, "not_enabled", "Withdrawals open soon.");
+  const host = await env.DB_META.prepare("SELECT status FROM hf_hosts WHERE uid=?1").bind(u.uid).first<{ status: string }>().catch(() => null);
+  if (!isInfluencerStatus(host?.status)) return err(403, "influencers_only", FAN_MESSAGE);
+  const vpa = String((await readJson(req)).vpa ?? "").trim().toLowerCase();
+  if (!UPI_RE.test(vpa)) return err(400, "invalid_upi", "Enter a valid UPI ID, like name@bank.");
+  const lim = await rateLimit(env, `hfupi:${u.uid}`, 10, 3600);
+  if (lim) return lim;
+  const enc = await encryptPii(env, vpa);
+  // Changing the UPI clears any earlier name check; a different destination must be re-verified. Bank columns are untouched.
+  await env.DB_META.prepare(
+    `INSERT INTO hf_payout (uid, upi_enc, upi_verified, updated_at) VALUES (?1,?2,0,?3)
+     ON CONFLICT(uid) DO UPDATE SET upi_enc=excluded.upi_enc, upi_verified=0, updated_at=excluded.updated_at`,
+  ).bind(u.uid, enc, Date.now()).run();
+  void track(env, u.uid, "hf_payout_upi_set", APP, { vpa: maskVpa(vpa) });
+  return json({ ok: true, upi: { vpa, nameMatched: null } });
+}
+
 // ── router ───────────────────────────────────────────────────────────────────
 const ID = "([A-Za-z0-9-]{8,64})";
 const HOST_CANCEL_RE = new RegExp(`^/api/hosts/me/payouts/${ID}/cancel$`);
@@ -322,11 +409,14 @@ export async function hfPayoutsRoute(req: Request, env: Env, p: string, ctx?: Ex
   const m = req.method;
   const hostCancelM = p.match(HOST_CANCEL_RE);
   const adminM = p.match(ADMIN_RE);
-  const ours = p === "/api/hosts/me/payouts" || !!hostCancelM || p === "/api/admin/hf/payouts" || !!adminM;
+  const ours = p === "/api/hosts/me/payouts" || p === "/api/hf/payouts/summary" || p === "/api/hf/payouts/upi" || p === "/api/hf/payouts" || !!hostCancelM || p === "/api/admin/hf/payouts" || !!adminM;
   if (!ours) return null;
   try {
     if (p === "/api/hosts/me/payouts" && m === "GET") return await hostGet(req, env);
     if (p === "/api/hosts/me/payouts" && m === "POST") return await hostCreate(req, env);
+    if (p === "/api/hf/payouts/summary" && m === "GET") return await appSummary(req, env);
+    if (p === "/api/hf/payouts/upi" && m === "PUT") return await appPutUpi(req, env);
+    if (p === "/api/hf/payouts" && m === "POST") return await hostCreate(req, env, true);
     if (hostCancelM && m === "POST") return await hostCancel(req, env, hostCancelM[1]);
     if (p === "/api/admin/hf/payouts" && m === "GET") return await adminList(req, env);
     if (adminM) {

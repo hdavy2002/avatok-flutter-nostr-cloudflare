@@ -33,7 +33,8 @@ const igBody = (id: string, followers: number, bio = "", extra: any = {}) =>
 
 function makeEnv(withKeys = true) {
   db = new DatabaseSync(":memory:");
-  db.exec(`CREATE TABLE hf_hosts (uid TEXT PRIMARY KEY, status TEXT NOT NULL DEFAULT 'draft', created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL);`);
+  db.exec(`CREATE TABLE hf_hosts (uid TEXT PRIMARY KEY, status TEXT NOT NULL DEFAULT 'draft', display_name TEXT, slug TEXT, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL);
+    CREATE UNIQUE INDEX idx_hf_hosts_slug ON hf_hosts(slug);`);
   db.exec(readFileSync(new URL("../../migrations/2026-10-19-hf-channels.sql", import.meta.url), "utf8"));
   kv = new Map();
   const stmt = (q: string, args: unknown[] = []) => ({
@@ -319,6 +320,27 @@ describe("hf channels: one channel, one person; own data only", () => {
     db.prepare("INSERT INTO hf_hosts (uid,status,created_at,updated_at) VALUES ('u1','live',1,1)").run();
     await approve("u1");
     expect(hostStatus()).toBe("live");
+  });
+
+  // [HF-WIRE-10] approval must leave a slug or the feed and profile skip the influencer.
+  const slugOf = (uid: string) => db.prepare("SELECT slug FROM hf_hosts WHERE uid=?").get(uid)?.slug ?? null;
+  it("approval assigns a unique slug from the channel handle and keeps it on re-check", async () => {
+    await approve("u1");
+    const s1 = slugOf("u1");
+    expect(s1).toMatch(/^[a-z0-9]{1,16}-[a-z0-9]{4}$/);
+    const id = db.prepare("SELECT id FROM hf_channels WHERE host_uid='u1'").get().id;
+    await call("POST", `/api/hf/channels/${id}/check`, undefined, "u1");
+    expect(slugOf("u1")).toBe(s1);
+  });
+  it("never overwrites an existing slug", async () => {
+    db.prepare("INSERT INTO hf_hosts (uid,status,display_name,slug,created_at,updated_at) VALUES ('u2','live','Asha K','asha-keep',1,1)").run();
+    await approve("u2");
+    expect(slugOf("u2")).toBe("asha-keep");
+  });
+  it("uses display_name when set and heals a live host without a slug", async () => {
+    db.prepare("INSERT INTO hf_hosts (uid,status,display_name,created_at,updated_at) VALUES ('u3','live','Ravi Kumar',1,1)").run();
+    await approve("u3");
+    expect(slugOf("u3")).toMatch(/^ravi-[a-z0-9]{4}$/);
   });
 });
 

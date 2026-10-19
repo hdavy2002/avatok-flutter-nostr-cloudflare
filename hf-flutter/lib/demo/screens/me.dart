@@ -65,7 +65,7 @@ class _Dashboard extends StatelessWidget {
     final items = <(IconData, String, String, String)>[
       (Icons.call_rounded, 'Call records', '${demo.calls.length} calls', '/calls'),
       (Icons.currency_rupee_rounded, 'Wallet', inr(demo.balance, paise: false), '/wallet'),
-      (Icons.north_east_rounded, 'Payout', '', '/payout'),
+      if (Services.instance.viewerIsInfluencer) (Icons.north_east_rounded, 'Payout', '', '/payout'),
       (Icons.event_rounded, 'My bookings', '${demo.bookings.length}', '/bookings'),
       (Icons.favorite_rounded, 'Favourites', '${demo.favs.length}', 'tab:/favourites'),
       (Icons.settings_rounded, 'Settings', '', '/settings'),
@@ -462,7 +462,7 @@ class HelpScreen extends StatelessWidget {
     ('How much does it cost?', 'Each influencer sets a per-minute rate, shown on their reel and profile. It comes out of your wallet as you talk.'),
     ('My favourite influencer is not here.', 'Search for them and tap Invite. Every tap is a vote; we ask the most-wanted names to join.'),
     ('What if they are offline?', 'Open their profile and book a time. We hold 10 minutes from your wallet and ring you both at that minute.'),
-    ('Can I get my money back?', 'Unused wallet money can be withdrawn from Payout. Test credits can be spent but not withdrawn.'),
+    ('Can I get my money back?', 'Wallet money is for calls and bookings. If a refund is due it goes back to the payment you used. Test credits can be spent but not withdrawn.'),
   ];
 
   @override

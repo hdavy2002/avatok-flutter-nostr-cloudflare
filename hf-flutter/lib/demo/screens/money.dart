@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 import '../../data/api_exception.dart';
 import '../../data/demo_mode.dart';
 import '../../data/models/wallet.dart';
+import '../../data/repos/payouts_repo.dart';
 import '../../data/repos/wallet_repo.dart';
 import '../../data/services.dart';
 import '../../data/telemetry.dart';
@@ -192,8 +193,11 @@ class _WalletScreenState extends State<WalletScreen> {
           Row(
             children: [
               Expanded(child: ChunkyButton(label: 'TOP UP', icon: Icons.add_rounded, onTap: () => context.push('/topup'))),
-              const SizedBox(width: 12),
-              Expanded(child: ChunkyButton(label: 'WITHDRAW', filled: false, dark: true, onTap: () => context.push('/payout'))),
+              // Only influencers withdraw (HF-REEL-31); a fan's refund goes back to the original payment.
+              if (Services.instance.viewerIsInfluencer) ...[
+                const SizedBox(width: 12),
+                Expanded(child: ChunkyButton(label: 'WITHDRAW', filled: false, dark: true, onTap: () => context.push('/payout'))),
+              ],
             ],
           ),
         ],
@@ -572,16 +576,39 @@ class _PaymentScreenState extends State<PaymentScreen> {
 
 // ---------------------------------------------------------------------------------------------- Payout
 
-/// Payout: withdraw to UPI. ₹500 minimum, 7-day hold, checked by hand, UTR on WhatsApp.
+/// Payout: withdraw to UPI (HF-WIRE-10). ₹500 minimum, 7-day hold, checked by hand, UTR on WhatsApp.
+/// Only influencers withdraw; the ID check happens once, before the first payout (HF-REEL-31).
+///
+/// With [DemoMode.on] (and no [repo]) it shows the dummy numbers. Otherwise it reads `GET /api/hf/payouts/summary`.
 class PayoutScreen extends StatefulWidget {
-  const PayoutScreen({super.key});
+  const PayoutScreen({super.key, this.repo});
+
+  final PayoutsRepo? repo;
 
   @override
   State<PayoutScreen> createState() => _PayoutScreenState();
 }
 
 class _PayoutScreenState extends State<PayoutScreen> {
-  late final _amount = TextEditingController(text: demo.earningsReady.toStringAsFixed(0));
+  bool get _real => widget.repo != null || !DemoMode.on;
+  PayoutsRepo get _repo => widget.repo ?? Services.instance.payoutsRepo;
+
+  AsyncState<PayoutSummary> _state = const AsyncLoading();
+  final _amount = TextEditingController();
+  bool _busy = false;
+  // One key per intended request, kept while the same amount is retried after a lost answer.
+  String? _key;
+  int? _keyAmount;
+
+  @override
+  void initState() {
+    super.initState();
+    if (_real) {
+      _load();
+    } else {
+      _amount.text = demo.earningsReady.toStringAsFixed(0);
+    }
+  }
 
   @override
   void dispose() {
@@ -589,7 +616,68 @@ class _PayoutScreenState extends State<PayoutScreen> {
     super.dispose();
   }
 
-  void _request() {
+  Future<void> _load({bool keepAmount = false}) async {
+    if (!keepAmount) setState(() => _state = const AsyncLoading());
+    try {
+      final s = await _repo.summary();
+      if (!mounted) return;
+      setState(() {
+        _state = AsyncData(s);
+        if (!keepAmount || _amount.text.isEmpty) _amount.text = '${s.readyRupees}';
+      });
+    } catch (e) {
+      if (mounted) setState(() => _state = AsyncFailure(e));
+    }
+  }
+
+  int get _typedRupees => int.tryParse(_amount.text.replaceAll(RegExp(r'[^0-9]'), '')) ?? 0;
+
+  Future<void> _request() async {
+    if (!_real) return _requestDemo();
+    final s = (_state as AsyncData<PayoutSummary>).value;
+    final v = _typedRupees;
+    if (s.upi == null) {
+      toast(context, 'Add your UPI first.');
+      return;
+    }
+    if (v * 100 < s.minPaise) {
+      toast(context, 'Minimum payout is ${inr(s.minPaise / 100, paise: false)}.');
+      return;
+    }
+    if (v * 100 > s.readyPaise) {
+      toast(context, 'You can withdraw up to ${inr(s.readyPaise / 100, paise: false)}.');
+      return;
+    }
+    if (_busy) return;
+    if (_keyAmount != v || _key == null) {
+      _key = PayoutsRepo.newKey();
+      _keyAmount = v;
+    }
+    setState(() => _busy = true);
+    try {
+      await _repo.request(v * 100, key: _key!);
+      _key = null;
+      if (!mounted) return;
+      toast(context, 'Requested ${inr(v, paise: false)}. We will WhatsApp you the UTR once paid.');
+      _amount.clear();
+      await _load(keepAmount: true);
+    } catch (e) {
+      final kyc = PayoutsRepo.kycStep(e);
+      if (e is ApiException && e.kind == ApiFailure.http) _key = null; // a clear answer: the next tap is a new request
+      if (!mounted) return;
+      if (kyc != null) {
+        _key = null;
+        await Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => PayoutKycScreen(step: kyc)));
+        if (mounted) await _load(keepAmount: true);
+      } else {
+        toast(context, e is ApiException ? e.userMessage : ApiException.genericText);
+      }
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  void _requestDemo() {
     final v = double.tryParse(_amount.text.replaceAll(RegExp(r'[^0-9.]'), '')) ?? 0;
     if (v < 500) {
       toast(context, 'Minimum payout is ₹500.');
@@ -604,126 +692,190 @@ class _PayoutScreenState extends State<PayoutScreen> {
     toast(context, 'Requested ${inr(v, paise: false)}. We will WhatsApp you the UTR once paid.');
   }
 
+  Future<void> _editUpi(String? current) async {
+    final saved = await showModalBottomSheet<PayoutUpi>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: C.clear,
+      builder: (_) => _UpiSheet(repo: _repo, current: current),
+    );
+    if (saved != null && mounted) await _load(keepAmount: true);
+  }
+
   @override
   Widget build(BuildContext context) {
+    if (!_real) {
+      return ListenableBuilder(
+        listenable: demo,
+        builder: (context, _) => _frame(
+          ready: demo.earningsReady,
+          hold: demo.earningsHold,
+          vpa: demo.name.isEmpty ? 'yourname@okbank' : '${demo.name.split(' ').first.toLowerCase()}@okhdfcbank',
+          checkedLine: 'Checked · name matches',
+          minRupees: 500,
+          history: [for (final p in demo.payouts) (p.when, p.amount, p.status, p.status.startsWith('PAID'))],
+          canAsk: true,
+        ),
+      );
+    }
+    return AsyncView<PayoutSummary>(
+      state: _state,
+      onRetry: _load,
+      isEmpty: (_) => false,
+      builder: (context, s) => _frame(
+        ready: s.readyPaise / 100,
+        hold: s.onHoldPaise / 100,
+        vpa: s.upi?.vpa,
+        checkedLine: s.upi == null ? null : (s.upi!.nameMatched == true ? 'Checked · name matches' : 'We check the name when we pay'),
+        minRupees: s.minPaise ~/ 100,
+        history: [for (final h in s.history) (_when(h.at), h.amountPaise / 100, _label(h), h.status == PayoutStatus.paid)],
+        canAsk: s.upi != null,
+        onChangeUpi: () => _editUpi(s.upi?.vpa),
+      ),
+    );
+  }
+
+  static const _months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  static String _when(DateTime d) => '${d.day} ${_months[d.month - 1]}';
+  static String _label(PayoutItem h) => switch (h.status) {
+        PayoutStatus.paid => h.utr == null ? 'PAID' : 'PAID · UTR ${h.utr}',
+        PayoutStatus.rejected => 'NOT PAID',
+        PayoutStatus.checking => 'BEING CHECKED',
+      };
+
+  Widget _frame({
+    required double ready,
+    required double hold,
+    required String? vpa,
+    required String? checkedLine,
+    required int minRupees,
+    required List<(String, double, String, bool)> history,
+    required bool canAsk,
+    VoidCallback? onChangeUpi,
+  }) {
     return Scaffold(
       body: SafeArea(
-        child: ListenableBuilder(
-          listenable: demo,
-          builder: (context, _) => Column(
-            children: [
-              const Padding(padding: EdgeInsets.fromLTRB(16, 12, 16, 0), child: Align(alignment: Alignment.centerLeft, child: BackBtn())),
-              Expanded(
-                child: ListView(
-                  padding: const EdgeInsets.fromLTRB(22, 8, 22, 16),
-                  children: [
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+        child: Column(
+          children: [
+            const Padding(padding: EdgeInsets.fromLTRB(16, 12, 16, 0), child: Align(alignment: Alignment.centerLeft, child: BackBtn())),
+            Expanded(
+              child: ListView(
+                padding: const EdgeInsets.fromLTRB(22, 8, 22, 16),
+                children: [
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Headline(solid: 'PAY', outline: 'OUT', size: 46),
+                            const SizedBox(height: 4),
+                            Text('Send your money to your UPI.', style: t(16, color: C.muted, w: FontWeight.w700)),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 110, height: 100, child: Art('payout/potli-bag.webp', fallback: ArtStandIn('POTLI BAG', color: C.ivory, ink: C.brassDark))),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  Row(
+                    children: [
+                      Expanded(child: _box('READY TO WITHDRAW', inr(ready, paise: false), dark: true)),
+                      const SizedBox(width: 10),
+                      Expanded(child: _box('ON HOLD · 7 DAYS', inr(hold, paise: false))),
+                    ],
+                  ),
+                  const SizedBox(height: 18),
+                  Text('Amount (minimum ${inr(minRupees, paise: false)})', style: t(15)),
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: _amount,
+                    keyboardType: TextInputType.number,
+                    style: t(32),
+                    decoration: InputDecoration(
+                      prefixText: '₹ ',
+                      prefixStyle: t(30, color: C.maroon),
+                      suffixIcon: Padding(
+                        padding: const EdgeInsets.all(8),
+                        child: TextButton(
+                          style: TextButton.styleFrom(backgroundColor: C.gold, shape: const StadiumBorder()),
+                          onPressed: () => _amount.text = ready.floor().toString(),
+                          child: Text('ALL', style: t(14)),
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(color: C.paper, borderRadius: BorderRadius.circular(14), border: Border.all(color: C.brass, width: 2)),
+                    child: Row(
                       children: [
+                        BrassKnob(label: 'UPI', size: 42, child: Text('UPI', style: t(12))),
+                        const SizedBox(width: 12),
                         Expanded(
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              const Headline(solid: 'PAY', outline: 'OUT', size: 46),
-                              const SizedBox(height: 4),
-                              Text('Send your money to your UPI.', style: t(16, color: C.muted, w: FontWeight.w700)),
+                              Text(vpa ?? 'No UPI added yet', style: t(16)),
+                              if (checkedLine != null) Text(checkedLine, style: t(13, color: C.muted, w: FontWeight.w700)),
                             ],
                           ),
                         ),
-                        const SizedBox(width: 110, height: 100, child: Art('payout/potli-bag.webp', fallback: ArtStandIn('POTLI BAG', color: C.ivory, ink: C.brassDark))),
-                      ],
-                    ),
-                    const SizedBox(height: 16),
-                    Row(
-                      children: [
-                        Expanded(child: _box('READY TO WITHDRAW', inr(demo.earningsReady, paise: false), dark: true)),
-                        const SizedBox(width: 10),
-                        Expanded(child: _box('ON HOLD · 7 DAYS', inr(demo.earningsHold, paise: false))),
-                      ],
-                    ),
-                    const SizedBox(height: 18),
-                    Text('Amount (minimum ₹500)', style: t(15)),
-                    const SizedBox(height: 8),
-                    TextField(
-                      controller: _amount,
-                      keyboardType: TextInputType.number,
-                      style: t(32),
-                      decoration: InputDecoration(
-                        prefixText: '₹ ',
-                        prefixStyle: t(30, color: C.maroon),
-                        suffixIcon: Padding(
-                          padding: const EdgeInsets.all(8),
-                          child: TextButton(
-                            style: TextButton.styleFrom(backgroundColor: C.gold, shape: const StadiumBorder()),
-                            onPressed: () => _amount.text = demo.earningsReady.toStringAsFixed(0),
-                            child: Text('ALL', style: t(14)),
-                          ),
+                        TextButton(
+                          onPressed: onChangeUpi ?? () => toast(context, 'Change UPI (demo)'),
+                          child: Text(vpa == null ? 'Add' : 'Change', style: t(14, color: C.maroon)),
                         ),
-                      ),
+                      ],
                     ),
-                    const SizedBox(height: 14),
-                    Container(
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(color: C.paper, borderRadius: BorderRadius.circular(14), border: Border.all(color: C.brass, width: 2)),
+                  ),
+                  const SizedBox(height: 14),
+                  for (final line in [
+                    'We check every request by hand and pay it to your UPI.',
+                    'You get the payment reference (UTR) on WhatsApp.',
+                    'We check your ID once, before your first payout.',
+                    'Test credits can be spent but not withdrawn.',
+                  ])
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 6),
                       child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          BrassKnob(label: 'UPI', size: 42, child: Text('UPI', style: t(12))),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(demo.name.isEmpty ? 'yourname@okbank' : '${demo.name.split(' ').first.toLowerCase()}@okhdfcbank', style: t(16)),
-                                Text('Checked · name matches', style: t(13, color: C.muted, w: FontWeight.w700)),
-                              ],
-                            ),
-                          ),
-                          TextButton(onPressed: () => toast(context, 'Change UPI (demo)'), child: Text('Change', style: t(14, color: C.maroon))),
+                          Text('●  ', style: t(13, color: C.ruby)),
+                          Expanded(child: Text(line, style: t(14, color: C.deep, w: FontWeight.w700, h: 1.4))),
                         ],
                       ),
                     ),
-                    const SizedBox(height: 14),
-                    for (final line in [
-                      'We check every request by hand and pay it to your UPI.',
-                      'You get the payment reference (UTR) on WhatsApp.',
-                      'Test credits can be spent but not withdrawn.',
-                    ])
-                      Padding(
-                        padding: const EdgeInsets.only(bottom: 6),
-                        child: Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text('●  ', style: t(13, color: C.ruby)),
-                            Expanded(child: Text(line, style: t(14, color: C.deep, w: FontWeight.w700, h: 1.4))),
-                          ],
-                        ),
+                  const SizedBox(height: 14),
+                  Text('Past payouts', style: t(18, color: C.maroon)),
+                  const SizedBox(height: 6),
+                  if (history.isEmpty) Text('No payouts yet.', style: t(15, color: C.muted, w: FontWeight.w700)),
+                  for (final p in history)
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 6),
+                      child: Row(
+                        children: [
+                          Expanded(child: Text('${p.$1} · ${inr(p.$2, paise: false)}', style: t(15))),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
+                            decoration: BoxDecoration(color: p.$4 ? C.deep : C.butter, borderRadius: BorderRadius.circular(999)),
+                            child: Text(p.$3, style: t(12, color: p.$4 ? C.gold : C.deep, ls: 0.06)),
+                          ),
+                        ],
                       ),
-                    const SizedBox(height: 14),
-                    Text('Past payouts', style: t(18, color: C.maroon)),
-                    const SizedBox(height: 6),
-                    for (final p in demo.payouts)
-                      Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 6),
-                        child: Row(
-                          children: [
-                            Expanded(child: Text('${p.when} · ${inr(p.amount, paise: false)}', style: t(15))),
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
-                              decoration: BoxDecoration(color: p.status.startsWith('PAID') ? C.deep : C.butter, borderRadius: BorderRadius.circular(999)),
-                              child: Text(p.status, style: t(12, color: p.status.startsWith('PAID') ? C.gold : C.deep, ls: 0.06)),
-                            ),
-                          ],
-                        ),
-                      ),
-                  ],
-                ),
+                    ),
+                ],
               ),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(22, 0, 22, 20),
-                child: SizedBox(width: double.infinity, child: ChunkyButton(label: 'REQUEST PAYOUT', dark: true, height: 62, onTap: _request)),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(22, 0, 22, 20),
+              child: SizedBox(
+                width: double.infinity,
+                child: ChunkyButton(label: _busy ? 'SENDING…' : (canAsk ? 'REQUEST PAYOUT' : 'ADD UPI TO START'), dark: true, height: 62, onTap: canAsk ? _request : onChangeUpi),
               ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );
@@ -744,6 +896,147 @@ class _PayoutScreenState extends State<PayoutScreen> {
           const SizedBox(height: 4),
           FittedBox(child: Text(value, style: t(28, color: dark ? C.ivory : C.maroon))),
         ],
+      ),
+    );
+  }
+}
+
+/// Add or change the UPI. The server checks the format again and clears any earlier name check.
+class _UpiSheet extends StatefulWidget {
+  const _UpiSheet({required this.repo, this.current});
+
+  final PayoutsRepo repo;
+  final String? current;
+
+  @override
+  State<_UpiSheet> createState() => _UpiSheetState();
+}
+
+class _UpiSheetState extends State<_UpiSheet> {
+  late final _vpa = TextEditingController(text: widget.current ?? '');
+  String? _error;
+  bool _busy = false;
+
+  @override
+  void dispose() {
+    _vpa.dispose();
+    super.dispose();
+  }
+
+  Future<void> _save() async {
+    final v = _vpa.text.trim().toLowerCase();
+    if (!PayoutsRepo.validUpi(v)) {
+      setState(() => _error = 'Enter a valid UPI ID, like name@bank.');
+      return;
+    }
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+    try {
+      final u = await widget.repo.setUpi(v);
+      if (mounted) Navigator.of(context).pop(u);
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _busy = false;
+          _error = e is ApiException ? e.userMessage : ApiException.genericText;
+        });
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(22, 20, 22, 24),
+        decoration: const BoxDecoration(color: C.ivory, borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(widget.current == null ? 'Add your UPI' : 'Change your UPI', style: t(22, color: C.maroon)),
+            const SizedBox(height: 6),
+            Text('Your payouts go here. Use a UPI ID in your own name.', style: t(14, color: C.muted, w: FontWeight.w700, h: 1.35)),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _vpa,
+              autofocus: true,
+              keyboardType: TextInputType.emailAddress,
+              autocorrect: false,
+              style: t(20),
+              decoration: const InputDecoration(hintText: 'name@bank'),
+            ),
+            if (_error != null) Padding(padding: const EdgeInsets.only(top: 8), child: Text(_error!, style: t(14, color: C.ruby, w: FontWeight.w700))),
+            const SizedBox(height: 16),
+            SizedBox(width: double.infinity, child: ChunkyButton(label: _busy ? 'SAVING…' : 'SAVE UPI', dark: true, onTap: _busy ? null : _save)),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Shown when a first payout needs the ID check: "We check your ID once, before your first payout."
+/// The check itself lives on the website (no in-app KYC route yet), so the button opens it in a Custom Tab.
+class PayoutKycScreen extends StatelessWidget {
+  const PayoutKycScreen({super.key, required this.step});
+
+  final KycNextStep step;
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: SafeArea(
+        child: Column(
+          children: [
+            const Padding(padding: EdgeInsets.fromLTRB(16, 12, 16, 0), child: Align(alignment: Alignment.centerLeft, child: BackBtn())),
+            Expanded(
+              child: ListView(
+                padding: const EdgeInsets.fromLTRB(22, 16, 22, 16),
+                children: [
+                  const Headline(solid: 'ID', outline: 'CHECK', size: 46),
+                  const SizedBox(height: 14),
+                  Text(step.title, style: t(22, color: C.maroon, h: 1.2)),
+                  const SizedBox(height: 12),
+                  for (final line in [
+                    'You only do this once. Joining and getting calls never needed it.',
+                    'It takes a few minutes. Keep your Aadhaar mobile number handy.',
+                    'When it is done, come back and request your payout again.',
+                  ])
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 8),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text('●  ', style: t(13, color: C.ruby)),
+                          Expanded(child: Text(line, style: t(15, color: C.deep, w: FontWeight.w700, h: 1.4))),
+                        ],
+                      ),
+                    ),
+                ],
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(22, 0, 22, 20),
+              child: SizedBox(
+                width: double.infinity,
+                child: ChunkyButton(
+                  label: 'CHECK MY ID',
+                  dark: true,
+                  height: 62,
+                  onTap: () async {
+                    final url = step.url;
+                    final ok = url != null && await Checkout.open(url);
+                    if (!ok && context.mounted) toast(context, 'Could not open the page. Please try again.');
+                  },
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../data/demo_mode.dart';
 import '../../data/models/channel.dart';
+import '../../data/repos/payouts_repo.dart';
+import '../../data/services.dart';
 import '../data.dart';
 import '../my_reels_section.dart';
 import '../presence_bridge.dart';
@@ -321,34 +324,7 @@ class InfluencerHomeScreen extends StatelessWidget {
                   ],
                 ),
                 const SizedBox(height: 18),
-                GestureDetector(
-                  onTap: () => context.push('/payout'),
-                  child: Container(
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(color: C.paper, borderRadius: BorderRadius.circular(16), border: Border.all(color: C.deep, width: 3)),
-                    child: Row(
-                      children: [
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text('READY TO WITHDRAW', style: t(12, color: C.tan, ls: 0.12)),
-                              Text(inr(demo.earningsReady, paise: false), style: t(30, color: C.maroon)),
-                              Text('${inr(demo.earningsHold, paise: false)} on 7-day hold', style: t(13, color: C.muted, w: FontWeight.w700)),
-                            ],
-                          ),
-                        ),
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                          decoration: BoxDecoration(color: C.marigold, borderRadius: BorderRadius.circular(12)),
-                          child: Text('PAYOUT', style: t(14, ls: 0.06)),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Text('You keep 60% of each call minus ₹2 a minute.', style: t(13, color: C.muted, w: FontWeight.w700)),
+                const _EarningsCard(), // [HF-WIRE-10]
                 const SizedBox(height: 22),
                 Row(
                   children: [
@@ -704,4 +680,88 @@ class _AvailabilityScreenState extends State<AvailabilityScreen> {
   }
 
   Widget _round(IconData icon, String label, VoidCallback onTap) => BrassKnob(label: label, size: 52, onTap: onTap, child: Icon(icon, color: C.deep, size: 26));
+}
+
+
+/// READY TO WITHDRAW and the 7-day hold on the influencer Home (HF-WIRE-10). Real numbers come from
+/// `GET /api/hf/payouts/summary`; a failed or switched-off read shows dashes, never made-up money.
+/// The split text matches HF-REEL-30.
+class _EarningsCard extends StatefulWidget {
+  const _EarningsCard();
+
+  @override
+  State<_EarningsCard> createState() => _EarningsCardState();
+}
+
+class _EarningsCardState extends State<_EarningsCard> {
+  bool get _real => !DemoMode.on;
+  PayoutSummary? _summary;
+  bool _failed = false;
+
+  @override
+  void initState() {
+    super.initState();
+    if (_real) _load();
+  }
+
+  Future<void> _load() async {
+    try {
+      final s = await Services.instance.payoutsRepo.summary();
+      if (mounted) setState(() => _summary = s);
+    } catch (_) {
+      if (mounted) setState(() => _failed = true);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final String ready;
+    final String hold;
+    if (!_real) {
+      ready = inr(demo.earningsReady, paise: false);
+      hold = '${inr(demo.earningsHold, paise: false)} on 7-day hold';
+    } else if (_summary != null) {
+      ready = inr(_summary!.readyPaise / 100, paise: false);
+      hold = '${inr(_summary!.onHoldPaise / 100, paise: false)} on 7-day hold';
+    } else {
+      ready = '—';
+      hold = _failed ? 'Could not load. Tap to open Payout.' : 'Loading…';
+    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        GestureDetector(
+          onTap: () async {
+            await context.push('/payout');
+            if (_real && mounted) _load();
+          },
+          child: Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(color: C.paper, borderRadius: BorderRadius.circular(16), border: Border.all(color: C.deep, width: 3)),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('READY TO WITHDRAW', style: t(12, color: C.tan, ls: 0.12)),
+                      Text(ready, style: t(30, color: C.maroon)),
+                      Text(hold, style: t(13, color: C.muted, w: FontWeight.w700)),
+                    ],
+                  ),
+                ),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                  decoration: BoxDecoration(color: C.marigold, borderRadius: BorderRadius.circular(12)),
+                  child: Text('PAYOUT', style: t(14, ls: 0.06)),
+                ),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: 8),
+        Text('We keep ₹2 a minute plus 40% of your rate above ₹2. The rest is yours.', style: t(13, color: C.muted, w: FontWeight.w700)),
+      ],
+    );
+  }
 }

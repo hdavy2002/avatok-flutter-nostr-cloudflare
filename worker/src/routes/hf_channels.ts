@@ -20,6 +20,7 @@ import { trackUser, trackException } from "../hooks";
 import { BRAND } from "../lib/brand";
 import { emailFor } from "../lib/identity";
 import { readConfig } from "./config";
+import { ensureSlug } from "../lib/hf_host_store"; // [HF-WIRE-10]
 import { importChannelReels, importCountOf } from "../lib/hf_reels_import"; // [HF-WIRE-4]
 import {
   lookupChannel, makeVerifyCode, bioHasCode, ProviderError, type ChannelLookup, type ChannelPlatform,
@@ -86,6 +87,22 @@ async function readBody(req: Request): Promise<Record<string, unknown> | null> {
   try { const v = JSON.parse(t); return v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : null; } catch { return null; }
 }
 
+/** [HF-WIRE-10] Approved influencers need hf_hosts.slug or the feed and profile skip them. Same generator as web hosts
+ * (`<first-name>-<4 random>`, unique, never changes an existing slug). Name hint: display_name, else the approved channel's handle. Never throws. */
+async function ensureInfluencerSlug(env: Env, uid: string): Promise<void> {
+  try {
+    const h = await env.DB_META.prepare("SELECT slug, display_name FROM hf_hosts WHERE uid=?1").bind(uid).first<{ slug: string | null; display_name: string | null }>();
+    if (!h || h.slug) return;
+    let name = h.display_name;
+    if (!name?.trim()) {
+      name = (await env.DB_META.prepare("SELECT handle FROM hf_channels WHERE host_uid=?1 AND status='approved' ORDER BY created_at ASC LIMIT 1").bind(uid).first<{ handle: string | null }>())?.handle ?? null;
+    }
+    await ensureSlug(env, uid, name ?? "");
+  } catch (e) {
+    await trackException(env, e, { uid, route: "hf_channels.ensureInfluencerSlug", handled: true, app_name: APP, extra: { area: "hf_channels" } });
+  }
+}
+
 /** Keep hf_hosts.status in step with the channels. Returns the host status afterwards (null = no row) and whether she qualifies. */
 export async function syncHostState(env: Env, uid: string, now = Date.now()): Promise<{ hostStatus: string | null; qualified: boolean }> {
   const ok = Number((await env.DB_META.prepare("SELECT COUNT(*) AS c FROM hf_channels WHERE host_uid=?1 AND status='approved'").bind(uid).first<{ c: number }>())?.c ?? 0);
@@ -94,12 +111,15 @@ export async function syncHostState(env: Env, uid: string, now = Date.now()): Pr
   if (ok > 0) {
     if (cur === null) {
       await env.DB_META.prepare("INSERT OR IGNORE INTO hf_hosts (uid, status, created_at, updated_at) VALUES (?1, 'approved', ?2, ?2)").bind(uid, now).run();
+      await ensureInfluencerSlug(env, uid);
       return { hostStatus: "approved", qualified: true };
     }
     if (cur === "pending_check") {
       await env.DB_META.prepare("UPDATE hf_hosts SET status='approved', updated_at=?2 WHERE uid=?1 AND status='pending_check'").bind(uid, now).run();
+      await ensureInfluencerSlug(env, uid);
       return { hostStatus: "approved", qualified: true };
     }
+    await ensureInfluencerSlug(env, uid); // [HF-WIRE-10] heals hosts approved before this fix
     return { hostStatus: cur, qualified: true };
   }
   if (cur === "approved") {

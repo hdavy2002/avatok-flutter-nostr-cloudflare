@@ -12,6 +12,7 @@ import 'repos/calls_repo.dart';
 import 'repos/channels_repo.dart';
 import 'repos/config_repo.dart';
 import 'repos/me_repo.dart';
+import 'repos/payouts_repo.dart';
 import 'repos/reels_repo.dart';
 import 'repos/wallet_repo.dart';
 import 'telemetry.dart';
@@ -38,6 +39,7 @@ class Services {
   late final ReelsRepo reelsRepo = ReelsRepo(api); // [HF-WIRE-4]
   late final WalletRepo walletRepo = WalletRepo(api); // [HF-WIRE-6]
   late final CallsRepo callsRepo = CallsRepo(api); // [HF-WIRE-7]
+  late final PayoutsRepo payoutsRepo = PayoutsRepo(api); // [HF-WIRE-10]
 
   /// The signed-in Clerk user, or null (signed out, or no connection at start).
   ClerkUser? user;
@@ -49,6 +51,9 @@ class Services {
   UpdateStatus updateStatus = UpdateStatus.none;
 
   bool get isSignedIn => user != null;
+
+  /// Only influencers withdraw (HF-REEL-31). Fans' money only goes back to the original payment as a refund.
+  bool get viewerIsInfluencer => demo.influencerJoined || me?.hostStatus != null;
 
   Future<void> _sessionLost() async {
     user = null;
