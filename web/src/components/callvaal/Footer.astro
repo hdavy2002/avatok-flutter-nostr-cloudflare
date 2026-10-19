@@ -2,6 +2,7 @@
 import brandConfig from '../../../../Specs/brand.json';
 import AppTabBar from './AppTabBar.astro';
 import '../../styles/callvaal-chrome.css';
+import { publicImage } from '../../lib/config';
 interface Props { hideTagline?: boolean; }
 const { hideTagline: _hideTagline = false } = Astro.props; // kept for callers; the footer no longer shows a tagline
 const identity = brandConfig.homepageIdentity;
@@ -25,8 +26,11 @@ const groups = [
     ['Explore all influencers', '/marketplace'], ['Find an influencer', '/#naye-dost'], ['Popular topics', '/#moods'], ['Influencers you follow', '/#people'], ['LGBTQ+ safety', '/lgbtq'], ['Earn with us', '/hosts/join'],
   ]],
 ] as const;
+// [HF-FOOTER-TORAN-1] Owner 2026-10-19: the homepage's marigold toran is the standard top edge of the footer on every page.
+const toran = publicImage('/assets/hf-desi/toran-marigold.webp', { width: 1400, fit: 'scale-down' });
 ---
 <footer class="cv-footer notebook-footer" data-callvaal-chrome>
+  <div class="cv-footer-toran" aria-hidden="true" style={`--cv-toran:url(${toran})`}></div>
   {/* [HF-DESI-HOME-MOBILE-1] 2026-10-17: disclaimer is the owner's own wording from the desi design footer. */}
   {/* [HF-DASH-LAYOUT-1] Owner 2026-10-16: no logo and no tagline in the footer (the header already carries the logo). */}
   <nav class="cv-footer-columns footer-columns" aria-label="Footer">

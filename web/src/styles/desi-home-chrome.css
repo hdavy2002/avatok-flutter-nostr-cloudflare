@@ -5,7 +5,6 @@ body.desi-home-page{margin:0;background:#fff2cf}
 .desi-home .dh-anchor{display:block;height:0}
 /* the marigold toran hangs under the sticky header; it scrolls away with the page */
 .desi-home .cv-header+main>.toran:first-child{margin-top:0!important}
-.desi-home .dh-footer-toran{height:72px}
 .desi-home .cv-footer{margin-top:0;border-top:0;font-family:'Nunito',Comfortaa,sans-serif}
 .desi-home .cv-footer-group a{color:#30245f;font-weight:700}
 .desi-home .cv-footer-group summary{color:#30245f}

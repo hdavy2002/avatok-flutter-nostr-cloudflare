@@ -394,6 +394,18 @@ then *"they still seem squeezed height-wise"*. The fix that was approved:
   faceRows (the pothi leaf: `83 356 95 356`, cap = 2.92 × height). Give the element a **fixed height** so text can
   never stretch the caps. Where the caps no longer fit beside the text (≤1100px), don't squeeze them: switch to a
   card with the whole leaf at true shape as its header strip (`::before`, height `min(52px, 12.5cqw)`).
+- **Wooden chips (pothi leaves) — the approved standard (owner, 2026-10-19, /help):** every chip on every page uses
+  these numbers. Height `clamp(116px, 9.2vw, 156px)`; each lotus end `1.6 × height` wide (the art's true cap is
+  2.92×; the owner narrowed it step by step and approved 1.6); the numbered flower medallion is **86% of the chip
+  height** with its number at 30% of the height (Nunito 900); question text `clamp(30px, 2.4vw, 44px)` Nunito 900,
+  topic pill 20px, opened answer text `clamp(26px, 2vw, 36px)`. Phones (≤1100px): card with a whole-leaf header
+  `min(66px, 16cqw)` tall (ends 1.6× its height), 112px medallion with a 42px number, question 24–32px, answer 22–28px.
+- **Art buttons (keys) — the approved standard (owner, 2026-10-19):** caps `0.95 × key height` for the help keys
+  (squashed PNGs), labels Nunito 900 forced with `!important` (the shared chrome resets link fonts), 22–26px on
+  desktop and 17–20px on phones, always one line.
+- **Footer toran (owner, 2026-10-19):** the homepage marigold toran (`/assets/hf-desi/toran-marigold.webp`) hangs
+  from the top of the shared footer (`components/callvaal/Footer.astro`, `.cv-footer-toran`, 72px) on every page.
+  Pages don't add their own toran above the footer.
 - **Framed covers (books, ledgers):** a 9-slice frame must be **symmetric** and its sides must **repeat**
   (`border-image-repeat: round`), never `stretch` — a tall page stretched the /help bahi-khata paisleys into stripes.
   If the art has a one-sided extra (tassels), mirror the clean half into a new file (`bahikhata-frame.png`) rather

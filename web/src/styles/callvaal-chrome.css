@@ -109,3 +109,5 @@ html.hf-app .hf-tabbar{display:flex;position:fixed;left:0;right:0;bottom:0;z-ind
    stylesheets reset <p> margins/alignment, so pin it here with enough specificity. */
 footer.cv-footer .cv-footer-bottom .cv-footer-disclaimer{display:block;box-sizing:border-box;width:auto;max-width:min(1150px,calc(100% - 32px));margin-left:auto!important;margin-right:auto!important;text-align:center!important}
 footer.cv-footer .cv-footer-credits,footer.cv-footer .cv-footer-credits p{text-align:center!important;margin-left:auto;margin-right:auto}
+/* [HF-FOOTER-TORAN-1] marigold toran hanging from the top edge of every footer (art: /assets/hf-desi/toran-marigold.webp, 1400x280) */
+.cv-footer .cv-footer-toran{height:72px;margin:-20px 0 24px;background:var(--cv-toran,none) repeat-x center bottom/auto 120.2%;pointer-events:none}

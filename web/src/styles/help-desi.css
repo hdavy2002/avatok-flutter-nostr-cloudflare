@@ -40,9 +40,11 @@
 .gh .gh-band--peacock { background: var(--peacock); color: var(--cream); border-top: 3px solid var(--ink); }
 .gh .gh-note { margin-top: 32px; text-align: center; font-size: clamp(14px, .85vw, 16px); opacity: .92; }
 /* buttons: owner's Indian skins (border-image; the ends keep their drawing, the middle stretches) */
-.gh .gh-btn { --bh: 80px; display: inline-flex; align-items: center; justify-content: center; gap: 10px; height: var(--bh); padding: 0 8px; border-style: solid; border-width: 0 calc(var(--bh) * 1.25); border-image: var(--gh-btn, linear-gradient(var(--saffron), var(--saffron))) 46 197 46 197 fill / 0 calc(var(--bh) * 1.25) stretch; background: none; color: var(--ink); font: 900 clamp(20px, 1.35vw, 24px)/1 var(--head); white-space: nowrap; text-decoration: none; filter: drop-shadow(0 4px 0 rgba(42, 31, 92, .55)); transition: transform .15s; }
+.gh .gh-btn { --bh: 80px; display: inline-flex; align-items: center; justify-content: center; gap: 10px; height: var(--bh); padding: 0 8px; border-style: solid; border-width: 0 calc(var(--bh) * .95); border-image: var(--gh-btn, linear-gradient(var(--saffron), var(--saffron))) 46 197 46 197 fill / 0 calc(var(--bh) * .95) stretch; background: none; color: var(--ink); font: 900 clamp(22px, 1.5vw, 26px)/1 var(--head); white-space: nowrap; text-decoration: none; filter: drop-shadow(0 4px 0 rgba(42, 31, 92, .55)); transition: transform .15s; }
 .gh .gh-btn:hover { transform: translate(-2px, -2px); color: var(--kumkum); }
-.gh .gh-btn2 { --bh: 62px; display: inline-flex; align-items: center; justify-content: center; height: var(--bh); padding: 0 6px; border-style: solid; border-width: 0 calc(var(--bh) * 1.3); border-image: var(--gh-btn2, linear-gradient(var(--haldi), var(--haldi))) 45 200 49 200 fill / 0 calc(var(--bh) * 1.3) stretch; color: var(--ink); font: 900 19px/1 var(--head); white-space: nowrap; text-decoration: none; filter: drop-shadow(0 4px 0 rgba(42, 31, 92, .55)); transition: transform .15s; }
+.gh .gh-btn2 { --bh: 66px; display: inline-flex; align-items: center; justify-content: center; height: var(--bh); padding: 0 6px; border-style: solid; border-width: 0 calc(var(--bh) * .95); border-image: var(--gh-btn2, linear-gradient(var(--haldi), var(--haldi))) 45 200 49 200 fill / 0 calc(var(--bh) * .95) stretch; color: var(--ink); font: 900 22px/1 var(--head); white-space: nowrap; text-decoration: none; filter: drop-shadow(0 4px 0 rgba(42, 31, 92, .55)); transition: transform .15s; }
+/* the shared chrome resets link fonts: keep the keys in heavy Nunito */
+.gh .gh-btn, .gh .gh-btn2 { font-family: var(--head) !important; font-weight: 900 !important; letter-spacing: .02em; }
 .gh .gh-btn2:hover { transform: translate(-2px, -2px); color: var(--kumkum); }
 /* ornaments */
 .gh .gh-mandana { height: clamp(66px, 5.8vw, 108px); background: var(--gh-rangoli, var(--saffron)) repeat-x center / auto 100%; border-block: 3px solid var(--ink); }
@@ -91,18 +93,18 @@
 .gh .gh-leaves { display: flex; flex-direction: column; gap: 22px; max-width: 1440px; margin: 0 auto; }
 .gh .gh-leaf { color: var(--ink); }
 .gh .gh-leaf:nth-child(odd) { margin-right: clamp(0px, 3vw, 48px); } .gh .gh-leaf:nth-child(even) { margin-left: clamp(0px, 3vw, 48px); }
-.gh .gh-leaf { --lh: clamp(92px, 7.4vw, 112px); container-type: inline-size; }
-.gh .gh-leaf summary { list-style: none; cursor: pointer; display: flex; align-items: center; gap: 16px; height: var(--lh); padding: 0 4px; border-style: solid; border-width: 0 calc(var(--lh) * 2.92); border-image: var(--gh-leaf, linear-gradient(var(--palm), var(--palm))) 83 356 95 356 fill / 0 calc(var(--lh) * 2.92) stretch; filter: drop-shadow(6px 6px 0 #1a1340); }
+.gh .gh-leaf { --lh: clamp(116px, 9.2vw, 156px); container-type: inline-size; }
+.gh .gh-leaf summary { list-style: none; cursor: pointer; display: flex; align-items: center; gap: 16px; height: var(--lh); padding: 0 4px; border-style: solid; border-width: 0 calc(var(--lh) * 1.6); border-image: var(--gh-leaf, linear-gradient(var(--palm), var(--palm))) 83 356 95 356 fill / 0 calc(var(--lh) * 1.6) stretch; filter: drop-shadow(6px 6px 0 #1a1340); }
 .gh .gh-leaf summary::-webkit-details-marker { display: none; }
-.gh .gh-num { flex: none; display: grid; place-items: center; width: 60px; height: 60px; background: var(--gh-rosette, var(--haldi)) center / 100% 100% no-repeat; font: 900 22px var(--head); color: var(--ink); }
+.gh .gh-num { flex: none; display: grid; place-items: center; width: calc(var(--lh) * .86); height: calc(var(--lh) * .86); background: var(--gh-rosette, var(--haldi)) center / 112% 112% no-repeat; font: 900 calc(var(--lh) * .3) var(--head) !important; color: var(--ink); }
 .gh .gh-q { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 6px; }
-.gh .gh-q b { font: 900 clamp(18px, 1.3vw, 24px)/1.18 var(--head); }
-.gh .gh-pill { display: inline-block; padding: 2px 12px; border-radius: 999px; border: 2px solid var(--ink); background: var(--tone, var(--saffron)); color: var(--tone-ink, var(--ink)); font-size: 13px; font-weight: 800; }
+.gh .gh-q b { font: 900 clamp(30px, 2.4vw, 44px)/1.14 var(--head); }
+.gh .gh-pill { display: inline-block; padding: 2px 12px; border-radius: 999px; border: 2px solid var(--ink); background: var(--tone, var(--saffron)); color: var(--tone-ink, var(--ink)); font-size: 20px; font-weight: 800; }
 .gh .gh-chev { flex: none; width: 28px; height: 28px; transition: transform .15s; }
 .gh .gh-leaf[open] .gh-chev { transform: rotate(180deg); }
 .gh .gh-answer { margin: 10px clamp(24px, 6vw, 110px) 0; padding: 18px 22px; background: var(--palm); border: 3px solid var(--ink); border-radius: 20px; box-shadow: 6px 6px 0 #1a1340; }
-.gh .gh-answer p { font-size: clamp(16px, 1.1vw, 19px); }
-.gh .gh-answer-foot { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; margin-top: 14px; font-size: 14px; font-weight: 700; color: var(--muted); }
+.gh .gh-answer p { font-size: clamp(26px, 2vw, 36px); line-height: 1.45; }
+.gh .gh-answer-foot { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; margin-top: 14px; font-size: 17px; font-weight: 700; color: var(--muted); }
 
 /* ---------- ④ bahi-khata ---------- */
 .gh .gh-books { background: var(--cream); }
@@ -258,10 +260,12 @@
 }
 @media (max-width: 1100px) {
   .gh .gh-leaf:nth-child(n) { margin: 0; }
-  .gh .gh-leaf summary { --mh: min(52px, 12.5cqw); height: auto; flex-direction: column; text-align: center; gap: 8px; padding: 0 18px 18px; border: 3px solid var(--ink); border-image: none; border-radius: 22px; background: var(--palm); }
-  .gh .gh-leaf summary::before { content: ""; align-self: stretch; height: var(--mh); margin: 10px -12px 0; border-style: solid; border-width: 0 calc(var(--mh) * 2.92); border-image: var(--gh-leaf, linear-gradient(var(--saffron), var(--saffron))) 83 356 95 356 fill / 0 calc(var(--mh) * 2.92) stretch; }
-  .gh .gh-num { position: relative; margin-top: calc(-.5 * var(--mh) - 38px); }
+  .gh .gh-leaf summary { --mh: min(66px, 16cqw); height: auto; flex-direction: column; text-align: center; gap: 8px; padding: 0 18px 18px; border: 3px solid var(--ink); border-image: none; border-radius: 22px; background: var(--palm); }
+  .gh .gh-leaf summary::before { content: ""; align-self: stretch; height: var(--mh); margin: max(10px, calc(61px - var(--mh) / 2)) -12px 0; border-style: solid; border-width: 0 calc(var(--mh) * 1.6); border-image: var(--gh-leaf, linear-gradient(var(--saffron), var(--saffron))) 83 356 95 356 fill / 0 calc(var(--mh) * 1.6) stretch; }
+  .gh .gh-num { position: relative; width: 112px; height: 112px; font-size: 42px !important; margin-top: calc(-.5 * var(--mh) - 64px); }
   .gh .gh-q { align-items: center; }
+  .gh .gh-q b { font-size: clamp(24px, 3.6vw, 32px); }
+  .gh .gh-answer p { font-size: clamp(22px, 3vw, 28px); }
 }
 /* phones and small tablets: everything centred (owner rule) */
 @media (max-width: 900px) {
@@ -278,8 +282,8 @@
   .gh .gh-roof { width: 108%; margin: 0 -4% -0.6%; }
   .gh .gh-kite-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .gh .gh-answer { margin: 10px 0 0; text-align: center; padding: 16px 14px; }
-  .gh .gh-btn { --bh: 68px; font-size: 20px; }
-  .gh .gh-btn2 { --bh: 58px; font-size: 17px; }
+  .gh .gh-btn { --bh: 68px; font-size: 22px; }
+  .gh .gh-btn2 { --bh: 60px; font-size: 20px; }
   .gh .gh-answer-foot { justify-content: center; flex-direction: column; }
   .gh .gh-book { --bk: .17; }
   .gh .gh-ribbons { top: -66px; right: 6%; width: 64px; }
@@ -310,8 +314,8 @@
   .gh .hs-prose ol li::before { width: 40px; height: 40px; font-size: 18px; }
 }
 @media (max-width: 600px) { .gh .gh-book { --bk: .12; margin-inline: calc(8px - var(--gut)); } .gh .gh-page { padding-inline: 12px; } }
-@media (max-width: 420px) { .gh .gh-btn { --bh: 62px; font-size: 18px; } .gh .gh-btn2 { --bh: 56px; font-size: 16px; } }
-@media (max-width: 360px) { .gh .gh-btn { --bh: 56px; font-size: 16px; } .gh .gh-btn2 { --bh: 52px; font-size: 14px; } }
+@media (max-width: 420px) { .gh .gh-btn { --bh: 62px; font-size: 20px; } .gh .gh-btn2 { --bh: 58px; font-size: 19px; } }
+@media (max-width: 360px) { .gh .gh-btn { --bh: 56px; font-size: 18px; } .gh .gh-btn2 { --bh: 54px; font-size: 17px; } }
 @media (prefers-reduced-motion: reduce) { .gh .gh-kite, .gh .gh-btn, .gh .gh-btn2 { transition: none; } }
 /* shared chrome resets b/strong fonts; keep Nunito on titles */
 .gh .hs-toc-cta b, .gh .hs-prevnext b, .gh .gh-q b { font-family: var(--head) !important; font-weight: 900 !important; }
