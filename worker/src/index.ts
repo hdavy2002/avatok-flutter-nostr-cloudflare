@@ -281,6 +281,7 @@ import {
   affiliateBind, adminAffiliates, adminAffiliateSuspend, runAffiliateQualification,
 } from "./routes/affiliate";
 import { affiliateAssetsGenerate, affiliateAssetsList } from "./routes/affiliate_assets";
+import { hydrateKvSecrets } from "./lib/kv_secrets";
 // --- Ava in-chat AI (Phase 0 — Foundations) ---
 // These handler modules + DO classes are created by LATER phases (see master-plan
 // §4: P2 gemini, P3 thread, P5 tools, P8 guardian, P9 image, P10 backup). The
@@ -420,6 +421,7 @@ export { IntroCheckWorkflow } from "./workflows/intro_check"; // [HF-VOICE-INTRO
 export default {
   async fetch(req: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const t0 = Date.now();
+    { const p0 = new URL(req.url).pathname; if (p0.startsWith("/api/hf/") || p0.startsWith("/api/admin/hf/") || p0.startsWith("/api/hosts/")) await hydrateKvSecrets(env); } // [HF-WIRE-18] TREG_API_KEY lives in KV (binding limit)
     const traceId = req.headers.get("x-trace-id") || crypto.randomUUID();
     let res: Response;
     try {
@@ -508,6 +510,7 @@ export default {
   // per-minute) on purpose: the qualification window is measured in days, and
   // each tick is bounded to QUALIFY_BATCH rows.
   async scheduled(_event: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
+    await hydrateKvSecrets(env); // [HF-WIRE-18]
     ctx.waitUntil(
       Promise.all([
         gcalExportSweep(env).catch(e=>console.error("[gcal-export]",String(e))),
