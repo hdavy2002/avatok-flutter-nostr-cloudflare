@@ -58,7 +58,7 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
                 const SizedBox(height: 36),
                 Text('ROLLING OUT THE COLOURS…', style: t(22, color: C.gold, ls: 0.06)),
                 const SizedBox(height: 8),
-                Text('Chhotu is unfolding the next reel.', style: t(16, color: C.cream, w: FontWeight.w700)),
+                Text('Rangili is unfolding the next reel.', style: t(16, color: C.cream, w: FontWeight.w700)),
               ],
             ),
           ),
@@ -242,7 +242,7 @@ class _IntroOne extends StatelessWidget {
         const Expanded(
           child: Padding(
             padding: EdgeInsets.symmetric(horizontal: 28),
-            child: Art('intro/bazaar-hero.png', fallback: ArtStandIn('BAZAAR ART\nChhotu + bandhani stall', color: C.lemon)),
+            child: Art('intro/bazaar-hero.png', fallback: ArtStandIn('BAZAAR ART\nRangili at her fabric stall', color: C.lemon)),
           ),
         ),
         Padding(
