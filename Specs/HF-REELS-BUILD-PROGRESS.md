@@ -27,11 +27,11 @@ Legend: ⬜ not started · 🟨 in progress · ✅ done · ⛔ blocked (needs ow
 |---|---|---|---|---|
 | 0 | Progress log created | ✅ | (this commit) | 2026-10-19 |
 | 1 | HF-WIRE-1 Foundations (ApiClient, Clerk, /api/hf/me, config/update prompt, states, deep links, telemetry) | ⬜ | | |
-| 2 | HF-WIRE-2 Fan sign-up (WhatsApp OTP → account → resume action) | ⬜ | | Open Q2 |
-| 3 | HF-WIRE-3 Channels + treg (10-follower rule, approval) | ⬜ | | Open Q1, Q7; treg research first |
+| 2 | HF-WIRE-2 Fan sign-up (WhatsApp OTP → account → resume action) | ⬜ | | Q2 answered: OTP |
+| 3 | HF-WIRE-3 Channels + treg (10-follower rule, approval) | ⬜ | | Q1=10, Q7=IG+YT; treg research first |
 | 4 | HF-WIRE-4 Reels import + jev face check, real feed, demo seed `is_demo` | ⬜ | | Open Q9; jev research first |
 | 5 | HF-WIRE-5 Presence (Online/Offline, busy, Notify me) | ⬜ | | |
-| 6 | HF-WIRE-6 Wallet + Cashfree top-up (GST ÷1.18, webhook, receipts) | ⬜ | | Open Q10 |
+| 6 | HF-WIRE-6 Wallet + Cashfree top-up (GST ÷1.18, webhook, receipts) | ⬜ | | Q10=Cashfree |
 | 7 | HF-WIRE-7 Instant calls (Vobiz live, call screen, reviews, records) | ⬜ | | |
 | 8 | HF-WIRE-8 Bookings (availability, holds, reminders, auto-start, calendars) | ⬜ | | Open Q6 |
 | 9 | HF-WIRE-9 Favourites, Search, Invite votes | ⬜ | | Open Q8 |
@@ -40,7 +40,12 @@ Legend: ⬜ not started · 🟨 in progress · ✅ done · ⛔ blocked (needs ow
 | 12 | HF-WIRE-12 Hardening (strip dummy data, analytics, crash, a11y, closed test) | ⬜ | | |
 
 ## 3. Owner answers to the open questions (handover §10)
-_None yet. Record each answer here AND in the rulebook._
+- Q1 Min followers: **10** (confirmed, not 10,000) — HF-REEL-23.
+- Q2 Fan WhatsApp: **verify by OTP** — HF-REEL-24.
+- Q7 Platforms at launch: **Instagram + YouTube**; Facebook "coming soon" — HF-REEL-25.
+- Q10 Top-up payment: **Cashfree** (not Play Billing) — HF-REEL-25.
+- Still open: Q3 fan withdrawals, Q4 revenue-split text, Q5 KYC at payout, Q6 booking cancellation cut-off, Q8 search source, Q9 demo influencer content. Ask before building those stages.
 
 ## 4. Log (newest last)
 - 2026-10-19 — Stage 0: progress log created on main. Next: Stage 1 (HF-WIRE-1).
+- 2026-10-19 — Owner answered Q1, Q2, Q7, Q10 (rules HF-REEL-23…25). Starting Stage 1 with parallel agents: A = Flutter foundations, B = worker audit + /api/hf/me + flags, C = treg/jev research.

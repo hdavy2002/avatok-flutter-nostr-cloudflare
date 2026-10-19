@@ -290,6 +290,9 @@ The app is a Reels feed: fans watch influencers' short videos, then call or book
 | HF-REEL-20 | **Influencer Channels** (owner 2026-10-19). Settings has a **Channels** menu where an influencer adds Instagram, YouTube (Facebook later) channels. Each channel has its own consent flow (embeds, counts, face-check note, "this channel is mine" proof). Her reels are pulled from these channels. | ADOPTED | N/A | TODO |
 | HF-REEL-21 | **Automatic acceptance: at least 10 subscribers/followers** on YouTube or Instagram (owner 2026-10-19), checked automatically through the **treg** API. Threshold kept in config (`hfInfluencerMinFollowers`, default 10). Re-checked on every sync; below threshold = hidden from feed, not deleted. | ADOPTED | N/A | TODO |
 | HF-REEL-22 | **Demo app is UI-only** (owner 2026-10-19): the current app (2.0.123 on Play internal) has dummy data and wired screens only; backend wiring follows `Specs/HF-REELS-APP-HANDOVER.md`. Every new build ships to the same Play app (com.hellofraands.app) and the same internal tester link. | ADOPTED | N/A | TODO |
+| HF-REEL-23 | **Influencer minimum stays at 10 followers/subscribers** (owner confirmed 2026-10-19; not 10,000). Still a config value. | ADOPTED | N/A | TODO |
+| HF-REEL-24 | **Fan WhatsApp is verified by OTP** at sign-up (owner 2026-10-19), through the existing WhatsApp OTP routes; calls ring this number. | ADOPTED | N/A | TODO |
+| HF-REEL-25 | **App top-ups use Cashfree** (owner 2026-10-19), not Google Play Billing; gateway name never shown. **Channels at launch: Instagram and YouTube only**; Facebook shows "coming soon". | ADOPTED | N/A | TODO |
 
 ---
 
@@ -446,3 +449,4 @@ else, or come back later."
 | 2026-10-19 | HF-DEMO-UI-3 (owner): influencer footer with a dedicated Online/Offline button (HF-REEL-15); Offline = no instant calls but bookings stay open (HF-REEL-16); bookings calendar (HF-REEL-17); availability calendar (HF-REEL-18); fan date-and-time booking flow (HF-REEL-19). Built in the demo app on dummy data. |
 | 2026-10-19 | HF-HANDOVER-1 (owner): Channels menu with per-channel consent (HF-REEL-20); automatic acceptance at 10+ YouTube/Instagram followers via treg (HF-REEL-21); demo app is UI-only, handover spec `Specs/HF-REELS-APP-HANDOVER.md` (HF-REEL-22). |
 | 2026-10-19 | HF-REEL-APP-3 (owner): Invite on a person not on the network counts as a vote to bring them in (HF-REEL-9); intro screen 2 now just says what Hello Fraands is (talk to your favourite influencer on a private call) and points to Invite, instead of giving steps. |
+| 2026-10-19 | HF-PROGRESS-1 (owner answers to handover §10): 10-follower minimum confirmed (HF-REEL-23); fan WhatsApp OTP (HF-REEL-24); Cashfree for app top-ups, Instagram + YouTube only at launch (HF-REEL-25). |
