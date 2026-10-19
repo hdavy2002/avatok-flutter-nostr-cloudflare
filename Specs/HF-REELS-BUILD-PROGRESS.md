@@ -33,10 +33,10 @@ Legend: ⬜ not started · 🟨 in progress · ✅ done · ⛔ blocked (needs ow
 | 5 | HF-WIRE-5 Presence (Online/Offline, busy, Notify me) | ✅ (code) | HF-WIRE-5 | Gated by hfCallsEnabled OR hfReelsEnabled. |
 | 6 | HF-WIRE-6 Wallet + Cashfree top-up (GST ÷1.18, webhook, receipts) | ✅ (code) | HF-WIRE-6 | Reuses POST /api/hf/wallet/topup + webhook; new GET /api/hf/app/wallet. Secrets CASHFREE_APP_ID/SECRET_KEY; flags hfTopupEnabled, hfTopupGateway=cashfree, hfTokensEnabled. Checkout on avatok.ai (Cashfree whitelist). |
 | 7 | HF-WIRE-7 Instant calls (Vobiz live, call screen, reviews, records) | ✅ (code) | HF-WIRE-7 | Needs hfCallsEnabled, HF_CALL_DID, VOBIZ_* secrets; two-phone test pending. |
-| 8 | HF-WIRE-8 Bookings (availability, holds, reminders, auto-start, calendars) | ⬜ | | Q6: free cancel until 1 h before (HF-REEL-28) |
-| 9 | HF-WIRE-9 Favourites, Search, Invite votes | ⬜ | | Q8: network + exact handle lookup (HF-REEL-29) |
-| 10 | HF-WIRE-10 Payouts (request, admin UTR queue, WhatsApp) | ⬜ | | Q3/Q5: KYC+UPI at first payout, fans refund only (HF-REEL-31) |
-| 11 | HF-WIRE-11 Settings (prefs, delete account, legal) | ⬜ | | |
+| 8 | HF-WIRE-8 Bookings (availability, holds, reminders, auto-start, calendars) | ✅ (code) | HF-WIRE-8 | Adapter over existing bookings router; migration hf-booking-notes; auto-start cron runHfBookingAutoStart; flag hfBookingsEnabled. |
+| 9 | HF-WIRE-9 Favourites, Search, Invite votes | ✅ (code) | HF-WIRE-9 | /api/hf/search, invite votes (migration hf-invite-votes), favourites store, share sheet (share_plus). Flags hfReelsEnabled, hfInvitesEnabled, hfFavouritesEnabled. |
+| 10 | HF-WIRE-10 Payouts (request, admin UTR queue, WhatsApp) | ✅ (code) | HF-WIRE-10 | /api/hf/payouts/* adapter (UPI, KYC only at first payout → website KYC page), split text per HF-REEL-30, slug assigned on Channels approval. Flag hfPayoutsEnabled. |
+| 11 | HF-WIRE-11 Settings (prefs, delete account, legal) | ✅ (code) | HF-WIRE-11 | Real prefs/name/version/legal links, delete account via /api/hf/account/exit. Email/WhatsApp change = write to support (no OTP-change route). Play data-safety draft: Specs/HF-PLAY-DATA-SAFETY.md. |
 | 12 | HF-WIRE-12 Hardening (strip dummy data, analytics, crash, a11y, closed test) | ⬜ | | |
 
 ## 3. Owner answers to the open questions (handover §10)
@@ -73,3 +73,6 @@ Legend: ⬜ not started · 🟨 in progress · ✅ done · ⛔ blocked (needs ow
 - 2026-10-19 — Stages 4, 6, 7 merged (reels import + real feed, wallet + Cashfree top-up, instant calls). Integration CI green (run 39240200960). Owner answered Q3–Q6, Q8 (HF-REEL-28…31).
   - IMPORTANT for anyone continuing: NOTHING is deployed. The app still runs dummy screens unless built with `--dart-define=HF_DEMO=false`. Go-live checklist is §5 below.
   - Next batch: Stage 8 bookings, Stage 9 favourites/search/invites, Stage 10 payouts, Stage 11 settings, plus fix: assign a slug when Channels approves an influencer; replace the "60% minus ₹2" text.
+- 2026-10-19 — Stages 8, 9, 10, 11 merged. Integration CI green (runs 39258253758, 39258596466).
+  - To check with owner: Help FAQ says refunds go to the original payment "within 180 days" (agent wording, not an owner rule).
+  - Next: Stage 12 hardening (default HF_DEMO=false for release builds, remove dummy data from release, PostHog + crash reporting, TalkBack labels, closed test) and the go-live checklist in §5. Still open: Q9 demo influencer content.
