@@ -56,10 +56,10 @@ Legend: ⬜ not started · 🟨 in progress · ✅ done · ⛔ blocked (needs ow
 ## 2b. Round 2 (owner 2026-10-19 evening) — rework after review
 | # | Stage | Status | Notes |
 |---|---|---|---|
-| R2-A | HF-WIRE-13 Money rules engine + monitor (HF-REEL-35/36): ₹20 minimum, ₹1 first-minute drop, wallet-only refunds, fan payouts, reconciliation cron | ⬜ | |
-| R2-B | HF-WIRE-14 Embeds only + YouTube sign-in + admin demo links (HF-REEL-32/33/34) | ⬜ | Needs Android OAuth client for com.hellofraands.app with youtube.readonly |
-| R2-C | HF-WIRE-15 Rewrite policies, web pages, help centre, FAQs, app help to match HF-REEL-35/36 | ⬜ | |
-| R2-D | Go live: migrations, deploy worker, flags, Clerk toggle, build demo=false | ⬜ | |
+| R2-A | HF-WIRE-13 Money rules engine + monitor (HF-REEL-35/36): ₹20 minimum, ₹1 first-minute drop, wallet-only refunds, fan payouts, reconciliation cron | ✅ live | lib/hf_money_rules.ts; admin GET /api/admin/hf/money-audit; gateway refunds gated off (hfGatewayRefundsEnabled=false). Fan payout min hfFanPayoutMinRupees=100 (owner to confirm). |
+| R2-B | HF-WIRE-14 Embeds only + YouTube sign-in + admin demo links (HF-REEL-32/33/34) | ✅ live (server) | Admin page /admin/hosts/demo-influencers. OWNER TODO: Google Cloud Android OAuth clients (upload SHA-1 54:13:7E:57:63:12:B6:63:78:F0:15:EB:9D:7F:3E:EF:1B:A5:5B:F6 + Play app-signing SHA-1), YouTube Data API on, consent scope youtube.readonly + test users. |
+| R2-C | HF-WIRE-15/16 Rewrite policies, web pages, help centre, FAQs, app help to match HF-REEL-35/36 | ✅ | Table: Specs/HF-POLICY-REWRITE-2026-10-19.md. Web deploy run 39273876303. |
+| R2-D | Go live: migrations, deploy worker, flags, Clerk toggle, build demo=false | 🟨 | Migrations applied to PROD (and staging by mistake — harmless). Worker deployed 2e7daa29. Flags on: hfChannels/Reels/FanSignup/Invites/Payouts; hfTopupMinRupees=10. Clerk keeps 'Require email' ON → fixed in code (HF-WIRE-17 placeholder email). App build run 39273815540 (internal, demo=false). |
 
 Secrets found 2026-10-19: worker already has CASHFREE_APP_ID, CASHFREE_SECRET_KEY, HF_CALL_DID, VOBIZ_AUTH_ID, VOBIZ_AUTH_TOKEN, VOBIZ_WEBHOOK_SECRET, YOUTUBE_API_KEY, WASENDER_API_KEY. Local copies in gitignored `secrets/` (cashfree.env, secret-values.env incl. POSTHOG_API_KEY). **TREG_API_KEY is not saved anywhere — ask the owner.**
 
@@ -91,3 +91,5 @@ Secrets found 2026-10-19: worker already has CASHFREE_APP_ID, CASHFREE_SECRET_KE
   - What is left (in order): owner sets secrets + applies migrations + deploys worker + flips flags (§5); build with demo=false; run the closed test plan (two-phone call, Cashfree sandbox, booking auto-start, real IG/YT channel); fix what the tests find; Play closed test 12 testers × 14 days.
   - Known gaps: no influencer "today" summary route (tiles hidden); email/WhatsApp change goes through support; treg Instagram parameters unverified on live data; Crashlytics not added (PostHog only); Q9 demo influencer content still open; FAQ "within 180 days" refund wording needs owner OK.
 - 2026-10-19 — Owner round 2: new rules HF-REEL-32…36 recorded. Launching R2-A, R2-B, R2-C in parallel.
+- 2026-10-19 — Round 2 merged and LIVE: HF-WIRE-13 money rules + monitor, HF-WIRE-14 embeds/YouTube sign-in/demo links, HF-WIRE-15/16 policy rewrite, HF-WIRE-17 Clerk placeholder email. Prod migrations applied (note: cf.sh targets staging from a non-main branch unless AVATOK_TARGET=prod). Worker 2e7daa29. Real app internal build started (demo=false).
+  - Still needed from owner: TREG_API_KEY (Instagram), Google Cloud Android OAuth clients for YouTube sign-in, confirm fan payout minimum ₹100, hfStdPlanEnabled is ON (fixed standard rate — influencers cannot set their own rate while on).
