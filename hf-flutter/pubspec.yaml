@@ -1,5 +1,5 @@
 name: hf_app
-description: Native Android app for the Hello Fraands calling platform (HF-NATIVE-*). Brand values come from Specs/brand.json through lib/core/brand.dart.
+description: Native Android app (HF-NATIVE-*). Demo frontend since 2026-10-19 (HF-DEMO-UI-1) - screens only, dummy data. Brand values come from Specs/brand.json through lib/core/brand.dart.
 publish_to: 'none'
 # CI overrides both with --build-name / --build-number (versionCode = 2000 + run number).
 version: 2.0.0+2000
@@ -47,12 +47,17 @@ flutter:
 
   assets:
     - assets/images/
-    - assets/images/intro/
-    - assets/images/auth/
-    - assets/images/kyc/
-    - assets/beaver/
     - assets/brand/
-    - assets/lottie/
+    - assets/images/bazaar/intro/
+    - assets/images/bazaar/feed/
+    - assets/images/bazaar/signup/
+    - assets/images/bazaar/loading/
+    - assets/images/bazaar/profile/
+    - assets/images/bazaar/dashboard/
+    - assets/images/bazaar/wallet/
+    - assets/images/bazaar/topup/
+    - assets/images/bazaar/payout/
+    - assets/images/bazaar/bg/
 
   fonts:
     - family: Nunito

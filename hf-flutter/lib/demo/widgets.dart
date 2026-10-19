@@ -1,0 +1,527 @@
+import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
+
+import 'data.dart';
+import 'screens/sheets.dart';
+import 'state.dart';
+import 'theme.dart';
+
+/// Picture from the Rang Bazaar art pack (claude/hello-fraands-rang-bazaar-app-artwork-prompts.md).
+/// Until the owner saves the file, [fallback] (a drawn stand-in) is shown instead.
+class Art extends StatelessWidget {
+  const Art(this.path, {super.key, this.fit = BoxFit.contain, this.fallback, this.width, this.height, this.alignment = Alignment.center});
+
+  final String path;
+  final BoxFit fit;
+  final Widget? fallback;
+  final double? width;
+  final double? height;
+  final Alignment alignment;
+
+  @override
+  Widget build(BuildContext context) {
+    return Image.asset(
+      'assets/images/bazaar/$path',
+      fit: fit,
+      width: width,
+      height: height,
+      alignment: alignment,
+      errorBuilder: (context, error, stack) => SizedBox(width: width, height: height, child: fallback ?? const SizedBox.shrink()),
+    );
+  }
+}
+
+/// Labelled placeholder used when a picture has not been generated yet.
+class ArtStandIn extends StatelessWidget {
+  const ArtStandIn(this.label, {super.key, this.color = C.sand, this.ink = C.deep, this.radius = 20});
+
+  final String label;
+  final Color color;
+  final Color ink;
+  final double radius;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        color: color,
+        borderRadius: BorderRadius.circular(radius),
+        border: Border.all(color: ink.withValues(alpha: 0.5), width: 2),
+      ),
+      alignment: Alignment.center,
+      padding: const EdgeInsets.all(8),
+      child: Text('[ $label ]', textAlign: TextAlign.center, style: t(13, color: ink, ls: 0.06)),
+    );
+  }
+}
+
+/// Dashed vertical line (ticket perforation).
+class DashedLine extends StatelessWidget {
+  const DashedLine({super.key, this.color = C.maroon, this.width = 3, this.vertical = true});
+
+  final Color color;
+  final double width;
+  final bool vertical;
+
+  @override
+  Widget build(BuildContext context) {
+    return CustomPaint(
+      size: vertical ? Size(width, double.infinity) : Size(double.infinity, width),
+      painter: _DashPainter(color, width, vertical),
+    );
+  }
+}
+
+class _DashPainter extends CustomPainter {
+  _DashPainter(this.color, this.width, this.vertical);
+  final Color color;
+  final double width;
+  final bool vertical;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final p = Paint()
+      ..color = color
+      ..strokeWidth = width;
+    const dash = 6.0;
+    const gap = 5.0;
+    final len = vertical ? size.height : size.width;
+    var pos = 0.0;
+    while (pos < len) {
+      final end = (pos + dash).clamp(0, len).toDouble();
+      if (vertical) {
+        canvas.drawLine(Offset(size.width / 2, pos), Offset(size.width / 2, end), p);
+      } else {
+        canvas.drawLine(Offset(pos, size.height / 2), Offset(end, size.height / 2), p);
+      }
+      pos += dash + gap;
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _DashPainter old) => old.color != color;
+}
+
+/// The fabric-tag button: body + stitched line + tag end. Used for Call now, Continue, Pay.
+class TicketButton extends StatelessWidget {
+  const TicketButton({
+    super.key,
+    required this.label,
+    required this.onTap,
+    this.stubTop,
+    this.stubBottom,
+    this.stubIcon,
+    this.icon,
+    this.maroon = false,
+    this.height = 64,
+    this.enabled = true,
+    this.stubWidth = 92,
+    this.labelSize = 20,
+  });
+
+  final String label;
+  final VoidCallback onTap;
+  final String? stubTop;
+  final String? stubBottom;
+  final IconData? stubIcon;
+  final IconData? icon;
+  final bool maroon;
+  final double height;
+  final bool enabled;
+  final double stubWidth;
+  final double labelSize;
+
+  @override
+  Widget build(BuildContext context) {
+    final body = maroon ? C.maroon : C.marigold;
+    final ink = maroon ? C.gold : C.deep;
+    final stub = maroon ? C.marigold : C.maroon;
+    final stubInk = maroon ? C.deep : C.gold;
+    return Opacity(
+      opacity: enabled ? 1 : 0.45,
+      child: Semantics(
+        button: true,
+        label: label,
+        child: GestureDetector(
+          onTap: enabled ? onTap : null,
+          child: Container(
+            height: height,
+            decoration: const BoxDecoration(
+              boxShadow: [BoxShadow(color: C.deep, offset: Offset(0, 6))],
+              borderRadius: BorderRadius.all(Radius.circular(16)),
+            ),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(16),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Container(
+                      color: body,
+                      alignment: Alignment.center,
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          if (icon != null) ...[Icon(icon, color: ink, size: 24), const SizedBox(width: 8)],
+                          Flexible(
+                            child: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis, style: t(labelSize, color: ink, ls: 0.06)),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  Container(color: body, width: 3, child: DashedLine(color: maroon ? C.gold : C.maroon)),
+                  Container(
+                    width: stubWidth,
+                    color: stub,
+                    alignment: Alignment.center,
+                    child: stubIcon != null
+                        ? Icon(stubIcon, color: stubInk, size: 26)
+                        : Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              if (stubTop != null) Text(stubTop!, style: t(11, color: stubInk, ls: 0.12)),
+                              if (stubBottom != null) Text(stubBottom!, style: t(16, color: stubInk)),
+                            ],
+                          ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Plain chunky button (secondary actions).
+class ChunkyButton extends StatelessWidget {
+  const ChunkyButton({super.key, required this.label, required this.onTap, this.filled = true, this.dark = false, this.height = 58, this.icon});
+
+  final String label;
+  final VoidCallback? onTap;
+  final bool filled;
+  final bool dark;
+  final double height;
+  final IconData? icon;
+
+  @override
+  Widget build(BuildContext context) {
+    final bg = filled ? (dark ? C.maroon : C.marigold) : C.clear;
+    final fg = filled ? (dark ? C.gold : C.deep) : (dark ? C.gold : C.maroon);
+    final border = filled ? bg : (dark ? C.gold : C.maroon);
+    return SizedBox(
+      height: height,
+      child: Material(
+        color: bg,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14), side: BorderSide(color: border, width: 3)),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(14),
+          onTap: onTap,
+          child: Center(
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (icon != null) ...[Icon(icon, color: fg, size: 22), const SizedBox(width: 8)],
+                Text(label, style: t(18, color: fg, ls: 0.06)),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Round mirror-work button (feed side buttons, menu medallions). Uses feed/mirror-button.png when saved.
+class BrassKnob extends StatelessWidget {
+  const BrassKnob({super.key, required this.child, this.onTap, this.size = 52, required this.label});
+
+  final Widget child;
+  final VoidCallback? onTap;
+  final double size;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      button: onTap != null,
+      label: label,
+      child: GestureDetector(
+        onTap: onTap,
+        child: SizedBox(
+          width: size,
+          height: size,
+          child: Stack(
+            alignment: Alignment.center,
+            children: [
+              Positioned.fill(
+                child: Art(
+                  'feed/mirror-button.png',
+                  fallback: Container(
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      border: Border.all(color: const Color(0xFFFFFFFF), width: 3),
+                      boxShadow: const [BoxShadow(color: C.maroon, spreadRadius: 2)],
+                      gradient: const RadialGradient(
+                        center: Alignment(-0.3, -0.4),
+                        colors: [Color(0xFFBFF3FF), C.turquoise, C.brassDark],
+                        stops: [0, 0.6, 1],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              child,
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Round avatar: the influencer's portrait art when saved, else tones + initials.
+class Avatar extends StatelessWidget {
+  const Avatar(this.who, {super.key, this.size = 56, this.ring = true});
+
+  final Influencer who;
+  final double size;
+  final bool ring;
+
+  @override
+  Widget build(BuildContext context) {
+    final fallback = Container(
+      decoration: BoxDecoration(shape: BoxShape.circle, gradient: LinearGradient(colors: who.tones, begin: Alignment.topLeft, end: Alignment.bottomRight)),
+      alignment: Alignment.center,
+      child: Text(who.initials, style: t(size * 0.36, color: C.gold)),
+    );
+    final face = ClipOval(
+      child: who.portrait == null
+          ? fallback
+          : Container(
+              color: who.tones.first,
+              child: Art(who.portrait!, fit: BoxFit.cover, alignment: Alignment.topCenter, fallback: fallback),
+            ),
+    );
+    return Container(
+      width: size,
+      height: size,
+      padding: EdgeInsets.all(ring ? size * 0.05 : 0),
+      decoration: ring ? const BoxDecoration(shape: BoxShape.circle, gradient: SweepGradient(colors: [C.marigold, C.rani, C.marigold])) : null,
+      child: Container(
+        decoration: ring ? BoxDecoration(shape: BoxShape.circle, border: Border.all(color: C.cinema, width: 2)) : null,
+        child: face,
+      ),
+    );
+  }
+}
+
+/// Online / offline pill.
+class StatusPill extends StatelessWidget {
+  const StatusPill({super.key, required this.online, this.dark = true});
+
+  final bool online;
+  final bool dark;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      decoration: BoxDecoration(color: dark ? C.deep : C.paper, borderRadius: BorderRadius.circular(999), border: dark ? null : Border.all(color: C.sand, width: 2)),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 9,
+            height: 9,
+            decoration: BoxDecoration(shape: BoxShape.circle, color: online ? C.rani : C.cream, boxShadow: online ? [BoxShadow(color: C.rani.withValues(alpha: 0.35), spreadRadius: 3)] : null),
+          ),
+          const SizedBox(width: 7),
+          Text(online ? 'ONLINE NOW' : 'OFFLINE', style: t(13, color: dark ? C.gold : C.muted, ls: 0.06)),
+        ],
+      ),
+    );
+  }
+}
+
+/// Bandhani band with a gota scallop edge (intro/bandhani-border.png when saved).
+class Valance extends StatelessWidget {
+  const Valance({super.key, this.height = 74});
+
+  final double height;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: height,
+      width: double.infinity,
+      child: Art(
+        'intro/bandhani-border.png',
+        fit: BoxFit.fitHeight,
+        alignment: Alignment.topLeft,
+        fallback: CustomPaint(painter: _ValancePainter()),
+      ),
+    );
+  }
+}
+
+class _ValancePainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    // Bandhani: a rani-pink band with rows of tiny white tie-dye dots, a lemon gota lace edge with
+    // rounded scallops, and small turquoise tassels.
+    final band = size.height * 0.66;
+    canvas.drawRect(Rect.fromLTWH(0, 0, size.width, band), Paint()..color = C.maroon);
+    final dot = Paint()..color = const Color(0xFFFFFFFF);
+    final dotY = Paint()..color = C.lemon;
+    var row = 0;
+    for (var y = 8.0; y < band - 8; y += 11, row++) {
+      for (var x = (row.isEven ? 6.0 : 12.0); x < size.width; x += 12) {
+        canvas.drawCircle(Offset(x, y), 1.8, (x ~/ 12 + row) % 5 == 0 ? dotY : dot);
+      }
+    }
+    canvas.drawRect(Rect.fromLTWH(0, band - 6, size.width, 6), Paint()..color = C.marigold);
+    final r = (size.height - band) * 0.8;
+    var i = 0;
+    for (var x = 0.0; x < size.width + r; x += r * 2, i++) {
+      canvas.drawCircle(Offset(x + r, band), r * 0.85, Paint()..color = C.marigold);
+      if (i.isOdd) canvas.drawCircle(Offset(x + r, band + r * 0.95), r * 0.32, Paint()..color = C.turquoise);
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+}
+
+/// Leheriya-striped side rail (feed/leheriya-rail.png when saved).
+class SprocketRail extends StatelessWidget {
+  const SprocketRail({super.key, this.width = 10});
+
+  final double width;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: width,
+      child: Opacity(
+        opacity: 0.9,
+        child: Art('feed/leheriya-rail.png', fit: BoxFit.fitWidth, alignment: Alignment.topCenter, fallback: CustomPaint(painter: _RailPainter())),
+      ),
+    );
+  }
+}
+
+class _RailPainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    // Leheriya: diagonal waves of colour, like a Rajasthani tie-dye turban.
+    const colours = [C.maroon, C.marigold, C.turquoise, C.saffron, C.violet];
+    canvas.save();
+    canvas.clipRect(Offset.zero & size);
+    var i = 0;
+    for (var y = -size.width; y < size.height + size.width; y += 9, i++) {
+      final path = Path()
+        ..moveTo(0, y)
+        ..lineTo(size.width, y - size.width * 0.8)
+        ..lineTo(size.width, y - size.width * 0.8 + 9)
+        ..lineTo(0, y + 9)
+        ..close();
+      canvas.drawPath(path, Paint()..color = colours[i % colours.length]);
+    }
+    canvas.restore();
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+}
+
+/// Round back button.
+class BackBtn extends StatelessWidget {
+  const BackBtn({super.key, this.dark = false});
+
+  final bool dark;
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      button: true,
+      label: 'Back',
+      child: GestureDetector(
+        onTap: () => context.canPop() ? context.pop() : context.go('/reels'),
+        child: Container(
+          width: 44,
+          height: 44,
+          decoration: BoxDecoration(shape: BoxShape.circle, color: dark ? C.ivory.withValues(alpha: 0.15) : const Color(0xFFFFE3F0)),
+          child: Icon(Icons.arrow_back_rounded, color: dark ? C.gold : C.deep),
+        ),
+      ),
+    );
+  }
+}
+
+/// Big two-tone headline: solid line(s) + outline line.
+class Headline extends StatelessWidget {
+  const Headline({super.key, required this.solid, this.outline, this.size = 46, this.color = C.maroon, this.align = TextAlign.left});
+
+  final String solid;
+  final String? outline;
+  final double size;
+  final Color color;
+  final TextAlign align;
+
+  @override
+  Widget build(BuildContext context) {
+    return Text.rich(
+      TextSpan(children: [
+        TextSpan(text: solid, style: t(size, color: color, ls: 0.04, h: 1.02)),
+        if (outline != null) TextSpan(text: '\n$outline', style: tOutline(size, color: color)),
+      ]),
+      textAlign: align,
+    );
+  }
+}
+
+/// Simple screen header used on inner pages: back button + title.
+class PageHeader extends StatelessWidget {
+  const PageHeader({super.key, required this.title, this.trailing});
+
+  final String title;
+  final Widget? trailing;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+      child: Row(
+        children: [
+          const BackBtn(),
+          const SizedBox(width: 14),
+          Expanded(child: Text(title, style: t(24, color: C.maroon, ls: 0.03))),
+          if (trailing != null) trailing!,
+        ],
+      ),
+    );
+  }
+}
+
+/// Opens the sign-up sheet when the visitor has no account yet, then runs [then].
+Future<void> requireAccount(BuildContext context, VoidCallback then, {String? reason}) async {
+  if (demo.signedIn) {
+    then();
+    return;
+  }
+  final ok = await showModalBottomSheet<bool>(
+    context: context,
+    isScrollControlled: true,
+    backgroundColor: C.clear,
+    builder: (_) => SignUpSheet(reason: reason),
+  );
+  if (ok == true && context.mounted) then();
+}
+
+void toast(BuildContext context, String msg) {
+  ScaffoldMessenger.of(context)
+    ..hideCurrentSnackBar()
+    ..showSnackBar(SnackBar(content: Text(msg)));
+}
