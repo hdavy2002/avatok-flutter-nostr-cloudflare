@@ -1,18 +1,18 @@
 ---
 title: "What happens when my balance is low?"
-description: "Learn the minimum balance to start a call, the one-minute-left warning, and how a call ends when wallet money runs out."
+description: "You need at least ₹20 in your wallet to start a call. Learn about the one-minute-left warning and how a call ends when wallet money runs out."
 section: wallet-and-payments
 order: 5
-updated: 2026-10-15
+updated: 2026-10-19
 keywords: ["low balance", "call ended", "minimum balance", "no time limit", "balance khatam", "call cut", "warning", "negative balance"]
 audience: buyer
 faq:
   - q: "What is the lowest balance I need to start a call?"
-    a: "You need enough money in your wallet to start the call at the influencer's per-minute rate. The app tells you if you need to add more."
+    a: "You need at least ₹20 in your wallet to start a call. If you have less, add money first."
   - q: "Will my wallet go below zero?"
     a: "No. Your balance never goes below zero."
   - q: "How long can one call be?"
-    a: "There is no fixed limit. The call runs until either person hangs up or your wallet money ends."
+    a: "The call runs until either person hangs up or your wallet money ends. You hear \"one minute left\" before that."
 draft: false
 ---
 
@@ -22,13 +22,13 @@ Your wallet decides how long you can talk. Here is what to expect, so a call nev
 
 ## The minimum balance
 
-To start a call, you need enough money in your wallet to cover the start of the call at the influencer's rate. The app tells you if you need to add more.
+To start a call, you need **at least ₹20** in your wallet. This is the same for every influencer.
 
 If you have less, add money first. See [top up your wallet](/help/wallet-and-payments/top-up-your-wallet).
 
 ## How long can I talk?
 
-There is **no fixed time limit**. A call goes on until either person hangs up or your wallet money is used up.
+A call goes on until either person hangs up or your wallet money is used up.
 
 - If an influencer's rate is ₹10 a minute (only an example), Rohit with ₹100 in his wallet can talk for about 10 minutes.
 - The more money you add, the longer you can talk.
@@ -45,9 +45,9 @@ You can start a new call if you add more money and the influencer is still onlin
 
 ## How billing works
 
-You pay by the minute while you are connected, at the influencer's per-minute rate.
+You pay by the minute while you speak, at the influencer's per-minute rate.
 
-You pay only when both of you are connected. Ringing or a call that never connects costs ₹0.
+A call is made once we have rung both of you and joined the call. Before that, nothing is charged. If the influencer declines, cancels or does not answer, you pay nothing. If a joined call breaks within the first minute, we charge ₹1 and return the rest to your wallet.
 
 ## Tips
 

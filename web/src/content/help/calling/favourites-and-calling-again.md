@@ -3,7 +3,7 @@ title: "How do favourites and calling again work?"
 description: "Save influencers you like with a heart, get told when they are online, and call them again easily."
 section: calling
 order: 4
-updated: 2026-10-08
+updated: 2026-10-19
 keywords: ["favourite", "notify me", "call again", "heart", "dobara call", "saved influencer"]
 audience: buyer
 faq:
@@ -68,4 +68,4 @@ If an influencer asks you for money outside the platform, report it at [report f
 
 ## Check the price each time
 
-Each influencer sets their own price per minute, and it can change. You see it on their profile before you call. You need enough money in your wallet to start a call. See [How much does a call cost?](/help/calling/price-and-minutes).
+Each influencer sets their own price per minute, and it can change. You see it on their profile before you call. You need at least ₹20 in your wallet to start a call. See [How much does a call cost?](/help/calling/price-and-minutes).

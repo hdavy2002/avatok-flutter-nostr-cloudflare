@@ -115,7 +115,7 @@ const rate = 20; const mins = 10; const wallet = 300;
             <span class="hw-medal">{HOW_ART.medal2 && <img src={img(HOW_ART.medal2, 300)} alt="" width="150" height="150" aria-hidden="true" />}<b>2</b></span>
             <p class="hw-kicker">Kadam do · Wallet bharo</p>
             <h2 id="hw-s2">Add money to your wallet.</h2>
-            <p>Sign in, open your wallet and choose an amount. The price includes 18% GST, and you see the total, the GST and the amount that goes into your wallet <strong>before you pay</strong>. The money is added as soon as your payment is confirmed.</p>
+            <p>Sign in, open your wallet and add any amount from ₹10. The price includes 18% GST, and you see the total, the GST and the amount that goes into your wallet <strong>before you pay</strong>. The money is added as soon as your payment is confirmed. You need at least ₹20 in your wallet to start a call.</p>
             <div class="hw-example" aria-label="Example wallet">
               <span class="hw-example-tag">Example</span>
               <div class="hw-wallet"><span>Riya's wallet</span><b>₹{wallet}</b></div>
@@ -167,8 +167,9 @@ const rate = 20; const mins = 10; const wallet = 300;
             <h2 id="hw-pay">How you pay.</h2>
             <ul class="hw-rules">
               <li><b>By the minute.</b> Each influencer sets their own per-minute rate, shown on their profile.</li>
-              <li><b>₹0 if you don't connect.</b> Ringing, a declined call or a call that never connects costs nothing.</li>
-              <li><b>A heads-up before you run out.</b> You need enough money in your wallet to start. You hear "one minute left" before your balance ends, and the call ends when either of you hangs up or your wallet runs out.</li>
+              <li><b>Nothing if they don't pick up.</b> If the influencer declines, cancels or does not answer, you pay nothing. A call is made once we have rung both of you and joined the call.</li>
+              <li><b>First minute safety.</b> If a joined call breaks within the first minute, we charge ₹1 and return the rest to your wallet.</li>
+              <li><b>A heads-up before you run out.</b> You need at least ₹20 in your wallet to start. You hear "one minute left" before your balance ends, and the call ends when either of you hangs up or your wallet runs out.</li>
               <li><b>Want to keep talking?</b> Add money and call again.</li>
             </ul>
             <p class="hw-small">Billing details: <a href="/wallet-terms">wallet terms</a> and <a href="/refunds">refunds</a>.</p>

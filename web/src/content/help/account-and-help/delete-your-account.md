@@ -1,14 +1,14 @@
 ---
 title: "How do I delete my account?"
-description: "Get your unused wallet money refunded first, then follow the steps to delete your account. Learn what records we keep."
+description: "Withdraw your wallet money first, then follow the steps to delete your account. Learn what records we keep."
 section: account-and-help
 order: 3
-updated: 2026-10-08
+updated: 2026-10-19
 keywords: ["delete account", "account delete", "data deletion", "account band karo", "remove data", "withdraw first", "privacy", "records"]
 audience: both
 faq:
   - q: "What should I do before I delete my account?"
-    a: "Close your account from the account page. Unused wallet money is refunded to you first."
+    a: "Withdraw your wallet money with the Payout button first. Closing your account from the account page also pays out what is left."
   - q: "What call details do you keep?"
     a: "Only simple call details such as who called whom, the time, the length and the price. See the list on this page."
   - q: "Do you sell my data?"
@@ -19,17 +19,17 @@ draft: false
 
 You can delete your {{brand.name}} account if you want to leave. Please do one important thing first: take out your money.
 
-## Step 1: Get your unused wallet money refunded
+## Step 1: Withdraw your wallet money
 
-Unused wallet money can be refunded on request within 180 days. Closing your account from the account page does this for you first.
+Anyone can withdraw wallet money with the Payout button. We send it to your UPI after a one-time ID (KYC) and UPI check. Test credits cannot be withdrawn.
 
-1. Sign in and open the close-account page.
-2. Start the closure. Your unused wallet money is refunded to you after a person approves it.
-3. Your account is deleted once everything is settled.
+1. Sign in and open your wallet.
+2. Tap **Payout** and withdraw what you want to keep.
+3. Then close your account from the close-account page. Your account is deleted once everything is settled.
 
-Doing this first keeps your money safe. Read [refund your unused wallet money](/help/wallet-and-payments/withdraw-your-balance) for the full steps.
+Doing this first keeps your money safe. Read [withdraw your wallet money](/help/wallet-and-payments/withdraw-your-balance) for the full steps.
 
-If you are an influencer, withdraw your earnings too. See [getting paid](/help/hosts/getting-paid).
+If you are an influencer, your latest earnings are held for 7 days. See [getting paid](/help/hosts/getting-paid).
 
 ## Step 2: Follow the delete steps
 

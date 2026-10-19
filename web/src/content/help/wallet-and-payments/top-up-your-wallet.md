@@ -1,20 +1,20 @@
 ---
 title: "How do I top up my wallet?"
-description: "Learn how to add money to your prepaid talk-time wallet and see your history."
+description: "Learn how to add money to your prepaid talk-time wallet, how GST works, and where to see your history."
 section: wallet-and-payments
 order: 1
-updated: 2026-10-15
-keywords: ["wallet top up", "add money", "gst", "recharge", "talk time", "paise daalo", "wallet history", "receipt"]
+updated: 2026-10-19
+keywords: ["wallet top up", "add money", "gst", "recharge", "talk time", "paise daalo", "wallet history", "receipt", "minimum 10"]
 audience: buyer
 faq:
-  - q: "How do I pay to add money?"
-    a: "You pay on the wallet page. You see the total, the GST and the amount added before you pay, and the money goes into your prepaid talk-time wallet in rupees."
+  - q: "How much can I add?"
+    a: "Any amount from ₹10."
   - q: "Is GST charged on the money I add?"
-    a: "The price of each pack includes 18% GST. Your wallet gets the amount without GST. If you pay ₹120, the GST is ₹18.31 and ₹101.69 is added to your wallet."
+    a: "The price you pay includes 18% GST. Your wallet gets the amount you pay divided by 1.18. If you pay ₹120, the GST is ₹18.31 and ₹101.69 is added to your wallet."
   - q: "Where can I see my top-ups and calls?"
     a: "Every addition and call charge shows in your wallet history, with the date, duration and amount."
   - q: "Do I pay anything just to join?"
-    a: "No. Joining is free. You only pay for the time you talk."
+    a: "No. Joining is free. You only pay for the minutes you talk."
 draft: false
 ---
 
@@ -24,19 +24,19 @@ On {{brand.name}}, you pay for calls from a prepaid talk-time wallet. You add mo
 
 ## What is the wallet?
 
-The wallet holds your talk-time money in rupees. When you call an influencer, the cost of the call is taken from it second by second. You can only use what you have added, so there are no surprise bills. Joining is free. There is no subscription.
+The wallet holds your talk-time money in rupees. When you call an influencer, the cost of the call is taken from it minute by minute. You can only use what you have added, so there are no surprise bills. Joining is free. There is no subscription.
 
 ## How to add money
 
 1. Open your wallet.
-2. Choose how much to add.
+2. Type how much to add. You can add **any amount from ₹10**.
 3. Pay on the secure payment page.
 
-Money is added only after your payment is confirmed, and only once. Then you can call any influencer who is online.
+Money is added only after your payment is confirmed, and only once.
 
 ## GST and what reaches your wallet
 
-The price of each pack includes 18% GST. Your wallet gets the amount without GST. Before you pay, you see three things: the total you pay, the GST, and the amount added to your wallet. Your receipt shows the same three.
+The price you pay includes 18% GST. Your wallet gets the amount you pay divided by 1.18. Before you pay, you see three things: the total you pay, the GST, and the amount added to your wallet. Your receipt shows the same three.
 
 | You pay | GST | Added to wallet |
 |---|---|---|
@@ -49,9 +49,9 @@ No GST is charged again when you spend wallet money on calls.
 
 ## How much should I add?
 
-Each influencer sets their own per-minute rate, and you see it before you call. You need enough money in your wallet to start a call at that rate.
+Each influencer sets their own per-minute rate, and you see it before you call. You need **at least ₹20 in your wallet** to start a call.
 
-Rohit from Pune wants a quick chat. He adds the ₹120 pack, so ₹101.69 goes into his wallet. He can now call an influencer whose rate fits his wallet.
+Rohit from Pune wants a quick chat. He pays ₹120, so ₹101.69 goes into his wallet. That is more than the ₹20 he needs to start, so he can call.
 
 ## Your wallet history
 
@@ -59,8 +59,8 @@ Every addition and every call charge shows in your wallet history. For each line
 
 ## Good to know
 
-- Charging starts only when both of you are connected. Ringing, an influencer declining, or a call that never connects costs ₹0.
-- Unused wallet money can be [refunded](/help/wallet-and-payments/withdraw-your-balance) on request within 180 days.
+- A call is made once we have rung both of you and joined the call. Ringing, an influencer declining, cancelling or not answering costs ₹0.
+- Refunds always go back to your wallet. You can take wallet money out with the [Payout button](/help/wallet-and-payments/withdraw-your-balance).
 - Read the full [wallet terms](/wallet-terms) if you want every detail.
 
 ## Stay safe

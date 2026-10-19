@@ -59,11 +59,11 @@ export function checkHelloFraandsPages(root, identity) {
   assert.equal((pages.get('/hosts/join').match(/<ol class="jp-pats"[\s\S]*?<\/ol>/)?.[0].match(/<li class="jp-pat\b/g) || []).length, 4, 'Join: four scroll panels');
   assert(!/by the second|exact seconds|Google Play|Razorpay|Cashfree/i.test(text(pages.get('/hosts/join').match(/<main\b[^>]*>[\s\S]*?<\/main>/)?.[0] || '')), 'Join: per-minute billing, no payment-provider names');
   const hostJoin = text(pages.get('/hosts/join'));
-  // [HF-JOIN-PAT-2 2026-10-18] Owner model: free account, free upgrade in the dashboard, own rate (no range), 60% minus ₹2, 40% = platform fees + GST, India only.
+  // [HF-JOIN-PAT-2 2026-10-18] Owner model: free account, free upgrade in the dashboard, own rate (no range), India only. [HF-WIRE-15 2026-10-19] We keep ₹2 a minute plus 40% of the rate above ₹2 (HF-REEL-30).
   for (const copy of [
     'Fans are charged per minute of the phone call.',
-    'You receive 60% of the connected-call charge minus ₹2.00 per connected minute for the telephone call.',
-    'The 40% includes platform fees and GST.',
+    'We keep ₹2 a minute plus 40% of the rate above ₹2. You keep the rest.', // [HF-WIRE-15 2026-10-19] HF-REEL-30
+    'The part we keep includes platform fees and GST.',
     'Being online does not guarantee calls.',
     'Before TDS or your own taxes.',
     'Open to influencers in India.',
@@ -71,20 +71,21 @@ export function checkHelloFraandsPages(root, identity) {
   assert(!/video KYC|Aadhaar|DigiLocker|₹5 to ₹1,000/i.test(text(pages.get('/hosts/join').match(/<main\b[^>]*>[\s\S]*?<\/main>/)?.[0] || '')), 'Join: no registration-process details or price range');
   const hostRates = text(pages.get('/hosts/rates'));
   for (const copy of [
-    'Earnings are paid by the minute, only for connected time.', // [HF-BILL-MINUTE-1 2026-10-18] owner: billing is by the minute
+    'Earnings are paid by the minute spoken.', // [HF-BILL-MINUTE-1 2026-10-18] owner: billing is by the minute
     'You choose your own whole-rupee fan price per minute.', // [HF-JOIN-PAT-2 2026-10-18] owner: no price range
-    'Your earnings are 60% of the connected-call charge, minus ₹2.00 for each connected minute to cover the telephone call.',
-    'Example at ₹20 per minute for a one-minute connected call: the fan pays ₹20, your earning is ₹10, ₹2 covers the call, and the platform share is ₹8.',
+    'We keep ₹2 a minute plus 40% of the rate above ₹2. You keep the rest.',
+    'Example at ₹20 per minute for one minute spoken: the fan pays ₹20, we keep ₹9.20 (₹2 plus 40% of the other ₹18), and you earn ₹10.80.',
   ]) assert(hostRates.includes(copy), 'Current host rates contract: ' + copy);
   // FAQ and wallet terms describe Standard calling; influencer pricing and
   // earnings are covered separately by the host join/rates contracts above.
   const faqText = text(faq);
   for (const copy of [
     'at the per-minute rate set by the influencer, which you see before you call.',
-    'Only once both of you are connected. Ringing, an influencer declining, or a call that never connects costs nothing.',
-    "By the minute of connected time, at the influencer's rate.",
-    "You need at least two minutes of balance at the influencer's rate in your wallet to start a call.",
-    'Your earnings are 60% of the connected-call charge, minus ₹2.00 for each connected minute to cover the telephone call.',
+    'A call is made once we have rung both of you and joined the call. You pay per minute spoken.',
+    "By the minute, at the influencer's rate. You need at least ₹20 in your wallet to start a call.",
+    'We keep ₹2 a minute plus 40% of the rate above ₹2, and you keep the rest.',
+    'If a joined call breaks within the first minute, we charge ₹1 and return the rest to your wallet.',
+    'All refunds go back to your wallet, never to your card or UPI.',
   ]) assert(faqText.includes(copy), 'FAQ Standard call contract: ' + copy);
   const wallet = text(pages.get('/wallet-terms'));
   for (const copy of [
@@ -92,11 +93,13 @@ export function checkHelloFraandsPages(root, identity) {
     'Minutes you have already talked are never charged again at a new price.',
     'The rate is shown before you start a call.',
     'You pay by the minute while you are connected.',
-    "You need at least two minutes of balance at the influencer's rate in your wallet to start a call.",
-    'Billing starts only when influencer and caller are connected, not while a phone rings or the influencer decides.',
-    "You are billed by the minute for connected time, at the influencer's rate.",
-    'Ringing, a declined or missed call, a failed connection and waiting all cost ₹0.',
-    'Influencers earn a share of the rate for every connected minute.',
+    'You need at least ₹20 in your wallet to start a call.',
+    'A call is made once we have rung both of you and joined the call.',
+    "You are billed by the minute for the time you speak, at the influencer's rate.",
+    'Ringing, a declined, cancelled or missed call, and a call that fails before we join you all cost ₹0.',
+    'If a joined call breaks within the first minute, we charge ₹1 and return the rest to your wallet.',
+    'Anyone can withdraw wallet money with the Payout button.',
+    'Influencers earn a share of the rate for every minute spoken.',
   ]) assert(wallet.includes(copy), 'Wallet Standard call contract: ' + copy);
   // [HF-BILL-MINUTE-1 2026-10-18] Owner: per-minute billing, and public pages never name the payment provider.
   for (const route of ['/faq', '/wallet-terms', '/refunds', '/terms', '/hosts/rates', '/data-deletion', '/community-guidelines', '/how-it-works']) {
@@ -104,7 +107,7 @@ export function checkHelloFraandsPages(root, identity) {
     assert(!/by the second|exact seconds|Google Play|Razorpay|Cashfree/i.test(body), route + ': per-minute billing, no payment-provider names');
   }
   const earningsCoins = [...(pages.get('/hosts/join').match(/<ul class="jp-coins"[\s\S]*?<\/ul>/)?.[0] || '').matchAll(/<small>([^<]+)<\/small><b>([^<]+)<\/b>/g)].map(m => [m[1], m[2]]);
-  assert.deepEqual(earningsCoins, [['1 hour', '₹600'], ['1,000 minutes', '₹10,000'], ['3,000 minutes', '₹30,000']], 'Illustrative earnings follow ₹10.00 per connected minute at a ₹20 fan price');
+  assert.deepEqual(earningsCoins, [['1 hour', '₹648'], ['1,000 minutes', '₹10,800'], ['3,000 minutes', '₹32,400']], 'Illustrative earnings follow ₹10.80 per minute spoken at a ₹20 fan price');
   for (const [route, phones] of [['/emergency', ['14416', '112', '9152987821', '18602662345']], ['/hosts/crisis-script', ['14416', '112']]]) {
     const links = [...pages.get(route).matchAll(/href="tel:([^"]+)"/g)].map(m => m[1].replace(/[^\d]/g, ''));
     for (const phone of phones) assert(links.includes(phone), `${route}: tap-to-call ${phone}`);

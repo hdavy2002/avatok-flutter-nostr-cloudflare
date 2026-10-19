@@ -115,7 +115,7 @@ export default function HfWallet() {
       {w.host && rupees && hp && (
         <section className="hfc-card" aria-labelledby="hfw-earn">
           <h2 id="hfw-earn">Influencer earnings</h2>
-          <p className="hfc-sub" style={{ margin: 0 }}>You earn 60% of each connected call, minus ₹2.00 per connected minute.</p>
+          <p className="hfc-sub" style={{ margin: 0 }}>We keep ₹2 a minute plus 40% of the rate above ₹2. You keep the rest.</p>
           <div className="hfc-stats">
             <div className="hfc-stat"><strong>{formatPaise(hp.pending)}</strong><span>pending (releases after 7 days)</span></div>
             <div className="hfc-stat"><strong>{formatPaise(hp.available)}</strong><span>available to withdraw</span></div>

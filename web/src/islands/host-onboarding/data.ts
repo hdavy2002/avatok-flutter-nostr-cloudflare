@@ -56,7 +56,7 @@ export const PRICE_MIN = 5;
 export const PRICE_MAX = 100;
 export const hostShare = (price: number) => Math.round(price * 0.60 * 100) / 100;
 /** [HF-STD-PLAN-1] Shown only after the runtime flag is enabled. */
-export const STD_PLAN_HOST_LINE = 'Callers pay the per-minute rate you set · you earn 60% of the connected-call charge, minus ₹2.00 per connected minute';
+export const STD_PLAN_HOST_LINE = 'Callers pay the per-minute rate you set · we keep ₹2 a minute plus 40% of the rate above ₹2, and you keep the rest';
 export const rupees = (n: number) => `₹${Number.isInteger(n) ? n : n.toFixed(2)}`;
 
 /** Text a caller must never see: numbers, emails, links, social handles. */

@@ -1,14 +1,16 @@
 ---
 title: "How do I get paid as an influencer?"
-description: "Learn when your earnings are credited and how to withdraw them to your own bank account or UPI ID."
+description: "Learn when your earnings are credited and how to withdraw them with the Payout button, to your own UPI."
 section: hosts
 order: 5
-updated: 2026-10-15
+updated: 2026-10-19
 keywords: ["influencer payout", "withdraw earnings", "upi withdraw", "paise kaise milenge", "get paid", "influencer payment", "outside payment", "removal"]
 audience: creator
 faq:
   - q: "When are my earnings added?"
-    a: "Your earnings are credited after each completed call. You can see them in your dashboard."
+    a: "Your earnings are credited after each completed call and held for 7 days. After that you can withdraw them with the Payout button."
+  - q: "Do I need an ID check?"
+    a: "Joining needs no ID check. We do a one-time ID (KYC) check and a UPI check before your first payout."
   - q: "Can I withdraw to someone else's UPI ID?"
     a: "No. You can only withdraw to a UPI ID in your own name."
   - q: "Can a fan pay me directly?"
@@ -17,7 +19,7 @@ draft: false
 ---
 <!-- rebrand: reviewed -->
 
-Your money is simple to follow. You earn after each call, and you can send it to your own bank account or UPI ID.
+Your money is simple to follow. You earn after each call, and you can send it to your own UPI.
 
 ## How you earn
 
@@ -27,12 +29,13 @@ Your fan pays per minute at the rate you have set. To learn more, read [how much
 
 ## How to withdraw
 
-1. Sign in to your dashboard.
-2. Open your earnings.
-3. Choose to withdraw.
-4. Use a **bank account or UPI ID in your own name**.
+1. Sign in and open your wallet.
+2. Tap the **Payout** button.
+3. Use a **UPI ID in your own name**.
 
-The minimum payout is **₹500**. New earnings are held for **7 days** first. Our team approves each payout before it is sent. The account must be yours. We do not send money to other people's accounts. This keeps your money safe.
+New earnings are held for **7 days** first. The first time, we do a **one-time ID (KYC) check** and a **UPI check**. After that you will not be asked again. We send the money to your UPI. The UPI must be yours. We do not send money to other people's accounts. This keeps your money safe.
+
+Test credits can be spent but not withdrawn. Earnings from calls paid with test credits cannot be withdrawn either.
 
 ## Never take money outside the platform
 

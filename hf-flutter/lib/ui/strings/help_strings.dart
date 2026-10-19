@@ -1,11 +1,13 @@
 import '../../core/brand.dart';
 
-/// All the words on the Help screen, in one place (HF-WIRE-11).
+/// All the words on the Help screen, in one place (HF-WIRE-11, rewritten by HF-WIRE-15 on 2026-10-19).
 ///
-/// Aligned with the rulebook (Specs/RULEBOOK-HELLO-FRAANDS.md): calls are masked and joined by us,
-/// the wallet is charged per minute, "Notify me" for offline influencers, a booking is free to cancel
-/// until 1 hour before it starts (HF-REEL-28), unused top-up money goes back to the original payment
-/// (HF-REEL-31, HF-PAY-15). Nothing here names the payment gateway.
+/// Aligned with the rulebook (Specs/RULEBOOK-HELLO-FRAANDS.md HF-CALL-1..6, HF-REEL-28..36, section 7):
+/// calls are private and masked, you need at least ₹20 in the wallet to start, a call is made once we have
+/// rung both people and joined them, a joined call that breaks in the first minute costs ₹1, a booking holds
+/// 10 minutes and is free to cancel until 1 hour before, all refunds go to the wallet (never to a card or UPI),
+/// anyone can withdraw wallet money with Payout after a one-time ID and UPI check. Nothing here names the
+/// payment gateway.
 abstract final class HelpStrings {
   static const String title = 'Help';
 
@@ -14,12 +16,14 @@ abstract final class HelpStrings {
     (
       'How does a call work?',
       'Tap Call now on an online influencer. We ring them first; when they pick up we ring your phone and join the two calls. '
-          'Both calls come from our number, so neither of you ever sees the other\'s real number.',
+          'Both calls come from our number, so neither of you ever sees the other\'s real number. '
+          'A call is made once we have rung both of you and joined the call.',
     ),
     (
       'How much does it cost?',
-      'Each influencer sets a per-minute rate, shown on their reel and profile. It comes out of your wallet minute by minute while you talk, '
-          'and the call stops when your wallet runs low. Top up from the Wallet screen.',
+      'Each influencer sets a per-minute rate, shown on their reel and profile. You pay per minute spoken, from your wallet. '
+          'You need at least ₹20 in your wallet to start a call. You can top up any amount from ₹10; the price includes 18% GST, '
+          'so your wallet gets the amount divided by 1.18. Top up from the Wallet screen.',
     ),
     (
       'My favourite influencer is not here.',
@@ -27,13 +31,24 @@ abstract final class HelpStrings {
     ),
     (
       'What if they are offline?',
-      'Tap Notify me on their profile and we send you a WhatsApp message when they come online. Or book a time: we hold the money from your wallet '
-          'and ring you both at that minute. You can cancel a booking for free until 1 hour before it starts, and if the influencer cancels you always get your money back.',
+      'Tap Notify me on their profile and we send you a WhatsApp message when they come online. Or book a time: we hold 10 minutes of their rate '
+          'from your wallet and ring you both at that minute. You can cancel for free until 1 hour before it starts. If the influencer cancels, '
+          'or does not pick up at the booked time, the full hold comes back to your wallet.',
     ),
     (
       'Can I get my money back?',
-      'Yes. Unused top-up money is refunded to the same payment you used, within 180 days of paying. Test credits can be spent but are not refundable. '
-          'Money held for a booking comes back when the booking is cancelled in time.',
+      'We do not refund calls that were made. If the influencer declines, cancels or does not answer, you pay nothing. '
+          'If a joined call breaks within the first minute, we charge ₹1 and return the rest. '
+          'All refunds go back to your wallet, never to your card or UPI.',
+    ),
+    (
+      'How do I take my money out?',
+      'Tap Payout in your wallet. We send the money to your UPI after a one-time ID (KYC) and UPI check. '
+          'Test credits can be spent on calls but cannot be withdrawn. An influencer\'s earnings are held for 7 days first.',
+    ),
+    (
+      'Where do the videos come from?',
+      'From the influencer\'s own YouTube or Instagram. They play in the official players. We do not copy or store videos.',
     ),
   ];
 

@@ -3,7 +3,7 @@ title: "How does a call work?"
 description: "See each step of a call, from the influencer's phone ringing first to how your number stays private."
 section: getting-started
 order: 2
-updated: 2026-10-15
+updated: 2026-10-19
 keywords: ["how call works", "number chhupa", "private number", "press 1", "hash key", "call kaise hota hai", "masked number"]
 audience: both
 faq:
@@ -37,7 +37,7 @@ Masking hides your number. It does not hide what you say. So do not share your f
 
 ## What if the influencer says no?
 
-You pay nothing. Ringing, a decline, a timeout, or a call that never connects all cost ₹0. Charging starts only when both of you are connected. Try another influencer.
+You pay nothing. If the influencer declines, cancels or does not answer, nothing is charged. A call is made once we have rung both of you and joined the call, and you pay per minute spoken. Try another influencer.
 
 ## How we keep the call safe
 

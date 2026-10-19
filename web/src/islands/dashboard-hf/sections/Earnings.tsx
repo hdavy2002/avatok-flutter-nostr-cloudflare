@@ -34,7 +34,7 @@ export default function Earnings({ account }: { account: DashboardAccount }) {
       <section className="hfc-card"><h2>Today’s earnings</h2><div className="hfc-stats"><div className="hfc-stat"><strong>{today ? formatPaise(Math.round(today.earned * 100)) : '—'}</strong><span>earned today</span></div><div className="hfc-stat"><strong>{today?.minutes ?? '—'}</strong><span>connected minutes</span></div></div></section>
       {wallet?.host && hp && <section className="hfc-card" aria-labelledby="hfc-earn">
         <h2 id="hfc-earn">Your earnings</h2>
-        <p className="hfc-sub" style={{ margin: 0 }}>{wallet.mode === 'rupees' ? 'You earn 60% of each connected call, minus ₹2.00 per connected minute.' : 'Your earnings use the rate agreed for each call.'}</p>
+        <p className="hfc-sub" style={{ margin: 0 }}>{wallet.mode === 'rupees' ? 'We keep ₹2 a minute plus 40% of the rate above ₹2. You keep the rest.' : 'Your earnings use the rate agreed for each call.'}</p>
         <div className="hfc-stats">
           <div className="hfc-stat"><strong>{formatPaise(hp.pending)}</strong><span>pending (releases after 7 days)</span></div>
           <div className="hfc-stat"><strong>{formatPaise(hp.available)}</strong><span>available to withdraw</span></div>

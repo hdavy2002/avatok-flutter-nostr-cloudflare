@@ -3,7 +3,7 @@ title: "How do I raise a complaint?"
 description: "Learn how to use the grievance page, what to include, and how to ask for a review of a strike or a ban."
 section: account-and-help
 order: 4
-updated: 2026-10-08
+updated: 2026-10-19
 keywords: ["complaint", "grievance", "shikayat", "appeal", "ban review", "wrong decision", "unfair", "wrong strike"]
 audience: both
 faq:
@@ -35,7 +35,7 @@ If you believe a strike or ban is wrong, raise it on the grievance page. **A per
 
 Three confirmed strikes lead to a permanent ban. Threats, sexual harassment or fraud can lead to an immediate ban. If you think a strike or ban is wrong, ask for a review.
 
-Remember, a banned account can still sign in, and unused wallet money can be refunded on request within 180 days. Your money is never taken as a penalty.
+Remember, a banned account can still sign in and withdraw wallet money with the Payout button. Your money is never taken as a penalty.
 
 ## What to include
 

@@ -1,5 +1,5 @@
 /* [HF-DASH-V3-1] Become an influencer: perks, live onboarding progress (each step reads the real verification status) and an earnings
- * estimate that uses the published formula (60% of the connected-call charge, minus ₹2.00 per connected minute; hosts set ₹5–₹1,000/min).
+ * estimate that uses the published formula (we keep ₹2 a minute plus 40% of the rate above ₹2, HF-REEL-30; hosts set ₹5–₹1,000/min).
  * Worker: GET /api/hosts/me ({ host, kyc }), GET /api/hf/me (WhatsApp verified). The steps themselves happen in /hosts/onboarding. */
 import { useEffect, useState } from 'react';
 import { hfCall } from '../../../lib/hfCallsApi';
@@ -11,8 +11,8 @@ import { Card, Ic, PageHead, Skel, Sticker, fmtInt } from './ui';
 
 interface HostMe { host: { status: string; slug: string | null } | null; kyc: { aadhaar: { done: boolean }; selfie: { status: string }; payout: { done: boolean } } }
 const PRICES = [5, 10, 15, 20, 25, 30, 40, 50, 75, 100, 150, 200, 300, 500, 750, 1000];
-/** Host earning per connected minute, in paise, for a price in rupees (rulebook: 60% of the charge minus ₹2.00). */
-export const hostPaisePerMin = (rupees: number) => Math.max(0, Math.round(rupees * 100 * 0.6) - 200);
+/** Host earning per connected minute, in paise, for a price in rupees (rulebook HF-REEL-30: we keep ₹2 plus 40% of the rate above ₹2). */
+export const hostPaisePerMin = (rupees: number) => Math.max(0, Math.round((rupees * 100 - 200) * 0.6));
 
 export default function Become({ account }: { account: DashboardAccount }) {
   const [me, setMe] = useState<HostMe | null>(null);
@@ -61,7 +61,7 @@ export default function Become({ account }: { account: DashboardAccount }) {
           <div><span>You keep per minute</span><b>{formatPaise(per)}</b></div>
           <div className="tot"><span>About per month</span><span>{formatPaise(month)}</span></div>
         </div>
-        <p className="small muted" style={{ marginTop: 8 }}>You earn 60% of each connected call, minus ₹2.00 per connected minute. Earnings are paid by the second, only for connected time. Estimates only — real earnings depend on your calls.</p>
+        <p className="small muted" style={{ marginTop: 8 }}>We keep ₹2 a minute plus 40% of the rate above ₹2. You keep the rest. Earnings are paid by the minute spoken. Estimates only — real earnings depend on your calls.</p>
         <div style={{ marginTop: 10, textAlign: 'center' }}><Sticker name="kyabaat" w={100} rot={-5} /></div>
       </Card>
     </section>

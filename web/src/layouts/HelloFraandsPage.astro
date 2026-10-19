@@ -21,8 +21,8 @@ import { LEGAL_ART, LEGAL_BG, LEGAL_SKINS, legalFlavour, FLAVOUR_COPY } from '..
 import '../styles/legal-ghat.css';
 
 // [HF-LEGAL-GHAT-1] Owner: no placeholder lines on public pages. Pages without their own `updated` show the date of
-// the 2026-10-18 copy clean-up instead of the old literal "{{DATE}}". Bump it when the shared copy changes.
-const DEFAULT_UPDATED = '2026-10-18';
+// the 2026-10-18 copy clean-up (re-dated 2026-10-19 for the HF-WIRE-15 money rewrite) instead of the old literal "{{DATE}}". Bump it when the shared copy changes.
+const DEFAULT_UPDATED = '2026-10-19';
 interface Link { href: string; label: string }
 interface Props { title: string; summary: string; review?: boolean; related?: Link[]; description?: string; updated?: string }
 const { title, summary, review = false, related = [], description = summary, updated = DEFAULT_UPDATED } = Astro.props;

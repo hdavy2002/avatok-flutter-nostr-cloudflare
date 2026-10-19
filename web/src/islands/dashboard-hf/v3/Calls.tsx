@@ -109,9 +109,10 @@ export default function Calls({ account }: { account: DashboardAccount }) {
       </Card>
       <Card title="How calls are billed" note="Simple and fair, by the minute" tone={1}>
         <div style={{ display: 'grid', gap: 10 }}>
-          {[['⏱️', 'Billed by the minute of connected time, at the influencer’s rate.'], ['🔔', 'Ringing, declined, missed or a failed connection costs ₹0.'],
-            ['💰', 'You need 2 minutes of balance to start a call.'], ['⌛', 'A call can last up to 60 minutes; you hear a heads-up near the end.'],
-            ['#️⃣', 'Press # any time to end the call, block the person and report it.'], ['🧾', 'Charged for a call that never connected? It comes back to your wallet.']]
+          {[['⏱️', 'Billed by the minute of connected time, at the influencer’s rate.'], ['🔔', 'If the influencer declines, cancels or does not answer, you pay nothing.'],
+            ['⚡', 'If a joined call breaks in the first minute, we charge ₹1 and return the rest to your wallet.'],
+            ['💰', 'You need at least ₹20 in your wallet to start a call.'], ['⌛', 'A call can last up to 60 minutes; you hear a heads-up near the end.'],
+            ['#️⃣', 'Press # any time to end the call, block the person and report it.'], ['🧾', 'Charged twice, or for a call that was never made? It comes back to your wallet.']]
             .map(([e, t]) => <div key={t} style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}><span style={{ fontSize: 20 }} aria-hidden="true">{e}</span><span>{t}</span></div>)}
           {wallet.data?.mode === 'rupees' && <div className="h3-break"><b>Standard plan</b>{rateCardLines(tiers).map(l => <div key={l}><span>{l}</span></div>)}</div>}
         </div>

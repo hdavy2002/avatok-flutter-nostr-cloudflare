@@ -62,7 +62,7 @@ export default function CreatorListings() {
           <label>Fan price per minute (₹)<input style={field} type="number" min={5} max={1000} step={1} value={listing.pricePerMin} onChange={e => change({ pricePerMin: Number(e.target.value) })} /></label>
           <label>Private host phone (optional)<input style={field} type="tel" autoComplete="off" placeholder="+91…" value={listing.privatePhone ?? ''} onChange={e => change({ privatePhone: e.target.value || null })} /><small>Encrypted, admin-only; never on public cards. Calls use the verified account number.</small></label>
         </div>
-        <p>Creator receives 60% of the fan price minus ₹2 per connected minute. Platform commission is 40% and includes its GST.</p>
+        <p>We keep ₹2 a minute plus 40% of the rate above ₹2, including its GST. The creator keeps the rest.</p>
         <label>Tagline<input style={field} maxLength={120} value={listing.tagline ?? ''} onChange={e => change({ tagline: e.target.value })} /></label>
         <label>About<textarea style={field} rows={4} maxLength={600} value={listing.about ?? ''} onChange={e => change({ about: e.target.value })} /></label>
         <label>Languages (comma separated)<input style={field} value={listing.languages.join(', ')} onChange={e => change({ languages: e.target.value.split(',').map(s => s.trim()) })} /></label>

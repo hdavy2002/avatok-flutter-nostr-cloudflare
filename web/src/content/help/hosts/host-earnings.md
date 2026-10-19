@@ -3,14 +3,14 @@ title: "How much will I earn as an influencer?"
 description: "See how you earn as an influencer: your fans pay per minute at the rate you set, and you earn your share of every connected minute."
 section: hosts
 order: 2
-updated: 2026-10-18
+updated: 2026-10-19
 keywords: ["influencer earnings", "kitna kamayenge", "per minute", "paisa kamao", "influencer income", "set my rate"]
 audience: creator
 faq:
   - q: "Can I set my own price?"
-    a: "Yes. You set your own per-minute rate, as you see fit. You earn 60% of every connected minute, minus ₹2.00 a minute for the telephone call."
+    a: "Yes. You set your own per-minute rate, as you see fit. We keep ₹2 a minute plus 40% of the rate above ₹2. You keep the rest."
   - q: "How is the time counted?"
-    a: "By the minute of connected time. Ringing, missed calls and calls that never connect earn ₹0."
+    a: "By the minute spoken. A call is made once we have rung both of you and joined the call. Ringing, declined, cancelled or missed calls earn nothing."
   - q: "Will I get calls every day?"
     a: "Calls are not guaranteed. How many calls you get depends on your fans choosing to call you."
 draft: false
@@ -22,19 +22,20 @@ Your fans pay per minute, at the rate you set. You earn your share of each conne
 
 ## The simple rule
 
-The caller is charged per minute of the phone call at **your rate**, only for connected time. You receive **60% of the connected-call charge, minus ₹2.00 for each connected minute** to cover the telephone call. The other 40% covers platform fees and GST. Your earnings for each call are shown in rupees in your dashboard, with the payout status.
+The caller is charged per minute of the phone call at **your rate**, only for the minutes spoken. **We keep ₹2 a minute plus 40% of the rate above ₹2. You keep the rest.** The part we keep covers the phone call, platform fees and GST. Your earnings for each call are shown in rupees in your dashboard, with the payout status.
 
 ## A simple example
 
-Say your rate is ₹20 a minute. Your fan Rohit from Pune calls you and you talk for 15 minutes. He is charged ₹300 (15 × ₹20). For each minute you earn 60% of ₹20, which is ₹12, minus ₹2 for the call, so ₹10. For 15 minutes you earn **₹150**, before TDS or your own taxes.
+Say your rate is ₹20 a minute. Your fan Rohit from Pune calls you and you talk for 15 minutes. He is charged ₹300 (15 × ₹20). For each minute we keep ₹2, plus 40% of the other ₹18, which is ₹7.20. So we keep ₹9.20 and you earn **₹10.80** a minute. For 15 minutes you earn **₹162**, before TDS or your own taxes.
 
-If the call never connects, nobody pays anything and nothing is earned.
+If the influencer declines, cancels or does not answer, nobody pays anything and nothing is earned.
 
 ## Things to know
 
 - **Calls are not guaranteed.** Some days are busy and some days are quiet.
-- Earning starts only when both of you are connected.
-- A fan needs money in their wallet before a call can start.
+- Earning starts only once we have rung both of you and joined the call.
+- A fan needs at least ₹20 in their wallet before a call can start.
+- Earnings are held for 7 days, then you can withdraw them with the Payout button.
 
 ## Grow your fans
 

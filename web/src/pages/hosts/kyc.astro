@@ -3,15 +3,15 @@ import HelloFraandsPage from '../../layouts/HelloFraandsPage.astro';
 import { BRAND } from '../../lib/brand';
 export const prerender = true;
 ---
-<HelloFraandsPage updated="2026-10-14" title="How we verify influencers, and how we protect your data" summary="Influencer verification aur aapke data ki suraksha, saaf shabdon mein.">
+<HelloFraandsPage updated="2026-10-19" title="How we verify influencers, and how we protect your data" summary="Influencer verification aur aapke data ki suraksha, saaf shabdon mein.">
 <p><strong>Your privacy is protected.</strong> Your phone number stays hidden behind our masked line. Influencers appear only as an AI avatar they chose — never their real photo.</p>
-<p>This page explains the checks every influencer on {BRAND.name} goes through, what we keep, and your rights. We follow India's Digital Personal Data Protection (DPDP) Act, 2023 and the DPDP Rules, 2025. See also our <a href="/privacy">privacy policy</a>.</p>
-<h2>What we check</h2>
+<p>This page explains the checks an influencer goes through, and when. Joining needs no ID check. We check your ID (KYC) and your UPI once, before your first payout. It also explains what we keep and your rights. We follow India's Digital Personal Data Protection (DPDP) Act, 2023 and the DPDP Rules, 2025. See also our <a href="/privacy">privacy policy</a>.</p>
+<h2>What we check, and when</h2>
 <ol>
-<li><strong>Your WhatsApp number.</strong> We send a one-time code on WhatsApp. This is the number we call when a fan wants to talk to you.</li>
-<li><strong>Your Aadhaar, with an OTP.</strong> We check your Aadhaar with an OTP sent to the mobile linked to it. If that doesn't work, you can use DigiLocker instead (a Government of India service): you sign in and approve sharing your e-Aadhaar with us. Our verification partner, Sandbox.co.in, passes it on. With the OTP, your 12-digit Aadhaar number is used only to request the OTP and is not stored. With DigiLocker we never ask for it.</li>
-<li><strong>A 10-second selfie video.</strong> You read a short code shown on screen, so we know a real person is joining.</li>
-<li><strong>Your UPI ID and bank account.</strong> We check that the account is in your own name, so your earnings reach you and no one else.</li>
+<li><strong>Your WhatsApp number, when you join.</strong> We send a one-time code on WhatsApp. This is the number we call when a fan wants to talk to you.</li>
+<li><strong>Your ID, once, before your first payout: Aadhaar with an OTP.</strong> We check your Aadhaar with an OTP sent to the mobile linked to it. If that doesn't work, you can use DigiLocker instead (a Government of India service): you sign in and approve sharing your e-Aadhaar with us. Our verification partner, Sandbox.co.in, passes it on. With the OTP, your 12-digit Aadhaar number is used only to request the OTP and is not stored. With DigiLocker we never ask for it.</li>
+<li><strong>A 10-second selfie video.</strong> You read a short code shown on screen, so we know a real person is asking for the payout.</li>
+<li><strong>Your UPI ID, before your first payout.</strong> We check that the UPI is in your own name, so your earnings reach you and no one else.</li>
 </ol>
 <h2>Why we need it</h2>
 <ul>
@@ -25,10 +25,10 @@ export const prerender = true;
 <ul>
 <li>From UIDAI (OTP) or DigiLocker: your name, gender, date of birth, address, father's or guardian's name and the photo on your Aadhaar.</li>
 <li>Only the last 4 digits of your Aadhaar number, and our partner's verification reference. We never store the full Aadhaar number.</li>
-<li>Your WhatsApp number, your selfie video, and your UPI ID and bank account details.</li>
+<li>Your WhatsApp number, your selfie video, and your UPI ID.</li>
 </ul>
 <h2>What callers see, and never see</h2>
-<p>Callers see only your first name (or nickname), your AI avatar, your own recorded voice introduction (after our team has listened to it), your topics and languages. Callers never see your real name, photo, phone number, address, Aadhaar or bank details.</p>
+<p>Callers see only your first name (or nickname), your AI avatar, your own recorded voice introduction (after our team has listened to it), your topics and languages. Callers never see your real name, photo, phone number, address, Aadhaar or UPI details.</p>
 <h2>How we protect it</h2>
 <ul>
 <li>Your details are stored encrypted, in private storage, separate from your public profile.</li>
@@ -51,5 +51,5 @@ export const prerender = true;
 <h2>If something goes wrong</h2>
 <p>If a data breach ever affects you, we will tell you and the Data Protection Board of India, as the law requires.</p>
 <h2>If verification fails</h2>
-<p>Check your internet, lighting and that your details match your Aadhaar and bank account, then try again when the flow allows. If you stay stuck, contact <a href={`mailto:${BRAND.emails.support}`}>{BRAND.emails.support}</a>. Do not send Aadhaar numbers, document images or OTPs by email. DigiLocker sign-in happens only on the DigiLocker page.</p>
+<p>Check your internet, lighting and that your details match your Aadhaar and your UPI, then try again when the flow allows. If you stay stuck, contact <a href={`mailto:${BRAND.emails.support}`}>{BRAND.emails.support}</a>. Do not send Aadhaar numbers, document images or OTPs by email. DigiLocker sign-in happens only on the DigiLocker page.</p>
 </HelloFraandsPage>

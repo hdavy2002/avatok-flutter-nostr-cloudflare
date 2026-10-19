@@ -3,14 +3,14 @@ title: "My call has a problem. What do I do?"
 description: "Fixes for a phone that did not ring, a dropped call, bad voice or an influencer who said no."
 section: calling
 order: 5
-updated: 2026-10-08
+updated: 2026-10-19
 keywords: ["phone not ringing", "call dropped", "bad voice", "network", "DND", "spam blocker", "call nahi aaya", "support"]
 audience: both
 faq:
   - q: "My phone did not ring. What should I check?"
     a: "Check that your number is right, your network is working, and that DND or a spam-blocker app is not blocking unknown numbers."
   - q: "Am I charged if the call drops?"
-    a: "Charging stops at the moment of disconnect. You pay only for the connected time."
+    a: "Charging stops the moment the call disconnects. If a joined call breaks within the first minute, we charge ₹1 and return the rest to your wallet."
   - q: "How do I reach support?"
     a: "Write to support (@) {{brand.domain}} with your call ID, date and time. Never send your OTP, UPI PIN, Aadhaar number or card details."
 draft: false
@@ -30,13 +30,15 @@ Check these things one by one:
 4. **Do you use a spam-blocker app?** Some apps block unknown numbers. Our call comes from a platform number, so it may look unknown. Allow unknown numbers for a while, or add the number to your contacts.
 5. **Is your phone on silent or flight mode?**
 
-If the influencer said yes but your phone did not ring, you pay ₹0. Nothing is charged until both of you are connected.
+If the influencer said yes but your phone did not ring, you pay nothing. A call is made only once we have rung both of you and joined the call.
 
 ## My call dropped
 
-Calls can drop if the network is weak. **Charging stops at the moment of disconnect.** You pay only for the minutes you were connected.
+Calls can drop if the network is weak. **Charging stops at the moment of disconnect.** You pay only for the minutes you spoke.
 
-Then call again. You need at least 2 minutes of balance to start. See [How much does a call cost?](/help/calling/price-and-minutes).
+If a joined call breaks within the first minute, we charge ₹1 and return the rest to your wallet.
+
+Then call again. You need at least ₹20 in your wallet to start. See [How much does a call cost?](/help/calling/price-and-minutes).
 
 ## The voice is bad
 
@@ -49,11 +51,11 @@ If it stays bad, try another influencer and tell us the call ID.
 
 ## The influencer declined
 
-If the influencer pressed 2, or did not answer in 10 seconds, you pay **₹0**. Influencers can decline any call. It is not about you. They may be busy. Try another influencer, or tap **Notify me** on a favourite. See [Favourites and calling again](/help/calling/favourites-and-calling-again).
+If the influencer pressed 2, or did not answer in 10 seconds, you pay **nothing**. Influencers can decline any call. It is not about you. They may be busy. Try another influencer, or tap **Notify me** on a favourite. See [Favourites and calling again](/help/calling/favourites-and-calling-again).
 
 ## Charged by mistake?
 
-If you were charged for a call that never connected, or charged twice, send us the details. The wrong amount is put back in your wallet. See [refund policy](/refunds).
+If you were charged twice, or for a call that was never made, send us the details. The wrong amount is put back in your wallet. See [refund policy](/refunds).
 
 ## Contact support
 

@@ -1,56 +1,60 @@
 ---
-title: "How do I get a refund for my unused wallet money?"
-description: "Unused wallet money can be refunded on request within 180 days."
+title: "How do I withdraw my wallet money?"
+description: "Anyone can withdraw wallet money with the Payout button. We send it to your UPI after a one-time ID check and UPI check."
 section: wallet-and-payments
 order: 3
-updated: 2026-10-15
-keywords: ["withdraw balance", "wallet money back", "transfer to upi", "balance nikalna", "paisa nikalo", "after ban", "delete account", "unused balance"]
+updated: 2026-10-19
+keywords: ["withdraw balance", "payout", "wallet money back", "transfer to upi", "balance nikalna", "paisa nikalo", "kyc", "after ban", "delete account", "unused balance"]
 audience: both
 faq:
-  - q: "Can I take out my balance whenever I want?"
-    a: "Unused wallet money can be refunded on request within 180 days of adding it."
+  - q: "Can I take out my wallet money?"
+    a: "Yes. Anyone can withdraw wallet money with the Payout button. We send it to your UPI."
+  - q: "Do I need an ID check?"
+    a: "Yes, once. We do a one-time ID (KYC) check and a UPI check before the first payout."
+  - q: "Can I withdraw test credits?"
+    a: "No. Test credits can be spent on calls but cannot be withdrawn."
   - q: "Can I still withdraw if my account is banned?"
-    a: "Yes. A banned account can still sign in and request a refund of unused wallet money within 180 days."
-  - q: "Will you keep my wallet money as a penalty?"
-    a: "No. Your money is never taken as a penalty."
+    a: "Yes. A banned account can still sign in and use the Payout button. Your money is never taken as a penalty."
 draft: false
 ---
 <!-- rebrand: reviewed -->
 
-Money you added to your wallet and have not used can be refunded. This page shows you how.
+Money in your wallet is yours. Anyone can take it out. This page shows you how.
 
-## Your balance is yours
+## Your wallet money is yours
 
-**Unused wallet money can be refunded on request within 180 days.** There is no need to spend them.
+**Anyone can withdraw wallet money with the Payout button.** Fans and influencers use the same button. We send the money to your UPI.
 
 We will never take your money as a penalty. This is true even if something goes wrong with your account.
 
-## How to ask for a refund
+## How to withdraw
 
 1. Sign in and open your wallet.
-2. Choose to request a refund.
-3. A person approves it, and the money goes back to you the way you paid.
+2. Tap **Payout**.
+3. Add your UPI ID, in your own name.
+4. Ask for the amount you want.
 
-Only money you added and have not used can be refunded. Money already used on calls, and test credits, cannot. Influencers [withdraw their earnings](/help/hosts/getting-paid) from the influencer dashboard.
+The first time, we do a **one-time ID (KYC) check** and a **UPI check**. After that you will not be asked again.
 
-## When to ask
+## What cannot be withdrawn
 
-You can ask within 180 days of adding the money. These are common times:
+- **Test credits.** They can be spent on calls, but they cannot be withdrawn.
+- **Influencer earnings still in the 7-day hold.** Earnings are held for 7 days, then they can be withdrawn.
 
-- **When you stop using the service.** Ask for a refund so nothing is left behind.
-- **Before you delete your account.** Close your account from the account page; unused wallet money are refunded first. Then follow the steps in [delete your account](/help/account-and-help/delete-your-account).
-- **After a ban.** If your account is banned, you cannot make calls. But you can still sign in and request a refund of unused wallet money.
+## Refunds are different
 
-Meera adds money to her wallet and talks for ₹60 worth. Then she decides to stop. She asks for a refund within 180 days, and the part she did not use goes back to her the way she paid.
+A refund (for example, a booked call the influencer cancelled) goes back to your **wallet**, never straight to your card or UPI. To get it into your bank, use Payout. See [do you refund calls?](/help/wallet-and-payments/no-refunds).
 
-## Things to remember
+## When to withdraw
 
-- Refunds go back the way you paid, never to a UPI ID you type in.
-- Your money is never taken as a penalty.
-- Your wallet history shows every purchase and charge, with the date, duration and amount.
+- **When you stop using the service.** Take out what is left so nothing stays behind.
+- **Before you delete your account.** Withdraw first, then follow the steps in [delete your account](/help/account-and-help/delete-your-account).
+- **After a ban.** If your account is banned, you cannot make calls. But you can still sign in and use Payout.
+
+Influencers can read [how earnings reach you](/help/hosts/getting-paid).
 
 ## Stay safe
 
-We will **never** ask for your OTP, UPI PIN, password or bank details. If someone says they will "help you get a refund" and asks for these, it is a scam. Do not share them. You can [report it](/report).
+We will **never** ask for your OTP, UPI PIN, password or bank details. If someone says they will "help you withdraw" and asks for these, it is a scam. Do not share them. You can [report it](/report).
 
 For more details, read the [wallet terms](/wallet-terms).

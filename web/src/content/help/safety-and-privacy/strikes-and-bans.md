@@ -1,16 +1,16 @@
 ---
 title: "What are strikes and bans?"
-description: "How strikes work, when an account is banned, and how a banned user can still take their wallet money."
+description: "How strikes work, when an account is banned, and how a banned user can still withdraw their wallet money."
 section: safety-and-privacy
 order: 5
-updated: 2026-10-15
+updated: 2026-10-19
 keywords: ["strike", "ban", "account blocked", "banned wallet", "3 strikes", "suspend", "account ban"]
 audience: both
 faq:
   - q: "How many strikes lead to a ban?"
     a: "Three confirmed strikes lead to a permanent ban."
   - q: "Can a banned person get their wallet money?"
-    a: "Yes. A banned user can still sign in, and unused wallet money can be refunded on request within 180 days. Your money is never taken as a penalty."
+    a: "Yes. A banned user can still sign in and withdraw wallet money with the Payout button, after the one-time ID and UPI check. Your money is never taken as a penalty."
   - q: "What if I think a strike is wrong?"
     a: "Raise it at /grievance. A person will review it."
 draft: false
@@ -59,7 +59,7 @@ A banned account:
 
 ## Wallet money is safe
 
-**A banned user can still sign in, and unused wallet money can be refunded on request within 180 days.** We never take your money as a penalty.
+**A banned user can still sign in and withdraw wallet money with the Payout button.** We never take your money as a penalty.
 
 ## What if there was a mistake?
 

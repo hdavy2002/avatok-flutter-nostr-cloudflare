@@ -3,7 +3,7 @@ title: "How much does a call cost?"
 description: "Learn how the price per minute is set, when charging starts, and how a call ends."
 section: calling
 order: 2
-updated: 2026-10-08
+updated: 2026-10-19
 keywords: ["price", "per minute", "kitna paisa", "charges", "billing", "minimum balance", "rate"]
 audience: buyer
 faq:
@@ -12,7 +12,7 @@ faq:
   - q: "Do I pay for a part of a minute?"
     a: "You pay by the minute while you are connected, at the influencer's rate."
   - q: "What is the longest a call can be?"
-    a: "There is no fixed limit. The call runs until either person hangs up or your wallet money ends. You hear \"one minute left\" before that."
+    a: "The call runs until either person hangs up or your wallet money ends. You hear \"one minute left\" before that."
   - q: "Can my balance go below zero?"
     a: "No. The call ends when your wallet money runs out. Your balance never goes below zero."
 draft: false
@@ -37,24 +37,26 @@ You pay by the minute while you are connected, at the influencer's per-minute ra
 
 ## Minimum balance to start
 
-You need enough in your wallet for at least **2 minutes** at the influencer's rate.
+You need **at least ₹20** in your wallet to start a call.
 
 If your balance is lower, add money first. See [Make your first call](/help/calling/make-your-first-call).
 
 ## When charging starts
 
-**Charging starts only when both of you are connected.**
+**A call is made once we have rung both of you and joined the call.** You pay per minute spoken.
 
-You pay ₹0 when:
+You pay nothing when:
 
 - the phone is only ringing,
-- the influencer declines or you miss the call,
+- the influencer declines or cancels,
 - the influencer does not answer, or
-- the call never connects.
+- the call fails before we join you.
+
+If a joined call breaks within the first minute, we charge ₹1 and return the rest to your wallet.
 
 ## How long can a call be?
 
-There is no fixed time limit. The call goes on until either person hangs up or your wallet money runs out.
+The call goes on until either person hangs up or your wallet money runs out.
 
 About one minute before your wallet money ends, you hear "one minute left". Then the call ends by itself. Your balance never goes below zero. To keep talking, add money and call again.
 
@@ -64,8 +66,8 @@ Every addition to your wallet and every call charge shows in your wallet history
 
 ## Refunds and mistakes
 
-Connected calls are not refunded. You choose the influencer, you see the price, and you can hang up at any second. If a call was not what you hoped, rate the influencer and try someone else.
+We do not refund calls that were made, except under the first-minute rule above. You choose the influencer, you see the price, and you can hang up at any second. If a call was not what you hoped, rate the influencer and try someone else.
 
-If we charged you for a call that never connected, or charged you twice, tell us. That is a billing error. The wrong amount is put back in your wallet and linked to that call. Read [refund policy](/refunds) and [wallet terms](/wallet-terms).
+If we charged you twice, or for a call that was never made, tell us. That is a billing error. The wrong amount is put back in your wallet and linked to that call. All refunds go to your wallet, never to your card or UPI. Read [refund policy](/refunds) and [wallet terms](/wallet-terms).
 
-Unused wallet money can be refunded on request within 180 days.
+You can take wallet money out any time with the Payout button. See [withdraw your wallet money](/help/wallet-and-payments/withdraw-your-balance).

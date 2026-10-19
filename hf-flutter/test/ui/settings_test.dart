@@ -86,11 +86,14 @@ void main() {
   });
 
   group('help strings', () {
-    test('five answers, no gateway name, rulebook facts present', () {
-      expect(HelpStrings.faq.length, 5);
+    test('seven answers, no gateway name, rulebook facts present', () {
+      expect(HelpStrings.faq.length, 7);
       final all = HelpStrings.faq.map((f) => '${f.$1} ${f.$2}').join(' ').toLowerCase();
       expect(all, contains('1 hour'));
-      expect(all, contains('same payment'));
+      expect(all, contains('back to your wallet'));
+      expect(all, contains('₹20'));
+      expect(all, isNot(contains('180 days')));
+      expect(all, isNot(contains('original payment')));
       expect(all, contains('notify me'));
       expect(all, isNot(contains('cashfree')));
       expect(all, isNot(contains('razorpay')));

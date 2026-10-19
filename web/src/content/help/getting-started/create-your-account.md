@@ -3,7 +3,7 @@ title: "How do I create my account?"
 description: "Sign up in a minute with a one-time code on WhatsApp or email. No password, and free to join."
 section: getting-started
 order: 3
-updated: 2026-10-15
+updated: 2026-10-19
 keywords: ["sign up", "register", "account banao", "OTP", "WhatsApp login", "no password", "18+", "join"]
 audience: both
 faq:
@@ -51,7 +51,7 @@ Your phone number is never shared with the other person on a call. See [How does
 
 ## Leaving later
 
-You can delete your account any time. Unused wallet money is refunded to you first. Steps are at [data deletion](/data-deletion).
+You can delete your account any time. Withdraw your wallet money with the Payout button first. Steps are at [data deletion](/data-deletion).
 
 ## Next step
 

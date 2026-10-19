@@ -3,16 +3,16 @@ title: "How do I make my first call?"
 description: "Top up your wallet, pick an influencer, check the price and tap call. Here is what you will hear."
 section: calling
 order: 1
-updated: 2026-10-08
+updated: 2026-10-19
 keywords: ["first call", "pehli call", "top up", "wallet", "how to call", "call kaise karein"]
 audience: buyer
 faq:
   - q: "How do I add money?"
     a: "Add money to your prepaid talk-time wallet. You pay by the minute, at the rate the influencer sets."
   - q: "How much balance do I need?"
-    a: "You need enough in your wallet for at least 2 minutes at the influencer's price per minute. Each influencer sets their own price, and you see it before you call."
+    a: "You need at least ₹20 in your wallet to start a call. Each influencer sets their own price per minute, and you see it before you call."
   - q: "Will I be charged if the influencer does not pick up?"
-    a: "No. Charging starts only when you are both connected. Ringing, a decline or a timeout costs ₹0."
+    a: "No. If the influencer declines, cancels or does not answer, you pay nothing."
 draft: false
 ---
 
@@ -24,7 +24,7 @@ Your first call takes only a few minutes to set up. Here is the whole way, step 
 
 1. [Create your account](/help/getting-started/create-your-account) if you have not yet.
 2. **Top up your wallet.** Open your wallet and add money. Your wallet holds your talk-time money in rupees.
-3. Make sure you have enough balance. You need enough for at least 2 minutes at the influencer's price per minute.
+3. Make sure you have enough balance. You need at least ₹20 in your wallet to start a call.
 
 ## Pick an influencer and check the price
 
@@ -43,7 +43,7 @@ Tap the call button. Then wait. Here is what happens and what you will hear:
 
 Your number stays private. See [How does a call work?](/help/getting-started/how-a-call-works).
 
-If the influencer says no or does not answer in 10 seconds, you pay ₹0. Pick another influencer.
+If the influencer says no or does not answer in 10 seconds, you pay nothing. Pick another influencer.
 
 ## First-call tips
 

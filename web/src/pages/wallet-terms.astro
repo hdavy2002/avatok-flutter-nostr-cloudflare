@@ -1,24 +1,29 @@
 ---
 import HelloFraandsPage from '../layouts/HelloFraandsPage.astro';
 ---
-<HelloFraandsPage title="Payment & wallet terms" summary="Wallet ka balance platform par baat karne ke liye hai — aur bacha hua paisa UPI par wapas." review={true} related={[{"href":"/refunds","label":"Refunds"},{"href":"/terms","label":"Terms of use"},{"href":"/grievance","label":"Grievance redressal"}]}>
+<HelloFraandsPage updated="2026-10-19" title="Payment & wallet terms" summary="Wallet ka paisa platform par baat karne ke liye hai. Aap use Payout button se apne UPI par nikal sakte hain." review={true} related={[{"href":"/refunds","label":"Refunds"},{"href":"/terms","label":"Terms of use"},{"href":"/grievance","label":"Grievance redressal"}]}>
 <h2>Prepaid talk-time wallet</h2>
-<p>Callers add money to a prepaid wallet and spend it on connected call time. The wallet holds rupees. It is for calls on this platform only; it is not a bank account and earns no interest.</p>
+<p>Callers add money to a prepaid wallet and spend it on call minutes. The wallet holds rupees. It is for calls on this platform only; it is not a bank account and earns no interest.</p>
 <h2>Adding money and GST</h2>
-<p>The price of each pack includes 18% GST. Your wallet gets the amount without GST. For example, if you pay ₹120, the GST is ₹18.31 and ₹101.69 is added to your wallet. Pay ₹240 and ₹203.39 is added. Pay ₹600 and ₹508.47 is added. Pay ₹1,200 and ₹1,016.95 is added.</p>
+<p>You can add any amount from ₹10. The price you pay includes 18% GST, so your wallet gets the amount you pay divided by 1.18. For example, if you pay ₹120, the GST is ₹18.31 and ₹101.69 is added to your wallet. Pay ₹240 and ₹203.39 is added. Pay ₹600 and ₹508.47 is added. Pay ₹1,200 and ₹1,016.95 is added.</p>
 <p>Before you pay, you see the total, the GST and the amount added to your wallet. The same three amounts are on your receipt. Money is added only after your payment is confirmed, and only once. No GST is charged again when you spend wallet money on calls.</p>
 <h2>Call price and minimum balance</h2>
-<p>Each influencer sets their own per-minute rate, and you see it before you call. You are charged that rate for the time you are connected. Minutes you have already talked are never charged again at a new price.</p>
+<p>Each influencer sets their own per-minute rate, and you see it before you call. You are charged that rate for the minutes you speak. Minutes you have already talked are never charged again at a new price.</p>
 <ul><li>The rate is shown before you start a call.</li><li>You pay by the minute while you are connected.</li></ul>
-<p>You need at least two minutes of balance at the influencer's rate in your wallet to start a call.</p>
+<p>You need at least ₹20 in your wallet to start a call.</p>
 <h2>When charges start</h2>
-<p>Billing starts only when influencer and caller are connected, not while a phone rings or the influencer decides. You are billed by the minute for connected time, at the influencer's rate. Ringing, a declined or missed call, a failed connection and waiting all cost ₹0.</p>
-<p>There is no fixed time limit on a call. It goes on until either person hangs up or your wallet money is used up. About one minute before your wallet money ends, you hear "one minute left". Your balance can never go below zero.</p>
+<p>A call is made once we have rung both of you and joined the call. You are billed by the minute for the time you speak, at the influencer's rate. Ringing, a declined, cancelled or missed call, and a call that fails before we join you all cost ₹0.</p>
+<p>A call goes on until either person hangs up or your wallet money is used up. About one minute before your wallet money ends, you hear "one minute left". Your balance can never go below zero.</p>
+<p>If a joined call breaks within the first minute, we charge ₹1 and return the rest to your wallet.</p>
+<h2>Booked calls</h2>
+<p>A booked call holds 10 minutes of the influencer's rate in your wallet. You can cancel free until 1 hour before the booked time. If the influencer does not pick up at the booked time, or if the influencer cancels, the full hold comes back to your wallet. If you cancel later than 1 hour before, the hold is kept.</p>
+<h2>Refunds always go to your wallet</h2>
+<p>We do not refund calls that were made, except under the first-minute rule above. Any refund we do make goes back to your wallet, never to your card or UPI. See the <a href="/refunds">refund policy</a>.</p>
+<h2>Withdrawing wallet money</h2>
+<p>Anyone can withdraw wallet money with the Payout button. We send it to your UPI after a one-time ID (KYC) and UPI check. Test credits can be spent on calls but cannot be withdrawn.</p>
 <h2>Influencer earnings</h2>
-<p>Influencers earn a share of the rate for every connected minute. Influencer earnings are shown in rupees with their payout status. Payouts go to a bank account or UPI ID in the influencer's own name.</p>
-<h2>Refunds of unused wallet money</h2>
-<p>Unused wallet money can be refunded on request within 180 days. Calls themselves are not refundable — see the <a href="/refunds">refund policy</a>.</p>
+<p>Influencers earn a share of the rate for every minute spoken. We keep ₹2 a minute plus 40% of the rate above ₹2, and the influencer keeps the rest. Earnings are held for 7 days, then they can be withdrawn with the Payout button.</p>
 <h2>Ended calls, bans and disputes</h2>
-<p>A call ended by either person, by # or by a safety action bills the connected time up to that moment. If an account is banned, it can no longer make or receive calls, but the owner can still sign in and request a refund of unused wallet money within 180 days. Money is never forfeited as a penalty.</p>
+<p>A call ended by either person, by # or by a safety action bills the minutes spoken up to that moment. If an account is banned, it can no longer make or receive calls, but the owner can still sign in and withdraw wallet money with the Payout button. Money is never forfeited as a penalty.</p>
 <p>See <a href="/refunds">refunds and billing errors</a> for incorrect charges, and <a href="/grievance">grievance redressal</a> to ask for a review of an account restriction.</p>
 </HelloFraandsPage>

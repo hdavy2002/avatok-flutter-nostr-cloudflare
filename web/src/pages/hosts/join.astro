@@ -8,8 +8,8 @@
 // a Kalamkari closing panel. Art: /assets/hf-join/ (slots + CSS stand-ins in components/join/joinSkin.ts). Prompt pack:
 // SaatHum project doc claude/hello-fraands-join-artwork-prompts.md. Styles: styles/join-pat.css (scoped `.jp`).
 // Owner model (2026-10-18): influencers create an account, then upgrade to influencer for FREE in the dashboard; they set
-// their own per-minute rate (no range shown); fans are charged per minute of the phone call; influencers receive 60% of
-// the connected-call charge minus ₹2.00 per connected minute; the 40% covers platform fees and GST; Indian influencers
+// their own per-minute rate (no range shown); fans are charged per minute of the phone call; [HF-WIRE-15 2026-10-19] we keep
+// ₹2 a minute plus 40% of the rate above ₹2 and the influencer keeps the rest (HF-REEL-30); Indian influencers
 // only for now. Do not describe registration/verification steps. Never per-second billing, never the payment gateway.
 // Contracts (scripts/check-hello-fraands-pages.mjs) read the earnings paragraph verbatim and the .jp-coins list.
 export const prerender = true;
@@ -38,7 +38,7 @@ const vars = [
   ...JOIN_SKINS.map((o) => `--jp-${o.key}:url(${img(o.path, o.width)})`),
 ].join(';');
 const skins = [...JOIN_BG, ...JOIN_SKINS].map((o) => o.key).join(' ');
-const rate = 20; const share = rate * 0.6; const callCost = 2; const perMin = share - callCost; const kept = rate - share;
+const rate = 20; const callCost = 2; const cut = (rate - callCost) * 0.4; const perMin = rate - callCost - cut;
 const medals = [JOIN_ART.medal1, JOIN_ART.medal2, JOIN_ART.medal3, JOIN_ART.medal4];
 const pats = [
   { n: 1, word: 'Khaata', title: 'Create your free account', alt: 'Patachitra-style painting: Neha opening a beautifully painted account book on her phone', art: JOIN_ART.pat1, css: 'Khaata' },
@@ -139,24 +139,24 @@ const pats = [
         <div class="jp-wrap">
           <p class="jp-kicker">Har minute ka hisaab</p>
           <h2 id="jp-earn">What you earn</h2>
-          <p class="jp-ledger-lead">Fans are charged per minute of the phone call. You receive 60% of the connected-call charge minus ₹2.00 per connected minute for the telephone call. The 40% includes platform fees and GST. Being online does not guarantee calls.</p>
+          <p class="jp-ledger-lead">Fans are charged per minute of the phone call. We keep ₹2 a minute plus 40% of the rate above ₹2. You keep the rest. The part we keep includes platform fees and GST. Being online does not guarantee calls.</p>
           <ol class="jp-split" aria-label={`One connected minute at ₹${rate}`}>
             <li><small>Fan pays</small><b>₹{rate}</b></li>
-            <li><small>Your 60%</small><b>₹{share}</b><em>₹{kept} platform fees &amp; GST</em></li>
             <li><small>Phone call</small><b>−₹{callCost}</b></li>
-            <li class="jp-split-you"><small>You earn</small><b>₹{perMin}</b></li>
+            <li><small>40% of the rest</small><b>−₹{cut.toFixed(2)}</b><em>incl. platform fees &amp; GST</em></li>
+            <li class="jp-split-you"><small>You earn</small><b>₹{perMin.toFixed(2)}</b></li>
           </ol>
           <div class="jp-ledger-grid">
             <ul class="jp-coins" aria-label={`At ₹${rate} a minute`}>
-              <li><small>1 hour</small><b>₹600</b></li>
-              <li><small>1,000 minutes</small><b>₹10,000</b></li>
-              <li><small>3,000 minutes</small><b>₹30,000</b></li>
+              <li><small>1 hour</small><b>₹648</b></li>
+              <li><small>1,000 minutes</small><b>₹10,800</b></li>
+              <li><small>3,000 minutes</small><b>₹32,400</b></li>
             </ul>
             <form class="jp-calc" aria-labelledby="jp-calc-title" onsubmit="return false">
               <p class="jp-calc-title" id="jp-calc-title">Try your numbers</p>
               <label>Your rate (₹ a minute)<input type="number" name="rate" min="1" step="1" value={rate} inputmode="numeric" /></label>
               <label>Minutes talked<input type="number" name="mins" min="1" max="100000" step="1" value="60" inputmode="numeric" /></label>
-              <p class="jp-calc-out" aria-live="polite">You earn <output name="total">₹600</output></p>
+              <p class="jp-calc-out" aria-live="polite">You earn <output name="total">₹648</output></p>
             </form>
           </div>
           <p class="jp-ledger-more">Before TDS or your own taxes. <a href="/hosts/rates">Rates &amp; payouts</a></p>
@@ -198,6 +198,7 @@ const pats = [
             <p class="jp-kicker">Ab aapki baari</p>
             <h2 id="jp-apply">Your scroll starts here.</h2>
             <p>Open to influencers in India. Calls are for conversation, not professional advice. Read the <a href="/hosts/rules">influencer rules</a> and <a href="/hosts/agreement">agreement</a>.</p>
+            <p>Joining is free. Connect YouTube by signing in with it, or Instagram with a short code in your bio. You need 10 or more followers. Your videos stay on YouTube and Instagram and play in their own players; we do not copy or store them. We check your ID once, before your first payout.</p>
             <div class="jp-ctas">
               <a class="jp-btn" href="/sign-up">Join for free →</a>
               <a class="jp-btn jp-btn--blue" href="/hosts/rates">Rates &amp; payouts</a>
@@ -211,13 +212,13 @@ const pats = [
 </Base>
 
 <script>
-  // Earnings calculator: 60% of the rate minus ₹2 per connected minute (same rule as the paragraph above).
+  // Earnings calculator: we keep ₹2 a minute plus 40% of the rate above ₹2 (same rule as the paragraph above).
   const form = document.querySelector<HTMLFormElement>('.jp-calc');
   if (form) {
     const update = () => {
       const r = Math.max(0, Math.round(Number((form.elements.namedItem('rate') as HTMLInputElement).value) || 0));
       const m = Math.max(0, Math.round(Number((form.elements.namedItem('mins') as HTMLInputElement).value) || 0));
-      const total = Math.max(0, Math.round((r * 0.6 - 2) * m));
+      const total = Math.max(0, Math.round(Math.max(0, r - 2) * 0.6 * m));
       (form.elements.namedItem('total') as HTMLOutputElement).value = '₹' + total.toLocaleString('en-IN');
     };
     form.addEventListener('input', update);

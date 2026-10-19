@@ -7,15 +7,15 @@ import { getTickets, sendTicket, type Ticket } from './data';
 import { Card, Ic, PageHead, Sticker, istDay, useToast } from './ui';
 
 const FAQ: [string, string, string][] = [
-  ['wallet', 'How do I add money?', 'Go to Wallet → Add money, type any whole amount and pay with UPI, card or netbanking. The price includes 18% GST, and the receipt comes on WhatsApp and email.'],
-  ['wallet', 'Can I get my money back?', 'Unused top-up money can go back to the original payment within 180 days of paying, after our team approves it. Money spent on connected calls is not refundable.'],
-  ['calls', 'How am I charged for a call?', 'By the minute of connected time, at the influencer’s rate. Ringing, declined, missed or failed calls cost ₹0. You need 2 minutes of balance to start.'],
-  ['calls', 'I was charged for a call that never connected', 'That is a billing error and the money goes back to your wallet. Ask us below with the call time.'],
-  ['safety', 'Will the influencer see my number?', 'Never. Both numbers are masked and calls are not recorded. Influencers only see your handle.'],
+  ['wallet', 'How do I add money?', 'Go to Wallet → Add money, type any amount from ₹10 and pay with UPI, card or netbanking. The price includes 18% GST, so your wallet gets the amount divided by 1.18. The receipt comes on WhatsApp and email.'],
+  ['wallet', 'Can I get my money back?', 'We do not refund calls that were made, except when a joined call breaks in the first minute (we charge ₹1 and return the rest). Every refund goes to your wallet. To take wallet money out, tap Payout: we send it to your UPI after a one-time ID (KYC) and UPI check. Test credits can be spent but not withdrawn.'],
+  ['calls', 'How am I charged for a call?', 'By the minute spoken, at the influencer’s rate. If the influencer declines, cancels or does not answer, you pay nothing. You need at least ₹20 in your wallet to start.'],
+  ['calls', 'I was charged twice, or for a call that was never made', 'That is a billing error and the money goes back to your wallet. Ask us below with the call time.'],
+  ['safety', 'Will the influencer see my number?', 'Never. Both numbers are masked. Influencers only see your handle.'],
   ['safety', 'Someone made me uncomfortable', 'Press # during the call to end it, block them and report it. You can also block from a call’s details in Calls. Our team reviews every report.'],
   ['safety', 'Someone asked for my OTP or bank details', 'Hang up and report. We never ask for OTP, UPI PIN, passwords or bank details — on any channel.'],
-  ['appointment', 'How do appointments work?', 'Pick a free slot on an influencer’s profile. The amount is held from your wallet until the call. Open the appointment a few minutes early; the cancellation rules are on each appointment.'],
-  ['account', 'How do I close my account?', 'Go to Close my account. If you have money in your wallet we refund it first, then delete your account.'],
+  ['appointment', 'How do appointments work?', 'Pick a free slot on an influencer’s profile. 10 minutes of their rate is held in your wallet. You can cancel free until 1 hour before. If the influencer does not pick up or cancels, the full hold comes back to your wallet.'],
+  ['account', 'How do I close my account?', 'Go to Close my account. If you have money in your wallet, withdraw it with the Payout button first, then close your account.'],
 ];
 const TOPICS: [string, string][] = [['', 'All'], ['wallet', 'Wallet & payments'], ['call', 'Calls'], ['appointment', 'Appointments'], ['safety', 'Safety'], ['account', 'Account']];
 const FAQ_KEY: Record<string, string> = { call: 'calls' };

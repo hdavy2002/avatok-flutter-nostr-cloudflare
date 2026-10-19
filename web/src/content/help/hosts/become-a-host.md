@@ -3,7 +3,7 @@ title: "How do I become an influencer?"
 description: "Who can become an influencer, and the simple steps to start taking calls from your fans and earning."
 section: hosts
 order: 1
-updated: 2026-10-18
+updated: 2026-10-19
 keywords: ["become influencer", "influencer kaise bane", "earn from fans", "influencer signup", "upgrade to influencer", "paise kamao", "join as influencer"]
 audience: creator
 faq:
@@ -23,6 +23,7 @@ draft: false
 
 - You must be **18 years or older**.
 - For now, we only take on **influencers based in India**, with their own Indian mobile number.
+- You need **10 or more followers** on the channel you connect.
 
 Influencers on {{brand.name}} are not doctors, lawyers, counsellors, CAs or financial advisors. This is a place to talk to your fans, not to give professional advice.
 
@@ -30,10 +31,11 @@ Influencers on {{brand.name}} are not doctors, lawyers, counsellors, CAs or fina
 
 1. **Create your account.** It is free.
 2. **Upgrade to influencer** from your dashboard. This is free too.
-3. **Set your rate.** Choose your own per-minute price, as you see fit, and the topics you are happy to talk about.
-4. Go **online**. Your fans can now find you and call you.
+3. **Connect your channel.** For YouTube, sign in with your YouTube account. For Instagram, put a short code in your bio. Your videos stay on YouTube and Instagram and play in their own players. We do not copy or store them.
+4. **Set your rate.** Choose your own per-minute price, as you see fit, and the topics you are happy to talk about.
+5. Go **online**. Your fans can now find you and call you.
 
-You do not need to install any app. Calls come to your normal phone.
+You do not need to install any app. Calls come to your normal phone. Joining needs no ID check. We check your ID once, before your first payout.
 
 ## What your profile shows
 
