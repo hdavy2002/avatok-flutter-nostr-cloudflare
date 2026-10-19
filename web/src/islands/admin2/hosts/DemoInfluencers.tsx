@@ -1,7 +1,7 @@
 /* DemoInfluencers — [HF-WIRE-14] Paste YouTube links (one per line) + a name and a rate to create or fill a demo influencer.
  * Worker: GET/POST /api/admin/hf/demo-influencers, DELETE /api/admin/hf/demo-influencers/:uid. Videos are embeds only. Nothing under 14px. */
 import { useCallback, useEffect, useState } from 'react';
-import { hfAdminApi, type DemoInfluencer, type DemoSaveResult } from '../../../lib/hfAdminApi';
+import { hfAdminApi, type DemoInfluencer, type DemoSaveResult, type InviteCreator } from '../../../lib/hfAdminApi';
 import { Banner, ConsultShell, Spinner, dateIST, fail, track } from '../consultants/kit';
 
 const T14 = { fontSize: 14 } as const;
@@ -17,6 +17,72 @@ export function summaryOf(r: DemoSaveResult): string {
   if (r.missing.length) parts.push(`${r.missing.length} private or not found`);
   if (r.bad.length) parts.push(`${r.bad.length} not a YouTube link`);
   return `${r.name}: ${parts.join(', ')}.`;
+}
+
+/** [HF-WIRE-22] Invite creators: add by platform + handle, hide / show. Their reels follow the network reels in the feed with an Invite button. */
+export function InviteCreators() {
+  const [items, setItems] = useState<InviteCreator[] | null>(null);
+  const [platform, setPlatform] = useState<'youtube' | 'instagram'>('youtube');
+  const [handle, setHandle] = useState('');
+  const [busy, setBusy] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [info, setInfo] = useState<string | null>(null);
+  const load = useCallback(async () => {
+    try { setItems(await hfAdminApi.inviteCreators()); } catch (e) { setError(fail('invite_list', e)); setItems([]); }
+  }, []);
+  useEffect(() => { void load(); }, [load]);
+  const add = async () => {
+    setBusy('add'); setError(null); setInfo(null);
+    try {
+      const r = await hfAdminApi.addInviteCreator({ platform, handle: handle.trim() });
+      track('invite_add', { ok: true, reels: r.reels });
+      setInfo(`${r.creator.handle} added with ${r.reels} reel${r.reels === 1 ? '' : 's'}.`); setHandle('');
+      await load();
+    } catch (e) { setError(fail('invite_add', e)); } finally { setBusy(null); }
+  };
+  const toggle = async (c: InviteCreator) => {
+    setBusy(c.platform + c.handle); setError(null); setInfo(null);
+    try { await hfAdminApi.hideInviteCreator(c.platform, c.handle, !c.hidden); await load(); }
+    catch (e) { setError(fail('invite_hide', e)); } finally { setBusy(null); }
+  };
+  return (
+    <div className="card" style={{ padding: 14, background: '#fff', marginBottom: 16 }}>
+      <h3 style={{ margin: '0 0 6px', fontSize: 18 }}>Invite creators (not on Hello Fraands yet)</h3>
+      <p className="muted" style={{ ...T14, margin: '0 0 10px' }}>Their latest reels show after the network reels in the feed, with an Invite button. Fans' searches and Invite votes add creators here too.</p>
+      {error && <Banner tone="error">{error}</Banner>}
+      {info && <Banner tone="info">{info}</Banner>}
+      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+        <label style={T14}>Platform<br />
+          <select value={platform} onChange={(e) => setPlatform(e.target.value as 'youtube' | 'instagram')} style={{ ...inp, minWidth: 140 }} aria-label="Platform">
+            <option value="youtube">YouTube</option>
+            <option value="instagram">Instagram</option>
+          </select>
+        </label>
+        <label style={T14}>Handle<br /><input value={handle} onChange={(e) => setHandle(e.target.value)} maxLength={120} placeholder="@name" style={{ ...inp, width: 220 }} aria-label="Handle" /></label>
+        <button type="button" className="btn" style={T14} disabled={busy === 'add' || handle.trim().length < 2} onClick={() => void add()}>{busy === 'add' ? 'Adding…' : 'Add creator'}</button>
+      </div>
+      {items === null ? <Spinner label="Loading invite creators" /> : items.length === 0 ? <p className="muted" style={T14}>No invite creators yet.</p> : (
+        <div style={{ overflowX: 'auto', marginTop: 10 }}>
+          <table style={{ borderCollapse: 'collapse', ...T14, minWidth: 520 }}>
+            <thead><tr>{['Creator', 'Platform', 'Followers', 'Votes', 'Reels', 'From', ''].map((h) => <th key={h} style={{ textAlign: 'left', padding: '6px 10px' }}>{h}</th>)}</tr></thead>
+            <tbody>
+              {items.map((c) => (
+                <tr key={c.platform + c.handle} style={c.hidden ? { opacity: 0.55 } : undefined}>
+                  <td style={{ padding: '6px 10px' }}>{c.handle}{c.name ? <span className="muted"> · {c.name}</span> : null}</td>
+                  <td style={{ padding: '6px 10px' }}>{c.platform === 'youtube' ? 'YouTube' : 'Instagram'}</td>
+                  <td style={{ padding: '6px 10px' }}>{c.followers.toLocaleString('en-IN')}</td>
+                  <td style={{ padding: '6px 10px' }}>{c.votes}</td>
+                  <td style={{ padding: '6px 10px' }}>{c.reels}</td>
+                  <td style={{ padding: '6px 10px' }}>{c.source}</td>
+                  <td style={{ padding: '6px 10px' }}><button type="button" className="btn ghost" style={T14} disabled={busy === c.platform + c.handle} onClick={() => void toggle(c)}>{c.hidden ? 'Show' : 'Hide'}</button></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
 }
 
 export default function DemoInfluencers() {
@@ -53,6 +119,7 @@ export default function DemoInfluencers() {
 
   return (
     <ConsultShell>
+      <InviteCreators />
       {error && <Banner tone="error">{error}</Banner>}
       {info && <Banner tone="info">{info}</Banner>}
       <div className="card" style={{ padding: 14, background: '#fff', marginBottom: 16 }}>

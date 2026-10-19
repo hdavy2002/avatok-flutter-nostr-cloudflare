@@ -1,7 +1,8 @@
 // [HF-WIRE-9] Reels-app search + "Invite" votes (rulebook HF-REEL-9 / HF-REEL-29).
-//   GET  /api/hf/search?q=&topic=      public, rate-limited, flag hfReelsEnabled
+//   GET  /api/hf/search?q=&topic=&platform=all|youtube|instagram      public, rate-limited, flag hfReelsEnabled
 //        -> { ok, q, online:[host], offline:[host], notOnNetwork:[{ handle, platform, followers?, votes }] }
-//        host = { slug, name, handle, avatar, presence:'online'|'busy'|'offline', followers, topics, ratePaise }
+//        host = { slug, name, handle, avatar, presence:'online'|'busy'|'offline', followers, platforms:['instagram'|'youtube'], topics, ratePaise }
+//        [HF-WIRE-22 / HF-REEL-41] platform filters our hosts (an approved channel on that platform; demo hosts count as youtube) AND limits the look-up to that platform.
 //        notOnNetwork appears only when q is an exact @handle that is not an approved channel on our network. Provider look-ups
 //        (YouTube Data API / treg Instagram) are cached 24 h in KV and skipped silently when the provider is not configured.
 //   POST /api/hf/invites/:platform/:handle/vote   signed in, idempotent, flag hfInvitesEnabled -> { ok, votes, voted:true }
@@ -22,6 +23,7 @@ import { readHfStdPlan } from "../lib/hf_token_config";
 import { TOPICS, TOPIC_SLUGS } from "../lib/hf_options";
 import { lookupChannel, ProviderError, type ChannelPlatform, type ChannelLookup } from "../lib/hf_channel_providers";
 import { pricingStd, readInfluencerRate } from "../lib/hf_influencer_rate"; // [HF-WIRE-18]
+import { noteInviteCreator } from "../lib/hf_invite_reels"; // [HF-WIRE-22]
 
 const NO_STORE = { "cache-control": "private, no-store" };
 const err = (status: number, error: string, message?: string) => json({ ok: false, error, message: message ?? error }, status, NO_STORE);
@@ -43,7 +45,7 @@ export function exactHandle(q: string): string | null {
 const likeEsc = (s: string) => s.replace(/[\\%_]/g, (c) => "\\" + c);
 const at = (h: string) => "@" + h;
 
-interface CachedLookup { exists: boolean; followers: number }
+interface CachedLookup { exists: boolean; followers: number; pid?: string | null; name?: string; avatar?: string | null }
 const cacheKey = (platform: string, handle: string) => `hfinv:lk:${platform}:${handle}`;
 
 async function cachedPeek(env: Env, platform: string, handle: string): Promise<CachedLookup | null> {
@@ -51,7 +53,7 @@ async function cachedPeek(env: Env, platform: string, handle: string): Promise<C
     const raw = await env.TOKENS.get(cacheKey(platform, handle));
     if (!raw) return null;
     const v = JSON.parse(raw);
-    return { exists: v.exists === true, followers: Math.max(0, Number(v.followers) || 0) };
+    return { exists: v.exists === true, followers: Math.max(0, Number(v.followers) || 0), pid: typeof v.pid === "string" ? v.pid : null, name: typeof v.name === "string" ? v.name : "", avatar: typeof v.avatar === "string" ? v.avatar : null };
   } catch { return null; }
 }
 
@@ -61,7 +63,7 @@ export async function cachedLookup(env: Env, platform: ChannelPlatform, handle: 
   if (hit) return hit;
   try {
     const r: ChannelLookup = await lookupChannel(env, platform, handle, f);
-    const v: CachedLookup = { exists: r.exists, followers: r.exists ? r.followers : 0 };
+    const v: CachedLookup = { exists: r.exists, followers: r.exists ? r.followers : 0, ...(r.exists ? { pid: r.platformUserId, name: r.displayName ?? "", avatar: r.avatarUrl ?? null } : {}) };
     try { await env.TOKENS.put(cacheKey(platform, handle), JSON.stringify(v), { expirationTtl: LOOKUP_TTL_S }); } catch { /* cache is best effort */ }
     return v;
   } catch (e) {
@@ -91,7 +93,7 @@ interface HostRow {
   uid: string; slug: string; display_name: string | null; presence: string | null; price_per_min: number; category: string | null; topics_json: string | null; image_key: string | null;
 }
 
-async function searchHosts(env: Env, cfg: Record<string, unknown>, q: string, topic: string | null) {
+async function searchHosts(env: Env, cfg: Record<string, unknown>, q: string, topic: string | null, platform: ChannelPlatform | null = null) {
   const demoVisible = cfg.hfDemoInfluencersVisible !== false;
   const binds: unknown[] = [];
   const where: string[] = [
@@ -109,6 +111,10 @@ async function searchHosts(env: Env, cfg: Record<string, unknown>, q: string, to
       ${topicOr.length ? "OR " + topicOr.join(" OR ") : ""})`);
   }
   if (topic) { binds.push(`%"${topic}"%`); where.push(`h.topics_json LIKE ?${binds.length}`); }
+  if (platform) { // [HF-WIRE-22] HF-REEL-41
+    binds.push(platform);
+    where.push(`(EXISTS (SELECT 1 FROM hf_channels pc WHERE pc.host_uid=h.uid AND pc.status='approved' AND pc.platform=?${binds.length})${platform === "youtube" ? " OR EXISTS (SELECT 1 FROM hf_demo_hosts pd WHERE pd.host_uid=h.uid)" : ""})`);
+  }
   const sql = `SELECT h.uid, h.slug, h.display_name, h.presence, h.price_per_min, h.category, h.topics_json,
       COALESCE((SELECT r2_key FROM hf_host_media m WHERE m.uid=h.uid AND m.kind='profile' AND m.status='active' ORDER BY m.created_at DESC LIMIT 1), a.image_key) AS image_key
     FROM hf_hosts h LEFT JOIN hf_avatars a ON a.id=h.avatar_id WHERE ${where.join(" AND ")}
@@ -118,14 +124,17 @@ async function searchHosts(env: Env, cfg: Record<string, unknown>, q: string, to
   const uids = rows.map((r) => r.uid);
   const ph = uids.map((_, i) => `?${i + 1}`).join(",");
   const facts = new Map<string, { handle: string | null; followers: number }>();
-  const ch = (await env.DB_META.prepare(`SELECT host_uid, handle, followers FROM hf_channels WHERE host_uid IN (${ph}) AND status='approved' ORDER BY followers DESC`).bind(...uids).all<{ host_uid: string; handle: string; followers: number }>()).results ?? [];
+  const plats = new Map<string, Set<string>>(); // [HF-WIRE-22] platforms of each host's approved channels (small icon in the app)
+  const ch = (await env.DB_META.prepare(`SELECT host_uid, handle, followers, platform FROM hf_channels WHERE host_uid IN (${ph}) AND status='approved' ORDER BY followers DESC`).bind(...uids).all<{ host_uid: string; handle: string; followers: number; platform: string }>()).results ?? [];
   for (const c of ch) {
+    if (!plats.has(c.host_uid)) plats.set(c.host_uid, new Set());
+    plats.get(c.host_uid)!.add(c.platform);
     const cur = facts.get(c.host_uid);
     if (!cur) facts.set(c.host_uid, { handle: c.handle, followers: Number(c.followers ?? 0) }); else cur.followers += Number(c.followers ?? 0);
   }
   try {
     const dm = (await env.DB_META.prepare(`SELECT host_uid, handle, followers FROM hf_demo_hosts WHERE host_uid IN (${ph})`).bind(...uids).all<{ host_uid: string; handle: string | null; followers: number }>()).results ?? [];
-    for (const d of dm) if (!facts.has(d.host_uid)) facts.set(d.host_uid, { handle: d.handle, followers: Number(d.followers ?? 0) });
+    for (const d of dm) if (!facts.has(d.host_uid)) { facts.set(d.host_uid, { handle: d.handle, followers: Number(d.followers ?? 0) }); plats.set(d.host_uid, new Set(["youtube"])); }
   } catch { /* no demo table */ }
   const std = pricingStd(readHfStdPlan(cfg), cfg);
   return rows.map((r) => {
@@ -136,12 +145,12 @@ async function searchHosts(env: Env, cfg: Record<string, unknown>, q: string, to
     return {
       slug: r.slug, name: r.display_name ?? "", handle: h, avatar: r.image_key ? mediaUrl(env, r.image_key) : null,
       presence: r.presence === "online" || r.presence === "busy" ? r.presence : "offline",
-      followers: f?.followers ?? 0, topics, ratePaise: priceFields({ price_per_min: r.price_per_min, category: r.category ?? undefined }, std).pricePaisePerMin,
+      followers: f?.followers ?? 0, platforms: [...(plats.get(r.uid) ?? [])].sort(), topics, ratePaise: priceFields({ price_per_min: r.price_per_min, category: r.category ?? undefined }, std).pricePaisePerMin,
     };
   });
 }
 
-export async function hfSearchRoute(req: Request, env: Env, p: string, f?: typeof fetch): Promise<Response | null> {
+export async function hfSearchRoute(req: Request, env: Env, p: string, f?: typeof fetch, ctx?: ExecutionContext): Promise<Response | null> {
   const vote = p.match(/^\/api\/hf\/invites\/(instagram|youtube)\/([^/]{2,64})$/);
   const isSearch = p === "/api/hf/search";
   const isTop = p === "/api/hf/invites/top";
@@ -175,22 +184,28 @@ export async function hfSearchRoute(req: Request, env: Env, p: string, f?: typeo
       const q = (url.searchParams.get("q") ?? "").trim().slice(0, 80);
       const topicRaw = (url.searchParams.get("topic") ?? "").trim();
       const topic = topicRaw && TOPIC_SLUGS.has(topicRaw) ? topicRaw : null;
-      const hosts = await searchHosts(env, cfg, q, topic);
+      const platRaw = (url.searchParams.get("platform") ?? "all").trim().toLowerCase();
+      const platform: ChannelPlatform | null = platRaw === "youtube" || platRaw === "instagram" ? platRaw : null;
+      const hosts = await searchHosts(env, cfg, q, topic, platform);
       const online = hosts.filter((h) => h.presence !== "offline").slice(0, RESULT_MAX);
       const offline = hosts.filter((h) => h.presence === "offline").slice(0, RESULT_MAX);
       const notOnNetwork: { handle: string; platform: string; followers?: number; votes: number }[] = [];
       const exact = exactHandle(q);
       if (exact && cfg.hfInvitesEnabled === true) {
         const found: { platform: ChannelPlatform; followers?: number }[] = [];
-        for (const platform of PLATFORMS) {
-          if (await onNetwork(env, platform, exact)) continue;
-          const lk = await cachedLookup(env, platform, exact, f);
-          if (lk?.exists) found.push({ platform, followers: lk.followers });
+        const plats = platform ? [platform] : PLATFORMS;
+        for (const pl of plats) {
+          if (await onNetwork(env, pl, exact)) continue;
+          const lk = await cachedLookup(env, pl, exact, f);
+          if (lk?.exists) {
+            found.push({ platform: pl, followers: lk.followers });
+            await noteInviteCreator(env, cfg, { platform: pl, handle: exact, source: "search", followers: lk.followers, platformUserId: lk.pid ?? null, name: lk.name, avatar: lk.avatar ?? null }, ctx, { f }); // [HF-WIRE-22] HF-REEL-40
+          }
         }
-        const votes = await voteCounts(env, PLATFORMS.map((platform) => ({ handle: exact, platform })));
+        const votes = await voteCounts(env, plats.map((platform) => ({ handle: exact, platform })));
         for (const x of found) notOnNetwork.push({ handle: at(exact), platform: x.platform, ...(x.followers ? { followers: x.followers } : {}), votes: votes.get(`${x.platform}:${exact}`) ?? 0 });
         // Provider not configured / down: still show a handle that fans have already voted for, so the vote count is not lost.
-        for (const platform of PLATFORMS) {
+        for (const platform of plats) {
           if (notOnNetwork.some((n) => n.platform === platform)) continue;
           const v = votes.get(`${platform}:${exact}`) ?? 0;
           if (v > 0 && !(await onNetwork(env, platform, exact))) notOnNetwork.push({ handle: at(exact), platform, votes: v });
@@ -226,6 +241,7 @@ export async function hfSearchRoute(req: Request, env: Env, p: string, f?: typeo
     if (limited) return limited;
     if (await onNetwork(env, platform, handle)) return err(409, "already_on_network", "This creator is already here.");
     await env.DB_META.prepare("INSERT OR IGNORE INTO hf_invite_votes (handle, platform, uid, at) VALUES (?1,?2,?3,?4)").bind(handle, platform, u.uid, Date.now()).run();
+    await noteInviteCreator(env, cfg, { platform, handle, source: "vote" }, ctx, { f }); // [HF-WIRE-22] a vote keeps the creator's invite reels in the feed
     const votes = Number((await env.DB_META.prepare("SELECT COUNT(*) AS c FROM hf_invite_votes WHERE handle=?1 AND platform=?2").bind(handle, platform).first<{ c: number }>())?.c ?? 0);
     return json({ ok: true, votes, voted: true }, 200, NO_STORE);
   } catch (e) {

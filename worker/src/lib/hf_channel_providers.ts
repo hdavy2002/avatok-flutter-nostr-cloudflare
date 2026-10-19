@@ -20,6 +20,9 @@ export interface ChannelLookup {
   /** YouTube channel with the subscriber count switched off. */
   countHidden: boolean;
   url: string;
+  /** [HF-WIRE-22] Public name and picture, when the provider returns them (used for invite cards). */
+  displayName?: string;
+  avatarUrl?: string | null;
 }
 
 export type ProviderErrorCode = "provider_not_configured" | "provider_unavailable" | "bad_handle" | "token_invalid";
@@ -90,6 +93,11 @@ export function parseYoutubeRef(input: string): YoutubeRef {
 
 // ── YouTube ──────────────────────────────────────────────────────────────────────────────────────────────────────
 
+function ytAvatar(th: any): string | null {
+  const u = (th?.medium ?? th?.default ?? th?.high)?.url;
+  return typeof u === "string" && u.startsWith("https://") ? u : null;
+}
+
 export async function youtubeLookup(env: Pick<Env, "YOUTUBE_API_KEY">, handleOrUrl: string, f: FetchLike = fetch): Promise<ChannelLookup> {
   const ref = parseYoutubeRef(handleOrUrl);
   const key = (env.YOUTUBE_API_KEY ?? "").trim();
@@ -116,6 +124,8 @@ export async function youtubeLookup(env: Pick<Env, "YOUTUBE_API_KEY">, handleOrU
     isPrivate: false,
     countHidden: hidden,
     url: custom && custom.startsWith("@") ? `https://www.youtube.com/${custom}` : `https://www.youtube.com/channel/${item.id}`,
+    displayName: String(item.snippet?.title ?? "").slice(0, 80),
+    avatarUrl: ytAvatar(item.snippet?.thumbnails),
   };
 }
 
@@ -152,6 +162,8 @@ export async function instagramLookup(env: Pick<Env, "TREG_API_KEY">, handleOrUr
     isPrivate: user.is_private === true || body?.is_private === true || body?.message === "Profile is private",
     countHidden: false,
     url: profileUrl,
+    displayName: String(user.full_name ?? "").slice(0, 80),
+    avatarUrl: typeof (user.profile_pic_url_hd ?? user.profile_pic_url) === "string" && String(user.profile_pic_url_hd ?? user.profile_pic_url).startsWith("https://") ? String(user.profile_pic_url_hd ?? user.profile_pic_url) : null,
   };
 }
 

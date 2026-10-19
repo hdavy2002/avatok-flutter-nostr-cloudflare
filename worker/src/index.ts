@@ -330,6 +330,8 @@ import { hfDashV3Route, isDashV3Path } from "./routes/hf_dash_v3"; // [HF-DASH-V
 import { hfMeRoute } from "./routes/hf_me"; // [HF-NATIVE-S1] native app: who am I (GET/PATCH /api/hf/me)
 import { hfDemoAdminRoute } from "./routes/hf_demo_admin"; // [HF-WIRE-14] demo influencers from pasted YouTube links
 import { hfReelsRoute } from "./routes/hf_reels"; // [HF-WIRE-4] reels feed (flag hfReelsEnabled)
+import { hfInviteAdminRoute } from "./routes/hf_invite_admin"; // [HF-WIRE-22]
+import { refreshInviteCreators } from "./lib/hf_invite_reels"; // [HF-WIRE-22]
 import { hfSearchRoute } from "./routes/hf_search"; // [HF-WIRE-9] search + invite votes
 import { hfChannelsRoute, recheckAllChannels } from "./routes/hf_channels"; // [HF-WIRE-3] influencer Channels (flag hfChannelsEnabled)
 import { hfRegistrationRoute } from "./routes/hf_registration"; // [HF-REF-AUTH-1] immutable native username + legal acceptance
@@ -528,6 +530,7 @@ export default {
           .catch((e) => { console.error("[hf-bookings-cron] failed:", String(e)); }), // [HF-BOOKING-CALENDAR-1]
         runHfPresenceNudge(env).then((r) => { if (r.scanned) console.log("[hf-presence-nudge]", JSON.stringify(r)); }).catch((e) => { console.error("[hf-presence-nudge] failed:", String(e)); }), // [HF-PRESENCE-NUDGE-1]
         recheckAllChannels(env).then((r) => { if (r.scanned) console.log("[hf-channels-recheck]", JSON.stringify(r)); }).catch((e) => { console.error("[hf-channels-recheck] failed:", String(e)); }), // [HF-WIRE-3] self-throttled: 20 h per channel, 25 per tick
+        refreshInviteCreators(env).then((r) => { if (r.scanned) console.log("[hf-invite-refresh]", JSON.stringify(r)); }).catch((e) => { console.error("[hf-invite-refresh] failed:", String(e)); }), // [HF-WIRE-22] self-throttled: 20 h per creator, 15 per tick; prunes 30-day-idle creators
         runVobizWatch(env).catch((e) => { console.error("[hf-vobiz-watch] failed:", String(e)); }), // [HF-VOBIZ-SPEND-2] every 5 min (a 1-min trigger halted all crons)
         expireHfTopups(env).catch((e) => { console.error("[hf-topup-expire] failed:", String(e)); }), // [HF-TOPUP-1]
         runHfPlayCron(env).then((r) => { if (r.consumeRetried || r.rechecked || r.swept) console.log("[hf-play-cron]", JSON.stringify(r)); }).catch((e) => { console.error("[hf-play-cron] failed:", String(e)); }), // [HF-TOK-PLAY-1]
@@ -1168,6 +1171,7 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
       if (isDashV3Path(p)) { const r = await hfDashV3Route(req, env, p); if (r) return r; } // [HF-DASH-V3-1]
       if (p === "/api/hf/me" || p === "/api/hf/me/ack") { const r = await hfMeRoute(req, env, p); if (r) return r; } // [HF-NATIVE-S1] [HF-NATIVE-S4]
       if (p === "/api/hf/channels" || p.startsWith("/api/hf/channels/")) { const r = await hfChannelsRoute(req, env, p, ctx); if (r) return r; } // [HF-WIRE-3]
+      if (p === "/api/admin/hf/invite-creators" || p.startsWith("/api/admin/hf/invite-creators/")) { const r = await hfInviteAdminRoute(req, env, p); if (r) return r; } // [HF-WIRE-22]
       if (p === "/api/admin/hf/demo-influencers" || p.startsWith("/api/admin/hf/demo-influencers/")) { const r = await hfDemoAdminRoute(req, env, p); if (r) return r; } // [HF-WIRE-14]
       if (p === "/api/hf/reels" || p.startsWith("/api/hf/reels/") || p === "/api/hf/hosts/me/reels") { const r = await hfReelsRoute(req, env, p, ctx); if (r) return r; } // [HF-WIRE-4]
       if (p === "/api/hf/me/summary") { const r = await hfDashSummaryRoute(req, env); if (r) return r; } // [HF-DASH-SUMMARY-1]
@@ -1177,7 +1181,7 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
       if (p === "/api/hosts/me/payouts" || p === "/api/hf/payouts" || p.startsWith("/api/hf/payouts/") || p.startsWith("/api/hosts/me/payouts/") || p === "/api/admin/hf/payouts" || p.startsWith("/api/admin/hf/payouts/")) { const r = await hfPayoutsRoute(req, env, p, ctx); if (r) return r; } // [HF-PAYOUT-1]
       if (p.startsWith("/api/admin/hf/vobiz/")) { const r = await hfVobizAdminRoute(req, env, ctx); if (r) return r; } // [HF-VOBIZ-SPEND-1]
       if (p.startsWith("/api/admin/hf/std/")) { const r = await hfStdAdminRoute(req, env, ctx); if (r) return r; } // [HF-STD-PLAN-1]
-      if (p === "/api/hf/search" || p.startsWith("/api/hf/invites/") || p === "/api/admin/hf/invites") { const r = await hfSearchRoute(req, env, p); if (r) return r; } // [HF-WIRE-9]
+      if (p === "/api/hf/search" || p.startsWith("/api/hf/invites/") || p === "/api/admin/hf/invites") { const r = await hfSearchRoute(req, env, p, undefined, ctx); if (r) return r; } // [HF-WIRE-9]
       if (p === "/api/hf/favourites" || p.startsWith("/api/hf/favourites/")) { const r = await hfFavouritesRoute(req, env, p); if (r) return r; } // [HF-DASH-FRAANDS-1]
       if (p.startsWith("/api/hf/") || p.startsWith("/api/hosts/me/") || p === "/api/admin/hf/calls" || p.startsWith("/api/admin/hf/calls/") || p === "/api/admin/hf/wallet/credit" || p === "/api/admin/hf/wallet/migrate-test-credits" || p === "/api/admin/hf/tokens/migrate-test-credits" || p === "/api/admin/hf/users/search") { const r = await hfCallsRoute(req, env, p, ctx); if (r) return r; } // [HF-CALLS-1]
       if (p.startsWith("/api/hosts/") || p.startsWith("/api/admin/hf/")) { const r = await hfHostKycRoute(req, env, p, ctx); if (r) return r; } // [HF-HOST-KYC-1]

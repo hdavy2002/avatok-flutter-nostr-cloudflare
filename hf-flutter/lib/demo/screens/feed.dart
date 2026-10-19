@@ -5,8 +5,11 @@ import 'package:go_router/go_router.dart';
 
 import '../../core/brand.dart';
 import '../../data/favourites_store.dart';
+import '../../data/api_exception.dart';
 import '../../data/models/reel.dart';
+import '../../data/models/search.dart';
 import '../../data/repos/reels_repo.dart';
+import '../../data/repos/search_repo.dart';
 import '../../data/services.dart';
 import '../../data/share.dart';
 import '../../ui/async_view.dart';
@@ -23,9 +26,12 @@ import 'sheets.dart';
 /// Reels feed: full-screen cards, swipe up/down. Only ONLINE influencers are shown (HF-REEL-4).
 /// Demo mode keeps the dummy reels; real mode (HF-WIRE-4) pages `GET /api/hf/reels`. [reelId] opens a shared reel first.
 class FeedScreen extends StatelessWidget {
-  const FeedScreen({super.key, this.reelId, this.repo, this.onlineFetch});
+  const FeedScreen({super.key, this.reelId, this.repo, this.onlineFetch, this.searchRepo});
 
   final String? reelId;
+
+  /// Tests pass a repo for the INVITE vote on invite reels (HF-REEL-40).
+  final SearchRepo? searchRepo;
 
   /// Tests pass a repo on a fake API; the app uses [Services].
   final ReelsRepo? repo;
@@ -35,7 +41,7 @@ class FeedScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) =>
-      PresenceBridge.real ? RealFeed(reelId: reelId, repo: repo ?? Services.instance.reelsRepo, onlineFetch: onlineFetch) : const _DemoFeed();
+      PresenceBridge.real ? RealFeed(reelId: reelId, repo: repo ?? Services.instance.reelsRepo, onlineFetch: onlineFetch, searchRepo: searchRepo) : const _DemoFeed();
 }
 
 /// The empty-feed text (owner copy).
@@ -43,9 +49,10 @@ const String kFeedEmptyText = 'No one is online right now. Check back soon.';
 
 /// The real feed: a vertical pager over the server's pages. Plays the visible reel, pauses the others, readies the next.
 class RealFeed extends StatefulWidget {
-  const RealFeed({super.key, required this.repo, this.reelId, this.onlineFetch});
+  const RealFeed({super.key, required this.repo, this.reelId, this.onlineFetch, this.searchRepo});
 
   final ReelsRepo repo;
+  final SearchRepo? searchRepo;
   final String? reelId;
   final Future<int> Function()? onlineFetch;
 
@@ -91,7 +98,7 @@ class _RealFeedState extends State<RealFeed> {
       _cursor = page.nextCursor;
       _more = page.nextCursor != null;
       _index = 0;
-      if (_items.isNotEmpty && _counted.add(_items.first.id)) unawaited(widget.repo.view(_items.first.id));
+      if (_items.isNotEmpty && !_items.first.isInvite && _counted.add(_items.first.id)) unawaited(widget.repo.view(_items.first.id));
       setState(() => _state = AsyncData(List.of(_items)));
     } catch (e) {
       if (mounted) setState(() => _state = AsyncFailure(e));
@@ -119,7 +126,7 @@ class _RealFeedState extends State<RealFeed> {
   void _onPage(int i) {
     setState(() => _index = i);
     if (i >= _items.length - 3) unawaited(_loadMore());
-    if (i < _items.length && _counted.add(_items[i].id)) unawaited(widget.repo.view(_items[i].id));
+    if (i < _items.length && !_items[i].isInvite && _counted.add(_items[i].id)) unawaited(widget.repo.view(_items[i].id)); // invite reels are not ours to count
   }
 
   @override
@@ -158,6 +165,7 @@ class _RealFeedState extends State<RealFeed> {
               real: items[i],
               active: i == _index,
               preload: i == _index + 1,
+              searchRepo: widget.searchRepo,
             ),
           ),
           Positioned(
@@ -229,7 +237,10 @@ class _FeedScreenState extends State<_DemoFeed> {
 }
 
 class ReelPage extends StatefulWidget {
-  const ReelPage({super.key, required this.reel, required this.active, this.real, this.preload = false});
+  const ReelPage({super.key, required this.reel, required this.active, this.real, this.preload = false, this.searchRepo});
+
+  /// Used by the INVITE button of an invite reel; the app uses [Services].
+  final SearchRepo? searchRepo;
 
   final Reel reel;
   final bool active;
@@ -275,7 +286,8 @@ class _ReelPageState extends State<ReelPage> with SingleTickerProviderStateMixin
   Widget build(BuildContext context) {
     final r = widget.reel;
     final who = r.who;
-    final realSlug = widget.real?.host.slug; // [HF-WIRE-9] real hearts are saved by influencer slug
+    final inviteOf = widget.real?.invite; // [HF-WIRE-22] set for a creator who is not on the app yet
+    final realSlug = inviteOf == null ? widget.real?.host.slug : null; // [HF-WIRE-9] real hearts are saved by influencer slug
     return ListenableBuilder(
       listenable: realSlug != null ? Listenable.merge([demo, FavouritesStore.instance]) : demo,
       builder: (context, _) {
@@ -337,14 +349,15 @@ class _ReelPageState extends State<ReelPage> with SingleTickerProviderStateMixin
                 children: [
                   Semantics(
                     button: true,
-                    label: 'Open ${who.name} profile',
+                    label: inviteOf != null ? who.name : 'Open ${who.name} profile',
                     child: GestureDetector(
-                      onTap: () => context.push('/profile/${who.id}'),
+                      onTap: inviteOf != null ? null : () => context.push('/profile/${who.id}'),
                       child: Stack(
                         clipBehavior: Clip.none,
                         alignment: Alignment.bottomCenter,
                         children: [
                           Avatar(who, size: 58),
+                          if (inviteOf == null)
                           Positioned(
                             bottom: -9,
                             child: Container(
@@ -357,6 +370,7 @@ class _ReelPageState extends State<ReelPage> with SingleTickerProviderStateMixin
                       ),
                     ),
                   ),
+                  if (inviteOf == null) ...[
                   const SizedBox(height: 24),
                   BrassKnob(
                     label: faved ? 'Remove from favourites' : 'Add to favourites',
@@ -377,6 +391,7 @@ class _ReelPageState extends State<ReelPage> with SingleTickerProviderStateMixin
                     onTap: () => widget.real == null ? toast(context, 'Share link copied (demo)') : _share(context, widget.real!),
                     child: const Icon(Icons.reply_rounded, color: C.deep, textDirection: TextDirection.rtl),
                   ),
+                  ],
                 ],
               ),
             ),
@@ -401,6 +416,14 @@ class _ReelPageState extends State<ReelPage> with SingleTickerProviderStateMixin
                               onTap: () => context.push('/profile/${who.id}'),
                               child: Text(who.name, style: t(22, color: C.ivory, ls: 0.02)),
                             ),
+                            if (inviteOf != null)
+                              Container(
+                                key: const ValueKey('not-on-pill'),
+                                padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
+                                decoration: BoxDecoration(color: C.sand, borderRadius: BorderRadius.circular(999), border: Border.all(color: C.maroon, width: 1.5)),
+                                child: Text('Not on ${Brand.name} yet', style: t(14, color: C.deep)),
+                              )
+                            else
                             Container(
                               padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
                               decoration: BoxDecoration(color: C.marigold, borderRadius: BorderRadius.circular(999)),
@@ -412,10 +435,17 @@ class _ReelPageState extends State<ReelPage> with SingleTickerProviderStateMixin
                         Text('${who.handle} · ${who.followers} followers', style: t(14, color: C.gold, w: FontWeight.w700)),
                         const SizedBox(height: 6),
                         Text(r.caption, style: t(15, color: C.ivory, w: FontWeight.w600, h: 1.4)),
+                        if (inviteOf != null) ...[
+                          const SizedBox(height: 6),
+                          Text('${compactCount(r.hearts)} likes · ${r.views} views', key: const ValueKey('invite-stats'), style: t(14, color: C.gold, w: FontWeight.w700)),
+                        ],
                       ],
                     ),
                   ),
                   const SizedBox(height: 16),
+                  if (inviteOf != null)
+                    _InviteButton(creator: inviteOf, repo: widget.searchRepo)
+                  else
                   TicketButton(
                     label: 'CALL NOW',
                     icon: Icons.call_rounded,
@@ -442,4 +472,55 @@ class _ReelPageState extends State<ReelPage> with SingleTickerProviderStateMixin
   }
 
   static String _count(int n) => n >= 1000 ? '${(n / 1000).toStringAsFixed(1)}K' : '$n';
+}
+
+/// Votes remembered for this session so a card keeps saying VOTED when it is scrolled away and back.
+class InviteVotes {
+  static final Set<String> voted = {};
+}
+
+/// [HF-WIRE-22] HF-REEL-40: the INVITE button of an invite reel. One tap = one vote (HF-REEL-9), needs an account, then reads VOTED.
+class _InviteButton extends StatefulWidget {
+  const _InviteButton({required this.creator, this.repo});
+
+  final InviteCreator creator;
+  final SearchRepo? repo;
+
+  @override
+  State<_InviteButton> createState() => _InviteButtonState();
+}
+
+class _InviteButtonState extends State<_InviteButton> {
+  bool _busy = false;
+
+  Future<void> _vote() async {
+    final c = widget.creator;
+    setState(() => _busy = true);
+    try {
+      await (widget.repo ?? Services.instance.searchRepo).vote(MissingCreator(handle: c.handle, platform: c.platform, votes: c.votes, followers: c.followers));
+      InviteVotes.voted.add(c.key);
+      if (mounted) toast(context, 'Voted! We will ask ${c.handle} to join.');
+    } on ApiException catch (e) {
+      if (mounted) toast(context, e.userMessage);
+    } catch (_) {
+      if (mounted) toast(context, ApiException.genericText);
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final voted = InviteVotes.voted.contains(widget.creator.key);
+    return SizedBox(
+      height: 56,
+      width: double.infinity,
+      child: FilledButton(
+        key: const ValueKey('invite-button'),
+        style: FilledButton.styleFrom(backgroundColor: voted ? C.sand : C.marigold, foregroundColor: C.deep, shape: const StadiumBorder()),
+        onPressed: voted || _busy ? null : () => requireAccount(context, () => unawaited(_vote()), reason: 'to vote'),
+        child: Text(voted ? 'VOTED' : 'INVITE', style: t(18, color: C.deep, ls: 0.06)),
+      ),
+    );
+  }
 }

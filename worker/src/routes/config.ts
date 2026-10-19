@@ -2174,6 +2174,7 @@ export interface PlatformConfig {
   hfChannelsEnabled: boolean; // influencer Channels onboarding (treg follower check)
   hfFanSignupEnabled: boolean; // [HF-WIRE-2] reels-app fan sign-up extras: store the typed email (PATCH /api/hf/me {email}) and the "new reels from favourites" switch (PATCH /api/hf/me/prefs). Name edits stay open either way.
   hfInvitesEnabled: boolean; // "Invite" votes for influencers not yet on the app
+  hfInviteReelsEnabled: boolean; // [HF-WIRE-22] HF-REEL-40: reels of creators not on the network appear after network reels in the feed, with an Invite button. Default true.
   hfDemoInfluencersVisible: boolean; // default true; false hides every is_demo host and reel in one switch
   hfReelsImportCount: number; // [HF-WIRE-4] NUMERIC (numericKeys): latest videos imported per approved channel on approval and in the daily recheck; default 50 (HF-WIRE-14), max 200
   hfInfluencerMinFollowers: number; // NUMERIC (numericKeys): followers/subscribers needed on one YouTube or Instagram channel; default 10
@@ -2941,6 +2942,7 @@ const DEFAULTS: PlatformConfig = {
   hfChannelsEnabled: false, // [HF-WIRE-1B]
   hfInvitesEnabled: false, // [HF-WIRE-1B]
   hfFanSignupEnabled: false, // [HF-WIRE-2] dark until the owner flips it
+  hfInviteReelsEnabled: true, // [HF-WIRE-22]
   hfDemoInfluencersVisible: true, // [HF-WIRE-1B] seed influencers are shown until the owner hides them
   hfReelsImportCount: 50, // [HF-WIRE-4] raised to 50 by HF-WIRE-14
   hfInfluencerMinFollowers: 10, // [HF-WIRE-1B] owner 2026-10-19 (handover 10 asks whether 10 or 10,000)

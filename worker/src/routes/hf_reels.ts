@@ -4,6 +4,9 @@
 //   POST  /api/hf/reels/:id/view          cheap counter, rate-limited per reel + IP -> { ok }
 //   GET   /api/hf/hosts/me/reels          the caller's own reels, hidden ones too -> { ok, reels:[mine], onFeed, hostStatus }
 //   PATCH /api/hf/reels/:id { visible }   owner only (404 for anyone else) -> { ok, reel:mine }
+// [HF-WIRE-22] HF-REEL-40: after the network reels the feed continues with INVITE reels (flag hfInviteReelsEnabled, default true): creators not on Hello Fraands yet.
+//   invite item = { id:"hfiv_...", kind:"invite", creator:{platform,handle:"@x",name,avatar,followers,votes}, platform, url, embedUrl, thumbUrl, title, caption, likes, comments, views, publishedAt }
+//   Network items carry no `kind` (= network, unchanged). Round-robin across creators, most-voted first. Cursor: "<ts>_<id>" pages the network part, "i:<offset>" the invite part.
 // item = { id, host:{slug,name,handle,avatar,ratePaise,followers,presence}, platform, url, embedUrl, thumbUrl, title, caption, likes, comments, views, publishedAt }
 // mine = { id, channelId, platform, url, embedUrl, thumbUrl, title, caption, likes, comments, views, publishedAt, visible }
 // Demo (starter) hosts/reels are included only while hfDemoInfluencersVisible is true. Reels of a disconnected / unapproved channel never show.
@@ -20,6 +23,7 @@ import { mediaUrl } from "../lib/hf_host_store";
 import { priceFields } from "./hf_hosts_public";
 import { readHfStdPlan } from "../lib/hf_token_config";
 import { pricingStd, readInfluencerRate } from "../lib/hf_influencer_rate"; // [HF-WIRE-18]
+import { inviteReelsOn } from "../lib/hf_invite_reels"; // [HF-WIRE-22]
 
 const APP = BRAND.slug;
 const NO_STORE = { "cache-control": "private, no-store" };
@@ -90,6 +94,35 @@ const mineJson = (r: MineRow) => ({
   title: r.caption ?? "", caption: r.caption ?? "", likes: Number(r.likes ?? 0), comments: Number(r.comments ?? 0), views: Number(r.views ?? 0), publishedAt: r.published_at ?? null, visible: r.visible === 1,
 });
 const MINE_COLS = "id, channel_id, platform, url, embed_url, video_url, thumb_url, caption, likes, comments, views, published_at, visible";
+
+interface InviteRow {
+  id: string; platform: string; handle: string; url: string | null; embed_url: string | null; thumb_url: string | null; caption: string | null;
+  likes: number; comments: number; views: number; published_at: number | null; display_name: string | null; avatar_url: string | null; followers: number; votes: number;
+}
+
+/** Invite reels: not hidden, creator has not joined, round-robin across creators (newest first), most-voted creators first. Details only, never a video file. */
+async function inviteItems(env: Env, offset: number, take: number): Promise<{ items: unknown[]; more: boolean }> {
+  try {
+    const rows = (await env.DB_META.prepare(
+      `SELECT x.* FROM (
+         SELECT r.id, r.platform, r.handle, r.url, r.embed_url, r.thumb_url, r.caption, r.likes, r.comments, r.views, r.published_at,
+           c.display_name, c.avatar_url, c.followers,
+           (SELECT COUNT(*) FROM hf_invite_votes v WHERE v.platform=r.platform AND v.handle=r.handle) AS votes,
+           ROW_NUMBER() OVER (PARTITION BY r.platform, r.handle ORDER BY COALESCE(r.published_at,0) DESC, r.id DESC) AS rn
+         FROM hf_invite_reels r JOIN hf_invite_creators c ON c.platform=r.platform AND c.handle=r.handle
+         WHERE c.hidden=0 AND r.embed_url IS NOT NULL
+           AND NOT EXISTS (SELECT 1 FROM hf_channels ch WHERE ch.platform=c.platform AND ch.status='approved' AND (LOWER(REPLACE(ch.handle,'@',''))=c.handle OR (c.platform_user_id IS NOT NULL AND ch.platform_user_id=c.platform_user_id)))
+       ) x ORDER BY x.rn ASC, x.votes DESC, x.followers DESC, x.handle ASC, x.id ASC LIMIT ?1 OFFSET ?2`,
+    ).bind(take + 1, offset).all<InviteRow>()).results ?? [];
+    const items = rows.slice(0, take).map((r) => ({
+      id: r.id, kind: "invite",
+      creator: { platform: r.platform, handle: "@" + r.handle, name: r.display_name ?? "", avatar: r.avatar_url ?? null, followers: Number(r.followers ?? 0), votes: Number(r.votes ?? 0) },
+      platform: r.platform, url: r.url, embedUrl: r.embed_url, thumbUrl: r.thumb_url, title: r.caption ?? "", caption: r.caption ?? "",
+      likes: Number(r.likes ?? 0), comments: Number(r.comments ?? 0), views: Number(r.views ?? 0), publishedAt: r.published_at ?? null,
+    }));
+    return { items, more: rows.length > take };
+  } catch { return { items: [], more: false }; } // tables not applied yet
+}
 
 /** Visible reels of one host for the public profile (GET /api/hosts/public/:slug). Returns null when the flag is off or the tables are missing. */
 export async function profileReels(env: Env, hostUid: string, cfg: Record<string, unknown>): Promise<{ reels: unknown[]; followers: number; handle: string | null } | null> {
@@ -172,15 +205,34 @@ export async function hfReelsRoute(req: Request, env: Env, p: string, ctx?: Exec
     // ── GET feed ───────────────────────────────────────────────────────────────────────────────────────────────
     const url = new URL(req.url);
     const limit = Math.min(PAGE_MAX, Math.max(1, Math.floor(Number(url.searchParams.get("limit") || 10)) || 10));
-    const cur = (url.searchParams.get("cursor") ?? "").match(/^(\d{1,15})_(hfrl_[a-z0-9]{8,40})$/);
-    if (url.searchParams.get("cursor") && !cur) return err(400, "invalid_field", "Bad page marker.");
-    const where = `${publicWhere(demoVisible)} AND h.presence='online'${cur ? " AND (COALESCE(r.published_at, r.imported_at) < ?2 OR (COALESCE(r.published_at, r.imported_at) = ?2 AND r.id < ?3))" : ""}`;
-    const stmt = env.DB_META.prepare(`SELECT ${REEL_COLS}, ${HOST_COLS} ${FROM} WHERE ${where} ORDER BY ts DESC, r.id DESC LIMIT ?1`);
-    const rows = (await (cur ? stmt.bind(limit + 1, Number(cur[1]), cur[2]) : stmt.bind(limit + 1)).all<FeedRow>()).results ?? [];
-    const page = rows.slice(0, limit);
-    const last = page[page.length - 1];
-    const nextCursor = rows.length > limit && last ? `${last.ts}_${last.id}` : null;
-    return json({ ok: true, items: await toItems(env, page, cfg), nextCursor }, 200, FEED_CACHE);
+    const rawCursor = url.searchParams.get("cursor") ?? "";
+    const inv = rawCursor.match(/^i:(\d{1,6})$/);
+    const cur = rawCursor.match(/^(\d{1,15})_(hfrl_[a-z0-9]{8,40})$/);
+    if (rawCursor && !cur && !inv) return err(400, "invalid_field", "Bad page marker.");
+    const withInvites = inviteReelsOn(cfg);
+    let items: unknown[] = [];
+    let nextCursor: string | null = null;
+    let room = limit;
+    let invOffset = 0;
+    let doInvite = false;
+    if (inv) { doInvite = true; invOffset = Number(inv[1]); }
+    else {
+      const where = `${publicWhere(demoVisible)} AND h.presence='online'${cur ? " AND (COALESCE(r.published_at, r.imported_at) < ?2 OR (COALESCE(r.published_at, r.imported_at) = ?2 AND r.id < ?3))" : ""}`;
+      const stmt = env.DB_META.prepare(`SELECT ${REEL_COLS}, ${HOST_COLS} ${FROM} WHERE ${where} ORDER BY ts DESC, r.id DESC LIMIT ?1`);
+      const rows = (await (cur ? stmt.bind(limit + 1, Number(cur[1]), cur[2]) : stmt.bind(limit + 1)).all<FeedRow>()).results ?? [];
+      const page = rows.slice(0, limit);
+      const last = page[page.length - 1];
+      items = await toItems(env, page, cfg);
+      room = limit - page.length;
+      if (rows.length > limit && last) nextCursor = `${last.ts}_${last.id}`;
+      else doInvite = true; // network part is finished: continue with invite reels
+    }
+    if (doInvite && withInvites) {
+      const r = await inviteItems(env, invOffset, room);
+      items = items.concat(r.items);
+      if (r.more) nextCursor = `i:${invOffset + r.items.length}`;
+    }
+    return json({ ok: true, items, nextCursor }, 200, FEED_CACHE);
   } catch (e) {
     await trackException(env, e, { route: p, method, handled: true, app_name: APP, extra: { area: "hf_reels" } });
     return err(500, "internal_error", "Something went wrong. Please try again.");

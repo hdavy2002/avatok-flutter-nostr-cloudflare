@@ -63,7 +63,7 @@ function ytQuery(params: Record<string, string>, key: string, auth?: YoutubeAuth
   return q.toString();
 }
 
-function toReel(v: any): ImportedReel {
+export function toReel(v: any): ImportedReel {
   const id = String(v.id);
   const th = v.snippet?.thumbnails ?? {};
   const pub = Date.parse(String(v.snippet?.publishedAt ?? ""));

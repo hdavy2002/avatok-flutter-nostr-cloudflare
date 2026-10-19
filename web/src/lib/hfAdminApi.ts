@@ -68,6 +68,9 @@ const e = encodeURIComponent;
 /** Signed media paths come back relative to the API origin. */
 export const apiUrl = (p: string | null | undefined) => (p ? (p.startsWith('http') ? p : `${API_BASE}${p}`) : '');
 
+/** [HF-WIRE-22] A creator who is not on Hello Fraands yet; their reels show in the feed with an Invite button. */
+export interface InviteCreator { platform: 'youtube' | 'instagram'; handle: string; name: string; avatar: string | null; followers: number; votes: number; source: string; hidden: boolean; reels: number; lastLookupAt: number }
+
 export const hfAdminApi = {
   hosts: async (status: HostStatus) => (await adminCall<{ items: AdminHost[] }>(`/api/admin/hf/hosts?status=${e(status)}`)).items ?? [],
   host: (uid: string) => adminCall<AdminHostDetail>(`/api/admin/hf/hosts/${e(uid)}`),
@@ -94,6 +97,12 @@ export const hfAdminApi = {
   saveDemoInfluencer: (b: { uid?: string; name: string; ratePaise: number; youtubeUrls: string[] }) =>
     adminCall<{ ok: true; result: DemoSaveResult }>('/api/admin/hf/demo-influencers', { method: 'POST', body: b }),
   deleteDemoInfluencer: (uid: string) => adminCall<{ ok: true }>(`/api/admin/hf/demo-influencers/${e(uid)}`, { method: 'DELETE' }),
+  // [HF-WIRE-22] invite creators (HF-REEL-40)
+  inviteCreators: async () => (await adminCall<{ items: InviteCreator[] }>('/api/admin/hf/invite-creators')).items ?? [],
+  addInviteCreator: (b: { platform: 'youtube' | 'instagram'; handle: string }) =>
+    adminCall<{ ok: true; creator: { platform: string; handle: string; name: string; followers: number }; reels: number }>('/api/admin/hf/invite-creators', { method: 'POST', body: b }),
+  hideInviteCreator: (platform: string, handle: string, hidden: boolean) =>
+    adminCall<{ ok: true; hidden: boolean }>(`/api/admin/hf/invite-creators/${e(platform)}/${e(handle.replace(/^@/, ''))}`, { method: 'PATCH', body: { hidden } }),
   // [HF-CALLS-1]
   reviews: async (status: 'pending' | 'approved' | 'rejected' = 'pending') => (await adminCall<{ items: AdminReview[] }>(`/api/admin/hf/reviews?status=${e(status)}`)).items ?? [],
   decideReview: (id: string, decision: 'approve' | 'reject', reason = '') =>

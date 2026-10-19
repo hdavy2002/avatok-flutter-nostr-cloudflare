@@ -30,6 +30,7 @@ class _RealSearchState extends State<RealSearch> {
   Timer? _timer;
   int _run = 0;
   String? _topic;
+  String _platform = 'all'; // [HF-WIRE-22] HF-REEL-41: all | youtube | instagram
   AsyncState<SearchResult> _state = const AsyncLoading();
   List<TopicOption> _topics = const [];
   List<MissingCreator> _top = const [];
@@ -72,7 +73,7 @@ class _RealSearchState extends State<RealSearch> {
     setState(() => _state = const AsyncLoading());
     AsyncState<SearchResult> next;
     try {
-      next = AsyncData(await widget.repo.search(_q.text, topic: _topic));
+      next = AsyncData(await widget.repo.search(_q.text, topic: _topic, platform: _platform));
     } catch (e) {
       next = AsyncFailure(e);
     }
@@ -84,6 +85,55 @@ class _RealSearchState extends State<RealSearch> {
     _timer?.cancel();
     setState(() => _topic = _topic == slug ? null : slug);
     unawaited(_search());
+  }
+
+  void _pickPlatform(String p) {
+    if (_platform == p) return;
+    _timer?.cancel();
+    setState(() => _platform = p);
+    unawaited(_search());
+  }
+
+  /// All / YouTube / Instagram, Rang Bazaar style: chunky outlined pills, the chosen one marigold. Text is 15 sp.
+  Widget _platformFilter() {
+    const options = [('all', 'All'), ('youtube', 'YouTube'), ('instagram', 'Instagram')];
+    return Row(
+      key: const ValueKey('platform-filter'),
+      children: [
+        for (final o in options)
+          Expanded(
+            child: Padding(
+              padding: const EdgeInsets.only(right: 8),
+              child: Semantics(
+                button: true,
+                selected: _platform == o.$1,
+                label: 'Show ${o.$2}',
+                child: InkWell(
+                  key: ValueKey('platform-${o.$1}'),
+                  borderRadius: BorderRadius.circular(999),
+                  onTap: () => _pickPlatform(o.$1),
+                  child: Container(
+                    height: 48,
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      color: _platform == o.$1 ? C.marigold : C.paper,
+                      borderRadius: BorderRadius.circular(999),
+                      border: Border.all(color: C.maroon, width: 2),
+                    ),
+                    child: Text(o.$2, style: t(15, color: _platform == o.$1 ? C.deep : C.maroon, w: FontWeight.w700)),
+                  ),
+                ),
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+
+  /// A small platform mark next to a result.
+  Widget _platformIcon(String platform) {
+    final yt = platform == 'youtube';
+    return Icon(yt ? Icons.smart_display_rounded : Icons.camera_alt_rounded, key: ValueKey('plat-icon-$platform'), size: 16, color: yt ? C.rani : C.maroon, semanticLabel: yt ? 'YouTube' : 'Instagram');
   }
 
   Future<void> _vote(MissingCreator c) async {
@@ -137,6 +187,8 @@ class _RealSearchState extends State<RealSearch> {
                       ),
               ),
             ),
+            const SizedBox(height: 12),
+            _platformFilter(),
             const SizedBox(height: 16),
             if (_topics.isNotEmpty) ...[
               Text('Try a topic', style: t(18, color: C.maroon)),
@@ -262,7 +314,12 @@ class _RealSearchState extends State<RealSearch> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(h.name, style: t(17)),
-                  Text('${h.handle ?? ''}${h.handle == null ? '' : ' · '}₹${h.rateRupees}/min', style: t(14, color: C.tan)),
+                  Row(
+                    children: [
+                      for (final p in h.platforms) Padding(padding: const EdgeInsets.only(right: 4), child: _platformIcon(p)),
+                      Flexible(child: Text('${h.handle ?? ''}${h.handle == null ? '' : ' · '}₹${h.rateRupees}/min', style: t(14, color: C.tan))),
+                    ],
+                  ),
                 ],
               ),
             ),
@@ -293,7 +350,7 @@ class _RealSearchState extends State<RealSearch> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(c.handle, style: t(17)),
+                Row(children: [_platformIcon(c.platform), const SizedBox(width: 4), Flexible(child: Text(c.handle, style: t(17)))]),
                 Text('Not on ${Brand.name} · $votes votes', style: t(14, color: C.muted, w: FontWeight.w700)),
               ],
             ),

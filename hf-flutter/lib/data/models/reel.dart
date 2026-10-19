@@ -17,6 +17,7 @@ class ReelHost {
     this.ratePaise = 0,
     this.followers = 0,
     this.presence = 'offline',
+    this.platforms = const [],
   });
 
   final String slug;
@@ -31,6 +32,9 @@ class ReelHost {
   /// `online`, `busy` or `offline`.
   final String presence;
 
+  /// `youtube` / `instagram` channels of this influencer (search results show a small icon). Empty when the server did not say.
+  final List<String> platforms;
+
   bool get online => presence == 'online' || presence == 'busy';
 
   /// Whole rupees a minute for the pill.
@@ -44,6 +48,35 @@ class ReelHost {
         ratePaise: _int(j['ratePaise']),
         followers: _int(j['followers']),
         presence: _str(j['presence']) ?? 'offline',
+        platforms: [
+          for (final p in (j['platforms'] is List ? j['platforms'] as List : const []))
+            if (p is String && p.isNotEmpty) p,
+        ],
+      );
+}
+
+/// [HF-WIRE-22] HF-REEL-40: a creator who is NOT on the app yet. Their reels sit after the network reels with an INVITE button (a vote).
+class InviteCreator {
+  const InviteCreator({required this.platform, required this.handle, this.name = '', this.avatar, this.followers = 0, this.votes = 0});
+
+  final String platform;
+
+  /// With the leading "@".
+  final String handle;
+  final String name;
+  final String? avatar;
+  final int followers;
+  final int votes;
+
+  String get key => '$platform:${handle.toLowerCase()}';
+
+  factory InviteCreator.fromJson(Map<String, dynamic> j) => InviteCreator(
+        platform: _str(j['platform']) ?? 'youtube',
+        handle: _str(j['handle']) ?? '',
+        name: _str(j['name']) ?? '',
+        avatar: _str(j['avatar']),
+        followers: _int(j['followers']),
+        votes: _int(j['votes']),
       );
 }
 
@@ -60,6 +93,7 @@ class FeedReel {
     this.likes = 0,
     this.comments = 0,
     this.views = 0,
+    this.invite,
   });
 
   final String id;
@@ -74,14 +108,25 @@ class FeedReel {
   final int comments;
   final int views;
 
+  /// Set for an invite reel (creator not on the app yet): the card shows INVITE instead of Call / Book.
+  final InviteCreator? invite;
+
+  bool get isInvite => invite != null;
+
   /// Embeds only (HF-REEL-32): a reel plays from its official YouTube / Instagram embed, never from a file we hold.
   bool get playable => embedUrl != null;
 
   FeedReel withHost(ReelHost h) => FeedReel(
-      id: id, host: h, platform: platform, url: url, embedUrl: embedUrl, thumbUrl: thumbUrl, caption: caption, likes: likes, comments: comments, views: views);
+      id: id, host: h, platform: platform, url: url, embedUrl: embedUrl, thumbUrl: thumbUrl, caption: caption, likes: likes, comments: comments, views: views, invite: invite);
 
-  factory FeedReel.fromJson(Map<String, dynamic> j, {ReelHost? host}) => FeedReel(
+  factory FeedReel.fromJson(Map<String, dynamic> j, {ReelHost? host}) {
+    final inv = j['kind'] == 'invite' && j['creator'] is Map ? InviteCreator.fromJson(Map<String, dynamic>.from(j['creator'] as Map)) : null;
+    return FeedReel._parse(j, host: host ?? (inv == null ? null : ReelHost(slug: '', name: inv.name, handle: inv.handle, avatar: inv.avatar, followers: inv.followers)), invite: inv);
+  }
+
+  factory FeedReel._parse(Map<String, dynamic> j, {ReelHost? host, InviteCreator? invite}) => FeedReel(
         id: _str(j['id']) ?? '',
+        invite: invite,
         host: host ?? ReelHost.fromJson(j['host'] is Map ? Map<String, dynamic>.from(j['host'] as Map) : const {}),
         platform: _str(j['platform']) ?? 'youtube',
         url: _str(j['url']),

@@ -22,9 +22,11 @@ class SearchRepo {
   }
 
   /// Our network (online first), plus the exact @handle lookup for people who are not here yet. Public: no sign-in.
-  Future<SearchResult> search(String q, {String? topic}) => _guard(() async {
+  /// [platform] is `youtube` or `instagram` (HF-REEL-41); null or `all` means everything.
+  Future<SearchResult> search(String q, {String? topic, String? platform}) => _guard(() async {
         final query = <String, Object?>{'q': q.trim()};
         if (topic != null && topic.isNotEmpty) query['topic'] = topic;
+        if (platform == 'youtube' || platform == 'instagram') query['platform'] = platform;
         return SearchResult.fromJson(await _api.getJson('/api/hf/search', query: query, auth: false));
       });
 
