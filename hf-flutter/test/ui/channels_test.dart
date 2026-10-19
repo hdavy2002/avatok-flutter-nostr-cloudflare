@@ -376,7 +376,7 @@ void main() {
   group('ChannelCheckingScreen', () {
     testWidgets('a result handed over by the YouTube sign-in is shown without asking the server again', (tester) async {
       final f = _Fake((_) => _json({'ok': true}));
-      final first = ChannelCheck.fromJson({'result': 'approved', 'message': 'You\'re in!', 'channel': _ch('hfch_y', 'approved', platform: 'youtube'), 'minFollowers': 10, 'qualified': true});
+      final first = ChannelCheck.fromJson({'result': 'approved', 'message': 'Your channel is confirmed.', 'channel': _ch('hfch_y', 'approved', platform: 'youtube'), 'minFollowers': 10, 'qualified': true});
       await _pump(tester, ChannelCheckingScreen(id: 'hfch_y', initial: first, onApprovedDone: () {}, repo: f.repo));
       await tester.pump();
       expect(find.text("You're in!"), findsOneWidget);
