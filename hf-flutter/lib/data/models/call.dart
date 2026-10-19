@@ -5,6 +5,20 @@ int _int(Object? v, [int d = 0]) => v is num ? v.toInt() : (v is String ? int.tr
 int? _intOrNull(Object? v) => v is num ? v.toInt() : null;
 String? _str(Object? v) => v is String && v.isNotEmpty ? v : null;
 
+/// [HF-WIRE-13] Owner's rule: a wallet needs at least Rs 20 to start a call (the server's number wins; this is the fallback).
+const int kDefaultMinBalancePaise = 2000;
+
+String _rupeeWord(int paise) {
+  final r = paise / 100;
+  return r == r.roundToDouble() ? '\u20B9${r.round()}' : '\u20B9${r.toStringAsFixed(2)}';
+}
+
+/// "You need at least ₹20 in your wallet to call. Top up to keep going."
+String lowBalanceText(int minPaise) => 'You need at least ${_rupeeWord(minPaise)} in your wallet to call. Top up to keep going.';
+
+/// "Call ended in the first minute. We charged ₹1 and returned the rest to your wallet."
+String firstMinuteChargeText(int chargePaise) => 'Call ended in the first minute. We charged ${_rupeeWord(chargePaise)} and returned the rest to your wallet.';
+
 /// What a call with one influencer would cost this person right now (`GET /api/hf/wallet/estimate?host=`).
 class CallEstimate {
   const CallEstimate({
@@ -15,6 +29,8 @@ class CallEstimate {
     required this.affordableSeconds,
     required this.lowBalanceSeconds,
     required this.hasDebt,
+    this.minBalancePaise = kDefaultMinBalancePaise,
+    this.lowBalanceMessage,
   });
 
   factory CallEstimate.fromJson(Map<String, dynamic> j) {
@@ -28,6 +44,8 @@ class CallEstimate {
       affordableSeconds: _intOrNull(j['affordableSeconds']),
       lowBalanceSeconds: _int(j['lowBalanceSeconds'], 180),
       hasDebt: j['hasDebt'] == true,
+      minBalancePaise: _intOrNull(j['minBalancePaise']) ?? kDefaultMinBalancePaise,
+      lowBalanceMessage: _str(j['lowBalanceMessage']),
     );
   }
 
@@ -45,11 +63,23 @@ class CallEstimate {
   final int lowBalanceSeconds;
   final bool hasDebt;
 
+  /// [HF-WIRE-13] The least a wallet must hold to start a call, in paise. Comes from the server (config hfCallMinBalanceRupees, Rs 20).
+  final int minBalancePaise;
+
+  /// The server's own wording for the low-balance state, when it sent one.
+  final String? lowBalanceMessage;
+
+  /// Below the wallet minimum: block the start and show a top-up.
+  bool get belowMinBalance => balancePaise != null && balancePaise! < minBalancePaise;
+
+  /// What to tell the person when the balance is low: the server's words, else the owner's sentence built from the server's minimum.
+  String get lowMessage => (lowBalanceMessage != null && lowBalanceMessage!.isNotEmpty) ? lowBalanceMessage! : lowBalanceText(minBalancePaise);
+
   /// Whole minutes of talk time the wallet covers, when known.
   int? get talkMinutes => affordableSeconds == null ? null : affordableSeconds! ~/ 60;
 
   /// Not enough for a comfortable call: top up first.
-  bool get low => !canStart || hasDebt || (affordableSeconds != null && affordableSeconds! < lowBalanceSeconds);
+  bool get low => !canStart || hasDebt || belowMinBalance || (affordableSeconds != null && affordableSeconds! < lowBalanceSeconds);
 }
 
 /// The phases the call screen shows.
@@ -76,6 +106,9 @@ class CallStatus {
     required this.lowBalanceSeconds,
     required this.canReview,
     required this.endReason,
+    this.firstMinuteDrop = false,
+    this.firstMinuteChargePaise,
+    this.firstMinuteMessage,
   });
 
   factory CallStatus.fromJson(Map<String, dynamic> j) {
@@ -100,6 +133,9 @@ class CallStatus {
       lowBalanceSeconds: _int(j['lowBalanceSeconds'], 180),
       canReview: j['canReview'] == true,
       endReason: _str(j['endReason']),
+      firstMinuteDrop: j['firstMinuteDrop'] == true,
+      firstMinuteChargePaise: _intOrNull(j['firstMinuteChargePaise']),
+      firstMinuteMessage: _str(j['firstMinuteMessage']),
     );
   }
 
@@ -128,6 +164,14 @@ class CallStatus {
   final int lowBalanceSeconds;
   final bool canReview;
   final String? endReason;
+
+  /// [HF-WIRE-13] The call joined but broke in the first minute: only a small fixed charge was taken and the rest went back to the wallet.
+  final bool firstMinuteDrop;
+  final int? firstMinuteChargePaise;
+  final String? firstMinuteMessage;
+
+  /// The line shown on the call-ended screen for a first-minute break (server wording when sent).
+  String get firstMinuteText => (firstMinuteMessage != null && firstMinuteMessage!.isNotEmpty) ? firstMinuteMessage! : firstMinuteChargeText(firstMinuteChargePaise ?? costPaise);
 
   bool get isEnded => phase == CallPhase.ended;
 

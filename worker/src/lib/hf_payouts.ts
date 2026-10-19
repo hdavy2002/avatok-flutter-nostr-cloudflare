@@ -90,6 +90,8 @@ export interface PayoutRow {
   created_at: number; updated_at: number; approved_at: number | null; paid_at: number | null;
   /** [HF-WALLET-EXIT-1] 1 = made by the account-closure flow (no minimum, no weekly cap). Absent before the migration. */
   exit?: number | null;
+  /** [HF-WIRE-13] paise of this request taken from the person's own wallet (purchase lots); 0 / absent = all from influencer earnings. */
+  lots_paise?: number | null;
 }
 
 export interface Withdrawable {

@@ -17,6 +17,7 @@ import { withIdempotency, rateLimit } from "../money";
 import { trackException } from "../hooks";
 import { isAdminUid } from "../lib/preview";
 import { cleanUtr } from "../lib/hf_payouts";
+import { readMoneyRules } from "../lib/hf_money_rules"; // [HF-WIRE-13] HF-REEL-35 rule 7
 import { exitFlags } from "../lib/hf_exit";
 import { readConfig } from "./config";
 import { readHfTokenConfig } from "../lib/hf_token_config"; // [HF-TOK-EXIT-1]
@@ -29,6 +30,9 @@ import {
 } from "../lib/hf_refunds";
 
 const err = (status: number, error: string, message?: string, extra: Record<string, unknown> = {}) => json({ error, message: message ?? error, ...extra }, status);
+// [HF-WIRE-13] Rule 7: every refund lands in the WALLET. A refund to the original payment (card/UPI/Google Play) is OFF unless the owner sets
+// hfGatewayRefundsEnabled. While off, nobody can start one and an admin can only reject an old one; wallet money leaves by payout to UPI.
+export const REFUND_WALLET_ONLY_MESSAGE = "Refunds go to your wallet, not to your card. You can withdraw your wallet to your UPI from Payouts.";
 const SYSTEM_PREFIX = "system:";
 const isSystemRow = (r: RefundRow) => r.status === "cancelled" && (r.reason ?? "").startsWith(SYSTEM_PREFIX);
 
@@ -77,6 +81,10 @@ async function userGet(req: Request, env: Env): Promise<Response> {
   const u = await requireUser(req, env);
   if (isFail(u)) return err(u.status, u.error);
   const f = await exitFlags(env);
+  if (!(await readMoneyRules(env)).gatewayRefundsEnabled) { // [HF-WIRE-13] rule 7: nothing to offer; old requests stay visible
+    const old = (await env.DB_META.prepare("SELECT * FROM hf_refund_requests WHERE uid=?1 ORDER BY created_at DESC LIMIT 50").bind(u.uid).all<RefundRow>().catch(() => ({ results: [] as RefundRow[] }))).results ?? [];
+    return json({ enabled: false, walletOnly: true, message: REFUND_WALLET_ONLY_MESSAGE, requests: old.filter((r) => !isSystemRow(r)).map(publicRow) });
+  }
   if ((await tokenCfg(env)).enabled) return tokenGet(env, u.uid, f.windowDays); // [HF-TOK-EXIT-1] token refunds do not wait for hfRefundsEnabled: the public terms promise them
   if (!f.refundsEnabled) return json({ enabled: false, requests: [] });
   let refundable = 0, eligible = 0;
@@ -92,6 +100,7 @@ async function userGet(req: Request, env: Env): Promise<Response> {
 async function userCreate(req: Request, env: Env): Promise<Response> {
   const u = await requireUser(req, env);
   if (isFail(u)) return err(u.status, u.error);
+  if (!(await readMoneyRules(env)).gatewayRefundsEnabled) return err(409, "refund_to_wallet_only", REFUND_WALLET_ONLY_MESSAGE, { walletOnly: true });
   const f = await exitFlags(env);
   const tokens = (await tokenCfg(env)).enabled;
   if (!f.refundsEnabled && !tokens) return err(404, "not_enabled", "Refunds open soon.");
@@ -163,6 +172,7 @@ async function adminList(req: Request, env: Env): Promise<Response> {
 
 async function adminAct(req: Request, env: Env, id: string, action: string): Promise<Response> {
   const a = await adminCtx(req, env); if (a instanceof Response) return a;
+  if (action !== "reject" && !(await readMoneyRules(env)).gatewayRefundsEnabled) return err(409, "refund_to_wallet_only", REFUND_WALLET_ONLY_MESSAGE, { walletOnly: true });
   let res;
   const target = await getRefund(env, id);
   if (isPlayRefund(target)) { // [HF-TOK-EXIT-1] a Google Play refund of unused wallet money: its own confirm / reject, no WalletDO, no gateway slices

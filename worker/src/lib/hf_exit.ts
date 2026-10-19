@@ -20,7 +20,10 @@ import { hfTokensOn, tokenExitSummary, createExitPayoutTokens, cancelExitPayoutT
 import { requestPlayRefunds, cancelPlayRefund, hasActiveCall } from "./hf_play_refunds"; // [HF-TOK-EXIT-1]
 import { hostSummary, wholeRupees, isHostLedgerRef } from "./hf_host_ledger"; // [HF-TOK-EXIT-1]
 import { drainHfBookingHolds } from "./hf_booking_store";
+import { readMoneyRules } from "./hf_money_rules"; // [HF-WIRE-13] HF-REEL-35 rule 7: refunds go to the wallet, never back to a card/UPI
 
+export const WITHDRAW_FIRST_MESSAGE = "Your wallet money goes back to your wallet, not to your card. Withdraw it to your UPI from Payouts first, then close your account.";
+export const SMALL_BALANCE_MESSAGE = "Your wallet holds less than the smallest withdrawal, so it cannot be paid out. Choose to give it up to close your account.";
 export type ExitStatus = "booking_cleanup" | "waiting_hold" | "waiting_payouts" | "ready" | "done" | "cancelled";
 export const ACTIVE_EXIT: ExitStatus[] = ["booking_cleanup", "waiting_hold", "waiting_payouts", "ready"];
 export const isActiveExit = (s: string | null | undefined) => (ACTIVE_EXIT as string[]).includes(String(s));
@@ -287,7 +290,15 @@ export async function startExit(env: Env, uid: string, o: { forfeit: boolean; tr
   }
   let refundId: string | null = null, payoutId: string | null = null;
   const callerMoney = s.refundable + s.manualRefund;
-  if (callerMoney > 0) {
+  // [HF-WIRE-13] rule 7: no refund to the original payment. Wallet money is withdrawn to UPI (rule 8) BEFORE the account is closed; money under
+  // the smallest withdrawal can only be given up, with the person's say-so (forfeit), like earnings that cannot be paid out.
+  const rules = await readMoneyRules(env);
+  const gatewayRefunds = rules.gatewayRefundsEnabled;
+  if (callerMoney > 0 && !gatewayRefunds) {
+    if (callerMoney >= rules.fanPayoutMinRupees) return no(409, "withdraw_first", WITHDRAW_FIRST_MESSAGE, { forfeitRupees: 0 });
+    if (!o.forfeit) return no(409, "forfeit_required", SMALL_BALANCE_MESSAGE, { forfeitRupees: callerMoney });
+  }
+  if (callerMoney > 0 && gatewayRefunds) {
     const r = await createRefundRequest(env, uid, { exit: true, windowDays: flags.windowDays });
     if (!r.ok) return no(r.status, r.error, r.message);
     refundId = r.id;
@@ -331,7 +342,13 @@ async function startTokenExit(env: Env, uid: string, o: { forfeit: boolean; trig
   }
   const ti = s.tokensInfo;
   let refundIds: string[] = [], payoutId: string | null = null;
-  if (ti && ti.refundPaise > 0) {
+  // [HF-WIRE-13] rule 7 (see startExit): wallet money is withdrawn first, never refunded to Google Play / the card.
+  const rules = await readMoneyRules(env);
+  if (ti && ti.refundPaise > 0 && !rules.gatewayRefundsEnabled) {
+    if (ti.refundPaise >= rules.fanPayoutMinRupees * 100) return no(409, "withdraw_first", WITHDRAW_FIRST_MESSAGE, { forfeitRupees: 0 });
+    if (!o.forfeit) return no(409, "forfeit_required", SMALL_BALANCE_MESSAGE, { forfeitRupees: Math.floor(ti.refundPaise / 100) });
+  }
+  if (ti && ti.refundPaise > 0 && rules.gatewayRefundsEnabled) {
     const r = await requestPlayRefunds(env, uid, { exit: true, windowDays: flags.windowDays });
     if (!r.ok) return no(r.status, r.error, r.message);
     refundIds = r.ids;

@@ -74,7 +74,7 @@ class _Dashboard extends StatelessWidget {
     final items = <(IconData, String, String, String)>[
       (Icons.call_rounded, 'Call records', live ? '' : '${demo.calls.length} calls', '/calls'),
       (Icons.currency_rupee_rounded, 'Wallet', live ? '' : inr(demo.balance, paise: false), '/wallet'),
-      if (Services.instance.viewerIsInfluencer) (Icons.north_east_rounded, 'Payout', '', '/payout'),
+      (Icons.north_east_rounded, 'Payout', '', '/payout'), // [HF-WIRE-13] open to fans too
       (Icons.event_rounded, 'My bookings', live ? '' : '${demo.bookings.length}', '/bookings'),
       (Icons.favorite_rounded, 'Favourites', live ? '' : '${demo.favs.length}', 'tab:/favourites'),
       (Icons.settings_rounded, 'Settings', '', '/settings'),

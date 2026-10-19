@@ -193,11 +193,9 @@ class _WalletScreenState extends State<WalletScreen> {
           Row(
             children: [
               Expanded(child: ChunkyButton(label: 'TOP UP', icon: Icons.add_rounded, onTap: () => context.push('/topup'))),
-              // Only influencers withdraw (HF-REEL-31); a fan's refund goes back to the original payment.
-              if (Services.instance.viewerIsInfluencer) ...[
-                const SizedBox(width: 12),
-                Expanded(child: ChunkyButton(label: 'WITHDRAW', filled: false, dark: true, onTap: () => context.push('/payout'))),
-              ],
+              // [HF-WIRE-13] HF-REEL-36: anyone can withdraw wallet money to UPI (after ID + UPI check). Refunds always land in the wallet.
+              const SizedBox(width: 12),
+              Expanded(child: ChunkyButton(label: 'WITHDRAW', filled: false, dark: true, onTap: () => context.push('/payout'))),
             ],
           ),
         ],
@@ -576,8 +574,8 @@ class _PaymentScreenState extends State<PaymentScreen> {
 
 // ---------------------------------------------------------------------------------------------- Payout
 
-/// Payout: withdraw to UPI (HF-WIRE-10). ₹500 minimum, 7-day hold, checked by hand, UTR on WhatsApp.
-/// Only influencers withdraw; the ID check happens once, before the first payout (HF-REEL-31).
+/// Payout: withdraw to UPI (HF-WIRE-10). Open to everyone (HF-REEL-36): the minimum comes from the server (fans ₹100 by default; influencer
+/// earnings keep ₹500 and the 7-day hold), checked by hand, UTR on WhatsApp. The ID check happens once, before the first payout.
 ///
 /// With [DemoMode.on] (and no [repo]) it shows the dummy numbers. Otherwise it reads `GET /api/hf/payouts/summary`.
 class PayoutScreen extends StatefulWidget {

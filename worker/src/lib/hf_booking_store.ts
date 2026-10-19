@@ -164,10 +164,10 @@ export async function listHfBusyIntervals(
   }));
 }
 
-type BookingCleanupRow = { id: string; call_id: string; customer_uid: string; host_uid: string; status: string; settlement_status: string };
+export type BookingCleanupRow = { id: string; call_id: string; customer_uid: string; host_uid: string; status: string; settlement_status: string };
 type BookingCleanupResult = { processed: number; blocked: number; more: boolean };
 
-async function releaseHeldBooking(
+export async function releaseHeldBooking(
   env: Env,
   row: BookingCleanupRow,
   now: number,

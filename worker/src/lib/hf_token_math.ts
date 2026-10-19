@@ -217,6 +217,26 @@ export function planSpend(lots: Lot[], ratePaise: Price, billableSeconds: number
   };
 }
 
+/**
+ * [HF-WIRE-13] A FIXED charge (rulebook HF-REEL-35 rule 3: a joined call that breaks inside the first minute costs exactly Rs 1, however long it
+ * ran). Same lot walk as planSpend, but the value is given, not derived from the seconds. If the lots hold less than the fixed value the plan
+ * takes what they hold and reports a shortfall. `billableSeconds` is only recorded (secondsCovered), it does not change the value.
+ */
+export function planFixedSpend(lots: Lot[], fixedValuePaise: number, billableSeconds: number): SpendPlan {
+  const want = BigInt(Math.max(0, Math.trunc(fixedValuePaise)));
+  let totalCap = 0n;
+  for (const l of lots) totalCap += lotCapPaise(l);
+  const value = want <= totalCap ? want : totalCap;
+  const { uses } = walk(lots, value);
+  return {
+    uses,
+    totalValuePaise: num(value),
+    totalMicro: uses.reduce((a, u) => a + u.micro, 0),
+    secondsCovered: Math.trunc(Math.max(0, billableSeconds)),
+    shortfall: value < want,
+  };
+}
+
 /** Whole seconds the lots can pay for at this rate, capped (60 min by default). */
 export function affordableSeconds(lots: Lot[], ratePaise: Price, capSeconds = MAX_CALL_SECONDS): number {
   return planSpend(lots, ratePaise, capSeconds).secondsCovered;

@@ -28,6 +28,7 @@ import {
 } from "../lib/hf_call_math";
 
 import { validCreatorSnapshot, type CreatorSnapshot } from "../lib/hf_creator_pricing";
+import { readMoneyRules, firstMinuteDrop } from "../lib/hf_money_rules"; // [HF-WIRE-13] HF-REEL-35 rule 3
 
 type Role = "host" | "caller";
 const HOST_RING_SEC = 30, CALLER_RING_SEC = 35;
@@ -702,9 +703,11 @@ export class HfCallDO {
         const seconds = s.hardEndsAt != null && s.connectedAt != null
           ? Math.max(0, Math.min(rawSeconds, Math.floor((s.hardEndsAt - s.connectedAt) / 1000)))
           : rawSeconds;
+        const rules = await readMoneyRules(this.env); // [HF-WIRE-13] rule 3: joined and broke inside the first minute = the fixed charge
         const out = await settleTokenCall(this.env, {
           callId: s.callId, callerUid: s.callerUid, hostUid: s.hostUid, ratePaise: t.ratePaise, callCostPaisePerMin: t.callCostPaisePerMin,
           hostShareBps: t.hostShareBps, connectedSeconds: seconds, maxSeconds: t.maxSeconds, endedAt, std: t.std ?? null, creator: t.creator, booked: t.booked === true,
+          joined: s.connectedAt != null, dropChargePaise: rules.dropChargePaise,
         });
         b.plan = { billedMinutes: out.billedMinutes, chargeRupees: 0, hostEarningPaise: out.hostPaise, hostTokens: 0, capped: out.shortfall };
         b.tokSettled = true; b.saved = true;
@@ -748,7 +751,11 @@ export class HfCallDO {
           } else if (r1.status !== 402) throw new Error(`reserve2 ${r1.status}`);
         }
         b.funds = funds;
-        const st = settleCall({ connectedSeconds: seconds, rateRupees: s.rateRupees, fundsRupees: funds + testHeld });
+        // [HF-WIRE-13] rule 3 on the old rupee wallet: a joined call that broke inside the first minute costs the fixed charge (whole rupees, rounded up).
+        const drop = firstMinuteDrop({ joined: s.connectedAt != null, connectedSeconds: seconds, dropChargePaise: (await readMoneyRules(this.env)).dropChargePaise });
+        const st = drop.applies
+          ? { billedMinutes: 1, chargeRupees: Math.min(Math.ceil(drop.chargePaise / 100), funds + testHeld), hostEarningPaise: 0, capped: false }
+          : settleCall({ connectedSeconds: seconds, rateRupees: s.rateRupees, fundsRupees: funds + testHeld });
         let hostTokens = 0;
         if (st.hostEarningPaise > 0) {
           const prior = await this.db().prepare("SELECT COALESCE(SUM(host_earning_paise),0) AS p, COALESCE(SUM(host_earned_tokens),0) AS t FROM hf_calls WHERE host_uid=?1 AND id<>?2")

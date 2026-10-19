@@ -226,7 +226,7 @@ class CallConfirmSheet extends StatelessWidget {
                 },
               )
             else ...[
-              Text('Your wallet is low. Top up to talk for at least 3 minutes.', textAlign: TextAlign.center, style: t(15, color: C.ruby, h: 1.4)),
+              Text('You need at least ₹20 in your wallet to call. Top up to keep going.', textAlign: TextAlign.center, style: t(15, color: C.ruby, h: 1.4)),
               const SizedBox(height: 12),
               TicketButton(
                 label: 'TOP UP',

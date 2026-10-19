@@ -207,7 +207,7 @@ class _RealCallConfirmSheetState extends State<RealCallConfirmSheet> {
           onTap: _start,
         )
       else ...[
-        Text('Your wallet is low. Top up to talk for at least 3 minutes.', textAlign: TextAlign.center, style: t(15, color: C.ruby, h: 1.4)),
+        Text(est.lowMessage, key: const Key('lowBalanceMessage'), textAlign: TextAlign.center, style: t(15, color: C.ruby, h: 1.4)),
         const SizedBox(height: 12),
         TicketButton(label: 'TOP UP', maroon: true, stubIcon: Icons.add_rounded, onTap: _topUp),
       ],
@@ -589,7 +589,10 @@ class _RealCallScreenState extends State<RealCallScreen> with SingleTickerProvid
     }
     return [
       const SizedBox(height: 18),
-      Text('${s.billedMinutes} min · ${paiseText(s.costPaise)}', style: t(18, color: C.ivory)),
+      if (s.firstMinuteDrop)
+        Text(s.firstMinuteText, key: const Key('firstMinuteMessage'), textAlign: TextAlign.center, style: t(18, color: C.ivory, h: 1.4))
+      else
+        Text('${s.billedMinutes} min · ${paiseText(s.costPaise)}', style: t(18, color: C.ivory)),
       if (s.reason == CallReason.noBalance) ...[
         const SizedBox(height: 8),
         Text('Your balance ran out.', style: t(15, color: C.cream, w: FontWeight.w700)),

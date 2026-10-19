@@ -138,12 +138,14 @@ void main() {
       expect(find.text('ADD UPI TO START'), findsOneWidget);
     });
 
-    testWidgets('a fan sees the server message and Try again', (tester) async {
-      final api = FakeApiClient((m, p, b) => ApiException.fromResponse(403,
-          '{"error":"influencers_only","message":"Only influencers can withdraw. Your money comes back to your original payment if a refund is due."}'));
+    // [HF-WIRE-13] HF-REEL-36: fans withdraw too. Their summary is shown like anyone's, with the server's smaller fan minimum.
+    testWidgets('a fan sees the payout screen with their wallet money and the fan minimum', (tester) async {
+      final api = FakeApiClient((m, p, b) => {..._summary(ready: 25000, hold: 0), 'minPaise': 10000, 'isInfluencer': false});
       await _pump(tester, PayoutScreen(repo: PayoutsRepo(api)));
-      expect(find.textContaining('Only influencers can withdraw'), findsOneWidget);
-      expect(find.text('Try again'), findsOneWidget);
+      expect(find.text('REQUEST PAYOUT'), findsOneWidget);
+      expect(find.textContaining('minimum ₹100'), findsOneWidget);
+      expect(find.text('Try again'), findsNothing);
+      expect(find.textContaining('Only influencers'), findsNothing);
     });
   });
 }

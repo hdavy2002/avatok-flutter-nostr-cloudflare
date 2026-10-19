@@ -25,6 +25,8 @@ import { pushWithdrawal } from "../lib/hf_push"; // [HF-APP-4]
 import { readConfig } from "./config";
 import { walletOp } from "./wallet";
 import { readHfTokenConfig } from "../lib/hf_token_config"; // [HF-TOK-CALLS-1]
+import { moneyRulesFrom, splitPayoutSources, payoutMinimumRupees, type PayoutSource } from "../lib/hf_money_rules"; // [HF-WIRE-13] HF-REEL-36
+import { fanWithdrawablePaise, takeFanPayout, returnFanPayout, markFanPayoutPaid, fanPayoutRef, isFanPayoutRef, fanTakenPaise } from "../lib/hf_fan_payout";
 import { hostSummary, reservePayout, cancelPayoutReserve, markPayoutPaid, hostLedgerRef, isHostLedgerRef, wholeRupees } from "../lib/hf_host_ledger";
 import {
   WALLET_APP, refFor, reserveOpId, payOpId, releaseOpId, cleanUtr, canApprove, canCancel, canPay, canReject, validatePayoutRequest,
@@ -48,6 +50,7 @@ async function cfg(env: Env) {
     enabled: c.hfPayoutsEnabled === true,
     minRupees: Math.max(1, n(c.hfPayoutMinRupees, 500)),
     maxPerWeek: Math.max(1, n(c.hfPayoutMaxPerWeek, 2)),
+    fanMinRupees: moneyRulesFrom(c).fanPayoutMinRupees, // [HF-WIRE-13] wallet-only withdrawals (default Rs 100, owner to confirm)
     // [HF-TOK-CALLS-1] hfTokensEnabled on: the host's INR ledger (paise) replaces the WalletDO for withdrawals. Payouts stay whole rupees, min Rs 500.
     tokens: readHfTokenConfig(c).enabled,
   };
@@ -88,6 +91,26 @@ const publicRow = (r: PayoutRow) => {
     reason: r.status === "rejected" ? r.reject_reason : null, createdAt: r.created_at, updatedAt: r.updated_at, paidAt: r.paid_at, exit: r.exit === 1,
   };
 };
+
+/**
+ * Give a cancelled / rejected request's money back. [HF-WIRE-13] Wallet money (purchase lots) returns to the WALLET as a new purchase lot;
+ * influencer earnings return to the earnings ledger. A mixed request returns both. Idempotent: a retry finishes whatever is left.
+ */
+async function releasePayoutMoney(env: Env, row: PayoutRow): Promise<{ status: number }> {
+  const hasLots = Number(row.lots_paise ?? 0) > 0 || isFanPayoutRef(row.wallet_ref);
+  if (isHostLedgerRef(row.wallet_ref)) {
+    if (!(await cancelPayoutReserve(env, row.host_uid, row.id)).ok) return { status: 502 };
+  } else if (!isFanPayoutRef(row.wallet_ref)) {
+    const r = await walletOp(env, row.host_uid, { op: "release_reservation", uid: row.host_uid, ref: refFor(row.id), op_id: releaseOpId(row.id), app_name: WALLET_APP });
+    if (r.status !== 200) return { status: r.status };
+  }
+  if (hasLots) {
+    const rr = await returnFanPayout(env, row.host_uid, row.id);
+    // "not_taken" = the request failed before the wallet part was taken: nothing to give back.
+    if (!rr.ok && rr.reason !== "not_taken") return { status: 502 };
+  }
+  return { status: 200 };
+}
 
 // ── host ─────────────────────────────────────────────────────────────────────
 async function hostGet(req: Request, env: Env): Promise<Response> {
@@ -136,8 +159,8 @@ async function hostCreate(req: Request, env: Env, app = false): Promise<Response
     const host = await env.DB_META.prepare("SELECT status FROM hf_hosts WHERE uid=?1").bind(uid).first<{ status: string }>().catch(() => null);
     let ready = await hostPayoutReadiness(env, uid);
     if (app) {
-      // [HF-WIRE-10] Reels-app flow (HF-REEL-31): influencers only; UPI is the destination; ID check only before the FIRST payout.
-      if (!isInfluencerStatus(host?.status)) return err(403, "influencers_only", FAN_MESSAGE);
+      // [HF-WIRE-10] Reels-app flow: UPI is the destination; ID check only before the FIRST payout.
+      // [HF-WIRE-13] HF-REEL-36: ANYONE can withdraw (fans too). Wallet money and influencer earnings are combined in one request below.
       const ap = appValidate(body);
       if (!ap.ok) return err(400, ap.error, ap.message);
       body.amount = ap.rupees;
@@ -150,14 +173,24 @@ async function hostCreate(req: Request, env: Env, app = false): Promise<Response
       ready = { ...ready, kycOk: true, bankOk: true };
     }
     let w: { withdrawable: number };
-    try { w = c.tokens ? { withdrawable: wholeRupees((await hostSummary(env, uid)).availablePaise) } : await withdrawableFor(env, uid); }
-    catch (e) {
+    let src: PayoutSource | null = null;
+    let earnReady = 0;
+    try {
+      if (app) {
+        const isInf = isInfluencerStatus(host?.status);
+        const lotsReady = c.tokens ? await fanWithdrawablePaise(env, uid) : 0; // purchase lots only: test credits never
+        earnReady = !isInf ? 0 : c.tokens ? wholeRupees((await hostSummary(env, uid)).availablePaise) * 100 : (await withdrawableFor(env, uid)).withdrawable * 100;
+        src = splitPayoutSources(Number(body.amount), lotsReady, earnReady);
+        w = { withdrawable: Math.floor((lotsReady + earnReady) / 100) };
+      } else w = c.tokens ? { withdrawable: wholeRupees((await hostSummary(env, uid)).availablePaise) } : await withdrawableFor(env, uid);
+    } catch (e) {
       await trackException(env, e, { uid, route: "/api/hosts/me/payouts", handled: true, app_name: APP, extra: { area: "hf_payout", step: "withdrawable" } });
       return err(502, "wallet_error", "We couldn't check your balance. Please try again.");
     }
     const verdict = validatePayoutRequest({
       enabled: c.enabled, hostStatus: app ? "live" : host?.status ?? null, kycOk: ready.kycOk, bankOk: ready.bankOk, amount: body.amount,
-      minRupees: c.minRupees, withdrawable: w.withdrawable, recentCount: await recentRequestCount(env, uid), maxPerWeek: c.maxPerWeek,
+      minRupees: app ? (src ? payoutMinimumRupees(src, c.fanMinRupees, c.minRupees) : earnReady > 0 ? c.minRupees : c.fanMinRupees) : c.minRupees,
+      withdrawable: w.withdrawable, recentCount: await recentRequestCount(env, uid), maxPerWeek: c.maxPerWeek,
     });
     if (!verdict.ok) return err(verdict.status, verdict.error, verdict.message, { withdrawable: w.withdrawable });
     const amount = verdict.amount;
@@ -166,22 +199,36 @@ async function hostCreate(req: Request, env: Env, app = false): Promise<Response
     const name = await tryDecryptPii(env, bankRow?.name_at_bank_enc);
     const snapshot = JSON.stringify({ accountLast4: ready.accountLast4, ifsc: ready.ifsc, name });
     const id = crypto.randomUUID();
-    const ref = c.tokens ? hostLedgerRef(id) : refFor(id);
+    // [HF-WIRE-13] lotsPaise = wallet money taken from the person's own top-ups; earnRupees = the rest, from influencer earnings (7-day hold applies).
+    const lotsPaise = app && src ? src.lotsPaise : 0;
+    const earnRupees = app && src ? src.earningsPaise / 100 : amount;
+    const ref = earnRupees <= 0 ? fanPayoutRef(id) : c.tokens ? hostLedgerRef(id) : refFor(id);
     const now = Date.now();
     // Row first, THEN re-check the calls ceiling including it: two concurrent requests cannot both fit.
     await env.DB_META.prepare(
-      `INSERT INTO hf_payout_requests (id, host_uid, amount_rupees, status, bank_snapshot, wallet_ref, withdrawable_at_request, created_at, updated_at)
-       VALUES (?1,?2,?3,'requested',?4,?5,?6,?7,?7)`,
-    ).bind(id, uid, amount, snapshot, ref, w.withdrawable, now).run();
+      lotsPaise > 0 // only a request that takes wallet money touches the new lots_paise column
+        ? `INSERT INTO hf_payout_requests (id, host_uid, amount_rupees, status, bank_snapshot, wallet_ref, withdrawable_at_request, lots_paise, created_at, updated_at)
+           VALUES (?1,?2,?3,'requested',?4,?5,?6,?8,?7,?7)`
+        : `INSERT INTO hf_payout_requests (id, host_uid, amount_rupees, status, bank_snapshot, wallet_ref, withdrawable_at_request, created_at, updated_at)
+           VALUES (?1,?2,?3,'requested',?4,?5,?6,?7,?7)`,
+    ).bind(...(lotsPaise > 0 ? [id, uid, amount, snapshot, ref, w.withdrawable, now, lotsPaise] : [id, uid, amount, snapshot, ref, w.withdrawable, now])).run();
     const abort = async (code: string, status: number, message: string) => {
+      if (lotsPaise > 0) await returnFanPayout(env, uid, id).catch(() => undefined); // wallet money goes straight back to the wallet
       await env.DB_META.prepare("UPDATE hf_payout_requests SET status='cancelled', reject_reason=?2, updated_at=?3 WHERE id=?1 AND status='requested'").bind(id, SYSTEM_PREFIX + code, Date.now()).run();
       return err(status, code, message, { withdrawable: w.withdrawable });
     };
+    if (lotsPaise > 0) {
+      // The wallet part is taken from purchase lots in one guarded batch: it can no longer be spent on a call or withdrawn twice.
+      const tk = await takeFanPayout(env, uid, id, lotsPaise);
+      if (!tk.ok) return abort("insufficient_withdrawable", 402, "That amount is not available right now. Please try again.");
+    }
     if (c.tokens) {
       // The balance check and the reserve are ONE statement in the host ledger, so two requests cannot both fit.
-      const rr = await reservePayout(env, uid, id, amount * 100, now);
-      if (!rr.ok) return abort("insufficient_withdrawable", 402, "That amount is not available yet. Earnings are held for 7 days.");
-      void track(env, uid, "hf_payout_requested", APP, { amount, mode: "inr_ledger" });
+      if (earnRupees > 0) {
+        const rr = await reservePayout(env, uid, id, earnRupees * 100, now);
+        if (!rr.ok) return abort("insufficient_withdrawable", 402, "That amount is not available yet. Earnings are held for 7 days.");
+      }
+      void track(env, uid, "hf_payout_requested", APP, { amount, mode: lotsPaise > 0 ? (earnRupees > 0 ? "wallet_and_earnings" : "wallet") : "inr_ledger" });
       return json({ ok: true, id, status: "requested", amount, amountPaise: amount * 100 });
     }
     const [matured, sums] = await Promise.all([sumMaturedCallRupees(env, uid, now), payoutSums(env, uid)]);
@@ -206,9 +253,7 @@ async function hostCancel(req: Request, env: Env, id: string): Promise<Response>
   if (row.exit === 1) return err(409, "exit_request", "This withdrawal belongs to your account closure. Cancel the closure instead.");
   if (!canCancel(row.status)) return err(409, "not_cancellable", "This request can no longer be cancelled.");
   // [HF-TOK-CALLS-1] which path holds the money is decided by the request itself (wallet_ref), so a flag flip never strands a payout.
-  const r = isHostLedgerRef(row.wallet_ref)
-    ? { status: (await cancelPayoutReserve(env, row.host_uid, id)).ok ? 200 : 502 }
-    : await walletOp(env, row.host_uid, { op: "release_reservation", uid: row.host_uid, ref: refFor(id), op_id: releaseOpId(id), app_name: WALLET_APP });
+  const r = await releasePayoutMoney(env, row);
   if (r.status !== 200) return err(502, "wallet_error", "We couldn't release that money. Please try again.");
   const up = await env.DB_META.prepare("UPDATE hf_payout_requests SET status='cancelled', updated_at=?2 WHERE id=?1 AND status='requested'").bind(id, Date.now()).run();
   if (!up.meta?.changes) return err(409, "not_cancellable", "This request was just approved, so it can no longer be cancelled.");
@@ -238,7 +283,8 @@ async function adminList(req: Request, env: Env): Promise<Response> {
       return {
         id: r.id, hostUid: r.host_uid, hostName: r.host_name, hostSlug: r.host_slug, amount: r.amount_rupees, status: r.status,
         accountLast4: b.accountLast4, ifsc: b.ifsc, accountName: b.name, withdrawableAtRequest: r.withdrawable_at_request, utr: r.utr,
-        reason: r.reject_reason, adminUid: r.admin_uid, exit: r.exit === 1, createdAt: r.created_at, updatedAt: r.updated_at, approvedAt: r.approved_at, paidAt: r.paid_at,
+        reason: r.reject_reason, adminUid: r.admin_uid, exit: r.exit === 1, walletPaise: Number(r.lots_paise ?? 0), // [HF-WIRE-13] part paid out of the person's own wallet
+         createdAt: r.created_at, updatedAt: r.updated_at, approvedAt: r.approved_at, paidAt: r.paid_at,
       };
     }),
     counts: Object.fromEntries(counts.map((c) => [c.status, { n: Number(c.n), rupees: Number(c.s) }])),
@@ -287,9 +333,17 @@ async function adminPaid(req: Request, env: Env, ctx: ExecutionContext | undefin
   const dup = await env.DB_META.prepare("SELECT id FROM hf_payout_requests WHERE utr=?1 AND id<>?2 LIMIT 1").bind(utr, id).first();
   if (dup) return err(409, "duplicate_utr", "That UTR is already recorded on another payout.");
   const ref = refFor(id);
+  const lotsPart = Number(row.lots_paise ?? 0) > 0 || isFanPayoutRef(row.wallet_ref);
+  if (lotsPart) { // [HF-WIRE-13] the wallet part was taken when the person asked; it must still be there (not returned) to be paid
+    if ((await fanTakenPaise(env, id)) !== (Number(row.lots_paise ?? 0) || row.amount_rupees * 100)) return err(409, "needs_reconciliation", "The wallet part of this payout is missing. Nothing was marked paid.");
+    const mf = await markFanPayoutPaid(env, row.host_uid, id);
+    if (!mf.ok) return err(409, "needs_reconciliation", "The wallet part of this payout was returned or is missing. Nothing was marked paid.");
+  }
   if (isHostLedgerRef(row.wallet_ref)) {
     const mp = await markPayoutPaid(env, row.host_uid, id);
     if (!mp.ok) return err(409, "needs_reconciliation", "The earnings reserve for this payout is missing or was cancelled. Nothing was marked paid.");
+  } else if (isFanPayoutRef(row.wallet_ref)) {
+    // wallet-only request: nothing else to settle
   } else {
   const r = await walletOp(env, row.host_uid, {
     op: "consume_reserved", uid: row.host_uid, amount: row.amount_rupees, ref, allow_free: false, type: "payout", app_name: WALLET_APP, op_id: payOpId(id),
@@ -315,9 +369,7 @@ async function adminReject(req: Request, env: Env, ctx: ExecutionContext | undef
   if (row.status === "rejected") return json({ ok: true, status: "rejected", replay: true });
   if (!canReject(row.status)) return err(409, "invalid_state", `This request is ${row.status}.`);
   // [HF-TOK-CALLS-1] which path holds the money is decided by the request itself (wallet_ref), so a flag flip never strands a payout.
-  const r = isHostLedgerRef(row.wallet_ref)
-    ? { status: (await cancelPayoutReserve(env, row.host_uid, id)).ok ? 200 : 502 }
-    : await walletOp(env, row.host_uid, { op: "release_reservation", uid: row.host_uid, ref: refFor(id), op_id: releaseOpId(id), app_name: WALLET_APP });
+  const r = await releasePayoutMoney(env, row);
   if (r.status !== 200) return err(502, "wallet_error", "The wallet could not release that money. Nothing changed.");
   const up = await env.DB_META.prepare("UPDATE hf_payout_requests SET status='rejected', reject_reason=?2, admin_uid=?3, updated_at=?4 WHERE id=?1 AND status IN ('requested','approved')").bind(id, reason, a.uid, Date.now()).run();
   if (!up.meta?.changes) return err(409, "invalid_state", "This request changed. Refresh and try again.");
@@ -333,8 +385,9 @@ async function adminReject(req: Request, env: Env, ctx: ExecutionContext | undef
 //                                     history:[{id,at,amountPaise,status:'checking'|'paid'|'rejected',utr?}] }
 //   PUT  /api/hf/payouts/upi {vpa} -> { ok, upi:{vpa,nameMatched} }
 //   POST /api/hf/payouts {amountPaise} + Idempotency-Key -> { ok, id, status:'requested', amountPaise }
-//        errors: 403 influencers_only, 409 upi_required, 409 kyc_required {nextStep}, 400 invalid_amount|below_minimum, 402 insufficient_withdrawable, 429 weekly_limit
-const FAN_MESSAGE = "Only influencers can withdraw. Your money comes back to your original payment if a refund is due.";
+//        errors: 409 upi_required, 409 kyc_required {nextStep}, 400 invalid_amount|below_minimum, 402 insufficient_withdrawable, 429 weekly_limit
+// [HF-WIRE-13] HF-REEL-36: ANYONE withdraws (fans too). readyPaise = the person's own wallet money (purchase lots; test credits never) + matured
+// influencer earnings; minPaise is the fan minimum (hfFanPayoutMinRupees) unless earnings are the only money, then hfPayoutMinRupees.
 const UPI_RE = /^[a-z0-9._-]{2,64}@[a-z][a-z0-9.-]{1,32}$/;
 const isInfluencerStatus = (s: string | null | undefined) => s === "live" || s === "approved";
 const kycNextStep = () => ({ type: "kyc", title: "We check your ID once, before your first payout.", url: brandUrl("/hosts/kyc") });
@@ -352,11 +405,15 @@ async function appSummary(req: Request, env: Env): Promise<Response> {
   const c = await cfg(env);
   if (!c.enabled) return err(404, "not_enabled", "Withdrawals open soon.");
   const host = await env.DB_META.prepare("SELECT status FROM hf_hosts WHERE uid=?1").bind(u.uid).first<{ status: string }>().catch(() => null);
-  if (!isInfluencerStatus(host?.status)) return err(403, "influencers_only", FAN_MESSAGE);
-  let readyPaise = 0, onHoldPaise = 0;
+  const isInf = isInfluencerStatus(host?.status);
+  let readyPaise = 0, onHoldPaise = 0, earningsReadyPaise = 0, walletReadyPaise = 0;
   try {
-    if (c.tokens) { const x = await hostSummary(env, u.uid); readyPaise = x.availablePaise; onHoldPaise = x.pendingPaise; }
-    else { const x = await withdrawableFor(env, u.uid); readyPaise = x.withdrawable * 100; onHoldPaise = x.held * 100; }
+    if (isInf) {
+      if (c.tokens) { const x = await hostSummary(env, u.uid); earningsReadyPaise = wholeRupees(x.availablePaise) * 100; onHoldPaise = x.pendingPaise; }
+      else { const x = await withdrawableFor(env, u.uid); earningsReadyPaise = x.withdrawable * 100; onHoldPaise = x.held * 100; }
+    }
+    if (c.tokens) walletReadyPaise = await fanWithdrawablePaise(env, u.uid);
+    readyPaise = earningsReadyPaise + walletReadyPaise;
   } catch (e) {
     await trackException(env, e, { uid: u.uid, route: "/api/hf/payouts/summary", handled: true, app_name: APP, extra: { area: "hf_payout", step: "summary" } });
     return err(502, "wallet_error", "We couldn't check your balance. Please try again.");
@@ -374,7 +431,9 @@ async function appSummary(req: Request, env: Env): Promise<Response> {
     ...(r.status === "paid" && r.utr ? { utr: r.utr } : {}),
   }));
   return json({
-    readyPaise: Math.max(0, readyPaise), onHoldPaise: Math.max(0, onHoldPaise), minPaise: c.minRupees * 100,
+    readyPaise: Math.max(0, readyPaise), onHoldPaise: Math.max(0, onHoldPaise),
+    minPaise: (isInf && walletReadyPaise === 0 ? c.minRupees : c.fanMinRupees) * 100,
+    walletReadyPaise, earningsReadyPaise, isInfluencer: isInf, // [HF-WIRE-13]
     upi: vpa ? { vpa, nameMatched: pay?.upi_verified === 1 ? true : null } : null, kycStatus, history,
   }, 200, { "cache-control": "private, no-store" });
 }
@@ -384,8 +443,6 @@ async function appPutUpi(req: Request, env: Env): Promise<Response> {
   if (isFail(u)) return err(u.status, u.error);
   const c = await cfg(env);
   if (!c.enabled) return err(404, "not_enabled", "Withdrawals open soon.");
-  const host = await env.DB_META.prepare("SELECT status FROM hf_hosts WHERE uid=?1").bind(u.uid).first<{ status: string }>().catch(() => null);
-  if (!isInfluencerStatus(host?.status)) return err(403, "influencers_only", FAN_MESSAGE);
   const vpa = String((await readJson(req)).vpa ?? "").trim().toLowerCase();
   if (!UPI_RE.test(vpa)) return err(400, "invalid_upi", "Enter a valid UPI ID, like name@bank.");
   const lim = await rateLimit(env, `hfupi:${u.uid}`, 10, 3600);

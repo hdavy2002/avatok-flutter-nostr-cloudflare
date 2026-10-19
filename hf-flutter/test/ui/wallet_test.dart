@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:hf_app/data/api_client.dart';
 import 'package:hf_app/data/api_exception.dart';
+import 'package:hf_app/data/models/wallet.dart';
 import 'package:hf_app/data/repos/wallet_repo.dart';
 import 'package:hf_app/demo/screens/money.dart';
 import 'package:hf_app/demo/state.dart';
@@ -72,6 +73,18 @@ Future<void> _pump(WidgetTester tester, Widget home) async {
 
 void main() {
   tearDown(() => Checkout.launcher = (u) async => false);
+
+  // [HF-WIRE-13] Refunds and withdrawals show in the history under the server's own words and the right kind.
+  group('Wallet history kinds', () {
+    test('refund and payout rows keep their kind and the server label', () {
+      final back = LedgerEntry.fromJson({'id': 'a', 'kind': 'refund', 'amountPaise': 4000, 'at': 1760000000000, 'label': 'Withdrawal returned to your wallet'});
+      expect(back.kind, LedgerKind.refund);
+      expect(back.label, 'Withdrawal returned to your wallet');
+      final out = LedgerEntry.fromJson({'id': 'b', 'kind': 'payout', 'amountPaise': -10000, 'at': 1760000000000, 'label': 'Withdrawal to your UPI'});
+      expect(out.kind, LedgerKind.payout);
+      expect(out.amountPaise, -10000);
+    });
+  });
 
   group('WalletRepo', () {
     test('credit maths matches the demo (and the server): paid / 1.18 rounded down', () {

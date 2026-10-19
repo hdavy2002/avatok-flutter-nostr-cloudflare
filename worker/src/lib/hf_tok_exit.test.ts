@@ -3,7 +3,7 @@
 // [HF-TOK-EXIT-1] Token-aware refunds (Google Play), account closing, debt write-off, test-lot removal. Real SQL on in-memory SQLite.
 import { describe, it, expect, beforeEach, vi } from "vitest";
 
-vi.mock("../routes/config", () => ({ readConfig: async () => ({ hfTokensEnabled: true, hfExitGateEnabled: true, hfRefundsEnabled: false, hfRefundWindowDays: 180 }) }));
+vi.mock("../routes/config", () => ({ readConfig: async () => ({ hfTokensEnabled: true, hfExitGateEnabled: true, hfGatewayRefundsEnabled: true, hfRefundsEnabled: false, hfRefundWindowDays: 180 }) }));
 vi.mock("./pii_crypto", () => ({ tryDecryptPii: async (_e: any, v: string | null) => (v ? `dec(${v})` : null) }));
 vi.mock("../hooks", () => ({ track: async () => {}, trackException: async () => {} }));
 vi.mock("./whatsapp_notify", () => ({ verifiedWhatsAppNumber: async () => null }));

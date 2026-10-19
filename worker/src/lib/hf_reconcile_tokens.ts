@@ -180,7 +180,7 @@ export async function loadTokenReconciliation(env: Env, fromMs: number, toMs: nu
     `SELECT t.id, t.uid, t.kind, t.status, t.tokens_left_micro AS left_m, t.tokens_reserved_micro AS reserved, COALESCE(s.net,0) AS net
        FROM hf_token_lots t
        LEFT JOIN (SELECT lot_id, SUM(delta_micro) AS net FROM hf_token_ledger
-                   WHERE kind IN ('purchase','admin_adjust','spend','refund_revoke','debt_clear') AND lot_id IS NOT NULL GROUP BY lot_id) s ON s.lot_id=t.id
+                   WHERE kind IN ('purchase','admin_adjust','spend','refund_revoke','debt_clear','payout_take') AND lot_id IS NOT NULL GROUP BY lot_id) s ON s.lot_id=t.id
       WHERE t.tokens_left_micro != COALESCE(s.net,0) OR t.tokens_left_micro < 0 OR t.tokens_reserved_micro < 0 OR t.tokens_reserved_micro > t.tokens_left_micro LIMIT 200`);
   for (const b of bal ?? []) {
     const detail = n(b.reserved) > n(b.left_m) || n(b.reserved) < 0 || n(b.left_m) < 0
@@ -196,12 +196,14 @@ export async function loadTokenReconciliation(env: Env, fromMs: number, toMs: nu
          FROM hf_calls c WHERE c.lots_used IS NOT NULL AND COALESCE(c.host_earning_paise,0)>0 AND COALESCE(c.ended_at, c.created_at)>=?1 AND COALESCE(c.ended_at, c.created_at)<?2)
       WHERE led != e LIMIT 200`, fromMs, toMs);
   for (const r of he ?? []) mismatches.push({ kind: "host_earning_ledger", ref: r.id, uid: r.uid, expected: n(r.e), actual: n(r.led), detail: `Call recorded a host share of ${n(r.e)} paise but the host ledger holds ${n(r.led)}` });
-  const po = await rows<{ id: string; uid: string; status: string; amt: number; net: number }>(env,
-    `SELECT p.id AS id, p.host_uid AS uid, p.status AS status, p.amount_rupees AS amt,
+  // [HF-WIRE-13] a request can be paid partly from the person's own wallet (lots_paise): the earnings ledger holds only the rest.
+  const poSql = (lots: string) => `SELECT p.id AS id, p.host_uid AS uid, p.status AS status, p.amount_rupees AS amt, ${lots} AS lots,
             COALESCE((SELECT SUM(l.amount_paise) FROM hf_host_ledger l WHERE l.payout_id=p.id AND l.kind IN ('payout_reserve','payout_cancel')),0) AS net
-       FROM hf_payout_requests p WHERE p.wallet_ref LIKE 'hfhl:%' LIMIT 3000`);
+       FROM hf_payout_requests p WHERE p.wallet_ref LIKE 'hfhl:%' LIMIT 3000`;
+  const po = (await rows<{ id: string; uid: string; status: string; amt: number; lots: number; net: number }>(env, poSql("COALESCE(p.lots_paise,0)")))
+    ?? (await rows<{ id: string; uid: string; status: string; amt: number; lots: number; net: number }>(env, poSql("0")));
   for (const p of po ?? []) {
-    const expected = ["requested", "approved", "paid"].includes(p.status) ? -n(p.amt) * 100 : 0;
+    const expected = ["requested", "approved", "paid"].includes(p.status) ? -(n(p.amt) * 100 - n(p.lots)) : 0;
     if (n(p.net) !== expected) mismatches.push({ kind: "host_payout_ledger", ref: p.id, uid: p.uid, expected, actual: n(p.net), detail: `Withdrawal is '${p.status}' for ₹${n(p.amt)} but the host ledger holds ${n(p.net)} paise for it` });
   }
   const neg = await rows<{ uid: string; bal: number }>(env,

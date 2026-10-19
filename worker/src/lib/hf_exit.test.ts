@@ -20,7 +20,7 @@ vi.mock("../routes/wallet", () => ({
     return out;
   },
 }));
-vi.mock("../routes/config", () => ({ readConfig: async () => ({ hfExitGateEnabled: true, hfRefundsEnabled: false, hfRefundWindowDays: 180 }) }));
+vi.mock("../routes/config", () => ({ readConfig: async () => ({ hfExitGateEnabled: true, hfGatewayRefundsEnabled: true, hfRefundsEnabled: false, hfRefundWindowDays: 180 }) }));
 vi.mock("./pii_crypto", () => ({ tryDecryptPii: async (_e: any, v: string | null) => (v ? `dec(${v})` : null) }));
 vi.mock("./hf_credits", () => ({ getTestBalance: async () => ({ balance: 40, reserved: 0 }) }));
 vi.mock("./payments/registry", () => ({ resolveGateway: () => null }));

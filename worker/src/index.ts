@@ -316,6 +316,8 @@ import { runHfPresenceNudge } from "./lib/hf_presence_nudge"; // [HF-PRESENCE-NU
 import { cashfreeCheckoutHost } from "./routes/cashfree_checkout_host"; // [HF-CASHFREE-CHECKOUT-HOST-1]
 import { hfTopupRoute } from "./routes/hf_topup"; // [HF-TOPUP-1] wallet top-up, any gateway (flags hfTopupEnabled + hfTopupGateway)
 import { expireHfTopups } from "./lib/hf_topup"; // [HF-TOPUP-1] close unpaid top-ups after 24 h
+import { hfMoneyAuditRoute } from "./routes/hf_money_audit"; // [HF-WIRE-13] admin list of call-money cases the monitor flagged
+import { runHfMoneyMonitor } from "./lib/hf_money_monitor"; // [HF-WIRE-13]
 import { hfRefundsRoute } from "./routes/hf_refunds"; // [HF-WALLET-EXIT-1] refunds of unused top-up money (flag hfRefundsEnabled)
 import { hfExitRoute } from "./routes/hf_exit"; // [HF-WALLET-EXIT-1] pay-out-first account closure (flag hfExitGateEnabled)
 import { runHfExitCron } from "./lib/hf_exit"; // [HF-WALLET-EXIT-1]
@@ -515,6 +517,7 @@ export default {
           .then((r) => { if (r.scanned) console.log("[play-voids]", JSON.stringify(r)); })
           .catch((e) => { console.error("[play-voids] failed:", String(e)); }),
         runConsultCron(env).catch((e) => { console.error("[consult-cron] failed:", String(e)); }), // [AUMFE-CONSULT-FOUNDATION-1]
+        runHfMoneyMonitor(env).then((r) => { if (r.fixed || r.flagged) console.log("[hf-money-monitor]", JSON.stringify(r)); }).catch((e) => { console.error("[hf-money-monitor] failed:", String(e)); }), // [HF-WIRE-13]
         runHfCallsCron(env).catch((e) => { console.error("[hf-calls-cron] failed:", String(e)); }), // [HF-CALLS-1]
         readConfig(env).then(async (c) => { if (c.hfBookingsEnabled !== true) return null; const st = await runHfBookingAutoStart(env).catch(() => null); if (st && st.scanned) console.log("[hf-booking-autostart]", JSON.stringify(st)); return runHfBookingsCron(env); }) // [HF-WIRE-8] start booked calls at their minute, then the existing cleanup
           .then((r) => { if (r && (r.expiredQuotes || r.noShows.processed || r.noShows.blocked || r.recovery.processed || r.recovery.blocked)) console.log("[hf-bookings-cron]", JSON.stringify(r)); })
@@ -1153,6 +1156,7 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
       } // [HF-BOOKING-CALENDAR-1] feature stays dark until the booked-call settlement path is ready
       if (p.startsWith("/api/hf/lanes/")) { const r = await hfLanesRoute(req, env, p, ctx); if (r) return r; } // [HF-LANE-VERIFY-1]
       if (p.startsWith("/api/hf/wallet/topup") || p.startsWith("/api/admin/hf/topups")) { const r = await hfTopupRoute(req, env, p); if (r) return r; } // [HF-TOPUP-1]
+      if (p === "/api/admin/hf/money-audit" || p.startsWith("/api/admin/hf/money-audit/")) { const r = await hfMoneyAuditRoute(req, env, p); if (r) return r; } // [HF-WIRE-13]
       if (p === "/api/hf/wallet/refunds" || p.startsWith("/api/hf/wallet/refunds/") || p === "/api/admin/hf/refunds" || p.startsWith("/api/admin/hf/refunds/")) { const r = await hfRefundsRoute(req, env, p); if (r) return r; } // [HF-WALLET-EXIT-1]
       if (p === "/api/hf/account/age-confirm" && req.method === "POST") return await hfAgeConfirm(req, env); // [HF-AUTH-WA-1]
       if (p === "/api/hf/account/exit") { const r = await hfExitRoute(req, env, p); if (r) return r; } // [HF-WALLET-EXIT-1]

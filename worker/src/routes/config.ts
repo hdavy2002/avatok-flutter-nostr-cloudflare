@@ -2110,6 +2110,16 @@ export interface PlatformConfig {
   hfExitGateEnabled: boolean;
   // [HF-WALLET-LIMITS-1] The "Are you sure?" step on large top-ups. [HF-NOLIMITS-1] Daily / monthly spend limits were removed (owner decision).
   hfTopupConfirmAboveRupees: number;
+  // [HF-WIRE-13] Call money rules (rulebook HF-REEL-35/36). hfCallMinBalanceRupees: wallet needed to START a call (rule 1).
+  // hfFirstMinuteDropChargePaise: what a joined call that breaks inside 60 s costs (rule 3). hfFanPayoutMinRupees: smallest wallet-only payout (rule 8).
+  // hfGatewayRefundsEnabled: OFF = every refund goes to the wallet, nothing is sent back to a card/UPI (rule 7).
+  // hfMoneyMonitorEnabled / hfMoneyMonitorAutoFix: the cron that re-checks recent calls and bookings against rules 1-7 (rule 9).
+  hfCallMinBalanceRupees: number;
+  hfFirstMinuteDropChargePaise: number;
+  hfFanPayoutMinRupees: number;
+  hfGatewayRefundsEnabled: boolean;
+  hfMoneyMonitorEnabled: boolean;
+  hfMoneyMonitorAutoFix: boolean;
   // [HF-TOK-MATH-1] Play-token pricing (spec 11.3). DECLARED ONLY: nothing reads these until HF-TOK-LEDGER/CALLS-1. Never sent raw to the browser.
   // hfCheckoutProvider: none|google_play|paytm|razorpay|cashfree. Numbers (paise per minute, basis points) go in numericKeys.
   // [HF-APP-4] Android push notifications (worker/src/lib/hf_push.ts). Default OFF; never sent raw to the browser.
@@ -2937,6 +2947,12 @@ const DEFAULTS: PlatformConfig = {
   hfRefundWindowDays: 180,
   hfExitGateEnabled: true,
   hfTopupConfirmAboveRupees: 1000, // [HF-WALLET-LIMITS-1]
+  hfCallMinBalanceRupees: 20, // [HF-WIRE-13] HF-REEL-35 rule 1
+  hfFirstMinuteDropChargePaise: 100, // [HF-WIRE-13] HF-REEL-35 rule 3 (Rs 1)
+  hfFanPayoutMinRupees: 100, // [HF-WIRE-13] HF-REEL-36; owner to confirm
+  hfGatewayRefundsEnabled: false, // [HF-WIRE-13] HF-REEL-35 rule 7: refunds go to the wallet only
+  hfMoneyMonitorEnabled: true, // [HF-WIRE-13] only acts while hfCallsEnabled is on
+  hfMoneyMonitorAutoFix: true, // [HF-WIRE-13] off = the monitor only reports
   hfPushEnabled: false, // [HF-APP-4] dark until tested on a phone and the owner flips it
   hfPresenceNudgeEnabled: false, // [HF-PRESENCE-NUDGE-1] dark until the owner flips it
   hfBookingRemindersEnabled: true, // [HF-APPT-REMIND-1] owner asked for reminders to be built and live (2026-10-16)
@@ -3288,6 +3304,7 @@ export async function putConfig(req: Request, env: Env): Promise<Response> {
     "hfTopupMinRupees", "hfTopupMaxRupees", // [HF-TOPUP-1]
     "hfRefundWindowDays", // [HF-WALLET-EXIT-1]
     "hfTopupConfirmAboveRupees", // [HF-WALLET-LIMITS-1]
+    "hfCallMinBalanceRupees", "hfFirstMinuteDropChargePaise", "hfFanPayoutMinRupees", // [HF-WIRE-13]
     "hfCallCostPaisePerMin", "hfHostShareBps", // [HF-TOK-MATH-1]
     "hfStdTier1PaisePerMin", "hfStdTier2PaisePerMin", "hfStdTier3PaisePerMin", "hfStdTier1EndMin", "hfStdTier2EndMin", // [HF-STD-PLAN-1]
     "hfStdHostPaisePerMin", "hfStdPhoneCostPaisePerMin", "hfTopupGstBps",
@@ -3382,6 +3399,16 @@ export async function putConfig(req: Request, env: Env): Promise<Response> {
     }
     if (k === "hfTopupGstBps" && (!Number.isInteger(v) || (v as number) < 0 || (v as number) > 5000)) {
       return json({ error: "hfTopupGstBps must be an integer 0-5000 (1800 = 18%)" }, 400);
+    }
+ // [HF-WIRE-13]
+    if (k === "hfCallMinBalanceRupees" && (!Number.isInteger(v) || (v as number) < 0 || (v as number) > 10_000)) {
+      return json({ error: "hfCallMinBalanceRupees must be a whole rupee amount 0-10000" }, 400);
+    }
+    if (k === "hfFirstMinuteDropChargePaise" && (!Number.isInteger(v) || (v as number) < 0 || (v as number) > 10_000)) {
+      return json({ error: "hfFirstMinuteDropChargePaise must be an integer 0-10000 (paise)" }, 400);
+    }
+    if (k === "hfFanPayoutMinRupees" && (!Number.isInteger(v) || (v as number) < 1 || (v as number) > 100_000)) {
+      return json({ error: "hfFanPayoutMinRupees must be a whole rupee amount 1-100000" }, 400);
     }
     // [HF-WALLET-LIMITS-1]
     if (k === "hfTopupConfirmAboveRupees" && (!Number.isInteger(v) || (v as number) < 0 || (v as number) > 1_000_000)) {

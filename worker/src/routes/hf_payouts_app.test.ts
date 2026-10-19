@@ -116,8 +116,8 @@ describe("PUT /api/hf/payouts/upi", () => {
     await hit("PUT", "/api/hf/payouts/upi", { vpa: "new@ybl" });
     expect(h.db.prepare("SELECT upi_verified v FROM hf_payout").get().v).toBe(0);
   });
-  it("fans get 403", async () => {
-    expect((await jsonOf(await hit("PUT", "/api/hf/payouts/upi", { vpa: "a1@ybl" }))).status).toBe(403);
+  it("[HF-WIRE-13] fans can save a UPI too", async () => {
+    expect((await jsonOf(await hit("PUT", "/api/hf/payouts/upi", { vpa: "a1@ybl" }))).status).toBe(200);
   });
 });
 
@@ -152,10 +152,9 @@ describe("GET /api/hf/payouts/summary", () => {
     s = await jsonOf(await hit("GET", "/api/hf/payouts/summary"));
     expect(s.history.map((x: any) => x.status).sort()).toEqual(["paid", "rejected"]);
   });
-  it("fans 403 with the refund message; flag off is 404; own data only", async () => {
+  it("[HF-WIRE-13] fans see the payout summary (nothing ready, fan minimum); flag off is 404; own data only", async () => {
     const f = await jsonOf(await hit("GET", "/api/hf/payouts/summary"));
-    expect(f.status).toBe(403);
-    expect(f.message).toBe("Only influencers can withdraw. Your money comes back to your original payment if a refund is due.");
+    expect(f).toMatchObject({ status: 200, readyPaise: 0, minPaise: 10000, isInfluencer: false });
     seedInfluencer({ upi: true, kyc: true }); wallet.balance = 1000; call("old", 20, 1000);
     await post(50000);
     currentUid = "other"; h.db.exec("INSERT INTO hf_hosts VALUES ('other','approved','Ben','ben-abcd')");
@@ -170,10 +169,9 @@ describe("POST /api/hf/payouts", () => {
     seedInfluencer({ upi: true, kyc: true });
     expect((await jsonOf(await hit("POST", "/api/hf/payouts", { amountPaise: 60000 }))).status).toBe(400);
   });
-  it("fans get 403 and nothing is created", async () => {
+  it("[HF-WIRE-13] a fan is no longer refused as 'influencers only': without a UPI it asks for one, and nothing is created", async () => {
     const r = await jsonOf(await post(60000));
-    expect(r).toMatchObject({ status: 403, error: "influencers_only" });
-    expect(r.message).toMatch(/^Only influencers can withdraw\./);
+    expect(r).toMatchObject({ status: 409, error: "upi_required" });
     expect(h.db.prepare("SELECT COUNT(*) n FROM hf_payout_requests").get().n).toBe(0);
   });
   it("flag off -> 404 not_enabled", async () => {

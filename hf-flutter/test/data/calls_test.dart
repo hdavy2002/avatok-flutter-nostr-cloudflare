@@ -222,6 +222,27 @@ void main() {
       expect(find.text('TOPUP PAGE'), findsOneWidget);
     });
 
+    // [HF-WIRE-13] HF-REEL-35 rule 1: a wallet under the server's minimum cannot start a call, whatever the talk time says.
+    testWidgets('under the Rs 20 minimum: the owner wording and TOP UP, no CALL NOW, nothing started', (tester) async {
+      final api = FakeApiClient((m, p, q, b) => {..._estimate(seconds: 1200, balance: 1999), 'minBalancePaise': 2000});
+      await _openSheet(tester, RealCallConfirmSheet(who: _meera, repo: CallsRepo(api)));
+      expect(find.text('You need at least ₹20 in your wallet to call. Top up to keep going.'), findsOneWidget);
+      expect(find.text('CALL NOW'), findsNothing);
+      expect(find.text('TOP UP'), findsOneWidget);
+      expect(api.count('POST', '/api/hf/calls'), 0);
+    });
+
+    testWidgets('the minimum comes from the server (Rs 30) and an old server without it falls back to Rs 20', (tester) async {
+      final api = FakeApiClient((m, p, q, b) => {..._estimate(seconds: 1200, balance: 2500), 'minBalancePaise': 3000});
+      await _openSheet(tester, RealCallConfirmSheet(who: _meera, repo: CallsRepo(api)));
+      expect(find.text('You need at least ₹30 in your wallet to call. Top up to keep going.'), findsOneWidget);
+      expect(find.text('CALL NOW'), findsNothing);
+      final old = CallEstimate.fromJson(_estimate(seconds: 1200, balance: 1999));
+      expect(old.minBalancePaise, 2000);
+      expect(old.low, isTrue);
+      expect(CallEstimate.fromJson(_estimate(seconds: 1200, balance: 2000)).low, isFalse);
+    });
+
     testWidgets('flag off: Calls are not open yet.', (tester) async {
       final api = FakeApiClient((m, p, q, b) => const ApiException(kind: ApiFailure.http, status: 404, code: 'not_enabled'));
       await _openSheet(tester, RealCallConfirmSheet(who: _meera, repo: CallsRepo(api)));
@@ -363,6 +384,38 @@ void main() {
       expect(api.count('POST', '/api/hf/calls/call_abc12345/review'), 1);
       expect(api.bodies.last, {'stars': 4});
       expect(find.text('REELS PAGE'), findsOneWidget);
+    });
+
+    // [HF-WIRE-13] HF-REEL-35 rule 3: a joined call that broke in the first minute costs Rs 1; say so instead of a minute count.
+    testWidgets('first-minute break: the Rs 1 / returned-to-wallet message replaces the minutes line', (tester) async {
+      await pumpCall(
+        tester,
+        [
+          {
+            ..._status('completed', phase: 'ended', reason: 'ended', connectedAt: _now - 30000, minutes: 1, cost: 100, endReason: 'caller_hangup'),
+            'firstMinuteDrop': true,
+            'firstMinuteChargePaise': 100,
+            'firstMinuteMessage': 'Call ended in the first minute. We charged ₹1 and returned the rest to your wallet.',
+          }
+        ],
+      );
+      await tester.pump(const Duration(milliseconds: 5));
+      expect(find.text('Call ended in the first minute. We charged ₹1 and returned the rest to your wallet.'), findsOneWidget);
+      expect(find.textContaining('1 min'), findsNothing);
+    });
+
+    testWidgets('first-minute break from a server that sends only the flag still shows the same sentence', (tester) async {
+      await pumpCall(
+        tester,
+        [
+          {
+            ..._status('completed', phase: 'ended', reason: 'ended', connectedAt: _now - 30000, minutes: 1, cost: 100, endReason: 'caller_hangup'),
+            'firstMinuteDrop': true,
+          }
+        ],
+      );
+      await tester.pump(const Duration(milliseconds: 5));
+      expect(find.text('Call ended in the first minute. We charged ₹1 and returned the rest to your wallet.'), findsOneWidget);
     });
 
     testWidgets('ran out of balance: says so and offers TOP UP', (tester) async {

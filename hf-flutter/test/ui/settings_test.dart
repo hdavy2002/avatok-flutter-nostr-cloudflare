@@ -222,7 +222,7 @@ void main() {
       });
       await _pump(tester, DeleteAccountScreen(repo: SettingsRepo(api)));
       expect(find.textContaining('₹800'), findsWidgets);
-      expect(find.textContaining('refunded to the payment you used'), findsOneWidget);
+      expect(find.textContaining('never refunded to your card'), findsOneWidget);
       // Disabled until the tick.
       await tester.tap(find.text('START CLOSING MY ACCOUNT'));
       await tester.pumpAndSettle();

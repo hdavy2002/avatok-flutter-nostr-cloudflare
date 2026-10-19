@@ -31,6 +31,7 @@ import { formatTokens, formatDuration, formatRupees, tierBreakdown, chargePaise,
 import { hfStdPlanPublic } from "../lib/hf_token_config";
 import { balanceSummary, availableLots, getLots, release as releaseTokenLots } from "../lib/hf_token_ledger";
 import { prepareTokenStart, estimateForHost, activeValuePaise } from "../lib/hf_token_calls";
+import { readMoneyRules, lowBalanceMessage, firstMinuteMessage, RULE_FIRST_MINUTE_DROP } from "../lib/hf_money_rules"; // [HF-WIRE-13] HF-REEL-35
 import { creatorSnapshotFor, isCreatorCategory, validCreatorRate, validCreatorSnapshot, type CreatorSnapshot } from "../lib/hf_creator_pricing";
 import { hostSummary, listCallEarnings } from "../lib/hf_host_ledger";
 import { correctCallCharge } from "../lib/hf_call_corrections"; // [HF-STD-PLAN-1] rule 6
@@ -155,7 +156,8 @@ async function startCall(req: Request, env: Env): Promise<Response> {
   if (std.enabled) return await startTokenCall(env, { uid, hostUid: host.uid, lane, rate: std.tariff.tiers[0].paisePerMin / 100, callId, tk, hardEndsAt: bookingCutoff ?? undefined, bookingGuard: rawCfg.hfBookingsEnabled === true, std });
   if (!(rate > 0)) return UNAVAILABLE();
   if (tk.enabled) return await startTokenCall(env, { uid, hostUid: host.uid, lane, rate, callId, tk, hardEndsAt: bookingCutoff ?? undefined, bookingGuard: rawCfg.hfBookingsEnabled === true });
-  const needed = rate * START_RESERVE_MINUTES;
+  const moneyRules = await readMoneyRules(env); // [HF-WIRE-13] rule 1 on the old rupee wallet too
+  const needed = Math.max(rate * START_RESERVE_MINUTES, Math.ceil(moneyRules.minBalancePaise / 100));
 
   // [HF-WALLET-1] Test credits are held first (up to a full-length call); the paid wallet reserves only what they do not cover.
   const testReserved = await reserveTestCredits(env, uid, callId, rate * MAX_CALL_MINUTES);
@@ -166,7 +168,7 @@ async function startCall(req: Request, env: Env): Promise<Response> {
     if (!rsv.ok) {
       await settleTestCredits(env, uid, callId, 0).catch(() => 0);
       const spendable = testReserved + rsv.available;
-      if (rsv.status === 402) return err(402, "low_balance", `You need at least ₹${needed} for this call.`, { needed, balance: spendable });
+      if (rsv.status === 402) return err(402, "low_balance", spendable < Math.ceil(moneyRules.minBalancePaise / 100) ? lowBalanceMessage(moneyRules.minBalancePaise) : `You need at least ₹${needed} for this call.`, { needed, balance: spendable, minBalancePaise: moneyRules.minBalancePaise });
       return err(502, "wallet_error", "We couldn't check your balance. Please try again.");
     }
     paidReserved = shortfall;
@@ -222,7 +224,8 @@ async function startCall(req: Request, env: Env): Promise<Response> {
 async function startTokenCall(env: Env, a: { uid: string; hostUid: string; lane: string | null; rate: number; callId: string; tk: ReturnType<typeof readHfTokenConfig>; hardEndsAt?: number; bookingGuard?: boolean; std?: HfStdPlan; creator?: CreatorSnapshot }): Promise<Response> {
   const { uid, hostUid, lane, rate, callId, tk, hardEndsAt, bookingGuard } = a;
   const ratePaise = Math.round(rate * 100);
-  const chk = await prepareTokenStart(env, { uid, callId, ratePaise, tk, std: a.std ?? null, creator: a.creator });
+  const rules = await readMoneyRules(env); // [HF-WIRE-13] rule 1: at least Rs 20 in the wallet to start
+  const chk = await prepareTokenStart(env, { uid, callId, ratePaise, tk, std: a.std ?? null, creator: a.creator, minBalancePaise: rules.minBalancePaise });
   if (!chk.ok) return err(chk.status, chk.error, chk.message, chk.extra ?? {});
   const undo = async (claimed: boolean) => {
     if (claimed) await releaseHost(env, hostUid, callId).catch(() => undefined);
@@ -336,10 +339,15 @@ async function getCall(req: Request, env: Env, id: string): Promise<Response> {
     canReview = !rv;
   }
   const live = await liveFields(env, c, pricingRaw, frozenStandard, c.caller_uid === u.uid);
+  // [HF-WIRE-13] rule 3: tell the CALLER when the charge is the first-minute one (the app shows the owner's sentence; the host sees nothing about it).
+  const moneyRule = (c as unknown as { money_rule?: string | null }).money_rule ?? null;
+  const dropped = c.caller_uid === u.uid && moneyRule === RULE_FIRST_MINUTE_DROP;
+  const droppedPaise = dropped ? Math.max(0, Math.trunc(Number((c as unknown as { consumed_value_paise?: number | null }).consumed_value_paise ?? c.charged_paise ?? 0))) : 0;
   return json({
     id: c.id, status: c.status, hostSlug: h?.slug ?? null, hostName: h?.display_name ?? null, rate: rupees(c.rate_paise),
     connectedAt: c.connected_at, endedAt: c.ended_at, billedMinutes: c.billed_minutes, chargedRupees: rupees(c.charged_paise), endReason: c.end_reason, canReview,
     ...live, // [HF-WIRE-7] additive: phase, reason, costPaise, walletPaise, capAt, lowBalanceSeconds
+    ...(dropped ? { moneyRule: RULE_FIRST_MINUTE_DROP, firstMinuteDrop: true, firstMinuteChargePaise: droppedPaise, firstMinuteMessage: firstMinuteMessage(droppedPaise) } : {}), // [HF-WIRE-13]
     plan: frozenCreator ? "creator" : frozenStandard ? "standard" : "host_rate",
     rateTiers: frozenStandard
       ? frozenStandard.tiers.map((tier, index) => ({ fromMin: tier.fromSec / 60, toMin: index + 1 < frozenStandard.tiers.length ? frozenStandard.tiers[index + 1].fromSec / 60 : null, paisePerMin: tier.paisePerMin }))
@@ -523,13 +531,15 @@ async function walletGetStandard(env: Env, uid: string, tk: ReturnType<typeof re
     // A call-charge correction writes two rows (the credit and the "Call charge corrected" marker): show only the marker, linked to the call.
     `SELECT l.kind, l.delta_micro, l.rupee_value_paise, l.created_at, l.lot_id, l.call_id, t.paid_paise, t.gst_paise, t.provider_ref
        FROM hf_token_ledger l LEFT JOIN hf_token_lots t ON t.id = l.lot_id
-      WHERE l.uid=?1 AND l.kind IN ('purchase','admin_adjust','refund_revoke','debt_create','debt_clear','call_refund')
-        AND NOT (l.kind IN ('purchase','admin_adjust') AND l.note LIKE 'call_refund:%')
+      WHERE l.uid=?1 AND l.kind IN ('purchase','admin_adjust','refund_revoke','debt_create','debt_clear','call_refund','payout_take','payout_return')
+        AND NOT (l.kind IN ('purchase','admin_adjust') AND (l.note LIKE 'call_refund:%' OR l.note LIKE 'payout_return:%'))
         AND NOT (l.kind='admin_adjust' AND l.note = 'hf_std_migration') ORDER BY l.created_at DESC LIMIT 50`,
   ).bind(uid).all<{ kind: string; delta_micro: number; rupee_value_paise: number; created_at: number; lot_id: string | null; call_id: string | null; paid_paise: number | null; gst_paise: number | null; provider_ref: string | null }>().catch(() => ({ results: [] }))).results ?? [];
   const lbl: Record<string, string> = {
     purchase: "Money added", admin_adjust: "Test credit added", refund_revoke: "Money removed (refund)", debt_create: "Amount owed after a refund",
     debt_clear: "Amount owed paid from new money", call_refund: "Call charge corrected",
+    // [HF-WIRE-13] refunds only ever land in the wallet; a withdrawal that is cancelled or rejected returns here too.
+    payout_take: "Withdrawal to your UPI", payout_return: "Withdrawal returned to your wallet",
   };
   for (const l of led) {
     const neg = Number(l.delta_micro) < 0 || l.kind === "refund_revoke" || l.kind === "debt_clear";
@@ -542,12 +552,12 @@ async function walletGetStandard(env: Env, uid: string, tk: ReturnType<typeof re
     });
   }
   const calls = (await env.DB_META.prepare(
-    `SELECT c.id, c.created_at, c.ended_at, c.billable_seconds, c.consumed_value_paise, (SELECT display_name FROM hf_hosts h WHERE h.uid=c.host_uid) AS host_name
-       FROM hf_calls c WHERE c.caller_uid=?1 AND c.status='completed' AND c.tokens_spent_micro IS NOT NULL AND c.billable_seconds>0 ORDER BY c.created_at DESC LIMIT 50`,
-  ).bind(uid).all<{ id: string; created_at: number; ended_at: number | null; billable_seconds: number; consumed_value_paise: number | null; host_name: string | null }>().catch(() => ({ results: [] }))).results ?? [];
+    `SELECT c.id, c.created_at, c.ended_at, c.billable_seconds, c.consumed_value_paise, c.money_rule, (SELECT display_name FROM hf_hosts h WHERE h.uid=c.host_uid) AS host_name
+       FROM hf_calls c WHERE c.caller_uid=?1 AND c.status='completed' AND c.tokens_spent_micro IS NOT NULL AND (c.billable_seconds>0 OR c.consumed_value_paise>0) ORDER BY c.created_at DESC LIMIT 50`,
+  ).bind(uid).all<{ id: string; created_at: number; ended_at: number | null; billable_seconds: number; consumed_value_paise: number | null; money_rule: string | null; host_name: string | null }>().catch(() => ({ results: [] }))).results ?? [];
   for (const c of calls) {
     const p = -Math.max(0, Math.trunc(Number(c.consumed_value_paise ?? 0)));
-    hist.push({ at: Number(c.ended_at ?? c.created_at), kind: "call_spent", amountPaise: p, amount: sign(p), tokens: (p / 100).toFixed(2), label: `Call with ${callerHandle(c.host_name)} (${formatDuration(Number(c.billable_seconds))})`, callId: c.id });
+    hist.push({ at: Number(c.ended_at ?? c.created_at), kind: "call_spent", amountPaise: p, amount: sign(p), tokens: (p / 100).toFixed(2), label: c.money_rule === RULE_FIRST_MINUTE_DROP ? `Call with ${callerHandle(c.host_name)} (ended in the first minute)` : `Call with ${callerHandle(c.host_name)} (${formatDuration(Number(c.billable_seconds))})`, callId: c.id });
   }
   hist.sort((a, b) => b.at - a.at);
   const testPaise = allLots.filter((l) => l.kind === "test").reduce((t, l) => t + Math.floor((l.leftMicro * l.valuePaisePerToken) / 1_000_000), 0);
@@ -599,7 +609,15 @@ async function walletEstimate(req: Request, env: Env): Promise<Response> {
   if (res.status !== 200) return res;
   const body = (await res.json().catch(() => null)) as Record<string, unknown> | null;
   if (!body) return res;
-  return json({ ...body, lowBalanceSeconds: LOW_BALANCE_SECONDS }, 200, { "cache-control": "private, no-store" });
+  // [HF-WIRE-13] rule 1: the server owns the wallet minimum; below it the answer is "cannot start" with the owner's words.
+  const rules = await readMoneyRules(env);
+  const out: Record<string, unknown> = { ...body, lowBalanceSeconds: LOW_BALANCE_SECONDS, minBalancePaise: rules.minBalancePaise, lowBalanceMessage: lowBalanceMessage(rules.minBalancePaise) };
+  if (typeof body.balancePaise === "number" && body.balancePaise < rules.minBalancePaise) {
+    out.canStart = false;
+    out.startNeedPaise = Math.max(Number(body.startNeedPaise ?? 0), rules.minBalancePaise);
+    if (typeof body.startNeedPaise === "number") out.startNeed = formatRupees(out.startNeedPaise as number);
+  }
+  return json(out, 200, { "cache-control": "private, no-store" });
 }
 async function walletEstimateInner(req: Request, env: Env): Promise<Response> {
   if (!(await callsOn(env))) return NOT_ENABLED();

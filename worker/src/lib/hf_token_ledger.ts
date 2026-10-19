@@ -11,7 +11,7 @@
 //  - Lots are used OLDEST FIRST and never revalued. Reservations are held INSIDE tokens_left (available = left - reserved).
 //  - Gate rows carry delta_micro 0 (kind decides the meaning); the per-lot rows carry the amounts, so SUMs never double count.
 import type { Env } from "../types";
-import { planSpend, microForValue, applyRefund, priceValid, PRICING_GP_V1, PRICING_GP_R1, PRICING_GP_R2, PRICING_CF_R1, MICRO, type Lot, type Price } from "./hf_token_math";
+import { planSpend, planFixedSpend, microForValue, applyRefund, priceValid, PRICING_GP_V1, PRICING_GP_R1, PRICING_GP_R2, PRICING_CF_R1, MICRO, type Lot, type Price } from "./hf_token_math";
 
 export const resOpId = (callId: string) => `hftres:${callId}`;
 export const relOpId = (callId: string) => `hftrel:${callId}`;
@@ -563,7 +563,7 @@ export async function settleCall(
   callId: string,
   ratePaise: Price,
   billableSeconds: number,
-  options: { reservedLotsOnly?: boolean } = {},
+  options: { reservedLotsOnly?: boolean; /** [HF-WIRE-13] charge exactly this many paise instead of the per-second price (first-minute rule). */ fixedValuePaise?: number } = {},
 ): Promise<SettleResult> {
   if (!priceValid(ratePaise) || !(billableSeconds >= 0)) return { ok: false, reason: "invalid" };
   const db = env.DB_META;
@@ -586,7 +586,9 @@ export async function settleCall(
           ? Math.min(l.leftMicro, held.get(l.id) ?? 0)
           : Math.min(l.leftMicro, (held.get(l.id) ?? 0) + Math.max(0, l.leftMicro - l.reservedMicro)) }))
       .filter((l) => l.leftMicro > 0);
-    const plan = planSpend(planLots, ratePaise, Math.trunc(billableSeconds));
+    const plan = options.fixedValuePaise != null
+      ? planFixedSpend(planLots, options.fixedValuePaise, Math.trunc(billableSeconds))
+      : planSpend(planLots, ratePaise, Math.trunc(billableSeconds));
     const spend = new Map(plan.uses.map((u) => [u.lotId, u]));
     const touched = all.filter((l) => (held.get(l.id) ?? 0) > 0 || spend.has(l.id));
     const now = Date.now(), nonce = crypto.randomUUID();

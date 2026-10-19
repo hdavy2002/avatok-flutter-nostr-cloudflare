@@ -82,6 +82,7 @@ export function hfPurgeTables(scope: HfPurgeScope, includeSafetyRecords = false)
     { table: "hf_media_jobs", cols: ["uid"] },
     { table: "hf_selfie", cols: ["uid"] },
     { table: "hf_payout", cols: ["uid"] },
+    { table: "hf_money_audit", cols: ["uid", "host_uid"] }, // [HF-WIRE-13] monitor cases about this person
     { table: "hf_kyc_otp", cols: ["uid"] },
     { table: "hf_lane_access", cols: OTHER_UID_COLS },
     { table: "hf_review_tokens", cols: OTHER_UID_COLS },

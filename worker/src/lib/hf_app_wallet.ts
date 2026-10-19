@@ -12,7 +12,8 @@ export function kindOf(raw: string): AppLedgerKind {
   switch (raw) {
     case "call_spent": case "call_earned": return "call";
     case "refund_revoke": case "call_refund": case "debt_create": case "debt_clear": return "refund";
-    case "payout": return "payout";
+    case "payout": case "payout_take": return "payout"; // [HF-WIRE-13] money leaving the wallet for the person's UPI
+    case "payout_return": return "refund"; // [HF-WIRE-13] a cancelled/rejected withdrawal is back in the wallet
     default: return "topup"; // purchase, admin_adjust, grant, migrate, test_credit(_removed)
   }
 }

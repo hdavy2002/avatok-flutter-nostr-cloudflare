@@ -94,10 +94,10 @@ class KycNextStep {
 
 /// Payouts for influencers (HF-WIRE-10, rulebook HF-REEL-30/31).
 ///
-/// - `GET  /api/hf/payouts/summary` -> `{readyPaise, onHoldPaise, minPaise, upi, kycStatus, history[]}`
+/// - `GET  /api/hf/payouts/summary` -> `{readyPaise, onHoldPaise, minPaise, upi, kycStatus, history[]}` (open to fans too, HF-REEL-36)
 /// - `PUT  /api/hf/payouts/upi {vpa}` -> `{ok, upi}`
 /// - `POST /api/hf/payouts {amountPaise}` + `Idempotency-Key` -> `{ok, id, status, amountPaise}`; or
-///   `409 kyc_required {nextStep}`, `409 upi_required`, `403 influencers_only` (fans never withdraw).
+///   `409 kyc_required {nextStep}`, `409 upi_required`. Anyone can withdraw wallet money (no more `403 influencers_only`).
 class PayoutsRepo {
   const PayoutsRepo(this._api);
 
