@@ -48,7 +48,7 @@ const _serverDown = ApiException(kind: ApiFailure.http, status: 503, code: 'unav
 /// Records which reels the (stubbed) player was told to play.
 Map<String, bool> _stubPlayer() {
   final seen = <String, bool>{};
-  ReelPlayer.override = (reel, active) {
+  ReelPlayer.testPlayer = (reel, active) {
     seen[reel.id] = active;
     return Container(key: ValueKey('player-${reel.id}'), color: Colors.black);
   };
@@ -72,7 +72,7 @@ void main() {
   setUp(() => PresenceBridge.forceReal = true);
   tearDown(() {
     PresenceBridge.forceReal = false;
-    ReelPlayer.override = null;
+    ReelPlayer.testPlayer = null;
   });
 
   group('ReelsRepo', () {

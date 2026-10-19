@@ -140,7 +140,7 @@ class _RealFeedState extends State<RealFeed> {
         ),
       );
     }
-    final items = (s as AsyncData<List<FeedReel>>).value;
+    final items = s.value;
     return Scaffold(
       backgroundColor: C.cinema,
       body: Stack(

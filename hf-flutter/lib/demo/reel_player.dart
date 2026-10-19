@@ -21,7 +21,7 @@ class ReelPlayer extends StatefulWidget {
 
   /// Tests replace the platform players with a stub. Receives the reel and whether it should be playing.
   @visibleForTesting
-  static Widget Function(FeedReel reel, bool active)? override;
+  static Widget Function(FeedReel reel, bool active)? testPlayer;
 
   /// The URL the embed WebView loads: autoplay, inline, no chrome, looping.
   @visibleForTesting
@@ -79,7 +79,7 @@ class _ReelPlayerState extends State<ReelPlayer> {
   }
 
   void _sync() {
-    if (ReelPlayer.override != null) return;
+    if (ReelPlayer.testPlayer != null) return;
     if (_wantVideo) {
       if (_needLive) {
         _startVideo();
@@ -170,7 +170,7 @@ class _ReelPlayerState extends State<ReelPlayer> {
 
   @override
   Widget build(BuildContext context) {
-    final o = ReelPlayer.override;
+    final o = ReelPlayer.testPlayer;
     if (o != null) return o(widget.reel, widget.active);
     final v = _video;
     return Stack(
