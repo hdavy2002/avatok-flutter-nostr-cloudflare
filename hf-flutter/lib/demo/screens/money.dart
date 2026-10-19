@@ -407,7 +407,7 @@ class _TopUpScreenState extends State<TopUpScreen> {
                       children: [
                         _line('You pay', inr(v), C.ivory),
                         const SizedBox(height: 8),
-                        _line('GST (18%, included)', inr(gst), C.cream),
+                        _line('GST 18%', inr(gst), C.cream),
                         const SizedBox(height: 8),
                         const SizedBox(height: 2, width: double.infinity, child: DashedLine(vertical: false, color: C.brass, width: 2)),
                         const SizedBox(height: 8),

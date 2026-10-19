@@ -105,6 +105,11 @@ class _CheckoutFlowState extends State<CheckoutFlow> {
 
   CardEntry? _card;
 
+  /// [HF-CHECKOUT-FALLBACK-1] Set once a way of paying on our own screens is refused (the provider has not switched it on for the
+  /// account). From then on every tap opens the provider's own secure checkout inside the app (UPI apps, UPI ID, cards, net
+  /// banking), which hands the payer to PhonePe / GPay / Paytm and comes back to us.
+  bool _hostedOnly = false;
+
   @override
   void initState() {
     super.initState();
@@ -238,12 +243,44 @@ class _CheckoutFlowState extends State<CheckoutFlow> {
         }
       case PayResult.unavailable:
       case PayResult.notEnabled:
-        setState(() {
-          _busy = false;
-          _error = _notAvailable;
-          _checkable = false;
-          if (_stage == _Stage.card || _stage == _Stage.upiWait) _stage = _Stage.methods;
-        });
+        unawaited(_switchToHosted(o, method, out));
+    }
+  }
+
+  /// [HF-CHECKOUT-FALLBACK-1] Our own screen could not pay this way, so open the provider's secure checkout for the SAME order inside
+  /// the app instead of showing an error. Only if that cannot open either does the payer see "not available right now".
+  Future<void> _switchToHosted(TopupOrder o, String from, [PayOutcome? why]) async {
+    _hostedOnly = true;
+    Telemetry.event('hf_topup_result', {
+      'order': o.orderId,
+      'result': 'native_refused',
+      'method': from,
+      'reason': why?.result.name ?? 'no_entry',
+      if (why?.message != null) 'detail': why!.message!.length > 120 ? why.message!.substring(0, 120) : why.message!,
+    });
+    if (!mounted) return;
+    setState(() {
+      _busy = true;
+      _error = null;
+      _checkable = false;
+      if (_stage == _Stage.card || _stage == _Stage.upiWait) _stage = _Stage.methods;
+    });
+    final sid = o.paymentSessionId;
+    if (sid == null || sid.isEmpty) {
+      _fail(_notAvailable);
+      return;
+    }
+    final out = await widget.checkout.payHosted(orderId: o.orderId, paymentSessionId: sid, sandbox: o.environment == 'sandbox');
+    if (!mounted) return;
+    Telemetry.event('hf_topup_result', {'order': o.orderId, 'result': 'hosted_${out.result.name}', 'method': 'hosted'});
+    switch (out.result) {
+      case PayResult.completed:
+        _go(_next(o));
+      case PayResult.failed:
+        _go('${_next(o)}&sdk=err');
+      case PayResult.unavailable:
+      case PayResult.notEnabled:
+        _fail(_notAvailable);
     }
   }
 
@@ -279,6 +316,7 @@ class _CheckoutFlowState extends State<CheckoutFlow> {
     });
     final o = await _ensureOrder();
     if (o == null || !mounted) return;
+    if (_hostedOnly) return _switchToHosted(o, 'upi_app');
     final out = await widget.checkout.payWithUpiApp(
       orderId: o.orderId,
       paymentSessionId: o.paymentSessionId!,
@@ -306,6 +344,7 @@ class _CheckoutFlowState extends State<CheckoutFlow> {
     });
     final o = await _ensureOrder();
     if (o == null || !mounted) return;
+    if (_hostedOnly) return _switchToHosted(o, 'upi_id');
     final token = ++_token;
     setState(() {
       _busy = false;
@@ -348,10 +387,7 @@ class _CheckoutFlowState extends State<CheckoutFlow> {
       case PayResult.notEnabled:
         _stopTimers();
         _token++;
-        setState(() {
-          _stage = _Stage.methods;
-          _error = _notAvailable;
-        });
+        await _switchToHosted(o, 'upi_id', out);
     }
   }
 
@@ -415,9 +451,10 @@ class _CheckoutFlowState extends State<CheckoutFlow> {
     });
     final o = await _ensureOrder();
     if (o == null || !mounted) return;
+    if (_hostedOnly) return _switchToHosted(o, 'card');
     final entry = widget.checkout.cardEntry(orderId: o.orderId, paymentSessionId: o.paymentSessionId!, sandbox: o.environment == 'sandbox');
     if (entry == null) {
-      _fail(_notAvailable);
+      await _switchToHosted(o, 'card');
       return;
     }
     _card?.dispose();

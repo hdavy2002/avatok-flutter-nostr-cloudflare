@@ -292,15 +292,47 @@ void main() {
       expect(fake.calls.length, 2);
     });
 
-    testWidgets('not switched on for the merchant: "not available right now", nothing else', (tester) async {
+    testWidgets('not switched on for the merchant: the secure checkout opens for the same order, no error', (tester) async {
+      // [HF-CHECKOUT-FALLBACK-1]
+      final api = _api();
       final fake = FakeCheckout(apps: _apps, upiAppOutcome: const PayOutcome(PayResult.notEnabled, 'UPI intent is not enabled'));
+      final h = await _pump(tester, api: api, checkout: fake);
+      await tester.tap(find.byKey(const Key('upi-app-com.phonepe.app')));
+      await _settle(tester);
+      expect(fake.calls.last, 'hosted|$_orderId|session_1|true');
+      expect(api.count('POST'), 1);
+      expect(find.textContaining('This payment method is not available right now'), findsNothing);
+      expect(find.textContaining('not enabled'), findsNothing);
+      expect(h.finished, [_next(500)]);
+    });
+
+    testWidgets('refused AND the secure checkout cannot open: "not available right now"', (tester) async {
+      final fake = FakeCheckout(
+        apps: _apps,
+        upiAppOutcome: const PayOutcome(PayResult.notEnabled, 'UPI intent is not enabled'),
+        hostedOutcome: const PayOutcome(PayResult.unavailable),
+      );
       final h = await _pump(tester, api: _api(), checkout: fake);
       await tester.tap(find.byKey(const Key('upi-app-com.phonepe.app')));
       await _settle(tester);
       expect(find.textContaining('This payment method is not available right now'), findsOneWidget);
       expect(find.byKey(const Key('check-payment')), findsNothing);
-      expect(find.textContaining('not enabled'), findsNothing);
       expect(h.finished, isEmpty);
+    });
+
+    testWidgets('after one refusal, the next tap goes straight to the secure checkout', (tester) async {
+      final fake = FakeCheckout(
+        apps: _apps,
+        upiAppOutcome: const PayOutcome(PayResult.notEnabled),
+        hostedOutcome: const PayOutcome(PayResult.unavailable),
+      );
+      await _pump(tester, api: _api(), checkout: fake);
+      await tester.tap(find.byKey(const Key('upi-app-com.phonepe.app')));
+      await _settle(tester);
+      final before = fake.calls.length;
+      await tester.tap(find.byKey(const Key('upi-app-com.google.android.apps.nbu.paisa.user')));
+      await _settle(tester);
+      expect(fake.calls.sublist(before), ['hosted|$_orderId|session_1|true']);
     });
   });
 
@@ -468,22 +500,22 @@ void main() {
       expect(h.finished, [_next(500)]);
     });
 
-    testWidgets('cards not enabled for the merchant: "not available right now" and back to the methods', (tester) async {
+    testWidgets('cards not enabled for the merchant: the secure checkout opens instead', (tester) async {
       final fake = FakeCheckout(apps: _apps, cardOutcome: const PayOutcome(PayResult.notEnabled, 'Card payments are not enabled'));
-      await _pump(tester, api: _api(), checkout: fake);
+      final h = await _pump(tester, api: _api(), checkout: fake);
       await openCard(tester);
       await fill(tester);
       await tester.tap(find.byKey(const Key('card-pay')));
       await _settle(tester);
-      expect(find.textContaining('This payment method is not available right now'), findsOneWidget);
-      expect(find.byKey(const Key('pay-amount')), findsOneWidget);
+      expect(fake.calls.last, 'hosted|$_orderId|session_1|true');
+      expect(h.finished, [_next(500)]);
     });
 
-    testWidgets('no card form on this phone: "not available right now"', (tester) async {
+    testWidgets('no card form on this phone: the secure checkout opens instead', (tester) async {
       final fake = FakeCheckout(apps: _apps, cardsAvailable: false);
       await _pump(tester, api: _api(), checkout: fake);
       await openCard(tester);
-      expect(find.textContaining('This payment method is not available right now'), findsOneWidget);
+      expect(fake.calls.last, 'hosted|$_orderId|session_1|true');
       expect(find.byKey(const Key('fake-card-number')), findsNothing);
     });
 

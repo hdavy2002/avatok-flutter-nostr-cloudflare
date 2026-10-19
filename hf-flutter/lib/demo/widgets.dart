@@ -368,14 +368,20 @@ class Valance extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return SizedBox(
-      height: height,
-      width: double.infinity,
-      child: Art(
-        'intro/bandhani-border.webp',
-        fit: BoxFit.fitHeight,
-        alignment: Alignment.topLeft,
-        fallback: CustomPaint(painter: _ValancePainter()),
+    // [HF-APP-POLISH-1] Start below the status bar so the clock, Wi-Fi and battery icons are never drawn over.
+    // Inside a SafeArea the top inset is already 0, so this is a no-op there.
+    final top = MediaQuery.paddingOf(context).top;
+    return Padding(
+      padding: EdgeInsets.only(top: top),
+      child: SizedBox(
+        height: height,
+        width: double.infinity,
+        child: Art(
+          'intro/bandhani-border.webp',
+          fit: BoxFit.fitHeight,
+          alignment: Alignment.topLeft,
+          fallback: CustomPaint(painter: _ValancePainter()),
+        ),
       ),
     );
   }
