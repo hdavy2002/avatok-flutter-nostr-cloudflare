@@ -51,8 +51,26 @@ final router = GoRouter(
     GoRoute(parentNavigatorKey: rootKey, path: '/settings', builder: (_, __) => const SettingsScreen()),
     GoRoute(parentNavigatorKey: rootKey, path: '/help', builder: (_, __) => const HelpScreen()),
     GoRoute(parentNavigatorKey: rootKey, path: '/influencer/join', builder: (_, __) => const InfluencerJoinScreen()),
-    GoRoute(parentNavigatorKey: rootKey, path: '/influencer', builder: (_, __) => const InfluencerDashboardScreen()),
-    GoRoute(parentNavigatorKey: rootKey, path: '/influencer/rate', builder: (_, __) => const RateScreen()),
+    // The influencer's side has its own bottom bar (owner 2026-10-19).
+    StatefulShellRoute.indexedStack(
+      builder: (context, state, shell) => InfluencerShell(shell: shell),
+      branches: [
+        StatefulShellBranch(routes: [GoRoute(path: '/inf/home', builder: (_, __) => const InfluencerHomeScreen())]),
+        StatefulShellBranch(routes: [GoRoute(path: '/inf/bookings', builder: (_, __) => const InfluencerBookingsScreen())]),
+        StatefulShellBranch(routes: [GoRoute(path: '/inf/status', builder: (_, __) => const InfluencerStatusScreen())]),
+        StatefulShellBranch(routes: [GoRoute(path: '/inf/availability', builder: (_, __) => const AvailabilityScreen())]),
+      ],
+    ),
+    GoRoute(
+      parentNavigatorKey: rootKey,
+      path: '/book/:id/confirm',
+      builder: (_, s) => BookConfirmScreen(id: s.pathParameters['id']!, day: s.uri.queryParameters['day'] ?? '', slot: s.uri.queryParameters['slot'] ?? ''),
+    ),
+    GoRoute(
+      parentNavigatorKey: rootKey,
+      path: '/booked/:id',
+      builder: (_, s) => BookedScreen(id: s.pathParameters['id']!, day: s.uri.queryParameters['day'] ?? '', slot: s.uri.queryParameters['slot'] ?? ''),
+    ),
   ],
 );
 

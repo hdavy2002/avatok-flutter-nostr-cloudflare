@@ -22,14 +22,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
   int _tab = 0;
   int _day = 0;
 
-  static const _days = ['Mon 20', 'Tue 21', 'Wed 22', 'Thu 23', 'Fri 24', 'Sat 25'];
-  static const _slots = ['10:00 am', '11:30 am', '4:00 pm', '6:30 pm', '9:00 pm'];
 
   @override
   Widget build(BuildContext context) {
     final who = influencerById(widget.id);
     final mine = reels.where((r) => r.who.id == who.id).toList();
     final firstReel = mine.isEmpty ? null : mine.first;
+    final today = dayOnly(DateTime.now());
+    final openDays = [for (var i = 0; i < 21; i++) today.add(Duration(days: i))].where((d) => slotsFor(who, d).isNotEmpty).take(10).toList();
     return Scaffold(
       body: ListenableBuilder(
         listenable: demo,
@@ -161,11 +161,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         height: 66,
                         child: ListView.separated(
                           scrollDirection: Axis.horizontal,
-                          itemCount: _days.length,
+                          itemCount: openDays.length,
                           separatorBuilder: (_, __) => const SizedBox(width: 8),
                           itemBuilder: (_, i) {
                             final on = i == _day;
-                            final parts = _days[i].split(' ');
+                            final d = openDays[i];
                             return GestureDetector(
                               onTap: () => setState(() => _day = i),
                               child: Container(
@@ -178,8 +178,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                 child: Column(
                                   mainAxisAlignment: MainAxisAlignment.center,
                                   children: [
-                                    Text(parts[0], style: t(12, color: on ? C.gold : C.deep)),
-                                    Text(parts[1], style: t(20, color: on ? C.gold : C.deep)),
+                                    Text(weekdayShort[d.weekday - 1], style: t(12, color: on ? C.gold : C.deep)),
+                                    Text('${d.day}', style: t(20, color: on ? C.gold : C.deep)),
                                   ],
                                 ),
                               ),
@@ -188,19 +188,20 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         ),
                       ),
                       const SizedBox(height: 14),
-                      Wrap(
-                        spacing: 8,
-                        runSpacing: 8,
-                        children: [
-                          for (final s in _slots)
-                            ActionChip(
-                              label: Text(s, style: t(15, color: C.maroon)),
-                              backgroundColor: C.paper,
-                              shape: const StadiumBorder(side: BorderSide(color: C.maroon, width: 2)),
-                              onPressed: () => context.push('/book/${who.id}?day=${Uri.encodeComponent(_days[_day])}&slot=${Uri.encodeComponent(s)}'),
-                            ),
-                        ],
-                      ),
+                      if (openDays.isNotEmpty)
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 8,
+                          children: [
+                            for (final s in slotsFor(who, openDays[_day.clamp(0, openDays.length - 1)]))
+                              ActionChip(
+                                label: Text(s, style: t(15, color: C.maroon)),
+                                backgroundColor: C.paper,
+                                shape: const StadiumBorder(side: BorderSide(color: C.maroon, width: 2)),
+                                onPressed: () => context.push('/book/${who.id}?day=${dayKey(openDays[_day.clamp(0, openDays.length - 1)])}&slot=${Uri.encodeComponent(s)}'),
+                              ),
+                          ],
+                        ),
                       const SizedBox(height: 12),
                       Text('Pick a time — we ring you both at that minute.', style: t(14, color: C.muted, w: FontWeight.w700)),
                     ],

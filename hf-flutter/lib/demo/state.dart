@@ -4,6 +4,48 @@ import 'data.dart';
 
 /// All demo state lives in memory. Restarting the app resets it. No backend, no storage.
 class DemoState extends ChangeNotifier {
+  DemoState() {
+    final today = dayOnly(DateTime.now());
+    // The influencer's own open days: the next 12 days except Sundays, four slots each.
+    for (var i = 0; i < 12; i++) {
+      final d = today.add(Duration(days: i));
+      if (d.weekday == DateTime.sunday) continue;
+      availability[dayKey(d)] = {'10:00 am', '4:00 pm', '6:00 pm', '8:00 pm'};
+    }
+    // Fans who booked the influencer (demo).
+    inBookings.addAll([
+      InBooking('Tara S.', today, '6:00 pm', 10, 'Wants tips on a Jaipur trip'),
+      InBooking('Rahul M.', today.add(const Duration(days: 1)), '10:00 am', 10, 'First call'),
+      InBooking('Neha K.', today.add(const Duration(days: 1)), '8:00 pm', 15, 'Follow-up from last week'),
+      InBooking('Imran A.', today.add(const Duration(days: 3)), '4:00 pm', 10, ''),
+      InBooking('Pooja R.', today.add(const Duration(days: 6)), '6:00 pm', 10, 'Birthday surprise call'),
+    ]);
+  }
+
+  // Influencer calendar
+  final Map<String, Set<String>> availability = {};
+  final List<InBooking> inBookings = [];
+
+  Set<String> slotsOn(DateTime d) => availability[dayKey(d)] ?? <String>{};
+
+  void toggleSlot(DateTime d, String slot) {
+    final set = availability.putIfAbsent(dayKey(d), () => <String>{});
+    if (!set.remove(slot)) set.add(slot);
+    if (set.isEmpty) availability.remove(dayKey(d));
+    notifyListeners();
+  }
+
+  void setDayOpen(DateTime d, bool open) {
+    if (open) {
+      availability[dayKey(d)] = {'10:00 am', '4:00 pm', '6:00 pm', '8:00 pm'};
+    } else {
+      availability.remove(dayKey(d));
+    }
+    notifyListeners();
+  }
+
+  List<InBooking> bookingsOn(DateTime d) => inBookings.where((b) => dayKey(b.day) == dayKey(d)).toList();
+
   bool introSeen = false;
 
   // Fan account

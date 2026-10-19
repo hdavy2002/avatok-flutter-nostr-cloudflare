@@ -58,6 +58,10 @@ flutter:
     - assets/images/bazaar/topup/
     - assets/images/bazaar/payout/
     - assets/images/bazaar/bg/
+    - assets/images/bazaar/me/
+    - assets/images/bazaar/favourites/
+    - assets/images/bazaar/booking/
+    - assets/images/bazaar/influencer/
 
   fonts:
     - family: Nunito

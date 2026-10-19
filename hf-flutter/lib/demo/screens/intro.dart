@@ -58,7 +58,7 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
                 const SizedBox(height: 36),
                 Text('ROLLING OUT THE COLOURS…', style: t(22, color: C.gold, ls: 0.06)),
                 const SizedBox(height: 8),
-                Text('Rangili is unfolding the next reel.', style: t(16, color: C.cream, w: FontWeight.w700)),
+                Text('Chhotu is unfolding the next reel.', style: t(16, color: C.cream, w: FontWeight.w700)),
               ],
             ),
           ),
@@ -165,7 +165,7 @@ class _IntroScreenState extends State<IntroScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: _page == 0 ? C.ivory : C.maroon,
+      backgroundColor: _page == 0 ? C.ivory : C.deep,
       body: Stack(
         children: [
           PageView(
@@ -242,7 +242,7 @@ class _IntroOne extends StatelessWidget {
         const Expanded(
           child: Padding(
             padding: EdgeInsets.symmetric(horizontal: 28),
-            child: Art('intro/bazaar-hero.png', fallback: ArtStandIn('BAZAAR ART\nRangili at her fabric stall', color: C.lemon)),
+            child: Art('intro/bazaar-hero.png', fallback: ArtStandIn('BAZAAR ART\nChhotu + bandhani stall', color: C.lemon)),
           ),
         ),
         Padding(
@@ -275,8 +275,11 @@ class _IntroTwo extends StatelessWidget {
             child: Stack(
               alignment: Alignment.center,
               children: [
-                Container(width: 210, height: 210, decoration: BoxDecoration(shape: BoxShape.circle, color: C.marigold, border: Border.all(color: C.deep, width: 4))),
-                const Art('intro/fan-on-call.png', fallback: SizedBox(width: 160, height: 200, child: ArtStandIn('TARA CUTOUT\non a call'))),
+                Container(width: 250, height: 250, decoration: const BoxDecoration(shape: BoxShape.circle, color: C.turquoise)),
+                const Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 12),
+                  child: Art('intro/chhotu.webp', fallback: SizedBox(width: 160, height: 200, child: ArtStandIn('CHHOTU\nat the stall'))),
+                ),
               ],
             ),
           ),
@@ -292,7 +295,7 @@ class _IntroTwo extends StatelessWidget {
           Container(
             margin: const EdgeInsets.symmetric(horizontal: 24),
             padding: const EdgeInsets.all(14),
-            decoration: BoxDecoration(color: C.deep, borderRadius: BorderRadius.circular(16), border: Border.all(color: C.brass, width: 2)),
+            decoration: BoxDecoration(color: C.maroon, borderRadius: BorderRadius.circular(16), border: Border.all(color: C.lemon, width: 2)),
             child: Row(
               children: [
                 const SizedBox(width: 46, height: 46, child: Art('intro/invite-vote-badge.png', fallback: BrassKnob(label: 'Invite', size: 46, child: Icon(Icons.add_rounded, color: C.deep)))),

@@ -35,6 +35,8 @@ class _Guest extends StatelessWidget {
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
+                const ArtMoment('me/welcome-rangili.png', label: 'RANGILI\nwaving hello', size: 200, ring: C.butter),
+                const SizedBox(height: 10),
                 const Headline(solid: 'YOUR', outline: 'BAZAAR PASS', size: 40, align: TextAlign.center),
                 const SizedBox(height: 14),
                 Text('Make a free account to call, book and save favourites. It takes 20 seconds.', textAlign: TextAlign.center, style: t(17, w: FontWeight.w700, h: 1.45)),
@@ -114,7 +116,7 @@ class _Dashboard extends StatelessWidget {
                 icon: Icons.star_rounded,
                 label: demo.influencerJoined ? 'Influencer dashboard' : 'Join as an influencer',
                 meta: demo.influencerJoined ? (demo.online ? 'Online' : 'Offline') : 'Free',
-                onTap: () => context.push(demo.influencerJoined ? '/influencer' : '/influencer/join'),
+                onTap: () => demo.influencerJoined ? context.go('/inf/home') : context.push('/influencer/join'),
               ),
             ],
           ),

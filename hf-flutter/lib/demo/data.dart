@@ -99,6 +99,7 @@ const influencers = <Influencer>[
     videos: 211,
     online: true,
     tones: [Color(0xFF7B2FBE), Color(0xFF14A9C4)],
+    portrait: 'profile/demo-priya.png',
   ),
   Influencer(
     id: 'rohan',
@@ -155,6 +156,7 @@ const influencers = <Influencer>[
     videos: 175,
     online: false,
     tones: [Color(0xFFFF2E7A), Color(0xFF7B2FBE)],
+    portrait: 'profile/demo-simran.png',
   ),
   Influencer(
     id: 'ananya',
@@ -169,6 +171,7 @@ const influencers = <Influencer>[
     videos: 64,
     online: false,
     tones: [Color(0xFF14A9C4), Color(0xFFC2185B)],
+    portrait: 'profile/demo-ananya.png',
   ),
 ];
 
@@ -230,3 +233,35 @@ const influencerUpcoming = <(String, String)>[
   ('Rahul M.', 'Tomorrow, 11:00 am · 10 min'),
   ('Neha K.', 'Thu, 4:00 pm · 10 min'),
 ];
+
+// ------------------------------------------------------------------------------------------- dates
+
+const weekdayShort = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+const monthShort = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+const monthLong = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+
+DateTime dayOnly(DateTime d) => DateTime(d.year, d.month, d.day);
+String dayKey(DateTime d) => '${d.year}-${d.month}-${d.day}';
+
+/// "Thu 23 Oct"
+String dayLabel(DateTime d) => '${weekdayShort[d.weekday - 1]} ${d.day} ${monthShort[d.month - 1]}';
+
+/// Time slots an influencer can be booked in (one list for the whole demo).
+const allSlots = ['9:00 am', '10:00 am', '11:00 am', '12:00 pm', '2:00 pm', '4:00 pm', '6:00 pm', '7:00 pm', '8:00 pm', '9:00 pm', '10:00 pm'];
+
+/// Demo availability of the OTHER influencers (fans book them). Deterministic so it looks real.
+List<String> slotsFor(Influencer who, DateTime day) {
+  final seed = who.id.codeUnits.fold<int>(0, (a, b) => a + b) + day.day + day.month * 31;
+  if (day.weekday == DateTime.sunday || seed % 5 == 0) return const [];
+  return [for (var i = 0; i < allSlots.length; i++) if ((seed + i * 3) % 4 != 0) allSlots[i]];
+}
+
+/// A fan's booking with the influencer using the app (influencer side).
+class InBooking {
+  InBooking(this.fan, this.day, this.time, this.minutes, this.note);
+  final String fan;
+  final DateTime day;
+  final String time;
+  final int minutes;
+  final String note;
+}

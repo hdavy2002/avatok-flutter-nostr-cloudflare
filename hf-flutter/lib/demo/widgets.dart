@@ -525,3 +525,126 @@ void toast(BuildContext context, String msg) {
     ..hideCurrentSnackBar()
     ..showSnackBar(SnackBar(content: Text(msg)));
 }
+
+/// Month calendar used by the influencer's Bookings and Availability screens and the fan's
+/// booking flow. [fill] tints open days, [dots] marks days with bookings.
+class MonthGrid extends StatelessWidget {
+  const MonthGrid({
+    super.key,
+    required this.month,
+    required this.selected,
+    required this.onPick,
+    required this.onMonth,
+    this.fill = const {},
+    this.dots = const {},
+    this.allowPast = false,
+  });
+
+  final DateTime month; // any day in the month shown
+  final DateTime? selected;
+  final ValueChanged<DateTime> onPick;
+  final ValueChanged<DateTime> onMonth;
+  final Set<String> fill;
+  final Set<String> dots;
+  final bool allowPast;
+
+  @override
+  Widget build(BuildContext context) {
+    final first = DateTime(month.year, month.month, 1);
+    final daysInMonth = DateTime(month.year, month.month + 1, 0).day;
+    final lead = first.weekday - 1; // Monday first
+    final today = dayOnly(DateTime.now());
+    final cells = <Widget>[
+      for (final w in weekdayShort) Center(child: Text(w.substring(0, 2), style: t(12, color: C.tan))),
+      for (var i = 0; i < lead; i++) const SizedBox.shrink(),
+      for (var d = 1; d <= daysInMonth; d++) _day(DateTime(month.year, month.month, d), today),
+    ];
+    return Container(
+      padding: const EdgeInsets.fromLTRB(10, 6, 10, 10),
+      decoration: BoxDecoration(color: C.paper, borderRadius: BorderRadius.circular(18), border: Border.all(color: C.sandLine, width: 2)),
+      child: Column(
+        children: [
+          Row(
+            children: [
+              IconButton(
+                tooltip: 'Previous month',
+                onPressed: () => onMonth(DateTime(month.year, month.month - 1, 1)),
+                icon: const Icon(Icons.chevron_left_rounded, color: C.maroon),
+              ),
+              Expanded(child: Text('${monthLong[month.month - 1]} ${month.year}', textAlign: TextAlign.center, style: t(18, color: C.maroon))),
+              IconButton(
+                tooltip: 'Next month',
+                onPressed: () => onMonth(DateTime(month.year, month.month + 1, 1)),
+                icon: const Icon(Icons.chevron_right_rounded, color: C.maroon),
+              ),
+            ],
+          ),
+          GridView.count(
+            crossAxisCount: 7,
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            mainAxisSpacing: 4,
+            crossAxisSpacing: 4,
+            children: cells,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _day(DateTime d, DateTime today) {
+    final past = d.isBefore(today);
+    final isSel = selected != null && dayKey(selected!) == dayKey(d);
+    final isOpen = fill.contains(dayKey(d));
+    final hasDot = dots.contains(dayKey(d));
+    final isToday = dayKey(d) == dayKey(today);
+    final bg = isSel ? C.maroon : (isOpen ? C.butter : C.clear);
+    final fg = isSel ? C.gold : (past && !allowPast ? C.sandLine : C.deep);
+    return GestureDetector(
+      onTap: past && !allowPast ? null : () => onPick(d),
+      child: Container(
+        decoration: BoxDecoration(
+          color: bg,
+          shape: BoxShape.circle,
+          border: isToday && !isSel ? Border.all(color: C.turquoise, width: 2) : null,
+        ),
+        child: Stack(
+          alignment: Alignment.center,
+          children: [
+            Text('${d.day}', style: t(15, color: fg)),
+            if (hasDot)
+              Positioned(
+                bottom: 4,
+                child: Container(width: 6, height: 6, decoration: BoxDecoration(shape: BoxShape.circle, color: isSel ? C.lemon : C.rani)),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Picture with a soft round colour behind it (used for the women illustrations on empty and status screens).
+class ArtMoment extends StatelessWidget {
+  const ArtMoment(this.path, {super.key, required this.label, this.size = 220, this.ring = C.sand});
+
+  final String path;
+  final String label;
+  final double size;
+  final Color ring;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: size,
+      height: size,
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          Container(width: size * 0.92, height: size * 0.92, decoration: BoxDecoration(shape: BoxShape.circle, color: ring)),
+          Art(path, fallback: ArtStandIn(label, color: C.paper, ink: C.maroon, radius: size)),
+        ],
+      ),
+    );
+  }
+}
