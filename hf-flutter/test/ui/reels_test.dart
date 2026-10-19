@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:hf_app/data/api_client.dart';
+import 'package:hf_app/core/brand.dart';
 import 'package:hf_app/data/api_exception.dart';
 import 'package:hf_app/data/models/reel.dart';
 import 'package:hf_app/data/repos/reels_repo.dart';
@@ -129,7 +130,7 @@ void main() {
       expect(u.queryParameters['playlist'], 'abc12345');
       expect(u.queryParameters.containsKey('controls'), isFalse);
       expect(u.queryParameters.containsKey('modestbranding'), isFalse);
-      expect(u.queryParameters['origin'], 'https://hellofraands.com');
+      expect(u.queryParameters['origin'], Brand.webOrigin);
       final html = ReelPlayer.youtubeHtml('https://www.youtube.com/embed/abc12345')!;
       expect(html, contains('<iframe'));
       expect(html, contains('https://www.youtube.com/embed/abc12345?'));

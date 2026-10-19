@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../core/brand.dart';
 import '../../data/api_exception.dart';
 import '../../data/models/channel.dart';
 import '../../data/repos/channels_repo.dart';
@@ -447,8 +448,8 @@ class _ChannelConsentScreenState extends State<ChannelConsentScreen> {
     );
   }
 
-  static const String _ytLabel =
-      'I allow Hello Fraands to read my YouTube channel (read only) and show my public videos with the official YouTube player. This channel is mine.';
+  static final String _ytLabel =
+      'I allow ${Brand.name} to read my YouTube channel (read only) and show my public videos with the official YouTube player. This channel is mine.';
 
   Widget _youtubeForm() => ListView(
         padding: const EdgeInsets.fromLTRB(22, 8, 22, 24),

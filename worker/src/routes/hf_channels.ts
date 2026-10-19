@@ -8,7 +8,7 @@
 //   POST   /api/hf/channels/youtube/connect { accessToken }   [HF-WIRE-14, HF-REEL-33] sign in with YouTube (Google, scope youtube.readonly): the app sends the
 //                                      access token; channels.list?mine=true returns HER channel, which proves ownership (no bio code). Approves when subscribers
 //                                      >= minimum, imports the DETAILS of her public videos (embeds only, visible=1). The token is never stored.
-//                                      -> same shape as /check plus { imported:{fetched,inserted} }; errors: token_invalid 400 (not 401: the app would think the Hello Fraands session ended), no_youtube_channel 404, channel_claimed 409
+//                                      -> same shape as /check plus { imported:{fetched,inserted} }; errors: token_invalid 400 (not 401: the app would think her sign-in to this app ended), no_youtube_channel 404, channel_claimed 409
 // channel = { id, platform, handle, url, followers, state:'checking'|'approved'|'needs_followers'|'disconnected', verified, needsCode,
 //             verifyCode (only while the code is still needed), lastSyncAt, createdAt }
 // result = 'approved' | 'needs_followers' | 'code_missing' | 'not_found' | 'private' | 'hidden_count'
