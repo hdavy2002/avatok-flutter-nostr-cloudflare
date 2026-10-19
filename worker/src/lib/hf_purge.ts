@@ -90,6 +90,7 @@ export function hfPurgeTables(scope: HfPurgeScope, includeSafetyRecords = false)
     { table: "hf_age_confirm", cols: ["uid"] }, // [HF-AUTH-WA-1] "I am 18 or over" confirmation (S4 writes it too)
     { table: "hf_notify", cols: ["uid", "caller_uid", "host_uid", "recipient_uid"] },
     { table: "hf_favourites", cols: ["uid", "host_uid"] }, // [HF-DASH-FRAANDS-1] saved hosts: rows saved by the account and rows saving the account as a host
+    { table: "hf_invite_votes", cols: ["uid"] }, // [HF-WIRE-9] Invite votes cast by the account
     { table: "hf_user_profile", cols: ["uid"] }, // [HF-DASH-V3-1] city, languages, what they like to talk about
     { table: "hf_user_email", cols: ["uid"] }, // [HF-WIRE-2] email typed at fan sign-up
     { table: "hf_reels", cols: ["host_uid"] }, // [HF-WIRE-4] imported reels (before hf_channels, which they point at)

@@ -7,7 +7,7 @@ version: 2.0.0+2000
 environment:
   sdk: '>=3.9.0 <4.0.0'
 
-# Nineteen runtime packages, on purpose (spec section 5.1; the old comment said seventeen but eighteen
+# Twenty runtime packages, on purpose (spec section 5.1; the old comment said seventeen but eighteen
 # were listed). The newest, lottie, was owner-approved on 2026-10-15 (HF-MOTION-1) for the mascot and
 # celebration motion; everything else in the motion kit is plain Flutter. Left out: google_fonts (fonts
 # are bundled), flutter_local_notifications (the channel is made in Kotlin), dio, intl, image_picker,
@@ -38,6 +38,7 @@ dependencies:
   lottie: ^3.3.1                     # mascot and celebration motion (HF-MOTION-1)
   webview_flutter: ^4.10.0           # [HF-WIRE-4] official YouTube / Instagram reel embeds (video_player plays direct files)
   webview_flutter_android: ^4.3.0    # [HF-WIRE-4] lets the embed autoplay
+  share_plus: ^10.1.4                # [HF-WIRE-9] system share sheet for a reel link (Share.share)
 
 dev_dependencies:
   flutter_test:

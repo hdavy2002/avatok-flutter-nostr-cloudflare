@@ -2,14 +2,21 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/brand.dart';
+import '../../data/repos/search_repo.dart';
+import '../../data/services.dart';
 import '../data.dart';
+import '../presence_bridge.dart';
+import '../search_real.dart';
 import '../state.dart';
 import '../theme.dart';
 import '../widgets.dart';
 
 /// Search (HF-REEL-9): Online / Offline / Not on the app. Invite = a vote to bring them in.
 class SearchScreen extends StatefulWidget {
-  const SearchScreen({super.key});
+  const SearchScreen({super.key, this.repo});
+
+  /// Tests pass a repo on a fake API; the app uses [Services]. Real mode only (HF-WIRE-9).
+  final SearchRepo? repo;
 
   @override
   State<SearchScreen> createState() => _SearchScreenState();
@@ -26,6 +33,7 @@ class _SearchScreenState extends State<SearchScreen> {
 
   @override
   Widget build(BuildContext context) {
+    if (PresenceBridge.real) return RealSearch(repo: widget.repo ?? Services.instance.searchRepo); // [HF-WIRE-9]
     final q = _q.text.trim().toLowerCase();
     final hits = q.isEmpty
         ? <Influencer>[]

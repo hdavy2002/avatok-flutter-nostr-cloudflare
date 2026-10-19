@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../data/favourites_store.dart';
 import '../../data/models/reel.dart';
 import '../../data/repos/reels_repo.dart';
 import '../../data/services.dart';
@@ -41,6 +42,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   void initState() {
     super.initState();
     if (PresenceBridge.real) unawaited(_loadProfile());
+    if (PresenceBridge.real && demo.signedIn) unawaited(FavouritesStore.instance.ensureLoaded()); // [HF-WIRE-9]
   }
 
   Future<void> _loadProfile() async {
@@ -110,9 +112,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final openDays = [for (var i = 0; i < 21; i++) today.add(Duration(days: i))].where((d) => slotsFor(who, d).isNotEmpty).take(10).toList();
     return Scaffold(
       body: ListenableBuilder(
-        listenable: demo,
+        listenable: prof != null ? Listenable.merge([demo, FavouritesStore.instance]) : demo,
         builder: (context, _) {
-          final faved = firstReel != null && demo.isFav(firstReel.id);
+          final realSlug = prof?.host.slug; // [HF-WIRE-9] real hearts are saved by influencer slug
+          final faved = realSlug != null ? FavouritesStore.instance.isFav(realSlug) : firstReel != null && demo.isFav(firstReel.id);
           return CustomScrollView(
             slivers: [
               SliverToBoxAdapter(
@@ -135,14 +138,20 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       child: Art('profile/gota-border.webp', fit: BoxFit.fitHeight, alignment: Alignment.centerLeft, fallback: CustomPaint(painter: _BulbPainter())),
                     ),
                     Positioned(top: MediaQuery.paddingOf(context).top + 10, left: 16, child: const BackBtn()),
-                    if (firstReel != null)
+                    if (firstReel != null || realSlug != null)
                       Positioned(
                         top: MediaQuery.paddingOf(context).top + 10,
                         right: 16,
                         child: BrassKnob(
                           size: 46,
                           label: faved ? 'Remove from favourites' : 'Add to favourites',
-                          onTap: () => requireAccount(context, () => demo.toggleFav(firstReel.id), reason: 'to save favourites'),
+                          onTap: () => requireAccount(
+                            context,
+                            () => realSlug != null
+                                ? unawaited(toggleFavourite(realSlug, onError: (_) => toast(context, 'Could not save that. Please try again.')))
+                                : demo.toggleFav(firstReel!.id),
+                            reason: 'to save favourites',
+                          ),
                           child: Icon(faved ? Icons.favorite_rounded : Icons.favorite_border_rounded, color: faved ? C.rani : C.deep, size: 22),
                         ),
                       ),

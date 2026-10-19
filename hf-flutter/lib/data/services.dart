@@ -10,10 +10,13 @@ import 'models/me.dart';
 import 'repos/auth_repo.dart';
 import 'repos/calls_repo.dart';
 import 'repos/channels_repo.dart';
+import 'favourites_store.dart';
 import 'repos/config_repo.dart';
+import 'repos/favourites_repo.dart';
 import 'repos/me_repo.dart';
 import 'repos/payouts_repo.dart';
 import 'repos/reels_repo.dart';
+import 'repos/search_repo.dart';
 import 'repos/wallet_repo.dart';
 import 'telemetry.dart';
 
@@ -40,6 +43,8 @@ class Services {
   late final WalletRepo walletRepo = WalletRepo(api); // [HF-WIRE-6]
   late final CallsRepo callsRepo = CallsRepo(api); // [HF-WIRE-7]
   late final PayoutsRepo payoutsRepo = PayoutsRepo(api); // [HF-WIRE-10]
+  late final SearchRepo searchRepo = SearchRepo(api); // [HF-WIRE-9]
+  late final FavouritesRepo favouritesRepo = FavouritesRepo(api); // [HF-WIRE-9]
 
   /// The signed-in Clerk user, or null (signed out, or no connection at start).
   ClerkUser? user;
@@ -59,6 +64,7 @@ class Services {
     user = null;
     me = null;
     demo.signOut();
+    FavouritesStore.instance.reset(); // [HF-WIRE-9]
   }
 
   /// Is there an active Clerk session on this device? Never throws.
@@ -97,6 +103,7 @@ class Services {
     user = null;
     me = null;
     demo.signOut();
+    FavouritesStore.instance.reset(); // [HF-WIRE-9]
   }
 
   /// Android versionCode, or 0 when unknown (never nag on a guess).

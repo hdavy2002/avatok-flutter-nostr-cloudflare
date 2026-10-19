@@ -1,17 +1,25 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../data/repos/favourites_repo.dart';
+import '../../data/services.dart';
 import '../data.dart';
+import '../favourites_real.dart';
+import '../presence_bridge.dart';
 import '../state.dart';
 import '../theme.dart';
 import '../widgets.dart';
 
 /// Favourites: reels the fan saved with ♥ (HF-REEL-7).
 class FavouritesScreen extends StatelessWidget {
-  const FavouritesScreen({super.key});
+  const FavouritesScreen({super.key, this.repo});
+
+  /// Tests pass a repo on a fake API; the app uses [Services]. Real mode only (HF-WIRE-9).
+  final FavouritesRepo? repo;
 
   @override
   Widget build(BuildContext context) {
+    if (PresenceBridge.real) return RealFavourites(repo: repo ?? Services.instance.favouritesRepo); // [HF-WIRE-9]
     return Scaffold(
       body: SafeArea(
         child: ListenableBuilder(

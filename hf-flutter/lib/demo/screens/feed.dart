@@ -1,13 +1,14 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/brand.dart';
+import '../../data/favourites_store.dart';
 import '../../data/models/reel.dart';
 import '../../data/repos/reels_repo.dart';
 import '../../data/services.dart';
+import '../../data/share.dart';
 import '../../ui/async_view.dart';
 import '../data.dart';
 import '../online_now_pill.dart';
@@ -250,6 +251,7 @@ class _ReelPageState extends State<ReelPage> with SingleTickerProviderStateMixin
     super.initState();
     _play.value = 0; // build the controller now: a late field first touched in dispose() would make a ticker on a dead element
     if (widget.active && widget.real == null) _play.repeat();
+    if (widget.real != null && demo.signedIn) unawaited(FavouritesStore.instance.ensureLoaded()); // [HF-WIRE-9] so the ♥ starts right
   }
 
   @override
@@ -273,10 +275,11 @@ class _ReelPageState extends State<ReelPage> with SingleTickerProviderStateMixin
   Widget build(BuildContext context) {
     final r = widget.reel;
     final who = r.who;
+    final realSlug = widget.real?.host.slug; // [HF-WIRE-9] real hearts are saved by influencer slug
     return ListenableBuilder(
-      listenable: demo,
+      listenable: realSlug != null ? Listenable.merge([demo, FavouritesStore.instance]) : demo,
       builder: (context, _) {
-        final faved = demo.isFav(r.id);
+        final faved = realSlug != null ? FavouritesStore.instance.isFav(realSlug) : demo.isFav(r.id);
         return Stack(
           fit: StackFit.expand,
           children: [
@@ -357,7 +360,13 @@ class _ReelPageState extends State<ReelPage> with SingleTickerProviderStateMixin
                   const SizedBox(height: 24),
                   BrassKnob(
                     label: faved ? 'Remove from favourites' : 'Add to favourites',
-                    onTap: () => requireAccount(context, () => demo.toggleFav(r.id), reason: 'to save favourites'),
+                    onTap: () => requireAccount(
+                      context,
+                      () => realSlug == null
+                          ? demo.toggleFav(r.id)
+                          : unawaited(toggleFavourite(realSlug, onError: (_) => toast(context, 'Could not save that. Please try again.'))),
+                      reason: 'to save favourites',
+                    ),
                     child: Icon(faved ? Icons.favorite_rounded : Icons.favorite_border_rounded, color: faved ? C.rani : C.deep, size: 26),
                   ),
                   const SizedBox(height: 4),
@@ -424,8 +433,12 @@ class _ReelPageState extends State<ReelPage> with SingleTickerProviderStateMixin
   }
 
   Future<void> _share(BuildContext context, FeedReel r) async {
-    await Clipboard.setData(ClipboardData(text: Brand.url('/r/${r.id}')));
-    if (context.mounted) toast(context, 'Link copied. Paste it to share this reel.');
+    // [HF-WIRE-9] the system share sheet, link on the brand domain (Brand.url via reelShareUrl)
+    try {
+      await ShareSheet.reel(r.id, caption: r.caption);
+    } catch (_) {
+      if (context.mounted) toast(context, 'Could not open sharing. Please try again.');
+    }
   }
 
   static String _count(int n) => n >= 1000 ? '${(n / 1000).toStringAsFixed(1)}K' : '$n';
