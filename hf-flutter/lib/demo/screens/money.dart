@@ -458,6 +458,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
   final _since = Stopwatch()..start();
   int? _credit;
   bool _asking = false;
+  int _polls = 0;
 
   bool get _real => widget.orderId != null && (widget.repo != null || !DemoMode.on);
   WalletRepo get _repo => widget.repo ?? Services.instance.walletRepo;
@@ -479,6 +480,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
   Future<void> _ask() async {
     if (_asking) return;
     _asking = true;
+    _polls++;
     try {
       final st = await _repo.status(widget.orderId!);
       if (!mounted) return;
@@ -492,7 +494,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
         _t?.cancel();
         Telemetry.event('hf_topup_result', {'order': widget.orderId, 'result': 'failed', 'ms': _since.elapsedMilliseconds});
         setState(() => _pay = _Pay.failed);
-      } else if (_pay == _Pay.confirming && _since.elapsed >= widget.slowAfter) {
+      } else if (_pay == _Pay.confirming && widget.pollEvery * _polls >= widget.slowAfter) {
         Telemetry.event('hf_topup_result', {'order': widget.orderId, 'result': 'slow'});
         setState(() => _pay = _Pay.slow);
       }
