@@ -4,7 +4,7 @@
 //   POST  /api/hf/reels/:id/view          cheap counter, rate-limited per reel + IP -> { ok }
 //   GET   /api/hf/hosts/me/reels          the caller's own reels, hidden ones too -> { ok, reels:[mine], onFeed, hostStatus }
 //   PATCH /api/hf/reels/:id { visible }   owner only (404 for anyone else) -> { ok, reel:mine }
-// [HF-WIRE-22] HF-REEL-40: after the network reels the feed continues with INVITE reels (flag hfInviteReelsEnabled, default true): creators not on Hello Fraands yet.
+// [HF-WIRE-22] HF-REEL-40: after the network reels the feed continues with INVITE reels (flag hfInviteReelsEnabled, default true): creators not on the app yet.
 //   invite item = { id:"hfiv_...", kind:"invite", creator:{platform,handle:"@x",name,avatar,followers,votes}, platform, url, embedUrl, thumbUrl, title, caption, likes, comments, views, publishedAt }
 //   Network items carry no `kind` (= network, unchanged). Round-robin across creators, most-voted first. Cursor: "<ts>_<id>" pages the network part, "i:<offset>" the invite part.
 // item = { id, host:{slug,name,handle,avatar,ratePaise,followers,presence}, platform, url, embedUrl, thumbUrl, title, caption, likes, comments, views, publishedAt }

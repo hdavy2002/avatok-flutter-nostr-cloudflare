@@ -1,4 +1,4 @@
-// [HF-WIRE-22] HF-REEL-40: invite reels = reels of creators who are NOT on Hello Fraands yet. Embeds only (HF-REEL-32): details + official embed url,
+// [HF-WIRE-22] HF-REEL-40: invite reels = reels of creators who are NOT on the app yet. Embeds only (HF-REEL-32): details + official embed url,
 // never a video file. Sources: exact-handle look-ups, Invite votes, and creators the admin adds. Flag hfInviteReelsEnabled (default true).
 import type { Env } from "../types";
 import { readConfig } from "../routes/config";

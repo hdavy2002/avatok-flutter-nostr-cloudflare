@@ -68,7 +68,7 @@ const e = encodeURIComponent;
 /** Signed media paths come back relative to the API origin. */
 export const apiUrl = (p: string | null | undefined) => (p ? (p.startsWith('http') ? p : `${API_BASE}${p}`) : '');
 
-/** [HF-WIRE-22] A creator who is not on Hello Fraands yet; their reels show in the feed with an Invite button. */
+/** [HF-WIRE-22] A creator who is not on the app yet; their reels show in the feed with an Invite button. */
 export interface InviteCreator { platform: 'youtube' | 'instagram'; handle: string; name: string; avatar: string | null; followers: number; votes: number; source: string; hidden: boolean; reels: number; lastLookupAt: number }
 
 export const hfAdminApi = {

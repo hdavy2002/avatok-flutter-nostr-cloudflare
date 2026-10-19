@@ -1,4 +1,4 @@
--- [HF-WIRE-22] HF-REEL-40: reels of creators who are NOT on Hello Fraands yet, shown in the Reels feed with an Invite button. DB_META.
+-- [HF-WIRE-22] HF-REEL-40: reels of creators who are NOT on the app yet, shown in the Reels feed with an Invite button. DB_META.
 -- CREATE only. Apply: scripts/cf.sh worker d1 execute DB_META --remote --file=migrations/2026-10-20-hf-invite-creators.sql
 -- Public data about public creators only (handle, name, avatar url, counts). No uid / phone / email -> nothing to purge with an account.
 -- Embeds only (HF-REEL-32): hf_invite_reels keeps details next to the official embed url, NEVER a video file url (there is no video_url column).

@@ -1,4 +1,4 @@
-// [HF-WIRE-22] Admin: invite creators (HF-REEL-40). ADMIN_UIDS only. Creators who are NOT on Hello Fraands but whose reels show in the feed with an Invite button.
+// [HF-WIRE-22] Admin: invite creators (HF-REEL-40). ADMIN_UIDS only. Creators who are NOT on the app but whose reels show in the feed with an Invite button.
 //   GET    /api/admin/hf/invite-creators                       -> { ok, items:[{platform,handle,name,avatar,followers,votes,source,hidden,reels,lastLookupAt}] }
 //   POST   /api/admin/hf/invite-creators { platform, handle }  -> { ok, creator, reels }   look-up + fetch up to 6 reels now (409 already_on_network, 404 not_found, 503 provider_*)
 //   PATCH  /api/admin/hf/invite-creators/:platform/:handle { hidden:boolean } -> { ok, hidden }   hide / unhide
@@ -73,7 +73,7 @@ export async function hfInviteAdminRoute(req: Request, env: Env, p: string, prov
     if (!lk.exists) return err(404, "not_found", "We could not find that account.");
     if (lk.isPrivate) return err(400, "private", "That account is private, so it has no public reels.");
     const added = await upsertInviteCreator(env, { platform, handle, source: "admin", followers: lk.followers, platformUserId: lk.platformUserId, name: lk.displayName, avatar: lk.avatarUrl ?? null });
-    if (!added) return err(409, "already_on_network", "This creator is already on Hello Fraands.");
+    if (!added) return err(409, "already_on_network", "This creator is already on the app.");
     await env.DB_META.prepare("UPDATE hf_invite_creators SET hidden=0, source='admin' WHERE platform=?1 AND handle=?2").bind(platform, handle).run();
     const reels = await fetchInviteReels(env, platform, handle, { ...prov, force: true });
     return json({ ok: true, creator: { platform, handle: "@" + handle, name: lk.displayName ?? "", followers: lk.followers }, reels }, 200, NO_STORE);
