@@ -2,7 +2,7 @@
 
 **Read this before any Hello Fraands page, screen, component, artwork prompt or app animation.** It is the
 single source for how the owner wants the product to look and how we build it. It replaces the 2026-10-17
-"desi homepage" version. Rule ids live in `Specs/RULEBOOK-HELLO-FRAANDS.md` (HF-DS-1, HF-DS-2). The same
+"desi homepage" version. Rule ids live in `Specs/RULEBOOK-HELLO-FRAANDS.md` (HF-DS-1, HF-DS-2, HF-DS-7, HF-DS-8). App screens: §11. The same
 philosophy applies to the **website, the Android/iOS app screens, onboarding screens and app animations**.
 
 When a page ships, **update §8 (Theme registry) in the same commit**. A future session reads that table to
@@ -651,17 +651,48 @@ and base tokens. Each Indianized page adds its own multi-colour palette on top o
 
 ---
 
-## 11. The mobile app
+## 11. Mobile app screens (owner, 2026-10-19; rule HF-DS-8)
 
-The same rules apply to app screens, onboarding and animations:
+The Hello Fraands Android app (`hf-flutter/`) follows the same philosophy as the website (★, §0, §2): a
+different India per flow, multi-colour, bold, rounded, never boxy, little reading. This section covers what
+changes on a phone.
 
-- A unique Indian theme per flow, and multi-colour.
-- Rounded everything, bold Nunito, centred layouts.
-- A worked example with a character.
-- Art generated from prompt packs.
-- Animations that move like the craft (a scroll unrolling, a kite rising, a coin dropping into a slot).
+**Where things live**
+- **Tokens:** `hf-flutter/lib/core/theme/hf_tokens.dart` (`HfColors`, `HfText`, `HfRadius`, `HfSpacing`,
+  `HfShadows`, `HfMotion`) and `hf_theme.dart`. Screens never hard-code a colour or size; add a token instead.
+- **Screen list:** `hf-flutter/lib/core/router/app_router.dart`. Brand name and links come from `Brand`
+  (`lib/core/brand.dart`) and are never typed out.
 
-Record app themes in §8 too.
+**How a screen gets made**
+1. **One theme per flow, not per screen**, so a flow feels continuous. Example flows: onboarding, booking,
+   the call, the wallet, the host dashboard. Pitch 3 ideas (§0), and record the chosen one in §8.
+2. **Mock it in a phone frame first** (360×800, also checked at 320 wide and at the largest font size) and get
+   the owner's approval before any Dart is written.
+3. Art pack (§7) → build in Flutter → **ship it** → the owner checks it on his phone. There is no local preview
+   (no toolchain on the Mac), so the visual check (§9) is done on the Closed Alpha build or on screenshots.
+
+**Phone rules**
+- **Type:** Nunito everywhere, with Comfortaa only for the wordmark. Nothing smaller than 14sp. Use the
+  `HfText` scale (hero 30 · headline 27 · title 24 · section 20 · subsection 17). No text may be cut off at 200%
+  system font size.
+- **Touch:** every tap target is at least 48dp. The primary button is 56dp tall, full width up to 360dp, with a
+  one-line 16–18sp label. The main action sits at the bottom, within thumb reach.
+- **Layout:** 16dp side gutters inside the safe areas (notch, gesture bar). Hero and header blocks are
+  centred (§2.11), with one focal point per screen. The bottom tab bar stays plain and readable; art goes in
+  headers, heroes and empty states, never behind lists or forms.
+- **Art:** the same standards as the web (§6.1–6.3). Borders keep every motif whole, scaled to height, in
+  48–72dp bands. Heroes run full width. Object art is big, with no tinted square. Images are WebP at 2× and 3×,
+  ≤200 KB each.
+- **States:** design loading, empty, error and offline for every screen. Empty states are where the character
+  and the theme art carry the screen.
+- **Motion:** animations move like the craft (a scroll unrolling, a kite rising, a coin dropping into a slot),
+  UI transitions last ≤400ms, and reduced motion is respected (`core/motion/reduced_motion.dart`).
+- **Always:** no green (`test/core/tokens_test.dart` enforces it), no peacocks, Phosphor icons only, and the
+  Android back gesture always works.
+
+**Open (owner to decide before the first redesign):** the app's palette is still neutral (page `#F6F3EE`, ink
+`#000000`, orange primary `#F28C28`), while the website uses the §10 palette (ink `#30245f`, magenta, cream…).
+Either the app moves to the §10 palette, or the neutral base stays and each flow's theme adds its colours on top.
 
 ---
 
