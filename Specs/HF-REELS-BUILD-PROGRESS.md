@@ -28,8 +28,8 @@ Legend: ⬜ not started · 🟨 in progress · ✅ done · ⛔ blocked (needs ow
 | 0 | Progress log created | ✅ | (this commit) | 2026-10-19 |
 | 1 | HF-WIRE-1 Foundations (ApiClient, Clerk, /api/hf/me, config/update prompt, states, deep links, telemetry) | ✅ (code) | HF-WIRE-1A, 1B, 1C | CI mode=check green (run 39235025525). Worker change NOT deployed yet. Screens still on dummy data. |
 | 2 | HF-WIRE-2 Fan sign-up (WhatsApp OTP → account → resume action) | ⬜ | | Q2 answered: OTP |
-| 3 | HF-WIRE-3 Channels + treg (10-follower rule, approval) | ⛔ | | Q1=10, Q7=IG+YT. Research done (Specs/HF-TREG-JEV-RESEARCH.md): treg = paid scraper proxy (ScrapeCreators). Needs owner OK on data source + ownership proof. |
-| 4 | HF-WIRE-4 Reels import + jev face check, real feed, demo seed `is_demo` | ⛔ | | Open Q9. jev CANNOT do faces (text-only). Need owner pick of face-check service. |
+| 3 | HF-WIRE-3 Channels + treg (10-follower rule, approval) | ⬜ | | Q1=10, Q7=IG+YT. HF-REEL-26: YouTube Data API v3 + treg for Instagram, bio-code ownership. |
+| 4 | HF-WIRE-4 Reels import + jev face check, real feed, demo seed `is_demo` | ⬜ | | Open Q9. HF-REEL-27: no auto face check — influencer picks feed reels. |
 | 5 | HF-WIRE-5 Presence (Online/Offline, busy, Notify me) | ⬜ | | |
 | 6 | HF-WIRE-6 Wallet + Cashfree top-up (GST ÷1.18, webhook, receipts) | ⬜ | | Q10=Cashfree |
 | 7 | HF-WIRE-7 Instant calls (Vobiz live, call screen, reviews, records) | ⬜ | | |
@@ -44,6 +44,8 @@ Legend: ⬜ not started · 🟨 in progress · ✅ done · ⛔ blocked (needs ow
 - Q2 Fan WhatsApp: **verify by OTP** — HF-REEL-24.
 - Q7 Platforms at launch: **Instagram + YouTube**; Facebook "coming soon" — HF-REEL-25.
 - Q10 Top-up payment: **Cashfree** (not Play Billing) — HF-REEL-25.
+- Channel data (after research): YouTube official API + treg for Instagram, bio-code ownership — HF-REEL-26.
+- Face check: none at launch; influencer picks her feed reels — HF-REEL-27.
 - Still open: Q3 fan withdrawals, Q4 revenue-split text, Q5 KYC at payout, Q6 booking cancellation cut-off, Q8 search source, Q9 demo influencer content. Ask before building those stages.
 
 ## 4. Log (newest last)
@@ -54,3 +56,4 @@ Legend: ⬜ not started · 🟨 in progress · ✅ done · ⛔ blocked (needs ow
   - 1B Worker: `/api/hf/me` extended (name, email, whatsapp, role, hostStatus, presence, walletPaise, prefs); flags hfReelsEnabled, hfChannelsEnabled, hfInvitesEnabled (off), hfDemoInfluencersVisible (on), hfInfluencerMinFollowers=10. Full route gap list: `Specs/HF-REELS-BACKEND-AUDIT.md` — READ IT before stages 2–10 (real route paths differ from the handover, e.g. calls start = POST /api/hf/calls, estimate = /api/hf/wallet/estimate, presence = PUT /api/hosts/me/presence, top-up = POST /api/hf/wallet/topup {amount rupees}). Note: 24 pre-existing HF vitest failures on main (10 files, listed in the 1B report) — not caused by this work.
   - 1C Research: `Specs/HF-TREG-JEV-RESEARCH.md`. treg is a pay-per-call scraper gateway (~$0.0019/call); jev is text-only and cannot detect faces. Recommendation: YouTube Data API v3 + ScrapeCreators/treg for Instagram, Instagram Login OAuth or bio-code for ownership, Google Cloud Vision (or Workers AI) on thumbnails for the face check.
   - Next: Stage 2 (HF-WIRE-2 fan sign-up with WhatsApp OTP). Stages 3–4 blocked on owner decision about data source / face check.
+- 2026-10-19 — Owner decided HF-REEL-26/27. Launching in parallel: Stage 2 (fan sign-up), Stage 3 (Channels), Stage 5 (presence).

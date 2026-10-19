@@ -293,6 +293,8 @@ The app is a Reels feed: fans watch influencers' short videos, then call or book
 | HF-REEL-23 | **Influencer minimum stays at 10 followers/subscribers** (owner confirmed 2026-10-19; not 10,000). Still a config value. | ADOPTED | N/A | TODO |
 | HF-REEL-24 | **Fan WhatsApp is verified by OTP** at sign-up (owner 2026-10-19), through the existing WhatsApp OTP routes; calls ring this number. | ADOPTED | N/A | TODO |
 | HF-REEL-25 | **App top-ups use Cashfree** (owner 2026-10-19), not Google Play Billing; gateway name never shown. **Channels at launch: Instagram and YouTube only**; Facebook shows "coming soon". | ADOPTED | N/A | TODO |
+| HF-REEL-26 | **Channel data source** (owner 2026-10-19): YouTube through the official YouTube Data API v3; Instagram through treg (paid scraper gateway). Ownership proof = a one-time code the influencer puts in her bio/channel description. Supersedes the treg-for-everything idea in HF-REEL-14/21 (the 10-follower check still applies). | ADOPTED | N/A | TODO |
+| HF-REEL-27 | **No automatic face check at launch** (owner 2026-10-19): jev is text-only. Imported reels start hidden; the influencer picks which reels go on the feed (and can remove any). An automatic face check may come later. | ADOPTED | N/A | TODO |
 
 ---
 
@@ -450,3 +452,4 @@ else, or come back later."
 | 2026-10-19 | HF-HANDOVER-1 (owner): Channels menu with per-channel consent (HF-REEL-20); automatic acceptance at 10+ YouTube/Instagram followers via treg (HF-REEL-21); demo app is UI-only, handover spec `Specs/HF-REELS-APP-HANDOVER.md` (HF-REEL-22). |
 | 2026-10-19 | HF-REEL-APP-3 (owner): Invite on a person not on the network counts as a vote to bring them in (HF-REEL-9); intro screen 2 now just says what Hello Fraands is (talk to your favourite influencer on a private call) and points to Invite, instead of giving steps. |
 | 2026-10-19 | HF-PROGRESS-1 (owner answers to handover §10): 10-follower minimum confirmed (HF-REEL-23); fan WhatsApp OTP (HF-REEL-24); Cashfree for app top-ups, Instagram + YouTube only at launch (HF-REEL-25). |
+| 2026-10-19 | HF-PROGRESS-3 (owner, after HF-WIRE-1C research): YouTube official API + treg for Instagram, bio-code ownership proof (HF-REEL-26); no automatic face check at launch, influencer picks her feed reels (HF-REEL-27). |
