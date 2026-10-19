@@ -150,6 +150,7 @@ class _RealFeedState extends State<RealFeed> {
             scrollDirection: Axis.vertical,
             itemCount: items.length,
             onPageChanged: _onPage,
+            allowImplicitScrolling: true, // builds the next page early so its video is ready
             itemBuilder: (_, i) => ReelPage(
               key: ValueKey(items[i].id),
               reel: demoReelFrom(items[i]),
@@ -247,6 +248,7 @@ class _ReelPageState extends State<ReelPage> with SingleTickerProviderStateMixin
   @override
   void initState() {
     super.initState();
+    _play.value = 0; // build the controller now: a late field first touched in dispose() would make a ticker on a dead element
     if (widget.active && widget.real == null) _play.repeat();
   }
 
