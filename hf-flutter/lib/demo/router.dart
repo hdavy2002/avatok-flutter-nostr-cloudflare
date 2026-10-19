@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import 'screens/booking.dart';
+import 'screens/channels.dart';
 import 'screens/call.dart';
 import 'screens/favourites.dart';
 import 'screens/feed.dart';
@@ -53,7 +54,24 @@ final router = GoRouter(
     GoRoute(parentNavigatorKey: rootKey, path: '/bookings', builder: (_, __) => const BookingsScreen()),
     GoRoute(parentNavigatorKey: rootKey, path: '/settings', builder: (_, __) => const SettingsScreen()),
     GoRoute(parentNavigatorKey: rootKey, path: '/help', builder: (_, __) => const HelpScreen()),
-    GoRoute(parentNavigatorKey: rootKey, path: '/influencer/join', builder: (_, __) => const InfluencerJoinScreen()),
+    GoRoute(
+      parentNavigatorKey: rootKey,
+      path: '/influencer/join',
+      builder: (_, s) => InfluencerJoinScreen(initialStep: int.tryParse(s.uri.queryParameters['step'] ?? '') ?? 0),
+    ),
+    // [HF-WIRE-3] Channels. `?from=join` keeps the person inside "Join as influencer".
+    GoRoute(parentNavigatorKey: rootKey, path: '/inf/channels', builder: (_, __) => const ChannelsListScreen()),
+    GoRoute(parentNavigatorKey: rootKey, path: '/inf/channels/add', builder: (_, s) => ChannelPlatformScreen(from: s.uri.queryParameters['from'])),
+    GoRoute(
+      parentNavigatorKey: rootKey,
+      path: '/inf/channels/add/:platform',
+      builder: (_, s) => ChannelConsentScreen(platform: s.pathParameters['platform'] ?? '', from: s.uri.queryParameters['from']),
+    ),
+    GoRoute(
+      parentNavigatorKey: rootKey,
+      path: '/inf/channels/:id/checking',
+      builder: (_, s) => ChannelCheckingScreen(id: s.pathParameters['id']!, from: s.uri.queryParameters['from']),
+    ),
     // The influencer's side has its own bottom bar (owner 2026-10-19).
     StatefulShellRoute.indexedStack(
       builder: (context, state, shell) => InfluencerShell(shell: shell),

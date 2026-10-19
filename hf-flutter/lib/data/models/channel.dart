@@ -1,0 +1,177 @@
+/// Where one connected channel stands. Matches `state` in worker/src/routes/hf_channels.ts.
+enum ChannelState {
+  /// Waiting for the ownership code or for the check to finish.
+  checking,
+
+  /// Confirmed and over the follower minimum.
+  approved,
+
+  /// Confirmed, but under the follower minimum.
+  needsFollowers,
+
+  /// The influencer removed it.
+  disconnected;
+
+  static ChannelState parse(Object? v) => switch ((v ?? '').toString()) {
+        'approved' => ChannelState.approved,
+        'needs_followers' => ChannelState.needsFollowers,
+        'disconnected' => ChannelState.disconnected,
+        _ => ChannelState.checking,
+      };
+}
+
+/// One Instagram or YouTube channel of the signed-in influencer (`GET /api/hf/channels`).
+class Channel {
+  const Channel({
+    required this.id,
+    required this.platform,
+    required this.handle,
+    this.url,
+    this.followers = 0,
+    this.state = ChannelState.checking,
+    this.verified = false,
+    this.needsCode = false,
+    this.verifyCode,
+    this.lastSyncAt,
+  });
+
+  final String id;
+
+  /// `instagram` or `youtube`.
+  final String platform;
+  final String handle;
+  final String? url;
+  final int followers;
+  final ChannelState state;
+
+  /// The ownership code was seen once.
+  final bool verified;
+
+  /// Still waiting for the code in the bio or description.
+  final bool needsCode;
+
+  /// Only present while [needsCode].
+  final String? verifyCode;
+
+  /// Milliseconds since the epoch, or null when never synced.
+  final int? lastSyncAt;
+
+  bool get isInstagram => platform == 'instagram';
+  String get platformName => isInstagram ? 'Instagram' : 'YouTube';
+  String get followersWord => isInstagram ? 'followers' : 'subscribers';
+
+  factory Channel.fromJson(Map<String, dynamic> j) => Channel(
+        id: (j['id'] ?? '').toString(),
+        platform: (j['platform'] ?? '').toString(),
+        handle: (j['handle'] ?? '').toString(),
+        url: _s(j['url']),
+        followers: _i(j['followers']),
+        state: ChannelState.parse(j['state']),
+        verified: j['verified'] == true,
+        needsCode: j['needsCode'] == true,
+        verifyCode: _s(j['verifyCode']),
+        lastSyncAt: j['lastSyncAt'] is num ? (j['lastSyncAt'] as num).toInt() : null,
+      );
+}
+
+/// `GET /api/hf/channels`.
+class ChannelsList {
+  const ChannelsList({this.channels = const [], this.minFollowers = defaultMinFollowers, this.hostStatus, this.qualified = false});
+
+  /// Used only until the server says otherwise; the real number is `hfInfluencerMinFollowers`.
+  static const int defaultMinFollowers = 10;
+
+  final List<Channel> channels;
+  final int minFollowers;
+
+  /// `hf_hosts.status` (`pending_check`, `approved`, ...), or null.
+  final String? hostStatus;
+
+  /// At least one channel is confirmed and over the minimum.
+  final bool qualified;
+
+  /// Removed channels are kept on the server but not worth showing as a card to most people; the list screen shows them last.
+  List<Channel> get active => channels.where((c) => c.state != ChannelState.disconnected).toList();
+
+  factory ChannelsList.fromJson(Map<String, dynamic> j) {
+    final raw = j['channels'];
+    return ChannelsList(
+      channels: raw is List ? [for (final e in raw) if (e is Map) Channel.fromJson(Map<String, dynamic>.from(e))] : const [],
+      minFollowers: j['minFollowers'] is num ? (j['minFollowers'] as num).toInt() : defaultMinFollowers,
+      hostStatus: _s(j['hostStatus']),
+      qualified: j['qualified'] == true,
+    );
+  }
+}
+
+/// `POST /api/hf/channels`: the channel was found and a code was issued.
+class AddedChannel {
+  const AddedChannel({required this.channel, required this.verifyCode, required this.instructions, this.minFollowers = ChannelsList.defaultMinFollowers});
+
+  final Channel channel;
+  final String verifyCode;
+  final String instructions;
+  final int minFollowers;
+
+  factory AddedChannel.fromJson(Map<String, dynamic> j) {
+    final ch = j['channel'];
+    return AddedChannel(
+      channel: Channel.fromJson(ch is Map ? Map<String, dynamic>.from(ch) : const <String, dynamic>{}),
+      verifyCode: (j['verifyCode'] ?? '').toString(),
+      instructions: (j['instructions'] ?? '').toString(),
+      minFollowers: j['minFollowers'] is num ? (j['minFollowers'] as num).toInt() : ChannelsList.defaultMinFollowers,
+    );
+  }
+}
+
+/// What a check found.
+enum CheckResult {
+  approved,
+  needsFollowers,
+  codeMissing,
+  notFound,
+  private,
+  hiddenCount,
+  unknown;
+
+  static CheckResult parse(Object? v) => switch ((v ?? '').toString()) {
+        'approved' => CheckResult.approved,
+        'needs_followers' => CheckResult.needsFollowers,
+        'code_missing' => CheckResult.codeMissing,
+        'not_found' => CheckResult.notFound,
+        'private' => CheckResult.private,
+        'hidden_count' => CheckResult.hiddenCount,
+        _ => CheckResult.unknown,
+      };
+}
+
+/// `POST /api/hf/channels/:id/check` and `/resync`.
+class ChannelCheck {
+  const ChannelCheck({required this.result, required this.message, required this.channel, this.minFollowers = ChannelsList.defaultMinFollowers, this.qualified = false});
+
+  final CheckResult result;
+
+  /// Plain-English text from the server.
+  final String message;
+  final Channel channel;
+  final int minFollowers;
+  final bool qualified;
+
+  factory ChannelCheck.fromJson(Map<String, dynamic> j) {
+    final ch = j['channel'];
+    return ChannelCheck(
+      result: CheckResult.parse(j['result']),
+      message: (j['message'] ?? '').toString(),
+      channel: Channel.fromJson(ch is Map ? Map<String, dynamic>.from(ch) : const <String, dynamic>{}),
+      minFollowers: j['minFollowers'] is num ? (j['minFollowers'] as num).toInt() : ChannelsList.defaultMinFollowers,
+      qualified: j['qualified'] == true,
+    );
+  }
+}
+
+String? _s(Object? v) {
+  final s = (v ?? '').toString().trim();
+  return s.isEmpty ? null : s;
+}
+
+int _i(Object? v) => v is num ? v.toInt() : int.tryParse((v ?? '').toString()) ?? 0;

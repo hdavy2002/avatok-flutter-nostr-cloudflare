@@ -1,37 +1,40 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../data/models/channel.dart';
 import '../data.dart';
 import '../presence_bridge.dart';
 import '../state.dart';
 import '../theme.dart';
 import '../widgets.dart';
+import 'channels.dart';
 
 // ---------------------------------------------------------------------------------------------- Join
 
-/// Influencer sign-up (HF-REEL-2): details + page URL → consent → WhatsApp verify → dashboard.
+/// Influencer sign-up (HF-REEL-2): details → channels (HF-WIRE-3: connect, prove ownership, follower check) → WhatsApp verify → dashboard.
 class InfluencerJoinScreen extends StatefulWidget {
-  const InfluencerJoinScreen({super.key});
+  const InfluencerJoinScreen({super.key, this.initialStep = 0});
+
+  /// 0 details, 1 channels, 2 WhatsApp. The channel screens return here with `?step=`.
+  final int initialStep;
 
   @override
   State<InfluencerJoinScreen> createState() => _InfluencerJoinScreenState();
 }
 
 class _InfluencerJoinScreenState extends State<InfluencerJoinScreen> {
-  int _step = 0;
+  late int _step = widget.initialStep.clamp(0, 2);
   late final _name = TextEditingController(text: demo.name);
   late final _email = TextEditingController(text: demo.email);
-  final _url = TextEditingController();
   late final _wa = TextEditingController(text: demo.whatsapp);
   final _otp = TextEditingController();
-  bool _consentVideos = false;
-  bool _consentStats = false;
+  ChannelsList? _channels; // [HF-WIRE-3] what step 2 last loaded
   bool _codeSent = false;
   String? _error;
 
   @override
   void dispose() {
-    for (final c in [_name, _email, _url, _wa, _otp]) {
+    for (final c in [_name, _email, _wa, _otp]) {
       c.dispose();
     }
     super.dispose();
@@ -44,15 +47,11 @@ class _InfluencerJoinScreenState extends State<InfluencerJoinScreen> {
         setState(() => _error = 'Please fill your name and a real email.');
         return;
       }
-      final u = _url.text.toLowerCase();
-      if (!(u.contains('instagram.com') || u.contains('youtube.com') || u.contains('youtu.be') || u.contains('facebook.com'))) {
-        setState(() => _error = 'Paste your YouTube, Instagram or Facebook page link.');
-        return;
-      }
       setState(() => _step = 1);
     } else if (_step == 1) {
-      if (!_consentVideos || !_consentStats) {
-        setState(() => _error = 'Both boxes are needed so we can show your reels.');
+      final c = _channels;
+      if (c == null || !c.qualified) {
+        setState(() => _error = 'We need at least ${c?.minFollowers ?? ChannelsList.defaultMinFollowers} followers or subscribers on YouTube or Instagram. Add a channel and check it, or try another channel.');
         return;
       }
       setState(() => _step = 2);
@@ -78,7 +77,7 @@ class _InfluencerJoinScreenState extends State<InfluencerJoinScreen> {
 
   @override
   Widget build(BuildContext context) {
-    const titles = ['Your page', 'Your permission', 'Your WhatsApp'];
+    const titles = ['Your details', 'Your channels', 'Your WhatsApp'];
     return Scaffold(
       body: SafeArea(
         child: Column(
@@ -108,18 +107,13 @@ class _InfluencerJoinScreenState extends State<InfluencerJoinScreen> {
                     _label('Email'),
                     TextField(controller: _email, keyboardType: TextInputType.emailAddress, style: t(17, w: FontWeight.w700), decoration: const InputDecoration(hintText: 'you@example.com')),
                     const SizedBox(height: 12),
-                    _label('Your YouTube, Instagram or Facebook page'),
-                    TextField(controller: _url, keyboardType: TextInputType.url, style: t(16, w: FontWeight.w700), decoration: const InputDecoration(hintText: 'instagram.com/yourname')),
                     const SizedBox(height: 10),
-                    Text('We show your public reels to fans. Fans can then call you at your own rate.', style: t(14, color: C.muted, w: FontWeight.w700, h: 1.4)),
+                    Text('Next you connect your Instagram or YouTube. We show your public reels to fans. Fans can then call you at your own rate.', style: t(14, color: C.muted, w: FontWeight.w700, h: 1.4)),
                   ],
                   if (_step == 1) ...[
-                    Text('To show your page here we need your OK for two things:', style: t(16, w: FontWeight.w700, h: 1.4)),
-                    const SizedBox(height: 12),
-                    _check('Show my videos as embeds in the Reels feed and on my profile.', _consentVideos, (v) => setState(() => _consentVideos = v)),
-                    _check('Show my likes, comments and video counts.', _consentStats, (v) => setState(() => _consentStats = v)),
-                    const SizedBox(height: 8),
-                    Text('Only videos with your face in the first seconds go on the feed. You can remove any video later.', style: t(14, color: C.muted, w: FontWeight.w700, h: 1.4)),
+                    ChannelsStep(onLoaded: (l) {
+                      if (mounted) setState(() => _channels = l);
+                    }),
                   ],
                   if (_step == 2) ...[
                     Text('We send call alerts and booking reminders here.', style: t(16, w: FontWeight.w700, h: 1.4)),
@@ -174,24 +168,6 @@ class _InfluencerJoinScreenState extends State<InfluencerJoinScreen> {
   }
 
   Widget _label(String s) => Padding(padding: const EdgeInsets.only(bottom: 6), child: Text(s, style: t(15)));
-
-  Widget _check(String label, bool v, ValueChanged<bool> on) => Padding(
-        padding: const EdgeInsets.only(bottom: 10),
-        child: InkWell(
-          onTap: () => on(!v),
-          child: Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(color: v ? C.butter : C.paper, borderRadius: BorderRadius.circular(14), border: Border.all(color: v ? C.marigold : C.sand, width: 2)),
-            child: Row(
-              children: [
-                Icon(v ? Icons.check_box_rounded : Icons.check_box_outline_blank_rounded, color: C.maroon, size: 28),
-                const SizedBox(width: 10),
-                Expanded(child: Text(label, style: t(15, h: 1.35))),
-              ],
-            ),
-          ),
-        ),
-      );
 }
 
 // ---------------------------------------------------------------------------------------------- Shell
@@ -382,7 +358,12 @@ class InfluencerHomeScreen extends StatelessWidget {
                 if (todays.isEmpty) Text('No bookings today.', style: t(15, color: C.muted, w: FontWeight.w700)),
                 for (final b in todays) BookingTile(b),
                 const SizedBox(height: 22),
-                Text('My reels', style: t(20, color: C.maroon)),
+                Row(
+                  children: [
+                    Expanded(child: Text('My reels', style: t(20, color: C.maroon))),
+                    TextButton(onPressed: () => context.push('/inf/channels'), child: Text('Manage channels', style: t(15, color: C.maroon))),
+                  ],
+                ),
                 const SizedBox(height: 4),
                 Text('24 of 31 passed the face check and are in the feed.', style: t(14, color: C.muted, w: FontWeight.w700)),
                 const SizedBox(height: 10),

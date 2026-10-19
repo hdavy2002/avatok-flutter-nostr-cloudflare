@@ -388,6 +388,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   _info('Name', demo.name),
                   _info('Email', demo.email),
                   _info('WhatsApp', demo.whatsappDisplay),
+                  // [HF-WIRE-3] Channels: for an influencer, or someone who has started joining.
+                  if (demo.influencerJoined || Services.instance.me?.hostStatus != null) _link(context, 'Channels', '/inf/channels'),
                   const SizedBox(height: 18),
                   Text('WhatsApp messages', style: t(18, color: C.maroon)),
                   _switch('Call alerts', _callAlerts, (v) => setState(() => _callAlerts = v)),
