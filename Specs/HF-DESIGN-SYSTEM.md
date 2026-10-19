@@ -403,6 +403,9 @@ then *"they still seem squeezed height-wise"*. The fix that was approved:
 - **Art buttons (keys) — the approved standard (owner, 2026-10-19):** caps `0.95 × key height` for the help keys
   (squashed PNGs), labels Nunito 900 forced with `!important` (the shared chrome resets link fonts), 22–26px on
   desktop and 17–20px on phones, always one line.
+- **Standard header (owner, 2026-10-19):** one header on every page (`components/callvaal/Header.astro`): Home ·
+  Explore · How it works · Help, then Sign in and the red **Join us** CTA (`.cv-join`, 3px ink border, hard shadow,
+  Nunito 900) while signed out. Signed in: Join us and Sign in disappear; Dashboard and Sign out show.
 - **Footer toran (owner, 2026-10-19):** the homepage marigold toran (`/assets/hf-desi/toran-marigold.webp`) hangs
   from the top of the shared footer (`components/callvaal/Footer.astro`, `.cv-footer-toran`, 72px) on every page.
   Pages don't add their own toran above the footer.

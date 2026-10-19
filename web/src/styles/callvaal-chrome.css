@@ -111,3 +111,9 @@ footer.cv-footer .cv-footer-bottom .cv-footer-disclaimer{display:block;box-sizin
 footer.cv-footer .cv-footer-credits,footer.cv-footer .cv-footer-credits p{text-align:center!important;margin-left:auto;margin-right:auto}
 /* [HF-FOOTER-TORAN-1] marigold toran hanging from the top edge of every footer (art: /assets/hf-desi/toran-marigold.webp, 1400x280) */
 .cv-footer .cv-footer-toran{height:72px;margin:-20px 0 24px;background:var(--cv-toran,none) repeat-x center bottom/auto 120.2%;pointer-events:none}
+/* [HF-HEADER-STD-1] the "Join us" CTA on every header (signed out only; hidden by the cv-auth-out rule once signed in) */
+.cv-header .cv-navigation .cv-join{justify-content:center;min-height:46px;padding:0 22px;border-radius:14px;background:#bf1d40;color:#fff;border:3px solid #30245f;box-shadow:4px 4px 0 #30245f;font:900 17px/1 'Nunito',system-ui,sans-serif;letter-spacing:.02em;white-space:nowrap;text-decoration:none;transition:transform .15s,box-shadow .15s}
+.cv-header .cv-navigation .cv-join:hover{text-decoration:none;transform:translate(-2px,-2px);box-shadow:6px 6px 0 #30245f;color:#fff}
+.cv-header .cv-navigation a[aria-current=page]:not(.cv-join):not(.cv-dashboards){text-decoration:underline;text-decoration-thickness:3px;text-underline-offset:6px}
+@media (max-width:699px){.cv-header .cv-navigation .cv-join{margin-top:6px;min-height:52px;font-size:18px}}
+
