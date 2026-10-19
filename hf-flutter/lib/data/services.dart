@@ -8,6 +8,7 @@ import 'auth/clerk_client.dart';
 import 'intro_store.dart';
 import 'models/me.dart';
 import 'repos/auth_repo.dart';
+import 'repos/bookings_repo.dart';
 import 'repos/calls_repo.dart';
 import 'repos/channels_repo.dart';
 import 'favourites_store.dart';
@@ -39,6 +40,7 @@ class Services {
     refreshMe: refreshMe,
   );
   late final ChannelsRepo channelsRepo = ChannelsRepo(api); // [HF-WIRE-3]
+  late final BookingsRepo bookingsRepo = BookingsRepo(api); // [HF-WIRE-8]
   late final ReelsRepo reelsRepo = ReelsRepo(api); // [HF-WIRE-4]
   late final WalletRepo walletRepo = WalletRepo(api); // [HF-WIRE-6]
   late final CallsRepo callsRepo = CallsRepo(api); // [HF-WIRE-7]

@@ -11,6 +11,7 @@ import '../presence_bridge.dart';
 import '../state.dart';
 import '../theme.dart';
 import '../widgets.dart';
+import 'bookings_real.dart'; // [HF-WIRE-8]
 import 'channels.dart';
 
 // ---------------------------------------------------------------------------------------------- Join
@@ -332,8 +333,10 @@ class InfluencerHomeScreen extends StatelessWidget {
                     TextButton(onPressed: () => StatefulNavigationShell.of(context).goBranch(1), child: Text('All', style: t(15, color: C.maroon))),
                   ],
                 ),
+                if (BookingsBridge.real) const RealTodaysBookings() else ...[ // [HF-WIRE-8]
                 if (todays.isEmpty) Text('No bookings today.', style: t(15, color: C.muted, w: FontWeight.w700)),
                 for (final b in todays) BookingTile(b),
+                ],
                 const SizedBox(height: 22),
                 if (PresenceBridge.real) const MyReelsSection() else ...[
                 Row(

@@ -16,6 +16,7 @@ import '../reels_real.dart';
 import '../state.dart';
 import '../theme.dart';
 import '../widgets.dart';
+import 'bookings_real.dart'; // [HF-WIRE-8]
 import 'sheets.dart';
 
 /// Public influencer profile (HF-REEL-8): likes, videos, rate, bio, Call now / Book,
@@ -245,6 +246,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         ),
                     ],
                   ),
+                )
+              else if (BookingsBridge.real) // [HF-WIRE-8] real open dates and free times
+                SliverPadding(
+                  padding: const EdgeInsets.fromLTRB(22, 0, 22, 40),
+                  sliver: SliverToBoxAdapter(child: RealProfileCalendar(slug: who.id)),
                 )
               else
                 SliverPadding(

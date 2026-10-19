@@ -173,7 +173,7 @@ async function publicAvailability(req: Request, env: Env, slug: string): Promise
 }
 
 type BookingStatus = "confirming" | "confirmed" | "starting" | "active" | "settling" | "completed" | "cancelled" | "failed";
-type BookingRow = {
+export type BookingRow = {
   id: string; host_uid: string; customer_uid: string; starts_at: number; ends_at: number; host_timezone: string;
   schedule_version: number; quote_id: string; idempotency_key: string; status: BookingStatus; duration_min: number;
   reserved_paise: number; expected_host_net_paise: number; expected_host_paid_net_paise: number; expected_host_test_net_paise: number;
@@ -184,7 +184,7 @@ type BookingQuoteRow = {
   schedule_version: number; expires_at: number; status: string; reserved_paise: number;
   price_snapshot_json: string; policy_snapshot_json: string;
 };
-type HfHostPricingRow = {
+export type HfHostPricingRow = {
   uid: string; slug: string; status: string; price_per_min: number; category: string;
   women_lane: number; lgbtq_lane: number;
 };
@@ -192,7 +192,7 @@ const BOOKING_ACTIVE = "('confirming','confirmed','starting','active','settling'
 const BOOKING_APP = "hf_booking";
 const QUOTE_TTL_MS = 5 * 60_000;
 
-function bookingPublic(row: BookingRow, role: "host" | "customer") {
+export function bookingPublic(row: BookingRow, role: "host" | "customer") {
   const common = {
     id: row.id, status: row.status, hostUid: row.host_uid, customerUid: row.customer_uid,
     startUtc: new Date(Number(row.starts_at)).toISOString(), endUtc: new Date(Number(row.ends_at)).toISOString(),
@@ -213,7 +213,7 @@ function eventTrack(env: Env, uid: string, event: string, props: Record<string, 
   }).catch(() => undefined);
 }
 
-function parseUtcIso(value: unknown): number | null {
+export function parseUtcIso(value: unknown): number | null {
   if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?Z$/.test(value)) return null;
   const ms = Date.parse(value);
   return Number.isFinite(ms) && new Date(ms).toISOString() === new Date(value).toISOString() ? ms : null;
@@ -256,7 +256,7 @@ async function bookingEligibility(env: Env, uid: string, host: HfHostPricingRow,
   return null;
 }
 
-async function loadHostPricing(env: Env, host: HfHostPricingRow) {
+export async function loadHostPricing(env: Env, host: HfHostPricingRow) {
   const cfg = await readConfig(env).catch(() => ({})) as Record<string, unknown>;
   if (cfg.hfCallsEnabled !== true || !callsConfigured(env)) return null;
   const tk = readHfTokenConfig(cfg);
@@ -286,7 +286,7 @@ async function loadHostPricing(env: Env, host: HfHostPricingRow) {
 }
 
 
-async function quoteRoute(req: Request, env: Env): Promise<Response> {
+export async function quoteRoute(req: Request, env: Env): Promise<Response> {
   const auth = await requireUser(req, env);
   if (isFail(auth)) return err(auth.status, auth.error);
   const limited = await rateLimit(env, "hfbookquote:" + auth.uid, 12, 600);
@@ -366,7 +366,7 @@ async function quoteRoute(req: Request, env: Env): Promise<Response> {
   return json({ quote }, 201, { "cache-control": "private, no-store" });
 }
 
-async function confirmRoute(req: Request, env: Env): Promise<Response> {
+export async function confirmRoute(req: Request, env: Env): Promise<Response> {
   const auth = await requireUser(req, env);
   if (isFail(auth)) return err(auth.status, auth.error);
   const idempotencyKey = req.headers.get("Idempotency-Key")?.trim() ?? "";
@@ -554,7 +554,12 @@ async function detailRoute(req: Request, env: Env, id: string): Promise<Response
   return json({ booking: bookingPublic(row, role) }, 200, { "cache-control": "private, no-store" });
 }
 
-async function cancelRoute(req: Request, env: Env, id: string): Promise<Response> {
+/** [HF-WIRE-8] HF-REEL-28: a fan cancels free until 1 h before the booked minute; after that the hold is kept. Influencer cancels always refund. */
+export const FAN_FREE_CANCEL_MS = 60 * 60_000;
+export const FAN_TOO_LATE_TEXT = "It is less than 1 hour to your booking, so it can no longer be cancelled for free. Your hold stays and the call will ring at the booked time.";
+export const FAN_CANCEL_RULE_TEXT = "You can cancel for free until 1 hour before. After that the hold is kept.";
+
+export async function cancelRoute(req: Request, env: Env, id: string, opts: { fanCutoff?: boolean } = {}): Promise<Response> {
   const auth = await requireUser(req, env);
   if (isFail(auth)) return err(auth.status, auth.error);
   const row = await env.DB_META.prepare("SELECT * FROM hf_bookings WHERE id=?1 AND (host_uid=?2 OR customer_uid=?2)")
@@ -563,6 +568,9 @@ async function cancelRoute(req: Request, env: Env, id: string): Promise<Response
   const role = row.host_uid === auth.uid ? "host" : "customer";
   if (row.status === "cancelled") return json({ booking: bookingPublic(row, role) }, 200, { "cache-control": "private, no-store" });
   if (row.status !== "confirmed" || !row.call_id) return err(409, "booking_not_cancellable");
+  if (opts.fanCutoff && role === "customer" && Number(row.starts_at) - Date.now() < FAN_FREE_CANCEL_MS) {
+    return err(409, "too_late", { message: FAN_TOO_LATE_TEXT });
+  }
   const reservation = await getReservation(env, row.call_id);
   if (!reservation || reservation.secondsCovered !== Number(row.duration_min) * 60 || !reservation.lots.length) return err(409, "booking_hold_unavailable");
   const now = Date.now();
@@ -607,6 +615,12 @@ async function startBookingRoute(req: Request, env: Env, bookingId: string): Pro
   const row = await env.DB_META.prepare("SELECT * FROM hf_bookings WHERE id=?1 AND customer_uid=?2")
     .bind(bookingId, auth.uid).first<BookingRow>();
   if (!row) return err(404, "booking_not_found");
+  return startBookingCore(env, row, auth.uid, now);
+}
+
+/** [HF-WIRE-8] Shared by the fan's Start button and the auto-start cron (actorUid null). Rings the influencer first. */
+export async function startBookingCore(env: Env, row: BookingRow, actorUid: string | null, now: number): Promise<Response> {
+  const bookingId = row.id;
   if (row.status === "starting" || row.status === "active" || row.status === "settling") {
     const existing = await env.DB_META.prepare("SELECT id,status FROM hf_calls WHERE booking_id=?1").bind(bookingId)
       .first<{ id: string; status: string }>();
@@ -655,7 +669,7 @@ async function startBookingRoute(req: Request, env: Env, bookingId: string): Pro
           Number(priceSnapshot.callCostPaisePerMin), Number(priceSnapshot.hostShareBps), String(priceSnapshot.taxMode ?? ""), String(priceSnapshot.splitRuleVersion ?? ""),
           JSON.stringify(priceSnapshot.creator ?? priceSnapshot.std ?? priceSnapshot), bookingId),
       env.DB_META.prepare("INSERT INTO hf_booking_events(id,booking_id,operation_id,actor_uid,from_status,to_status,details_json,created_at) SELECT ?1,?2,?3,?4,'confirmed','starting',?5,?6 WHERE EXISTS (SELECT 1 FROM hf_bookings WHERE id=?2 AND status='starting')")
-        .bind(crypto.randomUUID(), bookingId, "start:"+callId, auth.uid, JSON.stringify({ callId }), now),
+        .bind(crypto.randomUUID(), bookingId, "start:"+callId, actorUid, JSON.stringify({ callId }), now),
     ]);
     const started = await env.DB_META.prepare("SELECT b.status AS booking_status,c.id AS call_id FROM hf_bookings b LEFT JOIN hf_calls c ON c.booking_id=b.id WHERE b.id=?1")
       .bind(bookingId).first<{ booking_status: string; call_id: string | null }>();

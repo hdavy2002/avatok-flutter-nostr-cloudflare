@@ -7,6 +7,7 @@ import '../../data/services.dart';
 import '../state.dart';
 import '../theme.dart';
 import '../widgets.dart';
+import 'bookings_real.dart'; // [HF-WIRE-8]
 import 'call_real.dart';
 import 'call_records_real.dart';
 import 'settings_real.dart';
@@ -285,6 +286,7 @@ class BookingsScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (BookingsBridge.real) return const RealBookingsScreen(); // [HF-WIRE-8]
     return Scaffold(
       body: SafeArea(
         child: ListenableBuilder(

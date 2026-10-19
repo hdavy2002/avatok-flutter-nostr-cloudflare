@@ -1,0 +1,235 @@
+/// Booking shapes (HF-WIRE-8). Dates are IST dates written `YYYY-MM-DD`, times are 24-hour `HH:MM` in IST.
+/// Money is whole paise.
+
+int _i(Object? v) => v is num ? v.round() : int.tryParse('$v') ?? 0;
+String? _s(Object? v) => v is String && v.isNotEmpty ? v : null;
+
+/// `2026-10-21` for a calendar day (no time zone maths: the person's calendar day).
+String isoDay(DateTime d) => '${d.year.toString().padLeft(4, '0')}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+
+/// Accepts `2026-10-21` and the demo's unpadded `2026-10-21` style (`2026-10-2`). Null when it is not a date.
+DateTime? parseDay(String? k) {
+  if (k == null || k.isEmpty) return null;
+  final p = k.split('-').map(int.tryParse).toList();
+  if (p.length != 3 || p.any((x) => x == null)) return null;
+  return DateTime(p[0]!, p[1]!, p[2]!);
+}
+
+/// `16:00` -> `4:00 pm`, `09:00` -> `9:00 am`, `12:00` -> `12:00 pm`. Anything else is returned as it came.
+String slotLabel(String hhmm) {
+  final m = RegExp(r'^(\d{2}):(\d{2})$').firstMatch(hhmm);
+  if (m == null) return hhmm;
+  final h = int.parse(m.group(1)!);
+  final h12 = h % 12 == 0 ? 12 : h % 12;
+  return '$h12:${m.group(2)} ${h < 12 ? 'am' : 'pm'}';
+}
+
+/// `GET/PUT /api/hf/hosts/me/rate` and the `rate` block of the availability response.
+/// [hostGetsPerMinPaise] comes from the SERVER's split rule; the app never does this maths itself.
+class RateInfo {
+  const RateInfo({
+    required this.ratePerMin,
+    required this.minRate,
+    required this.maxRate,
+    required this.editable,
+    required this.hostGetsPerMinPaise,
+    this.fixedMessage,
+  });
+
+  factory RateInfo.fromJson(Map<String, dynamic> j) => RateInfo(
+        ratePerMin: _i(j['ratePerMin']),
+        minRate: _i(j['minRate']),
+        maxRate: _i(j['maxRate']),
+        editable: j['editable'] != false,
+        hostGetsPerMinPaise: _i(j['hostGetsPerMinPaise']),
+        fixedMessage: _s(j['fixedMessage']),
+      );
+
+  final int ratePerMin;
+  final int minRate;
+  final int maxRate;
+
+  /// False when the Standard plan sets one rate for everyone.
+  final bool editable;
+  final int hostGetsPerMinPaise;
+  final String? fixedMessage;
+
+  RateInfo withRate(int rate, int hostGetsPaise) => RateInfo(
+        ratePerMin: rate,
+        minRate: minRate,
+        maxRate: maxRate,
+        editable: editable,
+        hostGetsPerMinPaise: hostGetsPaise,
+        fixedMessage: fixedMessage,
+      );
+}
+
+/// One calendar day of the influencer's availability.
+class DayPlan {
+  const DayPlan({required this.open, required this.slots});
+  final bool open;
+  final Set<String> slots;
+}
+
+/// `GET /api/hf/hosts/me/availability`.
+class HostAvailability {
+  const HostAvailability({
+    required this.version,
+    required this.today,
+    required this.horizonDays,
+    required this.slotChoices,
+    required this.days,
+    required this.booked,
+    required this.rate,
+  });
+
+  factory HostAvailability.fromJson(Map<String, dynamic> j) {
+    final days = <String, DayPlan>{};
+    final rawDays = j['days'];
+    if (rawDays is Map) {
+      rawDays.forEach((k, v) {
+        if (v is Map) {
+          final slots = v['slots'];
+          days['$k'] = DayPlan(open: v['open'] == true, slots: {if (slots is List) for (final s in slots) '$s'});
+        }
+      });
+    }
+    final booked = <String, Set<String>>{};
+    final rawBooked = j['booked'];
+    if (rawBooked is Map) {
+      rawBooked.forEach((k, v) => booked['$k'] = {if (v is List) for (final s in v) '$s'});
+    }
+    final choices = j['slotChoices'];
+    return HostAvailability(
+      version: _i(j['version']),
+      today: _s(j['today']) ?? isoDay(DateTime.now()),
+      horizonDays: _i(j['horizonDays']) == 0 ? 21 : _i(j['horizonDays']),
+      slotChoices: choices is List ? [for (final c in choices) '$c'] : const [],
+      days: days,
+      booked: booked,
+      rate: RateInfo.fromJson(j['rate'] is Map ? Map<String, dynamic>.from(j['rate'] as Map) : <String, dynamic>{}),
+    );
+  }
+
+  final int version;
+  final String today;
+  final int horizonDays;
+  final List<String> slotChoices;
+  final Map<String, DayPlan> days;
+  final Map<String, Set<String>> booked;
+  final RateInfo rate;
+
+  /// Last date the server lets her open (`YYYY-MM-DD`).
+  String get lastDay => isoDay(parseDay(today)!.add(Duration(days: horizonDays - 1)));
+
+  bool isOpen(String day) => days[day]?.open == true;
+  Set<String> slotsOn(String day) => days[day]?.slots ?? const <String>{};
+}
+
+/// `GET /api/hf/hosts/:slug/slots`: only free slots.
+class HostSlots {
+  const HostSlots({required this.minutes, required this.ratePerMin, required this.holdPaise, required this.today, required this.lastDate, required this.days});
+
+  factory HostSlots.fromJson(Map<String, dynamic> j) {
+    final days = <String, List<String>>{};
+    final raw = j['days'];
+    if (raw is Map) {
+      raw.forEach((k, v) {
+        if (v is List && v.isNotEmpty) days['$k'] = [for (final s in v) '$s'];
+      });
+    }
+    return HostSlots(
+      minutes: _i(j['minutes']) == 0 ? 10 : _i(j['minutes']),
+      ratePerMin: _i(j['ratePerMin']),
+      holdPaise: _i(j['holdPaise']),
+      today: _s(j['today']) ?? isoDay(DateTime.now()),
+      lastDate: _s(j['lastDate']) ?? isoDay(DateTime.now().add(const Duration(days: 20))),
+      days: days,
+    );
+  }
+
+  final int minutes;
+  final int ratePerMin;
+  final int holdPaise;
+  final String today;
+  final String lastDate;
+
+  /// Date -> free `HH:MM` slots. Closed days are simply missing.
+  final Map<String, List<String>> days;
+
+  Set<String> get openDays => days.keys.toSet();
+  List<String> slotsOn(String day) => days[day] ?? const [];
+}
+
+/// One booking, from either side. Fan rows have [hostSlug]/[hostName]; influencer rows have [fanHandle]/[note].
+/// There is never a phone number in here.
+class AppBooking {
+  const AppBooking({
+    required this.id,
+    required this.status,
+    required this.startAt,
+    required this.day,
+    required this.time,
+    required this.minutes,
+    required this.holdPaise,
+    required this.canCancel,
+    required this.cancelRule,
+    this.cancelBlockedText,
+    this.hostSlug,
+    this.hostName,
+    this.fanHandle,
+    this.note = '',
+    this.expectedNetPaise = 0,
+  });
+
+  factory AppBooking.fromJson(Map<String, dynamic> j) => AppBooking(
+        id: '${j['id'] ?? ''}',
+        status: '${j['status'] ?? ''}',
+        startAt: DateTime.tryParse('${j['startAt'] ?? ''}')?.toLocal() ?? DateTime.fromMillisecondsSinceEpoch(0),
+        day: '${j['day'] ?? ''}',
+        time: '${j['time'] ?? ''}',
+        minutes: _i(j['minutes']) == 0 ? 10 : _i(j['minutes']),
+        holdPaise: _i(j['holdPaise']),
+        canCancel: j['canCancel'] == true,
+        cancelRule: _s(j['cancelRule']) ?? '',
+        cancelBlockedText: _s(j['cancelBlockedText']),
+        hostSlug: _s(j['hostSlug']),
+        hostName: _s(j['hostName']),
+        fanHandle: _s(j['fanHandle']),
+        note: _s(j['note']) ?? '',
+        expectedNetPaise: _i(j['expectedNetPaise']),
+      );
+
+  final String id;
+  final String status;
+  final DateTime startAt;
+
+  /// IST date `YYYY-MM-DD` and `HH:MM`.
+  final String day;
+  final String time;
+  final int minutes;
+  final int holdPaise;
+  final bool canCancel;
+  final String cancelRule;
+
+  /// Why the fan can no longer cancel for free (shown instead of the normal dialog text).
+  final String? cancelBlockedText;
+  final String? hostSlug;
+  final String? hostName;
+  final String? fanHandle;
+  final String note;
+  final int expectedNetPaise;
+
+  DateTime get date => parseDay(day) ?? DateTime(startAt.year, startAt.month, startAt.day);
+}
+
+/// The answer to a cancel: the server's own sentence for the toast.
+class CancelResult {
+  const CancelResult({required this.message, required this.refundPaise});
+
+  factory CancelResult.fromJson(Map<String, dynamic> j) =>
+      CancelResult(message: _s(j['message']) ?? 'Booking cancelled.', refundPaise: _i(j['refundPaise']));
+
+  final String message;
+  final int refundPaise;
+}

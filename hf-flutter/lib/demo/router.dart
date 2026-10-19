@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import 'screens/booking.dart';
+import 'screens/bookings_real.dart'; // [HF-WIRE-8]
 import 'screens/channels.dart';
 import 'screens/call.dart';
 import 'screens/favourites.dart';
@@ -39,7 +40,9 @@ final router = GoRouter(
     GoRoute(
       parentNavigatorKey: rootKey,
       path: '/book/:id',
-      builder: (_, s) => BookScreen(id: s.pathParameters['id']!, day: s.uri.queryParameters['day'], slot: s.uri.queryParameters['slot']),
+      builder: (_, s) => BookingsBridge.real
+          ? RealBookScreen(id: s.pathParameters['id']!, day: s.uri.queryParameters['day'], slot: s.uri.queryParameters['slot'])
+          : BookScreen(id: s.pathParameters['id']!, day: s.uri.queryParameters['day'], slot: s.uri.queryParameters['slot']),
     ),
     GoRoute(parentNavigatorKey: rootKey, path: '/call/:id', builder: (_, s) => CallScreen(id: s.pathParameters['id']!)),
     GoRoute(parentNavigatorKey: rootKey, path: '/wallet', builder: (_, __) => const WalletScreen()),
@@ -81,20 +84,24 @@ final router = GoRouter(
       builder: (context, state, shell) => InfluencerShell(shell: shell),
       branches: [
         StatefulShellBranch(routes: [GoRoute(path: '/inf/home', builder: (_, __) => const InfluencerHomeScreen())]),
-        StatefulShellBranch(routes: [GoRoute(path: '/inf/bookings', builder: (_, __) => const InfluencerBookingsScreen())]),
+        StatefulShellBranch(routes: [GoRoute(path: '/inf/bookings', builder: (_, __) => BookingsBridge.real ? const RealInfluencerBookingsScreen() : const InfluencerBookingsScreen())]),
         StatefulShellBranch(routes: [GoRoute(path: '/inf/status', builder: (_, __) => const InfluencerStatusScreen())]),
-        StatefulShellBranch(routes: [GoRoute(path: '/inf/availability', builder: (_, __) => const AvailabilityScreen())]),
+        StatefulShellBranch(routes: [GoRoute(path: '/inf/availability', builder: (_, __) => BookingsBridge.real ? const RealAvailabilityScreen() : const AvailabilityScreen())]),
       ],
     ),
     GoRoute(
       parentNavigatorKey: rootKey,
       path: '/book/:id/confirm',
-      builder: (_, s) => BookConfirmScreen(id: s.pathParameters['id']!, day: s.uri.queryParameters['day'] ?? '', slot: s.uri.queryParameters['slot'] ?? ''),
+      builder: (_, s) => BookingsBridge.real
+          ? RealBookConfirmScreen(id: s.pathParameters['id']!, day: s.uri.queryParameters['day'] ?? '', slot: s.uri.queryParameters['slot'] ?? '')
+          : BookConfirmScreen(id: s.pathParameters['id']!, day: s.uri.queryParameters['day'] ?? '', slot: s.uri.queryParameters['slot'] ?? ''),
     ),
     GoRoute(
       parentNavigatorKey: rootKey,
       path: '/booked/:id',
-      builder: (_, s) => BookedScreen(id: s.pathParameters['id']!, day: s.uri.queryParameters['day'] ?? '', slot: s.uri.queryParameters['slot'] ?? ''),
+      builder: (_, s) => BookingsBridge.real
+          ? RealBookedScreen(day: s.uri.queryParameters['day'] ?? '', slot: s.uri.queryParameters['slot'] ?? '', name: s.uri.queryParameters['name'] ?? '')
+          : BookedScreen(id: s.pathParameters['id']!, day: s.uri.queryParameters['day'] ?? '', slot: s.uri.queryParameters['slot'] ?? ''),
     ),
   ],
 );

@@ -308,6 +308,7 @@ import { hfVobizAdminRoute } from "./routes/hf_vobiz_admin"; // [HF-VOBIZ-SPEND-
 import { hfStdAdminRoute } from "./routes/hf_std_admin"; // [HF-STD-PLAN-1] admin Standard-plan reporting + rupee lot migration
 import { runVobizWatch } from "./lib/hf_vobiz_watch"; // [HF-VOBIZ-SPEND-1] every-minute Vobiz spend watcher
 import { hfCallsRoute } from "./routes/hf_calls"; // [HF-CALLS-1] masked paid calls, presence, test credits, Vobiz webhooks (flag hfCallsEnabled)
+import { hfBookingsAppRoute, runHfBookingAutoStart } from "./routes/hf_bookings_app"; // [HF-WIRE-8]
 import { hfBookingsRoute } from "./routes/hf_bookings"; // [HF-BOOKING-CALENDAR-1] host availability and reserved bookings (flag hfBookingsEnabled)
 import { runHfCallsCron } from "./lib/hf_calls_store"; // [HF-CALLS-1] 8 h auto-offline + stuck-call sweep
 import { runHfBookingsCron } from "./lib/hf_booking_store"; // [HF-BOOKING-CALENDAR-1] bounded no-show and hold cleanup
@@ -515,7 +516,7 @@ export default {
           .catch((e) => { console.error("[play-voids] failed:", String(e)); }),
         runConsultCron(env).catch((e) => { console.error("[consult-cron] failed:", String(e)); }), // [AUMFE-CONSULT-FOUNDATION-1]
         runHfCallsCron(env).catch((e) => { console.error("[hf-calls-cron] failed:", String(e)); }), // [HF-CALLS-1]
-        readConfig(env).then((c) => c.hfBookingsEnabled === true ? runHfBookingsCron(env) : null)
+        readConfig(env).then(async (c) => { if (c.hfBookingsEnabled !== true) return null; const st = await runHfBookingAutoStart(env).catch(() => null); if (st && st.scanned) console.log("[hf-booking-autostart]", JSON.stringify(st)); return runHfBookingsCron(env); }) // [HF-WIRE-8] start booked calls at their minute, then the existing cleanup
           .then((r) => { if (r && (r.expiredQuotes || r.noShows.processed || r.noShows.blocked || r.recovery.processed || r.recovery.blocked)) console.log("[hf-bookings-cron]", JSON.stringify(r)); })
           .catch((e) => { console.error("[hf-bookings-cron] failed:", String(e)); }), // [HF-BOOKING-CALENDAR-1]
         runHfPresenceNudge(env).then((r) => { if (r.scanned) console.log("[hf-presence-nudge]", JSON.stringify(r)); }).catch((e) => { console.error("[hf-presence-nudge] failed:", String(e)); }), // [HF-PRESENCE-NUDGE-1]
@@ -1144,10 +1145,10 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
       if (p.startsWith("/api/guides/")) { const r = await guidesRoute(req, env, p); if (r) return r; } // [AUMFE-GUIDE-BRAIN-1]
       if (p.startsWith("/api/consultants/")) { const r = await consultRoute(req, env, p, ctx); if (r) return r; } // [AUMFE-CONSULT-FOUNDATION-1]
       if (p === "/api/hf/hosts" || p === "/api/hf/options") { const r = await hfHostsListRoute(req, env, ctx); if (r) return r; } // [HF-NATIVE-S2/S3]
-      if (p === "/api/hosts/me/availability" || p === "/api/hosts/me/bookings/summary" || p.startsWith("/api/hf/bookings") || /^\/api\/hf\/hosts\/[^/]+\/availability$/.test(p)) {
+      if (p === "/api/hosts/me/availability" || p === "/api/hosts/me/bookings/summary" || p.startsWith("/api/hf/bookings") || /^\/api\/hf\/hosts\/[^/]+\/availability$/.test(p) || p === "/api/hf/hosts/me/rate" || /^\/api\/hf\/hosts\/[^/]+\/slots$/.test(p)) {
         const bookingConfig = await readConfig(env).catch(() => null);
         if (bookingConfig?.hfBookingsEnabled !== true) return new Response(null, { status: 404 });
-        const bookingResponse = await hfBookingsRoute(req, env);
+        const bookingResponse = (await hfBookingsAppRoute(req, env)) ?? (await hfBookingsRoute(req, env)); // [HF-WIRE-8] app adapter first; null = older router
         if (bookingResponse) return bookingResponse;
       } // [HF-BOOKING-CALENDAR-1] feature stays dark until the booked-call settlement path is ready
       if (p.startsWith("/api/hf/lanes/")) { const r = await hfLanesRoute(req, env, p, ctx); if (r) return r; } // [HF-LANE-VERIFY-1]
