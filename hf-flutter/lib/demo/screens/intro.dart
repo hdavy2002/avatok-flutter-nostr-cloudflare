@@ -58,7 +58,7 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
                 const SizedBox(height: 36),
                 Text('ROLLING OUT THE COLOURS…', style: t(22, color: C.gold, ls: 0.06)),
                 const SizedBox(height: 8),
-                Text('Chhotu is unfolding the next reel.', style: t(16, color: C.cream, w: FontWeight.w700)),
+                Text('Rangili is unfolding the next reel.', style: t(16, color: C.cream, w: FontWeight.w700)),
               ],
             ),
           ),
@@ -85,7 +85,7 @@ class CountdownLeader extends StatelessWidget {
         children: [
           Positioned.fill(
             child: Art(
-              'loading/leheriya-loader.png',
+              'loading/leheriya-loader.webp',
               fallback: Container(
                 decoration: BoxDecoration(shape: BoxShape.circle, color: C.deep, border: Border.all(color: C.brass, width: 6)),
                 child: CustomPaint(painter: _CrossPainter()),
@@ -241,8 +241,8 @@ class _IntroOne extends StatelessWidget {
         const SizedBox(height: 8),
         const Expanded(
           child: Padding(
-            padding: EdgeInsets.symmetric(horizontal: 28),
-            child: Art('intro/bazaar-hero.png', fallback: ArtStandIn('BAZAAR ART\nChhotu + bandhani stall', color: C.lemon)),
+            padding: EdgeInsets.symmetric(horizontal: 12),
+            child: Art('intro/bazaar-hero.webp', fallback: ArtStandIn('BAZAAR ART\nChhotu + bandhani stall', color: C.lemon)),
           ),
         ),
         Padding(
@@ -298,7 +298,7 @@ class _IntroTwo extends StatelessWidget {
             decoration: BoxDecoration(color: C.maroon, borderRadius: BorderRadius.circular(16), border: Border.all(color: C.lemon, width: 2)),
             child: Row(
               children: [
-                const SizedBox(width: 46, height: 46, child: Art('intro/invite-vote-badge.png', fallback: BrassKnob(label: 'Invite', size: 46, child: Icon(Icons.add_rounded, color: C.deep)))),
+                const SizedBox(width: 46, height: 46, child: Art('intro/invite-vote-badge.webp', fallback: BrassKnob(label: 'Invite', size: 46, child: Icon(Icons.add_rounded, color: C.deep)))),
                 const SizedBox(width: 12),
                 Expanded(
                   child: Text.rich(

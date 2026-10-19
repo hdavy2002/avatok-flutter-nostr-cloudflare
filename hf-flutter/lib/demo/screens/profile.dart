@@ -54,7 +54,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       right: 0,
                       bottom: 0,
                       height: 22,
-                      child: Art('profile/gota-border.png', fit: BoxFit.fitHeight, alignment: Alignment.centerLeft, fallback: CustomPaint(painter: _BulbPainter())),
+                      child: Art('profile/gota-border.webp', fit: BoxFit.fitHeight, alignment: Alignment.centerLeft, fallback: CustomPaint(painter: _BulbPainter())),
                     ),
                     Positioned(top: MediaQuery.paddingOf(context).top + 10, left: 16, child: const BackBtn()),
                     if (firstReel != null)

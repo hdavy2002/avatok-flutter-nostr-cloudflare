@@ -35,7 +35,7 @@ class _Guest extends StatelessWidget {
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                const ArtMoment('me/welcome-rangili.png', label: 'RANGILI\nwaving hello', size: 200, ring: C.butter),
+                const ArtMoment('me/welcome-rangili.webp', label: 'RANGILI\nwaving hello', size: 200, ring: C.butter),
                 const SizedBox(height: 10),
                 const Headline(solid: 'YOUR', outline: 'BAZAAR PASS', size: 40, align: TextAlign.center),
                 const SizedBox(height: 14),

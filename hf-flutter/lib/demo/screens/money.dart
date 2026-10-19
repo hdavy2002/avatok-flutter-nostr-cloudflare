@@ -42,7 +42,7 @@ class WalletScreen extends StatelessWidget {
                       children: [
                         Positioned.fill(
                           child: Art(
-                            'wallet/counter-board.png',
+                            'wallet/counter-board.webp',
                             fallback: Container(
                               decoration: BoxDecoration(
                                 color: C.deep,
@@ -188,7 +188,7 @@ class _TopUpScreenState extends State<TopUpScreen> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Expanded(child: Headline(solid: 'TOP', outline: 'UP', size: 50)),
-                      SizedBox(width: 120, height: 110, child: Art('topup/thread-spools.png', fallback: ArtStandIn('THREAD SPOOLS', color: C.ivory, ink: C.brassDark))),
+                      SizedBox(width: 120, height: 110, child: Art('topup/thread-spools.webp', fallback: ArtStandIn('THREAD SPOOLS', color: C.ivory, ink: C.brassDark))),
                     ],
                   ),
                   const SizedBox(height: 18),
@@ -416,7 +416,7 @@ class _PayoutScreenState extends State<PayoutScreen> {
                             ],
                           ),
                         ),
-                        const SizedBox(width: 110, height: 100, child: Art('payout/potli-bag.png', fallback: ArtStandIn('POTLI BAG', color: C.ivory, ink: C.brassDark))),
+                        const SizedBox(width: 110, height: 100, child: Art('payout/potli-bag.webp', fallback: ArtStandIn('POTLI BAG', color: C.ivory, ink: C.brassDark))),
                       ],
                     ),
                     const SizedBox(height: 16),

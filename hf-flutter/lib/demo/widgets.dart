@@ -9,9 +9,10 @@ import 'theme.dart';
 /// Picture from the Rang Bazaar art pack (claude/hello-fraands-rang-bazaar-app-artwork-prompts.md).
 /// Until the owner saves the file, [fallback] (a drawn stand-in) is shown instead.
 class Art extends StatelessWidget {
-  const Art(this.path, {super.key, this.fit = BoxFit.contain, this.fallback, this.width, this.height, this.alignment = Alignment.center});
+  const Art(this.path, {super.key, this.fit = BoxFit.contain, this.fallback, this.width, this.height, this.alignment = Alignment.center, this.repeat = ImageRepeat.noRepeat});
 
   final String path;
+  final ImageRepeat repeat;
   final BoxFit fit;
   final Widget? fallback;
   final double? width;
@@ -26,6 +27,7 @@ class Art extends StatelessWidget {
       width: width,
       height: height,
       alignment: alignment,
+      repeat: repeat,
       errorBuilder: (context, error, stack) => SizedBox(width: width, height: height, child: fallback ?? const SizedBox.shrink()),
     );
   }
@@ -233,7 +235,7 @@ class ChunkyButton extends StatelessWidget {
   }
 }
 
-/// Round mirror-work button (feed side buttons, menu medallions). Uses feed/mirror-button.png when saved.
+/// Round mirror-work button (feed side buttons, menu medallions). Uses feed/mirror-button.webp when saved.
 class BrassKnob extends StatelessWidget {
   const BrassKnob({super.key, required this.child, this.onTap, this.size = 52, required this.label});
 
@@ -257,7 +259,7 @@ class BrassKnob extends StatelessWidget {
             children: [
               Positioned.fill(
                 child: Art(
-                  'feed/mirror-button.png',
+                  'feed/mirror-button.webp',
                   fallback: Container(
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
@@ -345,7 +347,7 @@ class StatusPill extends StatelessWidget {
   }
 }
 
-/// Bandhani band with a gota scallop edge (intro/bandhani-border.png when saved).
+/// Bandhani band with a gota scallop edge (intro/bandhani-border.webp when saved).
 class Valance extends StatelessWidget {
   const Valance({super.key, this.height = 74});
 
@@ -357,7 +359,7 @@ class Valance extends StatelessWidget {
       height: height,
       width: double.infinity,
       child: Art(
-        'intro/bandhani-border.png',
+        'intro/bandhani-border.webp',
         fit: BoxFit.fitHeight,
         alignment: Alignment.topLeft,
         fallback: CustomPaint(painter: _ValancePainter()),
@@ -394,7 +396,7 @@ class _ValancePainter extends CustomPainter {
   bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
 
-/// Leheriya-striped side rail (feed/leheriya-rail.png when saved).
+/// Leheriya-striped side rail (feed/leheriya-rail.webp when saved).
 class SprocketRail extends StatelessWidget {
   const SprocketRail({super.key, this.width = 10});
 
@@ -406,7 +408,7 @@ class SprocketRail extends StatelessWidget {
       width: width,
       child: Opacity(
         opacity: 0.9,
-        child: Art('feed/leheriya-rail.png', fit: BoxFit.fitWidth, alignment: Alignment.topCenter, fallback: CustomPaint(painter: _RailPainter())),
+        child: Art('feed/leheriya-rail.webp', fit: BoxFit.fitWidth, alignment: Alignment.topCenter, repeat: ImageRepeat.repeatY, fallback: CustomPaint(painter: _RailPainter())),
       ),
     );
   }

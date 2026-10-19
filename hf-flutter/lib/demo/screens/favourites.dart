@@ -32,7 +32,7 @@ class FavouritesScreen extends StatelessWidget {
                       child: Column(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          const ArtMoment('favourites/empty-sakhi.png', label: 'TARA\nhugging a heart', size: 200),
+                          const ArtMoment('favourites/empty-sakhi.webp', label: 'TARA\nhugging a heart', size: 200),
                           const SizedBox(height: 18),
                           Text('No favourites yet', style: t(22, color: C.maroon)),
                           const SizedBox(height: 6),

@@ -277,7 +277,7 @@ class BookedScreen extends StatelessWidget {
           child: Column(
             children: [
               const Spacer(),
-              const ArtMoment('booking/booked-tara.png', label: 'TARA\nso happy', size: 240, ring: C.butter),
+              const ArtMoment('booking/booked-tara.webp', label: 'TARA\nso happy', size: 240, ring: C.butter),
               const SizedBox(height: 18),
               const Headline(solid: 'BOOKED!', size: 46, align: TextAlign.center),
               const SizedBox(height: 8),

@@ -69,7 +69,7 @@ const influencers = <Influencer>[
     videos: 148,
     online: true,
     tones: [Color(0xFFFF8A1F), Color(0xFFC2185B)],
-    portrait: 'profile/demo-meera.png',
+    portrait: 'profile/demo-meera.webp',
   ),
   Influencer(
     id: 'arjun',
@@ -84,7 +84,7 @@ const influencers = <Influencer>[
     videos: 96,
     online: true,
     tones: [Color(0xFF14A9C4), Color(0xFF7B2FBE)],
-    portrait: 'profile/demo-arjun.png',
+    portrait: 'profile/demo-arjun.webp',
   ),
   Influencer(
     id: 'priya',
@@ -99,7 +99,7 @@ const influencers = <Influencer>[
     videos: 211,
     online: true,
     tones: [Color(0xFF7B2FBE), Color(0xFF14A9C4)],
-    portrait: 'profile/demo-priya.png',
+    portrait: 'profile/demo-priya.webp',
   ),
   Influencer(
     id: 'rohan',
@@ -156,7 +156,7 @@ const influencers = <Influencer>[
     videos: 175,
     online: false,
     tones: [Color(0xFFFF2E7A), Color(0xFF7B2FBE)],
-    portrait: 'profile/demo-simran.png',
+    portrait: 'profile/demo-simran.webp',
   ),
   Influencer(
     id: 'ananya',
@@ -171,7 +171,7 @@ const influencers = <Influencer>[
     videos: 64,
     online: false,
     tones: [Color(0xFF14A9C4), Color(0xFFC2185B)],
-    portrait: 'profile/demo-ananya.png',
+    portrait: 'profile/demo-ananya.webp',
   ),
 ];
 

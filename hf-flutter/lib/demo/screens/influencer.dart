@@ -493,7 +493,7 @@ class InfluencerStatusScreen extends StatelessWidget {
                   const SizedBox(height: 12),
                   Center(
                     child: ArtMoment(
-                      on ? 'influencer/online-mode.png' : 'influencer/offline-mode.png',
+                      on ? 'influencer/online-mode.webp' : 'influencer/offline-mode.webp',
                       label: on ? 'RANGILI\nready to talk' : 'RANGILI\nresting',
                       size: 250,
                       ring: on ? C.butter : C.violet,
@@ -594,7 +594,7 @@ class _InfluencerBookingsScreenState extends State<InfluencerBookingsScreen> {
                   crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
                     const Expanded(child: Headline(solid: 'MY', outline: 'BOOKINGS', size: 38)),
-                    SizedBox(width: 110, height: 70, child: Art('influencer/calendar-header.png', fit: BoxFit.contain)),
+                    SizedBox(width: 110, height: 70, child: Art('influencer/calendar-header.webp', fit: BoxFit.contain)),
                   ],
                 ),
                 const SizedBox(height: 14),
