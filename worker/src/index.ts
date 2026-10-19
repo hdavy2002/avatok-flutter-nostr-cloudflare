@@ -93,6 +93,7 @@ import {
   saathumCheckoutPaid, // [SAATHUM-UPI-3LAYER 2026-09-29]
 } from "./routes/saathum_checkout";
 import { runWhatsAppOutboxDrain } from "./lib/whatsapp_notify"; // [WA-NOTIFY-1]
+import { hfOnlineCountRoute } from "./routes/hf_online_count";
 import { hfNotifyRoute, runHfNotifyMaterializer } from "./lib/hf_notify";
 import { runHfBookingReminders } from "./lib/hf_booking_reminders"; // [HF-APPT-REMIND-1] // [HF-CALLS-1 / HF-NOTIFY-DELIVERY-1]
 import { preetiRoute } from "./routes/preeti"; // [SAATHUM-PREETI-1]
@@ -1168,6 +1169,7 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
         if (r) return r;
       }
       if (p.startsWith("/api/admin/hf/hosts") || p.startsWith("/api/admin/hf/avatars") || p.startsWith("/api/admin/hf/listings")) { const r = await hfHostsAdminRoute(req, env, ctx); if (r) return r; } // [HF-HOST-PLATFORM-1]
+      if (p === "/api/hf/online-count") { const r = await hfOnlineCountRoute(req, env); if (r) return r; } // [HF-WIRE-5]
       if (p.startsWith("/api/hf/") || p.startsWith("/api/admin/hf/reviews")) { const r = (await hfReviewsRoute(req, env, ctx)) ?? (await hfNotifyRoute(req, env, ctx)); if (r) return r; } // [HF-CALLS-1]
       if (p.startsWith("/api/me/push/")) { const r = await mePushRoute(req, env, p); if (r) return r; } // [DASH2-PUSH]
       if (p.startsWith("/api/me/") || p.startsWith("/api/admin/refunds/") || p === "/api/admin/refunds"

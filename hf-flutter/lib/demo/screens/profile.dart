@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import '../data.dart';
+import '../notify_me_button.dart';
 import '../state.dart';
 import '../theme.dart';
 import '../widgets.dart';
@@ -104,11 +105,18 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           flex: 3,
                           child: who.online
                               ? TicketButton(label: 'CALL NOW', labelSize: 18, stubIcon: Icons.call_rounded, stubWidth: 52, height: 60, onTap: () => startCall(context, who))
-                              : Container(
-                                  height: 60,
-                                  alignment: Alignment.center,
-                                  decoration: BoxDecoration(color: C.sand, borderRadius: BorderRadius.circular(16)),
-                                  child: Text('Offline right now', style: t(16, color: C.muted)),
+                              : Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Container(
+                                      height: 60,
+                                      alignment: Alignment.center,
+                                      decoration: BoxDecoration(color: C.sand, borderRadius: BorderRadius.circular(16)),
+                                      child: Text('Offline right now', style: t(16, color: C.muted)),
+                                    ),
+                                    const SizedBox(height: 8),
+                                    NotifyMeButton(slug: who.id, firstName: who.name.split(' ').first),
+                                  ],
                                 ),
                         ),
                         const SizedBox(width: 10),

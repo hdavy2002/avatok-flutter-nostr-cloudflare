@@ -3,6 +3,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../core/brand.dart';
 import '../data.dart';
+import '../online_now_pill.dart';
 import '../state.dart';
 import '../theme.dart';
 import '../widgets.dart';
@@ -50,22 +51,7 @@ class _FeedScreenState extends State<FeedScreen> {
                 const Expanded(
                   child: Text(Brand.name, style: TextStyle(fontFamily: 'Comfortaa', fontSize: 21, color: C.ivory, fontWeight: FontWeight.w400)),
                 ),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                  decoration: BoxDecoration(
-                    gradient: const LinearGradient(colors: [C.lemon, C.saffron], begin: Alignment.topCenter, end: Alignment.bottomCenter),
-                    borderRadius: BorderRadius.circular(999),
-                    border: Border.all(color: C.maroon, width: 2),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Container(width: 9, height: 9, decoration: const BoxDecoration(shape: BoxShape.circle, color: C.rani)),
-                      const SizedBox(width: 8),
-                      Text('${onlineCount * 21} online now', style: t(14, color: C.deep, ls: 0.04)),
-                    ],
-                  ),
-                ),
+                OnlineNowPill(demoCount: onlineCount * 21),
               ],
             ),
           ),

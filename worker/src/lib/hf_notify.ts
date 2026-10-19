@@ -8,12 +8,18 @@ import { track, trackException } from "../hooks";
 import { BRAND, brandUrl } from "./brand";
 import { verifiedWhatsAppNumber } from "./whatsapp_notify";
 import { hfCallsOn } from "./hf_reviews";
+import { readConfig } from "../routes/config";
 import { NOTIFY_WINDOW_MS, firstNameOf } from "./hf_reviews_pure";
 import { notifyWhatsappOn } from "../routes/hf_dash_v3"; // [HF-DASH-V3-1]
 
 const APP = BRAND.slug;
 const SAFETY_SWEEP_LIMIT = 200;
 const TRANSITION_PAGE_SIZE = 200;
+/** [HF-WIRE-5] Notify me works when calls OR the reels app are open. */
+async function hfNotifyOn(env: Env): Promise<boolean> {
+  if (await hfCallsOn(env)) return true;
+  try { return (await readConfig(env)).hfReelsEnabled === true; } catch { return false; }
+}
 const err = (status: number, error: string, message?: string) => json({ error, message: message ?? error }, status);
 
 type NotifyCandidate = {
@@ -137,7 +143,7 @@ export async function notifyHostOnline(env: Env, ctx: ExecutionContext | undefin
   let cursorCreated = -1;
   let cursorCaller = "";
   try {
-    if (!(await hfCallsOn(env))) return;
+    if (!(await hfNotifyOn(env))) return;
     for (;;) {
       const rows = (await env.DB_META.prepare(
         `SELECT n.caller_uid, n.host_uid, n.created_at, h.display_name, h.slug
@@ -171,7 +177,7 @@ export async function notifyHostOnline(env: Env, ctx: ExecutionContext | undefin
 
 /** Bounded cron safety net for subscriptions missed by an interrupted online transition. */
 export async function runHfNotifyMaterializer(env: Env, limit = SAFETY_SWEEP_LIMIT, now = Date.now()): Promise<HfNotifyMaterializeResult> {
-  if (!(await hfCallsOn(env))) return { scanned: 0, queued: 0, deferred: 0, skipped: 0, failed: 0 };
+  if (!(await hfNotifyOn(env))) return { scanned: 0, queued: 0, deferred: 0, skipped: 0, failed: 0 };
   const rows = (await env.DB_META.prepare(
     `SELECT n.caller_uid, n.host_uid, n.created_at, h.display_name, h.slug
        FROM hf_notify n JOIN hf_hosts h ON h.uid=n.host_uid
@@ -194,7 +200,7 @@ export async function hfNotifyRoute(req: Request, env: Env, ctx?: ExecutionConte
   if (!m) return null;
   if (req.method !== "GET" && req.method !== "POST" && req.method !== "DELETE") return err(405, "method_not_allowed");
   try {
-    if (!(await hfCallsOn(env))) return err(404, "not_enabled");
+    if (!(await hfNotifyOn(env))) return err(404, "not_enabled");
     const u = await requireUser(req, env);
     if (isFail(u)) return err(u.status, u.error);
     const host = await env.DB_META.prepare("SELECT uid FROM hf_hosts WHERE slug=?1 AND status='live'").bind(m[1]).first<{ uid: string }>();

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import '../data.dart';
+import '../presence_bridge.dart';
 import '../state.dart';
 import '../theme.dart';
 import '../widgets.dart';
@@ -203,13 +204,14 @@ class InfluencerShell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    ensurePresenceLoaded();
     return ListenableBuilder(
-      listenable: demo,
+      listenable: presenceListenable,
       builder: (context, _) {
         final items = <(IconData, String)>[
           (Icons.home_rounded, 'Home'),
           (Icons.event_note_rounded, 'Bookings'),
-          (demo.online ? Icons.wifi_tethering_rounded : Icons.nightlight_round, demo.online ? 'Online' : 'Offline'),
+          (myOnline ? Icons.wifi_tethering_rounded : Icons.nightlight_round, myOnline ? 'Online' : 'Offline'),
           (Icons.edit_calendar_rounded, 'Availability'),
         ];
         return Scaffold(
@@ -269,14 +271,14 @@ class InfluencerShell extends StatelessWidget {
             height: 40,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              color: demo.online ? C.rani : C.muted,
+              color: myOnline ? C.rani : C.muted,
               border: Border.all(color: on ? C.lemon : C.paper, width: 3),
-              boxShadow: demo.online ? [BoxShadow(color: C.rani.withValues(alpha: 0.4), blurRadius: 10, spreadRadius: 1)] : null,
+              boxShadow: myOnline ? [BoxShadow(color: C.rani.withValues(alpha: 0.4), blurRadius: 10, spreadRadius: 1)] : null,
             ),
-            child: Icon(demo.online ? Icons.wifi_tethering_rounded : Icons.nightlight_round, color: C.paper, size: 22),
+            child: Icon(myOnline ? Icons.wifi_tethering_rounded : Icons.nightlight_round, color: C.paper, size: 22),
           ),
           const SizedBox(height: 2),
-          Text(demo.online ? 'Online' : 'Offline', style: t(12, color: demo.online ? C.rani : C.muted)),
+          Text(myOnline ? 'Online' : 'Offline', style: t(12, color: myOnline ? C.rani : C.muted)),
         ],
       );
 }
@@ -291,7 +293,7 @@ class InfluencerHomeScreen extends StatelessWidget {
     return Scaffold(
       body: SafeArea(
         child: ListenableBuilder(
-          listenable: demo,
+          listenable: presenceListenable,
           builder: (context, _) {
             final today = dayOnly(DateTime.now());
             final todays = demo.bookingsOn(today);
@@ -306,21 +308,21 @@ class InfluencerHomeScreen extends StatelessWidget {
                   child: Container(
                     padding: const EdgeInsets.all(18),
                     decoration: BoxDecoration(
-                      color: demo.online ? C.maroon : C.deep,
+                      color: myOnline ? C.maroon : C.deep,
                       borderRadius: BorderRadius.circular(20),
                       boxShadow: const [BoxShadow(color: C.lemon, offset: Offset(5, 5))],
                     ),
                     child: Row(
                       children: [
-                        Icon(demo.online ? Icons.wifi_tethering_rounded : Icons.nightlight_round, color: C.lemon, size: 34),
+                        Icon(myOnline ? Icons.wifi_tethering_rounded : Icons.nightlight_round, color: C.lemon, size: 34),
                         const SizedBox(width: 14),
                         Expanded(
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Text(demo.online ? 'You are ONLINE' : 'You are OFFLINE', style: t(20, color: C.gold)),
+                              Text(myOnline ? 'You are ONLINE' : 'You are OFFLINE', style: t(20, color: C.gold)),
                               Text(
-                                demo.online ? 'Fans see your reels and can call you now.' : 'No calls now. Fans can still book you.',
+                                myOnline ? 'Fans see your reels and can call you now.' : 'No calls now. Fans can still book you.',
                                 style: t(14, color: C.cream, w: FontWeight.w700),
                               ),
                             ],
@@ -478,9 +480,9 @@ class InfluencerStatusScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       body: ListenableBuilder(
-        listenable: demo,
+        listenable: presenceListenable,
         builder: (context, _) {
-          final on = demo.online;
+          final on = myOnline;
           return AnimatedContainer(
             duration: const Duration(milliseconds: 350),
             color: on ? C.ivory : C.deep,
@@ -509,10 +511,7 @@ class InfluencerStatusScreen extends StatelessWidget {
                   ),
                   const SizedBox(height: 26),
                   GestureDetector(
-                    onTap: () {
-                      demo.setOnline(!on);
-                      toast(context, demo.online ? 'You are online. Fans can call you now.' : 'You are offline. Bookings stay open.');
-                    },
+                    onTap: () => togglePresence(context),
                     child: AnimatedContainer(
                       duration: const Duration(milliseconds: 300),
                       height: 84,

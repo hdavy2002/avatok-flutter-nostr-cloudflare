@@ -66,6 +66,9 @@ export function instantBookingOverlapGuardSql(first: number): string {
 async function callsOn(env: Env): Promise<boolean> {
   try { return (await readConfig(env)).hfCallsEnabled === true; } catch { return false; }
 }
+async function reelsOn(env: Env): Promise<boolean> {
+  try { return (await readConfig(env)).hfReelsEnabled === true; } catch { return false; }
+}
 async function nextBookingCutoff(env: Env, callerUid: string, hostUid: string, now: number): Promise<number | null> {
   const parties = [callerUid, hostUid];
   const active = await env.DB_META.prepare(
@@ -592,7 +595,8 @@ async function walletEstimate(req: Request, env: Env): Promise<Response> {
 
 // ── host presence ────────────────────────────────────────────────────────────
 async function presenceRoute(req: Request, env: Env, p: string, ctx?: ExecutionContext): Promise<Response> {
-  if (!(await callsOn(env))) return NOT_ENABLED();
+  // [HF-WIRE-5] the reels app uses presence without calls being open: calls OR reels flag.
+  if (!(await callsOn(env)) && !(await reelsOn(env))) return NOT_ENABLED();
   const u = await requireUser(req, env);
   if (isFail(u)) return err(u.status, u.error, u.error);
   const host = await env.DB_META.prepare("SELECT uid, status, presence FROM hf_hosts WHERE uid=?1").bind(u.uid).first<{ uid: string; status: string; presence: string | null }>();
