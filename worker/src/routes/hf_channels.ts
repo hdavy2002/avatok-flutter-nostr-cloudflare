@@ -24,6 +24,7 @@ import { trackUser, trackException } from "../hooks";
 import { BRAND } from "../lib/brand";
 import { emailFor } from "../lib/identity";
 import { readConfig } from "./config";
+import { readInfluencerRate } from "../lib/hf_influencer_rate"; // [HF-WIRE-18]
 import { ensureSlug } from "../lib/hf_host_store"; // [HF-WIRE-10]
 import { importChannelReels, importCountOf, refreshDemoReels } from "../lib/hf_reels_import"; // [HF-WIRE-4]
 import {
@@ -108,6 +109,11 @@ async function ensureInfluencerSlug(env: Env, uid: string): Promise<void> {
   }
 }
 
+/** [HF-WIRE-18] HF-REEL-37: a new influencer starts at the default rate (Rs 5/min) unless she sets her own later. */
+async function defaultRateRupees(env: Env): Promise<number> {
+  return readInfluencerRate((await readConfig(env).catch(() => ({}))) as unknown as Record<string, unknown>).defaultRupees;
+}
+
 /** Keep hf_hosts.status in step with the channels. Returns the host status afterwards (null = no row) and whether she qualifies. */
 export async function syncHostState(env: Env, uid: string, now = Date.now()): Promise<{ hostStatus: string | null; qualified: boolean }> {
   const ok = Number((await env.DB_META.prepare("SELECT COUNT(*) AS c FROM hf_channels WHERE host_uid=?1 AND status='approved'").bind(uid).first<{ c: number }>())?.c ?? 0);
@@ -115,7 +121,7 @@ export async function syncHostState(env: Env, uid: string, now = Date.now()): Pr
   const cur = host?.status ?? null;
   if (ok > 0) {
     if (cur === null) {
-      await env.DB_META.prepare("INSERT OR IGNORE INTO hf_hosts (uid, status, created_at, updated_at) VALUES (?1, 'approved', ?2, ?2)").bind(uid, now).run();
+      await env.DB_META.prepare("INSERT OR IGNORE INTO hf_hosts (uid, status, price_per_min, created_at, updated_at) VALUES (?1, 'approved', ?3, ?2, ?2)").bind(uid, now, await defaultRateRupees(env)).run();
       await ensureInfluencerSlug(env, uid);
       return { hostStatus: "approved", qualified: true };
     }
@@ -135,7 +141,7 @@ export async function syncHostState(env: Env, uid: string, now = Date.now()): Pr
 }
 
 async function ensureHostRow(env: Env, uid: string, now: number): Promise<void> {
-  await env.DB_META.prepare("INSERT OR IGNORE INTO hf_hosts (uid, status, created_at, updated_at) VALUES (?1, 'pending_check', ?2, ?2)").bind(uid, now).run();
+  await env.DB_META.prepare("INSERT OR IGNORE INTO hf_hosts (uid, status, price_per_min, created_at, updated_at) VALUES (?1, 'pending_check', ?3, ?2, ?2)").bind(uid, now, await defaultRateRupees(env)).run();
 }
 
 export type CheckResult = "approved" | "needs_followers" | "code_missing" | "not_found" | "private" | "hidden_count" | "claimed";

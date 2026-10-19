@@ -18,6 +18,7 @@ import { transcribeAndFlag } from "../lib/hf_intro_check";
 import { isHostCategory, isCreatorCategory, validCreatorRate, CREATOR_MIN_RUPEES, CREATOR_MAX_RUPEES } from "../lib/hf_creator_pricing";
 import { encryptPii } from "../lib/pii_crypto";
 import { TOPIC_SLUGS, LANGUAGES, LANGUAGE_CODE_SET, STYLES, PRICE_MIN, PRICE_MAX, contactLeak } from "../lib/hf_options";
+import { pricingStd, readInfluencerRate } from "../lib/hf_influencer_rate"; // [HF-WIRE-18]
 
 const APP = BRAND.slug;
 const err = (status: number, error: string, extra: Record<string, unknown> = {}) => json({ error, ...extra }, status);
@@ -141,11 +142,13 @@ async function putMe(req: Request, env: Env, ctx: ExecutionContext | undefined):
   }
   // [HF-STD-PLAN-1] Standard plan: hosts no longer set a price; one rate card applies to every call. An older app still sending
   // pricePerMin is ignored (never an error, so onboarding is not blocked).
-  const stdOn = readHfStdPlan((await readConfig(env).catch(() => ({}))) as unknown as Record<string, unknown>).enabled;
+  const cfgNow = (await readConfig(env).catch(() => ({}))) as unknown as Record<string, unknown>;
+  const infRate = readInfluencerRate(cfgNow); // [HF-WIRE-18] HF-REEL-37: hosts set their own rate
+  const stdOn = pricingStd(readHfStdPlan(cfgNow), cfgNow).enabled;
   const creator = isCreatorCategory(patch.category ?? cur?.category);
   if (has("pricePerMin") && (creator || !stdOn)) {
     const n = b.pricePerMin;
-    if (creator ? !validCreatorRate(n) : typeof n !== "number" || !Number.isInteger(n) || n < PRICE_MIN || n > PRICE_MAX) return bad("pricePerMin", `Price must be a whole number from ₹${creator ? CREATOR_MIN_RUPEES : PRICE_MIN} to ₹${creator ? CREATOR_MAX_RUPEES : PRICE_MAX} per minute.`);
+    if (creator ? !validCreatorRate(n) : typeof n !== "number" || !Number.isInteger(n) || n < (infRate.on ? infRate.minRupees : PRICE_MIN) || n > PRICE_MAX) return bad("pricePerMin", `Price must be a whole number from ₹${creator ? CREATOR_MIN_RUPEES : infRate.on ? infRate.minRupees : PRICE_MIN} to ₹${creator ? CREATOR_MAX_RUPEES : PRICE_MAX} per minute.`);
     patch.price_per_min = n as number; changed.push("pricePerMin");
   }
   if (has("hours")) {

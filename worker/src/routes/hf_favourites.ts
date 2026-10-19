@@ -17,6 +17,7 @@ import { getLaneAccess } from "../lib/hf_lanes";
 import { readConfig } from "./config";
 import { card, SEL, type LiveRow } from "./hf_hosts_public";
 import { readHfStdPlan } from "../lib/hf_token_config";
+import { pricingStd, readInfluencerRate } from "../lib/hf_influencer_rate"; // [HF-WIRE-18]
 
 export const MAX_FAVOURITES = 500;
 const err = (status: number, error: string, message?: string) => json({ ok: false, error, message: message ?? error }, status);
@@ -44,7 +45,7 @@ export async function hfFavouritesRoute(req: Request, env: Env, p: string): Prom
 
     if (!one) {
       const access = await getLaneAccess(env, uid);
-      const std = readHfStdPlan(cfg as unknown as Record<string, unknown>); // [HF-DASH-V3-1]
+      const std = pricingStd(readHfStdPlan(cfg as unknown as Record<string, unknown>), cfg as unknown as Record<string, unknown>); // [HF-DASH-V3-1] [HF-WIRE-18]
       const rows = (await env.DB_META.prepare(`${SEL} WHERE h.status='live' AND h.slug IS NOT NULL AND h.uid IN (SELECT host_uid FROM hf_favourites WHERE uid=?1)`)
         .bind(uid).all<LiveRow>()).results ?? [];
       const saved = new Map(((await env.DB_META.prepare("SELECT host_uid, created_at FROM hf_favourites WHERE uid=?1").bind(uid).all<{ host_uid: string; created_at: number }>()).results ?? [])

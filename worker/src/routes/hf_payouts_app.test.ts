@@ -30,7 +30,7 @@ let currentUid = "host1";
 vi.mock("../authz", () => ({ requireUser: async () => ({ uid: currentUid }), isFail: (x: any) => x.error !== undefined }));
 vi.mock("../lib/preview", () => ({ isAdminUid: (_e: any, uid: string) => uid === "admin1" }));
 let cfgOn = true;
-vi.mock("./config", () => ({ readConfig: async () => ({ hfPayoutsEnabled: cfgOn, hfPayoutMinRupees: 500, hfPayoutMaxPerWeek: 2 }) }));
+vi.mock("./config", () => ({ readConfig: async () => ({ hfPayoutsEnabled: cfgOn, hfPayoutMaxPerWeek: 2 }) }));
 vi.mock("../hooks", () => ({ track: async () => {}, trackException: async () => {} }));
 vi.mock("../lib/whatsapp_notify", () => ({ verifiedWhatsAppNumber: async () => null }));
 vi.mock("../lib/whatsapp_send", () => ({ sendWhatsAppText: async () => ({ ok: true }) }));
@@ -125,7 +125,7 @@ describe("GET /api/hf/payouts/summary", () => {
   it("kycStatus none / pending / verified, upi null when unset", async () => {
     seedInfluencer();
     let s = await jsonOf(await hit("GET", "/api/hf/payouts/summary"));
-    expect(s).toMatchObject({ readyPaise: 0, onHoldPaise: 0, minPaise: 50000, upi: null, kycStatus: "none", history: [] });
+    expect(s).toMatchObject({ readyPaise: 0, onHoldPaise: 0, minPaise: 0, upi: null, kycStatus: "none", history: [] });
     h.db.exec("INSERT INTO hf_kyc VALUES ('host1', NULL)");
     expect((await jsonOf(await hit("GET", "/api/hf/payouts/summary"))).kycStatus).toBe("pending");
     h.db.exec("UPDATE hf_kyc SET verified_at=1");
@@ -152,9 +152,9 @@ describe("GET /api/hf/payouts/summary", () => {
     s = await jsonOf(await hit("GET", "/api/hf/payouts/summary"));
     expect(s.history.map((x: any) => x.status).sort()).toEqual(["paid", "rejected"]);
   });
-  it("[HF-WIRE-13] fans see the payout summary (nothing ready, fan minimum); flag off is 404; own data only", async () => {
+  it("[HF-WIRE-13] fans see the payout summary (nothing ready, no minimum); flag off is 404; own data only", async () => {
     const f = await jsonOf(await hit("GET", "/api/hf/payouts/summary"));
-    expect(f).toMatchObject({ status: 200, readyPaise: 0, minPaise: 10000, isInfluencer: false });
+    expect(f).toMatchObject({ status: 200, readyPaise: 0, minPaise: 0, isInfluencer: false });
     seedInfluencer({ upi: true, kyc: true }); wallet.balance = 1000; call("old", 20, 1000);
     await post(50000);
     currentUid = "other"; h.db.exec("INSERT INTO hf_hosts VALUES ('other','approved','Ben','ben-abcd')");
@@ -178,13 +178,14 @@ describe("POST /api/hf/payouts", () => {
     seedInfluencer({ upi: true, kyc: true }); cfgOn = false;
     expect((await jsonOf(await post(60000))).error).toBe("not_enabled");
   });
-  it("min Rs 500, whole rupees, and at most what is ready", async () => {
+  it("[HF-WIRE-18] no minimum (HF-REEL-38): any whole rupee above 0, and at most what is ready", async () => {
     seedInfluencer({ upi: true, kyc: true }); wallet.balance = 1500; call("old", 20, 1500);
     expect((await jsonOf(await post(50050, "a"))).error).toBe("invalid_amount"); // not whole rupees
-    expect((await jsonOf(await post(40000, "b"))).error).toBe("below_minimum");
+    expect((await jsonOf(await post(0, "b0"))).error).toBe("invalid_amount"); // zero is never a withdrawal
+    expect((await jsonOf(await post(100, "b"))).status).toBe(200); // Rs 1 is fine
     expect((await jsonOf(await post("abc", "c"))).error).toBe("invalid_amount");
     expect((await jsonOf(await post(150100, "d"))).error).toBe("insufficient_withdrawable");
-    expect((await jsonOf(await post(150000, "e"))).status).toBe(200);
+    expect((await jsonOf(await post(150000, "e"))).error).toBe("insufficient_withdrawable"); // Rs 1 is already requested
   });
   it("needs a UPI (409 upi_required) before anything else is created", async () => {
     seedInfluencer({ kyc: true }); wallet.balance = 1000; call("old", 20, 1000);

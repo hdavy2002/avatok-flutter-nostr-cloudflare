@@ -130,7 +130,7 @@ export interface RupeeWallet {
   balance: string; available: string; test: string; debt: string; debtOpen: boolean;
 }
 export interface StdPlanTier { fromMin: number; toMin: number | null; paisePerMin: number; rupeesPerMin?: string }
-export interface StdPlanInfo { enabled?: boolean; startPaisePerMin?: number; gstBps?: number; gstInclusive?: boolean; tiers?: StdPlanTier[] }
+export interface StdPlanInfo { enabled?: boolean; startPaisePerMin?: number; gstBps?: number; gstInclusive?: boolean; influencerSetsRate?: boolean; tiers?: StdPlanTier[] }
 export interface PurchaseSplit { paidPaise: number; gstPaise: number; walletPaise: number; orderId?: string }
 export interface WalletInfo {
   paidBalance: number; testBalance: number; spendable: number;

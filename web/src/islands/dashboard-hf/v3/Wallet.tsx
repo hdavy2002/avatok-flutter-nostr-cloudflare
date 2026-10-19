@@ -81,7 +81,7 @@ export default function Wallet() {
           <RefundBox onAsk={() => setRefundOpen(true)} key={`rf${rcptKey}`} />
         </Card>
         <Card title="Payment receipts" note={`Sent to WhatsApp and email after every top-up`}><Receipts reloadKey={rcptKey} /></Card>
-        {w?.mode === 'rupees' && <Card title="Call rates" note="The same Standard plan for every influencer" tone={1}><div className="h3-break">{rateCardLines(w.plan?.tiers).map(l => <div key={l}><span>{l}</span></div>)}</div></Card>}
+        {w?.mode === 'rupees' && !w.plan?.influencerSetsRate && <Card title="Call rates" note="Each influencer sets their own rate; you see it before you call" tone={1}><div className="h3-break">{rateCardLines(w.plan?.tiers).map(l => <div key={l}><span>{l}</span></div>)}</div></Card>}
       </div>
     </section>
 

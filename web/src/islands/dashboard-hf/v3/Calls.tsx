@@ -114,7 +114,7 @@ export default function Calls({ account }: { account: DashboardAccount }) {
             ['💰', 'You need at least ₹20 in your wallet to start a call.'], ['⌛', 'A call can last up to 60 minutes; you hear a heads-up near the end.'],
             ['#️⃣', 'Press # any time to end the call, block the person and report it.'], ['🧾', 'Charged twice, or for a call that was never made? It comes back to your wallet.']]
             .map(([e, t]) => <div key={t} style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}><span style={{ fontSize: 20 }} aria-hidden="true">{e}</span><span>{t}</span></div>)}
-          {wallet.data?.mode === 'rupees' && <div className="h3-break"><b>Standard plan</b>{rateCardLines(tiers).map(l => <div key={l}><span>{l}</span></div>)}</div>}
+          {wallet.data?.mode === 'rupees' && !wallet.data.plan?.influencerSetsRate && <div className="h3-break"><b>Standard plan</b>{rateCardLines(tiers).map(l => <div key={l}><span>{l}</span></div>)}</div>}
         </div>
       </Card>
     </section>

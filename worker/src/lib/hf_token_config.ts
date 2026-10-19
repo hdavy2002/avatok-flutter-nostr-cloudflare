@@ -87,7 +87,7 @@ export function readHfStdPlan(cfg: RawStd): HfStdPlan {
 /** What the app and website may see: the rate card and the GST note. Never host pay, phone cost or margins. */
 export function hfStdPlanPublic(cfg: RawStd): {
   enabled: boolean; tiers: Array<{ fromMin: number; toMin: number | null; paisePerMin: number; rupeesPerMin: string }>;
-  startPaisePerMin: number; gstBps: number; gstInclusive: boolean; minCompatibleBuild: number;
+  startPaisePerMin: number; gstBps: number; gstInclusive: boolean; minCompatibleBuild: number; influencerSetsRate: boolean;
 } {
   const p = readHfStdPlan(cfg);
   const t = p.tariff.tiers;
@@ -95,5 +95,6 @@ export function hfStdPlanPublic(cfg: RawStd): {
     enabled: p.enabled,
     tiers: t.map((b, i) => ({ fromMin: b.fromSec / 60, toMin: i + 1 < t.length ? t[i + 1].fromSec / 60 : null, paisePerMin: b.paisePerMin, rupeesPerMin: (b.paisePerMin / 100).toFixed(2) })),
     startPaisePerMin: t[0].paisePerMin, gstBps: p.gstBps, gstInclusive: p.gstInclusive, minCompatibleBuild: HF_STD_PLAN_MIN_COMPAT_BUILD,
+    influencerSetsRate: cfg.hfInfluencerSetsRate === true, // [HF-WIRE-18] HF-REEL-37: clients stop showing the one-rate card for influencers
   };
 }

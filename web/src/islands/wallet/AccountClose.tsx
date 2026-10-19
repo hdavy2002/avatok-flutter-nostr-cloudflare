@@ -128,7 +128,7 @@ export default function AccountClose() {
           </div>
           {info.held > 0 && <p className="hfc-note">Held earnings are paid after the hold ends, so closing will wait until then.</p>}
           {walletMoney > 0 && (
-            <p className="hfc-note" role="status">{withdrawFirst ? 'Withdraw your wallet money first, then come back here to close your account. ' : ''}<a className="hfc-btn" href={PAYOUT_HREF}>Go to Payout</a> If what is left is below the smallest withdrawal, you can choose to give it up below.</p>
+            <p className="hfc-note" role="status">{withdrawFirst ? 'Withdraw your wallet money first, then come back here to close your account. ' : ''}<a className="hfc-btn" href={PAYOUT_HREF}>Go to Payout</a> If what is left is under ₹1 (too small to pay out), you can choose to give it up below.</p>
           )}
           {!info.bankOk && (info.withdrawable > 0 || info.held > 0) && (
             <p className="hfc-note">To receive your earnings you need a verified bank account (<a href="/dashboard/host/earnings">add it on your Earnings page</a>). If you would rather not, you can give up those earnings below.</p>

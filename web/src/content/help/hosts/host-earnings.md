@@ -18,7 +18,7 @@ draft: false
 
 <!-- rebrand: reviewed -->
 
-Your fans pay per minute, at the rate you set. You earn your share of each connected minute. Here is how it works, in plain words.
+Your fans pay per minute, at the rate you set. A new influencer starts at ₹5 a minute, and ₹5 is the lowest rate. You can raise it any time. You earn your share of each connected minute. Here is how it works, in plain words.
 
 ## The simple rule
 

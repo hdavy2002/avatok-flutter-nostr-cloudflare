@@ -60,7 +60,7 @@ class PayoutSummary {
     return PayoutSummary(
       readyPaise: _i(j['readyPaise']),
       onHoldPaise: _i(j['onHoldPaise']),
-      minPaise: j['minPaise'] == null ? 50000 : _i(j['minPaise']),
+      minPaise: j['minPaise'] == null ? 0 : _i(j['minPaise']), // HF-REEL-38: no minimum unless the server sets one
       upi: upi is Map ? PayoutUpi.fromJson(Map<String, dynamic>.from(upi)) : null,
       kycStatus: switch (j['kycStatus']) {
         'verified' => KycStatus.verified,

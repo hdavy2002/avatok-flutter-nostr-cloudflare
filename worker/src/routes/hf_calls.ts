@@ -44,6 +44,7 @@ import { reserveTestCredits, settleTestCredits, grantTestCredits, getTestBalance
 import { maxMinutesFor, START_RESERVE_MINUTES, MAX_CALL_MINUTES, paidShortfall, hangupXml, callerDidntPickUpXml, callerHandle } from "../lib/hf_call_math";
 import { hasPositiveCallDuration } from "../lib/hf_reviews_pure";
 import { recordLegFromWebhook } from "../lib/hf_vobiz_ledger";
+import { pricingStd, readInfluencerRate } from "../lib/hf_influencer_rate"; // [HF-WIRE-18]
 
 const err = (status: number, error: string, message: string, extra: Record<string, unknown> = {}) => json({ error, message, ...extra }, status);
 const UNAVAILABLE = () => err(409, "host_unavailable", "This host isn't available right now.");
@@ -150,13 +151,14 @@ async function startCall(req: Request, env: Env): Promise<Response> {
   const bookingCutoff = rawCfg.hfBookingsEnabled === true ? await nextBookingCutoff(env, uid, host.uid, now) : null;
   if (bookingCutoff != null && bookingCutoff <= now) return err(409, "booking_window_conflict", "A scheduled booking is too close to start another call.");
   const tk = readHfTokenConfig(rawCfg);
-  const std = readHfStdPlan(rawCfg);
+  const std = pricingStd(readHfStdPlan(rawCfg), rawCfg); // [HF-WIRE-18] HF-REEL-37
+  const infRate = readInfluencerRate(rawCfg);
   if (isCreatorCategory(host.category)) {
     if (!validCreatorRate(rate)) return UNAVAILABLE();
     return await startTokenCall(env, { uid, hostUid: host.uid, lane, rate, callId, tk, hardEndsAt: bookingCutoff ?? undefined, bookingGuard: rawCfg.hfBookingsEnabled === true, creator: creatorSnapshotFor(host.category, rate) });
   }
   if (std.enabled) return await startTokenCall(env, { uid, hostUid: host.uid, lane, rate: std.tariff.tiers[0].paisePerMin / 100, callId, tk, hardEndsAt: bookingCutoff ?? undefined, bookingGuard: rawCfg.hfBookingsEnabled === true, std });
-  if (!(rate > 0)) return UNAVAILABLE();
+  if (!(rate > 0) || (infRate.on && rate < infRate.minRupees)) return UNAVAILABLE();
   if (tk.enabled) return await startTokenCall(env, { uid, hostUid: host.uid, lane, rate, callId, tk, hardEndsAt: bookingCutoff ?? undefined, bookingGuard: rawCfg.hfBookingsEnabled === true });
   const moneyRules = await readMoneyRules(env); // [HF-WIRE-13] rule 1 on the old rupee wallet too
   const needed = Math.max(rate * START_RESERVE_MINUTES, Math.ceil(moneyRules.minBalancePaise / 100));
@@ -632,7 +634,8 @@ async function walletEstimateInner(req: Request, env: Env): Promise<Response> {
   const rate = Math.trunc(Number(h.price_per_min));
   const cfgAll = (await readConfig(env).catch(() => ({}))) as Record<string, unknown>;
   const tk = readHfTokenConfig(cfgAll);
-  const std = readHfStdPlan(cfgAll);
+  const stdWallet = readHfStdPlan(cfgAll).enabled; // [HF-WIRE-18] wallet stays rupee-based; only pricing switches
+  const std = pricingStd(readHfStdPlan(cfgAll), cfgAll);
   if (isCreatorCategory(h.category)) {
     if (!validCreatorRate(rate)) return err(409, "invalid_pricing", "This listing's price is unavailable.");
     const [lots, v, sum] = await Promise.all([availableLots(env, u.uid), activeValuePaise(env, tk), balanceSummary(env, u.uid)]);
@@ -662,6 +665,15 @@ async function walletEstimateInner(req: Request, env: Env): Promise<Response> {
   if (!tk.enabled) return json({ mode: "inr", ratePerMinRupees: rate }, 200, { "cache-control": "private, no-store" });
   const [lots, v, sum] = await Promise.all([availableLots(env, u.uid), activeValuePaise(env, tk), balanceSummary(env, u.uid)]);
   const e = estimateForHost(lots, rate * 100, v);
+  if (stdWallet) { // [HF-WIRE-18] HF-REEL-37: her own rate on the rupee wallet (same shape as the creator estimate)
+    const ir = readInfluencerRate(cfgAll);
+    if (rate < ir.minRupees || rate > ir.maxRupees) return err(409, "invalid_pricing", "This listing's price is unavailable.");
+    return json({ mode: "rupees", plan: "host_rate", ratePerMinRupees: e.ratePerMinRupees, ratePaisePerMin: e.ratePaise, aboutText: e.aboutText,
+      affordableSeconds: e.affordableSeconds, affordableChargePaise: e.affordableChargePaise, operationalMaxSeconds: MAX_CALL_MINUTES * 60,
+      canStart: e.canStart && sum.debtValuePaise <= 0 && sum.debtMicro <= 0, startNeedPaise: rate * 100 * TOK_START_MINUTES,
+      balancePaise: sum.availablePaise, balance: formatRupees(sum.availablePaise), hasDebt: sum.debtValuePaise > 0 || sum.debtMicro > 0,
+      tokensPerMinute: e.ratePerMinRupees }, 200, { "cache-control": "private, no-store" });
+  }
   return json({
     mode: "tokens", ratePerMinRupees: rate, tokensPerMinute: e.tokensPerMinute, aboutText: e.aboutText, affordableSeconds: e.affordableSeconds, canStart: e.canStart,
     hasDebt: sum.debtValuePaise > 0 || sum.debtMicro > 0, balance: formatTokens(sum.totalMicro, 2),

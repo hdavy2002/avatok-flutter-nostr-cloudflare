@@ -48,10 +48,10 @@ async function cfg(env: Env) {
   const n = (v: unknown, d: number) => (typeof v === "number" && Number.isFinite(v) && v >= 0 ? Math.floor(v) : d);
   return {
     enabled: c.hfPayoutsEnabled === true,
-    minRupees: Math.max(1, n(c.hfPayoutMinRupees, 500)),
+    minRupees: n(c.hfPayoutMinRupees, 0), // [HF-WIRE-18] HF-REEL-38: default no minimum (0); amounts must still be > 0
     maxPerWeek: Math.max(1, n(c.hfPayoutMaxPerWeek, 2)),
-    fanMinRupees: moneyRulesFrom(c).fanPayoutMinRupees, // [HF-WIRE-13] wallet-only withdrawals (default Rs 100, owner to confirm)
-    // [HF-TOK-CALLS-1] hfTokensEnabled on: the host's INR ledger (paise) replaces the WalletDO for withdrawals. Payouts stay whole rupees, min Rs 500.
+    fanMinRupees: moneyRulesFrom(c).fanPayoutMinRupees, // [HF-WIRE-13] wallet-only withdrawals (default 0 = no minimum, HF-REEL-38)
+    // [HF-TOK-CALLS-1] hfTokensEnabled on: the host's INR ledger (paise) replaces the WalletDO for withdrawals. Payouts stay whole rupees, no minimum (HF-REEL-38).
     tokens: readHfTokenConfig(c).enabled,
   };
 }

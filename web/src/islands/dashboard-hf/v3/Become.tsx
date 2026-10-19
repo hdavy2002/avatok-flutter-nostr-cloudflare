@@ -37,7 +37,7 @@ export default function Become({ account }: { account: DashboardAccount }) {
   const price = PRICES[pi], per = hostPaisePerMin(price), month = Math.round(per * mins * 4.3);
   return <>
     <PageHead eyebrow="Become an influencer" title="Apni baatein, apni kamaai" sub="Create content on YouTube, Instagram or Facebook? Let your fans call you privately — and earn from every connected minute." art={<Sticker name="girlboss" w={100} rot={5} />} />
-    <section className="h3-kpis">{([['🔒', 'Number hidden', 'Fans never see your real number.'], ['🕐', 'Your hours', 'Go online or offline any time. Decline any call.'], ['💸', 'Real money', 'Paid to your own UPI or bank: minimum ₹500, 7 days after the call.'], ['🛡️', 'Safety first', 'Press # to end, block and report.']] as const)
+    <section className="h3-kpis">{([['🔒', 'Number hidden', 'Fans never see your real number.'], ['🕐', 'Your hours', 'Go online or offline any time. Decline any call.'], ['💸', 'Real money', 'Paid to your own UPI, no minimum payout, 7 days after the call.'], ['🛡️', 'Safety first', 'Press # to end, block and report.']] as const)
       .map(([e, t, d]) => <div key={t} className="h3-card"><div style={{ fontSize: 28 }} aria-hidden="true">{e}</div><h3 style={{ marginTop: 6 }}>{t}</h3><p className="small muted">{d}</p></div>)}</section>
     <section className="h3-row c21">
       <Card title="Get verified" note={st ? (STATUS_NOTE[st] ?? (st === 'live' ? 'Your profile is live 🎉' : 'Your profile is on its way.')) : 'About 10 minutes, start to finish'}>

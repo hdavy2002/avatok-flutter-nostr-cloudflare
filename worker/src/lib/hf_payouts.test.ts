@@ -42,6 +42,9 @@ describe("validatePayoutRequest", () => {
     expect(code({ amount: -5 })).toBe("400:invalid_amount");
     expect(code({ amount: 499 })).toBe("400:below_minimum");
     expect(code({ recentCount: 2 })).toBe("429:weekly_limit");
+    // [HF-WIRE-18] HF-REEL-38: minRupees 0 = no minimum, but zero is never a withdrawal
+    expect(code({ minRupees: 0, amount: 1 })).toBe("ok");
+    expect(code({ minRupees: 0, amount: 0 })).toBe("400:invalid_amount");
     expect(code({ amount: 801 })).toBe("402:insufficient_withdrawable");
   });
   it("accepts exactly the minimum and exactly the withdrawable", () => {

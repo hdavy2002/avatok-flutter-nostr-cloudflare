@@ -31,6 +31,7 @@ import {
   releaseHfScheduleWriteLock,
   saveHfBookingSchedule,
 } from "../lib/hf_booking_store";
+import { pricingStd, readInfluencerRate } from "../lib/hf_influencer_rate"; // [HF-WIRE-18]
 
 const err = (status: number, error: string, extra: Record<string, unknown> = {}) =>
   json({ error, ...extra }, status);
@@ -261,7 +262,8 @@ export async function loadHostPricing(env: Env, host: HfHostPricingRow) {
   const cfg = await readConfig(env).catch(() => ({})) as Record<string, unknown>;
   if (cfg.hfCallsEnabled !== true || !callsConfigured(env)) return null;
   const tk = readHfTokenConfig(cfg);
-  const std = readHfStdPlan(cfg);
+  const std = pricingStd(readHfStdPlan(cfg), cfg); // [HF-WIRE-18]
+  const infMin = readInfluencerRate(cfg);
   const rate = Math.trunc(Number(host.price_per_min) * 100);
   if (isCreatorCategory(host.category)) {
     if (!validCreatorRate(Number(host.price_per_min))) return null;
@@ -280,6 +282,7 @@ export async function loadHostPricing(env: Env, host: HfHostPricingRow) {
     }).hostPaise, plan: "standard" };
   }
   if (!tk.enabled || rate <= 0 || rate > 100_000 * 100) return null;
+  if (infMin.on && rate < infMin.minRupees * 100) return null; // [HF-WIRE-18] below the influencer minimum is not bookable
   const snapshot = snapshotFor(rate, tk);
   return { snapshot, price: priceOf(snapshot), hostNet: (seconds: number) => callSplit({
     ratePaise: rate, billableSeconds: seconds, callCostPaisePerMin: tk.callCostPaisePerMin, hostShareBps: tk.hostShareBps,

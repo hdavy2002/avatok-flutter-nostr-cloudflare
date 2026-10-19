@@ -2117,6 +2117,10 @@ export interface PlatformConfig {
   hfCallMinBalanceRupees: number;
   hfFirstMinuteDropChargePaise: number;
   hfFanPayoutMinRupees: number;
+  // [HF-WIRE-18] HF-REEL-37: influencers set their own rate. On = host pricing bypasses the fixed Standard tariff (wallet/GST unchanged).
+  hfInfluencerSetsRate: boolean;
+  hfDefaultRatePaise: number;
+  hfMinRatePaise: number;
   hfGatewayRefundsEnabled: boolean;
   hfMoneyMonitorEnabled: boolean;
   hfMoneyMonitorAutoFix: boolean;
@@ -2919,7 +2923,7 @@ const DEFAULTS: PlatformConfig = {
   panditChatEnabled: false,
   hostKycEnabled: false, // [HF-HOST-KYC-1] dark until the owner flips it
   hfPayoutsEnabled: false, // [HF-PAYOUT-1] dark until the owner flips it
-  hfPayoutMinRupees: 500,
+  hfPayoutMinRupees: 0, // [HF-WIRE-18] HF-REEL-38: no minimum withdrawal
   hfPayoutHoldDays: 7,
   hfPayoutMaxPerWeek: 2,
   hostOnboardingEnabled: false, // [HF-HOST-PLATFORM-1] dark until the owner flips it
@@ -2949,7 +2953,10 @@ const DEFAULTS: PlatformConfig = {
   hfTopupConfirmAboveRupees: 1000, // [HF-WALLET-LIMITS-1]
   hfCallMinBalanceRupees: 20, // [HF-WIRE-13] HF-REEL-35 rule 1
   hfFirstMinuteDropChargePaise: 100, // [HF-WIRE-13] HF-REEL-35 rule 3 (Rs 1)
-  hfFanPayoutMinRupees: 100, // [HF-WIRE-13] HF-REEL-36; owner to confirm
+  hfFanPayoutMinRupees: 0, // [HF-WIRE-18] HF-REEL-38: no minimum withdrawal
+  hfInfluencerSetsRate: false, // [HF-WIRE-18] HF-REEL-37: coordinator turns on in prod
+  hfDefaultRatePaise: 500,
+  hfMinRatePaise: 500,
   hfGatewayRefundsEnabled: false, // [HF-WIRE-13] HF-REEL-35 rule 7: refunds go to the wallet only
   hfMoneyMonitorEnabled: true, // [HF-WIRE-13] only acts while hfCallsEnabled is on
   hfMoneyMonitorAutoFix: true, // [HF-WIRE-13] off = the monitor only reports
@@ -3304,7 +3311,7 @@ export async function putConfig(req: Request, env: Env): Promise<Response> {
     "hfTopupMinRupees", "hfTopupMaxRupees", // [HF-TOPUP-1]
     "hfRefundWindowDays", // [HF-WALLET-EXIT-1]
     "hfTopupConfirmAboveRupees", // [HF-WALLET-LIMITS-1]
-    "hfCallMinBalanceRupees", "hfFirstMinuteDropChargePaise", "hfFanPayoutMinRupees", // [HF-WIRE-13]
+    "hfCallMinBalanceRupees", "hfFirstMinuteDropChargePaise", "hfFanPayoutMinRupees", "hfPayoutMinRupees", "hfDefaultRatePaise", "hfMinRatePaise", // [HF-WIRE-13] [HF-WIRE-18]
     "hfCallCostPaisePerMin", "hfHostShareBps", // [HF-TOK-MATH-1]
     "hfStdTier1PaisePerMin", "hfStdTier2PaisePerMin", "hfStdTier3PaisePerMin", "hfStdTier1EndMin", "hfStdTier2EndMin", // [HF-STD-PLAN-1]
     "hfStdHostPaisePerMin", "hfStdPhoneCostPaisePerMin", "hfTopupGstBps",
@@ -3407,8 +3414,11 @@ export async function putConfig(req: Request, env: Env): Promise<Response> {
     if (k === "hfFirstMinuteDropChargePaise" && (!Number.isInteger(v) || (v as number) < 0 || (v as number) > 10_000)) {
       return json({ error: "hfFirstMinuteDropChargePaise must be an integer 0-10000 (paise)" }, 400);
     }
-    if (k === "hfFanPayoutMinRupees" && (!Number.isInteger(v) || (v as number) < 1 || (v as number) > 100_000)) {
-      return json({ error: "hfFanPayoutMinRupees must be a whole rupee amount 1-100000" }, 400);
+    if ((k === "hfFanPayoutMinRupees" || k === "hfPayoutMinRupees") && (!Number.isInteger(v) || (v as number) < 0 || (v as number) > 100_000)) {
+      return json({ error: `${k} must be a whole rupee amount 0-100000 (0 = no minimum)` }, 400);
+    }
+    if ((k === "hfDefaultRatePaise" || k === "hfMinRatePaise") && (!Number.isInteger(v) || (v as number) < 500 || (v as number) > 10_000 || (v as number) % 100 !== 0)) {
+      return json({ error: `${k} must be a whole-rupee amount in paise, 500-10000` }, 400);
     }
     // [HF-WALLET-LIMITS-1]
     if (k === "hfTopupConfirmAboveRupees" && (!Number.isInteger(v) || (v as number) < 0 || (v as number) > 1_000_000)) {

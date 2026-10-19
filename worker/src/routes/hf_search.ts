@@ -21,6 +21,7 @@ import { priceFields } from "./hf_hosts_public";
 import { readHfStdPlan } from "../lib/hf_token_config";
 import { TOPICS, TOPIC_SLUGS } from "../lib/hf_options";
 import { lookupChannel, ProviderError, type ChannelPlatform, type ChannelLookup } from "../lib/hf_channel_providers";
+import { pricingStd, readInfluencerRate } from "../lib/hf_influencer_rate"; // [HF-WIRE-18]
 
 const NO_STORE = { "cache-control": "private, no-store" };
 const err = (status: number, error: string, message?: string) => json({ ok: false, error, message: message ?? error }, status, NO_STORE);
@@ -126,7 +127,7 @@ async function searchHosts(env: Env, cfg: Record<string, unknown>, q: string, to
     const dm = (await env.DB_META.prepare(`SELECT host_uid, handle, followers FROM hf_demo_hosts WHERE host_uid IN (${ph})`).bind(...uids).all<{ host_uid: string; handle: string | null; followers: number }>()).results ?? [];
     for (const d of dm) if (!facts.has(d.host_uid)) facts.set(d.host_uid, { handle: d.handle, followers: Number(d.followers ?? 0) });
   } catch { /* no demo table */ }
-  const std = readHfStdPlan(cfg);
+  const std = pricingStd(readHfStdPlan(cfg), cfg);
   return rows.map((r) => {
     const f = facts.get(r.uid);
     let topics: string[] = [];

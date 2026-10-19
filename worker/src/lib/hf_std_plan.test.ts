@@ -130,7 +130,8 @@ describe("config", () => {
     const pub = hfStdPlanPublic({});
     expect(pub.minCompatibleBuild).toBe(2078);
     expect(pub.tiers.map((t) => t.rupeesPerMin)).toEqual(["3.99", "3.50", "3.25"]);
-    expect(JSON.stringify(pub)).not.toMatch(/host|phone/i);
+    expect(JSON.stringify(pub)).not.toMatch(/host|phone/i);    expect(pub.influencerSetsRate).toBe(false); // [HF-WIRE-18]
+    expect(hfStdPlanPublic({ hfInfluencerSetsRate: true }).influencerSetsRate).toBe(true);
   });
 });
 

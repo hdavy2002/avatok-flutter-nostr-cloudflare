@@ -67,7 +67,7 @@ type Phase = 'confirm' | 'starting' | 'live' | 'error';
 interface Problem { text: string; link?: { href: string; label: string }; balance?: boolean; notify?: boolean; addMoney?: boolean }
 /** [HF-STD-PLAN-1] Rupee wallet: the caller's balance and what the Standard plan lets them do with it (GET /api/hf/wallet/estimate). */
 interface StdEstimate { plan?: string; ratePerMinRupees?: string; tokensPerMinute?: string; aboutText: string; affordableSeconds: number; canStart: boolean; startNeed?: string; startNeedPaise?: number; balance?: string; tiers?: PriceTier[] }
-interface TokView { balance: string; hasDebt: boolean; standard: boolean; est?: StdEstimate }
+interface TokView { balance: string; hasDebt: boolean; standard: boolean; own?: boolean; est?: StdEstimate }
 const capFirst = (t: string) => (t ? t.charAt(0).toUpperCase() + t.slice(1) : t);
 
 function useNow(active: boolean): number {
@@ -102,8 +102,10 @@ function CallSheet({ host, open, onClose }: { host: CallHost; open: boolean; onC
       if ((r.data.mode === 'rupees' && r.data.wallet) || (r.data.mode === 'tokens' && r.data.tokens)) {
         const e = await hfCall<StdEstimate>('GET', `/api/hf/wallet/estimate?host=${encodeURIComponent(host.slug)}`);
         const standard = r.data.mode === 'rupees' && !!r.data.wallet && e.ok && e.data.plan === 'standard';
-        const bal = standard ? r.data.wallet!.balance : `${r.data.tokens?.balance ?? '0.00'} tokens`;
-        setTok({ balance: bal, hasDebt: standard ? !!r.data.wallet!.debtOpen : !!r.data.tokens?.debt?.open, standard, est: e.ok ? e.data : undefined });
+        // [HF-WIRE-18] HF-REEL-37: the influencer's own rate on the rupee wallet (plan creator / host_rate) is priced per minute, not by the Standard rate card
+        const own = r.data.mode === 'rupees' && !!r.data.wallet && e.ok && (e.data.plan === 'creator' || e.data.plan === 'host_rate');
+        const bal = standard || own ? r.data.wallet!.balance : `${r.data.tokens?.balance ?? '0.00'} tokens`;
+        setTok({ balance: bal, hasDebt: standard || own ? !!r.data.wallet!.debtOpen : !!r.data.tokens?.debt?.open, standard, own, est: e.ok ? e.data : undefined });
         if (standard) capture('hf_std_rate_card_viewed', { surface: 'call_confirm', host: host.slug, can_start: e.data.canStart });
       } else setBalance(Number(r.data.spendable ?? r.data.balanceRupees) || 0);
     } else if (r.status === 401) window.location.assign(signInUrl());
@@ -210,6 +212,8 @@ function CallSheet({ host, open, onClose }: { host: CallHost; open: boolean; onC
           <ul className="hfc-facts">
             {tok?.standard ? (
               <li><Icon name="rupee" size={22} /><span><strong>Standard plan · {hostRateLabel(host)}</strong> to start. <RateLines tiers={tiers} />Same rate for every influencer · billed per second. Ringing or no answer costs nothing.</span></li>
+            ) : tok?.own ? (
+              <li><Icon name="rupee" size={22} /><span><strong>{hostRateLabel(host)}</strong> · set by {name} · billed per second. Ringing or no answer costs nothing.</span></li>
             ) : tok ? (
               <li><Icon name="rupee" size={22} /><span><strong>{tok.est?.tokensPerMinute ?? '—'} tokens/min</strong> · billed per started minute. Ringing or no answer costs nothing.</span></li>
             ) : (

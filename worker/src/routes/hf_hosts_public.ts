@@ -21,6 +21,7 @@ export type LiveRow = HostRow & { presence?: string | null; image_key: string | 
 import { readHfStdPlan, type HfStdPlan } from "../lib/hf_token_config"; // [HF-STD-PLAN-1]
 import { formatRupees } from "../lib/hf_token_math";
 import { isCreatorCategory, CREATOR_VERSION } from "../lib/hf_creator_pricing";
+import { pricingStd, readInfluencerRate } from "../lib/hf_influencer_rate"; // [HF-WIRE-18]
 export const SEL = `SELECT h.*, COALESCE((SELECT r2_key FROM hf_host_media m WHERE m.uid=h.uid AND m.kind='profile' AND m.status='active' ORDER BY m.created_at DESC LIMIT 1), a.image_key) AS image_key,
   CASE WHEN EXISTS (SELECT 1 FROM hf_host_media m WHERE m.uid=h.uid AND m.kind='profile' AND m.status='active')
     THEN CASE WHEN (SELECT job_id FROM hf_host_media m WHERE m.uid=h.uid AND m.kind='profile' AND m.status='active' ORDER BY m.created_at DESC LIMIT 1) IS NOT NULL THEN 'ai' ELSE 'uploaded' END
@@ -72,7 +73,7 @@ export async function hfHostsPublicRoute(req: Request, env: Env, ctx?: Execution
   try {
     const cfgAll = await readConfig(env);
     if (cfgAll.hostsPublicEnabled !== true) return err(404, "not_enabled");
-    const std = readHfStdPlan(cfgAll as unknown as Record<string, unknown>); // [HF-STD-PLAN-1]
+    const std = pricingStd(readHfStdPlan(cfgAll as unknown as Record<string, unknown>), cfgAll as unknown as Record<string, unknown>); // [HF-STD-PLAN-1] [HF-WIRE-18]
     const laneRaw = url.searchParams.get("lane");
     const lane = parseLane(laneRaw);
     if (laneRaw && !lane) return err(400, "bad_lane");

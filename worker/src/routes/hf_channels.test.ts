@@ -33,7 +33,7 @@ const igBody = (id: string, followers: number, bio = "", extra: any = {}) =>
 
 function makeEnv(withKeys = true) {
   db = new DatabaseSync(":memory:");
-  db.exec(`CREATE TABLE hf_hosts (uid TEXT PRIMARY KEY, status TEXT NOT NULL DEFAULT 'draft', display_name TEXT, slug TEXT, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL);
+  db.exec(`CREATE TABLE hf_hosts (uid TEXT PRIMARY KEY, status TEXT NOT NULL DEFAULT 'draft', display_name TEXT, slug TEXT, price_per_min INTEGER NOT NULL DEFAULT 20, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL);
     CREATE UNIQUE INDEX idx_hf_hosts_slug ON hf_hosts(slug);`);
   db.exec(readFileSync(new URL("../../migrations/2026-10-19-hf-channels.sql", import.meta.url), "utf8"));
   kv = new Map();
@@ -206,6 +206,8 @@ describe("hf channels: checking ownership and followers", () => {
     expect(b.qualified).toBe(true);
     expect(b.hostStatus).toBe("approved");
     expect(hostStatus()).toBe("approved");
+    // [HF-WIRE-18] HF-REEL-37: a new influencer starts at Rs 5/min, not the table default of 20
+    expect(db.prepare("SELECT price_per_min AS p FROM hf_hosts WHERE uid='u1'").get().p).toBe(5);
     const list = await (await call("GET")).json();
     expect(list.qualified).toBe(true);
     expect(list.channels[0].followers).toBe(10);

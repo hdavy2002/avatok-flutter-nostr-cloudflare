@@ -35,7 +35,7 @@ Map<String, Object?> _summary({
   String kyc = 'none',
   List<Map<String, Object?>> history = const [],
 }) =>
-    {'readyPaise': ready, 'onHoldPaise': hold, 'minPaise': 50000, 'upi': upi, 'kycStatus': kyc, 'history': history};
+    {'readyPaise': ready, 'onHoldPaise': hold, 'minPaise': 0, 'upi': upi, 'kycStatus': kyc, 'history': history};
 
 Future<void> _pump(WidgetTester tester, Widget home) async {
   tester.view.physicalSize = const Size(900, 2600);
@@ -99,8 +99,8 @@ void main() {
       expect(find.text('We check your ID once, before your first payout.'), findsOneWidget);
     });
 
-    testWidgets('REQUEST PAYOUT sends the amount in paise; below the minimum calls nothing', (tester) async {
-      final api = FakeApiClient((m, p, b) => m == 'GET' ? _summary() : {'ok': true, 'id': 'x'});
+    testWidgets('REQUEST PAYOUT sends the amount in paise; below a server-set minimum calls nothing', (tester) async {
+      final api = FakeApiClient((m, p, b) => m == 'GET' ? {..._summary(), 'minPaise': 50000} : {'ok': true, 'id': 'x'});
       await _pump(tester, PayoutScreen(repo: PayoutsRepo(api)));
       await tester.enterText(find.byType(TextField), '400');
       await tester.tap(find.text('REQUEST PAYOUT'));
@@ -138,12 +138,23 @@ void main() {
       expect(find.text('ADD UPI TO START'), findsOneWidget);
     });
 
-    // [HF-WIRE-13] HF-REEL-36: fans withdraw too. Their summary is shown like anyone's, with the server's smaller fan minimum.
-    testWidgets('a fan sees the payout screen with their wallet money and the fan minimum', (tester) async {
-      final api = FakeApiClient((m, p, b) => {..._summary(ready: 25000, hold: 0), 'minPaise': 10000, 'isInfluencer': false});
+    // [HF-WIRE-18] HF-REEL-38: no minimum for anyone. The screen says so and any amount above zero is sent.
+    testWidgets('a fan sees the payout screen with their wallet money and no minimum', (tester) async {
+      final api = FakeApiClient((m, p, b) => m == 'GET' ? {..._summary(ready: 25000, hold: 0), 'isInfluencer': false} : {'ok': true, 'id': 'x'});
       await _pump(tester, PayoutScreen(repo: PayoutsRepo(api)));
       expect(find.text('REQUEST PAYOUT'), findsOneWidget);
-      expect(find.textContaining('minimum ₹100'), findsOneWidget);
+      expect(find.text('Amount (no minimum)'), findsOneWidget);
+      expect(find.textContaining('Minimum payout'), findsNothing);
+      await tester.enterText(find.byType(TextField), '1');
+      await tester.tap(find.text('REQUEST PAYOUT'));
+      await tester.pumpAndSettle();
+      final i = api.calls.indexOf('POST /api/hf/payouts');
+      expect(i, greaterThan(-1));
+      expect(api.bodies[i], {'amountPaise': 100});
+      await tester.enterText(find.byType(TextField), '0');
+      await tester.tap(find.text('REQUEST PAYOUT'));
+      await tester.pumpAndSettle();
+      expect(find.textContaining('Enter the amount'), findsOneWidget);
       expect(find.text('Try again'), findsNothing);
       expect(find.textContaining('Only influencers'), findsNothing);
     });

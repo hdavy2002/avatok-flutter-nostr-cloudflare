@@ -31,6 +31,7 @@ import {
   FAN_CANCEL_RULE_TEXT, FAN_FREE_CANCEL_MS, FAN_TOO_LATE_TEXT, cancelRoute, confirmRoute, loadHostPricing, quoteRoute,
   startBookingCore, type BookingRow, type HfHostPricingRow,
 } from "./hf_bookings";
+import { pricingStd, readInfluencerRate } from "../lib/hf_influencer_rate"; // [HF-WIRE-18]
 
 export const APP_TZ = "Asia/Kolkata";
 export const APP_MINUTES = 10;           // every booking is a 10-minute call (HF-REEL-19)
@@ -77,9 +78,10 @@ type HostRateRow = { uid: string; slug: string | null; status: string; category:
 export async function rateInfo(env: Env, host: { category: string; price_per_min: number }, previewRate?: number) {
   const cfg = (await readConfig(env).catch(() => ({}))) as unknown as Record<string, unknown>;
   const creator = isCreatorCategory(host.category);
-  const std = readHfStdPlan(cfg);
+  const infRate = readInfluencerRate(cfg); // [HF-WIRE-18] HF-REEL-37
+  const std = pricingStd(readHfStdPlan(cfg), cfg);
   const fixed = std.enabled && !creator;
-  const min = creator ? CREATOR_MIN_RUPEES : PRICE_MIN;
+  const min = creator ? CREATOR_MIN_RUPEES : infRate.on ? infRate.minRupees : PRICE_MIN;
   const max = creator ? CREATOR_MAX_RUPEES : PRICE_MAX;
   const rate = previewRate ?? Number(host.price_per_min);
   let hostPaise = 0;

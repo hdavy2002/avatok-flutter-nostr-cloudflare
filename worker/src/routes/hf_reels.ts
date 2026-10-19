@@ -19,6 +19,7 @@ import { readConfig } from "./config";
 import { mediaUrl } from "../lib/hf_host_store";
 import { priceFields } from "./hf_hosts_public";
 import { readHfStdPlan } from "../lib/hf_token_config";
+import { pricingStd, readInfluencerRate } from "../lib/hf_influencer_rate"; // [HF-WIRE-18]
 
 const APP = BRAND.slug;
 const NO_STORE = { "cache-control": "private, no-store" };
@@ -67,7 +68,7 @@ const at = (h: string | null) => (h ? (h.startsWith("@") ? h : "@" + h) : null);
 
 async function toItems(env: Env, rows: FeedRow[], cfg: Record<string, unknown>) {
   const facts = await hostFacts(env, [...new Set(rows.map((r) => r.host_uid))]);
-  const std = readHfStdPlan(cfg);
+  const std = pricingStd(readHfStdPlan(cfg), cfg);
   return rows.map((r) => {
     const f = facts.get(r.host_uid);
     return {

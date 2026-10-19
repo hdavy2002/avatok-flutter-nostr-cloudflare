@@ -19,7 +19,7 @@ const STATUS_TEXT: Record<Req['status'], string> = {
   requested: 'Waiting for our check', approved: 'Approved, payment on its way', paid: 'Paid', rejected: 'Not paid', cancelled: 'Cancelled',
 };
 const ERRORS: Record<string, string> = {
-  below_minimum: 'That is below the smallest withdrawal.',
+  below_minimum: 'That is below the smallest withdrawal set for now.',
   insufficient_withdrawable: 'That is more than you can withdraw right now.',
   weekly_limit: 'You have made the most requests allowed this week. Please try again later.',
   kyc_required: 'Please finish your identity check first.',
@@ -71,12 +71,13 @@ export default function WithdrawPanel({ onChanged, isCurrent }: { onChanged?: ()
   if (!info) return null;
 
   const n = Number(amount);
-  const validAmount = Number.isInteger(n) && n >= info.minRupees && n <= info.withdrawable;
+  const minR = Math.max(1, info.minRupees); // [HF-WIRE-18] HF-REEL-38: the server minimum is 0 = no minimum; an amount must still be at least ₹1
+  const validAmount = Number.isInteger(n) && n >= minR && n <= info.withdrawable;
   const blocker =
     !info.enabled ? 'Withdrawals open soon.'
       : info.hostStatus !== 'live' ? 'Only live influencers can withdraw.'
         : !info.kycOk || !info.bankOk ? 'Finish your identity check and bank details to withdraw.'
-          : info.withdrawable < info.minRupees ? `You can withdraw once you have at least ${inr(info.minRupees)} available.`
+          : info.withdrawable < minR ? (info.minRupees > 0 ? `You can withdraw once you have at least ${inr(info.minRupees)} available.` : 'You have nothing ready to withdraw yet.')
             : null;
 
   const submit = async (e: React.FormEvent) => {
@@ -124,12 +125,12 @@ export default function WithdrawPanel({ onChanged, isCurrent }: { onChanged?: ()
       {blocker && <p className="hfc-sub" role="status" style={{ margin: '8px 0' }}>{blocker}{!info.enabled ? '' : (!info.kycOk || !info.bankOk) ? <> <a href="/hosts/onboarding?step=payout">Continue</a></> : ''}</p>}
       <form onSubmit={submit} style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'flex-end' }}>
         <label style={{ display: 'grid', gap: 4, fontSize: '.9rem' }}>
-          Amount in rupees (at least {inr(info.minRupees)})
+          Amount in rupees{info.minRupees > 0 ? ` (at least ${inr(info.minRupees)})` : ' (no minimum)'}
           <input inputMode="numeric" autoComplete="off" value={amount} disabled={!!blocker || busy} onChange={(e) => setAmount(e.target.value.replace(/\D/g, '').slice(0, 7))}
             style={{ minHeight: 44, padding: '8px 10px', fontSize: 16, borderRadius: 10, border: '1px solid #c8afd1', width: 180 }} />
         </label>
         <button type="submit" className="hfc-btn hfc-primary" disabled={!!blocker || busy || !validAmount}>{busy ? 'Sending…' : 'Request withdrawal'}</button>
-        {!blocker && info.withdrawable >= info.minRupees && <button type="button" className="hfc-btn" disabled={busy} onClick={() => setAmount(String(info.withdrawable))}>All {inr(info.withdrawable)}</button>}
+        {!blocker && info.withdrawable >= minR && <button type="button" className="hfc-btn" disabled={busy} onClick={() => setAmount(String(info.withdrawable))}>All {inr(info.withdrawable)}</button>}
       </form>
       {msg && <p role={msg.tone === 'err' ? 'alert' : 'status'} className={msg.tone === 'err' ? 'hfc-err' : 'hfc-sub'} style={{ margin: '8px 0' }}>{msg.text}</p>}
       <p className="hfc-sub" style={{ margin: '8px 0', color: '#785979', fontSize: '.875rem' }}>

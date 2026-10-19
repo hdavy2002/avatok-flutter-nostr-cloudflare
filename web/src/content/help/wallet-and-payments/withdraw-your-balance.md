@@ -9,6 +9,8 @@ audience: both
 faq:
   - q: "Can I take out my wallet money?"
     a: "Yes. Anyone can withdraw wallet money with the Payout button. We send it to your UPI."
+  - q: "Is there a minimum amount to withdraw?"
+    a: "No. You can withdraw any amount in your wallet, in whole rupees. There is no minimum and we take no fee."
   - q: "Do I need an ID check?"
     a: "Yes, once. We do a one-time ID (KYC) check and a UPI check before the first payout."
   - q: "Can I withdraw test credits?"
@@ -32,7 +34,9 @@ We will never take your money as a penalty. This is true even if something goes 
 1. Sign in and open your wallet.
 2. Tap **Payout**.
 3. Add your UPI ID, in your own name.
-4. Ask for the amount you want.
+4. Ask for the amount you want. There is **no minimum**: any amount in your wallet can be withdrawn, in whole rupees.
+
+We take **no fee** for a payout.
 
 The first time, we do a **one-time ID (KYC) check** and a **UPI check**. After that you will not be asked again.
 

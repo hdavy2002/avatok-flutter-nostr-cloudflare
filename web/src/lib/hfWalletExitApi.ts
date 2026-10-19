@@ -51,7 +51,7 @@ export function walletExitCode(e: unknown): string {
 
 const CODE_TEXT: Record<string, string> = {
   withdraw_first: 'Your wallet money does not go back to your card. Withdraw it to your UPI with Payout first, then close your account.',
-  forfeit_required: 'Your wallet holds less than the smallest withdrawal, so it cannot be paid out. Tick the box to give it up and close your account.',
+  forfeit_required: 'Your wallet holds less than ₹1, which is too small to pay out. Tick the box to give it up and close your account.',
   refund_to_wallet_only: 'Refunds go to your wallet, not to your card. You can withdraw your wallet to your UPI with Payout.',
 };
 

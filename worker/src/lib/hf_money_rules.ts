@@ -19,7 +19,7 @@ import { readConfig } from "../routes/config";
 
 export const DEFAULT_MIN_BALANCE_RUPEES = 20;
 export const DEFAULT_DROP_CHARGE_PAISE = 100;
-export const DEFAULT_FAN_PAYOUT_MIN_RUPEES = 100;
+export const DEFAULT_FAN_PAYOUT_MIN_RUPEES = 0; // [HF-WIRE-18] HF-REEL-38: no minimum withdrawal
 /** A joined call shorter than this many whole seconds is a "first minute" break (rule 3). Exactly 60 s is billed normally. */
 export const FIRST_MINUTE_SECONDS = 60;
 /** Stored on hf_calls.money_rule when rule 3 set the charge. */
@@ -41,7 +41,7 @@ export function moneyRulesFrom(c: Record<string, unknown> | null | undefined): M
   return {
     minBalancePaise: wholeNonNeg(x.hfCallMinBalanceRupees, DEFAULT_MIN_BALANCE_RUPEES) * 100,
     dropChargePaise: wholeNonNeg(x.hfFirstMinuteDropChargePaise, DEFAULT_DROP_CHARGE_PAISE),
-    fanPayoutMinRupees: Math.max(1, wholeNonNeg(x.hfFanPayoutMinRupees, DEFAULT_FAN_PAYOUT_MIN_RUPEES)),
+    fanPayoutMinRupees: wholeNonNeg(x.hfFanPayoutMinRupees, DEFAULT_FAN_PAYOUT_MIN_RUPEES),
     gatewayRefundsEnabled: x.hfGatewayRefundsEnabled === true,
     monitorEnabled: x.hfMoneyMonitorEnabled !== false,
     monitorAutoFix: x.hfMoneyMonitorAutoFix !== false,
@@ -165,9 +165,9 @@ export function splitPayoutSources(amountRupees: number, lotsReadyPaise: number,
 }
 
 /**
- * The smallest request: money that is only the person's own wallet uses the fan minimum (hfFanPayoutMinRupees, default Rs 100);
- * a request that touches influencer earnings keeps the earnings minimum (hfPayoutMinRupees, default Rs 500).
+ * The smallest request: money that is only the person's own wallet uses the fan minimum (hfFanPayoutMinRupees, default 0 = no minimum, HF-REEL-38);
+ * a request that touches influencer earnings keeps the earnings minimum (hfPayoutMinRupees, default 0 = no minimum, HF-REEL-38).
  */
 export function payoutMinimumRupees(src: PayoutSource, fanMinRupees: number, earningsMinRupees: number): number {
-  return src.earningsPaise > 0 ? Math.max(1, earningsMinRupees) : Math.max(1, fanMinRupees);
+  return Math.max(0, src.earningsPaise > 0 ? earningsMinRupees : fanMinRupees);
 }

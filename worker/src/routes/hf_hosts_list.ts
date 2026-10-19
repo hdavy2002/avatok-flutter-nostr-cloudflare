@@ -15,6 +15,7 @@ import { buildHfOptions } from "../lib/hf_options";
 import { parseHostList, buildListSql, listCacheKey } from "../lib/hf_hosts_list";
 import { card, SEL, type LiveRow } from "./hf_hosts_public";
 import { readHfStdPlan } from "../lib/hf_token_config"; // [HF-STD-PLAN-1]
+import { pricingStd, readInfluencerRate } from "../lib/hf_influencer_rate"; // [HF-WIRE-18]
 
 const LIST_TTL_S = 45;
 const err = (status: number, error: string) => json({ error }, status);
@@ -30,7 +31,7 @@ export async function hfHostsListRoute(req: Request, env: Env, ctx?: ExecutionCo
     if (cfgAll.hostsPublicEnabled !== true) return err(404, "not_enabled");
     const parsed = parseHostList(url.searchParams);
     if (!parsed.ok) return err(parsed.status, parsed.error);
-    const std = readHfStdPlan(cfgAll as unknown as Record<string, unknown>); // [HF-STD-PLAN-1]
+    const std = pricingStd(readHfStdPlan(cfgAll as unknown as Record<string, unknown>), cfgAll as unknown as Record<string, unknown>); // [HF-STD-PLAN-1] [HF-WIRE-18]
     const q = parsed.q;
     const authed = req.headers.has("authorization");
     if (q.lane) {

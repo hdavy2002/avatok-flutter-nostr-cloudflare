@@ -72,7 +72,7 @@ export function validatePayoutRequest(c: RequestCheck): RequestVerdict {
   if (!c.bankOk) return no(409, "bank_required", "Add and verify your bank account first. The name must match your Aadhaar.");
   const n = Number(c.amount);
   if (!Number.isInteger(n) || n <= 0) return no(400, "invalid_amount", "Enter a whole number of rupees.");
-  if (n < c.minRupees) return no(400, "below_minimum", `The smallest withdrawal is ₹${c.minRupees}.`);
+  if (c.minRupees > 0 && n < c.minRupees) return no(400, "below_minimum", `The smallest withdrawal is ₹${c.minRupees}.`);
   if (c.recentCount >= c.maxPerWeek) return no(429, "weekly_limit", `You can make ${c.maxPerWeek} withdrawal requests a week. Please try again later.`);
   if (n > c.withdrawable) return no(402, "insufficient_withdrawable", `You can withdraw up to ₹${c.withdrawable} right now.`);
   return { ok: true, amount: n };

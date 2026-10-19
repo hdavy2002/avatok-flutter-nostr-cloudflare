@@ -281,6 +281,39 @@ describe("availability and rate", () => {
   });
 });
 
+describe("[HF-WIRE-18] influencers set their own rate (HF-REEL-37)", () => {
+  const std = { hfStdPlanEnabled: true, hfTokensEnabled: true, hfAppMinBuild: 99_999_999 };
+  const stdHost = { uid: "host-1", slug: "tara-ab12", status: "live", category: "standard", price_per_min: 5 };
+  beforeEach(() => { vi.mocked(authz.requireUser).mockResolvedValue({ uid: "host-1" } as never); });
+
+  it("with hfInfluencerSetsRate on, the Standard plan stays on but her rate is editable: min Rs 5, max Rs 100, 'you get' by the HF-REEL-30 rule", async () => {
+    flag({ ...std, hfInfluencerSetsRate: true });
+    const { env, calls } = mkEnv([[/SELECT uid,slug,status,category/, stdHost]]);
+    const got = await hfBookingsAppRoute(get("/api/hf/hosts/me/rate"), env);
+    expect((await got!.json() as any).rate).toMatchObject({ ratePerMin: 5, minRate: 5, maxRate: 100, editable: true, hostGetsPerMinPaise: 180 });
+    const ok = await hfBookingsAppRoute(send("PUT", "/api/hf/hosts/me/rate", { pricePerMin: 5 }), env);
+    expect(ok?.status).toBe(200);
+    expect(calls.some((c) => /UPDATE hf_hosts SET price_per_min/.test(c.sql) && c.args[0] === 5)).toBe(true);
+    expect((await hfBookingsAppRoute(send("PUT", "/api/hf/hosts/me/rate", { pricePerMin: 4 }), env))?.status).toBe(400);
+    expect((await hfBookingsAppRoute(send("PUT", "/api/hf/hosts/me/rate", { pricePerMin: 101 }), env))?.status).toBe(400);
+    const prev = await hfBookingsAppRoute(get("/api/hf/hosts/me/rate?rate=50"), env);
+    expect((await prev!.json() as any).rate.hostGetsPerMinPaise).toBe(2880); // 60% of (Rs 50 - Rs 2)
+  });
+
+  it("with hfMinRatePaise raised, the stepper floor follows the server", async () => {
+    flag({ ...std, hfInfluencerSetsRate: true, hfMinRatePaise: 1000 });
+    const { env } = mkEnv([[/SELECT uid,slug,status,category/, { ...stdHost, price_per_min: 10 }]]);
+    expect((await hfBookingsAppRoute(send("PUT", "/api/hf/hosts/me/rate", { pricePerMin: 9 }), env))?.status).toBe(400);
+    expect((await hfBookingsAppRoute(send("PUT", "/api/hf/hosts/me/rate", { pricePerMin: 10 }), env))?.status).toBe(200);
+  });
+
+  it("with the switch off nothing changes: Standard plan still fixes a standard host's rate", async () => {
+    flag({ ...std, hfInfluencerSetsRate: false });
+    const { env } = mkEnv([[/SELECT uid,slug,status,category/, stdHost]]);
+    expect((await hfBookingsAppRoute(send("PUT", "/api/hf/hosts/me/rate", { pricePerMin: 20 }), env))?.status).toBe(409);
+  });
+});
+
 describe("public slots and auto-start", () => {
   it("slots: only free open dates, no uids", async () => {
     const sched = { timezone: "Asia/Kolkata", version: 2, durationsMinutes: [10], slotIntervalMinutes: 10, bufferMinutes: 0, minNoticeMinutes: 60, horizonDays: 21, rules: [],

@@ -43,7 +43,7 @@ abstract final class HelpStrings {
     ),
     (
       'How do I take my money out?',
-      'Tap Payout in your wallet. We send the money to your UPI after a one-time ID (KYC) and UPI check. '
+      'Tap Payout in your wallet. We send the money to your UPI after a one-time ID (KYC) and UPI check. There is no minimum amount and we take no fee. '
           'Test credits can be spent on calls but cannot be withdrawn. An influencer\'s earnings are held for 7 days first.',
     ),
     (

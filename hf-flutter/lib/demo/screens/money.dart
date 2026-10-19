@@ -574,8 +574,8 @@ class _PaymentScreenState extends State<PaymentScreen> {
 
 // ---------------------------------------------------------------------------------------------- Payout
 
-/// Payout: withdraw to UPI (HF-WIRE-10). Open to everyone (HF-REEL-36): the minimum comes from the server (fans ₹100 by default; influencer
-/// earnings keep ₹500 and the 7-day hold), paid to UPI, UTR on WhatsApp. The ID check happens once, before the first payout.
+/// Payout: withdraw to UPI (HF-WIRE-10). Open to everyone (HF-REEL-36) with no minimum (HF-REEL-38; the server's `minPaise` is 0 unless the
+/// owner sets one). Influencer earnings keep the 7-day hold. Paid to UPI, UTR on WhatsApp. The ID check happens once, before the first payout.
 ///
 /// With [DemoMode.on] (and no [repo]) it shows the dummy numbers. Otherwise it reads `GET /api/hf/payouts/summary`.
 class PayoutScreen extends StatefulWidget {
@@ -638,7 +638,11 @@ class _PayoutScreenState extends State<PayoutScreen> {
       toast(context, 'Add your UPI first.');
       return;
     }
-    if (v * 100 < s.minPaise) {
+    if (v <= 0) {
+      toast(context, 'Enter the amount you want to withdraw.');
+      return;
+    }
+    if (s.minPaise > 0 && v * 100 < s.minPaise) {
       toast(context, 'Minimum payout is ${inr(s.minPaise / 100, paise: false)}.');
       return;
     }
@@ -677,8 +681,8 @@ class _PayoutScreenState extends State<PayoutScreen> {
 
   void _requestDemo() {
     final v = double.tryParse(_amount.text.replaceAll(RegExp(r'[^0-9.]'), '')) ?? 0;
-    if (v < 500) {
-      toast(context, 'Minimum payout is ₹500.');
+    if (v <= 0) {
+      toast(context, 'Enter the amount you want to withdraw.');
       return;
     }
     if (v > demo.earningsReady) {
@@ -710,7 +714,7 @@ class _PayoutScreenState extends State<PayoutScreen> {
           hold: demo.earningsHold,
           vpa: demo.name.isEmpty ? 'yourname@okbank' : '${demo.name.split(' ').first.toLowerCase()}@okhdfcbank',
           checkedLine: 'Checked · name matches',
-          minRupees: 500,
+          minRupees: 0,
           history: [for (final p in demo.payouts) (p.when, p.amount, p.status, p.status.startsWith('PAID'))],
           canAsk: true,
         ),
@@ -785,7 +789,7 @@ class _PayoutScreenState extends State<PayoutScreen> {
                     ],
                   ),
                   const SizedBox(height: 18),
-                  Text('Amount (minimum ${inr(minRupees, paise: false)})', style: t(15)),
+                  Text(minRupees > 0 ? 'Amount (minimum ${inr(minRupees, paise: false)})' : 'Amount (no minimum)', style: t(15)),
                   const SizedBox(height: 8),
                   TextField(
                     controller: _amount,

@@ -48,8 +48,9 @@ async function call(id: string, o: { seconds: number; joined: boolean; drop?: nu
 }
 
 describe("rule config and wording", () => {
-  it("defaults are the owner's numbers: Rs 20 to call, Rs 1 for a first-minute break, Rs 100 fan payout minimum, gateway refunds off", () => {
-    expect(moneyRulesFrom({})).toMatchObject({ minBalancePaise: 2000, dropChargePaise: 100, fanPayoutMinRupees: 100, gatewayRefundsEnabled: false, monitorEnabled: true });
+  it("defaults are the owner's numbers: Rs 20 to call, Rs 1 for a first-minute break, no payout minimum (HF-REEL-38), gateway refunds off", () => {
+    expect(moneyRulesFrom({})).toMatchObject({ minBalancePaise: 2000, dropChargePaise: 100, fanPayoutMinRupees: 0, gatewayRefundsEnabled: false, monitorEnabled: true });
+    expect(moneyRulesFrom({ hfFanPayoutMinRupees: 0 }).fanPayoutMinRupees).toBe(0);
     expect(moneyRulesFrom({ hfCallMinBalanceRupees: 30, hfFirstMinuteDropChargePaise: 200, hfFanPayoutMinRupees: 250 })).toMatchObject({ minBalancePaise: 3000, dropChargePaise: 200, fanPayoutMinRupees: 250 });
   });
   it("the app words are exact", () => {
@@ -227,5 +228,8 @@ describe("rule 8: anyone can withdraw wallet money; test credits never", () => {
     expect(splitPayoutSources(800, 20000, 50000)).toBeNull();
     expect(payoutMinimumRupees({ lotsPaise: 10000, earningsPaise: 0 }, 100, 500)).toBe(100);
     expect(payoutMinimumRupees({ lotsPaise: 0, earningsPaise: 50000 }, 100, 500)).toBe(500);
+    // [HF-WIRE-18] HF-REEL-38: configured 0 means no minimum for anyone
+    expect(payoutMinimumRupees({ lotsPaise: 10000, earningsPaise: 0 }, 0, 0)).toBe(0);
+    expect(payoutMinimumRupees({ lotsPaise: 0, earningsPaise: 50000 }, 0, 0)).toBe(0);
   });
 });
