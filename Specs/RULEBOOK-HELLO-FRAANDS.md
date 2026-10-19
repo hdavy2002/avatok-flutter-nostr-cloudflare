@@ -261,6 +261,26 @@ The app is the website inside an Android shell (Capacitor). Spec: `Specs/SPEC-20
 
 ---
 
+## 16. Reels app — sign-up, feed, profile, search (owner 2026-10-19)
+
+The app is a Reels feed: fans watch influencers' short videos, then call or book them. Open questions
+(not yet decided) are listed in the project doc `claude/hello-fraands-reels-app-plan.md`.
+
+| ID | Rule | Decision | Pages | Backend |
+|---|---|---|---|---|
+| HF-REEL-1 | **Simple fan sign-up**: email, name and a WhatsApp number (for notifications), then straight into Browse. Nothing else is asked. | ADOPTED | TODO | TODO |
+| HF-REEL-2 | **Simple influencer sign-up**: email, name, the URL of their YouTube, Instagram or Facebook page, consent to pull their videos as embeds plus likes, comments and other details, then verify their WhatsApp number for notifications, then into the Dashboard. | ADOPTED | TODO | TODO |
+| HF-REEL-3 | **Browse = Reels feed**: full-screen video cards the user swipes up or down, like Instagram Reels. The reels are taken from the influencers' own Instagram (and other linked) accounts. | ADOPTED | TODO | TODO |
+| HF-REEL-4 | **Online influencers only in the feed.** The feed shows reels of influencers who are online; offline influencers are not shown. Every reel card shows a **Call now** button while the influencer is online. | ADOPTED | TODO | TODO |
+| HF-REEL-5 | **Profile icon on every reel**: a profile icon under every video opens the influencer's full profile page. | ADOPTED | TODO | TODO |
+| HF-REEL-6 | **Face filter**: only videos with a face in the first seconds are pulled into the network, so poor videos never reach the feed. (Tool named "jev" by the owner — to confirm.) | ADOPTED | N/A | TODO |
+| HF-REEL-7 | **Favourites**: a user can favourite a reel; it goes into their Favourites tab. | ADOPTED | TODO | TODO |
+| HF-REEL-8 | **Public influencer profile**: likes, total videos, description, a Book button, a calendar, and status — Online (taking calls) or Offline (phone off). Their list of videos sits under a separate tab. | ADOPTED | TODO | TODO |
+| HF-REEL-9 | **Search** is its own screen with its own menu icon. Results show each person as Online, Offline or Not on Hello Fraands; suggested names come from the platform API and results are cached. A person not on the network gets an **Invite** button. | ADOPTED | TODO | TODO |
+| HF-REEL-10 | **The journey**: watch reels → open the profile or tap Call now → book or call. Plus a basic Profile page and a Settings page for every user. | ADOPTED | TODO | TODO |
+
+---
+
 ## Implementation plan — public pages first (backend not ready)
 
 **Phase 1 — public pages (can do now):**
@@ -409,3 +429,4 @@ else, or come back later."
 | 2026-10-18 | HF-LEGAL-ART-2 (owner): the owner's 12 Ghat ki Seedhiyan artworks wired into the shared policy layout (arch hero capped to 760px with Bholu at its lower left, square chhatri badges, lota number set on its plain disc, measured oar keys: slice 19 120 13 120, cap = height × 0.81, tiles at full strength on matching bands). No rule change. |
 | 2026-10-18 | HF-VERIFIED-ONLY-1 (owner): women-only and LGBTQ+ lanes and their Aadhaar/video-KYC entry dropped (HF-WOM-2, HF-LGBT-1, HF-LGBT-3 DROPPED); new HF-PLAN-1 — influencers on the monthly influencer plan can take calls from customers with full KYC only (identity, not gender). /women-only retitled "Women's safety", /lgbtq "LGBTQ+ safety"; FAQ, help articles, terms, safety centre, community guidelines and footer labels follow (footer Explore now links LGBTQ+ safety). HF-PLAN-2 (call recording for subscribers) recorded as PROPOSED and kept off the site until built. /verify/lane is no longer linked. |
 | 2026-10-19 | HF-DS-MOBILE-1 (owner): new rule HF-DS-8 — short mobile-app section added to HF-DESIGN-SYSTEM §11 (replaces the old 5-line §11). Open question recorded: whether the app adopts the web §10 palette. |
+| 2026-10-19 | HF-REEL-APP-1 (owner): new §16 Reels app — simple fan and influencer sign-up, swipe Reels feed of online influencers with Call now, profile icon on every reel, face filter, favourites, public profile with Book/calendar/Online-Offline, search with Invite for people not on the network (HF-REEL-1…10). May affect HF-NATIVE-UI-1 (guest browsing before sign-up) and the 2026-10-11 Online/Offline switch — open questions in claude/hello-fraands-reels-app-plan.md. |
