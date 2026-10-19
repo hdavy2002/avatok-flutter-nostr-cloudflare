@@ -73,9 +73,9 @@ class AsyncView<T> extends StatelessWidget {
     }
     if (s is AsyncFailure<T>) {
       final e = s.error;
-      final msg = e is ApiException ? e.userMessage : ApiException.genericText;
+      final msg = e is ApiException ? e.failureMessage : ApiException.genericText;
       return _Panel(
-        title: e is ApiException && e.isOffline ? 'You are offline' : 'That did not work',
+        title: e is ApiException ? e.failureTitle : 'That did not work',
         message: msg,
         icon: e is ApiException && e.isOffline ? Icons.wifi_off_rounded : Icons.error_outline_rounded,
         action: onRetry == null ? null : _TryAgain(onTap: onRetry!),

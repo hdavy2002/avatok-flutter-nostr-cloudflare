@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../data/api_exception.dart';
 import '../../data/demo_mode.dart';
+import '../../data/in_app_checkout.dart';
 import '../../data/models/wallet.dart';
 import '../../data/repos/payouts_repo.dart';
 import '../../data/repos/wallet_repo.dart';
@@ -14,6 +15,7 @@ import '../../ui/async_view.dart';
 import '../state.dart';
 import '../theme.dart';
 import '../widgets.dart';
+import 'me.dart' show WalletTicket;
 
 // ---------------------------------------------------------------------------------------------- Wallet
 
@@ -296,12 +298,30 @@ class _TopUpScreenState extends State<TopUpScreen> {
     try {
       final order = await _repo.createTopup(v);
       Telemetry.event('hf_topup_started', {'amount_rupees': v, 'order': order.orderId});
-      final url = order.checkoutUrl;
-      if (order.orderId.isEmpty || url == null || !await Checkout.open(url)) {
+      if (order.orderId.isEmpty) {
         if (mounted) toast(context, 'We could not open the payment page. Please try again.');
         return;
       }
-      if (mounted) context.pushReplacement('/payment?amount=$v&order=${order.orderId}&credit=${order.creditPaise}');
+      final next = '/payment?amount=$v&order=${order.orderId}&credit=${order.creditPaise}';
+      // [HF-WIRE-20] The payment sheet opens INSIDE the app; UPI apps open from it and return to it. The server's webhook is the only
+      // thing that credits the wallet, so every outcome goes to the Payment screen, which asks the server.
+      final sessionId = order.paymentSessionId;
+      if (sessionId != null && sessionId.isNotEmpty) {
+        final out = await Checkout.inApp.pay(orderId: order.orderId, paymentSessionId: sessionId, sandbox: order.environment == 'sandbox');
+        Telemetry.event('hf_topup_checkout', {'order': order.orderId, 'result': out.result.name});
+        if (out.result != PayResult.unavailable) {
+          if (mounted) context.pushReplacement(out.result == PayResult.failed ? '$next&sdk=err' : next);
+          return;
+        }
+      }
+      // Fallback only when the in-app checkout cannot start on this phone: the hosted page in a browser tab. Its return page brings
+      // the payer back to the app (hellofraands://wallet/topup/<id>).
+      final url = order.checkoutUrl;
+      if (url == null || !await Checkout.open(url)) {
+        if (mounted) toast(context, 'We could not open the payment page. Please try again.');
+        return;
+      }
+      if (mounted) context.pushReplacement(next);
     } on ApiException catch (e) {
       if (mounted) toast(context, e.userMessage);
     } finally {
@@ -433,15 +453,21 @@ class _TopUpScreenState extends State<TopUpScreen> {
 class PaymentScreen extends StatefulWidget {
   const PaymentScreen({
     super.key,
-    required this.amount,
+    this.amount,
     this.orderId,
     this.creditPaise,
+    this.sdkFailed = false,
     this.repo,
     this.pollEvery = const Duration(seconds: 2),
     this.slowAfter = const Duration(seconds: 60),
   });
 
-  final double amount;
+  /// Rupees paid. Null when the screen was opened from a return link: the amount then comes from the server.
+  final double? amount;
+
+  /// The in-app checkout reported an error or the payer backed out. If the server still has no payment, the screen says so
+  /// instead of waiting for a minute.
+  final bool sdkFailed;
   final String? orderId;
   final int? creditPaise;
   final WalletRepo? repo;
@@ -452,13 +478,14 @@ class PaymentScreen extends StatefulWidget {
   State<PaymentScreen> createState() => _PaymentScreenState();
 }
 
-enum _Pay { confirming, slow, paid, failed }
+enum _Pay { confirming, slow, paid, failed, notDone }
 
 class _PaymentScreenState extends State<PaymentScreen> {
   _Pay _pay = _Pay.confirming;
   Timer? _t;
   final _since = Stopwatch()..start();
   int? _credit;
+  double? _paid;
   bool _asking = false;
   int _polls = 0;
 
@@ -469,11 +496,12 @@ class _PaymentScreenState extends State<PaymentScreen> {
   void initState() {
     super.initState();
     _credit = widget.creditPaise;
+    _paid = widget.amount;
     if (_real) {
       _t = Timer.periodic(widget.pollEvery, (_) => _ask());
     } else {
       _t = Timer(const Duration(seconds: 2), () {
-        demo.topUp(widget.amount);
+        demo.topUp(widget.amount ?? 0);
         if (mounted) setState(() => _pay = _Pay.paid);
       });
     }
@@ -489,13 +517,21 @@ class _PaymentScreenState extends State<PaymentScreen> {
       if (st.state == TopupState.paid) {
         _t?.cancel();
         if (st.creditPaise != null) _credit = st.creditPaise;
+        if (st.paidPaise != null) _paid = st.paidPaise! / 100;
         Telemetry.event('hf_topup_result', {'order': widget.orderId, 'result': 'paid', 'ms': _since.elapsedMilliseconds});
+        // [HF-WIRE-20] Back from the checkout: refresh Me and the balance tag on its own.
         unawaited(Services.instance.refreshMe());
+        WalletTicket.refresh.value++;
         setState(() => _pay = _Pay.paid);
       } else if (st.state == TopupState.failed) {
         _t?.cancel();
         Telemetry.event('hf_topup_result', {'order': widget.orderId, 'result': 'failed', 'ms': _since.elapsedMilliseconds});
         setState(() => _pay = _Pay.failed);
+      } else if (widget.sdkFailed && st.state == TopupState.pending) {
+        // The checkout said it did not finish and the server has no payment for this order.
+        _t?.cancel();
+        Telemetry.event('hf_topup_result', {'order': widget.orderId, 'result': 'not_done'});
+        setState(() => _pay = _Pay.notDone);
       } else if (_pay == _Pay.confirming && widget.pollEvery * _polls >= widget.slowAfter) {
         Telemetry.event('hf_topup_result', {'order': widget.orderId, 'result': 'slow'});
         setState(() => _pay = _Pay.slow);
@@ -517,9 +553,11 @@ class _PaymentScreenState extends State<PaymentScreen> {
   Widget build(BuildContext context) {
     final done = _pay == _Pay.paid;
     final failed = _pay == _Pay.failed;
-    final creditText = _credit != null ? inr(_credit! / 100) : inr(DemoState.creditFor(widget.amount));
+    final notDone = _pay == _Pay.notDone;
+    final paid = _paid;
+    final creditText = _credit != null ? inr(_credit! / 100) : inr(DemoState.creditFor(paid ?? 0));
     return PopScope(
-      canPop: done || failed,
+      canPop: done || failed || notDone,
       child: Scaffold(
         backgroundColor: done ? C.ivory : C.cinema,
         body: SafeArea(
@@ -542,6 +580,12 @@ class _PaymentScreenState extends State<PaymentScreen> {
                     textAlign: TextAlign.center,
                     style: t(15, color: C.cream, w: FontWeight.w700, h: 1.4),
                   ),
+                ] else if (notDone) ...[
+                  const Icon(Icons.info_outline_rounded, color: C.gold, size: 72),
+                  const SizedBox(height: 18),
+                  Text('Payment was not completed.', textAlign: TextAlign.center, style: t(22, color: C.ivory, h: 1.3)),
+                  const SizedBox(height: 8),
+                  Text('If money left your account, it is added to your wallet within a few minutes.', textAlign: TextAlign.center, style: t(15, color: C.cream, w: FontWeight.w700, h: 1.4)),
                 ] else if (failed) ...[
                   const Icon(Icons.error_outline_rounded, color: C.gold, size: 72),
                   const SizedBox(height: 18),
@@ -549,7 +593,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
                 ] else ...[
                   const BrassKnob(label: 'Paid', size: 110, child: Icon(Icons.check_rounded, color: C.deep, size: 60)),
                   const SizedBox(height: 22),
-                  Text('Paid ${inr(widget.amount, paise: false)}', style: t(32, color: C.maroon)),
+                  Text(paid == null ? 'Payment received' : 'Paid ${inr(paid, paise: false)}', style: t(32, color: C.maroon)),
                   const SizedBox(height: 8),
                   Text('$creditText added to your wallet', style: t(18, color: C.deep)),
                   const SizedBox(height: 6),
@@ -558,7 +602,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
                 const Spacer(),
                 if (done)
                   SizedBox(width: double.infinity, child: ChunkyButton(label: 'BACK TO WALLET', dark: true, onTap: () => context.pushReplacement('/wallet'))),
-                if (failed) ...[
+                if (failed || notDone) ...[
                   SizedBox(width: double.infinity, child: ChunkyButton(label: 'TRY AGAIN', onTap: () => context.pushReplacement('/topup'))),
                   const SizedBox(height: 10),
                   SizedBox(width: double.infinity, child: ChunkyButton(label: 'BACK TO WALLET', filled: false, dark: true, onTap: () => context.pushReplacement('/wallet'))),

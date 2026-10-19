@@ -26,6 +26,7 @@ class LinkTarget {
 /// - `/h/<slug>`  -> influencer profile
 /// - `/r/<id>`    -> the Reels tab, opened on that reel
 /// - `/wallet`    -> wallet
+/// - `/wallet/topup/<id>` -> the Payment screen for that top-up (return from the payment page)
 LinkTarget? linkTargetFor(Uri uri) {
   final scheme = uri.scheme.toLowerCase();
   final List<String> segs;
@@ -48,6 +49,10 @@ LinkTarget? linkTargetFor(Uri uri) {
   }
   if (segs.length == 1 && segs.first == 'wallet') {
     return const LinkTarget('/wallet', '/wallet');
+  }
+  // [HF-WIRE-20] hellofraands://wallet/topup/<id>: where the payment return page sends the payer back. Opens the Payment screen for that order.
+  if (segs.length == 3 && segs.first == 'wallet' && segs[1] == 'topup' && RegExp(r'^hftop_[A-Za-z0-9]{6,64}$').hasMatch(segs[2])) {
+    return LinkTarget('/payment?order=${Uri.encodeQueryComponent(segs[2])}', '/wallet/topup/:id');
   }
   return null;
 }

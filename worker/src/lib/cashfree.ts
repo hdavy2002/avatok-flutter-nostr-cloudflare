@@ -52,6 +52,14 @@ function headers(env: Env): Record<string, string> {
   };
 }
 
+/** [HF-WIRE-20] Any spelling of an Indian mobile ("+91 98765 43210", "09876543210", "919876543210") -> the 10 digits Cashfree wants, else null. */
+export function cashfreePhone(raw: unknown): string | null {
+  let d = String(raw ?? "").replace(/\D/g, "");
+  if (d.length === 12 && d.startsWith("91")) d = d.slice(2);
+  else if (d.length === 11 && d.startsWith("0")) d = d.slice(1);
+  return /^[6-9]\d{9}$/.test(d) ? d : null;
+}
+
 /**
  * Create a payment order. `amountPaise` is what the BUYER pays — base + fee + GST — and
  * is computed server-side from the listing. Never accept an amount from a client.
@@ -68,8 +76,13 @@ export async function createCashfreeOrder(env: Env, args: {
   customerPhone?: string | null;
   returnUrl?: string | null;
   notifyUrl?: string | null;
+  /** [HF-WIRE-20] true = never invent a number: with no valid 10-digit Indian mobile the order is refused (`customer_phone_required`)
+   *  instead of going out with the 9999999999 placeholder (which Cashfree's checkout then shows to the payer). */
+  requirePhone?: boolean;
 }): Promise<CashfreeOrder | { error: string; status: number }> {
   if (!cashfreeConfigured(env)) return { error: "gateway_unconfigured", status: 503 };
+  const phone = cashfreePhone(args.customerPhone);
+  if (args.requirePhone && !phone) return { error: "customer_phone_required", status: 422 };
   const rupees = (args.amountPaise / 100).toFixed(2);
   const body = {
     order_id: args.orderId,
@@ -77,9 +90,9 @@ export async function createCashfreeOrder(env: Env, args: {
     order_currency: "INR",
     customer_details: {
       customer_id: args.customerId,
-      // Cashfree requires a phone. A placeholder is used only when we genuinely have
-      // none; it never reaches a user and is not stored as their number.
-      customer_phone: args.customerPhone || "9999999999",
+      // Cashfree requires a phone. The retired main-app rail may still fall back to a placeholder; HF top-ups pass requirePhone
+      // and never reach this fallback.
+      customer_phone: phone ?? "9999999999",
       ...(args.customerEmail ? { customer_email: args.customerEmail } : {}),
     },
     order_meta: {

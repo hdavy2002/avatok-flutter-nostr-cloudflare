@@ -35,3 +35,10 @@
 # Keep line numbers so a crash stack trace is readable after shrinking
 -keepattributes SourceFile,LineNumberTable
 -renamesourcefileattribute SourceFile
+
+# [HF-WIRE-20] In-app checkout (flutter_cashfree_pg_sdk, Android SDK com.cashfree.pg). The SDK builds its payment sheet, the UPI-app
+# intents and its JSON models by name, so R8 must not rename or strip them. Missing optional classes only warn.
+-keep class com.cashfree.** { *; }
+-dontwarn com.cashfree.**
+-keep class com.cashfree.pg.** { *; }
+-keepattributes Signature,*Annotation*,InnerClasses,EnclosingMethod

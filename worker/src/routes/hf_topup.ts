@@ -19,6 +19,7 @@ import { isClosing, CLOSING_MESSAGE } from "../lib/hf_exit"; // [HF-WALLET-EXIT-
 import { readHfStdPlan } from "../lib/hf_token_config";
 import { topupSplitFloor as topupSplit } from "../lib/hf_token_math";
 import { hfCallsRoute } from "./hf_calls";
+import { topupCustomer } from "../lib/hf_topup_customer"; // [HF-WIRE-20]
 import { normalizeAppWallet } from "../lib/hf_app_wallet";
 import {
   newTopupId, getTopup, isHfTopupId, reconcileHfTopup, settleParsedWebhook, type HfTopupRow,
@@ -63,9 +64,16 @@ async function createTopup(req: Request, env: Env): Promise<Response> {
       "INSERT INTO hf_topups (id, uid, amount_rupees, gateway, status, credited, created_at, updated_at) VALUES (?1,?2,?3,?4,'created',0,?5,?5)",
     ).bind(id, u.uid, amount, adapter.id, now).run();
 
-    const order = await adapter.createOrder(env, { orderId: id, amountPaise: amount * 100, currency: "INR", uid: u.uid, listingId: "", kind: "wallet_topup" });
+    // [HF-WIRE-20] The gateway order carries the payer's real verified number and email (never a placeholder), and an order started from the
+    // native app (`client: "app"`) returns to the app, not the website.
+    const customer = await topupCustomer(env, u.uid).catch(() => ({ phone: null, email: null }));
+    const client = b.client === "app" ? "app" : "web";
+    const order = await adapter.createOrder(env, { orderId: id, amountPaise: amount * 100, currency: "INR", uid: u.uid, listingId: "", kind: "wallet_topup", client, customer });
     if ("error" in order) {
       await env.DB_META.prepare("UPDATE hf_topups SET status='failed', raw_status=?2, updated_at=?3 WHERE id=?1").bind(id, order.error.slice(0, 80), Date.now()).run();
+      if (order.error === "customer_phone_required") {
+        return err(409, "whatsapp_required", "Verify your WhatsApp number in Settings before adding money.", { reason: "whatsapp_required" });
+      }
       return err(502, "gateway_error", "We could not start the payment. Please try again in a moment.");
     }
     await env.DB_META.prepare("UPDATE hf_topups SET gateway_order_id=?2, updated_at=?3 WHERE id=?1").bind(id, order.gateway_order_id, Date.now()).run();

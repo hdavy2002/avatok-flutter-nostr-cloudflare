@@ -52,9 +52,11 @@ final router = GoRouter(
       parentNavigatorKey: rootKey,
       path: '/payment',
       builder: (_, s) => PaymentScreen(
-        amount: double.tryParse(s.uri.queryParameters['amount'] ?? '') ?? 500,
+        // No amount when the screen is opened from a return link (hellofraands://wallet/topup/<id>): it is read from the server.
+        amount: double.tryParse(s.uri.queryParameters['amount'] ?? '') ?? (s.uri.queryParameters['order'] == null ? 500 : null),
         orderId: s.uri.queryParameters['order'],
         creditPaise: int.tryParse(s.uri.queryParameters['credit'] ?? ''),
+        sdkFailed: s.uri.queryParameters['sdk'] == 'err',
       ),
     ),
     GoRoute(parentNavigatorKey: rootKey, path: '/payout', builder: (_, __) => const PayoutScreen()),

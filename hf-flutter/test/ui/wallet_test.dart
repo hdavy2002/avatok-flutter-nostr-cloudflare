@@ -2,9 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:hf_app/data/api_client.dart';
+import 'package:hf_app/core/deep_links.dart';
 import 'package:hf_app/data/api_exception.dart';
+import 'package:hf_app/data/in_app_checkout.dart';
 import 'package:hf_app/data/models/wallet.dart';
 import 'package:hf_app/data/repos/wallet_repo.dart';
+import 'package:hf_app/demo/screens/me.dart' show WalletTicket;
 import 'package:hf_app/demo/screens/money.dart';
 import 'package:hf_app/demo/state.dart';
 
@@ -72,7 +75,12 @@ Future<void> _pump(WidgetTester tester, Widget home) async {
 }
 
 void main() {
-  tearDown(() => Checkout.launcher = (u) async => false);
+  // The real payment SDK needs a phone: tests never start it, they use a fake or "unavailable" (browser-tab fallback).
+  setUp(() => Checkout.inApp = const UnavailableCheckout());
+  tearDown(() {
+    Checkout.launcher = (u) async => false;
+    Checkout.inApp = const UnavailableCheckout();
+  });
 
   // [HF-WIRE-13] Refunds and withdrawals show in the history under the server's own words and the right kind.
   group('Wallet history kinds', () {
@@ -98,7 +106,7 @@ void main() {
       final api = FakeApiClient((m, p, q, b) => _order(500));
       final order = await WalletRepo(api).createTopup(500);
       expect(api.calls, ['POST /api/hf/wallet/topup']);
-      expect(api.bodies.single, {'amount': 500});
+      expect(api.bodies.single, {'amount': 500, 'client': 'app'});
       expect(api.sentHeaders.single!['Idempotency-Key'], isNotEmpty);
       expect(order.creditPaise, 42372);
       expect(order.gstPaise, 7628);
@@ -264,4 +272,156 @@ void main() {
       expect(find.text('Paid ₹100'), findsOneWidget);
     });
   });
+
+  // [HF-WIRE-20] In-app checkout, return link, honest error states.
+  group('In-app checkout', () {
+    testWidgets('session present: the payment sheet opens in the app, no browser tab, then the Payment screen', (tester) async {
+      final api = FakeApiClient((m, p, q, b) => _order(500));
+      final fake = _FakeCheckout(const PayOutcome(PayResult.completed));
+      Checkout.inApp = fake;
+      var tab = false;
+      Checkout.launcher = (u) async => tab = true;
+      await _pump(tester, TopUpScreen(repo: WalletRepo(api)));
+      await tester.tap(find.textContaining('PAY ₹500'));
+      await tester.pumpAndSettle();
+      expect(fake.calls, ['hftop_aaaaaaaaaaaaaaaaaaaaaaaa|session_1|true']);
+      expect(tab, isFalse);
+      expect(find.textContaining('PAYMENT amount=500&order=hftop_'), findsOneWidget);
+      expect(find.textContaining('sdk=err'), findsNothing);
+    });
+
+    testWidgets('payer backs out / SDK error: still goes to the Payment screen, marked sdk=err so it asks the server once', (tester) async {
+      final api = FakeApiClient((m, p, q, b) => _order(500));
+      Checkout.inApp = _FakeCheckout(const PayOutcome(PayResult.failed, 'cancelled'));
+      await _pump(tester, TopUpScreen(repo: WalletRepo(api)));
+      await tester.tap(find.textContaining('PAY ₹500'));
+      await tester.pumpAndSettle();
+      expect(find.textContaining('sdk=err'), findsOneWidget);
+    });
+
+    testWidgets('SDK cannot start: falls back to the browser tab', (tester) async {
+      final api = FakeApiClient((m, p, q, b) => _order(500));
+      Checkout.inApp = _FakeCheckout(const PayOutcome(PayResult.unavailable));
+      Uri? opened;
+      Checkout.launcher = (u) async {
+        opened = u;
+        return true;
+      };
+      await _pump(tester, TopUpScreen(repo: WalletRepo(api)));
+      await tester.tap(find.textContaining('PAY ₹500'));
+      await tester.pumpAndSettle();
+      expect(opened.toString(), 'https://pay.test/checkout?s=1');
+      expect(find.textContaining('PAYMENT amount=500&order=hftop_'), findsOneWidget);
+    });
+
+    testWidgets('no WhatsApp number on the account: the server message is shown and nothing opens', (tester) async {
+      final api = FakeApiClient((m, p, q, b) => const ApiException(
+          kind: ApiFailure.http, status: 409, code: 'whatsapp_required', message: 'Verify your WhatsApp number in Settings before adding money.'));
+      final fake = _FakeCheckout(const PayOutcome(PayResult.completed));
+      Checkout.inApp = fake;
+      await _pump(tester, TopUpScreen(repo: WalletRepo(api)));
+      await tester.tap(find.textContaining('PAY ₹500'));
+      await tester.pumpAndSettle();
+      expect(find.textContaining('Verify your WhatsApp number'), findsOneWidget);
+      expect(fake.calls, isEmpty);
+    });
+
+    testWidgets('PaymentScreen after an SDK error: server has nothing yet -> "not completed", Try again', (tester) async {
+      final api = FakeApiClient((m, p, q, b) => {'state': 'pending'});
+      await _pump(tester, PaymentScreen(amount: 500, orderId: 'hftop_x', sdkFailed: true, repo: WalletRepo(api)));
+      await tester.pump(const Duration(seconds: 2));
+      await tester.pump();
+      expect(find.text('Payment was not completed.'), findsOneWidget);
+      expect(find.text('TRY AGAIN'), findsOneWidget);
+    });
+
+    testWidgets('PaymentScreen after an SDK error but the server says paid: shows paid', (tester) async {
+      final api = FakeApiClient((m, p, q, b) => {'state': 'paid', 'creditPaise': 100});
+      await _pump(tester, PaymentScreen(amount: 100, orderId: 'hftop_x', sdkFailed: true, repo: WalletRepo(api)));
+      await tester.pump(const Duration(seconds: 2));
+      await tester.pump();
+      expect(find.text('Paid ₹100'), findsOneWidget);
+    });
+
+    testWidgets('opened from the return link (no amount): the amount comes from the server, and the balance tag is told to refresh', (tester) async {
+      final api = FakeApiClient((m, p, q, b) => {'state': 'paid', 'creditPaise': 847, 'paidPaise': 1000});
+      final before = WalletTicket.refresh.value;
+      await _pump(tester, PaymentScreen(orderId: 'hftop_x', repo: WalletRepo(api)));
+      expect(find.text('Confirming your payment…'), findsOneWidget);
+      await tester.pump(const Duration(seconds: 2));
+      await tester.pump();
+      expect(find.text('Paid ₹10'), findsOneWidget);
+      expect(find.text('₹8.47 added to your wallet'), findsOneWidget);
+      expect(WalletTicket.refresh.value, before + 1);
+    });
+
+    test('hellofraands://wallet/topup/<id> opens the Payment screen for that order; junk ids are ignored', () {
+      final t = linkTargetFor(Uri.parse('hellofraands://wallet/topup/hftop_aaaaaaaaaaaaaaaaaaaaaaaa'));
+      expect(t?.location, '/payment?order=hftop_aaaaaaaaaaaaaaaaaaaaaaaa');
+      expect(t?.telemetryPath, '/wallet/topup/:id');
+      expect(linkTargetFor(Uri.parse('hellofraands://wallet/topup/..%2Fadmin')), isNull);
+      expect(linkTargetFor(Uri.parse('hellofraands://wallet/topup/x')), isNull);
+      expect(linkTargetFor(Uri.parse('hellofraands://wallet'))?.location, '/wallet');
+    });
+  });
+
+  group('Wallet read errors', () {
+    test('one automatic second try: a 503 then success returns the wallet', () async {
+      var n = 0;
+      final api = FakeApiClient((m, p, q, b) => ++n == 1
+          ? const ApiException(kind: ApiFailure.http, status: 503, code: 'http_503')
+          : _wallet());
+      final w = await WalletRepo(api, retryDelay: Duration.zero).fetch();
+      expect(w.balancePaise, 42372);
+      expect(n, 2);
+    });
+
+    test('offline twice -> the offline error reaches the screen after exactly two tries', () async {
+      final api = FakeApiClient((m, p, q, b) => ApiException.offline());
+      await expectLater(WalletRepo(api, retryDelay: Duration.zero).fetch(), throwsA(isA<ApiException>().having((e) => e.isOffline, 'offline', true)));
+      expect(api.calls.length, 2);
+    });
+
+    test('a refusal (401 / 404) is not retried', () async {
+      final api = FakeApiClient((m, p, q, b) => ApiException.fromResponse(401, '{"error":"unauthorized"}'));
+      await expectLater(WalletRepo(api, retryDelay: Duration.zero).fetch(), throwsA(isA<ApiException>()));
+      expect(api.calls.length, 1);
+    });
+
+    testWidgets('server error: says it is on our side, with Try again', (tester) async {
+      final api = FakeApiClient((m, p, q, b) => const ApiException(kind: ApiFailure.http, status: 500, code: 'internal_error', message: 'Something went wrong.'));
+      await _pump(tester, WalletScreen(repo: WalletRepo(api, retryDelay: Duration.zero)));
+      await tester.pumpAndSettle();
+      expect(find.text('Our server had a problem'), findsOneWidget);
+      expect(find.textContaining('problem on our side'), findsOneWidget);
+      expect(find.text('Try again'), findsOneWidget);
+    });
+
+    testWidgets('signed out: says to sign in again', (tester) async {
+      final api = FakeApiClient((m, p, q, b) => ApiException.fromResponse(401, '{"error":"unauthorized"}'));
+      await _pump(tester, WalletScreen(repo: WalletRepo(api, retryDelay: Duration.zero)));
+      await tester.pumpAndSettle();
+      expect(find.text('Please sign in again'), findsOneWidget);
+    });
+
+    testWidgets('missing route (404): "not available right now", not a generic failure', (tester) async {
+      final api = FakeApiClient((m, p, q, b) => ApiException.fromResponse(404, '{"error":"not_found","message":"Not found."}'));
+      await _pump(tester, WalletScreen(repo: WalletRepo(api, retryDelay: Duration.zero)));
+      await tester.pumpAndSettle();
+      expect(find.text('Not available right now'), findsOneWidget);
+    });
+  });
+}
+
+class _FakeCheckout implements InAppCheckout {
+  _FakeCheckout(this.outcome);
+
+  final PayOutcome outcome;
+  final List<String> calls = [];
+
+  @override
+  Future<PayOutcome> pay({required String orderId, required String paymentSessionId, required bool sandbox}) async {
+    calls.add('$orderId|$paymentSessionId|$sandbox');
+    return outcome;
+  }
 }

@@ -421,6 +421,7 @@ export interface Env {
   CASHFREE_WEBHOOK_SECRET?: string;
   CASHFREE_ENV?: string;           // "sandbox" | "production"
   CASHFREE_RETURN_URL?: string;    // where the browser lands after paying
+  CASHFREE_APP_RETURN_URL?: string; // [HF-WIRE-20] optional override of the page that hands an app top-up back to the app (default: avatok.ai/pay/cashfree/return)
 
   // [PAY-HDFC-SMS-1] Single-account, staging-first UPI QR rail. The companion phone
   // signs incoming HDFC SMS with this secret; the Worker never accepts browser payment claims.

@@ -112,5 +112,10 @@
             <action android:name="android.intent.action.DIAL" />
             <data android:scheme="tel" />
         </intent>
+        <!-- [HF-WIRE-20] UPI apps (PhonePe, GPay, Paytm...) the in-app checkout hands the payment to: Android 11+ hides them unless declared. -->
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="upi" />
+        </intent>
     </queries>
 </manifest>

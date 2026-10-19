@@ -9,6 +9,10 @@ const credits = new Map<string, number>(); // op_id -> amount (WalletDO dedupes 
 let cfg: Record<string, unknown> = {};
 let fakeOrderPaid = true;
 let fakePaidPaise = 0;
+let fakeOrderError: string | null = null; // [HF-WIRE-20] makes the fake gateway refuse the order
+let customerNow = { phone: "9876543210", email: "fan@example.com" as string | null } as { phone: string | null; email: string | null };
+const orderCalls: any[] = [];
+vi.mock("../lib/hf_topup_customer", () => ({ topupCustomer: async () => customerNow }));
 
 vi.mock("./wallet", () => ({
   walletOp: async (_env: unknown, _uid: string, op: any) => {
@@ -38,7 +42,7 @@ const fake = {
   id: "razorpay",
   configured: () => true,
   testMode: () => true,
-  createOrder: async (_env: unknown, a: any) => ({
+  createOrder: async (_env: unknown, a: any) => fakeOrderError ? (orderCalls.push(a), { error: fakeOrderError, status: 422 }) : (orderCalls.push(a), {
     gateway: "razorpay", gateway_order_id: `gw_${a.orderId}`, amount_paise: a.amountPaise, currency: "INR", client_payload: { key_id: "k", razorpay_order_id: `gw_${a.orderId}` },
   }),
   verifyWebhook: async (_e: unknown, raw: string, h: Headers) => h.get("x-sig") === "good",
@@ -80,6 +84,7 @@ const webhook = (body: unknown, sig = "good") =>
 
 beforeEach(() => {
   env = { DB_META: makeDb(), TOKENS: makeKv() };
+  orderCalls.length = 0; fakeOrderError = null; customerNow = { phone: "9876543210", email: "fan@example.com" };
   credits.clear(); lots.clear(); notices.length = 0; cfg = { ...ON }; fakeOrderPaid = true; fakePaidPaise = 0; idem = 0;
 });
 
@@ -118,6 +123,27 @@ describe("hf top-up", () => {
     expect((await post("/api/hf/wallet/topup", { amount: 10 })).status).toBe(400);
     expect((await post("/api/hf/wallet/topup", { amount: 99999 })).status).toBe(400);
     expect((await post("/api/hf/wallet/topup", { amount: 75.5 })).status).toBe(400);
+  });
+
+  // [HF-WIRE-20] The gateway order gets the payer's real details and, from the app, the app return target.
+  it("passes the real phone/email and client=app to the gateway; the web default is client=web", async () => {
+    expect((await post("/api/hf/wallet/topup", { amount: 100, client: "app" })).status).toBe(200);
+    expect((await post("/api/hf/wallet/topup", { amount: 100 })).status).toBe(200);
+    expect(orderCalls[0].client).toBe("app");
+    expect(orderCalls[0].customer).toEqual({ phone: "9876543210", email: "fan@example.com" });
+    expect(orderCalls[1].client).toBe("web");
+  });
+
+  it("no verified number: 409 whatsapp_required in plain words, the row is marked failed, no gateway name", async () => {
+    customerNow = { phone: null, email: null };
+    fakeOrderError = "customer_phone_required";
+    const res = await post("/api/hf/wallet/topup", { amount: 100, client: "app" });
+    expect(res.status).toBe(409);
+    const b = await res.json();
+    expect(b.error).toBe("whatsapp_required");
+    expect(b.message).toMatch(/WhatsApp/);
+    expect(b.message).not.toMatch(/cashfree|razorpay/i);
+    expect(env.DB_META.raw.prepare("SELECT status FROM hf_topups").get().status).toBe("failed");
   });
 
   it("webhook is idempotent: a double delivery credits once", async () => {

@@ -43,6 +43,10 @@ export interface GatewayAdapter {
     listingId: string; // "" for kind "wallet_topup" (no listing)
     /** [HF-TOPUP-1] "wallet_topup" = HF wallet top-up; orderId is then an `hftop_…` id and is what each gateway echoes back. */
     kind: "live_event" | "consult_1to1" | "wallet_topup";
+    /** [HF-WIRE-20] "app" = the order was started from the native app, so the gateway's return page must hand the buyer back to the app. */
+    client?: "app" | "web";
+    /** [HF-WIRE-20] The payer's REAL contact details (verified WhatsApp number, real email). Never a placeholder; null = unknown. */
+    customer?: { phone: string | null; email: string | null };
   }): Promise<GatewayOrder | { error: string; status: number }>;
   /** Verify over the RAW body. Must not parse before verifying. */
   verifyWebhook(env: Env, raw: string, headers: Headers): Promise<boolean>;

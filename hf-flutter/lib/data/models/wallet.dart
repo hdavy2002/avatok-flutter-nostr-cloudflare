@@ -112,7 +112,7 @@ enum TopupState { pending, paid, failed }
 
 /// `GET /api/hf/wallet/topup/:id`.
 class TopupStatus {
-  const TopupStatus({required this.state, required this.creditPaise});
+  const TopupStatus({required this.state, required this.creditPaise, this.paidPaise});
 
   factory TopupStatus.fromJson(Map<String, dynamic> j) {
     final s = j['state'];
@@ -123,9 +123,13 @@ class TopupStatus {
               ? TopupState.failed
               : TopupState.pending,
       creditPaise: j['creditPaise'] is num ? (j['creditPaise'] as num).round() : null,
+      paidPaise: j['paidPaise'] is num ? (j['paidPaise'] as num).round() : null,
     );
   }
 
   final TopupState state;
   final int? creditPaise;
+
+  /// What the payer paid in paise (the top-up amount), when the server says. Lets the Payment screen show the amount after a return link.
+  final int? paidPaise;
 }

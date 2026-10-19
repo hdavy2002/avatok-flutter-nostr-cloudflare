@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/brand.dart';
+import '../../data/api_exception.dart';
 import '../../data/demo_mode.dart';
 import '../../data/models/wallet.dart';
 import '../../data/services.dart';
@@ -154,7 +155,8 @@ class WalletTicket extends StatefulWidget {
 
 class _WalletTicketState extends State<WalletTicket> {
   WalletSnapshot? _wallet;
-  bool _failed = false;
+  Object? _error; // [HF-WIRE-20] why the last read failed, so the caption can say so
+  bool get _failed => _error != null;
 
   bool get _live => !DemoMode.on;
 
@@ -178,12 +180,23 @@ class _WalletTicketState extends State<WalletTicket> {
       if (mounted) {
         setState(() {
           _wallet = w;
-          _failed = false;
+          _error = null;
         });
       }
-    } catch (_) {
-      if (mounted) setState(() => _failed = true);
+    } catch (e) {
+      if (mounted) setState(() => _error = e);
     }
+  }
+
+  /// [HF-WIRE-20] Specific, never a bare "could not load": offline, signed out, or our side. The repo already tried twice.
+  String get _failCaption {
+    final e = _error;
+    if (e is ApiException) {
+      if (e.isOffline) return 'No internet. Tap to try again.';
+      if (e.isUnauthorized) return 'Please sign in again.';
+      if (e.isTransient) return 'Our server is busy. Tap to try again.';
+    }
+    return 'Could not load your balance. Tap to try again.';
   }
 
   @override
@@ -199,7 +212,7 @@ class _WalletTicketState extends State<WalletTicket> {
       caption = w.heldPaise > 0 ? '${inr(w.heldPaise / 100)} set aside for a booking' : 'Ready for calls and bookings';
     } else {
       amount = '—';
-      caption = _failed ? 'Could not load your balance.' : 'Checking your balance…';
+      caption = _failed ? _failCaption : 'Checking your balance…';
     }
     return Container(
       height: 112,
@@ -209,17 +222,21 @@ class _WalletTicketState extends State<WalletTicket> {
         child: Row(
           children: [
             Expanded(
-              child: Container(
-                color: C.maroon,
-                padding: const EdgeInsets.symmetric(horizontal: 18),
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text('WALLET BALANCE', style: t(14, color: C.gold, ls: 0.16)),
-                    FittedBox(child: Text(amount, style: t(36, color: C.ivory, h: 1.1))),
-                    Text(caption, style: t(14, color: C.cream, w: FontWeight.w700)),
-                  ],
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: _live && _failed ? () => unawaited(_load()) : null,
+                child: Container(
+                  color: C.maroon,
+                  padding: const EdgeInsets.symmetric(horizontal: 18),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('WALLET BALANCE', style: t(14, color: C.gold, ls: 0.16)),
+                      FittedBox(child: Text(amount, style: t(36, color: C.ivory, h: 1.1))),
+                      Text(caption, style: t(14, color: C.cream, w: FontWeight.w700)),
+                    ],
+                  ),
                 ),
               ),
             ),

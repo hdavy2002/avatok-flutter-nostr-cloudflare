@@ -3,6 +3,9 @@ import 'dart:math';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../api_client.dart';
+import '../api_exception.dart';
+import '../cashfree_checkout.dart';
+import '../in_app_checkout.dart';
 import '../models/wallet.dart';
 
 /// Wallet and top-up (HF-WIRE-6).
@@ -14,21 +17,35 @@ import '../models/wallet.dart';
 ///
 /// Money is only ever added by the payment provider's signed message to the server, never by this app.
 class WalletRepo {
-  const WalletRepo(this._api);
+  const WalletRepo(this._api, {this.retryDelay = const Duration(milliseconds: 800)});
 
   final ApiClient _api;
+
+  /// [HF-WIRE-20] Pause before the one automatic second try of a read that failed on a dropped connection or a server hiccup.
+  final Duration retryDelay;
 
   static const int minRupees = 10;
   static const int confirmFromRupees = 1000;
 
-  Future<WalletSnapshot> fetch({String? cursor, int limit = 20}) async =>
-      WalletSnapshot.fromJson(await _api.getJson('/api/hf/app/wallet', query: {'cursor': cursor, 'limit': limit}));
+  /// Reads the wallet. A failure that is probably momentary (no connection, a 5xx, an unreadable reply) is tried once more after
+  /// [retryDelay] before the error reaches the screen; refusals (401, 4xx) are not retried. [HF-WIRE-20]
+  Future<WalletSnapshot> fetch({String? cursor, int limit = 20}) async {
+    Future<WalletSnapshot> once() async =>
+        WalletSnapshot.fromJson(await _api.getJson('/api/hf/app/wallet', query: {'cursor': cursor, 'limit': limit}));
+    try {
+      return await once();
+    } on ApiException catch (e) {
+      if (!e.isTransient) rethrow;
+      await Future<void>.delayed(retryDelay);
+      return once();
+    }
+  }
 
   Future<TopupOrder> createTopup(int rupees) async {
     final json = await _api.request(
       'POST',
       '/api/hf/wallet/topup',
-      body: {'amount': rupees},
+      body: {'amount': rupees, 'client': 'app'},
       headers: {'Idempotency-Key': _key()},
     );
     return TopupOrder.fromJson(json is Map<String, dynamic> ? json : <String, dynamic>{});
@@ -47,8 +64,10 @@ class WalletRepo {
   }
 }
 
-/// Opens the payment page. A Chrome Custom Tab on Android. Tests replace [launcher].
+/// Opens the payment page. [inApp] is the checkout inside the app (the payment SDK); [open] is the hosted page in a Chrome Custom
+/// Tab, kept as the fallback when the SDK cannot start. Tests replace [inApp] and [launcher].
 abstract final class Checkout {
+  static InAppCheckout inApp = const CashfreeInAppCheckout();
   static Future<bool> Function(Uri url) launcher = _launch;
 
   static Future<bool> open(String url) async {

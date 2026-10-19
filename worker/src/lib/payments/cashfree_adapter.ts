@@ -15,7 +15,7 @@ import {
 } from "../cashfree";
 import type { GatewayAdapter, GatewayOrder } from "./types";
 import { BRAND, brandUrl } from "../brand";
-import { cashfreeCheckoutUrl, cashfreeReturnUrl } from "../../routes/cashfree_checkout_host";
+import { cashfreeCheckoutUrl, cashfreeReturnUrl, cashfreeAppReturnUrl } from "../../routes/cashfree_checkout_host";
 
 function mapStatus(type: string | undefined, orderStatus: string | undefined): "paid" | "failed" | "refunded" | "pending" {
   const t = String(type ?? "").toUpperCase();
@@ -46,10 +46,18 @@ export const cashfreeAdapter: GatewayAdapter = {
       // [HF-CASHFREE-TOPUP-1] Wallet top-ups get their own return + notify URLs per order, so the live rail works without
       // anyone pasting a webhook into the Cashfree dashboard. {order_id} is Cashfree's own placeholder. The status poll on
       // /wallet is the backstop if a webhook is ever lost.
+      // [HF-WIRE-20] Orders started from the native app return to the app (avatok.ai/pay/cashfree/return -> hellofraands://wallet/topup/<id>),
+      // never to the website. CASHFREE_APP_RETURN_URL overrides; the website's CASHFREE_RETURN_URL is deliberately ignored for them.
       returnUrl: a.kind === "wallet_topup"
-        ? (env.CASHFREE_RETURN_URL ?? cashfreeReturnUrl() ?? brandUrl("/wallet?topup={order_id}"))
+        ? (a.client === "app"
+          ? (env.CASHFREE_APP_RETURN_URL ?? cashfreeAppReturnUrl() ?? brandUrl("/wallet?topup={order_id}"))
+          : (env.CASHFREE_RETURN_URL ?? cashfreeReturnUrl() ?? brandUrl("/wallet?topup={order_id}")))
         : (env.CASHFREE_RETURN_URL ?? null),
       notifyUrl: a.kind === "wallet_topup" ? `${BRAND.apiOrigin}/api/hf/wallet/topup/webhook/cashfree` : null,
+      // [HF-WIRE-20] The payer's real details only. A wallet top-up with no valid number is refused, never sent with a made-up one.
+      customerPhone: a.customer?.phone ?? null,
+      customerEmail: a.customer?.email ?? null,
+      requirePhone: a.kind === "wallet_topup",
     });
     if ("error" in created) return created;
     const order: GatewayOrder = {

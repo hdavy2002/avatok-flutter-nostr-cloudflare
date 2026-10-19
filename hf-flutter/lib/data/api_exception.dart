@@ -92,6 +92,42 @@ class ApiException implements Exception {
     return genericText;
   }
 
+  /// [HF-WIRE-20] Heading for a failure panel: says WHICH kind of failure it was (offline, signed out, server side) instead of one
+  /// "That did not work" for everything.
+  String get failureTitle {
+    if (isOffline) return code == 'timeout' ? 'Slow connection' : 'You are offline';
+    if (isUnauthorized) return 'Please sign in again';
+    if (kind == ApiFailure.parse) return 'Unexpected reply';
+    if (status >= 500) return 'Our server had a problem';
+    if (status == 429) return 'Too many tries';
+    if (status == 404 && !isNotEnabled) return 'Not available right now';
+    return 'That did not work';
+  }
+
+  /// [HF-WIRE-20] Body of a failure panel, to match [failureTitle].
+  String get failureMessage {
+    if (isOffline) return code == 'timeout' ? 'The server took too long to answer. Check your connection and try again.' : offlineText;
+    if (isUnauthorized) return 'Your sign-in has ended. Sign in again to continue.';
+    if (kind == ApiFailure.parse) return 'The app got a reply it could not read. Update the app, then try again.';
+    final own = _specificMessage;
+    if (status >= 500) return own ?? 'This is a problem on our side, not yours. Please try again in a moment.';
+    if (status == 429) return own ?? 'Please wait a few seconds, then try again.';
+    if (status == 404 && !isNotEnabled) return own ?? 'This part is not responding yet. Please try again in a little while.';
+    return userMessage;
+  }
+
+  /// The worker's own sentence when it says something useful; the stock "Something went wrong." / "Not found." lines say nothing.
+  String? get _specificMessage {
+    final m = message?.trim();
+    if (m == null || m.isEmpty) return null;
+    final lower = m.toLowerCase();
+    if (lower.startsWith('something went wrong') || lower == 'not found.' || lower == 'not found') return null;
+    return m;
+  }
+
+  /// [HF-WIRE-20] Worth one automatic second try (a dropped connection or a server hiccup), never a refusal such as 4xx.
+  bool get isTransient => isOffline || kind == ApiFailure.parse || status >= 500;
+
   @override
   String toString() => 'ApiException(${kind.name} $status $code${message == null ? '' : ': $message'})';
 }
