@@ -35,16 +35,17 @@
 | 4 | Design mocks | ⏭ SKIPPED | — | — | Owner waived 2026-10-20; visual check on phone in Phase 13. |
 | 5+6 | App: footer Online/Offline pill (influencer bar), Me/Settings rows, drag-select availability calendar (`screens/availability_real.dart`) | ✅ landed on main | integ branch | `973e93ac` | Not compiled locally; CI mode=check is the compile. |
 | 7+8 | App: data layer (§9b), fan flow with topic + approval copy, My bookings chips, influencer Bookings approval page, booking deep links | ✅ landed on main | integ branch | `dd94af23` | Known gap: app has no push-tap handling (firebase_messaging unused) — links only. Push paths /dashboard/appointments and /host don't map to app routes. |
-| 9 | Verify + land | 🟨 IN PROGRESS | `../wt-hf-book-approve-integ` | — | Last step: 3 agent branches cherry-picked into integ, telemetry.dart conflict merged, worker tsc clean, 70 booking tests pass. Next: push to main, run `gh workflow run hf-flutter.yml --ref main -f mode=check`, fix compile errors. |
-| 10 | Go-live: migrations, worker deploy, `hfBookingApprovalEnabled=true`, all live influencers → Online | ⬜ | — | — | Owner approved 2026-10-20. |
-| 11 | Owner account → influencer; second test fan account | ⬜ | — | — | — |
-| 12 | Build APK (`hf-flutter.yml mode=apk demo=false`) + sideload via `scripts/hf_sideload.sh` | ⬜ | — | — | Phone on USB, USB debugging on. |
+| 9 | Verify + land | ✅ | integ | `903db13f` | tsc clean, 70 booking tests pass, design/brand/flags guards OK, CI hf-flutter mode=check run 39386214890 = success. |
+| 10 | Go-live | ✅ | — | — | 2026-10-20 ~13:00 IST: alters applied (7 cols), CREATE applied, presence-online applied, worker deployed (version 4f92dc8c), consumers deployed (9d7204b9), flag hfBookingApprovalEnabled=true (verified with flags.sh get). Note: prod had 0 hf_hosts before this. |
+| 11 | Owner → influencer + QA influencer | ✅ | — | — | Owner uid user_3AuqQadIDHJftJtTkLD0DtKM8MB is live influencer slug `humphrey-davy` (manual approval, topics: channel/friendship/advice, ₹10/min). QA influencer `qa_hfbook_host` slug `qa-test-influencer` (fake verified phone +910000000000, availability 21–27 Oct 10:00–21:00) so the owner can test the FAN side by booking it. SQL: `output/hf-book-approve-qa/qa_setup.sql`; REMOVE after testing with `qa_teardown.sql` (cf.sh worker d1 execute DB_META --remote --file=…, copy the file under worker/ first). |
+| 12 | Build APK + sideload | 🟨 IN PROGRESS | — | — | Last step: CI run 39386798479 (hf-flutter mode=apk demo=false) started. Next: `scripts/hf_sideload.sh 39386798479` (first switch from Play build may need --fresh). Phone ZA223K79KG connected. |
 | 13 | Visual test both sides on phone, fix, re-check; screenshots in `output/hf-book-approve-shots/` | ⬜ | — | — | Checklist in plan §7 row 13. |
 
 ## Owner answers (plan §9)
 See plan §9a (2026-10-20): all influencers default Online (existing + new); reminders stay 1 h + 10 min; add topics "Talk about my channel", "Just friendship", "General advice"; footer influencer-only; no SMS; mock gate waived; build + sideload + both-sides test approved.
 
 ## Log (newest first)
+- 2026-10-20 — Coordinator: go-live done (migrations, worker+consumers deploy, flag on); owner made influencer; QA influencer created; APK build running.
 - 2026-10-20 — Coordinator: merged be + app-a + app-b into issue/hf-book-approve-integ; tsc + booking tests green; landing to main.
 - 2026-10-20 — Backend agent: DONE, committed `0c3f4a8c` (not pushed). tsc green; new tests pass; full-suite failures identical to origin/main baseline (pre-existing).
 - 2026-10-20 — Backend agent: code complete, tsc green, existing HF tests green (hf_calls_end/corrections failures are pre-existing on origin/main: no such column presence_call_id in the test shim). Writing tests + docs next.
