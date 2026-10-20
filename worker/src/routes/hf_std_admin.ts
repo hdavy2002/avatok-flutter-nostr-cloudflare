@@ -17,7 +17,7 @@ import { isAdminUid } from "../lib/preview";
 import { track, trackException } from "../hooks";
 import { BRAND } from "../lib/brand";
 import { istDayStart, parseIstDate } from "../lib/hf_ist";
-import { lookupPeople } from "../lib/hf_vobiz_report";
+import { personName } from "../lib/admin2_people_data";
 import { tierBreakdown, validTariff, formatRupees, type Tariff, type TierLine } from "../lib/hf_token_math";
 import { testPartOfCall } from "../lib/hf_reconcile_tokens";
 import { MIN_LEGS_FOR_ACTUAL } from "../lib/hf_std_cost";
@@ -28,6 +28,22 @@ const DAY_MS = 86_400_000;
 const NO_STORE = { "cache-control": "private, no-store" };
 const MAX_ROWS = 20_000;
 const err = (status: number, error: string, message: string) => json({ error, message }, status, NO_STORE);
+/** Names only (the calls page never shows phones; the shared lookup ran a phone_otp subquery per user). One IN query per 80 uids, run together. */
+async function lookupNames(env: Env, uids: string[]): Promise<Map<string, { name: string | null }>> {
+  const out = new Map<string, { name: string | null }>();
+  const list = [...new Set(uids.filter(Boolean))];
+  const chunks: string[][] = [];
+  for (let i = 0; i < list.length; i += 80) chunks.push(list.slice(i, i + 80));
+  await Promise.all(chunks.map(async (chunk) => {
+    try {
+      const rs = await env.DB_META.prepare(
+        `SELECT uid, display_name, first_name, last_name FROM users WHERE uid IN (${chunk.map((_, k) => `?${k + 1}`).join(",")})`,
+      ).bind(...chunk).all<{ uid: string; display_name: string | null; first_name: string | null; last_name: string | null }>();
+      for (const r of rs.results ?? []) out.set(r.uid, { name: personName(r) });
+    } catch { /* names are a convenience */ }
+  }));
+  return out;
+}
 const n = (v: unknown): number => Math.trunc(Number(v ?? 0)) || 0;
 
 /** Wording the admin pages must show next to every platform figure. */
@@ -96,19 +112,19 @@ export interface StdTotals {
 }
 
 async function loadWindow(env: Env, from: number, to: number): Promise<{ rows: CallRow[]; actual: Map<string, number | null> }> {
-  const rows = ((await env.DB_META.prepare(
+  // [HF-ADMIN-SPEED-2] the two queries are independent: run them together (was strictly sequential)
+  const rowsP = env.DB_META.prepare(
     `SELECT ${CALL_COLS} FROM hf_calls WHERE status='completed' AND ended_at IS NOT NULL AND ended_at>=?1 AND ended_at<=?2 ORDER BY ended_at DESC LIMIT ${MAX_ROWS}`,
-  ).bind(from, to).all<CallRow>().catch(() => ({ results: [] as CallRow[] }))).results ?? []);
+  ).bind(from, to).all<CallRow>().then((r) => r.results ?? [], () => [] as CallRow[]);
+  const legsP = env.DB_META.prepare(
+    `SELECT l.call_id AS call_id, COUNT(*) AS legs, COALESCE(SUM(l.total_cost_paise),0) AS cost, SUM(CASE WHEN l.total_cost_paise IS NULL THEN 1 ELSE 0 END) AS missing
+       FROM hf_vobiz_legs l JOIN hf_calls c ON c.id=l.call_id
+      WHERE c.status='completed' AND c.ended_at>=?1 AND c.ended_at<=?2 GROUP BY l.call_id`,
+  ).bind(from, to).all<{ call_id: string; legs: number; cost: number; missing: number }>().then((r) => r.results ?? [], () => null);
+  const [rows, legs] = await Promise.all([rowsP, legsP]);
   const actual = new Map<string, number | null>();
-  try {
-    const legs = (await env.DB_META.prepare(
-      `SELECT l.call_id AS call_id, COUNT(*) AS legs, COALESCE(SUM(l.total_cost_paise),0) AS cost, SUM(CASE WHEN l.total_cost_paise IS NULL THEN 1 ELSE 0 END) AS missing
-         FROM hf_vobiz_legs l JOIN hf_calls c ON c.id=l.call_id
-        WHERE c.status='completed' AND c.ended_at>=?1 AND c.ended_at<=?2 GROUP BY l.call_id`,
-    ).bind(from, to).all<{ call_id: string; legs: number; cost: number; missing: number }>()).results ?? [];
-    // same rule as sumActualLegCost: at least 2 legs on record and every one of them carries a cost
-    for (const g of legs) actual.set(g.call_id, n(g.legs) >= MIN_LEGS_FOR_ACTUAL && n(g.missing) === 0 ? n(g.cost) : null);
-  } catch { /* ledger table absent: stored column only */ }
+  // same rule as sumActualLegCost: at least 2 legs on record and every one of them carries a cost (legs null = ledger table absent: stored column only)
+  for (const g of legs ?? []) actual.set(g.call_id, n(g.legs) >= MIN_LEGS_FOR_ACTUAL && n(g.missing) === 0 ? n(g.cost) : null);
   return { rows, actual };
 }
 
@@ -152,25 +168,28 @@ export async function stdCallsReport(env: Env, from: number, to: number, limit =
   const { rows, actual } = await loadWindow(env, from, to);
   const shaped = rows.map((r) => shape(r, actual));
   const page = shaped.slice(offset, offset + limit);
-  const people = await lookupPeople(env, page.flatMap((r) => [r.callerUid, r.hostUid]));
+  const people = await lookupNames(env, page.flatMap((r) => [r.callerUid, r.hostUid]));
   const calls: StdCallRow[] = page.map((r) => ({ ...r, callerName: people.get(r.callerUid)?.name ?? null, hostName: people.get(r.hostUid)?.name ?? null }));
   return { from, to, limit, offset, count: shaped.length, truncated: rows.length >= MAX_ROWS, note: PLATFORM_NOTE, totals: totalsOf(shaped), calls };
 }
 
 export async function stdSummaryReport(env: Env, from: number, to: number) {
-  const { rows, actual } = await loadWindow(env, from, to);
-  const calls = totalsOf(rows.map((r) => shape(r, actual)));
   const one = async <T>(sql: string, ...b: unknown[]): Promise<T | null> => { try { return await env.DB_META.prepare(sql).bind(...b).first<T>(); } catch { return null; } };
   // top-ups: purchase lots made in the window; migration lots are the same money as the lot they replaced and are excluded when the column exists
   const topSql = (excl: string) =>
     `SELECT COUNT(*) AS c, COALESCE(SUM(paid_paise),0) AS paid, COALESCE(SUM(gst_paise),0) AS gst,
             COALESCE(SUM((tokens_granted_micro * redemption_paise_per_token + 500000) / 1000000),0) AS wallet
        FROM hf_token_lots WHERE kind='purchase' AND created_at>=?1 AND created_at<=?2 ${excl}`;
-  const top = (await one<{ c: number; paid: number; gst: number; wallet: number }>(topSql("AND source_lot_id IS NULL"), from, to))
-    ?? (await one<{ c: number; paid: number; gst: number; wallet: number }>(topSql("").replace("COALESCE(SUM(gst_paise),0)", "0"), from, to));
-  const corr = await one<{ c: number; v: number }>("SELECT COUNT(*) AS c, COALESCE(SUM(rupee_value_paise),0) AS v FROM hf_token_ledger WHERE kind='call_refund' AND created_at>=?1 AND created_at<=?2", from, to);
-  const rev = await one<{ c: number; v: number }>("SELECT COUNT(*) AS c, COALESCE(SUM(rupee_value_paise),0) AS v FROM hf_token_ledger WHERE kind='refund_revoke' AND created_at>=?1 AND created_at<=?2", from, to);
-  const play = await one<{ c: number; v: number }>("SELECT COUNT(*) AS c, COALESCE(SUM(COALESCE(recorded_paise, amount_paise, 0)),0) AS v FROM hf_refund_requests WHERE kind='play_refund' AND status='refunded' AND refunded_at>=?1 AND refunded_at<=?2", from, to);
+  type Top = { c: number; paid: number; gst: number; wallet: number };
+  // [HF-ADMIN-SPEED-2] the call window and the four money queries are independent: run them together (was 6 sequential round trips)
+  const [{ rows, actual }, top, corr, rev, play] = await Promise.all([
+    loadWindow(env, from, to),
+    one<Top>(topSql("AND source_lot_id IS NULL"), from, to).then(async (t) => t ?? await one<Top>(topSql("").replace("COALESCE(SUM(gst_paise),0)", "0"), from, to)),
+    one<{ c: number; v: number }>("SELECT COUNT(*) AS c, COALESCE(SUM(rupee_value_paise),0) AS v FROM hf_token_ledger WHERE kind='call_refund' AND created_at>=?1 AND created_at<=?2", from, to),
+    one<{ c: number; v: number }>("SELECT COUNT(*) AS c, COALESCE(SUM(rupee_value_paise),0) AS v FROM hf_token_ledger WHERE kind='refund_revoke' AND created_at>=?1 AND created_at<=?2", from, to),
+    one<{ c: number; v: number }>("SELECT COUNT(*) AS c, COALESCE(SUM(COALESCE(recorded_paise, amount_paise, 0)),0) AS v FROM hf_refund_requests WHERE kind='play_refund' AND status='refunded' AND refunded_at>=?1 AND refunded_at<=?2", from, to),
+  ]);
+  const calls = totalsOf(rows.map((r) => shape(r, actual)));
   return {
     from, to, note: PLATFORM_NOTE,
     topups: { count: n(top?.c), paidPaise: n(top?.paid), gstIncludedPaise: n(top?.gst), walletCreditedPaise: n(top?.wallet) },
@@ -220,6 +239,29 @@ export function stdSummaryCsv(s: Awaited<ReturnType<typeof stdSummaryReport>>): 
 }
 const csvResponse = (body: string, name: string) => new Response(body, { status: 200, headers: { ...CORS, "content-type": "text/csv; charset=utf-8", "content-disposition": `attachment; filename="${name}"`, ...NO_STORE } });
 
+// ── short edge cache ─────────────────────────────────────────────────────────
+// [HF-ADMIN-SPEED-2] Admin-global report JSON cached 45 s in the colo cache. Only ever read AFTER requireUser + isAdminUid passed, so it is never
+// served to a non-admin; the data is the same for every admin. `&fresh=1` bypasses it. CSV is never cached.
+const CACHE_TTL_S = 45;
+const cacheKey = (kind: string, url: URL) => {
+  const k = new URL(`https://hf-std-cache.internal/${kind}`);
+  for (const name of ["from", "to", "limit", "offset"]) { const v = url.searchParams.get(name); if (v != null) k.searchParams.set(name, v); }
+  return new Request(k.toString());
+};
+async function cached(kind: string, url: URL, ctx: ExecutionContext, build: () => Promise<unknown>): Promise<Response> {
+  const store = typeof caches !== "undefined" ? (caches as unknown as { default?: Cache }).default : undefined;
+  const key = cacheKey(kind, url);
+  if (store && url.searchParams.get("fresh") !== "1") {
+    try { const hit = await store.match(key); if (hit) return new Response(hit.body, { status: 200, headers: { ...CORS, "content-type": "application/json", "x-hf-cache": "hit", ...NO_STORE } }); } catch { /* miss */ }
+  }
+  const body = JSON.stringify(await build());
+  if (store) {
+    const put = store.put(key, new Response(body, { headers: { "content-type": "application/json", "cache-control": `public, max-age=${CACHE_TTL_S}` } })).catch(() => undefined);
+    try { ctx.waitUntil(put); } catch { void put; }
+  }
+  return new Response(body, { status: 200, headers: { ...CORS, "content-type": "application/json", "x-hf-cache": "miss", ...NO_STORE } });
+}
+
 // ── route ────────────────────────────────────────────────────────────────────
 export async function hfStdAdminRoute(req: Request, env: Env, ctx: ExecutionContext): Promise<Response | null> {
   const url = new URL(req.url);
@@ -241,12 +283,15 @@ export async function hfStdAdminRoute(req: Request, env: Env, ctx: ExecutionCont
     if (sub === "calls" && m === "GET") {
       const { from, to } = stdRange(url);
       log("calls", { q: url.search.slice(0, 200) });
-      const r = await stdCallsReport(env, from, to, intParam(url.searchParams.get("limit"), 50, 1, csv ? MAX_ROWS : 500), intParam(url.searchParams.get("offset"), 0, 0, MAX_ROWS));
+      const limit = intParam(url.searchParams.get("limit"), 50, 1, csv ? MAX_ROWS : 500), offset = intParam(url.searchParams.get("offset"), 0, 0, MAX_ROWS);
+      if (!csv && offset === 0) return await cached("calls", url, ctx, () => stdCallsReport(env, from, to, limit, 0));
+      const r = await stdCallsReport(env, from, to, limit, offset);
       return csv ? csvResponse(stdCallsCsv(r), "hf-standard-plan-calls.csv") : json(r, 200, NO_STORE);
     }
     if (sub === "summary" && m === "GET") {
       const { from, to } = stdRange(url);
       log("summary", { q: url.search.slice(0, 200) });
+      if (!csv) return await cached("summary", url, ctx, () => stdSummaryReport(env, from, to));
       const r = await stdSummaryReport(env, from, to);
       return csv ? csvResponse(stdSummaryCsv(r), "hf-standard-plan-summary.csv") : json(r, 200, NO_STORE);
     }

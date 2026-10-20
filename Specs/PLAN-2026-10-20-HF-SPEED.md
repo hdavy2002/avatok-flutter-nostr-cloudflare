@@ -113,6 +113,15 @@ Owner report: each admin page "loads" when opened; slow on a weak network.
 - True SPA navigation (Astro ClientRouter) would remove Clerk re-init per click but touches the whole shell; risky for the single-ClerkProvider design.
 - Money screens not cached: reconciliation, phone costs, std calls (computed reports).
 
+### HF-ADMIN-SPEED-2 (server side of the admin)
+Measured: `/std/calls` 1.36 s, `/std/summary` 1.2 s, `/v2/shop/kpis` 0.9 s on every page. Prod D1 is tiny (hf_calls 0 rows, ledger 26, lots 6), so the time is round trips, not scans: calls did 2 sequential queries + a names query with a per-user `phone_otp` subquery; summary did 7 sequential queries (window 2 + top-ups + 3 ledger/refund counts). EXPLAIN showed the calls window using `hf_calls_status (status=?)` + TEMP B-TREE for `ended_at` (grows with history).
+- Shop badge: `AdminNav.useToPrint` no longer calls `/api/admin/v2/shop/kpis` on load; shop screens announce the count and it is kept in sessionStorage. Saves 0.9 s of worker work per page.
+- `hf_std_admin.ts`: `loadWindow` runs rows + vobiz legs with Promise.all; summary runs the window and the 4 money queries together; names-only lookup (no phone subquery), chunks parallel; 45 s colo cache (caches.default) for summary and calls offset 0 (JSON only, never CSV), read only after requireUser + isAdminUid, `&fresh=1` bypasses, response header `x-hf-cache: hit|miss`. Audit rows are still written on every request.
+- Migration `worker/migrations/2026-10-20-hf-std-indexes.sql` (CREATE INDEX IF NOT EXISTS only): `hf_calls(status, ended_at)`, `hf_token_lots(kind, created_at)`, `hf_token_ledger(kind, created_at)`, `hf_refund_requests(kind, status, refunded_at)`.
+- Expected: cold calls ~0.4-0.5 s, cold summary ~0.4-0.5 s (about 3 round trips deep instead of 7), repeat within 45 s ~0.1-0.2 s (auth only).
+- Not changed: `/api/admin/whoami` (0.5 s) is `requireAdmin` (token verify) + KV/memoised email; no cheap win without touching auth.
+- Deploy: worker deploy, then web; apply migration: `cd worker && AVATOK_TARGET=prod ALLOW_PROD=1 ../scripts/cf.sh worker d1 execute DB_META --remote --file=migrations/2026-10-20-hf-std-indexes.sql`.
+
 ## Status 2026-10-20 22:00 IST (coordinator)
 - Landed on main: HF-APP-CACHE-1 (+ compile fix), HF-ADMIN-CACHE-1 (web deployed, run 39454225619), HF-REELS-FAV-1, HF-PALETTE-RANGOLI-1 (owner chose "Rangoli Soft"), HF-TESTS-FIX-1. APK run 39458496306 built OK and is INSTALLED on the owner's phone (not yet looked at: phone locked).
 - Admin measured after deploy: HTML 0.26 s, whoami now parallel with the data fetches, calls list served from cache (`a2c:` sessionStorage). Remaining slow parts are server-side: /api/admin/hf/std/calls 1.36 s, /std/summary 1.2 s, and an unneeded /api/admin/v2/shop/kpis (0.9 s) fired on every HF admin page by the shell — NEXT: drop the shop KPI call from HF pages, add worker-side caching/indexes for std reports.

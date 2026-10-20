@@ -128,23 +128,25 @@ function NavPill({ label, className }: { label?: string; className?: string }) {
   );
 }
 
-/** Paid shop orders waiting to be placed with the printer. Shop screens announce it themselves
- * (`shop-admin:to-print`); every other admin page asks GET /api/admin/v2/shop/kpis once. */
-function useToPrint(ready: boolean, active: AdminKey): number {
-  const [n, setN] = useState(0);
+/** Paid shop orders waiting to be placed with the printer. [HF-ADMIN-SPEED-2] Shop screens announce the number themselves
+ * (`shop-admin:to-print`); it is remembered for the tab so other pages show the last known badge. No page fires GET /api/admin/v2/shop/kpis
+ * on load any more (it cost ~0.9 s of worker time on every Hello Fraands admin page that never shows shop numbers). The badge is refreshed
+ * lazily, once per tab, only when the Shop group is actually opened on a shop page (that page's own fetch announces it). */
+const TO_PRINT_KEY = 'admin2:to-print';
+function useToPrint(_ready: boolean, _active: AdminKey): number {
+  const [n, setN] = useState(() => {
+    try { return Number(sessionStorage.getItem(TO_PRINT_KEY)) || 0; } catch { return 0; }
+  });
   useEffect(() => {
-    const on = (e: Event) => { const d = (e as CustomEvent<number>).detail; if (typeof d === 'number') setN(d); };
+    const on = (e: Event) => {
+      const d = (e as CustomEvent<number>).detail;
+      if (typeof d !== 'number') return;
+      setN(d);
+      try { sessionStorage.setItem(TO_PRINT_KEY, String(d)); } catch { /* storage blocked */ }
+    };
     window.addEventListener('shop-admin:to-print', on);
     return () => window.removeEventListener('shop-admin:to-print', on);
   }, []);
-  useEffect(() => {
-    if (!ready || active.startsWith('shop-')) return;
-    let off = false;
-    adminApi<{ to_print?: number }>('/api/admin/v2/shop/kpis')
-      .then((k) => { if (!off && typeof k.to_print === 'number') setN(k.to_print); })
-      .catch((e) => captureException(e, { where: 'admin2_nav_shop_badge' }));
-    return () => { off = true; };
-  }, [ready, active]);
   return n;
 }
 
