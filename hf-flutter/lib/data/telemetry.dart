@@ -29,6 +29,8 @@ abstract final class Telemetry {
     'app_crash',
     'hf_app_open',
     'hf_app_deeplink_opened',
+    'hf_app_push_opened', // [HF-BOOK-APPROVE-PUSH]
+    'hf_push_registered',
     'hf_signup_code_sent',
     'hf_signup_verified',
     'hf_signup_age_confirmed',
@@ -157,6 +159,13 @@ abstract final class Telemetry {
   /// Catalog event `hf_app_deeplink_opened`: [path] must already be anonymised (`/h/:id`).
   static void deepLinkOpened({required String path, required String source, required String launch}) {
     event('hf_app_deeplink_opened', {'path': path, 'source': source, 'launch': launch});
+  }
+
+  /// Catalog event `hf_app_push_opened` [HF-BOOK-APPROVE-PUSH]: a notification was tapped. [path] is anonymised like
+  /// [deepLinkOpened] (`/bookings/:id`), or `/unmapped` when the app has no screen for it; [state] is
+  /// `cold` | `background` | `foreground`.
+  static void pushOpened({required String path, required String state}) {
+    event('hf_app_push_opened', {'path': path, 'state': state});
   }
 
   /// Catalog event `hf_app_open`: once per process start, after the splash work.

@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:app_links/app_links.dart';
 import 'package:go_router/go_router.dart';
 
+import '../data/models/booking.dart';
 import '../data/services.dart';
 import '../data/telemetry.dart';
 import 'brand.dart';
@@ -29,6 +30,8 @@ class LinkTarget {
 /// - `/wallet`    -> wallet
 /// - `/wallet/topup/<id>` -> the Payment screen for that top-up (return from the payment page)
 /// - `/bookings/<id>` -> [HF-BOOK-APPROVE] one booking: the influencer's Bookings page on that card, a fan's My bookings
+/// - `/bookings`, `/inf/bookings`, `/inf/availability`, `/inf/home`, `/inf/status` -> [HF-BOOK-APPROVE-PUSH] those screens
+/// - `/dashboard/appointments`, `/host`, `/hosts/dashboard` -> the same influencer screens, for older web-style push paths
 LinkTarget? linkTargetFor(Uri uri) {
   final scheme = uri.scheme.toLowerCase();
   final List<String> segs;
@@ -60,7 +63,22 @@ LinkTarget? linkTargetFor(Uri uri) {
   if (segs.length == 2 && segs.first == 'bookings' && RegExp(r'^[A-Za-z0-9_-]{8,64}$').hasMatch(segs[1])) {
     return LinkTarget('/bookings/${segs[1]}', '/bookings/:id');
   }
+  // [HF-BOOK-APPROVE-PUSH] App-friendly push paths, plus the web-style paths older pushes carried.
+  if (segs.length == 1 && segs.first == 'bookings') return const LinkTarget('/bookings', '/bookings');
+  if (segs.length == 2 && segs.first == 'inf' && const {'bookings', 'availability', 'home', 'status'}.contains(segs[1])) {
+    return LinkTarget('/inf/${segs[1]}', '/inf/${segs[1]}');
+  }
+  if (segs.length == 2 && segs.first == 'dashboard' && segs[1] == 'appointments') return const LinkTarget('/inf/bookings', '/inf/bookings');
+  if (segs.length == 1 && segs.first == 'host') return const LinkTarget('/inf/status', '/inf/status');
+  if (segs.length == 2 && segs.first == 'hosts' && segs[1] == 'dashboard') return const LinkTarget('/inf/home', '/inf/home');
   return null;
+}
+
+/// A push payload `path` (always same-site and relative, for example `/bookings/<id>`) as a screen, or null.
+LinkTarget? linkTargetForPath(String path) {
+  if (!path.startsWith('/') || path.startsWith('//') || path.contains('\\')) return null;
+  final uri = Uri.tryParse('https://${Brand.domain}$path');
+  return uri == null ? null : linkTargetFor(uri);
 }
 
 /// Listens for links (cold start and while running) and opens the matching screen.
@@ -97,12 +115,26 @@ abstract final class DeepLinks {
   static void _handle(Uri uri, String launch) {
     final target = linkTargetFor(uri);
     if (target == null) return;
+    _dispatch(target, uri.scheme == 'https' ? 'link' : 'scheme', launch);
+  }
+
+  /// [HF-BOOK-APPROVE-PUSH] A tapped push notification. [path] is the payload's `path`; [state] is `cold` (the tap
+  /// started the app), `background` or `foreground` (OPEN on the in-app banner). Telemetry: `hf_app_push_opened`, then
+  /// the usual `hf_app_deeplink_opened` with `source = push`.
+  static void openPush(String path, {required String state}) {
+    final target = linkTargetForPath(path);
+    Telemetry.pushOpened(path: target?.telemetryPath ?? '/unmapped', state: state);
+    if (target == null) return;
+    _dispatch(target, 'push', state == 'cold' ? 'cold' : 'warm');
+  }
+
+  static void _dispatch(LinkTarget target, String source, String launch) {
     // The plugin can deliver the launch link twice (initial + stream); open it once.
     final now = DateTime.now();
     if (_lastLocation == target.location && now.difference(_lastAt) < const Duration(seconds: 2)) return;
     _lastLocation = target.location;
     _lastAt = now;
-    Telemetry.deepLinkOpened(path: target.telemetryPath, source: uri.scheme == 'https' ? 'link' : 'scheme', launch: launch);
+    Telemetry.deepLinkOpened(path: target.telemetryPath, source: source, launch: launch);
     if (_ready) {
       _open(target);
     } else {
@@ -117,19 +149,62 @@ abstract final class DeepLinks {
       if (target.location.startsWith('/bookings/')) {
         // [HF-BOOK-APPROVE] Role decides the screen. The influencer's page is a tab of the influencer shell, so it is
         // opened with go (a second copy of the shell cannot be pushed); a fan's My bookings is a plain pushed screen.
-        final id = Uri.encodeQueryComponent(target.location.substring('/bookings/'.length));
-        if (Services.instance.viewerIsInfluencer) {
-          r.go('/inf/bookings?booking=$id');
-        } else {
-          unawaited(r.push<Object?>('/bookings?booking=$id'));
-        }
-      } else if (target.location.startsWith('/reels')) {
-        r.go(target.location);
+        unawaited(_openBooking(r, target.location.substring('/bookings/'.length)));
+      } else if (target.location.startsWith('/reels') || target.location.startsWith('/inf/')) {
+        r.go(target.location); // tabs of a shell (Reels, the influencer's pages) are opened with go
       } else {
         unawaited(r.push<Object?>(target.location));
       }
     } catch (_) {
       // an unknown location must never crash the app
     }
+  }
+
+  /// [HF-BOOK-APPROVE-PUSH] One booking: the influencer's Bookings page when she is the host of it, else the fan's My
+  /// bookings. Asks the server (her pending, upcoming and past lists) instead of guessing from her account, because one
+  /// person can be a fan of some bookings and the host of others. When the server cannot be asked, falls back to
+  /// [Services.viewerIsInfluencer].
+  static Future<void> _openBooking(GoRouter r, String id) async {
+    final enc = Uri.encodeQueryComponent(id);
+    var host = Services.instance.viewerIsInfluencer;
+    try {
+      host = await _isHostBooking(id);
+    } catch (_) {
+      // keep the fallback
+    }
+    try {
+      if (host) {
+        r.go('/inf/bookings?booking=$enc');
+      } else {
+        unawaited(r.push<Object?>('/bookings?booking=$enc'));
+      }
+    } catch (_) {
+      // an unknown location must never crash the app
+    }
+  }
+
+  static Future<bool> _isHostBooking(String id) async {
+    final s = Services.instance;
+    if (!s.isSignedIn) return s.viewerIsInfluencer;
+    bool? found; // null = the server could not be asked
+    Future<void> look(Future<List<AppBooking>> f) async {
+      try {
+        final list = await f;
+        if (list.any((b) => b.id == id)) {
+          found = true;
+        } else {
+          found ??= false;
+        }
+      } catch (_) {
+        // not a host (403), offline: leave it to the other lists / the fallback
+      }
+    }
+
+    await Future.wait<void>([
+      look(s.bookingsRepo.hostBookings(status: 'pending')),
+      look(s.bookingsRepo.hostBookings()),
+      look(s.bookingsRepo.hostBookings(status: 'past')),
+    ]);
+    return found ?? s.viewerIsInfluencer;
   }
 }

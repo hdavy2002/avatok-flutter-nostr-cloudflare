@@ -88,7 +88,7 @@ export async function runHfOpenWindowAlerts(env: Env, now = Date.now()): Promise
             .bind(h.uid, date, w.fromMin, now).run();
           if (!claim.meta?.changes) continue; // already sent for this window
           const text = openAlertText(windowLabel(w));
-          const pushed = await sendHfPush(env, h.uid, { kind: "open_window", title: "You're open for calls", body: "Expect calls. " + windowLabel(w) + " today.", path: "/host" }).catch(() => false);
+          const pushed = await sendHfPush(env, h.uid, { kind: "open_window", title: "You're open for calls", body: "Expect calls. " + windowLabel(w) + " today.", path: "/inf/availability" }).catch(() => false);
           void track(env, h.uid, "hf_open_alert_sent", APP, { channel: "push", result: pushed ? "queued" : "skipped", date, start_min: w.fromMin }).catch(() => undefined);
           let wa = "no_verified_whatsapp";
           const e164 = await verifiedWhatsAppNumber(env, h.uid).catch(() => null);

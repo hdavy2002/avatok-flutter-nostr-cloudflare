@@ -67,3 +67,23 @@ describe("hfPushCopy + buildHfPushJob", () => {
     expect(j.body.length).toBeLessThanOrEqual(160);
   });
 });
+
+// [HF-BOOK-APPROVE-PUSH] The booking pushes must carry app locations the phone can open (hf-flutter core/deep_links.dart).
+describe("booking push paths are app locations", () => {
+  const APP_PATH = /^\/(bookings(\/[A-Za-z0-9_-]{8,64})?|inf\/(bookings|availability|home|status))$/;
+  it("fallback copy for the booking kinds never uses a web-only path", () => {
+    for (const k of ["booking_reminder", "booking_request", "booking_update", "booking_nudge", "open_window"] as const) {
+      const path = hfPushCopy(k, "Brand", { name: "Priya" }).path;
+      expect(path, k).toMatch(APP_PATH);
+      expect(buildHfPushJob("uid_1234", hfPushCopy(k, "Brand", { name: "Priya" }))?.path).toBe(path);
+    }
+  });
+  it("request and nudge go to the influencer's Bookings page; open_window to her calendar", () => {
+    expect(hfPushCopy("booking_request", "Brand").path).toBe("/inf/bookings");
+    expect(hfPushCopy("booking_nudge", "Brand").path).toBe("/inf/bookings");
+    expect(hfPushCopy("open_window", "Brand").path).toBe("/inf/availability");
+  });
+  it("a reminder with a booking id points at that booking", () => {
+    expect(hfPushCopy("booking_reminder", "Brand", { name: "Priya", slug: "bk_abcdef123456" }).path).toBe("/bookings/bk_abcdef123456");
+  });
+});

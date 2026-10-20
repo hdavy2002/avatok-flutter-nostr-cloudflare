@@ -20,6 +20,7 @@ import 'repos/payouts_repo.dart';
 import 'repos/reels_repo.dart';
 import 'repos/search_repo.dart';
 import 'repos/wallet_repo.dart';
+import 'push.dart'; // [HF-BOOK-APPROVE-PUSH]
 import 'telemetry.dart';
 
 /// The app-wide singletons: Clerk, the API client and the repositories. Plain Dart (no provider tree)
@@ -71,6 +72,7 @@ class Services {
   Future<void> _sessionLost() async {
     user = null;
     me = null;
+    PushNotifications.forget(); // [HF-BOOK-APPROVE-PUSH] the session is gone, so the token cannot be removed from here
     demo.signOut();
     FavouritesStore.instance.reset(); // [HF-WIRE-9]
   }
@@ -91,9 +93,19 @@ class Services {
     try {
       me = await meRepo.fetch();
       _syncDemoAccount();
+      unawaited(_syncPush());
     } catch (_) {
       // keep what we had; the api client already reported the failure
     }
+  }
+
+  /// [HF-BOOK-APPROVE-PUSH] Ask for the notification permission once and register this phone's push token for this
+  /// account. Does nothing in a build without Firebase (and in tests). Never throws.
+  Future<void> _syncPush() async {
+    try {
+      if (!PushNotifications.ready) return;
+      await PushNotifications.onAccount(api, shell: 'native-${await installedBuild()}');
+    } catch (_) {}
   }
 
   /// Mirror the real account into the screens' shared state (Me header, Settings, `requireAccount`).
@@ -105,6 +117,7 @@ class Services {
 
   /// Clerk sign-out, then forget everything held for this person (account, cached /me, screen state).
   Future<void> signOut() async {
+    if (PushNotifications.ready) await PushNotifications.onSignOut(api); // [HF-BOOK-APPROVE-PUSH] while the session can still authorise the call
     try {
       await clerk.signOut();
     } catch (_) {}

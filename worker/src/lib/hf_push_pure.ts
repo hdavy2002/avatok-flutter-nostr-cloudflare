@@ -50,16 +50,17 @@ export function hfPushCopy(kind: HfPushKind, brand: string, v: { name?: string; 
     case "review_request":
       return { kind, title: "How was your call?", body: `Tell us about your call with ${v.name?.trim() || "your host"}. It takes a few seconds.`, path: v.token ? `/review/${v.token}` : "/" };
     case "booking_reminder": // [HF-APPT-REMIND-1]
-      return { kind, title: "Your call starts soon", body: `${name} — open the appointment a few minutes early.`, path: v.slug ? `/bookings/${v.slug}` : "/dashboard/appointments" };
+      return { kind, title: "Your call starts soon", body: `${name} — open the appointment a few minutes early.`, path: v.slug ? `/bookings/${v.slug}` : "/bookings" };
+    // [HF-BOOK-APPROVE-PUSH] Paths are app locations (hf-flutter core/deep_links.dart maps them): /bookings/<id>, /inf/bookings, /inf/availability.
     // [HF-BOOK-APPROVE-BE] The booking-approval pushes carry their own title/body (built in lib/hf_booking_approval.ts); these are only the safe fallbacks.
     case "booking_request":
-      return { kind, title: "New booking request", body: "Someone wants to book a call with you. Accept within 24 hours.", path: "/dashboard/appointments" };
+      return { kind, title: "New booking request", body: "Someone wants to book a call with you. Accept within 24 hours.", path: "/inf/bookings" };
     case "booking_update":
-      return { kind, title: "Your booking was updated", body: "Open the app to see the latest.", path: "/dashboard/appointments" };
+      return { kind, title: "Your booking was updated", body: "Open the app to see the latest.", path: "/bookings" };
     case "booking_nudge":
-      return { kind, title: "A booking is waiting for you", body: "Accept or decline it before it is cancelled and refunded.", path: "/dashboard/appointments" };
+      return { kind, title: "A booking is waiting for you", body: "Accept or decline it before it is cancelled and refunded.", path: "/inf/bookings" };
     case "open_window":
-      return { kind, title: "You're open for calls", body: "Expect calls. You're open for calls right now.", path: "/host" };
+      return { kind, title: "You're open for calls", body: "Expect calls. You're open for calls right now.", path: "/inf/availability" };
     case "presence_nudge": // [HF-PRESENCE-NUDGE-1]
       return { kind, title: "You're showing as offline", body: `Callers can't reach you on ${brand}. Open the app and turn the switch on.`, path: "/host" };
   }

@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 
 import 'core/brand.dart';
 import 'core/deep_links.dart';
+import 'data/push.dart';
 import 'data/telemetry.dart';
 import 'demo/router.dart';
 import 'demo/theme.dart';
@@ -31,6 +32,9 @@ Future<void> main() async {
     // Cold-start and running links (hellofraands:// and https app links). A link that lands during the
     // splash waits until the splash hands over (DeepLinks.markReady).
     unawaited(DeepLinks.start(router));
+    // [HF-BOOK-APPROVE-PUSH] Firebase + notification taps (cold start, background, foreground banner). A tap that
+    // lands during the splash waits for DeepLinks.markReady like a link does.
+    unawaited(PushNotifications.init());
   }, Telemetry.zoneError);
 }
 
@@ -43,6 +47,7 @@ class HfDemoApp extends StatelessWidget {
       title: Brand.name,
       debugShowCheckedModeBanner: false,
       theme: buildTheme(),
+      scaffoldMessengerKey: hfMessengerKey,
       routerConfig: router,
     );
   }
