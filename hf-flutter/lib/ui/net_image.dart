@@ -12,7 +12,7 @@ class NetImage extends StatelessWidget {
   final String url;
   final Widget fallback;
   final BoxFit fit;
-  final AlignmentGeometry alignment;
+  final Alignment alignment; // CachedNetworkImage takes Alignment, not AlignmentGeometry
 
   /// Tests can force either path.
   static bool useCache = !Platform.environment.containsKey('FLUTTER_TEST');
