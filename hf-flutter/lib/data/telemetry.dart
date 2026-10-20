@@ -44,6 +44,8 @@ abstract final class Telemetry {
     'hf_app_call_cancelled',
     'hf_app_call_cap_warning',
     'hf_app_review_submitted',
+    'hf_presence_toggled', // [HF-BOOK-APPROVE-5]
+    'hf_availability_saved', // [HF-BOOK-APPROVE-6]
   };
 
   static TelemetrySink sink = _debugSink;

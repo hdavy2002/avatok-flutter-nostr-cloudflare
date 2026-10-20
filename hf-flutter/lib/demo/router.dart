@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import 'screens/booking.dart';
+import 'screens/availability_real.dart'; // [HF-BOOK-APPROVE-6]
 import 'screens/bookings_real.dart'; // [HF-WIRE-8]
 import '../data/models/channel.dart';
 import 'screens/channels.dart';

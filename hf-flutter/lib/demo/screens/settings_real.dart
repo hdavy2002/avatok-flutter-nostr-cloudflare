@@ -183,6 +183,9 @@ class _RealSettingsScreenState extends State<RealSettingsScreen> {
                   _info('WhatsApp', (whatsapp ?? '').isEmpty ? 'Not added' : whatsapp!),
                   _supportNote(HelpStrings.changeWhatsappNote),
                   if (me?.hostStatus != null) _link('Channels', () => context.push('/inf/channels')),
+                  // [HF-BOOK-APPROVE-5] Influencer-only: her calendar and bookings live in her own shell, so go (not push).
+                  if (me?.hostStatus != null) _link('Availability calendar', () => context.go('/inf/availability')),
+                  if (me?.hostStatus != null) _link('Bookings', () => context.go('/inf/bookings')),
                   const SizedBox(height: 18),
                   Text('WhatsApp messages', style: t(18, color: C.maroon)),
                   if (_prefsFailed)

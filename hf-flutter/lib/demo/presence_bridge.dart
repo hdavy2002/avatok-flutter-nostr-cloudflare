@@ -21,6 +21,12 @@ Listenable get presenceListenable => PresenceBridge.real ? Listenable.merge([dem
 /// Is she online right now (busy counts as online).
 bool get myOnline => PresenceBridge.real ? PresenceStore.instance.online : demo.online;
 
+/// She is on a call right now (real mode only; the button is paused until it ends).
+bool get myBusy => PresenceBridge.real && PresenceStore.instance.busy;
+
+/// A switch is already on its way to the server.
+bool get mySaving => PresenceBridge.real && PresenceStore.instance.saving;
+
 /// Call from a build method of the first influencer screen.
 void ensurePresenceLoaded() {
   if (PresenceBridge.real) PresenceStore.instance.ensureLoaded();

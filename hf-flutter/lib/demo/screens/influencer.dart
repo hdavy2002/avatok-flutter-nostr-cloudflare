@@ -1,11 +1,15 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../data/api_exception.dart';
 import '../../data/demo_mode.dart';
 import '../../data/models/channel.dart';
+import '../../data/presence_store.dart';
 import '../../data/repos/payouts_repo.dart';
 import '../../data/services.dart';
+import '../../data/telemetry.dart';
 import '../data.dart';
 import '../my_reels_section.dart';
 import '../presence_bridge.dart';
@@ -221,48 +225,81 @@ class InfluencerShell extends StatelessWidget {
 
   final StatefulNavigationShell shell;
 
+  /// Tabs either side of the centre Online/Offline button. Branch order in the router stays
+  /// Home 0 · Bookings 1 · (Online/Offline screen 2, no longer a tab) · Availability 3.
+  static const _left = <(int, IconData, String)>[
+    (0, Icons.home_rounded, 'Home'),
+    (1, Icons.event_note_rounded, 'Bookings'),
+  ];
+
+  /// [HF-BOOK-APPROVE-5] The centre button flips Online/Offline right here (optimistic, rolls back on error).
+  Future<void> _togglePresence(BuildContext context) async {
+    if (PresenceBridge.real && !PresenceStore.instance.loaded) {
+      await PresenceStore.instance.load(); // first read failed: tapping tries again
+      return;
+    }
+    if (myBusy || mySaving) return;
+    final from = myOnline;
+    await togglePresence(context);
+    final to = myOnline;
+    if (to != from) Telemetry.event('hf_presence_toggled', {'from': from ? 'online' : 'offline', 'to': to ? 'online' : 'offline', 'surface': 'footer'});
+  }
+
   @override
   Widget build(BuildContext context) {
     ensurePresenceLoaded();
     return ListenableBuilder(
       listenable: presenceListenable,
       builder: (context, _) {
-        final items = <(IconData, String)>[
-          (Icons.home_rounded, 'Home'),
-          (Icons.event_note_rounded, 'Bookings'),
-          (myOnline ? Icons.wifi_tethering_rounded : Icons.nightlight_round, myOnline ? 'Online' : 'Offline'),
-          (Icons.edit_calendar_rounded, 'Availability'),
-        ];
         return Scaffold(
           body: shell,
           bottomNavigationBar: Container(
             decoration: const BoxDecoration(color: C.paper, border: Border(top: BorderSide(color: C.turquoise, width: 3))),
             child: SafeArea(
               top: false,
-              child: SizedBox(
-                height: 72,
-                child: Row(
-                  children: [
-                    for (var i = 0; i < items.length; i++)
+              // Big system fonts must not push the bar out of shape: the bar stops growing at 130%.
+              child: MediaQuery.withClampedTextScaling(
+                maxScaleFactor: 1.3,
+                child: SizedBox(
+                  height: 76,
+                  child: Row(
+                    children: [
+                      for (final it in _left)
+                        Expanded(
+                          flex: 2,
+                          child: Semantics(
+                            button: true,
+                            selected: shell.currentIndex == it.$1,
+                            label: it.$3,
+                            child: InkWell(
+                              onTap: () => shell.goBranch(it.$1, initialLocation: it.$1 == shell.currentIndex),
+                              child: _tab(it.$2, it.$3, shell.currentIndex == it.$1),
+                            ),
+                          ),
+                        ),
+                      Expanded(flex: 3, child: _presencePill(context)),
                       Expanded(
+                        flex: 2,
                         child: Semantics(
                           button: true,
-                          selected: shell.currentIndex == i,
-                          label: i == 2 ? (myOnline ? 'You are online. Open the online and offline switch' : 'You are offline. Open the online and offline switch') : items[i].$2,
+                          selected: shell.currentIndex == 3,
+                          label: 'Availability',
                           child: InkWell(
-                            onTap: () => shell.goBranch(i, initialLocation: i == shell.currentIndex),
-                            child: i == 2 ? _statusTab(shell.currentIndex == i) : _tab(items[i].$1, items[i].$2, shell.currentIndex == i),
+                            onTap: () => shell.goBranch(3, initialLocation: shell.currentIndex == 3),
+                            child: _tab(Icons.edit_calendar_rounded, 'Availability', shell.currentIndex == 3),
                           ),
                         ),
                       ),
-                    Expanded(
-                      child: Semantics(
-                        button: true,
-                        label: 'Switch to fan view',
-                        child: InkWell(onTap: () => context.go('/me'), child: _tab(Icons.swap_horiz_rounded, 'Fan view', false)),
+                      Expanded(
+                        flex: 2,
+                        child: Semantics(
+                          button: true,
+                          label: 'Switch to fan view',
+                          child: InkWell(onTap: () => context.go('/me'), child: _tab(Icons.swap_horiz_rounded, 'Fan view', false)),
+                        ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
             ),
@@ -277,29 +314,95 @@ class InfluencerShell extends StatelessWidget {
         children: [
           Icon(icon, size: 26, color: on ? C.maroon : C.muted),
           const SizedBox(height: 3),
-          Text(label, style: t(14, color: on ? C.maroon : C.muted, w: on ? FontWeight.w800 : FontWeight.w700)),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 2),
+            child: FittedBox(
+              fit: BoxFit.scaleDown,
+              child: Text(label, maxLines: 1, style: t(14, color: on ? C.maroon : C.muted, w: on ? FontWeight.w800 : FontWeight.w700)),
+            ),
+          ),
         ],
       );
 
-  /// The middle tab is the Online/Offline button: a big round colour dot.
-  Widget _statusTab(bool on) => Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Container(
-            width: 40,
-            height: 40,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: myOnline ? C.rani : C.muted,
-              border: Border.all(color: on ? C.lemon : C.paper, width: 3),
-              boxShadow: myOnline ? [BoxShadow(color: C.rani.withValues(alpha: 0.4), blurRadius: 10, spreadRadius: 1)] : null,
+  /// The centre Online/Offline pill: icon AND words (never colour alone). Online = rani pink fill,
+  /// Offline = white with a plum outline, On a call = marigold and not tappable. Never green.
+  Widget _presencePill(BuildContext context) {
+    final waiting = PresenceBridge.real && !PresenceStore.instance.loaded;
+    final busy = myBusy;
+    final online = myOnline;
+    final IconData icon;
+    final String label;
+    final String spoken;
+    final Color fill;
+    final Color ink;
+    final Color edge;
+    if (waiting) {
+      icon = Icons.sync_rounded;
+      label = 'Status';
+      spoken = 'Your online status has not loaded. Tap to try again';
+      fill = C.paper;
+      ink = C.muted;
+      edge = C.muted;
+    } else if (busy) {
+      icon = Icons.call_rounded;
+      label = 'On a call';
+      spoken = 'You are on a call. The online and offline button is paused';
+      fill = C.marigold;
+      ink = C.deep;
+      edge = C.deep;
+    } else if (online) {
+      icon = Icons.wifi_tethering_rounded;
+      label = 'Online';
+      spoken = 'You are online. Tap to go offline';
+      fill = C.maroon;
+      ink = C.paper;
+      edge = C.maroon;
+    } else {
+      icon = Icons.nightlight_round;
+      label = 'Offline';
+      spoken = 'You are offline. Tap to go online';
+      fill = C.paper;
+      ink = C.deep;
+      edge = C.deep;
+    }
+    return Center(
+      child: Semantics(
+        button: true,
+        enabled: !busy,
+        label: spoken,
+        excludeSemantics: true,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 4),
+          child: Material(
+            key: const ValueKey('footer-presence'),
+            color: fill,
+            shape: StadiumBorder(side: BorderSide(color: edge, width: 2.5)),
+            child: InkWell(
+              customBorder: const StadiumBorder(),
+              onTap: busy ? null : () => unawaited(_togglePresence(context)),
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(minHeight: 52, minWidth: 48),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  child: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(icon, color: ink, size: 22),
+                        const SizedBox(width: 6),
+                        Text(label, maxLines: 1, style: t(15, color: ink)),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
             ),
-            child: Icon(myOnline ? Icons.wifi_tethering_rounded : Icons.nightlight_round, color: C.paper, size: 22),
           ),
-          const SizedBox(height: 2),
-          Text(myOnline ? 'Online' : 'Offline', style: t(14, color: myOnline ? C.rani : C.muted)),
-        ],
-      );
+        ),
+      ),
+    );
+  }
 }
 
 // ---------------------------------------------------------------------------------------------- Home

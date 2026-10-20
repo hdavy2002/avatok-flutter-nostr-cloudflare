@@ -77,6 +77,9 @@ class _Dashboard extends StatelessWidget {
       (Icons.currency_rupee_rounded, 'Wallet', live ? '' : inr(demo.balance, paise: false), '/wallet'),
       (Icons.north_east_rounded, 'Payout', '', '/payout'), // [HF-WIRE-13] open to fans too
       (Icons.event_rounded, 'My bookings', live ? '' : '${demo.bookings.length}', '/bookings'),
+      // [HF-BOOK-APPROVE-5] Influencer-only shortcuts into her side ("tab:" = context.go, her bar has its own shell).
+      if (isInfluencer) (Icons.edit_calendar_rounded, 'Availability calendar', '', 'tab:/inf/availability'),
+      if (isInfluencer) (Icons.event_note_rounded, 'Bookings', '', 'tab:/inf/bookings'),
       (Icons.favorite_rounded, 'Favourites', live ? '' : '${demo.favs.length}', 'tab:/favourites'),
       (Icons.settings_rounded, 'Settings', '', '/settings'),
       (Icons.help_rounded, 'Help', '', '/help'),
