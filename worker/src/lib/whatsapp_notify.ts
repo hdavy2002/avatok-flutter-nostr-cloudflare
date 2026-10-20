@@ -29,6 +29,7 @@
 import { BRAND } from "./brand";
 import type { Env } from "../types";
 import { REMIND_KIND, revalidateBookingReminder } from "./hf_booking_reminders"; // [HF-APPT-REMIND-1]
+import { revalidateApprovalMessage } from "./hf_booking_approval"; // [HF-BOOK-APPROVE-BE]
 import { sha256Hex } from "../util";
 import { track, trackException } from "../hooks";
 import { sendWhatsAppText } from "./whatsapp_send";
@@ -360,6 +361,13 @@ export async function runWhatsAppOutboxDrain(env: Env, limit = 25): Promise<{ sc
     try {
       // [HF-APPT-REMIND-1] An appointment reminder goes out only while the booking is still on, in the future and not blocked.
       if (row.kind === REMIND_KIND && await revalidateBookingReminder(env, row) !== "eligible") {
+        await db.prepare(
+          "UPDATE whatsapp_outbox SET status='cancelled', error='ineligible_before_send', updated_at=?2 WHERE id=?1 AND status='sending'",
+        ).bind(row.id, Date.now()).run();
+        continue;
+      }
+      // [HF-BOOK-APPROVE-BE] "booking request" and "still waiting" messages are stale the moment the booking is no longer waiting for approval.
+      if ((row.kind === "hf_booking_request" || row.kind === "hf_booking_nudge") && await revalidateApprovalMessage(env, row) !== "eligible") {
         await db.prepare(
           "UPDATE whatsapp_outbox SET status='cancelled', error='ineligible_before_send', updated_at=?2 WHERE id=?1 AND status='sending'",
         ).bind(row.id, Date.now()).run();

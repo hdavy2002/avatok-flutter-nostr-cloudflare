@@ -32,6 +32,9 @@ import {
   saveHfBookingSchedule,
 } from "../lib/hf_booking_store";
 import { pricingStd, readInfluencerRate } from "../lib/hf_influencer_rate"; // [HF-WIRE-18]
+import {
+  TOO_SOON_TEXT, approvalDeadline, approvalOn, cancelReasonFor, hostApprovalMode, hostTopics, tooSoonForApproval, type ApprovalMode,
+} from "../lib/hf_booking_approval"; // [HF-BOOK-APPROVE-BE]
 
 const err = (status: number, error: string, extra: Record<string, unknown> = {}) =>
   json({ error, ...extra }, status);
@@ -107,7 +110,7 @@ async function scheduleRoute(req: Request, env: Env): Promise<Response> {
     for (;;) {
       const page = await env.DB_META.prepare(`
         SELECT id,starts_at,ends_at,duration_min FROM hf_bookings
-        WHERE host_uid=?1 AND status IN ('confirming','confirmed','starting','active','settling')
+        WHERE host_uid=?1 AND status IN ('confirming','confirmed','pending_approval','starting','active','settling')
           AND ends_at>?2 AND (starts_at>?3 OR (starts_at=?3 AND id>?4))
         ORDER BY starts_at,id LIMIT 200
       `).bind(auth.uid, now, cursorStart, cursorId)
@@ -174,7 +177,7 @@ async function publicAvailability(req: Request, env: Env, slug: string): Promise
   return json({ slots }, 200, { "cache-control": "public, max-age=30" });
 }
 
-type BookingStatus = "confirming" | "confirmed" | "starting" | "active" | "settling" | "completed" | "cancelled" | "failed";
+type BookingStatus = "confirming" | "confirmed" | "pending_approval" | "starting" | "active" | "settling" | "completed" | "cancelled" | "failed";
 export type BookingRow = {
   id: string; host_uid: string; customer_uid: string; starts_at: number; ends_at: number; host_timezone: string;
   schedule_version: number; quote_id: string; idempotency_key: string; status: BookingStatus; duration_min: number;
@@ -190,7 +193,7 @@ export type HfHostPricingRow = {
   uid: string; slug: string; status: string; price_per_min: number; category: string;
   women_lane: number; lgbtq_lane: number;
 };
-const BOOKING_ACTIVE = "('confirming','confirmed','starting','active','settling')";
+const BOOKING_ACTIVE = "('confirming','confirmed','pending_approval','starting','active','settling')"; // [HF-BOOK-APPROVE-BE] a pending booking blocks the slot
 const BOOKING_APP = "hf_booking";
 const QUOTE_TTL_MS = 5 * 60_000;
 
@@ -201,7 +204,7 @@ export function bookingPublic(row: BookingRow, role: "host" | "customer") {
     hostTimezone: row.host_timezone, reservedPaise: Number(row.reserved_paise),
     canStart: role === "customer" && row.status === "confirmed" && row.settlement_status === "held" &&
       Date.now() >= Number(row.starts_at) - 5 * 60_000 && Date.now() < Number(row.ends_at),
-    canCancel: row.status === "confirmed" && row.settlement_status === "held",
+    canCancel: (row.status === "confirmed" || row.status === "pending_approval") && row.settlement_status === "held",
     ...(row.call_id ? { callId: row.call_id } : {}),
   };
   return role === "host" ? { ...common, expectedHostNetPaise: Number(row.expected_host_net_paise) } : common;
@@ -309,6 +312,8 @@ export async function quoteRoute(req: Request, env: Env): Promise<Response> {
   if (await isDemoHost(env, host.uid)) return err(409, "demo_host", { message: DEMO_MESSAGE }); // [HF-WIRE-14] HF-REEL-34
   const eligibility = await bookingEligibility(env, auth.uid, host, lane);
   if (eligibility) return eligibility;
+  // [HF-BOOK-APPROVE-BE] a manual-approval influencer needs >= 2 h notice (refused before any quote or hold exists)
+  if (await approvalOn(env) && tooSoonForApproval(await hostApprovalMode(env, host.uid), startAt, Date.now())) return err(409, "too_soon_for_approval", { message: TOO_SOON_TEXT });
   const schedule = await getHfBookingSchedule(env, host.uid);
   if (schedule.version < 1 || validateHfBookingSchedule(schedule).length) return err(409, "availability_unavailable");
   if (!schedule.durationsMinutes.includes(duration)) return err(400, "invalid_duration");
@@ -402,6 +407,17 @@ export async function confirmRoute(req: Request, env: Env): Promise<Response> {
   const callConfig = await readConfig(env).catch(() => null);
   if (callConfig?.hfCallsEnabled !== true || !callsConfigured(env)) return err(409, "booking_payment_unavailable");
   if (await hasOpenDebt(env, auth.uid)) return err(409, "debt_open");
+  // [HF-BOOK-APPROVE-BE] flag on: manual-approval influencers get 'pending_approval' (hold + slot blocked, not startable); auto -> 'confirmed' as before.
+  const approval = (callConfig as unknown as Record<string, unknown> | null)?.hfBookingApprovalEnabled === true;
+  const mode: ApprovalMode = approval ? await hostApprovalMode(env, host.uid) : "auto";
+  const manual = approval && mode === "manual";
+  if (tooSoonForApproval(manual ? "manual" : "auto", Number(quote.starts_at), Date.now())) return err(409, "too_soon_for_approval", { message: TOO_SOON_TEXT });
+  let topicSlug: string | null = null;
+  if (approval && body.topicSlug != null && body.topicSlug !== "") {
+    topicSlug = typeof body.topicSlug === "string" ? body.topicSlug : "";
+    if (!(await hostTopics(env, host.uid)).some((t) => t.slug === topicSlug)) return err(400, "bad_topic", { message: "Pick one of the topics this influencer offers." });
+  }
+  const finalStatus = manual ? "pending_approval" : "confirmed";
   const priceSnapshot = JSON.parse(quote.price_snapshot_json) as {
     price: Price; expectedHostNetPaise: number; ratePaise: number;
     callCostPaisePerMin: number; hostShareBps: number; creator?: unknown; std?: unknown;
@@ -469,19 +485,21 @@ export async function confirmRoute(req: Request, env: Env): Promise<Response> {
   const statements = [
     bookingInsert,
     ...reserveStatements,
-    env.DB_META.prepare("UPDATE hf_bookings SET status='confirmed',updated_at=?1 WHERE id=?2 AND status='confirming' AND EXISTS (SELECT 1 FROM hf_token_ledger WHERE op_id=?3 AND note=?4)")
-      .bind(now, bookingId, reserveOp, "secs:" + seconds),
-    env.DB_META.prepare("UPDATE hf_booking_quotes SET status='consumed',consumed_at=?1 WHERE id=?2 AND status='open' AND EXISTS (SELECT 1 FROM hf_bookings WHERE id=?3 AND status='confirmed')")
+    env.DB_META.prepare("UPDATE hf_bookings SET status='" + finalStatus + "',updated_at=?1" +
+      (approval ? ",topic_slug=?5,approval_deadline=?6" + (manual ? "" : ",approved_at=?1,decided_by='auto'") : "") +
+      " WHERE id=?2 AND status='confirming' AND EXISTS (SELECT 1 FROM hf_token_ledger WHERE op_id=?3 AND note=?4)")
+      .bind(now, bookingId, reserveOp, "secs:" + seconds, ...(approval ? [topicSlug, manual ? approvalDeadline(now, Number(quote.starts_at)) : null] : [])),
+    env.DB_META.prepare("UPDATE hf_booking_quotes SET status='consumed',consumed_at=?1 WHERE id=?2 AND status='open' AND EXISTS (SELECT 1 FROM hf_bookings WHERE id=?3 AND status='" + finalStatus + "')")
       .bind(now, quote.id, bookingId),
-    env.DB_META.prepare("INSERT INTO hf_booking_occupancy(booking_id,user_id,starts_at,ends_at,status,created_at,updated_at) SELECT ?1,?2,?3,?4,'busy',?5,?5 WHERE EXISTS (SELECT 1 FROM hf_bookings WHERE id=?1 AND status='confirmed')")
+    env.DB_META.prepare("INSERT INTO hf_booking_occupancy(booking_id,user_id,starts_at,ends_at,status,created_at,updated_at) SELECT ?1,?2,?3,?4,'busy',?5,?5 WHERE EXISTS (SELECT 1 FROM hf_bookings WHERE id=?1 AND status='" + finalStatus + "')")
       .bind(bookingId, host.uid, quote.starts_at, quote.ends_at, now),
-    env.DB_META.prepare("INSERT INTO hf_booking_occupancy(booking_id,user_id,starts_at,ends_at,status,created_at,updated_at) SELECT ?1,?2,?3,?4,'busy',?5,?5 WHERE EXISTS (SELECT 1 FROM hf_bookings WHERE id=?1 AND status='confirmed')")
+    env.DB_META.prepare("INSERT INTO hf_booking_occupancy(booking_id,user_id,starts_at,ends_at,status,created_at,updated_at) SELECT ?1,?2,?3,?4,'busy',?5,?5 WHERE EXISTS (SELECT 1 FROM hf_bookings WHERE id=?1 AND status='" + finalStatus + "')")
       .bind(bookingId, auth.uid, quote.starts_at, quote.ends_at, now),
-    env.DB_META.prepare("INSERT INTO calendar_blocks(id,user_id,source_app,source_ref,starts_at,ends_at,title,status,created_at) SELECT ?1,?2,'hf_booking',?3,?4,?5,NULL,'busy',?6 WHERE EXISTS (SELECT 1 FROM hf_bookings WHERE id=?3 AND status='confirmed')")
+    env.DB_META.prepare("INSERT INTO calendar_blocks(id,user_id,source_app,source_ref,starts_at,ends_at,title,status,created_at) SELECT ?1,?2,'hf_booking',?3,?4,?5,NULL,'busy',?6 WHERE EXISTS (SELECT 1 FROM hf_bookings WHERE id=?3 AND status='" + finalStatus + "')")
       .bind("hfb:" + bookingId + ":host", host.uid, bookingId, quote.starts_at, quote.ends_at, now),
-    env.DB_META.prepare("INSERT INTO calendar_blocks(id,user_id,source_app,source_ref,starts_at,ends_at,title,status,created_at) SELECT ?1,?2,'hf_booking',?3,?4,?5,NULL,'busy',?6 WHERE EXISTS (SELECT 1 FROM hf_bookings WHERE id=?3 AND status='confirmed')")
+    env.DB_META.prepare("INSERT INTO calendar_blocks(id,user_id,source_app,source_ref,starts_at,ends_at,title,status,created_at) SELECT ?1,?2,'hf_booking',?3,?4,?5,NULL,'busy',?6 WHERE EXISTS (SELECT 1 FROM hf_bookings WHERE id=?3 AND status='" + finalStatus + "')")
       .bind("hfb:" + bookingId + ":customer", auth.uid, bookingId, quote.starts_at, quote.ends_at, now),
-    env.DB_META.prepare("INSERT INTO hf_booking_events(id,booking_id,operation_id,actor_uid,from_status,to_status,details_json,created_at) SELECT ?1,?2,?3,?4,'confirming','confirmed',?5,?6 WHERE EXISTS (SELECT 1 FROM hf_bookings WHERE id=?2 AND status='confirmed')")
+    env.DB_META.prepare("INSERT INTO hf_booking_events(id,booking_id,operation_id,actor_uid,from_status,to_status,details_json,created_at) SELECT ?1,?2,?3,?4,'confirming','" + finalStatus + "',?5,?6 WHERE EXISTS (SELECT 1 FROM hf_bookings WHERE id=?2 AND status='" + finalStatus + "')")
       .bind(crypto.randomUUID(), bookingId, "confirm:" + idempotencyKey, auth.uid, JSON.stringify({ quoteId: quote.id, reservedPaise: quote.reserved_paise, durationMinutes: quote.duration_min }), now),
   ];
   try {
@@ -498,8 +516,9 @@ export async function confirmRoute(req: Request, env: Env): Promise<Response> {
   }
   const saved = await env.DB_META.prepare("SELECT * FROM hf_bookings WHERE id=?1 AND customer_uid=?2")
     .bind(bookingId, auth.uid).first<BookingRow>();
-  if (!saved || saved.status !== "confirmed") return err(409, "slot_or_wallet_changed");
+  if (!saved || saved.status !== finalStatus) return err(409, "slot_or_wallet_changed");
   eventTrack(env, auth.uid, "hf_booking_confirmed", {
+    ...(approval ? { status: finalStatus, approval_mode: mode } : {}),
     booking_id: bookingId, call_id: callId, host_uid: host.uid, duration_minutes: seconds / 60,
     reserved_paise: Number(quote.reserved_paise), expected_host_net_paise: Number(priceSnapshot.expectedHostNetPaise),
   });
@@ -573,18 +592,21 @@ export async function cancelRoute(req: Request, env: Env, id: string, opts: { fa
   if (!row) return err(404, "booking_not_found");
   const role = row.host_uid === auth.uid ? "host" : "customer";
   if (row.status === "cancelled") return json({ booking: bookingPublic(row, role) }, 200, { "cache-control": "private, no-store" });
-  if (row.status !== "confirmed" || !row.call_id) return err(409, "booking_not_cancellable");
-  if (opts.fanCutoff && role === "customer" && Number(row.starts_at) - Date.now() < FAN_FREE_CANCEL_MS) {
+  // [HF-BOOK-APPROVE-BE] a pending booking can be cancelled too (fan: free any time, full refund; the hold is released from 'pending_approval')
+  if ((row.status !== "confirmed" && row.status !== "pending_approval") || !row.call_id) return err(409, "booking_not_cancellable");
+  const from = row.status === "pending_approval" ? "pending_approval" : "confirmed";
+  if (opts.fanCutoff && role === "customer" && from === "confirmed" && Number(row.starts_at) - Date.now() < FAN_FREE_CANCEL_MS) {
     return err(409, "too_late", { message: FAN_TOO_LATE_TEXT });
   }
   const reservation = await getReservation(env, row.call_id);
   if (!reservation || reservation.secondsCovered !== Number(row.duration_min) * 60 || !reservation.lots.length) return err(409, "booking_hold_unavailable");
+  const approval = await approvalOn(env);
   const now = Date.now();
   const nonce = crypto.randomUUID();
   const releaseStatements = buildReleaseStatements(env, {
     uid: row.customer_uid, callId: row.call_id, lots: reservation.lots, now, nonce,
     gatePredicate: (first) => ({
-      sql: "EXISTS (SELECT 1 FROM hf_bookings WHERE id=?" + first + " AND status='confirmed' AND call_id=?" + (first + 1) +
+      sql: "EXISTS (SELECT 1 FROM hf_bookings WHERE id=?" + first + " AND status='" + from + "' AND call_id=?" + (first + 1) +
         " AND (host_uid=?" + (first + 2) + " OR customer_uid=?" + (first + 2) + "))",
       values: [row.id, row.call_id, auth.uid],
     }),
@@ -592,16 +614,16 @@ export async function cancelRoute(req: Request, env: Env, id: string, opts: { fa
   const releaseGate = relOpId(row.call_id);
   const statements = [
     releaseStatements[0],
-    env.DB_META.prepare("UPDATE hf_bookings SET status='cancelled',settlement_status='released',cancelled_at=?1,updated_at=?1 " +
-      "WHERE id=?2 AND status='confirmed' AND EXISTS (SELECT 1 FROM hf_token_ledger WHERE op_id=?3 AND note=?4)")
-      .bind(now, row.id, releaseGate, nonce),
+    env.DB_META.prepare("UPDATE hf_bookings SET status='cancelled',settlement_status='released',cancelled_at=?1,updated_at=?1" + (approval ? ",cancel_reason=?5,decided_by=?6" : "") + " " +
+      "WHERE id=?2 AND status='" + from + "' AND EXISTS (SELECT 1 FROM hf_token_ledger WHERE op_id=?3 AND note=?4)")
+      .bind(now, row.id, releaseGate, nonce, ...(approval ? [cancelReasonFor(role), auth.uid] : [])),
     ...releaseStatements.slice(1, -1),
     env.DB_META.prepare("UPDATE hf_booking_occupancy SET status='cancelled',updated_at=?1 WHERE booking_id=?2 AND " +
       "EXISTS (SELECT 1 FROM hf_bookings WHERE id=?2 AND status='cancelled')").bind(now, row.id),
     env.DB_META.prepare("UPDATE calendar_blocks SET status='cancelled' WHERE source_app='hf_booking' AND source_ref=?1 " +
       "AND EXISTS (SELECT 1 FROM hf_bookings WHERE id=?1 AND status='cancelled')").bind(row.id),
     env.DB_META.prepare("INSERT INTO hf_booking_events(id,booking_id,operation_id,actor_uid,from_status,to_status,details_json,created_at) " +
-      "SELECT ?1,?2,?3,?4,'confirmed','cancelled',?5,?6 WHERE EXISTS (SELECT 1 FROM hf_bookings WHERE id=?2 AND status='cancelled') " +
+      "SELECT ?1,?2,?3,?4,'" + from + "','cancelled',?5,?6 WHERE EXISTS (SELECT 1 FROM hf_bookings WHERE id=?2 AND status='cancelled') " +
       "AND EXISTS (SELECT 1 FROM hf_token_ledger WHERE op_id=?7)")
       .bind(crypto.randomUUID(), row.id, "cancel:" + row.id, auth.uid, JSON.stringify({ role, releasedPaise: row.reserved_paise }), now, releaseGate),
     releaseStatements[releaseStatements.length - 1],

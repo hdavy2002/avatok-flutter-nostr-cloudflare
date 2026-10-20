@@ -97,6 +97,7 @@ export function hfPurgeTables(scope: HfPurgeScope, includeSafetyRecords = false)
     { table: "hf_reels", cols: ["host_uid"] }, // [HF-WIRE-4] imported reels (before hf_channels, which they point at)
     { table: "hf_demo_hosts", cols: ["host_uid"] }, // [HF-WIRE-4] demo marker
     { table: "hf_booking_notes", cols: ["fan_uid", "host_uid"] }, // [HF-WIRE-8] note a fan leaves with a booking
+    { table: "hf_host_open_alerts", cols: ["host_uid"] }, // [HF-BOOK-APPROVE-BE] "you're open" alert dedupe
     { table: "hf_channels", cols: ["host_uid"] }, // [HF-WIRE-3] influencer Instagram/YouTube channels
     { table: "hf_user_prefs", cols: ["uid"] }, // [HF-DASH-V3-1] notification preference
     { table: "hf_support_tickets", cols: ["uid"] }, // [HF-DASH-V3-1] questions sent from the dashboard

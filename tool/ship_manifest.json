@@ -10996,5 +10996,41 @@
         "note": "On the owner's two-phone test the Reels app places a call, the influencer presses 1, the fan answers: hf_app_call_status shows ringing_host, ringing_caller, connected, completed and hf_app_call_ended arrives with status = completed and a seconds value; hf_app_review_submitted outcome = ok after the stars."
       }
     ]
+  },
+  "HF-BOOK-APPROVE-BE": {
+    "description": "Influencers approve booking requests (24-hour rule) with full wallet refund on decline or expiry, booking-settings, topics and open-window alerts; Worker side, behind hfBookingApprovalEnabled.",
+    "two_sided": true,
+    "min_devices_on_build": 2,
+    "flags": [
+      "hfBookingApprovalEnabled"
+    ],
+    "success": [
+      {
+        "event": "hf_booking_requested",
+        "property": "amount_paise",
+        "gt": 0,
+        "min_events": 1,
+        "note": "A fan booked and the hold was kept while the influencer decides."
+      },
+      {
+        "event": "hf_booking_accepted",
+        "property": "booking_id",
+        "min_events": 1,
+        "note": "An influencer accepted a pending booking; both sides were told."
+      },
+      {
+        "event": "hf_booking_expired_refunded",
+        "property": "amount_paise",
+        "gt": 0,
+        "min_events": 1,
+        "note": "A request nobody accepted in time was cancelled and the full amount went back to the fan's wallet."
+      },
+      {
+        "event": "hf_open_alert_sent",
+        "property": "start_min",
+        "min_events": 1,
+        "note": "An influencer was told their open window just started."
+      }
+    ]
   }
 }

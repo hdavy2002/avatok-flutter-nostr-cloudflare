@@ -394,31 +394,32 @@ export function buildReleaseStatements(
 
 async function releaseFutureBookingsForLot(env: Env, lotId: string, uid: string): Promise<boolean> {
   const rows = (await env.DB_META.prepare(
-    "SELECT DISTINCT b.id,b.call_id FROM hf_bookings b JOIN hf_token_ledger l ON l.call_id=b.call_id " +
-    "WHERE b.customer_uid=?1 AND b.status='confirmed' AND l.kind='reserve' AND l.lot_id=?2 ORDER BY b.starts_at,b.id LIMIT 501",
-  ).bind(uid, lotId).all<{ id: string; call_id: string }>()).results ?? [];
+    "SELECT DISTINCT b.id,b.call_id,b.status,b.starts_at FROM hf_bookings b JOIN hf_token_ledger l ON l.call_id=b.call_id " +
+    "WHERE b.customer_uid=?1 AND b.status IN ('confirmed','pending_approval') AND l.kind='reserve' AND l.lot_id=?2 ORDER BY b.starts_at,b.id LIMIT 501",
+  ).bind(uid, lotId).all<{ id: string; call_id: string; status: string }>()).results ?? [];
   if (rows.length > 500) return false;
   for (const booking of rows) {
     const reservation = await getReservation(env, booking.call_id);
     if (!reservation || reservation.lots.length === 0) return false;
     const nonce = crypto.randomUUID(), now = Date.now(), gate = relOpId(booking.call_id);
+    const from = booking.status === "pending_approval" ? "pending_approval" : "confirmed"; // [HF-BOOK-APPROVE-BE] a pending booking also holds this lot
     const releaseStatements = buildReleaseStatements(env, {
       uid, callId: booking.call_id, lots: reservation.lots, now, nonce,
       gatePredicate: (first) => ({
-        sql: "EXISTS (SELECT 1 FROM hf_bookings WHERE id=?" + first + " AND call_id=?" + (first + 1) + " AND status='confirmed' AND settlement_status='held')",
+        sql: "EXISTS (SELECT 1 FROM hf_bookings WHERE id=?" + first + " AND call_id=?" + (first + 1) + " AND status='" + from + "' AND settlement_status='held')",
         values: [booking.id, booking.call_id],
       }),
     });
     await env.DB_META.batch([
       releaseStatements[0],
-      env.DB_META.prepare("UPDATE hf_bookings SET status='cancelled',settlement_status='released',cancelled_at=?1,updated_at=?1 WHERE id=?2 AND call_id=?3 AND status='confirmed' AND EXISTS (SELECT 1 FROM hf_token_ledger WHERE op_id=?4 AND note=?5)")
+      env.DB_META.prepare("UPDATE hf_bookings SET status='cancelled',settlement_status='released',cancelled_at=?1,updated_at=?1 WHERE id=?2 AND call_id=?3 AND status='" + from + "' AND EXISTS (SELECT 1 FROM hf_token_ledger WHERE op_id=?4 AND note=?5)")
         .bind(now, booking.id, booking.call_id, gate, nonce),
       ...releaseStatements.slice(1, -1),
       env.DB_META.prepare("UPDATE hf_booking_occupancy SET status='cancelled',updated_at=?1 WHERE booking_id=?2 AND EXISTS (SELECT 1 FROM hf_bookings WHERE id=?2 AND status='cancelled')")
         .bind(now, booking.id),
       env.DB_META.prepare("UPDATE calendar_blocks SET status='cancelled' WHERE source_app='hf_booking' AND source_ref=?1 AND EXISTS (SELECT 1 FROM hf_bookings WHERE id=?1 AND status='cancelled')")
         .bind(booking.id),
-      env.DB_META.prepare("INSERT OR IGNORE INTO hf_booking_events(id,booking_id,operation_id,actor_uid,from_status,to_status,details_json,created_at) SELECT ?1,?2,?3,NULL,'confirmed','cancelled',?4,?5 WHERE EXISTS (SELECT 1 FROM hf_bookings WHERE id=?2 AND status='cancelled')")
+      env.DB_META.prepare("INSERT OR IGNORE INTO hf_booking_events(id,booking_id,operation_id,actor_uid,from_status,to_status,details_json,created_at) SELECT ?1,?2,?3,NULL,'" + from + "','cancelled',?4,?5 WHERE EXISTS (SELECT 1 FROM hf_bookings WHERE id=?2 AND status='cancelled')")
         .bind(crypto.randomUUID(), booking.id, "refund-revoke:" + lotId, JSON.stringify({ reason: "purchase_revoked" }), now),
       releaseStatements[releaseStatements.length - 1],
     ]);

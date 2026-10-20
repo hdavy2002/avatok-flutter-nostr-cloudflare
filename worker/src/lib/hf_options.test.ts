@@ -17,12 +17,13 @@ describe("hf_options", () => {
     expect(makeSlug("A")).not.toBe(makeSlug("A") + "x");
   });
   it("keeps legacy topics and balances creator, everyday and interest starters", () => {
-    expect(TOPICS).toHaveLength(43);
+    expect(TOPICS).toHaveLength(46); // [HF-BOOK-APPROVE-BE] +3 fan-call topics (owner 2026-10-20)
     expect(TOPICS.slice(0, 6).map((t) => t.slug)).toEqual([
       "content-creation", "bas-baat-karni-hai", "music-and-movies",
       "behind-the-scenes", "roz-thodi-baat", "travel-and-food",
     ]);
-    expect(TOPICS.filter((t) => t.group === "Creator life")).toHaveLength(6);
+    expect(TOPICS.filter((t) => t.group === "Creator life")).toHaveLength(9);
+    for (const slug of ["talk-about-my-channel", "just-friendship", "general-advice"]) expect(TOPIC_SLUGS.has(slug)).toBe(true);
     expect(TOPICS.filter((t) => t.group === "Interests & hobbies")).toHaveLength(6);
     for (const slug of [
       "roz-thodi-baat", "koi-jo-mujhe-jaane", "shaam-ka-saathi", "ek-dost-jo-sune",

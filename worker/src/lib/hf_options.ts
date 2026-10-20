@@ -45,6 +45,9 @@ export const TOPICS: readonly Topic[] = [
   { slug: "social-media-growth", label: "Growing on social media", group: "Creator life" },
   { slug: "creator-collaborations", label: "Creator collaborations", group: "Creator life" },
   { slug: "fan-conversations", label: "Fan conversations", group: "Creator life" },
+  { slug: "talk-about-my-channel", label: "Talk about my channel", group: "Creator life" }, // [HF-BOOK-APPROVE-BE] owner 2026-10-20
+  { slug: "just-friendship", label: "Just friendship", group: "Creator life" },
+  { slug: "general-advice", label: "General advice", group: "Creator life" },
   { slug: "gaming-and-esports", label: "Gaming & esports", group: "Interests & hobbies" },
   { slug: "fashion-and-beauty", label: "Fashion & beauty", group: "Interests & hobbies" },
   { slug: "fitness-and-hobbies", label: "Fitness & hobbies", group: "Interests & hobbies" },

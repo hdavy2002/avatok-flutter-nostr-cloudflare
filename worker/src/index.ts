@@ -313,6 +313,8 @@ import { hfBookingsAppRoute, runHfBookingAutoStart } from "./routes/hf_bookings_
 import { hfBookingsRoute } from "./routes/hf_bookings"; // [HF-BOOKING-CALENDAR-1] host availability and reserved bookings (flag hfBookingsEnabled)
 import { runHfCallsCron } from "./lib/hf_calls_store"; // [HF-CALLS-1] 8 h auto-offline + stuck-call sweep
 import { runHfBookingsCron } from "./lib/hf_booking_store"; // [HF-BOOKING-CALENDAR-1] bounded no-show and hold cleanup
+import { runHfBookingApprovalExpiry } from "./lib/hf_booking_approval"; // [HF-BOOK-APPROVE-BE] 24 h approval expiry + refund (runs even with the flag off: never strand a hold)
+import { runHfOpenWindowAlerts } from "./lib/hf_open_alerts"; // [HF-BOOK-APPROVE-BE] "you're open for calls" alert (flag hfBookingApprovalEnabled)
 import { runHfPresenceNudge } from "./lib/hf_presence_nudge"; // [HF-PRESENCE-NUDGE-1] 3-hourly "you're offline" reminder (flag hfPresenceNudgeEnabled)
 import { cashfreeCheckoutHost } from "./routes/cashfree_checkout_host"; // [HF-CASHFREE-CHECKOUT-HOST-1]
 import { hfTopupRoute } from "./routes/hf_topup"; // [HF-TOPUP-1] wallet top-up, any gateway (flags hfTopupEnabled + hfTopupGateway)
@@ -528,6 +530,8 @@ export default {
         readConfig(env).then(async (c) => { if (c.hfBookingsEnabled !== true) return null; const st = await runHfBookingAutoStart(env).catch(() => null); if (st && st.scanned) console.log("[hf-booking-autostart]", JSON.stringify(st)); return runHfBookingsCron(env); }) // [HF-WIRE-8] start booked calls at their minute, then the existing cleanup
           .then((r) => { if (r && (r.expiredQuotes || r.noShows.processed || r.noShows.blocked || r.recovery.processed || r.recovery.blocked)) console.log("[hf-bookings-cron]", JSON.stringify(r)); })
           .catch((e) => { console.error("[hf-bookings-cron] failed:", String(e)); }), // [HF-BOOKING-CALENDAR-1]
+        runHfBookingApprovalExpiry(env).then((r) => { if (r.scanned || r.nudged) console.log("[hf-booking-approval-expiry]", JSON.stringify(r)); }).catch((e) => { console.error("[hf-booking-approval-expiry] failed:", String(e)); }), // [HF-BOOK-APPROVE-BE]
+        runHfOpenWindowAlerts(env).then((r) => { if (r.sent) console.log("[hf-open-alerts]", JSON.stringify(r)); }).catch((e) => { console.error("[hf-open-alerts] failed:", String(e)); }), // [HF-BOOK-APPROVE-BE]
         runHfPresenceNudge(env).then((r) => { if (r.scanned) console.log("[hf-presence-nudge]", JSON.stringify(r)); }).catch((e) => { console.error("[hf-presence-nudge] failed:", String(e)); }), // [HF-PRESENCE-NUDGE-1]
         recheckAllChannels(env).then((r) => { if (r.scanned) console.log("[hf-channels-recheck]", JSON.stringify(r)); }).catch((e) => { console.error("[hf-channels-recheck] failed:", String(e)); }), // [HF-WIRE-3] self-throttled: 20 h per channel, 25 per tick
         refreshInviteCreators(env).then((r) => { if (r.scanned) console.log("[hf-invite-refresh]", JSON.stringify(r)); }).catch((e) => { console.error("[hf-invite-refresh] failed:", String(e)); }), // [HF-WIRE-22] self-throttled: 20 h per creator, 15 per tick; prunes 30-day-idle creators
@@ -1155,7 +1159,7 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
       if (p.startsWith("/api/guides/")) { const r = await guidesRoute(req, env, p); if (r) return r; } // [AUMFE-GUIDE-BRAIN-1]
       if (p.startsWith("/api/consultants/")) { const r = await consultRoute(req, env, p, ctx); if (r) return r; } // [AUMFE-CONSULT-FOUNDATION-1]
       if (p === "/api/hf/hosts" || p === "/api/hf/options") { const r = await hfHostsListRoute(req, env, ctx); if (r) return r; } // [HF-NATIVE-S2/S3]
-      if (p === "/api/hosts/me/availability" || p === "/api/hosts/me/bookings/summary" || p.startsWith("/api/hf/bookings") || /^\/api\/hf\/hosts\/[^/]+\/availability$/.test(p) || p === "/api/hf/hosts/me/rate" || /^\/api\/hf\/hosts\/[^/]+\/slots$/.test(p)) {
+      if (p === "/api/hosts/me/availability" || p === "/api/hosts/me/bookings/summary" || p.startsWith("/api/hf/bookings") || /^\/api\/hf\/hosts\/[^/]+\/availability$/.test(p) || p === "/api/hf/hosts/me/rate" || p === "/api/hf/hosts/me/booking-settings" || /^\/api\/hf\/hosts\/[^/]+\/slots$/.test(p)) {
         const bookingConfig = await readConfig(env).catch(() => null);
         if (bookingConfig?.hfBookingsEnabled !== true) return new Response(null, { status: 404 });
         const bookingResponse = (await hfBookingsAppRoute(req, env)) ?? (await hfBookingsRoute(req, env)); // [HF-WIRE-8] app adapter first; null = older router

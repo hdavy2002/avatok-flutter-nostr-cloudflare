@@ -61,7 +61,7 @@ const callStub = (env: Env, id: string) => env.HF_CALL.get(env.HF_CALL.idFromNam
 export function instantBookingOverlapGuardSql(first: number): string {
   if (!Number.isInteger(first) || first < 1) throw new Error("invalid booking guard parameter index");
   const enabled = first, caller = first + 1, host = first + 2, start = first + 3, end = first + 4;
-  return ` WHERE ?${enabled}=0 OR NOT EXISTS (SELECT 1 FROM hf_bookings b WHERE b.status IN ('confirmed','starting','active','settling') ` +
+  return ` WHERE ?${enabled}=0 OR NOT EXISTS (SELECT 1 FROM hf_bookings b WHERE b.status IN ('confirmed','pending_approval','starting','active','settling') ` +
     `AND (b.host_uid IN (?${caller},?${host}) OR b.customer_uid IN (?${caller},?${host})) ` +
     `AND b.starts_at-COALESCE((SELECT buffer_min*60000 FROM hf_availability_schedules s WHERE s.host_uid=b.host_uid),600000)<?${end} ` +
     `AND b.ends_at+COALESCE((SELECT buffer_min*60000 FROM hf_availability_schedules s WHERE s.host_uid=b.host_uid),600000)>?${start})`;
@@ -75,14 +75,14 @@ async function reelsOn(env: Env): Promise<boolean> {
 async function nextBookingCutoff(env: Env, callerUid: string, hostUid: string, now: number): Promise<number | null> {
   const parties = [callerUid, hostUid];
   const active = await env.DB_META.prepare(
-    "SELECT 1 AS x FROM hf_bookings b WHERE b.status IN ('confirmed','starting','active','settling') " +
+    "SELECT 1 AS x FROM hf_bookings b WHERE b.status IN ('confirmed','pending_approval','starting','active','settling') " +
     "AND (b.host_uid IN (?1,?2) OR b.customer_uid IN (?1,?2)) AND b.starts_at<=?3 " +
     "AND b.ends_at+COALESCE((SELECT buffer_min*60000 FROM hf_availability_schedules s WHERE s.host_uid=b.host_uid),600000)>?3 LIMIT 1",
   ).bind(...parties, now).first();
   if (active) return now;
   const next = await env.DB_META.prepare(
     "SELECT MIN(b.starts_at-COALESCE((SELECT buffer_min*60000 FROM hf_availability_schedules s WHERE s.host_uid=b.host_uid),600000)) AS cutoff " +
-    "FROM hf_bookings b WHERE b.status IN ('confirmed','starting','active','settling') " +
+    "FROM hf_bookings b WHERE b.status IN ('confirmed','pending_approval','starting','active','settling') " +
     "AND (b.host_uid IN (?1,?2) OR b.customer_uid IN (?1,?2)) AND b.starts_at>?3",
   ).bind(...parties, now).first<{ cutoff: number | null }>();
   return next?.cutoff == null ? null : Number(next.cutoff);

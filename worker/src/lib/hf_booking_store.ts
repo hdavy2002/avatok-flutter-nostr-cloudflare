@@ -167,34 +167,42 @@ export async function listHfBusyIntervals(
 export type BookingCleanupRow = { id: string; call_id: string; customer_uid: string; host_uid: string; status: string; settlement_status: string };
 type BookingCleanupResult = { processed: number; blocked: number; more: boolean };
 
+/** [HF-BOOK-APPROVE-BE] Optional extras for the approval flow: the booking is released FROM 'pending_approval' (row.status) and records why/who. */
+export interface ReleaseOpts { cancelReason?: string; decidedBy?: string; eventOp?: string; actorUid?: string | null }
+
 export async function releaseHeldBooking(
   env: Env,
   row: BookingCleanupRow,
   now: number,
   toStatus: "cancelled" | "failed",
   reason: string,
+  opts: ReleaseOpts = {},
 ): Promise<boolean> {
   const reservation = await getReservation(env, row.call_id);
   if (!reservation || reservation.lots.length === 0) return false;
   const nonce = crypto.randomUUID(), gate = relOpId(row.call_id);
+  // A pending booking holds money exactly like a confirmed one; it is released from its own status. Only these two literals are ever spliced in.
+  const from = row.status === "pending_approval" ? "pending_approval" : "confirmed";
   const release = buildReleaseStatements(env, {
     uid: row.customer_uid, callId: row.call_id, lots: reservation.lots, now, nonce,
     gatePredicate: (first) => ({
-      sql: "EXISTS (SELECT 1 FROM hf_bookings WHERE id=?" + first + " AND call_id=?" + (first + 1) + " AND status='confirmed' AND settlement_status='held')",
+      sql: "EXISTS (SELECT 1 FROM hf_bookings WHERE id=?" + first + " AND call_id=?" + (first + 1) + " AND status='" + from + "' AND settlement_status='held')",
       values: [row.id, row.call_id],
     }),
   });
+  const why = opts.cancelReason ? ",cancel_reason=?7,decided_by=?8" : "";
+  const whyArgs = opts.cancelReason ? [opts.cancelReason, opts.decidedBy ?? null] : [];
   await env.DB_META.batch([
     release[0],
-    env.DB_META.prepare("UPDATE hf_bookings SET status=?1,settlement_status='released',cancelled_at=?2,updated_at=?2 WHERE id=?3 AND call_id=?4 AND status='confirmed' AND settlement_status='held' AND EXISTS (SELECT 1 FROM hf_token_ledger WHERE op_id=?5 AND note=?6)")
-      .bind(toStatus, now, row.id, row.call_id, gate, nonce),
+    env.DB_META.prepare("UPDATE hf_bookings SET status=?1,settlement_status='released',cancelled_at=?2,updated_at=?2" + why + " WHERE id=?3 AND call_id=?4 AND status='" + from + "' AND settlement_status='held' AND EXISTS (SELECT 1 FROM hf_token_ledger WHERE op_id=?5 AND note=?6)")
+      .bind(toStatus, now, row.id, row.call_id, gate, nonce, ...whyArgs),
     ...release.slice(1, -1),
     env.DB_META.prepare("UPDATE hf_booking_occupancy SET status='cancelled',updated_at=?1 WHERE booking_id=?2 AND EXISTS (SELECT 1 FROM hf_bookings WHERE id=?2 AND status=?3)")
       .bind(now, row.id, toStatus),
     env.DB_META.prepare("UPDATE calendar_blocks SET status='cancelled' WHERE source_app='hf_booking' AND source_ref=?1 AND EXISTS (SELECT 1 FROM hf_bookings WHERE id=?1 AND status=?2)")
       .bind(row.id, toStatus),
-    env.DB_META.prepare("INSERT OR IGNORE INTO hf_booking_events(id,booking_id,operation_id,actor_uid,from_status,to_status,details_json,created_at) SELECT ?1,?2,?3,NULL,'confirmed',?4,?5,?6 WHERE EXISTS (SELECT 1 FROM hf_bookings WHERE id=?2 AND status=?4)")
-      .bind(crypto.randomUUID(), row.id, "system:" + reason + ":" + row.id, toStatus, JSON.stringify({ reason }), now),
+    env.DB_META.prepare("INSERT OR IGNORE INTO hf_booking_events(id,booking_id,operation_id,actor_uid,from_status,to_status,details_json,created_at) SELECT ?1,?2,?3,?7,'" + from + "',?4,?5,?6 WHERE EXISTS (SELECT 1 FROM hf_bookings WHERE id=?2 AND status=?4)")
+      .bind(crypto.randomUUID(), row.id, opts.eventOp ?? ("system:" + reason + ":" + row.id), toStatus, JSON.stringify({ reason }), now, opts.actorUid ?? null),
     release[release.length - 1],
   ]);
   const saved = await env.DB_META.prepare("SELECT status,settlement_status FROM hf_bookings WHERE id=?1")
@@ -246,7 +254,7 @@ export async function releaseHfBookingsForUser(
 ): Promise<BookingCleanupResult> {
   const rows = (await env.DB_META.prepare(
     "SELECT id,call_id,customer_uid,host_uid,status,settlement_status FROM hf_bookings " +
-    "WHERE status='confirmed' AND settlement_status='held' AND (customer_uid=?1 OR host_uid=?1) " +
+    "WHERE status IN ('confirmed','pending_approval') AND settlement_status='held' AND (customer_uid=?1 OR host_uid=?1) " +
     "AND NOT EXISTS (SELECT 1 FROM hf_calls c WHERE c.booking_id=hf_bookings.id) ORDER BY starts_at,id LIMIT 101",
   ).bind(uid).all<BookingCleanupRow>()).results ?? [];
   let processed = 0, blocked = 0;
@@ -273,7 +281,7 @@ export async function drainHfBookingHolds(
   }
   const remaining = await env.DB_META.prepare(
     "SELECT COUNT(*) AS n FROM hf_bookings WHERE (customer_uid=?1 OR host_uid=?1) " +
-    "AND settlement_status='held' AND status IN ('confirming','confirmed','starting','active','settling')",
+    "AND settlement_status='held' AND status IN ('confirming','confirmed','pending_approval','starting','active','settling')",
   ).bind(uid).first<{ n: number }>().catch(() => null);
   return remaining != null && Number(remaining.n) === 0;
 }

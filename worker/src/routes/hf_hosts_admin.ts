@@ -309,7 +309,7 @@ async function decide(req: Request, env: Env, uid: string): Promise<Response> {
     const creatorMissing = await creatorPublicationBlockers(env, uid);
     if (creatorMissing.length) return err(409, "not_ready", { missing: creatorMissing });
     const slug = h.slug || (await uniqueSlug(env, h.display_name || "host", uid));
-    const published = await env.DB_META.prepare("UPDATE hf_hosts SET status='live', slug=?2, live_at=COALESCE(live_at,?3), review_note=NULL, reviewed_by=?4, reviewed_at=?3, updated_at=?3, listing_revision=listing_revision+1 WHERE uid=?1 AND listing_revision=?5 AND status IN ('pending_review','paused','rejected')")
+    const published = await env.DB_META.prepare("UPDATE hf_hosts SET presence='online', presence_at=?3, status='live', slug=?2, live_at=COALESCE(live_at,?3), review_note=NULL, reviewed_by=?4, reviewed_at=?3, updated_at=?3, listing_revision=listing_revision+1 WHERE uid=?1 AND listing_revision=?5 AND status IN ('pending_review','paused','rejected')")
       .bind(uid, slug, now, a.uid, h.listing_revision).run();
     if (!published.meta?.changes) return err(409, "listing_changed");
     msg = "Good news! Your profile is now live. People can find you and talk to you. Thank you for joining us.";

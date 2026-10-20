@@ -162,7 +162,7 @@ export async function hfCreatorListingsAdminRoute(req: Request, env: Env, ctx?: 
       if (!EDITABLE.has(h.status) && h.status !== "pending_review") return fail(409, "listing_locked");
       const missing = await creatorPublicationBlockers(env, uid);
       if (missing.length) return fail(422, "publication_blocked", { missing });
-      const r = await env.DB_META.prepare("UPDATE hf_hosts SET status='live', live_at=COALESCE(live_at,?2), reviewed_at=?2, reviewed_by=?3, updated_at=?2, listing_revision=listing_revision+1 WHERE uid=?1 AND listing_revision=?4 AND status IN ('draft','pending_host','paused','rejected','pending_review')")
+      const r = await env.DB_META.prepare("UPDATE hf_hosts SET presence='online', presence_at=?2, status='live', live_at=COALESCE(live_at,?2), reviewed_at=?2, reviewed_by=?3, updated_at=?2, listing_revision=listing_revision+1 WHERE uid=?1 AND listing_revision=?4 AND status IN ('draft','pending_host','paused','rejected','pending_review')")
         .bind(uid, Date.now(), user.uid, h.listing_revision ?? 1).run();
       if (!r.meta?.changes) return fail(409, "listing_changed");
       await emit(env, user.uid, uid, "published", { category: h.category, price_per_min: h.price_per_min });

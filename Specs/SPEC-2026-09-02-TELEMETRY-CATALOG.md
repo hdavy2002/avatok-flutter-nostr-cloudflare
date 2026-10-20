@@ -1323,6 +1323,19 @@ Web events (flag `hfFavouritesEnabled`). Never in any prop: the person's name, p
 | web `hf_dash3_notify_pref` | `key: 'notifyWhatsapp' \| 'apptReminders'`, `on` | A switch changed on Profile → Notifications. |
 | worker `$exception` | `extra.area: 'hf_booking_reminders'`, `booking_id`, `window` | One booking failed to queue (others continue). |
 
+## Hello Fraands booking approval (`[HF-BOOK-APPROVE-BE]`, worker, 2026-10-20)
+
+| Event | Props | Note |
+|---|---|---|
+| worker `hf_booking_requested` | `booking_id`, `mode: 'manual' \| 'auto'`, `amount_paise`, `topic` | A fan booked; manual bookings wait for the influencer. |
+| worker `hf_booking_accepted` | `booking_id` | The influencer accepted (or auto mode confirmed). |
+| worker `hf_booking_declined` | `booking_id`, `refund_paise` | Declined; the hold went back to the wallet. |
+| worker `hf_booking_expired_refunded` | `booking_id`, `amount_paise` | Not accepted in time; refunded in full. |
+| worker `hf_booking_msg_sent` | `event`, `channel: 'push' \| 'whatsapp' \| 'email'`, `result`, `booking_id` | One approval message attempted on one channel. |
+| worker `hf_booking_mode_changed` | `from`, `to` | Influencer switched Manual or Auto. |
+| worker `hf_open_alert_sent` | `channel`, `result`, `date`, `start_min` | An open-window alert went to the influencer. |
+| worker `$exception` | `extra.area: 'hf_booking_approval' \| 'hf_open_alerts'` | A step failed; others continue. |
+
 ## Hello Fraands influencer Channels (`[HF-WIRE-3]`, worker + Flutter app, 2026-10-19)
 
 | Event | Props | Note |

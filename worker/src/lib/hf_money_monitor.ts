@@ -12,6 +12,8 @@ import { chargePaise, validTariff, type Price, type Tariff } from "./hf_token_ma
 import { judgeCall, readMoneyRules, type CallFacts } from "./hf_money_rules";
 import { correctCallCharge, corrOpId } from "./hf_call_corrections";
 import { releaseHeldBooking, type BookingCleanupRow } from "./hf_booking_store";
+import { MONITOR_GRACE_MS, expirePendingBooking } from "./hf_booking_approval"; // [HF-BOOK-APPROVE-BE]
+import { relOpId } from "./hf_token_ledger";
 
 export const MONEY_MONITOR_ACTOR = "system:money-monitor";
 const LOOKBACK_MS = 48 * 3600 * 1000;
@@ -21,6 +23,8 @@ const CALL_BATCH = 100;
 const BOOKING_BATCH = 50;
 export const RULE_BOOKING_HOLD_STUCK = "booking_hold_not_released";
 export const RULE_BOOKING_NO_SHOW_RELEASED = "booking_no_show_hold";
+export const RULE_BOOKING_PENDING_STUCK = "booking_pending_past_deadline"; // [HF-BOOK-APPROVE-BE]
+export const RULE_BOOKING_DECIDED_NO_RELEASE = "booking_declined_or_expired_without_release"; // [HF-BOOK-APPROVE-BE]
 
 export interface MonitorResult { scannedCalls: number; scannedBookings: number; fixed: number; flagged: number; skipped: number }
 
@@ -108,6 +112,44 @@ async function scanCalls(env: Env, now: number, autoFix: boolean, dropChargePais
   }
 }
 
+/**
+ * [HF-BOOK-APPROVE-BE] (1) A booking still waiting for approval 15 min after its deadline is expired by the same exactly-once path as the cron (or flagged).
+ * (2) Every declined / expired booking must have exactly one hold release in the ledger (op_id is UNIQUE, so "one" = "at least one"); none = flagged for an admin.
+ * Quietly does nothing until the approval migration is applied.
+ */
+async function scanPendingApproval(env: Env, now: number, autoFix: boolean, out: MonitorResult): Promise<void> {
+  try {
+    const late = (await env.DB_META.prepare(
+      `SELECT b.id,b.customer_uid,b.host_uid,b.reserved_paise FROM hf_bookings b
+        WHERE b.status='pending_approval' AND b.approval_deadline IS NOT NULL AND b.approval_deadline<=?1 ORDER BY b.approval_deadline LIMIT ?2`,
+    ).bind(now - MONITOR_GRACE_MS, BOOKING_BATCH).all<{ id: string; customer_uid: string; host_uid: string; reserved_paise: number }>()).results ?? [];
+    for (const b of late) {
+      out.scannedBookings++;
+      const base = { kind: "booking", subjectId: b.id, rule: RULE_BOOKING_PENDING_STUCK, uid: b.customer_uid, hostUid: b.host_uid, expected: 0, actual: Number(b.reserved_paise), now };
+      if (autoFix && await expirePendingBooking(env, b.id, now).catch(() => false)) {
+        await upsertAudit(env, { ...base, status: "fixed", fixOpId: "hfbook-expire:" + b.id, detail: { reason: "Booking was still waiting for approval after its deadline: cancelled and the hold returned to the wallet" } });
+        out.fixed++;
+      } else {
+        await upsertAudit(env, { ...base, status: "open", detail: { reason: "Booking is still waiting for approval after its deadline and the hold could not be released" } });
+        out.flagged++;
+      }
+    }
+    const missing = (await env.DB_META.prepare(
+      `SELECT b.id,b.call_id,b.customer_uid,b.host_uid,b.reserved_paise,b.cancel_reason FROM hf_bookings b
+        WHERE b.status='cancelled' AND b.cancel_reason IN ('declined','not_accepted_24h') AND b.call_id IS NOT NULL AND b.updated_at>=?1
+          AND NOT EXISTS (SELECT 1 FROM hf_token_ledger l WHERE l.op_id=('hftrel:'||b.call_id)) ORDER BY b.updated_at LIMIT ?2`,
+    ).bind(now - LOOKBACK_MS, BOOKING_BATCH).all<{ id: string; call_id: string; customer_uid: string; host_uid: string; reserved_paise: number; cancel_reason: string }>()).results ?? [];
+    for (const b of missing) {
+      out.scannedBookings++;
+      await upsertAudit(env, { kind: "booking", subjectId: b.id, rule: RULE_BOOKING_DECIDED_NO_RELEASE, status: "open", uid: b.customer_uid, hostUid: b.host_uid,
+        expected: Number(b.reserved_paise), actual: 0, detail: { reason: `Booking was ${b.cancel_reason} but the ledger has no hold release (${relOpId(b.call_id)})` }, now });
+      out.flagged++;
+    }
+  } catch (e) {
+    if (!/no such (column|table)/i.test(String((e as Error)?.message ?? e))) throw e;
+  }
+}
+
 async function scanBookings(env: Env, now: number, autoFix: boolean, out: MonitorResult): Promise<void> {
   // A booked slot that passed with no call at all: the whole hold goes back to the wallet (rule 5). The bookings cron does this first;
   // this catches what it left behind.
@@ -128,6 +170,7 @@ async function scanBookings(env: Env, now: number, autoFix: boolean, out: Monito
       out.flagged++;
     }
   }
+  await scanPendingApproval(env, now, autoFix, out);
   // A booking that finished (or failed) but still shows its money as held: an admin has to look, nothing is changed automatically.
   const hung = (await env.DB_META.prepare(
     `SELECT b.id,b.customer_uid,b.host_uid,b.status,b.reserved_paise FROM hf_bookings b

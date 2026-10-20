@@ -312,6 +312,20 @@ The app is a Reels feed: fans watch influencers' short videos, then call or book
 | HF-REEL-42 | **Every way of paying must actually open** (owner 2026-10-20, after PhonePe showed "not available right now"). When the provider refuses one of our own checkout screens (UPI app, UPI ID or card — its "seamless" modes are not yet switched on for the account), the app opens the provider's own secure checkout **inside the app** for the same order: UPI apps on the phone (PhonePe, GPay, Paytm…), UPI ID, debit/credit card and net banking, and the UPI app returns straight to us. The payer never sees an error unless that page cannot open either. Amends HF-REEL-39 (no outside browser still holds). Top-up summary label reads just **"GST 18%"**. | ADOPTED | N/A | DONE in app (HF-CHECKOUT-FALLBACK-1); server switch `hfCheckoutMode=web` skips our screens' refusal entirely until the provider enables seamless |
 | HF-REEL-43 | **The app links its policy pages from Settings → About** (owner 2026-10-20, payment provider app whitelisting): Terms of use, Privacy policy, **Refunds and cancellations**, **Contact us** — each opens the website page on the brand domain. Prices in the app are in ₹. | ADOPTED | N/A | DONE (HF-LEGAL-LINKS-1) |
 
+## 17. Booking approval (owner 2026-10-20)
+
+Plan: `Specs/PLAN-2026-10-20-HF-BOOKING-APPROVAL.md`.
+
+| ID | Rule | Decision | Pages | Backend |
+|---|---|---|---|---|
+| HF-BOOK-1 | **Influencers approve bookings** (owner 2026-10-20). Each influencer chooses Manual (default) or Auto-accept. Manual: a booking is a request (`pending_approval`) until the influencer accepts; the slot is blocked and the fan's money stays held. Auto: confirmed straight away. Behind `hfBookingApprovalEnabled`; with it off nothing changes. | ADOPTED | TODO | DONE (code, not landed) |
+| HF-BOOK-2 | **24-hour rule**: a request not accepted within 24 hours (or one hour before the call, whichever is earlier) is cancelled and the full amount returns to the fan's wallet. Every request message says so. Manual mode needs at least 2 hours notice (`too_soon_for_approval`). | ADOPTED | TODO | DONE (code, not landed) |
+| HF-BOOK-3 | **Decline or expiry refunds in full, exactly once**, to the wallet only, through the same hold-release path as every other cancel. Accept, decline, expiry and the fan withdrawing cannot both win; the first one decides. | ADOPTED | TODO | DONE (code, not landed) |
+| HF-BOOK-4 | **The fan can withdraw a pending request at any time** with a full refund; the one-hour cutoff applies only to confirmed bookings. | ADOPTED | TODO | DONE (code, not landed) |
+| HF-BOOK-5 | **A pending booking is not a call**: it is never reminded, never auto-started and cannot be started; it still blocks the slot and counts as busy for overlap checks. | ADOPTED | TODO | DONE (code, not landed) |
+| HF-BOOK-6 | **Messages**: push, WhatsApp (paced outbox) and email for request, accepted, declined, expired and a nudge to the influencer 4 hours before the deadline. Reminders stay at 1 hour and 10 minutes (no 30-minute one). Wording is neutral and shows no phone numbers; blocked users and people who switched appointment reminders off are respected. | ADOPTED | TODO | DONE (code, not landed) |
+| HF-BOOK-7 | **Topics and open-window alerts**: a fan may pick one of the influencer's own topics (`talk-about-my-channel`, `just-friendship`, `general-advice` added); influencers can switch on an alert when an availability window starts (no alerts 11 pm to 8 am IST). New live influencers start Online. The money monitor flags any pending booking past its deadline and any decline or expiry without a release. | ADOPTED | TODO | DONE (code, not landed) |
+
 ---
 
 ## Implementation plan — public pages first (backend not ready)
@@ -477,3 +491,4 @@ else, or come back later."
 | 2026-10-19 | HF-PROGRESS-11 (owner, after the first real top-up test): in-app checkout on our own screens with real customer name/phone/email (HF-REEL-39); reels of not-yet-joined creators in the feed with Invite (HF-REEL-40); search platform filter (HF-REEL-41). |
 | 2026-10-20 | HF-CHECKOUT-FALLBACK-1 (owner, phone test of build 2173): refused in-app payment methods fall back to the provider's secure checkout inside the app (HF-REEL-42); "GST 18%" label; Me-screen border no longer covers the status bar. |
 | 2026-10-20 | HF-LEGAL-LINKS-1 (owner): the app was whitelisted with Cashfree (first in-app ₹10 top-up paid end to end); Settings now links Refunds and cancellations + Contact us (HF-REEL-43). |
+| 2026-10-20 | HF-BOOK-APPROVE-BE (owner): booking approval, 24-hour rule, full refund on decline or expiry, topics, open-window alerts (HF-BOOK-1 to 7), behind `hfBookingApprovalEnabled`. |
