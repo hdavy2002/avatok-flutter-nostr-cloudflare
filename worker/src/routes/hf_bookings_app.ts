@@ -37,7 +37,7 @@ import {
 import { pricingStd, readInfluencerRate } from "../lib/hf_influencer_rate"; // [HF-WIRE-18]
 import { track } from "../hooks";
 import {
-  TOO_SOON_TEXT, acceptPending, approvalOn, approvalText, countdown, declinePending, emitBookingEvent, hostApprovalMode, hostTopics, notifyBooking,
+  type Defer, TOO_SOON_TEXT, acceptPending, approvalOn, approvalText, countdown, declinePending, emitBookingEvent, hostApprovalMode, hostTopics, notifyBooking,
   topicRef,
 } from "../lib/hf_booking_approval"; // [HF-BOOK-APPROVE-BE]
 
@@ -404,7 +404,7 @@ function shape(row: JoinRow, role: "fan" | "host", now: number, note?: string, a
   };
 }
 
-async function createBooking(req: Request, env: Env, body: Record<string, unknown>): Promise<Response> {
+async function createBooking(req: Request, env: Env, body: Record<string, unknown>, defer?: Defer): Promise<Response> {
   const auth = await requireUser(req, env);
   if (isFail(auth)) return err(auth.status, auth.error);
   const slug = typeof body.hostSlug === "string" ? body.hostSlug.trim().toLowerCase() : "";
@@ -451,7 +451,8 @@ async function createBooking(req: Request, env: Env, body: Record<string, unknow
     void emitBookingEvent(env, "hf_booking_requested", auth.uid, row.host_uid, row.customer_uid, {
       booking_id: row.id, mode: pending ? "manual" : "auto", amount_paise: Number(row.reserved_paise), topic: row.topic_slug ?? null,
     });
-    await notifyBooking(env, pending ? "request" : "accepted", row);
+    const msgs = notifyBooking(env, pending ? "request" : "accepted", row); // [HF-BOOK-APPROVE-QA-1] after the response when possible
+    if (defer) defer(msgs.catch(() => undefined)); else await msgs;
     const name = row.host_name ?? "your influencer";
     return json({
       booking: shape(row, "fan", Date.now(), note, true), needsApproval: pending,
@@ -565,13 +566,13 @@ async function loadJoined(env: Env, id: string): Promise<JoinRow | null> {
   ).bind(id).first<JoinRow>();
 }
 
-async function decideRoute(req: Request, env: Env, id: string, action: "accept" | "decline"): Promise<Response> {
+async function decideRoute(req: Request, env: Env, id: string, action: "accept" | "decline", defer?: Defer): Promise<Response> {
   if (req.method !== "POST") return err(405, "method_not_allowed");
   const auth = await requireUser(req, env);
   if (isFail(auth)) return err(auth.status, auth.error);
   const host = await hostOf(env, auth.uid);
   if (!host) return err(404, "host_not_found");
-  const out = action === "accept" ? await acceptPending(env, id, auth.uid) : await declinePending(env, id, auth.uid);
+  const out = action === "accept" ? await acceptPending(env, id, auth.uid, Date.now(), defer) : await declinePending(env, id, auth.uid, Date.now(), defer);
   if (!out.ok) {
     if (out.reason === "not_found") return err(404, "booking_not_found", { message: "We couldn't find that booking." });
     const code = out.reason === "hold_unavailable" ? "booking_hold_unavailable" : out.reason;
@@ -628,7 +629,7 @@ export async function runHfBookingAutoStart(env: Env, now = Date.now()): Promise
 }
 
 /** Which handler (if any) of this adapter owns the request. null = the older router's. */
-async function pick(req: Request, env: Env): Promise<null | (() => Promise<Response>)> {
+async function pick(req: Request, env: Env, defer?: Defer): Promise<null | (() => Promise<Response>)> {
   const url = new URL(req.url);
   const p = url.pathname;
   const m = req.method;
@@ -639,7 +640,7 @@ async function pick(req: Request, env: Env): Promise<null | (() => Promise<Respo
   if (p === "/api/hf/bookings") {
     if (m === "POST") {
       const peek = await req.clone().json().catch(() => null) as Record<string, unknown> | null;
-      if (peek && typeof peek === "object" && typeof peek.hostSlug === "string" && peek.startAt !== undefined) return () => createBooking(req, env, peek);
+      if (peek && typeof peek === "object" && typeof peek.hostSlug === "string" && peek.startAt !== undefined) return () => createBooking(req, env, peek, defer);
       return null;
     }
     if (m === "GET") {
@@ -656,15 +657,16 @@ async function pick(req: Request, env: Env): Promise<null | (() => Promise<Respo
   if (dm && m === "DELETE") return () => deleteBooking(req, env, dm[1]);
   // [HF-BOOK-APPROVE-BE] flag off -> null, exactly as these paths were before (the older router answers 404)
   const am = p.match(/^\/api\/hf\/bookings\/([a-f0-9-]{36})\/(accept|decline)$/i);
-  if (am && await approvalOn(env)) return () => decideRoute(req, env, am[1], am[2].toLowerCase() as "accept" | "decline");
+  if (am && await approvalOn(env)) return () => decideRoute(req, env, am[1], am[2].toLowerCase() as "accept" | "decline", defer);
   if (p === "/api/hf/hosts/me/booking-settings" && await approvalOn(env)) return async () => (m !== "GET" && m !== "PUT") ? err(405, "method_not_allowed") : settingsRoute(req, env);
   return null;
 }
 
 /** Returns null for every path/shape that belongs to the older router. Dark (404) unless hfBookingsEnabled. */
-export async function hfBookingsAppRoute(req: Request, env: Env): Promise<Response | null> {
+export async function hfBookingsAppRoute(req: Request, env: Env, ctx?: ExecutionContext): Promise<Response | null> {
   try {
-    const handler = await pick(req, env);
+    const defer: Defer | undefined = ctx ? (p) => ctx.waitUntil(p) : undefined;
+    const handler = await pick(req, env, defer);
     if (!handler) return null;
     const cfg = (await readConfig(env).catch(() => null)) as unknown as Record<string, unknown> | null;
     if (cfg?.hfBookingsEnabled !== true) return new Response(null, { status: 404 });

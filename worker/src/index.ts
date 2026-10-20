@@ -1162,7 +1162,7 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
       if (p === "/api/hosts/me/availability" || p === "/api/hosts/me/bookings/summary" || p.startsWith("/api/hf/bookings") || /^\/api\/hf\/hosts\/[^/]+\/availability$/.test(p) || p === "/api/hf/hosts/me/rate" || p === "/api/hf/hosts/me/booking-settings" || /^\/api\/hf\/hosts\/[^/]+\/slots$/.test(p)) {
         const bookingConfig = await readConfig(env).catch(() => null);
         if (bookingConfig?.hfBookingsEnabled !== true) return new Response(null, { status: 404 });
-        const bookingResponse = (await hfBookingsAppRoute(req, env)) ?? (await hfBookingsRoute(req, env)); // [HF-WIRE-8] app adapter first; null = older router
+        const bookingResponse = (await hfBookingsAppRoute(req, env, ctx)) ?? (await hfBookingsRoute(req, env)); // [HF-WIRE-8] app adapter first; null = older router
         if (bookingResponse) return bookingResponse;
       } // [HF-BOOKING-CALENDAR-1] feature stays dark until the booked-call settlement path is ready
       if (p.startsWith("/api/hf/lanes/")) { const r = await hfLanesRoute(req, env, p, ctx); if (r) return r; } // [HF-LANE-VERIFY-1]

@@ -102,6 +102,12 @@ export interface BookingFacts {
   topic_slug?: string | null; approval_deadline?: number | null; created_at?: number | null;
   host_name: string | null; fan_name: string | null;
 }
+/** [HF-BOOK-APPROVE-QA-1] Send messages after the response when the route has an ExecutionContext (the phone waited ~10 s otherwise). */
+export type Defer = (p: Promise<unknown>) => void;
+async function sendOrDefer(defer: Defer | undefined, p: Promise<unknown>): Promise<void> {
+  if (defer) { defer(p.catch(() => undefined)); return; }
+  await p;
+}
 export type MsgEvent = "request" | "accepted" | "declined" | "expired" | "nudge";
 
 export function approvalText(hostName: string, holdPaise: number): string {
@@ -277,7 +283,7 @@ export async function cancelPending(env: Env, id: string, reason: "declined" | "
   return after?.cancel_reason === reason && after.decided_by === decidedBy ? "done" : "lost";
 }
 
-export async function acceptPending(env: Env, id: string, hostUid: string, now = Date.now()): Promise<Outcome> {
+export async function acceptPending(env: Env, id: string, hostUid: string, now = Date.now(), defer?: Defer): Promise<Outcome> {
   const cur = await loadFacts(env, id);
   if (!cur || cur.host_uid !== hostUid) return { ok: false, reason: "not_found" };
   if (cur.status !== "pending_approval") return { ok: false, reason: await wasExpired(env, id) ? "expired" : "not_pending" };
@@ -299,7 +305,7 @@ export async function acceptPending(env: Env, id: string, hostUid: string, now =
   void emitBookingEvent(env, "hf_booking_accepted", hostUid, row.host_uid, row.customer_uid, {
     booking_id: id, latency_min: Math.max(0, Math.round((now - Number(row.created_at)) / MIN)), amount_paise: Number(row.reserved_paise),
   });
-  await notifyBooking(env, "accepted", row);
+  await sendOrDefer(defer, notifyBooking(env, "accepted", row));
   return { ok: true, row };
 }
 
@@ -307,7 +313,7 @@ async function wasExpired(env: Env, id: string): Promise<boolean> {
   return (await reasonOf(env, id))?.cancel_reason === "not_accepted_24h";
 }
 
-export async function declinePending(env: Env, id: string, hostUid: string, now = Date.now()): Promise<Outcome & { already?: boolean }> {
+export async function declinePending(env: Env, id: string, hostUid: string, now = Date.now(), defer?: Defer): Promise<Outcome & { already?: boolean }> {
   const cur = await loadFacts(env, id);
   if (!cur || cur.host_uid !== hostUid) return { ok: false, reason: "not_found" };
   if (cur.status !== "pending_approval") {
@@ -323,7 +329,7 @@ export async function declinePending(env: Env, id: string, hostUid: string, now 
   }
   const row = (await loadFacts(env, id))!;
   void emitBookingEvent(env, "hf_booking_declined", hostUid, row.host_uid, row.customer_uid, { booking_id: id, refund_paise: Number(row.reserved_paise) });
-  await notifyBooking(env, "declined", row);
+  await sendOrDefer(defer, notifyBooking(env, "declined", row));
   return { ok: true, row };
 }
 

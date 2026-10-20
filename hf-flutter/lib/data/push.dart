@@ -150,10 +150,13 @@ abstract final class PushNotifications {
       if (messenger == null) return;
       final path = m.data['path'];
       messenger.hideCurrentSnackBar();
-      messenger.showSnackBar(
+      // [HF-BOOK-APPROVE-QA-1] A SnackBar with an action never times out when the phone reports accessible navigation, and on
+      // the test phone it sat over the booking screen's Continue button for minutes. Close it ourselves and give it an X.
+      final ctl = messenger.showSnackBar(
         SnackBar(
           behavior: SnackBarBehavior.floating,
           duration: const Duration(seconds: 8),
+          showCloseIcon: true,
           content: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -167,6 +170,9 @@ abstract final class PushNotifications {
               : null,
         ),
       );
+      Timer(const Duration(seconds: 8), () {
+        try { ctl.close(); } catch (_) {}
+      });
     } catch (_) {
       // a banner must never crash the app
     }

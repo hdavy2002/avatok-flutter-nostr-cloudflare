@@ -790,7 +790,7 @@ class _RealBookingsScreenState extends State<RealBookingsScreen> {
                           Text(b.hostName ?? 'Influencer', style: t(17)),
                           Text('${dayLabel(b.date)} · ${slotLabel(b.time)}', style: t(15, color: C.maroon)),
                           if (b.topic != null) Text('About: ${b.topic!.label}', key: ValueKey('topic-${b.id}'), style: t(14, color: C.tan, w: FontWeight.w700)),
-                          Text('${paiseText(b.holdPaise)} held · ${b.minutes} min', style: t(14, color: C.muted, w: FontWeight.w700)),
+                          Text('${paiseText(b.holdPaise)} ${b.status == 'cancelled' ? 'refunded' : 'held'} · ${b.minutes} min', style: t(14, color: C.muted, w: FontWeight.w700)),
                           if (rich) ...[
                             const SizedBox(height: 6),
                             _statusChip(b),
@@ -1144,7 +1144,7 @@ class _RealInfluencerBookingsScreenState extends State<RealInfluencerBookingsScr
                   Row(
                     crossAxisAlignment: CrossAxisAlignment.end,
                     children: [
-                      const Expanded(child: Headline(solid: 'MY', outline: 'BOOKINGS', size: 38)),
+                      const Expanded(child: Headline(solid: 'BOOKED', outline: 'WITH ME', size: 38)), // [HF-BOOK-APPROVE-QA-1] not 'My bookings' (that is the fan list)
                       SizedBox(width: 110, height: 70, child: Art('influencer/calendar-header.webp', fit: BoxFit.contain)),
                     ],
                   ),
@@ -1231,12 +1231,12 @@ class _RealInfluencerBookingsScreenState extends State<RealInfluencerBookingsScr
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(manual ? 'Manual approval' : 'Auto-accept', key: const ValueKey('approval-title'), style: t(18, color: C.maroon)),
+                      Text('I approve each booking', key: const ValueKey('approval-title'), style: t(18, color: C.maroon)), // [HF-BOOK-APPROVE-QA-1] the switch says on/off; the title stays put
                       const SizedBox(height: 2),
                       Text(
                         manual
-                            ? 'Each booking waits for you to accept. If you do not accept within 24 hours it is cancelled and the caller is refunded.'
-                            : 'Bookings are confirmed straight away. You can still cancel one later and the caller is refunded.',
+                            ? 'On: each booking waits for you to accept. If you do not accept within 24 hours it is cancelled and the caller is refunded.'
+                            : 'Off (auto-accept): bookings are confirmed straight away. You can still cancel one later and the caller is refunded.',
                         style: t(14, color: C.muted, w: FontWeight.w700, h: 1.35),
                       ),
                     ],
