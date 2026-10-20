@@ -126,3 +126,11 @@ Measured: `/std/calls` 1.36 s, `/std/summary` 1.2 s, `/v2/shop/kpis` 0.9 s on ev
 - Landed on main: HF-APP-CACHE-1 (+ compile fix), HF-ADMIN-CACHE-1 (web deployed, run 39454225619), HF-REELS-FAV-1, HF-PALETTE-RANGOLI-1 (owner chose "Rangoli Soft"), HF-TESTS-FIX-1. APK run 39458496306 built OK and is INSTALLED on the owner's phone (not yet looked at: phone locked).
 - Admin measured after deploy: HTML 0.26 s, whoami now parallel with the data fetches, calls list served from cache (`a2c:` sessionStorage). Remaining slow parts are server-side: /api/admin/hf/std/calls 1.36 s, /std/summary 1.2 s, and an unneeded /api/admin/v2/shop/kpis (0.9 s) fired on every HF admin page by the shell — NEXT: drop the shop KPI call from HF pages, add worker-side caching/indexes for std reports.
 - NEXT on the phone: Rangoli palette look on Me/Bookings/Availability/Confirm/Wallet, green Online bar + footer pill, kolam footer, heart on reel cards, channel name → profile (on-platform) / invite page (not on platform), second visits instant (cache), unknown route → "This page moved".
+
+### HF-ADMIN-SPEED-3 (2026-10-20 23:30 IST) — measured in the browser on /admin/hosts/calls
+- Shop KPI call on every HF admin page: **gone** (web deploy 39464777624).
+- The remaining cost was per request, not the queries: `whoami` (no report work) took as long as the reports.
+  1. Worker CORS had no `Access-Control-Max-Age`, so Chrome sent a preflight before every admin call (an extra round trip). Now `7200` (commit 00cba28a).
+  2. `requireUser` ran two D1 round trips (uid mapping + ban row) on every request. Now kept in the isolate for 30 s (commit 5f65ab67); a ban still bites within 30 s.
+- Result (warm page): whoami 231 ms, std_calls 255–531 ms, std_summary 216–238 ms, calls 321–719 ms (were 1.0–1.6 s each). A cold first load after a deploy is still ~1 s.
+
