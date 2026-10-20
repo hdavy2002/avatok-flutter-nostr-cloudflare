@@ -31,7 +31,7 @@
 |---|---|---|---|---|---|
 | 0 | Plan + tracker written | ✅ | — | (see git log `[HF-BOOK-APPROVE-0]`) | 2026-10-20. Plan + this file. Waiting on owner answers to plan §9 before Phase 4/5 copy is final; Phases 1–3 can start on the defaults. |
 | 0b | Owner answers §9 recorded (plan §9a) + API contract fixed (plan §9b) | ✅ | — | `[HF-BOOK-APPROVE-0B]` | 2026-10-20. Rulebook rows HF-BOOK-1…7 are written by the backend agent in Phase 1's commit. |
-| 1–3 | Backend (agent "backend"): approval state, settings, accept/decline, 24 h expiry refund cron, topics (+3 new), messages, open-window alert cron, money monitor, rulebook rows | ⬜ | `../wt-hf-book-approve-be` / `issue/hf-book-approve-be` | — | — |
+| 1–3 | Backend (agent "backend"): approval state, settings, accept/decline, 24 h expiry refund cron, topics (+3 new), messages, open-window alert cron, money monitor, rulebook rows | ✅ (code, not landed) | `../wt-hf-book-approve-be` / `issue/hf-book-approve-be` | `0c3f4a8c` | 2026-10-20. Done: flag hfBookingApprovalEnabled, 3 migrations (alters, create, presence-online), accept/decline/booking-settings routes, expiry+nudge cron, open-window cron, money monitor, topics, rulebook HF-BOOK-1..7, manifest, telemetry, 43 new tests. Not landed/deployed. |
 | 4 | Design mocks | ⏭ SKIPPED | — | — | Owner waived 2026-10-20; visual check on phone in Phase 13. |
 | 5+6 | App (agent "app-inf-a"): footer Online/Offline + Settings rows + availability calendar drag-select (moved to `screens/availability_real.dart`) | ⬜ | `../wt-hf-book-approve-app-a` | — | — |
 | 7+8 | App (agent "app-b"): data layer (models/repo for §9b), fan booking flow with topic + approval copy + pending states, fan My bookings, influencer Bookings page (mode switch, pending Accept/Decline, upcoming) + deep links | ⬜ | `../wt-hf-book-approve-app-b` | — | — |
@@ -45,4 +45,7 @@
 See plan §9a (2026-10-20): all influencers default Online (existing + new); reminders stay 1 h + 10 min; add topics "Talk about my channel", "Just friendship", "General advice"; footer influencer-only; no SMS; mock gate waived; build + sideload + both-sides test approved.
 
 ## Log (newest first)
+- 2026-10-20 — Backend agent: DONE, committed `0c3f4a8c` (not pushed). tsc green; new tests pass; full-suite failures identical to origin/main baseline (pre-existing).
+- 2026-10-20 — Backend agent: code complete, tsc green, existing HF tests green (hf_calls_end/corrections failures are pre-existing on origin/main: no such column presence_call_id in the test shim). Writing tests + docs next.
+- 2026-10-20 — Phase 1-3 backend agent started in ../wt-hf-book-approve-be.
 - 2026-10-20 — Phase 0: read existing code. Found: availability API, bookings (no approval step), reminders 1 h/10 min, topics catalogue, presence + nudges, influencer `/inf/*` shell already exist. Wrote plan + this tracker.
