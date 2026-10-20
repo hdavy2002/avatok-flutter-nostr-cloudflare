@@ -696,6 +696,25 @@ changes on a phone.
 - **Always:** no green (`test/core/tokens_test.dart` enforces it), no peacocks, Phosphor icons only, and the
   Android back gesture always works.
 
+**App palette "Rangoli Soft" (owner, 2026-10-20; HF-REEL-44/45/46).** The app (`hf-flutter/lib/demo/theme.dart`, class `C`)
+uses a paler, calmer palette. Artwork and illustrations keep their own colours. Token names are unchanged.
+
+| Role | Token | Value |
+|---|---|---|
+| Primary (buttons, headings, selected tab) | `C.maroon` | `#6D63B8` lavender indigo |
+| Secondary accent / eyebrow text | `C.rani` / `C.tan` | `#D9809B` rose / `#B0537A` dark rose (4.5:1) |
+| CTA, accents on indigo | `C.marigold`, `C.lemon` | `#F4CF73` soft marigold (ink text) |
+| Ink / muted | `C.deep` / `C.muted` | `#2B2645` / `#726D88` |
+| Page / borders / chip fills | `C.ivory` / `C.sandLine` / `C.sand` | `#FBF8FF` / `#E2DCF3` / `#EFEBFB` |
+| Pale marigold / light text on dark | `C.butter` / `C.gold` | `#FDF1D3` / `#FFF6DE` |
+| Soft indigo borders | `C.brass`, `C.turquoise` | `#8C84CC` |
+| Error | `C.ruby` | `#B8385A` |
+
+**Online is light green, and nothing else is:** `onlineBg #E3F6E8`, `onlineLine #A2DAB3`, `onlineInk #1F6B3F`,
+`onlineDot #3FA868` (this supersedes "no green" for the Online state only). **Bottom bars:** background `#F6F2FD`
+with a code-drawn 5-dot kolam flower every ~44 px (`#DCD3F1`, 1.4 px), 2 px top border `#E2DCF3`; selected tab
+indigo, unselected muted. White text on `#3FA868` is about 3:1, so that pill keeps a bold 15sp label and a dark-green outline.
+
 **Open (owner to decide before the first redesign):** the app's palette is still neutral (page `#F6F3EE`, ink
 `#000000`, orange primary `#F28C28`), while the website uses the §10 palette (ink `#30245f`, magenta, cream…).
 Either the app moves to the §10 palette, or the neutral base stays and each flow's theme adds its colours on top.

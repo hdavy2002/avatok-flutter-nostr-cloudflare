@@ -19,6 +19,7 @@ import 'screens/profile.dart';
 import 'screens/search.dart';
 import 'reel_player.dart';
 import 'theme.dart';
+import 'widgets.dart' show KolamBackground;
 
 final rootKey = GlobalKey<NavigatorState>();
 
@@ -173,10 +174,10 @@ class _MainShellState extends State<MainShell> {
       body: shell,
       bottomNavigationBar: Container(
         decoration: const BoxDecoration(
-          color: C.paper,
-          border: Border(top: BorderSide(color: C.turquoise, width: 3)),
+          color: C.footerBg,
+          border: Border(top: BorderSide(color: C.sandLine, width: 2)),
         ),
-        child: SafeArea(
+        child: KolamBackground(child: SafeArea(
           top: false,
           child: SizedBox(
             height: 68,
@@ -207,6 +208,7 @@ class _MainShellState extends State<MainShell> {
               ],
             ),
           ),
+        ),
         ),
       ),
     );

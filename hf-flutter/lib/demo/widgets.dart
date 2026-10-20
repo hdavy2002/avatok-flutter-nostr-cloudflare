@@ -391,7 +391,7 @@ class BrassKnob extends StatelessWidget {
                       boxShadow: const [BoxShadow(color: C.maroon, spreadRadius: 2)],
                       gradient: const RadialGradient(
                         center: Alignment(-0.3, -0.4),
-                        colors: [Color(0xFFBFF3FF), C.turquoise, C.brassDark],
+                        colors: [C.sand, C.turquoise, C.brassDark],
                         stops: [0, 0.6, 1],
                       ),
                     ),
@@ -465,7 +465,7 @@ class StatusPill extends StatelessWidget {
           Container(
             width: 9,
             height: 9,
-            decoration: BoxDecoration(shape: BoxShape.circle, color: online ? C.rani : C.cream, boxShadow: online ? [BoxShadow(color: C.rani.withValues(alpha: 0.35), spreadRadius: 3)] : null),
+            decoration: BoxDecoration(shape: BoxShape.circle, color: online ? C.onlineDot : C.cream, boxShadow: online ? [BoxShadow(color: C.onlineDot.withValues(alpha: 0.35), spreadRadius: 3)] : null),
           ),
           const SizedBox(width: 7),
           Text(online ? 'ONLINE NOW' : 'OFFLINE', style: t(14, color: dark ? C.gold : C.muted, ls: 0.06)),
@@ -594,7 +594,7 @@ class BackBtn extends StatelessWidget {
             child: Container(
               width: 44,
               height: 44,
-              decoration: BoxDecoration(shape: BoxShape.circle, color: dark ? C.ivory.withValues(alpha: 0.15) : const Color(0xFFFFE3F0)),
+              decoration: BoxDecoration(shape: BoxShape.circle, color: dark ? C.ivory.withValues(alpha: 0.15) : C.sand),
               child: Icon(Icons.arrow_back_rounded, color: dark ? C.gold : C.deep),
             ),
           ),
@@ -793,4 +793,52 @@ class ArtMoment extends StatelessWidget {
       ),
     );
   }
+}
+
+/// [HF-PALETTE-RANGOLI-1] Pale kolam / rangoli motif behind both bottom bars: a small 5-dot flower every ~44 px
+/// (rows offset by half a step), drawn in code so no image asset is needed.
+class KolamBackground extends StatelessWidget {
+  const KolamBackground({super.key, required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) => CustomPaint(painter: const _KolamPainter(), child: child);
+}
+
+class _KolamPainter extends CustomPainter {
+  const _KolamPainter();
+
+  static const double _step = 44;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final p = Paint()
+      ..color = C.footerDot
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.4;
+    var row = 0;
+    for (double y = _step / 2; y < size.height + _step / 2; y += _step / 2, row++) {
+      final shift = row.isOdd ? _step / 2 : 0.0;
+      for (double x = shift + _step / 2; x < size.width + _step / 2; x += _step) {
+        final c = Offset(x, y);
+        const a = 7.0; // arm length of the flower
+        final tips = [c + const Offset(0, -a), c + const Offset(a, 0), c + const Offset(0, a), c + const Offset(-a, 0)];
+        canvas.drawCircle(c, 1.6, p);
+        for (final o in tips) {
+          canvas.drawCircle(o, 1.6, p);
+        }
+        final diamond = Path()
+          ..moveTo(tips[0].dx, tips[0].dy)
+          ..lineTo(tips[1].dx, tips[1].dy)
+          ..lineTo(tips[2].dx, tips[2].dy)
+          ..lineTo(tips[3].dx, tips[3].dy)
+          ..close();
+        canvas.drawPath(diamond, p);
+      }
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _KolamPainter old) => false;
 }

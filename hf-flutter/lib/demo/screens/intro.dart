@@ -224,7 +224,7 @@ class _IntroScreenState extends State<IntroScreen> {
                         height: 9,
                         decoration: BoxDecoration(
                           borderRadius: BorderRadius.circular(999),
-                          color: _page == 0 ? (i == _page ? C.maroon : C.sand) : (i == _page ? C.gold : const Color(0xFFF7A8CB)),
+                          color: _page == 0 ? (i == _page ? C.maroon : C.sand) : (i == _page ? C.gold : C.sandLine),
                         ),
                       ),
                   ],

@@ -391,7 +391,7 @@ class _ReelPageState extends State<ReelPage> with SingleTickerProviderStateMixin
                             bottom: -9,
                             child: Container(
                               padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 1),
-                              decoration: BoxDecoration(color: C.rani, borderRadius: BorderRadius.circular(999), border: Border.all(color: C.cinema, width: 2)),
+                              decoration: BoxDecoration(color: C.ruby, borderRadius: BorderRadius.circular(999), border: Border.all(color: C.cinema, width: 2)),
                               child: Text('LIVE', style: t(14, color: C.ivory, ls: 0.06)),
                             ),
                           ),

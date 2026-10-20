@@ -1,32 +1,41 @@
 import 'package:flutter/material.dart';
 
-/// Rang Bazaar palette (owner pick 2026-10-19: bright, happy, everyday India; a Jaipur fabric market).
-/// Token names kept from the first draft so screens did not change: maroon = strong pink, deep = plum ink,
-/// marigold = sunny lemon, brass = turquoise, gold = soft light text on dark. Never green.
+/// "Rangoli Soft" palette (owner decision 2026-10-20 [HF-PALETTE-RANGOLI-1]): paler, calmer, lavender-indigo with
+/// rose and soft marigold. Token NAMES are kept from the Rang Bazaar draft so screens did not change; the meaning of
+/// each name is in its comment. Artwork keeps its own colours. Green is allowed ONLY for the Online state (online* tokens).
 abstract final class C {
-  static const maroon = Color(0xFFC2185B); // rani pink (headings, strong buttons)
-  static const deep = Color(0xFF2B1240); // plum ink (text, dark panels)
-  static const cinema = Color(0xFF1A0B26); // behind reels
-  static const marigold = Color(0xFFFFC21A); // sunny lemon-saffron (Call now)
-  static const gold = Color(0xFFFFF1B0); // light text on pink / plum
-  static const brass = Color(0xFF14A9C4); // turquoise (borders, knobs)
-  static const brassDark = Color(0xFF0B6F86);
-  static const ivory = Color(0xFFFFF8EE); // page
+  static const maroon = Color(0xFF6D63B8); // PRIMARY lavender indigo (headings, buttons, selected tab). White text on it passes 5:1
+  static const deep = Color(0xFF2B2645); // ink (text, dark panels)
+  static const cinema = Color(0xFF1A0B26); // behind reels (video scrim, unchanged)
+  static const marigold = Color(0xFFF4CF73); // soft marigold CTA (Call now). Ink text on it
+  static const gold = Color(0xFFFFF6DE); // light text on indigo / ink panels
+  static const brass = Color(0xFF8C84CC); // soft indigo borders and knobs
+  static const brassDark = Color(0xFF4F4796); // deep indigo (icons and ink on pale fills)
+  static const ivory = Color(0xFFFBF8FF); // page
   static const paper = Color(0xFFFFFFFF);
-  static const sand = Color(0xFFFFD9EC); // light pink fills
-  static const sandLine = Color(0xFFFFC2DE);
-  static const rani = Color(0xFFFF2E7A); // live dot, hearts
-  static const ruby = Color(0xFFD81B4A);
-  static const muted = Color(0xFF6A5478);
-  static const cream = Color(0xFFF1E6FF);
-  static const tan = Color(0xFF8E3FB0); // violet secondary text
-  static const butter = Color(0xFFFFF1B8);
-  static const saffron = Color(0xFFFF8A1F);
-  static const turquoise = Color(0xFF14A9C4);
-  static const violet = Color(0xFF7B2FBE);
-  static const lemon = Color(0xFFFFE14D);
+  static const sand = Color(0xFFEFEBFB); // chip / light fills
+  static const sandLine = Color(0xFFE2DCF3); // borders
+  static const rani = Color(0xFFD9809B); // rose accent (hearts, ring). Not for text with white on top
+  static const ruby = Color(0xFFB8385A); // error / destructive (text passes 4.5:1 on white)
+  static const muted = Color(0xFF726D88); // muted text (passes 4.5:1 on the page)
+  static const cream = Color(0xFFF2EEFC); // light text on dark panels, pale fills
+  static const tan = Color(0xFFB0537A); // secondary / eyebrow text: dark rose, passes 4.5:1 on white
+  static const butter = Color(0xFFFDF1D3); // pale marigold fill
+  static const saffron = Color(0xFFEBA05A); // soft saffron (decorative dots, gradients)
+  static const turquoise = Color(0xFF8C84CC); // was turquoise; now soft indigo borders / dots
+  static const violet = Color(0xFF8F80D6); // decorative violet
+  static const lemon = Color(0xFFF4CF73); // same soft marigold (accent on indigo / ink)
   static const white = Color(0xFFFFFFFF);
   static const clear = Color(0x00000000);
+
+  // Online state is the one place green is allowed.
+  static const onlineBg = Color(0xFFE3F6E8); // pale green fill
+  static const onlineLine = Color(0xFFA2DAB3); // pale green border
+  static const onlineInk = Color(0xFF1F6B3F); // dark green text / icons on onlineBg (passes 4.5:1)
+  static const onlineDot = Color(0xFF3FA868); // green dot, Online pill fill
+  // Footer (both bottom bars) kolam background and motif stroke.
+  static const footerBg = Color(0xFFF6F2FD);
+  static const footerDot = Color(0xFFDCD3F1);
 }
 
 /// Text style helper. Nunito ships 400–800 in the app, so 800 is the heaviest weight.
@@ -72,7 +81,23 @@ ThemeData buildTheme() {
       primary: C.maroon,
       secondary: C.marigold,
       surface: C.ivory,
+      onPrimary: C.white,
+      onSecondary: C.deep,
+      onSurface: C.deep,
     ),
+    dividerColor: C.sandLine,
+    switchTheme: SwitchThemeData(
+      thumbColor: WidgetStateProperty.resolveWith((s) => s.contains(WidgetState.selected) ? C.white : C.brass),
+      trackColor: WidgetStateProperty.resolveWith((s) => s.contains(WidgetState.selected) ? C.maroon : C.sand),
+      trackOutlineColor: WidgetStateProperty.resolveWith((s) => s.contains(WidgetState.selected) ? C.maroon : C.brass),
+    ),
+    dialogTheme: DialogThemeData(
+      backgroundColor: C.paper,
+      surfaceTintColor: C.clear,
+      titleTextStyle: t(20, color: C.deep),
+      contentTextStyle: t(16, color: C.deep, w: FontWeight.w600),
+    ),
+    bottomSheetTheme: const BottomSheetThemeData(backgroundColor: C.paper, surfaceTintColor: C.clear),
     snackBarTheme: SnackBarThemeData(
       backgroundColor: C.deep,
       contentTextStyle: t(15, color: C.gold),
@@ -84,15 +109,15 @@ ThemeData buildTheme() {
       contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
       border: OutlineInputBorder(
         borderRadius: BorderRadius.circular(14),
-        borderSide: const BorderSide(color: C.deep, width: 3),
+        borderSide: const BorderSide(color: C.brass, width: 2),
       ),
       enabledBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(14),
-        borderSide: const BorderSide(color: C.deep, width: 3),
+        borderSide: const BorderSide(color: C.brass, width: 2),
       ),
       focusedBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(14),
-        borderSide: const BorderSide(color: C.marigold, width: 3),
+        borderSide: const BorderSide(color: C.maroon, width: 3),
       ),
       hintStyle: t(16, color: C.muted, w: FontWeight.w600),
     ),

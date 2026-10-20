@@ -569,7 +569,7 @@ class _CheckoutFlowState extends State<CheckoutFlow> {
                       height: 48,
                       child: Center(
                         child: DecoratedBox(
-                          decoration: BoxDecoration(shape: BoxShape.circle, color: Color(0xFFFFE3F0)),
+                          decoration: BoxDecoration(shape: BoxShape.circle, color: C.sand),
                           child: SizedBox(width: 44, height: 44, child: Icon(Icons.arrow_back_rounded, color: C.deep)),
                         ),
                       ),

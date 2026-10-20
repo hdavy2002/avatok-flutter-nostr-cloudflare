@@ -254,8 +254,8 @@ class InfluencerShell extends StatelessWidget {
         return Scaffold(
           body: shell,
           bottomNavigationBar: Container(
-            decoration: const BoxDecoration(color: C.paper, border: Border(top: BorderSide(color: C.turquoise, width: 3))),
-            child: SafeArea(
+            decoration: const BoxDecoration(color: C.footerBg, border: Border(top: BorderSide(color: C.sandLine, width: 2))),
+            child: KolamBackground(child: SafeArea(
               top: false,
               // Big system fonts must not push the bar out of shape: the bar stops growing at 130%.
               child: MediaQuery.withClampedTextScaling(
@@ -303,6 +303,7 @@ class InfluencerShell extends StatelessWidget {
                 ),
               ),
             ),
+            ),
           ),
         );
       },
@@ -324,8 +325,8 @@ class InfluencerShell extends StatelessWidget {
         ],
       );
 
-  /// The centre Online/Offline pill: icon AND words (never colour alone). Online = rani pink fill,
-  /// Offline = white with a plum outline, On a call = marigold and not tappable. Never green.
+  /// The centre Online/Offline pill: icon AND words (never colour alone). Online = green fill with white text,
+  /// Offline = white with an indigo outline, On a call = soft marigold and not tappable.
   Widget _presencePill(BuildContext context) {
     final waiting = PresenceBridge.real && !PresenceStore.instance.loaded;
     final busy = myBusy;
@@ -354,16 +355,16 @@ class InfluencerShell extends StatelessWidget {
       icon = Icons.wifi_tethering_rounded;
       label = 'Online';
       spoken = 'You are online. Tap to go offline';
-      fill = C.maroon;
+      fill = C.onlineDot;
       ink = C.paper;
-      edge = C.maroon;
+      edge = C.onlineInk;
     } else {
       icon = Icons.nightlight_round;
       label = 'Offline';
       spoken = 'You are offline. Tap to go online';
       fill = C.paper;
-      ink = C.deep;
-      edge = C.deep;
+      ink = C.maroon;
+      edge = C.maroon;
     }
     return Center(
       child: Semantics(
@@ -430,27 +431,29 @@ class InfluencerHomeScreen extends StatelessWidget {
                   child: Container(
                     padding: const EdgeInsets.all(18),
                     decoration: BoxDecoration(
-                      color: myOnline ? C.maroon : C.deep,
+                      color: myOnline ? C.onlineBg : C.sand,
                       borderRadius: BorderRadius.circular(20),
-                      boxShadow: const [BoxShadow(color: C.lemon, offset: Offset(5, 5))],
+                      border: Border.all(color: myOnline ? C.onlineLine : C.sandLine, width: 2),
                     ),
                     child: Row(
                       children: [
-                        Icon(myOnline ? Icons.wifi_tethering_rounded : Icons.nightlight_round, color: C.lemon, size: 34),
+                        Container(width: 12, height: 12, decoration: BoxDecoration(shape: BoxShape.circle, color: myOnline ? C.onlineDot : C.muted)),
+                        const SizedBox(width: 10),
+                        Icon(myOnline ? Icons.wifi_tethering_rounded : Icons.nightlight_round, color: myOnline ? C.onlineInk : C.muted, size: 34),
                         const SizedBox(width: 14),
                         Expanded(
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Text(myOnline ? 'You are ONLINE' : 'You are OFFLINE', style: t(20, color: C.gold)),
+                              Text(myOnline ? 'You are ONLINE' : 'You are OFFLINE', style: t(20, color: myOnline ? C.onlineInk : C.deep)),
                               Text(
                                 myOnline ? 'Fans see your reels and can call you now.' : 'No calls now. Fans can still book you.',
-                                style: t(14, color: C.cream, w: FontWeight.w700),
+                                style: t(14, color: myOnline ? C.onlineInk : C.muted, w: FontWeight.w700),
                               ),
                             ],
                           ),
                         ),
-                        const Icon(Icons.chevron_right_rounded, color: C.gold),
+                        Icon(Icons.chevron_right_rounded, color: myOnline ? C.onlineInk : C.muted),
                       ],
                     ),
                   ),
@@ -597,7 +600,7 @@ class InfluencerStatusScreen extends StatelessWidget {
               child: ListView(
                 padding: const EdgeInsets.fromLTRB(24, 20, 24, 24),
                 children: [
-                  Text(on ? 'YOU ARE' : 'YOU ARE', textAlign: TextAlign.center, style: t(16, color: on ? C.ruby : C.cream, ls: 0.14)),
+                  Text(on ? 'YOU ARE' : 'YOU ARE', textAlign: TextAlign.center, style: t(16, color: on ? C.onlineInk : C.cream, ls: 0.14)),
                   Text(on ? 'ONLINE' : 'OFFLINE', textAlign: TextAlign.center, style: t(54, color: on ? C.maroon : C.gold, ls: 0.04, h: 1.05)),
                   const SizedBox(height: 12),
                   Center(
@@ -624,7 +627,7 @@ class InfluencerStatusScreen extends StatelessWidget {
                       height: 84,
                       padding: const EdgeInsets.all(8),
                       decoration: BoxDecoration(
-                        color: on ? C.rani : C.muted,
+                        color: on ? C.onlineInk : C.muted,
                         borderRadius: BorderRadius.circular(999),
                         border: Border.all(color: C.lemon, width: 3),
                       ),
@@ -636,7 +639,7 @@ class InfluencerStatusScreen extends StatelessWidget {
                             width: 64,
                             height: 64,
                             decoration: const BoxDecoration(shape: BoxShape.circle, color: C.paper),
-                            child: Icon(on ? Icons.wifi_tethering_rounded : Icons.nightlight_round, color: on ? C.rani : C.deep, size: 32),
+                            child: Icon(on ? Icons.wifi_tethering_rounded : Icons.nightlight_round, color: on ? C.onlineDot : C.deep, size: 32),
                           ),
                           if (!on) Expanded(child: Center(child: Text('TAP TO GO ONLINE', style: t(16, color: C.paper, ls: 0.06)))),
                         ],

@@ -68,7 +68,7 @@ class ChannelCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final c = channel;
     final (Color bg, Color fg) = switch (c.state) {
-      ChannelState.approved => (C.brass, C.white),
+      ChannelState.approved => (C.maroon, C.white),
       ChannelState.checking => (C.marigold, C.deep),
       ChannelState.needsFollowers => (C.sand, C.ruby),
       ChannelState.disconnected => (C.cream, C.muted),
