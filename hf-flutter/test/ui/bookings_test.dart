@@ -203,7 +203,7 @@ void main() {
       await tester.pump();
       await tester.tap(find.text('NEXT'));
       await tester.pumpAndSettle();
-      expect(find.text('CONFIRM day=${isoDay(open)}&slot=16%3A00'), findsOneWidget);
+      expect(find.textContaining('CONFIRM day=${isoDay(open)}&slot=16%3A00'), findsOneWidget); // [HF-BOOK-APPROVE-QA-6] name/avatar may follow
     });
 
     testWidgets('a failed load shows Try again', (tester) async {
