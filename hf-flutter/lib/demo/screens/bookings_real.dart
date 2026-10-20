@@ -380,7 +380,11 @@ class _RealBookConfirmScreenState extends State<RealBookConfirmScreen> {
       });
       if (!mounted) return;
       final waiting = r.needsApproval ? '&approval=1&text=${Uri.encodeComponent(r.approvalText ?? '')}' : '';
-      context.pushReplacement('/booked/${widget.id}?day=${widget.day}&slot=${Uri.encodeComponent(widget.slot)}&name=${Uri.encodeComponent(_name)}$waiting');
+      // [HF-BOOK-APPROVE-QA-1] Drop the date/time form too, so Back from "Booked" returns to the profile, not to a stale form.
+      final router = GoRouter.of(context);
+      final to = '/booked/${widget.id}?day=${widget.day}&slot=${Uri.encodeComponent(widget.slot)}&name=${Uri.encodeComponent(_name)}$waiting';
+      if (router.canPop()) router.pop();
+      router.pushReplacement(to);
     } catch (e) {
       Telemetry.event('hf_app_booking_requested', {
         'mode': s.needsApproval ? 'manual' : 'direct',
