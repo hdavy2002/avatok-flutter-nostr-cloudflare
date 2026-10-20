@@ -305,6 +305,8 @@ class _RealBookConfirmScreenState extends State<RealBookConfirmScreen> {
 
   AsyncState<HostSlots> _state = const AsyncLoading();
   int? _walletPaise;
+  bool _walletLoading = true;
+  bool _walletFailed = false;
   String _name = '';
   String? _avatar;
   bool _busy = false;
@@ -314,6 +316,7 @@ class _RealBookConfirmScreenState extends State<RealBookConfirmScreen> {
   void initState() {
     super.initState();
     unawaited(_load());
+    unawaited(_loadWallet());
   }
 
   @override
@@ -340,17 +343,25 @@ class _RealBookConfirmScreenState extends State<RealBookConfirmScreen> {
         });
       }
     } catch (_) {}
-    if (Services.instance.isSignedIn || widget.walletRepo != null) {
-      // [HF-BOOK-APPROVE-QA-2] The first wallet read after sign-in is often slow/refused and the line stayed "—": try 3 times.
-      for (var attempt = 0; attempt < 3 && mounted && _walletPaise == null; attempt++) {
-        try {
-          final w = await (widget.walletRepo ?? Services.instance.walletRepo).fetch(limit: 1);
-          if (mounted) setState(() => _walletPaise = w.balancePaise + w.testCreditPaise);
-        } catch (_) {
-          await Future<void>.delayed(Duration(milliseconds: 800 * (attempt + 1)));
-        }
+  }
+
+  /// [HF-BOOK-APPROVE-QA-4] Same read the Me screen's balance tag makes (`walletRepo.fetch(limit: 1)`), started in initState in
+  /// parallel with the slots call. It used to wait for slots + profile and sat behind `Services.instance.isSignedIn` (the cached
+  /// Clerk user), which the Me tag never checks; when that was null the line stayed "—" with no read and no error. The repo
+  /// already retries once on a transient failure; failures are reported to telemetry instead of swallowed.
+  Future<void> _loadWallet() async {
+    if (DemoMode.on && widget.walletRepo == null) return;
+    if (mounted) setState(() { _walletLoading = true; _walletFailed = false; });
+    for (var attempt = 0; attempt < 3 && mounted && _walletPaise == null; attempt++) {
+      try {
+        final w = await (widget.walletRepo ?? Services.instance.walletRepo).fetch(limit: 1);
+        if (mounted) setState(() => _walletPaise = w.balancePaise + w.testCreditPaise);
+      } catch (e, st) {
+        Telemetry.crash(e, st, source: 'book_confirm_wallet');
+        if (attempt < 2) await Future<void>.delayed(Duration(milliseconds: 800 * (attempt + 1)));
       }
     }
+    if (mounted) setState(() { _walletLoading = false; _walletFailed = _walletPaise == null; });
   }
 
   String get _approver => _name.isEmpty ? 'the influencer' : _name.split(' ').first;
@@ -463,7 +474,7 @@ class _RealBookConfirmScreenState extends State<RealBookConfirmScreen> {
                           if (_topicLabel(s) != null) ...[_line('About', _topicLabel(s)!), const SizedBox(height: 8)],
                           _line('Held now (${s.minutes} min)', paiseText(s.holdPaise)),
                           const SizedBox(height: 8),
-                          _line('Your wallet', _walletPaise == null ? '—' : paiseText(_walletPaise!)),
+                          _line('Your wallet', _walletPaise != null ? paiseText(_walletPaise!) : (_walletLoading ? 'Checking…' : (_walletFailed ? "Couldn't load" : '—'))),
                         ],
                       ),
                     ),

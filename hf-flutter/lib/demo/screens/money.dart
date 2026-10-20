@@ -160,9 +160,13 @@ class _WalletScreenState extends State<WalletScreen> {
             ],
           ),
           const SizedBox(height: 16),
-          SizedBox(
-            height: 160,
-            width: 310,
+          // [HF-BOOK-APPROVE-QA-4] The frame is laid out at its own 1100x560 ratio and the amount is fitted into the dark inner panel
+          // (measured on the art: x 0.10-0.90, y 0.27-0.74 of the image; the arched top is narrower, so the text box stays inside
+          // x 0.20-0.80, y 0.36-0.71). FittedBox(scaleDown) shrinks the number at any width or font scale instead of spilling out.
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 310),
+            child: AspectRatio(
+            aspectRatio: 1100 / 560,
             child: Stack(
               alignment: Alignment.center,
               children: [
@@ -178,17 +182,28 @@ class _WalletScreenState extends State<WalletScreen> {
                     ),
                   ),
                 ),
-                Padding(
-                  padding: const EdgeInsets.only(top: 30),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text('YOUR BALANCE', style: t(14, color: C.gold, ls: 0.16)),
-                      FittedBox(child: Text(balance, style: t(44, color: C.ivory, h: 1.05))),
-                    ],
+                Positioned.fill(
+                  child: LayoutBuilder(
+                    builder: (context, c) => Padding(
+                      padding: EdgeInsets.fromLTRB(c.maxWidth * 0.20, c.maxHeight * 0.33, c.maxWidth * 0.20, c.maxHeight * 0.27),
+                      // The label keeps its 14sp; only the amount shrinks to whatever room is left in the panel.
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Text('YOUR BALANCE', maxLines: 1, overflow: TextOverflow.ellipsis, style: t(14, color: C.gold, ls: 0.16)),
+                          Flexible(
+                            child: FittedBox(
+                              fit: BoxFit.scaleDown,
+                              child: Text(balance, maxLines: 1, style: t(44, color: C.ivory, h: 1.05)),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
                   ),
                 ),
               ],
+            ),
             ),
           ),
           ...extras,
