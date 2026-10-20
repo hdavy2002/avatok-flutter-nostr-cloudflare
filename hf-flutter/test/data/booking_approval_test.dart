@@ -202,7 +202,8 @@ void main() {
       final scheme = linkTargetFor(Uri.parse('${Brand.scheme}://bookings/$id'));
       expect(scheme?.location, '/bookings/$id');
       expect(linkTargetFor(Uri.parse('https://${Brand.domain}/bookings/x')), isNull);
-      expect(linkTargetFor(Uri.parse('https://${Brand.domain}/bookings')), isNull);
+      // [HF-BOOK-APPROVE-PUSH] the bare list is a valid target now (push taps)
+      expect(linkTargetFor(Uri.parse('https://${Brand.domain}/bookings'))?.location, '/bookings');
     });
   });
 }
