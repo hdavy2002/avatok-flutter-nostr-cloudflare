@@ -58,6 +58,20 @@ export interface StdTotals {
   platformEstPaise?: number; platformAfterActualPaise?: number | null;
 }
 
+/** [HF-ADMIN-CALLS-BLANK-1] The worker sends totals with long names (and /summary nests them under `calls`, an OBJECT). Rendering that
+ * object as {totals.calls} crashed React (#31) and blanked the whole Calls and credits page. Map to plain numbers only. */
+function stdTotals(raw: unknown): StdTotals | undefined {
+  if (!raw || typeof raw !== 'object') return undefined;
+  const o = raw as Record<string, unknown>;
+  const n = (...keys: string[]): number | undefined => { for (const k of keys) { const v = o[k]; if (typeof v === 'number' && Number.isFinite(v)) return v; } return undefined; };
+  return {
+    calls: n('calls', 'count'), seconds: n('seconds', 'billableSeconds'), chargePaise: n('chargePaise'), hostPaise: n('hostPaise'),
+    phoneCostEstPaise: n('phoneCostEstPaise'), phoneCostActualPaise: n('phoneCostActualPaise') ?? null,
+    platformEstPaise: n('platformEstPaise', 'platformBeforeOtherExpensesEstPaise'),
+    platformAfterActualPaise: n('platformAfterActualPaise', 'platformBeforeOtherExpensesActualPaise') ?? null,
+  };
+}
+
 /** [HF-ADMIN-CREDIT-1] One row of the caller picker (admin only: full phone and email). */
 export interface AdminUserHit {
   uid: string; name: string | null; phone: string | null; email: string | null; whatsappVerified: boolean;
@@ -112,7 +126,7 @@ export const hfAdminApi = {
   creditWallet: (b: { uid?: string; phone?: string; rupees: number; note: string; via?: 'search'; opId?: string }) =>
     adminCall<{ ok: true; uid: string; name: string | null; balanceRupees: number }>('/api/admin/hf/wallet/credit', { method: 'POST', body: b }),
   /** [HF-STD-PLAN-1] Calls & margins. */
-  stdCalls: async () => { const r = await adminCall<{ items?: StdCallRow[]; calls?: StdCallRow[]; totals?: StdTotals }>('/api/admin/hf/std/calls'); return { items: r.items ?? r.calls ?? [], totals: r.totals }; },
-  stdSummary: async () => { const r = await adminCall<{ totals?: StdTotals } & StdTotals>('/api/admin/hf/std/summary'); return (r.totals ?? r) as StdTotals; },
+  stdCalls: async () => { const r = await adminCall<{ items?: StdCallRow[]; calls?: StdCallRow[]; totals?: Record<string, unknown> }>('/api/admin/hf/std/calls'); return { items: Array.isArray(r.items) ? r.items : Array.isArray(r.calls) ? r.calls : [], totals: stdTotals(r.totals) }; },
+  stdSummary: async () => { const r = await adminCall<Record<string, unknown>>('/api/admin/hf/std/summary'); return stdTotals(r.totals ?? r.calls ?? r); },
   searchUsers: async (q: string) => (await adminCall<{ items: AdminUserHit[] }>(`/api/admin/hf/users/search?q=${e(q)}`)).items ?? [],
 };
