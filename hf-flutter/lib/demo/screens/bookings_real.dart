@@ -144,7 +144,9 @@ class _RealBookScreenState extends State<RealBookScreen> {
         label: _slot == null ? 'PICK A TIME' : (topicOk ? 'NEXT' : 'PICK A TOPIC'),
         enabled: _day != null && _slot != null && topicOk,
         stubIcon: Icons.arrow_forward_rounded,
-        onTap: () => context.push('/book/${widget.id}/confirm?day=${isoDay(_day!)}&slot=${Uri.encodeComponent(_slot!)}$topicQuery'),
+        onTap: () => context.push('/book/${widget.id}/confirm?day=${isoDay(_day!)}&slot=${Uri.encodeComponent(_slot!)}$topicQuery'
+            // [HF-BOOK-APPROVE-QA-6] hand the name/photo on, so the confirm screen never shows placeholders while it reloads them
+            '${_name.isEmpty ? '' : '&name=${Uri.encodeQueryComponent(_name)}'}${_avatar == null ? '' : '&avatar=${Uri.encodeQueryComponent(_avatar!)}'}'),
       ),
     );
   }
@@ -284,7 +286,7 @@ extension on Influencer {
 // ======================================================================================== fan: confirm
 
 class RealBookConfirmScreen extends StatefulWidget {
-  const RealBookConfirmScreen({super.key, required this.id, required this.day, required this.slot, this.topic, this.repo, this.walletRepo, this.reelsRepo});
+  const RealBookConfirmScreen({super.key, required this.id, required this.day, required this.slot, this.topic, this.name, this.avatar, this.repo, this.walletRepo, this.reelsRepo});
 
   final String id;
   final String day; // YYYY-MM-DD
@@ -292,6 +294,10 @@ class RealBookConfirmScreen extends StatefulWidget {
 
   /// [HF-BOOK-APPROVE] The chosen topic slug, when the influencer offers topics.
   final String? topic;
+
+  /// [HF-BOOK-APPROVE-QA-6] Name and photo from the previous step (shown at once; the profile load only refreshes them).
+  final String? name;
+  final String? avatar;
   final BookingsRepo? repo;
   final WalletRepo? walletRepo;
   final ReelsRepo? reelsRepo;
@@ -315,6 +321,8 @@ class _RealBookConfirmScreenState extends State<RealBookConfirmScreen> {
   @override
   void initState() {
     super.initState();
+    _name = (widget.name ?? '').trim();
+    _avatar = (widget.avatar ?? '').trim().isEmpty ? null : widget.avatar;
     unawaited(_load());
     unawaited(_loadWallet());
   }
@@ -451,7 +459,7 @@ class _RealBookConfirmScreenState extends State<RealBookConfirmScreen> {
                         children: [
                           Avatar(callPerson(widget.id, _name).copyWithAvatar(_avatar), size: 84),
                           const SizedBox(height: 10),
-                          Text(_name.isEmpty ? 'Your booking' : _name, style: t(24, color: C.maroon)),
+                          Text(_name.isEmpty ? 'Influencer' : _name, style: t(24, color: C.maroon)),
                           const SizedBox(height: 14),
                           Row(
                             children: [
@@ -507,15 +515,15 @@ class _RealBookConfirmScreenState extends State<RealBookConfirmScreen> {
                       maxLines: 2,
                       style: t(15),
                       decoration: InputDecoration(
-                        labelText: 'A note for ${_name.isEmpty ? 'her' : _name.split(' ').first} (optional)',
+                        labelText: 'A note for ${_name.isEmpty ? 'the influencer' : _name.split(' ').first} (optional)',
                         helperText: 'No phone numbers or links please.',
                       ),
                     ),
                     const SizedBox(height: 8),
                     Text(
                       s.needsApproval
-                          ? 'Once accepted, at ${slotLabel(widget.slot)} India time we ring ${_name.isEmpty ? 'her' : _name.split(' ').first} first, then your phone. You pay only for the minutes you talk; the rest of the hold comes back. You can cancel any time while you wait, and free until 1 hour before the call.'
-                          : 'At ${slotLabel(widget.slot)} India time we ring ${_name.isEmpty ? 'her' : _name.split(' ').first} first, then your phone. You pay only for the minutes you talk; the rest of the hold comes back. You can cancel free until 1 hour before. You get a WhatsApp reminder an hour before.',
+                          ? 'Once accepted, at ${slotLabel(widget.slot)} India time we ring ${_name.isEmpty ? 'the influencer' : _name.split(' ').first} first, then your phone. You pay only for the minutes you talk; the rest of the hold comes back. You can cancel any time while you wait, and free until 1 hour before the call.'
+                          : 'At ${slotLabel(widget.slot)} India time we ring ${_name.isEmpty ? 'the influencer' : _name.split(' ').first} first, then your phone. You pay only for the minutes you talk; the rest of the hold comes back. You can cancel free until 1 hour before. You get a WhatsApp reminder an hour before.',
                       style: t(15, color: C.muted, w: FontWeight.w700, h: 1.45),
                     ),
                   ],

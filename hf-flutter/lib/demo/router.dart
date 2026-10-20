@@ -99,7 +99,7 @@ final router = GoRouter(
       parentNavigatorKey: rootKey,
       path: '/book/:id/confirm',
       builder: (_, s) => BookingsBridge.real
-          ? RealBookConfirmScreen(id: s.pathParameters['id']!, day: s.uri.queryParameters['day'] ?? '', slot: s.uri.queryParameters['slot'] ?? '', topic: s.uri.queryParameters['topic'])
+          ? RealBookConfirmScreen(id: s.pathParameters['id']!, day: s.uri.queryParameters['day'] ?? '', slot: s.uri.queryParameters['slot'] ?? '', topic: s.uri.queryParameters['topic'], name: s.uri.queryParameters['name'], avatar: s.uri.queryParameters['avatar'])
           : BookConfirmScreen(id: s.pathParameters['id']!, day: s.uri.queryParameters['day'] ?? '', slot: s.uri.queryParameters['slot'] ?? ''),
     ),
     GoRoute(

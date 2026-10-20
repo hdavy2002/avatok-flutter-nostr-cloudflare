@@ -58,6 +58,33 @@ export interface StdTotals {
   platformEstPaise?: number; platformAfterActualPaise?: number | null;
 }
 
+/** [HF-ADMIN-CALLS-BLANK-2] /std/summary groups its figures: calls{count,billableSeconds,chargePaise,hostEarningsPaise},
+ * phoneCost{estimatePaise,actualPaise}, platformBeforeOtherExpenses{estimatePaise,afterActualPhoneCostPaise}. Flatten to StdTotals. */
+function stdSummaryTotals(r: Record<string, unknown>): StdTotals | undefined {
+  const g = (k: string): Record<string, unknown> => (r[k] && typeof r[k] === 'object' ? (r[k] as Record<string, unknown>) : {});
+  const num = (o: Record<string, unknown>, k: string): number | undefined => (typeof o[k] === 'number' && Number.isFinite(o[k] as number) ? (o[k] as number) : undefined);
+  const c = g('calls'), ph = g('phoneCost'), pl = g('platformBeforeOtherExpenses');
+  if (!Object.keys(c).length) return stdTotals(r.totals ?? r);
+  return {
+    calls: num(c, 'count'), seconds: num(c, 'billableSeconds'), chargePaise: num(c, 'chargePaise'), hostPaise: num(c, 'hostEarningsPaise') ?? num(c, 'hostPaise'),
+    phoneCostEstPaise: num(ph, 'estimatePaise'), phoneCostActualPaise: num(ph, 'actualPaise') ?? null,
+    platformEstPaise: num(pl, 'estimatePaise'), platformAfterActualPaise: num(pl, 'afterActualPhoneCostPaise') ?? null,
+  };
+}
+/** [HF-ADMIN-CALLS-BLANK-2] One /std/calls row: the worker sends startedAt and platformBeforeOtherExpenses*; the table reads at/platformEst*. */
+function stdRow(raw: unknown): StdCallRow | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const o = raw as Record<string, unknown>;
+  const num = (...ks: string[]): number | null => { for (const k of ks) { const v = o[k]; if (typeof v === 'number' && Number.isFinite(v)) return v; } return null; };
+  const str = (k: string): string | null => (typeof o[k] === 'string' ? (o[k] as string) : null);
+  return {
+    id: String(o.id ?? ''), at: num('at', 'endedAt', 'startedAt', 'createdAt'), createdAt: num('createdAt', 'startedAt'),
+    hostName: str('hostName'), hostSlug: str('hostSlug'), billableSeconds: num('billableSeconds'),
+    chargePaise: num('chargePaise'), hostPaise: num('hostPaise'), phoneCostEstPaise: num('phoneCostEstPaise'), phoneCostActualPaise: num('phoneCostActualPaise'),
+    platformEstPaise: num('platformEstPaise', 'platformBeforeOtherExpensesEstPaise'),
+    platformAfterActualPaise: num('platformAfterActualPaise', 'platformBeforeOtherExpensesActualPaise'),
+  };
+}
 /** [HF-ADMIN-CALLS-BLANK-1] The worker sends totals with long names (and /summary nests them under `calls`, an OBJECT). Rendering that
  * object as {totals.calls} crashed React (#31) and blanked the whole Calls and credits page. Map to plain numbers only. */
 function stdTotals(raw: unknown): StdTotals | undefined {
@@ -126,7 +153,7 @@ export const hfAdminApi = {
   creditWallet: (b: { uid?: string; phone?: string; rupees: number; note: string; via?: 'search'; opId?: string }) =>
     adminCall<{ ok: true; uid: string; name: string | null; balanceRupees: number }>('/api/admin/hf/wallet/credit', { method: 'POST', body: b }),
   /** [HF-STD-PLAN-1] Calls & margins. */
-  stdCalls: async () => { const r = await adminCall<{ items?: StdCallRow[]; calls?: StdCallRow[]; totals?: Record<string, unknown> }>('/api/admin/hf/std/calls'); return { items: Array.isArray(r.items) ? r.items : Array.isArray(r.calls) ? r.calls : [], totals: stdTotals(r.totals) }; },
-  stdSummary: async () => { const r = await adminCall<Record<string, unknown>>('/api/admin/hf/std/summary'); return stdTotals(r.totals ?? r.calls ?? r); },
+  stdCalls: async () => { const r = await adminCall<{ items?: unknown[]; calls?: unknown[]; totals?: Record<string, unknown> }>('/api/admin/hf/std/calls'); const list = Array.isArray(r.items) ? r.items : Array.isArray(r.calls) ? r.calls : []; return { items: list.map(stdRow).filter((x): x is StdCallRow => x !== null), totals: stdTotals(r.totals) }; },
+  stdSummary: async () => stdSummaryTotals(await adminCall<Record<string, unknown>>('/api/admin/hf/std/summary')),
   searchUsers: async (q: string) => (await adminCall<{ items: AdminUserHit[] }>(`/api/admin/hf/users/search?q=${e(q)}`)).items ?? [],
 };
