@@ -256,7 +256,7 @@ describe("messages", () => {
     expect(fan.text).toMatch(/24 hours/); expect(host.text).toMatch(/24 hours/);
     expect(fan.push.body).toMatch(/24 hours/); expect(host.push.body).toMatch(/24 hours/);
     expect(host.text).toContain("Just friendship");
-    expect(host.text).toContain("a caller"); // the digits-bearing name falls back to the neutral handle
+    expect(host.text).toContain("A fan"); // the digits-bearing name falls back to the neutral handle
     for (const m of [fan, host]) { expect(m.text).not.toMatch(/\d{10}/); expect(m.push.body.length).toBeLessThanOrEqual(160); expect(m.push.title.length).toBeLessThanOrEqual(60); }
   });
   it("a block gets the neutral wording and no names", () => {

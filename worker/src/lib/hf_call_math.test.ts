@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
-  ratePaise, hostSharePerMinPaise, billedMinutes, maxMinutesFor, settleCall, hostTokensToCredit, callerHandle, announceText,
+  ratePaise, hostSharePerMinPaise, billedMinutes, maxMinutesFor, settleCall, hostTokensToCredit, callerHandle, capFirst, announceText,
   hostAnnounceXml, noticeAndConferenceXml, hangupXml, callerDidntPickUpXml, SAFETY_NOTICE,
   splitCharge, splitHostShare, paidShortfall, paidStillNeeded,
 } from "./hf_call_math";
@@ -110,9 +110,11 @@ describe("spoken text", () => {
   });
   it("never reads out digits or handles", () => {
     expect(callerHandle("Riya Sharma")).toBe("Riya");
-    expect(callerHandle("9876543210")).toBe("a caller");
-    expect(callerHandle("@riya")).toBe("a caller");
-    expect(callerHandle(null)).toBe("a caller");
+    expect(callerHandle("9876543210")).toBe("a fan");
+    expect(callerHandle("@riya")).toBe("a fan");
+    expect(callerHandle(null)).toBe("a fan");
+    expect(capFirst(callerHandle(null))).toBe("A fan");
+    expect(capFirst("Riya")).toBe("Riya");
   });
 });
 

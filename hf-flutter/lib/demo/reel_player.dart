@@ -8,6 +8,79 @@ import '../core/brand.dart';
 import '../data/models/reel.dart';
 import 'theme.dart';
 
+/// Whether the main Reels feed is on screen. The Reels tab stays alive offstage (indexed stack), so the feed must be told
+/// when to stop: visible = the main shell is mounted AND its current tab is Reels AND no page route is pushed above it.
+/// Without a [MainShell] (tests, previews) it stays true. App background/foreground is handled by each [ReelPlayer].
+class ReelGate {
+  ReelGate._();
+
+  static final ValueNotifier<bool> visible = ValueNotifier<bool>(true);
+  static bool _managed = false;
+  static ModalRoute<dynamic>? _shellRoute;
+  static int _branch = 0;
+  static final List<Route<dynamic>> _pages = [];
+
+  /// Watches the root navigator for pushed pages (dialogs and sheets do not count).
+  static final NavigatorObserver observer = _GateObserver();
+
+  static void attachShell(ModalRoute<dynamic>? route) {
+    _managed = true;
+    _shellRoute = route;
+    _recompute();
+  }
+
+  static void detachShell() {
+    _shellRoute = null;
+    WidgetsBinding.instance.addPostFrameCallback((_) => _recompute());
+  }
+
+  static void setBranch(int i) {
+    if (_branch == i) return;
+    _branch = i;
+    _recompute();
+  }
+
+  static void _recompute() {
+    final top = _pages.isEmpty ? null : _pages.last;
+    final v = !_managed || (_shellRoute != null && _branch == 0 && (top == null || identical(top, _shellRoute)));
+    if (visible.value != v) visible.value = v;
+  }
+}
+
+class _GateObserver extends NavigatorObserver {
+  void _after(void Function() f) {
+    f();
+    // Navigator observers can fire during a build, so listeners are told after the frame, never synchronously.
+    WidgetsBinding.instance.addPostFrameCallback((_) => ReelGate._recompute());
+    WidgetsBinding.instance.ensureVisualUpdate();
+  }
+
+  @override
+  void didPush(Route<dynamic> route, Route<dynamic>? previousRoute) => _after(() {
+        if (route is PageRoute) ReelGate._pages.add(route);
+      });
+
+  @override
+  void didPop(Route<dynamic> route, Route<dynamic>? previousRoute) => _after(() => ReelGate._pages.remove(route));
+
+  @override
+  void didRemove(Route<dynamic> route, Route<dynamic>? previousRoute) => _after(() => ReelGate._pages.remove(route));
+
+  @override
+  void didReplace({Route<dynamic>? newRoute, Route<dynamic>? oldRoute}) => _after(() {
+        final i = oldRoute == null ? -1 : ReelGate._pages.indexOf(oldRoute);
+        if (i >= 0) {
+          if (newRoute is PageRoute) {
+            ReelGate._pages[i] = newRoute;
+          } else {
+            ReelGate._pages.removeAt(i);
+          }
+        } else if (newRoute is PageRoute) {
+          ReelGate._pages.add(newRoute);
+        }
+      });
+}
+
 /// Plays one real reel. EMBEDS ONLY (HF-REEL-32, HF-WIRE-14): we never download or host a video file. YouTube plays
 /// in the official YouTube player (its own controls and branding stay visible); Instagram plays in its official embed.
 /// The thumbnail shows until the player is up. [active] plays; a page with [preload] is only kept ready.
@@ -62,16 +135,38 @@ class ReelPlayer extends StatefulWidget {
   State<ReelPlayer> createState() => _ReelPlayerState();
 }
 
-class _ReelPlayerState extends State<ReelPlayer> {
+class _ReelPlayerState extends State<ReelPlayer> with WidgetsBindingObserver {
   WebViewController? _web;
   String? _webFor;
 
+  /// False while the app is in the background: the embed is torn down so audio stops, and rebuilt on resume.
+  bool _fg = true;
+
   bool get _wantEmbed => widget.reel.embedUrl != null;
+  bool get _playing => widget.active && _fg;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _fg = (WidgetsBinding.instance.lifecycleState ?? AppLifecycleState.resumed) == AppLifecycleState.resumed;
     _sync();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    final fg = state == AppLifecycleState.resumed;
+    if (fg == _fg) return;
+    setState(() {
+      _fg = fg;
+      _sync();
+    });
   }
 
   @override
@@ -82,9 +177,9 @@ class _ReelPlayerState extends State<ReelPlayer> {
 
   void _sync() {
     if (ReelPlayer.testPlayer != null) return;
-    if (_wantEmbed && widget.active) {
+    if (_wantEmbed && _playing) {
       _startWeb();
-    } else if (_web != null && !widget.active) {
+    } else if (_web != null && !_playing) {
       _web = null;
       _webFor = null;
     }
@@ -137,7 +232,7 @@ class _ReelPlayerState extends State<ReelPlayer> {
       fit: StackFit.expand,
       children: [
         _thumb(),
-        if (_wantEmbed && widget.active && _web != null) WebViewWidget(controller: _web!),
+        if (_wantEmbed && _playing && _web != null) WebViewWidget(controller: _web!),
       ],
     );
   }

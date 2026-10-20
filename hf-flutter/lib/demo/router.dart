@@ -15,6 +15,7 @@ import 'screens/me.dart';
 import 'screens/money.dart';
 import 'screens/profile.dart';
 import 'screens/search.dart';
+import 'reel_player.dart';
 import 'theme.dart';
 
 final rootKey = GlobalKey<NavigatorState>();
@@ -22,6 +23,7 @@ final rootKey = GlobalKey<NavigatorState>();
 /// Every screen of the demo app and where each tap goes. Screens only, dummy data.
 final router = GoRouter(
   navigatorKey: rootKey,
+  observers: [ReelGate.observer],
   initialLocation: '/splash',
   routes: [
     GoRoute(path: '/splash', builder: (_, __) => const SplashScreen()),
@@ -117,10 +119,42 @@ final router = GoRouter(
 );
 
 /// Bottom bar: Reels · Search · Favourites · Me (owner, 2026-10-19).
-class MainShell extends StatelessWidget {
+class MainShell extends StatefulWidget {
   const MainShell({super.key, required this.shell});
 
   final StatefulNavigationShell shell;
+
+  @override
+  State<MainShell> createState() => _MainShellState();
+}
+
+class _MainShellState extends State<MainShell> {
+  StatefulNavigationShell get shell => widget.shell;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final route = ModalRoute.of(context);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      ReelGate.attachShell(route);
+      ReelGate.setBranch(shell.currentIndex);
+    });
+  }
+
+  @override
+  void didUpdateWidget(covariant MainShell old) {
+    super.didUpdateWidget(old);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) ReelGate.setBranch(shell.currentIndex);
+    });
+  }
+
+  @override
+  void dispose() {
+    ReelGate.detachShell();
+    super.dispose();
+  }
 
   static const _items = <(IconData, IconData, String)>[
     (Icons.slow_motion_video_outlined, Icons.slow_motion_video_rounded, 'Reels'),

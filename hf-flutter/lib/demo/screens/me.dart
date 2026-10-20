@@ -414,16 +414,13 @@ class BookingsScreen extends StatelessWidget {
                                       width: 90,
                                       child: TextButton(
                                         onPressed: () async {
-                                          final ok = await showDialog<bool>(
-                                            context: context,
-                                            builder: (d) => AlertDialog(
-                                              title: Text('Cancel this booking?', style: t(20, color: C.maroon)),
-                                              content: Text('The ${inr(b.hold, paise: false)} hold comes back to your wallet.', style: t(15, w: FontWeight.w700)),
-                                              actions: [
-                                                TextButton(onPressed: () => Navigator.of(d).pop(false), child: Text('Keep it', style: t(16, color: C.maroon))),
-                                                TextButton(onPressed: () => Navigator.of(d).pop(true), child: Text('Cancel', style: t(16, color: C.ruby))),
-                                              ],
-                                            ),
+                                          final ok = await hfConfirm(
+                                            context,
+                                            title: 'Cancel this booking?',
+                                            body: 'The ${inr(b.hold, paise: false)} hold comes back to your wallet.',
+                                            confirmLabel: 'Cancel',
+                                            cancelLabel: 'Keep it',
+                                            destructive: true,
                                           );
                                           if (ok == true) demo.cancelBooking(b);
                                         },

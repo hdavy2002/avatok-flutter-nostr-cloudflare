@@ -113,8 +113,8 @@ class _RealSettingsScreenState extends State<RealSettingsScreen> {
     final ctl = TextEditingController(text: _name ?? '');
     final value = await showDialog<String>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text('Your name', style: t(20, color: C.maroon)),
+      builder: (ctx) => HfDialog(
+        title: 'Your name',
         content: TextField(
           controller: ctl,
           autofocus: true,
@@ -124,8 +124,8 @@ class _RealSettingsScreenState extends State<RealSettingsScreen> {
           decoration: const InputDecoration(hintText: 'Your name'),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: Text('Cancel', style: t(15, color: C.muted))),
-          TextButton(onPressed: () => Navigator.pop(ctx, ctl.text.trim()), child: Text('Save', style: t(15, color: C.maroon))),
+          HfDialogAction(label: 'Cancel', onTap: () => Navigator.pop(ctx)),
+          HfDialogAction(label: 'Save', kind: HfActionKind.primary, onTap: () => Navigator.pop(ctx, ctl.text.trim())),
         ],
       ),
     );
@@ -310,18 +310,7 @@ class _DeleteAccountScreenState extends State<DeleteAccountScreen> {
   }
 
   Future<bool> _confirm(String title, String body, String yes) async {
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(title, style: t(20, color: C.maroon)),
-        content: Text(body, style: t(15, w: FontWeight.w600, h: 1.4)),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text('Keep my account', style: t(15, color: C.muted))),
-          TextButton(onPressed: () => Navigator.pop(ctx, true), child: Text(yes, style: t(15, color: C.ruby))),
-        ],
-      ),
-    );
-    return ok == true;
+    return hfConfirm(context, title: title, body: body, confirmLabel: yes, cancelLabel: 'Keep my account', destructive: true);
   }
 
   Future<void> _run(Future<void> Function() job) async {

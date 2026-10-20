@@ -70,14 +70,20 @@ class _RealFeedState extends State<RealFeed> {
   bool _loadingMore = false;
   int _index = 0;
 
+  void _onGate() {
+    if (mounted) setState(() {});
+  }
+
   @override
   void initState() {
     super.initState();
+    ReelGate.visible.addListener(_onGate); // [HF-BOOK-APPROVE-POLISH] pause when the feed is not on screen
     unawaited(_first());
   }
 
   @override
   void dispose() {
+    ReelGate.visible.removeListener(_onGate);
     _pager.dispose();
     super.dispose();
   }
@@ -163,7 +169,7 @@ class _RealFeedState extends State<RealFeed> {
               key: ValueKey(items[i].id),
               reel: demoReelFrom(items[i]),
               real: items[i],
-              active: i == _index,
+              active: i == _index && ReelGate.visible.value,
               preload: i == _index + 1,
               searchRepo: widget.searchRepo,
             ),

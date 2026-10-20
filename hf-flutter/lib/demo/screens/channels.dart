@@ -170,16 +170,13 @@ class _ChannelsListScreenState extends State<ChannelsListScreen> {
   }
 
   Future<void> _remove(Channel c) async {
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text('Remove this channel?', style: t(20, color: C.maroon)),
-        content: Text('Fans will no longer see reels from ${c.handle}.', style: t(16, w: FontWeight.w700, h: 1.35)),
-        actions: [
-          TextButton(onPressed: () => Navigator.of(ctx).pop(false), child: Text('KEEP IT', style: t(16, color: C.muted))),
-          TextButton(onPressed: () => Navigator.of(ctx).pop(true), child: Text('REMOVE', style: t(16, color: C.ruby))),
-        ],
-      ),
+    final ok = await hfConfirm(
+      context,
+      title: 'Remove this channel?',
+      body: 'Fans will no longer see reels from ${c.handle}.',
+      confirmLabel: 'REMOVE',
+      cancelLabel: 'KEEP IT',
+      destructive: true,
     );
     if (ok != true) return;
     try {

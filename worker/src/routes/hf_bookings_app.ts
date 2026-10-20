@@ -15,7 +15,7 @@ import { json } from "../util";
 import { BRAND } from "../lib/brand";
 import { readConfig } from "./config";
 import { verifiedWhatsAppNumber } from "../lib/whatsapp_notify";
-import { callerHandle } from "../lib/hf_call_math";
+import { callerHandle, capFirst } from "../lib/hf_call_math";
 import { contactLeak, PRICE_MAX, PRICE_MIN } from "../lib/hf_options";
 import { parseIstDate } from "../lib/hf_ist";
 import {
@@ -349,7 +349,7 @@ export function statusText(row: JoinRow, role: "fan" | "host", now: number): str
     case "pending_approval": {
       const ms = row.approval_deadline == null ? null : Number(row.approval_deadline) - now;
       const left = ms == null ? "" : ms <= 0 ? " — auto-cancels any moment now" : ` — auto-cancels in ${countdown(ms)}`;
-      return role === "fan" ? `Waiting for ${host} to accept${left}` : `${fan} is waiting for you to accept${left}`;
+      return role === "fan" ? `Waiting for ${host} to accept${left}` : `${capFirst(fan)} is waiting for you to accept${left}`;
     }
     case "confirmed": return role === "fan" ? `Confirmed with ${host}` : `Confirmed — ${fan} will call you`;
     case "starting": case "active": return "Call in progress";
@@ -360,7 +360,7 @@ export function statusText(row: JoinRow, role: "fan" | "host", now: number): str
       switch (row.cancel_reason) {
         case "declined": return role === "fan" ? `${host} couldn't take this booking — ${hold} is back in your wallet` : "You declined this booking";
         case "not_accepted_24h": return role === "fan" ? `Not accepted in time — ${hold} is back in your wallet` : "Cancelled — not accepted within 24 hours";
-        case "fan": return role === "fan" ? `You cancelled — ${hold} is back in your wallet` : `${fan} cancelled`;
+        case "fan": return role === "fan" ? `You cancelled — ${hold} is back in your wallet` : `${capFirst(fan)} cancelled`;
         case "host": return role === "fan" ? `${host} cancelled — ${hold} is back in your wallet` : "You cancelled — the fan was refunded";
         default: return role === "fan" ? `Cancelled — ${hold} is back in your wallet` : "Cancelled";
       }
@@ -396,7 +396,7 @@ function shape(row: JoinRow, role: "fan" | "host", now: number, note?: string, a
   }
   const open = pending && (row.approval_deadline == null || Number(row.approval_deadline) > now);
   return {
-    ...common, fanHandle: callerHandle(row.fan_name), note: note ?? "",
+    ...common, fanHandle: capFirst(callerHandle(row.fan_name)), note: note ?? "",
     canCancel: held, expectedNetPaise: Number(row.expected_host_net_paise),
     cancelRule: "If you cancel, the fan's hold is refunded in full.",
     ...extra,
@@ -464,7 +464,7 @@ async function createBooking(req: Request, env: Env, body: Record<string, unknow
   await queueWhatsApp(env, row.id, row.customer_uid, "hf_booking_confirm", "c",
     `${BRAND.name}: booked! Your call with ${row.host_name ?? "your influencer"} is on ${when} IST. ${hold} is held; you pay only for the minutes you talk and the rest comes back. Cancel free until 1 hour before. Your number stays hidden.`);
   await queueWhatsApp(env, row.id, row.host_uid, "hf_booking_confirm", "c",
-    `${BRAND.name}: new booking. ${callerHandle(row.fan_name)} booked a ${APP_MINUTES}-minute call with you on ${when} IST. We will ring you first at that time.`);
+    `${BRAND.name}: new booking. ${capFirst(callerHandle(row.fan_name))} booked a ${APP_MINUTES}-minute call with you on ${when} IST. We will ring you first at that time.`);
   return json({ booking: shape(row, "fan", Date.now(), note) }, 201, NOSTORE);
 }
 
@@ -544,7 +544,7 @@ async function deleteBooking(req: Request, env: Env, id: string): Promise<Respon
   if (role === "host") {
     await queueWhatsApp(env, id, row.customer_uid, "hf_booking_cancel", "x", `${BRAND.name}: ${row.host_name ?? "Your influencer"} cancelled your call on ${when} IST. Your hold of ${rupees(hold)} is back in your wallet.`);
   } else {
-    await queueWhatsApp(env, id, row.host_uid, "hf_booking_cancel", "x", `${BRAND.name}: ${callerHandle(row.fan_name)} cancelled the call on ${when} IST.`);
+    await queueWhatsApp(env, id, row.host_uid, "hf_booking_cancel", "x", `${BRAND.name}: ${capFirst(callerHandle(row.fan_name))} cancelled the call on ${when} IST.`);
   }
   return json({
     ok: true, bookingId: id, status: "cancelled", refunded: true, refundPaise: hold,

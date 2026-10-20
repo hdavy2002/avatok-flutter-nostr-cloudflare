@@ -341,7 +341,10 @@ class _RealAvailabilityScreenState extends State<RealAvailabilityScreen> {
   Widget _content(HostAvailability a) {
     final rate = _rate ?? a.rate.ratePerMin;
     final gets = _rate == null ? a.rate.hostGetsPerMinPaise : (_rateGetsPaise ?? a.rate.hostGetsPerMinPaise);
-    final anyOpen = a.days.values.any((d) => d.open) || _edits.values.any((s) => s.isNotEmpty);
+    // Booked / pending times count as open: a day with only those still has fans on it.
+    final anyOpen = a.days.values.any((d) => d.open || d.slots.isNotEmpty) ||
+        a.booked.values.any((s) => s.isNotEmpty) ||
+        _edits.values.any((s) => s.isNotEmpty);
     return ListView(
       padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
       children: [

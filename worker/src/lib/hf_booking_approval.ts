@@ -15,7 +15,7 @@ import type { Env } from "../types";
 import { BRAND, brandUrl } from "./brand";
 import { readConfig } from "../routes/config";
 import { track, trackUser, trackException } from "../hooks";
-import { callerHandle } from "./hf_call_math";
+import { callerHandle, capFirst } from "./hf_call_math";
 import { TOPICS } from "./hf_options";
 import { releaseHeldBooking, type BookingCleanupRow } from "./hf_booking_store";
 import { apptRemindersOn } from "./hf_booking_reminders";
@@ -118,6 +118,7 @@ export function approvalText(hostName: string, holdPaise: number): string {
 export function messageFor(ev: MsgEvent, side: "fan" | "host", b: BookingFacts, opts: { hidePeer?: boolean } = {}): { push: { title: string; body: string }; text: string; subject: string } {
   const host = (b.host_name ?? "").trim() || "your influencer";
   const fan = callerHandle(b.fan_name);
+  const Fan = capFirst(fan); // at the start of a sentence
   const when = istLabel(Number(b.starts_at));
   const hold = rupees(Number(b.reserved_paise));
   const topic = topicRef(b.topic_slug)?.label;
@@ -131,14 +132,14 @@ export function messageFor(ev: MsgEvent, side: "fan" | "host", b: BookingFacts, 
       return side === "fan"
         ? { subject: `${B}: booking sent for approval`, push: { title: "Booking sent for approval", body: `${host} has 24 hours to accept. If not, ${hold} returns to your wallet.` },
             text: `${B}: your booking with ${host} for ${when} IST is sent for approval. ${host} has 24 hours to accept; if they don't, ${hold} goes back to your wallet. Open it here: ${link}` }
-        : { subject: `${B}: ${fan} wants to book a call`, push: { title: "New booking request", body: `${fan}, ${when}${topic ? `, ${topic}` : ""}. Accept within 24 hours or it is cancelled and refunded.` },
-            text: `${B}: ${fan} wants a 10-minute call with you on ${when} IST${aboutTopic}. Please accept within 24 hours${by}. If you don't, the booking is cancelled and ${fan} is refunded. Accept or decline here: ${link}` };
+        : { subject: `${B}: ${Fan} wants to book a call`, push: { title: "New booking request", body: `${Fan}, ${when}${topic ? `, ${topic}` : ""}. Accept within 24 hours or it is cancelled and refunded.` },
+            text: `${B}: ${Fan} wants a 10-minute call with you on ${when} IST${aboutTopic}. Please accept within 24 hours${by}. If you don't, the booking is cancelled and ${fan} is refunded. Accept or decline here: ${link}` };
     case "accepted":
       return side === "fan"
         ? { subject: `${B}: your call is confirmed`, push: { title: "Your call is confirmed", body: `${fanPeer} will take your call on ${when} IST.` },
             text: `${B}: confirmed! Your call with ${fanPeer} is on ${when} IST. ${hold} is held; you pay only for the minutes you talk and the rest comes back. Cancel free until 1 hour before. Your number stays hidden. ${link}` }
-        : { subject: `${B}: a call is confirmed`, push: { title: "Call confirmed", body: `${fan} calls you on ${when} IST${aboutTopic}.` },
-            text: `${B}: confirmed. ${fan} will call you on ${when} IST${aboutTopic}. We will ring you first at that time. ${link}` };
+        : { subject: `${B}: a call is confirmed`, push: { title: "Call confirmed", body: `${Fan} calls you on ${when} IST${aboutTopic}.` },
+            text: `${B}: confirmed. ${Fan} will call you on ${when} IST${aboutTopic}. We will ring you first at that time. ${link}` };
     case "declined":
       return side === "fan"
         ? { subject: `${B}: booking not accepted`, push: { title: "Booking not accepted", body: `${fanPeer} couldn't take your booking. ${hold} is back in your wallet.` },
@@ -149,10 +150,10 @@ export function messageFor(ev: MsgEvent, side: "fan" | "host", b: BookingFacts, 
       return side === "fan"
         ? { subject: `${B}: booking cancelled, money back`, push: { title: "Booking cancelled", body: `${fanPeer} didn't accept in time. ${hold} is back in your wallet.` },
             text: `${B}: ${fanPeer} didn't accept within 24 hours, so your booking for ${when} IST was cancelled. ${hold} is back in your wallet.` }
-        : { subject: `${B}: a booking was cancelled`, push: { title: "Booking cancelled", body: `${fan}'s booking for ${when} IST wasn't accepted in time. The caller was refunded.` },
+        : { subject: `${B}: a booking was cancelled`, push: { title: "Booking cancelled", body: `${Fan}'s booking for ${when} IST wasn't accepted in time. The caller was refunded.` },
             text: `${B}: the booking from ${fan} for ${when} IST was cancelled because it wasn't accepted within 24 hours. The caller was refunded.` };
     case "nudge":
-      return { subject: `${B}: a booking is waiting for you`, push: { title: "Still waiting for you", body: `${fan}'s booking for ${when} IST cancels in about 4 hours unless you accept.` },
+      return { subject: `${B}: a booking is waiting for you`, push: { title: "Still waiting for you", body: `${Fan}'s booking for ${when} IST cancels in about 4 hours unless you accept.` },
         text: `${B}: still waiting. The booking from ${fan} for ${when} IST cancels in about 4 hours if you don't accept it (24-hour rule). Accept or decline here: ${link}` };
   }
 }

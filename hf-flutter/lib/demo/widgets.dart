@@ -199,6 +199,107 @@ class TicketButton extends StatelessWidget {
   }
 }
 
+/// How a dialog button looks: quiet (outlined, the way out), primary (marigold), destructive (ruby).
+enum HfActionKind { quiet, primary, destructive }
+
+class HfDialogAction {
+  const HfDialogAction({required this.label, required this.onTap, this.kind = HfActionKind.quiet, this.key});
+
+  final String label;
+  final VoidCallback onTap;
+  final HfActionKind kind;
+  final Key? key;
+}
+
+/// [HF-BOOK-APPROVE-POLISH] The one dialog shell of the app (Rang Bazaar style): white paper, rounded 24, maroon title,
+/// buttons at least 48 dp high. Use instead of a plain Material AlertDialog.
+class HfDialog extends StatelessWidget {
+  const HfDialog({super.key, required this.title, required this.content, required this.actions});
+
+  final String title;
+  final Widget content;
+  final List<HfDialogAction> actions;
+
+  Widget _button(HfDialogAction a) {
+    final (Color bg, Color fg, Color line) = switch (a.kind) {
+      HfActionKind.quiet => (C.clear, C.maroon, C.maroon),
+      HfActionKind.primary => (C.marigold, C.deep, C.marigold),
+      HfActionKind.destructive => (C.ruby, C.white, C.ruby),
+    };
+    return TextButton(
+      key: a.key,
+      onPressed: a.onTap,
+      style: TextButton.styleFrom(
+        minimumSize: const Size(96, 48),
+        padding: const EdgeInsets.symmetric(horizontal: 20),
+        backgroundColor: bg,
+        foregroundColor: fg,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14), side: BorderSide(color: line, width: 2.5)),
+      ),
+      child: Text(a.label, style: t(16, color: fg, w: FontWeight.w800)),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Dialog(
+      backgroundColor: C.paper,
+      surfaceTintColor: C.clear,
+      insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24), side: const BorderSide(color: C.sandLine, width: 3)),
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.fromLTRB(22, 22, 22, 18),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(title, style: t(22, color: C.maroon, w: FontWeight.w800)),
+            const SizedBox(height: 12),
+            DefaultTextStyle.merge(style: t(16, w: FontWeight.w700, h: 1.4), child: content),
+            const SizedBox(height: 20),
+            Align(
+              alignment: Alignment.centerRight,
+              child: Wrap(spacing: 10, runSpacing: 10, alignment: WrapAlignment.end, children: [for (final a in actions) _button(a)]),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// A themed yes/no question. True only when the confirm button is tapped. A null [confirmLabel] makes it a notice with
+/// just the dismiss button. [destructive] paints the confirm button ruby.
+Future<bool> hfConfirm(
+  BuildContext context, {
+  required String title,
+  String? body,
+  Widget? content,
+  required String? confirmLabel,
+  String cancelLabel = 'Cancel',
+  bool destructive = false,
+  Key? confirmKey,
+}) async {
+  final r = await showDialog<bool>(
+    context: context,
+    builder: (d) => HfDialog(
+      title: title,
+      content: content ?? Text(body ?? '', style: t(16, w: FontWeight.w700, h: 1.4)),
+      actions: [
+        HfDialogAction(label: cancelLabel, onTap: () => Navigator.of(d).pop(false)),
+        if (confirmLabel != null)
+          HfDialogAction(
+            label: confirmLabel,
+            key: confirmKey,
+            kind: destructive ? HfActionKind.destructive : HfActionKind.primary,
+            onTap: () => Navigator.of(d).pop(true),
+          ),
+      ],
+    ),
+  );
+  return r == true;
+}
+
 /// Plain chunky button (secondary actions).
 class ChunkyButton extends StatelessWidget {
   const ChunkyButton({super.key, required this.label, required this.onTap, this.filled = true, this.dark = false, this.height = 58, this.icon});
@@ -215,6 +316,19 @@ class ChunkyButton extends StatelessWidget {
     final bg = filled ? (dark ? C.maroon : C.marigold) : C.clear;
     final fg = filled ? (dark ? C.gold : C.deep) : (dark ? C.gold : C.maroon);
     final border = filled ? bg : (dark ? C.gold : C.maroon);
+    final enabled = onTap != null;
+    // [HF-BOOK-APPROVE-POLISH] a button with nothing to do looks switched off: faded, no ripple.
+    return Semantics(
+      button: true,
+      enabled: enabled,
+      child: Opacity(
+        opacity: enabled ? 1 : 0.4,
+        child: _chunkyBody(bg, fg, border),
+      ),
+    );
+  }
+
+  Widget _chunkyBody(Color bg, Color fg, Color border) {
     return SizedBox(
       height: height,
       child: Material(

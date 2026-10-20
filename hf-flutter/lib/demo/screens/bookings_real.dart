@@ -675,23 +675,17 @@ class _RealBookingsScreenState extends State<RealBookingsScreen> {
 
   Future<void> _cancel(AppBooking b) async {
     final blocked = !b.canCancel;
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (d) => AlertDialog(
-        title: Text(blocked ? 'Too late to cancel' : (b.isPending ? 'Cancel this request?' : 'Cancel this booking?'), style: t(20, color: C.maroon)),
-        content: Text(
-          blocked
-              ? (b.cancelBlockedText ?? b.cancelRule)
-              : b.isPending
-                  ? 'Nothing is lost: the full ${paiseText(b.holdPaise)} comes back to your wallet.'
-                  : 'The ${paiseText(b.holdPaise)} hold comes back to your wallet. ${b.cancelRule}',
-          style: t(15, w: FontWeight.w700),
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.of(d).pop(false), child: Text(blocked ? 'OK' : 'Keep it', style: t(16, color: C.maroon))),
-          if (!blocked) TextButton(onPressed: () => Navigator.of(d).pop(true), child: Text('Cancel', style: t(16, color: C.ruby))),
-        ],
-      ),
+    final ok = await hfConfirm(
+      context,
+      title: blocked ? 'Too late to cancel' : (b.isPending ? 'Cancel this request?' : 'Cancel this booking?'),
+      body: blocked
+          ? (b.cancelBlockedText ?? b.cancelRule)
+          : b.isPending
+              ? 'Nothing is lost: the full ${paiseText(b.holdPaise)} comes back to your wallet.'
+              : 'The ${paiseText(b.holdPaise)} hold comes back to your wallet. ${b.cancelRule}',
+      confirmLabel: blocked ? null : 'Cancel',
+      cancelLabel: blocked ? 'OK' : 'Keep it',
+      destructive: true,
     );
     if (ok != true || !mounted) return;
     final r = await _guard(() => _repo.cancel(b.id), (e) {
@@ -917,8 +911,8 @@ class AppBookingTile extends StatelessWidget {
 Future<bool> showHostBookingSheet(BuildContext context, AppBooking b, BookingsRepo repo) async {
   final cancelled = await showDialog<bool>(
     context: context,
-    builder: (d) => AlertDialog(
-      title: Text('${b.fanHandle ?? 'A fan'} · ${slotLabel(b.time)}', style: t(20, color: C.maroon)),
+    builder: (d) => HfDialog(
+      title: '${b.fanHandle ?? 'A fan'} · ${slotLabel(b.time)}',
       content: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -937,11 +931,13 @@ Future<bool> showHostBookingSheet(BuildContext context, AppBooking b, BookingsRe
         ],
       ),
       actions: [
-        TextButton(onPressed: () => Navigator.of(d).pop(false), child: Text('Close', style: t(16, color: C.maroon))),
+        HfDialogAction(label: 'Close', onTap: () => Navigator.of(d).pop(false)),
         if (b.canCancel)
-          TextButton(
+          HfDialogAction(
             key: const ValueKey('host-cancel'),
-            onPressed: () async {
+            kind: HfActionKind.destructive,
+            label: 'Cancel booking',
+            onTap: () async {
               try {
                 final r = await repo.cancel(b.id);
                 if (d.mounted) Navigator.of(d).pop(true);
@@ -950,7 +946,6 @@ Future<bool> showHostBookingSheet(BuildContext context, AppBooking b, BookingsRe
                 if (context.mounted) toast(context, _why(e));
               }
             },
-            child: Text('Cancel booking', style: t(16, color: C.ruby)),
           ),
       ],
     ),
@@ -1099,16 +1094,14 @@ class _RealInfluencerBookingsScreenState extends State<RealInfluencerBookingsScr
 
   Future<void> _decline(AppBooking b) async {
     if (_busyId != null) return;
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (d) => AlertDialog(
-        title: Text('Decline this booking?', style: t(20, color: C.maroon)),
-        content: Text('The caller gets a full refund of ${paiseText(b.holdPaise)} to their wallet.', style: t(15, w: FontWeight.w700)),
-        actions: [
-          TextButton(onPressed: () => Navigator.of(d).pop(false), child: Text('Keep it', style: t(16, color: C.maroon))),
-          TextButton(key: const ValueKey('decline-confirm'), onPressed: () => Navigator.of(d).pop(true), child: Text('Decline', style: t(16, color: C.ruby))),
-        ],
-      ),
+    final ok = await hfConfirm(
+      context,
+      title: 'Decline this booking?',
+      body: 'The caller gets a full refund of ${paiseText(b.holdPaise)} to their wallet.',
+      confirmLabel: 'Decline',
+      cancelLabel: 'Keep it',
+      destructive: true,
+      confirmKey: const ValueKey('decline-confirm'),
     );
     if (ok != true) {
       Telemetry.event('hf_app_booking_decline_tapped', {'booking_id': b.id, 'outcome': 'dismissed'});

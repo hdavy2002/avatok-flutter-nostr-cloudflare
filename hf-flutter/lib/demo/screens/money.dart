@@ -283,17 +283,12 @@ class _TopUpScreenState extends State<TopUpScreen> {
       return;
     }
     if (v >= 1000) {
-      final ok = await showDialog<bool>(
-        context: context,
-        builder: (d) => AlertDialog(
-          backgroundColor: C.ivory,
-          title: Text('Pay ${inr(v, paise: false)}?', style: t(22, color: C.maroon)),
-          content: Text('That is ₹1,000 or more. Just checking before we go on.', style: t(15, w: FontWeight.w700, h: 1.4)),
-          actions: [
-            TextButton(onPressed: () => Navigator.of(d).pop(false), child: Text('Change', style: t(16, color: C.maroon))),
-            TextButton(onPressed: () => Navigator.of(d).pop(true), child: Text('Yes, pay', style: t(16, color: C.maroon))),
-          ],
-        ),
+      final ok = await hfConfirm(
+        context,
+        title: 'Pay ${inr(v, paise: false)}?',
+        body: 'That is ₹1,000 or more. Just checking before we go on.',
+        confirmLabel: 'Yes, pay',
+        cancelLabel: 'Change',
       );
       if (ok != true || !mounted) return;
     }

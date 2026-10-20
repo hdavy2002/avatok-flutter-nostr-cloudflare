@@ -90,11 +90,17 @@ export function esc(s: string): string {
 }
 const wrap = (inner: string) => `<?xml version="1.0" encoding="UTF-8"?><Response>${inner}</Response>`;
 
-/** First name only, never digits, handles or long strings: the host hears who is calling but no contact detail. */
+/** First name only, never digits, handles or long strings: the host hears who is calling but no contact detail.
+ *  The fallback is lowercase ("a fan") so it reads well mid-sentence; use [capFirst] at the start of a sentence. */
 export function callerHandle(displayName: string | null | undefined): string {
   const first = String(displayName ?? "").trim().split(/\s+/)[0] ?? "";
-  if (!first || first.length > 20 || /[0-9@+_.\/\\:]/.test(first)) return "a caller";
+  if (!first || first.length > 20 || /[0-9@+_.\/\\:]/.test(first)) return "a fan";
   return first;
+}
+
+/** Upper-case the first letter ("a fan" -> "A fan"); a real first name is left as it is. */
+export function capFirst(s: string): string {
+  return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
 export function announceText(handle: string, previousCalls: number): string {
