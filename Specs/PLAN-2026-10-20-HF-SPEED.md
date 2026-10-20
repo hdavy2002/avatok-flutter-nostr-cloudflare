@@ -112,3 +112,8 @@ Owner report: each admin page "loads" when opened; slow on a weak network.
 ### Not done / next
 - True SPA navigation (Astro ClientRouter) would remove Clerk re-init per click but touches the whole shell; risky for the single-ClerkProvider design.
 - Money screens not cached: reconciliation, phone costs, std calls (computed reports).
+
+## Status 2026-10-20 22:00 IST (coordinator)
+- Landed on main: HF-APP-CACHE-1 (+ compile fix), HF-ADMIN-CACHE-1 (web deployed, run 39454225619), HF-REELS-FAV-1, HF-PALETTE-RANGOLI-1 (owner chose "Rangoli Soft"), HF-TESTS-FIX-1. APK run 39458496306 built OK and is INSTALLED on the owner's phone (not yet looked at: phone locked).
+- Admin measured after deploy: HTML 0.26 s, whoami now parallel with the data fetches, calls list served from cache (`a2c:` sessionStorage). Remaining slow parts are server-side: /api/admin/hf/std/calls 1.36 s, /std/summary 1.2 s, and an unneeded /api/admin/v2/shop/kpis (0.9 s) fired on every HF admin page by the shell — NEXT: drop the shop KPI call from HF pages, add worker-side caching/indexes for std reports.
+- NEXT on the phone: Rangoli palette look on Me/Bookings/Availability/Confirm/Wallet, green Online bar + footer pill, kolam footer, heart on reel cards, channel name → profile (on-platform) / invite page (not on platform), second visits instant (cache), unknown route → "This page moved".
