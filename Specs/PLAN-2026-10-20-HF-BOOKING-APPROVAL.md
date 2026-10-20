@@ -118,7 +118,12 @@ Rules that still apply: block = "not available" wording (HF-WELL-3); no verified
 | 7 | App: fan booking flow (topic, approval copy, pending states) + My bookings | Dart | 1,2,4 |
 | 8 | App: influencer Bookings page (mode switch, pending, upcoming, calendar) + deep links | Dart | 1,3,4 |
 | 9 | Verify: vitest, `tsc --noEmit`, ship gate, design guard, brand guard, CI `hf-flutter.yml mode=check` | green checks | 1–8 |
-| 10 | Go-live (owner says): apply migrations, deploy worker, flip `hfBookingApprovalEnabled`, build on request, two-phone test (request → expiry → refund; request → accept → reminders → call) | live | 9 |
+| 10 | Go-live (owner said "continue" 2026-10-20): apply migrations, deploy worker, flip `hfBookingApprovalEnabled`, one-time "all influencers Online" | live | 9 |
+| 11 | Make the owner's account (`hdavy2005@gmail.com`) an influencer (live host with slug, topics, availability) + a second test fan account for the other side | prod data | 10 |
+| 12 | Build APK (`gh workflow run hf-flutter.yml --ref main -f mode=apk -f demo=false`) and sideload on the owner's phone (`scripts/hf_sideload.sh <run-id>`, USB, adb) | app on phone | 10 |
+| 13 | Visual test BOTH sides on the phone (adb screencap + taps): influencer footer toggle, Settings rows, calendar drag-select + save, Bookings page mode switch, pending card Accept/Decline; fan profile Book → date → time → topic → confirm copy → "Waiting for approval" → decline/expiry refund in wallet. Fix what looks wrong, re-build, re-check. Screenshots saved to `output/hf-book-approve-shots/` | report | 11, 12 |
+
+**Owner waived the mock-approval gate (Phase 4) on 2026-10-20** ("continue to code it … check visually on my phone"). Phase 4 = skipped; the design check happens in Phase 13 on the real phone, still following `Specs/HF-DESIGN-SYSTEM.md` §11 and HF-DS-8 tokens/sizes.
 
 ## 8. Safety rules for whoever builds this
 - Production only, no staging. Confirm before any prod write (deploy, migration, flag). Never build unless owner asks.
@@ -126,6 +131,38 @@ Rules that still apply: block = "not available" wording (HF-WELL-3); no verified
 - Money moves only through the existing hold/release path, idempotent op ids. Refunds go to the **wallet only**.
 - No brand literals; no green in UI; Nunito ≥14 sp; Phosphor/approved icons per app rules.
 - Update the rulebook and the progress file in the same commit as each phase.
+
+## 9a. OWNER ANSWERS (2026-10-20) — these override §9 and the text above
+- Q1 no answer → **influencer footer only** (default).
+- **Q2: Online by default for ALL influencers, existing and new** → one-time `UPDATE hf_hosts SET presence='online' WHERE status='live' AND presence='offline'` at go-live, and every new live host starts `online`.
+- Q3 no answer → default (deadline = earlier of 24 h or 1 h before start; manual mode needs ≥2 h notice).
+- Q4 no answer → push + WhatsApp + email, no SMS.
+- **Q5: reminders stay 1 h and 10 min** — do NOT add a 30-minute reminder. (Plan §3.8 / §5 "30 min?" row = dropped.)
+- **Q6: add these topics** to `TOPICS` in `worker/src/lib/hf_options.ts` (new group "Fan calls" or the nearest existing group): `talk-about-my-channel` "Talk about my channel", `just-friendship` "Just friendship", `general-advice` "General advice". Keep max 6 per influencer. (The six suggested in §9 Q6 are NOT added.)
+- Q7, Q8 → defaults (yes / yes).
+- **Owner: "continue to code it, use your own worktrees and multiple agents; then install the app on my phone, make my user an influencer, and test both sides."** → Phases 10–13 below are approved.
+
+## 9b. API CONTRACT (fixed 2026-10-20 — app and worker agents build to this; additive, everything new is dark behind `hfBookingApprovalEnabled`; with the flag off every response is exactly as today)
+
+App-shaped booking (`GET /api/hf/bookings?role=fan|host…`, POST response, accept/decline responses) gains:
+```
+status: "pending_approval" | "confirmed" | "cancelled" | … (existing values)
+approvalDeadline: ISO string | null      // only while pending_approval
+topic: { slug, label } | null
+cancelReason: "declined" | "not_accepted_24h" | "fan" | "host" | null
+statusText: string                       // plain English, e.g. "Waiting for Priya to accept — auto-cancels in 17 h"
+// host role only:
+canAccept: bool, canDecline: bool
+// fan role: canCancel is TRUE while pending_approval (free, full refund)
+```
+- `POST /api/hf/bookings {hostSlug,startAt,note?,topic?}` — `topic` = one of that host's topic slugs (400 `bad_topic` otherwise). Response adds `needsApproval: bool` and `approvalText` ("Sent to {name} for approval. If not accepted within 24 hours, ₹X returns to your wallet.").
+- `POST /api/hf/bookings/:id/accept` → `{ ok:true, booking }` (409 `not_pending` / `expired`).
+- `POST /api/hf/bookings/:id/decline {reason?}` → `{ ok:true, refunded:true, refundPaise, booking }`.
+- `GET/PUT /api/hf/hosts/me/booking-settings` → `{ approval: "manual"|"auto", openAlerts: bool }`.
+- `GET /api/hf/hosts/:slug/slots` response adds `topics: [{slug,label}]` (that host's) and `approvalMode: "manual"|"auto"`.
+- `GET /api/hf/bookings?role=host&shape=app&status=pending|upcoming|past` optional filter (no filter = all, pending first).
+- Presence is unchanged (`presence_repo.dart` / existing presence route); the footer button only calls it.
+- Config: `hfBookingApprovalEnabled` (bool, default false) is exposed in `/api/hf/config` so the app shows approval UI only when true.
 
 ## 9. Open questions for the owner (defaults in **bold** will be used if no answer)
 1. **Footer toggle placement:** influencer bar only (**default**), or also on the fan bar shown in the screenshot when the user is an influencer?
