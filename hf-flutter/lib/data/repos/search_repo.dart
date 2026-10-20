@@ -1,6 +1,7 @@
 import '../api_client.dart';
 import '../api_exception.dart';
 import '../models/search.dart';
+import '../response_cache.dart';
 
 /// Search, topic chips and Invite votes (HF-REEL-9 / HF-REEL-29).
 class SearchRepo {
@@ -27,12 +28,58 @@ class SearchRepo {
         final query = <String, Object?>{'q': q.trim()};
         if (topic != null && topic.isNotEmpty) query['topic'] = topic;
         if (platform == 'youtube' || platform == 'instagram') query['platform'] = platform;
-        return SearchResult.fromJson(await _api.getJson('/api/hf/search', query: query, auth: false));
+        return SearchResult.fromJson(await _api.getJson('/api/hf/search', query: query, auth: false, store: true));
       });
+
+  /// [HF-APP-CACHE-1] [search] cached-first (the landing list and repeat searches paint at once).
+  Stream<SearchResult> watchSearch(String q, {String? topic, String? platform}) {
+    final query = <String, Object?>{'q': q.trim()};
+    if (topic != null && topic.isNotEmpty) query['topic'] = topic;
+    if (platform == 'youtube' || platform == 'instagram') query['platform'] = platform;
+    return _guard2(_api.watchJson('/api/hf/search', query: query, auth: false, policy: CachePolicy.list).map(SearchResult.fromJson));
+  }
+
+  Stream<T> _guard2<T>(Stream<T> s) async* {
+    try {
+      yield* s;
+    } on ApiException catch (e) {
+      if (e.isNotEnabled) {
+        throw const ApiException(kind: ApiFailure.http, status: 404, code: 'not_enabled', message: notOpenText);
+      }
+      rethrow;
+    }
+  }
+
+  /// [HF-APP-CACHE-1] The topic chips, cached-first (they almost never change).
+  Stream<List<TopicOption>> watchTopics() =>
+      _api.watchJson('/api/hf/options', auth: false, policy: CachePolicy.stable).map(_topicsOf);
+
+  /// [HF-APP-CACHE-1] "Most-wanted, not here yet", cached-first. Switched off (404) means an empty list.
+  Stream<List<MissingCreator>> watchTopInvites() async* {
+    try {
+      await for (final j in _api.watchJson('/api/hf/invites/top', auth: false, policy: CachePolicy.list)) {
+        yield [
+          for (final e in (j['items'] is List ? j['items'] as List : const []))
+            if (e is Map) MissingCreator.fromJson(Map<String, dynamic>.from(e)),
+        ];
+      }
+    } on ApiException catch (e) {
+      if (e.isNotEnabled) {
+        yield const <MissingCreator>[];
+        return;
+      }
+      rethrow;
+    }
+  }
+
+  static List<TopicOption> _topicsOf(Map<String, dynamic> j) => [
+        for (final e in (j['topics'] is List ? j['topics'] as List : const []))
+          if (e is Map && e['slug'] != null) TopicOption(slug: '${e['slug']}', label: '${e['label'] ?? e['slug']}'),
+      ];
 
   /// The topic chips. The worker is the single source (`GET /api/hf/options`).
   Future<List<TopicOption>> topics() async {
-    final j = await _api.getJson('/api/hf/options', auth: false);
+    final j = await _api.getJson('/api/hf/options', auth: false, store: true);
     return [
       for (final e in (j['topics'] is List ? j['topics'] as List : const []))
         if (e is Map && e['slug'] != null) TopicOption(slug: '${e['slug']}', label: '${e['label'] ?? e['slug']}'),

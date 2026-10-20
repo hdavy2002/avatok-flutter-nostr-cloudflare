@@ -1,6 +1,7 @@
 import '../api_client.dart';
 import '../api_exception.dart';
 import '../models/booking.dart';
+import '../response_cache.dart';
 
 /// Bookings (HF-WIRE-8). The server holds 10 x the rate when a booking is made, starts the call at the booked
 /// minute (influencer first) and sends the WhatsApp messages. The app only picks, shows and cancels.
@@ -20,6 +21,12 @@ class BookingsRepo {
   Future<HostSlots> slots(String slug, {String? from, String? to}) async => HostSlots.fromJson(
         await _api.getJson('/api/hf/hosts/${Uri.encodeComponent(slug)}/slots', query: {'from': from, 'to': to}, auth: false),
       );
+
+  /// [HF-APP-CACHE-1] [slots] cached-first: the last list paints at once, then the server's. Booking still re-checks on the server
+  /// (409 `slot_unavailable`), so a stale time can only cost one friendly "pick again".
+  Stream<HostSlots> watchSlots(String slug, {String? from, String? to}) => _api
+      .watchJson('/api/hf/hosts/${Uri.encodeComponent(slug)}/slots', query: {'from': from, 'to': to}, auth: false, policy: CachePolicy.slots)
+      .map(HostSlots.fromJson);
 
   /// Throws [ApiException]; see [BookingProblem] for what the codes mean.
   Future<AppBooking> book(String slug, DateTime startAt, {String? note, String? topic}) async =>
@@ -45,12 +52,24 @@ class BookingsRepo {
 
   /// The fan's bookings. No [status]: active ones (waiting for approval first). `past`: finished and cancelled ones.
   Future<List<AppBooking>> mine({String? status}) async =>
-      _list(await _api.getJson('/api/hf/bookings', query: {'role': 'fan', 'status': status}));
+      _list(await _api.getJson('/api/hf/bookings', query: {'role': 'fan', 'status': status}, store: true));
+
+  /// [HF-APP-CACHE-1] [mine] cached-first (always re-asks the server; a booking/cancel/accept/decline throws the cached copy away).
+  Stream<List<AppBooking>> watchMine({String? status}) => _api
+      .watchJson('/api/hf/bookings', query: {'role': 'fan', 'status': status}, policy: CachePolicy.live)
+      .map(_list);
+
+  /// [HF-APP-CACHE-1] [hostBookings] cached-first.
+  Stream<List<AppBooking>> watchHostBookings({String? day, String? from, String? to, String? status}) => _api
+      .watchJson('/api/hf/bookings',
+          query: {'role': 'host', 'shape': 'app', 'day': day, 'from': from, 'to': to, 'status': status}, policy: CachePolicy.live)
+      .map(_list);
 
   /// The influencer's own bookings: upcoming by default, or one IST [day] (`YYYY-MM-DD`).
   /// [status] is `pending`, `upcoming` or `past`; it only has an effect while the approval feature is on.
   Future<List<AppBooking>> hostBookings({String? day, String? from, String? to, String? status}) async => _list(
-      await _api.getJson('/api/hf/bookings', query: {'role': 'host', 'shape': 'app', 'day': day, 'from': from, 'to': to, 'status': status}));
+      await _api.getJson('/api/hf/bookings',
+          query: {'role': 'host', 'shape': 'app', 'day': day, 'from': from, 'to': to, 'status': status}, store: true));
 
   List<AppBooking> _list(Map<String, dynamic> j) {
     final raw = j['bookings'];
@@ -91,7 +110,11 @@ class BookingsRepo {
         if (openAlerts != null) 'openAlerts': openAlerts,
       }));
 
-  Future<HostAvailability> availability() async => HostAvailability.fromJson(await _api.getJson('/api/hf/hosts/me/availability'));
+  Future<HostAvailability> availability() async => HostAvailability.fromJson(await _api.getJson('/api/hf/hosts/me/availability', store: true));
+
+  /// [HF-APP-CACHE-1] [availability] cached-first. Saving (PUT) throws the cached copy away.
+  Stream<HostAvailability> watchAvailability() =>
+      _api.watchJson('/api/hf/hosts/me/availability', policy: CachePolicy.live).map(HostAvailability.fromJson);
 
   /// Replaces just the dates in [days]. 409 `slot_booked` when a booked time would be closed.
   Future<HostAvailability> saveAvailability(Map<String, DayPlan> days, {int? expectedVersion}) async =>

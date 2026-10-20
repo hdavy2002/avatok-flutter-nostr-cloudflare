@@ -88,8 +88,9 @@ class _RealBookScreenState extends State<RealBookScreen> {
   Future<void> _load() async {
     setState(() => _state = const AsyncLoading());
     try {
-      final s = await _repo.slots(widget.id);
-      if (mounted) setState(() => _state = AsyncData(s));
+      await for (final s in _repo.watchSlots(widget.id)) {
+        if (mounted) setState(() => _state = AsyncData(s)); // [HF-APP-CACHE-1] cached times first, then the server's
+      }
     } catch (e) {
       if (mounted) setState(() => _state = AsyncFailure(e));
     }
@@ -336,8 +337,9 @@ class _RealBookConfirmScreenState extends State<RealBookConfirmScreen> {
   Future<void> _load() async {
     setState(() => _state = const AsyncLoading());
     try {
-      final s = await _repo.slots(widget.id, from: widget.day, to: widget.day);
-      if (mounted) setState(() => _state = AsyncData(s));
+      await for (final s in _repo.watchSlots(widget.id, from: widget.day, to: widget.day)) {
+        if (mounted) setState(() => _state = AsyncData(s)); // [HF-APP-CACHE-1]
+      }
     } catch (e) {
       if (mounted) setState(() => _state = AsyncFailure(e));
       return;
@@ -671,21 +673,26 @@ class _RealBookingsScreenState extends State<RealBookingsScreen> {
   Future<void> _load({bool quiet = false}) async {
     if (!quiet) setState(() => _state = const AsyncLoading());
     try {
-      final active = await _repo.mine();
-      var past = const <AppBooking>[];
-      if (Services.instance.bookingApprovalEnabled || active.any((b) => b.statusText != null)) {
-        // [HF-BOOK-APPROVE] cancelled / refunded ones stay visible, with the server's own sentence.
-        try {
-          past = await _repo.mine(status: 'past');
-        } catch (_) {}
-      }
-      if (!mounted) return;
-      setState(() => _state = AsyncData([...active, ...past]));
-      if (_highlightId != null) {
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          final c = _highlightKey.currentContext;
-          if (c != null) unawaited(Scrollable.ensureVisible(c, duration: const Duration(milliseconds: 300)));
-        });
+      // [HF-APP-CACHE-1] The saved list paints at once, then the server's answer replaces it. The "past" list follows the same
+      // rule: its saved copy goes with the saved active list, its network read with the fresh one.
+      var firstEmission = true;
+      await for (final active in _repo.watchMine()) {
+        var past = const <AppBooking>[];
+        if (Services.instance.bookingApprovalEnabled || active.any((b) => b.statusText != null)) {
+          // [HF-BOOK-APPROVE] cancelled / refunded ones stay visible, with the server's own sentence.
+          try {
+            past = firstEmission ? await _repo.watchMine(status: 'past').first : await _repo.mine(status: 'past');
+          } catch (_) {}
+        }
+        firstEmission = false;
+        if (!mounted) return;
+        setState(() => _state = AsyncData([...active, ...past]));
+        if (_highlightId != null) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            final c = _highlightKey.currentContext;
+            if (c != null) unawaited(Scrollable.ensureVisible(c, duration: const Duration(milliseconds: 300)));
+          });
+        }
       }
     } catch (e) {
       if (!mounted) return;
@@ -1038,28 +1045,34 @@ class _RealInfluencerBookingsScreenState extends State<RealInfluencerBookingsScr
   Future<void> _load({bool quiet = false}) async {
     if (!quiet) setState(() => _state = const AsyncLoading());
     try {
-      final l = await _repo.hostBookings();
-      var past = const <AppBooking>[];
-      BookingSettings? settings = _settings;
-      if (_approvalUi(l)) {
-        try {
-          past = await _repo.hostBookings(status: 'past');
-        } catch (_) {}
-        try {
-          settings = await _repo.bookingSettings();
-        } catch (_) {}
-      }
-      if (!mounted) return;
-      setState(() {
-        _state = AsyncData(l);
-        _past = past;
-        _settings = settings;
-      });
-      if (_highlightId != null) {
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          final c = _highlightKey.currentContext;
-          if (c != null) unawaited(Scrollable.ensureVisible(c, duration: const Duration(milliseconds: 300)));
+      // [HF-APP-CACHE-1] Saved list first, then the server's (see the fan list above). Settings are not cached.
+      var firstEmission = true;
+      await for (final l in _repo.watchHostBookings()) {
+        var past = _past;
+        BookingSettings? settings = _settings;
+        if (_approvalUi(l)) {
+          try {
+            past = firstEmission ? await _repo.watchHostBookings(status: 'past').first : await _repo.hostBookings(status: 'past');
+          } catch (_) {}
+          if (!firstEmission || settings == null) {
+            try {
+              settings = await _repo.bookingSettings();
+            } catch (_) {}
+          }
+        }
+        firstEmission = false;
+        if (!mounted) return;
+        setState(() {
+          _state = AsyncData(l);
+          _past = past;
+          _settings = settings;
         });
+        if (_highlightId != null) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            final c = _highlightKey.currentContext;
+            if (c != null) unawaited(Scrollable.ensureVisible(c, duration: const Duration(milliseconds: 300)));
+          });
+        }
       }
     } catch (e) {
       if (!mounted) return;
@@ -1404,8 +1417,9 @@ class _RealTodaysBookingsState extends State<RealTodaysBookings> {
 
   Future<void> _load() async {
     try {
-      final l = await _repo.hostBookings(day: isoDay(DateTime.now()));
-      if (mounted) setState(() => _state = AsyncData(l));
+      await for (final l in _repo.watchHostBookings(day: isoDay(DateTime.now()))) {
+        if (mounted) setState(() => _state = AsyncData(l)); // [HF-APP-CACHE-1]
+      }
     } catch (e) {
       if (mounted) setState(() => _state = AsyncFailure(e));
     }
@@ -1451,8 +1465,9 @@ class _RealProfileCalendarState extends State<RealProfileCalendar> {
   Future<void> _load() async {
     setState(() => _state = const AsyncLoading());
     try {
-      final s = await _repo.slots(widget.slug);
-      if (mounted) setState(() => _state = AsyncData(s));
+      await for (final s in _repo.watchSlots(widget.slug)) {
+        if (mounted) setState(() => _state = AsyncData(s)); // [HF-APP-CACHE-1]
+      }
     } catch (e) {
       if (mounted) setState(() => _state = AsyncFailure(e));
     }

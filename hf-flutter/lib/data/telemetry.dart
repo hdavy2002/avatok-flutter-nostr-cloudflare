@@ -26,6 +26,7 @@ abstract final class Telemetry {
   /// Every event the app may send. Keep in step with the telemetry catalog.
   static const Set<String> catalogEvents = {
     'api_error',
+    'hf_app_cache', // [HF-APP-CACHE-1]
     'app_crash',
     'hf_app_open',
     'hf_app_deeplink_opened',
@@ -136,6 +137,17 @@ abstract final class Telemetry {
     } catch (_) {
       // telemetry never throws into a request
     }
+  }
+
+  static final Set<String> _cacheSeen = {};
+
+  /// Catalog event `hf_app_cache` [HF-APP-CACHE-1]: how a cached read was served (`hit_fresh`, `revalidated`, `miss`,
+  /// `stale_on_error`). Sent once per endpoint and outcome per app run, so it measures the hit rate without flooding.
+  /// [endpoint] is the path with ids made generic.
+  static void cacheOutcome(String endpoint, String outcome, {int? ageSeconds}) {
+    final generic = endpoint.replaceAll(RegExp(r'/hosts/(?!me\b|public\b)[^/]+'), '/hosts/:slug').replaceAll(RegExp(r'/public/[^/]+'), '/public/:slug');
+    if (!_cacheSeen.add('$generic|$outcome')) return;
+    event('hf_app_cache', {'endpoint': generic, 'outcome': outcome, if (ageSeconds != null) 'age_s': ageSeconds});
   }
 
   /// Catalog event `api_error`: every non-2xx or network failure, reported once by the API client.

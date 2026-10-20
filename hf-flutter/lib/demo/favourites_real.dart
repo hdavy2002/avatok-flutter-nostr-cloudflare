@@ -8,6 +8,7 @@ import '../data/favourites_store.dart';
 import '../data/models/search.dart';
 import '../data/repos/favourites_repo.dart';
 import '../ui/async_view.dart';
+import '../ui/net_image.dart';
 import 'state.dart';
 import 'theme.dart';
 import 'widgets.dart';
@@ -39,7 +40,11 @@ class _RealFavouritesState extends State<RealFavourites> {
     setState(() => _state = const AsyncLoading());
     AsyncState<List<FavouriteHost>> next;
     try {
-      next = AsyncData(await widget.repo.list());
+      // [HF-APP-CACHE-1] saved list first, then the server's
+      await for (final items in widget.repo.watchList()) {
+        if (mounted) setState(() => _state = AsyncData(items));
+      }
+      return;
     } catch (e) {
       next = AsyncFailure(e);
     }
@@ -112,7 +117,7 @@ class _FavCard extends StatelessWidget {
           children: [
             host.photoUrl == null
                 ? const ColoredBox(color: C.cinema)
-                : Image.network(host.photoUrl!, fit: BoxFit.cover, alignment: Alignment.topCenter, errorBuilder: (_, __, ___) => const ColoredBox(color: C.cinema)),
+                : NetImage(host.photoUrl!, fit: BoxFit.cover, alignment: Alignment.topCenter, fallback: const ColoredBox(color: C.cinema)),
             const DecoratedBox(
               decoration: BoxDecoration(gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Color(0x00000000), Color(0xCC1A0B26)], stops: [0.45, 1])),
             ),

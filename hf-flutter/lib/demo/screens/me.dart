@@ -179,12 +179,14 @@ class _WalletTicketState extends State<WalletTicket> {
   Future<void> _load() async {
     if (!_live) return;
     try {
-      final w = await Services.instance.walletRepo.fetch(limit: 1);
-      if (mounted) {
-        setState(() {
-          _wallet = w;
-          _error = null;
-        });
+      // [HF-APP-CACHE-1] The last balance shows at once; the server's answer (always asked) replaces it.
+      await for (final w in Services.instance.walletRepo.watch(limit: 1)) {
+        if (mounted) {
+          setState(() {
+            _wallet = w;
+            _error = null;
+          });
+        }
       }
     } catch (e) {
       if (mounted) setState(() => _error = e);

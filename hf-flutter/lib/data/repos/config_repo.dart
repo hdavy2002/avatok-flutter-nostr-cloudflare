@@ -49,5 +49,11 @@ class ConfigRepo {
   final ApiClient _api;
 
   /// Public route: no sign-in needed.
-  Future<AppConfig> fetch() async => AppConfig.fromJson(await _api.getJson('/api/config', auth: false));
+  Future<AppConfig> fetch() async => AppConfig.fromJson(await _api.getJson('/api/config', auth: false, store: true));
+
+  /// [HF-APP-CACHE-1] The config this phone saw last (up to 30 days old), or null.
+  Future<AppConfig?> cached() async {
+    final j = await _api.peekJson('/api/config', auth: false, maxAge: const Duration(days: 30));
+    return j == null ? null : AppConfig.fromJson(j);
+  }
 }

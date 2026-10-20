@@ -82,8 +82,9 @@ class _RealAvailabilityScreenState extends State<RealAvailabilityScreen> {
       _edits.clear();
     });
     try {
-      final a = await _repo.availability();
-      if (mounted) setState(() => _state = AsyncData(a));
+      await for (final a in _repo.watchAvailability()) {
+        if (mounted) setState(() => _state = AsyncData(a)); // [HF-APP-CACHE-1] saved calendar first, then the server's
+      }
     } catch (e) {
       if (mounted) setState(() => _state = AsyncFailure(e));
     }

@@ -49,8 +49,10 @@ class _WalletScreenState extends State<WalletScreen> {
   Future<void> _load() async {
     setState(() => _state = const AsyncLoading());
     try {
-      final w = await _repo.fetch();
-      if (mounted) setState(() => _state = AsyncData(w));
+      // [HF-APP-CACHE-1] Last wallet first (balance + ledger), then the server's.
+      await for (final w in _repo.watch()) {
+        if (mounted) setState(() => _state = AsyncData(w));
+      }
     } catch (e) {
       if (mounted) setState(() => _state = AsyncFailure(e));
     }

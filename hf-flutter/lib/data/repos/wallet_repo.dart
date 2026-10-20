@@ -7,6 +7,7 @@ import '../api_exception.dart';
 import '../cashfree_checkout.dart';
 import '../in_app_checkout.dart';
 import '../models/wallet.dart';
+import '../response_cache.dart';
 
 /// Wallet and top-up (HF-WIRE-6).
 ///
@@ -31,7 +32,7 @@ class WalletRepo {
   /// [retryDelay] before the error reaches the screen; refusals (401, 4xx) are not retried. [HF-WIRE-20]
   Future<WalletSnapshot> fetch({String? cursor, int limit = 20}) async {
     Future<WalletSnapshot> once() async =>
-        WalletSnapshot.fromJson(await _api.getJson('/api/hf/app/wallet', query: {'cursor': cursor, 'limit': limit}));
+        WalletSnapshot.fromJson(await _api.getJson('/api/hf/app/wallet', query: {'cursor': cursor, 'limit': limit}, store: cursor == null));
     try {
       return await once();
     } on ApiException catch (e) {
@@ -40,6 +41,11 @@ class WalletRepo {
       return once();
     }
   }
+
+  /// [HF-APP-CACHE-1] The last wallet this account saw, painted at once, then the server's answer. Money is NEVER served from the cache
+  /// alone ([CachePolicy.live] has no fresh window), and any write call (top-up, booking, cancel, decline...) throws the cached copy away.
+  Stream<WalletSnapshot> watch({int limit = 20}) =>
+      _api.watchJson('/api/hf/app/wallet', query: {'limit': limit}, policy: CachePolicy.live).map(WalletSnapshot.fromJson);
 
   /// [name] and [email] are what the payer typed on our "Your details" screen because the profile had none; the server hands them
   /// to the payment provider for the receipt (used for this order only, and only if the profile has nothing).

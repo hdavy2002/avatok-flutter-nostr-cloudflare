@@ -6,6 +6,7 @@ import 'package:webview_flutter_android/webview_flutter_android.dart';
 
 import '../core/brand.dart';
 import '../data/models/reel.dart';
+import '../ui/net_image.dart';
 import 'theme.dart';
 
 /// Whether the main Reels feed is on screen. The Reels tab stays alive offstage (indexed stack), so the feed must be told
@@ -221,7 +222,7 @@ class _ReelPlayerState extends State<ReelPlayer> with WidgetsBindingObserver {
   Widget _thumb() {
     final t = widget.reel.thumbUrl;
     if (t == null) return const ColoredBox(color: C.cinema);
-    return Image.network(t, fit: BoxFit.cover, errorBuilder: (_, __, ___) => const ColoredBox(color: C.cinema));
+    return NetImage(t, fit: BoxFit.cover, fallback: const ColoredBox(color: C.cinema));
   }
 
   @override

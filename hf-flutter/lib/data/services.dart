@@ -21,6 +21,7 @@ import 'repos/reels_repo.dart';
 import 'repos/search_repo.dart';
 import 'repos/wallet_repo.dart';
 import 'push.dart'; // [HF-BOOK-APPROVE-PUSH]
+import 'response_cache.dart'; // [HF-APP-CACHE-1]
 import 'telemetry.dart';
 
 /// The app-wide singletons: Clerk, the API client and the repositories. Plain Dart (no provider tree)
@@ -32,7 +33,13 @@ class Services {
   static final Services instance = Services._();
 
   late final ClerkApi clerk = ClerkClient();
-  late final ApiClient api = ApiClient(tokens: clerk.sessionToken, onSessionLost: _sessionLost);
+  /// [HF-APP-CACHE-1] Reads are cached on disk, per Clerk account (the account id scopes every key; sign-out wipes it).
+  late final ApiClient api = ApiClient(
+    tokens: clerk.sessionToken,
+    onSessionLost: _sessionLost,
+    cache: ResponseCache(persist: true),
+    accountId: () => user?.id,
+  );
   late final MeRepo meRepo = MeRepo(api);
   late final ConfigRepo configRepo = ConfigRepo(api);
   late final AuthRepo authRepo = AuthRepo(
@@ -70,11 +77,34 @@ class Services {
   bool get viewerIsInfluencer => demo.influencerJoined || me?.hostStatus != null;
 
   Future<void> _sessionLost() async {
+    _forgetCached();
     user = null;
     me = null;
+    _prefetchedFor = null;
     PushNotifications.forget(); // [HF-BOOK-APPROVE-PUSH] the session is gone, so the token cannot be removed from here
     demo.signOut();
     FavouritesStore.instance.reset(); // [HF-WIRE-9]
+  }
+
+  /// [HF-APP-CACHE-1] Wipe this account's cached reads (memory and disk) so the next person on this phone never sees them.
+  void _forgetCached() {
+    final id = user?.id;
+    if (id != null && id.isNotEmpty) unawaited(api.cache.clearAccount(id));
+  }
+
+  /// [HF-APP-CACHE-1] Put the last `/me` this account loaded on screen state at once (no network). False when there is none.
+  Future<bool> restoreCachedMe() async {
+    if (!isSignedIn) return false;
+    if (me != null) return true;
+    try {
+      final m = await meRepo.cached();
+      if (m == null) return false;
+      me = m;
+      _syncDemoAccount();
+      return true;
+    } catch (_) {
+      return false;
+    }
   }
 
   /// Is there an active Clerk session on this device? Never throws.
@@ -94,9 +124,39 @@ class Services {
       me = await meRepo.fetch();
       _syncDemoAccount();
       unawaited(_syncPush());
+      unawaited(prefetch());
     } catch (_) {
       // keep what we had; the api client already reported the failure
     }
+  }
+
+  String? _prefetchedFor;
+
+  /// [HF-APP-CACHE-1] Warm the read cache once per account per app run, right after `/me` loads: wallet, the fan's bookings,
+  /// favourites, the search landing and topic chips, the first reels page, and for an influencer her bookings and calendar. Every
+  /// step is a plain cached GET (never a write), runs in parallel, and swallows its own errors.
+  Future<void> prefetch() async {
+    final id = user?.id;
+    if (id == null || id.isEmpty || _prefetchedFor == id) return;
+    _prefetchedFor = id;
+    final host = me?.hostStatus != null;
+    Future<void> quiet(Future<Object?> Function() run) async {
+      try {
+        await run();
+      } catch (_) {}
+    }
+
+    await Future.wait<void>([
+      quiet(() => walletRepo.fetch(limit: 1)),
+      quiet(() => walletRepo.fetch()),
+      quiet(() => bookingsRepo.mine()),
+      quiet(() => favouritesRepo.list()),
+      quiet(() => searchRepo.topics()),
+      quiet(() => searchRepo.search('')),
+      quiet(() => reelsRepo.feed()),
+      if (host) quiet(() => bookingsRepo.hostBookings()),
+      if (host) quiet(() => bookingsRepo.availability()),
+    ]);
   }
 
   /// [HF-BOOK-APPROVE-PUSH] Ask for the notification permission once and register this phone's push token for this
@@ -121,8 +181,10 @@ class Services {
     try {
       await clerk.signOut();
     } catch (_) {}
+    _forgetCached();
     user = null;
     me = null;
+    _prefetchedFor = null;
     demo.signOut();
     FavouritesStore.instance.reset(); // [HF-WIRE-9]
   }
@@ -145,16 +207,29 @@ class Services {
     final intro = IntroStore.read().then((seen) {
       if (seen) demo.introSeen = true;
     });
-    final session = restoreSession().then((_) => refreshMe());
+    // [HF-APP-CACHE-1] The saved /me and config are applied first, so the screens that open before the network answers already
+    // know who she is and whether approval is on; the fresh answers then replace them.
+    final session = restoreSession().then((_) async {
+      await restoreCachedMe();
+      await refreshMe();
+    });
     final config = () async {
+      try {
+        final saved = await configRepo.cached();
+        if (saved != null) {
+          bookingApprovalEnabled = saved.bookingApprovalEnabled;
+          updateStatus = saved.updateStatusFor(await installedBuild());
+        }
+      } catch (_) {}
       try {
         final cfg = await configRepo.fetch();
         updateStatus = cfg.updateStatusFor(await installedBuild());
         bookingApprovalEnabled = cfg.bookingApprovalEnabled;
       } catch (_) {
-        updateStatus = UpdateStatus.none;
+        // keep what the saved config said; with none saved this stays "none" / false
       }
     }();
+    unawaited(api.cache.prune());
     await Future.wait<void>([intro, session, config]);
     Telemetry.appOpen(coldMs: started.elapsedMilliseconds, signedIn: isSignedIn);
   }

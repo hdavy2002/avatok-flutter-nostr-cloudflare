@@ -5,6 +5,7 @@ import 'package:http/http.dart' as http;
 
 import '../core/brand.dart';
 import 'api_exception.dart';
+import 'response_cache.dart';
 import 'telemetry.dart';
 
 /// Where the client gets the Clerk session JWT (the Worker's Bearer token). Null means signed out.
@@ -29,7 +30,11 @@ class ApiClient {
     String? origin,
     this.timeout = const Duration(seconds: 15),
     this.clientTag = 'hf-android',
-  })  : _http = client ?? http.Client(),
+    ResponseCache? cache,
+    this.accountId,
+    this.retryDelay = const Duration(milliseconds: 700),
+  })  : cache = cache ?? ResponseCache(),
+        _http = client ?? http.Client(),
         _origin = origin ?? Brand.apiOrigin,
         _reporter = reporter ?? _defaultReporter;
 
@@ -37,6 +42,15 @@ class ApiClient {
   final Future<void> Function()? onSessionLost;
   final Duration timeout;
   final String clientTag;
+
+  /// [HF-APP-CACHE-1] The read cache (memory only unless the app passes a persistent one) and the id of the signed-in account that
+  /// scopes it. A signed-in read with no account id is never cached.
+  final ResponseCache cache;
+  final String? Function()? accountId;
+
+  /// Pause before the one automatic second try of a cached-read refresh that failed momentarily ([watchJson]).
+  final Duration retryDelay;
+  final Map<String, Future<Map<String, dynamic>>> _inflight = {};
   final http.Client _http;
   final String _origin;
   final FailureReporter _reporter;
@@ -94,6 +108,7 @@ class ApiClient {
         if (!err.isNotEnabled) _report(method, endpoint, err, sw);
         throw err;
       }
+      _afterOk(method, endpoint);
       if (text.trim().isEmpty) return <String, dynamic>{};
       try {
         return jsonDecode(text);
@@ -114,6 +129,13 @@ class ApiClient {
       _report(method, endpoint, err, sw);
       throw err;
     }
+  }
+
+  /// [HF-APP-CACHE-1] A write call went through: forget cached reads (wallet, bookings, me, availability, slots...) so no screen
+  /// shows a number from before it. Counting a reel view is not a change anyone sees.
+  void _afterOk(String method, String endpoint) {
+    if (method == 'GET' || method == 'HEAD' || endpoint.endsWith('/view')) return;
+    unawaited(cache.invalidateAfterWrite());
   }
 
   void _report(String method, String endpoint, ApiException err, Stopwatch sw) {
@@ -147,8 +169,101 @@ class ApiClient {
     return http.Response.fromStream(streamed).timeout(timeout);
   }
 
-  Future<Map<String, dynamic>> getJson(String path, {Map<String, Object?>? query, bool auth = true}) async =>
-      asMap(await request('GET', path, query: query, auth: auth));
+  /// [store] true keeps the answer in the read cache for [peekJson] / [watchJson] (write-through). Default off, so existing
+  /// callers behave exactly as before.
+  Future<Map<String, dynamic>> getJson(String path, {Map<String, Object?>? query, bool auth = true, bool store = false}) async {
+    final key = store ? _keyOf(path, query, auth) : null;
+    final gen = cache.generation;
+    final j = asMap(await request('GET', path, query: query, auth: auth));
+    if (key != null && gen == cache.generation) await cache.write(key, j);
+    return j;
+  }
+
+  String? _keyOf(String path, Map<String, Object?>? query, bool auth) {
+    String? scope;
+    if (!auth) {
+      scope = 'pub';
+    } else {
+      final id = accountId?.call();
+      if (id != null && id.isNotEmpty) scope = 'u:$id';
+    }
+    return scope == null ? null : cache.keyFor(scope, path, query);
+  }
+
+  /// The last stored answer for this GET (any age up to [maxAge]), or null. Never touches the network.
+  Future<Map<String, dynamic>?> peekJson(String path,
+      {Map<String, Object?>? query, bool auth = true, Duration maxAge = const Duration(days: 3)}) async {
+    final key = _keyOf(path, query, auth);
+    if (key == null) return null;
+    final hit = await cache.read(key, maxAge);
+    final j = hit?.json;
+    return j is Map ? Map<String, dynamic>.from(j) : null;
+  }
+
+  /// [HF-APP-CACHE-1] Stale-while-revalidate read. Emits the cached answer first (when there is one inside [policy].maxAge), then the
+  /// fresh one if it differs. A cached answer younger than [policy].fresh is the only emission. If the network fails after a cached
+  /// answer was shown, the error is swallowed (the person keeps what they see); with nothing shown, it is thrown like [getJson].
+  /// One automatic retry on a momentary failure when [retry]. Concurrent watchers of the same URL share one request.
+  Stream<Map<String, dynamic>> watchJson(
+    String path, {
+    Map<String, Object?>? query,
+    bool auth = true,
+    CachePolicy policy = CachePolicy.list,
+    bool retry = true,
+  }) async* {
+    final key = _keyOf(path, query, auth);
+    CacheHit? hit;
+    String? shown;
+    if (key != null) {
+      final h = await cache.read(key, policy.maxAge);
+      if (h != null && h.json is Map) {
+        hit = h;
+        shown = jsonEncode(h.json);
+        yield Map<String, dynamic>.from(h.json as Map);
+        if (cache.now().difference(h.at) < policy.fresh) {
+          Telemetry.cacheOutcome(path, 'hit_fresh', ageSeconds: cache.now().difference(h.at).inSeconds);
+          return;
+        }
+      }
+    }
+    try {
+      final fresh = await _fetchShared(path, query, auth, key, retry);
+      Telemetry.cacheOutcome(path, hit == null ? 'miss' : 'revalidated',
+          ageSeconds: hit == null ? null : cache.now().difference(hit.at).inSeconds);
+      if (hit == null || jsonEncode(fresh) != shown) yield fresh;
+    } on ApiException {
+      if (hit == null) rethrow;
+      Telemetry.cacheOutcome(path, 'stale_on_error');
+    }
+  }
+
+  Future<Map<String, dynamic>> _fetchShared(String path, Map<String, Object?>? query, bool auth, String? key, bool retry) async {
+    if (key == null) return _fetchOnce(path, query, auth, null, retry);
+    final running = _inflight[key];
+    if (running != null) return running;
+    final f = _fetchOnce(path, query, auth, key, retry);
+    _inflight[key] = f;
+    try {
+      return await f;
+    } finally {
+      if (identical(_inflight[key], f)) _inflight.remove(key);
+    }
+  }
+
+  Future<Map<String, dynamic>> _fetchOnce(String path, Map<String, Object?>? query, bool auth, String? key, bool retry) async {
+    final gen = cache.generation;
+    Future<Map<String, dynamic>> go() async => asMap(await request('GET', path, query: query, auth: auth));
+    Map<String, dynamic> j;
+    try {
+      j = await go();
+    } on ApiException catch (e) {
+      if (!retry || !e.isTransient) rethrow;
+      await Future<void>.delayed(retryDelay);
+      j = await go();
+    }
+    if (key != null && gen == cache.generation) await cache.write(key, j);
+    return j;
+  }
 
   Future<List<dynamic>> getList(String path, {Map<String, Object?>? query, bool auth = true}) async {
     final v = await request('GET', path, query: query, auth: auth);

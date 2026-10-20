@@ -53,12 +53,21 @@ class _RealSearchState extends State<RealSearch> {
   }
 
   Future<void> _loadHome() async {
-    unawaited(widget.repo.topics().then((t) {
-      if (mounted) setState(() => _topics = t);
-    }).catchError((_) {}));
-    unawaited(widget.repo.topInvites().then((t) {
-      if (mounted) setState(() => _top = t);
-    }).catchError((_) {}));
+    // [HF-APP-CACHE-1] saved chips / invite list first, then the server's
+    unawaited(() async {
+      try {
+        await for (final t in widget.repo.watchTopics()) {
+          if (mounted) setState(() => _topics = t);
+        }
+      } catch (_) {}
+    }());
+    unawaited(() async {
+      try {
+        await for (final t in widget.repo.watchTopInvites()) {
+          if (mounted) setState(() => _top = t);
+        }
+      } catch (_) {}
+    }());
     await _search();
   }
 
@@ -73,7 +82,12 @@ class _RealSearchState extends State<RealSearch> {
     setState(() => _state = const AsyncLoading());
     AsyncState<SearchResult> next;
     try {
-      next = AsyncData(await widget.repo.search(_q.text, topic: _topic, platform: _platform));
+      // [HF-APP-CACHE-1] the same search seen before paints at once, then the server's answer replaces it
+      await for (final r in widget.repo.watchSearch(_q.text, topic: _topic, platform: _platform)) {
+        if (!mounted || run != _run) return;
+        setState(() => _state = AsyncData(r));
+      }
+      return;
     } catch (e) {
       next = AsyncFailure(e);
     }

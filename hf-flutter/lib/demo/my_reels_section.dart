@@ -7,6 +7,7 @@ import '../data/api_exception.dart';
 import '../data/models/reel.dart';
 import '../data/repos/reels_repo.dart';
 import '../data/services.dart';
+import '../ui/net_image.dart';
 import 'reels_real.dart';
 import 'theme.dart';
 import 'widgets.dart';
@@ -123,7 +124,7 @@ class _MyReelsSectionState extends State<MyReelsSection> {
                 children: [
                   r.thumbUrl == null
                       ? const ColoredBox(color: C.cinema)
-                      : Image.network(r.thumbUrl!, fit: BoxFit.cover, errorBuilder: (_, __, ___) => const ColoredBox(color: C.cinema)),
+                      : NetImage(r.thumbUrl!, fit: BoxFit.cover, fallback: const ColoredBox(color: C.cinema)),
                   if (r.visible) const Positioned(top: 6, right: 6, child: Icon(Icons.check_circle_rounded, color: C.lemon, size: 22)),
                   Positioned(left: 6, bottom: 6, child: Text('▶ ${compactCount(r.views)}', style: t(14, color: C.ivory))),
                 ],

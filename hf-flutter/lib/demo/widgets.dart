@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import '../data/demo_mode.dart';
 import '../data/repos/auth_repo.dart';
 import '../data/services.dart';
+import '../ui/net_image.dart';
 import 'data.dart';
 import 'screens/sheets.dart';
 import 'state.dart';
@@ -425,7 +426,7 @@ class Avatar extends StatelessWidget {
     );
     final face = ClipOval(
       child: who.avatarUrl != null
-          ? Image.network(who.avatarUrl!, fit: BoxFit.cover, alignment: Alignment.topCenter, errorBuilder: (_, __, ___) => fallback)
+          ? NetImage(who.avatarUrl!, fit: BoxFit.cover, alignment: Alignment.topCenter, fallback: fallback)
           : who.portrait == null
           ? fallback
           : Container(
