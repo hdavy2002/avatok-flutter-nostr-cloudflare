@@ -13,6 +13,8 @@ import 'screens/influencer.dart';
 import 'screens/intro.dart';
 import 'screens/me.dart';
 import 'screens/money.dart';
+import 'screens/creator_page.dart'; // [HF-REELS-FAV-1]
+import 'screens/page_moved.dart';
 import 'screens/profile.dart';
 import 'screens/search.dart';
 import 'reel_player.dart';
@@ -25,6 +27,7 @@ final router = GoRouter(
   navigatorKey: rootKey,
   observers: [ReelGate.observer],
   initialLocation: '/splash',
+  errorBuilder: hfErrorPage, // [HF-REELS-FAV-1] never the raw GoException
   routes: [
     GoRoute(path: '/splash', builder: (_, __) => const SplashScreen()),
     GoRoute(path: '/intro', builder: (_, __) => const IntroScreen()),
@@ -40,6 +43,7 @@ final router = GoRouter(
         StatefulShellBranch(routes: [GoRoute(path: '/me', builder: (_, __) => const MeScreen())]),
       ],
     ),
+    GoRoute(parentNavigatorKey: rootKey, path: '/creator/:platform/:handle', builder: (_, s) => inviteProfileFromRoute(s)), // [HF-REELS-FAV-1] creator not on the app yet
     GoRoute(parentNavigatorKey: rootKey, path: '/profile/:id', builder: (_, s) => ProfileScreen(id: s.pathParameters['id']!)),
     GoRoute(
       parentNavigatorKey: rootKey,

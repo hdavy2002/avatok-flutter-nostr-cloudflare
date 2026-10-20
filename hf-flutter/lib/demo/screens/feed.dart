@@ -21,6 +21,7 @@ import '../reels_real.dart';
 import '../state.dart';
 import '../theme.dart';
 import '../widgets.dart';
+import 'creator_page.dart';
 import 'sheets.dart';
 
 /// Reels feed: full-screen cards, swipe up/down. Only ONLINE influencers are shown (HF-REEL-4).
@@ -129,6 +130,9 @@ class _RealFeedState extends State<RealFeed> {
     }
   }
 
+  /// [HF-REELS-FAV-1] The reels of an invite creator that this feed already holds (for the creator page).
+  List<FeedReel> _reelsOfCreator(FeedReel r) => [for (final x in _items) if (x.invite != null && x.invite!.key == r.invite?.key) x];
+
   void _onPage(int i) {
     setState(() => _index = i);
     if (i >= _items.length - 3) unawaited(_loadMore());
@@ -172,6 +176,7 @@ class _RealFeedState extends State<RealFeed> {
               active: i == _index && ReelGate.visible.value,
               preload: i == _index + 1,
               searchRepo: widget.searchRepo,
+              creatorReels: _reelsOfCreator,
             ),
           ),
           Positioned(
@@ -243,7 +248,10 @@ class _FeedScreenState extends State<_DemoFeed> {
 }
 
 class ReelPage extends StatefulWidget {
-  const ReelPage({super.key, required this.reel, required this.active, this.real, this.preload = false, this.searchRepo});
+  const ReelPage({super.key, required this.reel, required this.active, this.real, this.preload = false, this.searchRepo, this.creatorReels});
+
+  /// [HF-REELS-FAV-1] Lets the channel page of an invite creator show their reels.
+  final List<FeedReel> Function(FeedReel)? creatorReels;
 
   /// Used by the INVITE button of an invite reel; the app uses [Services].
   final SearchRepo? searchRepo;
@@ -286,6 +294,21 @@ class _ReelPageState extends State<ReelPage> with SingleTickerProviderStateMixin
   void dispose() {
     _play.dispose();
     super.dispose();
+  }
+
+  /// [HF-REELS-FAV-1] Avatar and name: an on-platform influencer opens the public profile; a creator not on the app
+  /// opens the invite page. A reel with no slug never pushes `/profile/` (that was the "Page Not Found").
+  void _openChannel(BuildContext context) {
+    final real = widget.real;
+    final inv = real?.invite;
+    if (inv != null) {
+      final reels = widget.creatorReels?.call(real!) ?? [real!];
+      context.push(creatorPath(inv), extra: InviteProfileArgs(creator: inv, reels: reels.isEmpty ? [real!] : reels));
+      return;
+    }
+    final id = real != null ? real.host.slug : widget.reel.who.id;
+    if (id.isEmpty) return;
+    context.push('/profile/${Uri.encodeComponent(id)}');
   }
 
   @override
@@ -355,9 +378,9 @@ class _ReelPageState extends State<ReelPage> with SingleTickerProviderStateMixin
                 children: [
                   Semantics(
                     button: true,
-                    label: inviteOf != null ? who.name : 'Open ${who.name} profile',
+                    label: 'Open ${who.name} profile',
                     child: GestureDetector(
-                      onTap: inviteOf != null ? null : () => context.push('/profile/${who.id}'),
+                      onTap: () => _openChannel(context),
                       child: Stack(
                         clipBehavior: Clip.none,
                         alignment: Alignment.bottomCenter,
@@ -384,7 +407,15 @@ class _ReelPageState extends State<ReelPage> with SingleTickerProviderStateMixin
                       context,
                       () => realSlug == null
                           ? demo.toggleFav(r.id)
-                          : unawaited(toggleFavourite(realSlug, onError: (_) => toast(context, 'Could not save that. Please try again.'))),
+                          : unawaited(toggleFavourite(
+                              realSlug,
+                              onDone: (saved) {
+                                if (context.mounted) toast(context, saved ? 'Saved to your favourites' : 'Removed from your favourites');
+                              },
+                              onError: (e) {
+                                if (context.mounted) toast(context, e is ApiException ? e.userMessage : 'Could not save that. Please try again.');
+                              },
+                            )),
                       reason: 'to save favourites',
                     ),
                     child: Icon(faved ? Icons.favorite_rounded : Icons.favorite_border_rounded, color: faved ? C.rani : C.deep, size: 26),
@@ -419,7 +450,7 @@ class _ReelPageState extends State<ReelPage> with SingleTickerProviderStateMixin
                           crossAxisAlignment: WrapCrossAlignment.center,
                           children: [
                             GestureDetector(
-                              onTap: () => context.push('/profile/${who.id}'),
+                              onTap: () => _openChannel(context),
                               child: Text(who.name, style: t(22, color: C.ivory, ls: 0.02)),
                             ),
                             if (inviteOf != null)
@@ -450,7 +481,7 @@ class _ReelPageState extends State<ReelPage> with SingleTickerProviderStateMixin
                   ),
                   const SizedBox(height: 16),
                   if (inviteOf != null)
-                    _InviteButton(creator: inviteOf, repo: widget.searchRepo)
+                    InviteButton(creator: inviteOf, repo: widget.searchRepo)
                   else
                   TicketButton(
                     label: 'CALL NOW',
@@ -486,17 +517,17 @@ class InviteVotes {
 }
 
 /// [HF-WIRE-22] HF-REEL-40: the INVITE button of an invite reel. One tap = one vote (HF-REEL-9), needs an account, then reads VOTED.
-class _InviteButton extends StatefulWidget {
-  const _InviteButton({required this.creator, this.repo});
+class InviteButton extends StatefulWidget {
+  const InviteButton({required this.creator, this.repo});
 
   final InviteCreator creator;
   final SearchRepo? repo;
 
   @override
-  State<_InviteButton> createState() => _InviteButtonState();
+  State<InviteButton> createState() => InviteButtonState();
 }
 
-class _InviteButtonState extends State<_InviteButton> {
+class InviteButtonState extends State<InviteButton> {
   bool _busy = false;
 
   Future<void> _vote() async {

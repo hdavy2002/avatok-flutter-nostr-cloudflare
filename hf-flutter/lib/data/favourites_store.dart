@@ -26,6 +26,14 @@ class FavouritesStore extends ChangeNotifier {
   Future<void>? _loading;
 
   bool isFav(String slug) => _slugs.contains(slug);
+
+  /// How many toggles the server has confirmed. A list that is open elsewhere refreshes when this moves (not on the
+  /// optimistic flip, which would race the server write).
+  int get syncedCount => _synced;
+  int _synced = 0;
+
+  /// The saved slugs now (a copy).
+  Set<String> get slugs => Set.of(_slugs);
   bool get loaded => _loaded;
 
   /// Loads the saved list once (and again after [reset]). Never throws: the ♥ simply starts empty.
@@ -71,6 +79,8 @@ class FavouritesStore extends ChangeNotifier {
       } else {
         await _repo.add(slug);
       }
+      _synced++;
+      notifyListeners();
       return !was;
     } catch (_) {
       if (was) {
@@ -85,9 +95,10 @@ class FavouritesStore extends ChangeNotifier {
 }
 
 /// Tap handler body for the ♥: toggles and reports a failure through [onError] (a toast).
-Future<void> toggleFavourite(String slug, {required void Function(Object error) onError, FavouritesStore? store}) async {
+Future<void> toggleFavourite(String slug, {required void Function(Object error) onError, void Function(bool saved)? onDone, FavouritesStore? store}) async {
   try {
-    await (store ?? FavouritesStore.instance).toggle(slug);
+    final saved = await (store ?? FavouritesStore.instance).toggle(slug);
+    onDone?.call(saved);
   } catch (e) {
     onError(e);
   }

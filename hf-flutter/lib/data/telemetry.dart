@@ -53,6 +53,7 @@ abstract final class Telemetry {
     'hf_app_booking_accept_tapped',
     'hf_app_booking_decline_tapped',
     'hf_app_booking_mode_changed',
+    'hf_page_not_found', // [HF-REELS-FAV-1] unknown route shown the friendly page
   };
 
   static TelemetrySink sink = _debugSink;

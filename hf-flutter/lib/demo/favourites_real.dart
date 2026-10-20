@@ -25,11 +25,48 @@ class RealFavourites extends StatefulWidget {
 
 class _RealFavouritesState extends State<RealFavourites> {
   AsyncState<List<FavouriteHost>> _state = const AsyncLoading();
+  FavouritesStore? _store;
+  int _seenSynced = 0;
 
   @override
   void initState() {
     super.initState();
+    try {
+      _store = FavouritesStore.instance;
+      _seenSynced = _store!.syncedCount;
+      _store!.addListener(_onStore);
+    } catch (_) {
+      _store = null; // no services yet (a bare widget test): the list simply loads once
+    }
     unawaited(_load());
+  }
+
+  @override
+  void dispose() {
+    _store?.removeListener(_onStore);
+    super.dispose();
+  }
+
+  /// [HF-REELS-FAV-1] The tab stays alive under the bottom bar, so a ♥ tapped on a reel must refresh the list.
+  void _onStore() {
+    final s = _state;
+    final store = _store;
+    if (!mounted || store == null || !store.loaded || s is! AsyncData<List<FavouriteHost>>) return;
+    if (store.syncedCount == _seenSynced) return; // only a server-confirmed change refreshes the list
+    _seenSynced = store.syncedCount;
+    final shown = {for (final h in s.value) h.slug};
+    final saved = store.slugs;
+    if (shown.length != saved.length || !shown.containsAll(saved)) unawaited(_reload());
+  }
+
+  /// A quiet refresh: the grid stays on screen.
+  Future<void> _reload() async {
+    try {
+      final items = await widget.repo.list();
+      if (mounted) setState(() => _state = AsyncData(items));
+    } catch (_) {
+      // keep what is shown; pull-to-open again retries
+    }
   }
 
   Future<void> _load() async {
