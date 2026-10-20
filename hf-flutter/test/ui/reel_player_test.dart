@@ -30,7 +30,7 @@ void main() {
     js = [];
     launched = [];
     events = [];
-    msgs = StreamController<String>.broadcast();
+    msgs = StreamController<String>.broadcast(sync: true); // sync: the rebuild must be scheduled before tester.pump looks for a frame
     ReelPlayer.testRunJs = js.add;
     ReelPlayer.testMessages = msgs;
     ReelPlayer.testLaunch = launched.add;
