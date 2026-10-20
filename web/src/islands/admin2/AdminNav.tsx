@@ -130,7 +130,7 @@ function NavPill({ label, className }: { label?: string; className?: string }) {
 
 /** Paid shop orders waiting to be placed with the printer. [HF-ADMIN-SPEED-2] Shop screens announce the number themselves
  * (`shop-admin:to-print`); it is remembered for the tab so other pages show the last known badge. No page fires GET /api/admin/v2/shop/kpis
- * on load any more (it cost ~0.9 s of worker time on every Hello Fraands admin page that never shows shop numbers). The badge is refreshed
+ * on load any more (it cost ~0.9 s of worker time on every brand admin page that never shows shop numbers). The badge is refreshed
  * lazily, once per tab, only when the Shop group is actually opened on a shop page (that page's own fetch announces it). */
 const TO_PRINT_KEY = 'admin2:to-print';
 function useToPrint(_ready: boolean, _active: AdminKey): number {
