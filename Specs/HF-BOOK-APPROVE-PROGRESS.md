@@ -31,11 +31,11 @@
 |---|---|---|---|---|---|
 | 0 | Plan + tracker written | ✅ | — | (see git log `[HF-BOOK-APPROVE-0]`) | 2026-10-20. Plan + this file. Waiting on owner answers to plan §9 before Phase 4/5 copy is final; Phases 1–3 can start on the defaults. |
 | 0b | Owner answers §9 recorded (plan §9a) + API contract fixed (plan §9b) | ✅ | — | `[HF-BOOK-APPROVE-0B]` | 2026-10-20. Rulebook rows HF-BOOK-1…7 are written by the backend agent in Phase 1's commit. |
-| 1–3 | Backend (agent "backend"): approval state, settings, accept/decline, 24 h expiry refund cron, topics (+3 new), messages, open-window alert cron, money monitor, rulebook rows | ✅ (code, not landed) | `../wt-hf-book-approve-be` / `issue/hf-book-approve-be` | `0c3f4a8c` | 2026-10-20. Done: flag hfBookingApprovalEnabled, 3 migrations (alters, create, presence-online), accept/decline/booking-settings routes, expiry+nudge cron, open-window cron, money monitor, topics, rulebook HF-BOOK-1..7, manifest, telemetry, 43 new tests. Not landed/deployed. |
+| 1–3 | Backend: approval state, settings, accept/decline, 24 h expiry refund cron, topics (+3), messages, open-window alerts, money monitor, rulebook HF-BOOK-1..7 | ✅ landed on main | integ branch | `3f9da18f` | 3 migrations: `2026-10-20-hf-booking-approval-alters.sql` (d1_apply_alters.py), `2026-10-20-hf-booking-approval.sql`, `2026-10-20-hf-presence-online.sql` (plain execute). Flag hfBookingApprovalEnabled. |
 | 4 | Design mocks | ⏭ SKIPPED | — | — | Owner waived 2026-10-20; visual check on phone in Phase 13. |
-| 5+6 | App (agent "app-inf-a"): footer Online/Offline + Settings rows + availability calendar drag-select (moved to `screens/availability_real.dart`) | ⬜ | `../wt-hf-book-approve-app-a` | — | — |
-| 7+8 | App (agent "app-b"): data layer (models/repo for §9b), fan booking flow with topic + approval copy + pending states, fan My bookings, influencer Bookings page (mode switch, pending Accept/Decline, upcoming) + deep links | ⬜ | `../wt-hf-book-approve-app-b` | — | — |
-| 9 | Verify + land: coordinator reviews each agent, vitest, tsc, ship gate, design + brand guard, CI `hf-flutter.yml mode=check` on main | ⬜ | — | — | — |
+| 5+6 | App: footer Online/Offline pill (influencer bar), Me/Settings rows, drag-select availability calendar (`screens/availability_real.dart`) | ✅ landed on main | integ branch | `973e93ac` | Not compiled locally; CI mode=check is the compile. |
+| 7+8 | App: data layer (§9b), fan flow with topic + approval copy, My bookings chips, influencer Bookings approval page, booking deep links | ✅ landed on main | integ branch | `dd94af23` | Known gap: app has no push-tap handling (firebase_messaging unused) — links only. Push paths /dashboard/appointments and /host don't map to app routes. |
+| 9 | Verify + land | 🟨 IN PROGRESS | `../wt-hf-book-approve-integ` | — | Last step: 3 agent branches cherry-picked into integ, telemetry.dart conflict merged, worker tsc clean, 70 booking tests pass. Next: push to main, run `gh workflow run hf-flutter.yml --ref main -f mode=check`, fix compile errors. |
 | 10 | Go-live: migrations, worker deploy, `hfBookingApprovalEnabled=true`, all live influencers → Online | ⬜ | — | — | Owner approved 2026-10-20. |
 | 11 | Owner account → influencer; second test fan account | ⬜ | — | — | — |
 | 12 | Build APK (`hf-flutter.yml mode=apk demo=false`) + sideload via `scripts/hf_sideload.sh` | ⬜ | — | — | Phone on USB, USB debugging on. |
@@ -45,6 +45,7 @@
 See plan §9a (2026-10-20): all influencers default Online (existing + new); reminders stay 1 h + 10 min; add topics "Talk about my channel", "Just friendship", "General advice"; footer influencer-only; no SMS; mock gate waived; build + sideload + both-sides test approved.
 
 ## Log (newest first)
+- 2026-10-20 — Coordinator: merged be + app-a + app-b into issue/hf-book-approve-integ; tsc + booking tests green; landing to main.
 - 2026-10-20 — Backend agent: DONE, committed `0c3f4a8c` (not pushed). tsc green; new tests pass; full-suite failures identical to origin/main baseline (pre-existing).
 - 2026-10-20 — Backend agent: code complete, tsc green, existing HF tests green (hf_calls_end/corrections failures are pre-existing on origin/main: no such column presence_call_id in the test shim). Writing tests + docs next.
 - 2026-10-20 — Phase 1-3 backend agent started in ../wt-hf-book-approve-be.
