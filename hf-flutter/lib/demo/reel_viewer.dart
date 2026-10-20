@@ -59,7 +59,8 @@ class _ReelViewerState extends State<ReelViewer> {
                   Positioned(
                     left: 22,
                     right: 22,
-                    bottom: 28,
+                    // Above the phone's own navigation bar.
+                    bottom: 28 + MediaQuery.paddingOf(context).bottom,
                     child: IgnorePointer(child: Text('${r.caption}\n▶ ${compactCount(r.views)}', style: t(15, color: C.ivory, w: FontWeight.w600, h: 1.4))),
                   ),
                 ],
