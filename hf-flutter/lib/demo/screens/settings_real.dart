@@ -185,7 +185,7 @@ class _RealSettingsScreenState extends State<RealSettingsScreen> {
                   if (me?.hostStatus != null) _link('Channels', () => context.push('/inf/channels')),
                   // [HF-BOOK-APPROVE-5] Influencer-only: her calendar and bookings live in her own shell, so go (not push).
                   if (me?.hostStatus != null) _link('Availability calendar', () => context.go('/inf/availability')),
-                  if (me?.hostStatus != null) _link('Bookings', () => context.go('/inf/bookings')),
+                  if (me?.hostStatus != null) _link('Calls booked with me', () => context.go('/inf/bookings')),
                   const SizedBox(height: 18),
                   Text('WhatsApp messages', style: t(18, color: C.maroon)),
                   if (_prefsFailed)

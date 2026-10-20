@@ -91,11 +91,13 @@ export async function isBlockedEitherWay(env: Env, a: string, b: string): Promis
 }
 
 // ── cron (every 5 min, from scheduled()) ─────────────────────────────────────
-/** Auto-offline after 8 h without a heartbeat; poke the DO of any call stuck in a ringing state; drop orphaned `busy`. */
+/** Poke the DO of any call stuck in a ringing state; drop orphaned `busy`. */
 export async function runHfCallsCron(env: Env): Promise<void> {
   const now = Date.now();
   try {
-    await env.DB_META.prepare("UPDATE hf_hosts SET presence='offline', presence_at=?1 WHERE presence='online' AND (presence_at IS NULL OR presence_at < ?2)").bind(now, now - PRESENCE_TTL_MS).run();
+    // [HF-BOOK-APPROVE-QA-1] No more auto-offline after 8 h without a heartbeat: the owner's rule (HF-REEL-13, HF-BOOK-1) is that the
+    // influencer's own switch decides, default Online. The app never sent a heartbeat, so this sweep silently took every influencer
+    // offline 8 h after their last toggle (and undid the 2026-10-20 "everyone Online" change). PRESENCE_TTL_MS is kept for reference.
     // A host marked busy with no live call behind it (e.g. a lost DO) must not stay busy forever.
     await env.DB_META.prepare(
       `UPDATE hf_hosts SET presence='online', presence_at=?1, presence_call_id=NULL WHERE presence='busy' AND presence_at < ?2

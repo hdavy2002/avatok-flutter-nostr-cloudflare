@@ -325,6 +325,7 @@ Plan: `Specs/PLAN-2026-10-20-HF-BOOKING-APPROVAL.md`.
 | HF-BOOK-5 | **A pending booking is not a call**: it is never reminded, never auto-started and cannot be started; it still blocks the slot and counts as busy for overlap checks. | ADOPTED | TODO | DONE (code, not landed) |
 | HF-BOOK-6 | **Messages**: push, WhatsApp (paced outbox) and email for request, accepted, declined, expired and a nudge to the influencer 4 hours before the deadline. Reminders stay at 1 hour and 10 minutes (no 30-minute one). Wording is neutral and shows no phone numbers; blocked users and people who switched appointment reminders off are respected. | ADOPTED | TODO | DONE (code, not landed) |
 | HF-BOOK-7 | **Topics and open-window alerts**: a fan may pick one of the influencer's own topics (`talk-about-my-channel`, `just-friendship`, `general-advice` added); influencers can switch on an alert when an availability window starts (no alerts 11 pm to 8 am IST). New live influencers start Online. The money monitor flags any pending booking past its deadline and any decline or expiry without a release. | ADOPTED | TODO | DONE (code, not landed) |
+| HF-BOOK-8 | **Online by default, the switch decides** (owner 2026-10-20). Every influencer, existing and new, is Online unless she switches Offline with the button in the middle of her bottom bar. Nothing switches her off by itself: the old "offline after 8 hours without a heartbeat" sweep was removed (HF-BOOK-APPROVE-QA-1) because the app never sent heartbeats and it silently took everyone offline. Account closing still forces Offline (HF-PAY-14). | ADOPTED | N/A | DONE |
 
 ---
 
@@ -399,6 +400,7 @@ else, or come back later."
 
 | Date | Change |
 |---|---|
+| 2026-10-20 | HF-BOOK-APPROVE-QA-1 (phone test): HF-BOOK-8 — Online by default, no auto-offline sweep; saving availability keeps booked/pending times open instead of refusing the save. |
 | 2026-10-16 | HF-HOME-NATIVE-3 (owner): rejected previous image-inspired layout; requested a completely new native layout and immediate publication, with abundant oversized Indian artwork, torn images and meme stickers. HF-SITE-19 supersedes HF-SITE-18. |
 | 2026-10-17 | HF-DESI-HOME-1 (owner): desi design is the homepage (HF-SITE-20 supersedes HF-SITE-19), with the real shared header (Explore, How it works, Blog, Sign in / Dashboard, Join us) and footer. Header: no space above/below the logo, bigger logo, sticky with a shadow (HF-SITE-14 updated). Footer Explore column: "Women-only lane" → /women-only and "Earn with us" → /hosts/join (the homepage has no such sections). |
 | 2026-10-16 | HF-HOME-SHARP-2 (owner): fresh independent creator photos and scalable Indian artwork replace blurry mock crops. Explore header/footer and fluid width/type replace the boxed poster layout. Design concept and Design preview text removed; app download band added, with iPhone Coming soon until a listing is supplied. |

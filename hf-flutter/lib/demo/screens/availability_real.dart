@@ -525,24 +525,28 @@ class _RealAvailabilityScreenState extends State<RealAvailabilityScreen> {
             mainAxisSize: MainAxisSize.min,
             children: [
               if (days.isNotEmpty) ..._slotPicker(a, days),
-              if (_edits.isNotEmpty) ...[
+              // [HF-BOOK-APPROVE-QA-1] The save row is shown as soon as days are picked (disabled until something changes), so the
+              // panel does not grow under her finger while she taps times.
+              if (_edits.isNotEmpty || days.isNotEmpty) ...[
                 if (days.isNotEmpty) const SizedBox(height: 12),
                 Text(
-                  _edits.length == 1 ? '1 day changed. Not saved yet.' : '${_edits.length} days changed. Not saved yet.',
-                  style: t(14, color: C.maroon),
+                  _edits.isEmpty
+                      ? 'Tap the times you want, then save.'
+                      : (_edits.length == 1 ? '1 day changed. Not saved yet.' : '${_edits.length} days changed. Not saved yet.'),
+                  style: t(14, color: _edits.isEmpty ? C.muted : C.maroon),
                 ),
                 const SizedBox(height: 8),
                 ChunkyButton(
-                  label: _saving ? 'SAVING…' : (_edits.length == 1 ? 'SAVE 1 DAY' : 'SAVE ${_edits.length} DAYS'),
+                  label: _saving ? 'SAVING…' : (_edits.isEmpty ? 'SAVE' : (_edits.length == 1 ? 'SAVE 1 DAY' : 'SAVE ${_edits.length} DAYS')),
                   height: 52,
-                  onTap: _saving ? null : () => unawaited(_saveAll()),
+                  onTap: _saving || _edits.isEmpty ? null : () => unawaited(_saveAll()),
                 ),
                 Align(
                   alignment: Alignment.centerLeft,
                   child: TextButton(
                     key: const ValueKey('avail-discard'),
                     style: TextButton.styleFrom(minimumSize: const Size(48, 48)),
-                    onPressed: _saving ? null : () => setState(_edits.clear),
+                    onPressed: _saving || _edits.isEmpty ? null : () => setState(_edits.clear),
                     child: Text('Discard changes', style: t(15, color: C.muted)),
                   ),
                 ),
