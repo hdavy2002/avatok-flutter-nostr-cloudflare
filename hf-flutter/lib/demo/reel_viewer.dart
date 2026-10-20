@@ -43,21 +43,24 @@ class _ReelViewerState extends State<ReelViewer> {
                 fit: StackFit.expand,
                 children: [
                   ReelPlayer(reel: r, active: i == _index, preload: i == _index + 1),
-                  const DecoratedBox(
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        begin: Alignment.topCenter,
-                        end: Alignment.bottomCenter,
-                        colors: [Color(0x001A0B26), Color(0x001A0B26), Color(0xE61A0B26)],
-                        stops: [0, 0.7, 1],
+                  const IgnorePointer(
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          begin: Alignment.topCenter,
+                          end: Alignment.bottomCenter,
+                          colors: [Color(0x001A0B26), Color(0x001A0B26), Color(0xE61A0B26)],
+                          stops: [0, 0.7, 1],
+                        ),
                       ),
+                      child: SizedBox.expand(),
                     ),
                   ),
                   Positioned(
                     left: 22,
                     right: 22,
                     bottom: 28,
-                    child: Text('${r.caption}\n▶ ${compactCount(r.views)}', style: t(15, color: C.ivory, w: FontWeight.w600, h: 1.4)),
+                    child: IgnorePointer(child: Text('${r.caption}\n▶ ${compactCount(r.views)}', style: t(15, color: C.ivory, w: FontWeight.w600, h: 1.4))),
                   ),
                 ],
               );

@@ -341,14 +341,18 @@ class _ReelPageState extends State<ReelPage> with SingleTickerProviderStateMixin
                         fallback: Center(child: Text('[ REEL VIDEO ]', style: t(14, color: C.ivory.withValues(alpha: 0.5), ls: 0.12)))),
               ),
             ),
-            const DecoratedBox(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: [Color(0xBF1A0B26), Color(0x001A0B26), Color(0x001A0B26), Color(0xEB1A0B26)],
-                  stops: [0, 0.18, 0.5, 0.86],
+            // IgnorePointer: the scrim must not swallow the tap that the player turns into play / pause
+            const IgnorePointer(
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [Color(0xBF1A0B26), Color(0x001A0B26), Color(0x001A0B26), Color(0xEB1A0B26)],
+                    stops: [0, 0.18, 0.5, 0.86],
+                  ),
                 ),
+                child: SizedBox.expand(),
               ),
             ),
             const Positioned(left: 0, top: 0, bottom: 0, child: SprocketRail()),

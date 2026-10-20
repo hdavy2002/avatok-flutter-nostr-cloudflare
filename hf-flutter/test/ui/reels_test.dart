@@ -124,19 +124,31 @@ void main() {
   });
 
   group('player url', () {
-    test('YouTube embeds autoplay inline and loop, and keep the official controls and branding', () {
+    test('YouTube runs in the IFrame API page with the app id as origin; the tap layer drives it', () {
       final u = ReelPlayer.embedUri('https://www.youtube.com/embed/abc12345');
       expect(u.queryParameters['autoplay'], '1');
       expect(u.queryParameters['playlist'], 'abc12345');
-      expect(u.queryParameters.containsKey('controls'), isFalse);
-      expect(u.queryParameters.containsKey('modestbranding'), isFalse);
-      expect(u.queryParameters['origin'], Brand.webOrigin);
       final html = ReelPlayer.youtubeHtml('https://www.youtube.com/embed/abc12345')!;
-      expect(html, contains('<iframe'));
-      expect(html, contains('https://www.youtube.com/embed/abc12345?'));
+      expect(html, contains('new YT.Player'));
+      expect(html, contains('videoId:"abc12345"'));
+      expect(html, contains('controls:0'));
+      expect(html, contains('origin:"https://${Brand.hfPlayPackageId}"'));
+      expect(html, contains('window.hfToggle'));
+      expect(html, contains('error:'));
       expect(ReelPlayer.youtubeHtml('https://www.instagram.com/reel/Cx12345/embed'), isNull);
       expect(ReelPlayer.youtubeHtml('https://evil.example/embed/abc12345'), isNull);
       expect(ReelPlayer.embedUri('https://www.instagram.com/reel/Cx12345/embed').toString(), 'https://www.instagram.com/reel/Cx12345/embed');
+    });
+
+    test('Instagram opens the reel embed page and the script fills the page with the video', () {
+      expect(ReelPlayer.instagramUri('https://www.instagram.com/reel/Cx12345/embed').toString(), 'https://www.instagram.com/reel/Cx12345/embed/');
+      expect(ReelPlayer.instagramUri('https://www.instagram.com/p/Cx12345/embed/').toString(), 'https://www.instagram.com/reel/Cx12345/embed/');
+      final js = ReelPlayer.instagramScript(sound: false);
+      expect(js, contains('object-fit:cover'));
+      expect(js, contains('querySelector(\'video\')'));
+      expect(js, contains('SOUND=false'));
+      expect(js, contains('HFPlayer.postMessage'));
+      expect(js, contains('error:novideo'));
     });
   });
 
