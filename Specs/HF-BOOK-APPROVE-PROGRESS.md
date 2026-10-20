@@ -38,13 +38,14 @@
 | 9 | Verify + land | ✅ | integ | `903db13f` | tsc clean, 70 booking tests pass, design/brand/flags guards OK, CI hf-flutter mode=check run 39386214890 = success. |
 | 10 | Go-live | ✅ | — | — | 2026-10-20 ~13:00 IST: alters applied (7 cols), CREATE applied, presence-online applied, worker deployed (version 4f92dc8c), consumers deployed (9d7204b9), flag hfBookingApprovalEnabled=true (verified with flags.sh get). Note: prod had 0 hf_hosts before this. |
 | 11 | Owner → influencer + QA influencer | ✅ | — | — | Owner uid user_3AuqQadIDHJftJtTkLD0DtKM8MB is live influencer slug `humphrey-davy` (manual approval, topics: channel/friendship/advice, ₹10/min). QA influencer `qa_hfbook_host` slug `qa-test-influencer` (fake verified phone +910000000000, availability 21–27 Oct 10:00–21:00) so the owner can test the FAN side by booking it. SQL: `output/hf-book-approve-qa/qa_setup.sql`; REMOVE after testing with `qa_teardown.sql` (cf.sh worker d1 execute DB_META --remote --file=…, copy the file under worker/ first). |
-| 12 | Build APK + sideload | 🟨 IN PROGRESS | — | — | Last step: CI run 39386798479 (hf-flutter mode=apk demo=false) started. Next: `scripts/hf_sideload.sh 39386798479` (first switch from Play build may need --fresh). Phone ZA223K79KG connected. |
-| 13 | Visual test both sides on phone, fix, re-check; screenshots in `output/hf-book-approve-shots/` | ⬜ | — | — | Checklist in plan §7 row 13. |
+| 12 | Build APK + sideload | 🟨 IN PROGRESS | — | — | Last step: APK built OK (CI run 39386798479, success). Sideload blocked: phone not visible to adb (was ZA223K79KG earlier). Next: owner plugs in + unlocks + Allow USB debugging → `scripts/hf_sideload.sh 39386798479` (if INSTALL_FAILED_UPDATE_INCOMPATIBLE → `--fresh`, owner must sign in again with WhatsApp OTP). |
+| 13 | Visual test both sides | ⬜ | — | — | Influencer side on owner account (`humphrey-davy`). Fan side: owner books `qa-test-influencer` (Search › "QA Test Influencer") → expect Waiting for approval; to test 24 h expiry set its approval_deadline to now-1 in D1 and wait ≤5 min for the cron, check wallet refund. Influencer pending card: needs a booking INTO the owner — only a second real account can create one (not possible from one phone) — note as gap or insert a synthetic row. Screenshots → `output/hf-book-approve-shots/`. Then run qa_teardown.sql. |
 
 ## Owner answers (plan §9)
 See plan §9a (2026-10-20): all influencers default Online (existing + new); reminders stay 1 h + 10 min; add topics "Talk about my channel", "Just friendship", "General advice"; footer influencer-only; no SMS; mock gate waived; build + sideload + both-sides test approved.
 
 ## Log (newest first)
+- 2026-10-20 — APK built (run 39386798479). Phone dropped off USB before install; waiting for owner to reconnect.
 - 2026-10-20 — Coordinator: go-live done (migrations, worker+consumers deploy, flag on); owner made influencer; QA influencer created; APK build running.
 - 2026-10-20 — Coordinator: merged be + app-a + app-b into issue/hf-book-approve-integ; tsc + booking tests green; landing to main.
 - 2026-10-20 — Backend agent: DONE, committed `0c3f4a8c` (not pushed). tsc green; new tests pass; full-suite failures identical to origin/main baseline (pre-existing).
