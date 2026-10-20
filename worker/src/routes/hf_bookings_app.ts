@@ -235,15 +235,14 @@ async function availabilityRoute(req: Request, env: Env): Promise<Response> {
   const rows = (await env.DB_META.prepare(
     `SELECT id,starts_at FROM hf_bookings WHERE host_uid=?1 AND status IN ('confirming','confirmed','pending_approval','starting','active','settling') AND ends_at>?2 ORDER BY starts_at LIMIT 500`,
   ).bind(auth.uid, now).all<{ id: string; starts_at: number }>()).results ?? [];
-  const clashes = rows.filter((r) => {
+  // [HF-BOOK-APPROVE-QA-1] A booked (or pending) time always stays open: it is shown locked in the app, so the influencer never
+  // sends it, and refusing the whole save made every edit fail once any booking sat outside her saved times.
+  for (const r of rows) {
     const l = localDateAndMinute(Number(r.starts_at), APP_TZ);
-    return !next.get(l.date)?.has(l.minute);
-  });
-  if (clashes.length) {
-    return err(409, "slot_booked", {
-      bookingIds: clashes.map((r) => r.id),
-      message: `A fan has already booked ${label(Number(clashes[0].starts_at))}. Cancel that booking first, then close the time.`,
-    });
+    if (l.date < today) continue;
+    const set = next.get(l.date) ?? new Set<number>();
+    set.add(l.minute);
+    next.set(l.date, set);
   }
   const exceptions = toExceptions(next);
   if (exceptions.length > MAX_EXCEPTIONS) return err(400, "too_many_slots", { message: "That is too many separate times. Keep fewer times open." });

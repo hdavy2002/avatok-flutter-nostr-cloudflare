@@ -228,13 +228,19 @@ describe("availability and rate", () => {
     expect(b.slotChoices[0]).toBe("09:00");
   });
 
-  it("closing a booked slot is 409 until the booking is cancelled", async () => {
+  it("a booked time stays open even when the save leaves it out ([HF-BOOK-APPROVE-QA-1])", async () => {
     vi.mocked(store.getHfBookingSchedule).mockResolvedValue(sched);
-    const { env } = mkEnv([[/SELECT uid,slug,status,category/, host], [/SELECT id,starts_at FROM hf_bookings/, [{ id: BID, starts_at: Date.parse("2026-10-22T04:30:00Z") }]]]);
+    vi.mocked(store.acquireHfScheduleWriteLock).mockResolvedValue("lease");
+    vi.mocked(store.saveHfBookingSchedule).mockResolvedValue(4);
+    vi.mocked(store.releaseHfScheduleWriteLock).mockResolvedValue();
+    const { env } = mkEnv([[/SELECT uid,slug,status,category/, host], [/SELECT id,starts_at FROM hf_bookings/, [{ id: BID, starts_at: Date.parse("2026-10-22T04:30:00Z") }]], [/SELECT starts_at FROM hf_bookings/, []]]);
     const res = await hfBookingsAppRoute(send("PUT", "/api/hf/hosts/me/availability", { days: { "2026-10-22": { open: true, slots: ["16:00"] } } }), env);
-    expect(res?.status).toBe(409);
-    expect(await res!.json()).toMatchObject({ error: "slot_booked", bookingIds: [BID] });
-    expect(store.saveHfBookingSchedule).not.toHaveBeenCalled();
+    expect(res?.status).toBe(200);
+    const saved = vi.mocked(store.saveHfBookingSchedule).mock.calls.at(-1)![4];
+    expect(saved.exceptions).toEqual(expect.arrayContaining([
+      { date: "2026-10-22", startMin: 600, endMin: 610, status: "available" },
+      { date: "2026-10-22", startMin: 960, endMin: 970, status: "available" },
+    ]));
   });
 
   it("saves slots as dated windows under the write lease", async () => {
