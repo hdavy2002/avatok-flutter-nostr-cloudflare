@@ -140,7 +140,7 @@ void main() {
       expect(find.textContaining('4:00 pm · booked'), findsOneWidget);
       await tester.tap(find.byKey(const ValueKey('chip-16:00')));
       await tester.pumpAndSettle();
-      expect(find.textContaining('SAVE'), findsNothing); // nothing changed
+      expect(find.textContaining('SAVE '), findsNothing); // nothing changed: only the disabled plain SAVE shows
     });
 
     testWidgets('schedule changed elsewhere: shows the server message and reloads', (tester) async {
