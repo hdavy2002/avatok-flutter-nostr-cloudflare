@@ -341,10 +341,15 @@ class _RealBookConfirmScreenState extends State<RealBookConfirmScreen> {
       }
     } catch (_) {}
     if (Services.instance.isSignedIn || widget.walletRepo != null) {
-      try {
-        final w = await (widget.walletRepo ?? Services.instance.walletRepo).fetch(limit: 1);
-        if (mounted) setState(() => _walletPaise = w.balancePaise + w.testCreditPaise);
-      } catch (_) {}
+      // [HF-BOOK-APPROVE-QA-2] The first wallet read after sign-in is often slow/refused and the line stayed "—": try 3 times.
+      for (var attempt = 0; attempt < 3 && mounted && _walletPaise == null; attempt++) {
+        try {
+          final w = await (widget.walletRepo ?? Services.instance.walletRepo).fetch(limit: 1);
+          if (mounted) setState(() => _walletPaise = w.balancePaise + w.testCreditPaise);
+        } catch (_) {
+          await Future<void>.delayed(Duration(milliseconds: 800 * (attempt + 1)));
+        }
+      }
     }
   }
 
