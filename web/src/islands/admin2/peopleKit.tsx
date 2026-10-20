@@ -18,22 +18,39 @@ import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
 import { Drawer, DrawerContent, DrawerDescription, DrawerFooter, DrawerHeader, DrawerTitle } from '../../components/ui/drawer';
 import { toast } from '../../components/ui/sonner';
+import { cacheClear, cacheGet, cachePut } from './adminCache';
 import { ApiError, adminApi, adminBlob, saveBlob, errMessage, isAbort, formatPaise } from './adminApi';
 
 export { formatPaise };
 
 /* ── API ────────────────────────────────────────────────────────────────── */
 
+export type AdminCallOpts<T> = Omit<RequestOptions, 'auth'> & {
+  /** [HF-ADMIN-CACHE-1] GET only. Opt in to stale-while-revalidate: called synchronously with the last
+   *  response for this path+query (if any, under 30 min old) before the live fetch, which still runs and is returned. */
+  onCached?: (cached: T) => void;
+};
+
 /** adminApi() with one fresh-token retry on 401. */
-export async function adminCall<T>(path: string, opts: Omit<RequestOptions, 'auth'> = {}): Promise<T> {
+export async function adminCall<T>(path: string, opts: AdminCallOpts<T> = {}): Promise<T> {
+  const { onCached, ...rest } = opts;
+  const isGet = !rest.method || rest.method === 'GET';
+  if (isGet && onCached) {
+    const hit = cacheGet<T>(path, rest.query);
+    if (hit !== undefined) { try { onCached(hit); } catch { /* a bad cached shape must not block the live fetch */ } }
+  }
+  let out: T;
   try {
-    return await adminApi<T>(path, opts);
+    out = await adminApi<T>(path, rest);
   } catch (e) {
     if (!(e instanceof ApiError) || e.status !== 401) throw e;
     const fresh = await getActiveTokenWaited(5000, { skipCache: true });
     if (!fresh) throw e;
-    return request<T>(path, { timeoutMs: 20_000, ...opts, auth: fresh });
+    if (!isGet) cacheClear();
+    try { out = await request<T>(path, { timeoutMs: 20_000, ...rest, auth: fresh }); } finally { if (!isGet) cacheClear(); }
   }
+  if (isGet && onCached) cachePut(path, rest.query, out);
+  return out;
 }
 
 export interface Customer { uid: string; name: string | null; email: string | null; phone_masked: string | null; phone_hash_only: boolean }
@@ -60,7 +77,11 @@ export function usePaged<T>(path: string, query: Record<string, string | undefin
     const c = new AbortController(); ctl.current = c;
     setPhase('loading'); setError(null);
     try {
-      const r = await adminCall<Page<T>>(path, { query: q.current, signal: c.signal });
+      const r = await adminCall<Page<T>>(path, {
+        query: q.current, signal: c.signal,
+        // [HF-ADMIN-CACHE-1] paint the last response at once; the live fetch below replaces it.
+        onCached: (hit) => { if (c.signal.aborted) return; setItems(hit.items ?? []); setFirst(hit); setCursor(hit.next_cursor ?? null); setPhase('ready'); },
+      });
       if (c.signal.aborted) return;
       setItems(r.items ?? []); setFirst(r); setCursor(r.next_cursor ?? null); setPhase('ready');
     } catch (e) {

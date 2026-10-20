@@ -28,7 +28,7 @@ export function InviteCreators() {
   const [error, setError] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
   const load = useCallback(async () => {
-    try { setItems(await hfAdminApi.inviteCreators()); } catch (e) { setError(fail('invite_list', e)); setItems([]); }
+    try { setItems(await hfAdminApi.inviteCreators(setItems)); } catch (e) { setError(fail('invite_list', e)); setItems([]); }
   }, []);
   useEffect(() => { void load(); }, [load]);
   const add = async () => {
@@ -96,7 +96,7 @@ export default function DemoInfluencers() {
   const [busy, setBusy] = useState<string | null>(null);
 
   const load = useCallback(async () => {
-    try { setItems(await hfAdminApi.demoInfluencers()); } catch (e) { setError(fail('demo_list', e)); setItems([]); }
+    try { setItems(await hfAdminApi.demoInfluencers(setItems)); } catch (e) { setError(fail('demo_list', e)); setItems([]); }
   }, []);
   useEffect(() => { void load(); }, [load]);
 

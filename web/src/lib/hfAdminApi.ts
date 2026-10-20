@@ -113,7 +113,8 @@ export const apiUrl = (p: string | null | undefined) => (p ? (p.startsWith('http
 export interface InviteCreator { platform: 'youtube' | 'instagram'; handle: string; name: string; avatar: string | null; followers: number; votes: number; source: string; hidden: boolean; reels: number; lastLookupAt: number }
 
 export const hfAdminApi = {
-  hosts: async (status: HostStatus) => (await adminCall<{ items: AdminHost[] }>(`/api/admin/hf/hosts?status=${e(status)}`)).items ?? [],
+  // [HF-ADMIN-CACHE-1] list getters take an optional onCached(rows) that paints the last response before the live fetch.
+  hosts: async (status: HostStatus, onCached?: (r: AdminHost[]) => void) => (await adminCall<{ items: AdminHost[] }>(`/api/admin/hf/hosts?status=${e(status)}`, { onCached: onCached && ((r) => onCached(r.items ?? [])) })).items ?? [],
   host: (uid: string) => adminCall<AdminHostDetail>(`/api/admin/hf/hosts/${e(uid)}`),
   decide: (uid: string, decision: 'approve' | 'reject' | 'pause', reason = '') =>
     adminCall<{ ok: true; status: string; notified: boolean }>(`/api/admin/hf/hosts/${e(uid)}/decision`, { method: 'POST', body: { decision, reason } }),
@@ -123,32 +124,32 @@ export const hfAdminApi = {
   /** Signed selfie video + Aadhaar photo URLs (5 min). Find the host by uid in the status the selfie is in. */
   kycMedia: async (uid: string, status: 'pending' | 'approved' | 'rejected') =>
     ((await adminCall<{ items: KycItem[] }>(`/api/admin/hf/kyc?status=${status}`)).items ?? []).find((i) => i.uid === uid) ?? null,
-  kycList: async (status: 'pending' | 'approved' | 'rejected') =>
-    (await adminCall<{ items: KycItem[] }>(`/api/admin/hf/kyc?status=${status}`)).items ?? [],
+  kycList: async (status: 'pending' | 'approved' | 'rejected', onCached?: (r: KycItem[]) => void) =>
+    (await adminCall<{ items: KycItem[] }>(`/api/admin/hf/kyc?status=${status}`, { onCached: onCached && ((r) => onCached(r.items ?? [])) })).items ?? [],
   selfieDecision: (uid: string, decision: 'approve' | 'reject', reason = '', selfieId?: string) =>
     adminCall<{ ok: true }>(`/api/admin/hf/kyc/${e(uid)}/selfie`, { method: 'POST', body: { decision, reason, selfieId } }),
-  avatars: () => adminCall<{ items: AdminAvatar[]; jobs: AvatarJob[] }>('/api/admin/hf/avatars'),
+  avatars: (onCached?: (r: { items: AdminAvatar[]; jobs: AvatarJob[] }) => void) => adminCall<{ items: AdminAvatar[]; jobs: AvatarJob[] }>('/api/admin/hf/avatars', { onCached }),
   generateAvatars: (b: { count: number; gender: string; age: string; look: string }) =>
     adminCall<{ ok: true; jobId: string }>('/api/admin/hf/avatars/generate', { method: 'POST', body: b }),
   fillAvatars: (target = 4) =>
     adminCall<{ ok: true; jobId?: string; queued: number }>('/api/admin/hf/avatars/fill', { method: 'POST', body: { target } }),
   retireAvatar: (id: string) => adminCall<{ ok: true }>(`/api/admin/hf/avatars/${e(id)}/retire`, { method: 'POST', body: {} }),
   // [HF-WIRE-14] demo influencers from pasted YouTube links
-  demoInfluencers: async () => (await adminCall<{ items: DemoInfluencer[] }>('/api/admin/hf/demo-influencers')).items ?? [],
+  demoInfluencers: async (onCached?: (r: DemoInfluencer[]) => void) => (await adminCall<{ items: DemoInfluencer[] }>('/api/admin/hf/demo-influencers', { onCached: onCached && ((r) => onCached(r.items ?? [])) })).items ?? [],
   saveDemoInfluencer: (b: { uid?: string; name: string; ratePaise: number; youtubeUrls: string[] }) =>
     adminCall<{ ok: true; result: DemoSaveResult }>('/api/admin/hf/demo-influencers', { method: 'POST', body: b }),
   deleteDemoInfluencer: (uid: string) => adminCall<{ ok: true }>(`/api/admin/hf/demo-influencers/${e(uid)}`, { method: 'DELETE' }),
   // [HF-WIRE-22] invite creators (HF-REEL-40)
-  inviteCreators: async () => (await adminCall<{ items: InviteCreator[] }>('/api/admin/hf/invite-creators')).items ?? [],
+  inviteCreators: async (onCached?: (r: InviteCreator[]) => void) => (await adminCall<{ items: InviteCreator[] }>('/api/admin/hf/invite-creators', { onCached: onCached && ((r) => onCached(r.items ?? [])) })).items ?? [],
   addInviteCreator: (b: { platform: 'youtube' | 'instagram'; handle: string }) =>
     adminCall<{ ok: true; creator: { platform: string; handle: string; name: string; followers: number }; reels: number }>('/api/admin/hf/invite-creators', { method: 'POST', body: b }),
   hideInviteCreator: (platform: string, handle: string, hidden: boolean) =>
     adminCall<{ ok: true; hidden: boolean }>(`/api/admin/hf/invite-creators/${e(platform)}/${e(handle.replace(/^@/, ''))}`, { method: 'PATCH', body: { hidden } }),
   // [HF-CALLS-1]
-  reviews: async (status: 'pending' | 'approved' | 'rejected' = 'pending') => (await adminCall<{ items: AdminReview[] }>(`/api/admin/hf/reviews?status=${e(status)}`)).items ?? [],
+  reviews: async (status: 'pending' | 'approved' | 'rejected' = 'pending', onCached?: (r: AdminReview[]) => void) => (await adminCall<{ items: AdminReview[] }>(`/api/admin/hf/reviews?status=${e(status)}`, { onCached: onCached && ((r) => onCached(r.items ?? [])) })).items ?? [],
   decideReview: (id: string, decision: 'approve' | 'reject', reason = '') =>
     adminCall<{ ok: true }>(`/api/admin/hf/reviews/${e(id)}`, { method: 'POST', body: { decision, reason: reason || undefined } }),
-  calls: async () => (await adminCall<{ items: AdminCall[] }>('/api/admin/hf/calls')).items ?? [],
+  calls: async (onCached?: (r: AdminCall[]) => void) => (await adminCall<{ items: AdminCall[] }>('/api/admin/hf/calls', { onCached: onCached && ((r) => onCached(r.items ?? [])) })).items ?? [],
   /** [HF-ADMIN-CREDIT-1] Credit by uid (search result / advanced) or by WhatsApp number. */
   creditWallet: (b: { uid?: string; phone?: string; rupees: number; note: string; via?: 'search'; opId?: string }) =>
     adminCall<{ ok: true; uid: string; name: string | null; balanceRupees: number }>('/api/admin/hf/wallet/credit', { method: 'POST', body: b }),

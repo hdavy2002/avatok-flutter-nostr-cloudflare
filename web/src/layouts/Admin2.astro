@@ -20,6 +20,7 @@ import type { AdminKey } from '../islands/admin2/nav';
 import { publicImage } from '../lib/config';
 import '../styles/site-tokens.css';
 import { BRAND } from '../lib/brand';
+import { API_BASE } from '../lib/env';
 
 export interface Props {
   /** Page title (tab) and default heading. */
@@ -42,6 +43,8 @@ const ribbon = publicImage('/assets/bright/border.png', { width: 640, fit: 'scal
   <Fragment slot="head">
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <meta name="theme-color" content="hsl(42, 100%, 95%)" />
+    {/* [HF-ADMIN-CACHE-1] open the API connection while Clerk loads, instead of at the first data call */}
+    <link rel="preconnect" href={API_BASE} crossorigin />
     <slot name="head" />{/* [SAATHUM-SHOP-EDITOR-1] optional extra <head> content (the shop-page editor loads the shop fonts) */}
   </Fragment>
   {/* Radix portals (dialogs, popovers, selects, sheets) render into <body>, outside the
@@ -56,6 +59,14 @@ const ribbon = publicImage('/assets/bright/border.png', { width: 640, fit: 'scal
     style={`--folk-border-url:url(${ribbon})`}
   >
     <AdminNav client:load active={active} />
+    {/* [HF-ADMIN-CACHE-1] A browser that proved admin in the last 12h shows the page shell at once; AdminNav still
+        verifies with /whoami and flips to denied/error if that disagrees. Same key/TTL as islands/admin2/adminCache.ts. */}
+    <script is:inline>
+      try {
+        var g = JSON.parse(localStorage.getItem('admin2:gate') || 'null');
+        if (g && g.uid && g.t && Date.now() - g.t < 12 * 3600000) document.querySelector('[data-admin2-root]').setAttribute('data-admin2-state', 'ok');
+      } catch (e) {}
+    </script>
 
     <div class="flex min-h-screen flex-col pt-[calc(var(--dash-topbar-h,56px)+env(safe-area-inset-top,0px))] sm:pl-[var(--dash-rail-w,72px)] sm:pt-0 lg:pl-[var(--dash-sidebar-w,260px)]">
       <main class="dash-safe-bottom mx-auto w-full max-w-6xl flex-1 px-4 pt-6 sm:px-8 sm:pt-10">

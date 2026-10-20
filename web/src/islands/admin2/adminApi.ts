@@ -10,6 +10,7 @@
 import { ApiError, request, type RequestOptions } from '../../lib/apiClient';
 import { getActiveTokenWaited } from '../../lib/clerk';
 import { API_BASE } from '../../lib/env';
+import { cacheClear, readGate, setCacheUser, writeGate } from './adminCache';
 
 export { ApiError };
 export {
@@ -25,12 +26,21 @@ export class AdminDeniedError extends Error {
 
 let gate: AdminGate = 'loading';
 let who: AdminWho | null = null;
+// [HF-ADMIN-CACHE-1] A browser that proved admin in the last 12h starts as 'ok': the shell and the first data
+// fetches no longer wait for Clerk -> token -> /whoami in series. AdminNav still probes and overrides this,
+// and the worker enforces requireAdmin on every route regardless.
+{
+  const g = readGate();
+  if (g) { gate = 'ok'; who = { admin: true, uid: g.uid, email: g.email }; setCacheUser(g.uid); }
+}
 const waiters: Array<{ ok: () => void; no: (e: Error) => void }> = [];
 
 /** Called by AdminNav only. Also mirrors the verdict onto the layout root for CSS. */
 export function setAdminGate(next: AdminGate, me: AdminWho | null = null): void {
   gate = next;
   if (me) who = me;
+  if (next === 'ok' && me) { setCacheUser(me.uid); writeGate(me); }
+  else if (next === 'denied' || next === 'error') { if (next === 'denied') writeGate(null); }
   if (typeof document !== 'undefined') {
     document.querySelector<HTMLElement>('[data-admin2-root]')?.setAttribute('data-admin2-state', next);
   }
@@ -63,9 +73,15 @@ export async function adminToken(): Promise<string | null> {
 /** Authed call to an admin worker route. Throws ApiError / AdminDeniedError. */
 export async function adminApi<T>(path: string, opts: Omit<RequestOptions, 'auth'> = {}): Promise<T> {
   await whenAdmin();
+  const write = !!opts.method && opts.method !== 'GET';
+  if (write) cacheClear(); // [HF-ADMIN-CACHE-1] never show pre-write data as current
   const auth = await adminToken();
   if (!auth) throw new ApiError(401, 'unauthorized', { message: 'Please sign in again.' });
-  return request<T>(path, { timeoutMs: 20_000, ...opts, auth });
+  try {
+    return await request<T>(path, { timeoutMs: 20_000, ...opts, auth });
+  } finally {
+    if (write) cacheClear();
+  }
 }
 
 /** Authed GET of a binary/text route (e.g. a CSV export); returns the blob + filename. */

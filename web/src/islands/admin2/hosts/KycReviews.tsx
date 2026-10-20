@@ -20,7 +20,7 @@ export default function KycReviews() {
 
   const load = useCallback(async () => {
     setItems(null); setError(null);
-    try { setItems(await hfAdminApi.kycList(tab)); }
+    try { setItems(await hfAdminApi.kycList(tab, setItems)); }
     catch (e) { setItems([]); setError(fail('kyc_reviews_list', e, { tab })); }
   }, [tab]);
   useEffect(() => { void load(); }, [load]);

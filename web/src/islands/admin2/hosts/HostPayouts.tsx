@@ -98,7 +98,7 @@ export default function HostPayouts() {
   const [error, setError] = useState<string | null>(null);
   const load = useCallback(async () => {
     setError(null);
-    try { setData(await adminCall<List>(`/api/admin/hf/payouts?status=${tab}`)); } catch (e) { setError(fail('hf_payouts_list', e)); setData({ items: [], counts: {} }); }
+    try { setData(await adminCall<List>(`/api/admin/hf/payouts?status=${tab}`, { onCached: setData })); } catch (e) { setError(fail('hf_payouts_list', e)); setData({ items: [], counts: {} }); }
   }, [tab]);
   useEffect(() => { setData(null); void load(); }, [load]);
 

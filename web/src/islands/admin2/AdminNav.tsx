@@ -30,6 +30,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../../
 import { Skeleton } from '../../components/ui/skeleton';
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from '../../components/ui/sheet';
 import { ADMIN_NAV, ADMIN_PHONE_TABS, ADMIN_VIEW_SITE, ADMIN_LOGOUT, type AdminKey } from './nav';
+import { forgetAdminSession } from './adminCache';
 import { ApiError, adminApi, adminToken, setAdminGate, type AdminGate, type AdminWho } from './adminApi';
 import { BRAND } from '../../lib/brand';
 import { publicImage } from '../../lib/config';
@@ -226,6 +227,7 @@ function Sidebar({ active, who, ready, toPrint }: { active: AdminKey; who: Who |
         </a>
         <a
           href={ADMIN_LOGOUT.href}
+          onClick={forgetAdminSession}
           className="flex min-h-[44px] items-center gap-3 rounded-lg border border-border/50 px-3 text-[15px] font-bold text-primary no-underline transition-colors hover:bg-primary/10"
         >
           <ADMIN_LOGOUT.icon className="h-[18px] w-[18px]" strokeWidth={2.2} />
@@ -258,6 +260,7 @@ function Rail({ active, toPrint }: { active: AdminKey; toPrint: number }) {
                 <TooltipTrigger asChild>
                   <a
                     href={it.href}
+                    onClick={it.key === 'logout' ? forgetAdminSession : undefined}
                     aria-label={it.label}
                     aria-current={on ? 'page' : undefined}
                     className={cn(
@@ -332,7 +335,7 @@ function MoreSheet({ active, who, toPrint }: { active: AdminKey; who: Who | null
           <a href={ADMIN_VIEW_SITE.href} className={cn(row, 'text-foreground hover:bg-muted')}>
             <ADMIN_VIEW_SITE.icon className="h-5 w-5" strokeWidth={2.2} />{ADMIN_VIEW_SITE.label}
           </a>
-          <a href={ADMIN_LOGOUT.href} className={cn(row, 'text-primary hover:bg-primary/10')}>
+          <a href={ADMIN_LOGOUT.href} onClick={forgetAdminSession} className={cn(row, 'text-primary hover:bg-primary/10')}>
             <ADMIN_LOGOUT.icon className="h-5 w-5" strokeWidth={2.2} />{ADMIN_LOGOUT.label}
           </a>
         </nav>

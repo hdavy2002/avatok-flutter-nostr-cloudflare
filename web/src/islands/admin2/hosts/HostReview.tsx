@@ -24,7 +24,7 @@ export default function HostReview() {
 
   const load = useCallback(async () => {
     setError(null); setRows(null);
-    try { setRows(await hfAdminApi.hosts(tab)); } catch (e) { setError(fail('hosts_list', e, { tab })); setRows([]); }
+    try { setRows(await hfAdminApi.hosts(tab, setRows)); } catch (e) { setError(fail('hosts_list', e, { tab })); setRows([]); }
   }, [tab]);
   useEffect(() => { void load(); }, [load]);
 

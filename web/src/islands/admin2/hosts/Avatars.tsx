@@ -19,7 +19,7 @@ export default function Avatars() {
 
   const load = useCallback(async () => {
     setError(null);
-    try { const r = await hfAdminApi.avatars(); setItems(r.items ?? []); setJobs(r.jobs ?? []); } catch (e) { setError(fail('avatars_list', e)); setItems([]); }
+    try { const r = await hfAdminApi.avatars((c) => { setItems(c.items ?? []); setJobs(c.jobs ?? []); }); setItems(r.items ?? []); setJobs(r.jobs ?? []); } catch (e) { setError(fail('avatars_list', e)); setItems([]); }
   }, []);
   useEffect(() => { void load(); }, [load]);
 

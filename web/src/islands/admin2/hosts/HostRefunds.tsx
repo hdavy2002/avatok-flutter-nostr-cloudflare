@@ -154,7 +154,7 @@ export default function HostRefunds() {
   const [error, setError] = useState<string | null>(null);
   const load = useCallback(async () => {
     setError(null);
-    try { setData(await adminCall<List>(`/api/admin/hf/refunds?status=${tab}`)); } catch (e) { setError(fail('hf_refunds_list', e)); setData({ items: [], counts: {} }); }
+    try { setData(await adminCall<List>(`/api/admin/hf/refunds?status=${tab}`, { onCached: setData })); } catch (e) { setError(fail('hf_refunds_list', e)); setData({ items: [], counts: {} }); }
   }, [tab]);
   useEffect(() => { setData(null); void load(); }, [load]);
 

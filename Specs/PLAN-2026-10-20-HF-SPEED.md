@@ -90,3 +90,25 @@ Every signed-in key is `hfc1|u:<Clerk user id>|...`; public reads are `hfc1|pub|
 - Boot now keeps the SAVED update status if the config call fails (before: reset to none). A saved "forced" update therefore blocks while offline.
 - Search/slots tests that make the fake client throw an `ApiException` now see one retry after 700 ms (`pumpAndSettle` covers it).
 - `favourites_real.dart` and `search_real.dart` `_load` loops: `return` inside `try` before the `next` variable is assigned (Dart accepts it; check the analyzer).
+# Hello Fraands speed plan (2026-10-20)
+
+## Web admin
+
+Owner report: each admin page "loads" when opened; slow on a weak network.
+
+### Measured causes (from code; browser timing to be confirmed by the coordinator)
+1. Every admin link is a plain `<a>`: a full document load (Astro MPA, no view transitions). The React island, Clerk and every fetch restart on each click. Admin HTML is `private, no-store`, so nothing about the page is reused.
+2. A serial waterfall before any data: HTML -> JS -> Clerk init -> getToken -> `GET /api/admin/whoami` -> only then `.admin2-content` is shown and `whenAdmin()` releases the screens' first fetch -> data -> render. The user sees a 4-card skeleton for the whole chain.
+3. No client cache at all: lists refetch from empty every visit.
+4. API origin (api.hellofraands.com) is first contacted at the first data call (DNS+TLS then).
+5. Already fine: `/_astro/*` is `immutable` for a year (public/_headers); Clerk `getToken` is cached by Clerk (~60s) and 401 retry exists, so token caching is not a win. `hover-prefetch` deliberately skips /admin and HTML is no-store, so link prefetch would not help.
+
+### Changes (HF-ADMIN-CACHE-1)
+- `adminCache.ts`: per-admin-uid stale-while-revalidate (memory + sessionStorage, 30 min max age). Opt-in via `adminCall(..., { onCached })`; the live fetch always runs and replaces the cached paint. Any non-GET admin call clears the whole cache before and after, so nothing shows pre-write data (refunds, payouts, wallets) as current.
+- Wired into `usePaged` (Bookings, Payments, Users, Wallets) and the HF screens: host review, KYC, call reviews, avatars, demo/invite creators, calls, payouts, refunds.
+- Remembered admin verdict (localStorage, 12h): the shell shows at once and screens fetch without waiting for `/whoami`; AdminNav still probes and overrides (denied clears the flag). Worker still enforces `requireAdmin`. Sign-out clears flag and cache.
+- `<link rel=preconnect>` to the API origin in the admin layout.
+
+### Not done / next
+- True SPA navigation (Astro ClientRouter) would remove Clerk re-init per click but touches the whole shell; risky for the single-ClerkProvider design.
+- Money screens not cached: reconciliation, phone costs, std calls (computed reports).

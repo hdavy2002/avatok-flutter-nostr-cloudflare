@@ -192,7 +192,7 @@ export default function HostCalls() {
   const [error, setError] = useState<string | null>(null);
   const load = useCallback(async () => {
     setError(null); setRows(null);
-    try { setRows(await hfAdminApi.calls()); } catch (e) { setError(fail('hf_calls_list', e)); setRows([]); }
+    try { setRows(await hfAdminApi.calls(setRows)); } catch (e) { setError(fail('hf_calls_list', e)); setRows([]); }
   }, []);
   useEffect(() => { void load(); }, [load]);
 

@@ -22,7 +22,7 @@ export default function CallReviews() {
 
   const load = useCallback(async () => {
     setError(null); setRows(null);
-    try { setRows(await hfAdminApi.reviews(tab)); } catch (e) { setError(fail('call_reviews_list', e, { tab })); setRows([]); }
+    try { setRows(await hfAdminApi.reviews(tab, setRows)); } catch (e) { setError(fail('call_reviews_list', e, { tab })); setRows([]); }
   }, [tab]);
   useEffect(() => { void load(); }, [load]);
 
