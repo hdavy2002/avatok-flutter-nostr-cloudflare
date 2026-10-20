@@ -116,7 +116,7 @@ void main() {
       expect(inPage(find.text('BOOK')), findsNothing);
       expect(inPage(find.text('INVITE')), findsOneWidget);
 
-      await tester.tap(find.byKey(const ValueKey('invite-button')));
+      await tester.tap(inPage(find.byKey(const ValueKey('invite-button')))); // the feed underneath has one too
       await tester.pump();
       await tester.pump();
       expect(api.calls, contains('POST /api/hf/invites/youtube/newstar'));
