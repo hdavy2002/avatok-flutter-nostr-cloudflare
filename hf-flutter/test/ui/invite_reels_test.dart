@@ -213,10 +213,14 @@ void main() {
       await tester.pump();
       expect(lastSearch()!['platform'], 'instagram');
 
+      // [HF-APP-CACHE-1] "All" was already read a moment ago, so it is answered from the saved copy: no new request, and the
+      // cache key holds the whole query so it is not the YouTube/Instagram answer.
+      final before = api.queries.length;
       await tester.tap(find.byKey(const ValueKey('platform-all')));
       await tester.pump();
       await tester.pump();
-      expect(lastSearch()!.containsKey('platform'), isFalse);
+      expect(api.queries.length, before, reason: 'served from the cache');
+      expect(api.queries.where((q) => q != null && q.containsKey('q') && !q.containsKey('platform')).length, 1);
     });
 
     testWidgets('results show a small platform icon', (tester) async {

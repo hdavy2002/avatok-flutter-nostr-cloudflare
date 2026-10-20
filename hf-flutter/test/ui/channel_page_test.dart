@@ -101,30 +101,32 @@ void main() {
       await tester.tap(find.text('New Star'));
       await tester.pump();
       await tester.pump();
+      // The feed stays underneath the pushed page, so look inside the page only.
+      Finder inPage(Finder f) => find.descendant(of: find.byKey(const ValueKey('invite-profile')), matching: f);
       expect(find.byKey(const ValueKey('invite-profile')), findsOneWidget);
       expect(find.textContaining('PROFILE'), findsNothing);
-      expect(find.text('New Star'), findsOneWidget);
-      expect(find.textContaining('@newstar'), findsWidgets);
-      expect(find.text('Not on ${Brand.name} yet'), findsOneWidget);
-      expect(find.text('Followers'), findsOneWidget);
-      expect(find.text('4.2K'), findsOneWidget);
-      expect(find.byKey(const ValueKey('video-hfiv_1')), findsOneWidget);
-      expect(find.byKey(const ValueKey('video-hfiv_2')), findsOneWidget);
-      expect(find.text('CALL NOW'), findsNothing);
-      expect(find.text('BOOK'), findsNothing);
-      expect(find.text('INVITE'), findsOneWidget);
+      expect(inPage(find.text('New Star')), findsOneWidget);
+      expect(inPage(find.textContaining('@newstar')), findsWidgets);
+      expect(inPage(find.text('Not on ${Brand.name} yet')), findsOneWidget);
+      expect(inPage(find.text('Followers')), findsOneWidget);
+      expect(inPage(find.text('4.2K')), findsOneWidget);
+      expect(inPage(find.byKey(const ValueKey('video-hfiv_1'))), findsOneWidget);
+      expect(inPage(find.byKey(const ValueKey('video-hfiv_2'))), findsOneWidget);
+      expect(inPage(find.text('CALL NOW')), findsNothing);
+      expect(inPage(find.text('BOOK')), findsNothing);
+      expect(inPage(find.text('INVITE')), findsOneWidget);
 
       await tester.tap(find.byKey(const ValueKey('invite-button')));
       await tester.pump();
       await tester.pump();
       expect(api.calls, contains('POST /api/hf/invites/youtube/newstar'));
-      expect(find.text('VOTED'), findsOneWidget);
+      expect(inPage(find.text('VOTED')), findsOneWidget);
     });
 
     testWidgets('the avatar of an invite reel opens the same page', (tester) async {
       final api = FakeApiClient((m, p, q, b) => {'ok': true, 'items': [_invite('hfiv_1')], 'nextCursor': null});
       await _pump(tester, FeedScreen(repo: ReelsRepo(api), searchRepo: SearchRepo(api), onlineFetch: () async => 0));
-      await tester.tap(find.bySemanticsLabel('Open New Star profile'));
+      await tester.tap(find.byWidgetPredicate((w) => w is Semantics && w.properties.label == 'Open New Star profile'));
       await tester.pump();
       await tester.pump();
       expect(find.byKey(const ValueKey('invite-profile')), findsOneWidget);

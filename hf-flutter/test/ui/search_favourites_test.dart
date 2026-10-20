@@ -162,6 +162,9 @@ void main() {
     testWidgets('a failing search shows Try again', (tester) async {
       final api = FakeApiClient((m, p, q, b) => p == '/api/hf/search' ? _down : {'topics': <Object?>[], 'items': <Object?>[]});
       await _pump(tester, SearchScreen(repo: SearchRepo(api)));
+      // [HF-APP-CACHE-1] a momentary failure (503) is retried once after 700 ms before the error shows.
+      await tester.pump(const Duration(milliseconds: 800));
+      await tester.pump();
       expect(find.text('Try again'), findsOneWidget);
     });
   });
