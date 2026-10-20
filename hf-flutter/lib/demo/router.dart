@@ -97,14 +97,20 @@ final router = GoRouter(
       parentNavigatorKey: rootKey,
       path: '/book/:id/confirm',
       builder: (_, s) => BookingsBridge.real
-          ? RealBookConfirmScreen(id: s.pathParameters['id']!, day: s.uri.queryParameters['day'] ?? '', slot: s.uri.queryParameters['slot'] ?? '')
+          ? RealBookConfirmScreen(id: s.pathParameters['id']!, day: s.uri.queryParameters['day'] ?? '', slot: s.uri.queryParameters['slot'] ?? '', topic: s.uri.queryParameters['topic'])
           : BookConfirmScreen(id: s.pathParameters['id']!, day: s.uri.queryParameters['day'] ?? '', slot: s.uri.queryParameters['slot'] ?? ''),
     ),
     GoRoute(
       parentNavigatorKey: rootKey,
       path: '/booked/:id',
       builder: (_, s) => BookingsBridge.real
-          ? RealBookedScreen(day: s.uri.queryParameters['day'] ?? '', slot: s.uri.queryParameters['slot'] ?? '', name: s.uri.queryParameters['name'] ?? '')
+          ? RealBookedScreen(
+              day: s.uri.queryParameters['day'] ?? '',
+              slot: s.uri.queryParameters['slot'] ?? '',
+              name: s.uri.queryParameters['name'] ?? '',
+              approval: s.uri.queryParameters['approval'] == '1', // [HF-BOOK-APPROVE]
+              approvalText: s.uri.queryParameters['text'] ?? '',
+            )
           : BookedScreen(id: s.pathParameters['id']!, day: s.uri.queryParameters['day'] ?? '', slot: s.uri.queryParameters['slot'] ?? ''),
     ),
   ],

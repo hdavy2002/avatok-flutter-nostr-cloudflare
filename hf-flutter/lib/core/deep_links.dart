@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:app_links/app_links.dart';
 import 'package:go_router/go_router.dart';
 
+import '../data/services.dart';
 import '../data/telemetry.dart';
 import 'brand.dart';
 
@@ -27,6 +28,7 @@ class LinkTarget {
 /// - `/r/<id>`    -> the Reels tab, opened on that reel
 /// - `/wallet`    -> wallet
 /// - `/wallet/topup/<id>` -> the Payment screen for that top-up (return from the payment page)
+/// - `/bookings/<id>` -> [HF-BOOK-APPROVE] one booking: the influencer's Bookings page on that card, a fan's My bookings
 LinkTarget? linkTargetFor(Uri uri) {
   final scheme = uri.scheme.toLowerCase();
   final List<String> segs;
@@ -53,6 +55,10 @@ LinkTarget? linkTargetFor(Uri uri) {
   // [HF-WIRE-20] hellofraands://wallet/topup/<id>: where the payment return page sends the payer back. Opens the Payment screen for that order.
   if (segs.length == 3 && segs.first == 'wallet' && segs[1] == 'topup' && RegExp(r'^hftop_[A-Za-z0-9]{6,64}$').hasMatch(segs[2])) {
     return LinkTarget('/payment?order=${Uri.encodeQueryComponent(segs[2])}', '/wallet/topup/:id');
+  }
+  // [HF-BOOK-APPROVE] The push and WhatsApp booking messages link to /bookings/<booking id> (worker lib/hf_booking_approval.ts).
+  if (segs.length == 2 && segs.first == 'bookings' && RegExp(r'^[A-Za-z0-9_-]{8,64}$').hasMatch(segs[1])) {
+    return LinkTarget('/bookings/${segs[1]}', '/bookings/:id');
   }
   return null;
 }
@@ -108,7 +114,16 @@ abstract final class DeepLinks {
     final r = _router;
     if (r == null) return;
     try {
-      if (target.location.startsWith('/reels')) {
+      if (target.location.startsWith('/bookings/')) {
+        // [HF-BOOK-APPROVE] Role decides the screen. The influencer's page is a tab of the influencer shell, so it is
+        // opened with go (a second copy of the shell cannot be pushed); a fan's My bookings is a plain pushed screen.
+        final id = Uri.encodeQueryComponent(target.location.substring('/bookings/'.length));
+        if (Services.instance.viewerIsInfluencer) {
+          r.go('/inf/bookings?booking=$id');
+        } else {
+          unawaited(r.push<Object?>('/bookings?booking=$id'));
+        }
+      } else if (target.location.startsWith('/reels')) {
         r.go(target.location);
       } else {
         unawaited(r.push<Object?>(target.location));

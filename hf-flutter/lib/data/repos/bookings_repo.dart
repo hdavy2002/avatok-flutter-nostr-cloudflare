@@ -10,6 +10,8 @@ import '../models/booking.dart';
 /// - `GET  /api/hf/bookings?role=fan` / `role=host&from=&to=&day=` -> `{bookings[]}`.
 /// - `DELETE /api/hf/bookings/:id` -> `{message, refundPaise}`; 409 `too_late` for a fan inside the last hour.
 /// - `GET/PUT /api/hf/hosts/me/availability`, `GET/PUT /api/hf/hosts/me/rate`.
+/// - [HF-BOOK-APPROVE] (dark behind `hfBookingApprovalEnabled`): `POST /api/hf/bookings/:id/accept`, `.../decline {reason?}`,
+///   `GET/PUT /api/hf/hosts/me/booking-settings`, `topic` on the booking, `?status=pending|upcoming|past` on the lists.
 class BookingsRepo {
   const BookingsRepo(this._api);
 
@@ -20,22 +22,35 @@ class BookingsRepo {
       );
 
   /// Throws [ApiException]; see [BookingProblem] for what the codes mean.
-  Future<AppBooking> book(String slug, DateTime startAt, {String? note}) async {
+  Future<AppBooking> book(String slug, DateTime startAt, {String? note, String? topic}) async =>
+      (await bookRequest(slug, startAt, note: note, topic: topic)).booking;
+
+  /// Like [book], but also says whether the booking now waits for the influencer ([BookResult.needsApproval]) and the
+  /// server's own sentence for the "Request sent" screen. [topic] is one of the influencer's topic slugs.
+  Future<BookResult> bookRequest(String slug, DateTime startAt, {String? note, String? topic}) async {
     final j = await _api.postJson('/api/hf/bookings', body: {
       'hostSlug': slug,
       'startAt': startAt.toUtc().toIso8601String(),
       if (note != null && note.trim().isNotEmpty) 'note': note.trim(),
+      if (topic != null && topic.isNotEmpty) 'topic': topic,
     });
     final b = j['booking'];
     if (b is! Map) throw ApiException.parse(200);
-    return AppBooking.fromJson(Map<String, dynamic>.from(b));
+    return BookResult(
+      booking: AppBooking.fromJson(Map<String, dynamic>.from(b)),
+      needsApproval: j['needsApproval'] == true,
+      approvalText: j['approvalText'] is String && (j['approvalText'] as String).isNotEmpty ? j['approvalText'] as String : null,
+    );
   }
 
-  Future<List<AppBooking>> mine() async => _list(await _api.getJson('/api/hf/bookings', query: {'role': 'fan'}));
+  /// The fan's bookings. No [status]: active ones (waiting for approval first). `past`: finished and cancelled ones.
+  Future<List<AppBooking>> mine({String? status}) async =>
+      _list(await _api.getJson('/api/hf/bookings', query: {'role': 'fan', 'status': status}));
 
   /// The influencer's own bookings: upcoming by default, or one IST [day] (`YYYY-MM-DD`).
-  Future<List<AppBooking>> hostBookings({String? day, String? from, String? to}) async =>
-      _list(await _api.getJson('/api/hf/bookings', query: {'role': 'host', 'shape': 'app', 'day': day, 'from': from, 'to': to}));
+  /// [status] is `pending`, `upcoming` or `past`; it only has an effect while the approval feature is on.
+  Future<List<AppBooking>> hostBookings({String? day, String? from, String? to, String? status}) async => _list(
+      await _api.getJson('/api/hf/bookings', query: {'role': 'host', 'shape': 'app', 'day': day, 'from': from, 'to': to, 'status': status}));
 
   List<AppBooking> _list(Map<String, dynamic> j) {
     final raw = j['bookings'];
@@ -48,6 +63,33 @@ class BookingsRepo {
 
   Future<CancelResult> cancel(String id) async =>
       CancelResult.fromJson(await _api.deleteJson('/api/hf/bookings/${Uri.encodeComponent(id)}'));
+
+  /// Influencer accepts a booking that waits for approval. 409 `not_pending` / `expired`.
+  Future<AppBooking> accept(String id) async => _decided(await _api.postJson('/api/hf/bookings/${Uri.encodeComponent(id)}/accept', body: const <String, Object?>{}));
+
+  /// Influencer declines: the caller's full hold goes back to the wallet. 409 `not_pending` / `expired`.
+  Future<DeclineResult> decline(String id, {String? reason}) async {
+    final j = await _api.postJson('/api/hf/bookings/${Uri.encodeComponent(id)}/decline',
+        body: {if (reason != null && reason.trim().isNotEmpty) 'reason': reason.trim()});
+    final n = j['refundPaise'];
+    return DeclineResult(booking: _decided(j), refundPaise: n is num ? n.round() : 0);
+  }
+
+  AppBooking _decided(Map<String, dynamic> j) {
+    final b = j['booking'];
+    if (b is! Map) throw ApiException.parse(200);
+    return AppBooking.fromJson(Map<String, dynamic>.from(b));
+  }
+
+  /// `{approval: manual|auto, openAlerts}`. 404 while the approval feature is off.
+  Future<BookingSettings> bookingSettings() async => BookingSettings.fromJson(await _api.getJson('/api/hf/hosts/me/booking-settings'));
+
+  /// Sends only what is given.
+  Future<BookingSettings> saveBookingSettings({String? approval, bool? openAlerts}) async =>
+      BookingSettings.fromJson(await _api.putJson('/api/hf/hosts/me/booking-settings', body: {
+        if (approval != null) 'approval': approval,
+        if (openAlerts != null) 'openAlerts': openAlerts,
+      }));
 
   Future<HostAvailability> availability() async => HostAvailability.fromJson(await _api.getJson('/api/hf/hosts/me/availability'));
 
@@ -91,6 +133,15 @@ enum BookingProblem {
   /// The feature is off or not ready.
   notOpen,
 
+  /// [HF-BOOK-APPROVE] Too close to the start for a booking that needs approval. Pick a later time.
+  tooSoon,
+
+  /// [HF-BOOK-APPROVE] The chosen topic is not one of the influencer's.
+  badTopic,
+
+  /// [HF-BOOK-APPROVE] Accept / decline on a booking that is no longer waiting, or was not accepted in time.
+  notPending,
+
   other,
 }
 
@@ -111,6 +162,13 @@ BookingProblem bookingProblemOf(Object e) {
       return BookingProblem.rateFixed;
     case 'booking_payment_unavailable':
       return BookingProblem.notOpen;
+    case 'too_soon_for_approval':
+      return BookingProblem.tooSoon;
+    case 'bad_topic':
+      return BookingProblem.badTopic;
+    case 'not_pending':
+    case 'expired':
+      return BookingProblem.notPending;
   }
   return e.status == 404 ? BookingProblem.notOpen : BookingProblem.other;
 }

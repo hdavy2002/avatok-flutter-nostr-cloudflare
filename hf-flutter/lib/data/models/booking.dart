@@ -24,6 +24,43 @@ String slotLabel(String hhmm) {
   return '$h12:${m.group(2)} ${h < 12 ? 'am' : 'pm'}';
 }
 
+/// One topic a fan can pick for a booking (`{slug, label}`), [HF-BOOK-APPROVE].
+class BookingTopic {
+  const BookingTopic({required this.slug, required this.label});
+
+  /// Null when the value is not a `{slug, label}` map (an old server, or a booking with no topic).
+  static BookingTopic? tryParse(Object? v) {
+    if (v is! Map) return null;
+    final slug = _s(v['slug']);
+    if (slug == null) return null;
+    return BookingTopic(slug: slug, label: _s(v['label']) ?? slug);
+  }
+
+  final String slug;
+  final String label;
+}
+
+/// "17 h", "2 h 20 min", "35 min", "any moment now". Used for the 24-hour approval countdown.
+String countdownLabel(Duration left) {
+  if (left.inSeconds <= 0) return 'any moment now';
+  final mins = (left.inSeconds / 60).ceil();
+  if (mins < 60) return '$mins min';
+  final h = mins ~/ 60;
+  final m = mins % 60;
+  if (h >= 6 || m == 0) return '$h h';
+  return '$h h $m min';
+}
+
+/// "starts in 25 min", "starts in 3 h", "starts in 2 days", or "starting now" / "started" when it is not ahead of [now].
+String startsInLabel(DateTime start, DateTime now) {
+  final left = start.difference(now);
+  if (left.inSeconds <= 0) return left.inMinutes > -10 ? 'starting now' : 'started';
+  final mins = (left.inSeconds / 60).ceil();
+  if (mins < 60) return 'starts in $mins min';
+  if (mins < 48 * 60) return 'starts in ${mins ~/ 60} h';
+  return 'starts in ${mins ~/ (24 * 60)} days';
+}
+
 /// `GET/PUT /api/hf/hosts/me/rate` and the `rate` block of the availability response.
 /// [hostGetsPerMinPaise] comes from the SERVER's split rule; the app never does this maths itself.
 class RateInfo {
@@ -128,7 +165,16 @@ class HostAvailability {
 
 /// `GET /api/hf/hosts/:slug/slots`: only free slots.
 class HostSlots {
-  const HostSlots({required this.minutes, required this.ratePerMin, required this.holdPaise, required this.today, required this.lastDate, required this.days});
+  const HostSlots({
+    required this.minutes,
+    required this.ratePerMin,
+    required this.holdPaise,
+    required this.today,
+    required this.lastDate,
+    required this.days,
+    this.topics = const [],
+    this.approvalMode,
+  });
 
   factory HostSlots.fromJson(Map<String, dynamic> j) {
     final days = <String, List<String>>{};
@@ -145,6 +191,12 @@ class HostSlots {
       today: _s(j['today']) ?? isoDay(DateTime.now()),
       lastDate: _s(j['lastDate']) ?? isoDay(DateTime.now().add(const Duration(days: 20))),
       days: days,
+      topics: [
+        if (j['topics'] is List)
+          for (final e in j['topics'] as List)
+            if (BookingTopic.tryParse(e) != null) BookingTopic.tryParse(e)!,
+      ],
+      approvalMode: j['approvalMode'] == 'manual' || j['approvalMode'] == 'auto' ? j['approvalMode'] as String : null,
     );
   }
 
@@ -156,6 +208,15 @@ class HostSlots {
 
   /// Date -> free `HH:MM` slots. Closed days are simply missing.
   final Map<String, List<String>> days;
+
+  /// This influencer's topics for the fan's picker. Empty when the approval feature is off on the server.
+  final List<BookingTopic> topics;
+
+  /// `manual` or `auto`; null while the approval feature is off (the server then sends neither field).
+  final String? approvalMode;
+
+  /// True when a booking waits for the influencer to accept it.
+  bool get needsApproval => approvalMode == 'manual';
 
   Set<String> get openDays => days.keys.toSet();
   List<String> slotsOn(String day) => days[day] ?? const [];
@@ -180,6 +241,12 @@ class AppBooking {
     this.fanHandle,
     this.note = '',
     this.expectedNetPaise = 0,
+    this.approvalDeadline,
+    this.topic,
+    this.cancelReason,
+    this.statusText,
+    this.canAccept = false,
+    this.canDecline = false,
   });
 
   factory AppBooking.fromJson(Map<String, dynamic> j) => AppBooking(
@@ -198,6 +265,12 @@ class AppBooking {
         fanHandle: _s(j['fanHandle']),
         note: _s(j['note']) ?? '',
         expectedNetPaise: _i(j['expectedNetPaise']),
+        approvalDeadline: j['approvalDeadline'] is String ? DateTime.tryParse(j['approvalDeadline'] as String)?.toLocal() : null,
+        topic: BookingTopic.tryParse(j['topic']),
+        cancelReason: _s(j['cancelReason']),
+        statusText: _s(j['statusText']),
+        canAccept: j['canAccept'] == true,
+        canDecline: j['canDecline'] == true,
       );
 
   final String id;
@@ -220,6 +293,25 @@ class AppBooking {
   final String note;
   final int expectedNetPaise;
 
+  /// [HF-BOOK-APPROVE] All absent (null / false) while the approval feature is off on the server.
+  /// While [isPending]: when the booking is cancelled and refunded if nobody accepts it.
+  final DateTime? approvalDeadline;
+  final BookingTopic? topic;
+
+  /// `declined`, `not_accepted_24h`, `fan`, `host` on a cancelled booking.
+  final String? cancelReason;
+
+  /// The server's own plain-English line for this booking's state, in the viewer's words.
+  final String? statusText;
+  final bool canAccept;
+  final bool canDecline;
+
+  bool get isPending => status == 'pending_approval';
+  bool get isCancelled => status == 'cancelled';
+
+  /// Over for good: not waiting, not upcoming.
+  bool get isPast => status == 'completed' || status == 'cancelled' || status == 'failed';
+
   DateTime get date => parseDay(day) ?? DateTime(startAt.year, startAt.month, startAt.day);
 }
 
@@ -232,4 +324,35 @@ class CancelResult {
 
   final String message;
   final int refundPaise;
+}
+
+/// `POST /api/hf/bookings` answer. [needsApproval] / [approvalText] are only set while the approval feature is on.
+class BookResult {
+  const BookResult({required this.booking, required this.needsApproval, this.approvalText});
+
+  final AppBooking booking;
+  final bool needsApproval;
+  final String? approvalText;
+}
+
+/// `POST /api/hf/bookings/:id/decline` answer.
+class DeclineResult {
+  const DeclineResult({required this.booking, required this.refundPaise});
+
+  final AppBooking booking;
+  final int refundPaise;
+}
+
+/// `GET/PUT /api/hf/hosts/me/booking-settings`.
+class BookingSettings {
+  const BookingSettings({required this.approval, required this.openAlerts});
+
+  factory BookingSettings.fromJson(Map<String, dynamic> j) =>
+      BookingSettings(approval: j['approval'] == 'auto' ? 'auto' : 'manual', openAlerts: j['openAlerts'] != false);
+
+  /// `manual` (default) or `auto`.
+  final String approval;
+  final bool openAlerts;
+
+  bool get isManual => approval != 'auto';
 }

@@ -15,13 +15,19 @@ enum UpdateStatus {
 /// The slice of the public `GET /api/config` the app needs at start.
 /// `hfAppMinBuild` / `hfAppLatestBuild` are declared in worker/src/routes/config.ts; 0 means never prompt.
 class AppConfig {
-  const AppConfig({this.minBuild = 0, this.latestBuild = 0});
+  const AppConfig({this.minBuild = 0, this.latestBuild = 0, this.bookingApprovalEnabled = false});
 
   final int minBuild;
   final int latestBuild;
 
-  factory AppConfig.fromJson(Map<String, dynamic> j) =>
-      AppConfig(minBuild: _int(j['hfAppMinBuild']), latestBuild: _int(j['hfAppLatestBuild']));
+  /// [HF-BOOK-APPROVE] `hfBookingApprovalEnabled`: bookings can wait for the influencer to accept them. Off unless the server says true.
+  final bool bookingApprovalEnabled;
+
+  factory AppConfig.fromJson(Map<String, dynamic> j) => AppConfig(
+        minBuild: _int(j['hfAppMinBuild']),
+        latestBuild: _int(j['hfAppLatestBuild']),
+        bookingApprovalEnabled: j['hfBookingApprovalEnabled'] == true,
+      );
 
   static int _int(Object? v) {
     if (v is num) return v.toInt();

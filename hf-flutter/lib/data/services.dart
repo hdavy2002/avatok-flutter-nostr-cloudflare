@@ -59,6 +59,10 @@ class Services {
   /// Result of the start-up update check.
   UpdateStatus updateStatus = UpdateStatus.none;
 
+  /// [HF-BOOK-APPROVE] `hfBookingApprovalEnabled` from the start-up config. False until the config says true, so the
+  /// booking screens look exactly as before while the feature is dark (or the config could not be read).
+  bool bookingApprovalEnabled = false;
+
   bool get isSignedIn => user != null;
 
   /// Influencer earnings and fans' wallet money both leave through Payout (HF-REEL-36); refunds only ever land in the wallet (HF-REEL-35).
@@ -133,6 +137,7 @@ class Services {
       try {
         final cfg = await configRepo.fetch();
         updateStatus = cfg.updateStatusFor(await installedBuild());
+        bookingApprovalEnabled = cfg.bookingApprovalEnabled;
       } catch (_) {
         updateStatus = UpdateStatus.none;
       }
