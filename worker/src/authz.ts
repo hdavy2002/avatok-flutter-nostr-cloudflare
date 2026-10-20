@@ -13,6 +13,9 @@ export function isFail(x: UserCtx | AuthFail): x is AuthFail {
 
 // Accept the Clerk JWT from the Authorization header OR a ?token= query param
 // (WebSocket clients that can't set headers). Returns the uid or a failure.
+const AUTH_MEMO_MS = 30_000;
+const AUTH_MEMO = new Map<string, { uid: string; st: { status: string; blocked_until: number | null } | null; at: number }>();
+
 export async function requireUser(req: Request, env: Env): Promise<UserCtx | AuthFail> {
   let bearer = req.headers.get("authorization");
   if (!bearer) {
@@ -26,12 +29,21 @@ export async function requireUser(req: Request, env: Env): Promise<UserCtx | Aut
   // normal login this is a no-op (returns the same id); for a login whose Clerk id
   // changed (deleted+recreated Clerk user) it maps back to the original account so
   // every uid-keyed store stays reachable. Fail-open: unknown → the id itself.
-  const uid = await resolveCanonicalUid(env, clerk.clerkUserId);
-
-  // Account-status ban gate (account_status is already keyed by clerk_user_id).
-  const st = await env.DB_META
-    .prepare("SELECT status, blocked_until FROM account_status WHERE clerk_user_id = ?1")
-    .bind(uid).first<{ status: string; blocked_until: number | null }>();
+  // [HF-ADMIN-SPEED-3] The uid mapping and the ban row are kept in this isolate for 30 s, so a page that fires several
+  // calls at once does not pay two database round trips on each. A ban still takes effect within 30 s.
+  const memo = AUTH_MEMO.get(clerk.clerkUserId);
+  let uid: string, st: { status: string; blocked_until: number | null } | null;
+  if (memo && memo.at > Date.now() - AUTH_MEMO_MS) {
+    ({ uid, st } = memo);
+  } else {
+    uid = await resolveCanonicalUid(env, clerk.clerkUserId);
+    // Account-status ban gate (account_status is already keyed by clerk_user_id).
+    st = await env.DB_META
+      .prepare("SELECT status, blocked_until FROM account_status WHERE clerk_user_id = ?1")
+      .bind(uid).first<{ status: string; blocked_until: number | null }>();
+    if (AUTH_MEMO.size > 2000) AUTH_MEMO.clear();
+    AUTH_MEMO.set(clerk.clerkUserId, { uid, st: st ?? null, at: Date.now() });
+  }
   if (st) {
     if (st.status === "perm_banned") return { error: "account banned", status: 403 };
     if (st.status === "temp_blocked" && (!st.blocked_until || Date.now() < st.blocked_until)) {
