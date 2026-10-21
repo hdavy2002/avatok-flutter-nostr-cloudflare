@@ -1,8 +1,7 @@
 ---
 import { publicImage } from '../../lib/config';
-// [HF-LOGO-1 2026-10-15] Owner's new badge logo (design/hf logo/).
-// Square art: the header/footer size it by HEIGHT (callvaal-chrome.css).
+// [HF-ICON-LOGO-1] The owner's wide transparent wordmark keeps its natural aspect ratio.
 const artwork = publicImage('/assets/branding/hf-logo.png', { width: 320, fit: 'scale-down' });
 ---
 {/* The home link around this supplies the accessible brand name. */}
-<img class="cv-brand-logo" src={artwork} alt="" width="160" height="160" decoding="async" />
+<img class="cv-brand-logo" src={artwork} alt="" width="194" height="81" decoding="async" />
