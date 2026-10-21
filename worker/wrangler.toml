@@ -589,12 +589,8 @@ class_name = "ConsultCallDO"
 name = "HF_CALL"
 class_name = "HfCallDO"
 
-# [DYNW-CORE-1] Dynamic Workers loader (Specs/PROPOSAL-DYNAMIC-WORKERS-2026-07-28.md).
-# Lets this Worker spin up sandboxed child Workers at runtime. DARK behind
-# `dynamicWorkersEnabled` (routes/config.ts); the ONLY consumer is lib/dynw/host.ts.
-# Every load() sets globalOutbound: null (no network) unless a workstream opts in.
-[[worker_loaders]]
-binding = "LOADER"
+# [HF-WORKER-FREE-1] Dynamic Workers require Workers Paid. Keep the LOADER
+# binding absent while this shared API runs on Workers Free; its flags stay off.
 
 # [DYNW-FLOWS-1] Cloudflare Workflow — DARK PARALLEL account-deletion cascade
 # (Specs/PROPOSAL-DYNAMIC-WORKERS-2026-07-28.md §WS-3). The LIVE path is still the
