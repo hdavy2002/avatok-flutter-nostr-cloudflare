@@ -49,10 +49,12 @@ try {
       const top = await page.evaluate(() => {
         const header = document.querySelector('.cv-header'); const logo = header.querySelector('.cv-brand-logo');
         const h = header.getBoundingClientRect(), l = logo.getBoundingClientRect();
-        return { headerHeight: h.height, logoHeight: l.height, gapAbove: l.top - h.top, gapBelow: h.bottom - l.bottom, position: getComputedStyle(header).position, shadow: getComputedStyle(header).boxShadow };
+        return { headerHeight: h.height, logoWidth: l.width, logoHeight: l.height, gapAbove: l.top - h.top, gapBelow: h.bottom - l.bottom, position: getComputedStyle(header).position, shadow: getComputedStyle(header).boxShadow };
       });
       assert.equal(top.position, 'sticky', name + ': header is sticky');
-      assert(top.logoHeight >= (width < 700 ? 76 : 104) - 1, name + ': logo is the enlarged size (' + top.logoHeight + ')');
+      assert(top.logoWidth >= (width < 700 ? 160 : 210), name + ': wordmark has the intended width (' + top.logoWidth + ')');
+      assert(top.logoHeight >= (width < 700 ? 65 : 85), name + ': wordmark remains legible (' + top.logoHeight + ')');
+      assert(Math.abs(top.logoWidth / top.logoHeight - 1942 / 809) < 0.05, name + ': wordmark keeps its aspect ratio');
       assert(top.gapAbove <= 1 && top.gapBelow <= 1, name + ': no space above/below the logo (' + top.gapAbove + '/' + top.gapBelow + ')');
       assert.notEqual(top.shadow, 'none', name + ': header has a shadow');
       await page.evaluate(() => window.scrollTo(0, 2500));
