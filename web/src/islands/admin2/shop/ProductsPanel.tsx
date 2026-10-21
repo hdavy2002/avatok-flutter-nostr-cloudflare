@@ -106,7 +106,7 @@ export default function ProductsPanel({ rev }: { rev: number }) {
                       ) : (<>
                         <button type="button" className="sh-btn sh-btn--ghost sh-mini" onClick={() => setEdit(p)}>Edit</button>{' '}
                         <button type="button" className="sh-btn sh-btn--teal sh-mini" onClick={() => setPromo(p)}>Promote</button>{' '}
-                        <button type="button" className="sh-btn sh-btn--ghost sh-mini" style={{ color: '#b3261e', borderColor: '#b3261e' }} onClick={() => setDel(p)}>Delete</button>
+                        <button type="button" className="sh-btn sh-btn--ghost sh-mini sh-danger" onClick={() => setDel(p)}>Delete</button>
                       </>)}
                     </td>
                   </tr>
@@ -144,9 +144,9 @@ function DeleteModal({ p, onClose, onDone }: { p: AdminProduct | null; onClose: 
     <Modal open onClose={onClose}>
       <h2>Delete “{p.name}”?</h2>
       <p>It disappears from the shop, every card and search. Past orders and receipts keep their copy of the product. You can restore it from Archived for 30 days.</p>
-      <div style={{ display: 'flex', gap: 10 }}>
+      <div className="sh-actions">
         <button type="button" className="sh-btn sh-btn--ghost" onClick={onClose}>Cancel</button>
-        <button type="button" className="sh-btn sh-btn--red" style={{ flex: 1 }} disabled={busy} onClick={() => void go()}>{busy ? 'Deleting…' : 'Delete product'}</button>
+        <button type="button" className="sh-btn sh-btn--red sh-btn--danger" style={{ flex: 1 }} disabled={busy} onClick={() => void go()}>{busy ? 'Deleting…' : 'Delete product'}</button>
       </div>
     </Modal>
   );
@@ -185,7 +185,7 @@ function PromoteModal({ p, onClose, onDone }: { p: AdminProduct | null; onClose:
         <label>Badge<select value={badge} onChange={(e) => setBadge(e.target.value as Badge)}><option value="">Automatic</option><option value="new">New</option><option value="best">Bestseller</option><option value="sale">Sale</option></select></label>
         <label>Show until<input value="Always" disabled readOnly /></label>
       </div>
-      <div style={{ display: 'flex', gap: 10, marginTop: 16 }}>
+      <div className="sh-actions sh-actions--spaced">
         <button type="button" className="sh-btn sh-btn--ghost" onClick={onClose}>Cancel</button>
         <button type="button" className="sh-btn sh-btn--teal" style={{ flex: 1 }} disabled={busy} onClick={() => void save()}>{busy ? 'Saving…' : 'Save'}</button>
       </div>

@@ -1,32 +1,77 @@
-/* [SAATHUM-SHOP-EDITOR-1 2026-10-01] Chrome around the Puck shop-page editor (host document only; the canvas uses shop.css). */
+/* [HF-ADMIN-REDESIGN-1] Commerce admin presentation; product artwork and editor canvas colours stay independent. */
 .pe-root{position:fixed;inset:0;z-index:200;background:#fff;display:flex;flex-direction:column;font-family:Nunito,system-ui,sans-serif}
-.pe-top{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:8px 14px;border-bottom:1px solid #e3cfa9;background:#fffaf0;color:#5a1f14;font:800 14px Nunito,system-ui,sans-serif}
-.pe-top a{color:#173f3f;text-decoration:underline;text-underline-offset:3px}
+.pe-top{display:flex;align-items:center;gap:14px;flex-wrap:wrap;padding:8px 14px;border-bottom:1px solid var(--hf-admin-line, #f1e3d6);background:var(--hf-admin-cream, #fffaf3);color:var(--hf-admin-ink, #2b1530);font:800 14px Nunito,system-ui,sans-serif}
+.pe-top a{color:var(--hf-admin-plum, #4a1747);text-decoration:underline;text-underline-offset:3px}
 .pe-top b{font:700 16px Comfortaa,sans-serif}
 .pe-top .pe-spacer{flex:1}
-.pe-status{font-weight:700;color:#6b4a2b;white-space:nowrap;font-size:13px}
+.pe-status{font-weight:700;color:var(--hf-admin-muted, #6f5b6f);white-space:nowrap;font-size:13px}
 .pe-status.is-err{color:#9b1c14}
 .pe-body{flex:1;min-height:0}
-.pe-state{display:grid;place-items:center;height:100%;padding:24px;text-align:center;color:#6b4a2b;font:700 16px Nunito,sans-serif}
-.pe-btn{display:inline-flex;align-items:center;justify-content:center;min-height:36px;padding:0 14px;border-radius:10px;border:0;background:#b3261e;color:#fff;font:900 14px Nunito,sans-serif;cursor:pointer}
+.pe-state{display:grid;place-items:center;height:100%;padding:24px;text-align:center;color:var(--hf-admin-muted, #6f5b6f);font:700 16px Nunito,sans-serif}
+.pe-btn{display:inline-flex;align-items:center;justify-content:center;min-height:36px;padding:0 14px;border-radius:10px;border:0;background:#c0262d;color:#fff;font:900 14px Nunito,sans-serif;cursor:pointer}
 .pe-btn:disabled{opacity:.55;cursor:default}
-.pe-btn--ghost{background:#fff;color:#173f3f;border:2px solid #173f3f}
-.pe-btn--teal{background:#173f3f}
-.pe-link{background:none;border:0;color:#173f3f;text-decoration:underline;font:800 13px Nunito,sans-serif;cursor:pointer;padding:0}
-.pe-input{width:100%;min-height:36px;border:1px solid #d7c7a8;border-radius:8px;padding:0 8px;font:600 14px Nunito,sans-serif;background:#fff}
+.pe-btn--ghost{background:#fff;color:var(--hf-admin-plum, #4a1747);border:2px solid var(--hf-admin-plum, #4a1747)}
+.pe-btn--teal{background:var(--hf-admin-plum, #4a1747)}
+.pe-link{background:none;border:0;color:var(--hf-admin-plum, #4a1747);text-decoration:underline;font:800 14px Nunito,sans-serif;cursor:pointer;padding:0}
+.pe-input{width:100%;min-height:36px;border:1px solid var(--hf-admin-line, #f1e3d6);border-radius:8px;padding:0 8px;font:600 14px Nunito,sans-serif;background:#fff}
 .pe-img{display:flex;flex-direction:column;gap:8px}
-.pe-img-box{aspect-ratio:16/9;border-radius:10px;overflow:hidden;background:repeating-linear-gradient(135deg,#f6e3c4 0 12px,#fbf0dc 12px 24px);display:grid;place-items:center;color:#6b4a2b;font:700 13px Nunito,sans-serif}
+.pe-img-box{aspect-ratio:16/9;border-radius:10px;overflow:hidden;background:repeating-linear-gradient(135deg,var(--hf-admin-goldtint, #fff1d6) 0 12px,#fbf0dc 14px 24px);display:grid;place-items:center;color:var(--hf-admin-muted, #6f5b6f);font:700 14px Nunito,sans-serif}
 .pe-img-box img{width:100%;height:100%;object-fit:cover}
 .pe-img-row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
-.pe-img small{color:#6b4a2b}
-.pe-err{color:#9b1c14;font:700 13px Nunito,sans-serif;margin:0}
+.pe-img small{color:var(--hf-admin-muted, #6f5b6f)}
+.pe-err{color:#9b1c14;font:700 14px Nunito,sans-serif;margin:0}
 .pe-modal{position:fixed;inset:0;z-index:300;background:#0006;display:grid;place-items:center;padding:16px}
-.pe-modal-box{background:#fff;border-radius:16px;padding:20px;max-width:460px;width:100%;box-shadow:0 20px 50px #0004;color:#5a1f14}
+.pe-modal-box{background:#fff;border-radius:16px;padding:20px;max-width:460px;width:100%;box-shadow:0 20px 50px #0004;color:var(--hf-admin-ink, #2b1530)}
 .pe-modal-box h2{font:700 20px Comfortaa,sans-serif;margin:0 0 6px}
-.pe-modal-box p{margin:0 0 14px;font:600 14px Nunito,sans-serif;color:#6b4a2b}
-.pe-ver{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 0;border-top:1px solid #eee3cd;font:700 14px Nunito,sans-serif}
+.pe-modal-box p{margin:0 0 14px;font:600 14px Nunito,sans-serif;color:var(--hf-admin-muted, #6f5b6f)}
+.pe-ver{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 0;border-top:1px solid var(--hf-admin-line, #f1e3d6);font:700 14px Nunito,sans-serif}
 /* canvas: dots/cards cannot be clicked while editing (positions are set in the sidebar) */
 .sh-editing .sh-dot,.sh-editing .sh-pop{pointer-events:none}
 /* [SAATHUM-SHOP-EDITOR-2] Editor-only hints inside the canvas and the sidebar guide */
 .sh-edit-hint{margin:14px 0 0;padding:10px 14px;border-radius:12px;background:#fff3d6;border:2px dashed #d9a62b;color:#5a1f14;font:700 14px Nunito,sans-serif;text-align:center}
-.pe-guide{margin:0;font:600 14px/1.5 Nunito,system-ui,sans-serif;color:#6b4a2b}
+.pe-guide{margin:0;font:600 14px/1.5 Nunito,system-ui,sans-serif;color:var(--hf-admin-muted, #6f5b6f)}
+
+/* Only the host document is themed; Puck's iframe keeps the public shop canvas. */
+.pe-root{color-scheme:light;background:var(--hf-admin-canvas,#fff8f0);color:var(--hf-admin-ink,#2b1530);font-family:var(--hf-admin-body,'Comfortaa',sans-serif);font-size:16px}
+.pe-top{padding:12px 16px;border-color:var(--hf-admin-line,#f1e3d6)}
+.pe-top b,.pe-modal-box h2{font-family:var(--hf-admin-head,'Nunito',sans-serif);font-weight:900}
+.pe-top a{display:inline-flex;align-items:center;min-height:44px}
+.pe-status{white-space:normal;font-size:14px}
+.pe-btn{min-height:44px;padding:10px 16px;border-radius:999px;background:var(--hf-admin-plum,#4a1747);line-height:1.3}
+.pe-btn--ghost{background:#fff;border:1.5px solid var(--hf-admin-line,#f1e3d6);color:var(--hf-admin-plum,#4a1747)}
+.pe-link{display:inline-flex;align-items:center;min-height:44px;font-size:14px}
+.pe-input{min-height:44px;border-radius:14px;font:600 16px var(--hf-admin-body,'Comfortaa',sans-serif);color:var(--hf-admin-ink,#2b1530)}
+.pe-img small,.pe-err{font-size:14px}
+.pe-modal{background:rgb(43 21 48 / .45)}
+.pe-modal-box{border:1px solid var(--hf-admin-line,#f1e3d6);border-radius:24px;max-height:calc(100dvh - 32px);overflow:auto;box-shadow:0 18px 40px -18px rgb(74 23 71 / .4)}
+.pe-modal-box p,.pe-guide{font-family:var(--hf-admin-body,'Comfortaa',sans-serif);line-height:1.6}
+.pe-ver{flex-wrap:wrap}
+.pe-root :is(button,input,select,textarea,a,[tabindex]):focus-visible{outline:3px solid var(--hf-admin-rani,#d81b72);outline-offset:3px}
+.pe-root :is(button,input,select,textarea):disabled{cursor:not-allowed}
+@media(max-width:640px){.pe-top{gap:8px;padding:10px 12px}.pe-top .pe-status{flex-basis:100%}.pe-modal-box{padding:16px}}
+
+.pe-root{
+ --puck-font-family:var(--hf-admin-body,'Comfortaa',sans-serif);
+ --puck-font-size-xxxs:14px;
+ --puck-color-surface:#fff;
+ --puck-color-surface-muted:var(--hf-admin-canvas,#fff8f0);
+ --puck-color-surface-subtle:var(--hf-admin-cream,#fffaf3);
+ --puck-color-surface-inverse:var(--hf-admin-plum,#4a1747);
+ --puck-color-text:var(--hf-admin-ink,#2b1530);
+ --puck-color-text-secondary:var(--hf-admin-muted,#6f5b6f);
+ --puck-color-text-muted:var(--hf-admin-muted,#6f5b6f);
+ --puck-color-border:var(--hf-admin-line,#f1e3d6);
+ --puck-color-border-muted:var(--hf-admin-line,#f1e3d6);
+ --puck-color-border-hover:var(--hf-admin-plum,#4a1747);
+ --puck-color-interactive:var(--hf-admin-plum,#4a1747);
+ --puck-color-interactive-hover:#6b2468;
+ --puck-color-interactive-active:#351033;
+ --puck-color-interactive-subtle:var(--hf-admin-blush,#ffe6ef);
+ --puck-color-interactive-soft:var(--hf-admin-cream,#fffaf3);
+ --puck-color-interactive-soft-hover:var(--hf-admin-blush,#ffe6ef);
+ --puck-color-interactive-neutral-hover:var(--hf-admin-goldtint,#fff1d6);
+ --puck-color-focus-ring:var(--hf-admin-rani,#d81b72);
+ --puck-radius-s:10px;--puck-radius-m:14px;--puck-radius-l:20px;
+}
+.pe-root :is(button,[role=button],select){min-height:44px;min-width:44px;font-family:var(--hf-admin-head,'Nunito',sans-serif);font-size:14px}
+.pe-root input:not([type=checkbox]):not([type=radio]):not([type=range]){min-height:44px;font-size:16px}

@@ -129,7 +129,7 @@ export default function ProductStep({ designId }: { designId: string }) {
           <div className="ph chk" style={{ width: 140, height: 140, borderStyle: 'solid', padding: 10 }}>
             {artImg && <img src={artImg} alt="" style={{ maxWidth: 110, maxHeight: 110, objectFit: 'contain' }} />}
           </div>
-          <div style={{ flex: 1, minWidth: 280 }}>
+          <div className="studio-summary-copy">
             <span className="chip ok">Best match</span>
             <h2 style={{ marginTop: 8 }}>{bestItem?.label ?? best.kind}{best.colours.length ? ` · ${best.colours.join(', ')}` : ''}</h2>
             <p style={{ font: '700 15px/1.6 Nunito', color: '#3c4a4c', margin: '6px 0 0' }}>{best.text}</p>

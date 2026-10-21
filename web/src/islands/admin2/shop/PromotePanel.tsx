@@ -47,7 +47,7 @@ export default function PromotePanel() {
 
   return (
     <div className="sh-apanel is-on" data-apanel="promo">
-      <p style={{ font: '700 15px Nunito', color: '#6b4a2b', margin: '0 0 14px' }}>Each card on the shop home is a slot. Pick which products show in it — or use “Promote” on any product. The New arrivals and Bestsellers cards are the product flags: adding a product here ticks “Show in New arrivals” / “Mark as Bestseller” on it (you can also tick those in the product itself).</p>
+      <p className="sh-help">Each card on the shop home is a slot. Pick which products show in it — or use “Promote” on any product. The New arrivals and Bestsellers cards are the product flags: adding a product here ticks “Show in New arrivals” / “Mark as Bestseller” on it (you can also tick those in the product itself).</p>
       <div className="sh-slots">
         {SLOTS.map((s) => {
           const ids = (slots[s.key] ?? []).filter((id) => byId.has(id));
@@ -118,7 +118,7 @@ function PickerModal({ slotKey, products, current, onClose, onSave }: {
           </label>
         ))}
       </div>
-      <div style={{ display: 'flex', gap: 10 }}>
+      <div className="sh-actions">
         <button type="button" className="sh-btn sh-btn--ghost" onClick={onClose}>Cancel</button>
         <button type="button" className="sh-btn sh-btn--teal" style={{ flex: 1 }} disabled={!sel.length} onClick={() => onSave([...current, ...sel])}>Add {sel.length || ''}</button>
       </div>

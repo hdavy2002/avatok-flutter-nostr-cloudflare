@@ -1,25 +1,39 @@
-/* [AUMFE-POD-FULFIL-1] Print partner screen -- Specs/studio-mockup/PrintPartner.dc.html, scoped under .shop-admin (prefix pp-). */
+/* [HF-ADMIN-REDESIGN-1] Commerce admin presentation; product artwork and editor canvas colours stay independent. */
 .shop-admin .pp-g2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
-.shop-admin .pp-panel{background:#fffdf8;border:6px solid #fff;border-radius:22px;padding:22px;box-shadow:0 14px 30px #5a2c0f26;margin-bottom:18px}
+.shop-admin .pp-panel{background:#fff;border:1px solid var(--hf-admin-line, #f1e3d6);border-radius:22px;padding:22px;box-shadow:var(--dash-shadow, 0 8px 24px -12px #4a17472e);margin-bottom:18px}
 .shop-admin .pp-panel h2{font-size:22px;margin-bottom:6px}
-.shop-admin .pp-lead{font:600 15px Nunito,sans-serif;color:#6b4a2b;margin:0 0 16px}
-.shop-admin .pp-card{background:#fff;border:2px solid #e3cfa9;border-radius:18px;padding:14px;display:flex;flex-direction:column;gap:10px}
-.shop-admin .pp-card.is-sel{border:3px solid #173f3f;box-shadow:0 0 0 4px #173f3f22}
+.shop-admin .pp-lead{font:600 15px Nunito,sans-serif;color:var(--hf-admin-muted, #6f5b6f);margin:0 0 16px}
+.shop-admin .pp-card{background:#fff;border:2px solid var(--hf-admin-line, #f1e3d6);border-radius:18px;padding:14px;display:flex;flex-direction:column;gap:10px}
+.shop-admin .pp-card.is-sel{border:3px solid var(--hf-admin-plum, #4a1747);box-shadow:0 0 0 4px #173f3f22}
 .shop-admin .pp-card.is-dash{border-style:dashed}
 .shop-admin .pp-card h3{font-size:18px}
-.shop-admin .pp-card p{font:600 14px/1.5 Nunito,sans-serif;color:#3c4a4c;margin:0}
+.shop-admin .pp-card p{font:600 14px/1.5 Nunito,sans-serif;color:var(--hf-admin-ink, #2b1530);margin:0}
 .shop-admin .pp-row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
-.shop-admin .pp-lbl{display:flex;flex-direction:column;gap:6px;font:900 13px Nunito,sans-serif;letter-spacing:.06em;text-transform:uppercase;color:#7a4a1e}
-.shop-admin .pp-fld{min-height:46px;padding:10px 14px;border-radius:12px;border:2px solid #e3cfa9;background:#fff;font:700 15px Nunito,sans-serif;color:#5a1f14;text-transform:none;letter-spacing:0;width:100%}
+.shop-admin .pp-lbl{display:flex;flex-direction:column;gap:6px;font:900 14px Nunito,sans-serif;letter-spacing:.06em;text-transform:uppercase;color:var(--hf-admin-plum, #4a1747)}
+.shop-admin .pp-fld{min-height:46px;padding:10px 14px;border-radius:14px;border:2px solid var(--hf-admin-line, #f1e3d6);background:#fff;font:700 15px Nunito,sans-serif;color:var(--hf-admin-ink, #2b1530);text-transform:none;letter-spacing:0;width:100%}
 .shop-admin .pp-fld:disabled{opacity:.7;cursor:not-allowed}
-.shop-admin .pp-small{font:600 14px/1.5 Nunito,sans-serif;color:#6b4a2b;margin:10px 0 0}
+.shop-admin .pp-small{font:600 14px/1.5 Nunito,sans-serif;color:var(--hf-admin-muted, #6f5b6f);margin:10px 0 0}
 .shop-admin .pp-list{display:flex;flex-direction:column;gap:10px;margin:0;padding:0;list-style:none}
-.shop-admin .pp-list li{display:flex;gap:12px;align-items:flex-start;padding:12px 14px;border-radius:14px;background:#fff;border:2px solid #efe0c4;font:700 15px/1.45 Nunito,sans-serif;color:#3c4a4c}
-.shop-admin .pp-list li b{color:#5a1f14}
+.shop-admin .pp-list li{display:flex;gap:14px;align-items:flex-start;padding:14px 14px;border-radius:14px;background:#fff;border:2px solid var(--hf-admin-line, #f1e3d6);font:700 15px/1.45 Nunito,sans-serif;color:var(--hf-admin-ink, #2b1530)}
+.shop-admin .pp-list li b{color:var(--hf-admin-ink, #2b1530)}
 .shop-admin .pp-tog{display:inline-block;width:52px;height:30px;border-radius:999px;background:#d8c7a8;position:relative;flex:none;border:0;cursor:pointer;padding:0}
 .shop-admin .pp-tog::after{content:"";position:absolute;top:4px;left:4px;width:22px;height:22px;border-radius:50%;background:#fff;transition:left .15s}
 .shop-admin .pp-tog.is-on{background:#1e7a44}
 .shop-admin .pp-tog.is-on::after{left:26px}
 .shop-admin .pp-tog:disabled{cursor:not-allowed;opacity:.8}
-.shop-admin .pp-err{color:#b3261e;font:800 14px Nunito,sans-serif;margin-top:8px}
+.shop-admin .pp-err{color:#c0262d;font:800 14px Nunito,sans-serif;margin-top:8px}
 @media (max-width:900px){.shop-admin .pp-g2{grid-template-columns:1fr}}
+
+/* Partner controls inherit the same commerce chrome as the Shop. */
+.shop-admin :is(.pp-panel,.pp-card,.pp-list li>div){min-width:0}
+.shop-admin :is(.pp-lead,.pp-card p,.pp-small,.pp-list li){font-family:var(--hf-commerce-bodyfont);line-height:1.6}
+.shop-admin .pp-card.is-sel{border-color:var(--teal);box-shadow:0 0 0 3px var(--hf-admin-blush,#ffe6ef)}
+.shop-admin .pp-lbl{font-size:14px}
+.shop-admin .pp-fld{min-width:0;max-width:100%;font-family:var(--hf-commerce-bodyfont);font-size:16px;border-width:1.5px;border-radius:14px}
+.shop-admin .pp-tog{height:44px;min-height:44px;background:var(--hf-admin-muted,#6f5b6f)}
+.shop-admin .pp-tog::after{top:11px}
+.shop-admin .pp-tog.is-on{background:var(--teal)}
+.shop-admin .pp-list li{flex-wrap:wrap}
+.shop-admin .pp-list li>div{flex-basis:180px!important}
+@media(max-width:640px){.shop-admin .pp-panel{padding:16px}.shop-admin .pp-list li{padding:12px}.shop-admin .pp-row>.sh-btn{flex:1 1 150px}}
+@media(prefers-reduced-motion:reduce){.shop-admin .pp-tog::after{transition:none}}

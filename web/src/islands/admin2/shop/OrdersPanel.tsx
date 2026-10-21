@@ -227,9 +227,9 @@ interface MProps { state: ModalState; onClose: () => void; act: ActFn }
 
 function Buttons({ onClose, busy, label, tone = 'teal', disabled }: { onClose: () => void; busy: boolean; label: string; tone?: 'teal' | 'red'; disabled?: boolean }) {
   return (
-    <div style={{ display: 'flex', gap: 10, marginTop: 16 }}>
+    <div className="sh-actions sh-actions--spaced">
       <button type="button" className="sh-btn sh-btn--ghost" onClick={onClose}>Cancel</button>
-      <button type="submit" className={`sh-btn sh-btn--${tone}`} style={{ flex: 1 }} disabled={busy || disabled}>{busy ? 'Working…' : label}</button>
+      <button type="submit" className={`sh-btn sh-btn--${tone}${tone === 'red' ? ' sh-btn--danger' : ''}`} style={{ flex: 1 }} disabled={busy || disabled}>{busy ? 'Working…' : label}</button>
     </div>
   );
 }
@@ -536,8 +536,8 @@ function OrderDrawer({ id, onClose, onChanged, onOpenModal }: { id: string | nul
             {st === 'paid' && <button type="button" className="sh-btn sh-btn--teal" onClick={() => onOpenModal('print', d)}>Sent to Printrove{d.production?.provider && d.production.provider !== 'manual' ? ' (by hand)' : ''}</button>}
             {st === 'packed' && <button type="button" className="sh-btn sh-btn--red" onClick={() => onOpenModal('ship', d)}>Mark shipped</button>}
             {st === 'shipped' && <button type="button" className="sh-btn sh-btn--ghost" onClick={() => onOpenModal('deliver', d)}>Mark delivered</button>}
-            {canCancel && <button type="button" className="sh-btn sh-btn--ghost" style={{ color: '#b3261e', borderColor: '#b3261e' }} onClick={() => onOpenModal('cancel', d)}>Cancel order</button>}
-            {canRefund && <button type="button" className="sh-btn sh-btn--ghost" style={{ color: '#b3261e', borderColor: '#b3261e' }} onClick={() => onOpenModal('refund', d)}>Refund (UTR)</button>}
+            {canCancel && <button type="button" className="sh-btn sh-btn--ghost sh-danger" onClick={() => onOpenModal('cancel', d)}>Cancel order</button>}
+            {canRefund && <button type="button" className="sh-btn sh-btn--ghost sh-danger" onClick={() => onOpenModal('refund', d)}>Refund (UTR)</button>}
           </div>
         </div>
       )}

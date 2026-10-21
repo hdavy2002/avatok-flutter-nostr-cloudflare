@@ -55,7 +55,7 @@ export default function CollectionsPanel() {
             {items.length === 0 && <p>No collections yet — add the first one below.</p>}
             {items.map((c, i) => (
               <div
-                className="sh-sum-item sh-cat-row" key={c.id} style={{ gridTemplateColumns: '28px 1fr auto' }}
+                className="sh-sum-item sh-cat-row" key={c.id}
                 draggable
                 onDragStart={() => { dragFrom.current = i; }}
                 onDragOver={(e) => e.preventDefault()}
@@ -67,13 +67,13 @@ export default function CollectionsPanel() {
               >
                 <span style={{ font: '900 18px Nunito', color: '#a08974', cursor: 'grab' }} aria-hidden>⋮⋮</span>
                 <div><b>{c.name}</b><small>{c.count} products · shown on shop home{c.active ? '' : ' · hidden'}</small></div>
-                <div style={{ whiteSpace: 'nowrap' }}>
+                <div className="sh-cat-actions">
                   <span className="sh-mv">
                     <button type="button" className="sh-btn sh-btn--ghost sh-mini" aria-label="Move up" disabled={i === 0} onClick={() => moveBy(i, -1)}>▲</button>{' '}
                     <button type="button" className="sh-btn sh-btn--ghost sh-mini" aria-label="Move down" disabled={i === items.length - 1} onClick={() => moveBy(i, 1)}>▼</button>{' '}
                   </span>
                   <button type="button" className="sh-btn sh-btn--ghost sh-mini" onClick={() => setEdit(c)}>Edit</button>{' '}
-                  <button type="button" className="sh-btn sh-btn--ghost sh-mini" style={{ color: '#b3261e', borderColor: '#b3261e' }} onClick={() => askDelete(c)}>Delete</button>
+                  <button type="button" className="sh-btn sh-btn--ghost sh-mini sh-danger" onClick={() => askDelete(c)}>Delete</button>
                 </div>
               </div>
             ))}
@@ -90,9 +90,9 @@ export default function CollectionsPanel() {
       <Modal open={!!del} onClose={() => setDel(null)}>
         <h2>Delete “{del?.name}”?</h2>
         <p>It disappears from the shop home and the filters. It has no products, so nothing else changes.</p>
-        <div style={{ display: 'flex', gap: 10 }}>
+        <div className="sh-actions">
           <button type="button" className="sh-btn sh-btn--ghost" onClick={() => setDel(null)}>Cancel</button>
-          <button type="button" className="sh-btn sh-btn--red" style={{ flex: 1 }} onClick={async () => {
+          <button type="button" className="sh-btn sh-btn--red sh-btn--danger" style={{ flex: 1 }} onClick={async () => {
             if (!del) return;
             try { await deleteCollection(del.id); toast.success('Collection deleted'); setDel(null); await load(); }
             catch (e) {
@@ -166,7 +166,7 @@ function EditModal({ target, onClose, onSaved }: { target: AdminCollection | 'ne
         </div>
         {!creating && <label className="sh-opt" style={{ marginTop: 14 }}><input type="checkbox" checked={active} onChange={(e) => setActive(e.target.checked)} /> Show on the shop home</label>}
         {err && <p className="sh-err" role="alert">{err}</p>}
-        <div style={{ display: 'flex', gap: 10, marginTop: 16 }}>
+        <div className="sh-actions sh-actions--spaced">
           <button type="button" className="sh-btn sh-btn--ghost" onClick={onClose}>Cancel</button>
           <button type="submit" className="sh-btn sh-btn--teal" style={{ flex: 1 }} disabled={busy}>{busy ? 'Saving…' : 'Save'}</button>
         </div>

@@ -149,7 +149,7 @@ export default function UploadStep({ designId }: { designId: string | null }) {
           {problem && <p className="errtxt" role="alert">{problem}</p>}
           <div className="row" style={{ marginTop: 14 }}>
             <button className="btn ghost sm" type="button" onClick={pick}>{shown ? 'Replace file' : 'Choose file'}</button>
-            <label className="lbl" style={{ flex: 1, minWidth: 240 }}>Name this design
+            <label className="lbl studio-name-field">Name this design
               <input className="fld" value={name} onChange={(e) => setName(e.target.value)} onBlur={() => void saveName()} onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }} maxLength={120} />
             </label>
           </div>

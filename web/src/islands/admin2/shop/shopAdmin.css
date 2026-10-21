@@ -1,53 +1,53 @@
-/* [SAATHUM-SHOP-ADMIN-1 2026-10-01] Admin side of the approved Shop mockup (Specs/shop-mockup/shop.css), ported VERBATIM and scoped under .shop-admin. Values are the owner-approved chandan/ink/red/teal tokens — do not restyle. */
-.shop-admin{--ink:#5a1f14;--sub:#6b4a2b;--red:#b3261e;--redDk:#7a150f;--teal:#173f3f;--body:#3c4a4c;--gold:#F6B93B;--green:#1e8a4c;--line:#e3cfa9;--chip:#f3e7d2;--card:#fffdf8;--cream:#fbf3e4;
+/* [HF-ADMIN-REDESIGN-1] Commerce admin presentation; product artwork and editor canvas colours stay independent. */
+.shop-admin{--ink:var(--hf-admin-ink, #2b1530);--sub:var(--hf-admin-muted, #6f5b6f);--red:#c0262d;--redDk:#971f25;--teal:var(--hf-admin-plum, #4a1747);--body:var(--hf-admin-ink, #2b1530);--gold:var(--hf-admin-marigold, #f59e0b);--green:#1e8a4c;--line:var(--hf-admin-line, #f1e3d6);--chip:var(--hf-admin-goldtint, #fff1d6);--card:#fff;--cream:var(--hf-admin-cream, #fffaf3);
   color:var(--ink);font-family:Nunito,system-ui,sans-serif;}
 .shop-admin *{box-sizing:border-box}
 .shop-admin h1, .shop-admin h2, .shop-admin h3{font-family:Comfortaa,sans-serif;font-weight:600;margin:0;color:var(--ink);letter-spacing:0}
 .shop-admin .sh-btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:48px;padding:0 22px;border-radius:14px;font:900 16px Nunito,sans-serif;letter-spacing:.02em;cursor:pointer;border:0;text-decoration:none;transition:transform .12s}
 .shop-admin .sh-btn:active{transform:translateY(2px)}
 .shop-admin .sh-btn--red{background:var(--red);color:#fff;box-shadow:0 3px 0 var(--redDk)}
-.shop-admin .sh-btn--teal{background:var(--teal);color:#fff;box-shadow:0 3px 0 #0b2424}
+.shop-admin .sh-btn--teal{background:var(--teal);color:#fff;box-shadow:0 3px 0 #351033}
 .shop-admin .sh-btn--ghost{background:#fff;color:var(--teal);border:2px solid var(--teal)}
 .shop-admin .sh-btn--wide{width:100%}
 .shop-admin .sh-link{font:800 15px Nunito;color:var(--teal);text-decoration:underline;text-underline-offset:4px;cursor:pointer;background:none;border:0}
-.shop-admin .sh-eyebrow{font:900 13px Nunito;letter-spacing:.14em;text-transform:uppercase;color:#9a5a26}
-.shop-admin .sh-note{display:inline-block;padding:4px 10px;border-radius:999px;background:#fff3c4;border:1px dashed #c9a13a;font:700 13px Nunito;color:#6b4a2b}
+.shop-admin .sh-eyebrow{font:900 14px Nunito;letter-spacing:.14em;text-transform:uppercase;color:var(--hf-admin-rani, #d81b72)}
+.shop-admin .sh-note{display:inline-block;padding:4px 10px;border-radius:999px;background:#fff3c4;border:1px dashed #c9a13a;font:700 14px Nunito;color:var(--hf-admin-muted, #6f5b6f)}
 .shop-admin .sh-promise .sh-link{margin-left:auto}
-.shop-admin .sh-banner .sh-eyebrow{color:#F6B93B}
+.shop-admin .sh-banner .sh-eyebrow{color:var(--hf-admin-marigold, #f59e0b)}
 .shop-admin .sh-opt{display:flex;align-items:center;gap:10px;font:700 15px Nunito;color:var(--body);cursor:pointer}
 .shop-admin .sh-opt input{width:20px;height:20px;accent-color:var(--red)}
 .shop-admin .sh-opt i{width:20px;height:20px;border-radius:50%;box-shadow:0 0 0 1px #c9b08c}
-.shop-admin .sh-opt em{margin-left:auto;font-style:normal;color:#8a7560;font-size:14px}
+.shop-admin .sh-opt em{margin-left:auto;font-style:normal;color:var(--hf-admin-muted, #6f5b6f);font-size:14px}
 .shop-admin .sh-err{color:var(--red);font:800 14px Nunito;margin-top:8px;min-height:18px}
 .shop-admin .sh-scrim{position:fixed;inset:0;background:#1a0d0680;z-index:90;opacity:0;pointer-events:none;transition:.25s}
 .shop-admin .sh-scrim.is-on{opacity:1;pointer-events:auto}
-.shop-admin .sh-drawer{position:fixed;top:0;right:0;bottom:0;width:min(440px,100%);background:#fbf3e4;z-index:91;transform:translateX(105%);transition:transform .3s ease;display:flex;flex-direction:column;box-shadow:-20px 0 40px #0003}
+.shop-admin .sh-drawer{position:fixed;top:0;right:0;bottom:0;width:min(440px,100%);background:var(--hf-admin-cream, #fffaf3);z-index:91;transform:translateX(105%);transition:transform .3s ease;display:flex;flex-direction:column;box-shadow:-20px 0 40px #0003}
 .shop-admin .sh-drawer.is-on{transform:none}
 .shop-admin .sh-dh{display:flex;align-items:center;justify-content:space-between;padding:20px 22px;border-bottom:2px solid var(--line)}
 .shop-admin .sh-dh h2{font-size:24px}
-.shop-admin .sh-x{width:44px;height:44px;border-radius:12px;border:2px solid var(--line);background:#fff;font:900 22px Nunito;cursor:pointer;color:var(--ink)}
+.shop-admin .sh-x{width:44px;height:44px;border-radius:14px;border:2px solid var(--line);background:#fff;font:900 22px Nunito;cursor:pointer;color:var(--ink)}
 .shop-admin .sh-steps{display:flex;gap:8px;margin-bottom:20px;flex-wrap:wrap}
 .shop-admin .sh-steps span{padding:8px 14px;border-radius:999px;background:#fff;border:2px solid var(--line);font:800 14px Nunito;color:var(--sub)}
 .shop-admin .sh-steps span.is-on{background:var(--teal);border-color:var(--teal);color:#fff}
 .shop-admin .sh-steps span.is-done{background:#e4f3e9;border-color:#9fd3b2;color:var(--green)}
-.shop-admin .sh-panel{background:var(--card);border:6px solid #fff;border-radius:22px;padding:24px;box-shadow:0 14px 30px #5a2c0f26;margin-bottom:18px}
+.shop-admin .sh-panel{background:var(--card);border:1px solid var(--hf-admin-line, #f1e3d6);border-radius:22px;padding:24px;box-shadow:var(--dash-shadow, 0 8px 24px -12px #4a17472e);margin-bottom:18px}
 .shop-admin .sh-panel h2{font-size:24px;margin-bottom:6px}
 .shop-admin .sh-panel>p{font:600 15px Nunito;color:var(--sub);margin:0 0 16px}
 .shop-admin .sh-form{display:grid;grid-template-columns:1fr 1fr;gap:14px}
 .shop-admin .sh-form label{display:flex;flex-direction:column;gap:6px;font:800 14px Nunito;color:var(--ink)}
 .shop-admin .sh-form label.full{grid-column:1/-1}
-.shop-admin .sh-form input, .shop-admin .sh-form select{height:48px;border-radius:12px;border:2px solid var(--line);background:#fff;padding:0 14px;font:700 16px Nunito;color:var(--ink)}
-.shop-admin .sh-sum-item{display:grid;grid-template-columns:60px 1fr auto;gap:12px;align-items:center;padding:10px 0;border-bottom:1px solid var(--line)}
+.shop-admin .sh-form input, .shop-admin .sh-form select{height:48px;border-radius:14px;border:2px solid var(--line);background:#fff;padding:0 14px;font:700 16px Nunito;color:var(--ink)}
+.shop-admin .sh-sum-item{display:grid;grid-template-columns:60px 1fr auto;gap:14px;align-items:center;padding:10px 0;border-bottom:1px solid var(--line)}
 .shop-admin .sh-sum-item img{width:60px;aspect-ratio:3/4;object-fit:cover;border-radius:10px}
 .shop-admin .sh-sum-item b{font:800 15px/1.2 Comfortaa;color:var(--teal);display:block}
-.shop-admin .sh-sum-item small{font:700 13px Nunito;color:var(--sub)}
+.shop-admin .sh-sum-item small{font:700 14px Nunito;color:var(--sub)}
 .shop-admin .sh-sum-item strong{font:900 15px Nunito}
 .shop-admin .sh-coupon{display:flex;gap:8px;margin:14px 0}
-.shop-admin .sh-coupon input{flex:1;height:46px;border-radius:12px;border:2px solid var(--line);padding:0 12px;font:800 15px Nunito;text-transform:uppercase}
-.shop-admin .sh-dtitle{display:flex;justify-content:space-between;align-items:flex-end;gap:12px;margin-bottom:18px;flex-wrap:wrap}
+.shop-admin .sh-coupon input{flex:1;height:46px;border-radius:14px;border:2px solid var(--line);padding:0 14px;font:800 15px Nunito;text-transform:uppercase}
+.shop-admin .sh-dtitle{display:flex;justify-content:space-between;align-items:flex-end;gap:14px;margin-bottom:18px;flex-wrap:wrap}
 .shop-admin .sh-dtitle h1{font-size:clamp(28px,2.6vw,36px)}
 .shop-admin .sh-dtitle p{margin:4px 0 0;font:700 15px Nunito;color:var(--sub)}
-.shop-admin .sh-st{display:inline-flex;align-items:center;gap:6px;padding:6px 12px;border-radius:999px;font:900 13px Nunito;letter-spacing:.04em;text-transform:uppercase}
+.shop-admin .sh-st{display:inline-flex;align-items:center;gap:6px;padding:6px 14px;border-radius:999px;font:900 14px Nunito;letter-spacing:.04em;text-transform:uppercase}
 .shop-admin .st-pending{background:#fff3c4;color:#7a5a00}
 .shop-admin .st-paid{background:#e2eefc;color:#1b4f8c}
 .shop-admin .st-packed{background:#efe3fb;color:#5a2d8c}
@@ -55,25 +55,25 @@
 .shop-admin .st-delivered{background:#e4f3e9;color:#1e6b3c}
 .shop-admin .st-cancelled{background:#fde4e1;color:#9b1c14}
 .shop-admin .sh-track{display:grid;grid-template-columns:repeat(5,1fr);margin:20px 0 6px;position:relative}
-.shop-admin .sh-track div{text-align:center;font:800 13px/1.3 Nunito;color:#a08974;position:relative;padding-top:34px}
-.shop-admin .sh-track div::before{content:"";position:absolute;top:6px;left:50%;transform:translateX(-50%);width:22px;height:22px;border-radius:50%;background:#efdcbf;border:3px solid #fff;box-shadow:0 0 0 2px #e3cfa9;z-index:1}
+.shop-admin .sh-track div{text-align:center;font:800 14px/1.3 Nunito;color:var(--hf-admin-muted, #6f5b6f);position:relative;padding-top:34px}
+.shop-admin .sh-track div::before{content:"";position:absolute;top:6px;left:50%;transform:translateX(-50%);width:22px;height:22px;border-radius:50%;background:#efdcbf;border:3px solid #fff;box-shadow:0 0 0 2px var(--hf-admin-line, #f1e3d6);z-index:1}
 .shop-admin .sh-track div::after{content:"";position:absolute;top:16px;left:-50%;width:100%;height:4px;background:#efdcbf}
 .shop-admin .sh-track div:first-child::after{display:none}
 .shop-admin .sh-track div.ok{color:var(--green)}
 .shop-admin .sh-track div.ok::before{background:var(--green);box-shadow:0 0 0 2px #9fd3b2}
 .shop-admin .sh-track div.ok::after{background:var(--green)}
-.shop-admin .sh-track div small{display:block;font-weight:700;color:#8a7560}
+.shop-admin .sh-track div small{display:block;font-weight:700;color:var(--hf-admin-muted, #6f5b6f)}
 .shop-admin .sh-oact .sh-btn{min-height:42px;font-size:14px;padding:0 16px}
-.shop-admin .sh-table{width:100%;border-collapse:separate;border-spacing:0;background:var(--card);border:5px solid #fff;border-radius:20px;overflow:hidden;box-shadow:0 10px 24px #5a2c0f1f}
-.shop-admin .sh-table th{background:#f6e3c4;text-align:left;font:900 13px Nunito;letter-spacing:.08em;text-transform:uppercase;color:#7a4a1e;padding:12px 14px}
-.shop-admin .sh-table td{padding:12px 14px;border-top:1px solid var(--line);font:700 15px Nunito;color:var(--body);vertical-align:middle}
+.shop-admin .sh-table{width:100%;border-collapse:separate;border-spacing:0;background:var(--card);border:1px solid var(--hf-admin-line, #f1e3d6);border-radius:20px;overflow:hidden;box-shadow:var(--dash-shadow, 0 8px 24px -12px #4a17472e)}
+.shop-admin .sh-table th{background:var(--hf-admin-goldtint, #fff1d6);text-align:left;font:900 14px Nunito;letter-spacing:.08em;text-transform:uppercase;color:var(--hf-admin-plum, #4a1747);padding:14px 14px}
+.shop-admin .sh-table td{padding:14px 14px;border-top:1px solid var(--line);font:700 15px Nunito;color:var(--body);vertical-align:middle}
 .shop-admin .sh-table td b{color:var(--ink)}
 .shop-admin .sh-table img{width:44px;aspect-ratio:3/4;object-fit:cover;border-radius:8px;vertical-align:middle;margin-right:8px}
 .shop-admin .sh-tbl-wrap{overflow-x:auto;border-radius:20px}
-.shop-admin .sh-mini{min-height:36px!important;padding:0 12px!important;font-size:13px!important;border-radius:10px!important}
+.shop-admin .sh-mini{min-height:36px!important;padding:0 14px!important;font-size:14px!important;border-radius:10px!important}
 .shop-admin .sh-kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:20px}
-.shop-admin .sh-kpi{background:var(--card);border:5px solid #fff;border-radius:20px;padding:16px;box-shadow:0 8px 20px #5a2c0f1a}
-.shop-admin .sh-kpi small{font:900 13px Nunito;letter-spacing:.08em;text-transform:uppercase;color:#7a6a55}
+.shop-admin .sh-kpi{background:var(--card);border:1px solid var(--hf-admin-line, #f1e3d6);border-radius:20px;padding:16px;box-shadow:var(--dash-shadow, 0 8px 24px -12px #4a17472e)}
+.shop-admin .sh-kpi small{font:900 14px Nunito;letter-spacing:.08em;text-transform:uppercase;color:var(--hf-admin-muted, #6f5b6f)}
 .shop-admin .sh-kpi b{display:block;font:900 30px Nunito;color:var(--ink);margin-top:4px}
 .shop-admin .sh-kpi em{font-style:normal;font:800 14px Nunito;color:var(--green)}
 .shop-admin .sh-tabs{display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap}
@@ -82,19 +82,19 @@
 .shop-admin .sh-apanel{display:none}
 .shop-admin .sh-apanel.is-on{display:block}
 .shop-admin .sh-slots{display:grid;grid-template-columns:repeat(2,1fr);gap:16px}
-.shop-admin .sh-slot{background:var(--card);border:5px solid #fff;border-radius:20px;padding:16px;box-shadow:0 8px 20px #5a2c0f1a}
+.shop-admin .sh-slot{background:var(--card);border:1px solid var(--hf-admin-line, #f1e3d6);border-radius:20px;padding:16px;box-shadow:var(--dash-shadow, 0 8px 24px -12px #4a17472e)}
 .shop-admin .sh-slot h3{font-size:18px;margin-bottom:4px}
 .shop-admin .sh-slot p{font:600 14px Nunito;color:var(--sub);margin:0 0 10px}
 .shop-admin .sh-slot-items{display:flex;gap:8px;flex-wrap:wrap}
-.shop-admin .sh-slot-items span{display:inline-flex;align-items:center;gap:6px;background:#fff;border-radius:999px;padding:4px 10px 4px 4px;font:800 13px Nunito;border:2px solid var(--line)}
+.shop-admin .sh-slot-items span{display:inline-flex;align-items:center;gap:6px;background:#fff;border-radius:999px;padding:4px 10px 4px 4px;font:800 14px Nunito;border:2px solid var(--line)}
 .shop-admin .sh-slot-items img{width:28px;height:28px;border-radius:50%;object-fit:cover}
 .shop-admin .sh-modal{position:fixed;inset:0;z-index:99;display:none;place-items:center;background:#1a0d0680;padding:16px}
 .shop-admin .sh-modal.is-on{display:grid}
-.shop-admin .sh-modal-box{width:min(520px,100%);background:#fbf3e4;border:6px solid #fff;border-radius:24px;padding:24px;max-height:90vh;overflow:auto}
+.shop-admin .sh-modal-box{width:min(520px,100%);background:var(--hf-admin-cream, #fffaf3);border:1px solid var(--hf-admin-line, #f1e3d6);border-radius:24px;padding:24px;max-height:90vh;overflow:auto}
 .shop-admin .sh-modal-box h2{font-size:24px;margin-bottom:6px}
 .shop-admin .sh-modal-box p{font:600 15px Nunito;color:var(--sub);margin:0 0 14px}
 .shop-admin .sh-promo-opts{display:flex;flex-direction:column;gap:10px;margin-bottom:16px}
-.shop-admin .sh-bill-src{display:inline-block;padding:4px 10px;border-radius:999px;font:900 12px Nunito;letter-spacing:.05em;text-transform:uppercase}
+.shop-admin .sh-bill-src{display:inline-block;padding:4px 10px;border-radius:999px;font:900 14px Nunito;letter-spacing:.05em;text-transform:uppercase}
 @media (max-width:1100px){
   .shop-admin .sh-kpis{grid-template-columns:repeat(2,1fr)}
 }
@@ -108,7 +108,7 @@
   .shop-admin .sh-kpis{grid-template-columns:1fr 1fr}
 }
 .shop-admin .sh-ph{position:relative;width:100%;height:100%;display:grid;place-items:center;background:
-  repeating-linear-gradient(135deg,#00000008 0 12px,transparent 12px 24px),var(--ph,#efdcbf);color:#5a1f14a6;font:800 14px Nunito;text-align:center;padding:10px}
+  repeating-linear-gradient(135deg,#00000008 0 12px,transparent 14px 24px),var(--ph,#efdcbf);color:#5a1f14a6;font:800 14px Nunito;text-align:center;padding:10px}
 .shop-admin .sh-ph span{background:#fffdf8d9;border-radius:999px;padding:6px 12px;border:1px dashed #5a1f1466}
 .shop-admin .sh-ph--banner{min-height:300px;--ph:#e9b9a5}
 .shop-admin .sh-thumbs .sh-ph{aspect-ratio:3/4;font-size:11px;padding:4px}
@@ -127,29 +127,29 @@
 .shop-admin :focus-visible{outline:3px solid var(--gold);outline-offset:2px}
 .shop-admin .sh-table{min-width:720px}
 .shop-admin .sh-row-click{cursor:pointer}
-.shop-admin .sh-row-click:hover td{background:#fff6e6}
-.shop-admin .sh-toprow{display:flex;gap:12px;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;margin-bottom:16px}
+.shop-admin .sh-row-click:hover td{background:var(--hf-admin-cream, #fffaf3)}
+.shop-admin .sh-toprow{display:flex;gap:14px;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;margin-bottom:16px}
 .shop-admin .sh-toprow .sh-tabs{margin-bottom:0;flex:1 1 auto}
-.shop-admin .sh-search{height:46px;border-radius:12px;border:2px solid var(--line);padding:0 12px;font:800 15px Nunito;background:#fff;color:var(--ink);min-width:240px;max-width:100%}
+.shop-admin .sh-search{height:46px;border-radius:14px;border:2px solid var(--line);padding:0 14px;font:800 15px Nunito;background:#fff;color:var(--ink);min-width:240px;max-width:100%}
 .shop-admin .sh-empty-note{font:700 15px Nunito;color:var(--sub);text-align:center;padding:24px}
 .shop-admin .sh-form .full{grid-column:1/-1}
 .shop-admin .sh-field{display:flex;flex-direction:column;gap:6px}
 .shop-admin .sh-field-lbl{font:800 14px Nunito;color:var(--ink)}
-.shop-admin .sh-form textarea{border-radius:12px;border:2px solid var(--line);background:#fff;padding:12px 14px;font:700 16px Nunito;color:var(--ink);resize:vertical}
-.shop-admin .sh-form input:disabled,.shop-admin .sh-form select:disabled{background:var(--chip);color:#7a6a55}
+.shop-admin .sh-form textarea{border-radius:14px;border:2px solid var(--line);background:#fff;padding:14px 14px;font:700 16px Nunito;color:var(--ink);resize:vertical}
+.shop-admin .sh-form input:disabled,.shop-admin .sh-form select:disabled{background:var(--chip);color:var(--hf-admin-muted, #6f5b6f)}
 .shop-admin .sh-pair{display:grid;grid-template-columns:1fr 1fr;gap:14px}
 .shop-admin .sh-colrow{display:flex;gap:8px;align-items:center}
-.shop-admin .sh-colrow input[type=color]{width:48px;height:48px;padding:3px;border-radius:12px;border:2px solid var(--line);background:#fff;flex:none}
+.shop-admin .sh-colrow input[type=color]{width:48px;height:48px;padding:3px;border-radius:14px;border:2px solid var(--line);background:#fff;flex:none}
 .shop-admin .sh-colname{flex:1;min-width:0}
 .shop-admin .sh-colhex{width:110px;flex:none}
 .shop-admin .sh-photos{display:flex;gap:10px;flex-wrap:wrap}
 .shop-admin .sh-photo{position:relative;width:110px;display:flex;flex-direction:column;gap:6px}
-.shop-admin .sh-photo img{width:100%;aspect-ratio:3/4;object-fit:cover;border-radius:12px;border:3px solid #fff;box-shadow:0 0 0 1px var(--line)}
-.shop-admin .sh-photo select{height:36px!important;font-size:13px!important;padding:0 8px!important}
+.shop-admin .sh-photo img{width:100%;aspect-ratio:3/4;object-fit:cover;border-radius:14px;border:3px solid #fff;box-shadow:0 0 0 1px var(--line)}
+.shop-admin .sh-photo select{height:36px!important;font-size:14px!important;padding:0 8px!important}
 .shop-admin .sh-photo-act{display:flex;gap:4px}
 .shop-admin .sh-photo-act button{flex:1;height:32px;border-radius:8px;border:2px solid var(--line);background:#fff;font:900 16px Nunito;color:var(--ink);cursor:pointer}
 .shop-admin .sh-photo-act button:disabled{opacity:.4;cursor:default}
-.shop-admin .sh-photo em{position:absolute;top:6px;left:6px;font:900 11px Nunito;background:var(--teal);color:#fff;padding:2px 7px;border-radius:999px;font-style:normal}
+.shop-admin .sh-photo em{position:absolute;top:6px;left:6px;font:900 14px Nunito;background:var(--teal);color:#fff;padding:2px 7px;border-radius:999px;font-style:normal}
 .shop-admin .sh-drop.is-drag{outline:3px dashed var(--red)}
 .shop-admin .sh-chipx{cursor:grab}
 .shop-admin .sh-chipx button{border:0;background:none;font:900 15px Nunito;cursor:pointer;color:var(--red);padding:0 2px}
@@ -158,19 +158,19 @@
 .shop-admin .sh-hotbox i{position:absolute;width:24px;height:24px;margin:-12px 0 0 -12px;border-radius:50%;background:#fff;border:3px solid var(--red);font:900 12px/18px Nunito;font-style:normal;text-align:center;color:var(--red)}
 .shop-admin .sh-hotbox i.is-sel{background:var(--red);color:#fff}
 .shop-admin .sh-hotrow{display:grid;grid-template-columns:28px 1fr 70px 70px auto;gap:8px;align-items:center}
-.shop-admin .sh-hotrow select,.shop-admin .sh-hotrow input{height:44px;border-radius:12px;border:2px solid var(--line);background:#fff;padding:0 10px;font:700 15px Nunito;color:var(--ink);min-width:0}
+.shop-admin .sh-hotrow select,.shop-admin .sh-hotrow input{height:44px;border-radius:14px;border:2px solid var(--line);background:#fff;padding:0 10px;font:700 15px Nunito;color:var(--ink);min-width:0}
 .shop-admin .sh-hotn{display:grid;place-items:center;width:24px;height:24px;border-radius:50%;border:3px solid var(--red);font:900 12px Nunito;color:var(--red)}
 .shop-admin .sh-hotn.is-sel{background:var(--red);color:#fff}
 .shop-admin .sh-mv{display:none}
 .shop-admin .sh-drawer-body{flex:1;overflow:auto;padding:4px 22px 24px}
-.shop-admin .sh-dbody h3{font:900 13px Nunito;letter-spacing:.12em;text-transform:uppercase;color:#9a5a26;margin:18px 0 6px}
+.shop-admin .sh-dbody h3{font:900 14px Nunito;letter-spacing:.12em;text-transform:uppercase;color:var(--hf-admin-rani, #d81b72);margin:18px 0 6px}
 .shop-admin .sh-dline{display:flex;justify-content:space-between;align-items:center;gap:8px}
 .shop-admin .sh-dline small{font:700 14px Nunito;color:var(--sub)}
 .shop-admin .sh-dtext{font:700 15px/1.5 Nunito;color:var(--body);margin:0}
 .shop-admin .sh-tl{list-style:none;margin:0;padding:0}
 .shop-admin .sh-tl li{padding:6px 0 6px 16px;border-left:3px solid var(--line)}
 .shop-admin .sh-tl li b{display:block;font:800 14px Nunito;color:var(--ink)}
-.shop-admin .sh-tl li small{font:700 13px Nunito;color:var(--sub)}
+.shop-admin .sh-tl li small{font:700 14px Nunito;color:var(--sub)}
 @media (max-width:640px){
   .shop-admin .sh-mv{display:inline}
   .shop-admin .sh-pair{grid-template-columns:1fr}
@@ -181,10 +181,77 @@
 }
 
 /* [SAATHUM-SHOP-EDITOR-2] Product flags: the two checkboxes at the top of the product form and the toggles in the products table */
-.shop-admin .sh-form .sh-flags{flex-direction:row;flex-wrap:wrap;gap:12px 28px;padding:12px 14px;border-radius:14px;background:#fff3d6;border:2px solid #f0d9a0}
+.shop-admin .sh-form .sh-flags{flex-direction:row;flex-wrap:wrap;gap:14px 28px;padding:14px 14px;border-radius:14px;background:#fff3d6;border:2px solid #f0d9a0}
 .shop-admin .sh-form .sh-flags label.sh-opt{flex-direction:row;align-items:center;gap:10px;font:800 15px Nunito}
 .shop-admin .sh-form .sh-flags input{width:20px;height:20px;padding:0;border:0;accent-color:var(--red)}
-.shop-admin .sh-form label small{font:600 13px Nunito;color:#6b4a2b}
+.shop-admin .sh-form label small{font:600 14px Nunito;color:var(--hf-admin-muted, #6f5b6f)}
 .shop-admin .sh-form label small a{color:var(--teal);text-decoration:underline}
-.shop-admin .sh-flag{padding:5px 10px;border-radius:999px;border:2px solid var(--line);background:#fff;color:#8a7560;font:800 12px Nunito;cursor:pointer}
-.shop-admin .sh-flag.is-on{background:#173f3f;border-color:#173f3f;color:#fff}
+.shop-admin .sh-flag{padding:5px 10px;border-radius:999px;border:2px solid var(--line);background:#fff;color:var(--hf-admin-muted, #6f5b6f);font:800 14px Nunito;cursor:pointer}
+.shop-admin .sh-flag.is-on{background:var(--hf-admin-plum, #4a1747);border-color:var(--hf-admin-plum, #4a1747);color:#fff}
+
+/* Dashboard-aligned commerce chrome. --body above remains a text COLOUR. */
+.shop-admin{--hf-commerce-bodyfont:var(--hf-admin-body,'Comfortaa','Nunito',sans-serif);--hf-commerce-headfont:var(--hf-admin-head,'Nunito',sans-serif);font-family:var(--hf-commerce-bodyfont);font-size:16px;line-height:1.6;min-width:0;color-scheme:light}
+.shop-admin :is(h1,h2,h3){font-family:var(--hf-commerce-headfont);font-weight:900}
+.shop-admin :is(.sh-panel>p,.sh-dtitle p,.sh-modal-box p,.sh-slot p,.sh-dtext,.sh-empty-note,.sh-tl li small,.sh-form label small){font-family:var(--hf-commerce-bodyfont);line-height:1.6}
+.shop-admin :is(.sh-panel,.sh-slot,.sh-kpi,.sh-modal-box){min-width:0}
+.shop-admin .sh-kpi{border-top:3px solid var(--gold)}
+.shop-admin .sh-kpi:nth-child(2n){border-top-color:var(--hf-admin-rani,#d81b72)}
+.shop-admin .sh-kpi b{color:var(--teal)}
+.shop-admin :is(.sh-btn,.sh-tabs button,.sh-flag){border-radius:999px;min-height:44px}
+.shop-admin .sh-btn{padding:10px 20px;line-height:1.3;text-align:center;white-space:normal;max-width:100%}
+.shop-admin :is(.sh-btn--red,.sh-btn--teal){background:var(--teal);box-shadow:none}
+.shop-admin .sh-btn--ghost{border:1.5px solid var(--line)}
+.shop-admin :is(.sh-btn,.sh-tabs button,.sh-flag):not(:disabled):hover{box-shadow:0 0 0 3px var(--hf-admin-blush,#ffe6ef)}
+.shop-admin .sh-tabs button.is-on,.shop-admin .sh-flag.is-on{background:var(--teal);border-color:var(--teal)}
+.shop-admin .sh-mini{min-height:44px!important;font-size:14px!important;border-radius:999px!important}
+.shop-admin .sh-link{display:inline-flex;align-items:center;min-height:44px}
+.shop-admin :is(.sh-opt,.sh-chipx){min-height:44px}
+.shop-admin .sh-chipx button{min-width:44px;min-height:44px}
+.shop-admin :is(.sh-form input,.sh-form select,.sh-form textarea,.sh-search){min-width:0;max-width:100%;border-width:1.5px;border-radius:14px}
+.shop-admin .sh-form :is(input,select,textarea){font-family:var(--hf-commerce-bodyfont)}
+.shop-admin .sh-photo select{height:44px!important;font-size:14px!important}
+.shop-admin .sh-photo-act button{height:44px;min-width:44px}
+.shop-admin .sh-photo em{font-size:14px}
+.shop-admin .sh-form label{min-width:0}
+.shop-admin :is(.sh-tbl-wrap,.sh-drawer-body){min-width:0;max-width:100%;overscroll-behavior:contain}
+.shop-admin .sh-table th{font-size:14px;letter-spacing:.04em}
+.shop-admin .sh-table :is(th,td){line-height:1.5}
+.shop-admin .sh-table td small{font-size:14px}
+.shop-admin .sh-table td{font-variant-numeric:tabular-nums}
+
+.shop-admin .sh-actions{display:flex;flex-wrap:wrap;gap:10px}
+.shop-admin .sh-actions--spaced{margin-top:16px}
+.shop-admin .sh-danger{color:var(--red);border-color:var(--red)}
+.shop-admin .sh-help{font:600 16px/1.6 var(--hf-commerce-bodyfont);color:var(--sub);margin:0 0 14px}
+.shop-admin .sh-cat-actions{display:flex;flex-wrap:wrap;gap:8px}
+.shop-admin .sh-cat-row{grid-template-columns:28px minmax(0,1fr) auto}
+.shop-admin .sh-track{overflow-x:auto;grid-template-columns:repeat(5,minmax(90px,1fr));padding:4px 2px}
+.shop-admin .sh-track div{font-size:14px}
+.shop-admin .sh-track div small{font-size:14px}
+.shop-admin .sh-modal{background:rgb(43 21 48 / .45)}
+.shop-admin .sh-modal-box{max-height:calc(100dvh - 32px);box-shadow:0 18px 40px -18px rgb(74 23 71 / .4)}
+.shop-admin .sh-scrim{background:rgb(43 21 48 / .45)}
+.shop-admin .sh-drawer{background:var(--cream)}
+.shop-admin .sh-dh{gap:12px}
+.shop-admin .sh-dh h2{overflow-wrap:anywhere}
+.shop-admin .sh-x{flex-shrink:0}
+.shop-admin :is(button,input,select,textarea,a,[tabindex]):focus-visible{outline:3px solid var(--hf-admin-rani,#d81b72);outline-offset:3px}
+.shop-admin :is(button,input,select,textarea):disabled{cursor:not-allowed}
+.shop-admin .sh-colrow{flex-wrap:wrap}
+.shop-admin .sh-colrow .sh-colname{flex:1 1 120px}
+.shop-admin .sh-colrow .sh-colhex{flex:0 1 110px}
+@media(max-width:640px){
+ .shop-admin :is(.sh-panel,.sh-slot,.sh-modal-box){padding:16px}
+ .shop-admin .sh-hotrow{grid-template-columns:28px minmax(0,1fr) 56px 56px}
+ .shop-admin .sh-hotrow>button{grid-column:2/-1;justify-self:end}
+ .shop-admin .sh-cat-row{grid-template-columns:28px minmax(0,1fr)}
+ .shop-admin .sh-cat-actions{grid-column:2/-1}
+ .shop-admin .sh-form :is(input,select,textarea){width:100%}
+ .shop-admin .sh-form input:is([type=checkbox],[type=radio]){width:20px}
+ .shop-admin .sh-actions>.sh-btn{flex:1 1 130px}
+}
+@media(max-width:420px){.shop-admin .sh-kpis{grid-template-columns:1fr}.shop-admin .sh-hotrow{grid-template-columns:28px minmax(0,1fr)}.shop-admin .sh-hotrow>select{grid-column:2}.shop-admin .sh-hotrow>input{grid-column:auto}.shop-admin .sh-dh,.shop-admin .sh-drawer-body{padding:16px}}
+@media(prefers-reduced-motion:reduce){.shop-admin :is(.sh-btn,.sh-scrim,.sh-drawer){transition:none}.shop-admin .sh-btn:active{transform:none}}
+
+.shop-admin .sh-oact .sh-btn{min-height:44px}
+.shop-admin .sh-btn--danger{background:var(--red);color:#fff}

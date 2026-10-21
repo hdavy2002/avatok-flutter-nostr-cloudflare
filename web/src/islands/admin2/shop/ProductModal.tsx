@@ -216,7 +216,7 @@ export default function ProductModal({ open, product, onClose, onSaved }: {
         </div>
         {editing && product && <TraditionNotePanel kind="shop_product" id={product.id} title={product.name} />}{/* [AUMFE-KNOWLEDGE-ADMIN-UI-1] */}
         {err && <p className="sh-err" role="alert">{err}</p>}
-        <div style={{ display: 'flex', gap: 10, marginTop: 16 }}>
+        <div className="sh-actions sh-actions--spaced">
           <button type="button" className="sh-btn sh-btn--ghost" onClick={onClose}>Cancel</button>
           <button type="submit" className="sh-btn sh-btn--red" style={{ flex: 1 }} disabled={busy}>{busy ? 'Saving…' : editing ? 'Save changes' : 'Publish product'}</button>
         </div>

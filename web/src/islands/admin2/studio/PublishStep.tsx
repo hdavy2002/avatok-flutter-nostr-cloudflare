@@ -207,7 +207,7 @@ export default function PublishStep({ designId }: { designId: string }) {
                     <td>{c && gst !== null ? `${inr(up(gst))} (${c.partner_gst_pct}%)` : '—'}</td>
                     <td>{c && c.shipping_rupees !== null ? inr(up(c.shipping_rupees)) : '—'}</td>
                     <td><b>{total !== null ? inr(total) : '—'}</b></td>
-                    <td><input className="fld" style={{ minHeight: 38, width: 110 }} inputMode="numeric" aria-label={`Price for ${sz}`} value={prices[sz] ?? ''}
+                    <td><input className="fld studio-price-input" inputMode="numeric" aria-label={`Price for ${sz}`} value={prices[sz] ?? ''}
                       onChange={(e) => setPrices((p) => ({ ...p, [sz]: e.target.value.replace(/[^\d]/g, '') }))} /></td>
                     <td>{profit !== null ? <b style={{ color: profit > 0 ? '#1e7a44' : '#b3261e' }}>{profit < 0 ? '−' : ''}{inr(Math.abs(profit))}</b> : '—'}</td>
                     <td>{n ? inr(gstOn(n)) : '—'}</td><td><b>{n ? inr(n + gstOn(n)) : '—'}</b></td>

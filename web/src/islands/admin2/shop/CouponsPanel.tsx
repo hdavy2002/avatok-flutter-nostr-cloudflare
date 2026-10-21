@@ -113,7 +113,7 @@ function CouponModal({ c, onClose, onSaved }: { c: Coupon | 'new' | null; onClos
         </div>
         <label className="sh-opt" style={{ marginTop: 14 }}><input type="checkbox" checked={active} onChange={(e) => setActive(e.target.checked)} /> Active</label>
         {err && <p className="sh-err" role="alert">{err}</p>}
-        <div style={{ display: 'flex', gap: 10, marginTop: 16 }}>
+        <div className="sh-actions sh-actions--spaced">
           <button type="button" className="sh-btn sh-btn--ghost" onClick={onClose}>Cancel</button>
           <button type="submit" className="sh-btn sh-btn--teal" style={{ flex: 1 }} disabled={busy}>{busy ? 'Saving…' : 'Save coupon'}</button>
         </div>
