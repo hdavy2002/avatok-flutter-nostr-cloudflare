@@ -226,8 +226,8 @@ describe("hf channels: checking ownership and followers", () => {
   it("Instagram goes through treg with the token header, and the code is read from the bio", async () => {
     const { channel, verifyCode } = await (await add("instagram", "@Maya.Reels")).json();
     const lookup = seen.find((s) => s.url.startsWith("https://treg.to/call/"));
-    expect(lookup.url).toContain("scrapecreators.instagram.user.profile");
-    expect(lookup.url).toContain("handle=maya.reels");
+    expect(lookup.url).toContain("tikhub.instagram.user.profile");
+    expect(lookup.url).toContain("username=maya.reels");
     expect(lookup.url).not.toContain("cache_max_age"); // ownership checks are never cached
     expect(lookup.headers["X-Treg-Token"]).toBe("trg_live_secret");
     ig = { status: 200, body: igBody("1783", 42, `Reels | ${verifyCode}`) };

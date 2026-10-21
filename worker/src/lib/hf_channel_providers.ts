@@ -1,6 +1,6 @@
 // [HF-WIRE-3] Channel look-ups for the Reels app (HF-REEL-26).
 //   YouTube   -> official YouTube Data API v3 (secret YOUTUBE_API_KEY): channels.list part=snippet,statistics, forHandle / id.
-//   Instagram -> treg gateway (secret TREG_API_KEY, header X-Treg-Token), ScrapeCreators with TikHub fallback on provider failure.
+//   Instagram -> treg gateway (secret TREG_API_KEY, header X-Treg-Token), TikHub with ScrapeCreators fallback on provider failure.
 //                Parsers accept ScrapeCreators shapes (Specs/HF-TREG-JEV-RESEARCH.md §2) and TikHub data.data.user.
 // Both return the same ChannelLookup. A missing secret throws ProviderError('provider_not_configured'); a provider that is down,
 // rate-limited or blocked throws ProviderError('provider_unavailable'). Secrets are never logged, never echoed in an error message,
@@ -131,8 +131,8 @@ export async function youtubeLookup(env: Pick<Env, "YOUTUBE_API_KEY">, handleOrU
 
 // ── Instagram via treg ───────────────────────────────────────────────────────────────────────────────────────────
 
-export const TREG_IG_PROFILE = "scrapecreators.instagram.user.profile";
-export const TREG_IG_PROFILE_FALLBACK = "tikhub.instagram.user.profile";
+export const TREG_IG_PROFILE = "tikhub.instagram.user.profile";
+export const TREG_IG_PROFILE_FALLBACK = "scrapecreators.instagram.user.profile";
 
 export async function instagramLookup(env: Pick<Env, "TREG_API_KEY">, handleOrUrl: string, f: FetchLike = fetch): Promise<ChannelLookup> {
   const handle = parseInstagramHandle(handleOrUrl);
@@ -147,16 +147,47 @@ export async function instagramLookup(env: Pick<Env, "TREG_API_KEY">, handleOrUr
 }
 
 async function instagramProviderLookup(handle: string, token: string, endpoint: string, f: FetchLike): Promise<ChannelLookup> {
-  // ScrapeCreators accepts handle; TikHub requires username. Neither request is cached.
+  // Keep the full response, including JSON consumption, inside the provider budget.
+  // Two attempts fit under the admin client's 20s deadline. Do not log URLs, tokens,
+  // handles or response bodies; these fixed fields diagnose production failures safely.
   const q = new URLSearchParams({ username: handle });
-  if (endpoint === TREG_IG_PROFILE) q.set("handle", handle);
-  const res = await timedFetch(f, `https://treg.to/call/${endpoint}?${q.toString()}`, {
-    headers: { "X-Treg-Token": token, accept: "application/json" },
-  });
-  // 429 share_busy, 503 treg_saturated, 500 "IG is blocking us", 401/403 bad token: all retryable-or-ours, never the person's fault.
-  if (!res.ok) throw new ProviderError("provider_unavailable");
+  if (endpoint === "scrapecreators.instagram.user.profile") q.set("handle", handle);
+  const ctl = new AbortController();
+  const started = Date.now();
+  let stage = "fetch";
+  let status: number | null = null;
+  let timer: ReturnType<typeof setTimeout> | undefined;
   let body: any;
-  try { body = await res.json(); } catch { throw new ProviderError("provider_unavailable"); }
+  try {
+    body = await Promise.race([
+      (async () => {
+        const res = await f(`https://treg.to/call/${endpoint}?${q.toString()}`, {
+          headers: { "X-Treg-Token": token, accept: "application/json" }, signal: ctl.signal,
+        });
+        status = res.status;
+        if (!res.ok) throw new ProviderError("provider_unavailable");
+        stage = "json";
+        return res.json();
+      })(),
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => {
+          stage += "_timeout";
+          reject(new ProviderError("provider_unavailable"));
+          ctl.abort();
+        }, PROVIDER_TIMEOUT_MS);
+      }),
+    ]);
+    stage = "profile";
+    return parseInstagramProfile(body, handle);
+  } catch {
+    console.warn("[hf_instagram_lookup]", { endpoint, stage, status, elapsedMs: Date.now() - started });
+    throw new ProviderError("provider_unavailable");
+  } finally {
+    if (timer !== undefined) clearTimeout(timer);
+  }
+}
+
+function parseInstagramProfile(body: any, handle: string): ChannelLookup {
   const profileUrl = `https://www.instagram.com/${handle}/`;
   const user = body?.data?.data?.user ?? body?.data?.user ?? body?.user;
   const gone = { exists: false, platformUserId: null, handle, followers: 0, bio: "", isPrivate: false, countHidden: false, url: profileUrl } as ChannelLookup;

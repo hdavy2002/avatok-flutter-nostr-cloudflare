@@ -8,11 +8,12 @@ const json = (body: unknown, status = 200) => new Response(JSON.stringify(body),
 
 describe("Instagram provider fallback", () => {
   it("keeps a successful primary response and does not call the fallback", async () => {
-    const f = vi.fn().mockResolvedValue(json({ data: { user } }));
+    const f = vi.fn().mockResolvedValue(json({ data: { data: { user } } }));
     expect(await instagramLookup(env, "@Maya.Reels", f)).toMatchObject({
       exists: true, platformUserId: user.id, followers: 123327, handle: "maya.reels",
     });
     expect(f).toHaveBeenCalledTimes(1);
+    expect(new URL(f.mock.calls[0][0]).pathname).toBe("/call/tikhub.instagram.user.profile");
   });
 
   it.each(["http", "network", "json", "missing-user", "missing-id"])("falls back after %s failure", async (failure) => {
@@ -32,7 +33,8 @@ describe("Instagram provider fallback", () => {
     const fallback = new URL(f.mock.calls[1][0]);
     expect(primary.pathname).toBe("/call/" + TREG_IG_PROFILE);
     expect(fallback.pathname).toBe("/call/" + TREG_IG_PROFILE_FALLBACK);
-    expect(fallback.search).toBe("?username=maya.reels");
+    expect(primary.search).toBe("?username=maya.reels");
+    expect(fallback.searchParams.get("handle")).toBe("maya.reels");
     for (const [url, init] of f.mock.calls) {
       expect(url).not.toContain(env.TREG_API_KEY);
       expect(new Headers(init.headers).get("X-Treg-Token")).toBe(env.TREG_API_KEY);
@@ -58,12 +60,40 @@ describe("Instagram provider fallback", () => {
     }
   });
 
-  it("returns only a safe error when both providers fail", async () => {
-    const f = vi.fn().mockRejectedValue(new Error("test-secret"));
-    await expect(instagramLookup(env, "maya.reels", f)).rejects.toMatchObject({
-      code: "provider_unavailable", message: "provider_unavailable",
-    });
-    expect(f).toHaveBeenCalledTimes(2);
+  it.each(["headers", "body"])("falls back within the budget when %s stalls", async (part) => {
+    vi.useFakeTimers();
+    try {
+      const pending = new Promise<Response>(() => {});
+      const f = vi.fn().mockImplementationOnce(() => part === "headers" ? pending
+        : Promise.resolve({ ok: true, status: 200, json: () => new Promise(() => {}) }))
+        .mockResolvedValueOnce(json({ data: { user } }));
+      const result = instagramLookup(env, "maya.reels", f);
+      await vi.advanceTimersByTimeAsync(8000);
+      expect(await result).toMatchObject({ exists: true, platformUserId: user.id });
+      expect(f).toHaveBeenCalledTimes(2);
+      expect(f.mock.calls[0][1].signal.aborted).toBe(true);
+      expect(f.mock.calls[1][1].signal.aborted).toBe(false);
+      expect(vi.getTimerCount()).toBe(0);
+    } finally { vi.useRealTimers(); }
+  });
+
+  it("returns and logs only safe diagnostics when both providers fail", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      const f = vi.fn().mockRejectedValue(new Error("https://secret.invalid/test-secret"));
+      await expect(instagramLookup(env, "maya.reels", f)).rejects.toMatchObject({
+        code: "provider_unavailable", message: "provider_unavailable",
+      });
+      expect(f).toHaveBeenCalledTimes(2);
+      expect(warn).toHaveBeenCalledTimes(2);
+      expect(warn.mock.calls[0]).toEqual(["[hf_instagram_lookup]", {
+        endpoint: TREG_IG_PROFILE, stage: "fetch", status: null, elapsedMs: expect.any(Number),
+      }]);
+      const logs = JSON.stringify(warn.mock.calls);
+      expect(logs).not.toContain(env.TREG_API_KEY);
+      expect(logs).not.toContain("maya.reels");
+      expect(logs).not.toContain("secret.invalid");
+    } finally { warn.mockRestore(); }
   });
 
   it("treats malformed responses from both providers as unavailable, not an absent account", async () => {
