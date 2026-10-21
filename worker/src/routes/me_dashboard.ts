@@ -6,6 +6,7 @@
 //
 // Receipts: lib/me_receipt_pdf.ts. Pure rules (state, refund window, VPA, cursor):
 // lib/me_dashboard_logic.ts. SQL read models: lib/me_dashboard_data.ts.
+import { reserveAndSendOtp } from "../lib/otp_send_reservation";
 import { BRAND } from "../lib/brand";
 import type { Env } from "../types";
 import { json, sha256Hex } from "../util";
@@ -19,7 +20,7 @@ import {
   phoneTakenByOther, OTP_TTL_MS, RESEND_GAP_MS, HOUR_MS,
   MAX_SENDS_PER_UID_HOUR, MAX_SENDS_PER_PHONE_HOUR, MAX_SENDS_GLOBAL_HOUR, MAX_VERIFY_ATTEMPTS,
 } from "./phone_otp";
-import { otpProvider, sendOtp, checkOtp, sendFailMessage } from "../lib/otp_sender"; // [WA-OTP-1]
+import { otpProvider, checkOtp, sendFailMessage } from "../lib/otp_sender"; // [WA-OTP-1]
 import { normalizeE164, INVALID_PHONE_MESSAGE } from "../lib/phone_e164"; // [WA-LOGIN-1]
 import {
   eventState, isUpcomingScope, refundEligibility, normalizeVpa, encodeCursor, decodeCursor,
@@ -563,31 +564,17 @@ export async function mePhoneStart(req: Request, env: Env): Promise<Response> {
     await step(false, "phone_taken");
     return err(409, "phone_taken", "This number is already linked to another account. Use a different number.", { field: "phone" });
   }
-  const lim = await db.prepare(
-    `SELECT (SELECT COUNT(*) FROM phone_otp WHERE uid=?1 AND created_at>?2) AS by_uid_window,
-            (SELECT COUNT(*) FROM phone_otp WHERE uid=?1 AND created_at>?3) AS by_uid_hour,
-            (SELECT MAX(created_at) FROM phone_otp WHERE uid=?1) AS last_uid,
-            (SELECT COUNT(*) FROM phone_otp WHERE phone_hash=?4 AND created_at>?3) AS by_phone,
-            (SELECT COUNT(*) FROM phone_otp WHERE created_at>?3) AS global`,
-  ).bind(a.uid, now - PHONE_SEND_WINDOW_MS, now - HOUR_MS, hash)
-    .first<{ by_uid_window: number; by_uid_hour: number; last_uid: number | null; by_phone: number; global: number }>();
-  if (lim?.last_uid && now - lim.last_uid < RESEND_GAP_MS) {
-    const wait = Math.ceil((RESEND_GAP_MS - (now - lim.last_uid)) / 1000);
-    return err(429, "too_soon", `Please wait ${wait}s before asking for another code.`, { retry_after_s: wait, field: "phone" });
+  const sent = await reserveAndSendOtp(env, {
+    uid: a.uid, phoneHash: hash, e164, now, cooldown: "account",
+    actorLimit: MAX_SENDS_PER_UID_HOUR, phoneLimit: MAX_SENDS_PER_PHONE_HOUR,
+    globalLimit: MAX_SENDS_GLOBAL_HOUR, hourMs: HOUR_MS, gapMs: RESEND_GAP_MS,
+    actorWindow: { limit: PHONE_SENDS_PER_WINDOW, ms: PHONE_SEND_WINDOW_MS },
+  }, OTP_TTL_MS / 60_000);
+  if (sent instanceof Response) {
+    await step(false, sent.status === 429 ? "rate_limited" : "send_failed");
+    return sent;
   }
-  if ((lim?.by_uid_window ?? 0) >= PHONE_SENDS_PER_WINDOW || (lim?.by_uid_hour ?? 0) >= MAX_SENDS_PER_UID_HOUR || (lim?.by_phone ?? 0) >= MAX_SENDS_PER_PHONE_HOUR) {
-    await step(false, "rate_limited", { by_uid_window: lim?.by_uid_window });
-    return err(429, "too_many", "Too many codes requested. Please try again in 10 minutes.", { field: "phone" });
-  }
-  if ((lim?.global ?? 0) >= MAX_SENDS_GLOBAL_HOUR) {
-    await step(false, "global_breaker");
-    return err(429, "busy", "We're busy right now. Please try again in a few minutes.", { field: "phone" });
-  }
-  const sent = await sendOtp(env, e164, OTP_TTL_MS / 60_000);
-  await db.prepare(
-    "INSERT INTO phone_otp (uid, phone_hash, e164, session_id, status, attempts, created_at) VALUES (?1,?2,?3,?4,?5,0,?6)",
-  ).bind(a.uid, hash, e164, sent.ok ? sent.sessionId : null, sent.ok ? "sent" : "failed", now).run();
-  await step(sent.ok, sent.ok ? "sent" : sent.reason, { provider: sent.provider, ...(sent.ok ? {} : { provider_detail: sent.detail }) });
+  await step(sent.ok, sent.ok ? "sent" : sent.reason, { provider: sent.provider });
   if (!sent.ok) {
     const status = sent.reason === "not_on_whatsapp" ? 400 : sent.reason === "rate_limited" ? 429 : 502;
     return err(status, sent.reason === "provider_error" ? "send_failed" : sent.reason, sendFailMessage(env, sent.reason), { field: "phone" });

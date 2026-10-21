@@ -44,8 +44,10 @@ import type { Env } from "../types";
 import { json, sha256Hex } from "../util";
 import { requireUser, isFail } from "../authz";
 import { track } from "../hooks";
-import { otpProvider, sendOtp, checkOtp, sendFailMessage } from "../lib/otp_sender";
+import { otpProvider, checkOtp, sendFailMessage } from "../lib/otp_sender";
 import { normalizeE164, INVALID_PHONE_MESSAGE } from "../lib/phone_e164"; // [WA-LOGIN-1]
+
+import { reserveAndSendOtp } from "../lib/otp_send_reservation";
 
 const APP = "avatok";
 
@@ -145,42 +147,12 @@ export async function phoneOtpSend(req: Request, env: Env): Promise<Response> {
     }, 409);
   }
 
-  const since = now - HOUR_MS;
-  const lim = await db.prepare(
-    `SELECT
-       (SELECT COUNT(*)        FROM phone_otp WHERE uid=?1 AND created_at>?2)        AS by_uid,
-       (SELECT MAX(created_at) FROM phone_otp WHERE uid=?1)                          AS last_uid,
-       (SELECT COUNT(*)        FROM phone_otp WHERE phone_hash=?3 AND created_at>?2) AS by_phone,
-       (SELECT COUNT(*)        FROM phone_otp WHERE created_at>?2)                   AS global`,
-  ).bind(ctx.uid, since, hash).first<{ by_uid: number; last_uid: number | null; by_phone: number; global: number }>();
-
-  if (lim?.last_uid && now - lim.last_uid < RESEND_GAP_MS) {
-    const wait = Math.ceil((RESEND_GAP_MS - (now - lim.last_uid)) / 1000);
-    return json({ error: "too_soon", message: `Please wait ${wait}s before asking for another code.`, retry_after_s: wait, field: "phone" }, 429);
-  }
-  if ((lim?.by_uid ?? 0) >= MAX_SENDS_PER_UID_HOUR || (lim?.by_phone ?? 0) >= MAX_SENDS_PER_PHONE_HOUR) {
-    void track(env, ctx.uid, "phone_otp_send", APP, { outcome: "rate_limited", by_uid: lim?.by_uid, by_phone: lim?.by_phone, phone_masked: mask(e164) });
-    return json({ error: "too_many", message: "Too many codes requested. Please try again in an hour.", field: "phone" }, 429);
-  }
-  if ((lim?.global ?? 0) >= MAX_SENDS_GLOBAL_HOUR) {
-    void track(env, ctx.uid, "phone_otp_send", APP, { outcome: "global_breaker", global: lim?.global });
-    return json({ error: "busy", message: "We’re getting a lot of sign-ups right now. Please try again in a few minutes.", field: "phone" }, 429);
-  }
-
-  const sent = await sendOtp(env, e164, OTP_TTL_MS / 60_000);
-
-  // Failed sends are recorded too, so they count against the limits.
-  await db.prepare(
-    "INSERT INTO phone_otp (uid, phone_hash, e164, session_id, status, attempts, created_at) VALUES (?1,?2,?3,?4,?5,0,?6)",
-  ).bind(ctx.uid, hash, e164, sent.ok ? sent.sessionId : null, sent.ok ? "sent" : "failed", now).run();
-
-  void track(env, ctx.uid, "phone_otp_send", APP, {
-    outcome: sent.ok ? "sent" : sent.reason,
-    provider: sent.provider,
-    channel: sent.provider === "wasender" ? "whatsapp" : "sms",
-    provider_detail: sent.ok ? undefined : sent.detail,
-    phone_masked: mask(e164),
-  });
+  const sent = await reserveAndSendOtp(env, {
+    uid: ctx.uid, phoneHash: hash, e164, now, cooldown: "account",
+    actorLimit: MAX_SENDS_PER_UID_HOUR, phoneLimit: MAX_SENDS_PER_PHONE_HOUR,
+    globalLimit: MAX_SENDS_GLOBAL_HOUR, hourMs: HOUR_MS, gapMs: RESEND_GAP_MS,
+  }, OTP_TTL_MS / 60_000);
+  if (sent instanceof Response) return sent;
 
   if (!sent.ok) {
     const status = sent.reason === "not_on_whatsapp" ? 400 : sent.reason === "rate_limited" ? 429 : 502;

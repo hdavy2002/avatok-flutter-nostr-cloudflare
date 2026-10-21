@@ -51,17 +51,18 @@ import { json, sha256Hex } from "../util";
 import { requireUser, isFail } from "../authz";
 import { track, trackUser, trackException } from "../hooks";
 import { emailFor } from "../lib/identity";
-import { e164Country } from "../lib/e164_country";
 import { mintClerkSignInTicket } from "../lib/clerk_ticket";
 import { ensureHandle } from "../lib/handles";
 import { readConfig } from "./config";
 import { normalizeE164, INVALID_PHONE_MESSAGE } from "../lib/phone_e164";
-import { otpProvider, sendOtp, checkOtp, sendFailMessage, checkOnWhatsapp } from "../lib/otp_sender";
+import { otpProvider, checkOtp, sendFailMessage } from "../lib/otp_sender";
 import {
   phoneTakenByOther, verifiedAccountForPhone,
   OTP_TTL_MS, RESEND_GAP_MS, HOUR_MS, MAX_SENDS_GLOBAL_HOUR, MAX_VERIFY_ATTEMPTS,
 } from "./phone_otp";
 import { placeholderEmailFor } from "../lib/placeholder_email";
+
+import { reserveAndSendOtp } from "../lib/otp_send_reservation";
 
 const APP = "avatok";
 
@@ -97,7 +98,6 @@ export async function whatsappAuthSend(req: Request, env: Env): Promise<Response
   const e164 = normalizeE164(b?.phone);
   if (!e164) return json({ error: "invalid_phone", message: INVALID_PHONE_MESSAGE, field: "phone" }, 400);
 
-  const db = env.DB_META;
   const now = Date.now();
   const hash = await sha256Hex(e164);
   // Only the hash of the IP is ever stored — as a phone_otp.uid placeholder, so
@@ -107,58 +107,14 @@ export async function whatsappAuthSend(req: Request, env: Env): Promise<Response
   const ipHash = await sha256Hex(`wa-login-ip|${ip}`);
   const anonUid = `anon:${ipHash.slice(0, 40)}`;
 
-  const lim = await db.prepare(
-    `SELECT
-       (SELECT MAX(created_at) FROM phone_otp WHERE phone_hash=?1)                AS last_phone,
-       (SELECT COUNT(*)        FROM phone_otp WHERE phone_hash=?1 AND created_at>?2) AS by_phone,
-       (SELECT COUNT(*)        FROM phone_otp WHERE uid=?3        AND created_at>?2) AS by_ip,
-       (SELECT COUNT(*)        FROM phone_otp WHERE created_at>?2)                AS global`,
-  ).bind(hash, now - HOUR_MS, anonUid)
-    .first<{ last_phone: number | null; by_phone: number; by_ip: number; global: number }>();
-
-  if (lim?.last_phone && now - lim.last_phone < RESEND_GAP_MS) {
-    const wait = Math.ceil((RESEND_GAP_MS - (now - lim.last_phone)) / 1000);
-    return json({ error: "rate_limited", message: `Please wait ${wait}s before asking for another code.`, retry_after_s: wait }, 429);
-  }
-  if ((lim?.by_phone ?? 0) >= WA_LOGIN_MAX_SENDS_PER_PHONE_HOUR) {
-    void track(env, anonUid, "auth_whatsapp_send", APP, { outcome: "rate_limited_phone", country_code: e164Country(e164) });
-    return json({ error: "rate_limited", message: "Too many codes requested for this number. Please try again in an hour." }, 429);
-  }
-  if ((lim?.by_ip ?? 0) >= WA_LOGIN_MAX_SENDS_PER_IP_HOUR) {
-    void track(env, anonUid, "auth_whatsapp_send", APP, { outcome: "rate_limited_ip", country_code: e164Country(e164) });
-    return json({ error: "rate_limited", message: "Too many codes requested from this connection. Please try again in an hour." }, 429);
-  }
-  if ((lim?.global ?? 0) >= MAX_SENDS_GLOBAL_HOUR) {
-    void track(env, anonUid, "auth_whatsapp_send", APP, { outcome: "global_breaker" });
-    return json({ error: "rate_limited", message: "We’re getting a lot of sign-ins right now. Please try again in a few minutes." }, 429);
-  }
-
-  // Fail fast on a number that plainly isn't on WhatsApp, before spending a real
-  // send (see the file header). null (couldn't check / not on wasender) falls
-  // through to sendOtp, which does the same check as ITS fallback on failure.
-  const onWa = await checkOnWhatsapp(env, e164);
-  if (onWa === false) {
-    void track(env, anonUid, "auth_whatsapp_send", APP, { outcome: "not_on_whatsapp", country_code: e164Country(e164) });
-    return json({ error: "not_on_whatsapp", message: "This number isn’t on WhatsApp. Use a mobile number that has WhatsApp." }, 400);
-  }
-
-  const sent = await sendOtp(env, e164, OTP_TTL_MS / 60_000);
-  // Failed sends are recorded too, so they count against the limits above.
-  await db.prepare(
-    "INSERT INTO phone_otp (uid, phone_hash, e164, session_id, status, attempts, created_at) VALUES (?1,?2,?3,?4,?5,0,?6)",
-  ).bind(anonUid, hash, e164, sent.ok ? sent.sessionId : null, sent.ok ? "sent" : "failed", now).run();
-
-  void track(env, anonUid, "auth_whatsapp_send", APP, {
-    outcome: sent.ok ? "sent" : sent.reason, provider: sent.provider, country_code: e164Country(e164),
-    phone_masked: mask(e164), ...(sent.ok ? {} : { provider_detail: sent.detail }),
-  });
+  const sent = await reserveAndSendOtp(env, {
+    uid: anonUid, phoneHash: hash, e164, now, cooldown: "phone",
+    actorLimit: WA_LOGIN_MAX_SENDS_PER_IP_HOUR, phoneLimit: WA_LOGIN_MAX_SENDS_PER_PHONE_HOUR,
+    globalLimit: MAX_SENDS_GLOBAL_HOUR, hourMs: HOUR_MS, gapMs: RESEND_GAP_MS,
+  }, OTP_TTL_MS / 60_000, true);
+  if (sent instanceof Response) return sent;
 
   if (!sent.ok) {
-    if (sent.reason === "provider_error") {
-      void trackException(env, new Error(`whatsapp_auth_send: ${sent.detail}`), {
-        route: "/api/auth/whatsapp/send", method: "POST", handled: true, app_name: APP,
-      });
-    }
     const status = sent.reason === "not_on_whatsapp" ? 400 : sent.reason === "rate_limited" ? 429 : 502;
     return json({ error: sent.reason, message: sendFailMessage(env, sent.reason) }, status);
   }
