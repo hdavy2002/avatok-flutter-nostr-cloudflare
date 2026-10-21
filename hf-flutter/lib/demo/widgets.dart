@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
+import '../ui/motion.dart';
 import '../data/demo_mode.dart';
 import '../data/repos/auth_repo.dart';
 import '../data/services.dart';
@@ -143,7 +144,7 @@ class TicketButton extends StatelessWidget {
     final ink = maroon ? C.gold : C.deep;
     final stub = maroon ? C.marigold : C.maroon;
     final stubInk = maroon ? C.deep : C.gold;
-    return Opacity(
+    return HfPress(enabled: enabled, child: Opacity(
       opacity: enabled ? 1 : 0.45,
       child: Semantics(
         button: true,
@@ -196,7 +197,7 @@ class TicketButton extends StatelessWidget {
           ),
         ),
       ),
-    );
+    ));
   }
 }
 
@@ -322,10 +323,10 @@ class ChunkyButton extends StatelessWidget {
     return Semantics(
       button: true,
       enabled: enabled,
-      child: Opacity(
+      child: HfPress(enabled: enabled, child: Opacity(
         opacity: enabled ? 1 : 0.4,
         child: _chunkyBody(bg, fg, border),
-      ),
+      )),
     );
   }
 
@@ -367,7 +368,7 @@ class BrassKnob extends StatelessWidget {
     return Semantics(
       button: onTap != null,
       label: label,
-      child: GestureDetector(
+      child: HfPress(enabled: onTap != null, child: GestureDetector(
         onTap: onTap,
         behavior: HitTestBehavior.opaque,
         // [HF-WIRE-12] a tappable knob always has a 48 dp hit area, whatever its drawn size
@@ -404,7 +405,7 @@ class BrassKnob extends StatelessWidget {
         ),
           ),
         ),
-      ),
+      )),
     );
   }
 }
@@ -703,7 +704,7 @@ class MonthGrid extends StatelessWidget {
     final cells = <Widget>[
       for (final w in weekdayShort) Center(child: Text(w.substring(0, 2), style: t(14, color: C.tan))),
       for (var i = 0; i < lead; i++) const SizedBox.shrink(),
-      for (var d = 1; d <= daysInMonth; d++) _day(DateTime(month.year, month.month, d), today),
+      for (var d = 1; d <= daysInMonth; d++) _day(context, DateTime(month.year, month.month, d), today),
     ];
     return Container(
       padding: const EdgeInsets.fromLTRB(10, 6, 10, 10),
@@ -738,7 +739,7 @@ class MonthGrid extends StatelessWidget {
     );
   }
 
-  Widget _day(DateTime d, DateTime today) {
+  Widget _day(BuildContext context, DateTime d, DateTime today) {
     final past = d.isBefore(today);
     final isSel = selected != null && dayKey(selected!) == dayKey(d);
     final isOpen = fill.contains(dayKey(d));
@@ -748,7 +749,9 @@ class MonthGrid extends StatelessWidget {
     final fg = isSel ? C.gold : (past && !allowPast ? C.sandLine : C.deep);
     return GestureDetector(
       onTap: past && !allowPast ? null : () => onPick(d),
-      child: Container(
+      child: HfAnimatedContainer(
+        duration: HfMotion.duration(context, HfMotion.quick),
+        curve: HfMotion.curve,
         decoration: BoxDecoration(
           color: bg,
           shape: BoxShape.circle,
@@ -781,7 +784,7 @@ class ArtMoment extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return SizedBox(
+    return HfReveal(trigger: path, duration: HfMotion.entrance, child: SizedBox(
       width: size,
       height: size,
       child: Stack(
@@ -791,7 +794,7 @@ class ArtMoment extends StatelessWidget {
           Art(path, fallback: ArtStandIn(label, color: C.paper, ink: C.maroon, radius: size)),
         ],
       ),
-    );
+    ));
   }
 }
 

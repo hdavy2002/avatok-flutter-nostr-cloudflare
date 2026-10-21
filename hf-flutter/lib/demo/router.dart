@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
+import '../ui/motion.dart';
+
 import 'screens/booking.dart';
 import 'screens/availability_real.dart'; // [HF-BOOK-APPROVE-6]
 import 'screens/bookings_real.dart'; // [HF-WIRE-8]
@@ -194,7 +196,7 @@ class _MainShellState extends State<MainShell> {
                         child: Column(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
-                            Icon(shell.currentIndex == i ? _items[i].$2 : _items[i].$1, size: 27, color: shell.currentIndex == i ? C.maroon : C.muted),
+                            HfSelection(selected: shell.currentIndex == i, child: Icon(shell.currentIndex == i ? _items[i].$2 : _items[i].$1, size: 27, color: shell.currentIndex == i ? C.maroon : C.muted)),
                             const SizedBox(height: 3),
                             Text(
                               _items[i].$3,

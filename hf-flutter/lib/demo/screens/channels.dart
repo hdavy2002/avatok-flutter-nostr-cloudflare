@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../ui/motion.dart';
+
 import '../../core/brand.dart';
 import '../../data/api_exception.dart';
 import '../../data/models/channel.dart';
@@ -521,7 +523,9 @@ class _ChannelConsentScreenState extends State<ChannelConsentScreen> {
         label: _labels[i],
         child: InkWell(
           onTap: _busy ? null : () => setState(() => _ticks[i] = !v),
-          child: Container(
+          child: HfAnimatedContainer(
+            duration: HfMotion.duration(context, HfMotion.quick),
+            curve: HfMotion.curve,
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(color: v ? C.butter : C.paper, borderRadius: BorderRadius.circular(14), border: Border.all(color: v ? C.marigold : C.sand, width: 2)),
             child: Row(
@@ -741,7 +745,7 @@ class _ChannelCheckingScreenState extends State<ChannelCheckingScreen> {
       children: [
         if (art != null) Center(child: art),
         const SizedBox(height: 8),
-        Text(title, textAlign: TextAlign.center, style: t(28, color: C.maroon)),
+        HfReveal(trigger: title, child: Text(title, textAlign: TextAlign.center, style: t(28, color: C.maroon))),
         const SizedBox(height: 10),
         Text(message, textAlign: TextAlign.center, style: t(16, w: FontWeight.w700, h: 1.4)),
         if (extra != null) ...[const SizedBox(height: 16), extra],

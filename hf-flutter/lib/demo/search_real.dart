@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
+import '../ui/motion.dart';
 import '../core/brand.dart';
 import '../data/api_exception.dart';
 import '../data/models/reel.dart';
@@ -126,7 +127,9 @@ class _RealSearchState extends State<RealSearch> {
                   key: ValueKey('platform-${o.$1}'),
                   borderRadius: BorderRadius.circular(999),
                   onTap: () => _pickPlatform(o.$1),
-                  child: Container(
+                  child: HfAnimatedContainer(
+                    duration: HfMotion.duration(context, HfMotion.quick),
+                    curve: HfMotion.curve,
                     height: 48,
                     alignment: Alignment.center,
                     decoration: BoxDecoration(

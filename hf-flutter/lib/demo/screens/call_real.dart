@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../ui/motion.dart';
 import '../../core/brand.dart';
 import '../../data/api_exception.dart';
 import '../../data/demo_mode.dart';
@@ -281,8 +282,7 @@ class RealCallScreen extends StatefulWidget {
   State<RealCallScreen> createState() => _RealCallScreenState();
 }
 
-class _RealCallScreenState extends State<RealCallScreen> with SingleTickerProviderStateMixin {
-  late final AnimationController _pulse = AnimationController(vsync: this, duration: const Duration(milliseconds: 1200))..repeat();
+class _RealCallScreenState extends State<RealCallScreen> {
   CallStatus? _s;
   CallProblemInfo? _problem;
   bool _offline = false;
@@ -311,7 +311,6 @@ class _RealCallScreenState extends State<RealCallScreen> with SingleTickerProvid
     _disposed = true;
     _poll?.cancel();
     _tick?.cancel();
-    _pulse.dispose();
     super.dispose();
   }
 
@@ -348,7 +347,6 @@ class _RealCallScreenState extends State<RealCallScreen> with SingleTickerProvid
   void _apply(CallStatus s) {
     if (_seen.add(s.status)) Telemetry.event('hf_app_call_status', {'status': s.status});
     if (s.isEnded) {
-      _pulse.stop();
       _tick?.cancel();
       if (!_endedReported) {
         _endedReported = true;
@@ -502,14 +500,10 @@ class _RealCallScreenState extends State<RealCallScreen> with SingleTickerProvid
             alignment: Alignment.center,
             children: [
               if (!ended && _problem == null)
-                AnimatedBuilder(
-                  animation: _pulse,
-                  builder: (_, __) => Container(
-                    width: 150 + 70 * _pulse.value,
-                    height: 150 + 70 * _pulse.value,
-                    decoration: BoxDecoration(shape: BoxShape.circle, color: C.marigold.withValues(alpha: 0.35 * (1 - _pulse.value))),
-                  ),
-                ),
+                HfReveal(trigger: s?.phase, child: Container(
+                  width: 174, height: 174,
+                  decoration: BoxDecoration(shape: BoxShape.circle, color: C.marigold.withValues(alpha: 0.18)),
+                )),
               Avatar(w, size: 150),
             ],
           ),
@@ -517,7 +511,7 @@ class _RealCallScreenState extends State<RealCallScreen> with SingleTickerProvid
         const SizedBox(height: 18),
         Text(w.name, textAlign: TextAlign.center, style: t(30, color: C.ivory, ls: 0.02)),
         const SizedBox(height: 8),
-        Text(title, textAlign: TextAlign.center, style: t(19, color: C.gold)),
+        HfReveal(trigger: (_problem?.message, s?.phase, _offline), child: Text(title, textAlign: TextAlign.center, style: t(19, color: C.gold))),
         if (_offline && s != null) ...[
           const SizedBox(height: 6),
           Text(ApiException.offlineText, textAlign: TextAlign.center, style: t(14, color: C.cream, w: FontWeight.w700)),

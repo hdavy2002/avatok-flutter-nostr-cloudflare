@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../ui/motion.dart';
 import '../data.dart';
 import '../state.dart';
 import '../theme.dart';
@@ -95,7 +96,9 @@ class _BookScreenState extends State<BookScreen> {
                       for (final s in slots)
                         GestureDetector(
                           onTap: () => setState(() => _slot = s),
-                          child: Container(
+                          child: HfAnimatedContainer(
+                            duration: HfMotion.duration(context, HfMotion.quick),
+                            curve: HfMotion.curve,
                             height: 48,
                             padding: const EdgeInsets.symmetric(horizontal: 16),
                             decoration: BoxDecoration(

@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../../ui/motion.dart';
 import '../../data/api_exception.dart';
 import '../../data/in_app_checkout.dart';
 import '../../data/models/wallet.dart';
@@ -550,7 +551,7 @@ class _CheckoutFlowState extends State<CheckoutFlow> {
       onPopInvokedWithResult: (didPop, _) {
         if (!didPop) _back();
       },
-      child: Column(
+      child: HfReveal(trigger: _stage, child: Column(
         children: [
           if (showBack)
             Padding(
@@ -585,7 +586,7 @@ class _CheckoutFlowState extends State<CheckoutFlow> {
             ),
           ),
         ],
-      ),
+      )),
     );
   }
 

@@ -4,6 +4,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../ui/motion.dart';
 import '../../core/brand.dart';
 import '../../core/deep_links.dart';
 import '../../data/repos/config_repo.dart';
@@ -22,7 +23,7 @@ class SplashScreen extends StatefulWidget {
 }
 
 class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderStateMixin {
-  late final AnimationController _sweep = AnimationController(vsync: this, duration: const Duration(milliseconds: 600))..repeat();
+  late final AnimationController _sweep = AnimationController(vsync: this, duration: const Duration(milliseconds: 600));
   int _n = 3;
   Timer? _timer;
   Future<void> _boot = Future<void>.value();
@@ -42,6 +43,17 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
         unawaited(_finish());
       }
     });
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (HfMotion.enabled(context)) {
+      if (!_sweep.isAnimating) _sweep.repeat();
+    } else {
+      _sweep.stop();
+      _sweep.value = 0;
+    }
   }
 
   Future<void> _finish() async {
@@ -217,8 +229,9 @@ class _IntroScreenState extends State<IntroScreen> {
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     for (var i = 0; i < 2; i++)
-                      AnimatedContainer(
-                        duration: const Duration(milliseconds: 250),
+                      HfAnimatedContainer(
+                        duration: HfMotion.duration(context, HfMotion.quick),
+                        curve: HfMotion.curve,
                         margin: const EdgeInsets.symmetric(horizontal: 4),
                         width: i == _page ? 26 : 9,
                         height: 9,
@@ -235,7 +248,13 @@ class _IntroScreenState extends State<IntroScreen> {
                         label: 'NEXT',
                         dark: true,
                         height: 60,
-                        onTap: () => _pages.nextPage(duration: const Duration(milliseconds: 350), curve: Curves.easeOutCubic),
+                        onTap: () {
+                          if (HfMotion.enabled(context)) {
+                            _pages.nextPage(duration: HfMotion.standard, curve: HfMotion.curve);
+                          } else {
+                            _pages.jumpToPage(_page + 1);
+                          }
+                        },
                       )
                     : ChunkyButton(label: 'START WATCHING', height: 60, onTap: _done),
               ],

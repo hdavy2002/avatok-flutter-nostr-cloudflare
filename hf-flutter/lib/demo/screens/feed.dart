@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../ui/motion.dart';
 import '../../core/brand.dart';
 import '../../data/favourites_store.dart';
 import '../../data/api_exception.dart';
@@ -275,18 +276,27 @@ class _ReelPageState extends State<ReelPage> with SingleTickerProviderStateMixin
   void initState() {
     super.initState();
     _play.value = 0; // build the controller now: a late field first touched in dispose() would make a ticker on a dead element
-    if (widget.active && widget.real == null) _play.repeat();
     if (widget.real != null && demo.signedIn) unawaited(FavouritesStore.instance.ensureLoaded()); // [HF-WIRE-9] so the ♥ starts right
   }
 
   @override
   void didUpdateWidget(covariant ReelPage old) {
     super.didUpdateWidget(old);
-    if (widget.real != null) return;
-    if (widget.active && !_play.isAnimating) {
-      _play.repeat();
-    } else if (!widget.active && _play.isAnimating) {
+    _syncMotion();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _syncMotion();
+  }
+
+  void _syncMotion() {
+    if (widget.real == null && widget.active && HfMotion.enabled(context)) {
+      if (!_play.isAnimating) _play.repeat();
+    } else {
       _play.stop();
+      if (!HfMotion.enabled(context)) _play.value = 0;
     }
   }
 
