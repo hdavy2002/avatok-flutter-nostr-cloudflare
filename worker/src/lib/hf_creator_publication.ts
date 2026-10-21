@@ -1,6 +1,7 @@
 import type { Env } from "../types";
 import { getHost, listMedia } from "./hf_host_store";
 import { isCreatorCategory, validCreatorRate } from "./hf_creator_pricing";
+import { identityEvidenceBlockers } from "./hf_public_verification";
 import { INTRO_MIN_SECONDS } from "./hf_intro";
 import { isCreatorFixture } from "./hf_creator_fixtures";
 
@@ -17,9 +18,7 @@ export async function creatorPublicationBlockers(env: Env, uid: string): Promise
     env.DB_META.prepare("SELECT name_match, verified_at FROM hf_payout WHERE uid=?1").bind(uid).first<{ name_match: number; verified_at: number | null }>(),
     listMedia(env, uid),
   ]);
-  const missing: string[] = [];
-  if (!kyc?.verified_at || kyc.age_ok !== 1) missing.push("identity_verification");
-  if (video?.review_status !== "approved" || !video.r2_key || !video.mime?.startsWith("video/") || !/^\d{6}$/.test(video.code)) missing.push("video_kyc");
+  const missing = identityEvidenceBlockers(kyc, video);
   if (!payout?.verified_at || payout.name_match !== 1) missing.push("payout");
   if (!h.display_name?.trim() || !h.about?.trim() || !h.tagline?.trim()) missing.push("profile");
   if (!validCreatorRate(h.price_per_min)) missing.push("price");

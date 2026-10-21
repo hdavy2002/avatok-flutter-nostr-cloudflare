@@ -29,6 +29,7 @@ interface Card {
   gallery: { url: string; caption: string | null }[];
   /** [HF-CALLS-1] presence + public rating aggregates (reviews agent) */
   status?: 'online' | 'busy' | 'offline'; womenOnly?: boolean;
+  identityVerified?: boolean; callEligible?: boolean;
   rating?: number | null; reviewCount?: number; ratingBreakdown?: Record<'5' | '4' | '3' | '2' | '1', number>; talkedTo?: number; regulars?: number;
   reviews?: { firstName: string; stars: number; text: string; topic: string | null; minutes: number | null; regular: boolean; date: string | number }[];
 }
@@ -65,7 +66,9 @@ const reviews = host?.reviews ?? [];
 const breakdown = host?.ratingBreakdown ?? { '5': 0, '4': 0, '3': 0, '2': 0, '1': 0 };
 const talkedTo = host?.talkedTo ?? 0;
 const regulars = host?.regulars ?? 0;
-const callHost = host ? { slug: host.slug, displayName: host.displayName, pricePerMin: host.pricePerMin, pricePaisePerMin: paisePerMin || undefined, priceTiers: host.priceTiers, plan: host.plan, status: host.status ?? 'offline', womenOnly: !!host.womenOnly } : null;
+const identityVerified = host?.identityVerified === true;
+const callEligible = identityVerified && host?.callEligible === true;
+const callHost = host && callEligible ? { slug: host.slug, displayName: host.displayName, pricePerMin: host.pricePerMin, pricePaisePerMin: paisePerMin || undefined, priceTiers: host.priceTiers, plan: host.plan, status: host.status ?? 'offline', womenOnly: !!host.womenOnly } : null;
 const audioUrl = host?.introAudioUrl ?? null;
 const introLen = host?.introSeconds ? `${Math.floor(host.introSeconds / 60)}:${String(host.introSeconds % 60).padStart(2, '0')}` : '';
 const description = host ? `${name} on ${identity.name}. ${host.tagline ?? 'A real person to talk to, in your language.'} From ${rateLabel}. Your number stays private.` : 'This influencer page is not available.';
@@ -93,13 +96,13 @@ const galleryJson = JSON.stringify(gallery.map(g => ({ src: g.url, alt: g.captio
               <div class="cv-profile-photo">
                 {host.avatarUrl && <img src={host.avatarUrl} width="1254" height="1254" alt={`${name}, an AI avatar chosen by the influencer`} fetchpriority="high" />}
                 <span class="hf-ai-label">AI avatar chosen by the influencer</span>
-                <span class="cv-online cv-status-offline"><span aria-hidden="true"></span>Calls open soon</span>
+                <span class="cv-online cv-status-offline"><span aria-hidden="true"></span>{callEligible ? "Calls open soon" : "Calls unavailable"}</span>
               </div>
               <div class="cv-identity">
                 <div class="cv-name-row"><div><h1 id="profile-name">{name}</h1>{host.tagline && <p class="cv-role">{host.tagline}</p>}</div></div>
                 <div class="hf-save-row"><SaveHostButton client:only="react" slug={host.slug} name={host.displayName} surface="profile" variant="pill" /></div>
                 <p class="hfc-rate hfc-rate-lg">{reviewCount > 0 && rating != null ? <><span aria-hidden="true">★</span> <strong>{rating.toFixed(1)}</strong> <a href="#reviews">({reviewCount} {reviewCount === 1 ? 'review' : 'reviews'})</a></> : <span class="hfc-new">New influencer</span>}</p>
-                <span class="cv-verified" role="img" aria-label="Identity checked by our team"><span aria-hidden="true">ID-verified influencer ✓</span></span>
+                {identityVerified && <span class="cv-verified" role="img" aria-label="Identity checked by our team"><span aria-hidden="true">ID-verified influencer ✓</span></span>}
                 {audioUrl && (
                   <div class="hf-clip">
                     <h2 class="hf-clip-title">Hear {name}’s introduction{introLen && <span> · {introLen}</span>}</h2>
@@ -110,7 +113,7 @@ const galleryJson = JSON.stringify(gallery.map(g => ({ src: g.url, alt: g.captio
                 {host.quote && <blockquote class="cv-profile-quote"><p>“{host.quote}”</p><cite>– {name}</cite></blockquote>}
               </div>
             </section>
-            <p class="cv-sample-disclosure">To protect our influencers’ privacy, the photos on influencer profiles are AI-generated from an avatar the influencer chose. The voice introduction is the influencer’s own. The person you talk to on a call is the real, ID-verified influencer.</p>
+            <p class="cv-sample-disclosure">To protect our influencers’ privacy, the photos on influencer profiles are AI-generated from an avatar the influencer chose. The voice introduction is the influencer’s own. {identityVerified && <>This influencer has completed our identity and video checks.</>}</p>
             <nav class="cv-profile-tabs" aria-label="Profile sections"><a href="#about" aria-current="location">About</a><a href="#moods">Topics</a>{reviewCount > 0 && <a href="#reviews">Reviews</a>}{gallery.length > 0 && <a href="#gallery">Gallery</a>}</nav>
             <div class="cv-information-grid">
               <section class="cv-info-card" id="about" aria-labelledby="about-heading">
@@ -160,13 +163,13 @@ const galleryJson = JSON.stringify(gallery.map(g => ({ src: g.url, alt: g.captio
           </div>
           <aside class="cv-booking-rail" aria-label="Call options">
             <div class="cv-booking-card"><strong class="cv-rate">{rateLabel}</strong>{tenMin && <p class="cv-rate-estimate">10 min ≈ {tenMin}</p>}{standard && <p class="cv-rate-estimate">{SAME_RATE_LINE}</p>}
-              {callHost && <HostCallActions client:idle variant="rail" refresh host={callHost} />}
-              <ul class="cv-booking-benefits"><li><ModernIcon name="lock" /><div><strong>Your number stays private</strong><span>Calls are bridged through {identity.name}</span></div></li><li><DetailIcon name="shield" /><div><strong>ID-verified influencer</strong><span>Aadhaar and a live selfie, checked by our team</span></div></li></ul>
+              {callHost ? <HostCallActions client:idle variant="rail" refresh host={callHost} /> : <p role="status">Calls and bookings are unavailable for this profile.</p>}
+              <ul class="cv-booking-benefits"><li><ModernIcon name="lock" /><div><strong>Your number stays private</strong><span>Calls are bridged through {identity.name}</span></div></li>{identityVerified && <li><DetailIcon name="shield" /><div><strong>ID-verified influencer</strong><span>Identity and video checks completed</span></div></li>}</ul>
             </div>
           </aside>
         </div>
       </main>
-      <div class="cv-mobile-booking" aria-label="Call options"><div><strong>{rateLabel}</strong>{tenMin && <small>10 min ≈ {tenMin}</small>}</div>{callHost && <HostCallActions client:idle variant="bar" refresh host={callHost} />}</div>
+      <div class="cv-mobile-booking" aria-label="Call options"><div><strong>{rateLabel}</strong>{tenMin && <small>10 min ≈ {tenMin}</small>}</div>{callHost ? <HostCallActions client:idle variant="bar" refresh host={callHost} /> : <span>Calls and bookings unavailable</span>}</div>
       <dialog class="cv-detail-dialog cv-gallery-dialog" id="hf-lightbox" aria-labelledby="hf-lightbox-caption"><button class="cv-dialog-close" type="button" data-dialog-close aria-label="Close gallery">×</button><figure><img data-gallery-image alt="" width="1254" height="1254"/><span class="hf-ai-chip hf-ai-lb">AI image</span><figcaption id="hf-lightbox-caption" aria-live="polite"></figcaption></figure><div class="cv-gallery-controls"><button type="button" data-gallery-step="-1" aria-label="Previous picture">←</button><span data-gallery-count></span><button type="button" data-gallery-step="1" aria-label="Next picture">→</button></div></dialog>
       <script type="application/json" id="hf-gallery-data" set:html={galleryJson} />
     </>

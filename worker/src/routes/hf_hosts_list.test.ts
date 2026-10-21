@@ -6,6 +6,7 @@ import { readFileSync } from "node:fs";
 
 let cfg: Record<string, unknown> = {};
 let currentUid: string | null = null;
+vi.mock("./hf_reels", () => ({ profileReels: async () => null, isHiddenDemoHost: async () => false }));
 vi.mock("../hooks", () => ({ track: async () => undefined, trackException: async () => undefined }));
 vi.mock("./config", () => ({ readConfig: async () => cfg }));
 vi.mock("../authz", () => ({
@@ -26,8 +27,8 @@ let prepares = 0;
 function makeEnv() {
   const db = new DatabaseSync(":memory:");
   for (const f of ["2026-10-09-hf-hosts.sql", "2026-10-09-hf-presence.sql", "2026-10-09-hf-reviews.sql", "2026-10-09-hf-lane-access.sql", "2026-10-10-hf-hosts-list-idx.sql", "2026-10-12-hf-creator-price-alters.sql"]) db.exec(mig(f));
-  db.exec(`CREATE TABLE hf_kyc (uid TEXT PRIMARY KEY, gender TEXT, verified_at INTEGER);
-    CREATE TABLE hf_selfie (id TEXT PRIMARY KEY, uid TEXT, created_at INTEGER, review_status TEXT, review_reason TEXT);`);
+  db.exec(`CREATE TABLE hf_kyc (uid TEXT PRIMARY KEY, gender TEXT, verified_at INTEGER, age_ok INTEGER);
+    CREATE TABLE hf_selfie (id TEXT PRIMARY KEY, uid TEXT, created_at INTEGER, review_status TEXT, review_reason TEXT, r2_key TEXT, mime TEXT, code TEXT);`);
   const stmt = (q: string, args: unknown[] = []) => ({
     bind: (...a: unknown[]) => stmt(q, a),
     first: async () => (db.prepare(q).get(...args) as any) ?? null,
@@ -101,7 +102,7 @@ describe("GET /api/hf/hosts", () => {
     expect(b.items.map((i: any) => i.slug)).not.toContain("fay-ffff");
     expect(Object.keys(b.items[0]).sort()).toEqual(
       // [HF-STD-PLAN-1] cards now carry the Standard-plan price block (plan, pricePaisePerMin, priceLabel, priceTiers) next to pricePerMin
-      ["avatarUrl", "category", "displayName", "imageProvenance", "introAudioUrl", "introMime", "introSeconds", "languages", "lgbtqFriendly", "listingRevision", "plan", "priceLabel", "pricePaisePerMin", "pricePerMin", "priceTiers", "rating", "ratingBreakdown", "regulars", "reviewCount", "slug", "status", "style", "tagline", "talkedTo", "topics", "womenOnly"],
+      ["avatarUrl", "callEligible", "category", "displayName", "identityVerified", "imageProvenance", "introAudioUrl", "introMime", "introSeconds", "languages", "lgbtqFriendly", "listingRevision", "plan", "priceLabel", "pricePaisePerMin", "pricePerMin", "priceTiers", "rating", "ratingBreakdown", "regulars", "reviewCount", "slug", "status", "style", "tagline", "talkedTo", "topics", "womenOnly"],
     );
     expect(b.items[0]).toMatchObject({ plan: "standard", pricePerMin: 3.99, pricePaisePerMin: 399, priceLabel: "₹3.99/min" });
     expect(b.items[0].priceTiers).toEqual([{ fromMin: 0, toMin: 30, paisePerMin: 399 }, { fromMin: 30, toMin: 60, paisePerMin: 350 }, { fromMin: 60, toMin: null, paisePerMin: 325 }]);
@@ -233,7 +234,7 @@ describe("GET /api/hf/hosts", () => {
     });
     it("with access the lane list is filtered and never cached", async () => {
       currentUid = "viewer";
-      E.db.exec(`INSERT INTO hf_kyc VALUES ('viewer','F',1); INSERT INTO hf_lane_access (uid, lane, verified_at, declared_at) VALUES ('viewer','women',1,NULL),('viewer','lgbtq',1,1); INSERT INTO hf_selfie VALUES ('s1','viewer',1,'approved',NULL);`);
+      E.db.exec(`INSERT INTO hf_kyc (uid, gender, verified_at) VALUES ('viewer','F',1); INSERT INTO hf_lane_access (uid, lane, verified_at, declared_at) VALUES ('viewer','women',1,NULL),('viewer','lgbtq',1,1); INSERT INTO hf_selfie (id, uid, created_at, review_status, review_reason) VALUES ('s1','viewer',1,'approved',NULL);`);
       const w = (await get("lane=women", { authorization: "Bearer t" }))!;
       expect(w.status).toBe(200);
       expect(w.headers.get("cache-control")).toBe("private, no-store");
@@ -246,10 +247,10 @@ describe("GET /api/hf/hosts", () => {
     });
     it.each(["pending", "rejected"])("a newer %s video revokes lane list and profile access", async (status) => {
       currentUid = "viewer";
-      E.db.exec(`INSERT INTO hf_kyc VALUES ('viewer','M',1);
+      E.db.exec(`INSERT INTO hf_kyc (uid, gender, verified_at) VALUES ('viewer','M',1);
         INSERT INTO hf_lane_access VALUES ('viewer','lgbtq',1,1);
-        INSERT INTO hf_selfie VALUES ('a','viewer',1,'approved',NULL);`);
-      E.db.prepare("INSERT INTO hf_selfie VALUES ('b','viewer',1,?,NULL)").run(status);
+        INSERT INTO hf_selfie (id, uid, created_at, review_status, review_reason) VALUES ('a','viewer',1,'approved',NULL);`);
+      E.db.prepare("INSERT INTO hf_selfie (id, uid, created_at, review_status, review_reason) VALUES ('b','viewer',1,?,NULL)").run(status);
       expect((await get("lane=lgbtq", { authorization: "Bearer t" }))!.status).toBe(403);
       const detail = await hfHostsPublicRoute(new Request("https://api.test/api/hosts/public/dev-dddd?lane=lgbtq", { headers: { authorization: "Bearer t" } }), E.env);
       expect(detail!.status).toBe(403);
@@ -261,7 +262,7 @@ describe("GET /api/hf/hosts", () => {
       expect((await publicDetail!.json() as any).protectedLane).toBeNull();
       expect((await hfHostsPublicRoute(new Request("https://api.test/api/hosts/public/dev-dddd?lane=lgbtq"), E.env))!.status).toBe(401);
       currentUid = "viewer";
-      E.db.exec(`INSERT INTO hf_kyc VALUES ('viewer','M',1); INSERT INTO hf_lane_access VALUES ('viewer','lgbtq',1,1); INSERT INTO hf_selfie VALUES ('a','viewer',1,'approved',NULL);`);
+      E.db.exec(`INSERT INTO hf_kyc (uid, gender, verified_at) VALUES ('viewer','M',1); INSERT INTO hf_lane_access VALUES ('viewer','lgbtq',1,1); INSERT INTO hf_selfie (id, uid, created_at, review_status, review_reason) VALUES ('a','viewer',1,'approved',NULL);`);
       const gated = await hfHostsPublicRoute(new Request("https://api.test/api/hosts/public/dev-dddd?lane=lgbtq"), E.env);
       expect(gated!.status).toBe(200);
       expect(gated!.headers.get("cache-control")).toBe("private, no-store");
@@ -269,12 +270,12 @@ describe("GET /api/hf/hosts", () => {
     });
     it("old granted membership without a video remains locked", async () => {
       currentUid = "viewer";
-      E.db.exec(`INSERT INTO hf_kyc VALUES ('viewer','M',1); INSERT INTO hf_lane_access VALUES ('viewer','lgbtq',1,1);`);
+      E.db.exec(`INSERT INTO hf_kyc (uid, gender, verified_at) VALUES ('viewer','M',1); INSERT INTO hf_lane_access VALUES ('viewer','lgbtq',1,1);`);
       expect((await get("lane=lgbtq", { authorization: "Bearer t" }))!.status).toBe(403);
     });
     it("women lane needs a female/transgender Aadhaar even with a lane row", async () => {
       currentUid = "viewer";
-      E.db.exec(`INSERT INTO hf_kyc VALUES ('viewer','M',1); INSERT INTO hf_lane_access (uid, lane, verified_at) VALUES ('viewer','women',1);`);
+      E.db.exec(`INSERT INTO hf_kyc (uid, gender, verified_at) VALUES ('viewer','M',1); INSERT INTO hf_lane_access (uid, lane, verified_at) VALUES ('viewer','women',1);`);
       expect((await get("lane=women", { authorization: "Bearer t" }))!.status).toBe(403);
     });
   });
@@ -352,5 +353,38 @@ describe("GET /api/hf/options", () => {
     const groups = new Set(MOOD_GROUPS.map((g) => g.label));
     for (const t of o.topics) { expect(groups.has(t.group)).toBe(true); expect(TOPIC_SLUGS.has(t.slug)).toBe(true); }
     for (const l of o.languages) expect(parseHostList(new URLSearchParams({ lang: l.code })).ok).toBe(true);
+  });
+});
+
+describe("public identity evidence [HF-SEC-PROFILE-1]", () => {
+  const detail = () => hfHostsPublicRoute(new Request("https://api.test/api/hosts/public/ana-aaaa"), E.env);
+  const verify = () => E.db.exec(`INSERT INTO hf_kyc (uid, verified_at, age_ok) VALUES ('u1',1,1);
+    INSERT INTO hf_selfie (id, uid, created_at, review_status, r2_key, mime, code)
+    VALUES ('verified','u1',1,'approved','private/selfie-key','video/mp4','123456');`);
+  it("PROFILE-01/04: channel-only approved detail remains flag-gated and excluded from list", async () => {
+    E.db.exec("UPDATE hf_hosts SET status='approved' WHERE uid='u1'");
+    expect((await detail())!.status).toBe(404);
+    cfg.hfReelsEnabled = true;
+    const response = (await detail())!;
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ identityVerified: false, callEligible: false, status: "online" });
+    const list = await (await hfHostsPublicRoute(new Request("https://api.test/api/hosts/public"), E.env))!.json();
+    expect(list.some((h: any) => h.slug === "ana-aaaa")).toBe(false);
+  });
+  it("PROFILE-02: verified live host exposes booleans without private evidence", async () => {
+    verify();
+    const response = (await detail())!;
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body).toMatchObject({ identityVerified: true, callEligible: true, status: "online" });
+    expect(JSON.stringify(body)).not.toMatch(/private\/selfie-key|123456|verified_at|age_ok|r2_key|review_status|identity_verified_at|"uid"|"phone"|dob|provider_ref/);
+  });
+  it.each(["pending", "rejected"])("PROFILE-03: latest %s replacement invalidates an earlier approved video", async (status) => {
+    verify();
+    E.db.prepare("INSERT INTO hf_selfie (id, uid, created_at, review_status, r2_key, mime, code) VALUES ('zz-replacement','u1',1,?,'private/replacement','video/mp4','654321')").run(status);
+    expect(await (await detail())!.json()).toMatchObject({ identityVerified: false, callEligible: false });
+  });
+  it("PROFILE-03: missing evidence fails closed for a live host", async () => {
+    expect(await (await detail())!.json()).toMatchObject({ identityVerified: false, callEligible: false });
   });
 });
