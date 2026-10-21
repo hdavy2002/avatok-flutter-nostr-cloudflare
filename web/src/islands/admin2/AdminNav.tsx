@@ -1,7 +1,6 @@
 /* AdminNav — [ADMIN2-SHELL 2026-09-26] Admin 2 navigation + admin guard.
  *
- * Same shell as Dashboard 2 (islands/dashboard2/DashNav.tsx): this island owns
- * the page's SINGLE <ClerkProvider>. Screen islands must NOT mount their own
+ * This island owns the page's SINGLE <ClerkProvider>. Screen islands must NOT mount their own
  * ClerkIsland; they call adminApi() from ./adminApi, which waits for this
  * island's verdict and reads the token through getActiveTokenWaited().
  *

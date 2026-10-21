@@ -1,7 +1,7 @@
 /* [SAATHUM-SHOP-DASH-1 2026-10-01] Customer dashboard shop screens — ported VERBATIM from
    Specs/shop-mockup/shop.css (My orders, Billing tag, wishlist cards), every rule scoped under
-   .shop-dash. Only the dashboard-relevant rules are carried; the .sh-dash/.sh-side shell is the real
-   Dashboard2 layout. Additive (not in the mockup): .sh-form textarea, .sh-modal-box focus/err rows. */
+   .shop-dash. Only the dashboard-relevant rules are carried; the mockup shell is omitted.
+   Additive (not in the mockup): .sh-form textarea, .sh-modal-box focus/err rows. */
 .shop-dash{--ink:#5a1f14;--sub:#6b4a2b;--red:#b3261e;--redDk:#7a150f;--teal:#173f3f;--body:#3c4a4c;--gold:#F6B93B;--green:#1e8a4c;--line:#e3cfa9;--chip:#f3e7d2;--card:#fffdf8;--cream:#fbf3e4;color:var(--ink);font-family:Nunito,system-ui,sans-serif}
 .shop-dash *{box-sizing:border-box}
 .shop-dash h1,.shop-dash h2,.shop-dash h3{font-family:Comfortaa,sans-serif;font-weight:600;margin:0;color:var(--ink);letter-spacing:0}

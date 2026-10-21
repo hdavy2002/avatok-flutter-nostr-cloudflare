@@ -1,7 +1,7 @@
 /* %BRAND_NAME% service worker — [DASH2-PWA 2026-09-25]
  *
- * Registered ONLY from Dashboard 2 pages (islands/dashboard2/InstallPrompt.tsx),
- * scope "/". Deliberately small and conservative:
+ * Retained for existing home-screen installs and push subscriptions after the
+ * old dashboard was retired. Scope "/". Deliberately small and conservative:
  *
  *  - Static assets (same-origin /_astro/*, /fonts/*, /_images/*, /icons/*, images,
  *    plus Google Fonts) are cached as they are fetched, stale-while-revalidate.
@@ -18,7 +18,7 @@
  * JSON {title, body, url, tag}; `push` shows it, `notificationclick` focuses an open
  * dashboard tab (navigating it to the url) or opens a new one.
  */
-const VERSION = 'site-sw-v2'; // v2: [DASH2-PUSH] push + notificationclick
+const VERSION = 'site-sw-v3'; // [HF-DASH-RETIRE-1] Drop assets cached by the retired dashboard.
 const STATIC_CACHE = `${VERSION}-static`;
 const SHELL_CACHE = `${VERSION}-shell`;
 const OFFLINE_URL = '/offline.html';
@@ -98,7 +98,9 @@ async function staleWhileRevalidate(event, req) {
 
 async function networkWithOfflineFallback(event) {
   try {
-    return await fetch(event.request);
+    // Dashboard navigations must not revive HTML from a previous HTTP cache.
+    const path = new URL(event.request.url).pathname;
+    return await fetch(event.request, path === '/dashboard' || path.startsWith('/dashboard/') ? { cache: 'no-store' } : undefined);
   } catch (err) {
     const offline = await caches.match(OFFLINE_URL);
     if (offline) return offline;

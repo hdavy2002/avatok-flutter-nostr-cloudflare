@@ -1,9 +1,7 @@
 /* [SAATHUM-CHECKOUT-UI 2026-09-26] Prefill/save against the EXISTING profile
- * API (GET/PUT /api/me/profile — Specs/SPEC-2026-09-25-DASHBOARD-2.md, read
- * from dashboard2/Profile.tsx). We do NOT own that endpoint or its full
- * shape; this only reads/writes the subset the checkout needs (sankalp +
- * address + phone.verified), the same fields the profile screen itself
- * saves, so a booking here shows up prefilled there and vice versa.
+ * API (GET/PUT /api/me/profile — Specs/SPEC-2026-09-25-DASHBOARD-2.md).
+ * This only reads/writes the subset the checkout needs (sankalp +
+ * address + phone.verified), preserving the endpoint's other fields.
  */
 import { request } from '../../lib/apiClient';
 import type { Address, Sankalp } from './types';

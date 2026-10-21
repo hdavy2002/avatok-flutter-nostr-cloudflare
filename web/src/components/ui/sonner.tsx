@@ -3,7 +3,7 @@ import { Toaster as Sonner, toast } from 'sonner';
 
 type ToasterProps = React.ComponentProps<typeof Sonner>;
 
-/** Mount ONCE per page (Dashboard2 layout does it). Call `toast(...)` anywhere. */
+/** Mount ONCE per page (Admin2 mounts DashToaster). Call `toast(...)` anywhere. */
 const Toaster = ({ ...props }: ToasterProps) => (
   <Sonner
     theme="light"
