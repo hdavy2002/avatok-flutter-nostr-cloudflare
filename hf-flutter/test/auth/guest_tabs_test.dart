@@ -37,6 +37,16 @@ void main() {
       await tester.pumpWidget(const SizedBox());
     }
   });
+  testWidgets('live guest Me ignores stale demo sign-in state', (tester) async {
+    demo.signUp('Previous account', 'previous@example.com', '9876543210');
+    await tester.pumpWidget(const MaterialApp(home: MeScreen()));
+    await tester.pump();
+    expect(find.text('Log in'), findsOneWidget);
+    expect(find.text('Create account'), findsOneWidget);
+    expect(find.text('Previous account'), findsNothing);
+    expect(find.byType(WalletTicket), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
   testWidgets('guest Me fits a short viewport with large text', (tester) async {
     tester.view.physicalSize = const Size(360, 600);
     tester.view.devicePixelRatio = 1;

@@ -26,8 +26,13 @@ class MeScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       body: ListenableBuilder(
-        listenable: demo,
-        builder: (context, _) => demo.signedIn ? const _Dashboard() : const _Guest(),
+        listenable: Listenable.merge([demo, Services.instance.authAccount]),
+        builder: (context, _) {
+          final signedIn = DemoMode.on ? demo.signedIn : Services.instance.isSignedIn;
+          return signedIn
+              ? _Dashboard(key: ValueKey(DemoMode.on ? 'demo' : Services.instance.user?.id))
+              : const _Guest();
+        },
       ),
     );
   }
@@ -68,12 +73,13 @@ class _Guest extends StatelessWidget {
 }
 
 class _Dashboard extends StatelessWidget {
-  const _Dashboard();
+  const _Dashboard({super.key});
 
   @override
   Widget build(BuildContext context) {
     // [HF-WIRE-12] The counts below are dummy numbers: a live build shows none (the screens behind them have the real ones).
     const live = !DemoMode.on;
+    final name = live ? (Services.instance.me?.name ?? 'Friend') : demo.name;
     final isInfluencer = live ? Services.instance.me?.hostStatus != null : demo.influencerJoined;
     final items = <(IconData, String, String, String)>[
       (Icons.call_rounded, 'Call records', live ? '' : '${demo.calls.length} calls', '/calls'),
@@ -100,7 +106,7 @@ class _Dashboard extends StatelessWidget {
                 height: 64,
                 decoration: BoxDecoration(shape: BoxShape.circle, color: C.marigold, border: Border.all(color: C.deep, width: 3)),
                 alignment: Alignment.center,
-                child: Text(demo.name.isEmpty ? '?' : demo.name[0].toUpperCase(), style: t(28, color: C.deep)),
+                child: Text(name.isEmpty ? '?' : name[0].toUpperCase(), style: t(28, color: C.deep)),
               ),
               const SizedBox(width: 14),
               Expanded(
@@ -108,7 +114,7 @@ class _Dashboard extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text('NAMASTE', style: t(14, color: C.ruby, ls: 0.14)),
-                    Text(demo.name, style: t(30, color: C.maroon, h: 1.05)),
+                    Text(name, style: t(30, color: C.maroon, h: 1.05)),
                   ],
                 ),
               ),
