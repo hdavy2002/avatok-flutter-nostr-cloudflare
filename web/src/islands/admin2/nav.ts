@@ -13,7 +13,7 @@ export type AdminKey = 'overview' | 'events' | 'bookings' | 'payments' | 'refund
 
 export interface AdminNavItem { key: AdminKey; label: string; short: string; href: string; icon: LucideIcon; /** Optional group heading shown above the first item of a run (e.g. "Shop"). */ group?: string; /** [AUMFE-POD-FULFIL-1] Small gold pill after the label (e.g. "New"). */ pill?: string }
 
-export const ADMIN_NAV: AdminNavItem[] = [
+const ALL_ADMIN_NAV: AdminNavItem[] = [
   { key: 'overview', label: 'Analytics', short: 'Analytics', href: '/admin', icon: ChartColumn }, // [ADMIN2-ANALYTICS] key stays 'overview'
   { key: 'events', label: 'Events', short: 'Events', href: '/admin/events', icon: CalendarDays },
   { key: 'freevideos', label: 'Free videos', short: 'Free', href: '/admin/free-videos', icon: MonitorPlay }, // [SAATHUM-FREEVIDEOS-ADMIN-1]
@@ -59,8 +59,16 @@ export const ADMIN_NAV: AdminNavItem[] = [
   { key: 'preview-legal', label: 'Legal preview', short: 'Legal preview', href: '/admin/preview/legal', icon: Scale, group: 'Preview' },
 ];
 
+// Keep retired sections and their routes intact so they can be restored later.
+// This list controls every admin navigation surface, including the phone More sheet.
+export const HIDDEN_ADMIN_NAV_KEYS: ReadonlySet<AdminKey> = new Set([
+  'events', 'freevideos', 'chadhava', 'knowledge', 'voice-guides',
+  'consultants', 'consultant-bookings', 'consultant-reviews', 'host-reviews',
+]);
+export const ADMIN_NAV: AdminNavItem[] = ALL_ADMIN_NAV.filter((item) => !HIDDEN_ADMIN_NAV_KEYS.has(item.key));
+
 /** Phone tab bar: these five, then "More" (the rest + View site + Logout). */
-export const ADMIN_PHONE_TABS: AdminKey[] = ['overview', 'events', 'bookings', 'payments', 'refunds'];
+export const ADMIN_PHONE_TABS: AdminKey[] = ['overview', 'bookings', 'payments', 'refunds', 'customers'];
 
 export const ADMIN_VIEW_SITE = { label: 'View site', href: '/', icon: Globe };
 /** Logout goes through /sign-out (ends the Clerk session, lands on `/`). */
