@@ -3,10 +3,7 @@ import 'dart:convert' show HtmlEscape, HtmlEscapeMode;
 
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
-
 import 'package:webview_flutter/webview_flutter.dart';
-
-import '../ui/motion.dart';
 import 'package:webview_flutter_android/webview_flutter_android.dart';
 
 import '../core/brand.dart';
@@ -515,11 +512,10 @@ class _ReelPlayerState extends State<ReelPlayer> with WidgetsBindingObserver {
           Positioned.fill(
             child: IgnorePointer(
               child: Center(
-                child: HfAnimatedOpacity(
+                child: AnimatedOpacity(
                   key: const ValueKey('reel-glyph'),
                   opacity: _glyph ? 1 : 0,
-                  duration: HfMotion.duration(context, HfMotion.quick),
-                  curve: HfMotion.curve,
+                  duration: const Duration(milliseconds: 200),
                   child: Container(
                     width: 72,
                     height: 72,

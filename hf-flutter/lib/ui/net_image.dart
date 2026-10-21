@@ -3,8 +3,6 @@ import 'dart:io' show Platform;
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 
-import 'motion.dart';
-
 /// [HF-APP-CACHE-1] A network picture that is kept on the phone (cached_network_image's disk cache), so avatars and reel
 /// thumbnails load once, not on every visit. While it loads and when it fails, [fallback] shows (initials, a plain colour).
 /// Under `flutter test` it is a plain `Image.network` (the disk cache needs platform channels the tests do not have).
@@ -28,8 +26,7 @@ class NetImage extends StatelessWidget {
       imageUrl: url,
       fit: fit,
       alignment: alignment,
-      fadeInDuration: HfMotion.duration(context, HfMotion.quick),
-      fadeOutDuration: HfMotion.duration(context, HfMotion.quick),
+      fadeInDuration: const Duration(milliseconds: 120),
       placeholder: (_, __) => fallback,
       errorWidget: (_, __, ___) => fallback,
     );

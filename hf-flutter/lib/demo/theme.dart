@@ -1,7 +1,5 @@
 import 'package:flutter/material.dart';
 
-import '../ui/motion.dart';
-
 /// "Rangoli Soft" palette (owner decision 2026-10-20 [HF-PALETTE-RANGOLI-1]): paler, calmer, lavender-indigo with
 /// rose and soft marigold. Token NAMES are kept from the Rang Bazaar draft so screens did not change; the meaning of
 /// each name is in its comment. Artwork keeps its own colours. Green is allowed ONLY for the Online state (online* tokens).
@@ -76,11 +74,6 @@ TextStyle tOutline(double size, {Color color = C.maroon, double stroke = 2.5, do
 ThemeData buildTheme() {
   return ThemeData(
     useMaterial3: true,
-    pageTransitionsTheme: const PageTransitionsTheme(builders: {
-      TargetPlatform.android: HfPageTransitionsBuilder(),
-      TargetPlatform.iOS: HfPageTransitionsBuilder(cupertino: true),
-      TargetPlatform.macOS: HfPageTransitionsBuilder(cupertino: true),
-    }),
     fontFamily: 'Nunito',
     scaffoldBackgroundColor: C.ivory,
     colorScheme: ColorScheme.fromSeed(

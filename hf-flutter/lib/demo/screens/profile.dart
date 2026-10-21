@@ -3,7 +3,6 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../ui/motion.dart';
 import '../../data/favourites_store.dart';
 import '../../data/models/reel.dart';
 import '../../data/repos/reels_repo.dart';
@@ -170,7 +169,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 padding: const EdgeInsets.fromLTRB(22, 76, 22, 0),
                 sliver: SliverList.list(
                   children: [
-                    HfReveal(trigger: who.id, child: Text(who.name, style: t(32, color: C.maroon, ls: 0.03, h: 1.05))),
+                    Text(who.name, style: t(32, color: C.maroon, ls: 0.03, h: 1.05)),
                     const SizedBox(height: 4),
                     Text([who.handle, who.city, who.niche].where((e) => e.isNotEmpty).join(' · '), style: t(15, color: C.tan)), // [HF-WIRE-12] a live profile has no city/niche
                     const SizedBox(height: 10),
@@ -339,9 +338,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     return Expanded(
       child: InkWell(
         onTap: () => setState(() => _tab = i),
-        child: HfAnimatedContainer(
-          duration: HfMotion.duration(context, HfMotion.quick),
-          curve: HfMotion.curve,
+        child: Container(
           height: 48,
           alignment: Alignment.center,
           decoration: BoxDecoration(border: Border(bottom: BorderSide(color: on ? C.marigold : C.clear, width: 4))),

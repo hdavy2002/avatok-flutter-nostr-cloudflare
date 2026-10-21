@@ -2,7 +2,6 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
-import '../../ui/motion.dart';
 import '../../data/api_exception.dart';
 import '../../data/models/booking.dart';
 import '../../data/repos/bookings_repo.dart';
@@ -484,9 +483,7 @@ class _RealAvailabilityScreenState extends State<RealAvailabilityScreen> {
       onTap: inRange ? () => _tapDay(k) : null,
       child: Padding(
         padding: const EdgeInsets.all(2),
-        child: HfAnimatedContainer(
-          duration: HfMotion.duration(context, HfMotion.quick),
-          curve: HfMotion.curve,
+        child: Container(
           decoration: BoxDecoration(
             color: bg,
             borderRadius: BorderRadius.circular(14),

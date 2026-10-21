@@ -3,7 +3,6 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../ui/motion.dart';
 import '../../data/api_exception.dart';
 import '../../data/demo_mode.dart';
 import '../../data/models/booking.dart';
@@ -203,9 +202,7 @@ class _RealBookScreenState extends State<RealBookScreen> {
               GestureDetector(
                 key: ValueKey('slot-$hhmm'),
                 onTap: () => setState(() => _slot = hhmm),
-                child: HfAnimatedContainer(
-                  duration: HfMotion.duration(context, HfMotion.quick),
-                  curve: HfMotion.curve,
+                child: Container(
                   height: 48,
                   padding: const EdgeInsets.symmetric(horizontal: 16),
                   decoration: BoxDecoration(
@@ -786,7 +783,7 @@ class _RealBookingsScreenState extends State<RealBookingsScreen> {
       'failed' => (Icons.error_outline_rounded, 'Did not happen', C.sand, C.ruby),
       _ => (Icons.info_outline_rounded, 'In progress', C.cream, C.deep),
     };
-    return HfReveal(key: ValueKey('motion-${b.id}'), trigger: b.status, child: Container(
+    return Container(
       key: ValueKey('chip-${b.id}'),
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
       decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(999)),
@@ -798,7 +795,7 @@ class _RealBookingsScreenState extends State<RealBookingsScreen> {
           Flexible(child: Text(text, style: t(14, color: fg))),
         ],
       ),
-    ));
+    );
   }
 
   Widget _tile(AppBooking b, DateTime now) {

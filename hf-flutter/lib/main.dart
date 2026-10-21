@@ -3,8 +3,6 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-import 'ui/motion.dart';
-
 import 'core/brand.dart';
 import 'core/deep_links.dart';
 import 'data/push.dart';
@@ -49,7 +47,6 @@ class HfDemoApp extends StatelessWidget {
       title: Brand.name,
       debugShowCheckedModeBanner: false,
       theme: buildTheme(),
-      builder: (context, child) => HfMotionScope(child: child ?? const SizedBox.shrink()),
       scaffoldMessengerKey: hfMessengerKey,
       routerConfig: router,
     );

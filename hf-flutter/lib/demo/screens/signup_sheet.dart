@@ -3,7 +3,6 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-import '../../ui/motion.dart';
 import '../../data/api_exception.dart';
 import '../../data/repos/auth_repo.dart';
 import '../theme.dart';
@@ -306,7 +305,7 @@ class _RealSignUpSheetState extends State<RealSignUpSheet> {
         child: SingleChildScrollView(
           child: Padding(
             padding: EdgeInsets.fromLTRB(26, 8, 26, MediaQuery.paddingOf(context).bottom + 20),
-            child: HfReveal(trigger: _stage, child: Column(
+            child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
               children: [
@@ -328,7 +327,7 @@ class _RealSignUpSheetState extends State<RealSignUpSheet> {
                   onTap: _stage == _Stage.form ? _sendCode : _continue,
                 ),
               ],
-            )),
+            ),
           ),
         ),
       ),

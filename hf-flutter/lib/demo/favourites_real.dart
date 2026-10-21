@@ -3,7 +3,6 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
-import '../ui/motion.dart';
 import '../data/api_exception.dart';
 import '../data/favourites_store.dart';
 import '../data/models/search.dart';
@@ -119,7 +118,7 @@ class _RealFavouritesState extends State<RealFavourites> {
                   mainAxisSpacing: 12,
                   crossAxisSpacing: 12,
                   childAspectRatio: 0.62,
-                  children: [for (final h in items) _FavCard(key: ValueKey(h.slug), host: h, onRemove: () => unawaited(_remove(h)))],
+                  children: [for (final h in items) _FavCard(host: h, onRemove: () => unawaited(_remove(h)))],
                 ),
                 isEmpty: (items) => items.isEmpty,
                 emptyTitle: 'No favourites yet',
@@ -138,14 +137,14 @@ class _RealFavouritesState extends State<RealFavourites> {
 }
 
 class _FavCard extends StatelessWidget {
-  const _FavCard({super.key, required this.host, required this.onRemove});
+  const _FavCard({required this.host, required this.onRemove});
 
   final FavouriteHost host;
   final VoidCallback onRemove;
 
   @override
   Widget build(BuildContext context) {
-    return HfReveal(child: GestureDetector(
+    return GestureDetector(
       key: ValueKey('fav-${host.slug}'),
       onTap: () => context.push('/profile/${host.slug}'),
       child: ClipRRect(
@@ -164,9 +163,8 @@ class _FavCard extends StatelessWidget {
               right: 8,
               child: GestureDetector(
                 key: ValueKey('remove-${host.slug}'),
-                behavior: HitTestBehavior.opaque,
                 onTap: onRemove,
-                child: const SizedBox(width: 48, height: 48, child: Center(child: Icon(Icons.favorite_rounded, color: C.rani, size: 28, semanticLabel: 'Remove from favourites'))),
+                child: const Icon(Icons.favorite_rounded, color: C.rani, size: 28, semanticLabel: 'Remove from favourites'),
               ),
             ),
             Positioned(
@@ -186,6 +184,6 @@ class _FavCard extends StatelessWidget {
           ],
         ),
       ),
-    ));
+    );
   }
 }

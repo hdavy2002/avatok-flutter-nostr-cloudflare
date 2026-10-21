@@ -3,7 +3,6 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../ui/motion.dart';
 import '../../data/api_exception.dart';
 import '../../data/demo_mode.dart';
 import '../../data/models/channel.dart';
@@ -124,7 +123,7 @@ class _InfluencerJoinScreenState extends State<InfluencerJoinScreen> {
               child: Row(
                 children: [
                   for (var i = 0; i < 3; i++) ...[
-                    Expanded(child: HfAnimatedContainer(duration: HfMotion.duration(context, HfMotion.quick), curve: HfMotion.curve, height: 8, decoration: BoxDecoration(color: i <= _step ? C.marigold : C.sand, borderRadius: BorderRadius.circular(999)))),
+                    Expanded(child: Container(height: 8, decoration: BoxDecoration(color: i <= _step ? C.marigold : C.sand, borderRadius: BorderRadius.circular(999)))),
                     if (i < 2) const SizedBox(width: 6),
                   ],
                 ],
@@ -134,7 +133,7 @@ class _InfluencerJoinScreenState extends State<InfluencerJoinScreen> {
               child: ListView(
                 padding: const EdgeInsets.fromLTRB(22, 18, 22, 16),
                 children: [
-                  HfReveal(trigger: _step, child: Text(titles[_step], style: t(30, color: C.maroon))),
+                  Text(titles[_step], style: t(30, color: C.maroon)),
                   const SizedBox(height: 14),
                   if (_step == 0) ...[
                     _label('Your name'),
@@ -314,7 +313,7 @@ class InfluencerShell extends StatelessWidget {
   Widget _tab(IconData icon, String label, bool on) => Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          HfSelection(selected: on, child: Icon(icon, size: 26, color: on ? C.maroon : C.muted)),
+          Icon(icon, size: 26, color: on ? C.maroon : C.muted),
           const SizedBox(height: 3),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 2),
@@ -594,9 +593,8 @@ class InfluencerStatusScreen extends StatelessWidget {
         listenable: presenceListenable,
         builder: (context, _) {
           final on = myOnline;
-          return HfAnimatedContainer(
-            duration: HfMotion.duration(context),
-            curve: HfMotion.curve,
+          return AnimatedContainer(
+            duration: const Duration(milliseconds: 350),
             color: on ? C.ivory : C.deep,
             child: SafeArea(
               child: ListView(
@@ -624,9 +622,8 @@ class InfluencerStatusScreen extends StatelessWidget {
                   const SizedBox(height: 26),
                   GestureDetector(
                     onTap: () => togglePresence(context),
-                    child: HfAnimatedContainer(
-                      duration: HfMotion.duration(context),
-                      curve: HfMotion.curve,
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 300),
                       height: 84,
                       padding: const EdgeInsets.all(8),
                       decoration: BoxDecoration(
@@ -901,7 +898,7 @@ class _EarningsCardState extends State<_EarningsCard> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text('READY TO WITHDRAW', style: t(14, color: C.tan, ls: 0.12)),
-                      HfReveal(trigger: ready, child: Text(ready, style: t(30, color: C.maroon))),
+                      Text(ready, style: t(30, color: C.maroon)),
                       Text(hold, style: t(14, color: C.muted, w: FontWeight.w700)),
                     ],
                   ),

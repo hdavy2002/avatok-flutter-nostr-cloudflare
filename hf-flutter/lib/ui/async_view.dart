@@ -2,8 +2,6 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
-import 'motion.dart';
-
 import '../data/api_exception.dart';
 import '../demo/theme.dart';
 
@@ -67,12 +65,7 @@ class AsyncView<T> extends StatelessWidget {
   final String loadingLabel;
 
   @override
-  Widget build(BuildContext context) => HfReveal(
-    trigger: state.runtimeType,
-    child: _content(context),
-  );
-
-  Widget _content(BuildContext context) {
+  Widget build(BuildContext context) {
     final s = state;
     if (s is AsyncData<T>) {
       final empty = isEmpty != null ? isEmpty!(s.value) : _defaultIsEmpty(s.value);
@@ -94,9 +87,7 @@ class AsyncView<T> extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            SizedBox(width: 44, height: 44, child: HfMotion.enabled(context)
-                ? const CircularProgressIndicator(color: C.maroon, strokeWidth: 5)
-                : const Icon(Icons.hourglass_top_rounded, color: C.maroon, size: 36)),
+            const SizedBox(width: 44, height: 44, child: CircularProgressIndicator(color: C.maroon, strokeWidth: 5)),
             const SizedBox(height: 14),
             Text(loadingLabel, style: t(16, color: C.muted, w: FontWeight.w700)),
           ],

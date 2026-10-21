@@ -3,7 +3,6 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../ui/motion.dart';
 import '../../core/brand.dart';
 import '../data.dart';
 import '../state.dart';
@@ -35,7 +34,8 @@ class _DemoCallScreen extends StatefulWidget {
   State<_DemoCallScreen> createState() => _CallScreenState();
 }
 
-class _CallScreenState extends State<_DemoCallScreen> {
+class _CallScreenState extends State<_DemoCallScreen> with SingleTickerProviderStateMixin {
+  late final AnimationController _pulse = AnimationController(vsync: this, duration: const Duration(milliseconds: 1200))..repeat();
   _Stage _stage = _Stage.ringingThem;
   int _seconds = 0;
   int _stars = 0;
@@ -62,6 +62,7 @@ class _CallScreenState extends State<_DemoCallScreen> {
 
   void _end() {
     _timer?.cancel();
+    _pulse.stop();
     if (_stage == _Stage.onCall) demo.recordCall(who, _seconds);
     setState(() => _stage = _Stage.ended);
   }
@@ -69,6 +70,7 @@ class _CallScreenState extends State<_DemoCallScreen> {
   @override
   void dispose() {
     _timer?.cancel();
+    _pulse.dispose();
     super.dispose();
   }
 
@@ -100,10 +102,14 @@ class _CallScreenState extends State<_DemoCallScreen> {
                         alignment: Alignment.center,
                         children: [
                           if (_stage != _Stage.ended)
-                            HfReveal(trigger: _stage, child: Container(
-                              width: 174, height: 174,
-                              decoration: BoxDecoration(shape: BoxShape.circle, color: C.marigold.withValues(alpha: 0.18)),
-                            )),
+                            AnimatedBuilder(
+                              animation: _pulse,
+                              builder: (_, __) => Container(
+                                width: 150 + 70 * _pulse.value,
+                                height: 150 + 70 * _pulse.value,
+                                decoration: BoxDecoration(shape: BoxShape.circle, color: C.marigold.withValues(alpha: 0.35 * (1 - _pulse.value))),
+                              ),
+                            ),
                           Avatar(w, size: 150),
                         ],
                       ),
