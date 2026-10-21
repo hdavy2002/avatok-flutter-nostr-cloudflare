@@ -326,6 +326,7 @@ import { hfExitRoute } from "./routes/hf_exit"; // [HF-WALLET-EXIT-1] pay-out-fi
 import { runHfExitCron } from "./lib/hf_exit"; // [HF-WALLET-EXIT-1]
 import { hfReviewsRoute } from "./lib/hf_reviews"; // [HF-CALLS-1] reviews (token + signed-in + admin)
 import { hfPushRoute } from "./routes/hf_push"; // [HF-APP-4] push token register
+import { hfReelBookmarksRoute } from "./routes/hf_reel_bookmarks";
 import { hfFavouritesRoute } from "./routes/hf_favourites"; // [HF-DASH-FRAANDS-1] saved hosts (flag hfFavouritesEnabled)
 import { hfDashSummaryRoute } from "./routes/hf_dash_summary"; // [HF-DASH-SUMMARY-1]
 import { hfDashV3Route, isDashV3Path } from "./routes/hf_dash_v3"; // [HF-DASH-V3-1] new customer dashboard
@@ -1175,6 +1176,7 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
       if (p.startsWith("/api/admin/hf/vobiz/")) { const r = await hfVobizAdminRoute(req, env, ctx); if (r) return r; } // [HF-VOBIZ-SPEND-1]
       if (p.startsWith("/api/admin/hf/std/")) { const r = await hfStdAdminRoute(req, env, ctx); if (r) return r; } // [HF-STD-PLAN-1]
       if (p === "/api/hf/search" || p.startsWith("/api/hf/invites/") || p === "/api/admin/hf/invites") { const r = await hfSearchRoute(req, env, p, undefined, ctx); if (r) return r; } // [HF-WIRE-9]
+      if (p === "/api/hf/reel-bookmarks" || p.startsWith("/api/hf/reel-bookmarks/")) { const r = await hfReelBookmarksRoute(req, env, p); if (r) return r; }
       if (p === "/api/hf/favourites" || p.startsWith("/api/hf/favourites/")) { const r = await hfFavouritesRoute(req, env, p); if (r) return r; } // [HF-DASH-FRAANDS-1]
       if (p.startsWith("/api/hf/") || p.startsWith("/api/hosts/me/") || p === "/api/admin/hf/calls" || p.startsWith("/api/admin/hf/calls/") || p === "/api/admin/hf/wallet/credit" || p === "/api/admin/hf/wallet/migrate-test-credits" || p === "/api/admin/hf/tokens/migrate-test-credits" || p === "/api/admin/hf/users/search") { const r = await hfCallsRoute(req, env, p, ctx); if (r) return r; } // [HF-CALLS-1]
       if (p.startsWith("/api/hosts/") || p.startsWith("/api/admin/hf/")) { const r = await hfHostKycRoute(req, env, p, ctx); if (r) return r; } // [HF-HOST-KYC-1]

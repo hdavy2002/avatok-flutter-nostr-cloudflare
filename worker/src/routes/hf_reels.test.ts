@@ -74,7 +74,7 @@ describe("flag + auth", () => {
 });
 
 describe("feed", () => {
-  it("only visible reels of online, approved hosts with a connected channel", async () => {
+  it("visible reels of approved hosts include offline and busy, with a connected channel", async () => {
     host("a"); reel("hfrl_aaaaaaaa01", "a");
     host("b", { presence: "offline" }); reel("hfrl_bbbbbbbb01", "b");
     host("c", { presence: "busy" }); reel("hfrl_cccccccc01", "c");
@@ -85,7 +85,7 @@ describe("feed", () => {
     host("h", { status: "live", followers: 5 }); reel("hfrl_hhhhhhhh01", "h");
     const j = await body(await call("/api/hf/reels"));
     expect(j.ok).toBe(true);
-    expect(ids(j).sort()).toEqual(["hfrl_aaaaaaaa01", "hfrl_hhhhhhhh01"]);
+    expect(ids(j).sort()).toEqual(["hfrl_aaaaaaaa01", "hfrl_bbbbbbbb01", "hfrl_cccccccc01", "hfrl_hhhhhhhh01"]);
     const it = j.items.find((i: any) => i.id === "hfrl_aaaaaaaa01");
     expect(it.host).toMatchObject({ slug: "slug-a", name: "Name a", handle: "@a", ratePaise: 1200, followers: 100, presence: "online" });
     expect(JSON.stringify(j)).not.toMatch(/"uid"|host_uid/);

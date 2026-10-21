@@ -1,5 +1,5 @@
 // [HF-WIRE-4] Reels feed for the Reels app. Flag hfReelsEnabled (off -> 404 not_enabled).
-//   GET   /api/hf/reels?cursor=&limit=    public feed: visible reels of ONLINE, approved influencers -> { ok, items:[item], nextCursor }  (online count: GET /api/hf/online-count)
+//   GET   /api/hf/reels?cursor=&limit=    public feed: visible reels of approved influencers (presence included) -> { ok, items:[item], nextCursor }  (online count: GET /api/hf/online-count)
 //   GET   /api/hf/reels/:id               one visible reel (deep link /reels?reel=<id>), online or not -> { ok, item }
 //   POST  /api/hf/reels/:id/view          cheap counter, rate-limited per reel + IP -> { ok }
 //   GET   /api/hf/hosts/me/reels          the caller's own reels, hidden ones too -> { ok, reels:[mine], onFeed, hostStatus }
@@ -101,7 +101,7 @@ interface InviteRow {
 }
 
 /** Invite reels: not hidden, creator has not joined, round-robin across creators (newest first), most-voted creators first. Details only, never a video file. */
-async function inviteItems(env: Env, offset: number, take: number): Promise<{ items: unknown[]; more: boolean }> {
+async function inviteItems(env: Env, offset: number, take: number, ids?: string[]): Promise<{ items: unknown[]; more: boolean }> {
   try {
     const rows = (await env.DB_META.prepare(
       `SELECT x.* FROM (
@@ -110,10 +110,10 @@ async function inviteItems(env: Env, offset: number, take: number): Promise<{ it
            (SELECT COUNT(*) FROM hf_invite_votes v WHERE v.platform=r.platform AND v.handle=r.handle) AS votes,
            ROW_NUMBER() OVER (PARTITION BY r.platform, r.handle ORDER BY COALESCE(r.published_at,0) DESC, r.id DESC) AS rn
          FROM hf_invite_reels r JOIN hf_invite_creators c ON c.platform=r.platform AND c.handle=r.handle
-         WHERE c.hidden=0 AND r.embed_url IS NOT NULL
+         WHERE c.hidden=0 AND r.embed_url IS NOT NULL ${ids ? `AND r.id IN (${ids.map((_, i) => `?${i + 3}`).join(",")})` : ""}
            AND NOT EXISTS (SELECT 1 FROM hf_channels ch WHERE ch.platform=c.platform AND ch.status='approved' AND (LOWER(REPLACE(ch.handle,'@',''))=c.handle OR (c.platform_user_id IS NOT NULL AND ch.platform_user_id=c.platform_user_id)))
        ) x ORDER BY x.rn ASC, x.votes DESC, x.followers DESC, x.handle ASC, x.id ASC LIMIT ?1 OFFSET ?2`,
-    ).bind(take + 1, offset).all<InviteRow>()).results ?? [];
+    ).bind(take + 1, offset, ...(ids ?? [])).all<InviteRow>()).results ?? [];
     const items = rows.slice(0, take).map((r) => ({
       id: r.id, kind: "invite",
       creator: { platform: r.platform, handle: "@" + r.handle, name: r.display_name ?? "", avatar: r.avatar_url ?? null, followers: Number(r.followers ?? 0), votes: Number(r.votes ?? 0) },
@@ -122,6 +122,17 @@ async function inviteItems(env: Env, offset: number, take: number): Promise<{ it
     }));
     return { items, more: rows.length > take };
   } catch { return { items: [], more: false }; } // tables not applied yet
+}
+
+/** Resolve saved IDs against current visibility; never persist a stale snapshot of a creator. */
+export async function savedReelItems(env: Env, ids: string[], cfg: Record<string, unknown>): Promise<unknown[]> {
+  if (!ids.length || cfg.hfReelsEnabled !== true) return [];
+  const network = ids.filter((id) => REEL_ID.test(id));
+  const invites = ids.filter((id) => /^hfiv_[a-z0-9]{8,40}$/.test(id));
+  const rows = network.length ? (await env.DB_META.prepare(
+    `SELECT ${REEL_COLS}, ${HOST_COLS} ${FROM} WHERE r.id IN (${network.map((_, i) => `?${i + 1}`).join(",")}) AND ${publicWhere(cfg.hfDemoInfluencersVisible !== false)}`,
+  ).bind(...network).all<FeedRow>()).results ?? [] : [];
+  return [...await toItems(env, rows, cfg), ...(invites.length && inviteReelsOn(cfg) ? (await inviteItems(env, 0, invites.length, invites)).items : [])];
 }
 
 /** Visible reels of one host for the public profile (GET /api/hosts/public/:slug). Returns null when the flag is off or the tables are missing. */
@@ -148,7 +159,7 @@ export async function isHiddenDemoHost(env: Env, hostUid: string, cfg: Record<st
 
 export async function hfReelsRoute(req: Request, env: Env, p: string, ctx?: ExecutionContext): Promise<Response | null> {
   void ctx;
-  const m = p.match(/^\/api\/hf\/reels(?:\/(hfrl_[a-z0-9]{8,40}))?(?:\/(view))?$/);
+  const m = p.match(/^\/api\/hf\/reels(?:\/((?:hfrl|hfiv)_[a-z0-9]{8,40}))?(?:\/(view))?$/);
   const mine = p === "/api/hf/hosts/me/reels";
   if (!m && !mine) return null;
   const id = m?.[1] ?? null;
@@ -174,6 +185,7 @@ export async function hfReelsRoute(req: Request, env: Env, p: string, ctx?: Exec
 
     // ── PATCH: show / hide one of my reels ─────────────────────────────────────────────────────────────────────
     if (id && method === "PATCH") {
+      if (!REEL_ID.test(id)) return err(405, "method_not_allowed");
       const u = await requireUser(req, env);
       if (isFail(u)) return err(u.status, u.error);
       const txt = await req.text().catch(() => "");
@@ -188,6 +200,7 @@ export async function hfReelsRoute(req: Request, env: Env, p: string, ctx?: Exec
 
     // ── POST view counter ──────────────────────────────────────────────────────────────────────────────────────
     if (id && action === "view") {
+      if (!REEL_ID.test(id)) return err(405, "method_not_allowed");
       const ip = req.headers.get("cf-connecting-ip") ?? req.headers.get("x-forwarded-for") ?? "anon";
       const lim = await rateLimit(env, `hfview:${id}:${ip}`, 3, 3600);
       if (lim) return lim;
@@ -197,9 +210,9 @@ export async function hfReelsRoute(req: Request, env: Env, p: string, ctx?: Exec
 
     // ── GET one reel (deep link) ───────────────────────────────────────────────────────────────────────────────
     if (id) {
-      const r = await env.DB_META.prepare(`SELECT ${REEL_COLS}, ${HOST_COLS} ${FROM} WHERE r.id=?1 AND ${publicWhere(demoVisible)}`).bind(id).first<FeedRow>();
-      if (!r) return err(404, "not_found", "That video is not available any more.");
-      return json({ ok: true, item: (await toItems(env, [r], cfg))[0] }, 200, FEED_CACHE);
+      const item = (await savedReelItems(env, [id], cfg))[0];
+      if (!item) return err(404, "not_found", "That video is not available any more.");
+      return json({ ok: true, item }, 200, FEED_CACHE);
     }
 
     // ── GET feed ───────────────────────────────────────────────────────────────────────────────────────────────
@@ -217,7 +230,7 @@ export async function hfReelsRoute(req: Request, env: Env, p: string, ctx?: Exec
     let doInvite = false;
     if (inv) { doInvite = true; invOffset = Number(inv[1]); }
     else {
-      const where = `${publicWhere(demoVisible)} AND h.presence='online'${cur ? " AND (COALESCE(r.published_at, r.imported_at) < ?2 OR (COALESCE(r.published_at, r.imported_at) = ?2 AND r.id < ?3))" : ""}`;
+      const where = `${publicWhere(demoVisible)}${cur ? " AND (COALESCE(r.published_at, r.imported_at) < ?2 OR (COALESCE(r.published_at, r.imported_at) = ?2 AND r.id < ?3))" : ""}`;
       const stmt = env.DB_META.prepare(`SELECT ${REEL_COLS}, ${HOST_COLS} ${FROM} WHERE ${where} ORDER BY ts DESC, r.id DESC LIMIT ?1`);
       const rows = (await (cur ? stmt.bind(limit + 1, Number(cur[1]), cur[2]) : stmt.bind(limit + 1)).all<FeedRow>()).results ?? [];
       const page = rows.slice(0, limit);

@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import 'screens/booking.dart';
+import '../data/models/reel.dart';
+import '../data/services.dart';
 import 'screens/availability_real.dart'; // [HF-BOOK-APPROVE-6]
 import 'screens/bookings_real.dart'; // [HF-WIRE-8]
 import '../data/models/channel.dart';
@@ -33,79 +35,227 @@ final router = GoRouter(
     GoRoute(path: '/splash', builder: (_, __) => const SplashScreen()),
     GoRoute(path: '/intro', builder: (_, __) => const IntroScreen()),
     // Site links (`https://<domain>/h/<slug>`, `/r/<id>`): the same targets core/deep_links.dart opens for taps.
-    GoRoute(path: '/h/:slug', redirect: (_, s) => '/profile/${Uri.encodeComponent(s.pathParameters['slug'] ?? '')}'),
-    GoRoute(path: '/r/:id', redirect: (_, s) => '/reels?reel=${Uri.encodeQueryComponent(s.pathParameters['id'] ?? '')}'),
+    GoRoute(
+      path: '/h/:slug',
+      redirect: (_, s) =>
+          '/profile/${Uri.encodeComponent(s.pathParameters['slug'] ?? '')}',
+    ),
+    GoRoute(
+      path: '/r/:id',
+      redirect: (_, s) =>
+          '/reels?reel=${Uri.encodeQueryComponent(s.pathParameters['id'] ?? '')}',
+    ),
     StatefulShellRoute.indexedStack(
       builder: (context, state, shell) => MainShell(shell: shell),
       branches: [
-        StatefulShellBranch(routes: [GoRoute(path: '/reels', builder: (_, s) => FeedScreen(reelId: s.uri.queryParameters['reel']))]),
-        StatefulShellBranch(routes: [GoRoute(path: '/search', builder: (_, __) => const SearchScreen())]),
-        StatefulShellBranch(routes: [GoRoute(path: '/favourites', builder: (_, __) => const FavouritesScreen())]),
-        StatefulShellBranch(routes: [GoRoute(path: '/me', builder: (_, __) => const MeScreen())]),
+        StatefulShellBranch(
+          routes: [
+            GoRoute(
+              path: '/reels',
+              builder: (_, s) => s.extra is FeedReel
+                  ? RealFeed(
+                      repo: Services.instance.reelsRepo,
+                      reelId: (s.extra as FeedReel).id,
+                      initialReel: s.extra as FeedReel,
+                    )
+                  : FeedScreen(reelId: s.uri.queryParameters['reel']),
+            ),
+          ],
+        ),
+        StatefulShellBranch(
+          routes: [
+            GoRoute(path: '/search', builder: (_, __) => const SearchScreen()),
+          ],
+        ),
+        StatefulShellBranch(
+          routes: [
+            GoRoute(
+              path: '/favourites',
+              builder: (_, __) => const FavouritesScreen(),
+            ),
+          ],
+        ),
+        StatefulShellBranch(
+          routes: [GoRoute(path: '/me', builder: (_, __) => const MeScreen())],
+        ),
       ],
     ),
-    GoRoute(parentNavigatorKey: rootKey, path: '/creator/:platform/:handle', builder: (_, s) => inviteProfileFromRoute(s)), // [HF-REELS-FAV-1] creator not on the app yet
-    GoRoute(parentNavigatorKey: rootKey, path: '/profile/:id', builder: (_, s) => ProfileScreen(id: s.pathParameters['id']!)),
+    GoRoute(
+      parentNavigatorKey: rootKey,
+      path: '/creator/:platform/:handle',
+      builder: (_, s) => inviteProfileFromRoute(s),
+    ), // [HF-REELS-FAV-1] creator not on the app yet
+    GoRoute(
+      parentNavigatorKey: rootKey,
+      path: '/profile/:id',
+      builder: (_, s) => ProfileScreen(id: s.pathParameters['id']!),
+    ),
     GoRoute(
       parentNavigatorKey: rootKey,
       path: '/book/:id',
-      builder: (_, s) => BookingsBridge.real
-          ? RealBookScreen(id: s.pathParameters['id']!, day: s.uri.queryParameters['day'], slot: s.uri.queryParameters['slot'])
-          : BookScreen(id: s.pathParameters['id']!, day: s.uri.queryParameters['day'], slot: s.uri.queryParameters['slot']),
+      pageBuilder: (_, s) => _BookingSheetPage(
+        key: s.pageKey,
+        child: BookingsBridge.real
+            ? RealBookScreen(
+                id: s.pathParameters['id']!,
+                day: s.uri.queryParameters['day'],
+                slot: s.uri.queryParameters['slot'],
+              )
+            : BookScreen(
+                id: s.pathParameters['id']!,
+                day: s.uri.queryParameters['day'],
+                slot: s.uri.queryParameters['slot'],
+              ),
+      ),
     ),
-    GoRoute(parentNavigatorKey: rootKey, path: '/call/:id', builder: (_, s) => CallScreen(id: s.pathParameters['id']!)),
-    GoRoute(parentNavigatorKey: rootKey, path: '/wallet', builder: (_, __) => const WalletScreen()),
-    GoRoute(parentNavigatorKey: rootKey, path: '/topup', builder: (_, __) => const TopUpScreen()),
+    GoRoute(
+      parentNavigatorKey: rootKey,
+      path: '/call/:id',
+      builder: (_, s) => CallScreen(id: s.pathParameters['id']!),
+    ),
+    GoRoute(
+      parentNavigatorKey: rootKey,
+      path: '/wallet',
+      builder: (_, __) => const WalletScreen(),
+    ),
+    GoRoute(
+      parentNavigatorKey: rootKey,
+      path: '/topup',
+      builder: (_, __) => const TopUpScreen(),
+    ),
     GoRoute(
       parentNavigatorKey: rootKey,
       path: '/payment',
       builder: (_, s) => PaymentScreen(
         // No amount when the screen is opened from a return link (hellofraands://wallet/topup/<id>): it is read from the server.
-        amount: double.tryParse(s.uri.queryParameters['amount'] ?? '') ?? (s.uri.queryParameters['order'] == null ? 500 : null),
+        amount:
+            double.tryParse(s.uri.queryParameters['amount'] ?? '') ??
+            (s.uri.queryParameters['order'] == null ? 500 : null),
         orderId: s.uri.queryParameters['order'],
         creditPaise: int.tryParse(s.uri.queryParameters['credit'] ?? ''),
         sdkFailed: s.uri.queryParameters['sdk'] == 'err',
       ),
     ),
-    GoRoute(parentNavigatorKey: rootKey, path: '/payout', builder: (_, __) => const PayoutScreen()),
-    GoRoute(parentNavigatorKey: rootKey, path: '/calls', builder: (_, __) => const CallRecordsScreen()),
-    GoRoute(parentNavigatorKey: rootKey, path: '/bookings', builder: (_, __) => const BookingsScreen()),
-    GoRoute(parentNavigatorKey: rootKey, path: '/settings', builder: (_, __) => const SettingsScreen()),
-    GoRoute(parentNavigatorKey: rootKey, path: '/help', builder: (_, __) => const HelpScreen()),
+    GoRoute(
+      parentNavigatorKey: rootKey,
+      path: '/payout',
+      builder: (_, __) => const PayoutScreen(),
+    ),
+    GoRoute(
+      parentNavigatorKey: rootKey,
+      path: '/calls',
+      builder: (_, __) => const CallRecordsScreen(),
+    ),
+    GoRoute(
+      parentNavigatorKey: rootKey,
+      path: '/bookings',
+      builder: (_, __) => const BookingsScreen(),
+    ),
+    GoRoute(
+      parentNavigatorKey: rootKey,
+      path: '/settings',
+      builder: (_, __) => const SettingsScreen(),
+    ),
+    GoRoute(
+      parentNavigatorKey: rootKey,
+      path: '/help',
+      builder: (_, __) => const HelpScreen(),
+    ),
     GoRoute(
       parentNavigatorKey: rootKey,
       path: '/influencer/join',
-      builder: (_, s) => InfluencerJoinScreen(initialStep: int.tryParse(s.uri.queryParameters['step'] ?? '') ?? 0),
+      builder: (_, s) => InfluencerJoinScreen(
+        initialStep: int.tryParse(s.uri.queryParameters['step'] ?? '') ?? 0,
+      ),
     ),
     // [HF-WIRE-3] Channels. `?from=join` keeps the person inside "Join as influencer".
-    GoRoute(parentNavigatorKey: rootKey, path: '/inf/channels', builder: (_, __) => const ChannelsListScreen()),
-    GoRoute(parentNavigatorKey: rootKey, path: '/inf/channels/add', builder: (_, s) => ChannelPlatformScreen(from: s.uri.queryParameters['from'])),
+    GoRoute(
+      parentNavigatorKey: rootKey,
+      path: '/inf/channels',
+      builder: (_, __) => const ChannelsListScreen(),
+    ),
+    GoRoute(
+      parentNavigatorKey: rootKey,
+      path: '/inf/channels/add',
+      builder: (_, s) =>
+          ChannelPlatformScreen(from: s.uri.queryParameters['from']),
+    ),
     GoRoute(
       parentNavigatorKey: rootKey,
       path: '/inf/channels/add/:platform',
-      builder: (_, s) => ChannelConsentScreen(platform: s.pathParameters['platform'] ?? '', from: s.uri.queryParameters['from']),
+      builder: (_, s) => ChannelConsentScreen(
+        platform: s.pathParameters['platform'] ?? '',
+        from: s.uri.queryParameters['from'],
+      ),
     ),
     GoRoute(
       parentNavigatorKey: rootKey,
       path: '/inf/channels/:id/checking',
-      builder: (_, s) => ChannelCheckingScreen(id: s.pathParameters['id']!, from: s.uri.queryParameters['from'], initial: s.extra is ChannelCheck ? s.extra as ChannelCheck : null),
+      builder: (_, s) => ChannelCheckingScreen(
+        id: s.pathParameters['id']!,
+        from: s.uri.queryParameters['from'],
+        initial: s.extra is ChannelCheck ? s.extra as ChannelCheck : null,
+      ),
     ),
     // The influencer's side has its own bottom bar (owner 2026-10-19).
     StatefulShellRoute.indexedStack(
       builder: (context, state, shell) => InfluencerShell(shell: shell),
       branches: [
-        StatefulShellBranch(routes: [GoRoute(path: '/inf/home', builder: (_, __) => const InfluencerHomeScreen())]),
-        StatefulShellBranch(routes: [GoRoute(path: '/inf/bookings', builder: (_, __) => BookingsBridge.real ? const RealInfluencerBookingsScreen() : const InfluencerBookingsScreen())]),
-        StatefulShellBranch(routes: [GoRoute(path: '/inf/status', builder: (_, __) => const InfluencerStatusScreen())]),
-        StatefulShellBranch(routes: [GoRoute(path: '/inf/availability', builder: (_, __) => BookingsBridge.real ? const RealAvailabilityScreen() : const AvailabilityScreen())]),
+        StatefulShellBranch(
+          routes: [
+            GoRoute(
+              path: '/inf/home',
+              builder: (_, __) => const InfluencerHomeScreen(),
+            ),
+          ],
+        ),
+        StatefulShellBranch(
+          routes: [
+            GoRoute(
+              path: '/inf/bookings',
+              builder: (_, __) => BookingsBridge.real
+                  ? const RealInfluencerBookingsScreen()
+                  : const InfluencerBookingsScreen(),
+            ),
+          ],
+        ),
+        StatefulShellBranch(
+          routes: [
+            GoRoute(
+              path: '/inf/status',
+              builder: (_, __) => const InfluencerStatusScreen(),
+            ),
+          ],
+        ),
+        StatefulShellBranch(
+          routes: [
+            GoRoute(
+              path: '/inf/availability',
+              builder: (_, __) => BookingsBridge.real
+                  ? const RealAvailabilityScreen()
+                  : const AvailabilityScreen(),
+            ),
+          ],
+        ),
       ],
     ),
     GoRoute(
       parentNavigatorKey: rootKey,
       path: '/book/:id/confirm',
       builder: (_, s) => BookingsBridge.real
-          ? RealBookConfirmScreen(id: s.pathParameters['id']!, day: s.uri.queryParameters['day'] ?? '', slot: s.uri.queryParameters['slot'] ?? '', topic: s.uri.queryParameters['topic'], name: s.uri.queryParameters['name'], avatar: s.uri.queryParameters['avatar'])
-          : BookConfirmScreen(id: s.pathParameters['id']!, day: s.uri.queryParameters['day'] ?? '', slot: s.uri.queryParameters['slot'] ?? ''),
+          ? RealBookConfirmScreen(
+              id: s.pathParameters['id']!,
+              day: s.uri.queryParameters['day'] ?? '',
+              slot: s.uri.queryParameters['slot'] ?? '',
+              topic: s.uri.queryParameters['topic'],
+              name: s.uri.queryParameters['name'],
+              avatar: s.uri.queryParameters['avatar'],
+            )
+          : BookConfirmScreen(
+              id: s.pathParameters['id']!,
+              day: s.uri.queryParameters['day'] ?? '',
+              slot: s.uri.queryParameters['slot'] ?? '',
+            ),
     ),
     GoRoute(
       parentNavigatorKey: rootKey,
@@ -115,10 +265,15 @@ final router = GoRouter(
               day: s.uri.queryParameters['day'] ?? '',
               slot: s.uri.queryParameters['slot'] ?? '',
               name: s.uri.queryParameters['name'] ?? '',
-              approval: s.uri.queryParameters['approval'] == '1', // [HF-BOOK-APPROVE]
+              approval:
+                  s.uri.queryParameters['approval'] == '1', // [HF-BOOK-APPROVE]
               approvalText: s.uri.queryParameters['text'] ?? '',
             )
-          : BookedScreen(id: s.pathParameters['id']!, day: s.uri.queryParameters['day'] ?? '', slot: s.uri.queryParameters['slot'] ?? ''),
+          : BookedScreen(
+              id: s.pathParameters['id']!,
+              day: s.uri.queryParameters['day'] ?? '',
+              slot: s.uri.queryParameters['slot'] ?? '',
+            ),
     ),
   ],
 );
@@ -162,7 +317,11 @@ class _MainShellState extends State<MainShell> {
   }
 
   static const _items = <(IconData, IconData, String)>[
-    (Icons.slow_motion_video_outlined, Icons.slow_motion_video_rounded, 'Reels'),
+    (
+      Icons.slow_motion_video_outlined,
+      Icons.slow_motion_video_rounded,
+      'Reels',
+    ),
     (Icons.search_rounded, Icons.search_rounded, 'Search'),
     (Icons.favorite_border_rounded, Icons.favorite_rounded, 'Favourites'),
     (Icons.person_outline_rounded, Icons.person_rounded, 'Me'),
@@ -177,40 +336,80 @@ class _MainShellState extends State<MainShell> {
           color: C.footerBg,
           border: Border(top: BorderSide(color: C.sandLine, width: 2)),
         ),
-        child: KolamBackground(child: SafeArea(
-          top: false,
-          child: SizedBox(
-            height: 68,
-            child: Row(
-              children: [
-                for (var i = 0; i < _items.length; i++)
-                  Expanded(
-                    child: Semantics(
-                      button: true,
-                      selected: shell.currentIndex == i,
-                      label: _items[i].$3,
-                      child: InkWell(
-                        onTap: () => shell.goBranch(i, initialLocation: i == shell.currentIndex),
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(shell.currentIndex == i ? _items[i].$2 : _items[i].$1, size: 27, color: shell.currentIndex == i ? C.maroon : C.muted),
-                            const SizedBox(height: 3),
-                            Text(
-                              _items[i].$3,
-                              style: t(14, color: shell.currentIndex == i ? C.maroon : C.muted, w: shell.currentIndex == i ? FontWeight.w800 : FontWeight.w700),
-                            ),
-                          ],
+        child: KolamBackground(
+          child: SafeArea(
+            top: false,
+            child: SizedBox(
+              height: 52,
+              child: Row(
+                children: [
+                  for (var i = 0; i < _items.length; i++)
+                    Expanded(
+                      child: Semantics(
+                        button: true,
+                        selected: shell.currentIndex == i,
+                        label: _items[i].$3,
+                        child: InkWell(
+                          onTap: () => shell.goBranch(
+                            i,
+                            initialLocation: i == shell.currentIndex,
+                          ),
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(
+                                shell.currentIndex == i
+                                    ? _items[i].$2
+                                    : _items[i].$1,
+                                size: 22,
+                                color: shell.currentIndex == i
+                                    ? C.maroon
+                                    : C.muted,
+                              ),
+                              const SizedBox(height: 1),
+                              Text(
+                                _items[i].$3,
+                                style: t(
+                                  11,
+                                  color: shell.currentIndex == i
+                                      ? C.maroon
+                                      : C.muted,
+                                  w: shell.currentIndex == i
+                                      ? FontWeight.w800
+                                      : FontWeight.w700,
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
                       ),
                     ),
-                  ),
-              ],
+                ],
+              ),
             ),
           ),
-        ),
         ),
       ),
     );
   }
+}
+
+class _BookingSheetPage extends Page<void> {
+  const _BookingSheetPage({super.key, required this.child});
+  final Widget child;
+  @override
+  Route<void> createRoute(BuildContext context) => ModalBottomSheetRoute<void>(
+    settings: this,
+    builder: (_) => FractionallySizedBox(
+      heightFactor: 0.9,
+      child: ClipRRect(
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+        child: child,
+      ),
+    ),
+    isScrollControlled: true,
+    useSafeArea: true,
+    showDragHandle: true,
+    backgroundColor: C.cream,
+  );
 }

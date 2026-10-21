@@ -53,6 +53,11 @@ abstract final class Telemetry {
     'hf_app_booking_accept_tapped',
     'hf_app_booking_decline_tapped',
     'hf_app_booking_mode_changed',
+    'hf_reel_action',
+    'hf_reel_bookmark_sync',
+    'hf_intro_decision',
+    'hf_auth_entry',
+    'hf_auth_outcome',
     'hf_reel_play_fail', // [HF-REEL-PLAYER-2] platform + reason when a reel embed could not start
     'hf_page_not_found', // [HF-REELS-FAV-1] unknown route shown the friendly page
   };

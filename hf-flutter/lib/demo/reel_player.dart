@@ -13,7 +13,7 @@ import '../ui/net_image.dart';
 import 'theme.dart';
 
 /// Whether the main Reels feed is on screen. The Reels tab stays alive offstage (indexed stack), so the feed must be told
-/// when to stop: visible = the main shell is mounted AND its current tab is Reels AND no page route is pushed above it.
+/// when to stop: visible = the main shell is mounted AND its current tab is Reels AND no page, dialog or sheet is pushed above it.
 /// Without a [MainShell] (tests, previews) it stays true. App background/foreground is handled by each [ReelPlayer].
 class ReelGate {
   ReelGate._();
@@ -24,7 +24,7 @@ class ReelGate {
   static int _branch = 0;
   static final List<Route<dynamic>> _pages = [];
 
-  /// Watches the root navigator for pushed pages (dialogs and sheets do not count).
+  /// Watches the root navigator for pages and modal overlays, including info and booking sheets.
   static final NavigatorObserver observer = _GateObserver();
 
   static void attachShell(ModalRoute<dynamic>? route) {
@@ -61,7 +61,7 @@ class _GateObserver extends NavigatorObserver {
 
   @override
   void didPush(Route<dynamic> route, Route<dynamic>? previousRoute) => _after(() {
-        if (route is PageRoute) ReelGate._pages.add(route);
+        if (route is ModalRoute) ReelGate._pages.add(route);
       });
 
   @override
@@ -74,12 +74,12 @@ class _GateObserver extends NavigatorObserver {
   void didReplace({Route<dynamic>? newRoute, Route<dynamic>? oldRoute}) => _after(() {
         final i = oldRoute == null ? -1 : ReelGate._pages.indexOf(oldRoute);
         if (i >= 0) {
-          if (newRoute is PageRoute) {
+          if (newRoute is ModalRoute) {
             ReelGate._pages[i] = newRoute;
           } else {
             ReelGate._pages.removeAt(i);
           }
-        } else if (newRoute is PageRoute) {
+        } else if (newRoute is ModalRoute) {
           ReelGate._pages.add(newRoute);
         }
       });

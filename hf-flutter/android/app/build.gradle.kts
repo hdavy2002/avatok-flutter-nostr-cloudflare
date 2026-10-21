@@ -12,6 +12,7 @@ val hfName = hfBrand["name"] as String
 val hfDomain = hfBrand["domain"] as String
 val hfScheme = hfDomain.split(".")[0]
 val hfPackageId = hfBrand["hfPlayPackageId"] as String
+val hfLocalTest = System.getenv("HF_LOCAL_TEST") == "1"
 
 // Release signing: the CI workflow exports these four variables from GitHub secrets (same upload key as the
 // interim Capacitor app, so Play accepts this build as an update). When they are absent the release is left
@@ -58,6 +59,12 @@ android {
     }
 
     buildTypes {
+        debug {
+            if (hfLocalTest) {
+                applicationIdSuffix = ".localtest"
+                resValue("string", "app_name", "$hfName Test")
+            }
+        }
         release {
             // [HF-WIRE-12] Flutter turns R8 (code shrinking) on for release builds. The keep / dontwarn rules for the
             // packages we ship (webview, video_player, share_plus, url_launcher, package_info_plus, PostHog, billing,
@@ -76,6 +83,7 @@ flutter {
 
 // Push (HF-NATIVE-7): the Google services plugin is applied only when CI wrote google-services.json
 // (secret HF_GOOGLE_SERVICES_JSON), so the build works without it.
-if (file("google-services.json").exists()) {
+val hfLocalDebug = hfLocalTest && gradle.startParameter.taskNames.any { it.contains("Debug", ignoreCase = true) }
+if (file("google-services.json").exists() && !hfLocalDebug) {
     apply(plugin = "com.google.gms.google-services")
 }

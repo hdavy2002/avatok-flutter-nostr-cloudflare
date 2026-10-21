@@ -3,183 +3,229 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
-import '../data/api_exception.dart';
-import '../data/favourites_store.dart';
-import '../data/models/search.dart';
+import '../data/reel_bookmarks.dart';
 import '../data/repos/favourites_repo.dart';
-import '../ui/async_view.dart';
+import '../data/services.dart';
 import '../ui/net_image.dart';
 import 'state.dart';
 import 'theme.dart';
 import 'widgets.dart';
 
-/// The real Favourites tab (HF-WIRE-9): the influencers the fan hearted, as a grid, with a remove button.
+/// Saved videos; the old saved-host repository remains separate for profile favourites.
 class RealFavourites extends StatefulWidget {
   const RealFavourites({super.key, required this.repo});
-
   final FavouritesRepo repo;
-
   @override
   State<RealFavourites> createState() => _RealFavouritesState();
 }
 
 class _RealFavouritesState extends State<RealFavourites> {
-  AsyncState<List<FavouriteHost>> _state = const AsyncLoading();
-  FavouritesStore? _store;
-  int _seenSynced = 0;
-
+  final _store = ReelBookmarks.instance;
+  String? _account;
+  Object? _error;
+  bool _loading = false;
   @override
   void initState() {
     super.initState();
-    try {
-      _store = FavouritesStore.instance;
-      _seenSynced = _store!.syncedCount;
-      _store!.addListener(_onStore);
-    } catch (_) {
-      _store = null; // no services yet (a bare widget test): the list simply loads once
+    demo.addListener(_accountChanged);
+    _store.addListener(_changed);
+    _accountChanged();
+  }
+
+  void _changed() {
+    if (mounted) setState(() {});
+  }
+
+  void _accountChanged() {
+    final id = Services.instance.user?.id;
+    if (_account == id) {
+      _changed();
+      return;
     }
-    unawaited(_load());
+    _account = id;
+    _error = null;
+    if (id != null) unawaited(_load());
+    _changed();
+  }
+
+  Future<void> _load() async {
+    final id = _account;
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    try {
+      await _store.refresh();
+    } catch (e) {
+      if (mounted && id == _account) _error = e;
+    } finally {
+      if (mounted && id == _account) setState(() => _loading = false);
+    }
   }
 
   @override
   void dispose() {
-    _store?.removeListener(_onStore);
+    demo.removeListener(_accountChanged);
+    _store.removeListener(_changed);
     super.dispose();
-  }
-
-  /// [HF-REELS-FAV-1] The tab stays alive under the bottom bar, so a ♥ tapped on a reel must refresh the list.
-  void _onStore() {
-    final s = _state;
-    final store = _store;
-    if (!mounted || store == null || !store.loaded || s is! AsyncData<List<FavouriteHost>>) return;
-    if (store.syncedCount == _seenSynced) return; // only a server-confirmed change refreshes the list
-    _seenSynced = store.syncedCount;
-    final shown = {for (final h in s.value) h.slug};
-    final saved = store.slugs;
-    if (shown.length != saved.length || !shown.containsAll(saved)) unawaited(_reload());
-  }
-
-  /// A quiet refresh: the grid stays on screen.
-  Future<void> _reload() async {
-    try {
-      final items = await widget.repo.list();
-      if (mounted) setState(() => _state = AsyncData(items));
-    } catch (_) {
-      // keep what is shown; pull-to-open again retries
-    }
-  }
-
-  Future<void> _load() async {
-    if (!demo.signedIn) {
-      setState(() => _state = const AsyncData(<FavouriteHost>[]));
-      return;
-    }
-    setState(() => _state = const AsyncLoading());
-    AsyncState<List<FavouriteHost>> next;
-    try {
-      // [HF-APP-CACHE-1] saved list first, then the server's
-      await for (final items in widget.repo.watchList()) {
-        if (mounted) setState(() => _state = AsyncData(items));
-      }
-      return;
-    } catch (e) {
-      next = AsyncFailure(e);
-    }
-    if (mounted) setState(() => _state = next);
-  }
-
-  Future<void> _remove(FavouriteHost h) async {
-    final s = _state;
-    if (s is! AsyncData<List<FavouriteHost>>) return;
-    final before = s.value;
-    setState(() => _state = AsyncData([for (final x in before) if (x.slug != h.slug) x]));
-    await toggleFavourite(h.slug, onError: (e) {
-      if (!mounted) return;
-      setState(() => _state = AsyncData(before)); // roll back
-      toast(context, e is ApiException ? e.userMessage : 'Could not remove that. Please try again.');
-    });
   }
 
   @override
   Widget build(BuildContext context) {
+    final signedIn = Services.instance.isSignedIn;
+    final items = signedIn ? _store.items : const [];
     return Scaffold(
       body: SafeArea(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Padding(padding: EdgeInsets.fromLTRB(20, 16, 20, 14), child: Headline(solid: 'MY', outline: 'FAVOURITES', size: 40)),
+            const Padding(
+              padding: EdgeInsets.all(20),
+              child: Headline(solid: 'SAVED', outline: 'VIDEOS', size: 36),
+            ),
             Expanded(
-              child: AsyncView<List<FavouriteHost>>(
-                state: _state,
-                onRetry: () => unawaited(_load()),
-                builder: (context, items) => GridView.count(
-                  padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
-                  crossAxisCount: 2,
-                  mainAxisSpacing: 12,
-                  crossAxisSpacing: 12,
-                  childAspectRatio: 0.62,
-                  children: [for (final h in items) _FavCard(host: h, onRemove: () => unawaited(_remove(h)))],
-                ),
-                isEmpty: (items) => items.isEmpty,
-                emptyTitle: 'No favourites yet',
-                emptyMessage: demo.signedIn ? 'Tap ♥ on a reel to save it here.' : 'Sign in, then tap ♥ on a reel to save it here.',
-                emptyAction: ChunkyButton(
-                  label: demo.signedIn ? 'WATCH REELS' : 'SIGN IN',
-                  onTap: () => demo.signedIn ? context.go('/reels') : requireAccount(context, () => unawaited(_load()), reason: 'to see your favourites'),
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _FavCard extends StatelessWidget {
-  const _FavCard({required this.host, required this.onRemove});
-
-  final FavouriteHost host;
-  final VoidCallback onRemove;
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      key: ValueKey('fav-${host.slug}'),
-      onTap: () => context.push('/profile/${host.slug}'),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(16),
-        child: Stack(
-          fit: StackFit.expand,
-          children: [
-            host.photoUrl == null
-                ? const ColoredBox(color: C.cinema)
-                : NetImage(host.photoUrl!, fit: BoxFit.cover, alignment: Alignment.topCenter, fallback: const ColoredBox(color: C.cinema)),
-            const DecoratedBox(
-              decoration: BoxDecoration(gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Color(0x00000000), Color(0xCC1A0B26)], stops: [0.45, 1])),
-            ),
-            Positioned(
-              top: 8,
-              right: 8,
-              child: GestureDetector(
-                key: ValueKey('remove-${host.slug}'),
-                onTap: onRemove,
-                child: const Icon(Icons.favorite_rounded, color: C.rani, size: 28, semanticLabel: 'Remove from favourites'),
-              ),
-            ),
-            Positioned(
-              left: 10,
-              right: 10,
-              bottom: 10,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(host.name, style: t(16, color: C.ivory)),
-                  if (host.headline != null) Text(host.headline!, maxLines: 2, overflow: TextOverflow.ellipsis, style: t(14, color: C.cream, w: FontWeight.w600)),
-                  const SizedBox(height: 6),
-                  StatusPill(online: host.online),
-                ],
-              ),
+              child: !signedIn
+                  ? Center(
+                      child: Padding(
+                        padding: const EdgeInsets.all(24),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              'Log in or create an account to save videos.',
+                              textAlign: TextAlign.center,
+                              style: t(18),
+                            ),
+                            const SizedBox(height: 16),
+                            ChunkyButton(
+                              label: 'LOG IN / CREATE ACCOUNT',
+                              onTap: () => requireAccount(
+                                context,
+                                () => unawaited(_load()),
+                                reason: 'to see saved videos',
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    )
+                  : _loading && items.isEmpty
+                  ? const Center(child: CircularProgressIndicator())
+                  : _error != null && items.isEmpty
+                  ? Center(
+                      child: TextButton(
+                        onPressed: _load,
+                        child: const Text('Could not load saved videos. Retry'),
+                      ),
+                    )
+                  : items.isEmpty
+                  ? Center(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            'Tap ♥ on a reel to save it here.',
+                            style: t(16),
+                          ),
+                          TextButton(
+                            onPressed: () => context.go('/reels'),
+                            child: const Text('WATCH REELS'),
+                          ),
+                        ],
+                      ),
+                    )
+                  : RefreshIndicator(
+                      onRefresh: _load,
+                      child: GridView.builder(
+                        padding: const EdgeInsets.all(16),
+                        gridDelegate:
+                            const SliverGridDelegateWithFixedCrossAxisCount(
+                              crossAxisCount: 2,
+                              childAspectRatio: 0.65,
+                              crossAxisSpacing: 12,
+                              mainAxisSpacing: 12,
+                            ),
+                        itemCount: items.length,
+                        itemBuilder: (context, index) {
+                          final reel = items[index];
+                          return ClipRRect(
+                            borderRadius: BorderRadius.circular(14),
+                            child: Material(
+                              color: C.cinema,
+                              child: InkWell(
+                                onTap: () => context.go(
+                                  '/reels?reel=${Uri.encodeQueryComponent(reel.id)}',
+                                  extra: reel,
+                                ),
+                                child: Stack(
+                                  fit: StackFit.expand,
+                                  children: [
+                                    if (reel.thumbUrl != null)
+                                      NetImage(
+                                        reel.thumbUrl!,
+                                        fit: BoxFit.cover,
+                                        fallback: const ColoredBox(
+                                          color: C.cinema,
+                                        ),
+                                      ),
+                                    const Center(
+                                      child: Icon(
+                                        Icons.play_circle_outline_rounded,
+                                        size: 40,
+                                        color: C.ivory,
+                                      ),
+                                    ),
+                                    Positioned(
+                                      top: 0,
+                                      right: 0,
+                                      child: IconButton(
+                                        tooltip: 'Remove saved video',
+                                        onPressed: _store.busy(reel.id)
+                                            ? null
+                                            : () async {
+                                                try {
+                                                  await _store.toggle(reel);
+                                                } catch (_) {
+                                                  if (context.mounted)
+                                                    toast(
+                                                      context,
+                                                      'Could not remove that. Try again.',
+                                                    );
+                                                }
+                                              },
+                                        icon: const Icon(
+                                          Icons.favorite_rounded,
+                                          color: C.rani,
+                                        ),
+                                      ),
+                                    ),
+                                    Positioned(
+                                      left: 0,
+                                      right: 0,
+                                      bottom: 0,
+                                      child: ColoredBox(
+                                        color: const Color(0xAA000000),
+                                        child: Padding(
+                                          padding: const EdgeInsets.all(10),
+                                          child: Text(
+                                            reel.caption.isEmpty
+                                                ? reel.host.name
+                                                : reel.caption,
+                                            maxLines: 2,
+                                            overflow: TextOverflow.ellipsis,
+                                            style: t(14, color: C.ivory),
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                    ),
             ),
           ],
         ),

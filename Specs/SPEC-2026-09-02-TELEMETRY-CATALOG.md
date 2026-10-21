@@ -1360,6 +1360,11 @@ Events go to PostHog (EU, project 139917) only in builds made with `--dart-defin
 |---|---|---|
 | `app_crash` | `source: 'flutter' \| 'platform' \| 'zone'`, `fatal: boolean`, `error_type`, `library` (flutter source only), `stack_top` (first 6 stack lines) | Uncaught error: `FlutterError.onError` (`flutter`), `PlatformDispatcher.onError` (`platform`), `runZonedGuarded` (`zone`). The error MESSAGE is never sent (it can hold typed text). De-duplicated per run (same error type + top frame) and capped at 10 per run. **Success value:** arrives with `platform = android-app` after a forced error on a test build. |
 | `hf_signup_code_sent` | none | `[HF-WIRE-2]` The WhatsApp code request was accepted (`POST /api/auth/whatsapp/send` answered 200). |
+| `hf_reel_action` | `action: info/book/save/unsave`, `platform?` | Reel controls, no personal data. |
+| `hf_reel_bookmark_sync` | `outcome: synced/pending/rejected`, `reason?` | Account-scoped local bookmark sync outcome. |
+| `hf_intro_decision` | decision and reason | Onboarding routing outcome, no personal data. |
+| `hf_auth_entry` | entry mode | Login or account creation entry, no personal data. |
+| `hf_auth_outcome` | outcome | Authentication result, no personal data. |
 | `hf_signup_verified` | `is_new: boolean` | `[HF-WIRE-2]` The code was right and a session is active. |
 | `hf_signup_age_confirmed` | none | `[HF-WIRE-2]` The person confirmed 18+ (`POST /api/hf/me/ack` answered). |
 | `hf_topup_started` | `amount_rupees` | `[HF-WIRE-6]` A top-up order was created and the payment page opened. |

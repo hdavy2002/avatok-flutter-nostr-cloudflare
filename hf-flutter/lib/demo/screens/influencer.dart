@@ -261,7 +261,7 @@ class InfluencerShell extends StatelessWidget {
               child: MediaQuery.withClampedTextScaling(
                 maxScaleFactor: 1.3,
                 child: SizedBox(
-                  height: 76,
+                  height: 52,
                   child: Row(
                     children: [
                       for (final it in _left)
@@ -313,13 +313,13 @@ class InfluencerShell extends StatelessWidget {
   Widget _tab(IconData icon, String label, bool on) => Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(icon, size: 26, color: on ? C.maroon : C.muted),
-          const SizedBox(height: 3),
+          Icon(icon, size: 22, color: on ? C.maroon : C.muted),
+          const SizedBox(height: 1),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 2),
             child: FittedBox(
               fit: BoxFit.scaleDown,
-              child: Text(label, maxLines: 1, style: t(14, color: on ? C.maroon : C.muted, w: on ? FontWeight.w800 : FontWeight.w700)),
+              child: Text(label, maxLines: 1, style: t(11, color: on ? C.maroon : C.muted, w: on ? FontWeight.w800 : FontWeight.w700)),
             ),
           ),
         ],
@@ -382,7 +382,7 @@ class InfluencerShell extends StatelessWidget {
               customBorder: const StadiumBorder(),
               onTap: busy ? null : () => unawaited(_togglePresence(context)),
               child: ConstrainedBox(
-                constraints: const BoxConstraints(minHeight: 52, minWidth: 48),
+                constraints: const BoxConstraints(minHeight: 48, minWidth: 48),
                 child: Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                   child: FittedBox(
@@ -392,7 +392,7 @@ class InfluencerShell extends StatelessWidget {
                       children: [
                         Icon(icon, color: ink, size: 22),
                         const SizedBox(width: 6),
-                        Text(label, maxLines: 1, style: t(15, color: ink)),
+                        Text(label, maxLines: 1, style: t(12, color: ink)),
                       ],
                     ),
                   ),

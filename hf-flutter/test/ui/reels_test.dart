@@ -181,13 +181,19 @@ void main() {
       await _pump(tester, FeedScreen(repo: ReelsRepo(api), onlineFetch: () async => 2));
       expect(seen['hfrl_1'], isTrue);
       expect(seen['hfrl_2'], isFalse); // readied, not playing
+      expect(find.text('Caption hfrl_1'), findsNothing);
+      await tester.tap(find.byTooltip('Reel information').first);
+      await tester.pumpAndSettle();
       expect(find.text('Caption hfrl_1'), findsOneWidget);
-      expect(find.text('CALL NOW'), findsOneWidget);
+      await tester.pump(const Duration(seconds: 9));
+      await tester.pumpAndSettle();
+      expect(find.text('Caption hfrl_1'), findsNothing);
+      expect(find.byTooltip('Call now'), findsWidgets);
       await tester.fling(find.byType(PageView), const Offset(0, -900), 2000);
       await tester.pumpAndSettle();
       expect(seen['hfrl_1'], isFalse);
       expect(seen['hfrl_2'], isTrue);
-      expect(find.text('Riya'), findsOneWidget);
+      expect(find.byTooltip('Open Riya profile'), findsOneWidget);
       expect(api.calls.where((c) => c.endsWith('/view')).toSet(), {'POST /api/hf/reels/hfrl_1/view', 'POST /api/hf/reels/hfrl_2/view'});
     });
 
@@ -201,7 +207,8 @@ void main() {
       await _pump(tester, FeedScreen(reelId: 'hfrl_2', repo: ReelsRepo(api), onlineFetch: () async => 2));
       expect(seen['hfrl_2'], isTrue);
       expect(seen['hfrl_1'], isFalse);
-      expect(find.text('Caption hfrl_2'), findsOneWidget);
+      expect(find.text('Caption hfrl_2'), findsNothing);
+      expect(find.byTooltip('Open Riya profile'), findsOneWidget);
     });
   });
 
