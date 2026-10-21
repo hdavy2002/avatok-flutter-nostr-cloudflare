@@ -341,7 +341,7 @@ jobs:
       - run: npx tsc --noEmit
         working-directory: web
       # [WEB-TESTS-1] node:test + node:assert is this folder's runner (see
-      # test/sendMail.test.ts), and every file in test/*.test.ts is a real
+      # test/sendMail.test.ts), and every file in test/*.test.ts and test/*.test.mjs is a real
       # regression gate — the calendar/availability tests land in the same
       # directory, so the glob is what keeps them RUNNING alongside the device
       # checks. Node 22 above covers node:sqlite and --experimental-strip-types;
@@ -350,7 +350,7 @@ jobs:
       - name: Web unit tests (node:test) — full device checks + calendar regressions
         if: ${{ !inputs.calendar_only }}
         working-directory: web
-        run: node --experimental-strip-types --test test/*.test.ts
+        run: node --experimental-strip-types --test test/*.test.ts test/*.test.mjs
       # Focused calendar run: the explicit calendar and device files, so the
       # subset cannot silently widen or narrow with an unrelated glob change.
       - name: Web unit tests (node:test) — focused calendar + device checks
