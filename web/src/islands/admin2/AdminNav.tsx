@@ -94,7 +94,7 @@ function UserAvatar({ who, size = 'h-10 w-10' }: { who: Who | null; size?: strin
 
 function AdminBadge({ className }: { className?: string }) {
   return (
-    <span className={cn('rounded-full bg-grand-teal px-2 py-0.5 font-dashbody text-[10.5px] font-extrabold uppercase leading-[1.4] tracking-[0.12em] text-primary-foreground', className)}>
+    <span className={cn('hf-admin-badge rounded-full px-2.5 py-1 font-dash text-[14px] font-extrabold uppercase leading-[1.4] tracking-[0.12em] text-grand-teal', className)}>
       Admin
     </span>
   );
@@ -103,7 +103,7 @@ function AdminBadge({ className }: { className?: string }) {
 /** [SAATHUM-SHOP-ADMIN-1] Group heading ("SHOP"), styled like the mockup's `.sh-side h3` — chandan-brown small caps. */
 function GroupHeading({ label, className }: { label: string; className?: string }) {
   return (
-    <div role="presentation" className={cn('mt-4 px-3 pb-1 font-dashbody text-[12px] font-black uppercase leading-none tracking-[0.12em] text-[#9a5a26]', className)}>
+    <div role="presentation" className={cn('hf-admin-group mt-4 px-3 pb-1 font-dash text-[14px] font-black uppercase leading-none tracking-[0.12em] text-muted-foreground', className)}>
       {label}
     </div>
   );
@@ -113,7 +113,7 @@ function GroupHeading({ label, className }: { label: string; className?: string 
 function PrintBadge({ n, className }: { n: number; className?: string }) {
   if (!n) return null;
   return (
-    <span className={cn('relative ml-auto rounded-full bg-[#F6B93B] px-[7px] py-[3px] font-dashbody text-[11px] font-black leading-none text-[#3a1a0a]', className)}>
+    <span className={cn('hf-admin-navpill relative ml-auto rounded-full bg-grand-gold px-[7px] py-[3px] font-dash text-[14px] font-black leading-none text-foreground', className)}>
       {n} to print
     </span>
   );
@@ -123,7 +123,7 @@ function PrintBadge({ n, className }: { n: number; className?: string }) {
 function NavPill({ label, className }: { label?: string; className?: string }) {
   if (!label) return null;
   return (
-    <span className={cn('relative ml-auto rounded-full bg-[#F6B93B] px-2 py-[3px] font-dashbody text-[12px] font-black leading-none text-[#3a1a0a]', className)}>{label}</span>
+    <span className={cn('hf-admin-navpill relative ml-auto rounded-full bg-grand-gold px-2 py-[3px] font-dash text-[14px] font-black leading-none text-foreground', className)}>{label}</span>
   );
 }
 
@@ -151,10 +151,10 @@ function useToPrint(_ready: boolean, _active: AdminKey): number {
 
 function Logo({ compact = false }: { compact?: boolean }) {
   return (
-    <a href="/admin" className="flex items-center gap-2.5 no-underline" aria-label={`${BRAND.name} admin home`}>
+    <a href="/admin" className="hf-admin-logo flex items-center gap-2.5 no-underline" aria-label={`${BRAND.name} admin home`}>
       {/* [SAATHUM-DASH-LOGO-1 2026-10-01] Lotus emblem (same art as the site header), no wordmark. */}
       <img src={publicImage('/assets/branding/hf-mark.png', { width: 128, fit: 'scale-down' })} alt="" width={44} height={44} className="h-11 w-11 object-contain" />
-      {!compact && <AdminBadge />}
+      {!compact && <span className="hf-admin-brand"><span>{BRAND.name}</span><AdminBadge /></span>}
     </a>
   );
 }
@@ -162,16 +162,16 @@ function Logo({ compact = false }: { compact?: boolean }) {
 function Sidebar({ active, who, ready, toPrint }: { active: AdminKey; who: Who | null; ready: boolean; toPrint: number }) {
   const reduce = useReducedMotion();
   return (
-    <aside className="fixed inset-y-0 left-0 z-40 hidden w-[var(--dash-sidebar-w,260px)] flex-col overflow-y-auto border-r border-border/50 bg-card px-4 py-5 lg:flex">
+    <aside className="hf-admin-side fixed inset-y-0 left-0 z-40 hidden w-[var(--dash-sidebar-w,260px)] flex-col overflow-y-auto border-r border-border/50 bg-card px-4 py-5 lg:flex">
       <div className="px-2"><Logo /></div>
 
-      <div className="mt-6 rounded-xl border border-border/50 bg-background p-3 shadow-[var(--dash-shadow,none)]">
+      <div className="hf-admin-account mt-6 rounded-xl border border-border/50 bg-card p-3 shadow-[var(--dash-shadow,none)]">
         {ready && who ? (
           <div className="flex items-center gap-3">
             <UserAvatar who={who} />
             <div className="min-w-0">
               <div className="truncate font-dash text-[15px] font-bold text-foreground">{who.name}</div>
-              {who.email && <div className="truncate text-[12.5px] font-semibold text-muted-foreground">{who.email}</div>}
+              {who.email && <div className="truncate text-[14px] font-semibold text-muted-foreground">{who.email}</div>}
             </div>
           </div>
         ) : (
@@ -192,22 +192,24 @@ function Sidebar({ active, who, ready, toPrint }: { active: AdminKey; who: Who |
             {heading && <GroupHeading label={heading} />}
             <a
               href={it.href}
+              aria-label={it.label}
               aria-current={on ? 'page' : undefined}
               className={cn(
-                'group relative flex min-h-[44px] items-center gap-3 rounded-lg px-3 text-[15px] font-bold no-underline transition-colors',
+                'hf-admin-navitem group relative flex min-h-[44px] items-center gap-3 rounded-lg px-3 text-[15px] font-bold no-underline transition-colors',
                 on ? 'text-accent-foreground' : 'text-foreground/80 hover:bg-muted hover:text-foreground',
               )}
             >
               {on && (
                 <motion.span
                   layoutId="admin2-active"
-                  className="absolute inset-0 rounded-lg bg-accent shadow-[var(--dash-shadow,none)]"
+                  aria-hidden="true"
+                  className="pointer-events-none absolute inset-0 rounded-lg bg-accent shadow-[var(--dash-shadow,none)]"
                   initial={reduce ? false : { opacity: 0, scale: 0.96 }}
                   animate={{ opacity: 1, scale: 1 }}
                   transition={reduce ? { duration: 0 } : { type: 'spring', stiffness: 420, damping: 34 }}
                 />
               )}
-              {on && <span aria-hidden className="absolute -left-4 top-2 bottom-2 w-1 rounded-r-full bg-grand-gold" />}
+              {on && <span aria-hidden className="pointer-events-none absolute -left-4 top-2 bottom-2 w-1 rounded-r-full bg-grand-gold" />}
               <Icon className="relative h-[18px] w-[18px] shrink-0" strokeWidth={2.2} />
               <span className="relative">{it.label}</span>
               {it.key === 'shop-orders' && <PrintBadge n={toPrint} />}
@@ -246,9 +248,9 @@ function Rail({ active, toPrint }: { active: AdminKey; toPrint: number }) {
     { key: 'logout', label: ADMIN_LOGOUT.label, href: ADMIN_LOGOUT.href, icon: ADMIN_LOGOUT.icon, tail: true, first: false, divider: false },
   ];
   return (
-    <aside className="fixed inset-y-0 left-0 z-40 hidden w-[var(--dash-rail-w,72px)] flex-col items-center overflow-y-auto border-r border-border/50 bg-card py-4 sm:flex lg:hidden">
+    <aside className="hf-admin-rail fixed inset-y-0 left-0 z-40 hidden w-[var(--dash-rail-w,72px)] flex-col items-center overflow-y-auto border-r border-border/50 bg-card py-4 sm:flex lg:hidden">
       <Logo compact />
-      <AdminBadge className="mt-2 px-1.5 text-[9px]" />
+      <AdminBadge className="mt-2 px-1.5" />
       <TooltipProvider delayDuration={150}>
         <nav aria-label="Admin" className="mt-5 flex flex-1 flex-col items-center gap-2">
           {items.map((it) => {
@@ -273,9 +275,9 @@ function Rail({ active, toPrint }: { active: AdminKey; toPrint: number }) {
                     )}
                   >
                     <Icon className="h-5 w-5" strokeWidth={2.2} />
-                    {on && <span aria-hidden className="absolute -left-3 top-2 bottom-2 w-1 rounded-r-full bg-grand-gold" />}
+                    {on && <span aria-hidden className="pointer-events-none absolute -left-3 top-2 bottom-2 w-1 rounded-r-full bg-grand-gold" />}
                     {it.key === 'shop-orders' && toPrint > 0 && (
-                      <span aria-hidden className="absolute right-0.5 top-0.5 min-w-[18px] rounded-full bg-[#F6B93B] px-1 text-center font-dashbody text-[10px] font-black leading-[18px] text-[#3a1a0a]">{toPrint}</span>
+                      <span aria-hidden className="pointer-events-none absolute right-0.5 top-0.5 min-w-[18px] rounded-full bg-grand-gold px-1 text-center font-dash text-[14px] font-black leading-[18px] text-foreground">{toPrint}</span>
                     )}
                   </a>
                 </TooltipTrigger>
@@ -301,16 +303,16 @@ function MoreSheet({ active, who, toPrint }: { active: AdminKey; who: Who | null
           type="button"
           aria-label="More admin pages"
           className={cn(
-            'relative flex h-[var(--dash-tabbar-h,64px)] min-w-[44px] flex-col items-center justify-center gap-1 bg-transparent text-[11px] font-bold',
+            'relative flex h-[var(--dash-tabbar-h,64px)] min-w-[44px] flex-col items-center justify-center gap-1 bg-transparent text-[14px] font-bold',
             on ? 'text-accent' : 'text-muted-foreground',
           )}
         >
-          {on && <span aria-hidden className="absolute top-0 h-[3px] w-10 rounded-b-full bg-grand-gold" />}
+          {on && <span aria-hidden className="pointer-events-none absolute top-0 h-[3px] w-10 rounded-b-full bg-grand-gold" />}
           <MoreHorizontal className="h-[22px] w-[22px]" strokeWidth={on ? 2.4 : 2} />
           <span className="leading-none">More</span>
         </button>
       </SheetTrigger>
-      <SheetContent side="bottom" className="rounded-t-2xl pb-[calc(env(safe-area-inset-bottom,0px)+16px)]">
+      <SheetContent side="bottom" className="hf-admin-more rounded-t-2xl pb-[calc(env(safe-area-inset-bottom,0px)+16px)]">
         <SheetHeader className="text-left">
           <SheetTitle className="flex items-center gap-2 font-dash text-grand-teal">More <AdminBadge /></SheetTitle>
           <SheetDescription>{who?.email ?? `${BRAND.name} admin`}</SheetDescription>
@@ -351,7 +353,7 @@ function PhoneBars({ active, who, toPrint }: { active: AdminKey; who: Who | null
   return (
     <>
       <header
-        className="fixed inset-x-0 top-0 z-40 flex items-center justify-between border-b border-border/50 px-4 pt-[env(safe-area-inset-top,0px)] sm:hidden"
+        className="hf-admin-top fixed inset-x-0 top-0 z-40 flex items-center justify-between border-b border-border/50 px-4 pt-[env(safe-area-inset-top,0px)] sm:hidden"
         style={{ background: 'hsl(var(--card) / 0.92)', backdropFilter: 'blur(10px)', height: 'calc(var(--dash-topbar-h) + env(safe-area-inset-top, 0px))' }}
       >
         <Logo />
@@ -361,7 +363,7 @@ function PhoneBars({ active, who, toPrint }: { active: AdminKey; who: Who | null
       </header>
       <nav
         aria-label="Admin"
-        className="fixed inset-x-0 bottom-0 z-40 grid grid-cols-6 border-t border-border/50 px-1 pb-[env(safe-area-inset-bottom,0px)] sm:hidden"
+        className="hf-admin-bottom fixed inset-x-0 bottom-0 z-40 grid grid-cols-6 border-t border-border/50 px-1 pb-[env(safe-area-inset-bottom,0px)] sm:hidden"
         style={{ background: 'hsl(var(--card) / 0.96)', backdropFilter: 'blur(10px)' }}
       >
         {tabs.map((it) => {
@@ -371,9 +373,10 @@ function PhoneBars({ active, who, toPrint }: { active: AdminKey; who: Who | null
             <a
               key={it.key}
               href={it.href}
+              aria-label={it.label}
               aria-current={on ? 'page' : undefined}
               className={cn(
-                'relative flex h-[var(--dash-tabbar-h,64px)] min-w-[44px] flex-col items-center justify-center gap-1 text-[11px] font-bold no-underline',
+                'relative flex h-[var(--dash-tabbar-h,64px)] min-w-[44px] flex-col items-center justify-center gap-1 text-[14px] font-bold no-underline',
                 on ? 'text-accent' : 'text-muted-foreground',
               )}
             >
@@ -381,7 +384,7 @@ function PhoneBars({ active, who, toPrint }: { active: AdminKey; who: Who | null
                 <motion.span
                   layoutId="admin2-tab"
                   aria-hidden
-                  className="absolute top-0 h-[3px] w-10 rounded-b-full bg-grand-gold"
+                  className="pointer-events-none absolute top-0 h-[3px] w-10 rounded-b-full bg-grand-gold"
                   initial={reduce ? false : { opacity: 0, scaleX: 0.4 }}
                   animate={{ opacity: 1, scaleX: 1 }}
                   transition={reduce ? { duration: 0 } : { type: 'spring', stiffness: 420, damping: 30 }}

@@ -19,6 +19,7 @@ import DashToaster from '../islands/dashboard2/DashToaster.tsx';
 import type { AdminKey } from '../islands/admin2/nav';
 import { publicImage } from '../lib/config';
 import '../styles/site-tokens.css';
+import '../styles/hf-admin.css';
 import { BRAND } from '../lib/brand';
 import { API_BASE } from '../lib/env';
 
@@ -36,27 +37,25 @@ const hasActions = Astro.slots.has('actions');
 
 Astro.response.headers.set('Cache-Control', 'private, no-store');
 
-const ribbon = publicImage('/assets/bright/border.png', { width: 640, fit: 'scale-down' });
 ---
 
 <Base title={`${title} · ${BRAND.name} Admin`} chrome={false} noindex={true} indiaLandingLanguage={false}>
   <Fragment slot="head">
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <meta name="theme-color" content="hsl(42, 100%, 95%)" />
+    <meta name="theme-color" content="#fff8f0" />
     {/* [HF-ADMIN-CACHE-1] open the API connection while Clerk loads, instead of at the first data call */}
     <link rel="preconnect" href={API_BASE} crossorigin />
     <slot name="head" />{/* [SAATHUM-SHOP-EDITOR-1] optional extra <head> content (the shop-page editor loads the shop fonts) */}
   </Fragment>
   {/* Radix portals (dialogs, popovers, selects, sheets) render into <body>, outside the
       .dash2 root, so body carries the scope too. Runs before paint. */}
-  <script is:inline>document.body.classList.add('dash2');</script>
+  <script is:inline>document.body.classList.add('dash2', 'hf-admin');</script>
 
   <div
-    class="dash2 dash2-root admin2-root min-h-screen bg-background text-foreground"
+    class="dash2 hf-admin dash2-root admin2-root min-h-screen bg-background text-foreground"
     data-admin2-root
     data-admin2-state="loading"
     data-admin2-screen={active}
-    style={`--folk-border-url:url(${ribbon})`}
   >
     <AdminNav client:load active={active} />
     {/* [HF-ADMIN-CACHE-1] A browser that proved admin in the last 12h shows the page shell at once; AdminNav still
@@ -69,16 +68,17 @@ const ribbon = publicImage('/assets/bright/border.png', { width: 640, fit: 'scal
     </script>
 
     <div class="flex min-h-screen flex-col pt-[calc(var(--dash-topbar-h,56px)+env(safe-area-inset-top,0px))] sm:pl-[var(--dash-rail-w,72px)] sm:pt-0 lg:pl-[var(--dash-sidebar-w,260px)]">
-      <main class="dash-safe-bottom mx-auto w-full max-w-6xl flex-1 px-4 pt-6 sm:px-8 sm:pt-10">
-        <header class="mb-6 sm:mb-8">
+      <main class="hf-admin-main dash-safe-bottom mx-auto w-full max-w-[1600px] flex-1 px-4 pt-6 sm:px-8 sm:pt-10">
+        <header class="hf-admin-pagehead mb-6 sm:mb-8">
           <div class="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
             <div class="min-w-0">
+              <p class="hf-admin-eyebrow">Team workspace</p>
               <h1 class="font-dash text-[26px] font-bold leading-[1.15] tracking-[0.01em] text-grand-teal sm:text-[32px]">{heading ?? title}</h1>
               {subtitle && <p class="mt-2 max-w-2xl text-[15px] font-semibold leading-relaxed text-muted-foreground">{subtitle}</p>}
             </div>
             {hasActions && <div class="admin2-actions flex flex-wrap items-center gap-2"><slot name="actions" /></div>}
           </div>
-          <div class="dash-ribbon mt-5" aria-hidden="true"></div>
+          <div class="hf-admin-divider mt-5" aria-hidden="true"><span></span><span></span><span></span></div>
         </header>
 
         {/* Gate states — AdminNav flips data-admin2-state on the root. */}

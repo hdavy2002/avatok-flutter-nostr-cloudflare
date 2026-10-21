@@ -1,0 +1,181 @@
+/* [HF-ADMIN-REDESIGN-1] Admin-only dashboard palette. Body also scopes Radix portals.
+   Keep legacy shop/studio --body untouched: those screens use it as a colour. */
+.hf-admin.dash2,
+html.dark .hf-admin.dash2 {
+  --hf-admin-canvas: #fff8f0;
+  --hf-admin-cream: #fffaf3;
+  --hf-admin-ink: #2b1530;
+  --hf-admin-muted: #6f5b6f;
+  --hf-admin-line: #f1e3d6;
+  --hf-admin-plum: #4a1747;
+  --hf-admin-rani: #d81b72;
+  --hf-admin-marigold: #f59e0b;
+  --hf-admin-blush: #ffe6ef;
+  --hf-admin-goldtint: #fff1d6;
+  --hf-admin-head: 'Nunito', 'Comfortaa', ui-rounded, system-ui, sans-serif;
+  --hf-admin-body: 'Comfortaa', 'Nunito', ui-rounded, system-ui, sans-serif;
+  --background: 32 100% 97.06%;
+  --foreground: 288.89 39.13% 13.53%;
+  --card: 0 0% 100%;
+  --card-foreground: 288.89 39.13% 13.53%;
+  --popover: 0 0% 100%;
+  --popover-foreground: 288.89 39.13% 13.53%;
+  --primary: 303.53 52.58% 19.02%;
+  --primary-foreground: 0 0% 100%;
+  --secondary: 38.05 100% 91.96%;
+  --secondary-foreground: 303.53 52.58% 19.02%;
+  --muted: 32 100% 97.06%;
+  --muted-foreground: 300 9.9% 39.61%;
+  --accent: 303.53 52.58% 19.02%;
+  --accent-foreground: 0 0% 100%;
+  --destructive: 357.27 66.96% 45.1%;
+  --destructive-foreground: 0 0% 100%;
+  --border: 28.89 49.09% 89.22%;
+  --input: 28.89 49.09% 89.22%;
+  --ring: 332.38 77.78% 47.65%;
+  --scrim: 288.89 39.13% 13.53%;
+  --radius: 20px;
+  --grand-cream: var(--hf-admin-cream);
+  --grand-teal: var(--hf-admin-plum);
+  --grand-ink: var(--hf-admin-ink);
+  --grand-red: var(--hf-admin-rani);
+  --grand-sage: var(--hf-admin-blush);
+  --grand-gold: var(--hf-admin-marigold);
+  --dash-gold-soft: 28.89 49.09% 89.22% / 1;
+  --dash-shadow: 0 1px 0 rgb(74 23 71 / .04), 0 8px 24px -12px rgb(74 23 71 / .18);
+  --dash-shadow-lg: 0 18px 40px -18px rgb(74 23 71 / .24);
+  --dash-sidebar-w: 276px;
+  --dash-rail-w: 84px;
+  --dash-topbar-h: 76px;
+  --dash-tabbar-h: 72px;
+  --chart-1: 190 100% 30%;
+  --chart-2: 40 71% 42%;
+  --zine-card: #fff;
+  color-scheme: light;
+  background: var(--hf-admin-canvas);
+  color: var(--hf-admin-ink);
+  font-family: var(--hf-admin-body);
+  font-size: 16px;
+  line-height: 1.6;
+}
+
+/* Explicit scope wins over shared dashboard font utilities, including portal content. */
+.hf-admin :is(h1, h2, h3, h4, h5, h6, .font-dash, .tabular-nums, .hf-admin-stat) {
+  font-family: var(--hf-admin-head);
+  font-weight: 900;
+  letter-spacing: 0;
+}
+.hf-admin .font-dashbody { font-family: var(--hf-admin-body); }
+.hf-admin :is(button, [role="button"], .hf-admin-navitem, .hf-admin-bottom a, .hf-admin-navpill) {
+  font-family: var(--hf-admin-head);
+  font-weight: 900;
+}
+.hf-admin :is(.text-xs, [class*="text-[9px]"], [class*="text-[10px]"], [class*="text-[10.5px]"],
+  [class*="text-[11px]"], [class*="text-[12px]"], [class*="text-[12.5px]"], [class*="text-[13px]"]) {
+  font-size: 14px;
+}
+.hf-admin :is(button, [role="button"], [role="combobox"]) { min-height: 44px; min-width: 44px; }
+.hf-admin :is(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]), select) {
+  min-height: 44px;
+  font-size: 16px;
+}
+.hf-admin textarea { font-size: 16px; }
+.hf-admin :is(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]), select, textarea) {
+  border-radius: 14px;
+}
+.hf-admin label:has(> input:is([type="checkbox"], [type="radio"])) { min-height: 44px; }
+.hf-admin :is(a, button, input, select, textarea, [tabindex]):focus-visible {
+  outline: 3px solid var(--hf-admin-rani);
+  outline-offset: 3px;
+}
+.hf-admin :is(button, [role="button"]):disabled { cursor: not-allowed; }
+.hf-admin :is([role="dialog"], [role="alertdialog"], [role="menu"], [data-sonner-toast]) {
+  font-family: var(--hf-admin-body);
+  color-scheme: light;
+}
+.hf-admin [role="dialog"] { border-radius: 24px; }
+.hf-admin [data-sonner-toast] {
+  --normal-bg: #fff;
+  --normal-text: var(--hf-admin-ink);
+  --normal-border: var(--hf-admin-line);
+  font-size: 14px;
+  border-radius: 18px;
+}
+.hf-admin [data-sonner-toast] [data-button] { min-height: 44px; }
+.hf-admin [data-sonner-toast] [data-close-button] { min-width: 44px; min-height: 44px; }
+
+/* Shared shell. The content keeps its own scrolling tables and workspaces. */
+.hf-admin .hf-admin-main { min-width: 0; }
+.hf-admin .hf-admin-pagehead { position: relative; }
+.hf-admin .hf-admin-pagehead h1 {
+  color: var(--hf-admin-plum);
+  font-size: clamp(30px, 2.6vw, 42px);
+  line-height: 1.12;
+  overflow-wrap: anywhere;
+}
+.hf-admin .hf-admin-eyebrow {
+  margin: 0 0 8px;
+  font-family: var(--hf-admin-head);
+  font-size: 14px;
+  font-weight: 900;
+  letter-spacing: .09em;
+  text-transform: uppercase;
+  color: var(--hf-admin-rani);
+}
+.hf-admin .hf-admin-divider {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  pointer-events: none;
+}
+.hf-admin .hf-admin-divider::after { content: ""; height: 1px; flex: 1; background: var(--hf-admin-line); }
+.hf-admin .hf-admin-divider span { width: 8px; height: 8px; border-radius: 50%; background: var(--hf-admin-marigold); }
+.hf-admin .hf-admin-divider span:nth-child(2) { width: 22px; background: var(--hf-admin-rani); }
+.hf-admin .hf-admin-divider span:nth-child(3) { background: var(--hf-admin-plum); }
+.hf-admin .hf-admin-card {
+  min-width: 0;
+  background: #fff;
+  border: 1px solid var(--hf-admin-line);
+  border-radius: 20px;
+  box-shadow: var(--dash-shadow);
+}
+.hf-admin .hf-admin-kpi { border-top: 3px solid var(--hf-admin-marigold); }
+.hf-admin .hf-admin-stat { font-variant-numeric: tabular-nums; color: var(--hf-admin-plum); }
+.hf-admin .admin2-gate > .bg-card { border-radius: 24px; }
+.hf-admin .admin2-actions :is(a, button) { min-height: 44px; border-radius: 999px; }
+
+/* Navigation keeps the original desktop / rail / phone breakpoints and routes. */
+.hf-admin :is(.hf-admin-side, .hf-admin-rail) {
+  background: var(--hf-admin-cream);
+  border-color: var(--hf-admin-line);
+}
+.hf-admin .hf-admin-brand { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; min-width: 0; }
+.hf-admin .hf-admin-brand > span:first-child { font-family: var(--hf-admin-head); font-size: 20px; font-weight: 900; line-height: 1.1; color: var(--hf-admin-plum); }
+.hf-admin .hf-admin-badge { display: inline-flex; align-items: center; background: var(--hf-admin-goldtint); color: var(--hf-admin-plum); font-size: 14px; line-height: 1.2; }
+.hf-admin .hf-admin-account { border: 1px solid var(--hf-admin-line); border-radius: 18px; }
+.hf-admin .hf-admin-group { color: var(--hf-admin-muted); line-height: 1.4; }
+.hf-admin .hf-admin-navitem { min-height: 48px; padding-block: 10px; border-radius: 14px; }
+.hf-admin .hf-admin-navitem > span:first-child { border-radius: 14px; }
+.hf-admin .hf-admin-navitem > svg { width: 22px; height: 22px; }
+.hf-admin .hf-admin-navitem:not([aria-current="page"]):hover { background: #f1ebff; color: var(--hf-admin-plum); }
+.hf-admin .hf-admin-navpill { flex-shrink: 0; color: var(--hf-admin-ink); font-size: 14px; line-height: 1.2; }
+.hf-admin .hf-admin-side > div:last-child a { border-radius: 14px; }
+.hf-admin .hf-admin-top { gap: 10px; }
+.hf-admin .hf-admin-top .hf-admin-brand > span:first-child { font-size: 18px; }
+.hf-admin .hf-admin-bottom { box-shadow: 0 -8px 24px -16px rgb(74 23 71 / .25); }
+.hf-admin .hf-admin-bottom :is(a, button) { min-width: 0; padding-inline: 1px; font-size: 14px; }
+.hf-admin .hf-admin-bottom :is(a[aria-current="page"], button.text-accent) { background: var(--hf-admin-blush); color: var(--hf-admin-plum); }
+.hf-admin .hf-admin-more { background: var(--hf-admin-cream); }
+.hf-admin .hf-admin-more [role="heading"] { color: var(--hf-admin-plum); }
+.hf-admin .hf-admin-more nav a { border-radius: 14px; font-family: var(--hf-admin-head); font-weight: 800; }
+.hf-admin .hf-admin-more > button { background: #fff; border: 1px solid var(--hf-admin-line); border-radius: 50%; }
+@media (max-width: 639px) {
+  .hf-admin .hf-admin-pagehead { text-align: center; }
+  .hf-admin .hf-admin-pagehead p { margin-inline: auto; }
+  .hf-admin .admin2-actions { justify-content: center; }
+  .hf-admin .hf-admin-more { padding-inline: 16px; }
+  .hf-admin .hf-admin-more > div:first-child { padding-right: 44px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .hf-admin :is(.hf-admin-navitem, .hf-admin-bottom a, .hf-admin-bottom button) { transition: none; }
+}
