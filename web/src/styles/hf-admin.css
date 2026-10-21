@@ -47,7 +47,7 @@ html.dark .hf-admin.dash2 {
   --dash-sidebar-w: 276px;
   --dash-rail-w: 84px;
   --dash-topbar-h: 76px;
-  --dash-tabbar-h: 72px;
+  --dash-tabbar-h: 0px;
   --chart-1: 190 100% 30%;
   --chart-2: 40 71% 42%;
   --zine-card: #fff;
@@ -66,7 +66,7 @@ html.dark .hf-admin.dash2 {
   letter-spacing: 0;
 }
 .hf-admin .font-dashbody { font-family: var(--hf-admin-body); }
-.hf-admin :is(button, [role="button"], .hf-admin-navitem, .hf-admin-bottom a, .hf-admin-navpill) {
+.hf-admin :is(button, [role="button"], .hf-admin-navitem, .hf-admin-navpill) {
   font-family: var(--hf-admin-head);
   font-weight: 900;
 }
@@ -162,20 +162,17 @@ html.dark .hf-admin.dash2 {
 .hf-admin .hf-admin-side > div:last-child a { border-radius: 14px; }
 .hf-admin .hf-admin-top { gap: 10px; }
 .hf-admin .hf-admin-top .hf-admin-brand > span:first-child { font-size: 18px; }
-.hf-admin .hf-admin-bottom { box-shadow: 0 -8px 24px -16px rgb(74 23 71 / .25); }
-.hf-admin .hf-admin-bottom :is(a, button) { min-width: 0; padding-inline: 1px; font-size: 14px; }
-.hf-admin .hf-admin-bottom :is(a[aria-current="page"], button.text-accent) { background: var(--hf-admin-blush); color: var(--hf-admin-plum); }
-.hf-admin .hf-admin-more { background: var(--hf-admin-cream); }
-.hf-admin .hf-admin-more [role="heading"] { color: var(--hf-admin-plum); }
-.hf-admin .hf-admin-more nav a { border-radius: 14px; font-family: var(--hf-admin-head); font-weight: 800; }
-.hf-admin .hf-admin-more > button { background: #fff; border: 1px solid var(--hf-admin-line); border-radius: 50%; }
+.hf-admin .hf-admin-menu { background: var(--hf-admin-cream); }
+.hf-admin .hf-admin-menu [role="heading"] { color: var(--hf-admin-plum); }
+.hf-admin .hf-admin-menu nav a { border-radius: 14px; font-family: var(--hf-admin-head); font-weight: 800; }
+.hf-admin .hf-admin-menu > button { top: calc(env(safe-area-inset-top, 0px) + 12px); background: #fff; border: 1px solid var(--hf-admin-line); border-radius: 50%; }
 @media (max-width: 639px) {
   .hf-admin .hf-admin-pagehead { text-align: center; }
   .hf-admin .hf-admin-pagehead p { margin-inline: auto; }
   .hf-admin .admin2-actions { justify-content: center; }
-  .hf-admin .hf-admin-more { padding-inline: 16px; }
-  .hf-admin .hf-admin-more > div:first-child { padding-right: 44px; }
+  .hf-admin .hf-admin-menu { padding-inline: 16px; }
+  .hf-admin .hf-admin-menu > div:first-child { padding-right: 44px; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .hf-admin :is(.hf-admin-navitem, .hf-admin-bottom a, .hf-admin-bottom button) { transition: none; }
+  .hf-admin :is(.hf-admin-navitem, .hf-admin-menu-trigger) { transition: none; }
 }

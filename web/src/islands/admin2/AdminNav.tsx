@@ -12,12 +12,12 @@
  * Layout (all three rendered, CSS picks one):
  *   ≥1024px  260px sidebar: logo + ADMIN badge, admin card, menu, View site, Logout
  *   640–1023 72px icon rail with tooltips
- *   <640px   top bar + fixed bottom tab bar (5 tabs + "More" sheet)
+ *   <640px   top bar + hamburger menu with every visible admin page
  */
 import { Fragment, useEffect, useState } from 'react';
 import { motion, useReducedMotion } from 'framer-motion';
 import { useAuth, useUser } from '@clerk/clerk-react';
-import { MoreHorizontal } from 'lucide-react';
+import { Menu } from 'lucide-react';
 import { ClerkIsland } from '../../lib/clerk';
 import { CLERK_PUBLISHABLE_KEY } from '../../lib/env';
 import { captureException } from '../../lib/analytics';
@@ -28,7 +28,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '../../components/ui/avatar'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../../components/ui/tooltip';
 import { Skeleton } from '../../components/ui/skeleton';
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from '../../components/ui/sheet';
-import { ADMIN_NAV, ADMIN_PHONE_TABS, ADMIN_VIEW_SITE, ADMIN_LOGOUT, type AdminKey } from './nav';
+import { ADMIN_NAV, ADMIN_VIEW_SITE, ADMIN_LOGOUT, type AdminKey } from './nav';
 import { forgetAdminSession } from './adminCache';
 import { ApiError, adminApi, adminToken, setAdminGate, type AdminGate, type AdminWho } from './adminApi';
 import { BRAND } from '../../lib/brand';
@@ -292,40 +292,40 @@ function Rail({ active, toPrint }: { active: AdminKey; toPrint: number }) {
   );
 }
 
-function MoreSheet({ active, who, toPrint }: { active: AdminKey; who: Who | null; toPrint: number }) {
-  const rest = ADMIN_NAV.filter((i) => !ADMIN_PHONE_TABS.includes(i.key));
-  const on = rest.some((i) => i.key === active);
+function MobileMenu({ active, who, toPrint }: { active: AdminKey; who: Who | null; toPrint: number }) {
+  const [open, setOpen] = useState(false);
+  useEffect(() => {
+    const desktop = window.matchMedia('(min-width: 640px)');
+    const closeOnDesktop = () => { if (desktop.matches) setOpen(false); };
+    desktop.addEventListener('change', closeOnDesktop);
+    return () => desktop.removeEventListener('change', closeOnDesktop);
+  }, []);
   const row = 'flex min-h-[52px] items-center gap-3 rounded-xl px-3 text-[16px] font-bold no-underline transition-colors';
   return (
-    <Sheet>
+    <Sheet open={open} onOpenChange={setOpen}>
       <SheetTrigger asChild>
         <button
           type="button"
-          aria-label="More admin pages"
-          className={cn(
-            'relative flex h-[var(--dash-tabbar-h,64px)] min-w-[44px] flex-col items-center justify-center gap-1 bg-transparent text-[14px] font-bold',
-            on ? 'text-accent' : 'text-muted-foreground',
-          )}
+          aria-label="Open admin menu"
+          className="hf-admin-menu-trigger flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-border/50 bg-card text-foreground hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
-          {on && <span aria-hidden className="pointer-events-none absolute top-0 h-[3px] w-10 rounded-b-full bg-grand-gold" />}
-          <MoreHorizontal className="h-[22px] w-[22px]" strokeWidth={on ? 2.4 : 2} />
-          <span className="leading-none">More</span>
+          <Menu aria-hidden="true" className="h-6 w-6" strokeWidth={2.2} />
         </button>
       </SheetTrigger>
-      <SheetContent side="bottom" className="hf-admin-more rounded-t-2xl pb-[calc(env(safe-area-inset-bottom,0px)+16px)]">
+      <SheetContent side="top" className="hf-admin-menu max-h-[90dvh] rounded-b-2xl pt-[calc(env(safe-area-inset-top,0px)+24px)] pb-[calc(env(safe-area-inset-bottom,0px)+24px)]">
         <SheetHeader className="text-left">
-          <SheetTitle className="flex items-center gap-2 font-dash text-grand-teal">More <AdminBadge /></SheetTitle>
-          <SheetDescription>{who?.email ?? `${BRAND.name} admin`}</SheetDescription>
+          <SheetTitle className="flex items-center gap-2 font-dash text-grand-teal">Menu <AdminBadge /></SheetTitle>
+          <SheetDescription className="break-words">{who?.name && <span className="block font-bold">{who.name}</span>}{who?.email ?? `${BRAND.name} admin`}</SheetDescription>
         </SheetHeader>
-        <nav aria-label="More admin pages" className="mt-4 flex flex-col gap-1">
-          {rest.map((it, idx) => {
+        <nav aria-label="Admin menu" className="mt-4 flex flex-col gap-1">
+          {ADMIN_NAV.map((it, idx) => {
             const Icon = it.icon;
             const cur = it.key === active;
-            const heading = it.group && rest[idx - 1]?.group !== it.group ? it.group : null;
+            const heading = it.group && ADMIN_NAV[idx - 1]?.group !== it.group ? it.group : null;
             return (
               <Fragment key={it.key}>
                 {heading && <GroupHeading label={heading} className="mt-3" />}
-                <a href={it.href} aria-current={cur ? 'page' : undefined}
+                <a href={it.href} onClick={() => setOpen(false)} aria-current={cur ? 'page' : undefined}
                   className={cn(row, cur ? 'bg-accent text-accent-foreground' : 'text-foreground hover:bg-muted')}>
                   <Icon className="h-5 w-5" strokeWidth={2.2} />{it.label}
                   {it.key === 'shop-orders' && <PrintBadge n={toPrint} />}
@@ -335,10 +335,10 @@ function MoreSheet({ active, who, toPrint }: { active: AdminKey; who: Who | null
             );
           })}
           <div className="my-2 h-px bg-border/60" aria-hidden />
-          <a href={ADMIN_VIEW_SITE.href} className={cn(row, 'text-foreground hover:bg-muted')}>
+          <a href={ADMIN_VIEW_SITE.href} onClick={() => setOpen(false)} className={cn(row, 'text-foreground hover:bg-muted')}>
             <ADMIN_VIEW_SITE.icon className="h-5 w-5" strokeWidth={2.2} />{ADMIN_VIEW_SITE.label}
           </a>
-          <a href={ADMIN_LOGOUT.href} onClick={forgetAdminSession} className={cn(row, 'text-primary hover:bg-primary/10')}>
+          <a href={ADMIN_LOGOUT.href} onClick={() => { forgetAdminSession(); setOpen(false); }} className={cn(row, 'text-primary hover:bg-primary/10')}>
             <ADMIN_LOGOUT.icon className="h-5 w-5" strokeWidth={2.2} />{ADMIN_LOGOUT.label}
           </a>
         </nav>
@@ -347,57 +347,20 @@ function MoreSheet({ active, who, toPrint }: { active: AdminKey; who: Who | null
   );
 }
 
-function PhoneBars({ active, who, toPrint }: { active: AdminKey; who: Who | null; toPrint: number }) {
-  const reduce = useReducedMotion();
-  const tabs = ADMIN_NAV.filter((i) => ADMIN_PHONE_TABS.includes(i.key));
+function PhoneHeader({ active, who, toPrint }: { active: AdminKey; who: Who | null; toPrint: number }) {
   return (
-    <>
-      <header
-        className="hf-admin-top fixed inset-x-0 top-0 z-40 flex items-center justify-between border-b border-border/50 px-4 pt-[env(safe-area-inset-top,0px)] sm:hidden"
-        style={{ background: 'hsl(var(--card) / 0.92)', backdropFilter: 'blur(10px)', height: 'calc(var(--dash-topbar-h) + env(safe-area-inset-top, 0px))' }}
-      >
-        <Logo />
+    <header
+      className="hf-admin-top fixed inset-x-0 top-0 z-40 flex items-center justify-between border-b border-border/50 px-4 pt-[env(safe-area-inset-top,0px)] sm:hidden"
+      style={{ background: 'hsl(var(--card) / 0.92)', backdropFilter: 'blur(10px)', height: 'calc(var(--dash-topbar-h) + env(safe-area-inset-top, 0px))' }}
+    >
+      <Logo />
+      <div className="flex shrink-0 items-center gap-1">
         <span className="flex h-11 w-11 items-center justify-center rounded-full" aria-hidden>
           <UserAvatar who={who} size="h-9 w-9" />
         </span>
-      </header>
-      <nav
-        aria-label="Admin"
-        className="hf-admin-bottom fixed inset-x-0 bottom-0 z-40 grid grid-cols-6 border-t border-border/50 px-1 pb-[env(safe-area-inset-bottom,0px)] sm:hidden"
-        style={{ background: 'hsl(var(--card) / 0.96)', backdropFilter: 'blur(10px)' }}
-      >
-        {tabs.map((it) => {
-          const on = it.key === active;
-          const Icon = it.icon;
-          return (
-            <a
-              key={it.key}
-              href={it.href}
-              aria-label={it.label}
-              aria-current={on ? 'page' : undefined}
-              className={cn(
-                'relative flex h-[var(--dash-tabbar-h,64px)] min-w-[44px] flex-col items-center justify-center gap-1 text-[14px] font-bold no-underline',
-                on ? 'text-accent' : 'text-muted-foreground',
-              )}
-            >
-              {on && (
-                <motion.span
-                  layoutId="admin2-tab"
-                  aria-hidden
-                  className="pointer-events-none absolute top-0 h-[3px] w-10 rounded-b-full bg-grand-gold"
-                  initial={reduce ? false : { opacity: 0, scaleX: 0.4 }}
-                  animate={{ opacity: 1, scaleX: 1 }}
-                  transition={reduce ? { duration: 0 } : { type: 'spring', stiffness: 420, damping: 30 }}
-                />
-              )}
-              <Icon className="h-[22px] w-[22px]" strokeWidth={on ? 2.4 : 2} />
-              <span className="max-w-full truncate px-0.5 leading-none">{it.short}</span>
-            </a>
-          );
-        })}
-        <MoreSheet active={active} who={who} toPrint={toPrint} />
-      </nav>
-    </>
+        <MobileMenu active={active} who={who} toPrint={toPrint} />
+      </div>
+    </header>
   );
 }
 
@@ -407,7 +370,7 @@ function Shell({ active, guard }: { active: AdminKey; guard: { ready: boolean; w
     <>
       <Sidebar active={active} who={guard.who} ready={guard.ready} toPrint={toPrint} />
       <Rail active={active} toPrint={toPrint} />
-      <PhoneBars active={active} who={guard.who} toPrint={toPrint} />
+      <PhoneHeader active={active} who={guard.who} toPrint={toPrint} />
     </>
   );
 }
