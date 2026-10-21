@@ -9,6 +9,7 @@ import '../presence_bridge.dart';
 import '../state.dart';
 import '../theme.dart';
 import '../widgets.dart';
+import 'sheets.dart';
 
 /// Favourites: reels the fan saved with ♥ (HF-REEL-7).
 class FavouritesScreen extends StatelessWidget {
@@ -18,8 +19,15 @@ class FavouritesScreen extends StatelessWidget {
   final FavouritesRepo? repo;
 
   @override
-  Widget build(BuildContext context) {
-    if (PresenceBridge.real) return RealFavourites(repo: repo ?? Services.instance.favouritesRepo); // [HF-WIRE-9]
+  Widget build(BuildContext context) => ListenableBuilder(
+    listenable: Listenable.merge([demo, Services.instance.authAccount]),
+    builder: (context, _) => (PresenceBridge.real ? Services.instance.isSignedIn : demo.signedIn)
+        ? _authenticated(context)
+        : const AccountInvitation(reason: 'Save your favourite reels'),
+  );
+
+  Widget _authenticated(BuildContext context) {
+    if (PresenceBridge.real) return RealFavourites(key: ValueKey(Services.instance.user?.id), repo: repo ?? Services.instance.favouritesRepo); // [HF-WIRE-9]
     return Scaffold(
       body: SafeArea(
         child: ListenableBuilder(

@@ -13,6 +13,7 @@ import '../theme.dart';
 import '../widgets.dart';
 import 'bookings_real.dart'; // [HF-WIRE-8]
 import 'call_real.dart';
+import 'sheets.dart';
 import 'call_records_real.dart';
 import 'settings_real.dart';
 import '../../ui/strings/help_strings.dart';
@@ -41,7 +42,8 @@ class _Guest extends StatelessWidget {
       children: [
         const Valance(),
         Expanded(
-          child: Padding(
+          child: SingleChildScrollView(
+            child: Padding(
             padding: const EdgeInsets.all(28),
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
@@ -50,13 +52,14 @@ class _Guest extends StatelessWidget {
                 const SizedBox(height: 10),
                 const Headline(solid: 'YOUR', outline: 'BAZAAR PASS', size: 40, align: TextAlign.center),
                 const SizedBox(height: 14),
-                Text('Make a free account to call, book and save favourites. It takes 20 seconds.', textAlign: TextAlign.center, style: t(17, w: FontWeight.w700, h: 1.45)),
+                Text('Log in or create a free account to call, book and save favourites.', textAlign: TextAlign.center, style: t(17, w: FontWeight.w700, h: 1.45)),
                 const SizedBox(height: 26),
-                TicketButton(label: 'GET STARTED', maroon: true, stubIcon: Icons.arrow_forward_rounded, onTap: () => requireAccount(context, () {})),
+                const AccountButtons(),
                 const SizedBox(height: 16),
                 TextButton(onPressed: () => context.push('/help'), child: Text('How ${Brand.name} works', style: t(16, color: C.maroon))),
               ],
             ),
+          ),
           ),
         ),
       ],

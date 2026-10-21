@@ -1,4 +1,6 @@
 import '../api_client.dart';
+import '../intro_store.dart';
+import '../models/me.dart';
 import '../api_exception.dart';
 import '../auth/clerk_client.dart';
 import '../telemetry.dart';
@@ -97,10 +99,14 @@ class AuthRepo {
     final step = await _clerk.signInWithTicket(ticket);
     final user = step.user;
     if (user == null) throw AuthFailure(step.error ?? 'We could not finish signing you in. Please try again.');
+    await IntroStore.markSeen();
     onSignedIn?.call(user);
     Telemetry.event('hf_signup_verified', {'is_new': j['isNew'] == true});
     return VerifyResult(isNew: j['isNew'] == true, needs18Plus: j['needs18Plus'] == true);
   }
+
+  /// Fresh profile after OTP: a previously created identity may still need its details.
+  Future<Me> profileAfterVerification() async => Me.fromJson(await _api.getJson('/api/hf/me'));
 
   /// Save what the person typed. When the email switch is still off on the server the name is saved alone.
   Future<void> saveProfile({required String name, required String email}) async {

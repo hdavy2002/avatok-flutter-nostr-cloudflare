@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:package_info_plus/package_info_plus.dart';
+import 'package:flutter/foundation.dart';
 
 import '../demo/state.dart';
 import 'api_client.dart';
@@ -59,6 +60,9 @@ class Services {
   late final FavouritesRepo favouritesRepo = FavouritesRepo(api); // [HF-WIRE-9]
 
   /// The signed-in Clerk user, or null (signed out, or no connection at start).
+  /// Session changes can precede /me, including an offline or slow restore.
+  final ValueNotifier<String?> authAccount = ValueNotifier<String?>(null);
+
   ClerkUser? _user;
   ClerkUser? get user => _user;
   set user(ClerkUser? value) {
@@ -69,6 +73,7 @@ class Services {
       _prefetchedFor = null;
     }
     _user = value;
+    authAccount.value = value?.id;
   }
 
   /// `GET /api/hf/me`, or null until it loaded.

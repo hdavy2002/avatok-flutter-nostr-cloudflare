@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import '../../data/demo_mode.dart';
 import '../../data/repos/auth_repo.dart';
 import '../../data/services.dart';
+import '../../data/telemetry.dart';
 import '../data.dart';
 import '../state.dart';
 import '../theme.dart';
@@ -46,15 +47,16 @@ class SheetFrame extends StatelessWidget {
 /// Fan sign-up: name, email, WhatsApp number (HF-REEL-1). Opens when a guest taps Call now, Book or ♥.
 /// Real WhatsApp-code sign-up (HF-WIRE-2) unless this is a demo build; tests pass [repo] to force the real one.
 class SignUpSheet extends StatelessWidget {
-  const SignUpSheet({super.key, this.reason, this.repo});
+  const SignUpSheet({super.key, this.reason, this.repo, this.login = false});
 
   final String? reason;
   final AuthRepo? repo;
+  final bool login;
 
   @override
   Widget build(BuildContext context) {
     if (repo == null && DemoMode.on) return _DemoSignUpSheet(reason: reason);
-    return RealSignUpSheet(repo: repo ?? Services.instance.authRepo, reason: reason);
+    return RealSignUpSheet(repo: repo ?? Services.instance.authRepo, reason: reason, login: login);
   }
 }
 
@@ -253,4 +255,48 @@ class CallConfirmSheet extends StatelessWidget {
       ],
     );
   }
+}
+
+/// Account entry points shared by guest tabs. The protected child is not built.
+class AccountInvitation extends StatelessWidget {
+  const AccountInvitation({super.key, required this.reason});
+  final String reason;
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+    body: SafeArea(child: Center(child: SingleChildScrollView(
+      padding: const EdgeInsets.all(28),
+      child: Column(mainAxisSize: MainAxisSize.min, children: [
+        const Icon(Icons.person_outline_rounded, size: 64, color: C.maroon),
+        const SizedBox(height: 20),
+        Text(reason, textAlign: TextAlign.center, style: t(24, color: C.maroon)),
+        const SizedBox(height: 12),
+        Text('Log in or create an account to continue.', textAlign: TextAlign.center, style: t(17)),
+        const SizedBox(height: 24),
+        const AccountButtons(),
+      ]),
+    ))),
+  );
+}
+
+class AccountButtons extends StatelessWidget {
+  const AccountButtons({super.key});
+
+  Future<void> _open(BuildContext context, bool login) async {
+    Telemetry.event('hf_auth_entry', {'mode': login ? 'login' : 'create'});
+    final completed = await showModalBottomSheet<bool>(
+      context: context, isScrollControlled: true, useSafeArea: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => SignUpSheet(login: login),
+    );
+    Telemetry.event('hf_auth_outcome', {'completed': completed == true, 'mode': login ? 'login' : 'create'});
+  }
+
+  @override
+  Widget build(BuildContext context) => Column(children: [
+    TicketButton(label: 'Log in', maroon: true, stubIcon: Icons.login_rounded,
+      onTap: () => _open(context, true)),
+    const SizedBox(height: 12),
+    TextButton(onPressed: () => _open(context, false), child: Text('Create account', style: t(17, color: C.maroon))),
+  ]);
 }

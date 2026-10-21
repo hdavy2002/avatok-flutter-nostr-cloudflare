@@ -34,6 +34,17 @@ class ClerkClient implements ClerkApi {
   static const _apiVersion = '2025-11-10';
   static const _tokenKey = 'clerk_client_token';
 
+  /// Device-only onboarding hint; never makes a network request or exposes the token.
+  /// Unknown storage is treated as a previous install to avoid replaying intro.
+  static Future<bool> hasLocalCredential({KeyValueStore? store}) async {
+    try {
+      final token = await (store ?? SecureKeyValueStore()).read(_tokenKey);
+      return token != null && token.isNotEmpty;
+    } catch (_) {
+      return true;
+    }
+  }
+
   ClerkClient({KeyValueStore? store, http.Client? httpClient, String? publishableKey})
       : _storage = store ?? SecureKeyValueStore(),
         _http = httpClient ?? http.Client(),

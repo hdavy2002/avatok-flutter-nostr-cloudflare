@@ -10,6 +10,7 @@ import '../search_real.dart';
 import '../state.dart';
 import '../theme.dart';
 import '../widgets.dart';
+import 'sheets.dart';
 
 /// Search (HF-REEL-9): Online / Offline / Not on the app. Invite = a vote to bring them in.
 class SearchScreen extends StatefulWidget {
@@ -32,8 +33,15 @@ class _SearchScreenState extends State<SearchScreen> {
   }
 
   @override
-  Widget build(BuildContext context) {
-    if (PresenceBridge.real) return RealSearch(repo: widget.repo ?? Services.instance.searchRepo); // [HF-WIRE-9]
+  Widget build(BuildContext context) => ListenableBuilder(
+    listenable: Listenable.merge([demo, Services.instance.authAccount]),
+    builder: (context, _) => (PresenceBridge.real ? Services.instance.isSignedIn : demo.signedIn)
+        ? _authenticated(context)
+        : const AccountInvitation(reason: 'Find your favourite creators'),
+  );
+
+  Widget _authenticated(BuildContext context) {
+    if (PresenceBridge.real) return RealSearch(key: ValueKey(Services.instance.user?.id), repo: widget.repo ?? Services.instance.searchRepo); // [HF-WIRE-9]
     final q = _q.text.trim().toLowerCase();
     final hits = q.isEmpty
         ? <Influencer>[]

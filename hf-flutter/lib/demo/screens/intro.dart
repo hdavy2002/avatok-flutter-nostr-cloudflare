@@ -8,6 +8,9 @@ import '../../core/brand.dart';
 import '../../core/deep_links.dart';
 import '../../data/repos/config_repo.dart';
 import '../../data/services.dart';
+import '../../data/intro_store.dart';
+import '../../data/auth/clerk_client.dart';
+import '../../data/telemetry.dart';
 import '../../ui/update_prompt.dart';
 import '../state.dart';
 import '../theme.dart';
@@ -15,7 +18,11 @@ import '../widgets.dart';
 
 /// Opening: a colourful leheriya 3-2-1, then intro (first open) or Reels.
 class SplashScreen extends StatefulWidget {
-  const SplashScreen({super.key});
+  const SplashScreen({super.key, this.boot, this.hasLocalCredential});
+
+  /// Test seams for slow boot and local secure storage; production uses Services/Clerk.
+  final Future<void> Function()? boot;
+  final Future<bool> Function()? hasLocalCredential;
 
   @override
   State<SplashScreen> createState() => _SplashScreenState();
@@ -26,14 +33,19 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
   int _n = 3;
   Timer? _timer;
   Future<void> _boot = Future<void>.value();
+  late final Future<bool> _introSeen;
+  late final Future<bool> _hasCredential;
+  bool _bootTimedOut = false;
 
   @override
   void initState() {
     super.initState();
     // Real start-up work runs behind the countdown (HF-WIRE-1A): intro-seen flag, Clerk session restore,
-    // /api/hf/me and the app config. It is capped below the countdown and swallows its own failures, so a
-    // slow or missing network never blocks or crashes the splash; the demo flow carries on regardless.
-    _boot = Services.instance.boot().timeout(const Duration(milliseconds: 1500), onTimeout: () {}).catchError((Object _) {});
+    // /api/hf/me and app config. Network boot is capped; the local intro/credential reads
+    // are awaited separately so a slow network cannot replay intro for an existing install.
+    _introSeen = IntroStore.read();
+    _hasCredential = (widget.hasLocalCredential ?? ClerkClient.hasLocalCredential)();
+    _boot = (widget.boot ?? Services.instance.boot)().timeout(const Duration(milliseconds: 1500), onTimeout: () { _bootTimedOut = true; }).catchError((Object _) { _bootTimedOut = true; });
     _timer = Timer.periodic(const Duration(milliseconds: 600), (t) {
       if (_n > 1) {
         setState(() => _n--);
@@ -56,7 +68,17 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
       await showUpdatePrompt(context, status);
       if (!mounted) return;
     }
-    context.go(demo.introSeen ? '/reels' : '/intro');
+    final seen = await _introSeen;
+    if (!mounted) return;
+    final hasCredential = await _hasCredential;
+    if (!mounted) return;
+    final skip = seen || demo.introSeen || demo.signedIn || Services.instance.isSignedIn || hasCredential;
+    Telemetry.event('hf_intro_decision', {'show_intro': !skip, 'boot_timed_out': _bootTimedOut});
+    // Persist before displaying onboarding so restart/login cannot replay it.
+    await IntroStore.markSeen();
+    demo.introSeen = true;
+    if (!mounted) return;
+    context.go(skip ? '/reels' : '/intro');
     DeepLinks.markReady();
   }
 
@@ -176,7 +198,9 @@ class _IntroScreenState extends State<IntroScreen> {
   final _pages = PageController();
   int _page = 0;
 
-  void _done() {
+  Future<void> _done() async {
+    await IntroStore.markSeen();
+    if (!mounted) return;
     demo.finishIntro();
     context.go('/reels');
   }

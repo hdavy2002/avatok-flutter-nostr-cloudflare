@@ -9,14 +9,15 @@ import '../theme.dart';
 import '../widgets.dart';
 import 'sheets.dart';
 
-enum _Stage { form, code, save, age }
+enum _Stage { form, code, profileCheck, profile, save, age, finish }
 
-/// Real fan sign-up (HF-WIRE-2): name, email, WhatsApp number -> 6-digit code from WhatsApp -> signed in
-/// -> details saved -> 18+ tick when the server asks. Pops `true` when the person is signed in, so
+/// WhatsApp number -> verification -> profile details only for a new account
+/// -> 18+ tick when the server asks. Pops `true` when the person is signed in, so
 /// `requireAccount` can resume what they started.
 class RealSignUpSheet extends StatefulWidget {
-  const RealSignUpSheet({super.key, required this.repo, this.reason});
+  const RealSignUpSheet({super.key, required this.repo, this.reason, this.login = false});
 
+  final bool login;
   final AuthRepo repo;
   final String? reason;
 
@@ -85,9 +86,6 @@ class _RealSignUpSheetState extends State<RealSignUpSheet> {
   }
 
   Future<void> _sendCode() async {
-    final nameProblem = AuthRepo.nameProblem(_name.text);
-    if (nameProblem != null) return setState(() => _error = nameProblem);
-    if (!AuthRepo.validEmail(_email.text)) return setState(() => _error = 'Please type a real email.');
     if (AuthRepo.e164(_wa.text) == null) return setState(() => _error = 'WhatsApp number should be 10 digits.');
     setState(() {
       _busy = true;
@@ -117,6 +115,12 @@ class _RealSignUpSheetState extends State<RealSignUpSheet> {
   /// and the same button tries again (a saved step is never repeated).
   Future<void> _continue() async {
     if (_busy) return;
+    if (_stage == _Stage.profile) {
+      final problem = AuthRepo.nameProblem(_name.text);
+      if (problem != null) return setState(() => _error = problem);
+      if (!AuthRepo.validEmail(_email.text)) return setState(() => _error = 'Please type a real email.');
+      _stage = _Stage.save;
+    }
     if (_stage == _Stage.code && _code.text.replaceAll(RegExp(r'\D'), '').length != 6) {
       return setState(() => _error = 'Type the 6-digit code from WhatsApp.');
     }
@@ -131,7 +135,29 @@ class _RealSignUpSheetState extends State<RealSignUpSheet> {
       if (_stage == _Stage.code) {
         final r = await widget.repo.verifyCode(_phone, _code.text);
         _needsAge = r.needs18Plus;
-        _stage = _Stage.save;
+        if (!mounted) return;
+        if (r.isNew) {
+          setState(() { _stage = _Stage.profile; _busy = false; });
+          return;
+        }
+        _stage = _Stage.profileCheck;
+      }
+      if (_stage == _Stage.profileCheck) {
+        final profile = await widget.repo.profileAfterVerification();
+        if (!mounted) return;
+        // A saved display name proves the details step completed, including when
+        // email collection was disabled. OTP alone never writes a display name.
+        if (AuthRepo.nameProblem(profile.name ?? '') != null) {
+          _name.text = profile.name ?? '';
+          _email.text = profile.email ?? '';
+          setState(() { _stage = _Stage.profile; _busy = false; });
+          return;
+        }
+        _stage = _needsAge ? _Stage.age : _Stage.finish;
+        if (_needsAge) {
+          setState(() => _busy = false);
+          return;
+        }
       }
       if (_stage == _Stage.save) {
         await widget.repo.saveProfile(name: _name.text, email: _email.text);
@@ -143,12 +169,13 @@ class _RealSignUpSheetState extends State<RealSignUpSheet> {
           });
           return;
         }
-        await widget.repo.finish();
-        if (mounted) Navigator.of(context).pop(true);
-        return;
+        _stage = _Stage.finish;
       }
       if (_stage == _Stage.age) {
         await widget.repo.confirmAge();
+        _stage = _Stage.finish;
+      }
+      if (_stage == _Stage.finish) {
         await widget.repo.finish();
         if (mounted) Navigator.of(context).pop(true);
       }
@@ -169,8 +196,8 @@ class _RealSignUpSheetState extends State<RealSignUpSheet> {
 
   Widget _label(String text) => Padding(padding: const EdgeInsets.only(bottom: 6), child: Text(text, style: t(15)));
 
-  List<Widget> _formFields() => [
-        Text("Three things, then you're in. Your number is never shown to anyone.", style: t(15, color: C.deep, w: FontWeight.w700, h: 1.4)),
+  List<Widget> _profileFields() => [
+        Text("Add your details to finish creating your account.", style: t(15, color: C.deep, w: FontWeight.w700, h: 1.4)),
         const SizedBox(height: 16),
         _label('Your name'),
         TextField(
@@ -190,6 +217,11 @@ class _RealSignUpSheetState extends State<RealSignUpSheet> {
           decoration: const InputDecoration(hintText: 'you@example.com'),
         ),
         const SizedBox(height: 12),
+      ];
+
+  List<Widget> _formFields() => [
+        Text("We will send a code to verify your WhatsApp number.", style: t(15)),
+        const SizedBox(height: 16),
         Text.rich(TextSpan(children: [
           TextSpan(text: 'WhatsApp number  ', style: t(15)),
           TextSpan(text: 'we send a code here', style: t(14, color: C.muted, w: FontWeight.w700)),
@@ -288,13 +320,19 @@ class _RealSignUpSheetState extends State<RealSignUpSheet> {
   @override
   Widget build(BuildContext context) {
     final (title, button) = switch (_stage) {
-      _Stage.form => ('Say hello!', 'SEND CODE'),
+      _Stage.form => (widget.login ? 'Log in' : 'Create account', 'SEND CODE'),
+      _Stage.profile => ('Create account', 'SAVE DETAILS'),
+      _Stage.profileCheck => ('Checking your account', 'TRY AGAIN'),
+      _Stage.finish => ('Almost there', 'TRY AGAIN'),
       _Stage.code => ('Check WhatsApp', 'VERIFY'),
       _Stage.save => ('Almost there', 'TRY AGAIN'),
       _Stage.age => ('One last thing', 'FINISH'),
     };
     final fields = switch (_stage) {
       _Stage.form => _formFields(),
+      _Stage.profile => _profileFields(),
+      _Stage.profileCheck => [Text('Checking whether your account needs any details.', style: t(15))],
+      _Stage.finish => _saveFields(),
       _Stage.code => _codeFields(),
       _Stage.save => _saveFields(),
       _Stage.age => _ageFields(),
@@ -302,7 +340,8 @@ class _RealSignUpSheetState extends State<RealSignUpSheet> {
     return Padding(
       padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(context).bottom),
       child: SheetFrame(
-        child: SingleChildScrollView(
+        child: Flexible(
+          child: SingleChildScrollView(
           child: Padding(
             padding: EdgeInsets.fromLTRB(26, 8, 26, MediaQuery.paddingOf(context).bottom + 20),
             child: Column(
@@ -328,6 +367,7 @@ class _RealSignUpSheetState extends State<RealSignUpSheet> {
                 ),
               ],
             ),
+          ),
           ),
         ),
       ),

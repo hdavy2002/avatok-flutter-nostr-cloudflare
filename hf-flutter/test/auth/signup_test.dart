@@ -6,6 +6,7 @@ import 'package:hf_app/data/auth/clerk_client.dart';
 import 'package:hf_app/data/repos/auth_repo.dart';
 import 'package:hf_app/demo/state.dart';
 import 'package:hf_app/demo/widgets.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 /// Answers by "METHOD path" and records every call. A value that is an ApiException is thrown.
 class FakeApiClient extends ApiClient {
@@ -67,8 +68,6 @@ Widget _host(AuthRepo repo, void Function() then) => MaterialApp(
     );
 
 Future<void> _fillForm(WidgetTester tester) async {
-  await tester.enterText(find.byKey(const Key('su-name')), 'Tara Sharma');
-  await tester.enterText(find.byKey(const Key('su-email')), 'tara@example.com');
   await tester.enterText(find.byKey(const Key('su-wa')), '98765 43210');
 }
 
@@ -81,7 +80,16 @@ Future<void> _open(WidgetTester tester, AuthRepo repo, void Function() then) asy
   await tester.pumpAndSettle();
 }
 
+Future<void> _profile(WidgetTester tester) async {
+  await tester.enterText(find.byKey(const Key('su-name')), 'Tara Sharma');
+  await tester.enterText(find.byKey(const Key('su-email')), 'tara@example.com');
+  await tester.ensureVisible(find.text('SAVE DETAILS'));
+  await tester.tap(find.text('SAVE DETAILS'));
+  await tester.pumpAndSettle();
+}
+
 void main() {
+  setUp(() { SharedPreferences.setMockInitialValues({}); demo.signOut(); });
   test('number, email and name checks', () {
     expect(AuthRepo.e164('98765 43210'), '+919876543210');
     expect(AuthRepo.e164('+91 98765-43210'), '+919876543210');
@@ -118,6 +126,7 @@ void main() {
     await tester.tap(find.text('VERIFY'));
     await tester.pumpAndSettle();
 
+    await _profile(tester);
     expect(clerk.ticket, 'tkt');
     expect(signedIn?.id, 'user_1');
     expect(api.calls, ['POST /api/auth/whatsapp/send', 'POST /api/auth/whatsapp/verify', 'PATCH /api/hf/me']);
@@ -179,22 +188,105 @@ void main() {
     expect(find.byKey(const Key('su-code')), findsNothing);
   });
 
-  testWidgets('form checks: bad name, email and number are caught before any call', (tester) async {
+  testWidgets('phone is checked before sending; profile is only requested after verification', (tester) async {
     final api = FakeApiClient({});
     await _open(tester, AuthRepo(api: api, clerk: FakeClerk()), () {});
-    await tester.tap(find.text('SEND CODE'));
-    await tester.pump();
-    expect(find.textContaining('type your name'), findsOneWidget);
-    await tester.enterText(find.byKey(const Key('su-name')), 'Tara');
-    await tester.tap(find.text('SEND CODE'));
-    await tester.pump();
-    expect(find.text('Please type a real email.'), findsOneWidget);
-    await tester.enterText(find.byKey(const Key('su-email')), 'tara@example.com');
-    await tester.enterText(find.byKey(const Key('su-wa')), '12345');
+    expect(find.byKey(const Key('su-name')), findsNothing);
+    expect(find.byKey(const Key('su-email')), findsNothing);
     await tester.tap(find.text('SEND CODE'));
     await tester.pump();
     expect(find.text('WhatsApp number should be 10 digits.'), findsOneWidget);
     expect(api.calls, isEmpty);
+  });
+
+  testWidgets('returning WhatsApp user logs in without profile fields or writes', (tester) async {
+    final api = FakeApiClient({
+      'POST /api/auth/whatsapp/send': _sent,
+      'POST /api/auth/whatsapp/verify': {..._verified(), 'isNew': false},
+      'GET /api/hf/me': {'uid': 'user_1', 'displayName': 'Tara Sharma', 'email': 'tara@example.com'},
+    });
+    var resumed = 0;
+    await _open(tester, AuthRepo(api: api, clerk: FakeClerk()), () => resumed++);
+    await _fillForm(tester);
+    await tester.tap(find.text('SEND CODE'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byKey(const Key('su-code')), '123456');
+    await tester.tap(find.text('VERIFY'));
+    await tester.pumpAndSettle();
+    expect(api.calls, ['POST /api/auth/whatsapp/send', 'POST /api/auth/whatsapp/verify', 'GET /api/hf/me']);
+    expect(resumed, 1);
+  });
+
+  testWidgets('interrupted new account resumes profile and age after a later login', (tester) async {
+    var profileReads = 0;
+    final api = FakeApiClient({
+      'POST /api/auth/whatsapp/send': _sent,
+      'POST /api/auth/whatsapp/verify': _verified(needs18: true),
+      'GET /api/hf/me': () {
+        if (profileReads++ == 0) throw ApiException.offline();
+        return {'uid': 'user_1', 'displayName': null, 'email': null};
+      },
+      'PATCH /api/hf/me': {'ok': true},
+      'GET /api/config': {'hfAckVersion': '2026-10-10'},
+      'POST /api/hf/me/ack': {'ok': true},
+    });
+    var resumed = 0;
+    final repo = AuthRepo(api: api, clerk: FakeClerk());
+    await _open(tester, repo, () => resumed++);
+    await _fillForm(tester);
+    await tester.tap(find.text('SEND CODE'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byKey(const Key('su-code')), '123456');
+    await tester.tap(find.text('VERIFY'));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('su-name')), findsOneWidget);
+    Navigator.of(tester.element(find.byKey(const Key('su-name')))).pop();
+    await tester.pumpAndSettle();
+    api.routes['POST /api/auth/whatsapp/verify'] = {..._verified(needs18: true), 'isNew': false};
+    await tester.tap(find.text('OPEN'));
+    await tester.pumpAndSettle();
+    await _fillForm(tester);
+    await tester.tap(find.text('SEND CODE'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byKey(const Key('su-code')), '123456');
+    await tester.tap(find.text('VERIFY'));
+    await tester.pumpAndSettle();
+    expect(find.text('No internet. Check your connection.'), findsOneWidget);
+    await tester.tap(find.text('TRY AGAIN'));
+    await tester.pumpAndSettle();
+    expect(api.calls.where((c) => c == 'POST /api/auth/whatsapp/verify'), hasLength(2));
+    expect(find.byKey(const Key('su-name')), findsOneWidget);
+    await _profile(tester);
+    expect(find.byKey(const Key('su-18')), findsOneWidget);
+    await tester.tap(find.byKey(const Key('su-18')));
+    await tester.tap(find.text('FINISH'));
+    await tester.pumpAndSettle();
+    expect(resumed, 1);
+    expect(api.calls.where((c) => c == 'PATCH /api/hf/me'), hasLength(1));
+  });
+
+  testWidgets('auth sheet scrolls with keyboard on a short screen', (tester) async {
+    final api = FakeApiClient({'POST /api/auth/whatsapp/send': _sent, 'POST /api/auth/whatsapp/verify': _verified()});
+    await _open(tester, AuthRepo(api: api, clerk: FakeClerk()), () {});
+    tester.view.physicalSize = const Size(360, 600);
+    tester.view.devicePixelRatio = 1;
+    tester.view.viewInsets = const FakeViewPadding(bottom: 280);
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+    await tester.ensureVisible(find.byKey(const Key('su-wa')));
+    await _fillForm(tester);
+    await tester.ensureVisible(find.text('SEND CODE'));
+    await tester.tap(find.text('SEND CODE'));
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+    await tester.ensureVisible(find.byKey(const Key('su-code')));
+    await tester.enterText(find.byKey(const Key('su-code')), '123456');
+    await tester.ensureVisible(find.text('VERIFY'));
+    await tester.tap(find.text('VERIFY'));
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+    await tester.ensureVisible(find.text('SAVE DETAILS'));
+    expect(tester.getBottomRight(find.text('SAVE DETAILS')).dy, lessThanOrEqualTo(320));
   });
 
   testWidgets('new account: 18+ tick is asked, ack is posted, then the action resumes', (tester) async {
@@ -213,6 +305,7 @@ void main() {
     await tester.enterText(find.byKey(const Key('su-code')), '123456');
     await tester.tap(find.text('VERIFY'));
     await tester.pumpAndSettle();
+    await _profile(tester);
     expect(find.byKey(const Key('su-18')), findsOneWidget);
     expect(resumed, 0);
 
@@ -248,6 +341,7 @@ void main() {
     await tester.enterText(find.byKey(const Key('su-code')), '123456');
     await tester.tap(find.text('VERIFY'));
     await tester.pumpAndSettle();
+    await _profile(tester);
     expect(api.bodies.last, {'displayName': 'Tara Sharma'});
     expect(resumed, 1);
   });
@@ -271,6 +365,7 @@ void main() {
     await tester.enterText(find.byKey(const Key('su-code')), '123456');
     await tester.tap(find.text('VERIFY'));
     await tester.pumpAndSettle();
+    await _profile(tester);
     expect(find.text('No internet. Check your connection.'), findsOneWidget);
     expect(resumed, 0);
 

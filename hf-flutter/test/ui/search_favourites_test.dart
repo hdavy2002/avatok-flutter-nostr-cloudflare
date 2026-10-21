@@ -1,3 +1,5 @@
+import 'package:hf_app/data/services.dart';
+import 'package:hf_app/data/auth/clerk_client.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
@@ -59,10 +61,12 @@ Future<void> _pump(WidgetTester tester, Widget home) async {
 void main() {
   setUp(() {
     PresenceBridge.forceReal = true;
+    Services.instance.user = const ClerkUser(id: 'test_fan');
     demo.applyAccount(name: 'Fan', email: 'f@x.in', whatsapp: '******3210');
   });
   tearDown(() {
     PresenceBridge.forceReal = false;
+    Services.instance.user = null;
     FavouritesStore.override = null;
     ShareSheet.testSink = null;
     ReelPlayer.testPlayer = null;
