@@ -15,7 +15,6 @@
  *   <640px   top bar + hamburger menu with every visible admin page
  */
 import { Fragment, useEffect, useState } from 'react';
-import { motion, useReducedMotion } from 'framer-motion';
 import { useAuth, useUser } from '@clerk/clerk-react';
 import { Menu } from 'lucide-react';
 import { ClerkIsland } from '../../lib/clerk';
@@ -33,6 +32,7 @@ import { forgetAdminSession } from './adminCache';
 import { ApiError, adminApi, adminToken, setAdminGate, type AdminGate, type AdminWho } from './adminApi';
 import { BRAND } from '../../lib/brand';
 import { publicImage } from '../../lib/config';
+import { Ic, Jasmine, Marigold } from '../dashboard-hf/v3/ui';
 
 interface Who { name: string; email: string | null; photo: string | null }
 
@@ -100,13 +100,22 @@ function AdminBadge({ className }: { className?: string }) {
   );
 }
 
-/** [SAATHUM-SHOP-ADMIN-1] Group heading ("SHOP"), styled like the mockup's `.sh-side h3` — chandan-brown small caps. */
+/** [HF-ADMIN-DESI-1] Group heading like the dashboard's "Mera space": small caps with a marigold. Ungrouped screens sit
+ * under "Kaam-kaaj"; the Hosts group reads "Influencers" (hosts are influencers everywhere since 2026-10-15). */
 function GroupHeading({ label, className }: { label: string; className?: string }) {
   return (
-    <div role="presentation" className={cn('hf-admin-group mt-4 px-3 pb-1 font-dash text-[14px] font-black uppercase leading-none tracking-[0.12em] text-muted-foreground', className)}>
-      {label}
+    <div role="presentation" className={cn('hf-admin-group', className)}>
+      <Marigold size={14} tone={1} />{label}
     </div>
   );
+}
+const groupLabel = (g?: string) => (!g ? 'Kaam-kaaj' : g === 'Hosts' ? 'Influencers' : g);
+/** Heading to show above ADMIN_NAV[idx], or null when it continues the previous item's group. */
+const headingAt = (idx: number) => (idx === 0 || ADMIN_NAV[idx - 1]?.group !== ADMIN_NAV[idx].group ? groupLabel(ADMIN_NAV[idx].group) : null);
+
+/** A row of jasmine with the odd marigold, as at the foot of the dashboard menu. */
+function Mogra({ n = 9 }: { n?: number }) {
+  return <div className="hf-admin-mogra" aria-hidden="true">{Array.from({ length: n }, (_, i) => i % 4 === 3 ? <Marigold key={i} size={18} tone={1} /> : <Jasmine key={i} size={18} />)}</div>;
 }
 
 /** Gold "N to print" pill (mockup `.sh-side a .new`) on the Shop → Orders entry. */
@@ -149,28 +158,29 @@ function useToPrint(_ready: boolean, _active: AdminKey): number {
   return n;
 }
 
-function Logo({ compact = false }: { compact?: boolean }) {
+function Logo({ compact = false, badge = true }: { compact?: boolean; badge?: boolean }) {
   return (
-    <a href="/admin" className="hf-admin-logo flex items-center gap-2.5 no-underline" aria-label={`${BRAND.name} admin home`}>
-      {/* [SAATHUM-DASH-LOGO-1 2026-10-01] Lotus emblem (same art as the site header), no wordmark. */}
-      <img src={publicImage('/assets/branding/hf-mark.png', { width: 128, fit: 'scale-down' })} alt="" width={44} height={44} className="h-11 w-11 object-contain" />
-      {!compact && <span className="hf-admin-brand"><span>{BRAND.name}</span><AdminBadge /></span>}
+    <a href="/admin" className="hf-admin-logo flex items-center gap-2 no-underline" aria-label={`${BRAND.name} admin home`}>
+      {compact
+        ? <img src={publicImage('/assets/branding/hf-mark.png', { width: 128, fit: 'scale-down' })} alt="" width={44} height={44} className="h-11 w-11 object-contain" />
+        : <Ic name="heart" className="hf-admin-heart" size={26} />}
+      {!compact && <span className="hf-admin-brand"><span>{BRAND.name}</span>{badge && <AdminBadge />}</span>}
     </a>
   );
 }
 
 function Sidebar({ active, who, ready, toPrint }: { active: AdminKey; who: Who | null; ready: boolean; toPrint: number }) {
-  const reduce = useReducedMotion();
   return (
-    <aside className="hf-admin-side fixed inset-y-0 left-0 z-40 hidden w-[var(--dash-sidebar-w,260px)] flex-col overflow-y-auto border-r border-border/50 bg-card px-4 py-5 lg:flex">
-      <div className="px-2"><Logo /></div>
+    <aside className="hf-admin-side fixed inset-y-0 left-0 z-40 hidden w-[var(--dash-sidebar-w,260px)] flex-col overflow-y-auto border-r px-3.5 py-5 lg:flex">
+      <div className="px-1.5"><Logo badge={false} /></div>
+      <div className="hf-admin-tag"><AdminBadge /> <span>Team ka adda</span></div>
 
-      <div className="hf-admin-account mt-6 rounded-xl border border-border/50 bg-card p-3 shadow-[var(--dash-shadow,none)]">
+      <div className="hf-admin-account">
         {ready && who ? (
           <div className="flex items-center gap-3">
             <UserAvatar who={who} />
             <div className="min-w-0">
-              <div className="truncate font-dash text-[15px] font-bold text-foreground">{who.name}</div>
+              <div className="truncate font-dash text-[16px] font-bold text-foreground">{who.name}</div>
               {who.email && <div className="truncate text-[14px] font-semibold text-muted-foreground">{who.email}</div>}
             </div>
           </div>
@@ -182,11 +192,11 @@ function Sidebar({ active, who, ready, toPrint }: { active: AdminKey; who: Who |
         )}
       </div>
 
-      <nav aria-label="Admin" className="mt-6 flex flex-1 flex-col gap-1">
+      <nav aria-label="Admin" className="mt-1 flex flex-col gap-1">
         {ADMIN_NAV.map((it, idx) => {
           const on = it.key === active;
           const Icon = it.icon;
-          const heading = it.group && ADMIN_NAV[idx - 1]?.group !== it.group ? it.group : null;
+          const heading = headingAt(idx);
           return (
             <Fragment key={it.key}>
             {heading && <GroupHeading label={heading} />}
@@ -194,49 +204,32 @@ function Sidebar({ active, who, ready, toPrint }: { active: AdminKey; who: Who |
               href={it.href}
               aria-label={it.label}
               aria-current={on ? 'page' : undefined}
-              className={cn(
-                'hf-admin-navitem group relative flex min-h-[44px] items-center gap-3 rounded-lg px-3 text-[15px] font-bold no-underline transition-colors',
-                on ? 'text-accent-foreground' : 'text-foreground/80 hover:bg-muted hover:text-foreground',
-              )}
+              className={cn('hf-admin-navitem relative flex items-center gap-3 no-underline', on && 'is-on')}
             >
-              {on && (
-                <motion.span
-                  layoutId="admin2-active"
-                  aria-hidden="true"
-                  className="pointer-events-none absolute inset-0 rounded-lg bg-accent shadow-[var(--dash-shadow,none)]"
-                  initial={reduce ? false : { opacity: 0, scale: 0.96 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  transition={reduce ? { duration: 0 } : { type: 'spring', stiffness: 420, damping: 34 }}
-                />
-              )}
-              {on && <span aria-hidden className="pointer-events-none absolute -left-4 top-2 bottom-2 w-1 rounded-r-full bg-grand-gold" />}
-              <Icon className="relative h-[18px] w-[18px] shrink-0" strokeWidth={2.2} />
-              <span className="relative">{it.label}</span>
+              <Icon className="relative h-[22px] w-[22px] shrink-0" strokeWidth={2.1} />
+              <span className="relative min-w-0 flex-1">{it.label}</span>
               {it.key === 'shop-orders' && <PrintBadge n={toPrint} />}
               <NavPill label={it.pill} />
+              {on && <span className="hf-admin-flw" aria-hidden="true"><Marigold size={22} tone={1} /></span>}
             </a>
             </Fragment>
           );
         })}
       </nav>
 
-      <div className="mt-4 flex flex-col gap-2">
-        <a
-          href={ADMIN_VIEW_SITE.href}
-          className="flex min-h-[44px] items-center gap-3 rounded-lg px-3 text-[15px] font-bold text-foreground/80 no-underline transition-colors hover:bg-muted hover:text-foreground"
-        >
-          <ADMIN_VIEW_SITE.icon className="h-[18px] w-[18px]" strokeWidth={2.2} />
+      <GroupHeading label="Account" />
+      <div className="flex flex-col gap-1">
+        <a href={ADMIN_VIEW_SITE.href} className="hf-admin-navitem flex items-center gap-3 no-underline">
+          <ADMIN_VIEW_SITE.icon className="h-[22px] w-[22px] shrink-0" strokeWidth={2.1} />
           {ADMIN_VIEW_SITE.label}
         </a>
-        <a
-          href={ADMIN_LOGOUT.href}
-          onClick={forgetAdminSession}
-          className="flex min-h-[44px] items-center gap-3 rounded-lg border border-border/50 px-3 text-[15px] font-bold text-primary no-underline transition-colors hover:bg-primary/10"
-        >
-          <ADMIN_LOGOUT.icon className="h-[18px] w-[18px]" strokeWidth={2.2} />
+        <a href={ADMIN_LOGOUT.href} onClick={forgetAdminSession} className="hf-admin-navitem is-danger flex items-center gap-3 no-underline">
+          <ADMIN_LOGOUT.icon className="h-[22px] w-[22px] shrink-0" strokeWidth={2.1} />
           {ADMIN_LOGOUT.label}
         </a>
       </div>
+      <Mogra />
+      <p className="hf-admin-sidefoot">Thak gaye? Ek cutting chai banti hai.</p>
     </aside>
   );
 }
@@ -271,7 +264,7 @@ function Rail({ active, toPrint }: { active: AdminKey; toPrint: number }) {
                       it.first && 'mt-auto',
                       it.key === 'logout' && 'text-primary hover:bg-primary/10',
                       it.key === 'site' && 'text-foreground/75 hover:bg-muted hover:text-foreground',
-                      !it.tail && (on ? 'bg-accent text-accent-foreground shadow-[var(--dash-shadow,none)]' : 'text-foreground/75 hover:bg-muted hover:text-foreground'),
+                      !it.tail && (on ? 'hf-admin-rail-on' : 'text-foreground/75 hover:bg-muted hover:text-foreground'),
                     )}
                   >
                     <Icon className="h-5 w-5" strokeWidth={2.2} />
@@ -314,19 +307,19 @@ function MobileMenu({ active, who, toPrint }: { active: AdminKey; who: Who | nul
       </SheetTrigger>
       <SheetContent side="top" className="hf-admin-menu max-h-[90dvh] rounded-b-2xl pt-[calc(env(safe-area-inset-top,0px)+24px)] pb-[calc(env(safe-area-inset-bottom,0px)+24px)]">
         <SheetHeader className="text-left">
-          <SheetTitle className="flex items-center gap-2 font-dash text-grand-teal">Menu <AdminBadge /></SheetTitle>
+          <SheetTitle className="flex items-center gap-2 font-dash text-grand-teal"><Marigold size={24} tone={1} />Menu <AdminBadge /></SheetTitle>
           <SheetDescription className="break-words">{who?.name && <span className="block font-bold">{who.name}</span>}{who?.email ?? `${BRAND.name} admin`}</SheetDescription>
         </SheetHeader>
         <nav aria-label="Admin menu" className="mt-4 flex flex-col gap-1">
           {ADMIN_NAV.map((it, idx) => {
             const Icon = it.icon;
             const cur = it.key === active;
-            const heading = it.group && ADMIN_NAV[idx - 1]?.group !== it.group ? it.group : null;
+            const heading = headingAt(idx);
             return (
               <Fragment key={it.key}>
-                {heading && <GroupHeading label={heading} className="mt-3" />}
+                {heading && <GroupHeading label={heading} className="mt-2" />}
                 <a href={it.href} onClick={() => setOpen(false)} aria-current={cur ? 'page' : undefined}
-                  className={cn(row, cur ? 'bg-accent text-accent-foreground' : 'text-foreground hover:bg-muted')}>
+                  className={cn(row, 'hf-admin-navitem', cur ? 'is-on' : 'text-foreground')}>
                   <Icon className="h-5 w-5" strokeWidth={2.2} />{it.label}
                   {it.key === 'shop-orders' && <PrintBadge n={toPrint} />}
                   <NavPill label={it.pill} />
@@ -341,6 +334,7 @@ function MobileMenu({ active, who, toPrint }: { active: AdminKey; who: Who | nul
           <a href={ADMIN_LOGOUT.href} onClick={() => { forgetAdminSession(); setOpen(false); }} className={cn(row, 'text-primary hover:bg-primary/10')}>
             <ADMIN_LOGOUT.icon className="h-5 w-5" strokeWidth={2.2} />{ADMIN_LOGOUT.label}
           </a>
+          <Mogra />
         </nav>
       </SheetContent>
     </Sheet>

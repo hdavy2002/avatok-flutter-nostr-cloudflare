@@ -499,3 +499,4 @@ else, or come back later."
 | 2026-10-20 | HF-LEGAL-LINKS-1 (owner): the app was whitelisted with Cashfree (first in-app ₹10 top-up paid end to end); Settings now links Refunds and cancellations + Contact us (HF-REEL-43). |
 | 2026-10-20 | HF-BOOK-APPROVE-BE (owner): booking approval, 24-hour rule, full refund on decline or expiry, topics, open-window alerts (HF-BOOK-1 to 7), behind `hfBookingApprovalEnabled`. |
 | 2026-10-20 | HF-PALETTE-RANGOLI-1 (owner): app palette "Rangoli Soft" (HF-REEL-44), green for the Online state only (HF-REEL-45), kolam-motif bottom bars (HF-REEL-46). |
+| 2026-10-22 | HF-ADMIN-DESI-1 (owner): every /admin screen gets the dashboard's Indian treatment — Hinglish headline + desi sticker per screen, marigold group headings (Kaam-kaaj, Shop, Influencers, Preview, Account), plum active pill, mogra row, marigold section titles. Design only; no admin behaviour changed. |

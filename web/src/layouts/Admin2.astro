@@ -17,6 +17,7 @@ import Base from './Base.astro';
 import AdminNav from '../islands/admin2/AdminNav.tsx';
 import DashToaster from '../islands/dashboard2/DashToaster.tsx';
 import type { AdminKey } from '../islands/admin2/nav';
+import { ADMIN_DESI, POSTER_STICKERS } from '../islands/admin2/adminDesi';
 import { publicImage } from '../lib/config';
 import '../styles/site-tokens.css';
 import '../styles/hf-admin.css';
@@ -35,6 +36,9 @@ export interface Props {
 }
 const { title, heading, subtitle, active } = Astro.props;
 const hasActions = Astro.slots.has('actions');
+// [HF-ADMIN-DESI-1] Dashboard-style page head: plain page name as the eyebrow, a Hinglish headline, a desi sticker.
+const desi = ADMIN_DESI[active];
+const stickerSrc = desi ? publicImage(`/hf/stickers/${desi.sticker}.webp`, { width: 256 }) : null;
 
 Astro.response.headers.set('Cache-Control', 'private, no-store');
 
@@ -71,13 +75,25 @@ Astro.response.headers.set('Cache-Control', 'private, no-store');
     <div class="flex min-h-screen flex-col pt-[calc(var(--dash-topbar-h,56px)+env(safe-area-inset-top,0px))] sm:pl-[var(--dash-rail-w,72px)] sm:pt-0 lg:pl-[var(--dash-sidebar-w,260px)]">
       <main class="hf-admin-main pb-[calc(24px+env(safe-area-inset-bottom,0px))] sm:pb-10 mx-auto w-full max-w-[1600px] flex-1 px-4 pt-6 sm:px-8 sm:pt-10">
         <header class="hf-admin-pagehead mb-6 sm:mb-8">
-          <div class="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-            <div class="min-w-0">
-              <p class="hf-admin-eyebrow">Team workspace</p>
-              <h1 class="font-dash text-[26px] font-bold leading-[1.15] tracking-[0.01em] text-grand-teal sm:text-[32px]">{heading ?? title}</h1>
-              {subtitle && <p class="mt-2 max-w-2xl text-[15px] font-semibold leading-relaxed text-muted-foreground">{subtitle}</p>}
+          <div class="hf-admin-pagehead-row">
+            <div class="hf-admin-pagehead-text min-w-0">
+              <p class="hf-admin-eyebrow">{heading ?? title}</p>
+              <h1 class="font-dash font-bold leading-[1.12] text-grand-teal">{desi?.line ?? heading ?? title}</h1>
+              {subtitle && <p class="hf-admin-sub mt-2 max-w-2xl font-semibold leading-relaxed text-muted-foreground">{subtitle}</p>}
+              {hasActions && <div class="admin2-actions mt-4 flex flex-wrap items-center gap-2"><slot name="actions" /></div>}
             </div>
-            {hasActions && <div class="admin2-actions flex flex-wrap items-center gap-2"><slot name="actions" /></div>}
+            {desi && stickerSrc && (
+              <img
+                src={stickerSrc}
+                alt=""
+                width="120"
+                height="120"
+                decoding="async"
+                draggable="false"
+                class:list={['hf-admin-stk', POSTER_STICKERS.has(desi.sticker) && 'poster']}
+                style={`--rot:${desi.rot}deg`}
+              />
+            )}
           </div>
           <div class="hf-admin-divider mt-5" aria-hidden="true"><span></span><span></span><span></span></div>
         </header>
