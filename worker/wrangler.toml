@@ -59,28 +59,7 @@ CF_ACCOUNT_ID = "fd3dbf43f8e6d8bf65bd36b02eb0abb0"
 # [STAGING-ISOLATION-1] TAGS PostHog events with the environment (Phase-1 audit A1).
 # Safe to add now — only takes effect on a future PROD deploy (not run this session).
 ENVIRONMENT_NAME = "prod"
-# [AVA-MODEL-FLASH-1 2026-08-14] Agentic chat lane model swap (owner decision,
-# reversing the 2026-06-27 Kimi choice on measured data: kimi-k3 avg 15.4s /
-# max 34s per model call, TTFB ~17s — a reasoning model thinking silently is
-# what the owner reported as "Ava takes forever and doesn't stream"). Flash
-# first-tokens in ~1-2s. The ALT stays a DIFFERENT family on purpose
-# (composio.ts's outage rationale): Kimi becomes the fallback, so deep
-# reasoning stays on the ladder. Code defaults in composio.ts / ava_agent.ts
-# are deliberately unchanged — these vars override them.
-# [AVA-MODEL-FLASH-2 2026-08-14] Owner: 3.5-flash → 3.7-flash (released
-# 2026-08-13; same family/shape, OpenRouter slug verified). Drives BOTH the
-# agentic chat lane and the [AVA-AMBIENT-2] composer.
-OPENROUTER_AGENT_MODEL = "google/gemini-3.7-flash"
-# [AVA-MODEL-FLASH-2] Fallback: kimi-k3 → x-ai/grok-4.1-fast (owner 2026-08-14).
-# Still a different family from the Google primary (the outage rationale holds);
-# "fast" variant, reasoning-off by default via OpenRouter — unlike kimi-k3 it
-# won't add 15s of silent thinking on the rare turns the ladder falls back.
-OPENROUTER_AGENT_MODEL_ALT = "x-ai/grok-4.1-fast"
-# [AVA-VERTEX-TEXT-1 2026-08-23] Interactive Ava text, shared brainstorming,
-# media interviews and multi-tool planning now use Google Vertex directly.
-# The legacy OpenRouter vars above remain only for unrelated ambient/code-mode
-# paths pending their own migration; Ava's user-addressed lanes do not read them.
-AVA_VERTEX_TEXT_MODEL = "gemini-3.7-flash"
+# [HF-WORKER-FREE-2] Legacy Ava model vars are retired on Workers Free.
 # [LIVE-DIDIT-1] didit.me liveness — the "AvaTOK Liveness" workflow (LIVENESS
 # feature only) created 2026-07-09 in the owner's Didit console. The API key is
 # a SECRET (`wrangler secret put DIDIT_API_KEY`), never in this file.
@@ -98,19 +77,8 @@ BLOSSOM_BASE_URL = "https://media.hellofraands.com"   # public R2 read host (no 
 # its own bucket_name below.
 DIGITAL_BUCKET_NAME = "avatok-digital"
 FCM_PROJECT = "avatok-e19ef"
-BRAIN_REASONER_MODEL = "@cf/google/gemma-4-26b-a4b-it"  # Gemma 4 26B-A4B MoE (~4B-class cost, thinking-mode reasoning)
-# AVA CORE (Phase 0, AVA-CORE-1): the ONE reasoner slot behind avaReason()
-# (lib/ava_reason.ts). AVA_REASONER runs on Workers AI (env.AI); AVA_REASONER_ALT
-# is the OpenRouter error/429 fallback. Named for the ROLE, not the model (v5 D21).
-AVA_REASONER = "@cf/google/gemma-4-26b-a4b-it"
-AVA_REASONER_ALT = "google/gemini-2.5-flash-lite"
-BRAIN_EMBED_MODEL = "@cf/baai/bge-small-en-v1.5"            # 384-dim — matches avatok-semantic
-BRAIN_RETRO_DELETE = "1"                                    # Phase 9: toggle OFF ⇒ retro-delete indexed items
-POSTHOG_QUERY_HOST = "https://eu.posthog.com"               # investigate() reads (personal key) — EU: project 139917 lives on eu.posthog.com
+# Retained for account-deletion erasure in the shared API and consumers.
 POSTHOG_PROJECT_ID = "139917"
-# AvaVision Agentic-Vision snapshot model ("Analyze my form", code execution on).
-# Phase 0 PRICING.md §3 verified the exact id; preview may roll to GA gemini-3-flash.
-AVAVISION_SNAPSHOT_MODEL = "gemini-3-flash-preview"
 # [VERTEX-1] 2026-08-17 — REST Gemini calls go to Vertex (aiplatform.googleapis.com)
 # instead of the AI-Studio Developer API, for India-scale quota. Auth reuses the
 # GOOGLE_TTS_SA_JSON service account (ava-tts@avatok-avaglobal), which needs the
@@ -135,35 +103,17 @@ CLERK_JWKS_URL = "https://clerk.hellofraands.com/.well-known/jwks.json"
 CLERK_ISSUER = "https://clerk.hellofraands.com"
 # Admins allowed to PUT /api/admin/config (remote kill switches, Phase 1 A2).
 ADMIN_UIDS = "user_3AuqQadIDHJftJtTkLD0DtKM8MB"
-# AvaTalk group conferencing (Phase 10 — LiveKit ≤25). LIVEKIT_URL is a var;
-# LIVEKIT_API_KEY / LIVEKIT_API_SECRET are secrets (`wrangler secret put`).
-# All three unset ⇒ /api/conference/* returns 503 (flag-gated).
-LIVEKIT_URL = "wss://tocktube-gk81le6j.livekit.cloud"
 # AvaAffiliate /a/:linkId web preview — Play badge package id (the Android
 # applicationId from app/android/app/build.gradle.kts). APP_STORE_ID is
 # deliberately NOT set (Android-only launch): unset ⇒ no App Store badge.
 PLAY_PACKAGE_ID = "com.saathum.app"
 
-# State Sync Engine flags (worker/src/do/inbox.ts).
-# SYNC_OPS_V2: per-conversation sequence stamping + op_appended telemetry. Default ON
-#   in code ("!= '0'"); pinned here for clarity. Set "0" to disable stamping.
-# SYNC_CONV_CURSOR_V2: Phase 1 switch-over — per-conversation catch-up (HTTP /sync?conv=
-#   and the hybrid WS reply). SAFE: the hybrid payload is a strict SUPERSET of the plain
-#   global sweep (never fewer messages), and it only activates for clients that report
-#   `cc` per-conv positions in hello — current apps don't, so this is inert until the
-#   cc-sending APK is installed. Set "0" (or unset) to disable.
-SYNC_OPS_V2 = "1"
+# State Sync Engine: SYNC_OPS_V2 is absent because its code default is ON.
+# Keep per-conversation cursor behavior pinned until legacy messaging is retired.
 SYNC_CONV_CURSOR_V2 = "1"
 # P8 chat durability: keep a batched per-user R2 archive for backfill and
 # cross-device recovery. Staging explicitly remains dark in its own vars.
 CHAT_ARCHIVE_V2 = "1"
-
-# [AGENT-LIVE-1] Comma-separated Clerk uid(s) allowed to create/edit/publish AI
-# voice agent listings (D2). Empty until the coordinator resolves
-# hdavy2002@gmail.com to a single verified uid per R2 §7.1 and fills this in
-# at rollout — until then laneGate/talkGate fail closed with
-# agent_admin_unconfigured (worker/src/lib/agent_live/gate.ts).
-AGENT_ADMIN_UIDS = "user_3AuqQadIDHJftJtTkLD0DtKM8MB"  # hdavy2002@gmail.com — resolved 2026-09-13 via users.email_hash; sole agent admin
 
 # ---------------------------------------------------------------------------
 # D1 — the database (Golden Rule 1). Four logical databases at launch.
