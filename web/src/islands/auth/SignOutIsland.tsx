@@ -42,11 +42,8 @@
  */
 import { useEffect, useRef, useState } from 'react';
 import { useAuth, useClerk } from '@clerk/clerk-react';
-import { ClerkIsland } from '../../lib/clerk';
+import { ClerkIsland, clearLegacyIdentityStorage } from '../../lib/clerk';
 import { capture, reset } from '../../lib/analytics';
-
-const GUEST_JWT_KEY = 'saathum_guest_jwt';
-const GUEST_HANDLE_KEY = 'saathum_guest_handle';
 
 /** Leave the page. `replace` so Back does not return to the sign-out route. */
 function goHome() {
@@ -72,14 +69,7 @@ function Inner() {
   };
 
   useEffect(() => {
-    // The guest token is device-level and lives outside Clerk, so clear it
-    // immediately and unconditionally — it does not depend on the SDK.
-    try {
-      localStorage.removeItem(GUEST_JWT_KEY);
-      localStorage.removeItem(GUEST_HANDLE_KEY);
-    } catch {
-      /* storage blocked — nothing to clear */
-    }
+    clearLegacyIdentityStorage();
   }, []);
 
   useEffect(() => {

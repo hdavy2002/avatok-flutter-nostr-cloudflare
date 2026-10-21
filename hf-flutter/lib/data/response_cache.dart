@@ -3,7 +3,7 @@ import 'dart:convert';
 
 import 'package:shared_preferences/shared_preferences.dart';
 
-/// [HF-APP-CACHE-1] The app's read cache: the last good answer of a GET, kept in memory and (when [persist] is on) on disk,
+/// [HF-APP-CACHE-1] The app's read cache: GET answers in memory, explicit public allowlist only on disk,
 /// so a screen can paint instantly and refresh behind it (stale-while-revalidate). See Specs/PLAN-2026-10-20-HF-SPEED.md.
 ///
 /// Per-account scoping: a key is `hfc1|<scope>|<path?query>` where scope is `u:<account id>` for signed-in calls and `pub`
@@ -33,7 +33,38 @@ class ResponseCache {
     '/api/hf/invites/top',
   ];
 
+  // Only these public GETs may survive process restart. auth:false alone is insufficient.
+  static const persistentPublicPaths = {'/api/config', '/api/hf/options', '/api/hf/reels', '/api/hf/invites/top'};
+  bool _mayPersist(String key) => key.startsWith('${_prefix}pub|') &&
+      persistentPublicPaths.contains(key.substring('${_prefix}pub|'.length).split('?').first);
+
   final Map<String, CacheHit> _mem = {};
+  Future<void>? _migration;
+  bool _migrated = false;
+  Object? migrationError;
+
+  /// Retryable and observable: never hydrate historic account data, even if deletion fails.
+  Future<void> initialize() async {
+    if (!persist || _migrated) return;
+    if (_migration != null) return _migration!;
+    final task = _purgeLegacy();
+    _migration = task;
+    try { await task; } finally { _migration = null; }
+  }
+
+  Future<void> _purgeLegacy() async {
+    try {
+      final p = await SharedPreferences.getInstance();
+      for (final key in p.getKeys().where((k) => k.startsWith(_prefix) && !_mayPersist(k)).toList()) {
+        if (!await p.remove(key)) throw StateError('cache_purge_failed');
+      }
+      migrationError = null;
+      _migrated = true;
+    } catch (error) {
+      migrationError = error;
+      // Callers can retry initialize; private data is never read from disk meanwhile.
+    }
+  }
 
   String keyFor(String scope, String path, Map<String, Object?>? query) {
     final q = <String>[
@@ -46,8 +77,10 @@ class ResponseCache {
 
   /// The stored answer, or null when there is none or it is older than [maxAge].
   Future<CacheHit?> read(String key, Duration maxAge) async {
+    await initialize();
+    final gen = generation;
     var hit = _mem[key];
-    if (hit == null && persist) {
+    if (hit == null && persist && _migrated && _mayPersist(key)) {
       try {
         final p = await SharedPreferences.getInstance();
         final raw = p.getString(key);
@@ -56,6 +89,7 @@ class ResponseCache {
           final at = cut > 0 ? int.tryParse(raw.substring(0, cut)) : null;
           if (at != null) {
             hit = CacheHit(jsonDecode(raw.substring(cut + 1)), DateTime.fromMillisecondsSinceEpoch(at));
+            if (gen != generation) return null;
             _mem[key] = hit;
           }
         }
@@ -69,13 +103,17 @@ class ResponseCache {
   }
 
   Future<void> write(String key, Object? json) async {
+    final gen = generation;
+    await initialize();
+    if (gen != generation) return;
     final hit = CacheHit(json, _now());
     _mem[key] = hit;
-    if (!persist) return;
+    if (!persist || !_migrated || !_mayPersist(key)) return;
     try {
       final text = jsonEncode(json);
       if (text.length > maxBytes) return;
       final p = await SharedPreferences.getInstance();
+      if (gen != generation) return;
       await p.setString(key, '${hit.at.millisecondsSinceEpoch}|$text');
     } catch (_) {
       // best effort: the memory copy still works
@@ -92,11 +130,16 @@ class ResponseCache {
       });
 
   /// Sign-out / lost session: wipe one account's entries, memory and disk.
-  Future<void> clearAccount(String accountId) => _drop((k) => k.startsWith('${_prefix}u:$accountId|'));
+  int accountGeneration = 0;
+  Future<void> clearAccount(String accountId) {
+    accountGeneration++;
+    return _drop((k) => k.startsWith('${_prefix}u:$accountId|'));
+  }
 
   /// Housekeeping at start: delete disk entries older than [olderThan].
   Future<void> prune({Duration olderThan = const Duration(days: 14)}) async {
     if (!persist) return;
+    await initialize();
     try {
       final p = await SharedPreferences.getInstance();
       final cutoff = _now().subtract(olderThan).millisecondsSinceEpoch;

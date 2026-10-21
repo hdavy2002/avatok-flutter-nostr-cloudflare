@@ -33,7 +33,7 @@ class Services {
   static final Services instance = Services._();
 
   late final ClerkApi clerk = ClerkClient();
-  /// [HF-APP-CACHE-1] Reads are cached on disk, per Clerk account (the account id scopes every key; sign-out wipes it).
+  /// [HF-APP-CACHE-1] Account reads stay in memory; only explicitly public responses can reach disk.
   late final ApiClient api = ApiClient(
     tokens: clerk.sessionToken,
     onSessionLost: _sessionLost,
@@ -59,7 +59,17 @@ class Services {
   late final FavouritesRepo favouritesRepo = FavouritesRepo(api); // [HF-WIRE-9]
 
   /// The signed-in Clerk user, or null (signed out, or no connection at start).
-  ClerkUser? user;
+  ClerkUser? _user;
+  ClerkUser? get user => _user;
+  set user(ClerkUser? value) {
+    if (_user?.id != value?.id) {
+      final old = _user?.id;
+      if (old != null) unawaited(api.cache.clearAccount(old));
+      me = null;
+      _prefetchedFor = null;
+    }
+    _user = value;
+  }
 
   /// `GET /api/hf/me`, or null until it loaded.
   Me? me;
@@ -97,8 +107,10 @@ class Services {
     if (!isSignedIn) return false;
     if (me != null) return true;
     try {
+      final id = user?.id;
+      final epoch = api.cache.accountGeneration;
       final m = await meRepo.cached();
-      if (m == null) return false;
+      if (id != user?.id || epoch != api.cache.accountGeneration || m == null) return false;
       me = m;
       _syncDemoAccount();
       return true;
@@ -109,10 +121,13 @@ class Services {
 
   /// Is there an active Clerk session on this device? Never throws.
   Future<void> restoreSession() async {
+    final epoch = api.cache.accountGeneration;
     try {
       final u = await clerk.currentUser();
+      if (epoch != api.cache.accountGeneration) return;
       user = (u == null || u.id.isEmpty) ? null : u;
     } catch (_) {
+      if (epoch != api.cache.accountGeneration) return;
       user = null;
     }
   }
@@ -121,7 +136,11 @@ class Services {
   Future<void> refreshMe() async {
     if (!isSignedIn) return;
     try {
-      me = await meRepo.fetch();
+      final id = user?.id;
+      final epoch = api.cache.accountGeneration;
+      final fresh = await meRepo.fetch();
+      if (id != user?.id || epoch != api.cache.accountGeneration) return;
+      me = fresh;
       _syncDemoAccount();
       unawaited(_syncPush());
       unawaited(prefetch());
@@ -204,6 +223,10 @@ class Services {
   /// The splash gives up waiting after the countdown, and late results are simply kept for later screens.
   Future<void> boot() async {
     final started = Stopwatch()..start();
+    await api.cache.initialize();
+    if (api.cache.migrationError != null) {
+      Telemetry.cacheOutcome('/cache', 'legacy_purge_failed');
+    }
     final intro = IntroStore.read().then((seen) {
       if (seen) demo.introSeen = true;
     });

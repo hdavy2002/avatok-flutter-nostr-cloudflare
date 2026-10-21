@@ -37,16 +37,6 @@ const LAZY: Record<StepKey, React.LazyExoticComponent<ComponentType<StepProps>>>
 const LazyClerkBridge = lazy(() => import('../../lib/clerk').then(m => ({ default: m.ClerkSessionBridge })));
 
 type Phase = 'boot' | 'auth' | 'gate' | 'error' | 'ready';
-/** [HF-ONBOARD-GATE-2] Same test as the site head's auth hint: no live Clerk session cookie (__client_uat=0 or missing)
- *  and no guest token means nobody is signed in, so skip the 10 s token wait. */
-function looksSignedOut(): boolean {
-  try {
-    const m = document.cookie.match(/(?:^|;\s*)__client_uat(?:_[A-Za-z0-9]+)?=([^;]*)/);
-    if (m && m[1] && m[1] !== '0') return false;
-    try { if (localStorage.getItem('saathum_guest_jwt')) return false; } catch { /* ignore */ }
-    return true;
-  } catch { return false; }
-}
 const SIGN_IN_URL = `/sign-in?redirect_url=${encodeURIComponent('/hosts/onboarding')}`;
 
 /** Real mode only when the worker says both flags are on (cache-busted) and the URL does not ask for ?mock=1. */
@@ -163,7 +153,6 @@ export default function HostOnboarding() {
       try {
         // [HF-ONBOARD-GATE-1] The head script already knows when nobody is signed in: show the gate at once
         // instead of waiting up to 10 s for a Clerk token that will never come.
-        if (looksSignedOut()) { setPhase('gate'); return; }
         const { getActiveTokenWaited } = await import('../../lib/clerk');
         const t = await getActiveTokenWaited(10000);
         if (!live) return;

@@ -57,6 +57,25 @@ import { installEmbedBridge } from './embed';
 
 const GUEST_JWT_KEY = 'saathum_guest_jwt';
 const DEVICE_ID_KEY = 'saathum_device_id';
+let guestToken: string | null = null;
+
+/** Remove obsolete app-owned identity data, leaving Clerk's own session intact. */
+export function clearLegacyIdentityStorage(): void {
+  guestToken = null;
+  try {
+    localStorage.removeItem(GUEST_JWT_KEY);
+    localStorage.removeItem('saathum_guest_handle');
+    for (const key of Object.keys(localStorage)) {
+      if (key.startsWith('ph_email_')) localStorage.removeItem(key);
+    }
+  } catch { /* Storage may be unavailable. No reads fall back to these keys. */ }
+}
+// These still-reachable legacy apps have their own guest API/UI readers.
+// Their migration must be coordinated with those readers; HF never uses this fallback.
+function legacyGuestSurface(): boolean {
+  return typeof location !== 'undefined' && /^(?:\/pandit\/?|\/talk\/?|\/dash2(?:\/.*)?)$/.test(location.pathname);
+}
+if (!legacyGuestSurface()) clearLegacyIdentityStorage();
 
 // ── module-level bridges so non-React callers (requireGuestAuth) can read a
 // live Clerk session and open the gate modal mounted by <ClerkIsland>. ──────
@@ -69,6 +88,14 @@ const DEVICE_ID_KEY = 'saathum_device_id';
 // new one, and it is what the 401 retry in the admin workbench uses.
 let _clerkGetToken: ((opts?: { skipCache?: boolean }) => Promise<string | null>) | null = null;
 let _clerkSignedIn = false;
+let _clerkLoaded = false;
+/** A synchronous hint only after the active session bridge has loaded. Unknown waits for the token API. */
+export function activeSessionSignedOut(): boolean {
+  if (!_hostToken) {
+    try { _hostToken = installEmbedBridge(); } catch { /* normal browser */ }
+  }
+  return _clerkLoaded && !_clerkSignedIn && !_hostToken;
+}
 // Readiness and account changes invalidate optional-auth data in other islands.
 export const ACTIVE_SESSION_CHANGED = 'site:active-session-changed';
 let _openGate: ((resolve: (jwt: string) => void, reject: (e: unknown) => void) => void) | null = null;
@@ -111,7 +138,7 @@ export function deviceId(): string {
 
 /**
  * Best-effort read of the current session JWT WITHOUT opening any UI:
- * live Clerk session first, then a stored guest_token. Returns null for an
+ * live Clerk or native host session only. Returns null for an
  * anonymous visitor. Use this for optional-auth reads.
  */
 export async function getActiveToken(
@@ -161,7 +188,7 @@ export async function getActiveToken(
   // back an even older one" — and the caller, having explicitly asked for a
   // fresh mint, would read the resulting 401 as a dead session.
   if (opts?.skipCache) return null;
-  return lsGet(GUEST_JWT_KEY);
+  return legacyGuestSurface() ? (guestToken ?? lsGet(GUEST_JWT_KEY)) : null;
 }
 
 /**
@@ -219,7 +246,10 @@ async function createGuest(email: string): Promise<string> {
         method: 'POST',
         body: { handle, device_id: deviceId() },
       });
-      lsSet(GUEST_JWT_KEY, res.guest_token);
+      guestToken = res.guest_token;
+      // Legacy guide UI/API readers still use this key. Entering an HF page
+      // clears it, so returning to a guide then requires authentication again.
+      if (legacyGuestSurface()) lsSet(GUEST_JWT_KEY, res.guest_token);
       capture('auth_guest_token_issued');
       return res.guest_token;
     } catch (e) {
@@ -281,6 +311,7 @@ function ClerkBridge() {
   const { user, isLoaded: localeUserLoaded } = useUser();
   useEffect(() => { if (localeUserLoaded) setLocaleAccount(user?.id ?? null); }, [localeUserLoaded, user?.id]);
   useEffect(() => {
+    _clerkLoaded = !!isLoaded;
     _clerkSignedIn = !!isSignedIn;
     _clerkGetToken = (opts) => getToken(opts);
     // [FAV-WIRE-1 2026-09-05] A token getter for the page's INLINE scripts.
@@ -293,11 +324,12 @@ function ClerkBridge() {
     // the same waited/cached path every island uses.
     (window as any).__siteToken = () => getActiveTokenWaited(5000);
     return () => {
+      _clerkLoaded = false;
       _clerkGetToken = null;
       _clerkSignedIn = false;
       try { delete (window as any).__siteToken; } catch { /* ignore */ }
     };
-  }, [isSignedIn, getToken, sessionId, userId]);
+  }, [isLoaded, isSignedIn, getToken, sessionId, userId]);
 
   // Separate from getToken's identity: token refreshes must not refetch preview.
   // Runs after the token bridge above is updated, including a late first load.
@@ -408,7 +440,7 @@ export function GuestGate({ open, onAuthed, onCancel }: GuestGateProps) {
     setError(null);
     try {
       // Reuse an existing guest token if we already have one this session.
-      const existing = lsGet(GUEST_JWT_KEY);
+      const existing = guestToken;
       const jwt = existing ?? (await createGuest(email.trim().toLowerCase()));
       tokenRef.current = jwt;
       await request('/api/id/email/start', { method: 'POST', auth: jwt, body: { email: email.trim().toLowerCase() } });

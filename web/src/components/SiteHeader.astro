@@ -134,25 +134,17 @@ const chromeNavKey = (label: string) => ({ Ideas: 'chrome.ideas', 'For creators'
 {/* [WEB-HEADER-5 2026-08-26] Owner: the bazaar band belongs above the site
     header. Inside <header> on purpose — a sticky header that left the band
     outside would scroll the band away and pin the bar on its own. */}
-{/* [WEB-AUTH-STATE-1] Runs BEFORE paint (is:inline, no bundle, no await), so the
-    correct buttons are the first ones drawn — no flash of "Log in" for a
-    signed-in user. Duplicated from lib/authState.ts on purpose: an inline
-    pre-paint script cannot import a module. Keep the two in step; the module is
-    the documented original. */}
-<script is:inline>
-  (function () {
-    try {
-      var c = document.cookie;
-      var m = c.match(/(?:^|;\s*)__client_uat(?:_[A-Za-z0-9]+)?=([^;]*)/);
-      var signedIn = !!(m && m[1] && m[1] !== '0');
-      if (!signedIn) {
-        try { signedIn = !!localStorage.getItem('saathum_guest_jwt'); } catch (e) {}
-      }
-      document.documentElement.setAttribute('data-site-auth', signedIn ? 'in' : 'out');
-    } catch (e) {
-      document.documentElement.setAttribute('data-site-auth', 'out');
-    }
-  })();
+{/* Auth hints come from the active session; obsolete guest storage never decides the HF header. */}
+<script>
+  import { ACTIVE_SESSION_CHANGED, getActiveToken } from '../lib/clerk';
+  let authRevision = 0;
+  async function updateHeaderAuth() {
+    const revision = ++authRevision;
+    const token = await getActiveToken();
+    if (revision === authRevision) document.documentElement.setAttribute('data-site-auth', token ? 'in' : 'out');
+  }
+  window.addEventListener(ACTIVE_SESSION_CHANGED, updateHeaderAuth);
+  void updateHeaderAuth();
 </script>
 
 {/* [SAATHUM-CHROME-1] display:contents wrapper: carries the landing page's

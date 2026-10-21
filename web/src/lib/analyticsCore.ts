@@ -3,8 +3,7 @@
 // here — never `import posthog from 'posthog-js'` anywhere else.
 //
 // Contract: Specs/SPEC-2026-09-02-TELEMETRY-CATALOG.md §1, §2.1, §2.2, §2.11.
-// Mirrors app/lib/core/analytics.dart's naming and `_persistEmail` pattern so
-// one dashboard can serve both surfaces.
+// Uses the shared event naming; authenticated email stays in memory.
 //
 // SSR-safe: every export is a no-op when `typeof window === 'undefined'`
 // (Astro prerenders on the server, where there is no browser and nothing to
@@ -114,28 +113,15 @@ function registerResponsiveSuperProps(): void {
   });
 }
 
-// ── §1.3 persisted email, mirrors analytics.dart `_persistEmail` — so errors
-// after a lapsed session still carry the last-known email. ──────────────────
-function emailKey(uid: string): string {
-  return `ph_email_${uid}`;
-}
-
-function persistEmail(uid: string | null | undefined, email: string | null | undefined): void {
-  if (!isBrowser || !uid || !email) return;
+// Email is attached from the active authenticated identity at send time, never registered persistently.
+let activeEmail: string | null = null;
+function clearLegacyEmails(): void {
+  if (!isBrowser) return;
   try {
-    window.localStorage.setItem(emailKey(uid), email);
-  } catch {
-    /* private mode / storage full — best-effort only */
-  }
-}
-
-function loadEmail(uid: string): string | null {
-  if (!isBrowser) return null;
-  try {
-    return window.localStorage.getItem(emailKey(uid));
-  } catch {
-    return null;
-  }
+    for (const key of Object.keys(window.localStorage)) {
+      if (key.startsWith('ph_email_')) window.localStorage.removeItem(key);
+    }
+  } catch { /* storage blocked */ }
 }
 
 /**
@@ -160,6 +146,7 @@ function replaySampledIn(): boolean {
 
 export function initAnalytics(): void {
   if (!isBrowser) return;
+  clearLegacyEmails();
   if (initialized) {
     registerResponsiveSuperProps();
     return;
@@ -172,6 +159,8 @@ export function initAnalytics(): void {
   // [AGENT-LIVE-1 M10] No replay on a join link or a talk room.
   const sensitivePage = isPrivacySensitivePath(window.location.pathname);
 
+  // Older SDK persistence can contain identify() person properties as well as super properties.
+  try { window.localStorage.removeItem(`ph_${key}_posthog`); } catch { /* blocked storage */ }
   posthog.init(key, {
     api_host: host,
     capture_pageview: 'history_change',
@@ -196,9 +185,10 @@ export function initAnalytics(): void {
       blockClass: 'ph-no-capture',
     },
     // Private invitation URLs must not be persisted by SDK referral tracking.
-    persistence: sensitivePage ? 'memory' : 'localStorage+cookie',
+    persistence: 'memory',
     cross_subdomain_cookie: false,
     loaded: (ph) => {
+      ph.unregister('email');
       registerResponsiveSuperProps();
       // Belt-and-braces on top of `disable_session_recording` above — a
       // config option can change shape across posthog-js versions, an
@@ -223,6 +213,8 @@ export function initAnalytics(): void {
       if (!event) return event;
       if (event.properties) {
         event.properties = scrubProps(event.properties) ?? {};
+        delete event.properties.email;
+        if (currentUid && activeEmail) event.properties.email = activeEmail;
       }
       return event;
     },
@@ -234,19 +226,6 @@ export function initAnalytics(): void {
     release,
   });
   registerResponsiveSuperProps();
-
-  // §1.3 — re-register the last-known email for the current distinct_id, if
-  // any, so an error fired before identify() (or after a lapsed session)
-  // still carries it. distinct_id is anonymous pre-login, but harmless to try.
-  try {
-    const uid = posthog.get_distinct_id?.();
-    if (uid) {
-      const saved = loadEmail(uid);
-      if (saved) posthog.register({ email: saved });
-    }
-  } catch {
-    /* best-effort */
-  }
 
   if (isBrowser) {
     window.addEventListener('popstate', registerResponsiveSuperProps);
@@ -262,10 +241,8 @@ export function identify(
   if (!isBrowser) return;
   currentUid = uid;
   const personProps: Properties = { ...props };
-  if (props?.email) {
-    persistEmail(uid, props.email);
-    posthog.register({ email: props.email });
-  }
+  activeEmail = props?.email ?? null;
+  posthog.unregister('email');
   try {
     posthog.identify(uid, scrubProps(personProps) ?? undefined);
   } catch {
@@ -277,6 +254,8 @@ export function identify(
 export function reset(): void {
   if (!isBrowser) return;
   currentUid = null;
+  activeEmail = null;
+  clearLegacyEmails();
   try {
     posthog.reset();
   } catch {

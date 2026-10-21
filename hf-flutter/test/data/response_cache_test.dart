@@ -1,4 +1,6 @@
+import 'dart:async';
 import 'dart:convert';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hf_app/data/api_client.dart';
@@ -41,6 +43,62 @@ void main() {
 
   Future<List<Map<String, dynamic>>> watch(String path, {CachePolicy policy = CachePolicy.live, bool auth = true}) =>
       api.watchJson(path, policy: policy, auth: auth).toList();
+
+  test('STORE-01/02: purge all legacy accounts before hydration; only explicit public paths persist', () async {
+    SharedPreferences.setMockInitialValues({
+      'hfc1|u:old_a|/api/hf/app/wallet': '${clock.millisecondsSinceEpoch}|{"balancePaise":999}',
+      'hfc1|u:old_b|/api/hf/me': '${clock.millisecondsSinceEpoch}|{"email":"old"}',
+      'unrelated': 'keep',
+    });
+    final cache = ResponseCache(persist: true, now: () => clock);
+    expect(await cache.read('hfc1|u:old_a|/api/hf/app/wallet', const Duration(days: 1)), isNull);
+    for (final path in ['/api/hf/app/wallet', '/api/hf/bookings', '/api/hf/me', '/api/config']) {
+      await cache.write(cache.keyFor('u:current', path, null), {'private': true});
+    }
+    await cache.write(cache.keyFor('pub', '/api/hf/not-allowlisted', null), {'private': true});
+    await cache.write(cache.keyFor('pub', '/api/config', null), {'public': true});
+    final prefs = await SharedPreferences.getInstance();
+    expect(prefs.getKeys().where((k) => k.startsWith('hfc1|')), ['hfc1|pub|/api/config']);
+    expect(prefs.getString('unrelated'), 'keep');
+    final restarted = ResponseCache(persist: true, now: () => clock);
+    expect((await restarted.read('hfc1|pub|/api/config', const Duration(days: 1)))?.json, {'public': true});
+    expect(await restarted.read('hfc1|u:current|/api/hf/me', const Duration(days: 1)), isNull);
+  });
+
+  test('STORE-03: an old account response is neither emitted nor cached', () async {
+    final started = Completer<void>();
+    final response = Completer<http.Response>();
+    api = ApiClient(
+      accountId: () => account,
+      client: MockClient((_) { started.complete(); return response.future; }),
+      reporter: (m, e, err, ms) {},
+    );
+    final pending = watch('/api/hf/app/wallet');
+    await started.future;
+    await api.cache.clearAccount('user_a');
+    account = 'user_b';
+    response.complete(_json({'balancePaise': 999}));
+    expect(await pending, isEmpty);
+    account = 'user_a';
+    expect(await api.peekJson('/api/hf/app/wallet'), isNull);
+  });
+
+  test('STORE-03: direct GET rejects a response after logout', () async {
+    final started = Completer<void>();
+    final response = Completer<http.Response>();
+    api = ApiClient(
+      accountId: () => account,
+      client: MockClient((_) { started.complete(); return response.future; }),
+      reporter: (m, e, err, ms) {},
+    );
+    final pending = api.getJson('/api/hf/me', store: true);
+    final rejected = expectLater(pending, throwsA(isA<ApiException>().having((e) => e.code, 'code', 'stale_session')));
+    await started.future;
+    await api.cache.clearAccount('user_a');
+    account = null;
+    response.complete(_json({'email': 'old'}));
+    await rejected;
+  });
 
   test('first read is a miss: one network call, one emission, and it is stored', () async {
     final out = await watch('/api/hf/app/wallet');

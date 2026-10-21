@@ -79,18 +79,29 @@ class ApiClient {
     bool auth = true,
     Map<String, String>? headers,
   }) async {
+    final account = accountId?.call();
+    final epoch = cache.accountGeneration;
+    void checkAccount() {
+      if (auth && (account != accountId?.call() || epoch != cache.accountGeneration)) {
+        throw const ApiException(kind: ApiFailure.http, code: 'stale_session');
+      }
+    }
     final sw = Stopwatch()..start();
     final endpoint = path.split('?').first;
     try {
       final provider = auth ? tokens : null;
       var token = provider == null ? null : await provider();
+      checkAccount();
       var resp = await _send(method, path, query, body, headers, token);
+      checkAccount();
       if (resp.statusCode == 401 && provider != null) {
         final fresh = await provider(forceRefresh: true);
+        checkAccount();
         if (fresh != null && fresh != token) {
           token = fresh;
           resp = await _send(method, path, query, body, headers, token);
         }
+        checkAccount();
         if (resp.statusCode == 401) {
           final err = ApiException.fromResponse(401, utf8.decode(resp.bodyBytes, allowMalformed: true));
           _report(method, endpoint, err, sw);
@@ -173,9 +184,17 @@ class ApiClient {
   /// callers behave exactly as before.
   Future<Map<String, dynamic>> getJson(String path, {Map<String, Object?>? query, bool auth = true, bool store = false}) async {
     final key = store ? _keyOf(path, query, auth) : null;
+    final account = accountId?.call();
+    final epoch = cache.accountGeneration;
     final gen = cache.generation;
     final j = asMap(await request('GET', path, query: query, auth: auth));
+    if (auth && (account != accountId?.call() || epoch != cache.accountGeneration)) {
+      throw const ApiException(kind: ApiFailure.http, code: 'stale_session');
+    }
     if (key != null && gen == cache.generation) await cache.write(key, j);
+    if (auth && (account != accountId?.call() || epoch != cache.accountGeneration)) {
+      throw const ApiException(kind: ApiFailure.http, code: 'stale_session');
+    }
     return j;
   }
 
@@ -195,7 +214,9 @@ class ApiClient {
       {Map<String, Object?>? query, bool auth = true, Duration maxAge = const Duration(days: 3)}) async {
     final key = _keyOf(path, query, auth);
     if (key == null) return null;
+    final epoch = cache.accountGeneration;
     final hit = await cache.read(key, maxAge);
+    if (auth && (key != _keyOf(path, query, auth) || epoch != cache.accountGeneration)) return null;
     final j = hit?.json;
     return j is Map ? Map<String, dynamic>.from(j) : null;
   }
@@ -212,10 +233,14 @@ class ApiClient {
     bool retry = true,
   }) async* {
     final key = _keyOf(path, query, auth);
+    final account = accountId?.call();
+    final epoch = cache.accountGeneration;
+    bool current() => !auth || (account == accountId?.call() && epoch == cache.accountGeneration);
     CacheHit? hit;
     String? shown;
     if (key != null) {
       final h = await cache.read(key, policy.maxAge);
+      if (!current()) return;
       if (h != null && h.json is Map) {
         hit = h;
         shown = jsonEncode(h.json);
@@ -227,11 +252,14 @@ class ApiClient {
       }
     }
     try {
+      if (!current()) return;
       final fresh = await _fetchShared(path, query, auth, key, retry);
+      if (!current()) return;
       Telemetry.cacheOutcome(path, hit == null ? 'miss' : 'revalidated',
           ageSeconds: hit == null ? null : cache.now().difference(hit.at).inSeconds);
       if (hit == null || jsonEncode(fresh) != shown) yield fresh;
     } on ApiException {
+      if (!current()) return;
       if (hit == null) rethrow;
       Telemetry.cacheOutcome(path, 'stale_on_error');
     }
@@ -239,20 +267,28 @@ class ApiClient {
 
   Future<Map<String, dynamic>> _fetchShared(String path, Map<String, Object?>? query, bool auth, String? key, bool retry) async {
     if (key == null) return _fetchOnce(path, query, auth, null, retry);
-    final running = _inflight[key];
+    final inflightKey = '$key|${cache.accountGeneration}';
+    final running = _inflight[inflightKey];
     if (running != null) return running;
     final f = _fetchOnce(path, query, auth, key, retry);
-    _inflight[key] = f;
+    _inflight[inflightKey] = f;
     try {
       return await f;
     } finally {
-      if (identical(_inflight[key], f)) _inflight.remove(key);
+      if (identical(_inflight[inflightKey], f)) _inflight.remove(inflightKey);
     }
   }
 
   Future<Map<String, dynamic>> _fetchOnce(String path, Map<String, Object?>? query, bool auth, String? key, bool retry) async {
     final gen = cache.generation;
-    Future<Map<String, dynamic>> go() async => asMap(await request('GET', path, query: query, auth: auth));
+    final account = accountId?.call();
+    final epoch = cache.accountGeneration;
+    Future<Map<String, dynamic>> go() async {
+      if (auth && (account != accountId?.call() || epoch != cache.accountGeneration)) {
+        throw const ApiException(kind: ApiFailure.http, code: 'stale_session');
+      }
+      return asMap(await request('GET', path, query: query, auth: auth));
+    }
     Map<String, dynamic> j;
     try {
       j = await go();
@@ -260,6 +296,9 @@ class ApiClient {
       if (!retry || !e.isTransient) rethrow;
       await Future<void>.delayed(retryDelay);
       j = await go();
+    }
+    if (auth && (account != accountId?.call() || epoch != cache.accountGeneration)) {
+      throw const ApiException(kind: ApiFailure.http, code: 'stale_session');
     }
     if (key != null && gen == cache.generation) await cache.write(key, j);
     return j;
