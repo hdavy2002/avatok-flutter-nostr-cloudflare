@@ -68,7 +68,7 @@ import { presenceBeat } from "./routes/presence"; // [CALL-PRESENCE-1] device he
 // [AVA-IDGATE-1] idSession / idResult / idPhoneConfirm are NO LONGER ROUTED — they
 // minted verification without a Didit check. See LEGACY_GONE in the router.
 import { idStatus, idEmailStart, idEmailVerify, idPasswordStart, idPasswordSet } from "./routes/id";
-import { walletTopup, walletTopupIntent, walletTopupPlayVerify, runPlayVoidedPurchaseSweep, stripeWebhook, walletSpend, walletBalance, walletTransactions, walletEarnings, walletLive, walletLedger, walletLedgerDetail, walletReceiptResend } from "./routes/wallet";
+import { walletTopup, walletTopupIntent, walletTopupPlayVerify, stripeWebhook, walletSpend, walletBalance, walletTransactions, walletEarnings, walletLive, walletLedger, walletLedgerDetail, walletReceiptResend } from "./routes/wallet";
 import { walletStatement, walletStatementExport, walletSummary, walletTopupQuote, walletActivity } from "./routes/wallet_statement";
 import { adminLedger, adminRefund, adminAdjust, adminAccount, adminRecon, adminEscrowHold, adminEscrowRelease, adminTaxExport, adminFailedSettlements, adminRetrySettlement, requireAdmin } from "./routes/admin_money";
 import { adminCommercialClaims, adminResolveCommercialClaim } from "./routes/commercial_admin_claims";
@@ -278,7 +278,7 @@ import { runPodCatalogRefresh } from "./lib/pod"; // [AUMFE-POD-COST-1]
 import {
   affiliateRegister, affiliateMe, affiliateListings, affiliateLinkCreate, affiliateLinks,
   affiliateLinkStats, affiliateLinkSubscribers, affiliateLinkPause, affiliateClick,
-  affiliateBind, adminAffiliates, adminAffiliateSuspend, runAffiliateQualification,
+  affiliateBind, adminAffiliates, adminAffiliateSuspend,
 } from "./routes/affiliate";
 import { affiliateAssetsGenerate, affiliateAssetsList } from "./routes/affiliate_assets";
 import { hydrateKvSecrets } from "./lib/kv_secrets";
@@ -506,24 +506,13 @@ export default {
     }
   },
 
-  // [AFF-COMM-LIFECYCLE-1] Affiliate commission qualification (§6.1). The
-  // hourly cron is wired in wrangler.toml, but both handlers remain safe while
-  // the feature flags are off: runAffiliateQualification returns immediately unless
-  // avaAffiliateEnabled is true (default false), and it never throws — the
-  // affiliate program must not be able to take a cron tick down. Hourly (not
-  // per-minute) on purpose: the qualification window is measured in days, and
-  // each tick is bounded to QUALIFY_BATCH rows.
+  // [AVATOK-RETIRED-CRONS-1] Legacy affiliate qualification and Play void
+  // sweeps are retired. HF Play reconciliation and shared cleanup remain active.
   async scheduled(_event: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
     await hydrateKvSecrets(env); // [HF-WIRE-18]
     ctx.waitUntil(
       Promise.all([
         gcalExportSweep(env).catch(e=>console.error("[gcal-export]",String(e))),
-        runAffiliateQualification(env)
-          .then((r) => { if (r.scanned) console.log("[affiliate-qualify]", JSON.stringify(r)); })
-          .catch((e) => { console.error("[affiliate-qualify] failed:", String(e)); }),
-        runPlayVoidedPurchaseSweep(env)
-          .then((r) => { if (r.scanned) console.log("[play-voids]", JSON.stringify(r)); })
-          .catch((e) => { console.error("[play-voids] failed:", String(e)); }),
         runConsultCron(env).catch((e) => { console.error("[consult-cron] failed:", String(e)); }), // [AUMFE-CONSULT-FOUNDATION-1]
         runHfMoneyMonitor(env).then((r) => { if (r.fixed || r.flagged) console.log("[hf-money-monitor]", JSON.stringify(r)); }).catch((e) => { console.error("[hf-money-monitor] failed:", String(e)); }), // [HF-WIRE-13]
         runHfCallsCron(env).catch((e) => { console.error("[hf-calls-cron] failed:", String(e)); }), // [HF-CALLS-1]

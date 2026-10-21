@@ -3,18 +3,17 @@ import { BRAND } from "./brand";
 import type { Env, ModerationMsg, PushMsg, EmailMsg, AnalyticsMsg, BrainMsg, DeletionMsg, WalletTxMsg, AgentMsg, ArchiveMsg, MktAudioMsg, AutoReplyMsg, AutoDigestMsg, LivenessVerifyMsg } from "./types";
 import { handleMktAudio } from "./mkt_audio";
 import { handleLivenessVerify } from "./liveness_verify"; // LIVE-V2 P0 — async liveness-verify (dark; no live queue yet, see file header)
-import { handleAutoReply, handleAutoDigest, sweepAutoDigest } from "./auto_reply"; // STREAM F — away auto-responder job + away digest (+ schedule-end sweep)
+import { handleAutoReply, handleAutoDigest } from "./auto_reply"; // Existing queued away replies/digests can still drain.
 import { sweepAbandonedLiveness } from "./liveness_sweep"; // STREAM H — abandoned-liveness sweep (ported from worker/routes/liveness_audit)
 import { sweepRetention } from "./retention"; // [AVA-IDGATE-1] +256d biometric purge
 import { handleModeration } from "./moderation";
-import { handlePush, maybeBroadcastAppUpdate } from "./fcm";
+import { handlePush } from "./fcm";
 import { handleBrain, purgeChurnedBrains, rollupDailySummaries, runBrainRetention } from "./brain";
 import { handleArchive } from "./archive";
 import { handleDeletion } from "./deletion";
 import { handleWalletTx } from "./wallet";
 import { handleAgent } from "./agent";
 import { reconWallet } from "./recon";
-import { storageSnapshots, storageBilling } from "./storage";
 import { bookingReminderLadder, gcalSyncSweep } from "./calendar";
 import { moneySweep } from "./money_sweep";
 import { sweepListingExpiry } from "./listing_expiry"; // PLAN §5 — marketplace listing-expiry lifecycle (notify T−3d / expire T / archive T+30d)
@@ -80,12 +79,9 @@ export default {
   // Cron — money sweep every minute (Phase 7); reminders every 15m
   // (lightweight); heavy cleanup only on the 6h tick.
   async scheduled(event: ScheduledController, env: Env): Promise<void> {
-    // [AVA-UPDATE-PUSH-1] Every-minute check: has latestAppBuild risen since we
-    // last broadcast? If so, fan out a silent `app_update` wake so running apps
-    // prompt to update within ~60s of a release — no swipe-out/in, no manual
-    // Update tap (owner report 2026-07-24). Cheap (one KV read), gated, idempotent,
-    // and best-effort so it can never disrupt the rest of the cron.
-    try { await maybeBroadcastAppUpdate(env); } catch (e) { console.error("[app-update-broadcast]", String(e)); }
+    // [AVATOK-RETIRED-CRONS-1] No new legacy app-update broadcasts, away
+    // digests, or AvaStorage billing/snapshots. Shared queue handlers and
+    // HF notifications, account deletion, and retention continue unchanged.
 
     // Phase 7: refund/settlement SWEEP — catches missed DO alarms + settles
     // ended sessions (enqueue-only; the engine in avatok-api is idempotent, so
@@ -113,15 +109,6 @@ export default {
       const { swept } = await sweepAbandonedLiveness(env);
       if (swept) env.ANALYTICS?.writeDataPoint({ blobs: ["liveness_abandon_sweep"], doubles: [swept], indexes: ["cron"] });
     } catch (e) { console.error("[liveness-sweep]", String(e)); }
-
-    // STREAM F (AUTOREP-4) — schedule-end / hours-expiry away-digest sweep. Finds
-    // users whose responder window just CLOSED (no PUT fired the transition) and who
-    // auto-replied to someone today, then enqueues ONE digest job each (kind:"digest"
-    // on the auto-reply queue). Idempotent via a per-window KV marker; bounded.
-    try {
-      const { fired, scanned } = await sweepAutoDigest(env);
-      if (fired) env.ANALYTICS?.writeDataPoint({ blobs: ["auto_digest_sweep"], doubles: [fired, scanned], indexes: ["cron"] });
-    } catch (e) { console.error("[auto-digest-sweep]", String(e)); }
 
     // [AVA-IDGATE-1] Biometric retention drain (spec §10.1). Hard-deletes
     // deleted_account_retention rows past purge_after (+256d) and wipes any liveness
@@ -288,15 +275,6 @@ export default {
         if (ret.events || ret.facts || ret.vectors || ret.guardianFlags || ret.guardianEnforcement)
           env.ANALYTICS?.writeDataPoint({ blobs: ["brain_retention"], doubles: [ret.events, ret.facts, ret.vectors, ret.guardianFlags, ret.guardianEnforcement], indexes: ["cron"] });
       } catch (e) { console.error("[brain-retention]", String(e)); }
-      // AvaStorage (Phase 4): daily usage snapshot (trend mini-bars) + the
-      // monthly 20-coins/GB over-quota billing run on the 1st (idempotent op_id).
-      try { await storageSnapshots(env); } catch (e) { console.error("[storage-snap]", String(e)); }
-      if (new Date().getUTCDate() === 1) {
-        try {
-          const r = await storageBilling(env);
-          env.ANALYTICS?.writeDataPoint({ blobs: ["storage_billing"], doubles: [r.charged, r.locked], indexes: ["storage"] });
-        } catch (e) { console.error("[storage-billing]", String(e)); }
-      }
     }
   },
 };
