@@ -1,4 +1,5 @@
-import { defineMiddleware } from 'astro:middleware';
+import { defineMiddleware, sequence } from 'astro:middleware';
+import { withSecurityHeaders } from './lib/securityHeaders';
 import { BRAND } from './lib/brand';
 
 // [WEB-OLD-PAGES-GONE-1 2026-09-27] OWNER DECISION: the old avaTOK / creator-marketplace
@@ -94,7 +95,7 @@ function cacheable(res: Response): boolean {
   return /\bpublic\b/.test(cc) && !/no-store|private/.test(cc) && !!maxAge && Number(maxAge[1]) > 0;
 }
 
-export const onRequest = defineMiddleware(async (context, next) => {
+const routeMiddleware = defineMiddleware(async (context, next) => {
   // Both legacy index spellings have the same deliberate permanent redirect.
   if (context.url.pathname === '/rituals' || context.url.pathname === '/rituals/') {
     return new Response(null, { status: 301, headers: { Location: '/blog/' } });
@@ -135,3 +136,19 @@ export const onRequest = defineMiddleware(async (context, next) => {
   }
   return next();
 });
+
+// Outermost middleware: includes redirects, 410, non-cacheable SSR and cache HITs.
+// Pages static assets bypass Functions and use the parity-checked public/_headers.
+const securityMiddleware = defineMiddleware(async (context, next) => {
+  try {
+    return withSecurityHeaders(await next(), context.url);
+  } catch {
+    // Never expose exception details (which may include credentials) in a body.
+    console.error('[HF-SEC-HEADERS-1] SSR request failed');
+    return withSecurityHeaders(new Response('Internal Server Error', {
+      status: 500,
+      headers: { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store' },
+    }), context.url);
+  }
+});
+export const onRequest = sequence(securityMiddleware, routeMiddleware);
