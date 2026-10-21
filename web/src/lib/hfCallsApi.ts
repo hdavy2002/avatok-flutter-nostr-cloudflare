@@ -2,6 +2,7 @@
  * Contract: Specs/HF-CALLS-CONTRACT.md ("Web agent"). Money on this surface is whole rupees (test credits for now). */
 import { ApiError, request } from './apiClient';
 import { explicitAgeRecovery } from './hfAgeRecovery';
+import { activeSessionSignedOut } from './clerk';
 
 export type HostPresence = 'online' | 'busy' | 'offline';
 export type CallStatus =
@@ -24,14 +25,9 @@ export interface CallTierLine { fromMin: number; toMin: number | null; paisePerM
 
 export type HfResult<T> = { ok: true; data: T } | { ok: false; status: number; code: string; message: string; body: Record<string, unknown> };
 
-/** Same test as the site head's auth hint: no live Clerk session cookie and no guest token means nobody is signed in. */
+/** Active-session hint; unknown Clerk readiness waits for the real token API. */
 export function looksSignedOut(): boolean {
-  try {
-    const m = document.cookie.match(/(?:^|;\s*)__client_uat(?:_[A-Za-z0-9]+)?=([^;]*)/);
-    if (m && m[1] && m[1] !== '0') return false;
-    try { if (localStorage.getItem('saathum_guest_jwt')) return false; } catch { /* ignore */ }
-    return true;
-  } catch { return false; }
+  return activeSessionSignedOut();
 }
 export function signInUrl(back?: string): string {
   const here = back ?? (typeof location !== 'undefined' ? location.pathname + location.search : '/');

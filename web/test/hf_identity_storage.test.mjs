@@ -14,7 +14,7 @@ function storage(seed = {}) {
     return target[key];
   } });
 }
-async function load(file, { pathname = '/wallet', seed = {}, posthog = {}, guestIssued = 'g1.new' } = {}) {
+async function load(file, { pathname = '/wallet', seed = {}, posthog = {}, guestIssued = 'g1.new', signedOut = () => false } = {}) {
   const localStorage = storage(seed);
   const exports = {};
   const window = { localStorage, sessionStorage: storage(), location: { pathname }, innerWidth: 800,
@@ -30,6 +30,7 @@ async function load(file, { pathname = '/wallet', seed = {}, posthog = {}, guest
     setTimeout, console, require: name => {
       if (name === 'posthog-js') return posthog;
       if (name === './apiClient') return { request: async () => ({ guest_token: guestIssued }) };
+      if (name === './clerk') return { activeSessionSignedOut: signedOut };
       if (name === './embed') return { installEmbedBridge: () => null };
       return new Proxy({}, { get: () => () => {} });
     } });
@@ -99,4 +100,15 @@ test('STORE-04/06: entering HF clears legacy credentials and returning requires 
   // Similar-looking HF booking routes are not the legacy /talk page.
   const booking = await load('clerk.tsx', { pathname: '/talk/booking-123', seed: { saathum_guest_jwt: 'g1.old' } });
   assert.equal(await booking.api.getActiveToken(), null);
+});
+
+
+test('STORE-04: call UI uses the active session even when a stale guest token exists', async () => {
+  let out = true;
+  const { api } = await load('hfCallsApi.ts', {
+    seed: { saathum_guest_jwt: 'g1.stale' }, signedOut: () => out,
+  });
+  assert.equal(api.looksSignedOut(), true);
+  out = false; // Active Clerk/native session, or readiness not resolved yet.
+  assert.equal(api.looksSignedOut(), false);
 });
