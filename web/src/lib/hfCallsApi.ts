@@ -1,6 +1,7 @@
 /* [HF-CALLS-1] Typed calls + small helpers for the masked-call UI (call flow, notify-me, reviews, host dashboard).
  * Contract: Specs/HF-CALLS-CONTRACT.md ("Web agent"). Money on this surface is whole rupees (test credits for now). */
 import { ApiError, request } from './apiClient';
+import { explicitAgeRecovery } from './hfAgeRecovery';
 
 export type HostPresence = 'online' | 'busy' | 'offline';
 export type CallStatus =
@@ -52,7 +53,10 @@ export async function hfCall<T>(method: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PAT
   } catch (e) {
     if (e instanceof ApiError) {
       const b = (e.body && typeof e.body === 'object' ? e.body : {}) as Record<string, unknown>;
-      return { ok: false, status: e.status, code: e.error, message: typeof b.message === 'string' ? b.message : '', body: b };
+      const message = e.error === 'age_confirmation_required'
+        ? await recoverAgeConfirmation()
+        : typeof b.message === 'string' ? b.message : '';
+      return { ok: false, status: e.status, code: e.error, message, body: b };
     }
     return { ok: false, status: 0, code: 'network', message: 'We could not reach the server. Check your internet and try again.', body: {} };
   }
@@ -141,3 +145,11 @@ export interface WalletInfo {
   balanceRupees?: number;
 }
 export const fetchWallet = (): Promise<HfResult<WalletInfo>> => hfCall<WalletInfo>('GET', '/api/hf/wallet');
+
+/** Explicit self-attestation only. Never replays a rejected call/booking. */
+export function recoverAgeConfirmation(): Promise<string> {
+  return explicitAgeRecovery(
+    () => window.confirm('I am 18 or older. Confirm this to continue.'),
+    () => hfCall('POST', '/api/hf/me/ack', { version: 'age-18-v1', ack18: true, client: 'web' }),
+  );
+}

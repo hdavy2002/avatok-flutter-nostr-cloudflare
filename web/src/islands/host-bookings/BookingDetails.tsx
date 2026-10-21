@@ -1,3 +1,4 @@
+import { hfCall, recoverAgeConfirmation } from '../../lib/hfCallsApi';
 import { useEffect, useState } from 'react';
 import { bookingError, cancelBooking, dateLabel, getBooking, money, type HfBooking } from '../../lib/hfBookingsApi';
 import { capture } from '../../lib/analytics';
@@ -12,6 +13,12 @@ export default function BookingDetails({ id }: { id: string }) {
   const [message, setMessage] = useState('');
   const [confirming, setConfirming] = useState(false);
   const [retry, setRetry] = useState(0);
+  const [needsAge, setNeedsAge] = useState(false);
+  useEffect(() => {
+    let live = true;
+    void hfCall<{ age18ConfirmedAt: number | null }>('GET', '/api/hf/me').then(r => { if (live) setNeedsAge(!r.ok || !r.data.age18ConfirmedAt); });
+    return () => { live = false; };
+  }, [retry]);
   useEffect(() => {
     if (feature !== 'enabled') { setLoading(feature === 'checking'); return; }
     let live = true; setLoading(true); setMessage('');
@@ -36,6 +43,7 @@ export default function BookingDetails({ id }: { id: string }) {
     {loading && <p className="hfb-card" role="status">Loading appointment…</p>}
     {!loading && !booking && <section className="hfb-card"><p role="alert">{message || 'We could not find this appointment.'}</p><button className="hfb-button" type="button" onClick={() => setRetry(n => n + 1)}>Try again</button></section>}
     {booking && <>
+      {needsAge && !['completed', 'cancelled'].includes(status) && <section className="hfb-card"><p>Please confirm that you are 18 or older before this appointment can start.</p><button type="button" className="hfb-button" disabled={busy} onClick={async () => { setBusy(true); setMessage(await recoverAgeConfirmation()); setBusy(false); setRetry(n => n + 1); }}>Confirm 18+</button></section>}
       <section className="hfb-card">
         <span className={'hfb-status hfb-status-' + status}>{status.replaceAll('_', ' ')}</span>
         <h2>{booking.hostName || 'Appointment'}</h2>

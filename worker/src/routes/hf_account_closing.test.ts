@@ -25,6 +25,8 @@ let db: any, env: any;
 function makeEnv() {
   db = new DatabaseSync(":memory:");
   db.exec(`
+    CREATE TABLE hf_age_confirm (uid TEXT PRIMARY KEY, confirmed_at INTEGER);
+    INSERT INTO hf_age_confirm VALUES ('u1',1);
     CREATE TABLE hf_lane_access (uid TEXT, lane TEXT, verified_at INTEGER, declared_at INTEGER);
     CREATE TABLE hf_kyc (uid TEXT, gender TEXT, verified_at INTEGER);
     CREATE TABLE hf_selfie (id TEXT, uid TEXT, created_at INTEGER, review_status TEXT, review_reason TEXT);

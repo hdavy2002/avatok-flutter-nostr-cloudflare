@@ -18,6 +18,7 @@ const env = {
     prepare: (sql: string) => ({
       bind: (..._a: unknown[]) => ({
         first: async () => {
+          if (sql.includes("hf_age_confirm")) return { confirmed_at: 1 };
           if (sql.includes("hf_demo_hosts")) return { x: 1 };
           if (sql.includes("FROM hf_hosts")) return { uid: "demo_abc", slug: "priya-demo", status: "approved", display_name: "Priya", price_per_min: 12, category: null, women_lane: 0, lgbtq_lane: 0, presence: "online" };
           return null;

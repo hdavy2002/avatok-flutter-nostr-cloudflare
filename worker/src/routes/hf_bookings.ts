@@ -1,3 +1,4 @@
+import { requireHfAgeConfirmation } from "../lib/hf_age_eligibility";
 import type { Env } from "../types";
 import { isDemoHost, DEMO_MESSAGE } from "../lib/hf_demo"; // [HF-WIRE-14]
 import { isFail, requireUser } from "../authz";
@@ -249,6 +250,8 @@ function activeConflictSql(a: number, b: number, start: number, end: number, buf
 }
 
 async function bookingEligibility(env: Env, uid: string, host: HfHostPricingRow, lane: string | null): Promise<Response | null> {
+  const ageGate = await requireHfAgeConfirmation(env, uid);
+  if (ageGate) return ageGate;
   if (host.status !== "live" || host.uid === uid) return err(409, "host_unavailable");
   if (await isClosing(env, uid) || await isClosing(env, host.uid)) return err(409, "account_closing");
   if (!(await verifiedWhatsAppNumber(env, uid)) || !(await verifiedWhatsAppNumber(env, host.uid))) return err(403, "not_verified");
@@ -649,6 +652,9 @@ async function startBookingRoute(req: Request, env: Env, bookingId: string): Pro
 /** [HF-WIRE-8] Shared by the fan's Start button and the auto-start cron (actorUid null). Rings the influencer first. */
 export async function startBookingCore(env: Env, row: BookingRow, actorUid: string | null, now: number): Promise<Response> {
   const bookingId = row.id;
+  // Also gates recovery: that path can contact the call provider for a legacy booking.
+  const ageGate = await requireHfAgeConfirmation(env, row.customer_uid);
+  if (ageGate) return ageGate;
   if (row.status === "starting" || row.status === "active" || row.status === "settling") {
     const existing = await env.DB_META.prepare("SELECT id,status FROM hf_calls WHERE booking_id=?1").bind(bookingId)
       .first<{ id: string; status: string }>();

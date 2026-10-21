@@ -253,6 +253,18 @@ void main() {
       expect(find.textContaining('BOOKED day=2026-10-22'), findsOneWidget);
     });
 
+    testWidgets('AGE-04 missing age opens acknowledgement and cancelling never retries booking', (tester) async {
+      final api = await open(tester, happy(bookResult: _err(403, 'age_confirmation_required', 'Please confirm that you are 18 or older to continue.')));
+      await tester.tap(find.text('CONFIRM BOOKING'));
+      await tester.pumpAndSettle();
+      expect(find.text('I am 18 or older'), findsOneWidget);
+      expect(api.calls.where((c) => c == 'POST /api/hf/bookings'), hasLength(1));
+      await tester.tap(find.text('Cancel'));
+      await tester.pumpAndSettle();
+      expect(api.calls.where((c) => c == 'POST /api/hf/bookings'), hasLength(1));
+      expect(find.text('CONFIRM BOOKING'), findsOneWidget);
+    });
+
     testWidgets('low balance (known up front) goes to top up without calling the server', (tester) async {
       final api = await open(tester, happy(wallet: 5000));
       await tester.tap(find.text('CONFIRM BOOKING'));

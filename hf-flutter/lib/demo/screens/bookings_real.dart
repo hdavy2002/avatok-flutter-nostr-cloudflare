@@ -16,7 +16,7 @@ import '../../ui/async_view.dart';
 import '../data.dart';
 import '../theme.dart';
 import '../widgets.dart';
-import 'call_real.dart' show callPerson, paiseText;
+import 'call_real.dart' show callPerson, paiseText, recoverHfAgeConfirmation, BookingAgeConfirmation;
 
 /// Real bookings (HF-WIRE-8). While [DemoMode.on] the dummy flow in booking.dart / influencer.dart / me.dart stays.
 abstract final class BookingsBridge {
@@ -423,6 +423,10 @@ class _RealBookConfirmScreenState extends State<RealBookConfirmScreen> {
       });
       if (!mounted) return;
       setState(() => _busy = false);
+      if (e is ApiException && e.code == 'age_confirmation_required') {
+        await recoverHfAgeConfirmation(context);
+        return;
+      }
       switch (bookingProblemOf(e)) {
         case BookingProblem.tooSoon:
         case BookingProblem.badTopic:
@@ -754,6 +758,7 @@ class _RealBookingsScreenState extends State<RealBookingsScreen> {
                       physics: const AlwaysScrollableScrollPhysics(),
                       padding: const EdgeInsets.fromLTRB(22, 8, 22, 24),
                       children: [
+                        if (current.isNotEmpty) const BookingAgeConfirmation(),
                         for (final b in current) _tile(b, now),
                         if (earlier.isNotEmpty) ...[
                           Padding(padding: const EdgeInsets.only(top: 10, bottom: 10), child: Text('Earlier', style: t(18, color: C.maroon))),

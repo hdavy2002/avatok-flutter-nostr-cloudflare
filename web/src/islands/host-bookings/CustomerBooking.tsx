@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { looksSignedOut, signInUrl } from '../../lib/hfCallsApi';
+import { looksSignedOut, signInUrl, recoverAgeConfirmation } from '../../lib/hfCallsApi';
 import { ACTIVE_SESSION_CHANGED } from '../../lib/clerk';
 import { bookingError, confirmBooking, createQuote, getPublicSlots, money, type AvailabilitySlot, type BookingQuote } from '../../lib/hfBookingsApi';
 import { capture } from '../../lib/analytics';
@@ -98,7 +98,7 @@ export default function CustomerBooking() {
       const fresh = await createQuote(host, slot.startUtc, duration);
       if (authEpoch.current !== quoteEpoch) { setQuote(null); setSelected(null); setMessage('Your signed-in account changed. Choose the time again to get a fresh quote.'); return; }
       setQuote(fresh); quoteAuthEpoch.current = quoteEpoch; key.current = randomKey(); setMessage('');
-    } catch (error) { setMessage(bookingError(error).message); setSelected(null); }
+    } catch (error) { const issue = bookingError(error); setMessage(issue.code === 'age_confirmation_required' ? await recoverAgeConfirmation() : issue.message); setSelected(null); }
     finally { setBusy(false); }
   };
 
@@ -116,7 +116,9 @@ export default function CustomerBooking() {
     } catch (error) {
       const issue = bookingError(error);
       capture('hf_booking_confirm_failed', { feature: 'hf_booking', quote_id: quote.id, status: issue.status, code: issue.code });
-      if (issue.status === 409 || issue.code.includes('expired') || issue.code.includes('conflict')) {
+      if (issue.code === 'age_confirmation_required') {
+        setMessage(await recoverAgeConfirmation());
+      } else if (issue.status === 409 || issue.code.includes('expired') || issue.code.includes('conflict')) {
         setQuote(null); setSelected(null); setPolicyAccepted(false); setMessage('That time just changed. Choose an updated time to see a fresh price.');
         capture('hf_booking_stale_quote', { quote_id: quote.id, status: issue.status, reason: issue.code });
         await loadSlots(date, duration, true);

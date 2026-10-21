@@ -44,6 +44,8 @@ function build(withApproval: boolean) {
     db._raw.exec(lines.filter((x) => !x.trim().startsWith("ALTER TABLE")).join("\n"));
   }
   db._raw.exec(`
+    CREATE TABLE hf_age_confirm (uid TEXT PRIMARY KEY, confirmed_at INTEGER);
+    INSERT INTO hf_age_confirm VALUES ('fan',1),('fan2',1);
     CREATE TABLE users (uid TEXT PRIMARY KEY, display_name TEXT);
     CREATE TABLE hf_user_prefs (uid TEXT PRIMARY KEY, notify_whatsapp INTEGER NOT NULL DEFAULT 1, appt_reminders INTEGER NOT NULL DEFAULT 1, updated_at INTEGER NOT NULL DEFAULT 0);
     CREATE TABLE calendar_blocks (id TEXT PRIMARY KEY, user_id TEXT, source_app TEXT, source_ref TEXT, starts_at INTEGER, ends_at INTEGER, title TEXT, status TEXT, created_at INTEGER);
@@ -213,5 +215,36 @@ describe("cancelling a pending booking", () => {
     expect(reserved()).toBe(0);
     expect(["fan", "declined"]).toContain(rowOf().cancel_reason);
     expect(a.status === 200 || b.ok).toBe(true);
+  });
+});
+
+
+describe("HF-SEC-AGE-1 confirmation and legacy reservations", () => {
+  it("AGE-01 missing attestation creates no booking or wallet hold", async () => {
+    const qid = await quote("fan", NOW + 40 * HOUR);
+    raw.exec("DELETE FROM hf_age_confirm WHERE uid='fan'");
+    const response = await confirm("fan", qid);
+    expect(response.status).toBe(403);
+    expect(await response.json()).toMatchObject({ error: "age_confirmation_required" });
+    expect(rowOf()).toBeUndefined();
+    expect(reserved()).toBe(0);
+    expect(raw.prepare("SELECT status FROM hf_booking_quotes WHERE id=?").get(qid).status).toBe("open");
+  });
+  it("AGE-03 existing confirmation retry and cancellation remain available without attestation", async () => {
+    const qid = await quote("fan", NOW + 40 * HOUR);
+    const created = await confirm("fan", qid);
+    expect(created.status).toBe(201);
+    const id = rowOf().id;
+    raw.exec("DELETE FROM hf_age_confirm WHERE uid='fan'");
+    expect((await confirm("fan", qid)).status).toBe(200);
+    expect((await cancelRoute(new Request("https://x.test/api/hf/bookings/" + id + "/cancel", { method: "POST" }), env, id)).status).toBe(200);
+    expect(reserved()).toBe(0);
+  });
+  it("AGE-04 unavailable age storage cannot create a hold", async () => {
+    const qid = await quote("fan", NOW + 40 * HOUR);
+    raw.exec("DROP TABLE hf_age_confirm");
+    expect((await confirm("fan", qid)).status).toBe(503);
+    expect(rowOf()).toBeUndefined();
+    expect(reserved()).toBe(0);
   });
 });

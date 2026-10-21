@@ -18,6 +18,54 @@ import '../theme.dart';
 import '../widgets.dart';
 import 'sheets.dart';
 
+/// Explicit 18+ recovery; callers must tap their transaction action again afterwards.
+Future<void> recoverHfAgeConfirmation(BuildContext context, {Future<void> Function()? acknowledge}) async {
+  final agreed = await hfConfirm(context, title: 'Confirm your age',
+    body: 'Please confirm that you are 18 or older to continue.',
+    confirmLabel: 'I am 18 or older');
+  if (!agreed || !context.mounted) return;
+  try {
+    await (acknowledge ?? Services.instance.authRepo.confirmAge)();
+    if (context.mounted) toast(context, 'Age confirmation saved. Please try your call or booking again.');
+  } catch (e) {
+    if (context.mounted) toast(context, e is ApiException ? e.userMessage : 'We could not save your age confirmation. Please try again.');
+  }
+}
+
+/// Legacy scheduled bookings remain readable/cancellable, but need this before auto-start.
+class BookingAgeConfirmation extends StatefulWidget {
+  const BookingAgeConfirmation({super.key});
+  @override
+  State<BookingAgeConfirmation> createState() => _BookingAgeConfirmationState();
+}
+class _BookingAgeConfirmationState extends State<BookingAgeConfirmation> {
+  bool _needed = Services.instance.me?.age18ConfirmedAt == null;
+  bool _busy = false;
+  Future<void> _check() async {
+    try {
+      final me = await Services.instance.meRepo.fetch();
+      if (mounted) setState(() => _needed = me.age18ConfirmedAt == null);
+    } catch (_) {
+      // A failed read must still offer a route to explicit attestation.
+      if (mounted) setState(() => _needed = true);
+    }
+  }
+  @override
+  Widget build(BuildContext context) => !_needed ? const SizedBox.shrink() : Padding(
+    padding: const EdgeInsets.symmetric(vertical: 12),
+    child: Column(children: [
+      Text('Confirm you are 18 or older before your appointment can start.', style: t(16)),
+      TextButton(onPressed: _busy ? null : () async {
+        setState(() => _busy = true);
+        await recoverHfAgeConfirmation(context);
+        if (!mounted) return;
+        await _check();
+        if (mounted) setState(() => _busy = false);
+      }, child: const Text('Confirm 18+')),
+    ]),
+  );
+}
+
 /// Real instant calls (HF-WIRE-7). While [DemoMode.on] the dummy flow in call.dart / sheets.dart stays.
 abstract final class CallsBridge {
   /// Tests set this to exercise the real path without a dart-define.
@@ -123,6 +171,11 @@ class _RealCallConfirmSheetState extends State<RealCallConfirmSheet> {
         'mode': 'inr',
       });
       if (!mounted) return;
+      if (e is ApiException && e.code == 'age_confirmation_required') {
+        await recoverHfAgeConfirmation(context);
+        if (mounted) setState(() { _problem = null; _starting = false; });
+        return;
+      }
       setState(() {
         _problem = CallProblemInfo.of(e);
         _starting = false;

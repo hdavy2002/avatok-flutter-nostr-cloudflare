@@ -1,3 +1,4 @@
+import { requireHfAgeConfirmation } from "../lib/hf_age_eligibility";
 // [HF-CALLS-1] HF masked paid calls: start/status/cancel, wallet read, admin test credits, host presence, host call list,
 // admin call list and the Vobiz webhooks. Contract: Specs/HF-CALLS-CONTRACT.md. Dark behind hfCallsEnabled.
 //   POST /api/hf/calls {hostSlug, lane?}              -> {ok, callId, status:"ringing_host", rate, maxMinutes}
@@ -110,6 +111,8 @@ async function startCall(req: Request, env: Env): Promise<Response> {
   const u = await requireUser(req, env);
   if (isFail(u)) return err(u.status, u.error, u.error);
   const uid = u.uid;
+  const ageGate = await requireHfAgeConfirmation(env, uid);
+  if (ageGate) return ageGate;
   // [HF-WALLET-EXIT-1] A user closing their account starts no new calls.
   if (await isClosing(env, uid)) return err(409, "account_closing", CLOSING_MESSAGE, { reason: "account_closing" });
   const body = await readJson(req);
