@@ -1,3 +1,8 @@
+import 'fake_reel_bookmarks.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:hf_app/data/reel_bookmarks.dart';
+import 'package:hf_app/data/services.dart';
+import 'package:hf_app/data/auth/clerk_client.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
@@ -78,6 +83,9 @@ Widget _blank(BuildContext _) => const SizedBox();
 
 void main() {
   setUp(() {
+    SharedPreferences.setMockInitialValues({});
+    Services.instance.user = const ClerkUser(id: 'test_fan');
+    ReelBookmarks.override = WidgetBookmarks(FakeApiClient((m,p,q,b) => {'items': []}), () => Services.instance.user?.id);
     PresenceBridge.forceReal = true;
     InviteVotes.voted.clear();
     demo.applyAccount(name: 'Fan', email: 'f@x.in', whatsapp: '******3210');
@@ -87,6 +95,8 @@ void main() {
     PresenceBridge.forceReal = false;
     ReelPlayer.testPlayer = null;
     FavouritesStore.override = null;
+    ReelBookmarks.override = null;
+    Services.instance.user = null;
     demo.signOut();
   });
 
@@ -98,7 +108,7 @@ void main() {
       });
       final search = SearchRepo(api);
       await _pump(tester, FeedScreen(repo: ReelsRepo(api), searchRepo: search, onlineFetch: () async => 0), searchRepo: search);
-      await tester.tap(find.text('New Star'));
+      await tester.tap(find.byTooltip('Open New Star profile').first);
       await tester.pump();
       await tester.pump();
       // The feed stays underneath the pushed page, so look inside the page only.
@@ -126,7 +136,7 @@ void main() {
     testWidgets('the avatar of an invite reel opens the same page', (tester) async {
       final api = FakeApiClient((m, p, q, b) => {'ok': true, 'items': [_invite('hfiv_1')], 'nextCursor': null});
       await _pump(tester, FeedScreen(repo: ReelsRepo(api), searchRepo: SearchRepo(api), onlineFetch: () async => 0));
-      await tester.tap(find.byWidgetPredicate((w) => w is Semantics && w.properties.label == 'Open New Star profile'));
+      await tester.tap(find.byTooltip('Open New Star profile').first);
       await tester.pump();
       await tester.pump();
       expect(find.byKey(const ValueKey('invite-profile')), findsOneWidget);
@@ -148,7 +158,7 @@ void main() {
       final api = FakeApiClient((m, p, q, b) => p.endsWith('/view') ? {'ok': true} : {'ok': true, 'items': [_network('hfrl_1')], 'nextCursor': null});
       FavouritesStore.override = FavouritesStore(FavouritesRepo(api));
       await _pump(tester, FeedScreen(repo: ReelsRepo(api), searchRepo: SearchRepo(api), onlineFetch: () async => 1));
-      await tester.tap(find.text('Maya'));
+      await tester.tap(find.byTooltip('Open Maya profile').first);
       await tester.pump();
       await tester.pump();
       expect(find.text('PROFILE maya'), findsOneWidget);
@@ -156,68 +166,57 @@ void main() {
   });
 
   group('heart on a reel', () {
-    testWidgets('an invite card has no heart (nothing to save: she is not on the app)', (tester) async {
+    testWidgets('an invite card can save this video without offering call or book', (tester) async {
       final api = FakeApiClient((m, p, q, b) => {'ok': true, 'items': [_invite('hfiv_1')], 'nextCursor': null});
       await _pump(tester, FeedScreen(repo: ReelsRepo(api), searchRepo: SearchRepo(api), onlineFetch: () async => 0));
-      expect(find.byIcon(Icons.favorite_border_rounded), findsNothing);
-      expect(find.bySemanticsLabel('Add to favourites'), findsNothing);
+      expect(find.byTooltip('Save video'), findsOneWidget);
+      expect(find.byTooltip('Call now'), findsNothing);
+      expect(find.byTooltip('Book a time'), findsNothing);
     });
 
-    testWidgets('an on-app card has a labelled heart that saves, toasts, and the Favourites tab lists her', (tester) async {
+    testWidgets('saving a reel updates an already open saved-video grid', (tester) async {
       var saved = false;
       final api = FakeApiClient((m, p, q, b) {
+        if (p == '/api/hf/reel-bookmarks/hfrl_1' && m == 'PUT') saved = true;
+        if (p.startsWith('/api/hf/reel-bookmarks')) return {'items': [if (saved) _network('hfrl_1')]};
         if (p.endsWith('/view')) return {'ok': true};
-        if (p == '/api/hf/favourites' && m == 'GET') {
-          return {
-            'ok': true,
-            'items': [if (saved) {'slug': 'maya', 'displayName': 'Maya', 'presence': 'online'}],
-          };
-        }
-        if (p == '/api/hf/favourites/maya' && m == 'PUT') {
-          saved = true;
-          return {'ok': true, 'saved': true};
-        }
-        return {'ok': true, 'items': [_network('hfrl_1')], 'nextCursor': null};
+        return {'items': [_network('hfrl_1')]};
       });
-      final favRepo = FavouritesRepo(api);
-      FavouritesStore.override = FavouritesStore(favRepo);
-      await _pump(
-        tester,
-        Column(children: [
-          Expanded(child: RealFavourites(repo: favRepo)),
-          Expanded(child: FeedScreen(repo: ReelsRepo(api), searchRepo: SearchRepo(api), onlineFetch: () async => 1)),
-        ]),
-      );
-      expect(find.byKey(const ValueKey('fav-maya')), findsNothing);
-      expect(find.bySemanticsLabel('Add to favourites'), findsOneWidget);
-
-      await tester.tap(find.byIcon(Icons.favorite_border_rounded));
-      for (var i = 0; i < 6; i++) {
-        await tester.pump();
-      }
-      expect(FavouritesStore.instance.isFav('maya'), isTrue);
-      expect(api.calls, contains('PUT /api/hf/favourites/maya'));
-      expect(find.text('Saved to your favourites'), findsWidgets);
-      expect(find.byKey(const ValueKey('fav-maya')), findsOneWidget, reason: 'the open Favourites tab refreshed');
-      expect(find.byIcon(Icons.favorite_rounded), findsWidgets);
+      final store = WidgetBookmarks(api, () => Services.instance.user?.id);
+      ReelBookmarks.override = store;
+      await tester.pump();
+      await store.load();
+      await _pump(tester, Column(children: [
+        Expanded(child: RealFavourites(repo: FavouritesRepo(api))),
+        Expanded(child: FeedScreen(repo: ReelsRepo(api), onlineFetch: () async => 1)),
+      ]));
+      for (var i = 0; i < 10; i++) { await tester.pump(const Duration(milliseconds: 10)); }
+      await tester.pump();
+      expect(find.text('Caption hfrl_1'), findsNothing);
+      await tester.tap(find.byTooltip('Save video'));
+      for (var i = 0; i < 10; i++) { await tester.pump(const Duration(milliseconds: 10)); }
+      await tester.pump();
+      expect(store.isSaved('hfrl_1'), isTrue);
+      expect(api.calls, contains('PUT /api/hf/reel-bookmarks/hfrl_1'));
+      expect(find.text('Caption hfrl_1'), findsOneWidget);
     });
 
-    testWidgets('a failed save rolls the heart back and says why (favourites not open yet)', (tester) async {
+    testWidgets('an unavailable bookmark endpoint keeps the local saved heart', (tester) async {
       final api = FakeApiClient((m, p, q, b) {
+        if (p.startsWith('/api/hf/reel-bookmarks')) return const ApiException(kind: ApiFailure.http, status: 404, code: 'not_enabled');
         if (p.endsWith('/view')) return {'ok': true};
-        if (m == 'GET' && p == '/api/hf/favourites') return {'ok': true, 'items': <Object?>[]};
-        if (m == 'PUT') return const ApiException(kind: ApiFailure.http, status: 404, code: 'not_enabled', message: 'x');
-        return {'ok': true, 'items': [_network('hfrl_1')], 'nextCursor': null};
+        return {'items': [_network('hfrl_1')]};
       });
-      FavouritesStore.override = FavouritesStore(FavouritesRepo(api));
-      await _pump(tester, FeedScreen(repo: ReelsRepo(api), searchRepo: SearchRepo(api), onlineFetch: () async => 1));
-      await tester.tap(find.byIcon(Icons.favorite_border_rounded));
-      for (var i = 0; i < 6; i++) {
-        await tester.pump();
-      }
-      expect(FavouritesStore.instance.isFav('maya'), isFalse);
-      expect(find.byIcon(Icons.favorite_border_rounded), findsOneWidget);
-      expect(find.text(FavouritesRepo.notOpenText), findsWidgets);
+      final store = WidgetBookmarks(api, () => Services.instance.user?.id);
+      ReelBookmarks.override = store;
+      await tester.pump();
+      await store.load();
+      await _pump(tester, FeedScreen(repo: ReelsRepo(api), onlineFetch: () async => 1));
+      await tester.tap(find.byTooltip('Save video'));
+      for (var i = 0; i < 10; i++) { await tester.pump(const Duration(milliseconds: 10)); }
+      await tester.pump();
+      expect(store.isSaved('hfrl_1'), isTrue);
+      expect(find.byTooltip('Remove saved video'), findsOneWidget);
     });
   });
 

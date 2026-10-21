@@ -1,3 +1,6 @@
+import 'fake_reel_bookmarks.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:hf_app/data/reel_bookmarks.dart';
 import 'package:hf_app/data/services.dart';
 import 'package:hf_app/data/auth/clerk_client.dart';
 import 'package:flutter/material.dart';
@@ -76,6 +79,8 @@ Future<void> _pump(WidgetTester tester, Widget home) async {
 
 void main() {
   setUp(() {
+    SharedPreferences.setMockInitialValues({});
+    ReelBookmarks.override = WidgetBookmarks(FakeApiClient((m,p,q,b) => {'items': []}), () => Services.instance.user?.id);
     PresenceBridge.forceReal = true;
     Services.instance.user = const ClerkUser(id: 'test_fan');
     InviteVotes.voted.clear();
@@ -84,6 +89,7 @@ void main() {
   });
   tearDown(() {
     PresenceBridge.forceReal = false;
+    ReelBookmarks.override = null;
     Services.instance.user = null;
     ReelPlayer.testPlayer = null;
     demo.signOut();
@@ -126,6 +132,9 @@ void main() {
       await _pump(tester, FeedScreen(repo: ReelsRepo(api), searchRepo: SearchRepo(api), onlineFetch: () async => 0));
       expect(find.text(kFeedEmptyText), findsNothing);
       expect(find.byKey(const ValueKey('player-hfiv_1')), findsOneWidget);
+      expect(find.text('Not on ${Brand.name} yet'), findsNothing);
+      await tester.tap(find.byTooltip('Reel information').first);
+      await tester.pumpAndSettle();
       expect(find.text('Not on ${Brand.name} yet'), findsOneWidget);
       expect(find.text('INVITE'), findsOneWidget);
       expect(find.text('CALL NOW'), findsNothing);
@@ -133,6 +142,8 @@ void main() {
       expect(find.byKey(const ValueKey('invite-stats')), findsOneWidget);
       expect(find.textContaining('@newstar'), findsWidgets);
       expect(api.calls.where((c) => c.endsWith('/view')), isEmpty, reason: 'we do not count views of other people\'s reels');
+      await tester.pump(const Duration(seconds: 9));
+      await tester.pumpAndSettle();
     });
 
     testWidgets('an empty feed still shows the empty state', (tester) async {
@@ -147,13 +158,13 @@ void main() {
         return {'ok': true, 'items': [_network('hfrl_1'), _invite('hfiv_1')], 'nextCursor': null};
       });
       await _pump(tester, FeedScreen(repo: ReelsRepo(api), searchRepo: SearchRepo(api), onlineFetch: () async => 1));
-      expect(find.text('CALL NOW'), findsOneWidget);
+      expect(find.byTooltip('Call now'), findsOneWidget);
       expect(find.text('INVITE'), findsNothing);
       expect(find.text('Not on ${Brand.name} yet'), findsNothing);
       await tester.fling(find.byType(PageView), const Offset(0, -900), 2000);
       await tester.pumpAndSettle();
-      expect(find.text('INVITE'), findsOneWidget);
-      expect(find.text('CALL NOW'), findsNothing);
+      expect(find.byTooltip('Open New Star profile'), findsOneWidget);
+      expect(find.byTooltip('Call now'), findsNothing);
     });
 
     testWidgets('INVITE votes, toasts, and the button becomes Voted', (tester) async {
@@ -162,6 +173,8 @@ void main() {
         return {'ok': true, 'items': [_invite('hfiv_1')], 'nextCursor': null};
       });
       await _pump(tester, FeedScreen(repo: ReelsRepo(api), searchRepo: SearchRepo(api), onlineFetch: () async => 0));
+      await tester.tap(find.byTooltip('Reel information').first);
+      await tester.pumpAndSettle();
       await tester.tap(find.text('INVITE'));
       await tester.pump();
       await tester.pump();
@@ -169,6 +182,8 @@ void main() {
       expect(find.text('Voted! We will ask @newstar to join.'), findsOneWidget);
       expect(find.text('VOTED'), findsOneWidget);
       expect(find.text('INVITE'), findsNothing);
+      await tester.pump(const Duration(seconds: 9));
+      await tester.pumpAndSettle();
     });
 
     testWidgets('a failed vote shows the message and leaves INVITE tappable', (tester) async {
@@ -177,11 +192,15 @@ void main() {
         return {'ok': true, 'items': [_invite('hfiv_1')], 'nextCursor': null};
       });
       await _pump(tester, FeedScreen(repo: ReelsRepo(api), searchRepo: SearchRepo(api), onlineFetch: () async => 0));
+      await tester.tap(find.byTooltip('Reel information').first);
+      await tester.pumpAndSettle();
       await tester.tap(find.text('INVITE'));
       await tester.pump();
       await tester.pump();
       expect(find.text('VOTED'), findsNothing);
       expect(find.text('INVITE'), findsOneWidget);
+      await tester.pump(const Duration(seconds: 9));
+      await tester.pumpAndSettle();
     });
   });
 

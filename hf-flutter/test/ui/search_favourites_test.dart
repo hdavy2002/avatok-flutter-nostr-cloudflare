@@ -1,3 +1,6 @@
+import 'fake_reel_bookmarks.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:hf_app/data/reel_bookmarks.dart';
 import 'package:hf_app/data/services.dart';
 import 'package:hf_app/data/auth/clerk_client.dart';
 import 'package:flutter/material.dart';
@@ -60,6 +63,7 @@ Future<void> _pump(WidgetTester tester, Widget home) async {
 
 void main() {
   setUp(() {
+    SharedPreferences.setMockInitialValues({});
     PresenceBridge.forceReal = true;
     Services.instance.user = const ClerkUser(id: 'test_fan');
     demo.applyAccount(name: 'Fan', email: 'f@x.in', whatsapp: '******3210');
@@ -68,6 +72,7 @@ void main() {
     PresenceBridge.forceReal = false;
     Services.instance.user = null;
     FavouritesStore.override = null;
+    ReelBookmarks.override = null;
     ShareSheet.testSink = null;
     ReelPlayer.testPlayer = null;
     demo.signOut();
@@ -174,46 +179,34 @@ void main() {
   });
 
   group('RealFavourites', () {
-    testWidgets('shows the grid, removes optimistically, and rolls back on failure', (tester) async {
-      var failDelete = true;
-      final api = FakeApiClient((m, p, q, b) {
-        if (m == 'GET') {
-          return {
-            'ok': true,
-            'items': [
-              {'slug': 'maya', 'displayName': 'Maya', 'photoUrl': null, 'headline': 'Calm listener', 'presence': 'online'},
-              {'slug': 'ravi', 'displayName': 'Ravi', 'presence': 'offline'},
-            ],
-          };
-        }
-        return m == 'DELETE' && failDelete ? _down : {'ok': true, 'saved': false};
-      });
-      final repo = FavouritesRepo(api);
-      FavouritesStore.override = FavouritesStore(repo);
-      await _pump(tester, FavouritesScreen(repo: repo));
-      expect(find.byKey(const ValueKey('fav-maya')), findsOneWidget);
-      expect(find.byKey(const ValueKey('fav-ravi')), findsOneWidget);
-
-      await tester.tap(find.byKey(const ValueKey('remove-ravi')));
+    testWidgets('shows saved videos and keeps removal local when server is offline', (tester) async {
+      final api = FakeApiClient((m, p, q, b) => const ApiException(kind: ApiFailure.http, status: 404, code: 'not_enabled'));
+      final store = WidgetBookmarks(api, () => Services.instance.user?.id);
+      ReelBookmarks.override = store;
+      final r = FeedReel.fromJson({'id': 'hfrl_abc12345', 'host': _host('maya', 'Maya'), 'caption': 'Saved video'});
       await tester.pump();
+      await store.toggle(r);
+      await _pump(tester, FavouritesScreen(repo: FavouritesRepo(api)));
+      for (var i = 0; i < 10; i++) { await tester.pump(const Duration(milliseconds: 10)); }
       await tester.pump();
+      expect(find.text('Saved video'), findsOneWidget);
+      await tester.tap(find.byTooltip('Remove saved video'));
+      for (var i = 0; i < 10; i++) { await tester.pump(const Duration(milliseconds: 10)); }
       await tester.pump();
-      expect(find.byKey(const ValueKey('fav-ravi')), findsOneWidget, reason: 'rolled back after the failure');
-
-      failDelete = false;
-      await tester.tap(find.byKey(const ValueKey('remove-ravi')));
-      await tester.pump();
-      await tester.pump();
-      expect(find.byKey(const ValueKey('fav-ravi')), findsNothing);
-      expect(api.calls.where((c) => c == 'DELETE /api/hf/favourites/ravi').length, 2);
+      expect(find.text('Saved video'), findsNothing);
+      expect(store.isSaved(r.id), isFalse);
+      expect(api.calls.any((p) => p.contains('/api/hf/favourites')), isFalse);
     });
 
-    testWidgets('empty state matches the demo copy', (tester) async {
+    testWidgets('empty saved-video state explains the reel heart', (tester) async {
       final api = FakeApiClient((m, p, q, b) => {'ok': true, 'items': <Object?>[]});
-      final repo = FavouritesRepo(api);
-      FavouritesStore.override = FavouritesStore(repo);
-      await _pump(tester, FavouritesScreen(repo: repo));
-      expect(find.text('No favourites yet'), findsOneWidget);
+      final store = WidgetBookmarks(api, () => Services.instance.user?.id);
+      ReelBookmarks.override = store;
+      await tester.pump();
+      await store.load();
+      await _pump(tester, FavouritesScreen(repo: FavouritesRepo(api)));
+      for (var i = 0; i < 10; i++) { await tester.pump(const Duration(milliseconds: 10)); }
+      await tester.pump();
       expect(find.text('Tap ♥ on a reel to save it here.'), findsOneWidget);
     });
   });
@@ -221,21 +214,29 @@ void main() {
   group('reel heart and share', () {
     FeedReel reel() => FeedReel.fromJson({'id': 'hfrl_abc12345', 'host': _host('maya', 'Maya'), 'caption': 'Hello', 'embedUrl': 'https://www.youtube.com/embed/abc12345'});
 
-    testWidgets('the heart saves by influencer slug (optimistic) and share opens the system sheet with the brand link', (tester) async {
+    testWidgets('the heart saves the current reel ID and share opens the branded system link', (tester) async {
       ReelPlayer.testPlayer = (r, active) => const SizedBox();
-      final api = FakeApiClient((m, p, q, b) => m == 'GET' ? {'ok': true, 'items': <Object?>[]} : {'ok': true, 'saved': true});
-      FavouritesStore.override = FavouritesStore(FavouritesRepo(api));
+      final saved = <String>{};
+      final api = FakeApiClient((m, p, q, b) {
+        if (m == 'PUT') saved.add(p.split('/').last);
+        return {'ok': true, 'items': [for (final id in saved) {'id': id, 'host': _host('maya', 'Maya')}]};
+      });
+      final store = WidgetBookmarks(api, () => Services.instance.user?.id);
+      ReelBookmarks.override = store;
+      await tester.pump();
+      await store.load();
       String? shared;
       ShareSheet.testSink = (text) async => shared = text;
       final r = reel();
       await _pump(tester, Scaffold(body: ReelPage(reel: demoReelFrom(r), active: true, real: r)));
       await tester.tap(find.byIcon(Icons.favorite_border_rounded));
       await tester.pump();
-      expect(FavouritesStore.instance.isFav('maya'), isTrue);
+      for (var i = 0; i < 10; i++) { await tester.pump(const Duration(milliseconds: 10)); }
+      expect(store.isSaved(r.id), isTrue);
       await tester.pump();
-      expect(api.calls, contains('PUT /api/hf/favourites/maya'));
+      expect(api.calls, contains('PUT /api/hf/reel-bookmarks/hfrl_abc12345'));
 
-      await tester.tap(find.byIcon(Icons.reply_rounded));
+      await tester.tap(find.byIcon(Icons.share_outlined));
       await tester.pump();
       expect(shared, contains(Brand.url('/r/hfrl_abc12345')));
     });

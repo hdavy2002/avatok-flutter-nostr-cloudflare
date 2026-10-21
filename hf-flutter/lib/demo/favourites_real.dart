@@ -28,6 +28,7 @@ class _RealFavouritesState extends State<RealFavourites> {
   void initState() {
     super.initState();
     demo.addListener(_accountChanged);
+    Services.instance.authAccount.addListener(_accountChanged);
     _store.addListener(_changed);
     _accountChanged();
   }
@@ -66,6 +67,7 @@ class _RealFavouritesState extends State<RealFavourites> {
   @override
   void dispose() {
     demo.removeListener(_accountChanged);
+    Services.instance.authAccount.removeListener(_accountChanged);
     _store.removeListener(_changed);
     super.dispose();
   }

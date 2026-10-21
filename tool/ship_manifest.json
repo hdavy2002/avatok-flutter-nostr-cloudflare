@@ -11097,5 +11097,20 @@
         "note": "Confirms the account entry sheet completed authentication. Guest isolation, interrupted signup recovery and first-install onboarding require separate checks; this does not assert deployment."
       }
     ]
+  },
+  "HF-REEL-VIEW-1": {
+    "description": "Compact reel viewer, booking modal and account-scoped saved videos with local persistence and server sync.",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [],
+    "success": [
+      {
+        "event": "hf_reel_action",
+        "property": "action",
+        "equals": "save",
+        "min_events": 1,
+        "note": "Confirms a video was saved locally. Server sync, actual playback and modal pause/resume require separate checks; this does not assert deployment."
+      }
+    ]
   }
 }

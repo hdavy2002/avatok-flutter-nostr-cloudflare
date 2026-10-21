@@ -16,7 +16,10 @@ class ReelBookmarks extends ChangeNotifier {
   ReelBookmarks(this.api, this.accountId);
   final ApiClient api;
   final String? Function() accountId;
-  static final instance = ReelBookmarks(
+  @visibleForTesting
+  static ReelBookmarks? override;
+  static ReelBookmarks get instance => override ?? _instance;
+  static final _instance = ReelBookmarks(
     Services.instance.api,
     () => Services.instance.user?.id,
   );
