@@ -182,7 +182,7 @@ function Kpi({ icon: Icon, label, value, delta, hint, spark, sparkLabel, href, t
             </span>
           </div>
           <div className="flex items-center gap-2">
-            <span className="font-dash text-[26px] font-bold leading-none tracking-[0.01em] text-[var(--hf-admin-plum)] sm:text-[28px]">{value}</span>
+            <span className="font-dash text-[26px] font-bold leading-none tracking-[0.01em] text-[var(--hf-admin-plum,#4a1747)] sm:text-[28px]">{value}</span>
             {badge}
           </div>
           {delta}
@@ -215,7 +215,7 @@ function Panel({ title, action, children, className }: { title: string; action?:
   return (
     <Card className={cn('hf-admin-op-card min-w-0', className)}>
       <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-2 space-y-0 pb-2">
-        <CardTitle className="font-dash text-[18px] text-[var(--hf-admin-plum)] sm:text-[19px]">{title}</CardTitle>
+        <CardTitle className="font-dash text-[18px] text-[var(--hf-admin-plum,#4a1747)] sm:text-[19px]">{title}</CardTitle>
         {action}
       </CardHeader>
       <CardContent className="px-3 pb-4 sm:px-5">{children}</CardContent>

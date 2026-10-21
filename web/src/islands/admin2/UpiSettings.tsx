@@ -96,7 +96,7 @@ export default function UpiSettings() {
     <div className="hf-admin-operations space-y-5 pb-24">
       <section className="hf-admin-op-card rounded-xl border border-border bg-card p-4 shadow-sm sm:p-6">
         <div className="flex flex-wrap items-center gap-2">
-          <h2 className="font-dash text-[20px] font-bold text-[var(--hf-admin-plum)]">UPI payments</h2>
+          <h2 className="font-dash text-[20px] font-bold text-[var(--hf-admin-plum,#4a1747)]">UPI payments</h2>
           {status.rail.enabled
             ? <Badge variant="accent"><CheckCircle2 className="mr-1 h-3.5 w-3.5" /> Taking payments</Badge>
             : <Badge variant="destructive"><AlertTriangle className="mr-1 h-3.5 w-3.5" /> Not taking payments</Badge>}
@@ -122,7 +122,7 @@ export default function UpiSettings() {
               <Label htmlFor="upi-payee" className="text-[14px] font-bold">Name customers see in their UPI app</Label>
               <Input id="upi-payee" value={payee} maxLength={60} onChange={(e) => setPayee(e.target.value)} placeholder={BRAND.name} className="text-[17px] font-bold" />
             </div>
-            <div className="rounded-lg border border-[var(--hf-admin-marigold)] bg-[var(--hf-admin-goldtint)] p-3 text-[14px] font-semibold leading-relaxed text-[var(--hf-admin-plum)]">
+            <div className="rounded-lg border border-[var(--hf-admin-marigold,#f59e0b)] bg-[var(--hf-admin-goldtint,#fff1d6)] p-3 text-[14px] font-semibold leading-relaxed text-[var(--hf-admin-plum,#4a1747)]">
               This UPI ID must pay into the <b>same HDFC account</b> the SMS phone is watching. Payments are confirmed only when that
               account’s credit SMS arrives and matches the customer’s 12-digit UPI reference — money sent anywhere else can’t be confirmed.
             </div>
@@ -137,7 +137,7 @@ export default function UpiSettings() {
       </section>
 
       <section className="hf-admin-op-card rounded-xl border border-border bg-card p-4 shadow-sm sm:p-6">
-        <h2 className="flex items-center gap-2 font-dash text-[20px] font-bold text-[var(--hf-admin-plum)]"><Smartphone className="h-5 w-5" /> Bank SMS phone</h2>
+        <h2 className="flex items-center gap-2 font-dash text-[20px] font-bold text-[var(--hf-admin-plum,#4a1747)]"><Smartphone className="h-5 w-5" /> Bank SMS phone</h2>
         <p className="mt-2 text-[14px] font-semibold text-muted-foreground">
           Last HDFC credit SMS received: <b className="text-foreground">{status.last_bank_sms_at ? istDateTime(status.last_bank_sms_at) : 'never'}</b>
           {smsAgeDays !== null && smsAgeDays > 2 && ' — if you have taken payments since, the SMS app is not forwarding.'}

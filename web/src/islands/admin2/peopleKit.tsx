@@ -148,12 +148,12 @@ export function dayMs(day: string, end = false): string | undefined {
 /* ── status pills ───────────────────────────────────────────────────────── */
 
 export type Status = 'paid' | 'free' | 'pending' | 'refund_requested' | 'refunded' | 'requested' | 'rejected';
-const AMBER = 'bg-[var(--hf-admin-goldtint)] text-[var(--hf-admin-plum)]';
+const AMBER = 'bg-[var(--hf-admin-goldtint,#fff1d6)] text-[var(--hf-admin-plum,#4a1747)]';
 export const STATUS_META: Record<Status, { label: string; cls: string; dot: string }> = {
   paid: { label: 'Paid', cls: 'bg-accent text-accent-foreground', dot: 'bg-accent' },
   free: { label: 'Free', cls: 'bg-secondary text-secondary-foreground', dot: 'bg-secondary' },
   pending: { label: 'Pending', cls: 'border-grand-gold bg-grand-gold/25 text-foreground', dot: 'bg-grand-gold' },
-  refund_requested: { label: 'Refund requested', cls: AMBER, dot: 'bg-[var(--hf-admin-marigold)]' },
+  refund_requested: { label: 'Refund requested', cls: AMBER, dot: 'bg-[var(--hf-admin-marigold,#f59e0b)]' },
   refunded: { label: 'Refunded', cls: 'bg-muted text-muted-foreground', dot: 'bg-muted-foreground' },
   requested: { label: 'Requested', cls: AMBER, dot: 'bg-primary' },
   rejected: { label: 'Rejected', cls: 'bg-muted text-muted-foreground', dot: 'bg-muted-foreground' },

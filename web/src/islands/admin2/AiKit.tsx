@@ -3,7 +3,7 @@ import type { ReactNode } from 'react';
 import { cn } from '../../lib/utils';
 
 export const CARD = 'hf-admin-op-card rounded-xl border border-border bg-card p-4 shadow-sm sm:p-6';
-export const H2 = 'font-dash text-[20px] font-bold text-[var(--hf-admin-plum)]';
+export const H2 = 'font-dash text-[20px] font-bold text-[var(--hf-admin-plum,#4a1747)]';
 export const LABEL = 'font-dashbody text-[14px] font-bold text-foreground';
 export const HINT = 'text-[14px] font-semibold leading-relaxed text-muted-foreground';
 export const TEXTAREA =

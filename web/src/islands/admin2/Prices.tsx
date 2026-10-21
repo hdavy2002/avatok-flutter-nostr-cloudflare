@@ -81,7 +81,7 @@ export default function Prices() {
   return (
     <div className="hf-admin-operations space-y-5 pb-24">
       <section className="hf-admin-op-card rounded-xl border border-border bg-card p-4 shadow-sm sm:p-6">
-        <h2 className="font-dash text-[20px] font-bold text-[var(--hf-admin-plum)]">Starting-from prices</h2>
+        <h2 className="font-dash text-[20px] font-bold text-[var(--hf-admin-plum,#4a1747)]">Starting-from prices</h2>
         <p className="mt-1 max-w-2xl text-[14px] font-semibold leading-relaxed text-muted-foreground">
           Shown as “starting from ₹…” on every ritual article and on the WhatsApp share card. Leave a box empty to show no price.
         </p>
@@ -100,7 +100,7 @@ export default function Prices() {
       <section className="hf-admin-op-card rounded-xl border border-border bg-card p-4 shadow-sm sm:p-6">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
           <div>
-            <h2 className="flex items-center gap-2 font-dash text-[20px] font-bold text-[var(--hf-admin-plum)]">Price for one ritual {overrideCount > 0 && <Badge variant="accent">{overrideCount} set</Badge>}</h2>
+            <h2 className="flex items-center gap-2 font-dash text-[20px] font-bold text-[var(--hf-admin-plum,#4a1747)]">Price for one ritual {overrideCount > 0 && <Badge variant="accent">{overrideCount} set</Badge>}</h2>
             <p className="mt-1 text-[14px] font-semibold text-muted-foreground">Optional. Empty uses the havan or puja price above.</p>
           </div>
           <div className="relative sm:w-72">

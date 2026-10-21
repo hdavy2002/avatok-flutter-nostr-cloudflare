@@ -54,7 +54,7 @@ export default function Bookings() {
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div className="min-w-0">
               <div className="text-[14px] font-extrabold uppercase tracking-[0.08em] text-muted-foreground">Bookings for one event</div>
-              <h2 className="mt-1 font-dash text-[20px] font-bold text-[var(--hf-admin-plum)] sm:text-[22px]">{event?.title ?? (list.phase === 'loading' ? '…' : 'Event')}</h2>
+              <h2 className="mt-1 font-dash text-[20px] font-bold text-[var(--hf-admin-plum,#4a1747)] sm:text-[22px]">{event?.title ?? (list.phase === 'loading' ? '…' : 'Event')}</h2>
               {event && (
                 <p className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[14px] font-semibold text-muted-foreground">
                   <span className="inline-flex items-center gap-1"><CalendarDays className="h-4 w-4" />{event.starts_at ? istDateTime(event.starts_at) : 'No date'}</span>

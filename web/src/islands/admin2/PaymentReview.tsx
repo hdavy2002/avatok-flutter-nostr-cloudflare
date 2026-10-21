@@ -97,7 +97,7 @@ function SourceCards({ sources, now }: { sources: SourceHealth[]; now: number })
 
   return (
     <section aria-label="Payment sources">
-      <h2 className="mb-2 font-dash text-[18px] font-bold text-[var(--hf-admin-plum)]">Payment sources</h2>
+      <h2 className="mb-2 font-dash text-[18px] font-bold text-[var(--hf-admin-plum,#4a1747)]">Payment sources</h2>
       <div className="grid gap-3 md:grid-cols-2">
         {cards.map(({ key, s }) => {
           const label = SOURCE_LABEL[key];
@@ -148,7 +148,7 @@ function SourceCards({ sources, now }: { sources: SourceHealth[]; now: number })
 
 function CorroChip({ open }: { open: boolean }) {
   return open
-    ? <Badge className="border-transparent bg-[var(--hf-admin-goldtint)] text-[14px] text-[var(--hf-admin-plum)] hover:bg-[var(--hf-admin-goldtint)]">Awaiting second source</Badge>
+    ? <Badge className="border-transparent bg-[var(--hf-admin-goldtint,#fff1d6)] text-[14px] text-[var(--hf-admin-plum,#4a1747)] hover:bg-[var(--hf-admin-goldtint,#fff1d6)]">Awaiting second source</Badge>
     : <Badge variant="destructive" className="text-[14px]"><AlertTriangle className="mr-1 h-4 w-4" /> Not corroborated, check bank statement</Badge>;
 }
 
@@ -156,7 +156,7 @@ function Uncorroborated({ items, now }: { items: Uncorroborated[]; now: number }
   if (items.length === 0) return null;
   return (
     <section aria-label="Confirmed by forwarder only">
-      <h2 className="font-dash text-[18px] font-bold text-[var(--hf-admin-plum)]">Confirmed by forwarder only <span className="text-muted-foreground">({items.length})</span></h2>
+      <h2 className="font-dash text-[18px] font-bold text-[var(--hf-admin-plum,#4a1747)]">Confirmed by forwarder only <span className="text-muted-foreground">({items.length})</span></h2>
       <p className="mb-2 text-[14px] font-semibold text-muted-foreground">Confirmed automatically from the forwarder app alone. The Google Messages watcher has not yet seen the same bank SMS.</p>
       <div className="hidden overflow-x-auto hf-admin-op-card rounded-xl border border-border/60 bg-card shadow-sm md:block">
         <table className="w-full border-collapse">
@@ -226,7 +226,7 @@ function ForwarderSetup({ now }: { now: number }) {
     <section aria-label="Forwarder setup" className="hf-admin-op-card rounded-xl border border-border/60 bg-card shadow-sm">
       <button type="button" aria-expanded={open} onClick={() => setOpen((o) => !o)}
         className="flex min-h-[52px] w-full items-center justify-between gap-3 px-4 py-3 text-left">
-        <span className="font-dash text-[17px] font-bold text-[var(--hf-admin-plum)]">Forwarder setup</span>
+        <span className="font-dash text-[17px] font-bold text-[var(--hf-admin-plum,#4a1747)]">Forwarder setup</span>
         <ChevronDown className={cn('h-5 w-5 text-muted-foreground transition-transform', open && 'rotate-180')} aria-hidden />
       </button>
       {open && (
@@ -305,7 +305,7 @@ function ConfirmDialog({ checkout, sms, now, onClose, onSubmit }: {
         {checkout && (
           <>
             <DialogHeader>
-              <DialogTitle className="font-dash text-[20px] text-[var(--hf-admin-plum)]">Confirm payment</DialogTitle>
+              <DialogTitle className="font-dash text-[20px] text-[var(--hf-admin-plum,#4a1747)]">Confirm payment</DialogTitle>
               <DialogDescription className="text-[14px] font-semibold">
                 {checkout.buyer_name ?? 'Buyer'} · <b className="text-foreground">{rupees(checkout.pay_amount_paise)}</b> · {checkout.listing_title ?? 'Event'}
               </DialogDescription>
@@ -528,7 +528,7 @@ export default function PaymentReview() {
 
       <section aria-label="Waiting for verification">
         <div className="mb-2 flex items-center justify-between gap-3">
-          <h2 className="font-dash text-[18px] font-bold text-[var(--hf-admin-plum)]">Waiting for verification <span className="text-muted-foreground">({checkouts.length})</span></h2>
+          <h2 className="font-dash text-[18px] font-bold text-[var(--hf-admin-plum,#4a1747)]">Waiting for verification <span className="text-muted-foreground">({checkouts.length})</span></h2>
           <Button variant="outline" size="sm" className="h-10 text-[14px]" onClick={() => void load(true)}><RefreshCw /> Refresh</Button>
         </div>
 
@@ -601,7 +601,7 @@ export default function PaymentReview() {
       </section>
 
       <section aria-label="Unmatched bank SMS">
-        <h2 className="mb-2 font-dash text-[18px] font-bold text-[var(--hf-admin-plum)]">Unmatched bank SMS <span className="text-muted-foreground">({sms.length})</span></h2>
+        <h2 className="mb-2 font-dash text-[18px] font-bold text-[var(--hf-admin-plum,#4a1747)]">Unmatched bank SMS <span className="text-muted-foreground">({sms.length})</span></h2>
         {sms.length === 0 ? (
           <Empty title="No unmatched bank SMS" body="Every credit SMS has been matched to a checkout." />
         ) : (

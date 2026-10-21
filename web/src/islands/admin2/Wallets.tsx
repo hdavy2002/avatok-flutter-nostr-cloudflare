@@ -373,7 +373,7 @@ function WalletPanel({ uid, onChange }: { uid: string; onChange: (uid: string, p
                       <div>{typeLabel(s.type)}</div>
                       {(s.context || s.app_name) && <div className="text-[14px] font-semibold text-muted-foreground">{s.context ?? s.app_name}</div>}
                     </td>
-                    <td className={cn(`${TD} text-right font-extrabold tabular-nums`, s.amount_tokens > 0 ? 'text-[var(--hf-admin-plum)]' : 'text-foreground')}>
+                    <td className={cn(`${TD} text-right font-extrabold tabular-nums`, s.amount_tokens > 0 ? 'text-[var(--hf-admin-plum,#4a1747)]' : 'text-foreground')}>
                       {s.amount_tokens > 0 ? '+' : ''}{rupees(s.amount_tokens)}
                     </td>
                     <td className={`${TD} text-right tabular-nums text-muted-foreground`}>{s.balance_after_tokens != null ? rupees(s.balance_after_tokens) : '—'}</td>
