@@ -69,7 +69,7 @@ test('HEADERS-02/04: baseline blocks external ancestors; script tightening stays
   assert.ok(SECURITY_HEADERS['Content-Security-Policy'].includes("frame-ancestors 'self'"));
   assert.equal(SECURITY_HEADERS['X-Frame-Options'], 'SAMEORIGIN');
   assert.ok(!SECURITY_HEADERS['Content-Security-Policy'].includes('script-src'));
-  const script = REPORT_ONLY_CSP.split('; ').find((directive) => directive.startsWith('script-src '))!;
+  const script = REPORT_ONLY_CSP.split('; ').find((directive: string) => directive.startsWith('script-src '))!;
   assert.ok(script);
   assert.ok(!/unsafe-inline|unsafe-eval|\*/.test(script));
 });
