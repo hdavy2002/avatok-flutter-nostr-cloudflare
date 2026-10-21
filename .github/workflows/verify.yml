@@ -313,8 +313,9 @@ jobs:
           printf '  %s\n' "${files[@]}"
           flutter test "${files[@]}"
 
+      # Keep test evidence available after analysis errors; the job still fails.
       - name: Flutter unit tests
-        if: ${{ !inputs.commercial_only && !inputs.calendar_only }}
+        if: ${{ !cancelled() && !inputs.commercial_only && !inputs.calendar_only }}
         working-directory: app
         run: flutter test
 
@@ -347,13 +348,14 @@ jobs:
       # checks. Node 22 above covers node:sqlite and --experimental-strip-types;
       # a test that needs JSX or a bundler does not belong in this step (it does
       # not transform .tsx).
+      # A type-check failure remains fatal, but must not hide test results.
       - name: Web unit tests (node:test) — full device checks + calendar regressions
-        if: ${{ !inputs.calendar_only }}
+        if: ${{ !cancelled() && !inputs.calendar_only }}
         working-directory: web
         run: node --experimental-strip-types --test test/*.test.ts test/*.test.mjs
       # Focused calendar run: the explicit calendar and device files, so the
       # subset cannot silently widen or narrow with an unrelated glob change.
       - name: Web unit tests (node:test) — focused calendar + device checks
-        if: ${{ inputs.calendar_only }}
+        if: ${{ !cancelled() && inputs.calendar_only }}
         working-directory: web
         run: node --experimental-strip-types --test test/calendar_core.test.ts test/device_checks.test.ts

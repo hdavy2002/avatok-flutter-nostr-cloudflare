@@ -1,4 +1,54 @@
 {
+  "HF-SEC-AGE-1": {
+    "description": "Require authoritative adult self-attestation before paid call and booking transactions; provide explicit client recovery.",
+    "two_sided": false,
+    "min_devices_on_build": 0,
+    "flags": [],
+    "no_telemetry": "No dedicated age-denial event is emitted. Existing call and booking success events do not prove rejection before wallet/provider side effects. CI age eligibility, transaction and recovery regressions are the acceptance evidence; live enforcement remains unverified until deployed."
+  },
+  "HF-SEC-PROFILE-1": {
+    "description": "Derive public identity claims and creator publication eligibility from stored KYC and reviewed video evidence.",
+    "two_sided": false,
+    "min_devices_on_build": 0,
+    "flags": [],
+    "no_telemetry": "Public evidence projection and publication guards emit no dedicated verification event. CI evidence-matrix and profile/listing regressions check fail-closed behavior; inspect deployed public responses separately. Generic profile views do not prove evidence correctness."
+  },
+  "HF-SEC-OTP-1": {
+    "description": "Reserve OTP sends atomically before provider calls and retain counted capacity after ambiguous outcomes.",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [],
+    "success": [
+      {
+        "event": "otp_send_reservation",
+        "property": "outcome",
+        "equals": "reservation_granted",
+        "min_events": 1,
+        "note": "Existing bounded server telemetry confirms the reservation path was reached. It does not prove OTP delivery, final record update or concurrency safety; those require separate provider evidence and CI reservation regressions."
+      }
+    ]
+  },
+  "HF-SEC-STORAGE-1": {
+    "description": "Reduce persistent browser identity and authenticated response data; resolve HF call identity from the active session.",
+    "two_sided": false,
+    "min_devices_on_build": 0,
+    "flags": [],
+    "no_telemetry": "Storage minimization emits no dedicated event, and sending removed identity or token values would defeat the privacy change. CI storage regressions and browser sign-out/reload inspection provide evidence; existing product events do not prove absence of persisted data."
+  },
+  "HF-SEC-HEADERS-1": {
+    "description": "Apply baseline SSR and static browser security headers with canonical-origin HSTS and report-only resource policy.",
+    "two_sided": false,
+    "min_devices_on_build": 0,
+    "flags": [],
+    "no_telemetry": "Response headers and static policy mirrors emit no product telemetry. No CSP report collection endpoint is configured. CI policy tests, deployed response probes and browser flow checks are required; report-only CSP is not script enforcement."
+  },
+  "HF-SEC-RELEASE-1": {
+    "description": "Guard live HF release mode and include security regressions in CI while preserving analysis failure gates.",
+    "two_sided": false,
+    "min_devices_on_build": 0,
+    "flags": [],
+    "no_telemetry": "CI and release workflow controls emit no runtime product event. Acceptance is the GitHub Actions run evidence for workflow guards and security suites, with analysis failures remaining blocking; no passing run is claimed by this manifest."
+  },
   "SAATHUM-LEGAL-CONTACT-1": {
     "description": "Publish confirmed business and contact details across footer-linked pages and simplify the footer credit.",
     "two_sided": false,

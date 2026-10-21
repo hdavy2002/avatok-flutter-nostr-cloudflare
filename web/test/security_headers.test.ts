@@ -2,7 +2,18 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { readFileSync } from 'node:fs';
 import { BRAND } from '../src/lib/brand.ts';
-import { SECURITY_HEADERS, REPORT_ONLY_CSP, withSecurityHeaders } from '../src/lib/securityHeaders.ts';
+import ts from 'typescript';
+
+// Node's type stripping does not resolve the extensionless imports used by Astro.
+// Load the real policy with its brand dependency resolved explicitly for Node.
+const source = readFileSync(new URL('../src/lib/securityHeaders.ts', import.meta.url), 'utf8')
+  .replace("from './brand'", `from '${new URL('../src/lib/brand.ts', import.meta.url).href}'`);
+const { outputText } = ts.transpileModule(source, { compilerOptions: {
+  module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022,
+} });
+const { SECURITY_HEADERS, REPORT_ONLY_CSP, withSecurityHeaders } = await import(
+  'data:text/javascript;base64,' + Buffer.from(outputText).toString('base64')
+);
 
 const production = new URL(BRAND.webOrigin);
 
