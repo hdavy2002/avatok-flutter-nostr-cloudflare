@@ -52,8 +52,8 @@ try {
         return { headerHeight: h.height, logoWidth: l.width, logoHeight: l.height, gapAbove: l.top - h.top, gapBelow: h.bottom - l.bottom, position: getComputedStyle(header).position, shadow: getComputedStyle(header).boxShadow };
       });
       assert.equal(top.position, 'sticky', name + ': header is sticky');
-      assert(top.logoWidth >= (width < 700 ? 160 : 210), name + ': wordmark has the intended width (' + top.logoWidth + ')');
-      assert(top.logoHeight >= (width < 700 ? 65 : 85), name + ': wordmark remains legible (' + top.logoHeight + ')');
+      assert(top.logoWidth >= (width < 900 ? 160 : 210), name + ': wordmark has the intended width (' + top.logoWidth + ')');
+      assert(top.logoHeight >= (width < 900 ? 65 : 85), name + ': wordmark remains legible (' + top.logoHeight + ')');
       assert(Math.abs(top.logoWidth / top.logoHeight - 1942 / 809) < 0.05, name + ': wordmark keeps its aspect ratio');
       assert(top.gapAbove <= 1 && top.gapBelow <= 1, name + ': no space above/below the logo (' + top.gapAbove + '/' + top.gapBelow + ')');
       assert.notEqual(top.shadow, 'none', name + ': header has a shadow');
@@ -63,7 +63,7 @@ try {
       assert(Math.abs(stuck) <= 1, name + ': header stays at the top after scrolling (' + stuck + ')');
       await page.evaluate(() => window.scrollTo(0, 0));
       const nav = page.locator('#main-navigation');
-      if (width < 700) {
+      if (width < 900) {
         await page.locator('[data-callvaal-menu-toggle]').click();
         await expect(nav).toBeVisible();
       }
