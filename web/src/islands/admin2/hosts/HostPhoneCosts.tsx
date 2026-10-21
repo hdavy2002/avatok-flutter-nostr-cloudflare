@@ -303,7 +303,7 @@ export default function HostPhoneCosts() {
   return (
     <ConsultShell className="hf-admin-operations">
       <style>{CSS}</style>
-      <div className="pc-ui" style={{ display: 'grid', gap: 14 }}>
+      <div className="pc-ui" style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)', gap: 14 }}>
         {error && <Banner tone="error">{error}</Banner>}
         {note && <Banner tone="info">{note}</Banner>}
         {sumErr && !sum && <Banner tone="error">{sumErr}</Banner>}
