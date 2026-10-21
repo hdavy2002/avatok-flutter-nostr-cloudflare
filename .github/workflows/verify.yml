@@ -71,6 +71,31 @@ jobs:
         # that stub's filename — must be --dir.)
         run: npx vitest run --dir test
 
+      # Security suites live under src/, outside the legacy --dir test gate.
+      # Exact paths fail closed if a required issue was not integrated. Node 22
+      # also runs the OTP suite's real SQLite ledger, without provider requests.
+      - name: HF security suites (age, public evidence, atomic OTP reservations)
+        if: always()
+        working-directory: worker
+        run: |
+          set -euo pipefail
+          files=(
+            src/lib/hf_age_eligibility.test.ts
+            src/routes/hf_age_transactions.test.ts
+            src/routes/hf_bookings_approval_confirm.test.ts
+            src/lib/hf_public_verification.test.ts
+            src/routes/hf_hosts_list.test.ts
+            src/lib/otp_send_reservation.test.ts
+            src/routes/whatsapp_auth_phone_only.test.ts
+          )
+          for file in "${files[@]}"; do
+            test -f "$file" || { echo "::error::Required HF security suite missing: $file"; exit 1; }
+          done
+          npx vitest run "${files[@]}"
+      - name: HF release workflow contract
+        if: always()
+        run: python3 tool/test_hf_release_workflow.py
+
   # [CAL-2026-09-15] Focused calendar/availability worker gate. This is the
   # `calendar_only` counterpart to worker-ts: the same Node 22 runtime and
   # worker typecheck, but the vitest subset is limited to the calendar-owned

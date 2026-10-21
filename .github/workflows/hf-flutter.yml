@@ -13,8 +13,8 @@ name: HF Flutter (native app)
 #   mode=scaffold  one-off helper: runs `flutter create` in a temp folder, runs `pub get` with hf-flutter/pubspec.yaml
 #                  and uploads the generated android/ skeleton plus pubspec.lock as an artifact to commit.
 #
-# DEMO SWITCH (input `demo`, default 'true'):
-#   demo=true   the app shows dummy data (reels, wallet, calls...). This is what the owner's phone runs until the backend is live.
+# DEMO SWITCH (input `demo`, default 'false'):
+#   demo=true   explicit development artifact only (apk/aab/buildcheck); never publish to Play.
 #   demo=false  LIVE: every screen reads the real server, no dummy data (`--dart-define=HF_DEMO=false`).
 # Only the apk / aab / internal / buildcheck builds read it; analyze and tests always run in the default demo mode.
 #
@@ -24,7 +24,7 @@ name: HF Flutter (native app)
 # Magic words "ship hf" (go LIVE, only when the owner asks; backend deployed and flags on first, see
 # Specs/HF-REELS-BUILD-PROGRESS.md section 5):
 #   gh workflow run hf-flutter.yml --ref main -f mode=internal -f demo=false
-# Keep the demo on the phone instead:  gh workflow run hf-flutter.yml --ref main -f mode=internal   (demo defaults to true)
+# Demo artifact for device testing: gh workflow run hf-flutter.yml --ref main -f mode=apk -f demo=true
 on:
   workflow_dispatch:
     inputs:
@@ -35,9 +35,9 @@ on:
         type: choice
         options: [check, buildcheck, apk, aab, internal, scaffold]
       demo:
-        description: "'true' = dummy data in the app (default); 'false' = LIVE, real server data only"
+        description: "'false' = LIVE, real server data (default); 'true' = demo artifacts only, never Play"
         required: false
-        default: 'true'
+        default: 'false'
         type: choice
         options: ['true', 'false']
 
@@ -46,7 +46,7 @@ permissions:
 
 env:
   MODE: ${{ inputs.mode }}
-  HF_DEMO: ${{ inputs.demo || 'true' }}
+  HF_DEMO: ${{ inputs.demo || 'false' }}
   FLUTTER_VERSION: 3.41.x
 
 jobs:
@@ -62,6 +62,20 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Guard - release mode
+        run: |
+          case "${HF_DEMO}" in
+            true|false) ;;
+            *) echo "::error::HF_DEMO must be true or false."; exit 1 ;;
+          esac
+          if [ "${MODE}" = "internal" ] && [ "${HF_DEMO}" != "false" ]; then
+            echo "::error::Play internal publication requires demo=false. Use apk/aab/buildcheck for explicit demo artifacts."
+            exit 1
+          fi
+
+      - name: Release workflow contract
+        run: python3 tool/test_hf_release_workflow.py
 
       - name: Guard - main only for builds, secrets present
         run: |
@@ -321,6 +335,7 @@ jobs:
           {
             echo "## HF Flutter"
             echo ""
+            echo "- revision: ${GITHUB_SHA}"
             echo "- mode: ${MODE}"
             echo "- demo data: ${HF_DEMO} (apk/aab/internal/buildcheck only)"
             echo "- versionCode: ${HF_VERSION_CODE:-n/a}"
