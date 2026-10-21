@@ -79,28 +79,28 @@ export default function Prices() {
   if (loadError) return <ErrorBox message={loadError} onRetry={() => void load()} />;
 
   return (
-    <div className="space-y-5 pb-24">
-      <section className="rounded-xl border border-border bg-card p-4 shadow-sm sm:p-6">
-        <h2 className="font-dash text-[20px] font-bold text-grand-teal">Starting-from prices</h2>
+    <div className="hf-admin-operations space-y-5 pb-24">
+      <section className="hf-admin-op-card rounded-xl border border-border bg-card p-4 shadow-sm sm:p-6">
+        <h2 className="font-dash text-[20px] font-bold text-[var(--hf-admin-plum)]">Starting-from prices</h2>
         <p className="mt-1 max-w-2xl text-[14px] font-semibold leading-relaxed text-muted-foreground">
           Shown as “starting from ₹…” on every ritual article and on the WhatsApp share card. Leave a box empty to show no price.
         </p>
         <div className="mt-4 grid gap-4 sm:grid-cols-2">
           <div className="grid gap-1.5">
-            <Label htmlFor="price-havan" className="text-[13px] font-bold">Open havans: starting from (₹)</Label>
+            <Label htmlFor="price-havan" className="text-[14px] font-bold">Open havans: starting from (₹)</Label>
             <Input id="price-havan" inputMode="numeric" value={havan} placeholder="111" onChange={(e) => { setHavan(digits(e.target.value)); setDirty(true); }} className="text-[16px] font-bold" />
           </div>
           <div className="grid gap-1.5">
-            <Label htmlFor="price-puja" className="text-[13px] font-bold">Private pujas: starting from (₹)</Label>
+            <Label htmlFor="price-puja" className="text-[14px] font-bold">Private pujas: starting from (₹)</Label>
             <Input id="price-puja" inputMode="numeric" value={puja} placeholder="Empty = no price shown" onChange={(e) => { setPuja(digits(e.target.value)); setDirty(true); }} className="text-[16px] font-bold" />
           </div>
         </div>
       </section>
 
-      <section className="rounded-xl border border-border bg-card p-4 shadow-sm sm:p-6">
+      <section className="hf-admin-op-card rounded-xl border border-border bg-card p-4 shadow-sm sm:p-6">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
           <div>
-            <h2 className="flex items-center gap-2 font-dash text-[20px] font-bold text-grand-teal">Price for one ritual {overrideCount > 0 && <Badge variant="accent">{overrideCount} set</Badge>}</h2>
+            <h2 className="flex items-center gap-2 font-dash text-[20px] font-bold text-[var(--hf-admin-plum)]">Price for one ritual {overrideCount > 0 && <Badge variant="accent">{overrideCount} set</Badge>}</h2>
             <p className="mt-1 text-[14px] font-semibold text-muted-foreground">Optional. Empty uses the havan or puja price above.</p>
           </div>
           <div className="relative sm:w-72">
@@ -115,7 +115,7 @@ export default function Prices() {
               <li key={r.slug} className="grid grid-cols-[1fr_8.5rem] items-center gap-3 bg-card px-3 py-2.5 hover:bg-muted/30">
                 <div className="min-w-0">
                   <div className="truncate text-[14.5px] font-bold text-foreground">{r.title}</div>
-                  <div className="text-[11.5px] font-extrabold uppercase tracking-[0.08em] text-muted-foreground">{r.type}</div>
+                  <div className="text-[14px] font-extrabold uppercase tracking-[0.08em] text-muted-foreground">{r.type}</div>
                 </div>
                 <Input inputMode="numeric" aria-label={`Price for ${r.title}`} value={overrides[r.slug] ?? ''} placeholder={floor ? `₹${floor}` : 'No price'}
                   onChange={(e) => { setOverrides((o) => ({ ...o, [r.slug]: digits(e.target.value) })); setDirty(true); }} className="text-right font-bold tabular-nums" />
@@ -127,11 +127,11 @@ export default function Prices() {
       </section>
 
       {/* Sticky save bar: always reachable on a phone. */}
-      <div className="sticky bottom-[calc(var(--dash-tabbar-h,0px)+12px)] z-10 flex flex-wrap items-center gap-3 rounded-xl border border-border bg-card/95 p-3 shadow-lg backdrop-blur sm:bottom-4">
+      <div className="sticky bottom-[calc(var(--dash-tabbar-h,0px)+12px)] z-10 flex flex-wrap items-center gap-3 hf-admin-op-card rounded-xl border border-border bg-card/95 p-3 shadow-lg backdrop-blur sm:bottom-4">
         <Button variant="accent" onClick={() => void save()} disabled={saving}>
           {saving ? <Loader2 className="animate-spin" /> : <Save />} {saving ? 'Saving…' : 'Save prices'}
         </Button>
-        <span className="text-[13px] font-semibold text-muted-foreground">
+        <span className="text-[14px] font-semibold text-muted-foreground">
           {dirty ? 'Unsaved changes' : updatedAt ? `Last changed ${istDateTime(updatedAt)}` : 'Not saved yet'}
         </span>
       </div>

@@ -147,8 +147,8 @@ export default function Refunds() {
   const total = (counts.requested ?? 0) + (counts.refunded ?? 0) + (counts.rejected ?? 0);
 
   return (
-    <div className="space-y-5">
-      <p className="flex items-start gap-2 rounded-xl border border-grand-gold/60 bg-grand-gold/15 p-3 text-[13.5px] font-semibold text-foreground">
+    <div className="hf-admin-operations space-y-5">
+      <p className="flex items-start gap-2 hf-admin-op-card rounded-xl border border-grand-gold/60 bg-grand-gold/15 p-3 text-[14px] font-semibold text-foreground">
         <Info className="mt-0.5 h-4 w-4 shrink-0 text-grand-gold" />
         Refunds are sent by hand from the bank app. Send the money first, then record the refund UTR here. The customer sees it in Billing.
       </p>
@@ -161,12 +161,12 @@ export default function Refunds() {
             return (
               <button key={t.key} type="button" role="tab" aria-selected={on}
                 onClick={() => { setTab(t.key); setOpen(null); }}
-                className={cn('inline-flex h-9 items-center gap-2 rounded-full border px-3.5 text-[13px] font-bold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+                className={cn('inline-flex h-9 items-center gap-2 rounded-full border px-3.5 text-[14px] font-bold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
                   on ? 'border-accent bg-accent text-accent-foreground' : 'border-border/70 bg-card text-foreground hover:bg-muted')}>
                 {t.label}
                 {t.key === 'requested'
-                  ? <span className={cn('rounded-full px-2 text-[12px] font-extrabold', requested > 0 ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground')}>{requested}</span>
-                  : n != null ? <span className="text-[12px] tabular-nums opacity-80">{n}</span> : null}
+                  ? <span className={cn('rounded-full px-2 text-[14px] font-extrabold', requested > 0 ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground')}>{requested}</span>
+                  : n != null ? <span className="text-[14px] tabular-nums opacity-80">{n}</span> : null}
               </button>
             );
           })}
@@ -184,19 +184,19 @@ export default function Refunds() {
             const isOpen = open?.id === r.refund_id;
             const b = busy === r.refund_id;
             return (
-              <li key={r.refund_id} className="rounded-xl border border-border/60 bg-card p-4 shadow-sm sm:p-5">
+              <li key={r.refund_id} className="hf-admin-op-card rounded-xl border border-border/60 bg-card p-4 shadow-sm sm:p-5">
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div className="min-w-0">
                     <div className="font-dash text-[18px] font-bold text-foreground">{formatPaise(r.amount_paise)} · {r.event_title ?? 'Unknown event'}</div>
                     <div className="mt-1"><CustomerCell c={{ uid: r.customer.uid, name: r.customer.name, email: r.customer.email, phone_masked: null, phone_hash_only: false }} compact /></div>
-                    <div className="mt-1 text-[12.5px] font-semibold text-muted-foreground">Event {istDateTime(r.event_starts_at)} · requested {istDateTime(r.requested_at)}</div>
+                    <div className="mt-1 text-[14px] font-semibold text-muted-foreground">Event {istDateTime(r.event_starts_at)} · requested {istDateTime(r.requested_at)}</div>
                   </div>
                   <StatusPill status={r.status} />
                 </div>
 
-                <dl className="mt-3 grid gap-2 text-[13.5px] sm:grid-cols-2">
+                <dl className="mt-3 grid gap-2 text-[14px] sm:grid-cols-2">
                   <div className="flex flex-wrap items-center gap-2"><dt className="font-bold text-muted-foreground">Payer UTR</dt><dd>{r.payer_utr ? <CopyValue value={r.payer_utr} label="payer UTR" /> : '—'}</dd></div>
-                  <div className="flex min-w-0 flex-wrap items-center gap-2"><dt className="font-bold text-muted-foreground">Payment</dt><dd className="min-w-0"><CopyValue value={r.payment_id} label="payment id" className="text-[12.5px]" /></dd></div>
+                  <div className="flex min-w-0 flex-wrap items-center gap-2"><dt className="font-bold text-muted-foreground">Payment</dt><dd className="min-w-0"><CopyValue value={r.payment_id} label="payment id" className="text-[14px]" /></dd></div>
                   {r.refund_vpa && r.status !== 'refunded' && (
                     <div className="flex flex-wrap items-center gap-2"><dt className="font-bold text-muted-foreground">Customer's UPI id</dt><dd><CopyValue value={r.refund_vpa} label="UPI id" /></dd></div>
                   )}
@@ -207,7 +207,7 @@ export default function Refunds() {
                 </p>
 
                 {r.status === 'refunded' && (
-                  <p className="mt-2 text-[13px] font-semibold text-muted-foreground">
+                  <p className="mt-2 text-[14px] font-semibold text-muted-foreground">
                     Refunded {formatPaise(r.refund_amount_paise)} to {r.refund_vpa ?? '—'} on {istDateTime(r.refunded_at)} · refund UTR {r.refund_utr ?? '—'}
                   </p>
                 )}
@@ -220,16 +220,16 @@ export default function Refunds() {
                 )}
 
                 {isOpen && open?.kind === 'refund' && (
-                  <form className="mt-4 grid gap-3 rounded-xl border border-accent/40 bg-accent/5 p-4" onSubmit={(e) => { e.preventDefault(); void markRefunded(r); }}>
+                  <form className="mt-4 grid gap-3 hf-admin-op-card rounded-xl border border-accent/40 bg-accent/5 p-4" onSubmit={(e) => { e.preventDefault(); void markRefunded(r); }}>
                     <div className="grid gap-3 sm:grid-cols-3">
-                      <div className="grid gap-1.5"><Label htmlFor={`utr-${r.refund_id}`} className="text-[13px] font-bold">Refund UTR</Label>
+                      <div className="grid gap-1.5"><Label htmlFor={`utr-${r.refund_id}`} className="text-[14px] font-bold">Refund UTR</Label>
                         <Input id={`utr-${r.refund_id}`} value={utr} onChange={(e) => setUtr(e.target.value)} required maxLength={35} autoComplete="off" placeholder="From the bank app" /></div>
-                      <div className="grid gap-1.5"><Label htmlFor={`amt-${r.refund_id}`} className="text-[13px] font-bold">Amount (₹)</Label>
+                      <div className="grid gap-1.5"><Label htmlFor={`amt-${r.refund_id}`} className="text-[14px] font-bold">Amount (₹)</Label>
                         <Input id={`amt-${r.refund_id}`} value={amount} onChange={(e) => setAmount(e.target.value)} required inputMode="decimal" /></div>
-                      <div className="grid gap-1.5"><Label htmlFor={`vpa-${r.refund_id}`} className="text-[13px] font-bold">Refund UPI id</Label>
+                      <div className="grid gap-1.5"><Label htmlFor={`vpa-${r.refund_id}`} className="text-[14px] font-bold">Refund UPI id</Label>
                         <Input id={`vpa-${r.refund_id}`} value={vpa} onChange={(e) => setVpa(e.target.value)} required autoComplete="off" placeholder="name@bank" /></div>
                     </div>
-                    {formError && <p role="alert" className="rounded-lg border border-primary/30 bg-primary/5 p-2.5 text-[13px] font-bold text-foreground">{formError}</p>}
+                    {formError && <p role="alert" className="rounded-lg border border-primary/30 bg-primary/5 p-2.5 text-[14px] font-bold text-foreground">{formError}</p>}
                     <div className="flex gap-2">
                       <Button type="submit" variant="accent" disabled={b}>{b ? <Loader2 className="animate-spin" /> : <Undo2 />} {b ? 'Saving…' : 'Record refund'}</Button>
                       <Button type="button" variant="ghost" onClick={() => setOpen(null)}>Cancel</Button>
@@ -238,11 +238,11 @@ export default function Refunds() {
                 )}
 
                 {isOpen && open?.kind === 'reject' && (
-                  <form className="mt-4 grid gap-2 rounded-xl border border-primary/30 bg-primary/5 p-4" onSubmit={(e) => { e.preventDefault(); void reject(r); }}>
-                    <Label htmlFor={`note-${r.refund_id}`} className="text-[13px] font-bold">Note <span className="font-semibold text-muted-foreground">(optional, kept in the admin audit log)</span></Label>
+                  <form className="mt-4 grid gap-2 hf-admin-op-card rounded-xl border border-primary/30 bg-primary/5 p-4" onSubmit={(e) => { e.preventDefault(); void reject(r); }}>
+                    <Label htmlFor={`note-${r.refund_id}`} className="text-[14px] font-bold">Note <span className="font-semibold text-muted-foreground">(optional, kept in the admin audit log)</span></Label>
                     <textarea id={`note-${r.refund_id}`} rows={2} maxLength={500} value={note} onChange={(e) => setNote(e.target.value)}
                       className="flex w-full resize-none rounded-md border border-input bg-card px-3 py-2 text-base text-foreground shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring md:text-sm" />
-                    {formError && <p role="alert" className="rounded-lg border border-primary/30 bg-card p-2.5 text-[13px] font-bold text-foreground">{formError}</p>}
+                    {formError && <p role="alert" className="rounded-lg border border-primary/30 bg-card p-2.5 text-[14px] font-bold text-foreground">{formError}</p>}
                     <div className="flex gap-2">
                       <Button type="submit" variant="default" disabled={b}>{b ? <Loader2 className="animate-spin" /> : <X />} {b ? 'Rejecting…' : 'Confirm reject'}</Button>
                       <Button type="button" variant="ghost" onClick={() => setOpen(null)}>Cancel</Button>

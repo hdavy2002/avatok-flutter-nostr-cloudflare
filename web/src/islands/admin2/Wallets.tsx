@@ -152,7 +152,7 @@ export default function Wallets() {
   const mounted = (uid: string) => uid === open || uid === closing;
 
   return (
-    <div className="space-y-4">
+    <div className="hf-admin-operations space-y-4">
       <FilterBar
         title="Filter wallets"
         count={count}
@@ -178,7 +178,7 @@ export default function Wallets() {
         </div>
         <DateField id="w-from" label="Active from" value={f.from} onChange={(v) => set({ from: v })} />
         <DateField id="w-to" label="Active to" value={f.to} onChange={(v) => set({ to: v })} />
-        <label className="grid gap-1 text-[13px] font-bold text-muted-foreground">
+        <label className="grid gap-1 text-[14px] font-bold text-muted-foreground">
           Sort
           <Select value={f.sort || 'last_activity'} onValueChange={(v) => set({ sort: v === 'last_activity' ? '' : v })}>
             <SelectTrigger className="h-11 w-[190px] font-semibold text-foreground" aria-label="Sort wallets"><SelectValue /></SelectTrigger>
@@ -194,7 +194,7 @@ export default function Wallets() {
       </p>
 
       {open && !openInList && list.phase === 'ready' && (
-        <div className="rounded-xl border border-grand-gold/60 bg-card shadow-sm">
+        <div className="hf-admin-op-card rounded-xl border border-grand-gold/60 bg-card shadow-sm">
           <div className="flex items-center justify-between border-b border-border/50 px-4 py-2">
             <span className="text-[14px] font-bold text-muted-foreground">Opened from a link</span>
             <Button variant="ghost" className="min-h-11" onClick={() => toggle(open)}>Close</Button>
@@ -210,7 +210,7 @@ export default function Wallets() {
             body={q ? 'Check the spelling, or try the full email, the full mobile number or the user ID. Only people who have used their wallet appear here.' : 'People appear here once their wallet has its first top-up or charge.'}
           />
         ) : desktop ? (
-          <div className="overflow-x-auto rounded-xl border border-border/60 bg-card shadow-sm">
+          <div className="overflow-x-auto hf-admin-op-card rounded-xl border border-border/60 bg-card shadow-sm">
             <table className="w-full min-w-[960px] border-collapse">
               <thead className="bg-muted/60">
                 <tr>
@@ -233,8 +233,8 @@ export default function Wallets() {
                         >
                           {w.name ?? 'No name'}
                         </button>
-                        <div className="truncate text-[13px] font-semibold text-muted-foreground" title={w.email ?? undefined}>{w.email ?? '—'}</div>
-                        {w.phone_masked && <div className="text-[13px] font-semibold tabular-nums text-muted-foreground">{w.phone_masked}</div>}
+                        <div className="truncate text-[14px] font-semibold text-muted-foreground" title={w.email ?? undefined}>{w.email ?? '—'}</div>
+                        {w.phone_masked && <div className="text-[14px] font-semibold tabular-nums text-muted-foreground">{w.phone_masked}</div>}
                       </td>
                       <td className={`${TD} text-right text-[16px] font-extrabold tabular-nums`}>{rupees(w.balance_tokens)}</td>
                       <td className={`${TD} text-right tabular-nums`}>{rupees(w.topped_up_tokens)}</td>
@@ -259,7 +259,7 @@ export default function Wallets() {
             {list.items.map((w) => {
               const isOpen = w.uid === open;
               return (
-                <li key={w.uid} className={cn('overflow-hidden rounded-xl border bg-card shadow-sm', isOpen ? 'border-grand-gold/70' : 'border-border/60')}>
+                <li key={w.uid} className={cn('overflow-hidden hf-admin-op-card rounded-xl border bg-card shadow-sm', isOpen ? 'border-grand-gold/70' : 'border-border/60')}>
                   <button
                     type="button"
                     aria-expanded={isOpen}
@@ -290,7 +290,7 @@ export default function Wallets() {
         )}
       {list.phase === 'ready' && list.items.length > 0 && <LoadMore show={!!list.cursor} busy={list.more} onClick={list.loadMore} shown={list.items.length} />}
       {list.phase === 'ready' && list.items.length > 0 && (
-        <p className="flex items-start gap-1.5 text-[13px] font-semibold text-muted-foreground">
+        <p className="flex items-start gap-1.5 text-[14px] font-semibold text-muted-foreground">
           <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" />
           Balances in this list come from the wallet statement and can lag by a few seconds. Open a row for the live balance.
         </p>
@@ -336,8 +336,8 @@ function WalletPanel({ uid, onChange }: { uid: string; onChange: (uid: string, p
         <div className="min-w-0">
           <div className="font-dash text-[19px] font-bold leading-tight text-foreground">{label}</div>
           <div className="mt-0.5 flex flex-wrap items-center gap-1.5">
-            <span className="text-[13px] font-semibold text-muted-foreground">ID</span>
-            <CopyValue value={uid} label="user ID" className="text-[13px]" />
+            <span className="text-[14px] font-semibold text-muted-foreground">ID</span>
+            <CopyValue value={uid} label="user ID" className="text-[14px]" />
             <Badge variant="outline" className="whitespace-nowrap">Live balance, read just now</Badge>
           </div>
         </div>
@@ -355,7 +355,7 @@ function WalletPanel({ uid, onChange }: { uid: string; onChange: (uid: string, p
 
       <AdjustForm uid={uid} label={label} balance={l.balance_tokens} onDone={(next) => { onChange(uid, { balance_tokens: next }); void load(); }} />
 
-      <section aria-label="Statement" className="rounded-xl border border-border/60 bg-card p-4">
+      <section aria-label="Statement" className="hf-admin-op-card rounded-xl border border-border/60 bg-card p-4">
         <h3 className="mb-2 font-dash text-[16px] font-bold text-foreground">Statement (latest {d.statement.length})</h3>
         {d.statement.length === 0 ? <p className="text-[14px] font-semibold text-muted-foreground">Nothing on the statement yet.</p> : (
           <div className="overflow-x-auto">
@@ -371,9 +371,9 @@ function WalletPanel({ uid, onChange }: { uid: string; onChange: (uid: string, p
                     <td className={`${TD} whitespace-nowrap text-[14px] text-muted-foreground`}>{istDateTime(s.created_at)}</td>
                     <td className={TD}>
                       <div>{typeLabel(s.type)}</div>
-                      {(s.context || s.app_name) && <div className="text-[13px] font-semibold text-muted-foreground">{s.context ?? s.app_name}</div>}
+                      {(s.context || s.app_name) && <div className="text-[14px] font-semibold text-muted-foreground">{s.context ?? s.app_name}</div>}
                     </td>
-                    <td className={cn(`${TD} text-right font-extrabold tabular-nums`, s.amount_tokens > 0 ? 'text-emerald-700 dark:text-emerald-400' : 'text-foreground')}>
+                    <td className={cn(`${TD} text-right font-extrabold tabular-nums`, s.amount_tokens > 0 ? 'text-[var(--hf-admin-plum)]' : 'text-foreground')}>
                       {s.amount_tokens > 0 ? '+' : ''}{rupees(s.amount_tokens)}
                     </td>
                     <td className={`${TD} text-right tabular-nums text-muted-foreground`}>{s.balance_after_tokens != null ? rupees(s.balance_after_tokens) : '—'}</td>
@@ -431,7 +431,7 @@ function AdjustForm({ uid, label, balance, onDone }: { uid: string; label: strin
   };
 
   return (
-    <section aria-label="Add or deduct money" className="rounded-xl border border-border/60 bg-card p-4">
+    <section aria-label="Add or deduct money" className="hf-admin-op-card rounded-xl border border-border/60 bg-card p-4">
       <h3 className="mb-3 flex items-center gap-1.5 font-dash text-[16px] font-bold text-foreground"><WalletIcon className="h-4 w-4" /> Change this wallet</h3>
       <div className="grid gap-4 md:grid-cols-[auto_180px_1fr_auto] md:items-end">
         <div role="radiogroup" aria-label="Add or deduct" className="inline-flex overflow-hidden rounded-lg border border-border/70">
@@ -451,7 +451,7 @@ function AdjustForm({ uid, label, balance, onDone }: { uid: string; label: strin
             </button>
           ))}
         </div>
-        <label className="grid gap-1 text-[13px] font-bold text-muted-foreground">
+        <label className="grid gap-1 text-[14px] font-bold text-muted-foreground">
           Amount (₹)
           <Input
             inputMode="numeric"
@@ -463,7 +463,7 @@ function AdjustForm({ uid, label, balance, onDone }: { uid: string; label: strin
             className="h-11 text-[15px] font-semibold"
           />
         </label>
-        <label className="grid gap-1 text-[13px] font-bold text-muted-foreground">
+        <label className="grid gap-1 text-[14px] font-bold text-muted-foreground">
           Reason (kept in the audit log, at least 5 characters)
           <Input
             value={reason}
@@ -485,7 +485,7 @@ function AdjustForm({ uid, label, balance, onDone }: { uid: string; label: strin
       {amountErr && <p role="alert" className="mt-2 text-[14px] font-semibold text-destructive">{amountErr}</p>}
 
       <AlertDialog open={confirming} onOpenChange={(o) => { if (!busy) setConfirming(o); }}>
-        <AlertDialogContent>
+        <AlertDialogContent className="hf-admin-operations">
           <AlertDialogHeader>
             <AlertDialogTitle>{mode === 'add' ? `Add ${rupees(n)} to ${label}?` : `Deduct ${rupees(n)} from ${label}?`}</AlertDialogTitle>
             <AlertDialogDescription>

@@ -12,7 +12,7 @@ const TABS: { key: HostStatus; label: string }[] = [
   { key: 'pending_review', label: 'Pending review' }, { key: 'live', label: 'Live' }, { key: 'paused', label: 'Paused' }, { key: 'rejected', label: 'Rejected' },
 ];
 const T14 = { fontSize: 14 } as const;
-const label = { ...T14, fontWeight: 800, color: 'var(--teal, #46113e)' } as const;
+const label = { ...T14, fontWeight: 800, color: 'var(--hf-admin-plum)' } as const;
 
 export default function HostReview() {
   const [tab, setTab] = useState<HostStatus>('pending_review');
@@ -29,7 +29,7 @@ export default function HostReview() {
   useEffect(() => { void load(); }, [load]);
 
   return (
-    <ConsultShell>
+    <ConsultShell className="hf-admin-operations">
       <div role="tablist" aria-label="Host status" style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 16 }}>
         {TABS.map((t) => (
           <button key={t.key} type="button" role="tab" aria-selected={tab === t.key} className={`slot${tab === t.key ? ' on' : ''}`} style={{ padding: '0 14px', ...T14 }} onClick={() => setTab(t.key)}>{t.label}</button>
@@ -39,7 +39,7 @@ export default function HostReview() {
       {rows === null && <Spinner label="Loading hosts…" />}
       {rows && rows.length === 0 && !error && <div className="card muted" style={{ fontWeight: 700, ...T14 }}>Nobody here.</div>}
       {rows && rows.length > 0 && (
-        <div className="card" style={{ padding: 0, overflow: 'auto', background: '#fff' }}>
+        <div className="card" style={{ padding: 0, overflow: 'auto', background: 'var(--hf-admin-cream)' }}>
           <table className="t" style={T14}>
             <thead><tr><th></th><th>Host</th><th>Languages</th><th>Price</th><th>Sent</th><th></th></tr></thead>
             <tbody>
@@ -104,7 +104,7 @@ function Drawer({ uid, standard, onClose, onChanged }: { uid: string; standard: 
 
   return (
     <div role="dialog" aria-modal="true" aria-label="Host detail" style={{ position: 'fixed', inset: 0, zIndex: 60, display: 'flex', justifyContent: 'flex-end', background: 'rgba(40,10,35,.45)' }} onClick={onClose}>
-      <div className="consult-ui" onClick={(e) => e.stopPropagation()} style={{ width: 'min(760px, 100%)', height: '100%', overflow: 'auto', background: '#fffdf8', padding: 20, ...T14 }}>
+      <div className="consult-ui hf-admin-operations" onClick={(e) => e.stopPropagation()} style={{ width: 'min(760px, 100%)', height: '100%', overflow: 'auto', background: 'var(--hf-admin-cream)', padding: 20, ...T14 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
           <h2 style={{ margin: 0, fontSize: 22 }}>{h?.displayName || 'Host'}</h2>
           <button ref={closeRef} type="button" className="btn small ghost" style={T14} onClick={onClose}>Close</button>
@@ -143,14 +143,14 @@ function Drawer({ uid, standard, onClose, onChanged }: { uid: string; standard: 
 
             <p style={label}>Voice introduction</p>
             {intro ? (
-              <div className="card" style={{ padding: 12, marginBottom: 16, background: '#fff' }}>
+              <div className="card" style={{ padding: 12, marginBottom: 16, background: 'var(--hf-admin-cream)' }}>
                 <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 8 }}>
                   <span className={`chip ${intro.status === 'approved' ? 'neel' : intro.status === 'rejected' ? 'red' : 'gold'}`}>{intro.status === 'pending' ? 'Waiting for review' : intro.status === 'approved' ? 'Approved' : 'Asked to re-record'}</span>
                   <span>Length {Math.floor(intro.seconds / 60)}:{String(intro.seconds % 60).padStart(2, '0')}</span>
                 </div>
                 <audio controls preload="metadata" src={apiUrl(intro.url)} style={{ width: '100%' }} aria-label="Host introduction" />
                 {intro.flags.length > 0 && (
-                  <div role="alert" style={{ marginTop: 10, padding: 10, borderRadius: 10, background: '#fff4c9', border: '1px solid #e0b400', ...T14 }}>
+                  <div role="alert" style={{ marginTop: 10, padding: 10, borderRadius: 10, background: 'var(--hf-admin-goldtint)', border: '1px solid var(--hf-admin-marigold)', ...T14 }}>
                     <strong>Possible contact details heard. Please check before approving:</strong>
                     <ul style={{ margin: '6px 0 0', paddingLeft: 18 }}>{intro.flags.map((f, i) => <li key={i}><strong>{f.type}:</strong> “{f.text}”</li>)}</ul>
                   </div>
@@ -168,7 +168,7 @@ function Drawer({ uid, standard, onClose, onChanged }: { uid: string; standard: 
                 {intro.status === 'pending' && (
                   <div style={{ marginTop: 12 }}>
                     <label htmlFor="hf-intro-reason" style={label}>Reason (needed to ask for a new recording; shown to the host)</label>
-                    <input id="hf-intro-reason" value={introReason} onChange={(e) => setIntroReason(e.target.value)} maxLength={300} style={{ width: '100%', margin: '6px 0 8px', padding: 10, borderRadius: 10, border: '1px solid #d9cbd6', ...T14 }} />
+                    <input id="hf-intro-reason" value={introReason} onChange={(e) => setIntroReason(e.target.value)} maxLength={300} style={{ width: '100%', margin: '6px 0 8px', padding: 10, borderRadius: 10, border: '1px solid var(--hf-admin-line)', ...T14 }} />
                     <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                       <button type="button" className="btn small" style={T14} disabled={busy} onClick={() => void run('intro_approve', () => hfAdminApi.introDecision(uid, 'approve'), false, 'Introduction approved. It is live on the card and profile.')}>Approve intro</button>
                       <button type="button" className="btn small ghost" style={T14} disabled={busy} onClick={() => {
@@ -182,7 +182,7 @@ function Drawer({ uid, standard, onClose, onChanged }: { uid: string; standard: 
             ) : <p className="muted" style={{ ...T14, marginBottom: 16 }}>No introduction recorded yet.</p>}
 
             <p style={label}>Profile text</p>
-            <div className="card" style={{ padding: 12, marginBottom: 16, background: '#fff' }}>
+            <div className="card" style={{ padding: 12, marginBottom: 16, background: 'var(--hf-admin-cream)' }}>
               <p style={{ margin: 0 }}><strong>Written by host:</strong> {h.about || '—'}</p>
               <p style={{ margin: '8px 0 0' }}><strong>Polished:</strong> {h.aboutPolished || '—'}</p>
               {h.quote && <p style={{ margin: '8px 0 0' }}><strong>Quote:</strong> “{h.quote}”</p>}
@@ -192,7 +192,7 @@ function Drawer({ uid, standard, onClose, onChanged }: { uid: string; standard: 
             </div>
 
             <p style={label}>Verification</p>
-            <div className="card" style={{ padding: 12, marginBottom: 16, background: '#fff' }}>
+            <div className="card" style={{ padding: 12, marginBottom: 16, background: 'var(--hf-admin-cream)' }}>
               <p style={{ margin: 0 }}>Name on Aadhaar: <strong>{d.kyc.name || '—'}</strong> · Gender: <strong>{d.kyc.gender || '—'}</strong> · Aadhaar ends <strong>{d.kyc.last4 || '—'}</strong> · 18+: {d.kyc.ageOk ? 'yes' : 'no'}</p>
               <p style={{ margin: '6px 0 0' }}>Payout name match: <span className={`chip ${d.kyc.payout?.nameMatch ? 'neel' : 'red'}`}>{d.kyc.payout ? (d.kyc.payout.nameMatch ? 'Matches' : 'Does not match') : 'Not added'}</span> · Selfie: <span className={`chip ${selfie?.status === 'approved' ? 'neel' : selfie?.status === 'rejected' ? 'red' : 'gold'}`}>{selfie ? selfie.status : 'none'}</span></p>
               {kyc ? (
@@ -211,7 +211,7 @@ function Drawer({ uid, standard, onClose, onChanged }: { uid: string; standard: 
             </div>
 
             <label htmlFor="hf-reason" style={label}>Reason (needed to reject or pause; shown to the host)</label>
-            <textarea id="hf-reason" value={reason} onChange={(e) => setReason(e.target.value)} rows={3} maxLength={500} style={{ width: '100%', margin: '6px 0 12px', padding: 10, borderRadius: 10, border: '1px solid #d9cbd6', ...T14 }} />
+            <textarea id="hf-reason" value={reason} onChange={(e) => setReason(e.target.value)} rows={3} maxLength={500} style={{ width: '100%', margin: '6px 0 12px', padding: 10, borderRadius: 10, border: '1px solid var(--hf-admin-line)', ...T14 }} />
             {!ready && h.status !== 'live' && <p className="muted" style={{ ...T14, margin: '0 0 8px' }}>Approve needs: selfie approved, payout name match and photos present.</p>}
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
               {h.status !== 'live' && <button type="button" className="btn" style={T14} disabled={busy || !ready} onClick={() => void run('host_approve', () => hfAdminApi.decide(uid, 'approve'), false, 'Host is live. They were told on WhatsApp.')}>Approve host</button>}

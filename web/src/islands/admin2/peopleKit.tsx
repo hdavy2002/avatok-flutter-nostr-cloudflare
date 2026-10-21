@@ -148,12 +148,12 @@ export function dayMs(day: string, end = false): string | undefined {
 /* ── status pills ───────────────────────────────────────────────────────── */
 
 export type Status = 'paid' | 'free' | 'pending' | 'refund_requested' | 'refunded' | 'requested' | 'rejected';
-const AMBER = 'bg-[color-mix(in_srgb,var(--grand-gold,#d1ae70)_58%,var(--grand-red,#c82c25))] text-primary-foreground';
+const AMBER = 'bg-[var(--hf-admin-goldtint)] text-[var(--hf-admin-plum)]';
 export const STATUS_META: Record<Status, { label: string; cls: string; dot: string }> = {
   paid: { label: 'Paid', cls: 'bg-accent text-accent-foreground', dot: 'bg-accent' },
   free: { label: 'Free', cls: 'bg-secondary text-secondary-foreground', dot: 'bg-secondary' },
   pending: { label: 'Pending', cls: 'border-grand-gold bg-grand-gold/25 text-foreground', dot: 'bg-grand-gold' },
-  refund_requested: { label: 'Refund requested', cls: AMBER, dot: 'bg-[color-mix(in_srgb,var(--grand-gold,#d1ae70)_58%,var(--grand-red,#c82c25))]' },
+  refund_requested: { label: 'Refund requested', cls: AMBER, dot: 'bg-[var(--hf-admin-marigold)]' },
   refunded: { label: 'Refunded', cls: 'bg-muted text-muted-foreground', dot: 'bg-muted-foreground' },
   requested: { label: 'Requested', cls: AMBER, dot: 'bg-primary' },
   rejected: { label: 'Rejected', cls: 'bg-muted text-muted-foreground', dot: 'bg-muted-foreground' },
@@ -162,7 +162,7 @@ export const STATUS_META: Record<Status, { label: string; cls: string; dot: stri
 export function StatusPill({ status, className }: { status: string; className?: string }) {
   const m = STATUS_META[status as Status] ?? { label: status, cls: 'bg-muted text-muted-foreground' };
   return (
-    <span className={cn('inline-flex items-center whitespace-nowrap rounded-full border border-transparent px-2.5 py-0.5 text-[11.5px] font-extrabold tracking-[0.04em]', m.cls, className)}>
+    <span className={cn('inline-flex items-center whitespace-nowrap rounded-full border border-transparent px-2.5 py-0.5 text-[14px] font-extrabold tracking-[0.04em]', m.cls, className)}>
       {m.label}
     </span>
   );
@@ -181,7 +181,7 @@ export function StatusToggles<S extends Status>({ options, value, onChange }: { 
             aria-pressed={active}
             onClick={() => { const n = new Set(on); if (active) n.delete(s); else n.add(s); onChange([...n].join(',')); }}
             className={cn(
-              'inline-flex h-9 items-center gap-1.5 rounded-full border px-3 text-[13px] font-bold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+              'inline-flex h-9 items-center gap-1.5 rounded-full border px-3 text-[14px] font-bold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
               active ? 'border-accent bg-accent text-accent-foreground' : 'border-border/70 bg-card text-foreground hover:bg-muted',
             )}
           >
@@ -209,7 +209,7 @@ export function CopyValue({ value, label, className }: { value: string; label: s
           try { await navigator.clipboard.writeText(value); setDone(true); setTimeout(() => setDone(false), 1500); }
           catch { toast.error('Could not copy. Long-press to copy instead.'); }
         }}
-        className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
       >
         {done ? <Check className="h-3.5 w-3.5 text-accent" /> : <Copy className="h-3.5 w-3.5" />}
       </button>
@@ -230,9 +230,9 @@ export function CustomerCell({ c, compact }: { c: Customer; compact?: boolean })
       <a href={`/admin/users?user=${encodeURIComponent(c.uid)}`} className="font-extrabold text-foreground underline-offset-2 hover:text-accent hover:underline">
         {c.name ?? 'No name'}
       </a>
-      {c.email && <div className={cn('truncate text-[12.5px] font-semibold text-muted-foreground', compact && 'text-[12px]')} title={c.email}>{c.email}</div>}
+      {c.email && <div className={cn('truncate text-[14px] font-semibold text-muted-foreground', compact && 'text-[14px]')} title={c.email}>{c.email}</div>}
       {phone && (
-        <div className={cn('text-[12.5px] font-semibold tabular-nums text-muted-foreground', c.phone_hash_only && 'italic')}
+        <div className={cn('text-[14px] font-semibold tabular-nums text-muted-foreground', c.phone_hash_only && 'italic')}
           title={c.phone_hash_only ? 'Only a hash of this number is stored. Search with the full 10-digit number to find it.' : undefined}>
           {phone}
         </div>
@@ -252,7 +252,7 @@ export function SearchBox({ value, onChange, placeholder, label, className }: { 
 
 export function DateField({ id, label, value, onChange }: { id: string; label: string; value: string; onChange: (v: string) => void }) {
   return (
-    <label htmlFor={id} className="grid gap-1 text-[12px] font-bold text-muted-foreground">
+    <label htmlFor={id} className="grid gap-1 text-[14px] font-bold text-muted-foreground">
       {label}
       <Input id={id} type="date" value={value} onChange={(e) => onChange(e.target.value)} className="font-semibold text-foreground" />
     </label>
@@ -269,7 +269,7 @@ export function FilterBar({ search, children, count, title, onClear, resultLabel
   const [open, setOpen] = useState(false);
   return (
     <div className="space-y-3">
-      <div className="hidden rounded-xl border border-border/60 bg-card p-4 shadow-sm md:block">
+      <div className="hidden hf-admin-op-card rounded-xl border border-border/60 bg-card p-4 shadow-sm md:block">
         <div className="flex flex-wrap items-end gap-3">
           <div className="min-w-[240px] flex-1">{search}</div>
           {children}
@@ -280,11 +280,11 @@ export function FilterBar({ search, children, count, title, onClear, resultLabel
         <div className="flex-1">{search}</div>
         <Button variant="outline" size="icon" className="relative shrink-0" onClick={() => setOpen(true)} aria-label={`Filters${count ? `, ${count} active` : ''}`}>
           <Filter />
-          {count > 0 && <span className="absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1 text-[11px] font-extrabold text-primary-foreground">{count}</span>}
+          {count > 0 && <span className="absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1 text-[14px] font-extrabold text-primary-foreground">{count}</span>}
         </Button>
       </div>
       <Drawer open={open} onOpenChange={setOpen} shouldScaleBackground={false}>
-        <DrawerContent>
+        <DrawerContent className="hf-admin-operations">
           <DrawerHeader className="text-left">
             <DrawerTitle>{title}</DrawerTitle>
             <DrawerDescription>Dates are in India time (IST).</DrawerDescription>
@@ -330,12 +330,12 @@ export function ExportButton({ kind, path, query, className }: { kind: string; p
 export function Tile({ label, value, hint, tone }: { label: string; value: ReactNode; hint?: ReactNode; tone?: 'accent' | 'gold' | 'amber' | 'muted' }) {
   return (
     <div className={cn(
-      'rounded-xl border bg-card p-4 shadow-sm',
+      'hf-admin-op-card hf-admin-op-kpi rounded-xl border bg-card p-4 shadow-sm',
       tone === 'accent' ? 'border-accent/50' : tone === 'gold' ? 'border-grand-gold/70' : tone === 'amber' ? 'border-primary/40' : 'border-border/60',
     )}>
-      <div className="text-[12px] font-extrabold uppercase tracking-[0.08em] text-muted-foreground">{label}</div>
+      <div className="text-[14px] font-extrabold uppercase tracking-[0.08em] text-muted-foreground">{label}</div>
       <div className="mt-1 font-dash text-[22px] font-bold leading-tight text-foreground tabular-nums sm:text-[24px]">{value}</div>
-      {hint && <div className="mt-1 text-[12.5px] font-semibold text-muted-foreground">{hint}</div>}
+      {hint && <div className="mt-1 text-[14px] font-semibold text-muted-foreground">{hint}</div>}
     </div>
   );
 }
@@ -350,7 +350,7 @@ export function ListSkeleton({ rows = 6 }: { rows?: number }) {
 
 export function ErrorBox({ message, onRetry }: { message: string; onRetry: () => void }) {
   return (
-    <div role="alert" className="flex flex-col items-start gap-3 rounded-xl border border-primary/30 bg-primary/5 p-4 sm:flex-row sm:items-center">
+    <div role="alert" className="flex flex-col items-start gap-3 hf-admin-op-card rounded-xl border border-primary/30 bg-primary/5 p-4 sm:flex-row sm:items-center">
       <AlertCircle className="h-5 w-5 shrink-0 text-primary" />
       <p className="flex-1 text-[14px] font-semibold text-foreground">{message}</p>
       <Button size="sm" variant="outline" onClick={onRetry}><RefreshCw /> Try again</Button>
@@ -360,7 +360,7 @@ export function ErrorBox({ message, onRetry }: { message: string; onRetry: () =>
 
 export function Empty({ title, body }: { title: string; body?: string }) {
   return (
-    <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed border-border bg-card px-6 py-12 text-center">
+    <div className="flex flex-col items-center gap-2 hf-admin-op-card rounded-xl border border-dashed border-border bg-card px-6 py-12 text-center">
       <SearchX className="h-8 w-8 text-muted-foreground" aria-hidden />
       <p className="font-dash text-[17px] font-bold text-foreground">{title}</p>
       {body && <p className="max-w-md text-[14px] font-semibold text-muted-foreground">{body}</p>}
@@ -371,7 +371,7 @@ export function Empty({ title, body }: { title: string; body?: string }) {
 export function LoadMore({ show, busy, onClick, shown }: { show: boolean; busy: boolean; onClick: () => void; shown: number }) {
   return (
     <div className="flex flex-col items-center gap-2 pt-2">
-      <p className="text-[12.5px] font-semibold text-muted-foreground">Showing {shown}{show ? '+' : ''}</p>
+      <p className="text-[14px] font-semibold text-muted-foreground">Showing {shown}{show ? '+' : ''}</p>
       {show && (
         <Button variant="outline" onClick={onClick} disabled={busy}>
           {busy ? <Loader2 className="animate-spin" /> : null} Load more
@@ -382,5 +382,5 @@ export function LoadMore({ show, busy, onClick, shown }: { show: boolean; busy: 
 }
 
 /** Table header cell / cell classes shared by the desktop tables. */
-export const TH = 'px-4 py-3 text-left text-[12px] font-extrabold uppercase tracking-[0.08em] text-muted-foreground';
+export const TH = 'px-4 py-3 text-left text-[14px] font-extrabold uppercase tracking-[0.08em] text-muted-foreground';
 export const TD = 'px-4 py-3 align-top text-[14px] font-semibold text-foreground';

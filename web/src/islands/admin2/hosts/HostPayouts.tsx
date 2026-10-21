@@ -6,7 +6,7 @@ import { adminCall } from '../peopleKit';
 import { Banner, ConfirmDialog, ConsultShell, Spinner, dateIST, fail, rupees } from '../consultants/kit';
 
 const T14 = { fontSize: 14 } as const;
-const field = { width: '100%', ...T14, padding: 10, borderRadius: 10, border: '1px solid #c8afd1', minHeight: 44 } as const;
+const field = { width: '100%', ...T14, padding: 10, borderRadius: 10, border: '1px solid var(--hf-admin-line)', minHeight: 44 } as const;
 
 type Status = 'requested' | 'approved' | 'paid' | 'rejected' | 'cancelled';
 interface Item {
@@ -43,9 +43,9 @@ function Row({ it, onDone }: { it: Item; onDone: () => void }) {
   const utrOk = /^[A-Za-z0-9]{6,30}$/.test(utr.trim());
 
   return (
-    <div className="card" style={{ background: '#fff', display: 'grid', gap: 8 }}>
+    <div className="card" style={{ background: 'var(--hf-admin-cream)', display: 'grid', gap: 8 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap', alignItems: 'baseline' }}>
-        <strong style={{ fontSize: 16 }}>{it.hostName || it.hostSlug || 'Host'}{it.exit && <span style={{ ...T14, marginLeft: 8, padding: '2px 8px', borderRadius: 999, background: '#f2ecfc', color: '#46113e' }} title="Final payout: this person is closing their account">Exit</span>}</strong>
+        <strong style={{ fontSize: 16 }}>{it.hostName || it.hostSlug || 'Host'}{it.exit && <span style={{ ...T14, marginLeft: 8, padding: '2px 8px', borderRadius: 999, background: 'var(--hf-admin-blush)', color: 'var(--hf-admin-plum)' }} title="Final payout: this person is closing their account">Exit</span>}</strong>
         <strong style={{ fontSize: 18 }}>{rupees(it.amount)}</strong>
       </div>
       <div style={{ ...T14, display: 'grid', gap: 2 }}>
@@ -60,7 +60,7 @@ function Row({ it, onDone }: { it: Item; onDone: () => void }) {
       {(it.status === 'requested' || it.status === 'approved') && (
         <>
           {dest ? (
-            <div style={{ ...T14, background: '#f8f1fa', borderRadius: 10, padding: 10, display: 'grid', gap: 2, wordBreak: 'break-all' }}>
+            <div style={{ ...T14, background: 'var(--hf-admin-canvas)', borderRadius: 10, padding: 10, display: 'grid', gap: 2, wordBreak: 'break-all' }}>
               <span>Name at bank: <strong>{dest.accountName || '—'}</strong></span>
               <span>Account: <strong>{dest.account || '—'}</strong> · IFSC <strong>{dest.ifsc || '—'}</strong></span>
               <span>UPI: <strong>{dest.upi || '—'}</strong>{dest.upi ? (dest.upiVerified ? ' (verified)' : ' (not verified)') : ''}</span>
@@ -78,12 +78,12 @@ function Row({ it, onDone }: { it: Item; onDone: () => void }) {
       )}
       {err && <Banner tone="error">{err}</Banner>}
 
-      <ConfirmDialog open={dialog === 'paid'} title={`Mark ${rupees(it.amount)} as paid`} confirmLabel="Mark as paid" busy={busy} error={err} disabled={!utrOk}
+      <ConfirmDialog className="hf-admin-operations" open={dialog === 'paid'} title={`Mark ${rupees(it.amount)} as paid`} confirmLabel="Mark as paid" busy={busy} error={err} disabled={!utrOk}
         body="Only do this after the money has left your bank. The host is told on WhatsApp. This can’t be undone."
         onConfirm={() => void run(() => post(`${base}/paid`, { utr: utr.trim() }), 'hf_payout_paid')} onCancel={() => setDialog(null)}>
         <input aria-label="Bank reference (UTR)" style={field} value={utr} maxLength={30} autoComplete="off" placeholder="Bank reference (UTR), 6 to 30 letters or numbers" onChange={(e) => setUtr(e.target.value.replace(/[^A-Za-z0-9]/g, ''))} />
       </ConfirmDialog>
-      <ConfirmDialog open={dialog === 'reject'} title="Reject this withdrawal" confirmLabel="Reject" danger busy={busy} error={err} disabled={reason.trim().length < 3}
+      <ConfirmDialog className="hf-admin-operations" open={dialog === 'reject'} title="Reject this withdrawal" confirmLabel="Reject" danger busy={busy} error={err} disabled={reason.trim().length < 3}
         body="The money goes back to the host’s available balance. The host sees your reason."
         onConfirm={() => void run(() => post(`${base}/reject`, { reason: reason.trim() }), 'hf_payout_reject')} onCancel={() => setDialog(null)}>
         <input aria-label="Reason" style={field} value={reason} maxLength={200} placeholder="Reason (the host sees this)" onChange={(e) => setReason(e.target.value)} />
@@ -103,7 +103,7 @@ export default function HostPayouts() {
   useEffect(() => { setData(null); void load(); }, [load]);
 
   return (
-    <ConsultShell>
+    <ConsultShell className="hf-admin-operations">
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 12, alignItems: 'center' }}>
         {TABS.map((t) => {
           const c = data?.counts?.[t.key];

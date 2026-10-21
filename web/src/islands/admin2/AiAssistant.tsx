@@ -42,7 +42,7 @@ export default function AiAssistant() {
     capture('admin_ai_tab', { tab: next });
   };
   return (
-    <Tabs value={tab} onValueChange={change}>
+    <Tabs className="hf-admin-operations" value={tab} onValueChange={change}>
       <div className="-mx-4 overflow-x-auto px-4 sm:mx-0 sm:px-0">
         <TabsList className="h-12 w-max min-w-full justify-start sm:min-w-0">
           {TABS.map((t) => (

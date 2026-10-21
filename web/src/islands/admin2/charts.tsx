@@ -1,7 +1,7 @@
 /* [ADMIN2-ANALYTICS 2026-09-26] Hand-rolled SVG/HTML chart pieces for the Admin 2
  * Analytics page. No chart library. Follows the dataviz method:
- *  - Colours are tokens (site-tokens.css --chart-1 teal / --chart-2 gold, validated
- *    against --card in light and dark); text always wears text tokens, never a series colour.
+ *  - Colours follow the shared admin plum / marigold tokens;
+ *    text always wears text tokens, never a series colour.
  *  - 2px lines, <=24px bars with a 4px rounded data-end and a 2px surface gap, recessive
  *    hairline grid, legends for >=2 series, a hover/focus tooltip on every chart, and a
  *    table view (<details>) so no value is hover-only.
@@ -9,11 +9,11 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent, type ReactNode, type RefObject } from 'react';
 import { cn } from '../../lib/utils';
 
-export const C1 = 'hsl(var(--chart-1, 190 100% 30%))';
-export const C2 = 'hsl(var(--chart-2, 40 71% 42%))';
-export const INK_MUTED = 'hsl(var(--muted-foreground, 193 20% 36%))';
-export const GRID = 'hsl(var(--border, 38 51% 63%) / 0.35)';
-export const SURFACE = 'hsl(var(--card, 42 100% 98.5%))';
+export const C1 = 'var(--hf-admin-plum, #4a1747)';
+export const C2 = 'var(--hf-admin-marigold, #ffb52e)';
+export const INK_MUTED = 'var(--hf-admin-muted, #75606f)';
+export const GRID = 'var(--hf-admin-line, #eadbd1)';
+export const SURFACE = 'var(--hf-admin-cream, #fffdf8)';
 
 const nf = new Intl.NumberFormat('en-IN');
 export const fmtCount = (n: number) => nf.format(n);
@@ -64,7 +64,7 @@ function useWidth<T extends HTMLElement>(): [RefObject<T | null>, number] {
 
 /** Every 1/2/7/… day so at most ~6 labels fit. */
 function labelEvery(n: number, width: number): number {
-  const fit = Math.max(2, Math.floor(width / 72));
+  const fit = Math.max(2, Math.floor(width / 90));
   return Math.max(1, Math.ceil(n / fit));
 }
 
@@ -80,7 +80,7 @@ function Tip({ x, width, children }: { x: number; width: number; children: React
   return (
     <div
       role="status"
-      className="pointer-events-none absolute top-1 z-10 min-w-[150px] -translate-x-1/2 rounded-lg border border-border/60 bg-popover px-3 py-2 text-[12.5px] text-popover-foreground shadow-[var(--dash-shadow,none)]"
+      className="pointer-events-none absolute top-1 z-10 min-w-[150px] -translate-x-1/2 rounded-lg border border-border/60 bg-popover px-3 py-2 text-[14px] text-popover-foreground shadow-[var(--dash-shadow,none)]"
       style={{ left }}
     >
       {children}
@@ -100,7 +100,7 @@ function TipRow({ keyStyle, label, value }: { keyStyle: CSSProperties; label: st
 
 export function LegendKey({ kind, color, dashed, label }: { kind: 'line' | 'rect'; color: string; dashed?: boolean; label: string }) {
   return (
-    <span className="inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-muted-foreground">
+    <span className="inline-flex items-center gap-1.5 text-[14px] font-semibold text-muted-foreground">
       {kind === 'line'
         ? <span aria-hidden className={cn('h-0 w-4 border-t-2', dashed && 'border-dashed')} style={{ borderColor: color }} />
         : <span aria-hidden className="h-2.5 w-2.5 rounded-[3px]" style={{ background: color }} />}
@@ -149,7 +149,7 @@ function useIndex(n: number, x0: number, step: number) {
 }
 
 const H = 220;
-const M = { top: 12, right: 12, bottom: 26, left: 52 };
+const M = { top: 16, right: 24, bottom: 32, left: 72 };
 
 /* ── Line: this period vs previous (dashed) ─────────────────────────────── */
 
@@ -184,11 +184,11 @@ export function TrendLine({ days, cur, prev, format, axisFormat, label, onPick }
           {ticks.map((t) => (
             <g key={t}>
               <line x1={M.left} x2={width - M.right} y1={Y(t)} y2={Y(t)} style={{ stroke: GRID, strokeWidth: 1 }} />
-              <text x={M.left - 8} y={Y(t)} dy="0.32em" textAnchor="end" className="fill-muted-foreground text-[11px] font-semibold tabular-nums">{axisFormat(t)}</text>
+              <text x={M.left - 8} y={Y(t)} dy="0.32em" textAnchor="end" className="fill-muted-foreground text-[14px] font-semibold tabular-nums">{axisFormat(t)}</text>
             </g>
           ))}
           {days.map((d, i) => (i % every === 0 || i === n - 1) && (i === n - 1 || n - 1 - i >= every / 2) ? (
-            <text key={d} x={X(i)} y={H - 6} textAnchor={i === 0 && n > 1 ? 'start' : i === n - 1 && n > 1 ? 'end' : 'middle'} className="fill-muted-foreground text-[11px] font-semibold">{shortDay(d)}</text>
+            <text key={d} x={X(i)} y={H - 6} textAnchor={i === 0 && n > 1 ? 'start' : i === n - 1 && n > 1 ? 'end' : 'middle'} className="fill-muted-foreground text-[14px] font-semibold">{shortDay(d)}</text>
           ) : null)}
           {n > 1 && <path d={`${line(cur)}L${X(n - 1)},${Y(0)}L${X(0)},${Y(0)}Z`} style={{ fill: C1, opacity: 0.1 }} />}
           {prev && n > 1 && <path d={line(prev)} style={{ fill: 'none', stroke: INK_MUTED, strokeWidth: 1.5, strokeDasharray: '4 4', strokeLinejoin: 'round' }} />}
@@ -204,7 +204,7 @@ export function TrendLine({ days, cur, prev, format, axisFormat, label, onPick }
           <div className="mb-1 font-bold text-muted-foreground">{longDay(days[idx])}</div>
           <TipRow keyStyle={{ borderColor: C1 }} label="this period" value={format(cur[idx] ?? 0)} />
           {prev && <TipRow keyStyle={{ borderColor: INK_MUTED, borderStyle: 'dashed' }} label="previous" value={format(prev[idx] ?? 0)} />}
-          {onPick && <div className="mt-1 text-[11.5px] font-semibold text-muted-foreground">Click (or tap again) to open that day</div>}
+          {onPick && <div className="mt-1 text-[14px] font-semibold text-muted-foreground">Click (or tap again) to open that day</div>}
         </Tip>
       )}
     </div>
@@ -250,7 +250,7 @@ export function DayColumns({ days, series, format, label, onPick }: {
           {ticks.map((t) => (
             <g key={t}>
               <line x1={M.left} x2={width - M.right} y1={Y(t)} y2={Y(t)} style={{ stroke: GRID, strokeWidth: 1 }} />
-              <text x={M.left - 8} y={Y(t)} dy="0.32em" textAnchor="end" className="fill-muted-foreground text-[11px] font-semibold tabular-nums">{format(t)}</text>
+              <text x={M.left - 8} y={Y(t)} dy="0.32em" textAnchor="end" className="fill-muted-foreground text-[14px] font-semibold tabular-nums">{format(t)}</text>
             </g>
           ))}
           {idx != null && <rect x={M.left + idx * band} y={M.top} width={band} height={ih} style={{ fill: INK_MUTED, opacity: 0.08 }} />}
@@ -272,7 +272,7 @@ export function DayColumns({ days, series, format, label, onPick }: {
           })}
           <line x1={M.left} x2={width - M.right} y1={Y(0)} y2={Y(0)} style={{ stroke: INK_MUTED, strokeWidth: 1, opacity: 0.5 }} />
           {days.map((d, i) => (i % every === 0 || i === n - 1) && (i === n - 1 || n - 1 - i >= every / 2) ? (
-            <text key={d} x={X(i) + bw / 2} y={H - 6} textAnchor="middle" className="fill-muted-foreground text-[11px] font-semibold">{shortDay(d)}</text>
+            <text key={d} x={X(i) + bw / 2} y={H - 6} textAnchor="middle" className="fill-muted-foreground text-[14px] font-semibold">{shortDay(d)}</text>
           ) : null)}
         </svg>
       )}
@@ -281,7 +281,7 @@ export function DayColumns({ days, series, format, label, onPick }: {
           <div className="mb-1 font-bold text-muted-foreground">{longDay(days[idx])}</div>
           {series.length > 1 && <div className="font-dash text-[14px] font-bold text-foreground">{format(totals[idx])} total</div>}
           {series.map((s) => <TipRow key={s.key} keyStyle={{ borderColor: s.color }} label={s.label} value={format(s.values[idx] ?? 0)} />)}
-          {onPick && <div className="mt-1 text-[11.5px] font-semibold text-muted-foreground">Click (or tap again) to open that day</div>}
+          {onPick && <div className="mt-1 text-[14px] font-semibold text-muted-foreground">Click (or tap again) to open that day</div>}
         </Tip>
       )}
     </div>
@@ -301,11 +301,11 @@ export function HBars({ rows, color = C1 }: { rows: HBarRow[]; color?: string })
           <div className="grid grid-cols-[minmax(84px,34%)_1fr] items-center gap-3 rounded-lg px-2 py-2 transition-colors hover:bg-muted">
             <div className="min-w-0">
               <div className="truncate text-[14px] font-bold text-foreground" title={r.title}>{r.label}</div>
-              {r.sub && <div className="truncate text-[12px] font-semibold text-muted-foreground">{r.sub}</div>}
+              {r.sub && <div className="truncate text-[14px] font-semibold text-muted-foreground">{r.sub}</div>}
             </div>
             <div className="flex min-w-0 items-center gap-2">
               <div className="h-3 min-w-[2px] rounded-r-[4px]" style={{ width: `${Math.max(1, (r.value / max) * 100) * 0.78}%`, background: color }} aria-hidden />
-              <span className="shrink-0 font-dash text-[13.5px] font-bold tabular-nums text-foreground">{r.valueText}</span>
+              <span className="shrink-0 font-dash text-[14px] font-bold tabular-nums text-foreground">{r.valueText}</span>
             </div>
           </div>
         );
@@ -320,7 +320,7 @@ export function DayTable({ days, cols, summary = 'Show as a table' }: {
   days: string[]; cols: { label: string; values: number[]; format: (v: number) => string }[]; summary?: string;
 }) {
   return (
-    <details className="mt-2 text-[13px]">
+    <details className="mt-2 text-[14px]">
       <summary className="cursor-pointer select-none font-bold text-muted-foreground hover:text-foreground">{summary}</summary>
       <div className="mt-2 max-h-64 overflow-auto rounded-lg border border-border/50">
         <table className="w-full text-left">

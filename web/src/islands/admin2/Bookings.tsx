@@ -48,22 +48,22 @@ export default function Bookings() {
   );
 
   return (
-    <div className="space-y-5">
+    <div className="hf-admin-operations space-y-5">
       {applied.event && (
-        <section className="rounded-xl border border-border bg-card p-4 shadow-sm sm:p-5">
+        <section className="hf-admin-op-card rounded-xl border border-border bg-card p-4 shadow-sm sm:p-5">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div className="min-w-0">
-              <div className="text-[12px] font-extrabold uppercase tracking-[0.08em] text-muted-foreground">Bookings for one event</div>
-              <h2 className="mt-1 font-dash text-[20px] font-bold text-grand-teal sm:text-[22px]">{event?.title ?? (list.phase === 'loading' ? '…' : 'Event')}</h2>
+              <div className="text-[14px] font-extrabold uppercase tracking-[0.08em] text-muted-foreground">Bookings for one event</div>
+              <h2 className="mt-1 font-dash text-[20px] font-bold text-[var(--hf-admin-plum)] sm:text-[22px]">{event?.title ?? (list.phase === 'loading' ? '…' : 'Event')}</h2>
               {event && (
-                <p className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[13.5px] font-semibold text-muted-foreground">
+                <p className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[14px] font-semibold text-muted-foreground">
                   <span className="inline-flex items-center gap-1"><CalendarDays className="h-4 w-4" />{event.starts_at ? istDateTime(event.starts_at) : 'No date'}</span>
                   <span>{event.price_paise ? formatPaise(event.price_paise) : 'Free'} a seat</span>
                   <a className="font-bold text-accent underline-offset-2 hover:underline" href={`/admin/events/${encodeURIComponent(event.id)}`}>Edit event</a>
                 </p>
               )}
             </div>
-            <a href="/admin/bookings" className="inline-flex h-9 items-center gap-1 rounded-md border border-border bg-card px-3 text-[13px] font-bold text-foreground no-underline hover:bg-muted">
+            <a href="/admin/bookings" className="inline-flex h-9 items-center gap-1 rounded-md border border-border bg-card px-3 text-[14px] font-bold text-foreground no-underline hover:bg-muted">
               <X className="h-4 w-4" /> All bookings
             </a>
           </div>
@@ -91,7 +91,7 @@ export default function Bookings() {
       </FilterBar>
 
       <div className="flex items-center justify-between gap-3">
-        <p className="text-[13px] font-semibold text-muted-foreground" aria-live="polite">
+        <p className="text-[14px] font-semibold text-muted-foreground" aria-live="polite">
           {list.phase === 'ready' ? `${totals?.bookings ?? list.items.length} booking${(totals?.bookings ?? list.items.length) === 1 ? '' : 's'}` : list.phase === 'loading' ? 'Loading…' : ''}
         </p>
         <ExportButton kind={applied.event ? 'bookings_event' : 'bookings'} path="/api/admin/v2/bookings" query={query} />
@@ -103,7 +103,7 @@ export default function Bookings() {
         ) : (
           <>
             {/* Desktop table */}
-            <div className="hidden overflow-hidden rounded-xl border border-border/60 bg-card shadow-sm md:block">
+            <div className="hidden overflow-hidden hf-admin-op-card rounded-xl border border-border/60 bg-card shadow-sm md:block">
               <table className="w-full border-collapse">
                 <thead className="bg-muted/60">
                   <tr><th className={TH}>Customer</th><th className={TH}>Event</th><th className={TH}>Status</th><th className={`${TH} text-right`}>Amount</th><th className={TH}>UTR</th><th className={TH}>Booked</th></tr>
@@ -114,12 +114,12 @@ export default function Bookings() {
                       <td className={`${TD} max-w-[240px]`}><CustomerCell c={b.customer} /></td>
                       <td className={`${TD} max-w-[260px]`}>
                         <a href={`/admin/bookings?event=${encodeURIComponent(b.listing_id)}`} className="font-bold text-foreground underline-offset-2 hover:text-accent hover:underline">{b.event_title ?? b.listing_id}</a>
-                        <div className="text-[12.5px] font-semibold text-muted-foreground">{b.event_starts_at ? istDateTime(b.event_starts_at) : 'No date'}</div>
+                        <div className="text-[14px] font-semibold text-muted-foreground">{b.event_starts_at ? istDateTime(b.event_starts_at) : 'No date'}</div>
                       </td>
                       <td className={TD}><StatusPill status={b.status} /></td>
                       <td className={`${TD} text-right font-extrabold tabular-nums`}>{amount(b)}</td>
-                      <td className={`${TD} text-[13px]`}>{b.utr ? <CopyValue value={b.utr} label="UTR" /> : <span className="text-muted-foreground">—</span>}</td>
-                      <td className={`${TD} whitespace-nowrap text-[13px] text-muted-foreground`}>{istDateTime(b.booked_at)}</td>
+                      <td className={`${TD} text-[14px]`}>{b.utr ? <CopyValue value={b.utr} label="UTR" /> : <span className="text-muted-foreground">—</span>}</td>
+                      <td className={`${TD} whitespace-nowrap text-[14px] text-muted-foreground`}>{istDateTime(b.booked_at)}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -128,7 +128,7 @@ export default function Bookings() {
             {/* Phone cards */}
             <ul className="space-y-3 md:hidden">
               {list.items.map((b) => (
-                <li key={b.id} className="rounded-xl border border-border/60 bg-card p-4 shadow-sm">
+                <li key={b.id} className="hf-admin-op-card rounded-xl border border-border/60 bg-card p-4 shadow-sm">
                   <div className="flex items-start justify-between gap-3">
                     <CustomerCell c={b.customer} compact />
                     <div className="shrink-0 text-right">
@@ -137,10 +137,10 @@ export default function Bookings() {
                     </div>
                   </div>
                   <a href={`/admin/bookings?event=${encodeURIComponent(b.listing_id)}`} className="mt-3 block font-bold text-foreground underline-offset-2 hover:underline">{b.event_title ?? b.listing_id}</a>
-                  <div className="text-[12.5px] font-semibold text-muted-foreground">{b.event_starts_at ? istDateTime(b.event_starts_at) : 'No date'}</div>
-                  <div className="mt-2 flex flex-wrap items-center justify-between gap-2 border-t border-border/40 pt-2 text-[12.5px] font-semibold text-muted-foreground">
+                  <div className="text-[14px] font-semibold text-muted-foreground">{b.event_starts_at ? istDateTime(b.event_starts_at) : 'No date'}</div>
+                  <div className="mt-2 flex flex-wrap items-center justify-between gap-2 border-t border-border/40 pt-2 text-[14px] font-semibold text-muted-foreground">
                     <span>Booked {istDateTime(b.booked_at)}</span>
-                    {b.utr && <CopyValue value={b.utr} label="UTR" className="text-[12.5px] text-foreground" />}
+                    {b.utr && <CopyValue value={b.utr} label="UTR" className="text-[14px] text-foreground" />}
                   </div>
                 </li>
               ))}

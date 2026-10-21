@@ -6,7 +6,7 @@ import { Banner, ConsultShell, Spinner, dateIST, fail, track } from '../consulta
 
 const GENDERS = ['woman', 'man'], AGES = ['20s', '30s', '40s', '50s+'], LOOKS = ['traditional', 'casual', 'office'];
 const T14 = { fontSize: 14 } as const;
-const sel = { minHeight: 40, padding: '0 10px', borderRadius: 10, border: '1px solid #d9cbd6', background: '#fff', ...T14 } as const;
+const sel = { minHeight: 44, padding: '0 10px', borderRadius: 10, border: '1px solid var(--hf-admin-line)', background: 'var(--hf-admin-cream)', ...T14 } as const;
 
 export default function Avatars() {
   const [items, setItems] = useState<AdminAvatar[] | null>(null);
@@ -53,8 +53,8 @@ export default function Avatars() {
   };
 
   return (
-    <ConsultShell>
-      <div className="card" style={{ padding: 14, background: '#fff', marginBottom: 16 }}>
+    <ConsultShell className="hf-admin-operations">
+      <div className="card" style={{ padding: 14, background: 'var(--hf-admin-cream)', marginBottom: 16 }}>
         <h3 style={{ margin: '0 0 10px', fontSize: 18 }}>Make a new batch</h3>
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'flex-end' }}>
           <label style={T14}>How many (up to 12)<br /><input type="number" min={1} max={12} value={g.count} onChange={(e) => setG({ ...g, count: Math.max(1, Math.min(12, Number(e.target.value) || 1)) })} style={{ ...sel, width: 100 }} /></label>
@@ -97,7 +97,7 @@ export default function Avatars() {
       {items && shown.length === 0 && !error && <div className="card muted" style={{ fontWeight: 700, ...T14 }}>No avatars match.</div>}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(170px, 1fr))', gap: 12 }}>
         {shown.map((a) => (
-          <figure key={a.id} className="card" style={{ margin: 0, padding: 8, background: '#fff', opacity: a.status === 'retired' ? 0.6 : 1 }}>
+          <figure key={a.id} className="card" style={{ margin: 0, padding: 8, background: 'var(--hf-admin-cream)', opacity: a.status === 'retired' ? 0.6 : 1 }}>
             <img src={a.url} alt={`${a.gender}, ${a.age}, ${a.look}`} loading="lazy" style={{ width: '100%', aspectRatio: '1', objectFit: 'cover', borderRadius: 10 }} />
             <figcaption style={{ ...T14, marginTop: 6 }}>
               {a.gender} · {a.age} · {a.look}

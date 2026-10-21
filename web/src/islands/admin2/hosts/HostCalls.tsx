@@ -7,7 +7,7 @@ import { Banner, ConsultShell, Spinner, dateIST, fail } from '../consultants/kit
 import { formatPaise } from '../../../lib/money';
 
 const T14 = { fontSize: 14 } as const;
-const field = { width: '100%', ...T14, padding: 10, borderRadius: 10, border: '1px solid #c8afd1', minHeight: 44 } as const;
+const field = { width: '100%', ...T14, padding: 10, borderRadius: 10, border: '1px solid var(--hf-admin-line)', minHeight: 44 } as const;
 
 const QUICK = [100, 200, 500] as const;
 
@@ -31,7 +31,7 @@ function UserRow({ u, onBalance }: { u: AdminUserHit; onBalance: (uid: string, b
     setBusy(null);
   };
   return (
-    <div className="card" style={{ background: '#fff', display: 'grid', gap: 8 }}>
+    <div className="card" style={{ background: 'var(--hf-admin-cream)', display: 'grid', gap: 8 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap', alignItems: 'baseline' }}>
         <strong style={{ fontSize: 16 }}>{u.name || 'No name'}{u.isHost && <span className="chip gold" style={{ ...T14, marginLeft: 8 }}>Host{u.hostSlug ? ` · ${u.hostSlug}` : ''}</span>}</strong>
         <strong style={{ fontSize: 16 }}>Balance ₹{u.balanceRupees}</strong>
@@ -114,7 +114,7 @@ function CreditPanel() {
   const setBalance = (uid: string, bal: number) => setHits((h) => (h ? h.map((x) => (x.uid === uid ? { ...x, balanceRupees: bal } : x)) : h));
 
   return (
-    <section className="card" style={{ background: '#fff', display: 'grid', gap: 10, marginBottom: 18 }}>
+    <section className="card" style={{ background: 'var(--hf-admin-cream)', display: 'grid', gap: 10, marginBottom: 18 }}>
       <h2 style={{ margin: 0, fontSize: 18 }}>Add test credits</h2>
       <p className="muted" style={{ margin: 0, ...T14 }}>For testing only. Find the caller, then tap an amount. Every credit is logged.</p>
       <form onSubmit={search} style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
@@ -154,7 +154,7 @@ function MarginsPanel() {
     return () => { live = false; };
   }, []);
   return (
-    <section className="card" style={{ background: '#fff', display: 'grid', gap: 10, marginBottom: 18 }}>
+    <section className="card" style={{ background: 'var(--hf-admin-cream)', display: 'grid', gap: 10, marginBottom: 18 }}>
       <h2 style={{ margin: 0, fontSize: 18 }}>Calls &amp; margins</h2>
       <p className="muted" style={{ margin: 0, ...T14 }}>Estimates before other expenses — not profit.</p>
       {error && <Banner tone="error">{error}</Banner>}
@@ -197,7 +197,7 @@ export default function HostCalls() {
   useEffect(() => { void load(); }, [load]);
 
   return (
-    <ConsultShell>
+    <ConsultShell className="hf-admin-operations">
       <CreditPanel />
       <MarginsPanel />
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, marginBottom: 10 }}>
@@ -208,7 +208,7 @@ export default function HostCalls() {
       {rows === null && <Spinner label="Loading calls…" />}
       {rows && rows.length === 0 && !error && <div className="card muted" style={{ fontWeight: 700, ...T14 }}>No calls yet.</div>}
       {rows && rows.length > 0 && (
-        <div className="card" style={{ padding: 0, overflow: 'auto', background: '#fff' }}>
+        <div className="card" style={{ padding: 0, overflow: 'auto', background: 'var(--hf-admin-cream)' }}>
           <table className="t" style={T14}>
             <thead><tr><th>When</th><th>Host</th><th>Caller</th><th>Status</th><th>Min</th><th>Charged</th><th>Host share</th><th>Ended by</th></tr></thead>
             <tbody>

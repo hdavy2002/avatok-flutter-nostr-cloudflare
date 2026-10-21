@@ -12,7 +12,7 @@ const rupees = (n: number | null | undefined): string => (n == null ? '—' : fo
 
 const paiseRupees = (p: number) => rupees(p / 100);
 const T14 = { fontSize: 14 } as const;
-const field = { width: '100%', ...T14, padding: 10, borderRadius: 10, border: '1px solid #c8afd1', minHeight: 44 } as const;
+const field = { width: '100%', ...T14, padding: 10, borderRadius: 10, border: '1px solid var(--hf-admin-line)', minHeight: 44 } as const;
 
 type Status = 'requested' | 'processing' | 'failed' | 'refunded' | 'rejected' | 'cancelled';
 interface Alloc { topupId: string | null; rupees: number; status: 'pending' | 'submitting' | 'needs_check' | 'refunded' | 'manual' | 'failed'; gatewayRefundId?: string | null; error?: string }
@@ -65,11 +65,11 @@ function Row({ it, onDone }: { it: Item; onDone: () => void }) {
   };
 
   return (
-    <div className="card" style={{ background: '#fff', display: 'grid', gap: 8 }}>
+    <div className="card" style={{ background: 'var(--hf-admin-cream)', display: 'grid', gap: 8 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap', alignItems: 'baseline' }}>
         <strong style={{ fontSize: 16 }}>
           {play ? 'Refund through Google Play' : 'Refund'}
-          {it.exit && <span style={{ ...T14, marginLeft: 8, padding: '2px 8px', borderRadius: 999, background: '#f2ecfc', color: '#46113e' }} title="Account closure: the account is deleted once this is settled">Exit</span>}
+          {it.exit && <span style={{ ...T14, marginLeft: 8, padding: '2px 8px', borderRadius: 999, background: 'var(--hf-admin-blush)', color: 'var(--hf-admin-plum)' }} title="Account closure: the account is deleted once this is settled">Exit</span>}
         </strong>
         <strong style={{ fontSize: 18 }}>{play ? paiseRupees(owedPaise) : rupees(it.amount)}</strong>
       </div>
@@ -122,24 +122,24 @@ function Row({ it, onDone }: { it: Item; onDone: () => void }) {
       {note && <Banner tone="info">{note}</Banner>}
       {err && <Banner tone="error">{err}</Banner>}
 
-      <ConfirmDialog open={dialog === 'playhand'} title="Record the Play Console refund" confirmLabel="Record and remove the money" busy={busy} error={err} disabled={!recordedOk}
+      <ConfirmDialog className="hf-admin-operations" open={dialog === 'playhand'} title="Record the Play Console refund" confirmLabel="Record and remove the money" busy={busy} error={err} disabled={!recordedOk}
         body={`Only do this after you refunded the person in the Google Play Console. The unused wallet money is then removed from their account. Owed: ${paiseRupees(owedPaise)}. If you refunded less, write a note.`}
         onConfirm={() => void run(() => post(`${base}/play-confirm`, { manual: true, recordedPaise, note: playNote.trim() || undefined }), 'hf_play_refund_manual')} onCancel={() => setDialog(null)}>
         <input aria-label="Rupees you refunded" style={field} value={recorded} inputMode="decimal" autoComplete="off" placeholder="Rupees you refunded" onChange={(e) => setRecorded(e.target.value.replace(/[^0-9.]/g, ''))} />
         <input aria-label="Note" style={{ ...field, marginTop: 8 }} value={playNote} maxLength={200} placeholder="Note (needed if less than owed)" onChange={(e) => setPlayNote(e.target.value)} />
       </ConfirmDialog>
-      <ConfirmDialog open={slice?.mode === 'sent'} title="Record this part as already sent" confirmLabel="Yes, it was sent" busy={busy} error={err}
+      <ConfirmDialog className="hf-admin-operations" open={slice?.mode === 'sent'} title="Record this part as already sent" confirmLabel="Yes, it was sent" busy={busy} error={err}
         body="Only do this after you looked in the payment gateway’s dashboard and saw this refund there. The rest of the refund then continues."
         onConfirm={() => void run(() => post(`${base}/mark-sent`, { topupId: slice!.topupId }), 'hf_refund_mark_sent').then(() => setSlice(null))} onCancel={() => setSlice(null)} />
-      <ConfirmDialog open={slice?.mode === 'resend'} title="Send this part again" confirmLabel="Send again" danger busy={busy} error={err}
+      <ConfirmDialog className="hf-admin-operations" open={slice?.mode === 'resend'} title="Send this part again" confirmLabel="Send again" danger busy={busy} error={err}
         body="Only do this after you looked in the payment gateway’s dashboard and saw NO refund for this part. Sending it when one already exists could pay the person twice."
         onConfirm={() => void run(() => post(`${base}/retry`, { resubmit: [slice!.topupId] }), 'hf_refund_resend').then(() => setSlice(null))} onCancel={() => setSlice(null)} />
-      <ConfirmDialog open={dialog === 'manual'} title={`Mark ${rupees(it.amount)} as paid by hand`} confirmLabel="Mark as paid" busy={busy} error={err} disabled={!utrOk}
+      <ConfirmDialog className="hf-admin-operations" open={dialog === 'manual'} title={`Mark ${rupees(it.amount)} as paid by hand`} confirmLabel="Mark as paid" busy={busy} error={err} disabled={!utrOk}
         body="Only do this after the money has reached the person. Every part still waiting is marked as paid by hand. This can’t be undone."
         onConfirm={() => void run(() => post(`${base}/paid-manually`, { utr: utr.trim() }), 'hf_refund_manual')} onCancel={() => setDialog(null)}>
         <input aria-label="Bank reference (UTR)" style={field} value={utr} maxLength={30} autoComplete="off" placeholder="Bank reference (UTR), 6 to 30 letters or numbers" onChange={(e) => setUtr(e.target.value.replace(/[^A-Za-z0-9]/g, ''))} />
       </ConfirmDialog>
-      <ConfirmDialog open={dialog === 'reject'} title="Reject this refund" confirmLabel="Reject" danger busy={busy} error={err} disabled={reason.trim().length < 3}
+      <ConfirmDialog className="hf-admin-operations" open={dialog === 'reject'} title="Reject this refund" confirmLabel="Reject" danger busy={busy} error={err} disabled={reason.trim().length < 3}
         body="The money stays in the person’s wallet. They see your reason. You can’t reject once part of it has already been sent."
         onConfirm={() => void run(() => post(`${base}/reject`, { reason: reason.trim() }), 'hf_refund_reject')} onCancel={() => setDialog(null)}>
         <input aria-label="Reason" style={field} value={reason} maxLength={200} placeholder="Reason (the person sees this)" onChange={(e) => setReason(e.target.value)} />
@@ -159,7 +159,7 @@ export default function HostRefunds() {
   useEffect(() => { setData(null); void load(); }, [load]);
 
   return (
-    <ConsultShell>
+    <ConsultShell className="hf-admin-operations">
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 12, alignItems: 'center' }}>
         {TABS.map((t) => {
           const c = data?.counts?.[t.key];

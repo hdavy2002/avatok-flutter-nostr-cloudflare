@@ -5,7 +5,7 @@ import { hfAdminApi, type DemoInfluencer, type DemoSaveResult, type InviteCreato
 import { Banner, ConsultShell, Spinner, dateIST, fail, track } from '../consultants/kit';
 
 const T14 = { fontSize: 14 } as const;
-const inp = { minHeight: 40, padding: '8px 10px', borderRadius: 10, border: '1px solid #d9cbd6', background: '#fff', ...T14 } as const;
+const inp = { minHeight: 44, padding: '8px 10px', borderRadius: 10, border: '1px solid var(--hf-admin-line)', background: 'var(--hf-admin-cream)', ...T14 } as const;
 
 export function linesOf(text: string): string[] {
   return text.split(/\r?\n/).map((x) => x.trim()).filter(Boolean);
@@ -46,7 +46,7 @@ export function InviteCreators() {
     catch (e) { setError(fail('invite_hide', e)); } finally { setBusy(null); }
   };
   return (
-    <div className="card" style={{ padding: 14, background: '#fff', marginBottom: 16 }}>
+    <div className="card" style={{ padding: 14, background: 'var(--hf-admin-cream)', marginBottom: 16 }}>
       <h3 style={{ margin: '0 0 6px', fontSize: 18 }}>Invite creators (not on the app yet)</h3>
       <p className="muted" style={{ ...T14, margin: '0 0 10px' }}>Their latest reels show after the network reels in the feed, with an Invite button. Fans' searches and Invite votes add creators here too.</p>
       {error && <Banner tone="error">{error}</Banner>}
@@ -118,11 +118,11 @@ export default function DemoInfluencers() {
   };
 
   return (
-    <ConsultShell>
+    <ConsultShell className="hf-admin-operations">
       <InviteCreators />
       {error && <Banner tone="error">{error}</Banner>}
       {info && <Banner tone="info">{info}</Banner>}
-      <div className="card" style={{ padding: 14, background: '#fff', marginBottom: 16 }}>
+      <div className="card" style={{ padding: 14, background: 'var(--hf-admin-cream)', marginBottom: 16 }}>
         <h3 style={{ margin: '0 0 10px', fontSize: 18 }}>Create or fill a demo influencer</h3>
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'flex-end' }}>
           <label style={T14}>Add to<br />

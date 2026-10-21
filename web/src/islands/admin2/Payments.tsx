@@ -43,7 +43,7 @@ export default function Payments() {
   const filters = (
     <>
       <StatusToggles options={STATUSES} value={f.status} onChange={(v) => set({ status: v })} />
-      <label className="grid gap-1 text-[12px] font-bold text-muted-foreground md:w-44">
+      <label className="grid gap-1 text-[14px] font-bold text-muted-foreground md:w-44">
         Category
         <Select value={f.cat || 'all'} onValueChange={(v) => set({ cat: v === 'all' ? '' : v })}>
           <SelectTrigger aria-label="Category" className={cn('font-semibold', f.cat && 'border-accent text-accent')}><SelectValue placeholder="All categories" /></SelectTrigger>
@@ -59,16 +59,16 @@ export default function Payments() {
         <DateField id="pay-to" label="Paid until" value={f.paid_to} onChange={(v) => set({ paid_to: v })} />
       </div>
       <div className="grid grid-cols-2 gap-2 md:w-52">
-        <label htmlFor="pay-min" className="grid gap-1 text-[12px] font-bold text-muted-foreground">Min ₹
+        <label htmlFor="pay-min" className="grid gap-1 text-[14px] font-bold text-muted-foreground">Min ₹
           <Input id="pay-min" inputMode="numeric" placeholder="0" value={f.min} onChange={(e) => set({ min: digits(e.target.value) })} /></label>
-        <label htmlFor="pay-max" className="grid gap-1 text-[12px] font-bold text-muted-foreground">Max ₹
+        <label htmlFor="pay-max" className="grid gap-1 text-[14px] font-bold text-muted-foreground">Max ₹
           <Input id="pay-max" inputMode="numeric" placeholder="Any" value={f.max} onChange={(e) => set({ max: digits(e.target.value) })} /></label>
       </div>
     </>
   );
 
   return (
-    <div className="space-y-5">
+    <div className="hf-admin-operations space-y-5">
       {totals && (
         <div className="grid grid-cols-2 gap-3 lg:grid-cols-4" aria-label="Totals for these filters">
           <Tile tone="accent" label="Collected" value={formatPaise(totals.collected_paise)} hint={`${totals.paid_count} payment${totals.paid_count === 1 ? '' : 's'}`} />
@@ -89,7 +89,7 @@ export default function Payments() {
       </FilterBar>
 
       <div className="flex items-center justify-between gap-3">
-        <p className="text-[13px] font-semibold text-muted-foreground" aria-live="polite">
+        <p className="text-[14px] font-semibold text-muted-foreground" aria-live="polite">
           {list.phase === 'ready' ? `${totals?.count ?? list.items.length} payment${(totals?.count ?? list.items.length) === 1 ? '' : 's'}` : list.phase === 'loading' ? 'Loading…' : ''}
         </p>
         <ExportButton kind="payments" path="/api/admin/v2/payments" query={query} />
@@ -100,7 +100,7 @@ export default function Payments() {
           <Empty title={applied.q || count ? 'No payments match' : 'No payments yet'} body={applied.q || count ? 'Try a different search or clear the filters.' : undefined} />
         ) : (
           <>
-            <div className="hidden overflow-hidden rounded-xl border border-border/60 bg-card shadow-sm md:block">
+            <div className="hidden overflow-hidden hf-admin-op-card rounded-xl border border-border/60 bg-card shadow-sm md:block">
               <table className="w-full border-collapse">
                 <thead className="bg-muted/60">
                   <tr><th className={TH}>Paid</th><th className={TH}>Customer</th><th className={TH}>Event</th><th className={TH}>Status</th><th className={`${TH} text-right`}>Amount</th><th className={TH}>UTR</th></tr>
@@ -108,22 +108,22 @@ export default function Payments() {
                 <tbody className="divide-y divide-border/40">
                   {list.items.map((p) => (
                     <tr key={p.id} className="hover:bg-muted/30">
-                      <td className={`${TD} whitespace-nowrap text-[13px]`}>
+                      <td className={`${TD} whitespace-nowrap text-[14px]`}>
                         {p.paid_at ? istDateTime(p.paid_at) : <span className="text-muted-foreground">Started {istDateTime(p.created_at)}</span>}
                       </td>
                       <td className={`${TD} max-w-[240px]`}><CustomerCell c={p.customer} /></td>
                       <td className={`${TD} max-w-[240px]`}>
                         <a href={`/admin/bookings?event=${encodeURIComponent(p.listing_id)}`} className="font-bold text-foreground underline-offset-2 hover:text-accent hover:underline">{p.event_title ?? p.listing_id}</a>
-                        <div className="text-[12.5px] font-semibold text-muted-foreground">{p.category_label ?? p.category ?? ''}</div>
+                        <div className="text-[14px] font-semibold text-muted-foreground">{p.category_label ?? p.category ?? ''}</div>
                       </td>
                       <td className={TD}>
                         <StatusPill status={p.status} />
                         {p.status === 'refunded' && p.refund?.amount_paise != null && p.refund.amount_paise !== p.amount_paise && (
-                          <div className="mt-1 text-[12px] font-semibold text-muted-foreground">{formatPaise(p.refund.amount_paise)} back</div>
+                          <div className="mt-1 text-[14px] font-semibold text-muted-foreground">{formatPaise(p.refund.amount_paise)} back</div>
                         )}
                       </td>
                       <td className={`${TD} text-right font-extrabold tabular-nums`}>{formatPaise(p.amount_paise)}</td>
-                      <td className={`${TD} text-[13px]`}>{p.utr ? <CopyValue value={p.utr} label="UTR" /> : <span className="text-muted-foreground">—</span>}</td>
+                      <td className={`${TD} text-[14px]`}>{p.utr ? <CopyValue value={p.utr} label="UTR" /> : <span className="text-muted-foreground">—</span>}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -131,17 +131,17 @@ export default function Payments() {
             </div>
             <ul className="space-y-3 md:hidden">
               {list.items.map((p) => (
-                <li key={p.id} className="rounded-xl border border-border/60 bg-card p-4 shadow-sm">
+                <li key={p.id} className="hf-admin-op-card rounded-xl border border-border/60 bg-card p-4 shadow-sm">
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
                       <div className="font-dash text-[18px] font-bold tabular-nums">{formatPaise(p.amount_paise)}</div>
-                      <div className="text-[12.5px] font-semibold text-muted-foreground">{p.paid_at ? istDateTime(p.paid_at) : `Started ${istDateTime(p.created_at)}`}</div>
+                      <div className="text-[14px] font-semibold text-muted-foreground">{p.paid_at ? istDateTime(p.paid_at) : `Started ${istDateTime(p.created_at)}`}</div>
                     </div>
                     <StatusPill status={p.status} />
                   </div>
                   <a href={`/admin/bookings?event=${encodeURIComponent(p.listing_id)}`} className="mt-2 block font-bold text-foreground underline-offset-2 hover:underline">{p.event_title ?? p.listing_id}</a>
                   <div className="mt-2 border-t border-border/40 pt-2"><CustomerCell c={p.customer} compact /></div>
-                  {p.utr && <div className="mt-2 text-[12.5px] font-semibold text-muted-foreground">UTR <CopyValue value={p.utr} label="UTR" className="text-foreground" /></div>}
+                  {p.utr && <div className="mt-2 text-[14px] font-semibold text-muted-foreground">UTR <CopyValue value={p.utr} label="UTR" className="text-foreground" /></div>}
                 </li>
               ))}
             </ul>

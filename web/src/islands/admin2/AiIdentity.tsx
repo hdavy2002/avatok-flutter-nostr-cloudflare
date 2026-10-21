@@ -104,7 +104,7 @@ function BrandCard() {
             <div className="grid gap-1.5">
               <Label htmlFor="brand-domain" className={LABEL}>New domain</Label>
               <Input id="brand-domain" value={domain} maxLength={120} onChange={(e) => setDomain(e.target.value)} placeholder="example.com" autoCapitalize="off" spellCheck={false} disabled={busy} aria-invalid={domain.trim() !== '' && !domainOk} />
-              {domain.trim() !== '' && !domainOk && <p className="text-[13px] font-bold text-destructive">Enter a domain like example.com.</p>}
+              {domain.trim() !== '' && !domainOk && <p className="text-[14px] font-bold text-destructive">Enter a domain like example.com.</p>}
             </div>
             <div className="sm:col-span-2">
               <Button variant="outline" disabled={!canChange || busy} onClick={() => setConfirm(true)}>
@@ -151,7 +151,7 @@ function BrandCard() {
           </div>
 
           <AlertDialog open={confirm} onOpenChange={setConfirm}>
-            <AlertDialogContent>
+            <AlertDialogContent className="hf-admin-operations">
               <AlertDialogHeader>
                 <AlertDialogTitle>Change to {name.trim()} on {domainClean}?</AlertDialogTitle>
                 <AlertDialogDescription asChild>
@@ -329,11 +329,11 @@ export default function AiIdentity() {
                   <button
                     key={u} type="button" disabled={saving}
                     onClick={() => { void persist({ avatar_url: u }, 'Portrait saved').then(() => setCands([])); }}
-                    className="group overflow-hidden rounded-xl border-2 border-border/70 text-left transition-colors hover:border-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    className="group overflow-hidden hf-admin-op-card rounded-xl border-2 border-border/70 text-left transition-colors hover:border-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                     aria-label="Use this portrait"
                   >
                     <img src={u} alt="Generated portrait candidate" className="aspect-square w-full object-cover" loading="lazy" />
-                    <span className="block bg-card px-2 py-1.5 text-center font-dashbody text-[13px] font-extrabold">Use this one</span>
+                    <span className="block bg-card px-2 py-1.5 text-center font-dashbody text-[14px] font-extrabold">Use this one</span>
                   </button>
                 ))}
               </div>
@@ -390,12 +390,12 @@ export default function AiIdentity() {
 
       <BrandCard />
 
-      <div className="sticky bottom-[calc(var(--dash-tabbar-h,0px)+12px)] z-10 flex flex-wrap items-center gap-3 rounded-xl border border-border bg-card/95 p-3 shadow-lg backdrop-blur sm:bottom-4">
+      <div className="sticky bottom-[calc(var(--dash-tabbar-h,0px)+12px)] z-10 flex flex-wrap items-center gap-3 hf-admin-op-card rounded-xl border border-border bg-card/95 p-3 shadow-lg backdrop-blur sm:bottom-4">
         <Button variant="accent" onClick={() => void save()} disabled={saving || !dirty}>
           {saving ? <Loader2 className="animate-spin" /> : <Save />} {saving ? 'Saving…' : 'Save changes'}
         </Button>
         {dirty && <Button variant="ghost" onClick={() => setDraft(saved)} disabled={saving}>Discard</Button>}
-        <span className="text-[13px] font-semibold text-muted-foreground">{dirty ? 'Unsaved changes' : 'All changes saved'}</span>
+        <span className="text-[14px] font-semibold text-muted-foreground">{dirty ? 'Unsaved changes' : 'All changes saved'}</span>
       </div>
     </div>
   );

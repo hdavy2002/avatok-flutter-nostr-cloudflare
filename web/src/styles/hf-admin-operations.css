@@ -1,0 +1,162 @@
+/* [HF-ADMIN-REDESIGN-1] Operational screens. Opt-in roots keep retired host
+ * and consultant pages on their existing skin; portals carry the same marker. */
+.hf-admin .hf-admin-operations {
+  min-width: 0;
+  color: var(--hf-admin-ink);
+  font-family: var(--hf-admin-body);
+  font-size: 14px;
+  line-height: 1.6;
+}
+.hf-admin .hf-admin-operations :where(h2,h3,h4,.font-dash) {
+  font-family: var(--hf-admin-head);
+  font-weight: 900;
+}
+.hf-admin .hf-admin-operations :where(h2,h3,h4) { color: var(--hf-admin-plum); }
+.hf-admin .hf-admin-operations :where(.font-dashbody,pre,code) { font-family: var(--hf-admin-body); }
+.hf-admin .hf-admin-operations .hf-admin-op-card {
+  border-radius: 20px;
+  box-shadow: 0 5px 18px -14px rgb(74 23 71 / 25%);
+}
+.hf-admin .hf-admin-operations .hf-admin-op-kpi {
+  border-top: 3px solid var(--hf-admin-marigold);
+  background: var(--hf-admin-cream);
+}
+.hf-admin .hf-admin-operations :where(button:not([role="switch"]):not([role="checkbox"]),[role="button"],input:not([type="checkbox"]):not([type="radio"]),select) {
+  min-height: 44px;
+}
+.hf-admin .hf-admin-operations :where(button:not([role="checkbox"]),[role="button"]) { min-width: 44px; }
+
+.hf-admin .hf-admin-operations :where(button,[role="button"],summary) {
+  font-family: var(--hf-admin-head);
+  font-weight: 900;
+  font-size: 14px;
+}
+.hf-admin .hf-admin-operations :where(input,select,textarea) { font-size: 16px; }
+.hf-admin .hf-admin-operations :where(button,[role="button"],input,select,textarea,summary,a):focus-visible {
+  outline: 3px solid var(--hf-admin-rani);
+  outline-offset: 3px;
+}
+.hf-admin .hf-admin-operations :where(button,input,select,textarea):disabled {
+  cursor: not-allowed;
+  opacity: .55;
+}
+.hf-admin .hf-admin-operations summary {
+  min-height: 44px;
+  padding-block: 10px;
+  cursor: pointer;
+}
+.hf-admin .hf-admin-operations table { font-size: 14px; }
+.hf-admin .hf-admin-operations th {
+  font-family: var(--hf-admin-head);
+  font-size: 14px;
+  line-height: 1.4;
+}
+.hf-admin .hf-admin-operations td { line-height: 1.5; }
+
+/* Host kit aliases are local: the public consultants stylesheet is unchanged. */
+.hf-admin .consult-ui.hf-admin-operations {
+  --cream: var(--hf-admin-cream);
+  --teal: var(--hf-admin-plum);
+  --ink: var(--hf-admin-ink);
+  --red: #ac2549;
+  --sage: var(--hf-admin-goldtint);
+  --gold: var(--hf-admin-marigold);
+  --neel: var(--hf-admin-blush);
+  --neel-line: var(--hf-admin-line);
+  --muted: var(--hf-admin-muted);
+  --line: var(--hf-admin-line);
+  --paper: var(--hf-admin-cream);
+}
+.hf-admin .consult-ui.hf-admin-operations .card {
+  border: 1px solid var(--hf-admin-line);
+  border-radius: 20px;
+  box-shadow: 0 5px 18px -14px rgb(74 23 71 / 25%);
+}
+.hf-admin .consult-ui.hf-admin-operations :where(.btn,.slot) {
+  min-height: 44px;
+  border-radius: 999px;
+  padding: 9px 18px;
+  font-family: var(--hf-admin-head);
+  font-size: 14px;
+  font-weight: 900;
+  white-space: normal;
+  line-height: 1.4;
+}
+
+.hf-admin .consult-ui.hf-admin-operations .btn { background: var(--hf-admin-plum); color: #fff; }
+.hf-admin .consult-ui.hf-admin-operations .btn.ghost {
+  background: var(--hf-admin-cream);
+  color: var(--hf-admin-plum);
+  border: 1.5px solid var(--hf-admin-line);
+}
+.hf-admin .consult-ui.hf-admin-operations .btn.red { background: var(--red); }
+.hf-admin .consult-ui.hf-admin-operations .slot {
+  background: var(--hf-admin-cream);
+  border-color: var(--hf-admin-line);
+  color: var(--hf-admin-plum);
+}
+.hf-admin .consult-ui.hf-admin-operations .slot.on {
+  background: var(--hf-admin-plum);
+  border-color: var(--hf-admin-plum);
+  color: #fff;
+}
+.hf-admin .consult-ui.hf-admin-operations :where(.btn,.slot):hover:not(:disabled) {
+  box-shadow: 0 3px 0 var(--hf-admin-line);
+}
+.hf-admin .consult-ui.hf-admin-operations :where(.chip,.hint,.label,.edited) { font-size: 14px; }
+.hf-admin .consult-ui.hf-admin-operations .chip { font-family: var(--hf-admin-head); line-height: 1.5; }
+.hf-admin .consult-ui.hf-admin-operations .chip.neel { background: var(--hf-admin-blush); color: var(--hf-admin-plum); }
+.hf-admin .consult-ui.hf-admin-operations .chip.gold { background: var(--hf-admin-goldtint); color: #754d12; }
+.hf-admin .consult-ui.hf-admin-operations .chip.red { background: #fce8e8; color: #95233d; }
+.hf-admin .consult-ui.hf-admin-operations .card[role="status"] { background: var(--hf-admin-goldtint) !important; color: var(--hf-admin-plum) !important; border-color: var(--hf-admin-line) !important; }
+
+.hf-admin .consult-ui.hf-admin-operations :where(input:not([type="checkbox"]):not([type="radio"]),select,textarea) {
+  max-width: 100%;
+  min-height: 44px;
+  border-color: var(--hf-admin-line);
+  border-radius: 14px;
+  color: var(--hf-admin-ink);
+  font-family: var(--hf-admin-body);
+}
+.hf-admin .consult-ui.hf-admin-operations table.t th {
+  background: var(--hf-admin-goldtint);
+  color: var(--hf-admin-plum);
+  font-size: 14px;
+}
+.hf-admin .consult-ui.hf-admin-operations table.t td { border-color: var(--hf-admin-line); }
+.hf-admin .consult-ui.hf-admin-operations table.t tbody tr:hover { background: var(--hf-admin-canvas); }
+.hf-admin .consult-ui.hf-admin-operations[role="alertdialog"] {
+  background: var(--hf-admin-cream);
+  border-color: var(--hf-admin-line);
+  border-radius: 24px;
+  width: calc(100vw - 24px);
+  max-height: calc(100dvh - 24px);
+  overflow-y: auto;
+}
+.hf-admin .consult-ui.hf-admin-operations[role="alertdialog"] h2 { font-family: var(--hf-admin-head) !important; }
+@media (max-width: 639px) {
+  .hf-admin .hf-admin-operations .hf-admin-op-card { border-radius: 16px; }
+  .hf-admin .consult-ui.hf-admin-operations :where(.btn,.slot) { padding-inline: 14px; }
+}
+
+.hf-admin .hf-admin-operations .hf-admin-op-kpi-alert { border-top-color: var(--hf-admin-rani); }
+/* Keep switch/checkbox visuals compact while giving them a 44px hit area. */
+.hf-admin .hf-admin-operations :where([role="switch"],[role="checkbox"]) { position: relative; }
+.hf-admin .hf-admin-operations :where([role="switch"],[role="checkbox"])::before {
+  content: "";
+  position: absolute;
+  min-width: 44px;
+  min-height: 44px;
+  width: 100%;
+  height: 100%;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+}
+
+/* Shared primitives may supply text-xs even when the caller has no size class. */
+.hf-admin .hf-admin-operations .text-xs { font-size: 14px; }
+.hf-admin .hf-admin-operations:is([role="dialog"],[role="alertdialog"]) {
+  max-height: calc(100dvh - 24px);
+  overflow-y: auto;
+}

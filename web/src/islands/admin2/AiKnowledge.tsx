@@ -113,7 +113,7 @@ export default function AiKnowledge() {
           onDragOver={(e) => { e.preventDefault(); setDrag(true); }}
           onDragLeave={() => setDrag(false)}
           onDrop={(e) => { e.preventDefault(); setDrag(false); void addFiles(e.dataTransfer.files); }}
-          className={cn('flex flex-col items-center gap-2 rounded-xl border-2 border-dashed px-4 py-8 text-center transition-colors', drag ? 'border-accent bg-accent/10' : 'border-border bg-background')}
+          className={cn('flex flex-col items-center gap-2 hf-admin-op-card rounded-xl border-2 border-dashed px-4 py-8 text-center transition-colors', drag ? 'border-accent bg-accent/10' : 'border-border bg-background')}
         >
           <UploadCloud className="h-8 w-8 text-muted-foreground" aria-hidden />
           <p className="font-dash text-[16px] font-bold text-foreground">Drop files here</p>
@@ -134,9 +134,9 @@ export default function AiKnowledge() {
                   <FileText className="h-5 w-5 shrink-0 text-muted-foreground" aria-hidden />
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-[14.5px] font-extrabold text-foreground">{f.file_name}</p>
-                    <p className="text-[12.5px] font-semibold text-muted-foreground">{size(f.size_bytes)} · {istDateTime(f.created_at)}</p>
-                    {f.error && <p className="text-[12.5px] font-bold text-destructive">{f.error}</p>}
-                    {f.status === 'needs_review' && <p className="text-[12.5px] font-semibold text-muted-foreground">Written before a brand change: check it still reads correctly, or re-upload it.</p>}
+                    <p className="text-[14px] font-semibold text-muted-foreground">{size(f.size_bytes)} · {istDateTime(f.created_at)}</p>
+                    {f.error && <p className="text-[14px] font-bold text-destructive">{f.error}</p>}
+                    {f.status === 'needs_review' && <p className="text-[14px] font-semibold text-muted-foreground">Written before a brand change: check it still reads correctly, or re-upload it.</p>}
                   </div>
                   <StatusChip s={f.status} />
                   <Button size="icon" variant="ghost" aria-label={`Delete ${f.file_name}`} onClick={() => setDel(f)}><Trash2 /></Button>
@@ -170,9 +170,9 @@ export default function AiKnowledge() {
                 <Badge variant="outline" className="capitalize">{d.kind}</Badge>
                 <div className="min-w-0 flex-1">
                   <a href={d.url} target="_blank" rel="noreferrer" className="block truncate text-[14px] font-extrabold text-foreground underline-offset-2 hover:underline">{d.title ?? d.url}</a>
-                  {d.error && <span className="block text-[12.5px] font-bold text-destructive">{d.error}</span>}
+                  {d.error && <span className="block text-[14px] font-bold text-destructive">{d.error}</span>}
                 </div>
-                <span className="text-[12.5px] font-semibold text-muted-foreground">{d.synced_at ? istDateTime(d.synced_at) : 'not synced'}</span>
+                <span className="text-[14px] font-semibold text-muted-foreground">{d.synced_at ? istDateTime(d.synced_at) : 'not synced'}</span>
                 <StatusChip s={d.status} />
               </li>
             ))}
@@ -181,7 +181,7 @@ export default function AiKnowledge() {
       </Section>
 
       <AlertDialog open={!!del} onOpenChange={(o) => { if (!o) setDel(null); }}>
-        <AlertDialogContent>
+        <AlertDialogContent className="hf-admin-operations">
           <AlertDialogHeader>
             <AlertDialogTitle>Delete this file?</AlertDialogTitle>
             <AlertDialogDescription>{del?.file_name} will be removed and she will stop using it in answers.</AlertDialogDescription>

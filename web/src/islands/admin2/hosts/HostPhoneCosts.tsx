@@ -10,19 +10,19 @@ import { Banner, ConsultShell, fail } from '../consultants/kit';
 const IST = 19_800_000;
 const DAY = 86_400_000;
 const T14: CSSProperties = { fontSize: 14 };
-const field: CSSProperties = { ...T14, padding: 10, borderRadius: 10, border: '1px solid #c8afd1', minHeight: 44, fontFamily: 'inherit' };
+const field: CSSProperties = { ...T14, padding: 10, borderRadius: 10, border: '1px solid var(--hf-admin-line)', minHeight: 44, fontFamily: 'inherit' };
 const H: CSSProperties = { fontFamily: "'Nunito', system-ui, sans-serif", fontSize: 20, margin: '0 0 10px' };
-const WARN_BG = '#fdf0cf', WARN_FG = '#6b4e12', BAD_BG = '#fbe1dc', BAD_FG = '#9a1f19', OK_BG = '#dfe2f3', OK_FG = '#2f3a7a';
+const WARN_BG = 'var(--hf-admin-goldtint)', WARN_FG = '#6b4e12', BAD_BG = '#fbe1dc', BAD_FG = '#9a1f19', OK_BG = 'var(--hf-admin-blush)', OK_FG = 'var(--hf-admin-plum)';
 
 /* Scoped overrides: Comfortaa text, 14px floor, purple instead of the kit's teal. */
 const CSS = `
-.pc-ui{font-family:'Comfortaa',system-ui,sans-serif;font-size:14px;--teal:#4a2c7a;width:100%}
+.pc-ui{font-family:'Comfortaa',system-ui,sans-serif;font-size:14px;--teal:var(--hf-admin-plum);width:100%}
 .pc-ui .chip{font-size:14px}.pc-ui .btn{font-family:'Nunito',sans-serif}.pc-ui .label{font-size:14px}
 .pc-ui table.t{width:100%;border-collapse:collapse;font-size:14px}.pc-ui table.t th{font-size:14px}
 .pc-ui .tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px}
 .pc-ui .two{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,420px),1fr));gap:14px}
 .pc-ui .tile{padding:14px}.pc-ui .tile b{display:block;font-family:'Nunito',sans-serif;font-size:22px;color:var(--teal);margin-top:4px;word-break:break-word}
-.pc-ui tr.click{cursor:pointer}.pc-ui tr.click:hover{background:#f4eef8}
+.pc-ui tr.click{cursor:pointer}.pc-ui tr.click:hover{background:var(--hf-admin-blush)}
 .pc-ui button.link{background:none;border:0;padding:0;font:inherit;font-size:14px;font-weight:800;color:var(--teal);text-decoration:underline;cursor:pointer}
 `;
 
@@ -69,8 +69,8 @@ function rangeOf(k: RangeKey, cFrom: string, cTo: string): { from: number; to: n
 }
 
 function Tile({ label, value, sub, tone }: { label: string; value: ReactNode; sub?: ReactNode; tone?: 'warn' | 'bad' | 'ok' }) {
-  const bg = tone === 'bad' ? BAD_BG : tone === 'warn' ? WARN_BG : tone === 'ok' ? OK_BG : '#fff';
-  return <div className="card tile" style={{ background: bg }}><div className="label">{label}</div><b>{value}</b>{sub && <div className="muted" style={T14}>{sub}</div>}</div>;
+  const bg = tone === 'bad' ? BAD_BG : tone === 'warn' ? WARN_BG : tone === 'ok' ? OK_BG : 'var(--hf-admin-cream)';
+  return <div className="card tile hf-admin-op-kpi" style={{ background: bg }}><div className="label">{label}</div><b>{value}</b>{sub && <div className="muted" style={T14}>{sub}</div>}</div>;
 }
 function Chip({ tone, children }: { tone: 'ok' | 'warn' | 'bad'; children: ReactNode }) {
   const [bg, fg] = tone === 'bad' ? [BAD_BG, BAD_FG] : tone === 'warn' ? [WARN_BG, WARN_FG] : [OK_BG, OK_FG];
@@ -78,7 +78,7 @@ function Chip({ tone, children }: { tone: 'ok' | 'warn' | 'bad'; children: React
 }
 function Card({ title, children, pad = true, right }: { title: string; children: ReactNode; pad?: boolean; right?: ReactNode }) {
   return (
-    <section className="card" style={{ background: '#fff', padding: pad ? undefined : 0, overflow: pad ? undefined : 'hidden' }}>
+    <section className="card" style={{ background: 'var(--hf-admin-cream)', padding: pad ? undefined : 0, overflow: pad ? undefined : 'hidden' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap', alignItems: 'center', padding: pad ? 0 : '16px 18px 0' }}>
         <h2 style={H}>{title}</h2>{right}
       </div>
@@ -105,8 +105,8 @@ function BalanceChart({ points, recharges }: { points: BalPoint[]; recharges: Re
   return (
     <div style={{ overflowX: 'auto' }}>
       <svg viewBox={`0 0 ${W} ${Ht}`} style={{ width: '100%', minWidth: 560, height: 'auto', display: 'block' }} role="img" aria-label="Vobiz balance over time">
-        {ticks.map((v) => <g key={v}><line x1={L} x2={W - R} y1={y(v)} y2={y(v)} stroke="#e6d9e9" /><text x={L - 8} y={y(v) + 5} textAnchor="end" fontSize="14" fill="#4d6268" fontFamily="Comfortaa, sans-serif">{inr(Math.round(v))}</text></g>)}
-        <path d={d} fill="none" stroke="#4a2c7a" strokeWidth="2.5" />
+        {ticks.map((v) => <g key={v}><line x1={L} x2={W - R} y1={y(v)} y2={y(v)} stroke="var(--hf-admin-line)" /><text x={L - 8} y={y(v) + 5} textAnchor="end" fontSize="14" fill="var(--hf-admin-muted)" fontFamily="Comfortaa, sans-serif">{inr(Math.round(v))}</text></g>)}
+        <path d={d} fill="none" stroke="var(--hf-admin-plum)" strokeWidth="2.5" />
         {pts.filter((p) => !p.ok).map((p) => <circle key={p.at} cx={x(p.at)} cy={y(p.balancePaise as number)} r="4" fill="#c82c25" />)}
         {marks.map((r) => (
           <g key={String(r.id)}>
@@ -114,8 +114,8 @@ function BalanceChart({ points, recharges }: { points: BalPoint[]; recharges: Re
             <text x={x(r.at)} y={Ht - B + 18} textAnchor="middle" fontSize="14" fill="#6b4e12" fontFamily="Comfortaa, sans-serif">+{inr(r.amountPaise)}</text>
           </g>
         ))}
-        <text x={L} y={Ht - 4} fontSize="14" fill="#4d6268" fontFamily="Comfortaa, sans-serif">{tm(t0)}</text>
-        <text x={W - R} y={Ht - 4} textAnchor="end" fontSize="14" fill="#4d6268" fontFamily="Comfortaa, sans-serif">{tm(t1)}</text>
+        <text x={L} y={Ht - 4} fontSize="14" fill="var(--hf-admin-muted)" fontFamily="Comfortaa, sans-serif">{tm(t0)}</text>
+        <text x={W - R} y={Ht - 4} textAnchor="end" fontSize="14" fill="var(--hf-admin-muted)" fontFamily="Comfortaa, sans-serif">{tm(t1)}</text>
       </svg>
       <div className="muted" style={T14}>Line = Vobiz balance. Dashed amber lines = money you put in (recharges). Red dots = a check that failed.</div>
     </div>
@@ -159,7 +159,7 @@ function LegBox({ title, leg }: { title: string; leg: LegDetail | null }) {
     ['To', v(w, 'To'), v(c, 'destination_number')],
   ];
   return (
-    <div className="card" style={{ background: '#fff', minWidth: 0 }}>
+    <div className="card" style={{ background: 'var(--hf-admin-cream)', minWidth: 0 }}>
       <h3 style={{ ...H, fontSize: 18 }}>{title}</h3>
       {!leg ? <div className="muted">No record of this leg.</div> : (
         <div style={{ display: 'grid', gap: 6, wordBreak: 'break-all' }}>
@@ -301,7 +301,7 @@ export default function HostPhoneCosts() {
   const staleMs = lv?.at ? Date.now() - lv.at : 0;
 
   return (
-    <ConsultShell>
+    <ConsultShell className="hf-admin-operations">
       <style>{CSS}</style>
       <div className="pc-ui" style={{ display: 'grid', gap: 14 }}>
         {error && <Banner tone="error">{error}</Banner>}
@@ -309,7 +309,7 @@ export default function HostPhoneCosts() {
         {sumErr && !sum && <Banner tone="error">{sumErr}</Banner>}
 
         {checkFailed && lv && (
-          <div role="alert" className="card" style={{ background: BAD_BG, borderColor: '#e9b5ad', color: BAD_FG, fontWeight: 800 }}>
+          <div role="alert" className="card" style={{ background: BAD_BG, borderColor: 'var(--hf-admin-rani)', color: BAD_FG, fontWeight: 800 }}>
             {!lv.ok ? 'The last check of Vobiz failed, so the numbers below may be out of date.' : 'The Vobiz account is not active. Calls may not connect.'}
             <div style={{ ...T14, fontWeight: 400 }}>Last answer from Vobiz: {tm(lv.at)}{staleMs > 120_000 ? ` (${Math.round(staleMs / 60000)} minutes ago)` : ''}.</div>
           </div>
@@ -402,7 +402,7 @@ export default function HostPhoneCosts() {
                 })}</tbody>
               </table>
             )}
-            <form style={{ padding: 18, display: 'grid', gap: 8, borderTop: '1px solid #e6d9b8' }} onSubmit={(e) => { e.preventDefault(); void addRecharge(); }}>
+            <form style={{ padding: 18, display: 'grid', gap: 8, borderTop: '1px solid var(--hf-admin-line)' }} onSubmit={(e) => { e.preventDefault(); void addRecharge(); }}>
               <strong style={{ fontFamily: "'Nunito', sans-serif", fontSize: 16 }}>Add a recharge</strong>
               <label style={T14}>Amount (₹)<input style={{ ...field, width: '100%' }} inputMode="decimal" value={rf.amount} onChange={(e) => setRf({ ...rf, amount: e.target.value })} /></label>
               <label style={T14}>Date and time (India)<input type="datetime-local" style={{ ...field, width: '100%' }} value={rf.at} onChange={(e) => setRf({ ...rf, at: e.target.value })} /></label>
@@ -419,7 +419,7 @@ export default function HostPhoneCosts() {
                 {alerts.map((a) => {
                   const id = String(a.id); const acked = !!a.ackedAt; const crit = a.severity === 'critical';
                   return (
-                    <div key={id} style={{ padding: '12px 18px', borderTop: '1px solid #e6d9b8', opacity: acked ? 0.65 : 1 }}>
+                    <div key={id} style={{ padding: '12px 18px', borderTop: '1px solid var(--hf-admin-line)', opacity: acked ? 0.65 : 1 }}>
                       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
                         <Chip tone={crit ? 'bad' : 'warn'}>{crit ? 'Serious' : 'Warning'}</Chip>
                         <span className="muted">{tm(a.createdAt)}</span>

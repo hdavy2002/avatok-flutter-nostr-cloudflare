@@ -93,7 +93,7 @@ export default function AiIncidents() {
           {ended && <Badge variant="muted">Ended</Badge>}
         </div>
         <p className="mt-1 whitespace-pre-wrap break-words text-[14px] font-semibold text-foreground">{i.message}</p>
-        <p className="mt-1 text-[12.5px] font-semibold text-muted-foreground">
+        <p className="mt-1 text-[14px] font-semibold text-muted-foreground">
           From {istDateTime(i.starts_at)} · {i.expires_at ? `until ${istDateTime(i.expires_at)}` : 'no end time'}
         </p>
       </div>
@@ -111,7 +111,7 @@ export default function AiIncidents() {
               <option value={SITE}>Site-wide</option>
               {events.map((e) => <option key={e.id} value={e.id}>{e.title}</option>)}
             </select>
-            {evErr && <p className="text-[13px] font-bold text-destructive">Could not load events; site-wide still works.</p>}
+            {evErr && <p className="text-[14px] font-bold text-destructive">Could not load events; site-wide still works.</p>}
           </div>
           <div className="grid gap-1.5">
             <Label htmlFor="inc-exp" className={LABEL}>Ends (optional, India time)</Label>
@@ -141,7 +141,7 @@ export default function AiIncidents() {
       )}
 
       <AlertDialog open={!!del} onOpenChange={(o) => { if (!o) setDel(null); }}>
-        <AlertDialogContent>
+        <AlertDialogContent className="hf-admin-operations">
           <AlertDialogHeader>
             <AlertDialogTitle>Remove this incident?</AlertDialogTitle>
             <AlertDialogDescription>She will stop mentioning it.</AlertDialogDescription>

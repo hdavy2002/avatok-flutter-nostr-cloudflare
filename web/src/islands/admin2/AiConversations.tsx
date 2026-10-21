@@ -31,7 +31,7 @@ const AGENT_FILTERS: { key: AdminAiAgentFilter; label: string }[] = [
 ];
 const agentLabel = (a?: string): string => (!a || a === 'preeti' ? 'Preeti' : a === 'pandit' ? 'Pandit ji' : a === 'meera' ? 'Meera' : `${a.charAt(0).toUpperCase()}${a.slice(1)} · voice`);
 function AgentChip({ agent }: { agent?: string }) {
-  return <Badge variant="outline" className="px-2 py-0 text-[11px]">{agentLabel(agent)}</Badge>;
+  return <Badge variant="outline" className="px-2 py-0 text-[14px]">{agentLabel(agent)}</Badge>;
 }
 const SELECT = 'h-10 rounded-md border border-input bg-background px-3 font-dashbody text-[14px] font-bold text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring';
 
@@ -57,7 +57,7 @@ function useIsDesktop(): boolean {
 }
 
 /* ── chat pieces ────────────────────────────────────────────────────────── */
-const CARD_LINK = 'mt-2 flex items-center gap-2 rounded-lg border border-border/70 bg-background p-2 text-[13px] text-foreground no-underline hover:bg-muted';
+const CARD_LINK = 'mt-2 flex items-center gap-2 rounded-lg border border-border/70 bg-background p-2 text-[14px] text-foreground no-underline hover:bg-muted';
 function CardRow({ c }: { c: AdminAiCard }) {
   if (c.type === 'event' || c.type === 'article') {
     return (
@@ -93,8 +93,8 @@ function Bubble({ m }: { m: AdminAiMessage }) {
   // The customer never sees them; admins get a labelled, readable card instead of a raw pill.
   if (m.role === 'system' && m.text.startsWith('[summary] ')) {
     return (
-      <div className="mx-auto w-full max-w-[92%] rounded-xl border border-border bg-muted/60 px-3 py-2">
-        <p className="text-[13px] font-extrabold uppercase tracking-[0.08em] text-muted-foreground">Chat summary · hidden from the customer</p>
+      <div className="mx-auto w-full max-w-[92%] hf-admin-op-card rounded-xl border border-border bg-muted/60 px-3 py-2">
+        <p className="text-[14px] font-extrabold uppercase tracking-[0.08em] text-muted-foreground">Chat summary · hidden from the customer</p>
         <p className="mt-1 whitespace-pre-line text-[14px] text-foreground">{m.text.slice('[summary] '.length)}</p>
       </div>
     );
@@ -102,7 +102,7 @@ function Bubble({ m }: { m: AdminAiMessage }) {
   if (m.role === 'tool' || m.role === 'system') {
     return (
       <p className={cn(
-        'mx-auto w-fit max-w-[90%] break-words rounded-full px-3 py-1 text-center text-[12px] font-bold text-muted-foreground',
+        'mx-auto w-fit max-w-[90%] break-words rounded-full px-3 py-1 text-center text-[14px] font-bold text-muted-foreground',
         m.role === 'tool' ? 'border border-dashed border-border bg-transparent' : 'bg-muted',
       )}>
         {m.role === 'tool' ? `tool · ${m.tool_name ?? 'call'}${m.tool_summary || m.text ? ` — ${m.tool_summary ?? m.text}` : ''}` : m.text}
@@ -117,11 +117,11 @@ function Bubble({ m }: { m: AdminAiMessage }) {
         'max-w-[85%] whitespace-pre-wrap break-words rounded-2xl px-3 py-2 text-[14.5px] font-semibold leading-relaxed',
         mine ? 'bg-accent text-accent-foreground' : note ? 'border border-grand-gold/70 bg-grand-gold/25 text-foreground' : 'border border-border bg-card text-foreground',
       )}>
-        {note && <span className="mb-0.5 block text-[11px] font-extrabold uppercase tracking-[0.08em] text-muted-foreground">Admin note</span>}
+        {note && <span className="mb-0.5 block text-[14px] font-extrabold uppercase tracking-[0.08em] text-muted-foreground">Admin note</span>}
         {m.text}
-        {m.blocked && <span className="mt-1 block text-[11.5px] font-bold text-destructive">Blocked by the safety filter</span>}
+        {m.blocked && <span className="mt-1 block text-[14px] font-bold text-destructive">Blocked by the safety filter</span>}
         {m.cards.map((c, i) => <CardRow key={i} c={c} />)}
-        <span className="mt-1 block text-right text-[11px] font-semibold opacity-70">{rowTime(m.created_at)}</span>
+        <span className="mt-1 block text-right text-[14px] font-semibold opacity-70">{rowTime(m.created_at)}</span>
       </div>
     </div>
   );
@@ -185,8 +185,8 @@ function ChatPane({ id, onBack, onChanged, phone }: { id: string; onBack: () => 
         {phone && <Button size="icon" variant="ghost" onClick={onBack} aria-label="Back to conversations"><ArrowLeft /></Button>}
         <div className="min-w-0 flex-1">
           <p className="flex items-center gap-2"><span className="min-w-0 truncate font-dashbody text-[16px] font-extrabold text-foreground">{who(c)}</span><AgentChip agent={c.agent} /></p>
-          <p className="truncate text-[12.5px] font-semibold text-muted-foreground">{c.e164 && c.name ? `${c.e164} · ` : ''}{c.uid ? 'Signed in' : 'Visitor'}{c.last_page ? ` · ${c.last_page}` : ''}</p>
-          {c.email && <p className="truncate text-[12.5px] font-semibold text-muted-foreground">{c.email}</p>}
+          <p className="truncate text-[14px] font-semibold text-muted-foreground">{c.e164 && c.name ? `${c.e164} · ` : ''}{c.uid ? 'Signed in' : 'Visitor'}{c.last_page ? ` · ${c.last_page}` : ''}</p>
+          {c.email && <p className="truncate text-[14px] font-semibold text-muted-foreground">{c.email}</p>}
         </div>
         {wa && (
           <Button asChild size="sm" variant="outline">
@@ -221,7 +221,7 @@ function ChatPane({ id, onBack, onChanged, phone }: { id: string; onBack: () => 
             <ul className="mt-1 grid gap-1.5">
               {d.bookings.map((b) => (
                 <li key={b.checkout_id}>
-                  <a href="/admin/bookings" className="flex items-center gap-2 rounded-lg border border-border/70 bg-background px-3 py-2 text-[13.5px] font-semibold text-foreground no-underline hover:bg-muted">
+                  <a href="/admin/bookings" className="flex items-center gap-2 rounded-lg border border-border/70 bg-background px-3 py-2 text-[14px] font-semibold text-foreground no-underline hover:bg-muted">
                     <span className="min-w-0 flex-1 truncate font-extrabold">{b.listing_title}</span>
                     <Badge variant="outline">{b.status}</Badge>
                     <span className="text-muted-foreground">{istDateTime(b.created_at)}</span>
@@ -347,15 +347,15 @@ export default function AiConversations() {
                   >
                     <span className="flex items-baseline gap-2">
                       <span className="min-w-0 flex-1 truncate font-dashbody text-[15px] font-extrabold text-foreground">{who(c)}</span>
-                      <span className="shrink-0 text-[12px] font-semibold text-muted-foreground">{rowTime(c.last_message_at)}</span>
+                      <span className="shrink-0 text-[14px] font-semibold text-muted-foreground">{rowTime(c.last_message_at)}</span>
                     </span>
-                    {c.name && c.e164 && <span className="truncate text-[12.5px] font-semibold text-muted-foreground">{c.e164}</span>}
-                    {c.email && <span className="truncate text-[12.5px] font-semibold text-muted-foreground">{c.email}</span>}
-                    <span className="truncate text-[13.5px] font-semibold text-muted-foreground">{c.last_text || '…'}</span>
+                    {c.name && c.e164 && <span className="truncate text-[14px] font-semibold text-muted-foreground">{c.e164}</span>}
+                    {c.email && <span className="truncate text-[14px] font-semibold text-muted-foreground">{c.email}</span>}
+                    <span className="truncate text-[14px] font-semibold text-muted-foreground">{c.last_text || '…'}</span>
                     <span className="flex flex-wrap items-center gap-1">
                       <AgentChip agent={c.agent} />
-                      {c.badges.map((b) => <Badge key={b} variant={badgeMeta(b).variant} className="px-2 py-0 text-[11px]">{badgeMeta(b).label}</Badge>)}
-                      <Badge variant={c.status === 'open' ? 'outline' : c.status === 'resolved' ? 'muted' : 'destructive'} className="px-2 py-0 text-[11px]">
+                      {c.badges.map((b) => <Badge key={b} variant={badgeMeta(b).variant} className="px-2 py-0 text-[14px]">{badgeMeta(b).label}</Badge>)}
+                      <Badge variant={c.status === 'open' ? 'outline' : c.status === 'resolved' ? 'muted' : 'destructive'} className="px-2 py-0 text-[14px]">
                         {STATUSES.find((s) => s.key === c.status)?.label ?? c.status}
                       </Badge>
                     </span>
@@ -372,7 +372,7 @@ export default function AiConversations() {
   if (!desktop) {
     return (
       <>
-        <div className="h-[calc(100dvh-15rem)] min-h-[420px] overflow-hidden rounded-xl border border-border">{list}</div>
+        <div className="h-[calc(100dvh-15rem)] min-h-[420px] overflow-hidden hf-admin-op-card rounded-xl border border-border">{list}</div>
         {sel && (
           <div className="fixed inset-0 z-[60] bg-background pt-[env(safe-area-inset-top,0px)] pb-[env(safe-area-inset-bottom,0px)]">
             <ChatPane id={sel} phone onBack={() => setSel(null)} onChanged={onChanged} />
@@ -382,7 +382,7 @@ export default function AiConversations() {
     );
   }
   return (
-    <div className="grid h-[calc(100vh-13rem)] min-h-[560px] grid-cols-[minmax(300px,360px)_1fr] overflow-hidden rounded-xl border border-border">
+    <div className="grid h-[calc(100vh-13rem)] min-h-[560px] grid-cols-[minmax(300px,360px)_1fr] overflow-hidden hf-admin-op-card rounded-xl border border-border">
       {list}
       {sel ? <ChatPane id={sel} phone={false} onBack={() => setSel(null)} onChanged={onChanged} /> : (
         <div className="flex flex-col items-center justify-center gap-2 bg-background text-center">

@@ -100,7 +100,7 @@ function RangeBar({ sel, onChange, busy }: { sel: RangeSel; onChange: (r: RangeS
   return (
     <div className="flex flex-col gap-3">
       <div className="flex flex-wrap items-center gap-2">
-        <div role="group" aria-label="Date range" className="flex flex-wrap gap-1 rounded-xl border border-border/60 bg-card p-1">
+        <div role="group" aria-label="Date range" className="flex flex-wrap gap-1 hf-admin-op-card rounded-xl border border-border/60 bg-card p-1">
           {PRESETS.map((p) => {
             const on = sel.kind === 'preset' && sel.preset === p.key && !open;
             return (
@@ -125,7 +125,7 @@ function RangeBar({ sel, onChange, busy }: { sel: RangeSel; onChange: (r: RangeS
           <DateField id="an-from" label="From" value={from} onChange={setFrom} />
           <DateField id="an-to" label="To" value={to} onChange={setTo} />
           <Button type="submit" disabled={!valid}>Apply</Button>
-          {from && to && from > to && <span className="text-[13px] font-semibold text-primary">The start date is after the end date.</span>}
+          {from && to && from > to && <span className="text-[14px] font-semibold text-primary">The start date is after the end date.</span>}
         </form>
       )}
     </div>
@@ -156,7 +156,7 @@ function Delta({ cur, prev, upIsGood = true, vs }: { cur: number; prev: number; 
   const good = dir === 'flat' ? null : (dir === 'up') === upIsGood;
   const Icon = dir === 'up' ? ArrowUpRight : dir === 'down' ? ArrowDownRight : Minus;
   return (
-    <span className="inline-flex flex-wrap items-center gap-x-1.5 text-[12.5px] font-semibold text-muted-foreground">
+    <span className="inline-flex flex-wrap items-center gap-x-1.5 text-[14px] font-semibold text-muted-foreground">
       <span className={cn('inline-flex items-center gap-0.5 font-extrabold', good === true && 'text-accent', good === false && 'text-primary')}>
         <Icon className="h-3.5 w-3.5" strokeWidth={2.6} aria-hidden />
         <span className="sr-only">{dir === 'up' ? 'Up' : dir === 'down' ? 'Down' : ''}</span>
@@ -173,23 +173,23 @@ function Kpi({ icon: Icon, label, value, delta, hint, spark, sparkLabel, href, t
 }) {
   return (
     <a href={href} className="group block no-underline">
-      <Card className={cn('h-full transition-shadow group-hover:shadow-md group-focus-visible:ring-2 group-focus-visible:ring-ring', tone === 'alert' && 'border-primary/60')}>
+      <Card className={cn('hf-admin-op-card hf-admin-op-kpi h-full transition-shadow group-hover:shadow-md group-focus-visible:ring-2 group-focus-visible:ring-ring', tone === 'alert' && 'hf-admin-op-kpi-alert border-primary/60')}>
         <CardContent className="flex h-full flex-col gap-2 p-4 sm:p-5">
           <div className="flex items-center justify-between gap-2">
-            <span className="text-[12.5px] font-bold uppercase tracking-[0.06em] text-muted-foreground">{label}</span>
+            <span className="text-[14px] font-bold uppercase tracking-[0.06em] text-muted-foreground">{label}</span>
             <span className={cn('flex h-8 w-8 shrink-0 items-center justify-center rounded-full', tone === 'alert' ? 'bg-primary/10 text-primary' : 'bg-accent/15 text-accent')}>
               <Icon className="h-4 w-4" strokeWidth={2.2} />
             </span>
           </div>
           <div className="flex items-center gap-2">
-            <span className="font-dash text-[26px] font-bold leading-none tracking-[0.01em] text-grand-teal sm:text-[28px]">{value}</span>
+            <span className="font-dash text-[26px] font-bold leading-none tracking-[0.01em] text-[var(--hf-admin-plum)] sm:text-[28px]">{value}</span>
             {badge}
           </div>
           {delta}
-          {hint && <div className="text-[12.5px] font-semibold text-muted-foreground">{hint}</div>}
+          {hint && <div className="text-[14px] font-semibold text-muted-foreground">{hint}</div>}
           <div className="mt-auto pt-1">
             {spark ? <Sparkline values={spark} /> : <div className="h-7" aria-hidden />}
-            {sparkLabel && <div className="text-[11px] font-semibold text-muted-foreground">{sparkLabel}</div>}
+            {sparkLabel && <div className="text-[14px] font-semibold text-muted-foreground">{sparkLabel}</div>}
           </div>
         </CardContent>
       </Card>
@@ -213,9 +213,9 @@ function LiveBadge() {
 
 function Panel({ title, action, children, className }: { title: string; action?: ReactNode; children: ReactNode; className?: string }) {
   return (
-    <Card className={cn('min-w-0', className)}>
+    <Card className={cn('hf-admin-op-card min-w-0', className)}>
       <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-2 space-y-0 pb-2">
-        <CardTitle className="font-dash text-[18px] text-grand-teal sm:text-[19px]">{title}</CardTitle>
+        <CardTitle className="font-dash text-[18px] text-[var(--hf-admin-plum)] sm:text-[19px]">{title}</CardTitle>
         {action}
       </CardHeader>
       <CardContent className="px-3 pb-4 sm:px-5">{children}</CardContent>
@@ -299,10 +299,10 @@ export default function Analytics() {
   const payRange = { paid_from: F, paid_to: T };
 
   return (
-    <div className="grid gap-6 sm:gap-8">
+    <div className="hf-admin-operations grid gap-6 sm:gap-8">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <RangeBar sel={sel} onChange={change} busy={loading && !!data} />
-        {d && <p className="text-[13px] font-semibold text-muted-foreground sm:pt-3">{rangeText} · IST · compared with {longDay(d.range.prev_from)} – {longDay(d.range.prev_to)}</p>}
+        {d && <p className="text-[14px] font-semibold text-muted-foreground sm:pt-3">{rangeText} · IST · compared with {longDay(d.range.prev_from)} – {longDay(d.range.prev_to)}</p>}
       </div>
 
       {error && !d ? (
@@ -435,7 +435,7 @@ export default function Analytics() {
                       valueText: `${fmtCount(v)}${key === 'started' ? '' : ` · ${pct(d.funnel!.started ? v / d.funnel!.started : null)}`}`,
                       href: key === 'sent' ? qs('/admin/payments', { status: 'pending' }) : qs('/admin/payments', payRange),
                     }))} />
-                    <p className="mt-2 px-2 text-[12px] font-semibold text-muted-foreground">One step per customer and event. “Seat kept” excludes refunds.</p>
+                    <p className="mt-2 px-2 text-[14px] font-semibold text-muted-foreground">One step per customer and event. “Seat kept” excludes refunds.</p>
                   </>}
             </Panel>
           </div>
@@ -447,7 +447,7 @@ export default function Analytics() {
                 <div className="overflow-x-auto">
                   <table className="w-full min-w-[520px] text-left text-[14px]">
                     <thead>
-                      <tr className="text-[12px] font-bold uppercase tracking-[0.05em] text-muted-foreground">
+                      <tr className="text-[14px] font-bold uppercase tracking-[0.05em] text-muted-foreground">
                         <th className="w-8 px-2 py-2">#</th>
                         <th className="px-2 py-2">Event</th>
                         <th className="px-2 py-2 text-right">Paid</th>
@@ -463,13 +463,13 @@ export default function Analytics() {
                             <td className="px-2 py-2.5 font-bold tabular-nums text-muted-foreground">{i + 1}</td>
                             <td className="max-w-0 px-2 py-2.5">
                               <a href={href} className="block truncate font-bold text-foreground no-underline hover:underline">{e.title ?? e.id}</a>
-                              {e.category_label && <div className="truncate text-[12px] font-semibold text-muted-foreground">{e.category_label}</div>}
+                              {e.category_label && <div className="truncate text-[14px] font-semibold text-muted-foreground">{e.category_label}</div>}
                             </td>
                             <td className="px-2 py-2.5 text-right font-semibold tabular-nums">{fmtCount(e.paid_bookings)}</td>
                             <td className="px-2 py-2.5">
                               <a href={href} className="flex items-center gap-2 no-underline" aria-label={`${e.title ?? e.id}: ${formatPaise(e.revenue_paise)}`}>
                                 <span className="h-3 min-w-[2px] rounded-r-[4px]" style={{ width: `${Math.max(1, (e.revenue_paise / max) * 70)}%`, background: C1 }} aria-hidden />
-                                <span className="shrink-0 font-dash text-[13.5px] font-bold tabular-nums text-foreground">{formatPaise(e.revenue_paise)}</span>
+                                <span className="shrink-0 font-dash text-[14px] font-bold tabular-nums text-foreground">{formatPaise(e.revenue_paise)}</span>
                               </a>
                             </td>
                           </tr>
@@ -495,7 +495,7 @@ export default function Analytics() {
                   <div className="mt-4 overflow-x-auto">
                     <table className="w-full min-w-[420px] text-left text-[14px]">
                       <thead>
-                        <tr className="text-[12px] font-bold uppercase tracking-[0.05em] text-muted-foreground">
+                        <tr className="text-[14px] font-bold uppercase tracking-[0.05em] text-muted-foreground">
                           <th className="w-8 px-2 py-2">#</th>
                           <th className="px-2 py-2">Event</th>
                           <th className="px-2 py-2 text-right">Viewers</th>
@@ -541,7 +541,7 @@ export default function Analytics() {
                             {ev.live && <LiveBadge />}
                             <span className="truncate font-bold text-foreground">{ev.title}</span>
                           </div>
-                          <div className="mt-0.5 flex flex-wrap gap-x-3 text-[12.5px] font-semibold text-muted-foreground">
+                          <div className="mt-0.5 flex flex-wrap gap-x-3 text-[14px] font-semibold text-muted-foreground">
                             <span>{ev.live ? 'Streaming now' : `${istDay(ev.starts_at)} · ${istTime(ev.starts_at)}`}</span>
                             <span className="inline-flex items-center gap-1"><Users className="h-3.5 w-3.5" />
                               {ev.capacity != null ? `${fmtCount(ev.booked)} / ${fmtCount(ev.capacity)} booked` : `${fmtCount(ev.booked)} booked`}
@@ -564,7 +564,7 @@ export default function Analytics() {
                       <a href={qs('/admin/payments', { q: p.id })} className="flex items-center gap-3 rounded-lg px-1.5 py-2.5 no-underline transition-colors hover:bg-muted">
                         <div className="min-w-0 flex-1">
                           <div className="truncate font-bold text-foreground">{p.customer ?? 'Customer'}</div>
-                          <div className="truncate text-[12.5px] font-semibold text-muted-foreground">{p.event_title ?? p.listing_id} · {istDateTime(p.at)}</div>
+                          <div className="truncate text-[14px] font-semibold text-muted-foreground">{p.event_title ?? p.listing_id} · {istDateTime(p.at)}</div>
                         </div>
                         <div className="flex shrink-0 flex-col items-end gap-1">
                           <span className="font-dash text-[14px] font-bold tabular-nums text-foreground">{formatPaise(p.amount_paise)}</span>
@@ -585,7 +585,7 @@ export default function Analytics() {
                       <a href={qs('/admin/refunds', { q: r.id })} className="flex items-center gap-3 rounded-lg px-1.5 py-2.5 no-underline transition-colors hover:bg-muted">
                         <div className="min-w-0 flex-1">
                           <div className="truncate font-bold text-foreground">{r.customer ?? 'Customer'}</div>
-                          <div className="truncate text-[12.5px] font-semibold text-muted-foreground">
+                          <div className="truncate text-[14px] font-semibold text-muted-foreground">
                             {r.event_title ?? 'Event'} · asked {istDay(r.requested_at)}{r.reason ? ` · “${r.reason}”` : ''}
                           </div>
                         </div>
@@ -594,7 +594,7 @@ export default function Analytics() {
                     </li>
                   ))}
                   {k.open_refunds.count > d.open_refunds.length && (
-                    <li className="px-1.5 pt-2.5 text-[12.5px] font-semibold text-muted-foreground">
+                    <li className="px-1.5 pt-2.5 text-[14px] font-semibold text-muted-foreground">
                       +{fmtCount(k.open_refunds.count - d.open_refunds.length)} more waiting
                     </li>
                   )}

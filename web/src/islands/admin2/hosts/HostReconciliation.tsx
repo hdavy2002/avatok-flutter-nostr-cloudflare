@@ -11,7 +11,7 @@ import { formatPaise } from '../../../lib/money';
 const rupees = (n: number | null | undefined): string => (n == null ? '—' : formatPaise(Math.round(n * 100)));
 
 const T14 = { fontSize: 14 } as const;
-const field = { ...T14, padding: 10, borderRadius: 10, border: '1px solid #c8afd1', minHeight: 44 } as const;
+const field = { ...T14, padding: 10, borderRadius: 10, border: '1px solid var(--hf-admin-line)', minHeight: 44 } as const;
 
 interface Gw { count: number; rupees: number }
 interface Day {
@@ -78,10 +78,10 @@ function Row({ label, d, strong }: { label: string; d: Omit<Day, 'date'>; strong
 function TokenSection({ t }: { t: TokReport }) {
   const x = t.totals;
   return (
-    <section className="card" style={{ background: '#fff', ...T14, display: 'grid', gap: 10 }}>
+    <section className="card" style={{ background: 'var(--hf-admin-cream)', ...T14, display: 'grid', gap: 10 }}>
       <h2 style={{ margin: 0, fontSize: 18 }}>Tokens {t.mismatches.length === 0 ? '· everything matches' : `· ${t.mismatches.length} to look at`}</h2>
       {t.mismatches.map((m) => (
-        <div key={m.kind + m.ref} style={{ borderTop: '1px solid #eadcee', paddingTop: 8, wordBreak: 'break-all' }}>
+        <div key={m.kind + m.ref} style={{ borderTop: '1px solid var(--hf-admin-line)', paddingTop: 8, wordBreak: 'break-all' }}>
           <strong>{TOK_KIND[m.kind] ?? m.kind}</strong>
           <div>{m.detail}</div>
           <div className="muted">{m.ref}{m.uid ? ` · ${m.uid}` : ''}</div>
@@ -136,7 +136,7 @@ export default function HostReconciliation() {
   };
 
   return (
-    <ConsultShell>
+    <ConsultShell className="hf-admin-operations">
       <form onSubmit={(e) => { e.preventDefault(); void load(); }} style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', marginBottom: 12 }}>
         <label style={T14}>From <input type="date" style={field} value={from} max={to} onChange={(e) => setFrom(e.target.value)} /></label>
         <label style={T14}>To <input type="date" style={field} value={to} min={from} onChange={(e) => setTo(e.target.value)} /></label>
@@ -148,12 +148,12 @@ export default function HostReconciliation() {
       {busy && !rep && <Spinner label="Working it out…" />}
       {rep && (
         <div style={{ display: 'grid', gap: 14 }}>
-          <section className="card" style={{ background: '#fff' }}>
+          <section className="card" style={{ background: 'var(--hf-admin-cream)' }}>
             <h2 style={{ margin: '0 0 8px', fontSize: 18 }}>{rep.mismatches.length === 0 ? 'Everything matches' : `${rep.mismatches.length} to look at`}</h2>
             {rep.mismatches.length === 0 && <div className="muted" style={T14}>Every paid top-up in this period has exactly one wallet credit for the same amount, and the other way round. Top-ups paid in the last 30 minutes are skipped while their credit is still being recorded.</div>}
             <div style={{ display: 'grid', gap: 8 }}>
               {rep.mismatches.map((m) => (
-                <div key={m.kind + m.topupId} style={{ ...T14, borderTop: '1px solid #eadcee', paddingTop: 8, wordBreak: 'break-all' }}>
+                <div key={m.kind + m.topupId} style={{ ...T14, borderTop: '1px solid var(--hf-admin-line)', paddingTop: 8, wordBreak: 'break-all' }}>
                   <strong>{KIND[m.kind] ?? m.kind}</strong> · {m.topupRupees != null ? `top-up ${rupees(m.topupRupees)}` : 'no top-up'} · {m.creditRupees != null ? `credit ${rupees(m.creditRupees)}` : 'no credit'}
                   <div>{m.detail}</div>
                   <div className="muted">{m.topupId} · {m.uid}</div>
@@ -162,7 +162,7 @@ export default function HostReconciliation() {
             </div>
           </section>
 
-          <section className="card" style={{ padding: 0, overflow: 'auto', background: '#fff' }}>
+          <section className="card" style={{ padding: 0, overflow: 'auto', background: 'var(--hf-admin-cream)' }}>
             <table className="t" style={T14}>
               <thead><tr><th>Day</th><th>Top-ups paid</th><th>Wallet credits</th><th>Call charges (paid / test)</th><th>Host earnings (paid / test)</th><th>Platform share (paid / test)</th><th>Payouts paid</th><th>Refunds</th></tr></thead>
               <tbody>
@@ -173,7 +173,7 @@ export default function HostReconciliation() {
           </section>
 
           {rep.liabilities && (
-            <section className="card" style={{ background: '#fff', ...T14 }}>
+            <section className="card" style={{ background: 'var(--hf-admin-cream)', ...T14 }}>
               <h2 style={{ margin: '0 0 8px', fontSize: 18 }}>Still owed (approximate)</h2>
               <div>Caller wallets: <strong>{rupees(rep.liabilities.callerWalletsApprox)}</strong> · Host earnings not yet withdrawn: <strong>{rupees(rep.liabilities.hostEarningsApprox)}</strong></div>
               <div className="muted">{rep.liabilities.note}{rep.refundsAvailable ? '' : ' Refunds are not included (no refunds record yet).'}</div>
@@ -182,7 +182,7 @@ export default function HostReconciliation() {
 
           {rep.tokens && <TokenSection t={rep.tokens} />}
 
-          <section className="card" style={{ background: '#fff', ...T14 }}>
+          <section className="card" style={{ background: 'var(--hf-admin-cream)', ...T14 }}>
             <h2 style={{ margin: '0 0 8px', fontSize: 18 }}>Payouts paid</h2>
             {rep.payouts.length === 0 ? <div className="muted">None in this period.</div> : rep.payouts.map((p) => (
               <div key={p.id} style={{ wordBreak: 'break-all' }}>{new Date(p.paid_at + 19_800_000).toISOString().slice(0, 10)} · {rupees(p.amount_rupees)} · UTR {p.utr || '—'} · {p.host_uid}</div>

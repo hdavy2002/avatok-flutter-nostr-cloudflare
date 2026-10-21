@@ -91,8 +91,8 @@ function UserAvatar({ u, size = 'h-10 w-10' }: { u: { name: string | null; email
 
 function VerifiedBadge({ verified }: { verified: boolean }) {
   return verified
-    ? <Badge variant="accent" className="whitespace-nowrap text-[11px]"><ShieldCheck className="h-3 w-3" />Verified</Badge>
-    : <Badge variant="muted" className="whitespace-nowrap text-[11px]">Not verified</Badge>;
+    ? <Badge variant="accent" className="whitespace-nowrap text-[14px]"><ShieldCheck className="h-3 w-3" />Verified</Badge>
+    : <Badge variant="muted" className="whitespace-nowrap text-[14px]">Not verified</Badge>;
 }
 
 function StatusBadge({ u }: { u: Pick<UserItem, 'status' | 'deleting' | 'is_admin'> }) {
@@ -122,7 +122,7 @@ function Expander({ open, children, id }: { open: boolean; children: ReactNode; 
 function Field({ label, icon, children }: { label: string; icon?: ReactNode; children: ReactNode }) {
   return (
     <div className="flex items-start justify-between gap-4 py-2 sm:grid sm:grid-cols-[150px_1fr] sm:justify-start">
-      <dt className="flex shrink-0 items-center gap-1.5 text-[13px] font-bold text-muted-foreground">{icon}{label}</dt>
+      <dt className="flex shrink-0 items-center gap-1.5 text-[14px] font-bold text-muted-foreground">{icon}{label}</dt>
       <dd className="min-w-0 text-right text-[14px] font-semibold text-foreground sm:text-left">{children}</dd>
     </div>
   );
@@ -199,7 +199,7 @@ export default function Users() {
 
   return (
     <TooltipProvider delayDuration={200}>
-      <div className="space-y-4">
+      <div className="hf-admin-operations space-y-4">
         <FilterBar
           title="Filter users"
           count={count}
@@ -215,7 +215,7 @@ export default function Users() {
                 aria-pressed={on.has(x.key)}
                 onClick={() => flip(x.key)}
                 className={cn(
-                  'inline-flex h-9 items-center rounded-full border px-3 text-[13px] font-bold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+                  'inline-flex h-9 items-center rounded-full border px-3 text-[14px] font-bold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
                   on.has(x.key) ? 'border-accent bg-accent text-accent-foreground' : 'border-border/70 bg-card text-foreground hover:bg-muted',
                 )}
               >
@@ -225,7 +225,7 @@ export default function Users() {
           </div>
           <DateField id="u-from" label="Joined from" value={f.joined_from} onChange={(v) => set({ joined_from: v })} />
           <DateField id="u-to" label="Joined to" value={f.joined_to} onChange={(v) => set({ joined_to: v })} />
-          <label className="grid gap-1 text-[12px] font-bold text-muted-foreground">
+          <label className="grid gap-1 text-[14px] font-bold text-muted-foreground">
             Sort
             <Select value={f.sort || 'joined'} onValueChange={(v) => set({ sort: v === 'joined' ? '' : v })}>
               <SelectTrigger className="h-11 w-[170px] font-semibold text-foreground" aria-label="Sort users"><SelectValue /></SelectTrigger>
@@ -235,7 +235,7 @@ export default function Users() {
         </FilterBar>
 
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <p className="text-[13px] font-semibold text-muted-foreground" aria-live="polite">
+          <p className="text-[14px] font-semibold text-muted-foreground" aria-live="polite">
             {list.phase === 'loading' ? 'Loading…' : totals
               ? `${totals.users} user${totals.users === 1 ? '' : 's'} · ${formatPaise(totals.spent_paise)} spent · ${totals.verified} phone-verified · ${totals.blocked} blocked`
               : ''}
@@ -244,9 +244,9 @@ export default function Users() {
         </div>
 
         {open && !openInList && list.phase === 'ready' && (
-          <div className="rounded-xl border border-grand-gold/60 bg-card shadow-sm">
+          <div className="hf-admin-op-card rounded-xl border border-grand-gold/60 bg-card shadow-sm">
             <div className="flex items-center justify-between border-b border-border/50 px-4 py-2">
-              <span className="text-[12.5px] font-bold text-muted-foreground">Opened from a link</span>
+              <span className="text-[14px] font-bold text-muted-foreground">Opened from a link</span>
               <Button variant="ghost" size="sm" onClick={() => toggle(open)}>Close</Button>
             </div>
             <UserPanel uid={open} onChange={patch} />
@@ -257,7 +257,7 @@ export default function Users() {
           list.items.length === 0 ? (
             <Empty title={q || count ? 'No user matches' : 'No users yet'} body={q ? 'Check the spelling, or try the full email or the full mobile number.' : 'People appear here once they create an account.'} />
           ) : desktop ? (
-            <div className="overflow-x-auto rounded-xl border border-border/60 bg-card shadow-sm">
+            <div className="overflow-x-auto hf-admin-op-card rounded-xl border border-border/60 bg-card shadow-sm">
               <table className="w-full min-w-[980px] border-collapse">
                 <thead className="bg-muted/60">
                   <tr>
@@ -287,16 +287,16 @@ export default function Users() {
                               >
                                 {u.name ?? 'No name'}{u.is_self ? ' (you)' : ''}
                               </button>
-                              {u.email && <div className="truncate text-[12.5px] font-semibold text-muted-foreground" title={u.email}>{u.email}</div>}
+                              {u.email && <div className="truncate text-[14px] font-semibold text-muted-foreground" title={u.email}>{u.email}</div>}
                             </div>
                           </div>
                         </td>
                         <td className={TD}>
-                          <div className={cn('text-[13px] tabular-nums', u.phone_hash_only && 'italic text-muted-foreground')}>{phoneText(u) ?? <None />}</div>
+                          <div className={cn('text-[14px] tabular-nums', u.phone_hash_only && 'italic text-muted-foreground')}>{phoneText(u) ?? <None />}</div>
                           <div className="mt-1"><VerifiedBadge verified={u.phone_verified} /></div>
                         </td>
-                        <td className={`${TD} whitespace-nowrap text-[13px] text-muted-foreground`}>{istDate(u.joined_at)}</td>
-                        <td className={`${TD} whitespace-nowrap text-[13px] text-muted-foreground`}>{u.last_active_at ? istDateTime(u.last_active_at) : '—'}</td>
+                        <td className={`${TD} whitespace-nowrap text-[14px] text-muted-foreground`}>{istDate(u.joined_at)}</td>
+                        <td className={`${TD} whitespace-nowrap text-[14px] text-muted-foreground`}>{u.last_active_at ? istDateTime(u.last_active_at) : '—'}</td>
                         <td className={`${TD} text-right tabular-nums`}>{u.bookings}</td>
                         <td className={`${TD} text-right font-extrabold tabular-nums`}>{formatPaise(u.spent_paise)}</td>
                         <td className={TD}><StatusBadge u={u} /></td>
@@ -319,7 +319,7 @@ export default function Users() {
               {list.items.map((u) => {
                 const isOpen = u.uid === open;
                 return (
-                  <li key={u.uid} className={cn('overflow-hidden rounded-xl border bg-card shadow-sm', isOpen ? 'border-grand-gold/70' : 'border-border/60')}>
+                  <li key={u.uid} className={cn('overflow-hidden hf-admin-op-card rounded-xl border bg-card shadow-sm', isOpen ? 'border-grand-gold/70' : 'border-border/60')}>
                     <button
                       type="button"
                       aria-expanded={isOpen}
@@ -333,12 +333,12 @@ export default function Users() {
                           <span className="font-extrabold text-foreground">{u.name ?? 'No name'}{u.is_self ? ' (you)' : ''}</span>
                           <StatusBadge u={u} />
                         </div>
-                        {u.email && <div className="truncate text-[12.5px] font-semibold text-muted-foreground">{u.email}</div>}
-                        <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[12.5px] font-semibold text-muted-foreground">
+                        {u.email && <div className="truncate text-[14px] font-semibold text-muted-foreground">{u.email}</div>}
+                        <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[14px] font-semibold text-muted-foreground">
                           <span className={cn('tabular-nums', u.phone_hash_only && 'italic')}>{phoneText(u) ?? 'No phone'}</span>
                           <VerifiedBadge verified={u.phone_verified} />
                         </div>
-                        <div className="mt-1 text-[12.5px] font-bold text-foreground">
+                        <div className="mt-1 text-[14px] font-bold text-foreground">
                           {u.bookings} booking{u.bookings === 1 ? '' : 's'} · {formatPaise(u.spent_paise)} · joined {istDate(u.joined_at)}
                         </div>
                       </div>
@@ -383,7 +383,7 @@ function UserPanel({ uid, onChange }: { uid: string; onChange: (uid: string, p: 
   if (error) return <div className="p-4"><ErrorBox message={error} onRetry={load} /></div>;
   if (!d) {
     return (
-      <div className="flex items-center gap-2 p-6 text-[13px] font-semibold text-muted-foreground" aria-busy="true">
+      <div className="flex items-center gap-2 p-6 text-[14px] font-semibold text-muted-foreground" aria-busy="true">
         <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" /> Loading profile…
       </div>
     );
@@ -404,30 +404,30 @@ function UserPanel({ uid, onChange }: { uid: string; onChange: (uid: string, p: 
           <div className="font-dash text-[19px] font-bold leading-tight text-foreground">{p.name ?? 'No name'}</div>
           <div className="mt-0.5 flex flex-wrap items-center gap-1.5">
             <StatusBadge u={{ status: a.status, deleting: a.deleting, is_admin: a.is_admin }} />
-            <span className="text-[12px] font-semibold text-muted-foreground">ID</span>
-            <CopyValue value={uid} label="user ID" className="text-[12px]" />
+            <span className="text-[14px] font-semibold text-muted-foreground">ID</span>
+            <CopyValue value={uid} label="user ID" className="text-[14px]" />
           </div>
         </div>
       </div>
 
       {a.status === 'blocked' && a.blocked && (
-        <p role="status" className="rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-2 text-[13px] font-semibold text-foreground">
+        <p role="status" className="rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-2 text-[14px] font-semibold text-foreground">
           Blocked {a.blocked.at ? istDateTime(a.blocked.at) : ''}{a.blocked.reason ? `: ${a.blocked.reason}` : ''}. They can't sign in, and the app and website refuse their requests.
         </p>
       )}
       {a.deleting && (
-        <p role="status" className="rounded-lg border border-border bg-muted px-3 py-2 text-[13px] font-semibold text-foreground">
+        <p role="status" className="rounded-lg border border-border bg-muted px-3 py-2 text-[14px] font-semibold text-foreground">
           This account is being deleted. It disappears from the list once the deletion finishes.
         </p>
       )}
 
       <div className="grid gap-5 lg:grid-cols-[1.1fr_1fr]">
-        <section aria-label="Profile" className="rounded-xl border border-border/60 bg-card p-4">
+        <section aria-label="Profile" className="hf-admin-op-card rounded-xl border border-border/60 bg-card p-4">
           <h3 className="mb-1 font-dash text-[15px] font-bold text-foreground">Profile</h3>
           <dl className="divide-y divide-border/40">
             <Field label="Full name" icon={<UserRound className="h-3.5 w-3.5" />}>{p.name ?? <None />}</Field>
             <Field label="Email" icon={<Mail className="h-3.5 w-3.5" />}>
-              {p.email ? <span className="break-all">{p.email}{a.clerk.email_verified ? <Badge variant="outline" className="ml-1.5 text-[10.5px]">verified</Badge> : null}</span> : <None />}
+              {p.email ? <span className="break-all">{p.email}{a.clerk.email_verified ? <Badge variant="outline" className="ml-1.5 text-[14px]">verified</Badge> : null}</span> : <None />}
             </Field>
             <Field label="Phone" icon={<Phone className="h-3.5 w-3.5" />}>
               <span className="inline-flex flex-wrap items-center justify-end gap-1.5 sm:justify-start">
@@ -436,7 +436,7 @@ function UserPanel({ uid, onChange }: { uid: string; onChange: (uid: string, p: 
               </span>
             </Field>
             <Field label="UPI IDs" icon={<Wallet className="h-3.5 w-3.5" />}>
-              {p.vpas.length ? p.vpas.map((v) => <div key={v.id} className="break-all">{v.vpa}{v.is_default ? <span className="ml-1 text-[12px] text-muted-foreground">(default)</span> : null}</div>) : <None />}
+              {p.vpas.length ? p.vpas.map((v) => <div key={v.id} className="break-all">{v.vpa}{v.is_default ? <span className="ml-1 text-[14px] text-muted-foreground">(default)</span> : null}</div>) : <None />}
             </Field>
             <Field label="Prasad address" icon={<Home className="h-3.5 w-3.5" />}>{addr || <None />}</Field>
             <Field label="Gotra">{p.gotra ?? <None />}</Field>
@@ -445,7 +445,7 @@ function UserPanel({ uid, onChange }: { uid: string; onChange: (uid: string, p: 
             <Field label="Last sign-in">{a.clerk.last_sign_in_at ? istDateTime(a.clerk.last_sign_in_at) : <None />}</Field>
             <Field label="Last active">{a.clerk.last_active_at ? istDateTime(a.clerk.last_active_at) : <None />}</Field>
           </dl>
-          {!a.clerk.found && <p className="mt-2 text-[12px] font-semibold text-muted-foreground">Sign-in details couldn't be loaded right now.</p>}
+          {!a.clerk.found && <p className="mt-2 text-[14px] font-semibold text-muted-foreground">Sign-in details couldn't be loaded right now.</p>}
         </section>
 
         <div className="space-y-5">
@@ -460,12 +460,12 @@ function UserPanel({ uid, onChange }: { uid: string; onChange: (uid: string, p: 
             <Wallet className="h-4 w-4" /> Open wallet (balance, top-ups, add money) <ExternalLink className="h-3 w-3" />
           </a>
 
-          <section aria-label="Actions" className="rounded-xl border border-border/60 bg-card p-4">
+          <section aria-label="Actions" className="hf-admin-op-card rounded-xl border border-border/60 bg-card p-4">
             <h3 className="mb-2 font-dash text-[15px] font-bold text-foreground">Account actions</h3>
             {canAct ? (
               <Actions uid={uid} email={p.email} name={p.name} blocked={a.status === 'blocked'} onDone={(patch) => { onChange(uid, patch); void load(); }} />
             ) : (
-              <p className="flex items-start gap-1.5 text-[13px] font-semibold text-muted-foreground">
+              <p className="flex items-start gap-1.5 text-[14px] font-semibold text-muted-foreground">
                 <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" />
                 {a.is_self ? 'This is your own account. Actions are hidden.' : a.is_admin ? 'This is an admin account. Admins can\'t be blocked, signed out or deleted here.' : 'No actions while the account is being deleted.'}
               </p>
@@ -474,12 +474,12 @@ function UserPanel({ uid, onChange }: { uid: string; onChange: (uid: string, p: 
         </div>
       </div>
 
-      <section aria-label="Bookings" className="rounded-xl border border-border/60 bg-card p-4">
+      <section aria-label="Bookings" className="hf-admin-op-card rounded-xl border border-border/60 bg-card p-4">
         <div className="mb-2 flex items-center justify-between gap-2">
           <h3 className="font-dash text-[15px] font-bold text-foreground">Bookings</h3>
-          <a href={`/admin/bookings?q=${encodeURIComponent(p.email ?? uid)}`} className="inline-flex items-center gap-1 text-[12.5px] font-bold text-accent no-underline hover:underline">All in Bookings <ExternalLink className="h-3 w-3" /></a>
+          <a href={`/admin/bookings?q=${encodeURIComponent(p.email ?? uid)}`} className="inline-flex items-center gap-1 text-[14px] font-bold text-accent no-underline hover:underline">All in Bookings <ExternalLink className="h-3 w-3" /></a>
         </div>
-        {d.bookings.length === 0 ? <p className="text-[13px] font-semibold text-muted-foreground">No bookings yet.</p> : (
+        {d.bookings.length === 0 ? <p className="text-[14px] font-semibold text-muted-foreground">No bookings yet.</p> : (
           <div className="grid gap-4 md:grid-cols-2">
             <BookingList title="Upcoming" items={upcoming} />
             <BookingList title="Past" items={past.slice(0, 10)} more={past.length > 10 ? past.length - 10 : 0} />
@@ -487,18 +487,18 @@ function UserPanel({ uid, onChange }: { uid: string; onChange: (uid: string, p: 
         )}
       </section>
 
-      <section aria-label="Recent payments" className="rounded-xl border border-border/60 bg-card p-4">
+      <section aria-label="Recent payments" className="hf-admin-op-card rounded-xl border border-border/60 bg-card p-4">
         <div className="mb-2 flex items-center justify-between gap-2">
           <h3 className="font-dash text-[15px] font-bold text-foreground">Recent payments</h3>
-          <a href={`/admin/payments?q=${encodeURIComponent(p.email ?? uid)}`} className="inline-flex items-center gap-1 text-[12.5px] font-bold text-accent no-underline hover:underline">All in Payments <ExternalLink className="h-3 w-3" /></a>
+          <a href={`/admin/payments?q=${encodeURIComponent(p.email ?? uid)}`} className="inline-flex items-center gap-1 text-[14px] font-bold text-accent no-underline hover:underline">All in Payments <ExternalLink className="h-3 w-3" /></a>
         </div>
-        {d.payments.length === 0 ? <p className="text-[13px] font-semibold text-muted-foreground">No payments yet.</p> : (
+        {d.payments.length === 0 ? <p className="text-[14px] font-semibold text-muted-foreground">No payments yet.</p> : (
           <ul className="divide-y divide-border/40">
             {d.payments.slice(0, 8).map((x) => (
               <li key={x.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 py-2">
                 <a href={`/admin/payments?q=${encodeURIComponent(x.id)}`} className="min-w-0 flex-1 truncate text-[14px] font-bold text-foreground no-underline hover:text-accent hover:underline">{x.event_title ?? x.listing_id}</a>
-                <span className="text-[12.5px] font-semibold text-muted-foreground">{istDateTime(x.paid_at ?? x.created_at)}</span>
-                {x.utr && <span className="text-[12px] font-semibold tabular-nums text-muted-foreground">UTR {x.utr}</span>}
+                <span className="text-[14px] font-semibold text-muted-foreground">{istDateTime(x.paid_at ?? x.created_at)}</span>
+                {x.utr && <span className="text-[14px] font-semibold tabular-nums text-muted-foreground">UTR {x.utr}</span>}
                 <span className="font-extrabold tabular-nums"><IndianRupee className="sr-only" />{formatPaise(x.amount_paise)}</span>
                 <StatusPill status={x.status} />
               </li>
@@ -506,7 +506,7 @@ function UserPanel({ uid, onChange }: { uid: string; onChange: (uid: string, p: 
           </ul>
         )}
         {d.refunds.length > 0 && (
-          <a href="/admin/refunds" className="mt-2 inline-flex items-center gap-1 text-[12.5px] font-bold text-accent no-underline hover:underline">
+          <a href="/admin/refunds" className="mt-2 inline-flex items-center gap-1 text-[14px] font-bold text-accent no-underline hover:underline">
             {d.refunds.length} refund request{d.refunds.length === 1 ? '' : 's'} in Refunds <ExternalLink className="h-3 w-3" />
           </a>
         )}
@@ -518,20 +518,20 @@ function UserPanel({ uid, onChange }: { uid: string; onChange: (uid: string, p: 
 function BookingList({ title, items, more = 0 }: { title: string; items: Booking[]; more?: number }) {
   return (
     <div>
-      <h4 className="mb-1 text-[12px] font-extrabold uppercase tracking-[0.08em] text-muted-foreground">{title}</h4>
-      {items.length === 0 ? <p className="text-[13px] font-semibold text-muted-foreground">None.</p> : (
+      <h4 className="mb-1 text-[14px] font-extrabold uppercase tracking-[0.08em] text-muted-foreground">{title}</h4>
+      {items.length === 0 ? <p className="text-[14px] font-semibold text-muted-foreground">None.</p> : (
         <ul className="divide-y divide-border/40">
           {items.map((b) => (
             <li key={b.id} className="flex flex-wrap items-center gap-x-2 gap-y-1 py-2">
               <a href={`/admin/events/${encodeURIComponent(b.listing_id)}`} className="min-w-0 flex-1 truncate text-[14px] font-bold text-foreground no-underline hover:text-accent hover:underline">{b.event_title ?? b.listing_id}</a>
-              <span className="text-[12.5px] font-semibold text-muted-foreground">{b.event_starts_at ? istDateTime(b.event_starts_at) : '—'}</span>
+              <span className="text-[14px] font-semibold text-muted-foreground">{b.event_starts_at ? istDateTime(b.event_starts_at) : '—'}</span>
               <StatusPill status={b.status} />
-              <a href={`/admin/bookings?event=${encodeURIComponent(b.listing_id)}`} className="text-[12px] font-bold text-accent no-underline hover:underline">Seats</a>
+              <a href={`/admin/bookings?event=${encodeURIComponent(b.listing_id)}`} className="text-[14px] font-bold text-accent no-underline hover:underline">Seats</a>
             </li>
           ))}
         </ul>
       )}
-      {more > 0 && <p className="mt-1 text-[12px] font-semibold text-muted-foreground">and {more} more in Bookings</p>}
+      {more > 0 && <p className="mt-1 text-[14px] font-semibold text-muted-foreground">and {more} more in Bookings</p>}
     </div>
   );
 }
@@ -600,14 +600,14 @@ function Actions({ uid, email, name, blocked, onDone }: {
       </div>
 
       <AlertDialog open={dialog === 'block'} onOpenChange={(o) => !busy && setDialog(o ? 'block' : null)}>
-        <AlertDialogContent>
+        <AlertDialogContent className="hf-admin-operations">
           <AlertDialogHeader>
             <AlertDialogTitle>Block {who}?</AlertDialogTitle>
             <AlertDialogDescription>
               They are signed out everywhere, can't sign in again, and the app and website refuse their requests. Their bookings and payments stay. You can unblock them later.
             </AlertDialogDescription>
           </AlertDialogHeader>
-          <label htmlFor={`block-reason-${uid}`} className="grid gap-1 text-[13px] font-bold text-muted-foreground">
+          <label htmlFor={`block-reason-${uid}`} className="grid gap-1 text-[14px] font-bold text-muted-foreground">
             Reason (optional, only admins see it)
             <textarea
               id={`block-reason-${uid}`}
@@ -628,7 +628,7 @@ function Actions({ uid, email, name, blocked, onDone }: {
       </AlertDialog>
 
       <AlertDialog open={dialog === 'unblock'} onOpenChange={(o) => !busy && setDialog(o ? 'unblock' : null)}>
-        <AlertDialogContent>
+        <AlertDialogContent className="hf-admin-operations">
           <AlertDialogHeader>
             <AlertDialogTitle>Unblock {who}?</AlertDialogTitle>
             <AlertDialogDescription>They will be able to sign in and use {BRAND.name} again.</AlertDialogDescription>
@@ -643,7 +643,7 @@ function Actions({ uid, email, name, blocked, onDone }: {
       </AlertDialog>
 
       <AlertDialog open={dialog === 'signout'} onOpenChange={(o) => !busy && setDialog(o ? 'signout' : null)}>
-        <AlertDialogContent>
+        <AlertDialogContent className="hf-admin-operations">
           <AlertDialogHeader>
             <AlertDialogTitle>Sign {who} out of every device?</AlertDialogTitle>
             <AlertDialogDescription>
@@ -660,14 +660,14 @@ function Actions({ uid, email, name, blocked, onDone }: {
       </AlertDialog>
 
       <AlertDialog open={dialog === 'delete'} onOpenChange={(o) => { if (busy) return; setDialog(o ? 'delete' : null); if (!o) setConfirm(''); }}>
-        <AlertDialogContent>
+        <AlertDialogContent className="hf-admin-operations">
           <AlertDialogHeader>
             <AlertDialogTitle>Delete {who} permanently?</AlertDialogTitle>
             <AlertDialogDescription>
               This is permanent and can't be undone. Their account, profile, sign-in and personal data are erased straight away. Money records kept for the law stay without their name.
             </AlertDialogDescription>
           </AlertDialogHeader>
-          <label htmlFor={`delete-confirm-${uid}`} className="grid gap-1 text-[13px] font-bold text-muted-foreground">
+          <label htmlFor={`delete-confirm-${uid}`} className="grid gap-1 text-[14px] font-bold text-muted-foreground">
             Type {email ? 'their email' : 'their user ID'} to confirm: <span className="break-all font-extrabold text-foreground">{expected}</span>
             <Input
               id={`delete-confirm-${uid}`}

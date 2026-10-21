@@ -97,7 +97,7 @@ function SourceCards({ sources, now }: { sources: SourceHealth[]; now: number })
 
   return (
     <section aria-label="Payment sources">
-      <h2 className="mb-2 font-dash text-[18px] font-bold text-grand-teal">Payment sources</h2>
+      <h2 className="mb-2 font-dash text-[18px] font-bold text-[var(--hf-admin-plum)]">Payment sources</h2>
       <div className="grid gap-3 md:grid-cols-2">
         {cards.map(({ key, s }) => {
           const label = SOURCE_LABEL[key];
@@ -107,15 +107,15 @@ function SourceCards({ sources, now }: { sources: SourceHealth[]; now: number })
           // Forwarder: red only when the server says so. Others: heartbeat < 15 min and server healthy.
           const healthy = forwarder ? s?.healthy !== false : !!s && hb != null && now - hb < OFFLINE_MS && s.healthy !== false;
           return (
-            <div key={`${key}-${s?.device_id ?? 'none'}`} className={cn('rounded-xl border bg-card p-4 shadow-sm', healthy ? 'border-accent/50' : 'border-destructive/50')}>
+            <div key={`${key}-${s?.device_id ?? 'none'}`} className={cn('hf-admin-op-card rounded-xl border bg-card p-4 shadow-sm', healthy ? 'border-accent/50' : 'border-destructive/50')}>
               <div className="flex items-center justify-between gap-3">
                 <div className="flex min-w-0 items-center gap-2">
                   <Smartphone className="h-5 w-5 shrink-0 text-muted-foreground" aria-hidden />
                   <span className="truncate font-dash text-[16px] font-bold text-foreground">{label}</span>
                 </div>
                 {healthy
-                  ? <Badge variant="accent" className="text-[13px]"><CheckCircle2 className="mr-1 h-4 w-4" /> Healthy</Badge>
-                  : <Badge variant="destructive" className="text-[13px]"><WifiOff className="mr-1 h-4 w-4" /> {forwarder ? 'Silent' : 'Offline'}</Badge>}
+                  ? <Badge variant="accent" className="text-[14px]"><CheckCircle2 className="mr-1 h-4 w-4" /> Healthy</Badge>
+                  : <Badge variant="destructive" className="text-[14px]"><WifiOff className="mr-1 h-4 w-4" /> {forwarder ? 'Silent' : 'Offline'}</Badge>}
               </div>
               {forwarder ? (
                 <>
@@ -148,17 +148,17 @@ function SourceCards({ sources, now }: { sources: SourceHealth[]; now: number })
 
 function CorroChip({ open }: { open: boolean }) {
   return open
-    ? <Badge className="border-transparent bg-amber-100 text-[13px] text-amber-900 hover:bg-amber-100">Awaiting second source</Badge>
-    : <Badge variant="destructive" className="text-[13px]"><AlertTriangle className="mr-1 h-4 w-4" /> Not corroborated, check bank statement</Badge>;
+    ? <Badge className="border-transparent bg-[var(--hf-admin-goldtint)] text-[14px] text-[var(--hf-admin-plum)] hover:bg-[var(--hf-admin-goldtint)]">Awaiting second source</Badge>
+    : <Badge variant="destructive" className="text-[14px]"><AlertTriangle className="mr-1 h-4 w-4" /> Not corroborated, check bank statement</Badge>;
 }
 
 function Uncorroborated({ items, now }: { items: Uncorroborated[]; now: number }) {
   if (items.length === 0) return null;
   return (
     <section aria-label="Confirmed by forwarder only">
-      <h2 className="font-dash text-[18px] font-bold text-grand-teal">Confirmed by forwarder only <span className="text-muted-foreground">({items.length})</span></h2>
+      <h2 className="font-dash text-[18px] font-bold text-[var(--hf-admin-plum)]">Confirmed by forwarder only <span className="text-muted-foreground">({items.length})</span></h2>
       <p className="mb-2 text-[14px] font-semibold text-muted-foreground">Confirmed automatically from the forwarder app alone. The Google Messages watcher has not yet seen the same bank SMS.</p>
-      <div className="hidden overflow-x-auto rounded-xl border border-border/60 bg-card shadow-sm md:block">
+      <div className="hidden overflow-x-auto hf-admin-op-card rounded-xl border border-border/60 bg-card shadow-sm md:block">
         <table className="w-full border-collapse">
           <thead className="bg-muted/60">
             <tr><th className={TH}>Buyer</th><th className={TH}>Event</th><th className={`${TH} text-right`}>Amount</th><th className={TH}>Bank ref</th><th className={TH}>Confirmed</th><th className={TH}>Via</th><th className={TH}>Status</th></tr>
@@ -171,9 +171,9 @@ function Uncorroborated({ items, now }: { items: Uncorroborated[]; now: number }
                   <td className={`${TD} font-bold`}>{u.buyer_name ?? '—'}</td>
                   <td className={`${TD} max-w-[200px]`}>{u.listing_title ?? '—'}</td>
                   <td className={`${TD} whitespace-nowrap text-right text-[16px] font-extrabold tabular-nums`}>{rupees(u.pay_amount_paise)}</td>
-                  <td className={`${TD} text-[13px]`}>{u.bank_reference ? <CopyValue value={u.bank_reference} label="Bank reference" /> : '—'}</td>
-                  <td className={`${TD} whitespace-nowrap text-[13px]`}>{t ? istDateTime(t) : '—'}<div className="text-muted-foreground">{ago(t, now)}</div></td>
-                  <td className={`${TD} text-[13px]`}>{u.confirmed_via}</td>
+                  <td className={`${TD} text-[14px]`}>{u.bank_reference ? <CopyValue value={u.bank_reference} label="Bank reference" /> : '—'}</td>
+                  <td className={`${TD} whitespace-nowrap text-[14px]`}>{t ? istDateTime(t) : '—'}<div className="text-muted-foreground">{ago(t, now)}</div></td>
+                  <td className={`${TD} text-[14px]`}>{u.confirmed_via}</td>
                   <td className={TD}><CorroChip open={u.corroboration_window_open} /></td>
                 </tr>
               );
@@ -185,14 +185,14 @@ function Uncorroborated({ items, now }: { items: Uncorroborated[]; now: number }
         {items.map((u) => {
           const t = toMs(u.confirmed_at);
           return (
-            <li key={u.checkout_id} className="rounded-xl border border-border/60 bg-card p-4 shadow-sm">
+            <li key={u.checkout_id} className="hf-admin-op-card rounded-xl border border-border/60 bg-card p-4 shadow-sm">
               <div className="flex items-start justify-between gap-3">
                 <div className="font-dash text-[20px] font-bold tabular-nums">{rupees(u.pay_amount_paise)}</div>
-                <div className="text-right text-[13px] font-semibold text-muted-foreground">{ago(t, now)}</div>
+                <div className="text-right text-[14px] font-semibold text-muted-foreground">{ago(t, now)}</div>
               </div>
               <div className="mt-1 text-[15px] font-bold">{u.buyer_name ?? '—'}</div>
               <div className="text-[14px] font-semibold text-muted-foreground">{u.listing_title ?? '—'}</div>
-              <div className="mt-1 text-[13px] font-semibold text-muted-foreground">
+              <div className="mt-1 text-[14px] font-semibold text-muted-foreground">
                 {t ? istDateTime(t) : '—'} · via {u.confirmed_via}{u.bank_reference ? ` · Ref ${u.bank_reference}` : ''}
               </div>
               <div className="mt-2"><CorroChip open={u.corroboration_window_open} /></div>
@@ -223,10 +223,10 @@ function ForwarderSetup({ now }: { now: number }) {
   const flag = (on: boolean | undefined) => (on ? <Badge variant="accent">On</Badge> : <Badge variant="muted">Off</Badge>);
 
   return (
-    <section aria-label="Forwarder setup" className="rounded-xl border border-border/60 bg-card shadow-sm">
+    <section aria-label="Forwarder setup" className="hf-admin-op-card rounded-xl border border-border/60 bg-card shadow-sm">
       <button type="button" aria-expanded={open} onClick={() => setOpen((o) => !o)}
         className="flex min-h-[52px] w-full items-center justify-between gap-3 px-4 py-3 text-left">
-        <span className="font-dash text-[17px] font-bold text-grand-teal">Forwarder setup</span>
+        <span className="font-dash text-[17px] font-bold text-[var(--hf-admin-plum)]">Forwarder setup</span>
         <ChevronDown className={cn('h-5 w-5 text-muted-foreground transition-transform', open && 'rotate-180')} aria-hidden />
       </button>
       {open && (
@@ -252,10 +252,10 @@ function ForwarderSetup({ now }: { now: number }) {
                         <div className="flex flex-wrap items-center gap-2 text-[14px] font-bold">
                           <Badge variant="outline">{c.method}</Badge>
                           <span className="text-muted-foreground">{c.content_type ?? 'no content-type'}</span>
-                          <span className="ml-auto text-[13px] font-semibold text-muted-foreground">{t ? `${istDateTime(t)} · ${ago(t, now)}` : ''}</span>
+                          <span className="ml-auto text-[14px] font-semibold text-muted-foreground">{t ? `${istDateTime(t)} · ${ago(t, now)}` : ''}</span>
                         </div>
                         <p className="mt-1 break-words text-[14px] font-semibold text-muted-foreground">Top keys: <span className="text-foreground">{keys || '—'}</span></p>
-                        <pre className="mt-2 max-h-56 overflow-auto whitespace-pre-wrap break-all rounded-md bg-muted/60 p-3 font-mono text-[13px] leading-relaxed text-foreground">{c.body_sample}</pre>
+                        <pre className="mt-2 max-h-56 overflow-auto whitespace-pre-wrap break-all rounded-md bg-muted/60 p-3 font-dashbody text-[14px] leading-relaxed text-foreground">{c.body_sample}</pre>
                       </li>
                     );
                   })}
@@ -301,11 +301,11 @@ function ConfirmDialog({ checkout, sms, now, onClose, onSubmit }: {
 
   return (
     <Dialog open={!!checkout} onOpenChange={(o) => { if (!o) onClose(); }}>
-      <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-lg">
+      <DialogContent className="hf-admin-operations max-h-[92vh] overflow-y-auto sm:max-w-lg">
         {checkout && (
           <>
             <DialogHeader>
-              <DialogTitle className="font-dash text-[20px] text-grand-teal">Confirm payment</DialogTitle>
+              <DialogTitle className="font-dash text-[20px] text-[var(--hf-admin-plum)]">Confirm payment</DialogTitle>
               <DialogDescription className="text-[14px] font-semibold">
                 {checkout.buyer_name ?? 'Buyer'} · <b className="text-foreground">{rupees(checkout.pay_amount_paise)}</b> · {checkout.listing_title ?? 'Event'}
               </DialogDescription>
@@ -342,14 +342,14 @@ function ConfirmDialog({ checkout, sms, now, onClose, onSubmit }: {
                   </button>
                 </li>
               </ul>
-              {ranked.length === 0 && <p className="text-[13px] font-semibold text-muted-foreground">No unmatched bank SMS right now.</p>}
+              {ranked.length === 0 && <p className="text-[14px] font-semibold text-muted-foreground">No unmatched bank SMS right now.</p>}
             </div>
 
             <div className="grid gap-1.5">
               <Label htmlFor="pr-note" className="text-[14px] font-bold">Note{noSms ? ' (required)' : ' (optional)'}</Label>
               <Input id="pr-note" value={note} onChange={(e) => setNote(e.target.value)} maxLength={300}
                 placeholder={noSms ? 'e.g. Saw the credit in the HDFC app, ref …' : 'Anything worth remembering'} className="text-[16px]" />
-              {noSms && <p className="text-[13px] font-semibold text-muted-foreground">Without an SMS, say how you verified the money arrived.</p>}
+              {noSms && <p className="text-[14px] font-semibold text-muted-foreground">Without an SMS, say how you verified the money arrived.</p>}
             </div>
 
             <DialogFooter className="gap-2 sm:gap-2">
@@ -387,7 +387,7 @@ function RejectDialog({ checkout, onClose, onSubmit }: {
 
   return (
     <Dialog open={!!checkout} onOpenChange={(o) => { if (!o) onClose(); }}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="hf-admin-operations sm:max-w-md">
         {checkout && (
           <>
             <DialogHeader>
@@ -517,7 +517,7 @@ export default function PaymentReview() {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="hf-admin-operations space-y-6">
       {stale && (
         <div role="status" className="flex items-center gap-2 rounded-lg border border-primary/30 bg-primary/5 px-3 py-2 text-[14px] font-bold text-foreground">
           <WifiOff className="h-4 w-4 text-primary" /> Could not refresh — showing the last data. Retrying automatically.
@@ -528,19 +528,19 @@ export default function PaymentReview() {
 
       <section aria-label="Waiting for verification">
         <div className="mb-2 flex items-center justify-between gap-3">
-          <h2 className="font-dash text-[18px] font-bold text-grand-teal">Waiting for verification <span className="text-muted-foreground">({checkouts.length})</span></h2>
+          <h2 className="font-dash text-[18px] font-bold text-[var(--hf-admin-plum)]">Waiting for verification <span className="text-muted-foreground">({checkouts.length})</span></h2>
           <Button variant="outline" size="sm" className="h-10 text-[14px]" onClick={() => void load(true)}><RefreshCw /> Refresh</Button>
         </div>
 
         {checkouts.length === 0 ? (
-          <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed border-border bg-card px-6 py-12 text-center">
+          <div className="flex flex-col items-center gap-2 hf-admin-op-card rounded-xl border border-dashed border-border bg-card px-6 py-12 text-center">
             <CheckCircle2 className="h-8 w-8 text-accent" aria-hidden />
             <p className="font-dash text-[18px] font-bold text-foreground">All payments verified</p>
             <p className="text-[14px] font-semibold text-muted-foreground">Nothing is waiting for you. This page refreshes every 20 seconds.</p>
           </div>
         ) : (
           <>
-            <div className="hidden overflow-x-auto rounded-xl border border-border/60 bg-card shadow-sm md:block">
+            <div className="hidden overflow-x-auto hf-admin-op-card rounded-xl border border-border/60 bg-card shadow-sm md:block">
               <table className="w-full border-collapse">
                 <thead className="bg-muted/60">
                   <tr>
@@ -555,15 +555,15 @@ export default function PaymentReview() {
                       <tr key={c.checkout_id} className={cn('hover:bg-muted/30', t != null && now - t > SLOW_MS && 'bg-destructive/5')}>
                         <td className={`${TD} max-w-[220px]`}>
                           <div className="font-bold">{c.buyer_name ?? '—'}</div>
-                          {c.whatsapp && <div className="text-[13px] text-muted-foreground">WhatsApp {c.whatsapp}</div>}
-                          {c.email && <div className="truncate text-[13px] text-muted-foreground">{c.email}</div>}
+                          {c.whatsapp && <div className="text-[14px] text-muted-foreground">WhatsApp {c.whatsapp}</div>}
+                          {c.email && <div className="truncate text-[14px] text-muted-foreground">{c.email}</div>}
                         </td>
                         <td className={`${TD} max-w-[200px]`}>{c.listing_title ?? '—'}</td>
                         <td className={`${TD} whitespace-nowrap text-right text-[16px] font-extrabold tabular-nums`}>{rupees(c.pay_amount_paise)}</td>
-                        <td className={`${TD} whitespace-nowrap text-[13px]`}>{t ? istDateTime(t) : '—'}{!toMs(c.paid_claimed_at) && <div className="text-muted-foreground">(not tapped “I’ve paid”)</div>}</td>
+                        <td className={`${TD} whitespace-nowrap text-[14px]`}>{t ? istDateTime(t) : '—'}{!toMs(c.paid_claimed_at) && <div className="text-muted-foreground">(not tapped “I’ve paid”)</div>}</td>
                         <td className={`${TD} whitespace-nowrap`}>{ageCell(c)}</td>
-                        <td className={`${TD} text-[13px]`}>{c.utr ? <CopyValue value={c.utr} label="UTR" /> : <span className="text-muted-foreground">—</span>}</td>
-                        <td className={`${TD} text-[13px]`}>{reasonText(c.reason_code)}</td>
+                        <td className={`${TD} text-[14px]`}>{c.utr ? <CopyValue value={c.utr} label="UTR" /> : <span className="text-muted-foreground">—</span>}</td>
+                        <td className={`${TD} text-[14px]`}>{reasonText(c.reason_code)}</td>
                         <td className={`${TD} whitespace-nowrap`}>{btns(c)}</td>
                       </tr>
                     );
@@ -577,10 +577,10 @@ export default function PaymentReview() {
                 const t = checkoutMs(c);
                 const slow = t != null && now - t > SLOW_MS;
                 return (
-                  <li key={c.checkout_id} className={cn('rounded-xl border bg-card p-4 shadow-sm', slow ? 'border-destructive/50' : 'border-border/60')}>
+                  <li key={c.checkout_id} className={cn('hf-admin-op-card rounded-xl border bg-card p-4 shadow-sm', slow ? 'border-destructive/50' : 'border-border/60')}>
                     <div className="flex items-start justify-between gap-3">
                       <div className="font-dash text-[22px] font-bold tabular-nums">{rupees(c.pay_amount_paise)}</div>
-                      <div className="text-right text-[14px]">{ageCell(c)}<div className="text-[12.5px] font-semibold text-muted-foreground">waiting</div></div>
+                      <div className="text-right text-[14px]">{ageCell(c)}<div className="text-[14px] font-semibold text-muted-foreground">waiting</div></div>
                     </div>
                     <div className="mt-1 text-[15px] font-bold">{c.buyer_name ?? '—'}</div>
                     <div className="text-[14px] font-semibold text-muted-foreground">{c.listing_title ?? '—'}</div>
@@ -601,12 +601,12 @@ export default function PaymentReview() {
       </section>
 
       <section aria-label="Unmatched bank SMS">
-        <h2 className="mb-2 font-dash text-[18px] font-bold text-grand-teal">Unmatched bank SMS <span className="text-muted-foreground">({sms.length})</span></h2>
+        <h2 className="mb-2 font-dash text-[18px] font-bold text-[var(--hf-admin-plum)]">Unmatched bank SMS <span className="text-muted-foreground">({sms.length})</span></h2>
         {sms.length === 0 ? (
           <Empty title="No unmatched bank SMS" body="Every credit SMS has been matched to a checkout." />
         ) : (
           <>
-            <div className="hidden overflow-x-auto rounded-xl border border-border/60 bg-card shadow-sm md:block">
+            <div className="hidden overflow-x-auto hf-admin-op-card rounded-xl border border-border/60 bg-card shadow-sm md:block">
               <table className="w-full border-collapse">
                 <thead className="bg-muted/60">
                   <tr><th className={`${TH} text-right`}>Amount</th><th className={TH}>Payer UPI ID</th><th className={TH}>Bank ref</th><th className={TH}>Received</th><th className={TH}>Source</th></tr>
@@ -617,8 +617,8 @@ export default function PaymentReview() {
                       <td className={`${TD} text-right text-[16px] font-extrabold tabular-nums`}>{rupees(m.amount_paise)}</td>
                       <td className={`${TD} break-all`}>{m.payer_vpa ?? '—'}</td>
                       <td className={TD}>{m.bank_reference ? <CopyValue value={m.bank_reference} label="Bank reference" /> : '—'}</td>
-                      <td className={`${TD} whitespace-nowrap text-[13px]`}>{istDateTime(m.received_at_ms)}<div className="text-muted-foreground">{ago(m.received_at_ms, now)}</div></td>
-                      <td className={`${TD} text-[13px]`}>{m.source_device ?? '—'}</td>
+                      <td className={`${TD} whitespace-nowrap text-[14px]`}>{istDateTime(m.received_at_ms)}<div className="text-muted-foreground">{ago(m.received_at_ms, now)}</div></td>
+                      <td className={`${TD} text-[14px]`}>{m.source_device ?? '—'}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -626,13 +626,13 @@ export default function PaymentReview() {
             </div>
             <ul className="space-y-3 md:hidden">
               {sms.map((m) => (
-                <li key={m.message_hash} className="rounded-xl border border-border/60 bg-card p-4 shadow-sm">
+                <li key={m.message_hash} className="hf-admin-op-card rounded-xl border border-border/60 bg-card p-4 shadow-sm">
                   <div className="flex items-start justify-between gap-3">
                     <div className="font-dash text-[20px] font-bold tabular-nums">{rupees(m.amount_paise)}</div>
-                    <div className="text-right text-[13px] font-semibold text-muted-foreground">{ago(m.received_at_ms, now)}</div>
+                    <div className="text-right text-[14px] font-semibold text-muted-foreground">{ago(m.received_at_ms, now)}</div>
                   </div>
                   <div className="mt-1 break-all text-[14px] font-semibold text-foreground">{m.payer_vpa ?? 'Unknown payer'}</div>
-                  <div className="text-[13px] font-semibold text-muted-foreground">
+                  <div className="text-[14px] font-semibold text-muted-foreground">
                     {istDateTime(m.received_at_ms)}{m.bank_reference ? ` · Ref ${m.bank_reference}` : ''}{m.source_device ? ` · ${m.source_device}` : ''}
                   </div>
                 </li>

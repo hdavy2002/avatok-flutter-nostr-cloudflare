@@ -37,7 +37,7 @@ export default function KycReviews() {
     setBusy(null);
   };
 
-  return <ConsultShell>
+  return <ConsultShell className="hf-admin-operations">
     <div role="tablist" aria-label="Video KYC status" style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 16 }}>
       {tabs.map((entry) => <button key={entry.key} type="button" role="tab" aria-selected={tab === entry.key} className={`slot${tab === entry.key ? ' on' : ''}`} style={{ padding: '0 14px', ...text14 }} onClick={() => setTab(entry.key)}>{entry.label}</button>)}
     </div>
@@ -46,7 +46,7 @@ export default function KycReviews() {
     {items === null && <Spinner label="Loading video KYC reviews…" />}
     {items?.length === 0 && !error && <div className="card muted" style={text14}>Nothing here.</div>}
     <div style={{ display: 'grid', gap: 16 }}>
-      {items?.map((item) => <article className="card" key={item.selfieId} style={{ display: 'grid', gap: 12, background: '#fff' }}>
+      {items?.map((item) => <article className="card" key={item.selfieId} style={{ display: 'grid', gap: 12, background: 'var(--hf-admin-cream)' }}>
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', ...text14 }}>
           <strong>{item.aadhaar?.name || item.email || item.uid}</strong>
           {item.email && <span className="muted">{item.email}</span>}

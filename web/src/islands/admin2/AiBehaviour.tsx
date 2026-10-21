@@ -71,24 +71,24 @@ function TestChat({ promptId, label }: { promptId: string | undefined; label: st
   }
 
   return (
-    <div className="flex h-[520px] flex-col overflow-hidden rounded-xl border border-border bg-background">
+    <div className="flex h-[520px] flex-col overflow-hidden hf-admin-op-card rounded-xl border border-border bg-background">
       <div className="flex items-center justify-between gap-2 border-b border-border/60 bg-card px-3 py-2">
         <div className="min-w-0">
           <p className="font-dashbody text-[14px] font-extrabold text-foreground">Test chat</p>
-          <p className="truncate text-[12px] font-semibold text-muted-foreground">Using {label}. Not shown in Conversations.</p>
+          <p className="truncate text-[14px] font-semibold text-muted-foreground">Using {label}. Not shown in Conversations.</p>
         </div>
         <Button size="sm" variant="ghost" onClick={reset}><RotateCcw /> New</Button>
       </div>
       <div className="flex-1 space-y-2 overflow-y-auto p-3" aria-live="polite">
         {lines.length === 0 && <p className={cn(HINT, 'py-6 text-center')}>Ask her something, like “Which havan is coming up?”.</p>}
         {lines.map((l, i) => l.role === 'note' ? (
-          <p key={i} className="mx-auto w-fit max-w-full rounded-full bg-muted px-3 py-1 text-center text-[12px] font-bold text-muted-foreground">{l.text}</p>
+          <p key={i} className="mx-auto w-fit max-w-full rounded-full bg-muted px-3 py-1 text-center text-[14px] font-bold text-muted-foreground">{l.text}</p>
         ) : (
           <div key={i} className={cn('flex', l.role === 'me' ? 'justify-end' : 'justify-start')}>
             <div className={cn('max-w-[85%] whitespace-pre-wrap break-words rounded-2xl px-3 py-2 text-[14.5px] font-semibold leading-relaxed', l.role === 'me' ? 'bg-accent text-accent-foreground' : 'border border-border bg-card text-foreground')}>
               {l.text || (busy && i === lines.length - 1 ? <Loader2 className="h-4 w-4 animate-spin" aria-label="Thinking" /> : '')}
               {l.cards.map((c, j) => (
-                <div key={j} className="mt-2 rounded-lg border border-border/70 bg-background p-2 text-[13px] text-foreground">
+                <div key={j} className="mt-2 rounded-lg border border-border/70 bg-background p-2 text-[14px] text-foreground">
                   <b>{c.title}</b>
                   {c.type === 'event' ? <span className="block text-muted-foreground">{c.price_rupees != null ? `₹${c.price_rupees}` : 'Free'}{c.live_now ? ' · live now' : ''}</span> : <span className="block text-muted-foreground">Article</span>}
                 </div>
@@ -195,7 +195,7 @@ export default function AiBehaviour() {
                   >
                     <span className="min-w-0 flex-1">
                       <span className="block truncate text-[14px] font-extrabold text-foreground">{p.note || `Version ${p.id.slice(0, 6)}`}</span>
-                      <span className="block truncate text-[12.5px] font-semibold text-muted-foreground">{p.created_by} · {istDateTime(p.created_at)}</span>
+                      <span className="block truncate text-[14px] font-semibold text-muted-foreground">{p.created_by} · {istDateTime(p.created_at)}</span>
                     </span>
                     {p.active && <Badge variant="accent">Active</Badge>}
                   </button>

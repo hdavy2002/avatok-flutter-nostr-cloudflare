@@ -9,8 +9,8 @@ import type { BookingStatus, ConsultantStatus } from '../../../lib/consultTypes'
 import '../../../styles/consultants.css';
 
 /** Wraps a screen in the consultants look. */
-export function ConsultShell({ children }: { children: ReactNode }) {
-  return <div className="consult-ui" style={{ borderRadius: 16, padding: '4px 0 24px', background: 'transparent' }}>{children}</div>;
+export function ConsultShell({ children, className = '' }: { children: ReactNode; className?: string }) {
+  return <div className={`consult-ui ${className}`} style={{ borderRadius: 16, padding: '4px 0 24px', background: 'transparent' }}>{children}</div>;
 }
 
 export const rupees = (n: number | null | undefined) => (n == null ? '—' : `₹${Math.round(n).toLocaleString('en-IN')}`);
@@ -49,13 +49,13 @@ export function Banner({ tone, children }: { tone: 'error' | 'info'; children: R
 }
 
 /** In-page confirmation. `children` carries any extra field (reason, UTR…); onConfirm may throw to keep it open. */
-export function ConfirmDialog({ open, title, body, confirmLabel, danger, busy, error, disabled, children, onConfirm, onCancel }: {
+export function ConfirmDialog({ open, title, body, confirmLabel, danger, busy, error, disabled, children, onConfirm, onCancel, className = '' }: {
   open: boolean; title: string; body?: ReactNode; confirmLabel: string; danger?: boolean; busy?: boolean; error?: string | null; disabled?: boolean;
-  children?: ReactNode; onConfirm: () => void; onCancel: () => void;
+  children?: ReactNode; onConfirm: () => void; onCancel: () => void; className?: string;
 }) {
   return (
     <AlertDialog open={open} onOpenChange={(o) => { if (!o && !busy) onCancel(); }}>
-      <AlertDialogContent className="consult-ui" style={{ maxWidth: 460 }}>
+      <AlertDialogContent className={`consult-ui ${className}`} style={{ maxWidth: 460 }}>
         <AlertDialogHeader>
           <AlertDialogTitle style={{ fontFamily: 'Comfortaa, sans-serif', color: 'var(--teal)', fontSize: 20 }}>{title}</AlertDialogTitle>
           <AlertDialogDescription asChild><div style={{ fontSize: 15, color: 'var(--ink)' }}>{body}</div></AlertDialogDescription>
