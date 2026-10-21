@@ -55,21 +55,23 @@ class SignUpSheet extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (repo == null && DemoMode.on) return _DemoSignUpSheet(reason: reason);
+    if (repo == null && DemoMode.on) return _DemoSignUpSheet(reason: reason, login: login);
     return RealSignUpSheet(repo: repo ?? Services.instance.authRepo, reason: reason, login: login);
   }
 }
 
 class _DemoSignUpSheet extends StatefulWidget {
-  const _DemoSignUpSheet({this.reason});
+  const _DemoSignUpSheet({this.reason, this.login = false});
 
   final String? reason;
+  final bool login;
 
   @override
   State<_DemoSignUpSheet> createState() => _DemoSignUpSheetState();
 }
 
 class _DemoSignUpSheetState extends State<_DemoSignUpSheet> {
+  late bool _login = widget.login;
   final _name = TextEditingController();
   final _email = TextEditingController();
   final _wa = TextEditingController();
@@ -114,7 +116,15 @@ class _DemoSignUpSheetState extends State<_DemoSignUpSheet> {
             children: [
               Text('ONE STEP ${widget.reason == null ? 'TO CONTINUE' : widget.reason!.toUpperCase()}', style: t(14, color: C.ruby, ls: 0.14)),
               const SizedBox(height: 4),
-              Text('Say hello!', style: t(32, color: C.maroon, ls: 0.03, h: 1.05)),
+              Text(_login ? 'Log in' : 'Create account', style: t(32, color: C.maroon, ls: 0.03, h: 1.05)),
+              TextButton(
+                key: const Key('su-switch-mode'),
+                onPressed: () => setState(() {
+                  _login = !_login;
+                  _error = null;
+                }),
+                child: Text(_login ? 'Create account' : 'Log in', style: t(17, color: C.maroon)),
+              ),
               const SizedBox(height: 4),
               Text("Three things, then you're in. Your number is never shown to anyone.", style: t(15, color: C.deep, w: FontWeight.w700, h: 1.4)),
               const SizedBox(height: 16),

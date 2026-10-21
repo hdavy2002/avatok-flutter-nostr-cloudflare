@@ -90,6 +90,32 @@ Future<void> _profile(WidgetTester tester) async {
 
 void main() {
   setUp(() { SharedPreferences.setMockInitialValues({}); demo.signOut(); });
+  testWidgets('guest action sheet can switch between login and create without losing phone', (tester) async {
+    final api = FakeApiClient({'POST /api/auth/whatsapp/send': _sent});
+    final repo = AuthRepo(api: api, clerk: FakeClerk());
+    await _open(tester, repo, () {});
+    expect(find.text('Create account'), findsOneWidget);
+    expect(find.text('Log in'), findsOneWidget);
+    await _fillForm(tester);
+    await tester.tap(find.byKey(const Key('su-switch-mode')));
+    await tester.pump();
+    expect(find.descendant(of: find.byKey(const Key('su-switch-mode')), matching: find.text('Create account')), findsOneWidget);
+    expect(tester.widget<TextField>(find.byKey(const Key('su-wa'))).controller!.text, '98765 43210');
+    expect(api.calls, isEmpty);
+    await tester.tap(find.byKey(const Key('su-switch-mode')));
+    await tester.pump();
+    expect(find.descendant(of: find.byKey(const Key('su-switch-mode')), matching: find.text('Log in')), findsOneWidget);
+    expect(api.calls, isEmpty);
+    await tester.tap(find.byKey(const Key('su-switch-mode')));
+    await tester.pump();
+    await tester.tap(find.text('SEND CODE'));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('su-code')), findsOneWidget);
+    expect(find.byKey(const Key('su-switch-mode')), findsNothing);
+    expect(api.calls, ['POST /api/auth/whatsapp/send']);
+    expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox());
+  });
   test('number, email and name checks', () {
     expect(AuthRepo.e164('98765 43210'), '+919876543210');
     expect(AuthRepo.e164('+91 98765-43210'), '+919876543210');

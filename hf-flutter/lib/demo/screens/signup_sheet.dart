@@ -31,6 +31,7 @@ class _RealSignUpSheetState extends State<RealSignUpSheet> {
   final _wa = TextEditingController();
   final _code = TextEditingController();
 
+  late bool _login = widget.login;
   _Stage _stage = _Stage.form;
   bool _busy = false;
   bool _over18 = false;
@@ -320,7 +321,7 @@ class _RealSignUpSheetState extends State<RealSignUpSheet> {
   @override
   Widget build(BuildContext context) {
     final (title, button) = switch (_stage) {
-      _Stage.form => (widget.login ? 'Log in' : 'Create account', 'SEND CODE'),
+      _Stage.form => (_login ? 'Log in' : 'Create account', 'SEND CODE'),
       _Stage.profile => ('Create account', 'SAVE DETAILS'),
       _Stage.profileCheck => ('Checking your account', 'TRY AGAIN'),
       _Stage.finish => ('Almost there', 'TRY AGAIN'),
@@ -352,6 +353,15 @@ class _RealSignUpSheetState extends State<RealSignUpSheet> {
                 const SizedBox(height: 4),
                 Text(title, style: t(32, color: C.maroon, ls: 0.03, h: 1.05)),
                 const SizedBox(height: 4),
+                if (_stage == _Stage.form)
+                  TextButton(
+                    key: const Key('su-switch-mode'),
+                    onPressed: _busy ? null : () => setState(() {
+                      _login = !_login;
+                      _error = null;
+                    }),
+                    child: Text(_login ? 'Create account' : 'Log in', style: t(17, color: C.maroon)),
+                  ),
                 ...fields,
                 if (_error != null) ...[
                   const SizedBox(height: 10),
