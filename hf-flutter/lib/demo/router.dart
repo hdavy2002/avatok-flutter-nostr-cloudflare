@@ -21,7 +21,6 @@ import 'screens/profile.dart';
 import 'screens/search.dart';
 import 'reel_player.dart';
 import 'theme.dart';
-import 'widgets.dart' show KolamBackground;
 
 final rootKey = GlobalKey<NavigatorState>();
 
@@ -332,60 +331,65 @@ class _MainShellState extends State<MainShell> {
     return Scaffold(
       body: shell,
       bottomNavigationBar: Container(
-        decoration: const BoxDecoration(
-          color: C.footerBg,
-          border: Border(top: BorderSide(color: C.sandLine, width: 2)),
+        decoration: BoxDecoration(
+          color: shell.currentIndex == 0 ? Colors.black : C.footerBg,
         ),
-        child: KolamBackground(
-          child: SafeArea(
-            top: false,
-            child: SizedBox(
-              height: 52,
-              child: Row(
-                children: [
-                  for (var i = 0; i < _items.length; i++)
-                    Expanded(
-                      child: Semantics(
-                        button: true,
-                        selected: shell.currentIndex == i,
-                        label: _items[i].$3,
-                        child: InkWell(
-                          onTap: () => shell.goBranch(
-                            i,
-                            initialLocation: i == shell.currentIndex,
-                          ),
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Icon(
-                                shell.currentIndex == i
-                                    ? _items[i].$2
-                                    : _items[i].$1,
-                                size: 22,
+        child: SafeArea(
+          top: false,
+          child: SizedBox(
+            height: 52,
+            child: Row(
+              children: [
+                for (var i = 0; i < _items.length; i++)
+                  Expanded(
+                    child: Semantics(
+                      button: true,
+                      selected: shell.currentIndex == i,
+                      label: _items[i].$3,
+                      child: InkWell(
+                        onTap: () => shell.goBranch(
+                          i,
+                          initialLocation: i == shell.currentIndex,
+                        ),
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(
+                              shell.currentIndex == i
+                                  ? _items[i].$2
+                                  : _items[i].$1,
+                              size: 22,
+                              color: shell.currentIndex == i
+                                  ? (shell.currentIndex == 0
+                                        ? Colors.white
+                                        : C.maroon)
+                                  : (shell.currentIndex == 0
+                                        ? Colors.white70
+                                        : C.muted),
+                            ),
+                            const SizedBox(height: 1),
+                            Text(
+                              _items[i].$3,
+                              style: t(
+                                11,
                                 color: shell.currentIndex == i
-                                    ? C.maroon
-                                    : C.muted,
+                                    ? (shell.currentIndex == 0
+                                          ? Colors.white
+                                          : C.maroon)
+                                    : (shell.currentIndex == 0
+                                          ? Colors.white70
+                                          : C.muted),
+                                w: shell.currentIndex == i
+                                    ? FontWeight.w800
+                                    : FontWeight.w700,
                               ),
-                              const SizedBox(height: 1),
-                              Text(
-                                _items[i].$3,
-                                style: t(
-                                  11,
-                                  color: shell.currentIndex == i
-                                      ? C.maroon
-                                      : C.muted,
-                                  w: shell.currentIndex == i
-                                      ? FontWeight.w800
-                                      : FontWeight.w700,
-                                ),
-                              ),
-                            ],
-                          ),
+                            ),
+                          ],
                         ),
                       ),
                     ),
-                ],
-              ),
+                  ),
+              ],
             ),
           ),
         ),

@@ -233,17 +233,7 @@ class _RealFeedState extends State<RealFeed> {
             right: 22,
             child: Row(
               children: [
-                const Expanded(
-                  child: Text(
-                    Brand.name,
-                    style: TextStyle(
-                      fontFamily: 'Comfortaa',
-                      fontSize: 21,
-                      color: C.ivory,
-                      fontWeight: FontWeight.w400,
-                    ),
-                  ),
-                ),
+                const Spacer(),
                 OnlineNowPill(demoCount: 0, fetch: widget.onlineFetch),
               ],
             ),
@@ -292,17 +282,7 @@ class _FeedScreenState extends State<_DemoFeed> {
             right: 22,
             child: Row(
               children: [
-                const Expanded(
-                  child: Text(
-                    Brand.name,
-                    style: TextStyle(
-                      fontFamily: 'Comfortaa',
-                      fontSize: 21,
-                      color: C.ivory,
-                      fontWeight: FontWeight.w400,
-                    ),
-                  ),
-                ),
+                const Spacer(),
                 OnlineNowPill(demoCount: onlineCount * 21),
               ],
             ),
@@ -344,6 +324,17 @@ class ReelPage extends StatefulWidget {
 /// Stand-in "video": the influencer's art with a slow zoom and a progress bar, until real reels are wired.
 class _ReelPageState extends State<ReelPage>
     with SingleTickerProviderStateMixin {
+  bool _covered = false;
+
+  Future<void> _whileCovered(Future<void> Function() open) async {
+    setState(() => _covered = true);
+    try {
+      await open();
+    } finally {
+      if (mounted) setState(() => _covered = false);
+    }
+  }
+
   late final AnimationController _play = AnimationController(
     vsync: this,
     duration: const Duration(seconds: 12),
@@ -352,7 +343,8 @@ class _ReelPageState extends State<ReelPage>
   @override
   void initState() {
     super.initState();
-    _play.value = 0; // build the controller now: a late field first touched in dispose() would make a ticker on a dead element
+    _play.value =
+        0; // build the controller now: a late field first touched in dispose() would make a ticker on a dead element
     if (widget.active && widget.real == null) _play.repeat();
     if (widget.real != null && demo.signedIn)
       unawaited(
@@ -384,18 +376,22 @@ class _ReelPageState extends State<ReelPage>
     final inv = real?.invite;
     if (inv != null) {
       final reels = widget.creatorReels?.call(real!) ?? [real!];
-      context.push(
-        creatorPath(inv),
-        extra: InviteProfileArgs(
-          creator: inv,
-          reels: reels.isEmpty ? [real!] : reels,
+      _whileCovered(
+        () => context.push<void>(
+          creatorPath(inv),
+          extra: InviteProfileArgs(
+            creator: inv,
+            reels: reels.isEmpty ? [real!] : reels,
+          ),
         ),
       );
       return;
     }
     final id = real != null ? real.host.slug : widget.reel.who.id;
     if (id.isEmpty) return;
-    context.push('/profile/${Uri.encodeComponent(id)}');
+    _whileCovered(
+      () => context.push<void>('/profile/${Uri.encodeComponent(id)}'),
+    );
   }
 
   @override
@@ -421,7 +417,7 @@ class _ReelPageState extends State<ReelPage>
             if (widget.real != null)
               ReelPlayer(
                 reel: widget.real!,
-                active: widget.active,
+                active: widget.active && !_covered,
                 preload: widget.preload,
               )
             else
@@ -475,10 +471,10 @@ class _ReelPageState extends State<ReelPage>
                     begin: Alignment.topCenter,
                     end: Alignment.bottomCenter,
                     colors: [
-                      Color(0xBF1A0B26),
-                      Color(0x001A0B26),
-                      Color(0x001A0B26),
-                      Color(0xEB1A0B26),
+                      Color(0x66000000),
+                      Color(0x00000000),
+                      Color(0x00000000),
+                      Color(0x33000000),
                     ],
                     stops: [0, 0.18, 0.5, 0.86],
                   ),
@@ -512,19 +508,38 @@ class _ReelPageState extends State<ReelPage>
                   _action(
                     'Reel information',
                     Icons.info_outline_rounded,
-                    () => _info(context),
+                    () => _whileCovered(() => _info(context)),
                   ),
                   _action(
                     'Open ${who.name} profile',
                     Icons.person_outline_rounded,
                     () => _openChannel(context),
                   ),
+                  if (inviteOf != null) ...[
+                    const Tooltip(
+                      message: 'Not available — creator has not joined yet',
+                      child: Padding(
+                        padding: EdgeInsets.all(8),
+                        child: Icon(
+                          Icons.nightlight_round,
+                          size: 16,
+                          color: Color(0xFFAAA5AD),
+                          semanticLabel: 'Not available',
+                        ),
+                      ),
+                    ),
+                    _action(
+                      'Booking unavailable — invite creator',
+                      Icons.calendar_month_outlined,
+                      () => _whileCovered(() => _info(context)),
+                    ),
+                  ],
                   if (inviteOf == null) ...[
                     Tooltip(
                       message: presence == 'online'
                           ? 'Available'
                           : presence == 'busy'
-                          ? 'Busy'
+                          ? 'On call'
                           : 'Offline',
                       child: Padding(
                         padding: const EdgeInsets.all(8),
@@ -537,7 +552,7 @@ class _ReelPageState extends State<ReelPage>
                           semanticLabel: presence == 'online'
                               ? 'Available'
                               : presence == 'busy'
-                              ? 'Busy'
+                              ? 'On call'
                               : 'Offline',
                           size: 16,
                           color: presence == 'online'
@@ -550,16 +565,12 @@ class _ReelPageState extends State<ReelPage>
                     ),
                     _action('Book a time', Icons.calendar_month_outlined, () {
                       Telemetry.event('hf_reel_action', {'action': 'book'});
-                      context.push(
-                        '/book/${Uri.encodeComponent(widget.real?.host.slug ?? who.id)}',
+                      _whileCovered(
+                        () => context.push<void>(
+                          '/book/${Uri.encodeComponent(widget.real?.host.slug ?? who.id)}',
+                        ),
                       );
                     }),
-                    if (presence == 'online')
-                      _action(
-                        'Call now',
-                        Icons.call_outlined,
-                        () => startCall(context, who),
-                      ),
                   ],
                   _action(
                     faved ? 'Remove saved video' : 'Save video',
@@ -579,7 +590,9 @@ class _ReelPageState extends State<ReelPage>
                               if (context.mounted)
                                 toast(
                                   context,
-                                  e is ApiException ? e.userMessage : 'Could not save that. Please try again.',
+                                  e is ApiException
+                                      ? e.userMessage
+                                      : 'Could not save that. Please try again.',
                                 );
                             }
                           }, reason: 'to save videos'),
@@ -666,8 +679,20 @@ class _ReelPageState extends State<ReelPage>
                       creator: widget.real!.invite!,
                       repo: widget.searchRepo,
                     ),
-                  ] else
+                  ] else ...[
                     Text('₹${r.who.rate}/min', style: t(14)),
+                    if ((widget.real?.host.presence ??
+                            (r.who.online ? 'online' : 'offline')) ==
+                        'online')
+                      TextButton.icon(
+                        onPressed: () {
+                          Navigator.of(sheetContext).pop();
+                          startCall(context, r.who);
+                        },
+                        icon: const Icon(Icons.call_outlined),
+                        label: const Text('Call now'),
+                      ),
+                  ],
                 ],
               ),
             ),

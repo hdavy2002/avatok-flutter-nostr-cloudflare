@@ -46,7 +46,11 @@ class ReelGate {
 
   static void _recompute() {
     final top = _pages.isEmpty ? null : _pages.last;
-    final v = !_managed || (_shellRoute != null && _branch == 0 && (top == null || identical(top, _shellRoute)));
+    final v =
+        !_managed ||
+        (_shellRoute != null &&
+            _branch == 0 &&
+            (top == null || identical(top, _shellRoute)));
     if (visible.value != v) visible.value = v;
   }
 }
@@ -60,18 +64,22 @@ class _GateObserver extends NavigatorObserver {
   }
 
   @override
-  void didPush(Route<dynamic> route, Route<dynamic>? previousRoute) => _after(() {
+  void didPush(Route<dynamic> route, Route<dynamic>? previousRoute) =>
+      _after(() {
         if (route is ModalRoute) ReelGate._pages.add(route);
       });
 
   @override
-  void didPop(Route<dynamic> route, Route<dynamic>? previousRoute) => _after(() => ReelGate._pages.remove(route));
+  void didPop(Route<dynamic> route, Route<dynamic>? previousRoute) =>
+      _after(() => ReelGate._pages.remove(route));
 
   @override
-  void didRemove(Route<dynamic> route, Route<dynamic>? previousRoute) => _after(() => ReelGate._pages.remove(route));
+  void didRemove(Route<dynamic> route, Route<dynamic>? previousRoute) =>
+      _after(() => ReelGate._pages.remove(route));
 
   @override
-  void didReplace({Route<dynamic>? newRoute, Route<dynamic>? oldRoute}) => _after(() {
+  void didReplace({Route<dynamic>? newRoute, Route<dynamic>? oldRoute}) =>
+      _after(() {
         final i = oldRoute == null ? -1 : ReelGate._pages.indexOf(oldRoute);
         if (i >= 0) {
           if (newRoute is ModalRoute) {
@@ -92,7 +100,13 @@ class _GateObserver extends NavigatorObserver {
 /// our own attribution. When a video cannot be started the card shows the poster with a "Watch on …" button.
 /// The thumbnail shows until the player is up. [active] plays; a page with [preload] is only kept ready.
 class ReelPlayer extends StatefulWidget {
-  const ReelPlayer({super.key, required this.reel, required this.active, this.preload = false, this.sound = true});
+  const ReelPlayer({
+    super.key,
+    required this.reel,
+    required this.active,
+    this.preload = false,
+    this.sound = true,
+  });
 
   final FeedReel reel;
   final bool active;
@@ -127,6 +141,42 @@ class ReelPlayer extends StatefulWidget {
   /// through the base URL and as the `origin` player parameter, which is what stops embed errors 152 / 153.
   static String get youtubeOrigin => 'https://${Brand.hfPlayPackageId}';
 
+  /// Accept the original public link when the feed has no separate embed URL.
+  /// Only official provider hosts can become a player source.
+  static String? sourceFor(FeedReel reel) {
+    for (final value in [reel.embedUrl, reel.url]) {
+      final u = Uri.tryParse(value ?? '');
+      if (u == null || u.scheme != 'https') continue;
+      final host = u.host.toLowerCase();
+      if (host == 'youtu.be' ||
+          host == 'youtube.com' ||
+          host == 'www.youtube.com' ||
+          host == 'm.youtube.com' ||
+          host == 'www.youtube-nocookie.com') {
+        final parts = u.pathSegments;
+        final id = host == 'youtu.be'
+            ? (parts.isEmpty ? null : parts.first)
+            : u.queryParameters['v'] ??
+                  (parts.length > 1 &&
+                          ['embed', 'shorts', 'live'].contains(parts.first)
+                      ? parts[1]
+                      : null);
+        if (id != null && RegExp(r'^[A-Za-z0-9_-]{6,20}$').hasMatch(id)) {
+          return 'https://www.youtube.com/embed/$id';
+        }
+      }
+      if (host == 'instagram.com' || host == 'www.instagram.com') {
+        final parts = u.pathSegments;
+        if (parts.length > 1 &&
+            ['reel', 'reels', 'p', 'tv'].contains(parts.first) &&
+            RegExp(r'^[A-Za-z0-9_-]+$').hasMatch(parts[1])) {
+          return 'https://www.instagram.com/reel/${parts[1]}/embed/';
+        }
+      }
+    }
+    return null;
+  }
+
   /// The URL of the embed. YouTube: autoplay, inline, loop, related videos limited to the same channel.
   @visibleForTesting
   static Uri embedUri(String embed) {
@@ -134,15 +184,17 @@ class ReelPlayer extends StatefulWidget {
     if (u == null) return Uri.parse('about:blank');
     final yt = RegExp(r'^/embed/([A-Za-z0-9_-]{6,20})$').firstMatch(u.path);
     if (u.host.contains('youtube') && yt != null) {
-      return u.replace(queryParameters: {
-        ...u.queryParameters,
-        'autoplay': '1',
-        'playsinline': '1',
-        'loop': '1',
-        'rel': '0',
-        'origin': Brand.webOrigin,
-        'playlist': yt.group(1)!,
-      });
+      return u.replace(
+        queryParameters: {
+          ...u.queryParameters,
+          'autoplay': '1',
+          'playsinline': '1',
+          'loop': '1',
+          'rel': '0',
+          'origin': Brand.webOrigin,
+          'playlist': yt.group(1)!,
+        },
+      );
     }
     return u;
   }
@@ -153,7 +205,8 @@ class ReelPlayer extends StatefulWidget {
   static Uri instagramUri(String embed) {
     final u = Uri.tryParse(embed);
     if (u == null || !u.host.contains('instagram')) return embedUri(embed);
-    final m = RegExp(r'^/(?:reel|reels|p|tv)/([A-Za-z0-9_-]+)').firstMatch(u.path);
+    final m = RegExp(r'^/(?:reel|reels|p|tv)/([A-Za-z0-9_-]+)')
+        .firstMatch(u.path);
     if (m == null) return u;
     return Uri.parse('https://www.instagram.com/reel/${m.group(1)}/embed/');
   }
@@ -163,7 +216,9 @@ class ReelPlayer extends StatefulWidget {
   static String? youtubeId(String embed) {
     final u = Uri.tryParse(embed);
     if (u == null || !u.host.contains('youtube')) return null;
-    return RegExp(r'^/embed/([A-Za-z0-9_-]{6,20})$').firstMatch(u.path)?.group(1);
+    return RegExp(r'^/embed/([A-Za-z0-9_-]{6,20})$')
+        .firstMatch(u.path)
+        ?.group(1);
   }
 
   /// A small page that runs the YouTube IFrame Player API. It is loaded with the app id as its base URL so YouTube gets a
@@ -173,7 +228,8 @@ class ReelPlayer extends StatefulWidget {
   static String? youtubeHtml(String embed, {bool sound = true}) {
     final id = youtubeId(embed);
     if (id == null) return null;
-    final origin = const HtmlEscape(HtmlEscapeMode.attribute).convert(youtubeOrigin);
+    final origin = const HtmlEscape(HtmlEscapeMode.attribute)
+        .convert(youtubeOrigin);
     return '<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1">'
         '<style>html,body{margin:0;height:100%;background:#000;overflow:hidden}#p{position:absolute;top:0;left:0;width:100%;height:100%;border:0}</style></head>'
         '<body><div id="p"></div><script>'
@@ -195,7 +251,8 @@ class ReelPlayer extends StatefulWidget {
   /// own play control to make it appear), makes it fill the page (object-fit: cover) with everything else hidden, and exposes
   /// `hfSet(bool)` / `hfToggle()`. It reports `ready`, `playing`, `paused` and `error:novideo|blocked|media` over `HFPlayer`.
   @visibleForTesting
-  static String instagramScript({bool sound = true}) => '''
+  static String instagramScript({bool sound = true}) =>
+      '''
 (function(){
 if(window.__hfInit)return;window.__hfInit=true;
 var SOUND=$sound,want=true,vid=null,started=Date.now(),clicks=0,tick=0;
@@ -271,8 +328,10 @@ class _ReelPlayerState extends State<ReelPlayer> with WidgetsBindingObserver {
   Timer? _watchdog;
   StreamSubscription<String>? _testSub;
 
-  bool get _wantEmbed => widget.reel.embedUrl != null;
-  bool get _isIg => (Uri.tryParse(widget.reel.embedUrl ?? '')?.host ?? '').contains('instagram');
+  String? get _source => ReelPlayer.sourceFor(widget.reel);
+  bool get _wantEmbed => _source != null;
+  bool get _isIg =>
+      (Uri.tryParse(_source ?? '')?.host ?? '').contains('instagram');
   String get _platform => _isIg ? 'instagram' : 'youtube';
   bool get _engine => ReelPlayer.testRunJs != null || _web != null;
 
@@ -280,8 +339,11 @@ class _ReelPlayerState extends State<ReelPlayer> with WidgetsBindingObserver {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    _fg = (WidgetsBinding.instance.lifecycleState ?? AppLifecycleState.resumed) == AppLifecycleState.resumed;
-    if (ReelPlayer.testRunJs != null) _testSub = ReelPlayer.testMessages?.stream.listen(_onMessage);
+    _fg =
+        (WidgetsBinding.instance.lifecycleState ?? AppLifecycleState.resumed) ==
+        AppLifecycleState.resumed;
+    if (ReelPlayer.testRunJs != null)
+      _testSub = ReelPlayer.testMessages?.stream.listen(_onMessage);
     _sync();
   }
 
@@ -291,6 +353,7 @@ class _ReelPlayerState extends State<ReelPlayer> with WidgetsBindingObserver {
     _glyphTimer?.cancel();
     _watchdog?.cancel();
     _testSub?.cancel();
+    _drop();
     super.dispose();
   }
 
@@ -308,18 +371,21 @@ class _ReelPlayerState extends State<ReelPlayer> with WidgetsBindingObserver {
   @override
   void didUpdateWidget(covariant ReelPlayer old) {
     super.didUpdateWidget(old);
-    if (old.reel.id != widget.reel.id || old.reel.embedUrl != widget.reel.embedUrl) {
+    if (old.reel.id != widget.reel.id ||
+        ReelPlayer.sourceFor(old.reel) != _source) {
       _drop();
       _failReason = null;
       _played = false;
     }
     _sync();
     // Leaving the page pauses the video in place (the PageView drops far-away pages, so memory stays at one or two views).
-    if (old.active != widget.active && _engine) _run('window.hfSet&&window.hfSet(${widget.active})');
+    if (old.active != widget.active && _engine)
+      _run('window.hfSet&&window.hfSet(${widget.active})');
   }
 
   void _drop() {
     _watchdog?.cancel();
+    _run('window.hfSet&&window.hfSet(false)');
     _web = null;
     _webFor = null;
   }
@@ -339,43 +405,54 @@ class _ReelPlayerState extends State<ReelPlayer> with WidgetsBindingObserver {
   }
 
   void _startWeb() {
-    final embed = widget.reel.embedUrl!;
+    final embed = _source!;
     if (_web != null && _webFor == embed) return;
     final ig = _isIg;
     final c = WebViewController()
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
-      ..setBackgroundColor(C.cinema)
-      ..addJavaScriptChannel('HFPlayer', onMessageReceived: (m) => _onMessage(m.message))
-      ..setNavigationDelegate(NavigationDelegate(
-        // The embed stays on its own page: no tapping out to other sites. Only YouTube / Instagram embeds and the
-        // first page itself may load (about:blank and the app base URL belong to the small page that holds the player).
-        onNavigationRequest: (r) {
-          if (!r.isMainFrame) return NavigationDecision.navigate;
-          final ok = r.url == 'about:blank' ||
-              r.url == ReelPlayer.embedUri(embed).toString() ||
-              r.url == ReelPlayer.instagramUri(embed).toString() ||
-              r.url.startsWith('${ReelPlayer.youtubeOrigin}/') ||
-              r.url.startsWith('${Brand.webOrigin}/') ||
-              r.url.startsWith('https://www.youtube.com/embed/') ||
-              r.url.startsWith('https://www.instagram.com/reel/');
-          return ok ? NavigationDecision.navigate : NavigationDecision.prevent;
-        },
-        onPageFinished: (_) {
-          if (!mounted || _webFor != embed) return;
-          if (ig) _run(ReelPlayer.instagramScript(sound: widget.sound));
-          _run('window.hfSet&&window.hfSet(${widget.active})');
-        },
-        onWebResourceError: (e) {
-          if (e.isForMainFrame == true) _fail('load');
-        },
-      ));
+      ..setBackgroundColor(Colors.black)
+      ..addJavaScriptChannel(
+        'HFPlayer',
+        onMessageReceived: (m) => _onMessage(m.message),
+      )
+      ..setNavigationDelegate(
+        NavigationDelegate(
+          // The embed stays on its own page: no tapping out to other sites. Only YouTube / Instagram embeds and the
+          // first page itself may load (about:blank and the app base URL belong to the small page that holds the player).
+          onNavigationRequest: (r) {
+            if (!r.isMainFrame) return NavigationDecision.navigate;
+            final ok =
+                r.url == 'about:blank' ||
+                r.url == ReelPlayer.embedUri(embed).toString() ||
+                r.url == ReelPlayer.instagramUri(embed).toString() ||
+                r.url.startsWith('${ReelPlayer.youtubeOrigin}/') ||
+                r.url.startsWith('${Brand.webOrigin}/') ||
+                r.url.startsWith('https://www.youtube.com/embed/') ||
+                r.url.startsWith('https://www.instagram.com/reel/');
+            return ok
+                ? NavigationDecision.navigate
+                : NavigationDecision.prevent;
+          },
+          onPageFinished: (_) {
+            if (!mounted || _webFor != embed) return;
+            if (ig) _run(ReelPlayer.instagramScript(sound: widget.sound));
+            _run('window.hfSet&&window.hfSet(${widget.active})');
+          },
+          onWebResourceError: (e) {
+            if (e.isForMainFrame == true) _fail('load');
+          },
+        ),
+      );
     if (ig) unawaited(c.setUserAgent(ReelPlayer.mobileUserAgent));
     final p = c.platform;
     if (p is AndroidWebViewController) {
-      unawaited(p.setMediaPlaybackRequiresUserGesture(false)); // lets the embed autoplay
+      unawaited(
+        p.setMediaPlaybackRequiresUserGesture(false),
+      ); // lets the embed autoplay
       try {
         final cm = WebViewCookieManager().platform;
-        if (cm is AndroidWebViewCookieManager) unawaited(cm.setAcceptThirdPartyCookies(p, true));
+        if (cm is AndroidWebViewCookieManager)
+          unawaited(cm.setAcceptThirdPartyCookies(p, true));
       } catch (_) {
         // cookies are a nicety: the embed still plays without them
       }
@@ -398,21 +475,28 @@ class _ReelPlayerState extends State<ReelPlayer> with WidgetsBindingObserver {
 
   void _onMessage(String m) {
     if (!mounted) return;
-    if (m == 'playing') {
+    if (m == 'ready') {
+      _run('window.hfSet&&window.hfSet(${widget.active && _fg})');
+    } else if (m == 'playing') {
+      if (!widget.active || !_fg) _run('window.hfSet&&window.hfSet(false)');
       _watchdog?.cancel();
       _played = true;
       if (!_isPlaying) setState(() => _isPlaying = true);
     } else if (m == 'paused') {
       if (_isPlaying) setState(() => _isPlaying = false);
     } else if (m.startsWith('error:')) {
-      if (_played && m == 'error:media') return; // a hiccup after it was already playing
+      if (_played && m == 'error:media')
+        return; // a hiccup after it was already playing
       _fail(m.substring(6));
     }
   }
 
   void _fail(String reason) {
     if (!mounted || _failReason != null) return;
-    Telemetry.event('hf_reel_play_fail', {'platform': _platform, 'reason': reason});
+    Telemetry.event('hf_reel_play_fail', {
+      'platform': _platform,
+      'reason': reason,
+    });
     setState(() {
       _failReason = reason;
       _drop();
@@ -431,7 +515,8 @@ class _ReelPlayerState extends State<ReelPlayer> with WidgetsBindingObserver {
     });
   }
 
-  Uri? get _reelUri => Uri.tryParse(widget.reel.url ?? widget.reel.embedUrl ?? '');
+  Uri? get _reelUri =>
+      Uri.tryParse(widget.reel.url ?? widget.reel.embedUrl ?? '');
 
   void _openExternal() {
     final u = _reelUri;
@@ -441,13 +526,22 @@ class _ReelPlayerState extends State<ReelPlayer> with WidgetsBindingObserver {
       t(u);
       return;
     }
-    unawaited(launchUrl(u, mode: LaunchMode.externalApplication).catchError((Object _) => false));
+    unawaited(
+      launchUrl(
+        u,
+        mode: LaunchMode.externalApplication,
+      ).catchError((Object _) => false),
+    );
   }
 
   Widget _thumb() {
     final t = widget.reel.thumbUrl;
     if (t == null) return const ColoredBox(color: C.cinema);
-    return NetImage(t, fit: BoxFit.cover, fallback: const ColoredBox(color: C.cinema));
+    return NetImage(
+      t,
+      fit: BoxFit.cover,
+      fallback: const ColoredBox(color: C.cinema),
+    );
   }
 
   Widget _fallback() {
@@ -467,12 +561,22 @@ class _ReelPlayerState extends State<ReelPlayer> with WidgetsBindingObserver {
               onTap: _openExternal,
               child: Container(
                 constraints: const BoxConstraints(minHeight: 48),
-                padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 12),
-                decoration: BoxDecoration(color: C.marigold, borderRadius: BorderRadius.circular(999)),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 22,
+                  vertical: 12,
+                ),
+                decoration: BoxDecoration(
+                  color: C.marigold,
+                  borderRadius: BorderRadius.circular(999),
+                ),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    const Icon(Icons.play_arrow_rounded, color: C.deep, size: 24),
+                    const Icon(
+                      Icons.play_arrow_rounded,
+                      color: C.deep,
+                      size: 24,
+                    ),
                     const SizedBox(width: 6),
                     Text('Watch on $name', style: t(16, color: C.deep)),
                   ],
@@ -496,7 +600,14 @@ class _ReelPlayerState extends State<ReelPlayer> with WidgetsBindingObserver {
       fit: StackFit.expand,
       children: [
         _thumb(),
-        if (_web != null && _fg) Positioned(left: 0, right: 0, top: top, bottom: 0, child: WebViewWidget(controller: _web!)),
+        if (_web != null && _fg)
+          Positioned(
+            left: 0,
+            right: 0,
+            top: 0,
+            bottom: 0,
+            child: WebViewWidget(controller: _web!),
+          ),
         // The transparent layer with our control: a tap goes to the video underneath as play / pause. Only taps are taken,
         // so a vertical swipe still reaches the PageView.
         if (_wantEmbed && _engine && _fg)
@@ -519,8 +630,17 @@ class _ReelPlayerState extends State<ReelPlayer> with WidgetsBindingObserver {
                   child: Container(
                     width: 72,
                     height: 72,
-                    decoration: BoxDecoration(shape: BoxShape.circle, color: C.cinema.withValues(alpha: 0.6)),
-                    child: Icon(_isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded, color: C.ivory, size: 44),
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: C.cinema.withValues(alpha: 0.6),
+                    ),
+                    child: Icon(
+                      _isPlaying
+                          ? Icons.pause_rounded
+                          : Icons.play_arrow_rounded,
+                      color: C.ivory,
+                      size: 44,
+                    ),
                   ),
                 ),
               ),
@@ -538,11 +658,18 @@ class _ReelPlayerState extends State<ReelPlayer> with WidgetsBindingObserver {
                 child: Container(
                   constraints: const BoxConstraints(minHeight: 48),
                   padding: const EdgeInsets.symmetric(horizontal: 12),
-                  decoration: BoxDecoration(color: C.cinema.withValues(alpha: 0.6), borderRadius: BorderRadius.circular(999)),
+                  decoration: BoxDecoration(
+                    color: C.cinema.withValues(alpha: 0.6),
+                    borderRadius: BorderRadius.circular(999),
+                  ),
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      const Icon(Icons.open_in_new_rounded, color: C.ivory, size: 18),
+                      const Icon(
+                        Icons.open_in_new_rounded,
+                        color: C.ivory,
+                        size: 18,
+                      ),
                       const SizedBox(width: 6),
                       Text('Open in Instagram', style: t(14, color: C.ivory)),
                     ],

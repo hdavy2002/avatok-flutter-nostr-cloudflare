@@ -158,12 +158,14 @@ void main() {
         return {'ok': true, 'items': [_network('hfrl_1'), _invite('hfiv_1')], 'nextCursor': null};
       });
       await _pump(tester, FeedScreen(repo: ReelsRepo(api), searchRepo: SearchRepo(api), onlineFetch: () async => 1));
-      expect(find.byTooltip('Call now'), findsOneWidget);
+      expect(find.byTooltip('Call now'), findsNothing);
+      expect(find.byTooltip('Book a time'), findsOneWidget);
       expect(find.text('INVITE'), findsNothing);
       expect(find.text('Not on ${Brand.name} yet'), findsNothing);
       await tester.fling(find.byType(PageView), const Offset(0, -900), 2000);
       await tester.pumpAndSettle();
       expect(find.byTooltip('Open New Star profile'), findsOneWidget);
+      expect(find.byTooltip('Booking unavailable — invite creator'), findsOneWidget);
       expect(find.byTooltip('Call now'), findsNothing);
     });
 

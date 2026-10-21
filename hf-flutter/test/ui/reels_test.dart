@@ -185,10 +185,14 @@ void main() {
       await tester.tap(find.byTooltip('Reel information').first);
       await tester.pumpAndSettle();
       expect(find.text('Caption hfrl_1'), findsOneWidget);
+      expect(find.text('Call now'), findsOneWidget);
+      expect(seen['hfrl_1'], isFalse); // information sheet pauses playback
       await tester.pump(const Duration(seconds: 9));
       await tester.pumpAndSettle();
       expect(find.text('Caption hfrl_1'), findsNothing);
-      expect(find.byTooltip('Call now'), findsWidgets);
+      expect(find.text('Call now'), findsNothing);
+      expect(seen['hfrl_1'], isTrue);
+      expect(find.byTooltip('Book a time'), findsWidgets);
       await tester.fling(find.byType(PageView), const Offset(0, -900), 2000);
       await tester.pumpAndSettle();
       expect(seen['hfrl_1'], isFalse);
