@@ -763,19 +763,14 @@ new_sqlite_classes = ["HfCallDO"]
 # (Text/image moderation runs on Workers AI in avatok-consumers — no OpenAI.)
 
 # ═══════════════════════════════════════════════════════════════════════════
-# STAGING (creator-marketplace Phase 1, audit A1). Deploy:
-#   wrangler deploy --env staging        → avatok-api-staging @ api-staging.avatok.ai
-# Fully separate state: -staging D1/R2/KV/queues. Vectorize/AI/Browser/Analytics
-# Engine are shared with prod (read-mostly or cost-free to share; revisit if a
-# phase needs isolated vectors). Secrets: `wrangler secret put X --env staging`
-# with Stripe TEST keys / Wise sandbox per secrets/secret-values.env "# staging".
+# RETIRED STAGING ENVIRONMENT (creator-marketplace Phase 1, audit A1).
+# Its separate D1/R2/KV/queues remain as retained data, but the public custom
+# domain was detached on 2026-10-21. Do not restore a route or schedule.
 # ═══════════════════════════════════════════════════════════════════════════
 [env.staging]
 name = "avatok-api-staging"
-
-[[env.staging.routes]]
-pattern = "api-staging.avatok.ai"
-custom_domain = true
+# [AVATOK-RETIRE-CF-1] The retired staging Worker has no public route.
+# Production Hello Fraands routes above remain attached to avatok-api.
 
 [env.staging.vars]
 CHAT_ARCHIVE_V2 = "0"
