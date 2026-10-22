@@ -276,10 +276,18 @@ let _fullIslandSeen = false;
 
 /** Session-only Clerk mount (no UI): fills the token bridge once per page. */
 export function ClerkSessionBridge() {
+  // [HF-FIX-BOOKING-DETAILS-2] Claim the provider in an EFFECT, never during render. A render that React
+  // starts and throws away (lazy/Suspense resolution, a state update landing mid-render) never runs its
+  // cleanup, so a render-phase claim leaked: the next, committed instance saw an owner that no longer
+  // existed, rendered null, and no ClerkProvider/ClerkBridge ever mounted (window.__siteToken stayed
+  // undefined, every authenticated call answered no_session). Effects run only for committed trees.
   const [me] = useState(() => Symbol('clerk-bridge'));
-  if (_providerOwner === null && !_fullIslandSeen) _providerOwner = me;
-  useEffect(() => () => { if (_providerOwner === me) _providerOwner = null; }, [me]);
-  if (_providerOwner !== me) return null;
+  const [owner, setOwner] = useState(false);
+  useEffect(() => {
+    if (_providerOwner === null && !_fullIslandSeen) { _providerOwner = me; setOwner(true); }
+    return () => { if (_providerOwner === me) _providerOwner = null; };
+  }, [me]);
+  if (!owner) return null;
   return <ClerkIsland>{null}</ClerkIsland>;
 }
 
