@@ -11130,5 +11130,20 @@
         "note": "The client fires this right before it reports the reel; the server effect is proven by D1 hf_reel_unplayable rows and the reel missing from GET /api/hf/reels."
       }
     ]
+  },
+  "HF-FIX-AVAIL-SAVE-1": {
+    "description": "Influencer availability saves work after the first save (version>=1 compare-and-set update).",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [],
+    "success": [
+      {
+        "event": "hf_booking_schedule_saved",
+        "property": "outcome",
+        "equals": "ok",
+        "min_events": 1,
+        "note": "A host saved availability; a second save must also be ok (version>=2)."
+      }
+    ]
   }
 }
