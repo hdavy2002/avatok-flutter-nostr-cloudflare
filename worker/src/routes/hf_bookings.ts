@@ -1,6 +1,7 @@
 import { requireHfAgeConfirmation } from "../lib/hf_age_eligibility";
 import type { Env } from "../types";
 import { isDemoHost, DEMO_MESSAGE } from "../lib/hf_demo"; // [HF-WIRE-14]
+import { callerHandle, capFirst } from "../lib/hf_call_math"; // [HF-FIX-BOOKING-NAMES-1]
 import { isFail, requireUser } from "../authz";
 import { json } from "../util";
 import { track } from "../hooks";
@@ -202,7 +203,23 @@ const BOOKING_ACTIVE = "('confirming','confirmed','pending_approval','starting',
 const BOOKING_APP = "hf_booking";
 const QUOTE_TTL_MS = 5 * 60_000;
 
-export function bookingPublic(row: BookingRow, role: "host" | "customer") {
+/** [HF-FIX-BOOKING-NAMES-1] Display names joined onto a booking: host name/slug (public), customer first-name handle (never phone/email). */
+export type BookingNames = { hostName: string | null; hostSlug: string | null; fanName: string | null };
+
+export async function loadBookingNames(env: Env, ids: string[]): Promise<Map<string, BookingNames>> {
+  const out = new Map<string, BookingNames>();
+  if (!ids.length) return out;
+  const marks = ids.map((_, i) => "?" + (i + 1)).join(",");
+  const rows = (await env.DB_META.prepare(
+    "SELECT b.id AS id, h.display_name AS host_name, h.slug AS host_slug, u.display_name AS fan_name FROM hf_bookings b " +
+    "LEFT JOIN hf_hosts h ON h.uid=b.host_uid LEFT JOIN users u ON u.uid=b.customer_uid WHERE b.id IN (" + marks + ")",
+  ).bind(...ids).all<{ id: string; host_name: string | null; host_slug: string | null; fan_name: string | null }>()).results ?? [];
+  for (const r of rows) out.set(r.id, { hostName: r.host_name, hostSlug: r.host_slug, fanName: r.fan_name });
+  return out;
+}
+
+export function bookingPublic(row: BookingRow, role: "host" | "customer", names?: BookingNames) {
+  const durationMinutes = Number(row.duration_min) > 0 ? Number(row.duration_min) : Math.round((Number(row.ends_at) - Number(row.starts_at)) / 60_000);
   const common = {
     id: row.id, status: row.status, hostUid: row.host_uid, customerUid: row.customer_uid,
     startUtc: new Date(Number(row.starts_at)).toISOString(), endUtc: new Date(Number(row.ends_at)).toISOString(),
@@ -210,9 +227,14 @@ export function bookingPublic(row: BookingRow, role: "host" | "customer") {
     canStart: role === "customer" && row.status === "confirmed" && row.settlement_status === "held" &&
       Date.now() >= Number(row.starts_at) - 5 * 60_000 && Date.now() < Number(row.ends_at),
     canCancel: (row.status === "confirmed" || row.status === "pending_approval") && row.settlement_status === "held",
+    durationMinutes,
     ...(row.call_id ? { callId: row.call_id } : {}),
+    ...(names ? { hostName: (names.hostName ?? "").trim() || "Influencer", hostSlug: names.hostSlug ?? null } : {}),
   };
-  return role === "host" ? { ...common, expectedHostNetPaise: Number(row.expected_host_net_paise) } : common;
+  if (role === "host") {
+    return { ...common, expectedHostNetPaise: Number(row.expected_host_net_paise), ...(names ? { customerHandle: capFirst(callerHandle(names.fanName)) } : {}) };
+  }
+  return common;
 }
 
 function eventTrack(env: Env, uid: string, event: string, props: Record<string, unknown>): void {
@@ -570,7 +592,8 @@ async function listRoute(req: Request, env: Env): Promise<Response> {
     .bind(...values).all<BookingRow>()).results ?? [];
   const more = rows.length > 50;
   const page = rows.slice(0, 50);
-  const bookings = page.map((row) => bookingPublic(row, role));
+  const names = await loadBookingNames(env, page.map((r) => r.id));
+  const bookings = page.map((row) => bookingPublic(row, role, names.get(row.id)));
   const last = page[page.length - 1];
   const nextCursor = more && last ? String(last.starts_at) + "." + last.id : undefined;
   return json({ bookings, ...(nextCursor ? { nextCursor } : {}) }, 200, { "cache-control": "private, no-store" });
@@ -583,7 +606,8 @@ async function detailRoute(req: Request, env: Env, id: string): Promise<Response
     .bind(id, auth.uid).first<BookingRow>();
   if (!row) return err(404, "booking_not_found");
   const role = row.host_uid === auth.uid ? "host" : "customer";
-  return json({ booking: bookingPublic(row, role) }, 200, { "cache-control": "private, no-store" });
+  const names = await loadBookingNames(env, [row.id]);
+  return json({ booking: bookingPublic(row, role, names.get(row.id)) }, 200, { "cache-control": "private, no-store" });
 }
 
 /** [HF-WIRE-8] HF-REEL-28: a fan cancels free until 1 h before the booked minute; after that the hold is kept. Influencer cancels always refund. */
@@ -640,7 +664,8 @@ export async function cancelRoute(req: Request, env: Env, id: string, opts: { fa
     .bind(row.id, auth.uid).first<BookingRow>();
   if (!saved || saved.status !== "cancelled") return err(409, "booking_not_cancellable");
   eventTrack(env, auth.uid, "hf_booking_cancelled", { booking_id: row.id, call_id: row.call_id, role, released_paise: row.reserved_paise });
-  return json({ booking: bookingPublic(saved, role) }, 200, { "cache-control": "private, no-store" });
+  const savedNames = await loadBookingNames(env, [saved.id]);
+  return json({ booking: bookingPublic(saved, role, savedNames.get(saved.id)) }, 200, { "cache-control": "private, no-store" });
 }
 
 async function startBookingRoute(req: Request, env: Env, bookingId: string): Promise<Response> {
@@ -765,7 +790,7 @@ async function hostSummaryRoute(req: Request, env: Env): Promise<Response> {
   return json({ summary: {
     upcomingCount: Number(summary?.upcoming_count ?? 0),
     expectedHostNetPaise: await hostExpectedNetPaise(env, auth.uid),
-    nextBooking: next ? bookingPublic(next, "host") : null,
+    nextBooking: next ? bookingPublic(next, "host", (await loadBookingNames(env, [next.id])).get(next.id)) : null,
   } }, 200, { "cache-control": "private, no-store" });
 }
 

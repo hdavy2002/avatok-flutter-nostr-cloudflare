@@ -97,3 +97,39 @@ describe("HF booking availability routes", () => {
     expect(await response!.json()).toEqual({ schedule, legacyPreview: null });
   });
 });
+
+describe("[HF-FIX-BOOKING-NAMES-1] booking list carries display names", () => {
+  const row = {
+    id: "b1", host_uid: "host-1", customer_uid: "cust-1", starts_at: Date.parse("2026-10-25T10:00:00Z"), ends_at: Date.parse("2026-10-25T10:30:00Z"),
+    host_timezone: "Asia/Kolkata", status: "confirmed", duration_min: 30, reserved_paise: 5000, expected_host_net_paise: 3000,
+    call_id: "c1", settlement_status: "held",
+  };
+  const namesEnv = {
+    DB_META: {
+      prepare: (sql: string) => ({
+        bind: (..._a: unknown[]) => ({
+          first: async () => sql.includes("hf_hosts WHERE uid") ? { uid: "host-1" } : null,
+          all: async () => ({
+            results: sql.includes("LEFT JOIN users")
+              ? [{ id: "b1", host_name: "Meher", host_slug: "meher", fan_name: "Rohit Sharma 9876543210" }]
+              : [row],
+          }),
+        }),
+      }),
+    },
+  } as unknown as Env;
+
+  it("host role sees hostName, hostSlug, customerHandle, durationMinutes and no phone/email", async () => {
+    const res = await hfBookingsRoute(new Request("https://x.invalid/api/hf/bookings?role=host"), namesEnv);
+    const body = await res!.json() as { bookings: Array<Record<string, unknown>> };
+    expect(body.bookings[0]).toMatchObject({ hostName: "Meher", hostSlug: "meher", customerHandle: "Rohit", durationMinutes: 30 });
+    expect(JSON.stringify(body)).not.toMatch(/phone|email|9876543210|Sharma/i);
+  });
+
+  it("customer role gets host names but no customerHandle", async () => {
+    const res = await hfBookingsRoute(new Request("https://x.invalid/api/hf/bookings?role=customer"), namesEnv);
+    const body = await res!.json() as { bookings: Array<Record<string, unknown>> };
+    expect(body.bookings[0]).toMatchObject({ hostName: "Meher", hostSlug: "meher", durationMinutes: 30 });
+    expect(body.bookings[0]).not.toHaveProperty("customerHandle");
+  });
+});

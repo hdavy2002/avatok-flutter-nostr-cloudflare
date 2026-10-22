@@ -17,7 +17,7 @@ export interface BookingQuote {
 export interface HfBooking {
   id: string; status: string; hostUid: string; customerUid: string; startUtc: string; endUtc: string;
   hostTimezone: string; reservedPaise: number; expectedHostNetPaise?: number; callId?: string | null;
-  hostName?: string; customerHandle?: string; durationMinutes?: number;
+  hostName?: string; hostSlug?: string | null; customerHandle?: string; durationMinutes?: number;
 }
 export interface BookingSummary {
   upcomingCount: number; expectedHostNetPaise: number; nextBooking: HfBooking | null;
