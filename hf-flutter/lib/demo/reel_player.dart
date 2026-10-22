@@ -211,8 +211,9 @@ class ReelPlayer extends StatefulWidget {
   static Uri instagramUri(String embed) {
     final u = Uri.tryParse(embed);
     if (u == null || !u.host.contains('instagram')) return embedUri(embed);
-    final m = RegExp(r'^/(?:reel|reels|p|tv)/([A-Za-z0-9_-]+)')
-        .firstMatch(u.path);
+    final m = RegExp(
+      r'^/(?:reel|reels|p|tv)/([A-Za-z0-9_-]+)',
+    ).firstMatch(u.path);
     if (m == null) return u;
     return Uri.parse('https://www.instagram.com/reel/${m.group(1)}/embed/');
   }
@@ -222,9 +223,9 @@ class ReelPlayer extends StatefulWidget {
   static String? youtubeId(String embed) {
     final u = Uri.tryParse(embed);
     if (u == null || !u.host.contains('youtube')) return null;
-    return RegExp(r'^/embed/([A-Za-z0-9_-]{6,20})$')
-        .firstMatch(u.path)
-        ?.group(1);
+    return RegExp(
+      r'^/embed/([A-Za-z0-9_-]{6,20})$',
+    ).firstMatch(u.path)?.group(1);
   }
 
   /// [HF-REEL-BLUR-2] HF-REEL-48: heights in CSS px of YouTube's own top bar and bottom strip. The page blurs them only
@@ -249,8 +250,9 @@ class ReelPlayer extends StatefulWidget {
   }) {
     final id = youtubeId(embed);
     if (id == null) return null;
-    final origin = const HtmlEscape(HtmlEscapeMode.attribute)
-        .convert(youtubeOrigin);
+    final origin = const HtmlEscape(
+      HtmlEscapeMode.attribute,
+    ).convert(youtubeOrigin);
     return '<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1">'
         '<style>html,body{margin:0;width:100%;height:100%;background:#000;overflow:hidden;position:fixed;inset:0;touch-action:none}'
         '#p{position:absolute;top:0;left:0;width:100%;height:100%;border:0;transform-origin:50% 50%}'
@@ -684,8 +686,6 @@ class _ReelPlayerState extends State<ReelPlayer> with WidgetsBindingObserver {
     final o = ReelPlayer.testPlayer;
     if (o != null) return o(widget.reel, widget.active);
     if (_wantEmbed && _failReason != null) return _fallback();
-    // The embed stays below the system status bar: nothing of it is ever drawn under it.
-    final top = MediaQuery.paddingOf(context).top;
     return Stack(
       fit: StackFit.expand,
       children: [
@@ -714,41 +714,7 @@ class _ReelPlayerState extends State<ReelPlayer> with WidgetsBindingObserver {
               child: const SizedBox.expand(),
             ),
           ),
-        if (_isIg && _engine && _fg) ...[
-          // [HF-REEL-CLEAN-1] no play / pause glyph over the video (owner 2026-10-22): a tap just plays or pauses
-          Positioned(
-            top: top + 50,
-            left: 28,
-            child: Semantics(
-              button: true,
-              label: 'Open in Instagram',
-              child: GestureDetector(
-                key: const ValueKey('reel-open-ig'),
-                onTap: _openExternal,
-                child: Container(
-                  constraints: const BoxConstraints(minHeight: 48),
-                  padding: const EdgeInsets.symmetric(horizontal: 12),
-                  decoration: BoxDecoration(
-                    color: C.cinema.withValues(alpha: 0.6),
-                    borderRadius: BorderRadius.circular(999),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const Icon(
-                        Icons.open_in_new_rounded,
-                        color: C.ivory,
-                        size: 18,
-                      ),
-                      const SizedBox(width: 6),
-                      Text('Open in Instagram', style: t(14, color: C.ivory)),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ],
+        // [HF-REEL-NOIG-1] no "Open in Instagram" chip on the video (owner 2026-10-22); the link is in the reel's info sheet
       ],
     );
   }

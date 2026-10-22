@@ -337,7 +337,8 @@ class _MainShellState extends State<MainShell> {
         child: SafeArea(
           top: false,
           child: SizedBox(
-            height: 52,
+            // [HF-REEL-FOOTER-1] taller bar (was 52) so there is room above the icons (owner 2026-10-22)
+            height: 66,
             child: Row(
               children: [
                 for (var i = 0; i < _items.length; i++)

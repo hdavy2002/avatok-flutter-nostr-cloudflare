@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/brand.dart';
 import '../../data/unplayable_reels.dart';
@@ -758,6 +759,12 @@ class _ReelPageState extends State<ReelPage>
     ),
   );
 
+  /// The reel's original post on Instagram / YouTube, when it is a real reel with a link.
+  Uri? get _originalUrl {
+    final u = Uri.tryParse(widget.real?.url ?? widget.real?.embedUrl ?? '');
+    return u != null && u.scheme == 'https' ? u : null;
+  }
+
   Future<void> _info(BuildContext context) async {
     final r = widget.reel;
     Telemetry.event('hf_reel_action', {'action': 'info'});
@@ -788,6 +795,23 @@ class _ReelPageState extends State<ReelPage>
                   ),
                   const SizedBox(height: 12),
                   Text(r.caption, style: t(16)),
+                  // [HF-REEL-NOIG-1] the link to the original post lives here, not on the video
+                  if (_originalUrl != null)
+                    TextButton.icon(
+                      key: const ValueKey('reel-open-original'),
+                      onPressed: () => unawaited(
+                        launchUrl(
+                          _originalUrl!,
+                          mode: LaunchMode.externalApplication,
+                        ).catchError((Object _) => false),
+                      ),
+                      icon: const Icon(Icons.open_in_new_rounded),
+                      label: Text(
+                        _originalUrl!.host.contains('instagram')
+                            ? 'Open in Instagram'
+                            : 'Watch on YouTube',
+                      ),
+                    ),
                   const SizedBox(height: 12),
                   if (widget.real?.invite != null) ...[
                     Text(

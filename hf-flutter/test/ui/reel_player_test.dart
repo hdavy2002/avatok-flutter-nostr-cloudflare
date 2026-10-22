@@ -97,7 +97,10 @@ void main() {
     'a tap on the transparent layer toggles the video underneath, and nothing is drawn over it',
     (tester) async {
       await pumpPlayer(tester, _reel('a'));
-      expect(find.byKey(const ValueKey('reel-open-ig')), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('reel-open-ig')),
+        findsNothing,
+      ); // HF-REEL-NOIG-1
       await tester.tap(find.byKey(const ValueKey('reel-tap')));
       await tester.pump();
       expect(js.where((s) => s.contains('hfToggle')), hasLength(1));
@@ -106,18 +109,17 @@ void main() {
     },
   );
 
-  testWidgets(
-    'YouTube: the tap only toggles, no glyph, no Instagram chip',
-    (tester) async {
-      await pumpPlayer(tester, _reel('y', platform: 'youtube'));
-      await tester.tap(find.byKey(const ValueKey('reel-tap')));
-      await tester.pump();
-      expect(js.where((s) => s.contains('hfToggle')), hasLength(1));
-      expect(find.byKey(const ValueKey('reel-glyph')), findsNothing);
-      expect(find.byKey(const ValueKey('reel-open-ig')), findsNothing);
-      await tester.pump(const Duration(seconds: 1));
-    },
-  );
+  testWidgets('YouTube: the tap only toggles, no glyph, no Instagram chip', (
+    tester,
+  ) async {
+    await pumpPlayer(tester, _reel('y', platform: 'youtube'));
+    await tester.tap(find.byKey(const ValueKey('reel-tap')));
+    await tester.pump();
+    expect(js.where((s) => s.contains('hfToggle')), hasLength(1));
+    expect(find.byKey(const ValueKey('reel-glyph')), findsNothing);
+    expect(find.byKey(const ValueKey('reel-open-ig')), findsNothing);
+    await tester.pump(const Duration(seconds: 1));
+  });
 
   testWidgets('ready player honours inactive state', (tester) async {
     await pumpPlayer(tester, _reel('inactive'), active: false);
@@ -157,18 +159,18 @@ void main() {
   );
 
   testWidgets(
-    'Instagram: no video found shows Watch on Instagram; Open in Instagram launches the reel',
+    'Instagram: no video found shows Watch on Instagram, which opens the reel',
     (tester) async {
       await pumpPlayer(tester, _reel('a'));
-      await tester.tap(find.byKey(const ValueKey('reel-open-ig')));
-      expect(
-        launched.single.toString(),
-        'https://www.instagram.com/reel/Cx12345/',
-      );
       msgs.add('error:novideo');
       await tester.pump();
       expect(find.text('Watch on Instagram'), findsOneWidget);
       expect(events.single.$2, {'platform': 'instagram', 'reason': 'novideo'});
+      await tester.tap(find.byKey(const ValueKey('reel-fallback-open')));
+      expect(
+        launched.single.toString(),
+        'https://www.instagram.com/reel/Cx12345/',
+      );
     },
   );
 
