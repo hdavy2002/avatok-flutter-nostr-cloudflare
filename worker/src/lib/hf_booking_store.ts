@@ -110,29 +110,25 @@ export async function saveHfBookingSchedule(
   if (!Number.isInteger(expectedVersion) || expectedVersion < 0 || errors.length) {
     throw new Error(errors.length ? errors.join("; ") : "expectedVersion must be non-negative");
   }
-  const row = await env.DB_META.prepare(`
-    INSERT INTO hf_availability_schedules
-      (host_uid,timezone,version,durations_json,slot_interval_min,buffer_min,min_notice_min,horizon_days,rules_json,exceptions_json,updated_at)
-    SELECT ?1,?2,1,?3,?4,?5,?6,?7,?8,?9,?10
-    WHERE ?11=0 AND EXISTS (
+  const lockOk = `EXISTS (
       SELECT 1 FROM hf_booking_schedule_locks WHERE host_uid=?1 AND token=?12 AND expires_at>?10
-    )
-    ON CONFLICT(host_uid) DO UPDATE SET
-      timezone=excluded.timezone,
-      version=hf_availability_schedules.version+1,
-      durations_json=excluded.durations_json,
-      slot_interval_min=excluded.slot_interval_min,
-      buffer_min=excluded.buffer_min,
-      min_notice_min=excluded.min_notice_min,
-      horizon_days=excluded.horizon_days,
-      rules_json=excluded.rules_json,
-      exceptions_json=excluded.exceptions_json,
-      updated_at=excluded.updated_at
-    WHERE hf_availability_schedules.version=?11 AND EXISTS (
-      SELECT 1 FROM hf_booking_schedule_locks WHERE host_uid=?1 AND token=?12 AND expires_at>?10
-    )
-    RETURNING version
-  `).bind(
+    )`;
+  // [HF-FIX-AVAIL-SAVE-1] First save (no row yet) is an INSERT; every later save is a compare-and-set UPDATE.
+  // The old single INSERT..SELECT..WHERE ?11=0 yielded zero rows for expectedVersion>=1, so ON CONFLICT never ran
+  // and every second save returned null (409 schedule_changed).
+  const sql = expectedVersion === 0
+    ? `INSERT INTO hf_availability_schedules
+        (host_uid,timezone,version,durations_json,slot_interval_min,buffer_min,min_notice_min,horizon_days,rules_json,exceptions_json,updated_at)
+       SELECT ?1,?2,1,?3,?4,?5,?6,?7,?8,?9,?10
+       WHERE ?11=0 AND ${lockOk}
+       ON CONFLICT(host_uid) DO NOTHING
+       RETURNING version`
+    : `UPDATE hf_availability_schedules SET
+        timezone=?2, version=version+1, durations_json=?3, slot_interval_min=?4, buffer_min=?5, min_notice_min=?6,
+        horizon_days=?7, rules_json=?8, exceptions_json=?9, updated_at=?10
+       WHERE host_uid=?1 AND version=?11 AND ${lockOk}
+       RETURNING version`;
+  const row = await env.DB_META.prepare(sql).bind(
     hostUid, schedule.timezone, JSON.stringify(schedule.durationsMinutes), schedule.slotIntervalMinutes,
     schedule.bufferMinutes, schedule.minNoticeMinutes, schedule.horizonDays,
     JSON.stringify(schedule.rules), JSON.stringify(schedule.exceptions), now, expectedVersion, lockToken,
