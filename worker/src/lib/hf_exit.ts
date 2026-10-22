@@ -16,8 +16,9 @@ import {
 } from "./hf_payouts";
 import { createRefundRequest, cancelRefund, refundableFor, DEFAULT_REFUND_WINDOW_DAYS, OPEN_REFUND_STATUSES, type RefundRow } from "./hf_refunds";
 import { getTestBalance } from "./hf_credits";
-import { hfTokensOn, tokenExitSummary, createExitPayoutTokens, cancelExitPayoutTokens, finishTokenExit, refundIdsOf, type TokenExitExtra } from "./hf_exit_tokens"; // [HF-TOK-EXIT-1]
-import { requestPlayRefunds, cancelPlayRefund, hasActiveCall } from "./hf_play_refunds"; // [HF-TOK-EXIT-1]
+import { hfTokensOn, tokenExitSummary, createExitPayoutTokens, cancelExitPayoutTokens, finishTokenExit, refundIdsOf, exitPayoutPlan, payoutSetupNextStep, type TokenExitExtra, type SetupNextStep } from "./hf_exit_tokens"; // [HF-TOK-EXIT-1]
+import { isFanPayoutRef } from "./hf_fan_payout"; // [HF-FIX-CLOSE-ACCOUNT-1]
+import { cancelPlayRefund, hasActiveCall } from "./hf_play_refunds"; // [HF-TOK-EXIT-1]
 import { hostSummary, wholeRupees, isHostLedgerRef } from "./hf_host_ledger"; // [HF-TOK-EXIT-1]
 import { drainHfBookingHolds } from "./hf_booking_store";
 import { readMoneyRules } from "./hf_money_rules"; // [HF-WIRE-13] HF-REEL-35 rule 7: refunds go to the wallet, never back to a card/UPI
@@ -248,7 +249,7 @@ async function cancelExitPayout(env: Env, uid: string, id: string): Promise<bool
 export type Trigger = (env: Env, uid: string) => Promise<unknown>;
 export type StartResult =
   | { ok: true; status: ExitStatus; payoutId: string | null; refundId: string | null; replay?: boolean }
-  | { ok: false; status: number; error: string; message: string; forfeitRupees?: number };
+  | { ok: false; status: number; error: string; message: string; forfeitRupees?: number; nextStep?: SetupNextStep };
 
 async function upsertExit(env: Env, uid: string, status: ExitStatus, payoutId: string | null, refundId: string | null, note: string | null, refundIds?: string[]): Promise<void> {
   const now = Date.now();
@@ -321,12 +322,18 @@ export async function startExit(env: Env, uid: string, o: { forfeit: boolean; tr
 }
 
 /**
- * [HF-TOK-EXIT-1] Closing with tokens on. No WalletDO: unspent PURCHASE lots become one play_refund request each (admin confirms, Google refunds),
- * earnings come out of the host ledger as a closure payout after the 7-day hold. A person on a call (caller or host) cannot start.
+ * [HF-TOK-EXIT-1] Closing with tokens on. No WalletDO. [HF-FIX-CLOSE-ACCOUNT-1] (owner 2026-10-23, HF-PAY-14): the person's wallet money (the rupees
+ * the wallet shows, net of GST) and an influencer's matured earnings leave as ONE closure payout to their OWN UPI after the one-time ID + UPI
+ * check, exactly like Payout. There is NO refund to the original payment any more. Earnings come out after the 7-day hold (cron).
  * Test lots are removed and open debts written off when everything is settled (finishTokenExit, run just before the deletion).
+ * A person on a call (caller or host) cannot start.
  */
-async function startTokenExit(env: Env, uid: string, o: { forfeit: boolean; trigger: Trigger }, flags: ExitFlags): Promise<StartResult> {
-  const no = (status: number, error: string, message: string, extra: { forfeitRupees?: number } = {}): StartResult => ({ ok: false, status, error, message, ...extra });
+async function startTokenExit(env: Env, uid: string, o: { forfeit: boolean; trigger: Trigger }, _flags: ExitFlags): Promise<StartResult> {
+  const no = (status: number, error: string, message: string, extra: { forfeitRupees?: number; nextStep?: SetupNextStep } = {}): StartResult => {
+    // [HF-FIX-CLOSE-ACCOUNT-1] every refusal is a telemetry event (never a silent failure); the uid is the first argument
+    void track(env, uid, "hf_exit_start_failed", PAYOUT_APP, { error, status, mode: "tokens", forfeit: o.forfeit });
+    return { ok: false, status, error, message, ...extra };
+  };
   if (await hasActiveCall(env, uid)) return no(409, "active_call", "You have a call in progress. Please finish it before closing your account.");
   let s: ExitSummary;
   try { s = await exitSummary(env, uid); } catch (e) {
@@ -337,37 +344,33 @@ async function startTokenExit(env: Env, uid: string, o: { forfeit: boolean; trig
     await env.DB_META.prepare("DELETE FROM hf_exit_requests WHERE uid=?1 AND status='booking_cleanup'").bind(uid).run();
     return no(409, "nothing_to_settle", "You have no money to settle. You can close your account now.");
   }
+  const ti = s.tokensInfo;
+  if (ti?.debtBlocked) return no(409, "debt_open", "There is an open balance on your account. Please write to us from the Support page and we will settle it with you.");
+  // The wallet money needs a UPI ID and the one-time ID check BEFORE anything is created ("needs bank/UPI first").
+  if ((ti?.walletPayoutPaise ?? 0) > 0 && !ti?.payoutReady) {
+    return ti?.upiOk
+      ? no(409, "kyc_required", "We check your ID once, before your first payout. Do that first, then close your account.", { nextStep: payoutSetupNextStep(true) })
+      : no(409, "upi_required", "Add your UPI ID first (Me, then Payout in the app), then close your account.", { nextStep: payoutSetupNextStep(false) });
+  }
   if (s.forfeitRupees > 0 && !o.forfeit) {
     return no(409, "forfeit_required", s.bankOk ? "Some money cannot be paid out." : "Add and verify your bank account to receive your earnings, or choose to give them up.", { forfeitRupees: s.forfeitRupees });
   }
-  const ti = s.tokensInfo;
-  let refundIds: string[] = [], payoutId: string | null = null;
-  // [HF-WIRE-13] rule 7 (see startExit): wallet money is withdrawn first, never refunded to Google Play / the card.
-  const rules = await readMoneyRules(env);
-  if (ti && ti.refundPaise > 0 && !rules.gatewayRefundsEnabled) {
-    if (ti.refundPaise >= Math.max(1, rules.fanPayoutMinRupees) * 100) return no(409, "withdraw_first", WITHDRAW_FIRST_MESSAGE, { forfeitRupees: 0 });
-    if (!o.forfeit) return no(409, "forfeit_required", SMALL_BALANCE_MESSAGE, { forfeitRupees: Math.floor(ti.refundPaise / 100) });
-  }
-  if (ti && ti.refundPaise > 0 && rules.gatewayRefundsEnabled) {
-    const r = await requestPlayRefunds(env, uid, { exit: true, windowDays: flags.windowDays });
-    if (!r.ok) return no(r.status, r.error, r.message);
-    refundIds = r.ids;
-  }
-  // Earnings still in the 7-day hold: ONE closure payout is made for everything once the hold ends (cron).
-  if (s.bankOk && s.withdrawable > 0 && s.held === 0) {
-    const p = await createExitPayoutTokens(env, uid);
-    if (!p.ok) {
-      for (const id of refundIds) await cancelPlayRefund(env, id, uid, true);
-      return no(p.status, p.error, p.message);
+  let payoutId: string | null = null;
+  // Earnings still in the 7-day hold: ONE closure payout (wallet money + earnings) is made once the hold ends (cron), not one now and one later.
+  if (s.held === 0) {
+    const pl = await exitPayoutPlan(env, uid);
+    if (pl.walletPaise > 0 || (pl.earnRupees > 0 && pl.earnDestOk)) {
+      const p = await createExitPayoutTokens(env, uid);
+      if (!p.ok) return no(p.status, p.error, p.message, p.nextStep ? { nextStep: p.nextStep } : {});
+      payoutId = p.id;
     }
-    payoutId = p.id;
   }
-  const status: ExitStatus = s.held > 0 ? "waiting_hold" : payoutId || refundIds.length ? "waiting_payouts" : "ready";
-  await upsertExit(env, uid, status, payoutId, refundIds[0] ?? null, s.forfeitRupees > 0 ? `forfeit:${s.forfeitRupees}` : null, refundIds);
+  const status: ExitStatus = s.held > 0 ? "waiting_hold" : payoutId ? "waiting_payouts" : "ready";
+  await upsertExit(env, uid, status, payoutId, null, s.forfeitRupees > 0 ? `forfeit:${s.forfeitRupees}` : null, []);
   await forceHostOffline(env, uid);
-  void track(env, uid, "hf_exit_started", PAYOUT_APP, { status, payout: !!payoutId, refund: refundIds.length, forfeit: s.forfeitRupees, mode: "tokens" });
+  void track(env, uid, "hf_exit_started", PAYOUT_APP, { status, payout: !!payoutId, wallet_payout_paise: ti?.walletPayoutPaise ?? 0, forfeit: s.forfeitRupees, mode: "tokens" });
   if (status === "ready") await advanceExit(env, (await getExitRow(env, uid))!, o.trigger);
-  return { ok: true, status, payoutId, refundId: refundIds[0] ?? null };
+  return { ok: true, status, payoutId, refundId: null };
 }
 
 /** [HF-TOK-EXIT-1] Cancel a token closure: allowed only while no play_refund / payout has been picked up by an admin. */
@@ -380,7 +383,7 @@ async function cancelTokenExit(env: Env, uid: string, row: ExitRow): Promise<{ o
     return { ok: false, status: 409, error: "cannot_cancel", message: "Your money is already being paid out, so this can no longer be cancelled." };
   }
   if (p?.status === "requested" && row.payout_id) {
-    const ok = isHostLedgerRef(p.wallet_ref) ? await cancelExitPayoutTokens(env, uid, row.payout_id) : await cancelExitPayout(env, uid, row.payout_id);
+    const ok = isHostLedgerRef(p.wallet_ref) || isFanPayoutRef(p.wallet_ref) ? await cancelExitPayoutTokens(env, uid, row.payout_id) : await cancelExitPayout(env, uid, row.payout_id);
     if (!ok) return { ok: false, status: 502, error: "wallet_error", message: "We couldn't release that money. Please try again." };
   }
   for (const r of refunds) {
@@ -447,13 +450,33 @@ export async function advanceExit(env: Env, row: ExitRow, trigger: Trigger, now 
     if (status === "waiting_hold") held = tokenMode ? wholeRupees((await hostSummary(env, row.uid, now)).pendingPaise) : (await withdrawableFor(env, row.uid, now)).held;
     let step = nextExitStep({ status, held, hasPayout: !!payoutId, payoutStatus: pay?.status ?? null, refundStatus });
     if (step === "make_payout") {
-      const ready = await hostPayoutReadiness(env, row.uid);
-      const w = tokenMode ? { withdrawable: wholeRupees((await hostSummary(env, row.uid, now)).availablePaise) } : await withdrawableFor(env, row.uid, now);
-      if (w.withdrawable > 0 && ready.bankOk) {
-        const p = tokenMode ? await createExitPayoutTokens(env, row.uid, now) : await createExitPayout(env, row.uid, now);
-        if (!p.ok) { console.warn("[hf-exit] payout not created", row.uid, p.error); return status; }
-        payoutId = p.id;
-      } else if (w.withdrawable > 0) note = `forfeit:${w.withdrawable}`; // bank missing: the user already agreed to give these earnings up
+      if (tokenMode) {
+        // [HF-FIX-CLOSE-ACCOUNT-1] ONE closure payout: wallet money (to UPI) + matured earnings. Wallet money never gets forfeited silently:
+        // if the UPI / ID check went missing since the start, the closure waits (and says so in telemetry) instead of dropping the money.
+        const pl = await exitPayoutPlan(env, row.uid, now);
+        const walletBlocked = pl.walletPaise > 0 && !pl.setup.payoutReady;
+        if (pl.debtBlocked || walletBlocked) {
+          void track(env, row.uid, "hf_exit_payout_blocked", PAYOUT_APP, { reason: pl.debtBlocked ? "debt_open" : pl.setup.upiOk ? "kyc_required" : "upi_required", wallet_paise: pl.walletPaise });
+          return status;
+        }
+        if (pl.walletPaise > 0 || (pl.earnRupees > 0 && pl.earnDestOk)) {
+          const p = await createExitPayoutTokens(env, row.uid, now);
+          if (!p.ok) {
+            console.warn("[hf-exit] payout not created", row.uid, p.error);
+            void track(env, row.uid, "hf_exit_payout_failed", PAYOUT_APP, { error: p.error, status: p.status });
+            return status;
+          }
+          payoutId = p.id;
+        } else if (pl.earnRupees > 0) note = `forfeit:${pl.earnRupees}`; // bank missing: the user already agreed to give these earnings up
+      } else {
+        const ready = await hostPayoutReadiness(env, row.uid);
+        const w = await withdrawableFor(env, row.uid, now);
+        if (w.withdrawable > 0 && ready.bankOk) {
+          const p = await createExitPayout(env, row.uid, now);
+          if (!p.ok) { console.warn("[hf-exit] payout not created", row.uid, p.error); return status; }
+          payoutId = p.id;
+        } else if (w.withdrawable > 0) note = `forfeit:${w.withdrawable}`; // bank missing: the user already agreed to give these earnings up
+      }
       const p2 = payoutId ? await env.DB_META.prepare("SELECT status FROM hf_payout_requests WHERE id=?1").bind(payoutId).first<{ status: string }>().catch(() => null) : null;
       step = nextExitStep({ status: "waiting_payouts", held: 0, hasPayout: !!payoutId, payoutStatus: p2?.status ?? null, refundStatus });
       status = "waiting_payouts";

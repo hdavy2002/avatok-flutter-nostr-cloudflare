@@ -26,13 +26,18 @@ async function purchaseLots(env: Env, uid: string): Promise<Array<Lot & { reserv
     .filter((l) => l.leftMicro > 0);
 }
 
-/** Paise of real (purchase) money free to withdraw now, in whole rupees. Open debt = 0. */
-export async function fanWithdrawablePaise(env: Env, uid: string): Promise<number> {
-  if (await hasOpenDebt(env, uid)) return 0;
+/** [HF-FIX-CLOSE-ACCOUNT-1] Paise of real (purchase) money free right now, NOT rounded and ignoring open debt. */
+export async function fanPurchasePaise(env: Env, uid: string): Promise<number> {
   const lots = await purchaseLots(env, uid);
   let total = 0n;
   for (const l of lots) total += (BigInt(Math.trunc(l.leftMicro)) * BigInt(Math.trunc(l.valuePaisePerToken))) / 1_000_000n;
-  return Math.floor(Number(total) / 100) * 100;
+  return Number(total);
+}
+
+/** Paise of real (purchase) money free to withdraw now, in whole rupees. Open debt = 0. */
+export async function fanWithdrawablePaise(env: Env, uid: string): Promise<number> {
+  if (await hasOpenDebt(env, uid)) return 0;
+  return Math.floor((await fanPurchasePaise(env, uid)) / 100) * 100;
 }
 
 export type TakeResult = { ok: true; again: boolean; takenPaise: number } | { ok: false; reason: "insufficient" | "conflict" | "debt" | "invalid" };

@@ -10,6 +10,8 @@ vi.mock("./whatsapp_notify", () => ({ verifiedWhatsAppNumber: async () => null }
 vi.mock("./whatsapp_send", () => ({ sendWhatsAppText: async () => ({ ok: true }) }));
 vi.mock("../routes/wallet", () => ({ walletOp: async () => ({ status: 200, body: { balance: 0, held: 0 } }) }));
 vi.mock("./hf_credits", () => ({ getTestBalance: async () => ({ balance: 0, reserved: 0 }) }));
+// [HF-FIX-CLOSE-ACCOUNT-1] the booking tables are not part of this harness; the drain is covered by its own tests (it was failing every startExit test here)
+vi.mock("./hf_booking_store", () => ({ drainHfBookingHolds: async () => true }));
 vi.mock("./payments/registry", () => ({ resolveGateway: () => null }));
 
 import { makeDb } from "./hf_token_d1_shim";
@@ -26,7 +28,7 @@ const T = (n: number) => Math.round(n * MICRO);
 const DAY = 86_400_000;
 const MIGS = [
   "2026-10-10-hf-tokens.sql", "2026-10-09-hf-hosts.sql", "2026-10-09-hf-calls.sql", "2026-10-09-hf-credits.sql", "2026-10-09-hf-payouts.sql",
-  "2026-10-09-hf-host-kyc.sql", "2026-10-10-hf-calls-token-snapshot.sql", "2026-10-09-hf-topups.sql", "2026-10-10-hf-wallet-exit.sql", "2026-10-10-hf-tok-exit-alters.sql",
+  "2026-10-09-hf-host-kyc.sql", "2026-10-10-hf-calls-token-snapshot.sql", "2026-10-09-hf-topups.sql", "2026-10-10-hf-wallet-exit.sql", "2026-10-10-hf-tok-exit-alters.sql", "2026-10-19-hf-money-rules-alters.sql",
 ];
 
 let env: any;
@@ -204,21 +206,58 @@ describe("closing: test lots and debts", () => {
 });
 
 describe("startExit with tokens", () => {
-  it("a caller: one refund per purchase lot, test lot ignored in money; closing waits for the admin", async () => {
-    await lot("u1", "purchase", 100, 82, "GPA.1", 82);
-    await lot("u1", "purchase", 50, 82, "GPA.2", 41);
+  // [HF-FIX-CLOSE-ACCOUNT-1] owner 2026-10-23: closing pays the WALLET balance (net of GST) to the person's own UPI; no refund to the original payment.
+  const setupPayout = (uid: string) => {
+    raw().prepare("INSERT INTO hf_kyc (uid, verified_at, updated_at) VALUES (?, 1, 1)").run(uid);
+    raw().prepare("INSERT INTO hf_payout (uid, upi_enc, upi_verified, updated_at) VALUES (?, 'u', 0, 1)").run(uid);
+  };
+  it("a caller: the summary equals the wallet (net of GST), not the gross paid; no refund is created", async () => {
+    await lot("u1", "purchase", 100, 82, "GPA.1", 100); // paid Rs100 incl. GST, wallet value Rs82
+    await lot("u1", "purchase", 50, 82, "GPA.2", 50);   // paid Rs50, wallet value Rs41
     await lot("u1", "test", 30, 100, "t1");
     const s = await exitSummary(env, "u1");
     expect(s.hasMoney).toBe(true);
-    expect(s.refundable).toBeCloseTo(123, 5);
+    expect(s.paidBalance).toBeCloseTo(123, 5); // the wallet, not Rs150 (what was paid)
+    expect(s.refundable).toBe(0);
+    expect(s.tokensInfo?.walletPaise).toBe(12300);
+    expect(s.tokensInfo?.walletPayoutPaise).toBe(12300);
+  });
+
+  it("a caller without a UPI ID / ID check cannot start; nothing is taken from the wallet", async () => {
+    await lot("u1", "purchase", 100, 82, "GPA.1", 100);
+    const r: any = await startExit(env, "u1", { forfeit: false });
+    expect(r.ok).toBe(false);
+    expect(r.error).toBe("upi_required");
+    expect(r.nextStep.type).toBe("upi");
+    raw().prepare("INSERT INTO hf_payout (uid, upi_enc, upi_verified, updated_at) VALUES ('u1','u',0,1)").run();
+    const r2: any = await startExit(env, "u1", { forfeit: false });
+    expect(r2.error).toBe("kyc_required");
+    expect(raw().prepare("SELECT COUNT(*) AS n FROM hf_payout_requests").get().n).toBe(0);
+    expect(raw().prepare("SELECT COUNT(*) AS n FROM hf_refund_requests").get().n).toBe(0);
+  });
+
+  it("a caller: ONE exit payout of the wallet balance to UPI; cancel puts the money back in the wallet", async () => {
+    await lot("u1", "purchase", 100, 82, "GPA.1", 100);
+    await lot("u1", "purchase", 50, 82, "GPA.2", 50);
+    await lot("u1", "test", 30, 100, "t1");
+    setupPayout("u1");
     const r = await startExit(env, "u1", { forfeit: false });
     expect(r.ok).toBe(true);
     const row = await getExitRow(env, "u1");
-    expect(JSON.parse(row.refund_ids).length).toBe(2);
-    expect(raw().prepare("SELECT COUNT(*) AS n FROM hf_refund_requests WHERE kind='play_refund' AND exit=1").get().n).toBe(2);
-    // cancel puts everything back
+    expect(row.status).toBe("waiting_payouts");
+    expect(raw().prepare("SELECT COUNT(*) AS n FROM hf_refund_requests").get().n).toBe(0);
+    const p = raw().prepare("SELECT * FROM hf_payout_requests WHERE host_uid='u1' AND exit=1").all();
+    expect(p.length).toBe(1);
+    expect(p[0].amount_rupees).toBe(123);
+    expect(p[0].lots_paise).toBe(12300);
+    expect(p[0].wallet_ref.startsWith("hffan:")).toBe(true);
+    // the wallet was emptied of paid money (test credits stay until closing)
+    expect((await exitSummary(env, "u1")).tokensInfo?.walletPaise).toBe(0);
+    // cancel: back into the wallet, never anywhere else
     expect((await cancelExit(env, "u1")).ok).toBe(true);
-    expect(raw().prepare("SELECT COUNT(*) AS n FROM hf_refund_requests WHERE status='requested'").get().n).toBe(0);
+    expect(raw().prepare("SELECT status FROM hf_payout_requests WHERE host_uid='u1'").get().status).toBe("cancelled");
+    const back = await exitSummary(env, "u1");
+    expect(back.tokensInfo?.walletPaise).toBe(12300);
   });
 
   it("is refused while the user is on a call", async () => {

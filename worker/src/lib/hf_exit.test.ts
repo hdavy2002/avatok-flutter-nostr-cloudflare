@@ -5,6 +5,8 @@ import { createRequire } from "node:module";
 import { readFileSync } from "node:fs";
 
 const wallet = { balance: 0, held: 0, resv: new Map<string, number>(), ops: new Map<string, any>() };
+// [HF-FIX-CLOSE-ACCOUNT-1] booking tables are not in this harness; the drain was failing every startExit test
+vi.mock("./hf_booking_store", () => ({ drainHfBookingHolds: async () => true }));
 vi.mock("../routes/wallet", () => ({
   walletOp: async (_env: any, _uid: string, op: any) => {
     if (op.op === "release") return { status: 200, body: { released: 0, balance: wallet.balance, held: wallet.held } };

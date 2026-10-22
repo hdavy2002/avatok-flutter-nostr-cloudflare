@@ -6,7 +6,11 @@ export interface RefundItem { id: string; amount: number; status: 'requested' | 
 export interface RefundInfo { enabled: boolean; walletOnly?: boolean; message?: string; mode?: 'tokens' | 'rupees'; windowDays?: number; refundable?: number; eligible?: number; lots?: RefundLot[]; requests: RefundItem[] }
 /** Token mode: one entry per Google Play purchase that still has unused tokens (money in rupees, fractional). */
 export interface RefundLot { lotId: string; tokens: string; paid: number; refund: number; wholeOrder: boolean; boughtAt: number }
-export interface TokenExitInfo { mode: 'tokens'; refundPaise: number; refundLots: number; partialLots: number; partialPaise: number; testValuePaise: number; debtValuePaise: number; availablePaise: number; pendingPaise: number }
+export interface TokenExitInfo {
+  mode: 'tokens'; refundPaise: number; refundLots: number; partialLots: number; partialPaise: number; testValuePaise: number; debtValuePaise: number; availablePaise: number; pendingPaise: number;
+  /** [HF-FIX-CLOSE-ACCOUNT-1] The wallet balance exactly as the Wallet page shows it (after GST); closing pays it out to the person's UPI in whole rupees. */
+  walletPaise: number; walletPayoutPaise: number; upiOk: boolean; kycOk: boolean; payoutReady: boolean; debtBlocked: boolean;
+}
 
 export interface ExitInfo {
   gateEnabled: boolean;
@@ -50,6 +54,8 @@ export function walletExitCode(e: unknown): string {
 }
 
 const CODE_TEXT: Record<string, string> = {
+  upi_required: 'Add your UPI ID first (in the app: Me, then Payout). Your wallet money is paid out to it when you close your account.',
+  kyc_required: 'We check your ID once, before your first payout. Do that first, then close your account.',
   withdraw_first: 'Your wallet money does not go back to your card. Withdraw it to your UPI with Payout first, then close your account.',
   forfeit_required: 'Your wallet holds less than ₹1, which is too small to pay out. Tick the box to give it up and close your account.',
   refund_to_wallet_only: 'Refunds go to your wallet, not to your card. You can withdraw your wallet to your UPI with Payout.',

@@ -383,3 +383,10 @@
   .hf3 .h3-table td,.hf3 .h3-table th{padding:9px 4px}
   .hf3 .h3-top .h3-btn.sm{padding:6px 10px}
 }
+
+/* [HF-FIX-CLOSE-ACCOUNT-1] Close my account: the CLOSE box and the red button stayed inside their card (the 100% input had padding + border added on top, and the long
+   nowrap button label pushed the grid track wider than the card). */
+.hf3 .h3-confirm{min-width:0}
+.hf3 .h3-confirm>*{min-width:0;max-width:100%}
+.hf3 .h3-confirm input{box-sizing:border-box;min-width:0;max-width:100%}
+.hf3 .h3-confirm .h3-btn{box-sizing:border-box;max-width:100%;white-space:normal;text-align:center;line-height:1.25}

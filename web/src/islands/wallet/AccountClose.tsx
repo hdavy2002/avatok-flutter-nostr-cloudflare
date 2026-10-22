@@ -78,7 +78,8 @@ export default function AccountClose() {
   const m = (n: number) => formatPaise(Math.round(n * 100)); // [HF-STD-PLAN-1] rupees, two decimals
   const scheduled = info.deletion?.scheduledAt ?? closedAt;
   const giveUpRupees = info.forfeitRupees + smallLeft; // earnings that cannot be paid + a wallet leftover below the smallest withdrawal
-  const walletMoney = info.refundable + info.manualRefund;
+  // [HF-FIX-CLOSE-ACCOUNT-1] the wallet balance exactly as the Wallet page shows it (after GST)
+  const walletMoney = info.tokens ? info.tokens.walletPaise / 100 : info.refundable + info.manualRefund;
 
   return (
     <PageShell className="hfc-page">
@@ -103,13 +104,13 @@ export default function AccountClose() {
           {info.refund && (
             <div className="hfc-stat" style={{ textAlign: 'left' }}>
               <strong>{m(info.refund.amount)}</strong>
-              <span>Refund credited to your wallet: {REF[info.refund.status] ?? info.refund.status}{info.refund.reason ? ` (${info.refund.reason})` : ''}</span>
+              <span>Refund (started before this change): {REF[info.refund.status] ?? info.refund.status}{info.refund.reason ? ` (${info.refund.reason})` : ''}</span>
             </div>
           )}
           {info.payout && (
             <div className="hfc-stat" style={{ textAlign: 'left' }}>
               <strong>{m(info.payout.amount)}</strong>
-              <span>Final withdrawal of your earnings to your bank: {PAY[info.payout.status] ?? info.payout.status}{info.payout.reason ? ` (${info.payout.reason})` : ''}{info.payout.utr ? `, reference ${info.payout.utr}` : ''}</span>
+              <span>Final payout to your UPI or bank: {PAY[info.payout.status] ?? info.payout.status}{info.payout.reason ? ` (${info.payout.reason})` : ''}{info.payout.utr ? `, reference ${info.payout.utr}` : ''}</span>
             </div>
           )}
           <button type="button" className="hfc-btn" disabled={busy} onClick={() => void stop()}>Cancel and keep my account</button>
@@ -120,14 +121,17 @@ export default function AccountClose() {
       {!ex && !scheduled && info.decision === 'exit' && hasMoney && (
         <section className="hfc-card" aria-labelledby="hfx-sum">
           <h2 id="hfx-sum">Your money comes first</h2>
-          <p style={{ margin: 0 }}>You have money in your account, so it is settled before your account is deleted. Wallet money is never sent back to your card: you withdraw it to your UPI with Payout first (one-time ID and UPI check). Earnings are paid to your bank account for you. Your account is deleted once everything is paid.</p>
+          <p style={{ margin: 0 }}>You have money in your account, so it is settled before your account is deleted. Your wallet balance is paid out to your UPI after a one-time ID and UPI check (never back to the card or UPI you paid from). Earnings are paid out together with it. Your account is deleted once everything is paid.</p>
           <div className="hfc-stats">
-            <div className="hfc-stat"><strong>{m(info.refundable + info.manualRefund)}</strong><span>wallet money: withdraw it to your UPI with Payout before closing</span></div>
-            <div className="hfc-stat"><strong>{m(info.withdrawable)}</strong><span>earnings, withdrawn to your bank</span></div>
+            <div className="hfc-stat"><strong>{m(walletMoney)}</strong><span>wallet balance, paid out to your UPI</span></div>
+            <div className="hfc-stat"><strong>{m(info.withdrawable)}</strong><span>earnings, paid out to your UPI or bank</span></div>
             <div className="hfc-stat"><strong>{m(info.held)}</strong><span>earnings in the 7-day hold{info.heldReleaseAt ? `, until ${dateIN(info.heldReleaseAt)}` : ''}</span></div>
           </div>
           {info.held > 0 && <p className="hfc-note">Held earnings are paid after the hold ends, so closing will wait until then.</p>}
-          {walletMoney > 0 && (
+          {info.tokens && info.tokens.walletPayoutPaise > 0 && !info.tokens.payoutReady && (
+            <p className="hfc-note" role="status">{info.tokens.upiOk ? 'We check your ID once, before your first payout. Do that first, then come back to close your account.' : 'Add your UPI ID first (in the app: Me, then Payout) and finish the one-time ID check, then come back to close your account.'} <a className="hfc-btn" href={PAYOUT_HREF}>Go to Payout</a></p>
+          )}
+          {!info.tokens && walletMoney > 0 && (
             <p className="hfc-note" role="status">{withdrawFirst ? 'Withdraw your wallet money first, then come back here to close your account. ' : ''}<a className="hfc-btn" href={PAYOUT_HREF}>Go to Payout</a> If what is left is under ₹1 (too small to pay out), you can choose to give it up below.</p>
           )}
           {!info.bankOk && (info.withdrawable > 0 || info.held > 0) && (
@@ -140,7 +144,7 @@ export default function AccountClose() {
             </label>
           )}
           {(info.testCredits > 0 || info.testEarnings > 0) && <p className="hfc-sub" style={{ margin: 0 }}>Test credits ({m(info.testCredits)}) and earnings from test credits ({m(info.testEarnings)}) are not real money and are simply removed.</p>}
-          <button type="button" className="hfc-btn hfc-primary" disabled={busy || (giveUpRupees > 0 && !agree)} onClick={() => void begin()}>
+          <button type="button" className="hfc-btn hfc-primary" disabled={busy || !!(info.tokens && ((info.tokens.walletPayoutPaise > 0 && !info.tokens.payoutReady) || info.tokens.debtBlocked)) || (giveUpRupees > 0 && !agree)} onClick={() => void begin()}>
             {busy ? 'Working…' : 'Close my account'}
           </button>
         </section>

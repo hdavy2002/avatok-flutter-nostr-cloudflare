@@ -78,7 +78,7 @@ async function post(req: Request, env: Env): Promise<Response> {
   const body = await readJson(req);
   return withIdempotency(req, env, u.uid, async () => {
     const r = await startExit(env, u.uid, { forfeit: body.forfeit === true, trigger: scheduleDeletion });
-    if (!r.ok) return err(r.status, r.error, r.message, r.forfeitRupees != null ? { forfeitRupees: r.forfeitRupees } : {});
+    if (!r.ok) return err(r.status, r.error, r.message, { ...(r.forfeitRupees != null ? { forfeitRupees: r.forfeitRupees } : {}), ...(r.nextStep ? { nextStep: r.nextStep } : {}) }); // [HF-FIX-CLOSE-ACCOUNT-1]
     return json({ ok: true, status: r.status, payoutId: r.payoutId, refundId: r.refundId, ...(r.replay ? { replay: true } : {}) });
   });
 }
