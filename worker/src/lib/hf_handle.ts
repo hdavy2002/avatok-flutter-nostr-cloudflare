@@ -1,4 +1,4 @@
-// [HF-FIX-HANDLE-1] Every Hello Fraands user has a handle, shown read-only.
+// [HF-FIX-HANDLE-1] Every user of the call app has a handle, shown read-only.
 //
 // A chosen username lives in hf_user_registration (immutable). Users who never
 // finished registration have none, which left the dashboard Handle box empty
