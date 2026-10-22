@@ -5,9 +5,17 @@ import { useCallback, useEffect, useState } from 'react';
 import { capture, captureException } from '../../../lib/analytics';
 import { toast } from '../../../components/ui/sonner';
 import { LoadError, Modal, Spinner } from './ShopUI';
+import { DesiChip, DesiEmpty } from '../desi';
+import './shopDesi.css';
 import { createCoupon, digitsOnly, dmy, errMessage, inr, listCoupons, updateCoupon, type Coupon } from './shopApi';
 
 const endOfDayIst = (ymd: string): number => new Date(`${ymd}T23:59:59+05:30`).getTime();
+const BURST = Array.from({ length: 28 }, (_, i) => {
+  const a = (i * Math.PI) / 14; const r = i % 2 ? 40 : 49;
+  return `${(50 + r * Math.sin(a)).toFixed(1)},${(50 - r * Math.cos(a)).toFixed(1)}`;
+}).join(' ');
+const TICKET = ['rani', 'lav', 'gold', 'tea'] as const;
+
 const ymdIst = (ms: number | null): string => (ms ? new Date(ms + 5.5 * 3600_000).toISOString().slice(0, 10) : '');
 
 export default function CouponsPanel() {
@@ -28,30 +36,34 @@ export default function CouponsPanel() {
 
   return (
     <div className="sh-apanel is-on" data-apanel="coupons">
-      <div style={{ marginBottom: 14 }}><button type="button" className="sh-btn sh-btn--teal" onClick={() => setEdit('new')}>+ Add coupon</button></div>
-      <div className="sh-tbl-wrap">
-        <table className="sh-table">
-          <thead><tr><th>Code</th><th>Discount</th><th>Min order</th><th>Used</th><th>Valid till</th><th>Status</th><th /></tr></thead>
-          <tbody>
-            {items.length === 0 && <tr><td colSpan={7} style={{ textAlign: 'center', padding: 30 }}>No coupons yet.</td></tr>}
-            {items.map((c) => {
-              const expired = !!c.valid_until && c.valid_until < now;
-              const spent = c.max_uses != null && c.used_count >= c.max_uses;
-              const chip = !c.active ? { cls: 'st-pending', label: 'Paused' } : expired || spent ? { cls: 'st-cancelled', label: 'Expired' } : { cls: 'st-delivered', label: 'Active' };
-              return (
-                <tr key={c.code}>
-                  <td><b>{c.code}</b></td>
-                  <td>{c.kind === 'pct' ? `${c.value}% off` : `${inr(c.value)} off`}</td>
-                  <td>{c.min_order_rupees ? inr(c.min_order_rupees) : '—'}</td>
-                  <td>{c.used_count} / {c.max_uses ?? '∞'}</td>
-                  <td>{c.valid_until ? dmy(c.valid_until) : '—'}</td>
-                  <td><span className={`sh-st ${chip.cls}`}>{chip.label}</span></td>
-                  <td><button type="button" className="sh-btn sh-btn--ghost sh-mini" onClick={() => setEdit(c)}>Edit</button></td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
+      <div className="sd-bar"><button type="button" className="hfa-btn rani" onClick={() => setEdit('new')}>+ Add coupon</button></div>
+      {items.length === 0 && <DesiEmpty text="No coupons yet." />}
+      <div className="sd-tickets">
+        {items.map((c, i) => {
+          const expired = !!c.valid_until && c.valid_until < now;
+          const spent = c.max_uses != null && c.used_count >= c.max_uses;
+          const chip = !c.active ? { tone: 'grey' as const, label: 'Paused' } : expired || spent ? { tone: 'red' as const, label: 'Expired' } : { tone: 'tea' as const, label: 'Active' };
+          const off = c.kind === 'pct' ? `${c.value}%` : inr(c.value);
+          return (
+            <article key={c.code} className={`sd-ticket sd-tk-${TICKET[i % TICKET.length]}${chip.label === 'Active' ? '' : ' is-dim'}`}>
+              <div className="sd-stub">
+                <svg className="sd-burst" viewBox="0 0 100 100" aria-hidden="true"><polygon points={BURST} /></svg>
+                <span className="sd-off"><b>{off}</b><small>off</small></span>
+              </div>
+              <div className="sd-cut" aria-hidden="true"><i className="t" /><span>✂</span><i className="b" /></div>
+              <div className="sd-main">
+                <div className="sd-code">{c.code}</div>
+                <DesiChip tone={chip.tone}>{chip.label}</DesiChip>
+                <dl className="sd-facts">
+                  <div><dt>Min order</dt><dd>{c.min_order_rupees ? inr(c.min_order_rupees) : '—'}</dd></div>
+                  <div><dt>Used</dt><dd>{c.used_count} / {c.max_uses ?? '∞'}</dd></div>
+                  <div><dt>Valid till</dt><dd>{c.valid_until ? dmy(c.valid_until) : '—'}</dd></div>
+                </dl>
+                <button type="button" className="hfa-btn ghost" onClick={() => setEdit(c)}>Edit</button>
+              </div>
+            </article>
+          );
+        })}
       </div>
       <CouponModal c={edit} onClose={() => setEdit(null)} onSaved={() => { setEdit(null); void load(); }} />
     </div>

@@ -10,6 +10,7 @@ import {
   uploadArt, uploadArtPreview, type Design, type StudioStep,
 } from '../../../lib/studioApi';
 import type { ArtAnalysis } from './artAnalysis';
+import { DesiCard, Marigold } from '../desi';
 import { LoadError, Loading, Page, Steps, TopBar, go, useDesign } from './StudioKit';
 
 interface Info {
@@ -129,35 +130,34 @@ export default function UploadStep({ designId }: { designId: string | null }) {
       <TopBar design={design} />
       <Steps id={id} current="upload" design={design} />
       <input ref={fileRef} type="file" accept="image/png,image/jpeg" hidden onChange={(e) => { onFiles(e.target.files); e.target.value = ''; }} />
-      <div className={`g2${busy ? ' busy' : ''}`} aria-busy={!!busy}>
-        <div className="panel">
-          <h2>Your artwork</h2>
-          <p className="lead">Drop a 2000–5000 px image. Bigger files are fine; we resize to Printrove&apos;s limit.</p>
+      <div className={`hfa-row-side${busy ? ' busy' : ''}`} aria-busy={!!busy}>
+        <DesiCard tone="rani" corner="marigold" title="Your artwork" note="Drop a 2000–5000 px image. Bigger files are fine; we resize to Printrove's limit.">
           {shown ? (
-            <div className="ph chk" style={{ height: 420, borderStyle: 'solid', padding: 40 }}>
-              <img src={shown} alt="Your artwork" style={{ maxWidth: '100%', maxHeight: 340, objectFit: 'contain', borderRadius: 12 }} />
+            <div className="sa-show">
+              <img src={shown} alt="Your artwork" />
             </div>
           ) : (
-            <div className={`ph chk drop${over ? ' over' : ''}`} style={{ height: 420, borderStyle: 'dashed', padding: 40 }} role="button" tabIndex={0}
+            <div className={`sa-drop${over ? ' over' : ''}`} role="button" tabIndex={0}
               onClick={pick} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') pick(); }}
               onDragOver={(e) => { e.preventDefault(); setOver(true); }} onDragLeave={() => setOver(false)}
               onDrop={(e) => { e.preventDefault(); setOver(false); onFiles(e.dataTransfer.files); }}>
-              <span>Drop your artwork here or <b style={{ textDecoration: 'underline' }}>choose a file</b><br />PNG with a see-through background works best</span>
+              <span className="sa-drop-corner" aria-hidden="true"><Marigold size={110} /></span>
+              <span className="sa-drop-corner2" aria-hidden="true"><Marigold size={90} tone={1} /></span>
+              <span className="sa-drop-txt">Drop your artwork here or <b style={{ textDecoration: 'underline' }}>choose a file</b><br />PNG with a see-through background works best</span>
             </div>
           )}
-          {busy && <p className="lead" style={{ margin: '12px 0 0' }} role="status">{busy}</p>}
+          {busy && <p className="sa-lead" style={{ margin: '12px 0 0' }} role="status">{busy}</p>}
           {problem && <p className="errtxt" role="alert">{problem}</p>}
           <div className="row" style={{ marginTop: 14 }}>
-            <button className="btn ghost sm" type="button" onClick={pick}>{shown ? 'Replace file' : 'Choose file'}</button>
+            <button className="hfa-btn ghost sm" type="button" onClick={pick}>{shown ? 'Replace file' : 'Choose file'}</button>
             <label className="lbl studio-name-field">Name this design
               <input className="fld" value={name} onChange={(e) => setName(e.target.value)} onBlur={() => void saveName()} onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }} maxLength={120} />
             </label>
           </div>
-        </div>
-        <div>
-          <div className="panel">
-            <h2>File check</h2>
-            {!info ? <p className="lead" style={{ margin: 0 }}>Choose your artwork and the checks appear here.</p> : (
+        </DesiCard>
+        <div className="hfa-stack">
+          <DesiCard tone="tea" corner="jasmine" title="File check">
+            {!info ? <p className="sa-lead" style={{ margin: 0 }}>Choose your artwork and the checks appear here.</p> : (
               <ul className="list">
                 <li><span className={`dot ${limitsOk ? 'ok' : 'warn'}`}>{limitsOk ? '✓' : '!'}</span><div><b>{info.w} × {info.h} px · {MIME_LABEL[info.mime] ?? 'Image'} · {fmtBytes(info.bytes)}</b><br />{limitsOk ? 'Under Printrove\'s 5000 × 5000 px and 15 MB limits.' : 'Over Printrove\'s limits — your print file is made smaller and stays under them.'}</div></li>
                 {info.has_alpha === false
@@ -170,18 +170,17 @@ export default function UploadStep({ designId }: { designId: string | null }) {
                 )}
               </ul>
             )}
-          </div>
-          <div className="panel">
-            <h2>How big it can print sharply</h2>
-            {!sharp ? <p className="lead" style={{ margin: 0 }}>Shown once your artwork is checked.</p> : (
-              <p style={{ font: '700 16px/1.6 Nunito', color: '#3c4a4c', margin: 0 }}>
-                At 300 DPI (Printrove&apos;s minimum) this file prints sharp up to <b style={{ color: '#5a1f14' }}>{fmtIn(sharp.w)} × {fmtIn(sharp.h)} in</b>.<br />
+          </DesiCard>
+          <DesiCard tone="gold" corner="yellow" title="How big it can print sharply">
+            {!sharp ? <p className="sa-lead" style={{ margin: 0 }}>Shown once your artwork is checked.</p> : (
+              <p className="sa-big-num">
+                At 300 DPI (Printrove&apos;s minimum) this file prints sharp up to <b>{fmtIn(sharp.w)} × {fmtIn(sharp.h)} in</b>.<br />
                 A full {ref.label.replace("Men's T-shirt", "men's tee")} front is {fmtIn(ref.w)} × {fmtIn(ref.h)} in, so this art {fitsWhole ? 'can fill the whole print area.' : 'suits a chest or centre print, not edge-to-edge.'}
               </p>
             )}
-          </div>
+          </DesiCard>
           <div className="foot"><span></span>
-            <button type="button" className="btn red" disabled={!design || !info || !!busy} onClick={() => void next()}>See which products it suits →</button>
+            <button type="button" className="hfa-btn rani" disabled={!design || !info || !!busy} onClick={() => void next()}>See which products it suits →</button>
           </div>
         </div>
       </div>

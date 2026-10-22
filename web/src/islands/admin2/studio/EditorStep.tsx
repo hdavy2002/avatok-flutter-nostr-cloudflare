@@ -13,6 +13,7 @@ import {
   EXPORT_DPI, EXPORT_MAX_PX, NECK_PATH, SHIRT_PATH, STAGE_H, STAGE_PX_PER_IN as P, STAGE_W, areaRectPx, computeLayout, dpiQuality,
   isLightColour, printRectIn, type EditorState, type FrameShape, type PrintSide,
 } from '../../../lib/studioGeometry';
+import { DesiCard } from '../desi';
 import { LoadError, Loading, Page, Steps, TopBar, go, useDesign } from './StudioKit';
 
 const SHAPES: [FrameShape, string][] = [['none', 'No frame'], ['rect', 'Rectangle'], ['square', 'Square'], ['circle', 'Circle']];
@@ -79,8 +80,8 @@ export default function EditorStep({ designId }: { designId: string }) {
   if (!product) {
     return (
       <Page><TopBar design={design} /><Steps id={design.id} current="design" design={design} />
-        <div className="panel"><h2>Choose a product first</h2><p className="lead">The editor needs to know which shirt and print area to use.</p>
-          <a className="btn teal sm" href={stepHref(design.id, 'product')}>Go to Product</a></div></Page>
+        <DesiCard tone="gold" corner="marigold" title="Choose a product first"><p className="sa-lead">The editor needs to know which shirt and print area to use.</p>
+          <a className="hfa-btn sm" href={stepHref(design.id, 'product')}>Go to Product</a></DesiCard></Page>
     );
   }
   if (!ready) return <Page><Loading what="Opening the editor…" /></Page>;
@@ -156,10 +157,10 @@ export default function EditorStep({ designId }: { designId: string }) {
     <Page>
       <TopBar design={design} />
       <Steps id={design.id} current="design" design={design} />
-      <div className="ed-grid" style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) 380px', gap: 20, alignItems: 'start' }}>
-        <div className="panel" style={{ padding: 16 }}>
+      <div className="hfa-row-side">
+        <DesiCard tone="cream" pattern="dots" corner="marigold">
           <div className="row" style={{ justifyContent: 'space-between', marginBottom: 10 }}>
-            <div className="tabs" style={{ margin: 0 }}>
+            <div className="row">
               {sides.map(([k, l]) => <button key={k} type="button" className={`opt${side === k ? ' on' : ''}`} onClick={() => setSide(k)}>{l}</button>)}
             </div>
             <span className="chip info">{area.label} · print area {area.w.toFixed(1)} × {area.h.toFixed(1)} in</span>
@@ -176,7 +177,7 @@ export default function EditorStep({ designId }: { designId: string }) {
                 style={{ position: 'absolute', left: fl, top: ft, width: fw, height: fh, borderRadius: radius, overflow: 'hidden', outline: `2px solid ${frameLine}`, outlineOffset: 2 }}>
                 {artUrl && <img className="art-img" alt="Your artwork" src={artUrl} draggable={false} style={{ position: 'absolute', left: al, top: at, width: aw, height: ah }} />}
               </div>
-              <span style={{ position: 'absolute', left: ar.left, top: ar.top + ar.h + 8, font: '800 13px Nunito', color: guide }}>Printrove print area · faded art = cut off, will not print</span>
+              <span style={{ position: 'absolute', left: ar.left, top: ar.top + ar.h + 8, fontWeight: 800, fontSize: 14, color: guide }}>Printrove print area · faded art = cut off, will not print</span>
             </div>
           </div>
           <div className="row" style={{ marginTop: 12 }}>
@@ -184,8 +185,8 @@ export default function EditorStep({ designId }: { designId: string }) {
             <span className="chip">Prints at {visW.toFixed(1)} × {visH.toFixed(1)} in</span>
             <span className="chip">Print file {px(visW)} × {px(visH)} px</span>
           </div>
-        </div>
-        <div className="panel" style={{ padding: 18 }}>
+        </DesiCard>
+        <DesiCard tone="lav" corner="jasmine" title="Place the art">
           <div className="ctl"><h3>Frame shape</h3>
             <div className="row">{SHAPES.map(([k, l]) => <button key={k} type="button" className={`opt${s.shape === k ? ' on' : ''}`} onClick={() => set({ shape: k })}>{l}</button>)}</div></div>
           <div className="ctl"><h3>Frame size</h3>
@@ -193,37 +194,37 @@ export default function EditorStep({ designId }: { designId: string }) {
             <input className="rng" type="range" min={3} max={area.w} step={0.2} value={clamp(s.frame, 3, area.w)} onChange={(e) => set({ frame: Number(e.target.value) })} aria-label="Frame size" /></div>
           <div className="ctl"><h3>Zoom artwork</h3>
             <div className="row" style={{ justifyContent: 'space-between' }}>
-              <button type="button" className="btn ghost sm" onClick={() => set({ zoom: Math.max(40, s.zoom - 10) })} aria-label="Zoom out">−</button>
+              <button type="button" className="hfa-btn ghost sm" onClick={() => set({ zoom: Math.max(40, s.zoom - 10) })} aria-label="Zoom out">−</button>
               <span className="big">{s.zoom}%</span>
-              <button type="button" className="btn ghost sm" onClick={() => set({ zoom: Math.min(300, s.zoom + 10) })} aria-label="Zoom in">+</button></div>
+              <button type="button" className="hfa-btn ghost sm" onClick={() => set({ zoom: Math.min(300, s.zoom + 10) })} aria-label="Zoom in">+</button></div>
             <input className="rng" type="range" min={40} max={300} step={5} value={s.zoom} onChange={(e) => set({ zoom: Number(e.target.value) })} aria-label="Zoom artwork" /></div>
           <div className="ctl"><h3>Move artwork inside the frame</h3>
             <div className="row" style={{ gap: 16 }}>
               <div className="pad"><span></span>
-                <button type="button" className="btn ghost" onClick={() => set({ nudgeY: s.nudgeY - 0.5 })} aria-label="Move up">↑</button><span></span>
-                <button type="button" className="btn ghost" onClick={() => set({ nudgeX: s.nudgeX - 0.5 })} aria-label="Move left">←</button>
-                <button type="button" className="btn teal" onClick={() => set({ nudgeX: 0, nudgeY: 0 })} aria-label="Centre">•</button>
-                <button type="button" className="btn ghost" onClick={() => set({ nudgeX: s.nudgeX + 0.5 })} aria-label="Move right">→</button><span></span>
-                <button type="button" className="btn ghost" onClick={() => set({ nudgeY: s.nudgeY + 0.5 })} aria-label="Move down">↓</button><span></span></div>
-              <p style={{ font: '700 14px/1.5 Nunito', color: '#6b4a2b', margin: 0 }}>Each tap moves ½ inch. The dot puts it back in the middle. You can also drag the art with your finger or mouse.</p></div></div>
+                <button type="button" className="hfa-btn ghost" onClick={() => set({ nudgeY: s.nudgeY - 0.5 })} aria-label="Move up">↑</button><span></span>
+                <button type="button" className="hfa-btn ghost" onClick={() => set({ nudgeX: s.nudgeX - 0.5 })} aria-label="Move left">←</button>
+                <button type="button" className="hfa-btn" onClick={() => set({ nudgeX: 0, nudgeY: 0 })} aria-label="Centre">•</button>
+                <button type="button" className="hfa-btn ghost" onClick={() => set({ nudgeX: s.nudgeX + 0.5 })} aria-label="Move right">→</button><span></span>
+                <button type="button" className="hfa-btn ghost" onClick={() => set({ nudgeY: s.nudgeY + 0.5 })} aria-label="Move down">↓</button><span></span></div>
+              <p className="sa-lead" style={{ margin: 0, flex: '1 1 12rem' }}>Each tap moves ½ inch. The dot puts it back in the middle. You can also drag the art with your finger or mouse.</p></div></div>
           <div className="ctl"><h3>Frame height on the shirt</h3>
             <div className="row">
-              <button type="button" className="btn ghost sm" onClick={() => set({ top: Math.max(0, L.frameTop - 0.5) })}>Higher</button>
-              <button type="button" className="btn ghost sm" onClick={() => set({ top: Math.min(area.h - L.frameH, L.frameTop + 0.5) })}>Lower</button>
+              <button type="button" className="hfa-btn ghost sm" onClick={() => set({ top: Math.max(0, L.frameTop - 0.5) })}>Higher</button>
+              <button type="button" className="hfa-btn ghost sm" onClick={() => set({ top: Math.min(area.h - L.frameH, L.frameTop + 0.5) })}>Lower</button>
               <span className="chip">{L.frameTop.toFixed(1)} in from top of print area</span></div></div>
           <div className="ctl"><h3>Shirt colour</h3>
             <div className="row">{colours.map((c) => (
               <button key={c.name} type="button" className={`sw${colour === c.name ? ' on' : ''}`} onClick={() => setColour(c.name)}><i style={{ background: c.hex }}></i>{c.name}</button>
             ))}</div></div>
           <div className="note">We cut your art to the frame and send Printrove a see-through PNG of only that part. The circle is printed exactly as you see it.</div>
-          {busy && <p className="lead" style={{ margin: '12px 0 0' }} role="status">{busy}</p>}
+          {busy && <p className="sa-lead" style={{ margin: '12px 0 0' }} role="status">{busy}</p>}
           {problem && <p className="errtxt" role="alert">{problem}</p>}
           {L.empty && <p className="errtxt">None of your art is inside the frame. Move it back or make the frame bigger.</p>}
           <div className="foot" style={{ marginTop: 14 }}>
-            <a className="btn ghost" href={stepHref(design.id, 'product')}>Back</a>
-            <button type="button" className="btn red" disabled={blocked} onClick={() => void looksGood()}>Looks good →</button>
+            <a className="hfa-btn ghost" href={stepHref(design.id, 'product')}>Back</a>
+            <button type="button" className="hfa-btn rani" disabled={blocked} onClick={() => void looksGood()}>Looks good →</button>
           </div>
-        </div>
+        </DesiCard>
       </div>
     </Page>
   );

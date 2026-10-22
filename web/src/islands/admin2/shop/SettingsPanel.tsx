@@ -7,6 +7,8 @@ import { useCallback, useEffect, useState } from 'react';
 import { captureException } from '../../../lib/analytics';
 import { toast } from '../../../components/ui/sonner';
 import { LoadError, Spinner } from './ShopUI';
+import { DesiCard, DesiChip } from '../desi';
+import './shopDesi.css';
 import { errMessage, getSettings, putSetting, type PolicySettings } from './shopApi';
 
 export default function SettingsPanel() {
@@ -46,24 +48,38 @@ export default function SettingsPanel() {
     finally { setBusy(false); }
   }
 
+  const fixed = <DesiChip tone="grey">Fixed rule</DesiChip>;
   return (
     <div className="sh-apanel is-on" data-apanel="settings">
-      <div className="sh-panel">
-        <h2>Shop settings</h2>
-        <p>Every number here feeds the shop pages and checkout — nothing is typed into pages.</p>
-        <div className="sh-form">
-          <label>Shipping<input value="Free, pan India (included in price)" readOnly disabled /></label>
-          <label>International shipping<select disabled value="no"><option value="no">Not offered</option></select></label>
-          <label>GST<input value="18% added at checkout" readOnly disabled /></label>
-          <label>Returns<input value="Only if we sent the wrong item" readOnly disabled /></label>
-          <label>Print partner<select disabled value="Printrove"><option>Printrove</option></select></label>
-          <label>Report-a-problem window<input value={windowTxt} onChange={(e) => setWindowTxt(e.target.value)} onBlur={() => { const h = /\d+/.exec(windowTxt)?.[0]; if (h) setWindowTxt(`${Number(h)} hours from delivery`); }} /></label>
-          <label>Delivery time shown<input value={delivery} onChange={(e) => setDelivery(e.target.value)} /></label>
-          <label>Order alerts to
-            <select value={alerts ? 'wa' : 'off'} onChange={(e) => setAlerts(e.target.value === 'wa')}><option value="wa">Owner WhatsApp</option><option value="off">Nobody</option></select>
-          </label>
+      <div className="hfa-stack">
+        <p className="sh-help">Every number here feeds the shop pages and checkout — nothing is typed into pages.</p>
+        <div className="hfa-row sd-groups">
+          <DesiCard tone="tea" corner="marigold" title="Delivery" note="What buyers are told about shipping.">
+            <div className="sh-form sd-form">
+              <label className="sd-row">Shipping {fixed}<input value="Free, pan India (included in price)" readOnly disabled /></label>
+              <label className="sd-row">International shipping {fixed}<select disabled value="no"><option value="no">Not offered</option></select></label>
+              <label className="sd-row is-edit">Delivery time shown<input value={delivery} onChange={(e) => setDelivery(e.target.value)} /></label>
+            </div>
+          </DesiCard>
+          <DesiCard tone="gold" corner="hibiscus" title="Money and returns" note="Tax and the problem window.">
+            <div className="sh-form sd-form">
+              <label className="sd-row">GST {fixed}<input value="18% added at checkout" readOnly disabled /></label>
+              <label className="sd-row">Returns {fixed}<input value="Only if we sent the wrong item" readOnly disabled /></label>
+              <label className="sd-row is-edit">Report-a-problem window<input value={windowTxt} onChange={(e) => setWindowTxt(e.target.value)} onBlur={() => { const h = /\d+/.exec(windowTxt)?.[0]; if (h) setWindowTxt(`${Number(h)} hours from delivery`); }} /></label>
+            </div>
+          </DesiCard>
+          <DesiCard tone="rani" corner="yellow" title="Printing and alerts" note="Who prints, and who hears about orders.">
+            <div className="sh-form sd-form">
+              <label className="sd-row">Print partner {fixed}<select disabled value="Printrove"><option>Printrove</option></select></label>
+              <label className="sd-row is-edit">Order alerts to
+                <select value={alerts ? 'wa' : 'off'} onChange={(e) => setAlerts(e.target.value === 'wa')}><option value="wa">Owner WhatsApp</option><option value="off">Nobody</option></select>
+              </label>
+            </div>
+          </DesiCard>
         </div>
-        <div style={{ marginTop: 18 }}><button type="button" className="sh-btn sh-btn--red" disabled={busy} onClick={() => void save()}>{busy ? 'Saving…' : 'Save settings'}</button></div>
+        <DesiCard tone="lav" corner="jasmine" className="sd-save">
+          <button type="button" className="hfa-btn rani" disabled={busy} onClick={() => void save()}>{busy ? 'Saving…' : 'Save settings'}</button>
+        </DesiCard>
       </div>
     </div>
   );

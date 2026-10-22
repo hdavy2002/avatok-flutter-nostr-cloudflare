@@ -9,15 +9,15 @@
  * Screen islands never mount a Clerk provider: AdminNav owns it (see adminApi.ts).
  */
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
-import { AlertCircle, ArrowDownToLine, Check, Copy, Filter, Loader2, RefreshCw, Search, SearchX } from 'lucide-react';
+import { AlertCircle, ArrowDownToLine, Check, Copy, Filter, Loader2, RefreshCw, Search } from 'lucide-react';
 import { capture, captureException } from '../../lib/analytics';
 import { request, type RequestOptions } from '../../lib/apiClient';
 import { getActiveTokenWaited } from '../../lib/clerk';
 import { cn } from '../../lib/utils';
-import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
 import { Drawer, DrawerContent, DrawerDescription, DrawerFooter, DrawerHeader, DrawerTitle } from '../../components/ui/drawer';
 import { toast } from '../../components/ui/sonner';
+import { DesiCard, DesiChip, DesiEmpty, Jasmine, Marigold } from './desi';
 import { cacheClear, cacheGet, cachePut } from './adminCache';
 import { ApiError, adminApi, adminBlob, saveBlob, errMessage, isAbort, formatPaise } from './adminApi';
 
@@ -148,30 +148,27 @@ export function dayMs(day: string, end = false): string | undefined {
 /* ── status pills ───────────────────────────────────────────────────────── */
 
 export type Status = 'paid' | 'free' | 'pending' | 'refund_requested' | 'refunded' | 'requested' | 'rejected';
-const AMBER = 'bg-[var(--hf-admin-goldtint,#fff1d6)] text-[var(--hf-admin-plum,#4a1747)]';
-export const STATUS_META: Record<Status, { label: string; cls: string; dot: string }> = {
-  paid: { label: 'Paid', cls: 'bg-accent text-accent-foreground', dot: 'bg-accent' },
-  free: { label: 'Free', cls: 'bg-secondary text-secondary-foreground', dot: 'bg-secondary' },
-  pending: { label: 'Pending', cls: 'border-grand-gold bg-grand-gold/25 text-foreground', dot: 'bg-grand-gold' },
-  refund_requested: { label: 'Refund requested', cls: AMBER, dot: 'bg-[var(--hf-admin-marigold,#f59e0b)]' },
-  refunded: { label: 'Refunded', cls: 'bg-muted text-muted-foreground', dot: 'bg-muted-foreground' },
-  requested: { label: 'Requested', cls: AMBER, dot: 'bg-primary' },
-  rejected: { label: 'Rejected', cls: 'bg-muted text-muted-foreground', dot: 'bg-muted-foreground' },
+type ChipTone = 'tea' | 'gold' | 'rani' | 'lav' | 'grey';
+/* Money in = peacock, waiting = gold, money back = rani, info = lavender. */
+export const STATUS_META: Record<Status, { label: string; tone: ChipTone; ink: string }> = {
+  paid: { label: 'Paid', tone: 'tea', ink: '#0e7c86' },
+  free: { label: 'Free', tone: 'lav', ink: '#6d4fd0' },
+  pending: { label: 'Pending', tone: 'gold', ink: '#b45309' },
+  refund_requested: { label: 'Refund requested', tone: 'gold', ink: '#b45309' },
+  refunded: { label: 'Refunded', tone: 'rani', ink: '#d81b72' },
+  requested: { label: 'Requested', tone: 'gold', ink: '#b45309' },
+  rejected: { label: 'Rejected', tone: 'grey', ink: '#6f5b6f' },
 };
 
 export function StatusPill({ status, className }: { status: string; className?: string }) {
-  const m = STATUS_META[status as Status] ?? { label: status, cls: 'bg-muted text-muted-foreground' };
-  return (
-    <span className={cn('inline-flex items-center whitespace-nowrap rounded-full border border-transparent px-2.5 py-0.5 text-[14px] font-extrabold tracking-[0.04em]', m.cls, className)}>
-      {m.label}
-    </span>
-  );
+  const m = STATUS_META[status as Status];
+  return <DesiChip tone={m?.tone ?? 'grey'} className={cn('whitespace-nowrap', className)}>{m?.label ?? status}</DesiChip>;
 }
 
 export function StatusToggles<S extends Status>({ options, value, onChange }: { options: readonly S[]; value: string; onChange: (v: string) => void }) {
   const on = new Set(value ? value.split(',') : []);
   return (
-    <div role="group" aria-label="Status" className="flex flex-wrap gap-2">
+    <div role="group" aria-label="Status" className="hfa-pills">
       {options.map((s) => {
         const active = on.has(s);
         return (
@@ -180,12 +177,9 @@ export function StatusToggles<S extends Status>({ options, value, onChange }: { 
             type="button"
             aria-pressed={active}
             onClick={() => { const n = new Set(on); if (active) n.delete(s); else n.add(s); onChange([...n].join(',')); }}
-            className={cn(
-              'inline-flex h-9 items-center gap-1.5 rounded-full border px-3 text-[14px] font-bold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
-              active ? 'border-accent bg-accent text-accent-foreground' : 'border-border/70 bg-card text-foreground hover:bg-muted',
-            )}
+            className="hfa-pill inline-flex items-center gap-2"
           >
-            <span aria-hidden className={cn('h-2 w-2 rounded-full', active ? 'bg-accent-foreground' : STATUS_META[s].dot)} />
+            <span aria-hidden className="h-2.5 w-2.5 rounded-full" style={{ background: active ? '#ffd166' : STATUS_META[s].ink }} />
             {STATUS_META[s].label}
           </button>
         );
@@ -209,9 +203,9 @@ export function CopyValue({ value, label, className }: { value: string; label: s
           try { await navigator.clipboard.writeText(value); setDone(true); setTimeout(() => setDone(false), 1500); }
           catch { toast.error('Could not copy. Long-press to copy instead.'); }
         }}
-        className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-[var(--a-muted,#6f5b6f)] transition-colors hover:bg-[var(--a-blush,#ffe6ef)] hover:text-[var(--a-rani,#d81b72)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--a-rani,#d81b72)]"
       >
-        {done ? <Check className="h-3.5 w-3.5 text-accent" /> : <Copy className="h-3.5 w-3.5" />}
+        {done ? <Check className="h-4 w-4 text-[var(--a-peacock,#0e7c86)]" /> : <Copy className="h-4 w-4" />}
       </button>
     </span>
   );
@@ -227,12 +221,12 @@ export function CustomerCell({ c, compact }: { c: Customer; compact?: boolean })
   const phone = phoneText(c);
   return (
     <div className="min-w-0">
-      <a href={`/admin/users?user=${encodeURIComponent(c.uid)}`} className="font-extrabold text-foreground underline-offset-2 hover:text-accent hover:underline">
+      <a href={`/admin/users?user=${encodeURIComponent(c.uid)}`} className="font-extrabold text-[var(--a-ink,#2b1530)] underline-offset-2 hover:text-[var(--a-rani,#d81b72)] hover:underline">
         {c.name ?? 'No name'}
       </a>
-      {c.email && <div className={cn('truncate text-[14px] font-semibold text-muted-foreground', compact && 'text-[14px]')} title={c.email}>{c.email}</div>}
+      {c.email && <div className={cn('truncate text-[14px] font-semibold text-[var(--a-muted,#6f5b6f)]', compact && 'text-[14px]')} title={c.email}>{c.email}</div>}
       {phone && (
-        <div className={cn('text-[14px] font-semibold tabular-nums text-muted-foreground', c.phone_hash_only && 'italic')}
+        <div className={cn('text-[14px] font-semibold tabular-nums text-[var(--a-muted,#6f5b6f)]', c.phone_hash_only && 'italic')}
           title={c.phone_hash_only ? 'Only a hash of this number is stored. Search with the full 10-digit number to find it.' : undefined}>
           {phone}
         </div>
@@ -241,26 +235,33 @@ export function CustomerCell({ c, compact }: { c: Customer; compact?: boolean })
   );
 }
 
+/** A rounded pill search field. */
 export function SearchBox({ value, onChange, placeholder, label, className }: { value: string; onChange: (v: string) => void; placeholder: string; label: string; className?: string }) {
   return (
     <div className={cn('relative', className)}>
-      <Search aria-hidden className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-      <Input type="search" value={value} maxLength={80} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} aria-label={label} className="pl-9" />
+      <Search aria-hidden className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--a-rani,#d81b72)]" />
+      <Input
+        type="search" value={value} maxLength={80} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} aria-label={label}
+        className="h-11 min-h-11 rounded-full border-[1.5px] border-[var(--a-line,#f1e3d6)] bg-white pl-10 pr-4 text-[length:var(--fs-small,14px)] font-semibold shadow-none focus-visible:border-[var(--a-plum,#4a1747)] focus-visible:ring-2 focus-visible:ring-[var(--a-rani,#d81b72)]"
+      />
     </div>
   );
 }
 
 export function DateField({ id, label, value, onChange }: { id: string; label: string; value: string; onChange: (v: string) => void }) {
   return (
-    <label htmlFor={id} className="grid gap-1 text-[14px] font-bold text-muted-foreground">
+    <label htmlFor={id} className="grid gap-1 text-[14px] font-bold text-[var(--a-muted,#6f5b6f)]">
       {label}
-      <Input id={id} type="date" value={value} onChange={(e) => onChange(e.target.value)} className="font-semibold text-foreground" />
+      <Input
+        id={id} type="date" value={value} onChange={(e) => onChange(e.target.value)}
+        className="h-11 min-h-11 rounded-full border-[1.5px] border-[var(--a-line,#f1e3d6)] bg-white px-4 font-semibold text-[var(--a-ink,#2b1530)] shadow-none focus-visible:ring-2 focus-visible:ring-[var(--a-rani,#d81b72)]"
+      />
     </label>
   );
 }
 
 /**
- * Filters: inline at md+, a bottom drawer on phones (search stays visible). `count` is the
+ * Filters: a rounded pill toolbar at md+, a bottom drawer on phones (search stays visible). `count` is the
  * number of active filters shown on the phone button.
  */
 export function FilterBar({ search, children, count, title, onClear, resultLabel }: {
@@ -269,30 +270,36 @@ export function FilterBar({ search, children, count, title, onClear, resultLabel
   const [open, setOpen] = useState(false);
   return (
     <div className="space-y-3">
-      <div className="hidden hf-admin-op-card rounded-xl border border-border/60 bg-card p-4 shadow-sm md:block">
-        <div className="flex flex-wrap items-end gap-3">
+      <div className="relative hidden overflow-hidden rounded-[32px] border border-[var(--a-line,#f1e3d6)] bg-[linear-gradient(100deg,#fff,#fff6ee_60%,#ffeaf3)] p-3 shadow-[var(--a-shadow)] md:block">
+        <span aria-hidden className="pointer-events-none absolute -right-3 -top-3 opacity-60"><Jasmine size={46} /></span>
+        <div className="relative flex flex-wrap items-end gap-3">
           <div className="min-w-[240px] flex-1">{search}</div>
           {children}
-          {count > 0 && <Button variant="ghost" size="sm" onClick={onClear}>Clear filters</Button>}
+          {count > 0 && <button type="button" className="hfa-btn ghost" onClick={onClear}>Clear filters</button>}
         </div>
       </div>
       <div className="flex items-center gap-2 md:hidden">
         <div className="flex-1">{search}</div>
-        <Button variant="outline" size="icon" className="relative shrink-0" onClick={() => setOpen(true)} aria-label={`Filters${count ? `, ${count} active` : ''}`}>
-          <Filter />
-          {count > 0 && <span className="absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1 text-[14px] font-extrabold text-primary-foreground">{count}</span>}
-        </Button>
+        <button
+          type="button"
+          className="hfa-btn relative !h-11 !w-11 shrink-0 !px-0"
+          onClick={() => setOpen(true)}
+          aria-label={`Filters${count ? `, ${count} active` : ''}`}
+        >
+          <Filter className="h-5 w-5" />
+          {count > 0 && <span className="absolute -right-1 -top-1 flex h-6 min-w-6 items-center justify-center rounded-full bg-[var(--a-rani,#d81b72)] px-1 text-[14px] font-extrabold text-white">{count}</span>}
+        </button>
       </div>
       <Drawer open={open} onOpenChange={setOpen} shouldScaleBackground={false}>
         <DrawerContent className="hf-admin-operations">
           <DrawerHeader className="text-left">
-            <DrawerTitle>{title}</DrawerTitle>
+            <DrawerTitle className="flex items-center gap-2 text-[var(--a-plum,#4a1747)]"><Marigold size={22} />{title}</DrawerTitle>
             <DrawerDescription>Dates are in India time (IST).</DrawerDescription>
           </DrawerHeader>
           <div className="grid gap-4 overflow-y-auto px-4 pb-2">{children}</div>
           <DrawerFooter className="flex-row gap-2">
-            <Button variant="outline" className="flex-1" onClick={onClear} disabled={!count}>Clear all</Button>
-            <Button variant="accent" className="flex-1" onClick={() => setOpen(false)}>{resultLabel}</Button>
+            <button type="button" className="hfa-btn ghost flex-1" onClick={onClear} disabled={!count}>Clear all</button>
+            <button type="button" className="hfa-btn rani flex-1" onClick={() => setOpen(false)}>{resultLabel}</button>
           </DrawerFooter>
         </DrawerContent>
       </Drawer>
@@ -320,67 +327,66 @@ export function ExportButton({ kind, path, query, className }: { kind: string; p
     } finally { setBusy(false); }
   };
   return (
-    <Button variant="outline" onClick={run} disabled={busy} className={className}>
-      {busy ? <Loader2 className="animate-spin" /> : <ArrowDownToLine />}
+    <button type="button" onClick={run} disabled={busy} className={cn('hfa-btn gold', className)}>
+      {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <ArrowDownToLine className="h-4 w-4" />}
       {busy ? 'Preparing CSV…' : 'Export CSV'}
-    </Button>
+    </button>
   );
 }
 
+/** Small coloured number tile (accent = money in/peacock, gold = waiting, amber = money out/rani, muted = info/lavender). */
 export function Tile({ label, value, hint, tone }: { label: string; value: ReactNode; hint?: ReactNode; tone?: 'accent' | 'gold' | 'amber' | 'muted' }) {
+  const k = tone === 'accent' ? 'tea' : tone === 'gold' ? 'gold' : tone === 'amber' ? 'rani' : 'lav';
   return (
-    <div className={cn(
-      'hf-admin-op-card hf-admin-op-kpi rounded-xl border bg-card p-4 shadow-sm',
-      tone === 'accent' ? 'border-accent/50' : tone === 'gold' ? 'border-grand-gold/70' : tone === 'amber' ? 'border-primary/40' : 'border-border/60',
-    )}>
-      <div className="text-[14px] font-extrabold uppercase tracking-[0.08em] text-muted-foreground">{label}</div>
-      <div className="mt-1 font-dash text-[22px] font-bold leading-tight text-foreground tabular-nums sm:text-[24px]">{value}</div>
-      {hint && <div className="mt-1 text-[14px] font-semibold text-muted-foreground">{hint}</div>}
+    <div className={cn('hfa-kpi', `hfa-k-${k}`)} style={{ minHeight: 0 }}>
+      <span className="hfa-kpi-lbl">{label}</span>
+      <span className="hfa-kpi-big" style={{ fontSize: 'clamp(22px, 17px + 1vw, 32px)' }}>{value}</span>
+      {hint && <span className="hfa-kpi-sub">{hint}</span>}
     </div>
   );
 }
 
 export function ListSkeleton({ rows = 6 }: { rows?: number }) {
   return (
-    <div className="space-y-2" aria-busy="true" aria-label="Loading">
-      {Array.from({ length: rows }, (_, i) => <div key={i} className="h-16 animate-pulse rounded-xl bg-muted motion-reduce:animate-none" />)}
+    <div className="space-y-3" aria-busy="true" aria-label="Loading">
+      {Array.from({ length: rows }, (_, i) => <div key={i} className="h-16 animate-pulse rounded-[22px] bg-[linear-gradient(100deg,#ffe6ef,#fff1d6,#f1ebff)] motion-reduce:animate-none" />)}
     </div>
   );
 }
 
 export function ErrorBox({ message, onRetry }: { message: string; onRetry: () => void }) {
   return (
-    <div role="alert" className="flex flex-col items-start gap-3 hf-admin-op-card rounded-xl border border-primary/30 bg-primary/5 p-4 sm:flex-row sm:items-center">
-      <AlertCircle className="h-5 w-5 shrink-0 text-primary" />
-      <p className="flex-1 text-[14px] font-semibold text-foreground">{message}</p>
-      <Button size="sm" variant="outline" onClick={onRetry}><RefreshCw /> Try again</Button>
-    </div>
+    <DesiCard tone="rani" corner="hibiscus">
+      <div role="alert" className="flex flex-col items-start gap-3 sm:flex-row sm:items-center">
+        <AlertCircle className="h-6 w-6 shrink-0 text-[var(--a-rani,#d81b72)]" />
+        <p className="flex-1 pr-10 text-[length:var(--fs-small,14px)] font-bold text-[var(--a-ink,#2b1530)]">{message}</p>
+        <button type="button" className="hfa-btn ghost" onClick={onRetry}><RefreshCw className="h-4 w-4" /> Try again</button>
+      </div>
+    </DesiCard>
   );
 }
 
 export function Empty({ title, body }: { title: string; body?: string }) {
   return (
-    <div className="flex flex-col items-center gap-2 hf-admin-op-card rounded-xl border border-dashed border-border bg-card px-6 py-12 text-center">
-      <SearchX className="h-8 w-8 text-muted-foreground" aria-hidden />
-      <p className="font-dash text-[17px] font-bold text-foreground">{title}</p>
-      {body && <p className="max-w-md text-[14px] font-semibold text-muted-foreground">{body}</p>}
-    </div>
+    <DesiCard tone="lav" corner="jasmine" pattern="dots">
+      <DesiEmpty text={<><b className="font-['Nunito'] text-[1.15em] text-[var(--a-plum,#4a1747)]">{title}</b>{body && <><br />{body}</>}</>} />
+    </DesiCard>
   );
 }
 
 export function LoadMore({ show, busy, onClick, shown }: { show: boolean; busy: boolean; onClick: () => void; shown: number }) {
   return (
     <div className="flex flex-col items-center gap-2 pt-2">
-      <p className="text-[14px] font-semibold text-muted-foreground">Showing {shown}{show ? '+' : ''}</p>
+      <p className="hfa-note">Showing {shown}{show ? '+' : ''}</p>
       {show && (
-        <Button variant="outline" onClick={onClick} disabled={busy}>
-          {busy ? <Loader2 className="animate-spin" /> : null} Load more
-        </Button>
+        <button type="button" className="hfa-btn ghost" onClick={onClick} disabled={busy}>
+          {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : null} Load more
+        </button>
       )}
     </div>
   );
 }
 
 /** Table header cell / cell classes shared by the desktop tables. */
-export const TH = 'px-4 py-3 text-left text-[14px] font-extrabold uppercase tracking-[0.08em] text-muted-foreground';
-export const TD = 'px-4 py-3 align-top text-[14px] font-semibold text-foreground';
+export const TH = 'px-4 py-3 text-left text-[14px] font-extrabold uppercase tracking-[0.08em] text-[var(--a-plum,#4a1747)]';
+export const TD = 'px-4 py-3 align-top text-[14px] font-semibold text-[var(--a-ink,#2b1530)]';

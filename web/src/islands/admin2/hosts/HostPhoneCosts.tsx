@@ -6,24 +6,26 @@ import { useCallback, useEffect, useMemo, useState, type CSSProperties, type Rea
 import { adminCall } from '../peopleKit';
 import { adminBlob, saveBlob } from '../adminApi';
 import { Banner, ConsultShell, fail } from '../consultants/kit';
+import { DesiCard, DesiChip, DesiCounter, DesiEmpty, DesiKpi, DesiKpis, DesiTicker, type Tone } from '../desi';
 
 const IST = 19_800_000;
 const DAY = 86_400_000;
 const T14: CSSProperties = { fontSize: 14 };
 const field: CSSProperties = { ...T14, padding: 10, borderRadius: 10, border: '1px solid var(--hf-admin-line)', minHeight: 44, fontFamily: 'inherit' };
-const H: CSSProperties = { fontFamily: "'Nunito', system-ui, sans-serif", fontSize: 20, margin: '0 0 10px' };
-const WARN_BG = 'var(--hf-admin-goldtint)', WARN_FG = '#6b4e12', BAD_BG = '#fbe1dc', BAD_FG = '#9a1f19', OK_BG = 'var(--hf-admin-blush)', OK_FG = 'var(--hf-admin-plum)';
+const H: CSSProperties = { fontSize: 'var(--fs-h2)', margin: '0 0 10px' };
+const WARN_BG = 'var(--a-goldtint)', BAD_BG = '#fbe1dc', BAD_FG = '#9a1f19';
 
 /* Scoped overrides: Comfortaa text, 14px floor, purple instead of the kit's teal. */
 const CSS = `
-.pc-ui{font-family:'Comfortaa',system-ui,sans-serif;font-size:14px;--teal:var(--hf-admin-plum);width:100%}
-.pc-ui .chip{font-size:14px}.pc-ui .btn{font-family:'Nunito',sans-serif}.pc-ui .label{font-size:14px}
-.pc-ui table.t{width:100%;border-collapse:collapse;font-size:14px}.pc-ui table.t th{font-size:14px}
-.pc-ui .tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px}
+.pc-ui{--teal:var(--a-plum);width:100%}
+.pc-ui table.t{width:100%;border-collapse:collapse;font-size:var(--fs-small)}
+.pc-ui table.t th{text-align:left;color:var(--a-muted);font-weight:700;padding:10px 8px;border-bottom:1.5px solid var(--a-line);background:var(--a-cream)}
+.pc-ui table.t td{padding:12px 8px;border-bottom:1px dashed var(--a-line);vertical-align:middle}
 .pc-ui .two{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,420px),1fr));gap:14px}
-.pc-ui .tile{padding:14px}.pc-ui .tile b{display:block;font-family:'Nunito',sans-serif;font-size:22px;color:var(--teal);margin-top:4px;word-break:break-word}
-.pc-ui tr.click{cursor:pointer}.pc-ui tr.click:hover{background:var(--hf-admin-blush)}
-.pc-ui button.link{background:none;border:0;padding:0;font:inherit;font-size:14px;font-weight:800;color:var(--teal);text-decoration:underline;cursor:pointer}
+.pc-ui tr.click{cursor:pointer}.pc-ui tr.click:hover{background:var(--a-blush)}
+.pc-ui button.link{background:none;border:0;padding:0;min-height:44px;font:inherit;font-size:14px;font-weight:800;color:var(--a-plum);text-decoration:underline;cursor:pointer}
+.pc-ui .seal{width:clamp(110px,10vw,150px);aspect-ratio:1;border-radius:50%;display:grid;place-items:center;text-align:center;font-weight:900;font-size:var(--fs-body);border:4px double #fff;box-shadow:0 0 0 4px var(--a-peacock),0 12px 24px -12px rgba(14,124,134,.6);background:radial-gradient(circle at 30% 25%,#4fb5bd,#0e7c86 70%);color:#fff;padding:10px}
+.pc-ui .seal.bad{box-shadow:0 0 0 4px var(--a-rani),0 12px 24px -12px rgba(216,27,114,.6);background:radial-gradient(circle at 30% 25%,#f06ba5,#d81b72 70%)}
 `;
 
 type Rec = Record<string, any>;
@@ -68,26 +70,21 @@ function rangeOf(k: RangeKey, cFrom: string, cTo: string): { from: number; to: n
   return { from: f, to: t, label: `${istDate(f)}-${istDate(t)}` };
 }
 
-function Tile({ label, value, sub, tone }: { label: string; value: ReactNode; sub?: ReactNode; tone?: 'warn' | 'bad' | 'ok' }) {
-  const bg = tone === 'bad' ? BAD_BG : tone === 'warn' ? WARN_BG : tone === 'ok' ? OK_BG : 'var(--hf-admin-cream)';
-  return <div className="card tile hf-admin-op-kpi" style={{ background: bg }}><div className="label">{label}</div><b>{value}</b>{sub && <div className="muted" style={T14}>{sub}</div>}</div>;
+function Tile({ label, value, sub, tone, base = 'lav' }: { label: string; value: ReactNode; sub?: ReactNode; tone?: 'warn' | 'bad' | 'ok'; base?: Exclude<Tone, 'white' | 'cream'> }) {
+  const t = tone === 'bad' ? 'rani' : tone === 'warn' ? 'gold' : tone === 'ok' ? 'tea' : base;
+  return <DesiKpi label={label} value={value} sub={sub} tone={t} alert={tone === 'bad'} />;
 }
 function Chip({ tone, children }: { tone: 'ok' | 'warn' | 'bad'; children: ReactNode }) {
-  const [bg, fg] = tone === 'bad' ? [BAD_BG, BAD_FG] : tone === 'warn' ? [WARN_BG, WARN_FG] : [OK_BG, OK_FG];
-  return <span className="chip" style={{ background: bg, color: fg }}>{children}</span>;
+  return <DesiChip tone={tone === 'bad' ? 'rani' : tone === 'warn' ? 'gold' : 'tea'}>{children}</DesiChip>;
 }
-function Card({ title, children, pad = true, right }: { title: string; children: ReactNode; pad?: boolean; right?: ReactNode }) {
+function Card({ title, children, pad = true, right, tone = 'cream', corner }: { title: string; children: ReactNode; pad?: boolean; right?: ReactNode; tone?: Tone; corner?: 'marigold' | 'yellow' | 'hibiscus' | 'jasmine' }) {
   return (
-    <section className="card" style={{ background: 'var(--hf-admin-cream)', padding: pad ? undefined : 0, overflow: pad ? undefined : 'hidden' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap', alignItems: 'center', padding: pad ? 0 : '16px 18px 0' }}>
-        <h2 style={H}>{title}</h2>{right}
-      </div>
-      {pad ? children : <div style={{ overflowX: 'auto' }}>{children}</div>}
-    </section>
+    <DesiCard title={title} action={right} tone={tone} corner={corner ?? 'none'}>
+      {pad ? children : <div className="hfa-scroll">{children}</div>}
+    </DesiCard>
   );
 }
-const Empty = ({ children }: { children: ReactNode }) => <div className="muted" style={{ ...T14, padding: pad0 }}>{children}</div>;
-const pad0 = '4px 18px 16px';
+const Empty = ({ children }: { children: ReactNode }) => <DesiEmpty text={children} />;
 
 /* ── balance chart: inline SVG ── */
 function BalanceChart({ points, recharges }: { points: BalPoint[]; recharges: Recharge[] }) {
@@ -117,7 +114,7 @@ function BalanceChart({ points, recharges }: { points: BalPoint[]; recharges: Re
         <text x={L} y={Ht - 4} fontSize="14" fill="var(--hf-admin-muted)" fontFamily="Comfortaa, sans-serif">{tm(t0)}</text>
         <text x={W - R} y={Ht - 4} textAnchor="end" fontSize="14" fill="var(--hf-admin-muted)" fontFamily="Comfortaa, sans-serif">{tm(t1)}</text>
       </svg>
-      <div className="muted" style={T14}>Line = Vobiz balance. Dashed amber lines = money you put in (recharges). Red dots = a check that failed.</div>
+      <div className="hfa-note" style={T14}>Line = Vobiz balance. Dashed amber lines = money you put in (recharges). Red dots = a check that failed.</div>
     </div>
   );
 }
@@ -131,7 +128,7 @@ function LegsTable({ legs, onOpen }: { legs: Leg[]; onOpen: (callId: string) => 
         {legs.map((l) => (
           <tr key={l.legUuid} className={l.callId ? 'click' : undefined} onClick={() => l.callId && onOpen(l.callId)}>
             <td>{tm(l.endAt ?? l.startAt)}</td>
-            <td>{l.role === 'unknown' ? <Chip tone="bad">Not our call</Chip> : <><strong>{l.userName || '—'}</strong><div className="muted" style={T14}>{l.userPhone ?? ''}</div></>}</td>
+            <td>{l.role === 'unknown' ? <Chip tone="bad">Not our call</Chip> : <><strong>{l.userName || '—'}</strong><div className="hfa-note" style={T14}>{l.userPhone ?? ''}</div></>}</td>
             <td>{l.role}</td>
             <td>{l.from ?? '—'}</td><td>{l.to ?? '—'}</td>
             <td>{mins(l.billsec)}</td><td>{inr(l.totalCostPaise)}</td>
@@ -159,15 +156,15 @@ function LegBox({ title, leg }: { title: string; leg: LegDetail | null }) {
     ['To', v(w, 'To'), v(c, 'destination_number')],
   ];
   return (
-    <div className="card" style={{ background: 'var(--hf-admin-cream)', minWidth: 0 }}>
+    <div className="hfa-card hfa-t-lav" style={{ minWidth: 0 }}>
       <h3 style={{ ...H, fontSize: 18 }}>{title}</h3>
-      {!leg ? <div className="muted">No record of this leg.</div> : (
+      {!leg ? <div className="hfa-note">No record of this leg.</div> : (
         <div style={{ display: 'grid', gap: 6, wordBreak: 'break-all' }}>
           <div>{leg.from ?? '—'} → {leg.to ?? '—'}</div>
           <div>Started {tm(leg.startAt)} · Ended {tm(leg.endAt)}</div>
           <div>Billed {mins(leg.billsec)} · Total <strong>{inr(leg.totalCostPaise)}</strong> (calls {inr(leg.costPaise)} + streaming {inr(leg.streamingCostPaise)})</div>
-          <div className="muted">Vobiz id {leg.legUuid}</div>
-          <div className="muted">Raw values below are exactly as Vobiz sent them.</div>
+          <div className="hfa-note">Vobiz id {leg.legUuid}</div>
+          <div className="hfa-note">Raw values below are exactly as Vobiz sent them.</div>
           {leg.mismatch ? <Chip tone="bad">Mismatch: {leg.mismatch}</Chip> : leg.cdrCheckedAt ? <Chip tone="ok">Webhook and Vobiz record agree</Chip> : <Chip tone="warn">Vobiz record not checked yet</Chip>}
           <table className="t" style={{ marginTop: 6 }}>
             <thead><tr><th>Field</th><th>Our webhook</th><th>Vobiz record</th></tr></thead>
@@ -186,10 +183,10 @@ function DrillDown({ callId, onClose }: { callId: string; onClose: () => void })
   const callerLeg = data?.legs.find((l) => l.role === 'caller' || l.legUuid === data.call.callerLegUuid) ?? null;
   const charged = data?.call.chargedPaise;
   return (
-    <Card title="Call details" right={<button type="button" className="btn ghost small" onClick={onClose}>Close</button>}>
-      <div className="muted" style={{ ...T14, marginBottom: 8, wordBreak: 'break-all' }}>Call {callId}{data ? ` · ${data.call.callerName || data.call.callerPhone || 'caller'} called ${data.call.hostName || data.call.hostPhone || 'host'} · caller charged ${inr(charged)} · host earned ${inr(data.call.hostEarningPaise)}` : ''}</div>
+    <Card title="Call details" right={<button type="button" className="hfa-btn ghost" onClick={onClose}>Close</button>}>
+      <div className="hfa-note" style={{ ...T14, marginBottom: 8, wordBreak: 'break-all' }}>Call {callId}{data ? ` · ${data.call.callerName || data.call.callerPhone || 'caller'} called ${data.call.hostName || data.call.hostPhone || 'host'} · caller charged ${inr(charged)} · host earned ${inr(data.call.hostEarningPaise)}` : ''}</div>
       {err && <Banner tone="error">{err}</Banner>}
-      {!data && !err && <div className="muted">Loading…</div>}
+      {!data && !err && <div className="hfa-note">Loading…</div>}
       {data && <div className="two"><LegBox title="Leg 1 — host" leg={hostLeg} /><LegBox title="Leg 2 — caller" leg={callerLeg} /></div>}
     </Card>
   );
@@ -309,36 +306,45 @@ export default function HostPhoneCosts() {
         {sumErr && !sum && <Banner tone="error">{sumErr}</Banner>}
 
         {checkFailed && lv && (
-          <div role="alert" className="card" style={{ background: BAD_BG, borderColor: 'var(--hf-admin-rani)', color: BAD_FG, fontWeight: 800 }}>
+          <div role="alert" className="hfa-card" style={{ background: BAD_BG, borderColor: 'var(--a-rani)', color: BAD_FG, fontWeight: 800 }}>
             {!lv.ok ? 'The last check of Vobiz failed, so the numbers below may be out of date.' : 'The Vobiz account is not active. Calls may not connect.'}
             <div style={{ ...T14, fontWeight: 400 }}>Last answer from Vobiz: {tm(lv.at)}{staleMs > 120_000 ? ` (${Math.round(staleMs / 60000)} minutes ago)` : ''}.</div>
           </div>
         )}
         {sumErr && sum && <Banner tone="error">Could not refresh just now. Showing the last numbers. {sumErr}</Banner>}
 
-        <section>
-          <div className="muted" style={{ ...T14, marginBottom: 8 }}>{checkedAt ? `Last checked ${hms(lv?.at ?? checkedAt)} (India time) · this page refreshed ${hms(checkedAt)}, then every 15 seconds` : 'Checking…'}</div>
-          {!sum ? <div className="card muted">Loading the live numbers…</div> : (
-            <div className="tiles">
-              <Tile label="Vobiz balance" value={inr(lv?.balancePaise)} sub={`Balance as of ${tm(lv?.balanceAt)}`} tone={lv && !lv.ok ? 'bad' : undefined} />
-              <Tile label="Available to spend" value={inr(lv?.availablePaise)} sub={lv?.reservedPaise ? `${inr(lv.reservedPaise)} held` : undefined} />
-              <Tile label="Spent today" value={inr(sum.today.costPaise)} sub={`${sum.today.legs} legs · ${sum.today.minutes} min`} />
-              <Tile label="Spent this month" value={inr(sum.month.costPaise)} sub={`${sum.month.legs} legs · ${sum.month.minutes} min`} />
-              <Tile label="Unexplained today" value={inr(sum.unexplainedTodayPaise)} sub="Vobiz took it, no call of ours" tone={sum.unexplainedTodayPaise > 0 ? 'bad' : 'ok'} />
-              <Tile label="Unexplained this month" value={inr(sum.unexplainedMonthPaise)} tone={sum.unexplainedMonthPaise > 0 ? 'bad' : 'ok'} />
-              <Tile label="Users paid, today" value={inr(sum.chargedUsersTodayPaise)} sub={`Vobiz cost ${inr(sum.today.costPaise)}`} />
-              <Tile label="Users paid, this month" value={inr(sum.chargedUsersMonthPaise)} sub={`Vobiz cost ${inr(sum.month.costPaise)}`} />
-              <Tile label="Open alerts" value={sum.openAlerts} tone={sum.openAlerts > 0 ? 'warn' : 'ok'} />
-              <Tile label="Waiting for Vobiz record" value={sum.pendingCdr} sub="Calls still being double-checked" tone={sum.pendingCdr > 20 ? 'warn' : undefined} />
-              <Tile label="Record chain" value={sum.chainOk ? 'Intact' : 'BROKEN'} sub={sum.chainOk ? 'No entry was changed or removed' : 'Something was changed. Check alerts.'} tone={sum.chainOk ? 'ok' : 'bad'} />
-            </div>
+        <section style={{ display: 'grid', gap: 14 }}>
+          <div className="hfa-note">{checkedAt ? `Last checked ${hms(lv?.at ?? checkedAt)} (India time) · this page refreshed ${hms(checkedAt)}, then every 15 seconds` : 'Checking…'}</div>
+          {!sum ? <DesiCard tone="lav"><div className="hfa-note" role="status">Loading the live numbers…</div></DesiCard> : (
+            <>
+              <div className="hfa-row-wide">
+                <DesiCounter tone={lv && !lv.ok ? 'rani' : 'plum'} eyebrow="Vobiz balance" value={inr(lv?.balancePaise)}
+                  label={<>Balance as of {tm(lv?.balanceAt)}<br />Available to spend {inr(lv?.availablePaise)}{lv?.reservedPaise ? ` · ${inr(lv.reservedPaise)} held` : ''}</>} />
+                <DesiCard tone={sum.chainOk ? 'tea' : 'rani'} corner="jasmine" title="Record chain">
+                  <div style={{ display: 'flex', gap: 16, alignItems: 'center', flexWrap: 'wrap' }}>
+                    <div className={`seal${sum.chainOk ? '' : ' bad'}`} role="img" aria-label={sum.chainOk ? 'Record chain intact' : 'Record chain broken'}>{sum.chainOk ? 'Intact' : 'BROKEN'}</div>
+                    <div className="hfa-note" style={{ flex: 1, minWidth: 160 }}>{sum.chainOk ? 'No entry was changed or removed' : 'Something was changed. Check alerts.'}</div>
+                  </div>
+                </DesiCard>
+              </div>
+              <DesiKpis>
+                <Tile label="Spent today" value={inr(sum.today.costPaise)} sub={`${sum.today.legs} legs · ${sum.today.minutes} min`} base="saffron" />
+                <Tile label="Spent this month" value={inr(sum.month.costPaise)} sub={`${sum.month.legs} legs · ${sum.month.minutes} min`} base="gold" />
+                <Tile label="Unexplained today" value={inr(sum.unexplainedTodayPaise)} sub="Vobiz took it, no call of ours" tone={sum.unexplainedTodayPaise > 0 ? 'bad' : 'ok'} />
+                <Tile label="Unexplained this month" value={inr(sum.unexplainedMonthPaise)} tone={sum.unexplainedMonthPaise > 0 ? 'bad' : 'ok'} />
+                <Tile label="Users paid, today" value={inr(sum.chargedUsersTodayPaise)} sub={`Vobiz cost ${inr(sum.today.costPaise)}`} base="tea" />
+                <Tile label="Users paid, this month" value={inr(sum.chargedUsersMonthPaise)} sub={`Vobiz cost ${inr(sum.month.costPaise)}`} base="tea" />
+                <Tile label="Open alerts" value={sum.openAlerts} tone={sum.openAlerts > 0 ? 'warn' : 'ok'} />
+                <Tile label="Waiting for Vobiz record" value={sum.pendingCdr} sub="Calls still being double-checked" tone={sum.pendingCdr > 20 ? 'warn' : undefined} base="lav" />
+              </DesiKpis>
+            </>
           )}
         </section>
 
-        <Card title="Download proof" right={<span className="muted" style={T14}>Period: {range.label} (India time)</span>}>
+        <Card title="Download proof" tone="gold" corner="marigold" right={<span className="hfa-note">Period: {range.label} (India time)</span>}>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
             {(['today', 'yesterday', 'month', 'lastmonth', 'custom'] as RangeKey[]).map((k) => (
-              <button key={k} type="button" className={`btn small${rk === k ? '' : ' ghost'}`} onClick={() => setRk(k)}>
+              <button key={k} type="button" className="hfa-pill" aria-pressed={rk === k} onClick={() => setRk(k)}>
                 {{ today: 'Today', yesterday: 'Yesterday', month: 'This month', lastmonth: 'Last month', custom: 'Custom' }[k]}
               </button>
             ))}
@@ -352,31 +358,32 @@ export default function HostPhoneCosts() {
               <option value="">Everyone</option>
               {(users ?? []).filter((u) => u.uid).map((u) => <option key={u.uid} value={u.uid}>{u.name || u.phone || u.uid}{u.phone && u.name ? ` · ${u.phone}` : ''}</option>)}
             </select></label>
-            <button type="button" className="btn small" disabled={busy === 'pdf'} onClick={() => void download('pdf')}>{busy === 'pdf' ? 'Preparing…' : 'Download PDF'}</button>
-            <button type="button" className="btn ghost small" disabled={busy === 'csv'} onClick={() => void download('csv')}>{busy === 'csv' ? 'Preparing…' : 'Download CSV'}</button>
+            <button type="button" className="hfa-btn" disabled={busy === 'pdf'} onClick={() => void download('pdf')}>{busy === 'pdf' ? 'Preparing…' : 'Download PDF'}</button>
+            <button type="button" className="hfa-btn ghost" disabled={busy === 'csv'} onClick={() => void download('csv')}>{busy === 'csv' ? 'Preparing…' : 'Download CSV'}</button>
           </div>
         </Card>
 
-        <Card title="Live calls from Vobiz" pad={false} right={<span className="muted" style={{ ...T14, padding: '16px 18px 0' }}>Newest first · tap a row to open the call</span>}>
+        {feed && feed.length > 0 && <DesiTicker label="Live calls" items={feed.slice(0, 8).map((l) => `${l.role === 'unknown' ? 'Not our call' : l.userName || '—'} · ${l.from ?? '—'} → ${l.to ?? '—'} · ${mins(l.billsec)} · ${inr(l.totalCostPaise)}`)} />}
+        <Card title="Live calls from Vobiz" pad={false} tone="lav" right={<span className="hfa-note">Newest first · tap a row to open the call</span>}>
           {feed == null ? <Empty>Loading…</Empty> : feed.length === 0 ? <Empty>No Vobiz calls yet. They appear here within a minute of each call.</Empty> : <LegsTable legs={feed} onOpen={setOpen} />}
         </Card>
 
         {open && <DrillDown callId={open} onClose={() => setOpen(null)} />}
 
-        <Card title="Balance over time">
-          {bal == null ? <div className="muted">Loading…</div> : <BalanceChart points={bal.points} recharges={bal.recharges} />}
+        <Card title="Balance over time" tone="tea" corner="jasmine">
+          {bal == null ? <div className="hfa-note">Loading…</div> : <BalanceChart points={bal.points} recharges={bal.recharges} />}
         </Card>
 
-        <Card title="Each person: what they paid vs what Vobiz charged" pad={false}
-          right={<div style={{ padding: '16px 18px 0' }}><input type="search" placeholder="Search name, number or id" aria-label="Search people" style={{ ...field, width: 280, maxWidth: '100%' }} value={search} onChange={(e) => setSearch(e.target.value)} /></div>}>
+        <Card title="Each person: what they paid vs what Vobiz charged" pad={false} tone="white"
+          right={<div><input type="search" placeholder="Search name, number or id" aria-label="Search people" style={{ ...field, width: 280, maxWidth: '100%' }} value={search} onChange={(e) => setSearch(e.target.value)} /></div>}>
           {users == null ? <Empty>Loading…</Empty> : shown.length === 0 ? <Empty>{users.length ? 'No one matches that search.' : 'No phone usage in this period yet.'}</Empty> : (
             <table className="t">
               <thead><tr>{th('name', 'Person')}{th('callerCalls', 'Calls made')}{th('hostCalls', 'Calls taken')}{th('paidPaise', 'They paid')}{th('vobizCostPaise', 'Vobiz charged')}{th('diffPaise', 'Difference')}</tr></thead>
               <tbody>{shown.map((u) => (
                 <tr key={u.uid || 'unknown'} className={u.uid ? 'click' : undefined} style={u.uid ? undefined : { background: WARN_BG }} onClick={() => u.uid && setUid(u.uid)} title={u.uid ? 'Tap to filter the download to this person' : undefined}>
-                  <td>{u.uid ? <><strong>{u.name || '—'}</strong><div className="muted" style={T14}>{u.phone ?? '—'}</div></> : <><strong>Unknown traffic (not our calls)</strong><div className="muted" style={T14}>Vobiz charged these; we have no call for them.</div></>}</td>
-                  <td>{u.asCaller?.calls ?? 0} · {mins(u.asCaller?.billsec ?? 0)}<div className="muted" style={T14}>{inr(u.asCaller?.costPaise ?? 0)}</div></td>
-                  <td>{u.asHost?.calls ?? 0} · {mins(u.asHost?.billsec ?? 0)}<div className="muted" style={T14}>{inr(u.asHost?.costPaise ?? 0)}</div></td>
+                  <td>{u.uid ? <><strong>{u.name || '—'}</strong><div className="hfa-note" style={T14}>{u.phone ?? '—'}</div></> : <><strong>Unknown traffic (not our calls)</strong><div className="hfa-note" style={T14}>Vobiz charged these; we have no call for them.</div></>}</td>
+                  <td>{u.asCaller?.calls ?? 0} · {mins(u.asCaller?.billsec ?? 0)}<div className="hfa-note" style={T14}>{inr(u.asCaller?.costPaise ?? 0)}</div></td>
+                  <td>{u.asHost?.calls ?? 0} · {mins(u.asHost?.billsec ?? 0)}<div className="hfa-note" style={T14}>{inr(u.asHost?.costPaise ?? 0)}</div></td>
                   <td>{inr(u.paidPaise)}</td><td>{inr(u.vobizCostPaise)}</td>
                   <td>{u.diffPaise < 0 ? <Chip tone="bad">{inr(u.diffPaise)}</Chip> : <Chip tone="ok">{inr(u.diffPaise)}</Chip>}</td>
                 </tr>
@@ -386,7 +393,7 @@ export default function HostPhoneCosts() {
         </Card>
 
         <div className="two">
-          <Card title="Recharges (money you put into Vobiz)" pad={false}>
+          <Card title="Recharges (money you put into Vobiz)" pad={false} tone="gold" corner="yellow">
             {recharges == null ? <Empty>Loading…</Empty> : recharges.length === 0 ? <Empty>No recharges recorded yet. Add one below, or it appears here when the balance jumps up.</Empty> : (
               <table className="t">
                 <thead><tr><th>When</th><th>Amount</th><th>Proof</th><th /></tr></thead>
@@ -395,8 +402,8 @@ export default function HostPhoneCosts() {
                   return (
                     <tr key={id}>
                       <td>{tm(r.at)}</td><td>{inr(r.amountPaise)}</td>
-                      <td style={{ wordBreak: 'break-all' }}>{r.utr ? `UTR ${r.utr}` : '—'}{r.invoiceNo ? ` · Invoice ${r.invoiceNo}` : ''}{r.note ? <div className="muted">{r.note}</div> : null}</td>
-                      <td>{detected && !done ? <button type="button" className="btn small" disabled={busy === `rc${id}`} onClick={() => void confirmRc(id)}>Confirm</button> : <Chip tone={done || !detected ? 'ok' : 'warn'}>{detected ? 'Confirmed' : 'Added by you'}</Chip>}</td>
+                      <td style={{ wordBreak: 'break-all' }}>{r.utr ? `UTR ${r.utr}` : '—'}{r.invoiceNo ? ` · Invoice ${r.invoiceNo}` : ''}{r.note ? <div className="hfa-note">{r.note}</div> : null}</td>
+                      <td>{detected && !done ? <button type="button" className="hfa-btn" disabled={busy === `rc${id}`} onClick={() => void confirmRc(id)}>Confirm</button> : <Chip tone={done || !detected ? 'ok' : 'warn'}>{detected ? 'Confirmed' : 'Added by you'}</Chip>}</td>
                     </tr>
                   );
                 })}</tbody>
@@ -409,11 +416,11 @@ export default function HostPhoneCosts() {
               <label style={T14}>UTR<input style={{ ...field, width: '100%' }} value={rf.utr} onChange={(e) => setRf({ ...rf, utr: e.target.value })} /></label>
               <label style={T14}>Invoice no.<input style={{ ...field, width: '100%' }} value={rf.invoiceNo} onChange={(e) => setRf({ ...rf, invoiceNo: e.target.value })} /></label>
               <label style={T14}>Note<input style={{ ...field, width: '100%' }} value={rf.note} onChange={(e) => setRf({ ...rf, note: e.target.value })} /></label>
-              <div><button type="submit" className="btn small" disabled={busy === 'add'}>{busy === 'add' ? 'Saving…' : 'Save recharge'}</button></div>
+              <div><button type="submit" className="hfa-btn" disabled={busy === 'add'}>{busy === 'add' ? 'Saving…' : 'Save recharge'}</button></div>
             </form>
           </Card>
 
-          <Card title="Alerts" pad={false}>
+          <Card title="Alerts" pad={false} tone="rani" corner="hibiscus">
             {alerts == null ? <Empty>Loading…</Empty> : alerts.length === 0 ? <Empty>No alerts. Nothing odd has happened.</Empty> : (
               <div style={{ display: 'grid' }}>
                 {alerts.map((a) => {
@@ -422,11 +429,11 @@ export default function HostPhoneCosts() {
                     <div key={id} style={{ padding: '12px 18px', borderTop: '1px solid var(--hf-admin-line)', opacity: acked ? 0.65 : 1 }}>
                       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
                         <Chip tone={crit ? 'bad' : 'warn'}>{crit ? 'Serious' : 'Warning'}</Chip>
-                        <span className="muted">{tm(a.createdAt)}</span>
+                        <span className="hfa-note">{tm(a.createdAt)}</span>
                         {a.amountPaise != null && <strong>{inr(a.amountPaise)}</strong>}
                       </div>
                       <div style={{ margin: '6px 0', wordBreak: 'break-word' }}>{a.message}</div>
-                      {acked ? <span className="muted">Seen {tm(a.ackedAt)}</span> : <button type="button" className="btn ghost small" disabled={busy === `ack${id}`} onClick={() => void ack(id)}>Mark as seen</button>}
+                      {acked ? <span className="hfa-note">Seen {tm(a.ackedAt)}</span> : <button type="button" className="hfa-btn ghost" disabled={busy === `ack${id}`} onClick={() => void ack(id)}>Mark as seen</button>}
                     </div>
                   );
                 })}
@@ -435,11 +442,11 @@ export default function HostPhoneCosts() {
           </Card>
         </div>
 
-        <Card title="Sync a day from Vobiz">
-          <div className="muted" style={{ ...T14, marginBottom: 8 }}>Pulls Vobiz's own call records for one India-time day and fills in anything we missed.</div>
+        <Card title="Sync a day from Vobiz" tone="lav">
+          <div className="hfa-note" style={{ ...T14, marginBottom: 8 }}>Pulls Vobiz's own call records for one India-time day and fills in anything we missed.</div>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
             <input type="date" style={field} value={syncDay} max={istDate(Date.now())} onChange={(e) => setSyncDay(e.target.value)} aria-label="Day to sync" />
-            <button type="button" className="btn small" disabled={busy === 'sync' || !syncDay} onClick={() => void sync()}>{busy === 'sync' ? 'Syncing…' : 'Sync this day'}</button>
+            <button type="button" className="hfa-btn" disabled={busy === 'sync' || !syncDay} onClick={() => void sync()}>{busy === 'sync' ? 'Syncing…' : 'Sync this day'}</button>
           </div>
         </Card>
       </div>

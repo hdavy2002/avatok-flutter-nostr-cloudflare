@@ -75,3 +75,26 @@
 }
 .pe-root :is(button,[role=button],select){min-height:44px;min-width:44px;font-family:var(--hf-admin-head,'Nunito',sans-serif);font-size:14px}
 .pe-root input:not([type=checkbox]):not([type=radio]):not([type=range]){min-height:44px;font-size:16px}
+
+/* [HF-ADMIN-DESI-3] Editor chrome: marigold top band, tinted panels, coloured block tiles, framed preview. Puck's iframe canvas stays the public shop. */
+.pe-top{position:relative;overflow:hidden;border-bottom:3px solid var(--hf-admin-marigold,#f59e0b);background:radial-gradient(60% 200% at 100% 0%,#ffd7a8,transparent 70%),linear-gradient(100deg,#fff0f6,#fff6ea 60%,#f7f3ff)}
+.pe-top>*{position:relative;z-index:1}
+.pe-flowers{display:flex;align-items:flex-start;gap:2px;margin:-8px 4px -14px 0}
+.pe-flowers svg{filter:drop-shadow(0 4px 5px #4a174733)}
+.pe-top b{font-size:clamp(17px,1vw + 12px,24px);color:var(--hf-admin-plum,#4a1747)}
+.pe-root [class*="_PuckLayout-inner_"]{background:linear-gradient(160deg,#fff6ea,#fdeef5 55%,#f3edff)}
+.pe-root [class*="_Sidebar_"]{background:linear-gradient(165deg,#fff 30%,var(--hf-admin-lavtint,#f1ebff));border-radius:0 24px 24px 0;box-shadow:inset 0 4px 0 var(--hf-admin-rani,#d81b72)}
+.pe-root [class*="_SidebarSection_"]{background:linear-gradient(165deg,#fff 40%,var(--hf-admin-goldtint,#fff1d6));border:1.5px solid #f3dfb3;border-radius:20px;margin:8px;overflow:hidden}
+.pe-root [class*="_SidebarSection-title_"]{font-family:var(--hf-admin-head,'Nunito',sans-serif);font-weight:900;color:var(--hf-admin-plum,#4a1747)}
+.pe-root [class*="_Drawer_"]{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:10px;padding:6px}
+.pe-root [class*="_DrawerItem_"]{border:2px solid #f2a9c8;border-radius:18px;background:linear-gradient(150deg,#ffe6ef,#fff);min-height:56px;cursor:grab;box-shadow:0 8px 14px -12px var(--hf-admin-plum,#4a1747);font-weight:800}
+.pe-root [class*="_Drawer_"]>:nth-child(4n+2) [class*="_DrawerItem_"]{border-color:#c7b6f5;background:linear-gradient(150deg,#f1ebff,#fff)}
+.pe-root [class*="_Drawer_"]>:nth-child(4n+3) [class*="_DrawerItem_"]{border-color:#e9c98d;background:linear-gradient(150deg,#fff1d6,#fff)}
+.pe-root [class*="_Drawer_"]>:nth-child(4n+4) [class*="_DrawerItem_"]{border-color:#9fd3d8;background:linear-gradient(150deg,#e3f5f6,#fff)}
+.pe-root [class*="_Layer_"]{border-radius:14px}
+.pe-root [class*="_Layer-inner_"]{border-radius:14px;border:1.5px dashed #e3b9cd;background:#fffc;min-height:44px}
+.pe-root [class*="_PuckCanvas_"]{padding:clamp(6px,1.2vw,18px)}
+.pe-root [class*="_PuckPreview_"]{border-radius:22px;border:3px solid var(--hf-admin-plum,#4a1747);outline:3px dashed var(--hf-admin-marigold,#f59e0b);outline-offset:4px;overflow:hidden;box-shadow:0 18px 36px -20px var(--hf-admin-plum,#4a1747)}
+.pe-modal-box{background:linear-gradient(165deg,#fff 40%,var(--hf-admin-goldtint,#fff1d6));border:2px solid var(--hf-admin-marigold,#f59e0b)}
+.pe-ver{border-top:2px dashed #e9c98d}
+@media(max-width:640px){.pe-flowers{display:none}.pe-root [class*="_Sidebar_"]{border-radius:0}}

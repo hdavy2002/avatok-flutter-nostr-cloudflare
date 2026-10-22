@@ -6,11 +6,12 @@
  *    hairline grid, legends for >=2 series, a hover/focus tooltip on every chart, and a
  *    table view (<details>) so no value is hover-only.
  */
-import { useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent, type ReactNode, type RefObject } from 'react';
+import { useEffect, useId, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent, type ReactNode, type RefObject } from 'react';
 import { cn } from '../../lib/utils';
 
-export const C1 = 'var(--hf-admin-plum, #4a1747)';
-export const C2 = 'var(--hf-admin-marigold, #ffb52e)';
+export const C1 = '#d81b72'; // rani
+export const GRAD = 'linear-gradient(90deg, #f59e0b, #d81b72)'; // marigold -> rani
+export const C2 = '#f59e0b'; // marigold
 export const INK_MUTED = 'var(--hf-admin-muted, #75606f)';
 export const GRID = 'var(--hf-admin-line, #eadbd1)';
 export const SURFACE = 'var(--hf-admin-cream, #fffdf8)';
@@ -111,16 +112,16 @@ export function LegendKey({ kind, color, dashed, label }: { kind: 'line' | 'rect
 
 /* ── Sparkline (stat tiles) ──────────────────────────────────────────────── */
 
-export function Sparkline({ values, className }: { values: number[]; className?: string }) {
+export function Sparkline({ values, className, color = C1 }: { values: number[]; className?: string; color?: string }) {
   if (values.length < 2) return <div className={cn('h-7', className)} aria-hidden />;
   const max = Math.max(...values, 0) || 1;
   const n = values.length - 1;
   const pts = values.map((v, i) => `${(i / n) * 100},${28 - 2 - (v / max) * 24}`);
   return (
     <svg viewBox="0 0 100 28" preserveAspectRatio="none" className={cn('h-7 w-full overflow-visible', className)} aria-hidden>
-      <polygon points={`0,28 ${pts.join(' ')} 100,28`} style={{ fill: C1, opacity: 0.1 }} />
+      <polygon points={`0,28 ${pts.join(' ')} 100,28`} style={{ fill: color, opacity: 0.18 }} />
       <polyline points={pts.join(' ')} vectorEffect="non-scaling-stroke"
-        style={{ fill: 'none', stroke: C1, strokeWidth: 1.5, strokeLinejoin: 'round', strokeLinecap: 'round' }} />
+        style={{ fill: 'none', stroke: color, strokeWidth: 1.5, strokeLinejoin: 'round', strokeLinecap: 'round' }} />
     </svg>
   );
 }
@@ -168,6 +169,7 @@ export function TrendLine({ days, cur, prev, format, axisFormat, label, onPick }
   const { idx, setIdx, fromX, onKey, tapFirst } = useIndex(n, M.left, step || 1);
   const line = (vals: number[]) => vals.map((v, i) => `${i ? 'L' : 'M'}${X(i)},${Y(v)}`).join('');
   const every = labelEvery(n, iw);
+  const gid = useId().replace(/:/g, '');
 
   return (
     <div ref={ref} className="relative w-full" style={{ height: H }}>
@@ -181,6 +183,7 @@ export function TrendLine({ days, cur, prev, format, axisFormat, label, onPick }
           onKeyDown={(e) => onKey(e, onPick ? (i) => onPick(days[i]) : undefined)}
           onBlur={() => setIdx(null)}
         >
+          <defs><linearGradient id={`tl${gid}`} x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#f59e0b" stopOpacity="0.5" /><stop offset="1" stopColor="#d81b72" stopOpacity="0.04" /></linearGradient></defs>
           {ticks.map((t) => (
             <g key={t}>
               <line x1={M.left} x2={width - M.right} y1={Y(t)} y2={Y(t)} style={{ stroke: GRID, strokeWidth: 1 }} />
@@ -190,7 +193,7 @@ export function TrendLine({ days, cur, prev, format, axisFormat, label, onPick }
           {days.map((d, i) => (i % every === 0 || i === n - 1) && (i === n - 1 || n - 1 - i >= every / 2) ? (
             <text key={d} x={X(i)} y={H - 6} textAnchor={i === 0 && n > 1 ? 'start' : i === n - 1 && n > 1 ? 'end' : 'middle'} className="fill-muted-foreground text-[14px] font-semibold">{shortDay(d)}</text>
           ) : null)}
-          {n > 1 && <path d={`${line(cur)}L${X(n - 1)},${Y(0)}L${X(0)},${Y(0)}Z`} style={{ fill: C1, opacity: 0.1 }} />}
+          {n > 1 && <path d={`${line(cur)}L${X(n - 1)},${Y(0)}L${X(0)},${Y(0)}Z`} style={{ fill: `url(#tl${gid})` }} />}
           {prev && n > 1 && <path d={line(prev)} style={{ fill: 'none', stroke: INK_MUTED, strokeWidth: 1.5, strokeDasharray: '4 4', strokeLinejoin: 'round' }} />}
           {n > 1 && <path d={line(cur)} style={{ fill: 'none', stroke: C1, strokeWidth: 2, strokeLinejoin: 'round', strokeLinecap: 'round' }} />}
           {idx != null && <line x1={X(idx)} x2={X(idx)} y1={M.top} y2={M.top + ih} style={{ stroke: INK_MUTED, strokeWidth: 1 }} />}
@@ -292,7 +295,7 @@ export function DayColumns({ days, series, format, label, onPick }: {
 
 export interface HBarRow { key: string; label: ReactNode; value: number; valueText: string; sub?: string; href?: string; title?: string }
 
-export function HBars({ rows, color = C1 }: { rows: HBarRow[]; color?: string }) {
+export function HBars({ rows, color = GRAD }: { rows: HBarRow[]; color?: string }) {
   const max = Math.max(...rows.map((r) => r.value), 0) || 1;
   return (
     <ul className="grid gap-1">
@@ -304,7 +307,7 @@ export function HBars({ rows, color = C1 }: { rows: HBarRow[]; color?: string })
               {r.sub && <div className="truncate text-[14px] font-semibold text-muted-foreground">{r.sub}</div>}
             </div>
             <div className="flex min-w-0 items-center gap-2">
-              <div className="h-3 min-w-[2px] rounded-r-[4px]" style={{ width: `${Math.max(1, (r.value / max) * 100) * 0.78}%`, background: color }} aria-hidden />
+              <div className="h-3 min-w-[2px] rounded-r-[6px]" style={{ width: `${Math.max(1, (r.value / max) * 100) * 0.78}%`, background: color }} aria-hidden />
               <span className="shrink-0 font-dash text-[14px] font-bold tabular-nums text-foreground">{r.valueText}</span>
             </div>
           </div>

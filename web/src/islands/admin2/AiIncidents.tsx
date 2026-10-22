@@ -7,7 +7,6 @@ import { capture, captureException } from '../../lib/analytics';
 import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
 import { Label } from '../../components/ui/label';
-import { Badge } from '../../components/ui/badge';
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter,
   AlertDialogHeader, AlertDialogTitle,
@@ -15,12 +14,13 @@ import {
 import { toast } from '../../components/ui/sonner';
 import { adminApi, errMessage, istDateTime } from './adminApi';
 import { eventsPath, type EventsListResponse } from './eventsApi';
-import { Empty, ErrorBox, ListSkeleton } from './peopleKit';
+import { ErrorBox, ListSkeleton } from './peopleKit';
 import { aiApi, type AdminAiIncident } from './aiApi';
+import { DesiChip, DesiEmpty, DesiSlip } from './desi';
 import { HINT, LABEL, Section, TEXTAREA } from './AiKit';
 
 const SITE = '__site__';
-const SELECT = 'h-11 w-full rounded-md border border-input bg-background px-3 font-dashbody text-[15px] font-semibold text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring';
+const SELECT = 'h-12 w-full rounded-2xl border-2 border-[#f3dfb3] bg-white px-3 font-dashbody text-[15px] font-semibold text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring';
 
 export default function AiIncidents() {
   const [items, setItems] = useState<AdminAiIncident[] | null>(null);
@@ -85,25 +85,32 @@ export default function AiIncidents() {
   const recent = (items ?? []).filter((i) => i.expires_at != null && i.expires_at <= now);
 
   const row = (i: AdminAiIncident, ended: boolean) => (
-    <li key={i.id} className="flex flex-wrap items-start gap-3 rounded-lg border border-border/70 bg-background px-3 py-2.5">
-      <div className="min-w-0 flex-1">
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="text-[14px] font-extrabold text-foreground">{i.listing_title ?? (i.listing_id ? 'Event' : 'Site-wide')}</span>
-          <Badge variant={i.source === 'weather_notice' ? 'secondary' : 'outline'}>{i.source === 'weather_notice' ? 'Weather notice' : 'Added by admin'}</Badge>
-          {ended && <Badge variant="muted">Ended</Badge>}
+    <li key={i.id}>
+      <DesiSlip
+        tone={ended ? 'lav' : 'rani'}
+        strip={i.listing_title ?? (i.listing_id ? 'Event' : 'Site-wide')}
+        stripRight={
+          <span className="flex flex-wrap items-center gap-2">
+            <DesiChip tone={i.source === 'weather_notice' ? 'gold' : 'lav'}>{i.source === 'weather_notice' ? 'Weather notice' : 'Added by admin'}</DesiChip>
+            {ended && <DesiChip tone="grey">Ended</DesiChip>}
+          </span>
+        }
+        actions={<Button variant="ghost" className="min-h-11 rounded-full text-[var(--a-rani)]" aria-label="Delete incident" onClick={() => setDel(i)}><Trash2 /> Remove</Button>}
+      >
+        <div className="min-w-0 [grid-column:1/-1]">
+          <p className="whitespace-pre-wrap break-words text-[clamp(16px,15px+.3vw,19px)] font-bold text-foreground">{i.message}</p>
+          <p className="mt-1.5 text-[14px] font-semibold text-muted-foreground">
+            From {istDateTime(i.starts_at)} · {i.expires_at ? `until ${istDateTime(i.expires_at)}` : 'no end time'}
+          </p>
         </div>
-        <p className="mt-1 whitespace-pre-wrap break-words text-[14px] font-semibold text-foreground">{i.message}</p>
-        <p className="mt-1 text-[14px] font-semibold text-muted-foreground">
-          From {istDateTime(i.starts_at)} · {i.expires_at ? `until ${istDateTime(i.expires_at)}` : 'no end time'}
-        </p>
-      </div>
-      <Button size="icon" variant="ghost" aria-label="Delete incident" onClick={() => setDel(i)}><Trash2 /></Button>
+      </DesiSlip>
     </li>
   );
 
+
   return (
-    <div className="space-y-5">
-      <Section title="Add an incident">
+    <div className="hfa-stack">
+      <Section title="Add an incident" tone="gold" corner="marigold" pattern="stripes">
         <div className="grid gap-4 md:grid-cols-2">
           <div className="grid gap-1.5">
             <Label htmlFor="inc-target" className={LABEL}>Applies to</Label>
@@ -111,11 +118,11 @@ export default function AiIncidents() {
               <option value={SITE}>Site-wide</option>
               {events.map((e) => <option key={e.id} value={e.id}>{e.title}</option>)}
             </select>
-            {evErr && <p className="text-[14px] font-bold text-destructive">Could not load events; site-wide still works.</p>}
+            {evErr && <p className="text-[14px] font-bold text-[var(--a-bad)]">Could not load events; site-wide still works.</p>}
           </div>
           <div className="grid gap-1.5">
             <Label htmlFor="inc-exp" className={LABEL}>Ends (optional, India time)</Label>
-            <Input id="inc-exp" type="datetime-local" value={expires} onChange={(e) => setExpires(e.target.value)} />
+            <Input id="inc-exp" className="h-12 bg-white" type="datetime-local" value={expires} onChange={(e) => setExpires(e.target.value)} />
           </div>
           <div className="grid gap-1.5 md:col-span-2">
             <Label htmlFor="inc-msg" className={LABEL}>Message</Label>
@@ -123,20 +130,20 @@ export default function AiIncidents() {
             <p className={HINT}>Written for visitors. She repeats it in her own words.</p>
           </div>
           <div>
-            <Button variant="accent" onClick={() => void create()} disabled={busy || !message.trim()}>
+            <Button variant="accent" className="min-h-11 rounded-full" onClick={() => void create()} disabled={busy || !message.trim()}>
               {busy ? <Loader2 className="animate-spin" /> : <Plus />} Add incident
             </Button>
           </div>
         </div>
       </Section>
 
-      <Section title="Active now">
-        {err ? <ErrorBox message={err} onRetry={() => void load()} /> : !items ? <ListSkeleton rows={2} /> : active.length === 0 ? <Empty title="No active incidents" body="Add one above when something affects a booking." /> : <ul className="grid gap-2">{active.map((i) => row(i, false))}</ul>}
+      <Section title="Active now" tone="rani" corner="hibiscus">
+        {err ? <ErrorBox message={err} onRetry={() => void load()} /> : !items ? <ListSkeleton rows={2} /> : active.length === 0 ? <DesiEmpty text="No active incidents. Add one above when something affects a booking." /> : <ul className="grid gap-4">{active.map((i) => row(i, false))}</ul>}
       </Section>
 
       {items && recent.length > 0 && (
-        <Section title="Recent">
-          <ul className="grid gap-2">{recent.slice(0, 20).map((i) => row(i, true))}</ul>
+        <Section title="Recent" tone="lav" corner="jasmine">
+          <ul className="grid gap-4">{recent.slice(0, 20).map((i) => row(i, true))}</ul>
         </Section>
       )}
 

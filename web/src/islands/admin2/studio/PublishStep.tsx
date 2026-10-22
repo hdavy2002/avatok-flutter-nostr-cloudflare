@@ -13,6 +13,7 @@ import {
   type CostRange, type Fits, type PublishStepRow, type SizeCost,
 } from '../../../lib/studioApi';
 import { listCollections, type AdminCollection } from '../shop/shopApi';
+import { DesiCard } from '../desi';
 import { LoadError, Loading, Page, Steps, TopBar, useDesign } from './StudioKit';
 
 const FALLBACK_SIZES = ['S', 'M', 'L', 'XL', '2XL', '3XL']; // last resort only: the catalogue's own sizes are used whenever there is one
@@ -150,7 +151,7 @@ export default function PublishStep({ designId }: { designId: string }) {
       <TopBar design={design} />
       <Steps id={design.id} current="publish" design={design} />
       <div className="g2">
-        <div className="panel"><h2>What Printrove will print</h2>
+        <DesiCard tone="cream" pattern="bahi" corner="marigold" className="sa-receipt" title="What Printrove will print" note="The bahi entry for this design">
           <ul className="list">
             <li><span className="dot ok">✓</span><div><b>Product</b><br />{area?.label ?? fit?.label ?? 'Chosen product'}{design.colours.length ? ` · ${design.colours.join(', ')}` : ''}</div></li>
             <li><span className={`dot ${pl ? 'ok' : 'warn'}`}>{pl ? '✓' : '!'}</span><div><b>Print</b><br />
@@ -159,9 +160,9 @@ export default function PublishStep({ designId }: { designId: string }) {
               {hasPrint ? `${design.print_w} × ${design.print_h} px PNG, see-through outside the ${pl?.shape === 'circle' ? 'circle' : 'frame'} · ${pl?.dpi ?? '—'} DPI` : 'Not made yet — press “Looks good” in Step 3.'}</div></li>
             <li><span className={`dot ${hasPrint ? 'ok' : 'wait'}`}>{hasPrint ? '✓' : '·'}</span><div><b>Within Printrove limits</b><br />
               {area ? `Print area ${fmtIn(area.w)} × ${fmtIn(area.h)} in · ` : ''}file under 5000 × 5000 px · RGB</div></li>
-          </ul></div>
-        <div className="panel"><div className="foot" style={{ margin: '0 0 12px' }}><h2>Words</h2>
-          <button className="btn ghost sm" type="button" disabled={aiBusy} onClick={() => void writeAi()}>{aiBusy ? 'Writing…' : 'Write with AI'}</button></div>
+          </ul></DesiCard>
+        <DesiCard tone="rani" corner="hibiscus" title="Words" action={
+          <button className="hfa-btn ghost sm" type="button" disabled={aiBusy} onClick={() => void writeAi()}>{aiBusy ? 'Writing…' : 'Write with AI'}</button>}>
           <label className="lbl">Product name<input className="fld" value={name} onChange={(e) => setName(e.target.value)} maxLength={120} /></label>
           <label className="lbl" style={{ marginTop: 12 }}>Description<textarea className="fld" value={desc} onChange={(e) => setDesc(e.target.value)} maxLength={2000} /></label>
           <div className="g2" style={{ marginTop: 12 }}>
@@ -173,12 +174,11 @@ export default function PublishStep({ designId }: { designId: string }) {
             <label className="lbl">Badge
               <select className="fld" value={badge} onChange={(e) => setBadge(e.target.value)}>
                 {BADGES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
-              </select></label></div></div>
+              </select></label></div></DesiCard>
       </div>
 
-      <div className="panel"><div className="foot" style={{ margin: '0 0 6px' }}><h2>Sizes and prices</h2>
-        <button className="btn ghost sm" type="button" disabled={!suggestable} onClick={suggest}>Suggest prices</button></div>
-        <p className="lead">Shipping is free for the buyer and included in your price; GST 18% is added at checkout.</p>
+      <DesiCard tone="gold" corner="yellow" title="Sizes and prices" note="Shipping is free for the buyer and included in your price; GST 18% is added at checkout."
+        action={<button className="hfa-btn ghost sm" type="button" disabled={!suggestable} onClick={suggest}>Suggest prices</button>}>
         {unsold.length > 0 && (
           <p className="errtxt" role="alert" style={{ margin: '0 0 12px' }}>
             {unsold.join(', ')} {unsold.length === 1 ? 'is' : 'are'} not sold by Printrove. <a href={stepHref(design.id, 'product')}>Pick the colours again in the Product step</a> before publishing.
@@ -190,7 +190,7 @@ export default function PublishStep({ designId }: { designId: string }) {
           </p>
         )}
         {!builtin && !costs && <p className="note" style={{ marginBottom: 12 }}>Place the print in Step 3 to see what Printrove charges for it.</p>}
-        <div style={{ overflowX: 'auto', borderRadius: 20 }}>
+        <div className="tbl-wrap">
           <table className="tbl">
             <thead><tr><th>Size</th><th>Printrove cost</th><th>Printrove GST</th><th>Shipping</th><th>Your cost</th><th>Your price ₹</th><th>Profit</th><th>GST 18%</th><th>Buyer pays</th></tr></thead>
             <tbody>
@@ -209,7 +209,7 @@ export default function PublishStep({ designId }: { designId: string }) {
                     <td><b>{total !== null ? inr(total) : '—'}</b></td>
                     <td><input className="fld studio-price-input" inputMode="numeric" aria-label={`Price for ${sz}`} value={prices[sz] ?? ''}
                       onChange={(e) => setPrices((p) => ({ ...p, [sz]: e.target.value.replace(/[^\d]/g, '') }))} /></td>
-                    <td>{profit !== null ? <b style={{ color: profit > 0 ? '#1e7a44' : '#b3261e' }}>{profit < 0 ? '−' : ''}{inr(Math.abs(profit))}</b> : '—'}</td>
+                    <td>{profit !== null ? <b className={profit > 0 ? 'profit-up' : 'profit-down'}>{profit < 0 ? '−' : ''}{inr(Math.abs(profit))}</b> : '—'}</td>
                     <td>{n ? inr(gstOn(n)) : '—'}</td><td><b>{n ? inr(n + gstOn(n)) : '—'}</b></td>
                   </tr>
                 );
@@ -217,14 +217,13 @@ export default function PublishStep({ designId }: { designId: string }) {
             </tbody>
           </table>
         </div>
-        <p style={{ font: '600 14px Nunito', color: '#6b4a2b', margin: '12px 0 0' }}>
+        <p className="sa-lead" style={{ margin: '12px 0 0' }}>
           Costs are Printrove&apos;s prices today for this print size; GST and shipping are estimates until the first real order.
         </p>
         {bigDiffer && <p className="note" style={{ marginTop: 12 }}>2XL and larger are priced the same for now — the shop charges one price per product, so {inr(base)} applies to every size.</p>}
-      </div>
+      </DesiCard>
 
-      <div className="panel"><h2>Publish</h2>
-        <p className="lead">Each step can be retried on its own. Nothing goes live until all are green.</p>
+      <DesiCard tone="plum" corner="yellow" title="Publish" note="Each step can be retried on its own. Nothing goes live until all are done.">
         <div className="g2">
           {[rows.slice(0, half), rows.slice(half)].map((col, ci) => (
             <ul className="list" key={ci}>
@@ -235,13 +234,13 @@ export default function PublishStep({ designId }: { designId: string }) {
           ))}
         </div>
         {problem && <p className="errtxt" role="alert">{problem}</p>}
-        {busy && <p className="lead" role="status" style={{ margin: '12px 0 0' }}>{busy}</p>}
+        {busy && <p className="sa-lead" role="status" style={{ margin: '12px 0 0', color: '#fff' }}>{busy}</p>}
         {!hasPrint && <p className="errtxt">Make the print file in Step 3 first. <a href={stepHref(design.id, 'design')}>Open Step 3</a></p>}
         <div className="row" style={{ marginTop: 14 }}>
-          <button className="btn red" type="button" disabled={!canPublish} onClick={() => void publish()}>{failed > 0 ? 'Retry failed steps' : published ? 'Publish again' : 'Publish now'}</button>
-          <button className="btn ghost" type="button" disabled={!!busy} onClick={() => void saveDraft()}>Save as draft</button>
-          {published && <a className="btn teal" href="/admin/shop/products">See it in Products</a>}
-        </div></div>
+          <button className="hfa-btn rani" type="button" disabled={!canPublish} onClick={() => void publish()}>{failed > 0 ? 'Retry failed steps' : published ? 'Publish again' : 'Publish now'}</button>
+          <button className="hfa-btn ghost" type="button" disabled={!!busy} onClick={() => void saveDraft()}>Save as draft</button>
+          {published && <a className="hfa-btn gold" href="/admin/shop/products">See it in Products</a>}
+        </div></DesiCard>
     </Page>
   );
 }

@@ -2,10 +2,9 @@
  * Worker: GET/POST /api/admin/hf/demo-influencers, DELETE /api/admin/hf/demo-influencers/:uid. Videos are embeds only. Nothing under 14px. */
 import { useCallback, useEffect, useState } from 'react';
 import { hfAdminApi, type DemoInfluencer, type DemoSaveResult, type InviteCreator } from '../../../lib/hfAdminApi';
-import { Banner, ConsultShell, Spinner, dateIST, fail, track } from '../consultants/kit';
-
-const T14 = { fontSize: 14 } as const;
-const inp = { minHeight: 44, padding: '8px 10px', borderRadius: 10, border: '1px solid var(--hf-admin-line)', background: 'var(--hf-admin-cream)', ...T14 } as const;
+import { dateIST, fail, track } from '../consultants/kit';
+import { DesiAvatar, DesiCard, DesiChip, DesiEmpty, DesiPersonCard } from '../desi';
+import { HBanner } from './hostsKit';
 
 export function linesOf(text: string): string[] {
   return text.split(/\r?\n/).map((x) => x.trim()).filter(Boolean);
@@ -46,42 +45,37 @@ export function InviteCreators() {
     catch (e) { setError(fail('invite_hide', e)); } finally { setBusy(null); }
   };
   return (
-    <div className="card" style={{ padding: 14, background: 'var(--hf-admin-cream)', marginBottom: 16 }}>
-      <h3 style={{ margin: '0 0 6px', fontSize: 18 }}>Invite creators (not on the app yet)</h3>
-      <p className="muted" style={{ ...T14, margin: '0 0 10px' }}>Their latest reels show after the network reels in the feed, with an Invite button. Fans' searches and Invite votes add creators here too.</p>
-      {error && <Banner tone="error">{error}</Banner>}
-      {info && <Banner tone="info">{info}</Banner>}
-      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'flex-end' }}>
-        <label style={T14}>Platform<br />
-          <select value={platform} onChange={(e) => setPlatform(e.target.value as 'youtube' | 'instagram')} style={{ ...inp, minWidth: 140 }} aria-label="Platform">
-            <option value="youtube">YouTube</option>
-            <option value="instagram">Instagram</option>
-          </select>
-        </label>
-        <label style={T14}>Handle<br /><input value={handle} onChange={(e) => setHandle(e.target.value)} maxLength={120} placeholder="@name" style={{ ...inp, width: 220 }} aria-label="Handle" /></label>
-        <button type="button" className="btn" style={T14} disabled={busy === 'add' || handle.trim().length < 2} onClick={() => void add()}>{busy === 'add' ? 'Adding…' : 'Add creator'}</button>
-      </div>
-      {items === null ? <Spinner label="Loading invite creators" /> : items.length === 0 ? <p className="muted" style={T14}>No invite creators yet.</p> : (
-        <div style={{ overflowX: 'auto', marginTop: 10 }}>
-          <table style={{ borderCollapse: 'collapse', ...T14, minWidth: 520 }}>
-            <thead><tr>{['Creator', 'Platform', 'Followers', 'Votes', 'Reels', 'From', ''].map((h) => <th key={h} style={{ textAlign: 'left', padding: '6px 10px' }}>{h}</th>)}</tr></thead>
-            <tbody>
-              {items.map((c) => (
-                <tr key={c.platform + c.handle} style={c.hidden ? { opacity: 0.55 } : undefined}>
-                  <td style={{ padding: '6px 10px' }}>{c.handle}{c.name ? <span className="muted"> · {c.name}</span> : null}</td>
-                  <td style={{ padding: '6px 10px' }}>{c.platform === 'youtube' ? 'YouTube' : 'Instagram'}</td>
-                  <td style={{ padding: '6px 10px' }}>{c.followers.toLocaleString('en-IN')}</td>
-                  <td style={{ padding: '6px 10px' }}>{c.votes}</td>
-                  <td style={{ padding: '6px 10px' }}>{c.reels}</td>
-                  <td style={{ padding: '6px 10px' }}>{c.source}</td>
-                  <td style={{ padding: '6px 10px' }}><button type="button" className="btn ghost" style={T14} disabled={busy === c.platform + c.handle} onClick={() => void toggle(c)}>{c.hidden ? 'Show' : 'Hide'}</button></td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+    <DesiCard tone="lav" corner="hibiscus" title="Invite creators (not on the app yet)" note="Their latest reels show after the network reels in the feed, with an Invite button. Fans' searches and Invite votes add creators here too.">
+      <div className="hfa-stack">
+        {error && <HBanner tone="error">{error}</HBanner>}
+        {info && <HBanner tone="info">{info}</HBanner>}
+        <div className="hfh-fields">
+          <label className="hfh-field">Platform
+            <select value={platform} onChange={(e) => setPlatform(e.target.value as 'youtube' | 'instagram')} aria-label="Platform">
+              <option value="youtube">YouTube</option>
+              <option value="instagram">Instagram</option>
+            </select>
+          </label>
+          <label className="hfh-field">Handle<input value={handle} onChange={(e) => setHandle(e.target.value)} maxLength={120} placeholder="@name" aria-label="Handle" /></label>
+          <div><button type="button" className="hfa-btn" disabled={busy === 'add' || handle.trim().length < 2} onClick={() => void add()}>{busy === 'add' ? 'Adding…' : 'Add creator'}</button></div>
         </div>
-      )}
-    </div>
+        {items === null ? <p role="status" className="hfa-note">Loading invite creators</p> : items.length === 0 ? <DesiEmpty text="No invite creators yet." /> : (
+          <div className="hfh-demos">
+            {items.map((c) => (
+              <div key={c.platform + c.handle} className="hfh-demo" style={c.hidden ? { opacity: 0.6 } : undefined}>
+                <DesiPersonCard band={c.platform === 'youtube' ? 'rani' : 'lav'} avatar={<DesiAvatar name={c.name || c.handle} seed={c.handle} size={60} />}
+                  title={<>{c.handle}{c.name ? <span className="hfa-note"> · {c.name}</span> : null}</>}
+                  sub={c.platform === 'youtube' ? 'YouTube' : 'Instagram'}
+                  chips={<>{c.hidden && <DesiChip tone="grey">Hidden</DesiChip>}<DesiChip tone="lav">{c.followers.toLocaleString('en-IN')} followers</DesiChip></>}
+                  meta={<><span>Votes {c.votes}</span><span>Reels {c.reels}</span><span>From {c.source}</span></>}>
+                  <button type="button" className="hfa-btn ghost" disabled={busy === c.platform + c.handle} onClick={() => void toggle(c)}>{c.hidden ? 'Show' : 'Hide'}</button>
+                </DesiPersonCard>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </DesiCard>
   );
 }
 
@@ -118,47 +112,46 @@ export default function DemoInfluencers() {
   };
 
   return (
-    <ConsultShell className="hf-admin-operations">
+    <div className="hfa-stack">
       <InviteCreators />
-      {error && <Banner tone="error">{error}</Banner>}
-      {info && <Banner tone="info">{info}</Banner>}
-      <div className="card" style={{ padding: 14, background: 'var(--hf-admin-cream)', marginBottom: 16 }}>
-        <h3 style={{ margin: '0 0 10px', fontSize: 18 }}>Create or fill a demo influencer</h3>
-        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'flex-end' }}>
-          <label style={T14}>Add to<br />
-            <select value={fillUid} onChange={(e) => setFillUid(e.target.value)} style={{ ...inp, minWidth: 180 }} aria-label="Add to">
-              <option value="">A new demo influencer</option>
-              {(items ?? []).map((d) => <option key={d.uid} value={d.uid}>{d.name || d.uid}</option>)}
-            </select>
+      {error && <HBanner tone="error">{error}</HBanner>}
+      {info && <HBanner tone="info">{info}</HBanner>}
+      <DesiCard tone="rani" corner="marigold" pattern="dots" title="Create or fill a demo influencer" note="Paste YouTube links, one per line.">
+        <div className="hfa-stack">
+          <div className="hfh-fields">
+            <label className="hfh-field">Add to
+              <select value={fillUid} onChange={(e) => setFillUid(e.target.value)} aria-label="Add to">
+                <option value="">A new demo influencer</option>
+                {(items ?? []).map((d) => <option key={d.uid} value={d.uid}>{d.name || d.uid}</option>)}
+              </select>
+            </label>
+            <label className="hfh-field">Display name<input value={name} onChange={(e) => setName(e.target.value)} maxLength={60} aria-label="Display name" /></label>
+            <label className="hfh-field">Rate (rupees per minute)<input type="number" min={1} max={1000} value={rupees} onChange={(e) => setRupees(Math.max(1, Math.min(1000, Number(e.target.value) || 1)))} aria-label="Rate" /></label>
+          </div>
+          <label className="hfh-field">YouTube video links, one per line
+            <textarea value={text} onChange={(e) => setText(e.target.value)} rows={8} placeholder={'https://www.youtube.com/watch?v=...\nhttps://youtu.be/...\nhttps://www.youtube.com/shorts/...'} aria-label="YouTube links" />
           </label>
-          <label style={T14}>Display name<br /><input value={name} onChange={(e) => setName(e.target.value)} maxLength={60} style={{ ...inp, width: 200 }} aria-label="Display name" /></label>
-          <label style={T14}>Rate (rupees per minute)<br /><input type="number" min={1} max={1000} value={rupees} onChange={(e) => setRupees(Math.max(1, Math.min(1000, Number(e.target.value) || 1)))} style={{ ...inp, width: 120 }} aria-label="Rate" /></label>
+          <p className="hfa-note" style={{ margin: 0 }}>{urls.length} link{urls.length === 1 ? '' : 's'}. Videos stay on YouTube and play in the official player. A demo profile never takes calls or payments.</p>
+          <div><button type="button" className="hfa-btn rani" disabled={busy === 'save' || !urls.length || (!fillUid && !name.trim())} onClick={() => void save()}>{busy === 'save' ? 'Saving…' : fillUid ? 'Add videos' : 'Create demo influencer'}</button></div>
         </div>
-        <label style={{ ...T14, display: 'block', marginTop: 12 }}>YouTube video links, one per line<br />
-          <textarea value={text} onChange={(e) => setText(e.target.value)} rows={8} placeholder={'https://www.youtube.com/watch?v=...\nhttps://youtu.be/...\nhttps://www.youtube.com/shorts/...'} style={{ ...inp, width: '100%', maxWidth: 640, fontFamily: 'inherit' }} aria-label="YouTube links" />
-        </label>
-        <p className="muted" style={{ ...T14, margin: '6px 0 10px' }}>{urls.length} link{urls.length === 1 ? '' : 's'}. Videos stay on YouTube and play in the official player. A demo profile never takes calls or payments.</p>
-        <button type="button" className="btn" style={T14} disabled={busy === 'save' || !urls.length || (!fillUid && !name.trim())} onClick={() => void save()}>{busy === 'save' ? 'Saving…' : fillUid ? 'Add videos' : 'Create demo influencer'}</button>
-      </div>
+      </DesiCard>
 
-      {items === null ? <Spinner label="Loading demo influencers" /> : items.length === 0 ? <p className="muted" style={T14}>No demo influencers yet.</p> : (
-        <div style={{ overflowX: 'auto' }}>
-          <table style={{ borderCollapse: 'collapse', ...T14, minWidth: 520 }}>
-            <thead><tr>{['Name', 'Rate', 'Videos', 'Made', ''].map((h) => <th key={h} style={{ textAlign: 'left', padding: '6px 10px' }}>{h}</th>)}</tr></thead>
-            <tbody>
-              {items.map((d) => (
-                <tr key={d.uid}>
-                  <td style={{ padding: '6px 10px' }}>{d.name || d.uid}{d.slug ? <span className="muted"> · {d.slug}</span> : null}</td>
-                  <td style={{ padding: '6px 10px' }}>₹{Math.round(d.ratePaise / 100)}/min</td>
-                  <td style={{ padding: '6px 10px' }}>{d.videos}</td>
-                  <td style={{ padding: '6px 10px' }}>{dateIST(d.createdAt)}</td>
-                  <td style={{ padding: '6px 10px' }}><button type="button" className="btn ghost" style={T14} disabled={busy === d.uid} onClick={() => void remove(d)}>Delete</button></td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+      {items === null ? <DesiCard tone="cream" pattern="dots"><p role="status" className="hfa-note">Loading demo influencers</p></DesiCard> : items.length === 0 ? <DesiCard tone="gold" corner="marigold"><DesiEmpty text="No demo influencers yet." /></DesiCard> : (
+        <div className="hfh-demos">
+          {items.map((d) => (
+            <div key={d.uid} className="hfh-demo">
+              <span className="hfh-demo-tag"><DesiChip tone="gold">Demo</DesiChip></span>
+              <DesiPersonCard band="gold" avatar={<DesiAvatar name={d.name} seed={d.uid} size={72} />}
+                title={d.name || d.uid} sub={d.slug || undefined}
+                meta={<><span>₹{Math.round(d.ratePaise / 100)}/min</span><span>{d.videos} video{d.videos === 1 ? '' : 's'}</span><span>Made {dateIST(d.createdAt)}</span></>}>
+                <span className="hfh-acts" style={{ marginTop: 6 }}>
+                  <button type="button" className="hfh-chipbtn" disabled={busy === d.uid} onClick={() => void remove(d)} aria-label={`Delete ${d.name || d.uid}`}>Delete</button>
+                </span>
+              </DesiPersonCard>
+            </div>
+          ))}
         </div>
       )}
-    </ConsultShell>
+    </div>
   );
 }

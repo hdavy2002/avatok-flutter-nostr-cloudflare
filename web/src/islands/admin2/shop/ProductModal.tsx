@@ -10,6 +10,7 @@ import { capture, captureException } from '../../../lib/analytics';
 import { toast } from '../../../components/ui/sonner';
 import { uploadCover } from '../eventsApi';
 import { Modal } from './ShopUI';
+import { Hibiscus, Jasmine, Lotus, Marigold } from '../desi';
 import TraditionNotePanel from '../knowledge/TraditionNotePanel'; // [AUMFE-KNOWLEDGE-ADMIN-UI-1]
 import {
   PHOTO_LABELS, digitsOnly, errMessage, getProduct, listCollections, saveProduct,
@@ -134,11 +135,13 @@ export default function ProductModal({ open, product, onClose, onSaved }: {
   }
 
   return (
-    <Modal open onClose={onClose}>
+    <Modal open onClose={onClose} wide>
       <form onSubmit={submit}>
         <h2>{editing ? 'Edit product' : 'Add product'}</h2>
         <p>Photos, price and stock per size. SEO title and share card are written automatically.</p>
-        <div className="sh-form">
+        <section className="sh-sec sh-sec--lav">
+          <h3 className="sh-sec-h"><Lotus size={34} />The tee</h3>
+          <div className="sh-form">
           <label className="full">Product name<input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Ram Darbar Tee" /></label>
           {/* [SAATHUM-SHOP-EDITOR-2] These two flags decide who shows in the shop home's New arrivals and Bestsellers rows (and their "View all" lists). */}
           <div className="full sh-field sh-flags">
@@ -155,9 +158,22 @@ export default function ProductModal({ open, product, onClose, onSaved }: {
           <label>Fit<select value={fit} onChange={(e) => setFit(e.target.value as 'Regular' | 'Oversized')}><option>Regular</option><option>Oversized</option></select></label>
           <label>Print type<select value={printType} onChange={(e) => setPrintType(e.target.value)}>{PRINT_TYPES.map((t) => <option key={t}>{t}</option>)}</select></label>
           <label>For<select value={audience} onChange={(e) => setAudience(e.target.value as 'Adults' | 'Kids')}><option>Adults</option><option>Kids</option></select></label>
+          </div>
+        </section>
+
+        <section className="sh-sec sh-sec--gold">
+          <h3 className="sh-sec-h"><Marigold size={26} tone={1} />Price</h3>
+          <div className="sh-form">
           <label>Price (₹)<input inputMode="numeric" value={price} onChange={(e) => setPrice(digitsOnly(e.target.value, 6))} /></label>
           <label>MRP for strike-through (₹)<input inputMode="numeric" value={mrp} onChange={(e) => setMrp(digitsOnly(e.target.value, 6))} placeholder="optional" /></label>
 
+          <label>Price shown<input value="+18% GST at checkout" disabled readOnly /></label>
+          </div>
+        </section>
+
+        <section className="sh-sec sh-sec--rani">
+          <h3 className="sh-sec-h"><Hibiscus size={28} />Colours &amp; sizes</h3>
+          <div className="sh-form">
           <div className="full sh-field">
             <span className="sh-field-lbl">Colours</span>
             {colours.map((c, i) => (
@@ -172,8 +188,20 @@ export default function ProductModal({ open, product, onClose, onSaved }: {
           </div>
 
           <label className="full">Sizes offered<input value={sizes} onChange={(e) => setSizes(e.target.value)} /></label>
+          </div>
+        </section>
+
+        <section className="sh-sec sh-sec--tea">
+          <h3 className="sh-sec-h"><Jasmine size={26} />Printrove</h3>
+          <div className="sh-form">
           <label className="full">Printrove product / design ID<input value={ref} onChange={(e) => setRef(e.target.value)} placeholder="from your Printrove dashboard" /></label>
 
+          </div>
+        </section>
+
+        <section className="sh-sec sh-sec--saffron">
+          <h3 className="sh-sec-h"><Marigold size={26} />Photos</h3>
+          <div className="sh-form">
           <div className="full sh-field">
             <span className="sh-field-lbl">Photos (front, back, close-up, on model)</span>
             {images.length > 0 && (
@@ -209,14 +237,20 @@ export default function ProductModal({ open, product, onClose, onSaved }: {
             <input ref={fileRef} type="file" accept="image/jpeg,image/png,image/webp" multiple hidden onChange={(e) => { if (e.target.files) void addFiles(e.target.files); e.target.value = ''; }} />
           </div>
 
+          </div>
+        </section>
+
+        <section className="sh-sec sh-sec--cream">
+          <h3 className="sh-sec-h"><Jasmine size={26} />Story &amp; shelf</h3>
+          <div className="sh-form">
           <label className="full">Description<textarea rows={3} value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Original artwork, fabric, the story behind the design…" /></label>
           <label>Status<select value={status} onChange={(e) => setStatus(e.target.value as 'live' | 'draft' | 'hidden')}><option value="live">Live</option><option value="draft">Draft</option><option value="hidden">Hidden</option></select></label>
-          <label>Price shown<input value="+18% GST at checkout" disabled readOnly /></label>
           <label>Badge<select value={badge} onChange={(e) => setBadge(e.target.value as '' | 'new' | 'best' | 'sale')}><option value="">Automatic</option><option value="new">New</option><option value="best">Bestseller</option><option value="sale">Sale</option></select><small>Automatic: NEW if shown in New arrivals, else BESTSELLER, else SALE when marked down.</small></label>
-        </div>
+          </div>
+        </section>
         {editing && product && <TraditionNotePanel kind="shop_product" id={product.id} title={product.name} />}{/* [AUMFE-KNOWLEDGE-ADMIN-UI-1] */}
         {err && <p className="sh-err" role="alert">{err}</p>}
-        <div className="sh-actions sh-actions--spaced">
+        <div className="sh-actions sh-actions--spaced sh-sticky">
           <button type="button" className="sh-btn sh-btn--ghost" onClick={onClose}>Cancel</button>
           <button type="submit" className="sh-btn sh-btn--red" style={{ flex: 1 }} disabled={busy}>{busy ? 'Saving…' : editing ? 'Save changes' : 'Publish product'}</button>
         </div>

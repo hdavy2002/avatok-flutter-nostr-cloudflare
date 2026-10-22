@@ -6,7 +6,8 @@
 import { useCallback, useEffect, useState } from 'react';
 import { capture, captureException } from '../../../lib/analytics';
 import { toast } from '../../../components/ui/sonner';
-import { LoadError, Modal, Thumb } from './ShopUI';
+import { LoadError, Modal, Spinner, Thumb } from './ShopUI';
+import { DesiCard, DesiChip, DesiEmpty, Hibiscus, Jasmine, Marigold } from '../desi';
 import ProductModal from './ProductModal';
 import {
   SLOTS, archiveProduct, errMessage, inr, listProducts, promoteProduct, restoreProduct, setProductFlags, slotShort,
@@ -16,10 +17,12 @@ import {
 const TABS: { f: 'all' | ProductStatus; label: string }[] = [
   { f: 'all', label: 'All' }, { f: 'live', label: 'Live' }, { f: 'draft', label: 'Draft' }, { f: 'hidden', label: 'Hidden' }, { f: 'archived', label: 'Archived' },
 ];
-const CHIP: Record<ProductStatus, { cls: string; label: string }> = {
-  live: { cls: 'st-delivered', label: 'Live' }, draft: { cls: 'st-pending', label: 'Draft' },
-  hidden: { cls: 'st-packed', label: 'Hidden' }, archived: { cls: 'st-cancelled', label: 'Archived' },
+const CHIP: Record<ProductStatus, { tone: 'tea' | 'gold' | 'lav' | 'grey'; label: string }> = {
+  live: { tone: 'tea', label: 'Live' }, draft: { tone: 'gold', label: 'Draft' },
+  hidden: { tone: 'lav', label: 'Hidden' }, archived: { tone: 'grey', label: 'Archived' },
 };
+/** Each tile gets its own tint so a gallery reads as a bazaar, not a grid of identical boxes. */
+const TINTS = ['rani', 'lav', 'tea', 'gold', 'saffron'] as const;
 
 export default function ProductsPanel({ rev }: { rev: number }) {
   const [tab, setTab] = useState<'all' | ProductStatus>('all');
@@ -66,54 +69,63 @@ export default function ProductsPanel({ rev }: { rev: number }) {
 
   return (
     <div className="sh-apanel is-on" data-apanel="products">
-      <div className="sh-tabs">
-        {TABS.map((t) => (
-          <button key={t.f} type="button" className={tab === t.f ? 'is-on' : ''} onClick={() => setTab(t.f)}>
-            {t.label}{counts[t.f] !== undefined ? ` (${counts[t.f]})` : ''}
-          </button>
-        ))}
+      <div className="sh-toolbar sh-toolbar--gold">
+        <div className="hfa-pills" role="group" aria-label="Filter products">
+          {TABS.map((t) => (
+            <button key={t.f} type="button" className="hfa-pill" aria-pressed={tab === t.f} onClick={() => setTab(t.f)}>
+              {t.label}{counts[t.f] !== undefined ? ` (${counts[t.f]})` : ''}
+            </button>
+          ))}
+        </div>
       </div>
 
-      {error ? <LoadError message={error} onRetry={() => void load()} /> : (
-        <div className="sh-tbl-wrap">
-          <table className="sh-table">
-            <thead><tr><th>Product</th><th>Collection</th><th>Price</th><th>Sizes</th><th>Shows in</th><th>Promoted on</th><th>Status</th><th>Actions</th></tr></thead>
-            <tbody>
-              {loading ? (
-                <tr><td colSpan={8} style={{ textAlign: 'center', padding: 30 }}>Loading…</td></tr>
-              ) : items.length === 0 ? (
-                <tr><td colSpan={8} style={{ textAlign: 'center', padding: 30 }}>No products here yet. Tap “+ Add product”.</td></tr>
-              ) : items.map((p) => {
-                const chip = CHIP[p.status] ?? CHIP.live;
-                const on = (p.promoted_on ?? []).filter((k) => k !== 'new_arrivals' && k !== 'bestsellers').map(slotShort);
-                return (
-                  <tr key={p.id}>
-                    <td><Thumb url={p.image_url} /><b>{p.name}</b></td>
-                    <td>{p.collection?.name ?? '—'}</td>
-                    <td><b>{inr(p.price_rupees)}</b>{p.mrp_rupees ? <><br /><small><s>{inr(p.mrp_rupees)}</s></small></> : null}</td>
-                    <td><small>{(p.sizes ?? []).join(' · ')}</small></td>
-                    <td style={{ whiteSpace: 'nowrap' }}>
-                      {p.status === 'archived' ? '—' : (<>
-                        <button type="button" className={'sh-flag' + (p.is_new ? ' is-on' : '')} aria-pressed={!!p.is_new} title="Show in New arrivals" onClick={() => void flip(p, 'is_new')}>New arrival</button>{' '}
-                        <button type="button" className={'sh-flag' + (p.is_bestseller ? ' is-on' : '')} aria-pressed={!!p.is_bestseller} title="Mark as Bestseller" onClick={() => void flip(p, 'is_bestseller')}>Bestseller</button>
-                      </>)}
-                    </td>
-                    <td style={{ maxWidth: 220 }}><small>{on.join(', ') || '—'}</small></td>
-                    <td><span className={`sh-st ${chip.cls}`}>{chip.label}</span></td>
-                    <td style={{ whiteSpace: 'nowrap' }}>
-                      {p.status === 'archived' ? (
-                        <button type="button" className="sh-btn sh-btn--teal sh-mini" onClick={() => void restore(p)}>Restore</button>
-                      ) : (<>
-                        <button type="button" className="sh-btn sh-btn--ghost sh-mini" onClick={() => setEdit(p)}>Edit</button>{' '}
-                        <button type="button" className="sh-btn sh-btn--teal sh-mini" onClick={() => setPromo(p)}>Promote</button>{' '}
-                        <button type="button" className="sh-btn sh-btn--ghost sh-mini sh-danger" onClick={() => setDel(p)}>Delete</button>
-                      </>)}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+      {error ? <LoadError message={error} onRetry={() => void load()} /> : loading ? (
+        <Spinner label="Loading…" />
+      ) : items.length === 0 ? (
+        <DesiCard tone="gold" corner="marigold"><DesiEmpty text="No products here yet. Tap “+ Add product”." /></DesiCard>
+      ) : (
+        <div className="sh-gallery">
+          {items.map((p, idx) => {
+            const chip = CHIP[p.status] ?? CHIP.live;
+            const on = (p.promoted_on ?? []).filter((k) => k !== 'new_arrivals' && k !== 'bestsellers').map(slotShort);
+            const tint = TINTS[idx % TINTS.length];
+            return (
+              <article key={p.id} className={`sh-ptile sh-tint-${tint}${p.status === 'archived' ? ' is-archived' : ''}`}>
+                <span className="sh-pcorner" aria-hidden="true">{idx % 3 === 0 ? <Marigold size={56} tone={1} /> : idx % 3 === 1 ? <Hibiscus size={44} /> : <Jasmine size={34} />}</span>
+                <div className="sh-ptag">
+                  <div className="sh-ptag-img"><Thumb url={p.image_url} /></div>
+                  <div className="sh-pprice">
+                    <b>{inr(p.price_rupees)}</b>
+                    {p.mrp_rupees ? <small><s>{inr(p.mrp_rupees)}</s></small> : null}
+                  </div>
+                </div>
+                <div className="sh-pbody">
+                  <div className="sh-pchips">
+                    <DesiChip tone={chip.tone}>{chip.label}</DesiChip>
+                    {p.collection?.name && <DesiChip tone="plum">{p.collection.name}</DesiChip>}
+                  </div>
+                  <b className="sh-pname">{p.name}</b>
+                  {(p.sizes ?? []).length > 0 && <small className="sh-psizes">{(p.sizes ?? []).join(' · ')}</small>}
+                  {p.status !== 'archived' && (
+                    <div className="sh-pflags">
+                      <button type="button" className={'sh-flag' + (p.is_new ? ' is-on' : '')} aria-pressed={!!p.is_new} title="Show in New arrivals" onClick={() => void flip(p, 'is_new')}>New arrival</button>
+                      <button type="button" className={'sh-flag' + (p.is_bestseller ? ' is-on' : '')} aria-pressed={!!p.is_bestseller} title="Mark as Bestseller" onClick={() => void flip(p, 'is_bestseller')}>Bestseller</button>
+                    </div>
+                  )}
+                  <small className="sh-ppromo"><span>Promoted on</span> {on.join(', ') || '—'}</small>
+                </div>
+                <div className="sh-pacts">
+                  {p.status === 'archived' ? (
+                    <button type="button" className="sh-btn sh-btn--teal sh-mini" onClick={() => void restore(p)}>Restore</button>
+                  ) : (<>
+                    <button type="button" className="sh-btn sh-btn--ghost sh-mini" onClick={() => setEdit(p)}>Edit</button>
+                    <button type="button" className="sh-btn sh-btn--teal sh-mini" onClick={() => setPromo(p)}>Promote</button>
+                    <button type="button" className="sh-btn sh-btn--ghost sh-mini sh-danger" onClick={() => setDel(p)}>Delete</button>
+                  </>)}
+                </div>
+              </article>
+            );
+          })}
         </div>
       )}
 

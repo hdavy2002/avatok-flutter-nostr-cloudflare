@@ -14,6 +14,7 @@ import PromotePanel from './PromotePanel';
 import CouponsPanel from './CouponsPanel';
 import SettingsPanel from './SettingsPanel';
 import ProductModal from './ProductModal';
+import { DesiKpi, DesiKpis } from '../desi';
 import './shopAdmin.css';
 
 export type ShopPage = 'orders' | 'products' | 'collections' | 'promote' | 'coupons' | 'settings';
@@ -45,25 +46,16 @@ export default function ShopAdmin({ page }: { page: ShopPage }) {
 
   return (
     <div className="shop-admin" data-shop-page={page}>
-      {page === 'orders' ? (
-        /* [AUMFE-POD-FULFIL-1] Orders mockup tiles (Specs/studio-mockup/Orders.dc.html). */
-        <div className="sh-kpis">
-          <div className="sh-kpi"><small>Paid, ready to send</small><b>{kpis ? kpis.to_print : '—'}</b><em style={{ color: '#6b4a00' }}>bank confirmed</em></div>
-          <div className="sh-kpi"><small>Waiting for bank</small><b>{kpis ? (kpis.waiting_bank ?? 0) : '—'}</b><em style={{ color: '#6b4a2b' }}>customer says paid</em></div>
-          <div className="sh-kpi"><small>At Printrove</small><b>{kpis ? (kpis.at_printer ?? kpis.to_ship) : '—'}</b><em style={{ color: '#6b4a2b' }}>printing or packed</em></div>
-          <div className="sh-kpi"><small>Shipped this week</small><b>{kpis ? (kpis.shipped_7d ?? 0) : '—'}</b><em>tracking sent</em></div>
-        </div>
-      ) : (
-      <div className="sh-kpis">
-        <div className="sh-kpi"><small>Orders today</small><b>{kpis ? kpis.orders_today : '—'}</b>
-          <em style={diff < 0 ? { color: '#9b1c14' } : undefined}>{kpis ? `${diff < 0 ? '−' : '+'}${Math.abs(diff)} vs yesterday` : ' '}</em></div>
-        <div className="sh-kpi"><small>Revenue (30 days)</small><b>{kpis ? inr(kpis.revenue_30d_rupees) : '—'}</b><em>{kpis ? `${kpis.orders_30d} orders` : ' '}</em></div>
-        <div className="sh-kpi"><small>To ship</small><b>{kpis ? kpis.to_ship : '—'}</b><em style={{ color: '#9b1c14' }}>{kpis ? `${kpis.stale_48h} older than 48h` : ' '}</em></div>
-        <div className="sh-kpi"><small>To send to Printrove</small><b>{kpis ? kpis.to_print : '—'}</b><em style={{ color: '#7a5a00' }}>paid, not placed yet</em></div>
-      </div>
+      {page !== 'orders' && (
+        <DesiKpis className="sh-kpis-desi">
+          <DesiKpi tone="plum" label="Orders today" value={kpis ? kpis.orders_today : '—'} sub={kpis ? `${diff < 0 ? '−' : '+'}${Math.abs(diff)} vs yesterday` : ' '} alert={!!kpis && diff < 0} />
+          <DesiKpi tone="rani" label="Revenue (30 days)" value={kpis ? inr(kpis.revenue_30d_rupees) : '—'} sub={kpis ? `${kpis.orders_30d} orders` : ' '} />
+          <DesiKpi tone="gold" label="To ship" value={kpis ? kpis.to_ship : '—'} sub={kpis ? `${kpis.stale_48h} older than 48h` : ' '} />
+          <DesiKpi tone="lav" label="To send to Printrove" value={kpis ? kpis.to_print : '—'} sub="paid, not placed yet" />
+        </DesiKpis>
       )}
 
-      {page === 'orders' && <OrdersPanel onChanged={() => void refreshKpis()} />}
+      {page === 'orders' && <OrdersPanel kpis={kpis} onChanged={() => void refreshKpis()} />}
       {page === 'products' && <ProductsPanel rev={rev} />}
       {page === 'collections' && <CollectionsPanel />}
       {page === 'promote' && <PromotePanel />}

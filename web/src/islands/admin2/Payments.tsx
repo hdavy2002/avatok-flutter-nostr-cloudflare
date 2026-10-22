@@ -5,11 +5,12 @@
 import { useMemo } from 'react';
 import { istDateTime } from './adminApi';
 import { Input } from '../../components/ui/input';
+import { DesiCard, DesiChip, DesiEmpty, DesiKpi, DesiKpis, DesiMogra } from './desi';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../components/ui/select';
 import { cn } from '../../lib/utils';
 import {
-  CopyValue, CustomerCell, DateField, Empty, ErrorBox, ExportButton, FilterBar, ListSkeleton, LoadMore, SearchBox,
-  StatusPill, StatusToggles, TD, TH, Tile, dayMs, formatPaise, usePaged, useUrlFilters, type Customer,
+  CopyValue, CustomerCell, DateField, ErrorBox, ExportButton, FilterBar, ListSkeleton, LoadMore, SearchBox,
+  StatusToggles, dayMs, formatPaise, usePaged, useUrlFilters, type Customer,
 } from './peopleKit';
 
 interface Payment {
@@ -26,6 +27,15 @@ interface Totals {
 
 const KEYS = ['q', 'status', 'cat', 'paid_from', 'paid_to', 'min', 'max'] as const;
 const STATUSES = ['paid', 'pending', 'refund_requested', 'refunded'] as const;
+/* Ledger colours: money in = peacock, waiting = gold, needs a decision = lavender, money out = rani. */
+const LEDGER: Record<string, { chip: 'tea' | 'gold' | 'lav' | 'rani' | 'grey'; label: string; ink: string }> = {
+  paid: { chip: 'tea', label: 'Paid', ink: '#0e7c86' },
+  pending: { chip: 'gold', label: 'Pending', ink: '#b45309' },
+  refund_requested: { chip: 'lav', label: 'Refund requested', ink: '#6d4fd0' },
+  refunded: { chip: 'rani', label: 'Refunded', ink: '#d81b72' },
+  free: { chip: 'lav', label: 'Free', ink: '#6d4fd0' },
+};
+const ledger = (status: string) => LEDGER[status] ?? { chip: 'grey' as const, label: status, ink: '#6f5b6f' };
 const digits = (v: string) => v.replace(/\D/g, '').slice(0, 9);
 
 export default function Payments() {
@@ -68,28 +78,30 @@ export default function Payments() {
   );
 
   return (
-    <div className="hf-admin-operations space-y-5">
+    <div className="hf-admin-operations hfa-stack">
       {totals && (
-        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4" aria-label="Totals for these filters">
-          <Tile tone="accent" label="Collected" value={formatPaise(totals.collected_paise)} hint={`${totals.paid_count} payment${totals.paid_count === 1 ? '' : 's'}`} />
-          <Tile tone="gold" label="Pending" value={formatPaise(totals.pending_paise)} hint={`${totals.pending_count} awaiting the bank`} />
-          <Tile tone="amber" label="Refund requested" value={formatPaise(totals.refund_requested_paise)} hint="Still counted in collected" />
-          <Tile tone="muted" label="Refunded" value={formatPaise(totals.refunded_paise)} hint={`${totals.refunded_count} sent back`} />
-        </div>
+        <DesiKpis>
+          <DesiKpi tone="tea" corner label="Collected" value={formatPaise(totals.collected_paise)} sub={`${totals.paid_count} payment${totals.paid_count === 1 ? '' : 's'}`} />
+          <DesiKpi tone="gold" label="Pending" value={formatPaise(totals.pending_paise)} sub={`${totals.pending_count} awaiting the bank`} />
+          <DesiKpi tone="lav" label="Refund requested" value={formatPaise(totals.refund_requested_paise)} sub="Still counted in collected" />
+          <DesiKpi tone="rani" label="Refunded" value={formatPaise(totals.refunded_paise)} sub={`${totals.refunded_count} sent back`} />
+        </DesiKpis>
       )}
 
-      <FilterBar
-        title="Filter payments"
-        count={count}
-        onClear={clear}
-        resultLabel="Show results"
-        search={<SearchBox value={f.q} onChange={(v) => set({ q: v })} label="Search payments" placeholder="Name, email, phone last 4, UTR, event, id" />}
-      >
-        {filters}
-      </FilterBar>
+      <DesiCard tone="cream" corner="jasmine" pattern="dots">
+        <FilterBar
+          title="Filter payments"
+          count={count}
+          onClear={clear}
+          resultLabel="Show results"
+          search={<SearchBox value={f.q} onChange={(v) => set({ q: v })} label="Search payments" placeholder="Name, email, phone last 4, UTR, event, id" />}
+        >
+          {filters}
+        </FilterBar>
+      </DesiCard>
 
-      <div className="flex items-center justify-between gap-3">
-        <p className="text-[14px] font-semibold text-muted-foreground" aria-live="polite">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <p className="hfa-eyebrow" aria-live="polite">
           {list.phase === 'ready' ? `${totals?.count ?? list.items.length} payment${(totals?.count ?? list.items.length) === 1 ? '' : 's'}` : list.phase === 'loading' ? 'Loading…' : ''}
         </p>
         <ExportButton kind="payments" path="/api/admin/v2/payments" query={query} />
@@ -97,54 +109,71 @@ export default function Payments() {
 
       {list.phase === 'loading' ? <ListSkeleton /> : list.phase === 'error' ? <ErrorBox message={list.error ?? 'Could not load payments.'} onRetry={list.reload} /> :
         list.items.length === 0 ? (
-          <Empty title={applied.q || count ? 'No payments match' : 'No payments yet'} body={applied.q || count ? 'Try a different search or clear the filters.' : undefined} />
+          <DesiCard tone="gold" corner="hibiscus">
+            <DesiEmpty text={<><b>{applied.q || count ? 'No payments match' : 'No payments yet'}</b>{applied.q || count ? <><br />Try a different search or clear the filters.</> : null}</>} />
+          </DesiCard>
         ) : (
           <>
-            <div className="hidden overflow-hidden hf-admin-op-card rounded-xl border border-border/60 bg-card shadow-sm md:block">
-              <table className="w-full border-collapse">
-                <thead className="bg-muted/60">
-                  <tr><th className={TH}>Paid</th><th className={TH}>Customer</th><th className={TH}>Event</th><th className={TH}>Status</th><th className={`${TH} text-right`}>Amount</th><th className={TH}>UTR</th></tr>
-                </thead>
-                <tbody className="divide-y divide-border/40">
-                  {list.items.map((p) => (
-                    <tr key={p.id} className="hover:bg-muted/30">
-                      <td className={`${TD} whitespace-nowrap text-[14px]`}>
-                        {p.paid_at ? istDateTime(p.paid_at) : <span className="text-muted-foreground">Started {istDateTime(p.created_at)}</span>}
-                      </td>
-                      <td className={`${TD} max-w-[240px]`}><CustomerCell c={p.customer} /></td>
-                      <td className={`${TD} max-w-[240px]`}>
-                        <a href={`/admin/bookings?event=${encodeURIComponent(p.listing_id)}`} className="font-bold text-foreground underline-offset-2 hover:text-accent hover:underline">{p.event_title ?? p.listing_id}</a>
-                        <div className="text-[14px] font-semibold text-muted-foreground">{p.category_label ?? p.category ?? ''}</div>
-                      </td>
-                      <td className={TD}>
-                        <StatusPill status={p.status} />
-                        {p.status === 'refunded' && p.refund?.amount_paise != null && p.refund.amount_paise !== p.amount_paise && (
-                          <div className="mt-1 text-[14px] font-semibold text-muted-foreground">{formatPaise(p.refund.amount_paise)} back</div>
-                        )}
-                      </td>
-                      <td className={`${TD} text-right font-extrabold tabular-nums`}>{formatPaise(p.amount_paise)}</td>
-                      <td className={`${TD} text-[14px]`}>{p.utr ? <CopyValue value={p.utr} label="UTR" /> : <span className="text-muted-foreground">—</span>}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-            <ul className="space-y-3 md:hidden">
-              {list.items.map((p) => (
-                <li key={p.id} className="hf-admin-op-card rounded-xl border border-border/60 bg-card p-4 shadow-sm">
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <div className="font-dash text-[18px] font-bold tabular-nums">{formatPaise(p.amount_paise)}</div>
-                      <div className="text-[14px] font-semibold text-muted-foreground">{p.paid_at ? istDateTime(p.paid_at) : `Started ${istDateTime(p.created_at)}`}</div>
+            {/* Desktop: the bahi-khata ledger */}
+            <DesiCard title="Khata" tone="cream" pattern="bahi" corner="marigold" className="hidden md:block">
+              <div className="hfa-scroll">
+                <table className="hfa-table min-w-[760px]">
+                  <thead>
+                    <tr><th>Paid</th><th>Customer</th><th>Event</th><th>Status</th><th className="text-right">Amount</th><th>UTR</th></tr>
+                  </thead>
+                  <tbody>
+                    {list.items.map((p) => {
+                      const L = ledger(p.status);
+                      return (
+                        <tr key={p.id} style={{ boxShadow: `inset 5px 0 0 ${L.ink}` }}>
+                          <td className="whitespace-nowrap pl-4">
+                            {p.paid_at ? istDateTime(p.paid_at) : <span className="text-[var(--a-muted)]">Started {istDateTime(p.created_at)}</span>}
+                          </td>
+                          <td className="max-w-[240px]"><CustomerCell c={p.customer} /></td>
+                          <td className="max-w-[240px]">
+                            <a href={`/admin/bookings?event=${encodeURIComponent(p.listing_id)}`} className="font-bold text-[var(--a-ink)] underline-offset-2 hover:underline">{p.event_title ?? p.listing_id}</a>
+                            <div className="hfa-note">{p.category_label ?? p.category ?? ''}</div>
+                          </td>
+                          <td>
+                            <DesiChip tone={L.chip}>{L.label}</DesiChip>
+                            {p.status === 'refunded' && p.refund?.amount_paise != null && p.refund.amount_paise !== p.amount_paise && (
+                              <div className="hfa-note mt-1">{formatPaise(p.refund.amount_paise)} back</div>
+                            )}
+                          </td>
+                          <td className="text-right font-['Nunito'] text-[1.2em] font-black tabular-nums" style={{ color: L.ink }}>{formatPaise(p.amount_paise)}</td>
+                          <td>{p.utr ? <CopyValue value={p.utr} label="UTR" /> : <span className="text-[var(--a-muted)]">—</span>}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </DesiCard>
+
+            {/* Phones: one ledger slip per payment */}
+            <ul className="grid gap-3 md:hidden">
+              {list.items.map((p) => {
+                const L = ledger(p.status);
+                return (
+                  <li key={p.id} className="hfa-card hfa-t-cream" style={{ borderLeft: `8px solid ${L.ink}`, paddingLeft: 18 }}>
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="font-['Nunito'] text-[1.5rem] font-black leading-none tabular-nums" style={{ color: L.ink }}>{formatPaise(p.amount_paise)}</div>
+                        <div className="hfa-note mt-1">{p.paid_at ? istDateTime(p.paid_at) : `Started ${istDateTime(p.created_at)}`}</div>
+                      </div>
+                      <DesiChip tone={L.chip}>{L.label}</DesiChip>
                     </div>
-                    <StatusPill status={p.status} />
-                  </div>
-                  <a href={`/admin/bookings?event=${encodeURIComponent(p.listing_id)}`} className="mt-2 block font-bold text-foreground underline-offset-2 hover:underline">{p.event_title ?? p.listing_id}</a>
-                  <div className="mt-2 border-t border-border/40 pt-2"><CustomerCell c={p.customer} compact /></div>
-                  {p.utr && <div className="mt-2 text-[14px] font-semibold text-muted-foreground">UTR <CopyValue value={p.utr} label="UTR" className="text-foreground" /></div>}
-                </li>
-              ))}
+                    <a href={`/admin/bookings?event=${encodeURIComponent(p.listing_id)}`} className="mt-2 flex min-h-[44px] items-center font-bold text-[var(--a-ink)] underline-offset-2 hover:underline">{p.event_title ?? p.listing_id}</a>
+                    {p.status === 'refunded' && p.refund?.amount_paise != null && p.refund.amount_paise !== p.amount_paise && (
+                      <div className="hfa-note">{formatPaise(p.refund.amount_paise)} back</div>
+                    )}
+                    <div className="mt-2 border-t border-dashed border-[var(--a-line)] pt-2"><CustomerCell c={p.customer} compact /></div>
+                    {p.utr && <div className="hfa-note mt-2">UTR <CopyValue value={p.utr} label="UTR" className="text-foreground" /></div>}
+                  </li>
+                );
+              })}
             </ul>
+            <DesiMogra />
             <LoadMore show={!!list.cursor} busy={list.more} onClick={list.loadMore} shown={list.items.length} />
           </>
         )}

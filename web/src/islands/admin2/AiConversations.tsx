@@ -3,25 +3,26 @@
  * 20 s while the tab is visible). Right: the chat, with status, an internal note and the person's
  * bookings. On phones the list is the page and a chat opens full-screen with a Back button. */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowLeft, ExternalLink, Loader2, MessageCircle, MessagesSquare, Search } from 'lucide-react';
+import { ArrowLeft, ExternalLink, Loader2, MessageCircle, Search } from 'lucide-react';
 import { capture, captureException } from '../../lib/analytics';
 import { cn } from '../../lib/utils';
 import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
-import { Badge } from '../../components/ui/badge';
 import { toast } from '../../components/ui/sonner';
 import { errMessage, istDateTime } from './adminApi';
 import { ErrorBox, ListSkeleton } from './peopleKit';
 import { aiApi, type AdminAiAgentFilter, type AdminAiCard, type AdminAiConversationDetail, type AdminAiConversationRow, type AdminAiMessage, type ConvStatus } from './aiApi';
-import { Chip, HINT, LABEL, TEXTAREA } from './AiKit';
+import { DesiAvatar, DesiChip, DesiEmpty } from './desi';
+import { Chip, HINT, LABEL, TEXTAREA, TINT } from './AiKit';
 
-const BADGES: { key: string; label: string; variant: 'destructive' | 'accent' | 'secondary' | 'outline' }[] = [
-  { key: 'hot_lead', label: 'Hot lead', variant: 'accent' },
-  { key: 'needs_human', label: 'Needs human', variant: 'destructive' },
-  { key: 'booking_check', label: 'Booking check', variant: 'secondary' },
-  { key: 'angry', label: 'Angry', variant: 'destructive' },
+type ChipTone = 'tea' | 'gold' | 'rani' | 'lav' | 'grey' | 'plum' | 'red';
+const BADGES: { key: string; label: string; variant: ChipTone }[] = [
+  { key: 'hot_lead', label: 'Hot lead', variant: 'gold' },
+  { key: 'needs_human', label: 'Needs human', variant: 'rani' },
+  { key: 'booking_check', label: 'Booking check', variant: 'lav' },
+  { key: 'angry', label: 'Angry', variant: 'red' },
 ];
-const badgeMeta = (k: string) => BADGES.find((b) => b.key === k) ?? { key: k, label: k.replace(/_/g, ' '), variant: 'outline' as const };
+const badgeMeta = (k: string) => BADGES.find((b) => b.key === k) ?? { key: k, label: k.replace(/_/g, ' '), variant: 'grey' as ChipTone };
 const STATUSES: { key: ConvStatus; label: string }[] = [
   { key: 'open', label: 'Open' }, { key: 'resolved', label: 'Resolved' }, { key: 'needs_human', label: 'Needs human' },
 ];
@@ -31,9 +32,9 @@ const AGENT_FILTERS: { key: AdminAiAgentFilter; label: string }[] = [
 ];
 const agentLabel = (a?: string): string => (!a || a === 'preeti' ? 'Preeti' : a === 'pandit' ? 'Pandit ji' : a === 'meera' ? 'Meera' : `${a.charAt(0).toUpperCase()}${a.slice(1)} · voice`);
 function AgentChip({ agent }: { agent?: string }) {
-  return <Badge variant="outline" className="px-2 py-0 text-[14px]">{agentLabel(agent)}</Badge>;
+  return <DesiChip tone="plum">{agentLabel(agent)}</DesiChip>;
 }
-const SELECT = 'h-10 rounded-md border border-input bg-background px-3 font-dashbody text-[14px] font-bold text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring';
+const SELECT = 'h-11 rounded-full border-2 border-[#e4dafc] bg-white px-4 font-dashbody text-[14px] font-bold text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring';
 
 function rowTime(ms: number): string {
   const d = new Date(ms);
@@ -57,7 +58,7 @@ function useIsDesktop(): boolean {
 }
 
 /* ── chat pieces ────────────────────────────────────────────────────────── */
-const CARD_LINK = 'mt-2 flex items-center gap-2 rounded-lg border border-border/70 bg-background p-2 text-[14px] text-foreground no-underline hover:bg-muted';
+const CARD_LINK = 'mt-2 flex items-center gap-2 rounded-xl border border-white bg-white/80 p-2 text-[14px] text-foreground no-underline hover:bg-white';
 function CardRow({ c }: { c: AdminAiCard }) {
   if (c.type === 'event' || c.type === 'article') {
     return (
@@ -93,7 +94,7 @@ function Bubble({ m }: { m: AdminAiMessage }) {
   // The customer never sees them; admins get a labelled, readable card instead of a raw pill.
   if (m.role === 'system' && m.text.startsWith('[summary] ')) {
     return (
-      <div className="mx-auto w-full max-w-[92%] hf-admin-op-card rounded-xl border border-border bg-muted/60 px-3 py-2">
+      <div className="mx-auto w-full max-w-[92%] rounded-2xl border-2 border-dashed border-[#c7b6f5] bg-[var(--a-lavtint)] px-3 py-2">
         <p className="text-[14px] font-extrabold uppercase tracking-[0.08em] text-muted-foreground">Chat summary · hidden from the customer</p>
         <p className="mt-1 whitespace-pre-line text-[14px] text-foreground">{m.text.slice('[summary] '.length)}</p>
       </div>
@@ -103,7 +104,7 @@ function Bubble({ m }: { m: AdminAiMessage }) {
     return (
       <p className={cn(
         'mx-auto w-fit max-w-[90%] break-words rounded-full px-3 py-1 text-center text-[14px] font-bold text-muted-foreground',
-        m.role === 'tool' ? 'border border-dashed border-border bg-transparent' : 'bg-muted',
+        m.role === 'tool' ? 'border border-dashed border-[#f2a9c8] bg-transparent' : 'bg-[var(--a-goldtint)]',
       )}>
         {m.role === 'tool' ? `tool · ${m.tool_name ?? 'call'}${m.tool_summary || m.text ? ` — ${m.tool_summary ?? m.text}` : ''}` : m.text}
       </p>
@@ -114,12 +115,12 @@ function Bubble({ m }: { m: AdminAiMessage }) {
   return (
     <div className={cn('flex', mine ? 'justify-end' : note ? 'justify-center' : 'justify-start')}>
       <div className={cn(
-        'max-w-[85%] whitespace-pre-wrap break-words rounded-2xl px-3 py-2 text-[14.5px] font-semibold leading-relaxed',
-        mine ? 'bg-accent text-accent-foreground' : note ? 'border border-grand-gold/70 bg-grand-gold/25 text-foreground' : 'border border-border bg-card text-foreground',
+        'max-w-[85%] whitespace-pre-wrap break-words rounded-3xl px-4 py-2.5 text-[15px] font-semibold leading-relaxed shadow-sm',
+        mine ? 'rounded-br-md border-2 border-[#e4dafc] bg-[var(--a-lavtint)] text-foreground' : note ? 'border-2 border-dashed border-[var(--a-marigold)] bg-[var(--a-goldtint)] text-foreground' : 'rounded-bl-md border-2 border-[#cfe9eb] bg-[var(--a-teatint)] text-foreground',
       )}>
         {note && <span className="mb-0.5 block text-[14px] font-extrabold uppercase tracking-[0.08em] text-muted-foreground">Admin note</span>}
         {m.text}
-        {m.blocked && <span className="mt-1 block text-[14px] font-bold text-destructive">Blocked by the safety filter</span>}
+        {m.blocked && <span className="mt-1 block text-[14px] font-bold text-[var(--a-bad)]">Blocked by the safety filter</span>}
         {m.cards.map((c, i) => <CardRow key={i} c={c} />)}
         <span className="mt-1 block text-right text-[14px] font-semibold opacity-70">{rowTime(m.created_at)}</span>
       </div>
@@ -180,40 +181,41 @@ function ChatPane({ id, onBack, onChanged, phone }: { id: string; onBack: () => 
   const wa = c.e164 ? c.e164.replace(/\D/g, '') : '';
 
   return (
-    <div className="flex h-full min-h-0 flex-col bg-background">
-      <div className="flex items-center gap-2 border-b border-border/60 bg-card px-3 py-2.5">
-        {phone && <Button size="icon" variant="ghost" onClick={onBack} aria-label="Back to conversations"><ArrowLeft /></Button>}
+    <div className="flex h-full min-h-0 flex-col bg-[var(--a-cream)]">
+      <div className="flex items-center gap-3 bg-[linear-gradient(120deg,var(--a-plum),#8a2b7d)] px-3 py-3 text-white">
+        {phone && <Button size="icon" variant="ghost" className="h-11 w-11 text-white hover:bg-white/15 hover:text-white" onClick={onBack} aria-label="Back to conversations"><ArrowLeft /></Button>}
+        <DesiAvatar name={who(c)} seed={c.id} size={48} />
         <div className="min-w-0 flex-1">
-          <p className="flex items-center gap-2"><span className="min-w-0 truncate font-dashbody text-[16px] font-extrabold text-foreground">{who(c)}</span><AgentChip agent={c.agent} /></p>
-          <p className="truncate text-[14px] font-semibold text-muted-foreground">{c.e164 && c.name ? `${c.e164} · ` : ''}{c.uid ? 'Signed in' : 'Visitor'}{c.last_page ? ` · ${c.last_page}` : ''}</p>
-          {c.email && <p className="truncate text-[14px] font-semibold text-muted-foreground">{c.email}</p>}
+          <p className="flex flex-wrap items-center gap-2"><span className="min-w-0 truncate font-dash text-[17px] font-black">{who(c)}</span><AgentChip agent={c.agent} /></p>
+          <p className="truncate text-[14px] font-semibold opacity-90">{c.e164 && c.name ? `${c.e164} · ` : ''}{c.uid ? 'Signed in' : 'Visitor'}{c.last_page ? ` · ${c.last_page}` : ''}</p>
+          {c.email && <p className="truncate text-[14px] font-semibold opacity-90">{c.email}</p>}
         </div>
         {wa && (
-          <Button asChild size="sm" variant="outline">
+          <Button asChild variant="outline" className="min-h-11 rounded-full bg-white text-[var(--a-plum)]">
             <a href={`https://wa.me/${wa}`} target="_blank" rel="noreferrer"><MessageCircle /> WhatsApp</a>
           </Button>
         )}
       </div>
 
-      <div className="flex flex-wrap items-center gap-2 border-b border-border/60 bg-card px-3 py-2">
+      <div className="flex flex-wrap items-center gap-2 border-b-2 border-dashed border-[#f1e3d6] bg-[var(--a-goldtint)] px-3 py-2">
         <label htmlFor="conv-status" className="sr-only">Status</label>
         <select id="conv-status" value={c.status} disabled={busy} onChange={(e) => void patch({ status: e.target.value as ConvStatus })} className={SELECT}>
           {STATUSES.map((s) => <option key={s.key} value={s.key}>{s.label}</option>)}
         </select>
-        {c.badges.map((b) => <Badge key={b} variant={badgeMeta(b).variant}>{badgeMeta(b).label}</Badge>)}
+        {c.badges.map((b) => <DesiChip key={b} tone={badgeMeta(b).variant}>{badgeMeta(b).label}</DesiChip>)}
         <span className={cn(HINT, 'ml-auto')}>{c.message_count} messages</span>
       </div>
 
-      <div className="min-h-0 flex-1 space-y-2 overflow-y-auto p-3" aria-live="polite">
+      <div className="min-h-0 flex-1 space-y-2.5 overflow-y-auto bg-[radial-gradient(rgba(216,27,114,.1)_1.6px,transparent_1.8px)] [background-size:22px_22px] p-3 sm:p-4" aria-live="polite">
         {d.messages.length === 0 ? <p className={cn(HINT, 'py-8 text-center')}>No messages yet.</p> : d.messages.map((m) => <Bubble key={m.id} m={m} />)}
         <div ref={end} />
       </div>
 
-      <div className="grid max-h-[45%] gap-3 overflow-y-auto border-t border-border/60 bg-card p-3">
+      <div className="grid max-h-[45%] gap-3 overflow-y-auto border-t-2 border-dashed border-[#f2a9c8] bg-[var(--a-blush)] p-3">
         <div className="grid gap-1.5">
           <label htmlFor="conv-note" className={LABEL}>Internal note <span className={HINT}>(only admins see it)</span></label>
           <textarea id="conv-note" rows={2} maxLength={1000} value={note} onChange={(e) => { setNote(e.target.value); setNoteDirty(true); }} className={TEXTAREA} />
-          <div><Button size="sm" variant="outline" disabled={busy || !noteDirty} onClick={() => void patch({ admin_note: note })}>{busy ? <Loader2 className="animate-spin" /> : null} Save note</Button></div>
+          <div><Button variant="outline" className="min-h-11 rounded-full bg-white" disabled={busy || !noteDirty} onClick={() => void patch({ admin_note: note })}>{busy ? <Loader2 className="animate-spin" /> : null} Save note</Button></div>
         </div>
         <div>
           <p className={LABEL}>Bookings</p>
@@ -221,9 +223,9 @@ function ChatPane({ id, onBack, onChanged, phone }: { id: string; onBack: () => 
             <ul className="mt-1 grid gap-1.5">
               {d.bookings.map((b) => (
                 <li key={b.checkout_id}>
-                  <a href="/admin/bookings" className="flex items-center gap-2 rounded-lg border border-border/70 bg-background px-3 py-2 text-[14px] font-semibold text-foreground no-underline hover:bg-muted">
+                  <a href="/admin/bookings" className="flex min-h-11 flex-wrap items-center gap-2 rounded-2xl border-2 border-white bg-white/85 px-3 py-2 text-[14px] font-semibold text-foreground no-underline hover:bg-white">
                     <span className="min-w-0 flex-1 truncate font-extrabold">{b.listing_title}</span>
-                    <Badge variant="outline">{b.status}</Badge>
+                    <DesiChip tone="lav">{b.status}</DesiChip>
                     <span className="text-muted-foreground">{istDateTime(b.created_at)}</span>
                     <ExternalLink className="h-3.5 w-3.5 text-muted-foreground" aria-hidden />
                   </a>
@@ -314,36 +316,32 @@ export default function AiConversations() {
   const pickAgent = (k: AdminAiAgentFilter) => { setAgent(k); capture('admin_ai_conversations_filter', { agent: k, badge: badge || null, status: status || null }); };
 
   const list = (
-    <div className="flex h-full min-h-0 flex-col border-border bg-card md:border-r">
-      <div className="grid gap-2 border-b border-border/60 p-3">
+    <div className="flex h-full min-h-0 flex-col bg-[var(--a-cream)] md:border-r-2 md:border-dashed md:border-[#e4dafc]">
+      <div className="grid gap-2 border-b-2 border-dashed border-[#e4dafc] bg-[var(--a-lavtint)] p-3">
         <div className="relative">
           <Search aria-hidden className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <Input type="search" value={q} maxLength={80} onChange={(e) => setQ(e.target.value)} placeholder="Search name, phone, email, UTR or text" aria-label="Search conversations" className="pl-9" />
+          <Input type="search" value={q} maxLength={80} onChange={(e) => setQ(e.target.value)} placeholder="Search name, phone, email, UTR or text" aria-label="Search conversations" className="h-11 rounded-full bg-white pl-9" />
         </div>
-        <div className="flex gap-1.5 overflow-x-auto pb-0.5" role="group" aria-label="Agent">
-          {AGENT_FILTERS.map((a) => <Chip key={a.key} active={agent === a.key} onClick={() => pickAgent(a.key)}>{a.label}</Chip>)}
+        <div className="flex flex-wrap gap-1.5" role="group" aria-label="Agent">
+          {AGENT_FILTERS.map((a) => <Chip key={a.key} tone="lav" active={agent === a.key} onClick={() => pickAgent(a.key)}>{a.label}</Chip>)}
         </div>
-        <div className="flex gap-1.5 overflow-x-auto pb-0.5" role="group" aria-label="Filters">
-          {BADGES.map((b) => <Chip key={b.key} active={badge === b.key} onClick={() => setBadge(badge === b.key ? '' : b.key)}>{b.label}</Chip>)}
-          {STATUSES.map((s) => <Chip key={s.key} active={status === s.key} onClick={() => setStatus(status === s.key ? '' : s.key)}>{s.label}</Chip>)}
+        <div className="flex flex-wrap gap-1.5" role="group" aria-label="Filters">
+          {BADGES.map((b) => <Chip key={b.key} tone="rani" active={badge === b.key} onClick={() => setBadge(badge === b.key ? '' : b.key)}>{b.label}</Chip>)}
+          {STATUSES.map((s) => <Chip key={s.key} tone="tea" active={status === s.key} onClick={() => setStatus(status === s.key ? '' : s.key)}>{s.label}</Chip>)}
         </div>
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto">
         {phase === 'loading' && items.length === 0 ? <div className="p-3"><ListSkeleton rows={6} /></div>
           : phase === 'error' ? <div className="p-3"><ErrorBox message="Could not load conversations." onRetry={() => void load()} /></div>
           : items.length === 0 ? (
-            <div className="flex flex-col items-center gap-2 px-6 py-12 text-center">
-              <MessagesSquare className="h-8 w-8 text-muted-foreground" aria-hidden />
-              <p className="font-dash text-[17px] font-bold text-foreground">{filtered ? 'Nothing matches' : 'No conversations yet'}</p>
-              <p className={HINT}>{filtered ? 'Try a different search or clear the filters.' : 'They appear here as visitors chat with the guides.'}</p>
-            </div>
+            <DesiEmpty text={filtered ? 'Nothing matches. Try a different search or clear the filters.' : 'No conversations yet. They appear here as visitors chat with the guides.'} />
           ) : (
-            <ul>
-              {items.map((c) => (
+            <ul className="grid gap-2 p-2.5">
+              {items.map((c, ci) => (
                 <li key={c.id}>
                   <button
                     type="button" onClick={() => setSel(c.id)} aria-current={c.id === sel ? 'true' : undefined}
-                    className={cn('flex w-full flex-col gap-1 border-b border-border/50 px-3 py-3 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring', c.id === sel ? 'bg-accent/10' : 'hover:bg-muted')}
+                    className={cn('flex min-h-[64px] w-full flex-col gap-1 rounded-2xl border-2 px-3.5 py-3 text-left transition-transform hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring', TINT[(['lav', 'tea', 'gold', 'rani'] as const)[ci % 4]], c.id === sel && 'ring-[3px] ring-[var(--a-rani)]')}
                   >
                     <span className="flex items-baseline gap-2">
                       <span className="min-w-0 flex-1 truncate font-dashbody text-[15px] font-extrabold text-foreground">{who(c)}</span>
@@ -354,15 +352,15 @@ export default function AiConversations() {
                     <span className="truncate text-[14px] font-semibold text-muted-foreground">{c.last_text || '…'}</span>
                     <span className="flex flex-wrap items-center gap-1">
                       <AgentChip agent={c.agent} />
-                      {c.badges.map((b) => <Badge key={b} variant={badgeMeta(b).variant} className="px-2 py-0 text-[14px]">{badgeMeta(b).label}</Badge>)}
-                      <Badge variant={c.status === 'open' ? 'outline' : c.status === 'resolved' ? 'muted' : 'destructive'} className="px-2 py-0 text-[14px]">
+                      {c.badges.map((b) => <DesiChip key={b} tone={badgeMeta(b).variant}>{badgeMeta(b).label}</DesiChip>)}
+                      <DesiChip tone={c.status === 'open' ? 'lav' : c.status === 'resolved' ? 'grey' : 'red'}>
                         {STATUSES.find((s) => s.key === c.status)?.label ?? c.status}
-                      </Badge>
+                      </DesiChip>
                     </span>
                   </button>
                 </li>
               ))}
-              {cursor && <li><div ref={sentinel} className="flex justify-center p-3">{more ? <Loader2 className="h-4 w-4 animate-spin" aria-label="Loading more" /> : <Button size="sm" variant="ghost" onClick={() => void loadMore()}>Load more</Button>}</div></li>}
+              {cursor && <li><div ref={sentinel} className="flex justify-center p-3">{more ? <Loader2 className="h-4 w-4 animate-spin" aria-label="Loading more" /> : <Button variant="ghost" className="min-h-11" onClick={() => void loadMore()}>Load more</Button>}</div></li>}
             </ul>
           )}
       </div>
@@ -372,9 +370,9 @@ export default function AiConversations() {
   if (!desktop) {
     return (
       <>
-        <div className="h-[calc(100dvh-15rem)] min-h-[420px] overflow-hidden hf-admin-op-card rounded-xl border border-border">{list}</div>
+        <div className="h-[calc(100dvh-15rem)] min-h-[420px] overflow-hidden rounded-[28px] border-2 border-[#e4dafc] shadow-[var(--a-shadow)]">{list}</div>
         {sel && (
-          <div className="fixed inset-0 z-[60] bg-background pt-[env(safe-area-inset-top,0px)] pb-[env(safe-area-inset-bottom,0px)]">
+          <div className="fixed inset-0 z-[60] bg-[var(--a-cream)] pt-[env(safe-area-inset-top,0px)] pb-[env(safe-area-inset-bottom,0px)]">
             <ChatPane id={sel} phone onBack={() => setSel(null)} onChanged={onChanged} />
           </div>
         )}
@@ -382,13 +380,11 @@ export default function AiConversations() {
     );
   }
   return (
-    <div className="grid h-[calc(100vh-13rem)] min-h-[560px] grid-cols-[minmax(300px,360px)_1fr] overflow-hidden hf-admin-op-card rounded-xl border border-border">
+    <div className="grid h-[calc(100vh-13rem)] min-h-[560px] grid-cols-[minmax(300px,380px)_1fr] overflow-hidden rounded-[28px] border-2 border-[#e4dafc] shadow-[var(--a-shadow)]">
       {list}
       {sel ? <ChatPane id={sel} phone={false} onBack={() => setSel(null)} onChanged={onChanged} /> : (
-        <div className="flex flex-col items-center justify-center gap-2 bg-background text-center">
-          <MessagesSquare className="h-10 w-10 text-muted-foreground" aria-hidden />
-          <p className="font-dash text-[18px] font-bold text-foreground">Pick a conversation</p>
-          <p className={HINT}>Choose one on the left to read it.</p>
+        <div className="flex flex-col items-center justify-center bg-[var(--a-cream)]">
+          <DesiEmpty text="Pick a conversation on the left to read it." />
         </div>
       )}
     </div>

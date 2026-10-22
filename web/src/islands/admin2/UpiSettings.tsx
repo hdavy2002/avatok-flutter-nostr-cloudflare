@@ -11,13 +11,12 @@ import QRCode from 'qrcode';
 import { CheckCircle2, AlertTriangle, Loader2, Save, Smartphone } from 'lucide-react';
 import { ApiError } from '../../lib/apiClient';
 import { capture, captureException } from '../../lib/analytics';
-import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
 import { Label } from '../../components/ui/label';
-import { Badge } from '../../components/ui/badge';
 import { toast } from '../../components/ui/sonner';
 import { istDateTime, errMessage } from './adminApi';
-import { ErrorBox, ListSkeleton, adminCall } from './peopleKit';
+import { CopyValue, ErrorBox, ListSkeleton, adminCall } from './peopleKit';
+import { DesiCard, DesiJourney, Marigold } from './desi';
 import { BRAND } from '../../lib/brand';
 
 type Status = {
@@ -92,67 +91,90 @@ export default function UpiSettings() {
   const dirty = vpa.trim() !== (status.saved.vpa ?? status.active.vpa ?? '') || payee.trim() !== (status.saved.payee_name ?? status.active.payee_name ?? '');
   const smsAgeDays = status.last_bank_sms_at ? (Date.now() - status.last_bank_sms_at) / 86_400_000 : null;
 
+  const activeVpa = status.active.vpa;
+
   return (
-    <div className="hf-admin-operations space-y-5 pb-24">
-      <section className="hf-admin-op-card rounded-xl border border-border bg-card p-4 shadow-sm sm:p-6">
-        <div className="flex flex-wrap items-center gap-2">
-          <h2 className="font-dash text-[20px] font-bold text-[var(--hf-admin-plum,#4a1747)]">UPI payments</h2>
-          {status.rail.enabled
-            ? <Badge variant="accent"><CheckCircle2 className="mr-1 h-3.5 w-3.5" /> Taking payments</Badge>
-            : <Badge variant="destructive"><AlertTriangle className="mr-1 h-3.5 w-3.5" /> Not taking payments</Badge>}
-        </div>
-        {!status.rail.enabled && status.rail.reason && (
-          <p className="mt-2 text-[14px] font-bold text-destructive">{RAIL_REASON[status.rail.reason] ?? status.rail.reason}</p>
-        )}
-        <p className="mt-2 text-[14px] font-semibold text-muted-foreground">
-          Customers pay by scanning the QR at checkout: <b className="text-foreground">{status.active.vpa ?? '—'}</b>
-          {status.active.source === 'env' && ' (built-in default — save one below to take over)'}
-        </p>
-      </section>
-
-      <section className="hf-admin-op-card rounded-xl border border-border bg-card p-4 shadow-sm sm:p-6">
-        <div className="grid gap-6 md:grid-cols-[1fr_auto]">
-          <div className="grid content-start gap-4">
-            <div className="grid gap-1.5">
-              <Label htmlFor="upi-vpa" className="text-[14px] font-bold">Your UPI ID</Label>
-              <Input id="upi-vpa" value={vpa} onChange={(e) => setVpa(e.target.value.replace(/\s/g, ''))} placeholder="yourname@bank" autoCapitalize="off" autoCorrect="off" spellCheck={false} aria-invalid={vpa.trim() !== '' && !previewOk} className="text-[17px] font-bold" />
-              {vpa.trim() !== '' && !previewOk && <p className="text-[14px] font-bold text-destructive">Should look like name@bank.</p>}
+    <div className="hfa-stack pb-24">
+      <div className="hfa-row-wide">
+        {/* The painted shop nameplate */}
+        <section aria-label="Active UPI ID" className="relative overflow-hidden rounded-[30px] p-[clamp(10px,1.2vw,16px)] shadow-[0_18px_36px_-18px_rgba(10,92,99,.7)]"
+          style={{ background: 'linear-gradient(140deg,#0a5c63,#0e7c86 60%,#16a3ad)' }}>
+          <span aria-hidden="true" className="absolute left-5 top-4 h-3 w-3 rounded-full bg-[#fbbf24] shadow-inner" />
+          <span aria-hidden="true" className="absolute right-5 top-4 h-3 w-3 rounded-full bg-[#fbbf24] shadow-inner" />
+          <div className="relative flex flex-col gap-4 rounded-[22px] border-[3px] border-dashed border-[#fbbf24] px-[clamp(16px,2vw,32px)] py-[clamp(22px,2.4vw,36px)] text-white lg:flex-row lg:items-center lg:justify-between">
+            <span aria-hidden="true" className="pointer-events-none absolute -bottom-4 -right-4 opacity-90"><Marigold size={92} tone={1} /></span>
+            <div className="min-w-0 space-y-3">
+              <div className="flex flex-wrap items-center gap-2">
+                <h2 className="font-dash text-[clamp(16px,14px+.5vw,20px)] font-bold uppercase tracking-[.08em] text-[#ffe9a8]">UPI payments</h2>
+                {status.rail.enabled
+                  ? <span className="hfa-chip hfa-c-tea" style={{ background: '#fff' }}><CheckCircle2 className="h-4 w-4" aria-hidden /> Taking payments</span>
+                  : <span className="hfa-chip hfa-c-rani" style={{ background: '#fff' }}><AlertTriangle className="h-4 w-4" aria-hidden /> Not taking payments</span>}
+              </div>
+              <div className="break-all font-dash font-black leading-tight text-[#fff7da]" style={{ fontSize: 'clamp(26px, 12px + 2.6vw, 56px)', textShadow: '0 3px 0 rgba(0,0,0,.22)' }}>
+                {activeVpa ?? '—'}
+              </div>
+              {activeVpa && <CopyValue value={activeVpa} label="UPI ID" className="text-white [&_button]:bg-white/20 [&_button]:text-white [&_button:hover]:bg-white/30 [&_span]:!font-bold" />}
+              {!status.rail.enabled && status.rail.reason && (
+                <p className="rounded-xl bg-white p-3 text-[14px] font-bold text-destructive">{RAIL_REASON[status.rail.reason] ?? status.rail.reason}</p>
+              )}
+              <p className="text-[14px] font-semibold text-[#d9f3f5]">
+                Customers pay by scanning the QR at checkout: <b className="text-white">{activeVpa ?? '—'}</b>
+                {status.active.source === 'env' && ' (built-in default — save one below to take over)'}
+              </p>
             </div>
-            <div className="grid gap-1.5">
-              <Label htmlFor="upi-payee" className="text-[14px] font-bold">Name customers see in their UPI app</Label>
-              <Input id="upi-payee" value={payee} maxLength={60} onChange={(e) => setPayee(e.target.value)} placeholder={BRAND.name} className="text-[17px] font-bold" />
-            </div>
-            <div className="rounded-lg border border-[var(--hf-admin-marigold,#f59e0b)] bg-[var(--hf-admin-goldtint,#fff1d6)] p-3 text-[14px] font-semibold leading-relaxed text-[var(--hf-admin-plum,#4a1747)]">
-              This UPI ID must pay into the <b>same HDFC account</b> the SMS phone is watching. Payments are confirmed only when that
-              account’s credit SMS arrives and matches the customer’s 12-digit UPI reference — money sent anywhere else can’t be confirmed.
+            <div className="grid shrink-0 justify-items-center gap-2">
+              <div className="grid h-[200px] w-[200px] place-items-center rounded-2xl border-[6px] border-white bg-white shadow-md">
+                {qr ? <img src={qr} alt={`UPI QR for ${previewVpa}`} className="h-full w-full rounded-md" /> : <span className="px-3 text-center text-[14px] font-bold text-[var(--a-muted)]">Enter a UPI ID to see the QR</span>}
+              </div>
+              <span className="max-w-[220px] text-center text-[14px] font-bold text-[#d9f3f5]">Preview — checkout adds the exact amount</span>
             </div>
           </div>
-          <div className="grid justify-items-center gap-2">
-            <div className="grid h-[220px] w-[220px] place-items-center hf-admin-op-card rounded-xl border-[6px] border-white bg-muted/40 shadow-md">
-              {qr ? <img src={qr} alt={`UPI QR for ${previewVpa}`} className="h-full w-full rounded-md" /> : <span className="px-4 text-center text-[14px] font-bold text-muted-foreground">Enter a UPI ID to see the QR</span>}
-            </div>
-            <span className="text-[14px] font-bold text-muted-foreground">Preview — checkout adds the exact amount</span>
+        </section>
+
+        <DesiCard title="Bank SMS phone" tone="gold" corner="marigold" pattern="stripes">
+          <p className="text-[14px] font-semibold text-[var(--a-plum)]">
+            Last HDFC credit SMS received: <b>{status.last_bank_sms_at ? istDateTime(status.last_bank_sms_at) : 'never'}</b>
+            {smsAgeDays !== null && smsAgeDays > 2 && ' — if you have taken payments since, the SMS app is not forwarding.'}
+          </p>
+          <a href={SMS_COMPANION_APK_URL} className="hfa-btn mt-3" onClick={() => capture('admin_sms_companion_download')}>
+            <Smartphone className="h-5 w-5" aria-hidden /> Download the SMS app (APK)
+          </a>
+          <p className="mt-3 text-[14px] font-semibold text-[var(--a-plum)]">Not on Google Play — open this link on the Android phone that receives HDFC SMS and allow “install unknown apps”. Then enter the device ID, device secret and the last 4 digits of the HDFC account.</p>
+        </DesiCard>
+      </div>
+
+      <DesiCard title="Your UPI ID" note="Change it here; new checkouts use it within a few seconds." tone="cream" pattern="bahi" corner="jasmine">
+        <div className="grid max-w-3xl content-start gap-4">
+          <div className="grid gap-1.5">
+            <Label htmlFor="upi-vpa" className="text-[14px] font-bold">Your UPI ID</Label>
+            <Input id="upi-vpa" value={vpa} onChange={(e) => setVpa(e.target.value.replace(/\s/g, ''))} placeholder="yourname@bank" autoCapitalize="off" autoCorrect="off" spellCheck={false} aria-invalid={vpa.trim() !== '' && !previewOk} className="min-h-[48px] bg-white text-[17px] font-bold" />
+            {vpa.trim() !== '' && !previewOk && <p className="text-[14px] font-bold text-destructive">Should look like name@bank.</p>}
+          </div>
+          <div className="grid gap-1.5">
+            <Label htmlFor="upi-payee" className="text-[14px] font-bold">Name customers see in their UPI app</Label>
+            <Input id="upi-payee" value={payee} maxLength={60} onChange={(e) => setPayee(e.target.value)} placeholder={BRAND.name} className="min-h-[48px] bg-white text-[17px] font-bold" />
+          </div>
+          <div className="rounded-2xl border-2 border-dashed border-[#f59e0b] bg-[#fff1d6] p-3 text-[14px] font-semibold leading-relaxed text-[var(--a-plum)]">
+            This UPI ID must pay into the <b>same HDFC account</b> the SMS phone is watching. Payments are confirmed only when that
+            account’s credit SMS arrives and matches the customer’s 12-digit UPI reference — money sent anywhere else can’t be confirmed.
           </div>
         </div>
-      </section>
+      </DesiCard>
 
-      <section className="hf-admin-op-card rounded-xl border border-border bg-card p-4 shadow-sm sm:p-6">
-        <h2 className="flex items-center gap-2 font-dash text-[20px] font-bold text-[var(--hf-admin-plum,#4a1747)]"><Smartphone className="h-5 w-5" /> Bank SMS phone</h2>
-        <p className="mt-2 text-[14px] font-semibold text-muted-foreground">
-          Last HDFC credit SMS received: <b className="text-foreground">{status.last_bank_sms_at ? istDateTime(status.last_bank_sms_at) : 'never'}</b>
-          {smsAgeDays !== null && smsAgeDays > 2 && ' — if you have taken payments since, the SMS app is not forwarding.'}
-        </p>
-        <a href={SMS_COMPANION_APK_URL} className="mt-3 inline-flex h-11 items-center rounded-md bg-primary px-5 text-[14px] font-bold text-primary-foreground no-underline hover:bg-primary/90" onClick={() => capture('admin_sms_companion_download')}>
-          Download the SMS app (APK)
-        </a>
-        <p className="mt-2 text-[14px] font-semibold text-muted-foreground">Not on Google Play — open this link on the Android phone that receives HDFC SMS and allow “install unknown apps”. Then enter the device ID, device secret and the last 4 digits of the HDFC account.</p>
-      </section>
+      <DesiCard title="How a payment gets confirmed" note="Nothing changes for the customer when you switch UPI ID." tone="lav" corner="hibiscus" pattern="dots">
+        <DesiJourney label="How a payment gets confirmed" steps={[
+          { title: 'Customer scans', note: 'The checkout QR carries your UPI ID and the exact amount', tone: 'rani' },
+          { title: 'Pays and enters UTR', note: 'The 12-digit UPI reference from their app', tone: 'gold' },
+          { title: 'Bank SMS arrives', note: 'HDFC credit SMS, forwarded by the SMS phone', tone: 'lav' },
+          { title: 'Matched, confirmed', note: 'SMS and UTR agree, so the booking is released', tone: 'tea' },
+        ]} />
+      </DesiCard>
 
-      <div className="sticky bottom-[calc(var(--dash-tabbar-h,0px)+12px)] z-10 flex flex-wrap items-center gap-3 hf-admin-op-card rounded-xl border border-border bg-card/95 p-3 shadow-lg backdrop-blur sm:bottom-4">
-        <Button variant="accent" onClick={() => void save()} disabled={saving}>
-          {saving ? <Loader2 className="animate-spin" /> : <Save />} {saving ? 'Saving…' : 'Save UPI ID'}
-        </Button>
-        <span className="text-[14px] font-semibold text-muted-foreground">
+      <div className="hfa-card hfa-t-cream sticky bottom-[calc(var(--dash-tabbar-h,0px)+12px)] z-10 flex flex-wrap items-center gap-3 !py-3 backdrop-blur sm:bottom-4">
+        <button type="button" className="hfa-btn tea" onClick={() => void save()} disabled={saving}>
+          {saving ? <Loader2 className="h-5 w-5 animate-spin" /> : <Save className="h-5 w-5" />} {saving ? 'Saving…' : 'Save UPI ID'}
+        </button>
+        <span className="text-[14px] font-semibold text-[var(--a-muted)]">
           {dirty ? 'Unsaved changes' : status.saved.updated_at ? `Last changed ${istDateTime(status.saved.updated_at)}` : 'Using the built-in default'}
         </span>
       </div>

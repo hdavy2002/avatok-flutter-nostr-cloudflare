@@ -5,18 +5,18 @@
  *   POST /api/admin/saathum/checkout/:id/reject   { reason }
  * Refreshes every 20 s; confirm/reject remove the row at once and restore it if the call fails. */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { AlertTriangle, CheckCircle2, ChevronDown, Loader2, RefreshCw, Smartphone, WifiOff, X, Check } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, ChevronDown, Loader2, RefreshCw, WifiOff, X, Check } from 'lucide-react';
 import { capture, captureException } from '../../lib/analytics';
 import { cn } from '../../lib/utils';
 import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
 import { Label } from '../../components/ui/label';
-import { Badge } from '../../components/ui/badge';
 import { toast } from '../../components/ui/sonner';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '../../components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../components/ui/select';
 import { istDateTime, istTime, errMessage, isAbort } from './adminApi';
-import { CopyValue, Empty, ErrorBox, ListSkeleton, TD, TH, adminCall } from './peopleKit';
+import { CopyValue, ErrorBox, ListSkeleton, adminCall } from './peopleKit';
+import { DesiCard, DesiChip, DesiCounter, DesiEmpty, DesiSays, DesiSlip } from './desi';
 
 /* ── wire types (timestamps may be epoch ms, epoch seconds or ISO strings — toMs() copes) ── */
 type Ts = number | string | null | undefined;
@@ -80,7 +80,7 @@ const reasonText = (c: string | null) => (c ? REASONS[c] ?? c.replace(/_/g, ' ')
 
 const checkoutMs = (c: ReviewCheckout) => toMs(c.paid_claimed_at) ?? toMs(c.created_at);
 
-/* ── payment sources strip ─────────────────────────────────────────────── */
+/* ── payment sources: each SMS forwarder is a little phone with a live dot ── */
 
 const SOURCE_LABEL: Record<string, string> = {
   watcher: 'Google Messages watcher', forwarder: 'SMS forwarder app', companion: 'SMS companion (legacy)',
@@ -96,9 +96,8 @@ function SourceCards({ sources, now }: { sources: SourceHealth[]; now: number })
   }, [sources]);
 
   return (
-    <section aria-label="Payment sources">
-      <h2 className="mb-2 font-dash text-[18px] font-bold text-[var(--hf-admin-plum,#4a1747)]">Payment sources</h2>
-      <div className="grid gap-3 md:grid-cols-2">
+    <DesiCard title="Payment sources" note="The phones that forward your bank SMS. A red dot means that phone needs a look." tone="cream" corner="jasmine" className="h-full">
+      <div className="grid gap-4 sm:grid-cols-2 2xl:grid-cols-3">
         {cards.map(({ key, s }) => {
           const label = SOURCE_LABEL[key];
           const forwarder = key === 'forwarder';
@@ -106,32 +105,38 @@ function SourceCards({ sources, now }: { sources: SourceHealth[]; now: number })
           const lastSms = s ? toMs(s.last_sms_at) : null;
           // Forwarder: red only when the server says so. Others: heartbeat < 15 min and server healthy.
           const healthy = forwarder ? s?.healthy !== false : !!s && hb != null && now - hb < OFFLINE_MS && s.healthy !== false;
+          const dot = healthy ? '#0e7c86' : '#d81b72';
           return (
-            <div key={`${key}-${s?.device_id ?? 'none'}`} className={cn('hf-admin-op-card rounded-xl border bg-card p-4 shadow-sm', healthy ? 'border-accent/50' : 'border-destructive/50')}>
-              <div className="flex items-center justify-between gap-3">
-                <div className="flex min-w-0 items-center gap-2">
-                  <Smartphone className="h-5 w-5 shrink-0 text-muted-foreground" aria-hidden />
-                  <span className="truncate font-dash text-[16px] font-bold text-foreground">{label}</span>
-                </div>
+            <div key={`${key}-${s?.device_id ?? 'none'}`} className="relative flex min-w-0 flex-col gap-2 rounded-[28px] border-[3px] px-4 pb-4 pt-7 shadow-sm"
+              style={{ borderColor: dot, background: healthy ? 'linear-gradient(180deg,#e3f5f6,#fff 70%)' : 'linear-gradient(180deg,#ffe6ef,#fff 70%)' }}>
+              <span aria-hidden="true" className="absolute left-1/2 top-2.5 h-1.5 w-14 -translate-x-1/2 rounded-full" style={{ background: healthy ? '#9fd3d8' : '#f2a9c8' }} />
+              <div className="flex items-center gap-2.5">
+                <span className="relative flex h-3.5 w-3.5 shrink-0" aria-hidden="true">
+                  {healthy && <span className="absolute inline-flex h-full w-full animate-ping rounded-full opacity-60" style={{ background: dot }} />}
+                  <span className="relative inline-flex h-3.5 w-3.5 rounded-full" style={{ background: dot }} />
+                </span>
+                <b className="min-w-0 break-words font-dash" style={{ fontSize: 'var(--fs-body)', color: 'var(--a-plum)' }}>{label}</b>
+              </div>
+              <div>
                 {healthy
-                  ? <Badge variant="accent" className="text-[14px]"><CheckCircle2 className="mr-1 h-4 w-4" /> Healthy</Badge>
-                  : <Badge variant="destructive" className="text-[14px]"><WifiOff className="mr-1 h-4 w-4" /> {forwarder ? 'Silent' : 'Offline'}</Badge>}
+                  ? <DesiChip tone="tea"><CheckCircle2 className="h-4 w-4" aria-hidden /> Healthy</DesiChip>
+                  : <DesiChip tone="rani"><WifiOff className="h-4 w-4" aria-hidden /> {forwarder ? 'Silent' : 'Offline'}</DesiChip>}
               </div>
               {forwarder ? (
                 <>
-                  <p className={cn('mt-2 text-[14px] font-bold', healthy ? 'text-muted-foreground' : 'text-destructive')}>
+                  <p className={cn('text-[14px] font-bold', healthy ? 'text-muted-foreground' : 'text-destructive')}>
                     {healthy ? 'Sends each message as it arrives (no heartbeat).' : 'No messages for 24 h while bank credits arrived'}
                   </p>
-                  <p className="mt-1 text-[14px] font-semibold text-muted-foreground">
+                  <p className="text-[14px] font-semibold text-muted-foreground">
                     Last message: {lastSms ? `${ago(lastSms, now)} · ${istTime(lastSms)}` : 'none yet'}
                   </p>
                 </>
               ) : (
                 <>
-                  <p className={cn('mt-2 text-[14px] font-bold', healthy ? 'text-muted-foreground' : 'text-destructive')}>
+                  <p className={cn('text-[14px] font-bold', healthy ? 'text-muted-foreground' : 'text-destructive')}>
                     {!s ? 'Never reported in' : healthy ? `Last heartbeat ${ago(hb, now)}` : hb ? `Offline since ${istTime(hb)} (${ago(hb, now)})` : 'Offline — no heartbeat yet'}
                   </p>
-                  <p className="mt-1 text-[14px] font-semibold text-muted-foreground">
+                  <p className="text-[14px] font-semibold text-muted-foreground">
                     Last SMS: {lastSms ? `${ago(lastSms, now)} · ${istTime(lastSms)}` : 'none yet'}
                   </p>
                 </>
@@ -140,7 +145,7 @@ function SourceCards({ sources, now }: { sources: SourceHealth[]; now: number })
           );
         })}
       </div>
-    </section>
+    </DesiCard>
   );
 }
 
@@ -148,59 +153,35 @@ function SourceCards({ sources, now }: { sources: SourceHealth[]; now: number })
 
 function CorroChip({ open }: { open: boolean }) {
   return open
-    ? <Badge className="border-transparent bg-[var(--hf-admin-goldtint,#fff1d6)] text-[14px] text-[var(--hf-admin-plum,#4a1747)] hover:bg-[var(--hf-admin-goldtint,#fff1d6)]">Awaiting second source</Badge>
-    : <Badge variant="destructive" className="text-[14px]"><AlertTriangle className="mr-1 h-4 w-4" /> Not corroborated, check bank statement</Badge>;
+    ? <DesiChip tone="gold">Awaiting second source</DesiChip>
+    : <DesiChip tone="rani"><AlertTriangle className="h-4 w-4" aria-hidden /> Not corroborated, check bank statement</DesiChip>;
 }
 
 function Uncorroborated({ items, now }: { items: Uncorroborated[]; now: number }) {
   if (items.length === 0) return null;
   return (
-    <section aria-label="Confirmed by forwarder only">
-      <h2 className="font-dash text-[18px] font-bold text-[var(--hf-admin-plum,#4a1747)]">Confirmed by forwarder only <span className="text-muted-foreground">({items.length})</span></h2>
-      <p className="mb-2 text-[14px] font-semibold text-muted-foreground">Confirmed automatically from the forwarder app alone. The Google Messages watcher has not yet seen the same bank SMS.</p>
-      <div className="hidden overflow-x-auto hf-admin-op-card rounded-xl border border-border/60 bg-card shadow-sm md:block">
-        <table className="w-full border-collapse">
-          <thead className="bg-muted/60">
-            <tr><th className={TH}>Buyer</th><th className={TH}>Event</th><th className={`${TH} text-right`}>Amount</th><th className={TH}>Bank ref</th><th className={TH}>Confirmed</th><th className={TH}>Via</th><th className={TH}>Status</th></tr>
-          </thead>
-          <tbody className="divide-y divide-border/40">
-            {items.map((u) => {
-              const t = toMs(u.confirmed_at);
-              return (
-                <tr key={u.checkout_id} className="hover:bg-muted/30">
-                  <td className={`${TD} font-bold`}>{u.buyer_name ?? '—'}</td>
-                  <td className={`${TD} max-w-[200px]`}>{u.listing_title ?? '—'}</td>
-                  <td className={`${TD} whitespace-nowrap text-right text-[16px] font-extrabold tabular-nums`}>{rupees(u.pay_amount_paise)}</td>
-                  <td className={`${TD} text-[14px]`}>{u.bank_reference ? <CopyValue value={u.bank_reference} label="Bank reference" /> : '—'}</td>
-                  <td className={`${TD} whitespace-nowrap text-[14px]`}>{t ? istDateTime(t) : '—'}<div className="text-muted-foreground">{ago(t, now)}</div></td>
-                  <td className={`${TD} text-[14px]`}>{u.confirmed_via}</td>
-                  <td className={TD}><CorroChip open={u.corroboration_window_open} /></td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
-      <ul className="space-y-3 md:hidden">
+    <DesiCard title={<>Confirmed by forwarder only <span className="opacity-70">({items.length})</span></>}
+      note="Confirmed automatically from the forwarder app alone. The Google Messages watcher has not yet seen the same bank SMS."
+      tone="lav" corner="hibiscus" pattern="dots" id="confirmed-forwarder-only">
+      <div className="hfa-row">
         {items.map((u) => {
           const t = toMs(u.confirmed_at);
           return (
-            <li key={u.checkout_id} className="hf-admin-op-card rounded-xl border border-border/60 bg-card p-4 shadow-sm">
-              <div className="flex items-start justify-between gap-3">
-                <div className="font-dash text-[20px] font-bold tabular-nums">{rupees(u.pay_amount_paise)}</div>
-                <div className="text-right text-[14px] font-semibold text-muted-foreground">{ago(t, now)}</div>
+            <DesiSlip key={u.checkout_id} tone={u.corroboration_window_open ? 'lav' : 'rani'}
+              strip={`Confirmed via ${u.confirmed_via}`} stripRight={<span className="text-[14px] font-bold">{ago(t, now)}</span>}>
+              <div className="hfa-amount">{rupees(u.pay_amount_paise)}</div>
+              <div className="min-w-0">
+                <div className="font-dash text-[17px] font-bold">{u.buyer_name ?? '—'}</div>
+                <div className="text-[14px] font-semibold text-muted-foreground">{u.listing_title ?? '—'}</div>
+                <div className="mt-1 text-[14px] font-semibold text-muted-foreground">{t ? istDateTime(t) : '—'}</div>
+                {u.bank_reference && <div className="text-[14px] font-semibold text-muted-foreground">Bank ref <CopyValue value={u.bank_reference} label="Bank reference" className="text-foreground" /></div>}
+                <div className="mt-2"><CorroChip open={u.corroboration_window_open} /></div>
               </div>
-              <div className="mt-1 text-[15px] font-bold">{u.buyer_name ?? '—'}</div>
-              <div className="text-[14px] font-semibold text-muted-foreground">{u.listing_title ?? '—'}</div>
-              <div className="mt-1 text-[14px] font-semibold text-muted-foreground">
-                {t ? istDateTime(t) : '—'} · via {u.confirmed_via}{u.bank_reference ? ` · Ref ${u.bank_reference}` : ''}
-              </div>
-              <div className="mt-2"><CorroChip open={u.corroboration_window_open} /></div>
-            </li>
+            </DesiSlip>
           );
         })}
-      </ul>
-    </section>
+      </div>
+    </DesiCard>
   );
 }
 
@@ -220,25 +201,25 @@ function ForwarderSetup({ now }: { now: number }) {
   }, []);
   useEffect(() => { if (open && !d && !busy) void load(); }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const flag = (on: boolean | undefined) => (on ? <Badge variant="accent">On</Badge> : <Badge variant="muted">Off</Badge>);
+  const flag = (on: boolean | undefined) => (on ? <DesiChip tone="tea">On</DesiChip> : <DesiChip tone="grey">Off</DesiChip>);
 
   return (
-    <section aria-label="Forwarder setup" className="hf-admin-op-card rounded-xl border border-border/60 bg-card shadow-sm">
-      <button type="button" aria-expanded={open} onClick={() => setOpen((o) => !o)}
-        className="flex min-h-[52px] w-full items-center justify-between gap-3 px-4 py-3 text-left">
-        <span className="font-dash text-[17px] font-bold text-[var(--hf-admin-plum,#4a1747)]">Forwarder setup</span>
-        <ChevronDown className={cn('h-5 w-5 text-muted-foreground transition-transform', open && 'rotate-180')} aria-hidden />
-      </button>
+    <DesiCard title="Forwarder setup" tone="cream" corner="jasmine" pattern="bahi"
+      action={
+        <button type="button" aria-expanded={open} onClick={() => setOpen((o) => !o)} className="hfa-btn ghost">
+          {open ? 'Hide' : 'Show'} <ChevronDown className={cn('h-5 w-5 transition-transform', open && 'rotate-180')} aria-hidden />
+        </button>
+      }>
       {open && (
-        <div className="space-y-3 border-t border-border/40 p-4">
+        <div className="space-y-3">
           {err ? <ErrorBox message={err} onRetry={() => void load()} /> : !d ? <ListSkeleton rows={2} /> : (
             <>
               <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-[14px] font-bold">
                 <span className="flex items-center gap-2">Forwarder {flag(d.forwarder_enabled)}</span>
                 <span className="flex items-center gap-2">Capture mode {flag(d.capture_enabled)}</span>
-                <Button variant="outline" size="sm" className="h-10 text-[14px]" disabled={busy} onClick={() => void load()}>
-                  {busy ? <Loader2 className="animate-spin" /> : <RefreshCw />} Refresh
-                </Button>
+                <button type="button" className="hfa-btn ghost" disabled={busy} onClick={() => void load()}>
+                  {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />} Refresh
+                </button>
               </div>
               {d.captures.length === 0 ? (
                 <p className="text-[14px] font-semibold text-muted-foreground">No captures yet. Turn capture mode on and send a test message from the forwarder app.</p>
@@ -248,9 +229,9 @@ function ForwarderSetup({ now }: { now: number }) {
                     const t = toMs(c.received_at);
                     const keys = Array.isArray(c.top_keys) ? c.top_keys.map(String).join(', ') : String(c.top_keys ?? '');
                     return (
-                      <li key={c.id} className="rounded-lg border border-border/60 p-3">
+                      <li key={c.id} className="rounded-2xl border-2 border-dashed border-[#e9c98d] bg-white/80 p-3">
                         <div className="flex flex-wrap items-center gap-2 text-[14px] font-bold">
-                          <Badge variant="outline">{c.method}</Badge>
+                          <DesiChip tone="lav">{c.method}</DesiChip>
                           <span className="text-muted-foreground">{c.content_type ?? 'no content-type'}</span>
                           <span className="ml-auto text-[14px] font-semibold text-muted-foreground">{t ? `${istDateTime(t)} · ${ago(t, now)}` : ''}</span>
                         </div>
@@ -265,7 +246,7 @@ function ForwarderSetup({ now }: { now: number }) {
           )}
         </div>
       )}
-    </section>
+    </DesiCard>
   );
 }
 
@@ -301,7 +282,7 @@ function ConfirmDialog({ checkout, sms, now, onClose, onSubmit }: {
 
   return (
     <Dialog open={!!checkout} onOpenChange={(o) => { if (!o) onClose(); }}>
-      <DialogContent className="hf-admin-operations max-h-[92vh] overflow-y-auto sm:max-w-lg">
+      <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-lg">
         {checkout && (
           <>
             <DialogHeader>
@@ -320,12 +301,12 @@ function ConfirmDialog({ checkout, sms, now, onClose, onSubmit }: {
                   return (
                     <li key={m.message_hash}>
                       <button type="button" role="radio" aria-checked={on} onClick={() => setPick(m.message_hash)}
-                        className={cn('flex min-h-[56px] w-full items-start gap-3 rounded-lg border p-3 text-left', on ? 'border-accent bg-accent/10' : 'border-border bg-card hover:bg-muted')}>
-                        <span className={cn('mt-1 h-4 w-4 shrink-0 rounded-full border-2', on ? 'border-accent bg-accent' : 'border-muted-foreground')} aria-hidden />
+                        className={cn('flex min-h-[56px] w-full items-start gap-3 rounded-lg border p-3 text-left', on ? 'border-[#0e7c86] bg-[#e3f5f6]' : 'border-border bg-card hover:bg-muted')}>
+                        <span className={cn('mt-1 h-4 w-4 shrink-0 rounded-full border-2', on ? 'border-[#0e7c86] bg-[#0e7c86]' : 'border-muted-foreground')} aria-hidden />
                         <span className="min-w-0 flex-1 text-[14px] font-semibold">
                           <span className="flex flex-wrap items-center gap-2">
                             <b className="text-[16px] tabular-nums">{rupees(m.amount_paise)}</b>
-                            {exact ? <Badge variant="accent">Same amount</Badge> : <Badge variant="muted">Different amount</Badge>}
+                            {exact ? <DesiChip tone="tea">Same amount</DesiChip> : <DesiChip tone="grey">Different amount</DesiChip>}
                           </span>
                           <span className="block text-muted-foreground">{istDateTime(m.received_at_ms)} · {ago(m.received_at_ms, now)}</span>
                           <span className="block break-all text-muted-foreground">{m.payer_vpa ?? 'Unknown payer'}{m.bank_reference ? ` · Ref ${m.bank_reference}` : ''}</span>
@@ -336,8 +317,8 @@ function ConfirmDialog({ checkout, sms, now, onClose, onSubmit }: {
                 })}
                 <li>
                   <button type="button" role="radio" aria-checked={noSms} onClick={() => setPick('none')}
-                    className={cn('flex min-h-[56px] w-full items-center gap-3 rounded-lg border p-3 text-left', noSms ? 'border-accent bg-accent/10' : 'border-border bg-card hover:bg-muted')}>
-                    <span className={cn('h-4 w-4 shrink-0 rounded-full border-2', noSms ? 'border-accent bg-accent' : 'border-muted-foreground')} aria-hidden />
+                    className={cn('flex min-h-[56px] w-full items-center gap-3 rounded-lg border p-3 text-left', noSms ? 'border-[#0e7c86] bg-[#e3f5f6]' : 'border-border bg-card hover:bg-muted')}>
+                    <span className={cn('h-4 w-4 shrink-0 rounded-full border-2', noSms ? 'border-[#0e7c86] bg-[#0e7c86]' : 'border-muted-foreground')} aria-hidden />
                     <span className="text-[14px] font-bold">Confirm without an SMS</span>
                   </button>
                 </li>
@@ -353,8 +334,8 @@ function ConfirmDialog({ checkout, sms, now, onClose, onSubmit }: {
             </div>
 
             <DialogFooter className="gap-2 sm:gap-2">
-              <Button variant="outline" onClick={onClose}>Cancel</Button>
-              <Button variant="accent" disabled={!canSubmit}
+              <Button variant="outline" className="min-h-[44px]" onClick={onClose}>Cancel</Button>
+              <Button className="min-h-[44px] bg-[#0e7c86] text-white hover:bg-[#0a5c63]" disabled={!canSubmit}
                 onClick={() => onSubmit(checkout, { message_hash: noSms ? undefined : pick, note: note.trim() || undefined })}>
                 <Check /> Confirm payment
               </Button>
@@ -387,7 +368,7 @@ function RejectDialog({ checkout, onClose, onSubmit }: {
 
   return (
     <Dialog open={!!checkout} onOpenChange={(o) => { if (!o) onClose(); }}>
-      <DialogContent className="hf-admin-operations sm:max-w-md">
+      <DialogContent className="sm:max-w-md">
         {checkout && (
           <>
             <DialogHeader>
@@ -408,8 +389,8 @@ function RejectDialog({ checkout, onClose, onSubmit }: {
               <Input id="pr-reject-text" value={text} onChange={(e) => setText(e.target.value)} maxLength={300} className="text-[16px]" />
             </div>
             <DialogFooter className="gap-2 sm:gap-2">
-              <Button variant="outline" onClick={onClose}>Cancel</Button>
-              <Button variant="destructive" disabled={!canSubmit} onClick={() => onSubmit(checkout, reason)}><X /> Reject</Button>
+              <Button variant="outline" className="min-h-[44px]" onClick={onClose}>Cancel</Button>
+              <Button variant="destructive" className="min-h-[44px]" disabled={!canSubmit} onClick={() => onSubmit(checkout, reason)}><X /> Reject</Button>
             </DialogFooter>
           </>
         )}
@@ -499,148 +480,133 @@ export default function PaymentReview() {
   if (phase === 'loading') return <ListSkeleton rows={4} />;
   if (phase === 'error') return <ErrorBox message={error ?? 'Could not load the payment queue.'} onRetry={() => { setPhase('loading'); void load(true); }} />;
 
-  const btns = (c: ReviewCheckout) => (
-    <div className="flex gap-2">
-      <Button variant="accent" size="sm" className="h-10 flex-1 text-[14px] md:flex-none" disabled={busy.has(c.checkout_id)} onClick={() => setConfirming(c)}><Check /> Confirm</Button>
-      <Button variant="outline" size="sm" className="h-10 flex-1 text-[14px] text-destructive md:flex-none" disabled={busy.has(c.checkout_id)} onClick={() => setRejecting(c)}><X /> Reject</Button>
-    </div>
-  );
-
-  const ageCell = (c: ReviewCheckout) => {
-    const t = checkoutMs(c);
-    const slow = t != null && now - t > SLOW_MS;
-    return (
-      <span className={cn('inline-flex items-center gap-1 font-bold', slow ? 'text-destructive' : 'text-foreground')}>
-        {slow && <AlertTriangle className="h-4 w-4" aria-label="Waiting more than 10 minutes" />}{ago(t, now).replace(' ago', '')}
-      </span>
-    );
+  const slowOf = (c: ReviewCheckout) => { const t = checkoutMs(c); return t != null && now - t > SLOW_MS; };
+  const waitingTotal = checkouts.reduce((s, c) => s + c.pay_amount_paise, 0);
+  /** Closest-in-time SMS with exactly the same amount — the likely proof for this checkout. */
+  const matchFor = (c: ReviewCheckout): UnmatchedSms | null => {
+    const t = checkoutMs(c) ?? now;
+    let best: UnmatchedSms | null = null;
+    for (const m of sms) if (m.amount_paise === c.pay_amount_paise && (!best || Math.abs(m.received_at_ms - t) < Math.abs(best.received_at_ms - t))) best = m;
+    return best;
   };
 
   return (
-    <div className="hf-admin-operations space-y-6">
+    <div className="hfa-stack">
       {stale && (
-        <div role="status" className="flex items-center gap-2 rounded-lg border border-primary/30 bg-primary/5 px-3 py-2 text-[14px] font-bold text-foreground">
-          <WifiOff className="h-4 w-4 text-primary" /> Could not refresh — showing the last data. Retrying automatically.
+        <div role="status" className="hfa-card hfa-t-gold flex items-center gap-2 text-[14px] font-bold text-foreground">
+          <WifiOff className="h-5 w-5 shrink-0 text-primary" /> Could not refresh — showing the last data. Retrying automatically.
         </div>
       )}
 
-      <SourceCards sources={data?.sources ?? []} now={now} />
-
-      <section aria-label="Waiting for verification">
-        <div className="mb-2 flex items-center justify-between gap-3">
-          <h2 className="font-dash text-[18px] font-bold text-[var(--hf-admin-plum,#4a1747)]">Waiting for verification <span className="text-muted-foreground">({checkouts.length})</span></h2>
-          <Button variant="outline" size="sm" className="h-10 text-[14px]" onClick={() => void load(true)}><RefreshCw /> Refresh</Button>
-        </div>
-
-        {checkouts.length === 0 ? (
-          <div className="flex flex-col items-center gap-2 hf-admin-op-card rounded-xl border border-dashed border-border bg-card px-6 py-12 text-center">
-            <CheckCircle2 className="h-8 w-8 text-accent" aria-hidden />
-            <p className="font-dash text-[18px] font-bold text-foreground">All payments verified</p>
-            <p className="text-[14px] font-semibold text-muted-foreground">Nothing is waiting for you. This page refreshes every 20 seconds.</p>
+      <div className="hfa-row-wide rev">
+        <DesiCounter eyebrow="Pakka? Bank se poochh lo" value={checkouts.length} label={checkouts.length === 1 ? 'payment waiting for you' : 'payments waiting for you'}>
+          <div className="mt-4 flex flex-wrap items-center gap-3">
+            {checkouts.length > 0 && <b className="font-dash" style={{ fontSize: 'var(--fs-body)' }}>{rupees(waitingTotal)} in total</b>}
+            <button type="button" className="hfa-btn gold" onClick={() => void load(true)}><RefreshCw className="h-4 w-4" /> Refresh</button>
           </div>
-        ) : (
-          <>
-            <div className="hidden overflow-x-auto hf-admin-op-card rounded-xl border border-border/60 bg-card shadow-sm md:block">
-              <table className="w-full border-collapse">
-                <thead className="bg-muted/60">
-                  <tr>
-                    <th className={TH}>Buyer</th><th className={TH}>Event</th><th className={`${TH} text-right`}>Amount</th>
-                    <th className={TH}>Claimed paid</th><th className={TH}>Waiting</th><th className={TH}>UTR</th><th className={TH}>Reason</th><th className={TH}><span className="sr-only">Actions</span></th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-border/40">
-                  {checkouts.map((c) => {
-                    const t = checkoutMs(c);
-                    return (
-                      <tr key={c.checkout_id} className={cn('hover:bg-muted/30', t != null && now - t > SLOW_MS && 'bg-destructive/5')}>
-                        <td className={`${TD} max-w-[220px]`}>
-                          <div className="font-bold">{c.buyer_name ?? '—'}</div>
-                          {c.whatsapp && <div className="text-[14px] text-muted-foreground">WhatsApp {c.whatsapp}</div>}
-                          {c.email && <div className="truncate text-[14px] text-muted-foreground">{c.email}</div>}
-                        </td>
-                        <td className={`${TD} max-w-[200px]`}>{c.listing_title ?? '—'}</td>
-                        <td className={`${TD} whitespace-nowrap text-right text-[16px] font-extrabold tabular-nums`}>{rupees(c.pay_amount_paise)}</td>
-                        <td className={`${TD} whitespace-nowrap text-[14px]`}>{t ? istDateTime(t) : '—'}{!toMs(c.paid_claimed_at) && <div className="text-muted-foreground">(not tapped “I’ve paid”)</div>}</td>
-                        <td className={`${TD} whitespace-nowrap`}>{ageCell(c)}</td>
-                        <td className={`${TD} text-[14px]`}>{c.utr ? <CopyValue value={c.utr} label="UTR" /> : <span className="text-muted-foreground">—</span>}</td>
-                        <td className={`${TD} text-[14px]`}>{reasonText(c.reason_code)}</td>
-                        <td className={`${TD} whitespace-nowrap`}>{btns(c)}</td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
+        </DesiCounter>
+        <SourceCards sources={data?.sources ?? []} now={now} />
+      </div>
 
-            <ul className="space-y-3 md:hidden">
+      <div className="hfa-row-wide">
+        <DesiCard title={<>Waiting for you <span className="opacity-70">({checkouts.length})</span></>} note="Oldest first. Compare what the customer says with what the bank SMS says." tone="gold" corner="marigold" pattern="dots" id="waiting-for-verification">
+          {checkouts.length === 0 ? (
+            <DesiEmpty text="All payments verified. Nothing is waiting for you. This page refreshes every 20 seconds." />
+          ) : (
+            <ul className="space-y-4">
               {checkouts.map((c) => {
                 const t = checkoutMs(c);
-                const slow = t != null && now - t > SLOW_MS;
+                const claimed = toMs(c.paid_claimed_at);
+                const slow = slowOf(c);
+                const m = matchFor(c);
+                const bz = busy.has(c.checkout_id);
                 return (
-                  <li key={c.checkout_id} className={cn('hf-admin-op-card rounded-xl border bg-card p-4 shadow-sm', slow ? 'border-destructive/50' : 'border-border/60')}>
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="font-dash text-[22px] font-bold tabular-nums">{rupees(c.pay_amount_paise)}</div>
-                      <div className="text-right text-[14px]">{ageCell(c)}<div className="text-[14px] font-semibold text-muted-foreground">waiting</div></div>
-                    </div>
-                    <div className="mt-1 text-[15px] font-bold">{c.buyer_name ?? '—'}</div>
-                    <div className="text-[14px] font-semibold text-muted-foreground">{c.listing_title ?? '—'}</div>
-                    <div className="mt-2 grid gap-0.5 text-[14px] font-semibold text-muted-foreground">
-                      {c.whatsapp && <a href={`https://wa.me/${c.whatsapp.replace(/\D/g, '')}`} className="text-foreground underline-offset-2 hover:underline">WhatsApp {c.whatsapp}</a>}
-                      {c.email && <span className="break-all">{c.email}</span>}
-                      <span>Claimed paid {t ? istDateTime(t) : '—'}</span>
-                      {c.utr && <span>UTR <CopyValue value={c.utr} label="UTR" className="text-foreground" /></span>}
-                      <span>{reasonText(c.reason_code)}</span>
-                    </div>
-                    <div className="mt-3">{btns(c)}</div>
+                  <li key={c.checkout_id}>
+                    <DesiSlip tone={m ? 'tea' : 'gold'}
+                      strip={claimed ? `Claimed paid · ${t ? istDateTime(t) : '—'}` : `Created · ${t ? istDateTime(t) : '—'}`}
+                      stripRight={<DesiChip tone={slow ? 'rani' : 'gold'}>{slow && <AlertTriangle className="h-4 w-4" aria-label="Waiting more than 10 minutes" />}{ago(t, now).replace(' ago', '')} waiting</DesiChip>}
+                      actions={
+                        <>
+                          <button type="button" className="hfa-btn danger" disabled={bz} onClick={() => setRejecting(c)}><X className="h-4 w-4" /> Reject</button>
+                          <button type="button" className="hfa-btn ghost" disabled={bz} onClick={() => setConfirming(c)}>Link an SMS</button>
+                          <button type="button" className="hfa-btn tea" disabled={bz} onClick={() => setConfirming(c)}><Check className="h-4 w-4" /> Confirm</button>
+                        </>
+                      }>
+                      <div className="hfa-amount">{rupees(c.pay_amount_paise)}<small>{reasonText(c.reason_code)}</small></div>
+                      <div className="grid min-w-0 gap-3">
+                        <div className="min-w-0">
+                          <div className="font-dash font-bold" style={{ fontSize: 'var(--fs-body)' }}>{c.buyer_name ?? '—'}</div>
+                          <div className="text-[14px] font-semibold text-muted-foreground">{c.listing_title ?? '—'}</div>
+                          <div className="mt-1 grid gap-0.5 text-[14px] font-semibold text-muted-foreground">
+                            {c.whatsapp && <a href={`https://wa.me/${c.whatsapp.replace(/\D/g, '')}`} className="inline-flex min-h-[44px] items-center text-foreground underline-offset-2 hover:underline">WhatsApp {c.whatsapp}</a>}
+                            {c.email && <span className="break-all">{c.email}</span>}
+                            {!claimed && <span>(not tapped “I’ve paid”)</span>}
+                          </div>
+                        </div>
+                        <div className="hfa-says-grid">
+                          <DesiSays k="Customer says" tone="lav" v={<>
+                            <div>{c.utr ? <>UTR <CopyValue value={c.utr} label="UTR" /></> : 'No UTR given'}</div>
+                            <div className="text-[14px] font-semibold text-muted-foreground">Payer: {c.buyer_name ?? '—'}</div>
+                          </>} />
+                          {m ? (
+                            <DesiSays k="Bank SMS says" tone="tea" v={<>
+                              <div>{rupees(m.amount_paise)} · same amount</div>
+                              <div className="text-[14px] font-semibold text-muted-foreground">{m.payer_vpa ?? 'Unknown payer'}{m.bank_reference ? ` · Ref ${m.bank_reference}` : ''}</div>
+                              <div className="text-[14px] font-semibold text-muted-foreground">{istDateTime(m.received_at_ms)} · {ago(m.received_at_ms, now)}</div>
+                            </>} />
+                          ) : (
+                            <DesiSays k="Bank SMS says" tone="none" v={<span className="text-[var(--a-rani)]">Nothing matched yet</span>} />
+                          )}
+                        </div>
+                      </div>
+                    </DesiSlip>
                   </li>
                 );
               })}
             </ul>
-          </>
-        )}
-      </section>
+          )}
+        </DesiCard>
 
-      <section aria-label="Unmatched bank SMS">
-        <h2 className="mb-2 font-dash text-[18px] font-bold text-[var(--hf-admin-plum,#4a1747)]">Unmatched bank SMS <span className="text-muted-foreground">({sms.length})</span></h2>
-        {sms.length === 0 ? (
-          <Empty title="No unmatched bank SMS" body="Every credit SMS has been matched to a checkout." />
-        ) : (
-          <>
-            <div className="hidden overflow-x-auto hf-admin-op-card rounded-xl border border-border/60 bg-card shadow-sm md:block">
-              <table className="w-full border-collapse">
-                <thead className="bg-muted/60">
-                  <tr><th className={`${TH} text-right`}>Amount</th><th className={TH}>Payer UPI ID</th><th className={TH}>Bank ref</th><th className={TH}>Received</th><th className={TH}>Source</th></tr>
-                </thead>
-                <tbody className="divide-y divide-border/40">
-                  {sms.map((m) => (
-                    <tr key={m.message_hash} className="hover:bg-muted/30">
-                      <td className={`${TD} text-right text-[16px] font-extrabold tabular-nums`}>{rupees(m.amount_paise)}</td>
-                      <td className={`${TD} break-all`}>{m.payer_vpa ?? '—'}</td>
-                      <td className={TD}>{m.bank_reference ? <CopyValue value={m.bank_reference} label="Bank reference" /> : '—'}</td>
-                      <td className={`${TD} whitespace-nowrap text-[14px]`}>{istDateTime(m.received_at_ms)}<div className="text-muted-foreground">{ago(m.received_at_ms, now)}</div></td>
-                      <td className={`${TD} text-[14px]`}>{m.source_device ?? '—'}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-            <ul className="space-y-3 md:hidden">
-              {sms.map((m) => (
-                <li key={m.message_hash} className="hf-admin-op-card rounded-xl border border-border/60 bg-card p-4 shadow-sm">
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="font-dash text-[20px] font-bold tabular-nums">{rupees(m.amount_paise)}</div>
-                    <div className="text-right text-[14px] font-semibold text-muted-foreground">{ago(m.received_at_ms, now)}</div>
-                  </div>
-                  <div className="mt-1 break-all text-[14px] font-semibold text-foreground">{m.payer_vpa ?? 'Unknown payer'}</div>
-                  <div className="text-[14px] font-semibold text-muted-foreground">
-                    {istDateTime(m.received_at_ms)}{m.bank_reference ? ` · Ref ${m.bank_reference}` : ''}{m.source_device ? ` · ${m.source_device}` : ''}
-                  </div>
+        <div className="hfa-stack">
+          <DesiCard title={<>Unmatched bank SMS <span className="opacity-70">({sms.length})</span></>} note="Credits the bank told us about that no checkout owns yet." tone="tea" corner="jasmine" id="unmatched-bank-sms">
+            {sms.length === 0 ? (
+              <DesiEmpty text="No unmatched bank SMS. Every credit SMS has been matched to a checkout." />
+            ) : (
+              <ul className="grid gap-3">
+                {sms.map((m) => (
+                  <li key={m.message_hash} className="border border-[#9fd3d8] bg-[#d2eef0] p-4" style={{ borderRadius: '22px 22px 22px 4px' }}>
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="hfa-amount" style={{ fontSize: 'clamp(24px, 14px + 1.2vw, 32px)', minWidth: 0 }}>{rupees(m.amount_paise)}</div>
+                      <div className="text-right text-[14px] font-semibold text-muted-foreground">{ago(m.received_at_ms, now)}</div>
+                    </div>
+                    <div className="mt-1 break-all text-[14px] font-bold text-foreground">{m.payer_vpa ?? 'Unknown payer'}</div>
+                    <div className="text-[14px] font-semibold text-muted-foreground">
+                      {istDateTime(m.received_at_ms)}{m.source_device ? ` · ${m.source_device}` : ''}
+                    </div>
+                    {m.bank_reference && <div className="text-[14px] font-semibold text-muted-foreground">Bank ref <CopyValue value={m.bank_reference} label="Bank reference" className="text-foreground" /></div>}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </DesiCard>
+
+          <DesiCard title="Before you confirm" tone="gold" pattern="stripes" corner="yellow">
+            <ul className="grid gap-3">
+              {[
+                'Open the bank app and look for the credit yourself.',
+                'The amount must match to the paisa, not just the rupee.',
+                'Prefer linking the bank SMS that proves it.',
+                'No SMS? Confirm anyway, but write how you verified.',
+              ].map((t) => (
+                <li key={t} className="flex items-start gap-3 text-[14px] font-bold text-[var(--a-plum)]">
+                  <span className="mt-0.5 grid h-6 w-6 shrink-0 place-items-center rounded-full bg-[#0e7c86] text-white" aria-hidden="true"><Check className="h-4 w-4" /></span>
+                  {t}
                 </li>
               ))}
             </ul>
-          </>
-        )}
-      </section>
+          </DesiCard>
+        </div>
+      </div>
 
       <Uncorroborated items={data?.confirmed_uncorroborated ?? []} now={now} />
 
@@ -648,7 +614,7 @@ export default function PaymentReview() {
 
       <ConfirmDialog checkout={confirming} sms={sms} now={now} onClose={() => setConfirming(null)} onSubmit={(c, b) => void act('confirm', c, b)} />
       <RejectDialog checkout={rejecting} onClose={() => setRejecting(null)} onSubmit={(c, r) => void act('reject', c, { reason: r })} />
-      {busy.size > 0 && <div className="fixed bottom-24 right-4 z-50 rounded-full bg-card p-2 shadow-lg sm:bottom-4" aria-hidden><Loader2 className="h-5 w-5 animate-spin text-accent" /></div>}
+      {busy.size > 0 && <div className="fixed bottom-24 right-4 z-50 rounded-full bg-card p-2 shadow-lg sm:bottom-4" aria-hidden><Loader2 className="h-5 w-5 animate-spin text-[#0e7c86]" /></div>}
     </div>
   );
 }

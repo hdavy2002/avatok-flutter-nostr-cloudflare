@@ -1,6 +1,7 @@
 // [SAATHUM-PREETI-1 2026-09-30] Small shared pieces for the Admin 2 AI assistant tabs.
 import type { ReactNode } from 'react';
 import { cn } from '../../lib/utils';
+import { DesiCard, type Corner, type Tone } from './desi';
 
 export const CARD = 'hf-admin-op-card rounded-xl border border-border bg-card p-4 shadow-sm sm:p-6';
 export const H2 = 'font-dash text-[20px] font-bold text-[var(--hf-admin-plum,#4a1747)]';
@@ -9,27 +10,42 @@ export const HINT = 'text-[14px] font-semibold leading-relaxed text-muted-foregr
 export const TEXTAREA =
   'w-full rounded-md border border-input bg-background px-3 py-2 font-dashbody text-[15px] font-semibold leading-relaxed text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60';
 
-export function Section({ title, children, aside, className }: { title: string; children: ReactNode; aside?: ReactNode; className?: string }) {
+/** Tinted tile surfaces (soft wash + matching border) for rows, tiles and bubbles. */
+export const TINT = {
+  rani: 'border-[#f6c2d8] bg-[linear-gradient(160deg,#fff,var(--a-blush))]',
+  lav: 'border-[#e4dafc] bg-[linear-gradient(160deg,#fff,var(--a-lavtint))]',
+  tea: 'border-[#cfe9eb] bg-[linear-gradient(160deg,#fff,var(--a-teatint))]',
+  gold: 'border-[#f3dfb3] bg-[linear-gradient(160deg,#fff,var(--a-goldtint))]',
+  cream: 'border-[var(--a-line)] bg-[var(--a-cream)]',
+} as const;
+export type TintKey = keyof typeof TINT;
+
+export function Section({ title, children, aside, className, tone = 'cream', corner = 'jasmine', pattern }: {
+  title: string; children: ReactNode; aside?: ReactNode; className?: string; tone?: Tone; corner?: Corner; pattern?: 'stripes' | 'dots' | 'bahi';
+}) {
   return (
-    <section className={cn(CARD, className)}>
-      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-        <h2 className={H2}>{title}</h2>
-        {aside}
-      </div>
+    <DesiCard title={title} action={aside} tone={tone} corner={corner} pattern={pattern} className={className}>
       {children}
-    </section>
+    </DesiCard>
   );
 }
 
-export function Chip({ active, onClick, children }: { active: boolean; onClick: () => void; children: ReactNode }) {
+const CHIP_ON = 'border-[var(--a-plum)] bg-[var(--a-plum)] text-white';
+const CHIP_OFF: Record<'lav' | 'tea' | 'gold' | 'rani', string> = {
+  lav: 'border-[#e4dafc] bg-[var(--a-lavtint)] text-[var(--a-lav)] hover:bg-[#e6dcff]',
+  tea: 'border-[#cfe9eb] bg-[var(--a-teatint)] text-[var(--a-peacock)] hover:bg-[#d2eef0]',
+  gold: 'border-[#f3dfb3] bg-[var(--a-goldtint)] text-[var(--a-amber)] hover:bg-[#ffe8bd]',
+  rani: 'border-[#f6c2d8] bg-[var(--a-blush)] text-[var(--a-rani)] hover:bg-[#ffd6e5]',
+};
+export function Chip({ active, onClick, children, tone = 'lav' }: { active: boolean; onClick: () => void; children: ReactNode; tone?: 'lav' | 'tea' | 'gold' | 'rani' }) {
   return (
     <button
       type="button"
       aria-pressed={active}
       onClick={onClick}
       className={cn(
-        'inline-flex h-9 items-center rounded-full border px-3 font-dashbody text-[14px] font-bold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
-        active ? 'border-accent bg-accent text-accent-foreground' : 'border-border/70 bg-card text-foreground hover:bg-muted',
+        'inline-flex min-h-[44px] shrink-0 items-center rounded-full border-2 px-4 font-dashbody text-[14px] font-bold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+        active ? CHIP_ON : CHIP_OFF[tone],
       )}
     >
       {children}

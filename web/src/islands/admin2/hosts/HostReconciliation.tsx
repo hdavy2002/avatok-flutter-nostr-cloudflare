@@ -5,6 +5,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { adminCall } from '../peopleKit';
 import { adminBlob, saveBlob } from '../adminApi';
 import { Banner, ConsultShell, Spinner, fail } from '../consultants/kit';
+import { DesiCard, DesiChip, DesiEmpty, DesiKpi, DesiKpis } from '../desi';
 import { formatPaise } from '../../../lib/money';
 
 /** [HF-STD-PLAN-1] rupees with paise everywhere on this page (the shared helper rounds to whole rupees). */
@@ -64,7 +65,7 @@ function Row({ label, d, strong }: { label: string; d: Omit<Day, 'date'>; strong
   return (
     <tr style={st}>
       <td>{label}</td>
-      <td>{d.topups.count} · {rupees(d.topups.rupees)}<div className="muted" style={T14}>{gw(d)}</div></td>
+      <td>{d.topups.count} · {rupees(d.topups.rupees)}<div className="hfa-note">{gw(d)}</div></td>
       <td>{d.walletCredits.count} · {rupees(d.walletCredits.rupees)}</td>
       <td>{pair(d.calls.paid, d.calls.test)}</td>
       <td>{pair(d.hostEarnings.paid, d.hostEarnings.test)}</td>
@@ -78,13 +79,13 @@ function Row({ label, d, strong }: { label: string; d: Omit<Day, 'date'>; strong
 function TokenSection({ t }: { t: TokReport }) {
   const x = t.totals;
   return (
-    <section className="card" style={{ background: 'var(--hf-admin-cream)', ...T14, display: 'grid', gap: 10 }}>
-      <h2 style={{ margin: 0, fontSize: 18 }}>Tokens {t.mismatches.length === 0 ? '· everything matches' : `· ${t.mismatches.length} to look at`}</h2>
+    <DesiCard tone="lav" corner="jasmine" title={`Tokens ${t.mismatches.length === 0 ? '· everything matches' : `· ${t.mismatches.length} to look at`}`}>
+      <div style={{ display: 'grid', gap: 10, fontSize: 'var(--fs-small)' }}>
       {t.mismatches.map((m) => (
-        <div key={m.kind + m.ref} style={{ borderTop: '1px solid var(--hf-admin-line)', paddingTop: 8, wordBreak: 'break-all' }}>
+        <div key={m.kind + m.ref} style={{ padding: '10px 14px', borderRadius: 16, background: 'var(--a-blush)', borderLeft: '6px solid var(--a-rani)', wordBreak: 'break-all' }}>
           <strong>{TOK_KIND[m.kind] ?? m.kind}</strong>
           <div>{m.detail}</div>
-          <div className="muted">{m.ref}{m.uid ? ` · ${m.uid}` : ''}</div>
+          <div className="hfa-note">{m.ref}{m.uid ? ` · ${m.uid}` : ''}</div>
         </div>
       ))}
       <div style={{ display: 'grid', gap: 2 }}>
@@ -96,8 +97,8 @@ function TokenSection({ t }: { t: TokReport }) {
         <div>Test tokens (not real money): {x.testLots.grantedLots} lots · {tk(x.testLots.grantedMicro)} granted · {tk(x.testLots.spentMicro)} spent</div>
         <div>Still held: purchased tokens {tk(t.outstanding.purchaseTokensMicro)} · test tokens {tk(t.outstanding.testTokensMicro)} · host balance {pr(t.outstanding.hostBalancePaise)}</div>
       </div>
-      <div style={{ overflow: 'auto' }}>
-        <table className="t" style={T14}>
+      <div className="hfa-scroll">
+        <table className="hfa-table">
           <thead><tr><th>Day</th><th>Purchases</th><th>Tokens spent</th><th>Value consumed</th><th>Host</th><th>Platform</th><th>Refunds</th></tr></thead>
           <tbody>
             {t.days.map((d) => (
@@ -109,7 +110,8 @@ function TokenSection({ t }: { t: TokReport }) {
           </tbody>
         </table>
       </div>
-    </section>
+      </div>
+    </DesiCard>
   );
 }
 
@@ -135,61 +137,93 @@ export default function HostReconciliation() {
     catch (e) { setError(fail('hf_reconciliation_csv', e)); }
   };
 
+  const same = (d: Omit<Day, 'date'>) => d.topups.count === d.walletCredits.count && Math.round(d.topups.rupees * 100) === Math.round(d.walletCredits.rupees * 100);
+  const cell = (ok: boolean): React.CSSProperties => ({ padding: '10px 12px', borderRadius: 14, background: ok ? 'var(--a-teatint)' : 'var(--a-blush)', borderLeft: `6px solid ${ok ? 'var(--a-peacock)' : 'var(--a-rani)'}`, minWidth: 0 });
   return (
     <ConsultShell className="hf-admin-operations">
-      <form onSubmit={(e) => { e.preventDefault(); void load(); }} style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', marginBottom: 12 }}>
-        <label style={T14}>From <input type="date" style={field} value={from} max={to} onChange={(e) => setFrom(e.target.value)} /></label>
-        <label style={T14}>To <input type="date" style={field} value={to} min={from} onChange={(e) => setTo(e.target.value)} /></label>
-        <button type="submit" className="btn small" style={{ ...T14, minHeight: 44 }} disabled={busy || !from || !to}>{busy ? 'Loading…' : 'Show'}</button>
-        <button type="button" className="btn ghost small" style={{ ...T14, minHeight: 44 }} disabled={!rep} onClick={() => void csv()}>Download CSV</button>
-      </form>
-      <p className="muted" style={{ ...T14, marginTop: 0 }}>Dates are India time. Money columns show real (paid) / test credits. Up to 93 days at a time.</p>
-      {error && <div style={{ marginBottom: 12 }}><Banner tone="error">{error}</Banner></div>}
-      {busy && !rep && <Spinner label="Working it out…" />}
-      {rep && (
-        <div style={{ display: 'grid', gap: 14 }}>
-          <section className="card" style={{ background: 'var(--hf-admin-cream)' }}>
-            <h2 style={{ margin: '0 0 8px', fontSize: 18 }}>{rep.mismatches.length === 0 ? 'Everything matches' : `${rep.mismatches.length} to look at`}</h2>
-            {rep.mismatches.length === 0 && <div className="muted" style={T14}>Every paid top-up in this period has exactly one wallet credit for the same amount, and the other way round. Top-ups paid in the last 30 minutes are skipped while their credit is still being recorded.</div>}
-            <div style={{ display: 'grid', gap: 8 }}>
-              {rep.mismatches.map((m) => (
-                <div key={m.kind + m.topupId} style={{ ...T14, borderTop: '1px solid var(--hf-admin-line)', paddingTop: 8, wordBreak: 'break-all' }}>
-                  <strong>{KIND[m.kind] ?? m.kind}</strong> · {m.topupRupees != null ? `top-up ${rupees(m.topupRupees)}` : 'no top-up'} · {m.creditRupees != null ? `credit ${rupees(m.creditRupees)}` : 'no credit'}
-                  <div>{m.detail}</div>
-                  <div className="muted">{m.topupId} · {m.uid}</div>
+      <div className="hfa-stack">
+        <DesiCard tone="gold" corner="marigold" title="Pick the days" note="Dates are India time. Money columns show real (paid) / test credits. Up to 93 days at a time.">
+          <form onSubmit={(e) => { e.preventDefault(); void load(); }} style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+            <label style={T14}>From <input type="date" style={field} value={from} max={to} onChange={(e) => setFrom(e.target.value)} /></label>
+            <label style={T14}>To <input type="date" style={field} value={to} min={from} onChange={(e) => setTo(e.target.value)} /></label>
+            <button type="submit" className="hfa-btn gold" disabled={busy || !from || !to}>{busy ? 'Loading…' : 'Show'}</button>
+            <button type="button" className="hfa-btn ghost" disabled={!rep} onClick={() => void csv()}>Download CSV</button>
+          </form>
+        </DesiCard>
+        {error && <Banner tone="error">{error}</Banner>}
+        {busy && !rep && <Spinner label="Working it out…" />}
+        {rep && (
+          <>
+            <DesiKpis>
+              <DesiKpi tone={rep.mismatches.length === 0 ? 'tea' : 'rani'} alert={rep.mismatches.length > 0} label="Verdict" value={rep.mismatches.length === 0 ? 'Everything matches' : `${rep.mismatches.length} to look at`} />
+              <DesiKpi tone="tea" label="Top-ups paid" value={rupees(rep.totals.topups.rupees)} sub={`${rep.totals.topups.count} top-ups`} />
+              <DesiKpi tone="plum" label="Wallet credits" value={rupees(rep.totals.walletCredits.rupees)} sub={`${rep.totals.walletCredits.count} credits`} />
+              <DesiKpi tone="rani" label="Payouts paid" value={rupees(rep.totals.payouts.rupees)} sub={`${rep.totals.payouts.count} payouts`} />
+              <DesiKpi tone="lav" label="Refunds" value={rep.totals.refunds ? rupees(rep.totals.refunds.rupees) : 'n/a'} sub={rep.totals.refunds ? `${rep.totals.refunds.count} refunds` : undefined} />
+            </DesiKpis>
+
+            <DesiCard tone="cream" pattern="bahi" corner="hibiscus" title="Bahi-khata: top-ups vs wallet credits" note="Left page: money the gateway took. Right page: credit put in wallets. Teal rows agree, pink rows do not.">
+              <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)', gap: '8px 12px', fontSize: 'var(--fs-small)' }}>
+                <div className="hfa-eyebrow" style={{ color: 'var(--a-peacock)' }}>Top-ups paid (gateway)</div>
+                <div className="hfa-eyebrow">Wallet credits</div>
+                {[...rep.days.map((d) => ({ label: d.date, d, strong: false })), { label: 'Total', d: rep.totals as Omit<Day, 'date'>, strong: true }].map(({ label, d, strong }) => {
+                  const ok = same(d);
+                  return (
+                    <div key={label} style={{ display: 'contents', fontWeight: strong ? 800 : 500 }}>
+                      <div style={cell(ok)}><strong>{label}</strong><div>{d.topups.count} · {rupees(d.topups.rupees)}</div><div className="hfa-note">{gw(d)}</div></div>
+                      <div style={cell(ok)}><strong>{ok ? 'Matches' : 'Differs'}</strong><div>{d.walletCredits.count} · {rupees(d.walletCredits.rupees)}</div></div>
+                    </div>
+                  );
+                })}
+              </div>
+            </DesiCard>
+
+            <DesiCard tone={rep.mismatches.length === 0 ? 'tea' : 'rani'} corner={rep.mismatches.length === 0 ? 'jasmine' : 'hibiscus'} title={rep.mismatches.length === 0 ? 'Everything matches' : `${rep.mismatches.length} to look at`}>
+              {rep.mismatches.length === 0 && <div style={{ fontSize: 'var(--fs-small)' }}>Every paid top-up in this period has exactly one wallet credit for the same amount, and the other way round. Top-ups paid in the last 30 minutes are skipped while their credit is still being recorded.</div>}
+              <div style={{ display: 'grid', gap: 10 }}>
+                {rep.mismatches.map((m) => (
+                  <div key={m.kind + m.topupId} style={{ fontSize: 'var(--fs-small)', padding: '10px 14px', borderRadius: 16, background: '#fff', borderLeft: '6px solid var(--a-rani)', wordBreak: 'break-all' }}>
+                    <DesiChip tone="rani">{KIND[m.kind] ?? m.kind}</DesiChip> {m.topupRupees != null ? `top-up ${rupees(m.topupRupees)}` : 'no top-up'} · {m.creditRupees != null ? `credit ${rupees(m.creditRupees)}` : 'no credit'}
+                    <div>{m.detail}</div>
+                    <div className="hfa-note">{m.topupId} · {m.uid}</div>
+                  </div>
+                ))}
+              </div>
+            </DesiCard>
+
+            <DesiCard tone="white" title="Day by day, everything">
+              <div className="hfa-scroll">
+                <table className="hfa-table">
+                  <thead><tr><th>Day</th><th>Top-ups paid</th><th>Wallet credits</th><th>Call charges (paid / test)</th><th>Influencer earnings (paid / test)</th><th>Platform share (paid / test)</th><th>Payouts paid</th><th>Refunds</th></tr></thead>
+                  <tbody>
+                    {rep.days.map((d) => <Row key={d.date} label={d.date} d={d} />)}
+                    <Row label="Total" d={rep.totals} strong />
+                  </tbody>
+                </table>
+              </div>
+            </DesiCard>
+
+            {rep.liabilities && (
+              <DesiCard tone="plum" corner="yellow" title="Still owed (approximate)">
+                <div style={{ fontSize: 'var(--fs-body)' }}>Caller wallets: <strong>{rupees(rep.liabilities.callerWalletsApprox)}</strong> · Influencer earnings not yet withdrawn: <strong>{rupees(rep.liabilities.hostEarningsApprox)}</strong></div>
+                <div className="hfa-note">{rep.liabilities.note}{rep.refundsAvailable ? '' : ' Refunds are not included (no refunds record yet).'}</div>
+              </DesiCard>
+            )}
+
+            {rep.tokens && <TokenSection t={rep.tokens} />}
+
+            <DesiCard tone="lav" title="Payouts paid">
+              {rep.payouts.length === 0 ? <DesiEmpty text="None in this period." /> : (
+                <div style={{ display: 'grid', gap: 8, fontSize: 'var(--fs-small)' }}>
+                  {rep.payouts.map((p) => (
+                    <div key={p.id} style={{ wordBreak: 'break-all', padding: '8px 12px', borderRadius: 14, background: '#fff', borderLeft: '6px solid var(--a-lav)' }}>{new Date(p.paid_at + 19_800_000).toISOString().slice(0, 10)} · {rupees(p.amount_rupees)} · UTR {p.utr || '—'} · {p.host_uid}</div>
+                  ))}
                 </div>
-              ))}
-            </div>
-          </section>
-
-          <section className="card" style={{ padding: 0, overflow: 'auto', background: 'var(--hf-admin-cream)' }}>
-            <table className="t" style={T14}>
-              <thead><tr><th>Day</th><th>Top-ups paid</th><th>Wallet credits</th><th>Call charges (paid / test)</th><th>Host earnings (paid / test)</th><th>Platform share (paid / test)</th><th>Payouts paid</th><th>Refunds</th></tr></thead>
-              <tbody>
-                {rep.days.map((d) => <Row key={d.date} label={d.date} d={d} />)}
-                <Row label="Total" d={rep.totals} strong />
-              </tbody>
-            </table>
-          </section>
-
-          {rep.liabilities && (
-            <section className="card" style={{ background: 'var(--hf-admin-cream)', ...T14 }}>
-              <h2 style={{ margin: '0 0 8px', fontSize: 18 }}>Still owed (approximate)</h2>
-              <div>Caller wallets: <strong>{rupees(rep.liabilities.callerWalletsApprox)}</strong> · Host earnings not yet withdrawn: <strong>{rupees(rep.liabilities.hostEarningsApprox)}</strong></div>
-              <div className="muted">{rep.liabilities.note}{rep.refundsAvailable ? '' : ' Refunds are not included (no refunds record yet).'}</div>
-            </section>
-          )}
-
-          {rep.tokens && <TokenSection t={rep.tokens} />}
-
-          <section className="card" style={{ background: 'var(--hf-admin-cream)', ...T14 }}>
-            <h2 style={{ margin: '0 0 8px', fontSize: 18 }}>Payouts paid</h2>
-            {rep.payouts.length === 0 ? <div className="muted">None in this period.</div> : rep.payouts.map((p) => (
-              <div key={p.id} style={{ wordBreak: 'break-all' }}>{new Date(p.paid_at + 19_800_000).toISOString().slice(0, 10)} · {rupees(p.amount_rupees)} · UTR {p.utr || '—'} · {p.host_uid}</div>
-            ))}
-          </section>
-        </div>
-      )}
+              )}
+            </DesiCard>
+          </>
+        )}
+      </div>
     </ConsultShell>
   );
 }

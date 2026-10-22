@@ -17,6 +17,7 @@ import './pageEditor.css';
 import { capture, captureException } from '../../../lib/analytics';
 import { toast } from '../../../components/ui/sonner';
 import { errMessage } from '../adminApi';
+import { Jasmine, Marigold } from '../desi';
 import { shopPageConfig } from '../../shop/blocks/config';
 import { EditCtx, type EditProduct } from '../../shop/blocks/editorCtx';
 import { emptyResolved, type CollectionInfo, type PageData, type ShopResolved } from '../../shop/blocks/types';
@@ -203,6 +204,7 @@ export function PageEditorView({ api }: { api: PageApi }) {
         <b>Edit shop page</b>
         <span className="pe-status">Click any text on the page to edit it. Nothing goes live until you press Publish.</span>
         <span className="pe-spacer" />
+        <span className="pe-flowers" aria-hidden="true"><Jasmine size={22} /><Marigold size={34} /><Jasmine size={22} /><Marigold size={26} tone={1} /></span>
       </div>
       <div className="pe-body">
         {loadError && <div className="pe-state"><div><p>{loadError}</p><button type="button" className="pe-btn" onClick={() => void load()}>Try again</button></div></div>}

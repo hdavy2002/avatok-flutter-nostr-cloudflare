@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { hfAdminApi, type AdminCall, type AdminUserHit, type StdCallRow, type StdTotals } from '../../../lib/hfAdminApi';
 import { toMs } from '../../../lib/hfCallsApi';
 import { Banner, ConsultShell, Spinner, dateIST, fail } from '../consultants/kit';
+import { DesiCard, DesiChip, DesiEmpty, DesiKpi, DesiKpis } from '../desi';
 import { formatPaise } from '../../../lib/money';
 
 const T14 = { fontSize: 14 } as const;
@@ -31,19 +32,19 @@ function UserRow({ u, onBalance }: { u: AdminUserHit; onBalance: (uid: string, b
     setBusy(null);
   };
   return (
-    <div className="card" style={{ background: 'var(--hf-admin-cream)', display: 'grid', gap: 8 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap', alignItems: 'baseline' }}>
-        <strong style={{ fontSize: 16 }}>{u.name || 'No name'}{u.isHost && <span className="chip gold" style={{ ...T14, marginLeft: 8 }}>Host{u.hostSlug ? ` · ${u.hostSlug}` : ''}</span>}</strong>
-        <strong style={{ fontSize: 16 }}>Balance ₹{u.balanceRupees}</strong>
+    <div style={{ display: 'grid', gap: 10, padding: 16, borderRadius: 20, background: 'linear-gradient(160deg, #fff 30%, var(--a-teatint))', border: '1px solid #cfe9eb', borderLeft: '8px solid var(--a-peacock)' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
+        <strong style={{ fontSize: 'var(--fs-body)' }}>{u.name || 'No name'}{u.isHost && <DesiChip tone="gold" className="ml-2">Influencer{u.hostSlug ? ` · ${u.hostSlug}` : ''}</DesiChip>}</strong>
+        <strong className="hfa-amount" style={{ minWidth: 0, fontSize: 'var(--fs-big)', color: 'var(--a-peacock)' }}>Balance ₹{u.balanceRupees}</strong>
       </div>
       <div style={{ ...T14, display: 'grid', gap: 2, wordBreak: 'break-all' }}>
         <span>{u.phone || 'No phone on file'}{u.phone && (u.whatsappVerified ? ' · WhatsApp verified' : ' · not verified')}</span>
         <span>{u.email || 'No email'}</span>
-        <span className="muted">{u.uid}</span>
+        <span className="hfa-note">{u.uid}</span>
       </div>
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
         {QUICK.map((n) => (
-          <button key={n} type="button" className="btn small" style={{ ...T14, minHeight: 44, minWidth: 80 }} disabled={busy !== null} onClick={() => void credit(n)}>
+          <button key={n} type="button" className="hfa-btn gold" style={{ minWidth: 88 }} disabled={busy !== null} onClick={() => void credit(n)}>
             {busy === n ? 'Adding…' : `+ ₹${n}`}
           </button>
         ))}
@@ -51,7 +52,7 @@ function UserRow({ u, onBalance }: { u: AdminUserHit; onBalance: (uid: string, b
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
         <input aria-label="Custom amount in rupees" style={{ ...field, width: 140 }} inputMode="numeric" placeholder="Custom ₹" value={custom} onChange={(e) => setCustom(e.target.value.replace(/\D/g, ''))} />
         <input aria-label="Note (optional)" style={{ ...field, flex: 1, minWidth: 160, width: 'auto' }} value={note} maxLength={120} placeholder="Note (optional)" onChange={(e) => setNote(e.target.value)} />
-        <button type="button" className="btn ghost small" style={{ ...T14, minHeight: 44 }} disabled={!customOk || busy !== null} onClick={() => void credit(customAmt)}>{busy === customAmt && customOk ? 'Adding…' : 'Add'}</button>
+        <button type="button" className="hfa-btn ghost" disabled={!customOk || busy !== null} onClick={() => void credit(customAmt)}>{busy === customAmt && customOk ? 'Adding…' : 'Add'}</button>
       </div>
       {msg && <Banner tone={msg.tone}>{msg.text}</Banner>}
     </div>
@@ -80,7 +81,7 @@ function AdvancedUidForm() {
   };
   return (
     <details style={{ marginTop: 6 }}>
-      <summary style={{ ...T14, cursor: 'pointer', fontWeight: 800, minHeight: 44, display: 'flex', alignItems: 'center' }}>Advanced: by user id</summary>
+      <summary style={{ ...T14, cursor: 'pointer', fontWeight: 800, minHeight: 44, display: 'flex', alignItems: 'center', color: 'var(--a-amber)' }}>Advanced: by user id</summary>
       <form onSubmit={submit} style={{ display: 'grid', gap: 10, marginTop: 8 }}>
         <label style={{ ...T14, fontWeight: 800 }} htmlFor="cr-uid">User id (uid)</label>
         <input id="cr-uid" style={field} value={uid} onChange={(e) => setUid(e.target.value)} autoComplete="off" placeholder="user_…" />
@@ -90,7 +91,7 @@ function AdvancedUidForm() {
         <input id="cr-note" style={field} value={note} onChange={(e) => setNote(e.target.value)} maxLength={120} placeholder="e.g. testing calls with Priya" />
         {err && <Banner tone="error">{err}</Banner>}
         {ok && <Banner tone="info">{ok}</Banner>}
-        <div><button type="submit" className="btn small" style={T14} disabled={!valid || busy}>{busy ? 'Adding…' : 'Add test credits'}</button></div>
+        <div><button type="submit" className="hfa-btn gold" disabled={!valid || busy}>{busy ? 'Adding…' : 'Add test credits'}</button></div>
       </form>
     </details>
   );
@@ -114,24 +115,24 @@ function CreditPanel() {
   const setBalance = (uid: string, bal: number) => setHits((h) => (h ? h.map((x) => (x.uid === uid ? { ...x, balanceRupees: bal } : x)) : h));
 
   return (
-    <section className="card" style={{ background: 'var(--hf-admin-cream)', display: 'grid', gap: 10, marginBottom: 18 }}>
-      <h2 style={{ margin: 0, fontSize: 18 }}>Add test credits</h2>
-      <p className="muted" style={{ margin: 0, ...T14 }}>For testing only. Find the caller, then tap an amount. Every credit is logged.</p>
-      <form onSubmit={search} style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-        <input aria-label="WhatsApp number, email or name" style={{ ...field, flex: 1, minWidth: 200, width: 'auto' }} value={q} onChange={(e) => setQ(e.target.value)}
-          autoComplete="off" placeholder="WhatsApp number, email or name" />
-        <button type="submit" className="btn small" style={{ ...T14, minHeight: 44 }} disabled={!canSearch || busy}>{busy ? 'Searching…' : 'Search'}</button>
-      </form>
-      {err && <Banner tone="error">{err}</Banner>}
-      {hits && hits.length === 0 && <div className="muted" style={{ fontWeight: 700, ...T14 }}>No one found for “{searched}”. Try the full number with country code, the full email, or part of the name.</div>}
-      {hits && hits.length > 0 && (
-        <div style={{ display: 'grid', gap: 10 }}>
-          <div className="muted" style={T14}>{hits.length} found{hits.length === 20 ? ' (showing the first 20, narrow the search)' : ''}</div>
-          {hits.map((u) => <UserRow key={u.uid} u={u} onBalance={setBalance} />)}
-        </div>
-      )}
-      <AdvancedUidForm />
-    </section>
+    <DesiCard tone="gold" corner="marigold" title="Add test credits" note="For testing only. Find the caller, then tap an amount. Every credit is logged.">
+      <div style={{ display: 'grid', gap: 12 }}>
+        <form onSubmit={search} style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <input aria-label="WhatsApp number, email or name" style={{ ...field, flex: 1, minWidth: 200, width: 'auto' }} value={q} onChange={(e) => setQ(e.target.value)}
+            autoComplete="off" placeholder="WhatsApp number, email or name" />
+          <button type="submit" className="hfa-btn gold" disabled={!canSearch || busy}>{busy ? 'Searching…' : 'Search'}</button>
+        </form>
+        {err && <Banner tone="error">{err}</Banner>}
+        {hits && hits.length === 0 && <div className="hfa-note" style={{ fontWeight: 700 }}>No one found for “{searched}”. Try the full number with country code, the full email, or part of the name.</div>}
+        {hits && hits.length > 0 && (
+          <div style={{ display: 'grid', gap: 10 }}>
+            <div className="hfa-note">{hits.length} found{hits.length === 20 ? ' (showing the first 20, narrow the search)' : ''}</div>
+            {hits.map((u) => <UserRow key={u.uid} u={u} onBalance={setBalance} />)}
+          </div>
+        )}
+        <AdvancedUidForm />
+      </div>
+    </DesiCard>
   );
 }
 
@@ -154,36 +155,72 @@ function MarginsPanel() {
     return () => { live = false; };
   }, []);
   return (
-    <section className="card" style={{ background: 'var(--hf-admin-cream)', display: 'grid', gap: 10, marginBottom: 18 }}>
-      <h2 style={{ margin: 0, fontSize: 18 }}>Calls &amp; margins</h2>
-      <p className="muted" style={{ margin: 0, ...T14 }}>Estimates before other expenses — not profit.</p>
-      {error && <Banner tone="error">{error}</Banner>}
-      {rows === null && <Spinner label="Loading…" />}
-      {totals && (
-        <div style={{ ...T14, display: 'flex', gap: 16, flexWrap: 'wrap', fontWeight: 700 }}>
-          <span>Calls {totals.calls ?? '—'}</span><span>Charged {pn(totals.chargePaise)}</span><span>Hosts {pn(totals.hostPaise)}</span>
-          <span>Phone est. {pn(totals.phoneCostEstPaise)}</span><span>Phone actual {pn(totals.phoneCostActualPaise)}</span><span>Platform est. {pn(totals.platformEstPaise)}</span>
+    <DesiCard tone="lav" corner="jasmine" title="Calls & margins" note="Estimates before other expenses — not profit.">
+      <div style={{ display: 'grid', gap: 12 }}>
+        {error && <Banner tone="error">{error}</Banner>}
+        {rows === null && <Spinner label="Loading…" />}
+        {totals && (
+          <DesiKpis>
+            <DesiKpi tone="plum" label="Calls" value={totals.calls ?? '—'} />
+            <DesiKpi tone="tea" label="Charged" value={pn(totals.chargePaise)} />
+            <DesiKpi tone="lav" label="Influencers" value={pn(totals.hostPaise)} />
+            <DesiKpi tone="rani" label="Phone est." value={pn(totals.phoneCostEstPaise)} />
+            <DesiKpi tone="rani" label="Phone actual" value={pn(totals.phoneCostActualPaise)} />
+            <DesiKpi tone="gold" label="Platform est." value={pn(totals.platformEstPaise)} />
+          </DesiKpis>
+        )}
+        {rows && rows.length === 0 && !error && <DesiEmpty text="No Standard-plan calls yet." />}
+        {rows && rows.length > 0 && (
+          <div className="hfa-scroll">
+            <table className="hfa-table">
+              <thead><tr><th>When</th><th>Influencer</th><th>Charge</th><th>Influencer share</th><th>Phone est.</th><th>Phone actual</th><th>Platform est.</th></tr></thead>
+              <tbody>
+                {rows.map((c) => (
+                  <tr key={c.id}>
+                    <td>{dateIST(toMs(c.at ?? c.createdAt))}</td>
+                    <td>{c.hostName || c.hostSlug || '—'}</td>
+                    <td style={{ color: 'var(--a-peacock)', fontWeight: 800 }}>{pn(c.chargePaise)}</td><td>{pn(c.hostPaise)}</td><td>{pn(c.phoneCostEstPaise)}</td><td>{pn(c.phoneCostActualPaise)}</td>
+                    <td>{pn(c.platformAfterActualPaise ?? c.platformEstPaise)}{c.platformAfterActualPaise != null ? ' (after actual phone cost)' : ''}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+    </DesiCard>
+  );
+}
+
+/** STD-PCO style call register: outcome colours the whole row, minutes shown as a big meter. */
+function outcomeOf(status: string): { tone: 'tea' | 'gold' | 'rani' | 'lav'; bg: string; edge: string } {
+  const s = String(status || '').toLowerCase();
+  if (/(fail|miss|reject|declin|error|no.?answer|busy|cancel|expire)/.test(s)) return { tone: 'rani', bg: 'linear-gradient(100deg, #fff 30%, var(--a-blush))', edge: 'var(--a-rani)' };
+  if (/(complet|ended|done|finish|success|paid)/.test(s)) return { tone: 'tea', bg: 'linear-gradient(100deg, #fff 30%, var(--a-teatint))', edge: 'var(--a-peacock)' };
+  if (/(ring|connect|progress|live|active|pending|wait|start)/.test(s)) return { tone: 'gold', bg: 'linear-gradient(100deg, #fff 30%, var(--a-goldtint))', edge: 'var(--a-marigold)' };
+  return { tone: 'lav', bg: 'linear-gradient(100deg, #fff 30%, var(--a-lavtint))', edge: 'var(--a-lav)' };
+}
+function CallRow({ c }: { c: AdminCall }) {
+  const o = outcomeOf(c.status);
+  return (
+    <article style={{ display: 'grid', gridTemplateColumns: 'auto minmax(0, 1fr)', gap: 'clamp(10px, 1.6vw, 22px)', alignItems: 'center', padding: '14px clamp(14px, 1.6vw, 22px)', borderRadius: 20, background: o.bg, border: '1px solid var(--a-line)', borderLeft: `8px solid ${o.edge}`, boxShadow: 'var(--a-shadow)' }}>
+      <div style={{ textAlign: 'center', minWidth: 76, padding: '8px 10px', borderRadius: 16, background: 'linear-gradient(150deg, var(--a-plum), #8a2b7d)', color: '#ffd166' }} aria-label={`Minutes billed: ${c.billedMinutes ?? 'none'}`}>
+        <div className="hfa-amount" style={{ color: '#ffd166', minWidth: 0 }}>{c.billedMinutes ?? '—'}</div>
+        <div style={{ fontSize: 14, fontWeight: 700, color: '#fff' }}>min</div>
+      </div>
+      <div style={{ display: 'grid', gap: 6, minWidth: 0 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+          <strong style={{ fontSize: 'var(--fs-body)', overflowWrap: 'anywhere' }}>{c.hostName || c.hostSlug || c.hostUid || '—'}</strong>
+          <DesiChip tone={o.tone}>{c.status}</DesiChip>
         </div>
-      )}
-      {rows && rows.length === 0 && !error && <div className="muted" style={{ fontWeight: 700, ...T14 }}>No Standard-plan calls yet.</div>}
-      {rows && rows.length > 0 && (
-        <div style={{ overflow: 'auto' }}>
-          <table className="t" style={T14}>
-            <thead><tr><th>When</th><th>Host</th><th>Charge</th><th>Host</th><th>Phone est.</th><th>Phone actual</th><th>Platform est.</th></tr></thead>
-            <tbody>
-              {rows.map((c) => (
-                <tr key={c.id}>
-                  <td>{dateIST(toMs(c.at ?? c.createdAt))}</td>
-                  <td>{c.hostName || c.hostSlug || '—'}</td>
-                  <td>{pn(c.chargePaise)}</td><td>{pn(c.hostPaise)}</td><td>{pn(c.phoneCostEstPaise)}</td><td>{pn(c.phoneCostActualPaise)}</td>
-                  <td>{pn(c.platformAfterActualPaise ?? c.platformEstPaise)}{c.platformAfterActualPaise != null ? ' (after actual phone cost)' : ''}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        <div className="hfa-note" style={{ overflowWrap: 'anywhere' }}>{dateIST(toMs(c.createdAt))} · Caller {c.callerUid || '—'}</div>
+        <div style={{ display: 'flex', gap: '6px 18px', flexWrap: 'wrap', fontSize: 'var(--fs-small)', fontWeight: 700 }}>
+          <span style={{ color: 'var(--a-peacock)' }}>Charged {c.chargedPaise != null ? formatPaise(c.chargedPaise) : '—'}</span>
+          <span style={{ color: 'var(--a-lav)' }}>Influencer share {c.hostEarningPaise != null ? formatPaise(c.hostEarningPaise) : '—'}</span>
+          <span style={{ color: 'var(--a-muted)' }}>Ended by {c.endReason || '—'}</span>
         </div>
-      )}
-    </section>
+      </div>
+    </article>
   );
 }
 
@@ -198,36 +235,19 @@ export default function HostCalls() {
 
   return (
     <ConsultShell className="hf-admin-operations">
-      <CreditPanel />
-      <MarginsPanel />
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, marginBottom: 10 }}>
-        <h2 style={{ margin: 0, fontSize: 18 }}>Recent calls</h2>
-        <button type="button" className="btn ghost small" style={T14} onClick={() => void load()}>Refresh</button>
+      <div className="hfa-stack">
+        <CreditPanel />
+        <MarginsPanel />
+        <DesiCard tone="cream" pattern="stripes" title="Recent calls" note="The call register, newest first."
+          action={<button type="button" className="hfa-btn ghost" onClick={() => void load()}>Refresh</button>}>
+          <div style={{ display: 'grid', gap: 12 }}>
+            {error && <Banner tone="error">{error}</Banner>}
+            {rows === null && <Spinner label="Loading calls…" />}
+            {rows && rows.length === 0 && !error && <DesiEmpty text="No calls yet." />}
+            {rows && rows.map((c) => <CallRow key={c.id} c={c} />)}
+          </div>
+        </DesiCard>
       </div>
-      {error && <div style={{ marginBottom: 12 }}><Banner tone="error">{error}</Banner></div>}
-      {rows === null && <Spinner label="Loading calls…" />}
-      {rows && rows.length === 0 && !error && <div className="card muted" style={{ fontWeight: 700, ...T14 }}>No calls yet.</div>}
-      {rows && rows.length > 0 && (
-        <div className="card" style={{ padding: 0, overflow: 'auto', background: 'var(--hf-admin-cream)' }}>
-          <table className="t" style={T14}>
-            <thead><tr><th>When</th><th>Host</th><th>Caller</th><th>Status</th><th>Min</th><th>Charged</th><th>Host share</th><th>Ended by</th></tr></thead>
-            <tbody>
-              {rows.map((c) => (
-                <tr key={c.id}>
-                  <td>{dateIST(toMs(c.createdAt))}</td>
-                  <td>{c.hostName || c.hostSlug || c.hostUid || '—'}</td>
-                  <td style={{ wordBreak: 'break-all' }}>{c.callerUid || '—'}</td>
-                  <td>{c.status}</td>
-                  <td>{c.billedMinutes ?? '—'}</td>
-                  <td>{c.chargedPaise != null ? formatPaise(c.chargedPaise) : '—'}</td>
-                  <td>{c.hostEarningPaise != null ? formatPaise(c.hostEarningPaise) : '—'}</td>
-                  <td>{c.endReason || '—'}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
     </ConsultShell>
   );
 }

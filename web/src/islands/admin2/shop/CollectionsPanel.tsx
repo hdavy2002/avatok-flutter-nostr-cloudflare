@@ -7,11 +7,14 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { captureException } from '../../../lib/analytics';
 import { toast } from '../../../components/ui/sonner';
 import { uploadCover } from '../eventsApi';
-import { LoadError, Modal, Spinner } from './ShopUI';
+import { LoadError, Modal, Spinner, Thumb } from './ShopUI';
+import { DesiCard, DesiChip, DesiEmpty, Hibiscus, Jasmine, Marigold } from '../desi';
 import {
   createCollection, deleteCollection, errMessage, listCollections, reorderCollections, updateCollection,
   type AdminCollection,
 } from './shopApi';
+
+const SHELF = ['rani', 'lav', 'gold', 'tea', 'saffron'] as const;
 
 export default function CollectionsPanel() {
   const [items, setItems] = useState<AdminCollection[] | null>(null);
@@ -47,44 +50,55 @@ export default function CollectionsPanel() {
 
   return (
     <div className="sh-apanel is-on" data-apanel="cats">
-      <div className="sh-panel">
-        <h2>Categories &amp; collections</h2>
-        <p>Collections show as tiles on the shop home and as a filter. Drag to reorder.</p>
+      <DesiCard
+        tone="cream" pattern="dots" corner="marigold"
+        title="Categories & collections"
+        note="Collections show as tiles on the shop home and as a filter. Drag to reorder."
+      >
         {error ? <LoadError message={error} onRetry={() => void load()} /> : !items ? <Spinner /> : (
-          <div>
-            {items.length === 0 && <p>No collections yet — add the first one below.</p>}
-            {items.map((c, i) => (
-              <div
-                className="sh-sum-item sh-cat-row" key={c.id}
-                draggable
-                onDragStart={() => { dragFrom.current = i; }}
-                onDragOver={(e) => e.preventDefault()}
-                onDrop={() => {
-                  const from = dragFrom.current; dragFrom.current = null;
-                  if (from === null || from === i) return;
-                  const l = items.slice(); const [m] = l.splice(from, 1); l.splice(i, 0, m); void reorder(l);
-                }}
-              >
-                <span style={{ font: '900 18px Nunito', color: '#a08974', cursor: 'grab' }} aria-hidden>⋮⋮</span>
-                <div><b>{c.name}</b><small>{c.count} products · shown on shop home{c.active ? '' : ' · hidden'}</small></div>
-                <div className="sh-cat-actions">
-                  <span className="sh-mv">
-                    <button type="button" className="sh-btn sh-btn--ghost sh-mini" aria-label="Move up" disabled={i === 0} onClick={() => moveBy(i, -1)}>▲</button>{' '}
-                    <button type="button" className="sh-btn sh-btn--ghost sh-mini" aria-label="Move down" disabled={i === items.length - 1} onClick={() => moveBy(i, 1)}>▼</button>{' '}
-                  </span>
-                  <button type="button" className="sh-btn sh-btn--ghost sh-mini" onClick={() => setEdit(c)}>Edit</button>{' '}
-                  <button type="button" className="sh-btn sh-btn--ghost sh-mini sh-danger" onClick={() => askDelete(c)}>Delete</button>
+          <>
+            {items.length === 0 && <DesiEmpty text="No collections yet — add the first one below." />}
+            <div className="sh-shelves">
+              {items.map((c, i) => (
+                <div
+                  className={`sh-shelf sh-tint-${SHELF[i % SHELF.length]}`} key={c.id}
+                  draggable
+                  onDragStart={() => { dragFrom.current = i; }}
+                  onDragOver={(e) => e.preventDefault()}
+                  onDrop={() => {
+                    const from = dragFrom.current; dragFrom.current = null;
+                    if (from === null || from === i) return;
+                    const l = items.slice(); const [m] = l.splice(from, 1); l.splice(i, 0, m); void reorder(l);
+                  }}
+                >
+                  <span className="sh-pcorner" aria-hidden="true">{i % 3 === 0 ? <Marigold size={60} tone={1} /> : i % 3 === 1 ? <Hibiscus size={46} /> : <Jasmine size={36} />}</span>
+                  <div className="sh-shelf-top">
+                    <span className="sh-grip" aria-hidden>⋮⋮</span>
+                    {c.image_url ? <span className="sh-shelf-img"><Thumb url={c.image_url} /></span> : null}
+                  </div>
+                  <div className="sh-shelf-count"><b>{c.count}</b><span>products</span></div>
+                  <b className="sh-shelf-name">{c.name}</b>
+                  <small className="sh-shelf-sub">{c.count} products · shown on shop home{c.active ? '' : ' · hidden'}</small>
+                  {!c.active && <DesiChip tone="grey">Hidden</DesiChip>}
+                  <div className="sh-cat-actions">
+                    <span className="sh-mv">
+                      <button type="button" className="sh-btn sh-btn--ghost sh-mini" aria-label="Move up" disabled={i === 0} onClick={() => moveBy(i, -1)}>▲</button>{' '}
+                      <button type="button" className="sh-btn sh-btn--ghost sh-mini" aria-label="Move down" disabled={i === items.length - 1} onClick={() => moveBy(i, 1)}>▼</button>{' '}
+                    </span>
+                    <button type="button" className="sh-btn sh-btn--ghost sh-mini" onClick={() => setEdit(c)}>Edit</button>{' '}
+                    <button type="button" className="sh-btn sh-btn--ghost sh-mini sh-danger" onClick={() => askDelete(c)}>Delete</button>
+                  </div>
                 </div>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          </>
         )}
         {/* [SAATHUM-SHOP-EDITOR-2] A new collection is made in the same form as editing one — name, one line and the tile photo — so it is ready for the shop home straight away. */}
         <div className="sh-coupon">
           <button type="button" className="sh-btn sh-btn--teal" onClick={() => setEdit('new')}>+ New collection</button>
         </div>
-        <p style={{ marginTop: 10 }}><small>A collection appears on the shop home once at least one live product is in it.</small></p>
-      </div>
+        <p className="sh-help" style={{ marginTop: 10 }}><small>A collection appears on the shop home once at least one live product is in it.</small></p>
+      </DesiCard>
 
       <EditModal target={edit} onClose={() => setEdit(null)} onSaved={() => { setEdit(null); void load(); }} />
       <Modal open={!!del} onClose={() => setDel(null)}>

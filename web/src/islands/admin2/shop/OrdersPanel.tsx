@@ -13,10 +13,11 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { capture, captureException } from '../../../lib/analytics';
 import { toast } from '../../../components/ui/sonner';
 import { Drawer, LoadError, Modal, Spinner, Thumb } from './ShopUI';
+import { DesiCard, DesiChip, DesiEmpty, DesiJourney, DesiSlip } from '../desi';
 import {
   COURIERS, ORDER_TABS, ST_LABEL, dmy, dmyTime, digitsOnly, errMessage, getOrder, inr, listOrders, orderAction, uiStatus,
   resolveProduction, retryProduction, sendToProduction,
-  type AdminOrder, type Money, type OrderDetail, type Production, type Shipment, type UiStatus,
+  type AdminOrder, type Kpis, type Money, type OrderDetail, type Production, type Shipment, type UiStatus,
 } from './shopApi';
 import './ordersPod.css';
 
@@ -38,7 +39,8 @@ function MoneyCell({ m }: { m: Money | undefined }) {
   if (m.state === 'bank_confirmed') sub = ['HDFC', inr(m.amount_received_rupees ?? m.amount_expected_rupees), hhmm(m.received_at), m.utr_last4 && `UTR ••${m.utr_last4}`].filter(Boolean).join(' · ');
   else if (m.state === 'owner_confirmed') sub = ['Matched by hand', m.utr_last4 && `UTR ••${m.utr_last4}`].filter(Boolean).join(' · ');
   else if (m.state === 'customer_claimed') sub = ['Bank has not confirmed yet', m.claimed_at && minsAgo(m.claimed_at)].filter(Boolean).join(' · ');
-  return <><span className={`sh-chip${tone ? ` sh-chip--${tone}` : ''}`}>{m.label}</span>{sub && <><br /><small className={`sh-msub${tone ? ` sh-msub--${tone}` : ''}`}>{sub}</small></>}</>;
+  const chip = tone === 'ok' ? 'tea' : tone === 'warn' ? 'gold' : tone === 'bad' ? 'red' : 'grey';
+  return <><DesiChip tone={chip}>{m.label}</DesiChip>{sub && <><br /><small className={`sh-msub${tone ? ` sh-msub--${tone}` : ''}`}>{sub}</small></>}</>;
 }
 
 /** Production chip (mockup "Production" column). */
@@ -48,17 +50,28 @@ function ProductionCell({ p, m }: { p: Production | undefined; m: Money | undefi
   const ref = p.provider_order_id ? ` · ${p.provider === 'printrove' ? 'PR-' : ''}${p.provider_order_id}` : '';
   switch (p.state) {
     case 'not_sent':
-      if (isPaid(m)) return <span className="sh-chip sh-chip--warn">Not sent</span>;
-      return m?.state === 'customer_claimed' ? <span className="sh-chip">Waiting for payment</span> : <span className="sh-chip">—</span>;
-    case 'queued': case 'sending': return <span className="sh-chip sh-chip--info">Sending to {who}…</span>;
-    case 'sent': return <span className="sh-chip sh-chip--info">At {who}{ref}</span>;
-    case 'printing': return <span className="sh-chip sh-chip--info">Printing{ref}</span>;
-    case 'shipped': return <span className="sh-chip sh-chip--ok">Shipped{p.courier || p.awb ? ` · ${[p.courier, p.awb].filter(Boolean).join(' ')}` : ''}</span>;
-    case 'delivered': return <span className="sh-chip sh-chip--ok">Delivered</span>;
-    case 'problem': return <span className="sh-chip sh-chip--bad" title={p.problem ?? undefined}>Problem at {who}</span>;
-    case 'cancelled': return <span className="sh-chip">Cancelled</span>;
+      if (isPaid(m)) return <DesiChip tone="gold">Not sent</DesiChip>;
+      return m?.state === 'customer_claimed' ? <DesiChip tone="grey">Waiting for payment</DesiChip> : <DesiChip tone="grey">—</DesiChip>;
+    case 'queued': case 'sending': return <DesiChip tone="lav">Sending to {who}…</DesiChip>;
+    case 'sent': return <DesiChip tone="lav">At {who}{ref}</DesiChip>;
+    case 'printing': return <DesiChip tone="lav">Printing{ref}</DesiChip>;
+    case 'shipped': return <DesiChip tone="tea" className="sh-chip-wrap">Shipped{p.courier || p.awb ? ` · ${[p.courier, p.awb].filter(Boolean).join(' ')}` : ''}</DesiChip>;
+    case 'delivered': return <DesiChip tone="tea">Delivered</DesiChip>;
+    case 'problem': return <span title={p.problem ?? undefined}><DesiChip tone="red">Problem at {who}</DesiChip></span>;
+    case 'cancelled': return <DesiChip tone="grey">Cancelled</DesiChip>;
   }
 }
+
+const ST_TONE: Record<UiStatus, 'gold' | 'rani' | 'lav' | 'tea' | 'grey'> = { pending: 'gold', paid: 'rani', packed: 'lav', shipped: 'tea', delivered: 'tea', cancelled: 'grey' };
+const StatusChip = ({ st }: { st: UiStatus }) => <DesiChip tone={ST_TONE[st]}>{ST_LABEL[st]}</DesiChip>;
+
+/** Order pipeline stages — a click sets the existing list filter (tab). */
+const STAGES: { tab: string; title: string; note: string; tone: 'gold' | 'rani' | 'lav' | 'tea'; value: (k: Kpis) => number }[] = [
+  { tab: 'awaiting', title: 'Waiting for bank', note: 'customer says paid', tone: 'gold', value: (k) => k.waiting_bank ?? 0 },
+  { tab: 'to_print', title: 'Paid, ready to send', note: 'bank confirmed', tone: 'rani', value: (k) => k.to_print },
+  { tab: 'at_printer', title: 'At Printrove', note: 'printing or packed', tone: 'lav', value: (k) => k.at_printer ?? k.to_ship },
+  { tab: 'shipped', title: 'Shipped this week', note: 'tracking sent', tone: 'tea', value: (k) => k.shipped_7d ?? 0 },
+];
 
 const TIMELINE: Record<string, string> = {
   created: 'Order placed', paid_claimed: 'Customer said they paid', confirmed: 'Payment confirmed', rejected: 'Payment rejected',
@@ -66,7 +79,7 @@ const TIMELINE: Record<string, string> = {
   problem_reported: 'Problem reported',
 };
 
-export default function OrdersPanel({ onChanged }: { onChanged: () => void }) {
+export default function OrdersPanel({ onChanged, kpis }: { onChanged: () => void; kpis: Kpis | null }) {
   const [tab, setTab] = useState('all');
   const [qInput, setQInput] = useState('');
   const [q, setQ] = useState('');
@@ -165,10 +178,23 @@ export default function OrdersPanel({ onChanged }: { onChanged: () => void }) {
 
   return (
     <div className="sh-apanel is-on" data-apanel="orders">
-      <div className="sh-toprow">
-        <div className="sh-tabs">
+      <DesiCard tone="cream" pattern="dots" corner="marigold" className="sh-pipe" title="From bank to doorstep" note="Tap a stage to see only those orders. Tap it again to see all.">
+        <DesiJourney
+          label="Order pipeline"
+          steps={STAGES.map((g) => ({
+            tone: g.tone,
+            done: tab === g.tab,
+            icon: kpis ? g.value(kpis) : '—',
+            title: <button type="button" className="sh-stage" aria-pressed={tab === g.tab} onClick={() => setTab(tab === g.tab ? 'all' : g.tab)}>{g.title}</button>,
+            note: g.note,
+          }))}
+        />
+      </DesiCard>
+
+      <div className="sh-toolbar">
+        <div className="hfa-pills" role="group" aria-label="Filter orders">
           {ORDER_TABS.map((t) => (
-            <button key={t.f} type="button" className={tab === t.f ? 'is-on' : ''} onClick={() => setTab(t.f)}>
+            <button key={t.f} type="button" className="hfa-pill" aria-pressed={tab === t.f} onClick={() => setTab(t.f)}>
               {t.label}{(t.f === 'to_print' || t.f === 'problems') && counts[t.f] > 0 ? ` (${counts[t.f]})` : ''}
             </button>
           ))}
@@ -176,32 +202,63 @@ export default function OrdersPanel({ onChanged }: { onChanged: () => void }) {
         <input className="sh-search" type="search" value={qInput} onChange={(e) => setQInput(e.target.value)} placeholder="Search order no., name, UTR" aria-label="Search orders" />
       </div>
 
-      {error ? <LoadError message={error} onRetry={() => void load()} /> : (
-        <div className="sh-tbl-wrap">
-          <table className="sh-table">
-            <thead><tr><th>Order</th><th>Customer</th><th>Items</th><th>Total</th><th>Money</th><th>Production</th><th>Action</th></tr></thead>
-            <tbody>
-              {loading ? (
-                <tr><td colSpan={7} style={{ textAlign: 'center', padding: 30 }}>Loading…</td></tr>
-              ) : items.length === 0 ? (
-                <tr><td colSpan={7} style={{ textAlign: 'center', padding: 30 }}>No orders in this state.</td></tr>
-              ) : items.map((o) => {
-                const st: UiStatus = uiStatus(o);
-                return (
-                  <tr key={o.order_id} className="sh-row-click" onClick={() => setDrawerId(o.order_id)}>
-                    <td><b>{o.order_no}</b><br /><small>{dmy(o.created_at)}</small></td>
-                    <td>{o.customer?.name || '—'}<br /><small>{o.customer?.city ?? ''}</small></td>
-                    <td>{o.items.map((i, k) => <span key={k}>{k > 0 && <br />}{i.name}{i.size ? ` · ${i.size}` : ''} ×{i.qty}</span>)}</td>
-                    <td><b>{inr(o.total_rupees)}</b></td>
-                    <td><MoneyCell m={o.money} /></td>
-                    <td>{o.production ? <ProductionCell p={o.production} m={o.money} /> : <span className={`sh-st st-${st}`}>{ST_LABEL[st]}</span>}</td>
-                    <td onClick={(e) => e.stopPropagation()}>{actionCell(o)}</td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
+      {error ? <LoadError message={error} onRetry={() => void load()} /> : loading ? (
+        <Spinner label="Loading…" />
+      ) : items.length === 0 ? (
+        <DesiCard tone="lav" corner="jasmine"><DesiEmpty text="No orders in this state." /></DesiCard>
+      ) : (
+        <>
+          <div className="sh-otable hfa-scroll sh-tbl-wrap">
+            <table className="sh-table">
+              <thead><tr><th>Order</th><th>Customer</th><th>Items</th><th>Total</th><th>Money</th><th>Production</th><th>Action</th></tr></thead>
+              <tbody>
+                {items.map((o) => {
+                  const st: UiStatus = uiStatus(o);
+                  return (
+                    <tr key={o.order_id} className={`sh-row-click sh-r-${st}`} onClick={() => setDrawerId(o.order_id)}>
+                      <td><b>{o.order_no}</b><br /><small>{dmy(o.created_at)}</small></td>
+                      <td>{o.customer?.name || '—'}<br /><small>{o.customer?.city ?? ''}</small></td>
+                      <td>{o.items.map((i, k) => <span key={k}>{k > 0 && <br />}{i.name}{i.size ? ` · ${i.size}` : ''} ×{i.qty}</span>)}</td>
+                      <td><b>{inr(o.total_rupees)}</b></td>
+                      <td><MoneyCell m={o.money} /></td>
+                      <td>{o.production ? <ProductionCell p={o.production} m={o.money} /> : <StatusChip st={st} />}</td>
+                      <td onClick={(e) => e.stopPropagation()}>{actionCell(o)}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+
+          <div className="sh-ocards">
+            {items.map((o) => {
+              const st: UiStatus = uiStatus(o);
+              return (
+                <DesiSlip
+                  key={o.order_id}
+                  tone={st === 'pending' ? 'gold' : st === 'paid' ? 'rani' : st === 'packed' ? 'lav' : st === 'cancelled' ? 'rani' : 'tea'}
+                  strip={o.order_no}
+                  stripRight={<small className="sh-slip-date">{dmy(o.created_at)}</small>}
+                  actions={<>{actionCell(o)}<button type="button" className="sh-btn sh-btn--ghost sh-mini" onClick={() => setDrawerId(o.order_id)}>Details</button></>}
+                >
+                  <div className="sh-sb">
+                    <div className="sh-sb-top">
+                      <div><b className="sh-sb-name">{o.customer?.name || '—'}</b><small>{o.customer?.city ?? ''}</small></div>
+                      <b className="sh-sb-total">{inr(o.total_rupees)}</b>
+                    </div>
+                    <ul className="sh-sb-items">
+                      {o.items.map((i, k) => <li key={k}>{i.name}{i.size ? ` · ${i.size}` : ''} ×{i.qty}</li>)}
+                    </ul>
+                    <div className="sh-sb-chips">
+                      <div><MoneyCell m={o.money} /></div>
+                      <div>{o.production ? <ProductionCell p={o.production} m={o.money} /> : <StatusChip st={st} />}</div>
+                    </div>
+                  </div>
+                </DesiSlip>
+              );
+            })}
+          </div>
+        </>
       )}
       {next && !error && (
         <div style={{ textAlign: 'center', marginTop: 16 }}>
@@ -483,7 +540,7 @@ function OrderDrawer({ id, onClose, onChanged, onOpenModal }: { id: string | nul
       {!d && !err && <Spinner />}
       {d && st && (
         <div className="sh-dbody">
-          <div className="sh-dline"><span className={`sh-st st-${st}`}>{ST_LABEL[st]}</span><small>Placed {dmyTime(d.created_at)}</small></div>
+          <div className="sh-dline"><StatusChip st={st} /><small>Placed {dmyTime(d.created_at)}</small></div>
 
           <h3>Customer</h3>
           <p className="sh-dtext">

@@ -9,6 +9,7 @@ import {
   DEFAULT_COLOURS, errMessage, fmtIn, getFits, putProducts, stepHref, updateDesign,
   type ChosenProduct, type Fits, type FitItem,
 } from '../../../lib/studioApi';
+import { DesiCard } from '../desi';
 import { advanceTo } from './UploadStep';
 import { LoadError, Loading, Page, Steps, TopBar, go, useDesign } from './StudioKit';
 
@@ -16,6 +17,7 @@ interface Row { key: string; items: FitItem[]; item: FitItem; sideLabel: string 
 
 const keyOf = (kind: string, side: string): string => `${kind}|${side}`;
 const verdictChip = (v: FitItem['verdict']): string => (v === 'great' ? 'ok' : v === 'good' ? 'warn' : v === 'small_only' ? 'info' : 'bad');
+const verdictBand = (v: FitItem['verdict']): string => `v-${v === 'great' || v === 'good' || v === 'small_only' ? v : 'bad'}`;
 const verdictText = (v: FitItem['verdict']): string => (v === 'great' ? 'Great' : v === 'good' ? 'Good — just under 300' : v === 'small_only' ? 'Fits as a chest logo' : 'Too small');
 
 /** One row per product; front and back are merged when they print the same (mockup: "Front / Back"). */
@@ -120,54 +122,52 @@ export default function ProductStep({ designId }: { designId: string }) {
       <TopBar design={design} />
       <Steps id={design.id} current="product" design={design} />
       {design.catalog_source === 'builtin' && (
-        <p className="note" role="status" style={{ marginBottom: 18 }}>
+        <p className="note" role="status">
           Printrove catalogue unavailable — showing estimates{design.catalog_reason ? `. ${design.catalog_reason}` : ''} Colours and sizes here are not Printrove&apos;s own, so check again once it is back.
         </p>
       )}
       {best && (
-        <div className="panel" style={{ display: 'flex', gap: 20, alignItems: 'center', flexWrap: 'wrap' }}>
-          <div className="ph chk" style={{ width: 140, height: 140, borderStyle: 'solid', padding: 10 }}>
-            {artImg && <img src={artImg} alt="" style={{ maxWidth: 110, maxHeight: 110, objectFit: 'contain' }} />}
+        <DesiCard tone="gold" corner="marigold">
+          <div className="sa-best">
+            <div className="sa-best-art">
+              {artImg && <img src={artImg} alt="" />}
+            </div>
+            <div className="studio-summary-copy">
+              <span className="chip ok">Best match</span>
+              <h2>{bestItem?.label ?? best.kind}{best.colours.length ? ` · ${best.colours.join(', ')}` : ''}</h2>
+              <p className="sa-big-num" style={{ marginTop: 6 }}>{best.text}</p>
+            </div>
           </div>
-          <div className="studio-summary-copy">
-            <span className="chip ok">Best match</span>
-            <h2 style={{ marginTop: 8 }}>{bestItem?.label ?? best.kind}{best.colours.length ? ` · ${best.colours.join(', ')}` : ''}</h2>
-            <p style={{ font: '700 15px/1.6 Nunito', color: '#3c4a4c', margin: '6px 0 0' }}>{best.text}</p>
-          </div>
-        </div>
+        </DesiCard>
       )}
-      <div className="panel">
-        <h2>All Printrove products, checked against your file</h2>
-        <p className="lead">Tick each product you want to sell this design on. Each one becomes its own listing.</p>
-        <div style={{ overflowX: 'auto', borderRadius: 20 }}>
-          <table className="tbl">
-            <thead><tr><th>Product</th><th>Side</th><th>Max print area</th><th>Sharp at 300 DPI</th><th>Fit</th></tr></thead>
-            <tbody>
-              {rows.map((r) => {
-                const it = r.item;
-                const sharpText = it.sharp_w_in < it.area_in[0] - 0.05 ? `Up to ${fmtIn(it.sharp_w_in)} in wide` : `Full width (${Math.round(it.full_area_dpi)} DPI)`;
-                return (
-                  <tr key={r.key}>
-                    <td><label className="row" style={{ font: '800 15px Nunito', color: '#5a1f14' }}>
-                      <input type="checkbox" checked={picked.has(r.key)} onChange={() => toggle(r.key)} /> {it.label}
-                    </label></td>
-                    <td>{r.sideLabel}</td>
-                    <td>{fmtIn(it.area_in[0])} × {fmtIn(it.area_in[1])} in</td>
-                    <td>{sharpText}</td>
-                    <td><span className={`chip ${verdictChip(it.verdict)}`}>{it.note || verdictText(it.verdict)}</span></td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+      <DesiCard tone="lav" corner="jasmine" title="All Printrove products, checked against your file" note="Tick each product you want to sell this design on. Each one becomes its own listing.">
+        <div className="sa-prods">
+          {rows.map((r) => {
+            const it = r.item;
+            const sharpText = it.sharp_w_in < it.area_in[0] - 0.05 ? `Up to ${fmtIn(it.sharp_w_in)} in wide` : `Full width (${Math.round(it.full_area_dpi)} DPI)`;
+            const on = picked.has(r.key);
+            return (
+              <label key={r.key} className={`sa-prod ${verdictBand(it.verdict)}${on ? ' on' : ''}`}>
+                <span className="sa-prod-band">
+                  <input type="checkbox" checked={on} onChange={() => toggle(r.key)} /> {it.label}
+                </span>
+                <span className="sa-prod-body">
+                  <dl>
+                    <dt>Side</dt><dd>{r.sideLabel}</dd>
+                    <dt>Max print area</dt><dd>{fmtIn(it.area_in[0])} × {fmtIn(it.area_in[1])} in</dd>
+                    <dt>Sharp at 300 DPI</dt><dd>{sharpText}</dd>
+                  </dl>
+                  <span><span className={`chip ${verdictChip(it.verdict)}`}>{it.note || verdictText(it.verdict)}</span></span>
+                </span>
+              </label>
+            );
+          })}
         </div>
-        <p style={{ font: '600 14px Nunito', color: '#6b4a2b', margin: '12px 0 0' }}>
+        <p className="sa-lead" style={{ margin: '14px 0 0' }}>
           Sizes, colours and Printrove&apos;s prices come from Printrove&apos;s own catalogue. What each size costs you is on the Publish step.
         </p>
-      </div>
-      <div className="panel">
-        <h2>Colours you will sell</h2>
-        <p className="lead">Tick every shirt colour this design is sold in. Your photos and the plain-shirt pictures follow this list.</p>
+      </DesiCard>
+      <DesiCard tone="rani" corner="hibiscus" title="Colours you will sell" note="Tick every shirt colour this design is sold in. Your photos and the plain-shirt pictures follow this list.">
         {design.colour_info.some((c) => c.unavailable) && (
           <div className="note" role="alert" style={{ marginBottom: 14 }}>
             <b>Not sold by Printrove — pick again:</b>{' '}
@@ -185,10 +185,10 @@ export default function ProductStep({ designId }: { designId: string }) {
           ))}
         </div>
         {picked.size > 0 && usable.length === 0 && <p className="errtxt">Pick at least one colour.</p>}
-      </div>
+      </DesiCard>
       <div className="foot">
-        <a className="btn ghost" href={stepHref(design.id, 'upload')}>Back</a>
-        <button type="button" className="btn red" disabled={!ready || busy} onClick={() => void save()}>Design on the shirt →</button>
+        <a className="hfa-btn ghost" href={stepHref(design.id, 'upload')}>Back</a>
+        <button type="button" className="hfa-btn rani" disabled={!ready || busy} onClick={() => void save()}>Design on the shirt →</button>
       </div>
     </Page>
   );

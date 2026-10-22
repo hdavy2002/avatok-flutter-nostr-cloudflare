@@ -7,6 +7,8 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { captureException } from '../../../lib/analytics';
 import { toast } from '../../../components/ui/sonner';
 import { LoadError, Modal, Spinner, Thumb } from './ShopUI';
+import { DesiCard, DesiEmpty, type Corner, type Tone } from '../desi';
+import './shopDesi.css';
 import {
   SLOTS, errMessage, getSlots, listProducts, putSlot,
   type AdminProduct, type SlotKey,
@@ -45,48 +47,55 @@ export default function PromotePanel() {
     catch (e) { captureException(e, { where: 'admin2_shop_slot_save', slot: key }); toast.error(errMessage(e, 'Could not save this card.')); setSlots(prev); }
   }
 
+  const TONES: Tone[] = ['rani', 'lav', 'gold', 'tea'];
+  const CORNERS: Corner[] = ['marigold', 'jasmine', 'hibiscus', 'yellow'];
+
   return (
     <div className="sh-apanel is-on" data-apanel="promo">
-      <p className="sh-help">Each card on the shop home is a slot. Pick which products show in it — or use “Promote” on any product. The New arrivals and Bestsellers cards are the product flags: adding a product here ticks “Show in New arrivals” / “Mark as Bestseller” on it (you can also tick those in the product itself).</p>
-      <div className="sh-slots">
-        {SLOTS.map((s) => {
-          const ids = (slots[s.key] ?? []).filter((id) => byId.has(id));
-          return (
-            <div className="sh-slot" key={s.key}>
-              <h3>{s.title}</h3>
-              <p>{ids.length} product{ids.length === 1 ? '' : 's'} · drag to reorder</p>
-              <div className="sh-slot-items">
-                {ids.map((id, i) => {
-                  const pr = byId.get(id)!;
-                  return (
-                    <span
-                      key={id} draggable className="sh-chipx"
-                      onDragStart={() => { dragRef.current = { slot: s.key, i }; }}
-                      onDragOver={(e) => e.preventDefault()}
-                      onDrop={() => {
-                        const d = dragRef.current; dragRef.current = null;
-                        if (!d || d.slot !== s.key || d.i === i) return;
-                        const l = ids.slice(); const [m] = l.splice(d.i, 1); l.splice(i, 0, m); void saveSlot(s.key, l);
-                      }}
-                    >
-                      <Thumb url={pr.image_url} />{pr.name}
-                      <button type="button" aria-label={`Remove ${pr.name}`} onClick={() => void saveSlot(s.key, ids.filter((x) => x !== id))}>×</button>
-                    </span>
-                  );
-                })}
-                <span style={{ borderStyle: 'dashed', padding: '4px 10px', cursor: 'pointer' }} role="button" tabIndex={0}
-                  onClick={() => setPicker(s.key)} onKeyDown={(e) => { if (e.key === 'Enter') setPicker(s.key); }}>+ Add</span>
-              </div>
-            </div>
-          );
-        })}
+      <div className="hfa-stack">
+        <DesiCard tone="cream" corner="jasmine" className="sd-intro">
+          <p className="sh-help">Each card on the shop home is a slot. Pick which products show in it — or use “Promote” on any product. The New arrivals and Bestsellers cards are the product flags: adding a product here ticks “Show in New arrivals” / “Mark as Bestseller” on it (you can also tick those in the product itself).</p>
+        </DesiCard>
+        <div className="hfa-tiles sd-places">
+          {SLOTS.map((s, si) => {
+            const ids = (slots[s.key] ?? []).filter((id) => byId.has(id));
+            return (
+              <DesiCard key={s.key} tone={TONES[si % TONES.length]} corner={CORNERS[si % CORNERS.length]} className="sd-place">
+                <div className="sd-place-head">
+                  <span className="sd-place-num" aria-hidden="true">{ids.length}</span>
+                  <div className="min-w-0"><h3>{s.title}</h3><p>{ids.length} product{ids.length === 1 ? '' : 's'} · drag to reorder</p></div>
+                </div>
+                {ids.length === 0 && <DesiEmpty text="Nothing is shown here yet." />}
+                <div className="sh-slot-items">
+                  {ids.map((id, i) => {
+                    const pr = byId.get(id)!;
+                    return (
+                      <span
+                        key={id} draggable className="sh-chipx"
+                        onDragStart={() => { dragRef.current = { slot: s.key, i }; }}
+                        onDragOver={(e) => e.preventDefault()}
+                        onDrop={() => {
+                          const d = dragRef.current; dragRef.current = null;
+                          if (!d || d.slot !== s.key || d.i === i) return;
+                          const l = ids.slice(); const [m] = l.splice(d.i, 1); l.splice(i, 0, m); void saveSlot(s.key, l);
+                        }}
+                      >
+                        <Thumb url={pr.image_url} />{pr.name}
+                        <button type="button" aria-label={`Remove ${pr.name}`} onClick={() => void saveSlot(s.key, ids.filter((x) => x !== id))}>×</button>
+                      </span>
+                    );
+                  })}
+                  <button type="button" className="hfa-btn ghost sd-add" onClick={() => setPicker(s.key)}>+ Add</button>
+                </div>
+              </DesiCard>
+            );
+          })}
+        </div>
 
         {/* [SAATHUM-SHOP-EDITOR-1] The hero and the featured banner (and every other word / photo on the shop home) are edited visually now. */}
-        <div className="sh-slot" style={{ gridColumn: '1 / -1' }}>
-          <h3>Shop-home hero, featured banner and page text</h3>
-          <p>The big hero photo and its words, the collection photos, the featured banner and its photo are now edited directly on the page — click any text to change it.</p>
-          <div style={{ marginTop: 14 }}><a className="sh-btn sh-btn--teal" href="/admin/shop/editor">Edit shop page →</a></div>
-        </div>
+        <DesiCard tone="saffron" corner="marigold" title="Shop-home hero, featured banner and page text" note="The big hero photo and its words, the collection photos, the featured banner and its photo are now edited directly on the page — click any text to change it.">
+          <a className="hfa-btn" href="/admin/shop/editor">Edit shop page →</a>
+        </DesiCard>
       </div>
 
       <PickerModal

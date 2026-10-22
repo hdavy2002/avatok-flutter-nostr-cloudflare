@@ -5,6 +5,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { adminCall } from '../peopleKit';
 import { Banner, ConfirmDialog, ConsultShell, Spinner, dateIST, fail } from '../consultants/kit';
+import { DesiCard, DesiChip, DesiEmpty, DesiSlip } from '../desi';
 import { formatPaise } from '../../../lib/money';
 
 /** [HF-STD-PLAN-1] rupees with paise (the shared helper rounds to whole rupees). */
@@ -64,63 +65,69 @@ function Row({ it, onDone }: { it: Item; onDone: () => void }) {
     setBusy(false);
   };
 
+  const failed = it.status === 'failed';
+  const tone = it.status === 'refunded' ? 'tea' : it.status === 'processing' ? 'lav' : it.status === 'requested' || failed ? 'rani' : 'gold';
+  const actions = (open && play) ? (
+    <>
+      {it.lot?.wholeOrder && (
+        <button type="button" className="hfa-btn tea" disabled={busy}
+          onClick={() => void run(() => post(`${base}/play-confirm`), 'hf_play_refund')}>{busy ? 'Working…' : 'Refund through Google Play'}</button>
+      )}
+      <button type="button" className={`hfa-btn${it.lot?.wholeOrder ? ' ghost' : ' tea'}`} disabled={busy} onClick={() => { setRecorded(String(owedPaise / 100)); setPlayNote(''); setDialog('playhand'); }}>I refunded it in the Play Console</button>
+      <button type="button" className="hfa-btn danger" disabled={busy} onClick={() => { setReason(''); setDialog('reject'); }}>Reject</button>
+    </>
+  ) : open ? (
+    <>
+      <button type="button" className={`hfa-btn ${failed ? 'rani' : 'tea'}`} disabled={busy}
+        onClick={() => void run(() => post(`${base}/${failed ? 'retry' : 'approve'}`), 'hf_refund_approve')}>
+        {busy ? 'Working…' : failed ? 'Retry' : 'Approve and refund'}
+      </button>
+      <button type="button" className="hfa-btn ghost" disabled={busy} onClick={() => { setUtr(''); setDialog('manual'); }}>Mark paid by hand</button>
+      <button type="button" className="hfa-btn danger" disabled={busy} onClick={() => { setReason(''); setDialog('reject'); }}>Reject</button>
+    </>
+  ) : undefined;
+
   return (
-    <div className="card" style={{ background: 'var(--hf-admin-cream)', display: 'grid', gap: 8 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap', alignItems: 'baseline' }}>
-        <strong style={{ fontSize: 16 }}>
-          {play ? 'Refund through Google Play' : 'Refund'}
-          {it.exit && <span style={{ ...T14, marginLeft: 8, padding: '2px 8px', borderRadius: 999, background: 'var(--hf-admin-blush)', color: 'var(--hf-admin-plum)' }} title="Account closure: the account is deleted once this is settled">Exit</span>}
-        </strong>
-        <strong style={{ fontSize: 18 }}>{play ? paiseRupees(owedPaise) : rupees(it.amount)}</strong>
-      </div>
-      <div style={{ ...T14, display: 'grid', gap: 2 }}>
-        <span>Asked {dateIST(it.createdAt)}</span>
-        {it.status === 'refunded' && <span>Settled {dateIST(it.refundedAt)}{it.utr ? ` · paid by hand · UTR ${it.utr}` : ''}</span>}
-        {it.status === 'rejected' && <span>Reason: {it.reason}</span>}
-        {it.exit && open && <span><strong>Account closure:</strong> the account is deleted automatically after this is settled. Rejecting it also lets the closure finish.</span>}
-        {play && it.orderId && <span>Google Play order <span style={{ wordBreak: 'break-all' }}>{it.orderId}</span></span>}
-        {play && it.lot && <span>Added ₹{it.lot.tokensBought} to the wallet for {paiseRupees(it.lot.paidPaise)} · ₹{it.lot.tokensLeft} left · {it.lot.wholeOrder ? 'nothing used yet: the whole order can be refunded' : 'part used: refund this share in the Play Console and record it here'}</span>}
-        {play && it.status === 'refunded' && it.recordedPaise != null && <span>Recorded refund {paiseRupees(it.recordedPaise)}</span>}
-        <span className="muted" style={{ wordBreak: 'break-all' }}>{it.uid}</span>
-      </div>
-      {!play && <ul style={{ ...T14, margin: 0, paddingLeft: 18, display: 'grid', gap: 2 }}>
-        {it.allocations.map((a, i) => (
-          <li key={`${a.topupId ?? 'manual'}-${i}`}>
-            {rupees(a.rupees)} {a.topupId ? <>back to the payment <span className="muted" style={{ wordBreak: 'break-all' }}>{a.topupId}</span></> : <strong>no payment to return it to: pay by hand</strong>} · {allocLabel[a.status]}
-            {a.error ? ` (${a.error})` : ''}{a.gatewayRefundId ? ` · ${a.gatewayRefundId}` : ''}
-            {(a.status === 'needs_check' || a.status === 'submitting') && a.topupId && open && (
-              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 4 }}>
-                <button type="button" className="btn ghost small" style={{ ...T14, minHeight: 44 }} disabled={busy} onClick={() => setSlice({ topupId: a.topupId!, mode: 'sent' })}>I checked: it was sent</button>
-                <button type="button" className="btn ghost small" style={{ ...T14, minHeight: 44 }} disabled={busy} onClick={() => setSlice({ topupId: a.topupId!, mode: 'resend' })}>Send it again</button>
-              </div>
-            )}
-          </li>
-        ))}
-      </ul>}
-
-      {open && play && (
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          {it.lot?.wholeOrder && (
-            <button type="button" className="btn small" style={{ ...T14, minHeight: 44 }} disabled={busy}
-              onClick={() => void run(() => post(`${base}/play-confirm`), 'hf_play_refund')}>{busy ? 'Working…' : 'Refund through Google Play'}</button>
-          )}
-          <button type="button" className={`btn small${it.lot?.wholeOrder ? ' ghost' : ''}`} style={{ ...T14, minHeight: 44 }} disabled={busy} onClick={() => { setRecorded(String(owedPaise / 100)); setPlayNote(''); setDialog('playhand'); }}>I refunded it in the Play Console</button>
-          <button type="button" className="btn ghost small" style={{ ...T14, minHeight: 44 }} disabled={busy} onClick={() => { setReason(''); setDialog('reject'); }}>Reject</button>
+    <>
+      <div style={failed ? { borderRadius: 22, boxShadow: '0 0 0 3px var(--a-bad)' } : undefined}>
+      <DesiSlip tone={tone} actions={actions}
+        strip={`${play ? 'Google Play refund' : 'Refund'} · asked ${dateIST(it.createdAt)}`}
+        stripRight={<span style={{ display: 'inline-flex', gap: 6, flexWrap: 'wrap' }}>
+          {it.exit && <span title="Account closure: the account is deleted once this is settled"><DesiChip tone="plum">Exit</DesiChip></span>}
+          <DesiChip tone={failed ? 'red' : it.status === 'refunded' ? 'tea' : it.status === 'requested' ? 'rani' : it.status === 'processing' ? 'lav' : 'grey'}>{it.status}</DesiChip>
+        </span>}>
+        <div className="hfa-amount">{play ? paiseRupees(owedPaise) : rupees(it.amount)}<small>{play ? 'Refund through Google Play' : 'Refund'}</small></div>
+        <div style={{ display: 'grid', gap: 8, minWidth: 0, fontSize: 'var(--fs-small)' }}>
+          {it.status === 'refunded' && <span>Settled {dateIST(it.refundedAt)}{it.utr ? ` · paid by hand · UTR ${it.utr}` : ''}</span>}
+          {it.status === 'rejected' && <span>Reason: {it.reason}</span>}
+          {it.exit && open && <span><strong>Account closure:</strong> the account is deleted automatically after this is settled. Rejecting it also lets the closure finish.</span>}
+          {play && it.orderId && <span>Google Play order <span style={{ wordBreak: 'break-all' }}>{it.orderId}</span></span>}
+          {play && it.lot && <span>Added ₹{it.lot.tokensBought} to the wallet for {paiseRupees(it.lot.paidPaise)} · ₹{it.lot.tokensLeft} left · {it.lot.wholeOrder ? 'nothing used yet: the whole order can be refunded' : 'part used: refund this share in the Play Console and record it here'}</span>}
+          {play && it.status === 'refunded' && it.recordedPaise != null && <span>Recorded refund {paiseRupees(it.recordedPaise)}</span>}
+          <span className="hfa-note" style={{ wordBreak: 'break-all' }}>{it.uid}</span>
+          {!play && <ul style={{ margin: 0, paddingLeft: 0, listStyle: 'none', display: 'grid', gap: 8 }}>
+            {it.allocations.map((a, i) => {
+              const bad = a.status === 'failed' || a.status === 'needs_check';
+              const good = a.status === 'refunded' || a.status === 'manual';
+              return (
+                <li key={`${a.topupId ?? 'manual'}-${i}`} style={{ padding: '10px 12px', borderRadius: 14, background: bad ? 'var(--a-blush)' : good ? 'var(--a-teatint)' : 'var(--a-goldtint)', border: bad ? '1.5px dashed #f2a9c8' : '1px solid var(--a-line)' }}>
+                  <strong>{rupees(a.rupees)}</strong> {a.topupId ? <>back to the payment <span className="hfa-note" style={{ wordBreak: 'break-all' }}>{a.topupId}</span></> : <strong>no payment to return it to: pay by hand</strong>} · {allocLabel[a.status]}
+                  {a.error ? ` (${a.error})` : ''}{a.gatewayRefundId ? ` · ${a.gatewayRefundId}` : ''}
+                  {(a.status === 'needs_check' || a.status === 'submitting') && a.topupId && open && (
+                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 6 }}>
+                      <button type="button" className="hfa-btn ghost" disabled={busy} onClick={() => setSlice({ topupId: a.topupId!, mode: 'sent' })}>I checked: it was sent</button>
+                      <button type="button" className="hfa-btn danger" disabled={busy} onClick={() => setSlice({ topupId: a.topupId!, mode: 'resend' })}>Send it again</button>
+                    </div>
+                  )}
+                </li>
+              );
+            })}
+          </ul>}
+          {note && <Banner tone="info">{note}</Banner>}
+          {err && <Banner tone="error">{err}</Banner>}
         </div>
-      )}
-
-      {open && !play && (
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          <button type="button" className="btn small" style={{ ...T14, minHeight: 44 }} disabled={busy}
-            onClick={() => void run(() => post(`${base}/${it.status === 'failed' ? 'retry' : 'approve'}`), 'hf_refund_approve')}>
-            {busy ? 'Working…' : it.status === 'failed' ? 'Retry' : 'Approve and refund'}
-          </button>
-          <button type="button" className="btn ghost small" style={{ ...T14, minHeight: 44 }} disabled={busy} onClick={() => { setUtr(''); setDialog('manual'); }}>Mark paid by hand</button>
-          <button type="button" className="btn ghost small" style={{ ...T14, minHeight: 44 }} disabled={busy} onClick={() => { setReason(''); setDialog('reject'); }}>Reject</button>
-        </div>
-      )}
-      {note && <Banner tone="info">{note}</Banner>}
-      {err && <Banner tone="error">{err}</Banner>}
+      </DesiSlip>
+      </div>
 
       <ConfirmDialog className="hf-admin-operations" open={dialog === 'playhand'} title="Record the Play Console refund" confirmLabel="Record and remove the money" busy={busy} error={err} disabled={!recordedOk}
         body={`Only do this after you refunded the person in the Google Play Console. The unused wallet money is then removed from their account. Owed: ${paiseRupees(owedPaise)}. If you refunded less, write a note.`}
@@ -144,7 +151,7 @@ function Row({ it, onDone }: { it: Item; onDone: () => void }) {
         onConfirm={() => void run(() => post(`${base}/reject`, { reason: reason.trim() }), 'hf_refund_reject')} onCancel={() => setDialog(null)}>
         <input aria-label="Reason" style={field} value={reason} maxLength={200} placeholder="Reason (the person sees this)" onChange={(e) => setReason(e.target.value)} />
       </ConfirmDialog>
-    </div>
+    </>
   );
 }
 
@@ -160,18 +167,20 @@ export default function HostRefunds() {
 
   return (
     <ConsultShell className="hf-admin-operations">
-      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 12, alignItems: 'center' }}>
-        {TABS.map((t) => {
-          const c = data?.counts?.[t.key];
-          return <button key={t.key} type="button" className={`btn small${tab === t.key ? '' : ' ghost'}`} style={{ ...T14, minHeight: 44 }} aria-pressed={tab === t.key} onClick={() => setTab(t.key)}>{t.label}{c ? ` (${c.n})` : ''}</button>;
-        })}
-        <button type="button" className="btn ghost small" style={{ ...T14, minHeight: 44, marginLeft: 'auto' }} onClick={() => void load()}>Refresh</button>
-      </div>
-      {error && <div style={{ marginBottom: 12 }}><Banner tone="error">{error}</Banner></div>}
-      {data === null && <Spinner label="Loading refunds…" />}
-      {data && data.items.length === 0 && !error && <div className="card muted" style={{ fontWeight: 700, ...T14 }}>Nothing here.</div>}
-      <div style={{ display: 'grid', gap: 10 }}>
-        {data?.items.map((it) => <Row key={it.id} it={it} onDone={() => void load()} />)}
+      <div className="hfa-stack">
+        <div className="hfa-pills" style={{ alignItems: 'center' }}>
+          {TABS.map((t) => {
+            const c = data?.counts?.[t.key];
+            return <button key={t.key} type="button" className="hfa-pill" aria-pressed={tab === t.key} onClick={() => setTab(t.key)}>{t.label}{c ? ` (${c.n})` : ''}</button>;
+          })}
+          <button type="button" className="hfa-btn ghost" style={{ marginLeft: 'auto' }} onClick={() => void load()}>Refresh</button>
+        </div>
+        {error && <Banner tone="error">{error}</Banner>}
+        {data === null && <Spinner label="Loading refunds…" />}
+        {data && data.items.length === 0 && !error && <DesiCard tone="lav" corner="jasmine"><DesiEmpty text="Nothing here." /></DesiCard>}
+        <div style={{ display: 'grid', gap: 16 }}>
+          {data?.items.map((it) => <Row key={it.id} it={it} onDone={() => void load()} />)}
+        </div>
       </div>
     </ConsultShell>
   );

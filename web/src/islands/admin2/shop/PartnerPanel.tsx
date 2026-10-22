@@ -6,6 +6,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { capture, captureException } from '../../../lib/analytics';
 import { toast } from '../../../components/ui/sonner';
 import { LoadError, Spinner } from './ShopUI';
+import { DesiCard, DesiChip, DesiJourney, Marigold } from '../desi';
 import { dmyTime, errMessage, getPartner, putPartnerSettings, syncPartner, testPartner, type PartnerState } from './shopApi';
 import './shopAdmin.css';
 import './ordersPod.css';
@@ -81,77 +82,104 @@ export default function PartnerPanel() {
   const conn = testMsg ?? p.connection;
   const usingPrintrove = p.provider === 'printrove';
   const expires = conn?.token_expires_at;
+  const stamp = !printrove?.configured ? { cls: 'bad', label: 'Not connected' }
+    : conn?.ok ? { cls: 'ok', label: 'Connected' }
+      : conn ? { cls: 'bad', label: 'Not working' } : { cls: 'warn', label: 'Not tested yet' };
+
+  const toggle = (on: boolean, label: string, disabled: boolean, onClick?: () => void, title?: string) => (
+    <button type="button" role="switch" aria-checked={on} aria-label={label} className={`pw-tog${on ? ' is-on' : ''}`} disabled={disabled} title={title} onClick={onClick} />
+  );
 
   return (
     <div className="shop-admin">
-      <div className="pp-g2" style={{ alignItems: 'start' }}>
-        <div>
-          <div className="pp-panel"><h2>Current partner</h2>
-            <div className="pp-g2">
-              <div className={`pp-card${usingPrintrove ? ' is-sel' : ''}`}>
-                <h3>{printrove?.label ?? 'Printrove'}</h3>
-                {!printrove?.configured
-                  ? <span className="sh-chip sh-chip--bad">Not connected</span>
-                  : conn?.ok ? <span className="sh-chip sh-chip--ok">Connected ✓</span>
-                    : conn ? <span className="sh-chip sh-chip--bad">Not working</span> : <span className="sh-chip sh-chip--warn">Not tested yet</span>}
-                <p>{!printrove?.configured ? 'The login has not been added to the server yet.'
-                  : conn && !conn.ok ? conn.message
-                    : expires ? `Login token valid till ${dmyTime(expires)}.` : 'Press Test connection to check the login.'}</p>
-                <div className="pp-row">
-                  <button type="button" className="sh-btn sh-btn--ghost sh-mini" disabled={busy === 'test' || !printrove?.configured} onClick={() => void test()}>{busy === 'test' ? 'Testing…' : 'Test connection'}</button>
-                  {!usingPrintrove && <button type="button" className="sh-btn sh-btn--ghost sh-mini" disabled={!!busy || !printrove?.configured} onClick={() => void save({ provider: 'printrove' }, 'provider')}>Use this</button>}
-                </div>
-              </div>
-              <div className={`pp-card${!usingPrintrove ? ' is-sel' : ''}`}>
-                <h3>By hand</h3>
-                <span className={`sh-chip${!usingPrintrove ? ' sh-chip--ok' : ''}`}>{!usingPrintrove ? 'In use' : 'Backup'}</span>
-                <p>You place orders in the partner's dashboard and type in the AWB, like today.</p>
-                <div className="pp-row">{usingPrintrove && <button type="button" className="sh-btn sh-btn--ghost sh-mini" disabled={!!busy} onClick={() => void save({ provider: 'manual' }, 'provider')}>Use this</button>}</div>
-              </div>
-            </div>
-            <div className="pp-card is-dash" style={{ marginTop: 14 }}><h3>Add another partner</h3><p>A new partner needs its connector built once. Then use "Move all products" below.</p></div>
+      <div className="hfa-stack pw-page">
+        <section className="pw-shop">
+          <div className="pw-toran" aria-hidden="true">
+            {Array.from({ length: 11 }, (_, i) => (
+              <span key={i} className="pw-hang" style={{ ['--h' as string]: `${14 + ((i * 7) % 5) * 9}px` }}><i /><Marigold size={38} tone={i % 3 === 1 ? 1 : 0} /></span>
+            ))}
           </div>
-          <div className="pp-panel"><h2>Printrove account</h2>
-            <label className="pp-lbl">Login email<input className="pp-fld" disabled placeholder={printrove?.configured ? 'Saved on the server' : 'Not added yet'} /></label>
-            <label className="pp-lbl" style={{ marginTop: 12 }}>Password<input className="pp-fld" type="password" disabled placeholder={printrove?.configured ? '••••••••••' : 'Not added yet'} /></label>
-            <p className="pp-small">Kept only on the server as a secret (PRINTROVE_LOGIN). Never shown on the website.</p>
+          <div className="pw-sign">
+            <b>Your printing partner</b>
+            <span>Every paid order is printed, packed and shipped for you. You only watch it travel.</span>
           </div>
-        </div>
-        <div>
-          <div className="pp-panel"><h2>Automation</h2>
-            <ul className="pp-list">
-              <li>
-                <div style={{ flex: 1 }}><b>Send paid orders automatically</b><br />Off: you press "Send to Printrove" on each paid order. Turn on after the first orders go well.</div>
-                <button type="button" role="switch" aria-checked={p.auto_send} aria-label="Send paid orders automatically" className={`pp-tog${p.auto_send ? ' is-on' : ''}`} disabled={!!busy || !usingPrintrove}
-                  title={usingPrintrove ? undefined : 'Switch to Printrove first'} onClick={() => void save({ auto_send: !p.auto_send }, 'auto_send')} />
-              </li>
-              <li>
-                <div style={{ flex: 1 }}><b>Check order status</b><br />Printrove has no update push, so we ask every {p.poll_minutes} minutes.</div>
-                <select className="pp-fld" style={{ width: 140 }} value={p.poll_minutes} disabled={!!busy} aria-label="How often to check status"
+        </section>
+
+        <DesiCard tone="cream" corner="jasmine" title="The journey of every order" note="Set what happens at each stop.">
+          <DesiJourney label="Order journey" steps={[
+            { title: 'Paid', tone: 'rani', note: <span className="pw-ctl">Money received</span> },
+            { title: 'Sent to printer', tone: 'lav', note: (
+              <span className="pw-ctl">
+                <span>Send paid orders automatically</span>
+                <span className="pw-small">Off: you press "Send to Printrove" on each paid order.</span>
+                {toggle(p.auto_send, 'Send paid orders automatically', !!busy || !usingPrintrove, () => void save({ auto_send: !p.auto_send }, 'auto_send'), usingPrintrove ? undefined : 'Switch to Printrove first')}
+              </span>) },
+            { title: 'Printing', tone: 'gold', note: (
+              <span className="pw-ctl">
+                <span>Check order status</span>
+                <span className="pw-small">Printrove has no update push, so we ask every {p.poll_minutes} minutes.</span>
+                <select className="pw-fld pw-sel" value={p.poll_minutes} disabled={!!busy} aria-label="How often to check status"
                   onChange={(e) => void save({ poll_minutes: Number(e.target.value) }, 'poll_minutes')}>
                   {[...new Set([15, 30, 60, 120, p.poll_minutes])].sort((a, b) => a - b).map((m) => <option key={m} value={m}>{m} min</option>)}
                 </select>
-              </li>
-              <li>
-                <div style={{ flex: 1 }}><b>Message the buyer</b><br />WhatsApp + email on printing, shipped and delivered.</div>
-                <button type="button" role="switch" aria-checked={p.notify_buyer} aria-label="Message the buyer (always on)" className={`pp-tog${p.notify_buyer ? ' is-on' : ''}`} disabled title="Always on" />
-              </li>
-              <li>
-                <div style={{ flex: 1 }}><b>Alert me on problems</b><br />WhatsApp to the owner number when an order is stuck.</div>
-                <button type="button" role="switch" aria-checked={p.alert_owner} aria-label="Alert me on problems (always on)" className={`pp-tog${p.alert_owner ? ' is-on' : ''}`} disabled title="Always on" />
-              </li>
-            </ul>
-          </div>
-          <div className="pp-panel"><h2>Catalogue</h2><p className="pp-lead">Products, colours, sizes and costs the partner offers. Studio only shows these.</p>
-            <div className="pp-row">
-              <span className="sh-chip sh-chip--info">Last synced {ago(p.catalog.synced_at)}</span>
-              <span className="sh-chip">{p.catalog.count} products</span>
-              <button type="button" className="sh-btn sh-btn--ghost sh-mini" disabled={busy === 'sync'} onClick={() => void sync()}>{busy === 'sync' ? 'Syncing…' : 'Sync now'}</button>
+              </span>) },
+            { title: 'Shipped', tone: 'tea', note: (
+              <span className="pw-ctl">
+                <span>Message the buyer</span>
+                <span className="pw-small">WhatsApp + email on printing, shipped and delivered.</span>
+                {toggle(p.notify_buyer, 'Message the buyer (always on)', true, undefined, 'Always on')}
+              </span>) },
+            { title: 'Delivered', tone: 'plum', note: (
+              <span className="pw-ctl">
+                <span>Alert me on problems</span>
+                <span className="pw-small">WhatsApp to the owner number when an order is stuck.</span>
+                {toggle(p.alert_owner, 'Alert me on problems (always on)', true, undefined, 'Always on')}
+              </span>) },
+          ]} />
+        </DesiCard>
+
+        <div className="hfa-row pw-partners">
+          <section className="hfa-card hfa-t-rani pw-printrove">
+            <span className={`pw-stamp ${stamp.cls}`}>{stamp.label}</span>
+            <h3 className="pw-h">{printrove?.label ?? 'Printrove'}</h3>
+            {usingPrintrove && <DesiChip tone="plum">Current partner</DesiChip>}
+            <p>{!printrove?.configured ? 'The login has not been added to the server yet.'
+              : conn && !conn.ok ? conn.message
+                : expires ? `Login token valid till ${dmyTime(expires)}.` : 'Press Test connection to check the login.'}</p>
+            <div className="pw-row">
+              <button type="button" className="hfa-btn ghost" disabled={busy === 'test' || !printrove?.configured} onClick={() => void test()}>{busy === 'test' ? 'Testing…' : 'Test connection'}</button>
+              {!usingPrintrove && <button type="button" className="hfa-btn rani" disabled={!!busy || !printrove?.configured} onClick={() => void save({ provider: 'printrove' }, 'provider')}>Use this</button>}
             </div>
-          </div>
-          <div className="pp-panel"><h2>Move all products to a new partner</h2><p className="pp-lead">Re-sends every locked print file and placement to the new partner and re-links sizes and colours. Old orders stay with Printrove.</p>
-            <button type="button" className="sh-btn sh-btn--ghost" disabled aria-disabled="true" style={{ opacity: 0.55 }}>Move all products</button>
-          </div>
+          </section>
+          <DesiCard tone="gold" corner="marigold" className="pw-hand">
+            <h3 className="pw-h">By hand</h3>
+            <DesiChip tone={!usingPrintrove ? 'plum' : 'gold'}>{!usingPrintrove ? 'In use' : 'Backup'}</DesiChip>
+            <p>You place orders in the partner's dashboard and type in the AWB, like today.</p>
+            <div className="pw-row">{usingPrintrove && <button type="button" className="hfa-btn gold" disabled={!!busy} onClick={() => void save({ provider: 'manual' }, 'provider')}>Use this</button>}</div>
+          </DesiCard>
+          <section className="pw-add">
+            <span className="pw-plus" aria-hidden="true">+</span>
+            <h3 className="pw-h">Add another partner</h3>
+            <p>A new partner needs its connector built once. Then use "Move all products" below.</p>
+          </section>
+        </div>
+
+        <div className="hfa-row pw-trio">
+          <DesiCard pattern="bahi" title="Printrove account">
+            <label className="pw-lbl">Login email<input className="pw-fld pw-line" disabled placeholder={printrove?.configured ? 'Saved on the server' : 'Not added yet'} /></label>
+            <label className="pw-lbl">Password<input className="pw-fld pw-line" type="password" disabled placeholder={printrove?.configured ? '••••••••••' : 'Not added yet'} /></label>
+            <p className="pw-small">Kept only on the server as a secret (PRINTROVE_LOGIN). Never shown on the website.</p>
+          </DesiCard>
+          <DesiCard tone="lav" corner="jasmine" title="Catalogue" note="Products, colours, sizes and costs the partner offers. Studio only shows these.">
+            <div className="pw-count"><span>{p.catalog.count}</span>products</div>
+            <div className="pw-row">
+              <DesiChip tone="lav">Last synced {ago(p.catalog.synced_at)}</DesiChip>
+              <button type="button" className="hfa-btn" disabled={busy === 'sync'} onClick={() => void sync()}>{busy === 'sync' ? 'Syncing…' : 'Sync now'}</button>
+            </div>
+          </DesiCard>
+          <DesiCard pattern="stripes" title="Move all products to a new partner" note="Re-sends every locked print file and placement to the new partner and re-links sizes and colours. Old orders stay with Printrove.">
+            <button type="button" className="hfa-btn ghost" disabled aria-disabled="true">Move all products</button>
+          </DesiCard>
         </div>
       </div>
     </div>

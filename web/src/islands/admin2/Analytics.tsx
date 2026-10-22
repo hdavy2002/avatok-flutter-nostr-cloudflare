@@ -10,17 +10,16 @@ import {
   IndianRupee, Ticket, Users, UserPlus, ReceiptIndianRupee, Undo2, Hourglass, CalendarDays, Radio,
   ArrowUpRight, ArrowDownRight, Minus, RefreshCw, ArrowRight, Plus, CalendarRange, Eye, MonitorPlay, type LucideIcon,
 } from 'lucide-react';
-import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card';
-import { Badge } from '../../components/ui/badge';
 import { Button } from '../../components/ui/button';
 import { Shimmer } from '../dashboard2/Shimmer';
 import { cn } from '../../lib/utils';
 import { capture, captureException } from '../../lib/analytics';
 import { adminApi, errMessage, formatPaise, istDay, istTime, istDateTime, AdminDeniedError } from './adminApi';
 import { ADMIN_NAV } from './nav';
-import { DateField, StatusPill } from './peopleKit';
+import { DateField } from './peopleKit';
+import { DesiCard, DesiChip, DesiEmpty, DesiKpi, DesiKpis, DesiTicker, DesiMogra } from './desi';
 import {
-  C1, C2, INK_MUTED, DayColumns, DayTable, HBars, LegendKey, Sparkline, TrendLine, compactPaise, fmtCount, longDay,
+  C1, C2, GRAD, INK_MUTED, DayColumns, DayTable, HBars, LegendKey, Sparkline, TrendLine, compactPaise, fmtCount, longDay,
 } from './charts';
 
 /* ── wire types ─────────────────────────────────────────────────────────── */
@@ -88,29 +87,28 @@ const rangeQuery = (r: RangeSel): Record<string, string> =>
   r.kind === 'custom' ? { from: r.from, to: r.to, tz: 'Asia/Kolkata' } : { range: r.preset, tz: 'Asia/Kolkata' };
 const rangeKey = (r: RangeSel) => (r.kind === 'custom' ? `custom:${r.from}:${r.to}` : r.preset);
 
+
+const LAV = '#6d4fd0', TEA = '#0e7c86';
+
 function RangeBar({ sel, onChange, busy }: { sel: RangeSel; onChange: (r: RangeSel) => void; busy: boolean }) {
   const [open, setOpen] = useState(sel.kind === 'custom');
   const [from, setFrom] = useState(sel.kind === 'custom' ? sel.from : '');
   const [to, setTo] = useState(sel.kind === 'custom' ? sel.to : '');
   const valid = DAY_RE.test(from) && DAY_RE.test(to) && from <= to;
-  const btn = (on: boolean) => cn(
-    'h-10 min-w-[44px] rounded-lg px-3 text-[14px] font-bold transition-colors',
-    on ? 'bg-accent text-accent-foreground shadow-[var(--dash-shadow,none)]' : 'text-foreground/80 hover:bg-muted',
-  );
   return (
     <div className="flex flex-col gap-3">
       <div className="flex flex-wrap items-center gap-2">
-        <div role="group" aria-label="Date range" className="flex flex-wrap gap-1 hf-admin-op-card rounded-xl border border-border/60 bg-card p-1">
+        <div role="group" aria-label="Date range" className="hfa-pills">
           {PRESETS.map((p) => {
             const on = sel.kind === 'preset' && sel.preset === p.key && !open;
             return (
-              <button key={p.key} type="button" aria-pressed={on} className={btn(on)}
+              <button key={p.key} type="button" aria-pressed={on} className="hfa-pill"
                 onClick={() => { setOpen(false); onChange({ kind: 'preset', preset: p.key }); }}>
                 {p.label}
               </button>
             );
           })}
-          <button type="button" aria-pressed={open || sel.kind === 'custom'} aria-expanded={open} className={cn(btn(open || sel.kind === 'custom'), 'inline-flex items-center gap-1.5')}
+          <button type="button" aria-pressed={open || sel.kind === 'custom'} aria-expanded={open} className="hfa-pill inline-flex items-center gap-1.5"
             onClick={() => setOpen((o) => !o)}>
             <CalendarRange className="h-4 w-4" />Custom
           </button>
@@ -119,13 +117,13 @@ function RangeBar({ sel, onChange, busy }: { sel: RangeSel; onChange: (r: RangeS
       </div>
       {open && (
         <form
-          className="flex flex-wrap items-end gap-3"
+          className="hfa-card hfa-t-lav flex flex-wrap items-end gap-3"
           onSubmit={(e) => { e.preventDefault(); if (valid) onChange({ kind: 'custom', from, to }); }}
         >
           <DateField id="an-from" label="From" value={from} onChange={setFrom} />
           <DateField id="an-to" label="To" value={to} onChange={setTo} />
-          <Button type="submit" disabled={!valid}>Apply</Button>
-          {from && to && from > to && <span className="text-[14px] font-semibold text-primary">The start date is after the end date.</span>}
+          <Button type="submit" disabled={!valid} className="min-h-[44px]">Apply</Button>
+          {from && to && from > to && <span className="hfa-note font-bold text-[#d81b72]">The start date is after the end date.</span>}
         </form>
       )}
     </div>
@@ -142,9 +140,9 @@ const qs = (base: string, q: Record<string, string | null | undefined>) => {
   return s ? `${base}?${s}` : base;
 };
 
-/* ── KPI card ───────────────────────────────────────────────────────────── */
+/* ── KPI tile ───────────────────────────────────────────────────────────── */
 
-function Delta({ cur, prev, upIsGood = true, vs }: { cur: number; prev: number; upIsGood?: boolean; vs: string }) {
+function Delta({ cur, prev, upIsGood = true, vs, onDark }: { cur: number; prev: number; upIsGood?: boolean; vs: string; onDark?: boolean }) {
   let text: string, dir: 'up' | 'down' | 'flat';
   if (cur === prev) { text = 'No change'; dir = 'flat'; }
   else if (prev === 0) { text = 'New'; dir = 'up'; }
@@ -156,8 +154,9 @@ function Delta({ cur, prev, upIsGood = true, vs }: { cur: number; prev: number; 
   const good = dir === 'flat' ? null : (dir === 'up') === upIsGood;
   const Icon = dir === 'up' ? ArrowUpRight : dir === 'down' ? ArrowDownRight : Minus;
   return (
-    <span className="inline-flex flex-wrap items-center gap-x-1.5 text-[14px] font-semibold text-muted-foreground">
-      <span className={cn('inline-flex items-center gap-0.5 font-extrabold', good === true && 'text-accent', good === false && 'text-primary')}>
+    <span className="inline-flex flex-wrap items-center gap-x-1.5 text-[14px] font-semibold opacity-90">
+      <span className={cn('inline-flex items-center gap-0.5 rounded-full px-2 py-0.5 font-extrabold',
+        onDark ? 'bg-white/20 text-white' : good === true ? 'bg-[#e3f5f6] text-[#0e7c86]' : good === false ? 'bg-[#ffe6ef] text-[#d81b72]' : 'bg-black/5')}>
         <Icon className="h-3.5 w-3.5" strokeWidth={2.6} aria-hidden />
         <span className="sr-only">{dir === 'up' ? 'Up' : dir === 'down' ? 'Down' : ''}</span>
         {text}
@@ -167,84 +166,113 @@ function Delta({ cur, prev, upIsGood = true, vs }: { cur: number; prev: number; 
   );
 }
 
-function Kpi({ icon: Icon, label, value, delta, hint, spark, sparkLabel, href, tone, badge }: {
+type KpiTone = 'plum' | 'rani' | 'lav' | 'tea' | 'gold';
+const SPARK: Record<KpiTone, string> = { plum: '#ffd166', rani: '#d81b72', lav: LAV, tea: TEA, gold: '#b45309' };
+
+function Kpi({ icon: Icon, label, value, delta, hint, spark, sparkLabel, href, tone, alert, badge, wide }: {
   icon: LucideIcon; label: string; value: string; delta?: ReactNode; hint?: ReactNode; spark?: number[]; sparkLabel?: string;
-  href: string; tone?: 'alert'; badge?: ReactNode;
+  href: string; tone: KpiTone; alert?: boolean; badge?: ReactNode; wide?: boolean;
 }) {
   return (
-    <a href={href} className="group block no-underline">
-      <Card className={cn('hf-admin-op-card hf-admin-op-kpi h-full transition-shadow group-hover:shadow-md group-focus-visible:ring-2 group-focus-visible:ring-ring', tone === 'alert' && 'hf-admin-op-kpi-alert border-primary/60')}>
-        <CardContent className="flex h-full flex-col gap-2 p-4 sm:p-5">
-          <div className="flex items-center justify-between gap-2">
-            <span className="text-[14px] font-bold uppercase tracking-[0.06em] text-muted-foreground">{label}</span>
-            <span className={cn('flex h-8 w-8 shrink-0 items-center justify-center rounded-full', tone === 'alert' ? 'bg-primary/10 text-primary' : 'bg-accent/15 text-accent')}>
-              <Icon className="h-4 w-4" strokeWidth={2.2} />
-            </span>
-          </div>
-          <div className="flex items-center gap-2">
-            <span className="font-dash text-[26px] font-bold leading-none tracking-[0.01em] text-[var(--hf-admin-plum,#4a1747)] sm:text-[28px]">{value}</span>
-            {badge}
-          </div>
-          {delta}
-          {hint && <div className="text-[14px] font-semibold text-muted-foreground">{hint}</div>}
-          <div className="mt-auto pt-1">
-            {spark ? <Sparkline values={spark} /> : <div className="h-7" aria-hidden />}
-            {sparkLabel && <div className="text-[14px] font-semibold text-muted-foreground">{sparkLabel}</div>}
-          </div>
-        </CardContent>
-      </Card>
+    <a href={href} className={cn('block rounded-[22px] no-underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#d81b72]', wide && 'sm:col-span-2')}>
+      <DesiKpi tone={tone} alert={alert} label={label} icon={<Icon strokeWidth={2.2} />}
+        value={<span className="inline-flex flex-wrap items-center gap-2">{value}{badge}</span>}
+        sub={
+          <span className="flex flex-col gap-1.5">
+            {delta}
+            {hint && <span>{hint}</span>}
+            {spark ? <Sparkline values={spark} color={SPARK[tone]} /> : <span className="block h-7" aria-hidden />}
+            {sparkLabel && <span>{sparkLabel}</span>}
+          </span>
+        } />
     </a>
   );
 }
 
 function LiveBadge() {
   return (
-    <Badge variant="destructive" className="gap-1.5 uppercase">
+    <span className="inline-flex items-center gap-1.5 rounded-full bg-[#d1001f] px-2.5 py-0.5 text-[14px] font-extrabold uppercase text-white">
       <span className="relative flex h-2 w-2">
-        <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-destructive-foreground opacity-70 motion-reduce:animate-none" />
-        <span className="relative inline-flex h-2 w-2 rounded-full bg-destructive-foreground" />
+        <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-white opacity-70 motion-reduce:animate-none" />
+        <span className="relative inline-flex h-2 w-2 rounded-full bg-white" />
       </span>
       Live
-    </Badge>
+    </span>
   );
 }
 
-/* ── panels ─────────────────────────────────────────────────────────────── */
-
-function Panel({ title, action, children, className }: { title: string; action?: ReactNode; children: ReactNode; className?: string }) {
-  return (
-    <Card className={cn('hf-admin-op-card min-w-0', className)}>
-      <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-2 space-y-0 pb-2">
-        <CardTitle className="font-dash text-[18px] text-[var(--hf-admin-plum,#4a1747)] sm:text-[19px]">{title}</CardTitle>
-        {action}
-      </CardHeader>
-      <CardContent className="px-3 pb-4 sm:px-5">{children}</CardContent>
-    </Card>
-  );
-}
-const Empty = ({ children }: { children: ReactNode }) => (
-  <div className="flex min-h-[120px] items-center justify-center rounded-lg border border-dashed border-border/60 px-4 py-6 text-center text-[14px] font-semibold text-muted-foreground">
-    {children}
-  </div>
-);
 const SeeAll = ({ href, children = 'See all' }: { href: string; children?: ReactNode }) => (
-  <Button asChild variant="ghost" size="sm"><a href={href} className="no-underline">{children}<ArrowRight /></a></Button>
+  <a href={href} className="hfa-btn ghost no-underline">{children}<ArrowRight className="h-4 w-4" /></a>
 );
 
 function PageSkeleton() {
   return (
-    <div className="grid gap-6" aria-busy="true">
-      <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-3 xl:grid-cols-5">
-        {Array.from({ length: 9 }, (_, i) => <Shimmer key={i} className="h-[168px] rounded-xl" />)}
+    <div className="hfa-stack" aria-busy="true">
+      <div className="hfa-kpis">
+        {Array.from({ length: 9 }, (_, i) => <Shimmer key={i} className="h-[168px] rounded-[22px]" />)}
       </div>
-      <Shimmer className="h-[320px] rounded-xl" />
-      <div className="grid gap-4 lg:grid-cols-2"><Shimmer className="h-[300px] rounded-xl" /><Shimmer className="h-[300px] rounded-xl" /></div>
+      <Shimmer className="h-[320px] rounded-[24px]" />
+      <div className="hfa-row"><Shimmer className="h-[300px] rounded-[24px]" /><Shimmer className="h-[300px] rounded-[24px]" /></div>
       <span className="sr-only">Loading analytics…</span>
     </div>
   );
 }
 
 const pct = (v: number | null) => (v == null ? '—' : `${(v * 100).toFixed(v * 100 >= 10 || v === 0 ? 0 : 1)}%`);
+
+const PAY_CHIP: Record<string, { tone: 'tea' | 'gold' | 'rani' | 'lav' | 'grey'; label: string }> = {
+  paid: { tone: 'tea', label: 'Paid' }, free: { tone: 'lav', label: 'Free' }, pending: { tone: 'gold', label: 'Pending' },
+  refund_requested: { tone: 'lav', label: 'Refund requested' }, refunded: { tone: 'rani', label: 'Refunded' },
+  requested: { tone: 'rani', label: 'Requested' }, rejected: { tone: 'grey', label: 'Rejected' },
+};
+const PayChip = ({ status }: { status: string }) => {
+  const m = PAY_CHIP[status] ?? { tone: 'grey' as const, label: status };
+  return <DesiChip tone={m.tone}>{m.label}</DesiChip>;
+};
+
+const MEDAL = [
+  'linear-gradient(135deg,#fde68a,#f59e0b)', // gold
+  'linear-gradient(135deg,#f4f4f8,#a9a3b8)', // silver
+  'linear-gradient(135deg,#f6c59a,#b86a2c)', // bronze
+];
+const dayNum = new Intl.DateTimeFormat('en-IN', { day: 'numeric', timeZone: 'Asia/Kolkata' });
+const monShort = new Intl.DateTimeFormat('en-IN', { month: 'short', timeZone: 'Asia/Kolkata' });
+
+/** A calendar-leaf date tile for the "Next events" list. */
+function DateTile({ ms, live }: { ms: number | null; live: boolean }) {
+  return (
+    <span className={cn('flex h-14 w-14 shrink-0 flex-col items-center justify-center rounded-2xl border-2 font-extrabold leading-none',
+      live ? 'border-[#d1001f] bg-[#d1001f] text-white' : 'border-[#c7b6f5] bg-white text-[#6d4fd0]')} aria-hidden>
+      {live || !ms ? <span className="text-[14px] uppercase">{live ? 'Live' : '—'}</span> : (
+        <>
+          <span className="font-['Nunito'] text-[22px]">{dayNum.format(ms)}</span>
+          <span className="text-[14px] uppercase">{monShort.format(ms)}</span>
+        </>
+      )}
+    </span>
+  );
+}
+
+/** Funnel step as a full-width gradient bar. */
+function FunnelBars({ rows }: { rows: { key: string; label: string; value: number; text: string; href: string; grad: string }[] }) {
+  const max = Math.max(...rows.map((r) => r.value), 0) || 1;
+  return (
+    <ul className="grid gap-2.5">
+      {rows.map((r) => (
+        <li key={r.key}>
+          <a href={r.href} className="block rounded-xl p-1 no-underline transition-colors hover:bg-white/60">
+            <div className="mb-1 flex flex-wrap items-baseline justify-between gap-x-3 text-[14px] font-bold text-[var(--a-ink)]">
+              <span>{r.label}</span><span className="font-['Nunito'] font-black tabular-nums">{r.text}</span>
+            </div>
+            <div className="h-6 w-full overflow-hidden rounded-full bg-white/70" aria-hidden>
+              <div className="h-full rounded-full" style={{ width: `${Math.max(3, (r.value / max) * 100)}%`, background: r.grad }} />
+            </div>
+          </a>
+        </li>
+      ))}
+    </ul>
+  );
+}
 
 /* ── page ───────────────────────────────────────────────────────────────── */
 
@@ -298,92 +326,137 @@ export default function Analytics() {
   const rangeText = d ? (F === T ? longDay(F!) : `${longDay(F!)} – ${longDay(T!)}`) : '';
   const payRange = { paid_from: F, paid_to: T };
 
+  const ticker: ReactNode[] = [];
+  if (k) {
+    if (k.live_now > 0) ticker.push(<>{fmtCount(k.live_now)} event{k.live_now === 1 ? '' : 's'} streaming live right now</>);
+    if (k.pending_payments.count > 0) ticker.push(<>{fmtCount(k.pending_payments.count)} payment{k.pending_payments.count === 1 ? '' : 's'} pending · {formatPaise(k.pending_payments.paise)}{k.pending_payments.review ? ` · ${fmtCount(k.pending_payments.review)} need a check` : ''}</>);
+    if (k.open_refunds.count > 0) ticker.push(<>{fmtCount(k.open_refunds.count)} refund request{k.open_refunds.count === 1 ? '' : 's'} waiting · {formatPaise(k.open_refunds.paise)} to send</>);
+    if (k.upcoming_events.next_7d > 0) ticker.push(<>{fmtCount(k.upcoming_events.next_7d)} event{k.upcoming_events.next_7d === 1 ? '' : 's'} in the next 7 days</>);
+  }
+
   return (
-    <div className="hf-admin-operations grid gap-6 sm:gap-8">
+    <div className="hf-admin-operations hfa-stack">
+      {d && k && <DesiTicker items={ticker} />}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <RangeBar sel={sel} onChange={change} busy={loading && !!data} />
-        {d && <p className="text-[14px] font-semibold text-muted-foreground sm:pt-3">{rangeText} · IST · compared with {longDay(d.range.prev_from)} – {longDay(d.range.prev_to)}</p>}
+        {d && <p className="hfa-note sm:pt-2">{rangeText} · IST · compared with {longDay(d.range.prev_from)} – {longDay(d.range.prev_to)}</p>}
       </div>
 
       {error && !d ? (
-        <Card>
-          <CardContent className="flex flex-col items-start gap-3 p-5">
-            <p className="text-[15px] font-semibold text-foreground">{error}</p>
-            <Button variant="outline" onClick={() => void load()}><RefreshCw />Try again</Button>
-          </CardContent>
-        </Card>
+        <DesiCard tone="rani" corner="hibiscus" pattern="stripes">
+          <div className="flex flex-col items-start gap-3">
+            <p className="font-bold">{error}</p>
+            <button type="button" className="hfa-btn rani" onClick={() => void load()}><RefreshCw className="h-4 w-4" />Try again</button>
+          </div>
+        </DesiCard>
       ) : !d || !k || !s ? (
         <PageSkeleton />
       ) : (
-        <div className={cn('grid gap-6 transition-opacity sm:gap-8', loading && 'opacity-60')}>
+        <div className={cn('hfa-stack transition-opacity', loading && 'opacity-60')}>
           {error && (
-            <div className="flex flex-wrap items-center gap-3 rounded-lg border border-primary/50 bg-primary/5 px-4 py-2 text-[14px] font-semibold">
-              {error}<Button size="sm" variant="outline" onClick={() => void load()}><RefreshCw />Retry</Button>
+            <div className="hfa-card hfa-t-rani flex flex-wrap items-center gap-3 font-semibold">
+              {error}<button type="button" className="hfa-btn ghost" onClick={() => void load()}><RefreshCw className="h-4 w-4" />Retry</button>
             </div>
           )}
 
-          {/* KPI cards */}
-          <section aria-label="Key numbers" className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-3 xl:grid-cols-5">
-            <Kpi icon={IndianRupee} label="Revenue" value={formatPaise(k.revenue_paise.cur)}
-              delta={<Delta {...k.revenue_paise} vs={vs} />} hint="Paid, GST included, refunds out"
+          {/* KPI tiles: revenue is the plum hero */}
+          <section aria-label="Key numbers" className="hfa-kpis">
+            <Kpi tone="plum" wide icon={IndianRupee} label="Revenue" value={formatPaise(k.revenue_paise.cur)}
+              delta={<Delta {...k.revenue_paise} vs={vs} onDark />} hint="Paid, GST included, refunds out"
               spark={s.revenue_paise} href={qs('/admin/payments', payRange)} />
-            <Kpi icon={Ticket} label="Paid bookings" value={fmtCount(k.paid_bookings.cur)}
+            <Kpi tone="rani" icon={Ticket} label="Paid bookings" value={fmtCount(k.paid_bookings.cur)}
               delta={<Delta {...k.paid_bookings} vs={vs} />} hint={`${fmtCount(k.seats.cur)} seats incl. free`}
               spark={s.paid_bookings} href={qs('/admin/bookings', { status: 'paid', from: F, to: T })} />
-            <Kpi icon={Users} label="Unique customers" value={fmtCount(k.unique_customers.cur)}
+            <Kpi tone="lav" icon={Users} label="Unique customers" value={fmtCount(k.unique_customers.cur)}
               delta={<Delta {...k.unique_customers} vs={vs} />} hint="People who paid"
               spark={s.unique_customers} href={customersHref} />
-            <Kpi icon={UserPlus} label="New sign-ups" value={fmtCount(k.signups.cur)}
+            <Kpi tone="tea" icon={UserPlus} label="New sign-ups" value={fmtCount(k.signups.cur)}
               delta={<Delta {...k.signups} vs={vs} />} spark={s.signups} href={qs(customersHref, { joined_from: F, joined_to: T })} />
-            <Kpi icon={ReceiptIndianRupee} label="Avg order value" value={formatPaise(k.aov_paise.cur)}
+            <Kpi tone="gold" icon={ReceiptIndianRupee} label="Avg order value" value={formatPaise(k.aov_paise.cur)}
               delta={<Delta {...k.aov_paise} vs={vs} />} spark={s.aov_paise} href={qs('/admin/payments', payRange)} />
-            <Kpi icon={Undo2} label="Refunds sent" value={`${fmtCount(k.refunds.count.cur)} · ${compactPaise(k.refunds.paise.cur)}`}
+            <Kpi tone="rani" icon={Undo2} label="Refunds sent" value={`${fmtCount(k.refunds.count.cur)} · ${compactPaise(k.refunds.paise.cur)}`}
               delta={<Delta {...k.refunds.count} upIsGood={false} vs={vs} />}
               hint={<>Refund rate {pct(k.refund_rate.cur)}{k.refund_rate.prev != null && <> (was {pct(k.refund_rate.prev)})</>}</>}
               spark={s.refunds_paise} href={qs('/admin/refunds', { status: 'refunded' })} />
-            <Kpi icon={Hourglass} label="Pending payments" value={fmtCount(k.pending_payments.count)}
-              tone={k.pending_payments.review ? 'alert' : undefined}
+            <Kpi tone="gold" icon={Hourglass} label="Pending payments" value={fmtCount(k.pending_payments.count)}
+              alert={!!k.pending_payments.review}
               hint={k.pending_payments.count ? `${formatPaise(k.pending_payments.paise)}${k.pending_payments.review ? ` · ${fmtCount(k.pending_payments.review)} need a check` : ''}` : 'Nothing pending'}
               sparkLabel="Right now" href={qs('/admin/payments', { status: 'pending' })} />
-            <Kpi icon={CalendarDays} label="Upcoming events" value={fmtCount(k.upcoming_events.total)}
+            <Kpi tone="lav" icon={CalendarDays} label="Upcoming events" value={fmtCount(k.upcoming_events.total)}
               hint={`${fmtCount(k.upcoming_events.next_7d)} in the next 7 days`}
               spark={s.upcoming.map((u) => u.count)} sparkLabel="Events per day, next 14 days" href={qs('/admin/events', { tab: 'upcoming' })} />
-            <Kpi icon={Radio} label="Live now" value={fmtCount(k.live_now)} badge={k.live_now > 0 ? <LiveBadge /> : undefined}
+            <Kpi tone="tea" icon={Radio} label="Live now" value={fmtCount(k.live_now)} badge={k.live_now > 0 ? <LiveBadge /> : undefined}
               hint={k.live_now ? 'Streaming right now' : 'Nothing live'} sparkLabel="Right now" href={qs('/admin/events', { tab: 'live' })} />
-            <Kpi icon={Undo2} label="Refund requests" value={fmtCount(k.open_refunds.count)} tone={k.open_refunds.count ? 'alert' : undefined}
+            <Kpi tone="rani" icon={Undo2} label="Refund requests" value={fmtCount(k.open_refunds.count)} alert={k.open_refunds.count > 0}
               hint={k.open_refunds.count ? `${formatPaise(k.open_refunds.paise)} to send` : 'Nothing waiting'}
               sparkLabel="Open now" href={qs('/admin/refunds', {})} />
           </section>
 
-          {/* Revenue by day */}
-          <Panel title="Revenue by day" action={
-            <div className="flex flex-wrap items-center gap-3">
-              <LegendKey kind="line" color={C1} label="This period" />
-              <LegendKey kind="line" color={INK_MUTED} dashed label="Previous period" />
-            </div>
-          }>
-            {k.revenue_paise.cur === 0 && k.revenue_paise.prev === 0
-              ? <Empty>No paid bookings in this period or the one before.</Empty>
-              : <>
-                  <TrendLine days={s.days} cur={s.revenue_paise} prev={s.revenue_prev_paise} format={formatPaise} axisFormat={compactPaise}
-                    label={`Revenue by day, ${rangeText}`} onPick={(day) => location.assign(qs('/admin/payments', { paid_from: day, paid_to: day }))} />
-                  <DayTable days={s.days} cols={[
-                    { label: 'Revenue', values: s.revenue_paise, format: formatPaise },
-                    { label: 'Previous', values: s.revenue_prev_paise, format: formatPaise },
-                    { label: 'Paid bookings', values: s.paid_bookings, format: fmtCount },
-                  ]} />
-                </>}
-          </Panel>
+          {/* Focal row: revenue chart (wide) + next events (lavender date tiles) */}
+          <div className="hfa-row-wide">
+            <DesiCard title="Revenue by day" tone="rani" corner="marigold" pattern="dots"
+              action={
+                <div className="flex flex-wrap items-center gap-3">
+                  <LegendKey kind="line" color={C1} label="This period" />
+                  <LegendKey kind="line" color={INK_MUTED} dashed label="Previous period" />
+                </div>
+              }>
+              {k.revenue_paise.cur === 0 && k.revenue_paise.prev === 0
+                ? <DesiEmpty text="No paid bookings in this period or the one before." />
+                : <>
+                    <TrendLine days={s.days} cur={s.revenue_paise} prev={s.revenue_prev_paise} format={formatPaise} axisFormat={compactPaise}
+                      label={`Revenue by day, ${rangeText}`} onPick={(day) => location.assign(qs('/admin/payments', { paid_from: day, paid_to: day }))} />
+                    <DayTable days={s.days} cols={[
+                      { label: 'Revenue', values: s.revenue_paise, format: formatPaise },
+                      { label: 'Previous', values: s.revenue_prev_paise, format: formatPaise },
+                      { label: 'Paid bookings', values: s.paid_bookings, format: fmtCount },
+                    ]} />
+                  </>}
+            </DesiCard>
 
-          <div className="grid gap-6 lg:grid-cols-2">
-            <Panel title="Bookings by day" action={
+            <DesiCard title="Next events" tone="lav" corner="jasmine" action={<SeeAll href="/admin/events" />}>
+              {d.next_events.length === 0 ? (
+                <DesiEmpty text="No upcoming events. Create the next puja or havan.">
+                  <a href="/admin/events/new" className="hfa-btn gold no-underline"><Plus className="h-4 w-4" />New event</a>
+                </DesiEmpty>
+              ) : (
+                <ul className="grid gap-2">
+                  {d.next_events.map((ev) => (
+                    <li key={ev.id}>
+                      <a href={ev.admin_url} className="flex min-h-[44px] items-center gap-3 rounded-2xl bg-white/70 p-2 no-underline transition-colors hover:bg-white">
+                        <DateTile ms={ev.starts_at} live={ev.live} />
+                        <div className="min-w-0 flex-1">
+                          <div className="flex flex-wrap items-center gap-2">
+                            {ev.live && <LiveBadge />}
+                            <span className="truncate font-bold text-[var(--a-ink)]">{ev.title}</span>
+                          </div>
+                          <div className="mt-0.5 flex flex-wrap gap-x-3 text-[14px] font-semibold text-[var(--a-muted)]">
+                            <span>{ev.live ? 'Streaming now' : `${istDay(ev.starts_at)} · ${istTime(ev.starts_at)}`}</span>
+                            <span className="inline-flex items-center gap-1"><Users className="h-3.5 w-3.5" />
+                              {ev.capacity != null ? `${fmtCount(ev.booked)} / ${fmtCount(ev.capacity)} booked` : `${fmtCount(ev.booked)} booked`}
+                            </span>
+                          </div>
+                        </div>
+                        <ArrowRight className="h-4 w-4 shrink-0 text-[#6d4fd0]" />
+                      </a>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </DesiCard>
+          </div>
+
+          <DesiMogra />
+
+          <div className="hfa-row">
+            <DesiCard title="Bookings by day" tone="rani" corner="hibiscus" action={
               <div className="flex flex-wrap items-center gap-3">
                 <LegendKey kind="rect" color={C1} label="Paid" />
                 <LegendKey kind="rect" color={C2} label="Free" />
               </div>
             }>
               {k.seats.cur === 0
-                ? <Empty>No seats booked in this period.</Empty>
+                ? <DesiEmpty text="No seats booked in this period." />
                 : <>
                     <DayColumns days={s.days} format={fmtCount} label={`Seats booked by day, ${rangeText}`}
                       series={[
@@ -396,80 +469,78 @@ export default function Analytics() {
                       { label: 'Free', values: s.free_seats, format: fmtCount },
                     ]} />
                   </>}
-            </Panel>
+            </DesiCard>
 
-            <Panel title="New sign-ups by day" action={<SeeAll href={qs(customersHref, { joined_from: F, joined_to: T })}>Users</SeeAll>}>
+            <DesiCard title="New sign-ups by day" tone="tea" corner="marigold" action={<SeeAll href={qs(customersHref, { joined_from: F, joined_to: T })}>Users</SeeAll>}>
               {k.signups.cur === 0
-                ? <Empty>No new sign-ups in this period.</Empty>
+                ? <DesiEmpty text="No new sign-ups in this period." />
                 : <>
                     <DayColumns days={s.days} format={fmtCount} label={`New sign-ups by day, ${rangeText}`}
-                      series={[{ key: 'signups', label: 'sign-ups', color: C1, values: s.signups }]}
+                      series={[{ key: 'signups', label: 'sign-ups', color: TEA, values: s.signups }]}
                       onPick={(day) => location.assign(qs(customersHref, { joined_from: day, joined_to: day }))} />
                     <DayTable days={s.days} cols={[{ label: 'Sign-ups', values: s.signups, format: fmtCount }]} />
                   </>}
-            </Panel>
+            </DesiCard>
           </div>
 
-          <div className="grid gap-6 lg:grid-cols-2">
-            <Panel title="Revenue by category" action={<SeeAll href={qs('/admin/payments', payRange)}>Payments</SeeAll>}>
+          <div className="hfa-row">
+            <DesiCard title="Revenue by category" tone="gold" corner="yellow" pattern="dots" action={<SeeAll href={qs('/admin/payments', payRange)}>Payments</SeeAll>}>
               {d.by_category.length === 0
-                ? <Empty>No revenue in this period.</Empty>
+                ? <DesiEmpty text="No revenue in this period." />
                 : <HBars rows={d.by_category.map((c) => ({
                     key: c.category ?? '_none', label: c.label, value: c.revenue_paise, valueText: formatPaise(c.revenue_paise),
                     sub: `${fmtCount(c.paid_bookings)} paid booking${c.paid_bookings === 1 ? '' : 's'}`,
                     href: qs('/admin/payments', { cat: c.category, ...payRange }),
                   }))} />}
-            </Panel>
+            </DesiCard>
 
-            <Panel title="UPI checkout funnel" action={<SeeAll href={qs('/admin/payments', { status: 'pending' })}>Pending</SeeAll>}>
+            <DesiCard title="UPI checkout funnel" tone="lav" corner="jasmine" action={<SeeAll href={qs('/admin/payments', { status: 'pending' })}>Pending</SeeAll>}>
               {!d.funnel
-                ? <Empty>No UPI checkouts started in this period.</Empty>
+                ? <DesiEmpty text="No UPI checkouts started in this period." />
                 : <>
-                    <HBars rows={([
-                      ['started', 'Checkout started', d.funnel.started],
-                      ['sent', 'Payment sent', d.funnel.sent],
-                      ['confirmed', 'Payment confirmed', d.funnel.confirmed],
-                      ['kept', 'Seat kept', d.funnel.kept],
-                    ] as const).map(([key, label, v]) => ({
-                      key, label, value: v,
-                      valueText: `${fmtCount(v)}${key === 'started' ? '' : ` · ${pct(d.funnel!.started ? v / d.funnel!.started : null)}`}`,
+                    <FunnelBars rows={([
+                      ['started', 'Checkout started', d.funnel.started, 'linear-gradient(90deg,#a48cf0,#6d4fd0)'],
+                      ['sent', 'Payment sent', d.funnel.sent, 'linear-gradient(90deg,#a48cf0,#d81b72)'],
+                      ['confirmed', 'Payment confirmed', d.funnel.confirmed, 'linear-gradient(90deg,#f59e0b,#d81b72)'],
+                      ['kept', 'Seat kept', d.funnel.kept, 'linear-gradient(90deg,#4fb5bd,#0e7c86)'],
+                    ] as const).map(([key, label, v, grad]) => ({
+                      key, label, value: v, grad,
+                      text: `${fmtCount(v)}${key === 'started' ? '' : ` · ${pct(d.funnel!.started ? v / d.funnel!.started : null)}`}`,
                       href: key === 'sent' ? qs('/admin/payments', { status: 'pending' }) : qs('/admin/payments', payRange),
                     }))} />
-                    <p className="mt-2 px-2 text-[14px] font-semibold text-muted-foreground">One step per customer and event. “Seat kept” excludes refunds.</p>
+                    <p className="hfa-note mt-3">One step per customer and event. “Seat kept” excludes refunds.</p>
                   </>}
-            </Panel>
+            </DesiCard>
           </div>
 
-          <Panel title="Top 10 events by revenue" action={<SeeAll href="/admin/events">All events</SeeAll>}>
+          <DesiCard title="Top 10 events by revenue" tone="cream" pattern="bahi" corner="marigold" action={<SeeAll href="/admin/events">All events</SeeAll>}>
             {d.top_events.length === 0
-              ? <Empty>No paid bookings in this period.</Empty>
+              ? <DesiEmpty text="No paid bookings in this period." />
               : (
-                <div className="overflow-x-auto">
-                  <table className="w-full min-w-[520px] text-left text-[14px]">
+                <div className="hfa-scroll">
+                  <table className="hfa-table min-w-[520px]">
                     <thead>
-                      <tr className="text-[14px] font-bold uppercase tracking-[0.05em] text-muted-foreground">
-                        <th className="w-8 px-2 py-2">#</th>
-                        <th className="px-2 py-2">Event</th>
-                        <th className="px-2 py-2 text-right">Paid</th>
-                        <th className="w-[38%] px-2 py-2">Revenue</th>
-                      </tr>
+                      <tr><th className="w-14">#</th><th>Event</th><th className="text-right">Paid</th><th className="w-[38%]">Revenue</th></tr>
                     </thead>
                     <tbody>
                       {d.top_events.map((e, i) => {
                         const max = d.top_events[0].revenue_paise || 1;
                         const href = qs('/admin/bookings', { event: e.id });
                         return (
-                          <tr key={e.id} className="border-t border-border/40 transition-colors hover:bg-muted">
-                            <td className="px-2 py-2.5 font-bold tabular-nums text-muted-foreground">{i + 1}</td>
-                            <td className="max-w-0 px-2 py-2.5">
-                              <a href={href} className="block truncate font-bold text-foreground no-underline hover:underline">{e.title ?? e.id}</a>
-                              {e.category_label && <div className="truncate text-[14px] font-semibold text-muted-foreground">{e.category_label}</div>}
+                          <tr key={e.id}>
+                            <td>
+                              <span className="grid h-10 w-10 place-items-center rounded-full border-2 border-white font-['Nunito'] font-black shadow-md"
+                                style={{ background: MEDAL[i] ?? '#f1ebff', color: i < 3 ? '#3b1600' : '#6d4fd0' }}>{i + 1}</span>
                             </td>
-                            <td className="px-2 py-2.5 text-right font-semibold tabular-nums">{fmtCount(e.paid_bookings)}</td>
-                            <td className="px-2 py-2.5">
+                            <td className="max-w-0">
+                              <a href={href} className="block min-h-[24px] truncate font-bold text-[var(--a-ink)] no-underline hover:underline">{e.title ?? e.id}</a>
+                              {e.category_label && <div className="hfa-note truncate">{e.category_label}</div>}
+                            </td>
+                            <td className="text-right font-semibold tabular-nums">{fmtCount(e.paid_bookings)}</td>
+                            <td>
                               <a href={href} className="flex items-center gap-2 no-underline" aria-label={`${e.title ?? e.id}: ${formatPaise(e.revenue_paise)}`}>
-                                <span className="h-3 min-w-[2px] rounded-r-[4px]" style={{ width: `${Math.max(1, (e.revenue_paise / max) * 70)}%`, background: C1 }} aria-hidden />
-                                <span className="shrink-0 font-dash text-[14px] font-bold tabular-nums text-foreground">{formatPaise(e.revenue_paise)}</span>
+                                <span className="h-3 min-w-[2px] rounded-full" style={{ width: `${Math.max(1, (e.revenue_paise / max) * 70)}%`, background: GRAD }} aria-hidden />
+                                <span className="shrink-0 font-['Nunito'] font-black tabular-nums text-[var(--a-plum)]">{formatPaise(e.revenue_paise)}</span>
                               </a>
                             </td>
                           </tr>
@@ -479,128 +550,92 @@ export default function Analytics() {
                   </table>
                 </div>
               )}
-          </Panel>
+          </DesiCard>
 
           {d.video_views && (
-            <Panel title="Video views" action={<SeeAll href="/admin/events">All events</SeeAll>}>
-              <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-3 xl:grid-cols-5">
-                <Kpi icon={Eye} label="Viewers" value={fmtCount(d.video_views.viewers.cur)}
+            <DesiCard title="Video views" tone="lav" corner="hibiscus" pattern="dots" action={<SeeAll href="/admin/events">All events</SeeAll>}>
+              <DesiKpis>
+                <Kpi tone="lav" icon={Eye} label="Viewers" value={fmtCount(d.video_views.viewers.cur)}
                   delta={<Delta {...d.video_views.viewers} vs={vs} />} hint="People who watched a video" href="/admin/events" />
-                <Kpi icon={MonitorPlay} label="Plays" value={fmtCount(d.video_views.plays.cur)}
+                <Kpi tone="rani" icon={MonitorPlay} label="Plays" value={fmtCount(d.video_views.plays.cur)}
                   delta={<Delta {...d.video_views.plays} vs={vs} />} hint="Times play was pressed" href="/admin/events" />
-              </div>
+              </DesiKpis>
               {d.video_views.by_event.length === 0
-                ? <div className="mt-4"><Empty>Nobody watched a video in this period.</Empty></div>
+                ? <div className="mt-4"><DesiEmpty text="Nobody watched a video in this period." /></div>
                 : (
-                  <div className="mt-4 overflow-x-auto">
-                    <table className="w-full min-w-[420px] text-left text-[14px]">
+                  <div className="hfa-scroll mt-4">
+                    <table className="hfa-table min-w-[420px]">
                       <thead>
-                        <tr className="text-[14px] font-bold uppercase tracking-[0.05em] text-muted-foreground">
-                          <th className="w-8 px-2 py-2">#</th>
-                          <th className="px-2 py-2">Event</th>
-                          <th className="px-2 py-2 text-right">Viewers</th>
-                          <th className="px-2 py-2 text-right">Plays</th>
-                        </tr>
+                        <tr><th className="w-12">#</th><th>Event</th><th className="text-right">Viewers</th><th className="text-right">Plays</th></tr>
                       </thead>
                       <tbody>
                         {d.video_views.by_event.map((e, i) => (
-                          <tr key={e.listing_id} className="border-t border-border/40 transition-colors hover:bg-muted">
-                            <td className="px-2 py-2.5 font-bold tabular-nums text-muted-foreground">{i + 1}</td>
-                            <td className="max-w-0 px-2 py-2.5">
-                              <a href={e.kind === 'free_video' ? `/admin/free-videos/${encodeURIComponent(e.listing_id)}` : `/admin/events/${encodeURIComponent(e.listing_id)}`} className="flex items-center gap-2 no-underline">
-                                <span className="truncate font-bold text-foreground hover:underline">{e.title ?? e.listing_id}</span>
-                                {e.free && <Badge variant="accent" className="shrink-0">FREE</Badge>}
-                                {e.kind === 'free_video' && <Badge variant="outline" className="shrink-0">Free video</Badge>}
+                          <tr key={e.listing_id}>
+                            <td className="font-bold tabular-nums text-[var(--a-muted)]">{i + 1}</td>
+                            <td className="max-w-0">
+                              <a href={e.kind === 'free_video' ? `/admin/free-videos/${encodeURIComponent(e.listing_id)}` : `/admin/events/${encodeURIComponent(e.listing_id)}`} className="flex min-h-[24px] items-center gap-2 no-underline">
+                                <span className="truncate font-bold text-[var(--a-ink)] hover:underline">{e.title ?? e.listing_id}</span>
+                                {e.free && <DesiChip tone="tea" className="shrink-0">FREE</DesiChip>}
+                                {e.kind === 'free_video' && <DesiChip tone="lav" className="shrink-0">Free video</DesiChip>}
                               </a>
                             </td>
-                            <td className="px-2 py-2.5 text-right font-semibold tabular-nums">{fmtCount(e.viewers)}</td>
-                            <td className="px-2 py-2.5 text-right font-semibold tabular-nums">{fmtCount(e.plays)}</td>
+                            <td className="text-right font-semibold tabular-nums">{fmtCount(e.viewers)}</td>
+                            <td className="text-right font-semibold tabular-nums">{fmtCount(e.plays)}</td>
                           </tr>
                         ))}
                       </tbody>
                     </table>
                   </div>
                 )}
-            </Panel>
+            </DesiCard>
           )}
 
-          <div className="grid gap-6 xl:grid-cols-3">
-            <Panel title="Next events" action={<SeeAll href="/admin/events" />}>
-              {d.next_events.length === 0 ? (
-                <div className="flex flex-col items-start gap-3 py-2">
-                  <p className="text-[14px] font-semibold text-muted-foreground">No upcoming events. Create the next puja or havan.</p>
-                  <Button asChild size="sm"><a href="/admin/events/new" className="no-underline"><Plus />New event</a></Button>
-                </div>
-              ) : (
-                <ul className="divide-y divide-border/50">
-                  {d.next_events.map((ev) => (
-                    <li key={ev.id}>
-                      <a href={ev.admin_url} className="flex items-center gap-3 rounded-lg px-1.5 py-2.5 no-underline transition-colors hover:bg-muted">
-                        <div className="min-w-0 flex-1">
-                          <div className="flex flex-wrap items-center gap-2">
-                            {ev.live && <LiveBadge />}
-                            <span className="truncate font-bold text-foreground">{ev.title}</span>
-                          </div>
-                          <div className="mt-0.5 flex flex-wrap gap-x-3 text-[14px] font-semibold text-muted-foreground">
-                            <span>{ev.live ? 'Streaming now' : `${istDay(ev.starts_at)} · ${istTime(ev.starts_at)}`}</span>
-                            <span className="inline-flex items-center gap-1"><Users className="h-3.5 w-3.5" />
-                              {ev.capacity != null ? `${fmtCount(ev.booked)} / ${fmtCount(ev.capacity)} booked` : `${fmtCount(ev.booked)} booked`}
-                            </span>
-                          </div>
-                        </div>
-                        <ArrowRight className="h-4 w-4 shrink-0 text-muted-foreground" />
-                      </a>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </Panel>
-
-            <Panel title="Recent payments" action={<SeeAll href="/admin/payments" />}>
-              {d.recent_payments.length === 0 ? <Empty>No payments yet.</Empty> : (
-                <ul className="divide-y divide-border/50">
+          <div className="hfa-row">
+            <DesiCard title="Recent payments" tone="tea" corner="marigold" action={<SeeAll href="/admin/payments" />}>
+              {d.recent_payments.length === 0 ? <DesiEmpty text="No payments yet." /> : (
+                <ul className="grid gap-2">
                   {d.recent_payments.map((p) => (
                     <li key={p.id}>
-                      <a href={qs('/admin/payments', { q: p.id })} className="flex items-center gap-3 rounded-lg px-1.5 py-2.5 no-underline transition-colors hover:bg-muted">
+                      <a href={qs('/admin/payments', { q: p.id })} className="flex min-h-[44px] items-center gap-3 rounded-2xl border-l-[6px] border-[#0e7c86] bg-white/75 px-3 py-2 no-underline transition-colors hover:bg-white">
                         <div className="min-w-0 flex-1">
-                          <div className="truncate font-bold text-foreground">{p.customer ?? 'Customer'}</div>
-                          <div className="truncate text-[14px] font-semibold text-muted-foreground">{p.event_title ?? p.listing_id} · {istDateTime(p.at)}</div>
+                          <div className="truncate font-bold text-[var(--a-ink)]">{p.customer ?? 'Customer'}</div>
+                          <div className="truncate text-[14px] font-semibold text-[var(--a-muted)]">{p.event_title ?? p.listing_id} · {istDateTime(p.at)}</div>
                         </div>
                         <div className="flex shrink-0 flex-col items-end gap-1">
-                          <span className="font-dash text-[14px] font-bold tabular-nums text-foreground">{formatPaise(p.amount_paise)}</span>
-                          <StatusPill status={p.status} />
+                          <span className="font-['Nunito'] text-[16px] font-black tabular-nums text-[#0e7c86]">{formatPaise(p.amount_paise)}</span>
+                          <PayChip status={p.status} />
                         </div>
                       </a>
                     </li>
                   ))}
                 </ul>
               )}
-            </Panel>
+            </DesiCard>
 
-            <Panel title="Open refund requests" action={<SeeAll href="/admin/refunds" />}>
-              {d.open_refunds.length === 0 ? <Empty>No refund requests waiting.</Empty> : (
-                <ul className="divide-y divide-border/50">
+            <DesiCard title="Open refund requests" tone="rani" corner="hibiscus" pattern="stripes" action={<SeeAll href="/admin/refunds" />}>
+              {d.open_refunds.length === 0 ? <DesiEmpty text="No refund requests waiting." /> : (
+                <ul className="grid gap-2">
                   {d.open_refunds.map((r) => (
                     <li key={r.id}>
-                      <a href={qs('/admin/refunds', { q: r.id })} className="flex items-center gap-3 rounded-lg px-1.5 py-2.5 no-underline transition-colors hover:bg-muted">
+                      <a href={qs('/admin/refunds', { q: r.id })} className="flex min-h-[44px] items-center gap-3 rounded-2xl border-l-[6px] border-[#d81b72] bg-white/85 px-3 py-2 no-underline transition-colors hover:bg-white">
                         <div className="min-w-0 flex-1">
-                          <div className="truncate font-bold text-foreground">{r.customer ?? 'Customer'}</div>
-                          <div className="truncate text-[14px] font-semibold text-muted-foreground">
+                          <div className="truncate font-bold text-[var(--a-ink)]">{r.customer ?? 'Customer'}</div>
+                          <div className="truncate text-[14px] font-semibold text-[var(--a-muted)]">
                             {r.event_title ?? 'Event'} · asked {istDay(r.requested_at)}{r.reason ? ` · “${r.reason}”` : ''}
                           </div>
                         </div>
-                        <span className="shrink-0 font-dash text-[14px] font-bold tabular-nums text-foreground">{formatPaise(r.amount_paise)}</span>
+                        <span className="shrink-0 font-['Nunito'] text-[16px] font-black tabular-nums text-[#d81b72]">{formatPaise(r.amount_paise)}</span>
                       </a>
                     </li>
                   ))}
                   {k.open_refunds.count > d.open_refunds.length && (
-                    <li className="px-1.5 pt-2.5 text-[14px] font-semibold text-muted-foreground">
+                    <li className="hfa-note px-1.5 pt-1 font-semibold">
                       +{fmtCount(k.open_refunds.count - d.open_refunds.length)} more waiting
                     </li>
                   )}
                 </ul>
               )}
-            </Panel>
+            </DesiCard>
           </div>
         </div>
       )}

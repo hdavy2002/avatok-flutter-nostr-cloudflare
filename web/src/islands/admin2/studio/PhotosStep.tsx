@@ -12,6 +12,7 @@ import {
   PRINT_SPECS, areaFor, errMessage, fetchPrintBlob, getFits, hexForColour, stepHref, updatePhoto, uploadPhoto,
   type Design, type Fits, type StudioPhoto,
 } from '../../../lib/studioApi';
+import { DesiCard, DesiChip, DesiEmpty, Marigold } from '../desi';
 import { advanceTo } from './UploadStep';
 import { LoadError, Loading, Page, Steps, TopBar, go, useDesign } from './StudioKit';
 
@@ -154,18 +155,17 @@ export default function PhotosStep({ designId }: { designId: string }) {
       <Steps id={design.id} current="photos" design={design} />
       <input ref={fileRef} type="file" accept="image/jpeg,image/png,image/webp" multiple hidden onChange={(e) => { void addFiles(e.target.files); e.target.value = ''; }} />
       <div className="g2">
-        <div className="panel"><h2>Upload your photos</h2>
-          <p className="lead">Photos of people wearing this design. JPG or PNG, at least 1200 px on the short side.</p>
-          <div className={`ph drop${over ? ' over' : ''}${busy ? ' busy' : ''}`} style={{ height: 150, borderStyle: 'dashed' }} role="button" tabIndex={0}
+        <DesiCard tone="tea" corner="marigold" title="Upload your photos" note="Photos of people wearing this design. JPG or PNG, at least 1200 px on the short side.">
+          <div className={`sa-drop${over ? ' over' : ''}${busy ? ' busy' : ''}`} style={{ minHeight: 170 }} role="button" tabIndex={0}
             onClick={() => fileRef.current?.click()} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') fileRef.current?.click(); }}
             onDragOver={(e) => { e.preventDefault(); setOver(true); }} onDragLeave={() => setOver(false)}
             onDrop={(e) => { e.preventDefault(); setOver(false); void addFiles(e.dataTransfer.files); }}>
-            <span>{busy ?? <>Drop photos here or <b style={{ textDecoration: 'underline' }}>choose files</b></>}</span>
+            <span className="sa-drop-txt">{busy ?? <>Drop photos here or <b style={{ textDecoration: 'underline' }}>choose files</b></>}</span>
           </div>
           {problems.map((m) => <p key={m} className="errtxt" role="alert">{m}</p>)}
-        </div>
-        <div className="panel"><h2>Every colour you sell has a photo?</h2>
-          {coverage.length === 0 ? <p className="lead" style={{ margin: 0 }}>Choose the colours you sell in Step 2 and they are checked here.</p> : (
+        </DesiCard>
+        <DesiCard tone="gold" corner="jasmine" title="Every colour you sell has a photo?">
+          {coverage.length === 0 ? <p className="sa-lead" style={{ margin: 0 }}>Choose the colours you sell in Step 2 and they are checked here.</p> : (
             <ul className="list">
               {coverage.map((c) => (
                 <li key={c.colour}>
@@ -175,20 +175,19 @@ export default function PhotosStep({ designId }: { designId: string }) {
               ))}
             </ul>
           )}
-        </div>
+        </DesiCard>
       </div>
 
-      <div className="panel">
-        <div className="foot" style={{ margin: '0 0 12px' }}><h2>Your photos</h2><span className="chip info">Drag to reorder · first is the shop card picture</span></div>
-        {models.length === 0 ? <p className="lead" style={{ margin: 0 }}>No photos yet. Add the ones you made above.</p> : (
-          <div className="g4">
+      <DesiCard tone="rani" corner="hibiscus" title="Your photos" action={<DesiChip tone="lav">Drag to reorder · first is the shop card picture</DesiChip>}>
+        {models.length === 0 ? <DesiEmpty text="No photos yet. Add the ones you made above." /> : (
+          <div className="sa-polas">
             {models.map((p, i) => {
               const hex = p.colour ? hexForColour(p.colour, fits) : '#d9bd8c';
               const colourBad = p.checks.colour_sold === false;
               const sizeBad = p.checks.size_ok === false;
               const main = i === 0;
               return (
-                <div key={p.id} className={`card${main ? ' sel' : ''}${overId === p.id && dragId !== p.id ? ' drag-over' : ''}`} draggable
+                <div key={p.id} className={`sa-pola${main ? ' sel' : ''}${overId === p.id && dragId !== p.id ? ' drag-over' : ''}`} draggable
                   onDragStart={() => setDragId(p.id)} onDragEnd={() => { setDragId(null); setOverId(null); }}
                   onDragOver={(e) => { if (dragId) { e.preventDefault(); setOverId(p.id); } }} onDrop={(e) => { e.preventDefault(); void drop(p); }}>
                   <img className="tee-img" src={p.url} alt={`Model photo${p.colour ? `, ${p.colour} shirt` : ''}`} loading="lazy" style={{ background: hex, borderColor: hex }} />
@@ -206,34 +205,33 @@ export default function PhotosStep({ designId }: { designId: string }) {
                       : <span className="chip">{p.width && p.height ? `${p.width} × ${p.height} px ✓` : 'Size not read'}</span>}
                   </div>
                   <div className="row">
-                    <button className={`btn sm ${main ? 'teal' : 'ghost'}`} type="button" disabled={main || p.is_main} onClick={() => void patch(p, { is_main: true }, 'Main photo changed.')}>{main ? 'Main photo' : 'Set as main'}</button>
-                    <button className="btn ghost sm" type="button" onClick={() => void patch(p, { status: 'removed' }, 'Photo removed.')}>Remove</button>
+                    <button className={`hfa-btn sm ${main ? 'tea' : 'ghost'}`} type="button" disabled={main || p.is_main} onClick={() => void patch(p, { is_main: true }, 'Main photo changed.')}>{main ? 'Main photo' : 'Set as main'}</button>
+                    <button className="hfa-btn ghost sm" type="button" onClick={() => void patch(p, { status: 'removed' }, 'Photo removed.')}>Remove</button>
                   </div>
                 </div>
               );
             })}
           </div>
         )}
-        <p style={{ font: '600 14px/1.5 Nunito', color: '#6b4a2b', margin: '12px 0 0' }}>Your photos are for the shop page only. What gets printed is always the print file from Step 3 — never anything taken from these photos.</p>
-      </div>
+        <p className="sa-lead" style={{ margin: '14px 0 0' }}>Your photos are for the shop page only. What gets printed is always the print file from Step 3 — never anything taken from these photos.</p>
+      </DesiCard>
 
-      <div className="panel">
-        <div className="foot" style={{ margin: '0 0 12px' }}><h2>Plain shirt pictures</h2>
-          <span className={`chip ${plainErr ? 'bad' : plainBusy ? 'warn' : 'ok'}`}>{plainErr ?? (plainBusy ? 'Making them from your design…' : 'Made automatically from your design')}</span></div>
-        {plain.length === 0 ? <p className="lead" style={{ margin: 0 }}>{plainBusy ? 'One moment…' : design.print_w ? 'They appear here once made.' : 'Finish Step 3 and they are made from your print file.'}</p> : (
-          <div className="g4">
+      <DesiCard tone="lav" corner="jasmine" title="Plain shirt pictures"
+        action={<span className={`chip ${plainErr ? 'bad' : plainBusy ? 'warn' : 'ok'}`}>{plainErr ?? (plainBusy ? 'Making them from your design…' : 'Made automatically from your design')}</span>}>
+        {plain.length === 0 ? <p className="sa-lead" style={{ margin: 0 }}>{plainBusy ? 'One moment…' : design.print_w ? 'They appear here once made.' : 'Finish Step 3 and they are made from your print file.'}</p> : (
+          <div className="sa-polas">
             {plain.map((p) => (
-              <div className="card" key={p.id}>
-                <img className="thumb-img" src={p.url} alt={p.kind === 'closeup' ? 'Print close-up' : `Plain shirt, ${p.colour ?? ''}`} loading="lazy" style={{ height: 170 }} />
-                <span className="chip">{p.kind === 'closeup' ? 'Close-up' : p.colour}</span>
+              <div className="sa-pola plain" key={p.id}>
+                <img className="thumb-img" src={p.url} alt={p.kind === 'closeup' ? 'Print close-up' : `Plain shirt, ${p.colour ?? ''}`} loading="lazy" style={{ height: 190 }} />
+                <span><span className="chip"><Marigold size={16} />{p.kind === 'closeup' ? 'Close-up' : p.colour}</span></span>
               </div>
             ))}
           </div>
         )}
-      </div>
+      </DesiCard>
       <div className="foot">
-        <a className="btn ghost" href={stepHref(design.id, 'design')}>Back</a>
-        <button type="button" className="btn red" disabled={!!busy || plainBusy} onClick={() => void next()}>Name, price and publish →</button>
+        <a className="hfa-btn ghost" href={stepHref(design.id, 'design')}>Back</a>
+        <button type="button" className="hfa-btn rani" disabled={!!busy || plainBusy} onClick={() => void next()}>Name, price and publish →</button>
       </div>
     </Page>
   );

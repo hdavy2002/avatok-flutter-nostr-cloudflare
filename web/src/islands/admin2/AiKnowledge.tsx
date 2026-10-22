@@ -6,16 +6,16 @@ import { FileText, Loader2, RefreshCw, Trash2, UploadCloud } from 'lucide-react'
 import { capture, captureException } from '../../lib/analytics';
 import { cn } from '../../lib/utils';
 import { Button } from '../../components/ui/button';
-import { Badge } from '../../components/ui/badge';
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter,
   AlertDialogHeader, AlertDialogTitle,
 } from '../../components/ui/alert-dialog';
 import { toast } from '../../components/ui/sonner';
 import { errMessage, istDateTime } from './adminApi';
-import { Empty, ErrorBox, ListSkeleton } from './peopleKit';
+import { ErrorBox, ListSkeleton } from './peopleKit';
 import { aiApi, uploadKnowledgeFile, type AdminAiFile, type AdminAiKnowledgeDoc } from './aiApi';
-import { HINT, Section } from './AiKit';
+import { DesiChip, DesiEmpty, Marigold } from './desi';
+import { HINT, Section, TINT, type TintKey } from './AiKit';
 
 const MAX = 20 * 1024 * 1024;
 const TYPES: Record<string, string> = {
@@ -25,17 +25,21 @@ const TYPES: Record<string, string> = {
 };
 const mimeFor = (f: File): string | null => TYPES[(f.name.split('.').pop() ?? '').toLowerCase()] ?? null;
 
-const STATUS: Record<string, { label: string; variant: 'accent' | 'destructive' | 'muted' | 'outline' | 'secondary' }> = {
-  uploading: { label: 'Uploading', variant: 'secondary' },
-  indexing: { label: 'Indexing', variant: 'secondary' },
-  ready: { label: 'Ready', variant: 'accent' },
-  failed: { label: 'Failed', variant: 'destructive' },
-  needs_review: { label: 'Needs review', variant: 'outline' },
+const STATUS: Record<string, { label: string; tone: 'tea' | 'gold' | 'rani' | 'lav' | 'grey' | 'red' }> = {
+  uploading: { label: 'Uploading', tone: 'lav' },
+  indexing: { label: 'Indexing', tone: 'lav' },
+  ready: { label: 'Ready', tone: 'tea' },
+  failed: { label: 'Failed', tone: 'red' },
+  needs_review: { label: 'Needs review', tone: 'gold' },
 };
 function StatusChip({ s }: { s: string }) {
-  const m = STATUS[s] ?? { label: s, variant: 'muted' as const };
-  return <Badge variant={m.variant} className="whitespace-nowrap">{(s === 'uploading' || s === 'indexing') && <Loader2 className="mr-1 h-3 w-3 animate-spin" />}{m.label}</Badge>;
+  const m = STATUS[s] ?? { label: s, tone: 'grey' as const };
+  return <DesiChip tone={m.tone}>{(s === 'uploading' || s === 'indexing') && <Loader2 className="h-4 w-4 animate-spin" />}{m.label}</DesiChip>;
 }
+const extTint = (name: string): TintKey => {
+  const e = (name.split('.').pop() ?? '').toLowerCase();
+  return e === 'pdf' ? 'rani' : e === 'docx' ? 'lav' : e === 'csv' ? 'gold' : e === 'html' || e === 'htm' ? 'cream' : 'tea';
+};
 const size = (b: number) => (b >= 1048576 ? `${(b / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(b / 1024))} KB`);
 
 export default function AiKnowledge() {
@@ -107,39 +111,44 @@ export default function AiKnowledge() {
   }
 
   return (
-    <div className="space-y-5">
-      <Section title="Your files">
+    <div className="hfa-stack">
+      <Section title="Your files" tone="cream" corner="marigold" pattern="bahi">
         <div
           onDragOver={(e) => { e.preventDefault(); setDrag(true); }}
           onDragLeave={() => setDrag(false)}
           onDrop={(e) => { e.preventDefault(); setDrag(false); void addFiles(e.dataTransfer.files); }}
-          className={cn('flex flex-col items-center gap-2 hf-admin-op-card rounded-xl border-2 border-dashed px-4 py-8 text-center transition-colors', drag ? 'border-accent bg-accent/10' : 'border-border bg-background')}
+          className={cn('relative flex flex-col items-center gap-2 overflow-hidden rounded-3xl border-[3px] border-dashed px-4 py-8 text-center transition-colors', drag ? 'border-[var(--a-rani)] bg-[var(--a-blush)]' : 'border-[var(--a-marigold)] bg-[var(--a-goldtint)]')}
         >
-          <UploadCloud className="h-8 w-8 text-muted-foreground" aria-hidden />
+          <span className="pointer-events-none absolute -left-4 -top-5" aria-hidden="true"><Marigold size={64} tone={1} /></span>
+          <UploadCloud className="h-10 w-10 text-[var(--a-amber)]" aria-hidden />
           <p className="font-dash text-[16px] font-bold text-foreground">Drop files here</p>
           <p className={HINT}>pdf, docx, txt, md, csv or html · up to 20 MB each</p>
           <input ref={input} type="file" multiple accept=".pdf,.docx,.txt,.md,.csv,.html,.htm" className="sr-only" aria-label="Choose files" onChange={(e) => e.target.files && void addFiles(e.target.files)} />
-          <Button variant="outline" onClick={() => input.current?.click()} disabled={up > 0}>
+          <Button variant="outline" className="min-h-11 rounded-full bg-white" onClick={() => input.current?.click()} disabled={up > 0}>
             {up > 0 ? <Loader2 className="animate-spin" /> : null} {up > 0 ? 'Uploading…' : 'Choose files'}
           </Button>
         </div>
 
         <div className="mt-4">
           {fErr ? <ErrorBox message={fErr} onRetry={() => void loadFiles()} /> : !files ? <ListSkeleton rows={2} /> : files.length === 0 ? (
-            <Empty title="No files yet" body="Upload price lists, FAQs or guides she should know." />
+            <DesiEmpty text="No files yet. Upload price lists, FAQs or guides she should know." />
           ) : (
-            <ul className="grid gap-2">
+            <ul className="hfa-tiles">
               {files.map((f) => (
-                <li key={f.id} className="flex flex-wrap items-center gap-3 rounded-lg border border-border/70 bg-background px-3 py-2.5">
-                  <FileText className="h-5 w-5 shrink-0 text-muted-foreground" aria-hidden />
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-[14.5px] font-extrabold text-foreground">{f.file_name}</p>
-                    <p className="text-[14px] font-semibold text-muted-foreground">{size(f.size_bytes)} · {istDateTime(f.created_at)}</p>
-                    {f.error && <p className="text-[14px] font-bold text-destructive">{f.error}</p>}
-                    {f.status === 'needs_review' && <p className="text-[14px] font-semibold text-muted-foreground">Written before a brand change: check it still reads correctly, or re-upload it.</p>}
+                <li key={f.id} className={cn('flex flex-col gap-3 rounded-3xl border-2 p-4 shadow-sm', TINT[extTint(f.file_name)])}>
+                  <div className="flex items-start gap-3">
+                    <span className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-white text-[var(--a-plum)] shadow-sm"><FileText className="h-6 w-6" aria-hidden /></span>
+                    <div className="min-w-0 flex-1">
+                      <p className="break-words text-[15px] font-extrabold text-foreground">{f.file_name}</p>
+                      <p className="text-[14px] font-semibold text-muted-foreground">{size(f.size_bytes)} · {istDateTime(f.created_at)}</p>
+                      {f.error && <p className="text-[14px] font-bold text-[var(--a-bad)]">{f.error}</p>}
+                      {f.status === 'needs_review' && <p className="text-[14px] font-semibold text-muted-foreground">Written before a brand change: check it still reads correctly, or re-upload it.</p>}
+                    </div>
                   </div>
-                  <StatusChip s={f.status} />
-                  <Button size="icon" variant="ghost" aria-label={`Delete ${f.file_name}`} onClick={() => setDel(f)}><Trash2 /></Button>
+                  <div className="flex items-center justify-between gap-2">
+                    <StatusChip s={f.status} />
+                    <Button size="icon" variant="ghost" className="h-11 w-11 bg-white/70" aria-label={`Delete ${f.file_name}`} onClick={() => setDel(f)}><Trash2 /></Button>
+                  </div>
                 </li>
               ))}
             </ul>
@@ -149,12 +158,14 @@ export default function AiKnowledge() {
 
       <Section
         title="Site pages she has read"
+        tone="tea"
+        corner="jasmine"
         aside={
           <div className="flex flex-wrap gap-2">
-            <Button size="sm" variant="outline" disabled={syncing !== null} onClick={() => void sync(false)}>
+            <Button variant="outline" className="min-h-11 rounded-full bg-white" disabled={syncing !== null} onClick={() => void sync(false)}>
               {syncing === 'sync' ? <Loader2 className="animate-spin" /> : <RefreshCw />} Sync now
             </Button>
-            <Button size="sm" variant="outline" disabled={syncing !== null} onClick={() => void sync(true)}>
+            <Button variant="outline" className="min-h-11 rounded-full bg-white" disabled={syncing !== null} onClick={() => void sync(true)}>
               {syncing === 'full' ? <Loader2 className="animate-spin" /> : <RefreshCw />} Full re-sync
             </Button>
           </div>
@@ -162,18 +173,18 @@ export default function AiKnowledge() {
       >
         <p className={cn(HINT, 'mb-3')}>“Sync now” reads only pages that changed. “Full re-sync” re-reads everything, useful after a brand change.</p>
         {dErr ? <ErrorBox message={dErr} onRetry={() => void loadDocs()} /> : !docs ? <ListSkeleton rows={3} /> : docs.length === 0 ? (
-          <Empty title="Nothing synced yet" body="Press “Sync now” to read the site's articles and pages." />
+          <DesiEmpty text="Nothing synced yet. Press “Sync now” to read the site's articles and pages." />
         ) : (
-          <ul className="grid max-h-[460px] gap-1.5 overflow-y-auto">
-            {docs.map((d) => (
-              <li key={d.url} className="flex flex-wrap items-center gap-2 rounded-lg border border-border/60 bg-background px-3 py-2">
-                <Badge variant="outline" className="capitalize">{d.kind}</Badge>
-                <div className="min-w-0 flex-1">
-                  <a href={d.url} target="_blank" rel="noreferrer" className="block truncate text-[14px] font-extrabold text-foreground underline-offset-2 hover:underline">{d.title ?? d.url}</a>
-                  {d.error && <span className="block text-[14px] font-bold text-destructive">{d.error}</span>}
+          <ul className="hfa-tiles max-h-[480px] overflow-y-auto p-1">
+            {docs.map((d, di) => (
+              <li key={d.url} className={cn('flex flex-col gap-2 rounded-2xl border-2 p-3.5', di % 2 ? TINT.gold : TINT.lav)}>
+                <div className="flex flex-wrap items-center gap-2">
+                  <DesiChip tone="plum" className="capitalize">{d.kind}</DesiChip>
+                  <StatusChip s={d.status} />
                 </div>
+                <a href={d.url} target="_blank" rel="noreferrer" className="break-words text-[15px] font-extrabold text-foreground underline-offset-2 hover:underline">{d.title ?? d.url}</a>
+                {d.error && <span className="block text-[14px] font-bold text-[var(--a-bad)]">{d.error}</span>}
                 <span className="text-[14px] font-semibold text-muted-foreground">{d.synced_at ? istDateTime(d.synced_at) : 'not synced'}</span>
-                <StatusChip s={d.status} />
               </li>
             ))}
           </ul>

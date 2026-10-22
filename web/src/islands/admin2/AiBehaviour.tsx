@@ -7,12 +7,12 @@ import { capture, captureException } from '../../lib/analytics';
 import { cn } from '../../lib/utils';
 import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
-import { Badge } from '../../components/ui/badge';
 import { toast } from '../../components/ui/sonner';
 import { errMessage, isAbort, istDateTime } from './adminApi';
 import { ErrorBox, ListSkeleton } from './peopleKit';
 import { aiApi, streamTestChat, type AdminAiBrand, type AdminAiPrompt, type PreetiCard } from './aiApi';
-import { HINT, LABEL, Section } from './AiKit';
+import { DesiChip, DesiEmpty } from './desi';
+import { HINT, LABEL, Section, TINT } from './AiKit';
 
 const CORE_RULES = [
   'Never gives astrology, horoscope or kundli readings, palmistry, numerology or predictions.',
@@ -71,24 +71,24 @@ function TestChat({ promptId, label }: { promptId: string | undefined; label: st
   }
 
   return (
-    <div className="flex h-[520px] flex-col overflow-hidden hf-admin-op-card rounded-xl border border-border bg-background">
-      <div className="flex items-center justify-between gap-2 border-b border-border/60 bg-card px-3 py-2">
+    <div className="flex h-[520px] flex-col overflow-hidden rounded-[28px] border-2 border-[#cfe9eb] bg-[var(--a-cream)] shadow-[0_18px_34px_-20px_rgba(74,23,71,.4)]">
+      <div className="flex items-center justify-between gap-2 bg-[linear-gradient(120deg,var(--a-peacock),#16a3ad)] px-4 py-3 text-white">
         <div className="min-w-0">
-          <p className="font-dashbody text-[14px] font-extrabold text-foreground">Test chat</p>
-          <p className="truncate text-[14px] font-semibold text-muted-foreground">Using {label}. Not shown in Conversations.</p>
+          <p className="font-dash text-[17px] font-black">Test chat</p>
+          <p className="truncate text-[14px] font-semibold opacity-90">Using {label}. Not shown in Conversations.</p>
         </div>
-        <Button size="sm" variant="ghost" onClick={reset}><RotateCcw /> New</Button>
+        <Button variant="ghost" className="min-h-11 rounded-full bg-white/15 text-white hover:bg-white/25 hover:text-white" onClick={reset}><RotateCcw /> New</Button>
       </div>
-      <div className="flex-1 space-y-2 overflow-y-auto p-3" aria-live="polite">
+      <div className="flex-1 space-y-2.5 overflow-y-auto p-3 sm:p-4" aria-live="polite">
         {lines.length === 0 && <p className={cn(HINT, 'py-6 text-center')}>Ask her something, like “Which havan is coming up?”.</p>}
         {lines.map((l, i) => l.role === 'note' ? (
-          <p key={i} className="mx-auto w-fit max-w-full rounded-full bg-muted px-3 py-1 text-center text-[14px] font-bold text-muted-foreground">{l.text}</p>
+          <p key={i} className="mx-auto w-fit max-w-full rounded-full bg-[var(--a-goldtint)] px-3 py-1 text-center text-[14px] font-bold text-[var(--a-amber)]">{l.text}</p>
         ) : (
           <div key={i} className={cn('flex', l.role === 'me' ? 'justify-end' : 'justify-start')}>
-            <div className={cn('max-w-[85%] whitespace-pre-wrap break-words rounded-2xl px-3 py-2 text-[14.5px] font-semibold leading-relaxed', l.role === 'me' ? 'bg-accent text-accent-foreground' : 'border border-border bg-card text-foreground')}>
+            <div className={cn('max-w-[85%] whitespace-pre-wrap break-words rounded-2xl px-3 py-2 text-[14.5px] font-semibold leading-relaxed', l.role === 'me' ? 'rounded-br-md border border-[#e4dafc] bg-[var(--a-lavtint)] text-foreground' : 'rounded-bl-md border border-[#cfe9eb] bg-[var(--a-teatint)] text-foreground')}>
               {l.text || (busy && i === lines.length - 1 ? <Loader2 className="h-4 w-4 animate-spin" aria-label="Thinking" /> : '')}
               {l.cards.map((c, j) => (
-                <div key={j} className="mt-2 rounded-lg border border-border/70 bg-background p-2 text-[14px] text-foreground">
+                <div key={j} className="mt-2 rounded-xl border border-white bg-white/80 p-2 text-[14px] text-foreground">
                   <b>{c.title}</b>
                   {c.type === 'event' ? <span className="block text-muted-foreground">{c.price_rupees != null ? `₹${c.price_rupees}` : 'Free'}{c.live_now ? ' · live now' : ''}</span> : <span className="block text-muted-foreground">Article</span>}
                 </div>
@@ -98,9 +98,9 @@ function TestChat({ promptId, label }: { promptId: string | undefined; label: st
         ))}
         <div ref={end} />
       </div>
-      <form className="flex gap-2 border-t border-border/60 bg-card p-2" onSubmit={(e) => { e.preventDefault(); void send(); }}>
-        <Input value={text} maxLength={2000} onChange={(e) => setText(e.target.value)} placeholder="Type a test message" aria-label="Test message" disabled={busy} />
-        <Button type="submit" variant="accent" size="icon" disabled={busy || !text.trim()} aria-label="Send">{busy ? <Loader2 className="animate-spin" /> : <Send />}</Button>
+      <form className="flex gap-2 border-t-2 border-dashed border-[#cfe9eb] bg-white p-2.5" onSubmit={(e) => { e.preventDefault(); void send(); }}>
+        <Input className="h-11" value={text} maxLength={2000} onChange={(e) => setText(e.target.value)} placeholder="Type a test message" aria-label="Test message" disabled={busy} />
+        <Button type="submit" variant="accent" size="icon" className="h-11 w-11 shrink-0 rounded-full" disabled={busy || !text.trim()} aria-label="Send">{busy ? <Loader2 className="animate-spin" /> : <Send />}</Button>
       </form>
     </div>
   );
@@ -181,23 +181,23 @@ export default function AiBehaviour() {
   if (!prompts) return <ListSkeleton rows={4} />;
 
   return (
-    <div className="grid gap-5 lg:grid-cols-[1fr_400px]">
-      <div className="min-w-0 space-y-5">
-        <Section title="Versions">
-          {prompts.length === 0 ? <p className={HINT}>No versions yet. Write one below and save it.</p> : (
-            <ul className="grid max-h-64 gap-2 overflow-y-auto">
-              {prompts.map((p) => (
+    <div className="grid gap-[clamp(12px,1.2vw,20px)] lg:grid-cols-[minmax(0,1fr)_minmax(22rem,26rem)]">
+      <div className="hfa-stack min-w-0">
+        <Section title="Versions" tone="lav" corner="hibiscus">
+          {prompts.length === 0 ? <DesiEmpty text="No versions yet. Write one below and save it." /> : (
+            <ul className="hfa-tiles max-h-80 overflow-y-auto p-1">
+              {prompts.map((p, pi) => (
                 <li key={p.id}>
                   <button
                     type="button" onClick={() => { setSelected(p.id); setBody(p.body); }}
                     aria-pressed={p.id === selected}
-                    className={cn('flex w-full items-center gap-2 rounded-lg border px-3 py-2 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring', p.id === selected ? 'border-accent bg-accent/10' : 'border-border/70 hover:bg-muted')}
+                    className={cn('flex min-h-[64px] w-full items-center gap-2 rounded-2xl border-2 px-4 py-3 text-left transition-transform hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring', p.active ? TINT.tea : pi % 2 ? TINT.gold : TINT.cream, p.id === selected && 'ring-[3px] ring-[var(--a-rani)]')}
                   >
                     <span className="min-w-0 flex-1">
-                      <span className="block truncate text-[14px] font-extrabold text-foreground">{p.note || `Version ${p.id.slice(0, 6)}`}</span>
+                      <span className="block truncate text-[15px] font-extrabold text-foreground">{p.note || `Version ${p.id.slice(0, 6)}`}</span>
                       <span className="block truncate text-[14px] font-semibold text-muted-foreground">{p.created_by} · {istDateTime(p.created_at)}</span>
                     </span>
-                    {p.active && <Badge variant="accent">Active</Badge>}
+                    {p.active && <DesiChip tone="tea">Active</DesiChip>}
                   </button>
                 </li>
               ))}
@@ -205,42 +205,47 @@ export default function AiBehaviour() {
           )}
         </Section>
 
-        <Section title="Instructions">
+        <Section title="Instructions" tone="gold" corner="marigold" pattern="bahi">
           <div className="grid gap-3">
             <label htmlFor="ai-prompt" className={LABEL}>Her instructions {sel && <span className={HINT}>(started from {sel.active ? 'the active version' : 'an older version'})</span>}</label>
             <textarea
               id="ai-prompt" rows={22} value={body} onChange={(e) => setBody(e.target.value)}
-              className="w-full resize-y rounded-md border border-input bg-background px-3 py-2 font-dashbody text-[15px] font-medium leading-relaxed text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className="w-full resize-y rounded-2xl border-2 border-[#ecd9bd] bg-white/90 px-3 py-2 font-dashbody text-[15px] font-medium leading-relaxed text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               style={{ minHeight: '28rem' }}
             />
             <p className={HINT}>Use <code>{'{agent}'}</code>, <code>{'{brand}'}</code>, <code>{'{domain}'}</code> and <code>{'{site}'}</code> instead of typing names, so a future rename needs no edits here.</p>
             {literal && brand && (
-              <div role="note" className="flex flex-wrap items-center gap-2 rounded-lg border border-grand-gold/70 bg-grand-gold/20 p-3 text-[14px] font-semibold text-foreground">
+              <div role="note" className="flex flex-wrap items-center gap-2 rounded-2xl border-2 border-dashed border-[var(--a-marigold)] bg-[var(--a-goldtint)] p-3 text-[14px] font-semibold text-foreground">
                 <span className="min-w-0 flex-1">The text contains the current {[literal.hasName && 'brand name', literal.hasDom && 'domain'].filter(Boolean).join(' and ')} typed out.</span>
-                <Button size="sm" variant="outline" onClick={replaceLiterals}>Replace with {'{brand}'}/{'{domain}'}</Button>
+                <Button variant="outline" className="min-h-11 rounded-full bg-white" onClick={replaceLiterals}>Replace with {'{brand}'}/{'{domain}'}</Button>
               </div>
             )}
             <div className="grid gap-1.5 sm:max-w-md">
               <label htmlFor="ai-note" className={LABEL}>Note for this version (optional)</label>
-              <Input id="ai-note" value={note} maxLength={120} onChange={(e) => setNote(e.target.value)} placeholder="What changed?" />
+              <Input id="ai-note" className="h-11 bg-white" value={note} maxLength={120} onChange={(e) => setNote(e.target.value)} placeholder="What changed?" />
             </div>
             <div className="flex flex-wrap items-center gap-2">
-              <Button variant="accent" onClick={() => void saveVersion()} disabled={busy !== null || !body.trim() || (!changed && prompts.length > 0)}>
+              <Button variant="accent" className="min-h-11 rounded-full" onClick={() => void saveVersion()} disabled={busy !== null || !body.trim() || (!changed && prompts.length > 0)}>
                 {busy === 'save' ? <Loader2 className="animate-spin" /> : null} Save as new version
               </Button>
-              <Button variant="outline" onClick={() => void publish()} disabled={busy !== null || !sel || sel.active || changed}>
+              <Button variant="outline" className="min-h-11 rounded-full bg-white" onClick={() => void publish()} disabled={busy !== null || !sel || sel.active || changed}>
                 {busy === 'publish' ? <Loader2 className="animate-spin" /> : <PublishIcon />} Publish this version
               </Button>
-              {sel?.active && <span className={HINT}>This version is live.</span>}
-              {changed && sel && <span className={HINT}>Save your edits before publishing.</span>}
+              {sel?.active && <DesiChip tone="tea">This version is live</DesiChip>}
+              {changed && sel && <DesiChip tone="gold">Save your edits before publishing</DesiChip>}
             </div>
           </div>
         </Section>
 
-        <Section title="Core rules (locked)" aside={<Lock className="h-4 w-4 text-muted-foreground" aria-label="Locked" />}>
-          <p className={cn(HINT, 'mb-2')}>These are built in and apply whatever the instructions above say. They cannot be edited here.</p>
-          <ul className="grid gap-1.5">
-            {CORE_RULES.map((r) => <li key={r} className="flex gap-2 text-[14px] font-semibold text-foreground"><Lock className="mt-1 h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden />{r}</li>)}
+        <Section title="Core rules (locked)" tone="rani" corner="hibiscus" pattern="stripes" aside={<DesiChip tone="rani"><Lock className="h-4 w-4" aria-label="Locked" /> Locked</DesiChip>}>
+          <p className={cn(HINT, 'mb-3')}>These are built in and apply whatever the instructions above say. They cannot be edited here.</p>
+          <ul className="hfa-tiles">
+            {CORE_RULES.map((r, ri) => (
+              <li key={r} className={cn('flex gap-3 rounded-2xl border-2 p-3.5 text-[14px] font-semibold leading-relaxed text-foreground', ri % 3 === 0 ? TINT.rani : ri % 3 === 1 ? TINT.gold : TINT.lav)}>
+                <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-white text-[var(--a-rani)] shadow-sm"><Lock className="h-4 w-4" aria-hidden /></span>
+                <span className="min-w-0 self-center">{r}</span>
+              </li>
+            ))}
           </ul>
         </Section>
       </div>

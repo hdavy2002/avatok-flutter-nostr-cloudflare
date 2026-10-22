@@ -1,6 +1,9 @@
 import { useCallback, useEffect, useState } from 'react';
 import { apiUrl, hfAdminApi, type KycItem } from '../../../lib/hfAdminApi';
-import { Banner, ConsultShell, Spinner, dateIST, fail } from '../consultants/kit';
+import { Clapperboard, IdCard, Phone } from 'lucide-react';
+import { dateIST, fail } from '../consultants/kit';
+import { DesiCard, DesiChip, DesiEmpty, DesiKpi, DesiKpis, Marigold } from '../desi';
+import { HBanner } from './hostsKit';
 
 type Tab = 'pending' | 'approved' | 'rejected';
 const tabs: { key: Tab; label: string }[] = [
@@ -8,7 +11,6 @@ const tabs: { key: Tab; label: string }[] = [
   { key: 'approved', label: 'Approved' },
   { key: 'rejected', label: 'Rejected' },
 ];
-const text14 = { fontSize: 14 } as const;
 
 export default function KycReviews() {
   const [tab, setTab] = useState<Tab>('pending');
@@ -37,37 +39,49 @@ export default function KycReviews() {
     setBusy(null);
   };
 
-  return <ConsultShell className="hf-admin-operations">
-    <div role="tablist" aria-label="Video KYC status" style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 16 }}>
-      {tabs.map((entry) => <button key={entry.key} type="button" role="tab" aria-selected={tab === entry.key} className={`slot${tab === entry.key ? ' on' : ''}`} style={{ padding: '0 14px', ...text14 }} onClick={() => setTab(entry.key)}>{entry.label}</button>)}
+  const applicants = items?.filter((i) => i.aadhaar?.role === 'host').length ?? 0;
+  return <div className="hfa-stack">
+    <div role="tablist" aria-label="Video KYC status" className="hfa-pills">
+      {tabs.map((entry) => <button key={entry.key} type="button" role="tab" aria-selected={tab === entry.key} className="hfa-pill" onClick={() => setTab(entry.key)}>{entry.label}</button>)}
     </div>
-    {error && <div style={{ marginBottom: 12 }}><Banner tone="error">{error}</Banner></div>}
-    {info && <div style={{ marginBottom: 12 }}><Banner tone="info">{info}</Banner></div>}
-    {items === null && <Spinner label="Loading video KYC reviews…" />}
-    {items?.length === 0 && !error && <div className="card muted" style={text14}>Nothing here.</div>}
-    <div style={{ display: 'grid', gap: 16 }}>
-      {items?.map((item) => <article className="card" key={item.selfieId} style={{ display: 'grid', gap: 12, background: 'var(--hf-admin-cream)' }}>
-        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', ...text14 }}>
-          <strong>{item.aadhaar?.name || item.email || item.uid}</strong>
-          {item.email && <span className="muted">{item.email}</span>}
-          <span className="chip neel">{item.aadhaar?.role === 'host' ? 'Creator applicant' : 'Caller verification'}</span>
-          {item.createdAt && <span className="muted">{dateIST(item.createdAt)}</span>}
-        </div>
-        <p style={{ margin: 0, ...text14 }}>Identity: {item.aadhaar ? `${item.aadhaar.gender} · Aadhaar ending ${item.aadhaar.last4 || '—'}` : 'identity data unavailable'} · spoken code {item.code || '—'}</p>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(240px,1fr))', gap: 12 }}>
-          <div><strong style={text14}>Selfie video</strong><video controls playsInline preload="metadata" src={apiUrl(item.selfieUrl)} style={{ width: '100%', borderRadius: 10, background: '#000', marginTop: 6 }} /></div>
-          <div><strong style={text14}>Identity photo</strong>{item.photoUrl ? <img src={apiUrl(item.photoUrl)} alt="Identity document portrait" style={{ width: '100%', borderRadius: 10, marginTop: 6 }} /> : <p className="muted" style={text14}>No identity photo supplied.</p>}</div>
-        </div>
-        {item.reason && <p className="muted" style={{ margin: 0, ...text14 }}>Reason: {item.reason}</p>}
-        {tab === 'pending' && <div style={{ display: 'grid', gap: 8 }}>
-          <label htmlFor={`reason-${item.selfieId}`} style={{ fontWeight: 800, ...text14 }}>Reason if asking for a new recording</label>
-          <textarea id={`reason-${item.selfieId}`} rows={2} maxLength={500} value={reason[item.selfieId] || ''} onChange={(event) => setReason((current) => ({ ...current, [item.selfieId]: event.target.value }))} />
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-            <button type="button" className="btn small" disabled={busy === item.selfieId} onClick={() => void decide(item, 'approve')}>Approve video KYC</button>
-            <button type="button" className="btn small red" disabled={busy === item.selfieId || (reason[item.selfieId] || '').trim().length < 3} onClick={() => void decide(item, 'reject')}>Record again</button>
+    <DesiKpis>
+      <DesiKpi tone="plum" label={tabs.find((t) => t.key === tab)?.label ?? ''} value={items ? items.length : '…'} sub="IDs in this list" icon={<IdCard aria-hidden="true" />} />
+      <DesiKpi tone="lav" label="Creator applicants" value={items ? applicants : '…'} icon={<Clapperboard aria-hidden="true" />} />
+      <DesiKpi tone="gold" label="Caller verifications" value={items ? items.length - applicants : '…'} icon={<Phone aria-hidden="true" />} />
+    </DesiKpis>
+    {error && <HBanner tone="error">{error}</HBanner>}
+    {info && <HBanner tone="info">{info}</HBanner>}
+    {items === null && <DesiCard tone="cream" pattern="dots"><p role="status" className="hfa-note">Loading video KYC reviews…</p></DesiCard>}
+    {items?.length === 0 && !error && <DesiCard tone="lav" corner="marigold"><DesiEmpty text="Nothing here." /></DesiCard>}
+    <div className="hfh-idlist">
+      {items?.map((item) => <article className="hfh-id" key={item.selfieId}>
+        <div className="hfh-id-in">
+          <span className="hfa-corner" aria-hidden="true"><Marigold size={92} /></span>
+          <div className="hfh-id-media">
+            <div><p className="hfh-id-cap">Selfie video</p><div className="hfh-id-photo"><video controls playsInline preload="metadata" src={apiUrl(item.selfieUrl)} style={{ width: '100%', display: 'block', background: '#000' }} /></div></div>
+            <div><p className="hfh-id-cap">Identity photo</p>{item.photoUrl ? <div className="hfh-id-photo"><img src={apiUrl(item.photoUrl)} alt="Identity document portrait" /></div> : <p className="hfa-note">No identity photo supplied.</p>}</div>
           </div>
-        </div>}
+          <div className="hfh-id-det">
+            <DesiChip tone="lav">{item.aadhaar?.role === 'host' ? 'Creator applicant' : 'Caller verification'}</DesiChip>
+            <h3 className="hfh-id-name">{item.aadhaar?.name || item.email || item.uid}</h3>
+            {item.email && <span className="hfa-note">{item.email}</span>}
+            {item.createdAt && <span className="hfa-note">{dateIST(item.createdAt)}</span>}
+            <p style={{ margin: 0 }}>Identity: {item.aadhaar ? `${item.aadhaar.gender} · Aadhaar ending ${item.aadhaar.last4 || '—'}` : 'identity data unavailable'}</p>
+            <span className="hfh-id-code">Spoken code <b>{item.code || '—'}</b></span>
+            {item.reason && <p className="hfa-note" style={{ margin: 0 }}>Reason: {item.reason}</p>}
+          </div>
+          {tab === 'pending' && <div className="hfh-id-decide">
+            <label htmlFor={`reason-${item.selfieId}`} className="hfh-field">Reason if asking for a new recording
+              <textarea id={`reason-${item.selfieId}`} rows={2} maxLength={500} value={reason[item.selfieId] || ''} onChange={(event) => setReason((current) => ({ ...current, [item.selfieId]: event.target.value }))} />
+            </label>
+            <div className="hfh-acts">
+              <button type="button" className="hfa-btn tea" disabled={busy === item.selfieId} onClick={() => void decide(item, 'approve')}>Approve video KYC</button>
+              <button type="button" className="hfa-btn danger" disabled={busy === item.selfieId || (reason[item.selfieId] || '').trim().length < 3} onClick={() => void decide(item, 'reject')}>Record again</button>
+            </div>
+          </div>}
+        </div>
+        <div className="hfh-id-stripe" aria-hidden="true" />
       </article>)}
     </div>
-  </ConsultShell>;
+  </div>;
 }

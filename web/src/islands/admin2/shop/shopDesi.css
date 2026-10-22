@@ -1,0 +1,47 @@
+/* [HF-ADMIN-DESI-3] Shop promote tiles, coupon tickets, settings groups. Kit: styles/hf-admin-desi.css */
+.hf-admin .sd-intro .sh-help{margin:0}
+.hf-admin .sd-places{grid-template-columns:repeat(auto-fill,minmax(min(100%,22rem),1fr))}
+.hf-admin .sd-place{display:flex;flex-direction:column;gap:12px;box-shadow:var(--a-shadow);padding:clamp(16px,1.4vw,24px)}
+.hf-admin .sd-place-head{display:flex;gap:14px;align-items:center;padding-right:56px}
+.hf-admin .sd-place h3{font:900 var(--fs-h2) Nunito,sans-serif;margin:0;color:var(--a-ink)}
+.hf-admin .sd-place p{margin:0;font-size:var(--fs-small);color:var(--a-muted)}
+.hf-admin .sd-place-num{flex:none;min-width:64px;height:64px;border-radius:20px;display:grid;place-items:center;font:900 34px Nunito,sans-serif;color:#fff;background:linear-gradient(135deg,var(--a-rani),#f0408f);box-shadow:0 8px 16px -10px var(--a-plum)}
+.hf-admin .hfa-t-lav.sd-place .sd-place-num{background:linear-gradient(135deg,var(--a-lav),#a48cf0)}
+.hf-admin .hfa-t-gold.sd-place .sd-place-num{background:linear-gradient(135deg,var(--a-marigold),var(--a-saffron));color:#3b1600}
+.hf-admin .hfa-t-tea.sd-place .sd-place-num{background:linear-gradient(135deg,var(--a-peacock),#16a3ad)}
+.hf-admin .sd-place .hfa-empty{padding:10px 0}
+.hf-admin .sd-place .sh-slot-items{align-items:center}
+.hf-admin .sd-place .sh-chipx{background:#fffc;box-shadow:0 4px 10px -8px var(--a-plum)}
+.hf-admin .sd-add{min-height:44px}
+/* coupons */
+.hf-admin .sd-bar{margin-bottom:16px}
+.hf-admin .sd-tickets{display:grid;gap:clamp(14px,1.4vw,22px);grid-template-columns:repeat(auto-fill,minmax(min(100%,26rem),1fr))}
+.hf-admin .sd-ticket{--tk-a:#ffe6ef;--tk-b:#ffd6e5;--tk-ink:var(--a-rani);position:relative;display:grid;grid-template-columns:minmax(7.5rem,32%) 22px minmax(0,1fr);border-radius:22px;background:repeating-linear-gradient(135deg,var(--tk-a) 0 16px,var(--tk-b) 16px 32px);border:1px solid var(--a-line);box-shadow:0 14px 26px -18px var(--a-plum);min-width:0}
+.hf-admin .sd-tk-lav{--tk-a:#f1ebff;--tk-b:#e6dcff;--tk-ink:var(--a-lav)}
+.hf-admin .sd-tk-gold{--tk-a:#fff1d6;--tk-b:#ffe8bd;--tk-ink:var(--a-amber)}
+.hf-admin .sd-tk-tea{--tk-a:#e3f5f6;--tk-b:#d2eef0;--tk-ink:var(--a-peacock)}
+.hf-admin .sd-ticket.is-dim{filter:saturate(.45)}
+.hf-admin .sd-stub{display:grid;place-items:center;padding:14px 4px;position:relative}
+.hf-admin .sd-burst{position:absolute;inset:8px;margin:auto;width:calc(100% - 8px);max-width:150px;aspect-ratio:1;filter:drop-shadow(0 6px 8px #4a174740)}
+.hf-admin .sd-burst polygon{fill:#f59e0b;stroke:#ea6a12;stroke-width:2;stroke-linejoin:round}
+.hf-admin .sd-off{position:relative;display:flex;flex-direction:column;align-items:center;color:#3b1600;line-height:1}
+.hf-admin .sd-off b{font:900 clamp(22px,1.1vw + 14px,34px) Nunito,sans-serif;overflow-wrap:anywhere}
+.hf-admin .sd-off small{font:900 14px Nunito,sans-serif;letter-spacing:.14em;text-transform:uppercase}
+.hf-admin .sd-cut{position:relative;border-left:3px dashed var(--tk-ink);margin:10px 0;display:grid;place-items:center}
+.hf-admin .sd-cut span{background:#fff8f0;color:var(--tk-ink);font-size:16px;line-height:1;padding:4px 0;margin-left:-3px;transform:rotate(90deg)}
+.hf-admin .sd-cut i{position:absolute;left:-14px;width:26px;height:26px;border-radius:50%;background:#fff8f0;border:1px solid var(--a-line)}
+.hf-admin .sd-cut i.t{top:-22px}.hf-admin .sd-cut i.b{bottom:-22px}
+.hf-admin .sd-main{display:flex;flex-direction:column;align-items:flex-start;gap:10px;padding:16px 16px 16px 6px;min-width:0}
+.hf-admin .sd-code{font:900 clamp(22px,1vw + 16px,32px) ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.06em;color:var(--a-ink);overflow-wrap:anywhere;border-bottom:3px dashed var(--tk-ink)}
+.hf-admin .sd-facts{display:flex;flex-wrap:wrap;gap:6px 18px;margin:0}
+.hf-admin .sd-facts dt{font-size:14px;color:var(--a-muted);font-weight:700}
+.hf-admin .sd-facts dd{margin:0;font:800 var(--fs-body) Nunito,sans-serif;color:var(--a-ink)}
+@media (max-width:420px){.hf-admin .sd-ticket{grid-template-columns:minmax(6rem,28%) 20px minmax(0,1fr)}}
+/* settings */
+.hf-admin .sd-groups{align-items:stretch}
+.hf-admin .sd-form{display:flex;flex-direction:column;gap:10px}
+.hf-admin .sd-row{display:flex!important;flex-direction:column;gap:8px;padding:12px 14px;border-radius:16px;background:#ffffffb8;border:1.5px dashed #00000022;font:800 var(--fs-small) Nunito,sans-serif;color:var(--a-ink)}
+.hf-admin .sd-row.is-edit{background:#fff;border:2px solid var(--a-rani)}
+.hf-admin .sd-row .hfa-chip{align-self:flex-start}
+.hf-admin .sd-row :is(input,select){width:100%}
+.hf-admin .sd-save{display:flex;justify-content:flex-start}

@@ -3,8 +3,9 @@
  * striped placeholder as the empty state, and the busy-button helper. Markup/classes are the
  * mockup's (Specs/shop-mockup/shop-main.html + shop.js); CSS lives in shopAdmin.css. */
 import { useEffect, type ReactNode } from 'react';
+import { DesiCard, Jasmine, Marigold } from '../desi';
 
-export function Modal({ open, onClose, children }: { open: boolean; onClose: () => void; children: ReactNode }) {
+export function Modal({ open, onClose, children, wide }: { open: boolean; onClose: () => void; children: ReactNode; wide?: boolean }) {
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
@@ -14,7 +15,10 @@ export function Modal({ open, onClose, children }: { open: boolean; onClose: () 
   if (!open) return null;
   return (
     <div className="sh-modal is-on" role="dialog" aria-modal="true" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
-      <div className="sh-modal-box">{children}</div>
+      <div className={`sh-modal-box${wide ? ' sh-modal-box--wide' : ''}`}>
+        <span className="sh-modal-art" aria-hidden="true"><Marigold size={58} tone={1} /><Jasmine size={26} /></span>
+        {children}
+      </div>
     </div>
   );
 }
@@ -30,7 +34,7 @@ export function Drawer({ open, title, onClose, children }: { open: boolean; titl
     <>
       <div className={`sh-scrim${open ? ' is-on' : ''}`} onClick={onClose} />
       <aside className={`sh-drawer${open ? ' is-on' : ''}`} aria-label={title} aria-hidden={!open}>
-        <div className="sh-dh"><h2>{title}</h2><button type="button" className="sh-x" onClick={onClose} aria-label="Close">×</button></div>
+        <div className="sh-dh"><h2><Marigold size={26} />{title}</h2><button type="button" className="sh-x" onClick={onClose} aria-label="Close">×</button></div>
         <div className="sh-drawer-body">{open ? children : null}</div>
       </aside>
     </>
@@ -49,10 +53,11 @@ export function Spinner({ label = 'Loading…' }: { label?: string }) {
 
 export function LoadError({ message, onRetry }: { message: string; onRetry: () => void }) {
   return (
-    <div className="sh-panel" role="alert">
-      <h2>Couldn’t load this</h2>
-      <p>{message}</p>
-      <button type="button" className="sh-btn sh-btn--teal" onClick={onRetry}>Try again</button>
+    <div role="alert">
+      <DesiCard tone="rani" corner="hibiscus" title="Couldn’t load this">
+        <p className="sh-help">{message}</p>
+        <button type="button" className="sh-btn sh-btn--teal" onClick={onRetry}>Try again</button>
+      </DesiCard>
     </div>
   );
 }

@@ -3,11 +3,12 @@
  * ?event=<listing id> shows that event's header with seats and revenue.
  * Filters sync to the URL; phones get cards and a filter drawer. */
 import { useMemo } from 'react';
-import { CalendarDays, Users, IndianRupee, Clock, X } from 'lucide-react';
+import { CalendarDays, Users, IndianRupee, Clock, Undo2, X } from 'lucide-react';
 import { istDateTime } from './adminApi';
+import { DesiAvatar, DesiCard, DesiChip, DesiEmpty, DesiKpi, DesiKpis, DesiMogra } from './desi';
 import {
-  CopyValue, CustomerCell, DateField, Empty, ErrorBox, ExportButton, FilterBar, ListSkeleton, LoadMore, SearchBox,
-  StatusPill, StatusToggles, TD, TH, Tile, dayMs, formatPaise, usePaged, useUrlFilters, type Customer,
+  CopyValue, CustomerCell, DateField, ErrorBox, ExportButton, FilterBar, ListSkeleton, LoadMore, SearchBox,
+  StatusToggles, dayMs, formatPaise, usePaged, useUrlFilters, type Customer,
 } from './peopleKit';
 
 interface Booking {
@@ -21,6 +22,16 @@ interface EventHead { id: string; title: string; status: string; starts_at: numb
 
 const KEYS = ['q', 'status', 'from', 'to', 'event'] as const;
 const STATUSES = ['paid', 'free', 'pending', 'refund_requested', 'refunded'] as const;
+
+/* Guest-list colours: confirmed paid = peacock, free = lavender, waiting = gold, money back = rani. */
+const SEAT: Record<string, { chip: 'tea' | 'gold' | 'lav' | 'rani' | 'grey'; label: string; ink: string; stub: string }> = {
+  paid: { chip: 'tea', label: 'Paid', ink: '#0e7c86', stub: 'linear-gradient(160deg,#0e7c86,#4fb5bd)' },
+  free: { chip: 'lav', label: 'Free', ink: '#6d4fd0', stub: 'linear-gradient(160deg,#6d4fd0,#a48cf0)' },
+  pending: { chip: 'gold', label: 'Pending', ink: '#b45309', stub: 'linear-gradient(160deg,#f59e0b,#fbbf24)' },
+  refund_requested: { chip: 'lav', label: 'Refund requested', ink: '#6d4fd0', stub: 'linear-gradient(160deg,#8a2b7d,#a48cf0)' },
+  refunded: { chip: 'rani', label: 'Refunded', ink: '#d81b72', stub: 'linear-gradient(160deg,#d81b72,#f06ba5)' },
+};
+const seat = (status: string) => SEAT[status] ?? { chip: 'grey' as const, label: status, ink: '#6f5b6f', stub: 'linear-gradient(160deg,#6f5b6f,#a99aa9)' };
 
 function amount(b: Booking) {
   return b.status === 'free' ? 'Free' : formatPaise(b.amount_paise);
@@ -48,50 +59,53 @@ export default function Bookings() {
   );
 
   return (
-    <div className="hf-admin-operations space-y-5">
+    <div className="hf-admin-operations hfa-stack">
       {applied.event && (
-        <section className="hf-admin-op-card rounded-xl border border-border bg-card p-4 shadow-sm sm:p-5">
+        <DesiCard tone="saffron" corner="marigold">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div className="min-w-0">
-              <div className="text-[14px] font-extrabold uppercase tracking-[0.08em] text-muted-foreground">Bookings for one event</div>
-              <h2 className="mt-1 font-dash text-[20px] font-bold text-[var(--hf-admin-plum,#4a1747)] sm:text-[22px]">{event?.title ?? (list.phase === 'loading' ? '…' : 'Event')}</h2>
+              <div className="hfa-eyebrow !text-[#5a1d00]">Bookings for one event</div>
+              <h2 className="mt-1 font-['Nunito'] font-black leading-[1.05] text-[#3b1600] [overflow-wrap:anywhere]" style={{ fontSize: 'clamp(24px, 14px + 1.6vw, 40px)' }}>{event?.title ?? (list.phase === 'loading' ? '…' : 'Event')}</h2>
               {event && (
-                <p className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[14px] font-semibold text-muted-foreground">
+                <p className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 font-bold text-[#3b1600]">
                   <span className="inline-flex items-center gap-1"><CalendarDays className="h-4 w-4" />{event.starts_at ? istDateTime(event.starts_at) : 'No date'}</span>
                   <span>{event.price_paise ? formatPaise(event.price_paise) : 'Free'} a seat</span>
-                  <a className="font-bold text-accent underline-offset-2 hover:underline" href={`/admin/events/${encodeURIComponent(event.id)}`}>Edit event</a>
+                  <a className="inline-flex min-h-[44px] items-center font-extrabold text-[#3b1600] underline underline-offset-2" href={`/admin/events/${encodeURIComponent(event.id)}`}>Edit event</a>
                 </p>
               )}
             </div>
-            <a href="/admin/bookings" className="inline-flex h-9 items-center gap-1 rounded-md border border-border bg-card px-3 text-[14px] font-bold text-foreground no-underline hover:bg-muted">
+            <a href="/admin/bookings" className="hfa-btn ghost no-underline">
               <X className="h-4 w-4" /> All bookings
             </a>
           </div>
-        </section>
+        </DesiCard>
       )}
 
       {totals && (
-        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-          <Tile tone="accent" label="Seats" value={<span className="inline-flex items-center gap-2"><Users className="h-5 w-5 text-accent" />{totals.seats}{event?.capacity ? <span className="text-[15px] text-muted-foreground"> / {event.capacity}</span> : null}</span>}
-            hint={`${totals.paid_seats} paid · ${totals.free_seats} free`} />
-          <Tile label="Revenue" value={<span className="inline-flex items-center gap-1"><IndianRupee className="h-5 w-5 text-accent" />{formatPaise(totals.revenue_paise).replace('₹', '')}</span>} hint="Paid seats, refunds excluded" />
-          <Tile tone="gold" label="Pending" value={<span className="inline-flex items-center gap-2"><Clock className="h-5 w-5 text-grand-gold" />{totals.pending}</span>} hint={totals.pending ? `${formatPaise(totals.pending_paise)} awaiting the bank` : 'Nothing waiting'} />
-          <Tile tone="muted" label="Refunded" value={totals.refunded} hint={`${totals.bookings} bookings in this view`} />
-        </div>
+        <DesiKpis>
+          <DesiKpi tone="plum" icon={<Users strokeWidth={2.2} />} label="Seats"
+            value={<span>{totals.seats}{event?.capacity ? <span className="text-[0.5em] opacity-80"> / {event.capacity}</span> : null}</span>}
+            sub={`${totals.paid_seats} paid · ${totals.free_seats} free`} />
+          <DesiKpi tone="tea" icon={<IndianRupee strokeWidth={2.2} />} label="Revenue" value={formatPaise(totals.revenue_paise)} sub="Paid seats, refunds excluded" />
+          <DesiKpi tone="gold" icon={<Clock strokeWidth={2.2} />} label="Pending" value={totals.pending} sub={totals.pending ? `${formatPaise(totals.pending_paise)} awaiting the bank` : 'Nothing waiting'} />
+          <DesiKpi tone="rani" icon={<Undo2 strokeWidth={2.2} />} label="Refunded" value={totals.refunded} sub={`${totals.bookings} bookings in this view`} />
+        </DesiKpis>
       )}
 
-      <FilterBar
-        title="Filter bookings"
-        count={count}
-        onClear={clear}
-        resultLabel="Show results"
-        search={<SearchBox value={f.q} onChange={(v) => set({ q: v })} label="Search bookings" placeholder="Name, email, phone last 4, UTR, event" />}
-      >
-        {filters}
-      </FilterBar>
+      <DesiCard tone="lav" corner="jasmine" pattern="dots">
+        <FilterBar
+          title="Filter bookings"
+          count={count}
+          onClear={clear}
+          resultLabel="Show results"
+          search={<SearchBox value={f.q} onChange={(v) => set({ q: v })} label="Search bookings" placeholder="Name, email, phone last 4, UTR, event" />}
+        >
+          {filters}
+        </FilterBar>
+      </DesiCard>
 
-      <div className="flex items-center justify-between gap-3">
-        <p className="text-[14px] font-semibold text-muted-foreground" aria-live="polite">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <p className="hfa-eyebrow" aria-live="polite">
           {list.phase === 'ready' ? `${totals?.bookings ?? list.items.length} booking${(totals?.bookings ?? list.items.length) === 1 ? '' : 's'}` : list.phase === 'loading' ? 'Loading…' : ''}
         </p>
         <ExportButton kind={applied.event ? 'bookings_event' : 'bookings'} path="/api/admin/v2/bookings" query={query} />
@@ -99,52 +113,72 @@ export default function Bookings() {
 
       {list.phase === 'loading' ? <ListSkeleton /> : list.phase === 'error' ? <ErrorBox message={list.error ?? 'Could not load bookings.'} onRetry={list.reload} /> :
         list.items.length === 0 ? (
-          <Empty title={applied.q || count ? 'No bookings match' : 'No bookings yet'} body={applied.q || count ? 'Try a different search or clear the filters.' : 'Seats appear here as soon as customers book.'} />
+          <DesiCard tone="lav" corner="hibiscus">
+            <DesiEmpty text={<><b>{applied.q || count ? 'No bookings match' : 'No bookings yet'}</b><br />{applied.q || count ? 'Try a different search or clear the filters.' : 'Seats appear here as soon as customers book.'}</>} />
+          </DesiCard>
         ) : (
           <>
-            {/* Desktop table */}
-            <div className="hidden overflow-hidden hf-admin-op-card rounded-xl border border-border/60 bg-card shadow-sm md:block">
-              <table className="w-full border-collapse">
-                <thead className="bg-muted/60">
-                  <tr><th className={TH}>Customer</th><th className={TH}>Event</th><th className={TH}>Status</th><th className={`${TH} text-right`}>Amount</th><th className={TH}>UTR</th><th className={TH}>Booked</th></tr>
-                </thead>
-                <tbody className="divide-y divide-border/40">
-                  {list.items.map((b) => (
-                    <tr key={b.id} className="hover:bg-muted/30">
-                      <td className={`${TD} max-w-[240px]`}><CustomerCell c={b.customer} /></td>
-                      <td className={`${TD} max-w-[260px]`}>
-                        <a href={`/admin/bookings?event=${encodeURIComponent(b.listing_id)}`} className="font-bold text-foreground underline-offset-2 hover:text-accent hover:underline">{b.event_title ?? b.listing_id}</a>
-                        <div className="text-[14px] font-semibold text-muted-foreground">{b.event_starts_at ? istDateTime(b.event_starts_at) : 'No date'}</div>
-                      </td>
-                      <td className={TD}><StatusPill status={b.status} /></td>
-                      <td className={`${TD} text-right font-extrabold tabular-nums`}>{amount(b)}</td>
-                      <td className={`${TD} text-[14px]`}>{b.utr ? <CopyValue value={b.utr} label="UTR" /> : <span className="text-muted-foreground">—</span>}</td>
-                      <td className={`${TD} whitespace-nowrap text-[14px] text-muted-foreground`}>{istDateTime(b.booked_at)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-            {/* Phone cards */}
-            <ul className="space-y-3 md:hidden">
-              {list.items.map((b) => (
-                <li key={b.id} className="hf-admin-op-card rounded-xl border border-border/60 bg-card p-4 shadow-sm">
-                  <div className="flex items-start justify-between gap-3">
-                    <CustomerCell c={b.customer} compact />
-                    <div className="shrink-0 text-right">
-                      <div className="font-dash text-[16px] font-bold tabular-nums">{amount(b)}</div>
-                      <StatusPill status={b.status} className="mt-1" />
+            {/* Desktop: the guest register */}
+            <DesiCard title="Guest register" tone="cream" pattern="bahi" corner="marigold" className="hidden md:block">
+              <div className="hfa-scroll">
+                <table className="hfa-table min-w-[760px]">
+                  <thead>
+                    <tr><th>Customer</th><th>Event</th><th>Status</th><th className="text-right">Amount</th><th>UTR</th><th>Booked</th></tr>
+                  </thead>
+                  <tbody>
+                    {list.items.map((b) => {
+                      const S = seat(b.status);
+                      return (
+                        <tr key={b.id} style={{ boxShadow: `inset 5px 0 0 ${S.ink}` }}>
+                          <td className="max-w-[260px] pl-4">
+                            <div className="flex items-center gap-3">
+                              <DesiAvatar name={b.customer.name} seed={b.customer.uid} size={40} />
+                              <CustomerCell c={b.customer} />
+                            </div>
+                          </td>
+                          <td className="max-w-[260px]">
+                            <a href={`/admin/bookings?event=${encodeURIComponent(b.listing_id)}`} className="font-bold text-[var(--a-ink)] underline-offset-2 hover:underline">{b.event_title ?? b.listing_id}</a>
+                            <div className="hfa-note">{b.event_starts_at ? istDateTime(b.event_starts_at) : 'No date'}</div>
+                          </td>
+                          <td><DesiChip tone={S.chip}>{S.label}</DesiChip></td>
+                          <td className="text-right font-['Nunito'] text-[1.2em] font-black tabular-nums" style={{ color: S.ink }}>{amount(b)}</td>
+                          <td>{b.utr ? <CopyValue value={b.utr} label="UTR" /> : <span className="text-[var(--a-muted)]">—</span>}</td>
+                          <td className="whitespace-nowrap text-[var(--a-muted)]">{istDateTime(b.booked_at)}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </DesiCard>
+
+            {/* Phones: one ticket stub per seat */}
+            <ul className="grid gap-3 md:hidden">
+              {list.items.map((b) => {
+                const S = seat(b.status);
+                return (
+                  <li key={b.id} className="relative flex overflow-hidden rounded-[22px] border border-[var(--a-line)] bg-white shadow-[var(--a-shadow)]">
+                    <div className="flex w-[84px] shrink-0 flex-col items-center justify-center gap-2 px-2 py-3 text-center text-white" style={{ background: S.stub }}>
+                      <DesiAvatar name={b.customer.name} seed={b.customer.uid} size={44} />
+                      <span className="text-[14px] font-extrabold uppercase leading-tight">{S.label}</span>
                     </div>
-                  </div>
-                  <a href={`/admin/bookings?event=${encodeURIComponent(b.listing_id)}`} className="mt-3 block font-bold text-foreground underline-offset-2 hover:underline">{b.event_title ?? b.listing_id}</a>
-                  <div className="text-[14px] font-semibold text-muted-foreground">{b.event_starts_at ? istDateTime(b.event_starts_at) : 'No date'}</div>
-                  <div className="mt-2 flex flex-wrap items-center justify-between gap-2 border-t border-border/40 pt-2 text-[14px] font-semibold text-muted-foreground">
-                    <span>Booked {istDateTime(b.booked_at)}</span>
-                    {b.utr && <CopyValue value={b.utr} label="UTR" className="text-[14px] text-foreground" />}
-                  </div>
-                </li>
-              ))}
+                    <div className="min-w-0 flex-1 border-l-2 border-dashed border-[var(--a-line)] p-3">
+                      <div className="flex items-start justify-between gap-2">
+                        <CustomerCell c={b.customer} compact />
+                        <div className="shrink-0 font-['Nunito'] text-[1.15rem] font-black tabular-nums" style={{ color: S.ink }}>{amount(b)}</div>
+                      </div>
+                      <a href={`/admin/bookings?event=${encodeURIComponent(b.listing_id)}`} className="mt-2 flex min-h-[44px] items-center font-bold text-[var(--a-ink)] underline-offset-2 hover:underline">{b.event_title ?? b.listing_id}</a>
+                      <div className="hfa-note">{b.event_starts_at ? istDateTime(b.event_starts_at) : 'No date'}</div>
+                      <div className="mt-2 flex flex-wrap items-center justify-between gap-2 border-t border-dashed border-[var(--a-line)] pt-2 text-[14px] font-semibold text-[var(--a-muted)]">
+                        <span>Booked {istDateTime(b.booked_at)}</span>
+                        {b.utr && <CopyValue value={b.utr} label="UTR" className="text-[14px] text-foreground" />}
+                      </div>
+                    </div>
+                  </li>
+                );
+              })}
             </ul>
+            <DesiMogra />
             <LoadMore show={!!list.cursor} busy={list.more} onClick={list.loadMore} shown={list.items.length} />
           </>
         )}

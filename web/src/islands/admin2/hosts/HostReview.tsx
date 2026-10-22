@@ -1,9 +1,11 @@
 /* HostReview — [HF-HOST-PLATFORM-1] Host review queue + detail drawer.
  * Worker: GET /api/admin/hf/hosts?status=, GET /api/admin/hf/hosts/:uid, POST .../decision; selfie review + signed media via /api/admin/hf/kyc.
- * Look = consultants admin kit. No green; nothing under 14px. */
+ * Look = desi admin kit (audition cards, marquee-lit selection). No green; nothing under 14px. */
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { hfAdminApi, apiUrl, type AdminHost, type AdminHostDetail, type HostStatus, type KycItem } from '../../../lib/hfAdminApi';
-import { Banner, ConsultShell, Spinner, dateIST, fail, track } from '../consultants/kit';
+import { dateIST, fail, track } from '../consultants/kit';
+import { DesiCard, DesiChip, DesiEmpty, Marigold } from '../desi';
+import { HBanner, Tick } from './hostsKit';
 import { request } from '../../../lib/apiClient';
 import '../../../styles/profile-card.css';
 
@@ -11,8 +13,11 @@ const TABS: { key: HostStatus; label: string }[] = [
   { key: 'draft', label: 'Drafts' },
   { key: 'pending_review', label: 'Pending review' }, { key: 'live', label: 'Live' }, { key: 'paused', label: 'Paused' }, { key: 'rejected', label: 'Rejected' },
 ];
-const T14 = { fontSize: 14 } as const;
-const label = { ...T14, fontWeight: 800, color: 'var(--hf-admin-plum)' } as const;
+const priceOf = (h: AdminHost, standard: boolean) => (standard && (!h.category || h.category === 'standard') ? 'Standard plan' : `₹${h.pricePerMin}/min`);
+const STATUS_CHIP: Record<string, { tone: 'tea' | 'gold' | 'rani' | 'lav' | 'grey' | 'red'; label: string }> = {
+  draft: { tone: 'grey', label: 'Draft' }, pending_review: { tone: 'gold', label: 'Pending review' }, live: { tone: 'tea', label: 'Live' },
+  paused: { tone: 'lav', label: 'Paused' }, rejected: { tone: 'red', label: 'Rejected' },
+};
 
 export default function HostReview() {
   const [tab, setTab] = useState<HostStatus>('pending_review');
@@ -29,36 +34,49 @@ export default function HostReview() {
   useEffect(() => { void load(); }, [load]);
 
   return (
-    <ConsultShell className="hf-admin-operations">
-      <div role="tablist" aria-label="Host status" style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 16 }}>
+    <div className="hfa-stack">
+      <div role="tablist" aria-label="Host status" className="hfa-pills">
         {TABS.map((t) => (
-          <button key={t.key} type="button" role="tab" aria-selected={tab === t.key} className={`slot${tab === t.key ? ' on' : ''}`} style={{ padding: '0 14px', ...T14 }} onClick={() => setTab(t.key)}>{t.label}</button>
+          <button key={t.key} type="button" role="tab" aria-selected={tab === t.key} className="hfa-pill" onClick={() => setTab(t.key)}>
+            {t.label}{tab === t.key && rows && <span className="hfh-count">{rows.length}</span>}
+          </button>
         ))}
       </div>
-      {error && <div style={{ marginBottom: 12 }}><Banner tone="error">{error}</Banner></div>}
-      {rows === null && <Spinner label="Loading hosts…" />}
-      {rows && rows.length === 0 && !error && <div className="card muted" style={{ fontWeight: 700, ...T14 }}>Nobody here.</div>}
+      {error && <HBanner tone="error">{error}</HBanner>}
+      {rows === null && <DesiCard tone="cream" pattern="dots"><p role="status" className="hfa-note">Loading influencers…</p></DesiCard>}
+      {rows && rows.length === 0 && !error && <DesiCard tone="rani" corner="marigold"><DesiEmpty text="Nobody here." /></DesiCard>}
       {rows && rows.length > 0 && (
-        <div className="card" style={{ padding: 0, overflow: 'auto', background: 'var(--hf-admin-cream)' }}>
-          <table className="t" style={T14}>
-            <thead><tr><th></th><th>Host</th><th>Languages</th><th>Price</th><th>Sent</th><th></th></tr></thead>
-            <tbody>
-              {rows.map((h) => (
-                <tr key={h.uid}>
-                  <td>{h.avatarUrl && <img src={h.avatarUrl} alt="" width={48} height={48} style={{ borderRadius: 10, objectFit: 'cover' }} />}</td>
-                  <td><strong>{h.displayName || 'No name'}</strong><div className="muted" style={T14}>{h.tagline || ''}</div></td>
-                  <td>{h.languages.join(', ') || '—'}</td>
-                  <td>{standard && (!h.category || h.category === 'standard') ? 'Standard plan' : `₹${h.pricePerMin}/min`}</td>
-                  <td>{dateIST(h.submittedAt ?? h.updatedAt)}</td>
-                  <td><button type="button" className="btn small" style={T14} onClick={() => setOpenUid(h.uid)} aria-label={`Open ${h.displayName || 'host'}`}>Open</button></td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        <div className="hfh-wall">
+          {rows.map((h) => {
+            const st = STATUS_CHIP[h.status] ?? { tone: 'grey' as const, label: h.status };
+            return (
+              <div key={h.uid} className={`hfh-aud${openUid === h.uid ? ' is-sel' : ''}`}>
+                <article className="hfh-aud-in">
+                  <span className="hfa-corner" aria-hidden="true"><Marigold size={70} tone={1} /></span>
+                  <div className="hfh-arch">
+                    {h.avatarUrl ? <img src={h.avatarUrl} alt="" loading="lazy" /> : <span className="hfh-arch-ini" aria-hidden="true">{(h.displayName || '?').trim().charAt(0).toUpperCase()}</span>}
+                  </div>
+                  <div className="hfh-aud-body">
+                    <b className="hfh-name">{h.displayName || 'No name'}</b>
+                    {h.tagline && <span className="hfa-note">{h.tagline}</span>}
+                    <span className="hfh-ticks">
+                      <DesiChip tone={st.tone}>{st.label}</DesiChip>
+                      <Tick on={!!h.avatarUrl}>Photo</Tick><Tick on={!!h.displayName}>Name</Tick><Tick on={!!h.tagline}>Tagline</Tick><Tick on={h.languages.length > 0}>Languages</Tick>
+                    </span>
+                    <div className="hfh-aud-foot">
+                      <span>{h.languages.join(', ') || '—'}</span><b>{priceOf(h, standard)}</b>
+                      <span>Sent {dateIST(h.submittedAt ?? h.updatedAt)}</span>
+                    </div>
+                    <button type="button" className="hfa-btn rani" onClick={() => setOpenUid(h.uid)} aria-label={`Open ${h.displayName || 'influencer'}`}>Open audition</button>
+                  </div>
+                </article>
+              </div>
+            );
+          })}
         </div>
       )}
       {openUid && <Drawer uid={openUid} standard={standard} onClose={() => setOpenUid(null)} onChanged={() => { void load(); }} />}
-    </ConsultShell>
+    </div>
   );
 }
 
@@ -102,123 +120,162 @@ function Drawer({ uid, standard, onClose, onChanged }: { uid: string; standard: 
   const selfie = d?.kyc.selfie;
   const ready = !!d && selfie?.status === 'approved' && !!d.kyc.payout?.nameMatch && d.media.length > 0;
 
+  const checks = [
+    { ok: !!(profile?.url || h?.avatarUrl), label: 'Profile photo' },
+    { ok: selfie?.status === 'approved', label: 'Selfie approved' },
+    { ok: !!d?.kyc.payout?.nameMatch, label: 'Payout name matches' },
+    { ok: intro?.status === 'approved', label: 'Voice intro approved' },
+  ];
+
   return (
-    <div role="dialog" aria-modal="true" aria-label="Host detail" style={{ position: 'fixed', inset: 0, zIndex: 60, display: 'flex', justifyContent: 'flex-end', background: 'rgba(40,10,35,.45)' }} onClick={onClose}>
-      <div className="consult-ui hf-admin-operations" onClick={(e) => e.stopPropagation()} style={{ width: 'min(760px, 100%)', height: '100%', overflow: 'auto', background: 'var(--hf-admin-cream)', padding: 20, ...T14 }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-          <h2 style={{ margin: 0, fontSize: 22 }}>{h?.displayName || 'Host'}</h2>
-          <button ref={closeRef} type="button" className="btn small ghost" style={T14} onClick={onClose}>Close</button>
+    <div className="hfh-veil" role="dialog" aria-modal="true" aria-label="Influencer detail" onClick={onClose}>
+      <div className="hfh-drawer" onClick={(e) => e.stopPropagation()}>
+        <div className="hfh-dhead">
+          <h2>{h?.displayName || 'Influencer'}</h2>
+          <button ref={closeRef} type="button" className="hfa-btn gold" onClick={onClose}>Close</button>
         </div>
-        {error && <div style={{ marginBottom: 12 }}><Banner tone="error">{error}</Banner></div>}
-        {info && <div style={{ marginBottom: 12 }}><Banner tone="info">{info}</Banner></div>}
-        {!d && !error && <Spinner label="Loading…" />}
-        {d && h && (
-          <>
-            <p style={label}>Card preview</p>
-            <div className="people-grid" style={{ maxWidth: 360, marginBottom: 16 }}>
-              <article className="profile-card">
-                <div className="portrait-wrap" style={{ position: 'relative' }}>
-                  {(profile?.url || h.avatarUrl) && <img className="person-portrait" src={profile?.url || h.avatarUrl || ''} alt={h.displayName || 'Host'} />}
-                  <p className="person-status is-offline">Offline</p>
-                </div>
-                <div className="person-copy">
-                  <h3>{h.displayName || 'No name'}</h3>
-                  <p className="person-tagline">{h.tagline || h.about || ''}</p>
-                  <dl className="profile-card-facts">
-                    <div><dt>Languages</dt><dd>{h.languages.join(', ') || '—'}</dd></div>
-                    <div><dt>Style</dt><dd>{h.style || '—'}</dd></div>
+        <div className="hfh-dbody">
+          {error && <HBanner tone="error">{error}</HBanner>}
+          {info && <HBanner tone="info">{info}</HBanner>}
+          {!d && !error && <p role="status" className="hfa-note">Loading…</p>}
+          {d && h && (
+            <>
+              <DesiCard tone="gold" corner="marigold" title="Audition checklist" pattern="dots">
+                <div className="hfh-ticks">{checks.map((c) => <Tick key={c.label} on={c.ok}>{c.label}</Tick>)}</div>
+              </DesiCard>
+
+              <DesiCard tone="rani" corner="hibiscus" title="Card preview">
+                <div className="hfh-hero2">
+                  <div className="people-grid" style={{ maxWidth: 360 }}>
+                    <article className="profile-card">
+                      <div className="portrait-wrap" style={{ position: 'relative' }}>
+                        {(profile?.url || h.avatarUrl) && <img className="person-portrait" src={profile?.url || h.avatarUrl || ''} alt={h.displayName || 'Influencer'} />}
+                        <p className="person-status is-offline">Offline</p>
+                      </div>
+                      <div className="person-copy">
+                        <h3>{h.displayName || 'No name'}</h3>
+                        <p className="person-tagline">{h.tagline || h.about || ''}</p>
+                        <dl className="profile-card-facts">
+                          <div><dt>Languages</dt><dd>{h.languages.join(', ') || '—'}</dd></div>
+                          <div><dt>Style</dt><dd>{h.style || '—'}</dd></div>
+                        </dl>
+                        {h.topics.length > 0 && <ul className="person-moods">{h.topics.map((t) => <li key={t}>{t}</li>)}</ul>}
+                        <div className="person-actions"><span className="person-price">{priceOf(h, standard)}</span></div>
+                      </div>
+                    </article>
+                  </div>
+                  <dl className="hfh-kv">
+                    <div><dt>Status</dt><dd>{(STATUS_CHIP[h.status] ?? { label: h.status }).label}</dd></div>
+                    <div><dt>Price</dt><dd>{priceOf(h, standard)}</dd></div>
+                    <div><dt>Hours</dt><dd>{h.hours.days?.join(', ') || '—'} {h.hours.from || ''}{h.hours.to ? ` to ${h.hours.to}` : ''}</dd></div>
+                    <div><dt>Health consent</dt><dd>{h.healthConsent ? 'yes' : 'no'}</dd></div>
+                    <div><dt>Women lane</dt><dd>{h.womenLane ? 'yes' : 'no'}</dd></div>
+                    <div><dt>LGBTQ lane</dt><dd>{h.lgbtqLane ? (h.lgbtqPublic ? 'yes, public' : 'yes, private') : 'no'}</dd></div>
                   </dl>
-                  {h.topics.length > 0 && <ul className="person-moods">{h.topics.map((t) => <li key={t}>{t}</li>)}</ul>}
-                  <div className="person-actions"><span className="person-price">{standard && (!h.category || h.category === 'standard') ? 'Standard plan' : `₹${h.pricePerMin}/min`}</span></div>
                 </div>
-              </article>
-            </div>
+              </DesiCard>
 
-            {gallery.length > 0 && (<>
-              <p style={label}>Gallery</p>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: 8, marginBottom: 16 }}>
-                {gallery.map((g) => <figure key={g.id} style={{ margin: 0 }}><img src={g.url} alt={g.caption || 'Gallery'} style={{ width: '100%', borderRadius: 10, aspectRatio: '1', objectFit: 'cover' }} />{g.caption && <figcaption style={T14}>{g.caption}</figcaption>}</figure>)}
-              </div>
-            </>)}
-
-            <p style={label}>Voice introduction</p>
-            {intro ? (
-              <div className="card" style={{ padding: 12, marginBottom: 16, background: 'var(--hf-admin-cream)' }}>
-                <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 8 }}>
-                  <span className={`chip ${intro.status === 'approved' ? 'neel' : intro.status === 'rejected' ? 'red' : 'gold'}`}>{intro.status === 'pending' ? 'Waiting for review' : intro.status === 'approved' ? 'Approved' : 'Asked to re-record'}</span>
-                  <span>Length {Math.floor(intro.seconds / 60)}:{String(intro.seconds % 60).padStart(2, '0')}</span>
-                </div>
-                <audio controls preload="metadata" src={apiUrl(intro.url)} style={{ width: '100%' }} aria-label="Host introduction" />
-                {intro.flags.length > 0 && (
-                  <div role="alert" style={{ marginTop: 10, padding: 10, borderRadius: 10, background: 'var(--hf-admin-goldtint)', border: '1px solid var(--hf-admin-marigold)', ...T14 }}>
-                    <strong>Possible contact details heard. Please check before approving:</strong>
-                    <ul style={{ margin: '6px 0 0', paddingLeft: 18 }}>{intro.flags.map((f, i) => <li key={i}><strong>{f.type}:</strong> “{f.text}”</li>)}</ul>
+              {gallery.length > 0 && (
+                <DesiCard tone="cream" title="Gallery">
+                  <div className="hfh-polaroids">
+                    {gallery.map((g) => <figure key={g.id} className="hfh-pol"><img src={g.url} alt={g.caption || 'Gallery'} />{g.caption && <figcaption>{g.caption}</figcaption>}</figure>)}
                   </div>
-                )}
-                <details style={{ marginTop: 10 }}>
-                  <summary style={{ cursor: 'pointer', minHeight: 32, ...T14, fontWeight: 700 }}>Transcript (made by Gemini, may have mistakes)</summary>
-                  <p style={{ margin: '6px 0 0', whiteSpace: 'pre-wrap', ...T14 }}>{intro.transcript || 'No transcript yet.'}</p>
-                </details>
-                {d.liveIntroUrl && intro.status !== 'approved' && (
-                  <div style={{ marginTop: 10 }}>
-                    <p style={{ ...label, margin: '0 0 4px' }}>Currently live</p>
-                    <audio controls preload="none" src={apiUrl(d.liveIntroUrl)} style={{ width: '100%' }} aria-label="Introduction currently live" />
-                  </div>
-                )}
-                {intro.status === 'pending' && (
-                  <div style={{ marginTop: 12 }}>
-                    <label htmlFor="hf-intro-reason" style={label}>Reason (needed to ask for a new recording; shown to the host)</label>
-                    <input id="hf-intro-reason" value={introReason} onChange={(e) => setIntroReason(e.target.value)} maxLength={300} style={{ width: '100%', margin: '6px 0 8px', padding: 10, borderRadius: 10, border: '1px solid var(--hf-admin-line)', ...T14 }} />
-                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                      <button type="button" className="btn small" style={T14} disabled={busy} onClick={() => void run('intro_approve', () => hfAdminApi.introDecision(uid, 'approve'), false, 'Introduction approved. It is live on the card and profile.')}>Approve intro</button>
-                      <button type="button" className="btn small ghost" style={T14} disabled={busy} onClick={() => {
-                        if (!introReason.trim()) { setError('Please write a reason first.'); return; }
-                        void run('intro_reject', () => hfAdminApi.introDecision(uid, 'reject', introReason.trim()), false, 'Host asked to record again.').then(() => setIntroReason(''));
-                      }}>Ask to re-record</button>
-                    </div>
-                  </div>
-                )}
-              </div>
-            ) : <p className="muted" style={{ ...T14, marginBottom: 16 }}>No introduction recorded yet.</p>}
-
-            <p style={label}>Profile text</p>
-            <div className="card" style={{ padding: 12, marginBottom: 16, background: 'var(--hf-admin-cream)' }}>
-              <p style={{ margin: 0 }}><strong>Written by host:</strong> {h.about || '—'}</p>
-              <p style={{ margin: '8px 0 0' }}><strong>Polished:</strong> {h.aboutPolished || '—'}</p>
-              {h.quote && <p style={{ margin: '8px 0 0' }}><strong>Quote:</strong> “{h.quote}”</p>}
-              <p style={{ margin: '8px 0 0' }}><strong>Hours:</strong> {h.hours.days?.join(', ') || '—'} {h.hours.from || ''}{h.hours.to ? ` to ${h.hours.to}` : ''}</p>
-              <p style={{ margin: '8px 0 0' }}>Health consent: {h.healthConsent ? 'yes' : 'no'} · Women lane: {h.womenLane ? 'yes' : 'no'} · LGBTQ lane: {h.lgbtqLane ? (h.lgbtqPublic ? 'yes, public' : 'yes, private') : 'no'}</p>
-              {h.reviewNote && <p style={{ margin: '8px 0 0' }}><strong>Last note:</strong> {h.reviewNote}</p>}
-            </div>
-
-            <p style={label}>Verification</p>
-            <div className="card" style={{ padding: 12, marginBottom: 16, background: 'var(--hf-admin-cream)' }}>
-              <p style={{ margin: 0 }}>Name on Aadhaar: <strong>{d.kyc.name || '—'}</strong> · Gender: <strong>{d.kyc.gender || '—'}</strong> · Aadhaar ends <strong>{d.kyc.last4 || '—'}</strong> · 18+: {d.kyc.ageOk ? 'yes' : 'no'}</p>
-              <p style={{ margin: '6px 0 0' }}>Payout name match: <span className={`chip ${d.kyc.payout?.nameMatch ? 'neel' : 'red'}`}>{d.kyc.payout ? (d.kyc.payout.nameMatch ? 'Matches' : 'Does not match') : 'Not added'}</span> · Selfie: <span className={`chip ${selfie?.status === 'approved' ? 'neel' : selfie?.status === 'rejected' ? 'red' : 'gold'}`}>{selfie ? selfie.status : 'none'}</span></p>
-              {kyc ? (
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 12, marginTop: 12 }}>
-                  <div><p style={label}>Selfie video</p><video controls playsInline src={apiUrl(kyc.selfieUrl)} style={{ width: '100%', borderRadius: 10, background: '#000' }} /></div>
-                  <div><p style={label}>Aadhaar photo</p>{kyc.photoUrl ? <img src={apiUrl(kyc.photoUrl)} alt="Aadhaar photo" style={{ width: '100%', borderRadius: 10 }} /> : <p className="muted">No photo</p>}</div>
-                </div>
-              ) : <p className="muted" style={{ ...T14, marginTop: 8 }}>No selfie to show.</p>}
-              <p className="muted" style={{ ...T14, marginTop: 8 }}>Links last 5 minutes. Every view is logged.</p>
-              {selfie?.status === 'pending' && (
-                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 8 }}>
-                  <button type="button" className="btn small" style={T14} disabled={busy} onClick={() => void run('selfie_approve', () => hfAdminApi.selfieDecision(uid, 'approve', '', selfie.id), false, 'Selfie approved.')}>Approve selfie</button>
-                  <button type="button" className="btn small ghost" style={T14} disabled={busy} onClick={() => void run('selfie_reject', () => hfAdminApi.selfieDecision(uid, 'reject', reason, selfie.id), true, 'Selfie rejected.')}>Reject selfie</button>
-                </div>
+                </DesiCard>
               )}
-            </div>
 
-            <label htmlFor="hf-reason" style={label}>Reason (needed to reject or pause; shown to the host)</label>
-            <textarea id="hf-reason" value={reason} onChange={(e) => setReason(e.target.value)} rows={3} maxLength={500} style={{ width: '100%', margin: '6px 0 12px', padding: 10, borderRadius: 10, border: '1px solid var(--hf-admin-line)', ...T14 }} />
-            {!ready && h.status !== 'live' && <p className="muted" style={{ ...T14, margin: '0 0 8px' }}>Approve needs: selfie approved, payout name match and photos present.</p>}
-            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-              {h.status !== 'live' && <button type="button" className="btn" style={T14} disabled={busy || !ready} onClick={() => void run('host_approve', () => hfAdminApi.decide(uid, 'approve'), false, 'Host is live. They were told on WhatsApp.')}>Approve host</button>}
-              {h.status !== 'rejected' && <button type="button" className="btn ghost" style={T14} disabled={busy} onClick={() => void run('host_reject', () => hfAdminApi.decide(uid, 'reject', reason), true, 'Host sent back.')}>Reject</button>}
-              {h.status === 'live' && <button type="button" className="btn ghost" style={T14} disabled={busy} onClick={() => void run('host_pause', () => hfAdminApi.decide(uid, 'pause', reason), true, 'Host paused.')}>Pause</button>}
+              <DesiCard tone="lav" corner="jasmine" title="Voice introduction">
+                {intro ? (
+                  <div className="hfa-stack">
+                    <div className="hfh-acts">
+                      <DesiChip tone={intro.status === 'approved' ? 'tea' : intro.status === 'rejected' ? 'red' : 'gold'}>{intro.status === 'pending' ? 'Waiting for review' : intro.status === 'approved' ? 'Approved' : 'Asked to re-record'}</DesiChip>
+                      <span>Length {Math.floor(intro.seconds / 60)}:{String(intro.seconds % 60).padStart(2, '0')}</span>
+                    </div>
+                    <audio controls preload="metadata" src={apiUrl(intro.url)} style={{ width: '100%' }} aria-label="Host introduction" />
+                    {intro.flags.length > 0 && (
+                      <div role="alert" className="hfh-alert">
+                        <strong>Possible contact details heard. Please check before approving:</strong>
+                        <ul style={{ margin: '6px 0 0', paddingLeft: 18 }}>{intro.flags.map((f, i) => <li key={i}><strong>{f.type}:</strong> “{f.text}”</li>)}</ul>
+                      </div>
+                    )}
+                    <details>
+                      <summary className="hfh-summary">Transcript (made by Gemini, may have mistakes)</summary>
+                      <p style={{ margin: '6px 0 0', whiteSpace: 'pre-wrap' }}>{intro.transcript || 'No transcript yet.'}</p>
+                    </details>
+                    {d.liveIntroUrl && intro.status !== 'approved' && (
+                      <div>
+                        <p className="hfa-eyebrow">Currently live</p>
+                        <audio controls preload="none" src={apiUrl(d.liveIntroUrl)} style={{ width: '100%' }} aria-label="Introduction currently live" />
+                      </div>
+                    )}
+                    {intro.status === 'pending' && (
+                      <div className="hfa-stack">
+                        <label htmlFor="hf-intro-reason" className="hfh-field">Reason (needed to ask for a new recording; shown to the host)
+                          <input id="hf-intro-reason" value={introReason} onChange={(e) => setIntroReason(e.target.value)} maxLength={300} />
+                        </label>
+                        <div className="hfh-acts">
+                          <button type="button" className="hfa-btn tea" disabled={busy} onClick={() => void run('intro_approve', () => hfAdminApi.introDecision(uid, 'approve'), false, 'Introduction approved. It is live on the card and profile.')}>Approve intro</button>
+                          <button type="button" className="hfa-btn danger" disabled={busy} onClick={() => {
+                            if (!introReason.trim()) { setError('Please write a reason first.'); return; }
+                            void run('intro_reject', () => hfAdminApi.introDecision(uid, 'reject', introReason.trim()), false, 'Host asked to record again.').then(() => setIntroReason(''));
+                          }}>Ask to re-record</button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ) : <DesiEmpty text="No introduction recorded yet." />}
+              </DesiCard>
+
+              <DesiCard tone="white" pattern="bahi" title="Profile text">
+                <p style={{ margin: 0 }}><strong>Written by influencer:</strong> {h.about || '—'}</p>
+                <p style={{ margin: '8px 0 0' }}><strong>Polished:</strong> {h.aboutPolished || '—'}</p>
+                {h.quote && <p style={{ margin: '8px 0 0' }}><strong>Quote:</strong> “{h.quote}”</p>}
+                {h.reviewNote && <p style={{ margin: '8px 0 0' }}><strong>Last note:</strong> {h.reviewNote}</p>}
+              </DesiCard>
+
+              <DesiCard tone="tea" corner="marigold" title="Verification">
+                <dl className="hfh-kv">
+                  <div><dt>Name on Aadhaar</dt><dd>{d.kyc.name || '—'}</dd></div>
+                  <div><dt>Gender</dt><dd>{d.kyc.gender || '—'}</dd></div>
+                  <div><dt>Aadhaar ends</dt><dd>{d.kyc.last4 || '—'}</dd></div>
+                  <div><dt>18+</dt><dd>{d.kyc.ageOk ? 'yes' : 'no'}</dd></div>
+                </dl>
+                <div className="hfh-acts" style={{ margin: '12px 0' }}>
+                  <span>Payout name match:</span>
+                  <DesiChip tone={d.kyc.payout?.nameMatch ? 'tea' : 'red'}>{d.kyc.payout ? (d.kyc.payout.nameMatch ? 'Matches' : 'Does not match') : 'Not added'}</DesiChip>
+                  <span>Selfie:</span>
+                  <DesiChip tone={selfie?.status === 'approved' ? 'tea' : selfie?.status === 'rejected' ? 'red' : 'gold'}>{selfie ? selfie.status : 'none'}</DesiChip>
+                </div>
+                {kyc ? (
+                  <div className="hfa-row">
+                    <div><p className="hfh-id-cap">Selfie video</p><video className="hfh-media" controls playsInline src={apiUrl(kyc.selfieUrl)} /></div>
+                    <div><p className="hfh-id-cap">Aadhaar photo</p>{kyc.photoUrl ? <img className="hfh-media" src={apiUrl(kyc.photoUrl)} alt="Aadhaar photo" /> : <p className="hfa-note">No photo</p>}</div>
+                  </div>
+                ) : <p className="hfa-note">No selfie to show.</p>}
+                <p className="hfa-note">Links last 5 minutes. Every view is logged.</p>
+                {selfie?.status === 'pending' && (
+                  <div className="hfh-acts" style={{ marginTop: 8 }}>
+                    <button type="button" className="hfa-btn tea" disabled={busy} onClick={() => void run('selfie_approve', () => hfAdminApi.selfieDecision(uid, 'approve', '', selfie.id), false, 'Selfie approved.')}>Approve selfie</button>
+                    <button type="button" className="hfa-btn danger" disabled={busy} onClick={() => void run('selfie_reject', () => hfAdminApi.selfieDecision(uid, 'reject', reason, selfie.id), true, 'Selfie rejected.')}>Reject selfie</button>
+                  </div>
+                )}
+              </DesiCard>
+            </>
+          )}
+        </div>
+        {d && h && (
+          <div className="hfh-decide">
+            <div className="hfh-decide-in">
+              <label htmlFor="hf-reason" className="hfh-field">Reason (needed to reject or pause; shown to the host)
+                <textarea id="hf-reason" value={reason} onChange={(e) => setReason(e.target.value)} rows={2} maxLength={500} />
+              </label>
+              {!ready && h.status !== 'live' && <p className="hfa-note" style={{ margin: 0 }}>Approve needs: selfie approved, payout name match and photos present.</p>}
+              <div className="hfh-acts">
+                {h.status !== 'live' && <button type="button" className="hfa-btn tea" disabled={busy || !ready} onClick={() => void run('host_approve', () => hfAdminApi.decide(uid, 'approve'), false, 'Host is live. They were told on WhatsApp.')}>Approve</button>}
+                {h.status !== 'rejected' && <button type="button" className="hfa-btn danger" disabled={busy} onClick={() => void run('host_reject', () => hfAdminApi.decide(uid, 'reject', reason), true, 'Host sent back.')}>Send back</button>}
+                {h.status === 'live' && <button type="button" className="hfa-btn ghost" disabled={busy} onClick={() => void run('host_pause', () => hfAdminApi.decide(uid, 'pause', reason), true, 'Host paused.')}>Pause</button>}
+              </div>
             </div>
-          </>
+          </div>
         )}
       </div>
     </div>
