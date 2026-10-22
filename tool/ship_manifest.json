@@ -11182,5 +11182,20 @@
     "min_devices_on_build": 1,
     "flags": [],
     "no_telemetry": "Server payload fields only; verified by re-checking the dashboard in a browser after deploy."
+  },
+  "HF-FIX-HANDLE-1": {
+    "description": "Hello Fraands users without a handle get an auto-generated read-only handle.",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [],
+    "success": [
+      {
+        "event": "hf_handle_auto_assigned",
+        "property": "outcome",
+        "equals": "ok",
+        "min_events": 1,
+        "note": "A user with no handle opened the app or dashboard and got one."
+      }
+    ]
   }
 }
