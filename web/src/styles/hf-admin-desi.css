@@ -219,3 +219,14 @@
 .hf-admin .hfa-pills { display: flex; flex-wrap: wrap; gap: 8px; }
 .hf-admin .hfa-pill { min-height: 44px; border: 1.5px solid var(--a-line); background: #fff; border-radius: 999px; padding: 8px 15px; font-family: 'Comfortaa', sans-serif !important; font-weight: 700 !important; font-size: var(--fs-small) !important; color: var(--a-muted); cursor: pointer; }
 .hf-admin .hfa-pill[aria-pressed='true'], .hf-admin .hfa-pill.on { background: var(--a-plum); color: #fff; border-color: var(--a-plum); }
+
+/* polish after the live walk-through */
+.hf-admin .hfa-card:has(> .hfa-corner) > .hfa-card-top { padding-right: 34px; }
+@media (min-width: 761px) { .hf-admin .hfa-hero-text { max-width: min(48rem, calc(100% - clamp(150px, 16vw, 270px) - 24px)); } }
+@media (max-width: 560px) {
+  .hf-admin .hfa-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+  .hf-admin .hfa-kpi { min-height: 130px; padding: 14px 12px; }
+  .hf-admin .hfa-kpi-ic { width: 38px; height: 38px; margin-bottom: 2px; }
+  .hf-admin .hfa-kpi-big { font-size: clamp(24px, 7vw, 30px); }
+  .hf-admin .hfa-hero-art { width: 140px; }
+}
