@@ -23,6 +23,7 @@ import { callerHandle } from "../lib/hf_call_math";
 import { REVIEW_WINDOW_MS } from "../lib/hf_reviews_pure";
 import { enqueueEmail } from "../lib/email_outbox";
 import { readConfig } from "./config";
+import { resolveHfHandle } from "../lib/hf_handle";
 
 const APP = BRAND.slug;
 const DAY_MS = 86_400_000;
@@ -134,8 +135,9 @@ async function readProfile(env: Env, uid: string) {
   ]);
   let languages: string[] = [];
   try { const a = JSON.parse(prof?.languages_json ?? "[]"); if (Array.isArray(a)) languages = a.map(String); } catch { /* keep [] */ }
+  const username = await resolveHfHandle(env, uid, reg?.username); // [HF-FIX-HANDLE-1]
   return {
-    ok: true, firstName: reg?.first_name ?? null, lastName: reg?.last_name ?? null, username: reg?.username ?? null,
+    ok: true, firstName: reg?.first_name ?? null, lastName: reg?.last_name ?? null, username,
     displayName: user?.display_name?.trim() ? user.display_name : null,
     city: prof?.city ?? null, languages, talkAbout: prof?.talk_about ?? null,
     joinedAt: Number(reg?.created_at ?? user?.created_at ?? 0) || null,

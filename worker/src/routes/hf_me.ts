@@ -20,6 +20,7 @@ import { getLaneAccess } from "../lib/hf_lanes";
 import { isClosing } from "../lib/hf_exit";
 import { readConfig } from "./config";
 import { emailFor } from "../lib/identity";
+import { resolveHfHandle } from "../lib/hf_handle";
 import { walletOp } from "./wallet";
 import { balanceSummary } from "../lib/hf_token_ledger";
 
@@ -100,6 +101,8 @@ async function getMe(env: Env, uid: string): Promise<Response> {
     // [HF-WIRE-2] The email a fan typed at sign-up (phone-only accounts have no Clerk email). Failure-isolated.
     env.DB_META.prepare("SELECT email FROM hf_user_email WHERE uid=?1").bind(uid).first<{ email: string }>().then((r) => r?.email ?? null).catch(() => null),
   ]);
+  // [HF-FIX-HANDLE-1] Everyone has a handle; assign lazily when no registered username exists.
+  const handle = await resolveHfHandle(env, uid, registration?.username);
   const walletPaise = await readWalletPaise(env, uid, cfg?.hfTokensEnabled === true);
   const email = clerkEmail ?? typedEmail;
   const host = row?.host_status ? { status: row.host_status, slug: row.host_slug ?? null } : null;
@@ -108,7 +111,7 @@ async function getMe(env: Env, uid: string): Promise<Response> {
   const body = {
     uid,
     displayName,
-    username: registration?.username ?? null,
+    username: handle,
     registrationComplete: !!registration?.username,
     registrationRequired: !registration?.username && !!registrationPending,
     phoneMasked,
