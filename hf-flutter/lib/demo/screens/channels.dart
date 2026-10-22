@@ -14,6 +14,8 @@ import '../../data/youtube_sign_in.dart';
 import '../../ui/async_view.dart';
 import '../theme.dart';
 import '../widgets.dart';
+import '../channel_kit.dart';
+import '../desi.dart';
 
 // Influencer Channels (HF-WIRE-3, handover section 6). YouTube connects by signing in with Google (HF-REEL-33, HF-WIRE-14: no code);
 // Instagram keeps the handle + bio code and says "coming soon" while the provider is not switched on. Facebook says "coming soon".
@@ -64,14 +66,15 @@ class ChannelCard extends StatelessWidget {
   /// "Finish checking" for a channel still waiting for its code.
   final VoidCallback? onFinish;
 
+  /// [HF-APP-DESI-13] approved channel card.
   @override
   Widget build(BuildContext context) {
     final c = channel;
-    final (Color bg, Color fg) = switch (c.state) {
-      ChannelState.approved => (C.maroon, C.white),
-      ChannelState.checking => (C.marigold, C.deep),
-      ChannelState.needsFollowers => (C.sand, C.ruby),
-      ChannelState.disconnected => (C.cream, C.muted),
+    final (Color bg, Color fg, IconData? chipIcon, Color edge) = switch (c.state) {
+      ChannelState.approved => (C.teatint, const Color(0xFF0B5F66), Icons.check_rounded, const Color(0xFFF8C4D9)),
+      ChannelState.checking => (C.goldtint, C.amber, Icons.hourglass_top_rounded, const Color(0xFFF3DFB3)),
+      ChannelState.needsFollowers => (const Color(0xFFF3EEF2), C.ruby, null, const Color(0xFFDDD2FB)),
+      ChannelState.disconnected => (const Color(0xFFF3EEF2), C.muted, null, C.line),
     };
     final live = c.state != ChannelState.disconnected;
     return Semantics(
@@ -80,43 +83,52 @@ class ChannelCard extends StatelessWidget {
       child: Container(
         margin: const EdgeInsets.only(bottom: 12),
         padding: const EdgeInsets.all(14),
-        decoration: BoxDecoration(color: C.paper, borderRadius: BorderRadius.circular(16), border: Border.all(color: C.sandLine, width: 2)),
+        decoration: BoxDecoration(
+          color: C.white,
+          borderRadius: BorderRadius.circular(22),
+          border: Border.all(color: edge, width: 2),
+          boxShadow: const [BoxShadow(color: Color(0x404A1747), offset: Offset(0, 8), blurRadius: 18, spreadRadius: -12)],
+        ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
               children: [
-                Icon(_platformIcon(c.platform), color: C.maroon, size: 30),
-                const SizedBox(width: 10),
+                PlatformSquare(platform: c.platform, icon: _platformIcon(c.platform)),
+                const SizedBox(width: 12),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(c.handle.startsWith('@') ? c.handle : '@${c.handle}', style: t(18, color: C.deep), overflow: TextOverflow.ellipsis),
+                      Text(c.handle.startsWith('@') ? c.handle : '@${c.handle}', style: t(18, color: C.deep, w: FontWeight.w900), overflow: TextOverflow.ellipsis),
                       Text('${_count(c.followers)} ${c.followersWord} · ${c.platformName}', style: t(14, color: C.muted, w: FontWeight.w700)),
                     ],
                   ),
                 ),
+                const SizedBox(width: 6),
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                   decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(999)),
-                  child: Text(channelChipLabel(c, minFollowers), style: t(14, color: fg)),
+                  child: Row(mainAxisSize: MainAxisSize.min, children: [
+                    if (chipIcon != null) ...[Icon(chipIcon, size: 15, color: fg), const SizedBox(width: 4)],
+                    Text(channelChipLabel(c, minFollowers), style: t(14, color: fg, w: FontWeight.w800)),
+                  ]),
                 ),
               ],
             ),
-            const SizedBox(height: 6),
+            const SizedBox(height: 8),
             Text(c.needsCode ? 'Waiting for your code' : _ago(c.lastSyncAt), style: t(14, color: C.muted, w: FontWeight.w700)),
             if (live) ...[
               const SizedBox(height: 10),
               Row(
                 children: [
                   if (c.needsCode && onFinish != null)
-                    Expanded(child: ChunkyButton(label: 'FINISH CHECKING', height: 48, onTap: onFinish))
+                    Expanded(child: ChannelPill(label: 'FINISH CHECKING', gold: true, onTap: onFinish))
                   else if (onResync != null)
-                    Expanded(child: ChunkyButton(label: 'RESYNC', height: 48, filled: false, onTap: onResync)),
+                    Expanded(child: ChannelPill(label: 'RESYNC', onTap: onResync)),
                   if (onRemove != null) ...[
-                    const SizedBox(width: 10),
-                    Expanded(child: ChunkyButton(label: 'REMOVE', height: 48, filled: false, onTap: onRemove)),
+                    const SizedBox(width: 8),
+                    Expanded(child: ChannelPill(label: 'REMOVE', onTap: onRemove)),
                   ],
                 ],
               ),
@@ -189,12 +201,14 @@ class _ChannelsListScreenState extends State<ChannelsListScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final addButton = TicketButton(label: '+ ADD A CHANNEL', maroon: true, onTap: _add);
+    final addButton = DashedAddButton(label: '+ ADD A CHANNEL', onTap: _add);
+    // [HF-APP-DESI-13] approved Channels list
     return Scaffold(
+      backgroundColor: C.ivory,
       body: SafeArea(
         child: Column(
           children: [
-            const PageHeader(title: 'Channels'),
+            const ChannelHeader('Channels'),
             Expanded(
               child: AsyncLoader<ChannelsList>(
                 load: _repo.list,
@@ -205,8 +219,10 @@ class _ChannelsListScreenState extends State<ChannelsListScreen> {
                 emptyMessage: 'Add your Instagram or YouTube so fans can see your reels.',
                 emptyAction: SizedBox(width: 280, child: addButton),
                 builder: (context, v) => ListView(
-                  padding: const EdgeInsets.fromLTRB(22, 8, 22, 24),
+                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
                   children: [
+                    const DesiHero(eyebrow: 'Channels', title: 'Your channels', sub: 'Where fans see your reels.', ghost: 'Reels', tone: DesiTone.lav, minHeight: 110),
+                    const SizedBox(height: 12),
                     Text(
                       v.qualified
                           ? 'You are approved. Keep at least one channel with ${v.minFollowers}+ followers or subscribers.'
@@ -222,8 +238,10 @@ class _ChannelsListScreenState extends State<ChannelsListScreen> {
                         onRemove: () => unawaited(_remove(c)),
                         onFinish: () => unawaited(context.push('/inf/channels/${c.id}/checking').then((_) => _reload())),
                       ),
-                    const SizedBox(height: 8),
+                    const SizedBox(height: 4),
                     addButton,
+                    const SizedBox(height: 14),
+                    const DesiMogra(),
                   ],
                 ),
               ),
@@ -243,24 +261,26 @@ class ChannelPlatformScreen extends StatelessWidget {
 
   final String? from;
 
+  /// [HF-APP-DESI-13] approved "Add a channel" layout.
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: C.ivory,
       body: SafeArea(
         child: Column(
           children: [
-            const PageHeader(title: 'Add a channel'),
+            const ChannelHeader('Add a channel'),
             Expanded(
               child: ListView(
-                padding: const EdgeInsets.fromLTRB(22, 8, 22, 24),
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
                 children: [
-                  Text('Where are your reels?', style: t(26, color: C.maroon)),
-                  const SizedBox(height: 6),
-                  Text('Pick one. You can add more later.', style: t(16, color: C.muted, w: FontWeight.w700)),
-                  const SizedBox(height: 16),
+                  const DesiHero(eyebrow: 'Add a channel', title: 'Where are your reels?', sub: 'Pick one. You can add more later.', tone: DesiTone.gold, minHeight: 110),
+                  const SizedBox(height: 12),
                   _tile(context, icon: Icons.camera_alt_rounded, name: 'Instagram', sub: 'Your reels and public videos', platform: 'instagram'),
                   _tile(context, icon: Icons.smart_display_rounded, name: 'YouTube', sub: 'Sign in with YouTube. Your public videos', platform: 'youtube'),
                   _tile(context, icon: Icons.facebook_rounded, name: 'Facebook', sub: 'Coming soon', platform: null),
+                  const SizedBox(height: 8),
+                  const DesiMogra(),
                 ],
               ),
             ),
@@ -279,22 +299,22 @@ class ChannelPlatformScreen extends StatelessWidget {
       child: Padding(
         padding: const EdgeInsets.only(bottom: 12),
         child: Material(
-          color: on ? C.paper : C.cream,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16), side: BorderSide(color: on ? C.maroon : C.sandLine, width: 3)),
+          color: on ? C.white : const Color(0xFFF7F1F5),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22), side: BorderSide(color: on ? const Color(0xFFF8C4D9) : C.line, width: 2)),
           child: InkWell(
-            borderRadius: BorderRadius.circular(16),
+            borderRadius: BorderRadius.circular(22),
             onTap: on ? () => context.push('/inf/channels/add/$platform${_fromQuery(from)}') : null,
             child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+              padding: const EdgeInsets.all(16),
               child: Row(
                 children: [
-                  Icon(icon, color: on ? C.maroon : C.muted, size: 34),
+                  PlatformSquare(platform: platform ?? name.toLowerCase(), icon: icon, size: 52, off: !on),
                   const SizedBox(width: 14),
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(name, style: t(22, color: on ? C.deep : C.muted)),
+                        Text(name, style: t(20, color: on ? C.deep : C.muted, w: FontWeight.w900)),
                         Text(sub, style: t(14, color: C.muted, w: FontWeight.w700)),
                       ],
                     ),
@@ -425,11 +445,13 @@ class _ChannelConsentScreenState extends State<ChannelConsentScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // [HF-APP-DESI-13] approved "Connect + code" layout
     return Scaffold(
+      backgroundColor: C.ivory,
       body: SafeArea(
         child: Column(
           children: [
-            PageHeader(title: _supported ? 'Connect $_name' : 'Add a channel'),
+            ChannelHeader(_supported ? 'Connect $_name' : 'Add a channel'),
             Expanded(
               child: !_supported
                   ? Center(child: Padding(padding: const EdgeInsets.all(28), child: Text('That channel type is coming soon. Please use Instagram or YouTube for now.', textAlign: TextAlign.center, style: t(18, color: C.deep, h: 1.35))))
@@ -449,10 +471,10 @@ class _ChannelConsentScreenState extends State<ChannelConsentScreen> {
       'I allow ${Brand.name} to read my YouTube channel (read only) and show my public videos with the official YouTube player. This channel is mine.';
 
   Widget _youtubeForm() => ListView(
-        padding: const EdgeInsets.fromLTRB(22, 8, 22, 24),
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
         children: [
-          Text('Sign in with YouTube', style: t(26, color: C.maroon)),
-          const SizedBox(height: 8),
+          const DesiHero(eyebrow: 'YouTube', title: 'Sign in with YouTube', tone: DesiTone.rani, minHeight: 100),
+          const SizedBox(height: 12),
           Text(
             'Sign in with the Google account of your YouTube channel. That is how we know the channel is yours. We only read your channel and public videos: we never post, change or download anything.',
             style: t(16, w: FontWeight.w700, h: 1.4),
@@ -460,55 +482,45 @@ class _ChannelConsentScreenState extends State<ChannelConsentScreen> {
           const SizedBox(height: 8),
           Text('All your public videos are shown by default. You can hide any video later.', style: t(15, color: C.muted, w: FontWeight.w700, h: 1.4)),
           const SizedBox(height: 16),
-          Semantics(
-            checked: _ytTick,
-            label: _ytLabel,
-            child: InkWell(
-              key: const ValueKey('yt-consent'),
-              onTap: _busy ? null : () => setState(() => _ytTick = !_ytTick),
-              child: Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(color: _ytTick ? C.butter : C.paper, borderRadius: BorderRadius.circular(14), border: Border.all(color: _ytTick ? C.marigold : C.sand, width: 2)),
-                child: Row(
-                  children: [
-                    Icon(_ytTick ? Icons.check_box_rounded : Icons.check_box_outline_blank_rounded, color: C.maroon, size: 28),
-                    const SizedBox(width: 10),
-                    Expanded(child: Text(_ytLabel, style: t(15, h: 1.35))),
-                  ],
-                ),
-              ),
-            ),
+          KeyedSubtree(
+            key: const ValueKey('yt-consent'),
+            child: ConsentTick(label: _ytLabel, value: _ytTick, onTap: _busy ? null : () => setState(() => _ytTick = !_ytTick)),
           ),
           if (_error != null) ...[
             const SizedBox(height: 10),
             Text(_error!, style: t(15, color: C.ruby, h: 1.35)),
           ],
           const SizedBox(height: 14),
-          TicketButton(label: _busy ? 'CHECKING…' : 'SIGN IN WITH YOUTUBE', maroon: true, enabled: !_busy, stubIcon: Icons.arrow_forward_rounded, onTap: () => unawaited(_connectYoutube())),
+          ChannelBigButton(label: _busy ? 'CHECKING…' : 'SIGN IN WITH YOUTUBE', onTap: _busy ? null : () => unawaited(_connectYoutube())),
+          const SizedBox(height: 14),
+          const DesiMogra(),
         ],
       );
 
   Widget _form() => ListView(
-        padding: const EdgeInsets.fromLTRB(22, 8, 22, 24),
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
         children: [
-          Text(_ig ? 'Your Instagram @username' : 'Your YouTube @handle or channel link', style: t(16)),
-          const SizedBox(height: 8),
-          TextField(
-            controller: _handle,
-            keyboardType: _ig ? TextInputType.text : TextInputType.url,
-            autocorrect: false,
-            enabled: !_busy,
-            style: t(17, w: FontWeight.w700),
-            decoration: InputDecoration(hintText: _ig ? '@yourname' : '@yourchannel'),
+          DesiField(
+            label: _ig ? 'Your Instagram @username' : 'Your YouTube @handle or channel link',
+            field: TextField(
+              controller: _handle,
+              keyboardType: _ig ? TextInputType.text : TextInputType.url,
+              autocorrect: false,
+              enabled: !_busy,
+              style: t(18, w: FontWeight.w800),
+              decoration: InputDecoration(hintText: _ig ? '@yourname' : '@yourchannel'),
+            ),
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 12),
           for (var i = 0; i < _labels.length; i++) _check(i),
           if (_error != null) ...[
             const SizedBox(height: 4),
             Text(_error!, style: t(15, color: C.ruby, h: 1.35)),
           ],
           const SizedBox(height: 14),
-          TicketButton(label: _busy ? 'CHECKING…' : 'CONNECT', maroon: true, enabled: !_busy, stubIcon: Icons.arrow_forward_rounded, onTap: () => unawaited(_connect())),
+          ChannelBigButton(label: _busy ? 'CHECKING…' : 'CONNECT', onTap: _busy ? null : () => unawaited(_connect())),
+          const SizedBox(height: 14),
+          const DesiMogra(),
         ],
       );
 
@@ -516,46 +528,27 @@ class _ChannelConsentScreenState extends State<ChannelConsentScreen> {
     final v = _ticks[i];
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
-      child: Semantics(
-        checked: v,
-        label: _labels[i],
-        child: InkWell(
-          onTap: _busy ? null : () => setState(() => _ticks[i] = !v),
-          child: Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(color: v ? C.butter : C.paper, borderRadius: BorderRadius.circular(14), border: Border.all(color: v ? C.marigold : C.sand, width: 2)),
-            child: Row(
-              children: [
-                Icon(v ? Icons.check_box_rounded : Icons.check_box_outline_blank_rounded, color: C.maroon, size: 28),
-                const SizedBox(width: 10),
-                Expanded(child: Text(_labels[i], style: t(15, h: 1.35))),
-              ],
-            ),
-          ),
-        ),
-      ),
+      child: ConsentTick(label: _labels[i], value: v, onTap: _busy ? null : () => setState(() => _ticks[i] = !v)),
     );
   }
 
   Widget _codeStep(AddedChannel a) {
     final where = _ig ? 'Instagram bio' : 'YouTube channel description';
     return ListView(
-      padding: const EdgeInsets.fromLTRB(22, 8, 22, 24),
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
       children: [
-        Text('One last step', style: t(28, color: C.maroon)),
-        const SizedBox(height: 8),
-        Text('We found ${a.channel.handle.startsWith('@') ? a.channel.handle : '@${a.channel.handle}'}. To show it is yours, add this code to your $where.', style: t(16, w: FontWeight.w700, h: 1.4)),
+        CodeStepCard(
+          message: 'We found ${a.channel.handle.startsWith('@') ? a.channel.handle : '@${a.channel.handle}'}. To show it is yours, add this code to your $where.',
+          code: CodeBox(code: a.verifyCode),
+          line: a.instructions.isEmpty ? 'Save it, then tap the button below. You can remove the code after we confirm.' : a.instructions,
+        ),
         const SizedBox(height: 16),
-        CodeBox(code: a.verifyCode),
-        const SizedBox(height: 12),
-        Text(a.instructions.isEmpty ? 'Save it, then tap the button below. You can remove the code after we confirm.' : a.instructions, style: t(15, color: C.muted, w: FontWeight.w700, h: 1.4)),
-        const SizedBox(height: 20),
-        TicketButton(
+        ChannelBigButton(
           label: "I'VE ADDED IT, CHECK NOW",
-          maroon: true,
-          labelSize: 17,
           onTap: () => context.pushReplacement('/inf/channels/${a.channel.id}/checking${_fromQuery(widget.from)}'),
         ),
+        const SizedBox(height: 14),
+        const DesiMogra(),
       ],
     );
   }
@@ -570,17 +563,17 @@ class CodeBox extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-      decoration: BoxDecoration(color: C.butter, borderRadius: BorderRadius.circular(16), border: Border.all(color: C.marigold, width: 3)),
+      padding: const EdgeInsets.fromLTRB(14, 10, 10, 10),
+      decoration: BoxDecoration(color: C.goldtint, borderRadius: BorderRadius.circular(18), border: Border.all(color: C.marigold, width: 2)),
       child: Row(
         children: [
-          Expanded(child: SelectableText(code, style: t(32, color: C.deep, ls: 0.08))),
+          Expanded(child: SelectableText(code, style: t(32, color: C.deep, w: FontWeight.w900, ls: 0.1))),
           Semantics(
             button: true,
             label: 'Copy the code',
             child: IconButton(
-              iconSize: 30,
-              color: C.maroon,
+              iconSize: 22,
+              style: IconButton.styleFrom(backgroundColor: C.maroon, foregroundColor: C.lemon, minimumSize: const Size(48, 48)),
               icon: const Icon(Icons.copy_rounded),
               onPressed: () async {
                 await Clipboard.setData(ClipboardData(text: code));
@@ -672,10 +665,11 @@ class _ChannelCheckingScreenState extends State<ChannelCheckingScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: C.ivory,
       body: SafeArea(
         child: Column(
           children: [
-            const PageHeader(title: 'Checking your channel'),
+            const ChannelHeader('Checking your channel'),
             Expanded(
               child: AsyncView<ChannelCheck>(
                 state: _state,
@@ -690,34 +684,37 @@ class _ChannelCheckingScreenState extends State<ChannelCheckingScreen> {
     );
   }
 
+  /// [HF-APP-DESI-13] approved result card.
   Widget _result(BuildContext context, ChannelCheck r) {
     final ch = r.channel;
     switch (r.result) {
       case CheckResult.approved:
         return _panel(
-          art: const ArtMoment('influencer/online-mode.webp', label: 'Approved', size: 190),
-          title: "You're in!",
-          message: r.message.isEmpty ? 'Your channel is confirmed.' : r.message,
-          buttons: [TicketButton(label: _join ? 'NEXT: YOUR WHATSAPP' : 'GO TO MY DASHBOARD', maroon: true, labelSize: 18, onTap: () => unawaited(_approvedDone()))],
+          card: ResultCard(happy: true, art: 'influencer/online-mode.webp', title: "You're in!", message: r.message.isEmpty ? 'Your channel is confirmed.' : r.message),
+          buttons: [ChannelBigButton(label: _join ? 'NEXT: YOUR WHATSAPP' : 'GO TO MY DASHBOARD', onTap: () => unawaited(_approvedDone()))],
         );
       case CheckResult.needsFollowers:
         return _panel(
-          art: const ArtMoment('influencer/offline-mode.webp', label: 'Not yet', size: 190),
-          title: 'Not yet',
-          message: 'We need at least ${r.minFollowers} followers or subscribers on YouTube or Instagram. ${ch.handle.isEmpty ? '' : '${ch.handle} has ${_count(ch.followers)}.'}'.trim(),
+          card: ResultCard(
+            art: 'influencer/offline-mode.webp',
+            title: 'Not yet',
+            message: 'We need at least ${r.minFollowers} followers or subscribers on YouTube or Instagram. ${ch.handle.isEmpty ? '' : '${ch.handle} has ${_count(ch.followers)}.'}'.trim(),
+          ),
           buttons: [
-            TicketButton(label: 'TRY ANOTHER CHANNEL', maroon: true, labelSize: 18, onTap: () => context.go('/inf/channels/add${_fromQuery(widget.from)}')),
-            ChunkyButton(label: 'CHECK AGAIN LATER', filled: false, onTap: _leave),
+            ChannelBigButton(label: 'TRY ANOTHER CHANNEL', onTap: () => context.go('/inf/channels/add${_fromQuery(widget.from)}')),
+            ChannelBigButton(label: 'CHECK AGAIN LATER', ghost: true, onTap: _leave),
           ],
         );
       case CheckResult.codeMissing:
         return _panel(
-          title: 'We could not see the code yet',
-          message: r.message.isEmpty ? 'It can take a minute to show. Check it is saved, then try again.' : r.message,
-          extra: ch.verifyCode == null ? null : CodeBox(code: ch.verifyCode!),
+          card: ResultCard(
+            title: 'We could not see the code yet',
+            message: r.message.isEmpty ? 'It can take a minute to show. Check it is saved, then try again.' : r.message,
+            extra: ch.verifyCode == null ? null : CodeBox(code: ch.verifyCode!),
+          ),
           buttons: [
-            TicketButton(label: 'CHECK AGAIN', maroon: true, labelSize: 18, onTap: () => unawaited(_go())),
-            ChunkyButton(label: 'DO IT LATER', filled: false, onTap: _leave),
+            ChannelBigButton(label: 'CHECK AGAIN', onTap: () => unawaited(_go())),
+            ChannelBigButton(label: 'DO IT LATER', ghost: true, onTap: _leave),
           ],
         );
       case CheckResult.notFound:
@@ -725,28 +722,23 @@ class _ChannelCheckingScreenState extends State<ChannelCheckingScreen> {
       case CheckResult.hiddenCount:
       case CheckResult.unknown:
         return _panel(
-          title: 'We could not finish',
-          message: r.message.isEmpty ? ApiException.genericText : r.message,
+          card: ResultCard(title: 'We could not finish', message: r.message.isEmpty ? ApiException.genericText : r.message),
           buttons: [
-            TicketButton(label: 'CHECK AGAIN', maroon: true, labelSize: 18, onTap: () => unawaited(_go())),
-            ChunkyButton(label: 'BACK', filled: false, onTap: _leave),
+            ChannelBigButton(label: 'CHECK AGAIN', onTap: () => unawaited(_go())),
+            ChannelBigButton(label: 'BACK', ghost: true, onTap: _leave),
           ],
         );
     }
   }
 
-  Widget _panel({Widget? art, required String title, required String message, Widget? extra, required List<Widget> buttons}) {
+  Widget _panel({required Widget card, required List<Widget> buttons}) {
     return ListView(
-      padding: const EdgeInsets.fromLTRB(22, 16, 22, 24),
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
       children: [
-        if (art != null) Center(child: art),
-        const SizedBox(height: 8),
-        Text(title, textAlign: TextAlign.center, style: t(28, color: C.maroon)),
-        const SizedBox(height: 10),
-        Text(message, textAlign: TextAlign.center, style: t(16, w: FontWeight.w700, h: 1.4)),
-        if (extra != null) ...[const SizedBox(height: 16), extra],
-        const SizedBox(height: 22),
+        card,
+        const SizedBox(height: 18),
         for (final b in buttons) Padding(padding: const EdgeInsets.only(bottom: 12), child: b),
+        const DesiMogra(),
       ],
     );
   }
@@ -794,11 +786,11 @@ class _ChannelsStepState extends State<ChannelsStep> {
         children: [
           Text('Please sign in first so we can save your channels.', style: t(16, w: FontWeight.w700, h: 1.4)),
           const SizedBox(height: 14),
-          ChunkyButton(label: 'SIGN IN', onTap: () => unawaited(requireAccount(context, () => setState(() => _key++)))),
+          ChannelBigButton(label: 'SIGN IN', onTap: () => unawaited(requireAccount(context, () => setState(() => _key++)))),
         ],
       );
     }
-    final add = TicketButton(label: '+ ADD A CHANNEL', maroon: true, onTap: () => unawaited(_add()));
+    final add = DashedAddButton(label: '+ ADD A CHANNEL', onTap: () => unawaited(_add()));
     return AsyncLoader<ChannelsList>(
       load: _load,
       reloadKey: _key,

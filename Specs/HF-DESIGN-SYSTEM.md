@@ -697,6 +697,17 @@ changes on a phone.
 - **Always:** no green (`test/core/tokens_test.dart` enforces it), no peacocks, Phosphor icons only, and the
   Android back gesture always works.
 
+**Superseded 2026-10-22 (owner, HF-APP-DESI-1): the app now uses the dashboard desi palette.** `hf-flutter/lib/demo/theme.dart`
+class `C`: plum `#4A1747` (`C.maroon`), plum2 `#6B2468`, rani `#D81B72`, marigold `#F59E0B`, saffron `#EA6A12`, haldi `#FBBF24`
+(`C.lemon`), lavender `#6D4FD0`, peacock `#0E7C86`, amber `#B45309`, ink `#2B1530` (`C.deep`), muted `#6F5B6F`, line `#F1E3D6`,
+blush `#FFE6EF`, lavtint `#F1EBFF`, goldtint `#FFF1D6`, teatint `#E3F6F6`, page `#FFF8F0` (`C.ivory`). Online green tokens unchanged.
+The kit lives in `lib/demo/desi.dart` (DesiHero, DesiCard, DesiKpi, DesiChip, DesiButton, Marigold/Hibiscus/Jasmine, DesiMogra)
+and one `*_kit.dart` per flow (search, fav, profile, booking, call, list, money, settings, inf, channel). Approved mocks: the
+"Hello Fraands App Redesign v2" canvas artifact. Bottom bars are white with a blush pill on the chosen tab (black on Reels).
+Patterns: soft hero with a faint outline ghost word and right-side art; white cards with a 2px border cycling
+`#F8C4D9 / #DDD2FB / #B9E2E5 / #F3DFB3`; dark plum "Hisaab" card for money lines; gold time stub on booking rows;
+flower string across the top of celebration and dark screens; jasmine/marigold "mogra" row at the end of a page.
+
 **App palette "Rangoli Soft" (owner, 2026-10-20; HF-REEL-44/45/46).** The app (`hf-flutter/lib/demo/theme.dart`, class `C`)
 uses a paler, calmer palette. Artwork and illustrations keep their own colours. Token names are unchanged.
 

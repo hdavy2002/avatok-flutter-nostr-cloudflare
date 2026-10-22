@@ -9,6 +9,7 @@ import 'data.dart';
 import 'screens/sheets.dart';
 import 'state.dart';
 import 'theme.dart';
+import 'desi.dart';
 
 /// Picture from the Rang Bazaar art pack (claude/hello-fraands-rang-bazaar-app-artwork-prompts.md).
 /// Until the owner saves the file, [fallback] (a drawn stand-in) is shown instead.
@@ -139,10 +140,8 @@ class TicketButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final body = maroon ? C.maroon : C.marigold;
-    final ink = maroon ? C.gold : C.deep;
-    final stub = maroon ? C.marigold : C.maroon;
-    final stubInk = maroon ? C.deep : C.gold;
+        final ink = maroon ? C.white : const Color(0xFF3B1600);
+        final stubInk = maroon ? const Color(0xFF3B1600) : C.white;
     return Opacity(
       opacity: enabled ? 1 : 0.45,
       child: Semantics(
@@ -152,17 +151,20 @@ class TicketButton extends StatelessWidget {
           onTap: enabled ? onTap : null,
           child: Container(
             height: height,
-            decoration: const BoxDecoration(
-              boxShadow: [BoxShadow(color: C.deep, offset: Offset(0, 6))],
-              borderRadius: BorderRadius.all(Radius.circular(16)),
+            // [HF-APP-DESI-1] soft dashboard shadow instead of the hard ink drop
+            decoration: BoxDecoration(
+              boxShadow: [BoxShadow(color: (maroon ? C.maroon : C.saffron).withValues(alpha: .35), offset: const Offset(0, 10), blurRadius: 22, spreadRadius: -10)],
+              borderRadius: const BorderRadius.all(Radius.circular(20)),
             ),
             child: ClipRRect(
-              borderRadius: BorderRadius.circular(16),
+              borderRadius: BorderRadius.circular(20),
               child: Row(
                 children: [
                   Expanded(
                     child: Container(
-                      color: body,
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(colors: maroon ? const [Color(0xFF4A1747), Color(0xFF7A2470)] : const [Color(0xFFF59E0B), Color(0xFFFBBF24)]),
+                      ),
                       alignment: Alignment.center,
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
@@ -175,10 +177,12 @@ class TicketButton extends StatelessWidget {
                       ),
                     ),
                   ),
-                  Container(color: body, width: 3, child: DashedLine(color: maroon ? C.gold : C.maroon)),
+                  Container(color: maroon ? const Color(0xFF7A2470) : const Color(0xFFFBBF24), width: 3, child: DashedLine(color: maroon ? C.gold : C.maroon)),
                   Container(
                     width: stubWidth,
-                    color: stub,
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(colors: maroon ? const [Color(0xFFF59E0B), Color(0xFFEA6A12)] : const [Color(0xFFD81B72), Color(0xFFF0408F)]),
+                    ),
                     alignment: Alignment.center,
                     child: stubIcon != null
                         ? Icon(stubIcon, color: stubInk, size: 26)
@@ -314,9 +318,10 @@ class ChunkyButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final bg = filled ? (dark ? C.maroon : C.marigold) : C.clear;
-    final fg = filled ? (dark ? C.gold : C.deep) : (dark ? C.gold : C.maroon);
-    final border = filled ? bg : (dark ? C.gold : C.maroon);
+    // [HF-APP-DESI-1] dashboard pills: plum or marigold filled, white ghost with a soft border
+    final bg = filled ? (dark ? C.maroon : C.marigold) : (dark ? C.clear : C.white);
+    final fg = filled ? (dark ? C.white : const Color(0xFF3B1600)) : (dark ? C.gold : C.maroon);
+    final border = filled ? bg : (dark ? C.gold : C.line);
     final enabled = onTap != null;
     // [HF-BOOK-APPROVE-POLISH] a button with nothing to do looks switched off: faded, no ripple.
     return Semantics(
@@ -334,9 +339,9 @@ class ChunkyButton extends StatelessWidget {
       height: height,
       child: Material(
         color: bg,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14), side: BorderSide(color: border, width: 3)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(999), side: BorderSide(color: border, width: filled ? 0 : 1.5)),
         child: InkWell(
-          borderRadius: BorderRadius.circular(14),
+          borderRadius: BorderRadius.circular(999),
           onTap: onTap,
           child: Center(
             child: Row(
@@ -640,8 +645,10 @@ class PageHeader extends StatelessWidget {
       child: Row(
         children: [
           const BackBtn(),
-          const SizedBox(width: 14),
-          Expanded(child: Text(title, style: t(24, color: C.maroon, ls: 0.03))),
+          const SizedBox(width: 10),
+          const Marigold(size: 24),
+          const SizedBox(width: 8),
+          Expanded(child: Text(title, style: t(24, color: C.deep, ls: 0.01))),
           if (trailing != null) trailing!,
         ],
       ),

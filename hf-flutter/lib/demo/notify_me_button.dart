@@ -10,7 +10,10 @@ import 'widgets.dart';
 /// "Notify me" on an offline influencer's profile (HF-REEL-15): needs an account, then one WhatsApp
 /// when she goes online. [slug] is the public profile slug; [firstName] is for the toast.
 class NotifyMeButton extends StatefulWidget {
-  const NotifyMeButton({super.key, required this.slug, required this.firstName, this.repo});
+  const NotifyMeButton({super.key, required this.slug, required this.firstName, this.repo, this.big = false});
+
+  /// [HF-APP-DESI-4] Profile style: 58 dp plum pill with a bell.
+  final bool big;
 
   final String slug;
   final String firstName;
@@ -55,7 +58,18 @@ class _NotifyMeButtonState extends State<NotifyMeButton> {
       label: 'Notify me',
       child: GestureDetector(
         onTap: (_busy || _done) ? null : () => requireAccount(context, _subscribe, reason: 'to get a WhatsApp when ${widget.firstName} is online'),
-        child: Container(
+        child: widget.big
+            ? Container(
+                height: 58,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(color: _done ? C.lav : C.maroon, borderRadius: BorderRadius.circular(999)),
+                child: Row(mainAxisSize: MainAxisSize.min, children: [
+                  Icon(_done ? Icons.check_rounded : Icons.notifications_active_rounded, color: C.lemon, size: 20),
+                  const SizedBox(width: 8),
+                  Flexible(child: Text(_done ? 'We will WhatsApp you' : 'Notify me', maxLines: 1, overflow: TextOverflow.ellipsis, style: t(17, color: C.white, w: FontWeight.w900))),
+                ]),
+              )
+            : Container(
           height: 48,
           alignment: Alignment.center,
           decoration: BoxDecoration(

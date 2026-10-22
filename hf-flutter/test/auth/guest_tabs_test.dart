@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:hf_app/data/demo_mode.dart';
 import 'package:hf_app/demo/screens/search.dart';
 import 'package:hf_app/demo/screens/favourites.dart';
 import 'package:hf_app/demo/state.dart';
@@ -46,7 +47,7 @@ void main() {
     expect(find.text('Previous account'), findsNothing);
     expect(find.byType(WalletTicket), findsNothing);
     expect(tester.takeException(), isNull);
-  });
+  }, skip: DemoMode.on); // a LIVE-build check: CI runs tests with HF_DEMO=true, where demo sign-in is the source of truth
   testWidgets('guest Me fits a short viewport with large text', (tester) async {
     tester.view.physicalSize = const Size(360, 600);
     tester.view.devicePixelRatio = 1;

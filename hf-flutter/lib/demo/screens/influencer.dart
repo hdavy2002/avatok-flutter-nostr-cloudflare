@@ -16,6 +16,10 @@ import '../presence_bridge.dart';
 import '../state.dart';
 import '../theme.dart';
 import '../widgets.dart';
+import '../desi.dart';
+import '../inf_kit.dart';
+import '../channel_kit.dart';
+import '../booking_kit.dart';
 import 'bookings_real.dart'; // [HF-WIRE-8]
 import 'channels.dart';
 
@@ -110,40 +114,46 @@ class _InfluencerJoinScreenState extends State<InfluencerJoinScreen> {
     }
   }
 
+  /// [HF-APP-DESI-13] approved "Join as influencer" layout.
   @override
   Widget build(BuildContext context) {
     const titles = ['Your details', 'Your channels', 'Your WhatsApp'];
+    const subs = [
+      'Fans see your name on your reels and profile.',
+      'Connect your Instagram or YouTube.',
+      'Call alerts and booking reminders come here.',
+    ];
+    const tones = [DesiTone.rani, DesiTone.lav, DesiTone.tea];
     return Scaffold(
+      backgroundColor: C.ivory,
       body: SafeArea(
         child: Column(
           children: [
-            PageHeader(title: 'Join as influencer', trailing: Text('${_step + 1}/3', style: t(16, color: C.tan))),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 22),
-              child: Row(
-                children: [
-                  for (var i = 0; i < 3; i++) ...[
-                    Expanded(child: Container(height: 8, decoration: BoxDecoration(color: i <= _step ? C.marigold : C.sand, borderRadius: BorderRadius.circular(999)))),
-                    if (i < 2) const SizedBox(width: 6),
-                  ],
-                ],
-              ),
-            ),
+            ChannelHeader('Join as influencer', trailing: StepBadge('${_step + 1}/3')),
+            Padding(padding: const EdgeInsets.fromLTRB(20, 4, 20, 0), child: JoinStepper(step: _step)),
             Expanded(
               child: ListView(
-                padding: const EdgeInsets.fromLTRB(22, 18, 22, 16),
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
                 children: [
-                  Text(titles[_step], style: t(30, color: C.maroon)),
-                  const SizedBox(height: 14),
+                  DesiHero(
+                    eyebrow: 'Step ${_step + 1} of 3',
+                    title: titles[_step],
+                    sub: subs[_step],
+                    ghost: _step == 1 ? 'Reels' : 'Manch',
+                    tone: tones[_step],
+                    minHeight: _step == 0 ? 150 : 110,
+                    art: _step == 0 ? const SizedBox(width: 122, height: 146, child: Art('influencer/online-mode.webp', fit: BoxFit.contain)) : null,
+                  ),
+                  const SizedBox(height: 12),
                   if (_step == 0) ...[
-                    _label('Your name'),
-                    TextField(controller: _name, style: t(17, w: FontWeight.w700), decoration: const InputDecoration(hintText: 'Meera Joshi')),
+                    DesiField(label: 'Your name', field: TextField(controller: _name, style: t(18, w: FontWeight.w800), decoration: const InputDecoration(hintText: 'Meera Joshi'))),
                     const SizedBox(height: 12),
-                    _label('Email'),
-                    TextField(controller: _email, keyboardType: TextInputType.emailAddress, style: t(17, w: FontWeight.w700), decoration: const InputDecoration(hintText: 'you@example.com')),
+                    DesiField(
+                      label: 'Email',
+                      field: TextField(controller: _email, keyboardType: TextInputType.emailAddress, style: t(18, w: FontWeight.w800), decoration: const InputDecoration(hintText: 'you@example.com')),
+                    ),
                     const SizedBox(height: 12),
-                    const SizedBox(height: 10),
-                    Text('Next you connect your Instagram or YouTube. We show your public reels to fans. Fans can then call you at your own rate.', style: t(14, color: C.muted, w: FontWeight.w700, h: 1.4)),
+                    const DesiTip('Next you connect your Instagram or YouTube. We show your public reels to fans. Fans can then call you at your own rate.'),
                   ],
                   if (_step == 1) ...[
                     ChannelsStep(onLoaded: (l) {
@@ -153,60 +163,70 @@ class _InfluencerJoinScreenState extends State<InfluencerJoinScreen> {
                   if (_step == 2 && _live) ...[
                     Text('We send call alerts and booking reminders on WhatsApp. This is the number you signed in with.', style: t(16, w: FontWeight.w700, h: 1.4)),
                     const SizedBox(height: 12),
-                    _label('WhatsApp number'),
                     Container(
-                      height: 58,
-                      padding: const EdgeInsets.symmetric(horizontal: 14),
-                      alignment: Alignment.centerLeft,
-                      decoration: BoxDecoration(color: C.gold, borderRadius: BorderRadius.circular(14), border: Border.all(color: C.deep, width: 3)),
-                      child: Text(demo.whatsappDisplay.isEmpty ? 'Verified' : '${demo.whatsappDisplay}  ·  verified', style: t(17)),
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                      decoration: BoxDecoration(color: C.white, borderRadius: BorderRadius.circular(20), border: Border.all(color: const Color(0xFFB9E2E5), width: 1.5)),
+                      child: Row(children: [
+                        const DesiIconSquare(Icons.chat_rounded, tone: DesiTone.tea, size: 40),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                            Text('WhatsApp number', style: t(14, color: C.peacock, w: FontWeight.w800)),
+                            Text(demo.whatsappDisplay.isEmpty ? 'Verified' : '${demo.whatsappDisplay}  ·  verified', style: t(17, w: FontWeight.w800)),
+                          ]),
+                        ),
+                      ]),
                     ),
                   ],
                   if (_step == 2 && !_live) ...[
                     Text('We send call alerts and booking reminders here.', style: t(16, w: FontWeight.w700, h: 1.4)),
                     const SizedBox(height: 12),
-                    _label('WhatsApp number'),
                     Row(
                       children: [
                         Container(
                           height: 58,
                           padding: const EdgeInsets.symmetric(horizontal: 14),
                           alignment: Alignment.center,
-                          decoration: BoxDecoration(color: C.gold, borderRadius: BorderRadius.circular(14), border: Border.all(color: C.deep, width: 3)),
-                          child: Text('+91', style: t(17)),
+                          decoration: BoxDecoration(color: C.goldtint, borderRadius: BorderRadius.circular(18), border: Border.all(color: const Color(0xFFF3DFB3), width: 1.5)),
+                          child: Text('+91', style: t(17, color: C.amber, w: FontWeight.w900)),
                         ),
                         const SizedBox(width: 8),
-                        Expanded(child: TextField(controller: _wa, keyboardType: TextInputType.phone, style: t(17, w: FontWeight.w700), decoration: const InputDecoration(hintText: '98765 43210'))),
+                        Expanded(
+                          child: DesiField(
+                            label: 'WhatsApp number',
+                            field: TextField(controller: _wa, keyboardType: TextInputType.phone, style: t(17, w: FontWeight.w800), decoration: const InputDecoration(hintText: '98765 43210')),
+                          ),
+                        ),
                       ],
                     ),
                     if (_codeSent) ...[
-                      const SizedBox(height: 14),
-                      _label('6-digit code from WhatsApp'),
-                      TextField(
-                        controller: _otp,
-                        keyboardType: TextInputType.number,
-                        maxLength: 6,
-                        textAlign: TextAlign.center,
-                        style: t(28, ls: 0.4),
-                        decoration: const InputDecoration(counterText: '', hintText: '••••••'),
+                      const SizedBox(height: 12),
+                      DesiField(
+                        label: '6-digit code from WhatsApp',
+                        field: TextField(
+                          controller: _otp,
+                          keyboardType: TextInputType.number,
+                          maxLength: 6,
+                          textAlign: TextAlign.center,
+                          style: t(28, w: FontWeight.w900, ls: 0.4),
+                          decoration: const InputDecoration(counterText: '', hintText: '••••••'),
+                        ),
                       ),
                     ],
                   ],
                   if (_error != null) ...[
                     const SizedBox(height: 12),
-                    Text(_error!, style: t(14, color: C.ruby)),
+                    Text(_error!, style: t(14, color: C.ruby, w: FontWeight.w800)),
                   ],
+                  const SizedBox(height: 14),
+                  const DesiMogra(),
                 ],
               ),
             ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(22, 0, 22, 20),
-              child: TicketButton(
-                label: _busy ? 'PLEASE WAIT…' : (_step < 2 ? 'NEXT' : (_live ? 'FINISH' : (_codeSent ? 'VERIFY & FINISH' : 'SEND CODE'))),
-                maroon: true,
-                stubIcon: Icons.arrow_forward_rounded,
-                onTap: _next,
-              ),
+            BookBottomButton(
+              label: _busy ? 'PLEASE WAIT…' : (_step < 2 ? 'NEXT' : (_live ? 'FINISH' : (_codeSent ? 'VERIFY & FINISH' : 'SEND CODE'))),
+              plum: true,
+              onTap: _next,
             ),
           ],
         ),
@@ -214,7 +234,6 @@ class _InfluencerJoinScreenState extends State<InfluencerJoinScreen> {
     );
   }
 
-  Widget _label(String s) => Padding(padding: const EdgeInsets.only(bottom: 6), child: Text(s, style: t(15)));
 }
 
 // ---------------------------------------------------------------------------------------------- Shell
@@ -251,58 +270,67 @@ class InfluencerShell extends StatelessWidget {
     return ListenableBuilder(
       listenable: presenceListenable,
       builder: (context, _) {
+        // [HF-APP-DESI-11] white bar like the fan bar: pink highlight on the current tab, Online/Offline pill in the middle.
         return Scaffold(
           body: shell,
           bottomNavigationBar: Container(
-            decoration: const BoxDecoration(color: C.footerBg, border: Border(top: BorderSide(color: C.sandLine, width: 2))),
-            child: KolamBackground(child: SafeArea(
+            decoration: const BoxDecoration(
+              color: C.white,
+              border: Border(top: BorderSide(color: C.line)),
+              boxShadow: [BoxShadow(color: Color(0x664A1747), offset: Offset(0, -8), blurRadius: 24, spreadRadius: -16)],
+            ),
+            child: SafeArea(
               top: false,
               // Big system fonts must not push the bar out of shape: the bar stops growing at 130%.
               child: MediaQuery.withClampedTextScaling(
                 maxScaleFactor: 1.3,
-                child: SizedBox(
-                  height: 52,
-                  child: Row(
-                    children: [
-                      for (final it in _left)
+                child: Padding(
+                  padding: const EdgeInsets.all(6),
+                  child: SizedBox(
+                    height: 62,
+                    child: Row(
+                      children: [
+                        for (final it in _left)
+                          Expanded(
+                            flex: 10,
+                            child: Semantics(
+                              button: true,
+                              selected: shell.currentIndex == it.$1,
+                              label: it.$3,
+                              child: InkWell(
+                                borderRadius: BorderRadius.circular(14),
+                                onTap: () => shell.goBranch(it.$1, initialLocation: it.$1 == shell.currentIndex),
+                                child: _tab(it.$2, it.$3, shell.currentIndex == it.$1),
+                              ),
+                            ),
+                          ),
+                        Expanded(flex: 14, child: _presencePill(context)),
                         Expanded(
-                          flex: 2,
+                          flex: 10,
                           child: Semantics(
                             button: true,
-                            selected: shell.currentIndex == it.$1,
-                            label: it.$3,
+                            selected: shell.currentIndex == 3,
+                            label: 'Availability',
                             child: InkWell(
-                              onTap: () => shell.goBranch(it.$1, initialLocation: it.$1 == shell.currentIndex),
-                              child: _tab(it.$2, it.$3, shell.currentIndex == it.$1),
+                              borderRadius: BorderRadius.circular(14),
+                              onTap: () => shell.goBranch(3, initialLocation: shell.currentIndex == 3),
+                              child: _tab(Icons.edit_calendar_rounded, 'Availability', shell.currentIndex == 3),
                             ),
                           ),
                         ),
-                      Expanded(flex: 3, child: _presencePill(context)),
-                      Expanded(
-                        flex: 2,
-                        child: Semantics(
-                          button: true,
-                          selected: shell.currentIndex == 3,
-                          label: 'Availability',
-                          child: InkWell(
-                            onTap: () => shell.goBranch(3, initialLocation: shell.currentIndex == 3),
-                            child: _tab(Icons.edit_calendar_rounded, 'Availability', shell.currentIndex == 3),
+                        Expanded(
+                          flex: 10,
+                          child: Semantics(
+                            button: true,
+                            label: 'Switch to fan view',
+                            child: InkWell(borderRadius: BorderRadius.circular(14), onTap: () => context.go('/me'), child: _tab(Icons.swap_horiz_rounded, 'Fan view', false)),
                           ),
                         ),
-                      ),
-                      Expanded(
-                        flex: 2,
-                        child: Semantics(
-                          button: true,
-                          label: 'Switch to fan view',
-                          child: InkWell(onTap: () => context.go('/me'), child: _tab(Icons.swap_horiz_rounded, 'Fan view', false)),
-                        ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
                 ),
               ),
-            ),
             ),
           ),
         );
@@ -310,19 +338,23 @@ class InfluencerShell extends StatelessWidget {
     );
   }
 
-  Widget _tab(IconData icon, String label, bool on) => Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(icon, size: 22, color: on ? C.maroon : C.muted),
-          const SizedBox(height: 1),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 2),
-            child: FittedBox(
-              fit: BoxFit.scaleDown,
-              child: Text(label, maxLines: 1, style: t(11, color: on ? C.maroon : C.muted, w: on ? FontWeight.w800 : FontWeight.w700)),
+  Widget _tab(IconData icon, String label, bool on) => Container(
+        margin: const EdgeInsets.symmetric(horizontal: 1),
+        decoration: BoxDecoration(color: on ? C.blush : C.clear, borderRadius: BorderRadius.circular(14)),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(icon, size: 22, color: on ? C.rani : C.muted),
+            const SizedBox(height: 2),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 2),
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Text(label, maxLines: 1, style: t(14, color: on ? C.rani : C.muted, w: on ? FontWeight.w800 : FontWeight.w700)),
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       );
 
   /// The centre Online/Offline pill: icon AND words (never colour alone). Online = green fill with white text,
@@ -355,14 +387,14 @@ class InfluencerShell extends StatelessWidget {
       icon = Icons.wifi_tethering_rounded;
       label = 'Online';
       spoken = 'You are online. Tap to go offline';
-      fill = C.onlineDot;
-      ink = C.paper;
+      fill = C.onlineBg;
+      ink = C.onlineInk;
       edge = C.onlineInk;
     } else {
       icon = Icons.nightlight_round;
       label = 'Offline';
       spoken = 'You are offline. Tap to go online';
-      fill = C.paper;
+      fill = C.white;
       ink = C.maroon;
       edge = C.maroon;
     }
@@ -382,17 +414,17 @@ class InfluencerShell extends StatelessWidget {
               customBorder: const StadiumBorder(),
               onTap: busy ? null : () => unawaited(_togglePresence(context)),
               child: ConstrainedBox(
-                constraints: const BoxConstraints(minHeight: 48, minWidth: 48),
+                constraints: const BoxConstraints(minHeight: 50, minWidth: 48),
                 child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
                   child: FittedBox(
                     fit: BoxFit.scaleDown,
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        Icon(icon, color: ink, size: 22),
+                        Icon(icon, color: ink, size: 20),
                         const SizedBox(width: 6),
-                        Text(label, maxLines: 1, style: t(12, color: ink)),
+                        Text(label, maxLines: 1, style: t(15, color: ink, w: FontWeight.w900)),
                       ],
                     ),
                   ),
@@ -411,9 +443,11 @@ class InfluencerShell extends StatelessWidget {
 class InfluencerHomeScreen extends StatelessWidget {
   const InfluencerHomeScreen({super.key});
 
+  /// [HF-APP-DESI-11] approved influencer home layout.
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: C.ivory,
       body: SafeArea(
         child: ListenableBuilder(
           listenable: presenceListenable,
@@ -421,99 +455,51 @@ class InfluencerHomeScreen extends StatelessWidget {
             final today = dayOnly(DateTime.now());
             final todays = demo.bookingsOn(today);
             return ListView(
-              padding: const EdgeInsets.fromLTRB(22, 16, 22, 24),
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
               children: [
-                Text('NAMASTE', style: t(14, color: C.ruby, ls: 0.14)),
-                Text(demo.name.isEmpty ? 'Influencer' : demo.name, style: t(30, color: C.maroon, h: 1.05)),
-                const SizedBox(height: 16),
-                GestureDetector(
-                  onTap: () => StatefulNavigationShell.of(context).goBranch(2),
-                  child: Container(
-                    padding: const EdgeInsets.all(18),
-                    decoration: BoxDecoration(
-                      color: myOnline ? C.onlineBg : C.sand,
-                      borderRadius: BorderRadius.circular(20),
-                      border: Border.all(color: myOnline ? C.onlineLine : C.sandLine, width: 2),
-                    ),
-                    child: Row(
-                      children: [
-                        Container(width: 12, height: 12, decoration: BoxDecoration(shape: BoxShape.circle, color: myOnline ? C.onlineDot : C.muted)),
-                        const SizedBox(width: 10),
-                        Icon(myOnline ? Icons.wifi_tethering_rounded : Icons.nightlight_round, color: myOnline ? C.onlineInk : C.muted, size: 34),
-                        const SizedBox(width: 14),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(myOnline ? 'You are ONLINE' : 'You are OFFLINE', style: t(20, color: myOnline ? C.onlineInk : C.deep)),
-                              Text(
-                                myOnline ? 'Fans see your reels and can call you now.' : 'No calls now. Fans can still book you.',
-                                style: t(14, color: myOnline ? C.onlineInk : C.muted, w: FontWeight.w700),
-                              ),
-                            ],
-                          ),
-                        ),
-                        Icon(Icons.chevron_right_rounded, color: myOnline ? C.onlineInk : C.muted),
-                      ],
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 18),
+                InfHero(name: demo.name.isEmpty ? 'Influencer' : demo.name),
+                const SizedBox(height: 12),
+                PresenceCard(online: myOnline, onTap: () => StatefulNavigationShell.of(context).goBranch(2)),
+                const SizedBox(height: 12),
                 // [HF-WIRE-12] Dummy numbers: shown in the demo build only (no "today" summary route exists yet).
                 if (DemoMode.on) ...[
-                  Row(
-                    children: [
-                      _stat('Calls today', '6'),
-                      const SizedBox(width: 10),
-                      _stat('Minutes', '41'),
-                      const SizedBox(width: 10),
-                      _stat('Earned today', inr(41 * demo.myRate * 0.6 - 41 * 2, paise: false)),
-                    ],
-                  ),
-                  const SizedBox(height: 18),
+                  InfTodayTiles(calls: '6', minutes: '41', earned: inr(41 * demo.myRate * 0.6 - 41 * 2, paise: false)),
+                  const SizedBox(height: 12),
                 ],
                 const _EarningsCard(), // [HF-WIRE-10]
-                const SizedBox(height: 22),
-                Row(
-                  children: [
-                    Expanded(child: Text('Today\'s bookings', style: t(20, color: C.maroon))),
-                    TextButton(onPressed: () => StatefulNavigationShell.of(context).goBranch(1), child: Text('All', style: t(15, color: C.maroon))),
-                  ],
-                ),
+                const SizedBox(height: 16),
+                InfSectionHead(title: 'Today\'s bookings', action: 'All', onAction: () => StatefulNavigationShell.of(context).goBranch(1)),
                 if (BookingsBridge.real) const RealTodaysBookings() else ...[ // [HF-WIRE-8]
-                if (todays.isEmpty) Text('No bookings today.', style: t(15, color: C.muted, w: FontWeight.w700)),
-                for (final b in todays) BookingTile(b),
+                  if (todays.isEmpty) Text('No bookings today.', style: t(15, color: C.muted, w: FontWeight.w700)),
+                  for (var i = 0; i < todays.length; i++) BookingTile(todays[i], index: i),
                 ],
-                const SizedBox(height: 22),
+                const SizedBox(height: 16),
                 if (PresenceBridge.real) const MyReelsSection() else ...[
-                Row(
-                  children: [
-                    Expanded(child: Text('My reels', style: t(20, color: C.maroon))),
-                    TextButton(onPressed: () => context.push('/inf/channels'), child: Text('Manage channels', style: t(15, color: C.maroon))),
-                  ],
-                ),
-                const SizedBox(height: 4),
-                Text('24 of 31 passed the face check and are in the feed.', style: t(14, color: C.muted, w: FontWeight.w700)),
-                const SizedBox(height: 10),
-                SizedBox(
-                  height: 130,
-                  child: ListView.separated(
-                    scrollDirection: Axis.horizontal,
-                    itemCount: 6,
-                    separatorBuilder: (_, __) => const SizedBox(width: 8),
-                    itemBuilder: (_, i) => Container(
-                      width: 80,
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(10),
-                        gradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: influencers[i % influencers.length].tones),
-                      ),
-                      alignment: Alignment.topRight,
-                      padding: const EdgeInsets.all(6),
-                      child: Icon(i == 4 ? Icons.block_rounded : Icons.check_circle_rounded, color: i == 4 ? C.cream : C.lemon, size: 20),
+                  InfSectionHead(title: 'My reels', action: 'Manage channels', onAction: () => context.push('/inf/channels')),
+                  Text('24 of 31 passed the face check and are in the feed.', style: t(14, color: C.muted, w: FontWeight.w700)),
+                  const SizedBox(height: 10),
+                  SizedBox(
+                    height: 130,
+                    child: ListView.separated(
+                      scrollDirection: Axis.horizontal,
+                      itemCount: 6,
+                      separatorBuilder: (_, __) => const SizedBox(width: 8),
+                      itemBuilder: (_, i) {
+                        final who = influencers[i % influencers.length];
+                        return InfReelThumb(
+                          index: i,
+                          ok: i != 4,
+                          child: DecoratedBox(
+                            decoration: BoxDecoration(gradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: who.tones)),
+                            child: who.portrait == null ? null : Art(who.portrait!, fit: BoxFit.cover, alignment: Alignment.topCenter),
+                          ),
+                        );
+                      },
                     ),
                   ),
-                ),
                 ],
+                const SizedBox(height: 12),
+                const DesiMogra(),
               ],
             );
           },
@@ -521,63 +507,23 @@ class InfluencerHomeScreen extends StatelessWidget {
       ),
     );
   }
-
-  Widget _stat(String a, String b) => Expanded(
-        child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
-          decoration: BoxDecoration(color: C.deep, borderRadius: BorderRadius.circular(14)),
-          child: Column(
-            children: [
-              FittedBox(child: Text(b, style: t(22, color: C.gold))),
-              Text(a, textAlign: TextAlign.center, style: t(14, color: C.cream, w: FontWeight.w700)),
-            ],
-          ),
-        ),
-      );
 }
 
 /// One fan booking on the influencer side.
 class BookingTile extends StatelessWidget {
-  const BookingTile(this.b, {super.key, this.showDay = false});
+  const BookingTile(this.b, {super.key, this.showDay = false, this.index = 0});
 
   final InBooking b;
   final bool showDay;
+  final int index;
 
   @override
-  Widget build(BuildContext context) {
-    return Container(
-      margin: const EdgeInsets.only(top: 10),
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(color: C.paper, borderRadius: BorderRadius.circular(14), border: Border.all(color: C.sandLine, width: 2)),
-      child: Row(
-        children: [
-          Container(
-            width: 64,
-            padding: const EdgeInsets.symmetric(vertical: 8),
-            decoration: BoxDecoration(color: C.butter, borderRadius: BorderRadius.circular(10)),
-            child: Column(
-              children: [
-                Text(b.time.split(' ').first, style: t(16, color: C.maroon)),
-                Text(b.time.split(' ').last, style: t(14, color: C.tan)),
-              ],
-            ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(b.fan, style: t(16)),
-                Text('${showDay ? '${dayLabel(b.day)} · ' : ''}${b.minutes} min${b.note.isEmpty ? '' : ' · ${b.note}'}',
-                    maxLines: 2, overflow: TextOverflow.ellipsis, style: t(14, color: C.muted, w: FontWeight.w700)),
-              ],
-            ),
-          ),
-          const Icon(Icons.call_rounded, color: C.turquoise),
-        ],
-      ),
-    );
-  }
+  Widget build(BuildContext context) => InfBookingCard(
+        index: index,
+        time: b.time,
+        fan: b.fan,
+        line: '${showDay ? '${dayLabel(b.day)} · ' : ''}${b.minutes} min${b.note.isEmpty ? '' : ' · ${b.note}'}',
+      );
 }
 
 // ---------------------------------------------------------------------------------------------- Online / Offline
@@ -586,6 +532,7 @@ class BookingTile extends StatelessWidget {
 class InfluencerStatusScreen extends StatelessWidget {
   const InfluencerStatusScreen({super.key});
 
+  /// [HF-APP-DESI-11] approved Online (cream) / Offline (dark plum) layout.
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -595,20 +542,34 @@ class InfluencerStatusScreen extends StatelessWidget {
           final on = myOnline;
           return AnimatedContainer(
             duration: const Duration(milliseconds: 350),
-            color: on ? C.ivory : C.deep,
+            decoration: BoxDecoration(
+              color: on ? C.ivory : null,
+              gradient: on ? null : const RadialGradient(center: Alignment(0, -.64), radius: 1.2, colors: [Color(0xFF6B2468), Color(0xFF4A1747), Color(0xFF2B1530)], stops: [0, .45, 1]),
+            ),
             child: SafeArea(
               child: ListView(
-                padding: const EdgeInsets.fromLTRB(24, 20, 24, 24),
+                padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
                 children: [
-                  Text(on ? 'YOU ARE' : 'YOU ARE', textAlign: TextAlign.center, style: t(16, color: on ? C.onlineInk : C.cream, ls: 0.14)),
-                  Text(on ? 'ONLINE' : 'OFFLINE', textAlign: TextAlign.center, style: t(54, color: on ? C.maroon : C.gold, ls: 0.04, h: 1.05)),
+                  const FlowerString(),
+                  const SizedBox(height: 10),
+                  Text('YOU ARE', textAlign: TextAlign.center, style: t(16, color: on ? C.onlineInk : const Color(0xFFF7E6F0), w: FontWeight.w800, ls: .12)),
+                  Text(on ? 'ONLINE' : 'OFFLINE', textAlign: TextAlign.center, style: t(54, color: on ? C.maroon : C.lemon, w: FontWeight.w900, h: 1.05)),
                   const SizedBox(height: 12),
                   Center(
-                    child: ArtMoment(
-                      on ? 'influencer/online-mode.webp' : 'influencer/offline-mode.webp',
-                      label: on ? 'RANGILI\nready to talk' : 'RANGILI\nresting',
-                      size: 250,
-                      ring: on ? C.butter : C.violet,
+                    child: SizedBox(
+                      width: 250,
+                      height: 250,
+                      child: Stack(clipBehavior: Clip.none, alignment: Alignment.center, children: [
+                        Container(
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            gradient: RadialGradient(colors: on ? const [C.goldtint, Color(0xFFFFE2B8)] : const [Color(0xFF6B2468), Color(0xFF4A1747)]),
+                          ),
+                        ),
+                        Art(on ? 'influencer/online-mode.webp' : 'influencer/offline-mode.webp', width: 240, height: 240, fit: BoxFit.contain),
+                        const Positioned(left: -10, bottom: 10, child: Marigold(size: 54)),
+                        const Positioned(right: -6, top: 20, child: Hibiscus(size: 44)),
+                      ]),
                     ),
                   ),
                   const SizedBox(height: 18),
@@ -617,50 +578,58 @@ class InfluencerStatusScreen extends StatelessWidget {
                         ? 'Fans see you as Online on the app and the website. Your reels are in the feed with a Call now button.'
                         : 'We will not disturb you. Your reels leave the feed and nobody can call you now — but fans can still book a time from your calendar.',
                     textAlign: TextAlign.center,
-                    style: t(16, color: on ? C.deep : C.cream, w: FontWeight.w700, h: 1.45),
+                    style: t(16, color: on ? C.deep : const Color(0xFFF7E6F0), w: FontWeight.w700, h: 1.45),
                   ),
-                  const SizedBox(height: 26),
-                  GestureDetector(
-                    onTap: () => togglePresence(context),
-                    child: AnimatedContainer(
-                      duration: const Duration(milliseconds: 300),
-                      height: 84,
-                      padding: const EdgeInsets.all(8),
-                      decoration: BoxDecoration(
-                        color: on ? C.onlineInk : C.muted,
-                        borderRadius: BorderRadius.circular(999),
-                        border: Border.all(color: C.lemon, width: 3),
-                      ),
-                      child: Row(
-                        mainAxisAlignment: on ? MainAxisAlignment.end : MainAxisAlignment.start,
-                        children: [
-                          if (on) Expanded(child: Center(child: Text('TAP TO GO OFFLINE', style: t(16, color: C.paper, ls: 0.06)))),
-                          Container(
-                            width: 64,
-                            height: 64,
-                            decoration: const BoxDecoration(shape: BoxShape.circle, color: C.paper),
-                            child: Icon(on ? Icons.wifi_tethering_rounded : Icons.nightlight_round, color: on ? C.onlineDot : C.deep, size: 32),
-                          ),
-                          if (!on) Expanded(child: Center(child: Text('TAP TO GO ONLINE', style: t(16, color: C.paper, ls: 0.06)))),
-                        ],
+                  const SizedBox(height: 22),
+                  Semantics(
+                    button: true,
+                    child: GestureDetector(
+                      onTap: () => togglePresence(context),
+                      child: AnimatedContainer(
+                        duration: const Duration(milliseconds: 300),
+                        height: 84,
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          gradient: on ? const LinearGradient(colors: [C.onlineInk, Color(0xFF2E8B57)]) : null,
+                          color: on ? null : const Color(0x1FFFFFFF),
+                          borderRadius: BorderRadius.circular(999),
+                          border: Border.all(color: C.lemon, width: 3),
+                        ),
+                        child: Row(
+                          children: [
+                            if (on) Expanded(child: Center(child: Text('TAP TO GO OFFLINE', style: t(16, color: C.white, w: FontWeight.w900, ls: .04)))),
+                            Container(
+                              width: 64,
+                              height: 64,
+                              decoration: const BoxDecoration(shape: BoxShape.circle, color: C.white),
+                              child: Icon(on ? Icons.wifi_tethering_rounded : Icons.nightlight_round, color: on ? C.onlineInk : C.maroon, size: 30),
+                            ),
+                            if (!on) Expanded(child: Center(child: Text('TAP TO GO ONLINE', style: t(16, color: C.white, w: FontWeight.w900, ls: .04)))),
+                          ],
+                        ),
                       ),
                     ),
                   ),
-                  const SizedBox(height: 18),
+                  const SizedBox(height: 16),
                   Container(
                     padding: const EdgeInsets.all(14),
-                    decoration: BoxDecoration(color: on ? C.butter : C.maroon, borderRadius: BorderRadius.circular(14)),
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(20),
+                      gradient: on ? const LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [C.white, C.goldtint]) : null,
+                      color: on ? null : const Color(0x24FBBF24),
+                      border: Border.all(color: on ? const Color(0xFFF3DFB3) : const Color(0x66FBBF24), width: 1.5),
+                    ),
                     child: Row(
                       children: [
-                        Icon(Icons.event_available_rounded, color: on ? C.maroon : C.lemon),
-                        const SizedBox(width: 10),
+                        Icon(Icons.event_available_rounded, color: on ? C.amber : C.lemon),
+                        const SizedBox(width: 12),
                         Expanded(
                           child: Text(
                             // [HF-WIRE-12] the count is the dummy list, so a live build says it without a number
                             DemoMode.on
                                 ? '${demo.inBookings.length} bookings coming up. They ring you at the booked time, online or offline.'
                                 : 'Booked calls ring you at the booked time, online or offline.',
-                            style: t(14, color: on ? C.deep : C.gold, h: 1.35),
+                            style: t(14, color: on ? C.deep : const Color(0xFFFDE68A), w: FontWeight.w800, h: 1.35),
                           ),
                         ),
                       ],
@@ -690,9 +659,11 @@ class _InfluencerBookingsScreenState extends State<InfluencerBookingsScreen> {
   DateTime _month = dayOnly(DateTime.now());
   DateTime _day = dayOnly(DateTime.now());
 
+  /// [HF-APP-DESI-12] approved "Booked with me" layout (demo: no approval feature).
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: C.ivory,
       body: SafeArea(
         child: ListenableBuilder(
           listenable: demo,
@@ -700,31 +671,30 @@ class _InfluencerBookingsScreenState extends State<InfluencerBookingsScreen> {
             final list = demo.bookingsOn(_day);
             final upcoming = [...demo.inBookings]..sort((a, b) => a.day.compareTo(b.day));
             return ListView(
-              padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
               children: [
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: [
-                    const Expanded(child: Headline(solid: 'MY', outline: 'BOOKINGS', size: 38)),
-                    SizedBox(width: 110, height: 70, child: Art('influencer/calendar-header.webp', fit: BoxFit.contain)),
-                  ],
+                const BookedWithMeHero(),
+                const SizedBox(height: 12),
+                CalendarCard(
+                  child: BookMonth(
+                    month: _month,
+                    selected: _day,
+                    allowPast: true,
+                    fill: const {},
+                    dots: {for (final b in demo.inBookings) dayKey(b.day)},
+                    onPick: (d) => setState(() => _day = d),
+                    onMonth: (m) => setState(() => _month = m),
+                  ),
                 ),
                 const SizedBox(height: 14),
-                MonthGrid(
-                  month: _month,
-                  selected: _day,
-                  allowPast: true,
-                  dots: {for (final b in demo.inBookings) dayKey(b.day)},
-                  onPick: (d) => setState(() => _day = d),
-                  onMonth: (m) => setState(() => _month = m),
-                ),
-                const SizedBox(height: 18),
-                Text(dayLabel(_day), style: t(20, color: C.maroon)),
+                Text(dayLabel(_day), style: t(18, color: C.maroon, w: FontWeight.w900)),
                 if (list.isEmpty) Padding(padding: const EdgeInsets.only(top: 8), child: Text('No bookings on this day.', style: t(15, color: C.muted, w: FontWeight.w700))),
-                for (final b in list) BookingTile(b),
-                const SizedBox(height: 22),
-                Text('All upcoming', style: t(18, color: C.maroon)),
-                for (final b in upcoming) BookingTile(b, showDay: true),
+                for (var i = 0; i < list.length; i++) BookingTile(list[i], index: i),
+                const SizedBox(height: 18),
+                const InfSectionHead(title: 'All upcoming'),
+                for (var i = 0; i < upcoming.length; i++) BookingTile(upcoming[i], showDay: true, index: i + 1),
+                const SizedBox(height: 12),
+                const DesiMogra(),
               ],
             );
           },
@@ -748,9 +718,11 @@ class _AvailabilityScreenState extends State<AvailabilityScreen> {
   DateTime _month = dayOnly(DateTime.now());
   DateTime _day = dayOnly(DateTime.now());
 
+  /// [HF-APP-DESI-12] approved "Availability" layout (demo).
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: C.ivory,
       body: SafeArea(
         child: ListenableBuilder(
           listenable: demo,
@@ -758,72 +730,50 @@ class _AvailabilityScreenState extends State<AvailabilityScreen> {
             final open = demo.slotsOn(_day);
             final perMin = demo.myRate * 0.6 - 2;
             return ListView(
-              padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
               children: [
-                const Headline(solid: 'WHEN CAN', outline: 'FANS BOOK?', size: 36),
-                const SizedBox(height: 6),
-                Text('Tap a date, then tap the times you are free. Yellow dates are open.', style: t(14, color: C.muted, w: FontWeight.w700)),
-                const SizedBox(height: 14),
-                MonthGrid(
-                  month: _month,
-                  selected: _day,
-                  fill: demo.availability.keys.toSet(),
-                  onPick: (d) => setState(() => _day = d),
-                  onMonth: (m) => setState(() => _month = m),
-                ),
-                const SizedBox(height: 16),
-                Row(
-                  children: [
-                    Expanded(child: Text(dayLabel(_day), style: t(20, color: C.maroon))),
-                    Text(open.isEmpty ? 'Closed' : 'Open', style: t(14, color: open.isEmpty ? C.muted : C.maroon)),
-                    const SizedBox(width: 6),
-                    Switch(
-                      value: open.isNotEmpty,
-                      onChanged: (v) => demo.setDayOpen(_day, v),
-                      activeThumbColor: C.lemon,
-                      activeTrackColor: C.maroon,
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 6),
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: [
-                    for (final s in allSlots)
-                      FilterChip(
-                        label: Text(s, style: t(14, color: open.contains(s) ? C.gold : C.maroon)),
-                        selected: open.contains(s),
-                        showCheckmark: false,
-                        selectedColor: C.maroon,
-                        backgroundColor: C.paper,
-                        shape: const StadiumBorder(side: BorderSide(color: C.maroon, width: 2)),
-                        onSelected: (_) => demo.toggleSlot(_day, s),
-                      ),
-                  ],
-                ),
-                const SizedBox(height: 26),
-                Container(
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(color: C.deep, borderRadius: BorderRadius.circular(18)),
-                  child: Column(
-                    children: [
-                      Text('YOUR RATE', style: t(14, color: C.gold, ls: 0.14)),
-                      const SizedBox(height: 8),
-                      Row(
-                        children: [
-                          _round(Icons.remove_rounded, 'Lower rate', () => demo.setRate(demo.myRate - 1)),
-                          Expanded(child: Center(child: Text('₹${demo.myRate}/min', style: t(32, color: C.paper)))),
-                          _round(Icons.add_rounded, 'Raise rate', () => demo.setRate(demo.myRate + 1)),
-                        ],
-                      ),
-                      const SizedBox(height: 6),
-                      Text('You get about ${inr(perMin < 0 ? 0 : perMin)} a minute', style: t(14, color: C.cream, w: FontWeight.w700)),
-                    ],
+                const DesiHero(eyebrow: 'Availability', title: 'When can fans book?', sub: 'Open days and times, India time.', ghost: 'Kab', tone: DesiTone.lav, minHeight: 120),
+                const SizedBox(height: 8),
+                Text('Tap a date, then tap the times you are free. Yellow dates are open.', style: t(14, color: C.muted, w: FontWeight.w700, h: 1.4)),
+                const SizedBox(height: 12),
+                CalendarCard(
+                  white: true,
+                  child: BookMonth(
+                    month: _month,
+                    selected: _day,
+                    fill: demo.availability.keys.toSet(),
+                    onPick: (d) => setState(() => _day = d),
+                    onMonth: (m) => setState(() => _month = m),
                   ),
                 ),
-                const SizedBox(height: 14),
+                const SizedBox(height: 12),
+                Container(
+                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 14),
+                  decoration: BoxDecoration(color: C.white, borderRadius: BorderRadius.circular(24), border: Border.all(color: const Color(0xFFB9E2E5), width: 1.5)),
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Row(children: [
+                      Expanded(child: Text(dayLabel(_day), style: t(18, color: C.maroon, w: FontWeight.w900))),
+                      Text(open.isEmpty ? 'Closed' : 'Open', style: t(14, color: open.isEmpty ? C.muted : C.peacock, w: FontWeight.w800)),
+                      const SizedBox(width: 6),
+                      DesiSwitch(value: open.isNotEmpty, onChanged: (v) => demo.setDayOpen(_day, v)),
+                    ]),
+                    const SizedBox(height: 6),
+                    Wrap(spacing: 8, runSpacing: 8, children: [
+                      for (final s in allSlots) availabilityChip(label: s, selected: open.contains(s), onSelected: (_) => demo.toggleSlot(_day, s)),
+                    ]),
+                  ]),
+                ),
+                const SizedBox(height: 12),
+                RateCard(
+                  rate: '₹${demo.myRate}/min',
+                  line: 'You get about ${inr(perMin < 0 ? 0 : perMin)} a minute',
+                  onLower: () => demo.setRate(demo.myRate - 1),
+                  onRaise: () => demo.setRate(demo.myRate + 1),
+                ),
+                const SizedBox(height: 12),
                 Text('Going online for instant calls is the round button in the middle of your bar.', style: t(14, color: C.muted, w: FontWeight.w700, h: 1.4)),
+                const SizedBox(height: 12),
+                const DesiMogra(),
               ],
             );
           },
@@ -831,8 +781,6 @@ class _AvailabilityScreenState extends State<AvailabilityScreen> {
       ),
     );
   }
-
-  Widget _round(IconData icon, String label, VoidCallback onTap) => BrassKnob(label: label, size: 52, onTap: onTap, child: Icon(icon, color: C.deep, size: 26));
 }
 
 
@@ -883,37 +831,19 @@ class _EarningsCardState extends State<_EarningsCard> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        GestureDetector(
+        EarningsGullak(
+          ready: ready,
+          hold: hold,
           onTap: () async {
             await context.push('/payout');
             if (_real && mounted) _load();
           },
-          child: Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(color: C.paper, borderRadius: BorderRadius.circular(16), border: Border.all(color: C.deep, width: 3)),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text('READY TO WITHDRAW', style: t(14, color: C.tan, ls: 0.12)),
-                      Text(ready, style: t(30, color: C.maroon)),
-                      Text(hold, style: t(14, color: C.muted, w: FontWeight.w700)),
-                    ],
-                  ),
-                ),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                  decoration: BoxDecoration(color: C.marigold, borderRadius: BorderRadius.circular(12)),
-                  child: Text('PAYOUT', style: t(14, ls: 0.06)),
-                ),
-              ],
-            ),
-          ),
         ),
         const SizedBox(height: 8),
-        Text('We keep ₹2 a minute plus 40% of your rate above ₹2. The rest is yours.', style: t(14, color: C.muted, w: FontWeight.w700)),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 4),
+          child: Text('We keep ₹2 a minute plus 40% of your rate above ₹2. The rest is yours.', style: t(14, color: C.muted, w: FontWeight.w700)),
+        ),
       ],
     );
   }

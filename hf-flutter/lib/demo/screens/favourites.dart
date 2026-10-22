@@ -4,6 +4,8 @@ import 'package:go_router/go_router.dart';
 import '../../data/repos/favourites_repo.dart';
 import '../../data/services.dart';
 import '../data.dart';
+import '../desi.dart';
+import '../fav_kit.dart';
 import '../favourites_real.dart';
 import '../presence_bridge.dart';
 import '../state.dart';
@@ -28,104 +30,71 @@ class FavouritesScreen extends StatelessWidget {
 
   Widget _authenticated(BuildContext context) {
     if (PresenceBridge.real) return RealFavourites(key: ValueKey(Services.instance.user?.id), repo: repo ?? Services.instance.favouritesRepo); // [HF-WIRE-9]
-    return Scaffold(
-      body: SafeArea(
-        child: ListenableBuilder(
-          listenable: demo,
-          builder: (context, _) {
-            final saved = reels.where((r) => demo.isFav(r.id)).toList();
-            return CustomScrollView(
-              slivers: [
-                const SliverPadding(
-                  padding: EdgeInsets.fromLTRB(20, 16, 20, 14),
-                  sliver: SliverToBoxAdapter(child: Headline(solid: 'MY', outline: 'FAVOURITES', size: 40)),
-                ),
-                if (saved.isEmpty)
-                  SliverFillRemaining(
-                    hasScrollBody: false,
-                    child: Padding(
-                      padding: const EdgeInsets.all(32),
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          const ArtMoment('favourites/empty-sakhi.webp', label: 'TARA\nhugging a heart', size: 200),
-                          const SizedBox(height: 18),
-                          Text('No favourites yet', style: t(22, color: C.maroon)),
-                          const SizedBox(height: 6),
-                          Text('Tap ♥ on a reel to save it here.', textAlign: TextAlign.center, style: t(16, color: C.muted, w: FontWeight.w700)),
-                          const SizedBox(height: 20),
-                          ChunkyButton(label: 'WATCH REELS', onTap: () => context.go('/reels')),
-                        ],
-                      ),
-                    ),
-                  )
-                else
-                  SliverPadding(
-                    padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
-                    sliver: SliverGrid.count(
-                      crossAxisCount: 2,
-                      mainAxisSpacing: 12,
-                      crossAxisSpacing: 12,
-                      childAspectRatio: 0.62,
-                      children: [for (final r in saved) _FavCard(reel: r)],
-                    ),
-                  ),
-              ],
-            );
-          },
-        ),
-      ),
-    );
+    return const _DemoFavourites();
   }
 }
 
-class _FavCard extends StatelessWidget {
-  const _FavCard({required this.reel});
+/// [HF-APP-DESI-3] Demo favourites to the approved canvas: pink hero, online/saved tiles, filter pills, coloured cards.
+class _DemoFavourites extends StatefulWidget {
+  const _DemoFavourites();
+  @override
+  State<_DemoFavourites> createState() => _DemoFavouritesState();
+}
 
-  final Reel reel;
+class _DemoFavouritesState extends State<_DemoFavourites> {
+  FavFilter _filter = FavFilter.all;
 
   @override
-  Widget build(BuildContext context) {
-    final who = reel.who;
-    return GestureDetector(
-      onTap: () => context.push('/profile/${who.id}'),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(16),
-        child: Stack(
-          fit: StackFit.expand,
-          children: [
-            DecoratedBox(
-              decoration: BoxDecoration(gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [who.tones.first, who.tones.last, C.cinema])),
-              child: who.portrait == null ? null : Art(who.portrait!, fit: BoxFit.cover, alignment: Alignment.topCenter),
-            ),
-            const DecoratedBox(
-              decoration: BoxDecoration(gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Color(0x00000000), Color(0xCC1A0B26)], stops: [0.45, 1])),
-            ),
-            Positioned(
-              top: 8,
-              right: 8,
-              child: GestureDetector(
-                onTap: () => demo.toggleFav(reel.id),
-                child: const Icon(Icons.favorite_rounded, color: C.rani, size: 28, semanticLabel: 'Remove from favourites'),
-              ),
-            ),
-            Positioned(
-              left: 10,
-              right: 10,
-              bottom: 10,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(who.name, style: t(16, color: C.ivory)),
-                  Text(reel.caption, maxLines: 2, overflow: TextOverflow.ellipsis, style: t(14, color: C.cream, w: FontWeight.w600)),
-                  const SizedBox(height: 6),
-                  StatusPill(online: who.online),
-                ],
-              ),
-            ),
-          ],
+  Widget build(BuildContext context) => Scaffold(
+        backgroundColor: C.ivory,
+        body: SafeArea(
+          child: ListenableBuilder(
+            listenable: demo,
+            builder: (context, _) {
+              final saved = reels.where((r) => demo.isFav(r.id)).toList();
+              if (saved.isEmpty) {
+                return ListView(padding: const EdgeInsets.fromLTRB(16, 12, 16, 24), children: [
+                  const FavHeader(count: 0, compact: true),
+                  const SizedBox(height: 14),
+                  FavEmptyCard(onWatch: () => context.go('/reels')),
+                ]);
+              }
+              final online = saved.where((r) => r.who.online).length;
+              final shown = saved.where((r) => switch (_filter) { FavFilter.all => true, FavFilter.online => r.who.online, FavFilter.offline => !r.who.online }).toList();
+              return ListView(padding: const EdgeInsets.fromLTRB(16, 12, 16, 24), children: [
+                FavHeader(count: saved.length),
+                const SizedBox(height: 14),
+                FavStats(online: online, saved: saved.length),
+                const SizedBox(height: 14),
+                FavFilterPills(value: _filter, onPick: (f) => setState(() => _filter = f)),
+                const SizedBox(height: 14),
+                FavGrid(cards: [
+                  for (var i = 0; i < shown.length; i++)
+                    FavCard(
+                      index: i,
+                      image: _portrait(shown[i].who),
+                      name: shown[i].who.name,
+                      sub: shown[i].who.niche,
+                      online: shown[i].who.online,
+                      rate: shown[i].who.rate,
+                      onOpen: () => context.push('/profile/${shown[i].who.id}'),
+                      onHeart: () => demo.toggleFav(shown[i].id),
+                      onCall: () => startCall(context, shown[i].who),
+                      onBook: () => context.push('/book/${shown[i].who.id}'),
+                    ),
+                ]),
+                const SizedBox(height: 14),
+                const FavTip(),
+                const SizedBox(height: 10),
+                const DesiMogra(),
+              ]);
+            },
+          ),
         ),
-      ),
-    );
-  }
+      );
+
+  Widget _portrait(Influencer who) => DecoratedBox(
+        decoration: BoxDecoration(gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [who.tones.first, who.tones.last])),
+        child: who.portrait == null ? null : Art(who.portrait!, fit: BoxFit.cover, alignment: Alignment.topCenter),
+      );
 }

@@ -11,6 +11,9 @@ import '../../data/services.dart';
 import '../../ui/strings/help_strings.dart';
 import '../theme.dart';
 import '../widgets.dart';
+import '../booking_kit.dart';
+import '../desi.dart';
+import '../settings_kit.dart';
 
 /// Real Settings and Delete account (HF-WIRE-11). While [DemoMode.on] the dummy screens in me.dart stay.
 abstract final class SettingsBridge {
@@ -159,69 +162,70 @@ class _RealSettingsScreenState extends State<RealSettingsScreen> {
     final me = _me;
     final email = me?.email;
     final whatsapp = me?.phoneMasked;
+    final host = me?.hostStatus != null;
+    // [HF-APP-DESI-10] approved Settings layout
     return Scaffold(
+      backgroundColor: C.ivory,
       body: SafeArea(
         child: Column(
           children: [
-            const PageHeader(title: 'Settings'),
+            const BookHeader('Settings'),
             Expanded(
               child: ListView(
-                padding: const EdgeInsets.fromLTRB(22, 8, 22, 24),
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
                 children: [
-                  Text('Account', style: t(18, color: C.maroon)),
-                  const SizedBox(height: 4),
-                  ListTile(
-                    key: const Key('settings-name'),
-                    contentPadding: EdgeInsets.zero,
-                    title: Text('Name', style: t(15, color: C.muted)),
-                    subtitle: Text((_name ?? '').isEmpty ? 'Add your name' : _name!, style: t(16)),
-                    trailing: const Icon(Icons.edit_rounded, color: C.maroon),
-                    onTap: _editName,
-                  ),
-                  _info('Email', (email ?? '').isEmpty ? 'Not added' : email!),
-                  _supportNote(HelpStrings.changeEmailNote),
-                  _info('WhatsApp', (whatsapp ?? '').isEmpty ? 'Not added' : whatsapp!),
-                  _supportNote(HelpStrings.changeWhatsappNote),
-                  if (me?.hostStatus != null) _link('Channels', () => context.push('/inf/channels')),
-                  // [HF-BOOK-APPROVE-5] Influencer-only: her calendar and bookings live in her own shell, so go (not push).
-                  if (me?.hostStatus != null) _link('Availability calendar', () => context.go('/inf/availability')),
-                  if (me?.hostStatus != null) _link('Calls booked with me', () => context.go('/inf/bookings')),
-                  const SizedBox(height: 18),
-                  Text('WhatsApp messages', style: t(18, color: C.maroon)),
-                  if (_prefsFailed)
-                    Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 8),
-                      child: Row(children: [
-                        Expanded(child: Text('We could not load your choices.', style: t(15, color: C.muted, w: FontWeight.w700))),
-                        TextButton(onPressed: _loadPrefs, child: Text('Try again', style: t(15, color: C.maroon))),
-                      ]),
-                    )
-                  else ...[
-                    _switch('Call alerts', 'notifyWhatsapp', _prefs.notifyWhatsapp),
-                    _switch('Booking reminders', 'apptReminders', _prefs.apptReminders),
-                    _switch('New reels from favourites', 'reelAlerts', _prefs.reelAlerts),
-                  ],
-                  const SizedBox(height: 18),
-                  Text('About', style: t(18, color: C.maroon)),
-                  const SizedBox(height: 4),
-                  _link('Help and FAQ', () => context.push('/help')),
-                  _link('Terms of use', () => _openLink(ExternalLinks.terms)),
-                  _link('Privacy policy', () => _openLink(ExternalLinks.privacy)),
-                  _link('Refunds and cancellations', () => _openLink(ExternalLinks.refunds)),
-                  _link('Contact us', () => _openLink(ExternalLinks.contact)),
-                  _info('App version', _version.version.isEmpty ? '' : _version.label),
-                  const SizedBox(height: 26),
-                  ChunkyButton(label: 'SIGN OUT', filled: false, onTap: _signOut),
-                  const SizedBox(height: 14),
+                  SettingsMeStrip(key: const Key('settings-name'), name: _name ?? '', onTap: _editName),
+                  const SizedBox(height: 12),
+                  SettingsCard(title: 'Account', tone: DesiTone.rani, children: [
+                    SettingsRow(icon: Icons.mail_rounded, tone: DesiTone.rani, label: 'Email', sub: (email ?? '').isEmpty ? 'Not added' : email!, last: true),
+                    SettingsNote(lead: HelpStrings.changeEmailNote, email: HelpStrings.supportEmail, onTap: () => _openLink(ExternalLinks.supportMail)),
+                    SettingsRow(icon: Icons.chat_rounded, tone: DesiTone.rani, label: 'WhatsApp', sub: (whatsapp ?? '').isEmpty ? 'Not added' : whatsapp!, last: true),
+                    SettingsNote(lead: HelpStrings.changeWhatsappNote, email: HelpStrings.supportEmail, onTap: () => _openLink(ExternalLinks.supportMail)),
+                    if (host) SettingsRow(icon: Icons.smart_display_rounded, tone: DesiTone.lav, label: 'Channels', onTap: () => context.push('/inf/channels')),
+                    // [HF-BOOK-APPROVE-5] Influencer-only: her calendar and bookings live in her own shell, so go (not push).
+                    if (host) SettingsRow(icon: Icons.event_rounded, tone: DesiTone.tea, label: 'Availability calendar', onTap: () => context.go('/inf/availability')),
+                    if (host) SettingsRow(icon: Icons.call_rounded, tone: DesiTone.gold, label: 'Calls booked with me', last: true, onTap: () => context.go('/inf/bookings')),
+                  ]),
+                  const SizedBox(height: 12),
+                  SettingsCard(title: 'WhatsApp messages', tone: DesiTone.tea, flower: true, children: [
+                    if (_prefsFailed)
+                      Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 8),
+                        child: Row(children: [
+                          Expanded(child: Text('We could not load your choices.', style: t(15, color: C.muted, w: FontWeight.w700))),
+                          TextButton(onPressed: _loadPrefs, child: Text('Try again', style: t(15, color: C.maroon, w: FontWeight.w800))),
+                        ]),
+                      )
+                    else ...[
+                      _switch('Call alerts', 'notifyWhatsapp', _prefs.notifyWhatsapp, Icons.notifications_active_rounded),
+                      _switch('Booking reminders', 'apptReminders', _prefs.apptReminders, Icons.alarm_rounded),
+                      _switch('New reels from favourites', 'reelAlerts', _prefs.reelAlerts, Icons.movie_rounded, last: true),
+                    ],
+                  ]),
+                  const SizedBox(height: 12),
+                  SettingsCard(title: 'About', tone: DesiTone.lav, children: [
+                    SettingsRow(icon: Icons.help_rounded, tone: DesiTone.lav, label: 'Help and FAQ', onTap: () => context.push('/help')),
+                    SettingsRow(icon: Icons.description_rounded, tone: DesiTone.lav, label: 'Terms of use', onTap: () => _openLink(ExternalLinks.terms)),
+                    SettingsRow(icon: Icons.lock_rounded, tone: DesiTone.lav, label: 'Privacy policy', onTap: () => _openLink(ExternalLinks.privacy)),
+                    SettingsRow(icon: Icons.undo_rounded, tone: DesiTone.lav, label: 'Refunds and cancellations', onTap: () => _openLink(ExternalLinks.refunds)),
+                    SettingsRow(icon: Icons.call_rounded, tone: DesiTone.lav, label: 'Contact us', onTap: () => _openLink(ExternalLinks.contact)),
+                    SettingsRow(icon: Icons.info_rounded, tone: DesiTone.lav, label: 'App version', value: _version.version.isEmpty ? '' : _version.label, last: true),
+                  ]),
+                  const SizedBox(height: 16),
+                  OutlinePill(label: 'SIGN OUT', onTap: _signOut),
+                  const SizedBox(height: 8),
                   Center(
                     child: TextButton(
                       key: const Key('settings-delete'),
+                      style: TextButton.styleFrom(minimumSize: const Size(48, 48)),
                       onPressed: () => Navigator.of(context).push(MaterialPageRoute<void>(
                         builder: (_) => DeleteAccountScreen(repo: widget.repo, signOut: widget.signOut),
                       )),
-                      child: Text('Delete my account', style: t(15, color: C.ruby)),
+                      child: Text('Delete my account', style: t(15, color: C.ruby, w: FontWeight.w800)),
                     ),
                   ),
+                  const SizedBox(height: 8),
+                  const DesiMogra(),
                 ],
               ),
             ),
@@ -231,44 +235,13 @@ class _RealSettingsScreenState extends State<RealSettingsScreen> {
     );
   }
 
-  Widget _info(String a, String b) => Padding(
-        padding: const EdgeInsets.symmetric(vertical: 8),
-        child: Row(children: [Expanded(child: Text(a, style: t(15, color: C.muted))), Text(b, style: t(16))]),
-      );
-
-  Widget _supportNote(String lead) => Padding(
-        padding: const EdgeInsets.only(bottom: 6),
-        child: InkWell(
-          onTap: () => _openLink(ExternalLinks.supportMail),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: 6),
-            child: Text.rich(TextSpan(
-              style: t(14, color: C.muted, w: FontWeight.w700),
-              children: [
-                TextSpan(text: '$lead '),
-                TextSpan(text: HelpStrings.supportEmail, style: t(14, color: C.maroon, w: FontWeight.w800)),
-                const TextSpan(text: '.'),
-              ],
-            )),
-          ),
-        ),
-      );
-
-  Widget _switch(String label, String key, bool v) => SwitchListTile(
-        key: Key('pref-$key'),
-        contentPadding: EdgeInsets.zero,
-        title: Text(label, style: t(16)),
+  Widget _switch(String label, String key, bool v, IconData icon, {bool last = false}) => SettingsSwitch(
+        switchKey: Key('pref-$key'),
+        icon: icon,
+        label: label,
         value: v,
-        activeThumbColor: C.marigold,
-        activeTrackColor: C.maroon,
+        last: last,
         onChanged: _prefsLoaded ? (x) => _flip(key, x) : null,
-      );
-
-  Widget _link(String label, VoidCallback onTap) => ListTile(
-        contentPadding: EdgeInsets.zero,
-        title: Text(label, style: t(16)),
-        trailing: const Icon(Icons.chevron_right_rounded, color: C.maroon),
-        onTap: onTap,
       );
 }
 

@@ -310,9 +310,12 @@ void main() {
       await tester.pump(const Duration(milliseconds: 25));
       expect(find.textContaining('Answer the call from the'), findsOneWidget);
       await tester.pump(const Duration(milliseconds: 25));
-      expect(find.text('On call · 01:05'), findsOneWidget);
-      expect(find.text('2 min · ₹30 so far'), findsOneWidget);
-      expect(find.text('Wallet: ₹70'), findsOneWidget);
+      // [HF-APP-DESI-6] approved layout: "On call" label, big clock, "So far" and "Wallet left" tiles
+      expect(find.text('● On call'), findsOneWidget);
+      expect(find.text('01:05'), findsOneWidget);
+      expect(find.text('₹30'), findsOneWidget);
+      expect(find.text('2 min'), findsOneWidget);
+      expect(find.text('₹70'), findsOneWidget);
       expect(find.text('About 1 minute left. Top up to keep talking.'), findsOneWidget);
       expect(events, containsAll(['hf_app_call_status', 'hf_app_call_cap_warning']));
       // Connected: polling backs off to the slow interval, so a long wait adds no more status calls.
@@ -349,7 +352,8 @@ void main() {
       await _settle(tester);
       expect(api.count('POST', '/api/hf/calls/call_abc12345/end'), 1);
       expect(api.count('POST', '/api/hf/calls/call_abc12345/cancel'), 0);
-      expect(find.text('1 min · ₹15'), findsOneWidget);
+      expect(find.text('1 min'), findsOneWidget); // [HF-APP-DESI-6] Talked / Paid tiles
+      expect(find.text('₹15'), findsOneWidget);
     });
 
     testWidgets('cancel that arrives too late falls back to end', (tester) async {
@@ -375,7 +379,8 @@ void main() {
       );
       await tester.pump(const Duration(milliseconds: 5));
       expect(find.text('Call ended'), findsOneWidget);
-      expect(find.text('3 min · ₹45'), findsOneWidget);
+      expect(find.text('3 min'), findsOneWidget); // [HF-APP-DESI-6] Talked / Paid tiles
+      expect(find.text('₹45'), findsOneWidget);
       expect(find.text('How was it?'), findsOneWidget);
       await tester.tap(find.byTooltip('4 stars'));
       await tester.pump();

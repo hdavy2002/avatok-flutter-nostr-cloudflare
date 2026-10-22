@@ -9,6 +9,7 @@ import '../data.dart';
 import '../state.dart';
 import '../theme.dart';
 import '../widgets.dart';
+import '../call_kit.dart';
 import 'call_real.dart';
 import 'signup_sheet.dart';
 
@@ -191,46 +192,25 @@ class CallConfirmSheet extends StatelessWidget {
   Widget build(BuildContext context) {
     final minutes = (demo.balance / who.rate).floor();
     final enough = minutes >= 3;
-    return SheetFrame(
+    final first = who.name.split(' ').first;
+    // [HF-APP-DESI-6] approved call confirm sheet
+    return CallSheetFrame(
       child: Padding(
-        padding: EdgeInsets.fromLTRB(26, 8, 26, MediaQuery.paddingOf(context).bottom + 20),
+        padding: EdgeInsets.fromLTRB(20, 0, 20, MediaQuery.paddingOf(context).bottom + 20),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Avatar(who, size: 84),
-            const SizedBox(height: 10),
-            Text('Call ${who.name}?', textAlign: TextAlign.center, style: t(26, color: C.maroon)),
+            CallSheetHead(who: who, title: 'Call ${who.name}?'),
             const SizedBox(height: 14),
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(color: C.deep, borderRadius: BorderRadius.circular(16)),
-              child: Column(
-                children: [
-                  _row('Rate', '₹${who.rate} per minute'),
-                  const SizedBox(height: 8),
-                  _row('Your wallet', inr(demo.balance)),
-                  const SizedBox(height: 8),
-                  const SizedBox(height: 3, width: double.infinity, child: DashedLine(vertical: false, color: C.brass, width: 2)),
-                  const SizedBox(height: 8),
-                  _row('Talk time', 'up to $minutes min', strong: true),
-                ],
-              ),
-            ),
+            CallSheetHisaab(rate: '₹${who.rate} per minute', wallet: inr(demo.balance), talk: 'up to $minutes min'),
             const SizedBox(height: 12),
-            Row(
-              children: [
-                const Icon(Icons.lock_rounded, size: 18, color: C.muted),
-                const SizedBox(width: 8),
-                Expanded(child: Text("We ring ${who.name.split(' ').first} first, then your phone. Both numbers stay private.", style: t(14, color: C.muted, w: FontWeight.w700, h: 1.4))),
-              ],
-            ),
-            const SizedBox(height: 18),
+            CallPrivacyNote(first: first),
+            const SizedBox(height: 16),
             if (enough)
-              TicketButton(
+              CallPill(
                 label: 'CALL NOW',
                 icon: Icons.call_rounded,
-                stubTop: 'RATE',
-                stubBottom: '₹${who.rate}/min',
+                tag: '₹${who.rate}/min',
                 onTap: () {
                   final go = GoRouter.of(context);
                   Navigator.of(context).pop();
@@ -238,12 +218,12 @@ class CallConfirmSheet extends StatelessWidget {
                 },
               )
             else ...[
-              Text('You need at least ₹20 in your wallet to call. Top up to keep going.', textAlign: TextAlign.center, style: t(15, color: C.ruby, h: 1.4)),
+              Text('You need at least ₹20 in your wallet to call. Top up to keep going.', textAlign: TextAlign.center, style: t(15, color: C.ruby, w: FontWeight.w800, h: 1.4)),
               const SizedBox(height: 12),
-              TicketButton(
+              CallPill(
                 label: 'TOP UP',
-                maroon: true,
-                stubIcon: Icons.add_rounded,
+                kind: CallPillKind.gold,
+                icon: Icons.add_rounded,
                 onTap: () {
                   final go = GoRouter.of(context);
                   Navigator.of(context).pop();
@@ -254,15 +234,6 @@ class CallConfirmSheet extends StatelessWidget {
           ],
         ),
       ),
-    );
-  }
-
-  Widget _row(String a, String b, {bool strong = false}) {
-    return Row(
-      children: [
-        Expanded(child: Text(a, style: t(16, color: strong ? C.gold : C.cream, w: FontWeight.w700))),
-        Text(b, style: t(strong ? 20 : 16, color: strong ? C.gold : C.ivory)),
-      ],
     );
   }
 }

@@ -15,7 +15,7 @@ import '../data.dart';
 import '../notify_me_button.dart';
 import '../theme.dart';
 import '../widgets.dart';
-import 'sheets.dart';
+import '../call_kit.dart';
 
 /// Explicit 18+ recovery; callers must tap their transaction action again afterwards.
 Future<void> recoverHfAgeConfirmation(BuildContext context, {Future<void> Function()? acknowledge}) async {
@@ -193,15 +193,14 @@ class _RealCallConfirmSheetState extends State<RealCallConfirmSheet> {
     final who = widget.who;
     final est = _est;
     final p = _problem;
-    return SheetFrame(
+    // [HF-APP-DESI-6] approved call confirm sheet
+    return CallSheetFrame(
       child: Padding(
-        padding: EdgeInsets.fromLTRB(26, 8, 26, MediaQuery.paddingOf(context).bottom + 20),
+        padding: EdgeInsets.fromLTRB(20, 0, 20, MediaQuery.paddingOf(context).bottom + 20),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Avatar(who, size: 84),
-            const SizedBox(height: 10),
-            Text(p?.problem == CallProblem.hostUnavailable ? '$_first is not available' : 'Call ${who.name}?', textAlign: TextAlign.center, style: t(26, color: C.maroon)),
+            CallSheetHead(who: who, title: p?.problem == CallProblem.hostUnavailable ? '$_first is not available' : 'Call ${who.name}?'),
             const SizedBox(height: 14),
             if (_loading)
               const Padding(
@@ -222,47 +221,29 @@ class _RealCallConfirmSheetState extends State<RealCallConfirmSheet> {
     final low = est.low || startProblem?.problem == CallProblem.lowBalance;
     final minutes = est.talkMinutes;
     return [
-      Container(
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(color: C.deep, borderRadius: BorderRadius.circular(16)),
-        child: Column(
-          children: [
-            _row('Rate', '${_rateText(est.ratePerMinRupees)} per minute'),
-            const SizedBox(height: 8),
-            _row('Your wallet', est.balancePaise == null ? '—' : paiseText(est.balancePaise!)),
-            const SizedBox(height: 8),
-            const SizedBox(height: 3, width: double.infinity, child: DashedLine(vertical: false, color: C.brass, width: 2)),
-            const SizedBox(height: 8),
-            _row('Talk time', minutes == null ? 'see below' : 'up to $minutes min', strong: true),
-          ],
-        ),
+      CallSheetHisaab(
+        rate: '${_rateText(est.ratePerMinRupees)} per minute',
+        wallet: est.balancePaise == null ? '—' : paiseText(est.balancePaise!),
+        talk: minutes == null ? 'see below' : 'up to $minutes min',
       ),
       const SizedBox(height: 12),
-      Row(
-        children: [
-          const Icon(Icons.lock_rounded, size: 18, color: C.muted),
-          const SizedBox(width: 8),
-          Expanded(child: Text("We ring $_first first, then your phone. Both numbers stay private.", style: t(14, color: C.muted, w: FontWeight.w700, h: 1.4))),
-        ],
-      ),
-      const SizedBox(height: 18),
+      CallPrivacyNote(first: _first),
+      const SizedBox(height: 16),
       if (startProblem != null && startProblem.problem != CallProblem.lowBalance) ...[
-        Text(startProblem.message, textAlign: TextAlign.center, style: t(15, color: C.ruby, h: 1.4)),
+        Text(startProblem.message, textAlign: TextAlign.center, style: t(15, color: C.ruby, w: FontWeight.w800, h: 1.4)),
         const SizedBox(height: 12),
       ],
       if (!low)
-        TicketButton(
+        CallPill(
           label: _starting ? 'CALLING…' : 'CALL NOW',
           icon: Icons.call_rounded,
-          stubTop: 'RATE',
-          stubBottom: '${_rateText(est.ratePerMinRupees)}/min',
-          enabled: !_starting,
-          onTap: _start,
+          tag: '${_rateText(est.ratePerMinRupees)}/min',
+          onTap: _starting ? null : _start,
         )
       else ...[
-        Text(est.lowMessage, key: const Key('lowBalanceMessage'), textAlign: TextAlign.center, style: t(15, color: C.ruby, h: 1.4)),
+        Text(est.lowMessage, key: const Key('lowBalanceMessage'), textAlign: TextAlign.center, style: t(15, color: C.ruby, w: FontWeight.w800, h: 1.4)),
         const SizedBox(height: 12),
-        TicketButton(label: 'TOP UP', maroon: true, stubIcon: Icons.add_rounded, onTap: _topUp),
+        CallPill(label: 'TOP UP', kind: CallPillKind.gold, icon: Icons.add_rounded, onTap: _topUp),
       ],
     ];
   }
@@ -270,13 +251,14 @@ class _RealCallConfirmSheetState extends State<RealCallConfirmSheet> {
   List<Widget> _problemBody(CallProblemInfo p) {
     if (p.problem == CallProblem.hostUnavailable) {
       return [
-        Text('$_first is offline or busy right now. No charge.', textAlign: TextAlign.center, style: t(16, color: C.deep, h: 1.4)),
+        Text('$_first is offline or busy right now. No charge.', textAlign: TextAlign.center, style: t(16, color: C.deep, w: FontWeight.w700, h: 1.4)),
         const SizedBox(height: 16),
-        NotifyMeButton(slug: widget.who.id, firstName: _first, repo: widget.notifyRepo),
+        NotifyMeButton(slug: widget.who.id, firstName: _first, repo: widget.notifyRepo, big: true),
         const SizedBox(height: 10),
-        ChunkyButton(
+        CallPill(
           label: 'BOOK A TIME',
-          filled: false,
+          kind: CallPillKind.gold,
+          height: 58,
           onTap: () {
             final go = GoRouter.of(context);
             Navigator.of(context).pop();
@@ -286,22 +268,13 @@ class _RealCallConfirmSheetState extends State<RealCallConfirmSheet> {
       ];
     }
     return [
-      Text(p.message, textAlign: TextAlign.center, style: t(16, color: C.ruby, h: 1.4)),
+      Text(p.message, textAlign: TextAlign.center, style: t(16, color: C.ruby, w: FontWeight.w800, h: 1.4)),
       const SizedBox(height: 16),
       if (p.problem == CallProblem.lowBalance)
-        TicketButton(label: 'TOP UP', maroon: true, stubIcon: Icons.add_rounded, onTap: _topUp)
+        CallPill(label: 'TOP UP', kind: CallPillKind.gold, icon: Icons.add_rounded, onTap: _topUp)
       else if (p.problem != CallProblem.notOpen)
-        ChunkyButton(label: 'TRY AGAIN', onTap: _load),
+        CallPill(label: 'TRY AGAIN', kind: CallPillKind.plum, onTap: _load),
     ];
-  }
-
-  Widget _row(String a, String b, {bool strong = false}) {
-    return Row(
-      children: [
-        Expanded(child: Text(a, style: t(16, color: strong ? C.gold : C.cream, w: FontWeight.w700))),
-        Text(b, style: t(strong ? 20 : 16, color: strong ? C.gold : C.ivory)),
-      ],
-    );
   }
 }
 
@@ -512,25 +485,20 @@ class _RealCallScreenState extends State<RealCallScreen> with SingleTickerProvid
         CallPhase.ended => s.unavailable ? 'Busy right now' : 'Call ended',
       };
     }
+    // [HF-APP-DESI-6] approved on-call / call-ended layout
     return PopScope(
       canPop: ended || _problem != null,
       child: Scaffold(
-        backgroundColor: C.cinema,
-        body: SafeArea(
-          child: Stack(
-            children: [
-              const Positioned(left: 0, top: 0, bottom: 0, child: SprocketRail()),
-              const Positioned(right: 0, top: 0, bottom: 0, child: SprocketRail()),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 28),
-                child: SingleChildScrollView(
-                  child: ConstrainedBox(
-                    constraints: BoxConstraints(minHeight: MediaQuery.sizeOf(context).height - MediaQuery.paddingOf(context).vertical - 8),
-                    child: IntrinsicHeight(child: _body(context, s, w, first, title, ended)),
-                  ),
-                ),
+        backgroundColor: C.deep,
+        body: CallBackdrop(
+          child: LayoutBuilder(
+            builder: (context, box) => SingleChildScrollView(
+              padding: const EdgeInsets.fromLTRB(22, 40, 22, 24),
+              child: ConstrainedBox(
+                constraints: BoxConstraints(minHeight: box.maxHeight - 64),
+                child: IntrinsicHeight(child: _body(context, s, w, first, title, ended)),
               ),
-            ],
+            ),
           ),
         ),
       ),
@@ -545,51 +513,39 @@ class _RealCallScreenState extends State<RealCallScreen> with SingleTickerProvid
       _warnReported = true;
       Telemetry.event('hf_app_call_cap_warning', {});
     }
+    final over = ended && s != null;
     return Column(
       children: [
-        const SizedBox(height: 40),
-        SizedBox(
-          width: 220,
-          height: 220,
-          child: Stack(
-            alignment: Alignment.center,
-            children: [
-              if (!ended && _problem == null)
-                AnimatedBuilder(
-                  animation: _pulse,
-                  builder: (_, __) => Container(
-                    width: 150 + 70 * _pulse.value,
-                    height: 150 + 70 * _pulse.value,
-                    decoration: BoxDecoration(shape: BoxShape.circle, color: C.marigold.withValues(alpha: 0.35 * (1 - _pulse.value))),
-                  ),
-                ),
-              Avatar(w, size: 150),
-            ],
-          ),
-        ),
-        const SizedBox(height: 18),
-        Text(w.name, textAlign: TextAlign.center, style: t(30, color: C.ivory, ls: 0.02)),
-        const SizedBox(height: 8),
-        Text(title, textAlign: TextAlign.center, style: t(19, color: C.gold)),
+        CallPortrait(who: w, pulse: _pulse, active: !ended && _problem == null, small: over),
+        const SizedBox(height: 14),
+        if (over) ...[
+          Text(title, textAlign: TextAlign.center, style: t(28, color: C.white, w: FontWeight.w900)),
+          if (s.hostName != null) Text('with ${w.name}', textAlign: TextAlign.center, style: t(16, color: C.white, w: FontWeight.w700)),
+        ] else ...[
+          Text(w.name, textAlign: TextAlign.center, style: t(30, color: C.white, w: FontWeight.w900)),
+          const SizedBox(height: 8),
+          if (connected) ...[
+            const CallOnChip(),
+            const SizedBox(height: 10),
+            CallClock(_clock(_talkSeconds)),
+          ] else
+            Text(title, textAlign: TextAlign.center, style: t(19, color: C.lemon, w: FontWeight.w800)),
+        ],
         if (_offline && s != null) ...[
           const SizedBox(height: 6),
-          Text(ApiException.offlineText, textAlign: TextAlign.center, style: t(14, color: C.cream, w: FontWeight.w700)),
+          Text(ApiException.offlineText, textAlign: TextAlign.center, style: t(14, color: C.white, w: FontWeight.w700)),
         ],
         if (s != null && (s.phase == CallPhase.hostAccepted || s.phase == CallPhase.dialingFan)) ...[
           const SizedBox(height: 10),
-          Text('Answer the call from the ${Brand.name} number.', textAlign: TextAlign.center, style: t(15, color: C.cream, w: FontWeight.w700)),
+          Text('Answer the call from the ${Brand.name} number.', textAlign: TextAlign.center, style: t(15, color: C.white, w: FontWeight.w700)),
         ],
         if (connected) ...[
-          const SizedBox(height: 18),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-            decoration: BoxDecoration(color: C.deep, borderRadius: BorderRadius.circular(14), border: Border.all(color: C.brass, width: 2)),
-            child: Text('${(_talkSeconds / 60).ceil()} min · ${paiseText(s!.costPaise)} so far', style: t(17, color: C.gold)),
+          const SizedBox(height: 14),
+          CallSpendTiles(
+            spent: paiseText(s!.costPaise),
+            spentSub: '${(_talkSeconds / 60).ceil()} min',
+            wallet: s.walletPaise == null ? null : paiseText(s.walletPaise!),
           ),
-          if (s.walletPaise != null) ...[
-            const SizedBox(height: 8),
-            Text('Wallet: ${paiseText(s.walletPaise!)}', style: t(14, color: C.cream, w: FontWeight.w700)),
-          ],
           if (warn) ...[
             const SizedBox(height: 14),
             Semantics(
@@ -597,26 +553,27 @@ class _RealCallScreenState extends State<RealCallScreen> with SingleTickerProvid
               child: GestureDetector(
                 onTap: () => context.push('/topup'),
                 child: Container(
+                  width: double.infinity,
                   padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                  decoration: BoxDecoration(color: C.marigold, borderRadius: BorderRadius.circular(14)),
-                  child: Text('About 1 minute left. Top up to keep talking.', textAlign: TextAlign.center, style: t(16, color: C.deep, h: 1.3)),
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(colors: [Color(0xFFF59E0B), Color(0xFFFBBF24)]),
+                    borderRadius: BorderRadius.circular(18),
+                  ),
+                  child: Text('About 1 minute left. Top up to keep talking.', textAlign: TextAlign.center, style: t(16, color: C.deep, w: FontWeight.w800, h: 1.3)),
                 ),
               ),
             ),
           ],
         ],
-        if (ended && s != null) ..._endedBody(context, s, first),
+        if (over) ..._endedBody(context, s, first),
         const Spacer(),
+        const SizedBox(height: 16),
         if (_problem != null)
-          SizedBox(width: double.infinity, child: ChunkyButton(label: 'DONE', height: 64, onTap: () => _leave(context)))
+          CallPill(label: 'DONE', kind: CallPillKind.gold, onTap: () => _leave(context))
         else if (!ended)
-          SizedBox(
-            width: double.infinity,
-            child: ChunkyButton(label: 'END CALL', icon: Icons.call_end_rounded, dark: true, height: 64, onTap: (_busy || s == null) ? null : _hangUp),
-          )
+          CallPill(label: 'END CALL', kind: CallPillKind.red, icon: Icons.call_end_rounded, height: 64, onTap: (_busy || s == null) ? null : _hangUp)
         else
-          SizedBox(width: double.infinity, child: ChunkyButton(label: 'DONE', height: 64, onTap: _busy ? null : _done)),
-        const SizedBox(height: 24),
+          CallPill(label: 'DONE', kind: CallPillKind.gold, onTap: _busy ? null : _done),
       ],
     );
   }
@@ -624,50 +581,35 @@ class _RealCallScreenState extends State<RealCallScreen> with SingleTickerProvid
   List<Widget> _endedBody(BuildContext context, CallStatus s, String first) {
     if (s.unavailable) {
       return [
-        const SizedBox(height: 14),
-        Text("$first can't take your call right now. No charge — the call did not connect.", textAlign: TextAlign.center, style: t(16, color: C.ivory, h: 1.4)),
-        const SizedBox(height: 18),
+        const SizedBox(height: 16),
+        CallEndHisaab(message: "$first can't take your call right now. No charge — the call did not connect."),
+        const SizedBox(height: 16),
         if (s.hostSlug != null) ...[
-          NotifyMeButton(slug: s.hostSlug!, firstName: first, repo: widget.notifyRepo),
+          NotifyMeButton(slug: s.hostSlug!, firstName: first, repo: widget.notifyRepo, big: true),
           const SizedBox(height: 10),
-          ChunkyButton(label: 'BOOK A TIME', filled: false, dark: true, onTap: () => context.push('/book/${s.hostSlug}')),
+          CallPill(label: 'BOOK A TIME', kind: CallPillKind.ghost, height: 58, onTap: () => context.push('/book/${s.hostSlug}')),
         ],
       ];
     }
     if (!s.wasConnected) {
-      return [
-        const SizedBox(height: 18),
-        Text('No charge — the call did not connect.', textAlign: TextAlign.center, style: t(18, color: C.ivory)),
-      ];
+      return [const SizedBox(height: 16), const CallEndHisaab(message: 'No charge — the call did not connect.')];
     }
     return [
-      const SizedBox(height: 18),
-      if (s.firstMinuteDrop)
-        Text(s.firstMinuteText, key: const Key('firstMinuteMessage'), textAlign: TextAlign.center, style: t(18, color: C.ivory, h: 1.4))
-      else
-        Text('${s.billedMinutes} min · ${paiseText(s.costPaise)}', style: t(18, color: C.ivory)),
+      const SizedBox(height: 16),
+      s.firstMinuteDrop
+          ? CallEndHisaab(message: s.firstMinuteText, messageKey: const Key('firstMinuteMessage'))
+          : CallEndHisaab(
+              talked: '${s.billedMinutes} min',
+              paid: paiseText(s.costPaise),
+              footer: s.reason == CallReason.noBalance ? 'Your balance ran out.' : null,
+            ),
       if (s.reason == CallReason.noBalance) ...[
-        const SizedBox(height: 8),
-        Text('Your balance ran out.', style: t(15, color: C.cream, w: FontWeight.w700)),
-        const SizedBox(height: 10),
-        ChunkyButton(label: 'TOP UP', filled: false, dark: true, onTap: () => context.push('/topup')),
+        const SizedBox(height: 12),
+        CallPill(label: 'TOP UP', kind: CallPillKind.ghost, height: 52, icon: Icons.add_rounded, onTap: () => context.push('/topup')),
       ],
       if (s.canReview) ...[
-        const SizedBox(height: 22),
-        Text('How was it?', style: t(18, color: C.gold)),
-        const SizedBox(height: 8),
-        Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            for (var i = 1; i <= 5; i++)
-              IconButton(
-                iconSize: 40,
-                tooltip: '$i stars',
-                onPressed: () => setState(() => _stars = i),
-                icon: Icon(i <= _stars ? Icons.star_rounded : Icons.star_outline_rounded, color: C.marigold),
-              ),
-          ],
-        ),
+        const SizedBox(height: 18),
+        CallStars(value: _stars, onPick: (i) => setState(() => _stars = i)),
       ],
     ];
   }

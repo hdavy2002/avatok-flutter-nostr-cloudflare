@@ -15,6 +15,11 @@ import '../../ui/async_view.dart';
 import '../state.dart';
 import '../theme.dart';
 import '../widgets.dart';
+import '../booking_kit.dart';
+import '../desi.dart';
+import '../list_kit.dart';
+import '../money_kit.dart';
+import '../call_kit.dart';
 import 'checkout_flow.dart';
 import 'me.dart' show WalletTicket;
 
@@ -80,180 +85,82 @@ class _WalletScreenState extends State<WalletScreen> {
     return '${d.day} ${_months[d.month - 1]}, $h:$m ${d.hour < 12 ? 'am' : 'pm'}';
   }
 
+  /// [HF-APP-DESI-8] approved "My wallet" layout.
   @override
   Widget build(BuildContext context) {
     if (!_real) {
       return Scaffold(
-        body: ListenableBuilder(
-          listenable: demo,
-          builder: (context, _) => ListView(
-            padding: EdgeInsets.zero,
-            children: [
-              _header(context, inr(demo.balance)),
-              _historyTitle(),
-              for (final x in demo.txns) _row(x.title, x.sub, x.amount),
-              const SizedBox(height: 24),
-            ],
-          ),
+        backgroundColor: C.ivory,
+        body: SafeArea(
+          child: Column(children: [
+            const BookHeader('My wallet'),
+            Expanded(
+              child: ListenableBuilder(
+                listenable: demo,
+                builder: (context, _) => ListView(
+                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+                  children: [
+                    _gullak(context, inr(demo.balance)),
+                    const SizedBox(height: 12),
+                    const HistoryTitle(),
+                    for (final x in demo.txns) LedgerRow(title: x.title, sub: x.sub, amount: x.amount, amountText: inr(x.amount, sign: true)),
+                    const SizedBox(height: 8),
+                    const DesiMogra(),
+                  ],
+                ),
+              ),
+            ),
+          ]),
         ),
       );
     }
     return Scaffold(
-      body: AsyncView<WalletSnapshot>(
-        state: _state,
-        onRetry: _load,
-        isEmpty: (_) => false,
-        builder: (context, w) => RefreshIndicator(
-          onRefresh: _load,
-          child: ListView(
-            padding: EdgeInsets.zero,
-            children: [
-              _header(context, inr(w.balancePaise / 100), extras: [
-                if (w.testCreditPaise > 0)
-                  _note('Test credits ${inr(w.testCreditPaise / 100)} · spend on calls, cannot be withdrawn'),
-                if (w.heldPaise > 0) _note('${inr(w.heldPaise / 100)} set aside for a call or booking'),
-              ]),
-              _historyTitle(),
-              if (w.ledger.isEmpty)
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(22, 8, 22, 24),
-                  child: Text('Nothing here yet. Top up to start calling.', style: t(15, color: C.muted, w: FontWeight.w700)),
-                ),
-              for (final x in w.ledger) _row(x.label, _when(x.at), x.amountPaise / 100),
-              if (w.nextCursor != null)
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(22, 4, 22, 0),
-                  child: ChunkyButton(label: _loadingMore ? 'LOADING…' : 'LOAD MORE', filled: false, onTap: _more),
-                ),
-              const SizedBox(height: 24),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _note(String text) => Padding(
-        padding: const EdgeInsets.only(top: 8),
-        child: Text(text, textAlign: TextAlign.center, style: t(14, color: C.cream, w: FontWeight.w700, h: 1.35)),
-      );
-
-  Widget _historyTitle() => Padding(
-        padding: const EdgeInsets.fromLTRB(22, 22, 22, 10),
-        child: Row(
-          children: [
-            Expanded(child: Text('History', style: t(22, color: C.maroon))),
-            Text('Latest first', style: t(14, color: C.tan)),
-          ],
-        ),
-      );
-
-  Widget _header(BuildContext context, String balance, {List<Widget> extras = const []}) {
-    return Container(
-      padding: EdgeInsets.fromLTRB(20, MediaQuery.paddingOf(context).top + 12, 20, 24),
-      decoration: const BoxDecoration(color: C.maroon, borderRadius: BorderRadius.vertical(bottom: Radius.circular(32))),
-      child: Column(
-        children: [
-          Row(
-            children: [
-              const BackBtn(dark: true),
-              Expanded(child: Text('MY WALLET', textAlign: TextAlign.center, style: t(15, color: C.gold, ls: 0.2))),
-              const SizedBox(width: 44),
-            ],
-          ),
-          const SizedBox(height: 16),
-          // [HF-BOOK-APPROVE-QA-4] The frame is laid out at its own 1100x560 ratio and the amount is fitted into the dark inner panel
-          // (measured on the art: x 0.10-0.90, y 0.27-0.74 of the image; the arched top is narrower, so the text box stays inside
-          // x 0.20-0.80, y 0.36-0.71). FittedBox(scaleDown) shrinks the number at any width or font scale instead of spilling out.
-          ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 310),
-            child: AspectRatio(
-            aspectRatio: 1100 / 560,
-            child: Stack(
-              alignment: Alignment.center,
-              children: [
-                Positioned.fill(
-                  child: Art(
-                    'wallet/counter-board.webp',
-                    fallback: Container(
-                      decoration: BoxDecoration(
-                        color: C.deep,
-                        border: Border.all(color: C.brass, width: 5),
-                        borderRadius: const BorderRadius.vertical(top: Radius.circular(155), bottom: Radius.circular(14)),
-                      ),
-                    ),
-                  ),
-                ),
-                Positioned.fill(
-                  child: LayoutBuilder(
-                    builder: (context, c) => Padding(
-                      padding: EdgeInsets.fromLTRB(c.maxWidth * 0.20, c.maxHeight * 0.33, c.maxWidth * 0.20, c.maxHeight * 0.27),
-                      // The label keeps its 14sp; only the amount shrinks to whatever room is left in the panel.
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Text('YOUR BALANCE', maxLines: 1, overflow: TextOverflow.ellipsis, style: t(14, color: C.gold, ls: 0.16)),
-                          Flexible(
-                            child: FittedBox(
-                              fit: BoxFit.scaleDown,
-                              child: Text(balance, maxLines: 1, style: t(44, color: C.ivory, h: 1.05)),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            ),
-          ),
-          ...extras,
-          const SizedBox(height: 20),
-          Row(
-            children: [
-              Expanded(child: ChunkyButton(label: 'TOP UP', icon: Icons.add_rounded, onTap: () => context.push('/topup'))),
-              // [HF-WIRE-13] HF-REEL-36: anyone can withdraw wallet money to UPI (after ID + UPI check). Refunds always land in the wallet.
-              const SizedBox(width: 12),
-              Expanded(child: ChunkyButton(label: 'WITHDRAW', filled: false, dark: true, onTap: () => context.push('/payout'))),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _row(String title, String sub, double amount) {
-    return Container(
-      margin: const EdgeInsets.fromLTRB(22, 0, 22, 10),
-      height: 64,
-      decoration: BoxDecoration(color: C.paper, borderRadius: BorderRadius.circular(12), border: Border.all(color: C.sand, width: 2)),
-      clipBehavior: Clip.antiAlias,
-      child: Row(
-        children: [
-          Container(width: 10, color: amount < 0 ? C.ruby : C.marigold),
+      backgroundColor: C.ivory,
+      body: SafeArea(
+        child: Column(children: [
+          const BookHeader('My wallet'),
           Expanded(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 12),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(title, maxLines: 1, overflow: TextOverflow.ellipsis, style: t(16)),
-                  Text(sub, maxLines: 1, overflow: TextOverflow.ellipsis, style: t(14, color: C.muted, w: FontWeight.w700)),
-                ],
+            child: AsyncView<WalletSnapshot>(
+              state: _state,
+              onRetry: _load,
+              isEmpty: (_) => false,
+              builder: (context, w) => RefreshIndicator(
+                onRefresh: _load,
+                child: ListView(
+                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+                  children: [
+                    _gullak(context, inr(w.balancePaise / 100), chips: [
+                      if (w.heldPaise > 0) ('${inr(w.heldPaise / 100)} set aside for a call or booking', true),
+                      if (w.testCreditPaise > 0) ('Test credits ${inr(w.testCreditPaise / 100)} · spend on calls, cannot be withdrawn', false),
+                    ]),
+                    const SizedBox(height: 12),
+                    const HistoryTitle(),
+                    if (w.ledger.isEmpty)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 16),
+                        child: Text('Nothing here yet. Top up to start calling.', style: t(15, color: C.muted, w: FontWeight.w700)),
+                      ),
+                    for (final x in w.ledger) LedgerRow(title: x.label, sub: _when(x.at), amount: x.amountPaise / 100, amountText: inr(x.amountPaise / 100, sign: true)),
+                    if (w.nextCursor != null) LoadMorePill(label: _loadingMore ? 'LOADING…' : 'LOAD MORE', onTap: _more),
+                    const SizedBox(height: 12),
+                    const DesiMogra(),
+                  ],
+                ),
               ),
             ),
           ),
-          const SizedBox(width: 2, child: DashedLine(color: C.sandLine, width: 2)),
-          SizedBox(
-            width: 108,
-            child: Center(child: Text(inr(amount, sign: true), style: t(15, color: amount < 0 ? C.ruby : C.maroon))),
-          ),
-        ],
+        ]),
       ),
     );
   }
+
+  Widget _gullak(BuildContext context, String balance, {List<(String, bool)> chips = const []}) => GullakCard(
+        balance: balance,
+        chips: chips,
+        onTopUp: () => context.push('/topup'),
+        // [HF-WIRE-13] HF-REEL-36: anyone can withdraw wallet money to UPI (after ID + UPI check). Refunds always land in the wallet.
+        onWithdraw: () => context.push('/payout'),
+      );
 }
 
 // ---------------------------------------------------------------------------------------------- Top up
@@ -353,116 +260,52 @@ class _TopUpScreenState extends State<TopUpScreen> {
     final v = _value;
     final credit = DemoState.creditFor(v.toDouble());
     final gst = v - credit;
+    // [HF-APP-DESI-8] approved "Top up" layout
     return Scaffold(
+      backgroundColor: C.ivory,
       body: SafeArea(
         child: Column(
           children: [
-            const Padding(padding: EdgeInsets.fromLTRB(16, 12, 16, 0), child: Align(alignment: Alignment.centerLeft, child: BackBtn())),
+            const BookHeader('Top up'),
             Expanded(
               child: ListView(
-                padding: const EdgeInsets.fromLTRB(22, 8, 22, 16),
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
                 children: [
-                  const Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Expanded(child: Headline(solid: 'TOP', outline: 'UP', size: 50)),
-                      SizedBox(width: 120, height: 110, child: Art('topup/thread-spools.webp', fallback: ArtStandIn('THREAD SPOOLS', color: C.ivory, ink: C.brassDark))),
-                    ],
+                  const TopUpHero(),
+                  const SizedBox(height: 12),
+                  AmountBox(
+                    controller: _amount,
+                    value: v,
+                    onChanged: (_) => setState(() {}),
+                    onPick: (a) => setState(() => _amount.text = '$a'),
+                    label: (a) => inr(a, paise: false),
                   ),
-                  const SizedBox(height: 18),
-                  Text('How much do you want to pay?', style: t(15)),
-                  const SizedBox(height: 8),
-                  Container(
-                    decoration: const BoxDecoration(boxShadow: [BoxShadow(color: C.deep, offset: Offset(6, 6))], borderRadius: BorderRadius.all(Radius.circular(18))),
-                    child: TextField(
-                      controller: _amount,
-                      keyboardType: TextInputType.number,
-                      onChanged: (_) => setState(() {}),
-                      style: t(40, w: FontWeight.w800),
-                      decoration: InputDecoration(
-                        prefixIcon: Padding(padding: const EdgeInsets.only(left: 16, right: 6), child: Text('₹', style: t(38, color: C.maroon))),
-                        prefixIconConstraints: const BoxConstraints(minWidth: 0, minHeight: 0),
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(18), borderSide: const BorderSide(color: C.deep, width: 4)),
-                        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(18), borderSide: const BorderSide(color: C.deep, width: 4)),
-                        focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(18), borderSide: const BorderSide(color: C.marigold, width: 4)),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  Row(
-                    children: [
-                      for (final a in [100, 250, 500, 1000]) ...[
-                        Expanded(
-                          child: GestureDetector(
-                            onTap: () => setState(() => _amount.text = '$a'),
-                            child: Container(
-                              height: 50,
-                              alignment: Alignment.center,
-                              decoration: BoxDecoration(
-                                color: v == a ? C.maroon : C.paper,
-                                borderRadius: BorderRadius.circular(999),
-                                border: Border.all(color: C.maroon, width: 3),
-                              ),
-                              child: Text(inr(a, paise: false), style: t(15, color: v == a ? C.gold : C.maroon)),
-                            ),
-                          ),
-                        ),
-                        if (a != 1000) const SizedBox(width: 8),
-                      ],
-                    ],
-                  ),
-                  const SizedBox(height: 18),
-                  Container(
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(color: C.deep, borderRadius: BorderRadius.circular(16)),
-                    child: Column(
-                      children: [
-                        _line('You pay', inr(v), C.ivory),
-                        const SizedBox(height: 8),
-                        _line('GST 18%', inr(gst), C.cream),
-                        const SizedBox(height: 8),
-                        const SizedBox(height: 2, width: double.infinity, child: DashedLine(vertical: false, color: C.brass, width: 2)),
-                        const SizedBox(height: 8),
-                        _line('Added to wallet', inr(credit), C.gold, big: true),
-                      ],
-                    ),
-                  ),
+                  const SizedBox(height: 12),
+                  MoneyHisaab(lines: [('You pay', inr(v)), ('GST 18%', inr(gst))], total: ('Added to wallet', inr(credit))),
                   if (v >= 1000) ...[
                     const SizedBox(height: 12),
-                    Container(
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(color: C.butter, borderRadius: BorderRadius.circular(12), border: Border.all(color: C.marigold, width: 2)),
-                      child: Text("That's ₹1,000 or more. We'll ask you to confirm once more.", style: t(14, h: 1.4)),
-                    ),
+                    const BookNotice(text: "That's ₹1,000 or more. We'll ask you to confirm once more.", icon: Icons.info_outline_rounded),
                   ],
-                  const SizedBox(height: 16),
+                  const SizedBox(height: 14),
                   Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       const Icon(Icons.lock_rounded, size: 18, color: C.muted),
                       const SizedBox(width: 6),
-                      Text('Secure payment · UPI apps, UPI ID and cards', style: t(14, color: C.muted, w: FontWeight.w700)),
+                      Flexible(child: Text('Secure payment · UPI apps, UPI ID and cards', style: t(14, color: C.muted, w: FontWeight.w700))),
                     ],
                   ),
+                  const SizedBox(height: 12),
+                  const DesiMogra(),
                 ],
               ),
             ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(22, 0, 22, 20),
-              child: TicketButton(label: 'PAY ${inr(v, paise: false)}', stubIcon: Icons.arrow_forward_rounded, onTap: _pay),
-            ),
+            BookBottomButton(label: 'PAY ${inr(v, paise: false)}', onTap: _pay),
           ],
         ),
       ),
     );
   }
-
-  Widget _line(String a, String b, Color c, {bool big = false}) => Row(
-        children: [
-          Expanded(child: Text(a, style: t(16, color: c, w: FontWeight.w700))),
-          Text(b, style: t(big ? 24 : 16, color: c)),
-        ],
-      );
 }
 
 /// After the payment page: waits for the server to say the money arrived.
@@ -575,59 +418,58 @@ class _PaymentScreenState extends State<PaymentScreen> {
     final notDone = _pay == _Pay.notDone;
     final paid = _paid;
     final creditText = _credit != null ? inr(_credit! / 100) : inr(DemoState.creditFor(paid ?? 0));
+    final waiting = _pay == _Pay.confirming || _pay == _Pay.slow;
+    // [HF-APP-DESI-8] approved "Payment received" card; waiting / failed / not completed use the same card.
     return PopScope(
       canPop: done || failed || notDone,
       child: Scaffold(
-        backgroundColor: done ? C.ivory : C.cinema,
+        backgroundColor: C.ivory,
         body: SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.all(28),
-            child: Column(
-              children: [
-                const Spacer(),
-                if (_pay == _Pay.confirming || _pay == _Pay.slow) ...[
-                  const SizedBox(width: 64, height: 64, child: CircularProgressIndicator(color: C.marigold, strokeWidth: 6)),
-                  const SizedBox(height: 24),
-                  Text(_real ? 'Confirming your payment…' : 'Opening secure payment…', textAlign: TextAlign.center, style: t(20, color: C.gold)),
-                  const SizedBox(height: 8),
-                  Text(
-                    _pay == _Pay.slow
-                        ? 'We are still confirming your payment.'
-                        : _real
-                            ? 'This usually takes a few seconds. Please keep the app open.'
-                            : 'Demo: no real money moves.',
-                    textAlign: TextAlign.center,
-                    style: t(15, color: C.cream, w: FontWeight.w700, h: 1.4),
+          child: ListView(
+            padding: const EdgeInsets.fromLTRB(16, 24, 16, 24),
+            children: [
+              if (waiting)
+                PaymentCard(
+                  mark: const PaymentMark(spinning: true),
+                  title: _real ? 'Confirming your payment…' : 'Opening secure payment…',
+                  line: _pay == _Pay.slow
+                      ? 'We are still confirming your payment.'
+                      : _real
+                          ? 'This usually takes a few seconds. Please keep the app open.'
+                          : 'Demo: no real money moves.',
+                )
+              else if (notDone)
+                const PaymentCard(
+                  mark: PaymentMark(icon: Icons.info_outline_rounded),
+                  title: 'Payment was not completed.',
+                  line: 'If money left your account, it is added to your wallet within a few minutes.',
+                )
+              else if (failed)
+                const PaymentCard(mark: PaymentMark(icon: Icons.priority_high_rounded), title: 'Payment did not go through. No money was taken.')
+              else
+                PaymentCard(
+                  mark: const PaymentMark(),
+                  title: paid == null ? 'Payment received' : 'Paid ${inr(paid, paise: false)}',
+                  stub: '$creditText added to your wallet',
+                  line: 'Receipt sent on WhatsApp and email.',
+                ),
+              const SizedBox(height: 14),
+              if (done) MoneyPill(label: 'BACK TO WALLET', onTap: () => context.pushReplacement('/wallet')),
+              if (failed || notDone) ...[
+                MoneyPill(label: 'TRY AGAIN', gold: true, onTap: () => context.pushReplacement('/topup')),
+                const SizedBox(height: 10),
+                Semantics(
+                  button: true,
+                  child: TextButton(
+                    onPressed: () => context.pushReplacement('/wallet'),
+                    style: TextButton.styleFrom(minimumSize: const Size.fromHeight(48)),
+                    child: Text('BACK TO WALLET', style: t(16, color: C.maroon, w: FontWeight.w900)),
                   ),
-                ] else if (notDone) ...[
-                  const Icon(Icons.info_outline_rounded, color: C.gold, size: 72),
-                  const SizedBox(height: 18),
-                  Text('Payment was not completed.', textAlign: TextAlign.center, style: t(22, color: C.ivory, h: 1.3)),
-                  const SizedBox(height: 8),
-                  Text('If money left your account, it is added to your wallet within a few minutes.', textAlign: TextAlign.center, style: t(15, color: C.cream, w: FontWeight.w700, h: 1.4)),
-                ] else if (failed) ...[
-                  const Icon(Icons.error_outline_rounded, color: C.gold, size: 72),
-                  const SizedBox(height: 18),
-                  Text('Payment did not go through. No money was taken.', textAlign: TextAlign.center, style: t(22, color: C.ivory, h: 1.3)),
-                ] else ...[
-                  const BrassKnob(label: 'Paid', size: 110, child: Icon(Icons.check_rounded, color: C.deep, size: 60)),
-                  const SizedBox(height: 22),
-                  Text(paid == null ? 'Payment received' : 'Paid ${inr(paid, paise: false)}', style: t(32, color: C.maroon)),
-                  const SizedBox(height: 8),
-                  Text('$creditText added to your wallet', style: t(18, color: C.deep)),
-                  const SizedBox(height: 6),
-                  Text('Receipt sent on WhatsApp and email.', style: t(15, color: C.muted, w: FontWeight.w700)),
-                ],
-                const Spacer(),
-                if (done)
-                  SizedBox(width: double.infinity, child: ChunkyButton(label: 'BACK TO WALLET', dark: true, onTap: () => context.pushReplacement('/wallet'))),
-                if (failed || notDone) ...[
-                  SizedBox(width: double.infinity, child: ChunkyButton(label: 'TRY AGAIN', onTap: () => context.pushReplacement('/topup'))),
-                  const SizedBox(height: 10),
-                  SizedBox(width: double.infinity, child: ChunkyButton(label: 'BACK TO WALLET', filled: false, dark: true, onTap: () => context.pushReplacement('/wallet'))),
-                ],
+                ),
               ],
-            ),
+              const SizedBox(height: 12),
+              const DesiMogra(),
+            ],
           ),
         ),
       ),
@@ -808,6 +650,7 @@ class _PayoutScreenState extends State<PayoutScreen> {
         PayoutStatus.checking => 'BEING CHECKED',
       };
 
+  /// [HF-APP-DESI-9] approved "Withdraw" layout.
   Widget _frame({
     required double ready,
     required double hold,
@@ -819,148 +662,57 @@ class _PayoutScreenState extends State<PayoutScreen> {
     VoidCallback? onChangeUpi,
   }) {
     return Scaffold(
+      backgroundColor: C.ivory,
       body: SafeArea(
         child: Column(
           children: [
-            const Padding(padding: EdgeInsets.fromLTRB(16, 12, 16, 0), child: Align(alignment: Alignment.centerLeft, child: BackBtn())),
+            const BookHeader('Withdraw'),
             Expanded(
               child: ListView(
-                padding: const EdgeInsets.fromLTRB(22, 8, 22, 16),
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
                 children: [
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const Headline(solid: 'PAY', outline: 'OUT', size: 46),
-                            const SizedBox(height: 4),
-                            Text('Send your money to your UPI.', style: t(16, color: C.muted, w: FontWeight.w700)),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(width: 110, height: 100, child: Art('payout/potli-bag.webp', fallback: ArtStandIn('POTLI BAG', color: C.ivory, ink: C.brassDark))),
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-                  Row(
-                    children: [
-                      Expanded(child: _box('READY TO WITHDRAW', inr(ready, paise: false), dark: true)),
-                      const SizedBox(width: 10),
-                      Expanded(child: _box('ON HOLD · 7 DAYS', inr(hold, paise: false))),
-                    ],
-                  ),
-                  const SizedBox(height: 18),
-                  Text(minRupees > 0 ? 'Amount (minimum ${inr(minRupees, paise: false)})' : 'Amount (no minimum)', style: t(15)),
-                  const SizedBox(height: 8),
-                  TextField(
+                  const PayoutHero(),
+                  const SizedBox(height: 12),
+                  PayoutTiles(ready: inr(ready, paise: false), hold: inr(hold, paise: false)),
+                  const SizedBox(height: 12),
+                  PayoutAmountBox(
                     controller: _amount,
-                    keyboardType: TextInputType.number,
-                    style: t(32),
-                    decoration: InputDecoration(
-                      prefixText: '₹ ',
-                      prefixStyle: t(30, color: C.maroon),
-                      suffixIcon: Padding(
-                        padding: const EdgeInsets.all(8),
-                        child: TextButton(
-                          style: TextButton.styleFrom(backgroundColor: C.gold, shape: const StadiumBorder()),
-                          onPressed: () => _amount.text = ready.floor().toString(),
-                          child: Text('ALL', style: t(14)),
-                        ),
-                      ),
-                    ),
+                    label: minRupees > 0 ? 'Amount (minimum ${inr(minRupees, paise: false)})' : 'Amount (no minimum)',
+                    onAll: () => _amount.text = ready.floor().toString(),
                   ),
-                  const SizedBox(height: 14),
-                  Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(color: C.paper, borderRadius: BorderRadius.circular(14), border: Border.all(color: C.brass, width: 2)),
-                    child: Row(
-                      children: [
-                        BrassKnob(label: 'UPI', size: 42, child: Text('UPI', style: t(14))),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(vpa ?? 'No UPI added yet', style: t(16)),
-                              if (checkedLine != null) Text(checkedLine, style: t(14, color: C.muted, w: FontWeight.w700)),
-                            ],
-                          ),
-                        ),
-                        TextButton(
-                          onPressed: onChangeUpi ?? () => toast(context, 'Change UPI (demo)'),
-                          child: Text(vpa == null ? 'Add' : 'Change', style: t(14, color: C.maroon)),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 14),
-                  for (final line in [
+                  const SizedBox(height: 12),
+                  UpiCard(vpa: vpa, checkedLine: checkedLine, onTap: onChangeUpi ?? () => toast(context, 'Change UPI (demo)')),
+                  const SizedBox(height: 12),
+                  const RulesCard(lines: [
                     'We pay every request to your UPI.',
                     'You get the payment reference (UTR) on WhatsApp.',
                     'We check your ID once, before your first payout.',
                     'Test credits can be spent but not withdrawn.',
-                  ])
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: 6),
-                      child: Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text('●  ', style: t(14, color: C.ruby)),
-                          Expanded(child: Text(line, style: t(14, color: C.deep, w: FontWeight.w700, h: 1.4))),
-                        ],
-                      ),
-                    ),
+                  ]),
                   const SizedBox(height: 14),
-                  Text('Past payouts', style: t(18, color: C.maroon)),
-                  const SizedBox(height: 6),
+                  Text('Past payouts', style: t(18, color: C.maroon, w: FontWeight.w900)),
+                  const SizedBox(height: 8),
                   if (history.isEmpty) Text('No payouts yet.', style: t(15, color: C.muted, w: FontWeight.w700)),
                   for (final p in history)
-                    Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 6),
-                      child: Row(
-                        children: [
-                          Expanded(child: Text('${p.$1} · ${inr(p.$2, paise: false)}', style: t(15))),
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
-                            decoration: BoxDecoration(color: p.$4 ? C.deep : C.butter, borderRadius: BorderRadius.circular(999)),
-                            child: Text(p.$3, style: t(14, color: p.$4 ? C.gold : C.deep, ls: 0.06)),
-                          ),
-                        ],
-                      ),
+                    PayoutRow(
+                      amount: inr(p.$2, paise: false),
+                      when: p.$1,
+                      label: p.$3,
+                      kind: p.$4 ? PayoutKind.paid : (p.$3.startsWith('NOT') ? PayoutKind.notPaid : PayoutKind.checking),
                     ),
+                  const SizedBox(height: 8),
+                  const DesiMogra(),
                 ],
               ),
             ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(22, 0, 22, 20),
-              child: SizedBox(
-                width: double.infinity,
-                child: ChunkyButton(label: _busy ? 'SENDING…' : (canAsk ? 'REQUEST PAYOUT' : 'ADD UPI TO START'), dark: true, height: 62, onTap: canAsk ? _request : onChangeUpi),
-              ),
+            BookBottomButton(
+              label: _busy ? 'SENDING…' : (canAsk ? 'REQUEST PAYOUT' : 'ADD UPI TO START'),
+              plum: true,
+              icon: null,
+              onTap: canAsk ? _request : (onChangeUpi ?? () {}),
             ),
           ],
         ),
-      ),
-    );
-  }
-
-  Widget _box(String label, String value, {bool dark = false}) {
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: dark ? C.maroon : C.paper,
-        borderRadius: BorderRadius.circular(16),
-        border: dark ? null : Border.all(color: C.sand, width: 3),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(label, style: t(14, color: dark ? C.gold : C.tan, ls: 0.12)),
-          const SizedBox(height: 4),
-          FittedBox(child: Text(value, style: t(28, color: dark ? C.ivory : C.maroon))),
-        ],
       ),
     );
   }
@@ -1013,31 +765,33 @@ class _UpiSheetState extends State<_UpiSheet> {
 
   @override
   Widget build(BuildContext context) {
+    // [HF-APP-DESI-9] cream sheet like the call confirm sheet
     return Padding(
       padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
-      child: Container(
-        padding: const EdgeInsets.fromLTRB(22, 20, 22, 24),
-        decoration: const BoxDecoration(color: C.ivory, borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(widget.current == null ? 'Add your UPI' : 'Change your UPI', style: t(22, color: C.maroon)),
-            const SizedBox(height: 6),
-            Text('Your payouts go here. Use a UPI ID in your own name.', style: t(14, color: C.muted, w: FontWeight.w700, h: 1.35)),
-            const SizedBox(height: 12),
-            TextField(
-              controller: _vpa,
-              autofocus: true,
-              keyboardType: TextInputType.emailAddress,
-              autocorrect: false,
-              style: t(20),
-              decoration: const InputDecoration(hintText: 'name@bank'),
-            ),
-            if (_error != null) Padding(padding: const EdgeInsets.only(top: 8), child: Text(_error!, style: t(14, color: C.ruby, w: FontWeight.w700))),
-            const SizedBox(height: 16),
-            SizedBox(width: double.infinity, child: ChunkyButton(label: _busy ? 'SAVING…' : 'SAVE UPI', dark: true, onTap: _busy ? null : _save)),
-          ],
+      child: CallSheetFrame(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(widget.current == null ? 'Add your UPI' : 'Change your UPI', style: t(24, color: C.maroon, w: FontWeight.w900)),
+              const SizedBox(height: 6),
+              Text('Your payouts go here. Use a UPI ID in your own name.', style: t(14, color: C.muted, w: FontWeight.w700, h: 1.35)),
+              const SizedBox(height: 12),
+              TextField(
+                controller: _vpa,
+                autofocus: true,
+                keyboardType: TextInputType.emailAddress,
+                autocorrect: false,
+                style: t(20, w: FontWeight.w800),
+                decoration: const InputDecoration(hintText: 'name@bank'),
+              ),
+              if (_error != null) Padding(padding: const EdgeInsets.only(top: 8), child: Text(_error!, style: t(14, color: C.ruby, w: FontWeight.w700))),
+              const SizedBox(height: 16),
+              MoneyPill(label: _busy ? 'SAVING…' : 'SAVE UPI', onTap: _busy ? null : _save),
+            ],
+          ),
         ),
       ),
     );
@@ -1051,54 +805,41 @@ class PayoutKycScreen extends StatelessWidget {
 
   final KycNextStep step;
 
+  /// [HF-APP-DESI-9] approved "ID check" layout.
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: C.ivory,
       body: SafeArea(
         child: Column(
           children: [
-            const Padding(padding: EdgeInsets.fromLTRB(16, 12, 16, 0), child: Align(alignment: Alignment.centerLeft, child: BackBtn())),
+            const BookHeader('ID check'),
             Expanded(
               child: ListView(
-                padding: const EdgeInsets.fromLTRB(22, 16, 22, 16),
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
                 children: [
-                  const Headline(solid: 'ID', outline: 'CHECK', size: 46),
-                  const SizedBox(height: 14),
-                  Text(step.title, style: t(22, color: C.maroon, h: 1.2)),
+                  KycHero(title: step.title),
                   const SizedBox(height: 12),
-                  for (final line in [
+                  for (final (i, line) in const [
                     'You only do this once. Joining and getting calls never needed it.',
                     'It takes a few minutes. Keep your Aadhaar mobile number handy.',
                     'When it is done, come back and request your payout again.',
-                  ])
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: 8),
-                      child: Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text('●  ', style: t(14, color: C.ruby)),
-                          Expanded(child: Text(line, style: t(15, color: C.deep, w: FontWeight.w700, h: 1.4))),
-                        ],
-                      ),
-                    ),
+                  ].indexed)
+                    KycStep(n: i + 1, text: line),
+                  const SizedBox(height: 8),
+                  const DesiMogra(),
                 ],
               ),
             ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(22, 0, 22, 20),
-              child: SizedBox(
-                width: double.infinity,
-                child: ChunkyButton(
-                  label: 'CHECK MY ID',
-                  dark: true,
-                  height: 62,
-                  onTap: () async {
-                    final url = step.url;
-                    final ok = url != null && await Checkout.open(url);
-                    if (!ok && context.mounted) toast(context, 'Could not open the page. Please try again.');
-                  },
-                ),
-              ),
+            BookBottomButton(
+              label: 'CHECK MY ID',
+              plum: true,
+              icon: null,
+              onTap: () async {
+                final url = step.url;
+                final ok = url != null && await Checkout.open(url);
+                if (!ok && context.mounted) toast(context, 'Could not open the page. Please try again.');
+              },
             ),
           ],
         ),

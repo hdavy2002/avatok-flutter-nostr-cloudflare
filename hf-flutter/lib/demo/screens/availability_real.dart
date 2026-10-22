@@ -11,6 +11,9 @@ import '../../ui/async_view.dart';
 import '../data.dart';
 import '../theme.dart';
 import '../widgets.dart';
+import '../desi.dart';
+import '../inf_kit.dart';
+import '../money_kit.dart';
 import 'call_real.dart' show paiseText;
 
 /// [HF-BOOK-APPROVE-6] The influencer's availability calendar (moved out of bookings_real.dart).
@@ -322,7 +325,9 @@ class _RealAvailabilityScreenState extends State<RealAvailabilityScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // [HF-APP-DESI-12] approved "Availability" layout
     return Scaffold(
+      backgroundColor: C.ivory,
       body: SafeArea(
         child: AsyncView<HostAvailability>(
           state: _state,
@@ -347,10 +352,10 @@ class _RealAvailabilityScreenState extends State<RealAvailabilityScreen> {
         a.booked.values.any((s) => s.isNotEmpty) ||
         _edits.values.any((s) => s.isNotEmpty);
     return ListView(
-      padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
       children: [
-        const Headline(solid: 'WHEN CAN', outline: 'FANS BOOK?', size: 36),
-        const SizedBox(height: 6),
+        const DesiHero(eyebrow: 'Availability', title: 'When can fans book?', sub: 'Open days and times, India time.', ghost: 'Kab', tone: DesiTone.lav, minHeight: 120),
+        const SizedBox(height: 8),
         Text(
           'Tap a day to pick it. Press and hold a day, then slide across to pick many days. Then choose the times (India time).',
           style: t(14, color: C.muted, w: FontWeight.w700, h: 1.4),
@@ -362,36 +367,17 @@ class _RealAvailabilityScreenState extends State<RealAvailabilityScreen> {
         ),
         if (!anyOpen) ...[
           const SizedBox(height: 8),
-          Text('No days are open yet, so fans cannot book you. Pick some days below.', style: t(14, color: C.maroon, h: 1.4)),
+          Text('No days are open yet, so fans cannot book you. Pick some days below.', style: t(14, color: C.rani, w: FontWeight.w800, h: 1.4)),
         ],
         const SizedBox(height: 14),
         _calendar(a),
-        const SizedBox(height: 26),
-        Container(
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(color: C.deep, borderRadius: BorderRadius.circular(18)),
-          child: Column(
-            children: [
-              Text('YOUR RATE', style: t(14, color: C.gold, ls: 0.14)),
-              const SizedBox(height: 8),
-              Row(
-                children: [
-                  BrassKnob(label: 'Lower rate', size: 52, onTap: a.rate.editable ? () => _bumpRate(-1) : null, child: const Icon(Icons.remove_rounded, color: C.deep, size: 26)),
-                  Expanded(child: Center(child: FittedBox(fit: BoxFit.scaleDown, child: Text('₹$rate/min', style: t(32, color: C.paper))))),
-                  BrassKnob(label: 'Raise rate', size: 52, onTap: a.rate.editable ? () => _bumpRate(1) : null, child: const Icon(Icons.add_rounded, color: C.deep, size: 26)),
-                ],
-              ),
-              const SizedBox(height: 6),
-              if (a.rate.editable)
-                Text('You get about ${paiseText(gets)} a minute', textAlign: TextAlign.center, style: t(14, color: C.cream, w: FontWeight.w700))
-              else
-                Text(a.rate.fixedMessage ?? 'Your rate is set for everyone, so you can not change it.', textAlign: TextAlign.center, style: t(14, color: C.cream, w: FontWeight.w700)),
-              if (_rate != null && _rate != a.rate.ratePerMin) ...[
-                const SizedBox(height: 10),
-                ChunkyButton(label: 'SAVE RATE', onTap: _saving ? null : _saveRate),
-              ],
-            ],
-          ),
+        const SizedBox(height: 14),
+        RateCard(
+          rate: '₹$rate/min',
+          line: a.rate.editable ? 'You get about ${paiseText(gets)} a minute' : (a.rate.fixedMessage ?? 'Your rate is set for everyone, so you can not change it.'),
+          onLower: a.rate.editable ? () => _bumpRate(-1) : null,
+          onRaise: a.rate.editable ? () => _bumpRate(1) : null,
+          child: _rate != null && _rate != a.rate.ratePerMin ? MoneyPill(label: 'SAVE RATE', gold: true, height: 52, onTap: _saving ? null : _saveRate) : null,
         ),
         const SizedBox(height: 14),
         Text('Going online for instant calls is the round button in the middle of your bar.', style: t(14, color: C.muted, w: FontWeight.w700, h: 1.4)),
@@ -401,8 +387,8 @@ class _RealAvailabilityScreenState extends State<RealAvailabilityScreen> {
 
   Widget _calendar(HostAvailability a) {
     return Container(
-      padding: const EdgeInsets.fromLTRB(8, 8, 8, 10),
-      decoration: BoxDecoration(color: C.paper, borderRadius: BorderRadius.circular(18), border: Border.all(color: C.sandLine, width: 2)),
+      padding: const EdgeInsets.fromLTRB(8, 10, 8, 10),
+      decoration: BoxDecoration(color: C.white, borderRadius: BorderRadius.circular(24), border: Border.all(color: const Color(0xFFF3DFB3), width: 2)),
       child: GestureDetector(
         key: const ValueKey('avail-calendar'),
         behavior: HitTestBehavior.opaque,
@@ -415,7 +401,7 @@ class _RealAvailabilityScreenState extends State<RealAvailabilityScreen> {
           children: [
             Row(
               children: [
-                for (final w in weekdayShort) Expanded(child: Center(child: Text(w.substring(0, 2), style: t(14, color: C.tan)))),
+                for (final w in weekdayShort) Expanded(child: Center(child: Text(w.substring(0, 1), style: t(14, color: C.amber, w: FontWeight.w800)))),
               ],
             ),
             for (final m in _monthsOf(a)) ...[
@@ -423,7 +409,7 @@ class _RealAvailabilityScreenState extends State<RealAvailabilityScreen> {
                 padding: const EdgeInsets.fromLTRB(4, 10, 4, 4),
                 child: Align(
                   alignment: Alignment.centerLeft,
-                  child: Text('${monthLong[m.month - 1]} ${m.year}', style: t(18, color: C.maroon)),
+                  child: Text('${monthLong[m.month - 1]} ${m.year}', style: t(17, color: C.maroon, w: FontWeight.w900)),
                 ),
               ),
               _monthGrid(a, m),
@@ -469,8 +455,8 @@ class _RealAvailabilityScreenState extends State<RealAvailabilityScreen> {
     final has = slots.isNotEmpty;
     final edited = _edits.containsKey(k);
     final isToday = k == a.today;
-    final Color bg = selected ? C.maroon : (has ? C.butter : C.clear);
-    final Color fg = selected ? C.gold : (inRange ? C.deep : C.muted.withValues(alpha: 0.4));
+    final Color bg = selected ? C.maroon : (has ? C.goldtint : C.clear);
+    final Color fg = selected ? C.white : (inRange ? C.deep : C.muted.withValues(alpha: 0.4));
     final label = '${dayLabel(d)}. ${has ? '${slots.length} ${slots.length == 1 ? 'time' : 'times'} open' : 'Closed'}'
         '${edited ? '. Not saved yet' : ''}${inRange ? '' : '. Too far ahead to open'}';
     return Semantics(
@@ -486,15 +472,17 @@ class _RealAvailabilityScreenState extends State<RealAvailabilityScreen> {
         child: Container(
           decoration: BoxDecoration(
             color: bg,
-            borderRadius: BorderRadius.circular(14),
-            border: isToday && !selected ? Border.all(color: C.turquoise, width: 2) : null,
+            borderRadius: BorderRadius.circular(12),
+            border: isToday && !selected
+                ? Border.all(color: C.peacock, width: 2)
+                : Border.all(color: selected ? C.maroon : (has ? const Color(0xFFF3DFB3) : C.clear), width: 2),
           ),
           child: Stack(
             alignment: Alignment.center,
             children: [
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 2),
-                child: FittedBox(fit: BoxFit.scaleDown, child: Text('${d.day}', style: t(15, color: fg))),
+                child: FittedBox(fit: BoxFit.scaleDown, child: Text('${d.day}', style: t(15, color: fg, w: FontWeight.w800))),
               ),
               if (has)
                 Positioned(
@@ -519,7 +507,12 @@ class _RealAvailabilityScreenState extends State<RealAvailabilityScreen> {
     if (days.isEmpty && _edits.isEmpty) return const SizedBox.shrink();
     final maxH = MediaQuery.sizeOf(context).height * 0.5;
     return Container(
-      decoration: const BoxDecoration(color: C.paper, border: Border(top: BorderSide(color: C.sandLine, width: 2))),
+      decoration: const BoxDecoration(
+        color: C.ivory,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(26)),
+        border: Border(top: BorderSide(color: Color(0xFFF3DFB3), width: 1.5)),
+        boxShadow: [BoxShadow(color: Color(0x994A1747), offset: Offset(0, -16), blurRadius: 30, spreadRadius: -18)],
+      ),
       child: ConstrainedBox(
         constraints: BoxConstraints(maxHeight: maxH),
         child: SingleChildScrollView(
@@ -537,13 +530,17 @@ class _RealAvailabilityScreenState extends State<RealAvailabilityScreen> {
                   _edits.isEmpty
                       ? 'Tap the times you want, then save.'
                       : (_edits.length == 1 ? '1 day changed. Not saved yet.' : '${_edits.length} days changed. Not saved yet.'),
-                  style: t(14, color: _edits.isEmpty ? C.muted : C.maroon),
+                  style: t(14, color: _edits.isEmpty ? C.muted : C.maroon, w: FontWeight.w800),
                 ),
                 const SizedBox(height: 8),
-                ChunkyButton(
-                  label: _saving ? 'SAVING…' : (_edits.isEmpty ? 'SAVE' : (_edits.length == 1 ? 'SAVE 1 DAY' : 'SAVE ${_edits.length} DAYS')),
-                  height: 52,
-                  onTap: _saving || _edits.isEmpty ? null : () => unawaited(_saveAll()),
+                Opacity(
+                  opacity: _saving || _edits.isEmpty ? .5 : 1,
+                  child: MoneyPill(
+                    label: _saving ? 'SAVING…' : (_edits.isEmpty ? 'SAVE' : (_edits.length == 1 ? 'SAVE 1 DAY' : 'SAVE ${_edits.length} DAYS')),
+                    rani: true,
+                    height: 54,
+                    onTap: _saving || _edits.isEmpty ? null : () => unawaited(_saveAll()),
+                  ),
                 ),
                 Align(
                   alignment: Alignment.centerLeft,
@@ -571,7 +568,7 @@ class _RealAvailabilityScreenState extends State<RealAvailabilityScreen> {
           Expanded(
             child: Text(
               single ? 'Time slots for ${dayLabel(parseDay(days.first)!)}' : 'Time slots for ${days.length} days',
-              style: t(18, color: C.maroon),
+              style: t(18, color: C.maroon, w: FontWeight.w900),
             ),
           ),
         ],
@@ -605,7 +602,7 @@ class _RealAvailabilityScreenState extends State<RealAvailabilityScreen> {
             key: const ValueKey('avail-close-days'),
             onPressed: _saving ? null : () => _closeSelected(a),
             icon: const Icon(Icons.event_busy_rounded, color: C.maroon),
-            label: Text(single ? 'Close this day' : 'Close these days', style: t(15, color: C.maroon)),
+            label: Text(single ? 'Close this day' : 'Close these days', style: t(15, color: C.maroon, w: FontWeight.w800)),
             style: OutlinedButton.styleFrom(minimumSize: const Size(48, 48), side: const BorderSide(color: C.maroon, width: 2), shape: const StadiumBorder()),
           ),
           TextButton(
@@ -626,15 +623,12 @@ class _RealAvailabilityScreenState extends State<RealAvailabilityScreen> {
     final bookedDays = days.where((k) => _bookedOn(a, k).contains(s)).length;
     final lockedAll = bookedDays == days.length;
     final text = '${slotLabel(s)}${lockedAll ? ' · booked' : ''}';
-    return FilterChip(
+    return availabilityChip(
       key: ValueKey('chip-$s'),
-      avatar: bookedDays > 0 ? Icon(Icons.lock_rounded, size: 16, color: all ? C.gold : C.maroon) : null,
-      label: Text(partial ? '$text · some' : text, style: t(14, color: all ? C.gold : C.maroon)),
+      label: partial ? '$text · some' : text,
       selected: all,
-      showCheckmark: false,
-      selectedColor: C.maroon,
-      backgroundColor: partial ? C.butter : C.paper,
-      shape: const StadiumBorder(side: BorderSide(color: C.maroon, width: 2)),
+      partial: partial,
+      locked: bookedDays > 0,
       onSelected: _saving || lockedAll ? null : (_) => _applyChip(a, s),
     );
   }

@@ -12,6 +12,8 @@ import '../ui/async_view.dart';
 import 'reels_real.dart';
 import 'theme.dart';
 import 'widgets.dart';
+import 'desi.dart';
+import 'search_kit.dart';
 
 /// The real Search screen (HF-WIRE-9): `GET /api/hf/search` debounced 350 ms, results Online then Offline,
 /// "Most-wanted, not here yet" with INVITE votes, and topic chips from `GET /api/hf/options`.
@@ -130,11 +132,11 @@ class _RealSearchState extends State<RealSearch> {
                     height: 48,
                     alignment: Alignment.center,
                     decoration: BoxDecoration(
-                      color: _platform == o.$1 ? C.marigold : C.paper,
+                      color: _platform == o.$1 ? C.maroon : C.white,
                       borderRadius: BorderRadius.circular(999),
-                      border: Border.all(color: C.maroon, width: 2),
+                      border: Border.all(color: _platform == o.$1 ? C.maroon : C.line, width: 1.5),
                     ),
-                    child: Text(o.$2, style: t(15, color: _platform == o.$1 ? C.deep : C.maroon, w: FontWeight.w700)),
+                    child: Text(o.$2, style: t(15, color: _platform == o.$1 ? C.white : C.maroon, w: FontWeight.w800)),
                   ),
                 ),
               ),
@@ -169,66 +171,40 @@ class _RealSearchState extends State<RealSearch> {
   @override
   Widget build(BuildContext context) {
     final q = _q.text.trim();
+    // [HF-APP-DESI-2] Layout from the owner-approved canvas preview "2 · Search".
     return Scaffold(
       body: SafeArea(
+        bottom: false,
         child: ListView(
-          padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
           children: [
-            const Headline(solid: 'FIND', outline: 'YOUR PERSON', size: 40),
-            const SizedBox(height: 14),
-            TextField(
-              key: const ValueKey('search-field'),
-              controller: _q,
-              onChanged: _onChanged,
-              textInputAction: TextInputAction.search,
-              onSubmitted: (_) {
-                _timer?.cancel();
-                unawaited(_search());
-              },
-              style: t(17, w: FontWeight.w700),
-              decoration: InputDecoration(
-                hintText: 'Name, @handle or topic',
-                prefixIcon: const Icon(Icons.search_rounded, color: C.maroon),
-                suffixIcon: q.isEmpty
+            SearchHeader(
+              field: SearchPill(
+                fieldKey: const ValueKey('search-field'),
+                controller: _q,
+                onChanged: _onChanged,
+                onSubmitted: (_) {
+                  _timer?.cancel();
+                  unawaited(_search());
+                },
+                onClear: q.isEmpty
                     ? null
-                    : IconButton(
-                        tooltip: 'Clear',
-                        icon: const Icon(Icons.close_rounded, color: C.maroon),
-                        onPressed: () {
-                          _q.clear();
-                          _onChanged('');
-                        },
-                      ),
+                    : () {
+                        _q.clear();
+                        _onChanged('');
+                      },
               ),
             ),
-            const SizedBox(height: 12),
             _platformFilter(),
-            const SizedBox(height: 16),
+            const SizedBox(height: 14),
             if (_topics.isNotEmpty) ...[
-              Text('Try a topic', style: t(18, color: C.maroon)),
-              const SizedBox(height: 10),
-              SizedBox(
-                height: 48,
-                child: ListView(
-                  scrollDirection: Axis.horizontal,
-                  children: [
-                    for (final topic in _topics.take(16))
-                      Padding(
-                        padding: const EdgeInsets.only(right: 8),
-                        child: ChoiceChip(
-                          key: ValueKey('topic-${topic.slug}'),
-                          label: Text(topic.label, style: t(15, color: _topic == topic.slug ? C.deep : C.maroon)),
-                          selected: _topic == topic.slug,
-                          selectedColor: C.marigold,
-                          backgroundColor: C.paper,
-                          shape: const StadiumBorder(side: BorderSide(color: C.maroon, width: 2)),
-                          onSelected: (_) => _pickTopic(topic.slug),
-                        ),
-                      ),
-                  ],
-                ),
+              SearchTopics(
+                topics: [for (final topic in _topics.take(16)) (topic.slug, topic.label)],
+                selected: _topic,
+                keyFor: (slug) => ValueKey('topic-$slug'),
+                onTap: _pickTopic,
               ),
-              const SizedBox(height: 18),
+              const SizedBox(height: 14),
             ],
             AsyncView<SearchResult>(
               state: _state,
@@ -244,141 +220,78 @@ class _RealSearchState extends State<RealSearch> {
     );
   }
 
-  /// Nothing typed: who is online, and who fans want most.
+  /// Nothing typed: who is online, who you can book, and who fans want most.
   Widget _home(BuildContext context, SearchResult r) {
     return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Text('Online now', style: t(18, color: C.maroon)),
-        const SizedBox(height: 10),
-        if (r.online.isEmpty)
-          Text('No one is online right now.', style: t(15, color: C.muted, w: FontWeight.w700))
-        else
-          SizedBox(
-            height: 104,
-            child: ListView(
-              key: const ValueKey('online-row'),
-              scrollDirection: Axis.horizontal,
-              children: [
-                for (final h in r.online)
-                  Padding(
-                    padding: const EdgeInsets.only(right: 14),
-                    child: GestureDetector(
-                      onTap: () => context.push('/profile/${h.slug}'),
-                      child: Column(
-                        children: [
-                          Avatar(influencerFromHost(h), size: 70),
-                          const SizedBox(height: 6),
-                          Text(h.name.split(' ').first, style: t(14)),
-                        ],
-                      ),
-                    ),
-                  ),
-              ],
-            ),
-          ),
-        if (_top.isNotEmpty) ...[
-          const SizedBox(height: 18),
-          Text('Most-wanted, not here yet', style: t(18, color: C.maroon)),
-          const SizedBox(height: 4),
-          Text('Tap Invite to vote. We ask the top names to join.', style: t(14, color: C.muted, w: FontWeight.w700)),
-          const SizedBox(height: 8),
-          for (final c in _top) _missingRow(c),
+        OnlineNowCard(
+          listKey: const ValueKey('online-row'),
+          people: [for (final h in r.online) (influencerFromHost(h), () => context.push('/profile/${h.slug}'))],
+        ),
+        if (r.offline.isNotEmpty) ...[
+          const SizedBox(height: 14),
+          BookTimeCard(rows: [for (var k = 0; k < r.offline.length; k++) _hitRow(context, r.offline[k], last: k == r.offline.length - 1)]),
         ],
+        if (_top.isNotEmpty) ...[
+          const SizedBox(height: 14),
+          MostWantedCard(rows: [for (var k = 0; k < _top.length; k++) _missingRow(_top[k], k + 1)]),
+        ],
+        const DesiMogra(),
       ],
     );
   }
 
   /// Something typed (or a topic picked): Online first, then Offline, then people who are not on the app.
   Widget _results(BuildContext context, SearchResult r) {
+    Widget group(String title, List<ReelHost> hosts, DesiCorner corner, DesiTone tone) => Padding(
+          padding: const EdgeInsets.only(bottom: 14),
+          child: DesiCard(
+            title: title,
+            tone: tone,
+            corner: corner,
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 6),
+            child: Column(children: [for (var k = 0; k < hosts.length; k++) _hitRow(context, hosts[k], last: k == hosts.length - 1)]),
+          ),
+        );
     return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        if (r.online.isNotEmpty) ...[
-          _label('Online'),
-          for (final h in r.online) _hitRow(context, h),
-        ],
-        if (r.offline.isNotEmpty) ...[
-          _label('Offline'),
-          for (final h in r.offline) _hitRow(context, h),
-        ],
-        if (r.notOnNetwork.isNotEmpty) ...[
-          _label('Not on ${Brand.name} yet'),
-          for (final c in r.notOnNetwork) _missingRow(c),
-        ],
+        if (r.online.isNotEmpty) group('Online', r.online, DesiCorner.hibiscus, DesiTone.rani),
+        if (r.offline.isNotEmpty) group('Offline', r.offline, DesiCorner.marigold, DesiTone.white),
+        if (r.notOnNetwork.isNotEmpty)
+          MostWantedCard(title: 'Not on ${Brand.name} yet', rows: [for (var k = 0; k < r.notOnNetwork.length; k++) _missingRow(r.notOnNetwork[k], k + 1)]),
       ],
     );
   }
 
-  Widget _label(String s) => Padding(padding: const EdgeInsets.only(top: 6, bottom: 4), child: Text(s, style: t(18, color: C.maroon)));
-
-  Widget _hitRow(BuildContext context, ReelHost h) {
-    return InkWell(
+  Widget _hitRow(BuildContext context, ReelHost h, {bool last = false}) {
+    return SearchPersonRow(
       key: ValueKey('hit-${h.slug}'),
+      who: influencerFromHost(h),
+      online: h.online,
+      rate: h.rateRupees,
+      last: last,
+      subtitle: Row(children: [
+        for (final p in h.platforms) Padding(padding: const EdgeInsets.only(right: 4), child: _platformIcon(p)),
+        Flexible(child: Text(h.handle ?? '', maxLines: 1, overflow: TextOverflow.ellipsis, style: t(14, color: C.muted, w: FontWeight.w600))),
+      ]),
       onTap: () => context.push('/profile/${h.slug}'),
-      child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 12),
-        decoration: const BoxDecoration(border: Border(bottom: BorderSide(color: C.sandLine, width: 2))),
-        child: Row(
-          children: [
-            Avatar(influencerFromHost(h), size: 54, ring: h.online),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(h.name, style: t(17)),
-                  Row(
-                    children: [
-                      for (final p in h.platforms) Padding(padding: const EdgeInsets.only(right: 4), child: _platformIcon(p)),
-                      Flexible(child: Text('${h.handle ?? ''}${h.handle == null ? '' : ' · '}₹${h.rateRupees}/min', style: t(14, color: C.tan))),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-            StatusPill(online: h.online, dark: h.online),
-          ],
-        ),
-      ),
     );
   }
 
-  Widget _missingRow(MissingCreator c) {
+  Widget _missingRow(MissingCreator c, int rank) {
     final voted = _voted.contains(c.key);
     final votes = _votes[c.key] ?? c.votes;
-    return Container(
+    return MostWantedRow(
       key: ValueKey('missing-${c.key}'),
-      padding: const EdgeInsets.symmetric(vertical: 12),
-      decoration: const BoxDecoration(border: Border(bottom: BorderSide(color: C.sandLine, width: 2))),
-      child: Row(
-        children: [
-          Container(
-            width: 54,
-            height: 54,
-            decoration: BoxDecoration(shape: BoxShape.circle, color: C.sand, border: Border.all(color: C.brass, width: 2)),
-            child: const Icon(Icons.person_outline_rounded, color: C.muted),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(children: [_platformIcon(c.platform), const SizedBox(width: 4), Flexible(child: Text(c.handle, style: t(17)))]),
-                Text('Not on ${Brand.name} · $votes votes', style: t(14, color: C.muted, w: FontWeight.w700)),
-              ],
-            ),
-          ),
-          SizedBox(
-            height: 48,
-            child: FilledButton(
-              style: FilledButton.styleFrom(backgroundColor: voted ? C.sand : C.marigold, foregroundColor: C.deep, shape: const StadiumBorder()),
-              onPressed: voted ? null : () => requireAccount(context, () => unawaited(_vote(c)), reason: 'to vote'),
-              child: Text(voted ? 'VOTED' : 'INVITE', style: t(14, color: C.deep, ls: 0.06)),
-            ),
-          ),
-        ],
-      ),
+      rank: rank,
+      handle: c.handle,
+      votes: votes,
+      caption: _browsing ? null : 'Not on ${Brand.name} · $votes votes',
+      voted: voted,
+      platformIcon: _platformIcon(c.platform),
+      onInvite: () => requireAccount(context, () => unawaited(_vote(c)), reason: 'to vote'),
     );
   }
 }

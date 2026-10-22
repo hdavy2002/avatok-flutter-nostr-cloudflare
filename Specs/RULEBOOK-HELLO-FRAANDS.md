@@ -338,6 +338,16 @@ Plan: `Specs/PLAN-2026-10-20-HF-BOOKING-APPROVAL.md`.
 
 ---
 
+## 18. App look matches the dashboard (owner 2026-10-22)
+
+| ID | Rule | Decision | Pages | Backend |
+|---|---|---|---|---|
+| HF-APP-DESI-1 | **The phone app uses the dashboard's desi look** (owner 2026-10-22): plum/rani/marigold/lavender/peacock palette, white cards with coloured borders, flowers (marigold, hibiscus, jasmine) in corners and strings, soft heroes with a faint ghost word, dark plum "Hisaab" money cards, rounded pills. Nunito, nothing under 14sp, 48dp taps. Supersedes the "Rangoli Soft" app palette (HF-REEL-44/45/46). The Reels feed keeps its own look and small icons (owner). | ADOPTED | Every app screen except the Reels feed | N/A |
+| HF-APP-DESI-2 | **One screen at a time** (owner): each screen is mocked on the "Hello Fraands App Redesign v2" canvas, approved by the owner, then coded exactly; demo and live screens share one kit per flow (`lib/demo/*_kit.dart`). | ADOPTED | Process | N/A |
+| HF-APP-DESI-3 | **Green is only for the Online state** (the `C.online*` tokens): online chips, the influencer's Online pill and Online status screen. | ADOPTED | All app screens | N/A |
+
+---
+
 ## Implementation plan — public pages first (backend not ready)
 
 **Phase 1 — public pages (can do now):**
@@ -409,6 +419,7 @@ else, or come back later."
 
 | Date | Change |
 |---|---|
+| 2026-10-22 | HF-APP-DESI-1..14 (owner): new section 18 — every phone-app screen except the Reels feed redesigned in the dashboard's desi look, approved screen by screen (Me, Search, Favourites, profile, booking, call, call records, my bookings, wallet, top up, payment, withdraw, ID check, settings, help, influencer home/bar/status/bookings/availability, join, channels, splash, intro). |
 | 2026-10-20 | HF-BOOK-APPROVE-QA-1 (phone test): HF-BOOK-8 — Online by default, no auto-offline sweep; saving availability keeps booked/pending times open instead of refusing the save. |
 | 2026-10-16 | HF-HOME-NATIVE-3 (owner): rejected previous image-inspired layout; requested a completely new native layout and immediate publication, with abundant oversized Indian artwork, torn images and meme stickers. HF-SITE-19 supersedes HF-SITE-18. |
 | 2026-10-17 | HF-DESI-HOME-1 (owner): desi design is the homepage (HF-SITE-20 supersedes HF-SITE-19), with the real shared header (Explore, How it works, Blog, Sign in / Dashboard, Join us) and footer. Header: no space above/below the logo, bigger logo, sticky with a shadow (HF-SITE-14 updated). Footer Explore column: "Women-only lane" → /women-only and "Earn with us" → /hosts/join (the homepage has no such sections). |

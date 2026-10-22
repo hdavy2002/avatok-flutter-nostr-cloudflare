@@ -331,8 +331,11 @@ class _MainShellState extends State<MainShell> {
     return Scaffold(
       body: shell,
       bottomNavigationBar: Container(
+        // [HF-APP-DESI-1] Dashboard bottom bar: white, soft top shadow, the chosen tab rani on a blush pill.
         decoration: BoxDecoration(
-          color: shell.currentIndex == 0 ? Colors.black : C.footerBg,
+          color: shell.currentIndex == 0 ? Colors.black : C.white,
+          border: shell.currentIndex == 0 ? null : const Border(top: BorderSide(color: C.line)),
+          boxShadow: shell.currentIndex == 0 ? null : const [BoxShadow(color: Color(0x404A1747), blurRadius: 24, offset: Offset(0, -8), spreadRadius: -16)],
         ),
         child: SafeArea(
           top: false,
@@ -352,7 +355,14 @@ class _MainShellState extends State<MainShell> {
                           i,
                           initialLocation: i == shell.currentIndex,
                         ),
-                        child: Column(
+                        // [HF-APP-DESI-1] blush pill on the chosen tab (not on Reels)
+                        child: Container(
+                          margin: const EdgeInsets.symmetric(horizontal: 6, vertical: 5),
+                          decoration: BoxDecoration(
+                            color: shell.currentIndex == i && shell.currentIndex != 0 ? C.blush : C.clear,
+                            borderRadius: BorderRadius.circular(14),
+                          ),
+                          child: Column(
                           // [HF-REEL-FOOTER-1] icons sit low in the bar: the room is above them
                           mainAxisAlignment: MainAxisAlignment.end,
                           children: [
@@ -364,7 +374,7 @@ class _MainShellState extends State<MainShell> {
                               color: shell.currentIndex == i
                                   ? (shell.currentIndex == 0
                                         ? Colors.white
-                                        : C.maroon)
+                                        : C.rani)
                                   : (shell.currentIndex == 0
                                         ? Colors.white70
                                         : C.muted),
@@ -377,7 +387,7 @@ class _MainShellState extends State<MainShell> {
                                 color: shell.currentIndex == i
                                     ? (shell.currentIndex == 0
                                           ? Colors.white
-                                          : C.maroon)
+                                          : C.rani)
                                     : (shell.currentIndex == 0
                                           ? Colors.white70
                                           : C.muted),
@@ -388,6 +398,7 @@ class _MainShellState extends State<MainShell> {
                             ),
                             const SizedBox(height: 7),
                           ],
+                        ),
                         ),
                       ),
                     ),

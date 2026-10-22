@@ -9,7 +9,9 @@ import '../../data/repos/calls_repo.dart';
 import '../../data/services.dart';
 import '../../ui/async_view.dart';
 import '../theme.dart';
-import '../widgets.dart';
+import '../booking_kit.dart';
+import '../desi.dart';
+import '../list_kit.dart';
 import 'call_real.dart';
 
 const _days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
@@ -102,11 +104,13 @@ class _RealCallRecordsScreenState extends State<RealCallRecordsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // [HF-APP-DESI-7] approved Call records layout
     return Scaffold(
+      backgroundColor: C.ivory,
       body: SafeArea(
         child: Column(
           children: [
-            const PageHeader(title: 'Call records'),
+            const BookHeader('Call records'),
             Expanded(
               child: AsyncView<List<CallRecordItem>>(
                 state: _state,
@@ -115,20 +119,17 @@ class _RealCallRecordsScreenState extends State<RealCallRecordsScreen> {
                 emptyMessage: 'Calls you make will show up here.',
                 builder: (context, items) => ListView(
                   controller: _scroll,
-                  padding: const EdgeInsets.fromLTRB(22, 8, 22, 24),
+                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
                   children: [
-                    for (final c in items) _Row(c),
-                    if (_cursor != null)
-                      Padding(
-                        padding: const EdgeInsets.only(top: 6),
-                        child: Column(
-                          children: [
-                            if (_moreError != null) Text(_moreError!, textAlign: TextAlign.center, style: t(14, color: C.ruby)),
-                            const SizedBox(height: 6),
-                            ChunkyButton(label: _more ? 'LOADING…' : 'LOAD MORE', filled: false, onTap: _more ? null : () => unawaited(_loadMore())),
-                          ],
-                        ),
-                      ),
+                    const ListHero(eyebrow: 'Call records', title: 'Har baat ka hisaab', sub: 'Every call, its minutes and what it cost.', ghost: 'Baat'),
+                    const SizedBox(height: 12),
+                    for (var i = 0; i < items.length; i++) _row(context, i, items[i]),
+                    if (_cursor != null) ...[
+                      if (_moreError != null) Padding(padding: const EdgeInsets.only(bottom: 6), child: Text(_moreError!, textAlign: TextAlign.center, style: t(14, color: C.ruby, w: FontWeight.w800))),
+                      LoadMorePill(label: _more ? 'LOADING…' : 'LOAD MORE', onTap: _more ? null : () => unawaited(_loadMore())),
+                    ],
+                    const SizedBox(height: 12),
+                    const DesiMogra(),
                   ],
                 ),
               ),
@@ -138,62 +139,27 @@ class _RealCallRecordsScreenState extends State<RealCallRecordsScreen> {
       ),
     );
   }
-}
 
-class _Row extends StatelessWidget {
-  const _Row(this.c);
-
-  final CallRecordItem c;
-
-  String get _detail {
-    if (c.didNotConnect) {
-      return switch (c.reason) {
-        'declined' => "Didn't connect · declined",
-        'missed' => "Didn't connect · no answer",
-        'busy' => "Didn't connect · busy",
-        _ => "Didn't connect",
-      };
-    }
-    return '${callWhen(c.at)} · ${c.minutes} min';
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final who = callPerson(c.hostSlug, c.hostName);
+  Widget _row(BuildContext context, int i, CallRecordItem c) {
+    final detail = c.didNotConnect
+        ? switch (c.reason) {
+            'declined' => "Didn't connect · declined",
+            'missed' => "Didn't connect · no answer",
+            'busy' => "Didn't connect · busy",
+            _ => "Didn't connect",
+          }
+        : '${callWhen(c.at)} · ${c.minutes} min';
     final cost = c.amountPaise;
-    return Container(
-      margin: const EdgeInsets.only(bottom: 10),
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(color: C.paper, borderRadius: BorderRadius.circular(14), border: Border.all(color: C.sand, width: 2)),
-      child: Row(
-        children: [
-          Avatar(who, size: 50, ring: false),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(c.hostName, style: t(16)),
-                if (c.didNotConnect) Text(callWhen(c.at), style: t(14, color: C.muted, w: FontWeight.w700)),
-                Text(_detail, style: t(14, color: C.muted, w: FontWeight.w700)),
-                if (c.stars > 0) Text('★' * c.stars, style: t(14, color: C.marigold)),
-              ],
-            ),
-          ),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              Text(cost == null || c.didNotConnect ? '₹0' : '-${paiseText(cost)}', style: t(16, color: C.ruby)),
-              const SizedBox(height: 4),
-              if (c.hostSlug != null)
-                GestureDetector(
-                  onTap: () => context.push('/profile/${c.hostSlug}'),
-                  child: Text('Call again', style: t(14, color: C.maroon)),
-                ),
-            ],
-          ),
-        ],
-      ),
+    return CallRecordCard(
+      index: i,
+      who: callPerson(c.hostSlug, c.hostName),
+      name: c.hostName,
+      detail: detail,
+      when: c.didNotConnect ? callWhen(c.at) : null,
+      failed: c.didNotConnect,
+      stars: c.stars,
+      amount: cost == null || c.didNotConnect ? '₹0' : '-${paiseText(cost)}',
+      onCallAgain: c.hostSlug == null ? null : () => context.push('/profile/${c.hostSlug}'),
     );
   }
 }
