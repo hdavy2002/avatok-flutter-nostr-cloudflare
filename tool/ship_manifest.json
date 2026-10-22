@@ -11160,5 +11160,20 @@
         "note": "Server rendered a receipt for its owner; the browser can read it because CORS headers are now sent."
       }
     ]
+  },
+  "HF-FIX-CLOSE-ACCOUNT-1": {
+    "description": "Account closing pays out the wallet balance (net of GST) to the person's own UPI; close page copy/layout; pause only WhatsApp alerts.",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [],
+    "success": [
+      {
+        "event": "hf_exit_started",
+        "property": "wallet_payout_paise",
+        "gte": 0,
+        "min_events": 1,
+        "note": "A closure started and carries the net wallet payout; must equal the wallet balance floored to whole rupees, never the gross paid."
+      }
+    ]
   }
 }
