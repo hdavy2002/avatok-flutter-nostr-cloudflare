@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { looksSignedOut, signInUrl, recoverAgeConfirmation } from '../../lib/hfCallsApi';
 import { ACTIVE_SESSION_CHANGED } from '../../lib/clerk';
 import { bookingError, confirmBooking, createQuote, getPublicSlots, money, type AvailabilitySlot, type BookingQuote } from '../../lib/hfBookingsApi';
+import SessionBridge from '../calls/SessionBridge';
 import { capture } from '../../lib/analytics';
 import '../../styles/hf-bookings.css';
 import { BookingFeatureLoading, BookingUnavailable, useBookingFeature } from './BookingFeatureGate';
@@ -138,6 +139,7 @@ export default function CustomerBooking() {
   if (feature === 'checking') return <BookingFeatureLoading />;
   if (feature === 'disabled') return <BookingUnavailable />;
   return <main className="hfb-page" aria-labelledby="hfb-title">
+    <SessionBridge on />
     <header className="hfb-heading"><p className="hfb-eyebrow">Book a conversation</p><h1 id="hfb-title">Choose a time</h1><p>Call now stays available separately on the influencer’s profile. This booking is confirmed only after the server accepts your reservation.</p></header>
     {!host && <section className="hfb-card"><p role="alert">{message}</p><a className="hfb-button" href="/marketplace">Explore influencers</a></section>}
     {host && <>

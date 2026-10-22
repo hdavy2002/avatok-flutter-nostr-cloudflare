@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { PageShell, useIntoDashboard } from '../../components/account/dashboardEmbed';
+import SessionBridge from '../calls/SessionBridge';
+import { PageShell, useEmbedded, useIntoDashboard } from '../../components/account/dashboardEmbed';
 import { bookingError, getHostSchedule, legacyHoursToRules, normalizeAvailabilitySchedule, saveHostSchedule, type AvailabilitySchedule, type DateException, type LegacyAvailabilityPreview, type WindowRule } from '../../lib/hfBookingsApi';
 import '../../styles/hf-bookings.css';
 import { BookingFeatureLoading, BookingUnavailable, useBookingFeature } from './BookingFeatureGate';
@@ -16,6 +17,7 @@ const blank = (): AvailabilitySchedule => ({
 });
 export default function HostAvailability() {
   useIntoDashboard('/dashboard/host/availability');
+  const embedded = useEmbedded();
   const feature = useBookingFeature();
   const [schedule, setSchedule] = useState<AvailabilitySchedule>(blank);
   const [saved, setSaved] = useState<AvailabilitySchedule | null>(null);
@@ -116,6 +118,7 @@ export default function HostAvailability() {
   if (feature === 'checking') return <BookingFeatureLoading />;
   if (feature === 'disabled') return <BookingUnavailable />;
   return <PageShell className="hfb-page hfb-wide">
+    <SessionBridge on={!embedded} />
     <header className="hfb-heading"><p className="hfb-eyebrow">Influencer calendar</p><h1>Availability</h1><p>Set recurring hours and date exceptions. Saving checks confirmed appointments on the server. Paid appointments cannot be moved here.</p></header>
     {loading && <p className="hfb-card" role="status">Loading your schedule…</p>}
     {!loading && !saved && message && <section className="hfb-card"><p role="alert">{message}</p><button className="hfb-button" type="button" onClick={() => void load()}>Try again</button></section>}

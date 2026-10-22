@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import SessionBridge from '../calls/SessionBridge';
 import { PageShell, useEmbedded, useIntoDashboard } from '../../components/account/dashboardEmbed';
 import { signInUrl } from '../../lib/hfCallsApi';
 import { ACTIVE_SESSION_CHANGED, getActiveTokenWaited } from '../../lib/clerk';
@@ -78,6 +79,7 @@ export default function HostBookings({ role = 'customer' }: { role?: BookingRole
   if (feature === 'checking') return <BookingFeatureLoading />;
   if (feature === 'disabled') return <BookingUnavailable />;
   return <PageShell className="hfb-page hfb-wide hfb-appointments">
+    <SessionBridge on={!embedded} />
     <header className="hfb-heading">
       <p className="hfb-eyebrow">{BRAND.name} · {role === 'host' ? 'Influencer calendar' : 'Appointment calendar'}</p>
       <h1>{role === 'host' ? 'Your influencer calendar' : 'Your appointments'}</h1>
