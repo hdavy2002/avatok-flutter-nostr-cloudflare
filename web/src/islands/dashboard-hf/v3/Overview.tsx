@@ -22,8 +22,8 @@ const MIN_CALL_PAISE = 2000; // ₹20, the least a wallet needs to start a call
 
 type Headline = { kind: string; text: string; href?: string };
 type TickerIn = {
-  online: { displayName: string; slug: string }[] | null; apptsToday: number | undefined; next: HfBooking | null; bal: number | null;
-  pendingReviews: number | undefined; hostLive: boolean; hostPresence: HostPresence | null; receivedToday: number | undefined;
+  online: { displayName: string; slug: string }[] | null; apptsToday: number | null | undefined; next: HfBooking | null; bal: number | null;
+  pendingReviews: number | null | undefined; hostLive: boolean; hostPresence: HostPresence | null; receivedToday: number | null | undefined;
 };
 
 function buildHeadlines(i: TickerIn): Headline[] {
@@ -44,7 +44,7 @@ function buildHeadlines(i: TickerIn): Headline[] {
   else if (i.bal != null) out.push({ kind: 'wallet', href: '/dashboard/wallet', text: `Sootron ke hawale se: aapke wallet mein ${formatPaise(i.bal)} hain — baat shuru karne ke liye kaafi` });
   if (i.hostLive && i.receivedToday != null && i.receivedToday > 0) out.push({ kind: 'host_calls', href: '/dashboard/calls', text: `Breaking: aaj aapko ${i.receivedToday} call${i.receivedToday === 1 ? '' : 's'} mili` });
   if (i.hostLive && i.hostPresence === 'offline') out.push({ kind: 'host_offline', text: 'Exclusive: aap abhi offline ho — online aao, tabhi log aapko call kar paayenge' });
-  return [...out, ...EVERGREEN];
+  return [...out, ...EVERGREEN.map(text => ({ kind: 'evergreen', text }))];
 }
 
 export default function Overview({ account, bookingOn }: { account: DashboardAccount; bookingOn: boolean }) {
