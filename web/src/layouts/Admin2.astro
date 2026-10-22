@@ -22,6 +22,8 @@ import { publicImage } from '../lib/config';
 import '../styles/site-tokens.css';
 import '../styles/hf-admin.css';
 import '../styles/hf-admin-operations.css';
+import '../styles/hf-admin-desi.css';
+import { Marigold, Hibiscus } from '../islands/dashboard-hf/v3/ui';
 import { BRAND } from '../lib/brand';
 import { API_BASE } from '../lib/env';
 
@@ -73,29 +75,25 @@ Astro.response.headers.set('Cache-Control', 'private, no-store');
     </script>
 
     <div class="flex min-h-screen flex-col pt-[calc(var(--dash-topbar-h,56px)+env(safe-area-inset-top,0px))] sm:pl-[var(--dash-rail-w,72px)] sm:pt-0 lg:pl-[var(--dash-sidebar-w,260px)]">
-      <main class="hf-admin-main pb-[calc(24px+env(safe-area-inset-bottom,0px))] sm:pb-10 mx-auto w-full max-w-[1600px] flex-1 px-4 pt-6 sm:px-8 sm:pt-10">
-        <header class="hf-admin-pagehead mb-6 sm:mb-8">
-          <div class="hf-admin-pagehead-row">
-            <div class="hf-admin-pagehead-text min-w-0">
-              <p class="hf-admin-eyebrow">{heading ?? title}</p>
-              <h1 class="font-dash font-bold leading-[1.12] text-grand-teal">{desi?.line ?? heading ?? title}</h1>
-              {subtitle && <p class="hf-admin-sub mt-2 max-w-2xl font-semibold leading-relaxed text-muted-foreground">{subtitle}</p>}
-              {hasActions && <div class="admin2-actions mt-4 flex flex-wrap items-center gap-2"><slot name="actions" /></div>}
-            </div>
-            {desi && stickerSrc && (
-              <img
-                src={stickerSrc}
-                alt=""
-                width="120"
-                height="120"
-                decoding="async"
-                draggable="false"
-                class:list={['hf-admin-stk', POSTER_STICKERS.has(desi.sticker) && 'poster']}
-                style={`--rot:${desi.rot}deg`}
-              />
-            )}
+      <main class="hf-admin-main pb-[calc(32px+env(safe-area-inset-bottom,0px))] w-full flex-1 px-[clamp(12px,3vw,56px)] pt-[clamp(12px,2.2vw,40px)]">
+        {/* [HF-ADMIN-DESI-2] Themed hero like the dashboard's: tone wash, giant outline word, flowers, sticker. */}
+        <header class="hf-admin-pagehead hfa-hero mb-[clamp(14px,1.4vw,22px)]" data-tone={desi?.tone ?? 'saffron'}>
+          {desi && <span class="hfa-hero-ghost" aria-hidden="true">{desi.ghost}</span>}
+          <div class="hfa-hero-text">
+            <p class="hf-admin-eyebrow">{heading ?? title}</p>
+            <h1 class="font-dash font-bold">{desi?.line ?? heading ?? title}</h1>
+            {subtitle && <p class="hfa-hero-sub">{subtitle}</p>}
+            {hasActions && <div class="admin2-actions flex flex-wrap items-center gap-2"><slot name="actions" /></div>}
           </div>
-          <div class="hf-admin-divider mt-5" aria-hidden="true"><span></span><span></span><span></span></div>
+          {desi && stickerSrc && (
+            <div class="hfa-hero-art" aria-hidden="true">
+              <span class="f1"><Marigold size={120} /></span>
+              <span class="f2"><Marigold size={80} tone={1} /></span>
+              <span class="f3"><Hibiscus size={80} /></span>
+              <img src={stickerSrc} alt="" width="160" height="160" decoding="async" draggable="false"
+                class:list={[POSTER_STICKERS.has(desi.sticker) && 'poster']} style={`--rot:${desi.rot}deg`} />
+            </div>
+          )}
         </header>
 
         {/* Gate states — AdminNav flips data-admin2-state on the root. */}
