@@ -539,17 +539,10 @@ class _ReelPageState extends State<ReelPage>
                     () => _openChannel(context),
                   ),
                   if (inviteOf != null) ...[
-                    const Tooltip(
-                      message: 'Not available — creator has not joined yet',
-                      child: Padding(
-                        padding: EdgeInsets.all(8),
-                        child: Icon(
-                          Icons.nightlight_round,
-                          size: 16,
-                          color: Color(0xFFAAA5AD),
-                          semanticLabel: 'Not available',
-                        ),
-                      ),
+                    _statusDot(
+                      'Not available — creator has not joined yet',
+                      'Not available',
+                      C.ruby,
                     ),
                     _action(
                       'Booking unavailable — invite creator',
@@ -558,33 +551,22 @@ class _ReelPageState extends State<ReelPage>
                     ),
                   ],
                   if (inviteOf == null) ...[
-                    Tooltip(
-                      message: presence == 'online'
+                    _statusDot(
+                      presence == 'online'
                           ? 'Available'
                           : presence == 'busy'
                           ? 'On call'
                           : 'Offline',
-                      child: Padding(
-                        padding: const EdgeInsets.all(8),
-                        child: Icon(
-                          presence == 'online'
-                              ? Icons.circle
-                              : presence == 'busy'
-                              ? Icons.phone_in_talk_rounded
-                              : Icons.nightlight_round,
-                          semanticLabel: presence == 'online'
-                              ? 'Available'
-                              : presence == 'busy'
-                              ? 'On call'
-                              : 'Offline',
-                          size: 16,
-                          color: presence == 'online'
-                              ? const Color(0xFFA9E7BA)
-                              : presence == 'busy'
-                              ? const Color(0xFFE85B64)
-                              : const Color(0xFFAAA5AD),
-                        ),
-                      ),
+                      presence == 'online'
+                          ? 'Available'
+                          : presence == 'busy'
+                          ? 'On call'
+                          : 'Offline',
+                      presence == 'online'
+                          ? C.onlineDot
+                          : presence == 'busy'
+                          ? C.marigold
+                          : C.ruby,
                     ),
                     _action('Book a time', Icons.calendar_month_outlined, () {
                       Telemetry.event('hf_reel_action', {'action': 'book'});
@@ -636,6 +618,31 @@ class _ReelPageState extends State<ReelPage>
       },
     );
   }
+
+  /// [HF-REEL-DOT-1] The creator's status as a solid dot (owner 2026-10-22): green = online, red = offline / not on the
+  /// app yet, marigold = on a call. White ring so it reads on any video.
+  Widget _statusDot(String tip, String label, Color color) => Tooltip(
+    message: tip,
+    child: Semantics(
+      label: label,
+      child: Padding(
+        key: const ValueKey('reel-status-dot'),
+        padding: const EdgeInsets.all(8),
+        child: Container(
+          width: 22,
+          height: 22,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: color,
+            border: Border.all(color: C.ivory, width: 2.5),
+            boxShadow: const [
+              BoxShadow(color: Color(0x66000000), blurRadius: 6),
+            ],
+          ),
+        ),
+      ),
+    ),
+  );
 
   Widget _action(
     String label,

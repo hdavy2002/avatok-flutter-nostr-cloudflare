@@ -221,8 +221,14 @@ class ReelPlayer extends StatefulWidget {
         ?.group(1);
   }
 
-  /// [HF-REEL-BLUR-1] HF-REEL-48: height in CSS px of YouTube's own bottom strip (channel, title, buttons). The page lays a
-  /// frosted blur over just that strip; the video is not zoomed or moved. The page is pinned so it can never scroll.
+  /// [HF-REEL-BLUR-2] HF-REEL-48: heights in CSS px of YouTube's own top bar and bottom strip. The page blurs them only
+  /// while YouTube is showing them (see [youtubeChromeMs]); the video is not zoomed or moved. The page never scrolls.
+  @visibleForTesting
+  static const int youtubeHideTop = 60;
+
+  /// How long YouTube keeps its top / bottom bars after it starts playing (they fade on their own; our blur follows).
+  @visibleForTesting
+  static const int youtubeChromeMs = 4000;
   @visibleForTesting
   static const int youtubeHideBottom = 84;
 
@@ -242,12 +248,15 @@ class ReelPlayer extends StatefulWidget {
     return '<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1">'
         '<style>html,body{margin:0;width:100%;height:100%;background:#000;overflow:hidden;position:fixed;inset:0;touch-action:none}'
         '#p{position:absolute;top:0;left:0;width:100%;height:100%;border:0}'
-        // [HF-REEL-BLUR-1] a frosted strip over YouTube's own bottom controls (channel / title / buttons): the video stays
-        // full size and centred. YouTube shows no side buttons in this player, so only the bottom is blurred.
-        '.hfb{position:fixed;pointer-events:none;z-index:2;-webkit-backdrop-filter:blur(16px) saturate(1.1);backdrop-filter:blur(16px) saturate(1.1);background:rgba(10,4,16,.18)}'
+        // [HF-REEL-BLUR-2] frosted strips over YouTube's own top bar (channel / title) and bottom strip, shown only while
+        // YouTube shows them: from load until a few seconds after it starts playing, all the time it is paused or
+        // buffering, and again for a few seconds after every play. The video stays full size and centred.
+        '.hfb{position:fixed;pointer-events:none;z-index:2;-webkit-backdrop-filter:blur(16px) saturate(1.1);backdrop-filter:blur(16px) saturate(1.1);background:rgba(10,4,16,.18);opacity:0;transition:opacity .3s}body.c .hfb{opacity:1}'
+        '#bt{left:0;right:0;top:0;height:${youtubeHideTop}px;-webkit-mask-image:linear-gradient(#000 65%,transparent);mask-image:linear-gradient(#000 65%,transparent)}'
         '#bb{left:0;right:0;bottom:0;height:${youtubeHideBottom}px;-webkit-mask-image:linear-gradient(transparent,#000 30%);mask-image:linear-gradient(transparent,#000 30%)}'
         '</style></head>'
-        '<body><div id="p"></div><div class="hfb" id="bb"></div><script>'
+        '<body class="c"><div id="p"></div><div class="hfb" id="bt"></div><div class="hfb" id="bb"></div><script>'
+        'var ht=null;function chrome(ms){document.body.classList.add("c");clearTimeout(ht);if(ms)ht=setTimeout(function(){document.body.classList.remove("c")},ms)}'
         'window.addEventListener("scroll",function(){window.scrollTo(0,0)});'
         'var pl=null,ready=false,want=$start,SOUND=$sound,MUTED=${!start};'
         'function post(m){try{HFPlayer.postMessage(m)}catch(e){}}'
@@ -261,7 +270,7 @@ class ReelPlayer extends StatefulWidget {
         'playerVars:{autoplay:${start ? 1 : 0},playsinline:1,controls:0,rel:0,modestbranding:1,loop:1,playlist:"$id",enablejsapi:1,origin:"$origin",fs:0,disablekb:1,iv_load_policy:3},'
         'events:{onReady:function(){ready=true;mute();post("ready");apply()},'
         'onAutoplayBlocked:function(){try{pl.mute();pl.playVideo()}catch(e){}},'
-        'onStateChange:function(e){if(e.data===1)post("playing");else if(e.data===2)post("paused");else if(e.data===0){try{pl.playVideo()}catch(x){}}},'
+        'onStateChange:function(e){if(e.data===1)chrome($youtubeChromeMs);else chrome(0);if(e.data===1)post("playing");else if(e.data===2)post("paused");else if(e.data===0){try{pl.playVideo()}catch(x){}}},'
         'onError:function(e){post("error:"+e.data)}}})}'
         '</script><script src="https://www.youtube.com/iframe_api"></script></body></html>';
   }
