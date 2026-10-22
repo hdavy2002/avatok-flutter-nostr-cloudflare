@@ -137,7 +137,8 @@ void main() {
       expect(html, contains('error:'));
       // [HF-REEL-ZOOM-1] zoomed in so YouTube's own header, side buttons and title strip sit off screen
       expect(html, contains('backdrop-filter:blur('));
-      expect(html, contains('id="br"'));
+      expect(html, contains('id="bb"'));
+      expect(html, isNot(contains('id="br"')));
       expect(html, isNot(contains('hfZoom')));
       expect(ReelPlayer.youtubeHtml('https://www.instagram.com/reel/Cx12345/embed'), isNull);
       expect(ReelPlayer.youtubeHtml('https://evil.example/embed/abc12345'), isNull);

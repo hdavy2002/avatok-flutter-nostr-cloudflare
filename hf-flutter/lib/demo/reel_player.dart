@@ -221,13 +221,8 @@ class ReelPlayer extends StatefulWidget {
         ?.group(1);
   }
 
-  /// [HF-REEL-BLUR-1] HF-REEL-48: YouTube's own strips, in CSS px of the phone screen — the Shorts header (top), the side
-  /// buttons (right, from 30% down) and the channel / title strip (bottom). The page lays a frosted blur over just these
-  /// strips; the video itself is not zoomed or moved. The page is pinned so it can never scroll.
-  @visibleForTesting
-  static const int youtubeHideTop = 52;
-  @visibleForTesting
-  static const int youtubeHideRight = 68;
+  /// [HF-REEL-BLUR-1] HF-REEL-48: height in CSS px of YouTube's own bottom strip (channel, title, buttons). The page lays a
+  /// frosted blur over just that strip; the video is not zoomed or moved. The page is pinned so it can never scroll.
   @visibleForTesting
   static const int youtubeHideBottom = 84;
 
@@ -247,14 +242,12 @@ class ReelPlayer extends StatefulWidget {
     return '<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1">'
         '<style>html,body{margin:0;width:100%;height:100%;background:#000;overflow:hidden;position:fixed;inset:0;touch-action:none}'
         '#p{position:absolute;top:0;left:0;width:100%;height:100%;border:0}'
-        // [HF-REEL-BLUR-1] frosted strips over YouTube's own controls: the video stays full size and centred, only the
-        // Shorts header (top), the side buttons (right) and the channel / title strip (bottom) are blurred
+        // [HF-REEL-BLUR-1] a frosted strip over YouTube's own bottom controls (channel / title / buttons): the video stays
+        // full size and centred. YouTube shows no side buttons in this player, so only the bottom is blurred.
         '.hfb{position:fixed;pointer-events:none;z-index:2;-webkit-backdrop-filter:blur(16px) saturate(1.1);backdrop-filter:blur(16px) saturate(1.1);background:rgba(10,4,16,.18)}'
-        '#bt{left:0;right:0;top:0;height:${youtubeHideTop}px;-webkit-mask-image:linear-gradient(#000 70%,transparent);mask-image:linear-gradient(#000 70%,transparent)}'
-        '#br{right:0;width:${youtubeHideRight}px;top:30%;bottom:0;-webkit-mask-image:linear-gradient(90deg,transparent,#000 30%);mask-image:linear-gradient(90deg,transparent,#000 30%)}'
         '#bb{left:0;right:0;bottom:0;height:${youtubeHideBottom}px;-webkit-mask-image:linear-gradient(transparent,#000 30%);mask-image:linear-gradient(transparent,#000 30%)}'
         '</style></head>'
-        '<body><div id="p"></div><div class="hfb" id="bt"></div><div class="hfb" id="br"></div><div class="hfb" id="bb"></div><script>'
+        '<body><div id="p"></div><div class="hfb" id="bb"></div><script>'
         'window.addEventListener("scroll",function(){window.scrollTo(0,0)});'
         'var pl=null,ready=false,want=$start,SOUND=$sound,MUTED=${!start};'
         'function post(m){try{HFPlayer.postMessage(m)}catch(e){}}'
@@ -357,8 +350,6 @@ class _ReelPlayerState extends State<ReelPlayer> with WidgetsBindingObserver {
   /// Has this reel been on screen since it was warmed (then a return keeps its place instead of restarting).
   bool _seenActive = false;
   bool _isPlaying = true;
-  bool _glyph = false;
-  Timer? _glyphTimer;
   Timer? _watchdog;
   StreamSubscription<String>? _testSub;
 
@@ -384,7 +375,6 @@ class _ReelPlayerState extends State<ReelPlayer> with WidgetsBindingObserver {
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
-    _glyphTimer?.cancel();
     _watchdog?.cancel();
     _testSub?.cancel();
     _drop();
@@ -589,11 +579,6 @@ class _ReelPlayerState extends State<ReelPlayer> with WidgetsBindingObserver {
     _run('window.hfToggle&&window.hfToggle()');
     setState(() {
       _isPlaying = !_isPlaying;
-      _glyph = _isIg; // YouTube: nothing is drawn over the player, the tap only toggles
-    });
-    _glyphTimer?.cancel();
-    _glyphTimer = Timer(const Duration(milliseconds: 600), () {
-      if (mounted) setState(() => _glyph = false);
     });
   }
 
@@ -688,7 +673,8 @@ class _ReelPlayerState extends State<ReelPlayer> with WidgetsBindingObserver {
             right: 0,
             top: 0,
             bottom: 0,
-            child: WebViewWidget(controller: _web!),
+            // [HF-REEL-CLEAN-1] never focusable: a warmed player taking focus made the feed scroll to it by itself
+            child: ExcludeFocus(child: WebViewWidget(controller: _web!)),
           ),
         // [HF-REEL-WARM-1] the poster stays on top until the video has really started, so the viewer never sees the
         // embed page loading (Instagram's header / likes / comments, YouTube's spinner) or a black flash while scrolling
@@ -706,32 +692,7 @@ class _ReelPlayerState extends State<ReelPlayer> with WidgetsBindingObserver {
             ),
           ),
         if (_isIg && _engine && _fg) ...[
-          Positioned.fill(
-            child: IgnorePointer(
-              child: Center(
-                child: AnimatedOpacity(
-                  key: const ValueKey('reel-glyph'),
-                  opacity: _glyph ? 1 : 0,
-                  duration: const Duration(milliseconds: 200),
-                  child: Container(
-                    width: 72,
-                    height: 72,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: C.cinema.withValues(alpha: 0.6),
-                    ),
-                    child: Icon(
-                      _isPlaying
-                          ? Icons.pause_rounded
-                          : Icons.play_arrow_rounded,
-                      color: C.ivory,
-                      size: 44,
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          ),
+          // [HF-REEL-CLEAN-1] no play / pause glyph over the video (owner 2026-10-22): a tap just plays or pauses
           Positioned(
             top: top + 50,
             left: 28,

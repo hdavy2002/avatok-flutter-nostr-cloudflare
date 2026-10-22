@@ -15,7 +15,6 @@ import '../../data/telemetry.dart';
 import '../../data/share.dart';
 import '../../ui/async_view.dart';
 import '../data.dart';
-import '../online_now_pill.dart';
 import '../presence_bridge.dart';
 import '../reel_player.dart';
 import '../reels_real.dart';
@@ -109,7 +108,11 @@ class _RealFeedState extends State<RealFeed> {
   void didUpdateWidget(covariant RealFeed oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (widget.reelId != oldWidget.reelId) {
-      if (_pager.hasClients) _pager.jumpToPage(0);
+      if (_pager.hasClients) {
+        _ownJump = true;
+        _pager.jumpToPage(0);
+        _ownJump = false;
+      }
       unawaited(_first());
     }
   }
@@ -177,7 +180,34 @@ class _RealFeedState extends State<RealFeed> {
       if (x.invite != null && x.invite!.key == r.invite?.key) x,
   ];
 
+  /// [HF-REEL-CLEAN-1] The feed only moves when a finger moves it (owner 2026-10-22: "no auto scroll"). A page change
+  /// that no drag started (e.g. a player grabbing focus and the list scrolling to it) is undone. Screen-reader users
+  /// scroll without dragging, so the guard is off for them.
+  bool _fingerScroll = false;
+  bool _ownJump = false;
+
+  bool _onScroll(ScrollNotification n) {
+    if (n is ScrollStartNotification) {
+      _fingerScroll = n.dragDetails != null;
+    } else if (n is ScrollEndNotification) {
+      _fingerScroll = false;
+    }
+    return false;
+  }
+
   void _onPage(int i) {
+    if (!_fingerScroll &&
+        !_ownJump &&
+        !MediaQuery.of(context).accessibleNavigation) {
+      final back = _index;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted || !_pager.hasClients) return;
+        _ownJump = true;
+        _pager.jumpToPage(back);
+        _ownJump = false;
+      });
+      return;
+    }
     setState(() => _index = i);
     if (i >= _items.length - 3) unawaited(_loadMore());
     if (i < _items.length && !_items[i].isInvite && _counted.add(_items[i].id))
@@ -210,35 +240,28 @@ class _RealFeedState extends State<RealFeed> {
       backgroundColor: C.cinema,
       body: Stack(
         children: [
-          PageView.builder(
-            controller: _pager,
-            scrollDirection: Axis.vertical,
-            itemCount: items.length,
-            onPageChanged: _onPage,
-            allowImplicitScrolling:
-                true, // builds the next page early so its video is ready
-            itemBuilder: (_, i) => ReelPage(
-              key: ValueKey(items[i].id),
-              reel: demoReelFrom(items[i]),
-              real: items[i],
-              active: i == _index && ReelGate.visible.value,
-              preload: i == _index + 1,
-              keepAlive: (i - _index).abs() <= 1,
-              searchRepo: widget.searchRepo,
-              creatorReels: _reelsOfCreator,
+          NotificationListener<ScrollNotification>(
+            onNotification: _onScroll,
+            child: PageView.builder(
+              controller: _pager,
+              scrollDirection: Axis.vertical,
+              itemCount: items.length,
+              onPageChanged: _onPage,
+              allowImplicitScrolling:
+                  true, // builds the next page early so its video is ready
+              itemBuilder: (_, i) => ReelPage(
+                key: ValueKey(items[i].id),
+                reel: demoReelFrom(items[i]),
+                real: items[i],
+                active: i == _index && ReelGate.visible.value,
+                preload: i == _index + 1,
+                keepAlive: (i - _index).abs() <= 1,
+                searchRepo: widget.searchRepo,
+                creatorReels: _reelsOfCreator,
+              ),
             ),
           ),
-          Positioned(
-            top: MediaQuery.paddingOf(context).top + 10,
-            left: 22,
-            right: 22,
-            child: Row(
-              children: [
-                const Spacer(),
-                OnlineNowPill(demoCount: 0, fetch: widget.onlineFetch),
-              ],
-            ),
-          ),
+          // [HF-REEL-CLEAN-1] no "N online now" pill on the feed (owner 2026-10-22: it moves to the influencer page)
         ],
       ),
     );
@@ -265,7 +288,6 @@ class _FeedScreenState extends State<_DemoFeed> {
   @override
   Widget build(BuildContext context) {
     final live = reels.where((r) => r.who.online).toList();
-    final onlineCount = influencers.where((i) => i.online).length;
     return Scaffold(
       backgroundColor: C.cinema,
       body: Stack(
@@ -277,17 +299,7 @@ class _FeedScreenState extends State<_DemoFeed> {
             onPageChanged: (i) => setState(() => _index = i),
             itemBuilder: (_, i) => ReelPage(reel: live[i], active: i == _index),
           ),
-          Positioned(
-            top: MediaQuery.paddingOf(context).top + 10,
-            left: 22,
-            right: 22,
-            child: Row(
-              children: [
-                const Spacer(),
-                OnlineNowPill(demoCount: onlineCount * 21),
-              ],
-            ),
-          ),
+          // [HF-REEL-CLEAN-1] no "N online now" pill on the feed (owner 2026-10-22: it moves to the influencer page)
         ],
       ),
     );
@@ -631,14 +643,15 @@ class _ReelPageState extends State<ReelPage>
     VoidCallback? tap, {
     Color color = C.ivory,
   }) => Padding(
-    padding: const EdgeInsets.symmetric(vertical: 1),
+    // [HF-REEL-CLEAN-1] bigger, darker circles: they sit right over Instagram's own side buttons and hide them
+    padding: const EdgeInsets.symmetric(vertical: 3),
     child: IconButton(
       tooltip: label,
       onPressed: tap,
-      iconSize: 23,
+      iconSize: 26,
       style: IconButton.styleFrom(
-        backgroundColor: const Color(0x66000000),
-        minimumSize: const Size(48, 48),
+        backgroundColor: C.cinema.withValues(alpha: 0.92),
+        minimumSize: const Size(58, 58),
       ),
       icon: Icon(icon, color: color),
     ),

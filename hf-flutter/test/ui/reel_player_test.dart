@@ -94,34 +94,20 @@ void main() {
   }
 
   testWidgets(
-    'a tap on the transparent layer toggles the video underneath (Instagram shows our glyph)',
+    'a tap on the transparent layer toggles the video underneath, and nothing is drawn over it',
     (tester) async {
       await pumpPlayer(tester, _reel('a'));
       expect(find.byKey(const ValueKey('reel-open-ig')), findsOneWidget);
       await tester.tap(find.byKey(const ValueKey('reel-tap')));
       await tester.pump();
       expect(js.where((s) => s.contains('hfToggle')), hasLength(1));
-      expect(
-        find.byIcon(Icons.play_arrow_rounded),
-        findsOneWidget,
-      ); // now paused: our glyph says play
-      var glyph = tester.widget<AnimatedOpacity>(
-        find.byKey(const ValueKey('reel-glyph')),
-      );
-      expect(glyph.opacity, 1);
-      await tester.pump(const Duration(milliseconds: 700));
-      glyph = tester.widget<AnimatedOpacity>(
-        find.byKey(const ValueKey('reel-glyph')),
-      );
-      expect(glyph.opacity, 0);
-      msgs.add('playing');
-      await tester.pump();
-      expect(find.byIcon(Icons.pause_rounded), findsOneWidget);
+      expect(find.byKey(const ValueKey('reel-glyph')), findsNothing);
+      expect(find.byIcon(Icons.play_arrow_rounded), findsNothing);
     },
   );
 
   testWidgets(
-    'YouTube: the tap only toggles, nothing is drawn over the player',
+    'YouTube: the tap only toggles, no glyph, no Instagram chip',
     (tester) async {
       await pumpPlayer(tester, _reel('y', platform: 'youtube'));
       await tester.tap(find.byKey(const ValueKey('reel-tap')));
