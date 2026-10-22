@@ -221,10 +221,9 @@ class ReelPlayer extends StatefulWidget {
         ?.group(1);
   }
 
-  /// [HF-REEL-ZOOM-1] HF-REEL-48: YouTube's own strips, in CSS px of the phone screen — the Shorts header (top), the side
-  /// buttons (right) and the channel / title strip (bottom). The page zooms the player just enough, worked out from the
-  /// phone's own screen size, that these fall outside the screen. Nothing is drawn over the player; it is only zoomed.
-  /// It is a CSS transform (no layout change), and the page is pinned so it can never scroll.
+  /// [HF-REEL-BLUR-1] HF-REEL-48: YouTube's own strips, in CSS px of the phone screen — the Shorts header (top), the side
+  /// buttons (right, from 30% down) and the channel / title strip (bottom). The page lays a frosted blur over just these
+  /// strips; the video itself is not zoomed or moved. The page is pinned so it can never scroll.
   @visibleForTesting
   static const int youtubeHideTop = 52;
   @visibleForTesting
@@ -247,14 +246,15 @@ class ReelPlayer extends StatefulWidget {
         .convert(youtubeOrigin);
     return '<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1">'
         '<style>html,body{margin:0;width:100%;height:100%;background:#000;overflow:hidden;position:fixed;inset:0;touch-action:none}'
-        '#z{position:fixed;left:0;top:0;width:100vw;height:100vh;transform-origin:0 0}#p{position:absolute;top:0;left:0;width:100%;height:100%;border:0}</style></head>'
-        '<body><div id="z"><div id="p"></div></div><script>'
-        // zoom just enough for THIS screen: YouTube's top / right / bottom strips land off screen
-        'function hfZoom(){var W=window.innerWidth,H=window.innerHeight,T=$youtubeHideTop,R=$youtubeHideRight,B=$youtubeHideBottom;'
-        'if(!W||!H)return;var s=Math.max(W/(W-R),H/(H-T-B));'
-        'var l=Math.max(0,((W-R)-W/s)/2),t=T+Math.max(0,((H-T-B)-H/s)/2);'
-        'document.getElementById("z").style.transform="scale("+s+") translate("+(-l)+"px,"+(-t)+"px)"}'
-        'hfZoom();window.addEventListener("resize",hfZoom);'
+        '#p{position:absolute;top:0;left:0;width:100%;height:100%;border:0}'
+        // [HF-REEL-BLUR-1] frosted strips over YouTube's own controls: the video stays full size and centred, only the
+        // Shorts header (top), the side buttons (right) and the channel / title strip (bottom) are blurred
+        '.hfb{position:fixed;pointer-events:none;z-index:2;-webkit-backdrop-filter:blur(16px) saturate(1.1);backdrop-filter:blur(16px) saturate(1.1);background:rgba(10,4,16,.18)}'
+        '#bt{left:0;right:0;top:0;height:${youtubeHideTop}px;-webkit-mask-image:linear-gradient(#000 70%,transparent);mask-image:linear-gradient(#000 70%,transparent)}'
+        '#br{right:0;width:${youtubeHideRight}px;top:30%;bottom:0;-webkit-mask-image:linear-gradient(90deg,transparent,#000 30%);mask-image:linear-gradient(90deg,transparent,#000 30%)}'
+        '#bb{left:0;right:0;bottom:0;height:${youtubeHideBottom}px;-webkit-mask-image:linear-gradient(transparent,#000 30%);mask-image:linear-gradient(transparent,#000 30%)}'
+        '</style></head>'
+        '<body><div id="p"></div><div class="hfb" id="bt"></div><div class="hfb" id="br"></div><div class="hfb" id="bb"></div><script>'
         'window.addEventListener("scroll",function(){window.scrollTo(0,0)});'
         'var pl=null,ready=false,want=$start,SOUND=$sound,MUTED=${!start};'
         'function post(m){try{HFPlayer.postMessage(m)}catch(e){}}'
