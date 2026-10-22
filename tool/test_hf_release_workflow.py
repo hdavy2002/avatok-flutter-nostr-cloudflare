@@ -51,7 +51,9 @@ class ReleaseWorkflowContract(unittest.TestCase):
     def test_builds_use_resolved_mode_and_tests_keep_demo_fixtures(self):
         for name in ("Build APK (arm64)", "Build AAB", "Build unsigned release (buildcheck)"):
             self.assertIn('--dart-define=HF_DEMO="${HF_DEMO}"', step(name))
-        self.assertNotIn("--dart-define=HF_DEMO", step("Test"))
+        # Tests always run on demo fixtures, never on the release HF_DEMO value.
+        self.assertIn("--dart-define=HF_DEMO=true", step("Test"))
+        self.assertNotIn('HF_DEMO="${HF_DEMO}"', step("Test"))
         self.assertIn("if: env.MODE == 'internal'", step("Publish AAB to Play (internal track)"))
         self.assertIn("if: always()", step("Summary"))
         for field in ("${GITHUB_SHA}", "${MODE}", "${HF_DEMO}"):
