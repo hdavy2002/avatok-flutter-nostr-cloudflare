@@ -11175,5 +11175,12 @@
         "note": "A closure started and carries the net wallet payout; must equal the wallet balance floored to whole rupees, never the gross paid."
       }
     ]
+  },
+  "HF-FIX-BOOKING-NAMES-1": {
+    "description": "Web bookings payloads carry hostName, hostSlug, customerHandle (host role only) and durationMinutes.",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [],
+    "no_telemetry": "Server payload fields only; verified by re-checking the dashboard in a browser after deploy."
   }
 }
