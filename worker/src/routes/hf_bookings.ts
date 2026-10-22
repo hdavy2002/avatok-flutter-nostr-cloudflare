@@ -141,7 +141,11 @@ async function scheduleRoute(req: Request, env: Env): Promise<Response> {
     }
 
     const version = await saveHfBookingSchedule(env, auth.uid, expectedVersion, lockToken, submitted);
-    if (version === null) return err(409, "schedule_changed", { message: "Reload availability and apply your changes again." });
+    if (version === null) {
+      void track(env, auth.uid, "hf_booking_schedule_saved", BOOKING_APP, { outcome: "conflict", expected_version: expectedVersion }); // [HF-FIX-AVAIL-SAVE-1]
+      return err(409, "schedule_changed", { message: "Reload availability and apply your changes again." });
+    }
+    void track(env, auth.uid, "hf_booking_schedule_saved", BOOKING_APP, { outcome: "ok", version, expected_version: expectedVersion }); // [HF-FIX-AVAIL-SAVE-1]
     return json({ schedule: { ...submitted, version } }, 200, { "cache-control": "private, no-store" });
   } finally {
     await releaseHfScheduleWriteLock(env, auth.uid, lockToken).catch(() => undefined);
