@@ -11145,5 +11145,20 @@
         "note": "A host saved availability; a second save must also be ok (version>=2)."
       }
     ]
+  },
+  "HF-FIX-WALLET-RECEIPTS-1": {
+    "description": "Receipt View opens (CORS on receipt HTML), consistent GST maths, Withdraw to UPI replaces Ask for a refund.",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [],
+    "success": [
+      {
+        "event": "hf_receipt_viewed",
+        "property": "outcome",
+        "equals": "ok",
+        "min_events": 1,
+        "note": "Server rendered a receipt for its owner; the browser can read it because CORS headers are now sent."
+      }
+    ]
   }
 }
