@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/brand.dart';
+import '../../data/unplayable_reels.dart';
 import '../../data/reel_bookmarks.dart';
 import '../../data/api_exception.dart';
 import '../../data/models/reel.dart';
@@ -101,6 +102,17 @@ class _RealFeedState extends State<RealFeed> {
     ReelGate.visible.addListener(
       _onGate,
     ); // [HF-BOOK-APPROVE-POLISH] pause when the feed is not on screen
+    // [HF-REEL-SKIP-1] the list of reels that cannot play here loads alongside the feed; any that arrived first leave
+    unawaited(
+      UnplayableReels.load().then((_) {
+        if (!mounted) return;
+        for (final r in List.of(_items)) {
+          if (UnplayableReels.contains(r.id) && _items.indexOf(r) != _index) {
+            _dropUnplayable(r.id);
+          }
+        }
+      }),
+    );
     unawaited(_first());
   }
 
@@ -141,7 +153,9 @@ class _RealFeedState extends State<RealFeed> {
         ..clear()
         ..addAll([
           if (shared != null) shared,
-          ...page.items.where((r) => r.id != shared?.id),
+          ...page.items.where(
+            (r) => r.id != shared?.id && !UnplayableReels.contains(r.id),
+          ),
         ]);
       _cursor = page.nextCursor;
       _more = page.nextCursor != null;
@@ -163,7 +177,11 @@ class _RealFeedState extends State<RealFeed> {
       final page = await widget.repo.feed(cursor: _cursor);
       if (!mounted) return;
       final have = _items.map((r) => r.id).toSet();
-      _items.addAll(page.items.where((r) => !have.contains(r.id)));
+      _items.addAll(
+        page.items.where(
+          (r) => !have.contains(r.id) && !UnplayableReels.contains(r.id),
+        ),
+      );
       _cursor = page.nextCursor;
       _more = page.nextCursor != null;
       setState(() => _state = AsyncData(List.of(_items)));
@@ -193,6 +211,30 @@ class _RealFeedState extends State<RealFeed> {
       _fingerScroll = false;
     }
     return false;
+  }
+
+  /// [HF-REEL-SKIP-1] A reel that turned out not to play inside the app leaves the feed (usually while it is still the
+  /// warmed next reel, so the viewer never sees it). The reel on screen stays on screen.
+  void _dropUnplayable(String id) {
+    final i = _items.indexWhere((r) => r.id == id);
+    if (i < 0 || !mounted) return;
+    final shift = i < _index;
+    setState(() {
+      _items.removeAt(i);
+      if (shift) _index--;
+      if (_index >= _items.length)
+        _index = _items.isEmpty ? 0 : _items.length - 1;
+      _state = AsyncData(List.of(_items));
+    });
+    if (shift) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted || !_pager.hasClients) return;
+        _ownJump = true;
+        _pager.jumpToPage(_index);
+        _ownJump = false;
+      });
+    }
+    if (_items.length - _index < 4) unawaited(_loadMore());
   }
 
   void _onPage(int i) {
@@ -256,6 +298,7 @@ class _RealFeedState extends State<RealFeed> {
                 active: i == _index && ReelGate.visible.value,
                 preload: i == _index + 1,
                 keepAlive: (i - _index).abs() <= 1,
+                onUnplayable: () => _dropUnplayable(items[i].id),
                 searchRepo: widget.searchRepo,
                 creatorReels: _reelsOfCreator,
               ),
@@ -314,6 +357,7 @@ class ReelPage extends StatefulWidget {
     this.real,
     this.preload = false,
     this.keepAlive = false,
+    this.onUnplayable,
     this.searchRepo,
     this.creatorReels,
   });
@@ -335,6 +379,9 @@ class ReelPage extends StatefulWidget {
   /// up plays instantly from where it was instead of loading again.
   final bool keepAlive;
 
+  /// [HF-REEL-SKIP-1] The real reel cannot play inside the app; the feed removes it.
+  final VoidCallback? onUnplayable;
+
   @override
   State<ReelPage> createState() => _ReelPageState();
 }
@@ -346,6 +393,10 @@ class _ReelPageState extends State<ReelPage>
   bool get wantKeepAlive => widget.keepAlive;
 
   bool _covered = false;
+
+  /// [HF-REEL-DOT-1] The one-second message in the middle of the screen (status dot tap).
+  String? _flashText;
+  Timer? _flashTimer;
 
   Future<void> _whileCovered(Future<void> Function() open) async {
     setState(() => _covered = true);
@@ -387,6 +438,7 @@ class _ReelPageState extends State<ReelPage>
 
   @override
   void dispose() {
+    _flashTimer?.cancel();
     _play.dispose();
     super.dispose();
   }
@@ -442,6 +494,7 @@ class _ReelPageState extends State<ReelPage>
                 reel: widget.real!,
                 active: widget.active && !_covered,
                 preload: widget.preload,
+                onUnplayable: widget.onUnplayable,
               )
             else
               AnimatedBuilder(
@@ -505,6 +558,32 @@ class _ReelPageState extends State<ReelPage>
                 child: SizedBox.expand(),
               ),
             ),
+            // [HF-REEL-DOT-1] the status message, centred, for one second
+            Positioned.fill(
+              child: IgnorePointer(
+                child: Center(
+                  child: AnimatedOpacity(
+                    opacity: _flashText == null ? 0 : 1,
+                    duration: const Duration(milliseconds: 180),
+                    child: Container(
+                      key: const ValueKey('reel-status-flash'),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 22,
+                        vertical: 14,
+                      ),
+                      decoration: BoxDecoration(
+                        color: C.cinema.withValues(alpha: 0.92),
+                        borderRadius: BorderRadius.circular(999),
+                      ),
+                      child: Text(
+                        _flashText ?? '',
+                        style: t(16, color: C.ivory),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
             // progress (stand-in only: the real player shows its own)
             if (widget.real == null)
               Positioned(
@@ -540,7 +619,7 @@ class _ReelPageState extends State<ReelPage>
                   ),
                   if (inviteOf != null) ...[
                     _statusDot(
-                      'Not available — creator has not joined yet',
+                      'Influencer is not on ${Brand.name} yet',
                       'Not available',
                       C.ruby,
                     ),
@@ -553,10 +632,10 @@ class _ReelPageState extends State<ReelPage>
                   if (inviteOf == null) ...[
                     _statusDot(
                       presence == 'online'
-                          ? 'Available'
+                          ? 'Influencer is online'
                           : presence == 'busy'
-                          ? 'On call'
-                          : 'Offline',
+                          ? 'Influencer is on a call'
+                          : 'Influencer is offline',
                       presence == 'online'
                           ? 'Available'
                           : presence == 'busy'
@@ -619,22 +698,25 @@ class _ReelPageState extends State<ReelPage>
     );
   }
 
-  /// [HF-REEL-DOT-1] The creator's status as a solid dot (owner 2026-10-22): green = online, red = offline / not on the
-  /// app yet, marigold = on a call. White ring so it reads on any video.
-  Widget _statusDot(String tip, String label, Color color) => Tooltip(
-    message: tip,
+  /// [HF-REEL-DOT-1] The creator's status as a solid circle the same size as the other buttons (owner 2026-10-22): green =
+  /// online, red = offline / not on the app yet, marigold = on a call. A tap shows [message] in the middle of the screen
+  /// for a second.
+  Widget _statusDot(String message, String label, Color color) => Padding(
+    padding: const EdgeInsets.symmetric(vertical: 3),
     child: Semantics(
+      button: true,
       label: label,
-      child: Padding(
+      child: GestureDetector(
         key: const ValueKey('reel-status-dot'),
-        padding: const EdgeInsets.all(8),
+        behavior: HitTestBehavior.opaque,
+        onTap: () => _flash(message),
         child: Container(
-          width: 22,
-          height: 22,
+          width: 58,
+          height: 58,
           decoration: BoxDecoration(
             shape: BoxShape.circle,
             color: color,
-            border: Border.all(color: C.ivory, width: 2.5),
+            border: Border.all(color: C.ivory, width: 3),
             boxShadow: const [
               BoxShadow(color: Color(0x66000000), blurRadius: 6),
             ],
@@ -643,6 +725,14 @@ class _ReelPageState extends State<ReelPage>
       ),
     ),
   );
+
+  void _flash(String message) {
+    _flashTimer?.cancel();
+    setState(() => _flashText = message);
+    _flashTimer = Timer(const Duration(seconds: 1), () {
+      if (mounted) setState(() => _flashText = null);
+    });
+  }
 
   Widget _action(
     String label,

@@ -140,6 +140,7 @@ void main() {
       expect(html, contains('id="bb"'));
       expect(html, contains('id="bt"'));
       expect(html, contains('chrome(4000)'));
+      expect(html, contains('function fit()'));
       expect(html, isNot(contains('id="br"')));
       expect(html, isNot(contains('hfZoom')));
       expect(ReelPlayer.youtubeHtml('https://www.instagram.com/reel/Cx12345/embed'), isNull);

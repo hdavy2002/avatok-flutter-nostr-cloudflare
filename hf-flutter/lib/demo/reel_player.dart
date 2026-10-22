@@ -9,6 +9,7 @@ import 'package:webview_flutter_android/webview_flutter_android.dart';
 import '../core/brand.dart';
 import '../data/models/reel.dart';
 import '../data/telemetry.dart';
+import '../data/unplayable_reels.dart';
 import '../ui/net_image.dart';
 import 'theme.dart';
 
@@ -106,7 +107,11 @@ class ReelPlayer extends StatefulWidget {
     required this.active,
     this.preload = false,
     this.sound = true,
+    this.onUnplayable,
   });
+
+  /// [HF-REEL-SKIP-1] Called when the reel can never play inside the app; the feed then removes it.
+  final VoidCallback? onUnplayable;
 
   final FeedReel reel;
   final bool active;
@@ -247,7 +252,7 @@ class ReelPlayer extends StatefulWidget {
         .convert(youtubeOrigin);
     return '<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1">'
         '<style>html,body{margin:0;width:100%;height:100%;background:#000;overflow:hidden;position:fixed;inset:0;touch-action:none}'
-        '#p{position:absolute;top:0;left:0;width:100%;height:100%;border:0}'
+        '#p{position:absolute;top:0;left:0;width:100%;height:100%;border:0;transform-origin:50% 50%}'
         // [HF-REEL-BLUR-2] frosted strips over YouTube's own top bar (channel / title) and bottom strip, shown only while
         // YouTube shows them: from load until a few seconds after it starts playing, all the time it is paused or
         // buffering, and again for a few seconds after every play. The video stays full size and centred.
@@ -256,6 +261,10 @@ class ReelPlayer extends StatefulWidget {
         '#bb{left:0;right:0;bottom:0;height:${youtubeHideBottom}px;-webkit-mask-image:linear-gradient(transparent,#000 30%);mask-image:linear-gradient(transparent,#000 30%)}'
         '</style></head>'
         '<body class="c"><div id="p"></div><div class="hfb" id="bt"></div><div class="hfb" id="bb"></div><script>'
+        // [HF-REEL-FILL-1] a 9:16 reel on a taller phone screen leaves black bands above and below it; scale the player
+        // (centred) just enough that the video reaches the top and the bottom, as Instagram reels do
+        'function fit(){var e=document.getElementById("p");if(!e)return;var W=window.innerWidth,H=window.innerHeight,v=W*16/9;'
+        'e.style.transform="scale("+(H>v?H/v:1)+")"}window.addEventListener("resize",fit);'
         'var ht=null;function chrome(ms){document.body.classList.add("c");clearTimeout(ht);if(ms)ht=setTimeout(function(){document.body.classList.remove("c")},ms)}'
         'window.addEventListener("scroll",function(){window.scrollTo(0,0)});'
         'var pl=null,ready=false,want=$start,SOUND=$sound,MUTED=${!start};'
@@ -268,7 +277,7 @@ class ReelPlayer extends StatefulWidget {
         'window.hfRestart=function(){want=true;if(!ready)return;try{pl.seekTo(0,true)}catch(e){}apply()};'
         'function onYouTubeIframeAPIReady(){pl=new YT.Player("p",{videoId:"$id",width:"100%",height:"100%",host:"https://www.youtube.com",'
         'playerVars:{autoplay:${start ? 1 : 0},playsinline:1,controls:0,rel:0,modestbranding:1,loop:1,playlist:"$id",enablejsapi:1,origin:"$origin",fs:0,disablekb:1,iv_load_policy:3},'
-        'events:{onReady:function(){ready=true;mute();post("ready");apply()},'
+        'events:{onReady:function(){fit();ready=true;mute();post("ready");apply()},'
         'onAutoplayBlocked:function(){try{pl.mute();pl.playVideo()}catch(e){}},'
         'onStateChange:function(e){if(e.data===1)chrome($youtubeChromeMs);else chrome(0);if(e.data===1)post("playing");else if(e.data===2)post("paused");else if(e.data===0){try{pl.playVideo()}catch(x){}}},'
         'onError:function(e){post("error:"+e.data)}}})}'
@@ -582,6 +591,10 @@ class _ReelPlayerState extends State<ReelPlayer> with WidgetsBindingObserver {
       _failReason = reason;
       _drop();
     });
+    if (UnplayableReels.permanentReasons.contains(reason)) {
+      unawaited(UnplayableReels.mark(widget.reel.id));
+      widget.onUnplayable?.call();
+    }
   }
 
   void _toggle() {
