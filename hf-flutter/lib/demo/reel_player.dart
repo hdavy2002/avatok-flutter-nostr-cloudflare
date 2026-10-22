@@ -110,8 +110,9 @@ class ReelPlayer extends StatefulWidget {
     this.onUnplayable,
   });
 
-  /// [HF-REEL-SKIP-1] Called when the reel can never play inside the app; the feed then removes it.
-  final VoidCallback? onUnplayable;
+  /// [HF-REEL-SKIP-1] Called with the reason when the reel can never play inside the app; the feed then removes it and
+  /// reports it to the server ([HF-REEL-SKIP-2]).
+  final void Function(String reason)? onUnplayable;
 
   final FeedReel reel;
   final bool active;
@@ -593,7 +594,7 @@ class _ReelPlayerState extends State<ReelPlayer> with WidgetsBindingObserver {
     });
     if (UnplayableReels.permanentReasons.contains(reason)) {
       unawaited(UnplayableReels.mark(widget.reel.id));
-      widget.onUnplayable?.call();
+      widget.onUnplayable?.call(reason);
     }
   }
 

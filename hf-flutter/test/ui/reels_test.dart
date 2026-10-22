@@ -76,6 +76,19 @@ void main() {
   });
 
   group('ReelsRepo', () {
+    test('[HF-REEL-SKIP-2] reportUnplayable posts the reason, signed out, and never throws', () async {
+      Object? sent;
+      final api = FakeApiClient((m, p, q, b) {
+        sent = b;
+        return {'ok': true};
+      });
+      await ReelsRepo(api).reportUnplayable('hfrl_abc12345', 'appOnly');
+      expect(api.calls, ['POST /api/hf/reels/hfrl_abc12345/unplayable']);
+      expect(sent, {'reason': 'appOnly'});
+      final down = FakeApiClient((m, p, q, b) => throw Exception('offline'));
+      await ReelsRepo(down).reportUnplayable('hfrl_abc12345', 'appOnly');
+    });
+
     test('feed parses items, host and the next cursor, and asks without sign-in', () async {
       final api = FakeApiClient((m, p, q, b) => {
             'ok': true,

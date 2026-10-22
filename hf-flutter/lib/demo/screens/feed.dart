@@ -298,7 +298,11 @@ class _RealFeedState extends State<RealFeed> {
                 active: i == _index && ReelGate.visible.value,
                 preload: i == _index + 1,
                 keepAlive: (i - _index).abs() <= 1,
-                onUnplayable: () => _dropUnplayable(items[i].id),
+                onUnplayable: (reason) {
+                  _dropUnplayable(items[i].id);
+                  // [HF-REEL-SKIP-2] so the server can hide it for everyone
+                  unawaited(widget.repo.reportUnplayable(items[i].id, reason));
+                },
                 searchRepo: widget.searchRepo,
                 creatorReels: _reelsOfCreator,
               ),
@@ -379,8 +383,8 @@ class ReelPage extends StatefulWidget {
   /// up plays instantly from where it was instead of loading again.
   final bool keepAlive;
 
-  /// [HF-REEL-SKIP-1] The real reel cannot play inside the app; the feed removes it.
-  final VoidCallback? onUnplayable;
+  /// [HF-REEL-SKIP-1] The real reel cannot play inside the app (with the reason); the feed removes it.
+  final void Function(String reason)? onUnplayable;
 
   @override
   State<ReelPage> createState() => _ReelPageState();

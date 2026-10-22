@@ -2178,6 +2178,7 @@ export interface PlatformConfig {
   hfInviteReelsEnabled: boolean; // [HF-WIRE-22] HF-REEL-40: reels of creators not on the network appear after network reels in the feed, with an Invite button. Default true.
   hfDemoInfluencersVisible: boolean; // default true; false hides every is_demo host and reel in one switch
   hfReelsImportCount: number; // [HF-WIRE-4] NUMERIC (numericKeys): latest videos imported per approved channel on approval and in the daily recheck; default 50 (HF-WIRE-14), max 200
+  hfReelUnplayableHideAt: number; // [HF-REEL-SKIP-2] NUMERIC (numericKeys): distinct phones that must report a reel as unplayable inside the app before it is hidden from everyone (30 days). 0 = never hide. Default 2.
   hfInfluencerMinFollowers: number; // NUMERIC (numericKeys): followers/subscribers needed on one YouTube or Instagram channel; default 10
   // [AUMFE-PANDIT-COST-1] Pandit ji cost controls. NUMERIC -> they MUST also appear in `numericKeys` below or
   // `flags.sh set panditTopicMaxTurns=15` 400s `bad type`.
@@ -2947,6 +2948,7 @@ const DEFAULTS: PlatformConfig = {
   hfInviteReelsEnabled: true, // [HF-WIRE-22]
   hfDemoInfluencersVisible: true, // [HF-WIRE-1B] seed influencers are shown until the owner hides them
   hfReelsImportCount: 50, // [HF-WIRE-4] raised to 50 by HF-WIRE-14
+  hfReelUnplayableHideAt: 2, // [HF-REEL-SKIP-2] owner 2026-10-22: unplayable reels leave the feed for everyone
   hfInfluencerMinFollowers: 10, // [HF-WIRE-1B] owner 2026-10-19 (handover 10 asks whether 10 or 10,000)
   hfTopupEnabled: false, // [HF-TOPUP-1] dark until a gateway is configured and the owner flips it
   hfTopupGateway: "none",
@@ -3189,7 +3191,7 @@ export async function putConfig(req: Request, env: Env): Promise<Response> {
     "sessionCreatorCheckInMin", "liveHostGraceMin",
     "commercialConsultExtensionMinutes", "commercialConsultExtensionRate",
     "commercialLiveBackstageEarlyMin", "commercialLiveStartGraceMin",
-    "minAppBuild", "latestAppBuild", "hfAppMinBuild", "hfAppLatestBuild", /* [HF-NATIVE-S7] */ "hfInfluencerMinFollowers", /* [HF-WIRE-1B] */ "hfReelsImportCount", /* [HF-WIRE-4] */ "dailyAvaTurnLimit", "receptionistRings", "agentDailyCap", "livenessAuditSampleRate",
+    "minAppBuild", "latestAppBuild", "hfAppMinBuild", "hfAppLatestBuild", /* [HF-NATIVE-S7] */ "hfInfluencerMinFollowers", /* [HF-WIRE-1B] */ "hfReelUnplayableHideAt", /* [HF-REEL-SKIP-2] */ "hfReelsImportCount", /* [HF-WIRE-4] */ "dailyAvaTurnLimit", "receptionistRings", "agentDailyCap", "livenessAuditSampleRate",
     "receptWrapCueMs", "receptCloseMs", "receptHardCapMs",
     // [PA-GATE-1] PA stuck-session watchdog (spec §3.4) — numeric, so it must be here.
     "paWatchdogMs",
@@ -3445,6 +3447,9 @@ export async function putConfig(req: Request, env: Env): Promise<Response> {
     }
     if ((k === "hfAppLatestBuild" || k === "hfAppMinBuild") && (!Number.isInteger(v) || (v as number) < 0 || (v as number) > 100_000_000)) {
       return json({ error: `${k} must be a whole build number 0-100000000` }, 400); // [HF-NATIVE-S7]
+    }
+    if (k === "hfReelUnplayableHideAt" && (!Number.isInteger(v) || (v as number) < 0 || (v as number) > 1000)) {
+      return json({ error: "hfReelUnplayableHideAt must be a whole number 0-1000" }, 400); // [HF-REEL-SKIP-2]
     }
     if (k === "hfInfluencerMinFollowers" && (!Number.isInteger(v) || (v as number) < 0 || (v as number) > 100_000_000)) {
       return json({ error: "hfInfluencerMinFollowers must be a whole number 0-100000000" }, 400); // [HF-WIRE-1B]

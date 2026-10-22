@@ -10,10 +10,13 @@
 // item = { id, host:{slug,name,handle,avatar,ratePaise,followers,presence}, platform, url, embedUrl, thumbUrl, title, caption, likes, comments, views, publishedAt }
 // mine = { id, channelId, platform, url, embedUrl, thumbUrl, title, caption, likes, comments, views, publishedAt, visible }
 // Demo (starter) hosts/reels are included only while hfDemoInfluencersVisible is true. Reels of a disconnected / unapproved channel never show.
+// [HF-REEL-SKIP-2] POST /api/hf/reels/:id/unplayable { reason }  a phone found the reel cannot play inside the app -> { ok }.
+//   Public (no sign-in), rate-limited per IP; one vote per reporter (uid or IP hash). Once hfReelUnplayableHideAt distinct
+//   reporters agree (default 2), the reel is left out of the feed, saved videos and profiles for everyone for 30 days.
 // [HF-WIRE-14] Embeds only: no video file url is stored or returned; the app plays embedUrl in the official YouTube / Instagram player. title = caption.
 // Never returns uid, provider payload or secrets.
 import type { Env } from "../types";
-import { json } from "../util";
+import { json, sha256Hex } from "../util";
 import { requireUser, isFail } from "../authz";
 import { rateLimit } from "../money";
 import { trackException } from "../hooks";
@@ -44,11 +47,29 @@ const REEL_COLS = `r.id, r.host_uid, r.platform, r.url, r.embed_url, r.video_url
   COALESCE(r.published_at, r.imported_at) AS ts`;
 const FROM = `FROM hf_reels r JOIN hf_hosts h ON h.uid=r.host_uid LEFT JOIN hf_avatars a ON a.id=h.avatar_id`;
 
+/** [HF-REEL-SKIP-2] Reasons a phone may report: the reel can never play inside the app (not a slow network). */
+export const UNPLAYABLE_REASONS = new Set(["appOnly", "novideo", "100", "101", "150", "152", "153"]);
+/** How long a reel stays hidden after its last report (the uploader may switch embedding back on). */
+export const UNPLAYABLE_HIDE_MS = 30 * 24 * 3600 * 1000;
+
+/** The hide threshold from config; 0 / missing = never hide (also keeps tests without the table working). */
+export function unplayableHideAt(cfg: Record<string, unknown>): number {
+  const n = Math.floor(Number(cfg.hfReelUnplayableHideAt ?? 0));
+  return Number.isFinite(n) && n > 0 ? Math.min(n, 1000) : 0;
+}
+
+/** SQL fragment (numbers inlined, both whole numbers we computed): leave out reels enough phones reported unplayable. */
+function unplayableWhere(col: string, hideAt: number): string {
+  if (!hideAt) return "";
+  const since = Date.now() - UNPLAYABLE_HIDE_MS;
+  return ` AND NOT EXISTS (SELECT 1 FROM hf_reel_unplayable up WHERE up.reel_id=${col} AND up.reports>=${hideAt} AND up.last_at>${since})`;
+}
+
 /** SQL fragment: the reel is allowed to be public (host approved/live, channel still connected, demo rules). */
-function publicWhere(demoVisible: boolean): string {
+function publicWhere(demoVisible: boolean, hideAt = 0): string {
   const demo = demoVisible ? "" : " AND r.is_demo=0 AND NOT EXISTS (SELECT 1 FROM hf_demo_hosts d WHERE d.host_uid=h.uid)";
   return `r.visible=1 AND h.status IN ('approved','live') AND h.slug IS NOT NULL
-    AND (r.is_demo=1 OR EXISTS (SELECT 1 FROM hf_channels c WHERE c.id=r.channel_id AND c.status='approved'))${demo}`;
+    AND (r.is_demo=1 OR EXISTS (SELECT 1 FROM hf_channels c WHERE c.id=r.channel_id AND c.status='approved'))${demo}${unplayableWhere("r.id", hideAt)}`;
 }
 
 async function hostFacts(env: Env, uids: string[]): Promise<Map<string, { handle: string | null; followers: number }>> {
@@ -101,7 +122,7 @@ interface InviteRow {
 }
 
 /** Invite reels: not hidden, creator has not joined, round-robin across creators (newest first), most-voted creators first. Details only, never a video file. */
-async function inviteItems(env: Env, offset: number, take: number, ids?: string[]): Promise<{ items: unknown[]; more: boolean }> {
+async function inviteItems(env: Env, offset: number, take: number, ids?: string[], hideAt = 0): Promise<{ items: unknown[]; more: boolean }> {
   try {
     const rows = (await env.DB_META.prepare(
       `SELECT x.* FROM (
@@ -110,7 +131,7 @@ async function inviteItems(env: Env, offset: number, take: number, ids?: string[
            (SELECT COUNT(*) FROM hf_invite_votes v WHERE v.platform=r.platform AND v.handle=r.handle) AS votes,
            ROW_NUMBER() OVER (PARTITION BY r.platform, r.handle ORDER BY COALESCE(r.published_at,0) DESC, r.id DESC) AS rn
          FROM hf_invite_reels r JOIN hf_invite_creators c ON c.platform=r.platform AND c.handle=r.handle
-         WHERE c.hidden=0 AND r.embed_url IS NOT NULL ${ids ? `AND r.id IN (${ids.map((_, i) => `?${i + 3}`).join(",")})` : ""}
+         WHERE c.hidden=0 AND r.embed_url IS NOT NULL${unplayableWhere("r.id", hideAt)} ${ids ? `AND r.id IN (${ids.map((_, i) => `?${i + 3}`).join(",")})` : ""}
            AND NOT EXISTS (SELECT 1 FROM hf_channels ch WHERE ch.platform=c.platform AND ch.status='approved' AND (LOWER(REPLACE(ch.handle,'@',''))=c.handle OR (c.platform_user_id IS NOT NULL AND ch.platform_user_id=c.platform_user_id)))
        ) x ORDER BY x.rn ASC, x.votes DESC, x.followers DESC, x.handle ASC, x.id ASC LIMIT ?1 OFFSET ?2`,
     ).bind(take + 1, offset, ...(ids ?? [])).all<InviteRow>()).results ?? [];
@@ -130,9 +151,9 @@ export async function savedReelItems(env: Env, ids: string[], cfg: Record<string
   const network = ids.filter((id) => REEL_ID.test(id));
   const invites = ids.filter((id) => /^hfiv_[a-z0-9]{8,40}$/.test(id));
   const rows = network.length ? (await env.DB_META.prepare(
-    `SELECT ${REEL_COLS}, ${HOST_COLS} ${FROM} WHERE r.id IN (${network.map((_, i) => `?${i + 1}`).join(",")}) AND ${publicWhere(cfg.hfDemoInfluencersVisible !== false)}`,
+    `SELECT ${REEL_COLS}, ${HOST_COLS} ${FROM} WHERE r.id IN (${network.map((_, i) => `?${i + 1}`).join(",")}) AND ${publicWhere(cfg.hfDemoInfluencersVisible !== false, unplayableHideAt(cfg))}`,
   ).bind(...network).all<FeedRow>()).results ?? [] : [];
-  return [...await toItems(env, rows, cfg), ...(invites.length && inviteReelsOn(cfg) ? (await inviteItems(env, 0, invites.length, invites)).items : [])];
+  return [...await toItems(env, rows, cfg), ...(invites.length && inviteReelsOn(cfg) ? (await inviteItems(env, 0, invites.length, invites, unplayableHideAt(cfg))).items : [])];
 }
 
 /** Visible reels of one host for the public profile (GET /api/hosts/public/:slug). Returns null when the flag is off or the tables are missing. */
@@ -141,7 +162,7 @@ export async function profileReels(env: Env, hostUid: string, cfg: Record<string
   try {
     const demoVisible = cfg.hfDemoInfluencersVisible !== false;
     const rows = (await env.DB_META.prepare(
-      `SELECT ${REEL_COLS}, ${HOST_COLS} ${FROM} WHERE r.host_uid=?1 AND ${publicWhere(demoVisible)} ORDER BY ts DESC, r.id DESC LIMIT 60`,
+      `SELECT ${REEL_COLS}, ${HOST_COLS} ${FROM} WHERE r.host_uid=?1 AND ${publicWhere(demoVisible, unplayableHideAt(cfg))} ORDER BY ts DESC, r.id DESC LIMIT 60`,
     ).bind(hostUid).all<FeedRow>()).results ?? [];
     const items = await toItems(env, rows, cfg);
     const f = (await hostFacts(env, [hostUid])).get(hostUid);
@@ -159,7 +180,7 @@ export async function isHiddenDemoHost(env: Env, hostUid: string, cfg: Record<st
 
 export async function hfReelsRoute(req: Request, env: Env, p: string, ctx?: ExecutionContext): Promise<Response | null> {
   void ctx;
-  const m = p.match(/^\/api\/hf\/reels(?:\/((?:hfrl|hfiv)_[a-z0-9]{8,40}))?(?:\/(view))?$/);
+  const m = p.match(/^\/api\/hf\/reels(?:\/((?:hfrl|hfiv)_[a-z0-9]{8,40}))?(?:\/(view|unplayable))?$/);
   const mine = p === "/api/hf/hosts/me/reels";
   if (!m && !mine) return null;
   const id = m?.[1] ?? null;
@@ -208,6 +229,32 @@ export async function hfReelsRoute(req: Request, env: Env, p: string, ctx?: Exec
       return json({ ok: true }, 200, NO_STORE);
     }
 
+    // ── POST unplayable report [HF-REEL-SKIP-2] ───────────────────────────────────────────────────────────────────
+    if (id && action === "unplayable") {
+      const ip = req.headers.get("cf-connecting-ip") ?? req.headers.get("x-forwarded-for") ?? "anon";
+      const lim = await rateLimit(env, `hfunplay:${ip}`, 30, 3600);
+      if (lim) return lim;
+      const txt = await req.text().catch(() => "");
+      let b: any = null;
+      try { b = txt && txt.length < 500 ? JSON.parse(txt) : null; } catch { b = null; }
+      const reason = typeof b?.reason === "string" ? b.reason : "";
+      if (!UNPLAYABLE_REASONS.has(reason)) return err(400, "invalid_field", "Unknown reason.");
+      const table = id.startsWith("hfiv_") ? "hf_invite_reels" : "hf_reels";
+      const reel = await env.DB_META.prepare(`SELECT platform FROM ${table} WHERE id=?1`).bind(id).first<{ platform: string }>();
+      if (!reel) return err(404, "not_found", "We could not find that video.");
+      const u = req.headers.get("authorization") ? await requireUser(req, env) : null;
+      const who = u && !isFail(u) ? `u:${u.uid}` : `ip:${ip}`;
+      const reporter = await sha256Hex(`hf-unplayable:${who}`);
+      const now = Date.now();
+      const ins = await env.DB_META.prepare("INSERT OR IGNORE INTO hf_reel_unplayable_reports (reel_id, reporter, at) VALUES (?1, ?2, ?3)").bind(id, reporter, now).run();
+      const fresh = Number(ins.meta?.changes ?? 0) > 0;
+      await env.DB_META.prepare(
+        `INSERT INTO hf_reel_unplayable (reel_id, platform, reason, reports, first_at, last_at) VALUES (?1, ?2, ?3, ?4, ?5, ?5)
+         ON CONFLICT(reel_id) DO UPDATE SET reason=?3, reports=reports+?4, last_at=?5`,
+      ).bind(id, reel.platform, reason, fresh ? 1 : 0, now).run();
+      return json({ ok: true }, 200, NO_STORE);
+    }
+
     // ── GET one reel (deep link) ───────────────────────────────────────────────────────────────────────────────
     if (id) {
       const item = (await savedReelItems(env, [id], cfg))[0];
@@ -230,7 +277,7 @@ export async function hfReelsRoute(req: Request, env: Env, p: string, ctx?: Exec
     let doInvite = false;
     if (inv) { doInvite = true; invOffset = Number(inv[1]); }
     else {
-      const where = `${publicWhere(demoVisible)}${cur ? " AND (COALESCE(r.published_at, r.imported_at) < ?2 OR (COALESCE(r.published_at, r.imported_at) = ?2 AND r.id < ?3))" : ""}`;
+      const where = `${publicWhere(demoVisible, unplayableHideAt(cfg))}${cur ? " AND (COALESCE(r.published_at, r.imported_at) < ?2 OR (COALESCE(r.published_at, r.imported_at) = ?2 AND r.id < ?3))" : ""}`;
       const stmt = env.DB_META.prepare(`SELECT ${REEL_COLS}, ${HOST_COLS} ${FROM} WHERE ${where} ORDER BY ts DESC, r.id DESC LIMIT ?1`);
       const rows = (await (cur ? stmt.bind(limit + 1, Number(cur[1]), cur[2]) : stmt.bind(limit + 1)).all<FeedRow>()).results ?? [];
       const page = rows.slice(0, limit);
@@ -241,7 +288,7 @@ export async function hfReelsRoute(req: Request, env: Env, p: string, ctx?: Exec
       else doInvite = true; // network part is finished: continue with invite reels
     }
     if (doInvite && withInvites) {
-      const r = await inviteItems(env, invOffset, room);
+      const r = await inviteItems(env, invOffset, room, undefined, unplayableHideAt(cfg));
       items = items.concat(r.items);
       if (r.more) nextCursor = `i:${invOffset + r.items.length}`;
     }

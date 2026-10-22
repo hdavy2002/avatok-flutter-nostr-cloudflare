@@ -11112,5 +11112,23 @@
         "note": "Confirms a video was saved locally. Server sync, actual playback and modal pause/resume require separate checks; this does not assert deployment."
       }
     ]
+  },
+  "HF-REEL-SKIP-2": {
+    "description": "Phones report reels that cannot play inside the app; once hfReelUnplayableHideAt distinct reporters agree the server leaves them out of the feed, saved videos and profiles for 30 days.",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [
+      "hfReelUnplayableHideAt",
+      "hfReelsEnabled"
+    ],
+    "success": [
+      {
+        "event": "hf_reel_play_fail",
+        "property": "reason",
+        "equals": "appOnly",
+        "min_events": 1,
+        "note": "The client fires this right before it reports the reel; the server effect is proven by D1 hf_reel_unplayable rows and the reel missing from GET /api/hf/reels."
+      }
+    ]
   }
 }

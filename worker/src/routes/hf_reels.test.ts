@@ -213,3 +213,37 @@ describe("importer", () => {
     await expect(instagramRecent({}, "maya", 5, f)).rejects.toMatchObject({ code: "provider_not_configured" });
   });
 });
+
+describe("[HF-REEL-SKIP-2] unplayable reports", () => {
+  const report = (id: string, ip: string, reason = "appOnly") =>
+    call(`/api/hf/reels/${id}/unplayable`, { method: "POST", headers: { "cf-connecting-ip": ip }, body: JSON.stringify({ reason }) });
+  beforeEach(() => { db.exec(mig("2026-10-22-hf-reel-unplayable.sql")); cfg = { ...cfg, hfReelUnplayableHideAt: 2 }; });
+
+  it("hides a reel for everyone once two different phones report it; one phone twice is one vote", async () => {
+    host("a"); reel("hfrl_aaaaaaaa01", "a"); reel("hfrl_aaaaaaaa02", "a");
+    expect((await report("hfrl_aaaaaaaa01", "1.1.1.1")).status).toBe(200);
+    expect((await report("hfrl_aaaaaaaa01", "1.1.1.1")).status).toBe(200);
+    expect(ids(await body(await call("/api/hf/reels")))).toContain("hfrl_aaaaaaaa01");
+    await report("hfrl_aaaaaaaa01", "2.2.2.2");
+    const j = await body(await call("/api/hf/reels"));
+    expect(ids(j)).toEqual(["hfrl_aaaaaaaa02"]);
+    expect((await call("/api/hf/reels/hfrl_aaaaaaaa01")).status).toBe(404);
+    expect((await profileReels(env, "a", cfg))!.reels.map((r: any) => r.id)).toEqual(["hfrl_aaaaaaaa02"]);
+  });
+
+  it("threshold 0 never hides; unknown reasons and unknown reels are refused", async () => {
+    host("a"); reel("hfrl_aaaaaaaa01", "a");
+    expect((await report("hfrl_aaaaaaaa01", "1.1.1.1", "timeout")).status).toBe(400);
+    expect((await report("hfrl_zzzzzzzz99", "1.1.1.1")).status).toBe(404);
+    await report("hfrl_aaaaaaaa01", "1.1.1.1"); await report("hfrl_aaaaaaaa01", "2.2.2.2");
+    cfg = { ...cfg, hfReelUnplayableHideAt: 0 };
+    expect(ids(await body(await call("/api/hf/reels")))).toContain("hfrl_aaaaaaaa01");
+  });
+
+  it("reports older than 30 days no longer hide the reel", async () => {
+    host("a"); reel("hfrl_aaaaaaaa01", "a");
+    await report("hfrl_aaaaaaaa01", "1.1.1.1"); await report("hfrl_aaaaaaaa01", "2.2.2.2");
+    db.prepare("UPDATE hf_reel_unplayable SET last_at=?").run(Date.now() - 31 * 24 * 3600 * 1000);
+    expect(ids(await body(await call("/api/hf/reels")))).toContain("hfrl_aaaaaaaa01");
+  });
+});
