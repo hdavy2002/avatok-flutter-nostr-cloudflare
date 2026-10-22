@@ -221,6 +221,16 @@ class ReelPlayer extends StatefulWidget {
         ?.group(1);
   }
 
+  /// [HF-REEL-ZOOM-1] HF-REEL-48: the YouTube player is drawn 140% wide and tall and shifted so the video stays the focus
+  /// while YouTube's own Shorts header (top), side buttons (right) and channel / title strip (bottom) fall outside the
+  /// screen. Nothing is drawn over the player: it is only zoomed in. Our buttons sit on the visible picture as before.
+  @visibleForTesting
+  static const String youtubeZoomSize = '140%';
+  @visibleForTesting
+  static const String youtubeZoomLeft = '-15%';
+  @visibleForTesting
+  static const String youtubeZoomTop = '-18%';
+
   /// A small page that runs the YouTube IFrame Player API. It is loaded with the app id as its base URL so YouTube gets a
   /// Referer and origin. The tap layer in Flutter calls `hfSet(bool)` / `hfToggle()`; state and errors come back over the
   /// `HFPlayer` channel (`ready`, `playing`, `paused`, `error:<code>`). Null for a non-YouTube embed.
@@ -231,7 +241,7 @@ class ReelPlayer extends StatefulWidget {
     final origin = const HtmlEscape(HtmlEscapeMode.attribute)
         .convert(youtubeOrigin);
     return '<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1">'
-        '<style>html,body{margin:0;height:100%;background:#000;overflow:hidden}#p{position:absolute;top:0;left:0;width:100%;height:100%;border:0}</style></head>'
+        '<style>html,body{margin:0;height:100%;background:#000;overflow:hidden}#p{position:absolute;top:$youtubeZoomTop;left:$youtubeZoomLeft;width:$youtubeZoomSize;height:$youtubeZoomSize;border:0}</style></head>'
         '<body><div id="p"></div><script>'
         'var pl=null,ready=false,want=true,SOUND=$sound;'
         'function post(m){try{HFPlayer.postMessage(m)}catch(e){}}'
