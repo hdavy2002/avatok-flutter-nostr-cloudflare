@@ -11,13 +11,41 @@ import { BEAT_MS, STATUS_NOTE, type MeHost } from '../hostActivity';
 import { useDash, spendablePaise } from './data';
 import { Avatar, Card, Empty, Failed, FlowerCluster, Ic, Marigold, Pill, Skel, Sticker, durationText, fmtInt, istDay, istTime, minutes } from './ui';
 
-const HEADLINES = [
-  'Sootron ke hawale se: aapka favourite influencer abhi online hai',
+/* [HF-FIX-TICKER-1] Evergreen lines make NO live claim; they only follow the real headlines built from the person's own data. */
+const EVERGREEN = [
   'Exclusive: chai thandi ho rahi hai, call kab karoge?',
   'Desh ka mood: doomscroll kam, dil se baat zyada',
   'Abhi abhi: number masked, tension khatam',
   'Big reveal: ek pyaari si baat se din ban jaata hai',
 ];
+const MIN_CALL_PAISE = 2000; // ₹20, the least a wallet needs to start a call
+
+type Headline = { kind: string; text: string; href?: string };
+type TickerIn = {
+  online: { displayName: string; slug: string }[] | null; apptsToday: number | undefined; next: HfBooking | null; bal: number | null;
+  pendingReviews: number | undefined; hostLive: boolean; hostPresence: HostPresence | null; receivedToday: number | undefined;
+};
+
+function buildHeadlines(i: TickerIn): Headline[] {
+  const out: Headline[] = [];
+  if (i.online && i.online.length > 0) {
+    const f = i.online[0], more = i.online.length - 1;
+    out.push({ kind: 'online', href: `/h/${f.slug}`, text: `Breaking: ${f.displayName}${more > 0 ? ` aur ${more} aur fraands` : ''} abhi online ${more > 0 ? 'hain' : 'hai'} — call karo!` });
+  }
+  if (i.next) {
+    const t = Date.parse(i.next.startUtc), mins = Math.round((t - Date.now()) / 60_000), who = i.next.hostName || 'aapke influencer';
+    out.push({ kind: 'appointment', href: `/bookings/${encodeURIComponent(i.next.id)}`,
+      text: mins > 0 && mins <= 60 ? `Abhi abhi: ${who} ke saath appointment ${mins} minute mein — tayyar ho jao!` : `Sootron ke hawale se: ${who} ke saath appointment ${istDay(t)} ko ${istTime(t)} IST pe` });
+  } else if (i.apptsToday && i.apptsToday > 0) {
+    out.push({ kind: 'appointment', href: '/dashboard/appointments', text: `Sootron ke hawale se: aaj aapke ${i.apptsToday} appointment${i.apptsToday === 1 ? '' : 's'} hain` });
+  }
+  if (i.pendingReviews && i.pendingReviews > 0) out.push({ kind: 'rating', href: '/dashboard/calls?tab=rate', text: `Exclusive: ${i.pendingReviews} call${i.pendingReviews === 1 ? '' : 's'} aapki rating ka intezaar kar${i.pendingReviews === 1 ? 'i' : 'e'} hai` });
+  if (i.bal != null && i.bal < MIN_CALL_PAISE) out.push({ kind: 'wallet_low', href: '/dashboard/wallet#add', text: `Abhi abhi: wallet mein sirf ${formatPaise(i.bal)} — call shuru karne ke liye kam se kam ${formatPaise(MIN_CALL_PAISE)} chahiye, top up karo` });
+  else if (i.bal != null) out.push({ kind: 'wallet', href: '/dashboard/wallet', text: `Sootron ke hawale se: aapke wallet mein ${formatPaise(i.bal)} hain — baat shuru karne ke liye kaafi` });
+  if (i.hostLive && i.receivedToday != null && i.receivedToday > 0) out.push({ kind: 'host_calls', href: '/dashboard/calls', text: `Breaking: aaj aapko ${i.receivedToday} call${i.receivedToday === 1 ? '' : 's'} mili` });
+  if (i.hostLive && i.hostPresence === 'offline') out.push({ kind: 'host_offline', text: 'Exclusive: aap abhi offline ho — online aao, tabhi log aapko call kar paayenge' });
+  return [...out, ...EVERGREEN];
+}
 
 export default function Overview({ account, bookingOn }: { account: DashboardAccount; bookingOn: boolean }) {
   const { insights, summary, wallet, favs, profile, reload } = useDash();
@@ -27,6 +55,11 @@ export default function Overview({ account, bookingOn }: { account: DashboardAcc
   const online = favs.data?.filter(f => f.presence === 'online') ?? null;
   const delta = ins && ins.lastMonth.seconds > 0 ? (ins.month.seconds - ins.lastMonth.seconds) / ins.lastMonth.seconds : null;
   const hostLive = account.host?.status === 'live' && !account.closing;
+  const [next, setNext] = useState<HfBooking | null>(null);
+  const [hostPresence, setHostPresence] = useState<HostPresence | null>(null);
+  const headlines = buildHeadlines({ online, apptsToday: summary.data?.appointmentsToday, next, bal, pendingReviews: ins?.pendingReviews.length,
+    hostLive, hostPresence, receivedToday: summary.data?.callsToday.received });
+  const tickKey = headlines.map(h => h.text).join('|');
 
   return <>
     <section className="h3-hero">
@@ -48,11 +81,12 @@ export default function Overview({ account, bookingOn }: { account: DashboardAcc
 
     <div className="h3-ticker" role="region" aria-label="Fun headlines">
       <div className="tag"><i />Breaking</div>
-      <div className="lane"><div className="run" aria-hidden="false">{[0, 1].map(k => HEADLINES.map(t => <span key={`${k}${t}`} aria-hidden={k === 1}>{t}</span>))}</div></div>
+      <div className="lane"><div className="run" key={tickKey}>{[0, 1].map(k => headlines.map(h => <span key={`${k}${h.text}`} aria-hidden={k === 1 ? true : undefined}>{h.href
+        ? <a href={h.href} tabIndex={k === 1 ? -1 : undefined} onClick={() => capture('hf_dash3_ticker_click', { kind: h.kind, href: h.href })}>{h.text}</a> : h.text}</span>))}</div></div>
     </div>
 
     {account.closing && <aside className="h3-safe" style={{ background: 'var(--goldtint)' }}><div><h3>Your account is being closed.</h3><p className="small">Calling and profile editing are paused. <a href="/dashboard/close">Manage account closure</a></p></div></aside>}
-    {hostLive ? <HostPanel /> : account.host && !account.closing ? <section className="h3-card"><h2><Marigold size={20} />Your influencer profile</h2><p className="muted" style={{ marginTop: 6 }}>{STATUS_NOTE[account.host.status] ?? 'Your profile is not live yet.'}</p><a className="h3-btn" style={{ marginTop: 12 }} href="/dashboard/host">Continue my profile</a></section> : null}
+    {hostLive ? <HostPanel onPresence={setHostPresence} /> : account.host && !account.closing ? <section className="h3-card"><h2><Marigold size={20} />Your influencer profile</h2><p className="muted" style={{ marginTop: 6 }}>{STATUS_NOTE[account.host.status] ?? 'Your profile is not live yet.'}</p><a className="h3-btn" style={{ marginTop: 12 }} href="/dashboard/host">Continue my profile</a></section> : null}
 
     <section className="h3-kpis">
       <a className="h3-card h3-kpi k1" href="/dashboard/wallet"><div className="ic"><Ic name="wallet" className="" /></div><div className="lbl">Wallet balance</div>
@@ -70,7 +104,7 @@ export default function Overview({ account, bookingOn }: { account: DashboardAcc
     {(insights.failed || wallet.failed || summary.failed) && <Failed text="Some numbers could not load." onRetry={() => reload()} />}
 
     <section className="h3-row c21">
-      <Card title="Up next" note="Your booked time · times in IST" link={{ label: 'Calendar', href: '/dashboard/appointments' }}><UpNext enabled={bookingOn && !account.closing} uid={account.uid} /></Card>
+      <Card title="Up next" note="Your booked time · times in IST" link={{ label: 'Calendar', href: '/dashboard/appointments' }}><UpNext enabled={bookingOn && !account.closing} uid={account.uid} onNext={setNext} /></Card>
       <Card title="My Fraands right now" note="Online first · rose dot = free to talk" link={{ label: 'All fraands', href: '/dashboard/fraands' }} tone={1}>
         {favs.failed ? <Failed onRetry={() => reload('favs')} /> : !favs.data ? <Skel h={160} /> : favs.data.length === 0 ? <Empty text="No saved influencers yet. Tap the heart on someone you like."><a className="h3-btn sm rani" href="/marketplace">Find influencers</a></Empty> :
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>{[...favs.data].sort((a, b) => rank(a.presence) - rank(b.presence)).slice(0, 4).map(f =>
@@ -176,7 +210,7 @@ export function TalkChart({ days }: { days: { day: string; seconds: number; pais
 }
 
 /** Next confirmed appointment with a countdown, plus the two after it. */
-function UpNext({ enabled, uid }: { enabled: boolean; uid: string }) {
+function UpNext({ enabled, uid, onNext }: { enabled: boolean; uid: string; onNext?: (b: HfBooking | null) => void }) {
   const [rows, setRows] = useState<HfBooking[] | null>(null);
   const [failed, setFailed] = useState(false);
   const [now, setNow] = useState(Date.now());
@@ -188,6 +222,7 @@ function UpNext({ enabled, uid }: { enabled: boolean; uid: string }) {
       .catch(() => setFailed(true));
   }, [enabled]);
   useEffect(load, [load, uid]);
+  useEffect(() => { onNext?.(rows && rows.length ? rows[0] : null); }, [rows, onNext]);
   useEffect(() => { const t = setInterval(() => setNow(Date.now()), 30_000); return () => clearInterval(t); }, []);
   if (!enabled) return <Empty text="Appointments open soon." />;
   if (failed) return <Failed onRetry={load} />;
@@ -209,7 +244,7 @@ function UpNext({ enabled, uid }: { enabled: boolean; uid: string }) {
 }
 
 /** Live influencers: the online switch, today's calls and expected earnings (same rules as before, new look). */
-function HostPanel() {
+function HostPanel({ onPresence }: { onPresence?: (p: HostPresence) => void }) {
   const { summary } = useDash();
   const [host, setHost] = useState<MeHost | null>(null);
   const [on, setOn] = useState(false);
@@ -217,6 +252,8 @@ function HostPanel() {
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState('');
   const pres = useRef(presence); pres.current = presence;
+  const [loaded, setLoaded] = useState(false);
+  useEffect(() => { if (loaded) onPresence?.(presence); }, [loaded, presence, onPresence]);
   useEffect(() => {
     let live = true;
     void (async () => {
@@ -226,7 +263,7 @@ function HostPanel() {
       const enabled = await callsEnabled(); if (!live) return; setOn(enabled);
       let p = me.data.host.presence;
       if (!p && me.data.host.slug) { try { const r = await fetch(`${API_BASE}/api/hosts/public/${encodeURIComponent(me.data.host.slug)}`, { cache: 'no-store' }); if (r.ok) p = ((await r.json()) as { status?: string }).status; } catch { /* offline */ } }
-      if (live) setPresence(p === 'online' || p === 'busy' ? p : 'offline');
+      if (live) { setPresence(p === 'online' || p === 'busy' ? p : 'offline'); setLoaded(true); }
     })();
     return () => { live = false; };
   }, []);
