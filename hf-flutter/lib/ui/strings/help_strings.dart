@@ -22,7 +22,7 @@ abstract final class HelpStrings {
     (
       'How much does it cost?',
       'Each influencer sets a per-minute rate, shown on their reel and profile. You pay per minute spoken, from your wallet. '
-          'You need at least ₹20 in your wallet to start a call. You can top up any amount from ₹10; the price includes 18% GST, '
+          'You need at least ₹20 in your wallet to start a call. You can top up any amount from ₹10; 18% GST is deducted from what you pay, '
           'so your wallet gets the amount divided by 1.18. Top up from the Wallet screen.',
     ),
     (

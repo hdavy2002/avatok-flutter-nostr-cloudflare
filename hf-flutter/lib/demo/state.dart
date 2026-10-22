@@ -77,10 +77,10 @@ class DemoState extends ChangeNotifier {
   double balance = DemoMode.on ? 1240.50 : 0;
   final List<Txn> txns = !DemoMode.on ? [] : [
     Txn('Call · Meera Joshi', 'Today, 6:42 pm · 3 min', -45),
-    Txn('Top up', 'Today, 6:30 pm · ₹500 paid incl. GST', 423.72),
+    Txn('Top up', 'Today, 6:30 pm · ₹500 paid, GST deducted', 423.72),
     Txn('Booking held · Arjun Rao', 'Thu 23, 4:00 pm · 10 min', -200),
     Txn('Call · Rohan Mehta', 'Mon, 9:10 pm · 7 min', -175),
-    Txn('Top up', 'Mon, 9:02 pm · ₹1,200 paid incl. GST', 1016.95),
+    Txn('Top up', 'Mon, 9:02 pm · ₹1,200 paid, GST deducted', 1016.95),
   ];
   final List<PayoutReq> payouts = !DemoMode.on ? [] : [
     PayoutReq('12 Oct', 1500, 'PAID · UTR 4521…'),
@@ -161,7 +161,7 @@ class DemoState extends ChangeNotifier {
   void topUp(double paid) {
     final credit = creditFor(paid);
     balance += credit;
-    txns.insert(0, Txn('Top up', 'Just now · ₹${paid.toStringAsFixed(0)} paid incl. GST', credit));
+    txns.insert(0, Txn('Top up', 'Just now · ₹${paid.toStringAsFixed(0)} paid, GST deducted', credit));
     notifyListeners();
   }
 

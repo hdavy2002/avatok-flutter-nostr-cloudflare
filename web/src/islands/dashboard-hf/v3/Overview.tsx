@@ -108,7 +108,7 @@ export default function Overview({ account, bookingOn }: { account: DashboardAcc
           <a className="h3-btn gold" href="/dashboard/wallet#add"><Ic name="plus" className="" />Top up</a>
         </div>
         <div className="h3-amounts" style={{ marginTop: 10 }}>{[100, 250, 500, 1000].map(a => <a key={a} href={`/dashboard/wallet?amount=${a}#add`}>₹{fmtInt(a)}</a>)}</div>
-        <p className="small muted" style={{ marginTop: 8 }}>Price includes 18% GST · UPI, cards, netbanking</p>
+        <p className="small muted" style={{ marginTop: 8 }}>18% GST is deducted from what you pay · UPI, cards, netbanking</p>
       </Card>
       <Card title="Dosti streak" note="Days in a row you talked to someone">
         {!ins ? <Skel h={180} /> : <>

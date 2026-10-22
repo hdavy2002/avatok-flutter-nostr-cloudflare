@@ -54,7 +54,7 @@ export default function Wallet() {
           <div className="row"><a className="h3-btn gold" href="#add"><Ic name="plus" className="" />Add money</a><button type="button" className="h3-btn ghost" onClick={() => setRefundOpen(true)}>Ask for a refund</button></div>
         </div>
       </div>
-      <Card title="Add money" note="Any whole amount · the price includes 18% GST" tone={1} id="add">
+      <Card title="Add money" note="Any whole amount · 18% GST is deducted from what you pay" tone={1} id="add">
         {app ? <TokensPanel /> : <AddMoney onPaid={(text) => { toast(text); reload('wallet'); setRcptKey(k => k + 1); }} />}
       </Card>
     </section>
@@ -67,7 +67,7 @@ export default function Wallet() {
           <table className="h3-table"><thead><tr><th>Type</th><th>What</th><th className="hide-n">When</th><th className="r">Amount</th></tr></thead><tbody>
             {hist.map((h, i) => { const k = KIND[h.kind] ?? { label: 'Wallet', cls: 'dec' }; const v = paiseOf(h); return <tr key={`${h.at}-${h.callId ?? i}`} style={{ cursor: 'default' }}>
               <td><span className={`h3-chip ${k.cls}`}>{k.label}</span></td>
-              <td>{h.kind === 'call_refund' ? 'Call charge corrected' : h.label}{h.purchase && <div className="small muted">Paid {formatPaise(h.purchase.paidPaise)} · GST {formatPaise(h.purchase.gstPaise)} · added {formatPaise(h.purchase.walletPaise)}</div>}</td>
+              <td>{h.kind === 'call_refund' ? 'Call charge corrected' : h.label}{h.purchase && <div className="small muted">Paid {formatPaise(h.purchase.paidPaise)} − GST {formatPaise(h.purchase.gstPaise)} = added {formatPaise(h.purchase.walletPaise)}</div>}</td>
               <td className="hide-n small muted">{relDate(h.at)}</td>
               <td className={`r ${v > 0 ? 'h3-pos' : 'h3-neg'}`}>{h.amount ?? (h.tokens !== undefined ? h.tokens : `${v > 0 ? '+' : v < 0 ? '−' : ''}${formatPaise(Math.abs(v))}`)}</td></tr>; })}
           </tbody></table>}</div>
@@ -99,7 +99,7 @@ export default function Wallet() {
 
 function paidText(r: TopupStatus): string {
   if (r.walletPaise == null) return `₹${fmtInt(r.amountRupees)} added to your wallet.`;
-  return `Paisa aa gaya! ${formatPaise(r.walletPaise)} added (you paid ${formatPaise(r.paidPaise ?? r.amountRupees * 100)}, GST ${formatPaise(r.gstPaise ?? 0)} included).`;
+  return `Paisa aa gaya! ${formatPaise(r.walletPaise)} added to your wallet (you paid ${formatPaise(r.paidPaise ?? r.amountRupees * 100)} − your GST ${formatPaise(r.gstPaise ?? 0)}).`;
 }
 
 function AddMoney({ onPaid }: { onPaid: (text: string) => void }) {
@@ -155,7 +155,7 @@ function AddMoney({ onPaid }: { onPaid: (text: string) => void }) {
     <div className="h3-amounts">{(cfg.packs.length ? cfg.packs : [100, 250, 500, 1000]).map(v => <button key={v} type="button" className={v === a ? 'on' : ''} disabled={busy} onClick={() => setAmt(String(v))}>₹{fmtInt(v)}</button>)}</div>
     <div className="h3-break" aria-live="polite">
       <div><span>You pay</span><b>{formatPaise(prev.paidPaise)}</b></div>
-      <div className="muted"><span>GST ({(cfg.gstBps / 100).toFixed(0)}%, included)</span><span>{formatPaise(prev.gstPaise)}</span></div>
+      <div className="muted"><span>Your GST ({(cfg.gstBps / 100).toFixed(0)}%)</span><span>− {formatPaise(prev.gstPaise)}</span></div>
       <div className="tot"><span>Wallet gets</span><span>{formatPaise(prev.walletPaise)}</span></div>
     </div>
     <button type="button" className="h3-btn rani" style={{ width: '100%' }} disabled={!ok || busy} onClick={ask}><Ic name="wallet" className="" />
@@ -223,7 +223,7 @@ function Receipts({ reloadKey }: { reloadKey: number }) {
   if (failed) return <Failed text="We could not load your receipts." />;
   if (!items.length) return <p className="small muted">Your first top-up receipt will show up here.</p>;
   return <div>{items.slice(0, 8).map(r => { const sp = receiptSplit(r); return <div key={r.id} className="h3-rcpt">
-    <div><b>{r.number}</b><div className="small muted">{r.kind === 'tax_invoice' ? 'Tax invoice' : 'Payment receipt'} · {istDay(r.issuedAt)}{sp ? ` · paid ${formatPaise(sp.paid)} incl. GST ${formatPaise(sp.gst)}` : ` · ${formatPaise(Math.round(r.amountRupees * 100))}`}</div></div>
+    <div><b>{r.number}</b><div className="small muted">{r.kind === 'tax_invoice' ? 'Tax invoice' : 'Payment receipt'} · {istDay(r.issuedAt)}{sp ? ` · paid ${formatPaise(sp.paid)} − GST ${formatPaise(sp.gst)}` : ` · ${formatPaise(Math.round(r.amountRupees * 100))}`}</div></div>
     <button type="button" className="h3-btn sm ghost" disabled={busy === r.id} onClick={async () => { setBusy(r.id); const ok = await openReceipt(r.id); setBusy(null); if (!ok) toast('Please allow pop-ups for this site to open the receipt.'); }}><Ic name="down" className="" />{busy === r.id ? 'Opening…' : 'View'}</button>
   </div>; })}</div>;
 }

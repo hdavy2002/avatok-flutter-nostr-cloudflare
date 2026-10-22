@@ -13,7 +13,7 @@ type Phase = 'idle' | 'starting' | 'paying' | 'confirming';
 function paidText(r: TopupStatus): string {
   if (r.walletPaise == null) return `${inr(r.amountRupees)} added to your wallet.`;
   const paid = (r.paidPaise ?? r.amountRupees * 100) / 100;
-  return `${inr2(paid)} paid. GST ${inr2((r.gstPaise ?? 0) / 100)} included, ${inr2(r.walletPaise / 100)} added to your wallet.`;
+  return `${inr2(paid)} paid − your GST ${inr2((r.gstPaise ?? 0) / 100)} = ${inr2(r.walletPaise / 100)} added to your wallet.`;
 }
 
 export default function TopupPanel({ onPaid }: { onPaid: () => void }) {
@@ -97,7 +97,7 @@ export default function TopupPanel({ onPaid }: { onPaid: () => void }) {
         <input id="hft-custom" inputMode="numeric" pattern="[0-9]*" value={custom} disabled={busy}
           onChange={e => setCustom(e.target.value.replace(/[^0-9]/g, '').slice(0, 6))} style={{ minHeight: 48, padding: '0 14px', borderRadius: 12, border: '1px solid #cdbbd0', font: 'inherit' }} />
         {customOk && cfg.gstBps > 0 && (() => { const p = topupPreview(customAmount, cfg.gstBps); return (
-          <p className="hfc-sub" style={{ margin: 0 }} aria-live="polite">You pay {inr2(p.paidPaise / 100)}. GST ({(cfg.gstBps / 100).toFixed(0)}%) {inr2(p.gstPaise / 100)} is included, so {inr2(p.walletPaise / 100)} goes into your wallet.</p>
+          <p className="hfc-sub" style={{ margin: 0 }} aria-live="polite">You pay {inr2(p.paidPaise / 100)}. Your GST ({(cfg.gstBps / 100).toFixed(0)}%) of {inr2(p.gstPaise / 100)} is deducted, so {inr2(p.walletPaise / 100)} goes into your wallet.</p>
         ); })()}
         <button type="submit" className="hfc-btn hfc-primary" disabled={busy || !customOk}>
           {phase === 'starting' ? 'Starting…' : phase === 'confirming' ? 'Confirming…' : customOk ? `Add ${inr(customAmount)}` : 'Add money'}

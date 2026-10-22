@@ -10,7 +10,7 @@ faq:
   - q: "How much can I add?"
     a: "Any amount from ₹10."
   - q: "Is GST charged on the money I add?"
-    a: "The price you pay includes 18% GST. Your wallet gets the amount you pay divided by 1.18. If you pay ₹120, the GST is ₹18.31 and ₹101.69 is added to your wallet."
+    a: "18% GST is deducted from the amount you pay, so your wallet gets the amount divided by 1.18. If you pay ₹120, your GST of ₹18.31 is deducted and ₹101.69 is added to your wallet."
   - q: "Where can I see my top-ups and calls?"
     a: "Every addition and call charge shows in your wallet history, with the date, duration and amount."
   - q: "Do I pay anything just to join?"
@@ -36,7 +36,7 @@ Money is added only after your payment is confirmed, and only once.
 
 ## GST and what reaches your wallet
 
-The price you pay includes 18% GST. Your wallet gets the amount you pay divided by 1.18. Before you pay, you see three things: the total you pay, the GST, and the amount added to your wallet. Your receipt shows the same three.
+18% GST is deducted from the amount you pay, so your wallet gets the amount divided by 1.18. Before you pay, you see three things: the total you pay, your GST being deducted, and the amount added to your wallet. Your receipt shows the same three.
 
 | You pay | GST | Added to wallet |
 |---|---|---|

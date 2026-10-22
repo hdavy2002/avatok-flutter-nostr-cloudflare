@@ -111,7 +111,7 @@ export const faqSections: FaqSection[] = [
   {
     id: 'payments', title: 'Payments, wallet & refunds', hindi: 'Paisa aur wallet', icon: '₹', tone: 'paper',
     items: [
-      { q: 'How do I pay for calls?', a: 'You add money to a prepaid talk-time wallet on the wallet page. You can add any amount from ₹10. The price includes 18% GST, and your wallet gets the amount divided by 1.18: pay ₹120 and ₹101.69 is added. Each call is charged from that wallet at the per-minute rate set by the influencer, which you see before you call.' },
+      { q: 'How do I pay for calls?', a: 'You add money to a prepaid talk-time wallet on the wallet page. You can add any amount from ₹10. 18% GST is deducted from what you pay, so your wallet gets the amount divided by 1.18: pay ₹120, ₹18.31 GST is deducted and ₹101.69 is added. Each call is charged from that wallet at the per-minute rate set by the influencer, which you see before you call.' },
       { q: 'When does charging start?', a: 'A call is made once we have rung both of you and joined the call. You pay per minute spoken. If the influencer declines, cancels or does not answer, you pay nothing.' },
       { q: 'How are minutes counted?', a: 'By the minute, at the influencer\'s rate. You need at least ₹20 in your wallet to start a call.' },
       { q: 'What happens when my wallet runs low?', a: 'You hear "one minute left" before your wallet money ends, then the call ends automatically. You can never go into debt.' },

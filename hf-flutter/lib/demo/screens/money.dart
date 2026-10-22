@@ -281,7 +281,7 @@ class _TopUpScreenState extends State<TopUpScreen> {
                     label: (a) => inr(a, paise: false),
                   ),
                   const SizedBox(height: 12),
-                  MoneyHisaab(lines: [('You pay', inr(v)), ('GST 18%', inr(gst))], total: ('Added to wallet', inr(credit))),
+                  MoneyHisaab(lines: [('You pay', inr(v)), ('Your GST 18%', '− ${inr(gst)}')], total: ('Added to wallet', inr(credit))),
                   if (v >= 1000) ...[
                     const SizedBox(height: 12),
                     const BookNotice(text: "That's ₹1,000 or more. We'll ask you to confirm once more.", icon: Icons.info_outline_rounded),
