@@ -2,7 +2,7 @@
  * "View / print" opens the printable page in a new tab. */
 import { useEffect, useState } from 'react';
 import { formatPaise, topupKeptLabel } from '../../lib/money';
-import { fetchReceipts, openReceipt, receiptSplit, type ReceiptItem } from '../../lib/hfReceiptsApi';
+import { fetchReceipts, openReceipt, receiptSplit, RECEIPT_FAIL_MSG, type ReceiptItem } from '../../lib/hfReceiptsApi';
 
 const day = (ms: number) => new Date(ms).toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata', day: 'numeric', month: 'short', year: 'numeric' });
 
@@ -21,9 +21,10 @@ export default function ReceiptsPanel({ reloadKey = 0 }: { reloadKey?: number })
 
   const view = async (id: string) => {
     setMsg(null); setBusy(id);
-    const ok = await openReceipt(id);
+    const res = await openReceipt(id);
     setBusy(null);
-    if (!ok) setMsg('We could not open the receipt. Please allow pop-ups for this site and try again.');
+    if (res === 'popup_blocked') setMsg('We could not open the receipt. Please allow pop-ups for this site and try again.');
+    else if (res === 'failed') setMsg(RECEIPT_FAIL_MSG);
   };
 
   return (

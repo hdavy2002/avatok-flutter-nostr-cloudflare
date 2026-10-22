@@ -253,7 +253,8 @@ export function renderReceiptHtml(r: ReceiptRow, sup: Supplier, customerName: st
   const isPlay = !isInvoice && data.type === "play_purchase";
   // [HF-WALLET-HELD-LABEL-1] Current purchases record the 18% as GST; older (gp-r1) purchases kept the same share as part of the price, GST 0.
   const keptRow = (paid: number, gst: number, added: number): string => {
-    if (gst > 0) return `<tr><td>GST included (18%)</td><td class="n">${inr(gst)}</td></tr>`;
+    // Never print maths that does not add up: when paid - GST != added, GST is what was actually kept (paid - added).
+    if (gst > 0) return `<tr><td>GST included (18%)</td><td class="n">${inr(paid - gst !== added && paid > added ? paid - added : gst)}</td></tr>`;
     const kept = Math.max(0, paid - added);
     return kept > 0 ? `<tr><td>Held back (${added > 0 ? Math.round((kept / added) * 100) : 0}%)</td><td class="n">${inr(kept)}</td></tr>` : "";
   };

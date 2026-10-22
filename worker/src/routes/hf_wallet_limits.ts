@@ -3,7 +3,7 @@
 //   GET  /api/hf/wallet/receipts/:id                      -> printable HTML (owner only)
 //   GET  /api/admin/hf/reconciliation?from=&to=[&format=csv]   (IST dates, inclusive, max 93 days)
 import type { Env } from "../types";
-import { json } from "../util";
+import { json, CORS } from "../util";
 import { requireUser, isFail } from "../authz";
 import { trackException } from "../hooks";
 import { isAdminUid } from "../lib/preview";
@@ -75,7 +75,7 @@ async function receiptView(req: Request, env: Env, id: string): Promise<Response
   const name = (await env.DB_META.prepare("SELECT display_name FROM users WHERE uid=?1").bind(u.uid).first<{ display_name: string | null }>().catch(() => null))?.display_name ?? null;
   return new Response(renderReceiptHtml(r, supplierFrom(cfg), name), {
     status: 200,
-    headers: { "content-type": "text/html; charset=utf-8", "cache-control": "private, no-store", "x-robots-tag": "noindex", "content-security-policy": "default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; img-src data:" },
+    headers: { ...CORS, "content-type": "text/html; charset=utf-8", "cache-control": "private, no-store", "x-robots-tag": "noindex", "content-security-policy": "default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; img-src data:" },
   });
 }
 
@@ -92,7 +92,7 @@ async function reconciliation(req: Request, env: Env): Promise<Response> {
   await audit(env, a.uid, "reconciliation_viewed", `${rep.from}..${rep.to}`, { mismatches: rep.mismatches.length, tokenMismatches: tokens?.mismatches.length ?? null, csv: url.searchParams.get("format") === "csv" });
   if (url.searchParams.get("format") === "csv") {
     return new Response(reconciliationCsv(rep) + (tokens ? tokenReconciliationCsv(tokens) : ""), {
-      status: 200, headers: { "content-type": "text/csv; charset=utf-8", "content-disposition": `attachment; filename="hf-reconciliation-${rep.from}-to-${rep.to}.csv"`, "cache-control": "private, no-store" },
+      status: 200, headers: { ...CORS, "content-type": "text/csv; charset=utf-8", "content-disposition": `attachment; filename="hf-reconciliation-${rep.from}-to-${rep.to}.csv"`, "cache-control": "private, no-store" },
     });
   }
   return json({ ok: true, ...rep, ...(tokens ? { tokens } : {}) }, 200, NO_STORE);
