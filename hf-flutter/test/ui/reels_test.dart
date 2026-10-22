@@ -136,7 +136,8 @@ void main() {
       expect(html, contains('window.hfToggle'));
       expect(html, contains('error:'));
       // [HF-REEL-ZOOM-1] zoomed in so YouTube's own header, side buttons and title strip sit off screen
-      expect(html, contains('#p{position:absolute;top:-18%;left:-15%;width:140%;height:140%'));
+      expect(html, contains('function hfZoom()'));
+      expect(html, contains('T=52,R=68,B=84'));
       expect(ReelPlayer.youtubeHtml('https://www.instagram.com/reel/Cx12345/embed'), isNull);
       expect(ReelPlayer.youtubeHtml('https://evil.example/embed/abc12345'), isNull);
       expect(ReelPlayer.embedUri('https://www.instagram.com/reel/Cx12345/embed').toString(), 'https://www.instagram.com/reel/Cx12345/embed');

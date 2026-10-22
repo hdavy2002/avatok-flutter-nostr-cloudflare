@@ -223,6 +223,7 @@ class _RealFeedState extends State<RealFeed> {
               real: items[i],
               active: i == _index && ReelGate.visible.value,
               preload: i == _index + 1,
+              keepAlive: (i - _index).abs() <= 1,
               searchRepo: widget.searchRepo,
               creatorReels: _reelsOfCreator,
             ),
@@ -300,6 +301,7 @@ class ReelPage extends StatefulWidget {
     required this.active,
     this.real,
     this.preload = false,
+    this.keepAlive = false,
     this.searchRepo,
     this.creatorReels,
   });
@@ -317,13 +319,20 @@ class ReelPage extends StatefulWidget {
   final FeedReel? real;
   final bool preload;
 
+  /// [HF-REEL-WARM-1] Keep this page (and its player) alive while it is next to the one on screen, so scrolling back
+  /// up plays instantly from where it was instead of loading again.
+  final bool keepAlive;
+
   @override
   State<ReelPage> createState() => _ReelPageState();
 }
 
 /// Stand-in "video": the influencer's art with a slow zoom and a progress bar, until real reels are wired.
 class _ReelPageState extends State<ReelPage>
-    with SingleTickerProviderStateMixin {
+    with SingleTickerProviderStateMixin, AutomaticKeepAliveClientMixin {
+  @override
+  bool get wantKeepAlive => widget.keepAlive;
+
   bool _covered = false;
 
   Future<void> _whileCovered(Future<void> Function() open) async {
@@ -355,6 +364,7 @@ class _ReelPageState extends State<ReelPage>
   @override
   void didUpdateWidget(covariant ReelPage old) {
     super.didUpdateWidget(old);
+    if (old.keepAlive != widget.keepAlive) updateKeepAlive();
     if (widget.real != null) return;
     if (widget.active && !_play.isAnimating) {
       _play.repeat();
@@ -396,6 +406,7 @@ class _ReelPageState extends State<ReelPage>
 
   @override
   Widget build(BuildContext context) {
+    super.build(context); // keep-alive bookkeeping
     final r = widget.reel;
     final who = r.who;
     final inviteOf = widget

@@ -45,6 +45,7 @@ class _ReelViewerState extends State<ReelViewer> {
                 real: r,
                 active: i == _index,
                 preload: i == _index + 1,
+                keepAlive: (i - _index).abs() <= 1,
                 creatorReels: (reel) => widget.reels
                     .where(
                       (candidate) => candidate.invite?.key == reel.invite?.key,

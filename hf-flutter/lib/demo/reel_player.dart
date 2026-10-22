@@ -221,36 +221,52 @@ class ReelPlayer extends StatefulWidget {
         ?.group(1);
   }
 
-  /// [HF-REEL-ZOOM-1] HF-REEL-48: the YouTube player is drawn 140% wide and tall and shifted so the video stays the focus
-  /// while YouTube's own Shorts header (top), side buttons (right) and channel / title strip (bottom) fall outside the
-  /// screen. Nothing is drawn over the player: it is only zoomed in. Our buttons sit on the visible picture as before.
+  /// [HF-REEL-ZOOM-1] HF-REEL-48: YouTube's own strips, in CSS px of the phone screen — the Shorts header (top), the side
+  /// buttons (right) and the channel / title strip (bottom). The page zooms the player just enough, worked out from the
+  /// phone's own screen size, that these fall outside the screen. Nothing is drawn over the player; it is only zoomed.
+  /// It is a CSS transform (no layout change), and the page is pinned so it can never scroll.
   @visibleForTesting
-  static const String youtubeZoomSize = '140%';
+  static const int youtubeHideTop = 52;
   @visibleForTesting
-  static const String youtubeZoomLeft = '-15%';
+  static const int youtubeHideRight = 68;
   @visibleForTesting
-  static const String youtubeZoomTop = '-18%';
+  static const int youtubeHideBottom = 84;
 
   /// A small page that runs the YouTube IFrame Player API. It is loaded with the app id as its base URL so YouTube gets a
   /// Referer and origin. The tap layer in Flutter calls `hfSet(bool)` / `hfToggle()`; state and errors come back over the
   /// `HFPlayer` channel (`ready`, `playing`, `paused`, `error:<code>`). Null for a non-YouTube embed.
   @visibleForTesting
-  static String? youtubeHtml(String embed, {bool sound = true}) {
+  static String? youtubeHtml(
+    String embed, {
+    bool sound = true,
+    bool start = true,
+  }) {
     final id = youtubeId(embed);
     if (id == null) return null;
     final origin = const HtmlEscape(HtmlEscapeMode.attribute)
         .convert(youtubeOrigin);
     return '<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1">'
-        '<style>html,body{margin:0;height:100%;background:#000;overflow:hidden}#p{position:absolute;top:$youtubeZoomTop;left:$youtubeZoomLeft;width:$youtubeZoomSize;height:$youtubeZoomSize;border:0}</style></head>'
-        '<body><div id="p"></div><script>'
-        'var pl=null,ready=false,want=true,SOUND=$sound;'
+        '<style>html,body{margin:0;width:100%;height:100%;background:#000;overflow:hidden;position:fixed;inset:0;touch-action:none}'
+        '#z{position:fixed;left:0;top:0;width:100vw;height:100vh;transform-origin:0 0}#p{position:absolute;top:0;left:0;width:100%;height:100%;border:0}</style></head>'
+        '<body><div id="z"><div id="p"></div></div><script>'
+        // zoom just enough for THIS screen: YouTube's top / right / bottom strips land off screen
+        'function hfZoom(){var W=window.innerWidth,H=window.innerHeight,T=$youtubeHideTop,R=$youtubeHideRight,B=$youtubeHideBottom;'
+        'if(!W||!H)return;var s=Math.max(W/(W-R),H/(H-T-B));'
+        'var l=Math.max(0,((W-R)-W/s)/2),t=T+Math.max(0,((H-T-B)-H/s)/2);'
+        'document.getElementById("z").style.transform="scale("+s+") translate("+(-l)+"px,"+(-t)+"px)"}'
+        'hfZoom();window.addEventListener("resize",hfZoom);'
+        'window.addEventListener("scroll",function(){window.scrollTo(0,0)});'
+        'var pl=null,ready=false,want=$start,SOUND=$sound,MUTED=${!start};'
         'function post(m){try{HFPlayer.postMessage(m)}catch(e){}}'
         'function apply(){if(!ready)return;try{if(want)pl.playVideo();else pl.pauseVideo()}catch(e){}}'
         'window.hfSet=function(b){want=!!b;apply()};'
         'window.hfToggle=function(){if(!ready)return;try{want=pl.getPlayerState()!==1;apply()}catch(e){}};'
+        'function mute(){try{if(MUTED||!SOUND)pl.mute();else pl.unMute()}catch(e){}}'
+        'window.hfMute=function(m){MUTED=!!m;if(ready)mute()};'
+        'window.hfRestart=function(){want=true;if(!ready)return;try{pl.seekTo(0,true)}catch(e){}apply()};'
         'function onYouTubeIframeAPIReady(){pl=new YT.Player("p",{videoId:"$id",width:"100%",height:"100%",host:"https://www.youtube.com",'
-        'playerVars:{autoplay:1,playsinline:1,controls:0,rel:0,modestbranding:1,loop:1,playlist:"$id",enablejsapi:1,origin:"$origin",fs:0,disablekb:1,iv_load_policy:3},'
-        'events:{onReady:function(){ready=true;if(!SOUND){try{pl.mute()}catch(e){}}post("ready");apply()},'
+        'playerVars:{autoplay:${start ? 1 : 0},playsinline:1,controls:0,rel:0,modestbranding:1,loop:1,playlist:"$id",enablejsapi:1,origin:"$origin",fs:0,disablekb:1,iv_load_policy:3},'
+        'events:{onReady:function(){ready=true;mute();post("ready");apply()},'
         'onAutoplayBlocked:function(){try{pl.mute();pl.playVideo()}catch(e){}},'
         'onStateChange:function(e){if(e.data===1)post("playing");else if(e.data===2)post("paused");else if(e.data===0){try{pl.playVideo()}catch(x){}}},'
         'onError:function(e){post("error:"+e.data)}}})}'
@@ -261,11 +277,11 @@ class ReelPlayer extends StatefulWidget {
   /// own play control to make it appear), makes it fill the page (object-fit: cover) with everything else hidden, and exposes
   /// `hfSet(bool)` / `hfToggle()`. It reports `ready`, `playing`, `paused` and `error:novideo|blocked|media` over `HFPlayer`.
   @visibleForTesting
-  static String instagramScript({bool sound = true}) =>
+  static String instagramScript({bool sound = true, bool start = true}) =>
       '''
 (function(){
 if(window.__hfInit)return;window.__hfInit=true;
-var SOUND=$sound,want=true,vid=null,started=Date.now(),clicks=0,tick=0;
+var SOUND=$sound,MUTED=${!start},want=$start,vid=null,started=Date.now(),clicks=0,tick=0;
 function post(m){try{HFPlayer.postMessage(m)}catch(e){}}
 var st=document.createElement('style');
 st.textContent='html,body{background:#000!important;margin:0!important;padding:0!important;overflow:hidden!important}'
@@ -290,7 +306,7 @@ function apply(){
 }
 function bind(v){
   vid=v;v.setAttribute('playsinline','');v.setAttribute('webkit-playsinline','');
-  v.playsInline=true;v.loop=true;v.controls=false;v.removeAttribute('controls');v.muted=!SOUND;
+  v.playsInline=true;v.loop=true;v.controls=false;v.removeAttribute('controls');v.muted=MUTED||!SOUND;
   v.addEventListener('playing',function(){post('playing');});
   v.addEventListener('pause',function(){post('paused');});
   v.addEventListener('error',function(){post('error:media');});
@@ -305,6 +321,8 @@ function clickPlay(){
 }
 window.hfSet=function(b){want=!!b;apply();};
 window.hfToggle=function(){want=vid?vid.paused:true;apply();};
+window.hfMute=function(m){MUTED=!!m;if(vid)vid.muted=MUTED||!SOUND;};
+window.hfRestart=function(){want=true;if(vid){try{vid.currentTime=0;}catch(e){}}apply();};
 var iv=setInterval(function(){
   tick++;var t=Date.now()-started;
   if(vid&&!vid.isConnected){vid=null;started=Date.now();clicks=0;}
@@ -332,6 +350,12 @@ class _ReelPlayerState extends State<ReelPlayer> with WidgetsBindingObserver {
   /// Why the video could not start; set means the poster card with "Watch on …" is shown.
   String? _failReason;
   bool _played = false;
+
+  /// [HF-REEL-WARM-1] Started early, muted, and paused at its first frame so it plays the instant it comes on screen.
+  bool _warmed = false;
+
+  /// Has this reel been on screen since it was warmed (then a return keeps its place instead of restarting).
+  bool _seenActive = false;
   bool _isPlaying = true;
   bool _glyph = false;
   Timer? _glyphTimer;
@@ -386,11 +410,26 @@ class _ReelPlayerState extends State<ReelPlayer> with WidgetsBindingObserver {
       _drop();
       _failReason = null;
       _played = false;
+      _warmed = false;
+      _seenActive = false;
     }
     _sync();
     // Leaving the page pauses the video in place (the PageView drops far-away pages, so memory stays at one or two views).
-    if (old.active != widget.active && _engine)
-      _run('window.hfSet&&window.hfSet(${widget.active})');
+    if (old.active != widget.active && _engine) {
+      if (widget.active) {
+        _run('window.hfMute&&window.hfMute(false)');
+        // a warmed reel starts from the top the first time it is shown; after that it carries on where it was
+        _run(
+          _warmed && !_seenActive
+              ? 'window.hfRestart&&window.hfRestart()'
+              : 'window.hfSet&&window.hfSet(true)',
+        );
+        _seenActive = true;
+        if (!_played) _armWatchdog();
+      } else {
+        _run('window.hfSet&&window.hfSet(false)');
+      }
+    }
   }
 
   void _drop() {
@@ -402,7 +441,11 @@ class _ReelPlayerState extends State<ReelPlayer> with WidgetsBindingObserver {
 
   void _sync() {
     if (ReelPlayer.testPlayer != null || ReelPlayer.testRunJs != null) return;
-    if (_failReason == null && _wantEmbed && _fg && widget.active) _startWeb();
+    if (_failReason == null &&
+        _wantEmbed &&
+        _fg &&
+        (widget.active || widget.preload))
+      _startWeb();
   }
 
   void _run(String js) {
@@ -445,7 +488,13 @@ class _ReelPlayerState extends State<ReelPlayer> with WidgetsBindingObserver {
           },
           onPageFinished: (_) {
             if (!mounted || _webFor != embed) return;
-            if (ig) _run(ReelPlayer.instagramScript(sound: widget.sound));
+            if (ig)
+              _run(
+                ReelPlayer.instagramScript(
+                  sound: widget.sound,
+                  start: widget.active,
+                ),
+              );
             _run('window.hfSet&&window.hfSet(${widget.active})');
           },
           onWebResourceError: (e) {
@@ -467,7 +516,11 @@ class _ReelPlayerState extends State<ReelPlayer> with WidgetsBindingObserver {
         // cookies are a nicety: the embed still plays without them
       }
     }
-    final html = ReelPlayer.youtubeHtml(embed, sound: widget.sound);
+    final html = ReelPlayer.youtubeHtml(
+      embed,
+      sound: widget.sound,
+      start: widget.active,
+    );
     if (html != null) {
       c.loadHtmlString(html, baseUrl: ReelPlayer.youtubeOrigin);
     } else if (ig) {
@@ -477,6 +530,13 @@ class _ReelPlayerState extends State<ReelPlayer> with WidgetsBindingObserver {
     }
     _web = c;
     _webFor = embed;
+    if (widget.active) {
+      _seenActive = true;
+      _armWatchdog();
+    }
+  }
+
+  void _armWatchdog() {
     _watchdog?.cancel();
     _watchdog = Timer(const Duration(seconds: 9), () {
       if (mounted && widget.active && !_played) _fail('timeout');
@@ -486,11 +546,23 @@ class _ReelPlayerState extends State<ReelPlayer> with WidgetsBindingObserver {
   void _onMessage(String m) {
     if (!mounted) return;
     if (m == 'ready') {
-      _run('window.hfSet&&window.hfSet(${widget.active && _fg})');
+      if (widget.active && _fg) {
+        _run('window.hfMute&&window.hfMute(false)');
+        _run('window.hfSet&&window.hfSet(true)');
+      } else if (_fg && widget.preload && !_warmed) {
+        // warm up: play muted until the first frame, then stop (below) — the reel is buffered and ready
+        _run('window.hfMute&&window.hfMute(true)');
+        _run('window.hfSet&&window.hfSet(true)');
+      } else {
+        _run('window.hfSet&&window.hfSet(false)');
+      }
     } else if (m == 'playing') {
-      if (!widget.active || !_fg) _run('window.hfSet&&window.hfSet(false)');
+      if (!widget.active || !_fg) {
+        _run('window.hfSet&&window.hfSet(false)');
+        _warmed = true;
+      }
       _watchdog?.cancel();
-      _played = true;
+      if (!_played) setState(() => _played = true);
       if (!_isPlaying) setState(() => _isPlaying = true);
     } else if (m == 'paused') {
       if (_isPlaying) setState(() => _isPlaying = false);
@@ -618,6 +690,10 @@ class _ReelPlayerState extends State<ReelPlayer> with WidgetsBindingObserver {
             bottom: 0,
             child: WebViewWidget(controller: _web!),
           ),
+        // [HF-REEL-WARM-1] the poster stays on top until the video has really started, so the viewer never sees the
+        // embed page loading (Instagram's header / likes / comments, YouTube's spinner) or a black flash while scrolling
+        if (_web != null && _fg && !_played)
+          Positioned.fill(child: IgnorePointer(child: _thumb())),
         // The transparent layer with our control: a tap goes to the video underneath as play / pause. Only taps are taken,
         // so a vertical swipe still reaches the PageView.
         if (_wantEmbed && _engine && _fg)
