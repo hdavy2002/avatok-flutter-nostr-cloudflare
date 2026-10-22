@@ -12,11 +12,11 @@ import AiIncidents from './AiIncidents';
 import AiConversations from './AiConversations';
 
 const TABS = [
-  { key: 'identity', label: 'Identity', Icon: UserRound, off: 'bg-[var(--a-lavtint)] text-[var(--a-lav)] border-[#e4dafc]' },
-  { key: 'behaviour', label: 'Behaviour', Icon: ShieldCheck, off: 'bg-[var(--a-blush)] text-[var(--a-rani)] border-[#f6c2d8]' },
-  { key: 'knowledge', label: 'Knowledge', Icon: BookOpen, off: 'bg-[var(--a-goldtint)] text-[var(--a-amber)] border-[#f3dfb3]' },
-  { key: 'incidents', label: 'Incidents', Icon: Siren, off: 'bg-[#ffe4cf] text-[var(--a-saffron)] border-[#ffd0a8]' },
-  { key: 'conversations', label: 'Conversations', Icon: MessagesSquare, off: 'bg-[var(--a-teatint)] text-[var(--a-peacock)] border-[#cfe9eb]' },
+  { key: 'identity', label: 'Identity', Icon: UserRound, off: 'bg-[var(--a-lavtint,#f1ebff)] text-[var(--a-lav,#6d4fd0)] border-[#e4dafc]' },
+  { key: 'behaviour', label: 'Behaviour', Icon: ShieldCheck, off: 'bg-[var(--a-blush,#ffe6ef)] text-[var(--a-rani,#d81b72)] border-[#f6c2d8]' },
+  { key: 'knowledge', label: 'Knowledge', Icon: BookOpen, off: 'bg-[var(--a-goldtint,#fff1d6)] text-[var(--a-amber,#b45309)] border-[#f3dfb3]' },
+  { key: 'incidents', label: 'Incidents', Icon: Siren, off: 'bg-[#ffe4cf] text-[var(--a-saffron,#ea6a12)] border-[#ffd0a8]' },
+  { key: 'conversations', label: 'Conversations', Icon: MessagesSquare, off: 'bg-[var(--a-teatint,#e3f5f6)] text-[var(--a-peacock,#0e7c86)] border-[#cfe9eb]' },
 ] as const;
 type TabKey = (typeof TABS)[number]['key'];
 
@@ -49,7 +49,7 @@ export default function AiAssistant() {
           <TabsTrigger
             key={t.key}
             value={t.key}
-            className={`!h-auto min-h-[48px] gap-2 rounded-full border-2 px-4 font-dashbody text-[clamp(14px,13.4px+.2vw,17px)] font-extrabold shadow-sm hover:-translate-y-0.5 sm:px-6 ${t.off} data-[state=active]:!border-[var(--a-plum)] data-[state=active]:!bg-[var(--a-plum)] data-[state=active]:!text-white data-[state=active]:shadow-lg`}
+            className={`!h-auto min-h-[48px] gap-2 rounded-full border-2 px-4 font-dashbody text-[clamp(14px,13.4px+.2vw,17px)] font-extrabold shadow-sm hover:-translate-y-0.5 sm:px-6 ${t.off} data-[state=active]:!border-[var(--a-plum,#4a1747)] data-[state=active]:!bg-[var(--a-plum,#4a1747)] data-[state=active]:!text-white data-[state=active]:shadow-lg`}
           >
             <t.Icon className="h-5 w-5 shrink-0" aria-hidden />{t.label}
           </TabsTrigger>

@@ -115,7 +115,7 @@ function SourceCards({ sources, now }: { sources: SourceHealth[]; now: number })
                   {healthy && <span className="absolute inline-flex h-full w-full animate-ping rounded-full opacity-60" style={{ background: dot }} />}
                   <span className="relative inline-flex h-3.5 w-3.5 rounded-full" style={{ background: dot }} />
                 </span>
-                <b className="min-w-0 break-words font-dash" style={{ fontSize: 'var(--fs-body)', color: 'var(--a-plum)' }}>{label}</b>
+                <b className="min-w-0 break-words font-dash" style={{ fontSize: 'var(--fs-body)', color: 'var(--a-plum,#4a1747)' }}>{label}</b>
               </div>
               <div>
                 {healthy
@@ -555,7 +555,7 @@ export default function PaymentReview() {
                               <div className="text-[14px] font-semibold text-muted-foreground">{istDateTime(m.received_at_ms)} · {ago(m.received_at_ms, now)}</div>
                             </>} />
                           ) : (
-                            <DesiSays k="Bank SMS says" tone="none" v={<span className="text-[var(--a-rani)]">Nothing matched yet</span>} />
+                            <DesiSays k="Bank SMS says" tone="none" v={<span className="text-[var(--a-rani,#d81b72)]">Nothing matched yet</span>} />
                           )}
                         </div>
                       </div>
@@ -598,7 +598,7 @@ export default function PaymentReview() {
                 'Prefer linking the bank SMS that proves it.',
                 'No SMS? Confirm anyway, but write how you verified.',
               ].map((t) => (
-                <li key={t} className="flex items-start gap-3 text-[14px] font-bold text-[var(--a-plum)]">
+                <li key={t} className="flex items-start gap-3 text-[14px] font-bold text-[var(--a-plum,#4a1747)]">
                   <span className="mt-0.5 grid h-6 w-6 shrink-0 place-items-center rounded-full bg-[#0e7c86] text-white" aria-hidden="true"><Check className="h-4 w-4" /></span>
                   {t}
                 </li>

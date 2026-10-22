@@ -270,7 +270,7 @@ export function FilterBar({ search, children, count, title, onClear, resultLabel
   const [open, setOpen] = useState(false);
   return (
     <div className="space-y-3">
-      <div className="relative hidden overflow-hidden rounded-[32px] border border-[var(--a-line,#f1e3d6)] bg-[linear-gradient(100deg,#fff,#fff6ee_60%,#ffeaf3)] p-3 shadow-[var(--a-shadow)] md:block">
+      <div className="relative hidden overflow-hidden rounded-[32px] border border-[var(--a-line,#f1e3d6)] bg-[linear-gradient(100deg,#fff,#fff6ee_60%,#ffeaf3)] p-3 shadow-[var(--a-shadow,0_10px_26px_-14px_rgba(74,23,71,.24))] md:block">
         <span aria-hidden className="pointer-events-none absolute -right-3 -top-3 opacity-60"><Jasmine size={46} /></span>
         <div className="relative flex flex-wrap items-end gap-3">
           <div className="min-w-[240px] flex-1">{search}</div>

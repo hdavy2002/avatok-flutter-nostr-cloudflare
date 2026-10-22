@@ -13,19 +13,19 @@ const DAY = 86_400_000;
 const T14: CSSProperties = { fontSize: 14 };
 const field: CSSProperties = { ...T14, padding: 10, borderRadius: 10, border: '1px solid var(--hf-admin-line)', minHeight: 44, fontFamily: 'inherit' };
 const H: CSSProperties = { fontSize: 'var(--fs-h2)', margin: '0 0 10px' };
-const WARN_BG = 'var(--a-goldtint)', BAD_BG = '#fbe1dc', BAD_FG = '#9a1f19';
+const WARN_BG = 'var(--a-goldtint,#fff1d6)', BAD_BG = '#fbe1dc', BAD_FG = '#9a1f19';
 
 /* Scoped overrides: Comfortaa text, 14px floor, purple instead of the kit's teal. */
 const CSS = `
-.pc-ui{--teal:var(--a-plum);width:100%}
+.pc-ui{--teal:var(--a-plum,#4a1747);width:100%}
 .pc-ui table.t{width:100%;border-collapse:collapse;font-size:var(--fs-small)}
-.pc-ui table.t th{text-align:left;color:var(--a-muted);font-weight:700;padding:10px 8px;border-bottom:1.5px solid var(--a-line);background:var(--a-cream)}
-.pc-ui table.t td{padding:12px 8px;border-bottom:1px dashed var(--a-line);vertical-align:middle}
+.pc-ui table.t th{text-align:left;color:var(--a-muted,#6f5b6f);font-weight:700;padding:10px 8px;border-bottom:1.5px solid var(--a-line,#f1e3d6);background:var(--a-cream,#fffaf3)}
+.pc-ui table.t td{padding:12px 8px;border-bottom:1px dashed var(--a-line,#f1e3d6);vertical-align:middle}
 .pc-ui .two{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,420px),1fr));gap:14px}
-.pc-ui tr.click{cursor:pointer}.pc-ui tr.click:hover{background:var(--a-blush)}
-.pc-ui button.link{background:none;border:0;padding:0;min-height:44px;font:inherit;font-size:14px;font-weight:800;color:var(--a-plum);text-decoration:underline;cursor:pointer}
-.pc-ui .seal{width:clamp(110px,10vw,150px);aspect-ratio:1;border-radius:50%;display:grid;place-items:center;text-align:center;font-weight:900;font-size:var(--fs-body);border:4px double #fff;box-shadow:0 0 0 4px var(--a-peacock),0 12px 24px -12px rgba(14,124,134,.6);background:radial-gradient(circle at 30% 25%,#4fb5bd,#0e7c86 70%);color:#fff;padding:10px}
-.pc-ui .seal.bad{box-shadow:0 0 0 4px var(--a-rani),0 12px 24px -12px rgba(216,27,114,.6);background:radial-gradient(circle at 30% 25%,#f06ba5,#d81b72 70%)}
+.pc-ui tr.click{cursor:pointer}.pc-ui tr.click:hover{background:var(--a-blush,#ffe6ef)}
+.pc-ui button.link{background:none;border:0;padding:0;min-height:44px;font:inherit;font-size:14px;font-weight:800;color:var(--a-plum,#4a1747);text-decoration:underline;cursor:pointer}
+.pc-ui .seal{width:clamp(110px,10vw,150px);aspect-ratio:1;border-radius:50%;display:grid;place-items:center;text-align:center;font-weight:900;font-size:var(--fs-body);border:4px double #fff;box-shadow:0 0 0 4px var(--a-peacock,#0e7c86),0 12px 24px -12px rgba(14,124,134,.6);background:radial-gradient(circle at 30% 25%,#4fb5bd,#0e7c86 70%);color:#fff;padding:10px}
+.pc-ui .seal.bad{box-shadow:0 0 0 4px var(--a-rani,#d81b72),0 12px 24px -12px rgba(216,27,114,.6);background:radial-gradient(circle at 30% 25%,#f06ba5,#d81b72 70%)}
 `;
 
 type Rec = Record<string, any>;
@@ -306,7 +306,7 @@ export default function HostPhoneCosts() {
         {sumErr && !sum && <Banner tone="error">{sumErr}</Banner>}
 
         {checkFailed && lv && (
-          <div role="alert" className="hfa-card" style={{ background: BAD_BG, borderColor: 'var(--a-rani)', color: BAD_FG, fontWeight: 800 }}>
+          <div role="alert" className="hfa-card" style={{ background: BAD_BG, borderColor: 'var(--a-rani,#d81b72)', color: BAD_FG, fontWeight: 800 }}>
             {!lv.ok ? 'The last check of Vobiz failed, so the numbers below may be out of date.' : 'The Vobiz account is not active. Calls may not connect.'}
             <div style={{ ...T14, fontWeight: 400 }}>Last answer from Vobiz: {tm(lv.at)}{staleMs > 120_000 ? ` (${Math.round(staleMs / 60000)} minutes ago)` : ''}.</div>
           </div>

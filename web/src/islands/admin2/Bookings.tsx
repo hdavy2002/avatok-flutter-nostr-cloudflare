@@ -137,13 +137,13 @@ export default function Bookings() {
                             </div>
                           </td>
                           <td className="max-w-[260px]">
-                            <a href={`/admin/bookings?event=${encodeURIComponent(b.listing_id)}`} className="font-bold text-[var(--a-ink)] underline-offset-2 hover:underline">{b.event_title ?? b.listing_id}</a>
+                            <a href={`/admin/bookings?event=${encodeURIComponent(b.listing_id)}`} className="font-bold text-[var(--a-ink,#2b1530)] underline-offset-2 hover:underline">{b.event_title ?? b.listing_id}</a>
                             <div className="hfa-note">{b.event_starts_at ? istDateTime(b.event_starts_at) : 'No date'}</div>
                           </td>
                           <td><DesiChip tone={S.chip}>{S.label}</DesiChip></td>
                           <td className="text-right font-['Nunito'] text-[1.2em] font-black tabular-nums" style={{ color: S.ink }}>{amount(b)}</td>
-                          <td>{b.utr ? <CopyValue value={b.utr} label="UTR" /> : <span className="text-[var(--a-muted)]">—</span>}</td>
-                          <td className="whitespace-nowrap text-[var(--a-muted)]">{istDateTime(b.booked_at)}</td>
+                          <td>{b.utr ? <CopyValue value={b.utr} label="UTR" /> : <span className="text-[var(--a-muted,#6f5b6f)]">—</span>}</td>
+                          <td className="whitespace-nowrap text-[var(--a-muted,#6f5b6f)]">{istDateTime(b.booked_at)}</td>
                         </tr>
                       );
                     })}
@@ -157,19 +157,19 @@ export default function Bookings() {
               {list.items.map((b) => {
                 const S = seat(b.status);
                 return (
-                  <li key={b.id} className="relative flex overflow-hidden rounded-[22px] border border-[var(--a-line)] bg-white shadow-[var(--a-shadow)]">
+                  <li key={b.id} className="relative flex overflow-hidden rounded-[22px] border border-[var(--a-line,#f1e3d6)] bg-white shadow-[var(--a-shadow,0_10px_26px_-14px_rgba(74,23,71,.24))]">
                     <div className="flex w-[84px] shrink-0 flex-col items-center justify-center gap-2 px-2 py-3 text-center text-white" style={{ background: S.stub }}>
                       <DesiAvatar name={b.customer.name} seed={b.customer.uid} size={44} />
                       <span className="text-[14px] font-extrabold uppercase leading-tight">{S.label}</span>
                     </div>
-                    <div className="min-w-0 flex-1 border-l-2 border-dashed border-[var(--a-line)] p-3">
+                    <div className="min-w-0 flex-1 border-l-2 border-dashed border-[var(--a-line,#f1e3d6)] p-3">
                       <div className="flex items-start justify-between gap-2">
                         <CustomerCell c={b.customer} compact />
                         <div className="shrink-0 font-['Nunito'] text-[1.15rem] font-black tabular-nums" style={{ color: S.ink }}>{amount(b)}</div>
                       </div>
-                      <a href={`/admin/bookings?event=${encodeURIComponent(b.listing_id)}`} className="mt-2 flex min-h-[44px] items-center font-bold text-[var(--a-ink)] underline-offset-2 hover:underline">{b.event_title ?? b.listing_id}</a>
+                      <a href={`/admin/bookings?event=${encodeURIComponent(b.listing_id)}`} className="mt-2 flex min-h-[44px] items-center font-bold text-[var(--a-ink,#2b1530)] underline-offset-2 hover:underline">{b.event_title ?? b.listing_id}</a>
                       <div className="hfa-note">{b.event_starts_at ? istDateTime(b.event_starts_at) : 'No date'}</div>
-                      <div className="mt-2 flex flex-wrap items-center justify-between gap-2 border-t border-dashed border-[var(--a-line)] pt-2 text-[14px] font-semibold text-[var(--a-muted)]">
+                      <div className="mt-2 flex flex-wrap items-center justify-between gap-2 border-t border-dashed border-[var(--a-line,#f1e3d6)] pt-2 text-[14px] font-semibold text-[var(--a-muted,#6f5b6f)]">
                         <span>Booked {istDateTime(b.booked_at)}</span>
                         {b.utr && <CopyValue value={b.utr} label="UTR" className="text-[14px] text-foreground" />}
                       </div>

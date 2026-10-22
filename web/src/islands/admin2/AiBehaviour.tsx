@@ -71,8 +71,8 @@ function TestChat({ promptId, label }: { promptId: string | undefined; label: st
   }
 
   return (
-    <div className="flex h-[520px] flex-col overflow-hidden rounded-[28px] border-2 border-[#cfe9eb] bg-[var(--a-cream)] shadow-[0_18px_34px_-20px_rgba(74,23,71,.4)]">
-      <div className="flex items-center justify-between gap-2 bg-[linear-gradient(120deg,var(--a-peacock),#16a3ad)] px-4 py-3 text-white">
+    <div className="flex h-[520px] flex-col overflow-hidden rounded-[28px] border-2 border-[#cfe9eb] bg-[var(--a-cream,#fffaf3)] shadow-[0_18px_34px_-20px_rgba(74,23,71,.4)]">
+      <div className="flex items-center justify-between gap-2 bg-[linear-gradient(120deg,var(--a-peacock,#0e7c86),#16a3ad)] px-4 py-3 text-white">
         <div className="min-w-0">
           <p className="font-dash text-[17px] font-black">Test chat</p>
           <p className="truncate text-[14px] font-semibold opacity-90">Using {label}. Not shown in Conversations.</p>
@@ -82,10 +82,10 @@ function TestChat({ promptId, label }: { promptId: string | undefined; label: st
       <div className="flex-1 space-y-2.5 overflow-y-auto p-3 sm:p-4" aria-live="polite">
         {lines.length === 0 && <p className={cn(HINT, 'py-6 text-center')}>Ask her something, like “Which havan is coming up?”.</p>}
         {lines.map((l, i) => l.role === 'note' ? (
-          <p key={i} className="mx-auto w-fit max-w-full rounded-full bg-[var(--a-goldtint)] px-3 py-1 text-center text-[14px] font-bold text-[var(--a-amber)]">{l.text}</p>
+          <p key={i} className="mx-auto w-fit max-w-full rounded-full bg-[var(--a-goldtint,#fff1d6)] px-3 py-1 text-center text-[14px] font-bold text-[var(--a-amber,#b45309)]">{l.text}</p>
         ) : (
           <div key={i} className={cn('flex', l.role === 'me' ? 'justify-end' : 'justify-start')}>
-            <div className={cn('max-w-[85%] whitespace-pre-wrap break-words rounded-2xl px-3 py-2 text-[14.5px] font-semibold leading-relaxed', l.role === 'me' ? 'rounded-br-md border border-[#e4dafc] bg-[var(--a-lavtint)] text-foreground' : 'rounded-bl-md border border-[#cfe9eb] bg-[var(--a-teatint)] text-foreground')}>
+            <div className={cn('max-w-[85%] whitespace-pre-wrap break-words rounded-2xl px-3 py-2 text-[14.5px] font-semibold leading-relaxed', l.role === 'me' ? 'rounded-br-md border border-[#e4dafc] bg-[var(--a-lavtint,#f1ebff)] text-foreground' : 'rounded-bl-md border border-[#cfe9eb] bg-[var(--a-teatint,#e3f5f6)] text-foreground')}>
               {l.text || (busy && i === lines.length - 1 ? <Loader2 className="h-4 w-4 animate-spin" aria-label="Thinking" /> : '')}
               {l.cards.map((c, j) => (
                 <div key={j} className="mt-2 rounded-xl border border-white bg-white/80 p-2 text-[14px] text-foreground">
@@ -191,7 +191,7 @@ export default function AiBehaviour() {
                   <button
                     type="button" onClick={() => { setSelected(p.id); setBody(p.body); }}
                     aria-pressed={p.id === selected}
-                    className={cn('flex min-h-[64px] w-full items-center gap-2 rounded-2xl border-2 px-4 py-3 text-left transition-transform hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring', p.active ? TINT.tea : pi % 2 ? TINT.gold : TINT.cream, p.id === selected && 'ring-[3px] ring-[var(--a-rani)]')}
+                    className={cn('flex min-h-[64px] w-full items-center gap-2 rounded-2xl border-2 px-4 py-3 text-left transition-transform hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring', p.active ? TINT.tea : pi % 2 ? TINT.gold : TINT.cream, p.id === selected && 'ring-[3px] ring-[var(--a-rani,#d81b72)]')}
                   >
                     <span className="min-w-0 flex-1">
                       <span className="block truncate text-[15px] font-extrabold text-foreground">{p.note || `Version ${p.id.slice(0, 6)}`}</span>
@@ -215,7 +215,7 @@ export default function AiBehaviour() {
             />
             <p className={HINT}>Use <code>{'{agent}'}</code>, <code>{'{brand}'}</code>, <code>{'{domain}'}</code> and <code>{'{site}'}</code> instead of typing names, so a future rename needs no edits here.</p>
             {literal && brand && (
-              <div role="note" className="flex flex-wrap items-center gap-2 rounded-2xl border-2 border-dashed border-[var(--a-marigold)] bg-[var(--a-goldtint)] p-3 text-[14px] font-semibold text-foreground">
+              <div role="note" className="flex flex-wrap items-center gap-2 rounded-2xl border-2 border-dashed border-[var(--a-marigold,#f59e0b)] bg-[var(--a-goldtint,#fff1d6)] p-3 text-[14px] font-semibold text-foreground">
                 <span className="min-w-0 flex-1">The text contains the current {[literal.hasName && 'brand name', literal.hasDom && 'domain'].filter(Boolean).join(' and ')} typed out.</span>
                 <Button variant="outline" className="min-h-11 rounded-full bg-white" onClick={replaceLiterals}>Replace with {'{brand}'}/{'{domain}'}</Button>
               </div>
@@ -242,7 +242,7 @@ export default function AiBehaviour() {
           <ul className="hfa-tiles">
             {CORE_RULES.map((r, ri) => (
               <li key={r} className={cn('flex gap-3 rounded-2xl border-2 p-3.5 text-[14px] font-semibold leading-relaxed text-foreground', ri % 3 === 0 ? TINT.rani : ri % 3 === 1 ? TINT.gold : TINT.lav)}>
-                <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-white text-[var(--a-rani)] shadow-sm"><Lock className="h-4 w-4" aria-hidden /></span>
+                <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-white text-[var(--a-rani,#d81b72)] shadow-sm"><Lock className="h-4 w-4" aria-hidden /></span>
                 <span className="min-w-0 self-center">{r}</span>
               </li>
             ))}

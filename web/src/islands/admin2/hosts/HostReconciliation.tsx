@@ -82,7 +82,7 @@ function TokenSection({ t }: { t: TokReport }) {
     <DesiCard tone="lav" corner="jasmine" title={`Tokens ${t.mismatches.length === 0 ? '· everything matches' : `· ${t.mismatches.length} to look at`}`}>
       <div style={{ display: 'grid', gap: 10, fontSize: 'var(--fs-small)' }}>
       {t.mismatches.map((m) => (
-        <div key={m.kind + m.ref} style={{ padding: '10px 14px', borderRadius: 16, background: 'var(--a-blush)', borderLeft: '6px solid var(--a-rani)', wordBreak: 'break-all' }}>
+        <div key={m.kind + m.ref} style={{ padding: '10px 14px', borderRadius: 16, background: 'var(--a-blush,#ffe6ef)', borderLeft: '6px solid var(--a-rani,#d81b72)', wordBreak: 'break-all' }}>
           <strong>{TOK_KIND[m.kind] ?? m.kind}</strong>
           <div>{m.detail}</div>
           <div className="hfa-note">{m.ref}{m.uid ? ` · ${m.uid}` : ''}</div>
@@ -138,7 +138,7 @@ export default function HostReconciliation() {
   };
 
   const same = (d: Omit<Day, 'date'>) => d.topups.count === d.walletCredits.count && Math.round(d.topups.rupees * 100) === Math.round(d.walletCredits.rupees * 100);
-  const cell = (ok: boolean): React.CSSProperties => ({ padding: '10px 12px', borderRadius: 14, background: ok ? 'var(--a-teatint)' : 'var(--a-blush)', borderLeft: `6px solid ${ok ? 'var(--a-peacock)' : 'var(--a-rani)'}`, minWidth: 0 });
+  const cell = (ok: boolean): React.CSSProperties => ({ padding: '10px 12px', borderRadius: 14, background: ok ? 'var(--a-teatint,#e3f5f6)' : 'var(--a-blush,#ffe6ef)', borderLeft: `6px solid ${ok ? 'var(--a-peacock,#0e7c86)' : 'var(--a-rani,#d81b72)'}`, minWidth: 0 });
   return (
     <ConsultShell className="hf-admin-operations">
       <div className="hfa-stack">
@@ -164,7 +164,7 @@ export default function HostReconciliation() {
 
             <DesiCard tone="cream" pattern="bahi" corner="hibiscus" title="Bahi-khata: top-ups vs wallet credits" note="Left page: money the gateway took. Right page: credit put in wallets. Teal rows agree, pink rows do not.">
               <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)', gap: '8px 12px', fontSize: 'var(--fs-small)' }}>
-                <div className="hfa-eyebrow" style={{ color: 'var(--a-peacock)' }}>Top-ups paid (gateway)</div>
+                <div className="hfa-eyebrow" style={{ color: 'var(--a-peacock,#0e7c86)' }}>Top-ups paid (gateway)</div>
                 <div className="hfa-eyebrow">Wallet credits</div>
                 {[...rep.days.map((d) => ({ label: d.date, d, strong: false })), { label: 'Total', d: rep.totals as Omit<Day, 'date'>, strong: true }].map(({ label, d, strong }) => {
                   const ok = same(d);
@@ -182,7 +182,7 @@ export default function HostReconciliation() {
               {rep.mismatches.length === 0 && <div style={{ fontSize: 'var(--fs-small)' }}>Every paid top-up in this period has exactly one wallet credit for the same amount, and the other way round. Top-ups paid in the last 30 minutes are skipped while their credit is still being recorded.</div>}
               <div style={{ display: 'grid', gap: 10 }}>
                 {rep.mismatches.map((m) => (
-                  <div key={m.kind + m.topupId} style={{ fontSize: 'var(--fs-small)', padding: '10px 14px', borderRadius: 16, background: '#fff', borderLeft: '6px solid var(--a-rani)', wordBreak: 'break-all' }}>
+                  <div key={m.kind + m.topupId} style={{ fontSize: 'var(--fs-small)', padding: '10px 14px', borderRadius: 16, background: '#fff', borderLeft: '6px solid var(--a-rani,#d81b72)', wordBreak: 'break-all' }}>
                     <DesiChip tone="rani">{KIND[m.kind] ?? m.kind}</DesiChip> {m.topupRupees != null ? `top-up ${rupees(m.topupRupees)}` : 'no top-up'} · {m.creditRupees != null ? `credit ${rupees(m.creditRupees)}` : 'no credit'}
                     <div>{m.detail}</div>
                     <div className="hfa-note">{m.topupId} · {m.uid}</div>
@@ -216,7 +216,7 @@ export default function HostReconciliation() {
               {rep.payouts.length === 0 ? <DesiEmpty text="None in this period." /> : (
                 <div style={{ display: 'grid', gap: 8, fontSize: 'var(--fs-small)' }}>
                   {rep.payouts.map((p) => (
-                    <div key={p.id} style={{ wordBreak: 'break-all', padding: '8px 12px', borderRadius: 14, background: '#fff', borderLeft: '6px solid var(--a-lav)' }}>{new Date(p.paid_at + 19_800_000).toISOString().slice(0, 10)} · {rupees(p.amount_rupees)} · UTR {p.utr || '—'} · {p.host_uid}</div>
+                    <div key={p.id} style={{ wordBreak: 'break-all', padding: '8px 12px', borderRadius: 14, background: '#fff', borderLeft: '6px solid var(--a-lav,#6d4fd0)' }}>{new Date(p.paid_at + 19_800_000).toISOString().slice(0, 10)} · {rupees(p.amount_rupees)} · UTR {p.utr || '—'} · {p.host_uid}</div>
                   ))}
                 </div>
               )}

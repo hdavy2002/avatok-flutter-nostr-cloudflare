@@ -194,7 +194,7 @@ export default function Wallets() {
                     aria-expanded={isOpen}
                     onClick={() => toggle(w.uid)}
                     className={cn(
-                      'relative block w-full overflow-hidden rounded-[24px] border border-[var(--a-line,#f1e3d6)] bg-white p-0 text-left shadow-[var(--a-shadow)] transition-transform hover:-translate-y-0.5 motion-reduce:transition-none focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[var(--a-rani,#d81b72)]',
+                      'relative block w-full overflow-hidden rounded-[24px] border border-[var(--a-line,#f1e3d6)] bg-white p-0 text-left shadow-[var(--a-shadow,0_10px_26px_-14px_rgba(74,23,71,.24))] transition-transform hover:-translate-y-0.5 motion-reduce:transition-none focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[var(--a-rani,#d81b72)]',
                       isOpen && 'ring-4 ring-[var(--a-rani,#d81b72)]',
                     )}
                   >

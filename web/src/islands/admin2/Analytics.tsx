@@ -261,7 +261,7 @@ function FunnelBars({ rows }: { rows: { key: string; label: string; value: numbe
       {rows.map((r) => (
         <li key={r.key}>
           <a href={r.href} className="block rounded-xl p-1 no-underline transition-colors hover:bg-white/60">
-            <div className="mb-1 flex flex-wrap items-baseline justify-between gap-x-3 text-[14px] font-bold text-[var(--a-ink)]">
+            <div className="mb-1 flex flex-wrap items-baseline justify-between gap-x-3 text-[14px] font-bold text-[var(--a-ink,#2b1530)]">
               <span>{r.label}</span><span className="font-['Nunito'] font-black tabular-nums">{r.text}</span>
             </div>
             <div className="h-6 w-full overflow-hidden rounded-full bg-white/70" aria-hidden>
@@ -428,9 +428,9 @@ export default function Analytics() {
                         <div className="min-w-0 flex-1">
                           <div className="flex flex-wrap items-center gap-2">
                             {ev.live && <LiveBadge />}
-                            <span className="truncate font-bold text-[var(--a-ink)]">{ev.title}</span>
+                            <span className="truncate font-bold text-[var(--a-ink,#2b1530)]">{ev.title}</span>
                           </div>
-                          <div className="mt-0.5 flex flex-wrap gap-x-3 text-[14px] font-semibold text-[var(--a-muted)]">
+                          <div className="mt-0.5 flex flex-wrap gap-x-3 text-[14px] font-semibold text-[var(--a-muted,#6f5b6f)]">
                             <span>{ev.live ? 'Streaming now' : `${istDay(ev.starts_at)} · ${istTime(ev.starts_at)}`}</span>
                             <span className="inline-flex items-center gap-1"><Users className="h-3.5 w-3.5" />
                               {ev.capacity != null ? `${fmtCount(ev.booked)} / ${fmtCount(ev.capacity)} booked` : `${fmtCount(ev.booked)} booked`}
@@ -533,14 +533,14 @@ export default function Analytics() {
                                 style={{ background: MEDAL[i] ?? '#f1ebff', color: i < 3 ? '#3b1600' : '#6d4fd0' }}>{i + 1}</span>
                             </td>
                             <td className="max-w-0">
-                              <a href={href} className="block min-h-[24px] truncate font-bold text-[var(--a-ink)] no-underline hover:underline">{e.title ?? e.id}</a>
+                              <a href={href} className="block min-h-[24px] truncate font-bold text-[var(--a-ink,#2b1530)] no-underline hover:underline">{e.title ?? e.id}</a>
                               {e.category_label && <div className="hfa-note truncate">{e.category_label}</div>}
                             </td>
                             <td className="text-right font-semibold tabular-nums">{fmtCount(e.paid_bookings)}</td>
                             <td>
                               <a href={href} className="flex items-center gap-2 no-underline" aria-label={`${e.title ?? e.id}: ${formatPaise(e.revenue_paise)}`}>
                                 <span className="h-3 min-w-[2px] rounded-full" style={{ width: `${Math.max(1, (e.revenue_paise / max) * 70)}%`, background: GRAD }} aria-hidden />
-                                <span className="shrink-0 font-['Nunito'] font-black tabular-nums text-[var(--a-plum)]">{formatPaise(e.revenue_paise)}</span>
+                                <span className="shrink-0 font-['Nunito'] font-black tabular-nums text-[var(--a-plum,#4a1747)]">{formatPaise(e.revenue_paise)}</span>
                               </a>
                             </td>
                           </tr>
@@ -571,10 +571,10 @@ export default function Analytics() {
                       <tbody>
                         {d.video_views.by_event.map((e, i) => (
                           <tr key={e.listing_id}>
-                            <td className="font-bold tabular-nums text-[var(--a-muted)]">{i + 1}</td>
+                            <td className="font-bold tabular-nums text-[var(--a-muted,#6f5b6f)]">{i + 1}</td>
                             <td className="max-w-0">
                               <a href={e.kind === 'free_video' ? `/admin/free-videos/${encodeURIComponent(e.listing_id)}` : `/admin/events/${encodeURIComponent(e.listing_id)}`} className="flex min-h-[24px] items-center gap-2 no-underline">
-                                <span className="truncate font-bold text-[var(--a-ink)] hover:underline">{e.title ?? e.listing_id}</span>
+                                <span className="truncate font-bold text-[var(--a-ink,#2b1530)] hover:underline">{e.title ?? e.listing_id}</span>
                                 {e.free && <DesiChip tone="tea" className="shrink-0">FREE</DesiChip>}
                                 {e.kind === 'free_video' && <DesiChip tone="lav" className="shrink-0">Free video</DesiChip>}
                               </a>
@@ -598,8 +598,8 @@ export default function Analytics() {
                     <li key={p.id}>
                       <a href={qs('/admin/payments', { q: p.id })} className="flex min-h-[44px] items-center gap-3 rounded-2xl border-l-[6px] border-[#0e7c86] bg-white/75 px-3 py-2 no-underline transition-colors hover:bg-white">
                         <div className="min-w-0 flex-1">
-                          <div className="truncate font-bold text-[var(--a-ink)]">{p.customer ?? 'Customer'}</div>
-                          <div className="truncate text-[14px] font-semibold text-[var(--a-muted)]">{p.event_title ?? p.listing_id} · {istDateTime(p.at)}</div>
+                          <div className="truncate font-bold text-[var(--a-ink,#2b1530)]">{p.customer ?? 'Customer'}</div>
+                          <div className="truncate text-[14px] font-semibold text-[var(--a-muted,#6f5b6f)]">{p.event_title ?? p.listing_id} · {istDateTime(p.at)}</div>
                         </div>
                         <div className="flex shrink-0 flex-col items-end gap-1">
                           <span className="font-['Nunito'] text-[16px] font-black tabular-nums text-[#0e7c86]">{formatPaise(p.amount_paise)}</span>
@@ -619,8 +619,8 @@ export default function Analytics() {
                     <li key={r.id}>
                       <a href={qs('/admin/refunds', { q: r.id })} className="flex min-h-[44px] items-center gap-3 rounded-2xl border-l-[6px] border-[#d81b72] bg-white/85 px-3 py-2 no-underline transition-colors hover:bg-white">
                         <div className="min-w-0 flex-1">
-                          <div className="truncate font-bold text-[var(--a-ink)]">{r.customer ?? 'Customer'}</div>
-                          <div className="truncate text-[14px] font-semibold text-[var(--a-muted)]">
+                          <div className="truncate font-bold text-[var(--a-ink,#2b1530)]">{r.customer ?? 'Customer'}</div>
+                          <div className="truncate text-[14px] font-semibold text-[var(--a-muted,#6f5b6f)]">
                             {r.event_title ?? 'Event'} · asked {istDay(r.requested_at)}{r.reason ? ` · “${r.reason}”` : ''}
                           </div>
                         </div>

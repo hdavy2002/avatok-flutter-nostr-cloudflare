@@ -117,10 +117,10 @@ export default function AiKnowledge() {
           onDragOver={(e) => { e.preventDefault(); setDrag(true); }}
           onDragLeave={() => setDrag(false)}
           onDrop={(e) => { e.preventDefault(); setDrag(false); void addFiles(e.dataTransfer.files); }}
-          className={cn('relative flex flex-col items-center gap-2 overflow-hidden rounded-3xl border-[3px] border-dashed px-4 py-8 text-center transition-colors', drag ? 'border-[var(--a-rani)] bg-[var(--a-blush)]' : 'border-[var(--a-marigold)] bg-[var(--a-goldtint)]')}
+          className={cn('relative flex flex-col items-center gap-2 overflow-hidden rounded-3xl border-[3px] border-dashed px-4 py-8 text-center transition-colors', drag ? 'border-[var(--a-rani,#d81b72)] bg-[var(--a-blush,#ffe6ef)]' : 'border-[var(--a-marigold,#f59e0b)] bg-[var(--a-goldtint,#fff1d6)]')}
         >
           <span className="pointer-events-none absolute -left-4 -top-5" aria-hidden="true"><Marigold size={64} tone={1} /></span>
-          <UploadCloud className="h-10 w-10 text-[var(--a-amber)]" aria-hidden />
+          <UploadCloud className="h-10 w-10 text-[var(--a-amber,#b45309)]" aria-hidden />
           <p className="font-dash text-[16px] font-bold text-foreground">Drop files here</p>
           <p className={HINT}>pdf, docx, txt, md, csv or html · up to 20 MB each</p>
           <input ref={input} type="file" multiple accept=".pdf,.docx,.txt,.md,.csv,.html,.htm" className="sr-only" aria-label="Choose files" onChange={(e) => e.target.files && void addFiles(e.target.files)} />
@@ -137,11 +137,11 @@ export default function AiKnowledge() {
               {files.map((f) => (
                 <li key={f.id} className={cn('flex flex-col gap-3 rounded-3xl border-2 p-4 shadow-sm', TINT[extTint(f.file_name)])}>
                   <div className="flex items-start gap-3">
-                    <span className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-white text-[var(--a-plum)] shadow-sm"><FileText className="h-6 w-6" aria-hidden /></span>
+                    <span className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-white text-[var(--a-plum,#4a1747)] shadow-sm"><FileText className="h-6 w-6" aria-hidden /></span>
                     <div className="min-w-0 flex-1">
                       <p className="break-words text-[15px] font-extrabold text-foreground">{f.file_name}</p>
                       <p className="text-[14px] font-semibold text-muted-foreground">{size(f.size_bytes)} · {istDateTime(f.created_at)}</p>
-                      {f.error && <p className="text-[14px] font-bold text-[var(--a-bad)]">{f.error}</p>}
+                      {f.error && <p className="text-[14px] font-bold text-[var(--a-bad,#c0262d)]">{f.error}</p>}
                       {f.status === 'needs_review' && <p className="text-[14px] font-semibold text-muted-foreground">Written before a brand change: check it still reads correctly, or re-upload it.</p>}
                     </div>
                   </div>
@@ -183,7 +183,7 @@ export default function AiKnowledge() {
                   <StatusChip s={d.status} />
                 </div>
                 <a href={d.url} target="_blank" rel="noreferrer" className="break-words text-[15px] font-extrabold text-foreground underline-offset-2 hover:underline">{d.title ?? d.url}</a>
-                {d.error && <span className="block text-[14px] font-bold text-[var(--a-bad)]">{d.error}</span>}
+                {d.error && <span className="block text-[14px] font-bold text-[var(--a-bad,#c0262d)]">{d.error}</span>}
                 <span className="text-[14px] font-semibold text-muted-foreground">{d.synced_at ? istDateTime(d.synced_at) : 'not synced'}</span>
               </li>
             ))}

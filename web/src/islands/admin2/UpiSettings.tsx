@@ -124,7 +124,7 @@ export default function UpiSettings() {
             </div>
             <div className="grid shrink-0 justify-items-center gap-2">
               <div className="grid h-[200px] w-[200px] place-items-center rounded-2xl border-[6px] border-white bg-white shadow-md">
-                {qr ? <img src={qr} alt={`UPI QR for ${previewVpa}`} className="h-full w-full rounded-md" /> : <span className="px-3 text-center text-[14px] font-bold text-[var(--a-muted)]">Enter a UPI ID to see the QR</span>}
+                {qr ? <img src={qr} alt={`UPI QR for ${previewVpa}`} className="h-full w-full rounded-md" /> : <span className="px-3 text-center text-[14px] font-bold text-[var(--a-muted,#6f5b6f)]">Enter a UPI ID to see the QR</span>}
               </div>
               <span className="max-w-[220px] text-center text-[14px] font-bold text-[#d9f3f5]">Preview — checkout adds the exact amount</span>
             </div>
@@ -132,14 +132,14 @@ export default function UpiSettings() {
         </section>
 
         <DesiCard title="Bank SMS phone" tone="gold" corner="marigold" pattern="stripes">
-          <p className="text-[14px] font-semibold text-[var(--a-plum)]">
+          <p className="text-[14px] font-semibold text-[var(--a-plum,#4a1747)]">
             Last HDFC credit SMS received: <b>{status.last_bank_sms_at ? istDateTime(status.last_bank_sms_at) : 'never'}</b>
             {smsAgeDays !== null && smsAgeDays > 2 && ' — if you have taken payments since, the SMS app is not forwarding.'}
           </p>
           <a href={SMS_COMPANION_APK_URL} className="hfa-btn mt-3" onClick={() => capture('admin_sms_companion_download')}>
             <Smartphone className="h-5 w-5" aria-hidden /> Download the SMS app (APK)
           </a>
-          <p className="mt-3 text-[14px] font-semibold text-[var(--a-plum)]">Not on Google Play — open this link on the Android phone that receives HDFC SMS and allow “install unknown apps”. Then enter the device ID, device secret and the last 4 digits of the HDFC account.</p>
+          <p className="mt-3 text-[14px] font-semibold text-[var(--a-plum,#4a1747)]">Not on Google Play — open this link on the Android phone that receives HDFC SMS and allow “install unknown apps”. Then enter the device ID, device secret and the last 4 digits of the HDFC account.</p>
         </DesiCard>
       </div>
 
@@ -154,7 +154,7 @@ export default function UpiSettings() {
             <Label htmlFor="upi-payee" className="text-[14px] font-bold">Name customers see in their UPI app</Label>
             <Input id="upi-payee" value={payee} maxLength={60} onChange={(e) => setPayee(e.target.value)} placeholder={BRAND.name} className="min-h-[48px] bg-white text-[17px] font-bold" />
           </div>
-          <div className="rounded-2xl border-2 border-dashed border-[#f59e0b] bg-[#fff1d6] p-3 text-[14px] font-semibold leading-relaxed text-[var(--a-plum)]">
+          <div className="rounded-2xl border-2 border-dashed border-[#f59e0b] bg-[#fff1d6] p-3 text-[14px] font-semibold leading-relaxed text-[var(--a-plum,#4a1747)]">
             This UPI ID must pay into the <b>same HDFC account</b> the SMS phone is watching. Payments are confirmed only when that
             account’s credit SMS arrives and matches the customer’s 12-digit UPI reference — money sent anywhere else can’t be confirmed.
           </div>
@@ -174,7 +174,7 @@ export default function UpiSettings() {
         <button type="button" className="hfa-btn tea" onClick={() => void save()} disabled={saving}>
           {saving ? <Loader2 className="h-5 w-5 animate-spin" /> : <Save className="h-5 w-5" />} {saving ? 'Saving…' : 'Save UPI ID'}
         </button>
-        <span className="text-[14px] font-semibold text-[var(--a-muted)]">
+        <span className="text-[14px] font-semibold text-[var(--a-muted,#6f5b6f)]">
           {dirty ? 'Unsaved changes' : status.saved.updated_at ? `Last changed ${istDateTime(status.saved.updated_at)}` : 'Using the built-in default'}
         </span>
       </div>

@@ -95,7 +95,7 @@ export default function AiIncidents() {
             {ended && <DesiChip tone="grey">Ended</DesiChip>}
           </span>
         }
-        actions={<Button variant="ghost" className="min-h-11 rounded-full text-[var(--a-rani)]" aria-label="Delete incident" onClick={() => setDel(i)}><Trash2 /> Remove</Button>}
+        actions={<Button variant="ghost" className="min-h-11 rounded-full text-[var(--a-rani,#d81b72)]" aria-label="Delete incident" onClick={() => setDel(i)}><Trash2 /> Remove</Button>}
       >
         <div className="min-w-0 [grid-column:1/-1]">
           <p className="whitespace-pre-wrap break-words text-[clamp(16px,15px+.3vw,19px)] font-bold text-foreground">{i.message}</p>
@@ -118,7 +118,7 @@ export default function AiIncidents() {
               <option value={SITE}>Site-wide</option>
               {events.map((e) => <option key={e.id} value={e.id}>{e.title}</option>)}
             </select>
-            {evErr && <p className="text-[14px] font-bold text-[var(--a-bad)]">Could not load events; site-wide still works.</p>}
+            {evErr && <p className="text-[14px] font-bold text-[var(--a-bad,#c0262d)]">Could not load events; site-wide still works.</p>}
           </div>
           <div className="grid gap-1.5">
             <Label htmlFor="inc-exp" className={LABEL}>Ends (optional, India time)</Label>

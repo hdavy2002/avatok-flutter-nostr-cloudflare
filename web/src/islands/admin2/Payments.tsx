@@ -127,11 +127,11 @@ export default function Payments() {
                       return (
                         <tr key={p.id} style={{ boxShadow: `inset 5px 0 0 ${L.ink}` }}>
                           <td className="whitespace-nowrap pl-4">
-                            {p.paid_at ? istDateTime(p.paid_at) : <span className="text-[var(--a-muted)]">Started {istDateTime(p.created_at)}</span>}
+                            {p.paid_at ? istDateTime(p.paid_at) : <span className="text-[var(--a-muted,#6f5b6f)]">Started {istDateTime(p.created_at)}</span>}
                           </td>
                           <td className="max-w-[240px]"><CustomerCell c={p.customer} /></td>
                           <td className="max-w-[240px]">
-                            <a href={`/admin/bookings?event=${encodeURIComponent(p.listing_id)}`} className="font-bold text-[var(--a-ink)] underline-offset-2 hover:underline">{p.event_title ?? p.listing_id}</a>
+                            <a href={`/admin/bookings?event=${encodeURIComponent(p.listing_id)}`} className="font-bold text-[var(--a-ink,#2b1530)] underline-offset-2 hover:underline">{p.event_title ?? p.listing_id}</a>
                             <div className="hfa-note">{p.category_label ?? p.category ?? ''}</div>
                           </td>
                           <td>
@@ -141,7 +141,7 @@ export default function Payments() {
                             )}
                           </td>
                           <td className="text-right font-['Nunito'] text-[1.2em] font-black tabular-nums" style={{ color: L.ink }}>{formatPaise(p.amount_paise)}</td>
-                          <td>{p.utr ? <CopyValue value={p.utr} label="UTR" /> : <span className="text-[var(--a-muted)]">—</span>}</td>
+                          <td>{p.utr ? <CopyValue value={p.utr} label="UTR" /> : <span className="text-[var(--a-muted,#6f5b6f)]">—</span>}</td>
                         </tr>
                       );
                     })}
@@ -163,11 +163,11 @@ export default function Payments() {
                       </div>
                       <DesiChip tone={L.chip}>{L.label}</DesiChip>
                     </div>
-                    <a href={`/admin/bookings?event=${encodeURIComponent(p.listing_id)}`} className="mt-2 flex min-h-[44px] items-center font-bold text-[var(--a-ink)] underline-offset-2 hover:underline">{p.event_title ?? p.listing_id}</a>
+                    <a href={`/admin/bookings?event=${encodeURIComponent(p.listing_id)}`} className="mt-2 flex min-h-[44px] items-center font-bold text-[var(--a-ink,#2b1530)] underline-offset-2 hover:underline">{p.event_title ?? p.listing_id}</a>
                     {p.status === 'refunded' && p.refund?.amount_paise != null && p.refund.amount_paise !== p.amount_paise && (
                       <div className="hfa-note">{formatPaise(p.refund.amount_paise)} back</div>
                     )}
-                    <div className="mt-2 border-t border-dashed border-[var(--a-line)] pt-2"><CustomerCell c={p.customer} compact /></div>
+                    <div className="mt-2 border-t border-dashed border-[var(--a-line,#f1e3d6)] pt-2"><CustomerCell c={p.customer} compact /></div>
                     {p.utr && <div className="hfa-note mt-2">UTR <CopyValue value={p.utr} label="UTR" className="text-foreground" /></div>}
                   </li>
                 );

@@ -33,13 +33,13 @@ const digits = (s: string) => s.replace(/\D/g, '');
 
 /* ── spend meter ────────────────────────────────────────────────────────── */
 function SpendMeter({ spend }: { spend: AdminAiSpend | null }) {
-  if (!spend) return <div className="h-20 animate-pulse rounded-2xl bg-[var(--a-goldtint)] motion-reduce:animate-none" />;
+  if (!spend) return <div className="h-20 animate-pulse rounded-2xl bg-[var(--a-goldtint,#fff1d6)] motion-reduce:animate-none" />;
   const pct = Math.max(0, Math.min(100, Math.round(spend.pct)));
-  const tone = spend.pct >= 100 ? 'bg-[var(--a-bad)]' : spend.pct >= 80 ? 'bg-[var(--a-saffron)]' : 'bg-[var(--a-peacock)]';
+  const tone = spend.pct >= 100 ? 'bg-[var(--a-bad,#c0262d)]' : spend.pct >= 80 ? 'bg-[var(--a-saffron,#ea6a12)]' : 'bg-[var(--a-peacock,#0e7c86)]';
   return (
     <div>
       <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <span className="font-dash text-[clamp(34px,22px+2vw,56px)] font-black leading-none tabular-nums text-[var(--a-plum)]">₹{Math.round(spend.cost_rupees).toLocaleString('en-IN')}</span>
+        <span className="font-dash text-[clamp(34px,22px+2vw,56px)] font-black leading-none tabular-nums text-[var(--a-plum,#4a1747)]">₹{Math.round(spend.cost_rupees).toLocaleString('en-IN')}</span>
         <span className={HINT}>of ₹{spend.cap_rupees.toLocaleString('en-IN')} this month ({spend.month})</span>
       </div>
       <div className="mt-3 h-5 overflow-hidden rounded-full border-2 border-white bg-[#f3e6cf] shadow-inner" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={pct} aria-label="Monthly AI spend">
@@ -123,7 +123,7 @@ function BrandCard() {
                 {(result.check ?? []).map((c, i) => (
                   <li key={i} className={cn('rounded-2xl border-2 p-3', c.pass ? TINT.tea : TINT.rani)}>
                     <div className="flex items-start gap-2">
-                      {c.pass ? <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-[var(--a-peacock)]" /> : <XCircle className="mt-0.5 h-5 w-5 shrink-0 text-[var(--a-rani)]" />}
+                      {c.pass ? <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-[var(--a-peacock,#0e7c86)]" /> : <XCircle className="mt-0.5 h-5 w-5 shrink-0 text-[var(--a-rani,#d81b72)]" />}
                       <div className="min-w-0">
                         <p className="text-[14px] font-extrabold text-foreground">{c.question}</p>
                         <p className="mt-1 whitespace-pre-wrap break-words text-[14px] font-semibold text-muted-foreground">{c.answer}</p>
@@ -142,8 +142,8 @@ function BrandCard() {
             {brand.checklist.length === 0 ? <p className={cn(HINT, 'mt-2')}>Nothing outstanding.</p> : (
               <ul className="mt-2 grid gap-1.5">
                 {brand.checklist.map((c, i) => (
-                  <li key={i} className="flex items-start gap-2 rounded-2xl border border-[#f3dfb3] bg-[var(--a-goldtint)] px-3 py-2 text-[14px] font-semibold text-foreground">
-                    <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-[var(--a-saffron)]" />{c}
+                  <li key={i} className="flex items-start gap-2 rounded-2xl border border-[#f3dfb3] bg-[var(--a-goldtint,#fff1d6)] px-3 py-2 text-[14px] font-semibold text-foreground">
+                    <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-[var(--a-saffron,#ea6a12)]" />{c}
                   </li>
                 ))}
               </ul>
@@ -271,17 +271,17 @@ export default function AiIdentity() {
     <div className="hfa-stack pb-24">
       <div className="grid gap-[clamp(12px,1.2vw,20px)] lg:grid-cols-[minmax(17rem,24rem)_minmax(0,1fr)]">
         {/* The laminated pehchaan card */}
-        <section aria-label="Assistant ID card" className="relative min-w-0 self-start overflow-hidden rounded-[28px] border-2 border-[#c7b6f5] bg-[linear-gradient(170deg,#fff_20%,var(--a-lavtint))] shadow-[0_18px_34px_-18px_rgba(74,23,71,.4)]">
+        <section aria-label="Assistant ID card" className="relative min-w-0 self-start overflow-hidden rounded-[28px] border-2 border-[#c7b6f5] bg-[linear-gradient(170deg,#fff_20%,var(--a-lavtint,#f1ebff))] shadow-[0_18px_34px_-18px_rgba(74,23,71,.4)]">
           <span className="pointer-events-none absolute -right-5 -top-6 z-0" aria-hidden="true"><Marigold size={104} tone={0} /></span>
           <div className="relative z-10 border-b-2 border-dashed border-[#c7b6f5] bg-[repeating-linear-gradient(135deg,#f1ebff_0_14px,#e6dcff_14px_28px)] px-5 py-3 pr-24">
-            <b className="font-dash text-[14px] font-black uppercase tracking-[.08em] text-[var(--a-lav)]">Pehchaan Patra · AI helper</b>
+            <b className="font-dash text-[14px] font-black uppercase tracking-[.08em] text-[var(--a-lav,#6d4fd0)]">Pehchaan Patra · AI helper</b>
           </div>
           <div className="relative z-10 grid justify-items-center gap-3 px-5 pb-5 pt-5 text-center">
-            <Avatar className="h-36 w-36 border-4 border-white shadow-[0_0_0_4px_var(--a-marigold)] sm:h-40 sm:w-40">
+            <Avatar className="h-36 w-36 border-4 border-white shadow-[0_0_0_4px_var(--a-marigold,#f59e0b)] sm:h-40 sm:w-40">
               {draft.avatar_url ? <AvatarImage src={draft.avatar_url} alt={`${draft.name} portrait`} /> : null}
-              <AvatarFallback className="bg-[var(--a-rani)] font-dash text-[56px] font-black text-white">{(draft.name.trim()[0] ?? 'A').toUpperCase()}</AvatarFallback>
+              <AvatarFallback className="bg-[var(--a-rani,#d81b72)] font-dash text-[56px] font-black text-white">{(draft.name.trim()[0] ?? 'A').toUpperCase()}</AvatarFallback>
             </Avatar>
-            <p className="max-w-full break-words font-dash text-[clamp(28px,20px+1.6vw,44px)] font-black leading-tight text-[var(--a-plum)]">{draft.name.trim() || 'Unnamed'}</p>
+            <p className="max-w-full break-words font-dash text-[clamp(28px,20px+1.6vw,44px)] font-black leading-tight text-[var(--a-plum,#4a1747)]">{draft.name.trim() || 'Unnamed'}</p>
             <div className="flex flex-wrap justify-center gap-2">
               {draft.enabled ? <DesiChip tone="tea">On the site</DesiChip> : <DesiChip tone="grey">Switched off</DesiChip>}
               <DesiChip tone="lav">AI helper</DesiChip>
@@ -296,7 +296,7 @@ export default function AiIdentity() {
               </Button>
             </div>
             <p className={cn(HINT, 'max-w-[240px]')}>The chat always labels her “AI helper”.</p>
-            <div className="flex w-full items-center justify-between gap-4 rounded-2xl border-2 border-white bg-[var(--a-goldtint)] p-3 text-left">
+            <div className="flex w-full items-center justify-between gap-4 rounded-2xl border-2 border-white bg-[var(--a-goldtint,#fff1d6)] p-3 text-left">
               <div className="min-w-0">
                 <p className={LABEL}>Show the assistant on the site</p>
                 <p className={HINT}>Switch her off and the chat bubble disappears for visitors.</p>
@@ -309,8 +309,8 @@ export default function AiIdentity() {
         <DesiCard title="Name & welcome" tone="rani" corner="hibiscus" note="What visitors see first.">
           <div className="grid gap-4">
             {!draft.flag_enabled && (
-              <div role="note" className="flex items-start gap-2 rounded-2xl border-2 border-dashed border-[var(--a-marigold)] bg-[var(--a-goldtint)] p-3 text-[14px] font-semibold text-foreground">
-                <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-[var(--a-saffron)]" />
+              <div role="note" className="flex items-start gap-2 rounded-2xl border-2 border-dashed border-[var(--a-marigold,#f59e0b)] bg-[var(--a-goldtint,#fff1d6)] p-3 text-[14px] font-semibold text-foreground">
+                <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-[var(--a-saffron,#ea6a12)]" />
                 Preeti is also switched off site-wide; ask Claude to turn on the preetiEnabled flag.
               </div>
             )}
@@ -334,11 +334,11 @@ export default function AiIdentity() {
                     <button
                       key={u} type="button" disabled={saving}
                       onClick={() => { void persist({ avatar_url: u }, 'Portrait saved').then(() => setCands([])); }}
-                      className="group overflow-hidden rounded-2xl border-4 border-white text-left shadow-[0_0_0_2px_var(--a-marigold)] transition-transform hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      className="group overflow-hidden rounded-2xl border-4 border-white text-left shadow-[0_0_0_2px_var(--a-marigold,#f59e0b)] transition-transform hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                       aria-label="Use this portrait"
                     >
                       <img src={u} alt="Generated portrait candidate" className="aspect-square w-full object-cover" loading="lazy" />
-                      <span className="block bg-[var(--a-goldtint)] px-2 py-2.5 text-center font-dashbody text-[14px] font-extrabold">Use this one</span>
+                      <span className="block bg-[var(--a-goldtint,#fff1d6)] px-2 py-2.5 text-center font-dashbody text-[14px] font-extrabold">Use this one</span>
                     </button>
                   ))}
                 </div>
@@ -354,7 +354,7 @@ export default function AiIdentity() {
         <div className="grid gap-4 md:grid-cols-3">
           {KINDS.map((k, ki) => (
             <div key={k.key} className={cn('grid content-start gap-2 rounded-3xl border-2 p-4', TINT[(['lav', 'gold', 'tea'] as const)[ki % 3]])}>
-              <p className="font-dash text-[17px] font-extrabold text-[var(--a-plum)]">{k.label}</p>
+              <p className="font-dash text-[17px] font-extrabold text-[var(--a-plum,#4a1747)]">{k.label}</p>
               {qr[k.key].map((v, i) => (
                 <div key={i} className="flex gap-1.5">
                   <Input className="h-11 bg-white" value={v} maxLength={60} aria-label={`${k.label} quick reply ${i + 1}`} onChange={(e) => setQr(k.key, qr[k.key].map((x, j) => (j === i ? e.target.value : x)))} />
@@ -398,7 +398,7 @@ export default function AiIdentity() {
 
       <BrandCard />
 
-      <div className="sticky bottom-[calc(var(--dash-tabbar-h,0px)+12px)] z-10 flex flex-wrap items-center gap-3 rounded-full border-2 border-white bg-[linear-gradient(120deg,var(--a-plum),#8a2b7d)] px-4 py-3 text-white shadow-[0_14px_30px_-12px_rgba(74,23,71,.6)] sm:bottom-4">
+      <div className="sticky bottom-[calc(var(--dash-tabbar-h,0px)+12px)] z-10 flex flex-wrap items-center gap-3 rounded-full border-2 border-white bg-[linear-gradient(120deg,var(--a-plum,#4a1747),#8a2b7d)] px-4 py-3 text-white shadow-[0_14px_30px_-12px_rgba(74,23,71,.6)] sm:bottom-4">
         <Button variant="accent" className="min-h-11 rounded-full" onClick={() => void save()} disabled={saving || !dirty}>
           {saving ? <Loader2 className="animate-spin" /> : <Save />} {saving ? 'Saving…' : 'Save changes'}
         </Button>

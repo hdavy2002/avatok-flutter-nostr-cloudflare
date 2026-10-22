@@ -32,10 +32,10 @@ function UserRow({ u, onBalance }: { u: AdminUserHit; onBalance: (uid: string, b
     setBusy(null);
   };
   return (
-    <div style={{ display: 'grid', gap: 10, padding: 16, borderRadius: 20, background: 'linear-gradient(160deg, #fff 30%, var(--a-teatint))', border: '1px solid #cfe9eb', borderLeft: '8px solid var(--a-peacock)' }}>
+    <div style={{ display: 'grid', gap: 10, padding: 16, borderRadius: 20, background: 'linear-gradient(160deg, #fff 30%, var(--a-teatint,#e3f5f6))', border: '1px solid #cfe9eb', borderLeft: '8px solid var(--a-peacock,#0e7c86)' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
         <strong style={{ fontSize: 'var(--fs-body)' }}>{u.name || 'No name'}{u.isHost && <DesiChip tone="gold" className="ml-2">Influencer{u.hostSlug ? ` · ${u.hostSlug}` : ''}</DesiChip>}</strong>
-        <strong className="hfa-amount" style={{ minWidth: 0, fontSize: 'var(--fs-big)', color: 'var(--a-peacock)' }}>Balance ₹{u.balanceRupees}</strong>
+        <strong className="hfa-amount" style={{ minWidth: 0, fontSize: 'var(--fs-big)', color: 'var(--a-peacock,#0e7c86)' }}>Balance ₹{u.balanceRupees}</strong>
       </div>
       <div style={{ ...T14, display: 'grid', gap: 2, wordBreak: 'break-all' }}>
         <span>{u.phone || 'No phone on file'}{u.phone && (u.whatsappVerified ? ' · WhatsApp verified' : ' · not verified')}</span>
@@ -81,7 +81,7 @@ function AdvancedUidForm() {
   };
   return (
     <details style={{ marginTop: 6 }}>
-      <summary style={{ ...T14, cursor: 'pointer', fontWeight: 800, minHeight: 44, display: 'flex', alignItems: 'center', color: 'var(--a-amber)' }}>Advanced: by user id</summary>
+      <summary style={{ ...T14, cursor: 'pointer', fontWeight: 800, minHeight: 44, display: 'flex', alignItems: 'center', color: 'var(--a-amber,#b45309)' }}>Advanced: by user id</summary>
       <form onSubmit={submit} style={{ display: 'grid', gap: 10, marginTop: 8 }}>
         <label style={{ ...T14, fontWeight: 800 }} htmlFor="cr-uid">User id (uid)</label>
         <input id="cr-uid" style={field} value={uid} onChange={(e) => setUid(e.target.value)} autoComplete="off" placeholder="user_…" />
@@ -179,7 +179,7 @@ function MarginsPanel() {
                   <tr key={c.id}>
                     <td>{dateIST(toMs(c.at ?? c.createdAt))}</td>
                     <td>{c.hostName || c.hostSlug || '—'}</td>
-                    <td style={{ color: 'var(--a-peacock)', fontWeight: 800 }}>{pn(c.chargePaise)}</td><td>{pn(c.hostPaise)}</td><td>{pn(c.phoneCostEstPaise)}</td><td>{pn(c.phoneCostActualPaise)}</td>
+                    <td style={{ color: 'var(--a-peacock,#0e7c86)', fontWeight: 800 }}>{pn(c.chargePaise)}</td><td>{pn(c.hostPaise)}</td><td>{pn(c.phoneCostEstPaise)}</td><td>{pn(c.phoneCostActualPaise)}</td>
                     <td>{pn(c.platformAfterActualPaise ?? c.platformEstPaise)}{c.platformAfterActualPaise != null ? ' (after actual phone cost)' : ''}</td>
                   </tr>
                 ))}
@@ -195,16 +195,16 @@ function MarginsPanel() {
 /** STD-PCO style call register: outcome colours the whole row, minutes shown as a big meter. */
 function outcomeOf(status: string): { tone: 'tea' | 'gold' | 'rani' | 'lav'; bg: string; edge: string } {
   const s = String(status || '').toLowerCase();
-  if (/(fail|miss|reject|declin|error|no.?answer|busy|cancel|expire)/.test(s)) return { tone: 'rani', bg: 'linear-gradient(100deg, #fff 30%, var(--a-blush))', edge: 'var(--a-rani)' };
-  if (/(complet|ended|done|finish|success|paid)/.test(s)) return { tone: 'tea', bg: 'linear-gradient(100deg, #fff 30%, var(--a-teatint))', edge: 'var(--a-peacock)' };
-  if (/(ring|connect|progress|live|active|pending|wait|start)/.test(s)) return { tone: 'gold', bg: 'linear-gradient(100deg, #fff 30%, var(--a-goldtint))', edge: 'var(--a-marigold)' };
-  return { tone: 'lav', bg: 'linear-gradient(100deg, #fff 30%, var(--a-lavtint))', edge: 'var(--a-lav)' };
+  if (/(fail|miss|reject|declin|error|no.?answer|busy|cancel|expire)/.test(s)) return { tone: 'rani', bg: 'linear-gradient(100deg, #fff 30%, var(--a-blush,#ffe6ef))', edge: 'var(--a-rani,#d81b72)' };
+  if (/(complet|ended|done|finish|success|paid)/.test(s)) return { tone: 'tea', bg: 'linear-gradient(100deg, #fff 30%, var(--a-teatint,#e3f5f6))', edge: 'var(--a-peacock,#0e7c86)' };
+  if (/(ring|connect|progress|live|active|pending|wait|start)/.test(s)) return { tone: 'gold', bg: 'linear-gradient(100deg, #fff 30%, var(--a-goldtint,#fff1d6))', edge: 'var(--a-marigold,#f59e0b)' };
+  return { tone: 'lav', bg: 'linear-gradient(100deg, #fff 30%, var(--a-lavtint,#f1ebff))', edge: 'var(--a-lav,#6d4fd0)' };
 }
 function CallRow({ c }: { c: AdminCall }) {
   const o = outcomeOf(c.status);
   return (
-    <article style={{ display: 'grid', gridTemplateColumns: 'auto minmax(0, 1fr)', gap: 'clamp(10px, 1.6vw, 22px)', alignItems: 'center', padding: '14px clamp(14px, 1.6vw, 22px)', borderRadius: 20, background: o.bg, border: '1px solid var(--a-line)', borderLeft: `8px solid ${o.edge}`, boxShadow: 'var(--a-shadow)' }}>
-      <div style={{ textAlign: 'center', minWidth: 76, padding: '8px 10px', borderRadius: 16, background: 'linear-gradient(150deg, var(--a-plum), #8a2b7d)', color: '#ffd166' }} aria-label={`Minutes billed: ${c.billedMinutes ?? 'none'}`}>
+    <article style={{ display: 'grid', gridTemplateColumns: 'auto minmax(0, 1fr)', gap: 'clamp(10px, 1.6vw, 22px)', alignItems: 'center', padding: '14px clamp(14px, 1.6vw, 22px)', borderRadius: 20, background: o.bg, border: '1px solid var(--a-line,#f1e3d6)', borderLeft: `8px solid ${o.edge}`, boxShadow: 'var(--a-shadow,0 10px 26px -14px rgba(74,23,71,.24))' }}>
+      <div style={{ textAlign: 'center', minWidth: 76, padding: '8px 10px', borderRadius: 16, background: 'linear-gradient(150deg, var(--a-plum,#4a1747), #8a2b7d)', color: '#ffd166' }} aria-label={`Minutes billed: ${c.billedMinutes ?? 'none'}`}>
         <div className="hfa-amount" style={{ color: '#ffd166', minWidth: 0 }}>{c.billedMinutes ?? '—'}</div>
         <div style={{ fontSize: 14, fontWeight: 700, color: '#fff' }}>min</div>
       </div>
@@ -215,9 +215,9 @@ function CallRow({ c }: { c: AdminCall }) {
         </div>
         <div className="hfa-note" style={{ overflowWrap: 'anywhere' }}>{dateIST(toMs(c.createdAt))} · Caller {c.callerUid || '—'}</div>
         <div style={{ display: 'flex', gap: '6px 18px', flexWrap: 'wrap', fontSize: 'var(--fs-small)', fontWeight: 700 }}>
-          <span style={{ color: 'var(--a-peacock)' }}>Charged {c.chargedPaise != null ? formatPaise(c.chargedPaise) : '—'}</span>
-          <span style={{ color: 'var(--a-lav)' }}>Influencer share {c.hostEarningPaise != null ? formatPaise(c.hostEarningPaise) : '—'}</span>
-          <span style={{ color: 'var(--a-muted)' }}>Ended by {c.endReason || '—'}</span>
+          <span style={{ color: 'var(--a-peacock,#0e7c86)' }}>Charged {c.chargedPaise != null ? formatPaise(c.chargedPaise) : '—'}</span>
+          <span style={{ color: 'var(--a-lav,#6d4fd0)' }}>Influencer share {c.hostEarningPaise != null ? formatPaise(c.hostEarningPaise) : '—'}</span>
+          <span style={{ color: 'var(--a-muted,#6f5b6f)' }}>Ended by {c.endReason || '—'}</span>
         </div>
       </div>
     </article>

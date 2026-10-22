@@ -12,11 +12,11 @@ export const TEXTAREA =
 
 /** Tinted tile surfaces (soft wash + matching border) for rows, tiles and bubbles. */
 export const TINT = {
-  rani: 'border-[#f6c2d8] bg-[linear-gradient(160deg,#fff,var(--a-blush))]',
-  lav: 'border-[#e4dafc] bg-[linear-gradient(160deg,#fff,var(--a-lavtint))]',
-  tea: 'border-[#cfe9eb] bg-[linear-gradient(160deg,#fff,var(--a-teatint))]',
-  gold: 'border-[#f3dfb3] bg-[linear-gradient(160deg,#fff,var(--a-goldtint))]',
-  cream: 'border-[var(--a-line)] bg-[var(--a-cream)]',
+  rani: 'border-[#f6c2d8] bg-[linear-gradient(160deg,#fff,var(--a-blush,#ffe6ef))]',
+  lav: 'border-[#e4dafc] bg-[linear-gradient(160deg,#fff,var(--a-lavtint,#f1ebff))]',
+  tea: 'border-[#cfe9eb] bg-[linear-gradient(160deg,#fff,var(--a-teatint,#e3f5f6))]',
+  gold: 'border-[#f3dfb3] bg-[linear-gradient(160deg,#fff,var(--a-goldtint,#fff1d6))]',
+  cream: 'border-[var(--a-line,#f1e3d6)] bg-[var(--a-cream,#fffaf3)]',
 } as const;
 export type TintKey = keyof typeof TINT;
 
@@ -30,12 +30,12 @@ export function Section({ title, children, aside, className, tone = 'cream', cor
   );
 }
 
-const CHIP_ON = 'border-[var(--a-plum)] bg-[var(--a-plum)] text-white';
+const CHIP_ON = 'border-[var(--a-plum,#4a1747)] bg-[var(--a-plum,#4a1747)] text-white';
 const CHIP_OFF: Record<'lav' | 'tea' | 'gold' | 'rani', string> = {
-  lav: 'border-[#e4dafc] bg-[var(--a-lavtint)] text-[var(--a-lav)] hover:bg-[#e6dcff]',
-  tea: 'border-[#cfe9eb] bg-[var(--a-teatint)] text-[var(--a-peacock)] hover:bg-[#d2eef0]',
-  gold: 'border-[#f3dfb3] bg-[var(--a-goldtint)] text-[var(--a-amber)] hover:bg-[#ffe8bd]',
-  rani: 'border-[#f6c2d8] bg-[var(--a-blush)] text-[var(--a-rani)] hover:bg-[#ffd6e5]',
+  lav: 'border-[#e4dafc] bg-[var(--a-lavtint,#f1ebff)] text-[var(--a-lav,#6d4fd0)] hover:bg-[#e6dcff]',
+  tea: 'border-[#cfe9eb] bg-[var(--a-teatint,#e3f5f6)] text-[var(--a-peacock,#0e7c86)] hover:bg-[#d2eef0]',
+  gold: 'border-[#f3dfb3] bg-[var(--a-goldtint,#fff1d6)] text-[var(--a-amber,#b45309)] hover:bg-[#ffe8bd]',
+  rani: 'border-[#f6c2d8] bg-[var(--a-blush,#ffe6ef)] text-[var(--a-rani,#d81b72)] hover:bg-[#ffd6e5]',
 };
 export function Chip({ active, onClick, children, tone = 'lav' }: { active: boolean; onClick: () => void; children: ReactNode; tone?: 'lav' | 'tea' | 'gold' | 'rani' }) {
   return (

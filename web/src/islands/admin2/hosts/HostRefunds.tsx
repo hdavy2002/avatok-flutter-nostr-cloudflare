@@ -89,7 +89,7 @@ function Row({ it, onDone }: { it: Item; onDone: () => void }) {
 
   return (
     <>
-      <div style={failed ? { borderRadius: 22, boxShadow: '0 0 0 3px var(--a-bad)' } : undefined}>
+      <div style={failed ? { borderRadius: 22, boxShadow: '0 0 0 3px var(--a-bad,#c0262d)' } : undefined}>
       <DesiSlip tone={tone} actions={actions}
         strip={`${play ? 'Google Play refund' : 'Refund'} · asked ${dateIST(it.createdAt)}`}
         stripRight={<span style={{ display: 'inline-flex', gap: 6, flexWrap: 'wrap' }}>
@@ -110,7 +110,7 @@ function Row({ it, onDone }: { it: Item; onDone: () => void }) {
               const bad = a.status === 'failed' || a.status === 'needs_check';
               const good = a.status === 'refunded' || a.status === 'manual';
               return (
-                <li key={`${a.topupId ?? 'manual'}-${i}`} style={{ padding: '10px 12px', borderRadius: 14, background: bad ? 'var(--a-blush)' : good ? 'var(--a-teatint)' : 'var(--a-goldtint)', border: bad ? '1.5px dashed #f2a9c8' : '1px solid var(--a-line)' }}>
+                <li key={`${a.topupId ?? 'manual'}-${i}`} style={{ padding: '10px 12px', borderRadius: 14, background: bad ? 'var(--a-blush,#ffe6ef)' : good ? 'var(--a-teatint,#e3f5f6)' : 'var(--a-goldtint,#fff1d6)', border: bad ? '1.5px dashed #f2a9c8' : '1px solid var(--a-line,#f1e3d6)' }}>
                   <strong>{rupees(a.rupees)}</strong> {a.topupId ? <>back to the payment <span className="hfa-note" style={{ wordBreak: 'break-all' }}>{a.topupId}</span></> : <strong>no payment to return it to: pay by hand</strong>} · {allocLabel[a.status]}
                   {a.error ? ` (${a.error})` : ''}{a.gatewayRefundId ? ` · ${a.gatewayRefundId}` : ''}
                   {(a.status === 'needs_check' || a.status === 'submitting') && a.topupId && open && (

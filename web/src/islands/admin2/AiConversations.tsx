@@ -94,7 +94,7 @@ function Bubble({ m }: { m: AdminAiMessage }) {
   // The customer never sees them; admins get a labelled, readable card instead of a raw pill.
   if (m.role === 'system' && m.text.startsWith('[summary] ')) {
     return (
-      <div className="mx-auto w-full max-w-[92%] rounded-2xl border-2 border-dashed border-[#c7b6f5] bg-[var(--a-lavtint)] px-3 py-2">
+      <div className="mx-auto w-full max-w-[92%] rounded-2xl border-2 border-dashed border-[#c7b6f5] bg-[var(--a-lavtint,#f1ebff)] px-3 py-2">
         <p className="text-[14px] font-extrabold uppercase tracking-[0.08em] text-muted-foreground">Chat summary · hidden from the customer</p>
         <p className="mt-1 whitespace-pre-line text-[14px] text-foreground">{m.text.slice('[summary] '.length)}</p>
       </div>
@@ -104,7 +104,7 @@ function Bubble({ m }: { m: AdminAiMessage }) {
     return (
       <p className={cn(
         'mx-auto w-fit max-w-[90%] break-words rounded-full px-3 py-1 text-center text-[14px] font-bold text-muted-foreground',
-        m.role === 'tool' ? 'border border-dashed border-[#f2a9c8] bg-transparent' : 'bg-[var(--a-goldtint)]',
+        m.role === 'tool' ? 'border border-dashed border-[#f2a9c8] bg-transparent' : 'bg-[var(--a-goldtint,#fff1d6)]',
       )}>
         {m.role === 'tool' ? `tool · ${m.tool_name ?? 'call'}${m.tool_summary || m.text ? ` — ${m.tool_summary ?? m.text}` : ''}` : m.text}
       </p>
@@ -116,11 +116,11 @@ function Bubble({ m }: { m: AdminAiMessage }) {
     <div className={cn('flex', mine ? 'justify-end' : note ? 'justify-center' : 'justify-start')}>
       <div className={cn(
         'max-w-[85%] whitespace-pre-wrap break-words rounded-3xl px-4 py-2.5 text-[15px] font-semibold leading-relaxed shadow-sm',
-        mine ? 'rounded-br-md border-2 border-[#e4dafc] bg-[var(--a-lavtint)] text-foreground' : note ? 'border-2 border-dashed border-[var(--a-marigold)] bg-[var(--a-goldtint)] text-foreground' : 'rounded-bl-md border-2 border-[#cfe9eb] bg-[var(--a-teatint)] text-foreground',
+        mine ? 'rounded-br-md border-2 border-[#e4dafc] bg-[var(--a-lavtint,#f1ebff)] text-foreground' : note ? 'border-2 border-dashed border-[var(--a-marigold,#f59e0b)] bg-[var(--a-goldtint,#fff1d6)] text-foreground' : 'rounded-bl-md border-2 border-[#cfe9eb] bg-[var(--a-teatint,#e3f5f6)] text-foreground',
       )}>
         {note && <span className="mb-0.5 block text-[14px] font-extrabold uppercase tracking-[0.08em] text-muted-foreground">Admin note</span>}
         {m.text}
-        {m.blocked && <span className="mt-1 block text-[14px] font-bold text-[var(--a-bad)]">Blocked by the safety filter</span>}
+        {m.blocked && <span className="mt-1 block text-[14px] font-bold text-[var(--a-bad,#c0262d)]">Blocked by the safety filter</span>}
         {m.cards.map((c, i) => <CardRow key={i} c={c} />)}
         <span className="mt-1 block text-right text-[14px] font-semibold opacity-70">{rowTime(m.created_at)}</span>
       </div>
@@ -181,8 +181,8 @@ function ChatPane({ id, onBack, onChanged, phone }: { id: string; onBack: () => 
   const wa = c.e164 ? c.e164.replace(/\D/g, '') : '';
 
   return (
-    <div className="flex h-full min-h-0 flex-col bg-[var(--a-cream)]">
-      <div className="flex items-center gap-3 bg-[linear-gradient(120deg,var(--a-plum),#8a2b7d)] px-3 py-3 text-white">
+    <div className="flex h-full min-h-0 flex-col bg-[var(--a-cream,#fffaf3)]">
+      <div className="flex items-center gap-3 bg-[linear-gradient(120deg,var(--a-plum,#4a1747),#8a2b7d)] px-3 py-3 text-white">
         {phone && <Button size="icon" variant="ghost" className="h-11 w-11 text-white hover:bg-white/15 hover:text-white" onClick={onBack} aria-label="Back to conversations"><ArrowLeft /></Button>}
         <DesiAvatar name={who(c)} seed={c.id} size={48} />
         <div className="min-w-0 flex-1">
@@ -191,13 +191,13 @@ function ChatPane({ id, onBack, onChanged, phone }: { id: string; onBack: () => 
           {c.email && <p className="truncate text-[14px] font-semibold opacity-90">{c.email}</p>}
         </div>
         {wa && (
-          <Button asChild variant="outline" className="min-h-11 rounded-full bg-white text-[var(--a-plum)]">
+          <Button asChild variant="outline" className="min-h-11 rounded-full bg-white text-[var(--a-plum,#4a1747)]">
             <a href={`https://wa.me/${wa}`} target="_blank" rel="noreferrer"><MessageCircle /> WhatsApp</a>
           </Button>
         )}
       </div>
 
-      <div className="flex flex-wrap items-center gap-2 border-b-2 border-dashed border-[#f1e3d6] bg-[var(--a-goldtint)] px-3 py-2">
+      <div className="flex flex-wrap items-center gap-2 border-b-2 border-dashed border-[#f1e3d6] bg-[var(--a-goldtint,#fff1d6)] px-3 py-2">
         <label htmlFor="conv-status" className="sr-only">Status</label>
         <select id="conv-status" value={c.status} disabled={busy} onChange={(e) => void patch({ status: e.target.value as ConvStatus })} className={SELECT}>
           {STATUSES.map((s) => <option key={s.key} value={s.key}>{s.label}</option>)}
@@ -211,7 +211,7 @@ function ChatPane({ id, onBack, onChanged, phone }: { id: string; onBack: () => 
         <div ref={end} />
       </div>
 
-      <div className="grid max-h-[45%] gap-3 overflow-y-auto border-t-2 border-dashed border-[#f2a9c8] bg-[var(--a-blush)] p-3">
+      <div className="grid max-h-[45%] gap-3 overflow-y-auto border-t-2 border-dashed border-[#f2a9c8] bg-[var(--a-blush,#ffe6ef)] p-3">
         <div className="grid gap-1.5">
           <label htmlFor="conv-note" className={LABEL}>Internal note <span className={HINT}>(only admins see it)</span></label>
           <textarea id="conv-note" rows={2} maxLength={1000} value={note} onChange={(e) => { setNote(e.target.value); setNoteDirty(true); }} className={TEXTAREA} />
@@ -316,8 +316,8 @@ export default function AiConversations() {
   const pickAgent = (k: AdminAiAgentFilter) => { setAgent(k); capture('admin_ai_conversations_filter', { agent: k, badge: badge || null, status: status || null }); };
 
   const list = (
-    <div className="flex h-full min-h-0 flex-col bg-[var(--a-cream)] md:border-r-2 md:border-dashed md:border-[#e4dafc]">
-      <div className="grid gap-2 border-b-2 border-dashed border-[#e4dafc] bg-[var(--a-lavtint)] p-3">
+    <div className="flex h-full min-h-0 flex-col bg-[var(--a-cream,#fffaf3)] md:border-r-2 md:border-dashed md:border-[#e4dafc]">
+      <div className="grid gap-2 border-b-2 border-dashed border-[#e4dafc] bg-[var(--a-lavtint,#f1ebff)] p-3">
         <div className="relative">
           <Search aria-hidden className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input type="search" value={q} maxLength={80} onChange={(e) => setQ(e.target.value)} placeholder="Search name, phone, email, UTR or text" aria-label="Search conversations" className="h-11 rounded-full bg-white pl-9" />
@@ -341,7 +341,7 @@ export default function AiConversations() {
                 <li key={c.id}>
                   <button
                     type="button" onClick={() => setSel(c.id)} aria-current={c.id === sel ? 'true' : undefined}
-                    className={cn('flex min-h-[64px] w-full flex-col gap-1 rounded-2xl border-2 px-3.5 py-3 text-left transition-transform hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring', TINT[(['lav', 'tea', 'gold', 'rani'] as const)[ci % 4]], c.id === sel && 'ring-[3px] ring-[var(--a-rani)]')}
+                    className={cn('flex min-h-[64px] w-full flex-col gap-1 rounded-2xl border-2 px-3.5 py-3 text-left transition-transform hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring', TINT[(['lav', 'tea', 'gold', 'rani'] as const)[ci % 4]], c.id === sel && 'ring-[3px] ring-[var(--a-rani,#d81b72)]')}
                   >
                     <span className="flex items-baseline gap-2">
                       <span className="min-w-0 flex-1 truncate font-dashbody text-[15px] font-extrabold text-foreground">{who(c)}</span>
@@ -370,9 +370,9 @@ export default function AiConversations() {
   if (!desktop) {
     return (
       <>
-        <div className="h-[calc(100dvh-15rem)] min-h-[420px] overflow-hidden rounded-[28px] border-2 border-[#e4dafc] shadow-[var(--a-shadow)]">{list}</div>
+        <div className="h-[calc(100dvh-15rem)] min-h-[420px] overflow-hidden rounded-[28px] border-2 border-[#e4dafc] shadow-[var(--a-shadow,0_10px_26px_-14px_rgba(74,23,71,.24))]">{list}</div>
         {sel && (
-          <div className="fixed inset-0 z-[60] bg-[var(--a-cream)] pt-[env(safe-area-inset-top,0px)] pb-[env(safe-area-inset-bottom,0px)]">
+          <div className="fixed inset-0 z-[60] bg-[var(--a-cream,#fffaf3)] pt-[env(safe-area-inset-top,0px)] pb-[env(safe-area-inset-bottom,0px)]">
             <ChatPane id={sel} phone onBack={() => setSel(null)} onChanged={onChanged} />
           </div>
         )}
@@ -380,10 +380,10 @@ export default function AiConversations() {
     );
   }
   return (
-    <div className="grid h-[calc(100vh-13rem)] min-h-[560px] grid-cols-[minmax(300px,380px)_1fr] overflow-hidden rounded-[28px] border-2 border-[#e4dafc] shadow-[var(--a-shadow)]">
+    <div className="grid h-[calc(100vh-13rem)] min-h-[560px] grid-cols-[minmax(300px,380px)_1fr] overflow-hidden rounded-[28px] border-2 border-[#e4dafc] shadow-[var(--a-shadow,0_10px_26px_-14px_rgba(74,23,71,.24))]">
       {list}
       {sel ? <ChatPane id={sel} phone={false} onBack={() => setSel(null)} onChanged={onChanged} /> : (
-        <div className="flex flex-col items-center justify-center bg-[var(--a-cream)]">
+        <div className="flex flex-col items-center justify-center bg-[var(--a-cream,#fffaf3)]">
           <DesiEmpty text="Pick a conversation on the left to read it." />
         </div>
       )}
