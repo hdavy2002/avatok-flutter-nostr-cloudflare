@@ -5,7 +5,7 @@
 import type { Env } from "../types";
 import { json, CORS } from "../util";
 import { requireUser, isFail } from "../authz";
-import { trackException } from "../hooks";
+import { track, trackException } from "../hooks";
 import { isAdminUid } from "../lib/preview";
 import { readConfig } from "./config";
 import { HF_CALL_APP } from "../lib/hf_calls_store";
@@ -73,6 +73,7 @@ async function receiptView(req: Request, env: Env, id: string): Promise<Response
   if (!r || r.uid !== u.uid) return err(404, "not_found", "Receipt not found.");
   const cfg = await cfgOf(env);
   const name = (await env.DB_META.prepare("SELECT display_name FROM users WHERE uid=?1").bind(u.uid).first<{ display_name: string | null }>().catch(() => null))?.display_name ?? null;
+  void track(env, u.uid, "hf_receipt_viewed", HF_CALL_APP, { outcome: "ok", kind: r.kind }); // [HF-FIX-WALLET-RECEIPTS-1]
   return new Response(renderReceiptHtml(r, supplierFrom(cfg), name), {
     status: 200,
     headers: { ...CORS, "content-type": "text/html; charset=utf-8", "cache-control": "private, no-store", "x-robots-tag": "noindex", "content-security-policy": "default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; img-src data:" },
