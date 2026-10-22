@@ -353,7 +353,8 @@ class _MainShellState extends State<MainShell> {
                           initialLocation: i == shell.currentIndex,
                         ),
                         child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
+                          // [HF-REEL-FOOTER-1] icons sit low in the bar: the room is above them
+                          mainAxisAlignment: MainAxisAlignment.end,
                           children: [
                             Icon(
                               shell.currentIndex == i
@@ -385,6 +386,7 @@ class _MainShellState extends State<MainShell> {
                                     : FontWeight.w700,
                               ),
                             ),
+                            const SizedBox(height: 7),
                           ],
                         ),
                       ),

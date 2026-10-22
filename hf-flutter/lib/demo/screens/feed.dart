@@ -2,7 +2,6 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/brand.dart';
 import '../../data/unplayable_reels.dart';
@@ -24,6 +23,7 @@ import '../state.dart';
 import '../theme.dart';
 import '../widgets.dart';
 import 'creator_page.dart';
+import 'original_post_page.dart';
 import 'sheets.dart';
 
 /// Reels feed: full-screen cards, swipe up/down. Presence controls instant calls; offline creators can still be booked.
@@ -606,6 +606,22 @@ class _ReelPageState extends State<ReelPage>
                   ),
                 ),
               ),
+            // [HF-REEL-ORIGINAL-1] bottom-left: the original post (Instagram / YouTube) in an in-app page with an X back
+            if (_originalUrl != null)
+              Positioned(
+                left: 8,
+                bottom: 15,
+                child: _action(
+                  _originalUrl!.host.contains('instagram')
+                      ? 'See this post on Instagram'
+                      : 'See this video on YouTube',
+                  Icons.info_outline_rounded,
+                  () => _whileCovered(
+                    () => OriginalPostPage.open(context, _originalUrl!),
+                  ),
+                  key: const ValueKey('reel-original'),
+                ),
+              ),
             Positioned(
               right: 8,
               bottom: 12,
@@ -744,7 +760,9 @@ class _ReelPageState extends State<ReelPage>
     IconData icon,
     VoidCallback? tap, {
     Color color = C.ivory,
+    Key? key,
   }) => Padding(
+    key: key,
     // [HF-REEL-CLEAN-1] bigger, darker circles: they sit right over Instagram's own side buttons and hide them
     padding: const EdgeInsets.symmetric(vertical: 3),
     child: IconButton(
@@ -799,12 +817,14 @@ class _ReelPageState extends State<ReelPage>
                   if (_originalUrl != null)
                     TextButton.icon(
                       key: const ValueKey('reel-open-original'),
-                      onPressed: () => unawaited(
-                        launchUrl(
-                          _originalUrl!,
-                          mode: LaunchMode.externalApplication,
-                        ).catchError((Object _) => false),
-                      ),
+                      onPressed: () {
+                        Navigator.of(sheetContext).pop();
+                        unawaited(
+                          _whileCovered(
+                            () => OriginalPostPage.open(context, _originalUrl!),
+                          ),
+                        );
+                      },
                       icon: const Icon(Icons.open_in_new_rounded),
                       label: Text(
                         _originalUrl!.host.contains('instagram')
