@@ -26,6 +26,9 @@ export type HfBookingSlot = {
   offsetMinutes: number;
 };
 
+/** [HF-BOOKING-UNIFY-1] Every booking is a 10-minute call (HF-REEL-19 / HF-REEL-28). The one length both the app and the web offer. */
+export const HF_BOOKING_MINUTES = 10;
+
 const MAX_RULES = 84;
 const MAX_EXCEPTIONS = 366;
 const MAX_DURATION_MINUTES = 24 * 60;

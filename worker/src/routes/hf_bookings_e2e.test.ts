@@ -265,10 +265,11 @@ describe("availability -> slots -> book -> gone -> cancel -> back (approval flag
     expect(p.status).toBe(200);
     // the app's slots endpoint reads the same rows
     expect((await slotsOf()).days[TOMORROW]).toEqual(["10:00", "10:30", "11:00", "11:30"]);
-    const web = await call(req("GET", "/api/hf/hosts/tara-sharma/availability?from=2026-10-24&to=2026-10-24&durationMinutes=30", null));
+    const web = await call(req("GET", "/api/hf/hosts/tara-sharma/availability?from=2026-10-24&to=2026-10-24&durationMinutes=10", null));
     expect(web.body.slots).toHaveLength(4);
+    expect(web.body.durationsMinutes).toEqual([10]);          // [HF-BOOKING-UNIFY-1] the product books 10 minutes only; extra lengths are not stored
     expect((await book(FAN, "10:30")).status).toBe(201);
-    const after = await call(req("GET", "/api/hf/hosts/tara-sharma/availability?from=2026-10-24&to=2026-10-24&durationMinutes=30", null));
+    const after = await call(req("GET", "/api/hf/hosts/tara-sharma/availability?from=2026-10-24&to=2026-10-24&durationMinutes=10", null));
     expect(after.body.slots.map((x) => x.startUtc)).not.toContain(new Date(at("10:30")).toISOString());
     // the web editor cannot move a paid booking out from under the fan
     const g2 = await call(req("GET", "/api/hosts/me/availability", HOST));
@@ -326,5 +327,129 @@ describe("booking approval ON: a pending request blocks the slot and is counted 
     expect(raw().prepare("SELECT status FROM hf_bookings WHERE id=?1").get(p4.body.booking.id).status).toBe("cancelled");
     expect(reservedOf(FAN2)).toBe(0);
     expect(occupancy("cancelled")).toBeGreaterThanOrEqual(3);
+  });
+});
+
+// [HF-BOOKING-UNIFY-1] One availability model for the app and the web: weekly rules + dated windows in the same row, each writer merges.
+describe("app and web share one availability schedule without destroying each other", () => {
+  beforeEach(() => seed(false));
+  const WEEKDAY = new Date(at("10:00")).getUTCDay();          // weekday of TOMORROW (Saturday)
+  const NEXT_WEEK = "2026-10-31";                             // the same weekday one week later
+  const webSched = (over = {}) => ({
+    timezone: "Asia/Kolkata", durationsMinutes: [10], slotIntervalMinutes: 30, bufferMinutes: 0, minNoticeMinutes: 60, horizonDays: 14,
+    rules: [{ weekday: WEEKDAY, startMin: 600, endMin: 720 }], exceptions: [], ...over,
+  });
+  async function webSave(over = {}) {
+    const g = await call(req("GET", "/api/hosts/me/availability", HOST));
+    const p = await call(req("PUT", "/api/hosts/me/availability", HOST, { schedule: { ...g.body.schedule, ...webSched(), ...over }, expectedVersion: g.body.schedule.version }));
+    expect(p.status).toBe(200);
+    return p.body.schedule;
+  }
+  async function appSave(days) {
+    const g = await call(req("GET", "/api/hf/hosts/me/availability", HOST));
+    const p = await call(req("PUT", "/api/hf/hosts/me/availability", HOST, { days, expectedVersion: g.body.version }));
+    return p;
+  }
+  const slotsLong = async () => (await call(req("GET", "/api/hf/hosts/tara-sharma/slots?from=2026-10-23&to=2026-11-02", null))).body;
+  const webSlots = async (date, duration = 10) => (await call(req("GET", `/api/hf/hosts/tara-sharma/availability?from=${date}&to=${date}&durationMinutes=${duration}`, null)));
+  const webTimes = async (date) => (await webSlots(date)).body.slots.map((x) => new Date(x.startUtc).toLocaleTimeString("en-GB", { timeZone: "Asia/Kolkata", hour: "2-digit", minute: "2-digit" }));
+
+  it("U1. a web schedule saved without the 10-minute length (older save) still yields slots in the app AND on the web", async () => {
+    const g = await call(req("GET", "/api/hosts/me/availability", HOST));
+    await call(req("PUT", "/api/hosts/me/availability", HOST, { schedule: { ...g.body.schedule, ...webSched() }, expectedVersion: g.body.schedule.version }));
+    raw().prepare("UPDATE hf_availability_schedules SET durations_json='[15,30]' WHERE host_uid=?1").run(HOST); // what an old save left in D1
+    expect((await slotsOf()).days[TOMORROW]).toEqual(["10:00", "10:30", "11:00", "11:30"]);
+    expect(await webTimes(TOMORROW)).toEqual(["10:00", "10:30", "11:00", "11:30"]);
+    expect((await webSlots(TOMORROW, 15)).status).toBe(400);   // only the product's length is offered
+    expect((await webSlots(TOMORROW, 15)).body.durationsMinutes).toEqual([10]);
+    expect((await book(FAN, "10:30")).status).toBe(201);        // and it can really be booked
+    // the app's own editor sees the weekly pattern as open times
+    expect((await call(req("GET", "/api/hf/hosts/me/availability", HOST))).body.days[TOMORROW].slots).toEqual(["10:00", "10:30", "11:00", "11:30"]);
+  });
+
+  it("U2. web-saved weekly rules show in the app slots; the app then saves and the weekly rules + settings survive", async () => {
+    const before = await webSave();
+    expect((await slotsLong()).days[NEXT_WEEK]).toEqual(["10:00", "10:30", "11:00", "11:30"]);
+    const p = await appSave({ [TOMORROW]: { open: true, slots: ["10:00", "11:00"] }, "2026-10-27": { open: true, slots: ["14:00"] } });
+    expect(p.status).toBe(200);
+    const after = (await call(req("GET", "/api/hosts/me/availability", HOST))).body.schedule;
+    expect(after.rules).toEqual(before.rules);                  // the weekly rules are not wiped
+    expect(after).toMatchObject({ slotIntervalMinutes: 30, bufferMinutes: 0, minNoticeMinutes: 60, timezone: "Asia/Kolkata", durationsMinutes: [10] });
+    expect(after.horizonDays).toBeGreaterThanOrEqual(14);
+    // what she marked in the app is exactly what every fan surface shows ...
+    const s = await slotsLong();
+    expect(s.days[TOMORROW]).toEqual(["10:00", "11:00"]);       // 10:30 + 11:30 switched off for that date only
+    expect(s.days["2026-10-27"]).toEqual(["14:00"]);
+    expect(await webTimes(TOMORROW)).toEqual(["10:00", "11:00"]);
+    expect(await webTimes("2026-10-27")).toEqual(["14:00"]);
+    // ... and next week's weekly pattern is untouched
+    expect(s.days[NEXT_WEEK]).toEqual(["10:00", "10:30", "11:00", "11:30"]);
+    expect(await webTimes(NEXT_WEEK)).toEqual(["10:00", "10:30", "11:00", "11:30"]);
+  });
+
+  it("U3. app-saved dated windows show on the web editor as date overrides, and a web save keeps them (and the app keeps the web's new rule)", async () => {
+    expect((await appSave({ [TOMORROW]: { open: true, slots: ["10:00", "11:00"] } })).status).toBe(200);
+    const g = await call(req("GET", "/api/hosts/me/availability", HOST));
+    expect(g.body.schedule.exceptions.filter((e) => e.date === TOMORROW && e.status === "available").map((e) => e.startMin)).toEqual([600, 660]);
+    expect(g.body.schedule.durationsMinutes).toEqual([10]);
+    // the web editor saves the whole schedule it loaded, plus a new weekly rule on Monday
+    const p = await call(req("PUT", "/api/hosts/me/availability", HOST, {
+      schedule: { ...g.body.schedule, rules: [{ weekday: 1, startMin: 900, endMin: 960 }] }, expectedVersion: g.body.schedule.version }));
+    expect(p.status).toBe(200);
+    const s = await slotsOf();
+    expect(s.days[TOMORROW]).toEqual(["10:00", "11:00"]);       // the app-made windows survived the web save
+    expect(s.days["2026-10-26"]).toEqual(["15:00", "15:10", "15:20", "15:30", "15:40", "15:50"]); // Monday rule; the schedule began in the app, so its grid is 10 minutes
+    expect(await webTimes(TOMORROW)).toEqual(["10:00", "11:00"]);
+    expect((await call(req("GET", "/api/hf/hosts/me/availability", HOST))).body.days[TOMORROW].slots).toEqual(["10:00", "11:00"]);
+  });
+
+  it("U4. a stale web editor cannot silently overwrite an app save (version check), and vice versa", async () => {
+    const g = await call(req("GET", "/api/hosts/me/availability", HOST));
+    expect((await appSave({ [TOMORROW]: { open: true, slots: ["10:00"] } })).status).toBe(200);
+    const stale = await call(req("PUT", "/api/hosts/me/availability", HOST, { schedule: { ...g.body.schedule, ...webSched() }, expectedVersion: g.body.schedule.version }));
+    expect(stale.status).toBe(409);
+    expect(stale.body.error).toBe("schedule_changed");
+    expect((await slotsOf()).days[TOMORROW]).toEqual(["10:00"]);
+  });
+
+  it("U5. booked and waiting times stay blocked across both surfaces, and an app save never frees or removes them", async () => {
+    await webSave();
+    expect((await book(FAN, "10:30")).status).toBe(201);
+    expect(await webTimes(TOMORROW)).toEqual(["10:00", "11:00", "11:30"]);
+    expect((await slotsOf()).days[TOMORROW]).toEqual(["10:00", "11:00", "11:30"]);
+    // she closes the whole day in the app: only the booked time stays on her calendar, nothing else is offered
+    const p = await appSave({ [TOMORROW]: { open: false, slots: [] } });
+    expect(p.status).toBe(200);
+    expect(p.body.days[TOMORROW].slots).toEqual(["10:30"]);
+    expect(p.body.booked[TOMORROW]).toEqual(["10:30"]);
+    expect((await slotsOf()).days[TOMORROW]).toBeUndefined();
+    expect(await webTimes(TOMORROW)).toEqual([]);
+    expect(raw().prepare("SELECT status FROM hf_bookings WHERE host_uid=?1").get(HOST).status).toBe("confirmed");
+    // a different fan cannot take it, and next week's pattern is still there
+    expect((await book(FAN2, "10:30")).status).toBe(409);
+    expect(await webTimes(NEXT_WEEK)).toEqual(["10:00", "10:30", "11:00", "11:30"]);
+    // the web editor cannot remove the booked time either
+    const g = await call(req("GET", "/api/hosts/me/availability", HOST));
+    const closed = await call(req("PUT", "/api/hosts/me/availability", HOST, { schedule: { ...g.body.schedule, rules: [], exceptions: [] }, expectedVersion: g.body.schedule.version }));
+    expect(closed.status).toBe(409);
+  });
+
+  it("U6. a pending request (approval on) blocks the slot on the app and the web alike", async () => {
+    flags({ hfBookingApprovalEnabled: true });
+    raw().prepare("UPDATE hf_hosts SET booking_approval='manual' WHERE uid=?1").run(HOST);
+    await webSave();
+    const b = await book(FAN, "11:00");
+    expect(b.body.booking.status).toBe("pending_approval");
+    expect((await slotsOf()).days[TOMORROW]).toEqual(["10:00", "10:30", "11:30"]);
+    expect(await webTimes(TOMORROW)).toEqual(["10:00", "10:30", "11:30"]);
+  });
+
+  it("U7. app times that sit back-to-back on a wider web grid are still shown exactly as marked", async () => {
+    await webSave();
+    const p = await appSave({ [TOMORROW]: { open: true, slots: ["10:00", "10:10", "10:20"] } });
+    expect(p.status).toBe(200);
+    expect((await slotsOf()).days[TOMORROW]).toEqual(["10:00", "10:10", "10:20"]);
+    expect(await webTimes(TOMORROW)).toEqual(["10:00", "10:10", "10:20"]);
+    expect(((await call(req("GET", "/api/hosts/me/availability", HOST))).body.schedule.rules)).toEqual(webSched().rules);
   });
 });

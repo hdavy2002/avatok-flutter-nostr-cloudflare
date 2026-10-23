@@ -80,9 +80,11 @@ describe("HF booking availability routes", () => {
       env,
     );
     expect(response?.status).toBe(200);
-    expect(await response!.json()).toEqual({ schedule: { ...schedule, version: 2 } });
+    // [HF-BOOKING-UNIFY-1] the product books 10-minute calls only, so whatever lengths the page sends are stored as [10]
+    const stored = { ...schedule, durationsMinutes: [10] };
+    expect(await response!.json()).toEqual({ schedule: { ...stored, version: 2 } });
     expect(bookingStore.saveHfBookingSchedule).toHaveBeenCalledWith(
-      env, "host-1", 1, "lease-1", schedule,
+      env, "host-1", 1, "lease-1", stored,
     );
     expect(bookingStore.releaseHfScheduleWriteLock).toHaveBeenCalledWith(env, "host-1", "lease-1");
   });

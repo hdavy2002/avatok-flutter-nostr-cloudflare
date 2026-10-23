@@ -13,7 +13,7 @@ const today = () => { const d = new Date(); return new Date(d.getFullYear(), d.g
 const iso = (d: Date) => [d.getFullYear(), String(d.getMonth() + 1).padStart(2, '0'), String(d.getDate()).padStart(2, '0')].join('-');
 const blank = (): AvailabilitySchedule => ({
   timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'Asia/Kolkata', version: 0,
-  durationsMinutes: [10, 15, 30, 45, 60], slotIntervalMinutes: 15, bufferMinutes: 10, minNoticeMinutes: 120,
+  durationsMinutes: [10], slotIntervalMinutes: 15, bufferMinutes: 10, minNoticeMinutes: 120,
   horizonDays: 60, rules: [], exceptions: [],
 });
 /** [HF-BOOKING-E2E-1] Bookings that still hold a time: confirmed, waiting for the influencer's yes, or happening now. */
@@ -132,8 +132,8 @@ export default function HostAvailability() {
     if (schedule.rules.some(r => r.startMin === r.endMin) || schedule.exceptions.some(e => e.startMin === e.endMin)) { setMessage('Check each time window. Start and end cannot match.'); return; }
     const needsConfirmation = legacyNeedsConfirmation && schedule.version === 0;
     if (needsConfirmation && !legacyAcknowledged) { setMessage('Confirm the influencer timezone for these legacy hours before saving.'); return; }
-    // Every booking in the app is a 10-minute call, so 10 must always be one of the lengths on offer.
-    const normalized = normalizeAvailabilitySchedule(schedule.durationsMinutes.includes(10) ? schedule : { ...schedule, durationsMinutes: [10, ...schedule.durationsMinutes] });
+    // [HF-BOOKING-UNIFY-1] Every booking, in the app and on the web, is a 10-minute call: that is the only length on offer.
+    const normalized = normalizeAvailabilitySchedule({ ...schedule, durationsMinutes: [10] });
     setSaving(true); setMessage(''); setStale(false);
     try {
       const next = await saveHostSchedule(normalized, schedule.version, needsConfirmation && legacyAcknowledged);
@@ -223,7 +223,7 @@ export default function HostAvailability() {
         <label className="hfb-label">Gap between appointments (minutes)<input className="hfb-input" type="number" min="0" max="120" value={schedule.bufferMinutes} onChange={e => setSchedule(s => ({ ...s, bufferMinutes: Number(e.target.value) }))} /></label>
         <label className="hfb-label">Booking horizon (days)<input className="hfb-input" type="number" min="1" max="60" value={schedule.horizonDays} onChange={e => setSchedule(s => ({ ...s, horizonDays: Number(e.target.value) }))} /></label>
       </div>
-      <label className="hfb-label">Appointment lengths (minutes)<input className="hfb-input" value={schedule.durationsMinutes.join(', ')} onChange={e => setSchedule(s => ({ ...s, durationsMinutes: e.target.value.split(',').map(Number).filter(n => n > 0 && n <= 240) }))} /></label>
+      <p className="hfb-muted">Every appointment is a 10-minute call, in the app and on the web. Times you mark in the app show here as date overrides.</p>
       <label className="hfb-label">Start interval (minutes)<input className="hfb-input" type="number" min="5" max="60" step="5" value={schedule.slotIntervalMinutes} onChange={e => setSchedule(s => ({ ...s, slotIntervalMinutes: Number(e.target.value) }))} /></label>
       <div className="hfb-actions"><button type="button" className="hfb-button hfb-primary" onClick={() => void save()} disabled={saving || stale}>{saving ? 'Saving…' : 'Save availability'}</button><button type="button" className="hfb-button" disabled={saving || !saved} onClick={() => { if (saved) { setSchedule(saved); setMessage('Unsaved changes reverted.'); } }}>Undo unsaved changes</button></div>
       <p className="hfb-muted">Version {schedule.version}. Saved appointments are never moved by calendar edits.</p>

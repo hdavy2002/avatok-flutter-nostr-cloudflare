@@ -7,7 +7,7 @@ import { capture } from '../../lib/analytics';
 import '../../styles/hf-bookings.css';
 import { BookingFeatureLoading, BookingUnavailable, useBookingFeature } from './BookingFeatureGate';
 
-const DEFAULT_DURATIONS = [10, 15, 30, 45, 60]; // replaced by the lengths this influencer really offers as soon as the server tells us
+const DEFAULT_DURATIONS = [10]; // replaced by the lengths this influencer really offers as soon as the server tells us
 const localDate = (date: Date) => [date.getFullYear(), String(date.getMonth() + 1).padStart(2, '0'), String(date.getDate()).padStart(2, '0')].join('-');
 const addDays = (key: string, days: number) => { const d = new Date(key + 'T12:00:00'); d.setDate(d.getDate() + days); return localDate(d); };
 const randomKey = () => globalThis.crypto?.randomUUID?.() ?? 'bk_' + Date.now() + '_' + Math.random().toString(36).slice(2);

@@ -24,7 +24,7 @@ import {
 import { readHfStdPlan, readHfTokenConfig } from "../lib/hf_token_config";
 import { callSplit, chargePaise, stdSplit } from "../lib/hf_token_math";
 import {
-  isCalendarDate, localDateAndMinute, slotsForDate, slotsForRange, isBookingDateRangeWithinHorizon,
+  isCalendarDate, localDateAndMinute, slotsForDate, slotsForRange, isBookingDateRangeWithinHorizon, validateHfBookingSchedule,
   type HfBookingException, type HfBookingSchedule,
 } from "../lib/hf_booking_availability";
 import {
@@ -160,19 +160,63 @@ export function materialize(schedule: HfBookingSchedule, now: number): DayMap {
   return out;
 }
 
-function toExceptions(days: DayMap): HfBookingException[] {
+/** The 10-minute starts a schedule opens on one date, counting only its weekly rules (exceptions ignored), no notice window. */
+function ruleStarts(schedule: HfBookingSchedule, date: string, now: number): Set<number> {
+  const s = { ...schedule, exceptions: [], durationsMinutes: [APP_MINUTES], minNoticeMinutes: 0 };
+  return new Set(slotsForDate(s, date, APP_MINUTES, [], now).map((x) => x.localStartMin));
+}
+const sameSet = (a: Set<number>, b: Set<number>) => a.size === b.size && [...a].every((m) => b.has(m));
+
+/** Dated exceptions that make `date` open exactly `want`, on top of the weekly rules: one 10-minute "available" window for each time the
+ *  rules do not give, and "unavailable" runs for each rule time she switched off. */
+function exceptionsForDate(base: Set<number>, want: Set<number>, date: string, interval: number): HfBookingException[] {
   const out: HfBookingException[] = [];
-  for (const date of [...days.keys()].sort()) {
-    const mins = [...days.get(date)!].sort((a, b) => a - b);
-    let start = mins[0], prev = mins[0];
-    for (let i = 1; i <= mins.length; i++) {
-      const m = mins[i];
-      if (m !== undefined && m === prev + APP_MINUTES) { prev = m; continue; }
-      out.push({ date, startMin: start, endMin: prev + APP_MINUTES, status: "available" });
-      start = m; prev = m;
-    }
+  for (const m of [...want].sort((a, b) => a - b)) {
+    if (base.has(m)) continue;
+    const prev = out[out.length - 1];
+    // On a 10-minute grid, back-to-back times are one continuous window (same slots, fewer rows); on a wider grid they must stay separate.
+    if (interval === APP_MINUTES && prev && prev.status === "available" && prev.endMin === m) prev.endMin = m + APP_MINUTES;
+    else out.push({ date, startMin: m, endMin: m + APP_MINUTES, status: "available" });
+  }
+  const step = Math.max(interval, APP_MINUTES);
+  const cuts = [...base].filter((m) => !want.has(m)).sort((a, b) => a - b);
+  let i = 0;
+  while (i < cuts.length) {
+    let j = i;
+    while (j + 1 < cuts.length && cuts[j + 1] === cuts[j] + interval) j++;
+    out.push({ date, startMin: cuts[i], endMin: Math.min(1440, cuts[j] + step), status: "unavailable" });
+    i = j + 1;
   }
   return out;
+}
+
+/** [HF-BOOKING-UNIFY-1] An app save MERGES into the shared schedule row instead of replacing it: weekly rules, timezone, buffer,
+ *  notice and every date the app did not touch survive; each date the app sent is rebuilt as dated exceptions on top of the rules so
+ *  slots come out exactly as marked. Returns null if the marks cannot be expressed (e.g. they overlap a blocked run). */
+export function mergeAppEdits(current: HfBookingSchedule, edits: DayMap, today: string, now: number): HfBookingSchedule | null {
+  const start: HfBookingSchedule = current.version === 0 ? baseSchedule(0, []) : { ...current, durationsMinutes: [APP_MINUTES] };
+  let horizon = start.horizonDays;
+  for (const [date, mins] of edits) {
+    if (!mins.size) continue;
+    let n = 0;
+    while (n < 60 && addDays(today, n) !== date) n++;
+    horizon = Math.max(horizon, n + 1); // never let a date she opened sit beyond what fans may book
+  }
+  // Try the schedule's own start interval first (keeps the website's pattern); an adjacent-times mark may need the 10-minute grid.
+  for (const interval of start.slotIntervalMinutes === APP_MINUTES ? [APP_MINUTES] : [start.slotIntervalMinutes, APP_MINUTES]) {
+    const draft: HfBookingSchedule = { ...start, slotIntervalMinutes: interval, horizonDays: Math.min(60, horizon), exceptions: [] };
+    const exceptions = start.exceptions.filter((e) => e.date >= today && !edits.has(e.date)); // past dates can never matter again
+    for (const [date, want] of edits) exceptions.push(...exceptionsForDate(ruleStarts(draft, date, now), want, date, interval));
+    const candidate: HfBookingSchedule = { ...draft, exceptions };
+    if (validateHfBookingSchedule(candidate).length) continue;
+    const open = { ...candidate, minNoticeMinutes: 0 };
+    let ok = true;
+    for (const [date, want] of edits) {
+      if (!sameSet(new Set(slotsForDate(open, date, APP_MINUTES, [], now).map((x) => x.localStartMin)), new Set([...want].filter((m) => slotsForDate({ ...open, exceptions: [{ date, startMin: m, endMin: m + APP_MINUTES, status: "available" }], rules: [] }, date, APP_MINUTES, [], now).length > 0)))) { ok = false; break; }
+    }
+    if (ok) return candidate;
+  }
+  return null;
 }
 
 async function bookedSlots(env: Env, hostUid: string, now: number, tz: string): Promise<Record<string, string[]>> {
@@ -216,12 +260,12 @@ async function availabilityRoute(req: Request, env: Env): Promise<Response> {
   }
   const today = localDateAndMinute(now, APP_TZ).date;
   const last = addDays(today, APP_HORIZON_DAYS - 1);
-  const next = materialize(current, now);
+  const edits: DayMap = new Map(); // [HF-BOOKING-UNIFY-1] only the dates the app sent; everything else in the stored schedule is left alone
   for (const [date, raw] of Object.entries(incoming as Record<string, unknown>)) {
     if (!isCalendarDate(date) || date < today || date > last) return err(400, "invalid_day", { date, message: `You can set dates from today up to ${APP_HORIZON_DAYS} days ahead.` });
     const d = raw as { open?: unknown; slots?: unknown } | null;
     if (!d || typeof d !== "object" || typeof d.open !== "boolean") return err(400, "invalid_day", { date });
-    if (!d.open) { next.delete(date); continue; }
+    if (!d.open) { edits.set(date, new Set()); continue; }
     if (!Array.isArray(d.slots) || d.slots.length > MAX_SLOTS_PER_DAY) return err(400, "invalid_slots", { date, message: `Pick up to ${MAX_SLOTS_PER_DAY} times a day.` });
     const mins = new Set<number>();
     for (const s of d.slots) {
@@ -229,7 +273,7 @@ async function availabilityRoute(req: Request, env: Env): Promise<Response> {
       if (m == null) return err(400, "invalid_slots", { date, slot: s });
       mins.add(m);
     }
-    if (mins.size) next.set(date, mins); else next.delete(date);
+    edits.set(date, mins);
   }
   // A slot someone has booked can't be closed until that booking is cancelled.
   const rows = (await env.DB_META.prepare(
@@ -240,13 +284,13 @@ async function availabilityRoute(req: Request, env: Env): Promise<Response> {
   for (const r of rows) {
     const l = localDateAndMinute(Number(r.starts_at), APP_TZ);
     if (l.date < today) continue;
-    const set = next.get(l.date) ?? new Set<number>();
-    set.add(l.minute);
-    next.set(l.date, set);
+    const set = edits.get(l.date);
+    if (set) set.add(l.minute);
   }
-  const exceptions = toExceptions(next);
-  if (exceptions.length > MAX_EXCEPTIONS) return err(400, "too_many_slots", { message: "That is too many separate times. Keep fewer times open." });
-  const schedule = baseSchedule(current.version, exceptions);
+  const merged = mergeAppEdits(current, edits, today, now);
+  if (!merged) return err(409, "schedule_conflict", { message: "Those times can't be combined with your weekly hours from the website. Change them on the website, or pick other times." });
+  if (merged.exceptions.length > MAX_EXCEPTIONS) return err(400, "too_many_slots", { message: "That is too many separate times. Keep fewer times open." });
+  const schedule = merged;
   const token = await acquireHfScheduleWriteLock(env, auth.uid, current.version, now);
   if (!token) return err(409, "schedule_changed", { message: "Your availability changed somewhere else. Reload it and try again." });
   try {

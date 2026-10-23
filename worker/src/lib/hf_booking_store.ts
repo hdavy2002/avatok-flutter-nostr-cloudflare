@@ -1,6 +1,7 @@
 import type { Env } from "../types";
 import { buildReleaseStatements, getReservation, relOpId } from "./hf_token_ledger";
 import {
+  HF_BOOKING_MINUTES,
   validateHfBookingSchedule,
   type HfBookingSchedule,
   type HfBusyInterval,
@@ -26,7 +27,7 @@ export function emptyHfBookingSchedule(timezone = DEFAULT_HF_BOOKING_TIMEZONE): 
   return {
     timezone,
     version: 0,
-    durationsMinutes: [15, 30, 45, 60],
+    durationsMinutes: [HF_BOOKING_MINUTES],
     slotIntervalMinutes: 15,
     bufferMinutes: 10,
     minNoticeMinutes: 120,
@@ -48,7 +49,9 @@ function fromRow(row: ScheduleRow): HfBookingSchedule {
   const schedule: HfBookingSchedule = {
     timezone: row.timezone,
     version: Number(row.version),
-    durationsMinutes: parseJson<number[]>(row.durations_json, "durations"),
+    // [HF-BOOKING-UNIFY-1] Normalised on read, nothing rewritten in D1: whatever lengths an older web save stored, the product books
+    // exactly one length (10 minutes), so a schedule saved without 10 still yields slots in the app and on the web.
+    durationsMinutes: [HF_BOOKING_MINUTES],
     slotIntervalMinutes: Number(row.slot_interval_min),
     bufferMinutes: Number(row.buffer_min),
     minNoticeMinutes: Number(row.min_notice_min),

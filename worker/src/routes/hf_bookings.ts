@@ -15,7 +15,7 @@ import { creatorCallSplit, creatorSnapshotFor, isCreatorCategory, validCreatorRa
 import { priceOf, snapshotFor, stdSnapshotFor, splitHostByKind } from "../lib/hf_token_calls";
 import { callSplit, chargePaise, stdSplit, formatRupees, planSpend, type Price } from "../lib/hf_token_math";
 import { availableLots, getLots, getReservation, hasOpenDebt, buildReservationStatements, buildReleaseStatements, resOpId, relOpId } from "../lib/hf_token_ledger";
-import { conflictsWithBusy } from "../lib/hf_booking_availability";
+import { conflictsWithBusy, HF_BOOKING_MINUTES } from "../lib/hf_booking_availability";
 import {
   isBookingDateRangeWithinHorizon,
   isCalendarDate,
@@ -90,7 +90,8 @@ async function scheduleRoute(req: Request, env: Env): Promise<Response> {
     return err(400, "invalid_schedule", { fields: ["expectedVersion", "schedule"] });
   }
   const expectedVersion = Number(body.expectedVersion);
-  const submitted = body.schedule as HfBookingSchedule;
+  // [HF-BOOKING-UNIFY-1] The product books one length only (10 minutes, HF-REEL-19), so whatever lengths a page sends, store exactly that.
+  const submitted = { ...(body.schedule as HfBookingSchedule), durationsMinutes: [HF_BOOKING_MINUTES] };
   let legacyHasHours = false;
   if (expectedVersion === 0) {
     try {

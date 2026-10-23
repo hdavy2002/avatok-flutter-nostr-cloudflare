@@ -24,6 +24,8 @@ type Headline = { kind: string; text: string; href?: string };
 type TickerIn = {
   online: { displayName: string; slug: string }[] | null; apptsToday: number | null | undefined; next: HfBooking | null; bal: number | null;
   pendingReviews: number | null | undefined; hostLive: boolean; hostPresence: HostPresence | null; receivedToday: number | null | undefined;
+  /** [HF-BOOKING-UNIFY-1] requests the person made that the influencer has not answered, and (as an influencer) requests waiting for her answer. */
+  myPending: HfBooking[]; hostWaiting: number | null | undefined;
 };
 
 function buildHeadlines(i: TickerIn): Headline[] {
@@ -39,6 +41,12 @@ function buildHeadlines(i: TickerIn): Headline[] {
   } else if (i.apptsToday && i.apptsToday > 0) {
     out.push({ kind: 'appointment', href: '/dashboard/appointments', text: `Sootron ke hawale se: aaj aapke ${i.apptsToday} appointment${i.apptsToday === 1 ? '' : 's'} hain` });
   }
+  if (i.myPending.length > 0) {
+    const p = i.myPending[0], who = p.hostName || 'influencer', more = i.myPending.length - 1;
+    out.push({ kind: 'appointment_pending', href: more > 0 ? '/dashboard/appointments' : `/bookings/${encodeURIComponent(p.id)}`,
+      text: `Abhi abhi: ${who}${more > 0 ? ` aur ${more} aur` : ' ke saath'} appointment request${more > 0 ? 's' : ''} waiting for approval — jawab aate hi bata denge` });
+  }
+  if (i.hostLive && i.hostWaiting && i.hostWaiting > 0) out.push({ kind: 'host_requests', href: '/dashboard/host/calendar', text: `Breaking: ${i.hostWaiting} request${i.hostWaiting === 1 ? '' : 's'} waiting for your answer — calendar kholo aur haan ya na bolo` });
   if (i.pendingReviews && i.pendingReviews > 0) out.push({ kind: 'rating', href: '/dashboard/calls?tab=rate', text: `Exclusive: ${i.pendingReviews} call${i.pendingReviews === 1 ? '' : 's'} aapki rating ka intezaar kar${i.pendingReviews === 1 ? 'i' : 'e'} hai` });
   if (i.bal != null && i.bal < MIN_CALL_PAISE) out.push({ kind: 'wallet_low', href: '/dashboard/wallet#add', text: `Abhi abhi: wallet mein sirf ${formatPaise(i.bal)} — call shuru karne ke liye kam se kam ${formatPaise(MIN_CALL_PAISE)} chahiye, top up karo` });
   else if (i.bal != null) out.push({ kind: 'wallet', href: '/dashboard/wallet', text: `Sootron ke hawale se: aapke wallet mein ${formatPaise(i.bal)} hain — baat shuru karne ke liye kaafi` });
@@ -56,9 +64,13 @@ export default function Overview({ account, bookingOn }: { account: DashboardAcc
   const delta = ins && ins.lastMonth.seconds > 0 ? (ins.month.seconds - ins.lastMonth.seconds) / ins.lastMonth.seconds : null;
   const hostLive = account.host?.status === 'live' && !account.closing;
   const [next, setNext] = useState<HfBooking | null>(null);
+  const [myPending, setMyPending] = useState<HfBooking[]>([]);
+  // [HF-BOOKING-UNIFY-1] The influencer's booking numbers are loaded once here so the ticker and the status card agree.
+  const [bs, setBs] = useState<BookingSummary | null>(null);
+  useEffect(() => { if (bookingOn && hostLive) void getBookingSummary().then(setBs).catch(() => undefined); }, [bookingOn, hostLive]);
   const [hostPresence, setHostPresence] = useState<HostPresence | null>(null);
   const headlines = buildHeadlines({ online, apptsToday: summary.data?.appointmentsToday, next, bal, pendingReviews: ins?.pendingReviews.length,
-    hostLive, hostPresence, receivedToday: summary.data?.callsToday.received });
+    hostLive, hostPresence, receivedToday: summary.data?.callsToday.received, myPending, hostWaiting: bs?.waitingCount });
   const tickKey = headlines.map(h => h.text).join('|');
 
   return <>
@@ -86,7 +98,7 @@ export default function Overview({ account, bookingOn }: { account: DashboardAcc
     </div>
 
     {account.closing && <aside className="h3-safe" style={{ background: 'var(--goldtint)' }}><div><h3>Your account is being closed.</h3><p className="small">Calling and profile editing are paused. <a href="/dashboard/close">Manage account closure</a></p></div></aside>}
-    {hostLive ? <HostPanel onPresence={setHostPresence} bookingOn={bookingOn} /> : account.host && !account.closing ? <section className="h3-card"><h2><Marigold size={20} />Your influencer profile</h2><p className="muted" style={{ marginTop: 6 }}>{STATUS_NOTE[account.host.status] ?? 'Your profile is not live yet.'}</p><a className="h3-btn" style={{ marginTop: 12 }} href="/dashboard/host">Continue my profile</a></section> : null}
+    {hostLive ? <HostPanel onPresence={setHostPresence} bookingOn={bookingOn} bs={bs} /> : account.host && !account.closing ? <section className="h3-card"><h2><Marigold size={20} />Your influencer profile</h2><p className="muted" style={{ marginTop: 6 }}>{STATUS_NOTE[account.host.status] ?? 'Your profile is not live yet.'}</p><a className="h3-btn" style={{ marginTop: 12 }} href="/dashboard/host">Continue my profile</a></section> : null}
 
     <section className="h3-kpis">
       <a className="h3-card h3-kpi k1" href="/dashboard/wallet"><div className="ic"><Ic name="wallet" className="" /></div><div className="lbl">Wallet balance</div>
@@ -104,7 +116,7 @@ export default function Overview({ account, bookingOn }: { account: DashboardAcc
     {(insights.failed || wallet.failed || summary.failed) && <Failed text="Some numbers could not load." onRetry={() => reload()} />}
 
     <section className="h3-row c21">
-      <Card title="Up next" note="Your booked time · times in IST" link={{ label: 'Calendar', href: '/dashboard/appointments' }}><UpNext enabled={bookingOn && !account.closing} uid={account.uid} onNext={setNext} /></Card>
+      <Card title="Up next" note="Your booked time · times in IST" link={{ label: 'Calendar', href: '/dashboard/appointments' }}><UpNext enabled={bookingOn && !account.closing} uid={account.uid} onNext={setNext} onPending={setMyPending} /></Card>
       <Card title="My Fraands right now" note="Online first · rose dot = free to talk" link={{ label: 'All fraands', href: '/dashboard/fraands' }} tone={1}>
         {favs.failed ? <Failed onRetry={() => reload('favs')} /> : !favs.data ? <Skel h={160} /> : favs.data.length === 0 ? <Empty text="No saved influencers yet. Tap the heart on someone you like."><a className="h3-btn sm rani" href="/marketplace">Find influencers</a></Empty> :
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>{[...favs.data].sort((a, b) => rank(a.presence) - rank(b.presence)).slice(0, 4).map(f =>
@@ -210,7 +222,7 @@ export function TalkChart({ days }: { days: { day: string; seconds: number; pais
 }
 
 /** Next confirmed appointment with a countdown, plus the two after it. */
-function UpNext({ enabled, uid, onNext }: { enabled: boolean; uid: string; onNext?: (b: HfBooking | null) => void }) {
+function UpNext({ enabled, uid, onNext, onPending }: { enabled: boolean; uid: string; onNext?: (b: HfBooking | null) => void; onPending?: (b: HfBooking[]) => void }) {
   const [rows, setRows] = useState<HfBooking[] | null>(null);
   const [failed, setFailed] = useState(false);
   const [now, setNow] = useState(Date.now());
@@ -222,7 +234,8 @@ function UpNext({ enabled, uid, onNext }: { enabled: boolean; uid: string; onNex
       .catch(() => setFailed(true));
   }, [enabled]);
   useEffect(load, [load, uid]);
-  useEffect(() => { onNext?.(rows && rows.length ? rows[0] : null); }, [rows, onNext]);
+  // The ticker's "appointment" line is the first booked call; requests still waiting for a yes get their own line.
+  useEffect(() => { onNext?.(rows?.find(r => r.status !== 'pending_approval') ?? null); onPending?.(rows ? rows.filter(r => r.status === 'pending_approval') : []); }, [rows, onNext, onPending]);
   useEffect(() => { const t = setInterval(() => setNow(Date.now()), 30_000); return () => clearInterval(t); }, []);
   if (!enabled) return <Empty text="Appointments open soon." />;
   if (failed) return <Failed onRetry={load} />;
@@ -244,11 +257,9 @@ function UpNext({ enabled, uid, onNext }: { enabled: boolean; uid: string; onNex
 }
 
 /** Live influencers: the online switch, today's calls and expected earnings (same rules as before, new look). */
-function HostPanel({ onPresence, bookingOn }: { onPresence?: (p: HostPresence) => void; bookingOn: boolean }) {
+function HostPanel({ onPresence, bookingOn, bs }: { onPresence?: (p: HostPresence) => void; bookingOn: boolean; bs: BookingSummary | null }) {
   const { summary } = useDash();
-  // [HF-BOOKING-E2E-1] The influencer's bird's-eye numbers: days that carry a booking and requests waiting for her answer.
-  const [bs, setBs] = useState<BookingSummary | null>(null);
-  useEffect(() => { if (bookingOn) void getBookingSummary().then(setBs).catch(() => undefined); }, [bookingOn]);
+  // [HF-BOOKING-E2E-1] The influencer's bird's-eye numbers (days that carry a booking, requests waiting for her answer) come in as `bs`.
   const [host, setHost] = useState<MeHost | null>(null);
   const [on, setOn] = useState(false);
   const [presence, setPresence] = useState<HostPresence>('offline');
