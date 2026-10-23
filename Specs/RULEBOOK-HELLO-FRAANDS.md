@@ -349,6 +349,27 @@ Plan: `Specs/PLAN-2026-10-20-HF-BOOKING-APPROVAL.md`.
 
 ---
 
+## 19. Influencer merch shop (owner 2026-10-23)
+
+Plan: https://claude.ai/artifact/4HoRBv7y836ptfESQg7ma3 · Build spec: `Specs/SPEC-2026-10-23-HF-MERCH.md`. Behind `hfMerchEnabled` / `hfMerchCheckoutEnabled` (both off until the owner says).
+
+| ID | Rule | Decision | Pages | Backend |
+|---|---|---|---|---|
+| HF-MERCH-1 | **Influencers sell print-on-demand T-shirts** made by Printrove: upload art, pick a shirt, place the art, set a markup, publish. T-shirts only at launch; one item per order (no cart) in v1. | ADOPTED | TODO | TODO |
+| HF-MERCH-2 | **Price = base + markup, all-in.** We quote a base price per size (Printrove print + shipping + optional admin buffer); the influencer adds one markup (minimum Rs 10). The fan pays one number with free delivery in India; no GST or delivery line at checkout. | ADOPTED | TODO | TODO |
+| HF-MERCH-3 | **Split: platform 40% of the markup, influencer 60%.** The platform absorbs GST on its share and the Cashfree fee (~3.5%); these never reduce the influencer's amount. Every number is frozen on the order when the fan pays. | ADOPTED | TODO | TODO |
+| HF-MERCH-4 | **New products wait for admin review** before they appear publicly (copyright / brand-logo risk). The influencer ticks "I own this art"; art is moderated on upload. | ADOPTED | TODO | TODO |
+| HF-MERCH-5 | **Every paid order waits for admin approval** before it goes to Printrove. The approval card shows the live Printrove cost next to the frozen base price and the split. If the live cost has risen so far that the platform would lose money, the order is rejected and refunded and the influencer is told to raise the price. | ADOPTED | TODO | TODO |
+| HF-MERCH-6 | **Fans pay from the wallet or by Cashfree** (UPI / card / net-banking). Refunds go back the way the fan paid. Terms + refund policy must be ticked. No returns; wrong or damaged item reported within 48 h of delivery with a photo is replaced or refunded by hand. | ADOPTED | TODO | TODO |
+| HF-MERCH-7 | **The influencer never sees the fan's contact or payment details**: no phone, email, full address, UPI, card or payment reference. Only first name, city, state and a blurred address line, masked on the server. | ADOPTED | TODO | TODO |
+| HF-MERCH-8 | **Influencer money is withdrawable 7 days after delivery** (setting), through the normal payout. A refunded order earns nothing. | ADOPTED | TODO | TODO |
+| HF-MERCH-9 | **Platform wallet**: the platform's 40%, the Cashfree fee and GST estimates and the Printrove amount owed are kept in a separate admin-only ledger, viewable per month and per influencer. | ADOPTED | TODO | TODO |
+| HF-MERCH-10 | **Tracking reaches everyone**: courier, AWB and tracking link show on the admin order, the influencer's order and the fan's order, and go to the fan by WhatsApp + email. | ADOPTED | TODO | TODO |
+| HF-MERCH-11 | **Public channel page is shareable and discoverable on auto**: `/h/<name>` and every live product carry structured data, are in the sitemaps and `llms.txt` as soon as they are live, and drop out when hidden. | ADOPTED | TODO | TODO |
+| HF-MERCH-12 | **Same features on web and app** for influencers (products, studio, orders) and fans (buy, my orders). | ADOPTED | TODO | TODO |
+
+---
+
 ## Implementation plan — public pages first (backend not ready)
 
 **Phase 1 — public pages (can do now):**
@@ -420,6 +441,7 @@ else, or come back later."
 
 | Date | Change |
 |---|---|
+| 2026-10-23 | HF-MERCH-SPEC-1 (owner): new section 19 — influencer merch shop on Printrove; base + markup pricing, 40/60 split of the markup with GST and Cashfree fee absorbed by the platform, admin review of products and approval of every order, wallet or Cashfree payment, masked buyer details, earnings withdrawable 7 days after delivery. |
 | 2026-10-22 | HF-TOPUP-GST-MINUS-1 (owner): top-up breakdown on web and app shows the GST as a minus line ("Your GST (18%) - Rs x") so the buyer sees what reaches the wallet; customer copy says GST is deducted from what you pay (HF-PAY-21). |
 | 2026-10-22 | HF-APP-DESI-1..14 (owner): new section 18 — every phone-app screen except the Reels feed redesigned in the dashboard's desi look, approved screen by screen (Me, Search, Favourites, profile, booking, call, call records, my bookings, wallet, top up, payment, withdraw, ID check, settings, help, influencer home/bar/status/bookings/availability, join, channels, splash, intro). |
 | 2026-10-20 | HF-BOOK-APPROVE-QA-1 (phone test): HF-BOOK-8 — Online by default, no auto-offline sweep; saving availability keeps booked/pending times open instead of refusing the save. |
