@@ -11212,5 +11212,20 @@
         "note": "A profile save reached the server; GET must then return the saved first/last name (checked live after deploy)."
       }
     ]
+  },
+  "HF-CLOSE-UPI-1": {
+    "description": "Web UPI setup + ID check for fans; closure retires and records the sub-rupee rest; held-earnings date shown and WhatsApped.",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [],
+    "success": [
+      {
+        "event": "hf_exit_rounding_retired",
+        "property": "value_paise",
+        "lt": 100,
+        "min_events": 1,
+        "note": "A closed account's sub-rupee wallet rest was retired once and recorded for reconciliation."
+      }
+    ]
   }
 }
