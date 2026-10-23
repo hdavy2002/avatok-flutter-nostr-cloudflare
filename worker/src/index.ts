@@ -435,7 +435,7 @@ export { IntroCheckWorkflow } from "./workflows/intro_check"; // [HF-VOICE-INTRO
 export default {
   async fetch(req: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const t0 = Date.now();
-    { const p0 = new URL(req.url).pathname; if (p0.startsWith("/api/hf/") || p0.startsWith("/api/admin/hf/") || p0.startsWith("/api/hosts/")) await hydrateKvSecrets(env); } // [HF-WIRE-18] TREG_API_KEY lives in KV (binding limit)
+    await hydrateKvSecrets(env); // [HF-WIRE-18] TREG_API_KEY lives in KV (binding limit); [HF-MERCH-PT-LOGIN-1] so does PRINTROVE_LOGIN, used by shop/merch/admin/order paths. Memoised 10 min per isolate: one cheap check per request.
     const traceId = req.headers.get("x-trace-id") || crypto.randomUUID();
     let res: Response;
     try {
@@ -469,6 +469,7 @@ export default {
   // runLivenessChecks already treats a missing req as "no edge geo" (see the
   // device ctx comment inside it), so this is a safe, already-handled case.
   async queue(batch: MessageBatch, env: Env): Promise<void> {
+    await hydrateKvSecrets(env); // [HF-MERCH-PT-LOGIN-1] queue consumers may reach Printrove (orders / catalogue)
     for (const msg of batch.messages) {
       try {
         if (batch.queue.startsWith("money-dlq")) {

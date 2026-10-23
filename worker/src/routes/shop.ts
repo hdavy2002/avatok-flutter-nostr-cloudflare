@@ -61,7 +61,7 @@ function parseSetting<T>(raw: string | null | undefined, fallback: T): T {
 }
 
 async function loadLive(env: Env): Promise<ProductRow[]> {
-  const r = await env.DB_META.prepare("SELECT * FROM shop_products WHERE status='live'").all<ProductRow>();
+  const r = await env.DB_META.prepare("SELECT * FROM shop_products WHERE status='live' AND seller_uid IS NULL").all<ProductRow>();
   return r.results ?? [];
 }
 
@@ -250,7 +250,7 @@ const parseSizesLower = (p: ProductRow) => sizeListOf(p).map((s) => s.toLowerCas
 // GET /api/shop/products/:slug
 // ---------------------------------------------------------------------------
 async function productBySlug(env: Env, slug: string): Promise<Response> {
-  const row = await env.DB_META.prepare("SELECT * FROM shop_products WHERE slug=?1 AND status='live'").bind(slug).first<ProductRow>();
+  const row = await env.DB_META.prepare("SELECT * FROM shop_products WHERE slug=?1 AND status='live' AND seller_uid IS NULL").bind(slug).first<ProductRow>();
   if (!row) return err(404, "not_found", "That T-shirt was not found.");
   const [liveRows, cols] = await Promise.all([loadLive(env), loadCollections(env)]);
   const cmap = collectionMap(cols);

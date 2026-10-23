@@ -11600,5 +11600,12 @@
       "hfMerchEnabled"
     ],
     "no_telemetry": "Server-side fallback; verified by GET /api/hf/merch/catalog returning 200 with items while the login secret is absent."
+  },
+  "HF-MERCH-PT-LOGIN-1": {
+    "description": "Owner enters the Printrove login on /admin/shop/partner (stored in KV, secret:PRINTROVE_LOGIN, hydrated for fetch, cron and queue); influencer merch products no longer appear in the house-shop admin and public lists.",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [],
+    "no_telemetry": "Admin-only save/remove of a server credential; deliberately sends no password or login detail to analytics. Verified by PUT /api/admin/v2/shop/partner/login returning connected:true."
   }
 }

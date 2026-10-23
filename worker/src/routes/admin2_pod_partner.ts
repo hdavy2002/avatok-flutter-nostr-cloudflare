@@ -2,13 +2,16 @@
 // automation settings. Contract: Specs/SPEC-2026-10-01-AUMFE-POD-STUDIO.md section 3 (Partner admin API). Registered by
 // routes/admin2.ts (ADMIN2_POD_PARTNER_ROUTES). Pattern: routes/admin2_shop_catalog.ts (guard, audit to DB_WALLET admin_audit,
 // safeTrack). Every route is under /api/admin/v2/shop/partner/ (+ catalog) and behind the admin guard; writes are audited + tracked.
-// Secrets are never returned: `configured` is a boolean only.
+// Secrets are never returned: `configured` is a boolean only. [HF-MERCH-PT-LOGIN-1] The Printrove login is entered here and kept in
+// KV (`secret:PRINTROVE_LOGIN`, the Worker is at the 128-binding limit); only the masked email and where it is stored are ever returned.
 import type { Env } from "../types";
 import { json } from "../util";
 import type { Admin2RouteDef } from "./admin2"; // type only: admin2.ts imports this file, a value import would be circular
 import { requireAdmin } from "./admin_money";
 import { track, trackException } from "../hooks";
 import { readConfig, writeConfigOverrides } from "./config";
+import { putKvSecret, deleteKvSecret, isRealWorkerSecret } from "../lib/kv_secrets";
+import { printroveLogin, clearPrintroveToken, maskEmail } from "../lib/pod/printrove";
 import {
   POD_PROVIDER_IDS, getPodProvider, podConnectionPeek, podProviderConfigured, PodError, ensurePodCatalog, syncCatalogToDb,
   type PodProviderId,
@@ -90,6 +93,13 @@ async function catalogStats(env: Env, provider: PodProviderId): Promise<{ count:
   }
 }
 
+/** [HF-MERCH-PT-LOGIN-1] What the admin page may know about the Printrove login: never the password. */
+function loginStatus(env: Env): { configured: boolean; email_masked: string | null; stored_in: "kv" | "secret" | null } {
+  const l = printroveLogin(env);
+  if (!l) return { configured: false, email_masked: null, stored_in: null };
+  return { configured: true, email_masked: maskEmail(l.email), stored_in: isRealWorkerSecret(env, "PRINTROVE_LOGIN") ? "secret" : "kv" };
+}
+
 // ---------------------------------------------------------------------------
 // GET partner
 // ---------------------------------------------------------------------------
@@ -101,12 +111,54 @@ async function getPartner(_req: Request, env: Env): Promise<Response> {
     provider,
     providers: POD_PROVIDER_IDS.map((id) => ({ id, ...PROVIDER_LABELS[id], configured: podProviderConfigured(env, id) })),
     connection,
+    login: loginStatus(env),
     auto_send: cfg.shopPodAutoSend === true,
     poll_minutes: cfg.shopPodPollMinutes,
     catalog,
     notify_buyer: true,
     alert_owner: true,
   }, 200, noStore);
+}
+
+// ---------------------------------------------------------------------------
+// PUT partner/login  { email, password }   DELETE partner/login        [HF-MERCH-PT-LOGIN-1]
+// The password is never returned, logged, tracked, audited or put in an error message.
+// ---------------------------------------------------------------------------
+async function putLogin(req: Request, env: Env, a: { uid: string }): Promise<Response> {
+  const body = await readBody(req, 4096);
+  if (body === null) return err(400, "invalid_input", "Send a small JSON body.");
+  const email = typeof body.email === "string" ? body.email.trim() : "";
+  const password = typeof body.password === "string" ? body.password : "";
+  if (!email || email.length > 200 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    return err(400, "invalid_input", "Enter the email address you use to log in to Printrove.", { field: "email" });
+  }
+  if (!password.trim() || password.length > 200) {
+    return err(400, "invalid_input", "Enter your Printrove password.", { field: "password" });
+  }
+  await putKvSecret(env, "PRINTROVE_LOGIN", JSON.stringify({ email, password }));
+  await clearPrintroveToken(env); // old bearer token belonged to the old login
+  const overridden = isRealWorkerSecret(env, "PRINTROVE_LOGIN");
+  const r = await (await getPodProvider(env, "printrove")).testConnection();
+  safeTrack(env, a.uid, "pod_partner_login_saved", { connected: r.ok });
+  await audit(env, a.uid, "pod_partner_login_save", "printrove", { email_masked: maskEmail(email), connected: r.ok });
+  const message = r.ok
+    ? "Login saved. Printrove accepted it."
+    : /rejected the login/i.test(r.message)
+      ? "Login saved, but Printrove did not accept that email and password. Check them and save again."
+      : `Login saved, but we could not confirm it with Printrove right now. ${r.message}`;
+  return json({
+    ok: true, connected: r.ok,
+    message: overridden ? `${message} Note: a server secret is also set and takes priority over this login.` : message,
+    login: loginStatus(env),
+  }, 200, noStore);
+}
+
+async function deleteLogin(_req: Request, env: Env, a: { uid: string }): Promise<Response> {
+  await deleteKvSecret(env, "PRINTROVE_LOGIN");
+  await clearPrintroveToken(env);
+  safeTrack(env, a.uid, "pod_partner_login_removed", {});
+  await audit(env, a.uid, "pod_partner_login_remove", "printrove", {});
+  return json({ ok: true, connected: false, message: "Login removed.", login: loginStatus(env) }, 200, noStore);
 }
 
 /** Body provider (to test/sync a partner before switching to it) or the one currently selected. */
@@ -200,6 +252,8 @@ export const ADMIN2_POD_PARTNER_ROUTES: Admin2RouteDef[] = [
   { method: "GET", path: `${BASE}/partner`, handler: guarded("pod_partner/get", (r, e) => getPartner(r, e)) },
   { method: "POST", path: `${BASE}/partner/test`, handler: guarded("pod_partner/test", testPartner) },
   { method: "POST", path: `${BASE}/partner/sync`, handler: guarded("pod_partner/sync", syncPartner) },
+  { method: "PUT", path: `${BASE}/partner/login`, handler: guarded("pod_partner/login", putLogin) },
+  { method: "DELETE", path: `${BASE}/partner/login`, handler: guarded("pod_partner/login_remove", deleteLogin) },
   { method: "PUT", path: `${BASE}/partner/settings`, handler: guarded("pod_partner/settings", putSettings) },
   { method: "GET", path: `${BASE}/catalog`, handler: guarded("pod_partner/catalog", (r, e) => getCatalog(r, e)) },
 ];

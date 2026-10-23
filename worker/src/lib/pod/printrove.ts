@@ -143,8 +143,8 @@ export class PrintroveProvider implements PodProvider {
     const login = printroveLogin(this.env);
     if (!login) {
       throw new PodError('not_configured', this.env.PRINTROVE_LOGIN?.trim()
-        ? 'PRINTROVE_LOGIN is not valid JSON. It must look like {"email":"...","password":"..."}.'
-        : 'Printrove login is not set. Add the Worker secret PRINTROVE_LOGIN = {"email":"...","password":"..."}.');
+        ? 'The saved Printrove login is not valid. Enter it again on the Print partner page.'
+        : 'Printrove login is not set. Enter it on the Print partner page in the admin.');
     }
     await throttle();
     let res: Response;
@@ -500,4 +500,18 @@ export async function peekPrintroveToken(env: Env): Promise<{ token_expires_at: 
   if (tokenMemo && tokenMemo.expires_at - TOKEN_REFRESH_BEFORE_MS > Date.now()) return { token_expires_at: tokenMemo.expires_at };
   const kv = (await env.TOKENS.get(TOKEN_KV_KEY, 'json')) as StoredToken | null;
   return kv && typeof kv.expires_at === 'number' && kv.expires_at - TOKEN_REFRESH_BEFORE_MS > Date.now() ? { token_expires_at: kv.expires_at } : null;
+}
+
+/** [HF-MERCH-PT-LOGIN-1] Forget the cached bearer token (isolate memo + KV) after the login changed or was removed. */
+export async function clearPrintroveToken(env: Env): Promise<void> {
+  tokenMemo = null;
+  tokenInflight = null;
+  try { await env.TOKENS.delete(TOKEN_KV_KEY); } catch { /* best-effort */ }
+}
+
+/** [HF-MERCH-PT-LOGIN-1] "hd•••@gmail.com": first two letters of the address, never the password. */
+export function maskEmail(email: string): string {
+  const at = email.indexOf('@');
+  if (at < 1) return '•••';
+  return `${email.slice(0, Math.min(2, at))}•••${email.slice(at)}`;
 }

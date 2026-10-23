@@ -1,13 +1,14 @@
 /* PartnerPanel — [AUMFE-POD-FULFIL-1 2026-10-01] /admin/shop/partner — replica of Specs/studio-mockup/PrintPartner.dc.html.
  * Talks to the partner API of AUMFE-POD-CORE-1 (spec §3): GET partner, POST partner/test, POST partner/sync, PUT partner/settings.
- * Deviations from the mockup (the API has no way to store a password, and the two message toggles are fixed on): the Printrove
+ * [HF-MERCH-PT-LOGIN-1] The login fields are now editable (PUT/DELETE partner/login, stored in KV on the server).
+ * Deviations from the mockup (and the two message toggles are fixed on): the Printrove
  * login fields are read-only ("kept on the server as secrets"), and "Message the buyer" / "Alert me on problems" show as always on. */
 import { useCallback, useEffect, useState } from 'react';
 import { capture, captureException } from '../../../lib/analytics';
 import { toast } from '../../../components/ui/sonner';
 import { LoadError, Spinner } from './ShopUI';
 import { DesiCard, DesiChip, DesiJourney, Marigold } from '../desi';
-import { dmyTime, errMessage, getPartner, putPartnerSettings, syncPartner, testPartner, type PartnerState } from './shopApi';
+import { dmyTime, errMessage, getPartner, putPartnerSettings, removePartnerLogin, savePartnerLogin, syncPartner, testPartner, type PartnerState } from './shopApi';
 import './shopAdmin.css';
 import './ordersPod.css';
 import './partnerPanel.css';
@@ -26,6 +27,9 @@ export default function PartnerPanel() {
   const [p, setP] = useState<PartnerState | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState('');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [loginMsg, setLoginMsg] = useState<{ ok: boolean; message: string } | null>(null);
   const [testMsg, setTestMsg] = useState<{ ok: boolean; message: string; token_expires_at?: number } | null>(null);
 
   const load = useCallback(async () => {
@@ -45,6 +49,39 @@ export default function PartnerPanel() {
     } catch (e) {
       captureException(e, { where: `admin2_pod_partner_${event}` });
       toast.error(errMessage(e, 'That did not save. Please try again.'));
+    } finally { setBusy(''); }
+  }
+
+  /* [HF-MERCH-PT-LOGIN-1] The password is sent once, never kept in state after saving, never sent to analytics. */
+  async function saveLogin() {
+    setBusy('login'); setLoginMsg(null);
+    try {
+      const r = await savePartnerLogin({ email: email.trim(), password });
+      capture('admin2_pod_partner_login_saved', { connected: r.connected });
+      setPassword(''); setEmail(''); setTestMsg(null);
+      setLoginMsg({ ok: r.connected, message: r.message });
+      (r.connected ? toast.success : toast.error)(r.message);
+      await load();
+    } catch (e) {
+      captureException(e, { where: 'admin2_pod_partner_login_save' });
+      const m = errMessage(e, 'The login did not save. Please try again.');
+      setLoginMsg({ ok: false, message: m });
+      toast.error(m);
+    } finally { setBusy(''); }
+  }
+
+  async function removeLogin() {
+    if (!window.confirm('Remove the saved Printrove login? Products cannot be approved and orders cannot be sent until you add it again.')) return;
+    setBusy('login_remove');
+    try {
+      const r = await removePartnerLogin();
+      capture('admin2_pod_partner_login_removed');
+      setTestMsg(null); setLoginMsg(null);
+      toast.success(r.message);
+      await load();
+    } catch (e) {
+      captureException(e, { where: 'admin2_pod_partner_login_remove' });
+      toast.error(errMessage(e, 'Could not remove the login.'));
     } finally { setBusy(''); }
   }
 
@@ -143,7 +180,7 @@ export default function PartnerPanel() {
             <span className={`pw-stamp ${stamp.cls}`}>{stamp.label}</span>
             <h3 className="pw-h">{printrove?.label ?? 'Printrove'}</h3>
             {usingPrintrove && <DesiChip tone="plum">Current partner</DesiChip>}
-            <p>{!printrove?.configured ? 'The login has not been added to the server yet.'
+            <p>{!printrove?.configured ? 'Add your Printrove login in the "Printrove account" box below.'
               : conn && !conn.ok ? conn.message
                 : expires ? `Login token valid till ${dmyTime(expires)}.` : 'Press Test connection to check the login.'}</p>
             <div className="pw-row">
@@ -166,9 +203,30 @@ export default function PartnerPanel() {
 
         <div className="hfa-row pw-trio">
           <DesiCard pattern="bahi" title="Printrove account">
-            <label className="pw-lbl">Login email<input className="pw-fld pw-line" disabled placeholder={printrove?.configured ? 'Saved on the server' : 'Not added yet'} /></label>
-            <label className="pw-lbl">Password<input className="pw-fld pw-line" type="password" disabled placeholder={printrove?.configured ? '••••••••••' : 'Not added yet'} /></label>
-            <p className="pw-small">Kept only on the server as a secret (PRINTROVE_LOGIN). Never shown on the website.</p>
+            {p.login?.configured && (
+              <p className="pw-small" role="status">
+                <DesiChip tone="tea">Saved</DesiChip> Logged in as <b>{p.login.email_masked}</b>
+                {p.login.stored_in === 'secret' ? ' (set on the server).' : '.'} The password is never shown.
+              </p>
+            )}
+            <form onSubmit={(e) => { e.preventDefault(); if (email.trim() && password) void saveLogin(); }} autoComplete="off">
+              <label className="pw-lbl">Login email
+                <input className="pw-fld pw-line" type="email" name="printrove-login-email" autoComplete="off" value={email} disabled={!!busy}
+                  placeholder={p.login?.configured ? 'Type a new email to change it' : 'The email you use on Printrove'} onChange={(e) => setEmail(e.target.value)} />
+              </label>
+              <label className="pw-lbl">Password
+                <input className="pw-fld pw-line" type="password" name="printrove-login-secret" autoComplete="new-password" value={password} disabled={!!busy}
+                  placeholder={p.login?.configured ? 'Type a new password to change it' : 'Your Printrove password'} onChange={(e) => setPassword(e.target.value)} />
+              </label>
+              <div className="pw-row">
+                <button type="submit" className="hfa-btn rani" disabled={!!busy || !email.trim() || !password}>{busy === 'login' ? 'Saving…' : 'Save login'}</button>
+                {p.login?.configured && p.login.stored_in === 'kv' && (
+                  <button type="button" className="hfa-btn ghost" disabled={!!busy} onClick={() => void removeLogin()}>{busy === 'login_remove' ? 'Removing…' : 'Remove login'}</button>
+                )}
+              </div>
+            </form>
+            {loginMsg && <p className="pw-small" role="status" style={{ color: loginMsg.ok ? undefined : '#b3261e' }}>{loginMsg.message}</p>}
+            <p className="pw-small">Kept only on the server. Never shown on the website.</p>
           </DesiCard>
           <DesiCard tone="lav" corner="jasmine" title="Catalogue" note="Products, colours, sizes and costs the partner offers. Studio only shows these.">
             <div className="pw-count"><span>{p.catalog.count}</span>products</div>

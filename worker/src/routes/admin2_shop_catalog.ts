@@ -170,7 +170,7 @@ async function collectionExists(env: Env, id: string): Promise<CollectionRow | n
 const listProducts = guarded("admin2.shop.products.list", async (req, env) => {
   const status = new URL(req.url).searchParams.get("status") ?? "all";
   const [rows, cols, promoted] = await Promise.all([
-    env.DB_META.prepare("SELECT * FROM shop_products ORDER BY updated_at DESC").all<ProductRow>(),
+    env.DB_META.prepare("SELECT * FROM shop_products WHERE seller_uid IS NULL ORDER BY updated_at DESC").all<ProductRow>(),
     allCollections(env),
     promotedMap(env),
   ]);
@@ -410,7 +410,7 @@ const collectionShape = (c: CollectionRow, count: number) => ({
 const listCollections = guarded("admin2.shop.collections.list", async (req, env) => {
   const [cols, counts] = await Promise.all([
     allCollections(env),
-    env.DB_META.prepare("SELECT collection_id, COUNT(*) AS n FROM shop_products WHERE status<>'archived' AND collection_id IS NOT NULL GROUP BY collection_id")
+    env.DB_META.prepare("SELECT collection_id, COUNT(*) AS n FROM shop_products WHERE seller_uid IS NULL AND status<>'archived' AND collection_id IS NOT NULL GROUP BY collection_id")
       .all<{ collection_id: string; n: number }>(),
   ]);
   const m = new Map((counts.results ?? []).map((r) => [r.collection_id, Number(r.n)]));
@@ -496,7 +496,7 @@ const getSlots = guarded("admin2.shop.slots.get", async (req, env) => {
   const slots: Record<string, string[]> = Object.fromEntries(SLOTS.map((s) => [s, [] as string[]]));
   for (const x of r.results ?? []) if (!isFlagSlot(x.slot)) (slots[x.slot] ??= []).push(x.product_id);
   // [SAATHUM-SHOP-EDITOR-2] New arrivals / Bestsellers come from the product flags.
-  const flagged = await env.DB_META.prepare("SELECT * FROM shop_products WHERE status<>'archived'").all<ProductRow>();
+  const flagged = await env.DB_META.prepare("SELECT * FROM shop_products WHERE seller_uid IS NULL AND status<>'archived'").all<ProductRow>();
   const rows = flagged.results ?? [];
   slots.new_arrivals = rows.filter((p) => flagOf(p.is_new)).sort((x, y) => Number(y.created_at) - Number(x.created_at)).map((p) => p.id);
   slots.bestsellers = rows.filter((p) => flagOf(p.is_bestseller)).sort((x, y) => Number(y.sold_count) - Number(x.sold_count)).map((p) => p.id);
@@ -510,7 +510,7 @@ const putSlot = guarded("admin2.shop.slots.put", async (req, env, a, [slot]) => 
   if (!ids || ids.length > 50 || new Set(ids).size !== ids.length) return bad([{ field: "product_ids", message: "Send up to 50 distinct product ids." }]);
   if (ids.length) {
     const r = await env.DB_META.prepare(
-      `SELECT id FROM shop_products WHERE status<>'archived' AND id IN (${ids.map((_, i) => `?${i + 1}`).join(",")})`,
+      `SELECT id FROM shop_products WHERE seller_uid IS NULL AND status<>'archived' AND id IN (${ids.map((_, i) => `?${i + 1}`).join(",")})`,
     ).bind(...ids).all<{ id: string }>();
     const found = new Set((r.results ?? []).map((x) => x.id));
     const missing = ids.filter((i) => !found.has(i));
@@ -569,7 +569,7 @@ async function validateSetting(env: Env, key: SettingKey, raw: unknown): Promise
   };
   const productExists = async (field: string, id: unknown): Promise<string | null> => {
     if (id === null || id === undefined || id === "") return null;
-    const hit = typeof id === "string" ? await env.DB_META.prepare("SELECT id FROM shop_products WHERE id=?1 AND status<>'archived'").bind(id).first() : null;
+    const hit = typeof id === "string" ? await env.DB_META.prepare("SELECT id FROM shop_products WHERE id=?1 AND seller_uid IS NULL AND status<>'archived'").bind(id).first() : null;
     if (!hit) { errors.push({ field, message: "That product does not exist." }); return null; }
     return String(id);
   };
@@ -671,7 +671,7 @@ async function defaultPageFromSettings(env: Env): Promise<PageData> {
   if (fb) {
     let pid = "";
     if (typeof fb.product_id === "string" && fb.product_id) {
-      const live = await env.DB_META.prepare("SELECT id FROM shop_products WHERE id=?1 AND status='live'").bind(fb.product_id).first();
+      const live = await env.DB_META.prepare("SELECT id FROM shop_products WHERE id=?1 AND seller_uid IS NULL AND status='live'").bind(fb.product_id).first();
       if (live) pid = fb.product_id;
     }
     // [SAATHUM-SHOP-EDITOR-2] The banner no longer needs a product; the page always has one (the mockup copy fills any empty field).

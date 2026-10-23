@@ -166,8 +166,15 @@ export interface PartnerState {
   provider: 'manual' | 'printrove';
   providers: { id: 'manual' | 'printrove'; label: string; supportsApi: boolean; configured: boolean }[];
   connection: { ok: boolean; message: string; token_expires_at?: number } | null;
+  login?: PartnerLogin; // [HF-MERCH-PT-LOGIN-1]
   auto_send: boolean; poll_minutes: number; catalog: { count: number; synced_at: number | null }; notify_buyer: boolean; alert_owner: boolean;
 }
+/** [HF-MERCH-PT-LOGIN-1] Never carries the password. */
+export interface PartnerLogin { configured: boolean; email_masked: string | null; stored_in: 'kv' | 'secret' | null }
+export const savePartnerLogin = (body: { email: string; password: string }) =>
+  adminApi<{ ok: boolean; connected: boolean; message: string; login: PartnerLogin }>(`${SHOP}/partner/login`, { method: 'PUT', body });
+export const removePartnerLogin = () =>
+  adminApi<{ ok: boolean; message: string; login: PartnerLogin }>(`${SHOP}/partner/login`, { method: 'DELETE' });
 export const getPartner = () => adminApi<PartnerState>(`${SHOP}/partner`);
 export const testPartner = () => adminApi<{ ok: boolean; message: string; token_expires_at?: number }>(`${SHOP}/partner/test`, { method: 'POST', body: {} });
 export const syncPartner = () => adminApi<{ count: number; synced_at: number }>(`${SHOP}/partner/sync`, { method: 'POST', body: {} });

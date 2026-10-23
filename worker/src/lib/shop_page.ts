@@ -294,7 +294,7 @@ export function resolvePage(data: PageData, snap: Snapshot): Resolved {
 
 export async function loadSnapshot(env: Env): Promise<Snapshot> {
   const [liveR, colR] = await Promise.all([
-    env.DB_META.prepare("SELECT * FROM shop_products WHERE status='live'").all<ProductRow>(),
+    env.DB_META.prepare("SELECT * FROM shop_products WHERE status='live' AND seller_uid IS NULL").all<ProductRow>(),
     env.DB_META.prepare("SELECT id, slug, name, blurb, image_url, sort, active FROM shop_collections WHERE active=1 ORDER BY sort ASC, name ASC").all<CollectionRow>(),
   ]);
   return { live: liveR.results ?? [], cols: colR.results ?? [] };
