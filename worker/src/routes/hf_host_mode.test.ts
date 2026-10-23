@@ -17,6 +17,10 @@ vi.mock("../hooks", async (orig) => ({ ...(await orig()), track: vi.fn(async () 
 vi.mock("../lib/whatsapp_notify", () => ({ verifiedWhatsAppNumber: vi.fn(async () => "+919876543210") }));
 vi.mock("../lib/hf_notify", async (orig) => ({ ...(await orig()), notifyHostOnline: async (_e: any, _c: any, uid: string) => { st.notified.push(uid); } }));
 vi.mock("../lib/hf_queue_store", () => ({
+  // [HF-CALL-MODES-INT] the route now also uses Lane B's pokeLine / hostQueueView / setQueuePaused: real ones (loaded lazily), against this SQL; no line DO is bound here, so they write directly
+  pokeLine: vi.fn(async () => null),
+  hostQueueView: async (...a: any[]) => (await vi.importActual<any>("../lib/hf_queue_store")).hostQueueView(...a),
+  setQueuePaused: async (...a: any[]) => (await vi.importActual<any>("../lib/hf_queue_store")).setQueuePaused(...a),
   closeQueue: vi.fn(async (_e: any, uid: string) => { st.closed.push(uid); return 0; }),
   notifyLineFree: vi.fn(async () => undefined),
   queueGate: vi.fn(async () => ({ waiting: 0, paused: false, open: false })),
@@ -127,7 +131,10 @@ describe("flag OFF keeps today's contract", () => {
     await releaseHost(env, H, "c1");
     expect(row()).toMatchObject({ presence: "online", presence_call_id: null });
     raw().prepare("UPDATE hf_hosts SET presence='offline'").run();
-    expect(await claimHost(env, H, "c2", { booked: true })).toBe(false);
+    expect(await claimHost(env, H, "c2")).toBe(false);
+    // [HF-CALL-MODES-INT] a BOOKED claim keeps the statement the booking start always used (claimLineForBooking): an Offline host's booked call still rings
+    expect(await claimHost(env, H, "c3", { booked: true })).toBe(true);
+    expect(row()).toMatchObject({ presence: "offline", presence_call_id: "c3" });
   });
   it("public cards carry no new keys", async () => {
     st.cfg = { hfCallsEnabled: true, hostsPublicEnabled: true };
@@ -263,6 +270,7 @@ describe("queue pause endpoints", () => {
     expect((await q("GET")).status).toBe(404);
     st.cfg = { ...ON, hfCallQueueEnabled: true };
     raw().prepare("INSERT INTO hf_user_registration(uid,username,first_name,last_name,terms_accepted_at,privacy_accepted_at,disclaimer_accepted_at,community_accepted_at,engagement_accepted_at,created_at) VALUES('f1','ravi','ravi','kumar',1,1,1,1,1,1)").run();
+    try { raw().prepare("INSERT INTO users(uid,display_name,created_at,updated_at) VALUES('f1','Ravi Kumar',1,1)").run(); } catch { /* shape differs */ }
     raw().prepare("INSERT INTO hf_call_queue(id,host_uid,fan_uid,seq,status,joined_at,updated_at) VALUES('q1',?1,'f1',1,'waiting',5,5)").run(H);
     const g = await (await q("GET")).json();
     expect(g).toEqual({ ok: true, waiting: 1, paused: false, entries: [{ position: 1, firstName: "Ravi", joinedAt: 5 }] });
