@@ -11279,5 +11279,20 @@
         "note": "Availability saves succeed from both editors; cross-surface behaviour covered by hf_bookings_e2e.test.ts U1-U7."
       }
     ]
+  },
+  "HF-WITHDRAW-1": {
+    "description": "User-facing Payout renamed Withdraw (web, worker texts, reels app strings); fans can withdraw their wallet to UPI on the web.",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [],
+    "success": [
+      {
+        "event": "hf_withdraw_submitted",
+        "property": "amount_rupees",
+        "gt": 0,
+        "min_events": 1,
+        "note": "A withdrawal request was created from the web Withdraw card."
+      }
+    ]
   }
 }
