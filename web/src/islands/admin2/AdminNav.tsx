@@ -141,6 +141,30 @@ function NavPill({ label, className }: { label?: string; className?: string }) {
  * on load any more (it cost ~0.9 s of worker time on every brand admin page that never shows shop numbers). The badge is refreshed
  * lazily, once per tab, only when the Shop group is actually opened on a shop page (that page's own fetch announces it). */
 const TO_PRINT_KEY = 'admin2:to-print';
+/** [HF-MERCH-ADMIN-REVIEW-2] Gold "N to approve" count on Approve merch; the products page announces it (same pattern as useToPrint). */
+const NEEDS_KEY = 'admin2:merch-needs';
+function useNeedsApproval(): number {
+  const [n, setN] = useState(() => {
+    try { return Number(sessionStorage.getItem(NEEDS_KEY)) || 0; } catch { return 0; }
+  });
+  useEffect(() => {
+    const on = (e: Event) => { const d = (e as CustomEvent<number>).detail; if (typeof d === 'number') setN(d); };
+    window.addEventListener('merch-admin:needs-approval', on);
+    return () => window.removeEventListener('merch-admin:needs-approval', on);
+  }, []);
+  return n;
+}
+function NeedsBadge({ className }: { className?: string }) {
+  const n = useNeedsApproval();
+  if (!n) return null;
+  return <span className={cn('hf-admin-navpill relative ml-auto rounded-full bg-grand-gold px-[7px] py-[3px] font-dash text-[14px] font-black leading-none text-foreground', className)}>{n} to approve</span>;
+}
+function NeedsDot() {
+  const n = useNeedsApproval();
+  if (n <= 0) return null;
+  return <span aria-hidden className="pointer-events-none absolute right-0.5 top-0.5 min-w-[18px] rounded-full bg-grand-gold px-1 text-center font-dash text-[14px] font-black leading-[18px] text-foreground">{n}</span>;
+}
+
 function useToPrint(_ready: boolean, _active: AdminKey): number {
   const [n, setN] = useState(() => {
     try { return Number(sessionStorage.getItem(TO_PRINT_KEY)) || 0; } catch { return 0; }
@@ -209,6 +233,7 @@ function Sidebar({ active, who, ready, toPrint }: { active: AdminKey; who: Who |
               <Icon className="relative h-[22px] w-[22px] shrink-0" strokeWidth={2.1} />
               <span className="relative min-w-0 flex-1">{it.label}</span>
               {it.key === 'shop-orders' && <PrintBadge n={toPrint} />}
+              {it.key === 'merch-products' && <NeedsBadge />}
               <NavPill label={it.pill} />
               {on && <span className="hf-admin-flw" aria-hidden="true"><Marigold size={22} tone={1} /></span>}
             </a>
@@ -269,6 +294,7 @@ function Rail({ active, toPrint }: { active: AdminKey; toPrint: number }) {
                   >
                     <Icon className="h-5 w-5" strokeWidth={2.2} />
                     {on && <span aria-hidden className="pointer-events-none absolute -left-3 top-2 bottom-2 w-1 rounded-r-full bg-grand-gold" />}
+                    {it.key === 'merch-products' && <NeedsDot />}
                     {it.key === 'shop-orders' && toPrint > 0 && (
                       <span aria-hidden className="pointer-events-none absolute right-0.5 top-0.5 min-w-[18px] rounded-full bg-grand-gold px-1 text-center font-dash text-[14px] font-black leading-[18px] text-foreground">{toPrint}</span>
                     )}
@@ -322,6 +348,7 @@ function MobileMenu({ active, who, toPrint }: { active: AdminKey; who: Who | nul
                   className={cn(row, 'hf-admin-navitem', cur ? 'is-on' : 'text-foreground')}>
                   <Icon className="h-5 w-5" strokeWidth={2.2} />{it.label}
                   {it.key === 'shop-orders' && <PrintBadge n={toPrint} />}
+                  {it.key === 'merch-products' && <NeedsBadge />}
                   <NavPill label={it.pill} />
                 </a>
               </Fragment>

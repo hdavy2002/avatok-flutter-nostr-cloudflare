@@ -11380,6 +11380,29 @@
       }
     ]
   },
+  "HF-MERCH-ADMIN-REVIEW-2": {
+    "description": "[HF-MERCH-ADMIN-REVIEW-2] /admin/merch/products becomes \"Approve merch\": a row list of influencer T-shirt designs (Needs approval first), each row slides open below itself with pictures, prices per size and checks, a full-screen picture viewer, and Approve / Reject / Hide. Menu entry renamed and shows how many designs wait. Web only, no new server routes.",
+    "shipped": "2026-10-23",
+    "two_sided": false,
+    "min_devices_on_build": 0,
+    "flags": [],
+    "success": [
+      {
+        "event": "merch_review_lightbox_opened",
+        "property": "product_id",
+        "exists": true,
+        "min_events": 1,
+        "note": "An admin opened the large picture of a design on Approve merch."
+      },
+      {
+        "event": "merch_product_review_clicked",
+        "property": "decision",
+        "exists": true,
+        "min_events": 1,
+        "note": "An admin pressed Approve, Reject or Hide on a design."
+      }
+    ]
+  },
   "HF-MERCH-CREATOR-WEB-1": {
     "description": "[HF-MERCH-CREATOR-WEB-1 2026-10-23] Influencer dashboard Merch screen /dashboard/merch (hosts only, behind hfMerchEnabled): summary strip, products grid with edit markup / hide / delete, 4-step New product wizard (upload art, pick shirt, place art with 300 DPI print file, price and publish) and an Orders list that slides open to money, masked buyer, courier and timeline. Calls /api/hf/merch/*.",
     "two_sided": false,

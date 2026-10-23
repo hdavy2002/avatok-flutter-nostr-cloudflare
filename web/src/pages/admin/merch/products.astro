@@ -1,10 +1,10 @@
 ---
-// [HF-MERCH-ADMIN-1] Merch products.
+// [HF-MERCH-ADMIN-1] Merch products. [HF-MERCH-ADMIN-REVIEW-2] now "Approve merch".
 export const prerender = false;
 import Admin2 from '../../../layouts/Admin2.astro';
 import MerchProducts from '../../../islands/admin2/merch/MerchProducts.tsx';
 ---
 
-<Admin2 title="Merch products" active="merch-products" subtitle="Review influencer designs before fans can buy them.">
+<Admin2 title="Approve influencer T-shirts" active="merch-products" subtitle="New designs wait here. Open one, look at the pictures, then approve it so fans can buy.">
   <MerchProducts client:load />
 </Admin2>

@@ -68,7 +68,7 @@ const ALL_ADMIN_NAV: AdminNavItem[] = [
   { key: 'host-phone-costs', label: 'Phone costs', short: 'Phone costs', href: '/admin/hosts/phone-costs', icon: ReceiptIndianRupee, group: 'Hosts' }, // [HF-VOBIZ-SPEND-1]
   // [HF-MERCH-ADMIN-1] Merch group (influencer merch shop). Keep contiguous.
   { key: 'merch-orders', label: 'Merch orders', short: 'Orders', href: '/admin/merch', icon: PackageCheck, group: 'Merch' },
-  { key: 'merch-products', label: 'Merch products', short: 'Designs', href: '/admin/merch/products', icon: Brush, group: 'Merch' },
+  { key: 'merch-products', label: 'Approve merch', short: 'Approve', href: '/admin/merch/products', icon: Brush, group: 'Merch' },
   { key: 'merch-settings', label: 'Merch settings', short: 'Merch settings', href: '/admin/merch/settings', icon: SlidersHorizontal, group: 'Merch' },
   { key: 'merch-wallet', label: 'Merch wallet', short: 'Merch wallet', href: '/admin/merch/wallet', icon: Landmark, group: 'Merch' },
   // [AUMFE-HELP-LEGAL-PREVIEW-1] Preview group: hidden-until-gateway help topics and legal sections (admin only).
