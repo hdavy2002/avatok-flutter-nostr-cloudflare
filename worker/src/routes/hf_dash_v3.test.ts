@@ -155,6 +155,27 @@ describe("profile, prefs, blocks, tickets", () => {
     expect((await call("DELETE", `/api/hf/blocks/${list.body.items[0].key}`)).status).toBe(200);
     expect((await call("GET", "/api/hf/blocks")).body.items).toEqual([]);
   });
+  it("[HF-BLOCK-PROFILE-1] blocks from a profile slug, idempotent, same effects and unblock", async () => {
+    db.exec(`INSERT INTO hf_hosts VALUES ('h1','riya','Riya','live'), ('u1','me','Me','live')`);
+    db.exec(`INSERT INTO hf_notify VALUES ('u1','h1',1,NULL)`);
+    db.exec(`INSERT INTO hf_favourites VALUES ('u1','h1',1)`);
+    expect((await call("POST", "/api/hf/blocks", {})).status).toBe(400);
+    expect((await call("POST", "/api/hf/blocks", { slug: "nobody" })).status).toBe(404);
+    expect((await call("POST", "/api/hf/blocks", { slug: "me" })).status).toBe(400);
+    const a = await call("POST", "/api/hf/blocks", { slug: "Riya", reason: "rude" });
+    expect(a.status).toBe(200);
+    expect(a.body.key).toMatch(/^[a-f0-9]{20}$/);
+    expect(db.prepare("SELECT COUNT(*) AS n FROM hf_notify").get().n).toBe(0);
+    expect(db.prepare("SELECT COUNT(*) AS n FROM hf_favourites").get().n).toBe(0);
+    const b = await call("POST", "/api/hf/blocks", { slug: "riya" });
+    expect(b.body.key).toBe(a.body.key);
+    expect(db.prepare("SELECT COUNT(*) AS n FROM hf_blocks").get().n).toBe(1);
+    const list = await call("GET", "/api/hf/blocks");
+    expect(list.body.items).toHaveLength(1);
+    expect(list.body.items[0]).toMatchObject({ key: a.body.key, name: "Riya", slug: "riya" });
+    expect((await call("DELETE", `/api/hf/blocks/${a.body.key}`)).status).toBe(200);
+    expect((await call("GET", "/api/hf/blocks")).body.items).toEqual([]);
+  });
   it("support ticket is stored and emailed", async () => {
     expect((await call("POST", "/api/hf/support/tickets", { topic: "wallet", message: "short" })).status).toBe(400);
     const r = await call("POST", "/api/hf/support/tickets", { topic: "wallet", message: "My top-up did not show up in the wallet." });

@@ -274,7 +274,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       onHeart: onHeart,
                       onShare: onShare,
                       // [HF-APP-PARITY-SAFETY] Report a person lives here; not on your own page
-                      onMore: realSlug == null || Services.instance.me?.hostSlug == realSlug ? null : () => unawaited(showSafetyMenu(context, profileName: who.name)),
+                      onMore: realSlug == null || Services.instance.me?.hostSlug == realSlug ? null : () => unawaited(showSafetyMenu(context, profileName: who.name, slug: realSlug)),
                     ),
                     if (prof != null) const ChannelPrivacyLine(),
                     if (prof != null && (prof.introAudioUrl ?? '').isNotEmpty)

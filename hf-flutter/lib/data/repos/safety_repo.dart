@@ -3,6 +3,7 @@ import '../api_client.dart';
 /// [HF-APP-PARITY-SAFETY] Report a person, block / unblock, and the influencer's hearts / waiting counts.
 ///   POST   /api/hf/reports            { contact, profile, call, details } -> { ok, id:"HF-R-XXXXXXXX" }   (worker/src/routes/hf_reports.ts)
 ///   POST   /api/hf/calls/:id/block    { reason } -> { ok }                                                 (worker/src/routes/hf_dash_v3.ts)
+///   POST   /api/hf/blocks             { slug, reason } -> { ok, key }     [HF-BLOCK-PROFILE-1] block from a profile, no call
 ///   GET    /api/hf/blocks             -> { ok, items:[{key,name,slug,at}] }
 ///   DELETE /api/hf/blocks/:key        -> { ok }
 ///   GET    /api/hf/me/summary         -> { ..., fraands:{ saved, newThisWeek, hearts, waiting } }  hearts / waiting are null for a fan
@@ -101,6 +102,14 @@ class SafetyRepo {
   /// Blocks the other person of one of your calls. They leave My Fraands and cannot call or book you.
   Future<void> block(String callId, {String reason = 'other'}) async {
     await _api.postJson('/api/hf/calls/${Uri.encodeComponent(callId)}/block', body: {'reason': reason});
+  }
+
+  /// [HF-BLOCK-PROFILE-1] Blocks a person from their profile (their page name, no call needed). Same effects as [block].
+  /// Returns the block key so the screen can offer Unblock at once; empty if the server did not send one.
+  Future<String> blockProfile(String slug, {String reason = 'other'}) async {
+    final j = await _api.postJson('/api/hf/blocks', body: {'slug': slug, 'reason': reason});
+    final k = j['key'];
+    return k is String ? k : '';
   }
 
   Future<List<BlockedPerson>> blocks() async {

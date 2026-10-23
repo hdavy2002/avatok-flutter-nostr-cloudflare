@@ -11932,5 +11932,9 @@
     "min_devices_on_build": 1,
     "flags": [],
     "no_telemetry": "Read-only counts on an existing screen; no new user action to assert in telemetry. Verified by opening Availability on the new build."
+  },
+  "HF-BLOCK-PROFILE-1": {
+    "description": "[HF-BLOCK-PROFILE-1] Block a person from their profile (POST /api/hf/blocks {slug}) and a Blocked people screen in Settings with Unblock; same block row and effects as blocking from a call.",
+    "no_telemetry": "Server already tracks hf_dash_block (now with source=profile) and hf_dash_unblock; the rest is client UI."
   }
 }

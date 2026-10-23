@@ -109,6 +109,19 @@ void main() {
       expect((api.bodies.single as Map)['reason'], 'rude');
     });
 
+    test('[HF-BLOCK-PROFILE-1] blockProfile posts the slug and returns the key', () async {
+      final api = _FakeApi((m, p, b) => {'ok': true, 'key': 'abc123'});
+      final key = await SafetyRepo(api).blockProfile('maya', reason: 'rude');
+      expect(api.calls.single, 'POST /api/hf/blocks');
+      expect(api.bodies.single, {'slug': 'maya', 'reason': 'rude'});
+      expect(key, 'abc123');
+    });
+
+    test('blockProfile without a key in the answer gives an empty key', () async {
+      final api = _FakeApi((m, p, b) => {'ok': true});
+      expect(await SafetyRepo(api).blockProfile('maya'), '');
+    });
+
     test('blocks list and unblock', () async {
       final api = _FakeApi((m, p, b) => m == 'GET'
           ? {'ok': true, 'items': [{'key': 'k1', 'name': 'Maya', 'slug': 'maya', 'at': 1}]}

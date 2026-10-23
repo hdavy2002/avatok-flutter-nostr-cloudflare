@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import 'screens/booking.dart';
+import 'screens/blocked_people.dart'; // [HF-BLOCK-PROFILE-1]
 import '../data/models/reel.dart';
 import '../data/services.dart';
 import 'screens/availability_real.dart'; // [HF-BOOK-APPROVE-6]
@@ -222,6 +223,11 @@ final router = GoRouter(
       path: '/settings/profile',
       builder: (_, __) => const EditProfileScreen(),
     ), // [HF-APP-PARITY-PROFILE]
+    GoRoute(
+      parentNavigatorKey: rootKey,
+      path: '/settings/blocked',
+      builder: (_, __) => const BlockedPeopleScreen(),
+    ), // [HF-BLOCK-PROFILE-1]
     GoRoute(
       parentNavigatorKey: rootKey,
       path: '/help',

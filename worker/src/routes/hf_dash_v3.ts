@@ -8,6 +8,7 @@
 //   PUT|PATCH /api/hf/me/prefs          { notifyWhatsapp?, apptReminders?, reelAlerts? } -> same (+ reelAlerts, default on; [HF-WIRE-2] PATCH and reelAlerts need hfFanSignupEnabled, else 403 feature_off)   (notifyWhatsapp false pauses every "Notify me" WhatsApp;
 //                                         apptReminders false stops the 1 h / 10 min appointment reminders, HF-APPT-REMIND-1)
 //   POST   /api/hf/calls/:id/block      { reason } -> { ok }   the other person of one of your calls; also files an incident for the team
+//   POST   /api/hf/blocks               { slug, reason? } -> { ok, key }   [HF-BLOCK-PROFILE-1] block a person from their channel page, no call needed; same row, same effects, idempotent
 //   GET    /api/hf/blocks               -> { ok, items:[{key,name,slug,at}] }
 //   DELETE /api/hf/blocks/:key          -> { ok }
 //   GET    /api/hf/support/tickets      -> { ok, items:[{id,topic,status,createdAt}] }
@@ -236,6 +237,29 @@ async function blockFromCall(req: Request, env: Env, uid: string, callId: string
   void track(env, uid, "hf_dash_block", APP, { reason, call_id: callId });
   return json({ ok: true }, 200, NO_STORE);
 }
+/** [HF-BLOCK-PROFILE-1] Block a host from their channel page (slug), with no call. Same hf_blocks row and cleanup as blockFromCall. */
+async function blockFromProfile(req: Request, env: Env, uid: string): Promise<Response> {
+  const lim = await rateLimit(env, `hfblock:${uid}`, 20, 3600);
+  if (lim) return lim;
+  const b = (await req.json().catch(() => ({}))) as { slug?: unknown; reason?: unknown };
+  const slug = typeof b.slug === "string" ? b.slug.trim().toLowerCase() : "";
+  if (!/^[a-z0-9_.-]{1,64}$/.test(slug)) return err(400, "invalid_field", "Which person?", { field: "slug" });
+  const reason = typeof b.reason === "string" && (BLOCK_REASONS as readonly string[]).includes(b.reason) ? b.reason : "other";
+  const h = await env.DB_META.prepare("SELECT uid FROM hf_hosts WHERE lower(slug)=?1").bind(slug).first<{ uid: string }>();
+  if (!h) return err(404, "not_found", "We couldn\u2019t find that person.");
+  if (h.uid === uid) return err(400, "cannot_block_self", "You can\u2019t block yourself.");
+  const other = h.uid;
+  const now = Date.now();
+  await env.DB_META.batch([
+    // IGNORE keeps the first block (and its call id / time) when this person is already blocked: repeat taps change nothing.
+    env.DB_META.prepare("INSERT OR IGNORE INTO hf_blocks (blocker_uid, blocked_uid, call_id, created_at) VALUES (?1,?2,NULL,?3)").bind(uid, other, now),
+    env.DB_META.prepare("DELETE FROM hf_notify WHERE caller_uid=?1 AND host_uid=?2").bind(uid, other),
+    env.DB_META.prepare("DELETE FROM hf_favourites WHERE uid=?1 AND host_uid=?2").bind(uid, other),
+  ]);
+  await dropBlockedEntries(env, uid).catch(() => 0);
+  void track(env, uid, "hf_dash_block", APP, { reason, call_id: null, source: "profile" });
+  return json({ ok: true, key: await blockKey(uid, other) }, 200, NO_STORE);
+}
 const blockKey = async (blocker: string, blocked: string) => (await sha256Hex(`hfblk:${blocker}:${blocked}`)).toLowerCase().slice(0, 20);
 async function listBlocks(env: Env, uid: string) {
   const rows = (await env.DB_META.prepare(
@@ -288,7 +312,7 @@ export async function hfDashV3Route(req: Request, env: Env, p: string): Promise<
   if (!isDashV3Path(p)) return null;
   const m = req.method;
   const allowed = (p === "/api/hf/me/insights" && m === "GET") || (p === "/api/hf/me/profile" && (m === "GET" || m === "PUT")) || (p === "/api/hf/me/prefs" && (m === "GET" || m === "PUT" || m === "PATCH"))
-    || (p === "/api/hf/blocks" && m === "GET") || (p === "/api/hf/support/tickets" && (m === "GET" || m === "POST"))
+    || (p === "/api/hf/blocks" && (m === "GET" || m === "POST")) || (p === "/api/hf/support/tickets" && (m === "GET" || m === "POST"))
     || (CALL_BLOCK_RE.test(p) && m === "POST") || (BLOCK_KEY_RE.test(p) && m === "DELETE");
   if (!allowed) return err(405, "method_not_allowed");
   let uid: string | undefined;
@@ -300,6 +324,7 @@ export async function hfDashV3Route(req: Request, env: Env, p: string): Promise<
     if (p === "/api/hf/me/profile") return m === "PUT" ? await putProfile(req, env, uid) : json(await readProfile(env, uid), 200, NO_STORE);
     if (p === "/api/hf/me/prefs") return await prefs(req, env, uid);
     if (p === "/api/hf/support/tickets") return await tickets(req, env, uid);
+    if (p === "/api/hf/blocks" && m === "POST") return await blockFromProfile(req, env, uid);
     if (p === "/api/hf/blocks") return json({ ok: true, items: (await listBlocks(env, uid)).map(({ blocked: _b, ...rest }) => rest) }, 200, NO_STORE);
     const cb = p.match(CALL_BLOCK_RE);
     if (cb) return await blockFromCall(req, env, uid, cb[1]);

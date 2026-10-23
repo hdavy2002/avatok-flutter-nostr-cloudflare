@@ -14,9 +14,12 @@ import 'theme.dart';
 
 /// The "..." button. 48dp tap target.
 class SafetyMenuButton extends StatelessWidget {
-  const SafetyMenuButton({super.key, required this.profileName, this.callId, this.repo, this.color});
+  const SafetyMenuButton({super.key, required this.profileName, this.callId, this.slug, this.repo, this.color});
 
   final String profileName;
+
+  /// [HF-BLOCK-PROFILE-1] The person's page name, so a profile (no call) can still offer Block.
+  final String? slug;
 
   /// The call this is about, or null on a profile.
   final String? callId;
@@ -31,14 +34,14 @@ class SafetyMenuButton extends StatelessWidget {
           message: 'More',
           child: InkResponse(
             radius: 26,
-            onTap: () => showSafetyMenu(context, profileName: profileName, callId: callId, repo: repo),
+            onTap: () => showSafetyMenu(context, profileName: profileName, callId: callId, slug: slug, repo: repo),
             child: SizedBox(width: 48, height: 48, child: Icon(Icons.more_horiz_rounded, color: color ?? C.maroon)),
           ),
         ),
       );
 }
 
-Future<void> showSafetyMenu(BuildContext context, {required String profileName, String? callId, SafetyRepo? repo}) {
+Future<void> showSafetyMenu(BuildContext context, {required String profileName, String? callId, String? slug, SafetyRepo? repo}) {
   return showModalBottomSheet<void>(
     context: context,
     backgroundColor: C.clear,
@@ -58,7 +61,7 @@ Future<void> showSafetyMenu(BuildContext context, {required String profileName, 
               showReportSheet(context, profileName: profileName, callId: callId, repo: repo);
             },
           ),
-          if (callId != null && callId.isNotEmpty)
+          if ((callId != null && callId.isNotEmpty) || (slug != null && slug.isNotEmpty))
             _MenuRow(
               icon: Icons.block_rounded,
               title: 'Block',
@@ -66,7 +69,7 @@ Future<void> showSafetyMenu(BuildContext context, {required String profileName, 
               danger: true,
               onTap: () {
                 Navigator.of(sheetContext).pop();
-                showBlockSheet(context, profileName: profileName, callId: callId, repo: repo);
+                showBlockSheet(context, profileName: profileName, callId: callId, slug: slug, repo: repo);
               },
             ),
         ]),
@@ -118,12 +121,12 @@ Future<void> showReportSheet(BuildContext context, {required String profileName,
   );
 }
 
-Future<void> showBlockSheet(BuildContext context, {required String profileName, required String callId, SafetyRepo? repo, VoidCallback? onBlocked}) {
+Future<void> showBlockSheet(BuildContext context, {required String profileName, String? callId, String? slug, SafetyRepo? repo, VoidCallback? onBlocked}) {
   return showModalBottomSheet<void>(
     context: context,
     backgroundColor: C.clear,
     isScrollControlled: true,
-    builder: (_) => BlockSheet(profileName: profileName, callId: callId, repo: repo, onBlocked: onBlocked),
+    builder: (_) => BlockSheet(profileName: profileName, callId: callId, slug: slug, repo: repo, onBlocked: onBlocked),
   );
 }
 
@@ -275,10 +278,13 @@ class _ReportSheetState extends State<ReportSheet> {
 
 /// Asks once, then blocks.
 class BlockSheet extends StatefulWidget {
-  const BlockSheet({super.key, required this.profileName, required this.callId, this.repo, this.onBlocked});
+  const BlockSheet({super.key, required this.profileName, this.callId, this.slug, this.repo, this.onBlocked});
 
   final String profileName;
-  final String callId;
+
+  /// Block by call (call records) or by [slug] (profile, [HF-BLOCK-PROFILE-1]); one of the two is given.
+  final String? callId;
+  final String? slug;
   final SafetyRepo? repo;
   final VoidCallback? onBlocked;
 
@@ -299,14 +305,45 @@ class _BlockSheetState extends State<BlockSheet> {
       _error = null;
     });
     try {
-      await _repo.block(widget.callId);
+      final callId = widget.callId;
+      final slug = widget.slug;
+      var key = '';
+      if (callId != null && callId.isNotEmpty) {
+        await _repo.block(callId);
+      } else if (slug != null && slug.isNotEmpty) {
+        key = await _repo.blockProfile(slug);
+      } else {
+        return;
+      }
       if (!mounted) return;
       widget.onBlocked?.call();
       final messenger = ScaffoldMessenger.of(context);
+      final repo = _repo;
+      final name = widget.profileName;
       Navigator.of(context).pop();
+      // [HF-BLOCK-PROFILE-1] Show it, and offer Unblock at once when the server gave us the key.
       messenger
         ..hideCurrentSnackBar()
-        ..showSnackBar(SnackBar(content: Text('${widget.profileName} is blocked.')));
+        ..showSnackBar(SnackBar(
+          content: Text('$name is blocked.'),
+          action: key.isEmpty
+              ? null
+              : SnackBarAction(
+                  label: 'Unblock',
+                  onPressed: () async {
+                    try {
+                      await repo.unblock(key);
+                      messenger
+                        ..hideCurrentSnackBar()
+                        ..showSnackBar(SnackBar(content: Text('$name is unblocked.')));
+                    } catch (e) {
+                      messenger
+                        ..hideCurrentSnackBar()
+                        ..showSnackBar(SnackBar(content: Text(e is ApiException ? e.userMessage : ApiException.genericText)));
+                    }
+                  },
+                ),
+        ));
     } catch (e) {
       if (mounted) setState(() => _error = e is ApiException ? e.userMessage : ApiException.genericText);
     } finally {

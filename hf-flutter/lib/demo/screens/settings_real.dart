@@ -189,6 +189,11 @@ class _RealSettingsScreenState extends State<RealSettingsScreen> {
                     SettingsCard(title: 'Call queue', tone: DesiTone.gold, children: const [HostQueueSettingsRows()]),
                   ],
                   const SizedBox(height: 12),
+                  // [HF-BLOCK-PROFILE-1] who you blocked, with Unblock
+                  SettingsCard(title: 'Safety', tone: DesiTone.rani, children: [
+                    SettingsRow(icon: Icons.block_rounded, tone: DesiTone.rani, label: 'Blocked people', last: true, onTap: () => context.push('/settings/blocked')),
+                  ]),
+                  const SizedBox(height: 12),
                   SettingsCard(title: 'WhatsApp messages', tone: DesiTone.tea, flower: true, children: [
                     if (_prefsFailed)
                       Padding(
