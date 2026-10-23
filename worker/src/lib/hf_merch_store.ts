@@ -95,11 +95,12 @@ export async function openOrdersForProduct(env: Env, productId: string): Promise
 export type ProductShape = {
   id: string; slug: string; title: string; description: string; status: "pending" | "live" | "rejected" | "hidden"; reviewNote: string | null;
   imageUrl: string | null; mockups: string[]; catalogName: string; colours: Array<{ name: string; hex: string }>;
-  sizes: Array<{ size: string; basePaise: number; pricePaise: number; youEarnPaise: number; printingPaise: number; shippingPaise: number; bufferPaise: number }>;
+  /** pricePaise is GST-inclusive; youEarnPaise is the design royalty; maxMarkupRupees is present when the cap is passed in. */
+  sizes: Array<{ size: string; basePaise: number; pricePaise: number; youEarnPaise: number; printingPaise: number; shippingPaise: number; bufferPaise: number; maxMarkupRupees?: number }>;
   /** true when the printing / shipping split was worked back from today's shipping quote because the product predates the frozen breakdown. */
   breakdownEstimated: boolean; markupRupees: number; soldCount: number; publicUrl: string; createdAt: number;
 };
-export function productShape(row: MerchProductRow, host: Pick<MerchHost, "slug">, shareBps: number, legacyShipPaise = 0): ProductShape {
+export function productShape(row: MerchProductRow, host: Pick<MerchHost, "slug">, shareBps: number, legacyShipPaise = 0, capPaise?: number): ProductShape {
   const m = productMerch(row);
   const mockups = m?.mockups ?? [];
   const markup = Math.trunc(Number(row.markup_rupees ?? 0));
@@ -108,7 +109,7 @@ export function productShape(row: MerchProductRow, host: Pick<MerchHost, "slug">
   return {
     id: row.id, slug: m?.productSlug ?? row.slug, title: row.name, description: row.description, status: apiProductStatus(row.review_status), reviewNote: row.review_note,
     imageUrl: mockups[0] ?? m?.printPreviewUrl ?? m?.artUrl ?? null, mockups, catalogName: m?.catalogName ?? "", colours: m?.colours ?? [],
-    sizes: sizePrices(m?.sizes ?? [], markup, shareBps).map((x, i) => ({ ...x, printingPaise: parts[i].printingPaise, shippingPaise: parts[i].shippingPaise, bufferPaise: parts[i].bufferPaise })),
+    sizes: sizePrices(m?.sizes ?? [], markup, shareBps, capPaise).map((x, i) => ({ ...x, printingPaise: parts[i].printingPaise, shippingPaise: parts[i].shippingPaise, bufferPaise: parts[i].bufferPaise })),
     breakdownEstimated: parts.some((x) => x.estimated), markupRupees: markup, soldCount: Number(row.sold_count ?? 0),
     publicUrl: brandUrl(`/h/${host.slug}/merch/${m?.productSlug ?? row.slug}`), createdAt: Number(row.created_at),
   };
@@ -237,9 +238,26 @@ export async function deleteAddress(env: Env, uid: string, id: string): Promise<
 }
 
 // ---------------------------------------------------------------------------
+// [HF-MERCH-GST-1] The influencer's OPTIONAL GSTIN. Record only: payouts do not change because of it (yet). Table: hf_merch_seller_tax.
+// ---------------------------------------------------------------------------
+export const GSTIN_RE = /^\d{2}[A-Z]{5}\d{4}[A-Z][A-Z\d]Z[A-Z\d]$/;
+export async function getSellerTax(env: Env, uid: string): Promise<{ gstin: string; updatedAt: number } | null> {
+  try {
+    const r = await metaDb(env).prepare("SELECT gstin, updated_at FROM hf_merch_seller_tax WHERE uid=?1").bind(uid).first<{ gstin: string; updated_at: number }>();
+    return r ? { gstin: r.gstin, updatedAt: Number(r.updated_at) } : null;
+  } catch { return null; } // table not migrated yet: no GSTIN on file
+}
+/** Empty string clears it. Throws when the table is missing (the route turns that into 503). */
+export async function setSellerTax(env: Env, uid: string, gstin: string): Promise<void> {
+  const db = metaDb(env);
+  if (!gstin) { await db.prepare("DELETE FROM hf_merch_seller_tax WHERE uid=?1").bind(uid).run(); return; }
+  await db.prepare("INSERT INTO hf_merch_seller_tax (uid, gstin, updated_at) VALUES (?1,?2,?3) ON CONFLICT(uid) DO UPDATE SET gstin=excluded.gstin, updated_at=excluded.updated_at").bind(uid, gstin, Date.now()).run();
+}
+
+// ---------------------------------------------------------------------------
 // Platform ledger (append-only, UNIQUE op_id)
 // ---------------------------------------------------------------------------
-export type PlatformKind = "merch_share" | "printrove_cost" | "cashfree_fee" | "gst" | "refund_share" | "refund_printrove_cost" | "refund_cashfree_fee" | "refund_gst" | "refund_after_hold";
+export type PlatformKind = "merch_share" | "printrove_cost" | "cashfree_fee" | "gst" | "gst_output" | "gst_input" | "refund_share" | "refund_printrove_cost" | "refund_cashfree_fee" | "refund_gst" | "refund_gst_output" | "refund_gst_input" | "refund_after_hold";
 export const platformOpId = (kind: PlatformKind, orderId: string) => `hfplat:${kind}:${orderId}`;
 export async function platformEntry(env: Env, kind: PlatformKind, amountPaise: number, orderId: string, sellerUid: string | null, note: string | null = null): Promise<boolean> {
   const amt = Math.trunc(amountPaise);

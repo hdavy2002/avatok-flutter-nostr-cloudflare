@@ -235,7 +235,7 @@ export function buildProductProfit(ctx: ProfitCtx, cfg: MerchCfg, merch: Product
     const liveOk = !!c && c.in_stock && c.total_rupees != null;
     if (!liveOk) allLive = false;
     const cost = liveOk ? toPaise(c!.total_rupees as number) : Math.max(0, s.baseUnitPaise - shipPaise - cfg.baseBufferRupees * 100);
-    return profitRow({ size: s.size, printroveCostPaise: cost, shippingPaise: shipPaise, fanPaysPaise: s.baseUnitPaise + markup, markupPaise: markup, influencerPaise: inf, gstBps: cfg.gstBps, cashfreeFeeBps: cfg.cashfreeFeeBps });
+    return profitRow({ size: s.size, printroveCostPaise: cost, shippingPaise: shipPaise, fanPaysPaise: s.baseUnitPaise + markup, markupPaise: markup, influencerPaise: inf, gstRateBps: cfg.gstRateBps, cashfreeFeeBps: cfg.cashfreeFeeBps });
   });
   const notes: string[] = [];
   if (!allLive) notes.push("Printrove's live prices could not be read, so the Printrove cost is worked back from the price set when the product was made.");
@@ -270,6 +270,6 @@ export async function buildOrderProfit(env: Env, snap: Partial<MerchSnapshot>, p
     costPaise = Math.max(0, m.basePaise - shipPaise - Number(snap.bufferRupees ?? 0) * 100 * qty);
     note = "Printrove's live price could not be read, so the Printrove cost is worked back from the price frozen when the fan ordered.";
   }
-  const row = profitRow({ size: String(snap.size ?? ""), printroveCostPaise: costPaise as number, shippingPaise: shipPaise, fanPaysPaise: m.totalPaise, markupPaise: m.markupPaise, influencerPaise: m.influencerPaise, gstBps: m.gstBps, cashfreeFeeBps: m.payMethod === "cashfree" ? m.cashfreeFeeBps : 0 });
+  const row = profitRow({ size: String(snap.size ?? ""), printroveCostPaise: costPaise as number, shippingPaise: shipPaise, fanPaysPaise: m.totalPaise, markupPaise: m.markupPaise, influencerPaise: m.influencerPaise, gstRateBps: typeof m.gstRateBps === "number" ? m.gstRateBps : undefined, legacyGstBps: m.gstBps, cashfreeFeeBps: m.payMethod === "cashfree" ? m.cashfreeFeeBps : 0 });
   return { shippingPaise: shipPaise, rows: [row], live, ...(note ? { note } : {}) };
 }

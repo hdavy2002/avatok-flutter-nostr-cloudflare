@@ -300,12 +300,14 @@ export async function shopReceiptPdf(req: Request, env: Env, id: string): Promis
   if (shopExternalStatus(row) !== "confirmed" || !row.receipt_no) return failure("not_confirmed", 409, { message: "A receipt is available once the payment is confirmed." });
   const key = `shop-receipts/${auth.uid}/${row.receipt_no}.pdf`;
   const headers = { "content-type": "application/pdf", "content-disposition": `attachment; filename="${row.receipt_no}.pdf"`, "cache-control": "private, no-store" };
+  const merch = !!(row.seller_uid && row.merch_json); // [HF-MERCH-GST-1] merch documents change when a GSTIN is set (receipt -> tax invoice): never served from the cache
   try {
-    const cached = await env.DIGITAL.get(key);
+    const cached = merch ? null : await env.DIGITAL.get(key);
     if (cached) return new Response(cached.body, { headers });
   } catch { /* fall through to render */ }
   const email = await emailFor(env, auth.uid).catch(() => null);
   const pdf = await renderShopReceipt(env, row, email);
+  if (merch) return new Response(pdf, { headers });
   try { await env.DIGITAL.put(key, pdf, { httpMetadata: { contentType: "application/pdf" }, customMetadata: { uid: auth.uid, order_id: row.order_id } }); } catch { /* best-effort cache */ }
   return new Response(pdf, { headers });
 }

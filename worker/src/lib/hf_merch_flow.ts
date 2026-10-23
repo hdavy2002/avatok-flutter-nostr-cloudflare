@@ -10,12 +10,13 @@ import { validateAddress, type Address } from "./saathum_checkout_logic";
 import { newShopOrderId, shopOrderNo, shopReceiptNo, SHOP_REFUND_POLICY_VERSION, type ShopOrderRow } from "./shop_orders_logic";
 import { appendShopEvent } from "../routes/shop_orders";
 import { sendOrderToPartner, advanceOrder } from "./pod_fulfil";
-import { computeMerchMoney, quoteAgainstLive, readMerchCfg, type CostQuote, type MerchCfg, type PayMethod } from "./hf_merch_math";
+import { computeMerchMoney, maxMarkupForBase, merchGstOf, quoteAgainstLive, readMerchCfg, rupeesText, sizeBreakdown, type CostQuote, type MerchCfg, type PayMethod } from "./hf_merch_math";
+import { issueMerchOrderDocument } from "./hf_merch_invoice";
 import { parseJson, type MerchSnapshot } from "./hf_merch_types";
 import {
   getOrder, productMerch, platformEntry, saveAddress, type MerchHost, type MerchProductRow, type PlatformKind,
 } from "./hf_merch_store";
-import { liveBaseUnitForOrder } from "./hf_merch_catalog";
+import { legacyShippingPaise, liveBaseUnitForOrder } from "./hf_merch_catalog";
 import { refundWalletForOrder, spendWalletForOrder } from "./hf_merch_wallet";
 import { creditMerchEarning, reverseMerchEarning } from "./hf_merch_delivered";
 import {
@@ -26,11 +27,13 @@ export type FlowFail = { ok: false; status: number; error: string; message: stri
 const fail = (status: number, error: string, message: string, extra?: Record<string, unknown>): FlowFail => ({ ok: false, status, error, message, extra });
 const hexId = (n: number) => [...crypto.getRandomValues(new Uint8Array(n))].map((b) => b.toString(16).padStart(2, "0")).join("");
 
-export async function merchCfg(env: Env): Promise<{ cfg: MerchCfg; flags: { enabled: boolean; checkout: boolean; autoApprove: boolean; productReview: boolean } }> {
+export async function merchCfg(env: Env): Promise<{ cfg: MerchCfg; flags: { enabled: boolean; checkout: boolean; autoApprove: boolean; productReview: boolean; requireGstin: boolean }; gstinSet: boolean }> {
   const all = (await readConfig(env)) as unknown as Record<string, unknown>;
   return {
     cfg: readMerchCfg(all),
-    flags: { enabled: all.hfMerchEnabled === true, checkout: all.hfMerchCheckoutEnabled === true, autoApprove: all.hfMerchAutoApprove === true, productReview: all.hfMerchProductReview !== false },
+    // [HF-MERCH-GST-1] requireGstin (default true): no GSTIN on file => checkout answers 403 gst_not_ready, so no money is taken before invoices can be issued.
+    flags: { enabled: all.hfMerchEnabled === true, checkout: all.hfMerchCheckoutEnabled === true, autoApprove: all.hfMerchAutoApprove === true, productReview: all.hfMerchProductReview !== false, requireGstin: all.hfMerchRequireGstin !== false },
+    gstinSet: typeof all.hfGstin === "string" && all.hfGstin.trim() !== "",
   };
 }
 
@@ -70,7 +73,14 @@ export async function startMerchCheckout(env: Env, i: CheckoutInput): Promise<Ch
   if (a.line1.length > 50 || (a.line2 ?? "").length > 50) return fail(400, "address_line_too_long", "Each address line can be at most 50 characters. Use both lines.", { field: a.line1.length > 50 ? "line1" : "line2" });
 
   const markupUnit = Math.trunc(Number(i.product.markup_rupees ?? 0)) * 100;
-  const money = computeMerchMoney({ baseUnitPaise: sz.baseUnitPaise, markupUnitPaise: markupUnit, qty, payMethod: i.method, cfg });
+  // [HF-MERCH-GST-1] The fan price of ONE shirt may not pass the cap (Rs 2,500) so the 5% GST rate always applies. Re-checked here because the cap setting or the base price may have moved since the product was made.
+  if (sz.baseUnitPaise + markupUnit > cfg.priceCapPaise) {
+    return fail(409, "over_price_cap", `This shirt costs more than ${rupeesText(cfg.priceCapPaise)} right now, so it cannot be sold. The creator needs to lower the price.`, { maxMarkupRupees: maxMarkupForBase(sz.baseUnitPaise, cfg.priceCapPaise), priceCapPaise: cfg.priceCapPaise });
+  }
+  // GST-inclusive shirt + print per unit: the input credit is 5/105 of it. Products made before the breakdown was frozen get it worked back from today's shipping.
+  const printingUnitPaise = typeof sz.printingPaise === "number" ? sz.printingPaise
+    : sizeBreakdown(sz, await legacyShippingPaise(env), Math.max(0, Math.trunc(pm.bufferRupees ?? 0)) * 100).printingPaise;
+  const money = computeMerchMoney({ baseUnitPaise: sz.baseUnitPaise, markupUnitPaise: markupUnit, qty, payMethod: i.method, cfg, printingUnitPaise });
   if (money.totalPaise < 100 || money.totalPaise % 100 !== 0) return fail(409, "bad_price", "This product's price is not valid right now.");
   const orderId = newShopOrderId();
   const now = Date.now();
@@ -189,6 +199,7 @@ export async function settleMerchPayment(env: Env, orderId: string, ev: PaidEvid
     await db.batch(stmts);
   } catch (e) { await merchFail(env, e, "settle_bookkeeping", row.uid, { order_id: orderId }); }
   const snap = snapOf(row);
+  await issueMerchOrderDocument(env, row).catch((e) => merchFail(env, e, "settle_invoice", row.uid, { order_id: orderId })); // [HF-MERCH-GST-1] tax invoice (GSTIN set) or receipt; best-effort
   await merchTrack(env, row.uid, "merch_order_paid", {
     order_id: orderId, seller_uid: row.seller_uid, method: ev.via, total_paise: row.amount_paise, qty: snap.qty, influencer_paise: snap.money?.influencerPaise, platform_paise: snap.money?.platformPaise,
   });
@@ -269,7 +280,13 @@ export async function approveMerchOrder(env: Env, orderId: string, actor: string
     await platformEntry(env, "merch_share", m.platformPaise, orderId, row.seller_uid ?? null, "markup share");
     await platformEntry(env, "printrove_cost", -baseOwed, orderId, row.seller_uid ?? null, "print partner cost payable");
     if (m.cashfreeFeeEstPaise > 0) await platformEntry(env, "cashfree_fee", -m.cashfreeFeeEstPaise, orderId, row.seller_uid ?? null, "estimate");
-    await platformEntry(env, "gst", -m.gstEstPaise, orderId, row.seller_uid ?? null, "estimate");
+    const g = merchGstOf(m);
+    if (g.legacy) await platformEntry(env, "gst", -g.netGstPaise, orderId, row.seller_uid ?? null, "estimate");
+    else {
+      // [HF-MERCH-GST-1] output GST collected inside the fan price (we owe it) and the Printrove GST we claim back (input credit).
+      await platformEntry(env, "gst_output", -g.outputGstPaise, orderId, row.seller_uid ?? null, "GST inside the fan price");
+      await platformEntry(env, "gst_input", g.inputGstPaise, orderId, row.seller_uid ?? null, "Printrove GST claimed back");
+    }
   }
   await appendShopEvent(env, orderId, "approved", actor, opts.auto ? "auto" : null, now).catch((e) => merchFail(env, e, "approve_event", row.uid));
   await merchTrack(env, actor.startsWith("system:") ? row.uid : actor, "merch_order_approved", {
@@ -371,9 +388,10 @@ async function reverseOrderMoney(env: Env, row: ShopOrderRow): Promise<void> {
   const db = metaDb(env);
   // Cashfree keeps its fee on a refund, so cashfree_fee is never reversed. The print partner is owed its cost once it has the order, so printrove_cost is reversed only if it never got there.
   const reachedPrinter = !!(row.sent_to_printer_at || row.printrove_order_ref) || !!(await db.prepare("SELECT 1 AS x FROM shop_fulfilments WHERE order_id=?1 AND status IN ('sent','printing','shipped','delivered')").bind(row.order_id).first());
-  const kinds = reachedPrinter ? "'merch_share','gst'" : "'merch_share','printrove_cost','gst'";
+  // [HF-MERCH-GST-1] The invoice is cancelled with the order, so the output GST is reversed; the input credit stays once Printrove has billed us (like printrove_cost).
+  const kinds = reachedPrinter ? "'merch_share','gst','gst_output'" : "'merch_share','printrove_cost','gst','gst_output','gst_input'";
   const rows = (await db.prepare(`SELECT kind, amount_paise FROM hf_platform_ledger WHERE order_id=?1 AND kind IN (${kinds})`).bind(row.order_id).all<{ kind: string; amount_paise: number }>()).results ?? [];
-  const map: Record<string, PlatformKind> = { merch_share: "refund_share", printrove_cost: "refund_printrove_cost", cashfree_fee: "refund_cashfree_fee", gst: "refund_gst" };
+  const map: Record<string, PlatformKind> = { merch_share: "refund_share", printrove_cost: "refund_printrove_cost", cashfree_fee: "refund_cashfree_fee", gst: "refund_gst", gst_output: "refund_gst_output", gst_input: "refund_gst_input" };
   for (const r of rows) await platformEntry(env, map[r.kind], -Number(r.amount_paise), row.order_id, row.seller_uid ?? null, "reversal");
   const rev = await reverseMerchEarning(env, row);
   if (rev === "after_hold_platform_absorbs") {

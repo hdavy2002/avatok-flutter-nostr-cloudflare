@@ -7,7 +7,7 @@ import { sha256Hex } from "../util";
 import { moderate, moderateGeneratedImage } from "./moderation";
 import { ensurePodCatalog, isApparelKind } from "./pod";
 import { IMAGE_EXT, LIMITS, checkPrintFile, parseImageInfo, validatePlacement, variantSku, type Placement } from "./studio_logic";
-import { checkMarkup, type MerchCfg } from "./hf_merch_math";
+import { checkMarkup, checkPriceCap, rupeesText, type MerchCfg } from "./hf_merch_math";
 import { areaOrNull, isMerchKind, provisionPartnerListing, quoteBases } from "./hf_merch_catalog";
 import {
   getProduct, openOrdersForProduct, productMerch, shopSlugFor, type MerchHost, type MerchProductRow,
@@ -126,6 +126,14 @@ const cleanText = (v: unknown, max: number): string => (typeof v === "string" ? 
 const ownMockup = (env: Env, uid: string, u: unknown): string | null =>
   typeof u === "string" && u.startsWith(`${env.BLOSSOM_BASE_URL}/u/${uid}/public/merch/`) && u.length < 400 ? u : null;
 
+/** [HF-MERCH-GST-1] 400 over_price_cap when any size's fan price (base + markup) would pass the cap; carries maxMarkupRupees (the smallest across sizes). */
+function capFail(sizes: Array<{ size: string; baseUnitPaise: number }>, markupRupees: number, cfg: MerchCfg): PFail | null {
+  const c = checkPriceCap(sizes, markupRupees, cfg.priceCapPaise);
+  if (c.ok) return null;
+  return fail(400, "over_price_cap", `Shirts are capped at ${rupeesText(c.capPaise)} so the ${cfg.gstRateBps / 100}% GST rate applies. For this shirt your markup can be at most Rs ${c.maxMarkupRupees}.`,
+    { field: "markupRupees", maxMarkupRupees: c.maxMarkupRupees, priceCapPaise: c.capPaise });
+}
+
 export type CreateInput = Record<string, unknown>;
 export async function createMerchProduct(env: Env, cfg: MerchCfg, flags: { productReview: boolean }, host: MerchHost, b: CreateInput): Promise<{ ok: true; product: MerchProductRow } | PFail> {
   const uid = host.uid;
@@ -182,6 +190,8 @@ export async function createMerchProduct(env: Env, cfg: MerchCfg, flags: { produ
   const quote = await quoteBases(env, cfg, { catalogId, colours: colours.map((c) => c.name), side, wIn: pv.placement.print_w_in, hIn: pv.placement.print_h_in, sizes: wantSizes });
   if (!quote.ok) return fail(quote.error === "catalog_unavailable" ? 503 : 400, quote.error, quote.message);
   if (quote.sizes.length !== new Set(wantSizes).size) return fail(400, "invalid_sizes", "One of those sizes is not made in these colours.", { field: "sizes" });
+  const overCap = capFail(quote.sizes, mk.markupRupees, cfg); // [HF-MERCH-GST-1]
+  if (overCap) return overCap;
 
   const mockups = (Array.isArray(b.mockupUrls) ? (b.mockupUrls as unknown[]) : []).map((u) => ownMockup(env, uid, u)).filter((u): u is string => !!u).slice(0, 6);
   const artChecks = (() => { try { return JSON.parse(design.art_checks_json ?? "{}") as { moderation?: string }; } catch { return {}; } })();
@@ -258,6 +268,8 @@ export async function patchMerchProduct(env: Env, cfg: MerchCfg, host: MerchHost
     const mk = checkMarkup(b.markupRupees, cfg);
     if (!mk.ok) return fail(400, mk.error, mk.message, { field: "markupRupees" });
     const m = productMerch(row);
+    const overCap = m ? capFail(m.sizes, mk.markupRupees, cfg) : null; // [HF-MERCH-GST-1]
+    if (overCap) return overCap;
     const lowest = Math.min(...(m?.sizes ?? [{ baseUnitPaise: 0 }]).map((s) => s.baseUnitPaise));
     add("markup_rupees", mk.markupRupees);
     add("price_rupees", Math.max(1, Math.min(100000, Math.round(lowest / 100) + mk.markupRupees)));

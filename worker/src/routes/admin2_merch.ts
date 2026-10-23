@@ -3,6 +3,7 @@
 //   POST /api/admin/merch/orders/:id/{approve,reject,tracking,delivered,refund,refund-done}
 //   GET  /api/admin/merch/products?status=       POST /api/admin/merch/products/:id/review
 //   GET|PUT /api/admin/merch/settings            GET  /api/admin/merch/platform-wallet?month=YYYY-MM[&format=csv]
+//   GET  /api/admin/merch/gst-report?month=YYYY-MM[&format=csv]   [HF-MERCH-GST-1] per-order tax split + Printrove input GST, totals, net payable
 //   GET  /api/admin/merch/problem-photo?key=
 // Admin routes are NOT behind hfMerchEnabled: the settings page is how the feature gets switched on.
 import type { Env } from "../types";
@@ -11,11 +12,14 @@ import { requireAdmin } from "./admin_money";
 import { readConfig, writeConfigOverrides } from "./config";
 import { emailFor } from "../lib/identity";
 import { metaDb } from "../db/shard";
-import { MERCH_CFG_RANGES } from "../lib/hf_merch_math";
+import { MERCH_CFG_RANGES, readMerchCfg } from "../lib/hf_merch_math";
+import { supplierFrom } from "../lib/hf_receipts";
+import { gstStateCode } from "../lib/gst_states";
+import { merchTaxSplit } from "../lib/hf_merch_invoice";
 import { buildOrderProfit, buildProductProfit, profitContext } from "../lib/hf_merch_catalog";
 import { fanStatusOf, parseJson, sellerStatusOf } from "../lib/hf_merch_types";
 import {
-  ADMIN_TABS, adminListOrders, adminTabCounts, getOrder, hostsByUids, listProductsByReview, orderEvents, platformRows, productMerch, productShape, type AdminTab, type MerchProductRow,
+  ADMIN_TABS, adminListOrders, adminTabCounts, getOrder, getSellerTax, hostsByUids, listProductsByReview, orderEvents, platformRows, productMerch, productShape, type AdminTab, type MerchProductRow,
 } from "../lib/hf_merch_store";
 import { approveMerchOrder, markRefundDone, merchCfg, quoteMerchOrder, rejectMerchOrder, setMerchDelivered, setMerchTracking, type FlowFail } from "../lib/hf_merch_flow";
 import { reviewMerchProduct, type PFail } from "../lib/hf_merch_products";
@@ -55,7 +59,13 @@ async function orderDto(env: Env, row: ShopOrderRow, hosts: Map<string, { slug: 
     refund: { status: row.refund_status ?? "none", at: row.refunded_at ?? null }, earningCreditedAt: row.earning_credited_at ?? null,
     problem: problem ? { ...problem, photoUrl: problem.photo_key ? `/api/admin/merch/problem-photo?key=${encodeURIComponent(String(problem.photo_key))}` : null } : null,
   };
-  return withEvents ? { ...base, events: await orderEvents(env, row.order_id) } : base;
+  if (!withEvents) return base;
+  // [HF-MERCH-GST-1] detail only: the influencer's optional GSTIN (record only) and the invoice / receipt number issued for this order.
+  const [sellerTax, doc] = await Promise.all([
+    row.seller_uid ? getSellerTax(env, row.seller_uid) : Promise.resolve(null),
+    env.DB_META.prepare("SELECT number, kind FROM hf_receipts WHERE source='merch_order' AND source_id=?1 ORDER BY kind='tax_invoice' DESC LIMIT 1").bind(row.order_id).first<{ number: string; kind: string }>().catch(() => null),
+  ]);
+  return { ...base, sellerTax: sellerTax ? { gstin: sellerTax.gstin } : null, invoice: doc ? { number: doc.number, kind: doc.kind } : null, events: await orderEvents(env, row.order_id) };
 }
 async function hostMap(env: Env, rows: Array<{ seller_uid?: string | null }>) {
   const ids = [...new Set(rows.map((r) => r.seller_uid).filter((x): x is string => !!x))];
@@ -150,13 +160,15 @@ async function reviewRoute(req: Request, env: Env, admin: string, id: string): P
 // ---------------------------------------------------------------------------
 // Settings
 // ---------------------------------------------------------------------------
-const BOOL_KEYS = ["hfMerchEnabled", "hfMerchCheckoutEnabled", "hfMerchAutoApprove", "hfMerchProductReview"] as const;
+const BOOL_KEYS = ["hfMerchEnabled", "hfMerchCheckoutEnabled", "hfMerchAutoApprove", "hfMerchProductReview", "hfMerchRequireGstin"] as const;
 const NUM_KEYS: Record<string, readonly [number, number]> = MERCH_CFG_RANGES; // the same table readMerchCfg clamps to
 async function settingsOut(env: Env): Promise<Record<string, unknown>> {
   const c = (await readConfig(env)) as unknown as Record<string, unknown>;
   const o: Record<string, unknown> = {};
-  for (const k of BOOL_KEYS) o[k] = c[k] === true;
+  for (const k of BOOL_KEYS) o[k] = k === "hfMerchRequireGstin" ? c[k] !== false : c[k] === true;
   for (const k of Object.keys(NUM_KEYS)) o[k] = Number(c[k]);
+  o.hfMerchHsn = readMerchCfg(c).hsn;
+  o.gstinConfigured = typeof c.hfGstin === "string" && c.hfGstin.trim() !== ""; // read-only: set hfGstin / hfLegalName / hfLegalAddress / hfStateCode in the HF settings
   return o;
 }
 async function putSettings(req: Request, env: Env): Promise<Response> {
@@ -170,6 +182,9 @@ async function putSettings(req: Request, env: Env): Promise<Response> {
       const [lo, hi] = NUM_KEYS[k];
       if (typeof v !== "number" || !Number.isInteger(v) || v < lo || v > hi) return bad(400, "invalid_value", `${k} must be a whole number from ${lo} to ${hi}.`, { field: k });
       patch[k] = v;
+    } else if (k === "hfMerchHsn") {
+      if (typeof v !== "string" || !/^\d{4,8}$/.test(v.trim())) return bad(400, "invalid_value", "hfMerchHsn must be a 4 to 8 digit HSN code.", { field: k });
+      patch[k] = v.trim();
     } else return bad(400, "unknown_setting", `${k} is not a merch setting.`, { field: k });
   }
   if (Object.keys(patch).length) await writeConfigOverrides(env, patch); // ONE KV write
@@ -215,12 +230,15 @@ function monthRange(month: string | null): { label: string; from: number; to: nu
   const y = Number(m[1]), mo = Number(m[2]);
   return { label, from: Date.UTC(y, mo - 1, 1) - IST_MS, to: Date.UTC(y, mo, 1) - IST_MS };
 }
-type Totals = { sharePaise: number; cashfeePaise: number; gstPaise: number; netPaise: number; printroveOwedPaise: number; refundsPaise: number };
-const zero = (): Totals => ({ sharePaise: 0, cashfeePaise: 0, gstPaise: 0, netPaise: 0, printroveOwedPaise: 0, refundsPaise: 0 });
+/** gstPaise = NET GST (output - input, plus old-style estimates on old orders); outputGstPaise / inputGstPaise are the two halves [HF-MERCH-GST-1]. */
+type Totals = { sharePaise: number; cashfeePaise: number; gstPaise: number; outputGstPaise: number; inputGstPaise: number; netPaise: number; printroveOwedPaise: number; refundsPaise: number };
+const zero = (): Totals => ({ sharePaise: 0, cashfeePaise: 0, gstPaise: 0, outputGstPaise: 0, inputGstPaise: 0, netPaise: 0, printroveOwedPaise: 0, refundsPaise: 0 });
 function addRow(t: Totals, kind: string, amt: number): void {
   if (kind === "merch_share" || kind === "refund_share") t.sharePaise += amt;
   else if (kind === "cashfree_fee" || kind === "refund_cashfree_fee") t.cashfeePaise -= amt;
   else if (kind === "gst" || kind === "refund_gst") t.gstPaise -= amt;
+  else if (kind === "gst_output" || kind === "refund_gst_output") { t.outputGstPaise -= amt; t.gstPaise -= amt; }
+  else if (kind === "gst_input" || kind === "refund_gst_input") { t.inputGstPaise += amt; t.gstPaise -= amt; }
   else if (kind === "printrove_cost" || kind === "refund_printrove_cost") t.printroveOwedPaise -= amt;
   if (kind === "refund_share" || kind === "refund_after_hold") t.refundsPaise -= amt;
   if (kind === "refund_after_hold") t.sharePaise += amt; // platform absorbs the influencer's withdrawn earning
@@ -250,6 +268,57 @@ async function platformWallet(req: Request, env: Env): Promise<Response> {
     bySeller: [...by.entries()].map(([uid, t]) => ({ sellerUid: uid === "-" ? null : uid, slug: hosts.get(uid)?.slug ?? null, displayName: hosts.get(uid)?.displayName ?? null, ...finish(t) })),
     rows: rows.map((r) => ({ id: r.id, kind: r.kind, amountPaise: Number(r.amount_paise), orderId: r.order_id, sellerUid: r.seller_uid, note: r.note, createdAt: Number(r.created_at) })),
   });
+}
+
+// ---------------------------------------------------------------------------
+// [HF-MERCH-GST-1] GST report: one row per paid order of the month (by payment date, IST). The split is recomputed from the order total with the same pure
+// function the invoice uses, so the report always agrees with the documents. Cancelled / refunded orders are listed but NOT added to the totals
+// (a credit note for an issued invoice is a manual step for now). Input GST is the snapshot's Printrove GST claimed back.
+// ---------------------------------------------------------------------------
+type GstRow = {
+  orderId: string; orderNo: string; date: number; invoiceNo: string | null; buyerState: string; buyerStateCode: string | null; taxablePaise: number; cgstPaise: number; sgstPaise: number;
+  igstPaise: number; totalPaise: number; inputGstPaise: number; cancelled: boolean;
+};
+async function gstReport(req: Request, env: Env): Promise<Response> {
+  const q = new URL(req.url).searchParams;
+  const range = monthRange(q.get("month"));
+  if (!range) return bad(400, "invalid_month", "Month must look like 2026-10.");
+  const cfg = (await readConfig(env)) as unknown as Record<string, unknown>;
+  const sup = supplierFrom(cfg), mc = readMerchCfg(cfg);
+  const rows = (await metaDb(env).prepare(
+    `SELECT o.order_id AS order_id, o.order_no AS order_no, o.confirmed_at AS confirmed_at, o.amount_paise AS amount_paise, o.address_json AS address_json, o.merch_json AS merch_json,
+            o.approval_status AS approval_status, o.refund_status AS refund_status, o.fulfil_status AS fulfil_status, r.number AS invoice_no
+       FROM shop_orders o LEFT JOIN hf_receipts r ON r.kind='tax_invoice' AND r.source='merch_order' AND r.source_id=o.order_id
+      WHERE o.seller_uid IS NOT NULL AND o.pay_status='confirmed' AND o.confirmed_at>=?1 AND o.confirmed_at<?2 ORDER BY o.confirmed_at ASC, o.order_id ASC LIMIT 5000`,
+  ).bind(range.from, range.to).all<{ order_id: string; order_no: string; confirmed_at: number; amount_paise: number; address_json: string; merch_json: string | null; approval_status: string | null; refund_status: string | null; fulfil_status: string; invoice_no: string | null }>().catch(() => ({ results: [] }))).results ?? [];
+  const list: GstRow[] = rows.map((r) => {
+    const snap = parseJson<{ money?: { gstRateBps?: number; inputGstPaise?: number; gstEstPaise?: number } }>(r.merch_json, {});
+    const addr = parseJson<{ state?: string }>(r.address_json, {});
+    const code = gstStateCode(addr.state);
+    const split = merchTaxSplit(Number(r.amount_paise), typeof snap.money?.gstRateBps === "number" ? snap.money.gstRateBps : mc.gstRateBps, code, sup.stateCode);
+    const cancelled = r.approval_status === "rejected" || r.fulfil_status === "cancelled" || r.fulfil_status === "refunded" || (r.refund_status != null && r.refund_status !== "none");
+    return {
+      orderId: r.order_id, orderNo: r.order_no, date: Number(r.confirmed_at), invoiceNo: r.invoice_no ?? null, buyerState: (addr.state ?? "").trim(), buyerStateCode: code,
+      taxablePaise: split.taxablePaise, cgstPaise: split.cgstPaise, sgstPaise: split.sgstPaise, igstPaise: split.igstPaise, totalPaise: split.totalPaise,
+      inputGstPaise: Math.min(split.gstPaise, Math.max(0, Math.trunc(Number(snap.money?.inputGstPaise ?? 0)))), cancelled,
+    };
+  });
+  const t = { orders: 0, cancelledOrders: 0, taxablePaise: 0, cgstPaise: 0, sgstPaise: 0, igstPaise: 0, gstCollectedPaise: 0, totalPaise: 0, inputGstPaise: 0, netPayablePaise: 0 };
+  for (const r of list) {
+    if (r.cancelled) { t.cancelledOrders++; continue; }
+    t.orders++; t.taxablePaise += r.taxablePaise; t.cgstPaise += r.cgstPaise; t.sgstPaise += r.sgstPaise; t.igstPaise += r.igstPaise; t.totalPaise += r.totalPaise; t.inputGstPaise += r.inputGstPaise;
+  }
+  t.gstCollectedPaise = t.cgstPaise + t.sgstPaise + t.igstPaise;
+  t.netPayablePaise = t.gstCollectedPaise - t.inputGstPaise;
+  if (q.get("format") === "csv") {
+    const rs = (p: number) => (p / 100).toFixed(2);
+    const head = "date_ist,invoice_no,order_no,buyer_state,buyer_state_code,taxable,cgst,sgst,igst,total,printrove_input_gst,status";
+    const body = list.map((r) => [new Date(r.date + IST_MS).toISOString().slice(0, 10), r.invoiceNo ?? "", r.orderNo, r.buyerState, r.buyerStateCode ?? "", rs(r.taxablePaise), rs(r.cgstPaise), rs(r.sgstPaise), rs(r.igstPaise), rs(r.totalPaise), rs(r.inputGstPaise), r.cancelled ? "cancelled" : "sale"].map(csvCell).join(","));
+    const tot = ["TOTAL (sales only)", "", `${t.orders} orders`, "", "", rs(t.taxablePaise), rs(t.cgstPaise), rs(t.sgstPaise), rs(t.igstPaise), rs(t.totalPaise), rs(t.inputGstPaise), ""].map(csvCell).join(",");
+    const net = ["GST collected", rs(t.gstCollectedPaise), "Printrove input GST", rs(t.inputGstPaise), "NET GST PAYABLE", rs(t.netPayablePaise)].map(csvCell).join(",");
+    return new Response([head, ...body, tot, net].join("\n") + "\n", { headers: { "content-type": "text/csv; charset=utf-8", "content-disposition": `attachment; filename="merch-gst-${range.label}.csv"`, "cache-control": "private, no-store" } });
+  }
+  return out({ month: range.label, gstinConfigured: sup.gstin !== "", supplierStateCode: sup.stateCode || null, gstRateBps: mc.gstRateBps, hsn: mc.hsn, totals: t, orders: list });
 }
 
 async function problemPhoto(req: Request, env: Env): Promise<Response> {
@@ -287,6 +356,7 @@ export async function adminMerchRoute(req: Request, env: Env, p: string): Promis
       if (m === "PUT") return await putAi(req, env);
     }
     if (x === "platform-wallet" && rest.length === 1 && m === "GET") return await platformWallet(req, env);
+    if (x === "gst-report" && rest.length === 1 && m === "GET") return await gstReport(req, env);
     if (x === "problem-photo" && rest.length === 1 && m === "GET") return await problemPhoto(req, env);
     return null;
   } catch (e) {

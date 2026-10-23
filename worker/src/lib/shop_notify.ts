@@ -11,6 +11,7 @@ import { emailFor } from "./identity";
 import { escapeHtml } from "../cal/emails";
 import { enqueueEmail } from "./email_outbox";
 import { renderSaathumReceiptPdf } from "./me_receipt_pdf";
+import { renderMerchOrderPdf } from "./hf_merch_invoice";
 import { verifiedWhatsAppNumber, type NotifyKind } from "./whatsapp_notify";
 import { sendAdminAlert } from "./saathum_upi3";
 import { orderItems, shopReceiptMoney, SHOP_DEFAULT_REPORT_WINDOW_HOURS, type ShopOrderRow } from "./shop_orders_logic";
@@ -150,6 +151,11 @@ export async function alertOwnerShopProblem(env: Env, row: ShopOrderRow, message
 // Receipt PDF (shared by GET receipt.pdf and the confirmation email)
 // ---------------------------------------------------------------------------
 export async function renderShopReceipt(env: Env, row: ShopOrderRow, email: string | null): Promise<Uint8Array> {
+  // [HF-MERCH-GST-1] A merch order is sold by the platform: tax invoice (GSTIN set) or a receipt that says "GSTIN: applied for".
+  if (row.seller_uid && row.merch_json) {
+    const m = await renderMerchOrderPdf(env, row, email);
+    if (m) return m;
+  }
   const address = JSON.parse(row.address_json) as Address;
   return renderSaathumReceiptPdf({
     receiptNo: row.receipt_no ?? row.order_id, issuedAt: row.confirmed_at ?? row.created_at,

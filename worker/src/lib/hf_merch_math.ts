@@ -1,3 +1,7 @@
+// [HF-MERCH-GST-1 2026-10-23] GST MODEL (rule HF-MERCH-13): the PLATFORM is the seller of every shirt. The fan price (base + markup) is GST-INCLUSIVE at
+// hfMerchGstRateBps (5%, ready-made garments up to Rs 2,500 per piece, HSN 6109); we claim back the 5% Printrove charges us on the shirt + print (input credit);
+// the influencer earns a design ROYALTY (60% of the markup, unchanged). Output GST = fan total x r/(1+r); input credit = printing x 5/105; net GST = output - input.
+// The old "18% GST on our share" estimate is gone for new orders; its fields stay readable on old snapshots (see merchGstOf).
 // [HF-MERCH-CORE-1 2026-10-23] Pure money maths for the influencer merch shop (Specs/SPEC-2026-10-23-HF-MERCH.md section 1).
 // NO I/O, no imports. Everything is integer PAISE. The split is computed once, at checkout, and frozen into shop_orders.merch_json;
 // later setting changes never touch an old order. The platform ABSORBS the Cashfree fee and GST: the two estimates are report-only
@@ -11,15 +15,23 @@ export type MerchCfg = {
   baseBufferRupees: number;
   /** Report-only estimate of the Cashfree fee on the whole amount, basis points (default 350). */
   cashfreeFeeBps: number;
-  /** Report-only estimate of GST on the platform share, basis points (default 1800). */
+  /** LEGACY (pre HF-MERCH-GST-1): report-only estimate of GST on the platform share. No longer used by the maths; kept so the settings table stays stable. */
   gstBps: number;
+  /** [HF-MERCH-GST-1] GST rate INCLUDED in the fan price, basis points (default 500 = 5%). */
+  gstRateBps: number;
+  /** [HF-MERCH-GST-1] The most one shirt (one piece, any size) may cost the fan, in paise (default Rs 2,500) so the 5% rate always applies. */
+  priceCapPaise: number;
+  /** [HF-MERCH-GST-1] HSN code printed on the invoice (default 6109, T-shirts). */
+  hsn: string;
   /** Days after delivery before the influencer's earning is withdrawable (default 7). */
   holdDays: number;
 };
 
 export const MERCH_DEFAULT_CFG: MerchCfg = {
-  platformShareBps: 4000, minMarkupRupees: 10, baseBufferRupees: 0, cashfreeFeeBps: 350, gstBps: 1800, holdDays: 7,
+  platformShareBps: 4000, minMarkupRupees: 10, baseBufferRupees: 0, cashfreeFeeBps: 350, gstBps: 1800, gstRateBps: 500, priceCapPaise: 250_000, hsn: "6109", holdDays: 7,
 };
+/** The GST Printrove charges us on the shirt + print: always 5% (it is already inside the printing figure, so credit = printing x 5/105). */
+export const PRINTROVE_GST_BPS = 500;
 export const MAX_MARKUP_RUPEES = 5000;
 export const MAX_QTY = 3;
 export const DAY_MS = 86_400_000;
@@ -31,6 +43,8 @@ export const MERCH_CFG_RANGES = {
   hfMerchBaseBufferRupees: [0, 2000],
   hfMerchCashfreeFeeBps: [0, 1000],
   hfMerchGstBps: [0, 2800],
+  hfMerchGstRateBps: [0, 2800],
+  hfMerchPriceCapRupees: [1, 100_000],
   hfMerchHoldDays: [0, 60],
 } as const satisfies Record<string, readonly [number, number]>;
 const R = MERCH_CFG_RANGES;
@@ -50,6 +64,9 @@ export function readMerchCfg(cfg: Record<string, unknown> | null | undefined): M
     baseBufferRupees: int(c.hfMerchBaseBufferRupees, d.baseBufferRupees, R.hfMerchBaseBufferRupees[0], R.hfMerchBaseBufferRupees[1]),
     cashfreeFeeBps: int(c.hfMerchCashfreeFeeBps, d.cashfreeFeeBps, R.hfMerchCashfreeFeeBps[0], R.hfMerchCashfreeFeeBps[1]),
     gstBps: int(c.hfMerchGstBps, d.gstBps, R.hfMerchGstBps[0], R.hfMerchGstBps[1]),
+    gstRateBps: int(c.hfMerchGstRateBps, d.gstRateBps, R.hfMerchGstRateBps[0], R.hfMerchGstRateBps[1]),
+    priceCapPaise: int(c.hfMerchPriceCapRupees, d.priceCapPaise / 100, R.hfMerchPriceCapRupees[0], R.hfMerchPriceCapRupees[1]) * 100,
+    hsn: typeof c.hfMerchHsn === "string" && /^\d{4,8}$/.test(c.hfMerchHsn.trim()) ? c.hfMerchHsn.trim() : d.hsn,
     holdDays: int(c.hfMerchHoldDays, d.holdDays, R.hfMerchHoldDays[0], R.hfMerchHoldDays[1]),
   };
 }
@@ -58,6 +75,54 @@ export function readMerchCfg(cfg: Record<string, unknown> | null | undefined): M
 export const bpsOf = (a: number, bps: number): number => Math.floor((2 * Math.max(0, Math.trunc(a)) * Math.max(0, Math.trunc(bps)) + 10_000) / 20_000);
 /** Integer floor of (a * bps) / 10000 for non-negative a. */
 export const bpsFloor = (a: number, bps: number): number => Math.floor((Math.max(0, Math.trunc(a)) * Math.max(0, Math.trunc(bps))) / 10_000);
+
+/**
+ * [HF-MERCH-GST-1] Split a GST-INCLUSIVE total: gst = round(total x r / (10000 + r)), taxable = total - gst. 64,400 at 500 bps -> gst 3,067, taxable 61,333.
+ */
+export function gstInclusiveSplit(totalPaise: number, rateBps = 500): { taxablePaise: number; gstPaise: number } {
+  const total = Math.max(0, Math.trunc(totalPaise));
+  const r = Math.max(0, Math.trunc(rateBps));
+  const gst = Math.floor((2 * total * r + (10_000 + r)) / (2 * (10_000 + r))); // round half up
+  return { taxablePaise: total - gst, gstPaise: gst };
+}
+export interface MerchTaxSplit {
+  totalPaise: number; taxablePaise: number; gstPaise: number; cgstPaise: number; sgstPaise: number; igstPaise: number;
+  intraState: boolean; /** false when the fan's state could not be matched to a GST state code (treated as intra-state) */ stateKnown: boolean;
+}
+/**
+ * GST is INCLUDED in the total. Intra-state (buyer state code == supplier state code): CGST + SGST half each (CGST rounds down, SGST takes the odd paisa).
+ * Otherwise IGST. A buyer whose state cannot be matched is treated as intra-state and flagged (stateKnown false), as the other HF documents do.
+ */
+export function merchTaxSplit(totalPaise: number, rateBps: number, buyerStateCode: string | null, supplierStateCode: string): MerchTaxSplit {
+  const { taxablePaise, gstPaise } = gstInclusiveSplit(totalPaise, rateBps);
+  const intra = !supplierStateCode || !buyerStateCode || buyerStateCode === supplierStateCode;
+  const cgst = intra ? Math.floor(gstPaise / 2) : 0;
+  return {
+    totalPaise: Math.max(0, Math.trunc(totalPaise)), taxablePaise, gstPaise, cgstPaise: cgst, sgstPaise: intra ? gstPaise - cgst : 0, igstPaise: intra ? 0 : gstPaise,
+    intraState: intra, stateKnown: !!buyerStateCode,
+  };
+}
+
+/** [HF-MERCH-GST-1] Input credit on `printingPaise` (the GST-inclusive shirt + print figure): printing x 5/105. 39,375 -> 1,875. */
+export const printroveInputGstPaise = (printingPaise: number): number => gstInclusiveSplit(printingPaise, PRINTROVE_GST_BPS).gstPaise;
+
+/** [HF-MERCH-GST-1] Output / input / net GST of a snapshot's money block. Old snapshots only have the 18% estimate, which is reported as the net. */
+export function merchGstOf(m: { outputGstPaise?: number; inputGstPaise?: number; netGstPaise?: number; gstEstPaise?: number } | null | undefined): { outputGstPaise: number; inputGstPaise: number; netGstPaise: number; legacy: boolean } {
+  if (!m) return { outputGstPaise: 0, inputGstPaise: 0, netGstPaise: 0, legacy: true };
+  if (typeof m.netGstPaise === "number") return { outputGstPaise: Number(m.outputGstPaise ?? 0), inputGstPaise: Number(m.inputGstPaise ?? 0), netGstPaise: m.netGstPaise, legacy: false };
+  return { outputGstPaise: 0, inputGstPaise: 0, netGstPaise: Math.trunc(Number(m.gstEstPaise ?? 0)), legacy: true };
+}
+
+/**
+ * [HF-MERCH-GST-1] The fan-price cap. Per size: the largest whole-rupee markup that keeps base + markup <= cap (never below 0). `maxMarkupRupees` of a
+ * product is the smallest of its sizes.
+ */
+export const maxMarkupForBase = (baseUnitPaise: number, capPaise: number): number => Math.max(0, Math.floor((Math.trunc(capPaise) - Math.trunc(baseUnitPaise)) / 100));
+export function checkPriceCap(sizes: Array<{ size: string; baseUnitPaise: number }>, markupRupees: number, capPaise: number): { ok: true } | { ok: false; maxMarkupRupees: number; capPaise: number; size: string } {
+  const over = sizes.filter((s) => s.baseUnitPaise + Math.trunc(markupRupees) * 100 > capPaise);
+  if (!over.length) return { ok: true };
+  return { ok: false, maxMarkupRupees: Math.min(...sizes.map((s) => maxMarkupForBase(s.baseUnitPaise, capPaise))), capPaise, size: over[0].size };
+}
 
 /**
  * Base price (paise, WHOLE rupees, rounded UP) for one unit: the partner's print + shipping cost in rupees (may carry paise) plus the
@@ -130,13 +195,24 @@ export type MerchMoney = {
   /** Estimates only; 0 when paid from the wallet (no gateway fee). */
   cashfreeFeeBps: number;
   cashfreeFeeEstPaise: number;
+  /** LEGACY name, kept readable: on a new order gstBps = gstRateBps and gstEstPaise = netGstPaise. */
   gstBps: number;
   gstEstPaise: number;
-  /** platform - cashfree fee estimate - gst estimate. May go negative. */
+  /** [HF-MERCH-GST-1] absent on orders made before it shipped (use merchGstOf). */
+  gstRateBps?: number;
+  /** Fan total without the GST inside it. */
+  taxablePaise?: number;
+  /** GST collected from the fan (inside the total). */
+  outputGstPaise?: number;
+  /** GST Printrove charged us on the shirt + print (claimed back). */
+  inputGstPaise?: number;
+  /** output - input: what we pay the government for this order. */
+  netGstPaise?: number;
+  /** platform share - cashfree fee estimate - net GST. May go negative. */
   platformNetPaise: number;
 };
 
-export function computeMerchMoney(a: { baseUnitPaise: number; markupUnitPaise: number; qty: number; payMethod: PayMethod; cfg: MerchCfg }): MerchMoney {
+export function computeMerchMoney(a: { baseUnitPaise: number; markupUnitPaise: number; qty: number; payMethod: PayMethod; cfg: MerchCfg; /** GST-inclusive shirt + print per unit; 0/absent = no input credit */ printingUnitPaise?: number }): MerchMoney {
   const qty = Math.max(1, Math.min(MAX_QTY, Math.trunc(a.qty)));
   const baseUnit = Math.max(0, Math.trunc(a.baseUnitPaise));
   const markupUnit = Math.max(0, Math.trunc(a.markupUnitPaise));
@@ -147,12 +223,15 @@ export function computeMerchMoney(a: { baseUnitPaise: number; markupUnitPaise: n
   const influencer = bpsFloor(markup, 10_000 - a.cfg.platformShareBps);
   const platform = markup - influencer;
   const cfFee = a.payMethod === "cashfree" ? bpsOf(total, a.cfg.cashfreeFeeBps) : 0;
-  const gst = bpsOf(platform, a.cfg.gstBps);
+  const split = gstInclusiveSplit(total, a.cfg.gstRateBps);
+  const inputGst = Math.min(split.gstPaise, printroveInputGstPaise(Math.max(0, Math.trunc(a.printingUnitPaise ?? 0)) * qty));
+  const netGst = split.gstPaise - inputGst;
   return {
     qty, baseUnitPaise: baseUnit, markupUnitPaise: markupUnit, unitPaise: unit, basePaise: base, markupPaise: markup, totalPaise: total,
     influencerPaise: influencer, platformPaise: platform, shareBps: a.cfg.platformShareBps, payMethod: a.payMethod,
-    cashfreeFeeBps: a.payMethod === "cashfree" ? a.cfg.cashfreeFeeBps : 0, cashfreeFeeEstPaise: cfFee, gstBps: a.cfg.gstBps, gstEstPaise: gst,
-    platformNetPaise: platform - cfFee - gst,
+    cashfreeFeeBps: a.payMethod === "cashfree" ? a.cfg.cashfreeFeeBps : 0, cashfreeFeeEstPaise: cfFee, gstBps: a.cfg.gstRateBps, gstEstPaise: netGst,
+    gstRateBps: a.cfg.gstRateBps, taxablePaise: split.taxablePaise, outputGstPaise: split.gstPaise, inputGstPaise: inputGst, netGstPaise: netGst,
+    platformNetPaise: platform - cfFee - netGst,
   };
 }
 
@@ -174,11 +253,12 @@ export function quoteAgainstLive(m: Pick<MerchMoney, "qty" | "baseUnitPaise" | "
 /** When a delivered order's earning becomes withdrawable. */
 export const earningAvailableAt = (deliveredAtMs: number, holdDays: number): number => deliveredAtMs + Math.max(0, Math.trunc(holdDays)) * DAY_MS;
 
-/** Fan-facing price from the product's frozen per-size base price and the influencer's markup (whole rupees in, paise out). */
-export function sizePrices(sizes: Array<{ size: string; baseUnitPaise: number }>, markupRupees: number, platformShareBps: number) {
+/** Fan-facing price from the product's frozen per-size base price and the influencer's markup (whole rupees in, paise out). pricePaise is GST-inclusive. */
+export function sizePrices(sizes: Array<{ size: string; baseUnitPaise: number }>, markupRupees: number, platformShareBps: number, capPaise?: number) {
   const markupUnit = Math.trunc(markupRupees) * 100;
   return sizes.map((s) => ({
     size: s.size, basePaise: s.baseUnitPaise, pricePaise: s.baseUnitPaise + markupUnit, youEarnPaise: youEarnUnitPaise(markupUnit, platformShareBps),
+    ...(capPaise != null ? { maxMarkupRupees: maxMarkupForBase(s.baseUnitPaise, capPaise) } : {}),
   }));
 }
 
@@ -200,7 +280,13 @@ export type ProfitRow = {
   influencerPaise: number;
   /** fan pays - influencer - Printrove total. */
   platformBeforeFeesPaise: number;
-  /** GST on the platform's markup share (markup - influencer). */
+  /** [HF-MERCH-GST-1] GST collected inside what the fan pays. */
+  outputGstPaise: number;
+  /** GST Printrove charged on shirt + print (claimed back). */
+  inputGstPaise: number;
+  /** output - input. */
+  netGstPaise: number;
+  /** LEGACY name for the GST line: equals netGstPaise (or the old 18% estimate when the legacy path is used). */
   gstEstPaise: number;
   /** Cashfree fee on what the fan pays; 0 when cashfreeFeeBps is 0 (wallet). */
   cashfreeEstPaise: number;
@@ -209,17 +295,23 @@ export type ProfitRow = {
 
 /** Pure: one row of the profit table. Reuses bpsOf, the same rounding the order split uses. */
 export function profitRow(a: {
-  size: string; printroveCostPaise: number; shippingPaise: number; fanPaysPaise: number; markupPaise: number; influencerPaise: number; gstBps: number; cashfreeFeeBps: number;
+  size: string; printroveCostPaise: number; shippingPaise: number; fanPaysPaise: number; markupPaise: number; influencerPaise: number; cashfreeFeeBps: number;
+  /** [HF-MERCH-GST-1] GST included in the fan price. Omit it (and pass legacyGstBps) only for an order made before HF-MERCH-GST-1. */
+  gstRateBps?: number; legacyGstBps?: number;
 }): ProfitRow {
   const cost = Math.max(0, Math.trunc(a.printroveCostPaise)), ship = Math.max(0, Math.trunc(a.shippingPaise));
   const total = cost + ship;
   const fan = Math.trunc(a.fanPaysPaise), inf = Math.trunc(a.influencerPaise);
   const before = fan - inf - total;
-  const share = Math.max(0, Math.trunc(a.markupPaise) - inf);
-  const gst = bpsOf(share, a.gstBps);
   const cf = bpsOf(fan, a.cashfreeFeeBps);
+  let out = 0, inp = 0, net: number;
+  if (typeof a.gstRateBps === "number") {
+    out = gstInclusiveSplit(fan, a.gstRateBps).gstPaise;
+    inp = Math.min(out, printroveInputGstPaise(cost));
+    net = out - inp;
+  } else net = bpsOf(Math.max(0, Math.trunc(a.markupPaise) - inf), a.legacyGstBps ?? 0); // old orders: 18% on the platform share
   return {
     size: a.size, printroveCostPaise: cost, shippingPaise: ship, printroveTotalPaise: total, fanPaysPaise: fan, influencerPaise: inf,
-    platformBeforeFeesPaise: before, gstEstPaise: gst, cashfreeEstPaise: cf, platformAfterFeesPaise: before - gst - cf,
+    platformBeforeFeesPaise: before, outputGstPaise: out, inputGstPaise: inp, netGstPaise: net, gstEstPaise: net, cashfreeEstPaise: cf, platformAfterFeesPaise: before - net - cf,
   };
 }

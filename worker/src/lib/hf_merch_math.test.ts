@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   MERCH_DEFAULT_CFG, readMerchCfg, computeMerchMoney, baseUnitPaise, checkMarkup, quoteAgainstLive, earningAvailableAt, sizePrices, splitBase, sizeBreakdown, youEarnUnitPaise, bpsOf, bpsFloor,
-  rupeesText, DAY_MS, profitRow,
+  rupeesText, DAY_MS, profitRow, gstInclusiveSplit, merchTaxSplit, printroveInputGstPaise, merchGstOf, maxMarkupForBase, checkPriceCap,
 } from "./hf_merch_math";
 
 describe("spec section 1 worked example: base 500, markup 200, Cashfree", () => {
@@ -12,10 +12,13 @@ describe("spec section 1 worked example: base 500, markup 200, Cashfree", () => 
     expect(m.platformPaise).toBe(8_000);
     expect(m.basePaise).toBe(50_000);
   });
-  it("Cashfree fee estimate 24.50, GST estimate 14.40, platform net 41.10", () => {
+  it("[HF-MERCH-GST-1] Cashfree fee estimate 24.50, 5% GST inside 700 = 33.33 (no input credit without a printing figure), platform net 22.17", () => {
     expect(m.cashfreeFeeEstPaise).toBe(2_450);
-    expect(m.gstEstPaise).toBe(1_440);
-    expect(m.platformNetPaise).toBe(4_110);
+    expect(m.outputGstPaise).toBe(3_333);
+    expect(m.inputGstPaise).toBe(0);
+    expect(m.netGstPaise).toBe(3_333);
+    expect(m.gstEstPaise).toBe(3_333); // legacy name carries the net
+    expect(m.platformNetPaise).toBe(8_000 - 2_450 - 3_333);
   });
   it("the fee and GST never change the influencer's amount", () => {
     const wallet = computeMerchMoney({ baseUnitPaise: 50_000, markupUnitPaise: 20_000, qty: 1, payMethod: "wallet", cfg: MERCH_DEFAULT_CFG });
@@ -27,7 +30,98 @@ describe("spec section 1 worked example: base 500, markup 200, Cashfree", () => 
     const wallet = computeMerchMoney({ baseUnitPaise: 50_000, markupUnitPaise: 20_000, qty: 1, payMethod: "wallet", cfg: MERCH_DEFAULT_CFG });
     expect(wallet.cashfreeFeeEstPaise).toBe(0);
     expect(wallet.cashfreeFeeBps).toBe(0);
-    expect(wallet.platformNetPaise).toBe(8_000 - 1_440);
+    expect(wallet.platformNetPaise).toBe(8_000 - 3_333);
+  });
+});
+
+describe("[HF-MERCH-GST-1] platform is the seller: worked example, fan pays 644", () => {
+  // base 444 (shirt+print 393.75 incl. 5% GST, shipping 50, rounded up), markup 200, Cashfree 3.5%.
+  const m = computeMerchMoney({ baseUnitPaise: 44_400, markupUnitPaise: 20_000, qty: 1, payMethod: "cashfree", cfg: MERCH_DEFAULT_CFG, printingUnitPaise: 39_375 });
+  it("GST inside 644 is 30.67, taxable 613.33", () => {
+    expect(m.totalPaise).toBe(64_400);
+    expect(m.outputGstPaise).toBe(3_067);
+    expect(m.taxablePaise).toBe(61_333);
+    expect(m.gstRateBps).toBe(500);
+  });
+  it("Printrove input credit 18.75, net GST payable 11.92", () => {
+    expect(m.inputGstPaise).toBe(1_875);
+    expect(m.netGstPaise).toBe(1_192);
+  });
+  it("influencer royalty is still 60% of the markup", () => {
+    expect(m.influencerPaise).toBe(12_000);
+    expect(m.platformPaise).toBe(8_000);
+  });
+  it("platform keeps 45.79 in total (the profit row sees the 25 paise base round-up)", () => {
+    const r = profitRow({ size: "S", printroveCostPaise: 39_375, shippingPaise: 5_000, fanPaysPaise: 64_400, markupPaise: 20_000, influencerPaise: 12_000, gstRateBps: 500, cashfreeFeeBps: 350 });
+    expect(r.outputGstPaise).toBe(3_067);
+    expect(r.inputGstPaise).toBe(1_875);
+    expect(r.netGstPaise).toBe(1_192);
+    expect(r.platformBeforeFeesPaise).toBe(8_025);
+    expect(r.cashfreeEstPaise).toBe(2_254);
+    expect(r.platformAfterFeesPaise).toBe(4_579);
+  });
+  it("gstInclusiveSplit rounds GST to the paisa and taxable is the rest", () => {
+    expect(gstInclusiveSplit(64_400)).toEqual({ taxablePaise: 61_333, gstPaise: 3_067 });
+    expect(gstInclusiveSplit(10_500)).toEqual({ taxablePaise: 10_000, gstPaise: 500 });
+    expect(gstInclusiveSplit(0)).toEqual({ taxablePaise: 0, gstPaise: 0 });
+    expect(gstInclusiveSplit(10_500, 0)).toEqual({ taxablePaise: 10_500, gstPaise: 0 });
+    for (const t of [1, 99, 12_345, 250_000]) { const s = gstInclusiveSplit(t); expect(s.taxablePaise + s.gstPaise).toBe(t); }
+  });
+  it("input credit is printing x 5/105 and quantity multiplies the printing", () => {
+    expect(printroveInputGstPaise(39_375)).toBe(1_875);
+    const q = computeMerchMoney({ baseUnitPaise: 44_400, markupUnitPaise: 20_000, qty: 2, payMethod: "wallet", cfg: MERCH_DEFAULT_CFG, printingUnitPaise: 39_375 });
+    expect(q.inputGstPaise).toBe(3_750);
+    expect(q.outputGstPaise).toBe(gstInclusiveSplit(128_800).gstPaise);
+    expect(q.netGstPaise).toBe(q.outputGstPaise! - q.inputGstPaise!);
+  });
+  it("old snapshots read as their estimate", () => {
+    expect(merchGstOf({ gstEstPaise: 1_440 })).toEqual({ outputGstPaise: 0, inputGstPaise: 0, netGstPaise: 1_440, legacy: true });
+    expect(merchGstOf(m)).toMatchObject({ outputGstPaise: 3_067, inputGstPaise: 1_875, netGstPaise: 1_192, legacy: false });
+  });
+});
+
+describe("[HF-MERCH-GST-1] place of supply: CGST + SGST inside the supplier's state, IGST outside", () => {
+  it("same state -> CGST 2.5% + SGST 2.5% (CGST rounds down, SGST takes the odd paisa)", () => {
+    expect(merchTaxSplit(64_400, 500, "27", "27")).toEqual({ totalPaise: 64_400, taxablePaise: 61_333, gstPaise: 3_067, cgstPaise: 1_533, sgstPaise: 1_534, igstPaise: 0, intraState: true, stateKnown: true });
+  });
+  it("other state -> all IGST 5%", () => {
+    const s = merchTaxSplit(64_400, 500, "29", "27");
+    expect(s).toMatchObject({ taxablePaise: 61_333, gstPaise: 3_067, cgstPaise: 0, sgstPaise: 0, igstPaise: 3_067, intraState: false });
+  });
+  it("taxable + tax always equals the total; the parts always add up to the tax", () => {
+    for (const total of [100, 9_999, 64_400, 250_000]) for (const buyer of ["27", "07"]) {
+      const s = merchTaxSplit(total, 500, buyer, "27");
+      expect(s.taxablePaise + s.gstPaise).toBe(total);
+      expect(s.cgstPaise + s.sgstPaise + s.igstPaise).toBe(s.gstPaise);
+    }
+  });
+  it("an unknown buyer state is treated as intra-state and flagged", () => {
+    expect(merchTaxSplit(64_400, 500, null, "27")).toMatchObject({ intraState: true, stateKnown: false, igstPaise: 0 });
+  });
+});
+
+describe("[HF-MERCH-GST-1] price cap", () => {
+  const sizes = [{ size: "S", baseUnitPaise: 44_400 }, { size: "3XL", baseUnitPaise: 52_400 }];
+  it("max markup per size is whole rupees below the cap, never negative", () => {
+    expect(maxMarkupForBase(44_400, 250_000)).toBe(2_056);
+    expect(maxMarkupForBase(250_001, 250_000)).toBe(0);
+    expect(maxMarkupForBase(240_050, 250_000)).toBe(99);
+  });
+  it("a markup that pushes ANY size over the cap is refused with the smallest allowed markup", () => {
+    expect(checkPriceCap(sizes, 1_976, 250_000)).toEqual({ ok: true });
+    expect(checkPriceCap(sizes, 1_977, 250_000)).toEqual({ ok: false, maxMarkupRupees: 1_976, capPaise: 250_000, size: "3XL" });
+  });
+  it("the cap is inclusive: exactly Rs 2,500 is allowed", () => {
+    expect(checkPriceCap([{ size: "M", baseUnitPaise: 50_000 }], 2_000, 250_000)).toEqual({ ok: true });
+    expect(checkPriceCap([{ size: "M", baseUnitPaise: 50_000 }], 2_001, 250_000)).toMatchObject({ ok: false, maxMarkupRupees: 2_000 });
+  });
+  it("sizePrices adds maxMarkupRupees only when a cap is given", () => {
+    expect(sizePrices([{ size: "M", baseUnitPaise: 50_000 }], 200, 4000, 250_000)[0].maxMarkupRupees).toBe(2_000);
+    expect("maxMarkupRupees" in sizePrices([{ size: "M", baseUnitPaise: 50_000 }], 200, 4000)[0]).toBe(false);
+  });
+  it("config: cap and rate come from the flags, junk falls back", () => {
+    expect(readMerchCfg({ hfMerchPriceCapRupees: 3000, hfMerchGstRateBps: 1200, hfMerchHsn: " 6109 " })).toMatchObject({ priceCapPaise: 300_000, gstRateBps: 1200, hsn: "6109" });
+    expect(readMerchCfg({ hfMerchPriceCapRupees: 0, hfMerchGstRateBps: 9999, hfMerchHsn: "abc" })).toMatchObject({ priceCapPaise: 250_000, gstRateBps: 500, hsn: "6109" });
   });
 });
 
@@ -97,19 +191,20 @@ describe("markup rules", () => {
 });
 
 describe("approval re-quote", () => {
-  const frozen = computeMerchMoney({ baseUnitPaise: 50_000, markupUnitPaise: 20_000, qty: 1, payMethod: "cashfree", cfg: MERCH_DEFAULT_CFG }); // net 4110
+  const frozen = computeMerchMoney({ baseUnitPaise: 50_000, markupUnitPaise: 20_000, qty: 1, payMethod: "cashfree", cfg: MERCH_DEFAULT_CFG }); // net 2217
+  const NET = frozen.platformNetPaise;
   it("unchanged cost: approvable, net unchanged", () => {
     const q = quoteAgainstLive(frozen, 50_000);
-    expect(q).toMatchObject({ liveBasePaise: 50_000, platformNetAfterPaise: 4_110, costRose: false, canApprove: true, risePaise: 0 });
+    expect(q).toMatchObject({ liveBasePaise: 50_000, platformNetAfterPaise: NET, costRose: false, canApprove: true, risePaise: 0 });
   });
   it("a small rise eats into the platform net but can still be approved", () => {
-    const q = quoteAgainstLive(frozen, 53_000);
-    expect(q.platformNetAfterPaise).toBe(1_110);
+    const q = quoteAgainstLive(frozen, 51_000);
+    expect(q.platformNetAfterPaise).toBe(NET - 1_000);
     expect(q.canApprove).toBe(true);
   });
   it("net exactly zero is allowed; one paisa below is refused (cost_rose)", () => {
-    expect(quoteAgainstLive(frozen, 54_110).canApprove).toBe(true);
-    const q = quoteAgainstLive(frozen, 54_111);
+    expect(quoteAgainstLive(frozen, 50_000 + NET).canApprove).toBe(true);
+    const q = quoteAgainstLive(frozen, 50_000 + NET + 1);
     expect(q.platformNetAfterPaise).toBe(-1);
     expect(q.costRose).toBe(true);
     expect(q.canApprove).toBe(false);
@@ -159,7 +254,7 @@ describe("rupeesText", () => {
 });
 
 describe("[HF-MERCH-PROFIT-VIEW-1] profitRow", () => {
-  const base = { markupPaise: 20_000, influencerPaise: 12_000, gstBps: 1800, cashfreeFeeBps: 350 };
+  const base = { markupPaise: 20_000, influencerPaise: 12_000, legacyGstBps: 1800, cashfreeFeeBps: 350 }; // the pre HF-MERCH-GST-1 18%-on-our-share path (old orders)
   it("size S: Printrove 267.75 + 50 = 317.75, fan 548, platform 110.25 before, 76.67 after", () => {
     const r = profitRow({ ...base, size: "S", printroveCostPaise: 26_775, shippingPaise: 5_000, fanPaysPaise: 54_800 });
     expect(r.printroveTotalPaise).toBe(31_775);

@@ -6,7 +6,8 @@ describe("merch cfg ranges", () => {
   it("the table is the agreed one", () => {
     expect(MERCH_CFG_RANGES).toEqual({
       hfMerchPlatformShareBps: [0, 9000], hfMerchMinMarkupRupees: [0, 5000], hfMerchBaseBufferRupees: [0, 2000],
-      hfMerchCashfreeFeeBps: [0, 1000], hfMerchGstBps: [0, 2800], hfMerchHoldDays: [0, 60],
+      hfMerchCashfreeFeeBps: [0, 1000], hfMerchGstBps: [0, 2800],
+      hfMerchGstRateBps: [0, 2800], hfMerchPriceCapRupees: [1, 100_000], hfMerchHoldDays: [0, 60],
     });
   });
   it("the reader accepts the edges and rejects one past them (falls back to the default)", () => {

@@ -22,8 +22,9 @@ import { appendShopEvent } from "./shop_orders";
 import { maskOrderForSeller, assertNoSellerLeak } from "../lib/hf_merch_mask";
 import { fanStatusOf, parseJson, type MerchSnapshot } from "../lib/hf_merch_types";
 import { legacyShippingPaise, merchCatalog, quoteBases } from "../lib/hf_merch_catalog";
+import { maxMarkupForBase } from "../lib/hf_merch_math";
 import {
-  deleteAddress, getFanOrder, getProductBySlug, getProduct, getSellerOrder, hostBySlug, hostByUid, listAddresses, listFanOrders, listLiveProductsForSeller, listSellerOrders,
+  deleteAddress, getFanOrder, getSellerTax, setSellerTax, GSTIN_RE, getProductBySlug, getProduct, getSellerOrder, hostBySlug, hostByUid, listAddresses, listFanOrders, listLiveProductsForSeller, listSellerOrders,
   listSellerProducts, productMerch, productShape, sellerEarnings, sellerOrderCounts, sellerProductCounts, shopSlugFor, sitemapRows, type MerchHost, type MerchProductRow,
 } from "../lib/hf_merch_store";
 import {
@@ -80,7 +81,9 @@ async function catalogRoute(env: Env): Promise<Response> {
   const { cfg } = await merchCfg(env);
   const c = await merchCatalog(env, cfg);
   if (!c.ok) return bad(503, c.error, c.message);
-  return out({ items: c.items, shippingPaise: c.shippingPaise, bufferPaise: c.bufferPaise, minMarkupRupees: cfg.minMarkupRupees, platformShareBps: cfg.platformShareBps, holdDays: cfg.holdDays }, 200, { "cache-control": "private, max-age=300" });
+  // [HF-MERCH-GST-1] priceCapPaise / gstRateBps are top-level; every size carries maxMarkupRupees (the "up to" size here, re-quoted exactly by /quote).
+  const items = c.items.map((it) => ({ ...it, sizes: it.sizes.map((s) => ({ ...s, maxMarkupRupees: maxMarkupForBase(s.basePaise, cfg.priceCapPaise) })) }));
+  return out({ items, shippingPaise: c.shippingPaise, bufferPaise: c.bufferPaise, minMarkupRupees: cfg.minMarkupRupees, platformShareBps: cfg.platformShareBps, holdDays: cfg.holdDays, priceCapPaise: cfg.priceCapPaise, gstRateBps: cfg.gstRateBps }, 200, { "cache-control": "private, max-age=300" });
 }
 
 /** Extension: live base price for the chosen colours and print size (the studio asks this while the influencer resizes). */
@@ -95,8 +98,8 @@ async function quoteRoute(req: Request, env: Env): Promise<Response> {
   if (!r.ok) return bad(r.error === "catalog_unavailable" ? 503 : 400, r.error, r.message);
   const shippingPaise = Math.max(0, Math.round((r.shippingRupees ?? 0) * 100));
   return out({
-    sizes: r.sizes.map((s) => ({ size: s.size, basePaise: s.baseUnitPaise, baseRupees: s.baseUnitPaise / 100, printingPaise: s.printingPaise, shippingPaise: s.shippingPaise })),
-    shippingPaise, bufferPaise: cfg.baseBufferRupees * 100,
+    sizes: r.sizes.map((s) => ({ size: s.size, basePaise: s.baseUnitPaise, baseRupees: s.baseUnitPaise / 100, printingPaise: s.printingPaise, shippingPaise: s.shippingPaise, maxMarkupRupees: maxMarkupForBase(s.baseUnitPaise, cfg.priceCapPaise) })),
+    shippingPaise, bufferPaise: cfg.baseBufferRupees * 100, priceCapPaise: cfg.priceCapPaise, gstRateBps: cfg.gstRateBps,
   });
 }
 
@@ -154,8 +157,8 @@ async function removeBgRoute(env: Env, s: SellerCtx, artId: string): Promise<Res
 async function shipFor(env: Env, rows: MerchProductRow[]): Promise<number> {
   return rows.some((r) => (productMerch(r)?.sizes ?? []).some((x) => typeof x.shippingPaise !== "number")) ? legacyShippingPaise(env) : 0;
 }
-async function productDto(env: Env, row: MerchProductRow, host: MerchHost, shareBps: number) {
-  return productShape(row, host, shareBps, await shipFor(env, [row]));
+async function productDto(env: Env, row: MerchProductRow, host: MerchHost, shareBps: number, capPaise?: number) {
+  return productShape(row, host, shareBps, await shipFor(env, [row]), capPaise);
 }
 
 async function createProductRoute(req: Request, env: Env, s: SellerCtx): Promise<Response> {
@@ -164,18 +167,18 @@ async function createProductRoute(req: Request, env: Env, s: SellerCtx): Promise
   const b = await readJson(req);
   const r = await createMerchProduct(env, cfg, { productReview: flags.productReview }, s.host, b);
   if (!r.ok) return failOf(r);
-  return out({ product: await productDto(env, r.product, s.host, cfg.platformShareBps) }, 201);
+  return out({ product: await productDto(env, r.product, s.host, cfg.platformShareBps, cfg.priceCapPaise), gstRateBps: cfg.gstRateBps, priceCapPaise: cfg.priceCapPaise }, 201);
 }
 async function listProductsRoute(env: Env, s: SellerCtx): Promise<Response> {
   const { cfg } = await merchCfg(env);
   const rows = await listSellerProducts(env, s.uid);
   const ship = await shipFor(env, rows);
-  return out({ products: rows.map((r) => productShape(r, s.host, cfg.platformShareBps, ship)) });
+  return out({ products: rows.map((r) => productShape(r, s.host, cfg.platformShareBps, ship, cfg.priceCapPaise)), gstRateBps: cfg.gstRateBps, priceCapPaise: cfg.priceCapPaise });
 }
 async function patchProductRoute(req: Request, env: Env, s: SellerCtx, id: string): Promise<Response> {
   const { cfg } = await merchCfg(env);
   const r = await patchMerchProduct(env, cfg, s.host, id, await readJson(req));
-  return r.ok ? out({ product: await productDto(env, r.product, s.host, cfg.platformShareBps) }) : failOf(r);
+  return r.ok ? out({ product: await productDto(env, r.product, s.host, cfg.platformShareBps, cfg.priceCapPaise), gstRateBps: cfg.gstRateBps, priceCapPaise: cfg.priceCapPaise }) : failOf(r);
 }
 async function deleteProductRoute(env: Env, s: SellerCtx, id: string): Promise<Response> {
   const r = await deleteMerchProduct(env, s.host, id);
@@ -210,6 +213,16 @@ async function sellerOrderRoute(env: Env, s: SellerCtx, id: string): Promise<Res
   assertNoSellerLeak(payload);
   return out(payload);
 }
+/** [HF-MERCH-GST-1] The influencer's optional GSTIN (record only; payouts do not change because of it yet). */
+async function taxRoute(req: Request, env: Env, s: SellerCtx): Promise<Response> {
+  if (req.method === "GET") return out({ gstin: (await getSellerTax(env, s.uid))?.gstin ?? null });
+  const b = await readJson(req, 2000);
+  const gstin = str(b.gstin, 20).toUpperCase().replace(/\s+/g, "");
+  if (gstin && !GSTIN_RE.test(gstin)) return bad(400, "invalid_gstin", "A GSTIN has 15 letters and numbers, for example 27ABCDE1234F1Z5. Leave it empty if you do not have one.", { field: "gstin" });
+  const limited = await rateLimit(env, `merch:tax:${s.uid}`, 20, 3600); if (limited) return limited;
+  try { await setSellerTax(env, s.uid, gstin); } catch (e) { await merchFail(env, e, "seller_tax", s.uid); return bad(503, "unavailable", "We could not save this right now. Please try again later."); }
+  return out({ gstin: gstin || null });
+}
 async function summaryRoute(env: Env, s: SellerCtx): Promise<Response> {
   const [products, orders, earnings] = await Promise.all([sellerProductCounts(env, s.uid), sellerOrderCounts(env, s.uid), sellerEarnings(env, s.uid)]);
   return out({ products, orders, earnings });
@@ -235,7 +248,7 @@ async function publicHostRoute(env: Env, slug: string): Promise<Response> {
   if (!host || host.status !== "live") return bad(404, "not_found", "No such page.");
   const { cfg, flags } = await merchCfg(env);
   const rows = await listLiveProductsForSeller(env, host.uid);
-  return out({ host: { slug: host.slug, displayName: host.displayName, avatarUrl: host.avatarUrl }, checkoutEnabled: flags.checkout, products: rows.map((r) => publicProduct(r, host, cfg.platformShareBps)) }, 200, PUBLIC_CACHE);
+  return out({ host: { slug: host.slug, displayName: host.displayName, avatarUrl: host.avatarUrl }, checkoutEnabled: flags.checkout, gstRateBps: cfg.gstRateBps, products: rows.map((r) => publicProduct(r, host, cfg.platformShareBps)) }, 200, PUBLIC_CACHE);
 }
 async function publicProductRoute(env: Env, hostSlug: string, productSlug: string): Promise<Response> {
   const host = await hostBySlug(env, hostSlug.toLowerCase());
@@ -248,7 +261,7 @@ async function publicProductRoute(env: Env, hostSlug: string, productSlug: strin
   const m = productMerch(row);
   const p = productShape(row, host, cfg.platformShareBps);
   return out({
-    host: { slug: host.slug, displayName: host.displayName, avatarUrl: host.avatarUrl }, checkoutEnabled: flags.checkout,
+    host: { slug: host.slug, displayName: host.displayName, avatarUrl: host.avatarUrl }, checkoutEnabled: flags.checkout, gstRateBps: cfg.gstRateBps,
     product: { ...publicProduct(row, host, cfg.platformShareBps), photos: p.mockups.length ? p.mockups : p.imageUrl ? [p.imageUrl] : [], description: row.description, side: m?.side ?? "front", maxQty: MERCH_QTY_MAX },
   }, 200, PUBLIC_CACHE);
 }
@@ -276,8 +289,10 @@ const str = (v: unknown, max: number): string => (typeof v === "string" ? v.trim
 async function checkoutRoute(req: Request, env: Env): Promise<Response> {
   const u = await requireUser(req, env);
   if (isFail(u)) return bad(u.status, "unauthorized", "Please sign in to buy.");
-  const { flags } = await merchCfg(env);
+  const { flags, gstinSet } = await merchCfg(env);
   if (!flags.checkout) return bad(403, "checkout_off", "Buying opens soon.");
+  // [HF-MERCH-GST-1] We are the seller and must issue a tax invoice for every sale: no GSTIN on file => no money is taken yet.
+  if (flags.requireGstin && !gstinSet) return bad(403, "gst_not_ready", "Merch checkout opens soon.");
   const wa = await requireVerifiedWhatsApp(env, u.uid);
   if (wa) return bad(403, "whatsapp_required", "Verify your WhatsApp number first.", { reason: "whatsapp_required" });
   if (await isClosing(env, u.uid)) return bad(409, "account_closing", CLOSING_MESSAGE, { reason: "account_closing" });
@@ -449,7 +464,7 @@ export async function hfMerchRoute(req: Request, env: Env, p: string, ctx?: Exec
       if (rest.length === 2 && m === "DELETE") return await deleteAddressRoute(req, env, b2);
     }
     // Influencer
-    const influencer = ["catalog", "quote", "ai", "art", "print-file", "mockup", "products", "orders", "summary"];
+    const influencer = ["catalog", "quote", "ai", "art", "print-file", "mockup", "products", "orders", "summary", "tax"];
     if (!influencer.includes(a)) return null;
     const s = await sellerCtx(req, env);
     if (s instanceof Response) return s;
@@ -465,6 +480,7 @@ export async function hfMerchRoute(req: Request, env: Env, p: string, ctx?: Exec
     if (a === "print-file" && m === "POST") return await printFileRoute(req, env, s);
     if (a === "mockup" && m === "POST") return await mockupRoute(req, env, s);
     if (a === "summary" && m === "GET") return await summaryRoute(env, s);
+    if (a === "tax" && rest.length === 1 && (m === "GET" || m === "PUT")) return await taxRoute(req, env, s);
     if (a === "products") {
       if (rest.length === 1 && m === "POST") return await createProductRoute(req, env, s);
       if (rest.length === 1 && m === "GET") return await listProductsRoute(env, s);

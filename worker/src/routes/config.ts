@@ -840,6 +840,11 @@ export interface PlatformConfig {
   hfMerchHoldDays: number;                   // days after delivery before the earning is withdrawable
   hfMerchAiEnabled: boolean;                 // [HF-MERCH-STUDIO-2] "Create with AI" pictures in the merch studio (public: the UI hides the button)
   hfMerchAiChargeRupees: number;             // [HF-MERCH-STUDIO-2] fixed rupees per AI picture, 0-500 (numericKeys; public: the UI shows the price)
+  // [HF-MERCH-GST-1] The platform is the seller; fan prices are GST-inclusive (rule HF-MERCH-13/14). All server-only.
+  hfMerchGstRateBps: number;                 // GST included in the fan price, basis points (500 = 5%)
+  hfMerchPriceCapRupees: number;             // max fan price of ONE shirt, any size (2500 keeps the 5% rate valid)
+  hfMerchHsn: string;                        // HSN on the invoice (6109 = T-shirts)
+  hfMerchRequireGstin: boolean;              // true + no hfGstin => POST /api/hf/merch/checkout 403 gst_not_ready
   affiliateMinQualifyingTopupCoins: number;  // dust-farming floor on the SOURCE top-up
   affiliateDailyEarnCapCoins: number;        // per-affiliate promoted coins per UTC day
   affiliateMonthlyEarnCapCoins: number;      // per-affiliate promoted coins per UTC month
@@ -2475,6 +2480,10 @@ const DEFAULTS: PlatformConfig = {
   hfMerchHoldDays: 7,
   hfMerchAiEnabled: true,
   hfMerchAiChargeRupees: 10,
+  hfMerchGstRateBps: 500,
+  hfMerchPriceCapRupees: 2500,
+  hfMerchHsn: "6109",
+  hfMerchRequireGstin: true,
   affiliateMinQualifyingTopupCoins: 100,
   affiliateDailyEarnCapCoins: 2000,
   affiliateMonthlyEarnCapCoins: 20000,
@@ -3196,7 +3205,7 @@ export async function getConfig(env: Env): Promise<Response> {
   for (const k of ["hfStdPlanEnabled", "hfStdTier1PaisePerMin", "hfStdTier2PaisePerMin", "hfStdTier3PaisePerMin", "hfStdTier1EndMin", "hfStdTier2EndMin",
     "hfStdHostPaisePerMin", "hfStdPhoneCostPaisePerMin", "hfTopupGstBps", "hfTopupGstInclusive"]) delete merged[k];
   delete merged.hfPushEnabled; // [HF-APP-4] server-only
-  for (const k of ["hfMerchAutoApprove", "hfMerchPlatformShareBps", "hfMerchBaseBufferRupees", "hfMerchCashfreeFeeBps", "hfMerchGstBps"]) delete merged[k]; // [HF-MERCH-CORE-1] server-only
+  for (const k of ["hfMerchAutoApprove", "hfMerchPlatformShareBps", "hfMerchBaseBufferRupees", "hfMerchCashfreeFeeBps", "hfMerchGstBps", "hfMerchGstRateBps", "hfMerchPriceCapRupees", "hfMerchHsn", "hfMerchRequireGstin"]) delete merged[k]; // [HF-MERCH-CORE-1] [HF-MERCH-GST-1] server-only
   delete merged.hfPresenceNudgeEnabled; // [HF-PRESENCE-NUDGE-1] server-only
   delete merged.hfBookingRemindersEnabled; // [HF-APPT-REMIND-1] server-only
   delete merged.hfPhoneOnlySignupEnabled; // [HF-AUTH-WA-1] server-only
@@ -3331,6 +3340,7 @@ export async function putConfig(req: Request, env: Env): Promise<Response> {
     "affiliateQualifyDays", "affiliateMinQualifyingTopupCoins",
     "hfMerchPlatformShareBps", "hfMerchMinMarkupRupees", "hfMerchBaseBufferRupees", "hfMerchCashfreeFeeBps", "hfMerchGstBps", "hfMerchHoldDays", // [HF-MERCH-CORE-1]
     "hfMerchAiChargeRupees", // [HF-MERCH-STUDIO-2]
+    "hfMerchGstRateBps", "hfMerchPriceCapRupees", // [HF-MERCH-GST-1] numeric (hfMerchHsn is in stringKeys)
     "affiliateDailyEarnCapCoins", "affiliateMonthlyEarnCapCoins", "affiliatePerReferredCapCoins",
     // [AVA-CFG-CACHE-1 2026-08-07] Ava V2 numeric keys. The two *Tier keys and
     // avaVoiceStyleDefault are ENUMS-AS-NUMBERS (config.ts has no string type) —
@@ -3384,6 +3394,7 @@ export async function putConfig(req: Request, env: Env): Promise<Response> {
     "agentLiveModel", "agentBackendModel", "agentSlotMinutes",
     // [AUMFE-POD-CORE-1] 'manual' | 'printrove' — string config.
     "shopPodProvider",
+    "hfMerchHsn", // [HF-MERCH-GST-1] HSN code on the merch invoice (string)
     // [AUMFE-VOICE-RUNTIME-1] string config — must be here or `flags.sh set voiceAgentModel=...` 400s `bad type`.
     "voiceAgentModel",
     "hfTopupGateway", "hfTopupPacks", "hfCheckoutMode", // [HF-TOPUP-1] [HF-WIRE-21]
