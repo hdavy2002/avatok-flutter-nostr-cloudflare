@@ -18,13 +18,16 @@ import {
   HF_CALL_APP, webhookBase, releaseHost, hfReserve, hfRelease, hfConsume, hfEarn, type HfCallRow,
 } from "../lib/hf_calls_store";
 import { settleTestCredits } from "../lib/hf_credits";
-import { settleTokenCall, type StdSnapshot } from "../lib/hf_token_calls"; // [HF-TOK-CALLS-1]
+import { settleTokenCall, priceOf, type StdSnapshot } from "../lib/hf_token_calls"; // [HF-TOK-CALLS-1]
 import { validTariff } from "../lib/hf_token_math"; // [HF-STD-PLAN-1]
 import { getCdr, parseTimeMs } from "../lib/hf_vobiz_api";
-import { relOpId } from "../lib/hf_token_ledger";
+import { relOpId, reserveChunk, getReservation, releaseOrphanChunks } from "../lib/hf_token_ledger";
+import { speakToCaller } from "../lib/hf_vobiz"; // [HF-CALL-MODES-C]
+import { notifyLineFree } from "../lib/hf_queue_store"; // [HF-CALL-MODES-C] stub until the queue lane lands; never throws
 import {
   settleCall, billedMinutes, hostTokensToCredit, splitCharge, splitHostShare, paidStillNeeded, callerHandle, hostAnnounceXml, noticeAndConferenceXml, hangupXml, emptyXml,
   LIMIT_WARNING_TEXT, WARN_BEFORE_LIMIT_SEC,
+  lowFundsWhisperText, TOPPED_UP_WHISPER_TEXT, NEUTRAL_ONE_MINUTE_TEXT, whisperMinutes, chunkCapEffSec, nextChunkDueSec, nextChunkRange,
 } from "../lib/hf_call_math";
 
 import { validCreatorSnapshot, type CreatorSnapshot } from "../lib/hf_creator_pricing";
@@ -36,6 +39,7 @@ const HOST_PHASE_MS = 90_000;      // ring + announcement + digit wait
 const CALLER_PHASE_MS = 70_000;    // caller ring + safety notice
 const CONNECT_GUESS_MS = 25_000;   // only used when Vobiz sends no conference "enter" events at all
 const MAX_RETRY_DELAY_MS = 5 * 60_000;
+const FUNDS_RETRY_MS = 30_000;     // [HF-CALL-MODES-C] while the next chunk cannot be funded, look again this often (a top-up poke is the fast path)
 
 // [HF-WALLET-1] testUsed/paidUsed split the caller's charge; hostPaid/hostTest split the host's share the same way (test part is never withdrawable).
 interface Plan {
@@ -43,7 +47,12 @@ interface Plan {
   testUsed?: number; paidUsed?: number; hostPaid?: number; hostTest?: number;
 }
 // [HF-TOK-CALLS-1] Token-mode call: the snapshot taken at start (never live config) + the call's own time limit in seconds.
-interface TokenSnap { ratePaise: number; callCostPaisePerMin: number; hostShareBps: number; maxSeconds: number; booked?: boolean; std?: StdSnapshot | null; creator?: CreatorSnapshot }
+interface TokenSnap {
+  ratePaise: number; callCostPaisePerMin: number; hostShareBps: number; maxSeconds: number; booked?: boolean; std?: StdSnapshot | null; creator?: CreatorSnapshot;
+  // [HF-CALL-MODES-C] chunk billing (hfCallChunkBillingEnabled when the call started). Absent on every other call: the old 60-minute behaviour is untouched.
+  // maxSeconds is then the hard CAP; fundedSec = connected seconds the ledger has reserved money for (the call ends there unless a chunk or top-up extends it).
+  chunk?: true; chunkSec?: number; capSec?: number; fundedSec?: number; chunkN?: number; short?: boolean; shortWhispered?: boolean;
+}
 interface Bill {
   tokSettled?: boolean;
   funds?: number; plan?: Plan; consumed?: number; released?: boolean; earned?: boolean; saved?: boolean; post?: boolean; attempts: number;
@@ -70,7 +79,8 @@ interface S {
   hostPicked: boolean; hostAccepted: boolean; callerPicked: boolean; callerPickedAt: number | null;
   inRoom: Record<Role, boolean>; member: Partial<Record<Role, string>>; anyEnter: boolean;
   connectedAt: number | null; endedAt: number | null; endReason: string | null; finalStatus: string | null; hashBy: Role | null;
-  finalized: boolean; finishing?: FinishRequest; tasks: Partial<Record<"ring" | "warn" | "limit" | "retry" | "guess" | "disconnect", number>>; bill: Bill;
+  finalized: boolean; finishing?: FinishRequest; tasks: Partial<Record<"ring" | "warn" | "limit" | "retry" | "guess" | "disconnect" | "chunk" | "fundsRetry" | "whisper", number>>; bill: Bill;
+  source?: string; // [HF-CALL-MODES-C] instant | queue | booking
   tok?: TokenSnap; // present only for calls started with hfTokensEnabled on
 }
 
@@ -152,7 +162,14 @@ export class HfCallDO {
           return jsonRes({ ok: true, status: s.status });
         case "watchdog": return await this.watchdog(s);
         // [HF-WIRE-7] read-only: how long this call may run and (old rupee path only) the funds it was sized to. Numbers only.
-        case "info": return jsonRes({ ok: true, maxSeconds: this.maxSec(s), hardEndsAt: s.hardEndsAt ?? null, fundsPaise: s.tok ? null : Math.max(0, Math.trunc(s.fundsRupees)) * 100 });
+        case "info": return jsonRes({ ok: true, maxSeconds: this.maxSec(s), hardEndsAt: s.hardEndsAt ?? null, fundsPaise: s.tok ? null : Math.max(0, Math.trunc(s.fundsRupees)) * 100,
+          ...(s.tok?.chunk ? { fundedSec: s.tok.fundedSec ?? 0, short: s.tok.short === true } : {}) }); // [HF-CALL-MODES-C]
+        // [HF-CALL-MODES-C] a wallet top-up landed (lib/hf_call_funds.pokeLiveCall): reserve the chunks the call now can pay for. Idempotent.
+        case "funds": {
+          if (!s.tok?.chunk || (typeof body.uid === "string" && body.uid !== s.callerUid)) return jsonRes({ ok: false, fundedSec: s.tok?.fundedSec ?? 0, short: s.tok?.short === true, addedSec: 0 });
+          const r = await this.fund(body.reason === "retry" ? "retry" : "topup");
+          return jsonRes({ ok: r.ran, fundedSec: r.fundedSec, short: r.short, addedSec: r.addedSec });
+        }
         default: return jsonRes({ ok: false, error: "not_found" }, 404);
       }
     } catch (e) {
@@ -283,7 +300,17 @@ export class HfCallDO {
           hostPaisePerMin: Math.max(0, Math.trunc(Number(sd.hostPaisePerMin))), phoneCostPaisePerMin: Math.max(0, Math.trunc(Number(sd.phoneCostPaisePerMin))) };
       }
       s.maxMinutes = Math.floor(s.tok.maxSeconds / 60);
+      // [HF-CALL-MODES-C] chunk billing: the starter reserved chunk 0 (or, for a booking, the hold). The ledger is the truth for fundedSec.
+      if (t.chunk === true && Number(t.chunkSec) > 0 && Number(t.capSec) > 0) {
+        const held = Math.trunc(Number(t.fundedSec)) > 0 ? Math.trunc(Number(t.fundedSec)) : (await getReservation(this.env, s.callId).catch(() => null))?.secondsCovered ?? 0;
+        s.tok.chunk = true; s.tok.chunkSec = Math.trunc(Number(t.chunkSec));
+        s.tok.capSec = Math.min(Math.trunc(Number(t.capSec)), s.tok.maxSeconds > 0 ? s.tok.maxSeconds : Math.trunc(Number(t.capSec)));
+        s.tok.maxSeconds = s.tok.capSec; s.tok.fundedSec = Math.max(0, held); s.tok.chunkN = 1; s.tok.short = false; // chunk 0 (or the booked hold) already came with the start
+        s.maxMinutes = Math.floor(s.tok.maxSeconds / 60);
+      }
     }
+    if (typeof b.source === "string" && ["instant", "queue", "booking"].includes(b.source)) s.source = b.source;
+    else if (s.bookingId) s.source = "booking";
     await this.save(s);
     try {
       const to = await verifiedWhatsAppNumber(this.env, s.hostUid);
@@ -396,12 +423,18 @@ export class HfCallDO {
       return;
     }
     s.connectedAt = now; s.status = "connected"; delete s.tasks.ring; delete s.tasks.guess;
-    const scheduledRemainingMs = s.hardEndsAt != null ? Math.max(0, s.hardEndsAt - now) : Infinity;
-    const limitMs = Math.min(this.maxSec(s) * 1000, scheduledRemainingMs);
-    s.tasks.limit = now + limitMs;
-    if (limitMs > (WARN_BEFORE_LIMIT_SEC + 5) * 1000) s.tasks.warn = now + limitMs - WARN_BEFORE_LIMIT_SEC * 1000;
+    if (s.tok?.chunk) {
+      this.plan(s); // [HF-CALL-MODES-C] limit = what is funded (cut by the cap / a booking end), next chunk due 5 s after connect, warn / whisper 60 s before the limit
+    } else {
+      const scheduledRemainingMs = s.hardEndsAt != null ? Math.max(0, s.hardEndsAt - now) : Infinity;
+      const limitMs = Math.min(this.maxSec(s) * 1000, scheduledRemainingMs);
+      s.tasks.limit = now + limitMs;
+      if (limitMs > (WARN_BEFORE_LIMIT_SEC + 5) * 1000) s.tasks.warn = now + limitMs - WARN_BEFORE_LIMIT_SEC * 1000;
+    }
     await this.save(s);
     await this.db().prepare("UPDATE hf_calls SET status='connected', connected_at=?1 WHERE id=?2").bind(now, s.callId).run().catch(() => undefined);
+    // [HF-CALL-MODES-C] "On a call" comes from the JOINED call (spec 2.1): both legs are in the room now. Best effort; dynamic so a missing helper never blocks the call.
+    try { const m = await import("../lib/hf_calls_store"); await (m as { markOnCall?: (e: Env, h: string, c: string) => Promise<void> }).markOnCall?.(this.env, s.hostUid, s.callId); } catch { /* the line lock already shows busy */ }
     this.emit(s.callerUid, "hf_call_connected", { call_id: s.callId, max_minutes: s.maxMinutes, guessed });
   }
 
@@ -485,9 +518,26 @@ export class HfCallDO {
         await this.disconnectAndFinalize(s);
         return;
       }
-      if (due("limit")) { await this.finish(s, "completed", s.limitReason); return; }
+      if (due("limit")) {
+        // [HF-CALL-MODES-C] chunk billing: the call ended because the money (or the cap / booking end) ran out; say which in end_reason.
+        const t = s.tok;
+        const reason = t?.chunk && s.connectedAt
+          ? ((t.fundedSec ?? 0) < chunkCapEffSec({ capSec: t.capSec ?? t.maxSeconds, connectedAt: s.connectedAt, hardEndsAt: s.hardEndsAt }) ? "balance" : "time_limit")
+          : s.limitReason;
+        await this.finish(s, "completed", reason); return;
+      }
+      // [HF-CALL-MODES-C] chunk billing timers. Each handler re-loads the state after its I/O, so none of them continues with this (possibly stale) copy.
+      if (s.tok?.chunk && (due("chunk") || due("fundsRetry"))) {
+        const retry = !due("chunk");
+        delete s.tasks.chunk; delete s.tasks.fundsRetry; await this.save(s);
+        try { await this.fund(retry ? "retry" : "chunk"); }
+        catch (e) { await this.fundsFailed(e); }
+        return;
+      }
+      if (s.tok?.chunk && due("whisper")) { delete s.tasks.whisper; await this.save(s); await this.oneMinuteWhisper(); return; }
       if (due("warn")) {
         delete s.tasks.warn; await this.save(s);
+        if (s.tok?.chunk) { try { await this.chunkWarn(); } catch (e) { await this.fundsFailed(e); } return; }
         await Promise.all((["host", "caller"] as Role[]).map((r) =>
           speakIntoCall(this.env, { room: this.room(s), memberId: s.member[r], callUuid: r === "host" ? s.hostLeg : s.callerLeg, text: LIMIT_WARNING_TEXT })));
       }
@@ -506,6 +556,121 @@ export class HfCallDO {
     } catch (e) {
       await trackException(this.env, e, { route: "hf_call.alarm", handled: true, app_name: HF_CALL_APP, extra: { area: "hf_calls" } });
     }
+  }
+
+  // ── [HF-CALL-MODES-C] chunk billing (flag hfCallChunkBillingEnabled; none of this runs for a call that started without it) ──────────
+  /** Set limit / chunk / warn / whisper tasks from what is funded. Pure on `s`; the caller saves. */
+  private plan(s: S): void {
+    const t = s.tok;
+    if (!t?.chunk || !s.connectedAt) return;
+    const c = s.connectedAt, funded = t.fundedSec ?? 0, chunkSec = t.chunkSec ?? 300;
+    const cap = chunkCapEffSec({ capSec: t.capSec ?? t.maxSeconds, connectedAt: c, hardEndsAt: s.hardEndsAt });
+    const limitSec = Math.min(funded, cap);
+    s.tasks.limit = c + limitSec * 1000;
+    delete s.tasks.warn; delete s.tasks.whisper; delete s.tasks.chunk;
+    const due = nextChunkDueSec({ fundedSec: funded, chunkSec, capEffSec: cap });
+    if (t.short) {
+      const w = c + (limitSec - 60) * 1000;
+      if (limitSec > 65 && w > Date.now() + 2000) s.tasks.whisper = w;
+      return;
+    }
+    if (due != null) { if (!s.tasks.fundsRetry) s.tasks.chunk = c + due * 1000; return; }
+    delete s.tasks.fundsRetry;
+    if (limitSec > WARN_BEFORE_LIMIT_SEC + 5) s.tasks.warn = c + (limitSec - WARN_BEFORE_LIMIT_SEC) * 1000;
+  }
+
+  private mp3(key: string): string | null {
+    const base = (this.env as unknown as Record<string, string | undefined>).HF_WHISPER_MP3_BASE;
+    return base ? `${base.replace(/\/+$/, "")}/${key}.mp3` : null;
+  }
+
+  /** Caller-only whisper. Never takes a host id. Records which Vobiz path worked. */
+  private async whisperCaller(s: S, kind: string, text: string, mp3Key: string): Promise<void> {
+    const r = await speakToCaller(this.env, { room: this.room(s), callerMemberId: s.member.caller, callerLegUuid: s.callerLeg, text, mp3Url: this.mp3(mp3Key) })
+      .catch(() => ({ ok: false, via: "none" as const }));
+    this.emit(s.callerUid, "hf_call_whisper", { call_id: s.callId, kind, via: r.via, ok: r.ok });
+  }
+
+  /**
+   * Reserve the chunks the call now needs (money is taken ~5 min ahead). Idempotent per chunk (the ledger gate is keyed on the chunk number).
+   * All I/O happens before the state is re-read: a hangup that landed meanwhile wins, and whatever we reserved is swept by settle.
+   */
+  private async fund(reason: "chunk" | "retry" | "topup"): Promise<{ ran: boolean; fundedSec: number; short: boolean; addedSec: number }> {
+    const s0 = await this.load();
+    const idle = { ran: false, fundedSec: s0?.tok?.fundedSec ?? 0, short: s0?.tok?.short === true, addedSec: 0 };
+    if (!s0 || s0.finalized || s0.finishing || !s0.tok?.chunk || !s0.connectedAt) return idle;
+    const t0 = s0.tok, price = priceOf(t0), chunkSec = t0.chunkSec ?? 300;
+    const cap = chunkCapEffSec({ capSec: t0.capSec ?? t0.maxSeconds, connectedAt: s0.connectedAt, hardEndsAt: s0.hardEndsAt });
+    const start = t0.fundedSec ?? 0;
+    let funded = start, n = t0.chunkN ?? 0, short = false, retrySoon = false;
+    for (let i = 0; i < 70; i++) {
+      const elapsed = Math.max(0, Math.floor((Date.now() - s0.connectedAt) / 1000));
+      // already funded 5 minutes ahead -> nothing to do; but a call that ran short is re-checked at once (a top-up must extend it even though a partial chunk left it "ahead")
+      if (!(t0.short === true && i === 0) && funded - elapsed > chunkSec - 5) break;
+      const range = nextChunkRange({ fundedSec: funded, chunkSec, capEffSec: cap });
+      if (!range) break;
+      const r = await reserveChunk(this.env, s0.callerUid, s0.callId, n, price, range.from, range.to);
+      if (!r.ok) {
+        if (r.reason === "insufficient") short = true;
+        else if (r.reason === "conflict") retrySoon = true;
+        else if (r.reason === "invalid") { await trackException(this.env, new Error("chunk invalid"), { route: "hf_call.fund", handled: true, app_name: HF_CALL_APP, extra: { area: "hf_calls", call: s0.callId, n } }); retrySoon = true; }
+        funded = Math.max(funded, r.fundedSec);
+        break;
+      }
+      funded = Math.max(funded, r.fundedSec); n += 1;
+      this.emit(s0.callerUid, "hf_call_chunk_reserved", { call_id: s0.callId, n: r.n, from_sec: r.fromSec, covered_sec: r.coveredSec, paise: r.paise, partial: r.partial, funded_seconds: funded, reason });
+      if (r.partial) { short = true; break; }
+    }
+    const s = await this.load();
+    if (!s || s.finalized || s.finishing || !s.tok?.chunk || !s.connectedAt) return { ...idle, ran: false };
+    const t = s.tok, wasShort = t.short === true;
+    t.fundedSec = Math.max(t.fundedSec ?? 0, funded); t.chunkN = Math.max(t.chunkN ?? 0, n);
+    t.short = short && t.fundedSec < cap;
+    const added = t.fundedSec - start;
+    delete s.tasks.fundsRetry;
+    if (t.short || retrySoon) s.tasks.fundsRetry = Date.now() + FUNDS_RETRY_MS;
+    const needWhisper = t.short && !t.shortWhispered;
+    const topped = !t.short && wasShort;
+    if (needWhisper) t.shortWhispered = true;
+    if (!t.short) t.shortWhispered = false;
+    this.plan(s);
+    await this.save(s);
+    const remaining = Math.max(0, Math.min(t.fundedSec, cap) - Math.max(0, Math.floor((Date.now() - s.connectedAt) / 1000)));
+    if (needWhisper) {
+      this.emit(s.callerUid, "hf_call_funds_short", { call_id: s.callId, funded_seconds: t.fundedSec, remaining_sec: remaining, chunk_n: t.chunkN, reason });
+      const m = whisperMinutes(remaining);
+      await this.whisperCaller(s, "low_funds", lowFundsWhisperText(m), `low_funds_${m}`);
+    }
+    if (topped || (reason === "topup" && added > 0)) {
+      this.emit(s.callerUid, "hf_call_topup_extended", { call_id: s.callId, added_seconds: added, funded_seconds: t.fundedSec, reason });
+      if (topped) await this.whisperCaller(s, "topped_up", TOPPED_UP_WHISPER_TEXT, "topped_up");
+    }
+    return { ran: true, fundedSec: t.fundedSec, short: t.short === true, addedSec: added };
+  }
+
+  /** A chunk step threw (D1 blip, ledger error): look again soon, never end the call for it. */
+  private async fundsFailed(e: unknown): Promise<void> {
+    const s = await this.load();
+    await trackException(this.env, e, { route: "hf_call.fund", handled: true, app_name: HF_CALL_APP, extra: { area: "hf_calls", call: s?.callId } });
+    if (!s || s.finalized || s.finishing || !s.tok?.chunk) return;
+    s.tasks.fundsRetry = Date.now() + FUNDS_RETRY_MS;
+    await this.save(s);
+  }
+
+  /** 60 s before the cap / a booking end (the call is funded all the way): the same both-leg warning as today. */
+  private async chunkWarn(): Promise<void> {
+    const s = await this.load();
+    if (!s || s.finalized || s.finishing || !s.connectedAt) return;
+    await Promise.all((["host", "caller"] as Role[]).map((r) =>
+      speakIntoCall(this.env, { room: this.room(s), memberId: s.member[r], callUuid: r === "host" ? s.hostLeg : s.callerLeg, text: LIMIT_WARNING_TEXT })));
+  }
+
+  /** One minute before the funds run out: the caller hears the D5 line, the influencer a neutral one that never mentions money. */
+  private async oneMinuteWhisper(): Promise<void> {
+    const s = await this.load();
+    if (!s || s.finalized || s.finishing || !s.connectedAt || s.tok?.short !== true) return;
+    await this.whisperCaller(s, "one_minute", lowFundsWhisperText(1), "low_funds_1");
+    await speakIntoCall(this.env, { room: this.room(s), memberId: s.member.host, callUuid: s.hostLeg, text: NEUTRAL_ONE_MINUTE_TEXT }).catch(() => undefined);
   }
 
   // ── finish: hang up, record, free the host, bill, announce ───────────────────────────────────────────────────
@@ -627,6 +792,7 @@ export class HfCallDO {
         await releaseHost(this.env, s.hostUid, s.callId);
         s.bill.hostReleased = true;
         await this.save(s);
+        await notifyLineFree(this.env, s.hostUid, s.callId).catch(() => undefined); // [HF-CALL-MODES-C] queue: the line is free
       } catch (e) {
         s.bill.attempts += 1;
         s.tasks.retry = Date.now() + Math.min(MAX_RETRY_DELAY_MS, 20_000 * s.bill.attempts);
@@ -642,6 +808,7 @@ export class HfCallDO {
         await releaseHost(this.env, s.hostUid, s.callId);
         s.bill.hostReleased = true;
         await this.save(s);
+        await notifyLineFree(this.env, s.hostUid, s.callId).catch(() => undefined); // [HF-CALL-MODES-C] queue: the line is free
       } catch (e) {
         s.bill.attempts += 1;
         s.tasks.retry = Date.now() + Math.min(MAX_RETRY_DELAY_MS, 20_000 * s.bill.attempts);
@@ -687,8 +854,11 @@ export class HfCallDO {
     s.status = finalStatus;
     delete s.tasks.retry;
     await this.save(s);
+    // [HF-CALL-MODES-C] what the call was funded for and how many chunks it took: the money monitor's judgeCall reads funded_seconds. Best effort (column from an ALTER migration).
+    if (s.tok?.chunk) await this.db().prepare("UPDATE hf_calls SET funded_seconds=?1, chunks=?2 WHERE id=?3").bind(s.tok.fundedSec ?? 0, s.tok.chunkN ?? 0, s.callId).run().catch(() => undefined);
     const billed = s.bill.plan?.billedMinutes ?? 0;
-    this.emit(s.callerUid, "hf_call_ended", { call_id: s.callId, billed_minutes: billed, end_reason: s.endReason ?? s.finalStatus });
+    this.emit(s.callerUid, "hf_call_ended", { call_id: s.callId, billed_minutes: billed, end_reason: s.endReason ?? s.finalStatus,
+      ...(s.source ? { source: s.source } : {}), ...(s.tok?.chunk ? { funded_seconds: s.tok.fundedSec ?? 0, chunks: s.tok.chunkN ?? 0 } : {}) }); // [HF-CALL-MODES-C]
     const row = await this.db().prepare("SELECT * FROM hf_calls WHERE id=?1").bind(s.callId).first<HfCallRow>().catch(() => null);
     if (row) await onCallCompleted(this.env, undefined, row).catch(() => undefined);
   }
@@ -706,7 +876,7 @@ export class HfCallDO {
         const rules = await readMoneyRules(this.env); // [HF-WIRE-13] rule 3: joined and broke inside the first minute = the fixed charge
         const out = await settleTokenCall(this.env, {
           callId: s.callId, callerUid: s.callerUid, hostUid: s.hostUid, ratePaise: t.ratePaise, callCostPaisePerMin: t.callCostPaisePerMin,
-          hostShareBps: t.hostShareBps, connectedSeconds: seconds, maxSeconds: t.maxSeconds, endedAt, std: t.std ?? null, creator: t.creator, booked: t.booked === true,
+          hostShareBps: t.hostShareBps, connectedSeconds: seconds, maxSeconds: t.chunk && t.booked !== true ? Math.min(t.maxSeconds, Math.max(0, t.fundedSec ?? 0)) : t.maxSeconds, endedAt, std: t.std ?? null, creator: t.creator, booked: t.booked === true,
           joined: s.connectedAt != null, dropChargePaise: rules.dropChargePaise,
         });
         b.plan = { billedMinutes: out.billedMinutes, chargeRupees: 0, hostEarningPaise: out.hostPaise, hostTokens: 0, capped: out.shortfall };
@@ -718,6 +888,8 @@ export class HfCallDO {
           plan: t.creator ? "creator" : t.std ? "standard" : "host_rate", charge_paise: out.consumedValuePaise, phone_cost_est_paise: out.callCostPaise, platform_paise: out.platformPaise, shortfall: out.shortfall,
         });
       }
+      // [HF-CALL-MODES-C] a chunk that was mid-flight at hangup may have landed after settle read the hold: sweep it (idempotent, safe on every retry).
+      if (t.chunk) await releaseOrphanChunks(this.env, s.callId).catch((e) => trackException(this.env, e, { route: "hf_call.settle", handled: true, app_name: HF_CALL_APP, extra: { area: "hf_calls", step: "orphan_chunks", call: s.callId } }));
       return true;
     } catch (e) {
       b.attempts += 1;
