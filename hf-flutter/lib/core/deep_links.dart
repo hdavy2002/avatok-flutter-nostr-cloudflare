@@ -63,6 +63,10 @@ LinkTarget? linkTargetFor(Uri uri) {
   if (segs.length == 2 && segs.first == 'bookings' && RegExp(r'^[A-Za-z0-9_-]{8,64}$').hasMatch(segs[1])) {
     return LinkTarget('/bookings/${segs[1]}', '/bookings/:id');
   }
+  // [HF-MERCH-APP-1] hellofraands://orders/<id>: where the merch payment page sends the buyer back. Opens that order's tracker.
+  if (scheme == Brand.scheme && segs.length == 2 && segs.first == 'orders' && RegExp(r'^[A-Za-z0-9_-]{6,64}$').hasMatch(segs[1])) {
+    return LinkTarget('/merch/orders/${segs[1]}?src=link&wait=1', '/orders/:id');
+  }
   // [HF-BOOK-APPROVE-PUSH] App-friendly push paths, plus the web-style paths older pushes carried.
   if (segs.length == 1 && segs.first == 'bookings') return const LinkTarget('/bookings', '/bookings');
   if (segs.length == 2 && segs.first == 'inf' && const {'bookings', 'availability', 'home', 'status'}.contains(segs[1])) {

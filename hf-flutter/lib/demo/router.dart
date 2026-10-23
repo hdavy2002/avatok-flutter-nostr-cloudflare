@@ -14,6 +14,9 @@ import 'screens/feed.dart';
 import 'screens/influencer.dart';
 import 'screens/intro.dart';
 import 'screens/me.dart';
+import 'screens/merch_fan.dart'; // [HF-MERCH-APP-1]
+import 'screens/merch_studio.dart';
+import 'screens/merch_wizard.dart';
 import 'screens/money.dart';
 import 'screens/creator_page.dart'; // [HF-REELS-FAV-1]
 import 'screens/page_moved.dart';
@@ -116,6 +119,25 @@ final router = GoRouter(
       parentNavigatorKey: rootKey,
       path: '/wallet',
       builder: (_, __) => const WalletScreen(),
+    ),
+    // [HF-MERCH-APP-1] Influencer merch shop: studio, new-product wizard, checkout, My orders and one order.
+    GoRoute(parentNavigatorKey: rootKey, path: '/merch', builder: (_, __) => const MerchStudioScreen()),
+    GoRoute(parentNavigatorKey: rootKey, path: '/merch/new', builder: (_, __) => const MerchWizardScreen()),
+    GoRoute(
+      parentNavigatorKey: rootKey,
+      path: '/merch/checkout',
+      redirect: (_, s) => s.extra is MerchCheckoutArgs ? null : '/merch/orders',
+      builder: (_, s) => MerchCheckoutScreen(args: s.extra! as MerchCheckoutArgs),
+    ),
+    GoRoute(parentNavigatorKey: rootKey, path: '/merch/orders', builder: (_, __) => const MerchMyOrdersScreen()),
+    GoRoute(
+      parentNavigatorKey: rootKey,
+      path: '/merch/orders/:id',
+      builder: (_, s) => MerchOrderScreen(
+        id: s.pathParameters['id']!,
+        waiting: s.uri.queryParameters['wait'] == '1',
+        source: s.uri.queryParameters['src'] ?? 'link',
+      ),
     ),
     GoRoute(
       parentNavigatorKey: rootKey,

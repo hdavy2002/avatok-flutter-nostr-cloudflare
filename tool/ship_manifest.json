@@ -11445,5 +11445,39 @@
     "min_devices_on_build": 1,
     "flags": [],
     "no_telemetry": "Ships dark: contracts, flags (all off), migration files and uncalled stubs only; no behaviour change. Success is asserted by HF-CALL-MODES-A/B/C/D/E."
+  },
+  "HF-MERCH-APP-1": {
+    "description": "Android app side of the influencer merch shop: My merch studio, new-product wizard with on-phone 300 DPI print render, fan Merch row, product sheet, checkout, My orders and order tracker.",
+    "two_sided": true,
+    "min_devices_on_build": 2,
+    "flags": [
+      "hfMerchEnabled"
+    ],
+    "success": [
+      {
+        "event": "merch_studio_step",
+        "property": "step",
+        "equals": "published",
+        "min_events": 1,
+        "note": "An influencer finished the wizard: the print was rendered and uploaded and the product was created."
+      },
+      {
+        "event": "merch_buy_clicked",
+        "property": "qty",
+        "gt": 0,
+        "min_events": 1,
+        "note": "A fan on the second phone opened a product and tapped Buy."
+      },
+      {
+        "event": "merch_order_opened",
+        "property": "status",
+        "not_in": [
+          "cancelled",
+          "refunded"
+        ],
+        "min_events": 1,
+        "note": "An order reached the tracker in a live state. Payment success itself is proved by the server order rows, not by this event."
+      }
+    ]
   }
 }

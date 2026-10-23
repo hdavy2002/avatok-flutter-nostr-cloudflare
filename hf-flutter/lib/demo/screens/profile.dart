@@ -19,6 +19,7 @@ import '../state.dart';
 import '../theme.dart';
 import '../widgets.dart';
 import 'bookings_real.dart'; // [HF-WIRE-8]
+import 'merch_fan.dart'; // [HF-MERCH-APP-1]
 import 'sheets.dart';
 
 /// Public influencer profile (HF-REEL-8): likes, videos, rate, bio, Call now / Book,
@@ -147,6 +148,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       onBook: () => context.push('/book/${who.id}'),
                       notify: NotifyMeButton(slug: who.id, firstName: first, big: true),
                     ),
+                    if (prof != null) MerchProfileRow(slug: who.id), // [HF-MERCH-APP-1] hidden while hfMerchEnabled is off
                     const SizedBox(height: 14),
                     ProfileTabs(tab: _tab, onTab: (i) => setState(() => _tab = i)),
                     const SizedBox(height: 14),

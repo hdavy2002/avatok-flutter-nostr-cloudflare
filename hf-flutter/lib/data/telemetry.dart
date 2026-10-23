@@ -60,6 +60,12 @@ abstract final class Telemetry {
     'hf_auth_outcome',
     'hf_reel_play_fail', // [HF-REEL-PLAYER-2] platform + reason when a reel embed could not start
     'hf_page_not_found', // [HF-REELS-FAV-1] unknown route shown the friendly page
+    'merch_strip_viewed', // [HF-MERCH-APP-1]
+    'merch_product_viewed',
+    'merch_buy_clicked',
+    'merch_pay_method_chosen',
+    'merch_studio_step',
+    'merch_order_opened',
   };
 
   static TelemetrySink sink = _debugSink;

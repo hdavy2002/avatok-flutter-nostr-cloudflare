@@ -304,6 +304,89 @@ class ApiClient {
     return j;
   }
 
+  /// [HF-MERCH-APP-1] One raw upload (art, print file, mockup): the body is the file's own bytes, [contentType] says what they are, and
+  /// the answer is the usual JSON object. Same sign-in, one refresh on a 401, typed errors and failure report as [request]; a longer
+  /// timeout because a photo is bigger than a JSON body. Throws [ApiException].
+  Future<Map<String, dynamic>> postBytes(
+    String path,
+    List<int> bytes, {
+    required String contentType,
+    Map<String, String>? headers,
+    Duration uploadTimeout = const Duration(seconds: 90),
+  }) async {
+    final sw = Stopwatch()..start();
+    final endpoint = path.split('?').first;
+    try {
+      final provider = tokens;
+      var token = provider == null ? null : await provider();
+      var resp = await _sendBytes(path, bytes, contentType, headers, token, uploadTimeout);
+      if (resp.statusCode == 401 && provider != null) {
+        final fresh = await provider(forceRefresh: true);
+        if (fresh != null && fresh != token) {
+          token = fresh;
+          resp = await _sendBytes(path, bytes, contentType, headers, token, uploadTimeout);
+        }
+        if (resp.statusCode == 401) {
+          final err = ApiException.fromResponse(401, utf8.decode(resp.bodyBytes, allowMalformed: true));
+          _report('POST', endpoint, err, sw);
+          try {
+            await onSessionLost?.call();
+          } catch (_) {
+            // a failing hook never hides the 401
+          }
+          throw err;
+        }
+      }
+      final text = utf8.decode(resp.bodyBytes, allowMalformed: true);
+      if (resp.statusCode < 200 || resp.statusCode >= 300) {
+        final err = ApiException.fromResponse(resp.statusCode, text);
+        if (!err.isNotEnabled) _report('POST', endpoint, err, sw);
+        throw err;
+      }
+      unawaited(cache.invalidateAfterWrite());
+      Object? decoded;
+      try {
+        decoded = text.trim().isEmpty ? <String, dynamic>{} : jsonDecode(text);
+      } catch (_) {
+        final err = ApiException.parse(resp.statusCode);
+        _report('POST', endpoint, err, sw);
+        throw err;
+      }
+      return asMap(decoded);
+    } on ApiException {
+      rethrow;
+    } on TimeoutException {
+      final err = ApiException.offline(timeout: true);
+      _report('POST', endpoint, err, sw);
+      throw err;
+    } on Exception {
+      final err = ApiException.offline();
+      _report('POST', endpoint, err, sw);
+      throw err;
+    }
+  }
+
+  Future<http.Response> _sendBytes(
+    String path,
+    List<int> bytes,
+    String contentType,
+    Map<String, String>? extraHeaders,
+    String? token,
+    Duration limit,
+  ) async {
+    final req = http.Request('POST', _uri(path, null));
+    req.headers.addAll({
+      'Accept': 'application/json',
+      'X-Client': clientTag,
+      if (token != null && token.isNotEmpty) 'Authorization': 'Bearer $token',
+      ...?extraHeaders,
+      'Content-Type': contentType,
+    });
+    req.bodyBytes = bytes;
+    final streamed = await _http.send(req).timeout(limit);
+    return http.Response.fromStream(streamed).timeout(limit);
+  }
+
   Future<List<dynamic>> getList(String path, {Map<String, Object?>? query, bool auth = true}) async {
     final v = await request('GET', path, query: query, auth: auth);
     if (v is List) return v;
