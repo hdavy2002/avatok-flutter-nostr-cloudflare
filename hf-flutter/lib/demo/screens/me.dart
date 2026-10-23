@@ -7,6 +7,7 @@ import '../../core/brand.dart';
 import '../../data/api_exception.dart';
 import '../../data/demo_mode.dart';
 import '../../data/models/wallet.dart';
+import '../../data/repos/merch_repo.dart'; // [HF-HELP-MERCH-1]
 import '../../data/services.dart';
 import '../state.dart';
 import '../theme.dart';
@@ -523,6 +524,7 @@ class HelpScreen extends StatelessWidget {
                   const DesiHero(eyebrow: 'Help', title: 'Koi sawaal?', sub: 'Quick answers about calls, money and bookings.', ghost: 'Madad', tone: DesiTone.gold, minHeight: 120),
                   const SizedBox(height: 12),
                   for (var i = 0; i < HelpStrings.faq.length; i++) FaqCard(index: i, question: HelpStrings.faq[i].$1, answer: HelpStrings.faq[i].$2, initiallyOpen: i == 0),
+                  const _MerchHelpCards(), // [HF-HELP-MERCH-1] hidden while hfMerchEnabled is off
                   const SizedBox(height: 4),
                   HelpMailCard(key: const Key('help-email'), lead: HelpStrings.stillStuck, email: HelpStrings.supportEmail, onTap: () => openSupportMail(context)),
                   const SizedBox(height: 12),
@@ -534,5 +536,42 @@ class HelpScreen extends StatelessWidget {
         ),
       ),
     );
+  }
+}
+
+/// [HF-HELP-MERCH-1] The T-shirt answers on Help. They appear only once `/api/config` says `hfMerchEnabled` (same switch as the Merch screens).
+class _MerchHelpCards extends StatefulWidget {
+  const _MerchHelpCards();
+
+  @override
+  State<_MerchHelpCards> createState() => _MerchHelpCardsState();
+}
+
+class _MerchHelpCardsState extends State<_MerchHelpCards> {
+  @override
+  void initState() {
+    super.initState();
+    MerchRepo.flags.addListener(_changed);
+    unawaited(Services.instance.merchRepo.loadFlags());
+  }
+
+  @override
+  void dispose() {
+    MerchRepo.flags.removeListener(_changed);
+    super.dispose();
+  }
+
+  void _changed() {
+    if (mounted) setState(() {});
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (!MerchRepo.flags.value.enabled) return const SizedBox.shrink();
+    final n = HelpStrings.faq.length;
+    return Column(children: [
+      for (var i = 0; i < HelpStrings.merchFaq.length; i++)
+        FaqCard(index: n + i, question: HelpStrings.merchFaq[i].$1, answer: HelpStrings.merchFaq[i].$2, initiallyOpen: false),
+    ]);
   }
 }

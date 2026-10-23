@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { BRAND } from '../../../lib/brand';
 import { capture } from '../../../lib/analytics';
+import { merchEnabled } from '../merch/api';
 import { getTickets, sendTicket, type Ticket } from './data';
 import { Card, Ic, PageHead, Sticker, istDay, useToast } from './ui';
 
@@ -24,9 +25,19 @@ const FAQ: [string, string, string][] = [
   ['account', 'Can I pause instead of closing?', 'Yes. Pause notifications on the Close page pauses only the Notify me WhatsApps. You can resume them any time.'],
   ['account', 'Can I change my name or handle?', 'You can change your profile name. Your @handle is permanent: if you never chose one, we made one for you.'],
   ['account', 'I was asked to accept updated terms', 'We updated the Terms, Privacy policy and Community guidelines (withdrawals go only to your own UPI ID). You are asked to accept once.'],
+  ['account', 'How do I share my page?', 'Once you are live, use the Share my page card on Overview and Profile: copy the link, send it on WhatsApp, X or Facebook, put it in your Instagram bio, or show the QR code. In the app use Share my page on Me, in Settings, or the share button on your profile. Fans can share any influencer’s page with the Share button on it.'],
   ['account', 'What do I see about my fans?', 'Your hearts and how many fans tapped Notify me for you. You never see a fan’s number. Waiting fans in your queue are counted on your dashboard, and you can pause the queue.'],
 ];
+/* [HF-HELP-MERCH-1] T-shirt answers: shown only while /api/config hfMerchEnabled is on (same switch as the Merch screens). */
+const MERCH_FAQ: [string, string, string][] = [
+  ['merch', 'How do I buy an influencer’s T-shirt?', 'Open the influencer’s page, pick a T-shirt, colour and size, add your address, tick the Terms and refund policy and pay. The price is all-in: delivery in India is free and there is no separate GST or delivery line. Pay from your wallet (money you added; free test credit cannot be used for merch) or with UPI, card or net banking.'],
+  ['merch', 'Where is my T-shirt order?', 'Open My orders. Your order goes Placed, Approved, Printing, Shipped (with the courier and a tracking link) and Delivered. We also WhatsApp and email you at each step.'],
+  ['merch', 'Can I return a T-shirt?', 'No returns or exchanges, because each T-shirt is printed for you. If it is wrong or damaged, report it within 48 hours of delivery with a photo and we replace it or refund you. A refund goes back the way you paid.'],
+  ['merch', 'How do I sell T-shirts?', 'Open Merch, upload your art and tick I own this art, pick a T-shirt, place the art (a quality meter blocks blurry prints), add your markup (at least ₹10) and send it for review. Our team reviews every new product and checks every paid order before it is printed.'],
+  ['merch', 'How much do I earn from merch?', 'You keep 60% of your markup (currently). We keep 40% and pay GST and payment fees out of our share. Merch money can be withdrawn 7 days after delivery (currently); a refunded order earns nothing. You never see the fan’s phone, email, full address or payment details.'],
+];
 const TOPICS: [string, string][] = [['', 'All'], ['wallet', 'Wallet & payments'], ['call', 'Calls'], ['appointment', 'Appointments'], ['safety', 'Safety'], ['account', 'Account']];
+const MERCH_TOPIC: [string, string] = ['merch', 'T-shirts'];
 const FAQ_KEY: Record<string, string> = { call: 'calls' };
 
 export default function Support() {
@@ -38,11 +49,14 @@ export default function Support() {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
   const [tickets, setTickets] = useState<Ticket[] | null>(null);
+  const [merchOn, setMerchOn] = useState(false);
+  useEffect(() => { void merchEnabled().then(setMerchOn); }, []);
+  const topics = merchOn ? [...TOPICS, MERCH_TOPIC] : TOPICS;
   const load = () => { void getTickets().then(r => setTickets(r.ok ? r.data.items : [])); };
   useEffect(load, []);
   const ql = q.trim().toLowerCase();
   const fk = FAQ_KEY[topic] ?? topic;
-  const list = FAQ.filter(([k, qq, a]) => (!fk || k === fk) && (!ql || (qq + a).toLowerCase().includes(ql)));
+  const list = (merchOn ? [...FAQ, ...MERCH_FAQ] : FAQ).filter(([k, qq, a]) => (!fk || k === fk) && (!ql || (qq + a).toLowerCase().includes(ql)));
   const send = async () => {
     if (msg.trim().length < 10) { setErr('Thoda detail likh do 🙏 (at least 10 characters)'); return; }
     setBusy(true); setErr('');
@@ -56,7 +70,7 @@ export default function Support() {
     <section className="h3-row c21">
       <Card title="Common questions" note="Pick a topic or search">
         <div style={{ display: 'grid', gap: 12 }}>
-          <div className="h3-amounts">{TOPICS.map(([k, l]) => <button key={k} type="button" aria-pressed={topic === k} className={topic === k ? 'on' : ''} onClick={() => setTopic(k)}>{l}</button>)}</div>
+          <div className="h3-amounts">{topics.map(([k, l]) => <button key={k} type="button" aria-pressed={topic === k} className={topic === k ? 'on' : ''} onClick={() => setTopic(k)}>{l}</button>)}</div>
           <input type="search" placeholder="Type your question…" value={q} onChange={e => setQ(e.target.value)} aria-label="Search questions" />
           <div className="h3-faq">{list.length ? list.map(([, qq, a]) => <details key={qq}><summary>{qq}</summary><p>{a}</p></details>) : <p className="muted">Nothing matched. Ask us 👉</p>}</div>
           <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}><a className="h3-btn sm ghost" href="/help">Help Center</a><a className="h3-btn sm ghost" href="/talk-safely">Talk safely</a><a className="h3-btn sm ghost" href="/report">Report a person</a></div>

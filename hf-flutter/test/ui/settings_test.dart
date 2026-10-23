@@ -86,8 +86,13 @@ void main() {
   });
 
   group('help strings', () {
-    test('seven answers, no gateway name, rulebook facts present', () {
-      expect(HelpStrings.faq.length, 7);
+    test('answers, no gateway name, rulebook facts present', () {
+      expect(HelpStrings.faq.length, greaterThanOrEqualTo(7)); // [HF-HELP-MERCH-1] was pinned to 7; the list has grown since
+      expect(HelpStrings.merchFaq, isNotEmpty);
+      final merch = HelpStrings.merchFaq.map((f) => '${f.$1} ${f.$2}').join(' ').toLowerCase();
+      expect(merch, contains('48 hours'));
+      expect(merch, contains('free test credit cannot be used for merch'));
+      expect(merch, isNot(contains('cashfree')));
       final all = HelpStrings.faq.map((f) => '${f.$1} ${f.$2}').join(' ').toLowerCase();
       expect(all, contains('1 hour'));
       expect(all, contains('back to your wallet'));

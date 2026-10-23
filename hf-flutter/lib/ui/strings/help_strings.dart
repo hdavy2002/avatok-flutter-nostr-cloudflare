@@ -89,8 +89,44 @@ abstract final class HelpStrings {
       'Use Report a person: your report is saved with a reference you can quote, and our team reviews it. Blocking someone removes them from My Fraands.',
     ),
     (
+      'How do I share my page?',
+      'Influencers: tap Share my page on Me, or in Settings, or the share button on your profile, to copy your link or send it on WhatsApp and other apps. '
+          'Fans can also share any influencer’s page with the share button on it.',
+    ),
+    (
       'Where do the videos come from?',
       'From the influencer’s own YouTube or Instagram. They play in the official players. We do not copy or store videos.',
+    ),
+  ];
+
+  /// [HF-HELP-MERCH-1] T-shirt answers. Shown on the Help screen only while `/api/config` has `hfMerchEnabled` on.
+  static const List<(String, String)> merchFaq = <(String, String)>[
+    (
+      'How do I buy an influencer’s T-shirt?',
+      'Open the influencer’s profile, pick a T-shirt, colour and size, add your address, tick the Terms and refund policy and pay. '
+          'The price is all-in: delivery in India is free and there is no separate GST or delivery line. '
+          'Pay from your wallet (money you added; free test credit cannot be used for merch) or with UPI, card or net banking.',
+    ),
+    (
+      'Where is my T-shirt order?',
+      'Open My orders. Your order goes Placed, Approved, Printing, Shipped (with the courier and a tracking link) and Delivered. '
+          'We also WhatsApp and email you at each step.',
+    ),
+    (
+      'Can I return a T-shirt?',
+      'No returns or exchanges, because each T-shirt is printed for you. If it is wrong or damaged, report it within 48 hours of delivery '
+          'with a photo and we replace it or refund you. A refund goes back the way you paid.',
+    ),
+    (
+      'How do I sell T-shirts?',
+      'Open My merch, upload your art and tick I own this art, pick a T-shirt, place the art (a quality meter blocks blurry prints), '
+          'add your markup (at least ₹10) and send it for review. Our team reviews every new product and checks every paid order before it is printed.',
+    ),
+    (
+      'How much do I earn from merch?',
+      'You keep 60% of your markup (currently). We keep 40% and pay GST and payment fees out of our share. '
+          'Merch money can be withdrawn 7 days after delivery (currently); a refunded order earns nothing. '
+          'You never see the fan’s phone, email, full address or payment details.',
     ),
   ];
 

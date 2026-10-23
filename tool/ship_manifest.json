@@ -11678,5 +11678,12 @@
       "hfMerchEnabled"
     ],
     "no_telemetry": "Verified by GET /api/hf/merch/quote without sizes returning every size."
+  },
+  "HF-HELP-MERCH-1": {
+    "description": "Help centre, FAQ, dashboard Support and app Help updated for the influencer merch shop and Share my page; refund policy and wallet terms state the T-shirt rules. Copy only.",
+    "two_sided": false,
+    "min_devices_on_build": 0,
+    "flags": [],
+    "no_telemetry": "Copy-only change (help articles, FAQ, Support and Help strings, policy text); no new event. Merch articles stay drafts and merch answers stay hidden until hfMerchEnabled is on."
   }
 }

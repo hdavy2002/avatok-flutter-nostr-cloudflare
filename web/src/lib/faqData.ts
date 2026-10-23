@@ -50,6 +50,7 @@ export const faqSections: FaqSection[] = [
       { q: 'What does “Waiting for approval” mean on a booking?', a: 'Some influencers approve each booking. Your request shows <b>Waiting for approval</b> and your money stays held. If they decline, or do not accept within 24 hours (or 1 hour before the call, whichever is earlier), you get the full amount back in your wallet. You can also withdraw a pending request any time for a full refund.' },
       { q: 'Can I cancel a booking?', a: 'Yes, free until 1 hour before the booked time, and the whole hold comes back to your wallet. If the influencer cancels, it always comes back in full.' },
       { q: 'How do I report or block someone?', a: 'Use <a href="/report">Report a person</a>. Your report is saved with a reference number you can quote, and our team reviews it. Blocking someone (with <b>#</b> on a call or from your dashboard) stops calls between you and removes them from <b>My Fraands</b>.' },
+      { q: 'Can I share an influencer\'s page with a friend?', a: 'Yes. Every influencer\'s public page has a Share button. Tap it to copy the link or send it on WhatsApp, X or Facebook.' },
       { q: 'Can I call the same person again?', a: 'Yes — that is what favourites are for. Your number stays private every single time.' },
       { q: 'An influencer asked me to pay outside the platform or to share my number. What do I do?', a: 'Do not pay and do not share anything. End the call and <a href="/report">report the influencer</a>. Asking for money, UPI IDs or contact details outside the platform is a serious violation and leads to removal.' },
     ],
@@ -113,6 +114,7 @@ export const faqSections: FaqSection[] = [
       { q: 'Can I choose when I take calls?', a: 'Yes, with the three-way switch. <b>Online</b>: instant calls, the queue and bookings. <b>Bookings only</b> (fans see “Available by appointment”): no instant calls or queue, but fans can book open times. <b>Offline</b>: no instant calls and no new bookings, but bookings already confirmed still ring, and the switch tells you how many. While you are talking fans see “On a call”. You can decline any call before it connects.' },
       { q: 'What is the call queue for influencers?', a: 'When you are on a call, fans can join a queue. When your call ends you get about a minute’s break and then we ring you first and connect the next fan automatically. You see how many are waiting and can pause the queue. If you miss a queued call twice in a row the queue pauses. Going Bookings only or Offline closes it.' },
       { q: 'Do I have to approve bookings?', a: 'You choose Manual (the default) or Auto-accept. With Manual, a booking is a request until you accept, and the fan’s money stays held. If you decline, or do not accept within 24 hours (or 1 hour before the call), the fan is refunded in full. Fans can book 15 minutes up to 5 hours, and the booking holds the first 15 minutes.' },
+      { q: 'How do I share my page with my fans?', a: 'Once you are live, use the <b>Share my page</b> card on your dashboard Overview and Profile (and in the app: the Share my page card on Me, the row in Settings, or the share button on your profile). Copy the link, send it on WhatsApp, X or Facebook, put it in your Instagram bio, or show the QR code. See <a href="/help/hosts/share-your-page">share your page</a>.' },
       { q: 'What can I see about my fans?', a: 'You see your hearts and how many fans tapped Notify me for you. You never see a fan’s phone number or personal details.' },
       { q: 'Do you train influencers?', a: 'Yes. We run regular awareness training for influencers on spotting spam, scam and fraud calls — callers asking for OTPs, bank details, “KYC update” tricks, sextortion attempts and emotional manipulation — and on how to end and report them safely.' },
       { q: 'What if a caller seems very low or gets too attached to me?', a: 'Follow the <a href="/hosts/crisis-script">welfare & crisis guide</a>: stay kind, give Tele-MANAS 14416 and 112, never flirt or promise anything, and flag the caller. The platform — not you — limits contact, and the caller only sees that you are not available.' },
@@ -166,15 +168,23 @@ export const faqSections: FaqSection[] = [
 
 export const faqCount = faqSections.reduce((n, s) => n + s.items.length, 0);
 
-// [HF-FAQ-REFRESH-1] MERCH Q&As: NOT RENDERED. This export is intentionally unused by /faq, the FAQPage structured data and
-// faqCount, because influencer merch (HF-MERCH-1..12) is still switched off. When merch goes live, add this section to
-// `faqSections` (or filter it in behind the merch flag) in the same commit that switches merch on.
-export const merchFaqItems: FaqItem[] = [
-  { q: 'Can influencers sell T-shirts?', a: 'Yes. An influencer can upload their art, pick a T-shirt, set a small markup and publish it on their channel page. T-shirts are printed on demand and delivered to you in India. One item per order for now.' },
-  { q: 'What do I pay for a T-shirt?', a: 'One all-in price per size. Delivery in India is free and there is no separate GST or delivery line at checkout.' },
-  { q: 'How do I pay for merch?', a: 'From your wallet or with UPI, card or net banking. The wallet pays merch only from money you added; free test credit cannot be used. A refund goes back the way you paid. You tick the terms and refund policy before you pay.' },
-  { q: 'Can I return a T-shirt?', a: 'No returns. If the item is wrong or damaged, report it within 48 hours of delivery with a photo and we replace it or refund it.' },
-  { q: 'Does the influencer see my address or phone number?', a: 'No. They see only your first name, city and state. Your phone, email, full address and payment details stay private.' },
-  { q: 'How do I track my order?', a: 'Your courier and tracking link come to you on WhatsApp and email, and show under My orders.' },
-  { q: 'How do influencers earn from merch?', a: 'The fan pays the base price plus the influencer’s markup (at least ₹10). The influencer gets 60% of the markup and we keep 40%. Each new product is reviewed first, and earnings can be withdrawn 7 days after delivery. A refunded order earns nothing.' },
-];
+// [HF-FAQ-REFRESH-1] / [HF-HELP-MERCH-1] MERCH topic: NOT RENDERED. `merchFaqSection` is intentionally unused by /faq, the FAQPage
+// structured data and faqCount, because influencer merch (HF-MERCH-1..12) is still switched off (hfMerchEnabled /
+// hfMerchCheckoutEnabled). When merch goes live, add it to `faqSections` (e.g. insert before 'payments') in the same commit that
+// publishes the merch help articles (draft: false). faq.astro's dabbaFor()/dabbaArt() may need an entry for the 'merch' id.
+// Amounts that come from settings (60% / 40%, 7 days, minimum markup) are written as "currently".
+export const merchFaqSection: FaqSection = {
+  id: 'merch', title: 'T-shirts & merch', hindi: 'Apne influencer ki T-shirt', icon: '✿', tone: 'peach',
+  items: [
+    { q: 'Can influencers sell T-shirts?', a: 'Yes. An influencer uploads their own art, picks a T-shirt, places the art, adds a small markup and publishes it on their page. We print each T-shirt when you order and deliver it to you in India. One item per order for now.' },
+    { q: 'How do I buy one?', a: 'Open an influencer\'s page, pick a T-shirt, a colour and your size, add your address, tick the Terms and the refund policy, and pay. See <a href="/help/wallet-and-payments/buy-influencer-tshirts">how to buy a T-shirt</a>.' },
+    { q: 'What do I pay, and is delivery free?', a: 'One all-in price for your size: the base price plus the influencer\'s markup. Delivery anywhere in India is free, and there is no separate GST or delivery line at checkout.' },
+    { q: 'How can I pay for merch?', a: 'From your wallet, or with UPI, card or net banking. The wallet pays merch only from money you added. Free test credit cannot be used for merch.' },
+    { q: 'How long does delivery take, and how do I track it?', a: 'Each T-shirt is checked by our team and then printed for you, so it takes some time. Your order moves from Placed to Approved, Printing, Shipped and Delivered. We send the courier and tracking link on WhatsApp and email, and you can follow it in My orders. See <a href="/help/wallet-and-payments/track-your-merch-order">track your order</a>.' },
+    { q: 'Can I return a T-shirt?', a: 'No returns or exchanges, because each T-shirt is printed for you. If it is wrong or damaged, report it within 48 hours of delivery with a photo and we replace it or refund you. A refund goes back the way you paid. See <a href="/help/wallet-and-payments/merch-wrong-or-damaged-item">wrong or damaged T-shirt</a> and the <a href="/refunds">refund policy</a>.' },
+    { q: 'Does the influencer see my address or phone number?', a: 'No. They see only your first name, your city and state and a blurred address line. Your phone, email, full address and payment details stay private.' },
+    { q: 'I am an influencer. How do I sell T-shirts?', a: 'Open Merch in your dashboard or the app, upload your art and tick that you own it, pick a T-shirt, place the art (a quality meter blocks blurry prints), add your markup (at least ₹10) and send it for review. See <a href="/help/hosts/sell-t-shirts">how to sell T-shirts</a>.' },
+    { q: 'How much do I earn from a T-shirt?', a: 'You keep 60% of your markup (currently). We keep 40% and pay the GST and payment fees out of our share, so they never reduce yours. Your merch money can be withdrawn 7 days after delivery (currently). A refunded order earns nothing. See <a href="/help/hosts/merch-orders-and-earnings">merch orders and earnings</a>.' },
+    { q: 'Why is my product or order waiting?', a: 'Every new product is reviewed by our team before it goes on sale, and every paid order is checked before it is printed. If the printing cost has risen a lot since you set your price, an order may be cancelled with a full refund to the fan, and you are asked to raise your price.' },
+  ],
+};
