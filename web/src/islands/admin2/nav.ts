@@ -2,19 +2,20 @@
 // icon rail, the phone tab bar and its "More" sheet. Keys are what
 // Admin2.astro's `active` prop takes. Contract: Specs/SPEC-2026-09-26-ADMIN-2.md.
 import {
-  ChartColumn, CalendarDays, Ticket, IndianRupee, ShieldCheck, Undo2, Users, Tags, Gift, QrCode, Globe, LogOut, Sparkles, MonitorPlay, ShoppingBag, Shirt, LayoutGrid, Megaphone, BadgePercent, Settings2, LayoutTemplate, Palette, Printer, BookOpen, Wallet, AudioLines, Scale, GraduationCap, CalendarCheck, Star, UserCheck, Images, PhoneCall, MessageSquareQuote, Banknote, HandCoins, type LucideIcon, ClipboardCheck, ReceiptIndianRupee,
+  CalendarDays, Ticket, IndianRupee, ShieldCheck, Undo2, Users, Tags, Gift, QrCode, Globe, LogOut, Sparkles, MonitorPlay, ShoppingBag, Shirt, LayoutGrid, Megaphone, BadgePercent, Settings2, LayoutTemplate, Palette, Printer, BookOpen, Wallet, AudioLines, Scale, GraduationCap, CalendarCheck, Star, UserCheck, Images, PhoneCall, MessageSquareQuote, Banknote, HandCoins, type LucideIcon, ClipboardCheck, ReceiptIndianRupee, Flag, Siren, House,
 } from 'lucide-react';
 
 export type AdminKey = 'overview' | 'events' | 'bookings' | 'payments' | 'refunds' | 'customers' | 'wallets' | 'prices' | 'chadhava' | 'upi' | 'verify' | 'ai' | 'knowledge' | 'voice-guides' | 'freevideos'
   | 'shop-orders' | 'shop-studio' | 'shop-partner' | 'shop-editor' | 'shop-products' | 'shop-collections' | 'shop-promote' | 'shop-coupons' | 'shop-settings'
   | 'consultants' | 'consultant-bookings' | 'consultant-reviews'
+  | 'desk-wallets' | 'desk-bookings' | 'desk-topups' | 'desk-support' | 'desk-reports' | 'desk-money'
   | 'host-desk' | 'host-review' | 'host-kyc' | 'host-avatars' | 'host-demo' | 'host-reviews' | 'host-calls' | 'host-payouts' | 'host-refunds' | 'host-reconciliation' | 'host-phone-costs'
   | 'preview-help' | 'preview-legal';
 
 export interface AdminNavItem { key: AdminKey; label: string; short: string; href: string; icon: LucideIcon; /** Optional group heading shown above the first item of a run (e.g. "Shop"). */ group?: string; /** [AUMFE-POD-FULFIL-1] Small gold pill after the label (e.g. "New"). */ pill?: string }
 
 const ALL_ADMIN_NAV: AdminNavItem[] = [
-  { key: 'overview', label: 'Analytics', short: 'Analytics', href: '/admin', icon: ChartColumn }, // [ADMIN2-ANALYTICS] key stays 'overview'
+  { key: 'overview', label: 'Home', short: 'Home', href: '/admin', icon: House }, // [ADMIN2-ANALYTICS] key stays 'overview'; [HF-ADMIN-COMPLETE-1] now the Hello Fraands headline numbers (old Analytics lives at /admin/analytics)
   { key: 'events', label: 'Events', short: 'Events', href: '/admin/events', icon: CalendarDays },
   { key: 'freevideos', label: 'Free videos', short: 'Free', href: '/admin/free-videos', icon: MonitorPlay }, // [SAATHUM-FREEVIDEOS-ADMIN-1]
   { key: 'bookings', label: 'Bookings', short: 'Bookings', href: '/admin/bookings', icon: Ticket },
@@ -44,7 +45,14 @@ const ALL_ADMIN_NAV: AdminNavItem[] = [
   { key: 'consultant-bookings', label: 'Consultant bookings', short: 'Sessions', href: '/admin/consultant-bookings', icon: CalendarCheck, group: 'Consultants' },
   { key: 'consultant-reviews', label: 'Consultant reviews', short: 'Reviews', href: '/admin/consultant-reviews', icon: Star, group: 'Consultants' },
   // [HF-HOST-PLATFORM-1] Hosts group. Keep contiguous.
-  { key: 'host-desk', label: 'Members & activity', short: 'Members', href: '/admin/hosts/desk', icon: Users, group: 'Hosts' }, // [HF-ADMIN-SWEEP-1]
+  { key: 'host-desk', label: 'Members', short: 'Members', href: '/admin/hosts/desk', icon: Users, group: 'Hosts' }, // [HF-ADMIN-SWEEP-1]
+  // [HF-ADMIN-COMPLETE-1] The Hello Fraands replacements for the retired Aum Fe pages (Wallets, Bookings, Payments, Support, Reports, Money alerts), all tabs of the desk.
+  { key: 'desk-wallets', label: 'Wallets', short: 'Wallets', href: '/admin/hosts/desk?tab=wallets', icon: Wallet, group: 'Hosts' },
+  { key: 'desk-bookings', label: 'Bookings', short: 'Bookings', href: '/admin/hosts/desk?tab=bookings', icon: Ticket, group: 'Hosts' },
+  { key: 'desk-topups', label: 'Wallet top-ups', short: 'Top-ups', href: '/admin/hosts/desk?tab=topups', icon: IndianRupee, group: 'Hosts' },
+  { key: 'desk-support', label: 'Support questions', short: 'Support', href: '/admin/hosts/desk?tab=support', icon: MessageSquareQuote, group: 'Hosts' },
+  { key: 'desk-reports', label: 'Reports & blocks', short: 'Reports', href: '/admin/hosts/desk?tab=reports', icon: Flag, group: 'Hosts' },
+  { key: 'desk-money', label: 'Money alerts', short: 'Money', href: '/admin/hosts/desk?tab=money', icon: Siren, group: 'Hosts' },
   { key: 'host-review', label: 'Host review', short: 'Hosts', href: '/admin/hosts', icon: UserCheck, group: 'Hosts' },
   { key: 'host-kyc', label: 'Video KYC reviews', short: 'KYC', href: '/admin/hosts/kyc', icon: ShieldCheck, group: 'Hosts' },
   { key: 'host-avatars', label: 'Avatars', short: 'Avatars', href: '/admin/hosts/avatars', icon: Images, group: 'Hosts' },
@@ -64,12 +72,14 @@ const ALL_ADMIN_NAV: AdminNavItem[] = [
 // This list controls every admin navigation surface, including the phone More sheet.
 export const HIDDEN_ADMIN_NAV_KEYS: ReadonlySet<AdminKey> = new Set([
   'events', 'freevideos', 'chadhava', 'knowledge', 'voice-guides',
+  // [HF-ADMIN-COMPLETE-1] Aum Fe pages that read the old orders/payments tables and the tokens-era wallet; they now redirect to the desk tabs above.
+  'bookings', 'payments', 'verify', 'refunds', 'customers', 'wallets',
   'consultants', 'consultant-bookings', 'consultant-reviews', 'host-reviews',
 ]);
 export const ADMIN_NAV: AdminNavItem[] = ALL_ADMIN_NAV.filter((item) => !HIDDEN_ADMIN_NAV_KEYS.has(item.key));
 
 /** Phone tab bar: these five, then "More" (the rest + View site + Logout). */
-export const ADMIN_PHONE_TABS: AdminKey[] = ['overview', 'bookings', 'payments', 'refunds', 'customers'];
+export const ADMIN_PHONE_TABS: AdminKey[] = ['overview', 'host-desk', 'desk-bookings', 'desk-topups', 'desk-support'];
 
 export const ADMIN_VIEW_SITE = { label: 'View site', href: '/', icon: Globe };
 /** Logout goes through /sign-out (ends the Clerk session, lands on `/`). */

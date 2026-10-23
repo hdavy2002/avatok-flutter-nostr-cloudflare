@@ -1,12 +1,5 @@
 ---
-// [ADMIN2-MOVE 2026-09-26] Customer refund requests, in the Admin 2 shell. Refunds are sent by
-// hand from the bank app; this is where the admin records the refund UTR. Same API as the old
-// DASH2-ADMIN-REFUNDS screen (islands/admin/AdminRefunds.tsx).
+// [HF-ADMIN-COMPLETE-1] Retired Aum Fe page (it read the old orders/payments tables and the tokens-era wallet, so it showed no Hello Fraands data). The island code stays in islands/admin2; this route sends the admin to the Hello Fraands page instead.
 export const prerender = false;
-import Admin2 from '../../layouts/Admin2.astro';
-import Refunds from '../../islands/admin2/Refunds.tsx';
+return Astro.redirect('/admin/hosts/refunds', 302);
 ---
-
-<Admin2 title="Refunds" active="refunds" subtitle="Customer refund requests. Send the refund from the bank app, then record its UTR here.">
-  <Refunds client:load />
-</Admin2>

@@ -1,10 +1,16 @@
 ---
-// [HF-ADMIN-SWEEP-1] Admin: members and activity (sign-ups, bookings, wallet top-ups, support tickets, reports, money alerts). Read-only.
+// [HF-ADMIN-SWEEP-1] Admin: members and activity. [HF-ADMIN-COMPLETE-1] now acts too (notes, resolve, reply, review) and has wallets + a member page.
+// The menu highlights the tab you are on, so Wallets, Bookings, Top-ups, Support, Reports and Money alerts each read as their own page.
 export const prerender = false;
 import Admin2 from '../../../layouts/Admin2.astro';
 import HfDesk from '../../../islands/admin2/hosts/HfDesk.tsx';
+const TAB_KEY = { wallets: 'desk-wallets', bookings: 'desk-bookings', topups: 'desk-topups', support: 'desk-support', reports: 'desk-reports', money: 'desk-money' } as const;
+const tab = Astro.url.searchParams.get('tab') ?? '';
+const active = (TAB_KEY as Record<string, string>)[tab] ?? 'host-desk';
+const TITLES: Record<string, string> = { wallets: 'Wallets', bookings: 'Bookings', topups: 'Wallet top-ups', support: 'Support questions', reports: 'Reports & blocks', money: 'Money alerts' };
+const title = TITLES[tab] ?? 'Members';
 ---
 
-<Admin2 title="Members & activity" active="host-desk" subtitle="Who signed up, who booked and paid, what people asked us, and who was reported. Read-only.">
+<Admin2 title={title} active={active as any} subtitle="Who signed up, who booked and paid, what people asked us, who was reported. Open a person for their wallet and history; act on questions and reports here.">
   <HfDesk client:load />
 </Admin2>

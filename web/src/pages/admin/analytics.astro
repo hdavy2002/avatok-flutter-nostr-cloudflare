@@ -1,0 +1,15 @@
+---
+// /admin/analytics — [HF-ADMIN-COMPLETE-1] the old Aum Fe analytics landing, kept (not in the menu) because it reads the old events tables.
+// Was /admin: [ADMIN2-ANALYTICS 2026-09-26] (key 'overview'). Replaces [ADMIN2-OVERVIEW]'s Overview island — git history keeps it.
+// Specs/SPEC-2026-09-26-ADMIN-2.md.
+export const prerender = false;
+import Admin2 from '../../layouts/Admin2.astro';
+import Analytics from '../../islands/admin2/Analytics.tsx';
+---
+
+<Admin2 title="Analytics" heading="Analytics" active="overview" subtitle="Revenue, bookings and customers for any period, compared with the one before. Days are IST.">
+  <Fragment slot="actions">
+    <a href="/admin/events/new" class="inline-flex h-10 items-center gap-1.5 rounded-lg bg-primary px-4 text-[14px] font-bold text-primary-foreground no-underline shadow-[var(--dash-shadow,none)] hover:bg-primary/90">+ New event</a>
+  </Fragment>
+  <Analytics client:load />
+</Admin2>

@@ -132,7 +132,7 @@ function RangeBar({ sel, onChange, busy }: { sel: RangeSel; onChange: (r: RangeS
 
 /* ── links ──────────────────────────────────────────────────────────────── */
 
-const customersHref = ADMIN_NAV.find((i) => (i.key as string) === 'customers' || (i.key as string) === 'users')?.href ?? '/admin/customers';
+const customersHref = ADMIN_NAV.find((i) => (i.key as string) === 'customers' || (i.key as string) === 'users')?.href ?? '/admin/hosts/desk'; // [HF-ADMIN-COMPLETE-1] Users is retired from the menu
 const qs = (base: string, q: Record<string, string | null | undefined>) => {
   const u = new URLSearchParams();
   for (const [k, v] of Object.entries(q)) if (v) u.set(k, v);

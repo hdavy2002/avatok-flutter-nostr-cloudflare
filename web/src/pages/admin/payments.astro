@@ -1,10 +1,5 @@
 ---
-// [ADMIN2-PEOPLE 2026-09-26] Every payment line across customers, with totals and CSV export.
+// [HF-ADMIN-COMPLETE-1] Retired Aum Fe page (it read the old orders/payments tables and the tokens-era wallet, so it showed no Hello Fraands data). The island code stays in islands/admin2; this route sends the admin to the Hello Fraands page instead.
 export const prerender = false;
-import Admin2 from '../../layouts/Admin2.astro';
-import Payments from '../../islands/admin2/Payments.tsx';
+return Astro.redirect('/admin/hosts/desk?tab=topups', 302);
 ---
-
-<Admin2 title="Payments" active="payments" subtitle="All UPI payments, what is still pending, and what was refunded.">
-  <Payments client:load />
-</Admin2>
