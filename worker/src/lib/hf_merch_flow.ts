@@ -61,7 +61,7 @@ export async function startMerchCheckout(env: Env, i: CheckoutInput): Promise<Ch
   }
   const pm = productMerch(i.product);
   if (!pm || i.product.review_status !== "live" || i.product.deleted_at) return fail(410, "gone", "This product is no longer available.");
-  const sz = pm.sizes.find((s) => s.size.toLowerCase() === i.size.toLowerCase());
+  const sz = i.size ? pm.sizes.find((s) => s.size.toLowerCase() === i.size.toLowerCase()) : pm.sizes.length === 1 ? pm.sizes[0] : undefined; // [HF-CHANNEL-CORE-1] empty size on a one-size item
   const col = pm.colours.find((c) => c.name.toLowerCase() === i.colour.toLowerCase());
   if (!sz) return fail(400, "bad_size", "Pick one of the sizes shown.", { field: "size" });
   if (!col) return fail(400, "bad_colour", "Pick one of the colours shown.", { field: "colour" });

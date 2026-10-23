@@ -54,7 +54,7 @@ ${android ? `<script>setTimeout(function(){location.replace(${JSON.stringify(int
   return new Response(html, { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store", "x-robots-tag": "noindex" } });
 }
 
-const walletUrl = (topupId: string | null) => brandUrl(topupId && SHOP_RE.test(topupId) ? `/dashboard/orders?order=${topupId}` : topupId && TOPUP_RE.test(topupId) ? `/wallet?topup=${topupId}` : "/wallet");
+const walletUrl = (topupId: string | null) => brandUrl(topupId && /^mgp_[a-f0-9]{20}$/.test(topupId) ? `/dashboard/orders?group=${topupId}` : topupId && SHOP_RE.test(topupId) ? `/dashboard/orders?order=${topupId}` : topupId && TOPUP_RE.test(topupId) ? `/wallet?topup=${topupId}` : "/wallet");
 
 function page(env: Env, session: string, topupId: string): Response {
   const mode = cashfreeIsProduction(env) ? "production" : "sandbox";

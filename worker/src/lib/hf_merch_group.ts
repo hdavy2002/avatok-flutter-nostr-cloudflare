@@ -64,7 +64,7 @@ export async function startMerchBagCheckout(env: Env, i: BagCheckoutInput): Prom
     const host = hosts.get(product.seller_uid);
     const pm = productMerch(product);
     if (!host || host.status !== "live" || !pm || product.review_status !== "live" || product.deleted_at) return unavailable(line.productId, "gone");
-    const sz = pm.sizes.find((s) => s.size.toLowerCase() === line.size.toLowerCase());
+    const sz = line.size ? pm.sizes.find((s) => s.size.toLowerCase() === line.size.toLowerCase()) : pm.sizes.length === 1 ? pm.sizes[0] : undefined; // one-size items (mugs, posters) are sent with size ""
     const col = pm.colours.find((c) => c.name.toLowerCase() === line.colour.toLowerCase());
     if (!sz) return unavailable(line.productId, "bad_size");
     if (!col) return unavailable(line.productId, "bad_colour");

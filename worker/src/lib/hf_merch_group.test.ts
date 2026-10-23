@@ -139,6 +139,22 @@ describe("bag checkout: wallet", () => {
     expect((await balanceSummary(env, "buyer")).availablePaidPaise).toBe(200000);
   });
 
+  it("an empty size on a one-size product uses that size; on a multi-size product it is still refused", async () => {
+    await lot("buyer", 2000, "p1");
+    seedProduct("prd-3", "sellerA", "mug", { sizes: ["One size"] });
+    const ok: any = await bag([{ productId: "prd-3", colour: "Black", size: "", qty: 1 }]);
+    expect(ok.ok).toBe(true);
+    expect(JSON.parse(ok.rows[0].merch_json).size).toBe("One size");
+    const bad: any = await bag([{ ...L1, size: "" }], { requestKey: "key-other-5678" });
+    expect(bad).toMatchObject({ ok: false, error: "item_unavailable", extra: { productId: "prd-1", reason: "bad_size" } });
+    const product = await getProduct(env, "prd-3");
+    const host = await hostByUid(env, "sellerA");
+    const single: any = await startMerchCheckout(env, { uid: "buyer", product, host, colour: "Black", size: "", qty: 1, address: ADDR, saveAddress: false, method: "wallet", requestKey: "single-mug-123", client: "web" });
+    expect(single.ok).toBe(true);
+    const m1: any = await startMerchCheckout(env, { uid: "buyer", product: await getProduct(env, "prd-1"), host, colour: "Black", size: "", qty: 1, address: ADDR, saveAddress: false, method: "wallet", requestKey: "single-bad-123", client: "web" });
+    expect(m1).toMatchObject({ ok: false, status: 400, error: "bad_size" });
+  });
+
   it("rejects an empty bag, more than 10 lines, qty above the per-line cap, and the buyer's own product", async () => {
     expect(await bag([])).toMatchObject({ ok: false, error: "invalid_items" });
     expect(await bag(Array.from({ length: 11 }, () => L1))).toMatchObject({ ok: false, error: "invalid_items" });
