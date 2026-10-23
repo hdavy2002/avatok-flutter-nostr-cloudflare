@@ -1,6 +1,6 @@
 ---
 title: "How do I withdraw my wallet money?"
-description: "Anyone can withdraw wallet money with the Payout button. We send it to your UPI after a one-time ID check and UPI check."
+description: "Anyone can withdraw wallet money with the Withdraw button. We send it to your UPI after a one-time ID check and UPI check."
 section: wallet-and-payments
 order: 3
 updated: 2026-10-19
@@ -8,15 +8,15 @@ keywords: ["withdraw balance", "payout", "wallet money back", "transfer to upi",
 audience: both
 faq:
   - q: "Can I take out my wallet money?"
-    a: "Yes. Anyone can withdraw wallet money with the Payout button. We send it to your UPI."
+    a: "Yes. Anyone can withdraw wallet money with the Withdraw button. We send it to your UPI."
   - q: "Is there a minimum amount to withdraw?"
     a: "No. You can withdraw any amount in your wallet, in whole rupees. There is no minimum and we take no fee."
   - q: "Do I need an ID check?"
-    a: "Yes, once. We do a one-time ID (KYC) check and a UPI check before the first payout."
+    a: "Yes, once. We do a one-time ID (KYC) check and a UPI check before the first withdrawal."
   - q: "Can I withdraw test credits?"
     a: "No. Test credits can be spent on calls but cannot be withdrawn."
   - q: "Can I still withdraw if my account is banned?"
-    a: "Yes. A banned account can still sign in and use the Payout button. Your money is never taken as a penalty."
+    a: "Yes. A banned account can still sign in and use the Withdraw button. Your money is never taken as a penalty."
 draft: false
 ---
 <!-- rebrand: reviewed -->
@@ -25,18 +25,18 @@ Money in your wallet is yours. Anyone can take it out. This page shows you how.
 
 ## Your wallet money is yours
 
-**Anyone can withdraw wallet money with the Payout button.** Fans and influencers use the same button. We send the money to your UPI.
+**Anyone can withdraw wallet money with the Withdraw button.** Fans and influencers use the same button. We send the money to your UPI.
 
 We will never take your money as a penalty. This is true even if something goes wrong with your account.
 
 ## How to withdraw
 
 1. Sign in and open your wallet.
-2. Tap **Payout**.
+2. Tap **Withdraw**.
 3. Add your UPI ID, in your own name.
 4. Ask for the amount you want. There is **no minimum**: any amount in your wallet can be withdrawn, in whole rupees.
 
-We take **no fee** for a payout.
+We take **no fee** for a withdrawal.
 
 The first time, we do a **one-time ID (KYC) check** and a **UPI check**. After that you will not be asked again.
 
@@ -47,13 +47,13 @@ The first time, we do a **one-time ID (KYC) check** and a **UPI check**. After t
 
 ## Refunds are different
 
-A refund (for example, a booked call the influencer cancelled) goes back to your **wallet**, never straight to your card or UPI. To get it into your bank, use Payout. See [do you refund calls?](/help/wallet-and-payments/no-refunds).
+A refund (for example, a booked call the influencer cancelled) goes back to your **wallet**, never straight to your card or UPI. To get it into your bank, use Withdraw. See [do you refund calls?](/help/wallet-and-payments/no-refunds).
 
 ## When to withdraw
 
 - **When you stop using the service.** Take out what is left so nothing stays behind.
 - **Before you delete your account.** Withdraw first, then follow the steps in [delete your account](/help/account-and-help/delete-your-account).
-- **After a ban.** If your account is banned, you cannot make calls. But you can still sign in and use Payout.
+- **After a ban.** If your account is banned, you cannot make calls. But you can still sign in and use Withdraw.
 
 Influencers can read [how earnings reach you](/help/hosts/getting-paid).
 

@@ -525,7 +525,7 @@ async function payoutVerify(req: Request, env: Env, ctx: ExecutionContext | unde
   } catch (e) {
     await trackException(env, e, { uid, route: "/api/hosts/payout/verify", handled: true, app_name: APP, extra: { area: "hf_kyc", step: "payout_store" } });
     emit("hf_kyc_failed", { step: "payout", reason: "store_failed" });
-    return err(500, "store_failed", { message: "We couldn’t save your payout details. Please try again." });
+    return err(500, "store_failed", { message: "We couldn’t save your withdrawal details. Please try again." });
   }
   emit("hf_payout_verified", { match, upi_verified: upiVerified, upi_check: vpa.ok ? "done" : "unsupported" });
   // Only reveal the bank's full name when it matches HOLDER's own Aadhaar name; otherwise masked (no name-lookup oracle).

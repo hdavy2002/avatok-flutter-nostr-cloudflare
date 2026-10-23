@@ -23,7 +23,7 @@ import { hostSummary, wholeRupees, isHostLedgerRef } from "./hf_host_ledger"; //
 import { drainHfBookingHolds } from "./hf_booking_store";
 import { readMoneyRules } from "./hf_money_rules"; // [HF-WIRE-13] HF-REEL-35 rule 7: refunds go to the wallet, never back to a card/UPI
 
-export const WITHDRAW_FIRST_MESSAGE = "Your wallet money goes back to your wallet, not to your card. Withdraw it to your UPI from Payouts first, then close your account.";
+export const WITHDRAW_FIRST_MESSAGE = "Your wallet money goes back to your wallet, not to your card. Withdraw it to your UPI with the Withdraw button first, then close your account.";
 export const SMALL_BALANCE_MESSAGE = "Your wallet holds less than ₹1, which is too small to pay out. Choose to give it up to close your account.";
 export type ExitStatus = "booking_cleanup" | "waiting_hold" | "waiting_payouts" | "ready" | "done" | "cancelled";
 export const ACTIVE_EXIT: ExitStatus[] = ["booking_cleanup", "waiting_hold", "waiting_payouts", "ready"];
@@ -349,8 +349,8 @@ async function startTokenExit(env: Env, uid: string, o: { forfeit: boolean; trig
   // The wallet money needs a UPI ID and the one-time ID check BEFORE anything is created ("needs bank/UPI first").
   if ((ti?.walletPayoutPaise ?? 0) > 0 && !ti?.payoutReady) {
     return ti?.upiOk
-      ? no(409, "kyc_required", "We check your ID once, before your first payout. Do that first, then close your account.", { nextStep: payoutSetupNextStep(true) })
-      : no(409, "upi_required", "Add your UPI ID first (Me, then Payout in the app), then close your account.", { nextStep: payoutSetupNextStep(false) });
+      ? no(409, "kyc_required", "We check your ID once, before your first withdrawal. Do that first, then close your account.", { nextStep: payoutSetupNextStep(true) })
+      : no(409, "upi_required", "Add your UPI ID first (Me, then Withdraw in the app), then close your account.", { nextStep: payoutSetupNextStep(false) });
   }
   if (s.forfeitRupees > 0 && !o.forfeit) {
     return no(409, "forfeit_required", s.bankOk ? "Some money cannot be paid out." : "Add and verify your bank account to receive your earnings, or choose to give them up.", { forfeitRupees: s.forfeitRupees });

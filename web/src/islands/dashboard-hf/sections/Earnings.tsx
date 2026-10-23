@@ -1,7 +1,7 @@
 /* [HF-DASH-SHELL-2] Host earnings + withdrawals screen (moved off the Overview, where it rendered below the footer).
- * Worker: GET /api/hosts/me/calls (today), GET /api/hf/wallet (host block), WithdrawPanel (/api/hosts/me/payouts). */
+ * Worker: GET /api/hosts/me/calls (today), GET /api/hf/wallet (host block), the shared Withdraw card (/api/hf/payouts, same as Wallet and the app). */
 import { useCallback, useEffect, useRef, useState } from 'react';
-import WithdrawPanel from '../../calls/WithdrawPanel';
+import Withdraw from '../../wallet/Withdraw'; // [HF-WITHDRAW-1] same Withdraw card as the Wallet page
 import { fetchWallet, hfCall, hostPaise, relDate, type WalletInfo } from '../../../lib/hfCallsApi';
 import { formatPaise } from '../../../lib/money';
 import type { DashboardAccount } from '../../../components/account/DashboardNav';
@@ -25,7 +25,6 @@ export default function Earnings({ account }: { account: DashboardAccount }) {
     } catch { if (current()) setError('We could not reach the server. Please try again.'); }
   }, []);
   useEffect(() => { void load(); return () => { ++generation.current; }; }, [load, account.uid]);
-  const session = generation.current;
   const hp = wallet?.host ? hostPaise(wallet.host) : null;
   return <div className="hfd-section">
     <header className="hfd-section-head"><h1>Earnings</h1><p>What you earned from calls, what you can withdraw, and your withdrawal requests.</p></header>
@@ -45,7 +44,7 @@ export default function Earnings({ account }: { account: DashboardAccount }) {
         {wallet.host.payouts && wallet.host.payouts.length > 0 && <ul className="hfc-calls">{wallet.host.payouts.map(p => <li key={p.id}><strong>Withdrawal · {p.status}</strong><span>{formatPaise(p.amountPaise)}</span><small>{relDate(p.paidAt ?? p.createdAt)}</small></li>)}</ul>}
         <p className="hfc-sub" style={{ margin: 0 }}><a href="/dashboard/wallet">See wallet and history</a></p>
       </section>}
-      <WithdrawPanel key={`${account.uid}:${session}`} isCurrent={() => session === generation.current} onChanged={() => void load()} />
+      <section className="hfc-card" id="withdraw" aria-labelledby="hfc-wd"><h2 id="hfc-wd">Withdraw</h2><Withdraw key={account.uid} where="earnings" skin="hfc" next="/dashboard/host/earnings" onChanged={() => void load()} /></section>
     </div>
   </div>;
 }

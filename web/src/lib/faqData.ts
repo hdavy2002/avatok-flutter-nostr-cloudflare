@@ -30,7 +30,7 @@ export const faqSections: FaqSection[] = [
       { q: 'Do I need to install an app?', a: 'No. Calls come to your normal phone number like any other call. You manage your wallet, favourites and history on the website.' },
       { q: 'What do I need?', a: 'An Indian mobile number, a phone with normal network coverage, and a way to pay to add money to your wallet.' },
       { q: 'Can I be a caller and an influencer?', a: 'Yes, on the same account. Create your account, then upgrade to influencer for free from your dashboard.' },
-      { q: 'How do I delete my account?', a: 'Follow the steps on <a href="/data-deletion">data deletion</a>. Withdraw your wallet money with the Payout button first.' },
+      { q: 'How do I delete my account?', a: 'Follow the steps on <a href="/data-deletion">data deletion</a>. Withdraw your wallet money with the Withdraw button first.' },
     ],
   },
   {
@@ -99,7 +99,7 @@ export const faqSections: FaqSection[] = [
     items: [
       { q: 'Who can become an influencer on the platform?', a: 'Any adult in India with their own mobile number and 10 or more followers who wants to take calls from fans. For now, we only take on Indian influencers. Create a free account, then upgrade to influencer for free from your dashboard. Connect YouTube by signing in with it, or Instagram with a short code in your bio. Joining needs no ID check. Start at <a href="/hosts/join">Join &amp; earn</a>.' },
       { q: 'How much can I earn?', a: 'You set your own per-minute rate, as you see fit. Fans are charged for every connected minute of the phone call. We keep ₹2 a minute plus 40% of the rate above ₹2, and you keep the rest. At ₹20 a minute you earn ₹10.80 a minute. Being online does not guarantee calls. See <a href="/hosts/rates">rates</a>.' },
-      { q: 'How do I get paid?', a: 'Your earnings are credited after each completed call and held for 7 days. After that, tap the Payout button and we send the money to your UPI, in your own name. We do a one-time ID (KYC) check and a UPI check before your first payout.' },
+      { q: 'How do I get paid?', a: 'Your earnings are credited after each completed call and held for 7 days. After that, tap the Withdraw button and we send the money to your UPI, in your own name. We do a one-time ID (KYC) check and a UPI check before your first withdrawal.' },
       { q: 'Can I choose when I take calls?', a: 'Yes. Go online when you are free and offline whenever you want. You can decline any call before it connects.' },
       { q: 'Do you train influencers?', a: 'Yes. We run regular awareness training for influencers on spotting spam, scam and fraud calls — callers asking for OTPs, bank details, “KYC update” tricks, sextortion attempts and emotional manipulation — and on how to end and report them safely.' },
       { q: 'What if a caller seems very low or gets too attached to me?', a: 'Follow the <a href="/hosts/crisis-script">welfare & crisis guide</a>: stay kind, give Tele-MANAS 14416 and 112, never flirt or promise anything, and flag the caller. The platform — not you — limits contact, and the caller only sees that you are not available.' },
@@ -120,8 +120,8 @@ export const faqSections: FaqSection[] = [
       { q: 'I didn’t like my call with an influencer. Can I get my money back?', a: `No. ${B} connects you with an independent influencer; we are not responsible for how a particular conversation went, so we cannot refund a call because the experience was not what you hoped. Leave a rating, try someone else, and report the influencer if they broke a rule.` },
       { q: 'What happens if I book a call and cancel?', a: 'A booked call holds 10 minutes of the influencer\'s rate in your wallet. You can cancel free until 1 hour before, and the hold comes back to your wallet. If the influencer does not pick up at the booked time, the full hold comes back. If the influencer cancels, it always comes back.' },
       { q: 'Where do refunds go?', a: 'All refunds go back to your wallet, never to your card or UPI.' },
-      { q: 'Can I take my wallet money out?', a: 'Yes. Anyone can withdraw wallet money with the Payout button. We send it to your UPI after a one-time ID (KYC) and UPI check. Test credits can be spent but not withdrawn.' },
-      { q: 'What happens to my wallet if my account is banned?', a: 'A banned account can no longer make calls, but you can still sign in and withdraw wallet money with the Payout button. Wallet money is never taken away as a penalty.' },
+      { q: 'Can I take my wallet money out?', a: 'Yes. Anyone can withdraw wallet money with the Withdraw button. We send it to your UPI after a one-time ID (KYC) and UPI check. Test credits can be spent but not withdrawn.' },
+      { q: 'What happens to my wallet if my account is banned?', a: 'A banned account can no longer make calls, but you can still sign in and withdraw wallet money with the Withdraw button. Wallet money is never taken away as a penalty.' },
       { q: 'What if I was charged twice, or for a call that was never made?', a: 'That is a billing error, not a refund request. <a href="/report">Report it</a> with the call ID and time. It will be checked against the call details, and the wrong amount is put back in your wallet, linked to that call.' },
       { q: 'Do I get a receipt?', a: 'Every addition to your wallet and every call charge appears in your wallet history with the date, duration and amount.' },
     ],

@@ -28,7 +28,7 @@ export default function Become({ account }: { account: DashboardAccount }) {
     ['Verify your WhatsApp', 'An OTP on the Indian number you’ll take calls on.', !!wa],
     ['Aadhaar check', 'Aadhaar OTP (DigiLocker if OTP isn’t available). We keep only the last 4 digits.', !!me?.kyc.aadhaar.done],
     ['10-second selfie video', 'Read a code shown on screen; our team matches it to your Aadhaar photo.', me?.kyc.selfie.status === 'approved' || me?.kyc.selfie.status === 'pending'],
-    ['Payout details', 'UPI ID and bank account in your own name — checked without any deposit.', !!me?.kyc.payout.done],
+    ['Withdrawal details', 'UPI ID and bank account in your own name — checked without any deposit.', !!me?.kyc.payout.done],
     ['Your profile', 'Avatar, about, languages, up to 6 topics, your price per minute and your hours.', !!st && !['draft', 'generating'].includes(st)],
     ['Review & go live', 'You approve your profile, our team approves it, and you’re live.', st === 'live'],
   ];
@@ -37,7 +37,7 @@ export default function Become({ account }: { account: DashboardAccount }) {
   const price = PRICES[pi], per = hostPaisePerMin(price), month = Math.round(per * mins * 4.3);
   return <>
     <PageHead eyebrow="Become an influencer" title="Apni baatein, apni kamaai" sub="Create content on YouTube, Instagram or Facebook? Let your fans call you privately — and earn from every connected minute." art={<Sticker name="girlboss" w={100} rot={5} />} />
-    <section className="h3-kpis">{([['🔒', 'Number hidden', 'Fans never see your real number.'], ['🕐', 'Your hours', 'Go online or offline any time. Decline any call.'], ['💸', 'Real money', 'Paid to your own UPI, no minimum payout, 7 days after the call.'], ['🛡️', 'Safety first', 'Press # to end, block and report.']] as const)
+    <section className="h3-kpis">{([['🔒', 'Number hidden', 'Fans never see your real number.'], ['🕐', 'Your hours', 'Go online or offline any time. Decline any call.'], ['💸', 'Real money', 'Paid to your own UPI, no minimum withdrawal, 7 days after the call.'], ['🛡️', 'Safety first', 'Press # to end, block and report.']] as const)
       .map(([e, t, d]) => <div key={t} className="h3-card"><div style={{ fontSize: 28 }} aria-hidden="true">{e}</div><h3 style={{ marginTop: 6 }}>{t}</h3><p className="small muted">{d}</p></div>)}</section>
     <section className="h3-row c21">
       <Card title="Get verified" note={st ? (STATUS_NOTE[st] ?? (st === 'live' ? 'Your profile is live 🎉' : 'Your profile is on its way.')) : 'About 10 minutes, start to finish'}>

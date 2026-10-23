@@ -22,7 +22,7 @@ Your fans pay per minute, at the rate you set. A new influencer starts at ₹5 a
 
 ## The simple rule
 
-The caller is charged per minute of the phone call at **your rate**, only for the minutes spoken. **We keep ₹2 a minute plus 40% of the rate above ₹2. You keep the rest.** The part we keep covers the phone call, platform fees and GST. Your earnings for each call are shown in rupees in your dashboard, with the payout status.
+The caller is charged per minute of the phone call at **your rate**, only for the minutes spoken. **We keep ₹2 a minute plus 40% of the rate above ₹2. You keep the rest.** The part we keep covers the phone call, platform fees and GST. Your earnings for each call are shown in rupees in your dashboard, with the withdrawal status.
 
 ## A simple example
 
@@ -35,7 +35,7 @@ If the influencer declines, cancels or does not answer, nobody pays anything and
 - **Calls are not guaranteed.** Some days are busy and some days are quiet.
 - Earning starts only once we have rung both of you and joined the call.
 - A fan needs at least ₹20 in their wallet before a call can start.
-- Earnings are held for 7 days, then you can withdraw them with the Payout button.
+- Earnings are held for 7 days, then you can withdraw them with the Withdraw button.
 
 ## Grow your fans
 

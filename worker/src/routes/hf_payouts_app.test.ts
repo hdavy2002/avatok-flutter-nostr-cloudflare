@@ -195,7 +195,7 @@ describe("POST /api/hf/payouts", () => {
   it("first payout needs KYC: 409 kyc_required with a nextStep the app can open", async () => {
     seedInfluencer({ upi: true }); wallet.balance = 1000; call("old", 20, 1000);
     const r = await jsonOf(await post(60000));
-    expect(r).toMatchObject({ status: 409, error: "kyc_required", message: "We check your ID once, before your first payout." });
+    expect(r).toMatchObject({ status: 409, error: "kyc_required", message: "We check your ID once, before your first withdrawal." });
     expect(r.nextStep.type).toBe("kyc"); expect(r.nextStep.url).toMatch(/^https:\/\/.+\/verify\/id\?next=%2Fdashboard%2Fwallet$/);
     expect(h.db.prepare("SELECT COUNT(*) n FROM hf_payout_requests").get().n).toBe(0);
   });

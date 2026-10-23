@@ -123,7 +123,7 @@ class EarningsGullak extends StatelessWidget {
                   ]),
                 ),
                 const SizedBox(width: 8),
-                SizedBox(width: 104, child: MoneyPill(label: 'PAYOUT', gold: true, height: 48, onTap: onTap)),
+                SizedBox(width: 104, child: MoneyPill(label: 'WITHDRAW', gold: true, height: 48, onTap: onTap)),
               ]),
             ),
           ]),

@@ -68,8 +68,8 @@ export type SetupNextStep = { type: "upi" | "kyc"; title: string; url: string | 
 export function payoutSetupNextStep(upiOk: boolean): SetupNextStep {
   return upiOk
     // [HF-CLOSE-UPI-1] /verify/id is the ID check for everyone (fans too); /hosts/onboarding is the influencer wizard.
-    ? { type: "kyc", title: "We check your ID once, before your first payout.", url: brandUrl("/verify/id?next=%2Fdashboard%2Fclose") }
-    : { type: "upi", title: "Add your UPI ID on the website (Wallet, Payout setup) or in the app (Me, then Payout), and finish the one-time ID check.", url: brandUrl("/dashboard/wallet#payout") };
+    ? { type: "kyc", title: "We check your ID once, before your first withdrawal.", url: brandUrl("/verify/id?next=%2Fdashboard%2Fclose") }
+    : { type: "upi", title: "Add your UPI ID on the website (Wallet, Withdrawal setup) or in the app (Me, then Withdraw), and finish the one-time ID check.", url: brandUrl("/dashboard/wallet#payout") };
 }
 
 /**
@@ -158,8 +158,8 @@ export async function createExitPayoutTokens(env: Env, uid: string, now = Date.n
   if (pl.debtBlocked) return no(409, "debt_open", "There is an open balance on your account. Please write to us from the Support page and we will settle it with you.");
   if (pl.walletPaise > 0 && !pl.setup.payoutReady) {
     return pl.setup.upiOk
-      ? no(409, "kyc_required", "We check your ID once, before your first payout. Do that first, then close your account.", payoutSetupNextStep(true))
-      : no(409, "upi_required", "Add your UPI ID first (Wallet, then Payout setup on the website, or Me, then Payout in the app), then close your account.", payoutSetupNextStep(false));
+      ? no(409, "kyc_required", "We check your ID once, before your first withdrawal. Do that first, then close your account.", payoutSetupNextStep(true))
+      : no(409, "upi_required", "Add your UPI ID first (Wallet, then Withdrawal setup on the website, or Me, then Withdraw in the app), then close your account.", payoutSetupNextStep(false));
   }
   const earnRupees = pl.earnDestOk ? pl.earnRupees : 0;
   if (pl.walletPaise <= 0 && earnRupees <= 0) {
@@ -285,9 +285,9 @@ export function closureStartedText(a: { walletPayoutPaise: number; roundingPaise
   if (held > 0) {
     const when = a.releaseAt ? ` which ends on ${istLongDate(a.releaseAt)}` : "";
     return `Your ${BRAND.name} account closure has started. ${formatRupees(held)} of your earnings are still in the 7-day hold${when}. `
-      + `Your payout to your UPI (${formatRupees(wallet + earn + held)} in all, wallet money included) is made together after the hold, and your account is deleted once it is paid.${rest}`;
+      + `Your withdrawal to your UPI (${formatRupees(wallet + earn + held)} in all, wallet money included) is made together after the hold, and your account is deleted once it is paid.${rest}`;
   }
-  return `Your ${BRAND.name} account closure has started. Your payout of ${formatRupees(wallet + earn)} to your UPI is waiting for approval. Your account is deleted once it is paid.${rest}`;
+  return `Your ${BRAND.name} account closure has started. Your withdrawal of ${formatRupees(wallet + earn)} to your UPI is waiting for approval. Your account is deleted once it is paid.${rest}`;
 }
 
 /** Best-effort WhatsApp when a closure starts (the same helpers payouts and refunds use). Never throws. */

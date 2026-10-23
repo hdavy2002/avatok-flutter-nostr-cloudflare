@@ -35,7 +35,7 @@ Influencers on {{brand.name}} are not doctors, lawyers, counsellors, CAs or fina
 4. **Set your rate.** Choose your own per-minute price, as you see fit, and the topics you are happy to talk about.
 5. Go **online**. Your fans can now find you and call you.
 
-You do not need to install any app. Calls come to your normal phone. Joining needs no ID check. We check your ID once, before your first payout.
+You do not need to install any app. Calls come to your normal phone. Joining needs no ID check. We check your ID once, before your first withdrawal.
 
 ## What your profile shows
 

@@ -1,6 +1,6 @@
-/* [HF-WALLET-EXIT-1] /account/close: pay-out-first account closure. [HF-WIRE-16] Wallet money is withdrawn to UPI via Payout BEFORE closing (never refunded
+/* [HF-WALLET-EXIT-1] /account/close: pay-out-first account closure. [HF-WIRE-16] Wallet money is withdrawn to UPI via the Withdraw button BEFORE closing (never refunded
  * to a card); a leftover below the smallest withdrawal can be given up. Shows what happens to the user's money, starts the exit
- * (final host payout), tracks progress, and closes the account once everything is settled.
+ * (final host withdrawal), tracks progress, and closes the account once everything is settled.
  * Worker: GET/POST/DELETE /api/hf/account/exit, POST /api/account/delete (no-money case). Rulebook HF-PAY-14. */
 import { PageShell, useEmbedded, useIntoDashboard } from '../../components/account/dashboardEmbed';
 import { useEffect, useState } from 'react';
@@ -102,7 +102,7 @@ export default function AccountClose() {
           <h2 id="hfx-prog">We are paying out your money first</h2>
           <p className="hfc-sub" style={{ margin: 0 }}>Your account will be deleted automatically as soon as everything below is paid. Nothing else is needed from you.</p>
           {ex.status === 'waiting_hold' && (
-            <p className="hfc-note" role="status"><strong>Why it is waiting:</strong> {m(info.held)} of your earnings are still in the 7-day hold{releaseOn ? `, which ends on ${releaseOn}` : ''}. After that we make ONE payout to your UPI{payoutPaise > 0 ? `, and your wallet money (${formatPaise(payoutPaise)}) is paid together with it` : ''}. You don’t need to do anything.</p>
+            <p className="hfc-note" role="status"><strong>Why it is waiting:</strong> {m(info.held)} of your earnings are still in the 7-day hold{releaseOn ? `, which ends on ${releaseOn}` : ''}. After that we make ONE withdrawal to your UPI{payoutPaise > 0 ? `, and your wallet money (${formatPaise(payoutPaise)}) is paid together with it` : ''}. You don’t need to do anything.</p>
           )}
           <p className="hfc-sub" style={{ margin: 0 }}>While your account is closing you can’t make calls, go online as an influencer or add money.</p>
           {info.refund && (
@@ -114,7 +114,7 @@ export default function AccountClose() {
           {info.payout && (
             <div className="hfc-stat" style={{ textAlign: 'left' }}>
               <strong>{m(info.payout.amount)}</strong>
-              <span>Final payout to your UPI or bank: {PAY[info.payout.status] ?? info.payout.status}{info.payout.reason ? ` (${info.payout.reason})` : ''}{info.payout.utr ? `, reference ${info.payout.utr}` : ''}</span>
+              <span>Final withdrawal to your UPI or bank: {PAY[info.payout.status] ?? info.payout.status}{info.payout.reason ? ` (${info.payout.reason})` : ''}{info.payout.utr ? `, reference ${info.payout.utr}` : ''}</span>
             </div>
           )}
           <button type="button" className="hfc-btn" disabled={busy} onClick={() => void stop()}>Cancel and keep my account</button>
@@ -134,11 +134,11 @@ export default function AccountClose() {
           {restPaise > 0 && <p className="hfc-sub" style={{ margin: 0 }}>The {formatPaise(restPaise)} left over is below ₹1, so it cannot be paid out. It is removed with your account.</p>}
           {info.held > 0 && <p className="hfc-note">Held earnings are paid after the hold ends{releaseOn ? `, on ${releaseOn}` : ''}, so closing will wait until then. Your wallet money is paid together with them, and we message you on WhatsApp when it starts.</p>}
           {info.tokens && info.tokens.walletPayoutPaise > 0 && !info.tokens.payoutReady && (
-            <div className="hfc-note" role="status"><strong>Set up your payout first.</strong> Your wallet money is paid to your own UPI ID, after a one-time ID check. Do both here, then close your account.
+            <div className="hfc-note" role="status"><strong>Set up your withdrawal first.</strong> Your wallet money is paid to your own UPI ID, after a one-time ID check. Do both here, then close your account.
               <UpiSetup where="close" skin="hfc" next="/dashboard/close" onSaved={() => void load()} /></div>
           )}
           {!info.tokens && walletMoney > 0 && (
-            <p className="hfc-note" role="status">{withdrawFirst ? 'Withdraw your wallet money first, then come back here to close your account. ' : ''}<a className="hfc-btn" href={PAYOUT_HREF}>Go to Payout</a> If what is left is under ₹1 (too small to pay out), you can choose to give it up below.</p>
+            <p className="hfc-note" role="status">{withdrawFirst ? 'Withdraw your wallet money first, then come back here to close your account. ' : ''}<a className="hfc-btn" href={PAYOUT_HREF}>Go to Withdraw</a> If what is left is under ₹1 (too small to pay out), you can choose to give it up below.</p>
           )}
           {!info.bankOk && (info.withdrawable > 0 || info.held > 0) && (
             <p className="hfc-note">To receive your earnings you need a verified bank account (<a href="/dashboard/host/earnings">add it on your Earnings page</a>). If you would rather not, you can give up those earnings below.</p>

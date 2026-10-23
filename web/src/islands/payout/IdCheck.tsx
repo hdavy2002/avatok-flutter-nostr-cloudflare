@@ -1,4 +1,4 @@
-/* [HF-CLOSE-UPI-1] /verify/id?next=/dashboard/... : the one-time ID check before a first payout, for ANYONE signed in (fans too).
+/* [HF-CLOSE-UPI-1] /verify/id?next=/dashboard/... : the one-time ID check before a first withdrawal, for ANYONE signed in (fans too).
  * It is the host-onboarding Aadhaar step (OTP first, DigiLocker as the fallback) on its own page, without the influencer wizard around it:
  * /hosts/onboarding is for becoming an influencer and would push a fan into creating a profile. Role is "host" for an influencer (so her
  * onboarding sees the check as done) and "lane_caller" for everyone else. The Aadhaar number stays in the step's own state (see AadhaarStep). */

@@ -38,7 +38,7 @@ No human monitors your call. Influencers never see your number. They see only yo
 
 ## What we collect from influencers
 
-Influencers earn money, so we also keep what we need to pay you: the bank account or UPI ID you choose for payouts, and a record of your earnings.
+Influencers earn money, so we also keep what we need to pay you: the bank account or UPI ID you choose for withdrawals, and a record of your earnings.
 
 ## How we keep your data safe
 

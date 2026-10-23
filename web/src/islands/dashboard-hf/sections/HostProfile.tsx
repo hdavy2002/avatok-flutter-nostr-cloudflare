@@ -17,7 +17,7 @@ export default function HostProfile({ account }: { account: DashboardAccount }) 
           {live && account.host?.slug && <a className="hfc-btn" href={`/h/${encodeURIComponent(account.host.slug)}`}>View my public profile</a>}
         </div>
       </section>
-      {status && <section className="hfc-card"><h2>Identity check</h2><p>Influencers verify their identity with a short video check before payouts.</p><div className="hfd-actions"><a className="hfc-btn" href="/hosts/kyc">Open identity check</a></div></section>}
+      {status && <section className="hfc-card"><h2>Identity check</h2><p>Influencers verify their identity with a short video check before withdrawals.</p><div className="hfd-actions"><a className="hfc-btn" href="/hosts/kyc">Open identity check</a></div></section>}
       <section className="hfc-card"><h2>Rates and rules</h2><p>See what callers pay, what you earn, and the rules every influencer follows.</p><div className="hfd-actions"><a className="hfc-btn" href="/hosts/rates">Rates</a><a className="hfc-btn" href="/hosts/rules">Influencer rules</a></div></section>
     </div>
   </div>;

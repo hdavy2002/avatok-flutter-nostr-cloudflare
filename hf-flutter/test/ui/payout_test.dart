@@ -73,7 +73,7 @@ void main() {
 
     test('kycStep reads nextStep from a kyc_required error and ignores other errors', () {
       final e = ApiException.fromResponse(
-          409, '{"error":"kyc_required","message":"We check your ID once, before your first payout.","nextStep":{"type":"kyc","url":"https://x.test/hosts/kyc"}}');
+          409, '{"error":"kyc_required","message":"We check your ID once, before your first withdrawal.","nextStep":{"type":"kyc","url":"https://x.test/hosts/kyc"}}');
       final step = PayoutsRepo.kycStep(e)!;
       expect(step.url, 'https://x.test/hosts/kyc');
       expect(step.title, startsWith('We check your ID once'));
@@ -96,20 +96,20 @@ void main() {
       expect(find.text('₹300'), findsOneWidget);
       expect(find.text('asha@okhdfc'), findsOneWidget);
       expect(find.text('PAID · UTR 4521'), findsOneWidget);
-      expect(find.text('We check your ID once, before your first payout.'), findsOneWidget);
+      expect(find.text('We check your ID once, before your first withdrawal.'), findsOneWidget);
     });
 
-    testWidgets('REQUEST PAYOUT sends the amount in paise; below a server-set minimum calls nothing', (tester) async {
+    testWidgets('REQUEST WITHDRAWAL sends the amount in paise; below a server-set minimum calls nothing', (tester) async {
       final api = FakeApiClient((m, p, b) => m == 'GET' ? {..._summary(), 'minPaise': 50000} : {'ok': true, 'id': 'x'});
       await _pump(tester, PayoutScreen(repo: PayoutsRepo(api)));
       await tester.enterText(find.byType(TextField), '400');
-      await tester.tap(find.text('REQUEST PAYOUT'));
+      await tester.tap(find.text('REQUEST WITHDRAWAL'));
       await tester.pumpAndSettle();
       expect(api.calls.where((c) => c.startsWith('POST')), isEmpty);
-      expect(find.textContaining('Minimum payout is ₹500'), findsOneWidget);
+      expect(find.textContaining('Minimum withdrawal is ₹500'), findsOneWidget);
 
       await tester.tap(find.text('ALL'));
-      await tester.tap(find.text('REQUEST PAYOUT'));
+      await tester.tap(find.text('REQUEST WITHDRAWAL'));
       await tester.pumpAndSettle();
       final i = api.calls.indexOf('POST /api/hf/payouts');
       expect(i, greaterThan(-1));
@@ -121,13 +121,13 @@ void main() {
       final api = FakeApiClient((m, p, b) => m == 'GET'
           ? _summary()
           : ApiException.fromResponse(409,
-              '{"error":"kyc_required","message":"We check your ID once, before your first payout.","nextStep":{"type":"kyc","url":"https://x.test/hosts/kyc"}}'));
+              '{"error":"kyc_required","message":"We check your ID once, before your first withdrawal.","nextStep":{"type":"kyc","url":"https://x.test/hosts/kyc"}}'));
       await _pump(tester, PayoutScreen(repo: PayoutsRepo(api)));
       await tester.tap(find.text('ALL'));
-      await tester.tap(find.text('REQUEST PAYOUT'));
+      await tester.tap(find.text('REQUEST WITHDRAWAL'));
       await tester.pumpAndSettle();
       expect(find.text('CHECK MY ID'), findsOneWidget);
-      expect(find.text('We check your ID once, before your first payout.'), findsWidgets);
+      expect(find.text('We check your ID once, before your first withdrawal.'), findsWidgets);
     });
 
     testWidgets('no UPI: the card says Add and the main button asks for the UPI', (tester) async {
@@ -142,17 +142,17 @@ void main() {
     testWidgets('a fan sees the payout screen with their wallet money and no minimum', (tester) async {
       final api = FakeApiClient((m, p, b) => m == 'GET' ? {..._summary(ready: 25000, hold: 0), 'isInfluencer': false} : {'ok': true, 'id': 'x'});
       await _pump(tester, PayoutScreen(repo: PayoutsRepo(api)));
-      expect(find.text('REQUEST PAYOUT'), findsOneWidget);
+      expect(find.text('REQUEST WITHDRAWAL'), findsOneWidget);
       expect(find.text('Amount (no minimum)'), findsOneWidget);
-      expect(find.textContaining('Minimum payout'), findsNothing);
+      expect(find.textContaining('Minimum withdrawal'), findsNothing);
       await tester.enterText(find.byType(TextField), '1');
-      await tester.tap(find.text('REQUEST PAYOUT'));
+      await tester.tap(find.text('REQUEST WITHDRAWAL'));
       await tester.pumpAndSettle();
       final i = api.calls.indexOf('POST /api/hf/payouts');
       expect(i, greaterThan(-1));
       expect(api.bodies[i], {'amountPaise': 100});
       await tester.enterText(find.byType(TextField), '0');
-      await tester.tap(find.text('REQUEST PAYOUT'));
+      await tester.tap(find.text('REQUEST WITHDRAWAL'));
       await tester.pumpAndSettle();
       expect(find.textContaining('Enter the amount'), findsOneWidget);
       expect(find.text('Try again'), findsNothing);

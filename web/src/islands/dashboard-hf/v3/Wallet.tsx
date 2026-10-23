@@ -9,10 +9,10 @@ import { BRAND } from '../../../lib/brand';
 import { capture } from '../../../lib/analytics';
 import { rateCardLines } from '../../../lib/hfStdPlan';
 import { fetchTopupConfig, gatewaySupported, openCheckout, startTopup, topupErrorMessage, topupPreview, waitForTopup, type TopupConfig, type TopupStatus } from '../../../lib/hfTopupApi';
-import { fetchRefunds, PAYOUT_HREF, type RefundInfo } from '../../../lib/hfWalletExitApi';
+import { fetchRefunds, type RefundInfo } from '../../../lib/hfWalletExitApi';
 import { fetchReceipts, openReceipt, receiptSplit, RECEIPT_FAIL_MSG, RECEIPT_POPUP_MSG, type ReceiptItem } from '../../../lib/hfReceiptsApi';
 import TokensPanel from '../../wallet/TokensPanel';
-import UpiSetup from '../../wallet/UpiSetup'; // [HF-CLOSE-UPI-1]
+import Withdraw from '../../wallet/Withdraw'; // [HF-WITHDRAW-1] Withdraw card (UPI setup + ID check + request + status list)
 import { useDash, spendablePaise } from './data';
 import { Card, Dialog, Empty, Failed, FlowerCluster, Ic, PageHead, Petals, Skel, Sticker, fmtInt, istDay, useToast } from './ui';
 
@@ -33,7 +33,7 @@ export default function Wallet() {
   const [rcptKey, setRcptKey] = useState(0);
   const app = (() => { try { return isAppMode(); } catch { return false; } })();
 
-  useEffect(() => { if (location.hash === '#add') setTimeout(() => document.getElementById('add')?.scrollIntoView({ block: 'start' }), 150); }, []);
+  useEffect(() => { const h = location.hash.replace('#', ''); if (h === 'add' || h === 'withdraw' || h === 'payout') setTimeout(() => document.getElementById(h === 'payout' ? 'withdraw' : h)?.scrollIntoView({ block: 'start' }), 350); }, []);
   const hist = useMemo(() => (w?.history ?? []).filter(h => tab === 'all' || (KIND[h.kind]?.tab ?? 'all') === tab), [w, tab]);
   const added = (w?.history ?? []).filter(h => h.kind === 'purchase').reduce((s, h) => s + (h.purchase?.walletPaise ?? Math.max(0, paiseOf(h))), 0);
   const used = (w?.history ?? []).filter(h => h.kind === 'call_spent').reduce((s, h) => s + Math.abs(paiseOf(h)), 0);
@@ -51,7 +51,7 @@ export default function Wallet() {
           {w?.wallet && w.wallet.testPaise > 0 && <div className="small" style={{ opacity: .9 }}>{formatPaise(w.wallet.testPaise)} of this is test credit (spend only, can’t be refunded).</div>}
           {w?.wallet?.debtOpen && <div className="small" style={{ background: 'rgba(255,255,255,.18)', borderRadius: 10, padding: '6px 10px', marginTop: 6 }}>You owe {formatPaise(w.wallet.debtPaise)} after a refund. It is cleared from the next money you add.</div>}
           <div className="small" style={{ opacity: .85, marginTop: 4 }}>Spend it on calls and appointments. Every rupee is a rupee of talk time.</div>
-          <div className="row"><a className="h3-btn gold" href="#add"><Ic name="plus" className="" />Add money</a>{w?.host ? <a className="h3-btn ghost" href={PAYOUT_HREF}>Withdraw to UPI</a> : null}</div>
+          <div className="row"><a className="h3-btn gold" href="#add"><Ic name="plus" className="" />Add money</a><a className="h3-btn ghost" href="#withdraw">Withdraw to UPI</a></div>
         </div>
       </div>
       <Card title="Add money" note="Any whole amount · 18% GST is deducted from what you pay" tone={1} id="add">
@@ -59,9 +59,11 @@ export default function Wallet() {
       </Card>
     </section>
 
-    {/* [HF-CLOSE-UPI-1] Payout setup for everyone (fans too, HF-REEL-36): the UPI ID your money is paid to, and the one-time ID check. */}
-    <Card title="Payout setup" note="Your UPI ID and a one-time ID check, so you can take your wallet money out or close your account" id="payout">
-      <UpiSetup where="wallet" skin="h3" next="/dashboard/wallet" />
+    {/* [HF-WITHDRAW-1] Withdraw for everyone (fans too, HF-REEL-36): amount, the UPI it goes to, confirm, and the status of every request. The old
+        "Withdrawal setup" (UPI ID + one-time ID check) lives inside this card and shows first while either is missing. #payout is kept as an alias. */}
+    <Card title="Withdraw" note="Take your wallet money out to your own UPI. No fee." id="withdraw">
+      <span id="payout" />
+      <Withdraw where="wallet" skin="h3" next="/dashboard/wallet" debtOpen={!!w?.wallet?.debtOpen} onChanged={() => reload('wallet')} />
     </Card>
 
     <section className="h3-row c21">
@@ -83,7 +85,7 @@ export default function Wallet() {
             <div style={{ padding: 14, borderRadius: 16, background: 'var(--teatint)' }}><div className="small muted">Added</div><div className="num" style={{ fontSize: '1.5rem', color: 'var(--peacock)' }}>{w ? formatPaise(added) : '—'}</div></div>
             <div style={{ padding: 14, borderRadius: 16, background: 'var(--blush)' }}><div className="small muted">Used on calls</div><div className="num" style={{ fontSize: '1.5rem', color: 'var(--rani)' }}>{w ? formatPaise(used) : '—'}</div></div>
           </div>
-          <RefundBox canWithdraw={!!w?.host} key={`rf${rcptKey}`} />
+          <RefundBox key={`rf${rcptKey}`} />
         </Card>
         <Card title="Payment receipts" note={`Sent to WhatsApp and email after every top-up`}><Receipts reloadKey={rcptKey} /></Card>
         {w?.mode === 'rupees' && !w.plan?.influencerSetsRate && <Card title="Call rates" note="Each influencer sets their own rate; you see it before you call" tone={1}><div className="h3-break">{rateCardLines(w.plan?.tiers).map(l => <div key={l}><span>{l}</span></div>)}</div></Card>}
@@ -174,15 +176,14 @@ function AddMoney({ onPaid }: { onPaid: (text: string) => void }) {
   </div>;
 }
 
-function RefundBox({ canWithdraw }: { canWithdraw: boolean }) {
+function RefundBox() {
   const [info, setInfo] = useState<RefundInfo | null>(null);
   useEffect(() => { void fetchRefunds().then(setInfo).catch(() => setInfo(null)); }, []);
   if (!info) return null;
   const open = info.requests.find(r => r.status === 'requested' || r.status === 'processing');
   return <div style={{ marginTop: 12, padding: 14, borderRadius: 16, background: 'var(--cream)', border: '1px dashed var(--line)' }}>
-    <p className="small muted">Refunds go to your wallet, never to your card or UPI. To take money out, first set up your UPI ID in <a href="#payout">Payout setup</a> (one-time ID check). Then withdraw from the app (Me, then Payout){canWithdraw ? ', or from Earnings on the website' : ''}, or have it paid out when you close your account.</p>
+    <p className="small muted">Refunds go to your wallet, never to your card or UPI. To take money out, use <a href="#withdraw">Withdraw</a> on this page (or in the app: Me, then Withdraw). It goes to your own UPI after a one-time ID check, or it is paid out when you close your account.</p>
     {open && <p className="small" style={{ marginTop: 8 }}>A refund of {formatPaise(Math.round(open.amount * 100))} is in progress.</p>}
-    {canWithdraw && <a className="h3-btn sm ghost" style={{ marginTop: 8 }} href={PAYOUT_HREF}>Withdraw to UPI</a>}
   </div>;
 }
 

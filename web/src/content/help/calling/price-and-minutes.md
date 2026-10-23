@@ -70,4 +70,4 @@ We do not refund calls that were made, except under the first-minute rule above.
 
 If we charged you twice, or for a call that was never made, tell us. That is a billing error. The wrong amount is put back in your wallet and linked to that call. All refunds go to your wallet, never to your card or UPI. Read [refund policy](/refunds) and [wallet terms](/wallet-terms).
 
-You can take wallet money out any time with the Payout button. See [withdraw your wallet money](/help/wallet-and-payments/withdraw-your-balance).
+You can take wallet money out any time with the Withdraw button. See [withdraw your wallet money](/help/wallet-and-payments/withdraw-your-balance).

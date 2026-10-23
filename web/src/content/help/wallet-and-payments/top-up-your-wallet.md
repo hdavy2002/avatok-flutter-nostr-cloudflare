@@ -60,7 +60,7 @@ Every addition and every call charge shows in your wallet history. For each line
 ## Good to know
 
 - A call is made once we have rung both of you and joined the call. Ringing, an influencer declining, cancelling or not answering costs ₹0.
-- Refunds always go back to your wallet. You can take wallet money out with the [Payout button](/help/wallet-and-payments/withdraw-your-balance).
+- Refunds always go back to your wallet. You can take wallet money out with the [Withdraw button](/help/wallet-and-payments/withdraw-your-balance).
 - Read the full [wallet terms](/wallet-terms) if you want every detail.
 
 ## Stay safe

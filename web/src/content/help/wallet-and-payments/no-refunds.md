@@ -53,7 +53,7 @@ A booked call holds 10 minutes of the influencer's rate in your wallet.
 
 ## All refunds go to your wallet
 
-Every refund goes back to your wallet. We never send a refund to your card or UPI. If you want the money in your bank, use the Payout button. See [withdraw your wallet money](/help/wallet-and-payments/withdraw-your-balance).
+Every refund goes back to your wallet. We never send a refund to your card or UPI. If you want the money in your bank, use the Withdraw button. See [withdraw your wallet money](/help/wallet-and-payments/withdraw-your-balance).
 
 ## An example
 

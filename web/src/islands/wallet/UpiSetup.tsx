@@ -1,5 +1,5 @@
-/* [HF-CLOSE-UPI-1] Payout setup on the website, for EVERYONE (fans too, rulebook HF-REEL-36): add / change the UPI ID, and see / start the one-time
- * ID check. Used on Wallet ("Payout setup") and on the Close my account page, so a fan can close there without the app.
+/* [HF-CLOSE-UPI-1] Withdrawal setup on the website, for EVERYONE (fans too, rulebook HF-REEL-36): add / change the UPI ID, and see / start the one-time
+ * ID check. Used on Wallet ("Withdrawal setup") and on the Close my account page, so a fan can close there without the app.
  * Worker: PUT /api/hf/payouts/upi (format check only, no name check), GET /api/hf/payouts/summary. The saved UPI is shown masked (never in full).
  * The ID check is /verify/id (Aadhaar OTP, DigiLocker as the fallback). Telemetry: hf_payout_upi_saved / hf_payout_upi_failed / hf_payout_idcheck_clicked. */
 import { useCallback, useEffect, useState } from 'react';
@@ -61,7 +61,7 @@ export default function UpiSetup({ next, skin, onSaved, where }: Props) {
     setBusy(false);
   }
 
-  if (failed) return <div><p className="small" role="alert" style={{ color: 'var(--bad, #b3261e)' }}>We could not load your payout details.</p><button type="button" className={ghost} onClick={() => void load()}>Try again</button></div>;
+  if (failed) return <div><p className="small" role="alert" style={{ color: 'var(--bad, #b3261e)' }}>We could not load your withdrawal details.</p><button type="button" className={ghost} onClick={() => void load()}>Try again</button></div>;
   if (!sum) return <p className="small muted" role="status">Loading…</p>;
   const kyc = sum.kycStatus === 'verified';
   return <div style={{ display: 'grid', gap: 12 }}>
@@ -84,7 +84,7 @@ export default function UpiSetup({ next, skin, onSaved, where }: Props) {
       <b>2. One-time ID check</b>
       {kyc
         ? <p className="small" style={{ marginTop: 4 }}>Done. We do not ask again.</p>
-        : <p className="small" style={{ marginTop: 4 }}>We check your ID once, before your first payout (Aadhaar with an OTP, or DigiLocker). <a className={ghost} style={{ marginLeft: 6 }} href={idCheckHref(next)} onClick={() => capture('hf_payout_idcheck_clicked', uid())}>Do the ID check</a></p>}
+        : <p className="small" style={{ marginTop: 4 }}>We check your ID once, before your first withdrawal (Aadhaar with an OTP, or DigiLocker). <a className={ghost} style={{ marginLeft: 6 }} href={idCheckHref(next)} onClick={() => capture('hf_payout_idcheck_clicked', uid())}>Do the ID check</a></p>}
     </div>
     {msg && <p role="status" className="small" style={{ color: msg.kind === 'err' ? 'var(--bad, #b3261e)' : 'var(--peacock, #1b6b5f)', fontWeight: 700 }}>{msg.text}</p>}
   </div>;

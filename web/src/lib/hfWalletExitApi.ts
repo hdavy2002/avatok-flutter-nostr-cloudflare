@@ -44,8 +44,8 @@ export const cancelExit = () => authed<{ ok: true }>('DELETE', '/api/hf/account/
 /** Existing platform deletion request (30-day grace). Answers 409 {deferred:true} while real money still has to be paid out. */
 export const deleteAccountNow = () => authed<{ scheduled: boolean; grace_ends_at?: number }>('POST', '/api/account/delete', {});
 
-/** [HF-WIRE-16] Where money leaves the wallet. Influencers withdraw on the web; fans use Payout in the app (Me, then Payout). */
-export const PAYOUT_HREF = '/dashboard/host/earnings';
+/** [HF-WIRE-16] Where money leaves the wallet. Influencers withdraw on the web; fans use Withdraw in the app (Me, then Withdraw). */
+export const PAYOUT_HREF = '/dashboard/wallet#withdraw'; // [HF-WITHDRAW-1] one Withdraw card on Wallet, for fans and influencers
 
 /** The stable error code the worker sent (`withdraw_first`, `forfeit_required`, `refund_to_wallet_only`...), or ''. */
 export function walletExitCode(e: unknown): string {
@@ -54,11 +54,11 @@ export function walletExitCode(e: unknown): string {
 }
 
 const CODE_TEXT: Record<string, string> = {
-  upi_required: 'Add your UPI ID first (on the Wallet page, Payout setup, or in the app: Me, then Payout). Your wallet money is paid out to it when you close your account.',
-  kyc_required: 'We check your ID once, before your first payout. Do that first, then close your account.',
-  withdraw_first: 'Your wallet money does not go back to your card. Withdraw it to your UPI with Payout first, then close your account.',
+  upi_required: 'Add your UPI ID first (on the Wallet page, Withdrawal setup, or in the app: Me, then Withdraw). Your wallet money is paid out to it when you close your account.',
+  kyc_required: 'We check your ID once, before your first withdrawal. Do that first, then close your account.',
+  withdraw_first: 'Your wallet money does not go back to your card. Withdraw it to your UPI with the Withdraw button first, then close your account.',
   forfeit_required: 'Your wallet holds less than ₹1, which is too small to pay out. Tick the box to give it up and close your account.',
-  refund_to_wallet_only: 'Refunds go to your wallet, not to your card. You can withdraw your wallet to your UPI with Payout.',
+  refund_to_wallet_only: 'Refunds go to your wallet, not to your card. You can withdraw your wallet to your UPI with the Withdraw button.',
 };
 
 export function walletExitMessage(e: unknown): string {

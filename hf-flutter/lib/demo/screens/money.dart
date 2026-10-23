@@ -477,10 +477,10 @@ class _PaymentScreenState extends State<PaymentScreen> {
   }
 }
 
-// ---------------------------------------------------------------------------------------------- Payout
+// ---------------------------------------------------------------------------------------------- Withdraw
 
 /// Payout: withdraw to UPI (HF-WIRE-10). Open to everyone (HF-REEL-36) with no minimum (HF-REEL-38; the server's `minPaise` is 0 unless the
-/// owner sets one). Influencer earnings keep the 7-day hold. Paid to UPI, UTR on WhatsApp. The ID check happens once, before the first payout.
+/// owner sets one). Influencer earnings keep the 7-day hold. Paid to UPI, UTR on WhatsApp. The ID check happens once, before the first withdrawal.
 ///
 /// With [DemoMode.on] (and no [repo]) it shows the dummy numbers. Otherwise it reads `GET /api/hf/payouts/summary`.
 class PayoutScreen extends StatefulWidget {
@@ -548,7 +548,7 @@ class _PayoutScreenState extends State<PayoutScreen> {
       return;
     }
     if (s.minPaise > 0 && v * 100 < s.minPaise) {
-      toast(context, 'Minimum payout is ${inr(s.minPaise / 100, paise: false)}.');
+      toast(context, 'Minimum withdrawal is ${inr(s.minPaise / 100, paise: false)}.');
       return;
     }
     if (v * 100 > s.readyPaise) {
@@ -686,13 +686,13 @@ class _PayoutScreenState extends State<PayoutScreen> {
                   const RulesCard(lines: [
                     'We pay every request to your UPI.',
                     'You get the payment reference (UTR) on WhatsApp.',
-                    'We check your ID once, before your first payout.',
+                    'We check your ID once, before your first withdrawal.',
                     'Test credits can be spent but not withdrawn.',
                   ]),
                   const SizedBox(height: 14),
-                  Text('Past payouts', style: t(18, color: C.maroon, w: FontWeight.w900)),
+                  Text('Past withdrawals', style: t(18, color: C.maroon, w: FontWeight.w900)),
                   const SizedBox(height: 8),
-                  if (history.isEmpty) Text('No payouts yet.', style: t(15, color: C.muted, w: FontWeight.w700)),
+                  if (history.isEmpty) Text('No withdrawals yet.', style: t(15, color: C.muted, w: FontWeight.w700)),
                   for (final p in history)
                     PayoutRow(
                       amount: inr(p.$2, paise: false),
@@ -706,7 +706,7 @@ class _PayoutScreenState extends State<PayoutScreen> {
               ),
             ),
             BookBottomButton(
-              label: _busy ? 'SENDING…' : (canAsk ? 'REQUEST PAYOUT' : 'ADD UPI TO START'),
+              label: _busy ? 'SENDING…' : (canAsk ? 'REQUEST WITHDRAWAL' : 'ADD UPI TO START'),
               plum: true,
               icon: null,
               onTap: canAsk ? _request : (onChangeUpi ?? () {}),
@@ -777,7 +777,7 @@ class _UpiSheetState extends State<_UpiSheet> {
             children: [
               Text(widget.current == null ? 'Add your UPI' : 'Change your UPI', style: t(24, color: C.maroon, w: FontWeight.w900)),
               const SizedBox(height: 6),
-              Text('Your payouts go here. Use a UPI ID in your own name.', style: t(14, color: C.muted, w: FontWeight.w700, h: 1.35)),
+              Text('Your withdrawals go here. Use a UPI ID in your own name.', style: t(14, color: C.muted, w: FontWeight.w700, h: 1.35)),
               const SizedBox(height: 12),
               TextField(
                 controller: _vpa,
@@ -798,7 +798,7 @@ class _UpiSheetState extends State<_UpiSheet> {
   }
 }
 
-/// Shown when a first payout needs the ID check: "We check your ID once, before your first payout."
+/// Shown when a first withdrawal needs the ID check: "We check your ID once, before your first withdrawal."
 /// The check itself lives on the website (no in-app KYC route yet), so the button opens it in a Custom Tab.
 class PayoutKycScreen extends StatelessWidget {
   const PayoutKycScreen({super.key, required this.step});
@@ -823,7 +823,7 @@ class PayoutKycScreen extends StatelessWidget {
                   for (final (i, line) in const [
                     'You only do this once. Joining and getting calls never needed it.',
                     'It takes a few minutes. Keep your Aadhaar mobile number handy.',
-                    'When it is done, come back and request your payout again.',
+                    'When it is done, come back and request your withdrawal again.',
                   ].indexed)
                     KycStep(n: i + 1, text: line),
                   const SizedBox(height: 8),

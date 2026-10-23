@@ -42,7 +42,7 @@ export default function PayoutStep({ draft, update, api, setAction }: StepProps)
   if (done) {
     return (
       <div>
-        <h1 className="hob-h1">Payout details checked</h1>
+        <h1 className="hob-h1">Withdrawal details checked</h1>
         <div className="hob-card hob-v-done">
           <span className="hob-v-badge" aria-hidden="true"><Icon name="check" /></span>
           <p className="hob-v-strong">Name matches your Aadhaar ✓</p>
@@ -53,7 +53,7 @@ export default function PayoutStep({ draft, update, api, setAction }: StepProps)
           {p.accountLast4 && <div><dt>Bank account</dt><dd>••••{p.accountLast4}</dd></div>}
           {p.ifsc && <div><dt>IFSC</dt><dd>{p.ifsc}</dd></div>}
         </dl>
-        <button type="button" className="hob-v-link" onClick={() => { setEditing(true); update({ payout: { ...p, verified: false } }); }}>Change payout details</button>
+        <button type="button" className="hob-v-link" onClick={() => { setEditing(true); update({ payout: { ...p, verified: false } }); }}>Change withdrawal details</button>
       </div>
     );
   }

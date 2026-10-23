@@ -22,7 +22,7 @@ import 'call_records_real.dart';
 import 'settings_real.dart';
 import '../../ui/strings/help_strings.dart';
 
-/// Me — the customer dashboard: wallet ticket + menu (call records, wallet, payout, bookings…).
+/// Me — the customer dashboard: wallet ticket + menu (call records, wallet, withdrawal, bookings…).
 class MeScreen extends StatelessWidget {
   const MeScreen({super.key});
 
@@ -98,7 +98,7 @@ class _Dashboard extends StatelessWidget {
     final items = <(IconData, String, String, String)>[
       (Icons.call_rounded, 'Call records', live ? '' : '${demo.calls.length} calls', '/calls'),
       (Icons.currency_rupee_rounded, 'Wallet', live ? '' : inr(demo.balance, paise: false), '/wallet'),
-      (Icons.north_east_rounded, 'Payout', '', '/payout'), // [HF-WIRE-13] open to fans too
+      (Icons.north_east_rounded, 'Withdraw', '', '/payout'), // [HF-WIRE-13] open to fans too
       (Icons.event_rounded, 'My bookings', live ? '' : '${demo.bookings.length}', '/bookings'),
       // [HF-BOOK-APPROVE-5] Influencer-only shortcuts into her side ("tab:" = context.go, her bar has its own shell).
       if (isInfluencer) (Icons.edit_calendar_rounded, 'Availability calendar', '', 'tab:/inf/availability'),

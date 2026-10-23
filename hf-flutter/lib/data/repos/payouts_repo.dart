@@ -129,7 +129,7 @@ class PayoutsRepo {
     final n = error.extra['nextStep'];
     final map = n is Map ? n : const <String, Object?>{};
     return KycNextStep(
-      title: error.message ?? 'We check your ID once, before your first payout.',
+      title: error.message ?? 'We check your ID once, before your first withdrawal.',
       url: map['url'] is String ? map['url'] as String : null,
     );
   }

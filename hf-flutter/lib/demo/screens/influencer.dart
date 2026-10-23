@@ -826,7 +826,7 @@ class _EarningsCardState extends State<_EarningsCard> {
       hold = '${inr(_summary!.onHoldPaise / 100, paise: false)} on 7-day hold';
     } else {
       ready = '—';
-      hold = _failed ? 'Could not load. Tap to open Payout.' : 'Loading…';
+      hold = _failed ? 'Could not load. Tap to open Withdraw.' : 'Loading…';
     }
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,

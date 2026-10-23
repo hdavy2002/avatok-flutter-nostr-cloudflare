@@ -6,7 +6,7 @@ import '../../core/brand.dart';
 /// calls are private and masked, you need at least ₹20 in the wallet to start, a call is made once we have
 /// rung both people and joined them, a joined call that breaks in the first minute costs ₹1, a booking holds
 /// 10 minutes and is free to cancel until 1 hour before, all refunds go to the wallet (never to a card or UPI),
-/// anyone can withdraw wallet money with Payout after a one-time ID and UPI check. Nothing here names the
+/// anyone can withdraw wallet money with Withdraw after a one-time ID and UPI check. Nothing here names the
 /// payment gateway.
 abstract final class HelpStrings {
   static const String title = 'Help';
@@ -43,7 +43,7 @@ abstract final class HelpStrings {
     ),
     (
       'How do I take my money out?',
-      'Tap Payout in your wallet. We send the money to your UPI after a one-time ID (KYC) and UPI check. There is no minimum amount and we take no fee. '
+      'Tap Withdraw in your wallet. We send the money to your UPI after a one-time ID (KYC) and UPI check. There is no minimum amount and we take no fee. '
           'Test credits can be spent on calls but cannot be withdrawn. An influencer\'s earnings are held for 7 days first.',
     ),
     (

@@ -51,7 +51,7 @@ Your phone number is never shared with the other person on a call. See [How does
 
 ## Leaving later
 
-You can delete your account any time. Withdraw your wallet money with the Payout button first. Steps are at [data deletion](/data-deletion).
+You can delete your account any time. Withdraw your wallet money with the Withdraw button first. Steps are at [data deletion](/data-deletion).
 
 ## Next step
 

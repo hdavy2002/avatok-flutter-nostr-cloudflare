@@ -32,7 +32,7 @@ import {
 const err = (status: number, error: string, message?: string, extra: Record<string, unknown> = {}) => json({ error, message: message ?? error, ...extra }, status);
 // [HF-WIRE-13] Rule 7: every refund lands in the WALLET. A refund to the original payment (card/UPI/Google Play) is OFF unless the owner sets
 // hfGatewayRefundsEnabled. While off, nobody can start one and an admin can only reject an old one; wallet money leaves by payout to UPI.
-export const REFUND_WALLET_ONLY_MESSAGE = "Refunds go to your wallet, not to your card. You can withdraw your wallet to your UPI from Payouts.";
+export const REFUND_WALLET_ONLY_MESSAGE = "Refunds go to your wallet, not to your card. You can withdraw your wallet to your UPI with the Withdraw button.";
 const SYSTEM_PREFIX = "system:";
 const isSystemRow = (r: RefundRow) => r.status === "cancelled" && (r.reason ?? "").startsWith(SYSTEM_PREFIX);
 

@@ -168,7 +168,7 @@ async function hostCreate(req: Request, env: Env, app = false): Promise<Response
       if (!upiRow?.upi_enc) return err(409, "upi_required", "Add your UPI ID first.");
       if (!ready.kycOk) {
         const paidBefore = await env.DB_META.prepare("SELECT 1 AS x FROM hf_payout_requests WHERE host_uid=?1 AND status='paid' LIMIT 1").bind(uid).first().catch(() => null);
-        if (!paidBefore) return err(409, "kyc_required", "We check your ID once, before your first payout.", { nextStep: kycNextStep() });
+        if (!paidBefore) return err(409, "kyc_required", "We check your ID once, before your first withdrawal.", { nextStep: kycNextStep() });
       }
       ready = { ...ready, kycOk: true, bankOk: true };
     }
@@ -398,7 +398,7 @@ async function adminReject(req: Request, env: Env, ctx: ExecutionContext | undef
 // influencer earnings; minPaise is the fan minimum (hfFanPayoutMinRupees) unless earnings are the only money, then hfPayoutMinRupees.
 const UPI_RE = /^[a-z0-9._-]{2,64}@[a-z][a-z0-9.-]{1,32}$/;
 const isInfluencerStatus = (s: string | null | undefined) => s === "live" || s === "approved";
-const kycNextStep = () => ({ type: "kyc", title: "We check your ID once, before your first payout.", url: brandUrl("/verify/id?next=%2Fdashboard%2Fwallet") }); // [HF-CLOSE-UPI-1] the ID check for everyone (fans too); /hosts/kyc is an info page
+const kycNextStep = () => ({ type: "kyc", title: "We check your ID once, before your first withdrawal.", url: brandUrl("/verify/id?next=%2Fdashboard%2Fwallet") }); // [HF-CLOSE-UPI-1] the ID check for everyone (fans too); /hosts/kyc is an info page
 const maskVpa = (v: string) => { const [n, h] = v.split("@"); return `${n.length <= 2 ? n[0] : n.slice(0, 2)}${"*".repeat(Math.max(2, n.length - 2))}@${h}`; };
 
 function appValidate(body: Record<string, unknown>): { ok: true; rupees: number } | { ok: false; error: string; message: string } {
