@@ -198,3 +198,12 @@ Clarifications:
 - Settings PUT accepts only the ten keys of section 2, integers within sane ranges, and writes them in ONE KV write.
 - A fan problem report: `{ kind:'wrong'|'damaged', note (10-1000 chars), photoKey? }`, once per order, ≤ 48 h after delivery; it appears in the admin `problem` tab.
 - Refund on reject: wallet money returns instantly (idempotent op ids); Cashfree uses the refund API with a stable `refund_id`; if that fails the order shows `refund_status='pending_manual'`, the owner is alerted by WhatsApp, and `refund-done` closes it. A cron tick retries stuck refunds. An order that was refunded never earns; a reversal before the 7-day hold removes the earning, after the hold the platform absorbs it.
+
+### 11.1 Review fixes (HF-MERCH-CORE-1, second pass)
+- Merch is paid from PURCHASE wallet lots only. Free test credit is never spent on merch; checkout 402 `insufficient_balance` carries `balancePaise` = purchase-only balance and `testCreditNotUsable:true` when test credit exists (clients should say "Free test credit cannot be used for merch").
+- `refund` in the reject / refund responses and `refundStatus` on fan orders can now be `pending_gateway`: Cashfree accepted the refund but it has not finished. The tick (and Cashfree's refund webhook) moves it to `done`, or to `pending_manual` with an owner alert if Cashfree reports it failed or lost it. `refund-done` accepts both `pending_manual` and `pending_gateway`. Admin UIs: show `pending_gateway` as "Refund started, waiting for Cashfree".
+- Cashfree's fee is kept by Cashfree, so a refund never reverses the `cashfree_fee` ledger row; `printrove_cost` is reversed only for an order that never reached the printer.
+- The settings ranges are ONE table (`MERCH_CFG_RANGES`): share 0-9000 bps, min markup 0-5000, base buffer 0-2000, Cashfree fee 0-1000 bps, GST 0-2800 bps, hold days 0-60. The PUT validates against it and the reader clamps to it.
+- Placement: for `frame:'square'|'circle'` the frame box is `min(w,h)` square (centred on the print rectangle); `w`,`h` stay the print rectangle's size. Rectangular and `none` frames use `w` x `h`.
+- Turning `hfMerchEnabled` off does NOT stop the Cashfree webhook or the cron tick (payment polling, wallet-charge recovery, refunds, earnings).
+- A wallet order that was charged but not confirmed (worker died in between) is confirmed by the tick, never expired without a refund. A retry of a Cashfree checkout returns the same checkout link instead of a gateway error.

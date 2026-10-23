@@ -16,7 +16,7 @@ const NOMINAL_RATE_PAISE_PER_MIN = 100;
 
 export type SpendOutcome =
   | { ok: true; again: boolean; spentPaise: number }
-  | { ok: false; reason: "insufficient"; shortPaise: number; balancePaise: number }
+  | { ok: false; reason: "insufficient"; shortPaise: number; balancePaise: number; testCreditNotUsable: boolean }
   | { ok: false; reason: "debt" | "conflict" | "invalid" };
 
 /** Take `amountPaise` from the wallet for this order. Idempotent per order. Never leaves a partial charge behind. */
@@ -25,17 +25,26 @@ export async function spendWalletForOrder(env: Env, uid: string, orderId: string
   if (!(amt > 0)) return { ok: false, reason: "invalid" };
   const callId = merchWalletCallId(orderId);
   const already = await env.DB_META.prepare("SELECT rupee_value_paise AS v FROM hf_token_ledger WHERE op_id=?1").bind(`hftset:${callId}`).first<{ v: number }>();
-  if (already) return { ok: true, again: true, spentPaise: Number(already.v) };
+  if (already) {
+    // Only a full, still-standing charge counts as "already paid": a partial charge or one that was given back must never confirm an order.
+    const refunded = await env.DB_META.prepare("SELECT 1 AS x FROM hf_token_ledger WHERE op_id=?1").bind(merchRefundMarkOpId(orderId)).first();
+    if (!refunded && Number(already.v) >= amt) return { ok: true, again: true, spentPaise: Number(already.v) };
+    return { ok: false, reason: "conflict" };
+  }
   if (await hasOpenDebt(env, uid)) return { ok: false, reason: "debt" };
+  // Merch is paid from PURCHASE lots only. Free test credit is never spendable here (owner rule HF-MERCH-6).
+  const short = async (): Promise<SpendOutcome> => {
+    const b = await balanceSummary(env, uid);
+    return { ok: false, reason: "insufficient", shortPaise: Math.max(1, amt - b.availablePaidPaise), balancePaise: b.availablePaidPaise, testCreditNotUsable: b.availableTestPaise > 0 };
+  };
   const bal = await balanceSummary(env, uid);
-  if (bal.availablePaise < amt) return { ok: false, reason: "insufficient", shortPaise: amt - bal.availablePaise, balancePaise: bal.availablePaise };
-  const r = await settleCall(env, uid, callId, NOMINAL_RATE_PAISE_PER_MIN, 0, { fixedValuePaise: amt });
+  if (bal.availablePaidPaise < amt) return short();
+  const r = await settleCall(env, uid, callId, NOMINAL_RATE_PAISE_PER_MIN, 0, { fixedValuePaise: amt, onlyKind: "purchase" });
   if (!r.ok) return { ok: false, reason: r.reason === "invalid" ? "invalid" : "conflict" };
   if (r.shortfall || r.totalValuePaise < amt) {
     // A concurrent spend drained the lots between the check and the charge: give back whatever was taken.
     await refundWalletForOrder(env, uid, orderId);
-    const now = await balanceSummary(env, uid);
-    return { ok: false, reason: "insufficient", shortPaise: Math.max(1, amt - now.availablePaise), balancePaise: now.availablePaise };
+    return short();
   }
   return { ok: true, again: r.again, spentPaise: r.totalValuePaise };
 }

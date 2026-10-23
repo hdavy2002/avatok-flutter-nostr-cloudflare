@@ -127,6 +127,6 @@ export const cashfreeAdapter: GatewayAdapter = {
   /** [HF-WALLET-EXIT-1] our per-slice id IS the Cashfree refund_id (refund() above passes opId as refundId). */
   async listRefunds(env, a) {
     const r = await findCashfreeRefund(env, a.gatewayOrderId, a.opId);
-    return r ? { found: r.found, gateway_refund_id: r.id } : null;
+    return r ? { found: r.found, gateway_refund_id: r.id, status: r.status ?? null } : null;
   },
 };

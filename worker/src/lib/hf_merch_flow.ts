@@ -19,7 +19,7 @@ import { liveBaseUnitForOrder } from "./hf_merch_catalog";
 import { refundWalletForOrder, spendWalletForOrder } from "./hf_merch_wallet";
 import { creditMerchEarning, reverseMerchEarning } from "./hf_merch_delivered";
 import {
-  alertOwnerMerchRefund, merchFail, merchTrack, notifyMerchApproved, notifyMerchPaid, notifyMerchRejected, notifyMerchStatusPush, snapOf,
+  alertOwnerMerchRefund, merchFail, merchPush, merchTrack, notifyMerchApproved, notifyMerchPaid, notifyMerchRejected, notifyMerchStatusPush, snapOf,
 } from "./hf_merch_notify";
 
 export type FlowFail = { ok: false; status: number; error: string; message: string; extra?: Record<string, unknown> };
@@ -112,7 +112,7 @@ async function finishCheckout(env: Env, row: ShopOrderRow, created: boolean, i: 
     if (!s.ok) {
       if (s.reason === "insufficient") {
         await cancelUnpaid(env, row.order_id, "insufficient_balance");
-        return fail(402, "insufficient_balance", "Your wallet does not have enough money for this order.", { shortPaise: s.shortPaise, balancePaise: s.balancePaise });
+        return fail(402, "insufficient_balance", "Your wallet does not have enough money for this order.", { shortPaise: s.shortPaise, balancePaise: s.balancePaise, ...(s.testCreditNotUsable ? { testCreditNotUsable: true } : {}) });
       }
       await cancelUnpaid(env, row.order_id, `wallet_${s.reason}`);
       return fail(s.reason === "debt" ? 409 : 503, s.reason === "debt" ? "wallet_debt" : "wallet_unavailable", s.reason === "debt" ? "Clear the amount you owe in your wallet first." : "The wallet could not be charged. Please try again.");
@@ -123,6 +123,13 @@ async function finishCheckout(env: Env, row: ShopOrderRow, created: boolean, i: 
     return done === "failed" ? fail(503, "checkout_unavailable", "Your payment went through but the order is not confirmed yet. We will fix it shortly; check My orders.") : { ok: true, order: fresh, created };
   }
   // Cashfree
+  // A retry of the same request must not create the Cashfree order a second time (same id -> gateway error): reuse the stored session.
+  if (row.cashfree_order_id) {
+    const was = await reconcileCashfreeOrder(env, row.order_id).catch(() => "unavailable" as const);
+    if (was === "confirmed" || was === "duplicate") return { ok: true, order: (await getOrder(env, row.order_id)) ?? row, created };
+    const kept = await env.TOKENS.get(`merch:cfs:${row.order_id}`, "json").catch(() => null) as { checkoutUrl?: string | null; paymentSessionId?: string | null } | null;
+    if (kept && (kept.checkoutUrl || kept.paymentSessionId)) return { ok: true, order: row, created, checkoutUrl: kept.checkoutUrl ?? null, paymentSessionId: kept.paymentSessionId ?? null };
+  }
   const adapter = resolveGateway("cashfree");
   if (!adapter || !adapter.configured(env)) {
     await cancelUnpaid(env, row.order_id, "gateway_unconfigured");
@@ -139,6 +146,8 @@ async function finishCheckout(env: Env, row: ShopOrderRow, created: boolean, i: 
   }
   await metaDb(env).prepare("UPDATE shop_orders SET cashfree_order_id=?2, updated_at=?3 WHERE order_id=?1").bind(row.order_id, gw.gateway_order_id, Date.now()).run();
   const cp = (gw.client_payload ?? {}) as Record<string, unknown>;
+  const kept = { checkoutUrl: typeof cp.checkout_url === "string" ? cp.checkout_url : null, paymentSessionId: typeof cp.payment_session_id === "string" ? cp.payment_session_id : null };
+  await env.TOKENS.put(`merch:cfs:${row.order_id}`, JSON.stringify(kept), { expirationTtl: 3 * 3600 }).catch(() => undefined);
   return {
     ok: true, order: (await getOrder(env, row.order_id)) ?? row, created,
     checkoutUrl: typeof cp.checkout_url === "string" ? cp.checkout_url : null, paymentSessionId: typeof cp.payment_session_id === "string" ? cp.payment_session_id : null,
@@ -282,7 +291,8 @@ export async function approveMerchOrder(env: Env, orderId: string, actor: string
 // ---------------------------------------------------------------------------
 // Reject / refund
 // ---------------------------------------------------------------------------
-export type RefundResult = "done" | "pending_manual";
+export type RefundResult = "done" | "pending_manual" | "pending_gateway";
+export const merchRefundId = (orderId: string) => `mrf_${orderId.replace(/^shp_/, "")}`;
 
 /** Give the buyer's money back the way it came. Wallet: instant + idempotent. Cashfree: refund API, else a person is alerted. Never throws. */
 export async function refundMerchPayment(env: Env, row: ShopOrderRow): Promise<RefundResult> {
@@ -305,9 +315,14 @@ export async function refundMerchPayment(env: Env, row: ShopOrderRow): Promise<R
     }
     const adapter = resolveGateway("cashfree");
     if (!adapter || !adapter.configured(env)) return manual("Cashfree is not configured, refund by hand.");
-    const opId = `mrf_${row.order_id.replace(/^shp_/, "")}`;
+    const opId = merchRefundId(row.order_id);
     const rf = await adapter.refund(env, { gatewayOrderId: row.cashfree_order_id ?? row.order_id, amountPaise: row.amount_paise, reason: `Order ${row.order_no} cancelled`, opId });
-    if (rf.accepted) return done(`cashfree refund ${opId}`);
+    if (rf.accepted) {
+      // Cashfree ACCEPTED the refund; it is not money back yet. Stay 'pending_gateway' until Cashfree says SUCCESS (tick / refund webhook).
+      const r = await db.prepare("UPDATE shop_orders SET refund_status='pending_gateway', updated_at=?2 WHERE order_id=?1 AND COALESCE(refund_status,'none') IN ('none','refunding')").bind(row.order_id, Date.now()).run();
+      if (Number(r.meta?.changes ?? 0) === 1) await appendShopEvent(env, row.order_id, "refund_started", "system", `cashfree refund ${opId}`).catch(() => undefined);
+      return "pending_gateway";
+    }
     return manual(`Cashfree said: ${rf.error ?? "refund not accepted"}`);
   } catch (e) {
     await merchFail(env, e, "refund", row.uid, { order_id: row.order_id });
@@ -315,10 +330,49 @@ export async function refundMerchPayment(env: Env, row: ShopOrderRow): Promise<R
   }
 }
 
+/**
+ * A Cashfree refund that was accepted: ask Cashfree whether it finished. SUCCESS -> done (+ push); FAILED / CANCELLED / not found for an hour -> a person (pending_manual + owner alert);
+ * still PENDING -> wait (a week at most). Idempotent; never throws.
+ */
+export async function confirmCashfreeRefund(env: Env, orderId: string): Promise<"done" | "pending" | "manual" | "unknown"> {
+  try {
+    const row = await getOrder(env, orderId);
+    if (!row || row.refund_status !== "pending_gateway") return row?.refund_status === "done" ? "done" : "unknown";
+    const adapter = resolveGateway("cashfree");
+    if (!adapter?.listRefunds || !adapter.configured(env)) return "unknown";
+    const f = await adapter.listRefunds(env, { gatewayOrderId: row.cashfree_order_id ?? row.order_id, opId: merchRefundId(orderId) });
+    if (!f) return "unknown";
+    const db = metaDb(env);
+    const now = Date.now();
+    const age = now - Number(row.updated_at);
+    if (f.found && f.status === "SUCCESS") {
+      const r = await db.prepare("UPDATE shop_orders SET refund_status='done', refunded_at=COALESCE(refunded_at,?2), fulfil_status=CASE WHEN fulfil_status='cancelled' THEN 'refunded' ELSE fulfil_status END, updated_at=?2 WHERE order_id=?1 AND refund_status='pending_gateway'").bind(orderId, now).run();
+      if (Number(r.meta?.changes ?? 0) === 1) {
+        await appendShopEvent(env, orderId, "refunded", "system", `cashfree refund ${merchRefundId(orderId)} succeeded`).catch(() => undefined);
+        await merchPush(env, row.uid, "merch_update", `Order ${row.order_no} refunded`, "Your refund has been sent back to the account you paid from.", `/dashboard/orders?order=${row.order_id}`);
+      }
+      return "done";
+    }
+    const failed = f.found && (f.status === "FAILED" || f.status === "CANCELLED");
+    if (failed || (!f.found && age > 3_600_000) || age > 7 * 86_400_000) {
+      const r = await db.prepare("UPDATE shop_orders SET refund_status='pending_manual', updated_at=?2 WHERE order_id=?1 AND refund_status='pending_gateway'").bind(orderId, now).run();
+      if (Number(r.meta?.changes ?? 0) === 1) {
+        await appendShopEvent(env, orderId, "refund_pending", "system", `cashfree refund ${f.status ?? (f.found ? "stuck" : "not found")}`).catch(() => undefined);
+        await alertOwnerMerchRefund(env, row, `Cashfree refund ${f.status ?? (f.found ? "did not finish" : "was not found")}.`);
+      }
+      return "manual";
+    }
+    return "pending";
+  } catch (e) { await merchFail(env, e, "refund_confirm"); return "unknown"; }
+}
+
 /** Reverse the platform ledger rows an approved order wrote, and the influencer's earning if it was already credited. */
 async function reverseOrderMoney(env: Env, row: ShopOrderRow): Promise<void> {
   const db = metaDb(env);
-  const rows = (await db.prepare("SELECT kind, amount_paise FROM hf_platform_ledger WHERE order_id=?1 AND kind IN ('merch_share','printrove_cost','cashfree_fee','gst')").bind(row.order_id).all<{ kind: string; amount_paise: number }>()).results ?? [];
+  // Cashfree keeps its fee on a refund, so cashfree_fee is never reversed. The print partner is owed its cost once it has the order, so printrove_cost is reversed only if it never got there.
+  const reachedPrinter = !!(row.sent_to_printer_at || row.printrove_order_ref) || !!(await db.prepare("SELECT 1 AS x FROM shop_fulfilments WHERE order_id=?1 AND status IN ('sent','printing','shipped','delivered')").bind(row.order_id).first());
+  const kinds = reachedPrinter ? "'merch_share','gst'" : "'merch_share','printrove_cost','gst'";
+  const rows = (await db.prepare(`SELECT kind, amount_paise FROM hf_platform_ledger WHERE order_id=?1 AND kind IN (${kinds})`).bind(row.order_id).all<{ kind: string; amount_paise: number }>()).results ?? [];
   const map: Record<string, PlatformKind> = { merch_share: "refund_share", printrove_cost: "refund_printrove_cost", cashfree_fee: "refund_cashfree_fee", gst: "refund_gst" };
   for (const r of rows) await platformEntry(env, map[r.kind], -Number(r.amount_paise), row.order_id, row.seller_uid ?? null, "reversal");
   const rev = await reverseMerchEarning(env, row);
@@ -348,9 +402,13 @@ export async function rejectMerchOrder(env: Env, orderId: string, actor: string,
     const claim = await db.prepare(
       `UPDATE shop_orders SET approval_status='rejected', reject_reason=?2, cancel_reason=?2, fulfil_status=CASE WHEN fulfil_status IN ('new') THEN 'cancelled' ELSE fulfil_status END,
               updated_at=?3, refund_status=CASE WHEN COALESCE(refund_status,'none')='none' THEN 'refunding' ELSE refund_status END
-        WHERE order_id=?1 AND pay_status='confirmed' AND approval_status IN ('pending','approved') AND COALESCE(refund_status,'none') IN ('none','refunding')`,
+        WHERE order_id=?1 AND pay_status='confirmed' AND approval_status IN ('pending','approved') AND COALESCE(refund_status,'none') IN ('none','refunding')
+          ${opts.afterDelivery ? "" : "AND fulfil_status='new'"}
+          AND (fulfil_status<>'new' OR NOT EXISTS (SELECT 1 FROM shop_fulfilments f WHERE f.order_id=shop_orders.order_id AND f.status NOT IN ('problem','cancelled')))`,
     ).bind(orderId, why, now).run();
     if (Number(claim.meta?.changes ?? 0) !== 1) return fail(409, "bad_transition", "Someone else just changed this order. Reload and try again.");
+    // A failed-send ('problem') fulfilment row must not keep a retry time: it would starve the retry list for a refunded order.
+    await db.prepare("UPDATE shop_fulfilments SET status='cancelled', next_attempt_at=NULL, updated_at=?2 WHERE order_id=?1 AND status='problem'").bind(orderId, now).run();
     await appendShopEvent(env, orderId, "rejected", actor, why, now).catch((e) => merchFail(env, e, "reject_event", row.uid));
     const snap = snapOf(row);
     if (snap.productId) await db.prepare("UPDATE shop_products SET sold_count=MAX(0,sold_count-?2) WHERE id=?1").bind(snap.productId, Number(snap.qty ?? 1)).run().catch(() => undefined);
@@ -358,7 +416,7 @@ export async function rejectMerchOrder(env: Env, orderId: string, actor: string,
   }
   const fresh = (await getOrder(env, orderId)) ?? row;
   await reverseOrderMoney(env, fresh).catch((e) => merchFail(env, e, "reverse_money", row.uid, { order_id: orderId }));
-  const refund = fresh.refund_status === "done" ? "done" : fresh.refund_status === "pending_manual" ? "pending_manual" : await refundMerchPayment(env, fresh);
+  const refund = fresh.refund_status === "done" ? "done" : fresh.refund_status === "pending_manual" ? "pending_manual" : fresh.refund_status === "pending_gateway" ? "pending_gateway" : await refundMerchPayment(env, fresh);
   const after = (await getOrder(env, orderId)) ?? fresh;
   if (refund === "done" && after.fulfil_status === "cancelled") {
     await db.prepare("UPDATE shop_orders SET fulfil_status='refunded', updated_at=?2 WHERE order_id=?1 AND fulfil_status='cancelled'").bind(orderId, Date.now()).run();
@@ -372,9 +430,9 @@ export async function markRefundDone(env: Env, orderId: string, actor: string, n
   const row = await getOrder(env, orderId);
   if (!row) return fail(404, "not_found", "No such order.");
   if (row.refund_status === "done") return { ok: true };
-  if (row.refund_status !== "pending_manual") return fail(409, "bad_transition", "This order has no refund waiting.");
+  if (row.refund_status !== "pending_manual" && row.refund_status !== "pending_gateway") return fail(409, "bad_transition", "This order has no refund waiting.");
   const now = Date.now();
-  const r = await metaDb(env).prepare("UPDATE shop_orders SET refund_status='done', refunded_at=?2, fulfil_status=CASE WHEN fulfil_status='cancelled' THEN 'refunded' ELSE fulfil_status END, updated_at=?2 WHERE order_id=?1 AND refund_status='pending_manual'").bind(orderId, now).run();
+  const r = await metaDb(env).prepare("UPDATE shop_orders SET refund_status='done', refunded_at=?2, fulfil_status=CASE WHEN fulfil_status='cancelled' THEN 'refunded' ELSE fulfil_status END, updated_at=?2 WHERE order_id=?1 AND refund_status IN ('pending_manual','pending_gateway')").bind(orderId, now).run();
   if (Number(r.meta?.changes ?? 0) === 1) await appendShopEvent(env, orderId, "refunded", actor, (note ?? "refund sent by hand").slice(0, 200), now).catch(() => undefined);
   return { ok: true };
 }
@@ -420,19 +478,31 @@ export type MerchTickResult = { expired: number; polled: number; refunds: number
 export async function runMerchTick(env: Env): Promise<MerchTickResult> {
   const out: MerchTickResult = { expired: 0, polled: 0, refunds: 0, earnings: 0 };
   try {
-    const { flags } = await merchCfg(env);
-    if (!flags.enabled) return out;
+    // Deliberately NOT gated by hfMerchEnabled: turning the feature off must never strand a paid order, a refund or an earning.
     const db = metaDb(env);
     const now = Date.now();
     // (a) Cashfree orders still awaiting payment: ask the gateway (the webhook may have been lost).
     const waiting = (await db.prepare("SELECT order_id FROM shop_orders WHERE seller_uid IS NOT NULL AND pay_method='cashfree' AND pay_status='awaiting_payment' AND created_at<?1 ORDER BY created_at LIMIT 20").bind(now - 90_000).all<{ order_id: string }>()).results ?? [];
     for (const w of waiting) { const r = await reconcileCashfreeOrder(env, w.order_id).catch(() => "unavailable" as const); out.polled++; if (r === "failed") await cancelUnpaid(env, w.order_id, "payment_failed"); }
+    // (a2) wallet orders that were CHARGED but never confirmed (worker died between the charge and the confirm): confirm them, or give the money back. Never expire a charged order.
+    const charged = (await db.prepare(
+      `SELECT o.order_id AS order_id, o.pay_status AS pay_status, o.uid AS uid FROM shop_orders o JOIN hf_token_ledger l ON l.op_id='hftset:merch:'||o.order_id
+        WHERE o.seller_uid IS NOT NULL AND o.pay_method='wallet' AND o.pay_status IN ('awaiting_payment','expired','cancelled') AND o.created_at<?1 AND l.rupee_value_paise>=o.amount_paise
+          AND NOT EXISTS (SELECT 1 FROM hf_token_ledger r WHERE r.op_id='hfmrf:'||o.order_id||':mark') LIMIT 20`,
+    ).bind(now - 60_000).all<{ order_id: string; pay_status: string; uid: string }>()).results ?? [];
+    for (const c of charged) {
+      if (c.pay_status === "cancelled") await refundWalletForOrder(env, c.uid, c.order_id).catch((e) => merchFail(env, e, "charged_cancelled_refund", c.uid, { order_id: c.order_id }));
+      else { const r = await settleMerchPayment(env, c.order_id, { via: "wallet", reference: `hftset:merch:${c.order_id}` }); if (r === "confirmed") out.polled++; }
+    }
     // (b) expire what is still unpaid after the window (a late payment is still accepted by settle: it checks 'expired' too)
     const ex = await db.prepare("UPDATE shop_orders SET pay_status='expired', updated_at=?1 WHERE seller_uid IS NOT NULL AND pay_status='awaiting_payment' AND expires_at<?1").bind(now).run();
     out.expired = Number(ex.meta?.changes ?? 0);
     // (c) rejected orders whose refund never finished
     const stuck = (await db.prepare("SELECT order_id FROM shop_orders WHERE seller_uid IS NOT NULL AND approval_status='rejected' AND pay_status='confirmed' AND COALESCE(refund_status,'none') IN ('none','refunding') AND updated_at<?1 LIMIT 20").bind(now - 120_000).all<{ order_id: string }>()).results ?? [];
     for (const s of stuck) { const r = await rejectMerchOrder(env, s.order_id, "system:retry", "retry refund"); if (r.ok) out.refunds++; }
+    // (c2) Cashfree refunds Cashfree accepted: did they finish?
+    const gw = (await db.prepare("SELECT order_id FROM shop_orders WHERE seller_uid IS NOT NULL AND refund_status='pending_gateway' ORDER BY updated_at LIMIT 20").all<{ order_id: string }>()).results ?? [];
+    for (const g of gw) { if ((await confirmCashfreeRefund(env, g.order_id)) === "done") out.refunds++; }
     // (d) delivered orders whose earning was not credited (crash between the status change and the ledger write)
     const un = (await db.prepare("SELECT * FROM shop_orders WHERE seller_uid IS NOT NULL AND fulfil_status='delivered' AND approval_status='approved' AND earning_credited_at IS NULL AND COALESCE(refund_status,'none')='none' LIMIT 20").all<ShopOrderRow>()).results ?? [];
     for (const o of un) { if ((await creditMerchEarning(env, o)) === "credited") out.earnings++; }

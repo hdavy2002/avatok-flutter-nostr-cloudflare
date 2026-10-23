@@ -167,8 +167,11 @@ export async function createMerchProduct(env: Env, cfg: MerchCfg, flags: { produ
   const frame = pl.frame === "square" || pl.frame === "circle" || pl.frame === "rect" ? pl.frame : "none";
   const w = n("w"), h = n("h"), x = n("x"), y = n("y");
   if (![w, h, x, y].every(Number.isFinite) || w <= 0 || h <= 0) return fail(400, "invalid_placement", "Place your art on the shirt first.", { field: "placement" });
+  // The frame is the SHAPE the art is clipped to; the print rectangle (w x h) may be larger than a square/circle frame. Validate the frame box, not the print box.
+  const boxed = frame === "square" || frame === "circle";
+  const frameSide = Math.min(w, h);
   const pv = validatePlacement({
-    kind: prod.kind, side, shape: frame, frame_w_in: w, frame_h_in: h, frame_top_in: y, zoom_pct: Number.isFinite(n("zoom")) && n("zoom") > 0 ? n("zoom") : 100,
+    kind: prod.kind, side, shape: frame, frame_w_in: boxed ? frameSide : w, frame_h_in: boxed ? frameSide : h, frame_top_in: boxed ? y + (h - frameSide) / 2 : y, zoom_pct: Number.isFinite(n("zoom")) && n("zoom") > 0 ? n("zoom") : 100,
     nudge_x_in: 0, nudge_y_in: 0, print_w_in: w, print_h_in: h, dpi: design.print_w / w, print_left_in: x, print_top_in: y,
   });
   if (!pv.ok) return fail(400, pv.code, pv.message, { field: "placement" });

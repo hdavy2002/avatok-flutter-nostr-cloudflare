@@ -564,7 +564,7 @@ export async function settleCall(
   callId: string,
   ratePaise: Price,
   billableSeconds: number,
-  options: { reservedLotsOnly?: boolean; /** [HF-WIRE-13] charge exactly this many paise instead of the per-second price (first-minute rule). */ fixedValuePaise?: number } = {},
+  options: { reservedLotsOnly?: boolean; /** [HF-MERCH-CORE-1] spend only lots of this kind (merch: 'purchase'; free test credit is never spendable on merch). */ onlyKind?: LotKind; /** [HF-WIRE-13] charge exactly this many paise instead of the per-second price (first-minute rule). */ fixedValuePaise?: number } = {},
 ): Promise<SettleResult> {
   if (!priceValid(ratePaise) || !(billableSeconds >= 0)) return { ok: false, reason: "invalid" };
   const db = env.DB_META;
@@ -578,7 +578,7 @@ export async function settleCall(
       return { ok: false, reason: "conflict" };
     }
     const held = new Map((rsv?.lots ?? []).map((x) => [x.lotId, x.micro]));
-    const all = await getLots(env, uid);
+    const all = (await getLots(env, uid)).filter((l) => !options.onlyKind || l.kind === options.onlyKind);
     // Ordinary calls may use newly available lots when a hold was short. A booked call must
     // settle only from the lots reserved when it was confirmed, even after later top-ups.
     const planLots: Lot[] = all

@@ -11,6 +11,7 @@ import { requireAdmin } from "./admin_money";
 import { readConfig, writeConfigOverrides } from "./config";
 import { emailFor } from "../lib/identity";
 import { metaDb } from "../db/shard";
+import { MERCH_CFG_RANGES } from "../lib/hf_merch_math";
 import { fanStatusOf, parseJson, sellerStatusOf } from "../lib/hf_merch_types";
 import {
   ADMIN_TABS, adminListOrders, adminTabCounts, getOrder, hostsByUids, listProductsByReview, orderEvents, platformRows, productShape, type AdminTab, type MerchProductRow,
@@ -145,9 +146,7 @@ async function reviewRoute(req: Request, env: Env, admin: string, id: string): P
 // Settings
 // ---------------------------------------------------------------------------
 const BOOL_KEYS = ["hfMerchEnabled", "hfMerchCheckoutEnabled", "hfMerchAutoApprove", "hfMerchProductReview"] as const;
-const NUM_KEYS: Record<string, [number, number]> = {
-  hfMerchPlatformShareBps: [0, 10000], hfMerchMinMarkupRupees: [1, 10000], hfMerchBaseBufferRupees: [0, 1000], hfMerchCashfreeFeeBps: [0, 1000], hfMerchGstBps: [0, 2800], hfMerchHoldDays: [0, 60],
-};
+const NUM_KEYS: Record<string, readonly [number, number]> = MERCH_CFG_RANGES; // the same table readMerchCfg clamps to
 async function settingsOut(env: Env): Promise<Record<string, unknown>> {
   const c = (await readConfig(env)) as unknown as Record<string, unknown>;
   const o: Record<string, unknown> = {};

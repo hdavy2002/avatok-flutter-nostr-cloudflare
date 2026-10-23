@@ -27,7 +27,7 @@ import {
   listSellerProducts, productMerch, productShape, sellerEarnings, sellerOrderCounts, sellerProductCounts, shopSlugFor, sitemapRows, type MerchHost, type MerchProductRow,
 } from "../lib/hf_merch_store";
 import {
-  MERCH_QTY_MAX, merchCfg, reconcileCashfreeOrder, startMerchCheckout, type FlowFail,
+  MERCH_QTY_MAX, confirmCashfreeRefund, merchCfg, reconcileCashfreeOrder, startMerchCheckout, type FlowFail,
 } from "../lib/hf_merch_flow";
 import { createMerchProduct, deleteMerchProduct, patchMerchProduct, saveMerchArt, saveMerchMockup, saveMerchPrintFile, MERCH_ART_MAX_BYTES, type PFail } from "../lib/hf_merch_products";
 import { merchFail, merchTrack, snapOf } from "../lib/hf_merch_notify";
@@ -369,7 +369,7 @@ export async function merchCashfreeWebhook(req: Request, env: Env, rawIn?: strin
   if (!verified) return bad(401, "bad_signature", "Bad signature.");
   const parsed = adapter.parseWebhook(raw);
   if (!parsed || !isMerchOrderId(parsed.our_order_id)) return out({ ignored: "not_merch" });
-  if (parsed.status === "refunded") return out({ ignored: "refund" });
+  if (parsed.status === "refunded") return out({ refund: await confirmCashfreeRefund(env, parsed.our_order_id) });
   const r = await reconcileCashfreeOrder(env, parsed.our_order_id);
   return r === "unavailable" ? bad(503, "unavailable", "Try again.") : out({ result: r });
 }
@@ -385,10 +385,12 @@ export async function hfMerchRoute(req: Request, env: Env, p: string, ctx?: Exec
   if (!p.startsWith("/api/hf/merch/")) return null;
   const m = req.method;
   try {
-    const { flags } = await merchCfg(env);
-    if (!flags.enabled) return NOT_ENABLED();
     const rest = p.slice("/api/hf/merch/".length).split("/").map(dec);
     const [a, b2, c2] = rest;
+    // The gateway webhook is exempt from the feature flag: a paid order must be confirmed (and a refund noted) even while merch is switched off.
+    if (a === "webhook" && b2 === "cashfree" && rest.length === 2 && m === "POST") return await merchCashfreeWebhook(req, env);
+    const { flags } = await merchCfg(env);
+    if (!flags.enabled) return NOT_ENABLED();
     // Public
     if (a === "sitemap" && rest.length === 1 && m === "GET") return await sitemapRoute(env);
     if (a === "pincode" && rest.length === 2 && m === "GET") return await pincodeRoute(env, b2);
@@ -396,7 +398,6 @@ export async function hfMerchRoute(req: Request, env: Env, p: string, ctx?: Exec
       if (rest.length === 2) return await publicHostRoute(env, b2);
       if (rest.length === 3) return await publicProductRoute(env, b2, c2);
     }
-    if (a === "webhook" && b2 === "cashfree" && rest.length === 2 && m === "POST") return await merchCashfreeWebhook(req, env);
     // Fan
     if (a === "checkout" && rest.length === 1 && m === "POST") return await checkoutRoute(req, env);
     if (a === "my-orders") {

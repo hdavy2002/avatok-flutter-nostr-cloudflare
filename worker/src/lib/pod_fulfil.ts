@@ -383,7 +383,10 @@ export async function sendOrderToPartner(env: Env, orderId: string, actorUid: st
   if (!row) return fail(404, "not_found", "No such order.");
   if (row.pay_status !== "confirmed") return fail(409, "not_paid", "This order has not been paid yet. Nothing is sent until your bank (or you) confirmed the money.");
   // [HF-MERCH-CORE-1] A merch order is queued ONLY by admin approval (or hfMerchAutoApprove, which approves it first). Never by a retry, a resend or the tick.
-  if (isMerchOrder(row) && row.approval_status !== "approved") return fail(409, "not_approved", "This merch order has not been approved yet. Approve it in Admin > Merch first.");
+  if (isMerchOrder(row) && row.approval_status !== "approved") {
+    await db.prepare("UPDATE shop_fulfilments SET next_attempt_at=NULL, updated_at=?2 WHERE order_id=?1 AND status IN ('problem','sending')").bind(orderId, Date.now()).run(); // never leave a retry time on an unapproved/refunded order
+    return fail(409, "not_approved", "This merch order has not been approved yet. Approve it in Admin > Merch first.");
+  }
 
   const info = await providerInfo(env);
   if (!info.supportsApi) return fail(409, "manual_provider", "Place this order in the partner's dashboard, then use 'Sent to Printrove'.");
@@ -412,16 +415,18 @@ export async function sendOrderToPartner(env: Env, orderId: string, actorUid: st
 
   // First writer wins. A 'problem' row (retry) or a stuck 'sending' row whose retry time passed may be re-claimed once.
   const now = Date.now();
+  // [HF-MERCH-CORE-1] The claim itself re-checks the order, so an approve racing a reject can never print a refunded order.
+  const GATE = `EXISTS (SELECT 1 FROM shop_orders WHERE order_id=?1 AND fulfil_status='new' AND (seller_uid IS NULL OR approval_status='approved'))`;
   const ins = await db.prepare(
     `INSERT OR IGNORE INTO shop_fulfilments (order_id, provider, reference_number, status, attempts, next_attempt_at, sent_by, created_at, updated_at)
-     VALUES (?1,?2,?3,'sending',1,?4,?5,?6,?6)`,
+     SELECT ?1,?2,?3,'sending',1,?4,?5,?6,?6 WHERE ${GATE}`,
   ).bind(orderId, info.id, row.order_no, now + BACKOFF_MS[0], actorUid, now).run();
   let attempts = 1;
   if (Number((ins as { meta?: { changes?: number } }).meta?.changes ?? 0) !== 1) {
     const from = opts.retry ? `('problem','sending')` : `('problem')`;
     const claim = await db.prepare(
       `UPDATE shop_fulfilments SET status='sending', attempts=${opts.resetAttempts ? "1" : "attempts+1"}, next_attempt_at=?2, sent_by=?3, updated_at=?4
-        WHERE order_id=?1 AND status IN ${from} ${opts.dueOnly ? "AND next_attempt_at IS NOT NULL AND next_attempt_at<=?4" : ""}`,
+        WHERE order_id=?1 AND ${GATE} AND status IN ${from} ${opts.dueOnly ? "AND next_attempt_at IS NOT NULL AND next_attempt_at<=?4" : ""}`,
     ).bind(orderId, now + BACKOFF_MS[0], actorUid, now).run();
     if (Number((claim as { meta?: { changes?: number } }).meta?.changes ?? 0) !== 1) return fail(409, "already_sent", `This order is already with ${info.label}.`);
     attempts = (await loadFulfilments(env, [orderId])).get(orderId)?.attempts ?? existing?.attempts ?? 1;

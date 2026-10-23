@@ -182,7 +182,7 @@ export async function verifyCashfreeSignature(
  * were refunded when they were not.
  */
 /** [HF-WALLET-EXIT-1] GET /orders/:id/refunds -> the refund whose refund_id is ours. null = could not tell. */
-export async function findCashfreeRefund(env: Env, orderId: string, refundId: string): Promise<{ found: boolean; id: string | null } | null> {
+export async function findCashfreeRefund(env: Env, orderId: string, refundId: string): Promise<{ found: boolean; id: string | null; status?: string | null } | null> {
   if (!cashfreeConfigured(env)) return null;
   try {
     const res = await fetch(`${baseUrl(env)}/orders/${encodeURIComponent(orderId)}/refunds`, { headers: headers(env) });
@@ -190,7 +190,7 @@ export async function findCashfreeRefund(env: Env, orderId: string, refundId: st
     const list = await res.json().catch(() => null) as any;
     if (!Array.isArray(list)) return null;
     const hit = list.find((r: any) => r?.refund_id === refundId);
-    return hit ? { found: true, id: hit.cf_refund_id != null ? String(hit.cf_refund_id) : refundId } : { found: false, id: null };
+    return hit ? { found: true, id: hit.cf_refund_id != null ? String(hit.cf_refund_id) : refundId, status: typeof hit.refund_status === "string" ? hit.refund_status.toUpperCase() : null } : { found: false, id: null };
   } catch { return null; }
 }
 

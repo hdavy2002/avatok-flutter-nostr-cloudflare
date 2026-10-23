@@ -24,6 +24,17 @@ export const MAX_MARKUP_RUPEES = 5000;
 export const MAX_QTY = 3;
 export const DAY_MS = 86_400_000;
 
+/** ONE range table for the merch settings: the admin PUT validates against it and readMerchCfg clamps to it. [min, max] inclusive, keyed by the config key. */
+export const MERCH_CFG_RANGES = {
+  hfMerchPlatformShareBps: [0, 9000],
+  hfMerchMinMarkupRupees: [0, MAX_MARKUP_RUPEES],
+  hfMerchBaseBufferRupees: [0, 2000],
+  hfMerchCashfreeFeeBps: [0, 1000],
+  hfMerchGstBps: [0, 2800],
+  hfMerchHoldDays: [0, 60],
+} as const satisfies Record<string, readonly [number, number]>;
+const R = MERCH_CFG_RANGES;
+
 const int = (v: unknown, fallback: number, min: number, max: number): number => {
   const n = typeof v === "number" ? v : typeof v === "string" && v.trim() !== "" ? Number(v) : NaN;
   return Number.isFinite(n) && Math.trunc(n) === n && n >= min && n <= max ? n : fallback;
@@ -34,12 +45,12 @@ export function readMerchCfg(cfg: Record<string, unknown> | null | undefined): M
   const c = cfg ?? {};
   const d = MERCH_DEFAULT_CFG;
   return {
-    platformShareBps: int(c.hfMerchPlatformShareBps, d.platformShareBps, 0, 10_000),
-    minMarkupRupees: int(c.hfMerchMinMarkupRupees, d.minMarkupRupees, 1, MAX_MARKUP_RUPEES),
-    baseBufferRupees: int(c.hfMerchBaseBufferRupees, d.baseBufferRupees, 0, 10_000),
-    cashfreeFeeBps: int(c.hfMerchCashfreeFeeBps, d.cashfreeFeeBps, 0, 2_000),
-    gstBps: int(c.hfMerchGstBps, d.gstBps, 0, 5_000),
-    holdDays: int(c.hfMerchHoldDays, d.holdDays, 0, 90),
+    platformShareBps: int(c.hfMerchPlatformShareBps, d.platformShareBps, R.hfMerchPlatformShareBps[0], R.hfMerchPlatformShareBps[1]),
+    minMarkupRupees: int(c.hfMerchMinMarkupRupees, d.minMarkupRupees, R.hfMerchMinMarkupRupees[0], R.hfMerchMinMarkupRupees[1]),
+    baseBufferRupees: int(c.hfMerchBaseBufferRupees, d.baseBufferRupees, R.hfMerchBaseBufferRupees[0], R.hfMerchBaseBufferRupees[1]),
+    cashfreeFeeBps: int(c.hfMerchCashfreeFeeBps, d.cashfreeFeeBps, R.hfMerchCashfreeFeeBps[0], R.hfMerchCashfreeFeeBps[1]),
+    gstBps: int(c.hfMerchGstBps, d.gstBps, R.hfMerchGstBps[0], R.hfMerchGstBps[1]),
+    holdDays: int(c.hfMerchHoldDays, d.holdDays, R.hfMerchHoldDays[0], R.hfMerchHoldDays[1]),
   };
 }
 

@@ -84,7 +84,7 @@ export interface GatewayAdapter {
    * "we recorded it", so a retry never refunds twice. `found:false` = the gateway positively has no such refund (safe to send);
    * `null` = the gateway could not be asked or did not give a clear answer (a person must check).
    */
-  listRefunds?(env: Env, a: { gatewayOrderId: string; opId: string }): Promise<{ found: boolean; gateway_refund_id: string | null } | null>;
+  listRefunds?(env: Env, a: { gatewayOrderId: string; opId: string }): Promise<{ found: boolean; gateway_refund_id: string | null; /** [HF-MERCH-CORE-1] gateway refund state when it says (Cashfree: SUCCESS / PENDING / FAILED ...). */ status?: string | null } | null>;
   refund(env: Env, a: { gatewayOrderId: string; amountPaise: number; reason: string; opId: string }):
     Promise<{ accepted: boolean; gateway_refund_id: string | null; error?: string }>;
 }
