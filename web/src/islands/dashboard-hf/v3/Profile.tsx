@@ -30,12 +30,19 @@ export default function Profile({ account }: { account: DashboardAccount }) {
     if (!p || saving || locked) return;
     setSaving(true); setErr(null);
     const body: Record<string, unknown> = { city: f.city || null, languages: langs, talkAbout: f.talkAbout || null };
-    if (p.firstName != null && f.firstName !== p.firstName) body.firstName = f.firstName;
-    if (p.lastName != null && f.lastName !== p.lastName) body.lastName = f.lastName;
+    // [HF-FIX-PROFILE-NAME-1] Send a name whenever it differs from what is saved, including a first-time name (saved value null).
+    if (f.firstName.trim() !== (p.firstName ?? '')) body.firstName = f.firstName;
+    if (f.lastName.trim() !== (p.lastName ?? '')) body.lastName = f.lastName;
     const r = await putProfile(body);
-    if (!r.ok) { setSaving(false); setErr({ field: String(r.body.field ?? ''), text: r.message || 'We could not save that. Please try again.' }); return; }
-    if (f.displayName && f.displayName !== (p.displayName ?? '')) {
-      const n = await hfCall<{ ok: boolean; displayName: string }>('PATCH', '/api/hf/me', { displayName: f.displayName });
+    if (!r.ok) { setSaving(false); setErr({ field: String(r.body?.field ?? ''), text: r.message || 'We could not save your profile. Please try again.' }); return; }
+    // The names must really have come back, otherwise say so instead of pretending.
+    if ((body.firstName !== undefined && r.data.firstName !== String(body.firstName).normalize('NFKC').trim().replace(/\s+/g, ' ')) || (body.lastName !== undefined && r.data.lastName !== String(body.lastName).normalize('NFKC').trim().replace(/\s+/g, ' '))) {
+      setSaving(false); setErr({ field: 'firstName', text: 'Your name did not save. Please try again.' }); return;
+    }
+    // "Name influencers see" falls back to the first name when it was never set, so influencers never just hear "a fan".
+    const wantDisplay = f.displayName.trim() || (!p.displayName && f.firstName.trim() ? f.firstName.trim() : '');
+    if (wantDisplay && wantDisplay !== (p.displayName ?? '')) {
+      const n = await hfCall<{ ok: boolean; displayName: string }>('PATCH', '/api/hf/me', { displayName: wantDisplay });
       if (!n.ok) { setSaving(false); setErr({ field: 'displayName', text: n.message || 'We could not save that name.' }); return; }
     }
     setSaving(false); toast('Profile saved ✓'); capture('hf_dash3_profile_saved', { strength }); reload('profile');
@@ -69,7 +76,7 @@ export default function Profile({ account }: { account: DashboardAccount }) {
           {locked && <p className="small" style={{ color: 'var(--amber)' }}>Your account is closing, so editing is paused.</p>}
           <div style={{ display: 'grid', gap: 12, gridTemplateColumns: 'repeat(auto-fit,minmax(12rem,1fr))' }}>{field('firstName', 'First name', { max: 30 })}{field('lastName', 'Last name', { max: 30 })}</div>
           <div style={{ display: 'grid', gap: 12, gridTemplateColumns: 'repeat(auto-fit,minmax(12rem,1fr))' }}>{field('displayName', 'Name influencers see', { help: '2–40 letters, no numbers or links' })}{field('city', 'City')}</div>
-          <label className="f">Handle<input value={p.username ? `@${p.username}` : 'Setting up your handle…'} readOnly aria-readonly="true" /><span className="small muted" style={{ fontWeight: 400 }}>{p.username ? 'Your handle can’t be changed.' : 'This appears in a moment. Refresh if it does not.'}</span></label>
+          <label className="f">Handle<input value={p.username ? `@${p.username}` : 'Setting up your handle…'} readOnly disabled aria-readonly="true" style={{ background: 'var(--line, #eee)', color: 'var(--muted, #777)', borderStyle: 'dashed', cursor: 'not-allowed' }} /><span className="small muted" style={{ fontWeight: 400 }}>{p.username ? '🔒 Locked. Your handle can’t be changed.' : 'This appears in a moment. Refresh if it does not.'}</span></label>
           <div><div className="small muted" style={{ fontWeight: 700, marginBottom: 6 }}>Languages you speak</div>
             <div className="h3-amounts">{DASH_LANGUAGES.map(l => <button key={l} type="button" disabled={locked} aria-pressed={langs.includes(l)} className={langs.includes(l) ? 'on' : ''} onClick={() => setLangs(v => v.includes(l) ? v.filter(x => x !== l) : v.length >= 8 ? v : [...v, l])}>{l}</button>)}</div></div>
           <label className="f">What do you like to talk about?<textarea rows={3} maxLength={200} disabled={locked} placeholder="Cricket, career, music, bas time pass…" value={f.talkAbout} onChange={e => setF(v => ({ ...v, talkAbout: e.target.value }))} /></label>

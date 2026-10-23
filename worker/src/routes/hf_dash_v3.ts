@@ -131,13 +131,14 @@ async function readProfile(env: Env, uid: string) {
   const [reg, prof, user] = await Promise.all([
     env.DB_META.prepare("SELECT first_name, last_name, username, created_at FROM hf_user_registration WHERE uid=?1").bind(uid).first<RegRow>().catch(() => null),
     env.DB_META.prepare("SELECT city, languages_json, talk_about FROM hf_user_profile WHERE uid=?1").bind(uid).first<ProfRow>().catch(() => null),
-    env.DB_META.prepare("SELECT display_name, created_at FROM users WHERE uid=?1").bind(uid).first<{ display_name: string | null; created_at: number | null }>().catch(() => null),
+    env.DB_META.prepare("SELECT display_name, first_name, last_name, created_at FROM users WHERE uid=?1").bind(uid).first<{ display_name: string | null; first_name: string | null; last_name: string | null; created_at: number | null }>().catch(() => null),
   ]);
   let languages: string[] = [];
   try { const a = JSON.parse(prof?.languages_json ?? "[]"); if (Array.isArray(a)) languages = a.map(String); } catch { /* keep [] */ }
   const username = await resolveHfHandle(env, uid, reg?.username); // [HF-FIX-HANDLE-1]
   return {
-    ok: true, firstName: reg?.first_name ?? null, lastName: reg?.last_name ?? null, username,
+    ok: true, // [HF-FIX-PROFILE-NAME-1] The registration row wins when it exists; otherwise the names the user typed live on users.
+    firstName: reg?.first_name?.trim() || user?.first_name?.trim() || null, lastName: reg?.last_name?.trim() || user?.last_name?.trim() || null, username,
     displayName: user?.display_name?.trim() ? user.display_name : null,
     city: prof?.city ?? null, languages, talkAbout: prof?.talk_about ?? null,
     joinedAt: Number(reg?.created_at ?? user?.created_at ?? 0) || null,
@@ -152,9 +153,12 @@ async function putProfile(req: Request, env: Env, uid: string): Promise<Response
   if (!v.ok) return err(400, "invalid_field", v.message, { field: v.field });
   const now = Date.now(), p = v.value;
   if (p.firstName !== undefined || p.lastName !== undefined) {
-    const r = await env.DB_META.prepare("UPDATE hf_user_registration SET first_name=COALESCE(?2,first_name), last_name=COALESCE(?3,last_name) WHERE uid=?1")
-      .bind(uid, p.firstName ?? null, p.lastName ?? null).run();
-    if (!Number(r.meta?.changes ?? 0)) return err(409, "not_registered", "Please finish signing up first.");
+    // [HF-FIX-PROFILE-NAME-1] Names always persist on users (every signed-in user has that row); the registration row, when it exists, is kept in step.
+    const u = await env.DB_META.prepare("UPDATE users SET first_name=COALESCE(?2,first_name), last_name=COALESCE(?3,last_name), updated_at=?4 WHERE uid=?1")
+      .bind(uid, p.firstName ?? null, p.lastName ?? null, now).run();
+    if (!Number(u.meta?.changes ?? 0)) return err(404, "no_account", "We could not find your account. Please sign out and in again.");
+    await env.DB_META.prepare("UPDATE hf_user_registration SET first_name=COALESCE(?2,first_name), last_name=COALESCE(?3,last_name) WHERE uid=?1")
+      .bind(uid, p.firstName ?? null, p.lastName ?? null).run().catch(() => null);
   }
   if (p.city !== undefined || p.languages !== undefined || p.talkAbout !== undefined) {
     const cur = await readProfile(env, uid);

@@ -23,7 +23,7 @@ const DAY = 86_400_000;
 function makeEnv() {
   db = new DatabaseSync(":memory:");
   db.exec(`
-    CREATE TABLE users (uid TEXT PRIMARY KEY, display_name TEXT, created_at INTEGER);
+    CREATE TABLE users (uid TEXT PRIMARY KEY, display_name TEXT, first_name TEXT, last_name TEXT, updated_at INTEGER, created_at INTEGER);
     CREATE TABLE hf_hosts (uid TEXT PRIMARY KEY, slug TEXT, display_name TEXT, status TEXT NOT NULL DEFAULT 'live');
     CREATE TABLE hf_calls (id TEXT PRIMARY KEY, caller_uid TEXT, host_uid TEXT, status TEXT, created_at INTEGER, connected_at INTEGER, ended_at INTEGER,
       billed_minutes INTEGER DEFAULT 0, billable_seconds INTEGER, charged_paise INTEGER DEFAULT 0, consumed_value_paise INTEGER);
@@ -97,11 +97,30 @@ describe("GET /api/hf/me/insights", () => {
 
 describe("profile, prefs, blocks, tickets", () => {
   it("saves profile extras and names", async () => {
+    db.exec(`INSERT INTO users (uid, created_at) VALUES ('u1', 1)`);
     db.exec(`INSERT INTO hf_user_registration VALUES ('u1','Old','Name','davy',1)`);
     const r = await call("PUT", "/api/hf/me/profile", { firstName: "Davy", city: "Mumbai", languages: ["Hindi"], talkAbout: "Startups" });
     expect(r.status).toBe(200);
     expect(r.body).toMatchObject({ firstName: "Davy", lastName: "Name", username: "davy", city: "Mumbai", languages: ["Hindi"], talkAbout: "Startups" });
     expect((await call("PUT", "/api/hf/me/profile", { talkAbout: "wa.me/919876543210" })).status).toBe(400);
+  });
+  it("[HF-FIX-PROFILE-NAME-1] names persist for a user with NO registration row, and GET returns them", async () => {
+    db.exec(`INSERT INTO users (uid, display_name, created_at) VALUES ('u1', NULL, 1)`);
+    const r = await call("PUT", "/api/hf/me/profile", { firstName: "Davy", lastName: "Kumar" });
+    expect(r.status).toBe(200);
+    expect(r.body).toMatchObject({ firstName: "Davy", lastName: "Kumar" });
+    expect((await call("GET", "/api/hf/me/profile")).body).toMatchObject({ firstName: "Davy", lastName: "Kumar" });
+    expect(db.prepare("SELECT first_name, last_name FROM users WHERE uid='u1'").get()).toMatchObject({ first_name: "Davy", last_name: "Kumar" });
+    // partial update keeps the other name
+    expect((await call("PUT", "/api/hf/me/profile", { lastName: "Singh" })).body).toMatchObject({ firstName: "Davy", lastName: "Singh" });
+  });
+  it("[HF-FIX-PROFILE-NAME-1] with a registration row both stay in step; unknown user is a 404, never a silent 200", async () => {
+    db.exec(`INSERT INTO users (uid, created_at) VALUES ('u1', 1)`);
+    db.exec(`INSERT INTO hf_user_registration VALUES ('u1','Old','Name','davy',1)`);
+    expect((await call("PUT", "/api/hf/me/profile", { firstName: "New" })).body).toMatchObject({ firstName: "New", lastName: "Name" });
+    expect(db.prepare("SELECT first_name FROM hf_user_registration WHERE uid='u1'").get()).toMatchObject({ first_name: "New" });
+    const ghost = await call("PUT", "/api/hf/me/profile", { firstName: "Zed" }, "ghost");
+    expect(ghost.status).toBe(404);
   });
   it("notify preference defaults on and can be paused", async () => {
     expect(await notifyWhatsappOn(env, "u1")).toBe(true);
