@@ -212,7 +212,7 @@ export async function loadTokenReconciliation(env: Env, fromMs: number, toMs: nu
     if (n(p.net) !== expected) mismatches.push({ kind: "host_payout_ledger", ref: p.id, uid: p.uid, expected, actual: n(p.net), detail: `Withdrawal is '${p.status}' for ₹${n(p.amt)} but the host ledger holds ${n(p.net)} paise for it` });
   }
   const neg = await rows<{ uid: string; bal: number }>(env,
-    `SELECT host_uid AS uid, SUM(CASE WHEN kind IN ('call_earning','payout_reserve','payout_cancel','admin_adjust') THEN amount_paise ELSE 0 END) AS bal
+    `SELECT host_uid AS uid, SUM(CASE WHEN kind IN ('call_earning','merch_earning','payout_reserve','payout_cancel','admin_adjust') THEN amount_paise ELSE 0 END) AS bal
        FROM hf_host_ledger GROUP BY host_uid HAVING bal < 0 LIMIT 200`);
   for (const h of neg ?? []) mismatches.push({ kind: "host_balance_negative", ref: h.uid, uid: h.uid, expected: 0, actual: n(h.bal), detail: `Host earnings minus withdrawals is ${n(h.bal)} paise` });
   const pw = await rows<{ order_id: string; uid: string; state: string }>(env,
@@ -229,7 +229,7 @@ export async function loadTokenReconciliation(env: Env, fromMs: number, toMs: nu
             COALESCE(SUM(CASE WHEN kind='test' THEN (tokens_left_micro * redemption_paise_per_token) / 1000000 END),0) AS tp
        FROM hf_token_lots WHERE status='active'`))?.[0];
   const hb = (await rows<{ b: number }>(env,
-    "SELECT COALESCE(SUM(CASE WHEN kind IN ('call_earning','payout_reserve','payout_cancel','admin_adjust') THEN amount_paise ELSE 0 END),0) AS b FROM hf_host_ledger"))?.[0];
+    "SELECT COALESCE(SUM(CASE WHEN kind IN ('call_earning','merch_earning','payout_reserve','payout_cancel','admin_adjust') THEN amount_paise ELSE 0 END),0) AS b FROM hf_host_ledger"))?.[0];
 
   return buildTokenReconciliation({
     fromMs, toMs, lots: lots ?? [], calls: calls ?? [], ledger: ledger ?? [], hostLedger: hostLedger ?? [], playRefunds: playRefunds ?? [],

@@ -2,6 +2,7 @@
 // Used only when hfTokensEnabled is on; the old WalletDO + host_paid_rupees path (lib/hf_payouts.ts) is untouched while it is off.
 //
 // Row kinds (amount_paise is signed):
+//   merch_earning      +  [HF-MERCH-CORE-1] influencer share of a delivered merch order; withdrawable after available_at (delivery + hfMerchHoldDays). call_id stays NULL.
 //   call_earning       +  host share from PURCHASE-lot value; withdrawable after available_at (call end + 7 days)
 //   call_earning_test  +  host share from TEST-lot value; recorded for the host to see, NEVER withdrawable (available_at NULL)
 //   payout_reserve     -  money set aside when a withdrawal is requested (whole rupees * 100)
@@ -58,15 +59,15 @@ export interface HostSummary {
 
 /** SQL for the withdrawable balance of ?host at ?now. Reused inside the payout-reserve INSERT so the check and the write are one statement. */
 const WITHDRAWABLE_SQL = (host: string, now: string) =>
-  `(SELECT COALESCE(SUM(CASE WHEN kind='call_earning' OR (kind='admin_adjust' AND available_at IS NOT NULL) THEN (CASE WHEN available_at<=${now} THEN amount_paise ELSE 0 END)
+  `(SELECT COALESCE(SUM(CASE WHEN kind IN ('call_earning','merch_earning') OR (kind='admin_adjust' AND available_at IS NOT NULL) THEN (CASE WHEN available_at<=${now} THEN amount_paise ELSE 0 END)
                             WHEN kind IN ('payout_reserve','payout_cancel','admin_adjust') THEN amount_paise ELSE 0 END),0)
       FROM hf_host_ledger WHERE host_uid=${host})`;
 
 export async function hostSummary(env: Env, hostUid: string, now = Date.now()): Promise<HostSummary> {
   const r = await env.DB_META.prepare(
     // [HF-STD-PLAN-1] a held admin_adjust (call-charge correction reversal, available_at set) counts with the call earnings, not as an instant adjustment.
-    `SELECT COALESCE(SUM(CASE WHEN kind='call_earning' OR (kind='admin_adjust' AND available_at IS NOT NULL) THEN amount_paise END),0) AS earned,
-            COALESCE(SUM(CASE WHEN (kind='call_earning' OR (kind='admin_adjust' AND available_at IS NOT NULL)) AND available_at<=?2 THEN amount_paise END),0) AS matured,
+    `SELECT COALESCE(SUM(CASE WHEN kind IN ('call_earning','merch_earning') OR (kind='admin_adjust' AND available_at IS NOT NULL) THEN amount_paise END),0) AS earned,
+            COALESCE(SUM(CASE WHEN (kind IN ('call_earning','merch_earning') OR (kind='admin_adjust' AND available_at IS NOT NULL)) AND available_at<=?2 THEN amount_paise END),0) AS matured,
             COALESCE(SUM(CASE WHEN kind='call_earning_test' THEN amount_paise END),0) AS test,
             COALESCE(SUM(CASE WHEN kind IN ('payout_reserve','payout_cancel') OR (kind='admin_adjust' AND available_at IS NULL) THEN amount_paise END),0) AS adj
        FROM hf_host_ledger WHERE host_uid=?1`,

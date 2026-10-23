@@ -93,7 +93,7 @@ export async function tokenExitSummary(env: Env, uid: string, now: number, empty
     db.prepare("SELECT COALESCE(SUM(value_paise),0) AS s FROM hf_token_debts WHERE uid=?1 AND status='open'").bind(uid).first<{ s: number }>().catch(() => null),
     db.prepare("SELECT COUNT(*) AS n FROM hf_payout_requests WHERE host_uid=?1 AND status IN ('requested','approved')").bind(uid).first<{ n: number }>().catch(() => null),
     db.prepare(`SELECT COUNT(*) AS n FROM hf_refund_requests WHERE uid=?1 AND status IN (${OPEN_PLAY_STATUSES.map((s) => `'${s}'`).join(",")})`).bind(uid).first<{ n: number }>().catch(() => null),
-    db.prepare("SELECT MAX(available_at) AS t FROM hf_host_ledger WHERE host_uid=?1 AND kind='call_earning' AND available_at>?2").bind(uid, now).first<{ t: number | null }>().catch(() => null),
+    db.prepare("SELECT MAX(available_at) AS t FROM hf_host_ledger WHERE host_uid=?1 AND kind IN ('call_earning','merch_earning') AND available_at>?2").bind(uid, now).first<{ t: number | null }>().catch(() => null),
   ]);
   // [HF-FIX-CLOSE-ACCOUNT-1] The wallet money is what the WALLET says it is (purchase lots at their redemption value, i.e. the rupees AFTER GST),
   // paid out in whole rupees to the person's own UPI. It is never the gross amount paid to the gateway.
