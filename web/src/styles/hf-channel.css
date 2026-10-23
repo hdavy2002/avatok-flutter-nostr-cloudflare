@@ -484,6 +484,5 @@
   .gp .book-grid>div:first-child,.gp .rev-grid>div:first-child{text-align:center}
   .gp .book-grid>div:first-child>div{justify-content:center}
   .gp .showing,.gp .show .foot{text-align:center}
-  .gp .pprice small{display:block}
 }
 @media (max-width:699px){.gp{--hdr:92px}}
