@@ -13,6 +13,7 @@ import '../../ui/async_view.dart';
 import '../../ui/net_image.dart';
 import '../booking_kit.dart';
 import '../desi.dart';
+import '../merch_canvas.dart';
 import '../merch_kit.dart';
 import '../theme.dart';
 import '../widgets.dart';
@@ -363,7 +364,7 @@ class _Swatch extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final fill = Color(int.tryParse('FF${colour.hex.replaceAll('#', '')}', radix: 16) ?? 0xFFF8EEE6);
+    final fill = merchColour(colour.hex);
     return Semantics(
       button: true,
       selected: selected,
@@ -443,7 +444,7 @@ class _MerchCheckoutScreenState extends State<MerchCheckoutScreen> {
         if (list.isNotEmpty) _savedId = list.first.id;
       });
     } catch (_) {
-      if (mounted) setState(() => _saved = AsyncData(const <SavedAddress>[]));
+      if (mounted) setState(() => _saved = const AsyncData(<SavedAddress>[]));
     }
   }
 
@@ -536,7 +537,7 @@ class _MerchCheckoutScreenState extends State<MerchCheckoutScreen> {
       );
       if (!mounted) return;
       if (r.paid) {
-        unawaited(context.pushReplacement<Object?, Object?>('/merch/orders/${Uri.encodeComponent(r.orderId)}?src=pay'));
+        context.pushReplacement('/merch/orders/${Uri.encodeComponent(r.orderId)}?src=pay'); // go_router 16: returns void
         return;
       }
       final url = r.checkoutUrl;
@@ -556,7 +557,7 @@ class _MerchCheckoutScreenState extends State<MerchCheckoutScreen> {
         });
         return;
       }
-      unawaited(context.pushReplacement<Object?, Object?>('/merch/orders/${Uri.encodeComponent(r.orderId)}?src=pay&wait=1'));
+      context.pushReplacement('/merch/orders/${Uri.encodeComponent(r.orderId)}?src=pay&wait=1');
     } on ApiException catch (e) {
       if (!mounted) return;
       setState(() => _busy = false);
