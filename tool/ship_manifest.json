@@ -11438,5 +11438,12 @@
         "note": "A fan reached the pay step and chose a method. A paid order is proven server side by merch_order_paid, not here."
       }
     ]
+  },
+  "HF-CALL-MODES-P0": {
+    "description": "Phase 0 of call modes/queue/chunk billing: contracts, dark flags, migrations, stubs, publicCallState.",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [],
+    "no_telemetry": "Ships dark: contracts, flags (all off), migration files and uncalled stubs only; no behaviour change. Success is asserted by HF-CALL-MODES-A/B/C/D/E."
   }
 }
