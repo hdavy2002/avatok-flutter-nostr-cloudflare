@@ -48,19 +48,24 @@ export const cashfreeAdapter: GatewayAdapter = {
       // /wallet is the backstop if a webhook is ever lost.
       // [HF-WIRE-20] Orders started from the native app return to the app (avatok.ai/pay/cashfree/return -> hellofraands://wallet/topup/<id>),
       // never to the website. CASHFREE_APP_RETURN_URL overrides; the website's CASHFREE_RETURN_URL is deliberately ignored for them.
-      returnUrl: a.kind === "wallet_topup"
+      returnUrl: a.kind === "hf_merch" // [HF-MERCH-CORE-1] merch returns to the order page (web) or the app, via the checkout host's /done and /return
+        ? (a.client === "app"
+          ? (env.CASHFREE_APP_RETURN_URL ?? cashfreeAppReturnUrl() ?? brandUrl("/dashboard/orders?order={order_id}"))
+          : (cashfreeReturnUrl() ?? brandUrl("/dashboard/orders?order={order_id}")))
+        : a.kind === "wallet_topup"
         ? (a.client === "app"
           ? (env.CASHFREE_APP_RETURN_URL ?? cashfreeAppReturnUrl() ?? brandUrl("/wallet?topup={order_id}"))
           : (env.CASHFREE_RETURN_URL ?? cashfreeReturnUrl() ?? brandUrl("/wallet?topup={order_id}")))
         : (env.CASHFREE_RETURN_URL ?? null),
-      notifyUrl: a.kind === "wallet_topup" ? `${BRAND.apiOrigin}/api/hf/wallet/topup/webhook/cashfree` : null,
+      notifyUrl: a.kind === "hf_merch" ? `${BRAND.apiOrigin}/api/hf/merch/webhook/cashfree`
+        : a.kind === "wallet_topup" ? `${BRAND.apiOrigin}/api/hf/wallet/topup/webhook/cashfree` : null,
       // [HF-WIRE-20] The payer's real details only. A wallet top-up with no valid number is refused, never sent with a made-up one.
       customerPhone: a.customer?.phone ?? null,
       customerEmail: a.customer?.email ?? null,
       customerName: a.customer?.name ?? null, // [HF-WIRE-21]
       // [HF-WIRE-21] In-app checkout: only the modes the app's own screens offer (UPI apps, UPI ID, cards).
       paymentMethods: a.kind === "wallet_topup" && a.checkoutMode === "native" ? "upi,cc,dc" : null,
-      requirePhone: a.kind === "wallet_topup",
+      requirePhone: a.kind === "wallet_topup" || a.kind === "hf_merch",
     });
     if ("error" in created) return created;
     const order: GatewayOrder = {
@@ -71,7 +76,7 @@ export const cashfreeAdapter: GatewayAdapter = {
       client_payload: {
         payment_session_id: created.payment_session_id, order_id: created.order_id,
         // [HF-CASHFREE-CHECKOUT-HOST-1] Present = open the checkout on the whitelisted domain (full-page hand-off), not as a modal here.
-        ...(a.kind === "wallet_topup" && a.checkoutMode !== "native" && cashfreeCheckoutUrl(created.payment_session_id, a.orderId)
+        ...((a.kind === "wallet_topup" || a.kind === "hf_merch") && a.checkoutMode !== "native" && cashfreeCheckoutUrl(created.payment_session_id, a.orderId)
           ? { checkout_url: cashfreeCheckoutUrl(created.payment_session_id, a.orderId)! } : {}),
       },
     };

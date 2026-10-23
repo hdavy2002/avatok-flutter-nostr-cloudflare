@@ -14,6 +14,8 @@ import { cashfreeIsProduction } from "../lib/cashfree";
 export const CASHFREE_CHECKOUT_ORIGIN: string | null = "https://avatok.ai";
 const CHECKOUT_HOSTS = new Set(["avatok.ai", "www.avatok.ai"]);
 const TOPUP_RE = /^hftop_[a-f0-9]{24}$/;
+/** [HF-MERCH-CORE-1] A merch order is a shop order: `shp_` + 20 hex. Same hand-off page, different landing. */
+const SHOP_RE = /^shp_[a-f0-9]{20}$/;
 const SESSION_RE = /^session_[A-Za-z0-9_\-]{10,400}$/;
 
 export const cashfreeCheckoutUrl = (sessionId: string, topupId: string): string | null =>
@@ -31,7 +33,8 @@ const APP_SCHEME = BRAND.domain.split(".")[0];
 /** intent:// URL that opens the HF app on its top-up screen; falls back to the website wallet if the app is not installed. */
 export function appReturnIntent(topupId: string): string {
   const fallback = encodeURIComponent(walletUrl(topupId));
-  return `intent://wallet/topup/${topupId}#Intent;scheme=${APP_SCHEME};package=${BRAND.hfPlayPackageId};S.browser_fallback_url=${fallback};end`;
+  const path = SHOP_RE.test(topupId) ? `orders/${topupId}` : `wallet/topup/${topupId}`; // [HF-MERCH-CORE-1]
+  return `intent://${path}#Intent;scheme=${APP_SCHEME};package=${BRAND.hfPlayPackageId};S.browser_fallback_url=${fallback};end`;
 }
 
 function appReturnPage(topupId: string, android: boolean): Response {
@@ -51,7 +54,7 @@ ${android ? `<script>setTimeout(function(){location.replace(${JSON.stringify(int
   return new Response(html, { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store", "x-robots-tag": "noindex" } });
 }
 
-const walletUrl = (topupId: string | null) => brandUrl(topupId && TOPUP_RE.test(topupId) ? `/wallet?topup=${topupId}` : "/wallet");
+const walletUrl = (topupId: string | null) => brandUrl(topupId && SHOP_RE.test(topupId) ? `/dashboard/orders?order=${topupId}` : topupId && TOPUP_RE.test(topupId) ? `/wallet?topup=${topupId}` : "/wallet");
 
 function page(env: Env, session: string, topupId: string): Response {
   const mode = cashfreeIsProduction(env) ? "production" : "sandbox";
@@ -84,12 +87,12 @@ export function cashfreeCheckoutHost(req: Request, env: Env): Response | null {
   if (url.pathname === "/pay/cashfree/done") return Response.redirect(walletUrl(t), 302);
   // [HF-WIRE-20] Return page for orders started in the native app: Android -> back into the app; anything else -> a plain "go back to the app" note.
   if (url.pathname === "/pay/cashfree/return") {
-    if (!TOPUP_RE.test(t)) return Response.redirect(walletUrl(null), 302);
+    if (!TOPUP_RE.test(t) && !SHOP_RE.test(t)) return Response.redirect(walletUrl(null), 302);
     return appReturnPage(t, /android/i.test(req.headers.get("user-agent") ?? ""));
   }
   if (url.pathname === "/pay/cashfree") {
     const s = url.searchParams.get("s") ?? "";
-    if (!SESSION_RE.test(s) || !TOPUP_RE.test(t)) return Response.redirect(walletUrl(null), 302);
+    if (!SESSION_RE.test(s) || !(TOPUP_RE.test(t) || SHOP_RE.test(t))) return Response.redirect(walletUrl(null), 302);
     return page(env, s, t);
   }
   return Response.redirect(walletUrl(null), 302);
