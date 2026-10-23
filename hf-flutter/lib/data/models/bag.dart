@@ -98,3 +98,23 @@ class BagLine {
   /// The `items[]` entry of the group checkout body.
   Map<String, Object?> toCheckoutItem() => {'productId': productId, 'colour': colour, 'size': size, 'qty': qty};
 }
+
+/// A group checkout whose online payment page was opened and not yet confirmed paid. Kept so the bag is only emptied once the
+/// server says the group is paid. [fromBag] false means "Buy now" on one product (the bag is left alone).
+class BagPending {
+  const BagPending({required this.groupId, required this.fromBag, required this.totalPaise, required this.items});
+
+  factory BagPending.fromJson(Map<String, dynamic> j) => BagPending(
+        groupId: j['groupId'] is String ? j['groupId'] as String : '',
+        fromBag: j['fromBag'] != false,
+        totalPaise: j['totalPaise'] is num ? (j['totalPaise'] as num).round() : 0,
+        items: j['items'] is num ? (j['items'] as num).round() : 0,
+      );
+
+  final String groupId;
+  final bool fromBag;
+  final int totalPaise;
+  final int items;
+
+  Map<String, Object?> toJson() => {'groupId': groupId, 'fromBag': fromBag, 'totalPaise': totalPaise, 'items': items};
+}

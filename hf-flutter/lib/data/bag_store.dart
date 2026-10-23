@@ -35,6 +35,8 @@ class BagStore extends ChangeNotifier {
   bool _loaded = false;
   int _epoch = 0;
   Future<void>? _loading;
+  BagPending? _pending;
+  final Map<String, String> _unavailable = {};
 
   String _keyFor(String? id) => '$_base.${Uri.encodeComponent(id ?? 'guest')}';
 
@@ -48,6 +50,8 @@ class BagStore extends ChangeNotifier {
     _started = true;
     _epoch++;
     _lines.clear();
+    _pending = null;
+    _unavailable.clear();
     _loaded = false;
     _loading = null;
     unawaited(ensureLoaded());
@@ -64,6 +68,46 @@ class BagStore extends ChangeNotifier {
   }
 
   bool get isEmpty => lines.isEmpty;
+
+  /// The online payment that was started and not yet confirmed paid, if any.
+  BagPending? get pending {
+    _sync();
+    return _pending;
+  }
+
+  Future<void> setPending(BagPending? p) async {
+    await ensureLoaded();
+    _pending = p;
+    notifyListeners();
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final key = '${_keyFor(_scopeId)}.pending';
+      if (p == null) {
+        await prefs.remove(key);
+      } else {
+        await prefs.setString(key, jsonEncode(p.toJson()));
+      }
+    } catch (_) {
+      // kept in memory only
+    }
+  }
+
+  /// Product ids the server said are no longer available (409 item_unavailable) with the sentence to show. In memory only.
+  String? unavailableReason(String productId) {
+    _sync();
+    return _unavailable[productId];
+  }
+
+  bool get hasUnavailable {
+    _sync();
+    return _lines.any((l) => _unavailable.containsKey(l.productId));
+  }
+
+  void markUnavailable(String productId, String message) {
+    _sync();
+    _unavailable[productId] = message;
+    notifyListeners();
+  }
 
   /// Items counted by quantity: what the badge shows.
   int get count {
@@ -85,10 +129,19 @@ class BagStore extends ChangeNotifier {
   Future<void> _load(int epoch) async {
     final guestKey = _keyFor(null);
     var stored = <BagLine>[];
+    BagPending? pending;
     try {
       final p = await SharedPreferences.getInstance();
       final raw = p.getString(_keyFor(_scopeId));
       if (raw != null) stored = _decode(raw);
+      final rawP = p.getString('${_keyFor(_scopeId)}.pending');
+      if (rawP != null) {
+        final j = jsonDecode(rawP);
+        if (j is Map) {
+          final b = BagPending.fromJson(Map<String, dynamic>.from(j));
+          if (b.groupId.isNotEmpty) pending = b;
+        }
+      }
       if (_carry.isNotEmpty && _scopeId != null) await p.remove(guestKey);
     } catch (_) {
       // unreadable storage: start empty
@@ -97,6 +150,7 @@ class BagStore extends ChangeNotifier {
     _lines
       ..clear()
       ..addAll(stored);
+    _pending = pending;
     final carry = _carry;
     _carry = <BagLine>[];
     for (final l in carry) {
@@ -167,6 +221,7 @@ class BagStore extends ChangeNotifier {
   Future<void> remove(String key) async {
     await ensureLoaded();
     _lines.removeWhere((l) => l.key == key);
+    _unavailable.removeWhere((id, _) => !_lines.any((l) => l.productId == id));
     notifyListeners();
     await _save();
   }

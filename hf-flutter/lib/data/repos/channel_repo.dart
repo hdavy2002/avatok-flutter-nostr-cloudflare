@@ -70,6 +70,33 @@ class BagCheckoutResult {
   bool get paid => status == 'paid';
 }
 
+/// `GET /api/hf/merch/my-orders/<groupId>` -> `{ok, group:{groupId,status,totalPaise,orders:[...]}, order}`.
+class BagGroupStatus {
+  const BagGroupStatus({required this.groupId, required this.status, required this.totalPaise, required this.orderNos});
+
+  factory BagGroupStatus.fromJson(Map<String, dynamic> j) {
+    final g = j['group'] is Map ? Map<String, dynamic>.from(j['group'] as Map) : <String, dynamic>{};
+    final raw = g['orders'];
+    return BagGroupStatus(
+      groupId: g['groupId'] is String ? g['groupId'] as String : '',
+      status: g['status'] is String ? g['status'] as String : '',
+      totalPaise: g['totalPaise'] is num ? (g['totalPaise'] as num).round() : 0,
+      orderNos: [
+        if (raw is List)
+          for (final e in raw)
+            if (e is Map && e['orderNo'] is String && (e['orderNo'] as String).isNotEmpty) e['orderNo'] as String,
+      ],
+    );
+  }
+
+  final String groupId;
+  final String status;
+  final int totalPaise;
+  final List<String> orderNos;
+
+  bool get paid => status == 'paid';
+}
+
 /// [HF-CHANNEL-APP-1] The calls the channel page, the bag and the profile photo screen need on top of [MerchRepo]
 /// (spec Specs: .agent-wt/SPEC-HF-CHANNEL.md, contracts C1 to C3). Kept in its own file so the merch repo stays untouched.
 ///
@@ -142,6 +169,12 @@ class ChannelRepo {
       headers: {'X-Client': 'app'},
     );
     return BagCheckoutResult.fromJson(ApiClient.asMap(json));
+  }
+
+  /// Where a bag payment stands. Throws [ApiException] when it cannot be read.
+  Future<BagGroupStatus> groupStatus(String groupId) async {
+    final j = await _api.getJson('$_base/my-orders/${Uri.encodeComponent(groupId)}');
+    return BagGroupStatus.fromJson(j);
   }
 
   /// Sends the cropped picture (4:5, about 1200 x 1500). Returns the new public picture address, or null when the answer has none.

@@ -32,6 +32,22 @@ class BagCheckoutArgs {
   int get itemCount => lines.fold<int>(0, (a, l) => a + l.qty);
 }
 
+/// Asks the server where the pending online bag payment stands. Null when there is none. When the group is paid, the bag lines
+/// (if the payment was for the bag) and the pending record are cleared, and `bag_paid` is sent. Throws when the server cannot be read.
+Future<BagGroupStatus?> resolveBagPayment({ChannelRepo? repo}) async {
+  final store = BagStore.instance;
+  await store.ensureLoaded();
+  final p = store.pending;
+  if (p == null) return null;
+  final g = await (repo ?? ChannelRepo.instance).groupStatus(p.groupId);
+  if (g.paid) {
+    if (p.fromBag) await store.clear();
+    await store.setPending(null);
+    channelEvent('bag_paid', {'items': p.items, 'total_rupees': (g.totalPaise > 0 ? g.totalPaise : p.totalPaise) ~/ 100, 'method': 'online', 'orders': g.orderNos.length});
+  }
+  return g;
+}
+
 String _itemsText(int n) => '$n ${n == 1 ? 'item' : 'items'}';
 
 /// One product picture in a square tile (a plain icon when it has none).
@@ -63,12 +79,43 @@ class BagScreen extends StatefulWidget {
   State<BagScreen> createState() => _BagScreenState();
 }
 
-class _BagScreenState extends State<BagScreen> {
+class _BagScreenState extends State<BagScreen> with WidgetsBindingObserver {
+  bool _unfinished = false;
+
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    unawaited(_checkPending());
     unawaited(BagStore.instance.ensureLoaded());
     unawaited(Services.instance.merchRepo.loadFlags());
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) unawaited(_checkPending());
+  }
+
+  /// Back from the payment page (or the app was reopened): if a bag payment was started, ask the server how it went.
+  Future<void> _checkPending() async {
+    try {
+      final g = await resolveBagPayment();
+      if (!mounted || g == null) return;
+      if (g.paid) {
+        toast(context, 'Payment received. Your order is placed.');
+        context.go('/merch/orders');
+      } else {
+        setState(() => _unfinished = true);
+      }
+    } catch (_) {
+      // cannot reach the server right now: the bag stays as it is
+    }
   }
 
   void _checkout() {
@@ -99,6 +146,13 @@ class _BagScreenState extends State<BagScreen> {
               final total = bag.totalPaise;
               final count = bag.count;
               return ListView(padding: const EdgeInsets.fromLTRB(16, 22, 16, 24), children: [
+                if (_unfinished && BagStore.instance.pending != null)
+                  Container(
+                    margin: const EdgeInsets.only(bottom: 14),
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(color: GP.mariTint, borderRadius: BorderRadius.circular(16), border: Border.all(color: GP.mari, width: 2)),
+                    child: Semantics(liveRegion: true, child: Text('Payment not finished — try again.', style: t(16, color: GP.ink, w: FontWeight.w900))),
+                  ),
                 Semantics(header: true, child: Text('${_itemsText(count)}. ${count == 1 ? 'Good choice' : 'Good choices'}.', style: t(30, color: GP.ink, w: FontWeight.w900, h: 1.1))),
                 for (final e in byHost.entries) ...[
                   const SizedBox(height: 18),
@@ -122,9 +176,9 @@ class _BagScreenState extends State<BagScreen> {
         builder: (context, _) {
           if (BagStore.instance.isEmpty) return const SizedBox.shrink();
           final open = MerchRepo.flags.value.checkoutEnabled;
-          return GpBottomBar(
-            child: GpButton(open ? 'Checkout · ${merchRupees(BagStore.instance.totalPaise)}' : 'Buying opens soon', onTap: open ? _checkout : null),
-          );
+          final blocked = BagStore.instance.hasUnavailable;
+          final label = !open ? 'Buying opens soon' : (blocked ? 'Remove unavailable items' : 'Checkout · ${merchRupees(BagStore.instance.totalPaise)}');
+          return GpBottomBar(child: GpButton(label, onTap: (open && !blocked) ? _checkout : null));
         },
       ),
     );
@@ -172,6 +226,11 @@ class _BagScreenState extends State<BagScreen> {
               ]),
               style: t(15, color: GP.muted, w: FontWeight.w700),
             ),
+            if (BagStore.instance.unavailableReason(l.productId) != null)
+              Padding(
+                padding: const EdgeInsets.only(top: 4),
+                child: Text(BagStore.instance.unavailableReason(l.productId)!, style: t(14, color: GP.redDeep, w: FontWeight.w800, h: 1.3)),
+              ),
             const SizedBox(height: 8),
             Wrap(spacing: 8, crossAxisAlignment: WrapCrossAlignment.center, children: [
               GpQty(value: l.qty, max: l.maxQty, onChanged: (v) => unawaited(BagStore.instance.setQty(l.key, v))),
@@ -217,7 +276,7 @@ Widget _summary(List<(String, String)> rows, String total, String? note) {
 
 // ------------------------------------------------------------------------------------------------ checkout
 
-enum _Stage { address, payment, done }
+enum _Stage { address, payment, waiting, done }
 
 class BagCheckoutScreen extends StatefulWidget {
   const BagCheckoutScreen({super.key, required this.args, this.merch, this.channel});
@@ -230,7 +289,7 @@ class BagCheckoutScreen extends StatefulWidget {
   State<BagCheckoutScreen> createState() => _BagCheckoutScreenState();
 }
 
-class _BagCheckoutScreenState extends State<BagCheckoutScreen> {
+class _BagCheckoutScreenState extends State<BagCheckoutScreen> with WidgetsBindingObserver {
   _Stage _stage = _Stage.address;
   List<SavedAddress> _saved = const [];
   bool _loadingAddr = true;
@@ -251,8 +310,8 @@ class _BagCheckoutScreenState extends State<BagCheckoutScreen> {
   String? _error;
   bool _unavailable = false;
   String _requestKey = MerchRepo.newRequestKey();
-  BagCheckoutResult? _result;
-  bool _openedOnline = false;
+  List<String> _doneNos = const [];
+  int _doneTotal = 0;
 
   MerchRepo get _merch => widget.merch ?? Services.instance.merchRepo;
   ChannelRepo get _channel => widget.channel ?? ChannelRepo.instance;
@@ -261,16 +320,64 @@ class _BagCheckoutScreenState extends State<BagCheckoutScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     unawaited(_loadAddresses());
     unawaited(_loadBalance());
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     for (final c in [_name, _phone, _line1, _line2, _city, _state, _pin]) {
       c.dispose();
     }
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed && _stage == _Stage.waiting) unawaited(_verify());
+  }
+
+  /// Back from the payment page: the bag is emptied and the order shown only when the server says the group is paid.
+  Future<void> _verify() async {
+    if (_busy) return;
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+    try {
+      final p = BagStore.instance.pending;
+      final g = await resolveBagPayment(repo: _channel);
+      if (!mounted) return;
+      if (g != null && g.paid) {
+        _showDone(g.orderNos, g.totalPaise > 0 ? g.totalPaise : (p?.totalPaise ?? _a.totalPaise));
+        return;
+      }
+      setState(() {
+        _busy = false;
+        _stage = _Stage.payment;
+        _requestKey = MerchRepo.newRequestKey();
+        _error = 'Payment not finished — try again.';
+      });
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _busy = false;
+          _error = e is ApiException ? e.userMessage : ApiException.genericText;
+        });
+      }
+    }
+  }
+
+  void _showDone(List<String> nos, int total) {
+    setState(() {
+      _busy = false;
+      _error = null;
+      _doneNos = nos;
+      _doneTotal = total;
+      _stage = _Stage.done;
+    });
   }
 
   Future<void> _loadAddresses() async {
@@ -370,7 +477,9 @@ class _BagCheckoutScreenState extends State<BagCheckoutScreen> {
       );
       if (!mounted) return;
       if (r.paid) {
-        await _finish(r, online: false);
+        if (_a.fromBag) await BagStore.instance.clear();
+        channelEvent('bag_paid', {'items': _a.itemCount, 'total_rupees': r.totalPaise ~/ 100, 'method': _method, 'orders': r.orders.length});
+        if (mounted) _showDone([for (final o in r.orders) o.orderNo], r.totalPaise);
         return;
       }
       final url = r.checkoutUrl;
@@ -390,16 +499,28 @@ class _BagCheckoutScreenState extends State<BagCheckoutScreen> {
         });
         return;
       }
-      await _finish(r, online: true);
+      // The bag stays as it is until the server says this group is paid (see _verify).
+      await BagStore.instance.setPending(BagPending(groupId: r.groupId, fromBag: _a.fromBag, totalPaise: r.totalPaise, items: _a.itemCount));
+      if (mounted) {
+        setState(() {
+          _busy = false;
+          _stage = _Stage.waiting;
+        });
+      }
     } on ApiException catch (e) {
       if (!mounted) return;
       setState(() => _busy = false);
       if (e.status == 402) {
         await _lowBalance(e);
       } else if (e.status == 409 || e.code == 'item_unavailable') {
+        final pid = e.extra['productId'];
+        if (pid is String && pid.isNotEmpty) {
+          final m = e.userMessage;
+          BagStore.instance.markUnavailable(pid, m.isEmpty ? 'This item is no longer available.' : m);
+        }
         setState(() {
           _unavailable = true;
-          _error = 'One of these items is no longer available, so nothing was charged. Please check your bag.';
+          _error = 'One item is no longer available, so nothing was charged. Remove it from your bag and try again.';
         });
       } else {
         setState(() => _error = e.userMessage);
@@ -413,18 +534,6 @@ class _BagCheckoutScreenState extends State<BagCheckoutScreen> {
         });
       }
     }
-  }
-
-  Future<void> _finish(BagCheckoutResult r, {required bool online}) async {
-    if (_a.fromBag) await BagStore.instance.clear();
-    if (!online) channelEvent('bag_paid', {'items': _a.itemCount, 'total_rupees': r.totalPaise ~/ 100, 'method': _method, 'orders': r.orders.length});
-    if (!mounted) return;
-    setState(() {
-      _busy = false;
-      _result = r;
-      _openedOnline = online;
-      _stage = _Stage.done;
-    });
   }
 
   Future<void> _lowBalance(ApiException e) async {
@@ -488,6 +597,9 @@ class _BagCheckoutScreenState extends State<BagCheckoutScreen> {
     if (_stage == _Stage.address) {
       return GpBottomBar(child: GpButton('Continue', onTap: _loadingAddr ? null : _toPayment));
     }
+    if (_stage == _Stage.waiting) {
+      return GpBottomBar(child: GpButton(_busy ? 'Checking…' : 'I have paid, check now', onTap: _busy ? null : () => unawaited(_verify())));
+    }
     return GpBottomBar(
       child: GpButton(_busy ? 'Please wait…' : 'Pay ${merchRupees(_a.totalPaise)}', icon: Icons.lock_rounded, onTap: (_terms && !_busy) ? () => unawaited(_pay()) : null),
     );
@@ -497,7 +609,7 @@ class _BagCheckoutScreenState extends State<BagCheckoutScreen> {
     return ListView(padding: const EdgeInsets.fromLTRB(16, 18, 16, 28), children: [
       _Steps(current: _stage == _Stage.address ? 1 : 2),
       const SizedBox(height: 20),
-      if (_stage == _Stage.address) ..._addressSection() else ..._paymentSection(),
+      if (_stage == _Stage.address) ..._addressSection() else if (_stage == _Stage.waiting) ..._waitingSection() else ..._paymentSection(),
       if (_error != null) ...[
         const SizedBox(height: 12),
         Semantics(liveRegion: true, child: Text(_error!, style: t(15, color: GP.redDeep, w: FontWeight.w800, h: 1.3))),
@@ -557,6 +669,19 @@ class _BagCheckoutScreenState extends State<BagCheckoutScreen> {
     ];
   }
 
+  List<Widget> _waitingSection() => [
+        _panel(title: 'Finish paying', children: [
+          Text(
+            'The payment page is open. When you are done, come back here. Your order is placed only after the payment goes through.',
+            style: t(15, color: GP.ink, w: FontWeight.w700, h: 1.4),
+          ),
+        ]),
+        GpButton('Pay another way', kind: GpBtn.outline, onTap: _busy ? null : () => setState(() {
+              _stage = _Stage.payment;
+              _requestKey = MerchRepo.newRequestKey();
+            })),
+      ];
+
   List<Widget> _paymentSection() {
     final a = _address!;
     final low = _balance != null && _balance! < _a.totalPaise;
@@ -593,9 +718,8 @@ class _BagCheckoutScreenState extends State<BagCheckoutScreen> {
   }
 
   Widget _donePanel() {
-    final r = _result;
-    final nos = r == null ? '' : r.orders.map((o) => o.orderNo).where((n) => n.isNotEmpty).join(', ');
-    final total = merchRupees(r?.totalPaise ?? _a.totalPaise);
+    final nos = _doneNos.where((n) => n.isNotEmpty).join(', ');
+    final total = merchRupees(_doneTotal > 0 ? _doneTotal : _a.totalPaise);
     return Container(
       color: GP.ink,
       width: double.infinity,
@@ -614,9 +738,7 @@ class _BagCheckoutScreenState extends State<BagCheckoutScreen> {
           Semantics(header: true, child: Text('Picture abhi baaki hai!', textAlign: TextAlign.center, style: gpPoster(44))),
           const SizedBox(height: 12),
           Text(
-            _openedOnline
-                ? '${nos.isEmpty ? 'Your order' : 'Order $nos'} · $total. Finish paying on the payment page. It shows in My orders as soon as it is paid.'
-                : '${nos.isEmpty ? 'Your order' : 'Order $nos'} · $total paid. We’ll message you when it ships.',
+            '${nos.isEmpty ? 'Your order' : 'Order $nos'} · $total paid. We’ll message you when it ships.',
             textAlign: TextAlign.center,
             style: t(16, color: GP.onDark, w: FontWeight.w700, h: 1.4),
           ),
