@@ -11309,5 +11309,20 @@
         "note": "An admin acted on a ticket/report/money alert and an audit row was written."
       }
     ]
+  },
+  "HF-POLICY-WITHDRAW-1": {
+    "description": "Terms/Privacy/Community guidelines say Withdraw; policy versions re-pinned; dashboard asks users to re-accept changed policies.",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [],
+    "success": [
+      {
+        "event": "hf_policy_reaccepted",
+        "property": "policies",
+        "gt": 0,
+        "min_events": 1,
+        "note": "A signed-in user accepted the updated policy pages via the dashboard prompt."
+      }
+    ]
   }
 }
