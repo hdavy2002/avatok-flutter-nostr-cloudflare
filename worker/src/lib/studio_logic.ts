@@ -1,7 +1,7 @@
 // [AUMFE-POD-STUDIO-API-1 2026-10-01] Pure helpers for the Shop Studio API (routes/admin2_studio.ts).
 // Contract: Specs/SPEC-2026-10-01-AUMFE-POD-STUDIO.md section 4. No I/O here so every rule is unit-testable.
 // Print-partner facts (print areas, DPI verdicts) come from lib/pod; nothing partner-specific is named in this file.
-import { PRINT_SPECS, fitForProduct, estimatePrintCostRupees } from "./pod";
+import { PRINT_SPECS, fitForProduct, estimatePrintCostRupees, areaFor, isApparelKind } from "./pod";
 import type { CatalogProduct, CatalogVariant, PrintSide } from "./pod";
 
 export type PodKind = keyof typeof PRINT_SPECS.areas;
@@ -167,7 +167,12 @@ export function sizeRank(size: string): number {
   if (age) return 100 + Number(age[1]);
   return 1000;
 }
-export const sortSizes = (sizes: string[]) => [...sizes].sort((a, b) => sizeRank(a) - sizeRank(b) || a.localeCompare(b));
+/** Clothing sizes first in size order; anything else ("Free Size", "11 oz", "iPhone 15", "A4") keeps the partner's order after them. */
+export const sortSizes = (sizes: string[]) => [...sizes].sort((a, b) => {
+  const ra = sizeRank(a), rb = sizeRank(b);
+  if (ra !== rb) return ra - rb;
+  return ra >= 1000 ? 0 : a.localeCompare(b);
+});
 
 export type CatalogColour = { name: string; hex: string | null };
 export type CatalogSummary = { provider_product_id: string; name: string; kind: string; colours: CatalogColour[]; sizes: string[]; cost_from_paise: number | null };
@@ -243,7 +248,8 @@ export function fallbackBestText(row: FitRow | null, artW: number, artH: number,
 // Placement validation
 // ---------------------------------------------------------------------------
 export type Placement = {
-  kind: PodKind; side: PrintSide; shape: Shape; frame_w_in: number; frame_h_in: number; frame_top_in: number;
+  /** A PRINT_SPECS garment kind, or (merch, area override) any other product kind. */
+  kind: PodKind | (string & {}); side: PrintSide; shape: Shape; frame_w_in: number; frame_h_in: number; frame_top_in: number;
   zoom_pct: number; nudge_x_in: number; nudge_y_in: number; print_w_in: number; print_h_in: number; dpi: number;
   /** Where the clipped print PNG sits on the print area, inches from its top-left. Defaults: centred / frame_top_in. */
   print_left_in?: number; print_top_in?: number;
@@ -253,17 +259,19 @@ export type PlacementResult = { ok: true; placement: Placement } | { ok: false; 
 const finite = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v);
 const round2 = (n: number) => Math.round(n * 100) / 100;
 
-export function validatePlacement(raw: unknown): PlacementResult {
+/** areaOverride [w, h] (the partner's own print area for this product + side, inches) lets non-garment merch kinds validate: any non-empty kind string is then accepted. */
+export function validatePlacement(raw: unknown, areaOverride?: readonly [number, number] | null): PlacementResult {
   const fail = (code: string, message: string, field?: string): PlacementResult => ({ ok: false, status: 400, code, message, field });
   if (!raw || typeof raw !== "object") return fail("invalid_placement", "Send the placement as an object.", "placement");
   const p = raw as Record<string, unknown>;
-  if (!isKind(p.kind)) return fail("invalid_placement", "Pick a product for this placement.", "kind");
+  const override = areaOverride && areaOverride[0] > 0 && areaOverride[1] > 0 ? areaOverride : null;
+  if (override ? typeof p.kind !== "string" || !p.kind.trim() || p.kind.length > 40 : !isKind(p.kind)) return fail("invalid_placement", "Pick a product for this placement.", "kind");
   if (!isSide(p.side)) return fail("invalid_placement", "Side must be front or back.", "side");
   if (!(SHAPES as readonly unknown[]).includes(p.shape)) return fail("invalid_placement", "Frame must be none, rect, square or circle.", "shape");
   for (const k of ["frame_w_in", "frame_h_in", "frame_top_in", "zoom_pct", "nudge_x_in", "nudge_y_in", "print_w_in", "print_h_in", "dpi"] as const) {
     if (!finite(p[k])) return fail("invalid_placement", `${k} must be a number.`, k);
   }
-  const area = PRINT_SPECS.areas[p.kind][p.side];
+  const area = override ?? PRINT_SPECS.areas[p.kind as PodKind][p.side];
   const [aw, ah] = [area[0], area[1]];
   const fw = p.frame_w_in as number, fh = p.frame_h_in as number, ft = p.frame_top_in as number;
   const EPS = 0.05;
@@ -291,7 +299,7 @@ export function validatePlacement(raw: unknown): PlacementResult {
   return {
     ok: true,
     placement: {
-      kind: p.kind, side: p.side, shape: p.shape as Shape, frame_w_in: round2(fw), frame_h_in: round2(fh), frame_top_in: round2(Math.max(0, ft)),
+      kind: p.kind as string, side: p.side, shape: p.shape as Shape, frame_w_in: round2(fw), frame_h_in: round2(fh), frame_top_in: round2(Math.max(0, ft)),
       zoom_pct: Math.round(zoom), nudge_x_in: round2(p.nudge_x_in as number), nudge_y_in: round2(p.nudge_y_in as number),
       print_w_in: round2(pw), print_h_in: round2(ph), dpi: Math.round(dpi), print_left_in: left, print_top_in: top,
     },
@@ -300,7 +308,7 @@ export function validatePlacement(raw: unknown): PlacementResult {
 
 /** Where the print file sits on the partner's print area: centred left-to-right, frame_top from the top. */
 export function partnerPlacement(p: Placement): { side: PrintSide; width_in: number; height_in: number; top_in: number; left_in: number } {
-  const area = PRINT_SPECS.areas[p.kind][p.side];
+  const area = areaFor(p.kind, p.side) ?? [p.print_w_in, p.print_h_in]; // non-garment merch kinds always carry print_left_in
   const left = typeof p.print_left_in === "number" ? p.print_left_in : round2(Math.max(0, (area[0] - p.print_w_in) / 2));
   const top = typeof p.print_top_in === "number" ? p.print_top_in : p.frame_top_in;
   return { side: p.side, width_in: p.print_w_in, height_in: p.print_h_in, top_in: top, left_in: left };
@@ -568,14 +576,17 @@ const range = (xs: number[]): Range | null => (xs.length ? { min: r2(Math.min(..
  * Sizes are every size the product has in any colour; a size with no stocked variant in the chosen colours is in_stock:false.
  */
 export function computeSizeCosts(
-  product: Pick<CatalogProduct, "variants">, chosenColours: string[], side: PrintSide, printWIn: number, printHIn: number, shippingRupees: number | null,
+  product: Pick<CatalogProduct, "variants"> & { kind?: string }, chosenColours: string[], side: PrintSide, printWIn: number, printHIn: number, shippingRupees: number | null,
 ): SizeCost[] {
   const want = new Set(chosenColours.map((c) => c.toLowerCase()));
   const sizes = sortSizes([...new Set(product.variants.map((v) => v.size))]);
   return sizes.map((size) => {
     const vs = product.variants.filter((v) => v.size === size && (!want.size || want.has(v.colour.toLowerCase())));
     const garment = range(vs.map((v) => v.base_cost_paise).filter((n): n is number => typeof n === "number" && n > 0).map((n) => n / 100));
-    const print = range(vs.map((v) => estimatePrintCostRupees(v, side, printWIn, printHIn)).filter((n): n is number => n !== null));
+    // [HF-MERCH-STUDIO-2] An accessory (mug, case, bag ...) with no print-cost rates for this side has printing included in the partner's base price: Rs 0.
+    // Apparel (and a product with no kind) keeps the old behaviour: no rates = no total.
+    const free = !!product.kind && !isApparelKind(product.kind);
+    const print = range(vs.map((v) => estimatePrintCostRupees(v, side, printWIn, printHIn) ?? (free ? 0 : null)).filter((n): n is number => n !== null));
     const gst = vs.length ? Math.max(...vs.map((v) => (typeof v.gst_pct === "number" ? v.gst_pct : DEFAULT_PARTNER_GST_PCT))) : DEFAULT_PARTNER_GST_PCT;
     const total = garment && print ? r2((garment.max + print.max) * (1 + gst / 100) + (shippingRupees ?? 0)) : null;
     return { size, garment_rupees: garment, print_rupees: print, partner_gst_pct: gst, shipping_rupees: shippingRupees, total_rupees: total, in_stock: vs.length > 0 };

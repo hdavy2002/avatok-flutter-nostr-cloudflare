@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { PRINT_SPECS, maxSharpInches, fitForProduct } from './specs';
-import { classifyKind, mapPartnerStatus, printroveLogin, PrintroveProvider } from './printrove';
+import { PRINT_SPECS, maxSharpInches, fitForProduct, isApparelKind } from './specs';
+import { classifyKind, classifyByName, imageUrlOf, mapPartnerStatus, printroveLogin, PrintroveProvider } from './printrove';
 import { estimatePrintCostRupees } from './specs';
 import type { Env } from '../../types';
 import { builtInCatalog } from './manual';
@@ -149,5 +149,58 @@ describe('mapPartnerStatus', () => {
     expect(mapPartnerStatus('In production')).toBe('printing');
     expect(mapPartnerStatus('Cancelled')).toBe('cancelled');
     expect(mapPartnerStatus('Order placed')).toBe('sent');
+  });
+});
+
+describe('classifyKind by name [HF-MERCH-STUDIO-2]', () => {
+  it('keeps known ids even when a name is given', () => {
+    expect(classifyKind('460', 'Something else')).toBe('mens_tee');
+    expect(classifyKind('1216', 'Anything')).toBe('oversized_tee');
+  });
+  it('classifies unknown ids from the product name', () => {
+    const table: Array<[string, string]> = [
+      ['Crop Tank Top', 'crop_top'], ['Half Sleeve V-Neck T-Shirt', 'vneck_tee'], ['Premium Oversized Tshirt', 'oversized_tee'],
+      ['Oversized Hoodies', 'oversized_hoodie'], ['Crop Hoodies', 'crop_hoodie'], ['Zip Hoodie', 'hoodie'], ['Sweatshirts', 'sweatshirt'],
+      ['Joggers', 'joggers'], ['Shorts', 'shorts'], ['Bomber Jacket', 'bomber_jacket'], ['Varsity Jacket', 'jacket'], ['Polo T-Shirt', 'polo'],
+      ['Tote Bags', 'tote_bag'], ['Glass Phone Cases', 'phone_case'], ['Sipper Bottles', 'sipper_bottle'], ['Ceramic Mug', 'mug'],
+      ['Pop Sockets', 'pop_socket'], ['Framed Posters', 'poster'], ['Mouse Pads', 'mouse_pad'], ['Notebooks', 'notebook'], ['Face Mask', 'mask'],
+      ['Baseball Cap', 'cap'], ['Coasters', 'coaster'], ['Badges', 'badge'], ['Cushion Cover', 'cushion'], ['Tank Top', 'tank_top'],
+      ["Women's Round Neck T-Shirt", 'womens_tee'], ['Kids T-Shirt', 'kids_tee'], ['Plain T-Shirt', 'mens_tee'], ['Full Sleeve T-Shirt', 'full_sleeve_tee'],
+    ];
+    for (const [name, kind] of table) expect([name, classifyKind('9999', name)]).toEqual([name, kind]);
+  });
+  it('falls back to the category for accessories, then to the generic item', () => {
+    expect(classifyKind('9999', 'Premium Edition', 'Mugs')).toBe('mug');
+    expect(classifyKind('9999', 'Mystery Thing', "Men's Clothing")).toBe('item');
+    expect(classifyByName('Mystery')).toBeNull();
+    expect(classifyKind('9999')).toBe('other'); // no name given: unchanged behaviour
+  });
+  it('knows which kinds are apparel', () => {
+    for (const k of ['mens_tee', 'hoodie', 'joggers', 'shorts', 'bomber_jacket', 'oversized_hoodie', 'tank_top']) expect(isApparelKind(k)).toBe(true);
+    for (const k of ['mug', 'tote_bag', 'phone_case', 'item', 'other', '']) expect(isApparelKind(k)).toBe(false);
+  });
+});
+
+describe('PrintroveProvider.mapProduct for non-garments [HF-MERCH-STUDIO-2]', () => {
+  const variant = (over: Record<string, unknown>) => ({ id: 1, stock_status: 'in_stock', base_price: 120, gst: 12, color: 'White', color_code: '#ffffff', size: '11 oz', ...over });
+  const prov = new PrintroveProvider({} as Env);
+  it('offers only the sides that have print px and keeps a picture url', () => {
+    const body = { product: { name: 'Mug', image: { url: 'https://x.test/mug.png' }, variants: [variant({ front_print_width: 2400, front_print_height: 1200 })] } };
+    const p = prov.mapProduct(body, 'mug', '856', 'Mug', 'Mugs');
+    expect(p?.print_area_in).toEqual({ front: [8, 4] });
+    expect(p?.image_url).toBe('https://x.test/mug.png');
+    expect(p?.variants[0].print_cost).toBeUndefined();
+  });
+  it('skips a product with no print area on any side, but not a legacy garment kind', () => {
+    const body = { product: { variants: [variant({})] } };
+    const d = prov.mapProductDetailed(body, 'item', '9999', 'Thing', null);
+    expect(d.product).toBeNull();
+    expect(d.skip).toMatch(/no print area/);
+    expect(prov.mapProduct(body, 'mens_tee', '460', 'Tee', null)).not.toBeNull();
+  });
+  it('takes the picture from the list item when the detail has none', () => {
+    const body = { product: { variants: [variant({ back_print_width: 1500, back_print_height: 1500 })] } };
+    expect(prov.mapProduct(body, 'item', '1', 'x', null, { thumbnail: 'https://x.test/t.jpg' })?.image_url).toBe('https://x.test/t.jpg');
+    expect(imageUrlOf({ image: 'not a url' })).toBeNull();
   });
 });

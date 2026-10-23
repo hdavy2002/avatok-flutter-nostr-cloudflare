@@ -7,6 +7,8 @@ import { API_BASE } from '../../../lib/env';
 export interface Colour { name: string; hex: string }
 export interface CatalogItem {
   id: string; kind: string; name: string; side: ('front' | 'back')[]; printArea: { wIn: number; hIn: number };
+  /** [HF-MERCH-STUDIO-2] Category slug + label for the product tabs, silhouette family (studio/silhouettes.ts), per-side print areas. */
+  category?: string; categoryLabel?: string; family?: string; printAreas?: { front?: { wIn: number; hIn: number }; back?: { wIn: number; hIn: number } }; imageUrl?: string;
   colours: Colour[]; sizes: { size: string; basePaise: number; baseRupees: number; printingPaise: number; shippingPaise: number }[];
 }
 export interface CatalogInfo { items: CatalogItem[]; shippingPaise: number; bufferPaise: number; minMarkupRupees: number; platformShareBps: number; holdDays: number }
@@ -87,6 +89,28 @@ const asciiName = (n: string) => { try { return encodeURIComponent(n.slice(0, 12
 export const uploadArt = (blob: Blob, fileName: string) => rawUpload<ArtUpload>(`${B}/art`, blob, { 'x-file-name': asciiName(fileName) });
 export const uploadPrintFile = (artId: string, blob: Blob) => rawUpload<{ printFileId: string; url: string; width: number; height: number }>(`${B}/print-file`, blob, { 'x-art-id': artId });
 export const uploadMockup = (blob: Blob) => rawUpload<{ url: string }>(`${B}/mockup`, blob);
+
+/* ── [HF-MERCH-STUDIO-2] AI pictures + background remover (worker routes/hf_merch.ts, Specs/SPEC-2026-10-23-HF-MERCH-STUDIO-2.md §3) ── */
+export interface AiGen { genId: string; artId: string; url: string; width: number; height: number; prompt: string; style: string | null; createdAt: number }
+export interface AiInfo { enabled: boolean; chargePaise: number; chargeRupees: number; balancePaise: number; testCreditPaise: number; canAfford: boolean; recent: AiGen[] }
+export interface AiGenerateBody {
+  requestKey: string; prompt: string; style?: string; refArtIds?: string[]; baseArtId?: string; plainBackground?: boolean; aspect?: '1:1' | '3:4' | '4:3' | '9:16';
+}
+export const getAi = () => hfCall<{ ok: boolean } & AiInfo>('GET', `${B}/ai`);
+/** Charges the wallet (paid money only); refunded by the server if the picture cannot be made. 402 insufficient_funds carries chargePaise/balancePaise/shortPaise in `body`. */
+export const generateAi = (b: AiGenerateBody) => hfCall<{ ok: boolean; gen: { genId: string; chargedPaise: number }; art: ArtUpload; balancePaise: number }>('POST', `${B}/ai/generate`, b, { timeoutMs: 150_000 });
+export const removeBackground = (artId: string) => hfCall<{ ok: boolean; art: ArtUpload }>('POST', `${B}/art/${encodeURIComponent(artId)}/remove-bg`, {}, { timeoutMs: 90_000 });
+/** The influencer's own art bytes through the API (CORS-safe for canvas work; the public media host sends no CORS headers). */
+export async function fetchArtFile(artId: string): Promise<Blob | null> {
+  const { getActiveTokenWaited } = await import('../../../lib/clerk');
+  const token = await getActiveTokenWaited(6000);
+  if (!token) return null;
+  try {
+    const res = await fetch(`${API_BASE}${B}/art/${encodeURIComponent(artId)}/file`, { headers: { Authorization: `Bearer ${token}` }, cache: 'no-store' });
+    return res.ok ? await res.blob() : null;
+  } catch { return null; }
+}
+export const newRequestKey = () => `k${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}`;
 
 /* ── money (the same floor rule as worker lib/hf_merch_math.ts) ───────────── */
 export const youEarnPaise = (markupRupees: number, shareBps: number) => Math.floor((Math.trunc(markupRupees) * 100 * (10_000 - shareBps)) / 10_000);

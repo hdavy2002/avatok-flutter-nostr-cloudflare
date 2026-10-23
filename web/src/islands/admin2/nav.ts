@@ -11,7 +11,7 @@ export type AdminKey = 'overview' | 'events' | 'bookings' | 'payments' | 'refund
   | 'consultants' | 'consultant-bookings' | 'consultant-reviews'
   | 'desk-wallets' | 'desk-bookings' | 'desk-topups' | 'desk-support' | 'desk-reports' | 'desk-money'
   | 'host-desk' | 'host-review' | 'host-kyc' | 'host-avatars' | 'host-demo' | 'host-reviews' | 'host-calls' | 'host-payouts' | 'host-refunds' | 'host-reconciliation' | 'host-phone-costs'
-  | 'merch-orders' | 'merch-products' | 'merch-settings' | 'merch-wallet' // [HF-MERCH-ADMIN-1]
+  | 'merch-orders' | 'merch-products' | 'merch-settings' | 'merch-wallet' | 'merch-ai' // [HF-MERCH-ADMIN-1]
   | 'preview-help' | 'preview-legal';
 
 export interface AdminNavItem { key: AdminKey; label: string; short: string; href: string; icon: LucideIcon; /** Optional group heading shown above the first item of a run (e.g. "Shop"). */ group?: string; /** [AUMFE-POD-FULFIL-1] Small gold pill after the label (e.g. "New"). */ pill?: string }
@@ -71,6 +71,7 @@ const ALL_ADMIN_NAV: AdminNavItem[] = [
   { key: 'merch-products', label: 'Approve merch', short: 'Approve', href: '/admin/merch/products', icon: Brush, group: 'Merch' },
   { key: 'merch-settings', label: 'Merch settings', short: 'Merch settings', href: '/admin/merch/settings', icon: SlidersHorizontal, group: 'Merch' },
   { key: 'merch-wallet', label: 'Merch wallet', short: 'Merch wallet', href: '/admin/merch/wallet', icon: Landmark, group: 'Merch' },
+  { key: 'merch-ai', label: 'AI charges', short: 'AI charges', href: '/admin/merch/ai-charges', icon: Sparkles, group: 'Merch' }, // [HF-MERCH-STUDIO-2]
   // [AUMFE-HELP-LEGAL-PREVIEW-1] Preview group: hidden-until-gateway help topics and legal sections (admin only).
   { key: 'preview-legal', label: 'Legal preview', short: 'Legal preview', href: '/admin/preview/legal', icon: Scale, group: 'Preview' },
 ];

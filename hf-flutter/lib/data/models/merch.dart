@@ -61,12 +61,33 @@ class CatalogItem {
     required this.colours,
     required this.sizes,
     this.mockupUrl,
+    this.kind = '',
+    this.category = 'other',
+    this.categoryLabel = 'More',
+    this.family = 'other',
+    this.sides = const <String>['front'],
+    this.areas = const <String, PrintArea>{},
+    this.imageUrl,
   });
 
   factory CatalogItem.fromJson(Map<String, dynamic> j) {
     final area = j['printArea'];
     final a = area is Map ? Map<String, dynamic>.from(area) : <String, dynamic>{};
+    final areasRaw = j['printAreas'] is Map ? Map<String, dynamic>.from(j['printAreas'] as Map) : <String, dynamic>{};
+    final areas = <String, PrintArea>{
+      for (final e in areasRaw.entries)
+        if (e.value is Map && _d((e.value as Map)['wIn']) > 0 && _d((e.value as Map)['hIn']) > 0)
+          e.key: PrintArea(_d((e.value as Map)['wIn']), _d((e.value as Map)['hIn'])),
+    };
+    final sides = _strings(j['side']).where((s) => s == 'front' || s == 'back').toList();
     return CatalogItem(
+      kind: _s(j['kind']),
+      category: _sn(j['category']) ?? 'other',
+      categoryLabel: _sn(j['categoryLabel']) ?? 'More',
+      family: _sn(j['family']) ?? 'other',
+      sides: sides.isEmpty ? const <String>['front'] : sides,
+      areas: areas,
+      imageUrl: _sn(j['imageUrl']),
       id: _s(j['id']),
       name: _s(j['name']),
       areaW: _d(a['wIn']) > 0 ? _d(a['wIn']) : 12,
@@ -87,7 +108,26 @@ class CatalogItem {
   final List<CatalogSize> sizes;
   final String? mockupUrl;
 
+  /// [HF-MERCH-STUDIO-2] Printrove kind, category tab, silhouette family, sides that print, per-side print areas (inches).
+  final String kind;
+  final String category;
+  final String categoryLabel;
+  final String family;
+  final List<String> sides;
+  final Map<String, PrintArea> areas;
+  final String? imageUrl;
+
+  /// Print area for [side] (falls back to the catalogue's first area).
+  PrintArea areaFor(String side) => areas[side] ?? PrintArea(areaW, areaH);
+
   int get fromPaise => sizes.isEmpty ? 0 : sizes.map((s) => s.basePaise).reduce((a, b) => a < b ? a : b);
+}
+
+/// Print area in inches.
+class PrintArea {
+  const PrintArea(this.wIn, this.hIn);
+  final double wIn;
+  final double hIn;
 }
 
 class MerchCatalog {
@@ -128,6 +168,57 @@ class ArtUpload {
   final int width;
   final int height;
   final List<String> warnings;
+}
+
+/// [HF-MERCH-STUDIO-2] One AI picture the influencer made (GET /api/hf/merch/ai `recent`).
+class AiGen {
+  const AiGen({required this.genId, required this.art, required this.prompt, this.style, required this.createdAt});
+
+  factory AiGen.fromJson(Map<String, dynamic> j) => AiGen(
+        genId: _s(j['genId']),
+        art: ArtUpload(artId: _s(j['artId']), url: _s(j['url']), width: _i(j['width']), height: _i(j['height']), warnings: const <String>[]),
+        prompt: _s(j['prompt']),
+        style: _sn(j['style']),
+        createdAt: DateTime.fromMillisecondsSinceEpoch(_i(j['createdAt'])),
+      );
+
+  final String genId;
+  final ArtUpload art;
+  final String prompt;
+  final String? style;
+  final DateTime createdAt;
+}
+
+/// [HF-MERCH-STUDIO-2] AI picture price and the paid wallet balance (GET /api/hf/merch/ai).
+class AiInfo {
+  const AiInfo({required this.enabled, required this.chargePaise, required this.balancePaise, required this.testCreditPaise, required this.canAfford, required this.recent});
+
+  factory AiInfo.fromJson(Map<String, dynamic> j) => AiInfo(
+        enabled: j['enabled'] == true,
+        chargePaise: _i(j['chargePaise']),
+        balancePaise: _i(j['balancePaise']),
+        testCreditPaise: _i(j['testCreditPaise']),
+        canAfford: j['canAfford'] == true,
+        recent: [for (final m in _maps(j['recent'])) AiGen.fromJson(m)],
+      );
+
+  final bool enabled;
+  final int chargePaise;
+
+  /// Paid wallet money only (free test credit cannot pay for AI pictures).
+  final int balancePaise;
+  final int testCreditPaise;
+  final bool canAfford;
+  final List<AiGen> recent;
+}
+
+/// Result of POST /api/hf/merch/ai/generate.
+class AiResult {
+  const AiResult({required this.genId, required this.chargedPaise, required this.art, required this.balancePaise});
+  final String genId;
+  final int chargedPaise;
+  final ArtUpload art;
+  final int balancePaise;
 }
 
 /// [HF-MERCH-PRICE-LABELS-2] One size of a quote: printing (incl. GST) and shipping, both null on older responses.

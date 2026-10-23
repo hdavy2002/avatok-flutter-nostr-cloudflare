@@ -838,6 +838,8 @@ export interface PlatformConfig {
   hfMerchCashfreeFeeBps: number;             // report-only estimate (server-only)
   hfMerchGstBps: number;                     // report-only estimate (server-only)
   hfMerchHoldDays: number;                   // days after delivery before the earning is withdrawable
+  hfMerchAiEnabled: boolean;                 // [HF-MERCH-STUDIO-2] "Create with AI" pictures in the merch studio (public: the UI hides the button)
+  hfMerchAiChargeRupees: number;             // [HF-MERCH-STUDIO-2] fixed rupees per AI picture, 0-500 (numericKeys; public: the UI shows the price)
   affiliateMinQualifyingTopupCoins: number;  // dust-farming floor on the SOURCE top-up
   affiliateDailyEarnCapCoins: number;        // per-affiliate promoted coins per UTC day
   affiliateMonthlyEarnCapCoins: number;      // per-affiliate promoted coins per UTC month
@@ -2471,6 +2473,8 @@ const DEFAULTS: PlatformConfig = {
   hfMerchCashfreeFeeBps: 350,
   hfMerchGstBps: 1800,
   hfMerchHoldDays: 7,
+  hfMerchAiEnabled: true,
+  hfMerchAiChargeRupees: 10,
   affiliateMinQualifyingTopupCoins: 100,
   affiliateDailyEarnCapCoins: 2000,
   affiliateMonthlyEarnCapCoins: 20000,
@@ -3326,6 +3330,7 @@ export async function putConfig(req: Request, env: Env): Promise<Response> {
     // numeric, must be here or `flags.sh set affiliateQualifyDays=45` 400s `bad type`.
     "affiliateQualifyDays", "affiliateMinQualifyingTopupCoins",
     "hfMerchPlatformShareBps", "hfMerchMinMarkupRupees", "hfMerchBaseBufferRupees", "hfMerchCashfreeFeeBps", "hfMerchGstBps", "hfMerchHoldDays", // [HF-MERCH-CORE-1]
+    "hfMerchAiChargeRupees", // [HF-MERCH-STUDIO-2]
     "affiliateDailyEarnCapCoins", "affiliateMonthlyEarnCapCoins", "affiliatePerReferredCapCoins",
     // [AVA-CFG-CACHE-1 2026-08-07] Ava V2 numeric keys. The two *Tier keys and
     // avaVoiceStyleDefault are ENUMS-AS-NUMBERS (config.ts has no string type) —

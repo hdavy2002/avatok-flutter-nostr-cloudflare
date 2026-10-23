@@ -5,10 +5,10 @@ import type { Env } from "../types";
 import { metaDb } from "../db/shard";
 import { sha256Hex } from "../util";
 import { moderate, moderateGeneratedImage } from "./moderation";
-import { ensurePodCatalog } from "./pod";
+import { ensurePodCatalog, isApparelKind } from "./pod";
 import { IMAGE_EXT, LIMITS, checkPrintFile, parseImageInfo, validatePlacement, variantSku, type Placement } from "./studio_logic";
 import { checkMarkup, type MerchCfg } from "./hf_merch_math";
-import { areaOf, isTeeKind, provisionPartnerListing, quoteBases } from "./hf_merch_catalog";
+import { areaOrNull, isMerchKind, provisionPartnerListing, quoteBases } from "./hf_merch_catalog";
 import {
   getProduct, openOrdersForProduct, productMerch, shopSlugFor, type MerchHost, type MerchProductRow,
 } from "./hf_merch_store";
@@ -68,7 +68,7 @@ export async function saveMerchArt(env: Env, uid: string, bytes: Uint8Array, dec
   const now = Date.now();
   const dpiAtFullWidth = Math.round(info.w / FULL_WIDTH_IN);
   const warnings: string[] = [];
-  if (dpiAtFullWidth < 150) warnings.push("At full size this may look blurry. Keep the art smaller on the shirt or upload a bigger file.");
+  if (dpiAtFullWidth < 150) warnings.push("At full size this may look blurry. Keep the art smaller on the product or upload a bigger file.");
   if (info.mime === "image/jpeg" || info.has_alpha === false) warnings.push("This image has a solid background, and it will print too. Use a PNG with a see-through background to print only your art.");
   if (info.rgb === false) warnings.push("This file is not RGB, so colours may print differently.");
   if (moderation === "unscanned") warnings.push("This image will be checked by our team before it goes on sale.");
@@ -121,7 +121,7 @@ export async function saveMerchMockup(env: Env, uid: string, bytes: Uint8Array):
 // ---------------------------------------------------------------------------
 // Create
 // ---------------------------------------------------------------------------
-const slugify = (s: string): string => s.toLowerCase().normalize("NFKD").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40) || "tee";
+const slugify = (s: string): string => s.toLowerCase().normalize("NFKD").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40) || "merch";
 const cleanText = (v: unknown, max: number): string => (typeof v === "string" ? v.replace(/\s+/g, " ").trim().slice(0, max) : "");
 const ownMockup = (env: Env, uid: string, u: unknown): string | null =>
   typeof u === "string" && u.startsWith(`${env.BLOSSOM_BASE_URL}/u/${uid}/public/merch/`) && u.length < 400 ? u : null;
@@ -151,32 +151,33 @@ export async function createMerchProduct(env: Env, cfg: MerchCfg, flags: { produ
   if (text && text.ok && !text.safe) return fail(422, "text_blocked", text.reason || "Please change the name or description.", { field: "title" });
 
   const info = await ensurePodCatalog(env);
-  if (info.source !== "printrove") return fail(503, "catalog_unavailable", "Shirts are not available to add right now. Please try again in a little while.");
-  const prod = info.products.find((p) => p.provider_product_id === catalogId && isTeeKind(p.kind));
-  if (!prod) return fail(400, "unknown_product", "Pick one of the shirts shown.", { field: "catalogId" });
+  if (info.source !== "printrove") return fail(503, "catalog_unavailable", "Products are not available to add right now. Please try again in a little while.");
+  const prod = info.products.find((p) => p.provider_product_id === catalogId && isMerchKind(p.kind));
+  if (!prod) return fail(400, "unknown_product", "Pick one of the products shown.", { field: "catalogId" });
   const wantColours = Array.isArray(b.colours) ? (b.colours as unknown[]).map((c) => cleanText(c, 40).toLowerCase()).filter(Boolean) : [];
   const wantSizes = Array.isArray(b.sizes) ? (b.sizes as unknown[]).map((c) => cleanText(c, 12).toLowerCase()).filter(Boolean) : [];
   if (!wantColours.length || wantColours.length > 8) return fail(400, "invalid_colours", "Pick 1 to 8 colours.", { field: "colours" });
   if (!wantSizes.length) return fail(400, "invalid_sizes", "Pick at least one size.", { field: "sizes" });
   const colours = [...new Map(prod.variants.filter((v) => wantColours.includes(v.colour.toLowerCase())).map((v) => [v.colour.toLowerCase(), { name: v.colour, hex: v.colour_hex ?? "#cccccc" }])).values()];
-  if (colours.length !== new Set(wantColours).size) return fail(400, "invalid_colours", "One of those colours is not made for this shirt.", { field: "colours" });
+  if (colours.length !== new Set(wantColours).size) return fail(400, "invalid_colours", "One of those colours is not made for this product.", { field: "colours" });
 
-  // Where the print sits on the shirt. x / y / w / h are inches on the print area (top-left origin), the print file is w x h inches.
+  // Where the print sits on the product. x / y / w / h are inches on the print area (top-left origin), the print file is w x h inches.
   const pl = (b.placement && typeof b.placement === "object" ? b.placement : {}) as Record<string, unknown>;
   const n = (k: string): number => Number(pl[k]);
   const frame = pl.frame === "square" || pl.frame === "circle" || pl.frame === "rect" ? pl.frame : "none";
   const w = n("w"), h = n("h"), x = n("x"), y = n("y");
-  if (![w, h, x, y].every(Number.isFinite) || w <= 0 || h <= 0) return fail(400, "invalid_placement", "Place your art on the shirt first.", { field: "placement" });
+  if (![w, h, x, y].every(Number.isFinite) || w <= 0 || h <= 0) return fail(400, "invalid_placement", "Place your art on the product first.", { field: "placement" });
   // The frame is the SHAPE the art is clipped to; the print rectangle (w x h) may be larger than a square/circle frame. Validate the frame box, not the print box.
   const boxed = frame === "square" || frame === "circle";
   const frameSide = Math.min(w, h);
+  const area = areaOrNull(prod, side);
+  if (!area) return fail(400, "invalid_side", `This product has no ${side} print area. Pick the other side.`, { field: "side" });
   const pv = validatePlacement({
     kind: prod.kind, side, shape: frame, frame_w_in: boxed ? frameSide : w, frame_h_in: boxed ? frameSide : h, frame_top_in: boxed ? y + (h - frameSide) / 2 : y, zoom_pct: Number.isFinite(n("zoom")) && n("zoom") > 0 ? n("zoom") : 100,
     nudge_x_in: 0, nudge_y_in: 0, print_w_in: w, print_h_in: h, dpi: design.print_w / w, print_left_in: x, print_top_in: y,
-  });
+  }, area);
   if (!pv.ok) return fail(400, pv.code, pv.message, { field: "placement" });
-  const area = areaOf(prod, side);
-  if (pv.placement.print_w_in > area[0] + 0.05 || pv.placement.print_h_in > area[1] + 0.05) return fail(400, "outside_print_area", "The print is bigger than this shirt's print area.", { field: "placement" });
+  if (pv.placement.print_w_in > area[0] + 0.05 || pv.placement.print_h_in > area[1] + 0.05) return fail(400, "outside_print_area", "The print is bigger than this product's print area.", { field: "placement" });
 
   const quote = await quoteBases(env, cfg, { catalogId, colours: colours.map((c) => c.name), side, wIn: pv.placement.print_w_in, hIn: pv.placement.print_h_in, sizes: wantSizes });
   if (!quote.ok) return fail(quote.error === "catalog_unavailable" ? 503 : 400, quote.error, quote.message);
@@ -210,7 +211,7 @@ export async function createMerchProduct(env: Env, cfg: MerchCfg, flags: { produ
       `INSERT INTO shop_products (id, slug, name, description, fit, print_type, audience, price_rupees, colours_json, sizes_json, images_json, badge, status, sold_count, created_at, updated_at,
          seller_uid, review_status, review_note, markup_rupees, design_id, deleted_at, merch_json)
        VALUES (?1,?2,?3,?4,'Regular',?5,'Adults',?6,?7,?8,?9,'','hidden',0,?10,?10,?11,?12,NULL,?13,?14,NULL,?15)`,
-    ).bind(pid, shopSlugFor(host.slug, productSlug), title, description, side === "back" ? "Back print" : pv.placement.print_w_in >= 8 ? "Big front print" : "Chest print",
+    ).bind(pid, shopSlugFor(host.slug, productSlug), title, description, !isApparelKind(prod.kind) ? "Printed" : side === "back" ? "Back print" : pv.placement.print_w_in >= 8 ? "Big front print" : "Chest print",
       Math.max(1, Math.min(100000, Math.round(minPriceRupees))), JSON.stringify(colours), JSON.stringify(quote.sizes.map((s) => s.size)),
       JSON.stringify(image ? [{ url: image, label: "Front" }] : []), now, uid, goLive ? "live" : "pending", mk.markupRupees, artId, JSON.stringify(merch)),
     db.prepare(

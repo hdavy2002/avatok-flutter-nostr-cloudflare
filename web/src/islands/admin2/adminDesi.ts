@@ -59,6 +59,7 @@ consultants: { line: 'Gyaani log', sticker: 'mohmaya', rot: 5, tone: 'tea', ghos
 'merch-products': { line: 'Naye design, pehli nazar', sticker: 'girlboss', rot: 5, tone: 'rani', ghost: 'Design' },
 'merch-settings': { line: 'Merch ke niyam', sticker: 'chai', rot: -5, tone: 'lav', ghost: 'Niyam' },
 'merch-wallet': { line: 'Merch ka khazana', sticker: 'fav', rot: 5, tone: 'gold', ghost: 'Khazana' },
+'merch-ai': { line: 'AI ki tasveer, ek rate', sticker: 'girlboss', rot: -5, tone: 'rani', ghost: 'Tasveer' }, // [HF-MERCH-STUDIO-2]
 'preview-help': { line: 'Madad ka panna', sticker: 'chai', rot: -5, tone: 'lav', ghost: 'Madad' },
 'preview-legal': { line: 'Kaanoon ki kitaab', sticker: 'aalsi', rot: 5, tone: 'gold', ghost: 'Kaanoon' },
 };

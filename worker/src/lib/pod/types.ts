@@ -11,7 +11,9 @@ export type CatalogVariant = { provider_variant_id: string; colour: string; colo
 export type CatalogProduct = { provider: PodProviderId; provider_product_id: string; kind: string; name: string; category: string | null;
   variants: CatalogVariant[]; size_chart: Array<{ size: string; chest_in?: number; length_in?: number }> | null;
   /** The partner's own printable area per side in inches ([w, h]); authoritative over PRINT_SPECS (the fallback) when present. */
-  print_area_in?: { front?: [number, number]; back?: [number, number] } };
+  print_area_in?: { front?: [number, number]; back?: [number, number] };
+  /** [HF-MERCH-STUDIO-2] A product picture URL when the partner's payload carries one (optional; never required). */
+  image_url?: string };
 export type PrintPlacement = { side: PrintSide; width_in: number; height_in: number; top_in: number; left_in: number }; // relative to the print area's top-left
 export type ListingInput = { name: string; provider_product_id: string; design_ref: string; placement: PrintPlacement;
   variants: Array<{ provider_variant_id: string; sku: string }> };

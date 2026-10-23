@@ -5,7 +5,7 @@ import {
   artChecksFromInfo, audienceFor, buildFits, checkPrintFile, cleanBrowserChecks, cleanColours, cleanPrices, cleanProducts, cleanSlots,
   contrastRatio, fallbackBestText, fallbackCopy, looksFaded, orderPhotosForShop, parseCopyReply, parseImageInfo, partnerPlacement,
   pendingSteps, photoChecks, photoCoverage, pickBest, printTypeFor, resolveVariants, resumeSteps, shopPrice, sizeRank, sniffImageMime,
-  summariseCatalog, validatePlacement, variantSku, STEP_KEYS, type Placement,
+  summariseCatalog, sortSizes, validatePlacement, variantSku, STEP_KEYS, type Placement,
   computeSizeCosts, reconcileColours, remapProducts, matchCatalogColour, firstUnavailableColour,
 } from "./studio_logic";
 
@@ -369,5 +369,37 @@ describe("remap and colour reconciliation", () => {
   });
   it("collapses two chosen colours that land on one partner colour", () => {
     expect(reconcileColours([{ name: "Navy", hex: "#111111" }, { name: "Navy Blue", hex: "#222222" }], offered).colours).toHaveLength(1);
+  });
+});
+
+// [HF-MERCH-STUDIO-2]
+describe("merch kinds: validatePlacement override, accessory pricing, size order", () => {
+  const mugPlacement = { kind: "mug", side: "front", shape: "rect", frame_w_in: 8, frame_h_in: 3.5, frame_top_in: 0.2, zoom_pct: 100, nudge_x_in: 0, nudge_y_in: 0, print_w_in: 8, print_h_in: 3.5, dpi: 300 };
+  it("rejects a non-garment kind without an area and accepts it with one", () => {
+    expect(validatePlacement(mugPlacement).ok).toBe(false);
+    const r = validatePlacement(mugPlacement, [8, 4]);
+    expect(r.ok).toBe(true);
+    if (r.ok) expect(r.placement).toMatchObject({ kind: "mug", print_w_in: 8, print_left_in: 0 });
+    expect(validatePlacement({ ...mugPlacement, print_w_in: 9, frame_w_in: 8 }, [8, 4])).toMatchObject({ ok: false, code: "outside_print_area" });
+    expect(validatePlacement({ ...mugPlacement, kind: "" }, [8, 4]).ok).toBe(false);
+  });
+  it("an override replaces the garment area", () => {
+    expect(validatePlacement({ ...mugPlacement, kind: "mens_tee", frame_w_in: 12, print_w_in: 12, frame_h_in: 3, print_h_in: 3 }, [8, 4]).ok).toBe(false);
+  });
+  const bareVariants = [{ provider_variant_id: "1", colour: "White", colour_hex: null, size: "11 oz", base_cost_paise: 12000 }];
+  it("prices an accessory with no print rates (printing included) but not apparel", () => {
+    const mug = computeSizeCosts({ kind: "mug", variants: bareVariants }, [], "front", 8, 4, 50)[0];
+    expect(mug.print_rupees).toEqual({ min: 0, max: 0 });
+    expect(mug.total_rupees).toBe(Math.round((120 * 1.05 + 50) * 100) / 100);
+    expect(computeSizeCosts({ kind: "mens_tee", variants: bareVariants }, [], "front", 8, 4, 50)[0].total_rupees).toBeNull();
+    expect(computeSizeCosts({ kind: "joggers", variants: bareVariants }, [], "front", 8, 4, 50)[0].total_rupees).toBeNull();
+  });
+  it("an accessory with rates still pays them", () => {
+    const withRates = [{ ...bareVariants[0], print_cost: { front: { rate_per_sq_in_rupees: 1, min_price_rupees: 40 } } }];
+    expect(computeSizeCosts({ kind: "mug", variants: withRates }, [], "front", 8, 4, 0)[0].print_rupees).toEqual({ min: 40, max: 40 });
+  });
+  it("sortSizes puts clothing sizes first and keeps other sizes in partner order", () => {
+    expect(sortSizes(["XL", "Free Size", "S", "iPhone 15", "A4", "11 oz", "M"])).toEqual(["S", "M", "XL", "Free Size", "iPhone 15", "A4", "11 oz"]);
+    expect(sortSizes([])).toEqual([]);
   });
 });

@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:math';
 import 'dart:typed_data';
 
@@ -121,6 +122,51 @@ class MerchRepo {
     final u = j['url'];
     if (u is! String || u.isEmpty) throw StateError('mockup url missing');
     return u;
+  }
+
+  // ---------------------------------------------------------------------------------------------- [HF-MERCH-STUDIO-2] AI + cut-out
+
+  /// AI picture price, the paid wallet balance and the influencer's recent AI pictures.
+  Future<AiInfo> aiInfo() async => AiInfo.fromJson(await _api.getJson('$_base/ai'));
+
+  /// Makes one AI picture (Nano Banana 2). Charges the fixed price from paid wallet money; the server refunds it when the picture
+  /// cannot be made. Throws [ApiException]: 402 `insufficient_funds` (extra: chargePaise, balancePaise, shortPaise),
+  /// 422 `prompt_blocked` / `art_blocked`, 502 `generation_failed` (extra: refundedPaise), 403 `ai_off`.
+  /// Sent through [ApiClient.postBytes] for its long timeout (a picture takes up to two minutes).
+  Future<AiResult> generateAi({
+    required String requestKey,
+    required String prompt,
+    String? style,
+    List<String> refArtIds = const <String>[],
+    String? baseArtId,
+    bool plainBackground = true,
+    String aspect = '1:1',
+  }) async {
+    final body = <String, Object?>{
+      'requestKey': requestKey,
+      'prompt': prompt,
+      if (style != null) 'style': style,
+      if (refArtIds.isNotEmpty) 'refArtIds': refArtIds,
+      if (baseArtId != null) 'baseArtId': baseArtId,
+      'plainBackground': plainBackground,
+      'aspect': aspect,
+    };
+    final j = await _api.postBytes('$_base/ai/generate', utf8.encode(jsonEncode(body)),
+        contentType: 'application/json', uploadTimeout: const Duration(seconds: 150));
+    final gen = _map(j['gen']);
+    return AiResult(
+      genId: '${gen['genId'] ?? ''}',
+      chargedPaise: gen['chargedPaise'] is num ? (gen['chargedPaise'] as num).round() : 0,
+      art: ArtUpload.fromJson(_map(j['art'])),
+      balancePaise: j['balancePaise'] is num ? (j['balancePaise'] as num).round() : 0,
+    );
+  }
+
+  /// Cuts the subject out of one of the influencer's pictures (free). Returns the new transparent art.
+  Future<ArtUpload> removeBackground(String artId) async {
+    final j = await _api.postBytes('$_base/art/${Uri.encodeComponent(artId)}/remove-bg', utf8.encode('{}'),
+        contentType: 'application/json', uploadTimeout: const Duration(seconds: 90));
+    return ArtUpload.fromJson(_map(j['art']));
   }
 
   Future<MerchProduct> createProduct(Map<String, Object?> body) async {

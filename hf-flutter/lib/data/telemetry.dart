@@ -72,6 +72,7 @@ abstract final class Telemetry {
     'merch_buy_clicked',
     'merch_pay_method_chosen',
     'merch_studio_step',
+    'merch_ai', // [HF-MERCH-STUDIO-2] {action: open|generate_started|generate_done|generate_failed|use|bg_removed|...}
     'merch_order_opened',
   };
 

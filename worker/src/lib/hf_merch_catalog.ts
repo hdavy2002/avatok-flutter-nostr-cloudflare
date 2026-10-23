@@ -7,16 +7,23 @@ import { ensurePodCatalog, getPodProvider, referenceShippingRupees, loadStoredCa
 import type { CatalogProduct, PodProvider } from "./pod";
 import { computeSizeCosts, partnerPlacement, sortSizes, variantSku, type Placement } from "./studio_logic";
 import { baseUnitPaise, splitBase, profitRow, youEarnUnitPaise, type MerchCfg, type ProfitRow } from "./hf_merch_math";
+import { categoryOf, categoryRank, familyOf, type Family } from "./hf_merch_families";
 import { parseJson, type MerchSnapshot, type ProductMerch } from "./hf_merch_types";
 
 const TEE_KIND = /_tee$/;
+/** Kept for callers that still ask "is this a T-shirt kind"; the merch shop now sells every printable kind (isMerchKind). */
 export const isTeeKind = (k: string): boolean => TEE_KIND.test(k);
+/** [HF-MERCH-STUDIO-2] Any kind except the unclassified `other` is sellable. */
+export const isMerchKind = (k: string): boolean => !!k && k !== "other";
 /** A live re-quote older than this triggers a catalogue refresh first. */
 export const LIVE_QUOTE_MAX_AGE_MS = 60 * 60 * 1000;
 
+export type PrintAreas = { front?: { wIn: number; hIn: number }; back?: { wIn: number; hIn: number } };
 export type CatalogItem = {
-  id: string; kind: string; name: string; side: Array<"front" | "back">; printArea: { wIn: number; hIn: number };
-  colours: Array<{ name: string; hex: string }>; sizes: Array<{ size: string; basePaise: number; baseRupees: number; printingPaise: number; shippingPaise: number }>; mockupUrl?: string;
+  id: string; kind: string; name: string; category: string; categoryLabel: string; family: Family;
+  /** Only the sides this product has a print area for. */
+  side: Array<"front" | "back">; printAreas: PrintAreas; /** The first side's area. */ printArea: { wIn: number; hIn: number };
+  colours: Array<{ name: string; hex: string }>; sizes: Array<{ size: string; basePaise: number; baseRupees: number; printingPaise: number; shippingPaise: number }>; mockupUrl?: string; imageUrl?: string;
 };
 
 function colourList(p: CatalogProduct): Array<{ name: string; hex: string }> {
@@ -24,13 +31,17 @@ function colourList(p: CatalogProduct): Array<{ name: string; hex: string }> {
   for (const v of p.variants) if (!seen.has(v.colour.toLowerCase())) seen.set(v.colour.toLowerCase(), v.colour_hex ?? "#cccccc");
   return [...new Map(p.variants.map((v) => [v.colour.toLowerCase(), { name: v.colour, hex: v.colour_hex ?? "#cccccc" }])).values()];
 }
-export const areaOf = (p: Pick<CatalogProduct, "kind" | "print_area_in">, side: "front" | "back"): [number, number] => {
+/** The print area [w, h] in inches for a side, or null when the product has none there. The partner's own area wins; a product whose partner
+ *  data lists areas for some side only offers those sides; PRINT_SPECS is the fallback for the legacy garment kinds with no partner area. */
+export const areaOrNull = (p: Pick<CatalogProduct, "kind" | "print_area_in">, side: "front" | "back"): [number, number] | null => {
   const own = p.print_area_in?.[side];
-  if (own && own[0] > 0 && own[1] > 0) return own;
+  if (own && own[0] > 0 && own[1] > 0) return [own[0], own[1]];
+  if (p.print_area_in && (p.print_area_in.front || p.print_area_in.back)) return null;
   const spec = (PRINT_SPECS.areas as Record<string, { front: readonly [number, number]; back: readonly [number, number] } | undefined>)[p.kind];
-  const a = spec?.[side] ?? [12, 14];
-  return [a[0], a[1]];
+  return spec ? [spec[side][0], spec[side][1]] : null;
 };
+export const areaOf = (p: Pick<CatalogProduct, "kind" | "print_area_in">, side: "front" | "back"): [number, number] => areaOrNull(p, side) ?? [12, 14];
+export const sidesOf = (p: Pick<CatalogProduct, "kind" | "print_area_in">): Array<"front" | "back"> => (["front", "back"] as const).filter((s) => areaOrNull(p, s) !== null);
 
 export type BaseQuote =
   | { ok: true; sizes: Array<{ size: string; baseUnitPaise: number; printingPaise: number; shippingPaise: number; bufferPaise: number }>; shippingRupees: number | null }
@@ -42,8 +53,8 @@ export async function quoteBases(
 ): Promise<BaseQuote & { product?: CatalogProduct }> {
   const info = await ensurePodCatalog(env);
   if (info.source !== "printrove") return { ok: false, error: "catalog_unavailable", message: "Prices are not available right now. Please try again in a little while." };
-  const prod = info.products.find((p) => p.provider_product_id === a.catalogId && isTeeKind(p.kind));
-  if (!prod) return { ok: false, error: "unknown_product", message: "That shirt is not available." };
+  const prod = info.products.find((p) => p.provider_product_id === a.catalogId && isMerchKind(p.kind));
+  if (!prod) return { ok: false, error: "unknown_product", message: "That product is not available." };
   const shipping = await referenceShippingRupees(env);
   const costs = computeSizeCosts(prod, a.colours, a.side, a.wIn, a.hIn, shipping);
   const want = a.sizes ? new Set(a.sizes.map((s) => s.toLowerCase())) : null;
@@ -53,28 +64,38 @@ export async function quoteBases(
     const parts = splitBase(c.total_rupees, shipping, cfg.baseBufferRupees);
     if (parts) sizes.push({ size: c.size, ...parts });
   }
-  if (!sizes.length) return { ok: false, error: "no_sizes", message: "That shirt cannot be priced in those colours." };
+  if (!sizes.length) return { ok: false, error: "no_sizes", message: "That product cannot be priced in those colours." };
   return { ok: true, sizes, shippingRupees: shipping, product: prod };
 }
 
 export async function merchCatalog(env: Env, cfg: MerchCfg): Promise<{ ok: true; items: CatalogItem[]; shippingPaise: number; bufferPaise: number } | { ok: false; error: string; message: string }> {
   const info = await ensurePodCatalog(env);
-  if (info.source !== "printrove") return { ok: false, error: "catalog_unavailable", message: "The shirt catalogue is not available right now." };
+  if (info.source !== "printrove") return { ok: false, error: "catalog_unavailable", message: "The product catalogue is not available right now." };
   const shipping = await referenceShippingRupees(env);
   const items: CatalogItem[] = [];
   for (const p of info.products) {
-    if (!isTeeKind(p.kind)) continue;
-    const [w, h] = areaOf(p, "front");
-    // "Up to" price: the biggest print the shirt takes. The wizard re-quotes the real size through /quote as the art is placed.
-    const costs = computeSizeCosts(p, [], "front", w, h, shipping);
+    if (!isMerchKind(p.kind)) continue;
+    const sides = sidesOf(p);
+    if (!sides.length) continue; // no print area on any side: cannot be printed
+    const printAreas: PrintAreas = {};
+    for (const s of sides) { const a = areaOrNull(p, s) as [number, number]; printAreas[s] = { wIn: a[0], hIn: a[1] }; }
+    const first = sides[0];
+    const [w, h] = areaOrNull(p, first) as [number, number];
+    // "Up to" price: the biggest print the product takes (first side). The wizard re-quotes the real size through /quote as the art is placed.
+    const costs = computeSizeCosts(p, [], first, w, h, shipping);
     const sizes = costs.filter((c) => c.in_stock && c.total_rupees != null).map((c) => {
       const parts = splitBase(c.total_rupees as number, shipping, cfg.baseBufferRupees);
       const base = parts?.baseUnitPaise ?? 0;
       return { size: c.size, basePaise: base, baseRupees: Math.round(base / 100), printingPaise: parts?.printingPaise ?? 0, shippingPaise: parts?.shippingPaise ?? 0 };
     }).filter((s) => s.basePaise > 0);
     if (!sizes.length) continue;
-    items.push({ id: p.provider_product_id, kind: p.kind, name: p.name, side: ["front", "back"], printArea: { wIn: w, hIn: h }, colours: colourList(p), sizes });
+    const cat = categoryOf(p.kind);
+    items.push({
+      id: p.provider_product_id, kind: p.kind, name: p.name, category: cat.slug, categoryLabel: cat.label, family: familyOf(p.kind, p.name),
+      side: sides, printAreas, printArea: { wIn: w, hIn: h }, colours: colourList(p), sizes, ...(p.image_url ? { imageUrl: p.image_url } : {}),
+    });
   }
+  items.sort((a, b) => categoryRank(a.category) - categoryRank(b.category) || a.name.localeCompare(b.name));
   return { ok: true, items, shippingPaise: Math.max(0, Math.round((shipping ?? 0) * 100)), bufferPaise: cfg.baseBufferRupees * 100 };
 }
 
@@ -100,7 +121,7 @@ export async function liveBaseUnitForOrder(env: Env, snap: Partial<MerchSnapshot
       catch (e) { stale = true; await trackException(env, e, { route: "hf_merch:live_quote_sync", handled: true, app_name: "hf_merch" }); }
     }
     const prod = stored.products.find((p) => p.provider_product_id === snap.catalogId);
-    if (!prod) return fail("The shirt is no longer in the catalogue.");
+    if (!prod) return fail("The product is no longer in the catalogue.");
     let shipping = await referenceShippingRupees(env);
     let source = "reference_shipping";
     if (pincode) {
@@ -154,7 +175,7 @@ export async function provisionPartnerListing(
       .first<{ status: string; l: string | null; d: string | null; v: number | null }>();
     if (existing?.status === "listed" && existing.l && Number(existing.v) === d.version) return { ok: true, skipped: true, designRef: existing.d, listingRef: existing.l };
     const prod = info.products.find((p) => p.provider_product_id === merch.catalogId);
-    if (!prod) return { ok: false, message: "The shirt is no longer in the partner catalogue." };
+    if (!prod) return { ok: false, message: "The product is no longer in the partner catalogue." };
     const obj = await env.DIGITAL.get(d.print_key);
     if (!obj) return { ok: false, message: "The print file is missing from storage." };
     const bytes = new Uint8Array(await obj.arrayBuffer());

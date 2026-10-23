@@ -13,7 +13,7 @@ import { readConfig, writeConfigOverrides } from "./config";
 import { putKvSecret, deleteKvSecret, isRealWorkerSecret } from "../lib/kv_secrets";
 import { printroveLogin, clearPrintroveToken, maskEmail } from "../lib/pod/printrove";
 import {
-  POD_PROVIDER_IDS, getPodProvider, podConnectionPeek, podProviderConfigured, PodError, ensurePodCatalog, syncCatalogToDb,
+  POD_PROVIDER_IDS, getPodProvider, podConnectionPeek, podProviderConfigured, PodError, ensurePodCatalog, syncCatalogToDb, studioCatalog,
   type PodProviderId,
 } from "../lib/pod";
 
@@ -243,8 +243,10 @@ async function putSettings(req: Request, env: Env, a: { uid: string }): Promise<
 async function getCatalog(req: Request, env: Env): Promise<Response> {
   const kind = new URL(req.url).searchParams.get("kind")?.trim() || "";
   if (kind && !/^[a-z_]{1,32}$/.test(kind)) return err(400, "invalid_input", "Unknown kind.", { field: "kind" });
+  // [HF-MERCH-STUDIO-2] The admin partner page keeps listing the studio garments; ?kind=all shows every synced product.
   const info = await ensurePodCatalog(env);
-  const items = info.products.filter((p) => !kind || p.kind === kind);
+  const shown = kind === "all" ? info.products : studioCatalog(info).products;
+  const items = shown.filter((p) => !kind || kind === "all" || p.kind === kind);
   return json({ items, catalog_source: info.source, catalog_reason: info.reason, synced_at: info.synced_at }, 200, noStore);
 }
 

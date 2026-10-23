@@ -38,14 +38,14 @@ export default function MerchApp() {
     const r = await getCatalog();
     setOpening(false);
     if (r.ok) { setShareBps(r.data.platformShareBps); setMinMarkup(r.data.minMarkupRupees); setWizard(r.data); }
-    else { setOpenErr(r.message || 'The shirt list is not available right now. Please try again in a little while.'); if (r.status >= 500 || r.status === 0) captureException(new Error(`merch_catalog_${r.status}_${r.code}`), { area: 'hf_merch_creator' }); }
+    else { setOpenErr(r.message || 'The product list is not available right now. Please try again in a little while.'); if (r.status >= 500 || r.status === 0) captureException(new Error(`merch_catalog_${r.status}_${r.code}`), { area: 'hf_merch_creator' }); }
   }
   // Share of the markup for the edit dialog even before the wizard is opened.
   useEffect(() => { void getCatalog().then(r => { if (r.ok) setShareBps(r.data.platformShareBps); }); }, []);
 
   const s = summary;
   return <>
-    <PageHead eyebrow="Merch" title="Your T-shirt shop" sub="Put your art on a shirt, set your price, and your fans buy it from your page. We print and ship it, you earn on every sale." art={<Sticker name="swag" w={104} rot={6} />} />
+    <PageHead eyebrow="Merch" title="Your merch shop" sub="Put your art on T-shirts, hoodies, mugs and more, set your price, and your fans buy it from your page. We print and ship it, you earn on every sale." art={<Sticker name="swag" w={104} rot={6} />} />
     <ShareMyPage variant="row" />
     {sumFailed && <Failed onRetry={loadSummary} text="We could not load your numbers." />}
     <section className="mc-strip" aria-label="Summary">

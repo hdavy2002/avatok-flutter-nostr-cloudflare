@@ -1,6 +1,4 @@
 import 'dart:async';
-import 'dart:math' as math;
-import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -12,18 +10,19 @@ import '../../data/models/merch.dart';
 import '../../data/repos/merch_repo.dart';
 import '../../data/services.dart';
 import '../../ui/async_view.dart';
-import '../booking_kit.dart';
 import '../desi.dart';
-import '../merch_canvas.dart';
+import '../merch_designer/designer.dart';
 import '../merch_kit.dart';
 import '../theme.dart';
 import '../widgets.dart';
+import 'merch_ai_sheet.dart';
+import 'merch_product_pick.dart';
 
-enum _Step { art, shirt, place, price }
+enum _Step { art, product, design, price }
 
-/// [HF-MERCH-APP-1] "+ New product": pick art from the gallery, pick the shirt, place the art (drag and pinch on the shirt), set the
-/// markup and publish. The art is cut to its frame and drawn to a PNG at 300 DPI on the phone, uploaded as the print file, and the
-/// product goes to the team for review ("Sent for review") unless the server has review switched off.
+/// [HF-MERCH-STUDIO-2] "+ New product": Your art (upload or AI) -> Product -> Design (layers studio) -> Price and publish.
+/// Spec: Specs/SPEC-2026-10-23-HF-MERCH-STUDIO-2.md. The picture tray, the product choices and the design are kept across steps.
+/// The print file and the mockups are made by the designer; the money logic (quote, markup, you-earn) is unchanged from v1.
 class MerchWizardScreen extends StatefulWidget {
   const MerchWizardScreen({super.key, this.repo});
 
@@ -35,45 +34,41 @@ class MerchWizardScreen extends StatefulWidget {
 
 class _MerchWizardScreenState extends State<MerchWizardScreen> {
   _Step _step = _Step.art;
+  bool _leaving = false;
+  bool _madeAny = false;
 
   MerchRepo get _repo => widget.repo ?? Services.instance.merchRepo;
 
-  // art
-  ArtUpload? _art;
-  ui.Image? _imgFull;
-  ui.Image? _imgSmall;
+  // step 1: art
+  final List<StudioArt> _arts = <StudioArt>[];
+  final List<String> _picked = <String>[];
+  AiInfo? _ai;
   bool _busyArt = false;
   String? _artError;
+  bool _own = false;
+  bool _refUsed = false;
 
-  // shirt
+  // step 2: product
   AsyncState<MerchCatalog> _cat = const AsyncLoading();
   CatalogItem? _item;
+  String _side = 'front';
   final Set<String> _colours = <String>{};
   final Set<String> _sizes = <String>{};
 
-  // placement (inches on the print area; the centre of the print)
-  bool _placeFresh = true;
-  bool _back = false;
-  MerchFrame _frame = MerchFrame.none;
-  double _w = 0;
-  double _cx = 0;
-  double _cy = 0;
-  double _startW = 0;
-  String? _previewColour;
+  // step 3: design
+  List<DesignLayer>? _layers;
+  DesignResult? _design;
+  String _sig = '';
 
-  // price
+  // step 4: price
   final TextEditingController _title = TextEditingController();
   final TextEditingController _desc = TextEditingController();
   final TextEditingController _markup = TextEditingController(text: '100');
-  bool _own = false;
   Map<String, int>? _bases;
   Map<String, QuoteLine> _lines = const <String, QuoteLine>{};
   bool _quoting = false;
   String? _quoteError;
-
-  // publish
   bool _publishing = false;
-  String _phase = '';
   String? _publishError;
   MerchProduct? _done;
 
@@ -82,6 +77,7 @@ class _MerchWizardScreenState extends State<MerchWizardScreen> {
     super.initState();
     merchEvent('merch_studio_step', {'step': _Step.art.name});
     unawaited(_loadCatalog());
+    unawaited(_loadAi());
   }
 
   @override
@@ -89,70 +85,153 @@ class _MerchWizardScreenState extends State<MerchWizardScreen> {
     _title.dispose();
     _desc.dispose();
     _markup.dispose();
-    _imgFull?.dispose();
-    _imgSmall?.dispose();
     super.dispose();
   }
 
-  // ---------------------------------------------------------------------------------------------- art
+  // ---------------------------------------------------------------------------------------------- tray
 
-  Future<void> _pickArt() async {
+  bool get _aiOn => _ai?.enabled == true;
+  bool get _ownRequired => _refUsed || _arts.any((a) => a.source == 'upload');
+  bool get _ownOk => !_ownRequired || _own;
+
+  Future<void> _loadAi() async {
+    try {
+      final info = await _repo.aiInfo();
+      if (!mounted) return;
+      setState(() {
+        _ai = info;
+        for (final g in info.recent) {
+          if (_arts.every((a) => a.artId != g.art.artId)) _arts.add(StudioArt(art: g.art, source: 'ai', label: g.prompt));
+        }
+      });
+    } catch (_) {
+      if (mounted) setState(() => _ai = null); // AI is off or unreachable: the AI choice stays hidden
+    }
+  }
+
+  void _addToTray(StudioArt a, {bool select = false}) {
+    setState(() {
+      if (_arts.every((x) => x.artId != a.artId)) _arts.insert(0, a);
+      if (select && !_picked.contains(a.artId)) _picked.add(a.artId);
+    });
+  }
+
+  void _togglePicked(StudioArt a) {
+    setState(() {
+      if (!_picked.remove(a.artId)) _picked.add(a.artId);
+    });
+  }
+
+  void _removeFromTray(StudioArt a) {
+    setState(() {
+      _arts.removeWhere((x) => x.artId == a.artId);
+      _picked.remove(a.artId);
+    });
+  }
+
+  List<StudioArt> _designerArts() {
+    final byId = {for (final a in _arts) a.artId: a};
+    final out = <StudioArt>[
+      for (final id in _picked)
+        if (byId[id] != null) byId[id]!,
+    ];
+    for (final a in _arts) {
+      if (!_picked.contains(a.artId)) out.add(a);
+    }
+    return out;
+  }
+
+  /// Gallery -> upload. Adds the picture to the tray; returns it, or null when nothing was added (the reason is shown).
+  Future<StudioArt?> _pickAndUpload({bool select = true}) async {
+    if (_busyArt) return null;
     setState(() {
       _busyArt = true;
       _artError = null;
     });
+    String? problem;
+    StudioArt? made;
     try {
       final picked = await MerchArtPicker.pick();
-      if (picked == null) {
-        if (mounted) setState(() => _busyArt = false);
-        return;
+      if (picked != null) {
+        final up = await _repo.uploadArt(picked.bytes, contentType: picked.mime, fileName: picked.name);
+        made = StudioArt(art: up, source: 'upload', bytes: picked.bytes, label: picked.name);
       }
-      final up = await _repo.uploadArt(picked.bytes, contentType: picked.mime, fileName: picked.name);
-      final full = await merchDecode(picked.bytes, width: up.width, height: up.height, maxSide: 4096);
-      final small = await merchDecode(picked.bytes, width: up.width, height: up.height, maxSide: 1024);
-      if (!mounted) {
-        full.dispose();
-        small.dispose();
-        return;
-      }
-      final oldFull = _imgFull;
-      final oldSmall = _imgSmall;
-      setState(() {
-        _art = up;
-        _imgFull = full;
-        _imgSmall = small;
-        _busyArt = false;
-        _placeFresh = true;
-        _bases = null;
-      });
-      oldFull?.dispose();
-      oldSmall?.dispose();
     } on PlatformException catch (e) {
-      if (mounted) {
-        setState(() {
-          _busyArt = false;
-          _artError = e.code == 'too_large' ? 'The picture must be 15 MB or smaller.' : 'Could not open that picture. Try another one.';
-        });
-      }
+      problem = e.code == 'too_large' ? 'The picture must be 15 MB or smaller.' : 'Could not open that picture. Try another one.';
     } on ApiException catch (e) {
-      if (mounted) {
-        setState(() {
-          _busyArt = false;
-          _artError = e.userMessage;
-        });
-      }
+      problem = e.userMessage;
     } catch (e, st) {
       merchCapture(e, st, 'art');
-      if (mounted) {
-        setState(() {
-          _busyArt = false;
-          _artError = 'Could not read that picture. Try another one.';
-        });
-      }
+      problem = 'Could not read that picture. Try another one.';
+    }
+    if (!mounted) return null;
+    final err = problem;
+    setState(() {
+      _busyArt = false;
+      _artError = err;
+    });
+    if (err != null) toast(context, err);
+    if (made != null) _addToTray(made, select: select);
+    return made;
+  }
+
+  Future<void> _openAi() async {
+    final info = _ai;
+    if (info == null || !info.enabled) return;
+    merchEvent('merch_ai', {'action': 'open'});
+    await showMerchAiSheet(
+      context,
+      repo: _repo,
+      info: info,
+      tray: List<StudioArt>.of(_arts),
+      pickReference: () => _pickAndUpload(select: false),
+      onArt: (a) => _addToTray(a),
+      onUse: (a) => _addToTray(a, select: true),
+      onRefsUsed: () {
+        if (mounted && !_refUsed) setState(() => _refUsed = true);
+      },
+      onAddMoney: () async {
+        await context.push<void>('/topup');
+      },
+    );
+    if (mounted) unawaited(_loadAi());
+  }
+
+  /// "More art" from the designer: the same two choices, without losing the layers.
+  Future<void> _moreArt() async {
+    final choice = await showModalBottomSheet<String>(
+      context: context,
+      backgroundColor: C.paper,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(28))),
+      builder: (ctx) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 18, 16, 16),
+          child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            Text('Add another picture', style: t(22, color: C.maroon)),
+            const SizedBox(height: 12),
+            MerchChoiceCard(icon: Icons.photo_library_rounded, title: 'Upload art or photo', sub: 'From your phone gallery', tone: DesiTone.lav, onTap: () => Navigator.of(ctx).pop('upload')),
+            if (_aiOn) ...[
+              const SizedBox(height: 12),
+              MerchChoiceCard(icon: Icons.auto_awesome_rounded, title: 'Create with AI', sub: _aiPriceText(), tone: DesiTone.gold, onTap: () => Navigator.of(ctx).pop('ai')),
+            ],
+          ]),
+        ),
+      ),
+    );
+    if (!mounted) return;
+    if (choice == 'upload') {
+      await _pickAndUpload();
+    } else if (choice == 'ai') {
+      await _openAi();
     }
   }
 
-  // ---------------------------------------------------------------------------------------------- shirt
+  String _aiPriceText() {
+    final c = _ai?.chargePaise ?? 0;
+    return c <= 0 ? 'Free right now' : '${merchRupees(c)} per picture';
+  }
+
+  // ---------------------------------------------------------------------------------------------- product
 
   Future<void> _loadCatalog() async {
     setState(() => _cat = const AsyncLoading());
@@ -168,15 +247,16 @@ class _MerchWizardScreenState extends State<MerchWizardScreen> {
     if (_item?.id == it.id) return;
     setState(() {
       _item = it;
+      _side = it.sides.contains('front') || it.sides.isEmpty ? 'front' : it.sides.first;
       _colours
         ..clear()
         ..addAll(it.colours.isEmpty ? const <String>[] : [it.colours.first.name]);
       _sizes
         ..clear()
         ..addAll(it.sizes.map((s) => s.size));
-      _placeFresh = true;
       _bases = null;
     });
+    merchEvent('merch_studio_step', {'step': 'product_chosen', 'catalog': it.id});
   }
 
   void _toggleColour(String name) {
@@ -203,68 +283,6 @@ class _MerchWizardScreenState extends State<MerchWizardScreen> {
     });
   }
 
-  // ---------------------------------------------------------------------------------------------- placement maths
-
-  double get _aspect {
-    final fixed = _frame.fixedAspect;
-    if (fixed != null) return fixed;
-    final img = _imgFull;
-    return img == null ? 1.0 : img.width / img.height;
-  }
-
-  double get _h => _w / _aspect;
-
-  Rect _srcFor(ui.Image img) => merchCoverSource(img.width.toDouble(), img.height.toDouble(), _aspect);
-
-  /// The biggest the print may be: inside the print area, and sharp enough (150 DPI or better) for the picture's own pixels.
-  double get _maxW {
-    final it = _item;
-    final img = _imgFull;
-    if (it == null || img == null) return 1;
-    final sharp = _srcFor(img).width / 150;
-    return math.min(math.min(it.areaW, it.areaH * _aspect), sharp);
-  }
-
-  double get _minW => math.min(1.5, _maxW);
-
-  static double _cl(double v, double lo, double hi) => v < lo ? lo : (v > hi ? hi : v);
-
-  void _clampBox() {
-    final it = _item;
-    if (it == null) return;
-    _w = _cl(_w, _minW, _maxW);
-    _cx = _cl(_cx, _w / 2, it.areaW - _w / 2);
-    _cy = _cl(_cy, _h / 2, it.areaH - _h / 2);
-  }
-
-  void _initPlacement() {
-    final it = _item;
-    if (it == null) return;
-    _back = false;
-    _frame = MerchFrame.none;
-    _previewColour = _colours.isEmpty ? null : _colours.first;
-    _w = math.min(_maxW, 8.0);
-    _cx = it.areaW / 2;
-    _cy = _h / 2 + 0.5;
-    _clampBox();
-    _placeFresh = false;
-  }
-
-  double get _dpi {
-    final img = _imgFull;
-    if (img == null || _w <= 0) return 0;
-    return _srcFor(img).width / _w;
-  }
-
-  String get _colourHex {
-    final it = _item;
-    if (it == null || it.colours.isEmpty) return '#cccccc';
-    for (final c in it.colours) {
-      if (c.name == _previewColour) return c.hex;
-    }
-    return it.colours.first.hex;
-  }
-
   // ---------------------------------------------------------------------------------------------- price
 
   int? get _markupValue => int.tryParse(_markup.text.trim());
@@ -284,7 +302,8 @@ class _MerchWizardScreenState extends State<MerchWizardScreen> {
 
   Future<void> _quote() async {
     final it = _item;
-    if (it == null) return;
+    final d = _design;
+    if (it == null || d == null) return;
     setState(() {
       _quoting = true;
       _quoteError = null;
@@ -292,21 +311,13 @@ class _MerchWizardScreenState extends State<MerchWizardScreen> {
     try {
       final sizesInOrder = [for (final s in it.sizes) if (_sizes.contains(s.size)) s.size];
       final lines = <String, QuoteLine>{};
-      final b = await _repo.quote(
-        catalogId: it.id,
-        colours: _colours.toList(),
-        side: _back ? 'back' : 'front',
-        wIn: _w,
-        hIn: _h,
-        sizes: sizesInOrder,
-        breakdownOut: lines,
-      );
+      final b = await _repo.quote(catalogId: it.id, colours: _colours.toList(), side: _side, wIn: d.wIn, hIn: d.hIn, sizes: sizesInOrder, breakdownOut: lines);
       if (mounted) {
         setState(() {
           _bases = b;
           _lines = lines;
           _quoting = false;
-          if (b.isEmpty) _quoteError = 'That shirt cannot be priced in those colours right now.';
+          if (b.isEmpty) _quoteError = 'That product cannot be priced in those colours right now.';
         });
       }
     } catch (e) {
@@ -320,77 +331,41 @@ class _MerchWizardScreenState extends State<MerchWizardScreen> {
   }
 
   bool get _canPublish =>
-      !_publishing && !_quoting && (_bases?.isNotEmpty ?? false) && _title.text.trim().length >= 2 && _markupProblem == null && _own;
+      !_publishing && !_quoting && (_bases?.isNotEmpty ?? false) && _title.text.trim().length >= 2 && _markupProblem == null && _ownOk;
 
   double _r2(double v) => (v * 100).round() / 100;
 
   Future<void> _publish() async {
-    final art = _art;
-    final full = _imgFull;
-    final small = _imgSmall;
     final it = _item;
+    final d = _design;
     final bases = _bases;
     final markup = _markupValue;
-    if (art == null || full == null || small == null || it == null || bases == null || markup == null) return;
-    final frame = _frame;
-    final w = _w;
-    final h = _h;
-    final x = math.max(0.0, _cx - w / 2);
-    final y = math.max(0.0, _cy - h / 2);
-    final back = _back;
-    final hex = _colourHex;
+    if (it == null || d == null || bases == null || markup == null) return;
     final sizes = [for (final s in it.sizes) if (bases.containsKey(s.size)) s.size];
     setState(() {
       _publishing = true;
       _publishError = null;
-      _phase = 'Preparing your print…';
     });
     try {
-      final png = await renderPrintPng(art: full, source: _srcFor(full), frame: frame, wIn: w, hIn: h);
-      if (!mounted) return;
-      setState(() => _phase = 'Uploading your print…');
-      final printId = await _repo.uploadPrintFile(art.artId, png);
-      final mockups = <String>[];
-      try {
-        if (mounted) setState(() => _phase = 'Making the shirt picture…');
-        final scene = ShirtScene(
-          colour: merchColour(hex),
-          back: back,
-          areaW: it.areaW,
-          areaH: it.areaH,
-          art: small,
-          source: _srcFor(small),
-          frame: frame,
-          x: x,
-          y: y,
-          w: w,
-          h: h,
-          guides: false,
-        );
-        mockups.add(await _repo.uploadMockup(await renderMockupPng(scene)));
-      } catch (e, st) {
-        merchCapture(e, st, 'mockup'); // the product still goes up; the server then shows the print preview
-      }
-      if (!mounted) return;
-      setState(() => _phase = 'Saving your product…');
       final product = await _repo.createProduct({
         'title': _title.text.trim(),
         if (_desc.text.trim().isNotEmpty) 'description': _desc.text.trim(),
         'catalogId': it.id,
         'colours': _colours.toList(),
         'sizes': sizes,
-        'side': back ? 'back' : 'front',
-        'placement': {'frame': frame.name, 'x': _r2(x), 'y': _r2(y), 'w': _r2(w), 'h': _r2(h), 'zoom': 100},
-        'artId': art.artId,
-        'printFileId': printId,
+        'side': _side,
+        'placement': {'frame': 'rect', 'x': _r2(d.leftIn), 'y': _r2(d.topIn), 'w': _r2(d.wIn), 'h': _r2(d.hIn), 'zoom': 100},
+        'artId': d.artId,
+        'printFileId': d.printFileId,
         'markupRupees': markup,
         'ownArtConfirmed': true,
-        if (mockups.isNotEmpty) 'mockupUrls': mockups,
+        if (d.mockupUrls.isNotEmpty) 'mockupUrls': d.mockupUrls,
       });
-      merchEvent('merch_studio_step', {'step': 'published', 'status': product.status});
+      merchEvent('merch_studio_step', {'step': 'published', 'status': product.status, 'catalog': it.id});
       if (mounted) {
         setState(() {
           _publishing = false;
+          _madeAny = true;
           _done = product;
         });
       }
@@ -406,332 +381,273 @@ class _MerchWizardScreenState extends State<MerchWizardScreen> {
       if (mounted) {
         setState(() {
           _publishing = false;
-          _publishError = 'Something went wrong while preparing your print. Please try again.';
+          _publishError = 'Something went wrong while saving your product. Please try again.';
         });
       }
     }
   }
 
+  void _again() {
+    setState(() {
+      _done = null;
+      _step = _Step.art;
+      _picked.clear();
+      _item = null;
+      _colours.clear();
+      _sizes.clear();
+      _layers = null;
+      _design = null;
+      _sig = '';
+      _bases = null;
+      _publishError = null;
+      _title.clear();
+      _desc.clear();
+      _markup.text = '100';
+    });
+    merchEvent('merch_studio_step', {'step': _Step.art.name, 'again': true});
+  }
+
   // ---------------------------------------------------------------------------------------------- navigation
 
-  bool get _canNext {
+  bool get _hasWork => _picked.isNotEmpty || _item != null;
+
+  void _exit() {
+    setState(() => _leaving = true);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) context.pop(_madeAny);
+    });
+  }
+
+  Future<void> _back() async {
+    if (_publishing || _leaving) return;
+    if (_done != null) {
+      _exit();
+      return;
+    }
     switch (_step) {
       case _Step.art:
-        return _art != null && !_busyArt;
-      case _Step.shirt:
-        return _item != null && _colours.isNotEmpty && _sizes.isNotEmpty;
-      case _Step.place:
-        return _item != null && _imgFull != null && _w > 0;
+        if (!_hasWork) {
+          _exit();
+          return;
+        }
+        final ok = await hfConfirm(
+          context,
+          title: 'Leave this product?',
+          body: 'The pictures you picked and your choices will be lost.',
+          confirmLabel: 'Leave',
+          cancelLabel: 'Stay',
+          destructive: true,
+        );
+        if (ok && mounted) _exit();
+      case _Step.product:
+        _goto(_Step.art);
+      case _Step.design:
+        _goto(_Step.product);
       case _Step.price:
-        return false;
+        _goto(_Step.design);
     }
   }
 
   void _goto(_Step s) {
-    if (s == _Step.place && _placeFresh) _initPlacement();
-    setState(() => _step = s);
+    if (s == _Step.design) {
+      final it = _item;
+      final sig = it == null ? '' : '${it.id}|$_side';
+      if (sig != _sig) {
+        _layers = null; // another product or side: the old layers do not fit its print area
+        _design = null;
+        _sig = sig;
+      }
+    }
+    setState(() {
+      _step = s;
+      if (s == _Step.price) {
+        _bases = null;
+      }
+    });
     merchEvent('merch_studio_step', {'step': s.name});
-    if (s == _Step.price) {
-      unawaited(_quote());
-    }
+    if (s == _Step.price) unawaited(_quote());
   }
 
-  void _next() {
-    switch (_step) {
-      case _Step.art:
-        _goto(_Step.shirt);
-      case _Step.shirt:
-        _goto(_Step.place);
-      case _Step.place:
-        _goto(_Step.price);
-      case _Step.price:
-        break;
-    }
+  void _onDesignDone(DesignResult r) {
+    setState(() {
+      _design = r;
+      _layers = r.layers;
+    });
+    _goto(_Step.price);
   }
 
-  void _prev() {
-    switch (_step) {
-      case _Step.art:
-        break;
-      case _Step.shirt:
-        _goto(_Step.art);
-      case _Step.place:
-        _goto(_Step.shirt);
-      case _Step.price:
-        _goto(_Step.place);
-    }
-  }
+  bool get _canNext => switch (_step) {
+        _Step.art => _picked.isNotEmpty && !_busyArt && _ownOk,
+        _Step.product => _item != null && _colours.isNotEmpty && _sizes.isNotEmpty,
+        _ => false,
+      };
 
-  static const Map<_Step, String> _titles = {
-    _Step.art: 'Your art',
-    _Step.shirt: 'Pick your shirt',
-    _Step.place: 'Place your art',
-    _Step.price: 'Price and publish',
-  };
+  // ---------------------------------------------------------------------------------------------- build
 
   @override
   Widget build(BuildContext context) {
     final done = _done;
-    return Scaffold(
-      backgroundColor: C.ivory,
-      body: SafeArea(
-        child: Column(
-          children: [
-            const BookHeader('New product'),
-            if (done == null)
-              Padding(
-                padding: const EdgeInsets.fromLTRB(20, 2, 20, 6),
-                child: Align(
-                  alignment: Alignment.centerLeft,
-                  child: Text('Step ${_step.index + 1} of 4 · ${_titles[_step]}', style: t(15, color: C.tan)),
-                ),
-              ),
+    return PopScope<Object?>(
+      canPop: _leaving,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) unawaited(_back());
+      },
+      child: Scaffold(
+        backgroundColor: C.ivory,
+        body: SafeArea(
+          child: Column(children: [
+            MerchHeader('New product', onBack: () => unawaited(_back())),
+            if (done == null) MerchStepper(current: _step.index, compact: _step == _Step.design, onTap: (i) {
+              if (!_publishing) _goto(_Step.values[i]);
+            }),
             Expanded(child: done != null ? _doneView(done) : _body()),
-            if (done == null) _bottomBar(),
-          ],
+            if (done == null && (_step == _Step.art || _step == _Step.product || _step == _Step.price)) _bottomBar(),
+          ]),
         ),
       ),
     );
   }
 
-  Widget _body() {
-    switch (_step) {
-      case _Step.art:
-        return _artStep();
-      case _Step.shirt:
-        return _shirtStep();
-      case _Step.place:
-        return _placeStep();
-      case _Step.price:
-        return _priceStep();
-    }
-  }
+  Widget _body() => switch (_step) {
+        _Step.art => _artStep(),
+        _Step.product => _productStep(),
+        _Step.design => _designStep(),
+        _Step.price => _priceStep(),
+      };
 
   Widget _bottomBar() {
-    if (_step == _Step.price) {
-      return Padding(
-        padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
-        child: Row(children: [
-          DesiButton('Back', kind: DesiButtonKind.ghost, onTap: _publishing ? null : _prev),
-          const SizedBox(width: 10),
-          Expanded(
-            child: DesiButton(_publishing ? 'Please wait…' : 'Publish', icon: Icons.check_rounded, kind: DesiButtonKind.rani, expand: true, onTap: _canPublish ? () => unawaited(_publish()) : null),
-          ),
-        ]),
-      );
-    }
-    return Padding(
+    final price = _step == _Step.price;
+    return Container(
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+      decoration: const BoxDecoration(color: C.ivory, border: Border(top: BorderSide(color: C.line))),
       child: Row(children: [
         if (_step != _Step.art) ...[
-          DesiButton('Back', kind: DesiButtonKind.ghost, onTap: _prev),
+          DesiButton('Back', kind: DesiButtonKind.ghost, onTap: _publishing ? null : () => unawaited(_back())),
           const SizedBox(width: 10),
         ],
-        Expanded(child: DesiButton('Next', icon: Icons.arrow_forward_rounded, kind: DesiButtonKind.rani, expand: true, onTap: _canNext ? _next : null)),
+        Expanded(
+          child: price
+              ? DesiButton(_publishing ? 'Please wait…' : 'Publish', icon: Icons.check_rounded, kind: DesiButtonKind.rani, expand: true, onTap: _canPublish ? () => unawaited(_publish()) : null)
+              : DesiButton('Next', icon: Icons.arrow_forward_rounded, kind: DesiButtonKind.rani, expand: true, onTap: _canNext ? () => _goto(_step == _Step.art ? _Step.product : _Step.design) : null),
+        ),
       ]),
     );
   }
 
   // ---------------------------------------------------------------------------------------------- step 1: art
 
+  Widget _ownBox() {
+    return Semantics(
+      container: true,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(14),
+        onTap: () => setState(() => _own = !_own),
+        child: Container(
+          constraints: const BoxConstraints(minHeight: 56),
+          child: Row(children: [
+            Checkbox(value: _own, activeColor: C.maroon, onChanged: (v) => setState(() => _own = v == true)),
+            Expanded(child: Text('I own these pictures, or I have the right to sell them on products.', style: t(15, w: FontWeight.w700))),
+          ]),
+        ),
+      ),
+    );
+  }
+
   Widget _artStep() {
-    final art = _art;
-    final img = _imgSmall;
+    final warnings = <String>{
+      for (final a in _arts)
+        if (_picked.contains(a.artId)) ...a.art.warnings,
+    };
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 4, 16, 20),
       children: [
-        Text('Choose the picture you want on the T-shirt. A PNG with a see-through background prints best. JPEG or PNG, up to 15 MB.', style: t(15, color: C.muted, w: FontWeight.w700)),
+        Text('Start with a picture. A PNG with a see-through background prints best. JPEG or PNG, up to 15 MB.', style: t(15, color: C.muted, w: FontWeight.w700)),
         const SizedBox(height: 14),
-        Container(
-          height: 260,
-          decoration: BoxDecoration(color: C.white, borderRadius: BorderRadius.circular(24), border: Border.all(color: C.line)),
-          clipBehavior: Clip.antiAlias,
-          alignment: Alignment.center,
-          child: _busyArt
-              ? Column(mainAxisSize: MainAxisSize.min, children: [
-                  const SizedBox(width: 40, height: 40, child: CircularProgressIndicator(color: C.maroon, strokeWidth: 5)),
-                  const SizedBox(height: 12),
-                  Text('Uploading your art…', style: t(16, color: C.muted, w: FontWeight.w700)),
-                ])
-              : (img == null
-                  ? Column(mainAxisSize: MainAxisSize.min, children: [
-                      const Icon(Icons.photo_library_rounded, size: 52, color: C.violet),
-                      const SizedBox(height: 8),
-                      Text('No art chosen yet', style: t(16, color: C.muted, w: FontWeight.w700)),
-                    ])
-                  : Padding(padding: const EdgeInsets.all(12), child: RawImage(image: img, fit: BoxFit.contain))),
+        MerchChoiceCard(
+          icon: Icons.photo_library_rounded,
+          title: 'Upload art or photo',
+          sub: 'From your phone gallery',
+          tone: DesiTone.lav,
+          busy: _busyArt,
+          onTap: _busyArt ? null : () => unawaited(_pickAndUpload()),
         ),
-        const SizedBox(height: 14),
-        DesiButton(art == null ? 'Choose from gallery' : 'Choose another picture', icon: Icons.photo_library_rounded, kind: DesiButtonKind.rani, expand: true, onTap: _busyArt ? null : () => unawaited(_pickArt())),
-        if (_artError != null) ...[
-          const SizedBox(height: 10),
-          Text(_artError!, style: t(15, color: C.ruby, w: FontWeight.w700)),
-        ],
-        if (art != null) ...[
+        if (_aiOn) ...[
           const SizedBox(height: 12),
-          Text('${art.width} × ${art.height} pixels', style: t(14, color: C.muted, w: FontWeight.w700)),
-          for (final w in art.warnings)
-            Padding(
-              padding: const EdgeInsets.only(top: 6),
-              child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                const Icon(Icons.info_outline_rounded, size: 20, color: C.amber),
-                const SizedBox(width: 8),
-                Expanded(child: Text(w, style: t(14, color: C.deep, w: FontWeight.w700))),
-              ]),
-            ),
+          MerchChoiceCard(icon: Icons.auto_awesome_rounded, title: 'Create with AI', sub: _aiPriceText(), tone: DesiTone.gold, corner: DesiCorner.marigold, onTap: _busyArt ? null : () => unawaited(_openAi())),
         ],
+        if (_artError != null) Padding(padding: const EdgeInsets.only(top: 10), child: Text(_artError!, style: t(15, color: C.ruby, w: FontWeight.w700))),
+        const SizedBox(height: 20),
+        Text('My pictures', style: t(18, color: C.maroon)),
+        const SizedBox(height: 2),
+        Text(_arts.isEmpty ? 'Your pictures will show here.' : 'Tap a picture to use it. Tap the cross to remove it.', style: t(14, color: C.muted, w: FontWeight.w700)),
+        const SizedBox(height: 14),
+        if (_arts.isNotEmpty)
+          Wrap(spacing: 16, runSpacing: 16, children: [
+            for (final a in _arts)
+              MerchArtThumb(
+                a,
+                size: 96,
+                selected: _picked.contains(a.artId),
+                onTap: () => _togglePicked(a),
+                onRemove: () => _removeFromTray(a),
+                semanticLabel: a.source == 'ai' ? 'AI picture' : 'Your picture',
+              ),
+          ]),
+        for (final w in warnings) MerchNote(w),
+        if (_ownRequired) ...[
+          const SizedBox(height: 14),
+          _ownBox(),
+        ],
+        if (_arts.isNotEmpty && _picked.isEmpty)
+          const Padding(padding: EdgeInsets.only(top: 8), child: MerchNote('Pick at least one picture to go on.', icon: Icons.touch_app_rounded, color: C.maroon)),
       ],
     );
   }
 
-  // ---------------------------------------------------------------------------------------------- step 2: shirt
+  // ---------------------------------------------------------------------------------------------- step 2: product
 
-  Widget _shirtStep() {
+  Widget _productStep() {
     return AsyncView<MerchCatalog>(
       state: _cat,
       onRetry: () => unawaited(_loadCatalog()),
-      emptyTitle: 'No shirts yet',
-      emptyMessage: 'Shirts are not available right now. Please try again in a little while.',
+      emptyTitle: 'No products yet',
+      emptyMessage: 'Products are not available right now. Please try again in a little while.',
       isEmpty: (c) => c.items.isEmpty,
-      builder: (context, cat) {
-        final it = _item;
-        return ListView(
-          padding: const EdgeInsets.fromLTRB(16, 4, 16, 20),
-          children: [
-            for (final s in cat.items) ...[
-              _ShirtOption(item: s, selected: it?.id == s.id, onTap: () => _chooseItem(s)),
-              const SizedBox(height: 10),
-            ],
-            if (it != null) ...[
-              const SizedBox(height: 4),
-              Text('Colours you will sell (up to 8)', style: t(16, color: C.maroon)),
-              const SizedBox(height: 8),
-              Wrap(spacing: 10, runSpacing: 10, children: [
-                for (final c in it.colours) _ColourDot(colour: c, selected: _colours.contains(c.name), onTap: () => _toggleColour(c.name)),
-              ]),
-              const SizedBox(height: 16),
-              Text('Sizes', style: t(16, color: C.maroon)),
-              const SizedBox(height: 8),
-              Wrap(spacing: 8, runSpacing: 8, children: [
-                for (final s in it.sizes) MerchPill(label: s.size, selected: _sizes.contains(s.size), onTap: () => _toggleSize(s.size)),
-              ]),
-            ],
-          ],
-        );
-      },
+      builder: (context, cat) => MerchProductPick(
+        items: cat.items,
+        item: _item,
+        side: _side,
+        colours: _colours,
+        sizes: _sizes,
+        onItem: _chooseItem,
+        onSide: (s) => setState(() {
+          _side = s;
+          _bases = null;
+        }),
+        onColour: _toggleColour,
+        onSize: _toggleSize,
+      ),
     );
   }
 
-  // ---------------------------------------------------------------------------------------------- step 3: place
+  // ---------------------------------------------------------------------------------------------- step 3: design
 
-  Widget _placeStep() {
+  Widget _designStep() {
     final it = _item;
-    final small = _imgSmall;
-    if (it == null || small == null) return const SizedBox.shrink();
-    final maxW = _maxW;
-    final minW = _minW;
-    final dpi = _dpi;
-    final quality = dpi >= 250 ? 'Sharp print' : (dpi >= 190 ? 'Good print' : 'A little soft');
-    return Column(
-      children: [
-        Expanded(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: Center(
-              child: AspectRatio(
-                aspectRatio: 0.9,
-                child: LayoutBuilder(
-                  builder: (context, c) {
-                    final size = Size(c.maxWidth, c.maxHeight);
-                    final geo = ShirtGeometry(size, it.areaW, it.areaH);
-                    final scene = ShirtScene(
-                      colour: merchColour(_colourHex),
-                      back: _back,
-                      areaW: it.areaW,
-                      areaH: it.areaH,
-                      art: small,
-                      source: _srcFor(small),
-                      frame: _frame,
-                      x: _cx - _w / 2,
-                      y: _cy - _h / 2,
-                      w: _w,
-                      h: _h,
-                    );
-                    return Semantics(
-                      label: 'Shirt preview. Drag the art to move it. Pinch to make it bigger or smaller.',
-                      child: GestureDetector(
-                        behavior: HitTestBehavior.opaque,
-                        onScaleStart: (d) => _startW = _w,
-                        onScaleUpdate: (d) => setState(() {
-                          _w = _startW * d.scale;
-                          _cx += d.focalPointDelta.dx / geo.ppi;
-                          _cy += d.focalPointDelta.dy / geo.ppi;
-                          _clampBox();
-                        }),
-                        child: CustomPaint(size: size, painter: ShirtPainter(scene)),
-                      ),
-                    );
-                  },
-                ),
-              ),
-            ),
-          ),
-        ),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 6, 16, 0),
-          child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-            Text(
-              'Drag to move, pinch to resize · ${_w.toStringAsFixed(1)} × ${_h.toStringAsFixed(1)} in · $quality',
-              textAlign: TextAlign.center,
-              style: t(14, color: C.muted, w: FontWeight.w700),
-            ),
-            if (maxW - minW > 0.05)
-              Slider(
-                value: _cl(_w, minW, maxW),
-                min: minW,
-                max: maxW,
-                onChanged: (v) => setState(() {
-                  _w = v;
-                  _clampBox();
-                }),
-              ),
-            SizedBox(
-              height: 52,
-              child: ListView(scrollDirection: Axis.horizontal, children: [
-                MerchPill(label: 'Front', selected: !_back, onTap: () => setState(() => _back = false)),
-                const SizedBox(width: 8),
-                MerchPill(label: 'Back', selected: _back, onTap: () => setState(() => _back = true)),
-                const SizedBox(width: 16),
-                for (final f in MerchFrame.values) ...[
-                  MerchPill(
-                    label: f.label,
-                    selected: _frame == f,
-                    onTap: () => setState(() {
-                      _frame = f;
-                      _clampBox();
-                    }),
-                  ),
-                  const SizedBox(width: 8),
-                ],
-              ]),
-            ),
-            if (_colours.length > 1) ...[
-              const SizedBox(height: 6),
-              SizedBox(
-                height: 56,
-                child: ListView(scrollDirection: Axis.horizontal, children: [
-                  for (final c in it.colours)
-                    if (_colours.contains(c.name))
-                      Padding(
-                        padding: const EdgeInsets.only(right: 10),
-                        child: _ColourDot(colour: c, selected: _previewColour == c.name, onTap: () => setState(() => _previewColour = c.name), compact: true),
-                      ),
-                ]),
-              ),
-            ],
-          ]),
-        ),
-      ],
+    if (it == null) return const SizedBox.shrink();
+    return MerchDesigner(
+      key: ValueKey<String>('designer-$_sig'),
+      repo: _repo,
+      item: it,
+      side: _side,
+      colours: [for (final c in it.colours) if (_colours.contains(c.name)) c],
+      arts: _designerArts(),
+      onArtAdded: (a) => _addToTray(a, select: true),
+      onWantMoreArt: () => unawaited(_moreArt()),
+      initialLayers: _layers,
+      onLayersChange: (l) => _layers = l,
+      onBack: () => _goto(_Step.product),
+      onDone: _onDesignDone,
     );
   }
 
@@ -739,6 +655,7 @@ class _MerchWizardScreenState extends State<MerchWizardScreen> {
 
   Widget _priceStep() {
     final it = _item;
+    final d = _design;
     final cat = _cat;
     final bases = _bases;
     final m = _markupValue ?? 0;
@@ -746,16 +663,23 @@ class _MerchWizardScreenState extends State<MerchWizardScreen> {
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 4, 16, 20),
       children: [
-        MerchField(label: 'Product name', controller: _title, hint: 'My first T-shirt', capitalization: TextCapitalization.sentences, formatters: [LengthLimitingTextInputFormatter(80)], onChanged: (_) => setState(() {})),
+        if (d != null) MerchGallery(urls: d.mockupUrls, previewPng: d.previewPng, wIn: d.wIn, hIn: d.hIn),
+        const SizedBox(height: 16),
+        MerchField(label: 'Product name', controller: _title, hint: 'My first product', capitalization: TextCapitalization.sentences, formatters: [LengthLimitingTextInputFormatter(80)], onChanged: (_) => setState(() {})),
         MerchField(label: 'About it (optional)', controller: _desc, hint: 'A line or two for your fans', maxLines: 3, capitalization: TextCapitalization.sentences, formatters: [LengthLimitingTextInputFormatter(600)]),
         MerchField(
-          label: 'Your markup per T-shirt (₹)',
+          label: 'Your markup per item (₹)',
           controller: _markup,
           keyboard: TextInputType.number,
           formatters: [FilteringTextInputFormatter.digitsOnly, LengthLimitingTextInputFormatter(4)],
           onChanged: (_) => setState(() {}),
         ),
-        if (!validMarkup) Padding(padding: const EdgeInsets.only(bottom: 8), child: Text(_markupProblem!, style: t(15, color: C.ruby, w: FontWeight.w700))),
+        Wrap(spacing: 8, runSpacing: 8, children: [
+          for (final v in const [50, 100, 150, 200, 300, 500])
+            if (v >= _minMarkup) MerchPill(label: '₹$v', selected: _markupValue == v, onTap: () => setState(() => _markup.text = '$v')),
+        ]),
+        if (!validMarkup) Padding(padding: const EdgeInsets.only(top: 8), child: Text(_markupProblem!, style: t(15, color: C.ruby, w: FontWeight.w700))),
+        const SizedBox(height: 14),
         DesiCard(
           title: 'Your prices',
           note: 'Base price = printing (incl. GST) + shipping. Fans pay one price, incl. GST & delivery.',
@@ -768,67 +692,18 @@ class _MerchWizardScreenState extends State<MerchWizardScreen> {
                       const SizedBox(height: 8),
                       DesiButton('Try again', kind: DesiButtonKind.ghost, onTap: () => unawaited(_quote())),
                     ])
-                  : Column(children: [
-                      Row(children: [
-                        SizedBox(width: 50, child: Text('Size', style: t(14, color: C.muted))),
-                        Expanded(child: Text('Base', style: t(14, color: C.muted))),
-                        Expanded(child: Text('Fan pays*', style: t(14, color: C.muted))),
-                        Expanded(child: Text('You earn', textAlign: TextAlign.right, style: t(14, color: C.muted))),
-                      ]),
-                      const SizedBox(height: 4),
-                      if (it != null && bases != null)
-                        for (final s in it.sizes)
-                          if (bases.containsKey(s.size))
-                            Padding(
-                              padding: const EdgeInsets.symmetric(vertical: 4),
-                              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                               Row(children: [
-                                SizedBox(width: 50, child: Text(s.size, style: t(16))),
-                                Expanded(child: Text(merchRupees(bases[s.size] ?? 0), style: t(15, w: FontWeight.w700))),
-                                Expanded(child: Text(validMarkup ? merchRupees((bases[s.size] ?? 0) + m * 100) : '—', style: t(15, w: FontWeight.w700))),
-                                Expanded(
-                                  child: Text(
-                                    validMarkup && cat is AsyncData<MerchCatalog> ? merchRupees(cat.value.youEarnPaise(m)) : '—',
-                                    textAlign: TextAlign.right,
-                                    style: t(15, color: C.rani),
-                                  ),
-                                ),
-                               ]),
-                               if (_lines[s.size]?.printingPaise != null && _lines[s.size]?.shippingPaise != null)
-                                 Padding(
-                                   padding: const EdgeInsets.only(left: 50),
-                                   child: Text(
-                                     'Printing incl. GST ${merchRupees(_lines[s.size]!.printingPaise!)} + Shipping ${merchRupees(_lines[s.size]!.shippingPaise!)}',
-                                     style: t(13, color: C.muted),
-                                   ),
-                                 ),
-                              ]),
-                            ),
-                      const SizedBox(height: 6),
-                      Align(alignment: Alignment.centerLeft, child: Text('*Fan pays base + your markup, incl. GST & delivery.', style: t(13, color: C.muted))),
-                    ])),
+                  : MerchPriceTable(item: it, bases: bases, lines: _lines, markup: m, valid: validMarkup, catalog: cat is AsyncData<MerchCatalog> ? cat.value : null)),
         ),
-        const SizedBox(height: 12),
-        Semantics(
-          container: true,
-          child: InkWell(
-            borderRadius: BorderRadius.circular(14),
-            onTap: () => setState(() => _own = !_own),
-            child: Container(
-              constraints: const BoxConstraints(minHeight: 56),
-              child: Row(children: [
-                Checkbox(value: _own, activeColor: C.maroon, onChanged: (v) => setState(() => _own = v == true)),
-                Expanded(child: Text('This art is mine, or I have the right to sell it.', style: t(15, w: FontWeight.w700))),
-              ]),
-            ),
-          ),
-        ),
+        if (_ownRequired) ...[
+          const SizedBox(height: 12),
+          _ownBox(),
+        ],
         if (_publishing) ...[
           const SizedBox(height: 10),
           Row(children: [
             const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(color: C.maroon, strokeWidth: 3)),
             const SizedBox(width: 12),
-            Expanded(child: Text(_phase, style: t(15, color: C.muted, w: FontWeight.w700))),
+            Expanded(child: Text('Saving your product…', style: t(15, color: C.muted, w: FontWeight.w700))),
           ]),
         ],
         if (_publishError != null) ...[
@@ -842,20 +717,20 @@ class _MerchWizardScreenState extends State<MerchWizardScreen> {
   Widget _doneView(MerchProduct p) {
     final review = p.status != 'live';
     return ListView(
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
       children: [
+        const MerchCelebrate(),
+        const SizedBox(height: 8),
         DesiCard(
           tone: DesiTone.plum,
           corner: DesiCorner.yellow,
-          title: review ? 'Sent for review' : 'Your product is live',
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(
-              review
-                  ? 'Our team checks every new design before it goes on sale. We will tell you as soon as it is live on your page.'
-                  : 'Fans can now buy it from your page.',
-              style: t(16, color: C.white, w: FontWeight.w700, h: 1.35),
-            ),
-          ]),
+          title: review ? 'Sent for review' : 'Your product is live!',
+          child: Text(
+            review
+                ? 'Our team checks every new design before it goes on sale. We will tell you as soon as it is live on your page.'
+                : 'Fans can now buy it from your page.',
+            style: t(16, color: C.white, w: FontWeight.w700, h: 1.35),
+          ),
         ),
         const SizedBox(height: 14),
         Row(children: [
@@ -870,93 +745,10 @@ class _MerchWizardScreenState extends State<MerchWizardScreen> {
           ),
         ]),
         const SizedBox(height: 18),
-        DesiButton('Back to My merch', icon: Icons.checkroom_rounded, kind: DesiButtonKind.rani, expand: true, onTap: () => context.pop(true)),
+        DesiButton('Back to my products', icon: Icons.storefront_rounded, kind: DesiButtonKind.rani, expand: true, onTap: _exit),
+        const SizedBox(height: 10),
+        DesiButton('Make another', icon: Icons.add_rounded, kind: DesiButtonKind.ghost, expand: true, onTap: _again),
       ],
-    );
-  }
-}
-
-class _ShirtOption extends StatelessWidget {
-  const _ShirtOption({required this.item, required this.selected, required this.onTap});
-
-  final CatalogItem item;
-  final bool selected;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return Semantics(
-      button: true,
-      selected: selected,
-      label: item.name,
-      child: Material(
-        color: C.white,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20), side: BorderSide(color: selected ? C.rani : C.line, width: selected ? 3 : 1.5)),
-        child: InkWell(
-          borderRadius: BorderRadius.circular(20),
-          onTap: onTap,
-          child: Padding(
-            padding: const EdgeInsets.all(14),
-            child: Row(children: [
-              MerchThumb(item.mockupUrl, size: 64),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Text(item.name, style: t(17)),
-                  const SizedBox(height: 2),
-                  Text(item.fromPaise > 0 ? 'Base price from ${merchRupees(item.fromPaise)}' : 'Base price on the next step', style: t(14, color: C.muted, w: FontWeight.w700)),
-                  const SizedBox(height: 6),
-                  Row(children: [
-                    for (final c in item.colours.take(8))
-                      Container(
-                        width: 16,
-                        height: 16,
-                        margin: const EdgeInsets.only(right: 4),
-                        decoration: BoxDecoration(shape: BoxShape.circle, color: merchColour(c.hex), border: Border.all(color: C.brass)),
-                      ),
-                  ]),
-                ]),
-              ),
-              if (selected) const Icon(Icons.check_circle_rounded, color: C.rani),
-            ]),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _ColourDot extends StatelessWidget {
-  const _ColourDot({required this.colour, required this.selected, required this.onTap, this.compact = false});
-
-  final MerchColour colour;
-  final bool selected;
-  final VoidCallback onTap;
-  final bool compact;
-
-  @override
-  Widget build(BuildContext context) {
-    final fill = merchColour(colour.hex);
-    return Semantics(
-      button: true,
-      selected: selected,
-      label: colour.name,
-      child: InkWell(
-        borderRadius: BorderRadius.circular(16),
-        onTap: onTap,
-        child: SizedBox(
-          width: compact ? 52 : 68,
-          child: Column(mainAxisSize: MainAxisSize.min, children: [
-            Container(
-              width: 44,
-              height: 44,
-              decoration: BoxDecoration(shape: BoxShape.circle, color: fill, border: Border.all(color: selected ? C.rani : C.brass, width: selected ? 4 : 1.5)),
-              child: selected ? Icon(Icons.check_rounded, size: 22, color: fill.computeLuminance() > 0.5 ? C.deep : C.white) : null,
-            ),
-            if (!compact) Text(colour.name, maxLines: 1, overflow: TextOverflow.ellipsis, textAlign: TextAlign.center, style: t(14, color: C.muted, w: FontWeight.w700)),
-          ]),
-        ),
-      ),
     );
   }
 }

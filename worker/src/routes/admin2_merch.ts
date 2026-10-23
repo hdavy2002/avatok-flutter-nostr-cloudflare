@@ -22,6 +22,7 @@ import { reviewMerchProduct, type PFail } from "../lib/hf_merch_products";
 import { merchFail, snapOf } from "../lib/hf_merch_notify";
 import type { ShopOrderRow } from "../lib/shop_orders_logic";
 import { bad, out } from "./hf_merch";
+import { adminAiOverview, aiConfig, aiTableOk } from "../lib/hf_merch_ai";
 
 const failOf = (f: FlowFail | PFail): Response => bad(f.status, f.error, f.message, f.extra ?? {});
 async function readJson(req: Request): Promise<Record<string, unknown>> {
@@ -176,6 +177,33 @@ async function putSettings(req: Request, env: Env): Promise<Response> {
 }
 
 // ---------------------------------------------------------------------------
+// [HF-MERCH-STUDIO-2] AI pictures: price, switch, usage
+// ---------------------------------------------------------------------------
+async function aiOverview(env: Env): Promise<Response> {
+  return out(await adminAiOverview(env, async (uids) => {
+    const hosts = uids.length ? await hostsByUids(env, uids) : new Map<string, { displayName: string; slug: string }>();
+    return new Map([...hosts.entries()].map(([k, h]) => [k, h.displayName || h.slug]));
+  }));
+}
+async function putAi(req: Request, env: Env): Promise<Response> {
+  const b = await readJson(req);
+  const patch: Record<string, string | number | boolean> = {};
+  if (b.enabled !== undefined) {
+    if (typeof b.enabled !== "boolean") return bad(400, "invalid_value", "enabled must be true or false.", { field: "enabled" });
+    patch.hfMerchAiEnabled = b.enabled;
+  }
+  if (b.chargeRupees !== undefined) {
+    const v = b.chargeRupees;
+    if (typeof v !== "number" || !Number.isInteger(v) || v < 0 || v > 500) return bad(400, "invalid_value", "The charge must be a whole number of rupees from 0 to 500.", { field: "chargeRupees" });
+    patch.hfMerchAiChargeRupees = v;
+  }
+  for (const k of Object.keys(b)) if (k !== "enabled" && k !== "chargeRupees") return bad(400, "unknown_setting", `${k} is not an AI setting.`, { field: k });
+  if (Object.keys(patch).length) await writeConfigOverrides(env, patch); // ONE KV write
+  const cfg = await aiConfig(env);
+  return out({ enabled: cfg.flag, chargeRupees: cfg.chargeRupees, tableReady: await aiTableOk(env) });
+}
+
+// ---------------------------------------------------------------------------
 // Platform wallet
 // ---------------------------------------------------------------------------
 const IST_MS = 19_800_000;
@@ -253,6 +281,10 @@ export async function adminMerchRoute(req: Request, env: Env, p: string): Promis
     if (x === "settings" && rest.length === 1) {
       if (m === "GET") return out({ settings: await settingsOut(env) });
       if (m === "PUT") return await putSettings(req, env);
+    }
+    if (x === "ai" && rest.length === 1) {
+      if (m === "GET") return await aiOverview(env);
+      if (m === "PUT") return await putAi(req, env);
     }
     if (x === "platform-wallet" && rest.length === 1 && m === "GET") return await platformWallet(req, env);
     if (x === "problem-photo" && rest.length === 1 && m === "GET") return await problemPhoto(req, env);

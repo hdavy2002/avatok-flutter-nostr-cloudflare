@@ -47,6 +47,7 @@
     "framer-motion": "^13.4.4",
     "hls.js": "1.6.16",
     "input-otp": "^1.5.0",
+    "konva": "^9.3.20",
     "lucide-react": "^1.48.0",
     "posthog-js": "^1.424.1",
     "qrcode": "^1.5.4",

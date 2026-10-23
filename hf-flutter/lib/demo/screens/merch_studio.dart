@@ -223,7 +223,7 @@ class _ProductsTabState extends State<_ProductsTab> {
             DesiButton('New product', icon: Icons.add_rounded, kind: DesiButtonKind.rani, expand: true, onTap: () => unawaited(_new())),
             const SizedBox(height: 12),
             if (items.isEmpty)
-              const DesiEmpty(text: 'No products yet. Put your art on a T-shirt and sell it to your fans.')
+              const DesiEmpty(text: 'No products yet. Put your art on T-shirts, hoodies, mugs and more, and sell them to your fans.')
             else
               for (final p in items) ...[
                 _ProductCard(
@@ -383,7 +383,7 @@ class _MarkupSheetState extends State<_MarkupSheet> {
           Text(widget.product.title, maxLines: 1, overflow: TextOverflow.ellipsis, style: t(15, color: C.muted, w: FontWeight.w700)),
           const SizedBox(height: 14),
           MerchField(
-            label: 'Markup per T-shirt (₹)',
+            label: 'Markup per item (₹)',
             controller: _c,
             keyboard: TextInputType.number,
             formatters: [FilteringTextInputFormatter.digitsOnly, LengthLimitingTextInputFormatter(4)],
@@ -492,7 +492,7 @@ class _OrdersTabState extends State<_OrdersTab> {
           state: _state,
           onRetry: () => unawaited(_load()),
           emptyTitle: 'No orders here yet',
-          emptyMessage: 'When a fan buys your T-shirt it shows up here.',
+          emptyMessage: 'When a fan buys your product it shows up here.',
           builder: (context, items) => RefreshIndicator(
             color: C.maroon,
             onRefresh: _load,

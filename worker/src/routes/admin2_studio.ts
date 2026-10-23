@@ -10,7 +10,7 @@ import type { Admin2RouteDef } from "./admin2"; // type only: admin2.ts imports 
 import { track, trackException } from "../hooks";
 import { adminGuard, audit, createProduct, err, readBody, safeTrack, updateProduct } from "./admin2_shop_catalog";
 import { presignDigitalReadUrl } from "./media";
-import { getPodProvider, ensurePodCatalog, referenceShippingRupees } from "../lib/pod";
+import { getPodProvider, ensurePodCatalog, referenceShippingRupees, studioCatalog } from "../lib/pod";
 import type { CatalogInfo } from "../lib/pod";
 import type { CatalogProduct, PodProvider } from "../lib/pod";
 import { BADGES, SLOTS } from "../lib/shop_logic";
@@ -89,7 +89,8 @@ function photoShape(p: PhotoRow) {
 // Catalogue [AUMFE-POD-COST-1]: Printrove's stored rows whenever its login is configured (auto-synced when empty or a day old),
 // whatever shopPodProvider says (that flag is only about who places orders). The built-in manual catalogue is a visible fallback
 // (source:'builtin' + reason) when Printrove is not connected or the sync fails.
-const loadCatalogInfo = (env: Env): Promise<CatalogInfo> => ensurePodCatalog(env);
+// [HF-MERCH-STUDIO-2] studioCatalog keeps this studio on the garments it always sold (the merch shop sees every printable product).
+const loadCatalogInfo = async (env: Env): Promise<CatalogInfo> => studioCatalog(await ensurePodCatalog(env));
 async function loadCatalog(env: Env, _provider?: PodProvider): Promise<CatalogProduct[]> { return (await loadCatalogInfo(env)).products; }
 
 /**

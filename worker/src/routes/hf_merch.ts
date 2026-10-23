@@ -1,7 +1,7 @@
 // [HF-MERCH-CORE-1 2026-10-23] Influencer merch shop: influencer, public and fan routes. Spec: Specs/SPEC-2026-10-23-HF-MERCH.md section 5.
 // Every response is { ok:true, ... } or { ok:false, error, message }. Everything is dark behind hfMerchEnabled (404 not_enabled);
 // checkout is also behind hfMerchCheckoutEnabled (403 checkout_off). Admin routes live in routes/admin2_merch.ts.
-//   Influencer: GET catalog | GET quote | POST art | POST print-file | POST mockup | POST/GET products | PATCH/DELETE products/:id | GET orders(/:id) | GET summary
+//   Influencer: GET catalog | GET quote | POST art | GET ai | POST ai/generate | POST art/:id/remove-bg | GET art/:id/file | POST print-file | POST mockup | POST/GET products | PATCH/DELETE products/:id | GET orders(/:id) | GET summary
 //   Public:     GET public/:host | GET public/:host/:product | GET pincode/:pin | GET sitemap
 //   Fan:        POST checkout | GET my-orders(/:id) | POST my-orders/:id/problem(-photo) | GET addresses | DELETE addresses/:id
 //   Gateway:    POST webhook/cashfree
@@ -31,6 +31,7 @@ import {
 } from "../lib/hf_merch_flow";
 import { createMerchProduct, deleteMerchProduct, patchMerchProduct, saveMerchArt, saveMerchMockup, saveMerchPrintFile, MERCH_ART_MAX_BYTES, type PFail } from "../lib/hf_merch_products";
 import { merchFail, merchTrack, snapOf } from "../lib/hf_merch_notify";
+import { AI_UNAVAILABLE, aiState, aiTableOk, generateAiPicture, removeBackground } from "../lib/hf_merch_ai";
 
 const APP = "hf_merch";
 const SELLER_STATUSES = ["new", "processing", "shipped", "delivered", "cancelled"];
@@ -121,6 +122,32 @@ async function mockupRoute(req: Request, env: Env, s: SellerCtx): Promise<Respon
   if (!bytes) return bad(413, "too_large", "The picture must be 3 MB or smaller.");
   const r = await saveMerchMockup(env, s.uid, bytes);
   return r.ok ? out({ url: r.url }) : failOf(r);
+}
+
+// [HF-MERCH-STUDIO-2] AI pictures and the background remover. Logic lives in lib/hf_merch_ai.ts.
+async function aiStateRoute(env: Env, s: SellerCtx): Promise<Response> {
+  if (!(await aiTableOk(env))) { const f = AI_UNAVAILABLE(); return bad(f.status, f.error, f.message); }
+  return out(await aiState(env, s.uid));
+}
+async function aiGenerateRoute(req: Request, env: Env, s: SellerCtx): Promise<Response> {
+  const limited = await rateLimit(env, `merch:ai:${s.uid}`, 30, 3600); if (limited) return limited;
+  const r = await generateAiPicture(env, s.uid, await readJson(req, 8000));
+  return r.ok ? out(r.body) : failOf(r);
+}
+/** [HF-MERCH-STUDIO-2] The influencer's own art bytes with CORS, so the browser studio can draw it on a canvas (the public media bucket sends no CORS headers). */
+async function artFileRoute(env: Env, s: SellerCtx, artId: string): Promise<Response> {
+  if (!/^dsn-[a-f0-9]{8}$/.test(artId)) return bad(400, "invalid_art", "That art id is not valid.");
+  const d = await metaDb(env).prepare("SELECT art_key, art_mime FROM studio_designs WHERE id=?1 AND created_by=?2 AND step='merch'").bind(artId, s.uid)
+    .first<{ art_key: string | null; art_mime: string | null }>();
+  if (!d?.art_key) return bad(404, "not_found", "That picture was not found.");
+  const obj = await env.DIGITAL.get(d.art_key);
+  if (!obj) return bad(404, "not_found", "That picture was not found.");
+  return new Response(obj.body, { headers: { "content-type": d.art_mime || "image/png", "cache-control": "private, max-age=3600", "access-control-allow-origin": "*" } });
+}
+async function removeBgRoute(env: Env, s: SellerCtx, artId: string): Promise<Response> {
+  const limited = await rateLimit(env, `merch:bgrm:${s.uid}`, 60, 3600); if (limited) return limited;
+  const r = await removeBackground(env, s.uid, artId);
+  return r.ok ? out({ art: r.art }) : failOf(r);
 }
 
 /** Products made before the breakdown was frozen need today's reference shipping to show a split; fetched only when one is present. */
@@ -422,13 +449,19 @@ export async function hfMerchRoute(req: Request, env: Env, p: string, ctx?: Exec
       if (rest.length === 2 && m === "DELETE") return await deleteAddressRoute(req, env, b2);
     }
     // Influencer
-    const influencer = ["catalog", "quote", "art", "print-file", "mockup", "products", "orders", "summary"];
+    const influencer = ["catalog", "quote", "ai", "art", "print-file", "mockup", "products", "orders", "summary"];
     if (!influencer.includes(a)) return null;
     const s = await sellerCtx(req, env);
     if (s instanceof Response) return s;
     if (a === "catalog" && m === "GET") return await catalogRoute(env);
     if (a === "quote" && m === "GET") return await quoteRoute(req, env);
-    if (a === "art" && m === "POST") return await artRoute(req, env, s);
+    if (a === "ai") {
+      if (rest.length === 1 && m === "GET") return await aiStateRoute(env, s);
+      if (rest.length === 2 && b2 === "generate" && m === "POST") return await aiGenerateRoute(req, env, s);
+    }
+    if (a === "art" && rest.length === 3 && c2 === "remove-bg" && m === "POST") return await removeBgRoute(env, s, b2);
+    if (a === "art" && rest.length === 3 && c2 === "file" && m === "GET") return await artFileRoute(env, s, b2);
+    if (a === "art" && rest.length === 1 && m === "POST") return await artRoute(req, env, s);
     if (a === "print-file" && m === "POST") return await printFileRoute(req, env, s);
     if (a === "mockup" && m === "POST") return await mockupRoute(req, env, s);
     if (a === "summary" && m === "GET") return await summaryRoute(env, s);

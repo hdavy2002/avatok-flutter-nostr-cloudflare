@@ -103,14 +103,76 @@ export function printroveLogin(env: Env): { email: string; password: string } | 
   return email && password?.trim() ? { email, password } : null;
 }
 
-/** Studio kind by Printrove product id (the API has no kind field). Accessories and everything else are `other` (not shown). */
+/** Studio kind by Printrove product id (the API has no kind field). These 13 garment ids are fixed; the Aum Fe / admin studio sells only these. */
 export const KIND_BY_PRODUCT_ID: Record<string, string> = {
   '460': 'mens_tee', '462': 'womens_tee', '561': 'kids_tee', '560': 'toddler_tee',
   '463': 'hoodie', '1012': 'sweatshirt', '1182': 'polo', '464': 'crop_top', '1087': 'crop_hoodie',
   '1216': 'oversized_tee', '1440': 'oversized_tee', '461': 'full_sleeve_tee', '1453': 'vneck_tee',
 };
-export function classifyKind(productId: string): string {
-  return KIND_BY_PRODUCT_ID[productId] ?? 'other';
+/** True for the 13 products the admin (Aum Fe) studio has always sold. */
+export const isLegacyStudioProductId = (productId: string): boolean => Object.prototype.hasOwnProperty.call(KIND_BY_PRODUCT_ID, productId);
+
+// [HF-MERCH-STUDIO-2] Any other product is classified from its NAME (then, for accessories, its category name). First match wins.
+const teeKind = (t: string): string => {
+  if (/\b(toddler|infant|baby)\b/.test(t)) return 'toddler_tee';
+  if (/\b(kid|kids|boys?|girls?|junior)\b/.test(t)) return 'kids_tee';
+  if (/\b(women|womens|woman|ladies|lady|female)\b/.test(t)) return 'womens_tee';
+  return 'mens_tee';
+};
+const APPAREL_BY_NAME: Array<[RegExp, string | ((t: string) => string)]> = [
+  [/\boversized\b.*\bhood/, 'oversized_hoodie'],
+  [/\bcrop\b.*\bhood/, 'crop_hoodie'],
+  [/\bhood/, 'hoodie'],
+  [/sweat ?shirt|pullover/, 'sweatshirt'],
+  [/\bbomber\b/, 'bomber_jacket'],
+  [/\bjackets?\b|windcheater|\bcoat\b|varsity/, 'jacket'],
+  [/\bjoggers?\b|track ?pants?|\bpants?\b|trousers?|pyjamas?|\blowers?\b/, 'joggers'],
+  [/\bshorts\b|bermuda/, 'shorts'],
+  [/\bcrop\b/, 'crop_top'],
+  [/\btank\b|sleeveless|\bvest\b/, 'tank_top'],
+  [/\bpolo\b/, 'polo'],
+  [/\bv ?neck/, 'vneck_tee'],
+  [/\b(full|long) sleeves?\b/, 'full_sleeve_tee'],
+  [/\boversized\b|drop shoulder/, 'oversized_tee'],
+  [/\bt ?shirts?\b|\btees?\b|round neck/, teeKind],
+];
+const ACCESSORY_BY_TEXT: Array<[RegExp, string]> = [
+  [/pop ?sockets?|pop ?grips?|phone (grip|holder|stand)/, 'pop_socket'],
+  [/cushion|pillow/, 'cushion'],
+  [/phone|mobile (case|cover)|\bcase\b|\bcovers?\b/, 'phone_case'],
+  [/sipper|bottles?|tumbler|flask/, 'sipper_bottle'],
+  [/\bmugs?\b|\bcups?\b/, 'mug'],
+  [/\btote|\bbags?\b|pouch|backpack/, 'tote_bag'],
+  [/poster|\bframes?\b|framed|canvas|wall art/, 'poster'],
+  [/mouse ?pad|desk ?mat/, 'mouse_pad'],
+  [/notebook|diary|journal|planner/, 'notebook'],
+  [/\bmasks?\b/, 'mask'],
+  [/\bcaps?\b|\bhats?\b|beanie/, 'cap'],
+  [/coasters?/, 'coaster'],
+  [/badges?|\bpins?\b|magnets?/, 'badge'],
+  [/key ?chains?|key ?rings?/, 'keychain'],
+  [/stickers?/, 'sticker'],
+];
+const normText = (s: string | null | undefined): string => (s ?? '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+
+/** Kind from a product name (+ category name for accessories); null when nothing matches. Pure, no partner field names. */
+export function classifyByName(name: string | null | undefined, category?: string | null): string | null {
+  const n = normText(name);
+  if (n) {
+    for (const [re, k] of APPAREL_BY_NAME) if (re.test(n)) return typeof k === 'function' ? k(n) : k;
+    for (const [re, k] of ACCESSORY_BY_TEXT) if (re.test(n)) return k;
+  }
+  const c = normText(category);
+  if (c) for (const [re, k] of ACCESSORY_BY_TEXT) if (re.test(c)) return k;
+  return null;
+}
+
+/** Known ids keep their kind. Without a name an unknown id is `other`; with a name it is classified, else the generic printable `item`. */
+export function classifyKind(productId: string, name?: string | null, category?: string | null): string {
+  const known = KIND_BY_PRODUCT_ID[productId];
+  if (known) return known;
+  if (name === undefined || name === null) return 'other';
+  return classifyByName(name, category) ?? 'item';
 }
 
 /** Map a partner status string to our normalised state. Unknown statuses stay `sent` (provider_status is kept verbatim). */
@@ -122,6 +184,22 @@ export function mapPartnerStatus(status: string): NormalisedState {
   if (/ship|dispatch|transit|out for|picked/.test(s)) return 'shipped';
   if (/print|production|process|packed|pack|ready|quality|manufactur/.test(s)) return 'printing';
   return 'sent';
+}
+
+/** [HF-MERCH-STUDIO-2] A product picture URL if the payload carries one (string, {url|src}, or the first of an array). Null when none. */
+export function imageUrlOf(o: Rec | null): string | null {
+  if (!o) return null;
+  const asUrl = (v: unknown, depth = 0): string | null => {
+    if (typeof v === 'string') return /^https?:\/\//i.test(v.trim()) ? v.trim() : null;
+    if (Array.isArray(v)) { for (const x of v) { const u = asUrl(x, depth + 1); if (u) return u; } return null; }
+    const r = rec(v);
+    return r && depth < 3 ? asUrl(pick(r, ['url', 'src', 'image', 'original', 'large', 'medium', 'path']), depth + 1) : null;
+  };
+  for (const k of ['image', 'image_url', 'images', 'mockup', 'mockup_url', 'mockups', 'thumbnail', 'thumbnail_url', 'thumb', 'photo', 'picture', 'preview']) {
+    const u = asUrl(o[k]);
+    if (u) return u;
+  }
+  return null;
 }
 
 type Opts = { query?: Record<string, string | number | undefined>; json?: unknown; form?: FormData; auth?: boolean };
@@ -307,7 +385,12 @@ export class PrintroveProvider implements PodProvider {
   }
 
   /** Map one product-detail payload `{status, product:{id,name,variants:[...]}}` to a catalogue product. Out-of-stock variants are skipped. */
-  mapProduct(body: unknown, kind: string, productId: string, listName: string, category: string | null): CatalogProduct | null {
+  mapProduct(body: unknown, kind: string, productId: string, listName: string, category: string | null, listItem?: unknown): CatalogProduct | null {
+    return this.mapProductDetailed(body, kind, productId, listName, category, listItem).product;
+  }
+
+  /** Same as mapProduct but says WHY a product was dropped (no in-stock variants / no print area on any side). */
+  mapProductDetailed(body: unknown, kind: string, productId: string, listName: string, category: string | null, listItem?: unknown): { product: CatalogProduct | null; skip: string | null } {
     const full = rec(pick(rec(body), ['product'])) ?? {};
     const raw = Array.isArray(full.variants) ? (full.variants as unknown[]) : [];
     const variants: CatalogVariant[] = [];
@@ -340,17 +423,24 @@ export class PrintroveProvider implements PodProvider {
         if (pw && ph) px[side].push([pw, ph]);
       }
     }
-    if (!variants.length) return null;
+    if (!variants.length) return { product: null, skip: 'no in-stock variants in product payload' };
     const area = (side: 'front' | 'back'): [number, number] | undefined => {
       const first = px[side][0]; // identical across a product's variants (verified for every garment kind on 2026-10-01)
       return first ? [Math.round((first[0] / 300) * 100) / 100, Math.round((first[1] / 300) * 100) / 100] : undefined; // px at 300 DPI -> in
     };
     const front = area('front');
     const back = area('back');
+    // [HF-MERCH-STUDIO-2] A product with no print area on any side cannot take a print; only the legacy garment kinds (PRINT_SPECS) have a fallback area.
+    if (!front && !back && !Object.prototype.hasOwnProperty.call(PRINT_SPECS.areas, kind)) return { product: null, skip: 'no print area on any side' };
+    const image = imageUrlOf(full) ?? imageUrlOf(rec(listItem));
     return {
-      provider: 'printrove', provider_product_id: productId, kind, name: str(full.name) ?? listName, category,
-      variants, size_chart: null, // PROBE: the product detail carries no size chart; look for it elsewhere before showing one
-      ...(front || back ? { print_area_in: { ...(front ? { front } : {}), ...(back ? { back } : {}) } } : {}),
+      skip: null,
+      product: {
+        provider: 'printrove', provider_product_id: productId, kind, name: str(full.name) ?? listName, category,
+        variants, size_chart: null, // PROBE: the product detail carries no size chart; look for it elsewhere before showing one
+        ...(front || back ? { print_area_in: { ...(front ? { front } : {}), ...(back ? { back } : {}) } } : {}),
+        ...(image ? { image_url: image } : {}),
+      },
     };
   }
 
@@ -368,13 +458,13 @@ export class PrintroveProvider implements PodProvider {
         const p = rec(pr);
         const pid = str(pick(p, ['id']));
         if (!pid) continue;
-        const kind = classifyKind(pid);
-        if (kind === 'other') continue; // accessories and unlisted garments are not offered yet
+        const listName = str(pick(p, ['name'])) ?? `Product ${pid}`;
+        const kind = classifyKind(pid, listName, catName); // [HF-MERCH-STUDIO-2] every printable product syncs; unknown names become the generic `item`
         try {
           const body = await this.call('GET', `categories/${encodeURIComponent(catId)}/products/${encodeURIComponent(pid)}`);
-          const mapped = this.mapProduct(body, kind, pid, str(pick(p, ['name'])) ?? `Product ${pid}`, catName);
-          if (mapped) products.push(mapped);
-          else failures.push({ id: pid, why: 'no in-stock variants in product payload' });
+          const mapped = this.mapProductDetailed(body, kind, pid, listName, catName, p);
+          if (mapped.product) products.push(mapped.product);
+          else failures.push({ id: pid, why: mapped.skip ?? 'not usable' });
         } catch (e) {
           if (e instanceof PodError && (e.code === 'auth_failed' || e.code === 'not_configured')) throw e;
           failures.push({ id: pid, why: String((e as Error)?.message ?? e) });

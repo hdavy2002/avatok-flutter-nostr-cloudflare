@@ -11706,5 +11706,31 @@
     "min_devices_on_build": 0,
     "flags": [],
     "no_telemetry": "Label and copy change only; verified by reading a product page, the checkout review step and the wizard price step."
+  },
+  "HF-MERCH-STUDIO-2": {
+    "description": "[HF-MERCH-STUDIO-2 2026-10-23] Merch studio rebuild: AI pictures (Nano Banana 2, admin-set charge from paid wallet money, auto refund on failure), background remover, Konva layer studio with fonts/text/layers on web, matching Flutter studio, all printable Printrove products by category, admin AI charges page.",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [
+      "hfMerchEnabled",
+      "hfMerchAiEnabled",
+      "hfMerchAiChargeRupees"
+    ],
+    "success": [
+      {
+        "event": "merch_ai_generate",
+        "property": "status",
+        "equals": "done",
+        "min_events": 1,
+        "note": "An influencer made an AI picture end to end (charged, generated, stored)."
+      },
+      {
+        "event": "merch_studio_step",
+        "property": "step",
+        "equals": "publish_ok",
+        "min_events": 1,
+        "note": "A product was published from the new studio."
+      }
+    ]
   }
 }

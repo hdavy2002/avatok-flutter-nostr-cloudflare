@@ -25,6 +25,15 @@ export const PRINT_SPECS = {
 } as const; // [w_in, h_in]
 
 export type PrintKind = keyof typeof PRINT_SPECS.areas;
+
+/** [HF-MERCH-STUDIO-2] Garment kinds the merch shop sells that have no PRINT_SPECS entry (their print area comes from the partner API). */
+export const EXTRA_APPAREL_KINDS = ['joggers', 'shorts', 'bomber_jacket', 'jacket', 'oversized_hoodie', 'tank_top'] as const;
+/** True for clothing (PRINT_SPECS garments + EXTRA_APPAREL_KINDS). Everything else (mugs, bags, cases ...) is an accessory, whose printing is
+ *  included in the partner's base price when the partner gives no print-cost rates. */
+export function isApparelKind(kind: string | null | undefined): boolean {
+  if (!kind) return false;
+  return Object.prototype.hasOwnProperty.call(PRINT_SPECS.areas, kind) || (EXTRA_APPAREL_KINDS as readonly string[]).includes(kind);
+}
 export type FitVerdict = 'great' | 'good' | 'small_only' | 'too_small';
 
 /** How wide/tall the artwork can print sharp (at 300 DPI), one decimal. */

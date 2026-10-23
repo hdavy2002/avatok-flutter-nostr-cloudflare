@@ -5,7 +5,7 @@
 import type { Env } from '../../types';
 import { track, trackException } from '../../hooks';
 import { builtInCatalog, ManualProvider } from './manual';
-import { PrintroveProvider, printroveLogin } from './printrove';
+import { PrintroveProvider, printroveLogin, isLegacyStudioProductId } from './printrove';
 import type { CatalogProduct, CatalogVariant, PodProvider, PodProviderId } from './types';
 
 const APP = 'saathum';
@@ -42,11 +42,14 @@ export async function loadStoredCatalog(env: Env, provider: PodProviderId): Prom
   let at: number | null = null;
   const products: CatalogProduct[] = rows.map((r) => {
     at = at === null ? Number(r.synced_at) : Math.max(at, Number(r.synced_at));
-    const area = parseCol<{ print_area_in?: CatalogProduct['print_area_in'] } | null>(r.raw_json, null)?.print_area_in;
+    const raw = parseCol<{ print_area_in?: CatalogProduct['print_area_in']; image_url?: string } | null>(r.raw_json, null);
+    const area = raw?.print_area_in;
+    const image = typeof raw?.image_url === 'string' && raw.image_url ? raw.image_url : null;
     return {
       provider, provider_product_id: r.provider_product_id, kind: r.kind, name: r.name, category: r.category,
       variants: parseCol<CatalogVariant[]>(r.variants_json, []), size_chart: parseCol<CatalogProduct['size_chart']>(r.size_chart_json, null),
       ...(area ? { print_area_in: area } : {}),
+      ...(image ? { image_url: image } : {}),
     };
   });
   return { products, synced_at: at };
@@ -67,7 +70,7 @@ export async function syncCatalogToDb(env: Env, id: PodProviderId, provider?: Po
   const writes = items.map((x) => stmt.bind(
     x.provider, x.provider_product_id, x.kind, x.name, x.category, JSON.stringify(x.variants),
     x.size_chart ? JSON.stringify(x.size_chart) : null, now,
-    x.print_area_in ? JSON.stringify({ print_area_in: x.print_area_in }) : null, // raw_json carries the partner's own print areas
+    x.print_area_in || x.image_url ? JSON.stringify({ ...(x.print_area_in ? { print_area_in: x.print_area_in } : {}), ...(x.image_url ? { image_url: x.image_url } : {}) }) : null, // raw_json carries the partner's own print areas + picture
   ));
   for (let i = 0; i < writes.length; i += BATCH) await env.DB_META.batch(writes.slice(i, i + BATCH));
   await env.DB_META.prepare('DELETE FROM pod_catalog WHERE provider=?1 AND synced_at < ?2').bind(id, now).run();
@@ -185,4 +188,10 @@ export async function referenceShippingRupees(env: Env): Promise<number | null> 
   }
   try { await env.TOKENS.put(SHIP_KEY, JSON.stringify({ rupees }), { expirationTtl: rupees === null ? 300 : 24 * 60 * 60 }); } catch { /* best-effort */ }
   return rupees;
+}
+
+/** [HF-MERCH-STUDIO-2] The catalogue the admin (Aum Fe) studio sees: exactly the garments it always sold (the 13 known Printrove ids, or the built-in
+ *  manual rows). The merch shop reads ensurePodCatalog() directly and sees every printable product. */
+export function studioCatalog(info: CatalogInfo): CatalogInfo {
+  return { ...info, products: info.products.filter((p) => p.provider !== 'printrove' || isLegacyStudioProductId(p.provider_product_id)) };
 }

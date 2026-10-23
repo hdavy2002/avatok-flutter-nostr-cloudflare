@@ -1,0 +1,10 @@
+---
+// [HF-MERCH-STUDIO-2] AI charges: what an AI picture costs influencers, on/off, and the recent pictures.
+export const prerender = false;
+import Admin2 from '../../../layouts/Admin2.astro';
+import MerchAiCharges from '../../../islands/admin2/merch/MerchAiCharges.tsx';
+---
+
+<Admin2 title="AI charges" active="merch-ai" subtitle="What an AI picture costs influencers, and every picture made lately.">
+  <MerchAiCharges client:load />
+</Admin2>
