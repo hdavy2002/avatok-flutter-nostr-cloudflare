@@ -1,8 +1,12 @@
 import 'dart:async';
+import 'dart:io';
+import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show Clipboard, ClipboardData;
 
+import 'package:qr_flutter/qr_flutter.dart';
+import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../core/brand.dart';
@@ -10,6 +14,7 @@ import '../data/services.dart';
 import '../data/share.dart';
 import '../data/telemetry.dart';
 import 'desi.dart';
+import 'screens/sheets.dart';
 import 'theme.dart';
 import 'widgets.dart';
 
@@ -128,6 +133,10 @@ class _SharePageButtonsState extends State<SharePageButtons> {
           _track('native');
           unawaited(ShareSheet.text('$text\n${sharedPageUrl(slug, 'native')}'));
         }),
+        DesiButton('QR code', icon: Icons.qr_code_2_rounded, kind: DesiButtonKind.ghost, onTap: () {
+          _track('qr');
+          unawaited(showPageQrSheet(context, slug: slug, name: widget.name));
+        }),
       ]),
       if (_igTip)
         Padding(
@@ -157,5 +166,72 @@ class ShareShopRow extends StatelessWidget {
         child: SharePageButtons(slug: slug, name: me?.name),
       ),
     );
+  }
+}
+
+/// [HF-APP-SHARE-QR-1] The page link as a QR code (website parity: `utm_medium=qr`), dark plum on white with a quiet zone.
+Future<void> showPageQrSheet(BuildContext context, {required String slug, String? name}) {
+  return showModalBottomSheet<void>(
+    context: context,
+    backgroundColor: C.clear,
+    isScrollControlled: true,
+    builder: (sheetContext) => SheetFrame(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
+        child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          Text('Your QR code', style: t(20, color: C.maroon, w: FontWeight.w900)),
+          const SizedBox(height: 12),
+          Center(
+            child: Container(
+              color: C.white,
+              padding: const EdgeInsets.all(16),
+              child: QrImageView(
+                data: sharedPageUrl(slug, 'qr'),
+                version: QrVersions.auto,
+                size: 240,
+                backgroundColor: C.white,
+                eyeStyle: const QrEyeStyle(eyeShape: QrEyeShape.square, color: C.maroon),
+                dataModuleStyle: const QrDataModuleStyle(dataModuleShape: QrDataModuleShape.square, color: C.maroon),
+              ),
+            ),
+          ),
+          const SizedBox(height: 10),
+          Text(influencerPageUrl(slug, tracked: false), textAlign: TextAlign.center, maxLines: 1, overflow: TextOverflow.ellipsis, style: t(15, color: C.maroon, w: FontWeight.w800)),
+          const SizedBox(height: 14),
+          DesiButton('Save / share QR', icon: Icons.ios_share_rounded, kind: DesiButtonKind.rani, expand: true, onTap: () => unawaited(_shareQrPng(context, slug, name))),
+          const SizedBox(height: 8),
+          DesiButton('Close', kind: DesiButtonKind.ghost, expand: true, onTap: () => Navigator.of(sheetContext).pop()),
+        ]),
+      ),
+    ),
+  );
+}
+
+/// Renders the QR at 1024 px (white background, 8% quiet zone) and opens the phone's share sheet with the PNG.
+Future<void> _shareQrPng(BuildContext context, String slug, String? name) async {
+  try {
+    const px = 1024.0;
+    const pad = 96.0;
+    final painter = QrPainter(
+      data: sharedPageUrl(slug, 'qr'),
+      version: QrVersions.auto,
+      gapless: true,
+      eyeStyle: const QrEyeStyle(eyeShape: QrEyeShape.square, color: C.maroon),
+      dataModuleStyle: const QrDataModuleStyle(dataModuleShape: QrDataModuleShape.square, color: C.maroon),
+    );
+    final recorder = ui.PictureRecorder();
+    final canvas = Canvas(recorder);
+    canvas.drawRect(const Rect.fromLTWH(0, 0, px, px), Paint()..color = C.white);
+    canvas.translate(pad, pad);
+    painter.paint(canvas, const Size(px - 2 * pad, px - 2 * pad));
+    final image = await recorder.endRecording().toImage(px.toInt(), px.toInt());
+    final bytes = await image.toByteData(format: ui.ImageByteFormat.png);
+    if (bytes == null) throw StateError('qr png');
+    final safe = slug.replaceAll(RegExp(r'[^A-Za-z0-9_-]'), '_');
+    final file = File('${Directory.systemTemp.path}/hf-page-qr-$safe.png');
+    await file.writeAsBytes(bytes.buffer.asUint8List(bytes.offsetInBytes, bytes.lengthInBytes), flush: true);
+    await Share.shareXFiles([XFile(file.path, mimeType: 'image/png')], text: '${sharedPageText(name)} ${sharedPageUrl(slug, 'qr')}');
+  } catch (_) {
+    if (context.mounted) toast(context, 'Could not make the QR code.');
   }
 }

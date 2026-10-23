@@ -11953,5 +11953,21 @@
         "note": "Someone tapped a share button for an influencer page from the app (own=true). Proves the tap, not that the link was posted. The other new app events (merch_receipt_opened, merch_problem_submitted, merch_gstin_saved) are secondary checks."
       }
     ]
+  },
+  "HF-APP-SHARE-QR-1": {
+    "description": "[HF-APP-SHARE-QR-1] QR code on Share my page (and Share your shop) in the app, matching the website: a QR button opens a sheet with the page QR (utm_medium=qr) and Save / share QR, which shares a 1024 px PNG.",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [],
+    "success": [
+      {
+        "event": "profile_share_clicked",
+        "property": "network",
+        "equals": "qr",
+        "exists": true,
+        "min_events": 1,
+        "note": "Someone tapped QR code on Share my page in the app (own=true, network=qr). Proves the tap, not that the PNG was saved."
+      }
+    ]
   }
 }

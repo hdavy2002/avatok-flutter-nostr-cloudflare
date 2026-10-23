@@ -90,7 +90,7 @@ abstract final class HelpStrings {
     ),
     (
       'How do I share my page?',
-      'Influencers: tap Share my page on Me, or in Settings, or the share button on your profile, to copy your link or send it on WhatsApp and other apps. '
+      'Influencers: tap Share my page on Me, or in Settings, or the share button on your profile, to copy your link, send it on WhatsApp and other apps, or show or save a QR code. '
           'Fans can also share any influencer’s page with the share button on it.',
     ),
     (

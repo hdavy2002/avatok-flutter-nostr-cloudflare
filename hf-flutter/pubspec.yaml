@@ -38,6 +38,7 @@ dependencies:
   webview_flutter: ^4.10.0           # [HF-WIRE-4] official YouTube / Instagram reel embeds (embeds only, HF-REEL-32)
   webview_flutter_android: ^4.3.0    # [HF-WIRE-4] lets the embed autoplay
   google_sign_in: ^6.3.0             # [HF-WIRE-14] "Sign in with YouTube": read-only channel scope proves she owns the channel (HF-REEL-33)
+  qr_flutter: ^4.1.0                 # [HF-APP-SHARE-QR-1] QR for Share my page
   share_plus: ^10.1.4                # [HF-WIRE-9] system share sheet for a reel link (Share.share)
   flutter_cashfree_pg_sdk: 2.5.0+53  # [HF-WIRE-20] in-app checkout (web-checkout mode: card / netbanking / UPI, UPI apps return to the app). Owner-approved; exact pin.
 
