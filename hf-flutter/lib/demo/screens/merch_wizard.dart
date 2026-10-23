@@ -67,6 +67,7 @@ class _MerchWizardScreenState extends State<MerchWizardScreen> {
   final TextEditingController _markup = TextEditingController(text: '100');
   bool _own = false;
   Map<String, int>? _bases;
+  Map<String, QuoteLine> _lines = const <String, QuoteLine>{};
   bool _quoting = false;
   String? _quoteError;
 
@@ -290,6 +291,7 @@ class _MerchWizardScreenState extends State<MerchWizardScreen> {
     });
     try {
       final sizesInOrder = [for (final s in it.sizes) if (_sizes.contains(s.size)) s.size];
+      final lines = <String, QuoteLine>{};
       final b = await _repo.quote(
         catalogId: it.id,
         colours: _colours.toList(),
@@ -297,10 +299,12 @@ class _MerchWizardScreenState extends State<MerchWizardScreen> {
         wIn: _w,
         hIn: _h,
         sizes: sizesInOrder,
+        breakdownOut: lines,
       );
       if (mounted) {
         setState(() {
           _bases = b;
+          _lines = lines;
           _quoting = false;
           if (b.isEmpty) _quoteError = 'That shirt cannot be priced in those colours right now.';
         });
@@ -754,7 +758,7 @@ class _MerchWizardScreenState extends State<MerchWizardScreen> {
         if (!validMarkup) Padding(padding: const EdgeInsets.only(bottom: 8), child: Text(_markupProblem!, style: t(15, color: C.ruby, w: FontWeight.w700))),
         DesiCard(
           title: 'Your prices',
-          note: 'Base price covers printing and delivery.',
+          note: 'Base price = printing (incl. GST) + shipping. Fans pay one price, incl. GST & delivery.',
           tone: DesiTone.gold,
           child: _quoting
               ? const Padding(padding: EdgeInsets.all(12), child: Center(child: CircularProgressIndicator(color: C.maroon)))
@@ -768,7 +772,7 @@ class _MerchWizardScreenState extends State<MerchWizardScreen> {
                       Row(children: [
                         SizedBox(width: 50, child: Text('Size', style: t(14, color: C.muted))),
                         Expanded(child: Text('Base', style: t(14, color: C.muted))),
-                        Expanded(child: Text('Fan pays', style: t(14, color: C.muted))),
+                        Expanded(child: Text('Fan pays*', style: t(14, color: C.muted))),
                         Expanded(child: Text('You earn', textAlign: TextAlign.right, style: t(14, color: C.muted))),
                       ]),
                       const SizedBox(height: 4),
@@ -777,7 +781,8 @@ class _MerchWizardScreenState extends State<MerchWizardScreen> {
                           if (bases.containsKey(s.size))
                             Padding(
                               padding: const EdgeInsets.symmetric(vertical: 4),
-                              child: Row(children: [
+                              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                               Row(children: [
                                 SizedBox(width: 50, child: Text(s.size, style: t(16))),
                                 Expanded(child: Text(merchRupees(bases[s.size] ?? 0), style: t(15, w: FontWeight.w700))),
                                 Expanded(child: Text(validMarkup ? merchRupees((bases[s.size] ?? 0) + m * 100) : '—', style: t(15, w: FontWeight.w700))),
@@ -788,8 +793,19 @@ class _MerchWizardScreenState extends State<MerchWizardScreen> {
                                     style: t(15, color: C.rani),
                                   ),
                                 ),
+                               ]),
+                               if (_lines[s.size]?.printingPaise != null && _lines[s.size]?.shippingPaise != null)
+                                 Padding(
+                                   padding: const EdgeInsets.only(left: 50),
+                                   child: Text(
+                                     'Printing incl. GST ${merchRupees(_lines[s.size]!.printingPaise!)} + Shipping ${merchRupees(_lines[s.size]!.shippingPaise!)}',
+                                     style: t(13, color: C.muted),
+                                   ),
+                                 ),
                               ]),
                             ),
+                      const SizedBox(height: 6),
+                      Align(alignment: Alignment.centerLeft, child: Text('*Fan pays base + your markup, incl. GST & delivery.', style: t(13, color: C.muted))),
                     ])),
         ),
         const SizedBox(height: 12),

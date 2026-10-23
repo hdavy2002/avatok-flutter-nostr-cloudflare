@@ -25,6 +25,7 @@ const pageUrl = new URL(`/h/${host.slug}`, BRAND.webOrigin).toString();
           <span class="ph">{p.imageUrl ? <img src={publicImage(p.imageUrl, { width: 400 })} alt={`${p.title} T-shirt by ${host.displayName}`} width="200" height="200" loading={i < 2 ? 'eager' : 'lazy'} decoding="async" /> : null}</span>
           <b>{p.title}</b>
           <span class="pr">From {rupees(p.fromPricePaise)}</span>
+          <small class="pr-note">incl. GST &amp; free delivery</small>
         </a>
       </li>
     ))}

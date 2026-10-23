@@ -73,6 +73,7 @@ class MerchRepo {
     required double wIn,
     required double hIn,
     required List<String> sizes,
+    Map<String, QuoteLine>? breakdownOut,
   }) async {
     final j = await _api.getJson('$_base/quote', query: {
       'catalogId': catalogId,
@@ -86,7 +87,15 @@ class MerchRepo {
     final raw = j['sizes'];
     if (raw is List) {
       for (final e in raw) {
-        if (e is Map && e['size'] is String && e['basePaise'] is num) out[e['size'] as String] = (e['basePaise'] as num).round();
+        if (e is Map && e['size'] is String && e['basePaise'] is num) {
+          out[e['size'] as String] = (e['basePaise'] as num).round();
+          if (breakdownOut != null) {
+            breakdownOut[e['size'] as String] = QuoteLine(
+              printingPaise: e['printingPaise'] is num ? (e['printingPaise'] as num).round() : null,
+              shippingPaise: e['shippingPaise'] is num ? (e['shippingPaise'] as num).round() : null,
+            );
+          }
+        }
       }
     }
     return out;

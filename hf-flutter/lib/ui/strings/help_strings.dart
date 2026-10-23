@@ -104,7 +104,7 @@ abstract final class HelpStrings {
     (
       'How do I buy an influencer’s T-shirt?',
       'Open the influencer’s profile, pick a T-shirt, colour and size, add your address, tick the Terms and refund policy and pay. '
-          'The price is all-in: delivery in India is free and there is no separate GST or delivery line. '
+          'The price is all-in and labelled incl. GST & delivery: delivery in India is free and nothing is added at checkout. '
           'Pay from your wallet (money you added; free test credit cannot be used for merch) or with UPI, card or net banking.',
     ),
     (
@@ -124,7 +124,8 @@ abstract final class HelpStrings {
     ),
     (
       'How much do I earn from merch?',
-      'You keep 60% of your markup (currently). We keep 40% and pay GST and payment fees out of our share. '
+      'The base price is printing (incl. GST) plus shipping, shown size by size. The fan pays base plus your markup, incl. GST & delivery. '
+          'You keep 60% of your markup (currently). We keep 40% and pay GST and payment fees out of our share. '
           'Merch money can be withdrawn 7 days after delivery (currently); a refunded order earns nothing. '
           'You never see the fan’s phone, email, full address or payment details.',
     ),

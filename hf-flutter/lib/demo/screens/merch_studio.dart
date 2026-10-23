@@ -270,7 +270,7 @@ class _ProductCard extends StatelessWidget {
               ]),
               const SizedBox(height: 6),
               Text(
-                p.sizes.isEmpty ? 'Markup ${merchRupees(p.markupRupees * 100)}' : 'Fans pay from ${merchRupees(p.fromPaise)} · your markup ${merchRupees(p.markupRupees * 100)}',
+                p.sizes.isEmpty ? 'Markup ${merchRupees(p.markupRupees * 100)}' : 'Fans pay from ${merchRupees(p.fromPaise)} (incl. GST & delivery) · your markup ${merchRupees(p.markupRupees * 100)}',
                 style: t(14, color: C.muted, w: FontWeight.w700),
               ),
             ]),
@@ -393,10 +393,20 @@ class _MarkupSheetState extends State<_MarkupSheet> {
             for (final s in widget.product.sizes)
               Padding(
                 padding: const EdgeInsets.symmetric(vertical: 4),
-                child: Row(children: [
-                  SizedBox(width: 52, child: Text(s.size, style: t(16))),
-                  Expanded(child: Text('Fan pays ${merchRupees(s.basePaise + m * 100)}', style: t(15, w: FontWeight.w700))),
-                  Text(cat == null ? '' : 'You earn ${merchRupees(cat.youEarnPaise(m))}', style: t(15, color: C.rani)),
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Row(children: [
+                    SizedBox(width: 52, child: Text(s.size, style: t(16))),
+                    Expanded(child: Text('Fan pays ${merchRupees(s.basePaise + m * 100)} incl. GST & delivery', style: t(15, w: FontWeight.w700))),
+                    Text(cat == null ? '' : 'You earn ${merchRupees(cat.youEarnPaise(m))}', style: t(15, color: C.rani)),
+                  ]),
+                  if (s.printingPaise != null && s.shippingPaise != null)
+                    Padding(
+                      padding: const EdgeInsets.only(left: 52),
+                      child: Text(
+                        'Printing incl. GST ${merchRupees(s.printingPaise!)} + Shipping ${merchRupees(s.shippingPaise!)} = Base ${merchRupees(s.basePaise)}${widget.product.breakdownEstimated ? ' (estimate)' : ''}',
+                        style: t(13, color: C.muted),
+                      ),
+                    ),
                 ]),
               ),
           if (_error != null) ...[
@@ -568,7 +578,7 @@ class _OrderTileState extends State<_OrderTile> {
           const SizedBox(height: 8),
           MerchKv('Order', o.orderNo),
           MerchKv('Placed', merchDateTime(o.createdAt)),
-          MerchKv('Fan paid', merchRupees(o.pricePaise)),
+          MerchKv('Fan paid (incl. GST & delivery)', merchRupees(o.pricePaise)),
           MerchKv('Base price', merchRupees(o.basePaise)),
           MerchKv('You earn', o.status == 'cancelled' ? '₹0' : merchRupees(o.youEarnPaise), strong: true),
           if (o.status != 'cancelled')

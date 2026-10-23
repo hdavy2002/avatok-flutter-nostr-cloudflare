@@ -86,7 +86,7 @@ export default function MerchBuy({ host, product, checkoutEnabled }: BuyProps) {
       <label htmlFor="hfm-qty">Quantity</label>
       <div className="hfm-qty"><button type="button" aria-label="One less" disabled={qty <= 1} onClick={() => setQty(q => Math.max(1, q - 1))}>−</button><output id="hfm-qty" aria-live="polite">{qty}</output><button type="button" aria-label="One more" disabled={qty >= maxQty} onClick={() => setQty(q => Math.min(maxQty, q + 1))}>+</button></div>
     </div>
-    <div className="hfm-total"><span>Total</span><b>{rupees(total)}</b><small>Free delivery across India</small></div>
+    <div className="hfm-total"><span>Total</span><b>{rupees(total)}</b><small>incl. GST &amp; free delivery across India</small></div>
     <button type="button" className="hfm-cta" disabled={!checkoutEnabled || !size} onClick={buy}>{checkoutEnabled ? `Buy now · ${rupees(total)}` : 'Coming soon'}</button>
     {!checkoutEnabled && <p className="hfm-note" role="status">Buying opens soon. Save this page and check back.</p>}
     <form className="hfm-pin" onSubmit={check}>

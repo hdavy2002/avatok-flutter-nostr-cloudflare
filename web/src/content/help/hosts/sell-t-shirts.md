@@ -10,7 +10,7 @@ faq:
   - q: "How do I make a T-shirt product?"
     a: "Open Merch in your dashboard or the app. Upload your art, tick I own this art, pick a T-shirt (front or back, colours, sizes S to 5XL), place the art, add your markup and send it for review."
   - q: "What price do fans pay?"
-    a: "The base price for the size, plus your markup. Delivery in India is free and there is no separate GST or delivery line. The lowest markup is ₹10."
+    a: "One all-in price: the base price for the size (printing including GST, plus delivery) plus your markup. It is labelled incl. GST and delivery, delivery in India is free and nothing is added at checkout. The lowest markup is ₹10."
   - q: "How much do I earn on a T-shirt?"
     a: "You keep 60% of your markup (currently). We keep 40% and pay GST and payment fees out of our share, so they never reduce yours."
   - q: "Why is my product waiting?"
@@ -34,9 +34,14 @@ You can sell T-shirts with your own art on {{brand.name}}. We print each one whe
 
 ## How the price works
 
-For every size there is a **base price**. It covers the printing and the delivery. You see it while you set up the product.
+For every size there is a **base price**. It is made of two parts that you see separately, size by size, while you set up the product:
 
-The fan pays **base price + your markup**, all in. Delivery anywhere in India is free, and there is no extra GST or delivery line at checkout. Bigger sizes can have a higher base price, so the fan price can differ by size.
+- **Printing (incl. GST)**: the cost of printing the T-shirt, with GST already included.
+- **Shipping**: delivery to the fan anywhere in India.
+
+**Base price = printing (incl. GST) + shipping.** For example, for a Premium Oversized tee in black with a small print: printing incl. GST ₹393.75 + shipping ₹50 = base ₹444 (rounded up). Add a ₹200 markup and the fan pays **₹644 incl. GST & delivery**, and you earn ₹120.
+
+The fan pays **base price + your markup** as one all-in price, labelled **incl. GST & delivery**. Delivery anywhere in India is free for the fan, and nothing is added at checkout. Bigger sizes can have a higher base price, so the fan price can differ by size.
 
 ## Review
 
@@ -46,7 +51,7 @@ Every paid order is also checked by our team before it is printed. In the rare c
 
 ## What you earn
 
-You keep **60% of your markup** (currently). We keep 40%, and we pay the GST and payment fees out of our share. They never reduce what you earn.
+You keep **60% of your markup** (currently), so a ₹200 markup earns you ₹120. We keep 40%, and we pay the GST and payment fees out of our share. They never reduce what you earn.
 
 Your merch earnings can be withdrawn **7 days after the order is delivered** (currently), with the same Withdraw button as your call earnings. An order that is refunded earns nothing. Read more in [Your merch orders and earnings](/help/hosts/merch-orders-and-earnings) and [Getting paid](/help/hosts/getting-paid).
 

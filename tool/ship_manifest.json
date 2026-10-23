@@ -11699,5 +11699,12 @@
     "min_devices_on_build": 0,
     "flags": [],
     "no_telemetry": "Labels and a read-only breakdown; no new user action. Verified by opening the merch studio price step and an existing product's edit dialog."
+  },
+  "HF-MERCH-PRICE-LABELS-2": {
+    "description": "[HF-MERCH-PRICE-LABELS-2 2026-10-23] Part B (web + app labels): fan merch prices are labelled incl. GST & free delivery (profile strip, product page, checkout total, My orders, app); influencers see printing (incl. GST), shipping and base size by size; help, FAQ, support and app help updated. Prices unchanged, still all-in.",
+    "two_sided": false,
+    "min_devices_on_build": 0,
+    "flags": [],
+    "no_telemetry": "Label and copy change only; verified by reading a product page, the checkout review step and the wizard price step."
   }
 }

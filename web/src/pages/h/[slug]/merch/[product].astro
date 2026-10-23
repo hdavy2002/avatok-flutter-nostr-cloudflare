@@ -57,7 +57,8 @@ const title = ok ? `${p!.title} — T-shirt by ${host!.displayName}` : r.status 
         <div>
           <p class="hfm-by">By <a href={`/h/${slug}`}>{host!.displayName}</a></p>
           <h1 class="hfm-h1">{p!.title}</h1>
-          <p class="hfm-from">From {rupees(lowest)} · all included</p>
+          <p class="hfm-from">From {rupees(lowest)} · incl. GST &amp; free delivery</p>
+          <p class="hfm-note">Price includes: printing, GST and delivery across India.</p>
           <MerchBuy client:load host={{ slug, displayName: host!.displayName }} product={{ id: p!.id, slug: p!.slug, title: p!.title, imageUrl: photos[0] ?? null, colours: p!.colours, sizes: p!.sizes, maxQty: p!.maxQty }} checkoutEnabled={ok.checkoutEnabled} />
           <ul class="hfm-perks">
             <li>Free delivery across India</li>

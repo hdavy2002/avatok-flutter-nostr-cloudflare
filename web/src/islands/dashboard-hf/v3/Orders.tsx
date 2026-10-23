@@ -112,6 +112,7 @@ function OrderCard({ o, open, loading, timedOut, onToggle, onReport }: { o: FanO
       </div>}
       {loading && <Skel h={60} />}
       <dl className="hfo-facts">
+        <div><dt>Paid (incl. GST &amp; delivery)</dt><dd>{formatPaise(o.totalPaise)}</dd></div>
         <div><dt>Paid with</dt><dd>{o.payMethod === 'wallet' ? 'Wallet' : o.payMethod === 'cashfree' ? 'UPI / card' : '—'}</dd></div>
         {o.shipping?.courier && <div><dt>Courier</dt><dd>{o.shipping.courier}</dd></div>}
         {o.shipping?.awb && <div><dt>Tracking number</dt><dd>{o.shipping.awb}</dd></div>}

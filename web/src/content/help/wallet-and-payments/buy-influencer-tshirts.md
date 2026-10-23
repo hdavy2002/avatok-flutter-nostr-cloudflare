@@ -8,7 +8,7 @@ keywords: ["merch", "t-shirt", "tshirt", "buy", "order", "delivery", "my orders"
 audience: buyer
 faq:
   - q: "Is delivery free?"
-    a: "Yes. Delivery anywhere in India is free. The price you see is the price you pay, with no separate GST or delivery line."
+    a: "Yes. Delivery anywhere in India is free. The price you see is one all-in price that includes GST and delivery, and nothing is added at checkout."
   - q: "How can I pay?"
     a: "From your wallet, or with UPI, card or net banking. The wallet pays only from money you added. Free test credit cannot be used for merch."
   - q: "Can I return a T-shirt?"
@@ -27,7 +27,7 @@ Some influencers sell T-shirts with their own art. You can buy one in the app or
 
 1. Open an influencer's page and find their **T-shirts**.
 2. Pick a T-shirt, a colour and your size.
-3. Look at the price. It is **all-in**: delivery anywhere in India is free, and there is no extra GST or delivery line.
+3. Look at the price. It is **all-in** and labelled **incl. GST & delivery**: it covers the printing, GST and delivery across India. Delivery is free and nothing is added at checkout.
 4. Add your delivery address.
 5. Tick the **Terms** and the **refund policy**.
 6. Pay.

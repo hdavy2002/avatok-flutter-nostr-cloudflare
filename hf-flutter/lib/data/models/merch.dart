@@ -2,6 +2,8 @@
 /// Money is whole paise (an int) everywhere; the screens print rupees. Unknown or missing fields fall back to empty values.
 
 int _i(Object? v) => v is num ? v.round() : int.tryParse('$v') ?? 0;
+/// Nullable int: null when the field is absent (older worker responses), so screens can skip the breakdown.
+int? _in(Object? v) => v is num ? v.round() : null;
 String _s(Object? v) => v is String ? v : (v == null ? '' : '$v');
 String? _sn(Object? v) => v is String && v.isNotEmpty ? v : null;
 double _d(Object? v) => v is num ? v.toDouble() : double.tryParse('$v') ?? 0;
@@ -128,8 +130,21 @@ class ArtUpload {
   final List<String> warnings;
 }
 
+/// [HF-MERCH-PRICE-LABELS-2] One size of a quote: printing (incl. GST) and shipping, both null on older responses.
+class QuoteLine {
+  const QuoteLine({this.printingPaise, this.shippingPaise});
+
+  final int? printingPaise;
+  final int? shippingPaise;
+}
+
 class ProductSize {
-  const ProductSize({required this.size, required this.basePaise, required this.pricePaise, required this.youEarnPaise});
+  const ProductSize({required this.size, required this.basePaise, required this.pricePaise, required this.youEarnPaise, this.printingPaise, this.shippingPaise, this.bufferPaise});
+
+  /// Printing incl. GST / shipping / rounding buffer (paise); null when the server does not send them yet.
+  final int? printingPaise;
+  final int? shippingPaise;
+  final int? bufferPaise;
 
   final String size;
   final int basePaise;
@@ -151,6 +166,7 @@ class MerchProduct {
     required this.markupRupees,
     required this.soldCount,
     required this.publicUrl,
+    this.breakdownEstimated = false,
   });
 
   factory MerchProduct.fromJson(Map<String, dynamic> j) => MerchProduct(
@@ -164,12 +180,24 @@ class MerchProduct {
         colours: _colours(j['colours']),
         sizes: [
           for (final m in _maps(j['sizes']))
-            ProductSize(size: _s(m['size']), basePaise: _i(m['basePaise']), pricePaise: _i(m['pricePaise']), youEarnPaise: _i(m['youEarnPaise'])),
+            ProductSize(
+              size: _s(m['size']),
+              basePaise: _i(m['basePaise']),
+              pricePaise: _i(m['pricePaise']),
+              youEarnPaise: _i(m['youEarnPaise']),
+              printingPaise: _in(m['printingPaise']),
+              shippingPaise: _in(m['shippingPaise']),
+              bufferPaise: _in(m['bufferPaise']),
+            ),
         ],
         markupRupees: _i(j['markupRupees']),
         soldCount: _i(j['soldCount']),
         publicUrl: _s(j['publicUrl']),
+        breakdownEstimated: j['breakdownEstimated'] == true,
       );
+
+  /// True when the printing / shipping split of an older product is an estimate.
+  final bool breakdownEstimated;
 
   final String id;
   final String slug;

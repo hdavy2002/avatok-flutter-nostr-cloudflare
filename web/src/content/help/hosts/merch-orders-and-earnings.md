@@ -37,6 +37,10 @@ You do not have to do anything. We print, pack and post it.
 
 For the fan's privacy you see only their **first name**, their **city and state**, and a **blurred address line**. You never see their phone number, email, full address, UPI, card or any payment details. Please do not try to find them or contact them outside {{brand.name}}.
 
+## What the fan paid
+
+The fan paid one all-in price, **base price + your markup**, labelled **incl. GST & delivery**. The base price is the printing (incl. GST) plus the shipping, shown size by size when you set your price. You earn **60% of your markup** (currently). For example, base ₹444 + markup ₹200 = the fan pays ₹644, and you earn ₹120.
+
 ## When you get paid
 
 Your share of the markup is added to your earnings. It can be withdrawn **7 days after the order is delivered** (currently). Use the same **Withdraw** button as for your call earnings. Money goes only to your own UPI ID. See [Getting paid](/help/hosts/getting-paid).
