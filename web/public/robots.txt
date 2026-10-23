@@ -115,3 +115,6 @@ Disallow: /admin
 Disallow: /vision
 
 Sitemap: %BRAND_ORIGIN%/sitemap.xml
+# [HF-MERCH-FAN-WEB-1] Also reachable through the index above; listed for crawlers that read only robots.txt.
+Sitemap: %BRAND_ORIGIN%/sitemap-influencers.xml
+Sitemap: %BRAND_ORIGIN%/sitemap-merch.xml

@@ -1,0 +1,89 @@
+---
+// [HF-MERCH-FAN-WEB-1 2026-10-23] Merch product page: /h/<slug>/merch/<product>. SSR (prerender = false) so the HTML is complete for search,
+// AI answers and link previews. GET /api/hf/merch/public/:host/:product (404 missing, 410 gone: hidden or deleted, answered as 410 + noindex).
+// Product + Offer JSON-LD: INR, in stock, free shipping in India, brand = the influencer. The buy panel is the MerchBuy island.
+export const prerender = false;
+import Base from '../../../../layouts/Base.astro';
+import MerchBuy from '../../../../islands/merch/MerchBuy';
+import ShareButtons from '../../../../components/merch/ShareButtons.astro';
+import { fetchMerchProduct, rupees, STANDARD_SIZE_CHART } from '../../../../lib/merchPublic';
+import { productJsonLd } from '../../../../lib/merchSeo';
+import { publicImage } from '../../../../lib/config';
+import { BRAND } from '../../../../lib/brand';
+import type { PublicContent } from '../../../../lib/seo/types';
+import '../../../../styles/hf-merch.css';
+
+const { slug = '', product: productSlug = '' } = Astro.params;
+const r = await fetchMerchProduct(slug, productSlug);
+if (r.status === 'ok') Astro.response.headers.set('cache-control', 'public, max-age=60, s-maxage=120');
+else if (r.status === 'gone') { Astro.response.status = 410; Astro.response.headers.set('cache-control', 'public, max-age=300'); }
+else if (r.status === 'missing') { Astro.response.status = 404; Astro.response.headers.set('cache-control', 'public, max-age=60'); }
+else { Astro.response.status = 503; Astro.response.headers.set('cache-control', 'no-store'); }
+
+const ok = r.status === 'ok' ? r : null;
+const p = ok?.product;
+const host = ok?.host;
+const photos = p ? (p.photos?.length ? p.photos : p.imageUrl ? [p.imageUrl] : []) : [];
+const lowest = p ? Math.min(...p.sizes.filter(s => s.inStock).map(s => s.pricePaise), p.fromPricePaise || Infinity) : 0;
+const path = `/h/${slug}/merch/${productSlug}`;
+const pageUrl = new URL(path, BRAND.webOrigin).toString();
+const blurb = p ? (p.description?.replace(/\s+/g, ' ').trim() || `${p.title}, a ${p.colours.map(c => c.name).join(' / ') || 'cotton'} T-shirt by ${host!.displayName}, printed to order in India. Free delivery across India.`) : '';
+const chart = (p?.sizeChart?.length ? p.sizeChart : STANDARD_SIZE_CHART).filter(row => !p || p.sizes.length === 0 || p.sizes.some(s => s.size === row.size));
+const seoContent: PublicContent | undefined = ok ? {
+  kind: 'page', key: `h/${slug}/merch/${productSlug}`, canonicalPath: path, title: `${p!.title} — T-shirt by ${host!.displayName}`,
+  summary: `${blurb} From ${rupees(lowest)}.`.slice(0, 300), visibility: 'public',
+  image: photos[0] ? { url: photos[0], alt: `${p!.title} T-shirt by ${host!.displayName}` } : undefined,
+  breadcrumbs: [{ name: 'Home', path: '/' }, { name: host!.displayName, path: `/h/${slug}` }, { name: p!.title, path }],
+} : undefined;
+const jsonLd = ok ? [productJsonLd(host!, p!, photos, blurb)] : [];
+const title = ok ? `${p!.title} — T-shirt by ${host!.displayName}` : r.status === 'gone' ? 'This product is no longer available' : 'Product not found';
+---
+<Base title={title} description={ok ? blurb.slice(0, 200) : 'This merch product is not available.'} image={photos[0]} noindex={!ok} keywords="" lang="en-IN" content={seoContent} extraJsonLd={jsonLd} ogType="website">
+  <Fragment slot="head"><meta name="theme-color" content="#fffdf7" /></Fragment>
+  {!ok ? (
+    <main class="hfm-page hfm-gone" id="merch-main">
+      <h1>{r.status === 'gone' ? 'This product is no longer available' : r.status === 'unavailable' ? 'We could not load this product' : 'We could not find this product'}</h1>
+      <p>{r.status === 'unavailable' ? 'Please try again in a moment.' : 'The influencer may have taken it down. See what else they have.'}</p>
+      <p><a class="hfm-cta" href={`/h/${slug}`}>See the influencer’s page</a></p>
+    </main>
+  ) : (
+    <main class="hfm-page" id="merch-main" data-host-slug={slug} data-product-slug={productSlug}>
+      <nav class="hfm-crumb" aria-label="Breadcrumb"><a href="/">Home</a><span aria-hidden="true">›</span><a href={`/h/${slug}`}>{host!.displayName}</a><span aria-hidden="true">›</span><span aria-current="page">{p!.title}</span></nav>
+      <div class="hfm-grid2">
+        <div class="hfm-gallery">
+          <div class="hfm-main">{photos[0] ? <img id="hfm-hero" src={publicImage(photos[0], { width: 900 })} alt={`${p!.title} T-shirt by ${host!.displayName}`} width="900" height="900" fetchpriority="high" decoding="async" /> : null}</div>
+          {photos.length > 1 && <div class="hfm-thumbs" role="group" aria-label="More pictures">{photos.map((u, i) => <button type="button" data-hfm-thumb={publicImage(u, { width: 900 })} aria-label={`Picture ${i + 1} of ${photos.length}`} aria-current={i === 0 ? 'true' : 'false'}><img src={publicImage(u, { width: 160 })} alt="" width="68" height="68" loading="lazy" decoding="async" /></button>)}</div>}
+        </div>
+        <div>
+          <p class="hfm-by">By <a href={`/h/${slug}`}>{host!.displayName}</a></p>
+          <h1 class="hfm-h1">{p!.title}</h1>
+          <p class="hfm-from">From {rupees(lowest)} · all included</p>
+          <MerchBuy client:load host={{ slug, displayName: host!.displayName }} product={{ id: p!.id, slug: p!.slug, title: p!.title, imageUrl: photos[0] ?? null, colours: p!.colours, sizes: p!.sizes, maxQty: p!.maxQty }} checkoutEnabled={ok.checkoutEnabled} />
+          <ul class="hfm-perks">
+            <li>Free delivery across India</li>
+            <li>Printed to order on a soft cotton T-shirt</li>
+            <li>No returns. If it arrives wrong or damaged, tell us within 48 hours of delivery and we make it right.</li>
+          </ul>
+          {p!.description && <p class="hfm-desc">{p!.description}</p>}
+          <details class="hfm-chart" id="size-chart">
+            <summary>Size chart</summary>
+            <table>
+              <thead><tr><th scope="col">Size</th><th scope="col">Chest (in)</th><th scope="col">Length (in)</th></tr></thead>
+              <tbody>{chart.map(row => <tr><th scope="row">{row.size}</th><td>{row.chestIn ?? '–'}</td><td>{row.lengthIn ?? '–'}</td></tr>)}</tbody>
+            </table>
+            <p>Approximate garment measurements. Between two sizes? Pick the larger one.</p>
+          </details>
+          <ShareButtons url={pageUrl} text={`${p!.title} by ${host!.displayName}`} surface="product" hostSlug={slug} productSlug={productSlug} />
+        </div>
+      </div>
+    </main>
+  )}
+</Base>
+<script>
+  // Thumbnails swap the big picture; no framework needed for that.
+  const hero = document.querySelector<HTMLImageElement>('#hfm-hero');
+  document.querySelectorAll<HTMLButtonElement>('[data-hfm-thumb]').forEach(b => b.addEventListener('click', () => {
+    if (hero && b.dataset.hfmThumb) hero.src = b.dataset.hfmThumb;
+    document.querySelectorAll('[data-hfm-thumb]').forEach(x => x.setAttribute('aria-current', x === b ? 'true' : 'false'));
+  }));
+</script>

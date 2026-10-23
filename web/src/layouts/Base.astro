@@ -58,6 +58,8 @@ export interface Props {
   dir?: 'ltr' | 'rtl';
   /** Opt-in India chrome language selector/localization. */
   indiaLandingLanguage?: boolean;
+  /** [HF-MERCH-FAN-WEB-1] Extra schema.org nodes (each emitted as its own JSON-LD script) for pages with richer facts than PublicContent holds. */
+  extraJsonLd?: Record<string, unknown>[];
 }
 
 const {
@@ -85,6 +87,7 @@ const {
   lang = 'en',
   dir = 'ltr',
   indiaLandingLanguage = true,
+  extraJsonLd,
 } = Astro.props;
 
 ---
@@ -112,6 +115,7 @@ const {
       ogType={ogType}
       noindex={noindexProp}
       keywords={keywords}
+      extraJsonLd={extraJsonLd}
     />
 
     {/* [WEB-THEME-1] The Fredoka + Nunito preloads that were here are gone:

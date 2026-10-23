@@ -39,6 +39,9 @@ export const GET: APIRoute = async () => {
   const sitemaps = [
     '/sitemap-pages.xml',
     '/sitemap-directory.xml',
+    // [HF-MERCH-FAN-WEB-1] Live influencer pages and merch product pages.
+    '/sitemap-influencers.xml',
+    '/sitemap-merch.xml',
     ...Array.from({ length: manifest.listings.pages }, (_, index) => `/sitemap-listings.xml?page=${index + 1}&amp;page_size=${PAGE_SIZE}`),
     // [WEB-SEO-REBRAND-1 2026-09-27] Creator profiles are no longer listed: Saa Thum has
     // no outside creators, and /c/* is noindex (lib/seo/policy.ts). The feed itself was

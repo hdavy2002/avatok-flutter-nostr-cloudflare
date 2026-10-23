@@ -1,0 +1,46 @@
+---
+// [HF-MERCH-FAN-WEB-1] Share row: WhatsApp, X, native share (phones) and copy link. Every shared link carries
+// ?utm_source=share&utm_medium=<network>. WhatsApp and X work without JavaScript; copy and native share are enabled by the script below.
+import { whatsappHref, xHref } from '../../lib/merchShare';
+interface Props { url: string; text: string; surface: 'strip' | 'product'; hostSlug: string; productSlug?: string }
+const { url, text, surface, hostSlug, productSlug = '' } = Astro.props;
+---
+<div class="hfm-share" data-hfm-share data-url={url} data-text={text} data-surface={surface} data-host={hostSlug} data-product={productSlug}>
+  <span>Share</span>
+  <a href={whatsappHref(url, text)} target="_blank" rel="noopener noreferrer" data-net="whatsapp" aria-label="Share on WhatsApp (opens in a new tab)">WhatsApp</a>
+  <a href={xHref(url, text)} target="_blank" rel="noopener noreferrer" data-net="x" aria-label="Share on X (opens in a new tab)">X</a>
+  <button type="button" data-net="native" hidden>More…</button>
+  <button type="button" data-net="copy" hidden>Copy link</button>
+  <span class="hfm-copied" role="status" aria-live="polite" hidden>Link copied</span>
+</div>
+<script>
+  import { capture } from '../../lib/analytics';
+  import { shareUrl, type ShareNetwork } from '../../lib/merchShare';
+  document.querySelectorAll<HTMLElement>('[data-hfm-share]').forEach(box => {
+    if (box.dataset.ready) return;
+    box.dataset.ready = '1';
+    const url = box.dataset.url ?? location.href, text = box.dataset.text ?? '';
+    const track = (network: ShareNetwork) => capture('merch_shared', { network, surface: box.dataset.surface, host_slug: box.dataset.host, product_slug: box.dataset.product || undefined });
+    const copy = box.querySelector<HTMLButtonElement>('[data-net="copy"]');
+    const native = box.querySelector<HTMLButtonElement>('[data-net="native"]');
+    const note = box.querySelector<HTMLElement>('.hfm-copied');
+    if (copy) copy.hidden = false;
+    if (native && typeof navigator.share === 'function') native.hidden = false;
+    box.querySelectorAll<HTMLAnchorElement>('a[data-net]').forEach(a => a.addEventListener('click', () => track(a.dataset.net as ShareNetwork)));
+    native?.addEventListener('click', async () => {
+      track('native');
+      try { await navigator.share({ title: text, text, url: shareUrl(url, 'native') }); } catch { /* the person closed the sheet */ }
+    });
+    copy?.addEventListener('click', async () => {
+      track('copy');
+      const link = shareUrl(url, 'copy');
+      try { await navigator.clipboard.writeText(link); }
+      catch {
+        const t = document.createElement('textarea'); t.value = link; t.style.position = 'fixed'; t.style.opacity = '0'; document.body.appendChild(t); t.select();
+        try { document.execCommand('copy'); } catch { window.prompt('Copy this link', link); }
+        t.remove();
+      }
+      if (note) { note.hidden = false; setTimeout(() => { note.hidden = true; }, 2500); }
+    });
+  });
+</script>

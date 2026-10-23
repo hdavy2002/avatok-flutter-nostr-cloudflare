@@ -18,8 +18,13 @@ import { SAME_RATE_LINE, chargeForSeconds, stdRateLabel, type PriceTier } from '
 import { formatPaise } from '../../lib/money';
 import { langLabels } from '../../lib/hfLanguages'; // [HF-DAILY-FLOWS-1]
 import { shortCallDisclaimer } from '../../lib/callvaalProfileDetails';
+import MerchStrip from '../../components/merch/MerchStrip.astro';
+import { fetchMerchHost } from '../../lib/merchPublic';
+import { profileJsonLd } from '../../lib/merchSeo';
+import type { PublicContent } from '../../lib/seo/types';
 import '../../styles/callvaal-detail.css';
 import '../../styles/hf-calls.css';
+import '../../styles/hf-merch.css';
 
 interface Card {
   slug: string; displayName: string; tagline: string | null; avatarUrl: string | null; languages: string[]; style: string | null; topics: string[];
@@ -53,6 +58,9 @@ if (slug && /^[a-z0-9-]{3,40}$/.test(slug)) {
     console.warn('[HF-HOST-PLATFORM-1] influencer profile fetch failed', err instanceof Error ? err.message : String(err));
   }
 }
+// [HF-MERCH-FAN-WEB-1] Live merch of this influencer. null while the merch feature is off, so no strip appears.
+const merch = host ? await fetchMerchHost(host.slug) : null;
+const merchProducts = merch?.products ?? [];
 if (!host) Astro.response.status = 404;
 else Astro.response.headers.set('cache-control', 'public, max-age=60');
 
@@ -80,9 +88,16 @@ const callHost = host && callEligible ? { slug: host.slug, displayName: host.dis
 const audioUrl = host?.introAudioUrl ?? null;
 const introLen = host?.introSeconds ? `${Math.floor(host.introSeconds / 60)}:${String(host.introSeconds % 60).padStart(2, '0')}` : '';
 const description = host ? `${name} on ${identity.name}. ${host.tagline ?? 'A real person to talk to, in your language.'} From ${rateLabel}. Your number stays private.` : 'This influencer page is not available.';
+// [HF-MERCH-FAN-WEB-1] Public-page discovery: an indexable record (canonical, share image) plus ProfilePage + Person JSON-LD.
+const seoContent: PublicContent | undefined = host ? {
+  kind: 'page', key: `h/${host.slug}`, canonicalPath: `/h/${host.slug}`, title: `${name} — talk to a real person`, summary: description, visibility: 'public',
+  image: host.avatarUrl ? { url: host.avatarUrl, alt: `${name}, an AI avatar chosen by the influencer` } : undefined,
+  breadcrumbs: [{ name: 'Home', path: '/' }, { name: 'Explore', path: '/marketplace' }, { name, path: `/h/${host.slug}` }],
+} : undefined;
+const jsonLd = host ? [profileJsonLd({ slug: host.slug, name, description: host.tagline ?? description, imageUrl: host.avatarUrl, rating: reviewCount > 0 ? rating : null, reviewCount })] : [];
 const galleryJson = JSON.stringify(gallery.map(g => ({ src: g.url, alt: g.caption || 'AI image' }))).replace(/</g, '\\u003c');
 ---
-<Base title={host ? `${name} — talk to a real person | ${identity.name}` : `Influencer not found | ${identity.name}`} description={description} image={host?.avatarUrl ?? undefined} noindex={!host} keywords="" lang="en-IN">
+<Base title={host ? `${name} — talk to a real person | ${identity.name}` : `Influencer not found | ${identity.name}`} description={description} image={host?.avatarUrl ?? undefined} noindex={!host} keywords="" lang="en-IN" content={seoContent} extraJsonLd={jsonLd} ogType={host ? 'profile' : 'website'}>
   <Fragment slot="head"><meta name="theme-color" content="#fffdf7" /></Fragment>
   {!host ? (
     <main class="cv-detail-main" id="profile-main">
@@ -122,7 +137,8 @@ const galleryJson = JSON.stringify(gallery.map(g => ({ src: g.url, alt: g.captio
               </div>
             </section>
             <p class="cv-sample-disclosure">To protect our influencers’ privacy, the photos on influencer profiles are AI-generated from an avatar the influencer chose. The voice introduction is the influencer’s own. {identityVerified && <>This influencer has completed our identity and video checks.</>}</p>
-            <nav class="cv-profile-tabs" aria-label="Profile sections"><a href="#about" aria-current="location">About</a><a href="#moods">Topics</a>{reviewCount > 0 && <a href="#reviews">Reviews</a>}{gallery.length > 0 && <a href="#gallery">Gallery</a>}</nav>
+            {merch && merchProducts.length > 0 && <MerchStrip host={{ slug: host.slug, displayName: name }} products={merchProducts} />}
+            <nav class="cv-profile-tabs" aria-label="Profile sections"><a href="#about" aria-current="location">About</a>{merchProducts.length > 0 && <a href="#merch">Merch</a>}<a href="#moods">Topics</a>{reviewCount > 0 && <a href="#reviews">Reviews</a>}{gallery.length > 0 && <a href="#gallery">Gallery</a>}</nav>
             <div class="cv-information-grid">
               <section class="cv-info-card" id="about" aria-labelledby="about-heading">
                 <h2 id="about-heading">About {name}</h2>

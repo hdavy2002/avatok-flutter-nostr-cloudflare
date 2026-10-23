@@ -11,9 +11,10 @@ interface Props extends LegacySeoInput {
   titleMessageKey?: string;
   descriptionMessageKey?: string;
   keywords?: string;
+  extraJsonLd?: Record<string, unknown>[];
 }
 
-const { content, titleMessageKey, descriptionMessageKey, keywords, ...legacy } = Astro.props;
+const { content, titleMessageKey, descriptionMessageKey, keywords, extraJsonLd, ...legacy } = Astro.props;
 const seo = await resolveSeo({
   pathname: Astro.url.pathname,
   searchParams: Astro.url.searchParams,
@@ -58,3 +59,4 @@ const siteName = conversationProfile ? brandConfig.homepageIdentity.name : BRAND
 <meta name="twitter:image" content={imageUrl} />
 <meta name="twitter:image:alt" content={seo.image.alt} />
 {seo.indexable && <script type="application/ld+json" set:html={serializeJsonLd(seo.jsonLd)} />}
+{seo.indexable && (extraJsonLd ?? []).map((node) => <script type="application/ld+json" set:html={serializeJsonLd(node)} />)}
