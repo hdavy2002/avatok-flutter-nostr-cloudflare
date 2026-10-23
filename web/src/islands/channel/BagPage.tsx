@@ -2,6 +2,7 @@
  * Prices shown here are what each product cost when it was added; the server prices every line again at checkout.
  * Telemetry: bag_viewed, bag_checkout_started. */
 import { useEffect, useState } from 'react';
+import { artUrl, ART_DIMS } from '../../lib/hfChannelArt';
 import { capture } from '../../lib/analytics';
 import { publicImage } from '../../lib/config';
 import { merchCheckoutEnabled } from '../../lib/merchApi';
@@ -9,6 +10,8 @@ import { bagByHost, bagCount, bagLineKey, bagTotalPaise, removeFromBag, setBagQt
 import { rupees } from '../../lib/merchPublic';
 import { useBag } from './useBag';
 import Sticker from './Sticker';
+
+const emptyArt = artUrl('emptyBag');
 
 export default function BagPage() {
   const lines = useBag();
@@ -23,6 +26,7 @@ export default function BagPage() {
   const keep = lines.length ? `/h/${lines[lines.length - 1].hostSlug}` : '/marketplace';
 
   if (ready && lines.length === 0) return <main className="sec" style={{ paddingTop: 44 }}><div className="wrap gone">
+    {emptyArt && <img className="empty-bag" src={emptyArt} width={ART_DIMS.emptyBag.w} height={ART_DIMS.emptyBag.h} alt="" decoding="async" />}
     <p className="eyebrow">Your bag</p>
     <h1 className="h2" style={{ margin: '8px 0 14px' }}>Nothing in here yet.</h1>
     <p className="sub" style={{ marginBottom: 22 }}>Find an influencer you like and add something from their merch.</p>

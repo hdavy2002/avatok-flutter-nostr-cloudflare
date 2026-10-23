@@ -1,9 +1,9 @@
 ---
 // [HF-CHANNEL-WEB-1] Meme sticker for Astro pages: owner art when its flag is on (lib/hfChannelArt.ts), else the CSS stand-in from the mock.
-import { STICKER_SLOT, STICKER_TEXT, artUrl } from '../../lib/hfChannelArt';
+import { ART_DIMS, STICKER_SLOT, STICKER_TEXT, artUrl } from '../../lib/hfChannelArt';
 interface Props { k: keyof typeof STICKER_TEXT; class?: string }
 const { k, class: extra = '' } = Astro.props;
 const TONE = { merch: 'stk', videos: 'stk p', booking: 'stk b', reviews: 'stk', product: 'stk', bag: 'stk p' } as const;
 const src = artUrl(STICKER_SLOT[k]);
 ---
-{src ? <img class={`stk-img ${extra}`.trim()} src={src} alt={STICKER_TEXT[k]} width="900" height="450" loading="lazy" decoding="async" /> : <span class={`${TONE[k]} ${extra}`.trim()}>{STICKER_TEXT[k]}</span>}
+{src ? <img class={`stk-img ${extra}`.trim()} src={src} alt={STICKER_TEXT[k]} width={ART_DIMS[STICKER_SLOT[k]].w} height={ART_DIMS[STICKER_SLOT[k]].h} loading="lazy" decoding="async" /> : <span class={`${TONE[k]} ${extra}`.trim()}>{STICKER_TEXT[k]}</span>}

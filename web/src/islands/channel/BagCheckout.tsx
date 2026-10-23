@@ -13,7 +13,7 @@ import { publicImage } from '../../lib/config';
 import { INDIAN_STATES, checkoutBag, deleteAddress, listAddresses, merchCheckoutEnabled, validateAddress, type AddressInput, type BagCheckoutDone, type SavedAddress } from '../../lib/merchApi';
 import { bagCount, bagTotalPaise, clearBag, removeFromBag, bagLineKey } from '../../lib/merchBag';
 import { rupees } from '../../lib/merchPublic';
-import { artUrl } from '../../lib/hfChannelArt';
+import { artUrl, ART_DIMS } from '../../lib/hfChannelArt';
 import SessionBridge from '../calls/SessionBridge';
 import { useBag } from './useBag';
 
@@ -172,7 +172,7 @@ export default function BagCheckout() {
             {done.hostSlug && <a className="btn btn-ghost" href={`/h/${done.hostSlug}`}>Back to {done.hostName}</a>}
           </div>
         </div>
-        <div className="art">{art ? <img src={art} alt="" width="1600" height="1200" /> : <span>Your parcel is on its way to the printer.</span>}</div>
+        <div className="art">{art ? <img src={art} alt="" width={ART_DIMS.orderDone.w} height={ART_DIMS.orderDone.h} loading="lazy" decoding="async" /> : <span>Your parcel is on its way to the printer.</span>}</div>
       </div>
     </section>;
   }

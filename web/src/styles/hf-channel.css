@@ -45,7 +45,7 @@
 .gp .stk{display:inline-block;padding:10px 16px;border-radius:14px;background:var(--yel);color:var(--ink);font-family:Nunito;font-weight:900;font-size:17px;line-height:1.15;transform:rotate(-3deg);box-shadow:0 0 0 3px #fff,0 6px 16px #1f163033}
 .gp .stk.p{background:var(--rani);color:#fff;transform:rotate(3deg)}
 .gp .stk.b{background:var(--blue);color:#fff}
-.gp img.stk-img{display:block;width:min(260px,60vw);height:auto;transform:rotate(-3deg)}
+.gp img.stk-img{display:block;width:clamp(200px,18vw,300px);height:auto;transform:rotate(-3deg)}
 /* hand-painted truck lettering slot (image), CSS stand-in */
 .gp .paint{font-family:Nunito;font-weight:900;font-style:italic;color:var(--red);text-shadow:2px 2px 0 var(--mari),4px 4px 0 var(--ink)}
 /* ===== HERO: photo + information. No decorative border. ===== */
@@ -107,7 +107,7 @@
 .gp .sec-h{display:flex;align-items:end;justify-content:space-between;gap:24px;flex-wrap:wrap;margin-bottom:30px}
 /* thin painted divider (owner art: 1600x160 truck-art band, used BETWEEN sections only, never round the hero) */
 .gp .band{height:clamp(56px,4.8vw,90px);background:repeating-linear-gradient(90deg,var(--red) 0 46px,var(--mari) 46px 92px,var(--blue) 92px 138px,var(--rani) 138px 184px);opacity:.92}
-.gp .band.art{background-size:auto 100%;background-repeat:repeat-x;opacity:1}
+.gp .band.art{height:clamp(66px,5.8vw,108px);background-color:transparent;background-position:center;background-size:auto 100%;background-repeat:repeat-x;opacity:1}
 .gp .band.rick{background:repeating-conic-gradient(var(--ink) 0 25%,var(--yel) 0 50%) 0 0/28px 28px;height:28px}
 /* MERCH grid */
 .gp .cats{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:28px}
@@ -133,7 +133,7 @@
 .gp .empty{padding:28px;border-radius:22px;background:#fff;color:var(--muted)}
 /* NOW SHOWING (video) */
 .gp .show{background:var(--ink);color:#fff}
-.gp .show.art{background-size:cover;background-position:center}
+.gp .show.art{background-color:var(--ink);background-repeat:no-repeat;background-size:cover;background-position:top center}
 .gp .show .eyebrow{color:var(--yel)}
 .gp .poster-title{font-size:clamp(52px,6vw,110px);line-height:.92;font-style:italic;color:var(--yel);text-shadow:4px 4px 0 var(--red)}
 .gp .vid-grid{display:grid;grid-template-columns:minmax(0,1.5fr) minmax(0,1fr);gap:clamp(20px,3vw,48px);align-items:start}
@@ -456,3 +456,17 @@
 .gp .toast{margin-top:14px;text-align:center;font-family:Nunito;font-weight:800;color:var(--redd)}
 
 .gp .miniline.unavail{outline:2px solid var(--rani);outline-offset:2px;border-radius:12px;background:rgba(194,24,91,.07)}
+
+/* [HF-CHANNEL-WEB-1] owner art */
+.gp .soon{text-align:center}
+.gp .soon-img{display:block;width:100%;max-width:560px;height:auto;margin:28px auto 0;border-radius:24px}
+.gp .empty-bag{display:block;width:280px;max-width:70%;height:auto;margin:0 auto 18px}
+.gp .gone .empty-bag{margin:0 0 18px}
+.gp .empty-d{text-align:center;background:none}
+.gp .meter .meter-ic{width:88px;height:88px;flex:none;object-fit:contain;margin:-6px 0}
+.gp .meter .msum{flex:1 1 auto;min-width:0}
+.gp .photo>img[alt=""]{object-position:50% 50%}
+@media (max-width:700px){
+  .gp .sec-h img.stk-img,.gp .mainimg img.stk-img{display:none}
+  .gp .meter .meter-ic{width:64px;height:64px}
+}

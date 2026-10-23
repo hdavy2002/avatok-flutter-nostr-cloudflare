@@ -19,7 +19,7 @@ import { langLabels } from '../../lib/hfLanguages'; // [HF-DAILY-FLOWS-1]
 import { brandUrl } from '../../lib/brand';
 import { fetchMerchHost } from '../../lib/merchPublic';
 import { profileJsonLd } from '../../lib/merchSeo';
-import { artUrl } from '../../lib/hfChannelArt';
+import { artUrl, ART_DIMS } from '../../lib/hfChannelArt';
 import { compact, langTag, splitName, type ChannelReel } from '../../lib/channelKit';
 import MerchGrid from '../../islands/channel/MerchGrid';
 import VideoPlayer from '../../islands/channel/VideoPlayer';
@@ -114,11 +114,15 @@ const channelReels: ChannelReel[] = reels.slice(0, 24).map(r => ({ id: r.id, pla
 const bookOn = !!callHost; // the calendar itself hides when bookings are switched off
 const bandArt = artUrl('bandTruck');
 const showArt = artUrl('nowShowingBg');
+const noPhotoArt = artUrl('noPhoto');
+const emptyMerchArt = artUrl('emptyMerch');
+// Merch feature on but nothing live yet: show the 'coming soon' art instead of hiding the section.
+const merchSoon = !!(merch && merchProducts.length === 0);
 const aboutText = host?.aboutPolished || host?.about || '';
 const aboutPlain = aboutText ? aboutText.replace(/\s+/g, ' ').trim() : '';
 const pageUrl = host ? brandUrl(`/h/${host.slug}`) : '';
 const navItems = [
-  ...(merchOn ? [{ id: 'merch', label: 'Merch', count: merchProducts.length }] : []),
+  ...(merchOn ? [{ id: 'merch', label: 'Merch', count: merchProducts.length }] : merchSoon ? [{ id: 'merch', label: 'Merch', count: null }] : []),
   ...(channelReels.length ? [{ id: 'videos', label: 'Videos' }] : []),
   ...(bookOn ? [{ id: 'book', label: 'Book a time' }] : []),
   { id: 'about', label: 'About' },
@@ -144,9 +148,9 @@ const navItems = [
             <div class="photo-wrap">
               <div class="colorblock" aria-hidden="true"></div>
               <div class="photo">
-                {host.avatarUrl ? <img src={publicImage(host.avatarUrl, { width: 1200 })} width="1200" height="1500" alt={`${name}, an AI avatar chosen by the influencer`} fetchpriority="high" decoding="async" /> : <span class="initial" aria-hidden="true">{firstName.charAt(0).toUpperCase()}</span>}
+                {host.avatarUrl ? <img src={publicImage(host.avatarUrl, { width: 1200 })} width="1200" height="1500" alt={`${name}, an AI avatar chosen by the influencer`} fetchpriority="high" decoding="async" /> : noPhotoArt ? <img src={noPhotoArt} width={ART_DIMS.noPhoto.w} height={ART_DIMS.noPhoto.h} alt="" decoding="async" /> : <span class="initial" aria-hidden="true">{firstName.charAt(0).toUpperCase()}</span>}
                 <span class={`cv-online ${badgeClass}`.trim()}><span aria-hidden="true"></span>{badgeText}</span>
-                <span class="ai">AI avatar chosen by the influencer</span>
+                {host.avatarUrl && <span class="ai">AI avatar chosen by the influencer</span>}
               </div>
             </div>
             <div class="info">
@@ -190,6 +194,18 @@ const navItems = [
           <div class={`band${bandArt ? ' art' : ''}`} aria-hidden="true" style={bandArt ? `background-image:url(${bandArt})` : undefined}></div>
         </>}
 
+        {merchSoon && <>
+          <section class="sec" id="merch" aria-labelledby="mh">
+            <div class="wrap soon">
+              <p class="eyebrow">The merch shop</p>
+              <h2 class="h2" id="mh">Merch coming soon</h2>
+              <p class="sub" style="margin-top:8px">{firstName} is cooking up something. Check back soon.</p>
+              {emptyMerchArt && <img class="soon-img" src={emptyMerchArt} width={ART_DIMS.emptyMerch.w} height={ART_DIMS.emptyMerch.h} alt="" loading="lazy" decoding="async" />}
+            </div>
+          </section>
+          <div class={`band${bandArt ? ' art' : ''}`} aria-hidden="true" style={bandArt ? `background-image:url(${bandArt})` : undefined}></div>
+        </>}
+
         {channelReels.length > 0 && (
           <section class={`sec show${showArt ? ' art' : ''}`} id="videos" aria-labelledby="vh" style={showArt ? `background-image:url(${showArt})` : undefined}>
             <div class="wrap">
@@ -215,7 +231,7 @@ const navItems = [
               <InlineBooking client:idle hostSlug={host.slug} hostName={name} paisePerMin={paisePerMin} plan={host.plan} priceTiers={host.priceTiers} />
             </div>
           </section>
-          <div class="band rick" data-book-band aria-hidden="true"></div>
+          <div class={`band${bandArt ? ' art' : ' rick'}`} data-book-band aria-hidden="true" style={bandArt ? `background-image:url(${bandArt})` : undefined}></div>
         </>}
 
         <section class="sec" id="about" aria-labelledby="ah" style="background:#fff">

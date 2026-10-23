@@ -6,9 +6,12 @@ import { merchCheckoutEnabled } from '../../lib/merchApi';
 import { bagCount, bagTotalPaise, onBagDrawerOpen, type BagLine } from '../../lib/merchBag';
 import { publicImage } from '../../lib/config';
 import { rupees } from '../../lib/merchPublic';
+import { artUrl, ART_DIMS } from '../../lib/hfChannelArt';
 import { capture } from '../../lib/analytics';
 import { useBag } from './useBag';
 import Sticker from './Sticker';
+
+const emptyArt = artUrl('emptyBag');
 
 export default function BagDrawer({ checkoutEnabled }: { checkoutEnabled?: boolean }) {
   const ref = useRef<HTMLDialogElement>(null);
@@ -37,7 +40,7 @@ export default function BagDrawer({ checkoutEnabled }: { checkoutEnabled?: boole
       <h2>{added ? 'Added to bag ✓' : 'Your bag'}</h2>
       <button className="ibtn" type="button" aria-label="Close bag" onClick={close}>✕</button>
     </div>
-    {lines.length === 0 ? <p className="empty">Your bag is empty.</p> : lines.map(l => (
+    {lines.length === 0 ? <div className="empty empty-d">{emptyArt && <img className="empty-bag" src={emptyArt} width={ART_DIMS.emptyBag.w} height={ART_DIMS.emptyBag.h} alt="" decoding="async" />}<p>Your bag is empty.</p></div> : lines.map(l => (
       <div className="line" key={`${l.productId}|${l.colour}|${l.size}`}>
         <div className="im">{l.imageUrl && <img src={publicImage(l.imageUrl, { width: 200 })} alt="" width="90" height="90" />}</div>
         <div>

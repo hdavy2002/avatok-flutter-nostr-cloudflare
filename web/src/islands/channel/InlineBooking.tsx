@@ -5,6 +5,7 @@
  * a quiet note. Money shown here is the rate x minutes (an estimate); the real quote is made on the booking page.
  * Telemetry: channel_slot_requested. */
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { artUrl, ART_DIMS } from '../../lib/hfChannelArt';
 import { capture } from '../../lib/analytics';
 import { bookingError, bookingsEnabled, getPublicSlotsInfo, offeredDurations, type AvailabilitySlot } from '../../lib/hfBookingsApi';
 import { callModeFlags, offeredLengths } from '../../lib/hfCallModes';
@@ -20,6 +21,8 @@ const timeFmt = (iso: string) => new Intl.DateTimeFormat('en-IN', { hour: 'numer
 const money = (paise: number) => (paise % 100 === 0 ? `₹${(paise / 100).toLocaleString('en-IN')}` : formatPaise(paise));
 
 interface Props { hostSlug: string; hostName: string; paisePerMin: number; plan?: string; priceTiers?: PriceTier[] }
+
+const meterArt = artUrl('meterIcon');
 
 export default function InlineBooking({ hostSlug, hostName, paisePerMin, plan, priceTiers }: Props) {
   const today = useMemo(() => ymd(new Date()), []);
@@ -151,7 +154,8 @@ export default function InlineBooking({ hostSlug, hostName, paisePerMin, plan, p
         {lens.map(m => <button key={m} type="button" className={`chip${m === duration ? ' on' : ''}`} aria-pressed={m === duration} onClick={() => setDuration(m)}>{m} min</button>)}
       </div>
       <div className="meter">
-        <div><span className="disp">{money(priceFor(duration))}</span><small>{chosen ? `${dayFmt(day, { weekday: 'short', day: 'numeric', month: 'short' })} · ${timeFmt(chosen.startUtc)} · ${duration} min` : 'Pick a time'}</small></div>
+        {meterArt && <img className="meter-ic" src={meterArt} width={ART_DIMS.meterIcon.w} height={ART_DIMS.meterIcon.h} alt="" loading="lazy" decoding="async" />}
+        <div className="msum"><span className="disp">{money(priceFor(duration))}</span><small>{chosen ? `${dayFmt(day, { weekday: 'short', day: 'numeric', month: 'short' })} · ${timeFmt(chosen.startUtc)} · ${duration} min` : 'Pick a time'}</small></div>
         <button type="button" className="btn btn-y" disabled={!chosen} onClick={request}>Request this slot</button>
       </div>
     </>}
