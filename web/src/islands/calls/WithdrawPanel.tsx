@@ -1,5 +1,5 @@
 /* [HF-PAYOUT-1] Host withdrawals, shown inside HostDashboard. Worker: GET/POST /api/hosts/me/payouts, POST /api/hosts/me/payouts/:id/cancel.
- * Payouts: you ask, we pay your verified bank account and show the bank reference (UTR) here. Whole rupees. */
+ * Withdrawals: you ask, we pay your UPI ID and show the bank reference (UTR) here. Whole rupees. */
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ApiError, request } from '../../lib/apiClient';
 import { relDate } from '../../lib/hfCallsApi';

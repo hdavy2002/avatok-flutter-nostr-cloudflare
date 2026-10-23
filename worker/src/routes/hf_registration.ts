@@ -7,7 +7,7 @@ import { rateLimit } from "../money";
 import { contactLeak } from "../lib/hf_options";
 import { track, trackException } from "../hooks";
 import { BRAND } from "../lib/brand";
-import { HF_REGISTRATION_POLICIES, REGISTRATION_POLICY_NAMES, currentPolicyAcceptances } from "../lib/hf_registration_policies";
+import { HF_REGISTRATION_POLICIES, HF_POLICY_CHANGE_NOTE, REGISTRATION_POLICY_NAMES, currentPolicyAcceptances, type RegistrationPolicy } from "../lib/hf_registration_policies";
 
 const APP = BRAND.slug;
 const REQUIRED_POLICIES = REGISTRATION_POLICY_NAMES;
@@ -207,14 +207,56 @@ async function register(req: Request, env: Env, uid: string): Promise<Response> 
   return json({ ok: true, username, registrationComplete: true });
 }
 
+// [HF-POLICY-WITHDRAW-1] Re-accept flow. A person who registered under an older version of a policy page is asked
+// to accept the current one. Receipts are kept per (uid, policy, version): the registration receipt is never
+// overwritten, so the version someone first accepted stays on record.
+async function pendingPolicies(env: Env, uid: string): Promise<RegistrationPolicy[] | null> {
+  const registered = await env.DB_META.prepare("SELECT 1 AS x FROM hf_user_registration WHERE uid=?1").bind(uid).first();
+  if (!registered) return null; // not registered yet: the registration flow asks for the current versions
+  const rows = await env.DB_META.prepare(
+    `SELECT policy,document_version FROM hf_registration_policy_acceptances WHERE uid=?1
+     UNION SELECT policy,document_version FROM hf_policy_reacceptances WHERE uid=?1`,
+  ).bind(uid).all<{ policy: string; document_version: string }>().catch(() => null);
+  const have = new Set((rows?.results ?? []).map((r) => `${r.policy}:${r.document_version}`));
+  return REQUIRED_POLICIES.filter((name) => !have.has(`${name}:${HF_REGISTRATION_POLICIES[name].version}`));
+}
+
+async function policyUpdateStatus(env: Env, uid: string): Promise<Response> {
+  const pending = await pendingPolicies(env, uid);
+  const list = pending ?? [];
+  return json({
+    required: list.length > 0, note: HF_POLICY_CHANGE_NOTE,
+    pending: list.map((name) => ({ policy: name, path: HF_REGISTRATION_POLICIES[name].path, version: HF_REGISTRATION_POLICIES[name].version })),
+  }, 200, { "cache-control": "private, no-store" });
+}
+
+async function acceptPolicyUpdate(req: Request, env: Env, uid: string): Promise<Response> {
+  const lim = await rateLimit(env, `hfpolicyupdate:${uid}`, 30, 3600);
+  if (lim) return lim;
+  const body = await req.json().catch(() => null) as Record<string, unknown> | null;
+  if (!body || typeof body !== "object" || Array.isArray(body)) return err(400, "invalid_body", "Please try again.");
+  const pending = await pendingPolicies(env, uid);
+  if (!pending?.length) return json({ ok: true, required: false });
+  const accepted = currentPolicyAcceptances(body.acceptedPolicyVersions);
+  const stale = pending.filter((name) => !accepted[name]);
+  if (stale.length) return json({ error: "policy_versions_required", message: "The agreements changed. Read and accept the current versions.", missing: stale }, 409);
+  const now = Date.now();
+  await env.DB_META.batch(pending.map((name) => env.DB_META.prepare(
+    "INSERT OR IGNORE INTO hf_policy_reacceptances (uid,policy,document_version,accepted_at) VALUES (?1,?2,?3,?4)",
+  ).bind(uid, name, accepted[name]!, now)));
+  void track(env, uid, "hf_policy_reaccepted", APP, { policies: pending.length });
+  return json({ ok: true, required: false });
+}
+
 export async function hfRegistrationRoute(req: Request, env: Env, path: string): Promise<Response | null> {
-  if (path !== "/api/hf/me/registration" && path !== "/api/hf/me/username") return null;
-  const allowed = path.endsWith("/username") ? ["GET"] : ["GET", "PATCH", "POST"];
+  if (path !== "/api/hf/me/registration" && path !== "/api/hf/me/username" && path !== "/api/hf/me/policy-update") return null;
+  const allowed = path.endsWith("/username") ? ["GET"] : path.endsWith("/policy-update") ? ["GET", "POST"] : ["GET", "PATCH", "POST"];
   if (!allowed.includes(req.method)) return err(405, "method_not_allowed", "That action is not available.");
   const auth = await requireUser(req, env);
   if (isFail(auth)) return err(auth.status, auth.error, "Please sign in again.");
   try {
     if (path.endsWith("/username")) return await usernameAvailability(req, env, auth.uid);
+    if (path.endsWith("/policy-update")) return req.method === "GET" ? await policyUpdateStatus(env, auth.uid) : await acceptPolicyUpdate(req, env, auth.uid);
     if (req.method === "GET") return await progress(env, auth.uid);
     if (req.method === "PATCH") return await saveProgress(req, env, auth.uid);
     return await register(req, env, auth.uid);

@@ -37,10 +37,12 @@ function setup() {
     INSERT INTO hf_phone_signup VALUES ('u1','done');
   `);
   db.exec(readFileSync(new URL('../../migrations/2026-10-12-hf-registration-progress.sql', import.meta.url), 'utf8'));
+  db.exec(readFileSync(new URL('../../migrations/2026-10-23-hf-policy-reacceptances.sql', import.meta.url), 'utf8'));
   kv = new Map();
   const statement = (sql: string, values: unknown[] = []) => ({
     bind: (...next: unknown[]) => statement(sql, next),
     first: async () => db.prepare(sql).get(...values) ?? null,
+    all: async () => ({ results: db.prepare(sql).all(...values) }),
     run: async () => {
       const result = db.prepare(sql).run(...values);
       return { meta: { changes: Number(result.changes) } };
@@ -175,6 +177,25 @@ describe("HF immutable registration username", () => {
       const source = readFileSync(new URL(`../../../web/src/pages${policy.path}.astro`, import.meta.url));
       expect(policy.version).toBe(`sha256:${createHash('sha256').update(source).digest('hex')}`);
     }
+  });
+
+  it('asks a registered person to accept changed policies once, and keeps the first receipt', async () => {
+    const policyCall = (method = 'GET', body?: unknown, uid = 'u1') => hfRegistrationRoute(request('/api/hf/me/policy-update', method, body, uid), env, '/api/hf/me/policy-update');
+    expect(await (await policyCall()).json()).toMatchObject({ required: false, pending: [] }); // not registered yet
+    await call('POST', registration);
+    expect(await (await policyCall()).json()).toMatchObject({ required: false });
+    const old = 'sha256:' + '0'.repeat(64);
+    db.prepare("UPDATE hf_registration_policy_acceptances SET document_version=?1 WHERE policy IN ('terms','privacy')").run(old);
+    const status = await (await policyCall()).json();
+    expect(status.required).toBe(true);
+    expect(status.pending.map((p: any) => p.policy).sort()).toEqual(['privacy', 'terms']);
+    expect(status.note).toContain('UPI');
+    const refused = await policyCall('POST', { acceptedPolicyVersions: { terms: acceptedPolicyVersions.terms } });
+    expect(refused.status).toBe(409);
+    expect((await policyCall('POST', { acceptedPolicyVersions })).status).toBe(200);
+    expect(await (await policyCall()).json()).toMatchObject({ required: false, pending: [] });
+    expect(db.prepare("SELECT document_version FROM hf_registration_policy_acceptances WHERE policy='terms'").get().document_version).toBe(old);
+    expect(db.prepare('SELECT COUNT(*) AS n FROM hf_policy_reacceptances').get().n).toBe(2);
   });
 
   it('resumes every completed step from server state without saving OTP codes', async () => {

@@ -1173,7 +1173,7 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
       if (p === "/api/admin/hf/demo-influencers" || p.startsWith("/api/admin/hf/demo-influencers/")) { const r = await hfDemoAdminRoute(req, env, p); if (r) return r; } // [HF-WIRE-14]
       if (p === "/api/hf/reels" || p.startsWith("/api/hf/reels/") || p === "/api/hf/hosts/me/reels") { const r = await hfReelsRoute(req, env, p, ctx); if (r) return r; } // [HF-WIRE-4]
       if (p === "/api/hf/me/summary") { const r = await hfDashSummaryRoute(req, env); if (r) return r; } // [HF-DASH-SUMMARY-1]
-      if (p === "/api/hf/me/registration" || p === "/api/hf/me/username") { const r = await hfRegistrationRoute(req, env, p); if (r) return r; } // [HF-REF-AUTH-1]
+      if (p === "/api/hf/me/registration" || p === "/api/hf/me/username" || p === "/api/hf/me/policy-update") { const r = await hfRegistrationRoute(req, env, p); if (r) return r; } // [HF-REF-AUTH-1]
       if (p === "/api/hf/push/register") { const r = await hfPushRoute(req, env, p); if (r) return r; } // [HF-APP-4]
       if (p === "/api/hf/tokens/products" || p.startsWith("/api/hf/tokens/play/")) { const r = await hfTokensPlayRoute(req, env, p); if (r) return r; } // [HF-TOK-PLAY-1]
       if (p === "/api/hosts/me/payouts" || p === "/api/hf/payouts" || p.startsWith("/api/hf/payouts/") || p.startsWith("/api/hosts/me/payouts/") || p === "/api/admin/hf/payouts" || p.startsWith("/api/admin/hf/payouts/")) { const r = await hfPayoutsRoute(req, env, p, ctx); if (r) return r; } // [HF-PAYOUT-1]

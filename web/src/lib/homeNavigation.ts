@@ -8,7 +8,7 @@
 // Previous menu (for restore): Bazaar = Live streaming, 1:1 consultations,
 // Explore marketplace, Explore events, Experiences, Help, Joining a live event
 // (/help/booking-and-paying/join-a-live-show); Creators = Start selling
-// (/sign-up), Creator dashboard (/dashboard), Payouts, Safety
+// (/sign-up), Creator dashboard (/dashboard), Withdrawals, Safety
 // (/community-guidelines), For organisers, Guides (/organisers#guides),
 // Pricing & Fees; Company also had Careers, Who we are (/terms#status) and
 // duplicate Terms/Privacy links.

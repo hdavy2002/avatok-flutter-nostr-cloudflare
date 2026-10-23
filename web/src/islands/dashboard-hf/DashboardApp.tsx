@@ -34,6 +34,7 @@ import FraandsV3 from './v3/Fraands';
 import BecomeV3 from './v3/Become';
 import SupportV3 from './v3/Support';
 import CloseV3 from './v3/Close';
+import PolicyUpdatePrompt from './PolicyUpdatePrompt'; // [HF-POLICY-WITHDRAW-1]
 
 type Phase = 'boot' | 'signedout' | 'error' | 'ready';
 
@@ -144,6 +145,7 @@ function Shell({ initial }: { initial: DashSection }) {
   return <div className="hfd-v3" onClick={go}>
     <DashDataProvider uid={account.uid} favouritesOn={favouritesOn} nav={nav}>
       <ToastProvider>
+        <PolicyUpdatePrompt uid={account.uid} />
         <DashShell account={account} active={section} bookingOn={bookingOn} favouritesOn={favouritesOn}>
           <DashboardEmbed.Provider value={true}><SectionBoundary key={key} section={section}>{body}</SectionBoundary></DashboardEmbed.Provider>
         </DashShell>
