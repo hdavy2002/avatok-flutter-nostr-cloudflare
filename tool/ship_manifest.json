@@ -11479,5 +11479,20 @@
         "note": "An order reached the tracker in a live state. Payment success itself is proved by the server order rows, not by this event."
       }
     ]
+  },
+  "HF-CALL-MODES-A": {
+    "description": "Host call modes (online/bookings only/offline), live on-call status from the joined call, booked claims in any mode, public callState fields.",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [],
+    "success": [
+      {
+        "event": "hf_host_mode_changed",
+        "property": "to",
+        "exists": true,
+        "min_events": 1,
+        "note": "An influencer switched mode via the new three-way control (flag hfCallModesEnabled)."
+      }
+    ]
   }
 }
