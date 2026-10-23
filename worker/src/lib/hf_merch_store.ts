@@ -7,7 +7,7 @@ import { mediaUrl } from "./hf_host_store";
 import { brandUrl } from "./brand";
 import type { ShopOrderRow } from "./shop_orders_logic";
 import { apiProductStatus, parseJson, type ProductMerch } from "./hf_merch_types";
-import { sizePrices } from "./hf_merch_math";
+import { sizePrices, sizeBreakdown } from "./hf_merch_math";
 
 // ---------------------------------------------------------------------------
 // Hosts
@@ -95,16 +95,21 @@ export async function openOrdersForProduct(env: Env, productId: string): Promise
 export type ProductShape = {
   id: string; slug: string; title: string; description: string; status: "pending" | "live" | "rejected" | "hidden"; reviewNote: string | null;
   imageUrl: string | null; mockups: string[]; catalogName: string; colours: Array<{ name: string; hex: string }>;
-  sizes: Array<{ size: string; basePaise: number; pricePaise: number; youEarnPaise: number }>; markupRupees: number; soldCount: number; publicUrl: string; createdAt: number;
+  sizes: Array<{ size: string; basePaise: number; pricePaise: number; youEarnPaise: number; printingPaise: number; shippingPaise: number; bufferPaise: number }>;
+  /** true when the printing / shipping split was worked back from today's shipping quote because the product predates the frozen breakdown. */
+  breakdownEstimated: boolean; markupRupees: number; soldCount: number; publicUrl: string; createdAt: number;
 };
-export function productShape(row: MerchProductRow, host: Pick<MerchHost, "slug">, shareBps: number): ProductShape {
+export function productShape(row: MerchProductRow, host: Pick<MerchHost, "slug">, shareBps: number, legacyShipPaise = 0): ProductShape {
   const m = productMerch(row);
   const mockups = m?.mockups ?? [];
   const markup = Math.trunc(Number(row.markup_rupees ?? 0));
+  const bufferPaise = Math.max(0, Math.trunc(Number(m?.bufferRupees ?? 0))) * 100;
+  const parts = (m?.sizes ?? []).map((x) => sizeBreakdown(x, legacyShipPaise, bufferPaise));
   return {
     id: row.id, slug: m?.productSlug ?? row.slug, title: row.name, description: row.description, status: apiProductStatus(row.review_status), reviewNote: row.review_note,
     imageUrl: mockups[0] ?? m?.printPreviewUrl ?? m?.artUrl ?? null, mockups, catalogName: m?.catalogName ?? "", colours: m?.colours ?? [],
-    sizes: sizePrices(m?.sizes ?? [], markup, shareBps), markupRupees: markup, soldCount: Number(row.sold_count ?? 0),
+    sizes: sizePrices(m?.sizes ?? [], markup, shareBps).map((x, i) => ({ ...x, printingPaise: parts[i].printingPaise, shippingPaise: parts[i].shippingPaise, bufferPaise: parts[i].bufferPaise })),
+    breakdownEstimated: parts.some((x) => x.estimated), markupRupees: markup, soldCount: Number(row.sold_count ?? 0),
     publicUrl: brandUrl(`/h/${host.slug}/merch/${m?.productSlug ?? row.slug}`), createdAt: Number(row.created_at),
   };
 }

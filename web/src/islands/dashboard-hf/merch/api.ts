@@ -7,13 +7,15 @@ import { API_BASE } from '../../../lib/env';
 export interface Colour { name: string; hex: string }
 export interface CatalogItem {
   id: string; kind: string; name: string; side: ('front' | 'back')[]; printArea: { wIn: number; hIn: number };
-  colours: Colour[]; sizes: { size: string; basePaise: number; baseRupees: number }[];
+  colours: Colour[]; sizes: { size: string; basePaise: number; baseRupees: number; printingPaise: number; shippingPaise: number }[];
 }
-export interface CatalogInfo { items: CatalogItem[]; minMarkupRupees: number; platformShareBps: number; holdDays: number }
+export interface CatalogInfo { items: CatalogItem[]; shippingPaise: number; bufferPaise: number; minMarkupRupees: number; platformShareBps: number; holdDays: number }
 export type ProductStatus = 'pending' | 'live' | 'rejected' | 'hidden';
 export interface Product {
   id: string; slug: string; title: string; description: string; status: ProductStatus; reviewNote: string | null; imageUrl: string | null;
-  mockups: string[]; catalogName: string; colours: Colour[]; sizes: { size: string; basePaise: number; pricePaise: number; youEarnPaise: number }[];
+  mockups: string[]; catalogName: string; colours: Colour[]; sizes: { size: string; basePaise: number; pricePaise: number; youEarnPaise: number; printingPaise: number; shippingPaise: number; bufferPaise: number }[];
+  /** true for older products whose printing / shipping split is worked back from today's shipping quote. */
+  breakdownEstimated?: boolean;
   markupRupees: number; soldCount: number; publicUrl: string; createdAt: number;
 }
 export type OrderStatus = 'new' | 'processing' | 'shipped' | 'delivered' | 'cancelled';
@@ -54,7 +56,7 @@ export const merchEnabled = (): Promise<boolean> => merchConfig().then(c => c.en
 const B = '/api/hf/merch';
 export const getCatalog = () => hfCall<{ ok: boolean } & CatalogInfo>('GET', `${B}/catalog`);
 export const getQuote = (p: { catalogId: string; colours: string[]; side: string; w: number; h: number; sizes: string[] }) =>
-  hfCall<{ ok: boolean; sizes: { size: string; basePaise: number; baseRupees: number }[] }>('GET',
+  hfCall<{ ok: boolean; sizes: { size: string; basePaise: number; baseRupees: number; printingPaise: number; shippingPaise: number }[]; shippingPaise: number; bufferPaise: number }>('GET',
     `${B}/quote?catalogId=${encodeURIComponent(p.catalogId)}&colours=${encodeURIComponent(p.colours.join(','))}&side=${p.side}&w=${p.w.toFixed(2)}&h=${p.h.toFixed(2)}&sizes=${encodeURIComponent(p.sizes.join(','))}`);
 export const getSummary = () => hfCall<{ ok: boolean } & Summary>('GET', `${B}/summary`);
 export const listProducts = () => hfCall<{ ok: boolean; products: Product[] }>('GET', `${B}/products`);

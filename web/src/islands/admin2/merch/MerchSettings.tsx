@@ -113,7 +113,7 @@ export default function MerchSettings() {
             <label style={{ display: 'flex', gap: 8, alignItems: 'center' }}><input type="checkbox" checked={ex.cashfree} onChange={(e) => setEx({ ...ex, cashfree: e.target.checked })} /> Fan pays through Cashfree</label>
           </div>
           <dl className="mx-kv" style={{ marginTop: 12 }}>
-            <dt>Fan pays</dt><dd>{money(calc.total)}</dd>
+            <dt>Fan pays (incl. GST &amp; delivery)</dt><dd>{money(calc.total)}</dd>
             <dt>Printer is paid (base{parsed.hfMerchBaseBufferRupees ? ' + cushion' : ''})</dt><dd>{money(calc.base)}</dd>
             <dt>Influencer earns</dt><dd>{money(calc.infl)}</dd>
             <dt>Platform share</dt><dd>{money(calc.plat)}</dd>

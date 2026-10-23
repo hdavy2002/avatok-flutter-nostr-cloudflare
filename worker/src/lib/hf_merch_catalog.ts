@@ -6,7 +6,7 @@ import { trackException } from "../hooks";
 import { ensurePodCatalog, getPodProvider, referenceShippingRupees, loadStoredCatalog, syncCatalogToDb, PRINT_SPECS } from "./pod";
 import type { CatalogProduct, PodProvider } from "./pod";
 import { computeSizeCosts, partnerPlacement, sortSizes, variantSku, type Placement } from "./studio_logic";
-import { baseUnitPaise, profitRow, youEarnUnitPaise, type MerchCfg, type ProfitRow } from "./hf_merch_math";
+import { baseUnitPaise, splitBase, profitRow, youEarnUnitPaise, type MerchCfg, type ProfitRow } from "./hf_merch_math";
 import { parseJson, type MerchSnapshot, type ProductMerch } from "./hf_merch_types";
 
 const TEE_KIND = /_tee$/;
@@ -16,7 +16,7 @@ export const LIVE_QUOTE_MAX_AGE_MS = 60 * 60 * 1000;
 
 export type CatalogItem = {
   id: string; kind: string; name: string; side: Array<"front" | "back">; printArea: { wIn: number; hIn: number };
-  colours: Array<{ name: string; hex: string }>; sizes: Array<{ size: string; basePaise: number; baseRupees: number }>; mockupUrl?: string;
+  colours: Array<{ name: string; hex: string }>; sizes: Array<{ size: string; basePaise: number; baseRupees: number; printingPaise: number; shippingPaise: number }>; mockupUrl?: string;
 };
 
 function colourList(p: CatalogProduct): Array<{ name: string; hex: string }> {
@@ -33,7 +33,7 @@ export const areaOf = (p: Pick<CatalogProduct, "kind" | "print_area_in">, side: 
 };
 
 export type BaseQuote =
-  | { ok: true; sizes: Array<{ size: string; baseUnitPaise: number }>; shippingRupees: number | null }
+  | { ok: true; sizes: Array<{ size: string; baseUnitPaise: number; printingPaise: number; shippingPaise: number; bufferPaise: number }>; shippingRupees: number | null }
   | { ok: false; error: "catalog_unavailable" | "unknown_product" | "no_sizes"; message: string };
 
 /** Per-size base price (paise, whole rupees, buffer included) for printing w x h inches on `side` in the chosen colours. */
@@ -47,17 +47,17 @@ export async function quoteBases(
   const shipping = await referenceShippingRupees(env);
   const costs = computeSizeCosts(prod, a.colours, a.side, a.wIn, a.hIn, shipping);
   const want = a.sizes ? new Set(a.sizes.map((s) => s.toLowerCase())) : null;
-  const sizes: Array<{ size: string; baseUnitPaise: number }> = [];
+  const sizes: Array<{ size: string; baseUnitPaise: number; printingPaise: number; shippingPaise: number; bufferPaise: number }> = [];
   for (const c of costs) {
     if (!c.in_stock || c.total_rupees == null || (want && !want.has(c.size.toLowerCase()))) continue;
-    const base = baseUnitPaise(c.total_rupees, cfg.baseBufferRupees);
-    if (base != null) sizes.push({ size: c.size, baseUnitPaise: base });
+    const parts = splitBase(c.total_rupees, shipping, cfg.baseBufferRupees);
+    if (parts) sizes.push({ size: c.size, ...parts });
   }
   if (!sizes.length) return { ok: false, error: "no_sizes", message: "That shirt cannot be priced in those colours." };
   return { ok: true, sizes, shippingRupees: shipping, product: prod };
 }
 
-export async function merchCatalog(env: Env, cfg: MerchCfg): Promise<{ ok: true; items: CatalogItem[] } | { ok: false; error: string; message: string }> {
+export async function merchCatalog(env: Env, cfg: MerchCfg): Promise<{ ok: true; items: CatalogItem[]; shippingPaise: number; bufferPaise: number } | { ok: false; error: string; message: string }> {
   const info = await ensurePodCatalog(env);
   if (info.source !== "printrove") return { ok: false, error: "catalog_unavailable", message: "The shirt catalogue is not available right now." };
   const shipping = await referenceShippingRupees(env);
@@ -68,13 +68,19 @@ export async function merchCatalog(env: Env, cfg: MerchCfg): Promise<{ ok: true;
     // "Up to" price: the biggest print the shirt takes. The wizard re-quotes the real size through /quote as the art is placed.
     const costs = computeSizeCosts(p, [], "front", w, h, shipping);
     const sizes = costs.filter((c) => c.in_stock && c.total_rupees != null).map((c) => {
-      const base = baseUnitPaise(c.total_rupees as number, cfg.baseBufferRupees) ?? 0;
-      return { size: c.size, basePaise: base, baseRupees: Math.round(base / 100) };
+      const parts = splitBase(c.total_rupees as number, shipping, cfg.baseBufferRupees);
+      const base = parts?.baseUnitPaise ?? 0;
+      return { size: c.size, basePaise: base, baseRupees: Math.round(base / 100), printingPaise: parts?.printingPaise ?? 0, shippingPaise: parts?.shippingPaise ?? 0 };
     }).filter((s) => s.basePaise > 0);
     if (!sizes.length) continue;
     items.push({ id: p.provider_product_id, kind: p.kind, name: p.name, side: ["front", "back"], printArea: { wIn: w, hIn: h }, colours: colourList(p), sizes });
   }
-  return { ok: true, items };
+  return { ok: true, items, shippingPaise: Math.max(0, Math.round((shipping ?? 0) * 100)), bufferPaise: cfg.baseBufferRupees * 100 };
+}
+
+/** Today's reference shipping in paise (0 when unavailable): the stand-in for products made before the breakdown was frozen. */
+export async function legacyShippingPaise(env: Env): Promise<number> {
+  try { return Math.max(0, Math.round(((await referenceShippingRupees(env)) ?? 0) * 100)); } catch { return 0; }
 }
 
 // ---------------------------------------------------------------------------

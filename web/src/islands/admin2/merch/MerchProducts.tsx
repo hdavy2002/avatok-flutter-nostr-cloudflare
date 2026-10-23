@@ -86,7 +86,7 @@ function Row({ p, open, onToggle, onZoom, onChanged }: {
         </button>
         <button type="button" className="mx-pmain" aria-expanded={open} onClick={onToggle}>
           <span className="mx-title">{p.title} <ChevronDown size={16} aria-hidden="true" style={{ verticalAlign: -2, transform: open ? 'rotate(180deg)' : undefined }} /></span>
-          <span className="mx-sub">{p.seller.displayName ?? 'Influencer'} · {p.catalogName || 'T-shirt'} · {priceRange(p)}</span>
+          <span className="mx-sub">{p.seller.displayName ?? 'Influencer'} · {p.catalogName || 'T-shirt'} · Fan pays {priceRange(p)} (incl. GST &amp; delivery)</span>
           <span className="mx-dots" aria-label={`${p.colours.length} colours`}>{p.colours.map((c) => <i key={c.name} title={c.name} style={{ background: c.hex }} />)}</span>
         </button>
         <button type="button" className="mx-pchip" tabIndex={-1} aria-hidden="true" onClick={onToggle}><span className={`mx-chip ${chip.tone}`}>{chip.label}</span></button>
@@ -122,7 +122,7 @@ function Row({ p, open, onToggle, onZoom, onChanged }: {
           </div>
           <div>
             <h3 className="mx-h">Prices</h3>
-            <dl className="mx-kv"><dt>Influencer markup</dt><dd>{money(p.markupRupees * 100)}</dd></dl>
+            <dl className="mx-kv"><dt>Influencer markup</dt><dd>{money(p.markupRupees * 100)}</dd><dt>Fan pays (incl. GST &amp; delivery)</dt><dd>{priceRange(p)}</dd></dl>
           </div>
         </div>
         <div>

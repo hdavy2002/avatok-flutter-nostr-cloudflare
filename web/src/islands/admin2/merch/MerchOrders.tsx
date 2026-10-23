@@ -39,7 +39,7 @@ function Breakdown({ o, q }: { o: AdminOrder; q: LiveQuote | undefined }) {
   const rose = q?.costRose || (q?.risePaise ?? 0) > 0;
   return (
     <dl className="mx-kv">
-      <dt>Fan paid ({o.payMethod === 'cashfree' ? 'Cashfree' : o.payMethod === 'wallet' ? 'wallet' : o.payMethod ?? '—'})</dt><dd>{money(m.totalPaise)}</dd>
+      <dt>Fan pays (incl. GST &amp; delivery), paid by {o.payMethod === 'cashfree' ? 'Cashfree' : o.payMethod === 'wallet' ? 'wallet' : o.payMethod ?? '—'}</dt><dd>{money(m.totalPaise)}</dd>
       <dt>Frozen base (print + shipping)</dt><dd>{money(m.basePaise)}</dd>
       {q && <><dt>Live Printrove cost now</dt><dd className={rose ? 'amber' : ''}>{live == null ? 'Not available' : money(live)}{q.risePaise ? ` (${q.risePaise > 0 ? '+' : ''}${money(q.risePaise)})` : ''}</dd></>}
       <dt>Influencer markup</dt><dd>{money(m.markupPaise)}</dd>

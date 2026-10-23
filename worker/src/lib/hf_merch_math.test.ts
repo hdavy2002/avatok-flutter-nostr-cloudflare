@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
-  MERCH_DEFAULT_CFG, readMerchCfg, computeMerchMoney, baseUnitPaise, checkMarkup, quoteAgainstLive, earningAvailableAt, sizePrices, youEarnUnitPaise, bpsOf, bpsFloor,
+  MERCH_DEFAULT_CFG, readMerchCfg, computeMerchMoney, baseUnitPaise, checkMarkup, quoteAgainstLive, earningAvailableAt, sizePrices, splitBase, sizeBreakdown, youEarnUnitPaise, bpsOf, bpsFloor,
   rupeesText, DAY_MS, profitRow,
 } from "./hf_merch_math";
 
@@ -179,5 +179,39 @@ describe("[HF-MERCH-PROFIT-VIEW-1] profitRow", () => {
     expect(w.platformAfterFeesPaise).toBe(9_585);
     const loss = profitRow({ ...base, size: "S", printroveCostPaise: 50_000, shippingPaise: 5_000, fanPaysPaise: 54_800 });
     expect(loss.platformAfterFeesPaise).toBeLessThan(0);
+  });
+});
+
+describe("[HF-MERCH-PRICE-LABELS-1] price breakdown", () => {
+  // Premium oversized tee, small print: shirt 285 + print 90 + 5% GST = 393.75, shipping 50 -> 443.75 -> base 444.
+  it("splits printing (incl. GST) and shipping and rounds the base up", () => {
+    const total = Math.round((285 + 90) * 1.05 * 100) / 100 + 50;
+    expect(splitBase(total, 50, 0)).toEqual({ printingPaise: 39_375, shippingPaise: 5_000, bufferPaise: 0, baseUnitPaise: 44_400 });
+  });
+  it("carries the admin buffer into base and reports it separately", () => {
+    expect(splitBase(443.75, 50, 6)).toEqual({ printingPaise: 39_375, shippingPaise: 5_000, bufferPaise: 600, baseUnitPaise: 45_000 });
+  });
+  it("no shipping quote means printing is the whole cost", () => {
+    expect(splitBase(393.75, null, 0)).toMatchObject({ printingPaise: 39_375, shippingPaise: 0, baseUnitPaise: 39_400 });
+    expect(splitBase(null, 50, 0)).toBeNull();
+  });
+  it("fan price and earning follow the example: markup 200 -> fan pays 644, you earn 120", () => {
+    const [r] = sizePrices([{ size: "S", baseUnitPaise: 44_400 }], 200, 4000);
+    expect(r.pricePaise).toBe(64_400);
+    expect(r.youEarnPaise).toBe(12_000);
+  });
+  it("frozen parts are used as stored", () => {
+    expect(sizeBreakdown({ baseUnitPaise: 44_400, printingPaise: 39_375, shippingPaise: 5_000, bufferPaise: 0 }, 9_900, 0))
+      .toEqual({ printingPaise: 39_375, shippingPaise: 5_000, bufferPaise: 0, estimated: false });
+  });
+  it("older products derive shipping from today's quote, add up to the base, and are flagged estimated", () => {
+    const r = sizeBreakdown({ baseUnitPaise: 44_400 }, 5_000, 600);
+    expect(r).toEqual({ printingPaise: 38_800, shippingPaise: 5_000, bufferPaise: 600, estimated: true });
+    expect(r.printingPaise + r.shippingPaise + r.bufferPaise).toBe(44_400);
+  });
+  it("never goes negative when shipping exceeds the base", () => {
+    const r = sizeBreakdown({ baseUnitPaise: 3_000 }, 5_000, 600);
+    expect(r.printingPaise).toBe(0);
+    expect(r.shippingPaise + r.bufferPaise + r.printingPaise).toBe(3_000);
   });
 });

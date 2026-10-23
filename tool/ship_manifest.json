@@ -11692,5 +11692,12 @@
     "min_devices_on_build": 0,
     "flags": [],
     "no_telemetry": "Admin read-only view; verified by opening a product in /admin/merch/products and an order in /admin/merch and checking the money table."
+  },
+  "HF-MERCH-PRICE-LABELS-1": {
+    "description": "[HF-MERCH-PRICE-LABELS-1] Merch prices stay all-in, but the breakdown is now visible: /api/hf/merch/quote and /catalog return printingPaise (garment + print + Printrove GST) and shippingPaise per size plus top-level shippingPaise and bufferPaise; influencer products freeze printing / shipping / buffer with the base (older products are estimated and flagged breakdownEstimated); public products carry priceIncludes. Influencer studio price step, products grid, edit dialog, order money and admin screens label every fan price \"incl. GST & delivery\". Part A (worker + dashboard + admin web); fan pages, help and the app are part B.",
+    "two_sided": false,
+    "min_devices_on_build": 0,
+    "flags": [],
+    "no_telemetry": "Labels and a read-only breakdown; no new user action. Verified by opening the merch studio price step and an existing product's edit dialog."
   }
 }

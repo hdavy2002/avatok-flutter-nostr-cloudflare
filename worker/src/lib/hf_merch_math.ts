@@ -69,6 +69,31 @@ export function baseUnitPaise(partnerCostRupees: number | null | undefined, buff
   return Math.ceil(cents / 100) * 100 + Math.max(0, Math.trunc(bufferRupees)) * 100;
 }
 
+/** [HF-MERCH-PRICE-LABELS-1] The parts of a base price. printing = garment + print + partner GST (unrounded paise); shipping = reference delivery; buffer = admin buffer.
+ *  basePaise = ceil(printing + shipping) to a whole rupee + buffer, so printing + shipping + buffer is within one rupee below basePaise (the round-up). */
+export type BaseParts = { printingPaise: number; shippingPaise: number; bufferPaise: number; baseUnitPaise: number };
+/** totalRupees is the partner's printing + shipping total (computeSizeCosts.total_rupees); shippingRupees is the shipping inside it (null = none). */
+export function splitBase(totalRupees: number | null | undefined, shippingRupees: number | null | undefined, bufferRupees: number): BaseParts | null {
+  const base = baseUnitPaise(totalRupees, bufferRupees);
+  if (base == null) return null;
+  const shippingPaise = Math.max(0, Math.round((shippingRupees ?? 0) * 100));
+  const printingPaise = Math.max(0, Math.round((totalRupees as number) * 100) - shippingPaise);
+  return { printingPaise, shippingPaise, bufferPaise: Math.max(0, Math.trunc(bufferRupees)) * 100, baseUnitPaise: base };
+}
+
+/** The breakdown for a product's frozen size. Frozen parts are used as stored; a product made before the breakdown existed gets shipping from today's
+ *  reference quote and printing = base - shipping - buffer (never negative) and is flagged estimated. */
+export function sizeBreakdown(
+  s: { baseUnitPaise: number; printingPaise?: number; shippingPaise?: number; bufferPaise?: number }, fallbackShippingPaise: number, fallbackBufferPaise: number,
+): { printingPaise: number; shippingPaise: number; bufferPaise: number; estimated: boolean } {
+  if (typeof s.printingPaise === "number" && typeof s.shippingPaise === "number" && typeof s.bufferPaise === "number") {
+    return { printingPaise: s.printingPaise, shippingPaise: s.shippingPaise, bufferPaise: s.bufferPaise, estimated: false };
+  }
+  const shippingPaise = Math.max(0, Math.min(s.baseUnitPaise, Math.trunc(fallbackShippingPaise)));
+  const bufferPaise = Math.max(0, Math.min(s.baseUnitPaise - shippingPaise, Math.trunc(fallbackBufferPaise)));
+  return { printingPaise: Math.max(0, s.baseUnitPaise - shippingPaise - bufferPaise), shippingPaise, bufferPaise, estimated: true };
+}
+
 export type MarkupCheck = { ok: true; markupRupees: number } | { ok: false; error: "invalid_markup" | "markup_too_low" | "markup_too_high"; message: string };
 export function checkMarkup(raw: unknown, cfg: Pick<MerchCfg, "minMarkupRupees">): MarkupCheck {
   const n = typeof raw === "number" ? raw : typeof raw === "string" && raw.trim() !== "" ? Number(raw) : NaN;

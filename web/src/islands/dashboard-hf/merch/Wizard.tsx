@@ -1,5 +1,6 @@
 /* [HF-MERCH-CREATOR-WEB-1] "+ New product": 1 Upload art, 2 Pick shirt, 3 Place art (clipped 300 DPI print file), 4 Price and publish.
  * Reuses the admin Studio's pure logic (artAnalysis, lib/studioGeometry, lib/printFile, lib/composite); nothing there is admin-coupled. */
+import { PriceNote, PriceTable, type PriceRow } from './PriceTable';
 import { useEffect, useMemo, useRef, useState, type DragEvent, type PointerEvent } from 'react';
 import { capture, captureException } from '../../../lib/analytics';
 import {
@@ -9,7 +10,7 @@ import {
 import type { ArtAnalysis } from '../../admin2/studio/artAnalysis';
 import { Dialog, Ic, Marigold } from '../v3/ui';
 import {
-  MARKUP_MAX, createProduct, fanPaysPaise, getQuote, rupees, uploadArt, uploadMockup, uploadPrintFile, youEarnPaise,
+  MARKUP_MAX, createProduct, getQuote, rupees, uploadArt, uploadMockup, uploadPrintFile,
   type ArtUpload, type CatalogInfo, type CatalogItem, type Product,
 } from './api';
 
@@ -137,7 +138,8 @@ function ShirtStep({ info, item, colours, sizes, side, pick, setColours, setSize
       const from = Math.min(...c.sizes.map(s => s.basePaise));
       return <button key={c.id} type="button" role="radio" aria-checked={item?.id === c.id} className={`mc-cat${item?.id === c.id ? ' on' : ''}`} onClick={() => pick(c)}>
         <Ic name="shirt" className="" size={36} /><b>{c.name}</b>
-        <span className="small muted">Base price from {rupees(from)}</span>
+        <span className="small muted">From {rupees(from)} incl. delivery</span>
+        <span className="small muted">For the largest print. Smaller prints cost less.</span>
         <span className="mc-sw" aria-hidden="true" style={{ gap: 4 }}>{c.colours.slice(0, 8).map(x => <i key={x.name} style={{ width: 18, height: 18, borderRadius: '50%', background: x.hex, border: '1px solid rgba(0,0,0,.2)', display: 'block' }} />)}</span>
       </button>;
     })}</div>
@@ -147,7 +149,7 @@ function ShirtStep({ info, item, colours, sizes, side, pick, setColours, setSize
         <button key={c.name} type="button" className={colours.includes(c.name) ? 'on' : ''} aria-pressed={colours.includes(c.name)} onClick={() => setColours(tog(colours, c.name, 8))}><i style={{ background: c.hex }} />{c.name}</button>)}</div></div>
       <div className="mc-ctl"><h3>Sizes and base price</h3>
         <div className="mc-sw">{item.sizes.map(s => <button key={s.size} type="button" className={sizes.includes(s.size) ? 'on' : ''} aria-pressed={sizes.includes(s.size)} onClick={() => setSizes(tog(sizes, s.size))}>{s.size} · {rupees(s.basePaise)}</button>)}</div>
-        <p className="small muted">The base price covers printing and delivery. Your markup is added on top in the last step. The exact base for your print size is shown there.</p></div>
+        <p className="small muted">The base price covers printing (incl. GST) and delivery, shown for the largest print. Your markup is added on top in the last step, where you see the exact base for your print size.</p></div>
     </>}
     <div className="mc-foot"><button type="button" className="h3-btn ghost mc-big" onClick={onBack}>← Back</button>
       <button type="button" className="h3-btn rani mc-big" disabled={!item || !colours.length || !sizes.length} onClick={onNext}>Next: place your art →</button></div>
@@ -284,7 +286,7 @@ function PriceStep({ info, item, colours, sizes, side, art, placed, minMarkup, o
   const [title, setTitle] = useState('');
   const [desc, setDesc] = useState('');
   const [markup, setMarkup] = useState(String(Math.max(100, minMarkup)));
-  const [quote, setQuote] = useState<Record<string, number> | null>(null);
+  const [quote, setQuote] = useState<Record<string, PriceRow> | null>(null);
   const [quoteErr, setQuoteErr] = useState(false);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -294,7 +296,7 @@ function PriceStep({ info, item, colours, sizes, side, art, placed, minMarkup, o
     setQuote(null); setQuoteErr(false);
     void getQuote({ catalogId: item.id, colours, side, w: placed.w, h: placed.h, sizes }).then(r => {
       if (!live) return;
-      if (r.ok) setQuote(Object.fromEntries(r.data.sizes.map(x => [x.size, x.basePaise])));
+      if (r.ok) setQuote(Object.fromEntries(r.data.sizes.map(x => [x.size, { size: x.size, printingPaise: x.printingPaise, shippingPaise: x.shippingPaise, basePaise: x.basePaise }])));
       else { setQuoteErr(true); if (r.status >= 500 || r.status === 0) captureException(new Error(`merch_quote_${r.status}_${r.code}`), { area: 'hf_merch_creator', step: 'price_publish' }); }
     });
     return () => { live = false; };
@@ -302,8 +304,10 @@ function PriceStep({ info, item, colours, sizes, side, art, placed, minMarkup, o
 
   const m = Math.floor(Number(markup) || 0);
   const okM = m >= minMarkup && m <= MARKUP_MAX;
-  const rows = sizes.map(sz => ({ size: sz, base: quote?.[sz] ?? item.sizes.find(x => x.size === sz)?.basePaise ?? 0 }));
-  const earn = youEarnPaise(m, info.platformShareBps);
+  const rows: PriceRow[] = sizes.map(sz => {
+    const c = item.sizes.find(x => x.size === sz);
+    return quote?.[sz] ?? { size: sz, printingPaise: c?.printingPaise ?? 0, shippingPaise: c?.shippingPaise ?? 0, basePaise: c?.basePaise ?? 0 };
+  });
   const ready = title.trim().length >= 2 && okM && !!quote && !busy;
 
   async function publish() {
@@ -331,10 +335,8 @@ function PriceStep({ info, item, colours, sizes, side, art, placed, minMarkup, o
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
       <label className="f">Your markup per shirt (₹{minMarkup} – ₹{MARKUP_MAX})<input inputMode="numeric" value={markup} onChange={e => setMarkup(e.target.value.replace(/[^0-9]/g, '').slice(0, 4))} aria-label="Markup in rupees" /></label>
       <div className="mc-sw">{[50, 100, 150, 200, 300].filter(v => v >= minMarkup).map(v => <button key={v} type="button" className={m === v ? 'on' : ''} onClick={() => setMarkup(String(v))}>₹{v}</button>)}</div>
-      <table className="mc-sizes" aria-label="Price per size"><thead><tr><th>Size</th><th>Base</th><th>Fan pays</th><th>You earn</th></tr></thead><tbody>
-        {rows.map(r => <tr key={r.size}><td>{r.size}</td><td>{quote ? rupees(r.base) : '…'}</td><td>{okM && quote ? rupees(fanPaysPaise(r.base, m)) : '—'}</td><td className="mc-earn">{okM ? rupees(earn) : '—'}</td></tr>)}
-      </tbody></table>
-      <p className="small muted">Base price = printing and delivery for your print size. Free delivery for the fan. You keep {Math.round((10_000 - info.platformShareBps) / 100)}% of your markup, and it can be withdrawn {info.holdDays} days after delivery.</p>
+      <PriceTable rows={rows} markup={m} okMarkup={okM} shareBps={info.platformShareBps} loading={!quote} />
+      <PriceNote shareBps={info.platformShareBps} holdDays={info.holdDays} />
       {quoteErr && <p className="mc-err small" role="alert">We could not get the exact base price. Go back and try again in a moment.</p>}
       {!okM && <p className="mc-err small">Enter a markup between ₹{minMarkup} and ₹{MARKUP_MAX}.</p>}
       {err && <p className="mc-err" role="alert">{err}</p>}

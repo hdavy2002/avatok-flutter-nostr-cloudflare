@@ -77,7 +77,8 @@ export type ProductMerch = {
   catalogName: string;
   kind: string;
   side: "front" | "back";
-  sizes: Array<{ size: string; baseUnitPaise: number }>;
+  /** printingPaise / shippingPaise / bufferPaise are frozen with the base at creation [HF-MERCH-PRICE-LABELS-1]; absent on older products. */
+  sizes: Array<{ size: string; baseUnitPaise: number; printingPaise?: number; shippingPaise?: number; bufferPaise?: number }>;
   bufferRupees: number;
   colours: Array<{ name: string; hex: string }>;
   /** studio Placement (lib/studio_logic.ts) the partner print uses. */

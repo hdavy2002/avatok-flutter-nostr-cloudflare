@@ -21,7 +21,7 @@ import { alertOwnerShopProblem } from "../lib/shop_notify";
 import { appendShopEvent } from "./shop_orders";
 import { maskOrderForSeller, assertNoSellerLeak } from "../lib/hf_merch_mask";
 import { fanStatusOf, parseJson, type MerchSnapshot } from "../lib/hf_merch_types";
-import { merchCatalog, quoteBases } from "../lib/hf_merch_catalog";
+import { legacyShippingPaise, merchCatalog, quoteBases } from "../lib/hf_merch_catalog";
 import {
   deleteAddress, getFanOrder, getProductBySlug, getProduct, getSellerOrder, hostBySlug, hostByUid, listAddresses, listFanOrders, listLiveProductsForSeller, listSellerOrders,
   listSellerProducts, productMerch, productShape, sellerEarnings, sellerOrderCounts, sellerProductCounts, shopSlugFor, sitemapRows, type MerchHost, type MerchProductRow,
@@ -79,7 +79,7 @@ async function catalogRoute(env: Env): Promise<Response> {
   const { cfg } = await merchCfg(env);
   const c = await merchCatalog(env, cfg);
   if (!c.ok) return bad(503, c.error, c.message);
-  return out({ items: c.items, minMarkupRupees: cfg.minMarkupRupees, platformShareBps: cfg.platformShareBps, holdDays: cfg.holdDays }, 200, { "cache-control": "private, max-age=300" });
+  return out({ items: c.items, shippingPaise: c.shippingPaise, bufferPaise: c.bufferPaise, minMarkupRupees: cfg.minMarkupRupees, platformShareBps: cfg.platformShareBps, holdDays: cfg.holdDays }, 200, { "cache-control": "private, max-age=300" });
 }
 
 /** Extension: live base price for the chosen colours and print size (the studio asks this while the influencer resizes). */
@@ -92,7 +92,11 @@ async function quoteRoute(req: Request, env: Env): Promise<Response> {
     wIn: Number(q.get("w")), hIn: Number(q.get("h")), sizes: ((l) => (l.length ? l : undefined))((q.get("sizes") ?? "").split(",").map((s) => s.trim()).filter(Boolean)), // [HF-MERCH-QUOTE-SIZES-1] no sizes = all sizes ([] used to filter every size out)
   });
   if (!r.ok) return bad(r.error === "catalog_unavailable" ? 503 : 400, r.error, r.message);
-  return out({ sizes: r.sizes.map((s) => ({ size: s.size, basePaise: s.baseUnitPaise, baseRupees: s.baseUnitPaise / 100 })) });
+  const shippingPaise = Math.max(0, Math.round((r.shippingRupees ?? 0) * 100));
+  return out({
+    sizes: r.sizes.map((s) => ({ size: s.size, basePaise: s.baseUnitPaise, baseRupees: s.baseUnitPaise / 100, printingPaise: s.printingPaise, shippingPaise: s.shippingPaise })),
+    shippingPaise, bufferPaise: cfg.baseBufferRupees * 100,
+  });
 }
 
 async function artRoute(req: Request, env: Env, s: SellerCtx): Promise<Response> {
@@ -119,8 +123,12 @@ async function mockupRoute(req: Request, env: Env, s: SellerCtx): Promise<Respon
   return r.ok ? out({ url: r.url }) : failOf(r);
 }
 
+/** Products made before the breakdown was frozen need today's reference shipping to show a split; fetched only when one is present. */
+async function shipFor(env: Env, rows: MerchProductRow[]): Promise<number> {
+  return rows.some((r) => (productMerch(r)?.sizes ?? []).some((x) => typeof x.shippingPaise !== "number")) ? legacyShippingPaise(env) : 0;
+}
 async function productDto(env: Env, row: MerchProductRow, host: MerchHost, shareBps: number) {
-  return productShape(row, host, shareBps);
+  return productShape(row, host, shareBps, await shipFor(env, [row]));
 }
 
 async function createProductRoute(req: Request, env: Env, s: SellerCtx): Promise<Response> {
@@ -134,12 +142,13 @@ async function createProductRoute(req: Request, env: Env, s: SellerCtx): Promise
 async function listProductsRoute(env: Env, s: SellerCtx): Promise<Response> {
   const { cfg } = await merchCfg(env);
   const rows = await listSellerProducts(env, s.uid);
-  return out({ products: rows.map((r) => productShape(r, s.host, cfg.platformShareBps)) });
+  const ship = await shipFor(env, rows);
+  return out({ products: rows.map((r) => productShape(r, s.host, cfg.platformShareBps, ship)) });
 }
 async function patchProductRoute(req: Request, env: Env, s: SellerCtx, id: string): Promise<Response> {
   const { cfg } = await merchCfg(env);
   const r = await patchMerchProduct(env, cfg, s.host, id, await readJson(req));
-  return r.ok ? out({ product: productShape(r.product, s.host, cfg.platformShareBps) }) : failOf(r);
+  return r.ok ? out({ product: await productDto(env, r.product, s.host, cfg.platformShareBps) }) : failOf(r);
 }
 async function deleteProductRoute(env: Env, s: SellerCtx, id: string): Promise<Response> {
   const r = await deleteMerchProduct(env, s.host, id);
@@ -190,6 +199,8 @@ function publicProduct(row: MerchProductRow, host: MerchHost, shareBps: number) 
     id: p.id, slug: p.slug, title: p.title, imageUrl: p.imageUrl, colours: p.colours,
     sizes: p.sizes.map((x) => ({ size: x.size, pricePaise: x.pricePaise, inStock: true })),
     fromPricePaise: prices.length ? Math.min(...prices) : 0, url: p.publicUrl,
+    // [HF-MERCH-PRICE-LABELS-1] Fans see what the price covers, never the cost numbers.
+    priceIncludes: ["printing", "gst", "delivery"] as const,
   };
 }
 async function publicHostRoute(env: Env, slug: string): Promise<Response> {

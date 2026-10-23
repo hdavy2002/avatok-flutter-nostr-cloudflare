@@ -58,7 +58,7 @@ export default function OrdersTab({ counts }: { counts: Partial<Record<OrderStat
             <div className="mc-kv"><span>Placed</span><span>{dayTimeText(d.createdAt)}</span></div>
             <div className="mc-kv"><span>Product</span><span style={{ textAlign: 'right' }}>{d.product.title}<br />{d.product.colour}, size {d.product.size}, qty {d.product.qty}</span></div>
             <h3>Money</h3>
-            <div className="mc-kv"><span>Fan paid</span><span>{rupees(d.money.pricePaise)}</span></div>
+            <div className="mc-kv"><span>Fan paid (incl. GST &amp; delivery)</span><span>{rupees(d.money.pricePaise)}</span></div>
             <div className="mc-kv"><span>Base price (print and delivery)</span><span>{rupees(d.money.basePaise)}</span></div>
             <div className="mc-kv"><span>You earn</span><b className="mc-earn">{d.status === 'cancelled' ? '₹0' : rupees(d.money.youEarnPaise)}</b></div>
             <div className="mc-kv"><span>Withdrawable</span><span>{d.status === 'cancelled' ? 'Cancelled, nothing to pay' : d.money.credited && (!d.money.availableAt || d.money.availableAt <= Date.now()) ? 'Available now' : d.money.availableAt ? `From ${dayText(d.money.availableAt)}` : `${holdDays} days after delivery`}</span></div>

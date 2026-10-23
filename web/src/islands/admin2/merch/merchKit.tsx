@@ -99,7 +99,7 @@ export function ProfitTable({ profit }: { profit: ProfitBlock | null | undefined
       {profit.note && <div className="mx-warn" role="status" style={{ marginBottom: 8 }}>{profit.note}</div>}
       <div className="mx-scroll"><table className="mx-table mx-profit">
         <thead><tr>
-          <th>Size</th><th className="n">Printrove cost</th><th className="n">+ shipping</th><th className="n">Printrove total</th><th className="n">Fan pays</th>
+          <th>Size</th><th className="n">Printrove cost (incl. GST)</th><th className="n">+ shipping</th><th className="n">Printrove total</th><th className="n">Fan pays (incl. GST &amp; delivery)</th>
           <th className="n">Influencer gets</th><th className="n">Platform keeps (before fees)</th><th className="n">Fees</th><th className="n">Platform keeps (after fees)</th>
         </tr></thead>
         <tbody>{profit.rows.map((r) => {

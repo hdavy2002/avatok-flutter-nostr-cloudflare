@@ -78,3 +78,8 @@
 .hf3 .mc-tl li::before{content:'';width:10px;height:10px;border-radius:50%;background:var(--marigold);flex:none;transform:translateY(1px)}
 .hf3 .mc-done{text-align:center;display:flex;flex-direction:column;align-items:center;gap:10px;padding:24px 8px}
 @media (prefers-reduced-motion:no-preference){.hf3 .mc-order .det{animation:mcdrop .22s ease-out}@keyframes mcdrop{from{opacity:0;transform:translateY(-8px)}}}
+
+.hf3 .mc-scroll{overflow-x:auto;max-width:100%;-webkit-overflow-scrolling:touch;border-radius:18px}
+.hf3 .mc-sizes-wide{min-width:640px}
+.hf3 .mc-sizes-wide th,.hf3 .mc-sizes-wide td{white-space:nowrap}
+.hf3 .mc-sizes-wide th:nth-child(6){white-space:normal;min-width:120px}
