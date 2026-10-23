@@ -26,6 +26,18 @@ export type MerchSnapshot = {
   printWIn: number;
   printHIn: number;
   bufferRupees: number;
+  /** [HF-CHANNEL-CORE-1] Bag checkout: every order of one bag payment carries the same `mgp_` id (also the Cashfree order id). Absent on single-item orders. */
+  groupId?: string;
+};
+
+/** [HF-CHANNEL-CORE-1] Group (bag) id: `mgp_` + 20 hex. One payment, one order per bag line. */
+export const MERCH_GROUP_ID_RE = /^mgp_[a-f0-9]{20}$/;
+export const isMerchGroupId = (id: unknown): id is string => typeof id === "string" && MERCH_GROUP_ID_RE.test(id);
+export const newMerchGroupId = (): string => `mgp_${[...crypto.getRandomValues(new Uint8Array(10))].map((b) => b.toString(16).padStart(2, "0")).join("")}`;
+/** The group an order belongs to (from its frozen snapshot), or null for a single-item order. */
+export const groupIdOf = (row: { merch_json?: string | null }): string | null => {
+  const g = parseJson<{ groupId?: unknown }>(row.merch_json, {}).groupId;
+  return isMerchGroupId(g) ? g : null;
 };
 
 export type MerchAddress = { name: string; phone: string; line1: string; line2?: string; city: string; state: string; pincode: string };

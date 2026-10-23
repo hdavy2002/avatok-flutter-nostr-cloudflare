@@ -1390,6 +1390,11 @@ Every server event carries the user's email (`trackUser`). Failures go through `
 | worker `merch_product_created` | `product_id`, `catalog_id`, `kind`, `side`, `markup_rupees`, `status`, `moderation`, `sizes`, `colours` | Influencer made a product. |
 | worker `merch_product_reviewed` | `product_id`, `seller_uid`, `decision: approve/reject/hide`, `has_note` | Admin review. User is the admin. |
 | worker `merch_checkout_started` | `order_id`, `product_id`, `seller_uid`, `method`, `total_paise`, `qty` | Order row created. |
+| worker `merch_bag_checkout_started` | `group_id`, `lines`, `sellers`, `method`, `total_paise` | [HF-CHANNEL-CORE-1] Bag order rows created (one `merch_checkout_started` per line also carries `group_id`). |
+| worker `merch_bag_paid` | `group_id`, `orders`, `method`, `total_paise` | [HF-CHANNEL-CORE-1] Wallet bag fully charged and every order confirmed. **Success value:** exists `total_paise` after the first real bag. (Cashfree bags emit `merch_order_paid` per order when the gateway confirms.) |
+| worker `merch_bag_rolled_back` | `group_id`, `reason: insufficient_balance/debt/conflict/…`, `orders`, `failed_order_id?` | [HF-CHANNEL-CORE-1] A wallet bag could not be charged in full: earlier charges given back and every order cancelled. Failure value if frequent. |
+| worker `host_profile_photo_uploaded` | `bytes`, `width`, `height`, `mime`, `host_status` | [HF-CHANNEL-CORE-1] Influencer saved their own profile photo (`PUT /api/hosts/me/photo`). User is the influencer. |
+| worker `host_profile_photo_rejected` | `reason: bad_type/too_big/too_small` | [HF-CHANNEL-CORE-1] The upload failed validation. Server errors go to `$exception` (`route: /api/hosts/me/photo`). |
 | worker `merch_order_paid` | `order_id`, `seller_uid`, `method`, `total_paise`, `qty`, `influencer_paise`, `platform_paise` | Payment confirmed (wallet or Cashfree). **Success value:** exists `total_paise` after the first real order. |
 | worker `merch_auto_approve_skipped` | `order_id`, `error` | Auto-approve was on but the order was left for a person (for example `cost_rose`). |
 | worker `merch_order_approved` | `order_id`, `seller_uid`, `buyer_uid`, `auto`, `platform_net_after_paise`, `quote_stale` | Admin (or auto) approval. |

@@ -1,6 +1,7 @@
 // [HF-HOST-PLATFORM-1 2026-10-09] HF host onboarding APIs (profile, avatars, voice sample, submit). Contract: Specs/HF-HOST-PLATFORM-CONTRACT.md
 //   GET/PUT /api/hosts/me · GET /api/hosts/avatars · POST /api/hosts/avatars/:id/claim
 //   PUT /api/hosts/me/voice (POST /api/hosts/voice kept as an alias) · GET /api/hosts/me/voice   [HF-VOICE-INTRO-1: host's own recorded introduction]
+//   PUT /api/hosts/me/photo [HF-CHANNEL-CORE-1: influencer profile photo]
 //   PUT /api/hosts/me/generated · POST /api/hosts/submit          (flag hostOnboardingEnabled; 404 not_enabled when off)
 // /api/hosts/generate* belongs to the workflow agent; /api/hosts/public* to hf_hosts_public.ts.
 import type { Env } from "../types";
@@ -19,6 +20,7 @@ import { isHostCategory, isCreatorCategory, validCreatorRate, CREATOR_MIN_RUPEES
 import { encryptPii } from "../lib/pii_crypto";
 import { TOPIC_SLUGS, LANGUAGES, LANGUAGE_CODE_SET, STYLES, PRICE_MIN, PRICE_MAX, contactLeak } from "../lib/hf_options";
 import { pricingStd, readInfluencerRate } from "../lib/hf_influencer_rate"; // [HF-WIRE-18]
+import { putHostPhoto } from "./hf_host_photo"; // [HF-CHANNEL-CORE-1]
 
 const APP = BRAND.slug;
 const err = (status: number, error: string, extra: Record<string, unknown> = {}) => json({ error, ...extra }, status);
@@ -71,7 +73,11 @@ async function getMe(req: Request, env: Env): Promise<Response> {
   const u = await requireUser(req, env);
   if (isFail(u)) return err(u.status, u.error);
   const [host, kyc, media, job] = await Promise.all([hostJson(env, u.uid), kycSummary(env, u.uid), listMedia(env, u.uid).catch(() => []), latestJob(env, u.uid)]);
-  return json({ host, kyc, media: media.map((m) => mediaToJson(env, m)), job }, 200, { "cache-control": "private, no-store" });
+  // [HF-CHANNEL-CORE-1] avatarUrl = the current profile image: the host's own uploaded/AI profile photo first, else the claimed avatar, else null.
+  const prof = media.find((m) => m.kind === "profile");
+  const avatarUrl = prof ? mediaUrl(env, prof.r2_key) : host?.avatarUrl ?? null;
+  const imageProvenance = prof ? (prof.job_id ? "ai" : "uploaded") : avatarUrl ? "ai" : null;
+  return json({ host: host ? { ...host, avatarUrl, imageProvenance } : host, avatarUrl, kyc, media: media.map((m) => mediaToJson(env, m)), job }, 200, { "cache-control": "private, no-store" });
 }
 
 // ── PUT /api/hosts/me ────────────────────────────────────────────────────────
@@ -379,12 +385,13 @@ export async function hfHostsRoute(req: Request, env: Env, ctx?: ExecutionContex
   const p = new URL(req.url).pathname;
   const m = req.method;
   const claim = p.match(/^\/api\/hosts\/avatars\/([A-Za-z0-9._:-]{1,64})\/claim$/);
-  const ours = p === "/api/hosts/me" || p === "/api/hosts/me/generated" || p === "/api/hosts/avatars" || !!claim || p === "/api/hosts/voice" || p === "/api/hosts/me/voice" || p === "/api/hosts/submit";
+  const ours = p === "/api/hosts/me" || p === "/api/hosts/me/generated" || p === "/api/hosts/avatars" || !!claim || p === "/api/hosts/voice" || p === "/api/hosts/me/voice" || p === "/api/hosts/submit" || p === "/api/hosts/me/photo";
   if (!ours) return null;
   try {
     if ((await readConfig(env)).hostOnboardingEnabled !== true) return err(404, "not_enabled");
     if (p === "/api/hosts/me" && m === "GET") return await getMe(req, env);
     if (p === "/api/hosts/me" && m === "PUT") return await putMe(req, env, ctx);
+    if (p === "/api/hosts/me/photo" && m === "PUT") return await putHostPhoto(req, env, ctx); // [HF-CHANNEL-CORE-1]
     if (p === "/api/hosts/me/generated" && m === "PUT") return await putGenerated(req, env, ctx);
     if (p === "/api/hosts/avatars" && m === "GET") return await listAvatars(req, env);
     if (claim && m === "POST") return await claimAvatar(req, env, ctx, claim[1]);

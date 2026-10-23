@@ -15,7 +15,7 @@ export const CASHFREE_CHECKOUT_ORIGIN: string | null = "https://avatok.ai";
 const CHECKOUT_HOSTS = new Set(["avatok.ai", "www.avatok.ai"]);
 const TOPUP_RE = /^hftop_[a-f0-9]{24}$/;
 /** [HF-MERCH-CORE-1] A merch order is a shop order: `shp_` + 20 hex. Same hand-off page, different landing. */
-const SHOP_RE = /^shp_[a-f0-9]{20}$/;
+const SHOP_RE = /^(?:shp|mgp)_[a-f0-9]{20}$/; // [HF-CHANNEL-CORE-1] mgp_ = a bag payment (one gateway order for several shop orders)
 const SESSION_RE = /^session_[A-Za-z0-9_\-]{10,400}$/;
 
 export const cashfreeCheckoutUrl = (sessionId: string, topupId: string): string | null =>

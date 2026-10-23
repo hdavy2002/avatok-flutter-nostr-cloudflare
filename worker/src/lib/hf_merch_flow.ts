@@ -13,9 +13,9 @@ import { sendOrderToPartner, advanceOrder } from "./pod_fulfil";
 import { frozenOrFallback } from "./hf_merch_gst";
 import { computeMerchMoney, maxMarkupForBase, merchGstOf, quoteAgainstLive, readMerchCfg, rupeesText, sizeBreakdown, type CostQuote, type MerchCfg, type PayMethod } from "./hf_merch_math";
 import { issueMerchOrderDocument } from "./hf_merch_invoice";
-import { parseJson, type MerchSnapshot } from "./hf_merch_types";
+import { parseJson, groupIdOf, isMerchGroupId, type MerchSnapshot } from "./hf_merch_types";
 import {
-  getOrder, productMerch, platformEntry, saveAddress, type MerchHost, type MerchProductRow, type PlatformKind,
+  getGroupRows, getOrder, productMerch, platformEntry, saveAddress, type MerchHost, type MerchProductRow, type PlatformKind,
 } from "./hf_merch_store";
 import { legacyShippingPaise, liveBaseUnitForOrder } from "./hf_merch_catalog";
 import { refundWalletForOrder, spendWalletForOrder } from "./hf_merch_wallet";
@@ -217,8 +217,11 @@ export async function settleMerchPayment(env: Env, orderId: string, ev: PaidEvid
 
 /** Cashfree evidence: webhook or poll. The gateway is asked server-to-server; only PAID for the same amount confirms. */
 export async function reconcileCashfreeOrder(env: Env, orderId: string): Promise<"confirmed" | "duplicate" | "pending" | "failed" | "mismatch" | "unavailable"> {
+  if (isMerchGroupId(orderId)) return reconcileCashfreeGroup(env, orderId); // [HF-CHANNEL-CORE-1] the gateway order of a bag payment (webhook / return page)
   const row = await getOrder(env, orderId);
   if (!row || row.pay_method !== "cashfree") return "failed";
+  const gid = groupIdOf(row);
+  if (gid) return reconcileCashfreeGroup(env, gid); // one line of a bag: the payment covers the whole group
   if (row.pay_status === "confirmed") return "duplicate";
   if (row.pay_status === "cancelled") return "failed";
   const adapter = resolveGateway("cashfree");
@@ -230,6 +233,42 @@ export async function reconcileCashfreeOrder(env: Env, orderId: string): Promise
   if (truth.amount_paise !== row.amount_paise) { await merchFail(env, new Error("merch_amount_mismatch"), "cashfree_amount", row.uid, { order_id: orderId, paid: truth.amount_paise, expected: row.amount_paise }); return "mismatch"; }
   const r = await settleMerchPayment(env, orderId, { via: "cashfree", reference: row.cashfree_order_id ?? row.order_id });
   return r === "confirmed" ? "confirmed" : r === "duplicate" ? "duplicate" : "failed";
+}
+
+/**
+ * [HF-CHANNEL-CORE-1] Bag payment: ONE Cashfree order (id = group id) paid for every order of the group. Cashfree is asked server-to-server; only PAID for the
+ * SUM of all the group's orders confirms, and then each unconfirmed order is settled on its own (own receipt, own approval, own ledger rows).
+ */
+export async function reconcileCashfreeGroup(env: Env, groupId: string): Promise<"confirmed" | "duplicate" | "pending" | "failed" | "mismatch" | "unavailable"> {
+  const rows = await getGroupRows(env, groupId);
+  if (!rows.length || rows.some((r) => r.pay_method !== "cashfree")) return "failed";
+  const open = rows.filter((r) => r.pay_status !== "confirmed");
+  if (!open.length) return "duplicate";
+  const adapter = resolveGateway("cashfree");
+  if (!adapter || !adapter.configured(env)) return "unavailable";
+  const truth = await adapter.fetchOrder(env, groupId);
+  if (!truth) return "unavailable";
+  const st = String(truth.status).toUpperCase();
+  if (st !== "PAID") return st === "EXPIRED" || st === "TERMINATED" ? "failed" : "pending";
+  const expected = rows.reduce((a, r) => a + Number(r.amount_paise), 0);
+  if (truth.amount_paise !== expected) { await merchFail(env, new Error("merch_amount_mismatch"), "cashfree_group_amount", rows[0].uid, { group_id: groupId, paid: truth.amount_paise, expected }); return "mismatch"; }
+  let confirmed = 0, failed = 0;
+  for (const r of open) {
+    const res = await settleMerchPayment(env, r.order_id, { via: "cashfree", reference: groupId });
+    if (res === "confirmed") confirmed++; else if (res === "failed") failed++;
+  }
+  if (failed) await merchFail(env, new Error("merch_group_paid_row_not_settled"), "cashfree_group_settle", rows[0].uid, { group_id: groupId, failed });
+  if (confirmed > 0) await merchTrack(env, rows[0].uid, "merch_bag_paid", { group_id: groupId, orders: confirmed, method: "cashfree", total_paise: expected });
+  return confirmed > 0 ? "confirmed" : failed > 0 ? "failed" : "duplicate";
+}
+
+/** [HF-CHANNEL-CORE-1] A Cashfree refund webhook names the group's gateway order: check every order of the group that is waiting on its own refund. */
+export async function confirmCashfreeRefundsForGroup(env: Env, groupId: string): Promise<"done" | "pending" | "manual" | "unknown"> {
+  const rows = (await getGroupRows(env, groupId)).filter((r) => r.refund_status === "pending_gateway");
+  if (!rows.length) return "unknown";
+  const res: Array<"done" | "pending" | "manual" | "unknown"> = [];
+  for (const r of rows) res.push(await confirmCashfreeRefund(env, r.order_id));
+  return res.includes("manual") ? "manual" : res.includes("pending") ? "pending" : res.every((x) => x === "done") ? "done" : "unknown";
 }
 
 // ---------------------------------------------------------------------------

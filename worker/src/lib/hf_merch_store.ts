@@ -64,7 +64,7 @@ export async function listSellerProducts(env: Env, sellerUid: string): Promise<M
 }
 export async function listLiveProductsForSeller(env: Env, sellerUid: string): Promise<MerchProductRow[]> {
   return (await metaDb(env).prepare(
-    `SELECT ${PCOLS} FROM shop_products WHERE seller_uid=?1 AND review_status='live' AND deleted_at IS NULL ORDER BY created_at DESC LIMIT 100`,
+    `SELECT ${PCOLS} FROM shop_products WHERE seller_uid=?1 AND review_status='live' AND deleted_at IS NULL ORDER BY created_at DESC LIMIT 200`, // [HF-CHANNEL-CORE-1] public channel lists every live product (<= 200)
   ).bind(sellerUid).all<MerchProductRow>()).results ?? [];
 }
 export async function listProductsByReview(env: Env, review: string | null, limit = 100): Promise<MerchProductRow[]> {
@@ -134,6 +134,17 @@ export async function getOrder(env: Env, orderId: string): Promise<ShopOrderRow 
 }
 export async function getOrderByRequestKey(env: Env, uid: string, requestKey: string): Promise<ShopOrderRow | null> {
   return (await metaDb(env).prepare("SELECT * FROM shop_orders WHERE uid=?1 AND request_key=?2 AND seller_uid IS NOT NULL").bind(uid, requestKey).first<ShopOrderRow>()) ?? null;
+}
+
+/** [HF-CHANNEL-CORE-1] Every order of a bag payment, oldest line first. Looked up by the shared Cashfree order id (= group id), falling back to the snapshot's groupId
+ *  (rows created but not yet linked to a gateway order). `uid` narrows to one buyer when the caller is a fan. */
+export async function getGroupRows(env: Env, groupId: string, uid?: string): Promise<ShopOrderRow[]> {
+  const db = metaDb(env);
+  const who = uid ? "AND uid=?2" : "";
+  const bind = (st: D1PreparedStatement) => (uid ? st.bind(groupId, uid) : st.bind(groupId));
+  const a = (await bind(db.prepare(`SELECT * FROM shop_orders WHERE cashfree_order_id=?1 ${who} AND seller_uid IS NOT NULL ORDER BY request_key`)).all<ShopOrderRow>()).results ?? [];
+  if (a.length) return a;
+  return (await bind(db.prepare(`SELECT * FROM shop_orders WHERE json_extract(merch_json,'$.groupId')=?1 ${who} AND seller_uid IS NOT NULL ORDER BY request_key`)).all<ShopOrderRow>()).results ?? [];
 }
 
 const SELLER_STATUS_SQL: Record<string, string> = {

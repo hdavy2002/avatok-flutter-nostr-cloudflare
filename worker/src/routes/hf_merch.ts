@@ -20,20 +20,22 @@ import { reportWindowOpen, type ShopOrderRow } from "../lib/shop_orders_logic";
 import { alertOwnerShopProblem } from "../lib/shop_notify";
 import { appendShopEvent } from "./shop_orders";
 import { maskOrderForSeller, assertNoSellerLeak } from "../lib/hf_merch_mask";
-import { fanStatusOf, parseJson, type MerchSnapshot } from "../lib/hf_merch_types";
+import { fanStatusOf, parseJson, groupIdOf, isMerchGroupId, type MerchSnapshot } from "../lib/hf_merch_types";
 import { legacyShippingPaise, merchCatalog, quoteBases } from "../lib/hf_merch_catalog";
 import { gstForCategory, maxMarkupForBase, type MerchCfg } from "../lib/hf_merch_math";
 import { categoryOf } from "../lib/hf_merch_families";
 import {
-  deleteAddress, getFanOrder, getSellerTax, setSellerTax, GSTIN_RE, getProductBySlug, getProduct, getSellerOrder, hostBySlug, hostByUid, listAddresses, listFanOrders, listLiveProductsForSeller, listSellerOrders,
+  deleteAddress, getFanOrder, getGroupRows, getSellerTax, setSellerTax, GSTIN_RE, getProductBySlug, getProduct, getSellerOrder, hostBySlug, hostByUid, listAddresses, listFanOrders, listLiveProductsForSeller, listSellerOrders,
   listSellerProducts, productMerch, productShape, gstCtxOf, type GstCtx, sellerEarnings, sellerOrderCounts, sellerProductCounts, shopSlugFor, sitemapRows, type MerchHost, type MerchProductRow,
 } from "../lib/hf_merch_store";
 import {
-  MERCH_QTY_MAX, confirmCashfreeRefund, merchCfg, reconcileCashfreeOrder, startMerchCheckout, type FlowFail,
+  MERCH_QTY_MAX, confirmCashfreeRefund, confirmCashfreeRefundsForGroup, merchCfg, reconcileCashfreeOrder, startMerchCheckout, type FlowFail,
 } from "../lib/hf_merch_flow";
+import { startMerchBagCheckout, MERCH_BAG_MAX_LINES } from "../lib/hf_merch_group"; // [HF-CHANNEL-CORE-1]
 import { createMerchProduct, deleteMerchProduct, patchMerchProduct, saveMerchArt, saveMerchMockup, saveMerchPrintFile, MERCH_ART_MAX_BYTES, type PFail } from "../lib/hf_merch_products";
 import { merchFail, merchTrack, snapOf } from "../lib/hf_merch_notify";
 import { AI_UNAVAILABLE, aiState, aiTableOk, generateAiPicture, removeBackground } from "../lib/hf_merch_ai";
+import { merchPublicCategory } from "../lib/hf_merch_public_category"; // [HF-CHANNEL-CORE-1]
 
 const APP = "hf_merch";
 const SELLER_STATUSES = ["new", "processing", "shipped", "delivered", "cancelled"];
@@ -238,7 +240,9 @@ const PUBLIC_CACHE = { "cache-control": "public, max-age=60, s-maxage=120" };
 function publicProduct(row: MerchProductRow, host: MerchHost, shareBps: number, cfg?: MerchCfg) {
   const p = productShape(row, host, shareBps, 0, cfg ? gstCtxOf(cfg) : undefined);
   const prices = p.sizes.map((x) => x.pricePaise);
+  const pm = productMerch(row);
   return {
+    ...merchPublicCategory({ catalogName: pm?.catalogName ?? p.catalogName, kind: pm?.kind }), // [HF-CHANNEL-CORE-1] category + categoryLabel
     id: p.id, slug: p.slug, title: p.title, imageUrl: p.imageUrl, colours: p.colours,
     sizes: p.sizes.map((x) => ({ size: x.size, pricePaise: x.pricePaise, inStock: true })),
     fromPricePaise: prices.length ? Math.min(...prices) : 0, url: p.publicUrl, gstRateBps: p.gstRateBps, // [HF-MERCH-GST-1] this product's category GST rate, included in the price
@@ -305,6 +309,7 @@ async function checkoutRoute(req: Request, env: Env): Promise<Response> {
   if (!method) return bad(400, "invalid_method", "Pay from your wallet or by UPI / card.", { field: "method" });
   const requestKey = str(b.requestKey, 80);
   if (requestKey.length < 8) return bad(400, "invalid_request_key", "Missing request key.", { field: "requestKey" });
+  if (Array.isArray(b.items)) return bagCheckoutRoute(req, env, u.uid, b, method, requestKey); // [HF-CHANNEL-CORE-1] bag: many lines, one payment
   const productId = str(b.productId, 40);
   const qty = Number(b.qty ?? 1);
   if (!productId) return bad(400, "invalid_product", "Pick a product.", { field: "productId" });
@@ -324,12 +329,34 @@ async function checkoutRoute(req: Request, env: Env): Promise<Response> {
   return out({ orderId: o.order_id, orderNo: o.order_no, status: paid ? "paid" : "awaiting_payment", ...(r.checkoutUrl ? { checkoutUrl: r.checkoutUrl } : {}), ...(r.paymentSessionId ? { paymentSessionId: r.paymentSessionId } : {}) }, r.created ? 201 : 200);
 }
 
+/** [HF-CHANNEL-CORE-1] POST /api/hf/merch/checkout with `items:[…]` (the bag). Terms / method / requestKey / WhatsApp / closing gates already passed. */
+async function bagCheckoutRoute(req: Request, env: Env, uid: string, b: Record<string, unknown>, method: "wallet" | "cashfree", requestKey: string): Promise<Response> {
+  const raw = b.items as unknown[];
+  if (raw.length < 1 || raw.length > MERCH_BAG_MAX_LINES) return bad(400, "invalid_items", `Put 1 to ${MERCH_BAG_MAX_LINES} items in your bag.`, { field: "items" });
+  const lines = raw.map((x) => {
+    const it = (x && typeof x === "object" ? x : {}) as Record<string, unknown>;
+    return { productId: str(it.productId, 40), colour: str(it.colour, 40), size: str(it.size, 12), qty: Number(it.qty ?? 1) };
+  });
+  if (lines.some((l) => !l.productId)) return bad(400, "invalid_product", "Pick a product.", { field: "items" });
+  const limited = await rateLimit(env, `merch:checkout:${uid}`, 20, 3600); if (limited) return limited;
+  const client = (req.headers.get("x-client") ?? b.client) === "app" ? "app" : "web";
+  const r = await startMerchBagCheckout(env, { uid, lines, address: b.address, saveAddress: b.saveAddress === true, method, requestKey, client });
+  if (!r.ok) return failOf(r);
+  const paid = r.rows.every((o) => o.pay_status === "confirmed");
+  return out({
+    groupId: r.groupId,
+    orders: r.rows.map((o) => ({ orderId: o.order_id, orderNo: o.order_no, productId: snapOf(o).productId ?? "", amountPaise: Number(o.amount_paise) })),
+    totalPaise: r.rows.reduce((s, o) => s + Number(o.amount_paise), 0), status: paid ? "paid" : "awaiting_payment",
+    ...(r.checkoutUrl ? { checkoutUrl: r.checkoutUrl } : {}), ...(r.paymentSessionId ? { paymentSessionId: r.paymentSessionId } : {}),
+  });
+}
+
 function fanOrderDto(row: ShopOrderRow, now = Date.now()) {
   const snap = snapOf(row) as Partial<MerchSnapshot>;
   const status = fanStatusOf(row);
   const hasShip = !!(row.courier || row.awb || row.tracking_url);
   return {
-    id: row.order_id, orderNo: row.order_no, createdAt: Number(row.created_at), status,
+    id: row.order_id, orderNo: row.order_no, createdAt: Number(row.created_at), status, groupId: groupIdOf(row), // [HF-CHANNEL-CORE-1]
     product: { title: snap.title ?? "", imageUrl: snap.imageUrl ?? null, colour: snap.colour ?? "", size: snap.size ?? "", qty: Number(snap.qty ?? 1), hostName: snap.hostName ?? "", hostSlug: snap.hostSlug ?? "" },
     totalPaise: Number(row.amount_paise), payMethod: row.pay_method ?? null,
     shipping: hasShip ? { courier: row.courier ?? null, awb: row.awb ?? null, trackingUrl: row.tracking_url ?? null } : null,
@@ -349,6 +376,18 @@ async function myOrdersRoute(req: Request, env: Env): Promise<Response> {
 async function myOrderRoute(req: Request, env: Env, id: string): Promise<Response> {
   const u = await requireUser(req, env);
   if (isFail(u)) return bad(u.status, "unauthorized", "Please sign in.");
+  // [HF-CHANNEL-CORE-1] The Cashfree return page of a bag payment names the group id: answer with every order of the group.
+  if (isMerchGroupId(id)) {
+    let rows = await getGroupRows(env, id, u.uid);
+    if (!rows.length) return bad(404, "not_found", "No such order.");
+    if (rows.some((r) => r.pay_method === "cashfree" && r.pay_status === "awaiting_payment" && Date.now() - Number(r.updated_at) > POLL_GAP_MS)) {
+      try { await reconcileCashfreeOrder(env, id); } catch (e) { await merchFail(env, e, "poll", u.uid, { group_id: id }); }
+      rows = (await getGroupRows(env, id, u.uid)) ?? rows;
+    }
+    const orders = rows.map((r) => ({ ...fanOrderDto(r), timeline: timelineOf(r, "fan") }));
+    const status = rows.every((r) => r.pay_status === "confirmed") ? "paid" : rows.some((r) => r.pay_status === "cancelled" || r.pay_status === "expired") ? "cancelled" : "awaiting_payment";
+    return out({ group: { groupId: id, status, totalPaise: rows.reduce((s, r) => s + Number(r.amount_paise), 0), orders }, order: orders[0] });
+  }
   let row = await getFanOrder(env, u.uid, id);
   if (!row) return bad(404, "not_found", "No such order.");
   // The buyer came back from the payment page: ask Cashfree now instead of waiting for the webhook.
@@ -413,7 +452,7 @@ async function deleteAddressRoute(req: Request, env: Env, id: string): Promise<R
 // ---------------------------------------------------------------------------
 // Cashfree webhook (also reached from the shared wallet top-up webhook URL for shp_ ids)
 // ---------------------------------------------------------------------------
-export const isMerchOrderId = (id: string): boolean => /^shp_[a-f0-9]{20}$/.test(id);
+export const isMerchOrderId = (id: string): boolean => /^shp_[a-f0-9]{20}$/.test(id) || isMerchGroupId(id); // [HF-CHANNEL-CORE-1] mgp_ = a bag payment
 
 /** Signature verified over the raw body; the amount and status are then re-read from Cashfree itself before anything is confirmed. */
 export async function merchCashfreeWebhook(req: Request, env: Env, rawIn?: string): Promise<Response> {
@@ -425,7 +464,7 @@ export async function merchCashfreeWebhook(req: Request, env: Env, rawIn?: strin
   if (!verified) return bad(401, "bad_signature", "Bad signature.");
   const parsed = adapter.parseWebhook(raw);
   if (!parsed || !isMerchOrderId(parsed.our_order_id)) return out({ ignored: "not_merch" });
-  if (parsed.status === "refunded") return out({ refund: await confirmCashfreeRefund(env, parsed.our_order_id) });
+  if (parsed.status === "refunded") return out({ refund: isMerchGroupId(parsed.our_order_id) ? await confirmCashfreeRefundsForGroup(env, parsed.our_order_id) : await confirmCashfreeRefund(env, parsed.our_order_id) });
   const r = await reconcileCashfreeOrder(env, parsed.our_order_id);
   return r === "unavailable" ? bad(503, "unavailable", "Try again.") : out({ result: r });
 }

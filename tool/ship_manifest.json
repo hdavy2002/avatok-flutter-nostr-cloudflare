@@ -11748,5 +11748,29 @@
     "min_devices_on_build": 0,
     "flags": [],
     "no_telemetry": "Label and copy change plus a cap on the markup input; verified by reading a product page, the checkout review step and the wizard price step."
+  },
+  "HF-CHANNEL-CORE-1": {
+    "description": "[HF-CHANNEL-CORE-1 2026-10-23] Worker side of the influencer channel page: PUT /api/hosts/me/photo (influencer uploads their own profile photo, magic-byte + size checked) and avatarUrl on GET /api/hosts/me; public merch products carry category/categoryLabel and the public list returns every live product (up to 200); bag checkout on POST /api/hf/merch/checkout (items[], one payment for many orders linked by merch_json.groupId, one Cashfree order = group id, per-order refunds); my-orders rows carry groupId. No migration. Behind hostOnboardingEnabled / hfMerchEnabled / hfMerchCheckoutEnabled.",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [
+      "hostOnboardingEnabled",
+      "hfMerchEnabled",
+      "hfMerchCheckoutEnabled"
+    ],
+    "success": [
+      {
+        "event": "host_profile_photo_uploaded",
+        "property": "bytes",
+        "exists": true,
+        "note": "An influencer saved their own profile photo."
+      },
+      {
+        "event": "merch_bag_paid",
+        "property": "total_paise",
+        "exists": true,
+        "note": "A fan paid for a whole bag (wallet) in one go."
+      }
+    ]
   }
 }
