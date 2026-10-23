@@ -11591,5 +11591,14 @@
     "min_devices_on_build": 1,
     "flags": [],
     "no_telemetry": "Client-side contract fixes for already-declared flows; success asserted by HF-CALL-MODES-E1/E2 events."
+  },
+  "HF-MERCH-CATALOG-STORED-1": {
+    "description": "Merch/Studio catalogue keeps serving the last synced Printrove rows when the PRINTROVE_LOGIN secret is missing; reference shipping falls back to the cached figure or Rs 80 instead of Rs 0.",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [
+      "hfMerchEnabled"
+    ],
+    "no_telemetry": "Server-side fallback; verified by GET /api/hf/merch/catalog returning 200 with items while the login secret is absent."
   }
 }
