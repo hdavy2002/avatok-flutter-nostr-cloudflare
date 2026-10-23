@@ -1406,6 +1406,24 @@ Every server event carries the user's email (`trackUser`). Failures go through `
 | worker `merch_problem_reported` | `order_id`, `kind`, `has_photo` | Fan reported a wrong or damaged item. |
 | web/app `merch_strip_viewed` / `merch_product_viewed` / `merch_buy_clicked` / `merch_pay_method_chosen` / `merch_order_opened` | surface props | Sent by the web and app packages, not the worker. |
 
+### Channel page + Bag (`[HF-CHANNEL-WEB-1]`, web, 2026-10-23)
+
+Spec: `.agent-wt/SPEC-HF-CHANNEL.md` (web section). Sent by the web package, not the worker. The app lane (HF-CHANNEL-APP-1) reuses the same names with `surface: app`.
+
+| Event | Properties | Meaning |
+|---|---|---|
+| web `channel_viewed` | `host_slug`, `merch_count`, `reels_count`, `call_eligible`, `status`, `utm_medium` | The rebuilt `/h/<slug>` channel page was opened. |
+| web `merch_filter_used` | `host_slug`, `category` (`all` or a category slug), `count` | A category chip was pressed in the Merch section. |
+| web `merch_page_changed` | `host_slug`, `page`, `category`, `mode` (only `show_more` on phones) | The merch pager (or phone "Show more") was used. |
+| web `bag_added` | `source` (`quick`/`product`), `host_slug`, `product_id`, `category`, `qty`, `price_paise`, `via` (product page only: `add`/`buy`) | An item went into the Bag (merch tile "+ Add", or Add to bag / Buy now on the product page). |
+| web `bag_viewed` | `lines`, `items` | The `/bag` page was opened. |
+| web `bag_checkout_started` | `source` (`drawer`/`bag`/`checkout`), `method` (checkout only), `lines`, `items`, `total_paise` | Checkout pressed in the drawer or on the bag page; on the checkout page it fires when Pay is pressed (with `method`). |
+| web `bag_paid` | `group_id`, `method` (`wallet`/`online`), `orders`, `total_paise`, `source` (`return_url` for online) | The Bag was paid: wallet at once, online when the buyer returns to `/dashboard/orders?group=`. Server truth is `merch_order_paid`. |
+| web `channel_video_played` | `host_slug`, `platform`, `reel_id`, `surface` (`featured`/`row`) | A video or reel was played inline in "Now Showing". |
+| web `channel_slot_requested` | `host_slug`, `date`, `duration_minutes`, `price_paise` | "Request this slot" pressed in the inline booking calendar (hands off to `/bookings`). |
+| web `merch_checkout_step` / `merch_checkout_failed` / `merch_pay_method_chosen` | as for single-item checkout plus `surface: bag` | Same events as the retired single-item sheet, now sent by the Bag checkout. |
+| web `merch_product_viewed` / `merch_buy_clicked` / `merch_pincode_checked` | unchanged | Now sent by the rebuilt product page. |
+
 ## Hello Fraands call modes, queue, chunk billing and booking lengths (`[HF-CALL-MODES-A..E2]`, worker + web + app, 2026-10-23)
 
 Spec: `Specs/SPEC-2026-10-23-HF-CALL-MODES-QUEUE.md` section 2.8. All dark behind `hfCallModesEnabled`, `hfCallQueueEnabled`, `hfCallChunkBillingEnabled`, `hfBookingLengthsEnabled`. Server events use `track(env, uid, event, HF_CALL_APP, props)` (the `uid` is the person named in the Meaning column); the call events from the Durable Object carry `call_id`. Failures use `trackException` with `extra.area` of `hf_host_mode` or `hf_queue`.

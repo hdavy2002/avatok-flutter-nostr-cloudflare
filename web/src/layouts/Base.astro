@@ -60,6 +60,8 @@ export interface Props {
   indiaLandingLanguage?: boolean;
   /** [HF-MERCH-FAN-WEB-1] Extra schema.org nodes (each emitted as its own JSON-LD script) for pages with richer facts than PublicContent holds. */
   extraJsonLd?: Record<string, unknown>[];
+  /** [HF-CHANNEL-WEB-1] Show the Bag button (with the item count) in the shared header. */
+  bag?: boolean;
 }
 
 const {
@@ -88,6 +90,7 @@ const {
   dir = 'ltr',
   indiaLandingLanguage = true,
   extraJsonLd,
+  bag = false,
 } = Astro.props;
 
 ---
@@ -196,7 +199,7 @@ const {
     <slot name="head" />
   </head>
   <body data-i18n-namespace="web-common" class="min-h-screen bg-paper text-ink font-body">
-    {chrome && <SiteHeader auth={navStatic ? 'static' : headerAuth} hideAuth={hideNavCtas} />}
+    {chrome && <SiteHeader auth={navStatic ? 'static' : headerAuth} hideAuth={hideNavCtas} bag={bag} />}
     <script>
       import { initUiLocale } from '../lib/i18n/dom';
       initUiLocale();

@@ -1,17 +1,21 @@
 ---
 // [HF-MERCH-FAN-WEB-1 2026-10-23] Merch product page: /h/<slug>/merch/<product>. SSR (prerender = false) so the HTML is complete for search,
 // AI answers and link previews. GET /api/hf/merch/public/:host/:product (404 missing, 410 gone: hidden or deleted, answered as 410 + noindex).
-// Product + Offer JSON-LD: INR, in stock, free shipping in India, brand = the influencer. The buy panel is the MerchBuy island.
+// Product + Offer JSON-LD: INR, in stock, free shipping in India, brand = the influencer.
+// [HF-CHANNEL-WEB-1 2026-10-23] Rebuilt in the "Galli Pop" skin: gallery with left thumbs on plain tiles, by-line, price, colour, size (only when the
+// product has sizes), quantity, Add to bag / Buy now (ProductBuy island), pincode check, trust trio, accordion, "More from <name>".
 export const prerender = false;
 import Base from '../../../../layouts/Base.astro';
-import MerchBuy from '../../../../islands/merch/MerchBuy';
-import ShareButtons from '../../../../components/merch/ShareButtons.astro';
-import { fetchMerchProduct, gstText, rupees, STANDARD_SIZE_CHART } from '../../../../lib/merchPublic';
+import ProductBuy from '../../../../islands/channel/ProductBuy';
+import BagDrawer from '../../../../islands/channel/BagDrawer';
+import Sticker from '../../../../components/channel/Sticker.astro';
+import { fetchMerchHost, fetchMerchProduct, gstText, rupees, singularLabel, STANDARD_SIZE_CHART } from '../../../../lib/merchPublic';
 import { productJsonLd } from '../../../../lib/merchSeo';
 import { publicImage } from '../../../../lib/config';
 import { BRAND } from '../../../../lib/brand';
+import { splitName } from '../../../../lib/channelKit';
 import type { PublicContent } from '../../../../lib/seo/types';
-import '../../../../styles/hf-merch.css';
+import '../../../../styles/hf-channel.css';
 
 const { slug = '', product: productSlug = '' } = Astro.params;
 const r = await fetchMerchProduct(slug, productSlug);
@@ -23,69 +27,98 @@ else { Astro.response.status = 503; Astro.response.headers.set('cache-control', 
 const ok = r.status === 'ok' ? r : null;
 const p = ok?.product;
 const host = ok?.host;
+const more = ok ? await fetchMerchHost(slug) : null;
+const others = (more?.products ?? []).filter(x => x.id !== p!.id);
 const photos = p ? (p.photos?.length ? p.photos : p.imageUrl ? [p.imageUrl] : []) : [];
 const lowest = p ? Math.min(...p.sizes.filter(s => s.inStock).map(s => s.pricePaise), p.fromPricePaise || Infinity) : 0;
 const gst = gstText(p?.gstRateBps);
 const path = `/h/${slug}/merch/${productSlug}`;
 const pageUrl = new URL(path, BRAND.webOrigin).toString();
-const blurb = p ? (p.description?.replace(/\s+/g, ' ').trim() || `${p.title}, a ${p.colours.map(c => c.name).join(' / ') || 'cotton'} T-shirt by ${host!.displayName}, printed to order in India. Free delivery across India.`) : '';
+const kind = p ? singularLabel(p.categoryLabel || 'Merch') : 'Merch';
+const blurb = p ? (p.description?.replace(/\s+/g, ' ').trim() || `${p.title}, printed to order by ${host!.displayName} in India. Free delivery across India.`) : '';
+const hasSizes = !!p && p.sizes.length > 0;
 const chart = (p?.sizeChart?.length ? p.sizeChart : STANDARD_SIZE_CHART).filter(row => !p || p.sizes.length === 0 || p.sizes.some(s => s.size === row.size));
 const seoContent: PublicContent | undefined = ok ? {
-  kind: 'page', key: `h/${slug}/merch/${productSlug}`, canonicalPath: path, title: `${p!.title} — T-shirt by ${host!.displayName}`,
+  kind: 'page', key: `h/${slug}/merch/${productSlug}`, canonicalPath: path, title: `${p!.title} — ${kind} by ${host!.displayName}`,
   summary: `${blurb} From ${rupees(lowest)}.`.slice(0, 300), visibility: 'public',
-  image: photos[0] ? { url: photos[0], alt: `${p!.title} T-shirt by ${host!.displayName}` } : undefined,
+  image: photos[0] ? { url: photos[0], alt: `${p!.title} by ${host!.displayName}` } : undefined,
   breadcrumbs: [{ name: 'Home', path: '/' }, { name: host!.displayName, path: `/h/${slug}` }, { name: p!.title, path }],
 } : undefined;
-const jsonLd = ok ? [productJsonLd(host!, p!, photos, blurb)] : [];
-const title = ok ? `${p!.title} — T-shirt by ${host!.displayName}` : r.status === 'gone' ? 'This product is no longer available' : 'Product not found';
+const jsonLd = ok ? [productJsonLd(host!, p!, photos, blurb, kind)] : [];
+const title = ok ? `${p!.title} — ${kind} by ${host!.displayName}` : r.status === 'gone' ? 'This product is no longer available' : 'Product not found';
+const [firstName] = splitName(host?.displayName ?? '');
 ---
-<Base title={title} description={ok ? blurb.slice(0, 200) : 'This merch product is not available.'} image={photos[0]} noindex={!ok} keywords="" lang="en-IN" content={seoContent} extraJsonLd={jsonLd} ogType="website">
-  <Fragment slot="head"><meta name="theme-color" content="#fffdf7" /></Fragment>
+<Base title={title} description={ok ? blurb.slice(0, 200) : 'This merch product is not available.'} image={photos[0]} noindex={!ok} keywords="" lang="en-IN" content={seoContent} extraJsonLd={jsonLd} ogType="website" bag>
+  <Fragment slot="head"><meta name="theme-color" content="#fff9f0" /></Fragment>
   {!ok ? (
-    <main class="hfm-page hfm-gone" id="merch-main">
+    <div class="gp"><main class="sec" id="merch-main"><div class="wrap gone">
+      <p class="eyebrow">Merch</p>
       <h1>{r.status === 'gone' ? 'This product is no longer available' : r.status === 'unavailable' ? 'We could not load this product' : 'We could not find this product'}</h1>
-      <p>{r.status === 'unavailable' ? 'Please try again in a moment.' : 'The influencer may have taken it down. See what else they have.'}</p>
-      <p><a class="hfm-cta" href={`/h/${slug}`}>See the influencer’s page</a></p>
-    </main>
+      <p class="sub" style="margin-bottom:22px">{r.status === 'unavailable' ? 'Please try again in a moment.' : 'The influencer may have taken it down. See what else they have.'}</p>
+      <a class="btn btn-r" href={`/h/${slug}`}>See the influencer’s page</a>
+    </div></main></div>
   ) : (
-    <main class="hfm-page" id="merch-main" data-host-slug={slug} data-product-slug={productSlug}>
-      <nav class="hfm-crumb" aria-label="Breadcrumb"><a href="/">Home</a><span aria-hidden="true">›</span><a href={`/h/${slug}`}>{host!.displayName}</a><span aria-hidden="true">›</span><span aria-current="page">{p!.title}</span></nav>
-      <div class="hfm-grid2">
-        <div class="hfm-gallery">
-          <div class="hfm-main">{photos[0] ? <img id="hfm-hero" src={publicImage(photos[0], { width: 900 })} alt={`${p!.title} T-shirt by ${host!.displayName}`} width="900" height="900" fetchpriority="high" decoding="async" /> : null}</div>
-          {photos.length > 1 && <div class="hfm-thumbs" role="group" aria-label="More pictures">{photos.map((u, i) => <button type="button" data-hfm-thumb={publicImage(u, { width: 900 })} aria-label={`Picture ${i + 1} of ${photos.length}`} aria-current={i === 0 ? 'true' : 'false'}><img src={publicImage(u, { width: 160 })} alt="" width="68" height="68" loading="lazy" decoding="async" /></button>)}</div>}
+    <div class="gp has-pbar" id="gp-root" data-host-slug={slug} data-product-slug={productSlug}>
+      <main class="wrap" id="merch-main" style="padding-bottom:80px">
+        <nav class="crumb" aria-label="Breadcrumb"><a href={`/h/${slug}`}>{host!.displayName}</a> › <a href={`/h/${slug}#merch`}>Merch</a> › <span aria-current="page">{p!.title}</span></nav>
+        <div class="pgrid">
+          <div class="gal">
+            {photos.length > 1 && <div class="thumbs" role="group" aria-label="More pictures">{photos.map((u, i) => <button type="button" class={`th${i === 0 ? ' on' : ''}`} data-hfm-thumb={publicImage(u, { width: 900 })} aria-label={`Picture ${i + 1} of ${photos.length}`} aria-pressed={i === 0 ? 'true' : 'false'}><img src={publicImage(u, { width: 200 })} alt="" width="96" height="96" loading="lazy" decoding="async" /></button>)}</div>}
+            <div class="mainimg" style={photos.length > 1 ? undefined : 'grid-column:1/-1'}>
+              {photos[0] ? <img id="hfm-hero" src={publicImage(photos[0], { width: 900 })} alt={`${p!.title} by ${host!.displayName}`} width="900" height="900" fetchpriority="high" decoding="async" /> : null}
+              <Sticker k="product" />
+            </div>
+          </div>
+          <div>
+            <p class="by"><i aria-hidden="true">{host!.avatarUrl && <img src={publicImage(host!.avatarUrl, { width: 96 })} alt="" width="36" height="36" />}</i>By <a href={`/h/${slug}`}>{host!.displayName}</a></p>
+            <h1 class="ptitle">{p!.title}</h1>
+            <ProductBuy client:load host={{ slug, displayName: host!.displayName }} product={{ id: p!.id, slug: p!.slug, title: p!.title, imageUrl: photos[0] ?? null, colours: p!.colours, sizes: p!.sizes, maxQty: p!.maxQty, fromPricePaise: p!.fromPricePaise, category: p!.category || 'other', gstRateBps: p!.gstRateBps }} checkoutEnabled={ok.checkoutEnabled} />
+            <div class="trust">
+              <div><b>Free delivery</b>Anywhere in India</div>
+              <div><b>Made for you</b>Printed after you order</div>
+              <div><b>We fix mistakes</b>Wrong or damaged? Tell us in 48 hrs</div>
+            </div>
+            <div class="acc">
+              <details open><summary>About this item</summary><p>{blurb}</p></details>
+              {hasSizes && <details id="size-guide"><summary>Size guide</summary>
+                <table>
+                  <thead><tr><th scope="col">Size</th><th scope="col">Chest (in)</th><th scope="col">Length (in)</th></tr></thead>
+                  <tbody>{chart.map(row => <tr><th scope="row">{row.size}</th><td>{row.chestIn ?? '–'}</td><td>{row.lengthIn ?? '–'}</td></tr>)}</tbody>
+                </table>
+                <p>Approximate garment measurements. Between two sizes? Pick the larger one.</p>
+              </details>}
+              <details><summary>Delivery &amp; returns</summary>
+                <p>Price includes printing, {gst} and delivery across India. You’ll get a GST invoice by email.</p>
+                <p>Free delivery across India. Printed to order, so it ships in a few days.</p>
+                <p>No returns for a change of mind. If it arrives wrong or damaged, tell us within 48 hours of delivery and we make it right.</p>
+              </details>
+            </div>
+          </div>
         </div>
-        <div>
-          <p class="hfm-by">By <a href={`/h/${slug}`}>{host!.displayName}</a></p>
-          <h1 class="hfm-h1">{p!.title}</h1>
-          <p class="hfm-from">From {rupees(lowest)} · incl. {gst} &amp; free delivery</p>
-          <p class="hfm-note">Price includes: printing, {gst} and delivery across India. You’ll get a GST invoice by email.</p>
-          <MerchBuy client:load host={{ slug, displayName: host!.displayName }} product={{ id: p!.id, slug: p!.slug, title: p!.title, imageUrl: photos[0] ?? null, colours: p!.colours, sizes: p!.sizes, maxQty: p!.maxQty, gstRateBps: p!.gstRateBps }} checkoutEnabled={ok.checkoutEnabled} />
-          <ul class="hfm-perks">
-            <li>Free delivery across India</li>
-            <li>Printed to order on a soft cotton T-shirt</li>
-            <li>No returns. If it arrives wrong or damaged, tell us within 48 hours of delivery and we make it right.</li>
-          </ul>
-          {p!.description && <p class="hfm-desc">{p!.description}</p>}
-          <details class="hfm-chart" id="size-chart">
-            <summary>Size chart</summary>
-            <table>
-              <thead><tr><th scope="col">Size</th><th scope="col">Chest (in)</th><th scope="col">Length (in)</th></tr></thead>
-              <tbody>{chart.map(row => <tr><th scope="row">{row.size}</th><td>{row.chestIn ?? '–'}</td><td>{row.lengthIn ?? '–'}</td></tr>)}</tbody>
-            </table>
-            <p>Approximate garment measurements. Between two sizes? Pick the larger one.</p>
-          </details>
-          <ShareButtons url={pageUrl} text={`${p!.title} by ${host!.displayName}`} surface="product" hostSlug={slug} productSlug={productSlug} />
-        </div>
-      </div>
-    </main>
+      </main>
+      {others.length > 0 && <section class="sec" style="background:#fff" aria-labelledby="more"><div class="wrap">
+        <div class="sec-h"><h2 class="h2" id="more" style="font-size:clamp(28px,3vw,40px)">More from {firstName || host!.displayName}</h2><a class="btn btn-o btn-sm" href={`/h/${slug}#merch`}>See all {others.length + 1}</a></div>
+        <div class="grid">{others.slice(0, 4).map(o => <div class="card">
+          <span class="img">{o.imageUrl && <img src={publicImage(o.imageUrl, { width: 480 })} alt={`${o.title} by ${host!.displayName}`} width="240" height="240" loading="lazy" decoding="async" />}</span>
+          <span class="cat">{singularLabel(o.categoryLabel || 'Merch')}</span>
+          <b><a href={`/h/${slug}/merch/${o.slug}`}>{o.title}</a></b>
+          <span class="pr">{rupees(o.fromPricePaise)}</span>
+        </div>)}</div>
+      </div></section>}
+      <BagDrawer client:load checkoutEnabled={ok.checkoutEnabled} />
+    </div>
   )}
 </Base>
 <script>
   // Thumbnails swap the big picture; no framework needed for that.
   const hero = document.querySelector<HTMLImageElement>('#hfm-hero');
+  const root = document.getElementById('gp-root');
+  if (root) {
+    const setHdr = () => { const h = document.querySelector<HTMLElement>('.cv-header'); if (h) root.style.setProperty('--hdr', `${Math.round(h.getBoundingClientRect().height)}px`); };
+    setHdr(); window.addEventListener('resize', setHdr);
+  }
   document.querySelectorAll<HTMLButtonElement>('[data-hfm-thumb]').forEach(b => b.addEventListener('click', () => {
     if (hero && b.dataset.hfmThumb) hero.src = b.dataset.hfmThumb;
-    document.querySelectorAll('[data-hfm-thumb]').forEach(x => x.setAttribute('aria-current', x === b ? 'true' : 'false'));
+    document.querySelectorAll('[data-hfm-thumb]').forEach(x => { const on = x === b; x.classList.toggle('on', on); x.setAttribute('aria-pressed', on ? 'true' : 'false'); });
   }));
 </script>

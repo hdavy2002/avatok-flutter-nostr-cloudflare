@@ -2,11 +2,14 @@
  * the receipt, and "Report a problem" (wrong or damaged, with a photo, within 48 hours of delivery).
  * /dashboard/orders?order=<id> is where Cashfree returns the buyer: that order opens at once and, while it is still awaiting payment,
  * shows a payment-confirming state and asks the worker again every few seconds (the worker reads Cashfree itself).
+ * [HF-CHANNEL-WEB-1] /dashboard/orders?group=<groupId> is where the Bag checkout returns (one payment, one order per item): the group's orders are
+ * listed first with a note; the first one opens and shows the payment-confirming state. The Bag is emptied once the payment has gone through.
  * Worker: GET /api/hf/merch/my-orders(/:id), POST .../problem-photo, POST .../problem. */
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { capture, captureException } from '../../../lib/analytics';
 import { toMs } from '../../../lib/hfCallsApi';
 import { formatPaise } from '../../../lib/money';
+import { clearBag } from '../../../lib/merchBag';
 import { getMyOrder, listMyOrders, openReceipt, reportProblem, uploadProblemPhoto, type FanOrder, type FanOrderFull, type FanStatus } from '../../../lib/merchApi';
 import '../../../styles/hf-merch.css';
 import { Dialog, Empty, Failed, Ic, PageHead, Skel, Sticker, istDay, istTime, useToast } from './ui';
@@ -27,6 +30,8 @@ export default function Orders() {
   const [timedOut, setTimedOut] = useState<Record<string, boolean>>({});
   const [report, setReport] = useState<FanOrderFull | null>(null);
   const polls = useRef<Record<string, number>>({});
+  const groupId = typeof location !== 'undefined' ? new URLSearchParams(location.search).get('group') : null;
+  const groupDone = useRef(false);
 
   const load = useCallback(async () => {
     setFailed(false);
@@ -35,6 +40,22 @@ export default function Orders() {
     else { setFailed(true); if (r.status !== 401) captureException(new Error(`merch_orders_${r.status}_${r.code}`), { area: 'hf_merch_fan', step: 'orders_list' }); }
   }, []);
   useEffect(() => { void load(); }, [load]);
+
+  // Back from the Bag checkout: open the first order of the group, and empty the Bag once it is paid.
+  useEffect(() => {
+    if (!groupId || !orders) return;
+    const mine = orders.filter(o => o.groupId === groupId);
+    if (!openId && mine[0]) setOpenId(mine[0].id);
+    if (!groupDone.current && mine.length && mine.every(o => o.status !== 'awaiting_payment')) {
+      groupDone.current = true;
+      if (mine.some(o => o.status !== 'cancelled')) { clearBag(); capture('bag_paid', { group_id: groupId, method: 'online', orders: mine.length, source: 'return_url' }); }
+      try { sessionStorage.removeItem('hf_bag_group'); } catch { /* optional */ }
+    }
+    if (!groupDone.current && mine.some(o => o.status === 'awaiting_payment')) {
+      const t = setTimeout(() => void load(), POLL_MS);
+      return () => clearTimeout(t);
+    }
+  }, [groupId, orders]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const fetchOne = useCallback(async (id: string) => {
     const r = await getMyOrder(id);
@@ -73,7 +94,8 @@ export default function Orders() {
 
   // An order opened from the return URL may not be in the list yet (it was created seconds ago).
   const list = (() => {
-    const base = orders ?? [];
+    const raw = orders ?? [];
+    const base = groupId ? [...raw.filter(o => o.groupId === groupId), ...raw.filter(o => o.groupId !== groupId)] : raw;
     const d = openId ? detail[openId] : undefined;
     return d && !base.some(o => o.id === d.id) ? [d, ...base] : base;
   })();
@@ -83,6 +105,7 @@ export default function Orders() {
     {failed ? <Failed onRetry={() => void load()} /> : !orders && !(openId && detail[openId]) ? <Skel h={220} /> : list.length === 0 ?
       <Empty text="You have not bought any merch yet. Find an influencer you like and look for their Merch."><a className="h3-btn rani" href="/marketplace"><Ic name="search" className="" />Find influencers</a></Empty> :
       <div className="hfo hfo-list">
+        {groupId && (orders ?? []).some(o => o.groupId === groupId) && <p className="muted small" role="status" style={{ marginBottom: 12 }}>These came from your bag: {(orders ?? []).filter(o => o.groupId === groupId).length} orders, one payment.</p>}
         {list.map(o => <OrderCard key={o.id} o={detail[o.id] ?? o} open={openId === o.id} loading={openId === o.id && !detail[o.id]} timedOut={!!timedOut[o.id]} onToggle={() => toggle(o)} onReport={() => setReport(detail[o.id] ?? o)} />)}
       </div>}
     <ReportDialog order={report} onClose={() => setReport(null)} onDone={() => { toast('Thanks. We have your report and will contact you.'); const id = report?.id; setReport(null); if (id) { void fetchOne(id); void load(); } }} />

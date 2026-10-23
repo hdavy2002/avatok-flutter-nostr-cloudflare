@@ -17,6 +17,8 @@ export interface FanOrder {
   totalPaise: number; payMethod: 'wallet' | 'cashfree' | null;
   shipping: { courier: string | null; awb: string | null; trackingUrl: string | null } | null;
   receiptUrl: string | null; canReportProblem: boolean;
+  /** [HF-CHANNEL-WEB-1] Set when the order was paid together with others from one Bag (contract C3). */
+  groupId?: string | null;
   refundStatus?: 'none' | 'refunding' | 'done' | 'pending_manual'; rejectReason?: string | null; deepLink?: string;
 }
 export type FanOrderFull = FanOrder & { timeline?: { at: number; label: string }[] };
@@ -28,6 +30,16 @@ export interface CheckoutBody {
 }
 export interface CheckoutDone { ok: true; orderId: string; orderNo: string; status: 'paid' | 'awaiting_payment'; checkoutUrl?: string; paymentSessionId?: string }
 
+/** [HF-CHANNEL-WEB-1] Bag checkout (contract C3): 1..10 lines, one payment. The worker validates every line first; 409 item_unavailable { extra:{ productId, reason } } creates nothing. */
+export interface BagCheckoutBody {
+  items: { productId: string; colour: string; size: string; qty: number }[]; address: AddressInput; saveAddress: boolean;
+  acceptTerms: true; acceptRefund: true; method: 'wallet' | 'cashfree'; requestKey: string;
+}
+export interface BagCheckoutDone {
+  ok: true; groupId: string; orders: { orderId: string; orderNo: string; productId: string; amountPaise: number }[]; totalPaise: number;
+  status: 'paid' | 'awaiting_payment'; checkoutUrl?: string; paymentSessionId?: string;
+}
+export const checkoutBag = (b: BagCheckoutBody) => hfCall<BagCheckoutDone>('POST', '/api/hf/merch/checkout', { ...b, client: 'web' }, { timeoutMs: 45_000 });
 export const checkoutMerch = (b: CheckoutBody) => hfCall<CheckoutDone>('POST', '/api/hf/merch/checkout', { ...b, client: 'web' }, { timeoutMs: 45_000 });
 export const listMyOrders = () => hfCall<{ orders: FanOrder[] }>('GET', '/api/hf/merch/my-orders');
 export const getMyOrder = (id: string) => hfCall<{ order: FanOrderFull }>('GET', `/api/hf/merch/my-orders/${encodeURIComponent(id)}`);
@@ -43,6 +55,13 @@ let cfg: Promise<boolean> | null = null;
 export function merchEnabled(): Promise<boolean> {
   if (!cfg) cfg = request<{ hfMerchEnabled?: boolean }>('/api/config', { timeoutMs: 8000 }).then((c) => c?.hfMerchEnabled === true).catch(() => false);
   return cfg;
+}
+
+let cfgCheckout: Promise<boolean> | null = null;
+/** [HF-CHANNEL-WEB-1] hfMerchEnabled && hfMerchCheckoutEnabled from /api/config (one request per page). Any failure counts as off: the Bag still fills, the button reads "Buying opens soon". */
+export function merchCheckoutEnabled(): Promise<boolean> {
+  if (!cfgCheckout) cfgCheckout = request<{ hfMerchEnabled?: boolean; hfMerchCheckoutEnabled?: boolean }>('/api/config', { timeoutMs: 8000 }).then((c) => c?.hfMerchEnabled === true && c?.hfMerchCheckoutEnabled === true).catch(() => false);
+  return cfgCheckout;
 }
 
 export type PhotoResult = { ok: true; photoKey: string } | { ok: false; message: string };
@@ -79,6 +98,22 @@ export async function openReceipt(url: string): Promise<boolean> {
     setTimeout(() => URL.revokeObjectURL(href), 60_000);
     return true;
   } catch { return false; }
+}
+
+/** [HF-CHANNEL-WEB-1] Moved here from the retired single-item checkout sheet; the Bag checkout uses it. */
+export type AddressErrors = Partial<Record<keyof AddressInput, string>>;
+export function validateAddress(a: AddressInput): AddressErrors {
+  const LINE_MAX = 50;
+  const e: AddressErrors = {};
+  if (a.name.trim().length < 2) e.name = 'Enter the name of the person receiving the parcel.';
+  if (!/^[6-9]\d{9}$/.test(a.phone)) e.phone = 'Enter a 10-digit mobile number.';
+  if (!a.line1.trim()) e.line1 = 'Enter house number, building and street.';
+  else if (a.line1.length > LINE_MAX) e.line1 = `Keep this under ${LINE_MAX} characters.`;
+  if (a.line2.length > LINE_MAX) e.line2 = `Keep this under ${LINE_MAX} characters.`;
+  if (!a.city.trim()) e.city = 'Enter your city.';
+  if (!a.state) e.state = 'Pick your state.';
+  if (!/^[1-9]\d{5}$/.test(a.pincode)) e.pincode = 'Enter a 6-digit pincode.';
+  return e;
 }
 
 export const INDIAN_STATES = [

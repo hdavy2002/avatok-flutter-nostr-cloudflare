@@ -29,7 +29,7 @@ export function profileJsonLd(f: ProfileFacts): Record<string, unknown> {
 }
 
 /** Product + Offer for /h/<slug>/merch/<product>: INR, in stock, free shipping in India, brand = the influencer. */
-export function productJsonLd(host: { slug: string; displayName: string }, p: PublicProductFull | PublicProduct, photos: string[], description: string): Record<string, unknown> {
+export function productJsonLd(host: { slug: string; displayName: string }, p: PublicProductFull | PublicProduct, photos: string[], description: string, category = 'Merchandise'): Record<string, unknown> {
   const url = new URL(`/h/${host.slug}/merch/${p.slug}`, BRAND.webOrigin).toString();
   const shipping = {
     '@type': 'OfferShippingDetails',
@@ -49,7 +49,7 @@ export function productJsonLd(host: { slug: string; displayName: string }, p: Pu
     image: photos.map(abs).filter(Boolean),
     brand: { '@type': 'Brand', name: host.displayName },
     color: p.colours.length ? p.colours.map((c) => c.name).join(', ') : undefined,
-    category: 'T-shirt',
+    category,
     offers: offers.length === 1 ? offers[0] : offers,
   });
 }

@@ -1,0 +1,14 @@
+---
+// [HF-CHANNEL-WEB-1 2026-10-23] /bag: the fan's merch Bag (many items, any influencers, paid once). Client-only island: the bag lives in this browser (localStorage hf_bag_v1).
+import Base from '../layouts/Base.astro';
+import BagPage from '../islands/channel/BagPage';
+import { BRAND } from '../lib/brand';
+import '../styles/hf-channel.css';
+---
+<Base title={`Your bag | ${BRAND.name}`} description="The merch in your bag." noindex keywords="" lang="en-IN" bag>
+  <div class="gp" id="gp-root"><BagPage client:only="react" /></div>
+</Base>
+<script>
+  const root = document.getElementById('gp-root');
+  if (root) { const h = document.querySelector<HTMLElement>('.cv-header'); if (h) root.style.setProperty('--hdr', `${Math.round(h.getBoundingClientRect().height)}px`); }
+</script>

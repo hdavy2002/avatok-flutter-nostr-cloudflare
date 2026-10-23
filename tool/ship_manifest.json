@@ -11462,6 +11462,41 @@
       }
     ]
   },
+  "HF-CHANNEL-WEB-1": {
+    "description": "Website: the influencer channel page /h/<slug> and merch product page rebuilt in the owner-approved Galli Pop look (merch first with filter chips and pager, inline Now Showing videos, inline booking calendar, Before you call cards), plus the Bag: header badge, slide-in drawer, /bag, one-payment merch checkout /checkout/merch and the order-done panel. Art slots show CSS stand-ins until the owner's files are switched on in lib/hfChannelArt.ts. Needs the HF-CHANNEL-CORE-1 worker (category fields, group checkout) for the Bag to pay.",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [
+      "hfMerchEnabled",
+      "hfMerchCheckoutEnabled"
+    ],
+    "success": [
+      {
+        "event": "channel_viewed",
+        "property": "host_slug",
+        "exists": true,
+        "min_events": 1,
+        "note": "A fan opened the rebuilt channel page."
+      },
+      {
+        "event": "bag_added",
+        "property": "source",
+        "in": [
+          "quick",
+          "product"
+        ],
+        "min_events": 1,
+        "note": "A fan put an item in the Bag from a merch tile (quick add) or the product page."
+      },
+      {
+        "event": "bag_checkout_started",
+        "property": "lines",
+        "exists": true,
+        "min_events": 1,
+        "note": "A fan pressed Checkout (drawer or bag) or Pay (needs hfMerchCheckoutEnabled). A paid group is proven server side by merch_order_paid."
+      }
+    ]
+  },
   "HF-CALL-MODES-P0": {
     "description": "Phase 0 of call modes/queue/chunk billing: contracts, dark flags, migrations, stubs, publicCallState.",
     "two_sided": false,

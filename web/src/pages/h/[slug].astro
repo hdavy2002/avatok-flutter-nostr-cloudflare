@@ -1,15 +1,14 @@
 ---
 // [HF-HOST-PLATFORM-1 2026-10-09] Public page of a real, approved host: /h/<slug>.
 // SSR (prerender = false): GET /api/hosts/public/:slug is fetched here so the HTML is complete for search and share.
-// The look is the sample profile page's (components/callvaal/ProfileDetail.astro + styles/callvaal-detail.css).
-// Every photo on this page is AI-generated from an avatar the host chose, and is labelled so. The voice introduction is the host's OWN recording (admin-approved), labelled "Recorded by the host".
+// [HF-CHANNEL-WEB-1 2026-10-23] Rebuilt as the "Galli Pop" channel page (owner-approved mock): hero (photo + information, no decorative border),
+// sticky section nav, MERCH first, "Now Showing" videos, inline booking calendar, About, Reviews, "Before you call". Skin: styles/hf-channel.css (.gp).
+// Every photo on this page is AI-generated from an avatar the host chose, and is labelled so. The voice introduction is the host's OWN recording (admin-approved).
 // Flag hostsPublicEnabled off -> the API answers 404 -> this page is a friendly 404 (noindex).
 export const prerender = false;
 import Base from '../../layouts/Base.astro';
-import ModernIcon from '../../components/home/ModernIcon.astro';
-import DetailIcon from '../../components/callvaal/DetailIcon.astro';
 import brandConfig from '../../../../Specs/brand.json';
-import { API_BASE } from '../../lib/config';
+import { API_BASE, publicImage } from '../../lib/config';
 import { moods } from '../../lib/callvaalHomeReference';
 import HostCallActions from '../../islands/calls/HostCallActions';
 import SaveHostButton from '../../components/hosts/SaveHostButton';
@@ -17,16 +16,19 @@ import { relDate } from '../../lib/hfCallsApi';
 import { SAME_RATE_LINE, chargeForSeconds, stdRateLabel, type PriceTier } from '../../lib/hfStdPlan';
 import { formatPaise } from '../../lib/money';
 import { langLabels } from '../../lib/hfLanguages'; // [HF-DAILY-FLOWS-1]
-import { shortCallDisclaimer } from '../../lib/callvaalProfileDetails';
-import MerchStrip from '../../components/merch/MerchStrip.astro';
 import { brandUrl } from '../../lib/brand';
-import ShareButtons from '../../components/merch/ShareButtons.astro';
 import { fetchMerchHost } from '../../lib/merchPublic';
 import { profileJsonLd } from '../../lib/merchSeo';
+import { artUrl } from '../../lib/hfChannelArt';
+import { compact, langTag, splitName, type ChannelReel } from '../../lib/channelKit';
+import MerchGrid from '../../islands/channel/MerchGrid';
+import VideoPlayer from '../../islands/channel/VideoPlayer';
+import InlineBooking from '../../islands/channel/InlineBooking';
+import BagDrawer from '../../islands/channel/BagDrawer';
+import { VoiceIntro, ShareButton } from '../../islands/channel/HeroBits';
+import Sticker from '../../components/channel/Sticker.astro';
 import type { PublicContent } from '../../lib/seo/types';
-import '../../styles/callvaal-detail.css';
-import '../../styles/hf-calls.css';
-import '../../styles/hf-merch.css';
+import '../../styles/hf-channel.css';
 
 interface Card {
   slug: string; displayName: string; tagline: string | null; avatarUrl: string | null; languages: string[]; style: string | null; topics: string[];
@@ -35,7 +37,7 @@ interface Card {
   introAudioUrl: string | null; introSeconds: number | null; introMime: string | null;
   aboutPolished: string | null; about?: string | null; quote: string | null;
   /** [HF-DAILY-FLOWS-1] The influencer's visible reels (embeds only: we link out, never host the video). Absent while the reels flag is off. */
-  reels?: { id: string; platform: string; url: string; thumbUrl: string | null; title: string | null; views?: number | null }[];
+  reels?: { id: string; platform: string; url: string; embedUrl?: string | null; thumbUrl: string | null; title: string | null; views?: number | null }[];
   followers?: number; handle?: string | null;
   gallery: { url: string; caption: string | null }[];
   /** [HF-CALLS-1] presence + public rating aggregates (reviews agent) */
@@ -73,22 +75,16 @@ const standard = host?.plan === 'standard';
 const rateLabel = standard ? (host?.priceLabel || stdRateLabel(paisePerMin || undefined)) : `₹${Number(host?.pricePerMin ?? 0).toLocaleString('en-IN')}/min`;
 const tenMin = standard ? formatPaise(chargeForSeconds(host?.priceTiers, 600)) : null;
 const topics = (host?.topics ?? []).map(moodLabel);
-const gallery = host?.gallery ?? [];
 const langs = langLabels(host?.languages);
 const reels = (host?.reels ?? []).filter(r => r && typeof r.url === 'string' && /^https:\/\//.test(r.url)).slice(0, 12);
-const PLATFORM_LABEL: Record<string, string> = { youtube: 'YouTube', instagram: 'Instagram', facebook: 'Facebook' };
-const compact = (n: number) => n >= 1e6 ? `${(n / 1e6).toFixed(n >= 1e7 ? 0 : 1).replace(/\.0$/, '')}M` : n >= 1e3 ? `${(n / 1e3).toFixed(n >= 1e4 ? 0 : 1).replace(/\.0$/, '')}K` : String(n);
 const reviewCount = host?.reviewCount ?? 0;
 const rating = host?.rating ?? null;
 const reviews = host?.reviews ?? [];
-const breakdown = host?.ratingBreakdown ?? { '5': 0, '4': 0, '3': 0, '2': 0, '1': 0 };
 const talkedTo = host?.talkedTo ?? 0;
-const regulars = host?.regulars ?? 0;
 const identityVerified = host?.identityVerified === true;
 const callEligible = identityVerified && host?.callEligible === true;
 const callHost = host && callEligible ? { slug: host.slug, displayName: host.displayName, pricePerMin: host.pricePerMin, pricePaisePerMin: paisePerMin || undefined, priceTiers: host.priceTiers, plan: host.plan, status: host.status ?? 'offline', womenOnly: !!host.womenOnly } : null;
 const audioUrl = host?.introAudioUrl ?? null;
-const introLen = host?.introSeconds ? `${Math.floor(host.introSeconds / 60)}:${String(host.introSeconds % 60).padStart(2, '0')}` : '';
 const description = host ? `${name} on ${identity.name}. ${host.tagline ?? 'A real person to talk to, in your language.'} From ${rateLabel}. Your number stays private.` : 'This influencer page is not available.';
 // [HF-MERCH-FAN-WEB-1] Public-page discovery: an indexable record (canonical, share image) plus ProfilePage + Person JSON-LD.
 const seoContent: PublicContent | undefined = host ? {
@@ -97,159 +93,213 @@ const seoContent: PublicContent | undefined = host ? {
   breadcrumbs: [{ name: 'Home', path: '/' }, { name: 'Explore', path: '/marketplace' }, { name, path: `/h/${host.slug}` }],
 } : undefined;
 const jsonLd = host ? [profileJsonLd({ slug: host.slug, name, description: host.tagline ?? description, imageUrl: host.avatarUrl, rating: reviewCount > 0 ? rating : null, reviewCount })] : [];
-const galleryJson = JSON.stringify(gallery.map(g => ({ src: g.url, alt: g.caption || 'AI image' }))).replace(/</g, '\\u003c');
+
+// ---- [HF-CHANNEL-WEB-1] view model for the channel page ----
+const [firstName, restName] = splitName(name);
+const rateMatch = /^(.*?)(\/min)$/.exec(rateLabel);
+const rateBig = rateMatch ? rateMatch[1] : rateLabel;
+const rateSmall = rateMatch ? rateMatch[2] : '';
+const statusNow = host?.status ?? 'offline';
+const badgeText = !callEligible ? 'Calls unavailable' : statusNow === 'online' ? 'Online now' : statusNow === 'busy' ? 'On a call' : 'Offline';
+const badgeClass = !callEligible || statusNow === 'offline' ? 'cv-status-offline' : statusNow === 'busy' ? 'cv-status-busy' : '';
+const stats: { b: string; s: string }[] = [];
+if (reviewCount > 0 && rating != null) stats.push({ b: `${rating.toFixed(1)}★`, s: `${reviewCount} ${reviewCount === 1 ? 'review' : 'reviews'}` });
+if (talkedTo > 0) stats.push({ b: String(talkedTo), s: talkedTo === 1 ? 'person talked to' : 'people talked to' });
+if (host?.followers && host.followers > 0) stats.push({ b: compact(host.followers), s: 'followers' });
+const tags = (host?.languages ?? []).map(langTag).filter(Boolean);
+if (tags.length) stats.push({ b: [...new Set(tags)].slice(0, 3).join(' · '), s: 'languages' });
+const eyebrow = `Creator${topics[0] ? ` · ${topics[0]}` : ''}`;
+const merchOn = !!(merch && merchProducts.length > 0);
+const channelReels: ChannelReel[] = reels.slice(0, 24).map(r => ({ id: r.id, platform: r.platform, url: r.url, embedUrl: r.embedUrl ?? null, thumbUrl: r.thumbUrl, title: r.title, views: r.views ?? null }));
+const bookOn = !!callHost; // the calendar itself hides when bookings are switched off
+const bandArt = artUrl('bandTruck');
+const showArt = artUrl('nowShowingBg');
+const aboutText = host?.aboutPolished || host?.about || '';
+const aboutPlain = aboutText ? aboutText.replace(/\s+/g, ' ').trim() : '';
+const pageUrl = host ? brandUrl(`/h/${host.slug}`) : '';
+const navItems = [
+  ...(merchOn ? [{ id: 'merch', label: 'Merch', count: merchProducts.length }] : []),
+  ...(channelReels.length ? [{ id: 'videos', label: 'Videos' }] : []),
+  ...(bookOn ? [{ id: 'book', label: 'Book a time' }] : []),
+  { id: 'about', label: 'About' },
+  { id: 'reviews', label: 'Reviews' },
+] as { id: string; label: string; count?: number }[];
 ---
-<Base title={host ? `${name} — talk to a real person | ${identity.name}` : `Influencer not found | ${identity.name}`} description={description} image={host?.avatarUrl ?? undefined} noindex={!host} keywords="" lang="en-IN" content={seoContent} extraJsonLd={jsonLd} ogType={host ? 'profile' : 'website'}>
-  <Fragment slot="head"><meta name="theme-color" content="#fffdf7" /></Fragment>
+<Base title={host ? `${name} — talk to a real person | ${identity.name}` : `Influencer not found | ${identity.name}`} description={description} image={host?.avatarUrl ?? undefined} noindex={!host} keywords="" lang="en-IN" content={seoContent} extraJsonLd={jsonLd} ogType={host ? 'profile' : 'website'} bag>
+  <Fragment slot="head"><meta name="theme-color" content="#fff9f0" /></Fragment>
   {!host ? (
-    <main class="cv-detail-main" id="profile-main">
-      <nav class="cv-breadcrumb" aria-label="Breadcrumb"><a href="/">Home</a><span aria-hidden="true">›</span><a href="/marketplace">Explore</a></nav>
-      <section class="cv-info-card hf-missing" aria-labelledby="hf-missing-title">
-        <h1 id="hf-missing-title">We could not find this influencer</h1>
-        <p>The page may have moved, or the influencer is not taking calls right now. See everyone who is.</p>
-        <a class="cv-call-button hf-missing-link" href="/marketplace">Explore influencers</a>
-      </section>
-    </main>
+    <div class="gp">
+      <main class="sec" id="profile-main"><div class="wrap gone">
+        <p class="eyebrow">Not found</p>
+        <h1>We could not find this influencer</h1>
+        <p class="sub" style="margin-bottom:22px">The page may have moved, or the influencer is not taking calls right now. See everyone who is.</p>
+        <a class="btn btn-r" href="/marketplace">Explore influencers</a>
+      </div></main>
+    </div>
   ) : (
-    <>
-      <a class="cv-detail-skip" href="#profile-main">Skip to profile</a>
-      <main class="cv-detail-main" id="profile-main" data-host-slug={host.slug}>
-        <nav class="cv-breadcrumb" aria-label="Breadcrumb"><a href="/">Home</a><span aria-hidden="true">›</span><a href="/marketplace">Explore</a><span aria-hidden="true">›</span><span aria-current="page">{name}</span></nav>
-        <div class="cv-detail-layout">
-          <div class="cv-detail-content">
-            <section class="cv-profile-hero" aria-labelledby="profile-name">
-              <div class="cv-profile-photo">
-                {host.avatarUrl && <img src={host.avatarUrl} width="1254" height="1254" alt={`${name}, an AI avatar chosen by the influencer`} fetchpriority="high" />}
-                <span class="hf-ai-label">AI avatar chosen by the influencer</span>
-                <span class="cv-online cv-status-offline"><span aria-hidden="true"></span>{callEligible ? "Calls open soon" : "Calls unavailable"}</span>
+    <div class="gp has-pbar" id="gp-root" data-host-slug={host.slug} data-merch={merchProducts.length} data-reels={channelReels.length} data-call={callHost ? '1' : '0'} data-status={statusNow}>
+      <main id="profile-main">
+        <section class="hero" aria-labelledby="nm">
+          <div class="wrap hero-grid">
+            <div class="photo-wrap">
+              <div class="colorblock" aria-hidden="true"></div>
+              <div class="photo">
+                {host.avatarUrl ? <img src={publicImage(host.avatarUrl, { width: 1200 })} width="1200" height="1500" alt={`${name}, an AI avatar chosen by the influencer`} fetchpriority="high" decoding="async" /> : <span class="initial" aria-hidden="true">{firstName.charAt(0).toUpperCase()}</span>}
+                <span class={`cv-online ${badgeClass}`.trim()}><span aria-hidden="true"></span>{badgeText}</span>
+                <span class="ai">AI avatar chosen by the influencer</span>
               </div>
-              <div class="cv-identity">
-                <div class="cv-name-row"><div><h1 id="profile-name">{name}</h1>{host.tagline && <p class="cv-role">{host.tagline}</p>}</div></div>
-                <div class="hf-save-row"><SaveHostButton client:only="react" slug={host.slug} name={host.displayName} surface="profile" variant="pill" /></div>
-                <div class="hf-share-row"><ShareButtons url={brandUrl(`/h/${host.slug}`)} text={`Talk to ${name}`} surface="profile" hostSlug={host.slug} /></div>
-                <p class="hfc-rate hfc-rate-lg">{reviewCount > 0 && rating != null ? <><span aria-hidden="true">★</span> <strong>{rating.toFixed(1)}</strong> <a href="#reviews">({reviewCount} {reviewCount === 1 ? 'review' : 'reviews'})</a></> : <span class="hfc-new">New influencer</span>}</p>
-                {identityVerified && <span class="cv-verified" role="img" aria-label="Identity checked by our team"><span aria-hidden="true">ID-verified influencer ✓</span></span>}
-                {audioUrl && (
-                  <div class="hf-clip">
-                    <h2 class="hf-clip-title">Hear {name}’s introduction{introLen && <span> · {introLen}</span>}</h2>
-                    <audio controls preload="none" src={audioUrl} aria-label={`Hear ${name}’s introduction`}></audio>
-                    <span class="hf-ai-chip">Recorded by the influencer</span>
-                  </div>
-                )}
-                {host.quote && <blockquote class="cv-profile-quote"><p>“{host.quote}”</p><cite>– {name}</cite></blockquote>}
-              </div>
-            </section>
-            <p class="cv-sample-disclosure">To protect our influencers’ privacy, the photos on influencer profiles are AI-generated from an avatar the influencer chose. The voice introduction is the influencer’s own. {identityVerified && <>This influencer has completed our identity and video checks.</>}</p>
-            {merch && merchProducts.length > 0 && <MerchStrip host={{ slug: host.slug, displayName: name }} products={merchProducts} />}
-            <nav class="cv-profile-tabs" aria-label="Profile sections"><a href="#about" aria-current="location">About</a>{merchProducts.length > 0 && <a href="#merch">Merch</a>}<a href="#moods">Topics</a>{reviewCount > 0 && <a href="#reviews">Reviews</a>}{gallery.length > 0 && <a href="#gallery">Gallery</a>}</nav>
-            <div class="cv-information-grid">
-              <section class="cv-info-card" id="about" aria-labelledby="about-heading">
-                <h2 id="about-heading">About {name}</h2>
-                {(host.aboutPolished || host.about) && <p>{host.aboutPolished || host.about}</p>}
-                <dl class="cv-detail-facts">
-                  {langs.length > 0 && <div><dt><ModernIcon name="globe" />Languages</dt><dd>{langs.join(', ')}</dd></div>}
-                  {host.style && <div><dt><ModernIcon name="sparkle" />Conversation style</dt><dd>{STYLE_LABEL[host.style] ?? host.style}</dd></div>}
-                  {host.lgbtqFriendly && <div><dt><ModernIcon name="user" />Welcome</dt><dd>LGBTQ+ friendly</dd></div>}
-                </dl>
-              </section>
-              <section class="cv-info-card" id="moods" aria-labelledby="moods-heading"><h2 id="moods-heading">Let’s talk <em>about</em></h2><ul class="cv-detail-topics">{topics.map(t => <li><DetailIcon name="chat" /><span>{t}</span></li>)}</ul><p class="cv-mood-note">Pick a topic, bring a story, or just say hello.</p></section>
             </div>
-            {reels.length > 0 && (
-              <section class="cv-info-card" id="reels" aria-labelledby="reels-heading">
-                <h2 id="reels-heading">Latest reels{host.handle ? <> from {host.handle}</> : null}{host.followers ? <small class="hf-followers"> · {compact(host.followers)} followers</small> : null}</h2>
-                <ul class="hf-reel-grid">
-                  {reels.map(r => (
-                    <li><a class="hf-reel" href={r.url} target="_blank" rel="noopener noreferrer" data-reel-id={r.id} aria-label={`Watch on ${PLATFORM_LABEL[r.platform] ?? 'the original site'}: ${r.title || 'reel'} (opens in a new tab)`}>
-                      {r.thumbUrl ? <img src={r.thumbUrl} alt="" width="240" height="320" loading="lazy" referrerpolicy="no-referrer" /> : <span class="hf-reel-blank" aria-hidden="true"></span>}
-                      <span class="hf-reel-meta"><b>{PLATFORM_LABEL[r.platform] ?? 'Reel'}</b>{typeof r.views === 'number' && r.views > 0 ? <> · {compact(r.views)} views</> : null}</span>
-                    </a></li>
-                  ))}
-                </ul>
-              </section>
-            )}
-            <p class="cv-service-disclosure">{shortCallDisclaimer}</p>
-            {reviewCount > 0 && rating != null && (
-              <section class="cv-info-card hfc-reviews" id="reviews" aria-labelledby="reviews-heading">
-                <h2 id="reviews-heading">What callers say</h2>
-                <div class="hfc-rev-top">
-                  <div class="hfc-rev-avg"><strong>{rating.toFixed(1)}</strong><span class="hfc-stars" aria-hidden="true">{'★'.repeat(Math.round(rating))}{'☆'.repeat(5 - Math.round(rating))}</span><small>{reviewCount} {reviewCount === 1 ? 'review' : 'reviews'}</small></div>
-                  <ul class="hfc-bars" aria-label="Rating breakdown">
-                    {(['5', '4', '3', '2', '1'] as const).map(n => <li><span>{n} ★</span><span class="hfc-bar"><i style={`width:${Math.round(((breakdown[n] ?? 0) / reviewCount) * 100)}%`}></i></span><span>{breakdown[n] ?? 0}</span></li>)}
-                  </ul>
+            <div class="info">
+              <p class="eyebrow">{eyebrow}</p>
+              <h1 id="nm">{firstName}{restName && <>{' '}<br />{restName}</>}</h1>
+              {host.tagline && <p class="tag">{host.tagline}</p>}
+              {stats.length > 0 && <div class="stats">{stats.map(x => <div class="stat"><b>{x.b}</b><span>{x.s}</span></div>)}</div>}
+              <div class="ratecard">
+                <div class="rate">{rateBig}{rateSmall && <small>{rateSmall}</small>}</div>
+                <div class="acts">
+                  {callHost ? <HostCallActions client:idle variant="rail" refresh host={callHost} callLabel="Call now" bookHref="#book" /> : <p role="status" style="font-size:15px;color:var(--muted)">Calls and bookings are unavailable for this profile.</p>}
                 </div>
-                {talkedTo > 0 && <p class="hfc-rev-stat">Talked to {talkedTo} {talkedTo === 1 ? 'person' : 'people'}{regulars > 0 && <> · {regulars} {regulars === 1 ? 'regular' : 'regulars'}</>}</p>}
-                <ul class="hfc-rev-list">
-                  {reviews.map(r => (
-                    <li>
-                      <div class="hfc-rev-head"><strong>{r.firstName || 'A caller'}</strong><span class="hfc-stars" role="img" aria-label={`${r.stars} out of 5 stars`}>{'★'.repeat(r.stars)}{'☆'.repeat(5 - r.stars)}</span>{r.regular && <span class="hfc-tag">Regular</span>}</div>
-                      {r.text && <p>{r.text}</p>}
-                      <div class="hfc-rev-meta">{r.topic && <span class="hfc-tag hfc-tag-soft">{moodLabel(r.topic)}</span>}{r.minutes ? <span>{r.minutes} min call</span> : null}<span>{relDate(r.date)}</span></div>
-                    </li>
-                  ))}
-                </ul>
-              </section>
-            )}
-            {gallery.length > 0 && (
-              <section class="cv-gallery-section" id="gallery" aria-labelledby="gallery-heading">
-                <div class="cv-section-heading"><h2 id="gallery-heading">Gallery</h2><span class="hf-ai-chip">AI images</span></div>
-                <div class="cv-gallery-grid">{gallery.map((g, i) => <button type="button" class="hf-tile" data-gallery-index={i} aria-label={`Open picture ${i + 1}: ${g.caption || 'AI image'}`}><img src={g.url} alt={g.caption || 'AI image'} width="640" height="388" loading="lazy" /><span class="hf-ai-label hf-ai-tile">AI image</span></button>)}</div>
-              </section>
-            )}
-            <section class="cv-before-section" aria-labelledby="before-heading"><h2 id="before-heading">Before you call</h2><div class="cv-before-grid">
-              <div class="cv-before-card"><DetailIcon name="chat" /><div><h3>Just a conversation</h3><p>Talk and share at your own pace. No professional advice or promised results.</p></div></div>
-              <div class="cv-before-card"><ModernIcon name="user" /><div><h3>Keep it respectful</h3><p>18+ only. You can end a call at any time. Sexual or abusive talk is prohibited. End and report the call if you feel unsafe.</p></div></div>
-              <div class="cv-before-card"><DetailIcon name="notes" /><div><h3>Know before you start</h3><p>No human monitors your call, and your number stays masked. In crisis, call Tele-MANAS 14416 or 112.</p></div></div>
-            </div></section>
-          </div>
-          <aside class="cv-booking-rail" aria-label="Call options">
-            <div class="cv-booking-card"><strong class="cv-rate">{rateLabel}</strong>{tenMin && <p class="cv-rate-estimate">10 min ≈ {tenMin}</p>}{standard && <p class="cv-rate-estimate">{SAME_RATE_LINE}</p>}
-              {callHost ? <HostCallActions client:idle variant="rail" refresh host={callHost} /> : <p role="status">Calls and bookings are unavailable for this profile.</p>}
-              <ul class="cv-booking-benefits"><li><ModernIcon name="lock" /><div><strong>Your number stays private</strong><span>Calls are bridged through {identity.name}</span></div></li>{identityVerified && <li><DetailIcon name="shield" /><div><strong>ID-verified influencer</strong><span>Identity and video checks completed</span></div></li>}</ul>
+                {tenMin && <p class="est">10 min ≈ {tenMin}</p>}
+                {standard && <p class="est">{SAME_RATE_LINE}</p>}
+              </div>
+              <p class="priv"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>Your number stays private. Calls are bridged through {identity.name}.</p>
+              <div class="actrow">
+                {audioUrl && <VoiceIntro client:visible src={audioUrl} seconds={host.introSeconds ?? null} name={name} />}
+                <SaveHostButton client:only="react" slug={host.slug} name={host.displayName} surface="profile" variant="icon" />
+                <ShareButton client:idle url={pageUrl} text={`Talk to ${name}`} />
+              </div>
+              <p class="disc">Photos are AI-generated from an avatar the influencer chose.{audioUrl && ' The voice introduction is the influencer’s own.'}{identityVerified && ' This influencer has completed our identity and video checks.'}</p>
             </div>
-          </aside>
-        </div>
+          </div>
+        </section>
+
+        <nav class="snav" aria-label="Sections"><div class="wrap">
+          {navItems.map((it, i) => <a class={i === 0 ? 'on' : ''} href={`#${it.id}`} aria-current={i === 0 ? 'location' : undefined}>{it.label}{it.count != null && <span class="count">{it.count}</span>}</a>)}
+        </div></nav>
+
+        {merchOn && <>
+          <section class="sec" id="merch" aria-labelledby="mh">
+            <div class="wrap">
+              <div class="sec-h">
+                <div><p class="eyebrow">The merch shop</p><h2 class="h2" id="mh">{firstName}’s <span class="paint">drop</span></h2><p class="sub" style="margin-top:8px">Printed to order for you. Price includes GST and free delivery across India.</p></div>
+                <Sticker k="merch" />
+              </div>
+              <MerchGrid client:load host={{ slug: host.slug, displayName: name }} products={merchProducts} />
+            </div>
+          </section>
+          <div class={`band${bandArt ? ' art' : ''}`} aria-hidden="true" style={bandArt ? `background-image:url(${bandArt})` : undefined}></div>
+        </>}
+
+        {channelReels.length > 0 && (
+          <section class={`sec show${showArt ? ' art' : ''}`} id="videos" aria-labelledby="vh" style={showArt ? `background-image:url(${showArt})` : undefined}>
+            <div class="wrap">
+              <div class="sec-h">
+                <div><p class="eyebrow">Videos</p><h2 class="h2 poster-title" id="vh">Now Showing</h2></div>
+                <Sticker k="videos" />
+              </div>
+              <VideoPlayer client:visible hostSlug={host.slug} hostName={name} reels={channelReels} />
+            </div>
+          </section>
+        )}
+
+        {bookOn && <>
+          <section class="sec" id="book" aria-labelledby="bh">
+            <div class="wrap book-grid">
+              <div>
+                <p class="eyebrow">Book a time</p>
+                <h2 class="h2" id="bh">Pick a slot.<br />Skip the wait.</h2>
+                <p class="sub" style="margin:16px 0 22px">Choose a day and time. {firstName} confirms it, and you pay only after they say yes.</p>
+                <div style="display:flex;gap:10px;flex-wrap:wrap"><span class="chip">{rateLabel}</span><span class="chip">India time</span></div>
+                <div style="margin-top:30px"><Sticker k="booking" /></div>
+              </div>
+              <InlineBooking client:idle hostSlug={host.slug} hostName={name} paisePerMin={paisePerMin} plan={host.plan} priceTiers={host.priceTiers} />
+            </div>
+          </section>
+          <div class="band rick" data-book-band aria-hidden="true"></div>
+        </>}
+
+        <section class="sec" id="about" aria-labelledby="ah" style="background:#fff">
+          <div class="wrap about-grid">
+            <div>
+              <p class="eyebrow">About</p>
+              <h2 class="h2" id="ah" style="margin-bottom:22px">Meet {firstName}</h2>
+              {host.quote && <p class="quote">“{host.quote}”</p>}
+              {aboutPlain && <p class="sub" style={host.quote ? 'margin-top:18px;max-width:640px' : 'max-width:640px;font-size:clamp(18px,1.4vw,22px)'}>{aboutPlain}</p>}
+              {topics.length > 0 && <>
+                <p class="nun" style="margin:28px 0 12px">Let’s talk about</p>
+                <div style="display:flex;gap:10px;flex-wrap:wrap">{topics.map(t => <span class="chip">{t}</span>)}</div>
+              </>}
+            </div>
+            <div class="facts">
+              {langs.length > 0 && <div class="fact"><span class="ic" aria-hidden="true">🗣︎</span><span><b>Languages</b>{langs.join(', ')}</span></div>}
+              {host.style && <div class="fact"><span class="ic" aria-hidden="true">☕︎</span><span><b>Style</b>{STYLE_LABEL[host.style] ?? host.style}</span></div>}
+              {host.lgbtqFriendly && <div class="fact"><span class="ic" aria-hidden="true">🌈︎</span><span><b>Welcome</b>LGBTQ+ friendly</span></div>}
+              {identityVerified && <div class="fact"><span class="ic" aria-hidden="true">✓</span><span><b>ID-verified</b>Identity and video checks completed</span></div>}
+              <div class="fact"><span class="ic" aria-hidden="true">🔒︎</span><span><b>Private</b>Numbers never shared</span></div>
+            </div>
+          </div>
+        </section>
+
+        <section class="sec" id="reviews" aria-labelledby="rh">
+          <div class="wrap rev-grid">
+            <div>
+              <p class="eyebrow">Reviews</p>
+              {reviewCount > 0 && rating != null ? <>
+                <p class="bigr" id="rh">{rating.toFixed(1)}</p>
+                <p class="stars" style="font-size:22px" role="img" aria-label={`${rating.toFixed(1)} out of 5 stars`}>{'★'.repeat(Math.round(rating))}{'☆'.repeat(5 - Math.round(rating))}</p>
+                <p class="sub">{reviewCount} {reviewCount === 1 ? 'review' : 'reviews'}{talkedTo > 0 && <> · {talkedTo} {talkedTo === 1 ? 'person' : 'people'}</>}</p>
+              </> : <h2 class="h2" id="rh" style="font-size:clamp(30px,3vw,44px)">No reviews yet</h2>}
+              <div style="margin-top:22px"><Sticker k="reviews" /></div>
+            </div>
+            {reviewCount > 0 && reviews.length > 0
+              ? <div class="revs">{reviews.map(r => <div class="rev"><b class="nun">{r.firstName || 'A caller'}</b> <span class="stars" role="img" aria-label={`${r.stars} out of 5 stars`}>{'★'.repeat(r.stars)}{'☆'.repeat(5 - r.stars)}</span>{r.text && <p>{r.text}</p>}<p style="font-size:13px;color:var(--muted)">{[r.topic ? moodLabel(r.topic) : '', r.minutes ? `${r.minutes} min call` : '', relDate(r.date)].filter(Boolean).join(' · ')}</p></div>)}</div>
+              : <p class="empty">Be the first to talk to {firstName} and tell others how it went.</p>}
+          </div>
+        </section>
+
+        <section class="sec" aria-labelledby="ruh" style="padding-top:0">
+          <div class="wrap">
+            <h2 class="h2" id="ruh" style="font-size:clamp(28px,3vw,36px);margin-bottom:22px">Before you call</h2>
+            <div class="rules3">
+              <div class="r3"><span class="n">01</span><h3>Just a conversation</h3><p>No professional advice or promised results.</p></div>
+              <div class="r3"><span class="n">02</span><h3>Keep it friendly</h3><p>18+ only. Be kind and respectful; abusive or sexual talk is not allowed and gets reported.</p></div>
+              <div class="r3"><span class="n">03</span><h3>Pay only for talk time</h3><p>Charged per minute only while you are connected. Ringing, a missed or a declined call costs ₹0.</p></div>
+            </div>
+            <p class="note">Yahan sirf baat hoti hai. No medical, legal or money advice. Not a replacement for a doctor or counsellor. In crisis, call Tele-MANAS 14416 or 112. 18+ only.</p>
+          </div>
+        </section>
       </main>
-      <div class="cv-mobile-booking" aria-label="Call options"><div><strong>{rateLabel}</strong>{tenMin && <small>10 min ≈ {tenMin}</small>}</div>{callHost ? <HostCallActions client:idle variant="bar" refresh host={callHost} /> : <span>Calls and bookings unavailable</span>}</div>
-      <dialog class="cv-detail-dialog cv-gallery-dialog" id="hf-lightbox" aria-labelledby="hf-lightbox-caption"><button class="cv-dialog-close" type="button" data-dialog-close aria-label="Close gallery">×</button><figure><img data-gallery-image alt="" width="1254" height="1254"/><span class="hf-ai-chip hf-ai-lb">AI image</span><figcaption id="hf-lightbox-caption" aria-live="polite"></figcaption></figure><div class="cv-gallery-controls"><button type="button" data-gallery-step="-1" aria-label="Previous picture">←</button><span data-gallery-count></span><button type="button" data-gallery-step="1" aria-label="Next picture">→</button></div></dialog>
-      <script type="application/json" id="hf-gallery-data" set:html={galleryJson} />
-    </>
+
+      <div class="pbar" aria-label="Call options">
+        <div class="rate">{rateBig}{rateSmall && <small>{rateSmall}</small>}</div>
+        <div class="acts3">{callHost ? <HostCallActions client:idle variant="bar" host={callHost} callLabel="Call now" bookHref="#book" /> : <span style="font-size:14px;color:var(--muted)">Calls unavailable</span>}</div>
+      </div>
+      <BagDrawer client:load checkoutEnabled={merch?.checkoutEnabled === true} />
+    </div>
   )}
 </Base>
-<style is:global>
-  .cv-profile-photo .hf-ai-label{position:absolute;top:12px;left:12px;z-index:2;max-width:calc(100% - 24px);padding:4px 10px;border-radius:999px;background:#fffdf7e6;color:#46113e;font-size:.875rem;font-weight:700;line-height:1.3;box-shadow:0 2px 8px #46113e14}
-  .hf-tile{position:relative}
-  .hf-ai-tile{position:absolute;left:8px;bottom:8px;padding:3px 9px;border-radius:999px;background:#fffdf7e6;color:#46113e;font-size:.875rem;font-weight:700;line-height:1.3}
-  .hf-ai-chip{display:inline-block;padding:4px 10px;border-radius:999px;background:#f3eafb;color:#46113e;font-size:.875rem;font-weight:700;line-height:1.3}
-  .hf-ai-lb{display:block;width:max-content;margin:8px auto 0}
-  .hf-clip{display:grid;gap:8px;width:100%;margin-top:12px;padding:12px;border-radius:14px;background:#f2ecfc}
-  .hf-clip audio{width:100%;min-height:48px}
-  .hf-clip-title{margin:0;font-size:1.1rem;color:#46113e}
-  .hf-clip-title span{font-weight:600}
-  .hf-call-off{opacity:.75;cursor:not-allowed}
-  .hf-followers{font-weight:600;font-size:.9em}
-  .hf-reel-grid{list-style:none;margin:12px 0 0;padding:0;display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px}
-  .hf-reel{display:block;position:relative;border-radius:14px;overflow:hidden;background:#f2ecfc;color:#46113e;text-decoration:none;aspect-ratio:3/4}
-  .hf-reel img,.hf-reel-blank{width:100%;height:100%;object-fit:cover;display:block}
-  .hf-reel-meta{position:absolute;left:8px;bottom:8px;padding:3px 9px;border-radius:999px;background:#fffdf7e6;font-size:.875rem;line-height:1.3}
-  .hf-reel:focus-visible{outline:3px solid #bd2740;outline-offset:2px}
-  .hf-missing{max-width:640px;margin:48px auto;padding:28px}
-  .hf-missing-link{display:flex;margin-top:16px;max-width:320px;text-decoration:none}
-</style>
 <script>
-  const data = document.querySelector('#hf-gallery-data');
-  const photos: { src: string; alt: string }[] = JSON.parse(data?.textContent || '[]');
-  const dialog = document.querySelector<HTMLDialogElement>('#hf-lightbox');
-  if (dialog && photos.length) {
-    const img = dialog.querySelector<HTMLImageElement>('[data-gallery-image]')!;
-    const cap = dialog.querySelector<HTMLElement>('#hf-lightbox-caption')!;
-    const count = dialog.querySelector<HTMLElement>('[data-gallery-count]')!;
-    let i = 0;
-    let opener: HTMLElement | null = null;
-    const show = (n: number) => { i = (n + photos.length) % photos.length; img.src = photos[i].src; img.alt = photos[i].alt; cap.textContent = photos[i].alt; count.textContent = `${i + 1} / ${photos.length}`; };
-    document.querySelectorAll<HTMLButtonElement>('[data-gallery-index]').forEach(b => b.addEventListener('click', () => { opener = b; show(Number(b.dataset.galleryIndex) || 0); dialog.showModal(); dialog.querySelector<HTMLElement>('[data-dialog-close]')?.focus(); }));
-    dialog.querySelectorAll<HTMLButtonElement>('[data-gallery-step]').forEach(b => b.addEventListener('click', () => show(i + Number(b.dataset.galleryStep))));
-    dialog.querySelector('[data-dialog-close]')?.addEventListener('click', () => dialog.close());
-    dialog.addEventListener('close', () => opener?.focus());
-    dialog.addEventListener('keydown', e => { if (e.key === 'ArrowRight') show(i + 1); else if (e.key === 'ArrowLeft') show(i - 1); });
+  import { capture } from '../../lib/analytics';
+  const root = document.getElementById('gp-root');
+  if (root) {
+    const gp = root;
+    // The shared site header is sticky: the section nav sits right under it.
+    const hdr = () => { const h = document.querySelector<HTMLElement>('.cv-header'); if (h) gp.style.setProperty('--hdr', `${Math.round(h.getBoundingClientRect().height)}px`); };
+    hdr(); window.addEventListener('resize', hdr); window.addEventListener('load', hdr);
+    capture('channel_viewed', { host_slug: gp.dataset.hostSlug, merch_count: Number(gp.dataset.merch) || 0, reels_count: Number(gp.dataset.reels) || 0, call_eligible: gp.dataset.call === '1', status: gp.dataset.status, utm_medium: new URLSearchParams(location.search).get('utm_medium') ?? undefined });
+    // Highlight the section being read.
+    const links = [...gp.querySelectorAll<HTMLAnchorElement>('.snav a[href^="#"]')];
+    const map = new Map<Element, HTMLAnchorElement>();
+    links.forEach(a => { const el = document.getElementById(a.getAttribute('href')!.slice(1)); if (el) map.set(el, a); });
+    if ('IntersectionObserver' in window && map.size) {
+      const io = new IntersectionObserver(entries => {
+        for (const e of entries) {
+          if (!e.isIntersecting) continue;
+          const on = map.get(e.target);
+          links.forEach(a => { const is = a === on; a.classList.toggle('on', is); if (is) a.setAttribute('aria-current', 'location'); else a.removeAttribute('aria-current'); });
+        }
+      }, { rootMargin: '-35% 0px -60% 0px' });
+      map.forEach((_a, el) => io.observe(el));
+    }
   }
 </script>

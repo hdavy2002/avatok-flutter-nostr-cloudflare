@@ -5,9 +5,13 @@ import { API_BASE } from './env';
 
 export interface MerchColour { name: string; hex: string }
 export interface MerchSize { size: string; pricePaise: number; inStock: boolean }
-export interface PublicProduct { id: string; slug: string; title: string; imageUrl: string | null; colours: MerchColour[]; sizes: MerchSize[]; fromPricePaise: number; url: string;
+export interface PublicProduct {
+  id: string; slug: string; title: string; imageUrl: string | null; colours: MerchColour[]; sizes: MerchSize[]; fromPricePaise: number; url: string;
+  /** [HF-CHANNEL-WEB-1] Worker contract C2: category slug ("tshirts", "hoodies", "mugs", "caps", "phone-covers", "bags", "posters", "other") and its label ("T-shirts"). Absent on older API builds: shown as "Merch". */
+  category?: string; categoryLabel?: string;
   /** [HF-MERCH-GST-2] This product's own category GST rate in basis points (500 = 5%). Optional: labels say just "GST" without it. */
-  gstRateBps?: number }
+  gstRateBps?: number;
+}
 export interface PublicProductFull extends PublicProduct {
   photos: string[]; description: string | null; side: 'front' | 'back'; maxQty: number;
   /** Not sent by the server yet; when it is, the product page shows it instead of the standard chart. */
@@ -71,6 +75,19 @@ export async function fetchLiveHosts(maxPages = 40): Promise<LiveHost[]> {
   }
   return out;
 }
+
+/** [HF-CHANNEL-WEB-1] Filter chips: only the categories that exist, with counts, in the order they first appear. */
+export function merchCategories(products: PublicProduct[]): { slug: string; label: string; count: number }[] {
+  const out: { slug: string; label: string; count: number }[] = [];
+  for (const p of products) {
+    const slug = p.category || 'other';
+    const hit = out.find(c => c.slug === slug);
+    if (hit) hit.count += 1; else out.push({ slug, label: p.categoryLabel || (slug === 'other' ? 'Merch' : slug), count: 1 });
+  }
+  return out;
+}
+/** Singular, for the small label above a product name ("T-shirts" -> "T-shirt"). */
+export const singularLabel = (label: string): string => (label.endsWith('ies') ? label.slice(0, -3) + 'y' : label.replace(/s$/, ''));
 
 /** Whole rupees for a merch price ("₹699"). Merch prices are always whole rupees. */
 export const rupees = (paise: number): string => `₹${Math.round(paise / 100).toLocaleString('en-IN')}`;

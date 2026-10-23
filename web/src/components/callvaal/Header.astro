@@ -4,8 +4,8 @@ import ModernIcon from '../home/ModernIcon.astro';
 import BrandLogo from './BrandLogo.astro';
 import '../../styles/callvaal-chrome.css';
 import { APP_UA_MARKER } from '../../lib/nativeBridge';
-interface Props { hideAuth?: boolean; auth?: 'auto' | 'in' | 'static'; homeReference?: boolean; }
-const { hideAuth = false, auth = 'auto', homeReference = false } = Astro.props;
+interface Props { hideAuth?: boolean; auth?: 'auto' | 'in' | 'static'; homeReference?: boolean; /** [HF-CHANNEL-WEB-1] Show the Bag button with its item count (channel, product, bag and checkout pages). */ bag?: boolean; }
+const { hideAuth = false, auth = 'auto', homeReference = false, bag = false } = Astro.props;
 // All modes keep plain links (no Clerk island); static pages still reflect the session hint.
 const authMode = auth === 'in' ? 'in' : 'auto';
 const path = Astro.url.pathname;
@@ -51,14 +51,16 @@ const homeAnchor = (id: string) => `${Astro.url.pathname === '/' ? '' : '/'}#${i
 </script>
 <header class="cv-header" data-callvaal-chrome data-auth-mode={authMode} data-home-reference={homeReference || undefined}>
   <a class="cv-wordmark" href="/" aria-label={`${identity.name} home`}><BrandLogo /></a>
-  <div class="cv-mobile-actions"><a href={homeAnchor('people')} aria-label="Who's online"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="10" cy="10" r="6.5"/><path d="m15 15 6 6"/></svg></a><button class="cv-menu-toggle menu-toggle" data-callvaal-menu-toggle type="button" aria-expanded="false" aria-controls="main-navigation" aria-label="Open navigation"><ModernIcon name="menu" /></button></div>
+  <div class="cv-mobile-actions">{bag && <a class="cv-bag-m" href="/bag" aria-label="Bag, 0 items"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 8h14l-1.2 12H6.2z"/><path d="M9 8a3 3 0 0 1 6 0"/></svg><b data-bag-count data-zero="1">0</b></a>}<a href={homeAnchor('people')} aria-label="Who's online"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="10" cy="10" r="6.5"/><path d="m15 15 6 6"/></svg></a><button class="cv-menu-toggle menu-toggle" data-callvaal-menu-toggle type="button" aria-expanded="false" aria-controls="main-navigation" aria-label="Open navigation"><ModernIcon name="menu" /></button></div>
   <nav class="cv-navigation notebook-nav" id="main-navigation" data-callvaal-navigation aria-label="Main navigation">{/* [HF-HEADER-STD-1 2026-10-19] Owner: one standard header on every page — Home, Explore, How it works, Help, then
       Sign in and the "Join us" CTA while signed out; once signed in only Dashboard and Sign out show (the session hint
-      above flips html[data-site-auth] before paint). Earlier: [HF-LOGO-1], [HF-BLOG-ARCHIVE-1], [HF-HELP-NAV-1], [HF-HOW-NAV-1]. */}<a href="/" aria-current={path === '/' ? 'page' : undefined}>Home</a><a href="/marketplace" aria-current={path.startsWith('/marketplace') ? 'page' : undefined}>Explore</a><a href="/how-it-works" aria-current={path.startsWith('/how-it-works') ? 'page' : undefined}>How it works</a><a href="/help" aria-current={path.startsWith('/help') ? 'page' : undefined}>Help</a>{!hideAuth && <>{auth !== 'in' && <a class="cv-sign-in cv-auth-out" href="/sign-in"><ModernIcon name="user" />Sign in</a>}<a class="cv-sign-in cv-auth-in cv-dashboards" href="/dashboard" aria-current={onDashboard ? 'page' : undefined}><ModernIcon name="user" />Dashboard</a><a class="cv-auth-in" href="/sign-out">Sign out</a></>}{auth !== 'in' && <a class="cv-join cv-auth-out" href="/hosts/join" aria-current={path.startsWith('/hosts/join') ? 'page' : undefined}>Join us</a>}</nav>
+      above flips html[data-site-auth] before paint). Earlier: [HF-LOGO-1], [HF-BLOG-ARCHIVE-1], [HF-HELP-NAV-1], [HF-HOW-NAV-1]. */}<a href="/" aria-current={path === '/' ? 'page' : undefined}>Home</a><a href="/marketplace" aria-current={path.startsWith('/marketplace') ? 'page' : undefined}>Explore</a><a href="/how-it-works" aria-current={path.startsWith('/how-it-works') ? 'page' : undefined}>How it works</a><a href="/help" aria-current={path.startsWith('/help') ? 'page' : undefined}>Help</a>{!hideAuth && <>{auth !== 'in' && <a class="cv-sign-in cv-auth-out" href="/sign-in"><ModernIcon name="user" />Sign in</a>}<a class="cv-sign-in cv-auth-in cv-dashboards" href="/dashboard" aria-current={onDashboard ? 'page' : undefined}><ModernIcon name="user" />Dashboard</a><a class="cv-auth-in" href="/sign-out">Sign out</a></>}{auth !== 'in' && <a class="cv-join cv-auth-out" href="/hosts/join" aria-current={path.startsWith('/hosts/join') ? 'page' : undefined}>Join us</a>}{bag && <a class="cv-bag" href="/bag" aria-label="Bag, 0 items">Bag <b data-bag-count data-zero="1">0</b></a>}</nav>
 </header>
 <script>
   import { capture } from '../../lib/analytics';
   import { isAppMode } from '../../lib/nativeBridge';
+  import { initBagBadge } from '../../lib/bagBadge';
+  initBagBadge(); // [HF-CHANNEL-WEB-1] no-op unless this header has the Bag button
   // [HF-APP-3] back button, external links and app telemetry; loaded only inside the app shell.
   if (isAppMode()) void import('../../lib/appMode').then((m) => m.initAppMode());
   const toggle = document.querySelector<HTMLButtonElement>('.cv-menu-toggle');

@@ -1,0 +1,11 @@
+---
+// [HF-CHANNEL-WEB-1 2026-10-23] /checkout/merch: address, payment and the order-done panel for everything in the Bag. Client-only island.
+// "Buy now" on a product page adds the item to the Bag and lands here. The order list stays at /dashboard/orders.
+import Base from '../../layouts/Base.astro';
+import BagCheckout from '../../islands/channel/BagCheckout';
+import { BRAND } from '../../lib/brand';
+import '../../styles/hf-channel.css';
+---
+<Base title={`Checkout | ${BRAND.name}`} description="Pay for the merch in your bag." noindex keywords="" lang="en-IN">
+  <div class="gp"><BagCheckout client:only="react" /></div>
+</Base>

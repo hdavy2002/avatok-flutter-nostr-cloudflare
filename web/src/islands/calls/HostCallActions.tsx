@@ -350,7 +350,8 @@ function webHasTestCredits(): Promise<boolean> {
 }
 
 /* ── Public component ──────────────────────────────────────────────────── */
-export default function HostCallActions({ host, variant, refresh }: { host: CallHost; variant: Variant; refresh?: boolean }) {
+/** [HF-CHANNEL-WEB-1] callLabel replaces the "Call ₹x/min" text on the call button (the channel page shows the rate beside it: "Call now"); bookHref points "Book a time" at the page's own calendar. Both optional: other pages are unchanged. */
+export default function HostCallActions({ host, variant, refresh, callLabel, bookHref }: { host: CallHost; variant: Variant; refresh?: boolean; callLabel?: string; bookHref?: string }) {
   const [on, setOn] = useState<boolean | null>(null);
   const [bookingOn, setBookingOn] = useState(false);
   const [status, setStatus] = useState<HostPresence>(host.status ?? 'offline');
@@ -422,7 +423,7 @@ export default function HostCallActions({ host, variant, refresh }: { host: Call
   }, [on, callable]);
 
   const h: CallHost = { ...host, status, womenOnly };
-  const bookingHref = `/bookings?host=${encodeURIComponent(host.slug)}`;
+  const bookingHref = bookHref ?? `/bookings?host=${encodeURIComponent(host.slug)}`;
   const onClose = useCallback(() => setOpen(false), []);
 
   if (!on) {
@@ -454,7 +455,7 @@ export default function HostCallActions({ host, variant, refresh }: { host: Call
       <button type="button" className={btnClass(variant, 'hfc-call')} disabled={gate === 'pending'} onClick={() => {
         if (looksSignedOut()) { window.location.assign(signInUrl()); return; }
         setBridge(true); setEverOpen(true); setOpen(true);
-      }}><Icon name="phone" size={22} />Call {hostRateLabel(host)}</button>
+      }}><Icon name="phone" size={22} />{callLabel ?? <>Call {hostRateLabel(host)}</>}</button>
       {bookingOn && <a className={`${btnClass(variant)} hfc-book-time`} href={bookingHref}>Book a time</a>}
       {everOpen && <CallSheet host={h} open={open} onClose={onClose} flags={flags} bookingOn={bookingOn} />}
     </>
