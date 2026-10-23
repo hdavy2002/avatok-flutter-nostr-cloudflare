@@ -1489,3 +1489,11 @@ Each of the four flags must be on before its events appear. Events arrive only a
 | `hf_public_profile_served` | `slug`, `call_eligible`, `identity_verified`, `identity_method` (`whatsapp_otp`), `listing_status` | A public influencer profile was served (`GET /api/hosts/public/:slug`), distinct_id = the host uid. **Ship-manifest success event** (`call_eligible = true`). |
 | `hf_host_identity_gate` | `identity_method`, `passed` (false) | Profile generation refused because the host's WhatsApp number is not OTP-verified. |
 | `hf_host_generate_started` | + `identity_method` | Existing event; now records that WhatsApp OTP was the identity check. |
+
+## App channel page parity with the web profile (`[HF-APP-CHANNEL-PARITY-1]`, hf-flutter app, 2026-10-24)
+
+| Event | Props | Note |
+|---|---|---|
+| `channel_voice_intro_played` | `slug`, `surface` (`app`), `seconds` | A fan pressed play on the influencer's own voice introduction. **Ship-manifest success event.** |
+| `channel_voice_intro_failed` | `slug`, `surface`, `error` | The intro could not play; the fan saw "Could not play the introduction". |
+| `channel_viewed` | (existing) | Unchanged; the page now also shows reviews, facts, privacy line and the calls-unavailable state. |

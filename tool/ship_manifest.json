@@ -11903,5 +11903,27 @@
   "HF-APP-PARITY-BOOKINGS": {
     "description": "App booking parity with the website: a full booking details page (/bookings/:id) replaces the pop-up, booked days struck through on the influencer calendar, and 'N days booked' / 'N requests waiting' counts.",
     "no_telemetry": "Reuses the existing accept/decline events (source=detail); calendar counts and the details page add no new behaviour to assert."
+  },
+  "HF-APP-CHANNEL-PARITY-1": {
+    "description": "[HF-APP-CHANNEL-PARITY-1] App channel page gets what the web profile page has: Reviews (rating, breakdown, list / No reviews yet), voice intro player, privacy line, Let's talk about + Languages / Verified / Private facts, rating / talked-to / languages stats, callState badge, and no Call / Book when the profile is not verified or not live (callEligible).",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [],
+    "success": [
+      {
+        "event": "channel_viewed",
+        "property": "surface",
+        "equals": "app",
+        "min_events": 1,
+        "note": "A fan opened a channel page in the new build."
+      },
+      {
+        "event": "channel_voice_intro_played",
+        "property": "surface",
+        "equals": "app",
+        "min_events": 1,
+        "note": "A fan played a voice intro in the app (needs a profile that has one)."
+      }
+    ]
   }
 }

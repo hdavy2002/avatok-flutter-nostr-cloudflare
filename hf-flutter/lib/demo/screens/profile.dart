@@ -24,6 +24,7 @@ import '../state.dart';
 import '../theme.dart';
 import '../widgets.dart';
 import 'bookings_real.dart'; // [HF-WIRE-8]
+import 'channel_extras.dart'; // [HF-APP-CHANNEL-PARITY-1]
 import 'channel_sections.dart'; // [HF-CHANNEL-APP-1]
 import 'sheets.dart';
 
@@ -63,6 +64,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   final GlobalKey _videosKey = GlobalKey();
   final GlobalKey _bookKey = GlobalKey();
   final GlobalKey _aboutKey = GlobalKey();
+  final GlobalKey _reviewsKey = GlobalKey(); // [HF-APP-CHANNEL-PARITY-1]
   bool _pinNav = false;
   int _active = 0;
   List<_SectionTab> _tabs = const [];
@@ -201,13 +203,18 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final shop = _shop;
     final hasMerch = prof != null && shop != null && shop.items.isNotEmpty;
     final hasVideos = prof != null && prof.reels.isNotEmpty;
-    final hasBook = prof != null && BookingsBridge.real;
+    // [HF-APP-CHANNEL-PARITY-1] same rule as the website: no Call / Book unless the profile is verified and live.
+    final eligible = prof == null || prof.callEligible;
+    final hasBook = prof != null && BookingsBridge.real && eligible;
     final hasAbout = who.bio.trim().isNotEmpty;
+    final hasFacts = prof != null;
+    final hasReviews = prof != null;
     _tabs = [
       if (hasMerch) _SectionTab('Merch', _merchKey, count: shop.items.length),
       if (hasVideos) _SectionTab('Videos', _videosKey),
       if (hasBook) _SectionTab('Book', _bookKey),
-      if (hasAbout) _SectionTab('About', _aboutKey),
+      if (hasAbout || hasFacts) _SectionTab('About', _aboutKey),
+      if (hasReviews) _SectionTab('Reviews', _reviewsKey),
     ];
     final active = _active.clamp(0, _tabs.isEmpty ? 0 : _tabs.length - 1);
     return ListenableBuilder(
@@ -229,11 +236,23 @@ class _ProfileScreenState extends State<ProfileScreen> {
         final nav = _tabs.length < 2
             ? null
             : _SectionNav(tabs: _tabs, active: active, onTap: _goTo);
+        final cs0 = CallFlags.modes ? who.callState : null;
         final stats = <(String, String)>[
+          // [HF-APP-CHANNEL-PARITY-1] rating, people talked to and languages, as on the website
+          if (prof != null && prof.reviewCount > 0 && prof.rating != null) ('${prof.rating!.toStringAsFixed(1)}★', '${prof.reviewCount} ${prof.reviewCount == 1 ? 'review' : 'reviews'}'),
+          if (prof != null && prof.talkedTo > 0) ('${prof.talkedTo}', prof.talkedTo == 1 ? 'person talked to' : 'people talked to'),
           if (prof != null && prof.likes > 0) (compactCount(prof.likes), 'likes'),
           if (prof != null && prof.reels.isNotEmpty) ('${prof.reels.length}', 'videos'),
           if (prof != null && prof.host.followers > 0) (compactCount(prof.host.followers), 'followers'),
+          if (prof != null && hfLangTags(prof.languages).isNotEmpty) (hfLangTags(prof.languages), 'languages'),
         ];
+        final badge = prof != null && !prof.callEligible
+            ? 'Calls unavailable'
+            : switch (cs0) {
+                HostCallState.appointments => 'Available by appointment',
+                HostCallState.onCall => 'On a call',
+                _ => who.online ? 'Online now' : 'Offline',
+              };
         final tags = [who.niche, who.city].where((e) => e.isNotEmpty).toList();
         final cs = CallFlags.modes ? who.callState : null;
         final showBook = cs != HostCallState.offline;
@@ -248,7 +267,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
                     _ChannelHero(
                       who: who,
-                      tagline: _tagline(who.bio),
+                      badge: badge,
+                      tagline: prof != null && prof.tagline.trim().isNotEmpty ? prof.tagline.trim() : _tagline(who.bio),
                       stats: stats,
                       faved: faved,
                       onHeart: onHeart,
@@ -256,6 +276,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       // [HF-APP-PARITY-SAFETY] Report a person lives here; not on your own page
                       onMore: realSlug == null || Services.instance.me?.hostSlug == realSlug ? null : () => unawaited(showSafetyMenu(context, profileName: who.name)),
                     ),
+                    if (prof != null) const ChannelPrivacyLine(),
+                    if (prof != null && (prof.introAudioUrl ?? '').isNotEmpty)
+                      ChannelVoiceIntro(url: prof.introAudioUrl!, slug: who.id, firstName: first, seconds: prof.introSeconds),
                     if (nav != null) KeyedSubtree(key: _navKey, child: nav),
                     if (hasMerch) KeyedSubtree(key: _merchKey, child: ChannelMerchSection(shop: shop, hostSlug: who.id, firstName: first))
                     else if (prof != null && _shopEmpty) ChannelMerchEmpty(firstName: first),
@@ -264,10 +287,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       KeyedSubtree(key: _videosKey, child: ChannelVideosSection(reels: prof.reels)),
                     ],
                     if (hasBook) KeyedSubtree(key: _bookKey, child: ChannelBookSection(slug: who.id, firstName: first, hostName: who.name, avatarUrl: who.avatarUrl)),
-                    if (hasAbout) ...[
+                    if (hasAbout || hasFacts) ...[
                       const GpBand(rick: true),
-                      KeyedSubtree(key: _aboutKey, child: ChannelAboutSection(bio: who.bio.trim(), tags: tags)),
+                      KeyedSubtree(
+                        key: _aboutKey,
+                        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                          if (hasAbout) ChannelAboutSection(bio: who.bio.trim(), tags: tags),
+                          if (hasFacts) ChannelFacts(topics: prof.topics, languages: prof.languages, verified: prof.identityVerified),
+                        ]),
+                      ),
                     ],
+                    if (hasReviews) KeyedSubtree(key: _reviewsKey, child: ChannelReviewsSection(profile: prof, firstName: first)),
                     const ChannelRulesSection(),
                     const SizedBox(height: 12),
                   ]),
@@ -283,11 +313,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 Text('/min', style: t(14, color: GP.muted, w: FontWeight.w700, h: 1.1)),
               ]),
               const SizedBox(width: 12),
-              if (showBook) ...[
-                Expanded(child: GpButton('Book', kind: GpBtn.outline, onTap: () => context.push('/book/${who.id}'))),
-                const SizedBox(width: 10),
+              if (!eligible)
+                const Expanded(child: ChannelCallsUnavailable())
+              else ...[
+                if (showBook) ...[
+                  Expanded(child: GpButton('Book', kind: GpBtn.outline, onTap: () => context.push('/book/${who.id}'))),
+                  const SizedBox(width: 10),
+                ],
+                Expanded(child: _primaryAction(context, who, first)),
               ],
-              Expanded(child: _primaryAction(context, who, first)),
             ]),
           ),
         );
@@ -351,9 +385,12 @@ class _SectionNav extends StatelessWidget {
 /// Full-width photo (Online now / Offline on it), then the eyebrow, name, tagline, stats and Save / Share.
 /// No decorative border, arch or curtain round the photo (decision D2).
 class _ChannelHero extends StatelessWidget {
-  const _ChannelHero({required this.who, required this.tagline, required this.stats, required this.faved, required this.onHeart, required this.onShare, this.onMore});
+  const _ChannelHero({required this.who, required this.badge, required this.tagline, required this.stats, required this.faved, required this.onHeart, required this.onShare, this.onMore});
 
   final Influencer who;
+
+  /// [HF-APP-CHANNEL-PARITY-1] "Online now", "Available by appointment", "On a call", "Offline" or "Calls unavailable".
+  final String badge;
   final String tagline;
   final List<(String, String)> stats;
   final bool faved;
@@ -377,7 +414,7 @@ class _ChannelHero extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final hasPhoto = (who.avatarUrl ?? '').isNotEmpty || who.portrait != null;
-    final online = who.online;
+    final online = badge == 'Online now'; // the dark pill + dot only when she can take a call now
     return Column(children: [
       AspectRatio(
         aspectRatio: 4 / 4.6,
@@ -396,7 +433,7 @@ class _ChannelHero extends StatelessWidget {
                     Container(width: 9, height: 9, decoration: const BoxDecoration(color: GP.yel, shape: BoxShape.circle)),
                     const SizedBox(width: 8),
                   ],
-                  Text(online ? 'Online now' : 'Offline', style: t(14, color: online ? GP.paper : GP.ink, w: FontWeight.w900)),
+                  Text(badge, style: t(14, color: online ? GP.paper : GP.ink, w: FontWeight.w900)),
                 ]),
               ),
             ),
