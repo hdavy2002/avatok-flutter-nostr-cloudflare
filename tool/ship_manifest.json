@@ -11509,5 +11509,20 @@
         "note": "A live call reserved its chunks (flag hfCallChunkBillingEnabled); settle charges only spoken seconds."
       }
     ]
+  },
+  "HF-CALL-MODES-D": {
+    "description": "Booking lengths 15 min to 5 h with a 15-minute hold; booked calls ring in any mode.",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [],
+    "success": [
+      {
+        "event": "hf_booking_quote_created",
+        "property": "hold_minutes",
+        "exists": true,
+        "min_events": 1,
+        "note": "A booking quote with a length and 15-minute hold (flag hfBookingLengthsEnabled)."
+      }
+    ]
   }
 }
