@@ -12,6 +12,7 @@ import { fetchTopupConfig, gatewaySupported, openCheckout, startTopup, topupErro
 import { fetchRefunds, PAYOUT_HREF, type RefundInfo } from '../../../lib/hfWalletExitApi';
 import { fetchReceipts, openReceipt, receiptSplit, RECEIPT_FAIL_MSG, RECEIPT_POPUP_MSG, type ReceiptItem } from '../../../lib/hfReceiptsApi';
 import TokensPanel from '../../wallet/TokensPanel';
+import UpiSetup from '../../wallet/UpiSetup'; // [HF-CLOSE-UPI-1]
 import { useDash, spendablePaise } from './data';
 import { Card, Dialog, Empty, Failed, FlowerCluster, Ic, PageHead, Petals, Skel, Sticker, fmtInt, istDay, useToast } from './ui';
 
@@ -57,6 +58,11 @@ export default function Wallet() {
         {app ? <TokensPanel /> : <AddMoney onPaid={(text) => { toast(text); reload('wallet'); setRcptKey(k => k + 1); }} />}
       </Card>
     </section>
+
+    {/* [HF-CLOSE-UPI-1] Payout setup for everyone (fans too, HF-REEL-36): the UPI ID your money is paid to, and the one-time ID check. */}
+    <Card title="Payout setup" note="Your UPI ID and a one-time ID check, so you can take your wallet money out or close your account" id="payout">
+      <UpiSetup where="wallet" skin="h3" next="/dashboard/wallet" />
+    </Card>
 
     <section className="h3-row c21">
       <Card title="History" note="Every rupee in and out">
@@ -174,7 +180,7 @@ function RefundBox({ canWithdraw }: { canWithdraw: boolean }) {
   if (!info) return null;
   const open = info.requests.find(r => r.status === 'requested' || r.status === 'processing');
   return <div style={{ marginTop: 12, padding: 14, borderRadius: 16, background: 'var(--cream)', border: '1px dashed var(--line)' }}>
-    <p className="small muted">Refunds go to your wallet, never to your card or UPI.{canWithdraw ? ' To take money out, use Payout (UPI, after a one-time ID and UPI check).' : ''}</p>
+    <p className="small muted">Refunds go to your wallet, never to your card or UPI. To take money out, first set up your UPI ID in <a href="#payout">Payout setup</a> (one-time ID check). Then withdraw from the app (Me, then Payout){canWithdraw ? ', or from Earnings on the website' : ''}, or have it paid out when you close your account.</p>
     {open && <p className="small" style={{ marginTop: 8 }}>A refund of {formatPaise(Math.round(open.amount * 100))} is in progress.</p>}
     {canWithdraw && <a className="h3-btn sm ghost" style={{ marginTop: 8 }} href={PAYOUT_HREF}>Withdraw to UPI</a>}
   </div>;

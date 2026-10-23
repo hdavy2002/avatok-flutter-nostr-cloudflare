@@ -9,7 +9,7 @@ export interface RefundLot { lotId: string; tokens: string; paid: number; refund
 export interface TokenExitInfo {
   mode: 'tokens'; refundPaise: number; refundLots: number; partialLots: number; partialPaise: number; testValuePaise: number; debtValuePaise: number; availablePaise: number; pendingPaise: number;
   /** [HF-FIX-CLOSE-ACCOUNT-1] The wallet balance exactly as the Wallet page shows it (after GST); closing pays it out to the person's UPI in whole rupees. */
-  walletPaise: number; walletPayoutPaise: number; upiOk: boolean; kycOk: boolean; payoutReady: boolean; debtBlocked: boolean;
+  walletPaise: number; walletPayoutPaise: number; /** [HF-CLOSE-UPI-1] the sub-rupee rest that is not paid out (retired at deletion). Absent on older worker answers. */ roundingPaise?: number; upiOk: boolean; kycOk: boolean; payoutReady: boolean; debtBlocked: boolean;
 }
 
 export interface ExitInfo {
@@ -54,7 +54,7 @@ export function walletExitCode(e: unknown): string {
 }
 
 const CODE_TEXT: Record<string, string> = {
-  upi_required: 'Add your UPI ID first (in the app: Me, then Payout). Your wallet money is paid out to it when you close your account.',
+  upi_required: 'Add your UPI ID first (on the Wallet page, Payout setup, or in the app: Me, then Payout). Your wallet money is paid out to it when you close your account.',
   kyc_required: 'We check your ID once, before your first payout. Do that first, then close your account.',
   withdraw_first: 'Your wallet money does not go back to your card. Withdraw it to your UPI with Payout first, then close your account.',
   forfeit_required: 'Your wallet holds less than ₹1, which is too small to pay out. Tick the box to give it up and close your account.',

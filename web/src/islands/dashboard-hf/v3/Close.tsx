@@ -5,6 +5,7 @@ import { formatPaise } from '../../../lib/money';
 import { capture, captureException, currentDistinctUid } from '../../../lib/analytics';
 import { fetchExit, startExit, cancelExit, deleteAccountNow, walletExitMessage, walletExitCode, ApiError, PAYOUT_HREF, type ExitInfo } from '../../../lib/hfWalletExitApi';
 import { putPrefs, getPrefs } from './data';
+import UpiSetup from '../../wallet/UpiSetup'; // [HF-CLOSE-UPI-1]
 import { Card, Failed, PageHead, Skel, Sticker, useToast } from './ui';
 
 const dateIN = (ms: number | null | undefined) => (ms ? new Date(ms).toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' }) : '');
@@ -38,6 +39,9 @@ export default function Close() {
   const walletPaise = tk ? tk.walletPaise : Math.round((info?.paidBalance ?? 0) * 100);
   const payoutPaise = tk ? tk.walletPayoutPaise : walletPaise;
   const setupMissing = !!tk && tk.walletPayoutPaise > 0 && !tk.payoutReady; // needs the UPI ID / one-time ID check first
+  const restPaise = tk?.roundingPaise ?? 0; // [HF-CLOSE-UPI-1] the paise under Re 1 that are not paid out
+  const holdOn = (info?.held ?? 0) > 0; // earnings still in the 7-day hold: the closure payout waits for it
+  const releaseOn = dateIN(info?.heldReleaseAt);
   const sure = typed.trim().toUpperCase() === 'CLOSE';
   const go = async () => {
     if (!info || !sure || busy) return;
@@ -65,9 +69,12 @@ export default function Close() {
     {failed ? <Failed onRetry={() => void load()} /> : !info ? <Skel h={300} /> : scheduled && !ex ? <Card title="Your account is scheduled to close" note="">
       <p>Your money has been settled. Your account and personal details will be deleted after {dateIN(scheduled)}. Sign in again before then to cancel.</p></Card>
     : ex ? <Card title="We are paying out your money first" note="Your account is deleted automatically once everything below is paid">
-      {ex.status === 'waiting_hold' && <p className="small" style={{ marginBottom: 10 }}>Some earnings ({m(info.held)}) are in the 7-day hold{info.heldReleaseAt ? ` until ${dateIN(info.heldReleaseAt)}` : ''}.</p>}
+      {ex.status === 'waiting_hold' && <p className="small" style={{ marginBottom: 10 }} role="status"><b>Why it is waiting:</b> {m(info.held)} of your earnings are still in the 7-day hold{releaseOn ? `, which ends on ${releaseOn}` : ''}. We pay everything in one payout to your UPI after that{payoutPaise > 0 ? `, so your wallet money (${formatPaise(payoutPaise)}) is paid together with it` : ''}. You don’t need to do anything.</p>}
       <div className="h3-break">
         {info.refund && <div><span>Refund of unused top-ups (started before this change)</span><b>{m(info.refund.amount)} · {REF[info.refund.status] ?? info.refund.status}</b></div>}
+        {ex.status === 'waiting_hold' && payoutPaise > 0 && <div><span>Wallet money (paid together with the earnings)</span><b>{formatPaise(payoutPaise)}</b></div>}
+        {ex.status === 'waiting_hold' && holdOn && <div><span>Earnings in the 7-day hold{releaseOn ? `, released ${releaseOn}` : ''}</span><b>{m(info.held)}</b></div>}
+        {ex.status === 'waiting_hold' && restPaise > 0 && <div><span>Below ₹1, not paid out</span><b>{formatPaise(restPaise)}</b></div>}
         {info.payout && <div><span>Final payout to your UPI</span><b>{m(info.payout.amount)} · {PAY[info.payout.status] ?? info.payout.status}</b></div>}
       </div>
       <p className="small muted" style={{ marginTop: 8 }}>While your account is closing you can’t make calls, go online or add money.</p>
@@ -79,14 +86,14 @@ export default function Close() {
         <div className="h3-steps">
           {item(payoutPaise <= 0, `Wallet balance: ${formatPaise(walletPaise)}`,
             payoutPaise > 0
-              ? `Your wallet balance of ${formatPaise(payoutPaise)} is paid out to your UPI after a one-time ID and UPI check. It is not sent back to your card or UPI you paid from. Test credits are simply removed.`
+              ? `You will receive ${formatPaise(payoutPaise)} (whole rupees) from your wallet, paid to your own UPI after a one-time ID and UPI check${restPaise > 0 ? `. The ${formatPaise(restPaise)} left over is below ₹1, so it cannot be paid out and is removed with your account` : ''}. It is not sent back to your card or UPI you paid from. Test credits are simply removed.`
               : 'Nothing is left to pay out. Test credits are simply removed.',
             walletPaise > 0 ? <a className="h3-btn sm ghost" href="/dashboard/wallet">See wallet</a> : undefined)}
-          {setupMissing && item(false, tk && !tk.upiOk ? 'Add your UPI ID first' : 'Finish the one-time ID check first',
-            tk && !tk.upiOk ? 'Add your UPI ID in the app (Me, then Payout) and finish the one-time ID check. Then come back here and close your account.' : 'We check your ID once, before your first payout. Then come back here and close your account.',
-            <a className="h3-btn sm ghost" href={tk && !tk.upiOk && (info.withdrawable > 0 || info.held > 0) ? PAYOUT_HREF : '/hosts/onboarding?step=aadhaar'}>{tk && !tk.upiOk && (info.withdrawable > 0 || info.held > 0) ? 'Go to Payout' : 'Do the ID check'}</a>)}
+          {payoutPaise <= 0 && restPaise > 0 && item(true, 'Less than ₹1 in your wallet', `${formatPaise(restPaise)} is too small to pay out (payouts are whole rupees). It is removed with your account.`)}
+          {setupMissing && item(false, 'Set up your payout first', 'Your wallet money is paid to your own UPI ID, after a one-time ID check. Do both here, then close your account.',
+            <UpiSetup where="close" skin="h3" next="/dashboard/close" onSaved={() => void load()} />)}
           {tk?.debtBlocked && item(false, 'There is an open balance on your account', 'Please write to us from Support and we will settle it with you before you close.', <a className="h3-btn sm ghost" href="/dashboard/support">Go to Support</a>)}
-          {(info.withdrawable > 0 || info.held > 0) && item(false, `Influencer earnings: ${m(info.withdrawable + info.held)}`, `Paid out to your UPI or bank, together with your wallet balance${info.held > 0 ? `; ${m(info.held)} waits for the 7-day hold` : ''}.`, !info.bankOk && !tk?.payoutReady ? <a className="h3-btn sm ghost" href="/dashboard/host/earnings">Add a verified bank</a> : undefined)}
+          {(info.withdrawable > 0 || info.held > 0) && item(false, `Influencer earnings: ${m(info.withdrawable + info.held)}`, `Paid out to your UPI or bank, together with your wallet balance${info.held > 0 ? `. ${m(info.held)} is still in the 7-day hold${releaseOn ? ` until ${releaseOn}` : ''}, so closing waits for it: your wallet money is paid together with it after ${releaseOn || 'the hold ends'}, and you are told by WhatsApp` : ''}.`, !info.bankOk && !tk?.payoutReady ? <a className="h3-btn sm ghost" href="/dashboard/host/earnings">Add a verified bank</a> : undefined)}
           {item(true, 'What gets deleted', 'Your profile, My Fraands, call history and preferences, after a 30-day waiting period. Some payment and safety records are kept only as long as the law requires.')}
         </div>
         <p className="small muted" style={{ marginTop: 10 }}>See <a href="/data-deletion">how deletion works</a>.</p>

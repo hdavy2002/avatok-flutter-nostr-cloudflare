@@ -1,0 +1,28 @@
+---
+// [HF-CLOSE-UPI-1] The one-time ID check before a first payout, for anyone signed in (fans too). Standalone page, not indexed; ?next=/dashboard/...
+import brandConfig from '../../../../Specs/brand.json';
+import IdCheck from '../../islands/payout/IdCheck';
+import '../../styles/callvaal-notebook.css';
+import '../../styles/host-onboarding/base.css';
+import '../../styles/host-onboarding/verify.css';
+import '../../styles/host-onboarding/finish.css';
+export const prerender = true;
+const identity = brandConfig.homepageIdentity;
+---
+<!doctype html>
+<html lang="en-IN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>{`One-time ID check | ${identity.name}`}</title>
+    <meta name="robots" content="noindex,nofollow" />
+    <meta name="theme-color" content="#46113e" />
+    <link rel="icon" href="/assets/branding/hf-favicon.png" type="image/png" />
+    <link data-site-fonts rel="preload" href="/fonts/Comfortaa-Bold.ttf" as="font" type="font/ttf" crossorigin />
+    <link rel="preload" href="/fonts/Nunito-Black.woff2" as="font" type="font/woff2" crossorigin />
+  </head>
+  <body>
+    <IdCheck client:only="react" />
+    <noscript><p style="padding:24px;font-family:sans-serif;font-size:1rem">Please turn on JavaScript for the ID check.</p></noscript>
+  </body>
+</html>
