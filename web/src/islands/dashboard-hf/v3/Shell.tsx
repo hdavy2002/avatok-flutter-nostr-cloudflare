@@ -12,7 +12,7 @@ import { Avatar, Dialog, Ic, Marigold, Mogra, Sticker, istDay, istTime } from '.
 
 interface Item { key: DashSection | 'signout'; href: string; label: string; icon: string; badge?: number | null; badgeTone?: 'gold' | ''; disabled?: string }
 
-export default function Shell({ account, active, bookingOn, favouritesOn, children }: { account: DashboardAccount; active: DashSection; bookingOn: boolean; favouritesOn: boolean; children: ReactNode }) {
+export default function Shell({ account, active, bookingOn, favouritesOn, merchOn = false, children }: { account: DashboardAccount; active: DashSection; bookingOn: boolean; favouritesOn: boolean; merchOn?: boolean; children: ReactNode }) {
   const { insights, summary, wallet, favs, profile } = useDash();
   const [drawer, setDrawer] = useState(false);
   const [bye, setBye] = useState(false);
@@ -39,6 +39,7 @@ export default function Shell({ account, active, bookingOn, favouritesOn, childr
       { key: 'host-calendar', href: '/dashboard/host/calendar', label: 'Influencer calendar', icon: 'cal', disabled: !hostReady ? 'When your profile is live' : bookingOn ? undefined : 'Opens soon' },
       { key: 'availability', href: '/dashboard/host/availability', label: 'Availability', icon: 'clock', disabled: !hostReady ? 'When your profile is live' : bookingOn ? undefined : 'Opens soon' },
       { key: 'earnings', href: '/dashboard/host/earnings', label: 'Earnings', icon: 'money', disabled: !hostReady ? 'When your profile is live' : undefined },
+      ...(merchOn && hostReady ? [{ key: 'merch' as const, href: '/dashboard/merch', label: 'Merch', icon: 'shirt' }] : []), // [HF-MERCH-CREATOR-WEB-1]
     ] : [{ key: 'become', href: '/dashboard/become', label: 'Become an influencer', icon: 'star', disabled: account.closing ? 'Account closing' : undefined }] },
     { title: 'Account', items: [
       { key: 'support', href: '/dashboard/support', label: 'Support', icon: 'help' },

@@ -35,6 +35,8 @@ import BecomeV3 from './v3/Become';
 import SupportV3 from './v3/Support';
 import CloseV3 from './v3/Close';
 import PolicyUpdatePrompt from './PolicyUpdatePrompt'; // [HF-POLICY-WITHDRAW-1]
+import MerchApp from './merch/MerchApp'; // [HF-MERCH-CREATOR-WEB-1]
+import { merchEnabled } from './merch/api';
 
 type Phase = 'boot' | 'signedout' | 'error' | 'ready';
 
@@ -60,6 +62,7 @@ function Shell({ initial }: { initial: DashSection }) {
   const [account, setAccount] = useState<DashboardAccount | null>(null);
   const [bookingOn, setBookingOn] = useState(false);
   const [favouritesOn, setFavouritesOn] = useState(false);
+  const [merchOn, setMerchOn] = useState(false);
   const [retry, setRetry] = useState(0);
   const generation = useRef(0);
 
@@ -73,9 +76,9 @@ function Shell({ initial }: { initial: DashSection }) {
         const me = await hfCall<DashboardAccount>('GET', '/api/hf/me');
         if (!current()) return;
         if (!me.ok) { setPhase(me.status === 401 ? 'signedout' : 'error'); return; }
-        const [enabled, favs] = await Promise.all([bookingsEnabled(), favouritesEnabled()]);
+        const [enabled, favs, merch] = await Promise.all([bookingsEnabled(), favouritesEnabled(), merchEnabled()]);
         if (!current()) return;
-        setAccount(me.data); setBookingOn(enabled); setFavouritesOn(favs); setPhase('ready');
+        setAccount(me.data); setBookingOn(enabled); setFavouritesOn(favs); setMerchOn(merch); setPhase('ready');
       } catch (e) {
         captureException(e, { area: 'hf_dashboard', step: 'identity' });
         if (current()) setPhase('error');
@@ -121,7 +124,7 @@ function Shell({ initial }: { initial: DashSection }) {
   if (phase === 'error' || !account) return <main className="hfc-page"><h1>Dashboard</h1><p>We could not load your dashboard. Please check your internet and try again.</p><button type="button" className="hfc-btn hfc-primary" onClick={() => setRetry(n => n + 1)}>Try again</button></main>;
 
   const hostReady = account.host?.status === 'live' && !account.closing;
-  const blocked = (route.hostOnly && !hostReady) || (route.needsBookings && !bookingOn) || (route.needsFavourites && !favouritesOn);
+  const blocked = (route.hostOnly && !hostReady) || (route.needsBookings && !bookingOn) || (route.needsFavourites && !favouritesOn) || (route.needsMerch && !merchOn);
   const key = `${section}:${nav}:${account.uid}`;
   let body;
   if (blocked) {
@@ -139,6 +142,7 @@ function Shell({ initial }: { initial: DashSection }) {
     case 'host-calendar': body = <div className="h3-legacy"><HostBookings key={key} role="host" /></div>; break;
     case 'availability': body = <div className="h3-legacy"><HostAvailability key={key} /></div>; break;
     case 'earnings': body = <div className="h3-legacy"><Earnings key={key} account={account} /></div>; break;
+    case 'merch': body = <MerchApp key={key} />; break;
     case 'support': body = <SupportV3 key={key} />; break;
     case 'close': body = <CloseV3 key={key} />; break;
   }
@@ -146,7 +150,7 @@ function Shell({ initial }: { initial: DashSection }) {
     <DashDataProvider uid={account.uid} favouritesOn={favouritesOn} nav={nav}>
       <ToastProvider>
         <PolicyUpdatePrompt uid={account.uid} />
-        <DashShell account={account} active={section} bookingOn={bookingOn} favouritesOn={favouritesOn}>
+        <DashShell account={account} active={section} bookingOn={bookingOn} favouritesOn={favouritesOn} merchOn={merchOn}>
           <DashboardEmbed.Provider value={true}><SectionBoundary key={key} section={section}>{body}</SectionBoundary></DashboardEmbed.Provider>
         </DashShell>
       </ToastProvider>

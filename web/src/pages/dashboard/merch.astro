@@ -1,0 +1,11 @@
+---
+// [HF-MERCH-CREATOR-WEB-1] Dashboard screen "merch": one shell for every account screen (lib/dashboardRoutes.ts).
+export const prerender = false;
+import Base from '../../layouts/Base.astro';
+import DashboardApp from '../../islands/dashboard-hf/DashboardApp';
+import { BRAND } from '../../lib/brand';
+Astro.response.headers.set('Cache-Control', 'private, no-store');
+---
+<Base title={`Merch | ${BRAND.name}`} description="Your T-shirt shop: products, orders and earnings." noindex keywords="">
+  <DashboardApp client:only="react" section="merch" />
+</Base>

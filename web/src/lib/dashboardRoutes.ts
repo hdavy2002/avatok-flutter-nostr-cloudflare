@@ -2,7 +2,7 @@
  * in-dashboard router all read this list, so a screen is added in exactly one place. Paths live under /dashboard. */
 export type DashSection =
   | 'overview' | 'profile' | 'wallet' | 'calls' | 'appointments' | 'fraands'
-  | 'host' | 'host-calendar' | 'availability' | 'earnings'
+  | 'host' | 'host-calendar' | 'availability' | 'earnings' | 'merch'
   | 'support' | 'close' | 'become';
 
 export type DashGroup = 'me' | 'explore' | 'host' | 'account';
@@ -19,6 +19,8 @@ export interface DashRoute {
   needsBookings?: boolean;
   /** Needs the saved-hosts feature (hfFavouritesEnabled). Hidden from the menu while it is off. */
   needsFavourites?: boolean;
+  /** [HF-MERCH-CREATOR-WEB-1] Needs the influencer merch shop (hfMerchEnabled). Hidden from the menu while it is off. */
+  needsMerch?: boolean;
   title: string;
 }
 
@@ -33,6 +35,7 @@ export const DASH_ROUTES: DashRoute[] = [
   { section: 'host-calendar', path: '/dashboard/host/calendar', label: 'Influencer calendar', icon: 'calendar', group: 'host', hostOnly: true, needsBookings: true, title: 'Influencer calendar' },
   { section: 'availability', path: '/dashboard/host/availability', label: 'Availability', icon: 'clock', group: 'host', hostOnly: true, needsBookings: true, title: 'Availability' },
   { section: 'earnings', path: '/dashboard/host/earnings', label: 'Earnings', icon: 'money', group: 'host', hostOnly: true, title: 'Earnings' },
+  { section: 'merch', path: '/dashboard/merch', label: 'Merch', icon: 'shirt', group: 'host', hostOnly: true, needsMerch: true, title: 'Merch' },
   // [HF-DASH-V3-1] For people who are not influencers yet: perks, live onboarding progress and an earnings estimate.
   { section: 'become', path: '/dashboard/become', label: 'Become an influencer', icon: 'star', group: 'account', title: 'Become an influencer' },
   { section: 'support', path: '/dashboard/support', label: 'Support', icon: 'help', group: 'account', title: 'Support' },

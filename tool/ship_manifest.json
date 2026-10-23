@@ -11379,5 +11379,20 @@
         "note": "The Approve button on a real order was pressed. Only meaningful once hfMerchEnabled and a paid order exist; pair with the server merch_order_approved event."
       }
     ]
+  },
+  "HF-MERCH-CREATOR-WEB-1": {
+    "description": "[HF-MERCH-CREATOR-WEB-1 2026-10-23] Influencer dashboard Merch screen /dashboard/merch (hosts only, behind hfMerchEnabled): summary strip, products grid with edit markup / hide / delete, 4-step New product wizard (upload art, pick shirt, place art with 300 DPI print file, price and publish) and an Orders list that slides open to money, masked buyer, courier and timeline. Calls /api/hf/merch/*.",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": ["hfMerchEnabled"],
+    "success": [
+      {
+        "event": "merch_studio_step",
+        "property": "step",
+        "exists": true,
+        "min_events": 1,
+        "note": "An influencer moved through the New product wizard (upload_art, pick_shirt, place_art, price_publish, published). Only the first steps present means the print file render or upload, or publish, is failing."
+      }
+    ]
   }
 }

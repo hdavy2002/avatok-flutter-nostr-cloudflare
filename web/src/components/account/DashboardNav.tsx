@@ -42,7 +42,7 @@ export default function DashboardNav({ account, bookingOn, favouritesOn = false,
     disabled: !!r.needsBookings && !bookingOn, note: 'Opens soon',
   }));
   const host: Item[] = account.host
-    ? DASH_ROUTES.filter(r => r.group === 'host').map((r, i) => ({
+    ? DASH_ROUTES.filter(r => r.group === 'host' && !r.needsMerch).map((r, i) => ({
       href: r.path, label: r.label, icon: r.icon, key: r.section, divider: i === 0, heading: i === 0 ? 'Hosting' : undefined,
       disabled: (r.hostOnly && !hostReady) || (!!r.needsBookings && !bookingOn), note: r.hostOnly && !hostReady ? 'When your profile is live' : 'Opens soon',
     }))
