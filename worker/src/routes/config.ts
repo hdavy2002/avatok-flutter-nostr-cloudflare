@@ -2181,6 +2181,17 @@ export interface PlatformConfig {
   hfCallsEnabled: boolean; // [HF-CALLS-1] masked paid calls, host presence, test credits (routes/hf_calls.ts). Start answers 503 calls_not_ready while HF_CALL_DID / Vobiz secrets are missing.
   hfBookingsEnabled: boolean; // [HF-BOOKING-CALENDAR-1] host booking calendar; keep off until the full reservation and settlement path is ready.
   hfBookingApprovalEnabled: boolean; // [HF-BOOK-APPROVE-BE] influencer approval of bookings (pending_approval, accept/decline, 24 h auto-refund, open-time alerts). Public: the app shows the approval UI only when true. Default off.
+  hfCallModesEnabled: boolean; // [HF-CALL-MODES-P0] three-way host switch (Online / Bookings only / Offline) + "On a call" from the joined call. Public. Default off. Boolean -> NOT in numericKeys.
+  hfCallQueueEnabled: boolean; // [HF-CALL-MODES-P0] call queue when the host is on a call. Public. Default off. Boolean -> NOT in numericKeys.
+  hfCallChunkBillingEnabled: boolean; // [HF-CALL-MODES-P0] 5-minute chunk billing engine for instant, queued and booked calls. Public. Default off. Boolean -> NOT in numericKeys.
+  hfBookingLengthsEnabled: boolean; // [HF-CALL-MODES-P0] booking lengths 15/30/60/120/180/240/300 min + 15-min hold. Public. Default off. Boolean -> NOT in numericKeys.
+  hfCallChunkMinutes: number; // [HF-CALL-MODES-P0] chunk size in minutes (default 5). Numeric -> in numericKeys.
+  hfCallMaxMinutes: number; // [HF-CALL-MODES-P0] hard call cap with chunk billing, minutes (default 300). Numeric -> in numericKeys.
+  hfQueueMaxLength: number; // [HF-CALL-MODES-P0] max waiting fans per host (default 10). Numeric -> in numericKeys.
+  hfQueueBreakSeconds: number; // [HF-CALL-MODES-P0] pause between a call ending and the next queued call (default 60). Numeric -> in numericKeys.
+  hfQueueMaxWaitMinutes: number; // [HF-CALL-MODES-P0] a waiting entry expires after this (default 120). Numeric -> in numericKeys.
+  hfQueuePauseExpireMinutes: number; // [HF-CALL-MODES-P0] entries of a paused queue expire after this (default 15). Numeric -> in numericKeys.
+  hfBookingHoldMinutes: number; // [HF-CALL-MODES-P0] minutes of the booking price held at booking time (default 15). Numeric -> in numericKeys.
   hfFavouritesEnabled: boolean; // [HF-DASH-FRAANDS-1] save ("heart") hosts + My Fraands dashboard screen; dark until switched on.
   // [HF-WIRE-1B] Reels-app flags (Specs/HF-REELS-APP-HANDOVER.md 5.3). All dark by default except the demo-influencer switch. Public in /api/config.
   hfReelsEnabled: boolean; // reels feed + profile videos
@@ -2963,6 +2974,17 @@ const DEFAULTS: PlatformConfig = {
   hfCallsEnabled: false, // [HF-CALLS-1] dark until the owner flips it
   hfBookingsEnabled: false, // [HF-BOOKING-CALENDAR-1] dark until booking money and call lifecycle are verified
   hfBookingApprovalEnabled: false, // [HF-BOOK-APPROVE-BE] dark until the owner flips it at go-live (Specs/PLAN-2026-10-20-HF-BOOKING-APPROVAL.md)
+  hfCallModesEnabled: false, // [HF-CALL-MODES-P0] dark until the owner flips it (Specs/SPEC-2026-10-23-HF-CALL-MODES-QUEUE.md)
+  hfCallQueueEnabled: false, // [HF-CALL-MODES-P0] dark
+  hfCallChunkBillingEnabled: false, // [HF-CALL-MODES-P0] dark
+  hfBookingLengthsEnabled: false, // [HF-CALL-MODES-P0] dark
+  hfCallChunkMinutes: 5,
+  hfCallMaxMinutes: 300,
+  hfQueueMaxLength: 10,
+  hfQueueBreakSeconds: 60,
+  hfQueueMaxWaitMinutes: 120,
+  hfQueuePauseExpireMinutes: 15,
+  hfBookingHoldMinutes: 15,
   hfFavouritesEnabled: false, // [HF-DASH-FRAANDS-1] dark until the owner switches it on
   hfReelsEnabled: false, // [HF-WIRE-1B] dark until the reels backend ships
   hfChannelsEnabled: false, // [HF-WIRE-1B]
@@ -3215,7 +3237,7 @@ export async function putConfig(req: Request, env: Env): Promise<Response> {
     "sessionCreatorCheckInMin", "liveHostGraceMin",
     "commercialConsultExtensionMinutes", "commercialConsultExtensionRate",
     "commercialLiveBackstageEarlyMin", "commercialLiveStartGraceMin",
-    "minAppBuild", "latestAppBuild", "hfAppMinBuild", "hfAppLatestBuild", /* [HF-NATIVE-S7] */ "hfInfluencerMinFollowers", /* [HF-WIRE-1B] */ "hfReelUnplayableHideAt", /* [HF-REEL-SKIP-2] */ "hfReelsImportCount", /* [HF-WIRE-4] */ "dailyAvaTurnLimit", "receptionistRings", "agentDailyCap", "livenessAuditSampleRate",
+    "minAppBuild", "latestAppBuild", "hfAppMinBuild", /* [HF-CALL-MODES-P0] */ "hfCallChunkMinutes", "hfCallMaxMinutes", "hfQueueMaxLength", "hfQueueBreakSeconds", "hfQueueMaxWaitMinutes", "hfQueuePauseExpireMinutes", "hfBookingHoldMinutes", "hfAppLatestBuild", /* [HF-NATIVE-S7] */ "hfInfluencerMinFollowers", /* [HF-WIRE-1B] */ "hfReelUnplayableHideAt", /* [HF-REEL-SKIP-2] */ "hfReelsImportCount", /* [HF-WIRE-4] */ "dailyAvaTurnLimit", "receptionistRings", "agentDailyCap", "livenessAuditSampleRate",
     "receptWrapCueMs", "receptCloseMs", "receptHardCapMs",
     // [PA-GATE-1] PA stuck-session watchdog (spec §3.4) — numeric, so it must be here.
     "paWatchdogMs",

@@ -78,6 +78,24 @@ export async function releaseHost(env: Env, hostUid: string, callId: string): Pr
   await env.DB_META.prepare("UPDATE hf_hosts SET presence=CASE WHEN presence='busy' THEN 'online' ELSE presence END, presence_at=CASE WHEN presence='busy' THEN ?1 ELSE presence_at END, presence_call_id=NULL WHERE uid=?2 AND presence_call_id=?3").bind(Date.now(), hostUid, callId).run();
 }
 
+/**
+ * [HF-CALL-MODES-P0] STUB (Lane A implements; nothing calls it yet). Queue dispatch: swap the queue lock 'q:<entryId>' for the real call id,
+ * atomically (`UPDATE hf_hosts SET presence_call_id=?callId WHERE uid=? AND presence_call_id='q:<entryId>'`). Returns true when the swap happened.
+ * Safe default until implemented: false (no line taken). Spec section 2.1.
+ */
+export async function claimHostFromQueue(_env: Env, _hostUid: string, _entryId: string, _callId: string): Promise<boolean> {
+  return false;
+}
+
+/**
+ * [HF-CALL-MODES-P0] STUB (Lane A implements; Lane C calls it from HfCallDO.connect()). Marks the host "On a call" once BOTH legs joined:
+ * sets hf_hosts.on_call_since and rewrites the derived presence to 'busy' in the same statement, only for the lock owner (presence_call_id=callId).
+ * releaseHost (Lane A) clears on_call_since. Safe default until implemented: no-op. Spec sections 2.1, 2.3.
+ */
+export async function markOnCall(_env: Env, _hostUid: string, _callId: string): Promise<void> {
+  return;
+}
+
 /** Calls use the same current Aadhaar/declaration/video authority as discovery. */
 export async function hasLaneAccess(env: Env, uid: string, lane: "women" | "lgbtq"): Promise<boolean> {
   return (await getLaneAccess(env, uid))[lane];
