@@ -11732,5 +11732,14 @@
         "note": "A product was published from the new studio."
       }
     ]
+  },
+  "HF-MERCH-GST-1": {
+    "description": "[HF-MERCH-GST-1 2026-10-23] Part A (worker + dashboard + admin web): the platform is the seller of every merch shirt. Fan price (base + markup) is GST-inclusive at 5% (HSN 6109); Printrove's 5% is claimed back as input credit; the influencer earns a design royalty (60% of markup, unchanged). Fan price of one shirt is capped at Rs 2,500 (over_price_cap, maxMarkupRupees, priceCapPaise, gstRateBps on catalog/quote/products/public). Tax invoice (or a 'GSTIN: applied for' receipt) per paid order on the existing receipt route. Merch checkout answers 403 gst_not_ready until a GSTIN is saved. Admin GST report + CSV on /admin/merch/wallet, ProfitTable fees = net GST + Cashfree, optional influencer GSTIN (PUT /api/hf/merch/tax). Needs migration 2026-10-23-hf-merch-gst-tables.sql (CREATE only). Rules HF-MERCH-13, 14.",
+    "two_sided": false,
+    "min_devices_on_build": 0,
+    "flags": [
+      "hfMerchRequireGstin"
+    ],
+    "no_telemetry": "Money maths, invoices and a read-only admin report; no new fan or influencer action beyond an optional GSTIN field. Verified by buying a Rs 644 test order and reading the invoice, the GST report row and the platform wallet totals."
   }
 }
