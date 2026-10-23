@@ -13,6 +13,7 @@ import { sendWhatsAppText } from "./whatsapp_send";
 import { verifiedWhatsAppNumber } from "./whatsapp_notify";
 import { pushPresenceNudge } from "./hf_push";
 import { isClosing } from "./hf_exit";
+import { lineFlags } from "./hf_host_line_view"; // [HF-CALL-MODES-A]
 import { IST_OFFSET_MS } from "./hf_ist";
 import { readConfig } from "../routes/config";
 import { track, trackException } from "../hooks";
@@ -49,9 +50,11 @@ export async function runHfPresenceNudge(env: Env, now: number = Date.now(), o: 
     if (!(await hfPresenceNudgeOn(env))) return { ...out, reason: "flag_off" };
     if (!inNudgeWindow(now)) return { ...out, reason: "outside_hours" };
     const cut = now - NUDGE_EVERY_MS;
+    // [HF-CALL-MODES-A] With the three-way switch on, only hosts who chose OFFLINE are nudged ("Bookings only" is a deliberate choice).
+    const modeOnly = (await lineFlags(env)).modes ? " AND call_mode='offline'" : "";
     const rows = (await env.DB_META.prepare(
       `SELECT uid, display_name, nudge_last_at FROM hf_hosts
-        WHERE status='live' AND presence='offline' AND nudge_paused=0 AND (nudge_last_at IS NULL OR nudge_last_at < ?1)
+        WHERE status='live' AND presence='offline' AND nudge_paused=0${modeOnly} AND (nudge_last_at IS NULL OR nudge_last_at < ?1)
         ORDER BY COALESCE(nudge_last_at, 0) LIMIT ?2`,
     ).bind(cut, NUDGE_MAX_PER_RUN).all<{ uid: string; display_name: string | null; nudge_last_at: number | null }>()).results ?? [];
     let providerErrors = 0;
@@ -59,7 +62,7 @@ export async function runHfPresenceNudge(env: Env, now: number = Date.now(), o: 
       out.scanned++;
       // Claim first. Re-checks every condition, so a host who switched on or paused a moment ago is left alone.
       const claim = await env.DB_META.prepare(
-        `UPDATE hf_hosts SET nudge_last_at=?1 WHERE uid=?2 AND status='live' AND presence='offline' AND nudge_paused=0 AND (nudge_last_at IS NULL OR nudge_last_at < ?3)`,
+        `UPDATE hf_hosts SET nudge_last_at=?1 WHERE uid=?2 AND status='live' AND presence='offline' AND nudge_paused=0${modeOnly} AND (nudge_last_at IS NULL OR nudge_last_at < ?3)`,
       ).bind(now, h.uid, cut).run();
       if (!claim.meta?.changes) continue;
       let outcome: "ok" | "skipped" | "failed" = "skipped";

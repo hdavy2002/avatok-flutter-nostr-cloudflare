@@ -23,6 +23,7 @@ import { readHfStdPlan } from "../lib/hf_token_config";
 import { TOPICS, TOPIC_SLUGS } from "../lib/hf_options";
 import { lookupChannel, ProviderError, type ChannelPlatform, type ChannelLookup } from "../lib/hf_channel_providers";
 import { pricingStd, readInfluencerRate } from "../lib/hf_influencer_rate"; // [HF-WIRE-18]
+import { lineFieldsForUids } from "../lib/hf_host_line_view"; // [HF-CALL-MODES-A]
 import { noteInviteCreator } from "../lib/hf_invite_reels"; // [HF-WIRE-22]
 
 const NO_STORE = { "cache-control": "private, no-store" };
@@ -137,6 +138,7 @@ async function searchHosts(env: Env, cfg: Record<string, unknown>, q: string, to
     for (const d of dm) if (!facts.has(d.host_uid)) { facts.set(d.host_uid, { handle: d.handle, followers: Number(d.followers ?? 0) }); plats.set(d.host_uid, new Set(["youtube"])); }
   } catch { /* no demo table */ }
   const std = pricingStd(readHfStdPlan(cfg), cfg);
+  const lines = await lineFieldsForUids(env, uids); // [HF-CALL-MODES-A] null while hfCallModesEnabled is off
   return rows.map((r) => {
     const f = facts.get(r.uid);
     let topics: string[] = [];
@@ -146,6 +148,7 @@ async function searchHosts(env: Env, cfg: Record<string, unknown>, q: string, to
       slug: r.slug, name: r.display_name ?? "", handle: h, avatar: r.image_key ? mediaUrl(env, r.image_key) : null,
       presence: r.presence === "online" || r.presence === "busy" ? r.presence : "offline",
       followers: f?.followers ?? 0, platforms: [...(plats.get(r.uid) ?? [])].sort(), topics, ratePaise: priceFields({ price_per_min: r.price_per_min, category: r.category ?? undefined }, std).pricePaisePerMin,
+      ...(lines?.get(r.uid) ?? {}),
     };
   });
 }

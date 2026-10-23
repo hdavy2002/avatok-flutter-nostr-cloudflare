@@ -4,7 +4,8 @@ import type { Env } from "../types";
 import { BRAND } from "./brand";
 import { getLaneAccess } from "./hf_lanes";
 import { walletOp } from "../routes/wallet";
-import { trackException } from "../hooks";
+import { track, trackException } from "../hooks";
+import { lineFlags } from "./hf_host_line_view"; // [HF-CALL-MODES-A]
 
 export const HF_CALL_APP = BRAND.slug;
 export const WALLET_APP = "hf_call";
@@ -68,32 +69,68 @@ export async function hfEarn(env: Env, hostUid: string, rupees: number, callId: 
 }
 
 // ── presence ─────────────────────────────────────────────────────────────────
-/** online -> busy, atomically, and record which call owns that busy state. */
-export async function claimHost(env: Env, hostUid: string, callId: string): Promise<boolean> {
-  const r = await env.DB_META.prepare("UPDATE hf_hosts SET presence='busy', presence_at=?1, presence_call_id=?3 WHERE uid=?2 AND presence='online' AND status='live'").bind(Date.now(), hostUid, callId).run();
+// [HF-CALL-MODES-A] Spec 2.1. hf_hosts.call_mode is what she CHOSE, presence_call_id is the line lock (a call id or 'q:<entryId>'), on_call_since is set only
+// once both legs joined, and `presence` stays a DERIVED column for every existing reader + shipped app: busy if on_call_since, else online if call_mode='online',
+// else offline. Every statement below that touches the mode or the line rewrites presence in the SAME statement. With hfCallModesEnabled OFF
+// every function here runs today's statements unchanged.
+const LIVE_CALL_STATUSES = "'ringing_host','ringing_caller','connected','ending','finalizing'";
+
+/**
+ * Take the host's line for a call. Flag OFF: online -> busy at call start (today). Flag ON: only the lock is taken here (she still shows Online while it rings);
+ * a BOOKED claim works in any mode (fixes: a booked call could not start while she was Offline/Busy), an instant one needs call_mode='online' and nobody waiting.
+ */
+export async function claimHost(env: Env, hostUid: string, callId: string, opts: { booked?: boolean } = {}): Promise<boolean> {
+  const f = await lineFlags(env);
+  if (!f.modes) {
+    const r = await env.DB_META.prepare("UPDATE hf_hosts SET presence='busy', presence_at=?1, presence_call_id=?3 WHERE uid=?2 AND presence='online' AND status='live'").bind(Date.now(), hostUid, callId).run();
+    return Number(r.meta?.changes ?? 0) === 1;
+  }
+  const waiters = f.queue ? " AND NOT EXISTS (SELECT 1 FROM hf_call_queue q WHERE q.host_uid=hf_hosts.uid AND q.status='waiting')" : "";
+  const gate = opts.booked ? "" : ` AND call_mode='online'${waiters}`;
+  const r = await env.DB_META.prepare(`UPDATE hf_hosts SET presence_call_id=?3, presence_at=?1 WHERE uid=?2 AND status='live' AND presence_call_id IS NULL${gate}`).bind(Date.now(), hostUid, callId).run();
   return Number(r.meta?.changes ?? 0) === 1;
 }
-/** Release only the call that owns the busy state; an old retry cannot clear a newer call. */
+
+/** Release only the call that owns the lock; an old retry cannot clear a newer call. Flag ON also clears on_call_since and re-derives presence from call_mode. */
 export async function releaseHost(env: Env, hostUid: string, callId: string): Promise<void> {
-  await env.DB_META.prepare("UPDATE hf_hosts SET presence=CASE WHEN presence='busy' THEN 'online' ELSE presence END, presence_at=CASE WHEN presence='busy' THEN ?1 ELSE presence_at END, presence_call_id=NULL WHERE uid=?2 AND presence_call_id=?3").bind(Date.now(), hostUid, callId).run();
+  const f = await lineFlags(env);
+  if (!f.modes) {
+    await env.DB_META.prepare("UPDATE hf_hosts SET presence=CASE WHEN presence='busy' THEN 'online' ELSE presence END, presence_at=CASE WHEN presence='busy' THEN ?1 ELSE presence_at END, presence_call_id=NULL WHERE uid=?2 AND presence_call_id=?3").bind(Date.now(), hostUid, callId).run();
+    return;
+  }
+  const was = await env.DB_META.prepare("SELECT on_call_since FROM hf_hosts WHERE uid=?1 AND presence_call_id=?2").bind(hostUid, callId).first<{ on_call_since: number | null }>().catch(() => null);
+  const r = await env.DB_META.prepare("UPDATE hf_hosts SET on_call_since=NULL, presence=CASE WHEN call_mode='online' THEN 'online' ELSE 'offline' END, presence_at=?1, presence_call_id=NULL WHERE uid=?2 AND presence_call_id=?3").bind(Date.now(), hostUid, callId).run();
+  if (Number(r.meta?.changes ?? 0) === 1 && was?.on_call_since != null) void track(env, hostUid, "hf_host_on_call", HF_CALL_APP, { area: "hf_call", call_id: callId, on: false }).catch(() => undefined);
 }
 
 /**
- * [HF-CALL-MODES-P0] STUB (Lane A implements; nothing calls it yet). Queue dispatch: swap the queue lock 'q:<entryId>' for the real call id,
- * atomically (`UPDATE hf_hosts SET presence_call_id=?callId WHERE uid=? AND presence_call_id='q:<entryId>'`). Returns true when the swap happened.
- * Safe default until implemented: false (no line taken). Spec section 2.1.
+ * Queue dispatch: swap the queue lock 'q:<entryId>' for the real call id, atomically. Returns true when the swap happened (the lock was still ours,
+ * the host is live and still online). Only the queue (Lane B) calls it.
  */
-export async function claimHostFromQueue(_env: Env, _hostUid: string, _entryId: string, _callId: string): Promise<boolean> {
-  return false;
+export async function claimHostFromQueue(env: Env, hostUid: string, entryId: string, callId: string): Promise<boolean> {
+  const r = await env.DB_META.prepare("UPDATE hf_hosts SET presence_call_id=?3, presence_at=?4 WHERE uid=?1 AND status='live' AND call_mode='online' AND presence_call_id=?2").bind(hostUid, `q:${entryId}`, callId, Date.now()).run();
+  return Number(r.meta?.changes ?? 0) === 1;
+}
+/** Queue break: lock an idle, online, unpaused line for 'q:<entryId>' (the 60 s break, then dispatch). True when we got it. */
+export async function lockHostForQueue(env: Env, hostUid: string, entryId: string): Promise<boolean> {
+  const r = await env.DB_META.prepare("UPDATE hf_hosts SET presence_call_id=?3, presence_at=?4 WHERE uid=?1 AND status='live' AND call_mode='online' AND queue_paused=0 AND presence_call_id IS NULL").bind(hostUid, `q:${entryId}`, `q:${entryId}`, Date.now()).run();
+  return Number(r.meta?.changes ?? 0) === 1;
+}
+/** Drop a 'q:<entryId>' lock (queue emptied / skipped / closed). Only the matching lock is cleared. */
+export async function unlockQueueLock(env: Env, hostUid: string, entryId: string): Promise<boolean> {
+  const r = await env.DB_META.prepare("UPDATE hf_hosts SET presence_call_id=NULL, presence_at=?3 WHERE uid=?1 AND presence_call_id=?2").bind(hostUid, `q:${entryId}`, Date.now()).run();
+  return Number(r.meta?.changes ?? 0) === 1;
 }
 
 /**
- * [HF-CALL-MODES-P0] STUB (Lane A implements; Lane C calls it from HfCallDO.connect()). Marks the host "On a call" once BOTH legs joined:
- * sets hf_hosts.on_call_since and rewrites the derived presence to 'busy' in the same statement, only for the lock owner (presence_call_id=callId).
- * releaseHost (Lane A) clears on_call_since. Safe default until implemented: no-op. Spec sections 2.1, 2.3.
+ * Called by HfCallDO.connect() once BOTH legs joined: sets on_call_since and the derived presence 'busy' in one statement, only for the lock owner.
+ * No-op while hfCallModesEnabled is OFF (claimHost already marked her busy at call start then).
  */
-export async function markOnCall(_env: Env, _hostUid: string, _callId: string): Promise<void> {
-  return;
+export async function markOnCall(env: Env, hostUid: string, callId: string): Promise<void> {
+  if (!(await lineFlags(env)).modes) return;
+  const now = Date.now();
+  const r = await env.DB_META.prepare("UPDATE hf_hosts SET on_call_since=?1, presence='busy', presence_at=?1 WHERE uid=?2 AND presence_call_id=?3").bind(now, hostUid, callId).run();
+  if (Number(r.meta?.changes ?? 0) === 1) void track(env, hostUid, "hf_host_on_call", HF_CALL_APP, { area: "hf_call", call_id: callId, on: true }).catch(() => undefined);
 }
 
 /** Calls use the same current Aadhaar/declaration/video authority as discovery. */
@@ -117,10 +154,25 @@ export async function runHfCallsCron(env: Env): Promise<void> {
     // influencer's own switch decides, default Online. The app never sent a heartbeat, so this sweep silently took every influencer
     // offline 8 h after their last toggle (and undid the 2026-10-20 "everyone Online" change). PRESENCE_TTL_MS is kept for reference.
     // A host marked busy with no live call behind it (e.g. a lost DO) must not stay busy forever.
-    await env.DB_META.prepare(
-      `UPDATE hf_hosts SET presence='online', presence_at=?1, presence_call_id=NULL WHERE presence='busy' AND presence_at < ?2
-         AND NOT EXISTS (SELECT 1 FROM hf_calls c WHERE c.host_uid = hf_hosts.uid AND c.status IN ('ringing_host','ringing_caller','connected','ending','finalizing') AND c.created_at > ?3)`,
-    ).bind(now, now - 10 * 60_000, now - 25 * 3600_000).run(); // [HF-STD-PLAN-1] cover the explicit 24 h operational safety ceiling
+    if ((await lineFlags(env)).modes) {
+      // [HF-CALL-MODES-A] orphan on_call_since / call locks: re-derive presence from call_mode (never force a Bookings-only host Online).
+      await env.DB_META.prepare(
+        `UPDATE hf_hosts SET on_call_since=NULL, presence_call_id=NULL, presence=CASE WHEN call_mode='online' THEN 'online' ELSE 'offline' END, presence_at=?1
+           WHERE (on_call_since IS NOT NULL OR presence='busy' OR (presence_call_id IS NOT NULL AND presence_call_id NOT LIKE 'q:%')) AND presence_at < ?2
+           AND NOT EXISTS (SELECT 1 FROM hf_calls c WHERE c.host_uid = hf_hosts.uid AND c.status IN (${LIVE_CALL_STATUSES}) AND c.created_at > ?3)`,
+      ).bind(now, now - 10 * 60_000, now - 25 * 3600_000).run();
+      try { // orphan 'q:<entry>' locks (lost alarm): only when no waiting/offered queue entry still owns it
+        await env.DB_META.prepare(
+          `UPDATE hf_hosts SET presence_call_id=NULL, presence_at=?1 WHERE presence_call_id LIKE 'q:%' AND on_call_since IS NULL AND presence_at < ?2
+             AND NOT EXISTS (SELECT 1 FROM hf_call_queue q WHERE q.id = substr(hf_hosts.presence_call_id, 3) AND q.status IN ('waiting','offered'))`,
+        ).bind(now, now - 10 * 60_000).run();
+      } catch { /* hf_call_queue not applied yet */ }
+    } else {
+      await env.DB_META.prepare(
+        `UPDATE hf_hosts SET presence='online', presence_at=?1, presence_call_id=NULL WHERE presence='busy' AND presence_at < ?2
+           AND NOT EXISTS (SELECT 1 FROM hf_calls c WHERE c.host_uid = hf_hosts.uid AND c.status IN ('ringing_host','ringing_caller','connected','ending','finalizing') AND c.created_at > ?3)`,
+      ).bind(now, now - 10 * 60_000, now - 25 * 3600_000).run(); // [HF-STD-PLAN-1] cover the explicit 24 h operational safety ceiling
+    }
     const stuck = await env.DB_META.prepare(
       "SELECT id FROM hf_calls WHERE status IN ('ringing_host','ringing_caller','connected','ending','finalizing') AND created_at < ?1 AND created_at > ?2 LIMIT 20",
     ).bind(now - 3 * 60_000, now - 25 * 3600_000).all<{ id: string }>(); // [HF-STD-PLAN-1] watchdog covers calls up to the 24 h bound

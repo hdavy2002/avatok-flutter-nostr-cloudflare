@@ -16,6 +16,7 @@ import { isClosing } from "../lib/hf_exit";
 import { getLaneAccess } from "../lib/hf_lanes";
 import { readConfig } from "./config";
 import { card, SEL, type LiveRow } from "./hf_hosts_public";
+import { lineFieldsForUids } from "../lib/hf_host_line_view"; // [HF-CALL-MODES-A]
 import { readHfStdPlan } from "../lib/hf_token_config";
 import { pricingStd, readInfluencerRate } from "../lib/hf_influencer_rate"; // [HF-WIRE-18]
 
@@ -51,11 +52,12 @@ export async function hfFavouritesRoute(req: Request, env: Env, p: string): Prom
         .bind(uid).all<LiveRow>()).results ?? [];
       const saved = new Map(((await env.DB_META.prepare("SELECT host_uid, created_at FROM hf_favourites WHERE uid=?1").bind(uid).all<{ host_uid: string; created_at: number }>()).results ?? [])
         .map((r) => [r.host_uid, Number(r.created_at)]));
+      const lines = await lineFieldsForUids(env, rows.map((r) => r.uid)); // [HF-CALL-MODES-A]
       const items = rows.filter((r) => visible(r, access)).map((r) => {
-        const c = card(env, r, undefined, std);
+        const c = card(env, r, undefined, std, lines?.get(r.uid));
         // [HF-DASH-V3-1] + languages, topics and the price block so the dashboard card can start a real call (HostCallActions).
         return { slug: c.slug, displayName: c.displayName, photoUrl: c.avatarUrl, headline: c.tagline || null, presence: c.status, savedAt: saved.get(r.uid) ?? 0,
-          languages: c.languages, topics: c.topics, plan: c.plan, pricePerMin: c.pricePerMin, pricePaisePerMin: c.pricePaisePerMin, priceLabel: c.priceLabel, priceTiers: c.priceTiers, womenOnly: c.womenOnly };
+          languages: c.languages, topics: c.topics, plan: c.plan, pricePerMin: c.pricePerMin, pricePaisePerMin: c.pricePaisePerMin, priceLabel: c.priceLabel, priceTiers: c.priceTiers, womenOnly: c.womenOnly, ...(lines?.get(r.uid) ?? {}) };
       }).sort((a, b) => b.savedAt - a.savedAt);
       return json({ ok: true, items, count: items.length }, 200, NO_STORE);
     }

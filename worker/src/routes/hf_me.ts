@@ -9,6 +9,7 @@
 //   POST  /api/hf/me/ack { version, ack18? }  signed in -> { ok, ackVersion, age18ConfirmedAt }   [HF-NATIVE-S4]
 //        stores hf_user_ack(uid, version, at) (first ack of a version wins) and, when ack18 is true, the existing hf_age_confirm row.
 // Not avaTOK's /api/me (that one is avaTOK-shaped). Never returns a full phone number, an email or a Clerk id other than uid.
+import { lineFieldsForUids } from "../lib/hf_host_line_view"; // [HF-CALL-MODES-A]
 import type { Env } from "../types";
 import { json } from "../util";
 import { requireUser, isFail } from "../authz";
@@ -104,6 +105,7 @@ async function getMe(env: Env, uid: string): Promise<Response> {
   // [HF-FIX-HANDLE-1] Everyone has a handle; assign lazily when no registered username exists.
   const handle = await resolveHfHandle(env, uid, registration?.username);
   const walletPaise = await readWalletPaise(env, uid, cfg?.hfTokensEnabled === true);
+  const hostLine = row?.host_status ? (await lineFieldsForUids(env, [uid]).catch(() => null))?.get(uid) : undefined; // [HF-CALL-MODES-A] mode / callState / queue (flag on only)
   const email = clerkEmail ?? typedEmail;
   const host = row?.host_status ? { status: row.host_status, slug: row.host_slug ?? null } : null;
   const displayName = row?.display_name?.trim() ? row.display_name : null;
@@ -130,6 +132,7 @@ async function getMe(env: Env, uid: string): Promise<Response> {
     role: row?.host_status === "live" || row?.host_status === "approved" ? "host" : "fan", // [HF-WIRE-3] Channels-approved influencers are hosts too
     hostStatus: row?.host_status ?? null,
     presence: row?.host_status ? (row.host_presence ?? "offline") : null,
+    ...(hostLine ? { mode: hostLine.mode, callState: hostLine.callState, queue: hostLine.queue } : {}),
     walletPaise,
     prefs: { notifyWhatsapp: prefs ? Number(prefs.notify_whatsapp) === 1 : true, apptReminders: prefs ? Number(prefs.appt_reminders ?? 1) !== 0 : true, reelAlerts: prefs ? Number(prefs.reel_alerts ?? 1) !== 0 : true },
   };

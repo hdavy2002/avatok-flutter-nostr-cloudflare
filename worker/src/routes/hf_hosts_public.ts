@@ -13,6 +13,7 @@ import { hostAggregates, hostReviews, aggregateFields } from "../lib/hf_reviews"
 import type { HostAggregate } from "../lib/hf_reviews_pure";
 import { profileReels, isHiddenDemoHost } from "./hf_reels"; // [HF-WIRE-4]
 import { mediaUrl, mediaToJson, type HostRow, type MediaRow } from "../lib/hf_host_store";
+import { lineFieldsForUids, type HostLineFields } from "../lib/hf_host_line_view"; // [HF-CALL-MODES-A]
 
 const CACHE = { "cache-control": "public, max-age=60" };
 const err = (status: number, error: string) => json({ error }, status);
@@ -56,7 +57,7 @@ export function priceFields(r: { price_per_min: number; category?: string }, std
     pricePerMin: r.price_per_min, pricePaisePerMin: paise, priceLabel: `${formatRupees(paise)}/min`, priceTiers: [{ fromMin: 0, toMin: null, paisePerMin: paise }] };
 }
 
-export function card(env: Env, r: LiveRow, agg?: HostAggregate, std?: HfStdPlan | null) {
+export function card(env: Env, r: LiveRow, agg?: HostAggregate, std?: HfStdPlan | null, line?: HostLineFields | null) {
   return {
     ...publicVerification({ verified_at: r.identity_verified_at, age_ok: r.identity_age_ok }, { review_status: r.video_review_status, r2_key: r.video_r2_key, mime: r.video_mime, code: r.video_code }, r.status),
     slug: r.slug, displayName: r.display_name, tagline: r.tagline, avatarUrl: r.image_key ? mediaUrl(env, r.image_key) : null,
@@ -65,6 +66,7 @@ export function card(env: Env, r: LiveRow, agg?: HostAggregate, std?: HfStdPlan 
     languages: parse<string[]>(r.languages_json, []), style: r.style, topics: parse<string[]>(r.topics_json, []), ...priceFields(r, std),
     ...aggregateFields(agg), lgbtqFriendly: r.lgbtq_lane === 1 && r.lgbtq_public === 1, womenOnly: r.women_lane === 1,
     ...intro(env, r), status: (r.presence === "online" || r.presence === "busy" ? r.presence : "offline") as "online" | "busy" | "offline",
+    ...(line ? { mode: line.mode, callState: line.callState, queue: line.queue } : {}), // [HF-CALL-MODES-A] only while hfCallModesEnabled is on
   };
 }
 
@@ -97,7 +99,7 @@ export async function hfHostsPublicRoute(req: Request, env: Env, ctx?: Execution
       const gal = (await env.DB_META.prepare("SELECT * FROM hf_host_media WHERE uid=?1 AND kind='gallery' AND status='active' ORDER BY sort, created_at").bind(r.uid).all<MediaRow>()).results ?? [];
       return json({
         protectedLane: lane,
-        ...card(env, r, (await hostAggregates(env, [r.uid])).get(r.uid), std), reviews: await hostReviews(env, r.uid, 10), aboutPolished: r.about_polished, about: r.about ?? null, quote: r.quote, // [HF-DAILY-FLOWS-1] the host's own saved bio is the fallback while no polished version exists
+        ...card(env, r, (await hostAggregates(env, [r.uid])).get(r.uid), std, (await lineFieldsForUids(env, [r.uid]))?.get(r.uid)), reviews: await hostReviews(env, r.uid, 10), aboutPolished: r.about_polished, about: r.about ?? null, quote: r.quote, // [HF-DAILY-FLOWS-1] the host's own saved bio is the fallback while no polished version exists
         ...(pr ? { reels: pr.reels, followers: pr.followers, handle: pr.handle } : {}),
         gallery: gal.map((m) => { const j = mediaToJson(env, m); return { url: j.url, caption: j.caption, imageProvenance: m.job_id ? "ai" : "uploaded" }; }),
       }, 200, lane ? { "cache-control": "private, no-store" } : CACHE);
@@ -107,7 +109,8 @@ export async function hfHostsPublicRoute(req: Request, env: Env, ctx?: Execution
     // [HF-LANE-VERIFY-1] A protected-lane list is only for callers who have joined that lane.
     const rows = (await env.DB_META.prepare(`${SEL} WHERE h.status='live' AND h.slug IS NOT NULL${laneWhere} ORDER BY h.live_at DESC, h.uid LIMIT ?1 OFFSET ?2`).bind(limit, offset).all<LiveRow>()).results ?? [];
     const aggs = await hostAggregates(env, rows.map((r) => r.uid)); // [HF-CALLS-1]
-    return json(rows.map((r) => card(env, r, aggs.get(r.uid), std)), 200, lane ? { "cache-control": "private, no-store" } : CACHE);
+    const lines = await lineFieldsForUids(env, rows.map((r) => r.uid)); // [HF-CALL-MODES-A]
+    return json(rows.map((r) => card(env, r, aggs.get(r.uid), std, lines?.get(r.uid))), 200, lane ? { "cache-control": "private, no-store" } : CACHE);
   } catch (e) {
     await trackException(env, e, { route: p, method: "GET", handled: true, app_name: BRAND.slug, extra: { area: "hf_host_public" } });
     return err(500, "internal_error");

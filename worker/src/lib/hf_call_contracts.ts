@@ -24,6 +24,8 @@ export interface HostPresenceResponse {
   mode: HostMode;
   onCall: boolean;
   queue: { waiting: number; paused: boolean; open: boolean };
+  /** [HF-CALL-MODES-A] confirmed future bookings that still ring when she picks Offline (D1: "You have N booked calls. They will still ring."). */
+  bookedCalls?: number;
 }
 export interface HostPresenceRequest { mode?: HostMode; online?: boolean }
 

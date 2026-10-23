@@ -26,6 +26,7 @@ import { mediaUrl } from "../lib/hf_host_store";
 import { priceFields } from "./hf_hosts_public";
 import { readHfStdPlan } from "../lib/hf_token_config";
 import { pricingStd, readInfluencerRate } from "../lib/hf_influencer_rate"; // [HF-WIRE-18]
+import { lineFieldsForUids } from "../lib/hf_host_line_view"; // [HF-CALL-MODES-A]
 import { inviteReelsOn } from "../lib/hf_invite_reels"; // [HF-WIRE-22]
 
 const APP = BRAND.slug;
@@ -94,6 +95,7 @@ const at = (h: string | null) => (h ? (h.startsWith("@") ? h : "@" + h) : null);
 async function toItems(env: Env, rows: FeedRow[], cfg: Record<string, unknown>) {
   const facts = await hostFacts(env, [...new Set(rows.map((r) => r.host_uid))]);
   const std = pricingStd(readHfStdPlan(cfg), cfg);
+  const lines = await lineFieldsForUids(env, [...new Set(rows.map((r) => r.host_uid))]); // [HF-CALL-MODES-A]
   return rows.map((r) => {
     const f = facts.get(r.host_uid);
     return {
@@ -102,6 +104,7 @@ async function toItems(env: Env, rows: FeedRow[], cfg: Record<string, unknown>) 
         slug: r.slug, name: r.display_name ?? "", handle: at(f?.handle ?? null), avatar: r.image_key ? mediaUrl(env, r.image_key) : null,
         ratePaise: priceFields({ price_per_min: r.price_per_min, category: r.category ?? undefined }, std).pricePaisePerMin, followers: f?.followers ?? 0,
         presence: r.presence === "online" || r.presence === "busy" ? r.presence : "offline",
+        ...(lines?.get(r.host_uid) ?? {}),
       },
       platform: r.platform, url: r.url, embedUrl: r.embed_url, thumbUrl: r.thumb_url, title: r.caption ?? "", caption: r.caption ?? "",
       likes: Number(r.likes ?? 0), comments: Number(r.comments ?? 0), views: Number(r.views ?? 0), publishedAt: r.published_at ?? null,

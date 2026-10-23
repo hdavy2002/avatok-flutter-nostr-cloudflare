@@ -20,6 +20,8 @@ import { isFanPayoutRef } from "./hf_fan_payout"; // [HF-FIX-CLOSE-ACCOUNT-1]
 import { cancelPlayRefund, hasActiveCall } from "./hf_play_refunds"; // [HF-TOK-EXIT-1]
 import { hostSummary, wholeRupees, isHostLedgerRef } from "./hf_host_ledger"; // [HF-TOK-EXIT-1]
 import { drainHfBookingHolds } from "./hf_booking_store";
+import { lineFlags } from "./hf_host_line_view"; // [HF-CALL-MODES-A]
+import { closeQueue } from "./hf_queue_store"; // [HF-CALL-MODES-A]
 import { readMoneyRules } from "./hf_money_rules"; // [HF-WIRE-13] HF-REEL-35 rule 7: refunds go to the wallet, never back to a card/UPI
 
 export const WITHDRAW_FIRST_MESSAGE = "Your wallet money goes back to your wallet, not to your card. Withdraw it to your UPI with the Withdraw button first, then close your account.";
@@ -204,7 +206,19 @@ export async function isClosing(env: Env, uid: string): Promise<boolean> {
 }
 /** A host in closure takes no calls: online or busy -> offline. An ongoing call is not cut; it just does not return the host to "online". */
 export async function forceHostOffline(env: Env, uid: string): Promise<void> {
-  try { await env.DB_META.prepare("UPDATE hf_hosts SET presence='offline', presence_at=?2 WHERE uid=?1 AND presence IN ('online','busy')").bind(uid, Date.now()).run(); } catch { /* no host row / table */ }
+  // [HF-CALL-MODES-A] Spec 2.1 / rule 8: closing forces call_mode='offline' (not just presence) and closes the queue. With hfCallModesEnabled OFF the
+  // presence behaviour is today's; call_mode is still kept in step (best effort: the column may not exist yet).
+  const modes = await lineFlags(env);
+  const now = Date.now();
+  if (modes.modes) {
+    try {
+      const r = await env.DB_META.prepare("UPDATE hf_hosts SET call_mode='offline', presence=CASE WHEN on_call_since IS NOT NULL THEN 'busy' ELSE 'offline' END, presence_at=?2 WHERE uid=?1 AND call_mode!='offline'").bind(uid, now).run();
+      if (Number(r.meta?.changes ?? 0) > 0) await closeQueue(env, uid, "host_offline").catch(() => 0);
+    } catch { /* no host row / table */ }
+    return;
+  }
+  try { await env.DB_META.prepare("UPDATE hf_hosts SET presence='offline', call_mode='offline', presence_at=?2 WHERE uid=?1 AND presence IN ('online','busy')").bind(uid, now).run(); }
+  catch { try { await env.DB_META.prepare("UPDATE hf_hosts SET presence='offline', presence_at=?2 WHERE uid=?1 AND presence IN ('online','busy')").bind(uid, now).run(); } catch { /* no host row / table */ } }
 }
 
 // ── exit payout ──────────────────────────────────────────────────────────────
