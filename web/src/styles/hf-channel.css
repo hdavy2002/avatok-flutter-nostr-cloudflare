@@ -454,3 +454,5 @@
 .gp .card b a::after{content:"";position:absolute;inset:0;z-index:1;border-radius:24px}
 .gp .card:hover .img,.gp .card:focus-within .img{box-shadow:0 0 0 3px var(--mari)}
 .gp .toast{margin-top:14px;text-align:center;font-family:Nunito;font-weight:800;color:var(--redd)}
+
+.gp .miniline.unavail{outline:2px solid var(--rani);outline-offset:2px;border-radius:12px;background:rgba(194,24,91,.07)}

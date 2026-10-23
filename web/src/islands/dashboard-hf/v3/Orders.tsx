@@ -10,7 +10,7 @@ import { capture, captureException } from '../../../lib/analytics';
 import { toMs } from '../../../lib/hfCallsApi';
 import { formatPaise } from '../../../lib/money';
 import { clearBag } from '../../../lib/merchBag';
-import { getMyOrder, listMyOrders, openReceipt, reportProblem, uploadProblemPhoto, type FanOrder, type FanOrderFull, type FanStatus } from '../../../lib/merchApi';
+import { getMyGroup, getMyOrder, listMyOrders, openReceipt, reportProblem, uploadProblemPhoto, type FanGroup, type FanOrder, type FanOrderFull, type FanStatus } from '../../../lib/merchApi';
 import '../../../styles/hf-merch.css';
 import { Dialog, Empty, Failed, Ic, PageHead, Skel, Sticker, istDay, istTime, useToast } from './ui';
 
@@ -25,12 +25,23 @@ export default function Orders() {
   const toast = useToast();
   const [orders, setOrders] = useState<FanOrder[] | null>(null);
   const [failed, setFailed] = useState(false);
-  const [openId, setOpenId] = useState<string | null>(() => (typeof location !== 'undefined' ? new URLSearchParams(location.search).get('order') : null));
+  const [openId, setOpenId] = useState<string | null>(() => {
+    if (typeof location === 'undefined') return null;
+    const o = new URLSearchParams(location.search).get('order');
+    return o && !o.startsWith('mgp_') ? o : null;
+  });
   const [detail, setDetail] = useState<Record<string, FanOrderFull>>({});
   const [timedOut, setTimedOut] = useState<Record<string, boolean>>({});
   const [report, setReport] = useState<FanOrderFull | null>(null);
   const polls = useRef<Record<string, number>>({});
-  const groupId = typeof location !== 'undefined' ? new URLSearchParams(location.search).get('group') : null;
+  const groupId = (() => {
+    if (typeof location === 'undefined') return null;
+    const q = new URLSearchParams(location.search);
+    const o = q.get('order');
+    return q.get('group') || (o && o.startsWith('mgp_') ? o : null);
+  })();
+  const [group, setGroup] = useState<FanGroup | null>(null);
+  const [groupTimedOut, setGroupTimedOut] = useState(false);
   const groupDone = useRef(false);
 
   const load = useCallback(async () => {
@@ -41,21 +52,36 @@ export default function Orders() {
   }, []);
   useEffect(() => { void load(); }, [load]);
 
-  // Back from the Bag checkout: open the first order of the group, and empty the Bag once it is paid.
+  // Back from the Bag checkout (?group=<mgp_…>, or ?order=<mgp_…>): GET /my-orders/<groupId> asks the gateway first, then answers every order of the bag.
+  // Poll while any of them awaits payment; the Bag is emptied once the payment has gone through.
   useEffect(() => {
-    if (!groupId || !orders) return;
-    const mine = orders.filter(o => o.groupId === groupId);
-    if (!openId && mine[0]) setOpenId(mine[0].id);
-    if (!groupDone.current && mine.length && mine.every(o => o.status !== 'awaiting_payment')) {
-      groupDone.current = true;
-      if (mine.some(o => o.status !== 'cancelled')) { clearBag(); capture('bag_paid', { group_id: groupId, method: 'online', orders: mine.length, source: 'return_url' }); }
-      try { sessionStorage.removeItem('hf_bag_group'); } catch { /* optional */ }
-    }
-    if (!groupDone.current && mine.some(o => o.status === 'awaiting_payment')) {
-      const t = setTimeout(() => void load(), POLL_MS);
-      return () => clearTimeout(t);
-    }
-  }, [groupId, orders]); // eslint-disable-line react-hooks/exhaustive-deps
+    if (!groupId) return;
+    let live = true;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let tries = 0;
+    const tick = async () => {
+      const r = await getMyGroup(groupId);
+      if (!live) return;
+      if (!r.ok) { if (r.status !== 401 && r.status !== 404) captureException(new Error(`merch_group_${r.status}_${r.code}`), { area: 'hf_merch_fan', step: 'group_detail' }); return; }
+      const g = r.data.group;
+      setGroup(g);
+      setDetail(d => ({ ...d, [r.data.order.id]: r.data.order }));
+      setOpenId(cur => cur ?? g.orders[0]?.id ?? r.data.order.id);
+      if (g.orders.some(o => o.status === 'awaiting_payment')) {
+        if (++tries >= POLL_MAX) { setGroupTimedOut(true); return; }
+        timer = setTimeout(tick, POLL_MS);
+        return;
+      }
+      if (!groupDone.current) {
+        groupDone.current = true;
+        if (g.orders.some(o => o.status !== 'cancelled')) { clearBag(); capture('bag_paid', { group_id: groupId, method: 'online', orders: g.orders.length, source: 'return_url' }); if (tries > 0) toast('Payment received. Thank you!'); }
+        try { sessionStorage.removeItem('hf_bag_group'); } catch { /* optional */ }
+        void load();
+      }
+    };
+    void tick();
+    return () => { live = false; if (timer) clearTimeout(timer); };
+  }, [groupId, load, toast]);
 
   const fetchOne = useCallback(async (id: string) => {
     const r = await getMyOrder(id);
@@ -95,17 +121,18 @@ export default function Orders() {
   // An order opened from the return URL may not be in the list yet (it was created seconds ago).
   const list = (() => {
     const raw = orders ?? [];
-    const base = groupId ? [...raw.filter(o => o.groupId === groupId), ...raw.filter(o => o.groupId !== groupId)] : raw;
+    const gi = new Set((group?.orders ?? []).map(o => o.id));
+    const base = group ? [...group.orders.map(o => raw.find(r => r.id === o.id) ?? o), ...raw.filter(o => !gi.has(o.id))] : raw;
     const d = openId ? detail[openId] : undefined;
     return d && !base.some(o => o.id === d.id) ? [d, ...base] : base;
   })();
 
   return <>
     <PageHead eyebrow="My orders" title="Aapka merch, raste mein" sub="T-shirts you bought from influencers. Printed to order, so it takes a few days to reach you." art={<Sticker name="swag" w={110} rot={6} />} />
-    {failed ? <Failed onRetry={() => void load()} /> : !orders && !(openId && detail[openId]) ? <Skel h={220} /> : list.length === 0 ?
+    {failed ? <Failed onRetry={() => void load()} /> : !orders && !group && !(openId && detail[openId]) ? <Skel h={220} /> : list.length === 0 ?
       <Empty text="You have not bought any merch yet. Find an influencer you like and look for their Merch."><a className="h3-btn rani" href="/marketplace"><Ic name="search" className="" />Find influencers</a></Empty> :
       <div className="hfo hfo-list">
-        {groupId && (orders ?? []).some(o => o.groupId === groupId) && <p className="muted small" role="status" style={{ marginBottom: 12 }}>These came from your bag: {(orders ?? []).filter(o => o.groupId === groupId).length} orders, one payment.</p>}
+        {group && <p className="muted small" role="status" style={{ marginBottom: 12 }}>These came from your bag: {group.orders.length} {group.orders.length === 1 ? 'order' : 'orders'}, one payment of {formatPaise(group.totalPaise)}. {group.orders.some(o => o.status === 'awaiting_payment') ? (groupTimedOut ? 'We are still waiting for the bank to confirm. Check back in a few minutes.' : 'Confirming your payment…') : group.orders.every(o => o.status === 'cancelled') ? 'The payment did not go through.' : 'Payment received.'}</p>}
         {list.map(o => <OrderCard key={o.id} o={detail[o.id] ?? o} open={openId === o.id} loading={openId === o.id && !detail[o.id]} timedOut={!!timedOut[o.id]} onToggle={() => toggle(o)} onReport={() => setReport(detail[o.id] ?? o)} />)}
       </div>}
     <ReportDialog order={report} onClose={() => setReport(null)} onDone={() => { toast('Thanks. We have your report and will contact you.'); const id = report?.id; setReport(null); if (id) { void fetchOne(id); void load(); } }} />

@@ -41,6 +41,9 @@ export interface BagCheckoutDone {
 }
 export const checkoutBag = (b: BagCheckoutBody) => hfCall<BagCheckoutDone>('POST', '/api/hf/merch/checkout', { ...b, client: 'web' }, { timeoutMs: 45_000 });
 export const checkoutMerch = (b: CheckoutBody) => hfCall<CheckoutDone>('POST', '/api/hf/merch/checkout', { ...b, client: 'web' }, { timeoutMs: 45_000 });
+/** [HF-CHANNEL-WEB-1] One Bag payment: GET /my-orders/<mgp_…> polls the gateway first, then answers every order of the bag plus the first one. */
+export interface FanGroup { groupId: string; status: string; totalPaise: number; orders: FanOrder[] }
+export const getMyGroup = (id: string) => hfCall<{ group: FanGroup; order: FanOrderFull }>('GET', `/api/hf/merch/my-orders/${encodeURIComponent(id)}`);
 export const listMyOrders = () => hfCall<{ orders: FanOrder[] }>('GET', '/api/hf/merch/my-orders');
 export const getMyOrder = (id: string) => hfCall<{ order: FanOrderFull }>('GET', `/api/hf/merch/my-orders/${encodeURIComponent(id)}`);
 export const listAddresses = () => hfCall<{ addresses: SavedAddress[] }>('GET', '/api/hf/merch/addresses');

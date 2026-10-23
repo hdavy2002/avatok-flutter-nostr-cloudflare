@@ -37,6 +37,7 @@ export default function BagCheckout() {
   const [method, setMethod] = useState<'wallet' | 'cashfree'>('cashfree');
   const [balance, setBalance] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
+  const [badId, setBadId] = useState<string | null>(null);
   const [msg, setMsg] = useState<{ text: string; productId?: string; topup?: boolean } | null>(null);
   const [done, setDone] = useState<{ d: BagCheckoutDone; hostSlug: string; hostName: string; total: number } | null>(null);
   const key = useRef<{ sig: string; key: string } | null>(null);
@@ -101,9 +102,13 @@ export default function BagCheckout() {
     }
     if (code === 'item_unavailable') {
       key.current = null;
+      // The server answers FLAT: { error:'item_unavailable', message, productId, reason }. Older shape kept as a fallback.
       const extra = (body.extra ?? {}) as { productId?: string; reason?: string };
-      const line = lines.find(l => l.productId === extra.productId);
-      setMsg({ text: `${line ? `“${line.title}”` : 'One of the items'} is no longer available${extra.reason === 'size' || extra.reason === 'colour' ? ' in that option' : ''}. Remove it from your bag to continue. Nothing was charged.`, productId: extra.productId }); return;
+      const pid = typeof body.productId === 'string' ? body.productId : extra.productId;
+      const reason = typeof body.reason === 'string' ? body.reason : extra.reason;
+      const line = lines.find(l => l.productId === pid);
+      setBadId(pid ?? null);
+      setMsg({ text: `${line ? `“${line.title}”` : 'One of the items'} is no longer available${reason === 'size' || reason === 'colour' ? ' in that option' : ''}. Remove it from your bag to continue. Nothing was charged.`, productId: pid }); return;
     }
     if (code === 'order_closed') key.current = null;
     if (status === 400 && typeof body.field === 'string' && /^(address|name|phone|line1|line2|city|state|pincode)/.test(body.field)) { go('address'); setMsg({ text: message || 'Please check your address.' }); return; }
@@ -228,7 +233,7 @@ export default function BagCheckout() {
             {!walletOk && <p style={{ margin: '4px 0 8px' }}><a className="nun" href="/dashboard/wallet" onClick={() => capture('merch_topup_clicked', { surface: 'bag' })}>Top up your wallet →</a></p>}
             <label className="ck"><input type="checkbox" checked={agree} onChange={e => setAgree(e.target.checked)} /><i aria-hidden="true">{agree ? '✓' : ''}</i>
               <span>I agree to the <a href="/terms" target="_blank" rel="noopener">Terms</a>. Printed-to-order items can’t be returned for a change of mind; wrong or damaged items are fixed if reported within 48 hours of delivery. See the <a href="/refunds" target="_blank" rel="noopener">refund policy</a>.</span></label>
-            {msg && <p className="errp" role="alert">{msg.text}{msg.topup && <> <a href="/dashboard/wallet">Top up wallet</a></>}{msg.productId && <> <button type="button" className="lnk" onClick={() => { const l = lines.find(x => x.productId === msg.productId); if (l) removeFromBag(bagLineKey(l)); setMsg(null); }}>Remove it</button></>}</p>}
+            {msg && <p className="errp" role="alert">{msg.text}{msg.topup && <> <a href="/dashboard/wallet">Top up wallet</a></>}{msg.productId && <> <button type="button" className="lnk" onClick={() => { const l = lines.find(x => x.productId === msg.productId); if (l) removeFromBag(bagLineKey(l)); setBadId(null); setMsg(null); }}>Remove it</button></>}</p>}
             <button type="button" className="btn btn-r" style={{ marginTop: 22, minWidth: 320 }} disabled={!agree || busy || enabled === false} onClick={() => void pay()}>
               {enabled === false ? 'Buying opens soon' : busy ? (method === 'cashfree' ? 'Opening payment page…' : 'Paying…') : `Pay ${rupees(total)}`}</button>
           </section>
@@ -236,7 +241,7 @@ export default function BagCheckout() {
       </div>
       <aside className="sumcard" aria-label="Order summary">
         <h2 style={{ marginBottom: 12 }}>Your order</h2>
-        {lines.map(l => <div className="miniline" key={bagLineKey(l)}>
+        {lines.map(l => <div className={`miniline${badId && l.productId === badId ? ' unavail' : ''}`} key={bagLineKey(l)} aria-invalid={badId && l.productId === badId ? true : undefined}>
           <div className="im">{l.imageUrl && <img src={publicImage(l.imageUrl, { width: 160 })} alt="" width="64" height="64" />}</div>
           <div><b className="nun">{l.title}</b><br />{[l.colour, l.size].filter(Boolean).join(' · ')}{l.qty > 1 ? ` · × ${l.qty}` : ''}</div>
           <b className="nun">{rupees(l.unitPaise * l.qty)}</b>
