@@ -387,6 +387,79 @@ class ApiClient {
     return http.Response.fromStream(streamed).timeout(limit);
   }
 
+  /// [HF-CHANNEL-APP-1] One raw PUT upload (the influencer's profile photo): the body is the file's own bytes and [contentType] says
+  /// what they are. Same sign-in, one refresh on a 401, typed errors and failure report as [postBytes]. Throws [ApiException].
+  Future<Map<String, dynamic>> putBytes(
+    String path,
+    List<int> bytes, {
+    required String contentType,
+    Duration uploadTimeout = const Duration(seconds: 90),
+  }) async {
+    final sw = Stopwatch()..start();
+    final endpoint = path.split('?').first;
+    try {
+      final provider = tokens;
+      var token = provider == null ? null : await provider();
+      var resp = await _sendBytesAs('PUT', path, bytes, contentType, token, uploadTimeout);
+      if (resp.statusCode == 401 && provider != null) {
+        final fresh = await provider(forceRefresh: true);
+        if (fresh != null && fresh != token) {
+          token = fresh;
+          resp = await _sendBytesAs('PUT', path, bytes, contentType, token, uploadTimeout);
+        }
+        if (resp.statusCode == 401) {
+          final err = ApiException.fromResponse(401, utf8.decode(resp.bodyBytes, allowMalformed: true));
+          _report('PUT', endpoint, err, sw);
+          try {
+            await onSessionLost?.call();
+          } catch (_) {
+            // a failing hook never hides the 401
+          }
+          throw err;
+        }
+      }
+      final text = utf8.decode(resp.bodyBytes, allowMalformed: true);
+      if (resp.statusCode < 200 || resp.statusCode >= 300) {
+        final err = ApiException.fromResponse(resp.statusCode, text);
+        if (!err.isNotEnabled) _report('PUT', endpoint, err, sw);
+        throw err;
+      }
+      unawaited(cache.invalidateAfterWrite());
+      Object? decoded;
+      try {
+        decoded = text.trim().isEmpty ? <String, dynamic>{} : jsonDecode(text);
+      } catch (_) {
+        final err = ApiException.parse(resp.statusCode);
+        _report('PUT', endpoint, err, sw);
+        throw err;
+      }
+      return asMap(decoded);
+    } on ApiException {
+      rethrow;
+    } on TimeoutException {
+      final err = ApiException.offline(timeout: true);
+      _report('PUT', endpoint, err, sw);
+      throw err;
+    } on Exception {
+      final err = ApiException.offline();
+      _report('PUT', endpoint, err, sw);
+      throw err;
+    }
+  }
+
+  Future<http.Response> _sendBytesAs(String method, String path, List<int> bytes, String contentType, String? token, Duration limit) async {
+    final req = http.Request(method, _uri(path, null));
+    req.headers.addAll({
+      'Accept': 'application/json',
+      'X-Client': clientTag,
+      if (token != null && token.isNotEmpty) 'Authorization': 'Bearer $token',
+      'Content-Type': contentType,
+    });
+    req.bodyBytes = bytes;
+    final streamed = await _http.send(req).timeout(limit);
+    return http.Response.fromStream(streamed).timeout(limit);
+  }
+
   Future<List<dynamic>> getList(String path, {Map<String, Object?>? query, bool auth = true}) async {
     final v = await request('GET', path, query: query, auth: auth);
     if (v is List) return v;

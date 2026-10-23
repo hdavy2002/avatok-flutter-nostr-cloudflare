@@ -11820,5 +11820,45 @@
         "note": "An influencer opened the Profile photo screen."
       }
     ]
+  },
+  "HF-CHANNEL-APP-1": {
+    "description": "[HF-CHANNEL-APP-1 2026-10-23] Android app: new influencer channel page (photo hero, Merch first, Now Showing videos, booking card, sticky Book / Call now bar), merch product page, bag with group checkout (wallet or online), and the influencer profile photo screen (gallery pick, 4:5 crop, upload).",
+    "two_sided": true,
+    "min_devices_on_build": 2,
+    "flags": [
+      "hfMerchEnabled",
+      "hfMerchCheckoutEnabled"
+    ],
+    "success": [
+      {
+        "event": "channel_viewed",
+        "property": "surface",
+        "equals": "app",
+        "min_events": 1,
+        "note": "A fan opened an influencer channel page in the app."
+      },
+      {
+        "event": "bag_added",
+        "property": "qty",
+        "gt": 0,
+        "min_events": 1,
+        "note": "A fan put a merch item in the bag from a tile or the product page."
+      },
+      {
+        "event": "bag_checkout_started",
+        "property": "items",
+        "gt": 0,
+        "min_events": 1,
+        "note": "A fan tapped Pay on the bag checkout. Payment success itself is proved by the server group order rows."
+      },
+      {
+        "event": "profile_photo_saved",
+        "property": "has_url",
+        "equals": true,
+        "min_events": 1,
+        "note": "An influencer cropped and saved a profile photo from the app and the server answered with the new picture address."
+      }
+    ],
+    "_verified_at": "2026-10-23 read from channelEvent(...) calls in hf-flutter/lib/demo/screens/{profile,channel_sections,merch_product,bag,profile_photo}.dart and bag_kit.dart"
   }
 }

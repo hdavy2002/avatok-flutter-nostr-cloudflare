@@ -49,6 +49,37 @@ abstract final class C {
   static const footerDot = Color(0xFFF1E3D6);
 }
 
+/// [HF-CHANNEL-APP-1] "Galli Pop" tokens (owner mock 2026-10-23, Specs: .agent-wt/mock/gp.css): the colours of the influencer
+/// channel page, product page, bag and checkout. Truck-art red / marigold / blue / rani on ivory and ink. No green.
+abstract final class GP {
+  static const bg = Color(0xFFFFF9F0); // page
+  static const paper = Color(0xFFFFFFFF);
+  static const ink = Color(0xFF1F1630); // text, dark sections, dark buttons
+  static const black = Color(0xFF000000); // under-edge of the dark button
+  static const muted = Color(0xFF625872);
+  static const line = Color(0xFFECE3D6);
+  static const tile = Color(0xFFF5EEE4); // plain soft product tile (D3: no arch, no shelf)
+  static const red = Color(0xFFE2231A);
+  static const redDeep = Color(0xFFB3170F);
+  static const mari = Color(0xFFFFB000);
+  static const yel = Color(0xFFFFD400);
+  static const yelDeep = Color(0xFFC9A400);
+  static const rani = Color(0xFFE0157A);
+  static const raniTint = Color(0xFFFDE7F1);
+  static const blue = Color(0xFF1B3FA0);
+  static const blueTint = Color(0xFFE7ECFB);
+  static const blueSoft = Color(0xFF9FB2F0); // light end of a video wash
+  static const mariTint = Color(0xFFFFF1CC);
+  static const onDark = Color(0xFFE2DBEE); // body text on ink
+  static const onDarkMuted = Color(0xFFCFC8E0);
+  static const inputLine = Color(0xFFD8CCBB);
+  static const shadow = Color(0x331F1630); // soft drop shadow
+  static const scrim = Color(0xA81F1630); // dim around the crop window
+  static const veil = Color(0xEEFFFFFF); // pale chip on a photo
+  static const gridLine = Color(0x55FFFFFF); // rule-of-thirds lines
+  static const darkTile = Color(0xFF2C2142); // art slot on the ink "order placed" panel
+}
+
 /// Text style helper. Nunito ships 400–800 in the app, so 800 is the heaviest weight.
 TextStyle t(
   double size, {

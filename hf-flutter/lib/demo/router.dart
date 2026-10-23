@@ -15,6 +15,10 @@ import 'screens/influencer.dart';
 import 'screens/intro.dart';
 import 'screens/me.dart';
 import 'screens/merch_fan.dart'; // [HF-MERCH-APP-1]
+import '../data/repos/channel_repo.dart'; // [HF-CHANNEL-APP-1]
+import 'screens/bag.dart'; // [HF-CHANNEL-APP-1]
+import 'screens/merch_product.dart'; // [HF-CHANNEL-APP-1]
+import 'screens/profile_photo.dart'; // [HF-CHANNEL-APP-1]
 import 'screens/merch_studio.dart';
 import 'screens/merch_wizard.dart';
 import 'screens/money.dart';
@@ -148,6 +152,24 @@ final router = GoRouter(
         source: s.uri.queryParameters['src'] ?? 'link',
       ),
     ),
+    // [HF-CHANNEL-APP-1] Bag, bag checkout, one merch product, and the influencer's profile photo.
+    GoRoute(parentNavigatorKey: rootKey, path: '/bag', builder: (_, __) => const BagScreen()),
+    GoRoute(
+      parentNavigatorKey: rootKey,
+      path: '/bag/checkout',
+      redirect: (_, s) => s.extra is BagCheckoutArgs ? null : '/bag',
+      builder: (_, s) => BagCheckoutScreen(args: s.extra! as BagCheckoutArgs),
+    ),
+    GoRoute(
+      parentNavigatorKey: rootKey,
+      path: '/merch/p/:host/:slug',
+      builder: (_, s) => MerchProductScreen(
+        hostSlug: s.pathParameters['host']!,
+        productSlug: s.pathParameters['slug']!,
+        initial: s.extra is ChannelProduct ? s.extra! as ChannelProduct : null,
+      ),
+    ),
+    GoRoute(parentNavigatorKey: rootKey, path: '/inf/photo', builder: (_, __) => const ProfilePhotoScreen()),
     GoRoute(
       parentNavigatorKey: rootKey,
       path: '/topup',

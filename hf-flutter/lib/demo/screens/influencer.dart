@@ -25,6 +25,7 @@ import '../channel_kit.dart';
 import '../booking_kit.dart';
 import 'bookings_real.dart'; // [HF-WIRE-8]
 import 'channels.dart';
+import 'profile_photo.dart'; // [HF-CHANNEL-APP-1]
 
 // ---------------------------------------------------------------------------------------------- Join
 
@@ -492,6 +493,7 @@ class InfluencerHomeScreen extends StatelessWidget {
                 ],
                 const _EarningsCard(), // [HF-WIRE-10]
                 if (PresenceBridge.real) const SharePageCard(), // [HF-SHARE-APP-1]
+                if (PresenceBridge.real) const ProfilePhotoCard(), // [HF-CHANNEL-APP-1]
                 const SizedBox(height: 16),
                 InfSectionHead(title: 'Today\'s bookings', action: 'All', onAction: () => StatefulNavigationShell.of(context).goBranch(1)),
                 if (BookingsBridge.real) const RealTodaysBookings() else ...[ // [HF-WIRE-8]

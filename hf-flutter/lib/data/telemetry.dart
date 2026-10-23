@@ -25,6 +25,15 @@ abstract final class Telemetry {
 
   /// Every event the app may send. Keep in step with the telemetry catalog.
   static const Set<String> catalogEvents = {
+    // [HF-CHANNEL-APP-1] channel page, bag and profile photo (same names as the web)
+    'channel_viewed',
+    'merch_filter_used',
+    'bag_added',
+    'bag_checkout_started',
+    'bag_paid',
+    'channel_video_played',
+    'channel_slot_requested',
+    'profile_photo_saved',
     'api_error',
     'hf_app_cache', // [HF-APP-CACHE-1]
     'app_crash',
