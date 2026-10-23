@@ -11227,5 +11227,20 @@
         "note": "A closed account's sub-rupee wallet rest was retired once and recorded for reconciliation."
       }
     ]
+  },
+  "HF-BOOKING-E2E-1": {
+    "description": "Booking chain: offered lengths, days booked/waiting counts, 1h web cancel rule, booked days crossed out, pending requests shown, web accept/decline.",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [],
+    "success": [
+      {
+        "event": "hf_booking_schedule_saved",
+        "property": "outcome",
+        "equals": "ok",
+        "min_events": 1,
+        "note": "Availability saves keep the 10-minute length so app slots exist; full chain covered by hf_bookings_e2e.test.ts."
+      }
+    ]
   }
 }
