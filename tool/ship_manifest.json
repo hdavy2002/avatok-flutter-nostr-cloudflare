@@ -11645,5 +11645,20 @@
         "note": "Someone tapped a share button (own=true from the influencer's own app, own=false from a fan viewing a profile). It proves the tap, not that the link was posted anywhere."
       }
     ]
+  },
+  "HF-SHARE-WEB-1": {
+    "description": "Influencers can share their public page: a Share my page card (copy, WhatsApp, X, Facebook, Instagram tip, native share, QR download) on the dashboard Overview and Profile, a Share your shop row on Merch, and a Share row beside the name on every /h/<slug> page. Links carry utm_source=share&utm_medium=<network>.",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [],
+    "success": [
+      {
+        "event": "profile_share_clicked",
+        "property": "network",
+        "exists": true,
+        "min_events": 1,
+        "note": "Someone tapped a share button for an influencer page (own=true from the dashboard, false from the public page)."
+      }
+    ]
   }
 }

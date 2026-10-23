@@ -1,8 +1,9 @@
 ---
+// [HF-SHARE-WEB-1] surface 'profile' = the Share row beside the name on /h/<slug> (telemetry: profile_share_clicked {own, network}).
 // [HF-MERCH-FAN-WEB-1] Share row: WhatsApp, X, native share (phones) and copy link. Every shared link carries
 // ?utm_source=share&utm_medium=<network>. WhatsApp and X work without JavaScript; copy and native share are enabled by the script below.
 import { whatsappHref, xHref } from '../../lib/merchShare';
-interface Props { url: string; text: string; surface: 'strip' | 'product'; hostSlug: string; productSlug?: string }
+interface Props { url: string; text: string; surface: 'strip' | 'product' | 'profile'; hostSlug: string; productSlug?: string }
 const { url, text, surface, hostSlug, productSlug = '' } = Astro.props;
 ---
 <div class="hfm-share" data-hfm-share data-url={url} data-text={text} data-surface={surface} data-host={hostSlug} data-product={productSlug}>
@@ -20,7 +21,7 @@ const { url, text, surface, hostSlug, productSlug = '' } = Astro.props;
     if (box.dataset.ready) return;
     box.dataset.ready = '1';
     const url = box.dataset.url ?? location.href, text = box.dataset.text ?? '';
-    const track = (network: ShareNetwork) => capture('merch_shared', { network, surface: box.dataset.surface, host_slug: box.dataset.host, product_slug: box.dataset.product || undefined });
+    const track = (network: ShareNetwork) => box.dataset.surface === 'profile' ? capture('profile_share_clicked', { own: false, network }) : capture('merch_shared', { network, surface: box.dataset.surface, host_slug: box.dataset.host, product_slug: box.dataset.product || undefined });
     const copy = box.querySelector<HTMLButtonElement>('[data-net="copy"]');
     const native = box.querySelector<HTMLButtonElement>('[data-net="native"]');
     const note = box.querySelector<HTMLElement>('.hfm-copied');

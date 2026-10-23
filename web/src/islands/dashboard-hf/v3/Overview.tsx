@@ -8,6 +8,7 @@ import { getBookingSummary, listBookings, type BookingSummary, type HfBooking } 
 import { capture } from '../../../lib/analytics';
 import { callModeFlags, NO_FLAGS, type CallModeFlags, type HostMode } from '../../../lib/hfCallModes'; // [HF-CALL-MODES-E1]
 import HostModes from './HostModes';
+import ShareMyPage from '../share/ShareMyPage'; // [HF-SHARE-WEB-1]
 import type { DashboardAccount } from '../../../components/account/DashboardNav';
 import { BEAT_MS, STATUS_NOTE, type MeHost } from '../hostActivity';
 import { useDash, spendablePaise } from './data';
@@ -110,6 +111,7 @@ export default function Overview({ account, bookingOn }: { account: DashboardAcc
 
     {account.closing && <aside className="h3-safe" style={{ background: 'var(--goldtint)' }}><div><h3>Your account is being closed.</h3><p className="small">Calling and profile editing are paused. <a href="/dashboard/close">Manage account closure</a></p></div></aside>}
     {hostLive ? <HostPanel onPresence={setHostPresence} onMode={setHostMode} bookingOn={bookingOn} bs={bs} /> : account.host && !account.closing ? <section className="h3-card"><h2><Marigold size={20} />Your influencer profile</h2><p className="muted" style={{ marginTop: 6 }}>{STATUS_NOTE[account.host.status] ?? 'Your profile is not live yet.'}</p><a className="h3-btn" style={{ marginTop: 12 }} href="/dashboard/host">Continue my profile</a></section> : null}
+    {hostLive && <ShareMyPage slug={account.host?.slug} />}
 
     <section className="h3-kpis">
       <a className="h3-card h3-kpi k1" href="/dashboard/wallet"><div className="ic"><Ic name="wallet" className="" /></div><div className="lbl">Wallet balance</div>

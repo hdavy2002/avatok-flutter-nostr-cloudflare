@@ -7,6 +7,7 @@ import './merch.css';
 import OrdersTab from './OrdersTab';
 import ProductsTab from './ProductsTab';
 import Wizard from './Wizard';
+import ShareMyPage from '../share/ShareMyPage'; // [HF-SHARE-WEB-1]
 import { getCatalog, getSummary, merchConfig, rupees, type CatalogInfo, type Summary } from './api';
 
 type Tab = 'products' | 'orders';
@@ -45,6 +46,7 @@ export default function MerchApp() {
   const s = summary;
   return <>
     <PageHead eyebrow="Merch" title="Your T-shirt shop" sub="Put your art on a shirt, set your price, and your fans buy it from your page. We print and ship it, you earn on every sale." art={<Sticker name="swag" w={104} rot={6} />} />
+    <ShareMyPage variant="row" />
     {sumFailed && <Failed onRetry={loadSummary} text="We could not load your numbers." />}
     <section className="mc-strip" aria-label="Summary">
       <div className="mc-stat"><span className="small muted">Products</span><span className="num">{s ? s.products.live : '—'} live</span><span className="small muted">{s ? `${s.products.pending} waiting for review` : ''}</span></div>

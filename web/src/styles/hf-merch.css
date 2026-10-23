@@ -1,11 +1,11 @@
 /* [HF-MERCH-FAN-WEB-1] Merch shop, fan side: the Merch strip on /h/<slug>, the product page, the checkout sheet and My orders.
  * Palette follows Specs/HF-DESIGN-SYSTEM.md: warm ivory, plum ink, rani pink and marigold; teal (never green) for good news.
  * Text never goes below 14px; touch targets are at least 44px; phones are centred. */
-.hfm-strip,.hfm-page,.hfm-dlg,.hfo{
+.hfm-strip,.hfm-page,.hfm-dlg,.hfo,.hf-share-row{
   --hfm-ink:#46113e; --hfm-muted:#6f5b6f; --hfm-bg:#fffdf7; --hfm-line:#eadbe6; --hfm-soft:#f6eefc; --hfm-rani:#d81b72; --hfm-gold:#f5a623; --hfm-ok:#0e7c86; --hfm-bad:#c0262d;
   font-family:Nunito,Comfortaa,ui-rounded,system-ui,sans-serif; color:var(--hfm-ink); box-sizing:border-box;
 }
-.hfm-strip *,.hfm-page *,.hfm-dlg *,.hfo *{box-sizing:border-box}
+.hf-share-row *,.hfm-strip *,.hfm-page *,.hfm-dlg *,.hfo *{box-sizing:border-box}
 
 /* ── strip on the influencer page ─────────────────────────────────────── */
 .hfm-strip{margin:20px 0;padding:18px 0 6px;border-top:2px dashed var(--hfm-line);border-bottom:2px dashed var(--hfm-line);scroll-margin-top:80px}
@@ -159,3 +159,7 @@
 .hfo-time{list-style:none;margin:0;padding:0;display:grid;gap:4px;color:var(--muted,#6f5b6f);font-size:.9375rem}
 .hfo-form{display:grid;gap:12px}.hfo-form textarea{min-height:110px;border-radius:14px;border:1.5px solid var(--line,#f1e3d6);padding:12px;font:inherit;width:100%}
 .hfo-form label.k{display:flex;gap:10px;align-items:center;min-height:44px;font-weight:700}
+
+/* [HF-SHARE-WEB-1] Share row beside the name on /h/<slug>: bigger, rounder touch targets than the merch strip's. */
+.hf-share-row{margin:12px 0 0}
+.hf-share-row .hfm-share button,.hf-share-row .hfm-share a{min-height:56px;padding:10px 22px;font-size:1rem}

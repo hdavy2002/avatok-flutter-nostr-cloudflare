@@ -1,0 +1,11 @@
+/* [HF-SHARE-WEB-1] "Share my page" card / "Share your shop" row in the influencer dashboard. Plum + rani pills, no green. */
+.sm-card{font-family:Nunito,Comfortaa,ui-rounded,system-ui,sans-serif}
+.sm-link{display:flex;align-items:center;gap:10px;margin:12px 0;padding:10px 18px;min-height:56px;border-radius:999px;background:var(--goldtint,#fff4dc);border:1.5px dashed var(--line,#eadbe6);overflow:hidden}
+.sm-link code{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font:inherit;font-weight:800}
+.sm-btns{display:flex;flex-wrap:wrap;gap:10px}
+.sm-btns .h3-btn,.sm-btns a.h3-btn{min-height:56px;display:inline-flex;align-items:center;justify-content:center;gap:8px;text-decoration:none}
+.sm-tip{margin-top:12px;padding:12px 18px;border-radius:24px;background:var(--goldtint,#fff4dc)}
+.sm-qr{display:flex;align-items:center;gap:16px;flex-wrap:wrap;margin-top:14px}
+.sm-qr img{width:132px;height:132px;border-radius:20px;border:1.5px solid var(--line,#eadbe6);background:#fff;padding:6px}
+.sm-row{display:flex;align-items:center;flex-wrap:wrap;gap:10px;margin:0 0 14px;padding:12px 18px;border-radius:32px;background:var(--goldtint,#fff4dc)}
+.sm-row>b{margin-right:auto}

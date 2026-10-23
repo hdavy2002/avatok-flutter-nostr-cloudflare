@@ -4,6 +4,7 @@
 import { useEffect, useState } from 'react';
 import { hfCall } from '../../../lib/hfCallsApi';
 import { capture } from '../../../lib/analytics';
+import ShareMyPage from '../share/ShareMyPage'; // [HF-SHARE-WEB-1]
 import type { DashboardAccount } from '../../../components/account/DashboardNav';
 import { getBlocks, getPrefs, putPrefs, putProfile, unblock, useDash, type BlockItem } from './data';
 import { Avatar, Card, Failed, Hibiscus, Marigold, PageHead, Skel, Sticker, istDay, useToast } from './ui';
@@ -54,6 +55,7 @@ export default function Profile({ account }: { account: DashboardAccount }) {
   return <>
     <PageHead eyebrow="Profile" title="Main apni favourite hoon" sub="How you show up — your handle, languages and what you like to talk about. Influencers never see your number." />
     {profile.failed && <Failed onRetry={() => reload('profile')} />}
+    {account.host?.status === 'live' && !account.closing && <ShareMyPage slug={account.host.slug} />}
     <section className="h3-row c12">
       <section className="h3-card" style={{ textAlign: 'center', overflow: 'hidden' }}>
         <div style={{ position: 'absolute', left: -30, top: -34 }}><Marigold size={110} tone={1} /></div><div style={{ position: 'absolute', right: -20, top: -26 }}><Hibiscus size={80} /></div>

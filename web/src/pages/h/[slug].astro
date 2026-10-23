@@ -19,6 +19,8 @@ import { formatPaise } from '../../lib/money';
 import { langLabels } from '../../lib/hfLanguages'; // [HF-DAILY-FLOWS-1]
 import { shortCallDisclaimer } from '../../lib/callvaalProfileDetails';
 import MerchStrip from '../../components/merch/MerchStrip.astro';
+import { brandUrl } from '../../lib/brand';
+import ShareButtons from '../../components/merch/ShareButtons.astro';
 import { fetchMerchHost } from '../../lib/merchPublic';
 import { profileJsonLd } from '../../lib/merchSeo';
 import type { PublicContent } from '../../lib/seo/types';
@@ -124,6 +126,7 @@ const galleryJson = JSON.stringify(gallery.map(g => ({ src: g.url, alt: g.captio
               <div class="cv-identity">
                 <div class="cv-name-row"><div><h1 id="profile-name">{name}</h1>{host.tagline && <p class="cv-role">{host.tagline}</p>}</div></div>
                 <div class="hf-save-row"><SaveHostButton client:only="react" slug={host.slug} name={host.displayName} surface="profile" variant="pill" /></div>
+                <div class="hf-share-row"><ShareButtons url={brandUrl(`/h/${host.slug}`)} text={`Talk to ${name}`} surface="profile" hostSlug={host.slug} /></div>
                 <p class="hfc-rate hfc-rate-lg">{reviewCount > 0 && rating != null ? <><span aria-hidden="true">★</span> <strong>{rating.toFixed(1)}</strong> <a href="#reviews">({reviewCount} {reviewCount === 1 ? 'review' : 'reviews'})</a></> : <span class="hfc-new">New influencer</span>}</p>
                 {identityVerified && <span class="cv-verified" role="img" aria-label="Identity checked by our team"><span aria-hidden="true">ID-verified influencer ✓</span></span>}
                 {audioUrl && (
