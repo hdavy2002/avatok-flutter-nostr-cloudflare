@@ -146,7 +146,7 @@ class _QueueScreenState extends State<QueueScreen> {
     if (_moved || !e.isOffered || id == null || id.isEmpty || !mounted) return;
     _moved = true;
     _timer?.cancel();
-    unawaited(context.pushReplacement('/call/${Uri.encodeComponent(id)}'));
+    context.pushReplacement('/call/${Uri.encodeComponent(id)}');
   }
 
   Future<void> _pollNow() async {
@@ -278,7 +278,7 @@ class _QueueScreenState extends State<QueueScreen> {
           const SizedBox(height: 12),
           Text(_overText, key: const ValueKey('queue-over-text'), textAlign: TextAlign.center, style: t(18, w: FontWeight.w800, h: 1.4)),
           const SizedBox(height: 20),
-          CallPill(label: 'BOOK A TIME', kind: CallPillKind.gold, height: 58, onTap: () => unawaited(context.pushReplacement('/book/${Uri.encodeComponent(widget.slug)}'))),
+          CallPill(label: 'BOOK A TIME', kind: CallPillKind.gold, height: 58, onTap: () => context.pushReplacement('/book/${Uri.encodeComponent(widget.slug)}')),
           const SizedBox(height: 10),
           TextButton(
             style: TextButton.styleFrom(minimumSize: const Size.fromHeight(48)),
@@ -340,11 +340,11 @@ class _QueueScreenState extends State<QueueScreen> {
         ],
         if (p.problem == QueueProblem.alreadyQueued && p.hostSlug != null) ...[
           const SizedBox(height: 12),
-          CallPill(label: 'GO TO THAT QUEUE', kind: CallPillKind.plum, onTap: () => unawaited(context.pushReplacement('/queue/${Uri.encodeComponent(p.hostSlug!)}'))),
+          CallPill(label: 'GO TO THAT QUEUE', kind: CallPillKind.plum, onTap: () => context.pushReplacement('/queue/${Uri.encodeComponent(p.hostSlug!)}')),
         ],
         if (p.problem == QueueProblem.closed || p.problem == QueueProblem.full) ...[
           const SizedBox(height: 12),
-          CallPill(label: 'BOOK A TIME', kind: CallPillKind.gold, height: 58, onTap: () => unawaited(context.pushReplacement('/book/${Uri.encodeComponent(widget.slug)}'))),
+          CallPill(label: 'BOOK A TIME', kind: CallPillKind.gold, height: 58, onTap: () => context.pushReplacement('/book/${Uri.encodeComponent(widget.slug)}')),
         ],
       ]),
     );
