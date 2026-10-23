@@ -18,26 +18,30 @@ class BookingsRepo {
 
   final ApiClient _api;
 
-  Future<HostSlots> slots(String slug, {String? from, String? to}) async => HostSlots.fromJson(
-        await _api.getJson('/api/hf/hosts/${Uri.encodeComponent(slug)}/slots', query: {'from': from, 'to': to}, auth: false),
+  /// [durationMinutes] ([HF-CALL-MODES-E2], booking lengths) asks for the free starts that fit that length; omitted = the server's default.
+  Future<HostSlots> slots(String slug, {String? from, String? to, int? durationMinutes}) async => HostSlots.fromJson(
+        await _api.getJson('/api/hf/hosts/${Uri.encodeComponent(slug)}/slots',
+            query: {'from': from, 'to': to, if (durationMinutes != null) 'durationMinutes': durationMinutes}, auth: false),
       );
 
   /// [HF-APP-CACHE-1] [slots] cached-first: the last list paints at once, then the server's. Booking still re-checks on the server
   /// (409 `slot_unavailable`), so a stale time can only cost one friendly "pick again".
-  Stream<HostSlots> watchSlots(String slug, {String? from, String? to}) => _api
-      .watchJson('/api/hf/hosts/${Uri.encodeComponent(slug)}/slots', query: {'from': from, 'to': to}, auth: false, policy: CachePolicy.slots)
+  Stream<HostSlots> watchSlots(String slug, {String? from, String? to, int? durationMinutes}) => _api
+      .watchJson('/api/hf/hosts/${Uri.encodeComponent(slug)}/slots',
+          query: {'from': from, 'to': to, if (durationMinutes != null) 'durationMinutes': durationMinutes}, auth: false, policy: CachePolicy.slots)
       .map(HostSlots.fromJson);
 
   /// Throws [ApiException]; see [BookingProblem] for what the codes mean.
-  Future<AppBooking> book(String slug, DateTime startAt, {String? note, String? topic}) async =>
-      (await bookRequest(slug, startAt, note: note, topic: topic)).booking;
+  Future<AppBooking> book(String slug, DateTime startAt, {String? note, String? topic, int? durationMinutes}) async =>
+      (await bookRequest(slug, startAt, note: note, topic: topic, durationMinutes: durationMinutes)).booking;
 
   /// Like [book], but also says whether the booking now waits for the influencer ([BookResult.needsApproval]) and the
   /// server's own sentence for the "Request sent" screen. [topic] is one of the influencer's topic slugs.
-  Future<BookResult> bookRequest(String slug, DateTime startAt, {String? note, String? topic}) async {
+  Future<BookResult> bookRequest(String slug, DateTime startAt, {String? note, String? topic, int? durationMinutes}) async {
     final j = await _api.postJson('/api/hf/bookings', body: {
       'hostSlug': slug,
       'startAt': startAt.toUtc().toIso8601String(),
+      if (durationMinutes != null) 'durationMinutes': durationMinutes, // [HF-CALL-MODES-E2] only sent while booking lengths are on
       if (note != null && note.trim().isNotEmpty) 'note': note.trim(),
       if (topic != null && topic.isNotEmpty) 'topic': topic,
     });

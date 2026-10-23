@@ -15,7 +15,22 @@ enum UpdateStatus {
 /// The slice of the public `GET /api/config` the app needs at start.
 /// `hfAppMinBuild` / `hfAppLatestBuild` are declared in worker/src/routes/config.ts; 0 means never prompt.
 class AppConfig {
-  const AppConfig({this.minBuild = 0, this.latestBuild = 0, this.bookingApprovalEnabled = false});
+  const AppConfig({
+    this.minBuild = 0,
+    this.latestBuild = 0,
+    this.bookingApprovalEnabled = false,
+    this.callModesEnabled = false,
+    this.callQueueEnabled = false,
+    this.callChunkBillingEnabled = false,
+    this.bookingLengthsEnabled = false,
+  });
+
+  /// [HF-CALL-MODES-E2] `hfCallModesEnabled`, `hfCallQueueEnabled`, `hfCallChunkBillingEnabled`, `hfBookingLengthsEnabled`.
+  /// Each is true only when the server says exactly `true`.
+  final bool callModesEnabled;
+  final bool callQueueEnabled;
+  final bool callChunkBillingEnabled;
+  final bool bookingLengthsEnabled;
 
   final int minBuild;
   final int latestBuild;
@@ -27,6 +42,10 @@ class AppConfig {
         minBuild: _int(j['hfAppMinBuild']),
         latestBuild: _int(j['hfAppLatestBuild']),
         bookingApprovalEnabled: j['hfBookingApprovalEnabled'] == true,
+        callModesEnabled: j['hfCallModesEnabled'] == true,
+        callQueueEnabled: j['hfCallQueueEnabled'] == true,
+        callChunkBillingEnabled: j['hfCallChunkBillingEnabled'] == true,
+        bookingLengthsEnabled: j['hfBookingLengthsEnabled'] == true,
       );
 
   static int _int(Object? v) {

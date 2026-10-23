@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../data/call_flags.dart'; // [HF-CALL-MODES-E2]
 import '../booking_kit.dart';
 import '../data.dart';
 import '../desi.dart';
@@ -57,7 +58,7 @@ class _BookScreenState extends State<BookScreen> {
               child: ListView(
                 padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
                 children: [
-                  BookPerson(who: who, name: who.name, rate: '₹${who.rate}/min', chip: '10 minute call'),
+                  BookPerson(who: who, name: who.name, rate: '₹${who.rate}/min', chip: '${defaultBookingMinutes()} minute call'),
                   const SizedBox(height: 14),
                   BookStep(
                     n: '1',
@@ -119,7 +120,8 @@ class BookConfirmScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final who = influencerById(id);
     final d = _parseKey(day) ?? dayOnly(DateTime.now());
-    final hold = who.rate * 10.0;
+    final mins = defaultBookingMinutes(); // [HF-CALL-MODES-E2] 10 minutes, or 15 while booking lengths are on
+    final hold = who.rate * mins.toDouble();
     final first = who.name.split(' ').first;
     // [HF-APP-DESI-5] approved "Confirm booking" layout
     return Scaffold(
@@ -132,9 +134,9 @@ class BookConfirmScreen extends StatelessWidget {
               child: ListView(
                 padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
                 children: [
-                  BookTicket(who: who, name: who.name, sub: '10 minute call', date: dayLabel(d), time: slot),
+                  BookTicket(who: who, name: who.name, sub: '$mins minute call', date: dayLabel(d), time: slot),
                   const SizedBox(height: 14),
-                  HisaabCard(lines: [('Rate', '₹${who.rate}/min'), ('Held now (10 min)', inr(hold, paise: false)), ('Your wallet', inr(demo.balance))], strong: const {'Held now (10 min)'}),
+                  HisaabCard(lines: [('Rate', '₹${who.rate}/min'), ('Held now ($mins min)', inr(hold, paise: false)), ('Your wallet', inr(demo.balance))], strong: {'Held now ($mins min)'}),
                   const SizedBox(height: 14),
                   Text(
                     'At ${slot.toLowerCase()} we ring $first first, then your phone. You pay only for the minutes you talk; the rest of the hold comes back. You get a WhatsApp reminder an hour before.',

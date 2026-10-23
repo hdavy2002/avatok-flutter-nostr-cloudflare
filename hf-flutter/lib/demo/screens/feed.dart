@@ -7,6 +7,7 @@ import '../../core/brand.dart';
 import '../../data/unplayable_reels.dart';
 import '../../data/reel_bookmarks.dart';
 import '../../data/api_exception.dart';
+import '../../data/call_flags.dart'; // [HF-CALL-MODES-E2]
 import '../../data/models/reel.dart';
 import '../../data/models/search.dart';
 import '../../data/repos/reels_repo.dart';
@@ -17,6 +18,7 @@ import '../../data/share.dart';
 import '../../ui/async_view.dart';
 import '../data.dart';
 import '../presence_bridge.dart';
+import '../queue_kit.dart'; // [HF-CALL-MODES-E2]
 import '../reel_player.dart';
 import '../reels_real.dart';
 import '../state.dart';
@@ -484,6 +486,8 @@ class _ReelPageState extends State<ReelPage>
     final bookmarks = widget.real == null ? null : ReelBookmarks.instance;
     final presence =
         widget.real?.host.presence ?? (who.online ? 'online' : 'offline');
+    // [HF-CALL-MODES-E2] null unless call modes are on and the server sent a callState
+    final stateDot = callStateDot(widget.real?.host.callState);
     return ListenableBuilder(
       listenable: bookmarks == null
           ? demo
@@ -652,21 +656,24 @@ class _ReelPageState extends State<ReelPage>
                   ],
                   if (inviteOf == null) ...[
                     _statusDot(
-                      presence == 'online'
-                          ? 'Influencer is online'
-                          : presence == 'busy'
-                          ? 'Influencer is on a call'
-                          : 'Influencer is offline',
-                      presence == 'online'
-                          ? 'Available'
-                          : presence == 'busy'
-                          ? 'On call'
-                          : 'Offline',
-                      presence == 'online'
-                          ? C.onlineDot
-                          : presence == 'busy'
-                          ? C.marigold
-                          : C.ruby,
+                      stateDot?.$1 ??
+                          (presence == 'online'
+                              ? 'Influencer is online'
+                              : presence == 'busy'
+                              ? 'Influencer is on a call'
+                              : 'Influencer is offline'),
+                      stateDot?.$2 ??
+                          (presence == 'online'
+                              ? 'Available'
+                              : presence == 'busy'
+                              ? 'On call'
+                              : 'Offline'),
+                      stateDot?.$3 ??
+                          (presence == 'online'
+                              ? C.onlineDot
+                              : presence == 'busy'
+                              ? C.marigold
+                              : C.ruby),
                     ),
                     _action('Book a time', Icons.calendar_month_outlined, () {
                       Telemetry.event('hf_reel_action', {'action': 'book'});
@@ -850,16 +857,14 @@ class _ReelPageState extends State<ReelPage>
                     ),
                   ] else ...[
                     Text('₹${r.who.rate}/min', style: t(14)),
-                    if ((widget.real?.host.presence ??
-                            (r.who.online ? 'online' : 'offline')) ==
-                        'online')
+                    if (_callLabel(r) != null)
                       TextButton.icon(
                         onPressed: () {
                           Navigator.of(sheetContext).pop();
                           startCall(context, r.who);
                         },
                         icon: const Icon(Icons.call_outlined),
-                        label: const Text('Call now'),
+                        label: Text(_callLabel(r)!),
                       ),
                   ],
                 ],
@@ -870,6 +875,15 @@ class _ReelPageState extends State<ReelPage>
       },
     );
     timer?.cancel();
+  }
+
+  /// [HF-CALL-MODES-E2] The label of the call button in the reel sheet, or null for none. With call modes off (or no callState
+  /// from the server) this is exactly the old rule: "Call now" only while online.
+  String? _callLabel(Reel r) {
+    final cs = CallFlags.modes ? widget.real?.host.callState : null;
+    if (cs != null) return callActionLabel(cs);
+    final presence = widget.real?.host.presence ?? (r.who.online ? 'online' : 'offline');
+    return presence == 'online' ? 'Call now' : null;
   }
 
   Future<void> _share(BuildContext context, FeedReel r) async {

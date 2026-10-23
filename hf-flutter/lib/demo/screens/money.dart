@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../data/api_exception.dart';
+import '../../data/call_flags.dart'; // [HF-CALL-MODES-E2]
 import '../../data/demo_mode.dart';
 import '../../data/in_app_checkout.dart';
 import '../../data/models/wallet.dart';
@@ -308,6 +309,16 @@ class _TopUpScreenState extends State<TopUpScreen> {
   }
 }
 
+/// [HF-CALL-MODES-E2] After a payment: back to the call she topped up from (chunk billing), else the wallet as before.
+void _backFromPayment(BuildContext context) {
+  final id = CallReturn.callId;
+  if (id != null) {
+    context.go('/call/${Uri.encodeComponent(id)}');
+  } else {
+    context.pushReplacement('/wallet');
+  }
+}
+
 /// After the payment page: waits for the server to say the money arrived.
 ///
 /// With an [orderId] it asks `GET /api/hf/wallet/topup/:id` every [pollEvery] and shows paid, "still confirming"
@@ -454,16 +465,16 @@ class _PaymentScreenState extends State<PaymentScreen> {
                   line: 'Receipt sent on WhatsApp and email.',
                 ),
               const SizedBox(height: 14),
-              if (done) MoneyPill(label: 'BACK TO WALLET', onTap: () => context.pushReplacement('/wallet')),
+              if (done) MoneyPill(label: CallReturn.callId != null ? 'BACK TO YOUR CALL' : 'BACK TO WALLET', onTap: () => _backFromPayment(context)),
               if (failed || notDone) ...[
                 MoneyPill(label: 'TRY AGAIN', gold: true, onTap: () => context.pushReplacement('/topup')),
                 const SizedBox(height: 10),
                 Semantics(
                   button: true,
                   child: TextButton(
-                    onPressed: () => context.pushReplacement('/wallet'),
+                    onPressed: () => _backFromPayment(context),
                     style: TextButton.styleFrom(minimumSize: const Size.fromHeight(48)),
-                    child: Text('BACK TO WALLET', style: t(16, color: C.maroon, w: FontWeight.w900)),
+                    child: Text(CallReturn.callId != null ? 'BACK TO YOUR CALL' : 'BACK TO WALLET', style: t(16, color: C.maroon, w: FontWeight.w900)),
                   ),
                 ),
               ],

@@ -21,6 +21,7 @@ import 'screens/money.dart';
 import 'screens/creator_page.dart'; // [HF-REELS-FAV-1]
 import 'screens/page_moved.dart';
 import 'screens/profile.dart';
+import 'screens/queue_real.dart'; // [HF-CALL-MODES-E2]
 import 'screens/search.dart';
 import 'reel_player.dart';
 import 'theme.dart';
@@ -110,6 +111,14 @@ final router = GoRouter(
               ),
       ),
     ),
+    GoRoute(
+      parentNavigatorKey: rootKey,
+      path: '/queue/:slug',
+      builder: (_, s) => QueueScreen(
+        slug: s.pathParameters['slug']!,
+        waiting: int.tryParse(s.uri.queryParameters['n'] ?? '') ?? 0,
+      ),
+    ), // [HF-CALL-MODES-E2] only linked to while hfCallQueueEnabled
     GoRoute(
       parentNavigatorKey: rootKey,
       path: '/call/:id',
@@ -269,6 +278,7 @@ final router = GoRouter(
               day: s.uri.queryParameters['day'] ?? '',
               slot: s.uri.queryParameters['slot'] ?? '',
               topic: s.uri.queryParameters['topic'],
+              length: int.tryParse(s.uri.queryParameters['len'] ?? ''), // [HF-CALL-MODES-E2]
               name: s.uri.queryParameters['name'],
               avatar: s.uri.queryParameters['avatar'],
             )

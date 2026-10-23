@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../data/api_exception.dart';
+import '../../data/call_flags.dart'; // [HF-CALL-MODES-E2]
 import '../../data/demo_mode.dart';
 import '../../data/models/me.dart';
 import '../../data/repos/settings_repo.dart';
@@ -14,6 +15,7 @@ import '../widgets.dart';
 import '../booking_kit.dart';
 import '../desi.dart';
 import '../settings_kit.dart';
+import '../queue_kit.dart'; // [HF-CALL-MODES-E2]
 
 /// Real Settings and Delete account (HF-WIRE-11). While [DemoMode.on] the dummy screens in me.dart stay.
 abstract final class SettingsBridge {
@@ -186,6 +188,11 @@ class _RealSettingsScreenState extends State<RealSettingsScreen> {
                     if (host) SettingsRow(icon: Icons.event_rounded, tone: DesiTone.tea, label: 'Availability calendar', onTap: () => context.go('/inf/availability')),
                     if (host) SettingsRow(icon: Icons.call_rounded, tone: DesiTone.gold, label: 'Calls booked with me', last: true, onTap: () => context.go('/inf/bookings')),
                   ]),
+                  // [HF-CALL-MODES-E2] Influencer only, and only while the queue flag is on: who waits, and Pause / Resume.
+                  if (host && CallFlags.queue && SettingsBridge.real) ...[
+                    const SizedBox(height: 12),
+                    SettingsCard(title: 'Call queue', tone: DesiTone.gold, children: const [HostQueueSettingsRows()]),
+                  ],
                   const SizedBox(height: 12),
                   SettingsCard(title: 'WhatsApp messages', tone: DesiTone.tea, flower: true, children: [
                     if (_prefsFailed)

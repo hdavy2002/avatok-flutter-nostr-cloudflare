@@ -28,6 +28,9 @@ Influencer influencerFromHost(ReelHost h, {String bio = '', int likes = 0, int v
       online: h.online,
       tones: _realTones,
       avatarUrl: h.avatar,
+      callState: h.callState,
+      queueOpen: h.queueOpen,
+      queueWaiting: h.queueWaiting,
     );
 
 /// A dummy-typed [Reel] wrapping a real one, so [ReelPage] keeps one layout.

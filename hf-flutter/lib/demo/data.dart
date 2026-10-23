@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../data/models/queue.dart';
+
 /// DEMO DATA ONLY. Nothing here talks to the backend yet (owner, 2026-10-19:
 /// screens first, wiring later). Every name below is invented.
 class Influencer {
@@ -18,7 +20,15 @@ class Influencer {
     required this.tones,
     this.portrait,
     this.avatarUrl,
+    this.callState,
+    this.queueOpen = false,
+    this.queueWaiting = 0,
   });
+
+  /// [HF-CALL-MODES-E2] What a fan sees (spec 2.1), when the server sent it. Null = behave as before (online / offline).
+  final HostCallState? callState;
+  final bool queueOpen;
+  final int queueWaiting;
 
   final String id;
   final String name;

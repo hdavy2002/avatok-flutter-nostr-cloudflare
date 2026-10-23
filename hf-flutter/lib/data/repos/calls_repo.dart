@@ -1,6 +1,7 @@
 import '../api_client.dart';
 import '../api_exception.dart';
 import '../models/call.dart';
+import '../models/queue.dart';
 
 /// Instant calls (HF-WIRE-7). The worker places the call (Vobiz rings the influencer, then this phone);
 /// the app only starts it, follows it and ends it.
@@ -72,10 +73,17 @@ enum CallProblem {
 }
 
 class CallProblemInfo {
-  const CallProblemInfo(this.problem, this.message);
+  const CallProblemInfo(this.problem, this.message, {this.reason, this.canQueue, this.canBook, this.queueWaiting = 0});
 
   final CallProblem problem;
   final String message;
+
+  /// [HF-CALL-MODES-E2] Why a `host_unavailable` refusal happened (`on_call`, `connecting`, `queue_only`, `appointments`,
+  /// `offline`) and what the fan can do about it. All null / 0 on an old server.
+  final HostCallState? reason;
+  final bool? canQueue;
+  final bool? canBook;
+  final int queueWaiting;
 
   static const String notOpenText = 'Calls are not open yet.';
   static const String unavailableText = "This host isn't available right now.";
@@ -91,7 +99,16 @@ class CallProblemInfo {
         return CallProblemInfo(CallProblem.lowBalance, error.userMessage);
       case 'host_unavailable':
       case 'host_offline':
-        return const CallProblemInfo(CallProblem.hostUnavailable, unavailableText);
+        final x = error.extra;
+        final w = x['queueWaiting'];
+        return CallProblemInfo(
+          CallProblem.hostUnavailable,
+          unavailableText,
+          reason: hostCallStateOf(x['reason']),
+          canQueue: x['canQueue'] is bool ? x['canQueue'] as bool : null,
+          canBook: x['canBook'] is bool ? x['canBook'] as bool : null,
+          queueWaiting: w is num ? w.toInt() : 0,
+        );
       case 'call_in_progress':
         return CallProblemInfo(CallProblem.inProgress, error.userMessage);
     }

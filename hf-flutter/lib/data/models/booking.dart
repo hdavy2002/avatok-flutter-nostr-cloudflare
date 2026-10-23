@@ -1,5 +1,8 @@
 /// Booking shapes (HF-WIRE-8). Dates are IST dates written `YYYY-MM-DD`, times are 24-hour `HH:MM` in IST.
 /// Money is whole paise.
+library;
+
+import '../call_flags.dart';
 
 int _i(Object? v) => v is num ? v.round() : int.tryParse('$v') ?? 0;
 String? _s(Object? v) => v is String && v.isNotEmpty ? v : null;
@@ -174,6 +177,8 @@ class HostSlots {
     required this.days,
     this.topics = const [],
     this.approvalMode,
+    this.durationsMinutes = const [],
+    this.holdMinutes,
   });
 
   factory HostSlots.fromJson(Map<String, dynamic> j) {
@@ -185,7 +190,7 @@ class HostSlots {
       });
     }
     return HostSlots(
-      minutes: _i(j['minutes']) == 0 ? 10 : _i(j['minutes']),
+      minutes: _i(j['minutes']) == 0 ? defaultBookingMinutes() : _i(j['minutes']),
       ratePerMin: _i(j['ratePerMin']),
       holdPaise: _i(j['holdPaise']),
       today: _s(j['today']) ?? isoDay(DateTime.now()),
@@ -197,8 +202,20 @@ class HostSlots {
             if (BookingTopic.tryParse(e) != null) BookingTopic.tryParse(e)!,
       ],
       approvalMode: j['approvalMode'] == 'manual' || j['approvalMode'] == 'auto' ? j['approvalMode'] as String : null,
+      durationsMinutes: [
+        if (j['durationsMinutes'] is List)
+          for (final e in j['durationsMinutes'] as List)
+            if (e is num && e > 0) e.round(),
+      ],
+      holdMinutes: _i(j['holdMinutes']) > 0 ? _i(j['holdMinutes']) : null,
     );
   }
+
+  /// [HF-CALL-MODES-E2] The lengths this influencer sells (minutes), when booking lengths are on server-side. Empty on an old server.
+  final List<int> durationsMinutes;
+
+  /// [HF-CALL-MODES-E2] How many minutes the hold covers (15), when the server says. Null on an old server.
+  final int? holdMinutes;
 
   final int minutes;
   final int ratePerMin;
@@ -255,7 +272,7 @@ class AppBooking {
         startAt: DateTime.tryParse('${j['startAt'] ?? ''}')?.toLocal() ?? DateTime.fromMillisecondsSinceEpoch(0),
         day: '${j['day'] ?? ''}',
         time: '${j['time'] ?? ''}',
-        minutes: _i(j['minutes']) == 0 ? 10 : _i(j['minutes']),
+        minutes: _i(j['minutes']) == 0 ? defaultBookingMinutes() : _i(j['minutes']),
         holdPaise: _i(j['holdPaise']),
         canCancel: j['canCancel'] == true,
         cancelRule: _s(j['cancelRule']) ?? '',

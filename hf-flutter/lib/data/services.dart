@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 
 import '../demo/state.dart';
 import 'api_client.dart';
+import 'call_flags.dart'; // [HF-CALL-MODES-E2]
 import 'auth/clerk_client.dart';
 import 'intro_store.dart';
 import 'models/me.dart';
@@ -19,6 +20,7 @@ import 'repos/favourites_repo.dart';
 import 'repos/me_repo.dart';
 import 'repos/merch_repo.dart'; // [HF-MERCH-APP-1]
 import 'repos/payouts_repo.dart';
+import 'repos/queue_repo.dart'; // [HF-CALL-MODES-E2]
 import 'repos/reels_repo.dart';
 import 'repos/search_repo.dart';
 import 'repos/wallet_repo.dart';
@@ -56,6 +58,7 @@ class Services {
   late final YoutubeSignIn youtubeSignIn = GoogleYoutubeSignIn(); // [HF-WIRE-14] created on first use
   late final WalletRepo walletRepo = WalletRepo(api); // [HF-WIRE-6]
   late final CallsRepo callsRepo = CallsRepo(api); // [HF-WIRE-7]
+  late final QueueRepo queueRepo = QueueRepo(api); // [HF-CALL-MODES-E2]
   late final PayoutsRepo payoutsRepo = PayoutsRepo(api); // [HF-WIRE-10]
   late final SearchRepo searchRepo = SearchRepo(api); // [HF-WIRE-9]
   late final FavouritesRepo favouritesRepo = FavouritesRepo(api); // [HF-WIRE-9]
@@ -248,6 +251,7 @@ class Services {
         final saved = await configRepo.cached();
         if (saved != null) {
           bookingApprovalEnabled = saved.bookingApprovalEnabled;
+          CallFlags.apply(saved); // [HF-CALL-MODES-E2]
           updateStatus = saved.updateStatusFor(await installedBuild());
         }
       } catch (_) {}
@@ -255,6 +259,7 @@ class Services {
         final cfg = await configRepo.fetch();
         updateStatus = cfg.updateStatusFor(await installedBuild());
         bookingApprovalEnabled = cfg.bookingApprovalEnabled;
+        CallFlags.apply(cfg); // [HF-CALL-MODES-E2]
       } catch (_) {
         // keep what the saved config said; with none saved this stays "none" / false
       }

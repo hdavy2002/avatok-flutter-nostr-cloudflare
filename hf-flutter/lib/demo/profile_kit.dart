@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../data/call_flags.dart';
+import '../data/models/queue.dart';
 import '../ui/net_image.dart';
 import 'data.dart';
 import 'desi.dart';
@@ -178,35 +180,98 @@ class ProfileBio extends StatelessWidget {
 }
 
 /// Pink Call now (online) or the given notify button (offline), orange Book, and a line underneath.
+/// [HF-CALL-MODES-E2] With call modes on and a [callState] from the server the buttons follow the table in spec 2.1
+/// (Call now / Join the queue / Book a time / Notify me); without it the classic online/offline pair is shown.
 class ProfileActions extends StatelessWidget {
-  const ProfileActions({super.key, required this.online, required this.first, required this.onCall, required this.onBook, required this.notify});
+  const ProfileActions({
+    super.key,
+    required this.online,
+    required this.first,
+    required this.onCall,
+    required this.onBook,
+    required this.notify,
+    this.callState,
+    this.queueWaiting = 0,
+    this.onQueue,
+  });
   final bool online;
   final String first;
   final VoidCallback onCall;
   final VoidCallback onBook;
   final Widget notify;
+  final HostCallState? callState;
+  final int queueWaiting;
+  final VoidCallback? onQueue;
+
+  Widget get _callPill => _Pill(
+        label: 'Call now',
+        icon: Icons.call_rounded,
+        gradient: const LinearGradient(colors: [Color(0xFFD81B72), Color(0xFFF0408F)]),
+        ink: C.white,
+        glow: const Color(0xCCD81B72),
+        onTap: onCall,
+      );
+
+  Widget get _queuePill => _Pill(
+        label: 'Join the queue',
+        icon: Icons.groups_rounded,
+        gradient: const LinearGradient(colors: [Color(0xFF4A1747), Color(0xFF6B2468)]),
+        ink: C.white,
+        onTap: onQueue ?? onCall,
+      );
+
+  Widget _bookPill(String label) => _Pill(label: label, gradient: const LinearGradient(colors: [Color(0xFFF59E0B), Color(0xFFEA6A12)]), ink: const Color(0xFF3B1600), onTap: onBook);
 
   @override
-  Widget build(BuildContext context) => Column(children: [
-        Row(children: [
-          Expanded(
-            flex: 3,
-            child: online
-                ? _Pill(
-                    label: 'Call now',
-                    icon: Icons.call_rounded,
-                    gradient: const LinearGradient(colors: [Color(0xFFD81B72), Color(0xFFF0408F)]),
-                    ink: C.white,
-                    glow: const Color(0xCCD81B72),
-                    onTap: onCall,
-                  )
-                : notify,
-          ),
+  Widget build(BuildContext context) {
+    final cs = CallFlags.modes ? callState : null;
+    if (cs == null) return _classic();
+    final queueOn = CallFlags.queue && onQueue != null;
+    final Widget main;
+    var showBook = true;
+    final String note;
+    switch (cs) {
+      case HostCallState.available:
+        main = _callPill;
+        note = 'Rings $first right away · you pay per minute from your wallet';
+      case HostCallState.onCall:
+        main = queueOn ? _queuePill : notify;
+        final w = queueWaiting > 0 ? '$queueWaiting waiting. ' : '';
+        note = queueOn
+            ? '$first is on a call. ${w}Join the queue and we WhatsApp you just before we call, or book a time.'
+            : '$first is on a call right now. Book a time, or we will WhatsApp you when she is free.';
+      case HostCallState.connecting:
+        main = queueOn ? _queuePill : _callPill;
+        note = queueOn ? '$first is about to take a call. Join the queue to keep your place.' : 'Rings $first right away · you pay per minute from your wallet';
+      case HostCallState.queueOnly:
+        main = queueOn ? _queuePill : notify;
+        note = '$first has people waiting. Join the queue to keep your place.';
+      case HostCallState.appointments:
+        main = notify;
+        note = '$first is available by appointment. Book a time that suits you.';
+      case HostCallState.offline:
+        main = notify;
+        showBook = false;
+        note = "$first is offline right now. We'll tell you the moment she is back.";
+    }
+    return Column(children: [
+      Row(children: [
+        Expanded(flex: 3, child: main),
+        if (showBook) ...[
           const SizedBox(width: 10),
-          Expanded(
-            flex: 2,
-            child: _Pill(label: 'Book', gradient: const LinearGradient(colors: [Color(0xFFF59E0B), Color(0xFFEA6A12)]), ink: const Color(0xFF3B1600), onTap: onBook),
-          ),
+          Expanded(flex: 2, child: _bookPill('Book a time')),
+        ],
+      ]),
+      const SizedBox(height: 8),
+      Text(note, key: const ValueKey('profile-actions-note'), textAlign: TextAlign.center, style: t(14, color: C.muted, w: FontWeight.w700)),
+    ]);
+  }
+
+  Widget _classic() => Column(children: [
+        Row(children: [
+          Expanded(flex: 3, child: online ? _callPill : notify),
+          const SizedBox(width: 10),
+          Expanded(flex: 2, child: _bookPill('Book')),
         ]),
         const SizedBox(height: 8),
         Text(
@@ -241,10 +306,13 @@ class _Pill extends StatelessWidget {
               customBorder: const StadiumBorder(),
               onTap: onTap,
               child: Center(
-                child: Row(mainAxisSize: MainAxisSize.min, children: [
-                  if (icon != null) ...[Icon(icon, color: ink, size: 20), const SizedBox(width: 8)],
-                  Text(label, style: t(18, color: ink, w: FontWeight.w900)),
-                ]),
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: Row(mainAxisSize: MainAxisSize.min, children: [
+                    if (icon != null) ...[Icon(icon, color: ink, size: 20), const SizedBox(width: 8)],
+                    Text(label, style: t(18, color: ink, w: FontWeight.w900)),
+                  ]),
+                ),
               ),
             ),
           ),

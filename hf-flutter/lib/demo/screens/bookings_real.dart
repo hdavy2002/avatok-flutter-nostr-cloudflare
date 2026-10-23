@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../data/api_exception.dart';
+import '../../data/call_flags.dart'; // [HF-CALL-MODES-E2]
 import '../../data/demo_mode.dart';
 import '../../data/models/booking.dart';
 import '../../data/repos/bookings_repo.dart';
@@ -31,6 +32,13 @@ abstract final class BookingsBridge {
 
   static bool get real => forceReal || !DemoMode.on;
 }
+
+/// [HF-CALL-MODES-E2] The quote under the booking: what is held now and how the rest is charged.
+String bookingHoldNotice(int holdMinutes) =>
+    'We hold the cost of the first $holdMinutes minutes now. After that your wallet is charged every 5 minutes while you talk, and only for the minutes you actually talk. Keep enough in your wallet for the whole call.';
+
+/// [HF-CALL-MODES-E2] "45 min" or, with booking lengths on, "1 h" / "2 h".
+String _minsText(int m) => CallFlags.bookingLengths ? lengthLabel(m) : '$m min';
 
 /// 10:00 on [day] in India (UTC+05:30, no daylight saving) as an instant.
 DateTime istToInstant(String day, String hhmm) {
@@ -84,12 +92,42 @@ class _RealBookScreenState extends State<RealBookScreen> {
   late DateTime? _day = parseDay(widget.day);
   late String? _slot = widget.slot;
   String? _topic; // [HF-BOOK-APPROVE] the influencer's topic slug the fan picked
+  int? _length; // [HF-CALL-MODES-E2] the length the fan picked (minutes); only used while booking lengths are on
+  bool _lengthBusy = false;
 
   @override
   void initState() {
     super.initState();
     unawaited(_load());
     unawaited(_loadName());
+  }
+
+  /// [HF-CALL-MODES-E2] Lengths are offered only while the flag is on AND the server sent a list.
+  bool _showLengths(HostSlots s) => CallFlags.bookingLengths && s.durationsMinutes.isNotEmpty;
+
+  int _lengthOf(HostSlots s) => _length ?? s.minutes;
+
+  /// Picks a length and asks the server for the starts that fit it. The page keeps showing the old times until the new ones arrive.
+  Future<void> _pickLength(int minutes) async {
+    if (_lengthBusy || minutes == _length) return;
+    Telemetry.event('hf_app_booking_length_picked', {'minutes': minutes});
+    setState(() {
+      _length = minutes;
+      _lengthBusy = true;
+    });
+    try {
+      final s = await _repo.slots(widget.id, durationMinutes: minutes);
+      if (!mounted) return;
+      setState(() {
+        _state = AsyncData(s);
+        final d = _day;
+        if (d != null && _slot != null && !s.slotsOn(isoDay(d)).contains(_slot)) _slot = null;
+      });
+    } catch (e) {
+      if (mounted) toast(context, e is ApiException ? e.userMessage : ApiException.genericText);
+    } finally {
+      if (mounted) setState(() => _lengthBusy = false);
+    }
   }
 
   Future<void> _load() async {
@@ -146,10 +184,11 @@ class _RealBookScreenState extends State<RealBookScreen> {
   Widget _nextButton(HostSlots s) {
     final needTopic = s.topics.isNotEmpty;
     final topicOk = !needTopic || _topic != null;
-    final topicQuery = needTopic && _topic != null ? '&topic=${Uri.encodeQueryComponent(_topic!)}' : '';
+    final topicQuery = (needTopic && _topic != null ? '&topic=${Uri.encodeQueryComponent(_topic!)}' : '') +
+        (_showLengths(s) ? '&len=${_lengthOf(s)}' : ''); // [HF-CALL-MODES-E2]
     return BookBottomButton(
       label: _slot == null ? 'PICK A TIME' : (topicOk ? 'NEXT' : 'PICK A TOPIC'),
-      enabled: _day != null && _slot != null && topicOk,
+      enabled: _day != null && _slot != null && topicOk && !_lengthBusy,
       onTap: () => context.push('/book/${widget.id}/confirm?day=${isoDay(_day!)}&slot=${Uri.encodeComponent(_slot!)}$topicQuery'
           // [HF-BOOK-APPROVE-QA-6] hand the name/photo on, so the confirm screen never shows placeholders while it reloads them
           '${_name.isEmpty ? '' : '&name=${Uri.encodeQueryComponent(_name)}'}${_avatar == null ? '' : '&avatar=${Uri.encodeQueryComponent(_avatar!)}'}'),
@@ -163,10 +202,28 @@ class _RealBookScreenState extends State<RealBookScreen> {
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
       children: [
-        BookPerson(who: _who, name: _name.isEmpty ? 'Book a call' : _name, rate: '₹${s.ratePerMin}/min', chip: '${s.minutes} minute call'),
+        BookPerson(
+            who: _who,
+            name: _name.isEmpty ? 'Book a call' : _name,
+            rate: '₹${s.ratePerMin}/min',
+            chip: _showLengths(s) ? '${lengthLabel(_lengthOf(s))} call' : '${s.minutes} minute call'),
         const SizedBox(height: 14),
+        // [HF-CALL-MODES-E2] Step 1 (only while booking lengths are on): how long. The other steps move down by one.
+        if (_showLengths(s)) ...[
+          BookStep(
+            n: '1',
+            title: 'How long?',
+            sub: 'We hold the cost of the first ${s.holdMinutes ?? 15} minutes. After that you are charged every 5 minutes while you talk.',
+            tone: BookTone.lav,
+            child: Wrap(spacing: 8, runSpacing: 8, children: [
+              for (final m in s.durationsMinutes)
+                BookSlotPill(key: ValueKey('length-$m'), label: lengthLabel(m), on: m == _lengthOf(s), onTap: () => unawaited(_pickLength(m))),
+            ]),
+          ),
+          const SizedBox(height: 14),
+        ],
         BookStep(
-          n: '1',
+          n: _showLengths(s) ? '2' : '1',
           title: 'Pick a date',
           sub: s.openDays.isEmpty ? '$first has not opened any times yet.' : 'Yellow dates are open.',
           tone: BookTone.gold,
@@ -187,7 +244,7 @@ class _RealBookScreenState extends State<RealBookScreen> {
         ),
         const SizedBox(height: 14),
         BookStep(
-          n: '2',
+          n: _showLengths(s) ? '3' : '2',
           title: 'Pick a time',
           sub: _day == null ? 'Choose a date first.' : '${dayLabel(_day!)} · India time',
           tone: BookTone.tea,
@@ -199,7 +256,7 @@ class _RealBookScreenState extends State<RealBookScreen> {
         if (s.topics.isNotEmpty) ...[
           const SizedBox(height: 14),
           BookStep(
-            n: '3',
+            n: _showLengths(s) ? '4' : '3',
             title: 'What is the call about?',
             sub: 'Pick one.',
             tone: BookTone.lav,
@@ -227,7 +284,10 @@ extension on Influencer {
 // ======================================================================================== fan: confirm
 
 class RealBookConfirmScreen extends StatefulWidget {
-  const RealBookConfirmScreen({super.key, required this.id, required this.day, required this.slot, this.topic, this.name, this.avatar, this.repo, this.walletRepo, this.reelsRepo});
+  const RealBookConfirmScreen({super.key, required this.id, required this.day, required this.slot, this.topic, this.length, this.name, this.avatar, this.repo, this.walletRepo, this.reelsRepo});
+
+  /// [HF-CALL-MODES-E2] The length the fan picked (minutes), when booking lengths are on.
+  final int? length;
 
   final String id;
   final String day; // YYYY-MM-DD
@@ -277,7 +337,7 @@ class _RealBookConfirmScreenState extends State<RealBookConfirmScreen> {
   Future<void> _load() async {
     setState(() => _state = const AsyncLoading());
     try {
-      await for (final s in _repo.watchSlots(widget.id, from: widget.day, to: widget.day)) {
+      await for (final s in _repo.watchSlots(widget.id, from: widget.day, to: widget.day, durationMinutes: _lengthOn ? widget.length : null)) {
         if (mounted) setState(() => _state = AsyncData(s)); // [HF-APP-CACHE-1]
       }
     } catch (e) {
@@ -316,6 +376,16 @@ class _RealBookConfirmScreenState extends State<RealBookConfirmScreen> {
 
   String get _approver => _name.isEmpty ? 'the influencer' : _name.split(' ').first;
 
+  /// [HF-CALL-MODES-E2] Booking lengths are on and a length was picked.
+  bool get _lengthOn => CallFlags.bookingLengths && widget.length != null;
+
+  int _minutesOf(HostSlots s) => _lengthOn ? widget.length! : s.minutes;
+
+  /// Minutes the hold covers: the server's number, else the first 15 (or the whole call if shorter).
+  int _holdMinutesOf(HostSlots s) => _lengthOn ? (s.holdMinutes ?? (widget.length! < 15 ? widget.length! : 15)) : s.minutes;
+
+  String _callText(HostSlots s) => _lengthOn ? '${lengthLabel(_minutesOf(s))} call' : '${s.minutes} minute call';
+
   String? _topicLabel(HostSlots s) {
     for (final x in s.topics) {
       if (x.slug == widget.topic) return x.label;
@@ -338,7 +408,7 @@ class _RealBookConfirmScreenState extends State<RealBookConfirmScreen> {
     }
     setState(() => _busy = true);
     try {
-      final r = await _repo.bookRequest(widget.id, istToInstant(widget.day, widget.slot), note: _note.text, topic: widget.topic);
+      final r = await _repo.bookRequest(widget.id, istToInstant(widget.day, widget.slot), note: _note.text, topic: widget.topic, durationMinutes: _lengthOn ? widget.length : null);
       Telemetry.event('hf_app_booking_requested', {
         'mode': r.needsApproval ? 'manual' : (s.approvalMode == 'auto' ? 'auto' : 'direct'),
         'has_topic': widget.topic != null,
@@ -404,7 +474,7 @@ class _RealBookConfirmScreenState extends State<RealBookConfirmScreen> {
                     BookTicket(
                       who: callPerson(widget.id, _name).copyWithAvatar(_avatar),
                       name: _name.isEmpty ? 'Influencer' : _name,
-                      sub: [('${s.minutes} minute call'), if (_topicLabel(s) != null) _topicLabel(s)!].join(' · '),
+                      sub: [_callText(s), if (_topicLabel(s) != null) _topicLabel(s)!].join(' · '),
                       date: dayLabel(d),
                       time: slotLabel(widget.slot),
                     ),
@@ -413,10 +483,10 @@ class _RealBookConfirmScreenState extends State<RealBookConfirmScreen> {
                       lines: [
                         ('Rate', '₹${s.ratePerMin}/min'),
                         if (_topicLabel(s) != null) ('About', _topicLabel(s)!),
-                        ('Held now (${s.minutes} min)', paiseText(s.holdPaise)),
+                        ('Held now (${_holdMinutesOf(s)} min)', paiseText(s.holdPaise)),
                         ('Your wallet', _walletPaise != null ? paiseText(_walletPaise!) : (_walletLoading ? 'Checking…' : (_walletFailed ? "Couldn't load" : '—'))),
                       ],
-                      strong: {'Held now (${s.minutes} min)'},
+                      strong: {'Held now (${_holdMinutesOf(s)} min)'},
                     ),
                     // [HF-BOOK-APPROVE] Manual approval: say plainly what happens if nobody accepts.
                     if (s.needsApproval) ...[
@@ -427,10 +497,24 @@ class _RealBookConfirmScreenState extends State<RealBookConfirmScreen> {
                       ),
                     ],
                     const SizedBox(height: 14),
+                    // [HF-CALL-MODES-E2] The quote, in words: a 15-minute hold, then 5-minute charging for talk time only.
+                    if (_lengthOn) ...[
+                      BookNotice(
+                        key: const ValueKey('hold-notice'),
+                        icon: Icons.info_outline_rounded,
+                        teal: true,
+                        text: bookingHoldNotice(_holdMinutesOf(s)),
+                      ),
+                      const SizedBox(height: 14),
+                    ],
                     BookNoteField(controller: _note, label: 'A note for ${_name.isEmpty ? 'the influencer' : firstName} (optional)'),
                     const SizedBox(height: 12),
                     Text(
-                      s.needsApproval
+                      _lengthOn
+                          ? (s.needsApproval
+                              ? 'Once accepted, at ${slotLabel(widget.slot)} India time we ring $firstName first, then your phone. You pay only for the minutes you talk. You can cancel any time while you wait, and free until 1 hour before the call.'
+                              : 'At ${slotLabel(widget.slot)} India time we ring $firstName first, then your phone. You pay only for the minutes you talk. You can cancel free until 1 hour before. You get a WhatsApp reminder an hour before.')
+                          : s.needsApproval
                           ? 'Once accepted, at ${slotLabel(widget.slot)} India time we ring $firstName first, then your phone. You pay only for the minutes you talk; the rest of the hold comes back. You can cancel any time while you wait, and free until 1 hour before the call.'
                           : 'At ${slotLabel(widget.slot)} India time we ring $firstName first, then your phone. You pay only for the minutes you talk; the rest of the hold comes back. You can cancel free until 1 hour before. You get a WhatsApp reminder an hour before.',
                       style: t(15, color: C.muted, w: FontWeight.w700, h: 1.45),
@@ -672,7 +756,7 @@ class _RealBookingsScreenState extends State<RealBookingsScreen> {
       time: slotLabel(b.time),
       topic: b.topic?.label,
       topicKey: ValueKey('topic-${b.id}'),
-      held: '${paiseText(b.holdPaise)} ${b.status == 'cancelled' ? 'refunded' : 'held'} · ${b.minutes} min',
+      held: '${paiseText(b.holdPaise)} ${b.status == 'cancelled' ? 'refunded' : 'held'} · ${_minsText(b.minutes)}',
       kind: rich ? _kind(b) : BookingKind.confirmed,
       chip: rich ? KeyedSubtree(key: ValueKey('chip-${b.id}'), child: BookingStatusChip(_kind(b))) : null,
       extra: [
@@ -729,7 +813,7 @@ class AppBookingTile extends StatelessWidget {
       index: b.id.hashCode.abs() % 4,
       time: label,
       fan: b.fanHandle ?? 'A fan',
-      line: '${showDay ? '${dayLabel(b.date)} · ' : ''}${b.minutes} min'
+      line: '${showDay ? '${dayLabel(b.date)} · ' : ''}${_minsText(b.minutes)}'
           '${b.topic == null ? '' : ' · ${b.topic!.label}'}'
           '${showStarts && !b.isPast ? ' · ${startsInLabel(b.startAt, DateTime.now())}' : ''}'
           '${b.note.isEmpty ? '' : ' · ${b.note}'}',
@@ -751,7 +835,7 @@ Future<bool> showHostBookingSheet(BuildContext context, AppBooking b, BookingsRe
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('${dayLabel(b.date)} · ${b.minutes} minute call', style: t(15, w: FontWeight.w700)),
+          Text('${dayLabel(b.date)} · ${CallFlags.bookingLengths ? '${lengthLabel(b.minutes)} call' : '${b.minutes} minute call'}', style: t(15, w: FontWeight.w700)),
           if (b.topic != null) ...[
             const SizedBox(height: 8),
             Text('Topic: ${b.topic!.label}', style: t(15, color: C.tan, w: FontWeight.w700)),
@@ -1097,7 +1181,7 @@ class _RealInfluencerBookingsScreenState extends State<RealInfluencerBookingsScr
     final card = WaitingCard(
       key: ValueKey('pending-${b.id}'),
       fan: b.fanHandle ?? 'A fan',
-      when: '${dayLabel(b.date)} · ${slotLabel(b.time)} · ${b.minutes} min',
+      when: '${dayLabel(b.date)} · ${slotLabel(b.time)} · ${_minsText(b.minutes)}',
       topic: b.topic?.label,
       note: b.note,
       held: '${paiseText(b.holdPaise)} held for this call',

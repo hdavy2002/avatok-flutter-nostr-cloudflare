@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../data/api_exception.dart';
+import '../../data/call_flags.dart'; // [HF-CALL-MODES-E2]
 import '../../data/demo_mode.dart';
 import '../../data/models/channel.dart';
 import '../../data/presence_store.dart';
@@ -13,6 +14,7 @@ import '../../data/telemetry.dart';
 import '../data.dart';
 import '../my_reels_section.dart';
 import '../presence_bridge.dart';
+import '../queue_kit.dart'; // [HF-CALL-MODES-E2]
 import '../state.dart';
 import '../theme.dart';
 import '../widgets.dart';
@@ -257,6 +259,11 @@ class InfluencerShell extends StatelessWidget {
       await PresenceStore.instance.load(); // first read failed: tapping tries again
       return;
     }
+    // [HF-CALL-MODES-E2] Three-way Online / Bookings only / Offline instead of the two-way flip.
+    if (CallFlags.modes && PresenceBridge.real) {
+      await showHostModeSheet(context, surface: 'footer');
+      return;
+    }
     if (myBusy || mySaving) return;
     final from = myOnline;
     await togglePresence(context);
@@ -361,6 +368,7 @@ class InfluencerShell extends StatelessWidget {
   /// Offline = white with an indigo outline, On a call = soft marigold and not tappable.
   Widget _presencePill(BuildContext context) {
     final waiting = PresenceBridge.real && !PresenceStore.instance.loaded;
+    final modes = CallFlags.modes && PresenceBridge.real; // [HF-CALL-MODES-E2]
     final busy = myBusy;
     final online = myOnline;
     final IconData icon;
@@ -379,21 +387,28 @@ class InfluencerShell extends StatelessWidget {
     } else if (busy) {
       icon = Icons.call_rounded;
       label = 'On a call';
-      spoken = 'You are on a call. The online and offline button is paused';
+      spoken = modes ? 'You are on a call. Tap to change your mode' : 'You are on a call. The online and offline button is paused';
       fill = C.marigold;
+      ink = C.deep;
+      edge = C.deep;
+    } else if (modes && PresenceStore.instance.mode == 'bookings_only') {
+      icon = Icons.event_available_rounded;
+      label = 'Bookings only';
+      spoken = 'You take bookings only. Tap to change your mode';
+      fill = C.butter;
       ink = C.deep;
       edge = C.deep;
     } else if (online) {
       icon = Icons.wifi_tethering_rounded;
       label = 'Online';
-      spoken = 'You are online. Tap to go offline';
+      spoken = modes ? 'You are online. Tap to change your mode' : 'You are online. Tap to go offline';
       fill = C.onlineBg;
       ink = C.onlineInk;
       edge = C.onlineInk;
     } else {
       icon = Icons.nightlight_round;
       label = 'Offline';
-      spoken = 'You are offline. Tap to go online';
+      spoken = modes ? 'You are offline. Tap to change your mode' : 'You are offline. Tap to go online';
       fill = C.white;
       ink = C.maroon;
       edge = C.maroon;
@@ -401,7 +416,7 @@ class InfluencerShell extends StatelessWidget {
     return Center(
       child: Semantics(
         button: true,
-        enabled: !busy,
+        enabled: !busy || modes,
         label: spoken,
         excludeSemantics: true,
         child: Padding(
@@ -412,7 +427,7 @@ class InfluencerShell extends StatelessWidget {
             shape: StadiumBorder(side: BorderSide(color: edge, width: 2.5)),
             child: InkWell(
               customBorder: const StadiumBorder(),
-              onTap: busy ? null : () => unawaited(_togglePresence(context)),
+              onTap: (busy && !modes) ? null : () => unawaited(_togglePresence(context)),
               child: ConstrainedBox(
                 constraints: const BoxConstraints(minHeight: 50, minWidth: 48),
                 child: Padding(
@@ -459,8 +474,16 @@ class InfluencerHomeScreen extends StatelessWidget {
               children: [
                 InfHero(name: demo.name.isEmpty ? 'Influencer' : demo.name),
                 const SizedBox(height: 12),
-                PresenceCard(online: myOnline, onTap: () => StatefulNavigationShell.of(context).goBranch(2)),
+                // [HF-CALL-MODES-E2] with call modes on, the card shows her mode and opens the three-way choice
+                if (CallFlags.modes && PresenceBridge.real && PresenceStore.instance.loaded)
+                  HostModeCard(store: PresenceStore.instance)
+                else
+                  PresenceCard(online: myOnline, onTap: () => StatefulNavigationShell.of(context).goBranch(2)),
                 const SizedBox(height: 12),
+                if (CallFlags.queue && PresenceBridge.real && PresenceStore.instance.loaded && PresenceStore.instance.mode == 'online') ...[
+                  const HostQueueCard(),
+                  const SizedBox(height: 12),
+                ],
                 // [HF-WIRE-12] Dummy numbers: shown in the demo build only (no "today" summary route exists yet).
                 if (DemoMode.on) ...[
                   InfTodayTiles(calls: '6', minutes: '41', earned: inr(41 * demo.myRate * 0.6 - 41 * 2, paise: false)),

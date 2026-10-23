@@ -53,6 +53,12 @@ abstract final class Telemetry {
     'hf_app_booking_accept_tapped',
     'hf_app_booking_decline_tapped',
     'hf_app_booking_mode_changed',
+    'hf_app_mode_changed', // [HF-CALL-MODES-E2] {from, to, surface}
+    'hf_app_queue_joined', // [HF-CALL-MODES-E2] {position}
+    'hf_app_queue_left', // [HF-CALL-MODES-E2] {wait_s, reason}
+    'hf_app_queue_failed', // [HF-CALL-MODES-E2] {reason}
+    'hf_app_booking_length_picked', // [HF-CALL-MODES-E2] {minutes}
+    'hf_app_call_topup_tapped', // [HF-CALL-MODES-E2] {surface}
     'hf_reel_action',
     'hf_reel_bookmark_sync',
     'hf_intro_decision',

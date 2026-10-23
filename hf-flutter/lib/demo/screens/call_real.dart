@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../core/brand.dart';
 import '../../data/api_exception.dart';
+import '../../data/call_flags.dart'; // [HF-CALL-MODES-E2]
 import '../../data/demo_mode.dart';
 import '../../data/models/call.dart';
 import '../../data/repos/calls_repo.dart';
@@ -13,6 +14,7 @@ import '../../data/services.dart';
 import '../../data/telemetry.dart';
 import '../data.dart';
 import '../notify_me_button.dart';
+import '../queue_kit.dart'; // [HF-CALL-MODES-E2]
 import '../theme.dart';
 import '../widgets.dart';
 import '../call_kit.dart';
@@ -90,6 +92,9 @@ Influencer callPerson(String? slug, String? name) => Influencer(
       tones: const [C.marigold, C.rani],
     );
 
+/// [HF-CALL-MODES-E2] The banner while the wallet cannot fund the next 5 minutes (chunk billing).
+const String kShortBannerText = 'Your wallet is running out — top up now and keep talking';
+
 /// Whole rupees without paise, otherwise two decimals.
 String paiseText(int paise) => paise % 100 == 0 ? inr(paise / 100, paise: false) : inr(paise / 100);
 
@@ -97,6 +102,10 @@ String _rateText(double r) => r == r.roundToDouble() ? '₹${r.round()}' : '₹$
 
 String _clock(int seconds) {
   final s = seconds < 0 ? 0 : seconds;
+  // [HF-CALL-MODES-E2] Calls can now last 5 hours: show h:mm:ss from the first hour (only with chunk billing on).
+  if (CallFlags.chunkBilling && s >= 3600) {
+    return '${s ~/ 3600}:${((s % 3600) ~/ 60).toString().padLeft(2, '0')}:${(s % 60).toString().padLeft(2, '0')}';
+  }
   return '${(s ~/ 60).toString().padLeft(2, '0')}:${(s % 60).toString().padLeft(2, '0')}';
 }
 
@@ -250,6 +259,22 @@ class _RealCallConfirmSheetState extends State<RealCallConfirmSheet> {
 
   List<Widget> _problemBody(CallProblemInfo p) {
     if (p.problem == CallProblem.hostUnavailable) {
+      // [HF-CALL-MODES-E2] The server said why (on a call, appointments only, offline...): offer what fits that reason.
+      final why = p.reason;
+      if (CallFlags.modes && why != null) {
+        return [
+          CallStateActions(
+            slug: widget.who.id,
+            first: _first,
+            state: why,
+            canQueue: p.canQueue,
+            canBook: p.canBook,
+            waiting: p.queueWaiting,
+            notifyRepo: widget.notifyRepo,
+            onDone: () => Navigator.of(context).pop(),
+          ),
+        ];
+      }
       return [
         Text('$_first is offline or busy right now. No charge.', textAlign: TextAlign.center, style: t(16, color: C.deep, w: FontWeight.w700, h: 1.4)),
         const SizedBox(height: 16),
@@ -345,7 +370,9 @@ class _RealCallScreenState extends State<RealCallScreen> with SingleTickerProvid
     _poll?.cancel();
     final s = _s;
     if (_disposed || _problem != null || (s != null && s.isEnded)) return;
-    _poll = Timer(s?.phase == CallPhase.connected ? widget.slowPoll : widget.fastPoll, () => unawaited(_pollNow()));
+    // [HF-CALL-MODES-E2] While the wallet is short, ask faster so a top-up shows at once.
+    final slow = s?.phase == CallPhase.connected && !(CallFlags.chunkBilling && s?.short == true);
+    _poll = Timer(slow ? widget.slowPoll : widget.fastPoll, () => unawaited(_pollNow()));
   }
 
   Future<void> _pollNow() async {
@@ -374,6 +401,7 @@ class _RealCallScreenState extends State<RealCallScreen> with SingleTickerProvid
   void _apply(CallStatus s) {
     if (_seen.add(s.status)) Telemetry.event('hf_app_call_status', {'status': s.status});
     if (s.isEnded) {
+      CallReturn.callId = null; // [HF-CALL-MODES-E2]
       _pulse.stop();
       _tick?.cancel();
       if (!_endedReported) {
@@ -459,6 +487,31 @@ class _RealCallScreenState extends State<RealCallScreen> with SingleTickerProvid
     if (mounted) _leave(context);
   }
 
+  /// [HF-CALL-MODES-E2] TOP UP while talking: opens the normal top-up and the payment result brings her back to this call.
+  void _topUp() {
+    Telemetry.event('hf_app_call_topup_tapped', {'surface': 'call', 'short': _s?.short == true});
+    if (CallFlags.chunkBilling) CallReturn.callId = widget.callId;
+    unawaited(context.push('/topup').then((_) {
+      if (mounted) unawaited(_pollNow());
+    }));
+  }
+
+  /// [HF-CALL-MODES-E2] Shown while the server says the wallet cannot fund the next chunk.
+  Widget _shortBanner() => Semantics(
+        liveRegion: true,
+        child: Container(
+          key: const ValueKey('call-short-banner'),
+          width: double.infinity,
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+          decoration: BoxDecoration(gradient: const LinearGradient(colors: [C.marigold, C.lemon]), borderRadius: BorderRadius.circular(18)),
+          child: Column(children: [
+            Text(kShortBannerText, textAlign: TextAlign.center, style: t(16, color: C.deep, w: FontWeight.w800, h: 1.3)),
+            const SizedBox(height: 10),
+            CallPill(label: 'TOP UP', kind: CallPillKind.plum, height: 52, icon: Icons.add_rounded, onTap: _topUp),
+          ]),
+        ),
+      );
+
   int get _talkSeconds {
     final at = _s?.connectedAt;
     if (at == null) return 0;
@@ -507,7 +560,10 @@ class _RealCallScreenState extends State<RealCallScreen> with SingleTickerProvid
 
   Widget _body(BuildContext context, CallStatus? s, Influencer w, String first, String title, bool ended) {
     final connected = s?.phase == CallPhase.connected;
-    final remainingMs = (s?.capAt == null) ? null : s!.capAt! - _nowMs();
+    // [HF-CALL-MODES-E2] With chunk billing the end moves: follow capAt (else fundedUntil) from the latest poll.
+    final endAt = s?.capAt ?? (CallFlags.chunkBilling ? s?.fundedUntil : null);
+    final remainingMs = endAt == null ? null : endAt - _nowMs();
+    final short = CallFlags.chunkBilling && connected && s?.short == true;
     final warn = connected && remainingMs != null && remainingMs > 0 && remainingMs <= 60000;
     if (warn && !_warnReported) {
       _warnReported = true;
@@ -546,12 +602,21 @@ class _RealCallScreenState extends State<RealCallScreen> with SingleTickerProvid
             spentSub: '${(_talkSeconds / 60).ceil()} min',
             wallet: s.walletPaise == null ? null : paiseText(s.walletPaise!),
           ),
-          if (warn) ...[
+          if (short) ...[
+            const SizedBox(height: 14),
+            _shortBanner(),
+          ] else if (warn) ...[
             const SizedBox(height: 14),
             Semantics(
               liveRegion: true,
               child: GestureDetector(
-                onTap: () => context.push('/topup'),
+                onTap: () {
+                  if (CallFlags.chunkBilling) {
+                    _topUp();
+                  } else {
+                    unawaited(context.push('/topup'));
+                  }
+                },
                 child: Container(
                   width: double.infinity,
                   padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
@@ -559,7 +624,7 @@ class _RealCallScreenState extends State<RealCallScreen> with SingleTickerProvid
                     gradient: const LinearGradient(colors: [Color(0xFFF59E0B), Color(0xFFFBBF24)]),
                     borderRadius: BorderRadius.circular(18),
                   ),
-                  child: Text('About 1 minute left. Top up to keep talking.', textAlign: TextAlign.center, style: t(16, color: C.deep, w: FontWeight.w800, h: 1.3)),
+                  child: Text(CallFlags.chunkBilling ? 'About 1 minute left on this call.' : 'About 1 minute left. Top up to keep talking.', textAlign: TextAlign.center, style: t(16, color: C.deep, w: FontWeight.w800, h: 1.3)),
                 ),
               ),
             ),

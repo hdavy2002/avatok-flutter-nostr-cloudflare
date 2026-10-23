@@ -109,6 +109,9 @@ class CallStatus {
     this.firstMinuteDrop = false,
     this.firstMinuteChargePaise,
     this.firstMinuteMessage,
+    this.fundedUntil,
+    this.short = false,
+    this.source,
   });
 
   factory CallStatus.fromJson(Map<String, dynamic> j) {
@@ -136,8 +139,20 @@ class CallStatus {
       firstMinuteDrop: j['firstMinuteDrop'] == true,
       firstMinuteChargePaise: _intOrNull(j['firstMinuteChargePaise']),
       firstMinuteMessage: _str(j['firstMinuteMessage']),
+      fundedUntil: _intOrNull(j['fundedUntil']),
+      short: j['short'] == true,
+      source: _str(j['source']),
     );
   }
+
+  /// [HF-CALL-MODES-E2] Chunk billing: epoch ms until which the call is paid for. Null on old servers.
+  final int? fundedUntil;
+
+  /// [HF-CALL-MODES-E2] The wallet cannot fund the next 5 minutes (the caller has heard the whisper). A top-up clears it.
+  final bool short;
+
+  /// [HF-CALL-MODES-E2] `instant`, `queue` or `booking`. Null on old servers.
+  final String? source;
 
   final String id;
 
@@ -159,7 +174,7 @@ class CallStatus {
   /// What is left in the wallet for this call while connected (null otherwise).
   final int? walletPaise;
 
-  /// Epoch ms when the balance runs out (null if unknown).
+  /// Epoch ms when the balance runs out (null if unknown). With chunk billing it MOVES as chunks are funded or topped up.
   final int? capAt;
   final int lowBalanceSeconds;
   final bool canReview;

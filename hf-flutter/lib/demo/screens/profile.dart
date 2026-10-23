@@ -147,6 +147,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       onCall: () => startCall(context, who),
                       onBook: () => context.push('/book/${who.id}'),
                       notify: NotifyMeButton(slug: who.id, firstName: first, big: true),
+                      callState: who.callState, // [HF-CALL-MODES-E2] ignored unless call modes are on
+                      queueWaiting: who.queueWaiting,
+                      onQueue: () => requireAccount(context, () => unawaited(context.push('/queue/${Uri.encodeComponent(who.id)}?n=${who.queueWaiting}')), reason: 'to join the queue'),
                     ),
                     if (prof != null) MerchProfileRow(slug: who.id), // [HF-MERCH-APP-1] hidden while hfMerchEnabled is off
                     const SizedBox(height: 14),

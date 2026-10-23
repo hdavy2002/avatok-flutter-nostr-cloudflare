@@ -1,6 +1,8 @@
 /// Reels models (HF-WIRE-4). Match worker/src/routes/hf_reels.ts. Parsing is tolerant: a missing key is a safe default.
 library;
 
+import 'queue.dart';
+
 int _int(Object? v) => v is num ? v.toInt() : int.tryParse('${v ?? ''}') ?? 0;
 String? _str(Object? v) {
   final s = v?.toString();
@@ -18,6 +20,9 @@ class ReelHost {
     this.followers = 0,
     this.presence = 'offline',
     this.platforms = const [],
+    this.callState,
+    this.queueOpen = false,
+    this.queueWaiting = 0,
   });
 
   final String slug;
@@ -37,6 +42,11 @@ class ReelHost {
 
   bool get online => presence == 'online' || presence == 'busy';
 
+  /// [HF-CALL-MODES-E2] What a fan sees (spec 2.1). Null when the server does not send it: callers then use [presence] as before.
+  final HostCallState? callState;
+  final bool queueOpen;
+  final int queueWaiting;
+
   /// Whole rupees a minute for the pill.
   int get rateRupees => (ratePaise / 100).round();
 
@@ -48,6 +58,9 @@ class ReelHost {
         ratePaise: _int(j['ratePaise']),
         followers: _int(j['followers']),
         presence: _str(j['presence']) ?? 'offline',
+        callState: hostCallStateOf(j['callState']),
+        queueOpen: j['queue'] is Map && (j['queue'] as Map)['open'] == true,
+        queueWaiting: j['queue'] is Map ? _int((j['queue'] as Map)['waiting']) : 0,
         platforms: [
           for (final p in (j['platforms'] is List ? j['platforms'] as List : const []))
             if (p is String && p.isNotEmpty) p,
@@ -208,6 +221,9 @@ class PublicProfile {
       ratePaise: _int(j['pricePaisePerMin']),
       followers: _int(j['followers']),
       presence: status,
+      callState: hostCallStateOf(j['callState']),
+      queueOpen: j['queue'] is Map && (j['queue'] as Map)['open'] == true,
+      queueWaiting: j['queue'] is Map ? _int((j['queue'] as Map)['waiting']) : 0,
     );
     final reels = [
       for (final e in (j['reels'] is List ? j['reels'] as List : const []))

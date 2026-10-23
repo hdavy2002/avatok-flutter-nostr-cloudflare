@@ -10,6 +10,7 @@ import '../state.dart';
 import '../theme.dart';
 import '../widgets.dart';
 import '../call_kit.dart';
+import '../queue_kit.dart'; // [HF-CALL-MODES-E2]
 import 'call_real.dart';
 import 'signup_sheet.dart';
 
@@ -174,6 +175,11 @@ class _DemoSignUpSheetState extends State<_DemoSignUpSheet> {
 /// Call now: sign-up if needed → confirm sheet → call screen. Low balance sends to Top up.
 Future<void> startCall(BuildContext context, Influencer who) {
   return requireAccount(context, () {
+    // [HF-CALL-MODES-E2] With call modes on and a callState from the server, the sheet offers what fits (queue / book / notify).
+    if (CallsBridge.real && needsCallStateSheet(who)) {
+      showCallStateSheet(context, who);
+      return;
+    }
     showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
