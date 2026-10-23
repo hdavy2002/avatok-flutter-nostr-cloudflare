@@ -625,7 +625,8 @@ describe("[HF-CALL-MODES-D] booking lengths, the 15-minute hold and booked start
     // what the call engine is told (Lane C contract): hold funded up front, the booking end is the hard stop, chunked past the hold
     expect(inits).toHaveLength(1);
     expect(inits[0]).toMatchObject({ callId: row.call_id, bookingId: id, hardEndsAt: row.ends_at, maxMinutes: 120 });
-    expect(inits[0].tokens).toMatchObject({ booked: true, maxSeconds: 900, chunked: true, fundedSec: 900, source: "booking" });
+    expect(inits[0]).toMatchObject({ source: "booking" });
+    expect(inits[0].tokens).toMatchObject({ booked: true, maxSeconds: 7200, chunk: true, chunkSec: 300, capSec: 7200, fundedSec: 900 }); // [HF-CALL-MODES-INT] Lane C contract
   });
 
   it("S2. same in 'busy-looking' states: a different call holding the line still refuses, so two calls never share her", async () => {
@@ -647,7 +648,7 @@ describe("[HF-CALL-MODES-D] booking lengths, the 15-minute hold and booked start
     const id = await bookAndGoToStart({ durationMinutes: 60 });
     expect((await call(req("POST", `/api/hf/bookings/${id}/start`, FAN, {}))).status).toBe(201);
     expect(inits[0].tokens.maxSeconds).toBe(900);
-    expect(inits[0].tokens.chunked).toBeUndefined();
+    expect(inits[0].tokens.chunk).toBeUndefined();
   });
 
   it("S4. flag OFF regression: a 10-minute booking starts exactly as before (online host -> busy, maxSeconds 600, no chunk fields)", async () => {
@@ -661,7 +662,7 @@ describe("[HF-CALL-MODES-D] booking lengths, the 15-minute hold and booked start
     expect(raw().prepare("SELECT presence,presence_call_id FROM hf_hosts WHERE uid=?1").get(HOST)).toMatchObject({ presence: "busy", presence_call_id: row.call_id });
     expect(inits[0]).toMatchObject({ hardEndsAt: row.ends_at, maxMinutes: 10 });
     expect(inits[0].tokens).toMatchObject({ booked: true, maxSeconds: 600 });
-    expect(inits[0].tokens.chunked).toBeUndefined();
+    expect(inits[0].tokens.chunk).toBeUndefined();
   });
 
   it("S5. a legacy 10-minute booking (hold_seconds NULL) still starts after the lengths flag is turned on", async () => {
@@ -672,6 +673,6 @@ describe("[HF-CALL-MODES-D] booking lengths, the 15-minute hold and booked start
     flags({ hfBookingLengthsEnabled: true, hfCallChunkBillingEnabled: true });
     expect((await call(req("POST", `/api/hf/bookings/${id}/start`, FAN, {}))).status).toBe(201);
     expect(inits[0].tokens).toMatchObject({ maxSeconds: 600 });
-    expect(inits[0].tokens.chunked).toBeUndefined();     // hold already covers the whole booking: nothing to chunk
+    expect(inits[0].tokens.chunk).toBeUndefined();     // hold already covers the whole booking: nothing to chunk
   });
 });

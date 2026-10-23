@@ -9,7 +9,8 @@ import { readConfig } from "./config";
 import { rateLimit } from "../money";
 import { isClosing } from "../lib/hf_exit";
 import { verifiedWhatsAppNumber } from "../lib/whatsapp_notify";
-import { hasLaneAccess, isBlockedEitherWay, releaseHost, callsConfigured } from "../lib/hf_calls_store";
+import { hasLaneAccess, isBlockedEitherWay, releaseHost, claimHost, callsConfigured } from "../lib/hf_calls_store";
+import { chunkSettingsFrom } from "../lib/hf_call_start"; // [HF-CALL-MODES-INT]
 import { readHfTokenConfig, readHfStdPlan } from "../lib/hf_token_config";
 import { creatorCallSplit, creatorSnapshotFor, isCreatorCategory, validCreatorRate } from "../lib/hf_creator_pricing";
 import { priceOf, snapshotFor, stdSnapshotFor, splitHostByKind } from "../lib/hf_token_calls";
@@ -746,7 +747,7 @@ export async function startBookingCore(env: Env, row: BookingRow, actorUid: stri
   // Funded seconds = the hold. Without the chunk engine nothing beyond the hold can be funded, so the call ends there (never bills unreserved time).
   const maxSeconds = holdSeconds;
   if (!(ratePaise > 0) || !Number.isInteger(maxSeconds)) return err(409, "pricing_snapshot_invalid");
-  if (!(await claimLineForBooking(env, row.host_uid, callId))) return err(409, "host_unavailable");
+  if (!(await claimHost(env, row.host_uid, callId, { booked: true }))) return err(409, "host_unavailable"); // [HF-CALL-MODES-INT] booked claims in any mode and never flips an Offline / Bookings-only host Online
   const conferenceName = `hf_${callId.replace(/-/g, "")}`;
   try {
     await env.DB_META.batch([
@@ -770,8 +771,10 @@ export async function startBookingCore(env: Env, row: BookingRow, actorUid: stri
     await releaseHost(env, row.host_uid, callId).catch(() => undefined);
     return err(409, "booking_start_conflict");
   }
+  // [HF-CALL-MODES-INT] how the call began (+ what chunk 0 paid for). Best effort on its own statement: the columns come from the 2026-10-24 ALTER migration.
+  await env.DB_META.prepare("UPDATE hf_calls SET source='booking', funded_seconds=?1, chunks=?2 WHERE id=?3").bind(chunked ? holdSeconds : null, chunked ? 1 : null, callId).run().catch(() => undefined);
   try {
-    const response = await initBookedCall(env, buildBookedInit({ row, callId, ratePaise, priceSnapshot, holdSeconds, chunked }));
+    const response = await initBookedCall(env, buildBookedInit({ row, callId, ratePaise, priceSnapshot, holdSeconds, chunk: chunked ? chunkSettingsFrom(cfg) : null }));
     if (!response.ok) return err(502, "call_start_pending");
     return json({ callId, status: "ringing_host" }, 201, { "cache-control": "private, no-store" });
   } catch {
@@ -779,39 +782,32 @@ export async function startBookingCore(env: Env, row: BookingRow, actorUid: stri
   }
 }
 
-/**
- * [HF-CALL-MODES-D] Claim the host's line for a BOOKED call in any mode (spec 2.1: "booked claims in any mode"). Same effect as Lane A's
- * claimHost(..., booked) and kept local so booked start does not depend on Lane A landing: takes presence_call_id when the line is free, and
- * flips legacy presence online->busy exactly as today; an Offline / Bookings-only host keeps her presence (she did not choose to be online).
- * The coordinator may swap this body for claimHost(env, hostUid, callId, { booked: true }) once Lane A ships it.
- */
-export async function claimLineForBooking(env: Env, hostUid: string, callId: string): Promise<boolean> {
-  const r = await env.DB_META.prepare(
-    "UPDATE hf_hosts SET presence=CASE WHEN presence='online' THEN 'busy' ELSE presence END, presence_at=?1, presence_call_id=?3 " +
-    "WHERE uid=?2 AND status='live' AND presence_call_id IS NULL AND presence<>'busy'",
-  ).bind(Date.now(), hostUid, callId).run();
-  return Number(r.meta?.changes ?? 0) === 1;
-}
-
 export interface BookedInitInput {
   row: BookingRow; callId: string; ratePaise: number; priceSnapshot: Record<string, any>;
   /** Seconds funded up front = the booking hold. */
   holdSeconds: number;
-  /** Chunk engine on: Lane C's DO keeps funding 5-minute chunks past the hold, up to hardEndsAt. */
-  chunked: boolean;
+  /** Chunk engine on (and the hold shorter than the booking): Lane C's DO keeps funding chunks past the hold, up to the booking end. Settings from chunkSettingsFrom(). */
+  chunk: { sec: number; capSec: number } | null;
 }
-/** Pure: the body POSTed to HfCallDO /init for a booked call. ASSUMES Lane C's init contract: tokens.chunked, tokens.fundedSec, tokens.source, top-level hardEndsAt. */
+/**
+ * Pure: the body POSTed to HfCallDO /init for a booked call. [HF-CALL-MODES-INT] Lane C's contract (do/hf_call.ts init): tokens.chunk:true + chunkSec + capSec
+ * + fundedSec (the hold, chunk 0 is already in the ledger so the DO continues at chunk 1); the booking end is the hard stop (hardEndsAt). With the chunk
+ * engine off nothing past the hold can be funded, so the call is capped at the hold exactly as before.
+ */
 export function buildBookedInit(i: BookedInitInput): Record<string, unknown> {
-  const { row, callId, ratePaise, priceSnapshot, holdSeconds, chunked } = i;
+  const { row, callId, ratePaise, priceSnapshot, holdSeconds, chunk } = i;
+  const bookingSec = Math.max(0, Math.trunc(Number(row.duration_min) * 60));
+  const capSec = chunk ? Math.max(holdSeconds, Math.min(chunk.capSec, bookingSec)) : holdSeconds;
   return {
     callId, bookingId: row.id, bookedEndsAt: Number(row.ends_at), hardEndsAt: Number(row.ends_at), callerUid: row.customer_uid, hostUid: row.host_uid, rateRupees: ratePaise / 100,
     reservedRupees: 0, testReservedRupees: 0, fundsRupees: 0, maxMinutes: Number(row.duration_min),
     limitReason: "time_limit",
+    ...(chunk ? { source: "booking" } : {}),
     tokens: {
       ratePaise, callCostPaisePerMin: Number(priceSnapshot.callCostPaisePerMin),
-      hostShareBps: Number(priceSnapshot.hostShareBps), maxSeconds: holdSeconds, booked: true,
+      hostShareBps: Number(priceSnapshot.hostShareBps), maxSeconds: capSec, booked: true,
       std: priceSnapshot.std ?? null, creator: priceSnapshot.creator ?? null,
-      ...(chunked ? { chunked: true, fundedSec: holdSeconds, source: "booking" } : {}),
+      ...(chunk ? { chunk: true, chunkSec: chunk.sec, capSec, fundedSec: holdSeconds } : {}),
     },
   };
 }

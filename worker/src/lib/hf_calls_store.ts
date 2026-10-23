@@ -82,6 +82,12 @@ const LIVE_CALL_STATUSES = "'ringing_host','ringing_caller','connected','ending'
 export async function claimHost(env: Env, hostUid: string, callId: string, opts: { booked?: boolean } = {}): Promise<boolean> {
   const f = await lineFlags(env);
   if (!f.modes) {
+    if (opts.booked) { // [HF-CALL-MODES-INT] a BOOKED call rings in any presence (HF-REEL-16): take the line; an online host shows busy as today, an offline one stays offline
+      const rb = await env.DB_META.prepare(
+        "UPDATE hf_hosts SET presence=CASE WHEN presence='online' THEN 'busy' ELSE presence END, presence_at=?1, presence_call_id=?3 WHERE uid=?2 AND status='live' AND presence_call_id IS NULL AND presence<>'busy'",
+      ).bind(Date.now(), hostUid, callId).run();
+      return Number(rb.meta?.changes ?? 0) === 1;
+    }
     const r = await env.DB_META.prepare("UPDATE hf_hosts SET presence='busy', presence_at=?1, presence_call_id=?3 WHERE uid=?2 AND presence='online' AND status='live'").bind(Date.now(), hostUid, callId).run();
     return Number(r.meta?.changes ?? 0) === 1;
   }
