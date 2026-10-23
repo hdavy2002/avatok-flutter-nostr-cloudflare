@@ -11339,5 +11339,22 @@
         "note": "A withdrawal was requested to a UPI ID (bank-only accounts get upi_required)."
       }
     ]
+  },
+  "HF-MERCH-CORE-1": {
+    "description": "[HF-MERCH-CORE-1 2026-10-23] Influencer merch shop, worker side: influencers upload art, place it on a Printrove T-shirt, set a markup; admin reviews the product; fans pay from the rupee wallet or by Cashfree; admin approves each paid order before it goes to Printrove; tracking for admin, influencer and fan; the influencer earns 60% of the markup, withdrawable 7 days after delivery. Routes /api/hf/merch/* and /api/admin/merch/*, Cashfree refund on reject, safety-net cron tick. Dark behind hfMerchEnabled + hfMerchCheckoutEnabled; needs the 2026-10-23 hf-merch alters and tables migrations. Spec: Specs/SPEC-2026-10-23-HF-MERCH.md.",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [
+      "hfMerchEnabled",
+      "hfMerchCheckoutEnabled"
+    ],
+    "success": [
+      {
+        "event": "merch_order_paid",
+        "property": "total_paise",
+        "exists": true,
+        "note": "A fan paid for an influencer merch order."
+      }
+    ]
   }
 }

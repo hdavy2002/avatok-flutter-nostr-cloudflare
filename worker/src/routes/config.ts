@@ -2449,8 +2449,17 @@ const DEFAULTS: PlatformConfig = {
   // [AFF-COMM-LIFECYCLE-1] §7 launch values. Nothing here is live while
   // avaAffiliateEnabled is false — the whole lifecycle is dark.
   affiliateQualifyDays: 30,
-  hfMerchEnabled: false, hfMerchCheckoutEnabled: false, hfMerchAutoApprove: false, hfMerchProductReview: true, // [HF-MERCH-CORE-1]
-  hfMerchPlatformShareBps: 4000, hfMerchMinMarkupRupees: 10, hfMerchBaseBufferRupees: 0, hfMerchCashfreeFeeBps: 350, hfMerchGstBps: 1800, hfMerchHoldDays: 7,
+  // [HF-MERCH-CORE-1] influencer merch shop: dark until the owner switches it on.
+  hfMerchEnabled: false,
+  hfMerchCheckoutEnabled: false,
+  hfMerchAutoApprove: false,
+  hfMerchProductReview: true,
+  hfMerchPlatformShareBps: 4000,
+  hfMerchMinMarkupRupees: 10,
+  hfMerchBaseBufferRupees: 0,
+  hfMerchCashfreeFeeBps: 350,
+  hfMerchGstBps: 1800,
+  hfMerchHoldDays: 7,
   affiliateMinQualifyingTopupCoins: 100,
   affiliateDailyEarnCapCoins: 2000,
   affiliateMonthlyEarnCapCoins: 20000,

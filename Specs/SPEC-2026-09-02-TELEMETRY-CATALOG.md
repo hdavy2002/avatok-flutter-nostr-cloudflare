@@ -1378,3 +1378,25 @@ Events go to PostHog (EU, project 139917) only in builds made with `--dart-defin
 |---|---|---|
 | `hf_admin_action` | `kind: ticket/report/incident/member/money`, `verb: note/resolve/reopen/reviewed/actioned/closed/open/reply_email/reply_whatsapp`, `target_id`, `status?`, `channel?`, `audited: boolean`, `result?` (only when a reply failed: `no_email`, `no_whatsapp`, `email_failed`, `whatsapp_<reason>`) | An admin acted on a support question, a report, a call incident, a member or a money alert from the desk. Every success also writes an `hf_admin_actions` row and an `admin_audit` row (`audited:false` = the audit insert failed and a `$exception` with `step: admin_audit` was logged). |
 | worker `$exception` | `extra.area: 'hf_admin_desk_actions'` (`step: wallet` / `admin_audit`) | Any failure in the member page, wallets list or desk actions. |
+## Hello Fraands influencer merch shop (`[HF-MERCH-CORE-1]`, worker, 2026-10-23)
+
+Every server event carries the user's email (`trackUser`). Failures go through `trackException` with `extra.area: 'hf_merch'` and a `route`.
+
+| Event | Props | Note |
+|---|---|---|
+| worker `merch_art_uploaded` | `design_id`, `w`, `h`, `bytes`, `moderation: 'ok' \| 'unscanned'` | Influencer art accepted. |
+| worker `merch_art_blocked` | `label`, `nsfw`, `violence` | Art refused by the image classifier. |
+| worker `merch_studio_step` | `step: 'print_file'`, `design_id`, `w`, `h` | Print file saved. The web and app send the other steps. |
+| worker `merch_product_created` | `product_id`, `catalog_id`, `kind`, `side`, `markup_rupees`, `status`, `moderation`, `sizes`, `colours` | Influencer made a product. |
+| worker `merch_product_reviewed` | `product_id`, `seller_uid`, `decision: approve/reject/hide`, `has_note` | Admin review. User is the admin. |
+| worker `merch_checkout_started` | `order_id`, `product_id`, `seller_uid`, `method`, `total_paise`, `qty` | Order row created. |
+| worker `merch_order_paid` | `order_id`, `seller_uid`, `method`, `total_paise`, `qty`, `influencer_paise`, `platform_paise` | Payment confirmed (wallet or Cashfree). **Success value:** exists `total_paise` after the first real order. |
+| worker `merch_auto_approve_skipped` | `order_id`, `error` | Auto-approve was on but the order was left for a person (for example `cost_rose`). |
+| worker `merch_order_approved` | `order_id`, `seller_uid`, `buyer_uid`, `auto`, `platform_net_after_paise`, `quote_stale` | Admin (or auto) approval. |
+| worker `merch_cost_rose` | `order_id`, `rise_paise`, `platform_net_after_paise`, `frozen_base_unit_paise`, `live_base_unit_paise` | Approval refused because the print cost went up. |
+| worker `merch_order_rejected` | `order_id`, `seller_uid`, `buyer_uid`, `reason`, `method`, `after_delivery` | Rejected or refunded. |
+| worker `merch_order_shipped` | `order_id`, `seller_uid`, `buyer_uid`, `courier`, `source` | Tracking set by admin. |
+| worker `merch_order_delivered` | `order_id`, `buyer_uid`, `actor`, `earning: credited/duplicate/skipped` | Delivered (partner poll or admin). User is the influencer. |
+| worker `merch_earning_credited` | `order_id`, `earning_paise`, `available_at`, `hold_days` | Delivered order credited to the influencer, once. |
+| worker `merch_problem_reported` | `order_id`, `kind`, `has_photo` | Fan reported a wrong or damaged item. |
+| web/app `merch_strip_viewed` / `merch_product_viewed` / `merch_buy_clicked` / `merch_pay_method_chosen` / `merch_order_opened` | surface props | Sent by the web and app packages, not the worker. |

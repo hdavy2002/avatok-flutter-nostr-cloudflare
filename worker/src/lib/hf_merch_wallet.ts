@@ -1,4 +1,4 @@
-// [HF-MERCH-CORE-1 2026-10-23] Paying for a merch order from the Hello Fraands rupee wallet, and giving it back.
+// [HF-MERCH-CORE-1 2026-10-23] Paying for a merch order from the rupee wallet, and giving it back.
 // Reuses the call-spend path (hf_token_ledger.settleCall with a FIXED rupee value): the same lot walk, the same guards, and an
 // op id derived from the order, so a retry never charges twice. A merch order uses the pseudo call id `merch:<orderId>`.
 // Refund puts the value back into NEW lots of the SAME provenance (real-money value as a purchase lot, test credit as a test lot),

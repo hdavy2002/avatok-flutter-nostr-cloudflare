@@ -175,3 +175,26 @@ Web/app: `merch_strip_viewed`, `merch_product_viewed`, `merch_buy_clicked`, `mer
 `python3 tool/check_design_guard.py --check all` (app), `python3 tool/check_ship_readiness.py --check all`, a `tool/ship_manifest.json`
 entry with success assertions, commits via `scripts/git_safe_commit.py` with explicit paths, one issue id per commit. NO deploys,
 NO prod D1 migration, NO flag writes, NO `gh workflow run`. The coordinator lands branches on `main`.
+
+## 11. As built by HF-MERCH-CORE-1 (contract additions and clarifications; none of these removes or renames anything above)
+
+Added routes (all `{ ok, ... }`):
+- `GET /api/hf/merch/quote?catalogId&colours=a,b&side=front|back&w=<in>&h=<in>[&sizes=S,M]` (influencer) → `{ sizes:[{size, basePaise, baseRupees}] }`. The live base price while the influencer resizes the print.
+- `POST /api/hf/merch/mockup` raw PNG/JPEG/WebP ≤ 3 MB (influencer) → `{ url }`; pass the urls as `mockupUrls[]` (max 6) when creating a product.
+- `POST /api/hf/merch/my-orders/:id/problem-photo` raw image ≤ 5 MB (buyer) → `{ photoKey }`; send it as `photoKey` to `.../problem`.
+- `POST /api/hf/merch/webhook/cashfree`, and the existing `/api/hf/wallet/topup/webhook/cashfree` URL also settles `shp_` ids. The signature is checked on the raw body, then the order is re-read from Cashfree before anything is confirmed.
+- Admin: `POST /api/admin/merch/orders/:id/refund {reason}` (problem order after the printer has it or after delivery), `POST .../refund-done {note?}` (the manual refund was sent), `GET /api/admin/merch/problem-photo?key=`.
+
+Clarifications:
+- Admin merch routes are NOT behind `hfMerchEnabled` (the Settings page is how it is switched on). Influencer, public and fan routes 404 `not_enabled` when off; checkout 403 `checkout_off`.
+- `printFileId` is the art id (`dsn-xxxxxxxx`); `artId` and `printFileId` must be equal. The art row is a `studio_designs` row with `step='merch'` (hidden from Admin > Studio).
+- `placement`: `x`, `y` = inches from the top-left of the shirt's print area; `w`, `h` = the print's size in inches; `zoom` = percent (default 100); `frame` = `none|square|circle|rect`. The print file is rendered at 300 DPI, so its pixel size ≈ `w*300` by `h*300`.
+- `/api/config` exposes `hfMerchEnabled`, `hfMerchCheckoutEnabled`, `hfMerchMinMarkupRupees`, `hfMerchHoldDays`. The other six flags (auto-approve, share, buffer, fee, gst, product review) are server-only and are read through `GET /api/admin/merch/settings`.
+- Public host and product responses add `checkoutEnabled:boolean`; public product adds `side` and `maxQty`. Fan orders add `refundStatus` (`none|refunding|done|pending_manual`), `rejectReason`, `deepLink`. Checkout (Cashfree) also returns `paymentSessionId`. A retry with the same `requestKey` returns the same order (`status:'paid'` once paid).
+- Checkout errors: 400 field errors (`field` set), 402 `insufficient_balance {shortPaise, balancePaise}`, 403 `checkout_off | whatsapp_required | own_product`, 409 `account_closing | wallet_debt | order_closed`, 410 `gone`, 502 `gateway_error`, 503 `payments_unavailable`.
+- Approve: 409 `cost_rose` (with `liveQuote`), 503 `quote_unavailable` (send `{force:true}` to approve on the frozen price; never used by auto-approve). `liveQuote` = `{ quoteAvailable, liveBasePaise, platformNetAfterPaise, costRose, canApprove, risePaise, stale, source }`.
+- Influencer summary earnings are merch earnings only (`kind='merch_earning'` rows in `hf_host_ledger`; the column has no CHECK, so no table rebuild).
+- Platform wallet totals (rupee amounts in paise): `sharePaise` platform share (net of reversals), `cashfeePaise` and `gstPaise` report-only estimates (positive = cost), `printroveOwedPaise` the print partner's amount payable, `refundsPaise` share given back plus any influencer earning the platform absorbed after the hold, `netPaise = sharePaise - cashfeePaise - gstPaise`. Months are IST.
+- Settings PUT accepts only the ten keys of section 2, integers within sane ranges, and writes them in ONE KV write.
+- A fan problem report: `{ kind:'wrong'|'damaged', note (10-1000 chars), photoKey? }`, once per order, ≤ 48 h after delivery; it appears in the admin `problem` tab.
+- Refund on reject: wallet money returns instantly (idempotent op ids); Cashfree uses the refund API with a stable `refund_id`; if that fails the order shows `refund_status='pending_manual'`, the owner is alerted by WhatsApp, and `refund-done` closes it. A cron tick retries stuck refunds. An order that was refunded never earns; a reversal before the 7-day hold removes the earning, after the hold the platform absorbs it.
