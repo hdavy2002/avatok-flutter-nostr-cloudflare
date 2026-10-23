@@ -826,6 +826,18 @@ export interface PlatformConfig {
   // conservative: they can be raised on evidence, but coins paid out on a
   // fraudulent referral cannot be un-paid.
   affiliateQualifyDays: number;              // days from top-up to promotion (launch: 30)
+  // [HF-MERCH-CORE-1 2026-10-23] Influencer merch shop (Specs/SPEC-2026-10-23-HF-MERCH.md section 2). Everything ships dark.
+  // Booleans are NOT in numericKeys; the six Bps/Rupees/Days keys ARE (or `flags.sh set hfMerchHoldDays=7` 400s `bad type`).
+  hfMerchEnabled: boolean;                   // whole feature; off -> every merch route 404 not_enabled
+  hfMerchCheckoutEnabled: boolean;           // fans can pay; off -> checkout 403 checkout_off
+  hfMerchAutoApprove: boolean;               // paid orders skip admin approval (server-only)
+  hfMerchProductReview: boolean;             // new art waits for admin review
+  hfMerchPlatformShareBps: number;           // platform share of the markup (server-only)
+  hfMerchMinMarkupRupees: number;
+  hfMerchBaseBufferRupees: number;           // added to the Printrove cost in the base price (server-only)
+  hfMerchCashfreeFeeBps: number;             // report-only estimate (server-only)
+  hfMerchGstBps: number;                     // report-only estimate (server-only)
+  hfMerchHoldDays: number;                   // days after delivery before the earning is withdrawable
   affiliateMinQualifyingTopupCoins: number;  // dust-farming floor on the SOURCE top-up
   affiliateDailyEarnCapCoins: number;        // per-affiliate promoted coins per UTC day
   affiliateMonthlyEarnCapCoins: number;      // per-affiliate promoted coins per UTC month
@@ -2437,6 +2449,8 @@ const DEFAULTS: PlatformConfig = {
   // [AFF-COMM-LIFECYCLE-1] §7 launch values. Nothing here is live while
   // avaAffiliateEnabled is false — the whole lifecycle is dark.
   affiliateQualifyDays: 30,
+  hfMerchEnabled: false, hfMerchCheckoutEnabled: false, hfMerchAutoApprove: false, hfMerchProductReview: true, // [HF-MERCH-CORE-1]
+  hfMerchPlatformShareBps: 4000, hfMerchMinMarkupRupees: 10, hfMerchBaseBufferRupees: 0, hfMerchCashfreeFeeBps: 350, hfMerchGstBps: 1800, hfMerchHoldDays: 7,
   affiliateMinQualifyingTopupCoins: 100,
   affiliateDailyEarnCapCoins: 2000,
   affiliateMonthlyEarnCapCoins: 20000,
@@ -3147,6 +3161,7 @@ export async function getConfig(env: Env): Promise<Response> {
   for (const k of ["hfStdPlanEnabled", "hfStdTier1PaisePerMin", "hfStdTier2PaisePerMin", "hfStdTier3PaisePerMin", "hfStdTier1EndMin", "hfStdTier2EndMin",
     "hfStdHostPaisePerMin", "hfStdPhoneCostPaisePerMin", "hfTopupGstBps", "hfTopupGstInclusive"]) delete merged[k];
   delete merged.hfPushEnabled; // [HF-APP-4] server-only
+  for (const k of ["hfMerchAutoApprove", "hfMerchPlatformShareBps", "hfMerchBaseBufferRupees", "hfMerchCashfreeFeeBps", "hfMerchGstBps"]) delete merged[k]; // [HF-MERCH-CORE-1] server-only
   delete merged.hfPresenceNudgeEnabled; // [HF-PRESENCE-NUDGE-1] server-only
   delete merged.hfBookingRemindersEnabled; // [HF-APPT-REMIND-1] server-only
   delete merged.hfPhoneOnlySignupEnabled; // [HF-AUTH-WA-1] server-only
@@ -3279,6 +3294,7 @@ export async function putConfig(req: Request, env: Env): Promise<Response> {
     // [AFF-COMM-LIFECYCLE-1 2026-08-05] affiliate qualification window + caps —
     // numeric, must be here or `flags.sh set affiliateQualifyDays=45` 400s `bad type`.
     "affiliateQualifyDays", "affiliateMinQualifyingTopupCoins",
+    "hfMerchPlatformShareBps", "hfMerchMinMarkupRupees", "hfMerchBaseBufferRupees", "hfMerchCashfreeFeeBps", "hfMerchGstBps", "hfMerchHoldDays", // [HF-MERCH-CORE-1]
     "affiliateDailyEarnCapCoins", "affiliateMonthlyEarnCapCoins", "affiliatePerReferredCapCoins",
     // [AVA-CFG-CACHE-1 2026-08-07] Ava V2 numeric keys. The two *Tier keys and
     // avaVoiceStyleDefault are ENUMS-AS-NUMBERS (config.ts has no string type) —
