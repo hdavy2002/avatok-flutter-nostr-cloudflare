@@ -237,6 +237,38 @@ export function planFixedSpend(lots: Lot[], fixedValuePaise: number, billableSec
   };
 }
 
+/**
+ * [HF-CALL-MODES-C] One CHUNK of a call: the money for connected seconds [fromSec, wantToSec]. The value is the difference of the two
+ * cumulative charges (each rounded once), so the chunks of a call add up EXACTLY to chargePaise(price, fundedSeconds) whatever the tiers
+ * are. If the lots cannot pay for all of it the chunk stops at the last whole second they can pay for (partial chunk).
+ * `secondsCovered` is the chunk's own length (end - fromSec), `endSec` the absolute end second.
+ */
+export interface ChunkPlan extends SpendPlan { fromSec: number; endSec: number }
+export function planSpendRange(lots: Lot[], price: Price, fromSec: number, wantToSec: number): ChunkPlan {
+  const from = Math.trunc(Math.max(0, fromSec));
+  const want = Math.trunc(Math.max(from, wantToSec));
+  const base = BigInt(consumedValuePaise(price, from));
+  const valueTo = (to: number): bigint => BigInt(consumedValuePaise(price, to)) - base;
+  let totalCap = 0n;
+  for (const l of lots) totalCap += lotCapPaise(l);
+  let end = want;
+  if (valueTo(want) > totalCap) {
+    let lo = from; // value 0 always fits
+    let hi = want; // does not fit
+    while (hi - lo > 1) {
+      const mid = Math.floor((lo + hi) / 2);
+      if (valueTo(mid) <= totalCap) lo = mid; else hi = mid;
+    }
+    end = lo;
+  }
+  const value = valueTo(end);
+  const { uses } = walk(lots, value);
+  return {
+    uses, totalValuePaise: num(value), totalMicro: uses.reduce((a, u) => a + u.micro, 0),
+    secondsCovered: end - from, shortfall: end < want, fromSec: from, endSec: end,
+  };
+}
+
 /** Whole seconds the lots can pay for at this rate, capped (60 min by default). */
 export function affordableSeconds(lots: Lot[], ratePaise: Price, capSeconds = MAX_CALL_SECONDS): number {
   return planSpend(lots, ratePaise, capSeconds).secondsCovered;

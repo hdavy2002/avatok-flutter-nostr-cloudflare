@@ -11,7 +11,7 @@
 //  - Lots are used OLDEST FIRST and never revalued. Reservations are held INSIDE tokens_left (available = left - reserved).
 //  - Gate rows carry delta_micro 0 (kind decides the meaning); the per-lot rows carry the amounts, so SUMs never double count.
 import type { Env } from "../types";
-import { planSpend, planFixedSpend, microForValue, applyRefund, priceValid, PRICING_GP_V1, PRICING_GP_R1, PRICING_GP_R2, PRICING_CF_R1, MICRO, type Lot, type Price } from "./hf_token_math";
+import { planSpend, planSpendRange, planFixedSpend, microForValue, applyRefund, priceValid, PRICING_GP_V1, PRICING_GP_R1, PRICING_GP_R2, PRICING_CF_R1, MICRO, type Lot, type Price } from "./hf_token_math";
 
 export const resOpId = (callId: string) => `hftres:${callId}`;
 export const relOpId = (callId: string) => `hftrel:${callId}`;
@@ -317,10 +317,12 @@ export function buildReservationStatements(
     now: number;
     nonce: string;
     gatePredicate: (firstParamIndex: number) => { sql: string; values: unknown[] };
+    /** [HF-CALL-MODES-C] gate op id of a later CHUNK of the call (hftres:<callId>:c<n>); default = the call's first reservation hftres:<callId>. */
+    gateOp?: string;
   },
 ): Array<ReturnType<Env["DB_META"]["prepare"]>> {
   const { uid, callId, plan, now, nonce } = input;
-  const gate = resOpId(callId);
+  const gate = input.gateOp ?? resOpId(callId);
   const params: unknown[] = [crypto.randomUUID(), uid, plan.totalValuePaise, callId, gate, nonce, now];
   const guards = plan.uses.map((u) => {
     const a = params.length + 1, b = params.length + 2;
@@ -436,14 +438,28 @@ async function readReservation(env: Env, callId: string): Promise<Reservation | 
   const db = env.DB_META;
   const g = await db.prepare("SELECT uid, note FROM hf_token_ledger WHERE op_id=?1").bind(resOpId(callId)).first<{ uid: string; note: string | null }>();
   if (!g) return null;
+  // [HF-CALL-MODES-C] A call can hold several reservations: the first gate hftres:<callId> and chunk gates hftres:<callId>:c<n> (lot_id NULL,
+  // note "secs:<seconds that chunk covers>"). The per-lot rows are summed BY LOT (a lot can back several chunks) and the seconds are summed over
+  // every gate. With one gate this is exactly the old result (one row per lot, that gate's seconds).
   const rows = (await db.prepare(
-    `SELECT l.lot_id AS lotId, l.delta_micro AS micro, l.rupee_value_paise AS valuePaise
+    `SELECT l.lot_id AS lotId, SUM(l.delta_micro) AS micro, SUM(l.rupee_value_paise) AS valuePaise
        FROM hf_token_ledger l JOIN hf_token_lots t ON t.id = l.lot_id
-      WHERE l.call_id=?1 AND l.kind='reserve' AND l.lot_id IS NOT NULL ORDER BY t.created_at ASC, t.rowid ASC`,
+      WHERE l.call_id=?1 AND l.kind='reserve' AND l.lot_id IS NOT NULL GROUP BY l.lot_id, t.created_at, t.rowid ORDER BY t.created_at ASC, t.rowid ASC`,
   ).bind(callId).all<ReservedLot>()).results ?? [];
-  const m = /secs:(\d+)/.exec(g.note ?? "");
-  return { uid: g.uid, secondsCovered: m ? Number(m[1]) : 0, lots: rows.map((r) => ({ lotId: r.lotId, micro: Number(r.micro), valuePaise: Number(r.valuePaise) })) };
+  const gates = (await db.prepare(
+    "SELECT note FROM hf_token_ledger WHERE call_id=?1 AND kind='reserve' AND lot_id IS NULL AND (op_id=?2 OR op_id LIKE ?3)",
+  ).bind(callId, resOpId(callId), `${resOpId(callId)}:c%`).all<{ note: string | null }>()).results ?? [];
+  let secondsCovered = 0;
+  for (const x of gates) { const m = /^secs:(\d+)/.exec(x.note ?? ""); if (m) secondsCovered += Number(m[1]); }
+  return { uid: g.uid, secondsCovered, lots: rows.map((r) => ({ lotId: r.lotId, micro: Number(r.micro), valuePaise: Number(r.valuePaise) })) };
 }
+
+/** [HF-CALL-MODES-C] gate op of chunk n of a call: chunk 0 IS the call's first reservation (hftres:<callId>), later ones hftres:<callId>:c<n>. */
+export const chunkGateOp = (callId: string, n: number): string => (n <= 0 ? resOpId(callId) : `${resOpId(callId)}:c${Math.trunc(n)}`);
+
+/** SQL guard fragment: this call's reserve rows still add up to exactly `totalMicro` (no chunk landed since the snapshot was read). */
+const reservedUnchangedSql = (callParam: number, totalParam: number) =>
+  `(SELECT COALESCE(SUM(delta_micro),0) FROM hf_token_ledger WHERE call_id=?${callParam} AND kind='reserve' AND lot_id IS NOT NULL)=?${totalParam}`;
 
 /**
  * Hold, oldest lot first, the tokens a call of up to `seconds` needs at `ratePaise` (paise per minute, or a tiered tariff [HF-STD-PLAN-1]). Reserves what the lots can pay
@@ -498,6 +514,90 @@ export async function reserveForCall(env: Env, uid: string, callId: string, rate
   return { ok: false, reason: "conflict" };
 }
 
+// ── [HF-CALL-MODES-C] chunks: money is taken 5 minutes ahead, one reservation per chunk ─────────────────────────────────────────────────
+
+export type ChunkReserveResult =
+  | { ok: true; again: boolean; n: number; fromSec: number; coveredSec: number; endSec: number; paise: number; partial: boolean; fundedSec: number }
+  | { ok: false; reason: "insufficient" | "conflict" | "invalid" | "closed"; fundedSec: number };
+
+/**
+ * Reserve chunk `n` of a call: the money for connected seconds [fromSec, toSec] (value = cumulative(to) - cumulative(from), so tiers stay exact).
+ * Chunk 0 is the call's first reservation (gate hftres:<callId>), chunk n>=1 uses gate hftres:<callId>:c<n> and per-lot rows hftres:<callId>:c<n>:<lot>.
+ * - Idempotent per (call, n): asking again returns what that chunk reserved (a retry or a concurrent twin can never take the money twice).
+ * - PARTIAL allowed: the chunk stops at the last whole second the lots can pay for (partial:true); nothing covered = { ok:false, "insufficient" }.
+ * - The gate always requires that the call has NOT been settled or released (hftset / hftrel): a chunk can never land after the call is over.
+ * `fundedSec` in every answer is the ledger's total (all chunks), the single source of truth for how long the call is paid for.
+ */
+export async function reserveChunk(env: Env, uid: string, callId: string, n: number, price: Price, fromSec: number, toSec: number): Promise<ChunkReserveResult> {
+  const db = env.DB_META;
+  const total = async (): Promise<number> => (await readReservation(env, callId))?.secondsCovered ?? 0;
+  if (!priceValid(price) || !Number.isInteger(n) || n < 0 || !(fromSec >= 0) || !(toSec > fromSec)) return { ok: false, reason: "invalid", fundedSec: await total() };
+  const gate = chunkGateOp(callId, n);
+  const closed = async () => !!(await db.prepare("SELECT 1 AS x FROM hf_token_ledger WHERE op_id IN (?1,?2) LIMIT 1").bind(setOpId(callId), relOpId(callId)).first());
+  const existing = async (): Promise<ChunkReserveResult | null> => {
+    const g = await db.prepare("SELECT note, rupee_value_paise AS v FROM hf_token_ledger WHERE op_id=?1").bind(gate).first<{ note: string | null; v: number }>();
+    if (!g) return null;
+    const m = /^secs:(\d+)/.exec(g.note ?? "");
+    const covered = m ? Number(m[1]) : 0;
+    return { ok: true, again: true, n, fromSec, coveredSec: covered, endSec: fromSec + covered, paise: Number(g.v ?? 0), partial: covered < Math.trunc(toSec - fromSec), fundedSec: await total() };
+  };
+  const prior = await existing();
+  if (prior) return prior;
+  if (await closed()) return { ok: false, reason: "closed", fundedSec: await total() };
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const lots = await availableLots(env, uid);
+    const plan = planSpendRange(lots, price, fromSec, toSec);
+    if (plan.secondsCovered <= 0) return { ok: false, reason: "insufficient", fundedSec: await total() };
+    const now = Date.now(), nonce = crypto.randomUUID();
+    const stmts = buildReservationStatements(env, {
+      uid, callId, now, nonce, gateOp: gate,
+      plan: { uses: plan.uses, totalValuePaise: plan.totalValuePaise, secondsCovered: plan.secondsCovered },
+      gatePredicate: (first) => ({ sql: `NOT EXISTS (SELECT 1 FROM hf_token_ledger WHERE op_id IN (?${first},?${first + 1}))`, values: [setOpId(callId), relOpId(callId)] }),
+    });
+    await db.batch(stmts);
+    const done = await existing();
+    if (done && done.ok) return { ...done, again: false };
+    if (await closed()) return { ok: false, reason: "closed", fundedSec: await total() };
+    // else a lot moved under us (a spend or another reserve): recompute once from fresh lots
+  }
+  return { ok: false, reason: "conflict", fundedSec: await total() };
+}
+
+/**
+ * Safety net: after a call is settled or released, give back any reservation still sitting on a lot for it. By construction none should
+ * exist (a chunk cannot land after settle/release and settle refuses a stale snapshot), so this normally returns 0; the money monitor and
+ * settleAndPost call it so a bug can never leave a wallet's money locked. Per lot, net = reserved - released - spent (micro); idempotent
+ * through op `hftorph:<callId>:<lot>:<net>`. Returns the number of lots put right.
+ */
+export async function releaseOrphanChunks(env: Env, callId: string): Promise<{ lots: number; micro: number }> {
+  const db = env.DB_META;
+  const out = { lots: 0, micro: 0 };
+  const over = await db.prepare("SELECT 1 AS x FROM hf_token_ledger WHERE op_id IN (?1,?2) LIMIT 1").bind(setOpId(callId), relOpId(callId)).first();
+  if (!over) return out; // still in flight: not an orphan
+  const rows = (await db.prepare(
+    `SELECT lot_id AS lotId, uid, SUM(delta_micro) AS net FROM hf_token_ledger
+      WHERE call_id=?1 AND lot_id IS NOT NULL AND kind IN ('reserve','release','spend') GROUP BY lot_id, uid HAVING SUM(delta_micro) > 0`,
+  ).bind(callId).all<{ lotId: string; uid: string; net: number }>()).results ?? [];
+  for (const r of rows) {
+    const net = Math.trunc(Number(r.net));
+    if (!(net > 0)) continue;
+    const op = `hftorph:${callId}:${r.lotId}:${net}`;
+    const now = Date.now(), nonce = crypto.randomUUID();
+    await db.batch([
+      db.prepare(
+        `INSERT OR IGNORE INTO hf_token_ledger (id,uid,kind,lot_id,delta_micro,rupee_value_paise,call_id,purchase_id,op_id,note,created_at)
+         SELECT ?1,?2,'release',?3,?4,0,?5,NULL,?6,?7,?8 WHERE EXISTS (SELECT 1 FROM hf_token_lots WHERE id=?3 AND uid=?2 AND tokens_reserved_micro>=?9)`,
+      ).bind(crypto.randomUUID(), r.uid, r.lotId, -net, callId, op, nonce, now, net),
+      db.prepare("UPDATE hf_token_lots SET tokens_reserved_micro=tokens_reserved_micro-?1 WHERE id=?2 AND uid=?3 AND EXISTS (SELECT 1 FROM hf_token_ledger WHERE op_id=?4 AND note=?5)")
+        .bind(net, r.lotId, r.uid, op, nonce),
+      db.prepare("UPDATE hf_token_ledger SET note=NULL WHERE op_id=?1 AND note=?2").bind(op, nonce),
+    ]);
+    const g = await db.prepare("SELECT 1 AS x FROM hf_token_ledger WHERE op_id=?1").bind(op).first();
+    if (g) { out.lots++; out.micro += net; }
+  }
+  return out;
+}
+
 export async function getReservation(env: Env, callId: string): Promise<{ secondsCovered: number; lots: ReservedLot[] } | null> {
   const r = await readReservation(env, callId);
   return r ? { secondsCovered: r.secondsCovered, lots: r.lots } : null;
@@ -506,32 +606,40 @@ export async function getReservation(env: Env, callId: string): Promise<{ second
 /** Give back everything held for a call that never settled (cancelled, failed). Idempotent; a no-op after settle. */
 export async function release(env: Env, callId: string): Promise<{ released: boolean }> {
   const db = env.DB_META;
-  const r = await readReservation(env, callId);
-  if (!r) return { released: false };
-  const done = await db.prepare("SELECT 1 AS x FROM hf_token_ledger WHERE op_id IN (?1,?2) LIMIT 1").bind(setOpId(callId), relOpId(callId)).first();
-  if (done) return { released: false };
-  const now = Date.now(), nonce = crypto.randomUUID(), gate = relOpId(callId);
-  const stmts = [
-    db.prepare(
-      `INSERT OR IGNORE INTO hf_token_ledger (id, uid, kind, lot_id, delta_micro, rupee_value_paise, call_id, purchase_id, op_id, note, created_at)
-       SELECT ?1,?2,'release',NULL,0,0,?3,NULL,?4,?5,?6 WHERE NOT EXISTS (SELECT 1 FROM hf_token_ledger WHERE op_id=?7)`,
-    ).bind(crypto.randomUUID(), r.uid, callId, gate, nonce, now, setOpId(callId)),
-  ];
-  for (const x of r.lots) {
-    stmts.push(
-      db.prepare("UPDATE hf_token_lots SET tokens_reserved_micro = MAX(0, tokens_reserved_micro - ?1) WHERE id=?2 AND status='active' AND EXISTS (SELECT 1 FROM hf_token_ledger WHERE op_id=?3 AND note=?4)")
-        .bind(x.micro, x.lotId, gate, nonce),
+  // [HF-CALL-MODES-C] up to 3 tries: a chunk that landed between the snapshot and the gate makes the gate refuse (the gate also requires that the
+  // call's reserve rows still add up to the snapshot), and the next try releases that chunk too. Flag off: one gate, the first try always applies.
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const r = await readReservation(env, callId);
+    if (!r) return { released: false };
+    const done = await db.prepare("SELECT 1 AS x FROM hf_token_ledger WHERE op_id IN (?1,?2) LIMIT 1").bind(setOpId(callId), relOpId(callId)).first();
+    if (done) return { released: false };
+    const now = Date.now(), nonce = crypto.randomUUID(), gate = relOpId(callId);
+    const heldTotal = r.lots.reduce((t, x) => t + x.micro, 0);
+    const stmts = [
       db.prepare(
         `INSERT OR IGNORE INTO hf_token_ledger (id, uid, kind, lot_id, delta_micro, rupee_value_paise, call_id, purchase_id, op_id, note, created_at)
-         SELECT ?1,?2,'release',?3,?4,0,?5,NULL,?6,NULL,?7 WHERE EXISTS (SELECT 1 FROM hf_token_ledger WHERE op_id=?8 AND note=?9)`,
-      ).bind(crypto.randomUUID(), r.uid, x.lotId, -x.micro, callId, sub(gate, x.lotId), now, gate, nonce),
-    );
+         SELECT ?1,?2,'release',NULL,0,0,?3,NULL,?4,?5,?6 WHERE NOT EXISTS (SELECT 1 FROM hf_token_ledger WHERE op_id=?7) AND ${reservedUnchangedSql(3, 8)}`,
+      ).bind(crypto.randomUUID(), r.uid, callId, gate, nonce, now, setOpId(callId), heldTotal),
+    ];
+    for (const x of r.lots) {
+      stmts.push(
+        db.prepare("UPDATE hf_token_lots SET tokens_reserved_micro = MAX(0, tokens_reserved_micro - ?1) WHERE id=?2 AND status='active' AND EXISTS (SELECT 1 FROM hf_token_ledger WHERE op_id=?3 AND note=?4)")
+          .bind(x.micro, x.lotId, gate, nonce),
+        db.prepare(
+          `INSERT OR IGNORE INTO hf_token_ledger (id, uid, kind, lot_id, delta_micro, rupee_value_paise, call_id, purchase_id, op_id, note, created_at)
+           SELECT ?1,?2,'release',?3,?4,0,?5,NULL,?6,NULL,?7 WHERE EXISTS (SELECT 1 FROM hf_token_ledger WHERE op_id=?8 AND note=?9)`,
+        ).bind(crypto.randomUUID(), r.uid, x.lotId, -x.micro, callId, sub(gate, x.lotId), now, gate, nonce),
+      );
+    }
+    await db.batch(stmts);
+    const g = await db.prepare("SELECT note FROM hf_token_ledger WHERE op_id=?1").bind(gate).first<{ note: string | null }>();
+    if (g?.note === nonce) {
+      await db.prepare("UPDATE hf_token_ledger SET note=NULL WHERE op_id=?1").bind(gate).run();
+      return { released: true };
+    }
+    if (g) return { released: false }; // another release already won
   }
-  await db.batch(stmts);
-  const g = await db.prepare("SELECT note FROM hf_token_ledger WHERE op_id=?1").bind(gate).first<{ note: string | null }>();
-  const applied = g?.note === nonce;
-  if (applied) await db.prepare("UPDATE hf_token_ledger SET note=NULL WHERE op_id=?1").bind(gate).run();
-  return { released: applied };
+  return { released: false };
 }
 
 export interface SettleLotUse { lotId: string; kind: LotKind; valuePaisePerToken: number; micro: number; valuePaise: number }
@@ -572,12 +680,17 @@ export async function settleCall(
   if (done) return done;
   if (await db.prepare("SELECT 1 AS x FROM hf_token_ledger WHERE op_id=?1").bind(relOpId(callId)).first()) return { ok: false, reason: "released" };
   const gate = setOpId(callId);
-  for (let attempt = 0; attempt < 2; attempt++) {
+  // [HF-CALL-MODES-C] 3 tries (was 2): the gate below also refuses when a chunk landed after the snapshot was read; the next try sees it.
+  for (let attempt = 0; attempt < 3; attempt++) {
     const rsv = await readReservation(env, callId);
     if (options.reservedLotsOnly && (!rsv || rsv.uid !== uid || rsv.secondsCovered < Math.trunc(billableSeconds))) {
       return { ok: false, reason: "conflict" };
     }
-    const held = new Map((rsv?.lots ?? []).map((x) => [x.lotId, x.micro]));
+    // readReservation now returns ONE entry per lot (the sum over every chunk). Before that a lot backing two reservations would have been
+    // overwritten here and the smaller number released, leaving reserved tokens stuck on the lot. Summing keeps that impossible.
+    const held = new Map<string, number>();
+    for (const x of rsv?.lots ?? []) held.set(x.lotId, (held.get(x.lotId) ?? 0) + x.micro);
+    const heldTotal = [...held.values()].reduce((t, x) => t + x, 0);
     const all = (await getLots(env, uid)).filter((l) => !options.onlyKind || l.kind === options.onlyKind);
     // Ordinary calls may use newly available lots when a hold was short. A booked call must
     // settle only from the lots reserved when it was confirmed, even after later top-ups.
@@ -601,10 +714,13 @@ export async function settleCall(
       params.push(l.id, u, r);
       return `(SELECT COUNT(*) FROM hf_token_lots WHERE id=?${id} AND uid=?2 AND status='active' AND tokens_left_micro >= ?${id + 1} AND tokens_reserved_micro >= ?${id + 2} AND tokens_left_micro - ?${id + 1} >= tokens_reserved_micro - ?${id + 2})=1`;
     });
+    // [HF-CALL-MODES-C] the call's reserve rows must still add up to the snapshot we planned from (a chunk landing meanwhile fails the gate, we re-plan)
+    params.push(heldTotal);
+    guards.push(reservedUnchangedSql(4, params.length));
     const stmts = [
       db.prepare(
         `INSERT OR IGNORE INTO hf_token_ledger (id, uid, kind, lot_id, delta_micro, rupee_value_paise, call_id, purchase_id, op_id, note, created_at)
-         SELECT ?1,?2,'spend',NULL,0,?3,?4,NULL,?5,?6,?7 ${guards.length ? `WHERE ${guards.join(" AND ")}` : ""}`,
+         SELECT ?1,?2,'spend',NULL,0,?3,?4,NULL,?5,?6,?7 WHERE ${guards.join(" AND ")}`,
       ).bind(...params),
     ];
     for (const l of touched) {
