@@ -52,6 +52,7 @@ class _SectionTab {
 class _ProfileScreenState extends State<ProfileScreen> {
   AsyncState<PublicProfile> _ps = const AsyncLoading();
   ChannelShop? _shop;
+  bool _shopEmpty = false; // the shop is on and loaded, but has no products
   bool _viewed = false;
 
   final ScrollController _scroll = ScrollController();
@@ -104,7 +105,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
       await Services.instance.merchRepo.loadFlags();
       if (!MerchRepo.flags.value.enabled) return;
       final s = await ChannelRepo.instance.shop(widget.id);
-      if (mounted && s.items.isNotEmpty) setState(() => _shop = s);
+      if (!mounted) return;
+      if (s.items.isNotEmpty) {
+        setState(() => _shop = s);
+      } else {
+        setState(() => _shopEmpty = true);
+      }
     } catch (_) {
       // merch is an extra: a failed read just leaves it out
     }
@@ -248,7 +254,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       onShare: onShare,
                     ),
                     if (nav != null) KeyedSubtree(key: _navKey, child: nav),
-                    if (hasMerch) KeyedSubtree(key: _merchKey, child: ChannelMerchSection(shop: shop!, hostSlug: who.id, firstName: first)),
+                    if (hasMerch) KeyedSubtree(key: _merchKey, child: ChannelMerchSection(shop: shop!, hostSlug: who.id, firstName: first))
+                    else if (prof != null && _shopEmpty) ChannelMerchEmpty(firstName: first),
                     if (hasVideos) ...[
                       if (hasMerch) const GpBand(),
                       KeyedSubtree(key: _videosKey, child: ChannelVideosSection(reels: prof!.reels)),
@@ -373,8 +380,7 @@ class _ChannelHero extends StatelessWidget {
         child: ClipRRect(
           borderRadius: const BorderRadius.vertical(bottom: Radius.circular(32)),
           child: Stack(fit: StackFit.expand, children: [
-            profilePhoto(who),
-            if (!hasPhoto) const Center(child: Icon(Icons.person_rounded, size: 150, color: GP.veil)),
+            if (hasPhoto) profilePhoto(who) else Image.asset('assets/channel/no-photo.webp', fit: BoxFit.cover, alignment: Alignment.topCenter, semanticLabel: 'No photo yet'),
             Positioned(
               left: 16,
               top: 16,
@@ -390,6 +396,7 @@ class _ChannelHero extends StatelessWidget {
                 ]),
               ),
             ),
+            if (hasPhoto)
             Positioned(
               left: 16,
               right: 16,

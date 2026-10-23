@@ -139,16 +139,37 @@ class GpChip extends StatelessWidget {
 
 enum GpStickerTone { yellow, pink, blue }
 
-/// A tilted meme sticker (owner copy, decision D10). The painted-sticker art slot has this CSS-style stand-in.
+/// A tilted meme sticker (owner copy, decision D10), drawn by the owner's art in assets/channel/. The exact sticker text is the
+/// semantic label. A text not in [_art] falls back to a plain pill so a new line of copy never shows nothing.
 class GpSticker extends StatelessWidget {
-  const GpSticker(this.text, {super.key, this.tone = GpStickerTone.yellow, this.angle = -0.052});
+  const GpSticker(this.text, {super.key, this.tone = GpStickerTone.yellow, this.angle = 0, this.width = 200});
 
   final String text;
   final GpStickerTone tone;
   final double angle;
+  final double width;
+
+  static const Map<String, String> _art = {
+    'Fan merch, no cap.': 'assets/channel/sticker-no-cap.png',
+    'POV: you found your fav creator': 'assets/channel/sticker-pov.png',
+    'Meter down, baat shuru.': 'assets/channel/sticker-meter.png',
+    'Rent-free in our heads': 'assets/channel/sticker-rent-free.png',
+    "It's giving main character.": 'assets/channel/sticker-main-character.png',
+    'Bag full, dil full.': 'assets/channel/sticker-bag-full.png',
+  };
 
   @override
   Widget build(BuildContext context) {
+    final asset = _art[text];
+    if (asset != null) {
+      return Padding(
+        padding: const EdgeInsets.all(4),
+        child: Transform.rotate(
+          angle: angle,
+          child: Image.asset(asset, width: width, fit: BoxFit.contain, semanticLabel: text),
+        ),
+      );
+    }
     final (Color bg, Color fg) = switch (tone) {
       GpStickerTone.yellow => (GP.yel, GP.ink),
       GpStickerTone.pink => (GP.rani, GP.paper),
@@ -156,18 +177,10 @@ class GpSticker extends StatelessWidget {
     };
     return Padding(
       padding: const EdgeInsets.all(6),
-      child: Transform.rotate(
-        angle: angle,
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
-          decoration: BoxDecoration(
-            color: bg,
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: GP.paper, width: 3),
-            boxShadow: const [BoxShadow(color: GP.shadow, blurRadius: 16, offset: Offset(0, 6))],
-          ),
-          child: Text(text, textAlign: TextAlign.center, style: t(16, color: fg, w: FontWeight.w900, h: 1.15)),
-        ),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+        decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(14), border: Border.all(color: GP.paper, width: 3)),
+        child: Text(text, textAlign: TextAlign.center, style: t(16, color: fg, w: FontWeight.w900, h: 1.15)),
       ),
     );
   }
@@ -307,7 +320,8 @@ class GpBottomBar extends StatelessWidget {
 
 // ------------------------------------------------------------------------------------------------ bands, qty
 
-/// A thin painted divider between sections (never round the hero): truck-art stripes, or the rickshaw chequer when [rick].
+/// The owner's painted truck band between sections: 56 dp tall, repeated sideways, never stretched ([rick] is kept only so old
+/// callers still compile; every band is the same art).
 class GpBand extends StatelessWidget {
   const GpBand({super.key, this.rick = false});
 
@@ -315,38 +329,14 @@ class GpBand extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ExcludeSemantics(child: SizedBox(height: rick ? 28 : 56, width: double.infinity, child: CustomPaint(painter: _BandPainter(rick))));
+    return ExcludeSemantics(
+      child: SizedBox(
+        height: 56,
+        width: double.infinity,
+        child: Image.asset('assets/channel/band-truck.png', height: 56, fit: BoxFit.fitHeight, repeat: ImageRepeat.repeatX, alignment: Alignment.centerLeft),
+      ),
+    );
   }
-}
-
-class _BandPainter extends CustomPainter {
-  _BandPainter(this.rick);
-
-  final bool rick;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final p = Paint();
-    if (rick) {
-      const sq = 14.0;
-      for (var r = 0; r * sq < size.height; r++) {
-        for (var c = 0; c * sq < size.width; c++) {
-          p.color = (r + c).isEven ? GP.ink : GP.yel;
-          canvas.drawRect(Rect.fromLTWH(c * sq, r * sq, sq, sq), p);
-        }
-      }
-      return;
-    }
-    const w = 34.0;
-    const colours = [GP.red, GP.mari, GP.blue, GP.rani];
-    for (var i = 0; i * w < size.width; i++) {
-      p.color = colours[i % colours.length];
-      canvas.drawRect(Rect.fromLTWH(i * w, 0, w, size.height), p);
-    }
-  }
-
-  @override
-  bool shouldRepaint(covariant _BandPainter old) => old.rick != rick;
 }
 
 /// A − 1 + stepper in a white pill.

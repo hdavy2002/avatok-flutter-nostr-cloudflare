@@ -255,6 +255,7 @@ class _MerchProductScreenState extends State<MerchProductScreen> {
           const SizedBox(height: 10),
           Text(merchRupees(unit), style: t(30, color: GP.red, w: FontWeight.w900, h: 1.1)),
           Text('GST + free delivery included', style: t(14, color: GP.muted, w: FontWeight.w700)),
+          const Align(alignment: Alignment.centerLeft, child: GpSticker("It's giving main character.", angle: -0.04)),
           if (colour != null) ...[
             _label('Colour: ${colour.name}'),
             Wrap(spacing: 12, runSpacing: 8, children: [

@@ -117,7 +117,7 @@ class _ChannelMerchSectionState extends State<ChannelMerchSection> {
             children: [TextSpan(text: first.isEmpty ? 'The ' : '${first}’s '), gpPaintedSpan('drop', 32)],
           ),
           sub: 'Printed to order for you. Price includes GST and free delivery across India.',
-          sticker: const GpSticker('Fan merch, no cap.'),
+          sticker: const GpSticker('Fan merch, no cap.', angle: -0.04),
         ),
         const SizedBox(height: 12),
         if (cats.length > 1) ...[
@@ -146,6 +146,28 @@ class _ChannelMerchSectionState extends State<ChannelMerchSection> {
 }
 
 // ================================================================================================ videos
+
+/// Shown in place of the merch section when the shop is on but this influencer has not put anything up yet.
+class ChannelMerchEmpty extends StatelessWidget {
+  const ChannelMerchEmpty({super.key, required this.firstName});
+
+  final String firstName;
+
+  @override
+  Widget build(BuildContext context) {
+    final who = firstName.isEmpty ? 'This influencer' : firstName;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 36, 16, 36),
+      child: Column(children: [
+        Image.asset('assets/channel/empty-merch.webp', height: 180, fit: BoxFit.contain, semanticLabel: 'No merch yet'),
+        const SizedBox(height: 12),
+        Text('$who has no merch yet', textAlign: TextAlign.center, style: t(22, color: GP.ink, w: FontWeight.w900, h: 1.15)),
+        const SizedBox(height: 4),
+        Text('Check back soon.', textAlign: TextAlign.center, style: t(16, color: GP.muted, w: FontWeight.w700)),
+      ]),
+    );
+  }
+}
 
 /// "Now Showing": the first video plays right here (the official YouTube / Instagram embed, never a file we hold), the rest
 /// are a row of tiles that open the full-screen viewer. Not built at all when the influencer has no videos.
@@ -204,8 +226,11 @@ class _ChannelVideosSectionState extends State<ChannelVideosSection> {
     final r = reels.first;
     final ig = r.platform == 'instagram';
     final rest = reels.skip(1).take(9).toList();
-    return ColoredBox(
-      color: GP.ink,
+    return DecoratedBox(
+      decoration: const BoxDecoration(
+        color: GP.ink,
+        image: DecorationImage(image: AssetImage('assets/channel/now-showing-bg.webp'), fit: BoxFit.cover),
+      ),
       child: Padding(
         padding: const EdgeInsets.fromLTRB(16, 44, 16, 44),
         child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
@@ -559,7 +584,11 @@ class _Meter extends StatelessWidget {
           Padding(
             padding: const EdgeInsets.fromLTRB(26, 16, 16, 16),
             child: Column(children: [
-              Text(total, textAlign: TextAlign.center, style: t(30, color: GP.yel, w: FontWeight.w900, ls: .04)),
+              Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                ExcludeSemantics(child: Image.asset('assets/channel/meter-icon.png', width: 56, height: 56, fit: BoxFit.contain)),
+                const SizedBox(width: 12),
+                Flexible(child: Text(total, textAlign: TextAlign.center, style: t(30, color: GP.yel, w: FontWeight.w900, ls: .04))),
+              ]),
               Text(line, textAlign: TextAlign.center, style: t(14, color: GP.onDarkMuted, w: FontWeight.w700)),
               const SizedBox(height: 12),
               SizedBox(width: double.infinity, child: button),

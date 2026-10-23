@@ -165,7 +165,7 @@ class _BagScreenState extends State<BagScreen> with WidgetsBindingObserver {
                   ('Delivery', 'Free'),
                 ], merchRupees(total), 'GST included · one payment'),
                 const SizedBox(height: 22),
-                const Center(child: GpSticker('Bag full, dil full.', tone: GpStickerTone.pink)),
+                const Center(child: GpSticker('Bag full, dil full.', angle: -0.04)),
               ]);
             },
           ),
@@ -190,7 +190,7 @@ class _BagScreenState extends State<BagScreen> with WidgetsBindingObserver {
       child: Padding(
         padding: const EdgeInsets.all(28),
         child: Column(mainAxisSize: MainAxisSize.min, children: [
-          const Icon(Icons.shopping_bag_outlined, size: 72, color: GP.muted),
+          Image.asset('assets/channel/empty-bag.webp', height: 200, fit: BoxFit.contain, semanticLabel: 'Your bag is empty'),
           const SizedBox(height: 14),
           Text('Your bag is empty', textAlign: TextAlign.center, style: t(26, color: GP.ink, w: FontWeight.w900)),
           const SizedBox(height: 6),
@@ -727,10 +727,9 @@ class _BagCheckoutScreenState extends State<BagCheckoutScreen> with WidgetsBindi
         padding: const EdgeInsets.fromLTRB(20, 32, 20, 32),
         child: Column(children: [
           Container(
-            height: 180,
             decoration: BoxDecoration(color: GP.darkTile, borderRadius: BorderRadius.circular(22)),
-            alignment: Alignment.center,
-            child: const Icon(Icons.local_shipping_rounded, size: 72, color: GP.yel),
+            clipBehavior: Clip.antiAlias,
+            child: ExcludeSemantics(child: Image.asset('assets/channel/order-done.webp', width: double.infinity, fit: BoxFit.fitWidth)),
           ),
           const SizedBox(height: 22),
           Text('ORDER PLACED', style: gpEyebrow(color: GP.yel)),

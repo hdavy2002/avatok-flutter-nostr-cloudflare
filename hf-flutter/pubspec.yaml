@@ -66,6 +66,7 @@ flutter:
     - assets/images/bazaar/favourites/
     - assets/images/bazaar/booking/
     - assets/images/bazaar/influencer/
+    - assets/channel/
 
   fonts:
     - family: Nunito
