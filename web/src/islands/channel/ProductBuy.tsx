@@ -6,6 +6,7 @@ import { useEffect, useState } from 'react';
 import { capture, captureException } from '../../lib/analytics';
 import { checkPincode } from '../../lib/merchApi';
 import { addToBag, openBagDrawer } from '../../lib/merchBag';
+import Sticker from './Sticker';
 import { gstText, rupees, type MerchColour, type MerchSize } from '../../lib/merchPublic';
 
 export interface BuyProps {
