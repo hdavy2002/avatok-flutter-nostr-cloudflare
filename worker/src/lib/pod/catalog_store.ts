@@ -122,6 +122,11 @@ export type CatalogInfo = {
  */
 export async function ensurePodCatalog(env: Env): Promise<CatalogInfo> {
   if (!printroveConfigured(env)) {
+    // [HF-MERCH-CATALOG-STORED-1 2026-10-23] The login secret can go missing (the Worker sits at the 128 text-binding limit) while
+    // the synced rows and their costs are still in D1. Browsing and pricing only need those rows, so keep serving them (they cannot
+    // refresh until the login is back). Sending an order still needs the login and fails closed in the adapter.
+    const kept = await loadStoredCatalog(env, 'printrove');
+    if (kept.products.length) return { products: kept.products, source: 'printrove', reason: 'Printrove login is missing; showing the last synced catalogue.', synced_at: kept.synced_at };
     return { products: builtInCatalog(), source: 'builtin', reason: 'Printrove is not connected yet.', synced_at: null };
   }
   let stored = await loadStoredCatalog(env, 'printrove');
@@ -155,8 +160,18 @@ export async function runPodCatalogRefresh(env: Env): Promise<{ synced: boolean;
 // Shipping estimate
 // ---------------------------------------------------------------------------
 /** Cheapest courier charge in rupees to a reference pincode (110001), cached in KV for 24 h. Null when it cannot be had. */
+/** [HF-MERCH-CATALOG-STORED-1] Used only while the partner login is missing: a cautious prepaid-shipping figure so a base price never
+ * silently leaves shipping out (null counted as Rs 0 in computeSizeCosts). The admin approval quote re-checks live once the login is back. */
+export const SHIP_FALLBACK_RUPEES = 80;
+
 export async function referenceShippingRupees(env: Env): Promise<number | null> {
-  if (!printroveConfigured(env)) return null;
+  if (!printroveConfigured(env)) {
+    try {
+      const hit = (await env.TOKENS.get(SHIP_KEY, 'json')) as { rupees: number | null } | null;
+      if (hit && typeof hit.rupees === 'number') return hit.rupees;
+    } catch { /* fall back */ }
+    return SHIP_FALLBACK_RUPEES;
+  }
   try {
     const hit = (await env.TOKENS.get(SHIP_KEY, 'json')) as { rupees: number | null } | null;
     if (hit && (hit.rupees === null || typeof hit.rupees === 'number')) return hit.rupees;
