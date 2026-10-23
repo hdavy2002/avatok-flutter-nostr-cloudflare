@@ -34,7 +34,14 @@ export type ShopOrderRow = {
   tracking_url: string | null; eta_text: string | null; sent_to_printer_at: number | null; shipped_at: number | null;
   delivered_at: number | null; cancel_reason: string | null; refund_utr: string | null; refunded_at: number | null;
   problem_json: string | null; created_at: number; updated_at: number;
+  // [HF-MERCH-CORE-1 2026-10-23] Influencer-merch columns (migrations/2026-10-23-hf-merch-alters.sql). NULL/undefined on every house order.
+  seller_uid?: string | null; pay_method?: string | null; merch_json?: string | null; approval_status?: string | null;
+  approved_by?: string | null; approved_at?: number | null; reject_reason?: string | null; cashfree_order_id?: string | null;
+  wallet_op_id?: string | null; refund_status?: string | null; earning_credited_at?: number | null;
 };
+
+/** A merch order is any shop order that carries a seller. House orders never have one. */
+export const isMerchOrder = (row: Pick<ShopOrderRow, "seller_uid">): boolean => typeof row.seller_uid === "string" && row.seller_uid !== "";
 
 // ---------------------------------------------------------------------------
 // Ids
@@ -81,7 +88,8 @@ export function shopStep(status: ShopExternalStatus, fulfil: ShopFulfilStatus): 
 }
 
 /** A shop order automatic matching may still confirm (same predicate as events). */
-export function shopOpenForMatching(row: Pick<ShopOrderRow, "pay_status" | "confirmed_at" | "reason_code">): boolean {
+export function shopOpenForMatching(row: Pick<ShopOrderRow, "pay_status" | "confirmed_at" | "reason_code" | "seller_uid">): boolean {
+  if (typeof row.seller_uid === "string" && row.seller_uid !== "") return false; // [HF-MERCH-CORE-1] a merch order is paid by wallet / Cashfree, never matched to a UPI SMS
   return (row.pay_status === "awaiting_payment" || row.pay_status === "review_pending") && !row.confirmed_at
     && row.reason_code !== "provisioning_failed" && row.reason_code !== "finalize_error";
 }

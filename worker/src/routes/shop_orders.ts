@@ -25,7 +25,7 @@ import {
 import { computeShopQuote, type ShopCartItem, type ProductRow, type CouponRow } from "../lib/shop_logic";
 import {
   SHOP_ORDER_ID_RE, SHOP_REFUND_POLICY_VERSION, buildShopOrder, newShopOrderId, shopOrderNo, shopReceiptNo,
-  shopExternalStatus, shopOpenForMatching, orderItems, reportWindowOpen, validHttpUrl,
+  shopExternalStatus, shopOpenForMatching, orderItems, reportWindowOpen, validHttpUrl, isMerchOrder,
   type ShopOrderRow, type ShopPayCtx, type ShopEventRow,
 } from "../lib/shop_orders_logic";
 import {
@@ -209,6 +209,7 @@ async function markPaid(req: Request, env: Env, id: string): Promise<Response> {
   const throttle = await limited(env, `paid:${auth.uid}`, 20); if (throttle) return throttle;
   let row = await loadOwn(env, auth.uid, id);
   if (!row) return failure("not_found", 404);
+  if (isMerchOrder(row)) return failure("not_upi_order", 409, { message: "This order is paid from your wallet or by card, not by UPI." }); // [HF-MERCH-CORE-1]
   const now = Date.now();
   if (row.pay_status === "awaiting_payment" && row.expires_at > now && !row.paid_claimed_at) {
     const res = await metaDb(env).prepare(
@@ -236,6 +237,7 @@ async function submitUtr(req: Request, env: Env, id: string): Promise<Response> 
   const throttle = await limited(env, `utr:${auth.uid}`, 20); if (throttle) return throttle;
   const row = await loadOwn(env, auth.uid, id);
   if (!row) return failure("not_found", 404);
+  if (isMerchOrder(row)) return failure("not_upi_order", 409, { message: "This order is paid from your wallet or by card, not by UPI." }); // [HF-MERCH-CORE-1]
   if (row.pay_status !== "awaiting_payment") {
     await track(env, auth.uid, "shop_order_utr_submitted", APP, { ok: false, reason: `status_${row.pay_status}` });
     return json({ order: await shopOrderEnvelope(env, row) });
@@ -277,8 +279,8 @@ async function myOrders(req: Request, env: Env): Promise<Response> {
   const auth = await requireUser(req, env);
   if (isFail(auth)) return failure(auth.error, auth.status);
   const rows = await metaDb(env).prepare(
-    `SELECT * FROM shop_orders WHERE uid=?1 AND NOT (pay_status IN ('expired','cancelled') AND confirmed_at IS NULL)
-      ORDER BY created_at DESC LIMIT 100`,
+    `SELECT * FROM shop_orders WHERE uid=?1 AND seller_uid IS NULL AND NOT (pay_status IN ('expired','cancelled') AND confirmed_at IS NULL)
+      ORDER BY created_at DESC LIMIT 100`, // [HF-MERCH-CORE-1] merch orders are listed by /api/hf/merch/my-orders
   ).bind(auth.uid).all<ShopOrderRow>();
   const ctx = await loadShopPayCtx(env);
   const out = [];

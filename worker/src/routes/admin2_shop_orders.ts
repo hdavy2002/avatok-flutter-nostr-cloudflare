@@ -20,7 +20,7 @@ import { maskE164, encodeCursor, decodeCursor } from "../lib/me_dashboard_logic"
 import { normalizeUtr, LATE_SMS_GRACE_MS, type Address } from "../lib/saathum_checkout_logic";
 import {
   SHOP_ORDER_ID_RE, SHOP_TRANSITIONS, SHOP_TAB_SQL, SHOP_TABS, SHOP_STALE_MS, canTransition, isShopTab, istDayStartMs, orderItems,
-  shopExternalStatus, utrLast4, validHttpUrl, type ShopAction, type ShopOrderRow, type ShopTab,
+  shopExternalStatus, utrLast4, validHttpUrl, isMerchOrder, type ShopAction, type ShopOrderRow, type ShopTab,
 } from "../lib/shop_orders_logic";
 import { notifyShopTransition } from "../lib/shop_notify";
 import { describeShipment, loadFulfilmentEvents, loadOrderExtras, moneyAndProduction, type OrderExtras } from "../lib/pod_fulfil"; // [AUMFE-POD-FULFIL-1]
@@ -75,7 +75,7 @@ async function adminShape(env: Env, row: ShopOrderRow, now = Date.now(), extras?
 // ---------------------------------------------------------------------------
 async function tabCounts(env: Env, now: number): Promise<Record<ShopTab, number>> {
   const cols = SHOP_TABS.map((t) => `COALESCE(SUM(CASE WHEN ${SHOP_TAB_SQL[t]} THEN 1 ELSE 0 END),0) AS n_${t}`).join(", "); // aliased: "all" is an SQL keyword
-  const r = await metaDb(env).prepare(`SELECT ${cols} FROM shop_orders`).bind(now).first<Record<ShopTab, number>>();
+  const r = await metaDb(env).prepare(`SELECT ${cols} FROM shop_orders WHERE seller_uid IS NULL`).bind(now).first<Record<ShopTab, number>>(); // [HF-MERCH-CORE-1] merch orders live in Admin > Merch
   const out = {} as Record<ShopTab, number>;
   for (const t of SHOP_TABS) out[t] = Number((r as Record<string, number> | null)?.[`n_${t}`] ?? 0);
   return out;
@@ -91,7 +91,7 @@ async function adminOrderList(req: Request, env: Env): Promise<Response> {
   if (rawCursor && !cursor) return err(400, "invalid_cursor", "That page link is no longer valid. Reload the list.");
   const now = Date.now();
   const binds: unknown[] = [now];
-  const where: string[] = [`?1 IS NOT NULL`, SHOP_TAB_SQL[tabRaw]]; // ?1 (= now) is always referenced, whichever tab
+  const where: string[] = [`?1 IS NOT NULL`, SHOP_TAB_SQL[tabRaw], `seller_uid IS NULL`]; // ?1 (= now) is always referenced, whichever tab; [HF-MERCH-CORE-1] merch orders live in Admin > Merch
   const q = (u.get("q") ?? "").trim().slice(0, 60);
   if (q) {
     const esc = q.replace(/[\\%_]/g, (ch) => "\\" + ch);
@@ -170,6 +170,7 @@ async function adminConfirmPayment(req: Request, env: Env, id: string): Promise<
   const a = await admin(req, env); if (a instanceof Response) return a;
   const row = await loadShopOrder(env, id);
   if (!row) return err(404, "not_found", "No such order.");
+  if (isMerchOrder(row)) return err(409, "use_merch_admin", "This is a merch order. Handle it in Admin > Merch."); // [HF-MERCH-CORE-1]
   const b = (await readBody(req)) ?? {};
   const messageHash = typeof b.message_hash === "string" && b.message_hash ? b.message_hash : null;
   if (b.message_hash !== undefined && b.message_hash !== null && (!messageHash || !/^[a-f0-9]{64}$/.test(messageHash))) return err(400, "invalid_message_hash", "That SMS reference is not valid.");
@@ -207,6 +208,7 @@ async function adminRejectPayment(req: Request, env: Env, id: string): Promise<R
   const a = await admin(req, env); if (a instanceof Response) return a;
   const row = await loadShopOrder(env, id);
   if (!row) return err(404, "not_found", "No such order.");
+  if (isMerchOrder(row)) return err(409, "use_merch_admin", "This is a merch order. Handle it in Admin > Merch."); // [HF-MERCH-CORE-1]
   const b = await readBody(req);
   const reason = str(b?.reason, 500);
   if (!reason) return err(400, "reason_required", "Please give a reason.");
@@ -229,6 +231,8 @@ async function transition(req: Request, env: Env, id: string, action: ShopAction
   const b = (await readBody(req)) ?? {};
   const notify = b.notify !== false;
   const now = Date.now();
+  // [HF-MERCH-CORE-1] A merch order moves only through Admin > Merch (approve -> partner -> tracking), never by these buttons.
+  if (isMerchOrder(row)) return err(409, "use_merch_admin", "This is a merch order. Handle it in Admin > Merch.");
   if (row.pay_status !== "confirmed") return err(409, "not_paid", "This order has not been paid yet.");
   const t = SHOP_TRANSITIONS[action];
   if (!canTransition(action, row.fulfil_status)) return err(409, "bad_transition", `An order that is "${row.fulfil_status}" can't be moved to "${t.to}".`, { from: row.fulfil_status, to: t.to });

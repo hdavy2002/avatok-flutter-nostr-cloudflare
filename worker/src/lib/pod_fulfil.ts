@@ -12,9 +12,10 @@ import { track, trackException } from "../hooks";
 import { readConfig } from "../routes/config";
 import { emailFor } from "./identity";
 import { verifiedWhatsAppNumber } from "./whatsapp_notify";
-import { orderItems, type ShopOrderRow } from "./shop_orders_logic";
+import { isMerchOrder, orderItems, type ShopOrderRow } from "./shop_orders_logic";
 import type { Address } from "./saathum_checkout_logic";
 import { notifyShopTransition, alertOwnerFulfilmentProblem } from "./shop_notify";
+import { onMerchDelivered } from "./hf_merch_delivered"; // [HF-MERCH-CORE-1]
 import { loadShopOrder, appendShopEvent } from "../routes/shop_orders";
 import {
   getPodProvider, splitAddressForPartner, deliveryPhone10, PRINT_SPECS, PodError,
@@ -349,7 +350,7 @@ async function recordProblem(env: Env, row: ShopOrderRow, provider: ProviderInfo
 }
 
 /** Apply one shop_orders step with a compare-and-set, write the event, tell the buyer. Returns true if THIS call moved the order. */
-async function advanceOrder(env: Env, orderId: string, step: "at_printer" | "shipped" | "delivered", f: { courier?: string | null; awb?: string | null; tracking_url?: string | null; eta_text?: string | null; ref?: string | null }, actor: string, now = Date.now()): Promise<boolean> {
+export async function advanceOrder(env: Env, orderId: string, step: "at_printer" | "shipped" | "delivered", f: { courier?: string | null; awb?: string | null; tracking_url?: string | null; eta_text?: string | null; ref?: string | null }, actor: string, now = Date.now()): Promise<boolean> {
   const db = metaDb(env);
   let sql: string; let binds: unknown[];
   if (step === "at_printer") {
@@ -372,6 +373,7 @@ async function advanceOrder(env: Env, orderId: string, step: "at_printer" | "shi
   await appendShopEvent(env, orderId, step, actor, note, now).catch((e) => trackException(env, e, { route: `pod_fulfil:${step}:event`, handled: true, app_name: APP }));
   await track(env, after.uid, "shop_order_status_changed", APP, { order_id: orderId, buyer_uid: after.uid, from: step === "at_printer" ? "new" : step === "shipped" ? "at_printer" : "shipped", to: step, notify: true, source: "print_partner" });
   await notifyShopTransition(env, step === "at_printer" ? "at-printer" : step, after);
+  if (step === "delivered" && isMerchOrder(after)) await onMerchDelivered(env, after, actor); // [HF-MERCH-CORE-1] credit the influencer (idempotent)
   return true;
 }
 
@@ -380,6 +382,8 @@ export async function sendOrderToPartner(env: Env, orderId: string, actorUid: st
   const row = await loadShopOrder(env, orderId);
   if (!row) return fail(404, "not_found", "No such order.");
   if (row.pay_status !== "confirmed") return fail(409, "not_paid", "This order has not been paid yet. Nothing is sent until your bank (or you) confirmed the money.");
+  // [HF-MERCH-CORE-1] A merch order is queued ONLY by admin approval (or hfMerchAutoApprove, which approves it first). Never by a retry, a resend or the tick.
+  if (isMerchOrder(row) && row.approval_status !== "approved") return fail(409, "not_approved", "This merch order has not been approved yet. Approve it in Admin > Merch first.");
 
   const info = await providerInfo(env);
   if (!info.supportsApi) return fail(409, "manual_provider", "Place this order in the partner's dashboard, then use 'Sent to Printrove'.");
@@ -523,6 +527,7 @@ export async function runPodFulfilmentTick(env: Env, _ctx?: ExecutionContext): P
         `SELECT o.order_id AS order_id FROM shop_orders o
           WHERE o.pay_status='confirmed' AND o.fulfil_status='new' AND o.confirmed_at IS NOT NULL AND o.confirmed_at<=?1
             AND NOT EXISTS (SELECT 1 FROM shop_fulfilments f WHERE f.order_id=o.order_id)
+            AND (o.seller_uid IS NULL OR o.approval_status='approved') -- [HF-MERCH-CORE-1] merch needs approval first
           ORDER BY o.confirmed_at LIMIT ${AUTO_SEND_PER_TICK}`,
       ).bind(now - AUTO_SEND_GRACE_MS).all<{ order_id: string }>()).results ?? []);
     for (const o of fresh) {
