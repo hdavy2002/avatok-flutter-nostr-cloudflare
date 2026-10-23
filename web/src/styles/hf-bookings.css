@@ -97,3 +97,21 @@
 .hfb-agenda .hfb-booking-row{animation:hfb-agenda-in .2s ease-out}
 @keyframes hfb-agenda-in{from{opacity:.6;transform:translateY(4px)}to{opacity:1;transform:translateY(0)}}
 @media(max-width:600px){.hfb-appointment-month{padding:12px;gap:14px}.hfb-appointment-grid{min-width:326px;gap:3px}.hfb-appointment-date{min-height:62px;padding:5px 2px;border-radius:10px;text-align:center}.hfb-day-number{min-width:25px;min-height:25px}.hfb-day-count{display:block;float:none;width:max-content;min-width:18px;line-height:18px;margin:3px auto 0;font-size:.6875rem}.hfb-day-preview{display:none}.hfb-appointment-month .hfb-month-controls{gap:6px}.hfb-calendar-label{font-size:.75rem}.hfb-appointments .hfb-heading .hfb-actions{gap:16px}}
+
+/* [HF-BOOKING-E2E-1] Bird's-eye view for the influencer: a day with a booking is crossed out, a day with a request waiting has a dashed gold edge. */
+.hfb-date{position:relative}
+.hfb-date.is-booked{background:#f2ecfc;color:#46113e}
+.hfb-date.is-booked::after{content:"";position:absolute;inset:7px;pointer-events:none;background:linear-gradient(to top right,transparent calc(50% - 1.25px),#d81b72 calc(50% - 1.25px),#d81b72 calc(50% + 1.25px),transparent calc(50% + 1.25px)),linear-gradient(to bottom right,transparent calc(50% - 1.25px),#d81b72 calc(50% - 1.25px),#d81b72 calc(50% + 1.25px),transparent calc(50% + 1.25px));opacity:.85}
+.hfb-date.is-waiting{border:2px dashed #e08a00}
+.hfb-date-badge{position:absolute;top:2px;right:3px;min-width:16px;padding:0 4px;border-radius:99px;background:#46113e;color:#fff;font-size:.6875rem;line-height:16px;font-weight:800}
+.hfb-legend{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:10px 0;color:#765d73;font-size:.875rem}
+.hfb-key{display:inline-block;width:14px;height:14px;border-radius:4px;border:1px solid #46113e;background:#f2ecfc;vertical-align:middle}
+.hfb-key.is-booked{background:linear-gradient(to top right,transparent 45%,#d81b72 45%,#d81b72 55%,transparent 55%),#f2ecfc}
+.hfb-key.is-waiting{border:2px dashed #e08a00;background:#fff}
+.hfb-booked-list{list-style:none;margin:8px 0 14px;padding:0;display:grid;gap:6px}
+.hfb-booked-list li{display:flex;flex-wrap:wrap;gap:6px 14px;align-items:center;padding:8px 12px;border:1px solid #eadfea;border-radius:12px;background:#fff}
+.hfb-booked-list a{margin-left:auto;color:#8a4393;font-weight:700}
+.hfb-status-pending_approval{background:#fff4de;color:#7a4a00}
+.hfb-waiting-bar{display:flex;flex-wrap:wrap;gap:8px 18px;align-items:center;padding:12px 14px;border:1px dashed #e08a00;border-radius:14px;background:#fffaf0;color:#46113e;font-weight:700}
+.hfb-appointment-date.is-waiting{border:2px dashed #e08a00}
+.hfb-day-count.is-waiting{background:#fff4de;color:#7a4a00}

@@ -1,6 +1,6 @@
 import { hfCall, recoverAgeConfirmation } from '../../lib/hfCallsApi';
 import { useEffect, useState } from 'react';
-import { bookingError, cancelBooking, dateLabel, getBooking, money, type HfBooking } from '../../lib/hfBookingsApi';
+import { acceptBooking, bookingError, cancelBooking, declineBooking, dateLabel, getBooking, money, type HfBooking } from '../../lib/hfBookingsApi';
 import { capture, captureException } from '../../lib/analytics';
 import { signInUrl } from '../../lib/hfCallsApi';
 import SessionBridge from '../calls/SessionBridge';
@@ -45,11 +45,18 @@ export default function BookingDetails({ id }: { id: string }) {
     setBusy(true); setMessage('');
     try { const row = await cancelBooking(id); setBooking(row); setConfirming(false); }
     catch (error) {
-      const issue = bookingError(error); setMessage(issue.status === 409 ? 'This appointment changed while you were viewing it. Reload to see its current status.' : friendly(error).text);
+      const issue = bookingError(error); setMessage(issue.code === 'too_late' ? issue.message : issue.status === 409 ? 'This appointment changed while you were viewing it. Reload to see its current status.' : friendly(error).text);
       capture('hf_booking_cancel_failed', { feature: 'hf_booking', booking_id: id, status: issue.status, code: issue.code });
     } finally { setBusy(false); }
   };
+  const decide = async (what: 'accept' | 'decline') => {
+    setBusy(true); setMessage('');
+    try { await (what === 'accept' ? acceptBooking(id) : declineBooking(id)); setBooking(await getBooking(id)); }
+    catch (error) { const issue = bookingError(error); setMessage(issue.status === 409 ? (issue.message !== issue.code ? issue.message : 'This request was already decided or has expired.') : friendly(error).text); }
+    finally { setBusy(false); }
+  };
   const status = booking?.status || '';
+  const isHost = typeof booking?.expectedHostNetPaise === 'number'; // the server only sends this to the influencer
   return <main className="hfb-page">
     <SessionBridge on />
     <a className="hfb-back" href="/dashboard/appointments">← All bookings</a>
@@ -71,7 +78,8 @@ export default function BookingDetails({ id }: { id: string }) {
         </dl>
         <p className="hfb-muted">The influencer’s timezone is shown separately so you can check the appointment across timezones.</p>
         {message && <p className="hfb-message" role="alert">{message}<button className="hfb-text-button" type="button" onClick={() => setRetry(n => n + 1)}>Reload</button></p>}
-        {status === 'confirmed' && <div className="hfb-actions">{!confirming ? <button type="button" className="hfb-button" onClick={() => setConfirming(true)}>Cancel appointment</button> : <div className="hfb-note" role="alertdialog" aria-labelledby="hfb-cancel-title"><h3 id="hfb-cancel-title">Cancel this appointment?</h3><p>The reservation will be released if the server confirms cancellation. The slot may be taken by someone else if you book again.</p><button type="button" className="hfb-button hfb-danger" onClick={() => void cancel()} disabled={busy}>{busy ? 'Cancelling…' : 'Confirm cancellation'}</button><button type="button" className="hfb-button" onClick={() => setConfirming(false)} disabled={busy}>Keep appointment</button></div>}</div>}
+        {status === 'pending_approval' && isHost && <div className="hfb-note"><h3>Waiting for your answer</h3><p>Accept to confirm this time, or decline and the caller gets the full amount back in their wallet. If you do nothing it is cancelled and refunded within 24 hours.</p><div className="hfb-actions"><button type="button" className="hfb-button hfb-primary" onClick={() => void decide('accept')} disabled={busy}>{busy ? 'Please wait…' : 'Accept'}</button><button type="button" className="hfb-button" onClick={() => void decide('decline')} disabled={busy}>Decline</button></div></div>}
+        {(status === 'confirmed' || (status === 'pending_approval' && !isHost)) && <div className="hfb-actions">{!confirming ? <button type="button" className="hfb-button" onClick={() => setConfirming(true)}>Cancel appointment</button> : <div className="hfb-note" role="alertdialog" aria-labelledby="hfb-cancel-title"><h3 id="hfb-cancel-title">Cancel this appointment?</h3><p>The reservation will be released if the server confirms cancellation. The slot may be taken by someone else if you book again.</p><button type="button" className="hfb-button hfb-danger" onClick={() => void cancel()} disabled={busy}>{busy ? 'Cancelling…' : 'Confirm cancellation'}</button><button type="button" className="hfb-button" onClick={() => setConfirming(false)} disabled={busy}>Keep appointment</button></div>}</div>}
       </section>
       <section className="hfb-card"><h2>What happens next</h2><p>Only the server can confirm changes or mark a call complete. Your status here refreshes from the booking record.</p><a className="hfb-button" href="/dashboard/appointments">View all bookings</a></section>
     </>}

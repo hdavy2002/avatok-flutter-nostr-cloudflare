@@ -26,11 +26,14 @@ export default function HostBookings({ role = 'customer' }: { role?: BookingRole
   const [retry, setRetry] = useState(0);
   const generation = useRef(0);
   const days = useMemo(() => calendarDays(month), [month]);
+
   const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
   const today = localDayKey(new Date());
   const selectedKey = localDayKey(selected);
   const dayRows = bookingsOnDay(rows, selected);
-  const monthRows = rows.filter(row => Date.parse(row.startUtc) < new Date(month.getFullYear(), month.getMonth() + 1, 1).getTime()
+  // [HF-BOOKING-E2E-1] A cancelled or failed booking no longer holds a time, so it must not colour a day or count as booked.
+  const holdsTime = (row: HfBooking) => !['cancelled', 'failed', 'no_show'].includes(row.status);
+  const monthRows = rows.filter(holdsTime).filter(row => Date.parse(row.startUtc) < new Date(month.getFullYear(), month.getMonth() + 1, 1).getTime()
     && Date.parse(row.endUtc) > month.getTime());
 
   // Invalidate synchronously on identity changes, before a pending page can settle.
@@ -98,17 +101,19 @@ export default function HostBookings({ role = 'customer' }: { role?: BookingRole
           {weekdays.map(day => <span className="hfb-calendar-label" key={day} aria-hidden="true">{day}</span>)}
           {days.map(day => {
             const key = localDayKey(day);
-            const appointments = bookingsOnDay(rows, day);
-            return <button key={key} type="button" className={'hfb-appointment-date' + (key === selectedKey ? ' is-selected' : '') + (day.getMonth() !== month.getMonth() ? ' is-outside' : '')}
+            const appointments = bookingsOnDay(rows.filter(holdsTime), day);
+            const waiting = appointments.filter(a => a.status === 'pending_approval').length;
+            return <button key={key} type="button" className={'hfb-appointment-date' + (key === selectedKey ? ' is-selected' : '') + (day.getMonth() !== month.getMonth() ? ' is-outside' : '') + (waiting ? ' is-waiting' : '')}
               aria-pressed={key === selectedKey} aria-current={key === today ? 'date' : undefined}
-              aria-label={`${dayLabel(day)}${key === today ? ', today' : ''}${loading ? ', loading appointments' : message ? `, ${appointments.length} loaded appointments, calendar incomplete` : `, ${appointments.length} appointments`}`}
+              aria-label={`${dayLabel(day)}${key === today ? ', today' : ''}${loading ? ', loading appointments' : message ? `, ${appointments.length} loaded appointments, calendar incomplete` : `, ${appointments.length} appointments${waiting ? `, ${waiting} waiting for your answer` : ''}`}`}
               onClick={() => setSelected(day)}>
               <span className="hfb-day-number">{day.getDate()}</span>
-              {appointments.length > 0 && <><span className="hfb-day-count">{appointments.length}<span className="hfb-visually-hidden"> appointments</span></span><span className="hfb-day-preview" aria-hidden="true">{person(appointments[0], role)}</span></>}
+              {appointments.length > 0 && <><span className={'hfb-day-count' + (waiting ? ' is-waiting' : '')}>{appointments.length}<span className="hfb-visually-hidden"> appointments</span></span><span className="hfb-day-preview" aria-hidden="true">{person(appointments[0], role)}</span></>}
             </button>;
           })}
         </div>
         </div>
+        {role === 'host' && !loading && !message && <p className="hfb-waiting-bar" role="status"><span>{new Set(monthRows.map(r => localDayKey(new Date(r.startUtc)))).size} day{new Set(monthRows.map(r => localDayKey(new Date(r.startUtc)))).size === 1 ? '' : 's'} booked this month</span>{monthRows.some(r => r.status === 'pending_approval') && <a href={'/bookings/' + encodeURIComponent(monthRows.find(r => r.status === 'pending_approval')!.id)}>{monthRows.filter(r => r.status === 'pending_approval').length} waiting for your answer — open the first</a>}</p>}
         {loading ? <p className="hfb-muted" role="status">Loading appointments…</p> : <p className="hfb-muted" role="status">{message ? 'Calendar incomplete — counts include only loaded appointments.' : `${monthRows.length} appointment${monthRows.length === 1 ? '' : 's'} this month. Select a date for details.`}</p>}
       </section>
       {message && <section className="hfb-note"><p role="alert">{message}</p><button className="hfb-button" type="button" onClick={retryLoad}>Try again</button></section>}

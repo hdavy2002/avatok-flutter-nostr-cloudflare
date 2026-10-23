@@ -9,8 +9,8 @@ import { formatPaise } from '../../../lib/money';
 import { capture } from '../../../lib/analytics';
 import { Avatar, Card, Empty, Failed, Ic, PageHead, Skel, Sticker, istDay, istTime } from './ui';
 
-const LIVE = ['confirmed', 'starting', 'active'];
-const label = (s: string) => s === 'confirmed' ? 'Confirmed' : s === 'completed' ? 'Completed' : s.startsWith('cancel') ? 'Cancelled' : s === 'starting' || s === 'active' ? 'Happening now' : s.replaceAll('_', ' ');
+const LIVE = ['confirmed', 'pending_approval', 'starting', 'active']; // [HF-BOOKING-E2E-1] a request still waiting for the influencer is upcoming too, not "past"
+const label = (s: string) => s === 'confirmed' ? 'Confirmed' : s === 'pending_approval' ? 'Waiting for approval' : s === 'completed' ? 'Completed' : s.startsWith('cancel') ? 'Cancelled' : s === 'starting' || s === 'active' ? 'Happening now' : s.replaceAll('_', ' ');
 const chip = (s: string) => s === 'completed' ? '' : s.startsWith('cancel') ? 'dec' : s === 'confirmed' ? 'lav' : 'gold';
 
 export default function Appointments({ enabled, uid }: { enabled: boolean; uid: string }) {
@@ -46,9 +46,9 @@ export default function Appointments({ enabled, uid }: { enabled: boolean; uid: 
     return <div key={b.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, padding: '12px 0', borderBottom: '1px dashed var(--line)', flexWrap: 'wrap' }}>
       <div className="h3-who"><Avatar name={b.hostName} seed={b.hostUid} /><span><b>{b.hostName || 'Your influencer'}</b><small>{istDay(t)}, {istTime(t)}{b.durationMinutes ? ` · ${b.durationMinutes} min` : ''}</small></span></div>
       <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
-        {actions ? <span className="h3-chip lav">{formatPaise(b.reservedPaise)} held</span> : <span className={`h3-chip ${chip(b.status)}`}>{label(b.status)}</span>}
+        {actions ? <><span className="h3-chip lav">{formatPaise(b.reservedPaise)} held</span>{b.status === 'pending_approval' && <span className="h3-chip gold">Waiting for approval</span>}</> : <span className={`h3-chip ${chip(b.status)}`}>{label(b.status)}</span>}
         {actions && mins > 0 && mins < 24 * 60 && <span className="h3-chip gold">{mins >= 60 ? `in ${Math.floor(mins / 60)}h` : `in ${mins}m`}</span>}
-        <a className={`h3-btn sm ${actions && mins <= 15 ? 'rani' : 'ghost'}`} href={`/bookings/${encodeURIComponent(b.id)}`} onClick={() => capture('hf_dash3_appt_open', { status: b.status })}>{actions && mins <= 15 ? 'Join' : actions ? 'View or change' : 'Details'}</a>
+        <a className={`h3-btn sm ${actions && mins <= 15 && b.status !== 'pending_approval' ? 'rani' : 'ghost'}`} href={`/bookings/${encodeURIComponent(b.id)}`} onClick={() => capture('hf_dash3_appt_open', { status: b.status })}>{actions && mins <= 15 && b.status !== 'pending_approval' ? 'Join' : actions ? 'View or change' : 'Details'}</a>
       </div></div>; };
 
   return <>

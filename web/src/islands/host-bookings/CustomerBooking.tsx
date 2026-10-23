@@ -1,13 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { looksSignedOut, signInUrl, recoverAgeConfirmation } from '../../lib/hfCallsApi';
 import { ACTIVE_SESSION_CHANGED } from '../../lib/clerk';
-import { bookingError, confirmBooking, createQuote, getPublicSlots, money, type AvailabilitySlot, type BookingQuote } from '../../lib/hfBookingsApi';
+import { bookingError, confirmBooking, createQuote, getPublicSlotsInfo, money, offeredDurations, type AvailabilitySlot, type BookingQuote } from '../../lib/hfBookingsApi';
 import SessionBridge from '../calls/SessionBridge';
 import { capture } from '../../lib/analytics';
 import '../../styles/hf-bookings.css';
 import { BookingFeatureLoading, BookingUnavailable, useBookingFeature } from './BookingFeatureGate';
 
-const DURATIONS = [15, 30, 45, 60];
+const DEFAULT_DURATIONS = [10, 15, 30, 45, 60]; // replaced by the lengths this influencer really offers as soon as the server tells us
 const localDate = (date: Date) => [date.getFullYear(), String(date.getMonth() + 1).padStart(2, '0'), String(date.getDate()).padStart(2, '0')].join('-');
 const addDays = (key: string, days: number) => { const d = new Date(key + 'T12:00:00'); d.setDate(d.getDate() + days); return localDate(d); };
 const randomKey = () => globalThis.crypto?.randomUUID?.() ?? 'bk_' + Date.now() + '_' + Math.random().toString(36).slice(2);
@@ -18,7 +18,8 @@ export default function CustomerBooking() {
   const params = useMemo(() => new URLSearchParams(window.location.search), []);
   const host = params.get('host') || '';
   const back = window.location.pathname + window.location.search;
-  const [duration, setDuration] = useState(Number(params.get('duration')) || 30);
+  const [duration, setDuration] = useState(Number(params.get('duration')) || 10);
+  const [durations, setDurations] = useState<number[]>(DEFAULT_DURATIONS);
   const [date, setDate] = useState(params.get('date') || localDate(new Date(Date.now() + 86_400_000)));
   const [slots, setSlots] = useState<AvailabilitySlot[]>([]);
   const [selected, setSelected] = useState<AvailabilitySlot | null>(null);
@@ -38,13 +39,20 @@ export default function CustomerBooking() {
     const next = new URL(window.location.href); next.searchParams.set('host', host); next.searchParams.set('date', nextDate); next.searchParams.set('duration', String(nextDuration));
     window.history.replaceState({}, '', next.pathname + next.search);
   };
-  const loadSlots = async (nextDate = date, nextDuration = duration, keepMessage = false) => {
+  const loadSlots = async (nextDate = date, nextDuration = duration, keepMessage = false, retried = false): Promise<void> => {
     setPhase('loading'); if (!keepMessage) setMessage(''); setQuote(null); setSelected(null);
     try {
-      const found = await getPublicSlots(host, addDays(nextDate, -1), addDays(nextDate, 1), nextDuration);
-      setSlots(found.filter(slot => localDate(new Date(slot.startUtc)) === nextDate));
+      const found = await getPublicSlotsInfo(host, addDays(nextDate, -1), addDays(nextDate, 1), nextDuration);
+      if (found.durationsMinutes) setDurations(found.durationsMinutes);
+      setSlots(found.slots.filter(slot => localDate(new Date(slot.startUtc)) === nextDate));
       setPhase('ready');
     } catch (error) {
+      // [HF-BOOKING-E2E-1] An influencer who set times in the app offers 10-minute calls only: switch to a length that exists instead of failing.
+      const offered = offeredDurations(error);
+      if (offered && !retried && !offered.includes(nextDuration)) {
+        setDurations(offered); setDuration(offered[0]); syncUrl(nextDate, offered[0]);
+        return loadSlots(nextDate, offered[0], keepMessage, true);
+      }
       const issue = bookingError(error); setMessage(issue.message); setPhase('error');
     }
   };
@@ -147,7 +155,7 @@ export default function CustomerBooking() {
       <section className="hfb-card" aria-labelledby="hfb-options">
         <h2 id="hfb-options">Appointment length</h2>
         <div className="hfb-choice-row" role="group" aria-label="Appointment length">
-          {DURATIONS.map(minutes => <button type="button" key={minutes} className={duration === minutes ? 'hfb-choice is-selected' : 'hfb-choice'} aria-pressed={duration === minutes} onClick={() => { setDuration(minutes); syncUrl(date, minutes); setQuote(null); setSelected(null); void loadSlots(date, minutes); }}>{minutes} minutes</button>)}
+          {durations.map(minutes => <button type="button" key={minutes} className={duration === minutes ? 'hfb-choice is-selected' : 'hfb-choice'} aria-pressed={duration === minutes} onClick={() => { setDuration(minutes); syncUrl(date, minutes); setQuote(null); setSelected(null); void loadSlots(date, minutes); }}>{minutes} minutes</button>)}
         </div>
         <label className="hfb-label" htmlFor="hfb-date">Date</label>
         <input id="hfb-date" className="hfb-input" type="date" min={minDate} max={maxDate} value={date} onChange={e => { setDate(e.target.value); syncUrl(e.target.value, duration); setQuote(null); setSelected(null); void loadSlots(e.target.value, duration); }} />

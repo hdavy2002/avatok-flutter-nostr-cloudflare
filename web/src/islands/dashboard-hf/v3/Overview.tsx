@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { API_BASE } from '../../../lib/env';
 import { callsEnabled, hfCall, type HostPresence } from '../../../lib/hfCallsApi';
 import { formatPaise } from '../../../lib/money';
-import { listBookings, type HfBooking } from '../../../lib/hfBookingsApi';
+import { getBookingSummary, listBookings, type BookingSummary, type HfBooking } from '../../../lib/hfBookingsApi';
 import { capture } from '../../../lib/analytics';
 import type { DashboardAccount } from '../../../components/account/DashboardNav';
 import { BEAT_MS, STATUS_NOTE, type MeHost } from '../hostActivity';
@@ -86,7 +86,7 @@ export default function Overview({ account, bookingOn }: { account: DashboardAcc
     </div>
 
     {account.closing && <aside className="h3-safe" style={{ background: 'var(--goldtint)' }}><div><h3>Your account is being closed.</h3><p className="small">Calling and profile editing are paused. <a href="/dashboard/close">Manage account closure</a></p></div></aside>}
-    {hostLive ? <HostPanel onPresence={setHostPresence} /> : account.host && !account.closing ? <section className="h3-card"><h2><Marigold size={20} />Your influencer profile</h2><p className="muted" style={{ marginTop: 6 }}>{STATUS_NOTE[account.host.status] ?? 'Your profile is not live yet.'}</p><a className="h3-btn" style={{ marginTop: 12 }} href="/dashboard/host">Continue my profile</a></section> : null}
+    {hostLive ? <HostPanel onPresence={setHostPresence} bookingOn={bookingOn} /> : account.host && !account.closing ? <section className="h3-card"><h2><Marigold size={20} />Your influencer profile</h2><p className="muted" style={{ marginTop: 6 }}>{STATUS_NOTE[account.host.status] ?? 'Your profile is not live yet.'}</p><a className="h3-btn" style={{ marginTop: 12 }} href="/dashboard/host">Continue my profile</a></section> : null}
 
     <section className="h3-kpis">
       <a className="h3-card h3-kpi k1" href="/dashboard/wallet"><div className="ic"><Ic name="wallet" className="" /></div><div className="lbl">Wallet balance</div>
@@ -218,7 +218,7 @@ function UpNext({ enabled, uid, onNext }: { enabled: boolean; uid: string; onNex
     if (!enabled) { setRows([]); return; }
     setFailed(false); setRows(null);
     const from = new Date(Date.now() - 60 * 60_000).toISOString(), to = new Date(Date.now() + 60 * 86_400_000).toISOString();
-    listBookings('customer', from, to).then(p => setRows(p.bookings.filter(b => ['confirmed', 'starting', 'active'].includes(b.status)).sort((a, b) => Date.parse(a.startUtc) - Date.parse(b.startUtc))))
+    listBookings('customer', from, to).then(p => setRows(p.bookings.filter(b => ['confirmed', 'pending_approval', 'starting', 'active'].includes(b.status)).sort((a, b) => Date.parse(a.startUtc) - Date.parse(b.startUtc))))
       .catch(() => setFailed(true));
   }, [enabled]);
   useEffect(load, [load, uid]);
@@ -232,10 +232,10 @@ function UpNext({ enabled, uid, onNext }: { enabled: boolean; uid: string; onNex
   return <>
     <div className="h3-next"><Avatar name={n.hostName} seed={n.hostUid} size="" />
       <div className="who"><b style={{ fontFamily: 'var(--head)', fontSize: 18, fontWeight: 900 }}>{n.hostName || 'Your influencer'}</b><br />
-        <span className="small">{istDay(t)} · {istTime(t)}{n.durationMinutes ? ` · ${n.durationMinutes} min` : ''}</span><br /><span className="small muted">{formatPaise(n.reservedPaise)} held from your wallet</span></div>
+        <span className="small">{istDay(t)} · {istTime(t)}{n.durationMinutes ? ` · ${n.durationMinutes} min` : ''}</span><br /><span className="small muted">{n.status === 'pending_approval' ? 'Waiting for the influencer to accept · ' : ''}{formatPaise(n.reservedPaise)} held from your wallet</span></div>
       <div style={{ textAlign: 'right' }}><div className="small muted">{mins > 0 ? 'starts in' : 'starting'}</div>
         <div className="h3-count">{mins > 0 ? (mins >= 1440 ? `${Math.floor(mins / 1440)}d ${Math.floor((mins % 1440) / 60)}h` : mins >= 60 ? `${Math.floor(mins / 60)}h ${mins % 60}m` : `${mins}m`) : 'Now'}</div>
-        <a className="h3-btn sm" style={{ marginTop: 8 }} href={`/bookings/${encodeURIComponent(n.id)}`}>{mins <= 15 ? 'Join waiting room' : 'View details'}</a></div>
+        <a className="h3-btn sm" style={{ marginTop: 8 }} href={`/bookings/${encodeURIComponent(n.id)}`}>{mins <= 15 && n.status !== 'pending_approval' ? 'Join waiting room' : 'View details'}</a></div>
     </div>
     {rows.slice(1, 3).map(r => { const t2 = Date.parse(r.startUtc); return <div key={r.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, padding: '12px 4px', borderBottom: '1px dashed var(--line)' }}>
       <a className="h3-who" href={`/bookings/${encodeURIComponent(r.id)}`}><Avatar name={r.hostName} seed={r.hostUid} /><span><b>{r.hostName || 'Your influencer'}</b><small>{istDay(t2)}, {istTime(t2)}</small></span></a>
@@ -244,8 +244,11 @@ function UpNext({ enabled, uid, onNext }: { enabled: boolean; uid: string; onNex
 }
 
 /** Live influencers: the online switch, today's calls and expected earnings (same rules as before, new look). */
-function HostPanel({ onPresence }: { onPresence?: (p: HostPresence) => void }) {
+function HostPanel({ onPresence, bookingOn }: { onPresence?: (p: HostPresence) => void; bookingOn: boolean }) {
   const { summary } = useDash();
+  // [HF-BOOKING-E2E-1] The influencer's bird's-eye numbers: days that carry a booking and requests waiting for her answer.
+  const [bs, setBs] = useState<BookingSummary | null>(null);
+  useEffect(() => { if (bookingOn) void getBookingSummary().then(setBs).catch(() => undefined); }, [bookingOn]);
   const [host, setHost] = useState<MeHost | null>(null);
   const [on, setOn] = useState(false);
   const [presence, setPresence] = useState<HostPresence>('offline');
@@ -294,6 +297,10 @@ function HostPanel({ onPresence }: { onPresence?: (p: HostPresence) => void }) {
         <div><div className="small muted">Calls received today</div><div className="num" style={{ fontSize: '1.8rem' }}>{summary.data?.callsToday.received ?? '—'}</div></div>
         <div><div className="small muted">Expected on hold</div><div className="num" style={{ fontSize: '1.8rem' }}>{summary.data?.expectedHostNetPaise != null ? formatPaise(summary.data.expectedHostNetPaise) : '—'}</div></div>
       </div>
+      {bookingOn && <div className="h3-kpis" style={{ marginTop: 10 }}>
+        <a href="/dashboard/host/calendar" style={{ color: 'inherit', textDecoration: 'none' }}><div className="small muted">Days booked</div><div className="num" style={{ fontSize: '1.8rem' }}>{bs?.bookedDays ?? '—'}</div></a>
+        <a href="/dashboard/host/calendar" style={{ color: 'inherit', textDecoration: 'none' }}><div className="small muted">Appointments waiting</div><div className="num" style={{ fontSize: '1.8rem', color: bs?.waitingCount ? 'var(--rani)' : undefined }}>{bs?.waitingCount ?? '—'}</div></a>
+      </div>}
       <a className="h3-link" href="/dashboard/host/earnings">Earnings →</a>
     </section>
   </section>;

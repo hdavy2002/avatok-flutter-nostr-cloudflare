@@ -138,7 +138,10 @@ async function scheduleRoute(req: Request, env: Env): Promise<Response> {
       cursorId = last.id;
     }
     if (affected.length) {
-      return err(409, "schedule_conflicts_with_bookings", { affectedBookingIds: affected });
+      return err(409, "schedule_conflicts_with_bookings", {
+        affectedBookingIds: affected,
+        message: "Someone has already booked " + (affected.length === 1 ? "a time" : "some times") + " that these hours would remove. Cancel " + (affected.length === 1 ? "that booking" : "those bookings") + " first, or keep those times open.",
+      });
     }
 
     const version = await saveHfBookingSchedule(env, auth.uid, expectedVersion, lockToken, submitted);
@@ -167,11 +170,14 @@ async function publicAvailability(req: Request, env: Env, slug: string): Promise
   const errors = validateHfBookingSchedule(schedule);
   if (errors.length) return err(503, "availability_unavailable");
   if (!isCalendarDate(from) || !isCalendarDate(to) || to < from) return err(400, "invalid_date_range");
-  if (!Number.isInteger(durationMinutes) || !schedule.durationsMinutes.includes(durationMinutes)) return err(400, "invalid_duration");
+  // [HF-BOOKING-E2E-1] Tell the page which lengths this influencer really offers (the app saves 10-minute-only schedules; the web page used to ask for 15-60 and show a raw code).
+  if (!Number.isInteger(durationMinutes) || !schedule.durationsMinutes.includes(durationMinutes)) {
+    return err(400, "invalid_duration", { durationsMinutes: schedule.durationsMinutes, message: "Pick one of the appointment lengths this influencer offers." });
+  }
   if (!isBookingDateRangeWithinHorizon(schedule, from, to)) return err(400, "date_range_out_of_bounds");
   // An unconfigured schedule has no public slots; legacy hours_json is not a
   // public booking preview and requires a separate owner-confirmed import.
-  if (schedule.version === 0) return json({ slots: [] }, 200, { "cache-control": "public, max-age=30" });
+  if (schedule.version === 0) return json({ slots: [], durationsMinutes: schedule.durationsMinutes }, 200, { "cache-control": "public, max-age=30" });
   const range = utcRangeForDates(from, to);
   const busy = await listHfBusyIntervals(env, host.uid, range.from, range.to);
   const slots = slotsForRange(schedule, from, to, durationMinutes, busy).map((slot) => ({
@@ -180,7 +186,7 @@ async function publicAvailability(req: Request, env: Env, slug: string): Promise
     hostLocalLabel: localLabel(slot.startAt, schedule.timezone),
     offsetLabel: offsetLabel(slot.offsetMinutes),
   }));
-  return json({ slots }, 200, { "cache-control": "public, max-age=30" });
+  return json({ slots, durationsMinutes: schedule.durationsMinutes }, 200, { "cache-control": "public, max-age=30" });
 }
 
 type BookingStatus = "confirming" | "confirmed" | "pending_approval" | "starting" | "active" | "settling" | "completed" | "cancelled" | "failed";
@@ -787,7 +793,17 @@ async function hostSummaryRoute(req: Request, env: Env): Promise<Response> {
   ).bind(auth.uid, now).first<{ upcoming_count: number; next_start: number | null }>();
   const next = summary?.next_start == null ? null : await env.DB_META.prepare("SELECT * FROM hf_bookings WHERE host_uid=?1 AND status='confirmed' AND starts_at=?2 ORDER BY id LIMIT 1")
     .bind(auth.uid, summary.next_start).first<BookingRow>();
+  // [HF-BOOKING-E2E-1] The influencer's bird's-eye numbers: appointments waiting for her yes, and how many different days (IST) have a booking or a request.
+  const waiting = await env.DB_META.prepare(
+    "SELECT COUNT(*) AS n FROM hf_bookings WHERE host_uid=?1 AND status='pending_approval' AND settlement_status='held' AND ends_at>?2",
+  ).bind(auth.uid, now).first<{ n: number }>();
+  const dayRows = (await env.DB_META.prepare(
+    "SELECT starts_at FROM hf_bookings WHERE host_uid=?1 AND status IN ('confirmed','pending_approval','starting','active') AND settlement_status='held' AND ends_at>?2 ORDER BY starts_at LIMIT 500",
+  ).bind(auth.uid, now).all<{ starts_at: number }>().catch(() => null))?.results ?? [];
+  const bookedDays = new Set(dayRows.map((r) => localDateAndMinute(Number(r.starts_at), "Asia/Kolkata").date)).size;
   return json({ summary: {
+    waitingCount: Number(waiting?.n ?? 0),
+    bookedDays,
     upcomingCount: Number(summary?.upcoming_count ?? 0),
     expectedHostNetPaise: await hostExpectedNetPaise(env, auth.uid),
     nextBooking: next ? bookingPublic(next, "host", (await loadBookingNames(env, [next.id])).get(next.id)) : null,
@@ -827,7 +843,7 @@ export async function hfBookingsRoute(req: Request, env: Env): Promise<Response 
         if (req.method !== "POST") return err(405, "method_not_allowed");
         return bookingMatch[2] === "start"
           ? await startBookingRoute(req, env, bookingMatch[1])
-          : await cancelRoute(req, env, bookingMatch[1]);
+          : await cancelRoute(req, env, bookingMatch[1], { fanCutoff: true }); // [HF-BOOKING-E2E-1] HF-REEL-28 holds on the web too, not just in the app
       }
       if (req.method !== "GET") return err(405, "method_not_allowed");
       return await detailRoute(req, env, bookingMatch[1]);

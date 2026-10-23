@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import SessionBridge from '../calls/SessionBridge';
 import { PageShell, useEmbedded, useIntoDashboard } from '../../components/account/dashboardEmbed';
-import { bookingError, getHostSchedule, legacyHoursToRules, normalizeAvailabilitySchedule, saveHostSchedule, type AvailabilitySchedule, type DateException, type LegacyAvailabilityPreview, type WindowRule } from '../../lib/hfBookingsApi';
+import { bookingError, getHostSchedule, legacyHoursToRules, listBookings, normalizeAvailabilitySchedule, saveHostSchedule, type AvailabilitySchedule, type DateException, type HfBooking, type LegacyAvailabilityPreview, type WindowRule } from '../../lib/hfBookingsApi';
+import { collectBookingPages } from '../../lib/hfBookingCalendar';
 import '../../styles/hf-bookings.css';
 import { BookingFeatureLoading, BookingUnavailable, useBookingFeature } from './BookingFeatureGate';
 
@@ -12,9 +13,19 @@ const today = () => { const d = new Date(); return new Date(d.getFullYear(), d.g
 const iso = (d: Date) => [d.getFullYear(), String(d.getMonth() + 1).padStart(2, '0'), String(d.getDate()).padStart(2, '0')].join('-');
 const blank = (): AvailabilitySchedule => ({
   timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'Asia/Kolkata', version: 0,
-  durationsMinutes: [15, 30, 45, 60], slotIntervalMinutes: 15, bufferMinutes: 10, minNoticeMinutes: 120,
+  durationsMinutes: [10, 15, 30, 45, 60], slotIntervalMinutes: 15, bufferMinutes: 10, minNoticeMinutes: 120,
   horizonDays: 60, rules: [], exceptions: [],
 });
+/** [HF-BOOKING-E2E-1] Bookings that still hold a time: confirmed, waiting for the influencer's yes, or happening now. */
+const HOLDS_TIME = ['confirmed', 'pending_approval', 'starting', 'active'];
+function dayIn(utc: string, timezone: string): string {
+  try { return new Intl.DateTimeFormat('en-CA', { timeZone: timezone, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(utc)); }
+  catch { return iso(new Date(utc)); }
+}
+function timeIn(utc: string, timezone: string): string {
+  try { return new Intl.DateTimeFormat('en-IN', { timeZone: timezone, hour: 'numeric', minute: '2-digit', hour12: true }).format(new Date(utc)); }
+  catch { return new Date(utc).toLocaleTimeString(); }
+}
 export default function HostAvailability() {
   useIntoDashboard('/dashboard/host/availability');
   const embedded = useEmbedded();
@@ -42,6 +53,8 @@ export default function HostAvailability() {
   const [manualFrom, setManualFrom] = useState('09:00');
   const [manualTo, setManualTo] = useState('10:00');
   const timeDrag = useRef<{ start: number; end: number } | null>(null);
+  const [booked, setBooked] = useState<HfBooking[]>([]);
+  const [bookedFailed, setBookedFailed] = useState(false);
 
   const load = async () => {
     setLoading(true); setMessage(''); setStale(false);
@@ -67,6 +80,25 @@ export default function HostAvailability() {
     window.addEventListener('pointerup', stop); window.addEventListener('pointercancel', stop); window.addEventListener('blur', stop);
     return () => { window.removeEventListener('pointerup', stop); window.removeEventListener('pointercancel', stop); window.removeEventListener('blur', stop); };
   }, []);
+  // Which days of the shown month already carry a booking or a request (reloaded when the month changes and after every save).
+  useEffect(() => {
+    if (feature !== 'enabled') return;
+    let live = true;
+    const from = new Date(month.getFullYear(), month.getMonth(), 0).toISOString();
+    const to = new Date(month.getFullYear(), month.getMonth() + 1, 2).toISOString();
+    void collectBookingPages(cursor => listBookings('host', from, to, cursor), () => live).then(r => {
+      if (!live) return;
+      setBooked(r.rows.filter(b => HOLDS_TIME.includes(b.status))); setBookedFailed(!!r.error);
+    });
+    return () => { live = false; };
+  }, [feature, month, saved]);
+  const bookedByDay = useMemo(() => {
+    const map = new Map<string, HfBooking[]>();
+    for (const b of booked) { const k = dayIn(b.startUtc, schedule.timezone); map.set(k, [...(map.get(k) ?? []), b]); }
+    for (const rows of map.values()) rows.sort((a, b) => Date.parse(a.startUtc) - Date.parse(b.startUtc));
+    return map;
+  }, [booked, schedule.timezone]);
+  const waitingTotal = booked.filter(b => b.status === 'pending_approval').length;
   const monthDays = useMemo(() => {
     const first = new Date(month.getFullYear(), month.getMonth(), 1);
     const offset = first.getDay();
@@ -100,7 +132,8 @@ export default function HostAvailability() {
     if (schedule.rules.some(r => r.startMin === r.endMin) || schedule.exceptions.some(e => e.startMin === e.endMin)) { setMessage('Check each time window. Start and end cannot match.'); return; }
     const needsConfirmation = legacyNeedsConfirmation && schedule.version === 0;
     if (needsConfirmation && !legacyAcknowledged) { setMessage('Confirm the influencer timezone for these legacy hours before saving.'); return; }
-    const normalized = normalizeAvailabilitySchedule(schedule);
+    // Every booking in the app is a 10-minute call, so 10 must always be one of the lengths on offer.
+    const normalized = normalizeAvailabilitySchedule(schedule.durationsMinutes.includes(10) ? schedule : { ...schedule, durationsMinutes: [10, ...schedule.durationsMinutes] });
     setSaving(true); setMessage(''); setStale(false);
     try {
       const next = await saveHostSchedule(normalized, schedule.version, needsConfirmation && legacyAcknowledged);
@@ -164,13 +197,17 @@ export default function HostAvailability() {
         {monthDays.map((day, index) => {
           if (!day) return <span className="hfb-date-empty" key={'empty-' + index} />;
           const key = iso(day); const low = rangeStart < rangeEnd ? rangeStart : rangeEnd; const high = rangeStart < rangeEnd ? rangeEnd : rangeStart;
-          return <button type="button" key={key} className={rangeStart && rangeEnd && key >= low && key <= high ? 'hfb-date is-selected' : 'hfb-date'} aria-pressed={rangeStart === key || rangeEnd === key}
+          const holds = bookedByDay.get(key) ?? []; const waiting = holds.filter(b => b.status === 'pending_approval').length;
+          return <button type="button" key={key} className={(rangeStart && rangeEnd && key >= low && key <= high ? 'hfb-date is-selected' : 'hfb-date') + (holds.length ? ' is-booked' : '') + (waiting ? ' is-waiting' : '')} aria-pressed={rangeStart === key || rangeEnd === key}
+            aria-label={holds.length ? `${day.getDate()}: ${holds.length} booked${waiting ? `, ${waiting} waiting for your answer` : ''}` : undefined}
             onPointerDown={() => { datePointerEvent.current = true; pointerSelecting.current = true; setRangeStart(key); setRangeEnd(key); }}
             onPointerEnter={() => { if (pointerSelecting.current) setRangeEnd(key); }}
             onPointerUp={() => { pointerSelecting.current = false; }}
-            onClick={() => { if (datePointerEvent.current) { datePointerEvent.current = false; return; } selectDay(key); }}>{day.getDate()}</button>;
+            onClick={() => { if (datePointerEvent.current) { datePointerEvent.current = false; return; } selectDay(key); }}>{day.getDate()}{holds.length > 0 && <span className="hfb-date-badge" aria-hidden="true">{holds.length}</span>}</button>;
         })}
       </div>
+      <p className="hfb-legend" role="status"><span className="hfb-key is-booked" aria-hidden="true" />Crossed-out days already have a booking{waitingTotal > 0 && <> · <span className="hfb-key is-waiting" aria-hidden="true" />{waitingTotal} waiting for your answer</>}{bookedFailed && ' · some bookings could not be loaded'}</p>
+      {bookedByDay.size > 0 && <ul className="hfb-booked-list" aria-label="Booked days this month">{[...bookedByDay.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([date, rows]) => <li key={date}><strong>{date}</strong><span>{rows.map(r => `${timeIn(r.startUtc, schedule.timezone)} ${r.status === 'pending_approval' ? '(waiting)' : '(booked)'}`).join(' · ')}</span><a href={'/bookings/' + encodeURIComponent(rows[0].id)}>Open</a></li>)}</ul>}
       <div className="hfb-range-fields"><label className="hfb-label">First date<input className="hfb-input" type="date" value={rangeStart} onChange={e => setRangeStart(e.target.value)} /></label><label className="hfb-label">Last date<input className="hfb-input" type="date" value={rangeEnd} onChange={e => setRangeEnd(e.target.value)} /></label></div>
       <div className="hfb-range-fields"><label className="hfb-label">From<input className="hfb-input" type="time" value={fromTime} onChange={e => setFromTime(e.target.value)} /></label><label className="hfb-label">To<input className="hfb-input" type="time" value={toTime} onChange={e => setToTime(e.target.value)} /></label><label className="hfb-label">Availability<select className="hfb-input" value={exceptionStatus} onChange={e => setExceptionStatus(e.target.value as 'available' | 'unavailable')}><option value="unavailable">Block these hours</option><option value="available">Open these hours</option></select></label></div>
       <label className="hfb-check"><input type="checkbox" checked={fullDay} onChange={e => setFullDay(e.target.checked)} /><span>Block or open the full selected day</span></label>

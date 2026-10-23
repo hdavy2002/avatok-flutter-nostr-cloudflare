@@ -21,6 +21,8 @@ export interface HfBooking {
 }
 export interface BookingSummary {
   upcomingCount: number; expectedHostNetPaise: number; nextBooking: HfBooking | null;
+  /** [HF-BOOKING-E2E-1] Requests waiting for the influencer's yes, and how many different days carry a booking or a request. */
+  waitingCount?: number; bookedDays?: number;
 }
 export interface BookingPage { bookings: HfBooking[]; nextCursor?: string | null }
 export type BookingRole = 'host' | 'customer';
@@ -107,12 +109,28 @@ export async function saveHostSchedule(schedule: AvailabilitySchedule, expectedV
     throw error;
   }
 }
-export async function getPublicSlots(slug: string, from: string, to: string, durationMinutes: number): Promise<AvailabilitySlot[]> {
-  const data = await request<Envelope<AvailabilitySlot[], 'slots'>>(
+export async function getPublicSlotsInfo(slug: string, from: string, to: string, durationMinutes: number): Promise<{ slots: AvailabilitySlot[]; durationsMinutes: number[] | null }> {
+  const data = await request<{ slots: AvailabilitySlot[]; durationsMinutes?: number[] }>(
     '/api/hf/hosts/' + encodeURIComponent(slug) + '/availability',
     { query: { from, to, durationMinutes } },
   );
-  return value(data, 'slots');
+  return { slots: data.slots, durationsMinutes: Array.isArray(data.durationsMinutes) ? data.durationsMinutes : null };
+}
+export async function getPublicSlots(slug: string, from: string, to: string, durationMinutes: number): Promise<AvailabilitySlot[]> {
+  return (await getPublicSlotsInfo(slug, from, to, durationMinutes)).slots;
+}
+/** The lengths an influencer offers, from the server's "invalid_duration" answer; null when the error is something else. */
+export function offeredDurations(error: unknown): number[] | null {
+  if (!(error instanceof ApiError) || error.error !== 'invalid_duration') return null;
+  const body = (error.body && typeof error.body === 'object' ? error.body : {}) as { durationsMinutes?: unknown };
+  const list = Array.isArray(body.durationsMinutes) ? body.durationsMinutes.filter((n): n is number => typeof n === 'number' && n > 0) : [];
+  return list.length ? list : null;
+}
+export async function acceptBooking(id: string): Promise<void> {
+  await request('/api/hf/bookings/' + encodeURIComponent(id) + '/accept', { method: 'POST', auth: await auth(), body: {} });
+}
+export async function declineBooking(id: string): Promise<void> {
+  await request('/api/hf/bookings/' + encodeURIComponent(id) + '/decline', { method: 'POST', auth: await auth(), body: {} });
 }
 export async function createQuote(hostSlug: string, startUtc: string, durationMinutes: number): Promise<BookingQuote> {
   telemetry('hf_booking_quote_requested', { duration_minutes: durationMinutes });
