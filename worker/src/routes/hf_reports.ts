@@ -32,7 +32,7 @@ export async function hfReportsRoute(req: Request, env: Env, p: string): Promise
       if (isFail(u)) return err(u.status, u.error);
       if (!isAdminUid(env, u.uid)) return err(403, "forbidden");
       const status = new URL(req.url).searchParams.get("status") || "open";
-      if (!["open", "closed", "all"].includes(status)) return err(400, "bad_status");
+      if (!["open", "closed", "reviewed", "actioned", "all"].includes(status)) return err(400, "bad_status"); // [HF-ADMIN-COMPLETE-1] reviewed/actioned set from the desk
       const table = adminReports ? "hf_reports" : "hf_support_tickets";
       const rows = (await env.DB_META.prepare(`SELECT * FROM ${table} ${status === "all" ? "" : "WHERE status=?1"} ORDER BY created_at DESC LIMIT 200`)
         .bind(...(status === "all" ? [] : [status])).all<Record<string, unknown>>()).results ?? [];

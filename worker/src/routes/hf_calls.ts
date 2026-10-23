@@ -410,6 +410,13 @@ async function walletGet(req: Request, env: Env): Promise<Response> {
   if (!(await callsOn(env))) return NOT_ENABLED();
   const u = await requireUser(req, env);
   if (isFail(u)) return err(u.status, u.error, u.error);
+  return walletGetFor(env, u.uid);
+}
+
+/** [HF-ADMIN-COMPLETE-1] The wallet exactly as GET /api/hf/wallet computes it, for any uid (the admin member page reuses this, so the
+ *  admin sees the same rupee figure the member sees). No auth here: callers must have authorised already. */
+export async function walletGetFor(env: Env, uid: string): Promise<Response> {
+  const u = { uid };
   // [HF-TOK-CALLS-1] token mode: callers see tokens (2 decimals) + the per-value breakdown + any amount owed; hosts see rupees only.
   const cfgAll = (await readConfig(env).catch(() => ({}))) as Record<string, unknown>;
   const tkCfg = readHfTokenConfig(cfgAll);

@@ -1371,3 +1371,10 @@ Events go to PostHog (EU, project 139917) only in builds made with `--dart-defin
 | `hf_topup_result` | `result: 'paid' \| 'failed' \| 'slow' \| 'native_refused' \| 'hosted_<completed\|failed\|unavailable\|notEnabled>'`, `ms` (poll results only), `method`, `reason`, `detail` (provider error text, ≤120 chars, on `native_refused`) | `[HF-WIRE-6]` What the app saw when it polled the order. `paid` = the server confirmed the credit; the payment provider's signed webhook is the only thing that adds money. `[HF-CHECKOUT-FALLBACK-1]` `native_refused` = our own UPI app / UPI ID / card screen was refused by the provider, so the provider's secure checkout opened instead; `hosted_*` is how that ended. |
 | `hf_channels_open` / `hf_channel_add_start` / `hf_channel_check_tap` | `platform` | `[HF-WIRE-3]` Already listed in the Channels section above. |
 | `hf_app_call_confirm_viewed` / `hf_app_call_started` / `hf_app_call_status` / `hf_app_call_ended` / `hf_app_call_cancelled` / `hf_app_call_cap_warning` / `hf_app_review_submitted` | see the native calls section | `[HF-WIRE-7]` Same events as the native calls section above. |
+
+## Hello Fraands admin desk actions (`[HF-ADMIN-COMPLETE-1]`, worker `routes/hf_admin_desk_actions.ts` + `routes/hf_money_audit.ts`, 2026-10-23)
+
+| Event | Properties | Meaning |
+|---|---|---|
+| `hf_admin_action` | `kind: ticket/report/incident/member/money`, `verb: note/resolve/reopen/reviewed/actioned/closed/open/reply_email/reply_whatsapp`, `target_id`, `status?`, `channel?`, `audited: boolean`, `result?` (only when a reply failed: `no_email`, `no_whatsapp`, `email_failed`, `whatsapp_<reason>`) | An admin acted on a support question, a report, a call incident, a member or a money alert from the desk. Every success also writes an `hf_admin_actions` row and an `admin_audit` row (`audited:false` = the audit insert failed and a `$exception` with `step: admin_audit` was logged). |
+| worker `$exception` | `extra.area: 'hf_admin_desk_actions'` (`step: wallet` / `admin_audit`) | Any failure in the member page, wallets list or desk actions. |

@@ -13,6 +13,7 @@ import { json } from "../util";
 import { requireUser, isFail } from "../authz";
 import { isAdminUid } from "../lib/preview";
 import { trackException } from "../hooks";
+import { actionsFor, reviewStateOf, rows as safeRows, reportedMember } from "../lib/hf_admin_actions_lib";
 
 const NO_STORE = { "cache-control": "private, no-store" };
 const err = (status: number, error: string, message?: string) => json({ ok: false, error, message: message ?? error }, status, NO_STORE);
@@ -20,7 +21,7 @@ export const DESK_PAGE = 50;
 const IST_MS = 5.5 * 3600_000;
 
 /** Display name of a person: registration name, else users.display_name, else null. */
-const NAME_SQL = (reg: string, usr: string) =>
+export const NAME_SQL = (reg: string, usr: string) =>
   `COALESCE(NULLIF(trim(COALESCE(${reg}.first_name,'') || ' ' || COALESCE(${reg}.last_name,'')),''), NULLIF(trim(${usr}.display_name),''))`;
 
 /** Any account that touched the call app: WhatsApp sign-up, registration, age confirm or an HF email. */
@@ -168,9 +169,10 @@ export async function support(env: Env, url: URL): Promise<Response> {
   ).bind(...(ok ? [st] : [])).all<Record<string, any>>()).results ?? [];
   const counts = (await env.DB_META.prepare("SELECT status, COUNT(*) AS n FROM hf_support_tickets GROUP BY status").all<{ status: string; n: number }>()).results ?? [];
   const p = paged(rows, offset);
+  const acts = await actionsFor(env, "ticket", p.items.map((r) => String(r.id)));
   return json({
     ok: true, nextCursor: p.nextCursor, counts: Object.fromEntries(counts.map((c) => [c.status, n(c.n)])),
-    items: p.items.map((r) => ({ id: r.id, uid: r.uid, name: r.name ?? null, username: r.username ?? null, email: r.email ?? null, topic: r.topic, message: r.message, status: r.status, createdAt: n(r.created_at), updatedAt: n(r.updated_at) })),
+    items: p.items.map((r) => ({ id: r.id, uid: r.uid, name: r.name ?? null, username: r.username ?? null, email: r.email ?? null, topic: r.topic, message: r.message, status: r.status, createdAt: n(r.created_at), updatedAt: n(r.updated_at), actions: acts.get(String(r.id)) ?? [] })),
   }, 200, NO_STORE);
 }
 
@@ -196,31 +198,64 @@ export async function reports(env: Env, url: URL): Promise<Response> {
       ORDER BY b.created_at DESC LIMIT 100`,
   ).all<Record<string, any>>()).results ?? [];
   const p = paged(rows, offset);
+  const incActs = await actionsFor(env, "incident", p.items.map((r) => String(r.id)));
+  // [HF-ADMIN-COMPLETE-1] The /report form queue (hf_reports; absent until its migration is applied) with who it is about, and each item's timeline.
+  const forms = offset > 0 ? [] : await safeRows<Record<string, any>>(env, "SELECT * FROM hf_reports ORDER BY (status='open') DESC, created_at DESC LIMIT 100");
+  const formActs = await actionsFor(env, "report", forms.map((r) => String(r.id)));
+  const userReports = await Promise.all(forms.map(async (r) => {
+    const about = await reportedMember(env, String(r.profile ?? ""), String(r.call_ref ?? ""), r.uid ?? null);
+    return { id: r.id, uid: r.uid ?? null, contact: r.contact, profile: r.profile, call: r.call_ref, details: r.details, status: r.status, createdAt: n(r.created_at),
+      reportedUid: about?.uid ?? null, reportedName: about?.name ?? null, actions: formActs.get(String(r.id)) ?? [] };
+  }));
   return json({
-    ok: true, nextCursor: p.nextCursor,
-    incidents: p.items.map((r) => ({ id: r.id, callId: r.call_id, kind: r.kind, reporterUid: r.reporter_uid, reporterName: r.reporter_name ?? null, otherUid: r.other_uid ?? null, otherName: r.other_name ?? null, at: n(r.created_at) })),
+    ok: true, nextCursor: p.nextCursor, userReports,
+    incidents: p.items.map((r) => { const a = incActs.get(String(r.id)) ?? []; return { id: r.id, callId: r.call_id, kind: r.kind, reporterUid: r.reporter_uid, reporterName: r.reporter_name ?? null, otherUid: r.other_uid ?? null, otherName: r.other_name ?? null, at: n(r.created_at), state: reviewStateOf(a), actions: a }; }),
     blocks: blocks.map((r) => ({ blockerUid: r.blocker_uid, blockerName: r.blocker_name ?? null, blockedUid: r.blocked_uid, blockedName: r.blocked_name ?? null, callId: r.call_id ?? null, at: n(r.created_at) })),
   }, 200, NO_STORE);
 }
 
 export async function summary(env: Env): Promise<Response> {
   const now = Date.now();
+  const dayStart = Math.floor((now + IST_MS) / 86_400_000) * 86_400_000 - IST_MS;
+  const d = new Date(now + IST_MS);
+  const monthStart = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1) - IST_MS;
   const one = async (sql: string, ...b: unknown[]) => n((await env.DB_META.prepare(sql).bind(...b).first<{ n: number }>().catch(() => null))?.n);
-  const [total, d1, d7, registered, hostsLive, hostsReview, bookingsOpen, ticketsOpen, payoutsOpen, refundsOpen, exitOpen, incidents30] = await Promise.all([
+  const sums = async (since: number) => {
+    const r = await env.DB_META.prepare("SELECT COUNT(*) AS n, COALESCE(SUM(amount_rupees),0) AS s FROM hf_topups WHERE status='paid' AND COALESCE(paid_at,created_at)>=?1").bind(since).first<{ n: number; s: number }>().catch(() => null);
+    return { n: n(r?.n), rupees: n(r?.s) };
+  };
+  const [total, d1, dToday, d7, registered, hostsLive, hostsReview, bookingsOpen, bookingsUpcoming, bookingsPending, ticketsOpen, payoutsOpen, refundsOpen, exitOpen, incidents30, incidentsOpen, formReportsOpen, moneyOpen, topToday, topMonth] = await Promise.all([
     one(`SELECT COUNT(*) AS n FROM users u WHERE ${HF_MEMBER_SQL}`),
     one(`SELECT COUNT(*) AS n FROM users u WHERE ${HF_MEMBER_SQL} AND u.created_at>=?1`, now - 86_400_000),
+    one(`SELECT COUNT(*) AS n FROM users u WHERE ${HF_MEMBER_SQL} AND u.created_at>=?1`, dayStart),
     one(`SELECT COUNT(*) AS n FROM users u WHERE ${HF_MEMBER_SQL} AND u.created_at>=?1`, now - 7 * 86_400_000),
     one("SELECT COUNT(*) AS n FROM hf_user_registration"),
     one("SELECT COUNT(*) AS n FROM hf_hosts WHERE status='live'"),
     one("SELECT COUNT(*) AS n FROM hf_hosts WHERE status='pending_review'"),
     one("SELECT COUNT(*) AS n FROM hf_bookings WHERE status IN ('confirming','confirmed','starting','active','settling')"),
+    one("SELECT COUNT(*) AS n FROM hf_bookings WHERE status IN ('confirmed','starting') AND starts_at>=?1", now),
+    one("SELECT COUNT(*) AS n FROM hf_bookings WHERE status='confirming'"),
     one("SELECT COUNT(*) AS n FROM hf_support_tickets WHERE status='open'"),
     one("SELECT COUNT(*) AS n FROM hf_payout_requests WHERE status IN ('requested','approved')"),
     one("SELECT COUNT(*) AS n FROM hf_refund_requests WHERE status IN ('requested','failed','processing')"),
     one("SELECT COUNT(*) AS n FROM hf_exit_requests WHERE status NOT IN ('done','cancelled')"),
     one("SELECT COUNT(*) AS n FROM hf_incidents WHERE created_at>=?1", now - 30 * 86_400_000),
+    // an incident is "open" until the desk has a review-type action on it (hf_admin_actions; before its migration every incident counts as open)
+    (async () => {
+      const r = await env.DB_META.prepare("SELECT COUNT(*) AS n FROM hf_incidents i WHERE NOT EXISTS (SELECT 1 FROM hf_admin_actions a WHERE a.subject_type='incident' AND a.subject_id=i.id AND a.action IN ('reviewed','actioned','closed'))").first<{ n: number }>().catch(() => null);
+      return r ? n(r.n) : one("SELECT COUNT(*) AS n FROM hf_incidents");
+    })(),
+    one("SELECT COUNT(*) AS n FROM hf_reports WHERE status='open'"),
+    one("SELECT COUNT(*) AS n FROM hf_money_audit WHERE status='open'"),
+    sums(dayStart), sums(monthStart),
   ]);
-  return json({ ok: true, members: { total, last24h: d1, last7d: d7, registered }, hosts: { live: hostsLive, pendingReview: hostsReview }, bookingsOpen, ticketsOpen, payoutsOpen, refundsOpen, closingAccounts: exitOpen, incidents30d: incidents30 }, 200, NO_STORE);
+  return json({
+    ok: true, members: { total, last24h: d1, today: dToday, last7d: d7, registered }, hosts: { live: hostsLive, pendingReview: hostsReview },
+    bookingsOpen, bookings: { open: bookingsOpen, upcoming: bookingsUpcoming, pendingApproval: bookingsPending },
+    topups: { today: topToday, month: topMonth },
+    ticketsOpen, payoutsOpen, refundsOpen, closingAccounts: exitOpen, incidents30d: incidents30,
+    reportsOpen: incidentsOpen + formReportsOpen, moneyAlertsOpen: moneyOpen,
+  }, 200, NO_STORE);
 }
 
 export async function hfAdminDeskRoute(req: Request, env: Env, p: string): Promise<Response | null> {
