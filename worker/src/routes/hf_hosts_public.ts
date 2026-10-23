@@ -1,9 +1,9 @@
 // [HF-HOST-PLATFORM-1] Public HF host cards. Flag hostsPublicEnabled. Only status='live'. Never exposes uid, KYC, phone, or an unapproved voice intro.
 //   GET /api/hosts/public?limit=&offset=[&lane=women|lgbtq]   [HF-LANE-VERIFY-1] lane needs a bearer token + lane access (403 lane_required); women-lane hosts carry womenOnly:true in the default list   GET /api/hosts/public/:slug
-import { publicVerification } from "../lib/hf_public_verification";
+import { publicVerification, phoneVerifiedSql } from "../lib/hf_public_verification";
 import type { Env } from "../types";
 import { json } from "../util";
-import { trackException } from "../hooks";
+import { trackException, track } from "../hooks";
 import { BRAND } from "../lib/brand";
 import { readConfig } from "./config";
 import { requireUser, isFail } from "../authz";
@@ -19,20 +19,18 @@ const CACHE = { "cache-control": "public, max-age=60" };
 const err = (status: number, error: string) => json({ error }, status);
 const parse = <T>(s: string | null | undefined, fb: T): T => { try { return s ? (JSON.parse(s) as T) : fb; } catch { return fb; } };
 
-export type LiveRow = HostRow & { identity_verified_at?: number | null; identity_age_ok?: number | null; video_review_status?: string | null; video_r2_key?: string | null; video_mime?: string | null; video_code?: string | null; presence?: string | null; image_key: string | null; image_source: "uploaded" | "ai" | null; audio_key: string | null; audio_caption: string | null };
+export type LiveRow = HostRow & { phone_verified?: number | null; presence?: string | null; image_key: string | null; image_source: "uploaded" | "ai" | null; audio_key: string | null; audio_caption: string | null };
 import { readHfStdPlan, type HfStdPlan } from "../lib/hf_token_config"; // [HF-STD-PLAN-1]
 import { formatRupees } from "../lib/hf_token_math";
 import { isCreatorCategory, CREATOR_VERSION } from "../lib/hf_creator_pricing";
 import { pricingStd, readInfluencerRate } from "../lib/hf_influencer_rate"; // [HF-WIRE-18]
-export const SEL = `SELECT h.*, k.verified_at AS identity_verified_at, k.age_ok AS identity_age_ok, v.review_status AS video_review_status, v.r2_key AS video_r2_key, v.mime AS video_mime, v.code AS video_code, COALESCE((SELECT r2_key FROM hf_host_media m WHERE m.uid=h.uid AND m.kind='profile' AND m.status='active' ORDER BY m.created_at DESC LIMIT 1), a.image_key) AS image_key,
+export const SEL = `SELECT h.*, ${phoneVerifiedSql("h.uid")} AS phone_verified /* [HF-IDV-WHATSAPP-1] */, COALESCE((SELECT r2_key FROM hf_host_media m WHERE m.uid=h.uid AND m.kind='profile' AND m.status='active' ORDER BY m.created_at DESC LIMIT 1), a.image_key) AS image_key,
   CASE WHEN EXISTS (SELECT 1 FROM hf_host_media m WHERE m.uid=h.uid AND m.kind='profile' AND m.status='active')
     THEN CASE WHEN (SELECT job_id FROM hf_host_media m WHERE m.uid=h.uid AND m.kind='profile' AND m.status='active' ORDER BY m.created_at DESC LIMIT 1) IS NOT NULL THEN 'ai' ELSE 'uploaded' END
     WHEN a.image_key IS NOT NULL THEN 'ai' ELSE NULL END AS image_source,
   (SELECT r2_key FROM hf_host_media m WHERE m.uid=h.uid AND m.kind='intro_audio' AND m.status='active' ORDER BY m.created_at DESC LIMIT 1) AS audio_key,
   (SELECT caption FROM hf_host_media m WHERE m.uid=h.uid AND m.kind='intro_audio' AND m.status='active' ORDER BY m.created_at DESC LIMIT 1) AS audio_caption
-  FROM hf_hosts h LEFT JOIN hf_avatars a ON a.id = h.avatar_id
-  LEFT JOIN hf_kyc k ON k.uid=h.uid
-  LEFT JOIN hf_selfie v ON v.id=(SELECT latest.id FROM hf_selfie latest WHERE latest.uid=h.uid ORDER BY latest.created_at DESC, latest.id DESC LIMIT 1)`;
+  FROM hf_hosts h LEFT JOIN hf_avatars a ON a.id = h.avatar_id`;
 
 // [HF-VOICE-INTRO-1] The host's own admin-approved voice introduction ("Recorded by the host").
 function intro(env: Env, r: LiveRow) {
@@ -59,7 +57,7 @@ export function priceFields(r: { price_per_min: number; category?: string }, std
 
 export function card(env: Env, r: LiveRow, agg?: HostAggregate, std?: HfStdPlan | null, line?: HostLineFields | null) {
   return {
-    ...publicVerification({ verified_at: r.identity_verified_at, age_ok: r.identity_age_ok }, { review_status: r.video_review_status, r2_key: r.video_r2_key, mime: r.video_mime, code: r.video_code }, r.status),
+    ...publicVerification({ phone_verified: r.phone_verified }, r.status), // [HF-IDV-WHATSAPP-1] WhatsApp OTP only
     slug: r.slug, displayName: r.display_name, tagline: r.tagline, avatarUrl: r.image_key ? mediaUrl(env, r.image_key) : null,
     imageProvenance: r.image_source,
     category: r.category ?? "standard", listingRevision: r.listing_revision ?? 1,
@@ -97,6 +95,10 @@ export async function hfHostsPublicRoute(req: Request, env: Env, ctx?: Execution
       const pr = await profileReels(env, r.uid, cfgAll as unknown as Record<string, unknown>); // [HF-WIRE-4] visible reels + followers (null while the flag is off)
       if ((lane === "women" && r.women_lane !== 1) || (lane === "lgbtq" && r.lgbtq_lane !== 1)) return err(404, "not_found");
       const gal = (await env.DB_META.prepare("SELECT * FROM hf_host_media WHERE uid=?1 AND kind='gallery' AND status='active' ORDER BY sort, created_at").bind(r.uid).all<MediaRow>()).results ?? [];
+      // [HF-IDV-WHATSAPP-1] success signal: a live profile served as callable because its WhatsApp OTP is verified.
+      const pv = publicVerification({ phone_verified: r.phone_verified }, r.status);
+      const tp = track(env, r.uid, "hf_public_profile_served", BRAND.slug, { area: "hf_host_public", slug: r.slug, call_eligible: pv.callEligible, identity_verified: pv.identityVerified, identity_method: "whatsapp_otp", listing_status: r.status }).catch(() => {});
+      if (ctx) ctx.waitUntil(tp);
       return json({
         protectedLane: lane,
         ...card(env, r, (await hostAggregates(env, [r.uid])).get(r.uid), std, (await lineFieldsForUids(env, [r.uid]))?.get(r.uid)), reviews: await hostReviews(env, r.uid, 10), aboutPolished: r.about_polished, about: r.about ?? null, quote: r.quote, // [HF-DAILY-FLOWS-1] the host's own saved bio is the fallback while no polished version exists

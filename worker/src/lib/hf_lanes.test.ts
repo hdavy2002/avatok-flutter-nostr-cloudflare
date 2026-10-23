@@ -28,31 +28,25 @@ describe("hf_lanes", () => {
 });
 
 
-// A fake D1 models failures independently so women never depend on selfie availability.
-function accessEnv({ gender = "F", verified = true, declared = true, selfie = "approved", failSelfie = false } = {}) {
+// A fake D1: lane rows already joined on verified Aadhaar (hf_kyc).
+function accessEnv({ gender = "F", verified = true, declared = true } = {}) {
   return { DB_META: { prepare: (sql: string) => ({ bind: () => ({
     all: async () => ({ results: verified ? [
       { lane: "women", gender, declared_at: null },
       { lane: "lgbtq", gender, declared_at: declared ? 1 : null },
     ] : [] }),
-    first: async () => {
-      expect(sql).toContain("ORDER BY created_at DESC, id DESC");
-      if (failSelfie) throw new Error("selfie unavailable");
-      return selfie === "none" ? null : { review_status: selfie, review_reason: null };
-    },
+    first: async () => { throw new Error(`no selfie lookups expected: ${sql}`); },
   }) }) } } as any;
 }
 
-describe("current protected-space authority", () => {
-  it.each(["none", "pending", "rejected"])("membership without approved latest video (%s) never grants LGBTQ+", async (selfie) => {
-    expect(await getLaneAccess(accessEnv({ selfie }), "u")).toEqual({ women: true, lgbtq: false });
-  });
-  it("approved video still requires verified Aadhaar and a private declaration", async () => {
+describe("current protected-space authority [HF-IDV-WHATSAPP-1: no selfie video]", () => {
+  it("LGBTQ+ needs a verified Aadhaar and a private declaration, never a video", async () => {
+    expect(await getLaneAccess(accessEnv(), "u")).toEqual({ women: true, lgbtq: true });
     expect((await getLaneAccess(accessEnv({ declared: false }), "u")).lgbtq).toBe(false);
     expect(await getLaneAccess(accessEnv({ verified: false }), "u")).toEqual({ women: false, lgbtq: false });
-    expect((await getLaneAccess(accessEnv({ gender: "M" }), "u")).lgbtq).toBe(true);
+    expect((await getLaneAccess(accessEnv({ gender: "M" }), "u"))).toEqual({ women: false, lgbtq: true });
   });
-  it.each(["F", "T"])("women with Aadhaar %s keep access when selfie queries fail", async (gender) => {
-    expect(await getLaneAccess(accessEnv({ gender, failSelfie: true }), "u")).toEqual({ women: true, lgbtq: false });
+  it.each(["F", "T"])("women with Aadhaar %s keep access", async (gender) => {
+    expect((await getLaneAccess(accessEnv({ gender }), "u")).women).toBe(true);
   });
 });

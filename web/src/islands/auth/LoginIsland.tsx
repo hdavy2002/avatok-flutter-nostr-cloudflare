@@ -41,7 +41,7 @@ import { CLERK_PUBLISHABLE_KEY } from '../../lib/env';
 import { capture, withTrace } from '../../lib/analytics';
 import { postLoginTarget, isFreeWatchTarget } from '../../lib/authRedirect';
 import {
-  Field, Button, CheckRow, Divider, GoogleButton, CodeStep,
+  Field, Button, CheckRow, Divider, GoogleButton, GOOGLE_AUTH_ENABLED, CodeStep,
   validateEmail, useFormReady, useClerkStalled, useRedirectIfSignedIn, STALLED_MESSAGE,
   type FieldErrors,
 } from './AuthKit';
@@ -424,8 +424,10 @@ function Inner() {
             </div>
           </>
         )}
-        <Divider label={uiT("web-auth.4aec6108de24a9f0","Or")} />
-        <GoogleButton onClick={() => void google()} disabled={!isLoaded || stalled || submitting} />
+        {GOOGLE_AUTH_ENABLED && <>
+          <Divider label={uiT("web-auth.4aec6108de24a9f0","Or")} />
+          <GoogleButton onClick={() => void google()} disabled={!isLoaded || stalled || submitting} />
+        </>}
         <div className="auth-foot">
           <p className="auth-footline"><UiText id="web-auth.38c1c4457cd164cc" source="New here?" /><a href="/sign-up"><UiText id="web-auth.86033f75a4c0876a" source="Create an account" /></a>
           </p>
@@ -467,7 +469,7 @@ function Inner() {
           its loading state, and if loading fails the message above explains it. */}
       <Button type="submit" loading={submitting || (!isLoaded && !stalled)} disabled={stalled}><UiText id="web-auth.88d420398edd3a06" source="Email me a code" />{" "}</Button>
 
-      {waStage !== 'needs_email' && (
+      {GOOGLE_AUTH_ENABLED && waStage !== 'needs_email' && (
         <>
           <Divider label={uiT("web-auth.4aec6108de24a9f0","Or")} />
           <GoogleButton onClick={() => void google()} disabled={!isLoaded || stalled || submitting} />

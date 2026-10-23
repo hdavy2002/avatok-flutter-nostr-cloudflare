@@ -22,6 +22,7 @@ beforeEach(async () => {
   const db = makeDb(["2026-10-09-hf-hosts.sql", "2026-10-09-hf-presence.sql", "2026-10-09-hf-host-kyc.sql", "2026-10-09-hf-voice-intro.sql", "2026-10-12-hf-creator-price-alters.sql"], { alters: true });
   db._raw.exec("CREATE TABLE users(uid TEXT PRIMARY KEY); INSERT INTO users(uid) VALUES ('creator')");
   db._raw.exec("CREATE TABLE admin_audit(id TEXT PRIMARY KEY,admin_id TEXT,action TEXT,target TEXT,meta TEXT,created_at INTEGER)");
+  db._raw.exec("CREATE TABLE contact_verification(uid TEXT PRIMARY KEY, phone_verified INTEGER, phone_hash TEXT); CREATE TABLE phone_otp(uid TEXT, phone_hash TEXT, status TEXT)");
   env = { DB_META: db, DB_WALLET: db, HF_PII_KEY: btoa("t".repeat(32)), BLOSSOM_BASE_URL: "https://media.example.invalid", VERIFICATION: { put: vi.fn(), delete: vi.fn().mockResolvedValue(undefined), get: vi.fn() }, BLOBS: { put: vi.fn(), delete: vi.fn().mockResolvedValue(undefined) } };
 });
 describe("creator draft administration", () => {
@@ -113,7 +114,7 @@ describe("creator draft administration", () => {
     expect(JSON.stringify(card(env, { ...row, image_key: null, audio_key: null, audio_caption: null }))).not.toMatch(/privatePhone|private_phone|9876543210|v1:/);
     const publish = await call("/creator/publish", "POST", { verified: true, status: "live" });
     expect(publish.status).toBe(422);
-    expect((await publish.json()).missing).toEqual(expect.arrayContaining(["video_kyc", "identity_verification", "voice"]));
+    expect((await publish.json()).missing).toEqual(expect.arrayContaining(["whatsapp", "voice"]));
   });
   it("rejects a stale admin editor revision instead of overwriting a newer save", async () => {
     await call("", "POST", { uid: "creator", category: "influencer" });
@@ -134,15 +135,16 @@ describe("creator draft administration", () => {
     expect(env.VERIFICATION.put).toHaveBeenCalledOnce();
     expect((await (await call("/creator")).json()).listing.voice).toMatchObject({ status: "pending", seconds: 20, mime: "audio/mpeg" });
   });
-  it("requires a real approved six-digit video record, not identity verification alone", async () => {
+  it("[HF-IDV-WHATSAPP-1] needs only a WhatsApp-OTP-verified number, never Aadhaar or a selfie video", async () => {
     await call("", "POST", { uid: "creator", category: "celebrity" });
     const db = env.DB_META._raw;
-    db.exec("INSERT INTO hf_kyc(uid,verified_at,age_ok,updated_at) VALUES ('creator',1,1,1)");
-    db.exec("INSERT INTO hf_selfie(id,uid,code,r2_key,mime,bytes,created_at,review_status) VALUES ('v','creator','1234','private/video','video/mp4',22000,1,'approved')");
-    expect(await creatorPublicationBlockers(env, "creator")).toContain("video_kyc");
-    db.exec("UPDATE hf_selfie SET code='123456' WHERE id='v'");
+    expect(await creatorPublicationBlockers(env, "creator")).toContain("whatsapp");
     expect(await creatorPublicationBlockers(env, "creator")).not.toContain("video_kyc");
-    db.exec("UPDATE hf_selfie SET review_status='pending' WHERE id='v'");
-    expect(await creatorPublicationBlockers(env, "creator")).toContain("video_kyc");
+    expect(await creatorPublicationBlockers(env, "creator")).not.toContain("identity_verification");
+    expect(await creatorPublicationBlockers(env, "creator")).not.toContain("payout");
+    db.exec("INSERT INTO contact_verification(uid,phone_verified,phone_hash) VALUES ('creator',1,'h')");
+    expect(await creatorPublicationBlockers(env, "creator")).toContain("whatsapp");
+    db.exec("INSERT INTO phone_otp(uid,phone_hash,status) VALUES ('creator','h','verified')");
+    expect(await creatorPublicationBlockers(env, "creator")).not.toContain("whatsapp");
   });
 });

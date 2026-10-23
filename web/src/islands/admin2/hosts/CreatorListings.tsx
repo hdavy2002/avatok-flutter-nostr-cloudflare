@@ -7,7 +7,7 @@ import { Banner, ConsultShell, fail } from '../consultants/kit';
 const field = { width: '100%', minHeight: 44, padding: 10, border: '1px solid #c8afd1', borderRadius: 10, fontSize: 15 } as const;
 const grid = { display: 'grid', gap: 12, gridTemplateColumns: 'repeat(auto-fit,minmax(220px,1fr))' } as const;
 const editable = (l: CreatorListing) => ['draft', 'pending_host', 'paused', 'rejected'].includes(l.status);
-const blockerNames: Record<string, string> = { sample_data: 'Create a draft for a real host account to publish this profile.', identity_verification: 'Verified identity and age', video_kyc: 'Approved six-digit video KYC', payout: 'Verified matching payout account', profile: 'Name, tagline and about', price: 'Valid creator price', agreements: 'Host agreement acceptance', voice: 'Approved voice introduction (20 seconds minimum)', profile_media: 'Profile image' };
+const blockerNames: Record<string, string> = { sample_data: 'Create a draft for a real host account to publish this profile.', whatsapp: 'WhatsApp number verified by OTP', profile: 'Name, tagline and about', price: 'Valid creator price', agreements: 'Host agreement acceptance', voice: 'Approved voice introduction (20 seconds minimum)', profile_media: 'Profile image' };
 
 export default function CreatorListings() {
   const [rows, setRows] = useState<CreatorListing[]>([]), [listing, setListing] = useState<CreatorListing | null>(null);
@@ -34,7 +34,7 @@ export default function CreatorListings() {
   const change = (patch: Partial<CreatorListing>) => setListing(l => l ? { ...l, ...patch } : l);
   const locked = !listing || !editable(listing);
   return <ConsultShell>
-    <p>Create a draft for an existing host account. Publishing requires their completed identity, video KYC, payout and agreement steps.</p>
+    <p>Create a draft for an existing host account. Publishing requires a WhatsApp-verified number, a voice intro and the agreement.</p>
     {error && <Banner tone="error">{error}</Banner>}{info && <Banner tone="info">{info}</Banner>}
     <section className="card" style={{ margin: '16px 0' }} aria-label="Create a creator listing">
       <h2>Create draft</h2>

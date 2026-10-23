@@ -5,9 +5,7 @@ import type { Avatar, Draft, StepGroup, StepKey } from './types';
 export const STEPS: { key: StepKey; group: StepGroup; title: string }[] = [
   { key: 'welcome', group: 'start', title: 'Welcome' },
   { key: 'phone', group: 'verify', title: 'Your WhatsApp number' },
-  { key: 'aadhaar', group: 'verify', title: 'Aadhaar check' },
-  { key: 'selfie', group: 'verify', title: 'Selfie video' },
-  { key: 'payout', group: 'verify', title: 'Where we pay you' },
+  // [HF-IDV-WHATSAPP-1 2026-10-24] No Aadhaar, no selfie video. Payout (UPI + Aadhaar) is set up later from the wallet, when withdrawing.
   { key: 'avatar', group: 'profile', title: 'Choose your avatar' },
   { key: 'about', group: 'profile', title: 'About you' },
   { key: 'languages', group: 'profile', title: 'Languages & style' },

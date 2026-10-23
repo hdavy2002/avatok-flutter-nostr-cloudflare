@@ -50,7 +50,7 @@ import { ClerkIsland } from '../../lib/clerk';
 import { CLERK_PUBLISHABLE_KEY } from '../../lib/env';
 import { capture, captureException, withTrace } from '../../lib/analytics';
 import {
-  Field, Button, CheckRow, Divider, GoogleButton,
+  Field, Button, CheckRow, Divider, GoogleButton, GOOGLE_AUTH_ENABLED,
   validateEmail, validateRequired, clerkError,
   useClerkStalled, STALLED_MESSAGE,
   type FieldErrors, type Role,
@@ -719,8 +719,10 @@ function Inner() {
             </div>
           </>
         )}
-        <Divider label={uiT("web-auth.4aec6108de24a9f0","Or")} />
-        <GoogleButton onClick={() => void google()} disabled={stalled || submitting} />
+        {GOOGLE_AUTH_ENABLED && <>
+          <Divider label={uiT("web-auth.4aec6108de24a9f0","Or")} />
+          <GoogleButton onClick={() => void google()} disabled={stalled || submitting} />
+        </>}
         <div className="auth-foot">
           <p className="auth-footline"><UiText id="web-auth.7016769c24191247" source="Already with us?" /><a href="/sign-in"><UiText id="web-auth.c189840cf7e2d6f6" source="Log in" /></a>
           </p>
@@ -773,8 +775,10 @@ function Inner() {
           Email me a code
         </Button>
 
-        <Divider label={uiT("web-auth.4aec6108de24a9f0","Or")} />
-        <GoogleButton onClick={() => void google()} disabled={stalled || submitting} />
+        {GOOGLE_AUTH_ENABLED && <>
+          <Divider label={uiT("web-auth.4aec6108de24a9f0","Or")} />
+          <GoogleButton onClick={() => void google()} disabled={stalled || submitting} />
+        </>}
         <div className="auth-foot">
           <p className="auth-footline"><UiText id="web-auth.7016769c24191247" source="Already with us?" /><a href="/sign-in"><UiText id="web-auth.c189840cf7e2d6f6" source="Log in" /></a>
           </p>

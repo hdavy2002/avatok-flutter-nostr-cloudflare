@@ -11860,5 +11860,20 @@
       }
     ],
     "_verified_at": "2026-10-23 read from channelEvent(...) calls in hf-flutter/lib/demo/screens/{profile,channel_sections,merch_product,bag,profile_photo}.dart and bag_kit.dart"
+  },
+  "HF-IDV-WHATSAPP-1": {
+    "description": "[HF-IDV-WHATSAPP-1 2026-10-24] Host/influencer identity = WhatsApp OTP only (no Aadhaar, no selfie video to go live, generate or be approved). Public identityVerified/callEligible come from the OTP, so live profiles show calls + the booking calendar. Aadhaar kept only for payouts and the Women-only/LGBTQ+ spaces (LGBTQ+ no longer needs a video). 'Continue with Google' removed from web sign-in/sign-up.",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [],
+    "success": [
+      {
+        "event": "hf_public_profile_served",
+        "property": "call_eligible",
+        "equals": true,
+        "min_events": 1,
+        "note": "A live, WhatsApp-verified influencer profile was served as callable/bookable (e.g. /h/humphrey-davy)."
+      }
+    ]
   }
 }

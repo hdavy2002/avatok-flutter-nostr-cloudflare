@@ -22,6 +22,7 @@ import { piiKeyBytes, piiKeyConfigured } from "../lib/pii_crypto";
 import { pushHostDecision } from "../lib/hf_push"; // [HF-APP-4]
 import { parseStoredFlags, introStatusOf, introCaption, INTRO_MEDIA_KIND } from "../lib/hf_intro";
 import { creatorPublicationBlockers } from "../lib/hf_creator_publication";
+import { isPhoneVerified } from "../lib/hf_public_verification";
 import { hfCreatorListingsAdminRoute } from "./hf_creator_listings_admin";
 import { acquireHfScheduleWriteLock, drainHfBookingHolds, getHfBookingSchedule, releaseHfScheduleWriteLock } from "../lib/hf_booking_store";
 
@@ -287,14 +288,13 @@ async function decide(req: Request, env: Env, uid: string): Promise<Response> {
   let msg = "";
   if (decision === "approve") {
     if (!["pending_review", "paused", "rejected"].includes(h.status)) return err(409, "bad_state", { status: h.status });
-    const [selfie, payout, media] = await Promise.all([
-      env.DB_META.prepare("SELECT review_status FROM hf_selfie WHERE uid=?1 ORDER BY created_at DESC, id DESC LIMIT 1").bind(uid).first<{ review_status: string }>(),
-      env.DB_META.prepare("SELECT upi_enc FROM hf_payout WHERE uid=?1").bind(uid).first<{ upi_enc: string | null }>(),
+    // [HF-IDV-WHATSAPP-1 2026-10-24] No selfie and no payout details needed to approve; WhatsApp OTP is checked by creatorPublicationBlockers / the public card.
+    const [phoneOk, media] = await Promise.all([
+      isPhoneVerified(env, uid),
       env.DB_META.prepare("SELECT COUNT(*) AS n FROM hf_host_media WHERE uid=?1 AND status='active' AND kind IN ('profile','gallery')").bind(uid).first<{ n: number }>(),
     ]);
     const missing: string[] = [];
-    if (selfie?.review_status !== "approved") missing.push("selfie_not_approved");
-    if (!payout?.upi_enc) missing.push("payout_upi_missing"); // [HF-UPI-ONLY-1]
+    if (!phoneOk) missing.push("whatsapp_not_verified");
     if (!media?.n) missing.push("no_media");
     const ih = await env.DB_META.prepare("SELECT intro_status FROM hf_hosts WHERE uid=?1").bind(uid).first<{ intro_status: string | null }>();
     if (h.status === "pending_review" && ih?.intro_status !== "pending" && ih?.intro_status !== "approved") missing.push("no_intro");

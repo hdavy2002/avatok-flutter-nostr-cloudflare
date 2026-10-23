@@ -6,7 +6,6 @@ import { isOnboardingStandardPlan } from '../api_real';
 
 const NEEDS: { icon: IconName; text: string }[] = [
   { icon: 'phone', text: 'Your own phone with WhatsApp' },
-  { icon: 'id', text: 'Your Aadhaar card' },
   { icon: 'clock', text: '10 minutes of your time' },
   { icon: 'mic', text: 'A quiet place to record a short voice introduction' },
 ];

@@ -1481,3 +1481,11 @@ Each of the four flags must be on before its events appear. Events arrive only a
 | `profile_photo_opened` | none | An influencer opened Dashboard > My public page > Profile photo. **Ship-manifest success event.** |
 | `profile_photo_saved` | `bytes`, `zoom` | The cropped 1200x1500 JPEG was accepted by `PUT /api/hosts/me/photo`. |
 | `profile_photo_failed` | `reason` (`bad_type`/`too_big`/`too_small`/`not_host`/`rate_limited`/`network`/`client`/...), `status` | The save failed; the person saw a plain-language message. |
+
+## Host identity by WhatsApp OTP (`[HF-IDV-WHATSAPP-1]`, worker, 2026-10-24)
+
+| Event | Props | Note |
+|---|---|---|
+| `hf_public_profile_served` | `slug`, `call_eligible`, `identity_verified`, `identity_method` (`whatsapp_otp`), `listing_status` | A public influencer profile was served (`GET /api/hosts/public/:slug`), distinct_id = the host uid. **Ship-manifest success event** (`call_eligible = true`). |
+| `hf_host_identity_gate` | `identity_method`, `passed` (false) | Profile generation refused because the host's WhatsApp number is not OTP-verified. |
+| `hf_host_generate_started` | + `identity_method` | Existing event; now records that WhatsApp OTP was the identity check. |

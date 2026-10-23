@@ -1,24 +1,33 @@
-/** Private evidence stays inside the worker. Only the two booleans are public. */
-export interface IdentityEvidence {
-  verified_at?: number | null;
-  age_ok?: number | null;
-}
-export interface VideoEvidence {
-  review_status?: string | null;
-  r2_key?: string | null;
-  mime?: string | null;
-  code?: string | null;
+/**
+ * [HF-IDV-WHATSAPP-1 2026-10-24] Owner decision: a creator / host is verified by a WhatsApp OTP on their
+ * phone number and nothing else. In India every mobile number is Aadhaar-linked, so there is no Aadhaar
+ * check and no selfie video for going live, publishing, or being callable/bookable.
+ * Aadhaar (hf_kyc) is still used ONLY for: payouts (money out) and entering the Women-only / LGBTQ+ spaces.
+ * Private evidence stays inside the worker. Only the two booleans are public.
+ */
+import type { Env } from "../types";
+
+export interface PhoneEvidence {
+  /** 1 when contact_verification.phone_verified=1 AND the matching phone_otp row is 'verified' (same rule as bookings). */
+  phone_verified?: number | null;
 }
 
-/** Shared with creator publication; callers must supply the latest video, never an older approval. */
-export function identityEvidenceBlockers(kyc: IdentityEvidence | null | undefined, video: VideoEvidence | null | undefined): string[] {
-  const missing: string[] = [];
-  if (!kyc?.verified_at || kyc.age_ok !== 1) missing.push("identity_verification");
-  if (video?.review_status !== "approved" || !video.r2_key || !video.mime?.startsWith("video/") || !/^\d{6}$/.test(video.code ?? "")) missing.push("video_kyc");
-  return missing;
+/** SQL predicate: uid (an SQL expression, e.g. `h.uid` or `?1`) has a WhatsApp-OTP-verified number. Mirrors the booking gate. */
+export function phoneVerifiedSql(uidExpr: string): string {
+  return `EXISTS (SELECT 1 FROM contact_verification cv JOIN phone_otp p ON p.uid=cv.uid AND p.phone_hash=cv.phone_hash WHERE cv.uid=${uidExpr} AND cv.phone_verified=1 AND p.status='verified')`;
 }
 
-export function publicVerification(kyc: IdentityEvidence | null | undefined, video: VideoEvidence | null | undefined, listingStatus: string) {
-  const identityVerified = identityEvidenceBlockers(kyc, video).length === 0;
+export async function isPhoneVerified(env: Env, uid: string): Promise<boolean> {
+  const r = await env.DB_META.prepare(`SELECT ${phoneVerifiedSql("?1")} AS ok`).bind(uid).first<{ ok: number }>().catch(() => null);
+  return Number(r?.ok) === 1;
+}
+
+/** Shared with creator publication. The only identity blocker left is a verified WhatsApp number. */
+export function identityEvidenceBlockers(phone: PhoneEvidence | null | undefined): string[] {
+  return Number(phone?.phone_verified) === 1 ? [] : ["whatsapp"];
+}
+
+export function publicVerification(phone: PhoneEvidence | null | undefined, listingStatus: string) {
+  const identityVerified = identityEvidenceBlockers(phone).length === 0;
   return { identityVerified, callEligible: identityVerified && listingStatus === "live" };
 }

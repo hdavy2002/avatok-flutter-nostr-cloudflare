@@ -292,6 +292,10 @@ export function Divider({ label }: { label: string }) {
  *
  * TO ADD FACEBOOK: enable it in the Clerk dashboard first, then add it here.
  */
+/** [HF-IDV-WHATSAPP-1 2026-10-24] Owner: no "Continue with Google" on sign-in / sign-up. Accounts are email code +
+ *  WhatsApp OTP only. (YouTube channel linking has its own Google consent and is unaffected.) Flip to true to restore. */
+export const GOOGLE_AUTH_ENABLED = false;
+
 export function GoogleButton({
   onClick, disabled, label = 'Continue with Google',
 }: {

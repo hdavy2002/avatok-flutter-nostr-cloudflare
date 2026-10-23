@@ -46,9 +46,7 @@ export async function getLaneAccess(env: Env, uid: string): Promise<{ women: boo
   for (const r of rows) {
     if (r.lane === "women" && womenEligible(r.gender)) out.women = true;
   }
-  // Keep women's F/T access independent of missing or unavailable selfie records.
-  if (rows.some((r) => r.lane === "lgbtq" && r.declared_at != null)) {
-    out.lgbtq = (await latestLaneSelfie(env, uid)).status === "approved";
-  }
+  // [HF-IDV-WHATSAPP-1 2026-10-24] No selfie video any more: LGBTQ+ needs the declaration + a verified Aadhaar (rows are already joined on verified hf_kyc).
+  if (rows.some((r) => r.lane === "lgbtq" && r.declared_at != null)) out.lgbtq = true;
   return out;
 }

@@ -272,7 +272,7 @@ function laneGuardSql(customerParam: number, hostParam: number, lane: string | n
   ];
   if (lane === "lgbtq") gates.push(
     `EXISTS (SELECT 1 FROM hf_lane_access WHERE uid=?${customerParam} AND lane='lgbtq' AND declared_at IS NOT NULL)`,
-    `(SELECT review_status FROM hf_selfie WHERE uid=?${customerParam} ORDER BY created_at DESC,id DESC LIMIT 1)='approved'`,
+    `EXISTS (SELECT 1 FROM hf_kyc WHERE uid=?${customerParam} AND verified_at IS NOT NULL)`, // [HF-IDV-WHATSAPP-1] Aadhaar replaces the selfie video
   );
   return gates.join(" AND ");
 }

@@ -8,6 +8,7 @@ import { trackUser, trackException } from "../hooks";
 import { BRAND } from "../lib/brand";
 import { emailFor } from "../lib/identity";
 import { readConfig } from "./config";
+import { isPhoneVerified } from "../lib/hf_public_verification";
 
 const APP = BRAND.slug;
 export const HF_MAX_GEN_ATTEMPTS = 3;
@@ -32,16 +33,14 @@ async function start(req: Request, env: Env, ctx: ExecutionContext | undefined):
   if (!["draft", "pending_host", "pending_review", "rejected"].includes(host.status)) return err(409, "not_allowed_in_status", { status: host.status });
   if (Number(host.gen_attempts) >= HF_MAX_GEN_ATTEMPTS) return err(429, "attempts_exhausted", { max: HF_MAX_GEN_ATTEMPTS });
 
-  const [kyc, selfie, payout] = await Promise.all([
-    env.DB_META.prepare("SELECT verified_at FROM hf_kyc WHERE uid=?1").bind(uid).first<{ verified_at: number | null }>().catch(() => null),
-    env.DB_META.prepare("SELECT review_status FROM hf_selfie WHERE uid=?1 ORDER BY created_at DESC, id DESC LIMIT 1").bind(uid).first<{ review_status: string }>().catch(() => null),
-    env.DB_META.prepare("SELECT upi_enc FROM hf_payout WHERE uid=?1").bind(uid).first<{ upi_enc: string | null }>().catch(() => null),
-  ]);
+  // [HF-IDV-WHATSAPP-1 2026-10-24] Identity = WhatsApp OTP only. No Aadhaar, no selfie, no payout details to create a profile.
   const missing: string[] = [];
-  if (!kyc?.verified_at) missing.push("aadhaar");
-  // pending is accepted: the admin reviews the selfie before the host can go live
-  if (!selfie || !["pending", "approved"].includes(selfie.review_status)) missing.push("selfie");
-  if (!payout?.upi_enc) missing.push("payout"); // [HF-UPI-ONLY-1]
+  if (!(await isPhoneVerified(env, uid))) {
+    missing.push("whatsapp");
+    const tp = emailFor(env, uid).catch(() => null).then((email) =>
+      trackUser(env, uid, email, "hf_host_identity_gate", APP, { area: "hf_host", identity_method: "whatsapp_otp", passed: false })).catch(() => {});
+    if (ctx) ctx.waitUntil(tp);
+  }
   if (!host.avatar_id) missing.push("avatar");
   if (!host.display_name?.trim()) missing.push("displayName");
   if (!host.about?.trim()) missing.push("about");
@@ -75,7 +74,7 @@ async function start(req: Request, env: Env, ctx: ExecutionContext | undefined):
     return err(502, "start_failed");
   }
   const p = emailFor(env, uid).catch(() => null).then((email) =>
-    trackUser(env, uid, email, "hf_host_generate_started", APP, { area: "hf_host_media", job_id: jobId, attempt: Number(host.gen_attempts) + 1 })).catch(() => {});
+    trackUser(env, uid, email, "hf_host_generate_started", APP, { area: "hf_host_media", job_id: jobId, attempt: Number(host.gen_attempts) + 1, identity_method: "whatsapp_otp" })).catch(() => {});
   if (ctx) ctx.waitUntil(p);
   return json({ jobId });
 }

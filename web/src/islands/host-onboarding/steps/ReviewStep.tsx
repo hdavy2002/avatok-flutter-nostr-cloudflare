@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import Icon from '../Icon';
-import { GENDER_LABEL, STD_PLAN_HOST_LINE, TOPICS } from '../data';
+import { STD_PLAN_HOST_LINE, TOPICS } from '../data';
 import type { StepKey, StepProps } from '../types';
 import { isOnboardingStandardPlan } from '../api_real';
 
@@ -34,9 +34,7 @@ export default function ReviewStep({ draft, update, goTo, avatars, setAction }: 
       <Row title="Verified" step="phone" goTo={goTo}>
         <ul className="hob-f-list">
           <li><Icon name="check" /> Phone +91 •••••• {draft.phone.slice(-4)}</li>
-          <li><Icon name={draft.aadhaarDone ? 'check' : 'x'} /> Aadhaar ending {draft.aadhaarLast4 || '----'}{draft.kycGender ? ` · ${GENDER_LABEL[draft.kycGender]}` : ''}</li>
-          <li><Icon name={draft.selfie.recorded ? 'check' : 'x'} /> Selfie video {draft.selfie.recorded ? 'done' : 'not done'}</li>
-          <li><Icon name={draft.payout.verified ? 'check' : 'x'} /> Withdrawal UPI ID: {draft.payout.upi || (draft.payout.verified ? 'saved' : 'not added')}</li>
+          {/* [HF-IDV-WHATSAPP-1] WhatsApp OTP is the only identity check; payout details are added later from the wallet. */}
         </ul>
       </Row>
       <Row title="Avatar" step="avatar" goTo={goTo}>
