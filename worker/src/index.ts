@@ -319,6 +319,7 @@ import { runHfPresenceNudge } from "./lib/hf_presence_nudge"; // [HF-PRESENCE-NU
 import { cashfreeCheckoutHost } from "./routes/cashfree_checkout_host"; // [HF-CASHFREE-CHECKOUT-HOST-1]
 import { hfTopupRoute } from "./routes/hf_topup"; // [HF-TOPUP-1] wallet top-up, any gateway (flags hfTopupEnabled + hfTopupGateway)
 import { expireHfTopups } from "./lib/hf_topup"; // [HF-TOPUP-1] close unpaid top-ups after 24 h
+import { hfAdminDeskRoute } from "./routes/hf_admin_desk"; // [HF-ADMIN-SWEEP-1] read-only members/bookings/top-ups/support/reports lists
 import { hfMoneyAuditRoute } from "./routes/hf_money_audit"; // [HF-WIRE-13] admin list of call-money cases the monitor flagged
 import { runHfMoneyMonitor } from "./lib/hf_money_monitor"; // [HF-WIRE-13]
 import { hfRefundsRoute } from "./routes/hf_refunds"; // [HF-WALLET-EXIT-1] refunds of unused top-up money (flag hfRefundsEnabled)
@@ -1158,6 +1159,7 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
       } // [HF-BOOKING-CALENDAR-1] feature stays dark until the booked-call settlement path is ready
       if (p.startsWith("/api/hf/lanes/")) { const r = await hfLanesRoute(req, env, p, ctx); if (r) return r; } // [HF-LANE-VERIFY-1]
       if (p.startsWith("/api/hf/wallet/topup") || p === "/api/hf/app/wallet" || p.startsWith("/api/admin/hf/topups")) { const r = await hfTopupRoute(req, env, p); if (r) return r; } // [HF-TOPUP-1]
+      if (p.startsWith("/api/admin/hf/desk/")) { const r = await hfAdminDeskRoute(req, env, p); if (r) return r; } // [HF-ADMIN-SWEEP-1]
       if (p === "/api/admin/hf/money-audit" || p.startsWith("/api/admin/hf/money-audit/")) { const r = await hfMoneyAuditRoute(req, env, p); if (r) return r; } // [HF-WIRE-13]
       if (p === "/api/hf/wallet/refunds" || p.startsWith("/api/hf/wallet/refunds/") || p === "/api/admin/hf/refunds" || p.startsWith("/api/admin/hf/refunds/")) { const r = await hfRefundsRoute(req, env, p); if (r) return r; } // [HF-WALLET-EXIT-1]
       if (p === "/api/hf/account/age-confirm" && req.method === "POST") return await hfAgeConfirm(req, env); // [HF-AUTH-WA-1]

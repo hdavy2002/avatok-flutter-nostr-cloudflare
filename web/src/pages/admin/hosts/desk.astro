@@ -1,0 +1,10 @@
+---
+// [HF-ADMIN-SWEEP-1] Admin: members and activity (sign-ups, bookings, wallet top-ups, support tickets, reports, money alerts). Read-only.
+export const prerender = false;
+import Admin2 from '../../../layouts/Admin2.astro';
+import HfDesk from '../../../islands/admin2/hosts/HfDesk.tsx';
+---
+
+<Admin2 title="Members & activity" active="host-desk" subtitle="Who signed up, who booked and paid, what people asked us, and who was reported. Read-only.">
+  <HfDesk client:load />
+</Admin2>

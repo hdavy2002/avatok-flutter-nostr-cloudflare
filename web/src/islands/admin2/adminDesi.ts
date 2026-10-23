@@ -38,6 +38,7 @@ knowledge: { line: 'Gyaan ka bhandaar', sticker: 'mohmaya', rot: -5, tone: 'gold
 consultants: { line: 'Gyaani log', sticker: 'mohmaya', rot: 5, tone: 'tea', ghost: 'Gyaani' },
 'consultant-bookings': { line: 'Kab, kaun, kitna?', sticker: 'mehman', rot: -5, tone: 'rani', ghost: 'Kab' },
 'consultant-reviews': { line: 'Log kya kahenge?', sticker: 'lkk', rot: 5, tone: 'lav', ghost: 'Log' },
+'host-desk': { line: 'Kaun aaya, kya kiya', sticker: 'nazar', rot: 4, tone: 'tea', ghost: 'Log' }, // [HF-ADMIN-SWEEP-1]
 'host-review': { line: 'Naye chehre, pehli nazar', sticker: 'nazar', rot: -5, tone: 'rani', ghost: 'Chehre' },
 'host-kyc': { line: 'Pehchaan pakki karo', sticker: 'peace', rot: 5, tone: 'tea', ghost: 'Pehchaan' },
 'host-avatars': { line: 'Chehre hazaar', sticker: 'fav', rot: -5, tone: 'lav', ghost: 'Chehre' },

@@ -151,11 +151,21 @@ async function adminList(req: Request, env: Env): Promise<Response> {
     const ls = (await env.DB_META.prepare(`SELECT * FROM hf_token_lots WHERE id IN (${lotIds.map((_, i) => `?${i + 1}`).join(",")})`).bind(...lotIds).all<LotRow>().catch(() => ({ results: [] as LotRow[] }))).results ?? [];
     for (const l of ls) lotMap.set(l.id, l);
   }
+  // [HF-ADMIN-SWEEP-1] who asked: the admin saw only a raw uid before.
+  const names = new Map<string, string>();
+  const uids = [...new Set(rows.map((r) => r.uid))].slice(0, 200);
+  if (uids.length) {
+    const ns = (await env.DB_META.prepare(
+      `SELECT u.uid AS uid, COALESCE(NULLIF(trim(COALESCE(g.first_name,'') || ' ' || COALESCE(g.last_name,'')),''), NULLIF(trim(u.display_name),'')) AS name
+         FROM users u LEFT JOIN hf_user_registration g ON g.uid=u.uid WHERE u.uid IN (${uids.map((_, i) => `?${i + 1}`).join(",")})`,
+    ).bind(...uids).all<{ uid: string; name: string | null }>().catch(() => ({ results: [] as { uid: string; name: string | null }[] }))).results ?? [];
+    for (const x of ns) if (x.name) names.set(x.uid, x.name);
+  }
   return json({
     items: rows.filter((r) => !isSystemRow(r)).map((r) => {
       const lot = r.lot_id ? lotMap.get(r.lot_id) : undefined;
       return {
-        id: r.id, uid: r.uid, amount: isPlayRefund(r) ? Number(r.amount_paise ?? 0) / 100 : r.amount_rupees, status: r.status, exit: r.exit === 1, utr: r.utr, reason: r.reason, adminUid: r.admin_uid,
+        id: r.id, uid: r.uid, name: names.get(r.uid) ?? null, amount: isPlayRefund(r) ? Number(r.amount_paise ?? 0) / 100 : r.amount_rupees, status: r.status, exit: r.exit === 1, utr: r.utr, reason: r.reason, adminUid: r.admin_uid,
         allocations: parseAllocations(r.allocations), createdAt: r.created_at, updatedAt: r.updated_at, refundedAt: r.refunded_at,
         ...(isPlayRefund(r) ? {
           kind: PLAY_REFUND, amountPaise: Number(r.amount_paise ?? 0), orderId: r.order_id ?? null, lotId: r.lot_id ?? null, recordedPaise: r.recorded_paise ?? null,

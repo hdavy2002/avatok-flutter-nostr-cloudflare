@@ -5,6 +5,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { adminCall } from '../peopleKit';
 import { Banner, ConfirmDialog, ConsultShell, Spinner, dateIST, fail, rupees } from '../consultants/kit';
 import { DesiCard, DesiChip, DesiEmpty, DesiJourney, DesiSays, DesiSlip } from '../desi';
+import { formatPaise } from '../../../lib/money';
 
 const T14 = { fontSize: 14 } as const;
 const field = { width: '100%', ...T14, padding: 10, borderRadius: 10, border: '1px solid var(--hf-admin-line)', minHeight: 44 } as const;
@@ -13,7 +14,7 @@ type Status = 'requested' | 'approved' | 'paid' | 'rejected' | 'cancelled';
 interface Item {
   id: string; hostUid: string; hostName: string | null; hostSlug: string | null; amount: number; status: Status;
   accountLast4: string | null; ifsc: string | null; accountName: string | null; withdrawableAtRequest: number | null;
-  utr: string | null; reason: string | null; createdAt: number; paidAt: number | null; exit?: boolean;
+  utr: string | null; reason: string | null; createdAt: number; paidAt: number | null; exit?: boolean; walletPaise?: number;
 }
 interface Dest { amount: number; accountName: string | null; account: string | null; ifsc: string | null; upi: string | null; upiVerified: boolean }
 interface List { items: Item[]; counts: Record<string, { n: number; rupees: number }> }
@@ -62,9 +63,10 @@ function Row({ it, onDone }: { it: Item; onDone: () => void }) {
           {it.exit && <span title="Final payout: this person is closing their account"><DesiChip tone="plum">Exit</DesiChip></span>}
           <DesiChip tone={it.status === 'paid' ? 'tea' : it.status === 'requested' ? 'gold' : it.status === 'approved' ? 'lav' : 'rani'}>{it.status}</DesiChip>
         </span>}>
-        <div className="hfa-amount">{rupees(it.amount)}<small>{it.hostName || it.hostSlug || 'Influencer'}</small></div>
+        <div className="hfa-amount">{rupees(it.amount)}<small>{it.hostName || it.hostSlug || 'Account holder'}</small></div>
         <div style={{ display: 'grid', gap: 10, minWidth: 0 }}>
           <div className="hfa-note">Could withdraw {rupees(it.withdrawableAtRequest)} at the time</div>
+          {(it.walletPaise ?? 0) > 0 && <div style={{ fontSize: 'var(--fs-small)' }}><strong>Includes {formatPaise(it.walletPaise ?? 0)} from their own wallet balance</strong> (money they topped up), the rest {formatPaise(Math.round(it.amount * 100) - (it.walletPaise ?? 0))} is earnings. Pay the full {rupees(it.amount)}.</div>}
           {it.exit && <div style={{ fontSize: 'var(--fs-small)' }}><strong>Account closure:</strong> the account is deleted automatically once this is paid. Rejecting it also lets the closure finish, so give a clear reason.</div>}
           <div className="hfa-says-grid">
             <DesiSays k="Influencer's UPI/bank" tone="lav"

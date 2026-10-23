@@ -276,12 +276,20 @@ async function adminList(req: Request, env: Env): Promise<Response> {
     `SELECT r.*, h.display_name AS host_name, h.slug AS host_slug FROM hf_payout_requests r LEFT JOIN hf_hosts h ON h.uid=r.host_uid
      ${status ? "WHERE r.status=?1" : ""} ORDER BY r.created_at DESC LIMIT 200`,
   ).bind(...(status ? [status] : [])).all<PayoutRow & { host_name: string | null; host_slug: string | null }>()).results ?? [];
+  // [HF-ADMIN-SWEEP-1] an exit payout can belong to a plain caller (no hf_hosts row): name them from their registration.
+  const regNames = new Map<string, string>();
+  const need = [...new Set(rows.filter((r) => !r.host_name?.trim()).map((r) => r.host_uid))].slice(0, 100);
+  if (need.length) {
+    const ns = (await env.DB_META.prepare(`SELECT uid, first_name, last_name FROM hf_user_registration WHERE uid IN (${need.map((_, i) => `?${i + 1}`).join(",")})`)
+      .bind(...need).all<{ uid: string; first_name: string; last_name: string }>().catch(() => ({ results: [] as { uid: string; first_name: string; last_name: string }[] }))).results ?? [];
+    for (const x of ns) regNames.set(x.uid, `${x.first_name} ${x.last_name}`.trim());
+  }
   const counts = (await env.DB_META.prepare("SELECT status, COUNT(*) AS n, COALESCE(SUM(amount_rupees),0) AS s FROM hf_payout_requests GROUP BY status").all<{ status: string; n: number; s: number }>()).results ?? [];
   return json({
     items: rows.filter((r) => !isSystemRow(r)).map((r) => {
       const b = parseSnapshot(r.bank_snapshot);
       return {
-        id: r.id, hostUid: r.host_uid, hostName: r.host_name, hostSlug: r.host_slug, amount: r.amount_rupees, status: r.status,
+        id: r.id, hostUid: r.host_uid, hostName: r.host_name?.trim() || regNames.get(r.host_uid) || null, hostSlug: r.host_slug, amount: r.amount_rupees, status: r.status,
         accountLast4: b.accountLast4, ifsc: b.ifsc, accountName: b.name, withdrawableAtRequest: r.withdrawable_at_request, utr: r.utr,
         reason: r.reject_reason, adminUid: r.admin_uid, exit: r.exit === 1, walletPaise: Number(r.lots_paise ?? 0), // [HF-WIRE-13] part paid out of the person's own wallet
          createdAt: r.created_at, updatedAt: r.updated_at, approvedAt: r.approved_at, paidAt: r.paid_at,

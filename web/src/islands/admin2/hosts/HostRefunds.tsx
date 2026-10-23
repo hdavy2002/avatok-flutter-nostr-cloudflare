@@ -18,7 +18,7 @@ const field = { width: '100%', ...T14, padding: 10, borderRadius: 10, border: '1
 type Status = 'requested' | 'processing' | 'failed' | 'refunded' | 'rejected' | 'cancelled';
 interface Alloc { topupId: string | null; rupees: number; status: 'pending' | 'submitting' | 'needs_check' | 'refunded' | 'manual' | 'failed'; gatewayRefundId?: string | null; error?: string }
 interface Item {
-  id: string; uid: string; amount: number; status: Status | 'approved'; exit: boolean; utr: string | null; reason: string | null;
+  id: string; uid: string; name?: string | null; amount: number; status: Status | 'approved'; exit: boolean; utr: string | null; reason: string | null;
   allocations: Alloc[]; createdAt: number; refundedAt: number | null;
   /* [HF-TOK-EXIT-1] Google Play refund of unused tokens: amountPaise is the unspent share owed; no gateway slices. */
   kind?: 'play_refund'; amountPaise?: number; orderId?: string | null; lotId?: string | null; recordedPaise?: number | null;
@@ -104,7 +104,7 @@ function Row({ it, onDone }: { it: Item; onDone: () => void }) {
           {play && it.orderId && <span>Google Play order <span style={{ wordBreak: 'break-all' }}>{it.orderId}</span></span>}
           {play && it.lot && <span>Added ₹{it.lot.tokensBought} to the wallet for {paiseRupees(it.lot.paidPaise)} · ₹{it.lot.tokensLeft} left · {it.lot.wholeOrder ? 'nothing used yet: the whole order can be refunded' : 'part used: refund this share in the Play Console and record it here'}</span>}
           {play && it.status === 'refunded' && it.recordedPaise != null && <span>Recorded refund {paiseRupees(it.recordedPaise)}</span>}
-          <span className="hfa-note" style={{ wordBreak: 'break-all' }}>{it.uid}</span>
+          <span className="hfa-note" style={{ wordBreak: 'break-all' }}>{it.name ? `${it.name} · ` : ''}{it.uid}</span>
           {!play && <ul style={{ margin: 0, paddingLeft: 0, listStyle: 'none', display: 'grid', gap: 8 }}>
             {it.allocations.map((a, i) => {
               const bad = a.status === 'failed' || a.status === 'needs_check';
