@@ -71,7 +71,7 @@ export async function hfMeRoute(req: Request, env: Env, p: string): Promise<Resp
 
 async function getMe(env: Env, uid: string): Promise<Response> {
   // One joined read for the profile facts, plus the ack, lane and closing checks and the (KV-cached) config, all in parallel.
-  const [row, ack, registration, registrationPending, lanes, closing, cfg, clerkEmail, prefs, typedEmail] = await Promise.all([
+  const [row, ack, registration, registrationPending, lanes, closing, cfg, clerkEmail, prefs, typedEmail, nameRow] = await Promise.all([
     env.DB_META.prepare(
       `SELECT u.display_name AS display_name,
               cv.phone_verified AS phone_verified,
@@ -101,6 +101,12 @@ async function getMe(env: Env, uid: string): Promise<Response> {
       .first<{ notify_whatsapp: number; appt_reminders: number | null; reel_alerts?: number | null }>())().catch(() => null),
     // [HF-WIRE-2] The email a fan typed at sign-up (phone-only accounts have no Clerk email). Failure-isolated.
     env.DB_META.prepare("SELECT email FROM hf_user_email WHERE uid=?1").bind(uid).first<{ email: string }>().then((r) => r?.email ?? null).catch(() => null),
+    // [HF-APP-PARITY-PROFILE] First/last name for the app's edit-profile screen (same source as GET /api/hf/me/profile: registration row wins, else users). Failure-isolated.
+    env.DB_META.prepare(
+      `SELECT COALESCE(NULLIF(TRIM(r.first_name),''), NULLIF(TRIM(u.first_name),'')) AS first_name,
+              COALESCE(NULLIF(TRIM(r.last_name),''), NULLIF(TRIM(u.last_name),'')) AS last_name
+         FROM (SELECT ?1 AS uid) x LEFT JOIN users u ON u.uid=x.uid LEFT JOIN hf_user_registration r ON r.uid=x.uid`,
+    ).bind(uid).first<{ first_name: string | null; last_name: string | null }>().catch(() => null),
   ]);
   // [HF-FIX-HANDLE-1] Everyone has a handle; assign lazily when no registered username exists.
   const handle = await resolveHfHandle(env, uid, registration?.username);
@@ -114,6 +120,8 @@ async function getMe(env: Env, uid: string): Promise<Response> {
     uid,
     displayName,
     username: handle,
+    firstName: nameRow?.first_name ?? null, // [HF-APP-PARITY-PROFILE]
+    lastName: nameRow?.last_name ?? null,
     registrationComplete: !!registration?.username,
     registrationRequired: !registration?.username && !!registrationPending,
     phoneMasked,

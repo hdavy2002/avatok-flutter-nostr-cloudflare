@@ -11895,5 +11895,9 @@
   "HF-APP-PARITY-WITHDRAW": {
     "description": "[HF-APP-PARITY-WITHDRAW] App withdrawals and wallet match the website: Requested/Cancelled statuses, cancel a waiting request, weekly-limit hint and friendly error, GST minus line on top-ups, in-app payment receipts. Worker: payout summary history now tells requested/approved/cancelled apart and returns maxPerWeek; app wallet top-up rows carry paid and GST.",
     "no_telemetry": "Screen parity with the website using existing endpoints; the existing payout and receipt events cover the server side."
+  },
+  "HF-APP-PARITY-PROFILE": {
+    "description": "[HF-APP-PARITY-PROFILE] App: Edit profile screen (first and last name, name influencers see, permanent handle), blocking policy re-accept prompt for signed-in people, close-account polish (whole rupees, below-Rs-1 line, held-earnings release date, payout UTR). Worker: GET /api/hf/me also returns firstName and lastName.",
+    "no_telemetry": "Screen parity with the website using existing endpoints; the existing profile and policy events cover the server side."
   }
 }

@@ -20,6 +20,9 @@ class Me {
     this.closing = false,
     this.email,
     this.age18ConfirmedAt,
+    this.firstName,
+    this.lastName,
+    this.handle,
   });
 
   final String uid;
@@ -44,6 +47,13 @@ class Me {
   /// Epoch ms of the 18+ confirmation, or null when not confirmed yet.
   final int? age18ConfirmedAt;
 
+  /// [HF-APP-PARITY-PROFILE] The name parts typed at sign-up or in Edit profile, or null when never set.
+  final String? firstName;
+  final String? lastName;
+
+  /// The permanent @handle (server field `username`), without the @, or null while it is not assigned.
+  final String? handle;
+
   bool get isHost => role == UserRole.host;
 
   factory Me.fromJson(Map<String, dynamic> j) {
@@ -61,6 +71,9 @@ class Me {
       closing: j['closing'] == true,
       email: _s(j['email']),
       age18ConfirmedAt: j['age18ConfirmedAt'] is num ? (j['age18ConfirmedAt'] as num).toInt() : null,
+      firstName: _s(j['firstName']),
+      lastName: _s(j['lastName']),
+      handle: _s(j['username'])?.replaceFirst(RegExp(r'^@+'), ''),
     );
   }
 
@@ -68,4 +81,12 @@ class Me {
     final s = (v ?? '').toString().trim();
     return s.isEmpty ? null : s;
   }
+}
+
+/// [HF-APP-PARITY-PROFILE] "Name influencers see", same rule as the website's Profile page: the name already saved for influencers,
+/// and while none was ever saved, the first name. Empty when both are empty.
+String influencerFacingName(String? saved, String? first) {
+  String clean(String? v) => (v ?? '').trim().replaceAll(RegExp(r'\s+'), ' ');
+  final s = clean(saved);
+  return s.isNotEmpty ? s : clean(first);
 }

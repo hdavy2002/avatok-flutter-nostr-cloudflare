@@ -70,12 +70,19 @@ describe("GET /api/hf/me", () => {
     db.prepare("INSERT INTO hf_user_registration VALUES ('u1','maya')").run();
     expect(await (await call(req('GET'))).json()).toMatchObject({ registrationRequired: false, registrationComplete: true });
   });
+  it("[HF-APP-PARITY-PROFILE] returns first/last name; registration row wins over users", async () => {
+    db.exec("ALTER TABLE users ADD COLUMN first_name TEXT; ALTER TABLE users ADD COLUMN last_name TEXT; ALTER TABLE hf_user_registration ADD COLUMN first_name TEXT; ALTER TABLE hf_user_registration ADD COLUMN last_name TEXT;");
+    db.prepare("INSERT INTO users (uid, display_name, first_name, last_name) VALUES ('u1','Asha','Asha','Rao')").run();
+    expect(await (await call(req("GET"))).json()).toMatchObject({ firstName: "Asha", lastName: "Rao" });
+    db.prepare("INSERT INTO hf_user_registration (uid, username, first_name, last_name) VALUES ('u1','asha','Ashaa','Rao2')").run();
+    expect(await (await call(req("GET"))).json()).toMatchObject({ firstName: "Ashaa", lastName: "Rao2", username: "asha" });
+  });
   it("a brand-new caller: safe defaults, no host, nothing confirmed", async () => {
     db.prepare("INSERT INTO users (uid) VALUES ('u1')").run();
     const r = await call(req("GET"));
     expect(r.status).toBe(200);
     expect(await r.json()).toEqual({
-      uid: "u1", displayName: null, username: null, registrationComplete: false, registrationRequired: false, phoneMasked: null, whatsappVerified: false, ackVersion: null, age18ConfirmedAt: null,
+      uid: "u1", displayName: null, username: null, firstName: null, lastName: null, registrationComplete: false, registrationRequired: false, phoneMasked: null, whatsappVerified: false, ackVersion: null, age18ConfirmedAt: null,
       isHost: false, host: null, lanes: { women: false, lgbtq: false }, closing: false, tokensMode: false,
       name: null, email: null, whatsapp: null, role: "fan", hostStatus: null, presence: null, walletPaise: 0,
       prefs: { notifyWhatsapp: true, apptReminders: true, reelAlerts: true },
@@ -102,7 +109,7 @@ describe("GET /api/hf/me", () => {
     db.prepare("INSERT INTO hf_user_prefs (uid, notify_whatsapp, appt_reminders, updated_at) VALUES ('u1',0,1,5)").run();
     const b = await (await call(req("GET"))).json();
     expect(b).toEqual({
-      uid: "u1", displayName: "Meena", username: "meena", registrationComplete: true, registrationRequired: false, phoneMasked: "******3210", whatsappVerified: true, ackVersion: "2026-10-10", age18ConfirmedAt: 1234,
+      uid: "u1", displayName: "Meena", username: "meena", firstName: null, lastName: null, registrationComplete: true, registrationRequired: false, phoneMasked: "******3210", whatsappVerified: true, ackVersion: "2026-10-10", age18ConfirmedAt: 1234,
       isHost: true, host: { status: "live", slug: "meena" }, lanes: { women: true, lgbtq: false }, closing: true, tokensMode: true,
       name: "Meena", email: "meena@example.com", whatsapp: "******3210", role: "host", hostStatus: "live", presence: "online", walletPaise: 4250,
       prefs: { notifyWhatsapp: false, apptReminders: true, reelAlerts: true },

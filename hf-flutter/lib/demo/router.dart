@@ -8,6 +8,7 @@ import 'screens/availability_real.dart'; // [HF-BOOK-APPROVE-6]
 import 'screens/bookings_real.dart'; // [HF-WIRE-8]
 import '../data/models/channel.dart';
 import 'screens/channels.dart';
+import 'screens/edit_profile.dart'; // [HF-APP-PARITY-PROFILE]
 import 'screens/call.dart';
 import 'screens/favourites.dart';
 import 'screens/feed.dart';
@@ -208,6 +209,11 @@ final router = GoRouter(
       path: '/settings',
       builder: (_, __) => const SettingsScreen(),
     ),
+    GoRoute(
+      parentNavigatorKey: rootKey,
+      path: '/settings/profile',
+      builder: (_, __) => const EditProfileScreen(),
+    ), // [HF-APP-PARITY-PROFILE]
     GoRoute(
       parentNavigatorKey: rootKey,
       path: '/help',

@@ -72,6 +72,7 @@ Future<void> _pump(WidgetTester tester, Widget home) async {
       GoRoute(path: '/start', builder: (_, __) => home),
       GoRoute(path: '/reels', builder: (_, __) => const Scaffold(body: Text('REELS PAGE'))),
       GoRoute(path: '/help', builder: (_, __) => const Scaffold(body: Text('HELP PAGE'))),
+      GoRoute(path: '/settings/profile', builder: (_, __) => const Scaffold(body: Text('EDIT PROFILE PAGE'))),
     ],
   );
   await tester.pumpWidget(MaterialApp.router(routerConfig: router));
@@ -143,31 +144,15 @@ void main() {
       expect(find.text('Could not save.'), findsOneWidget);
     });
 
-    testWidgets('edit name sends PATCH /api/hf/me and shows the stored name', (tester) async {
-      final api = FakeApiClient((m, p, b) => m == 'PATCH' && p == '/api/hf/me' ? {'ok': true, 'displayName': 'Asha Rao'} : _prefs());
+    testWidgets('tapping the name strip opens Edit profile (no more one-field dialog)', (tester) async {
+      final api = FakeApiClient((m, p, b) => _prefs());
       await _pump(tester, RealSettingsScreen(repo: SettingsRepo(api), me: _me));
+      expect(find.text('Edit your profile'), findsOneWidget);
       await tester.tap(find.byKey(const Key('settings-name')));
       await tester.pumpAndSettle();
-      await tester.enterText(find.byType(TextField), 'Asha Rao');
-      await tester.tap(find.text('Save'));
-      await tester.pumpAndSettle();
-      expect(api.calls, contains('PATCH /api/hf/me'));
-      expect(api.bodies.last, {'displayName': 'Asha Rao'});
-      expect(find.text('Asha Rao'), findsOneWidget);
-    });
-
-    testWidgets('name refused by the server keeps the old name and shows the message', (tester) async {
-      final api = FakeApiClient((m, p, b) => m == 'PATCH' && p == '/api/hf/me'
-          ? const ApiException(kind: ApiFailure.http, status: 400, code: 'invalid_name', message: 'Names cannot have numbers.')
-          : _prefs());
-      await _pump(tester, RealSettingsScreen(repo: SettingsRepo(api), me: _me));
-      await tester.tap(find.byKey(const Key('settings-name')));
-      await tester.pumpAndSettle();
-      await tester.enterText(find.byType(TextField), 'Asha 2');
-      await tester.tap(find.text('Save'));
-      await tester.pumpAndSettle();
-      expect(find.text('Names cannot have numbers.'), findsOneWidget);
-      expect(find.text('Asha'), findsOneWidget);
+      expect(find.text('EDIT PROFILE PAGE'), findsOneWidget);
+      expect(find.byType(TextField), findsNothing);
+      expect(api.calls, isNot(contains('PATCH /api/hf/me')));
     });
 
     testWidgets('Terms and Privacy open the website pages of the brand domain', (tester) async {
@@ -303,6 +288,35 @@ void main() {
       await tester.pumpAndSettle();
       expect(api.calls, contains('POST /api/account/delete/cancel'));
       expect(find.text('DELETE MY ACCOUNT'), findsOneWidget);
+    });
+  });
+
+  group('Close account polish [HF-APP-PARITY-PROFILE]', () {
+    testWidgets('amounts are whole rupees (rounded down) and the below-Rs-1 line is shown', (tester) async {
+      final api = FakeApiClient((m, p, b) => _close(decision: 'exit', withdrawable: 812.9, refundable: 0, forfeit: 0));
+      await _pump(tester, DeleteAccountScreen(repo: SettingsRepo(api)));
+      expect(find.textContaining('₹812'), findsWidgets);
+      expect(find.textContaining('812.9'), findsNothing);
+      expect(find.text('Anything below ₹1 is not paid out.'), findsOneWidget);
+    });
+
+    testWidgets('held earnings show their release date; a payout line shows the UTR', (tester) async {
+      // 2026-10-28 13:00 UTC = 28 Oct, 6:30 pm in India
+      final release = DateTime.utc(2026, 10, 28, 13, 0).millisecondsSinceEpoch;
+      final api = FakeApiClient((m, p, b) => {
+            ..._close(decision: 'exit', exit: {'status': 'waiting_hold'}, payout: {'amount': 800.6, 'status': 'paid', 'utr': 'UTR123456'}),
+            'heldReleaseAt': release,
+          });
+      await _pump(tester, DeleteAccountScreen(repo: SettingsRepo(api)));
+      expect(find.textContaining('28 Oct, 6:30 pm'), findsOneWidget);
+      expect(find.text('UTR UTR123456'), findsOneWidget);
+      expect(find.textContaining('₹800 · Done'), findsOneWidget);
+    });
+
+    testWidgets('no UTR text while the payout has none', (tester) async {
+      final api = FakeApiClient((m, p, b) => _close(decision: 'exit', exit: {'status': 'waiting_payouts'}, payout: {'amount': 800, 'status': 'requested'}));
+      await _pump(tester, DeleteAccountScreen(repo: SettingsRepo(api)));
+      expect(find.byKey(const Key('exit-utr')), findsNothing);
     });
   });
 

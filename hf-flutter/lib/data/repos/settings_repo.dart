@@ -78,6 +78,7 @@ class CloseState {
     this.payout,
     this.refund,
     this.deletionScheduledAt,
+    this.heldReleaseAt,
   });
 
   final bool gateEnabled;
@@ -102,6 +103,9 @@ class CloseState {
   /// Epoch ms when the account is erased (end of the 30-day grace), or null when no deletion is scheduled.
   final int? deletionScheduledAt;
 
+  /// [HF-APP-PARITY-PROFILE] Epoch ms when the influencer's held earnings are released (server `heldReleaseAt`), or null.
+  final int? heldReleaseAt;
+
   bool get mustSettleFirst => decision == 'exit';
   bool get closureActive => const {'booking_cleanup', 'waiting_hold', 'waiting_payouts', 'ready'}.contains(exitStatus);
   bool get deletionScheduled => deletionScheduledAt != null;
@@ -125,6 +129,35 @@ class CloseState {
       payout: ExitLine.from(j['payout']),
       refund: ExitLine.from(j['refund']),
       deletionScheduledAt: del is Map && del['scheduledAt'] is num ? (del['scheduledAt'] as num).toInt() : null,
+      heldReleaseAt: j['heldReleaseAt'] is num ? (j['heldReleaseAt'] as num).toInt() : null,
+    );
+  }
+}
+
+/// [HF-APP-PARITY-PROFILE] `GET/PUT /api/hf/me/profile`: the editable name parts, the permanent handle and the name influencers see.
+class ProfileData {
+  const ProfileData({this.firstName = '', this.lastName = '', this.handle, this.displayName});
+
+  final String firstName;
+  final String lastName;
+
+  /// The permanent @handle without the @, or null.
+  final String? handle;
+
+  /// What influencers see (`users.display_name`), or null while never set.
+  final String? displayName;
+
+  factory ProfileData.fromJson(Map<String, dynamic> j) {
+    String? s(Object? v) {
+      final t = (v ?? '').toString().trim();
+      return t.isEmpty ? null : t;
+    }
+
+    return ProfileData(
+      firstName: s(j['firstName']) ?? '',
+      lastName: s(j['lastName']) ?? '',
+      handle: s(j['username'])?.replaceFirst(RegExp(r'^@+'), ''),
+      displayName: s(j['displayName']),
     );
   }
 }
@@ -168,6 +201,14 @@ class SettingsRepo {
     final stored = (j['displayName'] ?? '').toString().trim();
     return stored.isEmpty ? name.trim() : stored;
   }
+
+  /// [HF-APP-PARITY-PROFILE] The signed-in person's profile names and handle.
+  Future<ProfileData> profile() async => ProfileData.fromJson(await _api.getJson('/api/hf/me/profile'));
+
+  /// Saves the two name parts (`PUT /api/hf/me/profile`, 1-30 letters each). Returns what the server now holds.
+  /// Throws `ApiException` with the server's message when a name is refused.
+  Future<ProfileData> saveProfileNames({required String firstName, required String lastName}) async =>
+      ProfileData.fromJson(await _api.putJson('/api/hf/me/profile', body: {'firstName': firstName.trim(), 'lastName': lastName.trim()}));
 
   Future<CloseState> closeState() async => CloseState.fromJson(await _api.getJson('/api/hf/account/exit'));
 

@@ -29,7 +29,19 @@ abstract final class SettingsBridge {
 
 Future<void> _defaultSignOut() => Services.instance.signOut();
 
-String _rupees(double v) => '₹${v == v.roundToDouble() ? v.toStringAsFixed(0) : v.toStringAsFixed(2)}';
+/// [HF-APP-PARITY-PROFILE] Whole rupees, rounded down: payouts are made in whole rupees and anything below ₹1 is not paid out.
+String _rupees(double v) => '₹${(v + 1e-9).floor()}';
+
+/// [HF-APP-PARITY-PROFILE] Indian date and time, e.g. "24 Oct, 6:30 pm" (always shown in India time).
+String inDayTime(int ms) {
+  final d = DateTime.fromMillisecondsSinceEpoch(ms, isUtc: true).add(const Duration(hours: 5, minutes: 30));
+  final h = d.hour % 12 == 0 ? 12 : d.hour % 12;
+  final m = d.minute.toString().padLeft(2, '0');
+  return '${d.day} ${_months[d.month - 1]}, $h:$m ${d.hour >= 12 ? 'pm' : 'am'}';
+}
+
+/// The plain line shown wherever money is settled (same meaning as the website's close-account page).
+const kBelowRupeeNote = 'Anything below ₹1 is not paid out.';
 
 const _months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 String _day(int ms) {
@@ -116,36 +128,11 @@ class _RealSettingsScreenState extends State<RealSettingsScreen> {
     }
   }
 
-  Future<void> _editName() async {
-    final ctl = TextEditingController(text: _name ?? '');
-    final value = await showDialog<String>(
-      context: context,
-      builder: (ctx) => HfDialog(
-        title: 'Your name',
-        content: TextField(
-          controller: ctl,
-          autofocus: true,
-          maxLength: 40,
-          textCapitalization: TextCapitalization.words,
-          style: t(16),
-          decoration: const InputDecoration(hintText: 'Your name'),
-        ),
-        actions: [
-          HfDialogAction(label: 'Cancel', onTap: () => Navigator.pop(ctx)),
-          HfDialogAction(label: 'Save', kind: HfActionKind.primary, onTap: () => Navigator.pop(ctx, ctl.text.trim())),
-        ],
-      ),
-    );
-    if (value == null || value.isEmpty || value == _name) return;
-    try {
-      final stored = await _repo.saveName(value);
-      if (!mounted) return;
-      setState(() => _name = stored);
-      unawaited(Services.instance.refreshMe());
-      toast(context, 'Name saved.');
-    } catch (e) {
-      if (mounted) toast(context, e is ApiException ? e.userMessage : 'We could not save your name. Please try again.');
-    }
+  /// [HF-APP-PARITY-PROFILE] Opens Edit profile (first and last name, the name influencers see, the permanent handle).
+  Future<void> _editProfile() async {
+    await context.push('/settings/profile');
+    if (!mounted) return;
+    setState(() => _name = _me?.name ?? _name);
   }
 
   Future<void> _signOut() async {
@@ -179,7 +166,7 @@ class _RealSettingsScreenState extends State<RealSettingsScreen> {
               child: ListView(
                 padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
                 children: [
-                  SettingsMeStrip(key: const Key('settings-name'), name: _name ?? '', onTap: _editName),
+                  SettingsMeStrip(key: const Key('settings-name'), name: _name ?? '', onTap: _editProfile, hint: 'Edit your profile'),
                   const SizedBox(height: 12),
                   SettingsCard(title: 'Account', tone: DesiTone.rani, children: [
                     SettingsRow(icon: Icons.mail_rounded, tone: DesiTone.rani, label: 'Email', sub: (email ?? '').isEmpty ? 'Not added' : email!, last: true),
@@ -432,7 +419,9 @@ class _DeleteAccountScreenState extends State<DeleteAccountScreen> {
   List<Widget> _closing(CloseState s) {
     final text = switch (s.exitStatus) {
       'booking_cleanup' => 'We are settling your scheduled calls.',
-      'waiting_hold' => 'Your latest earnings are still in their 7-day hold. We pay them out as soon as the hold ends.',
+      'waiting_hold' => s.heldReleaseAt == null
+          ? 'Your latest earnings are still in their 7-day hold. We pay them out as soon as the hold ends.'
+          : 'Your latest earnings are still in their 7-day hold. They are released on ${inDayTime(s.heldReleaseAt!)} and paid out then.',
       'waiting_payouts' => 'Your money is on its way. Once every payment is done, your account is deleted after a 30-day grace period.',
       _ => 'Almost done. Your account will be deleted after a 30-day grace period.',
     };
@@ -442,7 +431,9 @@ class _DeleteAccountScreenState extends State<DeleteAccountScreen> {
       _para(text),
       if (s.payout != null) _line('Earnings withdrawal', s.payout!),
       if (s.refund != null) _line('Refund (credited to your wallet)', s.refund!),
-      const SizedBox(height: 20),
+      const SizedBox(height: 10),
+      _para(kBelowRupeeNote, muted: true),
+      const SizedBox(height: 10),
       ChunkyButton(label: 'STOP CLOSING MY ACCOUNT', filled: false, onTap: _busy ? null : _cancelClosure),
       const SizedBox(height: 8),
       _para('You can stop only until a payment has been approved.', muted: true),
@@ -459,9 +450,12 @@ class _DeleteAccountScreenState extends State<DeleteAccountScreen> {
     };
     return Padding(
       padding: const EdgeInsets.only(top: 10),
-      child: Row(children: [
-        Expanded(child: Text(what, style: t(15, color: C.muted))),
-        Text('${_rupees(l.amount)} · $status', style: t(15)),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Row(children: [
+          Expanded(child: Text(what, style: t(15, color: C.muted))),
+          Text('${_rupees(l.amount)} · $status', style: t(15)),
+        ]),
+        if (l.utr != null) Align(alignment: Alignment.centerRight, child: Text('UTR ${l.utr}', key: const Key('exit-utr'), style: t(14, color: C.muted, w: FontWeight.w700))),
       ]),
     );
   }
@@ -485,13 +479,14 @@ class _DeleteAccountScreenState extends State<DeleteAccountScreen> {
       ..add(const SizedBox(height: 6))
       ..add(_para('Your account has money in it, so we settle it before deleting anything:'));
     if (s.withdrawable > 0 || s.held > 0) {
-      out.add(_bullet('Earnings of ${_rupees(s.withdrawable + s.held)} are paid to your UPI ID${s.held > 0 ? ' (${_rupees(s.held)} is still in its 7-day hold and is paid when the hold ends)' : ''}.'));
+      out.add(_bullet('Earnings of ${_rupees(s.withdrawable + s.held)} are paid to your UPI ID${s.held > 0 ? ' (${_rupees(s.held)} is still in its 7-day hold and is paid ${s.heldReleaseAt == null ? 'when the hold ends' : 'on ${inDayTime(s.heldReleaseAt!)}'})' : ''}.'));
     }
     if (s.refundable + s.manualRefund > 0) {
       out.add(_bullet('Your wallet money of ${_rupees(s.refundable + s.manualRefund)} is never refunded to your card. Withdraw it to your UPI with Withdraw before closing (one-time ID and UPI check). If it is under ₹1 (too small to pay out) you can choose to give it up.'));
       out.add(ChunkyButton(label: 'GO TO WITHDRAW', filled: false, onTap: _busy ? null : () => context.push('/payout')));
     }
     out.add(_bullet('Test credits are dropped. They are never paid out.'));
+    out.add(_bullet(kBelowRupeeNote));
     if (s.forfeitRupees > 0 || _smallLeft > 0) {
       out
         ..add(const SizedBox(height: 12))

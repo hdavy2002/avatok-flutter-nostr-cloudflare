@@ -8,6 +8,7 @@ import 'core/deep_links.dart';
 import 'data/push.dart';
 import 'data/telemetry.dart';
 import 'demo/router.dart';
+import 'demo/screens/policy_update.dart'; // [HF-APP-PARITY-PROFILE]
 import 'demo/theme.dart';
 
 /// The Hello Fraands app. With `--dart-define=HF_DEMO=true` (the default) every screen shows dummy data; the
@@ -49,6 +50,7 @@ class HfDemoApp extends StatelessWidget {
       theme: buildTheme(),
       scaffoldMessengerKey: hfMessengerKey,
       routerConfig: router,
+      builder: (context, child) => PolicyGate(child: child), // [HF-APP-PARITY-PROFILE] blocking "rules changed" prompt for signed-in people
     );
   }
 }
