@@ -29,6 +29,7 @@ function makeEnv() {
       women_lane INTEGER DEFAULT 0, lgbtq_lane INTEGER DEFAULT 0, lgbtq_public INTEGER DEFAULT 0);
     CREATE TABLE hf_favourites (uid TEXT NOT NULL, host_uid TEXT NOT NULL, created_at INTEGER NOT NULL, PRIMARY KEY (uid, host_uid));
     CREATE TABLE hf_exit_requests (uid TEXT PRIMARY KEY, status TEXT NOT NULL);
+    CREATE TABLE hf_blocks (blocker_uid TEXT NOT NULL, blocked_uid TEXT NOT NULL, call_id TEXT, created_at INTEGER NOT NULL, PRIMARY KEY (blocker_uid, blocked_uid));
     CREATE TABLE hf_kyc (uid TEXT PRIMARY KEY, gender TEXT, verified_at INTEGER);
     CREATE TABLE hf_lane_access (uid TEXT NOT NULL, lane TEXT NOT NULL, verified_at INTEGER NOT NULL, declared_at INTEGER, PRIMARY KEY (uid, lane));
   `);

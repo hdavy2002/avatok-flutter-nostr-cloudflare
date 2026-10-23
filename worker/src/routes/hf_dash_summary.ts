@@ -36,7 +36,7 @@ export async function hfDashSummaryRoute(req: Request, env: Env): Promise<Respon
     (await db.prepare("SELECT status FROM hf_hosts WHERE uid=?1").bind(uid).first<{ status: string }>()) ?? { status: "" });
   const isHost = host?.status === "live";
 
-  const [made, received, appointments, expected, saved, newThisWeek, recent] = await Promise.all([
+  const [made, received, appointments, expected, saved, newThisWeek, recent, hearts, waiting] = await Promise.all([
     part(env, uid, "calls_made", async () => Number((await db.prepare(
       "SELECT COUNT(*) AS n FROM hf_calls WHERE caller_uid=?1 AND status='completed' AND billed_minutes>=1 AND created_at>=?2 AND created_at<?3",
     ).bind(uid, istStart, istEnd).first<{ n: number }>())?.n ?? 0)),
@@ -64,6 +64,13 @@ export async function hfDashSummaryRoute(req: Request, env: Env): Promise<Respon
         return { id: r.id, otherHandle: (r.host_name ?? "").trim() || "Host", status: r.status, at: Number(r.created_at), seconds: secs, amountPaise: done ? Math.round(Number(r.charged_paise ?? 0)) : null };
       });
     }),
+    // [HF-DAILY-FLOWS-1] the influencer's side of hearts and Notify me: how many people saved them, how many asked to be told when they go online.
+    isHost ? part(env, uid, "fraands_hearts", async () => Number((await db.prepare(
+      "SELECT COUNT(*) AS n FROM hf_favourites f WHERE f.host_uid=?1 AND NOT EXISTS (SELECT 1 FROM hf_blocks b WHERE (b.blocker_uid=?1 AND b.blocked_uid=f.uid) OR (b.blocker_uid=f.uid AND b.blocked_uid=?1))",
+    ).bind(uid).first<{ n: number }>())?.n ?? 0)) : Promise.resolve(null),
+    isHost ? part(env, uid, "fraands_waiting", async () => Number((await db.prepare(
+      "SELECT COUNT(*) AS n FROM hf_notify WHERE host_uid=?1 AND notified_at IS NULL",
+    ).bind(uid).first<{ n: number }>())?.n ?? 0)) : Promise.resolve(null),
   ]);
 
   return json({
@@ -72,7 +79,7 @@ export async function hfDashSummaryRoute(req: Request, env: Env): Promise<Respon
     callsToday: { made, received },
     appointmentsToday: appointments,
     expectedHostNetPaise: isHost ? expected : null,
-    fraands: { saved, newThisWeek: isHost ? newThisWeek : null },
+    fraands: { saved, newThisWeek: isHost ? newThisWeek : null, hearts: isHost ? hearts : null, waiting: isHost ? waiting : null },
     recentMade: recent, // null when that part failed
   }, 200, { "cache-control": "private, no-store" });
 }

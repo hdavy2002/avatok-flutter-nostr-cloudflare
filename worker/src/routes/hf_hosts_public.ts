@@ -97,7 +97,7 @@ export async function hfHostsPublicRoute(req: Request, env: Env, ctx?: Execution
       const gal = (await env.DB_META.prepare("SELECT * FROM hf_host_media WHERE uid=?1 AND kind='gallery' AND status='active' ORDER BY sort, created_at").bind(r.uid).all<MediaRow>()).results ?? [];
       return json({
         protectedLane: lane,
-        ...card(env, r, (await hostAggregates(env, [r.uid])).get(r.uid), std), reviews: await hostReviews(env, r.uid, 10), aboutPolished: r.about_polished, quote: r.quote,
+        ...card(env, r, (await hostAggregates(env, [r.uid])).get(r.uid), std), reviews: await hostReviews(env, r.uid, 10), aboutPolished: r.about_polished, about: r.about ?? null, quote: r.quote, // [HF-DAILY-FLOWS-1] the host's own saved bio is the fallback while no polished version exists
         ...(pr ? { reels: pr.reels, followers: pr.followers, handle: pr.handle } : {}),
         gallery: gal.map((m) => { const j = mediaToJson(env, m); return { url: j.url, caption: j.caption, imageProvenance: m.job_id ? "ai" : "uploaded" }; }),
       }, 200, lane ? { "cache-control": "private, no-store" } : CACHE);

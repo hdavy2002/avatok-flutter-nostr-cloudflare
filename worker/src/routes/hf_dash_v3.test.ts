@@ -31,6 +31,7 @@ function makeEnv() {
     CREATE TABLE hf_blocks (blocker_uid TEXT, blocked_uid TEXT, call_id TEXT, created_at INTEGER, PRIMARY KEY (blocker_uid, blocked_uid));
     CREATE TABLE hf_incidents (id TEXT PRIMARY KEY, call_id TEXT, reporter_uid TEXT, kind TEXT, created_at INTEGER);
     CREATE TABLE hf_notify (caller_uid TEXT, host_uid TEXT, created_at INTEGER, notified_at INTEGER);
+    CREATE TABLE hf_favourites (uid TEXT NOT NULL, host_uid TEXT NOT NULL, created_at INTEGER NOT NULL, PRIMARY KEY (uid, host_uid));
     CREATE TABLE hf_user_registration (uid TEXT PRIMARY KEY, first_name TEXT, last_name TEXT, username TEXT, created_at INTEGER);
   `);
   db.exec(require_("node:fs").readFileSync(new URL("../../migrations/2026-10-16-hf-dash-v3.sql", import.meta.url), "utf8"));

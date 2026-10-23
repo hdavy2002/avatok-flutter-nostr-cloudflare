@@ -228,6 +228,8 @@ async function blockFromCall(req: Request, env: Env, uid: string, callId: string
     env.DB_META.prepare("INSERT OR REPLACE INTO hf_blocks (blocker_uid, blocked_uid, call_id, created_at) VALUES (?1,?2,?3,?4)").bind(uid, other, callId, now),
     env.DB_META.prepare("INSERT INTO hf_incidents (id, call_id, reporter_uid, kind, created_at) VALUES (?1,?2,?3,?4,?5)").bind(crypto.randomUUID(), callId, uid, `dash_report:${reason}`, now),
     env.DB_META.prepare("DELETE FROM hf_notify WHERE caller_uid=?1 AND host_uid=?2").bind(uid, other),
+    // [HF-DAILY-FLOWS-1] a blocked person leaves My Fraands too (they could not be called any more anyway)
+    env.DB_META.prepare("DELETE FROM hf_favourites WHERE uid=?1 AND host_uid=?2").bind(uid, other),
   ]);
   void track(env, uid, "hf_dash_block", APP, { reason, call_id: callId });
   return json({ ok: true }, 200, NO_STORE);

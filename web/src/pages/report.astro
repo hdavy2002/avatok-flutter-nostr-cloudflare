@@ -31,10 +31,34 @@ form{display:grid;gap:.7rem;margin:2rem 0}label{font-weight:700;margin-top:.65re
 </style>
 <script>
 const form = document.querySelector<HTMLFormElement>('#report-form');
-form?.addEventListener('submit', (event) => {
+// [HF-DAILY-FLOWS-1] The report is STORED by the server (and mailed to the grievance inbox). Only if that is not possible (offline, or
+// the server answers 503 not_ready) does the page fall back to the old email draft below, so a report is never lost.
+async function sendToServer(data: FormData): Promise<{ ok: true; id: string } | { ok: false; code: string; message: string }> {
+  const { hfCall, looksSignedOut } = await import('../lib/hfCallsApi');
+  const payload = { contact: String(data.get('contact') || ''), profile: String(data.get('profile') || ''), call: String(data.get('call') || ''), details: String(data.get('details') || '') };
+  let r = await hfCall<{ ok: true; id: string }>('POST', '/api/hf/reports', payload, { auth: !looksSignedOut() });
+  if (!r.ok && r.code === 'no_session') r = await hfCall<{ ok: true; id: string }>('POST', '/api/hf/reports', payload, { auth: false });
+  return r.ok ? { ok: true, id: r.data.id } : { ok: false, code: r.code, message: r.message };
+}
+form?.addEventListener('submit', async (event) => {
   event.preventDefault();
   if (!form.reportValidity()) return;
   const data = new FormData(form);
+  const statusEl = document.querySelector<HTMLElement>('#report-status');
+  const submitBtn = form.querySelector<HTMLButtonElement>('button[type="submit"]');
+  if (submitBtn) submitBtn.disabled = true;
+  try {
+    const sent = await sendToServer(data);
+    if (sent.ok) {
+      if (statusEl) statusEl.textContent = 'Thank you. Your report is with our team. Reference: ' + sent.id + '. Please keep it for follow-up. For immediate danger, call 112.';
+      form.reset();
+      return;
+    }
+    if (sent.code === 'invalid_field' || sent.code === 'rate limited') {
+      if (statusEl) statusEl.textContent = sent.message || 'Please check the form and try again in a little while.';
+      return;
+    }
+  } catch { /* fall through to the email draft */ } finally { if (submitBtn) submitBtn.disabled = false; }
   const fileInput = form.querySelector<HTMLInputElement>('#report-file');
   const file = fileInput?.files?.[0];
   const body = [

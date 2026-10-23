@@ -295,6 +295,8 @@ function HostPanel({ onPresence, bookingOn }: { onPresence?: (p: HostPresence) =
     <section className="h3-card"><h2><Marigold size={20} tone={1} />Today as an influencer</h2>
       <div className="h3-kpis" style={{ marginTop: 10 }}>
         <div><div className="small muted">Calls received today</div><div className="num" style={{ fontSize: '1.8rem' }}>{summary.data?.callsToday.received ?? '—'}</div></div>
+        <div><div className="small muted">Saved you (hearts)</div><div className="num" style={{ fontSize: '1.8rem' }}>{summary.data?.fraands.hearts ?? '—'}</div></div>
+        <div><div className="small muted">Asked to be told you’re online</div><div className="num" style={{ fontSize: '1.8rem' }}>{summary.data?.fraands.waiting ?? '—'}</div></div>
         <div><div className="small muted">Expected on hold</div><div className="num" style={{ fontSize: '1.8rem' }}>{summary.data?.expectedHostNetPaise != null ? formatPaise(summary.data.expectedHostNetPaise) : '—'}</div></div>
       </div>
       {bookingOn && <div className="h3-kpis" style={{ marginTop: 10 }}>

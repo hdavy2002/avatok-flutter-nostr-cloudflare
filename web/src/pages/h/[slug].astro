@@ -26,7 +26,7 @@ interface Card {
   /** [HF-STD-PLAN-1] pricePerMin is a number and may be fractional (3.99). */
   pricePerMin: number; pricePaisePerMin?: number; priceLabel?: string; priceTiers?: PriceTier[]; plan?: string; lgbtqFriendly: boolean;
   introAudioUrl: string | null; introSeconds: number | null; introMime: string | null;
-  aboutPolished: string | null; quote: string | null;
+  aboutPolished: string | null; about?: string | null; quote: string | null;
   /** [HF-DAILY-FLOWS-1] The influencer's visible reels (embeds only: we link out, never host the video). Absent while the reels flag is off. */
   reels?: { id: string; platform: string; url: string; thumbUrl: string | null; title: string | null; views?: number | null }[];
   followers?: number; handle?: string | null;
@@ -126,7 +126,7 @@ const galleryJson = JSON.stringify(gallery.map(g => ({ src: g.url, alt: g.captio
             <div class="cv-information-grid">
               <section class="cv-info-card" id="about" aria-labelledby="about-heading">
                 <h2 id="about-heading">About {name}</h2>
-                {host.aboutPolished && <p>{host.aboutPolished}</p>}
+                {(host.aboutPolished || host.about) && <p>{host.aboutPolished || host.about}</p>}
                 <dl class="cv-detail-facts">
                   {langs.length > 0 && <div><dt><ModernIcon name="globe" />Languages</dt><dd>{langs.join(', ')}</dd></div>}
                   {host.style && <div><dt><ModernIcon name="sparkle" />Conversation style</dt><dd>{STYLE_LABEL[host.style] ?? host.style}</dd></div>}

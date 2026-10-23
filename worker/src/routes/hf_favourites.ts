@@ -46,7 +46,8 @@ export async function hfFavouritesRoute(req: Request, env: Env, p: string): Prom
     if (!one) {
       const access = await getLaneAccess(env, uid);
       const std = pricingStd(readHfStdPlan(cfg as unknown as Record<string, unknown>), cfg as unknown as Record<string, unknown>); // [HF-DASH-V3-1] [HF-WIRE-18]
-      const rows = (await env.DB_META.prepare(`${SEL} WHERE h.status='live' AND h.slug IS NOT NULL AND h.uid IN (SELECT host_uid FROM hf_favourites WHERE uid=?1)`)
+      const rows = (await env.DB_META.prepare(`${SEL} WHERE h.status='live' AND h.slug IS NOT NULL AND h.uid IN (SELECT host_uid FROM hf_favourites WHERE uid=?1)
+        AND NOT EXISTS (SELECT 1 FROM hf_blocks b WHERE (b.blocker_uid=?1 AND b.blocked_uid=h.uid) OR (b.blocker_uid=h.uid AND b.blocked_uid=?1))`) // [HF-DAILY-FLOWS-1] blocked either way = not listed
         .bind(uid).all<LiveRow>()).results ?? [];
       const saved = new Map(((await env.DB_META.prepare("SELECT host_uid, created_at FROM hf_favourites WHERE uid=?1").bind(uid).all<{ host_uid: string; created_at: number }>()).results ?? [])
         .map((r) => [r.host_uid, Number(r.created_at)]));

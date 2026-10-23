@@ -8,7 +8,7 @@ export interface DashSummary {
   callsToday: { made: number | null; received: number | null };
   appointmentsToday: number | null;
   expectedHostNetPaise: number | null;
-  fraands: { saved: number | null; newThisWeek: number | null };
+  fraands: { saved: number | null; newThisWeek: number | null; /** influencer only: people who saved you / asked to be told when you go online */ hearts?: number | null; waiting?: number | null };
   recentMade: DashRecentCall[] | null;
 }
 
