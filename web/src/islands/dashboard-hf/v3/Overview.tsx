@@ -6,6 +6,8 @@ import { callsEnabled, hfCall, type HostPresence } from '../../../lib/hfCallsApi
 import { formatPaise } from '../../../lib/money';
 import { getBookingSummary, listBookings, type BookingSummary, type HfBooking } from '../../../lib/hfBookingsApi';
 import { capture } from '../../../lib/analytics';
+import { callModeFlags, NO_FLAGS, type CallModeFlags } from '../../../lib/hfCallModes'; // [HF-CALL-MODES-E1]
+import HostModes from './HostModes';
 import type { DashboardAccount } from '../../../components/account/DashboardNav';
 import { BEAT_MS, STATUS_NOTE, type MeHost } from '../hostActivity';
 import { useDash, spendablePaise } from './data';
@@ -265,6 +267,9 @@ function HostPanel({ onPresence, bookingOn, bs }: { onPresence?: (p: HostPresenc
   const [presence, setPresence] = useState<HostPresence>('offline');
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState('');
+  // [HF-CALL-MODES-E1] flags off (or unknown) = the old Online/Offline toggle below, unchanged
+  const [flags, setFlags] = useState<CallModeFlags>(NO_FLAGS);
+  useEffect(() => { let l = true; void callModeFlags().then(f => { if (l) setFlags(f); }); return () => { l = false; }; }, []);
   const pres = useRef(presence); pres.current = presence;
   const [loaded, setLoaded] = useState(false);
   useEffect(() => { if (loaded) onPresence?.(presence); }, [loaded, presence, onPresence]);
@@ -296,13 +301,14 @@ function HostPanel({ onPresence, bookingOn, bs }: { onPresence?: (p: HostPresenc
     else setMsg(r.message || 'We could not change that. Please try again.');
   };
   return <section className="h3-row c2">
+    {flags.modes && on && host ? <HostModes queueOn={flags.queue} bookedCount={bs?.upcomingCount ?? 0} onPresence={setPresence} /> :
     <section className="h3-card"><h2><Marigold size={20} />Influencer status</h2>
       <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginTop: 12 }}>
         <label className="h3-toggle"><input type="checkbox" role="switch" checked={onlineNow} disabled={busy || !on || !host} onChange={toggle} /><b>{!on ? 'Calls open soon' : onlineNow ? (presence === 'busy' ? 'On a call' : 'Online') : 'Offline'}</b></label>
       </div>
       <p className="small muted" style={{ marginTop: 8 }}>{!on ? 'Calling isn’t switched on yet.' : onlineNow ? 'Callers can call you now. Switch off when you’re done.' : 'Switch on when you’re ready. People who asked to be told get a WhatsApp.'}</p>
       {msg && <p className="small" style={{ color: 'var(--bad)' }} role="alert">{msg}</p>}
-    </section>
+    </section>}
     <section className="h3-card"><h2><Marigold size={20} tone={1} />Today as an influencer</h2>
       <div className="h3-kpis" style={{ marginTop: 10 }}>
         <div><div className="small muted">Calls received today</div><div className="num" style={{ fontSize: '1.8rem' }}>{summary.data?.callsToday.received ?? '—'}</div></div>

@@ -4,6 +4,7 @@ import { ACTIVE_SESSION_CHANGED } from '../../lib/clerk';
 import { bookingError, confirmBooking, createQuote, getPublicSlotsInfo, money, offeredDurations, type AvailabilitySlot, type BookingQuote } from '../../lib/hfBookingsApi';
 import SessionBridge from '../calls/SessionBridge';
 import { capture } from '../../lib/analytics';
+import { callModeFlags, holdLine, lengthLabel, offeredLengths } from '../../lib/hfCallModes'; // [HF-CALL-MODES-E1]
 import '../../styles/hf-bookings.css';
 import { BookingFeatureLoading, BookingUnavailable, useBookingFeature } from './BookingFeatureGate';
 
@@ -20,6 +21,9 @@ export default function CustomerBooking() {
   const back = window.location.pathname + window.location.search;
   const [duration, setDuration] = useState(Number(params.get('duration')) || 10);
   const [durations, setDurations] = useState<number[]>(DEFAULT_DURATIONS);
+  // [HF-CALL-MODES-E1] hfBookingLengthsEnabled: lengths 15 min to 5 h, the first 15 minutes held. Off = today's single 10-minute length.
+  const [lengthsOn, setLengthsOn] = useState(false);
+  const lengthsRef = useRef(false);
   const [date, setDate] = useState(params.get('date') || localDate(new Date(Date.now() + 86_400_000)));
   const [slots, setSlots] = useState<AvailabilitySlot[]>([]);
   const [selected, setSelected] = useState<AvailabilitySlot | null>(null);
@@ -43,7 +47,7 @@ export default function CustomerBooking() {
     setPhase('loading'); if (!keepMessage) setMessage(''); setQuote(null); setSelected(null);
     try {
       const found = await getPublicSlotsInfo(host, addDays(nextDate, -1), addDays(nextDate, 1), nextDuration);
-      if (found.durationsMinutes) setDurations(found.durationsMinutes);
+      if (found.durationsMinutes) setDurations(lengthsRef.current ? offeredLengths(found.durationsMinutes) : found.durationsMinutes);
       setSlots(found.slots.filter(slot => localDate(new Date(slot.startUtc)) === nextDate));
       setPhase('ready');
     } catch (error) {
@@ -59,8 +63,12 @@ export default function CustomerBooking() {
   useEffect(() => {
     if (feature !== 'enabled') { setPhase(feature === 'checking' ? 'loading' : 'error'); if (feature === 'disabled') setMessage('Appointments are not available right now.'); return; }
     if (!host) { setPhase('error'); setMessage('Choose an influencer from their profile to book a time.'); return; }
+    void (async () => {
+    const flags = await callModeFlags();
+    lengthsRef.current = flags.lengths; setLengthsOn(flags.lengths);
     let nextDate = date;
     let nextDuration = duration;
+    if (flags.lengths) { setDurations(offeredLengths(null)); if (!params.get('duration')) { nextDuration = 15; setDuration(15); } }
     const intent = sessionStorage.getItem('hf_booking_intent');
     if (intent) {
       try {
@@ -74,6 +82,7 @@ export default function CustomerBooking() {
     }
     if (!requestedSlot.current) requestedSlot.current = params.get('slot') || '';
     void loadSlots(nextDate, nextDuration, true);
+    })();
   }, [host, feature]);
   useEffect(() => {
     const invalidateQuote = () => {
@@ -155,7 +164,7 @@ export default function CustomerBooking() {
       <section className="hfb-card" aria-labelledby="hfb-options">
         <h2 id="hfb-options">Appointment length</h2>
         <div className="hfb-choice-row" role="group" aria-label="Appointment length">
-          {durations.map(minutes => <button type="button" key={minutes} className={duration === minutes ? 'hfb-choice is-selected' : 'hfb-choice'} aria-pressed={duration === minutes} onClick={() => { setDuration(minutes); syncUrl(date, minutes); setQuote(null); setSelected(null); void loadSlots(date, minutes); }}>{minutes} minutes</button>)}
+          {durations.map(minutes => <button type="button" key={minutes} className={duration === minutes ? 'hfb-choice is-selected' : 'hfb-choice'} aria-pressed={duration === minutes} onClick={() => { setDuration(minutes); syncUrl(date, minutes); setQuote(null); setSelected(null); if (lengthsOn) capture('hf_web_booking_length_picked', { host, minutes }); void loadSlots(date, minutes); }}>{lengthsOn ? lengthLabel(minutes) : `${minutes} minutes`}</button>)}
         </div>
         <label className="hfb-label" htmlFor="hfb-date">Date</label>
         <input id="hfb-date" className="hfb-input" type="date" min={minDate} max={maxDate} value={date} onChange={e => { setDate(e.target.value); syncUrl(e.target.value, duration); setQuote(null); setSelected(null); void loadSlots(e.target.value, duration); }} />
@@ -175,7 +184,8 @@ export default function CustomerBooking() {
       </section>
       {quote && selected && <section className="hfb-card hfb-quote" aria-labelledby="hfb-confirm">
         <h2 id="hfb-confirm">Review and confirm</h2>
-        <dl className="hfb-details"><div><dt>Date and time</dt><dd>{new Date(quote.startUtc).toLocaleString()} · {selected.hostLocalLabel} influencer time ({selected.offsetLabel})</dd></div><div><dt>Length</dt><dd>{quote.durationMinutes} minutes</dd></div><div><dt>Price to reserve</dt><dd><strong>{quote.priceRupees || money(quote.reservedPaise)}</strong></dd></div><div><dt>Quote expires</dt><dd>{new Date(quote.expiresAt).toLocaleTimeString()}</dd></div></dl>
+        <dl className="hfb-details"><div><dt>Date and time</dt><dd>{new Date(quote.startUtc).toLocaleString()} · {selected.hostLocalLabel} influencer time ({selected.offsetLabel})</dd></div><div><dt>Length</dt><dd>{lengthsOn ? lengthLabel(quote.durationMinutes) : `${quote.durationMinutes} minutes`}</dd></div><div><dt>{lengthsOn && quote.holdPaise != null ? 'Held now' : 'Price to reserve'}</dt><dd><strong>{lengthsOn && quote.holdPaise != null ? money(quote.holdPaise) : quote.priceRupees || money(quote.reservedPaise)}</strong></dd></div><div><dt>Quote expires</dt><dd>{new Date(quote.expiresAt).toLocaleTimeString()}</dd></div></dl>
+        {lengthsOn && quote.holdPaise != null && <p className="hfb-muted">{holdLine(money(quote.holdPaise), quote.holdMinutes ?? 15)}</p>}
         <p className="hfb-muted">Before the call connects, either person may cancel and the server releases the reservation. No cancellation penalty or no-show fee applies. After connection, the call charges only for verified connected time.</p>
         <label className="hfb-check"><input type="checkbox" checked={policyAccepted} onChange={e => setPolicyAccepted(e.target.checked)} /><span>I understand the reservation and cancellation policy.</span></label>
         {message && <p role="status" className="hfb-message">{message}</p>}

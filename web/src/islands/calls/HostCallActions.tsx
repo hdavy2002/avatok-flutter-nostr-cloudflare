@@ -18,6 +18,8 @@ import {
 } from '../../lib/hfCallsApi';
 import '../../styles/hf-calls.css';
 import { bookingsEnabled } from '../../lib/hfBookingsApi';
+import QueueSheet from './QueueSheet'; // [HF-CALL-MODES-E1]
+import { NO_FLAGS, callModeFlags, deriveCallState, fanButtons, minutesLeft, refusalText, type CallModeFlags, type PublicCallState } from '../../lib/hfCallModes';
 
 /** [HF-STD-PLAN-1] pricePerMin may be fractional (3.99); pricePaisePerMin / priceTiers come from the worker's host card. */
 export interface CallHost { slug: string; displayName: string; pricePerMin: number; pricePaisePerMin?: number; priceTiers?: PriceTier[]; plan?: string; status?: HostPresence; womenOnly?: boolean }
@@ -64,7 +66,7 @@ export function NotifyButton({ host, variant, prefix, initial, big }: { host: Ca
 
 /* ── The call sheet ────────────────────────────────────────────────────── */
 type Phase = 'confirm' | 'starting' | 'live' | 'error';
-interface Problem { text: string; link?: { href: string; label: string }; balance?: boolean; notify?: boolean; addMoney?: boolean }
+interface Problem { text: string; link?: { href: string; label: string }; balance?: boolean; notify?: boolean; addMoney?: boolean; queue?: boolean; book?: boolean; waiting?: number }
 /** [HF-STD-PLAN-1] Rupee wallet: the caller's balance and what the Standard plan lets them do with it (GET /api/hf/wallet/estimate). */
 interface StdEstimate { plan?: string; ratePerMinRupees?: string; tokensPerMinute?: string; aboutText: string; affordableSeconds: number; canStart: boolean; startNeed?: string; startNeedPaise?: number; balance?: string; tiers?: PriceTier[] }
 interface TokView { balance: string; hasDebt: boolean; standard: boolean; own?: boolean; est?: StdEstimate }
@@ -76,7 +78,7 @@ function useNow(active: boolean): number {
   return n;
 }
 
-function CallSheet({ host, open, onClose }: { host: CallHost; open: boolean; onClose: () => void }) {
+function CallSheet({ host, open, onClose, flags = NO_FLAGS, bookingOn = false }: { host: CallHost; open: boolean; onClose: () => void; flags?: CallModeFlags; bookingOn?: boolean }) {
   const ref = useRef<HTMLDialogElement>(null);
   const [phase, setPhase] = useState<Phase>('confirm');
   const [balance, setBalance] = useState<number | null>(null);
@@ -170,6 +172,12 @@ function CallSheet({ host, open, onClose }: { host: CallHost; open: boolean; onC
     }
     else if (r.code === 'debt_open') p = { text: r.message || 'Please clear the amount owed before calling' };
     else if (r.code === 'low_balance') { const b = Number(r.body.balance); if (Number.isFinite(b)) setBalance(b); p = { text: `You need at least ${inr(Number(r.body.needed) || rate * 2)} to start a call.`, balance: true }; }
+    else if (r.code === 'host_unavailable' && flags.modes && typeof r.body.reason === 'string') {
+      // [HF-CALL-MODES-E1] spec 2.5: the refusal says why and what the fan can do instead.
+      const canQueue = flags.queue && r.body.canQueue === true, canBook = bookingOn && r.body.canBook === true;
+      p = { text: refusalText(r.body.reason, name) || r.message || 'This influencer isn’t available right now.', queue: canQueue, book: canBook, notify: !canQueue && !canBook,
+        waiting: typeof r.body.queueWaiting === 'number' ? r.body.queueWaiting : undefined };
+    }
     else if (r.code === 'host_unavailable') p = { text: r.message || 'This influencer isn’t available right now.', notify: true };
     else if (r.code === 'call_in_progress') p = { text: 'You already have a call going. Finish that one first.' };
     else if (r.code === 'calls_not_ready') p = { text: 'Calls open soon. Please check back in a little while.' };
@@ -253,6 +261,14 @@ function CallSheet({ host, open, onClose }: { host: CallHost; open: boolean; onC
           {connected && (tok?.standard
             ? <><p className="hfc-status hfc-live">Connected · {mmss(sec)} · about {formatPaise(chargeForSeconds(tiers, sec))} so far</p><p className="hfc-sub">Billed per second. Press # on your phone to end the call and block.</p></>
             : <><p className="hfc-status hfc-live">Connected · {mmss(sec)} · {inr(soFar(sec, rate))} so far</p><p className="hfc-sub">Billed per started minute{maxMin ? `, up to ${maxMin} min` : ''}. Press # on your phone to end the call and block.</p></>)}
+          {connected && flags.chunk && info.short && (() => {
+            // [HF-CALL-MODES-E1] The wallet cannot fund the next 5 minutes: say when the call ends and let the caller top up without leaving the call.
+            const left = minutesLeft(info.capAt ?? info.fundedUntil, now);
+            return <div className="hfc-note hfc-warn" role="status">
+              <strong>Your wallet balance has run out.</strong> This call will end{left ? ` in about ${left} minute${left === 1 ? '' : 's'}` : ' soon'}. Please top up while you are speaking.
+              <a className="hfc-btn hfc-primary" style={{ marginTop: 8 }} href="/dashboard/wallet#add" target="_blank" rel="noopener noreferrer" onClick={() => capture('hf_web_topup_in_call', { host: host.slug })}><Icon name="rupee" size={22} />Top up now — your call continues</a>
+            </div>;
+          })()}
           {st === 'completed' && <>
             <p className="hfc-status">{info.charged !== undefined || info.chargedPaise !== undefined
               ? ((info.billableSeconds ?? 0) > 0 ? `Call ended · ${mmss(info.billableSeconds ?? 0)} · ${info.charged ?? formatPaise(info.chargedPaise ?? 0)}` : 'Call ended · No charge')
@@ -295,6 +311,8 @@ function CallSheet({ host, open, onClose }: { host: CallHost; open: boolean; onC
           {problem.addMoney && <p className="hfc-note hfc-warn">Add money in the app to call.</p>}
           {problem.link && <a className="hfc-btn hfc-primary" href={problem.link.href}>{problem.link.label}</a>}
           {problem.notify && <NotifyButton host={host} variant="rail" big />}
+          {problem.queue && <QueueSheet host={host} variant="rail" waiting={problem.waiting} bookingHref={`/bookings?host=${encodeURIComponent(host.slug)}`} bookingOn={bookingOn} />}
+          {problem.book && <a className="hfc-btn" href={`/bookings?host=${encodeURIComponent(host.slug)}`}>Book a time</a>}
           <div className="hfc-actions"><button type="button" className="hfc-btn" onClick={onClose}>Close</button></div>
         </div>
       )}
@@ -302,7 +320,7 @@ function CallSheet({ host, open, onClose }: { host: CallHost; open: boolean; onC
   );
 }
 
-const freshCache = new Map<string, Promise<{ status?: string; womenOnly?: boolean } | null>>();
+const freshCache = new Map<string, Promise<{ status?: string; womenOnly?: boolean; callState?: string; queue?: { open?: boolean; waiting?: number } } | null>>();
 /** One no-store fetch per slug per page (the rail and the mobile bar both ask). */
 function freshHost(slug: string) {
   let p = freshCache.get(slug);
@@ -343,6 +361,12 @@ export default function HostCallActions({ host, variant, refresh }: { host: Call
   const [subscribed, setSubscribed] = useState<boolean | undefined>(undefined);
   const [gate, setGate] = useState<'pending' | 'open' | 'app'>('pending'); // [HF-APP-3] starts 'pending' on server and client alike (no hydration mismatch)
 
+  // [HF-CALL-MODES-E1] the four call-mode flags (all off = today's behaviour) and the live callState / queue size from the fresh host card
+  const [flags, setFlags] = useState<CallModeFlags>(NO_FLAGS);
+  const [callState, setCallState] = useState<string | null>(null);
+  const [queueWaiting, setQueueWaiting] = useState(0);
+  useEffect(() => { let live = true; void callModeFlags().then(f => { if (live) setFlags(f); }); return () => { live = false; }; }, []);
+
   useEffect(() => { let live = true; void callsEnabled().then(v => { if (live) setOn(v); }); void bookingsEnabled().then(v => { if (live) setBookingOn(v); }); return () => { live = false; }; }, []);
 
   // /h/<slug> is cached for a minute at the edge: ask for the live status, and mirror it on the page badge.
@@ -353,37 +377,49 @@ export default function HostCallActions({ host, variant, refresh }: { host: Call
       if (!live || !j) return;
       if (j.status === 'online' || j.status === 'busy' || j.status === 'offline') setStatus(j.status);
       if (typeof j.womenOnly === 'boolean') setWomenOnly(j.womenOnly);
+      if (typeof j.callState === 'string') setCallState(j.callState);
+      if (typeof j.queue?.waiting === 'number') setQueueWaiting(j.queue.waiting);
     });
     return () => { live = false; };
   }, [on, refresh, host.slug]);
+
+  // With the modes flag on, callState (not the legacy status) decides what a fan sees. Off: exactly the old status logic.
+  const cs: PublicCallState | null = flags.modes ? deriveCallState(status, callState) : null;
+  const fb = cs ? fanButtons(cs, bookingOn, flags.queue) : null;
+  const callable = cs ? cs === 'available' : status === 'online';
 
   useEffect(() => {
     if (!on || variant !== 'rail') return;
     const badge = document.querySelector<HTMLElement>('.cv-online');
     if (!badge) return;
+    if (fb && cs) {
+      badge.className = `cv-online ${cs === 'available' || cs === 'connecting' || cs === 'queue_only' ? '' : cs === 'on_call' || cs === 'appointments' ? 'cv-status-busy' : 'cv-status-offline'}`.trim();
+      badge.innerHTML = '<span aria-hidden="true"></span>' + fb.badge;
+      return;
+    }
     badge.className = `cv-online ${status === 'online' ? '' : status === 'busy' ? 'cv-status-busy' : 'cv-status-offline'}`.trim();
     badge.innerHTML = '<span aria-hidden="true"></span>' + (status === 'online' ? 'Online' : status === 'busy' ? 'On a call' : 'Offline');
-  }, [on, status, variant]);
+  }, [on, status, variant, cs, fb?.badge]);
 
   // rail: if signed in and the host can't be called, find out whether we already subscribed
   useEffect(() => {
-    if (!on || variant !== 'rail' || status === 'online' || looksSignedOut()) return;
+    if (!on || variant !== 'rail' || callable || looksSignedOut()) return;
     setBridge(true);
     let live = true;
     void hfCall<{ subscribed: boolean }>('GET', `/api/hf/hosts/${encodeURIComponent(host.slug)}/notify`).then(r => { if (live && r.ok) setSubscribed(!!r.data.subscribed); });
     return () => { live = false; };
-  }, [on, variant, status, host.slug]);
+  }, [on, variant, callable, host.slug]);
 
   // [HF-APP-3] decide whether this person may start a call from here (see webHasTestCredits)
   useEffect(() => {
-    if (!on || status !== 'online') return;
+    if (!on || !callable) return;
     if (isAppMode()) { setGate('open'); return; }
     if (looksSignedOut()) { setGate('app'); return; }
     setBridge(true); // the wallet request needs the Clerk token bridge
     let live = true;
     void webHasTestCredits().then(ok => { if (live) setGate(ok ? 'open' : 'app'); });
     return () => { live = false; };
-  }, [on, status]);
+  }, [on, callable]);
 
   const h: CallHost = { ...host, status, womenOnly };
   const bookingHref = `/bookings?host=${encodeURIComponent(host.slug)}`;
@@ -395,7 +431,15 @@ export default function HostCallActions({ host, variant, refresh }: { host: Call
       {bookingOn && <a className={`${btnClass(variant)} hfc-book-time`} href={bookingHref}>Book a time</a>}
     </>;
   }
-  if (status !== 'online') {
+  if (fb && !fb.callNow) {
+    // [HF-CALL-MODES-E1] spec 2.1: on a call / queue only / appointments / offline
+    return <>
+      {fb.queue && <QueueSheet host={h} variant={variant} waiting={queueWaiting} bookingHref={bookingHref} bookingOn={bookingOn} />}
+      {fb.notify && <NotifyButton host={h} variant={variant} prefix={fb.badge} initial={subscribed} />}
+      {fb.book && <a className={`${btnClass(variant)} hfc-book-time`} href={bookingHref}>Book a time</a>}
+    </>;
+  }
+  if (!callable) {
     return <><NotifyButton host={h} variant={variant} prefix={status === 'busy' ? 'On a call' : 'Offline'} initial={subscribed} />{bookingOn && <a className={`${btnClass(variant)} hfc-book-time`} href={bookingHref}>Book a time</a>}</>;
   }
   if (gate === 'app') {
@@ -412,7 +456,7 @@ export default function HostCallActions({ host, variant, refresh }: { host: Call
         setBridge(true); setEverOpen(true); setOpen(true);
       }}><Icon name="phone" size={22} />Call {hostRateLabel(host)}</button>
       {bookingOn && <a className={`${btnClass(variant)} hfc-book-time`} href={bookingHref}>Book a time</a>}
-      {everOpen && <CallSheet host={h} open={open} onClose={onClose} />}
+      {everOpen && <CallSheet host={h} open={open} onClose={onClose} flags={flags} bookingOn={bookingOn} />}
     </>
   );
 }

@@ -13,6 +13,8 @@ export interface AvailabilitySlot { startUtc: string; endUtc: string; hostLocalL
 export interface BookingQuote {
   id: string; expiresAt: string; startUtc: string; endUtc: string; durationMinutes: number;
   reservedPaise: number; priceRupees: string;
+  /** [HF-CALL-MODES-E1] BookingLengthFields (worker/src/lib/hf_call_contracts.ts): what is held now (cost of the first holdMinutes). Absent while hfBookingLengthsEnabled is off. */
+  holdPaise?: number; holdMinutes?: number; durationsMinutes?: number[];
 }
 export interface HfBooking {
   id: string; status: string; hostUid: string; customerUid: string; startUtc: string; endUtc: string;

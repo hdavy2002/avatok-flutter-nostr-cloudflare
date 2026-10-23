@@ -20,6 +20,8 @@ export interface CallInfo {
   chargedPaise?: number; charged?: string; plan?: string; tiers?: CallTierLine[];
   /** [HF-STD-PLAN-1] Host: only their own earning for the call. */
   earningPaise?: number; earning?: string;
+  /** [HF-CALL-MODES-E1] chunk billing (worker/src/lib/hf_call_contracts.ts CallInfoAdditions): funded until / short on funds / moving end time. Absent while the flags are off. */
+  fundedUntil?: number | string | null; short?: boolean; capAt?: number | string | null; source?: 'instant' | 'queue' | 'booking';
 }
 export interface CallTierLine { fromMin: number; toMin: number | null; paisePerMin: number; seconds: number; amountPaise: number }
 

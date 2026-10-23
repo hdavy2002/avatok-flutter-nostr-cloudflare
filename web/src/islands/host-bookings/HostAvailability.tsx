@@ -3,6 +3,7 @@ import SessionBridge from '../calls/SessionBridge';
 import { PageShell, useEmbedded, useIntoDashboard } from '../../components/account/dashboardEmbed';
 import { bookingError, getHostSchedule, legacyHoursToRules, listBookings, normalizeAvailabilitySchedule, saveHostSchedule, type AvailabilitySchedule, type DateException, type HfBooking, type LegacyAvailabilityPreview, type WindowRule } from '../../lib/hfBookingsApi';
 import { collectBookingPages } from '../../lib/hfBookingCalendar';
+import { HF_BOOKING_LENGTHS, callModeFlags } from '../../lib/hfCallModes';
 import '../../styles/hf-bookings.css';
 import { BookingFeatureLoading, BookingUnavailable, useBookingFeature } from './BookingFeatureGate';
 
@@ -28,6 +29,8 @@ function timeIn(utc: string, timezone: string): string {
 }
 export default function HostAvailability() {
   useIntoDashboard('/dashboard/host/availability');
+  const [lengthsOn, setLengthsOn] = useState(false); // [HF-CALL-MODES-E1] hfBookingLengthsEnabled
+  useEffect(() => { let live = true; void callModeFlags().then(f => { if (live) setLengthsOn(f.lengths); }); return () => { live = false; }; }, []);
   const embedded = useEmbedded();
   const feature = useBookingFeature();
   const [schedule, setSchedule] = useState<AvailabilitySchedule>(blank);
@@ -133,7 +136,8 @@ export default function HostAvailability() {
     const needsConfirmation = legacyNeedsConfirmation && schedule.version === 0;
     if (needsConfirmation && !legacyAcknowledged) { setMessage('Confirm the influencer timezone for these legacy hours before saving.'); return; }
     // [HF-BOOKING-UNIFY-1] Every booking, in the app and on the web, is a 10-minute call: that is the only length on offer.
-    const normalized = normalizeAvailabilitySchedule({ ...schedule, durationsMinutes: [10] });
+    // [HF-CALL-MODES-E1] With hfBookingLengthsEnabled the schedule stores the full list of lengths (15 min to 5 h).
+    const normalized = normalizeAvailabilitySchedule({ ...schedule, durationsMinutes: lengthsOn ? [...HF_BOOKING_LENGTHS] : [10] });
     setSaving(true); setMessage(''); setStale(false);
     try {
       const next = await saveHostSchedule(normalized, schedule.version, needsConfirmation && legacyAcknowledged);
@@ -223,7 +227,9 @@ export default function HostAvailability() {
         <label className="hfb-label">Gap between appointments (minutes)<input className="hfb-input" type="number" min="0" max="120" value={schedule.bufferMinutes} onChange={e => setSchedule(s => ({ ...s, bufferMinutes: Number(e.target.value) }))} /></label>
         <label className="hfb-label">Booking horizon (days)<input className="hfb-input" type="number" min="1" max="60" value={schedule.horizonDays} onChange={e => setSchedule(s => ({ ...s, horizonDays: Number(e.target.value) }))} /></label>
       </div>
-      <p className="hfb-muted">Every appointment is a 10-minute call, in the app and on the web. Times you mark in the app show here as date overrides.</p>
+      <p className="hfb-muted">{lengthsOn
+        ? 'People can book 15 minutes, 30 minutes, 1, 2, 3, 4 or 5 hours with you. Only the first 15 minutes are held from their wallet; the rest is charged 5 minutes at a time while you talk. Times you mark in the app show here as date overrides.'
+        : 'Every appointment is a 10-minute call, in the app and on the web. Times you mark in the app show here as date overrides.'}</p>
       <label className="hfb-label">Start interval (minutes)<input className="hfb-input" type="number" min="5" max="60" step="5" value={schedule.slotIntervalMinutes} onChange={e => setSchedule(s => ({ ...s, slotIntervalMinutes: Number(e.target.value) }))} /></label>
       <div className="hfb-actions"><button type="button" className="hfb-button hfb-primary" onClick={() => void save()} disabled={saving || stale}>{saving ? 'Saving…' : 'Save availability'}</button><button type="button" className="hfb-button" disabled={saving || !saved} onClick={() => { if (saved) { setSchedule(saved); setMessage('Unsaved changes reverted.'); } }}>Undo unsaved changes</button></div>
       <p className="hfb-muted">Version {schedule.version}. Saved appointments are never moved by calendar edits.</p>
