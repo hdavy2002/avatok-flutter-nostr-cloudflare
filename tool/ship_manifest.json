@@ -11743,7 +11743,7 @@
     "no_telemetry": "Money maths, invoices and a read-only admin report; no new fan or influencer action beyond an optional GSTIN field. Verified by buying a Rs 644 test order and reading the invoice, the GST report row and the platform wallet totals."
   },
   "HF-MERCH-GST-2": {
-    "description": "[HF-MERCH-GST-2 2026-10-23] Part B (web + app labels): merch is sold by the platform with a 5% GST invoice; fan prices labelled incl. 5% GST & free delivery, 'Download GST invoice', gst_not_ready shows 'Merch checkout opens soon' / 'Coming soon'; shirts capped at Rs 2,500 (over_price_cap, markup input capped in the wizard and edit sheet); influencers earn a design royalty; help, FAQ, support and app help updated. Fan prices unchanged.",
+    "description": "[HF-MERCH-GST-2 2026-10-23] Part B (web + app labels): the platform sells every merch item and sends a GST invoice; fan prices are labelled with each product's own GST rate (5% on clothing, other items at their own rate; just 'GST' when unknown), gst_not_ready shows 'Merch checkout opens soon' / 'Coming soon', clothing is capped at Rs 2,500 (over_price_cap; markup input capped in the app wizard and edit sheet only where the cap applies); influencers earn a design royalty; help, FAQ, support and app help updated; 'Download GST invoice' on My orders.",
     "two_sided": false,
     "min_devices_on_build": 0,
     "flags": [],

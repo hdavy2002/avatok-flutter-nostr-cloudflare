@@ -5,16 +5,16 @@ import { API_BASE } from './env';
 
 export interface MerchColour { name: string; hex: string }
 export interface MerchSize { size: string; pricePaise: number; inStock: boolean }
-export interface PublicProduct { id: string; slug: string; title: string; imageUrl: string | null; colours: MerchColour[]; sizes: MerchSize[]; fromPricePaise: number; url: string }
+export interface PublicProduct { id: string; slug: string; title: string; imageUrl: string | null; colours: MerchColour[]; sizes: MerchSize[]; fromPricePaise: number; url: string;
+  /** [HF-MERCH-GST-2] This product's own category GST rate in basis points (500 = 5%). Optional: labels say just "GST" without it. */
+  gstRateBps?: number }
 export interface PublicProductFull extends PublicProduct {
   photos: string[]; description: string | null; side: 'front' | 'back'; maxQty: number;
   /** Not sent by the server yet; when it is, the product page shows it instead of the standard chart. */
   sizeChart?: { size: string; chestIn?: number; lengthIn?: number }[];
-  /** [HF-MERCH-GST-2] GST rate in basis points (500 = 5%). Optional: the label falls back to 5%. */
-  gstRateBps?: number;
 }
-/** [HF-MERCH-GST-2] "5" from 500 bps; falls back to 5 when the server did not send a rate. */
-export const gstPct = (bps?: number | null): string => { const v = typeof bps === 'number' && bps > 0 ? bps / 100 : 5; return String(Number.isInteger(v) ? v : Number(v.toFixed(2))); };
+/** [HF-MERCH-GST-2] "5% GST" from 500 bps (the product's own category rate), or just "GST" when the rate is not known. */
+export const gstText = (bps?: number | null): string => { if (typeof bps !== 'number' || !(bps > 0)) return 'GST'; const v = bps / 100; return `${Number.isInteger(v) ? v : Number(v.toFixed(2))}% GST`; };
 export interface PublicHostRef { slug: string; displayName: string; avatarUrl: string | null }
 export interface MerchSitemap { hosts: { slug: string; updatedAt: number }[]; products: { hostSlug: string; slug: string; updatedAt: number; imageUrl: string | null; title: string }[] }
 

@@ -270,7 +270,7 @@ class _ProductCard extends StatelessWidget {
               ]),
               const SizedBox(height: 6),
               Text(
-                p.sizes.isEmpty ? 'Markup ${merchRupees(p.markupRupees * 100)}' : 'Fans pay from ${merchRupees(p.fromPaise)} (incl. 5% GST & delivery) · your markup ${merchRupees(p.markupRupees * 100)}',
+                p.sizes.isEmpty ? 'Markup ${merchRupees(p.markupRupees * 100)}' : 'Fans pay from ${merchRupees(p.fromPaise)} (incl. ${merchGstText(p.gstRateBps)} & delivery) · your markup ${merchRupees(p.markupRupees * 100)}',
                 style: t(14, color: C.muted, w: FontWeight.w700),
               ),
             ]),
@@ -343,14 +343,15 @@ class _MarkupSheetState extends State<_MarkupSheet> {
     if (m < _min) return 'The markup must be at least ${merchRupees(_min * 100)}.';
     if (m > 5000) return 'The markup can be at most ₹5,000.';
     final cap = _maxMarkup;
-    if (m > cap) return 'Shirts are capped at ₹2,500 so the 5% GST rate applies. The most you can add is ${merchRupees(cap * 100)}.';
+    if (m > cap) return 'Clothing is capped at ₹2,500 so the 5% GST rate applies. The most you can add is ${merchRupees(cap * 100)}.';
     return null;
   }
 
   /// [HF-MERCH-GST-2] Highest markup that keeps every size of this product under the price cap (from the catalog cap and each base).
+  /// Only clothing is capped; other categories keep the old limit.
   int get _maxMarkup {
     var best = 5000;
-    final cap = _cat?.priceCapPaise;
+    final cap = widget.product.capApplies == true ? _cat?.priceCapPaise : null;
     if (cap != null) {
       for (final s in widget.product.sizes) {
         final v = (cap - s.basePaise) ~/ 100;
@@ -404,7 +405,7 @@ class _MarkupSheetState extends State<_MarkupSheet> {
             formatters: [FilteringTextInputFormatter.digitsOnly, LengthLimitingTextInputFormatter(4)],
             onChanged: (_) => setState(() => _error = null),
           ),
-          Padding(padding: const EdgeInsets.only(bottom: 6), child: Text(merchCapHint, style: t(13, color: C.muted))),
+          if (widget.product.capApplies == true) Padding(padding: const EdgeInsets.only(bottom: 6), child: Text(merchCapHint, style: t(13, color: C.muted))),
           if (valid)
             for (final s in widget.product.sizes)
               Padding(
@@ -412,7 +413,7 @@ class _MarkupSheetState extends State<_MarkupSheet> {
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                   Row(children: [
                     SizedBox(width: 52, child: Text(s.size, style: t(16))),
-                    Expanded(child: Text('Fan pays (incl. 5% GST & delivery) ${merchRupees(s.basePaise + m * 100)}', style: t(15, w: FontWeight.w700))),
+                    Expanded(child: Text('Fan pays (incl. ${merchGstText(widget.product.gstRateBps)} & delivery) ${merchRupees(s.basePaise + m * 100)}', style: t(15, w: FontWeight.w700))),
                     Text(cat == null ? '' : 'You earn (royalty) ${merchRupees(cat.youEarnPaise(m))}', style: t(15, color: C.rani)),
                   ]),
                   if (s.printingPaise != null && s.shippingPaise != null)
@@ -594,7 +595,7 @@ class _OrderTileState extends State<_OrderTile> {
           const SizedBox(height: 8),
           MerchKv('Order', o.orderNo),
           MerchKv('Placed', merchDateTime(o.createdAt)),
-          MerchKv('Fan paid (incl. 5% GST & delivery)', merchRupees(o.pricePaise)),
+          MerchKv('Fan paid (incl. GST & delivery)', merchRupees(o.pricePaise)),
           MerchKv('Base price', merchRupees(o.basePaise)),
           MerchKv('You earn', o.status == 'cancelled' ? '₹0' : merchRupees(o.youEarnPaise), strong: true),
           if (o.status != 'cancelled')

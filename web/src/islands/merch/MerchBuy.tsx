@@ -8,7 +8,7 @@ import SessionBridge from '../calls/SessionBridge';
 import { capture, captureException } from '../../lib/analytics';
 import { checkPincode } from '../../lib/merchApi';
 import type { MerchColour, MerchSize } from '../../lib/merchPublic';
-import { gstPct, rupees } from '../../lib/merchPublic';
+import { gstText, rupees } from '../../lib/merchPublic';
 
 const Checkout = lazy(() => import('./Checkout'));
 
@@ -27,7 +27,7 @@ export default function MerchBuy({ host, product, checkoutEnabled }: BuyProps) {
   const [open, setOpen] = useState(false);
   const [gstClosed, setGstClosed] = useState(false); // [HF-MERCH-GST-2] server said 403 gst_not_ready
   const canBuy = checkoutEnabled && !gstClosed;
-  const gst = gstPct(product.gstRateBps);
+  const gst = gstText(product.gstRateBps);
   const [pin, setPin] = useState('');
   const [pinMsg, setPinMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [pinBusy, setPinBusy] = useState(false);
@@ -89,7 +89,7 @@ export default function MerchBuy({ host, product, checkoutEnabled }: BuyProps) {
       <label htmlFor="hfm-qty">Quantity</label>
       <div className="hfm-qty"><button type="button" aria-label="One less" disabled={qty <= 1} onClick={() => setQty(q => Math.max(1, q - 1))}>−</button><output id="hfm-qty" aria-live="polite">{qty}</output><button type="button" aria-label="One more" disabled={qty >= maxQty} onClick={() => setQty(q => Math.min(maxQty, q + 1))}>+</button></div>
     </div>
-    <div className="hfm-total"><span>Total</span><b>{rupees(total)}</b><small>incl. {gst}% GST &amp; free delivery across India</small></div>
+    <div className="hfm-total"><span>Total</span><b>{rupees(total)}</b><small>incl. {gst} &amp; free delivery across India</small></div>
     <button type="button" className="hfm-cta" disabled={!canBuy || !size} onClick={buy}>{canBuy ? `Buy now · ${rupees(total)}` : 'Coming soon'}</button>
     {!canBuy && <p className="hfm-note" role="status">Merch checkout opens soon. Save this page and check back.</p>}
     <form className="hfm-pin" onSubmit={check}>

@@ -40,22 +40,23 @@ String merchErrorText(Object e) {
     if (e.code == 'over_price_cap') {
       final mx = e.extra['maxMarkupRupees'];
       return mx is num
-          ? 'Shirts are capped at ₹2,500 so the 5% GST rate applies. The most you can add is ${merchRupees(mx.round() * 100)}.'
-          : 'Shirts are capped at ₹2,500 so the 5% GST rate applies. Please lower your markup.';
+          ? 'Clothing is capped at ₹2,500 so the 5% GST rate applies. The most you can add is ${merchRupees(mx.round() * 100)}.'
+          : 'Clothing is capped at ₹2,500 so the 5% GST rate applies. Please lower your markup.';
     }
     return e.userMessage;
   }
   return ApiException.genericText;
 }
 
-/// [HF-MERCH-GST-2] "5" from 500 basis points; 5 when the server did not send a rate.
-String merchGstPct(int? bps) {
-  final v = bps != null && bps > 0 ? bps / 100 : 5.0;
-  return v == v.roundToDouble() ? v.round().toString() : v.toStringAsFixed(2);
+/// [HF-MERCH-GST-2] "5% GST" from 500 basis points, or just "GST" when the product's rate is not known.
+String merchGstText(int? bps) {
+  if (bps == null || bps <= 0) return 'GST';
+  final v = bps / 100;
+  return '${v == v.roundToDouble() ? v.round().toString() : v.toStringAsFixed(2)}% GST';
 }
 
-/// [HF-MERCH-GST-2] Shown under the markup box.
-const String merchCapHint = 'Shirts are capped at ₹2,500 so the 5% GST rate applies.';
+/// [HF-MERCH-GST-2] Shown under the markup box, only for products where the cap applies (clothing).
+const String merchCapHint = 'Clothing is capped at ₹2,500 so the 5% GST rate applies.';
 
 /// Catalog events `merch_*` (see Telemetry.catalogEvents). Never throws.
 void merchEvent(String name, [Map<String, Object?> props = const {}]) => Telemetry.event(name, props);
@@ -678,7 +679,7 @@ class MerchCelebrate extends StatelessWidget {
 
 /// The "Your prices" table: base, what the fan pays and what the influencer earns, per size.
 class MerchPriceTable extends StatelessWidget {
-  const MerchPriceTable({super.key, required this.item, required this.bases, required this.lines, required this.markup, required this.valid, required this.catalog});
+  const MerchPriceTable({super.key, required this.item, required this.bases, required this.lines, required this.markup, required this.valid, required this.catalog, this.gstBps});
 
   final CatalogItem? item;
   final Map<String, int>? bases;
@@ -686,6 +687,9 @@ class MerchPriceTable extends StatelessWidget {
   final int markup;
   final bool valid;
   final MerchCatalog? catalog;
+
+  /// [HF-MERCH-GST-2] This product category's GST rate in basis points; null shows just "GST".
+  final int? gstBps;
 
   @override
   Widget build(BuildContext context) {
@@ -696,8 +700,8 @@ class MerchPriceTable extends StatelessWidget {
       Row(children: [
         SizedBox(width: 50, child: Text('Size', style: t(14, color: C.muted))),
         Expanded(child: Text('Base', style: t(14, color: C.muted))),
-        Expanded(child: Text('Fan pays*', style: t(14, color: C.muted))),
-        Expanded(child: Text('You earn', textAlign: TextAlign.right, style: t(14, color: C.muted))),
+        Expanded(child: Text('Fan pays (incl. ${merchGstText(gstBps)} & delivery)*', style: t(12, color: C.muted))),
+        Expanded(child: Text('You earn (royalty)', textAlign: TextAlign.right, style: t(12, color: C.muted))),
       ]),
       const SizedBox(height: 4),
       if (it != null && b != null)
@@ -720,7 +724,7 @@ class MerchPriceTable extends StatelessWidget {
               ]),
             ),
       const SizedBox(height: 6),
-      Align(alignment: Alignment.centerLeft, child: Text('*Fan pays base + your markup, incl. GST & delivery.', style: t(14, color: C.muted))),
+      Align(alignment: Alignment.centerLeft, child: Text('*Fan pays (incl. ${merchGstText(gstBps)} & delivery) = base + your markup. You earn a design royalty on your markup.', style: t(14, color: C.muted))),
     ]);
   }
 }

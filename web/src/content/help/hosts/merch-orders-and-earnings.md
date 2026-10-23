@@ -14,7 +14,7 @@ faq:
   - q: "When can I withdraw merch money?"
     a: "7 days after the order is delivered (currently), with the Withdraw button. A refunded order earns nothing."
   - q: "Do I need a GST number?"
-    a: "No. You can sell T-shirts without one. A GSTIN field is optional."
+    a: "No. You can sell without one. A GSTIN field is optional."
 draft: false
 ---
 
@@ -41,7 +41,7 @@ For the fan's privacy you see only their **first name**, their **city and state*
 
 ## What the fan paid
 
-The fan paid one all-in price, **base price + your markup**, labelled **incl. 5% GST & delivery**. The base price is the printing (incl. GST) plus the shipping, shown size by size when you set your price. We sell the T-shirt and send the fan a GST invoice; you earn a **design royalty of 60% of your markup** (currently). Shirts are capped at ₹2,500. For example, base ₹444 + markup ₹200 = the fan pays ₹644, and you earn ₹120.
+The fan paid one all-in price, **base price + your markup**, labelled **incl. GST & delivery** (5% on clothing, other items at their own GST rate). The base price is the printing (incl. GST) plus the shipping, shown size by size when you set your price. We sell every item and send the fan a GST invoice; you earn a **design royalty of 60% of your markup** (currently). Clothing is capped at ₹2,500. For example, base ₹444 + markup ₹200 = the fan pays ₹644, and you earn ₹120.
 
 ## When you get paid
 

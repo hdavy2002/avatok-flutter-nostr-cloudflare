@@ -298,14 +298,17 @@ class _MerchWizardScreenState extends State<MerchWizardScreen> {
     if (m < _minMarkup) return 'The markup must be at least ${merchRupees(_minMarkup * 100)}.';
     if (m > 5000) return 'The markup can be at most ₹5,000.';
     final cap = _maxMarkup;
-    if (m > cap) return 'Shirts are capped at ₹2,500 so the 5% GST rate applies. The most you can add is ${merchRupees(cap * 100)}.';
+    if (m > cap) return 'Clothing is capped at ₹2,500 so the 5% GST rate applies. The most you can add is ${merchRupees(cap * 100)}.';
     return null;
   }
 
   /// [HF-MERCH-GST-2] Highest markup that keeps every chosen size under the price cap: the smallest per-size maximum from the quote,
   /// else worked out from the catalog cap and the quoted bases, else the old ₹5,000 limit.
+  bool get _capOn => _item?.capApplies == true || _lines.values.any((l) => l.maxMarkupRupees != null);
+
   int get _maxMarkup {
     var best = 5000;
+    if (!_capOn) return best; // only clothing is capped
     for (final l in _lines.values) {
       final v = l.maxMarkupRupees;
       if (v != null && v < best) best = v;
@@ -313,7 +316,7 @@ class _MerchWizardScreenState extends State<MerchWizardScreen> {
     final c = _cat;
     final cap = c is AsyncData<MerchCatalog> ? c.value.priceCapPaise : null;
     final bases = _bases;
-    if (cap != null && bases != null) {
+    if (cap != null && bases != null && _item?.capApplies == true) {
       for (final b in bases.values) {
         final v = (cap - b) ~/ 100;
         if (v < best) best = v;
@@ -700,11 +703,12 @@ class _MerchWizardScreenState extends State<MerchWizardScreen> {
           for (final v in const [50, 100, 150, 200, 300, 500])
             if (v >= _minMarkup) MerchPill(label: '₹$v', selected: _markupValue == v, onTap: () => setState(() => _markup.text = '$v')),
         ]),
+        if (_capOn) Padding(padding: const EdgeInsets.only(top: 8), child: Text(merchCapHint, style: t(13, color: C.muted))),
         if (!validMarkup) Padding(padding: const EdgeInsets.only(top: 8), child: Text(_markupProblem!, style: t(15, color: C.ruby, w: FontWeight.w700))),
         const SizedBox(height: 14),
         DesiCard(
           title: 'Your prices',
-          note: 'Base price = printing (incl. GST) + shipping. Fans pay one price, incl. 5% GST & delivery.',
+          note: 'Base price = printing (incl. GST) + shipping. Fans pay one price, incl. ${merchGstText(it?.gstRateBps)} & delivery.',
           tone: DesiTone.gold,
           child: _quoting
               ? const Padding(padding: EdgeInsets.all(12), child: Center(child: CircularProgressIndicator(color: C.maroon)))
@@ -714,7 +718,7 @@ class _MerchWizardScreenState extends State<MerchWizardScreen> {
                       const SizedBox(height: 8),
                       DesiButton('Try again', kind: DesiButtonKind.ghost, onTap: () => unawaited(_quote())),
                     ])
-                  : MerchPriceTable(item: it, bases: bases, lines: _lines, markup: m, valid: validMarkup, catalog: cat is AsyncData<MerchCatalog> ? cat.value : null)),
+                  : MerchPriceTable(item: it, bases: bases, lines: _lines, markup: m, valid: validMarkup, catalog: cat is AsyncData<MerchCatalog> ? cat.value : null, gstBps: it?.gstRateBps)),
         ),
         if (_ownRequired) ...[
           const SizedBox(height: 12),

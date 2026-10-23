@@ -103,13 +103,17 @@ abstract final class HelpStrings {
   static const List<(String, String)> merchFaq = <(String, String)>[
     (
       'How do I buy an influencer’s T-shirt?',
-      'Open the influencer’s profile, pick a T-shirt, colour and size, add your address, tick the Terms and refund policy and pay. We sell the T-shirt and email you a GST invoice. '
-          'The price is all-in and labelled incl. 5% GST & delivery: delivery in India is free and nothing is added at checkout. '
+      'Open the influencer’s profile, pick a T-shirt, colour and size, add your address, tick the Terms and refund policy and pay. We sell every item and email you a GST invoice. '
+          'The price is all-in and labelled incl. GST & delivery (5% on clothing, other items at their own rate): delivery in India is free and nothing is added at checkout. '
           'Pay from your wallet (money you added; free test credit cannot be used for merch) or with UPI, card or net banking.',
     ),
     (
       'Do I get a GST invoice?',
-      'Yes. We sell the T-shirt, so we email you a tax invoice at 5% GST. You can also download it from My orders.',
+      'Yes. We sell every item, so we email you a GST invoice. You can also download it from My orders.',
+    ),
+    (
+      'What can I sell?',
+      'T-shirts, hoodies, mugs, bottles, phone cases, posters and more.',
     ),
     (
       'Do I need a GST number to sell T-shirts?',
@@ -132,8 +136,8 @@ abstract final class HelpStrings {
     ),
     (
       'How much do I earn from merch?',
-      'The base price is printing (incl. GST) plus shipping, shown size by size. The fan pays base plus your markup, incl. 5% GST & delivery. '
-          'Shirts are capped at ₹2,500 so the 5% GST rate applies. We sell the T-shirt and issue the fan the GST invoice; you earn a design royalty of 60% of your markup (currently). You do not need a GST number to start (the GSTIN field is optional). '
+      'The base price is printing (incl. GST) plus shipping, shown size by size. The fan pays base plus your markup, incl. GST & delivery. '
+          'Clothing is capped at ₹2,500 so the 5% GST rate applies; other items are at their own GST rate. We sell every item and issue the fan the GST invoice; you earn a design royalty of 60% of your markup (currently). You do not need a GST number to start (the GSTIN field is optional). '
           'Merch money can be withdrawn 7 days after delivery (currently); a refunded order earns nothing. '
           'You never see the fan’s phone, email, full address or payment details.',
     ),

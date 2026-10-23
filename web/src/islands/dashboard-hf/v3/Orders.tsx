@@ -112,7 +112,7 @@ function OrderCard({ o, open, loading, timedOut, onToggle, onReport }: { o: FanO
       </div>}
       {loading && <Skel h={60} />}
       <dl className="hfo-facts">
-        <div><dt>Paid (incl. 5% GST &amp; delivery)</dt><dd>{formatPaise(o.totalPaise)}</dd></div>
+        <div><dt>Paid (incl. GST &amp; delivery)</dt><dd>{formatPaise(o.totalPaise)}</dd></div>
         <div><dt>Paid with</dt><dd>{o.payMethod === 'wallet' ? 'Wallet' : o.payMethod === 'cashfree' ? 'UPI / card' : '—'}</dd></div>
         {o.shipping?.courier && <div><dt>Courier</dt><dd>{o.shipping.courier}</dd></div>}
         {o.shipping?.awb && <div><dt>Tracking number</dt><dd>{o.shipping.awb}</dd></div>}
@@ -120,7 +120,7 @@ function OrderCard({ o, open, loading, timedOut, onToggle, onReport }: { o: FanO
       {o.timeline && o.timeline.length > 0 && <ul className="hfo-time" aria-label="Order history">{o.timeline.map(t => <li key={`${t.at}-${t.label}`}>{when(t.at)} · {t.label}</li>)}</ul>}
       <div className="hfo-acts">
         {o.shipping?.trackingUrl && /^https:\/\//.test(o.shipping.trackingUrl) && <a className="h3-btn sm" href={o.shipping.trackingUrl} target="_blank" rel="noopener noreferrer" onClick={() => capture('merch_tracking_opened', { order_id: o.id })}>Track parcel</a>}
-        {o.receiptUrl && <button type="button" className="h3-btn sm ghost" disabled={rcpt} onClick={() => void get()}>{rcpt ? 'Opening…' : o.gstInvoice === false ? 'Download receipt' : 'Download GST invoice'}</button>}
+        {o.receiptUrl && <button type="button" className="h3-btn sm ghost" disabled={rcpt} onClick={() => void get()}>{rcpt ? 'Opening…' : 'Download GST invoice'}</button>}
         <a className="h3-btn sm ghost" href={`/h/${o.product.hostSlug}`}>{o.product.hostName}’s page</a>
         {o.canReportProblem && <button type="button" className="h3-btn sm ghost" onClick={onReport}>Report a problem</button>}
       </div>

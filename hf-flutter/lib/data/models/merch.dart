@@ -71,6 +71,8 @@ class CatalogItem {
     this.sides = const <String>['front'],
     this.areas = const <String, PrintArea>{},
     this.imageUrl,
+    this.gstRateBps,
+    this.capApplies,
   });
 
   factory CatalogItem.fromJson(Map<String, dynamic> j) {
@@ -91,6 +93,8 @@ class CatalogItem {
       sides: sides.isEmpty ? const <String>['front'] : sides,
       areas: areas,
       imageUrl: _sn(j['imageUrl']),
+      gstRateBps: _in(j['gstRateBps']),
+      capApplies: j['capApplies'] is bool ? j['capApplies'] as bool : null,
       id: _s(j['id']),
       name: _s(j['name']),
       areaW: _d(a['wIn']) > 0 ? _d(a['wIn']) : 12,
@@ -120,6 +124,10 @@ class CatalogItem {
   final Map<String, PrintArea> areas;
   final String? imageUrl;
 
+  /// [HF-MERCH-GST-2] This category's GST rate (basis points, 500 = 5%) and whether the Rs 2,500 price cap applies (clothing); null on older servers.
+  final int? gstRateBps;
+  final bool? capApplies;
+
   /// Print area for [side] (falls back to the catalogue's first area).
   PrintArea areaFor(String side) => areas[side] ?? PrintArea(areaW, areaH);
 
@@ -145,10 +153,10 @@ class MerchCatalog {
         gstRateBps: _in(j['gstRateBps']),
       );
 
-  /// [HF-MERCH-GST-2] Highest fan price (paise) a shirt may have so the 5% GST rate applies; null on older servers.
+  /// [HF-MERCH-GST-2] Highest fan price (paise) a clothing item may have so the 5% GST rate applies; null on older servers.
   final int? priceCapPaise;
 
-  /// GST rate in basis points (500 = 5%); null on older servers.
+  /// Flat fallback GST rate in basis points; each item and product carries its own category rate.
   final int? gstRateBps;
 
   final List<CatalogItem> items;
@@ -272,6 +280,8 @@ class MerchProduct {
     required this.soldCount,
     required this.publicUrl,
     this.breakdownEstimated = false,
+    this.gstRateBps,
+    this.capApplies,
   });
 
   factory MerchProduct.fromJson(Map<String, dynamic> j) => MerchProduct(
@@ -299,10 +309,16 @@ class MerchProduct {
         soldCount: _i(j['soldCount']),
         publicUrl: _s(j['publicUrl']),
         breakdownEstimated: j['breakdownEstimated'] == true,
+        gstRateBps: _in(j['gstRateBps']),
+        capApplies: j['capApplies'] is bool ? j['capApplies'] as bool : null,
       );
 
   /// True when the printing / shipping split of an older product is an estimate.
   final bool breakdownEstimated;
+
+  /// [HF-MERCH-GST-2] This product's frozen GST rate (basis points) and whether the Rs 2,500 cap applies; null on older servers.
+  final int? gstRateBps;
+  final bool? capApplies;
 
   final String id;
   final String slug;
@@ -490,6 +506,7 @@ class PublicProduct {
     required this.photos,
     required this.description,
     required this.maxQty,
+    this.gstRateBps,
   });
 
   factory PublicProduct.fromJson(Map<String, dynamic> j) => PublicProduct(
@@ -506,7 +523,11 @@ class PublicProduct {
         photos: _strings(j['photos']),
         description: _s(j['description']),
         maxQty: j['maxQty'] is num && _i(j['maxQty']) > 0 ? _i(j['maxQty']) : 3,
+        gstRateBps: _in(j['gstRateBps']),
       );
+
+  /// [HF-MERCH-GST-2] This product's own category GST rate (basis points); null when not sent.
+  final int? gstRateBps;
 
   final String id;
   final String slug;
@@ -557,10 +578,10 @@ class PublicProductPage {
         host: PublicHost.fromJson(j['host']),
         checkoutEnabled: j['checkoutEnabled'] == true,
         product: PublicProduct.fromJson(j['product'] is Map ? Map<String, dynamic>.from(j['product'] as Map) : <String, dynamic>{}),
-        gstRateBps: _in(j['gstRateBps']) ?? (j['product'] is Map ? _in((j['product'] as Map)['gstRateBps']) : null),
+        gstRateBps: _in(j['gstRateBps']),
       );
 
-  /// [HF-MERCH-GST-2] GST rate in basis points (500 = 5%); null when the server does not send it.
+  /// [HF-MERCH-GST-2] Host-level fallback GST rate; the product's own `gstRateBps` wins.
   final int? gstRateBps;
 
   final PublicHost host;
@@ -685,7 +706,6 @@ class FanOrder {
     required this.refundStatus,
     required this.rejectReason,
     required this.timeline,
-    this.gstInvoice,
   });
 
   factory FanOrder.fromJson(Map<String, dynamic> j) {
@@ -706,7 +726,6 @@ class FanOrder {
       payMethod: _sn(j['payMethod']),
       shipping: ShippingInfo.fromJson(j['shipping']),
       receiptUrl: _sn(j['receiptUrl']),
-      gstInvoice: j['gstInvoice'] == false ? false : null,
       canReportProblem: j['canReportProblem'] == true,
       refundStatus: _s(j['refundStatus']),
       rejectReason: _sn(j['rejectReason']),
@@ -731,9 +750,6 @@ class FanOrder {
   final String? payMethod;
   final ShippingInfo? shipping;
   final String? receiptUrl;
-
-  /// [HF-MERCH-GST-2] false = an older order whose document is a plain receipt; null/true = GST invoice.
-  final bool? gstInvoice;
   final bool canReportProblem;
   final String refundStatus;
   final String? rejectReason;
