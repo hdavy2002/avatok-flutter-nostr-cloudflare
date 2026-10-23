@@ -33,7 +33,8 @@ vi.mock("./hf_merch_notify", () => ({
   notifyMerchRejected: async () => undefined, notifyMerchStatusPush: async () => undefined,
 }));
 vi.mock("./pod_fulfil", () => ({ sendOrderToPartner: async () => ({ ok: false, error: "manual_provider" }), advanceOrder: async () => true }));
-vi.mock("./hf_merch_catalog", () => ({ liveBaseUnitForOrder: async () => ({ ok: false, message: "n/a" }) }));
+vi.mock("./hf_merch_catalog", () => ({ liveBaseUnitForOrder: async () => ({ ok: false, message: "n/a" }), legacyShippingPaise: async () => 6000 }));
+vi.mock("./hf_merch_invoice", () => ({ issueMerchOrderDocument: async () => undefined }));
 vi.mock("./hf_merch_delivered", () => ({ creditMerchEarning: async () => "credited", reverseMerchEarning: async () => "none" }));
 vi.mock("./hf_merch_wallet", async (orig) => {
   const a: any = await orig();
@@ -240,5 +241,12 @@ describe("single-item checkout is untouched", () => {
     expect(r.order).toMatchObject({ pay_status: "confirmed", amount_paise: 40000, request_key: "single-key-123" });
     expect(JSON.parse(r.order.merch_json).groupId).toBeUndefined();
     expect(rows()).toHaveLength(1);
+    // a bag line of the same product is priced and snapshotted exactly like the single order (money incl. GST fields, category GST, printing credit)
+    const b: any = await bag([L1], { requestKey: "bag-same-1234" });
+    expect(b.ok).toBe(true);
+    const single = JSON.parse(r.order.merch_json), line = JSON.parse(b.rows[0].merch_json);
+    const { groupId, ...rest } = line;
+    expect(rest).toEqual(single);
+    expect(b.rows[0].amount_paise).toBe(r.order.amount_paise);
   });
 });
