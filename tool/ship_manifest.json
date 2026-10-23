@@ -11294,5 +11294,20 @@
         "note": "A withdrawal request was created from the web Withdraw card."
       }
     ]
+  },
+  "HF-ADMIN-COMPLETE-1": {
+    "description": "Admin home with HF headline numbers, member page with wallet, wallets tab, actionable support/reports/money alerts with audit.",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [],
+    "success": [
+      {
+        "event": "hf_admin_action",
+        "property": "action",
+        "exists": true,
+        "min_events": 1,
+        "note": "An admin acted on a ticket/report/money alert and an audit row was written."
+      }
+    ]
   }
 }
