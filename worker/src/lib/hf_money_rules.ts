@@ -107,6 +107,8 @@ export interface CallFacts {
   hostEarningPaise: number;
   /** Seconds the call was joined (ended - connected, floored). */
   joinedSeconds: number;
+  /** [HF-CALL-MODES-C] Seconds the chunk engine paid for (null = not a chunk-billed call). normalChargePaise is already priced at min(joined, funded). */
+  fundedSeconds?: number | null;
   /** Did the money path run at all (settlement wrote its numbers)? A call still in a retry loop is skipped, not judged. */
   settled: boolean;
 }

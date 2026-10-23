@@ -13,7 +13,7 @@ import { judgeCall, readMoneyRules, type CallFacts } from "./hf_money_rules";
 import { correctCallCharge, corrOpId } from "./hf_call_corrections";
 import { releaseHeldBooking, type BookingCleanupRow } from "./hf_booking_store";
 import { MONITOR_GRACE_MS, expirePendingBooking } from "./hf_booking_approval"; // [HF-BOOK-APPROVE-BE]
-import { relOpId } from "./hf_token_ledger";
+import { relOpId, releaseOrphanChunks } from "./hf_token_ledger";
 
 export const MONEY_MONITOR_ACTOR = "system:money-monitor";
 const LOOKBACK_MS = 48 * 3600 * 1000;
@@ -26,12 +26,16 @@ export const RULE_BOOKING_NO_SHOW_RELEASED = "booking_no_show_hold";
 export const RULE_BOOKING_PENDING_STUCK = "booking_pending_past_deadline"; // [HF-BOOK-APPROVE-BE]
 export const RULE_BOOKING_DECIDED_NO_RELEASE = "booking_declined_or_expired_without_release"; // [HF-BOOK-APPROVE-BE]
 
+export const RULE_CHUNK_RESERVATION_STRANDED = "chunk_reservation_stranded"; // [HF-CALL-MODES-C]
+
 export interface MonitorResult { scannedCalls: number; scannedBookings: number; fixed: number; flagged: number; skipped: number }
 
 interface CallRow {
   id: string; caller_uid: string; host_uid: string; status: string; rate_paise: number;
   connected_at: number | null; ended_at: number | null; charged_paise: number | null; consumed_value_paise: number | null;
   host_earning_paise: number | null; billable_seconds: number | null; tokens_spent_micro: number | null; pricing_snapshot: string | null;
+  /** [HF-CALL-MODES-C] seconds the chunk engine funded (NULL on calls before it / with the flag off). */
+  funded_seconds?: number | null;
 }
 
 /** The frozen per-second price of a call, or null when the snapshot is not one we can recompute from. */
@@ -49,13 +53,18 @@ function priceOfRow(r: CallRow): Price | null {
 export function factsOf(r: CallRow): CallFacts {
   const price = priceOfRow(r);
   const joined = r.connected_at != null && r.ended_at != null;
+  const joinedSeconds = joined ? Math.max(0, Math.floor((Number(r.ended_at) - Number(r.connected_at)) / 1000)) : 0;
+  // [HF-CALL-MODES-C] a chunk-billed call can only be charged for the seconds that were funded: the fair price is min(joined, funded).
+  const funded = r.funded_seconds != null && Number(r.funded_seconds) > 0 ? Math.trunc(Number(r.funded_seconds)) : null;
+  const normalSeconds = funded != null ? Math.min(joinedSeconds, funded) : r.billable_seconds != null ? Math.max(0, Math.trunc(r.billable_seconds)) : null;
   const settled = r.ended_at != null && (r.tokens_spent_micro != null || r.consumed_value_paise != null || r.charged_paise != null);
   return {
     status: r.status, connectedAt: r.connected_at, endedAt: r.ended_at,
     chargedPaise: Number(r.consumed_value_paise ?? r.charged_paise ?? 0),
-    normalChargePaise: price != null && r.billable_seconds != null ? chargePaise(price, Math.max(0, Math.trunc(r.billable_seconds))) : null,
+    normalChargePaise: price != null && normalSeconds != null ? chargePaise(price, normalSeconds) : null,
     hostEarningPaise: Number(r.host_earning_paise ?? 0),
-    joinedSeconds: joined ? Math.max(0, Math.floor((Number(r.ended_at) - Number(r.connected_at)) / 1000)) : 0,
+    joinedSeconds,
+    fundedSeconds: funded,
     settled,
   };
 }
@@ -76,9 +85,7 @@ async function upsertAudit(env: Env, a: {
 
 async function scanCalls(env: Env, now: number, autoFix: boolean, dropChargePaise: number, out: MonitorResult): Promise<void> {
   const rows = (await env.DB_META.prepare(
-    `SELECT c.id,c.caller_uid,c.host_uid,c.status,c.rate_paise,c.connected_at,c.ended_at,c.charged_paise,c.consumed_value_paise,
-            c.host_earning_paise,c.billable_seconds,c.tokens_spent_micro,c.pricing_snapshot
-       FROM hf_calls c
+    `SELECT c.* FROM hf_calls c
       WHERE c.ended_at IS NOT NULL AND c.ended_at>=?1 AND c.ended_at<=?2
         AND NOT EXISTS (SELECT 1 FROM hf_token_ledger l WHERE l.op_id='hfcorr:'||c.id)
         AND NOT EXISTS (SELECT 1 FROM hf_money_audit a WHERE a.subject_type='call' AND a.subject_id=c.id AND a.status IN ('fixed','resolved'))
@@ -107,6 +114,36 @@ async function scanCalls(env: Env, now: number, autoFix: boolean, dropChargePais
       out.fixed++;
     } else {
       await upsertAudit(env, { ...base, status: "open", detail: { reason: v.reason, refundPaise: v.refundPaise, fixError: res.error } });
+      out.flagged++;
+    }
+  }
+}
+
+/**
+ * [HF-CALL-MODES-C] A finished (settled or released) call must hold NOTHING on any lot: reserved - released - spent = 0 per lot. A chunk reservation
+ * left behind (it cannot happen by construction: chunks are refused after settle and settle refuses a stale snapshot) would lock the caller's money
+ * for good, so the monitor looks for it, gives it back (releaseOrphanChunks, wallet only, idempotent) and records what it did.
+ */
+async function scanStrandedChunks(env: Env, now: number, autoFix: boolean, out: MonitorResult): Promise<void> {
+  const rows = (await env.DB_META.prepare(
+    `SELECT l.call_id AS callId, c.caller_uid AS callerUid, c.host_uid AS hostUid, SUM(l.delta_micro) AS net
+       FROM hf_token_ledger l JOIN hf_calls c ON c.id=l.call_id
+      WHERE c.ended_at IS NOT NULL AND c.ended_at>=?1 AND c.ended_at<=?2 AND l.lot_id IS NOT NULL AND l.kind IN ('reserve','release','spend')
+        AND (EXISTS (SELECT 1 FROM hf_token_ledger g WHERE g.op_id='hftset:'||c.id) OR EXISTS (SELECT 1 FROM hf_token_ledger g WHERE g.op_id='hftrel:'||c.id))
+      GROUP BY l.call_id, l.lot_id, c.caller_uid, c.host_uid HAVING SUM(l.delta_micro) > 0 LIMIT ?3`,
+  ).bind(now - LOOKBACK_MS, now - SETTLE_GRACE_MS, CALL_BATCH).all<{ callId: string; callerUid: string; hostUid: string; net: number }>()).results ?? [];
+  const seen = new Set<string>();
+  for (const r of rows) {
+    if (seen.has(r.callId)) continue;
+    seen.add(r.callId);
+    out.scannedCalls++;
+    const base = { kind: "call", subjectId: r.callId, rule: RULE_CHUNK_RESERVATION_STRANDED, uid: r.callerUid, hostUid: r.hostUid, expected: 0, actual: 0, now };
+    const fixed = autoFix ? await releaseOrphanChunks(env, r.callId).catch(() => ({ lots: 0, micro: 0 })) : { lots: 0, micro: 0 };
+    if (fixed.lots > 0) {
+      await upsertAudit(env, { ...base, status: "fixed", fixOpId: `hftorph:${r.callId}`, detail: { reason: "A chunk reservation was left on the caller's wallet after the call ended: released", lots: fixed.lots, micro: fixed.micro } });
+      out.fixed++;
+    } else {
+      await upsertAudit(env, { ...base, status: "open", detail: { reason: "A chunk reservation is still on the caller's wallet after the call ended and could not be released", netMicro: Number(r.net) } });
       out.flagged++;
     }
   }
@@ -193,6 +230,10 @@ export async function runHfMoneyMonitor(env: Env, now = Date.now()): Promise<Mon
   const rules = await readMoneyRules(env);
   try { await scanCalls(env, now, autoFix, rules.dropChargePaise, out); }
   catch (e) { await trackException(env, e, { route: "scheduled", handled: true, extra: { area: "hf_money_monitor", step: "calls" } }); }
+  if (cfg.hfCallChunkBillingEnabled === true) { // [HF-CALL-MODES-C]
+    try { await scanStrandedChunks(env, now, autoFix, out); }
+    catch (e) { await trackException(env, e, { route: "scheduled", handled: true, extra: { area: "hf_money_monitor", step: "stranded_chunks" } }); }
+  }
   if (cfg.hfBookingsEnabled === true) {
     try { await scanBookings(env, now, autoFix, out); }
     catch (e) { await trackException(env, e, { route: "scheduled", handled: true, extra: { area: "hf_money_monitor", step: "bookings" } }); }

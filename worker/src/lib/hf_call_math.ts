@@ -133,3 +133,42 @@ export const hangupXml = (message?: string): string => wrap(message ? `<Speak>${
 export const emptyXml = (): string => wrap("");
 export const callerDidntPickUpXml = (): string => hangupXml("The caller didn't pick up. Goodbye.");
 export const LIMIT_WARNING_TEXT = "One minute left on this call.";
+
+// ── [HF-CALL-MODES-C] chunk billing: spoken lines + schedule maths (pure; no I/O) ───────────────────────────────────────────────────────────
+// The brand name is never typed into these lines (rulebook / Specs brand-central-config); they say "your wallet" and nothing else.
+
+/** Spec D5, caller only. `minutes` = whole minutes left (at least 1). */
+export function lowFundsWhisperText(minutes: number): string {
+  const m = Math.max(1, Math.trunc(minutes));
+  return `Your wallet balance has run out. This call will end in about ${m} ${m === 1 ? "minute" : "minutes"}. Please top up your wallet while you are speaking.`;
+}
+/** Caller only, after a top-up while talking extended the call. */
+export const TOPPED_UP_WHISPER_TEXT = "Thanks, your wallet is topped up. Your call continues.";
+/** The influencer hears this when the end is coming because of the caller's wallet: neutral, never the money reason (spec 2.3). */
+export const NEUTRAL_ONE_MINUTE_TEXT = "This call will end in one minute.";
+
+/** Whole minutes left for the whisper (floor, minimum 1). */
+export function whisperMinutes(remainingSec: number): number {
+  return Math.max(1, Math.floor(Math.max(0, remainingSec) / 60));
+}
+
+/** Seconds of connected time the call may run to: the hard cap, cut by a booking / queue deadline (`hardEndsAt`) that is still ahead. */
+export function chunkCapEffSec(a: { capSec: number; connectedAt: number; hardEndsAt?: number | null }): number {
+  const byDeadline = a.hardEndsAt == null ? Infinity : Math.max(0, Math.floor((a.hardEndsAt - a.connectedAt) / 1000));
+  return Math.max(0, Math.min(Math.trunc(a.capSec), byDeadline));
+}
+
+/**
+ * Money is taken 5 minutes ahead: the next chunk is due 5 s after connect for the first chunk, then when 295 s of funded time remain.
+ * Returns the connected second at which to reserve the next chunk, or null when the call is funded to its cap.
+ */
+export function nextChunkDueSec(a: { fundedSec: number; chunkSec: number; capEffSec: number }): number | null {
+  if (a.fundedSec >= a.capEffSec) return null;
+  return Math.max(0, a.fundedSec - a.chunkSec + 5);
+}
+
+/** Where the next chunk starts and ends (absolute connected seconds), cut at the cap. */
+export function nextChunkRange(a: { fundedSec: number; chunkSec: number; capEffSec: number }): { from: number; to: number } | null {
+  const to = Math.min(a.fundedSec + a.chunkSec, a.capEffSec);
+  return to > a.fundedSec ? { from: a.fundedSec, to } : null;
+}

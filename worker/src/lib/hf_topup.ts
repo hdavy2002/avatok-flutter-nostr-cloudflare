@@ -15,6 +15,7 @@ import { creditLot } from "./hf_token_ledger"; // [HF-CASHFREE-TOPUP-1]
 import { topupSplitFloor as topupSplit, paiseToMicro, microToPaise, RUPEE_LOT_VALUE_PAISE, PRICING_CF_R1 } from "./hf_token_math";
 import { readHfStdPlan } from "./hf_token_config";
 import { notifyTopupCredited } from "./hf_topup_notify";
+import { pokeLiveCall } from "./hf_call_funds"; // [HF-CALL-MODES-C]
 
 /** [HF-CASHFREE-TOPUP-1] Pricing version stamped on the rupee lot of a website top-up, per gateway. Only Cashfree is live. */
 const PRICING_BY_GATEWAY: Record<string, string> = { cashfree: PRICING_CF_R1.id };
@@ -123,6 +124,7 @@ export async function settleHfTopup(
     const gstPaise = lot ? Number(lot.g ?? 0) : split.gstPaise;
     await db.prepare("UPDATE hf_topups SET status='paid', credited=1, raw_status=?2, gateway_payment_id=COALESCE(?3,gateway_payment_id), paid_at=COALESCE(paid_at,?4), updated_at=?4, wallet_paise=?5, gst_paise=?6, lot_id=?7 WHERE id=?1")
       .bind(row.id, String(truth.status).slice(0, 40), evidence.gatewayPaymentId, now, walletPaise, gstPaise, credit.lotId).run();
+    await pokeLiveCall(env, row.uid); // [HF-CALL-MODES-C] a call in progress reserves its next chunk now (idempotent, never throws, no-op with the chunk flag off)
     if (credit.applied) {
       let receiptNumber: string | null = null;
       try {

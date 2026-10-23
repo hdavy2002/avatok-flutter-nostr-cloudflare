@@ -14,6 +14,7 @@ import { BRAND } from "../lib/brand";
 import { readConfig } from "./config";
 import { readHfTokenConfig, readHfStdPlan, type HfTokenConfig } from "../lib/hf_token_config";
 import { MICRO, topupSplit, formatRupees } from "../lib/hf_token_math";
+import { pokeLiveCall } from "../lib/hf_call_funds"; // [HF-CALL-MODES-C]
 import { productCreditPaise, isRupeeProduct,
   accountHashFor, rememberAccount, rememberPreparedProduct, listActiveProducts, productPricePaise, processPlayPurchase, balanceFor, emit,
   validProductId, validPurchaseToken, verifyPushJwt, handleRtdn, runPlayCron, type PlayCronResult,
@@ -92,6 +93,7 @@ export async function hfTokensPlayRoute(req: Request, env: Env, p: string): Prom
     if (!validPurchaseToken(b.purchaseToken)) return err(400, "bad_token", "That purchase could not be read.");
     const r = await processPlayPurchase(env, tok, { productId: b.productId, purchaseToken: b.purchaseToken, uid: u.uid, source: "verify" });
     if (!r.ok) return err(r.httpStatus, r.code, r.message, r.transient ? { retry: true } : {});
+    await pokeLiveCall(env, u.uid); // [HF-CALL-MODES-C] a call in progress reserves its next chunk now (idempotent, never throws, no-op with the chunk flag off)
     const balance = await balanceFor(env, u.uid, std.enabled);
     if (!("tokensMicro" in r)) return json({ ok: true, status: r.status, orderId: r.orderId, balance }, 200, { "cache-control": "no-store" });
     return json({

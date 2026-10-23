@@ -3,7 +3,7 @@
 // Maths: hf_token_math.ts. Lots: hf_token_ledger.ts. Host money: hf_host_ledger.ts (paise, hosts never see tokens).
 import type { Env } from "../types";
 import {
-  availableLots, hasOpenDebt, reserveForCall, release, settleCall, getPricingVersion, type SettleLotUse,
+  availableLots, hasOpenDebt, reserveForCall, reserveChunk, release, settleCall, getPricingVersion, type SettleLotUse,
 } from "./hf_token_ledger";
 import { creditCallEarning } from "./hf_host_ledger";
 import {
@@ -23,7 +23,9 @@ const snapshotVersion = (tk: HfTokenConfig) => `${tk.pricingVersion}/${SPLIT_RUL
 // ── start ───────────────────────────────────────────────────────────────────
 
 export type StartCheck =
-  | { ok: true; maxSeconds: number; limitReason: "balance" | "time_limit"; secondsCovered: number; snapshot: CallSnapshot }
+  | { ok: true; maxSeconds: number; limitReason: "balance" | "time_limit"; secondsCovered: number; snapshot: CallSnapshot;
+      /** [HF-CALL-MODES-C] chunk billing: the call is paid chunk by chunk. maxSeconds is then the hard CAP, fundedSec what chunk 0 paid for. */
+      chunk?: { sec: number; capSec: number; fundedSec: number } }
   | { ok: false; status: number; error: string; message: string; extra?: Record<string, unknown> };
 
 /** What is frozen on the hf_calls row at start. A config change later never alters a running call (HF-TOK-D3/D4). */
@@ -71,7 +73,10 @@ export async function startShortfall(env: Env, tk: HfTokenConfig, lots: Lot[], r
  */
 export async function prepareTokenStart(env: Env, a: { uid: string; callId: string; ratePaise: number; tk: HfTokenConfig; std?: HfStdPlan | null; creator?: CreatorSnapshot;
   /** [HF-WIRE-13] rule 1: the wallet must hold at least this many paise to START a call (0 = no minimum). Booked calls never come through here. */
-  minBalancePaise?: number }): Promise<StartCheck> {
+  minBalancePaise?: number;
+  /** [HF-CALL-MODES-C] hfCallChunkBillingEnabled on: reserve only chunk 0 (`sec`, 300 s) now, the DO takes the rest 5 minutes ahead; hard cap `capSec` (5 h).
+   *  The start minimum becomes max(minBalancePaise, the cost of one chunk at the call's rate) (spec D2). Absent = today's whole-call reserve. */
+  chunk?: { sec: number; capSec: number } }): Promise<StartCheck> {
   const { uid, callId, tk } = a;
   // [HF-STD-PLAN-1] Standard plan: one tariff and no shorter commercial cap — reserve what the whole balance can pay for
   // (up to the explicit 24 h operational safety ceiling), so hang-up or wallet exhaustion normally ends it. Old host-rate calls keep 60 min.
@@ -83,7 +88,9 @@ export async function prepareTokenStart(env: Env, a: { uid: string; callId: stri
     hostShareBps: a.creator.hostShareBps, taxMode: a.creator.taxMode, splitRuleVersion: `${a.creator.version}/gross-share-less-cost-v1`, creator: { ...a.creator } }
     : std ? stdSnapshotFor(std) : snapshotFor(a.ratePaise, tk);
   if (await hasOpenDebt(env, uid)) return { ok: false, status: 409, error: "debt_open", message: DEBT_MESSAGE, extra: { reason: "debt_open" } };
-  const minBalancePaise = Math.max(0, Math.trunc(a.minBalancePaise ?? 0));
+  // [HF-CALL-MODES-C] spec D2: with chunk billing the start minimum is max(the owner's Rs 20, one chunk at this call's rate).
+  const chunkCostPaise = a.chunk ? chargePaise(ratePaise, a.chunk.sec) : 0;
+  const minBalancePaise = Math.max(Math.max(0, Math.trunc(a.minBalancePaise ?? 0)), chunkCostPaise);
   const low = async (lots: Lot[]): Promise<StartCheck> => {
     const s = await startShortfall(env, tk, lots, ratePaise);
     // [HF-WIRE-13] rule 1: below the wallet minimum the owner's wording is shown and the shortfall is what is missing to reach it.
@@ -99,6 +106,19 @@ export async function prepareTokenStart(env: Env, a: { uid: string; callId: stri
   };
   const lots = await availableLots(env, uid);
   if (!canStart(lots, ratePaise) || (minBalancePaise > 0 && !meetsMinBalance(walletSpendablePaise(lots), minBalancePaise))) return low(lots);
+  if (a.chunk) {
+    // Chunk 0 only (300 s). It must be paid IN FULL or the call does not start; nothing stays reserved on refusal.
+    const c0 = await reserveChunk(env, uid, callId, 0, ratePaise, 0, a.chunk.sec);
+    if (!c0.ok) {
+      if (c0.reason === "conflict") return { ok: false, status: 503, error: "wallet_busy", message: "We couldn't check your balance. Please try again." };
+      return low(await availableLots(env, uid));
+    }
+    if (c0.coveredSec < a.chunk.sec) {
+      await release(env, callId).catch(() => undefined);
+      return low(await availableLots(env, uid));
+    }
+    return { ok: true, maxSeconds: a.chunk.capSec, secondsCovered: c0.coveredSec, limitReason: "balance", snapshot, chunk: { sec: a.chunk.sec, capSec: a.chunk.capSec, fundedSec: c0.fundedSec } };
+  }
   const r = await reserveForCall(env, uid, callId, ratePaise, cap);
   if (!r.ok) {
     if (r.reason === "conflict") return { ok: false, status: 503, error: "wallet_busy", message: "We couldn't check your balance. Please try again." };

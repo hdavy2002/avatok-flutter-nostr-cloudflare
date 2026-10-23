@@ -46,10 +46,50 @@ import { maxMinutesFor, START_RESERVE_MINUTES, MAX_CALL_MINUTES, paidShortfall, 
 import { hasPositiveCallDuration } from "../lib/hf_reviews_pure";
 import { recordLegFromWebhook } from "../lib/hf_vobiz_ledger";
 import { pricingStd, readInfluencerRate } from "../lib/hf_influencer_rate"; // [HF-WIRE-18]
+import { instantBookingOverlapGuardSql, nextBookingCutoff, startTokenCall, chunkSettingsFrom, pickPricing, type StartTokenResult } from "../lib/hf_call_start"; // [HF-CALL-MODES-C]
+import { publicCallState, canQueue as stateCanQueue, canBook as stateCanBook } from "../lib/hf_host_status";
+import { queueGate } from "../lib/hf_queue_store";
+import type { PublicCallState, CallRefusalReason } from "../lib/hf_call_contracts";
 
 const err = (status: number, error: string, message: string, extra: Record<string, unknown> = {}) => json({ error, message, ...extra }, status);
 const UNAVAILABLE = () => err(409, "host_unavailable", "This host isn't available right now.");
 const NOT_ENABLED = () => err(404, "not_enabled", "Calls are not open yet.");
+// [HF-CALL-MODES-C] A refusal for the line itself keeps error "host_unavailable" and ADDS why, and what the fan can do instead (spec 2.5).
+// Old apps ignore the extra fields. With hfCallModesEnabled off the reason comes from the legacy presence alone and the queue is never offered.
+async function lineRefusal(env: Env, hostUid: string): Promise<Response> {
+  try {
+    const cfg = (await readConfig(env).catch(() => ({}))) as unknown as Record<string, unknown>;
+    type LineRow = { presence: string | null; call_mode?: string | null; on_call_since?: number | null; presence_call_id?: string | null; queue_paused?: number | null };
+    let row = null as LineRow | null;
+    try { row = await env.DB_META.prepare("SELECT presence, call_mode, on_call_since, presence_call_id, queue_paused FROM hf_hosts WHERE uid=?1").bind(hostUid).first<LineRow>(); }
+    catch { row = await env.DB_META.prepare("SELECT presence FROM hf_hosts WHERE uid=?1").bind(hostUid).first<LineRow>().catch(() => null); } // migration not applied yet
+    if (!row) return UNAVAILABLE();
+    const modesOn = cfg.hfCallModesEnabled === true && row.call_mode != null;
+    const gate = await queueGate(env, hostUid).catch(() => ({ waiting: 0, paused: false, open: false }));
+    const state: PublicCallState = modesOn
+      ? publicCallState({ mode: row.call_mode, onCallSince: row.on_call_since ?? null, lockCallId: row.presence_call_id ?? null, waiting: gate.waiting })
+      : row.presence === "busy" ? "on_call" : row.presence === "online" ? "connecting" : "offline";
+    if (state === "available") return UNAVAILABLE(); // refused for another reason: no line reason to add
+    const reason: CallRefusalReason = state;
+    const canQueue = modesOn && cfg.hfCallQueueEnabled === true && stateCanQueue(state, row.queue_paused === 1 || gate.paused);
+    const canBook = cfg.hfBookingsEnabled === true && stateCanBook(state);
+    return err(409, "host_unavailable", "This host isn't available right now.", { reason, canQueue, canBook, queueWaiting: Math.max(0, gate.waiting) });
+  } catch { return UNAVAILABLE(); }
+}
+/** Fairness (spec 2.2 rule 1): while anyone waits in the queue an instant caller must queue too. Only acts with modes AND queue on. */
+async function queueHoldsLine(env: Env, hostUid: string): Promise<boolean> {
+  try {
+    const cfg = (await readConfig(env)) as unknown as Record<string, unknown>;
+    if (cfg.hfCallModesEnabled !== true || cfg.hfCallQueueEnabled !== true) return false;
+    return (await queueGate(env, hostUid)).waiting > 0;
+  } catch { return false; }
+}
+/** The JSON a successful start answers (unchanged shape), or the failure in the route's usual error shape. */
+async function startAnswer(env: Env, r: StartTokenResult, hostUid: string): Promise<Response> {
+  if (r.ok) return json({ ok: true, callId: r.callId, status: "ringing_host", rate: r.rate, maxMinutes: r.maxMinutes, maxSeconds: r.maxSeconds, mode: "tokens", plan: r.plan });
+  if (r.error === "host_unavailable") return lineRefusal(env, hostUid);
+  return err(r.status, r.error, r.message, r.extra ?? {});
+}
 const REVIEW_WINDOW_MS = 7 * 24 * 3600_000;
 const ID_RE = /^[A-Za-z0-9_-]{8,64}$/;
 
@@ -59,34 +99,13 @@ async function readJson(req: Request): Promise<Record<string, unknown>> {
   try { const v = JSON.parse(t); return v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : {}; } catch { return {}; }
 }
 const callStub = (env: Env, id: string) => env.HF_CALL.get(env.HF_CALL.idFromName(id));
-export function instantBookingOverlapGuardSql(first: number): string {
-  if (!Number.isInteger(first) || first < 1) throw new Error("invalid booking guard parameter index");
-  const enabled = first, caller = first + 1, host = first + 2, start = first + 3, end = first + 4;
-  return ` WHERE ?${enabled}=0 OR NOT EXISTS (SELECT 1 FROM hf_bookings b WHERE b.status IN ('confirmed','pending_approval','starting','active','settling') ` +
-    `AND (b.host_uid IN (?${caller},?${host}) OR b.customer_uid IN (?${caller},?${host})) ` +
-    `AND b.starts_at-COALESCE((SELECT buffer_min*60000 FROM hf_availability_schedules s WHERE s.host_uid=b.host_uid),600000)<?${end} ` +
-    `AND b.ends_at+COALESCE((SELECT buffer_min*60000 FROM hf_availability_schedules s WHERE s.host_uid=b.host_uid),600000)>?${start})`;
-}
+// [HF-CALL-MODES-C] moved to lib/hf_call_start.ts (queue dispatch needs them too); re-exported so existing imports keep working.
+export { instantBookingOverlapGuardSql };
 async function callsOn(env: Env): Promise<boolean> {
   try { return (await readConfig(env)).hfCallsEnabled === true; } catch { return false; }
 }
 async function reelsOn(env: Env): Promise<boolean> {
   try { return (await readConfig(env)).hfReelsEnabled === true; } catch { return false; }
-}
-async function nextBookingCutoff(env: Env, callerUid: string, hostUid: string, now: number): Promise<number | null> {
-  const parties = [callerUid, hostUid];
-  const active = await env.DB_META.prepare(
-    "SELECT 1 AS x FROM hf_bookings b WHERE b.status IN ('confirmed','pending_approval','starting','active','settling') " +
-    "AND (b.host_uid IN (?1,?2) OR b.customer_uid IN (?1,?2)) AND b.starts_at<=?3 " +
-    "AND b.ends_at+COALESCE((SELECT buffer_min*60000 FROM hf_availability_schedules s WHERE s.host_uid=b.host_uid),600000)>?3 LIMIT 1",
-  ).bind(...parties, now).first();
-  if (active) return now;
-  const next = await env.DB_META.prepare(
-    "SELECT MIN(b.starts_at-COALESCE((SELECT buffer_min*60000 FROM hf_availability_schedules s WHERE s.host_uid=b.host_uid),600000)) AS cutoff " +
-    "FROM hf_bookings b WHERE b.status IN ('confirmed','pending_approval','starting','active','settling') " +
-    "AND (b.host_uid IN (?1,?2) OR b.customer_uid IN (?1,?2)) AND b.starts_at>?3",
-  ).bind(...parties, now).first<{ cutoff: number | null }>();
-  return next?.cutoff == null ? null : Number(next.cutoff);
 }
 async function adminCtx(req: Request, env: Env): Promise<{ uid: string } | Response> {
   const u = await requireUser(req, env);
@@ -128,7 +147,8 @@ async function startCall(req: Request, env: Env): Promise<Response> {
   const host = await env.DB_META.prepare("SELECT uid, display_name, price_per_min, category, women_lane, lgbtq_lane, presence, status FROM hf_hosts WHERE slug=?1")
     .bind(slug).first<{ uid: string; display_name: string | null; price_per_min: number; category: string; women_lane: number; lgbtq_lane: number; presence: string | null; status: string }>();
   if (host && (await isDemoHost(env, host.uid))) return err(409, "demo_host", DEMO_MESSAGE, { reason: "demo_host" }); // [HF-WIRE-14] HF-REEL-34
-  if (!host || host.status !== "live" || host.uid === uid || host.presence !== "online") return UNAVAILABLE();
+  if (!host || host.status !== "live" || host.uid === uid) return UNAVAILABLE();
+  if (host.presence !== "online" || (await queueHoldsLine(env, host.uid))) return lineRefusal(env, host.uid); // [HF-CALL-MODES-C] adds reason / canQueue / canBook / queueWaiting
   if (await isClosing(env, host.uid)) return UNAVAILABLE(); // [HF-WALLET-EXIT-1] a host who is closing their account takes no calls
   if (await isBlockedEitherWay(env, uid, host.uid)) return UNAVAILABLE();
   if (!(await verifiedWhatsAppNumber(env, host.uid))) return UNAVAILABLE();
@@ -154,15 +174,16 @@ async function startCall(req: Request, env: Env): Promise<Response> {
   const bookingCutoff = rawCfg.hfBookingsEnabled === true ? await nextBookingCutoff(env, uid, host.uid, now) : null;
   if (bookingCutoff != null && bookingCutoff <= now) return err(409, "booking_window_conflict", "A scheduled booking is too close to start another call.");
   const tk = readHfTokenConfig(rawCfg);
-  const std = pricingStd(readHfStdPlan(rawCfg), rawCfg); // [HF-WIRE-18] HF-REEL-37
-  const infRate = readInfluencerRate(rawCfg);
-  if (isCreatorCategory(host.category)) {
-    if (!validCreatorRate(rate)) return UNAVAILABLE();
-    return await startTokenCall(env, { uid, hostUid: host.uid, lane, rate, callId, tk, hardEndsAt: bookingCutoff ?? undefined, bookingGuard: rawCfg.hfBookingsEnabled === true, creator: creatorSnapshotFor(host.category, rate) });
+  const pick = pickPricing(host, rawCfg, tk); // [HF-CALL-MODES-C] same order as before: creator, Standard plan, host rate (tokens), then the old rupee wallet
+  if (pick.kind === "unavailable") return UNAVAILABLE();
+  const chunk = chunkSettingsFrom(rawCfg);
+  if (pick.kind === "token") {
+    return startAnswer(env, await startTokenCall(env, {
+      uid, hostUid: host.uid, lane, rate: pick.rate, callId, tk, hardEndsAt: bookingCutoff ?? undefined, bookingGuard: rawCfg.hfBookingsEnabled === true,
+      ...(pick.std ? { std: pick.std } : {}), ...(pick.creator ? { creator: pick.creator } : {}), chunk, source: "instant",
+    }), host.uid);
   }
-  if (std.enabled) return await startTokenCall(env, { uid, hostUid: host.uid, lane, rate: std.tariff.tiers[0].paisePerMin / 100, callId, tk, hardEndsAt: bookingCutoff ?? undefined, bookingGuard: rawCfg.hfBookingsEnabled === true, std });
-  if (!(rate > 0) || (infRate.on && rate < infRate.minRupees)) return UNAVAILABLE();
-  if (tk.enabled) return await startTokenCall(env, { uid, hostUid: host.uid, lane, rate, callId, tk, hardEndsAt: bookingCutoff ?? undefined, bookingGuard: rawCfg.hfBookingsEnabled === true });
+  if (chunk) return err(503, "calls_not_ready", "Calls aren't ready yet. Please try again later."); // chunk billing runs on the rupee lots only
   const moneyRules = await readMoneyRules(env); // [HF-WIRE-13] rule 1 on the old rupee wallet too
   const needed = Math.max(rate * START_RESERVE_MINUTES, Math.ceil(moneyRules.minBalancePaise / 100));
 
@@ -226,58 +247,6 @@ async function startCall(req: Request, env: Env): Promise<Response> {
   return json({ ok: true, callId, status: "ringing_host", rate, maxMinutes });
 }
 
-// [HF-TOK-CALLS-1] Token-mode start. Debt and balance gates + lot reservation happen in prepareTokenStart; the hf_calls row carries the
-// pricing snapshot (rate, call cost per minute, host share, versions) so a later config change never alters this call.
-async function startTokenCall(env: Env, a: { uid: string; hostUid: string; lane: string | null; rate: number; callId: string; tk: ReturnType<typeof readHfTokenConfig>; hardEndsAt?: number; bookingGuard?: boolean; std?: HfStdPlan; creator?: CreatorSnapshot }): Promise<Response> {
-  const { uid, hostUid, lane, rate, callId, tk, hardEndsAt, bookingGuard } = a;
-  const ratePaise = Math.round(rate * 100);
-  const rules = await readMoneyRules(env); // [HF-WIRE-13] rule 1: at least Rs 20 in the wallet to start
-  const chk = await prepareTokenStart(env, { uid, callId, ratePaise, tk, std: a.std ?? null, creator: a.creator, minBalancePaise: rules.minBalancePaise });
-  if (!chk.ok) return err(chk.status, chk.error, chk.message, chk.extra ?? {});
-  const undo = async (claimed: boolean) => {
-    if (claimed) await releaseHost(env, hostUid, callId).catch(() => undefined);
-    await releaseTokenLots(env, callId).catch(() => undefined);
-  };
-  if (!(await claimHost(env, hostUid, callId))) { await undo(false); return UNAVAILABLE(); }
-  const maxMinutes = Math.floor(chk.maxSeconds / 60);
-  try {
-    const insertNow = Date.now();
-    const plannedEnd = Math.min(hardEndsAt ?? Number.MAX_SAFE_INTEGER, insertNow + chk.maxSeconds * 1000);
-    const inserted = await env.DB_META.prepare(
-      `INSERT INTO hf_calls (id, caller_uid, host_uid, rate_paise, status, lane, created_at, conference_name, call_cost_paise_per_min, host_share_bps, tax_mode, split_rule_version, pricing_snapshot)
-       SELECT ?1,?2,?3,?4,'ringing_host',?5,?6,?7,?8,?9,?10,?11,?12` + instantBookingOverlapGuardSql(13),
-    ).bind(callId, uid, hostUid, chk.snapshot.ratePaise, lane, insertNow, `hf_${callId.replace(/-/g, "")}`, chk.snapshot.callCostPaisePerMin, chk.snapshot.hostShareBps, chk.snapshot.taxMode, chk.snapshot.splitRuleVersion,
-      chk.snapshot.creator ? JSON.stringify(chk.snapshot.creator) : chk.snapshot.std ? JSON.stringify(chk.snapshot.std) : null,
-      bookingGuard === true ? 1 : 0, uid, hostUid, insertNow, plannedEnd).run();
-    if (Number(inserted.meta?.changes ?? 0) !== 1) {
-      await undo(true);
-      return err(409, "booking_window_conflict", "A scheduled booking overlaps this call window.");
-    }
-  } catch (e) {
-    await undo(true);
-    await trackException(env, e, { uid, route: "/api/hf/calls", handled: true, app_name: HF_CALL_APP, extra: { area: "hf_calls", step: "insert_tokens" } });
-    return err(500, "internal_error", "Something went wrong.");
-  }
-  try {
-    const r = await callStub(env, callId).fetch("https://hfcall/init", {
-      method: "POST",
-      body: JSON.stringify({
-        callId, callerUid: uid, hostUid, ...(hardEndsAt != null ? { hardEndsAt } : {}), rateRupees: rate, reservedRupees: 0, testReservedRupees: 0, fundsRupees: 0, maxMinutes, limitReason: chk.limitReason,
-        tokens: { ratePaise: chk.snapshot.ratePaise, callCostPaisePerMin: chk.snapshot.callCostPaisePerMin, hostShareBps: chk.snapshot.hostShareBps, maxSeconds: chk.maxSeconds, std: chk.snapshot.std ?? null, creator: chk.snapshot.creator },
-      }),
-    });
-    if (!r.ok) throw new Error(`init ${r.status}`);
-  } catch (e) {
-    await env.DB_META.prepare("UPDATE hf_calls SET status='failed', end_reason='error', ended_at=?1 WHERE id=?2 AND status='ringing_host'").bind(Date.now(), callId).run().catch(() => undefined);
-    await undo(true);
-    await trackException(env, e, { uid, route: "/api/hf/calls", handled: true, app_name: HF_CALL_APP, extra: { area: "hf_calls", step: "init_tokens" } });
-    return err(502, "call_failed", "We couldn't place the call. Please try again.");
-  }
-  const plan = chk.snapshot.creator ? "creator" : chk.snapshot.std ? "standard" : "host_rate";
-  void track(env, uid, "hf_call_started", HF_CALL_APP, { area: "hf_call", call_id: callId, rate_rupees: rate, lane, max_minutes: maxMinutes, max_seconds: chk.maxSeconds, mode: "tokens", plan, pricing_version: chk.snapshot.splitRuleVersion }).catch(() => undefined);
-  return json({ ok: true, callId, status: "ringing_host", rate, maxMinutes, maxSeconds: chk.maxSeconds, mode: "tokens", plan });
-}
-
 // ── GET /api/hf/calls/:id ────────────────────────────────────────────────────
 const tokCall = (c: HfCallRow): { micro: number; secs: number } | null => {
   return c.tokens_spent_micro == null
@@ -308,7 +277,9 @@ async function liveFields(env: Env, c: HfCallRow, pricingRaw: string | null | un
   const reason = phase === "ended" ? callReason(c) : null;
   const consumed = (c as unknown as { consumed_value_paise?: number | null }).consumed_value_paise;
   // The caller sees what the call cost; the host never sees the caller's money (costPaise 0, walletPaise null).
-  const out: Record<string, unknown> = { phase, reason, lowBalanceSeconds: LOW_BALANCE_SECONDS, costPaise: isCaller ? Math.max(0, Math.trunc(Number(consumed ?? c.charged_paise ?? 0))) : 0, walletPaise: null, capAt: null };
+  const out: Record<string, unknown> = { phase, reason, lowBalanceSeconds: LOW_BALANCE_SECONDS, costPaise: isCaller ? Math.max(0, Math.trunc(Number(consumed ?? c.charged_paise ?? 0))) : 0, walletPaise: null, capAt: null,
+    // [HF-CALL-MODES-C] chunk billing: fundedUntil = epoch ms the call is paid to, short = the next chunk could not be funded (the caller was told). null / false otherwise.
+    fundedUntil: null, short: false };
   if (phase !== "connected" || c.connected_at == null || !isCaller) return out;
   const secs = Math.max(0, Math.floor((Date.now() - Number(c.connected_at)) / 1000));
   let creatorRate: number | null = null;
@@ -318,11 +289,15 @@ async function liveFields(env: Env, c: HfCallRow, pricingRaw: string | null | un
   try {
     const r = await callStub(env, c.id).fetch("https://hfcall/info", { method: "POST", body: "{}" });
     if (r.ok) {
-      const i = (await r.json()) as { maxSeconds?: number; hardEndsAt?: number | null; fundsPaise?: number | null };
-      const maxMs = Math.max(0, Math.trunc(Number(i.maxSeconds ?? 0))) * 1000;
+      const i = (await r.json()) as { maxSeconds?: number; hardEndsAt?: number | null; fundsPaise?: number | null; fundedSec?: number | null; short?: boolean };
+      // [HF-CALL-MODES-C] with chunk billing the call ends at what is PAID FOR so far (moves up with every chunk and every top-up), never past the hard cap.
+      const capMs = Math.max(0, Math.trunc(Number(i.maxSeconds ?? 0))) * 1000;
+      const fundedMs = i.fundedSec != null ? Math.max(0, Math.trunc(Number(i.fundedSec))) * 1000 : null;
+      const maxMs = fundedMs != null ? Math.min(fundedMs, capMs) : capMs;
       let capAt = Number(c.connected_at) + maxMs;
       if (i.hardEndsAt != null) capAt = Math.min(capAt, Number(i.hardEndsAt));
       out.capAt = maxMs > 0 ? capAt : null;
+      if (fundedMs != null) { out.fundedUntil = maxMs > 0 ? capAt : null; out.short = i.short === true; }
       const funds = i.fundsPaise != null ? Number(i.fundsPaise) : costAt(Math.floor(maxMs / 1000));
       out.walletPaise = Math.max(0, Math.trunc(funds - Number(out.costPaise)));
     }
@@ -353,7 +328,8 @@ async function getCall(req: Request, env: Env, id: string): Promise<Response> {
   return json({
     id: c.id, status: c.status, hostSlug: h?.slug ?? null, hostName: h?.display_name ?? null, rate: rupees(c.rate_paise),
     connectedAt: c.connected_at, endedAt: c.ended_at, billedMinutes: c.billed_minutes, chargedRupees: rupees(c.charged_paise), endReason: c.end_reason, canReview,
-    ...live, // [HF-WIRE-7] additive: phase, reason, costPaise, walletPaise, capAt, lowBalanceSeconds
+    ...live, // [HF-WIRE-7] additive: phase, reason, costPaise, walletPaise, capAt, lowBalanceSeconds; [HF-CALL-MODES-C] fundedUntil, short
+    source: ((c as unknown as { source?: string | null }).source ?? ((c as unknown as { booking_id?: string | null }).booking_id ? "booking" : "instant")), // [HF-CALL-MODES-C]
     ...(dropped ? { moneyRule: RULE_FIRST_MINUTE_DROP, firstMinuteDrop: true, firstMinuteChargePaise: droppedPaise, firstMinuteMessage: firstMinuteMessage(droppedPaise) } : {}), // [HF-WIRE-13]
     plan: frozenCreator ? "creator" : frozenStandard ? "standard" : "host_rate",
     rateTiers: frozenStandard
