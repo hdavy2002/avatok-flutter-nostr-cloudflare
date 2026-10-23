@@ -22,6 +22,7 @@ import 'repos/merch_repo.dart'; // [HF-MERCH-APP-1]
 import 'repos/payouts_repo.dart';
 import 'repos/queue_repo.dart'; // [HF-CALL-MODES-E2]
 import 'repos/reels_repo.dart';
+import 'repos/safety_repo.dart'; // [HF-APP-PARITY-SAFETY]
 import 'repos/search_repo.dart';
 import 'repos/wallet_repo.dart';
 import 'push.dart'; // [HF-BOOK-APPROVE-PUSH]
@@ -63,6 +64,7 @@ class Services {
   late final SearchRepo searchRepo = SearchRepo(api); // [HF-WIRE-9]
   late final FavouritesRepo favouritesRepo = FavouritesRepo(api); // [HF-WIRE-9]
   late final MerchRepo merchRepo = MerchRepo(api); // [HF-MERCH-APP-1]
+  late final SafetyRepo safetyRepo = SafetyRepo(api); // [HF-APP-PARITY-SAFETY]
 
   /// The signed-in Clerk user, or null (signed out, or no connection at start).
   /// Session changes can precede /me, including an offline or slow restore.

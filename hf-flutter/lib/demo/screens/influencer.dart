@@ -9,6 +9,7 @@ import '../../data/demo_mode.dart';
 import '../../data/models/channel.dart';
 import '../../data/presence_store.dart';
 import '../../data/repos/payouts_repo.dart';
+import '../../data/repos/safety_repo.dart'; // [HF-APP-PARITY-SAFETY]
 import '../../data/services.dart';
 import '../../data/telemetry.dart';
 import '../data.dart';
@@ -492,6 +493,10 @@ class InfluencerHomeScreen extends StatelessWidget {
                   const SizedBox(height: 12),
                 ],
                 const _EarningsCard(), // [HF-WIRE-10]
+                if (PresenceBridge.real) ...[
+                  const SizedBox(height: 12),
+                  const FraandsCountTiles(), // [HF-APP-PARITY-SAFETY]
+                ],
                 if (PresenceBridge.real) const SharePageCard(), // [HF-SHARE-APP-1]
                 if (PresenceBridge.real) const ProfilePhotoCard(), // [HF-CHANNEL-APP-1]
                 const SizedBox(height: 16),
@@ -873,5 +878,49 @@ class _EarningsCardState extends State<_EarningsCard> {
         ),
       ],
     );
+  }
+}
+
+
+/// [HF-APP-PARITY-SAFETY] "Hearts" (people who saved you) and "Waiting for you online" (people who asked Notify me),
+/// from `GET /api/hf/me/summary` -> fraands.hearts / fraands.waiting. A failed read shows dashes, never made-up numbers.
+class FraandsCountTiles extends StatefulWidget {
+  const FraandsCountTiles({super.key, this.repo});
+
+  final SafetyRepo? repo;
+
+  @override
+  State<FraandsCountTiles> createState() => _FraandsCountTilesState();
+}
+
+class _FraandsCountTilesState extends State<FraandsCountTiles> {
+  FraandsCounts? _counts;
+  bool _failed = false;
+
+  @override
+  void initState() {
+    super.initState();
+    unawaited(_load());
+  }
+
+  Future<void> _load() async {
+    try {
+      final c = await (widget.repo ?? Services.instance.safetyRepo).fraandsCounts();
+      if (mounted) setState(() => _counts = c);
+    } catch (_) {
+      if (mounted) setState(() => _failed = true);
+    }
+  }
+
+  String _n(int? v) => v != null ? '$v' : (_failed || _counts != null ? '—' : '…');
+
+  @override
+  Widget build(BuildContext context) {
+    final c = _counts;
+    return Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      Expanded(child: DesiKpi(label: 'Hearts', value: _n(c?.hearts), sub: 'People who saved you', tone: DesiTone.rani, icon: Icons.favorite_rounded)),
+      const SizedBox(width: 12),
+      Expanded(child: DesiKpi(label: 'Waiting for you online', value: _n(c?.waiting), sub: 'Asked Notify me', tone: DesiTone.gold, icon: Icons.notifications_active_rounded)),
+    ]);
   }
 }

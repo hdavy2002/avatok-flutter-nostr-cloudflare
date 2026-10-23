@@ -86,7 +86,7 @@ abstract final class HelpStrings {
     ),
     (
       'How do I report or block someone?',
-      'Use Report a person: your report is saved with a reference you can quote, and our team reviews it. Blocking someone removes them from My Fraands.',
+      'Tap the three dots on their page or on the call in Call records, then choose Report a person. Your report is saved with a reference you can quote, and our team reviews it. To block, open Call records, tap the three dots on that call and choose Block. Blocking someone removes them from My Fraands.',
     ),
     (
       'How do I share my page?',

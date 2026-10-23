@@ -19,6 +19,7 @@ import '../notify_me_button.dart';
 import '../presence_bridge.dart';
 import '../profile_kit.dart';
 import '../reels_real.dart';
+import '../safety_sheets.dart'; // [HF-APP-PARITY-SAFETY]
 import '../state.dart';
 import '../theme.dart';
 import '../widgets.dart';
@@ -252,6 +253,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       faved: faved,
                       onHeart: onHeart,
                       onShare: onShare,
+                      // [HF-APP-PARITY-SAFETY] Report a person lives here; not on your own page
+                      onMore: realSlug == null || Services.instance.me?.hostSlug == realSlug ? null : () => unawaited(showSafetyMenu(context, profileName: who.name)),
                     ),
                     if (nav != null) KeyedSubtree(key: _navKey, child: nav),
                     if (hasMerch) KeyedSubtree(key: _merchKey, child: ChannelMerchSection(shop: shop, hostSlug: who.id, firstName: first))
@@ -348,7 +351,7 @@ class _SectionNav extends StatelessWidget {
 /// Full-width photo (Online now / Offline on it), then the eyebrow, name, tagline, stats and Save / Share.
 /// No decorative border, arch or curtain round the photo (decision D2).
 class _ChannelHero extends StatelessWidget {
-  const _ChannelHero({required this.who, required this.tagline, required this.stats, required this.faved, required this.onHeart, required this.onShare});
+  const _ChannelHero({required this.who, required this.tagline, required this.stats, required this.faved, required this.onHeart, required this.onShare, this.onMore});
 
   final Influencer who;
   final String tagline;
@@ -356,6 +359,7 @@ class _ChannelHero extends StatelessWidget {
   final bool faved;
   final VoidCallback? onHeart;
   final VoidCallback? onShare;
+  final VoidCallback? onMore;
 
   Widget _round(IconData icon, String label, Color color, VoidCallback onTap) => Semantics(
         button: true,
@@ -420,12 +424,16 @@ class _ChannelHero extends StatelessWidget {
                 ]),
             ]),
           ],
-          if (onHeart != null || onShare != null) ...[
+          if (onHeart != null || onShare != null || onMore != null) ...[
             const SizedBox(height: 18),
             Row(mainAxisAlignment: MainAxisAlignment.center, children: [
               if (onHeart != null) _round(faved ? Icons.favorite_rounded : Icons.favorite_border_rounded, faved ? 'Remove from favourites' : 'Add to favourites', GP.rani, onHeart!),
               if (onHeart != null && onShare != null) const SizedBox(width: 12),
               if (onShare != null) _round(Icons.share_rounded, 'Share this page', GP.ink, onShare!),
+              if (onMore != null) ...[
+                if (onHeart != null || onShare != null) const SizedBox(width: 12),
+                _round(Icons.more_horiz_rounded, 'More: report this person', GP.ink, onMore!),
+              ],
             ]),
           ],
         ]),

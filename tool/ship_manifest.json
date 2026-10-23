@@ -11887,5 +11887,9 @@
   "HF-APP-AI-LABEL-OFF-1": {
     "description": "[HF-APP-AI-LABEL-OFF-1] App copy-only: remove the AI-avatar tag from the channel photo and the 'shown with the AI label' line on the profile-photo screen (matches the website, HF-PROFILE-AI-LABEL-OFF-1).",
     "no_telemetry": "Copy removal only; no behaviour change."
+  },
+  "HF-APP-PARITY-SAFETY": {
+    "description": "[HF-APP-PARITY-SAFETY] App: Report a person (Shikayat sheet) and Block from profile and Call records, and Hearts / Waiting tiles on the influencer Home; all use existing worker routes.",
+    "no_telemetry": "Client UI over existing routes; the server already tracks hf_report_submitted and hf_dash_block."
   }
 }

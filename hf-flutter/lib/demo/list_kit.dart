@@ -62,6 +62,7 @@ class CallRecordCard extends StatelessWidget {
     this.failed = false,
     this.stars = 0,
     this.onCallAgain,
+    this.onMore,
   });
   final int index;
   final Influencer who;
@@ -74,6 +75,9 @@ class CallRecordCard extends StatelessWidget {
   final int stars;
   final String amount;
   final VoidCallback? onCallAgain;
+
+  /// [HF-APP-PARITY-SAFETY] The "..." menu (Report a person, Block) for this call; null hides it.
+  final VoidCallback? onMore;
 
   @override
   Widget build(BuildContext context) {
@@ -136,6 +140,12 @@ class CallRecordCard extends StatelessWidget {
               ),
             ),
           ],
+          if (onMore != null)
+            Semantics(
+              button: true,
+              label: 'More: report or block',
+              child: InkResponse(radius: 24, onTap: onMore, child: const SizedBox(width: 48, height: 48, child: Icon(Icons.more_horiz_rounded, color: C.maroon))),
+            ),
         ]),
       ]),
     );

@@ -12,6 +12,7 @@ import '../theme.dart';
 import '../booking_kit.dart';
 import '../desi.dart';
 import '../list_kit.dart';
+import '../safety_sheets.dart'; // [HF-APP-PARITY-SAFETY]
 import 'call_real.dart';
 
 const _days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
@@ -160,6 +161,7 @@ class _RealCallRecordsScreenState extends State<RealCallRecordsScreen> {
       stars: c.stars,
       amount: cost == null || c.didNotConnect ? '₹0' : '-${paiseText(cost)}',
       onCallAgain: c.hostSlug == null ? null : () => context.push('/profile/${c.hostSlug}'),
+      onMore: c.id.isEmpty ? null : () => unawaited(showSafetyMenu(context, profileName: c.hostName, callId: c.id)),
     );
   }
 }
