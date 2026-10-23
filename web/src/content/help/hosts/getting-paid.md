@@ -33,7 +33,7 @@ Your fan pays per minute at the rate you have set. To learn more, read [how much
 
 1. Sign in and open your wallet.
 2. Tap the **Withdraw** button.
-3. Use a **UPI ID in your own name**.
+3. Use a **UPI ID in your own name**. Withdrawals go **only to UPI**; we do not ask for a bank account.
 4. Ask for the amount you want. There is **no minimum withdrawal** and we take **no fee**.
 
 New earnings are held for **7 days** first. The first time, we do a **one-time ID (KYC) check** and a **UPI check**. After that you will not be asked again. We send the money to your UPI. The UPI must be yours. We do not send money to other people's accounts. This keeps your money safe.

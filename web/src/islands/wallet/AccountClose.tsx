@@ -114,7 +114,7 @@ export default function AccountClose() {
           {info.payout && (
             <div className="hfc-stat" style={{ textAlign: 'left' }}>
               <strong>{m(info.payout.amount)}</strong>
-              <span>Final withdrawal to your UPI or bank: {PAY[info.payout.status] ?? info.payout.status}{info.payout.reason ? ` (${info.payout.reason})` : ''}{info.payout.utr ? `, reference ${info.payout.utr}` : ''}</span>
+              <span>Final withdrawal to your UPI ID: {PAY[info.payout.status] ?? info.payout.status}{info.payout.reason ? ` (${info.payout.reason})` : ''}{info.payout.utr ? `, reference ${info.payout.utr}` : ''}</span>
             </div>
           )}
           <button type="button" className="hfc-btn" disabled={busy} onClick={() => void stop()}>Cancel and keep my account</button>
@@ -128,7 +128,7 @@ export default function AccountClose() {
           <p style={{ margin: 0 }}>You have money in your account, so it is settled before your account is deleted. Your wallet balance is paid out to your UPI after a one-time ID and UPI check (never back to the card or UPI you paid from). Earnings are paid out together with it. Your account is deleted once everything is paid.</p>
           <div className="hfc-stats">
             <div className="hfc-stat"><strong>{info.tokens ? formatPaise(payoutPaise) : m(walletMoney)}</strong><span>{info.tokens ? 'you will receive from your wallet (whole rupees), paid to your UPI' : 'wallet balance, paid out to your UPI'}</span></div>
-            <div className="hfc-stat"><strong>{m(info.withdrawable)}</strong><span>earnings, paid out to your UPI or bank</span></div>
+            <div className="hfc-stat"><strong>{m(info.withdrawable)}</strong><span>earnings, paid out to your UPI ID</span></div>
             <div className="hfc-stat"><strong>{m(info.held)}</strong><span>earnings in the 7-day hold{info.heldReleaseAt ? `, until ${dateIN(info.heldReleaseAt)}` : ''}</span></div>
           </div>
           {restPaise > 0 && <p className="hfc-sub" style={{ margin: 0 }}>The {formatPaise(restPaise)} left over is below ₹1, so it cannot be paid out. It is removed with your account.</p>}
@@ -141,7 +141,7 @@ export default function AccountClose() {
             <p className="hfc-note" role="status">{withdrawFirst ? 'Withdraw your wallet money first, then come back here to close your account. ' : ''}<a className="hfc-btn" href={PAYOUT_HREF}>Go to Withdraw</a> If what is left is under ₹1 (too small to pay out), you can choose to give it up below.</p>
           )}
           {!info.bankOk && (info.withdrawable > 0 || info.held > 0) && (
-            <p className="hfc-note">To receive your earnings you need a verified bank account (<a href="/dashboard/host/earnings">add it on your Earnings page</a>). If you would rather not, you can give up those earnings below.</p>
+            <p className="hfc-note">To receive your earnings you need a UPI ID (<a href="/dashboard/host/earnings">add it on your Earnings page</a>). Withdrawals go only to UPI. If you would rather not, you can give up those earnings below.</p>
           )}
           {giveUpRupees > 0 && (
             <label style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>

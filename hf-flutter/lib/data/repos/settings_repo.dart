@@ -90,7 +90,7 @@ class CloseState {
   final double refundable;
   final double manualRefund;
 
-  /// Money that would be lost unless a bank account is added (host earnings with no verified bank).
+  /// Money that would be lost unless a UPI ID is added (host earnings with no UPI ID). `bankOk` is the old name of upiOk.
   final double forfeitRupees;
   final bool bankOk;
 

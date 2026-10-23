@@ -28,7 +28,7 @@ export default function Become({ account }: { account: DashboardAccount }) {
     ['Verify your WhatsApp', 'An OTP on the Indian number you’ll take calls on.', !!wa],
     ['Aadhaar check', 'Aadhaar OTP (DigiLocker if OTP isn’t available). We keep only the last 4 digits.', !!me?.kyc.aadhaar.done],
     ['10-second selfie video', 'Read a code shown on screen; our team matches it to your Aadhaar photo.', me?.kyc.selfie.status === 'approved' || me?.kyc.selfie.status === 'pending'],
-    ['Withdrawal details', 'UPI ID and bank account in your own name — checked without any deposit.', !!me?.kyc.payout.done],
+    ['Withdrawal details', 'Your UPI ID, in your own name. Withdrawals are paid only to UPI.', !!me?.kyc.payout.done],
     ['Your profile', 'Avatar, about, languages, up to 6 topics, your price per minute and your hours.', !!st && !['draft', 'generating'].includes(st)],
     ['Review & go live', 'You approve your profile, our team approves it, and you’re live.', st === 'live'],
   ];

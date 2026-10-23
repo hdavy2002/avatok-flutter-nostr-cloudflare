@@ -17,7 +17,7 @@
 //     503 kyc_unavailable (Sandbox/PII key not configured: DigiLocker would fail too)                no fallback
 //   POST /api/hosts/kyc/selfie/code                                       -> { code, expires_in_s }
 //   POST /api/hosts/kyc/selfie          raw video body + x-selfie-code    -> { ok, status:"pending" }
-//   POST /api/hosts/payout/verify       { upi, account, ifsc }            -> { ok, nameAtBank, match, accountLast4, upiVerified }
+//   POST /api/hosts/payout/verify       { upi }                           -> { ok, match, upiVerified, upiOnFile }   [HF-UPI-ONLY-1] UPI only
 //   GET  /api/hosts/kyc/status                                            -> { aadhaar, selfie, payout }
 //   GET  /api/admin/hf/kyc?status=pending                                 -> pending selfies + short-lived signed media URLs   (ADMIN_UIDS)
 //   GET  /api/admin/hf/kyc/media?t=<signed token>                         -> streams selfie video / Aadhaar photo               (signed, 5 min)
@@ -41,9 +41,10 @@ import { emailFor } from "../lib/identity";
 import { isAdminUid } from "../lib/preview";
 import { readConfig } from "./config";
 import { encryptPii, tryDecryptPii, piiKeyConfigured, piiKeyBytes } from "../lib/pii_crypto";
-import { sandboxConfigured, aadhaarOtpGenerate, aadhaarOtpVerify, digilockerInit, digilockerStatus, digilockerAadhaar, digilockerProfile, bankVerify, upiVerify, type AadhaarKyc, type SandboxFail } from "../lib/sandbox_client";
+import { sandboxConfigured, aadhaarOtpGenerate, aadhaarOtpVerify, digilockerInit, digilockerStatus, digilockerAadhaar, digilockerProfile, type AadhaarKyc, type SandboxFail } from "../lib/sandbox_client";
+import { verifyUpiId } from "../lib/hf_payouts"; // [HF-UPI-ONLY-1]
 import { classifyOtpFailure, rateLimitedFailure, type OtpFailure } from "../lib/hf_kyc_fallback";
-import { cleanAadhaar, mapGender, isAdult, namesMatch, firstNameOf, UPI_RE, IFSC_RE, ACCOUNT_RE } from "../lib/hf_kyc_util";
+import { cleanAadhaar, mapGender, isAdult, firstNameOf, UPI_RE } from "../lib/hf_kyc_util";
 
 const APP = BRAND.slug;
 export const HF_KYC_CONSENT_VERSION = "hf-kyc-2026-10-09";
@@ -475,61 +476,43 @@ async function selfieUpload(req: Request, env: Env, ctx: ExecutionContext | unde
 }
 
 // ── payout ───────────────────────────────────────────────────────────────────
-const maskName = (s: string): string => s.split(/\s+/).filter(Boolean).map((t) => t.charAt(0) + "*".repeat(Math.max(0, t.length - 1))).join(" ");
 
 async function payoutVerify(req: Request, env: Env, ctx: ExecutionContext | undefined): Promise<Response> {
+  // [HF-UPI-ONLY-1] Withdrawals go ONLY to a UPI ID. No bank account number or IFSC is asked for or stored any more
+  // (columns and old rows stay, untouched). Name checking of the UPI ID plugs into verifyUpiId() when that API exists.
   const u = await requireUser(req, env);
   if (isFail(u)) return err(u.status, u.error);
   const uid = u.uid;
   const emit = makeEmit(env, ctx, uid);
-  if (!sandboxConfigured(env) || !piiKeyConfigured(env)) return err(503, "kyc_unavailable", { message: "Verification isn’t available right now. Please try again shortly." });
+  if (!piiKeyConfigured(env)) return err(503, "kyc_unavailable", { message: "Saving isn’t available right now. Please try again shortly." });
 
   const b = await readJson(req);
   const upi = String(b.upi ?? "").trim().toLowerCase();
-  const account = String(b.account ?? "").replace(/\s/g, "");
-  const ifsc = String(b.ifsc ?? "").trim().toUpperCase();
   if (!UPI_RE.test(upi)) return err(400, "invalid_upi", { message: "Enter a valid UPI ID, like name@bank.", field: "upi" });
-  if (!ACCOUNT_RE.test(account)) return err(400, "invalid_account", { message: "Enter your bank account number (9–18 digits).", field: "account" });
-  if (!IFSC_RE.test(ifsc)) return err(400, "invalid_ifsc", { message: "Enter a valid IFSC code, like HDFC0001234.", field: "ifsc" });
 
   const kyc = await kycRow(env, uid).catch(() => null);
   if (!kyc?.verified_at) return err(409, "aadhaar_required", { message: "Verify your Aadhaar first." });
-  const aadhaarName = await tryDecryptPii(env, kyc.name_enc);
-  if (!aadhaarName) {
-    await trackException(env, new Error("hf_kyc name undecryptable"), { uid, route: "/api/hosts/payout/verify", handled: true, app_name: APP, extra: { area: "hf_kyc", step: "decrypt" } });
-    return err(500, "kyc_unreadable", { message: "We couldn’t read your verification. Please contact support." });
-  }
 
-  // Every call is a paid vendor lookup AND would let someone probe other people's account holder names: keep it tight.
-  const lim = (await limited(env, `hfkyc_payout_h:${uid}`, 5, 3600, "Too many bank checks. Please try again in an hour."))
-    ?? (await limited(env, `hfkyc_payout_d:${uid}`, 12, 86400, "You’ve reached today’s limit for bank checks. Please try again tomorrow."));
+  const lim = await limited(env, `hfkyc_payout_d:${uid}`, 20, 86400, "You’ve reached today’s limit for saving withdrawal details. Please try again tomorrow.");
   if (lim) { emit("hf_kyc_failed", { step: "payout", reason: "rate_limited" }); return lim; }
 
-  const bank = await bankVerify(env, account, ifsc);
-  if (!bank.ok) return fail(env, emit, uid, "payout/verify", bank);
-  const vpa = await upiVerify(env, upi); // Sandbox has none → "unsupported" → stored unverified
-  const upiVerified = vpa.ok && namesMatch(aadhaarName, vpa.data.nameAtBank);
-
-  const match = namesMatch(aadhaarName, bank.data.nameAtBank);
+  const check = await verifyUpiId(env, upi);
+  if (check === "invalid") return err(422, "invalid_upi", { message: "We couldn’t find that UPI ID. Please check it and try again.", field: "upi" });
+  const upiVerified = check === "verified";
   const now = Date.now();
-  const last4 = account.slice(-4);
   try {
-    const [upiEnc, accEnc, nameEnc] = await Promise.all([encryptPii(env, upi), encryptPii(env, account), encryptPii(env, bank.data.nameAtBank)]);
+    const upiEnc = await encryptPii(env, upi);
     await env.DB_META.prepare(
-      `INSERT INTO hf_payout (uid, upi_enc, upi_verified, account_enc, account_last4, ifsc, name_at_bank_enc, name_match, verified_at, updated_at)
-       VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10)
-       ON CONFLICT(uid) DO UPDATE SET upi_enc=excluded.upi_enc, upi_verified=excluded.upi_verified, account_enc=excluded.account_enc,
-         account_last4=excluded.account_last4, ifsc=excluded.ifsc, name_at_bank_enc=excluded.name_at_bank_enc, name_match=excluded.name_match,
-         verified_at=excluded.verified_at, updated_at=excluded.updated_at`,
-    ).bind(uid, upiEnc, upiVerified ? 1 : 0, accEnc, last4, ifsc, nameEnc, match ? 1 : 0, match ? now : null, now).run();
+      `INSERT INTO hf_payout (uid, upi_enc, upi_verified, updated_at) VALUES (?1,?2,?3,?4)
+       ON CONFLICT(uid) DO UPDATE SET upi_enc=excluded.upi_enc, upi_verified=excluded.upi_verified, updated_at=excluded.updated_at`,
+    ).bind(uid, upiEnc, upiVerified ? 1 : 0, now).run();
   } catch (e) {
     await trackException(env, e, { uid, route: "/api/hosts/payout/verify", handled: true, app_name: APP, extra: { area: "hf_kyc", step: "payout_store" } });
     emit("hf_kyc_failed", { step: "payout", reason: "store_failed" });
     return err(500, "store_failed", { message: "We couldn’t save your withdrawal details. Please try again." });
   }
-  emit("hf_payout_verified", { match, upi_verified: upiVerified, upi_check: vpa.ok ? "done" : "unsupported" });
-  // Only reveal the bank's full name when it matches HOLDER's own Aadhaar name; otherwise masked (no name-lookup oracle).
-  return json({ ok: true, nameAtBank: match ? bank.data.nameAtBank : maskName(bank.data.nameAtBank), match, accountLast4: last4, upiVerified });
+  emit("hf_payout_verified", { match: true, upi_verified: upiVerified, upi_check: upiVerified ? "done" : "unverified" });
+  return json({ ok: true, match: true, upiVerified, upiOnFile: true });
 }
 
 // ── status ───────────────────────────────────────────────────────────────────
@@ -540,8 +523,8 @@ async function status(req: Request, env: Env): Promise<Response> {
     kycRow(env, u.uid).catch(() => null),
     env.DB_META.prepare("SELECT review_status, review_reason FROM hf_selfie WHERE uid=?1 ORDER BY created_at DESC, id DESC LIMIT 1").bind(u.uid)
       .first<{ review_status: string; review_reason: string | null }>().catch(() => null),
-    env.DB_META.prepare("SELECT name_match, account_last4, upi_verified FROM hf_payout WHERE uid=?1").bind(u.uid)
-      .first<{ name_match: number; account_last4: string | null; upi_verified: number }>().catch(() => null),
+    env.DB_META.prepare("SELECT upi_enc, account_last4, upi_verified FROM hf_payout WHERE uid=?1").bind(u.uid)
+      .first<{ upi_enc: string | null; account_last4: string | null; upi_verified: number }>().catch(() => null),
   ]);
   return json({
     aadhaar: {
@@ -549,7 +532,7 @@ async function status(req: Request, env: Env): Promise<Response> {
       method: kyc?.verified_at ? (kyc.provider === "sandbox_okyc" ? "otp" : "digilocker") : null,
     },
     selfie: { status: selfie?.review_status ?? "none", reason: selfie?.review_status === "rejected" ? selfie.review_reason : null },
-    payout: { done: !!payout && payout.name_match === 1, match: payout ? payout.name_match === 1 : false, accountLast4: payout?.account_last4 ?? null, upiVerified: payout ? payout.upi_verified === 1 : false },
+    payout: { done: !!payout?.upi_enc, match: !!payout?.upi_enc, /* [HF-UPI-ONLY-1] done = a UPI ID is on file */ accountLast4: payout?.account_last4 ?? null, upiVerified: payout ? payout.upi_verified === 1 : false },
   });
 }
 

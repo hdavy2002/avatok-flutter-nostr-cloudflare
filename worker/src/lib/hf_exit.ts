@@ -9,10 +9,9 @@
 import type { Env } from "../types";
 import { walletOp } from "../routes/wallet";
 import { readConfig } from "../routes/config";
-import { tryDecryptPii } from "./pii_crypto";
 import { trackException, track } from "../hooks";
 import {
-  WALLET_APP as PAYOUT_APP, HOLD_MS, refFor, reserveOpId, releaseOpId, hostPayoutReadiness, withdrawableFor, sumMaturedCallRupees, payoutSums,
+  WALLET_APP as PAYOUT_APP, HOLD_MS, refFor, reserveOpId, releaseOpId, hostPayoutReadiness, withdrawableFor, sumMaturedCallRupees, payoutSums, payoutSnapshot,
 } from "./hf_payouts";
 import { createRefundRequest, cancelRefund, refundableFor, DEFAULT_REFUND_WINDOW_DAYS, OPEN_REFUND_STATUSES, type RefundRow } from "./hf_refunds";
 import { getTestBalance } from "./hf_credits";
@@ -90,7 +89,7 @@ export interface ExitSummary {
   refundable: number;
   /** Unused top-up money no gateway can return (too old, or no top-up behind it): an admin pays it by hand. */
   manualRefund: number;
-  /** Money that will be lost unless the user fixes it first: no verified bank for earnings, or money nothing can account for. */
+  /** Money that will be lost unless the user fixes it first: no UPI ID for earnings, or money nothing can account for. */
   forfeitRupees: number;
   bankOk: boolean;
   testCredits: number;
@@ -214,12 +213,10 @@ export type MakePayout = { ok: true; id: string } | { ok: false; status: number;
 export async function createExitPayout(env: Env, uid: string, now = Date.now()): Promise<MakePayout> {
   const no = (status: number, error: string, message: string): MakePayout => ({ ok: false, status, error, message });
   const [w, ready] = await Promise.all([withdrawableFor(env, uid, now), hostPayoutReadiness(env, uid)]);
-  if (!ready.bankOk) return no(409, "bank_required", "Add and verify your bank account first, or choose to give up your earnings.");
+  if (!ready.upiOk) return no(409, "upi_required", "Add your UPI ID first, or choose to give up your earnings.");
   const amount = w.withdrawable;
   if (amount <= 0) return no(409, "nothing_withdrawable", "No earnings are available to withdraw right now.");
-  const bankRow = await env.DB_META.prepare("SELECT name_at_bank_enc FROM hf_payout WHERE uid=?1").bind(uid).first<{ name_at_bank_enc: string | null }>().catch(() => null);
-  const name = await tryDecryptPii(env, bankRow?.name_at_bank_enc);
-  const snapshot = JSON.stringify({ accountLast4: ready.accountLast4, ifsc: ready.ifsc, name });
+  const snapshot = await payoutSnapshot(env, uid); // [HF-UPI-ONLY-1]
   const id = crypto.randomUUID();
   const ref = refFor(id);
   await env.DB_META.prepare(
@@ -287,7 +284,7 @@ export async function startExit(env: Env, uid: string, o: { forfeit: boolean; tr
     return no(409, "nothing_to_settle", "You have no money to settle. You can close your account now.");
   }
   if (s.forfeitRupees > 0 && !o.forfeit) {
-    return no(409, "forfeit_required", s.bankOk ? "Some money cannot be paid out." : "Add and verify your bank account to receive your earnings, or choose to give them up.", { forfeitRupees: s.forfeitRupees });
+    return no(409, "forfeit_required", s.bankOk ? "Some money cannot be paid out." : "Add your UPI ID to receive your earnings, or choose to give them up.", { forfeitRupees: s.forfeitRupees });
   }
   let refundId: string | null = null, payoutId: string | null = null;
   const callerMoney = s.refundable + s.manualRefund;
@@ -353,7 +350,7 @@ async function startTokenExit(env: Env, uid: string, o: { forfeit: boolean; trig
       : no(409, "upi_required", "Add your UPI ID first (Me, then Withdraw in the app), then close your account.", { nextStep: payoutSetupNextStep(false) });
   }
   if (s.forfeitRupees > 0 && !o.forfeit) {
-    return no(409, "forfeit_required", s.bankOk ? "Some money cannot be paid out." : "Add and verify your bank account to receive your earnings, or choose to give them up.", { forfeitRupees: s.forfeitRupees });
+    return no(409, "forfeit_required", s.bankOk ? "Some money cannot be paid out." : "Add your UPI ID to receive your earnings, or choose to give them up.", { forfeitRupees: s.forfeitRupees });
   }
   let payoutId: string | null = null;
   // Earnings still in the 7-day hold: ONE closure payout (wallet money + earnings) is made once the hold ends (cron), not one now and one later.
@@ -469,7 +466,7 @@ export async function advanceExit(env: Env, row: ExitRow, trigger: Trigger, now 
             return status;
           }
           payoutId = p.id;
-        } else if (pl.earnRupees > 0) note = `forfeit:${pl.earnRupees}`; // bank missing: the user already agreed to give these earnings up
+        } else if (pl.earnRupees > 0) note = `forfeit:${pl.earnRupees}`; // UPI missing: the user already agreed to give these earnings up
       } else {
         const ready = await hostPayoutReadiness(env, row.uid);
         const w = await withdrawableFor(env, row.uid, now);
@@ -477,7 +474,7 @@ export async function advanceExit(env: Env, row: ExitRow, trigger: Trigger, now 
           const p = await createExitPayout(env, row.uid, now);
           if (!p.ok) { console.warn("[hf-exit] payout not created", row.uid, p.error); return status; }
           payoutId = p.id;
-        } else if (w.withdrawable > 0) note = `forfeit:${w.withdrawable}`; // bank missing: the user already agreed to give these earnings up
+        } else if (w.withdrawable > 0) note = `forfeit:${w.withdrawable}`; // UPI missing: the user already agreed to give these earnings up
       }
       const p2 = payoutId ? await env.DB_META.prepare("SELECT status FROM hf_payout_requests WHERE id=?1").bind(payoutId).first<{ status: string }>().catch(() => null) : null;
       step = nextExitStep({ status: "waiting_payouts", held: 0, hasPayout: !!payoutId, payoutStatus: p2?.status ?? null, refundStatus });

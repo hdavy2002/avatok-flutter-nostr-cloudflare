@@ -35,13 +35,13 @@ async function start(req: Request, env: Env, ctx: ExecutionContext | undefined):
   const [kyc, selfie, payout] = await Promise.all([
     env.DB_META.prepare("SELECT verified_at FROM hf_kyc WHERE uid=?1").bind(uid).first<{ verified_at: number | null }>().catch(() => null),
     env.DB_META.prepare("SELECT review_status FROM hf_selfie WHERE uid=?1 ORDER BY created_at DESC, id DESC LIMIT 1").bind(uid).first<{ review_status: string }>().catch(() => null),
-    env.DB_META.prepare("SELECT name_match FROM hf_payout WHERE uid=?1").bind(uid).first<{ name_match: number }>().catch(() => null),
+    env.DB_META.prepare("SELECT upi_enc FROM hf_payout WHERE uid=?1").bind(uid).first<{ upi_enc: string | null }>().catch(() => null),
   ]);
   const missing: string[] = [];
   if (!kyc?.verified_at) missing.push("aadhaar");
   // pending is accepted: the admin reviews the selfie before the host can go live
   if (!selfie || !["pending", "approved"].includes(selfie.review_status)) missing.push("selfie");
-  if (!payout || payout.name_match !== 1) missing.push("payout");
+  if (!payout?.upi_enc) missing.push("payout"); // [HF-UPI-ONLY-1]
   if (!host.avatar_id) missing.push("avatar");
   if (!host.display_name?.trim()) missing.push("displayName");
   if (!host.about?.trim()) missing.push("about");

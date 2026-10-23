@@ -230,8 +230,8 @@ async function hostDetail(req: Request, env: Env, uid: string): Promise<Response
       .first<{ name_enc: string | null; gender: string | null; aadhaar_last4: string | null; age_ok: number; photo_r2_key: string | null; verified_at: number | null }>(),
     env.DB_META.prepare("SELECT id, review_status, review_reason, created_at FROM hf_selfie WHERE uid=?1 ORDER BY created_at DESC, id DESC LIMIT 1").bind(uid)
       .first<{ id: string; review_status: string; review_reason: string | null; created_at: number }>(),
-    env.DB_META.prepare("SELECT name_match, upi_verified, account_last4, verified_at FROM hf_payout WHERE uid=?1").bind(uid)
-      .first<{ name_match: number; upi_verified: number; account_last4: string | null; verified_at: number | null }>(),
+    env.DB_META.prepare("SELECT upi_enc, upi_verified FROM hf_payout WHERE uid=?1").bind(uid)
+      .first<{ upi_enc: string | null; upi_verified: number }>(),
   ]);
   await audit(env, a.uid, "view", uid, {});
   const base = mediaBase(env);
@@ -256,7 +256,7 @@ async function hostDetail(req: Request, env: Env, uid: string): Promise<Response
       aadhaarDone: !!kyc?.verified_at, name: await tryDecryptPii(env, kyc?.name_enc), gender: kyc?.gender ?? null, last4: kyc?.aadhaar_last4 ?? null,
       ageOk: !!kyc?.age_ok, hasPhoto: !!kyc?.photo_r2_key,
       selfie: selfie ? { id: selfie.id, status: selfie.review_status, reason: selfie.review_reason, at: selfie.created_at } : null,
-      payout: payout ? { nameMatch: !!payout.name_match, upiVerified: !!payout.upi_verified, accountLast4: payout.account_last4 } : null,
+      payout: payout ? { upiOnFile: !!payout.upi_enc, nameMatch: !!payout.upi_enc, upiVerified: !!payout.upi_verified, accountLast4: null } : null,
     },
   });
 }
@@ -289,12 +289,12 @@ async function decide(req: Request, env: Env, uid: string): Promise<Response> {
     if (!["pending_review", "paused", "rejected"].includes(h.status)) return err(409, "bad_state", { status: h.status });
     const [selfie, payout, media] = await Promise.all([
       env.DB_META.prepare("SELECT review_status FROM hf_selfie WHERE uid=?1 ORDER BY created_at DESC, id DESC LIMIT 1").bind(uid).first<{ review_status: string }>(),
-      env.DB_META.prepare("SELECT name_match FROM hf_payout WHERE uid=?1").bind(uid).first<{ name_match: number }>(),
+      env.DB_META.prepare("SELECT upi_enc FROM hf_payout WHERE uid=?1").bind(uid).first<{ upi_enc: string | null }>(),
       env.DB_META.prepare("SELECT COUNT(*) AS n FROM hf_host_media WHERE uid=?1 AND status='active' AND kind IN ('profile','gallery')").bind(uid).first<{ n: number }>(),
     ]);
     const missing: string[] = [];
     if (selfie?.review_status !== "approved") missing.push("selfie_not_approved");
-    if (!payout?.name_match) missing.push("payout_name_mismatch");
+    if (!payout?.upi_enc) missing.push("payout_upi_missing"); // [HF-UPI-ONLY-1]
     if (!media?.n) missing.push("no_media");
     const ih = await env.DB_META.prepare("SELECT intro_status FROM hf_hosts WHERE uid=?1").bind(uid).first<{ intro_status: string | null }>();
     if (h.status === "pending_review" && ih?.intro_status !== "pending" && ih?.intro_status !== "approved") missing.push("no_intro");

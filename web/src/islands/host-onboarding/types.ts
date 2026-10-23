@@ -103,7 +103,7 @@ export interface OnboardingApi {
   /** Mock: stores nothing; the real one uploads the 10-second video with the spoken code. */
   uploadSelfie(blob: Blob, code: string): Promise<{ ok: boolean; error?: string; codeExpired?: boolean }>;
   /** Mock: penny-drop check. Real one compares nameAtBank with the Aadhaar name. */
-  verifyPayout(input: { upi: string; account: string; ifsc: string }): Promise<{ ok: boolean; nameAtBank?: string; match?: boolean; error?: string }>;
+  verifyPayout(input: { upi: string }): Promise<{ ok: boolean; nameAtBank?: string; match?: boolean; error?: string }>;
   listAvatars(): Promise<Avatar[]>;
   /** Real: takes the avatar for this host (exclusive). Mock: always ok. */
   claimAvatar(id: string): Promise<ApiResult>;

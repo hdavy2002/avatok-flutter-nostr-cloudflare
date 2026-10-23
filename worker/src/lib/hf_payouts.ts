@@ -10,6 +10,8 @@
 // LEGACY: calls from before HF-WALLET-1 have host_paid_rupees NULL; they count as 0 here. An admin can settle those by hand.
 import type { Env } from "../types";
 import { walletOp } from "../routes/wallet";
+import { tryDecryptPii } from "./pii_crypto";
+import { sha256Hex } from "../util";
 
 export const HOLD_DAYS = 7;
 export const HOLD_MS = HOLD_DAYS * 86_400_000;
@@ -54,7 +56,8 @@ export interface RequestCheck {
   enabled: boolean;
   hostStatus: string | null;
   kycOk: boolean;
-  bankOk: boolean;
+  /** [HF-UPI-ONLY-1] A UPI ID is on file. Withdrawals go ONLY to UPI; a bank account never counts. */
+  upiOk: boolean;
   amount: unknown;
   minRupees: number;
   withdrawable: number;
@@ -69,7 +72,7 @@ export function validatePayoutRequest(c: RequestCheck): RequestVerdict {
   if (!c.enabled) return no(404, "not_enabled", "Withdrawals open soon.");
   if (c.hostStatus !== "live") return no(403, "not_live", "Only live hosts can withdraw.");
   if (!c.kycOk) return no(409, "kyc_required", "Finish your identity check first.");
-  if (!c.bankOk) return no(409, "bank_required", "Add and verify your bank account first. The name must match your Aadhaar.");
+  if (!c.upiOk) return no(409, "upi_required", "Please add your UPI ID first. Withdrawals are paid only to a UPI ID in your own name.");
   const n = Number(c.amount);
   if (!Number.isInteger(n) || n <= 0) return no(400, "invalid_amount", "Enter a whole number of rupees.");
   if (c.minRupees > 0 && n < c.minRupees) return no(400, "below_minimum", `The smallest withdrawal is ₹${c.minRupees}.`);
@@ -152,24 +155,48 @@ export async function recentRequestCount(env: Env, hostUid: string, now = Date.n
   return Number(r?.n ?? 0);
 }
 
-/** hf_kyc verified + hf_payout bank verified with a name match. */
-export async function hostPayoutReadiness(env: Env, hostUid: string): Promise<{ kycOk: boolean; bankOk: boolean; accountLast4: string | null; ifsc: string | null }> {
-  const [kyc, bank] = await Promise.all([
+/** hf_kyc verified + a UPI ID on file. [HF-UPI-ONLY-1] `bankOk` is the OLD name of `upiOk`, kept (same value) because the app and older web read it; no bank account is ever required. */
+export async function hostPayoutReadiness(env: Env, hostUid: string): Promise<{ kycOk: boolean; upiOk: boolean; bankOk: boolean; accountLast4: string | null; ifsc: string | null }> {
+  const [kyc, pay] = await Promise.all([
     env.DB_META.prepare("SELECT verified_at FROM hf_kyc WHERE uid=?1").bind(hostUid).first<{ verified_at: number | null }>().catch(() => null),
-    env.DB_META.prepare("SELECT name_match, account_last4, ifsc, account_enc FROM hf_payout WHERE uid=?1").bind(hostUid)
-      .first<{ name_match: number; account_last4: string | null; ifsc: string | null; account_enc: string | null }>().catch(() => null),
+    env.DB_META.prepare("SELECT upi_enc, account_last4, ifsc FROM hf_payout WHERE uid=?1").bind(hostUid)
+      .first<{ upi_enc: string | null; account_last4: string | null; ifsc: string | null }>().catch(() => null),
   ]);
-  return {
-    kycOk: !!kyc?.verified_at,
-    bankOk: !!bank && bank.name_match === 1 && !!bank.account_last4 && !!bank.ifsc && !!bank.account_enc,
-    accountLast4: bank?.account_last4 ?? null,
-    ifsc: bank?.ifsc ?? null,
-  };
+  const upiOk = !!pay?.upi_enc;
+  return { kycOk: !!kyc?.verified_at, upiOk, bankOk: upiOk, accountLast4: pay?.account_last4 ?? null, ifsc: pay?.ifsc ?? null };
 }
 
-export function parseSnapshot(s: string | null): { accountLast4: string | null; ifsc: string | null; name: string | null } {
+export type UpiCheck = "unverified" | "verified" | "invalid";
+/**
+ * [HF-UPI-ONLY-1] THE hook for UPI verification. Today no verification API is connected, so every UPI ID is "unverified" and a
+ * withdrawal still goes ahead (the admin pays the UPI by hand). TODO: when the UPI-verification API arrives, call it here and
+ * return "verified" (name matches the person's ID check) or "invalid" (does not exist / wrong name). Every place that saves a UPI
+ * ID already calls this and stores upi_verified from it, so nothing else needs to change.
+ */
+export async function verifyUpiId(_env: Env, _vpa: string): Promise<UpiCheck> {
+  return "unverified";
+}
+
+/** a***@okhdfc: enough for the person and the admin to recognise it, never the whole handle. */
+export function maskUpiId(vpa: string | null | undefined): string | null {
+  const s = String(vpa ?? "").trim();
+  const at = s.lastIndexOf("@");
+  if (at < 1) return s ? "••••" : null;
+  return `${s.slice(0, 1)}${"•".repeat(Math.max(2, Math.min(5, at - 1)))}${s.slice(at)}`;
+}
+
+/** The destination frozen on a withdrawal request: the masked UPI ID and the holder name on file. No bank details. */
+export async function payoutSnapshot(env: Env, uid: string): Promise<string> {
+  const row = await env.DB_META.prepare("SELECT upi_enc, name_at_bank_enc FROM hf_payout WHERE uid=?1").bind(uid)
+    .first<{ upi_enc: string | null; name_at_bank_enc: string | null }>().catch(() => null);
+  const [upi, name] = await Promise.all([tryDecryptPii(env, row?.upi_enc), tryDecryptPii(env, row?.name_at_bank_enc)]);
+  // upiRef lets the admin screen notice that the UPI ID was changed after the request, without storing the ID itself.
+  return JSON.stringify({ upi: maskUpiId(upi), upiRef: upi ? (await sha256Hex(upi.trim().toLowerCase())).slice(0, 16) : null, name });
+}
+
+export function parseSnapshot(s: string | null): { upi: string | null; upiRef: string | null; accountLast4: string | null; ifsc: string | null; name: string | null } {
   try {
     const j = JSON.parse(s || "{}") as Record<string, unknown>;
-    return { accountLast4: typeof j.accountLast4 === "string" ? j.accountLast4 : null, ifsc: typeof j.ifsc === "string" ? j.ifsc : null, name: typeof j.name === "string" ? j.name : null };
-  } catch { return { accountLast4: null, ifsc: null, name: null }; }
+    return { upi: typeof j.upi === "string" ? j.upi : null, upiRef: typeof j.upiRef === "string" ? j.upiRef : null, accountLast4: typeof j.accountLast4 === "string" ? j.accountLast4 : null, ifsc: typeof j.ifsc === "string" ? j.ifsc : null, name: typeof j.name === "string" ? j.name : null };
+  } catch { return { upi: null, upiRef: null, accountLast4: null, ifsc: null, name: null }; }
 }

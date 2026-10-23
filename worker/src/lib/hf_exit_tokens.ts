@@ -8,13 +8,12 @@
 import type { Env } from "../types";
 import { readConfig } from "../routes/config";
 import { track, trackException } from "../hooks";
-import { tryDecryptPii } from "./pii_crypto";
 import { verifiedWhatsAppNumber } from "./whatsapp_notify"; // [HF-CLOSE-UPI-1] the same WhatsApp helpers payouts and refunds already use
 import { sendWhatsAppText } from "./whatsapp_send";
 import { formatRupees } from "./hf_token_math";
 import { readHfTokenConfig } from "./hf_token_config";
 import { hostSummary, reservePayout, cancelPayoutReserve, hostLedgerRef, isHostLedgerRef, wholeRupees } from "./hf_host_ledger";
-import { hostPayoutReadiness } from "./hf_payouts";
+import { hostPayoutReadiness, payoutSnapshot } from "./hf_payouts";
 import { retireLot, OPEN_PLAY_STATUSES } from "./hf_play_refunds";
 import { valuePaiseOfMicro, balanceSummary, hasOpenDebt } from "./hf_token_ledger";
 import { fanPurchasePaise, takeFanPayout, returnFanPayout, fanPayoutRef, isFanPayoutRef } from "./hf_fan_payout"; // [HF-FIX-CLOSE-ACCOUNT-1]
@@ -163,12 +162,10 @@ export async function createExitPayoutTokens(env: Env, uid: string, now = Date.n
   }
   const earnRupees = pl.earnDestOk ? pl.earnRupees : 0;
   if (pl.walletPaise <= 0 && earnRupees <= 0) {
-    return pl.earnRupees > 0 ? no(409, "bank_required", "Add and verify your bank account first, or choose to give up your earnings.") : no(409, "nothing_withdrawable", "No money is available to pay out right now.");
+    return pl.earnRupees > 0 ? no(409, "upi_required", "Add your UPI ID first, or choose to give up your earnings.") : no(409, "nothing_withdrawable", "No money is available to pay out right now.");
   }
   const amount = pl.walletPaise / 100 + earnRupees;
-  const bankRow = await env.DB_META.prepare("SELECT name_at_bank_enc FROM hf_payout WHERE uid=?1").bind(uid).first<{ name_at_bank_enc: string | null }>().catch(() => null);
-  const name = await tryDecryptPii(env, bankRow?.name_at_bank_enc);
-  const snapshot = JSON.stringify({ accountLast4: pl.setup.accountLast4, ifsc: pl.setup.ifsc, name });
+  const snapshot = await payoutSnapshot(env, uid); // [HF-UPI-ONLY-1]
   const id = crypto.randomUUID();
   const ref = earnRupees > 0 ? hostLedgerRef(id) : fanPayoutRef(id);
   await env.DB_META.prepare(

@@ -1,4 +1,4 @@
-/* HostPayouts — [HF-PAYOUT-1] Admin queue for HF host withdrawals. Manual flow: approve, pay the host yourself (bank transfer / UPI), enter the UTR.
+/* HostPayouts — [HF-PAYOUT-1] Admin queue for HF host withdrawals. Manual flow: approve, pay the host's UPI ID yourself (UPI only, [HF-UPI-ONLY-1]), enter the UTR.
  * Worker: GET /api/admin/hf/payouts?status=, GET /api/admin/hf/payouts/:id/destination, POST /api/admin/hf/payouts/:id/(approve|paid|reject).
  * Full account details are fetched only when you tap "Show payment details" (every view is audit-logged). Nothing under 14px. */
 import { useCallback, useEffect, useState } from 'react';
@@ -13,10 +13,10 @@ const field = { width: '100%', ...T14, padding: 10, borderRadius: 10, border: '1
 type Status = 'requested' | 'approved' | 'paid' | 'rejected' | 'cancelled';
 interface Item {
   id: string; hostUid: string; hostName: string | null; hostSlug: string | null; amount: number; status: Status;
-  accountLast4: string | null; ifsc: string | null; accountName: string | null; withdrawableAtRequest: number | null;
+  upi?: string | null; accountLast4: string | null; ifsc: string | null; accountName: string | null; withdrawableAtRequest: number | null;
   utr: string | null; reason: string | null; createdAt: number; paidAt: number | null; exit?: boolean; walletPaise?: number;
 }
-interface Dest { amount: number; accountName: string | null; account: string | null; ifsc: string | null; upi: string | null; upiVerified: boolean }
+interface Dest { amount: number; accountName: string | null; upi: string | null; upiVerified: boolean }
 interface List { items: Item[]; counts: Record<string, { n: number; rupees: number }> }
 
 const TABS: { key: Status; label: string }[] = [
@@ -69,10 +69,10 @@ function Row({ it, onDone }: { it: Item; onDone: () => void }) {
           {(it.walletPaise ?? 0) > 0 && <div style={{ fontSize: 'var(--fs-small)' }}><strong>Includes {formatPaise(it.walletPaise ?? 0)} from their own wallet balance</strong> (money they topped up), the rest {formatPaise(Math.round(it.amount * 100) - (it.walletPaise ?? 0))} is earnings. Pay the full {rupees(it.amount)}.</div>}
           {it.exit && <div style={{ fontSize: 'var(--fs-small)' }}><strong>Account closure:</strong> the account is deleted automatically once this is paid. Rejecting it also lets the closure finish, so give a clear reason.</div>}
           <div className="hfa-says-grid">
-            <DesiSays k="Influencer's UPI/bank" tone="lav"
-              v={dest ? <>{dest.accountName || '—'}<br />Account {dest.account || '—'} · IFSC {dest.ifsc || '—'}<br />UPI {dest.upi || '—'}{dest.upi ? (dest.upiVerified ? ' (verified)' : ' (not verified)') : ''}</> : <>{it.accountName || 'name not stored'}<br />account ending {it.accountLast4 || '—'} · {it.ifsc || '—'}</>}
+            <DesiSays k="Pay to this UPI ID" tone="lav"
+              v={dest ? <>UPI {dest.upi || '—'}{dest.upi ? (dest.upiVerified ? ' (verified)' : ' (not verified)') : ''}<br />{dest.accountName || 'name not stored'}</> : <>UPI {it.upi || 'ID hidden until you tap Show payment details'}<br />{it.accountName || 'name not stored'}</>}
               note={dest ? <>Pay exactly <strong>{rupees(dest.amount)}</strong></> : undefined} />
-            <DesiSays k="Your bank reference" tone={it.utr ? 'tea' : 'none'}
+            <DesiSays k="Your payment reference (UTR)" tone={it.utr ? 'tea' : 'none'}
               v={it.status === 'paid' ? <>UTR {it.utr}</> : 'Not entered yet'}
               note={it.status === 'paid' ? `Paid ${dateIST(it.paidAt)}` : it.status === 'rejected' ? `Reason: ${it.reason}` : undefined} />
           </div>
@@ -82,7 +82,7 @@ function Row({ it, onDone }: { it: Item; onDone: () => void }) {
       </DesiSlip>
 
       <ConfirmDialog className="hf-admin-operations" open={dialog === 'paid'} title={`Mark ${rupees(it.amount)} as paid`} confirmLabel="Mark as paid" busy={busy} error={err} disabled={!utrOk}
-        body="Only do this after the money has left your bank. The host is told on WhatsApp. This can’t be undone."
+        body="Only do this after the money has been sent to their UPI ID. The host is told on WhatsApp. This can’t be undone."
         onConfirm={() => void run(() => post(`${base}/paid`, { utr: utr.trim() }), 'hf_payout_paid')} onCancel={() => setDialog(null)}>
         <input aria-label="Bank reference (UTR)" style={field} value={utr} maxLength={30} autoComplete="off" placeholder="Bank reference (UTR), 6 to 30 letters or numbers" onChange={(e) => setUtr(e.target.value.replace(/[^A-Za-z0-9]/g, ''))} />
       </ConfirmDialog>
@@ -110,7 +110,7 @@ export default function HostPayouts() {
   return (
     <ConsultShell className="hf-admin-operations">
       <div className="hfa-stack">
-        <DesiCard tone="cream" corner="marigold" title="The payout road" note="Every withdrawal walks these four steps. You pay the influencer yourself, then enter the bank reference.">
+        <DesiCard tone="cream" corner="marigold" title="The payout road" note="Every withdrawal walks these four steps. You pay the influencer's UPI ID yourself, then enter the payment reference (UTR).">
           <DesiJourney label="Withdrawal steps" steps={[
             { title: 'Requested', note: `${n('requested')} waiting`, tone: 'gold', done: idx >= 0 },
             { title: 'Approved', note: `${n('approved')} to pay`, tone: 'lav', done: idx >= 1 },

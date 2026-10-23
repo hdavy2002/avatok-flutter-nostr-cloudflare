@@ -107,13 +107,15 @@ describe("POST /api/hosts/me/payouts", () => {
     const g = await jsonOf(await hit("GET", "/api/hosts/me/payouts"));
     expect(g.withdrawable).toBe(0); expect(g.testEarnings).toBe(800);
   });
-  it("validation codes: below minimum, kyc, bank", async () => {
+  it("validation codes: below minimum, kyc, UPI", async () => {
     seedHost(); wallet.balance = 2000; call("c1", 20, 2000);
     expect((await jsonOf(await hit("POST", "/api/hosts/me/payouts", { amount: 499 }, "a"))).error).toBe("below_minimum");
     h.db.exec("DELETE FROM hf_kyc");
     expect((await jsonOf(await hit("POST", "/api/hosts/me/payouts", { amount: 600 }, "b"))).error).toBe("kyc_required");
-    h.db.exec("INSERT INTO hf_kyc VALUES ('host1',1); UPDATE hf_payout SET name_match=0");
-    expect((await jsonOf(await hit("POST", "/api/hosts/me/payouts", { amount: 600 }, "c"))).error).toBe("bank_required");
+    h.db.exec("INSERT INTO hf_kyc VALUES ('host1',1); UPDATE hf_payout SET upi_enc=NULL"); // bank details alone never allow a withdrawal
+    const noUpi = await jsonOf(await hit("POST", "/api/hosts/me/payouts", { amount: 600 }, "c"));
+    expect(noUpi.error).toBe("upi_required");
+    expect(noUpi.message).toContain("UPI ID");
   });
   it("reserves, subtracts open requests from what is left, and replays by idempotency key", async () => {
     seedHost(); wallet.balance = 1500; call("c1", 20, 1500);
@@ -127,7 +129,9 @@ describe("POST /api/hosts/me/payouts", () => {
     const over = await jsonOf(await hit("POST", "/api/hosts/me/payouts", { amount: 901 }, "k2"));
     expect(over.error).toBe("insufficient_withdrawable");
     const snap = JSON.parse(h.db.prepare("SELECT bank_snapshot s FROM hf_payout_requests").get().s);
-    expect(snap).toEqual({ accountLast4: "1234", ifsc: "HDFC0001", name: "dec(nm)" });
+    expect(snap).toMatchObject({ upi: "••••", name: "dec(nm)" });
+    expect(snap.accountLast4).toBeUndefined(); // [HF-UPI-ONLY-1] no bank details are frozen on a request any more
+    expect(snap.ifsc).toBeUndefined();
   });
   it("weekly limit", async () => {
     seedHost(); wallet.balance = 5000; call("c1", 20, 5000);
@@ -214,19 +218,20 @@ describe("admin: approve / paid / reject", () => {
     expect(g.requests[0]).toMatchObject({ status: "rejected", reason: "Name mismatch" });
     expect(g.withdrawable).toBe(1000);
   });
-  it("destination shows the full account only while the bank still matches the snapshot, and is audited", async () => {
+  it("destination shows the UPI (never bank details) only while the UPI still matches the snapshot, and is audited", async () => {
     const id = await open();
     const d = await jsonOf(await hit("GET", `/api/admin/hf/payouts/${id}/destination`));
-    expect(d).toMatchObject({ account: "dec(acc)", ifsc: "HDFC0001", status: 200 });
-    h.db.exec("UPDATE hf_payout SET account_last4='9999'");
-    expect((await jsonOf(await hit("GET", `/api/admin/hf/payouts/${id}/destination`))).error).toBe("bank_changed");
+    expect(d).toMatchObject({ upi: "dec(u)", status: 200 });
+    expect(JSON.stringify(d)).not.toContain("dec(acc)");
+    h.db.exec("UPDATE hf_payout SET upi_enc='other-upi'");
+    expect((await jsonOf(await hit("GET", `/api/admin/hf/payouts/${id}/destination`))).error).toBe("upi_changed");
     expect(h.audits.filter((a) => a[2] === "hf_payout_destination_viewed")).toHaveLength(2);
   });
   it("list returns open items with counts and hides masked-only fields correctly", async () => {
     await open();
     const l = await jsonOf(await hit("GET", "/api/admin/hf/payouts?status=requested"));
     expect(l.items).toHaveLength(1);
-    expect(l.items[0]).toMatchObject({ amount: 600, accountLast4: "1234", hostName: "Asha", withdrawableAtRequest: 1000 });
+    expect(l.items[0]).toMatchObject({ amount: 600, upi: "••••", hostName: "Asha", withdrawableAtRequest: 1000 });
     expect(JSON.stringify(l)).not.toContain("dec(acc)");
     expect(l.counts.requested).toEqual({ n: 1, rupees: 600 });
   });

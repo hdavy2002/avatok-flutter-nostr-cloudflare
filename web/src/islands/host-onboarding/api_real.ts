@@ -316,7 +316,7 @@ export const realApi: OnboardingApi = {
 
   async verifyPayout(input) {
     const r = await call<{ ok: boolean; nameAtBank?: string; match?: boolean }>(
-      'POST', '/api/hosts/payout/verify', { upi: input.upi, account: input.account, ifsc: input.ifsc }, 'We could not check these details. Please look at them again.');
+      'POST', '/api/hosts/payout/verify', { upi: input.upi }, 'We could not save this UPI ID. Please look at it again.'); // [HF-UPI-ONLY-1] UPI only
     if (!r.ok) return { ok: false, error: r.error };
     return { ok: true, nameAtBank: r.data.nameAtBank, match: !!r.data.match };
   },

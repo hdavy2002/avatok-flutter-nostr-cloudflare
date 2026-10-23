@@ -25,7 +25,7 @@ export interface AdminHostDetail {
   kyc: {
     aadhaarDone: boolean; name: string | null; gender: string | null; last4: string | null; ageOk: boolean; hasPhoto: boolean;
     selfie: { id: string; status: 'pending' | 'approved' | 'rejected'; reason: string | null; at: number } | null;
-    payout: { nameMatch: boolean; upiVerified: boolean; accountLast4: string | null } | null;
+    payout: { upiOnFile: boolean; nameMatch: boolean; upiVerified: boolean; accountLast4: string | null } | null;
   };
 }
 export interface KycItem {

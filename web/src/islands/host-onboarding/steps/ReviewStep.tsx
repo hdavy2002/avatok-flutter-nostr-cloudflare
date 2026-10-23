@@ -36,7 +36,7 @@ export default function ReviewStep({ draft, update, goTo, avatars, setAction }: 
           <li><Icon name="check" /> Phone +91 •••••• {draft.phone.slice(-4)}</li>
           <li><Icon name={draft.aadhaarDone ? 'check' : 'x'} /> Aadhaar ending {draft.aadhaarLast4 || '----'}{draft.kycGender ? ` · ${GENDER_LABEL[draft.kycGender]}` : ''}</li>
           <li><Icon name={draft.selfie.recorded ? 'check' : 'x'} /> Selfie video {draft.selfie.recorded ? 'done' : 'not done'}</li>
-          <li><Icon name={draft.payout.verified ? 'check' : 'x'} /> Withdrawal details: {draft.payout.upi || 'no UPI'}{draft.payout.accountLast4 ? ` · bank ••••${draft.payout.accountLast4}` : ''}{draft.payout.verified ? ' (name matched)' : ''}</li>
+          <li><Icon name={draft.payout.verified ? 'check' : 'x'} /> Withdrawal UPI ID: {draft.payout.upi || (draft.payout.verified ? 'saved' : 'not added')}</li>
         </ul>
       </Row>
       <Row title="Avatar" step="avatar" goTo={goTo}>

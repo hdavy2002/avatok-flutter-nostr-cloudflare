@@ -15,11 +15,11 @@ export async function creatorPublicationBlockers(env: Env, uid: string): Promise
     env.DB_META.prepare("SELECT verified_at, age_ok FROM hf_kyc WHERE uid=?1").bind(uid).first<{ verified_at: number | null; age_ok: number }>(),
     env.DB_META.prepare("SELECT review_status, r2_key, mime, code FROM hf_selfie WHERE uid=?1 ORDER BY created_at DESC, id DESC LIMIT 1")
       .bind(uid).first<{ review_status: string; r2_key: string | null; mime: string | null; code: string }>(),
-    env.DB_META.prepare("SELECT name_match, verified_at FROM hf_payout WHERE uid=?1").bind(uid).first<{ name_match: number; verified_at: number | null }>(),
+    env.DB_META.prepare("SELECT upi_enc FROM hf_payout WHERE uid=?1").bind(uid).first<{ upi_enc: string | null }>(),
     listMedia(env, uid),
   ]);
   const missing = identityEvidenceBlockers(kyc, video);
-  if (!payout?.verified_at || payout.name_match !== 1) missing.push("payout");
+  if (!payout?.upi_enc) missing.push("payout"); // [HF-UPI-ONLY-1] a UPI ID on file; no bank account
   if (!h.display_name?.trim() || !h.about?.trim() || !h.tagline?.trim()) missing.push("profile");
   if (!validCreatorRate(h.price_per_min)) missing.push("price");
   if (!h.agreements_at) missing.push("agreements");

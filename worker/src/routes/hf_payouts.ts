@@ -12,7 +12,7 @@
 // Error codes (POST): not_enabled 404, not_live 403, kyc_required 409, bank_required 409, invalid_amount 400, below_minimum 400,
 //   weekly_limit 429, insufficient_withdrawable 402, wallet_error 502.
 import type { Env } from "../types";
-import { json } from "../util";
+import { json, sha256Hex } from "../util";
 import { requireUser, isFail } from "../authz";
 import { withIdempotency, rateLimit } from "../money";
 import { trackException, track } from "../hooks";
@@ -30,7 +30,7 @@ import { fanWithdrawablePaise, takeFanPayout, returnFanPayout, markFanPayoutPaid
 import { hostSummary, reservePayout, cancelPayoutReserve, markPayoutPaid, hostLedgerRef, isHostLedgerRef, wholeRupees } from "../lib/hf_host_ledger";
 import {
   WALLET_APP, refFor, reserveOpId, payOpId, releaseOpId, cleanUtr, canApprove, canCancel, canPay, canReject, validatePayoutRequest,
-  withdrawableFor, recentRequestCount, hostPayoutReadiness, payoutSums, sumMaturedCallRupees, parseSnapshot, STATUSES,
+  withdrawableFor, recentRequestCount, hostPayoutReadiness, payoutSums, sumMaturedCallRupees, parseSnapshot, STATUSES, payoutSnapshot, verifyUpiId,
   type PayoutRow,
 } from "../lib/hf_payouts";
 
@@ -87,7 +87,7 @@ const isSystemRow = (r: PayoutRow) => r.status === "cancelled" && (r.reject_reas
 const publicRow = (r: PayoutRow) => {
   const b = parseSnapshot(r.bank_snapshot);
   return {
-    id: r.id, amount: r.amount_rupees, status: r.status, accountLast4: b.accountLast4, ifsc: b.ifsc, utr: r.status === "paid" ? r.utr : null,
+    id: r.id, amount: r.amount_rupees, status: r.status, upi: b.upi, accountLast4: b.accountLast4, ifsc: b.ifsc, utr: r.status === "paid" ? r.utr : null,
     reason: r.status === "rejected" ? r.reject_reason : null, createdAt: r.created_at, updatedAt: r.updated_at, paidAt: r.paid_at, exit: r.exit === 1,
   };
 };
@@ -141,7 +141,7 @@ async function hostGet(req: Request, env: Env): Promise<Response> {
   }
   return json({
     enabled: c.enabled, minRupees: c.minRupees, maxPerWeek: c.maxPerWeek, holdDays: 7, hostStatus: host?.status ?? null,
-    kycOk: ready.kycOk, bankOk: ready.bankOk, bank: ready.bankOk ? { accountLast4: ready.accountLast4, ifsc: ready.ifsc } : null,
+    kycOk: ready.kycOk, upiOk: ready.upiOk, bankOk: ready.upiOk, bank: null, // [HF-UPI-ONLY-1] bankOk = old name of upiOk; no bank object any more
     ...w, requests: reqs.filter((r) => !isSystemRow(r)).map(publicRow),
   });
 }
@@ -170,7 +170,7 @@ async function hostCreate(req: Request, env: Env, app = false): Promise<Response
         const paidBefore = await env.DB_META.prepare("SELECT 1 AS x FROM hf_payout_requests WHERE host_uid=?1 AND status='paid' LIMIT 1").bind(uid).first().catch(() => null);
         if (!paidBefore) return err(409, "kyc_required", "We check your ID once, before your first withdrawal.", { nextStep: kycNextStep() });
       }
-      ready = { ...ready, kycOk: true, bankOk: true };
+      ready = { ...ready, kycOk: true, upiOk: true, bankOk: true };
     }
     let w: { withdrawable: number };
     let src: PayoutSource | null = null;
@@ -188,16 +188,14 @@ async function hostCreate(req: Request, env: Env, app = false): Promise<Response
       return err(502, "wallet_error", "We couldn't check your balance. Please try again.");
     }
     const verdict = validatePayoutRequest({
-      enabled: c.enabled, hostStatus: app ? "live" : host?.status ?? null, kycOk: ready.kycOk, bankOk: ready.bankOk, amount: body.amount,
+      enabled: c.enabled, hostStatus: app ? "live" : host?.status ?? null, kycOk: ready.kycOk, upiOk: ready.upiOk, amount: body.amount,
       minRupees: app ? (src ? payoutMinimumRupees(src, c.fanMinRupees, c.minRupees) : earnReady > 0 ? c.minRupees : c.fanMinRupees) : c.minRupees,
       withdrawable: w.withdrawable, recentCount: await recentRequestCount(env, uid), maxPerWeek: c.maxPerWeek,
     });
     if (!verdict.ok) return err(verdict.status, verdict.error, verdict.message, { withdrawable: w.withdrawable });
     const amount = verdict.amount;
 
-    const bankRow = await env.DB_META.prepare("SELECT name_at_bank_enc FROM hf_payout WHERE uid=?1").bind(uid).first<{ name_at_bank_enc: string | null }>().catch(() => null);
-    const name = await tryDecryptPii(env, bankRow?.name_at_bank_enc);
-    const snapshot = JSON.stringify({ accountLast4: ready.accountLast4, ifsc: ready.ifsc, name });
+    const snapshot = await payoutSnapshot(env, uid); // [HF-UPI-ONLY-1] masked UPI + holder name, no bank details
     const id = crypto.randomUUID();
     // [HF-WIRE-13] lotsPaise = wallet money taken from the person's own top-ups; earnRupees = the rest, from influencer earnings (7-day hold applies).
     const lotsPaise = app && src ? src.lotsPaise : 0;
@@ -290,7 +288,7 @@ async function adminList(req: Request, env: Env): Promise<Response> {
       const b = parseSnapshot(r.bank_snapshot);
       return {
         id: r.id, hostUid: r.host_uid, hostName: r.host_name?.trim() || regNames.get(r.host_uid) || null, hostSlug: r.host_slug, amount: r.amount_rupees, status: r.status,
-        accountLast4: b.accountLast4, ifsc: b.ifsc, accountName: b.name, withdrawableAtRequest: r.withdrawable_at_request, utr: r.utr,
+        upi: b.upi, accountLast4: b.accountLast4, ifsc: b.ifsc, accountName: b.name, withdrawableAtRequest: r.withdrawable_at_request, utr: r.utr,
         reason: r.reject_reason, adminUid: r.admin_uid, exit: r.exit === 1, walletPaise: Number(r.lots_paise ?? 0), // [HF-WIRE-13] part paid out of the person's own wallet
          createdAt: r.created_at, updatedAt: r.updated_at, approvedAt: r.approved_at, paidAt: r.paid_at,
       };
@@ -299,21 +297,22 @@ async function adminList(req: Request, env: Env): Promise<Response> {
   });
 }
 
-/** Full account / UPI so the owner can pay. Every read is audit-logged. Refuses if the host changed bank after asking. */
+/** Full UPI ID so the owner can pay. Every read is audit-logged. Refuses if the host changed UPI after asking. [HF-UPI-ONLY-1] UPI is the only destination; old bank columns are never returned. */
 async function adminDestination(req: Request, env: Env, id: string): Promise<Response> {
   const a = await adminCtx(req, env); if (a instanceof Response) return a;
   const row = await getRow(env, id);
   if (!row) return err(404, "not_found");
   if (row.status !== "requested" && row.status !== "approved") return err(409, "not_payable", "Only open requests show payment details.");
-  const p = await env.DB_META.prepare("SELECT upi_enc, upi_verified, account_enc, account_last4, ifsc, name_at_bank_enc FROM hf_payout WHERE uid=?1").bind(row.host_uid)
-    .first<{ upi_enc: string | null; upi_verified: number; account_enc: string | null; account_last4: string | null; ifsc: string | null; name_at_bank_enc: string | null }>().catch(() => null);
-  if (!p) return err(404, "no_bank");
+  const p = await env.DB_META.prepare("SELECT upi_enc, upi_verified, name_at_bank_enc FROM hf_payout WHERE uid=?1").bind(row.host_uid)
+    .first<{ upi_enc: string | null; upi_verified: number; name_at_bank_enc: string | null }>().catch(() => null);
+  if (!p?.upi_enc) return err(404, "no_upi", "This person has no UPI ID on file. Reject the request and ask them to add one.");
+  const [upi, name] = await Promise.all([tryDecryptPii(env, p.upi_enc), tryDecryptPii(env, p.name_at_bank_enc)]);
   const snap = parseSnapshot(row.bank_snapshot);
-  const matches = snap.accountLast4 === p.account_last4 && snap.ifsc === p.ifsc;
+  // Requests made before UPI-only froze a bank account instead (no upi in the snapshot): nothing to compare, the UPI on file is the destination.
+  const matches = snap.upiRef == null || snap.upiRef === (await sha256Hex(String(upi ?? "").trim().toLowerCase())).slice(0, 16);
   await audit(env, a.uid, "destination_viewed", id, { host: row.host_uid, matches });
-  if (!matches) return err(409, "bank_changed", "The host changed their bank details after asking. Reject this request and ask them to request again.");
-  const [account, upi, name] = await Promise.all([tryDecryptPii(env, p.account_enc), tryDecryptPii(env, p.upi_enc), tryDecryptPii(env, p.name_at_bank_enc)]);
-  return json({ amount: row.amount_rupees, accountName: name, account, ifsc: p.ifsc, upi, upiVerified: p.upi_verified === 1 });
+  if (!matches) return err(409, "upi_changed", "The host changed their UPI ID after asking. Reject this request and ask them to request again.");
+  return json({ amount: row.amount_rupees, accountName: name, upi, upiVerified: p.upi_verified === 1 });
 }
 
 async function adminApprove(req: Request, env: Env, id: string): Promise<Response> {
@@ -457,10 +456,12 @@ async function appPutUpi(req: Request, env: Env): Promise<Response> {
   if (lim) return lim;
   const enc = await encryptPii(env, vpa);
   // Changing the UPI clears any earlier name check; a different destination must be re-verified. Bank columns are untouched.
+  const check = await verifyUpiId(env, vpa); // [HF-UPI-ONLY-1] the one plug-in point for the UPI-verification API (unverified today)
+  if (check === "invalid") return err(422, "invalid_upi", "We could not find that UPI ID. Please check it and try again.");
   await env.DB_META.prepare(
-    `INSERT INTO hf_payout (uid, upi_enc, upi_verified, updated_at) VALUES (?1,?2,0,?3)
-     ON CONFLICT(uid) DO UPDATE SET upi_enc=excluded.upi_enc, upi_verified=0, updated_at=excluded.updated_at`,
-  ).bind(u.uid, enc, Date.now()).run();
+    `INSERT INTO hf_payout (uid, upi_enc, upi_verified, updated_at) VALUES (?1,?2,?3,?4)
+     ON CONFLICT(uid) DO UPDATE SET upi_enc=excluded.upi_enc, upi_verified=excluded.upi_verified, updated_at=excluded.updated_at`,
+  ).bind(u.uid, enc, check === "verified" ? 1 : 0, Date.now()).run();
   void track(env, u.uid, "hf_payout_upi_set", APP, { vpa: maskVpa(vpa) });
   return json({ ok: true, upi: { vpa, nameMatched: null } });
 }

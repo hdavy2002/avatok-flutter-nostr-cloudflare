@@ -1,5 +1,5 @@
 /* [HF-PAYOUT-1] Host withdrawals, shown inside HostDashboard. Worker: GET/POST /api/hosts/me/payouts, POST /api/hosts/me/payouts/:id/cancel.
- * Withdrawals: you ask, we pay your UPI ID and show the bank reference (UTR) here. Whole rupees. */
+ * Withdrawals: you ask, we pay your UPI ID (UPI only, [HF-UPI-ONLY-1]) and show the payment reference (UTR) here. Whole rupees. */
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ApiError, request } from '../../lib/apiClient';
 import { relDate } from '../../lib/hfCallsApi';
@@ -11,7 +11,7 @@ const inr = (n: number): string => formatPaise(Math.round(n * 100));
 interface Req { id: string; amount: number; status: 'requested' | 'approved' | 'paid' | 'rejected' | 'cancelled'; utr: string | null; reason: string | null; createdAt: number; paidAt: number | null }
 interface Info {
   enabled: boolean; minRupees: number; maxPerWeek: number; holdDays: number; hostStatus: string | null;
-  kycOk: boolean; bankOk: boolean; bank: { accountLast4: string | null; ifsc: string | null } | null;
+  kycOk: boolean; upiOk: boolean; /** old name of upiOk */ bankOk?: boolean;
   withdrawable: number; held: number; testEarnings: number; requests: Req[];
 }
 
@@ -23,7 +23,8 @@ const ERRORS: Record<string, string> = {
   insufficient_withdrawable: 'That is more than you can withdraw right now.',
   weekly_limit: 'You have made the most requests allowed this week. Please try again later.',
   kyc_required: 'Please finish your identity check first.',
-  bank_required: 'Please add and verify your bank account first.',
+  upi_required: 'Please add your UPI ID first.',
+  bank_required: 'Please add your UPI ID first.',
   not_live: 'Only live influencers can withdraw.',
   invalid_amount: 'Enter a whole number of rupees.',
 };
@@ -76,7 +77,7 @@ export default function WithdrawPanel({ onChanged, isCurrent }: { onChanged?: ()
   const blocker =
     !info.enabled ? 'Withdrawals open soon.'
       : info.hostStatus !== 'live' ? 'Only live influencers can withdraw.'
-        : !info.kycOk || !info.bankOk ? 'Finish your identity check and bank details to withdraw.'
+        : !info.kycOk || !info.upiOk ? 'Finish your identity check and add your UPI ID to withdraw.'
           : info.withdrawable < minR ? (info.minRupees > 0 ? `You can withdraw once you have at least ${inr(info.minRupees)} available.` : 'You have nothing ready to withdraw yet.')
             : null;
 
@@ -90,7 +91,7 @@ export default function WithdrawPanel({ onChanged, isCurrent }: { onChanged?: ()
     setBusy(false);
     if (r.ok) {
       attemptKey.current = null; setAmount('');
-      setMsg({ tone: 'ok', text: `Request sent for ${inr(n)}. We will pay your bank account and send you the payment reference.` });
+      setMsg({ tone: 'ok', text: `Request sent for ${inr(n)}. We will pay your UPI ID and send you the payment reference.` });
       await load(); if (current()) onChanged?.();
     } else {
       if (r.code !== 'network') attemptKey.current = null;
@@ -117,12 +118,12 @@ export default function WithdrawPanel({ onChanged, isCurrent }: { onChanged?: ()
         <div className="hfc-stat"><strong>{inr(info.held)}</strong><span>held for {info.holdDays} days</span></div>
         <div className="hfc-stat"><strong>{inr(info.testEarnings)}</strong><span>from test credits. Test earnings can’t be withdrawn.</span></div>
       </div>
-      {info.bank ? (
-        <p className="hfc-sub" style={{ margin: '8px 0' }}>Paid to your bank account ending {info.bank.accountLast4}{info.bank.ifsc ? ` (${info.bank.ifsc})` : ''}.</p>
+      {info.upiOk ? (
+        <p className="hfc-sub" style={{ margin: '8px 0' }}>Paid to your UPI ID. Withdrawals go only to UPI.</p>
       ) : info.enabled ? (
-        <p className="hfc-sub" style={{ margin: '8px 0' }}><a href="/hosts/onboarding?step=payout">Add your bank account</a> to withdraw.</p>
+        <p className="hfc-sub" style={{ margin: '8px 0' }}><a href="/hosts/onboarding?step=payout">Add your UPI ID</a> to withdraw.</p>
       ) : null}
-      {blocker && <p className="hfc-sub" role="status" style={{ margin: '8px 0' }}>{blocker}{!info.enabled ? '' : (!info.kycOk || !info.bankOk) ? <> <a href="/hosts/onboarding?step=payout">Continue</a></> : ''}</p>}
+      {blocker && <p className="hfc-sub" role="status" style={{ margin: '8px 0' }}>{blocker}{!info.enabled ? '' : (!info.kycOk || !info.upiOk) ? <> <a href="/hosts/onboarding?step=payout">Continue</a></> : ''}</p>}
       <form onSubmit={submit} style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'flex-end' }}>
         <label style={{ display: 'grid', gap: 4, fontSize: '.9rem' }}>
           Amount in rupees{info.minRupees > 0 ? ` (at least ${inr(info.minRupees)})` : ' (no minimum)'}
@@ -134,7 +135,7 @@ export default function WithdrawPanel({ onChanged, isCurrent }: { onChanged?: ()
       </form>
       {msg && <p role={msg.tone === 'err' ? 'alert' : 'status'} className={msg.tone === 'err' ? 'hfc-err' : 'hfc-sub'} style={{ margin: '8px 0' }}>{msg.text}</p>}
       <p className="hfc-sub" style={{ margin: '8px 0', color: '#785979', fontSize: '.875rem' }}>
-        Earnings can be withdrawn {info.holdDays} days after the call. We pay it to your UPI or bank and send you the payment reference. You can ask for up to {info.maxPerWeek} withdrawals a week.
+        Earnings can be withdrawn {info.holdDays} days after the call. We pay it to your UPI ID (UPI only) and send you the payment reference. You can ask for up to {info.maxPerWeek} withdrawals a week.
       </p>
       {info.requests.length > 0 && (
         <>
@@ -143,7 +144,7 @@ export default function WithdrawPanel({ onChanged, isCurrent }: { onChanged?: ()
             {info.requests.map((r) => (
               <li key={r.id}>
                 <strong>{inr(r.amount)}</strong>
-                <span>{STATUS_TEXT[r.status]}{r.status === 'paid' && r.utr ? ` · Bank reference ${r.utr}` : ''}{r.status === 'rejected' && r.reason ? ` · ${r.reason}` : ''}</span>
+                <span>{STATUS_TEXT[r.status]}{r.status === 'paid' && r.utr ? ` · Payment reference ${r.utr}` : ''}{r.status === 'rejected' && r.reason ? ` · ${r.reason}` : ''}</span>
                 <small>{relDate(r.paidAt ?? r.createdAt)}</small>
                 {r.status === 'requested' && <button type="button" className="hfc-btn" disabled={busy} onClick={() => void cancel(r.id)}>Cancel</button>}
               </li>

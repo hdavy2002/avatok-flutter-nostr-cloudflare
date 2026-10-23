@@ -470,7 +470,7 @@ class _DeleteAccountScreenState extends State<DeleteAccountScreen> {
       ..add(const SizedBox(height: 6))
       ..add(_para('Your account has money in it, so we settle it before deleting anything:'));
     if (s.withdrawable > 0 || s.held > 0) {
-      out.add(_bullet('Earnings of ${_rupees(s.withdrawable + s.held)} are paid to your verified bank account${s.held > 0 ? ' (${_rupees(s.held)} is still in its 7-day hold and is paid when the hold ends)' : ''}.'));
+      out.add(_bullet('Earnings of ${_rupees(s.withdrawable + s.held)} are paid to your UPI ID${s.held > 0 ? ' (${_rupees(s.held)} is still in its 7-day hold and is paid when the hold ends)' : ''}.'));
     }
     if (s.refundable + s.manualRefund > 0) {
       out.add(_bullet('Your wallet money of ${_rupees(s.refundable + s.manualRefund)} is never refunded to your card. Withdraw it to your UPI with Withdraw before closing (one-time ID and UPI check). If it is under ₹1 (too small to pay out) you can choose to give it up.'));
@@ -492,7 +492,7 @@ class _DeleteAccountScreenState extends State<DeleteAccountScreen> {
                 ? 'I understand that ${_rupees(_smallLeft)} in my wallet is too small to pay out and I give it up.'
                 : s.bankOk
                 ? 'I understand that ${_rupees(s.forfeitRupees)} cannot be paid out and will be lost.'
-                : 'I have no verified bank account. I give up ${_rupees(s.forfeitRupees)} of earnings.',
+                : 'I have no UPI ID. I give up ${_rupees(s.forfeitRupees)} of earnings.',
             style: t(14, w: FontWeight.w700, h: 1.35),
           ),
         ));

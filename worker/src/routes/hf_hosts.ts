@@ -44,12 +44,12 @@ async function kycSummary(env: Env, uid: string) {
   const [kyc, selfie, payout] = await Promise.all([
     env.DB_META.prepare("SELECT role, aadhaar_last4, gender, verified_at FROM hf_kyc WHERE uid=?1").bind(uid).first<{ role: string; aadhaar_last4: string | null; gender: string | null; verified_at: number | null }>().catch(() => null),
     env.DB_META.prepare("SELECT review_status, review_reason FROM hf_selfie WHERE uid=?1 ORDER BY created_at DESC, id DESC LIMIT 1").bind(uid).first<{ review_status: string; review_reason: string | null }>().catch(() => null),
-    env.DB_META.prepare("SELECT name_match, account_last4, upi_verified FROM hf_payout WHERE uid=?1").bind(uid).first<{ name_match: number; account_last4: string | null; upi_verified: number }>().catch(() => null),
+    env.DB_META.prepare("SELECT upi_enc, account_last4, upi_verified FROM hf_payout WHERE uid=?1").bind(uid).first<{ upi_enc: string | null; account_last4: string | null; upi_verified: number }>().catch(() => null),
   ]);
   return {
     aadhaar: { done: !!kyc?.verified_at, gender: kyc?.gender ?? null, last4: kyc?.aadhaar_last4 ?? null, role: kyc?.role ?? null },
     selfie: { status: selfie?.review_status ?? "none", reason: selfie?.review_status === "rejected" ? selfie.review_reason : null },
-    payout: { done: !!payout && payout.name_match === 1, match: payout ? payout.name_match === 1 : false, accountLast4: payout?.account_last4 ?? null, upiVerified: payout ? payout.upi_verified === 1 : false },
+    payout: { done: !!payout?.upi_enc, match: !!payout?.upi_enc, /* [HF-UPI-ONLY-1] done = a UPI ID is on file */ accountLast4: payout?.account_last4 ?? null, upiVerified: payout ? payout.upi_verified === 1 : false },
   };
 }
 

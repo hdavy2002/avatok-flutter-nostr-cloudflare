@@ -107,7 +107,7 @@ export default function Withdraw({ skin, next, where, debtOpen, onChanged }: Pro
       await requestWithdrawal(n, attempt.current.key);
       attempt.current = null; edited.current = false; setStep('form');
       capture('hf_withdraw_submitted', { ...uid(), amount_rupees: n });
-      setMsg({ kind: 'ok', text: `Request sent for ${formatPaise(n * 100)}. A person will check it, then we pay it to your UPI ID and show the bank reference here.` });
+      setMsg({ kind: 'ok', text: `Request sent for ${formatPaise(n * 100)}. A person will check it, then we pay it to your UPI ID and show the payment reference here.` });
       await load(); onChanged?.();
     } catch (e) {
       const code = e instanceof ApiError && e.body && typeof e.body === 'object' ? String((e.body as { error?: unknown }).error ?? '') : '';
@@ -171,7 +171,7 @@ export default function Withdraw({ skin, next, where, debtOpen, onChanged }: Pro
       <b>Please check before you confirm</b>
       <div>You receive: <b>{formatPaise(n * 100)}</b> (no fee)</div>
       <div>Sent to: <b>{maskUpi(sum.upi.vpa)}</b></div>
-      <div className="small muted">When: not instant. This money is set aside from your wallet now. A person checks every request, then pays it to your UPI ID, and you will see the status and the bank reference (UTR) below. You can cancel while it says “Waiting for our check”.</div>
+      <div className="small muted">When: not instant. This money is set aside from your wallet now. A person checks every request, then pays it to your UPI ID, and you will see the status and the payment reference (UTR) below. You can cancel while it says “Waiting for our check”.</div>
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
         <button type="button" className={primary} disabled={busy} onClick={() => void submit()}>{busy ? 'Sending…' : `Confirm ${formatPaise(n * 100)}`}</button>
         <button type="button" className={plain} disabled={busy} onClick={() => setStep('form')}>Go back</button>
@@ -186,7 +186,7 @@ export default function Withdraw({ skin, next, where, debtOpen, onChanged }: Pro
         {requests.slice(0, 12).map(r => <li key={r.id} className={skin === 'h3' ? 'h3-rcpt' : undefined}>
           <div><b>{formatPaise(r.amount * 100)}</b>{r.exit ? ' · account closing' : ''}
             <div className="small muted">{STATUS_TEXT[r.status]}
-              {r.status === 'paid' && r.utr ? ` · Bank reference (UTR) ${r.utr}` : ''}
+              {r.status === 'paid' && r.utr ? ` · Payment reference (UTR) ${r.utr}` : ''}
               {r.status === 'rejected' ? ` · ${r.reason || 'We could not pay this request'}. The money is back in your balance.` : ''}
               {' · '}{day(r.paidAt ?? r.createdAt)}</div></div>
           {r.status === 'requested' && !r.exit && <button type="button" className={small} disabled={busy} onClick={() => void cancel(r.id)}>Cancel</button>}

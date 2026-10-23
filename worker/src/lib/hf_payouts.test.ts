@@ -1,6 +1,6 @@
 // [HF-PAYOUT-1] Pure withdrawable math, request validation codes, UTR and state-machine rules.
 import { describe, it, expect } from "vitest";
-import { computeWithdrawable, validatePayoutRequest, cleanUtr, canApprove, canCancel, canPay, canReject, parseSnapshot, type RequestCheck } from "./hf_payouts";
+import { computeWithdrawable, validatePayoutRequest, cleanUtr, canApprove, canCancel, canPay, canReject, parseSnapshot, maskUpiId, verifyUpiId, type RequestCheck } from "./hf_payouts";
 
 describe("computeWithdrawable", () => {
   it("is the smaller of the wallet ceiling and the matured paid-call ceiling", () => {
@@ -26,7 +26,7 @@ describe("computeWithdrawable", () => {
   });
 });
 
-const base: RequestCheck = { enabled: true, hostStatus: "live", kycOk: true, bankOk: true, amount: 600, minRupees: 500, withdrawable: 800, recentCount: 0, maxPerWeek: 2 };
+const base: RequestCheck = { enabled: true, hostStatus: "live", kycOk: true, upiOk: true, amount: 600, minRupees: 500, withdrawable: 800, recentCount: 0, maxPerWeek: 2 };
 const code = (o: Partial<RequestCheck>) => { const v = validatePayoutRequest({ ...base, ...o }); return v.ok ? "ok" : `${v.status}:${v.error}`; };
 
 describe("validatePayoutRequest", () => {
@@ -36,7 +36,7 @@ describe("validatePayoutRequest", () => {
     expect(code({ hostStatus: "paused" })).toBe("403:not_live");
     expect(code({ hostStatus: null })).toBe("403:not_live");
     expect(code({ kycOk: false })).toBe("409:kyc_required");
-    expect(code({ bankOk: false })).toBe("409:bank_required");
+    expect(code({ upiOk: false })).toBe("409:upi_required");
     expect(code({ amount: "abc" })).toBe("400:invalid_amount");
     expect(code({ amount: 600.5 })).toBe("400:invalid_amount");
     expect(code({ amount: -5 })).toBe("400:invalid_amount");
@@ -70,8 +70,14 @@ describe("UTR and state machine", () => {
     expect(canReject("requested")).toBe(true); expect(canReject("approved")).toBe(true); expect(canReject("paid")).toBe(false);
   });
   it("snapshot parsing never throws", () => {
-    expect(parseSnapshot('{"accountLast4":"1234","ifsc":"X","name":"A"}')).toEqual({ accountLast4: "1234", ifsc: "X", name: "A" });
-    expect(parseSnapshot("nope")).toEqual({ accountLast4: null, ifsc: null, name: null });
-    expect(parseSnapshot(null)).toEqual({ accountLast4: null, ifsc: null, name: null });
+    expect(parseSnapshot('{"accountLast4":"1234","ifsc":"X","name":"A"}')).toEqual({ upi: null, upiRef: null, accountLast4: "1234", ifsc: "X", name: "A" });
+    expect(parseSnapshot('{"upi":"a••@okhdfc","upiRef":"abc","name":"A"}')).toMatchObject({ upi: "a••@okhdfc", upiRef: "abc" });
+    expect(parseSnapshot("nope")).toEqual({ upi: null, upiRef: null, accountLast4: null, ifsc: null, name: null });
+    expect(parseSnapshot(null)).toEqual({ upi: null, upiRef: null, accountLast4: null, ifsc: null, name: null });
+  });
+  it("UPI-only: masks the ID and has one verification hook that says unverified today", async () => {
+    expect(maskUpiId("asha@okhdfc")).toBe("a•••@okhdfc");
+    expect(maskUpiId(null)).toBeNull();
+    expect(await verifyUpiId({} as any, "asha@okhdfc")).toBe("unverified");
   });
 });

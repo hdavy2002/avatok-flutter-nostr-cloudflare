@@ -118,12 +118,12 @@ function Drawer({ uid, standard, onClose, onChanged }: { uid: string; standard: 
   const intro = d?.intro ?? null;
   const [introReason, setIntroReason] = useState('');
   const selfie = d?.kyc.selfie;
-  const ready = !!d && selfie?.status === 'approved' && !!d.kyc.payout?.nameMatch && d.media.length > 0;
+  const ready = !!d && selfie?.status === 'approved' && !!d.kyc.payout?.upiOnFile && d.media.length > 0;
 
   const checks = [
     { ok: !!(profile?.url || h?.avatarUrl), label: 'Profile photo' },
     { ok: selfie?.status === 'approved', label: 'Selfie approved' },
-    { ok: !!d?.kyc.payout?.nameMatch, label: 'Payout name matches' },
+    { ok: !!d?.kyc.payout?.upiOnFile, label: 'UPI ID for withdrawals added' },
     { ok: intro?.status === 'approved', label: 'Voice intro approved' },
   ];
 
@@ -240,8 +240,8 @@ function Drawer({ uid, standard, onClose, onChanged }: { uid: string; standard: 
                   <div><dt>18+</dt><dd>{d.kyc.ageOk ? 'yes' : 'no'}</dd></div>
                 </dl>
                 <div className="hfh-acts" style={{ margin: '12px 0' }}>
-                  <span>Payout name match:</span>
-                  <DesiChip tone={d.kyc.payout?.nameMatch ? 'tea' : 'red'}>{d.kyc.payout ? (d.kyc.payout.nameMatch ? 'Matches' : 'Does not match') : 'Not added'}</DesiChip>
+                  <span>Withdrawal UPI ID:</span>
+                  <DesiChip tone={d.kyc.payout?.upiOnFile ? 'tea' : 'red'}>{d.kyc.payout?.upiOnFile ? (d.kyc.payout.upiVerified ? 'Added, verified' : 'Added, not verified yet') : 'Not added'}</DesiChip>
                   <span>Selfie:</span>
                   <DesiChip tone={selfie?.status === 'approved' ? 'tea' : selfie?.status === 'rejected' ? 'red' : 'gold'}>{selfie ? selfie.status : 'none'}</DesiChip>
                 </div>
@@ -268,7 +268,7 @@ function Drawer({ uid, standard, onClose, onChanged }: { uid: string; standard: 
               <label htmlFor="hf-reason" className="hfh-field">Reason (needed to reject or pause; shown to the host)
                 <textarea id="hf-reason" value={reason} onChange={(e) => setReason(e.target.value)} rows={2} maxLength={500} />
               </label>
-              {!ready && h.status !== 'live' && <p className="hfa-note" style={{ margin: 0 }}>Approve needs: selfie approved, payout name match and photos present.</p>}
+              {!ready && h.status !== 'live' && <p className="hfa-note" style={{ margin: 0 }}>Approve needs: selfie approved, a withdrawal UPI ID and photos present.</p>}
               <div className="hfh-acts">
                 {h.status !== 'live' && <button type="button" className="hfa-btn tea" disabled={busy || !ready} onClick={() => void run('host_approve', () => hfAdminApi.decide(uid, 'approve'), false, 'Host is live. They were told on WhatsApp.')}>Approve</button>}
                 {h.status !== 'rejected' && <button type="button" className="hfa-btn danger" disabled={busy} onClick={() => void run('host_reject', () => hfAdminApi.decide(uid, 'reject', reason), true, 'Host sent back.')}>Send back</button>}

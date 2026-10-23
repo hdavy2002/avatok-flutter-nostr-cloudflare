@@ -58,10 +58,10 @@ export const mockApi: OnboardingApi = {
     await wait(700, 1400);
     return { ok: true };
   },
-  async verifyPayout({ upi, account, ifsc }) {
+  async verifyPayout({ upi }) {
     await wait(900, 1600);
-    if (!/^[A-Z]{4}0[A-Z0-9]{6}$/.test(ifsc) || !/^\d{9,18}$/.test(account) || !upi.includes('@')) return { ok: false, error: 'We could not check these details. Please look at them again.' };
-    return { ok: true, nameAtBank: 'SEEMA DEVI', match: true };
+    if (!upi.includes('@')) return { ok: false, error: 'We could not save this UPI ID. Please look at it again.' };
+    return { ok: true, match: true };
   },
   async listAvatars() {
     await wait(300, 700);
