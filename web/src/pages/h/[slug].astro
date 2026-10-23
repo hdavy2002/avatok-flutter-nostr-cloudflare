@@ -173,7 +173,7 @@ const navItems = [
                 <SaveHostButton client:only="react" slug={host.slug} name={host.displayName} surface="profile" variant="icon" />
                 <ShareButton client:idle url={pageUrl} text={`Talk to ${name}`} />
               </div>
-              <p class="disc">Photos are AI-generated from an avatar the influencer chose.{audioUrl && ' The voice introduction is the influencer’s own.'}{identityVerified && ' This influencer has completed our identity and video checks.'}</p>
+              <p class="disc">Photos are AI-generated from an avatar the influencer chose.{audioUrl && ' The voice introduction is the influencer’s own.'}{identityVerified && ' This influencer’s WhatsApp number is verified.'}</p>
             </div>
           </div>
         </section>
@@ -251,7 +251,7 @@ const navItems = [
               {langs.length > 0 && <div class="fact"><span class="ic" aria-hidden="true">🗣︎</span><span><b>Languages</b>{langs.join(', ')}</span></div>}
               {host.style && <div class="fact"><span class="ic" aria-hidden="true">☕︎</span><span><b>Style</b>{STYLE_LABEL[host.style] ?? host.style}</span></div>}
               {host.lgbtqFriendly && <div class="fact"><span class="ic" aria-hidden="true">🌈︎</span><span><b>Welcome</b>LGBTQ+ friendly</span></div>}
-              {identityVerified && <div class="fact"><span class="ic" aria-hidden="true">✓</span><span><b>ID-verified</b>Identity and video checks completed</span></div>}
+              {identityVerified && <div class="fact"><span class="ic" aria-hidden="true">✓</span><span><b>Verified</b>WhatsApp number verified by OTP</span></div>}
               <div class="fact"><span class="ic" aria-hidden="true">🔒︎</span><span><b>Private</b>Numbers never shared</span></div>
             </div>
           </div>
