@@ -1,10 +1,19 @@
 // @ts-nocheck
+// [HF-DAILY-FLOWS-1] LIVE MODE (data-live="1", used by /marketplace only): the creators are the real live hosts from GET /api/hf/hosts,
+// cards are real links to /h/<slug>, "Book call" opens the profile (the real call/booking flow lives there), the heart saves to
+// My Fraands (/api/hf/favourites) and "Ask them to join" is a real invite vote. /explore-preview keeps the sample data.
+import { API_BASE } from './env';
+import { capture, captureException } from './analytics';
+import { LANGUAGE_NAMES, langLabel } from './hfLanguages';
 // [HF-EXPLORE-V2-1] Client behaviour for /explore-preview: search + autocomplete, live filters, Grid/Reels/List views,
 // simulated official embeds and the 3-step Book Call drawer. All creators are SAMPLE data; wiring to D1 comes later.
 export function initExplorePreview(){
 const ROOT=document.getElementById('xp');if(!ROOT)return;
 const IMG=JSON.parse(document.getElementById('xp-img')?.textContent||'{}');
 const BRAND=ROOT.dataset.brand||'';
+const LIVE=ROOT.dataset.live==='1';
+const FAV={on:false,set:new Set(),busy:new Set()};
+const ev=(name,props)=>{try{capture(name,props)}catch(e){}};
 
 const $=(s,r=document)=>r.querySelector(s), $$=(s,r=document)=>[...r.querySelectorAll(s)];
 const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
@@ -44,7 +53,7 @@ const catImg=(k,cls='')=>`<img class="${cls}" src="${IMG['cat-'+k.toLowerCase()]
 
 
 /* ---------- sample data (dummy until wired to D1) ---------- */
-const C=[
+let C=LIVE?[]:[
  {id:'meera',name:'Meera Joshi',h:'meera.unfiltered',pl:['ig','yt'],cat:['Lifestyle','Travel'],lang:['Hindi','English'],rate:20,st:'online',v:'1.2M',f:'840K',ver:true,g:'Female',img:'sample-01',tags:['featured','popular'],today:true},
  {id:'kabir',name:'Kabir Malhotra',h:'kabirkehtahai',pl:['yt','ig'],cat:['Comedy'],lang:['Hindi','English'],rate:15,st:'busy',v:'842K',f:'1.1M',ver:true,g:'Male',img:'sample-02',tags:['featured','popular'],today:true},
  {id:'sonalim',name:'Sonali Mehta',h:'sonali.style',pl:['ig','fb'],cat:['Fashion'],lang:['Hindi','Marathi'],rate:16,st:'online',v:'356K',f:'3.4M',ver:true,g:'Female',img:'sample-03',tags:['featured'],today:true},
@@ -60,7 +69,7 @@ const C=[
  {id:'riya',name:'Riya Sen',h:'riya.glowup',pl:['ig','fb'],cat:['Beauty'],lang:['Bengali','Hindi'],rate:18,st:'offline',v:'97K',f:'150K',ver:false,g:'Female',img:'sample-11',tags:['new'],today:false},
  {id:'vikram',name:'Vikram Nair',h:'vikram.explains',pl:['yt'],cat:['Education'],lang:['Malayalam','English'],rate:20,st:'online',v:'—',f:'480K',ver:false,g:'Male',img:'sample-09',tags:['new'],today:true,video:'unavailable'}
 ];
-const D=[
+let D=LIVE?[]:[
  {id:'d1',name:'Sonali Sharma',h:'sonali.sharma',pl:['ig'],cat:['Gaming','Lifestyle'],lang:['Hindi'],f:'12.5M',img:'art-06',asks:342},
  {id:'d2',name:'Rahul Kulkarni',h:'rahulcooks',pl:['yt'],cat:['Food'],lang:['Marathi','Hindi'],f:'3.4M',img:'art-02',asks:128},
  {id:'d3',name:'Fatima Shaikh',h:'fatima.poetry',pl:['ig'],cat:['Education'],lang:['Urdu','Hindi'],f:'1.9M',img:'art-01',asks:96},
@@ -117,14 +126,71 @@ function row(c){
  </article>`;
 }
 
+
+/* ---------- live mode: real hosts ---------- */
+const profileUrl=c=>'/h/'+encodeURIComponent(c.id);
+const money0=n=>'₹'+(Number(n)%1?Number(n).toFixed(2):Number(n));
+const initial=c=>`<div class="poster ph" aria-hidden="true"><span>${esc((c.name||'?').trim().charAt(0).toUpperCase())}</span></div>`;
+const livePoster=c=>c.img?`<img class="poster" src="${esc(c.img)}" alt="" loading="lazy" decoding="async">`:initial(c);
+const heartBtn=c=>!FAV.on?'':`<button class="heart" type="button" data-heart="${esc(c.id)}" data-name="${esc(c.name)}" aria-pressed="${FAV.set.has(c.id)}" aria-label="${FAV.set.has(c.id)?'Remove '+esc(c.name)+' from My Fraands':'Save '+esc(c.name)+' to My Fraands'}"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="${FAV.set.has(c.id)?'currentColor':'none'}" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20s-8-4.6-8-10a4.5 4.5 0 0 1 8-2.8A4.5 4.5 0 0 1 20 10c0 5.4-8 10-8 10Z"/></svg></button>`;
+const ratingTxt=c=>c.rc>0&&c.rating!=null?`★ ${Number(c.rating).toFixed(1)} (${c.rc}) &middot; `:'';
+const stTxtOf=st=>({online:'Online now',busy:'On a call',offline:'Offline'}[st]||'Offline');
+function lcard(c,i){
+ const url=profileUrl(c);
+ return `<article class="card" style="--tile:url(${IMG[TILES[i%4]]})" data-id="${esc(c.id)}">
+  <img class="rosette" src="${IMG.rosette}" alt="" aria-hidden="true">
+  <div class="vid">${livePoster(c)}<div class="shade"></div>
+   <a class="card-link" href="${url}" data-card-link="${esc(c.id)}" tabindex="-1" aria-hidden="true"></a>
+   <div class="meta"><span class="status ${c.st}"><i></i><span>${stTxtOf(c.st)}</span></span></div>
+   ${heartBtn(c)}
+  </div>
+  <div class="info">
+   <div class="nm"><h3><a href="${url}" data-card-link="${esc(c.id)}">${esc(c.name)}</a></h3>${c.ver?`<img class="vbadge" src="${IMG.verified}" alt="Verified" title="ID-verified influencer">`:''}</div>
+   <div class="handle">${ratingTxt(c)}${esc(c.tag||'New influencer')}</div>
+   <div class="chips">${c.cat.slice(0,2).map(x=>`<span>${esc(x)}</span>`).join('')}${c.lang.slice(0,2).map(x=>`<span class="lang">${esc(x)}</span>`).join('')}</div>
+   <div class="buy"><div class="rate">${money0(c.rate)}<small>/min</small></div><a class="book" href="${url}" data-card-link="${esc(c.id)}">${I.phone}Book call</a></div>
+  </div>
+ </article>`;
+}
+function lrow(c){
+ const url=profileUrl(c);
+ return `<article class="row" data-id="${esc(c.id)}">
+  <div class="th">${c.img?`<img src="${esc(c.img)}" alt="" loading="lazy">`:initial(c)}</div>
+  <div style="min-width:0"><div class="nm"><h3><a href="${url}" data-card-link="${esc(c.id)}">${esc(c.name)}</a></h3>${c.ver?`<img class="vbadge" src="${IMG.verified}" alt="Verified">`:''}</div>
+   <div class="handle" style="margin-top:2px">${ratingTxt(c)}${esc(c.tag||'New influencer')}</div></div>
+  <div class="chips row-chips">${c.cat.map(x=>`<span>${esc(x)}</span>`).join('')}${c.lang.map(x=>`<span class="lang">${esc(x)}</span>`).join('')}</div>
+  <span class="status ${c.st} row-status"><i></i>${stTxtOf(c.st)}</span>
+  <div style="display:flex;align-items:center;gap:14px">${heartBtn(c)}<div class="rate">${money0(c.rate)}<small>/min</small></div><a class="book" href="${url}" data-card-link="${esc(c.id)}">${I.phone}<span>Book</span></a></div>
+ </article>`;
+}
+function ldcard(d,i){
+ const ig=d.pl[0]==='ig';
+ return `<article class="card disc" style="--tile:url(${IMG.tilelavender})" data-id="${esc(d.id)}">
+  <div class="vid">${d.avatar?`<img class="poster" src="${esc(d.avatar)}" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer">`:initial(d)}<div class="shade"></div>
+   <div class="plat"><span title="${PLN[d.pl[0]]}">${PL[d.pl[0]]}</span></div>
+   <div class="meta" style="justify-content:flex-end"><span class="tag no" style="background:var(--paper)">Not bookable yet</span></div>
+  </div>
+  <div class="info">
+   <div class="nm"><h3>${esc(d.name)}</h3></div>
+   <div class="handle">@${esc(d.h)} &middot; ${d.f} on ${PLN[d.pl[0]]}</div>
+   <button class="invite" type="button" data-vote="${esc(d.vkey)}" data-invite="${esc(d.id)}" aria-pressed="false">Ask them to join</button>
+   <div class="asked" data-asked="${esc(d.id)}">${d.asks} fans asked so far</div>
+  </div>
+ </article>`;
+}
+const CARDF=(c,i)=>LIVE?lcard(c,i):card(c,i);
+const DCARDF=(c,i)=>LIVE?ldcard(c,i):dcard(c,i);
+const ROWF=c=>LIVE?lrow(c):row(c);
+const compactN=n=>n>=1e6?(n/1e6).toFixed(n>=1e7?0:1).replace(/\.0$/,'')+'M':n>=1e3?(n/1e3).toFixed(n>=1e4?0:1).replace(/\.0$/,'')+'K':String(n||0);
+
 /* ---------- state ---------- */
 const S={q:'',platform:new Set(),category:new Set(),language:new Set(),gender:new Set(),avail:'any',pmin:'',pmax:'',sort:'rec',view:'grid'};
 const LANGS=['Hindi','English','Tamil','Telugu','Punjabi','Bengali','Marathi','Gujarati','Malayalam','Garhwali'];
 const F=[
- {k:'platform',label:'Platform',type:'multi',opts:[['ig','Instagram'],['yt','YouTube'],['fb','Facebook']]},
+ {k:'platform',liveHide:true,label:'Platform',type:'multi',opts:[['ig','Instagram'],['yt','YouTube'],['fb','Facebook']]},
  {k:'category',label:'Category',type:'multi',opts:Object.keys(CAT).map(x=>[x,x])},
  {k:'language',label:'Language',type:'multi',opts:LANGS.map(x=>[x,x])},
- {k:'gender',label:'Gender',type:'multi',opts:[['Female','Female'],['Male','Male']],note:'Only shown when the creator chose to add it to their profile.'},
+ {k:'gender',liveHide:true,label:'Gender',type:'multi',opts:[['Female','Female'],['Male','Male']],note:'Only shown when the creator chose to add it to their profile.'},
  {k:'avail',label:'Availability',type:'radio',opts:[['any','Any time'],['online','Online now'],['today','Available today'],['schedule','Schedule a call']]},
  {k:'price',label:'Price / min',type:'price'},
  {k:'sort',label:'Sort',type:'radio',opts:[['rec','Recommended'],['pop','Popular'],['recent','Recently active'],['plo','Price: low to high'],['phi','Price: high to low']]}
@@ -143,7 +209,7 @@ function filtered(){
   &&(S.avail==='any'||(S.avail==='online'&&c.st==='online')||(S.avail==='today'&&c.today)||S.avail==='schedule')
   &&(S.pmin===''||c.rate>=+S.pmin)&&(S.pmax===''||c.rate<=+S.pmax));
  const st={online:0,busy:1,offline:2};
- if(S.sort==='pop')r.sort((a,b)=>views(b.v)-views(a.v));
+ if(S.sort==='pop')r.sort((a,b)=>LIVE?((b.pop||0)-(a.pop||0)):(views(b.v)-views(a.v)));
  else if(S.sort==='recent')r.sort((a,b)=>st[a.st]-st[b.st]);
  else if(S.sort==='plo')r.sort((a,b)=>a.rate-b.rate);
  else if(S.sort==='phi')r.sort((a,b)=>b.rate-a.rate);
@@ -154,16 +220,20 @@ const active=()=>!!(S.q||S.platform.size||S.category.size||S.language.size||S.ge
 
 /* ---------- render ---------- */
 function renderList(list,el,kind){
- if(S.view==='list'&&kind!=='disc'){el.className='list';el.innerHTML=list.map(row).join('');return}
- if(S.view==='reels'){el.className='reels';el.innerHTML=list.map(kind==='disc'?dcard:card).join('');$$('.card .info .buy .book',el).forEach(b=>b.classList.add('wide'));return}
+ if(S.view==='list'&&kind!=='disc'){el.className='list';el.innerHTML=list.map(ROWF).join('');return}
+ if(S.view==='reels'){el.className='reels';el.innerHTML=list.map(kind==='disc'?DCARDF:CARDF).join('');$$('.card .info .buy .book',el).forEach(b=>b.classList.add('wide'));return}
  el.className=kind==='grid'?'grid':'rail';
- el.innerHTML=list.map(kind==='disc'?dcard:card).join('');
+ el.innerHTML=list.map(kind==='disc'?DCARDF:CARDF).join('');
 }
 function renderShelves(){
- const sh={featured:C.filter(c=>c.tags.includes('featured')),popular:C.filter(c=>c.tags.includes('popular')).sort((a,b)=>views(b.v)-views(a.v)),
+ const sh=LIVE?{featured:[],popular:C.filter(c=>c.rc>0).sort((a,b)=>(b.pop||0)-(a.pop||0)),available:C.filter(c=>c.st==='online'),new:C}
+  :{featured:C.filter(c=>c.tags.includes('featured')),popular:C.filter(c=>c.tags.includes('popular')).sort((a,b)=>views(b.v)-views(a.v)),
   available:C.filter(c=>c.st==='online'),new:C.filter(c=>c.tags.includes('new'))};
  $$('[data-shelf]').forEach(el=>{const k=el.dataset.shelf;const inner=document.createElement('div');inner.id='rail-'+k;el.innerHTML='';el.appendChild(inner);
+  const list=k==='discovered'?D:sh[k];
+  const sec=el.closest('section');if(LIVE&&sec)sec.hidden=!list.length;
   if(k==='discovered')renderList(D,inner,'disc');else renderList(sh[k],inner,'rail')});
+ if(LIVE){const m=$('.marq');if(m)m.hidden=!C.length;const e=$('#liveEmpty');if(e)e.hidden=!!C.length}
 }
 function renderResults(){
  const on=active();$('#results').hidden=!on;$('#shelves').hidden=on;
@@ -185,21 +255,22 @@ function renderResults(){
   if(!r.length){
    const ds=D.filter(d=>matchQ(d,S.q));
    body.className='';
-   body.innerHTML=`<div class="empty"><img src="${IMG.empty}" alt="" width="640" height="512"><h3>No bookable creators match yet.</h3><p>Try fewer filters, or a different name or topic.</p>${ds.length?`<p style="margin-top:18px"><b>Found on socials, not on ${BRAND} yet:</b></p><div class="grid" style="text-align:left">${ds.map(dcard).join('')}</div>`:''}</div>`;
+   body.innerHTML=`<div class="empty"><img src="${IMG.empty}" alt="" width="640" height="512"><h3>No bookable creators match yet.</h3><p>Try fewer filters, or a different name or topic.</p>${ds.length?`<p style="margin-top:18px"><b>Found on socials, not on ${BRAND} yet:</b></p><div class="grid" style="text-align:left">${ds.map(DCARDF).join('')}</div>`:''}</div>`;
   } else {
    renderList(r,body,'grid');
    const ds=S.q?D.filter(d=>matchQ(d,S.q)):[];
-   if(ds.length){body.insertAdjacentHTML('afterend','');const w=document.createElement('div');w.innerHTML=`<div class="eyebrow" style="margin-top:56px">Also found on socials &middot; not bookable yet</div><div class="grid">${ds.map(dcard).join('')}</div>`;body.appendChild(w);w.style.gridColumn='1/-1'}
+   if(ds.length){body.insertAdjacentHTML('afterend','');const w=document.createElement('div');w.innerHTML=`<div class="eyebrow" style="margin-top:56px">Also found on socials &middot; not bookable yet</div><div class="grid">${ds.map(DCARDF).join('')}</div>`;body.appendChild(w);w.style.gridColumn='1/-1'}
   }
  },260);
 }
 function renderFilters(){
- $('#frow').innerHTML=F.map(f=>{
+ $('#frow').innerHTML=F.filter(f=>!(LIVE&&f.liveHide)).map(f=>{
   let n=0;if(f.type==='multi')n=S[f.k].size;else if(f.k==='avail')n=S.avail!=='any'?1:0;else if(f.k==='price')n=(S.pmin!==''||S.pmax!=='')?1:0;else if(f.k==='sort')n=0;
   const lab=f.k==='sort'?'Sort: '+F[6].opts.find(o=>o[0]===S.sort)[1]:f.label;
   return `<div class="fdrop"><button class="fbtn${n?' on':''}" type="button" data-f="${f.k}" aria-expanded="false" aria-haspopup="true">${lab}${n?`<span class="n">${n}</span>`:''}${I.down}</button></div>`}).join('');
 }
 function renderCats(){
+ if(LIVE){const w=$('#cats');if(w)w.closest('.wrap').hidden=true;const t=$('#tiles');if(t)t.closest('section').hidden=true;return}
  const all=`<button class="cat" type="button" data-cat="" aria-pressed="${!S.category.size}">${catImg('all')}<span>All</span></button>`;
  $('#cats').innerHTML=all+Object.keys(CAT).map(k=>`<button class="cat" type="button" data-cat="${k}" aria-pressed="${S.category.has(k)}">${catImg(k)}<span>${k}</span></button>`).join('');
  $('#tiles').innerHTML=Object.keys(CAT).map(k=>{const n=C.filter(c=>c.cat.includes(k)).length;return `<button class="tile" type="button" data-cat="${k}">${catImg(k)}<span><b>${k}</b><span>${n*37+12} creators</span></span></button>`}).join('');
@@ -248,7 +319,7 @@ function suggest(){
  const reg=C.filter(c=>matchQ(c,v)).slice(0,5),dis=D.filter(d=>matchQ(d,v)).slice(0,3);
  const topics=[...Object.keys(CAT),...LANGS].filter(t=>t.toLowerCase().startsWith(v.toLowerCase())).slice(0,3);
  items=[];let h='';
- if(reg.length){h+='<h4>On ${BRAND} &middot; bookable</h4>';reg.forEach(c=>{items.push({t:'c',c});h+=`<button class="sg" type="button" role="option" data-i="${items.length-1}">${avatar(c)}<span class="who"><b>${esc(c.name)}</b> ${c.ver?`<img src="${IMG.verified}" alt="Verified" style="width:20px;height:20px;vertical-align:-4px">`:''}<span>@${esc(c.h)} &middot; ${c.f} followers &middot; ₹${c.rate}/min</span></span><span class="tag ok">${c.st==='online'?'Online':'Bookable'}</span></button>`})}
+ if(reg.length){h+='<h4>On ${BRAND} &middot; bookable</h4>';reg.forEach(c=>{items.push({t:'c',c});h+=`<button class="sg" type="button" role="option" data-i="${items.length-1}">${avatar(c)}<span class="who"><b>${esc(c.name)}</b> ${c.ver?`<img src="${IMG.verified}" alt="Verified" style="width:20px;height:20px;vertical-align:-4px">`:''}<span>${LIVE?esc(c.tag||'New influencer'):'@'+esc(c.h)+' &middot; '+c.f+' followers'} &middot; ${money0(c.rate)}/min</span></span><span class="tag ok">${c.st==='online'?'Online':'Bookable'}</span></button>`})}
  if(dis.length){h+='<h4>Found on socials &middot; not on ${BRAND} yet</h4>';dis.forEach(d=>{items.push({t:'d',d});h+=`<button class="sg" type="button" role="option" data-i="${items.length-1}">${avatar(d)}<span class="who"><b>${esc(d.name)}</b><span>@${esc(d.h)} &middot; ${d.f} on ${PLN[d.pl[0]]}</span></span><span class="tag no">Not bookable</span></button>`})}
  if(topics.length){h+='<h4>Topics &amp; languages</h4>';topics.forEach(t=>{items.push({t:'topic',v:t});h+=`<button class="sg" type="button" role="option" data-i="${items.length-1}"><span class="av" style="display:grid;place-items:center;background:#bfc2ee">${CAT[t]?catImg(t):'<b style="font-family:var(--head)">अ</b>'}</span><span class="who"><b>${t}</b><span>${CAT[t]?'Category':'Language'}</span></span></button>`})}
  items.push({t:'all'});h+=`<button class="sg" type="button" role="option" data-i="${items.length-1}"><span class="av" style="display:grid;place-items:center;background:var(--yellow)"><svg viewBox="0 0 24 24" fill="none" stroke="#30245f" stroke-width="2.6" style="width:22px;height:22px"><circle cx="10" cy="10" r="6.5"/><path d="m15 15 6 6"/></svg></span><span class="who"><b>Search &ldquo;${esc(v)}&rdquo; in all creators</b></span></button>`;
@@ -256,7 +327,7 @@ function suggest(){
 }
 function pick(i){
  const it=items[i];if(!it)return;sg.hidden=true;
- if(it.t==='c'){openBooking(it.c.id);return}
+ if(it.t==='c'){if(LIVE){location.href=profileUrl(it.c);return}openBooking(it.c.id);return}
  if(it.t==='q'){S.q=it.v;q.value=it.v}
  else if(it.t==='d'){S.q=it.d.name;q.value=it.d.name}
  else if(it.t==='topic'){q.value='';S.q='';(CAT[it.v]?S.category:S.language).add(it.v)}
@@ -289,10 +360,13 @@ document.addEventListener('click',e=>{
  if(b=t.closest('[data-rm]')){const k=b.dataset.rm,v=b.dataset.v;if(k==='q'){S.q='';q.value=''}else if(k==='avail')S.avail='any';else if(k==='sort')S.sort='rec';else if(k==='price'){S.pmin='';S.pmax=''}else S[k].delete(v);update();return}
  if(t.closest('#clearAll')){Object.assign(S,{q:'',avail:'any',pmin:'',pmax:'',sort:'rec'});['platform','category','language','gender'].forEach(k=>S[k].clear());q.value='';update();return}
  if(b=t.closest('[data-rail]')){const r=$('#rail-'+b.dataset.rail);r&&r.scrollBy({left:+b.dataset.dir*r.clientWidth*.8,behavior:'smooth'});return}
- if(b=t.closest('[data-play]')){play(b);return}
+ if(!LIVE&&(b=t.closest('[data-play]'))){play(b);return}
  if(b=t.closest('[data-stop]')){b.closest('.state').remove();return}
- if(b=t.closest('[data-book]')){openBooking(b.dataset.book);return}
- if(b=t.closest('[data-invite]')){const on=b.getAttribute('aria-pressed')!=='true';b.setAttribute('aria-pressed',on);b.textContent=on?'Request sent':'Ask them to join';const d=D.find(x=>x.id===b.dataset.invite);$$(`[data-asked="${d.id}"]`).forEach(a=>a.textContent=`${d.asks+(on?1:0)} fans asked so far${on?' · we\'ll tell you when they join':''}`);return}
+ if(LIVE&&(b=t.closest('[data-heart]'))){e.preventDefault();toggleHeart(b);return}
+ if(LIVE&&(b=t.closest('[data-vote]'))){castVote(b);return}
+ if(LIVE&&(b=t.closest('[data-card-link]'))){ev('explore_card_click',{host_slug:b.dataset.cardLink,source:b.classList.contains('book')?'book_call':'card'});return}
+ if(!LIVE&&(b=t.closest('[data-book]'))){openBooking(b.dataset.book);return}
+ if(!LIVE&&(b=t.closest('[data-invite]'))){const on=b.getAttribute('aria-pressed')!=='true';b.setAttribute('aria-pressed',on);b.textContent=on?'Request sent':'Ask them to join';const d=D.find(x=>x.id===b.dataset.invite);$$(`[data-asked="${d.id}"]`).forEach(a=>a.textContent=`${d.asks+(on?1:0)} fans asked so far${on?' · we\'ll tell you when they join':''}`);return}
  if(b=t.closest('#mMenu')){const nav=$('#nav'),o=nav.dataset.open!=='true';nav.dataset.open=o;b.setAttribute('aria-expanded',o);return}
  if(t.closest('#mSearch')){scrollTo({top:0,behavior:'smooth'});setTimeout(()=>q.focus(),300);return}
 });
@@ -381,8 +455,85 @@ const setH=()=>ROOT.style.setProperty('--hdr',hdrH()+'px');
 const hdr=$('.cv-header');if(hdr)new ResizeObserver(setH).observe(hdr);setH();
 
 /* live-ish online counter */
-setInterval(()=>{const el=$('#onlineCt');if(el)el.textContent=300+Math.floor(Math.random()*30)},4000);
+if(!LIVE)setInterval(()=>{const el=$('#onlineCt');if(el)el.textContent=300+Math.floor(Math.random()*30)},4000);
 
-renderAll();
+/* ---------- live mode: data, hearts, invite votes ---------- */
+async function toggleHeart(btn){
+ const slug=btn.dataset.heart,name=btn.dataset.name||'this influencer';
+ if(FAV.busy.has(slug))return;
+ let api=null;try{api=await import('./hfCallsApi')}catch(e){}
+ if(api&&api.looksSignedOut()){location.href=api.signInUrl();return}
+ const fav=await import('./hfFavouritesApi');
+ const next=!FAV.set.has(slug);
+ FAV.busy.add(slug);setHeart(slug,name,next);
+ try{
+  const r=next?await fav.saveFavourite(slug):await fav.unsaveFavourite(slug);
+  if(!r.ok){
+   setHeart(slug,name,!next);
+   if(r.status===401&&api){location.href=api.signInUrl();return}
+   captureException(new Error('favourite_'+(r.code||r.status)),{area:'hf_favourites',step:next?'save':'unsave',status:r.status,host_slug:slug});
+   flash(btn,r.code==='cannot_save_self'?'This is your own profile.':(r.message||'We could not save that. Please try again.'));
+  } else ev('hf_favourite_toggle',{host_slug:slug,on:next,surface:'explore'});
+ }catch(err){setHeart(slug,name,!next);captureException(err,{area:'hf_favourites',host_slug:slug});flash(btn,'We could not save that. Please try again.')}
+ finally{FAV.busy.delete(slug)}
+}
+function setHeart(slug,name,on){
+ on?FAV.set.add(slug):FAV.set.delete(slug);
+ $$(`[data-heart="${CSS.escape(slug)}"]`).forEach(b=>{b.setAttribute('aria-pressed',on);b.setAttribute('aria-label',on?`Remove ${name} from My Fraands`:`Save ${name} to My Fraands`);const p=$('path',b);p&&p.parentElement.setAttribute('fill',on?'currentColor':'none')});
+}
+function flash(el,msg){let n=$('#xpFlash');if(!n){n=document.createElement('div');n.id='xpFlash';n.setAttribute('role','status');n.className='xp-flash';document.body.appendChild(n)}n.textContent=msg;n.hidden=false;clearTimeout(flash.t);flash.t=setTimeout(()=>{n.hidden=true},4000)}
+async function castVote(btn){
+ if(btn.getAttribute('aria-pressed')==='true')return;
+ let api=null;try{api=await import('./hfCallsApi')}catch(e){}
+ if(api&&api.looksSignedOut()){location.href=api.signInUrl();return}
+ const [pl,handle]=btn.dataset.vote.split('|');
+ btn.disabled=true;
+ try{
+  const r=await api.hfCall('POST',`/api/hf/invites/${pl}/${encodeURIComponent(handle)}/vote`);
+  if(r.ok){btn.setAttribute('aria-pressed','true');btn.textContent='Request sent';const a=$(`[data-asked="${CSS.escape(btn.dataset.invite)}"]`);if(a)a.textContent=`${r.data.votes} fans asked so far · we'll tell you when they join`;ev('explore_invite_vote',{platform:pl,handle})}
+  else{if(r.status===401){location.href=api.signInUrl();return}flash(btn,r.message||'We could not send that. Please try again.')}
+ }catch(err){captureException(err,{area:'explore_invite_vote'});flash(btn,'We could not send that. Please try again.')}
+ finally{btn.disabled=false}
+}
+async function loadLive(){
+ const get=async p=>{const r=await fetch(API_BASE+p,{headers:{accept:'application/json'}});if(!r.ok)throw new Error(p+' '+r.status);return r.json()};
+ const [opts,hosts,reels]=await Promise.all([
+  get('/api/hf/options').catch(()=>null),
+  (async()=>{let out=[],off=0;for(let i=0;i<6;i++){const j=await get('/api/hf/hosts?limit=48&offset='+off);out=out.concat(j.items||[]);if(j.nextOffset==null)break;off=j.nextOffset}return out})().catch(e=>{captureException(e,{area:'explore_live_hosts'});return null}),
+  get('/api/hf/reels?limit=48').catch(()=>null)
+ ]);
+ const topicLabel={};((opts&&opts.topics)||[]).forEach(t=>{topicLabel[t.slug]=t.label});
+ if(opts){
+  F[1].opts=(opts.topics||[]).map(t=>[t.label,t.label]);
+  F[2].opts=(opts.languages||[]).map(l=>[l.label,l.label]);
+ }
+ F[4].opts=F[4].opts.filter(o=>o[0]==='any'||o[0]==='online');
+ if(hosts===null){const e=$('#liveEmpty');if(e){e.querySelector('h2').textContent='We could not load influencers right now.';e.querySelector('p').textContent='Please refresh in a moment.'}}
+ C=(hosts||[]).map(h=>({id:h.slug,name:h.displayName,h:h.slug,tag:h.tagline||'',cat:(h.topics||[]).map(t=>topicLabel[t]||t),lang:(h.languages||[]).map(langLabel),
+  rate:Number(h.pricePerMin)||0,st:h.status||'offline',ver:!!h.identityVerified,g:'',img:h.avatarUrl||null,rating:h.rating,rc:h.reviewCount||0,pop:(h.reviewCount||0)*10+(h.talkedTo||0),tags:[],today:true,kw:h.tagline||''}));
+ // creators fans can ask to join: invite creators seen in the reels feed (real names, followers and vote counts)
+ const seen=new Set();D=[];
+ ((reels&&reels.items)||[]).forEach(it=>{
+  if(it.kind!=='invite'||!it.creator)return;
+  const pl=it.platform==='youtube'?'yt':it.platform==='instagram'?'ig':null;if(!pl)return;
+  const handle=String(it.creator.handle||'').replace(/^@/,'');const key=it.platform+'|'+handle;
+  if(!handle||seen.has(key)||D.length>=8)return;seen.add(key);
+  D.push({id:'inv-'+it.platform+'-'+handle,name:it.creator.name||handle,h:handle,pl:[pl],cat:[],lang:[],f:compactN(it.creator.followers),avatar:it.creator.avatar||null,asks:Number(it.creator.votes)||0,vkey:key});
+ });
+ try{const fav=await import('./hfFavouritesApi');const api=await import('./hfCallsApi');
+  FAV.on=await fav.favouritesEnabled();
+  if(FAV.on&&!api.looksSignedOut()){const l=await fav.listFavourites();if(l.ok)l.data.items.forEach(i=>FAV.set.add(i.slug))}
+ }catch(e){FAV.on=false}
+ const online=C.filter(c=>c.st==='online').length;const oc=$('#onlineCt');if(oc)oc.textContent=String(online);
+ const minRate=C.length?Math.min(...C.map(c=>c.rate)):0;const sf=$('#fromRate');if(sf)sf.textContent=C.length?money0(minRate)+'/min':'—';
+ ev('explore_live_loaded',{hosts:C.length,online,invite_creators:D.length,hearts:FAV.set.size});
+ renderAll();
+}
+
+if(LIVE){
+ // no random "people online" ticker with real data
+ renderAll();
+ loadLive().catch(e=>{captureException(e,{area:'explore_live'});renderAll()});
+} else renderAll();
 
 }

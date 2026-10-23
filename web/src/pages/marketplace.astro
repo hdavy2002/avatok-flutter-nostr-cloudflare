@@ -1,10 +1,10 @@
 ---
 // [HF-EXPLORE-V2-3 2026-10-17] /marketplace = "Explore". Owner decision 2026-10-17: the video-first Explore design
 // (components/explore/ExplorePage.astro, first shown at /explore-preview) replaces the old people grid
-// (HELLO-FRAANDS-EXPLORE-1, in git history). Sample creators until the backend lists real ones.
+// (HELLO-FRAANDS-EXPLORE-1, in git history). [HF-DAILY-FLOWS-1] LIVE: real hosts from /api/hf/hosts (live prop); /explore-preview keeps the samples.
 export const prerender = true;
 import brandConfig from '../../../Specs/brand.json';
 import ExplorePage from '../components/explore/ExplorePage.astro';
 const canonical = `https://${brandConfig.homepageIdentity.domain}/marketplace`;
 ---
-<ExplorePage canonical={canonical} indexable />
+<ExplorePage canonical={canonical} indexable live />

@@ -3,8 +3,9 @@
 // indexed) and /explore-preview (noindex test copy). Owner decision 2026-10-17: this design replaces the old /marketplace.
 // Sample creators only; wiring to D1/search comes later. Fresh "Bazaar Pop" artwork lives in /assets/hf-explore/
 // (prompt pack: SaatHum project doc claude/hello-fraands-explore-category-icon-prompts.md).
-interface Props { canonical?: string; indexable?: boolean }
-const { canonical, indexable = false } = Astro.props;
+// [HF-DAILY-FLOWS-1] live = real hosts from the API, real links, hearts and invite votes (/marketplace). false = the sample preview.
+interface Props { canonical?: string; indexable?: boolean; live?: boolean }
+const { canonical, indexable = false, live = false } = Astro.props;
 import brandConfig from '../../../../Specs/brand.json';
 import Header from '../callvaal/Header.astro';
 import Footer from '../callvaal/Footer.astro';
@@ -58,7 +59,7 @@ const marquee = ['HORN OK PLEASE', 'REEL SE REAL TAK', 'EK CALL TOH BANTA HAI', 
   <style is:inline set:html={cssVars}></style>
 </head>
 <body class="desi-home-page">
-<div class="hf desi-home xp" id="xp" data-brand={identity.name}>
+<div class="hf desi-home xp" id="xp" data-brand={identity.name} data-live={live ? '1' : undefined}>
   <a class="skip-link" href="#main-content">Skip to main content</a>
   <Header />
   <main id="main-content">
@@ -109,6 +110,8 @@ const marquee = ['HORN OK PLEASE', 'REEL SE REAL TAK', 'EK CALL TOH BANTA HAI', 
       </div>
     </section>
 
+    {live && <section class="sec" id="liveEmpty" hidden><div class="wrap"><div class="shead"><div><span class="eyebrow">Coming together</span><h2>Our first influencers are getting ready.</h2><p>Nobody is listed yet. Are you a creator? Connect your channel and be the first to take calls.</p></div><a class="seeall" href="/hosts/join">Join &amp; earn</a></div></div></section>}
+
     <div id="shelves">
       <section class="sec" style="padding-top:clamp(28px,3vw,48px)">
         <div class="wrap">
@@ -138,7 +141,7 @@ const marquee = ['HORN OK PLEASE', 'REEL SE REAL TAK', 'EK CALL TOH BANTA HAI', 
         <div class="wrap">
           <div class="shead">
             <div><span class="eyebrow">Phone uthao</span><h2>Available for <span class="hl">calls.</span></h2><p>Online now or free later today. Tap Book call and pick Call now or a time that suits you.</p>
-              <div class="stats"><div><b><span class="pulse"></span><span id="onlineCt">312</span></b>online right now</div><div><b>₹5/min</b>calls starting from</div></div></div>
+              <div class="stats"><div><b><span class="pulse"></span><span id="onlineCt">{live ? '0' : '312'}</span></b>online right now</div><div><b id="fromRate">{live ? '—' : '₹5/min'}</b>calls starting from</div></div></div>
             <img class="sticker" src={sticker('abhi-free-hai')} alt="Abhi free hai!" width="420" height="245" loading="lazy" />
             <a class="seeall" href="#results" data-quick="online">See everyone online <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" aria-hidden="true"><path d="M7 17 17 7M9 7h8v8"/></svg></a>
           </div>
