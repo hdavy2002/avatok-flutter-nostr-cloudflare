@@ -74,7 +74,7 @@ export default function StartStep({ arts, sel, setSel, remove, addArt, ai, openA
     <section aria-label="My pictures" className="mc-tray">
       <h3 className="mc-h3">My pictures <span className="mc-count">{sel.length} chosen</span></h3>
       {mine.length === 0
-        ? <p className="mc-empty">Nothing here yet. Upload a picture or create one with AI, then tap the pictures you want to put on your product.</p>
+        ? <p className="mc-empty">{earlier.length ? 'Tap one of your earlier AI pictures below, upload a picture, or create a new one with AI.' : 'Nothing here yet. Upload a picture or create one with AI, then tap the pictures you want to put on your product.'}</p>
         : <ul className="mc-tiles">{mine.map(tile)}</ul>}
       {earlier.length > 0 && <>
         <h3 className="mc-h3 sub">Earlier AI pictures</h3>
