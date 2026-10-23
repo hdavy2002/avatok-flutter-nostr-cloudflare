@@ -1,5 +1,12 @@
 ---
-// [HF-DASHBOARD-SHELL-1] Retired dashboard presentation; no legacy data is changed.
+// [HF-MERCH-FAN-WEB-1] Dashboard screen "orders" (merch the fan bought). Also the page Cashfree returns the buyer to:
+// /dashboard/orders?order=<id>. The old shop-orders screen was retired ([HF-DASHBOARD-SHELL-1]); this replaces its redirect.
 export const prerender = false;
-return Astro.redirect('/dashboard?retired=orders', 302);
+import Base from '../../layouts/Base.astro';
+import DashboardApp from '../../islands/dashboard-hf/DashboardApp';
+import { BRAND } from '../../lib/brand';
+Astro.response.headers.set('Cache-Control', 'private, no-store');
 ---
+<Base title={`My orders | ${BRAND.name}`} description="Your merch orders and where they are." noindex keywords="">
+  <DashboardApp client:only="react" section="orders" />
+</Base>

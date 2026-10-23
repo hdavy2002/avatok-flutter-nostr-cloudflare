@@ -10,6 +10,7 @@ import { DashboardEmbed } from '../../components/account/dashboardEmbed';
 import { hfCall, signInUrl } from '../../lib/hfCallsApi';
 import { bookingsEnabled } from '../../lib/hfBookingsApi';
 import { favouritesEnabled } from '../../lib/hfFavouritesApi';
+import { merchEnabled } from '../../lib/merchApi'; // [HF-MERCH-FAN-WEB-1]
 import { capture, captureException } from '../../lib/analytics';
 import { BRAND } from '../../lib/brand';
 import { DASH_ROUTES, dashRouteFor, type DashSection } from '../../lib/dashboardRoutes';
@@ -36,7 +37,7 @@ import SupportV3 from './v3/Support';
 import CloseV3 from './v3/Close';
 import PolicyUpdatePrompt from './PolicyUpdatePrompt'; // [HF-POLICY-WITHDRAW-1]
 import MerchApp from './merch/MerchApp'; // [HF-MERCH-CREATOR-WEB-1]
-import { merchEnabled } from './merch/api';
+import OrdersV3 from './v3/Orders'; // [HF-MERCH-FAN-WEB-1]
 
 type Phase = 'boot' | 'signedout' | 'error' | 'ready';
 
@@ -136,6 +137,7 @@ function Shell({ initial }: { initial: DashSection }) {
     case 'wallet': body = <WalletV3 key={key} />; break;
     case 'calls': body = <CallsV3 key={key} account={account} />; break;
     case 'appointments': body = <AppointmentsV3 key={key} enabled={bookingOn && !account.closing} uid={account.uid} />; break;
+    case 'orders': body = <OrdersV3 key={key} />; break;
     case 'fraands': body = <FraandsV3 key={key} />; break;
     case 'become': body = <BecomeV3 key={key} account={account} />; break;
     case 'host': body = <div className="h3-legacy"><HostProfile key={key} account={account} /></div>; break;

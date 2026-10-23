@@ -11384,7 +11384,9 @@
     "description": "[HF-MERCH-CREATOR-WEB-1 2026-10-23] Influencer dashboard Merch screen /dashboard/merch (hosts only, behind hfMerchEnabled): summary strip, products grid with edit markup / hide / delete, 4-step New product wizard (upload art, pick shirt, place art with 300 DPI print file, price and publish) and an Orders list that slides open to money, masked buyer, courier and timeline. Calls /api/hf/merch/*.",
     "two_sided": false,
     "min_devices_on_build": 1,
-    "flags": ["hfMerchEnabled"],
+    "flags": [
+      "hfMerchEnabled"
+    ],
     "success": [
       {
         "event": "merch_studio_step",
@@ -11392,6 +11394,48 @@
         "exists": true,
         "min_events": 1,
         "note": "An influencer moved through the New product wizard (upload_art, pick_shirt, place_art, price_publish, published). Only the first steps present means the print file render or upload, or publish, is failing."
+      }
+    ]
+  },
+  "HF-MERCH-FAN-WEB-1": {
+    "description": "Fan side of influencer merch on the website: Merch strip and product pages on /h/<slug>, checkout (wallet or Cashfree), My orders with tracker and problem reports, plus sitemaps, llms.txt and Product/Person schema.",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [
+      "hfMerchEnabled",
+      "hfMerchCheckoutEnabled"
+    ],
+    "success": [
+      {
+        "event": "merch_strip_viewed",
+        "property": "host_slug",
+        "exists": true,
+        "min_events": 1,
+        "note": "A fan saw the Merch strip on an influencer page (needs hfMerchEnabled and one live product)."
+      },
+      {
+        "event": "merch_product_viewed",
+        "property": "product_slug",
+        "exists": true,
+        "min_events": 1,
+        "note": "A product page was opened and the buy panel hydrated."
+      },
+      {
+        "event": "merch_buy_clicked",
+        "property": "product_id",
+        "exists": true,
+        "min_events": 1,
+        "note": "A fan tapped Buy now (needs hfMerchCheckoutEnabled)."
+      },
+      {
+        "event": "merch_pay_method_chosen",
+        "property": "method",
+        "in": [
+          "wallet",
+          "cashfree"
+        ],
+        "min_events": 1,
+        "note": "A fan reached the pay step and chose a method. A paid order is proven server side by merch_order_paid, not here."
       }
     ]
   }

@@ -20,6 +20,7 @@ const PATHS: Record<string, string> = {
   menu: 'M4 7h16M4 12h16M4 17h16', x: 'M6 6l12 12M18 6L6 18', plus: 'M12 5v14M5 12h14',
   left: 'M15 6l-6 6 6 6', right: 'M9 6l6 6-6 6',
   clock: 'M12 21a8 8 0 1 0 0-16 8 8 0 0 0 0 16zM12 9v4l3 2M9 2h6',
+  bag: 'M5 8h14l-1 12H6zM9 8V6a3 3 0 0 1 6 0v2',
   money: 'M3 6h18v12H3zM12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6',
   shirt: 'M8 3L3 6l2 4 3-1v11h8V9l3 1 2-4-5-3c-.5 1.5-2 2.5-4 2.5S8.5 4.5 8 3z',
   down: 'M12 4v12M6 11l6 6 6-6M5 20h14', chat: 'M4 5h16v11H9l-5 4z', shield: 'M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6zM9 12l2 2 4-4',

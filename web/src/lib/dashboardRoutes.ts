@@ -2,7 +2,7 @@
  * in-dashboard router all read this list, so a screen is added in exactly one place. Paths live under /dashboard. */
 export type DashSection =
   | 'overview' | 'profile' | 'wallet' | 'calls' | 'appointments' | 'fraands'
-  | 'host' | 'host-calendar' | 'availability' | 'earnings' | 'merch'
+  | 'orders' | 'host' | 'host-calendar' | 'availability' | 'earnings' | 'merch'
   | 'support' | 'close' | 'become';
 
 export type DashGroup = 'me' | 'explore' | 'host' | 'account';
@@ -19,7 +19,7 @@ export interface DashRoute {
   needsBookings?: boolean;
   /** Needs the saved-hosts feature (hfFavouritesEnabled). Hidden from the menu while it is off. */
   needsFavourites?: boolean;
-  /** [HF-MERCH-CREATOR-WEB-1] Needs the influencer merch shop (hfMerchEnabled). Hidden from the menu while it is off. */
+  /** [HF-MERCH-CREATOR-WEB-1][HF-MERCH-FAN-WEB-1] Needs the merch shop (hfMerchEnabled). Hidden from the menu while it is off. */
   needsMerch?: boolean;
   title: string;
 }
@@ -30,6 +30,7 @@ export const DASH_ROUTES: DashRoute[] = [
   { section: 'wallet', path: '/dashboard/wallet', label: 'Wallet', icon: 'wallet', group: 'me', title: 'Wallet' },
   { section: 'calls', path: '/dashboard/calls', label: 'Calls', icon: 'calls', group: 'me', title: 'Calls' },
   { section: 'appointments', path: '/dashboard/appointments', label: 'My appointments', icon: 'calendar', group: 'me', needsBookings: true, title: 'My appointments' },
+  { section: 'orders', path: '/dashboard/orders', label: 'My orders', icon: 'bag', group: 'me', needsMerch: true, title: 'My orders' },
   { section: 'fraands', path: '/dashboard/fraands', label: 'My Fraands', icon: 'heart', group: 'me', needsFavourites: true, title: 'My Fraands' },
   { section: 'host', path: '/dashboard/host', label: 'Influencer profile', icon: 'star', group: 'host', title: 'Influencer profile' },
   { section: 'host-calendar', path: '/dashboard/host/calendar', label: 'Influencer calendar', icon: 'calendar', group: 'host', hostOnly: true, needsBookings: true, title: 'Influencer calendar' },
