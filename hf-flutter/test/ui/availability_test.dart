@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:go_router/go_router.dart';
 import 'package:hf_app/data/api_client.dart';
 import 'package:hf_app/data/api_exception.dart';
 import 'package:hf_app/data/models/booking.dart';
@@ -193,6 +194,44 @@ void main() {
       await _pump(tester, api);
       expect(find.textContaining('One rate is set for everyone'), findsOneWidget);
       expect(find.textContaining('You get about'), findsNothing);
+    });
+  });
+
+  group('RealAvailabilityScreen (counts) [HF-APP-AVAIL-COUNTS-1]', () {
+    Object? withSummary(String m, String p, Object? avail) =>
+        p == '/api/hf/bookings/summary' ? {'summary': {'waitingCount': 2, 'bookedDays': 3, 'upcomingCount': 4}} : avail;
+
+    testWidgets('shows the server counts', (tester) async {
+      final api = FakeApi((m, p, q, b) => withSummary(m, p, _avail()));
+      await _pump(tester, api);
+      expect(find.text('3 days booked'), findsOneWidget);
+      expect(find.text('2 requests waiting'), findsOneWidget);
+    });
+
+    testWidgets('server fails: booked days counted from the calendar, waiting chip hidden', (tester) async {
+      final api = FakeApi((m, p, q, b) => p == '/api/hf/bookings/summary'
+          ? _err(500, 'boom')
+          : _avail(booked: {_k(1): ['10:00'], _k(2): ['10:00', '11:00'], _k(3): <String>[]}));
+      await _pump(tester, api);
+      expect(find.text('2 days booked'), findsOneWidget);
+      expect(find.byKey(const ValueKey('chip-waiting')), findsNothing);
+      expect(find.textContaining('waiting'), findsNothing);
+    });
+
+    testWidgets('tapping requests waiting opens the bookings screen', (tester) async {
+      final api = FakeApi((m, p, q, b) => withSummary(m, p, _avail()));
+      tester.view.physicalSize = const Size(900, 2600);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      final router = GoRouter(routes: [
+        GoRoute(path: '/', builder: (_, __) => RealAvailabilityScreen(repo: BookingsRepo(api))),
+        GoRoute(path: '/bookings', builder: (_, __) => const Scaffold(body: Text('BOOKINGS PAGE'))),
+      ]);
+      await tester.pumpWidget(MaterialApp.router(routerConfig: router));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('chip-waiting')));
+      await tester.pumpAndSettle();
+      expect(find.text('BOOKINGS PAGE'), findsOneWidget);
     });
   });
 }

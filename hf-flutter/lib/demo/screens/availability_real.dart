@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../data/api_exception.dart';
 import '../../data/call_flags.dart';
@@ -51,6 +52,9 @@ class _RealAvailabilityScreenState extends State<RealAvailabilityScreen> {
 
   AsyncState<HostAvailability> _state = const AsyncLoading();
 
+  /// [HF-APP-AVAIL-COUNTS-1] The server's "N days booked / N requests waiting"; null until it answers or when it cannot.
+  HostBookingSummary? _summary;
+
   /// Selected days (`YYYY-MM-DD`).
   final Set<String> _sel = {};
 
@@ -86,6 +90,7 @@ class _RealAvailabilityScreenState extends State<RealAvailabilityScreen> {
       _sel.clear();
       _edits.clear();
     });
+    unawaited(_loadSummary());
     try {
       await for (final a in _repo.watchAvailability()) {
         if (mounted) setState(() => _state = AsyncData(a)); // [HF-APP-CACHE-1] saved calendar first, then the server's
@@ -93,6 +98,42 @@ class _RealAvailabilityScreenState extends State<RealAvailabilityScreen> {
     } catch (e) {
       if (mounted) setState(() => _state = AsyncFailure(e));
     }
+  }
+
+  Future<void> _loadSummary() async {
+    try {
+      final s = await _repo.hostSummary();
+      if (mounted) setState(() => _summary = s);
+    } catch (_) {
+      if (mounted) setState(() => _summary = null); // counted from the calendar instead; the waiting count is hidden
+    }
+  }
+
+  /// [HF-APP-AVAIL-COUNTS-1] Two counts above the calendar, same chips as the bookings page. Without the server's answer the
+  /// booked days are counted from the calendar already on screen and the waiting chip is left out (never a guessed number).
+  Widget _counts(HostAvailability a) {
+    final s = _summary;
+    final days = s?.bookedDays ?? a.booked.values.where((v) => v.isNotEmpty).length;
+    final bookedText = HostBookingSummary(waitingCount: 0, bookedDays: days).bookedDaysText;
+    return Wrap(spacing: 8, runSpacing: 8, children: [
+      KeyedSubtree(key: const ValueKey('chip-booked-days'), child: DesiChip(bookedText, tone: DesiTone.gold, icon: Icons.event_busy_rounded)),
+      if (s != null)
+        Semantics(
+          button: true,
+          child: InkWell(
+            key: const ValueKey('chip-waiting'),
+            borderRadius: BorderRadius.circular(999),
+            onTap: () => context.push('/bookings'),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(minHeight: 48),
+              child: Align(
+                widthFactor: 1,
+                child: DesiChip(s.waitingText, tone: DesiTone.rani, icon: Icons.hourglass_top_rounded),
+              ),
+            ),
+          ),
+        ),
+    ]);
   }
 
   HostAvailability? get _avail {
@@ -371,7 +412,9 @@ class _RealAvailabilityScreenState extends State<RealAvailabilityScreen> {
           const SizedBox(height: 8),
           Text('No days are open yet, so fans cannot book you. Pick some days below.', style: t(14, color: C.rani, w: FontWeight.w800, h: 1.4)),
         ],
-        const SizedBox(height: 14),
+        const SizedBox(height: 10),
+        _counts(a),
+        const SizedBox(height: 10),
         _calendar(a),
         const SizedBox(height: 14),
         RateCard(

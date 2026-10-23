@@ -11925,5 +11925,12 @@
         "note": "A fan played a voice intro in the app (needs a profile that has one)."
       }
     ]
+  },
+  "HF-APP-AVAIL-COUNTS-1": {
+    "description": "[HF-APP-AVAIL-COUNTS-1] App availability screen shows the same 'N days booked' and 'N requests waiting' chips as the bookings page; tapping waiting opens bookings; falls back to counting booked days from the calendar and hides the waiting chip when the count is unknown.",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [],
+    "no_telemetry": "Read-only counts on an existing screen; no new user action to assert in telemetry. Verified by opening Availability on the new build."
   }
 }
