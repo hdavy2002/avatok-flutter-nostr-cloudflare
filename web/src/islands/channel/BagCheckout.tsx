@@ -100,7 +100,8 @@ export default function BagCheckout() {
       if (typeof body.balancePaise === 'number') setBalance(body.balancePaise);
       setMsg({ text: short ? `Your wallet is short by ${rupees(short)}. Top up the wallet, or pay online.` : 'Your wallet balance is too low. Top up the wallet, or pay online.', topup: true }); return;
     }
-    if (code === 'item_unavailable') {
+    if (code === 'gst_not_ready') { setMsg({ text: 'Merch checkout opens soon. Nothing was charged.' }); return; }
+    if (code === 'item_unavailable' || code === 'over_price_cap') {
       key.current = null;
       // The server answers FLAT: { error:'item_unavailable', message, productId, reason }. Older shape kept as a fallback.
       const extra = (body.extra ?? {}) as { productId?: string; reason?: string };
@@ -108,7 +109,10 @@ export default function BagCheckout() {
       const reason = typeof body.reason === 'string' ? body.reason : extra.reason;
       const line = lines.find(l => l.productId === pid);
       setBadId(pid ?? null);
-      setMsg({ text: `${line ? `“${line.title}”` : 'One of the items'} is no longer available${reason === 'size' || reason === 'colour' ? ' in that option' : ''}. Remove it from your bag to continue. Nothing was charged.`, productId: pid }); return;
+      const what = line ? `“${line.title}”` : 'One of the items';
+      setMsg({ text: code === 'over_price_cap'
+        ? `${what} is priced above the allowed limit right now. Remove it from your bag to continue. Nothing was charged.`
+        : `${what} is no longer available${reason === 'size' || reason === 'colour' ? ' in that option' : ''}. Remove it from your bag to continue. Nothing was charged.`, productId: pid }); return;
     }
     if (code === 'order_closed') key.current = null;
     if (status === 400 && typeof body.field === 'string' && /^(address|name|phone|line1|line2|city|state|pincode)/.test(body.field)) { go('address'); setMsg({ text: message || 'Please check your address.' }); return; }
@@ -248,7 +252,7 @@ export default function BagCheckout() {
         </div>)}
         <div className="srow" style={{ marginTop: 8 }}><span>Delivery</span><span className="nun">Free</span></div>
         <div className="srow t"><span>Total</span><span>{rupees(total)}</span></div>
-        <p className="fine" style={{ textAlign: 'left', marginTop: 10 }}>GST included. We check each order before it goes to print.</p>
+        <p className="fine" style={{ textAlign: 'left', marginTop: 10 }}>GST included. You’ll get a GST invoice by email. We check each order before it goes to print.</p>
         <p style={{ marginTop: 10 }}><a className="nun" href="/bag">← Edit bag</a></p>
       </aside>
     </div>}
