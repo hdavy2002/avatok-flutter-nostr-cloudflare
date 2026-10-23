@@ -3,7 +3,7 @@ title: "How do I block someone?"
 description: "Learn how to block a person during a call with the # key, or later from a profile or your call history."
 section: account-and-help
 order: 2
-updated: 2026-10-08
+updated: 2026-10-23
 keywords: ["block", "block caller", "block influencer", "hash key", "band karo", "unblock", "call history", "stop calls"]
 audience: both
 faq:
@@ -43,6 +43,7 @@ This is useful if you felt fine at the time, but you do not want to talk to that
 ## What blocking does
 
 - The person is blocked from contacting you.
+- If you had saved them in **My Fraands**, they are removed from the list.
 - Neither of you ever sees the other's personal phone number. This stays true after blocking.
 
 If the person broke a rule, blocking is not enough on its own. Please also [report them](/help/account-and-help/report-someone), so our team can look at it.

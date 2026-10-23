@@ -3,7 +3,7 @@ title: "How do favourites and calling again work?"
 description: "Save influencers you like with a heart, get told when they are online, and call them again easily."
 section: calling
 order: 4
-updated: 2026-10-19
+updated: 2026-10-23
 keywords: ["favourite", "notify me", "call again", "heart", "dobara call", "saved influencer"]
 audience: buyer
 faq:
@@ -38,13 +38,15 @@ Your wallet, favourites and call history are all on the website. You do not need
 
 Favourite influencers are not always online. An influencer can go online or offline any time.
 
-If your favourite is offline:
+If your favourite is offline, or only takes bookings:
 
 1. Open their profile.
 2. Tap **Notify me**.
-3. We tell you when they come online.
+3. We send you one WhatsApp when they come online.
 
-Then you can call at once.
+Then you can call at once. If they are already on a call, you can also [join their queue](/help/calling/join-the-queue).
+
+Influencers can see how many people have hearted them and asked to be notified.
 
 ## Your numbers stay private, every time
 
@@ -68,4 +70,4 @@ If an influencer asks you for money outside the platform, report it at [report f
 
 ## Check the price each time
 
-Each influencer sets their own price per minute, and it can change. You see it on their profile before you call. You need at least ₹20 in your wallet to start a call. See [How much does a call cost?](/help/calling/price-and-minutes).
+Each influencer sets their own price per minute, and it can change. You see it on their profile before you call. You need at least ₹20 in your wallet, or the cost of 5 minutes at her rate if that is more, to start a call. See [How much does a call cost?](/help/calling/price-and-minutes).

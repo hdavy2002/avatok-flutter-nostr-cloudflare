@@ -3,7 +3,7 @@ title: "How do I report someone?"
 description: "Learn when to report a caller or influencer, how to do it, and what happens after you report."
 section: account-and-help
 order: 1
-updated: 2026-10-08
+updated: 2026-10-23
 keywords: ["report", "report influencer", "report caller", "complaint", "shikayat", "abuse", "strike", "call id"]
 audience: both
 faq:
@@ -40,6 +40,8 @@ A call that was just boring or not your type is not a rule break. You can rate t
 2. Add the **call ID**. You can find it in your call history.
 3. Add the **profile name** of the person.
 4. Write **what happened**, in a few short lines.
+
+Your report is saved, and you get a **reference ID**. Keep it if you want to ask us about it later.
 
 If you are on a call and feel unsafe, you do not have to wait. Press **#** on your phone. It ends the call, blocks that person and reports the incident at once.
 

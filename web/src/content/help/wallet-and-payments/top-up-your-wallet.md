@@ -3,12 +3,14 @@ title: "How do I top up my wallet?"
 description: "Learn how to add money to your prepaid talk-time wallet, how GST works, and where to see your history."
 section: wallet-and-payments
 order: 1
-updated: 2026-10-19
+updated: 2026-10-23
 keywords: ["wallet top up", "add money", "gst", "recharge", "talk time", "paise daalo", "wallet history", "receipt", "minimum 10"]
 audience: buyer
 faq:
   - q: "How much can I add?"
-    a: "Any amount from ₹10."
+    a: "Any whole amount from ₹10 to ₹5,000."
+  - q: "Where do I find my receipt?"
+    a: "Open Wallet, then Payment receipts, and tap View next to the top-up."
   - q: "Is GST charged on the money I add?"
     a: "18% GST is deducted from the amount you pay, so your wallet gets the amount divided by 1.18. If you pay ₹120, your GST of ₹18.31 is deducted and ₹101.69 is added to your wallet."
   - q: "Where can I see my top-ups and calls?"
@@ -29,7 +31,7 @@ The wallet holds your talk-time money in rupees. When you call an influencer, th
 ## How to add money
 
 1. Open your wallet.
-2. Type how much to add. You can add **any amount from ₹10**.
+2. Type how much to add. You can add **any whole amount from ₹10 to ₹5,000**.
 3. Pay on the secure payment page.
 
 Money is added only after your payment is confirmed, and only once.
@@ -49,13 +51,17 @@ No GST is charged again when you spend wallet money on calls.
 
 ## How much should I add?
 
-Each influencer sets their own per-minute rate, and you see it before you call. You need **at least ₹20 in your wallet** to start a call.
+Each influencer sets their own per-minute rate, and you see it before you call. You need **at least ₹20**, or the cost of 5 minutes at the influencer's rate if that is more, to start a call.
 
 Rohit from Pune wants a quick chat. He pays ₹120, so ₹101.69 goes into his wallet. That is more than the ₹20 he needs to start, so he can call.
 
 ## Your wallet history
 
-Every addition and every call charge shows in your wallet history. For each line you can see the date, the duration and the amount. Use it as your receipt. If you think there is a mistake, read [billing errors](/help/wallet-and-payments/billing-errors).
+Every addition and every call charge shows in your wallet history. For each line you can see the date, the duration and the amount. If you think there is a mistake, read [billing errors](/help/wallet-and-payments/billing-errors).
+
+## Payment receipts
+
+Open **Wallet**, then **Payment receipts**, and tap **View** to open the receipt for a top-up. It shows what you paid, your GST that was deducted and what reached your wallet.
 
 ## Good to know
 

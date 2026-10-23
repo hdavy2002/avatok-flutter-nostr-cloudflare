@@ -3,7 +3,7 @@ title: "Do you refund calls?"
 description: "Which calls are refunded, which are not, and where refunded money always goes: your wallet."
 section: wallet-and-payments
 order: 2
-updated: 2026-10-19
+updated: 2026-10-23
 keywords: ["refund", "paisa wapas", "money back", "no refund policy", "call not good", "bad call", "first minute", "booking cancel", "report influencer"]
 audience: buyer
 faq:
@@ -44,12 +44,13 @@ If a joined call breaks within the first minute, we **charge ₹1 and return the
 
 ## Booked calls
 
-A booked call holds 10 minutes of the influencer's rate in your wallet.
+A booked call holds the cost of the first 15 minutes in your wallet. The rest is charged 5 minutes at a time while you talk, and unused money comes back. See [Book a time](/help/calling/book-a-time).
 
 - You can cancel **free until 1 hour before** the booked time. The hold comes back to your wallet.
 - If the influencer does not pick up at the booked time, the **full hold comes back** to your wallet.
 - If the influencer cancels, it **always comes back**.
 - If you cancel later than 1 hour before, the hold is kept.
+- If the influencer must approve requests first and she declines, or does not answer in time, you get a **full refund** to your wallet. You can also withdraw a waiting request any time.
 
 ## All refunds go to your wallet
 

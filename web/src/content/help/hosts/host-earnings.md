@@ -3,7 +3,7 @@ title: "How much will I earn as an influencer?"
 description: "See how you earn as an influencer: your fans pay per minute at the rate you set, and you earn your share of every connected minute."
 section: hosts
 order: 2
-updated: 2026-10-19
+updated: 2026-10-23
 keywords: ["influencer earnings", "kitna kamayenge", "per minute", "paisa kamao", "influencer income", "set my rate"]
 audience: creator
 faq:
@@ -34,7 +34,7 @@ If the influencer declines, cancels or does not answer, nobody pays anything and
 
 - **Calls are not guaranteed.** Some days are busy and some days are quiet.
 - Earning starts only once we have rung both of you and joined the call.
-- A fan needs at least ₹20 in their wallet before a call can start.
+- A fan needs at least ₹20, or the cost of 5 minutes at your rate if that is more, before a call can start.
 - Earnings are held for 7 days, then you can withdraw them with the Withdraw button.
 
 ## Grow your fans

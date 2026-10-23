@@ -3,7 +3,7 @@ title: "How much does a call cost?"
 description: "Learn how the price per minute is set, when charging starts, and how a call ends."
 section: calling
 order: 2
-updated: 2026-10-19
+updated: 2026-10-23
 keywords: ["price", "per minute", "kitna paisa", "charges", "billing", "minimum balance", "rate"]
 audience: buyer
 faq:
@@ -12,9 +12,9 @@ faq:
   - q: "Do I pay for a part of a minute?"
     a: "You pay by the minute while you are connected, at the influencer's rate."
   - q: "What is the longest a call can be?"
-    a: "The call runs until either person hangs up or your wallet money ends. You hear \"one minute left\" before that."
+    a: "Up to 5 hours, as long as your wallet can fund it. If your wallet is about to run out, you hear a short message and can top up while you keep talking."
   - q: "Can my balance go below zero?"
-    a: "No. The call ends when your wallet money runs out. Your balance never goes below zero."
+    a: "No. Your balance never goes below zero."
 draft: false
 ---
 
@@ -37,7 +37,7 @@ You pay by the minute while you are connected, at the influencer's per-minute ra
 
 ## Minimum balance to start
 
-You need **at least ₹20** in your wallet to start a call.
+You need **at least ₹20**, or the cost of **5 minutes** at the influencer's rate if that is more, to start a call. The same is needed to join a [queue](/help/calling/join-the-queue).
 
 If your balance is lower, add money first. See [Make your first call](/help/calling/make-your-first-call).
 
@@ -56,9 +56,9 @@ If a joined call breaks within the first minute, we charge ₹1 and return the r
 
 ## How long can a call be?
 
-The call goes on until either person hangs up or your wallet money runs out.
+A call can last up to **5 hours**. It goes on until either person hangs up or your wallet money runs out.
 
-About one minute before your wallet money ends, you hear "one minute left". Then the call ends by itself. Your balance never goes below zero. To keep talking, add money and call again.
+If your wallet is about to run out, only you hear a short message that tells you how many minutes are left. Top up in the app or on the website while you keep talking, and the call continues. Your balance never goes below zero. See [How call money works](/help/wallet-and-payments/how-call-money-works).
 
 ## Check your charges
 

@@ -3,7 +3,7 @@ title: "How do I create my account?"
 description: "Sign up in a minute with a one-time code on WhatsApp or email. No password, and free to join."
 section: getting-started
 order: 3
-updated: 2026-10-19
+updated: 2026-10-23
 keywords: ["sign up", "register", "account banao", "OTP", "WhatsApp login", "no password", "18+", "join"]
 audience: both
 faq:
@@ -48,6 +48,10 @@ If you want to join as an influencer, see [Join & earn](/hosts/join).
 An influencer's real name and phone number are never shown on their profile. They are never shared with you. The same is true for you. Your name, number and details are not shown to the influencer.
 
 Your phone number is never shared with the other person on a call. See [How does a call work?](/help/getting-started/how-a-call-works).
+
+## Your profile
+
+Add your name, city and languages any time. Every account also gets a handle. See [What is on my profile, and what is a handle?](/help/account-and-help/your-profile-and-handle).
 
 ## Leaving later
 

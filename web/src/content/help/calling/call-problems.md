@@ -3,7 +3,7 @@ title: "My call has a problem. What do I do?"
 description: "Fixes for a phone that did not ring, a dropped call, bad voice or an influencer who said no."
 section: calling
 order: 5
-updated: 2026-10-19
+updated: 2026-10-23
 keywords: ["phone not ringing", "call dropped", "bad voice", "network", "DND", "spam blocker", "call nahi aaya", "support"]
 audience: both
 faq:
@@ -38,7 +38,7 @@ Calls can drop if the network is weak. **Charging stops at the moment of disconn
 
 If a joined call breaks within the first minute, we charge ₹1 and return the rest to your wallet.
 
-Then call again. You need at least ₹20 in your wallet to start. See [How much does a call cost?](/help/calling/price-and-minutes).
+Then call again. You need at least ₹20 in your wallet, or the cost of 5 minutes at her rate if that is more, to start. See [How much does a call cost?](/help/calling/price-and-minutes).
 
 ## The voice is bad
 

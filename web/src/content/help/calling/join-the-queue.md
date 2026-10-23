@@ -1,43 +1,48 @@
 ---
 title: "What if the influencer is on a call? Join the queue"
-description: "When an influencer is already talking, you can join their queue or book a time. We WhatsApp you just before we call. Nothing is charged until you talk."
+description: "When an influencer is already talking, you can join their queue or book a time. We WhatsApp you, then connect you by ourselves. Nothing is charged while you wait."
 section: calling
 order: 6
 updated: 2026-10-23
-keywords: ["queue", "waiting", "on a call", "busy", "line", "join the queue", "position", "wait"]
+keywords: ["queue", "waiting", "on a call", "busy", "line", "join the queue", "position", "wait", "you're next", "leave the queue"]
 audience: buyer
 faq:
   - q: "Do I pay for waiting in the queue?"
-    a: "No. Nothing is charged until you talk. We only check that your wallet can start a call when it is your turn."
+    a: "No. Nothing is charged while you wait. You pay only for the minutes you speak, at the influencer's per-minute rate."
   - q: "How will I know it is my turn?"
-    a: "We WhatsApp you when you join, and again just before we call. You also see your place on the influencer's page, and it updates by itself."
+    a: "We WhatsApp you \"you're in the queue #N\" when you join, and \"you're next\" just before we call. You also see your place on the influencer's page."
   - q: "Can I leave the queue?"
     a: "Yes, any time. Open the influencer's page and tap Leave the queue."
-  - q: "How many people can wait?"
-    a: "Up to 10 people wait for one influencer. If the queue is full, you can book a time instead."
+  - q: "How many people can wait, and for how long?"
+    a: "Up to 10 people can wait for one influencer, and a place lasts up to 2 hours. If the queue is full, you can book a time instead."
+  - q: "How much money do I need to join?"
+    a: "At least ₹20, or the cost of 5 minutes at the influencer's rate, whichever is more."
 draft: false
 ---
 
-<!-- HF-CALL-MODES-E1: DRAFT. Describes the behaviour once hfCallModesEnabled + hfCallQueueEnabled are on. Set draft: false when the flags go on. -->
+<!-- rebrand: reviewed -->
 
-When an influencer is on a call, you will see **On a call** on their page. You then have two choices: **Join the queue**, or **Book a time**.
+When an influencer is talking to someone else, you see **On a call** on their page. You then have two choices: **Join the queue**, or **Book a time**. See [Book a time](/help/calling/book-a-time) for the second one.
 
 ## How the queue works
 
-1. Tap **Join the queue**. You need a verified WhatsApp number and enough money in your wallet to start a call (at least ₹20, or the cost of the first 5 minutes if that is more).
-2. We WhatsApp you: "You're in the queue, #N". We never send you messages every time you move up.
-3. When the influencer's call ends, there is a **60-second break**. Then we WhatsApp you "you're next" and call your phone.
-4. The influencer's phone rings first. Once they pick up, we call you and connect you. Your number stays hidden.
+1. Tap **Join the queue**. You need a verified WhatsApp number and enough money in your wallet: at least **₹20**, or the cost of **5 minutes** at the influencer's rate if that is more.
+2. We WhatsApp you: "You're in the queue, #N". We do not message you every time you move up.
+3. When the influencer's call ends, she gets a short break of about a minute. Just before we call, we WhatsApp you "you're next".
+4. Then we connect you by ourselves. The influencer's phone rings first. Once she picks up, we call you and join you. Your number stays hidden.
 
-**Nothing is charged until you talk.** No money is held while you wait.
+**Nothing is charged while you wait.** No money is taken until you are talking. After that, the usual rules apply: you pay by the minute you speak. See [How call money works](/help/wallet-and-payments/how-call-money-works).
 
-## If you miss your turn
+## If you miss our call
 
-If we cannot reach your phone, you leave the queue and nothing is charged. We WhatsApp you so you can join again. If your wallet is too low when it is your turn, we tell you how much to add.
+If you do not pick up when we call, you leave the queue and nothing is charged. We WhatsApp you so you can join again. If your wallet is too low when it is your turn, we skip you and tell you to top up.
 
-## Other things to know
+## Good to know
 
-- You can wait in **one queue at a time**.
-- The queue only runs while the influencer is **Online**. If they switch to Bookings only or Offline, the queue closes and we tell you. Nothing is charged.
-- If the influencer has a booked call coming up, we may skip the queue to keep that appointment on time.
-- You can leave the queue whenever you like. Waiting for more than 2 hours ends your place automatically.
+- You can wait in **one queue at a time**, and you can **leave any time**.
+- A queue holds up to **10 people**, and a place lasts up to **2 hours**.
+- An influencer can **pause** her queue. While it is paused, nobody new can join.
+- The queue runs only while the influencer is **Online**. If she goes Offline or to Bookings only, the queue closes and we tell you. Nothing is charged.
+- When someone is waiting, new instant callers join the queue too. Nobody jumps the line.
+
+Not sure which mode an influencer is in? Read [Online, Bookings only or Offline](/help/hosts/online-bookings-only-offline).

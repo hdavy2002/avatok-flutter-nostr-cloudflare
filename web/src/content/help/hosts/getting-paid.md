@@ -3,12 +3,14 @@ title: "How do I get paid as an influencer?"
 description: "Learn when your earnings are credited and how to withdraw them with the Withdraw button, to your own UPI."
 section: hosts
 order: 5
-updated: 2026-10-19
-keywords: ["influencer payout", "withdraw earnings", "upi withdraw", "paise kaise milenge", "get paid", "influencer payment", "outside payment", "removal"]
+updated: 2026-10-23
+keywords: ["withdraw earnings", "upi withdraw", "paise kaise milenge", "get paid", "influencer payment", "outside payment", "removal"]
 audience: creator
 faq:
   - q: "When are my earnings added?"
-    a: "Your earnings are credited after each completed call and held for 7 days. After that you can withdraw them with the Withdraw button."
+    a: "Your earnings are credited after each completed call and held for 7 days. After that you can withdraw them with the Withdraw button. Merch earnings are withdrawable 7 days after delivery."
+  - q: "How many withdrawals can I ask for?"
+    a: "Up to 2 requests a week. You can cancel a request while it is waiting for our check."
   - q: "Is there a minimum withdrawal?"
     a: "No. You can withdraw any amount that is ready, in whole rupees. We take no fee."
   - q: "Do I need an ID check?"
@@ -36,7 +38,11 @@ Your fan pays per minute at the rate you have set. To learn more, read [how much
 3. Use a **UPI ID in your own name**. Withdrawals go **only to UPI**; we do not ask for a bank account.
 4. Ask for the amount you want. There is **no minimum withdrawal** and we take **no fee**.
 
-New earnings are held for **7 days** first. The first time, we do a **one-time ID (KYC) check** and a **UPI check**. After that you will not be asked again. We send the money to your UPI. The UPI must be yours. We do not send money to other people's accounts. This keeps your money safe.
+New earnings are held for **7 days** first, then you can withdraw them. You can ask for up to **2 withdrawals a week**. The first time, we do a **one-time ID (KYC) check** and a **UPI check**. After that you will not be asked again. We send the money to your UPI. The UPI must be yours. We do not send money to other people's accounts. This keeps your money safe.
+
+## Watch your request
+
+Each request shows a status: **Waiting for our check**, **Approved**, **Paid** (with the bank reference, called UTR) or **Not paid** (with the reason). You can **cancel** a request while it is waiting.
 
 Test credits can be spent but not withdrawn. Earnings from calls paid with test credits cannot be withdrawn either.
 
