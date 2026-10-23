@@ -151,7 +151,7 @@ const navItems = [
               <div class="photo">
                 {host.avatarUrl ? <img src={publicImage(host.avatarUrl, { width: 1200 })} width="1200" height="1500" alt={`${name}, an AI avatar chosen by the influencer`} fetchpriority="high" decoding="async" onerror={heroFallback} /> : noPhotoArt ? <img src={noPhotoArt} width={ART_DIMS.noPhoto.w} height={ART_DIMS.noPhoto.h} alt="" decoding="async" /> : <span class="initial" aria-hidden="true">{firstName.charAt(0).toUpperCase()}</span>}
                 <span class={`cv-online ${badgeClass}`.trim()}><span aria-hidden="true"></span>{badgeText}</span>
-                {host.avatarUrl && <span class="ai">AI avatar chosen by the influencer</span>}
+                {/* [HF-PROFILE-AI-LABEL-OFF-1 2026-10-24] owner: no visible 'AI avatar' label on the photo */}
               </div>
             </div>
             <div class="info">
@@ -173,7 +173,6 @@ const navItems = [
                 <SaveHostButton client:only="react" slug={host.slug} name={host.displayName} surface="profile" variant="icon" />
                 <ShareButton client:idle url={pageUrl} text={`Talk to ${name}`} />
               </div>
-              <p class="disc">Photos are AI-generated from an avatar the influencer chose.{audioUrl && ' The voice introduction is the influencer’s own.'}{identityVerified && ' This influencer’s WhatsApp number is verified.'}</p>
             </div>
           </div>
         </section>

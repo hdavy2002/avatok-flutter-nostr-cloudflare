@@ -11879,5 +11879,9 @@
   "HF-IDV-WHATSAPP-2": {
     "description": "[HF-IDV-WHATSAPP-2] Copy-only follow-up on /h/<slug>: verified badge says WhatsApp OTP instead of identity + video checks.",
     "no_telemetry": "Copy change only; success is HF-IDV-WHATSAPP-1's hf_public_profile_served."
+  },
+  "HF-PROFILE-AI-LABEL-OFF-1": {
+    "description": "[HF-PROFILE-AI-LABEL-OFF-1] Copy-only: remove the AI-avatar tag and the AI/WhatsApp disclaimer line from /h/<slug>.",
+    "no_telemetry": "Copy removal only; no behaviour change."
   }
 }
