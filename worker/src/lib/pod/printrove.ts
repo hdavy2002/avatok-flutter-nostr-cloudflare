@@ -31,6 +31,15 @@ const REQUEST_TIMEOUT_MS = 25_000;
 // (4680 x 5880 px = 15.6 x 19.6 in), so pixels at 300/in is the best guess; change to 1 if a real product shows inches.
 const DIMENSION_UNITS_PER_INCH = 300;
 
+/** [HF-MERCH-PRINT-TYPE-1] Print method sent on create-product. */
+export const PREFERRED_PRINT_TYPE = 'DTG';
+/** Print types Printrove lists as allowed in a "print_type" rejection message ('... one of: "DTF", "DTG"'), upper-cased; [] if none. */
+export function allowedPrintTypes(message: string): string[] {
+  if (!/print_type/i.test(message)) return [];
+  const tail = message.split(/one of/i)[1] ?? '';
+  return [...tail.matchAll(/"([A-Za-z0-9_-]{2,12})"/g)].map((m) => m[1].toUpperCase());
+}
+
 type Rec = Record<string, unknown>;
 const rec = (v: unknown): Rec | null => (v && typeof v === 'object' && !Array.isArray(v) ? (v as Rec) : null);
 const pick = (o: Rec | null, keys: string[]): unknown => {
@@ -401,14 +410,26 @@ export class PrintroveProvider implements PodProvider {
       top: Math.round(p.top_in * DIMENSION_UNITS_PER_INCH), left: Math.round(p.left_in * DIMENSION_UNITS_PER_INCH),
     };
     const asId = (s: string): string | number => (/^\d+$/.test(s) ? Number(s) : s);
-    const body = await this.call('POST', 'products', {
+    // [HF-MERCH-PRINT-TYPE-1 2026-10-23] Live reply (first real create-product): products printable more than one way need
+    // "print_type" — e.g. product 460: 'it can be printed as DTF or DTG ... Send "print_type" with one of: "DTF", "DTG"'.
+    // We send DTG (direct-to-garment, the usual choice for cotton tees); if Printrove names other allowed types, retry once with one.
+    const send = (printType: string) => this.call('POST', 'products', {
       json: {
         name: input.name, product_id: asId(input.provider_product_id),
         design: { [p.side]: { id: asId(input.design_ref), dimensions: dims } },
         variants: input.variants.map((v) => ({ product_id: asId(v.provider_variant_id), sku: v.sku })), // PROBE: `product_id` here is the variant id
         is_plain: false,
+        print_type: printType,
       },
     });
+    let body: unknown;
+    try {
+      body = await send(PREFERRED_PRINT_TYPE);
+    } catch (e) {
+      const alt = e instanceof PodError ? allowedPrintTypes(e.message).find((t) => t !== PREFERRED_PRINT_TYPE) : undefined;
+      if (!alt) throw e;
+      body = await send(alt);
+    }
     const r = rec(body);
     const d = rec(pick(r, ['product', 'data'])) ?? r;
     const listing_ref = str(pick(d, ['id', 'product_id'])); // PROBE: listing id key

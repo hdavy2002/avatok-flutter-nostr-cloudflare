@@ -11660,5 +11660,14 @@
         "note": "Someone tapped a share button for an influencer page (own=true from the dashboard, false from the public page)."
       }
     ]
+  },
+  "HF-MERCH-PRINT-TYPE-1": {
+    "description": "Printrove create-product sends print_type (DTG, falling back to a type Printrove lists as allowed). Found by the first live merch approval.",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [
+      "hfMerchEnabled"
+    ],
+    "no_telemetry": "Verified by approving a merch product in /admin/merch/products: it turns Live instead of listing_failed."
   }
 }
