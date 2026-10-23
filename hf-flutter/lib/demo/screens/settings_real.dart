@@ -9,6 +9,8 @@ import '../../data/demo_mode.dart';
 import '../../data/models/me.dart';
 import '../../data/repos/settings_repo.dart';
 import '../../data/services.dart';
+import '../../data/share.dart'; // [HF-SHARE-APP-1]
+import '../share_page_kit.dart'; // [HF-SHARE-APP-1]
 import '../../ui/strings/help_strings.dart';
 import '../theme.dart';
 import '../widgets.dart';
@@ -165,6 +167,7 @@ class _RealSettingsScreenState extends State<RealSettingsScreen> {
     final email = me?.email;
     final whatsapp = me?.phoneMasked;
     final host = me?.hostStatus != null;
+    final slug = (me?.hostSlug ?? '').isEmpty ? null : me!.hostSlug; // [HF-SHARE-APP-1]
     // [HF-APP-DESI-10] approved Settings layout
     return Scaffold(
       backgroundColor: C.ivory,
@@ -186,7 +189,12 @@ class _RealSettingsScreenState extends State<RealSettingsScreen> {
                     if (host) SettingsRow(icon: Icons.smart_display_rounded, tone: DesiTone.lav, label: 'Channels', onTap: () => context.push('/inf/channels')),
                     // [HF-BOOK-APPROVE-5] Influencer-only: her calendar and bookings live in her own shell, so go (not push).
                     if (host) SettingsRow(icon: Icons.event_rounded, tone: DesiTone.tea, label: 'Availability calendar', onTap: () => context.go('/inf/availability')),
-                    if (host) SettingsRow(icon: Icons.call_rounded, tone: DesiTone.gold, label: 'Calls booked with me', last: true, onTap: () => context.go('/inf/bookings')),
+                    if (host) SettingsRow(icon: Icons.call_rounded, tone: DesiTone.gold, label: 'Calls booked with me', last: slug == null, onTap: () => context.go('/inf/bookings')),
+                    // [HF-SHARE-APP-1] the influencer's public page: share it or copy the link
+                    if (host && slug != null) ...[
+                      SettingsRow(icon: Icons.share_rounded, tone: DesiTone.rani, label: 'Share my page', sub: influencerPageUrl(slug, tracked: false), onTap: () => unawaited(ShareSheet.influencer(slug, me?.name ?? slug, own: true))),
+                      SettingsRow(icon: Icons.copy_rounded, tone: DesiTone.rani, label: 'Copy my page link', last: true, onTap: () => unawaited(copyMyPageLink(context, slug))),
+                    ],
                   ]),
                   // [HF-CALL-MODES-E2] Influencer only, and only while the queue flag is on: who waits, and Pause / Resume.
                   if (host && CallFlags.queue && SettingsBridge.real) ...[

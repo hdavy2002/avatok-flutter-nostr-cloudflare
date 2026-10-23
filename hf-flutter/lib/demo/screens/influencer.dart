@@ -14,6 +14,7 @@ import '../../data/telemetry.dart';
 import '../data.dart';
 import '../my_reels_section.dart';
 import '../presence_bridge.dart';
+import '../share_page_kit.dart'; // [HF-SHARE-APP-1]
 import '../queue_kit.dart'; // [HF-CALL-MODES-E2]
 import '../state.dart';
 import '../theme.dart';
@@ -490,6 +491,7 @@ class InfluencerHomeScreen extends StatelessWidget {
                   const SizedBox(height: 12),
                 ],
                 const _EarningsCard(), // [HF-WIRE-10]
+                if (PresenceBridge.real) const SharePageCard(), // [HF-SHARE-APP-1]
                 const SizedBox(height: 16),
                 InfSectionHead(title: 'Today\'s bookings', action: 'All', onAction: () => StatefulNavigationShell.of(context).goBranch(1)),
                 if (BookingsBridge.real) const RealTodaysBookings() else ...[ // [HF-WIRE-8]

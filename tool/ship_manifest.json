@@ -11630,5 +11630,20 @@
     "min_devices_on_build": 1,
     "flags": [],
     "no_telemetry": "Admin-only save/remove of a server credential; deliberately sends no password or login detail to analytics. Verified by PUT /api/admin/v2/shop/partner/login returning connected:true."
+  },
+  "HF-SHARE-APP-1": {
+    "description": "Share the influencer's public page (/h/<slug>) from the app: a share button on the influencer profile header next to the heart, and a Share my page card plus settings rows for the influencer's own app (share sheet and copy link).",
+    "two_sided": true,
+    "min_devices_on_build": 1,
+    "flags": [],
+    "success": [
+      {
+        "event": "profile_share_tapped",
+        "property": "slug",
+        "exists": true,
+        "min_events": 1,
+        "note": "Someone tapped a share button (own=true from the influencer's own app, own=false from a fan viewing a profile). It proves the tap, not that the link was posted anywhere."
+      }
+    ]
   }
 }

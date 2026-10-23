@@ -18,6 +18,7 @@ import '../desi.dart';
 import 'bookings_real.dart'; // [HF-WIRE-8]
 import 'call_real.dart';
 import 'merch_me.dart'; // [HF-MERCH-APP-1]
+import '../share_page_kit.dart'; // [HF-SHARE-APP-1]
 import 'sheets.dart';
 import 'call_records_real.dart';
 import 'settings_real.dart';
@@ -166,6 +167,7 @@ class _Dashboard extends StatelessWidget {
               onTap: () => isInfluencer ? context.go('/inf/home') : context.push('/influencer/join'),
             ),
           ]),
+          if (live && isInfluencer) const SharePageCard(), // [HF-SHARE-APP-1]
           if (live) MerchMeSection(isInfluencer: isInfluencer), // [HF-MERCH-APP-1] hidden while hfMerchEnabled is off
           const SizedBox(height: 12),
           _MenuGroup(title: 'Account', tone: DesiTone.gold, corner: DesiCorner.hibiscus, children: [

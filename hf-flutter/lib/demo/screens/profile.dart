@@ -7,6 +7,7 @@ import '../../data/favourites_store.dart';
 import '../../data/models/reel.dart';
 import '../../data/repos/reels_repo.dart';
 import '../../data/services.dart';
+import '../../data/share.dart'; // [HF-SHARE-APP-1]
 import '../../ui/async_view.dart';
 import '../data.dart';
 import '../desi.dart';
@@ -126,6 +127,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       who: who,
                       line: [who.handle, who.city, who.niche].where((e) => e.isNotEmpty).join(' · '), // [HF-WIRE-12] a live profile has no city/niche
                       faved: faved,
+                      // [HF-SHARE-APP-1] only a live profile has a slug to link to
+                      onShare: realSlug == null ? null : () => unawaited(ShareSheet.influencer(realSlug, who.name, own: Services.instance.me?.hostSlug == realSlug)),
                       onHeart: (firstReel != null || realSlug != null)
                           ? () => requireAccount(
                                 context,

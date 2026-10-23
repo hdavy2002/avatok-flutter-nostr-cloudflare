@@ -21,13 +21,16 @@ Widget profilePhoto(Influencer who) {
 
 /// Big rounded photo card: flower string on top, Back and heart, Online/Offline label, name and handle line.
 class ProfileCover extends StatelessWidget {
-  const ProfileCover({super.key, required this.who, required this.line, this.faved = false, this.onHeart});
+  const ProfileCover({super.key, required this.who, required this.line, this.faved = false, this.onHeart, this.onShare});
   final Influencer who;
   final String line;
   final bool faved;
 
   /// Null hides the heart.
   final VoidCallback? onHeart;
+
+  /// [HF-SHARE-APP-1] Null hides the share button.
+  final VoidCallback? onShare;
 
   @override
   Widget build(BuildContext context) {
@@ -64,6 +67,34 @@ class ProfileCover extends StatelessWidget {
             ]),
           ),
           Positioned(left: 10, top: 24, child: const BackBtn()),
+          if (onShare != null)
+            Positioned(
+              right: onHeart != null ? 62 : 10,
+              top: 24,
+              child: Tooltip(
+                message: 'Share this page',
+                child: Semantics(
+                  button: true,
+                  label: 'Share this page',
+                  child: GestureDetector(
+                    onTap: onShare,
+                    behavior: HitTestBehavior.opaque,
+                    child: SizedBox(
+                      width: 52,
+                      height: 52,
+                      child: Center(
+                        child: Container(
+                          width: 48,
+                          height: 48,
+                          decoration: const BoxDecoration(color: Color(0xF2FFFFFF), shape: BoxShape.circle),
+                          child: const Icon(Icons.share_rounded, color: C.rani, size: 22),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
           if (onHeart != null)
             Positioned(
               right: 10,
