@@ -80,3 +80,25 @@ describe("HF booking availability", () => {
     expect(conflictsWithBusy(start, end, [{ startAt: end, endAt: end + 60_000 }], 1)).toBe(true);
   });
 });
+
+// [HF-CALL-MODES-D] lengths + hold helpers
+import { bookingLengthsFor, defaultBookingMinutes, holdSecondsFor, rowHoldSeconds } from "./hf_booking_availability";
+describe("booking lengths and hold", () => {
+  it("flag off is [10] / 10 / whole-length hold; on is 15..300 / 15 / min(L,15) minutes", () => {
+    expect(bookingLengthsFor(false)).toEqual([10]);
+    expect(bookingLengthsFor(true)).toEqual([15, 30, 60, 120, 180, 240, 300]);
+    expect(defaultBookingMinutes(false)).toBe(10);
+    expect(defaultBookingMinutes(true)).toBe(15);
+    expect(holdSecondsFor(10, false)).toBe(600);
+    expect(holdSecondsFor(120, false)).toBe(7200);
+    expect(holdSecondsFor(15, true)).toBe(900);
+    expect(holdSecondsFor(300, true)).toBe(900);
+    expect(holdSecondsFor(300, true, 10)).toBe(600);
+    expect(holdSecondsFor(300, true, 999)).toBe(900);     // a bad config falls back to 15
+  });
+  it("rowHoldSeconds uses hold_seconds, falling back to duration_min * 60 for old rows", () => {
+    expect(rowHoldSeconds({ hold_seconds: 900, duration_min: 120 })).toBe(900);
+    expect(rowHoldSeconds({ hold_seconds: null, duration_min: 10 })).toBe(600);
+    expect(rowHoldSeconds({ duration_min: 10 })).toBe(600);
+  });
+});

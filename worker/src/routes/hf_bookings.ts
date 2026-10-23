@@ -9,13 +9,13 @@ import { readConfig } from "./config";
 import { rateLimit } from "../money";
 import { isClosing } from "../lib/hf_exit";
 import { verifiedWhatsAppNumber } from "../lib/whatsapp_notify";
-import { hasLaneAccess, isBlockedEitherWay, claimHost, releaseHost, callsConfigured } from "../lib/hf_calls_store";
+import { hasLaneAccess, isBlockedEitherWay, releaseHost, callsConfigured } from "../lib/hf_calls_store";
 import { readHfTokenConfig, readHfStdPlan } from "../lib/hf_token_config";
 import { creatorCallSplit, creatorSnapshotFor, isCreatorCategory, validCreatorRate } from "../lib/hf_creator_pricing";
 import { priceOf, snapshotFor, stdSnapshotFor, splitHostByKind } from "../lib/hf_token_calls";
 import { callSplit, chargePaise, stdSplit, formatRupees, planSpend, type Price } from "../lib/hf_token_math";
 import { availableLots, getLots, getReservation, hasOpenDebt, buildReservationStatements, buildReleaseStatements, resOpId, relOpId } from "../lib/hf_token_ledger";
-import { conflictsWithBusy, HF_BOOKING_MINUTES } from "../lib/hf_booking_availability";
+import { bookingLengthsFor, conflictsWithBusy, readBookingLengthConfig, holdSecondsFor, rowHoldSeconds } from "../lib/hf_booking_availability"; // [HF-CALL-MODES-D]
 import {
   isBookingDateRangeWithinHorizon,
   isCalendarDate,
@@ -91,7 +91,9 @@ async function scheduleRoute(req: Request, env: Env): Promise<Response> {
   }
   const expectedVersion = Number(body.expectedVersion);
   // [HF-BOOKING-UNIFY-1] The product books one length only (10 minutes, HF-REEL-19), so whatever lengths a page sends, store exactly that.
-  const submitted = { ...(body.schedule as HfBookingSchedule), durationsMinutes: [HF_BOOKING_MINUTES] };
+  // [HF-CALL-MODES-D] hfBookingLengthsEnabled ON stores the 15..300 list instead.
+  const lengthCfg = await readBookingLengthConfig(env);
+  const submitted = { ...(body.schedule as HfBookingSchedule), durationsMinutes: bookingLengthsFor(lengthCfg.on) };
   let legacyHasHours = false;
   if (expectedVersion === 0) {
     try {
@@ -196,11 +198,13 @@ export type BookingRow = {
   schedule_version: number; quote_id: string; idempotency_key: string; status: BookingStatus; duration_min: number;
   reserved_paise: number; expected_host_net_paise: number; expected_host_paid_net_paise: number; expected_host_test_net_paise: number;
   price_snapshot_json: string; policy_snapshot_json: string; reservation_snapshot_json: string; call_id: string | null; settlement_status: string;
+  /** [HF-CALL-MODES-D] seconds held at booking time; NULL/absent on rows made before lengths -> duration_min * 60. */
+  hold_seconds?: number | null;
 };
 type BookingQuoteRow = {
   id: string; customer_uid: string; host_uid: string; starts_at: number; ends_at: number; duration_min: number;
   schedule_version: number; expires_at: number; status: string; reserved_paise: number;
-  price_snapshot_json: string; policy_snapshot_json: string;
+  price_snapshot_json: string; policy_snapshot_json: string; hold_seconds?: number | null;
 };
 export type HfHostPricingRow = {
   uid: string; slug: string; status: string; price_per_min: number; category: string;
@@ -231,6 +235,7 @@ export function bookingPublic(row: BookingRow, role: "host" | "customer", names?
     id: row.id, status: row.status, hostUid: row.host_uid, customerUid: row.customer_uid,
     startUtc: new Date(Number(row.starts_at)).toISOString(), endUtc: new Date(Number(row.ends_at)).toISOString(),
     hostTimezone: row.host_timezone, reservedPaise: Number(row.reserved_paise),
+    holdMinutes: Math.round(rowHoldSeconds(row) / 60), // [HF-CALL-MODES-D] what is held up front (the first 15 minutes of a long booking)
     canStart: role === "customer" && row.status === "confirmed" && row.settlement_status === "held" &&
       Date.now() >= Number(row.starts_at) - 5 * 60_000 && Date.now() < Number(row.ends_at),
     canCancel: (row.status === "confirmed" || row.status === "pending_approval") && row.settlement_status === "held",
@@ -350,9 +355,10 @@ export async function quoteRoute(req: Request, env: Env): Promise<Response> {
   if (eligibility) return eligibility;
   // [HF-BOOK-APPROVE-BE] a manual-approval influencer needs >= 2 h notice (refused before any quote or hold exists)
   if (await approvalOn(env) && tooSoonForApproval(await hostApprovalMode(env, host.uid), startAt, Date.now())) return err(409, "too_soon_for_approval", { message: TOO_SOON_TEXT });
-  const schedule = await getHfBookingSchedule(env, host.uid);
+  const lengthCfg = await readBookingLengthConfig(env); // [HF-CALL-MODES-D]
+  const schedule = await getHfBookingSchedule(env, host.uid, lengthCfg.on);
   if (schedule.version < 1 || validateHfBookingSchedule(schedule).length) return err(409, "availability_unavailable");
-  if (!schedule.durationsMinutes.includes(duration)) return err(400, "invalid_duration");
+  if (!schedule.durationsMinutes.includes(duration)) return err(400, "invalid_duration", { durationsMinutes: schedule.durationsMinutes });
   const local = localDateAndMinute(startAt, schedule.timezone);
   if (!isBookingDateRangeWithinHorizon(schedule, local.date, local.date)) return err(400, "slot_out_of_bounds");
   const range = utcRangeForDates(local.date, local.date);
@@ -366,7 +372,8 @@ export async function quoteRoute(req: Request, env: Env): Promise<Response> {
   if (await hasOpenDebt(env, auth.uid)) return err(409, "debt_open");
   const pricing = await loadHostPricing(env, host);
   if (!pricing) return err(409, "booking_payment_unavailable");
-  const seconds = duration * 60;
+  // [HF-CALL-MODES-D] lengths ON: only the first 15 minutes are held (hold_seconds = min(L,15)*60); OFF: the whole length, as always.
+  const seconds = holdSecondsFor(duration, lengthCfg.on, lengthCfg.holdMinutes);
   const reservedPaise = chargePaise(pricing.price, seconds);
   const expectedHostNetPaise = pricing.hostNet(seconds);
   if (!(reservedPaise > 0) || !(expectedHostNetPaise >= 0)) return err(409, "pricing_unavailable");
@@ -383,11 +390,12 @@ export async function quoteRoute(req: Request, env: Env): Promise<Response> {
   const priceSnapshot = {
     ...pricing.snapshot, plan: pricing.plan, price: pricing.price,
     reservedPaise, expectedHostNetPaise, durationMinutes: duration,
+    ...(lengthCfg.on ? { holdSeconds: seconds, fullExpectedHostNetPaise: pricing.hostNet(duration * 60) } : {}),
   };
   const conflict = activeConflictSql(2, 3, 4, 5, 13);
   const result = await env.DB_META.prepare(
-    "INSERT INTO hf_booking_quotes (id,customer_uid,host_uid,starts_at,ends_at,duration_min,schedule_version,expires_at,status,reserved_paise,price_snapshot_json,policy_snapshot_json,created_at) " +
-    "SELECT ?1,?2,?3,?4,?5,?6,?7,?8,'open',?9,?10,?11,?12 " +
+    "INSERT INTO hf_booking_quotes (id,customer_uid,host_uid,starts_at,ends_at,duration_min,schedule_version,expires_at,status,reserved_paise,price_snapshot_json,policy_snapshot_json,created_at" + (lengthCfg.on ? ",hold_seconds" : "") + ") " +
+    "SELECT ?1,?2,?3,?4,?5,?6,?7,?8,'open',?9,?10,?11,?12" + (lengthCfg.on ? ",?14" : "") + " " +
     "WHERE EXISTS (SELECT 1 FROM hf_availability_schedules WHERE host_uid=?3 AND version=?7) " +
     "AND NOT EXISTS (SELECT 1 FROM hf_booking_schedule_locks WHERE host_uid=?3 AND expires_at>?12) " +
     "AND EXISTS (SELECT 1 FROM hf_hosts WHERE uid=?3 AND status='live') " +
@@ -396,7 +404,7 @@ export async function quoteRoute(req: Request, env: Env): Promise<Response> {
     "AND NOT EXISTS (SELECT 1 FROM hf_calls WHERE (caller_uid IN (?2,?3) OR host_uid IN (?2,?3)) AND status IN ('ringing_host','ringing_caller','connected')) " +
     "AND " + laneGuardSql(2, 3, lane) + " AND " + conflict,
   ).bind(quoteId, auth.uid, host.uid, slot.startAt, slot.endAt, duration, schedule.version, expiresAt,
-    reservedPaise, JSON.stringify(priceSnapshot), JSON.stringify(policySnapshot), now, schedule.bufferMinutes).run();
+    reservedPaise, JSON.stringify(priceSnapshot), JSON.stringify(policySnapshot), now, schedule.bufferMinutes, ...(lengthCfg.on ? [seconds] : [])).run();
   if (Number(result.meta?.changes ?? 0) !== 1) {
     eventTrack(env, auth.uid, "hf_booking_quote_conflict", { host_uid: host.uid, duration_minutes: duration, schedule_version: schedule.version });
     return err(409, "slot_unavailable");
@@ -404,10 +412,12 @@ export async function quoteRoute(req: Request, env: Env): Promise<Response> {
   const quote = {
     id: quoteId, expiresAt, startUtc: new Date(slot.startAt).toISOString(), endUtc: new Date(slot.endAt).toISOString(),
     durationMinutes: duration, reservedPaise, priceRupees: reservedPaise / 100,
+    // [HF-CALL-MODES-D] clients show "held now: ₹holdPaise for the first holdMinutes minutes; the rest is taken 5 minutes at a time as you talk"
+    holdPaise: reservedPaise, holdMinutes: seconds / 60, durationsMinutes: schedule.durationsMinutes,
   };
   eventTrack(env, auth.uid, "hf_booking_quote_created", {
     quote_id: quoteId, host_uid: host.uid, duration_minutes: duration,
-    reserved_paise: reservedPaise, schedule_version: schedule.version, expires_at: expiresAt,
+    reserved_paise: reservedPaise, schedule_version: schedule.version, expires_at: expiresAt, hold_minutes: seconds / 60,
   });
   return json({ quote }, 201, { "cache-control": "private, no-store" });
 }
@@ -459,7 +469,7 @@ export async function confirmRoute(req: Request, env: Env): Promise<Response> {
     callCostPaisePerMin: number; hostShareBps: number; creator?: unknown; std?: unknown;
   };
   const lots = await availableLots(env, auth.uid);
-  const seconds = Number(quote.duration_min) * 60;
+  const seconds = rowHoldSeconds(quote); // [HF-CALL-MODES-D] the hold (min(L,15) min when lengths were on at quote time), else the whole length
   const spend = planSpend(lots, priceSnapshot.price, seconds);
   if (spend.secondsCovered !== seconds || spend.totalValuePaise !== Number(quote.reserved_paise)) {
     eventTrack(env, auth.uid, "hf_booking_confirm_conflict", { quote_id: quote.id, host_uid: host.uid, reason: "insufficient_or_changed_lots" });
@@ -484,6 +494,7 @@ export async function confirmRoute(req: Request, env: Env): Promise<Response> {
     Number(priceSnapshot.expectedHostNetPaise), hostSplit.paidPaise, hostSplit.testPaise,
     quote.price_snapshot_json, quote.policy_snapshot_json, reservationSnapshot, callId, now,
   ];
+  const hasHold = quote.hold_seconds != null && Number(quote.hold_seconds) > 0; // quotes made while lengths were OFF carry NULL: no hold_seconds column written
   const lotGuards = spend.uses.map((use) => {
     const i = insertParams.length + 1;
     insertParams.push(use.lotId, use.micro);
@@ -494,10 +505,12 @@ export async function confirmRoute(req: Request, env: Env): Promise<Response> {
   insertParams.push(schedule.bufferMinutes);
   const reserveOpIndex = insertParams.length + 1;
   insertParams.push(reserveOp);
+  const holdIndex = insertParams.length + 1;
+  if (hasHold) insertParams.push(Number(quote.hold_seconds));
   const bookingInsert = env.DB_META.prepare(
     "INSERT INTO hf_bookings (id,host_uid,customer_uid,starts_at,ends_at,host_timezone,schedule_version,quote_id,idempotency_key,status,duration_min," +
-    "reserved_paise,expected_host_net_paise,expected_host_paid_net_paise,expected_host_test_net_paise,price_snapshot_json,policy_snapshot_json,reservation_snapshot_json,call_id,settlement_status,created_at,updated_at) " +
-    "SELECT ?1,?2,?3,?4,?5,?6,?7,?8,?9,'confirming',?10,?11,?12,?13,?14,?15,?16,?17,?18,'held',?19,?19 " +
+    "reserved_paise,expected_host_net_paise,expected_host_paid_net_paise,expected_host_test_net_paise,price_snapshot_json,policy_snapshot_json,reservation_snapshot_json,call_id,settlement_status,created_at,updated_at" + (hasHold ? ",hold_seconds" : "") + ") " +
+    "SELECT ?1,?2,?3,?4,?5,?6,?7,?8,?9,'confirming',?10,?11,?12,?13,?14,?15,?16,?17,?18,'held',?19,?19" + (hasHold ? ",?" + holdIndex : "") + " " +
     "WHERE EXISTS (SELECT 1 FROM hf_booking_quotes q WHERE q.id=?8 AND q.customer_uid=?3 AND q.host_uid=?2 AND q.status='open' AND q.expires_at>?19) " +
     "AND EXISTS (SELECT 1 FROM hf_availability_schedules s WHERE s.host_uid=?2 AND s.version=?7) " +
     "AND NOT EXISTS (SELECT 1 FROM hf_booking_schedule_locks WHERE host_uid=?2 AND expires_at>?19) " +
@@ -536,7 +549,7 @@ export async function confirmRoute(req: Request, env: Env): Promise<Response> {
     env.DB_META.prepare("INSERT INTO calendar_blocks(id,user_id,source_app,source_ref,starts_at,ends_at,title,status,created_at) SELECT ?1,?2,'hf_booking',?3,?4,?5,NULL,'busy',?6 WHERE EXISTS (SELECT 1 FROM hf_bookings WHERE id=?3 AND status='" + finalStatus + "')")
       .bind("hfb:" + bookingId + ":customer", auth.uid, bookingId, quote.starts_at, quote.ends_at, now),
     env.DB_META.prepare("INSERT INTO hf_booking_events(id,booking_id,operation_id,actor_uid,from_status,to_status,details_json,created_at) SELECT ?1,?2,?3,?4,'confirming','" + finalStatus + "',?5,?6 WHERE EXISTS (SELECT 1 FROM hf_bookings WHERE id=?2 AND status='" + finalStatus + "')")
-      .bind(crypto.randomUUID(), bookingId, "confirm:" + idempotencyKey, auth.uid, JSON.stringify({ quoteId: quote.id, reservedPaise: quote.reserved_paise, durationMinutes: quote.duration_min }), now),
+      .bind(crypto.randomUUID(), bookingId, "confirm:" + idempotencyKey, auth.uid, JSON.stringify({ quoteId: quote.id, reservedPaise: quote.reserved_paise, durationMinutes: quote.duration_min, holdSeconds: seconds }), now),
   ];
   try {
     await env.DB_META.batch(statements);
@@ -555,7 +568,7 @@ export async function confirmRoute(req: Request, env: Env): Promise<Response> {
   if (!saved || saved.status !== finalStatus) return err(409, "slot_or_wallet_changed");
   eventTrack(env, auth.uid, "hf_booking_confirmed", {
     ...(approval ? { status: finalStatus, approval_mode: mode } : {}),
-    booking_id: bookingId, call_id: callId, host_uid: host.uid, duration_minutes: seconds / 60,
+    booking_id: bookingId, call_id: callId, host_uid: host.uid, duration_minutes: Number(quote.duration_min), hold_minutes: seconds / 60,
     reserved_paise: Number(quote.reserved_paise), expected_host_net_paise: Number(priceSnapshot.expectedHostNetPaise),
   });
   return json({ booking: bookingPublic(saved, "customer") }, 201, { "cache-control": "private, no-store" });
@@ -637,7 +650,7 @@ export async function cancelRoute(req: Request, env: Env, id: string, opts: { fa
     return err(409, "too_late", { message: FAN_TOO_LATE_TEXT });
   }
   const reservation = await getReservation(env, row.call_id);
-  if (!reservation || reservation.secondsCovered !== Number(row.duration_min) * 60 || !reservation.lots.length) return err(409, "booking_hold_unavailable");
+  if (!reservation || reservation.secondsCovered !== rowHoldSeconds(row) || !reservation.lots.length) return err(409, "booking_hold_unavailable"); // [HF-CALL-MODES-D] hold, not full length
   const approval = await approvalOn(env);
   const now = Date.now();
   const nonce = crypto.randomUUID();
@@ -712,12 +725,15 @@ export async function startBookingCore(env: Env, row: BookingRow, actorUid: stri
   const callId = row.call_id;
   if (!callId) return err(409, "reservation_unavailable");
   const reservation = await getReservation(env, callId);
-  if (!reservation || reservation.secondsCovered !== Number(row.duration_min) * 60 || reservation.lots.length === 0) {
+  const holdSeconds = rowHoldSeconds(row); // [HF-CALL-MODES-D] what the booking actually holds (first 15 min of a long one)
+  if (!reservation || reservation.secondsCovered !== holdSeconds || reservation.lots.length === 0) {
     return err(409, "reservation_unavailable");
   }
+  // [HF-CALL-MODES-D] D1 / spec 1.1: a CONFIRMED booking rings in ANY mode (Online, Bookings only, Offline). The old presence==='online'
+  // refusal made a booked call fail when she was Offline or Busy at the booked minute, contradicting HF-REEL-16. She must still be a live host.
   const host = await env.DB_META.prepare("SELECT uid,slug,status,presence,display_name,price_per_min,category,women_lane,lgbtq_lane FROM hf_hosts WHERE uid=?1")
     .bind(row.host_uid).first<HfHostPricingRow & { presence: string; display_name: string | null }>();
-  if (!host || host.presence !== "online") return err(409, "host_unavailable");
+  if (!host || host.status !== "live") return err(409, "host_unavailable");
   const policy = JSON.parse(row.policy_snapshot_json) as { lane?: string | null };
   const eligibility = await bookingEligibility(env, row.customer_uid, host, policy.lane ?? null);
   if (eligibility) return eligibility;
@@ -725,13 +741,16 @@ export async function startBookingCore(env: Env, row: BookingRow, actorUid: stri
   if (cfg.hfCallsEnabled !== true || !callsConfigured(env)) return err(404, "calls_not_enabled");
   const priceSnapshot = JSON.parse(row.price_snapshot_json) as Record<string, any>;
   const ratePaise = Math.trunc(Number(priceSnapshot.ratePaise));
-  const maxSeconds = Number(row.duration_min) * 60;
+  // Chunked funding only matters when the hold is shorter than the booking (a long booking); a hold-in-full booking runs exactly as before.
+  const chunked = cfg.hfCallChunkBillingEnabled === true && holdSeconds < Number(row.duration_min) * 60;
+  // Funded seconds = the hold. Without the chunk engine nothing beyond the hold can be funded, so the call ends there (never bills unreserved time).
+  const maxSeconds = holdSeconds;
   if (!(ratePaise > 0) || !Number.isInteger(maxSeconds)) return err(409, "pricing_snapshot_invalid");
-  if (!(await claimHost(env, row.host_uid, callId))) return err(409, "host_unavailable");
+  if (!(await claimLineForBooking(env, row.host_uid, callId))) return err(409, "host_unavailable");
   const conferenceName = `hf_${callId.replace(/-/g, "")}`;
   try {
     await env.DB_META.batch([
-      env.DB_META.prepare(`UPDATE hf_bookings SET status='starting',updated_at=?1 WHERE id=?2 AND status='confirmed' AND settlement_status='held' AND starts_at<=?3+300000 AND ends_at>?3 AND NOT EXISTS (SELECT 1 FROM hf_exit_requests WHERE uid IN (?4,?5) AND status IN ('booking_cleanup','waiting_hold','waiting_payouts','ready')) AND NOT EXISTS (SELECT 1 FROM hf_blocks WHERE (blocker_uid=?4 AND blocked_uid=?5) OR (blocker_uid=?5 AND blocked_uid=?4)) AND EXISTS (SELECT 1 FROM contact_verification cv JOIN phone_otp p ON p.uid=cv.uid AND p.phone_hash=cv.phone_hash WHERE cv.uid=?4 AND cv.phone_verified=1 AND p.status='verified') AND EXISTS (SELECT 1 FROM contact_verification cv JOIN phone_otp p ON p.uid=cv.uid AND p.phone_hash=cv.phone_hash WHERE cv.uid=?5 AND cv.phone_verified=1 AND p.status='verified') AND EXISTS (SELECT 1 FROM hf_hosts WHERE uid=?5 AND status='live' AND presence='busy' AND presence_call_id=?6) AND ${laneGuardSql(4,5,policy.lane ?? null)}`)
+      env.DB_META.prepare(`UPDATE hf_bookings SET status='starting',updated_at=?1 WHERE id=?2 AND status='confirmed' AND settlement_status='held' AND starts_at<=?3+300000 AND ends_at>?3 AND NOT EXISTS (SELECT 1 FROM hf_exit_requests WHERE uid IN (?4,?5) AND status IN ('booking_cleanup','waiting_hold','waiting_payouts','ready')) AND NOT EXISTS (SELECT 1 FROM hf_blocks WHERE (blocker_uid=?4 AND blocked_uid=?5) OR (blocker_uid=?5 AND blocked_uid=?4)) AND EXISTS (SELECT 1 FROM contact_verification cv JOIN phone_otp p ON p.uid=cv.uid AND p.phone_hash=cv.phone_hash WHERE cv.uid=?4 AND cv.phone_verified=1 AND p.status='verified') AND EXISTS (SELECT 1 FROM contact_verification cv JOIN phone_otp p ON p.uid=cv.uid AND p.phone_hash=cv.phone_hash WHERE cv.uid=?5 AND cv.phone_verified=1 AND p.status='verified') AND EXISTS (SELECT 1 FROM hf_hosts WHERE uid=?5 AND status='live' AND presence_call_id=?6) AND ${laneGuardSql(4,5,policy.lane ?? null)}`)
         .bind(now, bookingId, now, row.customer_uid, row.host_uid, callId),
       env.DB_META.prepare("INSERT INTO hf_calls(id,caller_uid,host_uid,rate_paise,status,lane,created_at,conference_name,call_cost_paise_per_min,host_share_bps,tax_mode,split_rule_version,pricing_snapshot,booking_id) " +
         "SELECT ?1,?2,?3,?4,'ringing_host',?5,?6,?7,?8,?9,?10,?11,?12,?13 WHERE EXISTS (SELECT 1 FROM hf_bookings WHERE id=?13 AND status='starting' AND call_id=?1)")
@@ -752,25 +771,54 @@ export async function startBookingCore(env: Env, row: BookingRow, actorUid: stri
     return err(409, "booking_start_conflict");
   }
   try {
-    const stub = env.HF_CALL.get(env.HF_CALL.idFromName(callId));
-    const response = await stub.fetch("https://hfcall/init", {
-      method: "POST",
-      body: JSON.stringify({
-        callId, bookingId, bookedEndsAt: Number(row.ends_at), hardEndsAt: Number(row.ends_at), callerUid: row.customer_uid, hostUid: row.host_uid, rateRupees: ratePaise / 100,
-        reservedRupees: 0, testReservedRupees: 0, fundsRupees: 0, maxMinutes: Number(row.duration_min),
-        limitReason: "time_limit",
-        tokens: {
-          ratePaise, callCostPaisePerMin: Number(priceSnapshot.callCostPaisePerMin),
-          hostShareBps: Number(priceSnapshot.hostShareBps), maxSeconds, booked: true,
-          std: priceSnapshot.std ?? null, creator: priceSnapshot.creator ?? null,
-        },
-      }),
-    });
+    const response = await initBookedCall(env, buildBookedInit({ row, callId, ratePaise, priceSnapshot, holdSeconds, chunked }));
     if (!response.ok) return err(502, "call_start_pending");
     return json({ callId, status: "ringing_host" }, 201, { "cache-control": "private, no-store" });
   } catch {
     return err(502, "call_start_pending");
   }
+}
+
+/**
+ * [HF-CALL-MODES-D] Claim the host's line for a BOOKED call in any mode (spec 2.1: "booked claims in any mode"). Same effect as Lane A's
+ * claimHost(..., booked) and kept local so booked start does not depend on Lane A landing: takes presence_call_id when the line is free, and
+ * flips legacy presence online->busy exactly as today; an Offline / Bookings-only host keeps her presence (she did not choose to be online).
+ * The coordinator may swap this body for claimHost(env, hostUid, callId, { booked: true }) once Lane A ships it.
+ */
+export async function claimLineForBooking(env: Env, hostUid: string, callId: string): Promise<boolean> {
+  const r = await env.DB_META.prepare(
+    "UPDATE hf_hosts SET presence=CASE WHEN presence='online' THEN 'busy' ELSE presence END, presence_at=?1, presence_call_id=?3 " +
+    "WHERE uid=?2 AND status='live' AND presence_call_id IS NULL AND presence<>'busy'",
+  ).bind(Date.now(), hostUid, callId).run();
+  return Number(r.meta?.changes ?? 0) === 1;
+}
+
+export interface BookedInitInput {
+  row: BookingRow; callId: string; ratePaise: number; priceSnapshot: Record<string, any>;
+  /** Seconds funded up front = the booking hold. */
+  holdSeconds: number;
+  /** Chunk engine on: Lane C's DO keeps funding 5-minute chunks past the hold, up to hardEndsAt. */
+  chunked: boolean;
+}
+/** Pure: the body POSTed to HfCallDO /init for a booked call. ASSUMES Lane C's init contract: tokens.chunked, tokens.fundedSec, tokens.source, top-level hardEndsAt. */
+export function buildBookedInit(i: BookedInitInput): Record<string, unknown> {
+  const { row, callId, ratePaise, priceSnapshot, holdSeconds, chunked } = i;
+  return {
+    callId, bookingId: row.id, bookedEndsAt: Number(row.ends_at), hardEndsAt: Number(row.ends_at), callerUid: row.customer_uid, hostUid: row.host_uid, rateRupees: ratePaise / 100,
+    reservedRupees: 0, testReservedRupees: 0, fundsRupees: 0, maxMinutes: Number(row.duration_min),
+    limitReason: "time_limit",
+    tokens: {
+      ratePaise, callCostPaisePerMin: Number(priceSnapshot.callCostPaisePerMin),
+      hostShareBps: Number(priceSnapshot.hostShareBps), maxSeconds: holdSeconds, booked: true,
+      std: priceSnapshot.std ?? null, creator: priceSnapshot.creator ?? null,
+      ...(chunked ? { chunked: true, fundedSec: holdSeconds, source: "booking" } : {}),
+    },
+  };
+}
+/** The ONE place a booked call is handed to the call engine; the coordinator re-points this at Lane C's start function if needed. */
+export async function initBookedCall(env: Env, body: Record<string, unknown>): Promise<Response> {
+  const stub = env.HF_CALL.get(env.HF_CALL.idFromName(String(body.callId)));
+  return await stub.fetch("https://hfcall/init", { method: "POST", body: JSON.stringify(body) });
 }
 
 /** [HF-DASH-SUMMARY-1] Host net earnings still on hold for upcoming/in-progress bookings, in paise. Shared with GET /api/hf/me/summary. */

@@ -1,3 +1,6 @@
+import { readConfig } from "../routes/config";
+import type { Env } from "../types";
+import { HF_BOOKING_HOLD_MINUTES_DEFAULT, HF_BOOKING_LENGTHS } from "./hf_call_contracts";
 export type HfBookingRule = { weekday: number; startMin: number; endMin: number };
 export type HfBookingException = {
   date: string;
@@ -28,6 +31,36 @@ export type HfBookingSlot = {
 
 /** [HF-BOOKING-UNIFY-1] Every booking is a 10-minute call (HF-REEL-19 / HF-REEL-28). The one length both the app and the web offer. */
 export const HF_BOOKING_MINUTES = 10;
+
+/** [HF-CALL-MODES-D] Lengths a host sells: flag hfBookingLengthsEnabled ON -> 15/30/60/120/180/240/300 (spec 2.4), OFF -> [10] exactly as before. */
+export function bookingLengthsFor(lengthsEnabled: boolean): number[] {
+  return lengthsEnabled ? [...HF_BOOKING_LENGTHS] : [HF_BOOKING_MINUTES];
+}
+/** Length used when a client (old app) posts a booking without durationMinutes: 15 when lengths are on, 10 when off. */
+export function defaultBookingMinutes(lengthsEnabled: boolean): number {
+  return lengthsEnabled ? HF_BOOKING_LENGTHS[0] : HF_BOOKING_MINUTES;
+}
+/** Seconds held at booking time: cost of min(length, holdMinutes) when lengths are on; the whole length when off (today's behaviour). */
+export function holdSecondsFor(durationMinutes: number, lengthsEnabled: boolean, holdMinutes = HF_BOOKING_HOLD_MINUTES_DEFAULT): number {
+  const hold = Number.isInteger(holdMinutes) && holdMinutes >= 5 && holdMinutes <= 60 ? holdMinutes : HF_BOOKING_HOLD_MINUTES_DEFAULT;
+  return (lengthsEnabled ? Math.min(durationMinutes, hold) : durationMinutes) * 60;
+}
+export async function bookingLengthsEnabled(env: Env): Promise<boolean> {
+  return (await readBookingLengthConfig(env)).on;
+}
+/** Lengths flag plus the configured hold minutes (hfBookingHoldMinutes, default 15). */
+export async function readBookingLengthConfig(env: Env): Promise<{ on: boolean; holdMinutes: number }> {
+  let cfg: Record<string, unknown> | null = null;
+  try { cfg = (await readConfig(env)) as unknown as Record<string, unknown> | null; } catch { cfg = null; }
+  const hold = Number(cfg?.hfBookingHoldMinutes);
+  return { on: cfg?.hfBookingLengthsEnabled === true, holdMinutes: Number.isInteger(hold) && hold >= 5 && hold <= 60 ? hold : 15 };
+}
+
+/** What a stored booking / quote row holds: hold_seconds, or (old rows, NULL) the whole duration. */
+export function rowHoldSeconds(row: { hold_seconds?: number | null; duration_min: number }): number {
+  const h = Number(row.hold_seconds);
+  return Number.isInteger(h) && h > 0 ? h : Number(row.duration_min) * 60;
+}
 
 const MAX_RULES = 84;
 const MAX_EXCEPTIONS = 366;

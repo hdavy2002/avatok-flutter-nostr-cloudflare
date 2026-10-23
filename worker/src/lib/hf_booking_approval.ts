@@ -101,6 +101,8 @@ export interface BookingFacts {
   id: string; host_uid: string; customer_uid: string; starts_at: number; reserved_paise: number;
   topic_slug?: string | null; approval_deadline?: number | null; created_at?: number | null;
   host_name: string | null; fan_name: string | null;
+  /** [HF-CALL-MODES-D] booked length in minutes (10 before lengths, up to 300); absent -> 10. */
+  duration_min?: number | null;
 }
 /** [HF-BOOK-APPROVE-QA-1] Send messages after the response when the route has an ExecutionContext (the phone waited ~10 s otherwise). */
 export type Defer = (p: Promise<unknown>) => void;
@@ -121,6 +123,7 @@ export function messageFor(ev: MsgEvent, side: "fan" | "host", b: BookingFacts, 
   const Fan = capFirst(fan); // at the start of a sentence
   const when = istLabel(Number(b.starts_at));
   const hold = rupees(Number(b.reserved_paise));
+  const mins = Number(b.duration_min) > 0 ? Number(b.duration_min) : 10; // [HF-CALL-MODES-D] length-aware (was a fixed "10-minute")
   const topic = topicRef(b.topic_slug)?.label;
   const aboutTopic = topic ? ` about ${topic}` : "";
   const by = b.approval_deadline ? ` (by ${istLabel(Number(b.approval_deadline))} IST)` : "";
@@ -133,7 +136,7 @@ export function messageFor(ev: MsgEvent, side: "fan" | "host", b: BookingFacts, 
         ? { subject: `${B}: booking sent for approval`, push: { title: "Booking sent for approval", body: `${host} has 24 hours to accept. If not, ${hold} returns to your wallet.` },
             text: `${B}: your booking with ${host} for ${when} IST is sent for approval. ${host} has 24 hours to accept; if they don't, ${hold} goes back to your wallet. Open it here: ${link}` }
         : { subject: `${B}: ${Fan} wants to book a call`, push: { title: "New booking request", body: `${Fan}, ${when}${topic ? `, ${topic}` : ""}. Accept within 24 hours or it is cancelled and refunded.` },
-            text: `${B}: ${Fan} wants a 10-minute call with you on ${when} IST${aboutTopic}. Please accept within 24 hours${by}. If you don't, the booking is cancelled and ${fan} is refunded. Accept or decline here: ${link}` };
+            text: `${B}: ${Fan} wants a ${mins}-minute call with you on ${when} IST${aboutTopic}${mins > 15 ? `. Only the first 15 minutes (${hold}) are held up front; the rest is taken as you talk` : ""}. Please accept within 24 hours${by}. If you don't, the booking is cancelled and ${fan} is refunded. Accept or decline here: ${link}` };
     case "accepted":
       return side === "fan"
         ? { subject: `${B}: your call is confirmed`, push: { title: "Your call is confirmed", body: `${fanPeer} will take your call on ${when} IST.` },
@@ -174,11 +177,11 @@ export function messageEmailHtml(title: string, line: string): string {
 
 // ───────────────────────────── notify ─────────────────────────────
 type Row = { id: string; host_uid: string; customer_uid: string; starts_at: number; reserved_paise: number; topic_slug: string | null; approval_deadline: number | null;
-  created_at: number; host_name: string | null; fan_name: string | null; status: string };
+  created_at: number; host_name: string | null; fan_name: string | null; status: string; duration_min?: number | null };
 
 export async function loadFacts(env: Env, id: string): Promise<Row | null> {
   return await env.DB_META.prepare(
-    `SELECT b.id,b.host_uid,b.customer_uid,b.starts_at,b.reserved_paise,b.topic_slug,b.approval_deadline,b.created_at,b.status,
+    `SELECT b.id,b.host_uid,b.customer_uid,b.starts_at,b.reserved_paise,b.topic_slug,b.approval_deadline,b.created_at,b.status,b.duration_min,
             h.display_name AS host_name, u.display_name AS fan_name
        FROM hf_bookings b LEFT JOIN hf_hosts h ON h.uid=b.host_uid LEFT JOIN users u ON u.uid=b.customer_uid WHERE b.id=?1`,
   ).bind(id).first<Row>().catch(() => null);

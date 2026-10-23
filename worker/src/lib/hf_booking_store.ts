@@ -1,7 +1,8 @@
 import type { Env } from "../types";
 import { buildReleaseStatements, getReservation, relOpId } from "./hf_token_ledger";
 import {
-  HF_BOOKING_MINUTES,
+  bookingLengthsEnabled,
+  bookingLengthsFor,
   validateHfBookingSchedule,
   type HfBookingSchedule,
   type HfBusyInterval,
@@ -23,11 +24,11 @@ type ScheduleRow = {
 
 export const DEFAULT_HF_BOOKING_TIMEZONE = "Asia/Kolkata";
 
-export function emptyHfBookingSchedule(timezone = DEFAULT_HF_BOOKING_TIMEZONE): HfBookingSchedule {
+export function emptyHfBookingSchedule(timezone = DEFAULT_HF_BOOKING_TIMEZONE, lengthsEnabled = false): HfBookingSchedule {
   return {
     timezone,
     version: 0,
-    durationsMinutes: [HF_BOOKING_MINUTES],
+    durationsMinutes: bookingLengthsFor(lengthsEnabled),
     slotIntervalMinutes: 15,
     bufferMinutes: 10,
     minNoticeMinutes: 120,
@@ -45,13 +46,14 @@ function parseJson<T>(raw: string, label: string): T {
   }
 }
 
-function fromRow(row: ScheduleRow): HfBookingSchedule {
+function fromRow(row: ScheduleRow, lengthsEnabled = false): HfBookingSchedule {
   const schedule: HfBookingSchedule = {
     timezone: row.timezone,
     version: Number(row.version),
     // [HF-BOOKING-UNIFY-1] Normalised on read, nothing rewritten in D1: whatever lengths an older web save stored, the product books
     // exactly one length (10 minutes), so a schedule saved without 10 still yields slots in the app and on the web.
-    durationsMinutes: [HF_BOOKING_MINUTES],
+    // [HF-CALL-MODES-D] hfBookingLengthsEnabled ON: the product sells the 15/30/60/120/180/240/300 list instead (spec 2.4); OFF stays [10].
+    durationsMinutes: bookingLengthsFor(lengthsEnabled),
     slotIntervalMinutes: Number(row.slot_interval_min),
     bufferMinutes: Number(row.buffer_min),
     minNoticeMinutes: Number(row.min_notice_min),
@@ -64,11 +66,13 @@ function fromRow(row: ScheduleRow): HfBookingSchedule {
   return schedule;
 }
 
-export async function getHfBookingSchedule(env: Env, hostUid: string): Promise<HfBookingSchedule> {
+/** [HF-CALL-MODES-D] hfBookingLengthsEnabled, read once per call; a config failure means OFF (today's behaviour). */
+export async function getHfBookingSchedule(env: Env, hostUid: string, lengthsEnabled?: boolean): Promise<HfBookingSchedule> {
+  const lengths = lengthsEnabled ?? await bookingLengthsEnabled(env);
   const row = await env.DB_META.prepare(
     "SELECT host_uid,timezone,version,durations_json,slot_interval_min,buffer_min,min_notice_min,horizon_days,rules_json,exceptions_json,updated_at FROM hf_availability_schedules WHERE host_uid=?1",
   ).bind(hostUid).first<ScheduleRow>();
-  return row ? fromRow(row) : emptyHfBookingSchedule();
+  return row ? fromRow(row, lengths) : emptyHfBookingSchedule(DEFAULT_HF_BOOKING_TIMEZONE, lengths);
 }
 
 /** A schedule writer lease serializes the impact check with later booking

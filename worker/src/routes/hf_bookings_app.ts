@@ -24,6 +24,7 @@ import {
 import { readHfStdPlan, readHfTokenConfig } from "../lib/hf_token_config";
 import { callSplit, chargePaise, stdSplit } from "../lib/hf_token_math";
 import {
+  bookingLengthsFor, defaultBookingMinutes, holdSecondsFor, readBookingLengthConfig,
   isCalendarDate, localDateAndMinute, slotsForDate, slotsForRange, isBookingDateRangeWithinHorizon, validateHfBookingSchedule,
   type HfBookingException, type HfBookingSchedule,
 } from "../lib/hf_booking_availability";
@@ -42,7 +43,12 @@ import {
 } from "../lib/hf_booking_approval"; // [HF-BOOK-APPROVE-BE]
 
 export const APP_TZ = "Asia/Kolkata";
-export const APP_MINUTES = 10;           // every booking is a 10-minute call (HF-REEL-19)
+export const APP_MINUTES = 10;           // every booking is a 10-minute call (HF-REEL-19); with hfBookingLengthsEnabled the lengths are 15..300 (see Grid)
+/** [HF-CALL-MODES-D] What one chip on the influencer's editor opens, and which lengths the schedule sells. OFF = exactly today (10-minute chip, [10]).
+ *  ON = an hourly chip opens that whole hour (so 15/30/60-minute calls fit it) and two adjacent chips open two hours (so 120 fits), etc. */
+export type Grid = { chip: number; lengths: number[] };
+export const GRID_OFF: Grid = { chip: APP_MINUTES, lengths: [APP_MINUTES] };
+export const gridFor = (lengthsOn: boolean): Grid => lengthsOn ? { chip: 60, lengths: bookingLengthsFor(true) } : GRID_OFF;
 export const APP_HORIZON_DAYS = 21;      // 21 dates x up to 14 hourly chips stays under the 366-exception cap
 const APP_MIN_NOTICE = 60;               // a booking must be made at least 1 h ahead, so a fan can always cancel free right after booking
 const MAX_SLOTS_PER_DAY = 14;
@@ -85,6 +91,7 @@ type HostRateRow = { uid: string; slug: string | null; status: string; category:
 
 export async function rateInfo(env: Env, host: { category: string; price_per_min: number }, previewRate?: number) {
   const cfg = (await readConfig(env).catch(() => ({}))) as unknown as Record<string, unknown>;
+  const holdMinutes = cfg.hfBookingLengthsEnabled === true ? holdSecondsFor(60, true, Number(cfg.hfBookingHoldMinutes)) / 60 : APP_MINUTES; // [HF-CALL-MODES-D]
   const creator = isCreatorCategory(host.category);
   const infRate = readInfluencerRate(cfg); // [HF-WIRE-18] HF-REEL-37
   const std = pricingStd(readHfStdPlan(cfg), cfg);
@@ -105,7 +112,8 @@ export async function rateInfo(env: Env, host: { category: string; price_per_min
     ratePerMin: rate, minRate: min, maxRate: max, editable: !fixed,
     ...(fixed ? { fixedMessage: `${BRAND.name} sets one rate for everyone right now, so you can't change yours.` } : {}),
     hostGetsPerMinPaise: hostPaise, platformPerMinPaise: Math.max(0, rate * 100 - hostPaise),
-    holdPaise: rate * 100 * APP_MINUTES,
+    holdPaise: rate * 100 * holdMinutes,
+    ...(cfg.hfBookingLengthsEnabled === true ? { holdMinutes } : {}),
   };
 }
 
@@ -139,46 +147,46 @@ async function rateRoute(req: Request, env: Env): Promise<Response> {
 // ───────────────────────────── availability ─────────────────────────────
 type DayMap = Map<string, Set<number>>;
 
-function baseSchedule(version: number, exceptions: HfBookingException[]): HfBookingSchedule {
+function baseSchedule(version: number, exceptions: HfBookingException[], grid: Grid = GRID_OFF): HfBookingSchedule {
   return {
-    timezone: APP_TZ, version, durationsMinutes: [APP_MINUTES], slotIntervalMinutes: APP_MINUTES, bufferMinutes: 0,
+    timezone: APP_TZ, version, durationsMinutes: grid.lengths, slotIntervalMinutes: grid.chip, bufferMinutes: 0,
     minNoticeMinutes: APP_MIN_NOTICE, horizonDays: APP_HORIZON_DAYS, rules: [], exceptions,
   };
 }
 
 /** Whatever the stored schedule is (app-made or rule-based), the dated 10-minute starts it opens, per IST date. */
-export function materialize(schedule: HfBookingSchedule, now: number): DayMap {
+export function materialize(schedule: HfBookingSchedule, now: number, grid: Grid = GRID_OFF): DayMap {
   const out: DayMap = new Map();
   if (schedule.version === 0) return out;
   const today = localDateAndMinute(now, schedule.timezone).date;
   const open = { ...schedule, minNoticeMinutes: 0 };
   for (let i = 0; i < schedule.horizonDays; i++) {
     const date = addDays(today, i);
-    const slots = slotsForDate(open, date, APP_MINUTES, [], now);
+    const slots = slotsForDate(open, date, grid.chip, [], now);
     if (slots.length) out.set(date, new Set(slots.map((s) => s.localStartMin)));
   }
   return out;
 }
 
 /** The 10-minute starts a schedule opens on one date, counting only its weekly rules (exceptions ignored), no notice window. */
-function ruleStarts(schedule: HfBookingSchedule, date: string, now: number): Set<number> {
-  const s = { ...schedule, exceptions: [], durationsMinutes: [APP_MINUTES], minNoticeMinutes: 0 };
-  return new Set(slotsForDate(s, date, APP_MINUTES, [], now).map((x) => x.localStartMin));
+function ruleStarts(schedule: HfBookingSchedule, date: string, now: number, grid: Grid = GRID_OFF): Set<number> {
+  const s = { ...schedule, exceptions: [], durationsMinutes: grid.lengths, minNoticeMinutes: 0 };
+  return new Set(slotsForDate(s, date, grid.chip, [], now).map((x) => x.localStartMin));
 }
 const sameSet = (a: Set<number>, b: Set<number>) => a.size === b.size && [...a].every((m) => b.has(m));
 
 /** Dated exceptions that make `date` open exactly `want`, on top of the weekly rules: one 10-minute "available" window for each time the
  *  rules do not give, and "unavailable" runs for each rule time she switched off. */
-function exceptionsForDate(base: Set<number>, want: Set<number>, date: string, interval: number): HfBookingException[] {
+function exceptionsForDate(base: Set<number>, want: Set<number>, date: string, interval: number, chip: number = APP_MINUTES): HfBookingException[] {
   const out: HfBookingException[] = [];
   for (const m of [...want].sort((a, b) => a - b)) {
     if (base.has(m)) continue;
     const prev = out[out.length - 1];
     // On a 10-minute grid, back-to-back times are one continuous window (same slots, fewer rows); on a wider grid they must stay separate.
-    if (interval === APP_MINUTES && prev && prev.status === "available" && prev.endMin === m) prev.endMin = m + APP_MINUTES;
-    else out.push({ date, startMin: m, endMin: m + APP_MINUTES, status: "available" });
+    if (interval === chip && prev && prev.status === "available" && prev.endMin === m) prev.endMin = m + chip;
+    else out.push({ date, startMin: m, endMin: m + chip, status: "available" });
   }
-  const step = Math.max(interval, APP_MINUTES);
+  const step = Math.max(interval, chip);
   const cuts = [...base].filter((m) => !want.has(m)).sort((a, b) => a - b);
   let i = 0;
   while (i < cuts.length) {
@@ -193,8 +201,8 @@ function exceptionsForDate(base: Set<number>, want: Set<number>, date: string, i
 /** [HF-BOOKING-UNIFY-1] An app save MERGES into the shared schedule row instead of replacing it: weekly rules, timezone, buffer,
  *  notice and every date the app did not touch survive; each date the app sent is rebuilt as dated exceptions on top of the rules so
  *  slots come out exactly as marked. Returns null if the marks cannot be expressed (e.g. they overlap a blocked run). */
-export function mergeAppEdits(current: HfBookingSchedule, edits: DayMap, today: string, now: number): HfBookingSchedule | null {
-  const start: HfBookingSchedule = current.version === 0 ? baseSchedule(0, []) : { ...current, durationsMinutes: [APP_MINUTES] };
+export function mergeAppEdits(current: HfBookingSchedule, edits: DayMap, today: string, now: number, grid: Grid = GRID_OFF): HfBookingSchedule | null {
+  const start: HfBookingSchedule = current.version === 0 ? baseSchedule(0, [], grid) : { ...current, durationsMinutes: grid.lengths };
   let horizon = start.horizonDays;
   for (const [date, mins] of edits) {
     if (!mins.size) continue;
@@ -203,16 +211,16 @@ export function mergeAppEdits(current: HfBookingSchedule, edits: DayMap, today: 
     horizon = Math.max(horizon, n + 1); // never let a date she opened sit beyond what fans may book
   }
   // Try the schedule's own start interval first (keeps the website's pattern); an adjacent-times mark may need the 10-minute grid.
-  for (const interval of start.slotIntervalMinutes === APP_MINUTES ? [APP_MINUTES] : [start.slotIntervalMinutes, APP_MINUTES]) {
+  for (const interval of start.slotIntervalMinutes === grid.chip ? [grid.chip] : [start.slotIntervalMinutes, grid.chip]) {
     const draft: HfBookingSchedule = { ...start, slotIntervalMinutes: interval, horizonDays: Math.min(60, horizon), exceptions: [] };
     const exceptions = start.exceptions.filter((e) => e.date >= today && !edits.has(e.date)); // past dates can never matter again
-    for (const [date, want] of edits) exceptions.push(...exceptionsForDate(ruleStarts(draft, date, now), want, date, interval));
+    for (const [date, want] of edits) exceptions.push(...exceptionsForDate(ruleStarts(draft, date, now, grid), want, date, interval, grid.chip));
     const candidate: HfBookingSchedule = { ...draft, exceptions };
     if (validateHfBookingSchedule(candidate).length) continue;
     const open = { ...candidate, minNoticeMinutes: 0 };
     let ok = true;
     for (const [date, want] of edits) {
-      if (!sameSet(new Set(slotsForDate(open, date, APP_MINUTES, [], now).map((x) => x.localStartMin)), new Set([...want].filter((m) => slotsForDate({ ...open, exceptions: [{ date, startMin: m, endMin: m + APP_MINUTES, status: "available" }], rules: [] }, date, APP_MINUTES, [], now).length > 0)))) { ok = false; break; }
+      if (!sameSet(new Set(slotsForDate(open, date, grid.chip, [], now).map((x) => x.localStartMin)), new Set([...want].filter((m) => slotsForDate({ ...open, exceptions: [{ date, startMin: m, endMin: m + grid.chip, status: "available" }], rules: [] }, date, grid.chip, [], now).length > 0)))) { ok = false; break; }
     }
     if (ok) return candidate;
   }
@@ -231,12 +239,13 @@ async function bookedSlots(env: Env, hostUid: string, now: number, tz: string): 
   return out;
 }
 
-async function availabilityPayload(env: Env, host: HostRateRow, schedule: HfBookingSchedule, now: number) {
-  const map = materialize(schedule, now);
+async function availabilityPayload(env: Env, host: HostRateRow, schedule: HfBookingSchedule, now: number, grid: Grid = GRID_OFF) {
+  const map = materialize(schedule, now, grid);
   const days: Record<string, { open: boolean; slots: string[] }> = {};
   for (const [date, mins] of [...map.entries()].sort()) days[date] = { open: true, slots: [...mins].sort((a, b) => a - b).map(hhmm) };
   return {
-    timezone: schedule.timezone, version: schedule.version, minutes: APP_MINUTES, horizonDays: APP_HORIZON_DAYS,
+    timezone: schedule.timezone, version: schedule.version, minutes: grid.lengths[0], horizonDays: APP_HORIZON_DAYS,
+    ...(grid.lengths.length > 1 ? { durationsMinutes: grid.lengths, chipMinutes: grid.chip } : {}), // [HF-CALL-MODES-D] additive, only when lengths are on
     today: localDateAndMinute(now, APP_TZ).date, slotChoices: SLOT_CHOICES, days,
     booked: await bookedSlots(env, host.uid, now, schedule.timezone),
     rate: await rateInfo(env, host),
@@ -249,8 +258,10 @@ async function availabilityRoute(req: Request, env: Env): Promise<Response> {
   const host = await hostOf(env, auth.uid);
   if (!host) return err(404, "host_not_found");
   const now = Date.now();
-  const current = await getHfBookingSchedule(env, auth.uid);
-  if (req.method === "GET") return json(await availabilityPayload(env, host, current, now), 200, NOSTORE);
+  const lengthCfg = await readBookingLengthConfig(env); // [HF-CALL-MODES-D]
+  const grid = gridFor(lengthCfg.on);
+  const current = await getHfBookingSchedule(env, auth.uid, lengthCfg.on);
+  if (req.method === "GET") return json(await availabilityPayload(env, host, current, now, grid), 200, NOSTORE);
 
   const body = await readBody(req);
   const incoming = body?.days;
@@ -287,7 +298,7 @@ async function availabilityRoute(req: Request, env: Env): Promise<Response> {
     const set = edits.get(l.date);
     if (set) set.add(l.minute);
   }
-  const merged = mergeAppEdits(current, edits, today, now);
+  const merged = mergeAppEdits(current, edits, today, now, grid);
   if (!merged) return err(409, "schedule_conflict", { message: "Those times can't be combined with your weekly hours from the website. Change them on the website, or pick other times." });
   if (merged.exceptions.length > MAX_EXCEPTIONS) return err(400, "too_many_slots", { message: "That is too many separate times. Keep fewer times open." });
   const schedule = merged;
@@ -296,7 +307,7 @@ async function availabilityRoute(req: Request, env: Env): Promise<Response> {
   try {
     const version = await saveHfBookingSchedule(env, auth.uid, current.version, token, schedule);
     if (version === null) return err(409, "schedule_changed", { message: "Your availability changed somewhere else. Reload it and try again." });
-    return json(await availabilityPayload(env, host, { ...schedule, version }, now), 200, NOSTORE);
+    return json(await availabilityPayload(env, host, { ...schedule, version }, now, grid), 200, NOSTORE);
   } finally {
     await releaseHfScheduleWriteLock(env, auth.uid, token).catch(() => undefined);
   }
@@ -306,7 +317,8 @@ async function slotsRoute(req: Request, env: Env, slug: string): Promise<Respons
   const host = await env.DB_META.prepare("SELECT uid,slug,status,category,price_per_min,women_lane,lgbtq_lane FROM hf_hosts WHERE slug=?1")
     .bind(slug).first<HfHostPricingRow>();
   if (!host || host.status !== "live") return err(404, "host_not_found");
-  const schedule = await getHfBookingSchedule(env, host.uid);
+  const lengthCfg = await readBookingLengthConfig(env); // [HF-CALL-MODES-D] ?durationMinutes=L only when lengths are on; off = 10 as always
+  const schedule = await getHfBookingSchedule(env, host.uid, lengthCfg.on);
   const now = Date.now();
   const today = localDateAndMinute(now, schedule.timezone).date;
   const lastAllowed = addDays(today, schedule.horizonDays - 1);
@@ -316,23 +328,30 @@ async function slotsRoute(req: Request, env: Env, slug: string): Promise<Respons
   if (!isCalendarDate(from) || !isCalendarDate(to) || to < from) return err(400, "invalid_date_range");
   if (from < today) from = today;
   if (to > lastAllowed) to = lastAllowed;
+  const rawLen = url.searchParams.get("durationMinutes");
+  const minutes = lengthCfg.on ? (rawLen == null || rawLen === "" ? defaultBookingMinutes(true) : Number(rawLen)) : APP_MINUTES;
+  if (lengthCfg.on && !schedule.durationsMinutes.includes(minutes)) {
+    return err(400, "invalid_duration", { durationsMinutes: schedule.durationsMinutes, message: "Pick one of the call lengths this influencer offers." });
+  }
+  const holdSeconds = holdSecondsFor(minutes, lengthCfg.on, lengthCfg.holdMinutes);
   const pricing = await loadHostPricing(env, host).catch(() => null);
-  const holdPaise = pricing ? chargePaise(pricing.price, APP_MINUTES * 60) : Number(host.price_per_min) * 100 * APP_MINUTES;
+  const holdPaise = pricing ? chargePaise(pricing.price, holdSeconds) : Number(host.price_per_min) * 100 * (holdSeconds / 60);
   // [HF-BOOK-APPROVE-BE] flag on: the influencer's topics (for the fan's picker) and whether bookings wait for approval
   const approval = await approvalOn(env);
   const head = {
-    timezone: schedule.timezone, minutes: APP_MINUTES, ratePerMin: Number(host.price_per_min), holdPaise,
+    timezone: schedule.timezone, minutes, ratePerMin: Number(host.price_per_min), holdPaise,
+    ...(lengthCfg.on ? { durationsMinutes: schedule.durationsMinutes, holdMinutes: holdSeconds / 60 } : {}), // [HF-CALL-MODES-D] additive, only when lengths are on
     today, lastDate: lastAllowed,
     ...(approval ? { topics: await hostTopics(env, host.uid), approvalMode: await hostApprovalMode(env, host.uid) } : {}),
   };
-  if (schedule.version === 0 || to < from || !schedule.durationsMinutes.includes(APP_MINUTES) || !isBookingDateRangeWithinHorizon(schedule, from, to, now)) {
+  if (schedule.version === 0 || to < from || !schedule.durationsMinutes.includes(minutes) || !isBookingDateRangeWithinHorizon(schedule, from, to, now)) {
     return json({ ...head, days: {}, openDates: [] }, 200, { "cache-control": "public, max-age=15" });
   }
   const [fy, fm, fd] = from.split("-").map(Number);
   const [ty, tm, td] = to.split("-").map(Number);
   const busy = await listHfBusyIntervals(env, host.uid, Date.UTC(fy, fm - 1, fd) - 2 * 86_400_000, Date.UTC(ty, tm - 1, td + 1) + 2 * 86_400_000);
   const days: Record<string, string[]> = {};
-  for (const s of slotsForRange(schedule, from, to, APP_MINUTES, busy, now)) (days[s.localDate] ??= []).push(hhmm(s.localStartMin));
+  for (const s of slotsForRange(schedule, from, to, minutes, busy, now)) (days[s.localDate] ??= []).push(hhmm(s.localStartMin));
   return json({ ...head, days, openDates: Object.keys(days).sort() }, 200, { "cache-control": "public, max-age=15" });
 }
 
@@ -420,7 +439,8 @@ function shape(row: JoinRow, role: "fan" | "host", now: number, note?: string, a
   const freeUntil = start - FAN_FREE_CANCEL_MS;
   const common = {
     id: row.id, status: row.status, startAt: new Date(start).toISOString(), endAt: new Date(Number(row.ends_at)).toISOString(),
-    day: l.date, time: hhmm(l.minute), minutes: APP_MINUTES, holdPaise: Number(row.reserved_paise),
+    day: l.date, time: hhmm(l.minute), minutes: Number(row.duration_min) > 0 ? Number(row.duration_min) : APP_MINUTES, holdPaise: Number(row.reserved_paise),
+    ...(Number(row.hold_seconds) > 0 ? { holdMinutes: Number(row.hold_seconds) / 60 } : {}), // [HF-CALL-MODES-D] only bookings made with lengths on
   };
   // flag on: the additive fields of the §9b contract (flag off: the response is exactly what it always was)
   const extra = approval ? {
@@ -468,7 +488,14 @@ async function createBooking(req: Request, env: Env, body: Record<string, unknow
     const h = await env.DB_META.prepare("SELECT uid FROM hf_hosts WHERE slug=?1").bind(slug).first<{ uid: string }>().catch(() => null);
     if (h && !(await hostTopics(env, h.uid)).some((t) => t.slug === topic)) return err(400, "bad_topic", { message: ERROR_TEXT.bad_topic });
   }
-  const quoteRes = await quoteRoute(innerReq(req, "/api/hf/bookings/quote", { hostSlug: slug, startUtc: new Date(ms).toISOString(), durationMinutes: APP_MINUTES }), env);
+  // [HF-CALL-MODES-D] lengths ON: the client sends durationMinutes (15..300); an old app that omits it gets 15. OFF: always 10, any value ignored.
+  const lengthOn = (await readBookingLengthConfig(env)).on;
+  let duration = APP_MINUTES;
+  if (lengthOn) {
+    duration = body.durationMinutes == null || body.durationMinutes === "" ? defaultBookingMinutes(true) : Number(body.durationMinutes);
+    if (!bookingLengthsFor(true).includes(duration)) return err(400, "invalid_duration", { durationsMinutes: bookingLengthsFor(true), message: "Pick one of the call lengths this influencer offers." });
+  }
+  const quoteRes = await quoteRoute(innerReq(req, "/api/hf/bookings/quote", { hostSlug: slug, startUtc: new Date(ms).toISOString(), durationMinutes: duration }), env);
   if (quoteRes.status !== 201) return passErr(quoteRes);
   const { quote } = await quoteRes.json() as { quote: { id: string; reservedPaise: number } };
   const confirmRes = await confirmRoute(innerReq(req, "/api/hf/bookings", { quoteId: quote.id, policyAccepted: true, ...(topic ? { topicSlug: topic } : {}) }, { "Idempotency-Key": `app-${quote.id}` }), env);
@@ -505,10 +532,17 @@ async function createBooking(req: Request, env: Env, body: Record<string, unknow
   }
   const when = label(Number(row.starts_at));
   const hold = rupees(Number(row.reserved_paise));
+  const mins = Number(row.duration_min) > 0 ? Number(row.duration_min) : APP_MINUTES;
+  const holdMins = Number(row.hold_seconds) > 0 ? Number(row.hold_seconds) / 60 : mins;
+  const longer = holdMins < mins; // [HF-CALL-MODES-D] a long booking holds only the first minutes; the rest is taken as the fan talks
   await queueWhatsApp(env, row.id, row.customer_uid, "hf_booking_confirm", "c",
-    `${BRAND.name}: booked! Your call with ${row.host_name ?? "your influencer"} is on ${when} IST. ${hold} is held; you pay only for the minutes you talk and the rest comes back. Cancel free until 1 hour before. Your number stays hidden.`);
+    longer
+      ? `${BRAND.name}: booked! Your ${mins}-minute call with ${row.host_name ?? "your influencer"} is on ${when} IST. ${hold} (the first ${holdMins} minutes) is held now; after that the call is paid for 5 minutes at a time from your wallet, and you pay only for the minutes you talk. Cancel free until 1 hour before. Your number stays hidden.`
+      : `${BRAND.name}: booked! Your call with ${row.host_name ?? "your influencer"} is on ${when} IST. ${hold} is held; you pay only for the minutes you talk and the rest comes back. Cancel free until 1 hour before. Your number stays hidden.`);
   await queueWhatsApp(env, row.id, row.host_uid, "hf_booking_confirm", "c",
-    `${BRAND.name}: new booking. ${capFirst(callerHandle(row.fan_name))} booked a ${APP_MINUTES}-minute call with you on ${when} IST. We will ring you first at that time.`);
+    longer
+      ? `${BRAND.name}: new booking. ${capFirst(callerHandle(row.fan_name))} booked a ${mins}-minute call with you on ${when} IST. Only the first ${holdMins} minutes (${hold}) are held up front; the rest is paid for 5 minutes at a time while you talk. We will ring you first at that time.`
+      : `${BRAND.name}: new booking. ${capFirst(callerHandle(row.fan_name))} booked a ${mins}-minute call with you on ${when} IST. We will ring you first at that time.`);
   return json({ booking: shape(row, "fan", Date.now(), note) }, 201, NOSTORE);
 }
 

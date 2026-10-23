@@ -453,3 +453,225 @@ describe("app and web share one availability schedule without destroying each ot
     expect(((await call(req("GET", "/api/hosts/me/availability", HOST))).body.schedule.rules)).toEqual(webSched().rules);
   });
 });
+
+// ── [HF-CALL-MODES-D] booking lengths 15..300 min, 15-min hold, booked start in any mode ─────────────────────────────────────────────
+describe("[HF-CALL-MODES-D] booking lengths, the 15-minute hold and booked start in any mode", () => {
+  beforeEach(() => seed(false));
+  const LENGTHS = [15, 30, 60, 120, 180, 240, 300];
+  const slotsFor = async (len: number | null, uid: string | null = null) =>
+    (await call(req("GET", "/api/hf/hosts/tara-sharma/slots?from=2026-10-23&to=2026-10-30" + (len == null ? "" : "&durationMinutes=" + len), uid)));
+  const bookingRow = (id: string) => raw().prepare("SELECT * FROM hf_bookings WHERE id=?1").get(id);
+  const ledgerNote = (callId: string) => raw().prepare("SELECT note FROM hf_token_ledger WHERE op_id=?1").get("hftres:" + callId)?.note;
+  function stubCalls() {
+    const inits: any[] = [];
+    env.HF_CALL = { idFromName: (n: string) => n, get: () => ({ fetch: async (_u: string, init: any) => { inits.push(JSON.parse(init.body)); return new Response("{}", { status: 200 }); } }) };
+    return inits;
+  }
+
+  it("L1. each length only offers the starts it fully covers (open hour chips 10:00-13:00 = one 3-hour window)", async () => {
+    flags({ hfBookingLengthsEnabled: true });
+    await openDay(["10:00", "11:00", "12:00"]);
+    const want: Record<number, string[]> = {
+      15: ["10:00", "11:00", "12:00"], 30: ["10:00", "11:00", "12:00"], 60: ["10:00", "11:00", "12:00"],
+      120: ["10:00", "11:00"], 180: ["10:00"], 240: [], 300: [],
+    };
+    for (const len of LENGTHS) {
+      const s = await slotsFor(len);
+      expect(s.status).toBe(200);
+      expect(s.body.days[TOMORROW] ?? [], "length " + len).toEqual(want[len]);
+      expect(s.body.minutes).toBe(len);
+      expect(s.body.durationsMinutes).toEqual(LENGTHS);
+      expect(s.body.holdMinutes).toBe(Math.min(len, 15));
+      expect(s.body.holdPaise).toBe(2000 * Math.min(len, 15));
+    }
+    expect((await slotsFor(null)).body.minutes).toBe(15);        // no length asked -> the shortest
+    const bad = await slotsFor(45);
+    expect(bad.status).toBe(400);
+    expect(bad.body.error).toBe("invalid_duration");
+    // the web endpoint agrees
+    const web = await call(req("GET", "/api/hf/hosts/tara-sharma/availability?from=2026-10-24&to=2026-10-24&durationMinutes=120", null));
+    expect(web.body.slots.map((x: any) => x.startUtc)).toEqual(["10:00", "11:00"].map((h) => new Date(at(h)).toISOString()));
+    expect(web.body.durationsMinutes).toEqual(LENGTHS);
+  });
+
+  it("L2. a booked long call blocks every start it overlaps for every other length", async () => {
+    flags({ hfBookingLengthsEnabled: true });
+    await openDay(["10:00", "11:00", "12:00"]);
+    expect((await book(FAN, "10:00", { durationMinutes: 120 })).status).toBe(201);   // 10:00-12:00
+    expect((await slotsFor(60, FAN2)).body.days[TOMORROW]).toEqual(["12:00"]);
+    expect((await slotsFor(15, FAN2)).body.days[TOMORROW]).toEqual(["12:00"]);
+    expect((await slotsFor(120, FAN2)).body.days[TOMORROW] ?? []).toEqual([]);
+    expect((await book(FAN2, "11:00", { durationMinutes: 15 })).status).toBe(409);
+    expect((await book(FAN2, "12:00", { durationMinutes: 60 })).status).toBe(201);
+  });
+
+  it("L3. a 120-minute booking holds only 15 minutes; cancel, host cancel and decline each give exactly that hold back once", async () => {
+    flags({ hfBookingLengthsEnabled: true });
+    await openDay(["10:00", "11:00", "12:00"]);
+    const b = await book(FAN, "10:00", { durationMinutes: 120 });
+    expect(b.status).toBe(201);
+    expect(b.body.booking).toMatchObject({ minutes: 120, holdMinutes: 15, holdPaise: 2000 * 15 });
+    const row = bookingRow(b.body.booking.id);
+    expect(row).toMatchObject({ duration_min: 120, hold_seconds: 900, reserved_paise: 30000 });
+    expect(row.ends_at - row.starts_at).toBe(120 * 60_000);
+    expect(ledgerNote(row.call_id)).toBe("secs:900");
+    const held = reservedOf(FAN);
+    expect(held).toBeGreaterThan(0);
+    // the same fan's 10-minute-style comparison: 15 minutes of reservation, not 120
+    const b2 = await book(FAN2, "12:00", { durationMinutes: 60 });
+    expect(reservedOf(FAN2)).toBe(held);                        // a 60-minute booking holds the same 15 minutes
+    expect(b2.body.booking.holdMinutes).toBe(15);
+    // fan cancels the 120: hold released, once
+    const id = b.body.booking.id;
+    expect((await call(req("DELETE", "/api/hf/bookings/" + id, FAN))).status).toBe(200);
+    expect(reservedOf(FAN)).toBe(0);
+    await call(req("DELETE", "/api/hf/bookings/" + id, FAN));
+    await call(req("POST", `/api/hf/bookings/${id}/cancel`, FAN, {}));
+    expect(reservedOf(FAN)).toBe(0);
+    expect(raw().prepare("SELECT COUNT(*) c FROM hf_token_ledger WHERE op_id=?1").get("hftrel:" + row.call_id).c).toBe(1);
+    // host cancels the 60: the fan gets the hold back
+    expect((await call(req("DELETE", "/api/hf/bookings/" + b2.body.booking.id, HOST))).status).toBe(200);
+    expect(reservedOf(FAN2)).toBe(0);
+  });
+
+  it("L4. decline and expiry (approval on) refund the 15-minute hold exactly once", async () => {
+    flags({ hfBookingLengthsEnabled: true, hfBookingApprovalEnabled: true });
+    raw().prepare("UPDATE hf_hosts SET booking_approval='manual' WHERE uid=?1").run(HOST);
+    await openDay(["10:00", "11:00", "12:00"]);
+    const p1 = await book(FAN, "10:00", { durationMinutes: 180 });
+    expect(p1.body.booking.status).toBe("pending_approval");
+    expect(p1.body.booking.holdMinutes).toBe(15);
+    const held = reservedOf(FAN);
+    expect(held).toBeGreaterThan(0);
+    expect((await call(req("POST", `/api/hf/bookings/${p1.body.booking.id}/decline`, HOST, {}))).status).toBe(200);
+    expect(reservedOf(FAN)).toBe(0);
+    await call(req("POST", `/api/hf/bookings/${p1.body.booking.id}/decline`, HOST, {}));
+    expect(reservedOf(FAN)).toBe(0);
+    const p2 = await book(FAN2, "11:00", { durationMinutes: 120 });
+    expect(reservedOf(FAN2)).toBe(held);
+    vi.setSystemTime(at("10:30"));
+    await runHfBookingApprovalExpiry(env, Date.now());
+    await runHfBookingApprovalExpiry(env, Date.now());
+    expect(raw().prepare("SELECT status FROM hf_bookings WHERE id=?1").get(p2.body.booking.id).status).toBe("cancelled");
+    expect(reservedOf(FAN2)).toBe(0);
+  });
+
+  it("L5. legacy rows (hold_seconds NULL, made before lengths) still cancel after the flag is turned on", async () => {
+    flags({});
+    await openDay(["10:00", "11:00"]);
+    const b = await book(FAN, "10:00");
+    expect(b.status).toBe(201);
+    const id = b.body.booking.id;
+    expect(bookingRow(id).hold_seconds).toBeNull();
+    expect(bookingRow(id).duration_min).toBe(10);
+    const held = reservedOf(FAN);
+    expect(held).toBeGreaterThan(0);
+    flags({ hfBookingLengthsEnabled: true });
+    const list = await call(req("GET", "/api/hf/bookings?role=fan", FAN));
+    expect(list.body.bookings[0]).toMatchObject({ minutes: 10, holdPaise: 20000 });
+    expect(list.body.bookings[0].holdMinutes).toBeUndefined();
+    expect((await call(req("DELETE", "/api/hf/bookings/" + id, FAN))).status).toBe(200);
+    expect(reservedOf(FAN)).toBe(0);
+  });
+
+  it("L6. an app POST with no durationMinutes books 15 minutes when lengths are on, 10 when off (and off ignores any length)", async () => {
+    flags({ hfBookingLengthsEnabled: true });
+    await openDay(["10:00", "11:00", "12:00"]);
+    const on = await book(FAN, "10:00");
+    expect(on.status).toBe(201);
+    expect(on.body.booking).toMatchObject({ minutes: 15, holdMinutes: 15, holdPaise: 30000 });
+    expect((await book(FAN2, "11:00", { durationMinutes: 45 })).status).toBe(400);
+
+    env = makeEnv(); seed(false); flags({});
+    await openDay(["10:00", "11:00", "12:00"]);
+    const off = await book(FAN, "10:00", { durationMinutes: 60 });          // an off server never sells 60
+    expect(off.status).toBe(201);
+    expect(off.body.booking).toMatchObject({ minutes: 10, holdPaise: 20000 });
+    expect(off.body.booking.holdMinutes).toBeUndefined();
+    expect(bookingRow(off.body.booking.id)).toMatchObject({ duration_min: 10, hold_seconds: null, reserved_paise: 20000 });
+  });
+
+  it("L7. flag OFF: web schedule save/slots stay at [10]; ON: the 15..300 list", async () => {
+    flags({});
+    const g = await call(req("GET", "/api/hosts/me/availability", HOST));
+    expect(g.body.schedule.durationsMinutes).toEqual([10]);
+    flags({ hfBookingLengthsEnabled: true });
+    const g2 = await call(req("GET", "/api/hosts/me/availability", HOST));
+    expect(g2.body.schedule.durationsMinutes).toEqual(LENGTHS);
+    const saved = await call(req("PUT", "/api/hosts/me/availability", HOST, { expectedVersion: 0, schedule: { ...g2.body.schedule, durationsMinutes: [10], rules: [{ weekday: new Date(at("10:00")).getUTCDay(), startMin: 600, endMin: 780 }] } }));
+    expect(saved.status).toBe(200);
+    expect(saved.body.schedule.durationsMinutes).toEqual(LENGTHS);       // the server decides the lengths, not the page
+  });
+
+  async function bookAndGoToStart(extra: Record<string, unknown>, hhmm = "10:00") {
+    const b = await book(FAN, hhmm, extra);
+    expect(b.status).toBe(201);
+    vi.setSystemTime(at(hhmm) - 60_000);
+    return b.body.booking.id as string;
+  }
+
+  it("S1. a confirmed booking rings in Bookings-only / Offline mode (it used to need presence=online); the line is taken, presence untouched", async () => {
+    flags({ hfBookingLengthsEnabled: true, hfCallChunkBillingEnabled: true });
+    await openDay(["10:00", "11:00", "12:00"]);
+    const inits = stubCalls();
+    const id = await bookAndGoToStart({ durationMinutes: 120 });
+    raw().prepare("UPDATE hf_hosts SET presence='offline' WHERE uid=?1").run(HOST);
+    const s = await call(req("POST", `/api/hf/bookings/${id}/start`, FAN, {}));
+    expect(s.status).toBe(201);
+    const row = bookingRow(id);
+    expect(row.status).toBe("starting");
+    const host = raw().prepare("SELECT presence,presence_call_id FROM hf_hosts WHERE uid=?1").get(HOST);
+    expect(host).toMatchObject({ presence: "offline", presence_call_id: row.call_id });
+    // what the call engine is told (Lane C contract): hold funded up front, the booking end is the hard stop, chunked past the hold
+    expect(inits).toHaveLength(1);
+    expect(inits[0]).toMatchObject({ callId: row.call_id, bookingId: id, hardEndsAt: row.ends_at, maxMinutes: 120 });
+    expect(inits[0].tokens).toMatchObject({ booked: true, maxSeconds: 900, chunked: true, fundedSec: 900, source: "booking" });
+  });
+
+  it("S2. same in 'busy-looking' states: a different call holding the line still refuses, so two calls never share her", async () => {
+    flags({ hfBookingLengthsEnabled: true });
+    await openDay(["10:00", "11:00", "12:00"]);
+    stubCalls();
+    const id = await bookAndGoToStart({ durationMinutes: 60 });
+    raw().prepare("UPDATE hf_hosts SET presence='online', presence_call_id='some-other-call' WHERE uid=?1").run(HOST);
+    const s = await call(req("POST", `/api/hf/bookings/${id}/start`, FAN, {}));
+    expect(s.status).toBe(409);
+    expect(s.body.error).toBe("host_unavailable");
+    expect(bookingRow(id).status).toBe("confirmed");
+  });
+
+  it("S3. chunk engine OFF: a long booking can only be funded for its hold, so the call is capped at the hold and carries no chunk fields", async () => {
+    flags({ hfBookingLengthsEnabled: true });
+    await openDay(["10:00", "11:00", "12:00"]);
+    const inits = stubCalls();
+    const id = await bookAndGoToStart({ durationMinutes: 60 });
+    expect((await call(req("POST", `/api/hf/bookings/${id}/start`, FAN, {}))).status).toBe(201);
+    expect(inits[0].tokens.maxSeconds).toBe(900);
+    expect(inits[0].tokens.chunked).toBeUndefined();
+  });
+
+  it("S4. flag OFF regression: a 10-minute booking starts exactly as before (online host -> busy, maxSeconds 600, no chunk fields)", async () => {
+    flags({});
+    await openDay(["10:00", "11:00"]);
+    const inits = stubCalls();
+    const id = await bookAndGoToStart({});
+    raw().prepare("UPDATE hf_hosts SET presence='online' WHERE uid=?1").run(HOST);
+    expect((await call(req("POST", `/api/hf/bookings/${id}/start`, FAN, {}))).status).toBe(201);
+    const row = bookingRow(id);
+    expect(raw().prepare("SELECT presence,presence_call_id FROM hf_hosts WHERE uid=?1").get(HOST)).toMatchObject({ presence: "busy", presence_call_id: row.call_id });
+    expect(inits[0]).toMatchObject({ hardEndsAt: row.ends_at, maxMinutes: 10 });
+    expect(inits[0].tokens).toMatchObject({ booked: true, maxSeconds: 600 });
+    expect(inits[0].tokens.chunked).toBeUndefined();
+  });
+
+  it("S5. a legacy 10-minute booking (hold_seconds NULL) still starts after the lengths flag is turned on", async () => {
+    flags({});
+    await openDay(["10:00", "11:00"]);
+    const inits = stubCalls();
+    const id = await bookAndGoToStart({});
+    flags({ hfBookingLengthsEnabled: true, hfCallChunkBillingEnabled: true });
+    expect((await call(req("POST", `/api/hf/bookings/${id}/start`, FAN, {}))).status).toBe(201);
+    expect(inits[0].tokens).toMatchObject({ maxSeconds: 600 });
+    expect(inits[0].tokens.chunked).toBeUndefined();     // hold already covers the whole booking: nothing to chunk
+  });
+});
