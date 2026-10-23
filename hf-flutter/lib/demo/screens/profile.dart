@@ -27,7 +27,7 @@ import 'channel_sections.dart'; // [HF-CHANNEL-APP-1]
 import 'sheets.dart';
 
 /// Public influencer channel page ([HF-CHANNEL-APP-1], built to the owner-approved phone mock PhoneChannel, 2026-10-23): big photo
-/// with Online / AI labels, name, tagline and the stats that have data, section tabs, then Merch first, Now Showing (videos),
+/// with the Online label, name, tagline and the stats that have data, section tabs, then Merch first, Now Showing (videos),
 /// Book a time, About and Before you call, with a sticky bar (rate, Book, Call now). Sections without data are left out.
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key, required this.id, this.repo});
@@ -345,7 +345,7 @@ class _SectionNav extends StatelessWidget {
   }
 }
 
-/// Full-width photo (Online now / Offline and the AI label on it), then the eyebrow, name, tagline, stats and Save / Share.
+/// Full-width photo (Online now / Offline on it), then the eyebrow, name, tagline, stats and Save / Share.
 /// No decorative border, arch or curtain round the photo (decision D2).
 class _ChannelHero extends StatelessWidget {
   const _ChannelHero({required this.who, required this.tagline, required this.stats, required this.faved, required this.onHeart, required this.onShare});
@@ -396,20 +396,7 @@ class _ChannelHero extends StatelessWidget {
                 ]),
               ),
             ),
-            if (hasPhoto)
-            Positioned(
-              left: 16,
-              right: 16,
-              bottom: 16,
-              child: Align(
-                alignment: Alignment.bottomLeft,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                  decoration: BoxDecoration(color: GP.veil, borderRadius: BorderRadius.circular(999)),
-                  child: Text('AI avatar chosen by the influencer', style: t(14, color: GP.ink, w: FontWeight.w800)),
-                ),
-              ),
-            ),
+            // [HF-PROFILE-AI-LABEL-OFF-1 2026-10-24] owner: no visible 'AI avatar' tag on the channel photo (matches the website).
           ]),
         ),
       ),

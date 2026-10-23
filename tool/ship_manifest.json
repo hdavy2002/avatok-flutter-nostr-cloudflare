@@ -11883,5 +11883,9 @@
   "HF-PROFILE-AI-LABEL-OFF-1": {
     "description": "[HF-PROFILE-AI-LABEL-OFF-1] Copy-only: remove the AI-avatar tag and the AI/WhatsApp disclaimer line from /h/<slug>.",
     "no_telemetry": "Copy removal only; no behaviour change."
+  },
+  "HF-APP-AI-LABEL-OFF-1": {
+    "description": "[HF-APP-AI-LABEL-OFF-1] App copy-only: remove the AI-avatar tag from the channel photo and the 'shown with the AI label' line on the profile-photo screen (matches the website, HF-PROFILE-AI-LABEL-OFF-1).",
+    "no_telemetry": "Copy removal only; no behaviour change."
   }
 }

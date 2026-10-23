@@ -247,7 +247,7 @@ class _ProfilePhotoScreenState extends State<ProfilePhotoScreen> {
               ),
             ]),
             const SizedBox(height: 8),
-            _rule(true, 'Your AI avatar', ' — shown with the AI label.'),
+            _rule(true, 'Your AI avatar', ' — the one you chose.'),
             _rule(false, 'No real photo of you', ' — for your safety.'),
             _rule(true, 'Face in the middle', ' — with a little space above your head.'),
             if (_error != null) ...[
