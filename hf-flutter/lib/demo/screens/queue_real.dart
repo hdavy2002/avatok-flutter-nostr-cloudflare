@@ -60,6 +60,7 @@ class _QueueScreenState extends State<QueueScreen> {
   bool _offline = false;
   bool _inFlight = false;
   bool _moved = false;
+  bool _wasOffered = false; // the server drops a finished entry from /queue/me, so "gone after our turn" is the only sign the turn came
   late final int _waitingAtStart = widget.waiting;
   Timer? _timer;
   final Stopwatch _wait = Stopwatch();
@@ -119,6 +120,7 @@ class _QueueScreenState extends State<QueueScreen> {
   }
 
   void _enter(MyQueueEntry e) {
+    _wasOffered = e.isOffered;
     _wait
       ..reset()
       ..start();
@@ -157,6 +159,7 @@ class _QueueScreenState extends State<QueueScreen> {
         _over(e);
         return;
       }
+      _wasOffered = e.isOffered;
       setState(() {
         _offline = false;
         _entry = e;
@@ -181,6 +184,7 @@ class _QueueScreenState extends State<QueueScreen> {
       'expired' => 'Your place in the queue has expired. Nothing was charged.',
       'closed' => '$_first has stopped taking calls for now, so the queue is closed. Nothing was charged.',
       'done' => 'Your call is finished. Thank you.',
+      _ when _wasOffered => 'Your turn came. If we could not reach you, you have left the queue. Nothing is charged for waiting.',
       _ => 'Your place in the queue has ended. Nothing was charged.',
     };
     setState(() {

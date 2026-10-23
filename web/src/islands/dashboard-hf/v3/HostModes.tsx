@@ -12,7 +12,7 @@ import { Marigold } from './ui';
 
 const POLL_MS = 10_000;
 
-export default function HostModes({ queueOn, bookedCount, onPresence }: { queueOn: boolean; bookedCount: number; onPresence?: (p: HostPresence) => void }) {
+export default function HostModes({ queueOn, bookedCount, onPresence, onMode }: { queueOn: boolean; bookedCount: number; onPresence?: (p: HostPresence) => void; onMode?: (m: HostMode) => void }) {
   const [pres, setPres] = useState<HostPresenceResponse | null>(null);
   const [queue, setQueue] = useState<HostQueueView | null>(null);
   const [busy, setBusy] = useState(false);
@@ -24,9 +24,9 @@ export default function HostModes({ queueOn, bookedCount, onPresence }: { queueO
   const load = useCallback(async () => {
     const p = await getMyPresence();
     if (!live.current) return;
-    if (p.ok) { setPres(p.data); setFailed(false); onPresence?.(p.data.presence); } else setFailed(true);
+    if (p.ok) { setPres(p.data); setFailed(false); onPresence?.(p.data.presence); onMode?.(p.data.mode); } else setFailed(true);
     if (queueOn) { const q = await getHostQueue(); if (live.current && q.ok) setQueue(q.data); }
-  }, [queueOn, onPresence]);
+  }, [queueOn, onPresence, onMode]);
   useEffect(() => {
     live.current = true; void load();
     const t = setInterval(() => { if (document.visibilityState === 'visible') void load(); }, POLL_MS);
@@ -40,7 +40,7 @@ export default function HostModes({ queueOn, bookedCount, onPresence }: { queueO
     const from = pres.mode;
     const r = await setMyMode(mode);
     setBusy(false);
-    if (r.ok) { setPres(r.data); onPresence?.(r.data.presence); capture('hf_web_mode_changed', { from, to: r.data.mode }); if (queueOn) void getHostQueue().then(q => { if (live.current && q.ok) setQueue(q.data); }); }
+    if (r.ok) { setPres(r.data); onPresence?.(r.data.presence); onMode?.(r.data.mode); capture('hf_web_mode_changed', { from, to: r.data.mode }); if (queueOn) void getHostQueue().then(q => { if (live.current && q.ok) setQueue(q.data); }); }
     else setMsg(r.message || 'We could not change that. Please try again.');
   };
   const togglePause = async () => {

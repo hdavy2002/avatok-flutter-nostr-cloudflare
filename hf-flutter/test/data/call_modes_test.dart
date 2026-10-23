@@ -124,7 +124,7 @@ void main() {
       final store = PresenceStore(PresenceRepo(api));
       expect(await store.setMode('bookings_only'), isNull);
       expect(api.calls, ['PUT /api/hosts/me/presence']);
-      expect(api.bodies.single, {'mode': 'bookings_only'});
+      expect(api.bodies.single, {'mode': 'bookings_only', 'surface': 'app'});
       expect(store.mode, 'bookings_only');
       expect(store.online, isFalse);
     });

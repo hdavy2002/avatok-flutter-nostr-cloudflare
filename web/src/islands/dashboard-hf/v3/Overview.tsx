@@ -6,7 +6,7 @@ import { callsEnabled, hfCall, type HostPresence } from '../../../lib/hfCallsApi
 import { formatPaise } from '../../../lib/money';
 import { getBookingSummary, listBookings, type BookingSummary, type HfBooking } from '../../../lib/hfBookingsApi';
 import { capture } from '../../../lib/analytics';
-import { callModeFlags, NO_FLAGS, type CallModeFlags } from '../../../lib/hfCallModes'; // [HF-CALL-MODES-E1]
+import { callModeFlags, NO_FLAGS, type CallModeFlags, type HostMode } from '../../../lib/hfCallModes'; // [HF-CALL-MODES-E1]
 import HostModes from './HostModes';
 import type { DashboardAccount } from '../../../components/account/DashboardNav';
 import { BEAT_MS, STATUS_NOTE, type MeHost } from '../hostActivity';
@@ -25,7 +25,9 @@ const MIN_CALL_PAISE = 2000; // ₹20, the least a wallet needs to start a call
 type Headline = { kind: string; text: string; href?: string };
 type TickerIn = {
   online: { displayName: string; slug: string }[] | null; apptsToday: number | null | undefined; next: HfBooking | null; bal: number | null;
-  pendingReviews: number | null | undefined; hostLive: boolean; hostPresence: HostPresence | null; receivedToday: number | null | undefined;
+  pendingReviews: number | null | undefined; hostLive: boolean; hostPresence: HostPresence | null;
+  /** [HF-CALL-MODES-INT-CLIENTS] the three-way mode when hfCallModesEnabled is on; null = flag off (legacy presence decides) */
+  hostMode: HostMode | null; modesOn: boolean; receivedToday: number | null | undefined;
   /** [HF-BOOKING-UNIFY-1] requests the person made that the influencer has not answered, and (as an influencer) requests waiting for her answer. */
   myPending: HfBooking[]; hostWaiting: number | null | undefined;
 };
@@ -53,7 +55,11 @@ function buildHeadlines(i: TickerIn): Headline[] {
   if (i.bal != null && i.bal < MIN_CALL_PAISE) out.push({ kind: 'wallet_low', href: '/dashboard/wallet#add', text: `Abhi abhi: wallet mein sirf ${formatPaise(i.bal)} — call shuru karne ke liye kam se kam ${formatPaise(MIN_CALL_PAISE)} chahiye, top up karo` });
   else if (i.bal != null) out.push({ kind: 'wallet', href: '/dashboard/wallet', text: `Sootron ke hawale se: aapke wallet mein ${formatPaise(i.bal)} hain — baat shuru karne ke liye kaafi` });
   if (i.hostLive && i.receivedToday != null && i.receivedToday > 0) out.push({ kind: 'host_calls', href: '/dashboard/calls', text: `Breaking: aaj aapko ${i.receivedToday} call${i.receivedToday === 1 ? '' : 's'} mili` });
-  if (i.hostLive && i.hostPresence === 'offline') out.push({ kind: 'host_offline', text: 'Exclusive: aap abhi offline ho — online aao, tabhi log aapko call kar paayenge' });
+  // [HF-CALL-MODES-INT-CLIENTS] "offline" only for the real Offline mode; Bookings only gets its own line. Modes on but not yet loaded: say nothing.
+  if (i.hostLive && i.modesOn) {
+    if (i.hostMode === 'offline') out.push({ kind: 'host_offline', text: 'Exclusive: aap abhi offline ho — online aao, tabhi log aapko call kar paayenge' });
+    else if (i.hostMode === 'bookings_only') out.push({ kind: 'host_bookings_only', href: '/dashboard/host/calendar', text: 'Abhi abhi: aap sirf bookings le rahe ho — instant call ke liye Online aao' });
+  } else if (i.hostLive && i.hostPresence === 'offline') out.push({ kind: 'host_offline', text: 'Exclusive: aap abhi offline ho — online aao, tabhi log aapko call kar paayenge' });
   return [...out, ...EVERGREEN.map(text => ({ kind: 'evergreen', text }))];
 }
 
@@ -71,8 +77,11 @@ export default function Overview({ account, bookingOn }: { account: DashboardAcc
   const [bs, setBs] = useState<BookingSummary | null>(null);
   useEffect(() => { if (bookingOn && hostLive) void getBookingSummary().then(setBs).catch(() => undefined); }, [bookingOn, hostLive]);
   const [hostPresence, setHostPresence] = useState<HostPresence | null>(null);
+  const [hostMode, setHostMode] = useState<HostMode | null>(null); // [HF-CALL-MODES-INT-CLIENTS]
+  const [modesOn, setModesOn] = useState(false);
+  useEffect(() => { let l = true; void callModeFlags().then(f => { if (l) setModesOn(f.modes); }); return () => { l = false; }; }, []);
   const headlines = buildHeadlines({ online, apptsToday: summary.data?.appointmentsToday, next, bal, pendingReviews: ins?.pendingReviews.length,
-    hostLive, hostPresence, receivedToday: summary.data?.callsToday.received, myPending, hostWaiting: bs?.waitingCount });
+    hostLive, hostPresence, hostMode, modesOn, receivedToday: summary.data?.callsToday.received, myPending, hostWaiting: bs?.waitingCount });
   const tickKey = headlines.map(h => h.text).join('|');
 
   return <>
@@ -100,7 +109,7 @@ export default function Overview({ account, bookingOn }: { account: DashboardAcc
     </div>
 
     {account.closing && <aside className="h3-safe" style={{ background: 'var(--goldtint)' }}><div><h3>Your account is being closed.</h3><p className="small">Calling and profile editing are paused. <a href="/dashboard/close">Manage account closure</a></p></div></aside>}
-    {hostLive ? <HostPanel onPresence={setHostPresence} bookingOn={bookingOn} bs={bs} /> : account.host && !account.closing ? <section className="h3-card"><h2><Marigold size={20} />Your influencer profile</h2><p className="muted" style={{ marginTop: 6 }}>{STATUS_NOTE[account.host.status] ?? 'Your profile is not live yet.'}</p><a className="h3-btn" style={{ marginTop: 12 }} href="/dashboard/host">Continue my profile</a></section> : null}
+    {hostLive ? <HostPanel onPresence={setHostPresence} onMode={setHostMode} bookingOn={bookingOn} bs={bs} /> : account.host && !account.closing ? <section className="h3-card"><h2><Marigold size={20} />Your influencer profile</h2><p className="muted" style={{ marginTop: 6 }}>{STATUS_NOTE[account.host.status] ?? 'Your profile is not live yet.'}</p><a className="h3-btn" style={{ marginTop: 12 }} href="/dashboard/host">Continue my profile</a></section> : null}
 
     <section className="h3-kpis">
       <a className="h3-card h3-kpi k1" href="/dashboard/wallet"><div className="ic"><Ic name="wallet" className="" /></div><div className="lbl">Wallet balance</div>
@@ -259,7 +268,7 @@ function UpNext({ enabled, uid, onNext, onPending }: { enabled: boolean; uid: st
 }
 
 /** Live influencers: the online switch, today's calls and expected earnings (same rules as before, new look). */
-function HostPanel({ onPresence, bookingOn, bs }: { onPresence?: (p: HostPresence) => void; bookingOn: boolean; bs: BookingSummary | null }) {
+function HostPanel({ onPresence, onMode, bookingOn, bs }: { onPresence?: (p: HostPresence) => void; onMode?: (m: HostMode) => void; bookingOn: boolean; bs: BookingSummary | null }) {
   const { summary } = useDash();
   // [HF-BOOKING-E2E-1] The influencer's bird's-eye numbers (days that carry a booking, requests waiting for her answer) come in as `bs`.
   const [host, setHost] = useState<MeHost | null>(null);
@@ -301,7 +310,7 @@ function HostPanel({ onPresence, bookingOn, bs }: { onPresence?: (p: HostPresenc
     else setMsg(r.message || 'We could not change that. Please try again.');
   };
   return <section className="h3-row c2">
-    {flags.modes && on && host ? <HostModes queueOn={flags.queue} bookedCount={bs?.upcomingCount ?? 0} onPresence={setPresence} /> :
+    {flags.modes && on && host ? <HostModes queueOn={flags.queue} bookedCount={bs?.upcomingCount ?? 0} onPresence={setPresence} onMode={onMode} /> :
     <section className="h3-card"><h2><Marigold size={20} />Influencer status</h2>
       <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginTop: 12 }}>
         <label className="h3-toggle"><input type="checkbox" role="switch" checked={onlineNow} disabled={busy || !on || !host} onChange={toggle} /><b>{!on ? 'Calls open soon' : onlineNow ? (presence === 'busy' ? 'On a call' : 'Online') : 'Offline'}</b></label>

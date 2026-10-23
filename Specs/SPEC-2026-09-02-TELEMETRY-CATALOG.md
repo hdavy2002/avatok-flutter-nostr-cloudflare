@@ -1400,3 +1400,53 @@ Every server event carries the user's email (`trackUser`). Failures go through `
 | worker `merch_earning_credited` | `order_id`, `earning_paise`, `available_at`, `hold_days` | Delivered order credited to the influencer, once. |
 | worker `merch_problem_reported` | `order_id`, `kind`, `has_photo` | Fan reported a wrong or damaged item. |
 | web/app `merch_strip_viewed` / `merch_product_viewed` / `merch_buy_clicked` / `merch_pay_method_chosen` / `merch_order_opened` | surface props | Sent by the web and app packages, not the worker. |
+
+## Hello Fraands call modes, queue, chunk billing and booking lengths (`[HF-CALL-MODES-A..E2]`, worker + web + app, 2026-10-23)
+
+Spec: `Specs/SPEC-2026-10-23-HF-CALL-MODES-QUEUE.md` section 2.8. All dark behind `hfCallModesEnabled`, `hfCallQueueEnabled`, `hfCallChunkBillingEnabled`, `hfBookingLengthsEnabled`. Server events use `track(env, uid, event, HF_CALL_APP, props)` (the `uid` is the person named in the Meaning column); the call events from the Durable Object carry `call_id`. Failures use `trackException` with `extra.area` of `hf_host_mode` or `hf_queue`.
+
+### Worker
+
+| Event | Properties | Meaning |
+|---|---|---|
+| `hf_host_mode_changed` | `area: 'hf_call'`, `from`, `to` (`online`/`bookings_only`/`offline`), `surface: 'web'/'app'/'legacy'/'unknown'` | The influencer changed her mode. `legacy` = a shipped app that still sends `{online:boolean}`. Only fires when the mode really changed. User is the influencer. |
+| `hf_host_on_call` | `area: 'hf_call'`, `call_id`, `on: boolean` | `on_call_since` was set (both legs joined, `on:true`) or cleared (`on:false`). User is the influencer. |
+| `hf_queue_joined` | `area: 'hf_queue'`, `host_uid`, `position` | A fan joined a queue. User is the fan. |
+| `hf_queue_left` | `area: 'hf_queue'`, `wait_s`, `expired?: true` | The fan left, or their wait passed `hfQueueMaxWaitMinutes` (`expired:true`). |
+| `hf_queue_dispatched` | `area: 'hf_queue'`, `wait_s`, `position_at_join`, `call_id` | It was the fan's turn and the queued call was placed. **Success value:** `wait_s` median. |
+| `hf_queue_skipped` | `area: 'hf_queue'`, `reason: 'fan_no_answer'/'low_balance'/'blocked'/'host_missed'/'host_offline'/'booking_conflict'` | A fan's turn was skipped. |
+| `hf_queue_closed` | `area: 'hf_queue'`, `reason`, `waiting` | The whole queue was closed (she left Online, or the account is closing). User is the influencer. |
+| `hf_queue_paused` | `area: 'hf_call'` or `'hf_queue'`, `paused: boolean`, `by: 'host'/'sweep'/...` | The queue was paused or resumed. |
+| `hf_call_chunk_reserved` | `call_id`, `n`, `from_sec`, `covered_sec`, `paise`, `partial: boolean`, `funded_seconds`, `reason: 'chunk'/'retry'/'topup'` | Another 5-minute slice of a call was paid for from the wallet. `partial:true` = the wallet covered only part. User is the caller. |
+| `hf_call_funds_short` | `call_id`, `funded_seconds`, `remaining_sec`, `chunk_n`, `reason` | The next slice could not be fully paid; the caller was told. |
+| `hf_call_whisper` | `call_id`, `kind: 'low_funds'/'topped_up'/'one_minute'`, `via`, `ok: boolean` | A spoken message to the caller only. `via` says which Vobiz path carried it, `ok:false` = it was not delivered. |
+| `hf_call_topup_extended` | `call_id`, `added_seconds`, `funded_seconds`, `reason` | A top-up while talking pushed the end of the call back. |
+| `hf_call_ended` (additions) | `source?: 'instant'/'queue'/'booking'`, `funded_seconds?`, `chunks?` (the last two only for chunk-billed calls) | Added to the existing call-ended event. |
+| `hf_booking_quote_created` (addition) | `hold_minutes` | Minutes held up front (15 for long bookings, or the whole call if shorter). |
+
+### Web (PostHog `capture`, signed-in)
+
+| Event | Properties | Meaning |
+|---|---|---|
+| `hf_web_mode_changed` | `from`, `to` | Influencer chose a mode on the dashboard (`HostModes.tsx`). |
+| `hf_web_queue_paused` | `paused` | Influencer paused or resumed her queue on the dashboard. |
+| `hf_web_queue_joined` | `host` (slug), `position`, `waiting` | A fan joined from the profile (`QueueSheet.tsx`). |
+| `hf_web_queue_failed` | `host`, `code`, `status` | Join refused (`queue_closed`, `queue_full`, `already_queued`, `low_balance`, `not_verified`, ...). |
+| `hf_web_queue_left` | `host`, `wait_s` | The fan left the queue. |
+| `hf_web_booking_length_picked` | `host`, `minutes` | The fan picked a booking length (15 to 300). |
+| `hf_web_topup_in_call` | `host` | The fan tapped Top up from the "balance ran out" note during a call. |
+
+### App (`Telemetry.event`, `hf_app_` names are listed in `hf-flutter/lib/data/telemetry.dart`)
+
+| Event | Properties | Meaning |
+|---|---|---|
+| `hf_app_mode_changed` | `from`, `to`, `surface: 'footer'/'home'` | Influencer picked a mode in the three-way sheet. |
+| `hf_app_queue_joined` | `position` | A fan joined a queue. |
+| `hf_app_queue_left` | `wait_s`, `reason: 'user'/'left'/'skipped'/'expired'/'closed'/'done'/'gone'` | The fan's queue ended; `user` = they tapped Leave. |
+| `hf_app_queue_failed` | `reason` (server error code) | Join refused. |
+| `hf_app_booking_length_picked` | `minutes` | Fan picked a booking length. |
+| `hf_app_call_topup_tapped` | `surface: 'call'/'queue'`, `short?: boolean` | Top up tapped from the live call banner (`short` = the wallet could not fund the next slice) or from a low-balance queue refusal. |
+
+### Ship manifest note
+
+Each of the four flags must be on before its events appear. Events arrive only after the worker (A to D) is deployed with the flag, and after the web and app builds that carry E1/E2.

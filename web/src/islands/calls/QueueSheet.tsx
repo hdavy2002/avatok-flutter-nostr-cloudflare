@@ -26,6 +26,7 @@ export default function QueueSheet({ host, variant, waiting, bookingHref, bookin
   const [busy, setBusy] = useState(false);
   const joinedAt = useRef<number | null>(null);
   const wasMine = useRef(false);
+  const wasCalled = useRef(false); // the last status we saw was 'offered': the entry leaving the queue then means the call was placed, not that we dropped out
 
   // Resume: a fan who already waits for THIS host sees "You're #N" straight away (after a refresh or on another device).
   useEffect(() => {
@@ -57,7 +58,7 @@ export default function QueueSheet({ host, variant, waiting, bookingHref, bookin
       if (inflight) return; inflight = true;
       const r = await myQueue(); inflight = false;
       if (!alive || !r.ok) return;
-      if (r.data.entry && r.data.entry.hostSlug === host.slug) { setEntry(r.data.entry); }
+      if (r.data.entry && r.data.entry.hostSlug === host.slug) { wasCalled.current = r.data.entry.status === 'offered'; setEntry(r.data.entry); }
       else if (wasMine.current) { wasMine.current = false; setEntry(null); setPhase('ended'); }
     };
     const t = setInterval(() => { if (document.visibilityState === 'visible') void tick(); }, POLL_MS);
@@ -89,7 +90,7 @@ export default function QueueSheet({ host, variant, waiting, bookingHref, bookin
     setBusy(false);
     if (!r.ok && r.status !== 404) { setProblem({ text: 'We could not take you out of the queue. Please try again.' }); setPhase('error'); return; }
     capture('hf_web_queue_left', { host: host.slug, wait_s: joinedAt.current ? Math.round((Date.now() - joinedAt.current) / 1000) : null });
-    wasMine.current = false; setEntry(null); setOpen(false); setPhase('confirm');
+    wasMine.current = false; wasCalled.current = false; setEntry(null); setOpen(false); setPhase('confirm');
   };
 
   const mine = phase === 'waiting' && entry;
@@ -121,8 +122,9 @@ export default function QueueSheet({ host, variant, waiting, bookingHref, bookin
         </div>
       </div>}
       {phase === 'ended' && <div className="hfc-body">
-        <p className="hfc-status">You’re no longer in the queue.</p>
-        <p className="hfc-sub">Nothing was charged for waiting. You can join again, or book a time.</p>
+        {wasCalled.current
+          ? <><p className="hfc-status">Your turn has come.</p><p className="hfc-sub">If you picked up, your call is in your call history. If you missed it, you can join again or book a time. Nothing is charged for waiting.</p></>
+          : <><p className="hfc-status">You’re no longer in the queue.</p><p className="hfc-sub">Nothing was charged for waiting. You can join again, or book a time.</p></>}
         <div className="hfc-actions">
           <button type="button" className="hfc-btn hfc-primary" onClick={() => setPhase('confirm')}>Join again</button>
           {bookingOn && <a className="hfc-btn" href={bookingHref}>Book a time</a>}

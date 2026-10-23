@@ -9,7 +9,7 @@ export type HostMode = 'online' | 'bookings_only' | 'offline';
 export const HOST_MODES: readonly HostMode[] = ['online', 'bookings_only', 'offline'];
 export type PublicCallState = 'available' | 'on_call' | 'connecting' | 'queue_only' | 'appointments' | 'offline';
 export interface HostPresenceResponse {
-  ok: true; presence: HostPresence; mode: HostMode; onCall: boolean; queue: { waiting: number; paused: boolean; open: boolean };
+  ok: true; presence: HostPresence; mode: HostMode; onCall: boolean; queue: { waiting: number; paused: boolean; open: boolean }; bookedCalls?: number;
 }
 export type QueueStatus = 'waiting' | 'offered' | 'connected' | 'done' | 'left' | 'skipped' | 'expired' | 'closed';
 export interface QueueJoinResponse { ok: true; entryId: string; position: number; waiting: number }
@@ -108,7 +108,7 @@ export function queueJoinProblem(code: string, body: Record<string, unknown>, na
 
 // ── influencer side ─────────────────────────────────────────────────────────────────────────────────────────
 export const getMyPresence = (): Promise<HfResult<HostPresenceResponse>> => hfCall<HostPresenceResponse>('GET', '/api/hosts/me/presence');
-export const setMyMode = (mode: HostMode): Promise<HfResult<HostPresenceResponse>> => hfCall<HostPresenceResponse>('PUT', '/api/hosts/me/presence', { mode });
+export const setMyMode = (mode: HostMode): Promise<HfResult<HostPresenceResponse>> => hfCall<HostPresenceResponse>('PUT', '/api/hosts/me/presence', { mode, surface: 'web' }); // surface feeds hf_host_mode_changed
 export const getHostQueue = (): Promise<HfResult<HostQueueView>> => hfCall<HostQueueView>('GET', '/api/hosts/me/queue');
 export const setQueuePaused = (paused: boolean): Promise<HfResult<HostQueueView>> => hfCall<HostQueueView>('PUT', '/api/hosts/me/queue', { paused });
 export const MODE_LABEL: Record<HostMode, string> = { online: 'Online', bookings_only: 'Bookings only', offline: 'Offline' };

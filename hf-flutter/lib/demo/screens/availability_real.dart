@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../../data/api_exception.dart';
+import '../../data/call_flags.dart';
 import '../../data/models/booking.dart';
 import '../../data/repos/bookings_repo.dart';
 import '../../data/services.dart';
@@ -578,6 +579,14 @@ class _RealAvailabilityScreenState extends State<RealAvailabilityScreen> {
         Text('These days have different times. A time you tap goes on all of them.', style: t(14, color: C.muted, w: FontWeight.w700, h: 1.4))
       else if (!single)
         Text('A time you tap goes on all ${days.length} days.', style: t(14, color: C.muted, w: FontWeight.w700, h: 1.4)),
+      if (CallFlags.bookingLengths && a.chipMinutes >= 60) ...[
+        const SizedBox(height: 4),
+        Text(
+          'Each tick opens that whole hour, so people can book 15 minutes up to 5 hours inside it. Tick two hours in a row for longer calls.',
+          key: const ValueKey('avail-chip-hint'),
+          style: t(14, color: C.muted, w: FontWeight.w700, h: 1.4),
+        ),
+      ],
       const SizedBox(height: 8),
       if (a.slotChoices.isEmpty)
         Text('No times can be set right now. Please try again later.', style: t(14, color: C.muted, w: FontWeight.w700))

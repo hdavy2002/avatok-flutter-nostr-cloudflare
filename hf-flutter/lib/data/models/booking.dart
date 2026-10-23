@@ -121,6 +121,8 @@ class HostAvailability {
     required this.days,
     required this.booked,
     required this.rate,
+    this.chipMinutes = 0,
+    this.durationsMinutes = const [],
   });
 
   factory HostAvailability.fromJson(Map<String, dynamic> j) {
@@ -148,8 +150,19 @@ class HostAvailability {
       days: days,
       booked: booked,
       rate: RateInfo.fromJson(j['rate'] is Map ? Map<String, dynamic>.from(j['rate'] as Map) : <String, dynamic>{}),
+      chipMinutes: _i(j['chipMinutes']),
+      durationsMinutes: [
+        if (j['durationsMinutes'] is List)
+          for (final e in j['durationsMinutes'] as List)
+            if (e is num && e > 0) e.round(),
+      ],
     );
   }
+
+  /// [HF-CALL-MODES-INT-CLIENTS] How long one tick opens (60 = a whole hour) and the lengths sold, sent by the server only while
+  /// booking lengths are on. 0 / empty on an old server or with the flag off (one tick = one 10-minute time).
+  final int chipMinutes;
+  final List<int> durationsMinutes;
 
   final int version;
   final String today;

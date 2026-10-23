@@ -68,7 +68,7 @@ class PresenceRepo {
 
   /// [HF-CALL-MODES-E2] Picks one of [kHostModes].
   Future<PresenceState> setMode(String mode) async =>
-      PresenceState.fromJson(await _api.putJson('/api/hosts/me/presence', body: {'mode': mode}));
+      PresenceState.fromJson(await _api.putJson('/api/hosts/me/presence', body: {'mode': mode, 'surface': 'app'})); // surface feeds hf_host_mode_changed
 
   /// Public. Throws `ApiException` on any failure (the pill hides itself).
   Future<int> onlineCount() async {
