@@ -22,6 +22,10 @@ export type MerchSnapshot = {
   money: MerchMoney;
   payMethod: PayMethod;
   holdDays: number;
+  /** Print size in inches and the buffer used when the base price was frozen: the approval re-quote prices the SAME print. */
+  printWIn: number;
+  printHIn: number;
+  bufferRupees: number;
 };
 
 export type MerchAddress = { name: string; phone: string; line1: string; line2?: string; city: string; state: string; pincode: string };
@@ -63,3 +67,31 @@ export function fanStatusOf(r: MerchOrderStatusRow): FanStatus {
   if (r.approval_status === "approved") return "approved";
   return "placed";
 }
+
+/** shop_products.merch_json of an influencer product. Per-size base prices are frozen here at creation (the partner is re-quoted at order approval). */
+export type ProductMerch = {
+  v: 1;
+  productSlug: string;
+  provider: string;
+  catalogId: string;
+  catalogName: string;
+  kind: string;
+  side: "front" | "back";
+  sizes: Array<{ size: string; baseUnitPaise: number }>;
+  bufferRupees: number;
+  colours: Array<{ name: string; hex: string }>;
+  /** studio Placement (lib/studio_logic.ts) the partner print uses. */
+  placement: Record<string, unknown>;
+  mockups: string[];
+  printPreviewUrl: string | null;
+  artUrl: string | null;
+  /** 'ok' = classifier ran and passed; 'unscanned' = classifier was unavailable (admin review required). */
+  moderation: "ok" | "unscanned";
+  approvedAt?: number | null;
+  hiddenBy?: "admin" | "seller" | null;
+  listing?: { designRef: string | null; listingRef: string | null; error: string | null } | null;
+};
+
+export type ApiProductStatus = "pending" | "live" | "rejected" | "hidden";
+export const apiProductStatus = (reviewStatus: string | null | undefined): ApiProductStatus =>
+  reviewStatus === "live" ? "live" : reviewStatus === "rejected" ? "rejected" : reviewStatus === "hidden" ? "hidden" : "pending";

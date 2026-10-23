@@ -1,0 +1,174 @@
+// [HF-MERCH-CORE-1 2026-10-23] Catalogue, base-price quoting and partner listing for influencer merch. The ONLY partner contact is through lib/pod
+// (getPodProvider / ensurePodCatalog / computeSizeCosts); no partner field name appears here.
+import type { Env } from "../types";
+import { metaDb } from "../db/shard";
+import { trackException } from "../hooks";
+import { ensurePodCatalog, getPodProvider, referenceShippingRupees, loadStoredCatalog, syncCatalogToDb, PRINT_SPECS } from "./pod";
+import type { CatalogProduct, PodProvider } from "./pod";
+import { computeSizeCosts, partnerPlacement, sortSizes, variantSku, type Placement } from "./studio_logic";
+import { baseUnitPaise, type MerchCfg } from "./hf_merch_math";
+import { parseJson, type MerchSnapshot, type ProductMerch } from "./hf_merch_types";
+
+const TEE_KIND = /_tee$/;
+export const isTeeKind = (k: string): boolean => TEE_KIND.test(k);
+/** A live re-quote older than this triggers a catalogue refresh first. */
+export const LIVE_QUOTE_MAX_AGE_MS = 60 * 60 * 1000;
+
+export type CatalogItem = {
+  id: string; kind: string; name: string; side: Array<"front" | "back">; printArea: { wIn: number; hIn: number };
+  colours: Array<{ name: string; hex: string }>; sizes: Array<{ size: string; basePaise: number; baseRupees: number }>; mockupUrl?: string;
+};
+
+function colourList(p: CatalogProduct): Array<{ name: string; hex: string }> {
+  const seen = new Map<string, string>();
+  for (const v of p.variants) if (!seen.has(v.colour.toLowerCase())) seen.set(v.colour.toLowerCase(), v.colour_hex ?? "#cccccc");
+  return [...new Map(p.variants.map((v) => [v.colour.toLowerCase(), { name: v.colour, hex: v.colour_hex ?? "#cccccc" }])).values()];
+}
+export const areaOf = (p: Pick<CatalogProduct, "kind" | "print_area_in">, side: "front" | "back"): [number, number] => {
+  const own = p.print_area_in?.[side];
+  if (own && own[0] > 0 && own[1] > 0) return own;
+  const spec = (PRINT_SPECS.areas as Record<string, { front: readonly [number, number]; back: readonly [number, number] } | undefined>)[p.kind];
+  const a = spec?.[side] ?? [12, 14];
+  return [a[0], a[1]];
+};
+
+export type BaseQuote =
+  | { ok: true; sizes: Array<{ size: string; baseUnitPaise: number }>; shippingRupees: number | null }
+  | { ok: false; error: "catalog_unavailable" | "unknown_product" | "no_sizes"; message: string };
+
+/** Per-size base price (paise, whole rupees, buffer included) for printing w x h inches on `side` in the chosen colours. */
+export async function quoteBases(
+  env: Env, cfg: MerchCfg, a: { catalogId: string; colours: string[]; side: "front" | "back"; wIn: number; hIn: number; sizes?: string[] },
+): Promise<BaseQuote & { product?: CatalogProduct }> {
+  const info = await ensurePodCatalog(env);
+  if (info.source !== "printrove") return { ok: false, error: "catalog_unavailable", message: "Prices are not available right now. Please try again in a little while." };
+  const prod = info.products.find((p) => p.provider_product_id === a.catalogId && isTeeKind(p.kind));
+  if (!prod) return { ok: false, error: "unknown_product", message: "That shirt is not available." };
+  const shipping = await referenceShippingRupees(env);
+  const costs = computeSizeCosts(prod, a.colours, a.side, a.wIn, a.hIn, shipping);
+  const want = a.sizes ? new Set(a.sizes.map((s) => s.toLowerCase())) : null;
+  const sizes: Array<{ size: string; baseUnitPaise: number }> = [];
+  for (const c of costs) {
+    if (!c.in_stock || c.total_rupees == null || (want && !want.has(c.size.toLowerCase()))) continue;
+    const base = baseUnitPaise(c.total_rupees, cfg.baseBufferRupees);
+    if (base != null) sizes.push({ size: c.size, baseUnitPaise: base });
+  }
+  if (!sizes.length) return { ok: false, error: "no_sizes", message: "That shirt cannot be priced in those colours." };
+  return { ok: true, sizes, shippingRupees: shipping, product: prod };
+}
+
+export async function merchCatalog(env: Env, cfg: MerchCfg): Promise<{ ok: true; items: CatalogItem[] } | { ok: false; error: string; message: string }> {
+  const info = await ensurePodCatalog(env);
+  if (info.source !== "printrove") return { ok: false, error: "catalog_unavailable", message: "The shirt catalogue is not available right now." };
+  const shipping = await referenceShippingRupees(env);
+  const items: CatalogItem[] = [];
+  for (const p of info.products) {
+    if (!isTeeKind(p.kind)) continue;
+    const [w, h] = areaOf(p, "front");
+    // "Up to" price: the biggest print the shirt takes. The wizard re-quotes the real size through /quote as the art is placed.
+    const costs = computeSizeCosts(p, [], "front", w, h, shipping);
+    const sizes = costs.filter((c) => c.in_stock && c.total_rupees != null).map((c) => {
+      const base = baseUnitPaise(c.total_rupees as number, cfg.baseBufferRupees) ?? 0;
+      return { size: c.size, basePaise: base, baseRupees: Math.round(base / 100) };
+    }).filter((s) => s.basePaise > 0);
+    if (!sizes.length) continue;
+    items.push({ id: p.provider_product_id, kind: p.kind, name: p.name, side: ["front", "back"], printArea: { wIn: w, hIn: h }, colours: colourList(p), sizes });
+  }
+  return { ok: true, items };
+}
+
+// ---------------------------------------------------------------------------
+// Live re-quote at approval
+// ---------------------------------------------------------------------------
+export type LiveBase = { ok: true; liveBaseUnitPaise: number; stale: boolean; source: string } | { ok: false; error: "quote_unavailable"; message: string };
+
+export async function liveBaseUnitForOrder(env: Env, snap: Partial<MerchSnapshot>, pincode: string | null): Promise<LiveBase> {
+  const fail = (message: string): LiveBase => ({ ok: false, error: "quote_unavailable", message });
+  try {
+    if (!snap.catalogId || !snap.colour || !snap.size || !snap.side || !snap.printWIn || !snap.printHIn) return fail("This order has no price snapshot to compare with.");
+    let stored = await loadStoredCatalog(env, "printrove");
+    let stale = false;
+    const age = stored.synced_at == null ? Infinity : Date.now() - stored.synced_at;
+    if (!stored.products.length || age > LIVE_QUOTE_MAX_AGE_MS) {
+      try { await syncCatalogToDb(env, "printrove"); stored = await loadStoredCatalog(env, "printrove"); }
+      catch (e) { stale = true; await trackException(env, e, { route: "hf_merch:live_quote_sync", handled: true, app_name: "hf_merch" }); }
+    }
+    const prod = stored.products.find((p) => p.provider_product_id === snap.catalogId);
+    if (!prod) return fail("The shirt is no longer in the catalogue.");
+    let shipping = await referenceShippingRupees(env);
+    let source = "reference_shipping";
+    if (pincode) {
+      try {
+        const provider = await getPodProvider(env, "printrove");
+        const s = await provider.serviceability(pincode, 300 * Math.max(1, Number(snap.qty ?? 1)));
+        if (!s.ok) return fail("The print partner cannot deliver to this pincode right now.");
+        if (typeof s.shipping_cost_rupees === "number") { shipping = s.shipping_cost_rupees; source = "pincode_quote"; }
+      } catch { stale = true; }
+    }
+    const row = computeSizeCosts(prod, [snap.colour], snap.side, snap.printWIn, snap.printHIn, shipping).find((c) => c.size.toLowerCase() === String(snap.size).toLowerCase());
+    if (!row || !row.in_stock || row.total_rupees == null) return fail("The partner does not quote this size and colour right now.");
+    const base = baseUnitPaise(row.total_rupees, Number(snap.bufferRupees ?? 0));
+    if (base == null) return fail("The partner returned no price.");
+    return { ok: true, liveBaseUnitPaise: base, stale, source };
+  } catch (e) {
+    await trackException(env, e, { route: "hf_merch:live_quote", handled: true, app_name: "hf_merch" });
+    return fail("The live price could not be fetched.");
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Partner listing (done when the product is approved / goes live)
+// ---------------------------------------------------------------------------
+export type ProvisionResult = { ok: true; skipped: boolean; designRef: string | null; listingRef: string | null } | { ok: false; message: string };
+
+async function upsertListing(env: Env, productId: string, provider: string, designId: string, version: number, designRef: string, status: string): Promise<void> {
+  await metaDb(env).prepare(
+    `INSERT INTO pod_listings (product_id, provider, design_id, design_version, provider_design_ref, provider_listing_ref, status, error, published_at)
+     VALUES (?1,?2,?3,?4,?5,NULL,?6,NULL,NULL)
+     ON CONFLICT(product_id, provider) DO UPDATE SET design_id=excluded.design_id, design_version=excluded.design_version, provider_design_ref=excluded.provider_design_ref,
+       status=CASE WHEN pod_listings.status='listed' AND pod_listings.design_version=excluded.design_version THEN pod_listings.status ELSE excluded.status END, error=NULL`,
+  ).bind(productId, provider, designId, version, designRef, status).run();
+}
+
+/** Upload the print file and create the partner listing for an influencer product. Idempotent (a listed product is left alone). */
+export async function provisionPartnerListing(
+  env: Env, productId: string, designId: string, merch: ProductMerch, title: string,
+): Promise<ProvisionResult> {
+  try {
+    const db = metaDb(env);
+    const info = await ensurePodCatalog(env);
+    const provider: PodProvider | null = info.source === "printrove" ? await getPodProvider(env).catch(() => null) : null;
+    const d = await db.prepare("SELECT id, version, print_key FROM studio_designs WHERE id=?1").bind(designId).first<{ id: string; version: number; print_key: string | null }>();
+    if (!d || !d.print_key) return { ok: false, message: "The print file is missing." };
+    if (!provider || !provider.supportsApi) {
+      await upsertListing(env, productId, provider?.id ?? "manual", d.id, d.version, d.id, "manual");
+      return { ok: true, skipped: true, designRef: d.id, listingRef: null };
+    }
+    const existing = await db.prepare("SELECT status, provider_listing_ref AS l, provider_design_ref AS d, design_version AS v FROM pod_listings WHERE product_id=?1 AND provider=?2").bind(productId, provider.id)
+      .first<{ status: string; l: string | null; d: string | null; v: number | null }>();
+    if (existing?.status === "listed" && existing.l && Number(existing.v) === d.version) return { ok: true, skipped: true, designRef: existing.d, listingRef: existing.l };
+    const prod = info.products.find((p) => p.provider_product_id === merch.catalogId);
+    if (!prod) return { ok: false, message: "The shirt is no longer in the partner catalogue." };
+    const obj = await env.DIGITAL.get(d.print_key);
+    if (!obj) return { ok: false, message: "The print file is missing from storage." };
+    const bytes = new Uint8Array(await obj.arrayBuffer());
+    const { design_ref } = await provider.uploadDesign(bytes, `${d.id}-v${d.version}.png`);
+    await upsertListing(env, productId, provider.id, d.id, d.version, design_ref, "design_uploaded");
+    const placement = merch.placement as unknown as Placement;
+    const maps = (await db.prepare("SELECT colour, size, provider_variant_id, sku FROM pod_variant_map WHERE product_id=?1 AND provider=?2 AND active=1").bind(productId, provider.id)
+      .all<{ colour: string; size: string; provider_variant_id: string; sku: string | null }>()).results ?? [];
+    if (!maps.length) return { ok: false, message: "No sizes or colours are linked to this product." };
+    const out = await provider.createListing({
+      name: title.slice(0, 80), provider_product_id: merch.catalogId, design_ref, placement: partnerPlacement(placement),
+      variants: maps.map((m) => ({ provider_variant_id: m.provider_variant_id, sku: variantSku(d.id, d.version, m.colour, m.size, m.sku ?? undefined) })),
+    });
+    await db.prepare("UPDATE pod_listings SET provider_listing_ref=?3, status='listed', error=NULL, published_at=?4 WHERE product_id=?1 AND provider=?2").bind(productId, provider.id, out.listing_ref, Date.now()).run();
+    return { ok: true, skipped: false, designRef: design_ref, listingRef: out.listing_ref };
+  } catch (e) {
+    await trackException(env, e, { route: "hf_merch:provision", handled: true, app_name: "hf_merch", extra: { product_id: productId } });
+    return { ok: false, message: (e instanceof Error ? e.message : String(e)).slice(0, 240) };
+  }
+}
+
+export const sizesOf = (merch: ProductMerch | null): string[] => sortSizes((merch?.sizes ?? []).map((s) => s.size));
+export const parseProductMerch = (raw: string | null): ProductMerch | null => { const m = parseJson<ProductMerch | null>(raw, null); return m && m.v === 1 ? m : null; };
