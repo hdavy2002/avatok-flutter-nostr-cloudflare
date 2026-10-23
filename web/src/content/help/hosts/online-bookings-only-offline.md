@@ -11,7 +11,7 @@ faq:
     a: "Yes. Calls that are already booked still ring. Offline stops instant calls, the queue and new bookings."
   - q: "How do I stop new people joining my queue for a while?"
     a: "Tap Pause queue on your dashboard. People already waiting are kept for a short time, and you can resume any time."
-draft: true
+draft: false
 ---
 
 <!-- HF-CALL-MODES-E1: DRAFT. Describes the behaviour once hfCallModesEnabled (+ hfCallQueueEnabled, hfBookingLengthsEnabled) are on. Set draft: false when the flags go on. -->

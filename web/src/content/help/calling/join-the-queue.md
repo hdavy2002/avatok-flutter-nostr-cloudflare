@@ -15,7 +15,7 @@ faq:
     a: "Yes, any time. Open the influencer's page and tap Leave the queue."
   - q: "How many people can wait?"
     a: "Up to 10 people wait for one influencer. If the queue is full, you can book a time instead."
-draft: true
+draft: false
 ---
 
 <!-- HF-CALL-MODES-E1: DRAFT. Describes the behaviour once hfCallModesEnabled + hfCallQueueEnabled are on. Set draft: false when the flags go on. -->

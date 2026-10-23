@@ -13,7 +13,7 @@ faq:
     a: "Only you hear a short message, with about how many minutes are left. Top up while you are speaking and the call carries on. The influencer is not told why."
   - q: "Do I lose the money that was set aside but not used?"
     a: "No. You are charged only for the time you actually speak. Anything set aside and not used comes back to your wallet."
-draft: true
+draft: false
 ---
 
 <!-- HF-CALL-MODES-E1: DRAFT. Describes the behaviour once hfCallChunkBillingEnabled is on. Set draft: false when the flag goes on. -->
