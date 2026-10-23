@@ -1162,7 +1162,7 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
       if (p.startsWith("/api/me/")) { const r = await agentMemoryRoute(req, env, p); if (r) return r; } // [AUMFE-AGENT-MEMORY-1]
       if (p.startsWith("/api/guides/")) { const r = await guidesRoute(req, env, p); if (r) return r; } // [AUMFE-GUIDE-BRAIN-1]
       if (p.startsWith("/api/consultants/")) { const r = await consultRoute(req, env, p, ctx); if (r) return r; } // [AUMFE-CONSULT-FOUNDATION-1]
-      if (p === "/api/hf/hosts" || p === "/api/hf/options") { const r = await hfHostsListRoute(req, env, ctx); if (r) return r; } // [HF-NATIVE-S2/S3]
+      if (p === "/api/hf/hosts" || p === "/api/hf/options" || (req.method === "GET" && /^\/api\/hf\/hosts\/(?!me$)[a-z0-9-]{3,40}$/.test(p))) { const r = await hfHostsListRoute(req, env, ctx); if (r) return r; } // [HF-NATIVE-S2/S3] [HF-CALL-MODES-INT] + GET /api/hf/hosts/:slug (one host's live call state)
       if (p === "/api/hosts/me/availability" || p === "/api/hosts/me/bookings/summary" || p.startsWith("/api/hf/bookings") || /^\/api\/hf\/hosts\/[^/]+\/availability$/.test(p) || p === "/api/hf/hosts/me/rate" || p === "/api/hf/hosts/me/booking-settings" || /^\/api\/hf\/hosts\/[^/]+\/slots$/.test(p)) {
         const bookingConfig = await readConfig(env).catch(() => null);
         if (bookingConfig?.hfBookingsEnabled !== true) return new Response(null, { status: 404 });

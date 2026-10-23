@@ -22,8 +22,7 @@ import { track, trackException } from "../hooks";
 import { isAdminUid } from "../lib/preview";
 import { personName } from "../lib/admin2_people_data";
 import { verifiedWhatsAppNumber } from "../lib/whatsapp_notify";
-import { notifyHostOnline } from "../lib/hf_notify";
-import { isClosing, forceHostOffline, CLOSING_MESSAGE } from "../lib/hf_exit"; // [HF-WALLET-EXIT-1]
+import { isClosing, CLOSING_MESSAGE } from "../lib/hf_exit"; // [HF-WALLET-EXIT-1]
 import { walletOp } from "./wallet";
 import { classifyAdminQuery, searchable } from "../lib/hf_admin_search";
 import { searchHfUsers, resolvePhone } from "../lib/hf_admin_users";
@@ -49,6 +48,7 @@ import { pricingStd, readInfluencerRate } from "../lib/hf_influencer_rate"; // [
 import { instantBookingOverlapGuardSql, nextBookingCutoff, startTokenCall, chunkSettingsFrom, pickPricing, type StartTokenResult } from "../lib/hf_call_start"; // [HF-CALL-MODES-C]
 import { publicCallState, canQueue as stateCanQueue, canBook as stateCanBook } from "../lib/hf_host_status";
 import { queueGate } from "../lib/hf_queue_store";
+import { hfHostModeRoute } from "./hf_host_mode"; // [HF-CALL-MODES-INT]
 import type { PublicCallState, CallRefusalReason } from "../lib/hf_call_contracts";
 
 const err = (status: number, error: string, message: string, extra: Record<string, unknown> = {}) => json({ error, message, ...extra }, status);
@@ -103,9 +103,6 @@ const callStub = (env: Env, id: string) => env.HF_CALL.get(env.HF_CALL.idFromNam
 export { instantBookingOverlapGuardSql };
 async function callsOn(env: Env): Promise<boolean> {
   try { return (await readConfig(env)).hfCallsEnabled === true; } catch { return false; }
-}
-async function reelsOn(env: Env): Promise<boolean> {
-  try { return (await readConfig(env)).hfReelsEnabled === true; } catch { return false; }
 }
 async function adminCtx(req: Request, env: Env): Promise<{ uid: string } | Response> {
   const u = await requireUser(req, env);
@@ -666,53 +663,7 @@ async function walletEstimateInner(req: Request, env: Env): Promise<Response> {
   }, 200, { "cache-control": "private, no-store" });
 }
 
-// ── host presence ────────────────────────────────────────────────────────────
-async function presenceRoute(req: Request, env: Env, p: string, ctx?: ExecutionContext): Promise<Response> {
-  // [HF-WIRE-5] the reels app uses presence without calls being open: calls OR reels flag.
-  if (!(await callsOn(env)) && !(await reelsOn(env))) return NOT_ENABLED();
-  const u = await requireUser(req, env);
-  if (isFail(u)) return err(u.status, u.error, u.error);
-  const host = await env.DB_META.prepare("SELECT uid, status, presence FROM hf_hosts WHERE uid=?1").bind(u.uid).first<{ uid: string; status: string; presence: string | null }>();
-  if (!host || host.status !== "live") return err(409, "not_live", "Your profile isn't live yet.");
-  const now = Date.now();
-  // [HF-PRESENCE-NUDGE-1] nudge_paused comes from an ALTER migration: read it on its own so a worker deployed before the migration still serves presence.
-  const nudgesPaused = async (): Promise<boolean> => {
-    try { return Number((await env.DB_META.prepare("SELECT nudge_paused FROM hf_hosts WHERE uid=?1").bind(u.uid).first<{ nudge_paused: number }>())?.nudge_paused ?? 0) === 1; } catch { return false; }
-  };
-  if (req.method === "GET") return json({ ok: true, presence: host.presence ?? "offline", nudgesPaused: await nudgesPaused() }, 200, { "cache-control": "private, no-store" });
-  if (p.endsWith("/nudges")) { // PUT {paused:boolean} -> {ok, paused}: pause / resume the 3-hourly "you're offline" reminders
-    const b = await readJson(req);
-    if (typeof b.paused !== "boolean") return err(400, "invalid_field", "paused must be true or false.");
-    try {
-      await env.DB_META.prepare("UPDATE hf_hosts SET nudge_paused=?1 WHERE uid=?2").bind(b.paused ? 1 : 0, u.uid).run();
-    } catch (e) {
-      await trackException(env, e, { route: p, method: "PUT", uid: u.uid, handled: true, app_name: HF_CALL_APP, extra: { area: "hf_presence_nudge" } });
-      return err(503, "unavailable", "Try again in a little while.");
-    }
-    void track(env, u.uid, "hf_presence_nudge_paused", HF_CALL_APP, { area: "hf_presence_nudge", paused: b.paused }).catch(() => undefined);
-    return json({ ok: true, paused: b.paused });
-  }
-  if (p.endsWith("/beat")) {
-    await env.DB_META.prepare("UPDATE hf_hosts SET presence_at=?1 WHERE uid=?2 AND presence IN ('online','busy')").bind(now, u.uid).run();
-    return json({ ok: true, presence: host.presence ?? "offline" });
-  }
-  const body = await readJson(req);
-  if (typeof body.online !== "boolean") return err(400, "invalid_field", "online must be true or false.");
-  if (body.online) {
-    if (await isClosing(env, u.uid)) { await forceHostOffline(env, u.uid); return err(409, "account_closing", CLOSING_MESSAGE, { reason: "account_closing" }); } // [HF-WALLET-EXIT-1]
-    if (!(await verifiedWhatsAppNumber(env, u.uid))) return err(403, "not_verified", "Verify your WhatsApp number to take calls.");
-    await env.DB_META.prepare("UPDATE hf_hosts SET presence=CASE WHEN presence='busy' OR presence_call_id IS NOT NULL THEN 'busy' ELSE 'online' END, presence_at=?1 WHERE uid=?2").bind(now, u.uid).run();
-  } else {
-    await env.DB_META.prepare("UPDATE hf_hosts SET presence='offline', presence_at=?1 WHERE uid=?2").bind(now, u.uid).run();
-  }
-  const after = (await env.DB_META.prepare("SELECT presence FROM hf_hosts WHERE uid=?1").bind(u.uid).first<{ presence: string }>())?.presence ?? "offline";
-  if (body.online && (host.presence ?? "offline") === "offline" && after === "online") {
-    const work = notifyHostOnline(env, ctx, u.uid).catch(() => undefined);
-    if (ctx) ctx.waitUntil(work); else await work;
-  }
-  void track(env, u.uid, "hf_host_presence", HF_CALL_APP, { area: "hf_call", presence: after }).catch(() => undefined);
-  return json({ ok: true, presence: after });
-}
+// ── host presence: moved to routes/hf_host_mode.ts (Lane A) [HF-CALL-MODES-INT] ──
 
 // ── GET /api/hf/calls (role=caller|host) ─────────────────────────────────────
 // [HF-DASH-CALLS-1] Paginated history of calls you made or received, every outcome. Handles only; scoped to the signed-in uid.
@@ -1038,9 +989,10 @@ export async function hfCallsRoute(req: Request, env: Env, p: string, ctx?: Exec
     if (end && m === "POST") return await endCall(req, env, end[1]);
     if (p === "/api/hf/wallet" && m === "GET") return await walletGet(req, env);
     if (p === "/api/hf/wallet/estimate" && m === "GET") return await walletEstimate(req, env);
-    if (p === "/api/hosts/me/presence" && (m === "PUT" || m === "GET")) return await presenceRoute(req, env, p, ctx);
-    if (p === "/api/hosts/me/presence/beat" && m === "POST") return await presenceRoute(req, env, p, ctx);
-    if (p === "/api/hosts/me/presence/nudges" && m === "PUT") return await presenceRoute(req, env, p, ctx); // [HF-PRESENCE-NUDGE-1]
+    if (p === "/api/hosts/me/presence" || p === "/api/hosts/me/presence/beat" || p === "/api/hosts/me/presence/nudges" || p === "/api/hosts/me/queue") { // [HF-CALL-MODES-INT] Lane A's routes (presence, beat, nudges [HF-PRESENCE-NUDGE-1], queue pause)
+      const r = await hfHostModeRoute(req, env, p, ctx);
+      if (r) return r;
+    }
     if (p === "/api/hosts/me/calls" && m === "GET") return await hostCalls(req, env);
     if (p === "/api/admin/hf/wallet/credit" && m === "POST") return await adminCredit(req, env);
     if (p === "/api/admin/hf/wallet/migrate-test-credits" && m === "POST") return await adminMigrateTestCredits(req, env);

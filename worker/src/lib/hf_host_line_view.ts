@@ -9,7 +9,7 @@ import type { HostMode, PublicCallState } from "./hf_call_contracts";
 export interface HostLineFields {
   mode: HostMode;
   callState: PublicCallState;
-  /** open = a fan can join the queue right now; waiting = fans in hf_call_queue with status 'waiting'. */
+  /** open = a fan can join the queue right now; waiting = fans in hf_call_queue that are waiting or in their 60 s break (same definition as lib/hf_queue_store.ts WAITING_SQL). */
   queue: { open: boolean; waiting: number };
 }
 
@@ -42,7 +42,7 @@ export async function waitingCounts(env: Env, hostUids: string[]): Promise<Map<s
   for (let i = 0; i < uids.length; i += 90) {
     const part = uids.slice(i, i + 90);
     try {
-      const rs = (await env.DB_META.prepare(`SELECT host_uid, COUNT(*) AS n FROM hf_call_queue WHERE status='waiting' AND host_uid IN (${part.map((_, j) => `?${j + 1}`).join(",")}) GROUP BY host_uid`)
+      const rs = (await env.DB_META.prepare(`SELECT host_uid, COUNT(*) AS n FROM hf_call_queue WHERE (status='waiting' OR (status='offered' AND call_id IS NULL)) AND host_uid IN (${part.map((_, j) => `?${j + 1}`).join(",")}) GROUP BY host_uid`)
         .bind(...part).all<{ host_uid: string; n: number }>()).results ?? [];
       for (const r of rs) out.set(r.host_uid, Number(r.n ?? 0));
     } catch { /* hf_call_queue not applied yet: nobody waits */ }
