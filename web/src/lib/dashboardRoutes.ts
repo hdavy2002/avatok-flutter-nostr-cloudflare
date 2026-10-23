@@ -3,7 +3,7 @@
 export type DashSection =
   | 'overview' | 'profile' | 'wallet' | 'calls' | 'appointments' | 'fraands'
   | 'orders' | 'host' | 'host-calendar' | 'availability' | 'earnings' | 'merch'
-  | 'support' | 'close' | 'become';
+  | 'support' | 'close' | 'become' | 'profile-photo';
 
 export type DashGroup = 'me' | 'explore' | 'host' | 'account';
 
@@ -37,6 +37,8 @@ export const DASH_ROUTES: DashRoute[] = [
   { section: 'availability', path: '/dashboard/host/availability', label: 'Availability', icon: 'clock', group: 'host', hostOnly: true, needsBookings: true, title: 'Availability' },
   { section: 'earnings', path: '/dashboard/host/earnings', label: 'Earnings', icon: 'money', group: 'host', hostOnly: true, title: 'Earnings' },
   { section: 'merch', path: '/dashboard/merch', label: 'Merch', icon: 'shirt', group: 'host', hostOnly: true, needsMerch: true, title: 'Merch' },
+  // [HF-CHANNEL-PHOTO-1] Influencers upload and crop the big photo on their public page. Non-influencers see a note, so no hostOnly block.
+  { section: 'profile-photo', path: '/dashboard/profile-photo', label: 'Profile photo', icon: 'profile', group: 'host', title: 'Profile photo' },
   // [HF-DASH-V3-1] For people who are not influencers yet: perks, live onboarding progress and an earnings estimate.
   { section: 'become', path: '/dashboard/become', label: 'Become an influencer', icon: 'star', group: 'account', title: 'Become an influencer' },
   { section: 'support', path: '/dashboard/support', label: 'Support', icon: 'help', group: 'account', title: 'Support' },

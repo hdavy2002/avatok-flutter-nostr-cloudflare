@@ -1455,3 +1455,11 @@ Spec: `Specs/SPEC-2026-10-23-HF-CALL-MODES-QUEUE.md` section 2.8. All dark behin
 ### Ship manifest note
 
 Each of the four flags must be on before its events appear. Events arrive only after the worker (A to D) is deployed with the flag, and after the web and app builds that carry E1/E2.
+
+## Influencer profile photo (`[HF-CHANNEL-PHOTO-1]`, web dashboard, 2026-10-23)
+
+| Event | Props | Note |
+|---|---|---|
+| `profile_photo_opened` | none | An influencer opened Dashboard > My public page > Profile photo. **Ship-manifest success event.** |
+| `profile_photo_saved` | `bytes`, `zoom` | The cropped 1200x1500 JPEG was accepted by `PUT /api/hosts/me/photo`. |
+| `profile_photo_failed` | `reason` (`bad_type`/`too_big`/`too_small`/`not_host`/`rate_limited`/`network`/`client`/...), `status` | The save failed; the person saw a plain-language message. |

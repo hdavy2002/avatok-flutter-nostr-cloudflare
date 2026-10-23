@@ -42,6 +42,10 @@ export default function Shell({ account, active, bookingOn, favouritesOn, merchO
       { key: 'earnings', href: '/dashboard/host/earnings', label: 'Earnings', icon: 'money', disabled: !hostReady ? 'When your profile is live' : undefined },
       ...(merchOn && hostReady ? [{ key: 'merch' as const, href: '/dashboard/merch', label: 'Merch', icon: 'shirt' }] : []), // [HF-MERCH-CREATOR-WEB-1]
     ] : [{ key: 'become', href: '/dashboard/become', label: 'Become an influencer', icon: 'star', disabled: account.closing ? 'Account closing' : undefined }] },
+    // [HF-CHANNEL-PHOTO-1] Only people who have an influencer profile get this group.
+    { title: 'My public page', items: account.host ? [
+      { key: 'profile-photo', href: '/dashboard/profile-photo', label: 'Profile photo', icon: 'user' },
+    ] : [] },
     { title: 'Account', items: [
       { key: 'support', href: '/dashboard/support', label: 'Support', icon: 'help' },
       { key: 'close', href: '/dashboard/close', label: 'Close my account', icon: 'trash' },
@@ -57,7 +61,7 @@ export default function Shell({ account, active, bookingOn, favouritesOn, merchO
       <span className="who"><b>{firstName || 'Your profile'}</b>{handle && <small className="muted small">@{handle}</small>}</span>
       <span className="bal">{bal == null ? '—' : formatPaise(bal)}</span>
     </a>
-    {groups.map(g => <div key={g.title} style={{ display: 'contents' }}>
+    {groups.filter(g => g.items.length > 0).map(g => <div key={g.title} style={{ display: 'contents' }}>
       <div className="h3-group"><Marigold size={14} tone={1} />{g.title}</div>
       {g.items.map(it => {
         const on = it.key === active;

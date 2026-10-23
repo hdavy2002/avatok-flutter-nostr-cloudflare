@@ -38,6 +38,7 @@ import CloseV3 from './v3/Close';
 import PolicyUpdatePrompt from './PolicyUpdatePrompt'; // [HF-POLICY-WITHDRAW-1]
 import MerchApp from './merch/MerchApp'; // [HF-MERCH-CREATOR-WEB-1]
 import OrdersV3 from './v3/Orders'; // [HF-MERCH-FAN-WEB-1]
+import ProfilePhoto from './v3/ProfilePhoto'; // [HF-CHANNEL-PHOTO-1]
 
 type Phase = 'boot' | 'signedout' | 'error' | 'ready';
 
@@ -144,6 +145,7 @@ function Shell({ initial }: { initial: DashSection }) {
     case 'host-calendar': body = <div className="h3-legacy"><HostBookings key={key} role="host" /></div>; break;
     case 'availability': body = <div className="h3-legacy"><HostAvailability key={key} /></div>; break;
     case 'earnings': body = <div className="h3-legacy"><Earnings key={key} account={account} /></div>; break;
+    case 'profile-photo': body = <ProfilePhoto key={key} account={account} />; break;
     case 'merch': body = <MerchApp key={key} />; break;
     case 'support': body = <SupportV3 key={key} />; break;
     case 'close': body = <CloseV3 key={key} />; break;

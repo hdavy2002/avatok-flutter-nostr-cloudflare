@@ -11772,5 +11772,18 @@
         "note": "A fan paid for a whole bag (wallet) in one go."
       }
     ]
+  },
+  "HF-CHANNEL-PHOTO-1": {
+    "description": "[HF-CHANNEL-PHOTO-1 2026-10-23] Influencer dashboard screen My public page > Profile photo (/dashboard/profile-photo): upload, drag/zoom crop to 4:5, saves a 1200x1500 JPEG via PUT /api/hosts/me/photo (worker HF-CHANNEL-CORE-1), live hero + explore previews. Influencers only.",
+    "two_sided": false,
+    "min_devices_on_build": 0,
+    "flags": [],
+    "success": [
+      {
+        "event": "profile_photo_opened",
+        "min_events": 1,
+        "note": "An influencer opened the Profile photo screen."
+      }
+    ]
   }
 }
