@@ -11197,5 +11197,20 @@
         "note": "A user with no handle opened the app or dashboard and got one."
       }
     ]
+  },
+  "HF-FIX-PROFILE-NAME-1": {
+    "description": "Profile first/last names persist for users without a registration row; handle visibly read-only; save errors shown.",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [],
+    "success": [
+      {
+        "event": "hf_dash_profile_saved",
+        "property": "fields",
+        "exists": true,
+        "min_events": 1,
+        "note": "A profile save reached the server; GET must then return the saved first/last name (checked live after deploy)."
+      }
+    ]
   }
 }
