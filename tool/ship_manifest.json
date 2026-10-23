@@ -11524,5 +11524,20 @@
         "note": "A booking quote with a length and 15-minute hold (flag hfBookingLengthsEnabled)."
       }
     ]
+  },
+  "HF-CALL-MODES-B": {
+    "description": "Call queue with HfHostLineDO: join, WhatsApp, 60 s break, auto-connect, pause, expiry.",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [],
+    "success": [
+      {
+        "event": "hf_queue_joined",
+        "property": "position",
+        "gt": 0,
+        "min_events": 1,
+        "note": "A fan joined an influencer's queue (flag hfCallQueueEnabled)."
+      }
+    ]
   }
 }
