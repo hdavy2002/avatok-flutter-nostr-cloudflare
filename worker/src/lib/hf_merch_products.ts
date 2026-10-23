@@ -7,7 +7,9 @@ import { sha256Hex } from "../util";
 import { moderate, moderateGeneratedImage } from "./moderation";
 import { ensurePodCatalog, isApparelKind } from "./pod";
 import { IMAGE_EXT, LIMITS, checkPrintFile, parseImageInfo, validatePlacement, variantSku, type Placement } from "./studio_logic";
-import { checkMarkup, checkPriceCap, rupeesText, type MerchCfg } from "./hf_merch_math";
+import { checkMarkup, checkPriceCap, gstForCategory, rupeesText, type MerchCfg } from "./hf_merch_math";
+import { frozenOrFallback } from "./hf_merch_gst";
+import { categoryOf } from "./hf_merch_families";
 import { areaOrNull, isMerchKind, provisionPartnerListing, quoteBases } from "./hf_merch_catalog";
 import {
   getProduct, openOrdersForProduct, productMerch, shopSlugFor, type MerchHost, type MerchProductRow,
@@ -127,10 +129,11 @@ const ownMockup = (env: Env, uid: string, u: unknown): string | null =>
   typeof u === "string" && u.startsWith(`${env.BLOSSOM_BASE_URL}/u/${uid}/public/merch/`) && u.length < 400 ? u : null;
 
 /** [HF-MERCH-GST-1] 400 over_price_cap when any size's fan price (base + markup) would pass the cap; carries maxMarkupRupees (the smallest across sizes). */
-function capFail(sizes: Array<{ size: string; baseUnitPaise: number }>, markupRupees: number, cfg: MerchCfg): PFail | null {
+function capFail(sizes: Array<{ size: string; baseUnitPaise: number }>, markupRupees: number, cfg: MerchCfg, gst: { rateBps: number; capApplies: boolean }): PFail | null {
+  if (!gst.capApplies) return null; // the category has no cap (e.g. mugs at 18%)
   const c = checkPriceCap(sizes, markupRupees, cfg.priceCapPaise);
   if (c.ok) return null;
-  return fail(400, "over_price_cap", `Shirts are capped at ${rupeesText(c.capPaise)} so the ${cfg.gstRateBps / 100}% GST rate applies. For this shirt your markup can be at most Rs ${c.maxMarkupRupees}.`,
+  return fail(400, "over_price_cap", `Clothing is capped at ${rupeesText(c.capPaise)} so the ${gst.rateBps / 100}% GST rate applies. For this item your markup can be at most Rs ${c.maxMarkupRupees}.`,
     { field: "markupRupees", maxMarkupRupees: c.maxMarkupRupees, priceCapPaise: c.capPaise });
 }
 
@@ -190,7 +193,8 @@ export async function createMerchProduct(env: Env, cfg: MerchCfg, flags: { produ
   const quote = await quoteBases(env, cfg, { catalogId, colours: colours.map((c) => c.name), side, wIn: pv.placement.print_w_in, hIn: pv.placement.print_h_in, sizes: wantSizes });
   if (!quote.ok) return fail(quote.error === "catalog_unavailable" ? 503 : 400, quote.error, quote.message);
   if (quote.sizes.length !== new Set(wantSizes).size) return fail(400, "invalid_sizes", "One of those sizes is not made in these colours.", { field: "sizes" });
-  const overCap = capFail(quote.sizes, mk.markupRupees, cfg); // [HF-MERCH-GST-1]
+  const gstRow = gstForCategory(cfg, categoryOf(prod.kind).slug); // [HF-MERCH-GST-1] frozen into merch_json below
+  const overCap = capFail(quote.sizes, mk.markupRupees, cfg, gstRow);
   if (overCap) return overCap;
 
   const mockups = (Array.isArray(b.mockupUrls) ? (b.mockupUrls as unknown[]) : []).map((u) => ownMockup(env, uid, u)).filter((u): u is string => !!u).slice(0, 6);
@@ -209,7 +213,7 @@ export async function createMerchProduct(env: Env, cfg: MerchCfg, flags: { produ
   if (await db.prepare("SELECT 1 AS x FROM shop_products WHERE slug=?1").bind(shopSlugFor(host.slug, productSlug)).first()) productSlug = `${base}-${hex8()}`;
 
   const merch: ProductMerch = {
-    v: 1, productSlug, provider: "printrove", catalogId, catalogName: prod.name, kind: prod.kind, side, sizes: quote.sizes, bufferRupees: cfg.baseBufferRupees, colours,
+    v: 1, productSlug, provider: "printrove", catalogId, catalogName: prod.name, kind: prod.kind, side, sizes: quote.sizes, gst: { rateBps: gstRow.rateBps, hsn: gstRow.hsn, capApplies: gstRow.capApplies, category: gstRow.category }, bufferRupees: cfg.baseBufferRupees, colours,
     placement: pv.placement as unknown as Record<string, unknown>, mockups, printPreviewUrl: design.print_preview_url, artUrl: design.art_preview_url, moderation, approvedAt: null, hiddenBy: null, listing: null,
   };
   const pid = `prd-${hex8()}`;
@@ -268,7 +272,7 @@ export async function patchMerchProduct(env: Env, cfg: MerchCfg, host: MerchHost
     const mk = checkMarkup(b.markupRupees, cfg);
     if (!mk.ok) return fail(400, mk.error, mk.message, { field: "markupRupees" });
     const m = productMerch(row);
-    const overCap = m ? capFail(m.sizes, mk.markupRupees, cfg) : null; // [HF-MERCH-GST-1]
+    const overCap = m ? capFail(m.sizes, mk.markupRupees, cfg, frozenOrFallback(m.gst, { rateBps: cfg.gstRateBps, hsn: cfg.hsn })) : null; // [HF-MERCH-GST-1]
     if (overCap) return overCap;
     const lowest = Math.min(...(m?.sizes ?? [{ baseUnitPaise: 0 }]).map((s) => s.baseUnitPaise));
     add("markup_rupees", mk.markupRupees);

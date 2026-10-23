@@ -7,7 +7,8 @@ import { mediaUrl } from "./hf_host_store";
 import { brandUrl } from "./brand";
 import type { ShopOrderRow } from "./shop_orders_logic";
 import { apiProductStatus, parseJson, type ProductMerch } from "./hf_merch_types";
-import { sizePrices, sizeBreakdown } from "./hf_merch_math";
+import { sizePrices, sizeBreakdown, maxMarkupForBase } from "./hf_merch_math";
+import { frozenOrFallback } from "./hf_merch_gst";
 
 // ---------------------------------------------------------------------------
 // Hosts
@@ -95,13 +96,21 @@ export async function openOrdersForProduct(env: Env, productId: string): Promise
 export type ProductShape = {
   id: string; slug: string; title: string; description: string; status: "pending" | "live" | "rejected" | "hidden"; reviewNote: string | null;
   imageUrl: string | null; mockups: string[]; catalogName: string; colours: Array<{ name: string; hex: string }>;
-  /** pricePaise is GST-inclusive; youEarnPaise is the design royalty; maxMarkupRupees is present when the cap is passed in. */
+  /** pricePaise is GST-inclusive; youEarnPaise is the design royalty; maxMarkupRupees is present when the cap is passed in AND the product's category has a cap. */
   sizes: Array<{ size: string; basePaise: number; pricePaise: number; youEarnPaise: number; printingPaise: number; shippingPaise: number; bufferPaise: number; maxMarkupRupees?: number }>;
+  /** [HF-MERCH-GST-1] The product's FROZEN category GST: rate (bps) included in the price, HSN ("" = to be confirmed), whether the price cap applies, and the smallest per-size
+   *  max markup (null/absent when no cap). */
+  gstRateBps: number; hsn: string; capApplies: boolean; maxMarkupRupees: number | null;
   /** true when the printing / shipping split was worked back from today's shipping quote because the product predates the frozen breakdown. */
   breakdownEstimated: boolean; markupRupees: number; soldCount: number; publicUrl: string; createdAt: number;
 };
-export function productShape(row: MerchProductRow, host: Pick<MerchHost, "slug">, shareBps: number, legacyShipPaise = 0, capPaise?: number): ProductShape {
+/** The settings a product's GST view needs: the cap and the flat fallback for a product made before the category table. */
+export type GstCtx = { capPaise: number; rateBps: number; hsn: string };
+export const gstCtxOf = (cfg: { priceCapPaise: number; gstRateBps: number; hsn: string }): GstCtx => ({ capPaise: cfg.priceCapPaise, rateBps: cfg.gstRateBps, hsn: cfg.hsn });
+export function productShape(row: MerchProductRow, host: Pick<MerchHost, "slug">, shareBps: number, legacyShipPaise = 0, gctx?: GstCtx): ProductShape {
   const m = productMerch(row);
+  const g = frozenOrFallback(m?.gst, { rateBps: gctx?.rateBps ?? 500, hsn: gctx?.hsn ?? "6109" });
+  const capPaise = gctx && g.capApplies ? gctx.capPaise : undefined;
   const mockups = m?.mockups ?? [];
   const markup = Math.trunc(Number(row.markup_rupees ?? 0));
   const bufferPaise = Math.max(0, Math.trunc(Number(m?.bufferRupees ?? 0))) * 100;
@@ -110,6 +119,8 @@ export function productShape(row: MerchProductRow, host: Pick<MerchHost, "slug">
     id: row.id, slug: m?.productSlug ?? row.slug, title: row.name, description: row.description, status: apiProductStatus(row.review_status), reviewNote: row.review_note,
     imageUrl: mockups[0] ?? m?.printPreviewUrl ?? m?.artUrl ?? null, mockups, catalogName: m?.catalogName ?? "", colours: m?.colours ?? [],
     sizes: sizePrices(m?.sizes ?? [], markup, shareBps, capPaise).map((x, i) => ({ ...x, printingPaise: parts[i].printingPaise, shippingPaise: parts[i].shippingPaise, bufferPaise: parts[i].bufferPaise })),
+    gstRateBps: g.rateBps, hsn: g.hsn, capApplies: g.capApplies,
+    maxMarkupRupees: capPaise != null && (m?.sizes ?? []).length ? Math.min(...(m?.sizes ?? []).map((s) => maxMarkupForBase(s.baseUnitPaise, capPaise))) : null,
     breakdownEstimated: parts.some((x) => x.estimated), markupRupees: markup, soldCount: Number(row.sold_count ?? 0),
     publicUrl: brandUrl(`/h/${host.slug}/merch/${m?.productSlug ?? row.slug}`), createdAt: Number(row.created_at),
   };

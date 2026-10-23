@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   MERCH_DEFAULT_CFG, readMerchCfg, computeMerchMoney, baseUnitPaise, checkMarkup, quoteAgainstLive, earningAvailableAt, sizePrices, splitBase, sizeBreakdown, youEarnUnitPaise, bpsOf, bpsFloor,
-  rupeesText, DAY_MS, profitRow, gstInclusiveSplit, merchTaxSplit, printroveInputGstPaise, merchGstOf, maxMarkupForBase, checkPriceCap,
+  rupeesText, DAY_MS, profitRow, gstInclusiveSplit, merchTaxSplit, printroveInputGstPaise, merchGstOf, maxMarkupForBase, checkPriceCap, gstForCategory,
 } from "./hf_merch_math";
 
 describe("spec section 1 worked example: base 500, markup 200, Cashfree", () => {
@@ -97,6 +97,51 @@ describe("[HF-MERCH-GST-1] place of supply: CGST + SGST inside the supplier's st
   });
   it("an unknown buyer state is treated as intra-state and flagged", () => {
     expect(merchTaxSplit(64_400, 500, null, "27")).toMatchObject({ intraState: true, stateKnown: false, igstPaise: 0 });
+  });
+});
+
+describe("[HF-MERCH-GST-1] per-category GST: a mug at 18% (fan pays 500, wallet)", () => {
+  // base 335 = printing 295 (incl. Printrove's 18%) + delivery 40, markup 165, no Cashfree on the wallet.
+  const gst = gstForCategory(MERCH_DEFAULT_CFG, "home");
+  const m = computeMerchMoney({ baseUnitPaise: 33_500, markupUnitPaise: 16_500, qty: 1, payMethod: "wallet", cfg: MERCH_DEFAULT_CFG, printingUnitPaise: 29_500, gst, partnerGstBps: 1_800 });
+  it("the home category is 18%, no cap, HSN still to confirm", () => {
+    expect(gst).toMatchObject({ rateBps: 1_800, hsn: "", capApplies: false, category: "home" });
+  });
+  it("GST inside 500 at 18% is 76.27, taxable 423.73, frozen into the money block", () => {
+    expect(m.totalPaise).toBe(50_000);
+    expect(m.outputGstPaise).toBe(7_627);
+    expect(m.taxablePaise).toBe(42_373);
+    expect(m).toMatchObject({ gstRateBps: 1_800, hsn: "", partnerGstBps: 1_800 });
+  });
+  it("input credit at Printrove's 18% is 45.00, net GST 31.27", () => {
+    expect(m.inputGstPaise).toBe(4_500);
+    expect(m.netGstPaise).toBe(3_127);
+  });
+  it("royalty is still 60% of the markup and the platform keeps 34.73", () => {
+    expect(m.influencerPaise).toBe(9_900);
+    expect(m.platformNetPaise).toBe(3_473);
+    const r = profitRow({ size: "M", printroveCostPaise: 29_500, shippingPaise: 4_000, fanPaysPaise: 50_000, markupPaise: 16_500, influencerPaise: 9_900, gstRateBps: 1_800, cashfreeFeeBps: 0 });
+    expect(r).toMatchObject({ outputGstPaise: 7_627, inputGstPaise: 4_500, netGstPaise: 3_127, platformAfterFeesPaise: 3_473 });
+  });
+  it("input credit uses Printrove's GST when it differs from the category rate", () => {
+    expect(printroveInputGstPaise(29_500, 1_800)).toBe(4_500);
+    const x = computeMerchMoney({ baseUnitPaise: 33_500, markupUnitPaise: 16_500, qty: 1, payMethod: "wallet", cfg: MERCH_DEFAULT_CFG, printingUnitPaise: 29_500, gst, partnerGstBps: 500 });
+    expect(x.inputGstPaise).toBe(1_405); // 29,500 x 5/105
+    expect(x.partnerGstBps).toBe(500);
+  });
+  it("with no partner GST the input credit uses the category rate; with no frozen gst the flat fallback (5%) applies", () => {
+    const a = computeMerchMoney({ baseUnitPaise: 33_500, markupUnitPaise: 16_500, qty: 1, payMethod: "wallet", cfg: MERCH_DEFAULT_CFG, printingUnitPaise: 29_500, gst });
+    expect(a.inputGstPaise).toBe(4_500);
+    const legacy = computeMerchMoney({ baseUnitPaise: 44_400, markupUnitPaise: 20_000, qty: 1, payMethod: "cashfree", cfg: MERCH_DEFAULT_CFG, printingUnitPaise: 39_375 });
+    expect(legacy).toMatchObject({ gstRateBps: 500, inputGstPaise: 1_875, netGstPaise: 1_192 });
+  });
+  it("T-shirt category is the 5% / 6109 / capped row", () => {
+    expect(gstForCategory(MERCH_DEFAULT_CFG, "tshirts")).toMatchObject({ rateBps: 500, hsn: "6109", capApplies: true });
+    expect(gstForCategory(MERCH_DEFAULT_CFG, "hoodies")).toMatchObject({ rateBps: 500, hsn: "6110", capApplies: true });
+    expect(gstForCategory(MERCH_DEFAULT_CFG, "no-such-category")).toMatchObject({ rateBps: 500, hsn: "6109", capApplies: true });
+  });
+  it("no cap: checkPriceCap with a null cap always passes", () => {
+    expect(checkPriceCap([{ size: "M", baseUnitPaise: 900_000 }], 5_000, null)).toEqual({ ok: true });
   });
 });
 

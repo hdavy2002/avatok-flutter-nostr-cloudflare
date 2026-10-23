@@ -840,10 +840,11 @@ export interface PlatformConfig {
   hfMerchHoldDays: number;                   // days after delivery before the earning is withdrawable
   hfMerchAiEnabled: boolean;                 // [HF-MERCH-STUDIO-2] "Create with AI" pictures in the merch studio (public: the UI hides the button)
   hfMerchAiChargeRupees: number;             // [HF-MERCH-STUDIO-2] fixed rupees per AI picture, 0-500 (numericKeys; public: the UI shows the price)
-  // [HF-MERCH-GST-1] The platform is the seller; fan prices are GST-inclusive (rule HF-MERCH-13/14). All server-only.
-  hfMerchGstRateBps: number;                 // GST included in the fan price, basis points (500 = 5%)
-  hfMerchPriceCapRupees: number;             // max fan price of ONE shirt, any size (2500 keeps the 5% rate valid)
-  hfMerchHsn: string;                        // HSN on the invoice (6109 = T-shirts)
+  // [HF-MERCH-GST-1] The platform is the seller; fan prices are GST-inclusive at a per-category rate (rules HF-MERCH-17/18). All server-only.
+  hfMerchGstRateBps: number;                 // FALLBACK GST included in the fan price, basis points (500 = 5%), for a category the table lacks / an old product
+  hfMerchPriceCapRupees: number;             // max fan price of ONE piece, any size, in categories where the table says the cap applies (clothing; 2500 keeps the 5% rate valid)
+  hfMerchHsn: string;                        // FALLBACK HSN on the invoice (6109 = T-shirts) for a category the table lacks / an old product
+  hfMerchGstTable: string;                   // JSON: per-category { hsn, rateBps, capApplies } (clothing 5% up to the cap, other categories 18%, HSN to confirm with the CA); "" = built-in defaults (lib/hf_merch_gst.ts)
   hfMerchRequireGstin: boolean;              // true + no hfGstin => POST /api/hf/merch/checkout 403 gst_not_ready
   affiliateMinQualifyingTopupCoins: number;  // dust-farming floor on the SOURCE top-up
   affiliateDailyEarnCapCoins: number;        // per-affiliate promoted coins per UTC day
@@ -2483,6 +2484,7 @@ const DEFAULTS: PlatformConfig = {
   hfMerchGstRateBps: 500,
   hfMerchPriceCapRupees: 2500,
   hfMerchHsn: "6109",
+  hfMerchGstTable: "",
   hfMerchRequireGstin: true,
   affiliateMinQualifyingTopupCoins: 100,
   affiliateDailyEarnCapCoins: 2000,
@@ -3205,7 +3207,7 @@ export async function getConfig(env: Env): Promise<Response> {
   for (const k of ["hfStdPlanEnabled", "hfStdTier1PaisePerMin", "hfStdTier2PaisePerMin", "hfStdTier3PaisePerMin", "hfStdTier1EndMin", "hfStdTier2EndMin",
     "hfStdHostPaisePerMin", "hfStdPhoneCostPaisePerMin", "hfTopupGstBps", "hfTopupGstInclusive"]) delete merged[k];
   delete merged.hfPushEnabled; // [HF-APP-4] server-only
-  for (const k of ["hfMerchAutoApprove", "hfMerchPlatformShareBps", "hfMerchBaseBufferRupees", "hfMerchCashfreeFeeBps", "hfMerchGstBps", "hfMerchGstRateBps", "hfMerchPriceCapRupees", "hfMerchHsn", "hfMerchRequireGstin"]) delete merged[k]; // [HF-MERCH-CORE-1] [HF-MERCH-GST-1] server-only
+  for (const k of ["hfMerchAutoApprove", "hfMerchPlatformShareBps", "hfMerchBaseBufferRupees", "hfMerchCashfreeFeeBps", "hfMerchGstBps", "hfMerchGstRateBps", "hfMerchPriceCapRupees", "hfMerchHsn", "hfMerchGstTable", "hfMerchRequireGstin"]) delete merged[k]; // [HF-MERCH-CORE-1] [HF-MERCH-GST-1] server-only
   delete merged.hfPresenceNudgeEnabled; // [HF-PRESENCE-NUDGE-1] server-only
   delete merged.hfBookingRemindersEnabled; // [HF-APPT-REMIND-1] server-only
   delete merged.hfPhoneOnlySignupEnabled; // [HF-AUTH-WA-1] server-only
@@ -3395,6 +3397,7 @@ export async function putConfig(req: Request, env: Env): Promise<Response> {
     // [AUMFE-POD-CORE-1] 'manual' | 'printrove' — string config.
     "shopPodProvider",
     "hfMerchHsn", // [HF-MERCH-GST-1] HSN code on the merch invoice (string)
+    "hfMerchGstTable", // [HF-MERCH-GST-1] per-category GST table (JSON string)
     // [AUMFE-VOICE-RUNTIME-1] string config — must be here or `flags.sh set voiceAgentModel=...` 400s `bad type`.
     "voiceAgentModel",
     "hfTopupGateway", "hfTopupPacks", "hfCheckoutMode", // [HF-TOPUP-1] [HF-WIRE-21]

@@ -26,6 +26,21 @@ describe("[HF-MERCH-GST-1] merch document facts", () => {
   });
 });
 
+describe("[HF-MERCH-GST-1] the invoice reads the order's FROZEN rate + HSN, not today's settings", () => {
+  const mug = (state: string): ShopOrderRow => ({ ...row(state), amount_paise: 50_000,
+    merch_json: JSON.stringify({ title: "Om mug", colour: "White", size: "One size", qty: 1, money: { gstRateBps: 1_800, hsn: "6912", inputGstPaise: 4_500 } }) } as unknown as ShopOrderRow);
+  it("a mug at 18%: rate and HSN come from the order snapshot even if the settings now say 5% / 6109", () => {
+    const d = merchDocFacts(mug("Maharashtra"), { ...cfg, hfMerchGstRateBps: 500, hfMerchHsn: "6109" });
+    expect(d).toMatchObject({ hsn: "6912", rateBps: 1_800, taxablePaise: 42_373, gstPaise: 7_627, cgstPaise: 3_813, sgstPaise: 3_814, igstPaise: 0, totalPaise: 50_000, inputGstPaise: 4_500 });
+    expect(merchDocFacts(mug("Karnataka"), cfg)).toMatchObject({ igstPaise: 7_627, cgstPaise: 0 });
+  });
+  it("a blank frozen HSN stays blank (to be confirmed by the CA); an old order without one uses the flat fallback", () => {
+    const blank = { ...mug("Maharashtra"), merch_json: JSON.stringify({ title: "Om mug", qty: 1, money: { gstRateBps: 1_800, hsn: "" } }) } as unknown as ShopOrderRow;
+    expect(merchDocFacts(blank, cfg).hsn).toBe("");
+    expect(merchDocFacts(row("Maharashtra"), { ...cfg, hfMerchHsn: "6110" }).hsn).toBe("6110");
+  });
+});
+
 describe("[HF-MERCH-GST-1] merch document PDF", () => {
   const doc = (kind: "tax_invoice" | "receipt"): ReceiptRow => ({ id: "hfr_1", number: kind === "tax_invoice" ? "HF/I/26-27/1" : "HF/R/2026-27/1", uid: "u1", kind, source: "merch_order", source_id: "shp_x",
     amount_rupees: 644, taxable_paise: 61_333, gst_paise: 3_067, gstin: kind === "tax_invoice" ? cfg.hfGstin : null, issued_at: 1_760_000_000_000, data: null });

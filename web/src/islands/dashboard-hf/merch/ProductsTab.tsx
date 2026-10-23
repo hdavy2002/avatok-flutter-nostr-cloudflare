@@ -3,7 +3,7 @@ import { PriceNote, PriceTable } from './PriceTable';
 import { useCallback, useEffect, useState } from 'react';
 import { captureException, capture } from '../../../lib/analytics';
 import { Dialog, Empty, Failed, Skel, Ic, useToast } from '../v3/ui';
-import { capText, deleteProduct, gstPct, listProducts, markupLimit, merchConfig, patchProduct, rupees, type Product, type ProductStatus } from './api';
+import { capHint, deleteProduct, inclGst, listProducts, markupLimit, merchConfig, patchProduct, rupees, type Product, type ProductStatus } from './api';
 
 const STATUS: Record<ProductStatus, { label: string; cls: string }> = {
   pending: { label: 'Waiting for review', cls: 'gold' }, live: { label: 'Live', cls: '' }, hidden: { label: 'Hidden', cls: 'dec' }, rejected: { label: 'Rejected', cls: 'miss' },
@@ -50,8 +50,8 @@ export default function ProductsTab({ shareBps, minMarkup, onNew, onChanged }: {
         <div className="bd">
           <h3>{p.title}</h3>
           <div className="small muted">{p.catalogName}{p.colours.length ? ` · ${p.colours.length} colour${p.colours.length === 1 ? '' : 's'}` : ''}</div>
-          <div><span className="small muted">Fan pays</span> <b>{prices.length ? range(prices) : '—'}</b> <span className="small muted">(incl. {gstPct(gstRateBps)} GST &amp; delivery)</span></div>
-          <div className="mc-earn">{earns.length ? range(earns) : '—'} <span className="small muted" style={{ fontWeight: 600 }}>design royalty per shirt</span></div>
+          <div><span className="small muted">Fan pays</span> <b>{prices.length ? range(prices) : '—'}</b> <span className="small muted">({inclGst(p.gstRateBps ?? gstRateBps)} &amp; delivery)</span></div>
+          <div className="mc-earn">{earns.length ? range(earns) : '—'} <span className="small muted" style={{ fontWeight: 600 }}>design royalty per item</span></div>
           <div className="small muted">{p.soldCount} sold</div>
           {(p.status === 'rejected' || p.status === 'pending') && p.reviewNote && <div className="mc-note">{p.reviewNote}</div>}
           {p.status === 'pending' && !p.reviewNote && <div className="mc-note">Our team is checking your art. You can still change the price.</div>}
@@ -64,7 +64,7 @@ export default function ProductsTab({ shareBps, minMarkup, onNew, onChanged }: {
         </div>
       </article>;
     })}</div>
-    {edit && <EditDialog p={edit} shareBps={shareBps} minMarkup={minMarkup} gstRateBps={gstRateBps} capPaise={capPaise} onClose={() => setEdit(null)} onSaved={() => { setEdit(null); load(); onChanged(); toast('Saved.'); }} />}
+    {edit && <EditDialog p={edit} shareBps={shareBps} minMarkup={minMarkup} gstRateBps={edit.gstRateBps ?? gstRateBps} capPaise={capPaise} onClose={() => setEdit(null)} onSaved={() => { setEdit(null); load(); onChanged(); toast('Saved.'); }} />}
     {del && <DeleteDialog p={del} onClose={() => setDel(null)} onDone={() => { setDel(null); load(); onChanged(); toast('Deleted.'); }} onHide={async () => { const r = await patchProduct(del.id, { hidden: true }); setDel(null); toast(r.ok ? 'Hidden instead. Fans can no longer see it.' : r.message || 'Could not hide it.'); load(); onChanged(); }} />}
   </>;
 }
@@ -97,8 +97,8 @@ function EditDialog({ p, shareBps, minMarkup, gstRateBps, capPaise, onClose, onS
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginTop: 10 }}>
       <label className="f">Name<input value={title} maxLength={80} onChange={e => setTitle(e.target.value)} /></label>
       <label className="f">Description<textarea rows={3} maxLength={600} value={desc} onChange={e => setDesc(e.target.value)} /></label>
-      <label className="f">Your markup per shirt (₹{minMarkup} – ₹{maxM})<input inputMode="numeric" value={markup} onChange={e => setMarkup(e.target.value.replace(/[^0-9]/g, '').slice(0, 4))} /></label>
-      <p className="small muted">Shirts are capped at {capText(capPaise)} so the {gstPct(gstRateBps)} GST rate applies.</p>
+      <label className="f">Your markup per item (₹{minMarkup} – ₹{maxM})<input inputMode="numeric" value={markup} onChange={e => setMarkup(e.target.value.replace(/[^0-9]/g, '').slice(0, 4))} /></label>
+      {p.capApplies !== false && <p className="small muted">{capHint(capPaise, gstRateBps)}</p>}
       <PriceTable rows={p.sizes.map(x => ({ size: x.size, printingPaise: x.printingPaise, shippingPaise: x.shippingPaise, basePaise: x.basePaise }))} markup={m} okMarkup={okM} shareBps={shareBps} gstBps={gstRateBps} />
       {p.breakdownEstimated && <p className="small muted">This product was made before we showed the split, so printing and shipping are an estimate. The base and the fan price are exact.</p>}
       <PriceNote shareBps={shareBps} holdDays={holdDays} />

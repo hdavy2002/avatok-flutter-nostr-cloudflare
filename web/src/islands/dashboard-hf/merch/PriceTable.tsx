@@ -1,16 +1,16 @@
 /* [HF-MERCH-PRICE-LABELS-1] One per-size price table for the influencer screens (studio step 4 and the edit-markup dialog).
  * Printing (incl. GST) + Shipping = Base (rounded up to a whole rupee); Fan pays = Base + markup, all-in. Money is integer paise. */
-import { fanPaysPaise, gstPct, rupees, youEarnPaise } from './api';
+import { fanPaysPaise, inclGst, rupees, youEarnPaise } from './api';
 
 export interface PriceRow { size: string; printingPaise: number; shippingPaise: number; basePaise: number; maxMarkupRupees?: number }
 
-export function PriceTable({ rows, markup, okMarkup, shareBps, loading = false, label = 'Price per size', gstBps = 500 }: {
+export function PriceTable({ rows, markup, okMarkup, shareBps, loading = false, label = 'Price per size', gstBps }: {
   rows: PriceRow[]; markup: number; okMarkup: boolean; shareBps: number; loading?: boolean; label?: string; gstBps?: number;
 }) {
   const earn = youEarnPaise(markup, shareBps);
   return <div className="mc-scroll" tabIndex={0} role="region" aria-label={label}>
     <table className="mc-sizes mc-sizes-wide"><thead><tr>
-      <th>Size</th><th>Printing (incl. GST)</th><th>Shipping</th><th>Base</th><th>Your markup</th><th>Fan pays (incl. {gstPct(gstBps)} GST &amp; delivery)</th><th>You earn (royalty)</th>
+      <th>Size</th><th>Printing (incl. GST)</th><th>Shipping</th><th>Base</th><th>Your markup</th><th>Fan pays ({inclGst(gstBps)} &amp; delivery)</th><th>You earn (royalty)</th>
     </tr></thead><tbody>
       {rows.map(r => <tr key={r.size}>
         <td>{r.size}</td>

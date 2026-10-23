@@ -13,13 +13,15 @@ import { readConfig, writeConfigOverrides } from "./config";
 import { emailFor } from "../lib/identity";
 import { metaDb } from "../db/shard";
 import { MERCH_CFG_RANGES, readMerchCfg } from "../lib/hf_merch_math";
+import { validateGstTable, needsHsnConfirm } from "../lib/hf_merch_gst";
+import { CATEGORY_ORDER } from "../lib/hf_merch_families";
 import { supplierFrom } from "../lib/hf_receipts";
 import { gstStateCode } from "../lib/gst_states";
 import { merchTaxSplit } from "../lib/hf_merch_invoice";
 import { buildOrderProfit, buildProductProfit, profitContext } from "../lib/hf_merch_catalog";
 import { fanStatusOf, parseJson, sellerStatusOf } from "../lib/hf_merch_types";
 import {
-  ADMIN_TABS, adminListOrders, adminTabCounts, getOrder, getSellerTax, hostsByUids, listProductsByReview, orderEvents, platformRows, productMerch, productShape, type AdminTab, type MerchProductRow,
+  ADMIN_TABS, adminListOrders, adminTabCounts, getOrder, getSellerTax, hostsByUids, listProductsByReview, orderEvents, platformRows, productMerch, productShape, gstCtxOf, type AdminTab, type MerchProductRow,
 } from "../lib/hf_merch_store";
 import { approveMerchOrder, markRefundDone, merchCfg, quoteMerchOrder, rejectMerchOrder, setMerchDelivered, setMerchTracking, type FlowFail } from "../lib/hf_merch_flow";
 import { reviewMerchProduct, type PFail } from "../lib/hf_merch_products";
@@ -144,7 +146,7 @@ async function listProducts(req: Request, env: Env): Promise<Response> {
   return out({
     products: rows.map((r: MerchProductRow) => {
       const h = r.seller_uid ? hosts.get(r.seller_uid) : undefined;
-      return { ...productShape(r, h ?? { slug: "" }, cfg.platformShareBps), profit: buildProductProfit(pctx, cfg, productMerch(r), Number(r.markup_rupees ?? 0)), seller: { uid: r.seller_uid, slug: h?.slug ?? null, displayName: h?.displayName ?? null }, moderation: (parseJson<{ moderation?: string }>(r.merch_json, {})).moderation ?? null };
+      return { ...productShape(r, h ?? { slug: "" }, cfg.platformShareBps, 0, gstCtxOf(cfg)), profit: buildProductProfit(pctx, cfg, productMerch(r), Number(r.markup_rupees ?? 0)), seller: { uid: r.seller_uid, slug: h?.slug ?? null, displayName: h?.displayName ?? null }, moderation: (parseJson<{ moderation?: string }>(r.merch_json, {})).moderation ?? null };
     }),
   });
 }
@@ -154,7 +156,7 @@ async function reviewRoute(req: Request, env: Env, admin: string, id: string): P
   if (!r.ok) return failOf(r);
   const { cfg } = await merchCfg(env);
   const h = r.product.seller_uid ? (await hostMap(env, [r.product])).get(r.product.seller_uid) : undefined;
-  return out({ product: productShape(r.product, h ?? { slug: "" }, cfg.platformShareBps) });
+  return out({ product: productShape(r.product, h ?? { slug: "" }, cfg.platformShareBps, 0, gstCtxOf(cfg)) });
 }
 
 // ---------------------------------------------------------------------------
@@ -167,7 +169,13 @@ async function settingsOut(env: Env): Promise<Record<string, unknown>> {
   const o: Record<string, unknown> = {};
   for (const k of BOOL_KEYS) o[k] = k === "hfMerchRequireGstin" ? c[k] !== false : c[k] === true;
   for (const k of Object.keys(NUM_KEYS)) o[k] = Number(c[k]);
-  o.hfMerchHsn = readMerchCfg(c).hsn;
+  const mc = readMerchCfg(c);
+  o.hfMerchHsn = mc.hsn;
+  // [HF-MERCH-GST-1] One row per category, in shop-tab order: HSN ("" = confirm with the CA), GST rate in basis points, whether the fan-price cap applies. Rows the table lists beyond the known categories are kept at the end.
+  const known = CATEGORY_ORDER.map((x) => x.slug);
+  const slugs = [...known, ...Object.keys(mc.gstTable).filter((k) => !known.includes(k))];
+  o.hfMerchGstTable = Object.fromEntries(slugs.map((s) => [s, mc.gstTable[s]]));
+  o.gstCategories = slugs.map((s) => ({ slug: s, label: CATEGORY_ORDER.find((x) => x.slug === s)?.label ?? s, hsn: mc.gstTable[s].hsn, rateBps: mc.gstTable[s].rateBps, capApplies: mc.gstTable[s].capApplies, confirmWithCa: needsHsnConfirm(mc.gstTable[s]) }));
   o.gstinConfigured = typeof c.hfGstin === "string" && c.hfGstin.trim() !== ""; // read-only: set hfGstin / hfLegalName / hfLegalAddress / hfStateCode in the HF settings
   return o;
 }
@@ -185,6 +193,10 @@ async function putSettings(req: Request, env: Env): Promise<Response> {
     } else if (k === "hfMerchHsn") {
       if (typeof v !== "string" || !/^\d{4,8}$/.test(v.trim())) return bad(400, "invalid_value", "hfMerchHsn must be a 4 to 8 digit HSN code.", { field: k });
       patch[k] = v.trim();
+    } else if (k === "hfMerchGstTable") {
+      const t = validateGstTable(v);
+      if (!t.ok) return bad(400, "invalid_value", t.message, { field: k });
+      patch[k] = JSON.stringify(t.table); // stored as one JSON string (setting is server-only)
     } else return bad(400, "unknown_setting", `${k} is not a merch setting.`, { field: k });
   }
   if (Object.keys(patch).length) await writeConfigOverrides(env, patch); // ONE KV write
@@ -277,7 +289,7 @@ async function platformWallet(req: Request, env: Env): Promise<Response> {
 // ---------------------------------------------------------------------------
 type GstRow = {
   orderId: string; orderNo: string; date: number; invoiceNo: string | null; buyerState: string; buyerStateCode: string | null; taxablePaise: number; cgstPaise: number; sgstPaise: number;
-  igstPaise: number; totalPaise: number; inputGstPaise: number; cancelled: boolean;
+  igstPaise: number; totalPaise: number; inputGstPaise: number; rateBps: number; hsn: string; cancelled: boolean;
 };
 async function gstReport(req: Request, env: Env): Promise<Response> {
   const q = new URL(req.url).searchParams;
@@ -292,15 +304,17 @@ async function gstReport(req: Request, env: Env): Promise<Response> {
       WHERE o.seller_uid IS NOT NULL AND o.pay_status='confirmed' AND o.confirmed_at>=?1 AND o.confirmed_at<?2 ORDER BY o.confirmed_at ASC, o.order_id ASC LIMIT 5000`,
   ).bind(range.from, range.to).all<{ order_id: string; order_no: string; confirmed_at: number; amount_paise: number; address_json: string; merch_json: string | null; approval_status: string | null; refund_status: string | null; fulfil_status: string; invoice_no: string | null }>().catch(() => ({ results: [] }))).results ?? [];
   const list: GstRow[] = rows.map((r) => {
-    const snap = parseJson<{ money?: { gstRateBps?: number; inputGstPaise?: number; gstEstPaise?: number } }>(r.merch_json, {});
+    const snap = parseJson<{ money?: { gstRateBps?: number; hsn?: string; inputGstPaise?: number; gstEstPaise?: number } }>(r.merch_json, {});
     const addr = parseJson<{ state?: string }>(r.address_json, {});
     const code = gstStateCode(addr.state);
-    const split = merchTaxSplit(Number(r.amount_paise), typeof snap.money?.gstRateBps === "number" ? snap.money.gstRateBps : mc.gstRateBps, code, sup.stateCode);
+    // [HF-MERCH-GST-1] the order's FROZEN category rate + HSN (older orders: the flat fallback)
+    const rateBps = typeof snap.money?.gstRateBps === "number" ? snap.money.gstRateBps : mc.gstRateBps;
+    const split = merchTaxSplit(Number(r.amount_paise), rateBps, code, sup.stateCode);
     const cancelled = r.approval_status === "rejected" || r.fulfil_status === "cancelled" || r.fulfil_status === "refunded" || (r.refund_status != null && r.refund_status !== "none");
     return {
       orderId: r.order_id, orderNo: r.order_no, date: Number(r.confirmed_at), invoiceNo: r.invoice_no ?? null, buyerState: (addr.state ?? "").trim(), buyerStateCode: code,
       taxablePaise: split.taxablePaise, cgstPaise: split.cgstPaise, sgstPaise: split.sgstPaise, igstPaise: split.igstPaise, totalPaise: split.totalPaise,
-      inputGstPaise: Math.min(split.gstPaise, Math.max(0, Math.trunc(Number(snap.money?.inputGstPaise ?? 0)))), cancelled,
+      inputGstPaise: Math.min(split.gstPaise, Math.max(0, Math.trunc(Number(snap.money?.inputGstPaise ?? 0)))), rateBps, hsn: typeof snap.money?.hsn === "string" ? snap.money.hsn : mc.hsn, cancelled,
     };
   });
   const t = { orders: 0, cancelledOrders: 0, taxablePaise: 0, cgstPaise: 0, sgstPaise: 0, igstPaise: 0, gstCollectedPaise: 0, totalPaise: 0, inputGstPaise: 0, netPayablePaise: 0 };
@@ -310,15 +324,24 @@ async function gstReport(req: Request, env: Env): Promise<Response> {
   }
   t.gstCollectedPaise = t.cgstPaise + t.sgstPaise + t.igstPaise;
   t.netPayablePaise = t.gstCollectedPaise - t.inputGstPaise;
+  // One line per GST rate (sales only): the GSTR-1 / 3B view when clothing at 5% and other products at 18% are sold in the same month.
+  const byRateMap = new Map<number, { rateBps: number; orders: number; taxablePaise: number; gstPaise: number; inputGstPaise: number }>();
+  for (const r of list) {
+    if (r.cancelled) continue;
+    const g = byRateMap.get(r.rateBps) ?? { rateBps: r.rateBps, orders: 0, taxablePaise: 0, gstPaise: 0, inputGstPaise: 0 };
+    g.orders++; g.taxablePaise += r.taxablePaise; g.gstPaise += r.cgstPaise + r.sgstPaise + r.igstPaise; g.inputGstPaise += r.inputGstPaise;
+    byRateMap.set(r.rateBps, g);
+  }
+  const byRate = [...byRateMap.values()].sort((a, b) => a.rateBps - b.rateBps);
   if (q.get("format") === "csv") {
     const rs = (p: number) => (p / 100).toFixed(2);
-    const head = "date_ist,invoice_no,order_no,buyer_state,buyer_state_code,taxable,cgst,sgst,igst,total,printrove_input_gst,status";
-    const body = list.map((r) => [new Date(r.date + IST_MS).toISOString().slice(0, 10), r.invoiceNo ?? "", r.orderNo, r.buyerState, r.buyerStateCode ?? "", rs(r.taxablePaise), rs(r.cgstPaise), rs(r.sgstPaise), rs(r.igstPaise), rs(r.totalPaise), rs(r.inputGstPaise), r.cancelled ? "cancelled" : "sale"].map(csvCell).join(","));
-    const tot = ["TOTAL (sales only)", "", `${t.orders} orders`, "", "", rs(t.taxablePaise), rs(t.cgstPaise), rs(t.sgstPaise), rs(t.igstPaise), rs(t.totalPaise), rs(t.inputGstPaise), ""].map(csvCell).join(",");
+    const head = "date_ist,invoice_no,order_no,buyer_state,buyer_state_code,gst_pct,hsn,taxable,cgst,sgst,igst,total,printrove_input_gst,status";
+    const body = list.map((r) => [new Date(r.date + IST_MS).toISOString().slice(0, 10), r.invoiceNo ?? "", r.orderNo, r.buyerState, r.buyerStateCode ?? "", String(r.rateBps / 100), r.hsn, rs(r.taxablePaise), rs(r.cgstPaise), rs(r.sgstPaise), rs(r.igstPaise), rs(r.totalPaise), rs(r.inputGstPaise), r.cancelled ? "cancelled" : "sale"].map(csvCell).join(","));
+    const tot = ["TOTAL (sales only)", "", `${t.orders} orders`, "", "", "", "", rs(t.taxablePaise), rs(t.cgstPaise), rs(t.sgstPaise), rs(t.igstPaise), rs(t.totalPaise), rs(t.inputGstPaise), ""].map(csvCell).join(",");
     const net = ["GST collected", rs(t.gstCollectedPaise), "Printrove input GST", rs(t.inputGstPaise), "NET GST PAYABLE", rs(t.netPayablePaise)].map(csvCell).join(",");
     return new Response([head, ...body, tot, net].join("\n") + "\n", { headers: { "content-type": "text/csv; charset=utf-8", "content-disposition": `attachment; filename="merch-gst-${range.label}.csv"`, "cache-control": "private, no-store" } });
   }
-  return out({ month: range.label, gstinConfigured: sup.gstin !== "", supplierStateCode: sup.stateCode || null, gstRateBps: mc.gstRateBps, hsn: mc.hsn, totals: t, orders: list });
+  return out({ month: range.label, gstinConfigured: sup.gstin !== "", supplierStateCode: sup.stateCode || null, gstRateBps: mc.gstRateBps, hsn: mc.hsn, totals: t, byRate, orders: list });
 }
 
 async function problemPhoto(req: Request, env: Env): Promise<Response> {

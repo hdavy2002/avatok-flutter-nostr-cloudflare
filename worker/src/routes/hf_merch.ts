@@ -22,10 +22,11 @@ import { appendShopEvent } from "./shop_orders";
 import { maskOrderForSeller, assertNoSellerLeak } from "../lib/hf_merch_mask";
 import { fanStatusOf, parseJson, type MerchSnapshot } from "../lib/hf_merch_types";
 import { legacyShippingPaise, merchCatalog, quoteBases } from "../lib/hf_merch_catalog";
-import { maxMarkupForBase } from "../lib/hf_merch_math";
+import { gstForCategory, maxMarkupForBase, type MerchCfg } from "../lib/hf_merch_math";
+import { categoryOf } from "../lib/hf_merch_families";
 import {
   deleteAddress, getFanOrder, getSellerTax, setSellerTax, GSTIN_RE, getProductBySlug, getProduct, getSellerOrder, hostBySlug, hostByUid, listAddresses, listFanOrders, listLiveProductsForSeller, listSellerOrders,
-  listSellerProducts, productMerch, productShape, sellerEarnings, sellerOrderCounts, sellerProductCounts, shopSlugFor, sitemapRows, type MerchHost, type MerchProductRow,
+  listSellerProducts, productMerch, productShape, gstCtxOf, type GstCtx, sellerEarnings, sellerOrderCounts, sellerProductCounts, shopSlugFor, sitemapRows, type MerchHost, type MerchProductRow,
 } from "../lib/hf_merch_store";
 import {
   MERCH_QTY_MAX, confirmCashfreeRefund, merchCfg, reconcileCashfreeOrder, startMerchCheckout, type FlowFail,
@@ -81,8 +82,9 @@ async function catalogRoute(env: Env): Promise<Response> {
   const { cfg } = await merchCfg(env);
   const c = await merchCatalog(env, cfg);
   if (!c.ok) return bad(503, c.error, c.message);
-  // [HF-MERCH-GST-1] priceCapPaise / gstRateBps are top-level; every size carries maxMarkupRupees (the "up to" size here, re-quoted exactly by /quote).
-  const items = c.items.map((it) => ({ ...it, sizes: it.sizes.map((s) => ({ ...s, maxMarkupRupees: maxMarkupForBase(s.basePaise, cfg.priceCapPaise) })) }));
+  // [HF-MERCH-GST-1] priceCapPaise / gstRateBps are top-level (the cap and the flat fallback rate); every item carries its own category gstRateBps / hsn / capApplies and every size
+  // its maxMarkupRupees (null when the category has no cap; the "up to" size here, re-quoted exactly by /quote).
+  const items = c.items;
   return out({ items, shippingPaise: c.shippingPaise, bufferPaise: c.bufferPaise, minMarkupRupees: cfg.minMarkupRupees, platformShareBps: cfg.platformShareBps, holdDays: cfg.holdDays, priceCapPaise: cfg.priceCapPaise, gstRateBps: cfg.gstRateBps }, 200, { "cache-control": "private, max-age=300" });
 }
 
@@ -97,9 +99,10 @@ async function quoteRoute(req: Request, env: Env): Promise<Response> {
   });
   if (!r.ok) return bad(r.error === "catalog_unavailable" ? 503 : 400, r.error, r.message);
   const shippingPaise = Math.max(0, Math.round((r.shippingRupees ?? 0) * 100));
+  const gst = gstForCategory(cfg, r.product ? categoryOf(r.product.kind).slug : null); // [HF-MERCH-GST-1] this product's category rate; maxMarkupRupees is null where no cap applies
   return out({
-    sizes: r.sizes.map((s) => ({ size: s.size, basePaise: s.baseUnitPaise, baseRupees: s.baseUnitPaise / 100, printingPaise: s.printingPaise, shippingPaise: s.shippingPaise, maxMarkupRupees: maxMarkupForBase(s.baseUnitPaise, cfg.priceCapPaise) })),
-    shippingPaise, bufferPaise: cfg.baseBufferRupees * 100, priceCapPaise: cfg.priceCapPaise, gstRateBps: cfg.gstRateBps,
+    sizes: r.sizes.map((s) => ({ size: s.size, basePaise: s.baseUnitPaise, baseRupees: s.baseUnitPaise / 100, printingPaise: s.printingPaise, shippingPaise: s.shippingPaise, maxMarkupRupees: gst.capApplies ? maxMarkupForBase(s.baseUnitPaise, cfg.priceCapPaise) : null })),
+    shippingPaise, bufferPaise: cfg.baseBufferRupees * 100, priceCapPaise: gst.capApplies ? cfg.priceCapPaise : null, gstRateBps: gst.rateBps, hsn: gst.hsn, capApplies: gst.capApplies,
   });
 }
 
@@ -157,8 +160,8 @@ async function removeBgRoute(env: Env, s: SellerCtx, artId: string): Promise<Res
 async function shipFor(env: Env, rows: MerchProductRow[]): Promise<number> {
   return rows.some((r) => (productMerch(r)?.sizes ?? []).some((x) => typeof x.shippingPaise !== "number")) ? legacyShippingPaise(env) : 0;
 }
-async function productDto(env: Env, row: MerchProductRow, host: MerchHost, shareBps: number, capPaise?: number) {
-  return productShape(row, host, shareBps, await shipFor(env, [row]), capPaise);
+async function productDto(env: Env, row: MerchProductRow, host: MerchHost, shareBps: number, gctx?: GstCtx) {
+  return productShape(row, host, shareBps, await shipFor(env, [row]), gctx);
 }
 
 async function createProductRoute(req: Request, env: Env, s: SellerCtx): Promise<Response> {
@@ -167,18 +170,18 @@ async function createProductRoute(req: Request, env: Env, s: SellerCtx): Promise
   const b = await readJson(req);
   const r = await createMerchProduct(env, cfg, { productReview: flags.productReview }, s.host, b);
   if (!r.ok) return failOf(r);
-  return out({ product: await productDto(env, r.product, s.host, cfg.platformShareBps, cfg.priceCapPaise), gstRateBps: cfg.gstRateBps, priceCapPaise: cfg.priceCapPaise }, 201);
+  return out({ product: await productDto(env, r.product, s.host, cfg.platformShareBps, gstCtxOf(cfg)), gstRateBps: cfg.gstRateBps, priceCapPaise: cfg.priceCapPaise }, 201);
 }
 async function listProductsRoute(env: Env, s: SellerCtx): Promise<Response> {
   const { cfg } = await merchCfg(env);
   const rows = await listSellerProducts(env, s.uid);
   const ship = await shipFor(env, rows);
-  return out({ products: rows.map((r) => productShape(r, s.host, cfg.platformShareBps, ship, cfg.priceCapPaise)), gstRateBps: cfg.gstRateBps, priceCapPaise: cfg.priceCapPaise });
+  return out({ products: rows.map((r) => productShape(r, s.host, cfg.platformShareBps, ship, gstCtxOf(cfg))), gstRateBps: cfg.gstRateBps, priceCapPaise: cfg.priceCapPaise });
 }
 async function patchProductRoute(req: Request, env: Env, s: SellerCtx, id: string): Promise<Response> {
   const { cfg } = await merchCfg(env);
   const r = await patchMerchProduct(env, cfg, s.host, id, await readJson(req));
-  return r.ok ? out({ product: await productDto(env, r.product, s.host, cfg.platformShareBps, cfg.priceCapPaise), gstRateBps: cfg.gstRateBps, priceCapPaise: cfg.priceCapPaise }) : failOf(r);
+  return r.ok ? out({ product: await productDto(env, r.product, s.host, cfg.platformShareBps, gstCtxOf(cfg)), gstRateBps: cfg.gstRateBps, priceCapPaise: cfg.priceCapPaise }) : failOf(r);
 }
 async function deleteProductRoute(env: Env, s: SellerCtx, id: string): Promise<Response> {
   const r = await deleteMerchProduct(env, s.host, id);
@@ -232,13 +235,13 @@ async function summaryRoute(env: Env, s: SellerCtx): Promise<Response> {
 // Public
 // ---------------------------------------------------------------------------
 const PUBLIC_CACHE = { "cache-control": "public, max-age=60, s-maxage=120" };
-function publicProduct(row: MerchProductRow, host: MerchHost, shareBps: number) {
-  const p = productShape(row, host, shareBps);
+function publicProduct(row: MerchProductRow, host: MerchHost, shareBps: number, cfg?: MerchCfg) {
+  const p = productShape(row, host, shareBps, 0, cfg ? gstCtxOf(cfg) : undefined);
   const prices = p.sizes.map((x) => x.pricePaise);
   return {
     id: p.id, slug: p.slug, title: p.title, imageUrl: p.imageUrl, colours: p.colours,
     sizes: p.sizes.map((x) => ({ size: x.size, pricePaise: x.pricePaise, inStock: true })),
-    fromPricePaise: prices.length ? Math.min(...prices) : 0, url: p.publicUrl,
+    fromPricePaise: prices.length ? Math.min(...prices) : 0, url: p.publicUrl, gstRateBps: p.gstRateBps, // [HF-MERCH-GST-1] this product's category GST rate, included in the price
     // [HF-MERCH-PRICE-LABELS-1] Fans see what the price covers, never the cost numbers.
     priceIncludes: ["printing", "gst", "delivery"] as const,
   };
@@ -248,7 +251,7 @@ async function publicHostRoute(env: Env, slug: string): Promise<Response> {
   if (!host || host.status !== "live") return bad(404, "not_found", "No such page.");
   const { cfg, flags } = await merchCfg(env);
   const rows = await listLiveProductsForSeller(env, host.uid);
-  return out({ host: { slug: host.slug, displayName: host.displayName, avatarUrl: host.avatarUrl }, checkoutEnabled: flags.checkout, gstRateBps: cfg.gstRateBps, products: rows.map((r) => publicProduct(r, host, cfg.platformShareBps)) }, 200, PUBLIC_CACHE);
+  return out({ host: { slug: host.slug, displayName: host.displayName, avatarUrl: host.avatarUrl }, checkoutEnabled: flags.checkout, gstRateBps: cfg.gstRateBps, products: rows.map((r) => publicProduct(r, host, cfg.platformShareBps, cfg)) }, 200, PUBLIC_CACHE);
 }
 async function publicProductRoute(env: Env, hostSlug: string, productSlug: string): Promise<Response> {
   const host = await hostBySlug(env, hostSlug.toLowerCase());
@@ -259,10 +262,10 @@ async function publicProductRoute(env: Env, hostSlug: string, productSlug: strin
   if (row.review_status !== "live") return bad(404, "not_found", "No such product.");
   const { cfg, flags } = await merchCfg(env);
   const m = productMerch(row);
-  const p = productShape(row, host, cfg.platformShareBps);
+  const p = productShape(row, host, cfg.platformShareBps, 0, gstCtxOf(cfg));
   return out({
-    host: { slug: host.slug, displayName: host.displayName, avatarUrl: host.avatarUrl }, checkoutEnabled: flags.checkout, gstRateBps: cfg.gstRateBps,
-    product: { ...publicProduct(row, host, cfg.platformShareBps), photos: p.mockups.length ? p.mockups : p.imageUrl ? [p.imageUrl] : [], description: row.description, side: m?.side ?? "front", maxQty: MERCH_QTY_MAX },
+    host: { slug: host.slug, displayName: host.displayName, avatarUrl: host.avatarUrl }, checkoutEnabled: flags.checkout, gstRateBps: p.gstRateBps,
+    product: { ...publicProduct(row, host, cfg.platformShareBps, cfg), photos: p.mockups.length ? p.mockups : p.imageUrl ? [p.imageUrl] : [], description: row.description, side: m?.side ?? "front", maxQty: MERCH_QTY_MAX },
   }, 200, PUBLIC_CACHE);
 }
 async function pincodeRoute(env: Env, pin: string): Promise<Response> {

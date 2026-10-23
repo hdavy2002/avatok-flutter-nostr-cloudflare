@@ -18,7 +18,7 @@ export interface MerchMoney {
   influencerPaise: number; platformPaise: number; shareBps: number; payMethod: 'wallet' | 'cashfree';
   cashfreeFeeBps: number; cashfreeFeeEstPaise: number; gstBps: number; gstEstPaise: number; platformNetPaise: number;
   /** [HF-MERCH-GST-1] absent on orders made before it shipped (gstEstPaise is then the old 18% estimate). */
-  gstRateBps?: number; taxablePaise?: number; outputGstPaise?: number; inputGstPaise?: number; netGstPaise?: number;
+  gstRateBps?: number; hsn?: string; partnerGstBps?: number; taxablePaise?: number; outputGstPaise?: number; inputGstPaise?: number; netGstPaise?: number;
 }
 export interface MerchSnap {
   title?: string; imageUrl?: string | null; hostName?: string; hostSlug?: string; productSlug?: string; catalogName?: string; colour?: string; size?: string; qty?: number;
@@ -63,6 +63,9 @@ export interface MerchSettings {
   hfMerchPlatformShareBps: number; hfMerchMinMarkupRupees: number; hfMerchBaseBufferRupees: number; hfMerchCashfreeFeeBps: number; hfMerchGstBps: number; hfMerchHoldDays: number;
   /** [HF-MERCH-GST-1] */
   hfMerchRequireGstin: boolean; hfMerchGstRateBps: number; hfMerchPriceCapRupees: number; hfMerchHsn: string; gstinConfigured: boolean;
+  /** Per-category GST, keyed by category slug (hsn '' = confirm with the CA, rateBps, capApplies), and the same rows with labels in shop-tab order. */
+  hfMerchGstTable: Record<string, { hsn: string; rateBps: number; capApplies: boolean }>;
+  gstCategories: Array<{ slug: string; label: string; hsn: string; rateBps: number; capApplies: boolean; confirmWithCa: boolean }>;
 }
 
 /** One admin page view per mount: merch_admin_page_viewed {page}. */

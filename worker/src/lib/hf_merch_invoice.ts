@@ -1,4 +1,4 @@
-// [HF-MERCH-GST-1 2026-10-23] Documents for a merch order. The PLATFORM is the seller (rule HF-MERCH-13): the fan gets a tax invoice at 5% GST (GST inside
+// [HF-MERCH-GST-1 2026-10-23] Documents for a merch order. The PLATFORM is the seller (rule HF-MERCH-17): the fan gets a tax invoice at 5% GST (GST inside
 // the price), HSN 6109, place of supply = the fan's state. Reuses the receipt machinery in hf_receipts.ts (gapless numbers, one document per source id):
 //   * hfGstin set    -> a TAX INVOICE "<prefix>/I/<short FY>/<seq>", source 'merch_order', CGST 2.5% + SGST 2.5% when the fan's state == hfStateCode, else IGST 5%.
 //   * hfGstin empty  -> a plain RECEIPT that says "GSTIN: applied for"; the GST split is still recorded in the document data. If a GSTIN is configured later
@@ -29,7 +29,9 @@ export function merchDocFacts(row: ShopOrderRow, cfg: Record<string, unknown>): 
   const snap = parseJson<Partial<MerchSnapshot>>(row.merch_json, {});
   const a = parseJson<Addr>(row.address_json, {});
   const mc = readMerchCfg(cfg);
+  // [HF-MERCH-GST-1] The rate + HSN FROZEN into the order at checkout (per category). An order from before the category table has the flat fallback.
   const rateBps = typeof snap.money?.gstRateBps === "number" ? snap.money.gstRateBps : mc.gstRateBps;
+  const hsn = typeof snap.money?.hsn === "string" ? snap.money.hsn : mc.hsn;
   const sup = supplierFrom(cfg);
   const code = gstStateCode(a.state);
   const split = merchTaxSplit(Number(row.amount_paise), rateBps, code, sup.stateCode);
@@ -39,7 +41,7 @@ export function merchDocFacts(row: ShopOrderRow, cfg: Record<string, unknown>): 
     type: "merch_order", orderId: row.order_id, orderNo: row.order_no, buyerName: (row.contact_name || a.name || "").trim(),
     buyerAddress: [a.line1, a.line2, [a.city, a.pincode].filter(Boolean).join(" ")].filter((x): x is string => !!x && x.trim() !== ""),
     buyerState: stateText, buyerStateCode: code, placeOfSupply: code ? `${gstStateName(code) ?? stateText} (${code})` : stateText,
-    hsn: mc.hsn, description: `${snap.title ?? "T-shirt"} - ${snap.colour ?? ""}${snap.size ? `, size ${snap.size}` : ""}`.replace(/\s+-\s*$/, ""), qty,
+    hsn, description: `${snap.title ?? "T-shirt"} - ${snap.colour ?? ""}${snap.size ? `, size ${snap.size}` : ""}`.replace(/\s+-\s*$/, ""), qty,
     unitTaxablePaise: Math.round(split.taxablePaise / qty), rateBps, taxablePaise: split.taxablePaise, gstPaise: split.gstPaise, cgstPaise: split.cgstPaise, sgstPaise: split.sgstPaise,
     igstPaise: split.igstPaise, totalPaise: split.totalPaise, intraState: split.intraState, stateKnown: split.stateKnown,
     inputGstPaise: Math.max(0, Math.trunc(Number(snap.money?.inputGstPaise ?? 0))), paidVia: row.pay_method ?? null, paidAt: row.confirmed_at ?? null,
@@ -144,7 +146,7 @@ export async function renderMerchDocumentPdf(i: MerchPdfInput): Promise<Uint8Arr
   for (const [n, t] of desc.entries()) {
     text(t, L, y, 10, bold);
     if (n === 0) {
-      text(d.hsn, cHsn, y, 10); right(String(d.qty), cQty + 18, y, 10);
+      text(d.hsn || "-", cHsn, y, 10); right(String(d.qty), cQty + 18, y, 10);
       if (isInvoice) { right(formatRupeesAscii(d.unitTaxablePaise), cRate + 20, y, 10); right(formatRupeesAscii(d.taxablePaise), cAmt, y, 10); } else right(formatRupeesAscii(d.totalPaise), cAmt, y, 10);
     }
     y -= 14;

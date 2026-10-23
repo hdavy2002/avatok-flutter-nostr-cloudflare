@@ -78,7 +78,9 @@ export type ProductMerch = {
   kind: string;
   side: "front" | "back";
   /** printingPaise / shippingPaise / bufferPaise are frozen with the base at creation [HF-MERCH-PRICE-LABELS-1]; absent on older products. */
-  sizes: Array<{ size: string; baseUnitPaise: number; printingPaise?: number; shippingPaise?: number; bufferPaise?: number }>;
+  sizes: Array<{ size: string; baseUnitPaise: number; printingPaise?: number; shippingPaise?: number; bufferPaise?: number; /** Printrove's GST for this size, basis points (input credit); absent = the category rate */ partnerGstBps?: number }>;
+  /** [HF-MERCH-GST-1] The category's GST rate + HSN + cap-applies, FROZEN at creation (a later admin edit never changes it). Absent on products made before it: flat fallback. */
+  gst?: { rateBps: number; hsn: string; capApplies: boolean; category?: string };
   bufferRupees: number;
   colours: Array<{ name: string; hex: string }>;
   /** studio Placement (lib/studio_logic.ts) the partner print uses. */

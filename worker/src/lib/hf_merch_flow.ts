@@ -10,6 +10,7 @@ import { validateAddress, type Address } from "./saathum_checkout_logic";
 import { newShopOrderId, shopOrderNo, shopReceiptNo, SHOP_REFUND_POLICY_VERSION, type ShopOrderRow } from "./shop_orders_logic";
 import { appendShopEvent } from "../routes/shop_orders";
 import { sendOrderToPartner, advanceOrder } from "./pod_fulfil";
+import { frozenOrFallback } from "./hf_merch_gst";
 import { computeMerchMoney, maxMarkupForBase, merchGstOf, quoteAgainstLive, readMerchCfg, rupeesText, sizeBreakdown, type CostQuote, type MerchCfg, type PayMethod } from "./hf_merch_math";
 import { issueMerchOrderDocument } from "./hf_merch_invoice";
 import { parseJson, type MerchSnapshot } from "./hf_merch_types";
@@ -73,14 +74,16 @@ export async function startMerchCheckout(env: Env, i: CheckoutInput): Promise<Ch
   if (a.line1.length > 50 || (a.line2 ?? "").length > 50) return fail(400, "address_line_too_long", "Each address line can be at most 50 characters. Use both lines.", { field: a.line1.length > 50 ? "line1" : "line2" });
 
   const markupUnit = Math.trunc(Number(i.product.markup_rupees ?? 0)) * 100;
-  // [HF-MERCH-GST-1] The fan price of ONE shirt may not pass the cap (Rs 2,500) so the 5% GST rate always applies. Re-checked here because the cap setting or the base price may have moved since the product was made.
-  if (sz.baseUnitPaise + markupUnit > cfg.priceCapPaise) {
-    return fail(409, "over_price_cap", `This shirt costs more than ${rupeesText(cfg.priceCapPaise)} right now, so it cannot be sold. The creator needs to lower the price.`, { maxMarkupRupees: maxMarkupForBase(sz.baseUnitPaise, cfg.priceCapPaise), priceCapPaise: cfg.priceCapPaise });
+  // [HF-MERCH-GST-1] The product's category GST (rate, HSN, cap-applies) was FROZEN when it was made; an older product has none and uses the flat fallback (5%, 6109, cap applies).
+  const gst = frozenOrFallback(pm.gst, { rateBps: cfg.gstRateBps, hsn: cfg.hsn });
+  // Where the category says the cap applies (clothing) the fan price of ONE piece may not pass it (Rs 2,500) so the 5% GST rate always applies. Re-checked here because the cap setting or the base price may have moved since the product was made.
+  if (gst.capApplies && sz.baseUnitPaise + markupUnit > cfg.priceCapPaise) {
+    return fail(409, "over_price_cap", `This item costs more than ${rupeesText(cfg.priceCapPaise)} right now, so it cannot be sold. The creator needs to lower the price.`, { maxMarkupRupees: maxMarkupForBase(sz.baseUnitPaise, cfg.priceCapPaise), priceCapPaise: cfg.priceCapPaise });
   }
-  // GST-inclusive shirt + print per unit: the input credit is 5/105 of it. Products made before the breakdown was frozen get it worked back from today's shipping.
+  // GST-inclusive item + print per unit: the input credit is g/(100+g) of it, g = Printrove's GST for this size (else the category rate). Products made before the breakdown was frozen get it worked back from today's shipping.
   const printingUnitPaise = typeof sz.printingPaise === "number" ? sz.printingPaise
     : sizeBreakdown(sz, await legacyShippingPaise(env), Math.max(0, Math.trunc(pm.bufferRupees ?? 0)) * 100).printingPaise;
-  const money = computeMerchMoney({ baseUnitPaise: sz.baseUnitPaise, markupUnitPaise: markupUnit, qty, payMethod: i.method, cfg, printingUnitPaise });
+  const money = computeMerchMoney({ baseUnitPaise: sz.baseUnitPaise, markupUnitPaise: markupUnit, qty, payMethod: i.method, cfg, printingUnitPaise, gst, ...(typeof sz.partnerGstBps === "number" ? { partnerGstBps: sz.partnerGstBps } : {}) });
   if (money.totalPaise < 100 || money.totalPaise % 100 !== 0) return fail(409, "bad_price", "This product's price is not valid right now.");
   const orderId = newShopOrderId();
   const now = Date.now();

@@ -2,7 +2,7 @@
 import { useEffect, useState } from 'react';
 import { capture, captureException } from '../../../lib/analytics';
 import { PriceNote, PriceTable, type PriceRow } from './PriceTable';
-import { MARKUP_MAX, createProduct, getQuote, type CatalogInfo, type CatalogItem, type Product } from './api';
+import { MARKUP_MAX, capHint, createProduct, getQuote, markupLimit, type CatalogInfo, type CatalogItem, type Product } from './api';
 import type { DesignResult } from './studio/types';
 
 export default function PriceStep({ info, item, colours, sizes, side, placed, minMarkup, onBack, onDone }: {
@@ -13,6 +13,8 @@ export default function PriceStep({ info, item, colours, sizes, side, placed, mi
   const [markup, setMarkup] = useState(String(Math.max(100, minMarkup)));
   const [quote, setQuote] = useState<Record<string, PriceRow> | null>(null);
   const [quoteErr, setQuoteErr] = useState(false);
+  // [HF-MERCH-GST-1] The cap and the GST rate belong to the product's category (clothing: 5%, capped at ₹2,500; others: no cap). The exact limits come with the quote.
+  const [gstInfo, setGstInfo] = useState<{ bps?: number; capApplies: boolean; capPaise?: number | null; limit: number } | null>(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const pics = placed.mockupUrls.length ? placed.mockupUrls : [placed.previewUrl];
@@ -23,14 +25,21 @@ export default function PriceStep({ info, item, colours, sizes, side, placed, mi
     setQuote(null); setQuoteErr(false);
     void getQuote({ catalogId: item.id, colours, side, w: placed.wIn, h: placed.hIn, sizes }).then(r => {
       if (!live) return;
-      if (r.ok) setQuote(Object.fromEntries(r.data.sizes.map(x => [x.size, { size: x.size, printingPaise: x.printingPaise, shippingPaise: x.shippingPaise, basePaise: x.basePaise }])));
+      if (r.ok) {
+        setQuote(Object.fromEntries(r.data.sizes.map(x => [x.size, { size: x.size, printingPaise: x.printingPaise, shippingPaise: x.shippingPaise, basePaise: x.basePaise }])));
+        setGstInfo({ bps: r.data.gstRateBps, capApplies: r.data.capApplies !== false && typeof r.data.priceCapPaise === 'number', capPaise: r.data.priceCapPaise, limit: markupLimit(r.data.sizes) });
+      }
       else { setQuoteErr(true); if (r.status >= 500 || r.status === 0) captureException(new Error(`merch_quote_${r.status}_${r.code}`), { area: 'hf_merch_creator', step: 'price_publish' }); }
     });
     return () => { live = false; };
   }, [item.id, colours, side, placed.wIn, placed.hIn, sizes]);
 
   const m = Math.floor(Number(markup) || 0);
-  const okM = m >= minMarkup && m <= MARKUP_MAX;
+  // Until the exact quote arrives, the catalogue's "up to" figures for the chosen sizes give the limit (null = this category has no cap).
+  const gstBps = gstInfo?.bps ?? item.gstRateBps;
+  const capApplies = gstInfo ? gstInfo.capApplies : item.capApplies !== false && item.sizes.some(s => typeof s.maxMarkupRupees === 'number');
+  const maxM = gstInfo ? gstInfo.limit : markupLimit(item.sizes.filter(s => sizes.includes(s.size)));
+  const okM = m >= minMarkup && m <= maxM;
   const rows: PriceRow[] = sizes.map(sz => {
     const c = item.sizes.find(x => x.size === sz);
     return quote?.[sz] ?? { size: sz, printingPaise: c?.printingPaise ?? 0, shippingPaise: c?.shippingPaise ?? 0, basePaise: c?.basePaise ?? 0 };
@@ -47,7 +56,7 @@ export default function PriceStep({ info, item, colours, sizes, side, placed, mi
     });
     setBusy(false);
     if (r.ok) { capture('merch_studio_step', { step: 'publish_ok', status: r.data.product.status }); onDone(r.data.product); }
-    else { setErr(r.message || 'Could not publish.'); captureException(new Error(`merch_publish_${r.status}_${r.code}`), { area: 'hf_merch_creator', step: 'price_publish', status: r.status }); }
+    else { setErr(r.code === 'over_price_cap' ? (r.message || `That price is over the cap. ${capHint(info.priceCapPaise, gstBps)}`) : (r.message || 'Could not publish.')); if (r.code !== 'over_price_cap') captureException(new Error(`merch_publish_${r.status}_${r.code}`), { area: 'hf_merch_creator', step: 'price_publish', status: r.status }); }
   }
 
   return <div className="mc-price">
@@ -59,12 +68,13 @@ export default function PriceStep({ info, item, colours, sizes, side, placed, mi
     </section>
     <section className="mc-pricebox">
       <h3 className="mc-h3">Set your price</h3>
-      <label className="f">Your markup per item (₹{minMarkup} – ₹{MARKUP_MAX})<input inputMode="numeric" value={markup} onChange={e => setMarkup(e.target.value.replace(/[^0-9]/g, '').slice(0, 4))} aria-label="Markup in rupees" /></label>
+      <label className="f">Your markup per item (₹{minMarkup} – ₹{maxM})<input inputMode="numeric" value={markup} onChange={e => setMarkup(e.target.value.replace(/[^0-9]/g, '').slice(0, 4))} aria-label="Markup in rupees" /></label>
       <div className="mc-sw">{[50, 100, 150, 200, 300].filter(v => v >= minMarkup).map(v => <button key={v} type="button" className={m === v ? 'on' : ''} aria-pressed={m === v} onClick={() => setMarkup(String(v))}>₹{v}</button>)}</div>
-      <PriceTable rows={rows} markup={m} okMarkup={okM} shareBps={info.platformShareBps} loading={!quote} />
+      {capApplies && <p className="small muted">{capHint(gstInfo?.capPaise ?? info.priceCapPaise, gstBps)}</p>}
+      <PriceTable rows={rows} markup={m} okMarkup={okM} shareBps={info.platformShareBps} loading={!quote} gstBps={gstBps} />
       <PriceNote shareBps={info.platformShareBps} holdDays={info.holdDays} />
       {quoteErr && <p className="mc-err small" role="alert">We could not get the exact base price. Go back and try again in a moment.</p>}
-      {!okM && <p className="mc-err small">Enter a markup between ₹{minMarkup} and ₹{MARKUP_MAX}.</p>}
+      {!okM && <p className="mc-err small">Enter a markup between ₹{minMarkup} and ₹{maxM}.</p>}
       {err && <p className="mc-err" role="alert">{err}</p>}
       <div className="mc-foot"><button type="button" className="h3-btn ghost mc-big" onClick={onBack} disabled={busy}>← Back to design</button>
         <button type="button" className="h3-btn rani mc-big" disabled={!ready} onClick={() => void publish()}>{busy ? 'Publishing…' : 'Publish'}</button></div>

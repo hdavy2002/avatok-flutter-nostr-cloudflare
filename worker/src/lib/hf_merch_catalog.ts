@@ -6,9 +6,10 @@ import { trackException } from "../hooks";
 import { ensurePodCatalog, getPodProvider, referenceShippingRupees, loadStoredCatalog, syncCatalogToDb, PRINT_SPECS } from "./pod";
 import type { CatalogProduct, PodProvider } from "./pod";
 import { computeSizeCosts, partnerPlacement, sortSizes, variantSku, type Placement } from "./studio_logic";
-import { baseUnitPaise, splitBase, profitRow, youEarnUnitPaise, type MerchCfg, type ProfitRow } from "./hf_merch_math";
+import { baseUnitPaise, splitBase, profitRow, youEarnUnitPaise, gstForCategory, maxMarkupForBase, type MerchCfg, type ProfitRow } from "./hf_merch_math";
 import { categoryOf, categoryRank, familyOf, type Family } from "./hf_merch_families";
 import { parseJson, type MerchSnapshot, type ProductMerch } from "./hf_merch_types";
+import { frozenOrFallback } from "./hf_merch_gst";
 
 const TEE_KIND = /_tee$/;
 /** Kept for callers that still ask "is this a T-shirt kind"; the merch shop now sells every printable kind (isMerchKind). */
@@ -22,8 +23,10 @@ export type PrintAreas = { front?: { wIn: number; hIn: number }; back?: { wIn: n
 export type CatalogItem = {
   id: string; kind: string; name: string; category: string; categoryLabel: string; family: Family;
   /** Only the sides this product has a print area for. */
+  /** [HF-MERCH-GST-1] This category's GST rate (bps) / HSN ("" = to be confirmed) / whether the fan-price cap applies; per-size maxMarkupRupees is null when no cap. */
+  gstRateBps: number; hsn: string; capApplies: boolean;
   side: Array<"front" | "back">; printAreas: PrintAreas; /** The first side's area. */ printArea: { wIn: number; hIn: number };
-  colours: Array<{ name: string; hex: string }>; sizes: Array<{ size: string; basePaise: number; baseRupees: number; printingPaise: number; shippingPaise: number }>; mockupUrl?: string; imageUrl?: string;
+  colours: Array<{ name: string; hex: string }>; sizes: Array<{ size: string; basePaise: number; baseRupees: number; printingPaise: number; shippingPaise: number; maxMarkupRupees: number | null }>; mockupUrl?: string; imageUrl?: string;
 };
 
 function colourList(p: CatalogProduct): Array<{ name: string; hex: string }> {
@@ -44,7 +47,7 @@ export const areaOf = (p: Pick<CatalogProduct, "kind" | "print_area_in">, side: 
 export const sidesOf = (p: Pick<CatalogProduct, "kind" | "print_area_in">): Array<"front" | "back"> => (["front", "back"] as const).filter((s) => areaOrNull(p, s) !== null);
 
 export type BaseQuote =
-  | { ok: true; sizes: Array<{ size: string; baseUnitPaise: number; printingPaise: number; shippingPaise: number; bufferPaise: number }>; shippingRupees: number | null }
+  | { ok: true; sizes: Array<{ size: string; baseUnitPaise: number; printingPaise: number; shippingPaise: number; bufferPaise: number; partnerGstBps: number }>; shippingRupees: number | null }
   | { ok: false; error: "catalog_unavailable" | "unknown_product" | "no_sizes"; message: string };
 
 /** Per-size base price (paise, whole rupees, buffer included) for printing w x h inches on `side` in the chosen colours. */
@@ -58,11 +61,11 @@ export async function quoteBases(
   const shipping = await referenceShippingRupees(env);
   const costs = computeSizeCosts(prod, a.colours, a.side, a.wIn, a.hIn, shipping);
   const want = a.sizes ? new Set(a.sizes.map((s) => s.toLowerCase())) : null;
-  const sizes: Array<{ size: string; baseUnitPaise: number; printingPaise: number; shippingPaise: number; bufferPaise: number }> = [];
+  const sizes: Array<{ size: string; baseUnitPaise: number; printingPaise: number; shippingPaise: number; bufferPaise: number; partnerGstBps: number }> = [];
   for (const c of costs) {
     if (!c.in_stock || c.total_rupees == null || (want && !want.has(c.size.toLowerCase()))) continue;
     const parts = splitBase(c.total_rupees, shipping, cfg.baseBufferRupees);
-    if (parts) sizes.push({ size: c.size, ...parts });
+    if (parts) sizes.push({ size: c.size, ...parts, partnerGstBps: Math.round(c.partner_gst_pct * 100) });
   }
   if (!sizes.length) return { ok: false, error: "no_sizes", message: "That product cannot be priced in those colours." };
   return { ok: true, sizes, shippingRupees: shipping, product: prod };
@@ -83,16 +86,17 @@ export async function merchCatalog(env: Env, cfg: MerchCfg): Promise<{ ok: true;
     const [w, h] = areaOrNull(p, first) as [number, number];
     // "Up to" price: the biggest print the product takes (first side). The wizard re-quotes the real size through /quote as the art is placed.
     const costs = computeSizeCosts(p, [], first, w, h, shipping);
+    const cat = categoryOf(p.kind);
+    const gst = gstForCategory(cfg, cat.slug);
     const sizes = costs.filter((c) => c.in_stock && c.total_rupees != null).map((c) => {
       const parts = splitBase(c.total_rupees as number, shipping, cfg.baseBufferRupees);
       const base = parts?.baseUnitPaise ?? 0;
-      return { size: c.size, basePaise: base, baseRupees: Math.round(base / 100), printingPaise: parts?.printingPaise ?? 0, shippingPaise: parts?.shippingPaise ?? 0 };
+      return { size: c.size, basePaise: base, baseRupees: Math.round(base / 100), printingPaise: parts?.printingPaise ?? 0, shippingPaise: parts?.shippingPaise ?? 0, maxMarkupRupees: gst.capApplies ? maxMarkupForBase(base, cfg.priceCapPaise) : null };
     }).filter((s) => s.basePaise > 0);
     if (!sizes.length) continue;
-    const cat = categoryOf(p.kind);
     items.push({
       id: p.provider_product_id, kind: p.kind, name: p.name, category: cat.slug, categoryLabel: cat.label, family: familyOf(p.kind, p.name),
-      side: sides, printAreas, printArea: { wIn: w, hIn: h }, colours: colourList(p), sizes, ...(p.image_url ? { imageUrl: p.image_url } : {}),
+      gstRateBps: gst.rateBps, hsn: gst.hsn, capApplies: gst.capApplies, side: sides, printAreas, printArea: { wIn: w, hIn: h }, colours: colourList(p), sizes, ...(p.image_url ? { imageUrl: p.image_url } : {}),
     });
   }
   items.sort((a, b) => categoryRank(a.category) - categoryRank(b.category) || a.name.localeCompare(b.name));
@@ -226,6 +230,7 @@ export function buildProductProfit(ctx: ProfitCtx, cfg: MerchCfg, merch: Product
   const inf = youEarnUnitPaise(markup, cfg.platformShareBps);
   if (!merch) return { shippingPaise: shipPaise, rows: [], live: false, note: "This product has no price data." };
   const prod = ctx.products?.find((p) => p.provider_product_id === merch.catalogId);
+  const gst = frozenOrFallback(merch.gst, { rateBps: cfg.gstRateBps, hsn: cfg.hsn }); // [HF-MERCH-GST-1] the product's frozen category rate
   const pl = merch.placement as { print_w_in?: number; print_h_in?: number };
   const costs = prod && pl.print_w_in && pl.print_h_in
     ? computeSizeCosts(prod, merch.colours.map((c) => c.name), merch.side, pl.print_w_in, pl.print_h_in, null) : [];
@@ -235,7 +240,7 @@ export function buildProductProfit(ctx: ProfitCtx, cfg: MerchCfg, merch: Product
     const liveOk = !!c && c.in_stock && c.total_rupees != null;
     if (!liveOk) allLive = false;
     const cost = liveOk ? toPaise(c!.total_rupees as number) : Math.max(0, s.baseUnitPaise - shipPaise - cfg.baseBufferRupees * 100);
-    return profitRow({ size: s.size, printroveCostPaise: cost, shippingPaise: shipPaise, fanPaysPaise: s.baseUnitPaise + markup, markupPaise: markup, influencerPaise: inf, gstRateBps: cfg.gstRateBps, cashfreeFeeBps: cfg.cashfreeFeeBps });
+    return profitRow({ size: s.size, printroveCostPaise: cost, shippingPaise: shipPaise, fanPaysPaise: s.baseUnitPaise + markup, markupPaise: markup, influencerPaise: inf, gstRateBps: gst.rateBps, partnerGstBps: s.partnerGstBps, cashfreeFeeBps: cfg.cashfreeFeeBps });
   });
   const notes: string[] = [];
   if (!allLive) notes.push("Printrove's live prices could not be read, so the Printrove cost is worked back from the price set when the product was made.");
@@ -270,6 +275,6 @@ export async function buildOrderProfit(env: Env, snap: Partial<MerchSnapshot>, p
     costPaise = Math.max(0, m.basePaise - shipPaise - Number(snap.bufferRupees ?? 0) * 100 * qty);
     note = "Printrove's live price could not be read, so the Printrove cost is worked back from the price frozen when the fan ordered.";
   }
-  const row = profitRow({ size: String(snap.size ?? ""), printroveCostPaise: costPaise as number, shippingPaise: shipPaise, fanPaysPaise: m.totalPaise, markupPaise: m.markupPaise, influencerPaise: m.influencerPaise, gstRateBps: typeof m.gstRateBps === "number" ? m.gstRateBps : undefined, legacyGstBps: m.gstBps, cashfreeFeeBps: m.payMethod === "cashfree" ? m.cashfreeFeeBps : 0 });
+  const row = profitRow({ size: String(snap.size ?? ""), printroveCostPaise: costPaise as number, shippingPaise: shipPaise, fanPaysPaise: m.totalPaise, markupPaise: m.markupPaise, influencerPaise: m.influencerPaise, gstRateBps: typeof m.gstRateBps === "number" ? m.gstRateBps : undefined, partnerGstBps: m.partnerGstBps, legacyGstBps: m.gstBps, cashfreeFeeBps: m.payMethod === "cashfree" ? m.cashfreeFeeBps : 0 });
   return { shippingPaise: shipPaise, rows: [row], live, ...(note ? { note } : {}) };
 }
