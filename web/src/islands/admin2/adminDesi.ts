@@ -55,6 +55,10 @@ consultants: { line: 'Gyaani log', sticker: 'mohmaya', rot: 5, tone: 'tea', ghos
 'host-refunds': { line: 'Paisa wapas, wallet se', sticker: 'auto', rot: 5, tone: 'tea', ghost: 'Wapas' },
 'host-reconciliation': { line: 'Hisaab barabar?', sticker: 'chugli', rot: -5, tone: 'gold', ghost: 'Hisaab' },
 'host-phone-costs': { line: 'Phone ka bill, paai-paai', sticker: 'panipilo', rot: 5, tone: 'tea', ghost: 'Bill' },
+'merch-orders': { line: 'Kurte ka hisaab', sticker: 'swag', rot: -5, tone: 'saffron', ghost: 'Order' }, // [HF-MERCH-ADMIN-1]
+'merch-products': { line: 'Naye design, pehli nazar', sticker: 'girlboss', rot: 5, tone: 'rani', ghost: 'Design' },
+'merch-settings': { line: 'Merch ke niyam', sticker: 'chai', rot: -5, tone: 'lav', ghost: 'Niyam' },
+'merch-wallet': { line: 'Merch ka khazana', sticker: 'fav', rot: 5, tone: 'gold', ghost: 'Khazana' },
 'preview-help': { line: 'Madad ka panna', sticker: 'chai', rot: -5, tone: 'lav', ghost: 'Madad' },
 'preview-legal': { line: 'Kaanoon ki kitaab', sticker: 'aalsi', rot: 5, tone: 'gold', ghost: 'Kaanoon' },
 };

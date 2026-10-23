@@ -1,0 +1,60 @@
+/* HF-MERCH-ADMIN-1 — admin merch screens. Uses the .hf-admin tokens (--a-*); Nunito/Comfortaa only, no green, nothing under 14px. */
+.hf-admin .mx-banner { padding: 12px 18px; border-radius: 18px; font-weight: 800; font-size: 15px; background: var(--a-goldtint); color: var(--a-amber); }
+.hf-admin .mx-banner.error { background: #fde3e6; color: var(--a-bad); }
+.hf-admin .mx-banner.info { background: var(--a-lavtint); color: var(--a-lav); }
+.hf-admin .mx-empty { padding: 28px 8px; text-align: center; color: var(--a-muted); font-weight: 700; font-size: 16px; }
+.hf-admin .mx-list { display: grid; gap: 14px; }
+.hf-admin .mx-row { background: #fff; border-radius: 26px; box-shadow: var(--a-shadow); overflow: hidden; border: 1.5px solid var(--a-line); }
+.hf-admin .mx-row.open { border-color: var(--a-marigold); }
+.hf-admin .mx-head { width: 100%; display: grid; grid-template-columns: 64px 1fr auto; gap: 14px; align-items: center; padding: 12px 16px; background: transparent; border: 0; text-align: left; cursor: pointer; min-height: 64px; font-family: 'Nunito', sans-serif; color: var(--a-ink); }
+.hf-admin .mx-thumb { width: 64px; height: 64px; border-radius: 18px; object-fit: cover; background: var(--a-blush); }
+.hf-admin .mx-title { font-weight: 900; font-size: 17px; line-height: 1.2; }
+.hf-admin .mx-sub { color: var(--a-muted); font-size: 14px; font-weight: 700; margin-top: 2px; }
+.hf-admin .mx-amt { text-align: right; font-weight: 900; font-size: 18px; color: var(--a-plum); }
+.hf-admin .mx-amt .mx-chip { margin-top: 4px; }
+.hf-admin .mx-chip { display: inline-block; padding: 3px 11px; border-radius: 999px; font-size: 14px; font-weight: 800; background: var(--a-goldtint); color: var(--a-amber); }
+.hf-admin .mx-chip.tea { background: var(--a-teatint); color: var(--a-peacock); }
+.hf-admin .mx-chip.lav { background: var(--a-lavtint); color: var(--a-lav); }
+.hf-admin .mx-chip.rani { background: var(--a-blush); color: var(--a-rani); }
+.hf-admin .mx-chip.bad { background: #fde3e6; color: var(--a-bad); }
+.hf-admin .mx-slide { display: grid; grid-template-rows: 0fr; transition: grid-template-rows .28s ease; }
+.hf-admin .mx-row.open .mx-slide { grid-template-rows: 1fr; }
+.hf-admin .mx-slide > div { overflow: hidden; min-height: 0; }
+.hf-admin .mx-body { padding: 4px 18px 20px; display: grid; gap: 18px; }
+.hf-admin .mx-cols { display: grid; gap: 18px; grid-template-columns: repeat(auto-fit, minmax(min(100%, 17rem), 1fr)); }
+.hf-admin .mx-mock { width: 100%; max-width: 280px; border-radius: 24px; background: var(--a-blush); aspect-ratio: 1; object-fit: cover; }
+.hf-admin .mx-h { font-family: 'Comfortaa', sans-serif; font-weight: 700; font-size: 15px; color: var(--a-rani); margin: 0 0 6px; text-transform: uppercase; letter-spacing: .04em; }
+.hf-admin .mx-kv { display: grid; grid-template-columns: 1fr auto; gap: 4px 12px; font-size: 15px; }
+.hf-admin .mx-kv dt { color: var(--a-muted); font-weight: 700; }
+.hf-admin .mx-kv dd { margin: 0; text-align: right; font-weight: 800; color: var(--a-ink); font-variant-numeric: tabular-nums; }
+.hf-admin .mx-kv .tot { border-top: 1.5px dashed var(--a-line); padding-top: 6px; color: var(--a-plum); }
+.hf-admin .mx-kv .amber { color: var(--a-amber); }
+.hf-admin .mx-warn { padding: 14px 16px; border-radius: 20px; background: var(--a-goldtint); color: var(--a-amber); font-weight: 800; font-size: 15px; }
+.hf-admin .mx-warn.bad { background: #fde3e6; color: var(--a-bad); }
+.hf-admin .mx-acts { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.hf-admin .mx-form { display: grid; gap: 10px; padding: 14px 16px; border-radius: 20px; background: var(--a-cream); }
+.hf-admin .mx-form label { font-weight: 800; font-size: 14px; color: var(--a-plum); display: grid; gap: 4px; }
+.hf-admin .mx-in { width: 100%; min-height: 46px; padding: 10px 14px; border-radius: 14px; border: 1.5px solid var(--a-line); font-family: 'Nunito', sans-serif; font-size: 16px; background: #fff; color: var(--a-ink); }
+.hf-admin .mx-timeline { margin: 0; padding: 0; list-style: none; display: grid; gap: 4px; font-size: 14px; color: var(--a-muted); }
+.hf-admin .mx-timeline b { color: var(--a-ink); }
+.hf-admin .mx-photo { max-width: 220px; border-radius: 18px; }
+.hf-admin .mx-sw { display: inline-block; width: 18px; height: 18px; border-radius: 50%; border: 1.5px solid var(--a-line); vertical-align: middle; margin-right: 6px; }
+.hf-admin .mx-table { width: 100%; border-collapse: collapse; font-size: 15px; }
+.hf-admin .mx-table th { text-align: left; color: var(--a-muted); font-weight: 800; padding: 8px 10px; border-bottom: 1.5px solid var(--a-line); }
+.hf-admin .mx-table td { padding: 8px 10px; border-bottom: 1px dashed var(--a-line); font-variant-numeric: tabular-nums; }
+.hf-admin .mx-table .n { text-align: right; }
+.hf-admin .mx-scroll { overflow-x: auto; }
+.hf-admin .mx-tiles { display: grid; gap: 14px; grid-template-columns: repeat(auto-fit, minmax(min(100%, 11rem), 1fr)); }
+.hf-admin .mx-tile { padding: 14px 18px; border-radius: 24px; background: var(--a-goldtint); }
+.hf-admin .mx-tile:nth-child(3n+2) { background: var(--a-blush); }
+.hf-admin .mx-tile:nth-child(3n) { background: var(--a-lavtint); }
+.hf-admin .mx-tile b { display: block; font-size: 14px; color: var(--a-muted); font-weight: 800; }
+.hf-admin .mx-tile span { font-size: 26px; font-weight: 900; color: var(--a-plum); font-variant-numeric: tabular-nums; }
+.hf-admin .mx-set { display: grid; gap: 4px; padding: 12px 0; border-bottom: 1px dashed var(--a-line); }
+.hf-admin .mx-set .row { display: flex; gap: 12px; align-items: center; justify-content: space-between; flex-wrap: wrap; }
+.hf-admin .mx-set label { font-weight: 800; font-size: 16px; color: var(--a-ink); }
+.hf-admin .mx-set .hint { color: var(--a-muted); font-size: 14px; }
+.hf-admin .mx-set .mx-in { width: 9rem; text-align: right; }
+.hf-admin .mx-toggle { min-width: 84px; }
+@media (max-width: 560px) { .hf-admin .mx-head { grid-template-columns: 52px 1fr; } .hf-admin .mx-thumb { width: 52px; height: 52px; } .hf-admin .mx-amt { grid-column: 2; text-align: left; } }
+@media (prefers-reduced-motion: reduce) { .hf-admin .mx-slide { transition: none; } }

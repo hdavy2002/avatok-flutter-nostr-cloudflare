@@ -11356,5 +11356,28 @@
         "note": "A fan paid for an influencer merch order."
       }
     ]
+  },
+  "HF-MERCH-ADMIN-1": {
+    "description": "[HF-MERCH-ADMIN-1] Admin web pages for the influencer merch shop: /admin/merch (orders queue with live Printrove quote, approve, reject, tracking, delivered, refund), /admin/merch/products (design review), /admin/merch/settings (ten settings + worked example), /admin/merch/wallet (platform wallet + CSV). Admin-only; visible once an admin opens them.",
+    "shipped": "2026-10-23",
+    "two_sided": false,
+    "min_devices_on_build": 0,
+    "flags": [],
+    "success": [
+      {
+        "event": "merch_admin_page_viewed",
+        "property": "page",
+        "exists": true,
+        "min_events": 1,
+        "note": "An admin opened a merch admin page. Absence means the pages are not deployed or nobody has opened them."
+      },
+      {
+        "event": "merch_order_approved_clicked",
+        "property": "order_id",
+        "exists": true,
+        "min_events": 1,
+        "note": "The Approve button on a real order was pressed. Only meaningful once hfMerchEnabled and a paid order exist; pair with the server merch_order_approved event."
+      }
+    ]
   }
 }

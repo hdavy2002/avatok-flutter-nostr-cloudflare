@@ -4,12 +4,14 @@
 import {
   CalendarDays, Ticket, IndianRupee, ShieldCheck, Undo2, Users, Tags, Gift, QrCode, Globe, LogOut, Sparkles, MonitorPlay, ShoppingBag, Shirt, LayoutGrid, Megaphone, BadgePercent, Settings2, LayoutTemplate, Palette, Printer, BookOpen, Wallet, AudioLines, Scale, GraduationCap, CalendarCheck, Star, UserCheck, Images, PhoneCall, MessageSquareQuote, Banknote, HandCoins, type LucideIcon, ClipboardCheck, ReceiptIndianRupee, Flag, Siren, House,
 } from 'lucide-react';
+import { PackageCheck, Brush, SlidersHorizontal, Landmark } from 'lucide-react'; // [HF-MERCH-ADMIN-1]
 
 export type AdminKey = 'overview' | 'events' | 'bookings' | 'payments' | 'refunds' | 'customers' | 'wallets' | 'prices' | 'chadhava' | 'upi' | 'verify' | 'ai' | 'knowledge' | 'voice-guides' | 'freevideos'
   | 'shop-orders' | 'shop-studio' | 'shop-partner' | 'shop-editor' | 'shop-products' | 'shop-collections' | 'shop-promote' | 'shop-coupons' | 'shop-settings'
   | 'consultants' | 'consultant-bookings' | 'consultant-reviews'
   | 'desk-wallets' | 'desk-bookings' | 'desk-topups' | 'desk-support' | 'desk-reports' | 'desk-money'
   | 'host-desk' | 'host-review' | 'host-kyc' | 'host-avatars' | 'host-demo' | 'host-reviews' | 'host-calls' | 'host-payouts' | 'host-refunds' | 'host-reconciliation' | 'host-phone-costs'
+  | 'merch-orders' | 'merch-products' | 'merch-settings' | 'merch-wallet' // [HF-MERCH-ADMIN-1]
   | 'preview-help' | 'preview-legal';
 
 export interface AdminNavItem { key: AdminKey; label: string; short: string; href: string; icon: LucideIcon; /** Optional group heading shown above the first item of a run (e.g. "Shop"). */ group?: string; /** [AUMFE-POD-FULFIL-1] Small gold pill after the label (e.g. "New"). */ pill?: string }
@@ -64,6 +66,11 @@ const ALL_ADMIN_NAV: AdminNavItem[] = [
   { key: 'host-refunds', label: 'Wallet refunds', short: 'Refunds', href: '/admin/hosts/refunds', icon: HandCoins, group: 'Hosts' }, // [HF-WALLET-EXIT-1]
   { key: 'host-reconciliation', label: 'Reconciliation', short: 'Reconcile', href: '/admin/hosts/reconciliation', icon: ClipboardCheck, group: 'Hosts' }, // [HF-WALLET-LIMITS-1]
   { key: 'host-phone-costs', label: 'Phone costs', short: 'Phone costs', href: '/admin/hosts/phone-costs', icon: ReceiptIndianRupee, group: 'Hosts' }, // [HF-VOBIZ-SPEND-1]
+  // [HF-MERCH-ADMIN-1] Merch group (influencer merch shop). Keep contiguous.
+  { key: 'merch-orders', label: 'Merch orders', short: 'Orders', href: '/admin/merch', icon: PackageCheck, group: 'Merch' },
+  { key: 'merch-products', label: 'Merch products', short: 'Designs', href: '/admin/merch/products', icon: Brush, group: 'Merch' },
+  { key: 'merch-settings', label: 'Merch settings', short: 'Merch settings', href: '/admin/merch/settings', icon: SlidersHorizontal, group: 'Merch' },
+  { key: 'merch-wallet', label: 'Merch wallet', short: 'Merch wallet', href: '/admin/merch/wallet', icon: Landmark, group: 'Merch' },
   // [AUMFE-HELP-LEGAL-PREVIEW-1] Preview group: hidden-until-gateway help topics and legal sections (admin only).
   { key: 'preview-legal', label: 'Legal preview', short: 'Legal preview', href: '/admin/preview/legal', icon: Scale, group: 'Preview' },
 ];

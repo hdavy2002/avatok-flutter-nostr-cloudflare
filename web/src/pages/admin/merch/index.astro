@@ -1,0 +1,10 @@
+---
+// [HF-MERCH-ADMIN-1] Merch orders.
+export const prerender = false;
+import Admin2 from '../../../layouts/Admin2.astro';
+import MerchOrders from '../../../islands/admin2/merch/MerchOrders.tsx';
+---
+
+<Admin2 title="Merch orders" active="merch-orders" subtitle="Approve, print, ship and refund influencer merch orders.">
+  <MerchOrders client:load />
+</Admin2>

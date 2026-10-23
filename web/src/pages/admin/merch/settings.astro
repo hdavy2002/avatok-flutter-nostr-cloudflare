@@ -1,0 +1,10 @@
+---
+// [HF-MERCH-ADMIN-1] Merch settings.
+export const prerender = false;
+import Admin2 from '../../../layouts/Admin2.astro';
+import MerchSettings from '../../../islands/admin2/merch/MerchSettings.tsx';
+---
+
+<Admin2 title="Merch settings" active="merch-settings" subtitle="Switches, shares and fees for the influencer merch shop.">
+  <MerchSettings client:load />
+</Admin2>
