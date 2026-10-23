@@ -460,6 +460,48 @@ class ApiClient {
     return http.Response.fromStream(streamed).timeout(limit);
   }
 
+  /// [HF-APP-PARITY-MERCH-1] A signed-in download of raw bytes (the GST invoice PDF). One refresh on a 401, typed errors, no cache.
+  /// [path] is a path on the API origin (for example `/api/shop/orders/<id>/receipt.pdf`). Throws [ApiException].
+  Future<List<int>> getBytes(String path, {Duration limit = const Duration(seconds: 45)}) async {
+    final sw = Stopwatch()..start();
+    final endpoint = path.split('?').first;
+    Future<http.Response> go(String? token) async {
+      final req = http.Request('GET', _uri(path, null));
+      req.headers.addAll({'X-Client': clientTag, if (token != null && token.isNotEmpty) 'Authorization': 'Bearer $token'});
+      final streamed = await _http.send(req).timeout(limit);
+      return http.Response.fromStream(streamed).timeout(limit);
+    }
+
+    try {
+      final provider = tokens;
+      var token = provider == null ? null : await provider();
+      var resp = await go(token);
+      if (resp.statusCode == 401 && provider != null) {
+        final fresh = await provider(forceRefresh: true);
+        if (fresh != null && fresh != token) {
+          token = fresh;
+          resp = await go(token);
+        }
+      }
+      if (resp.statusCode < 200 || resp.statusCode >= 300) {
+        final err = ApiException.fromResponse(resp.statusCode, utf8.decode(resp.bodyBytes, allowMalformed: true));
+        _report('GET', endpoint, err, sw);
+        throw err;
+      }
+      return resp.bodyBytes;
+    } on ApiException {
+      rethrow;
+    } on TimeoutException {
+      final err = ApiException.offline(timeout: true);
+      _report('GET', endpoint, err, sw);
+      throw err;
+    } on Exception {
+      final err = ApiException.offline();
+      _report('GET', endpoint, err, sw);
+      throw err;
+    }
+  }
+
   Future<List<dynamic>> getList(String path, {Map<String, Object?>? query, bool auth = true}) async {
     final v = await request('GET', path, query: query, auth: auth);
     if (v is List) return v;

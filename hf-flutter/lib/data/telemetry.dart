@@ -83,6 +83,13 @@ abstract final class Telemetry {
     'merch_studio_step',
     'merch_ai', // [HF-MERCH-STUDIO-2] {action: open|generate_started|generate_done|generate_failed|use|bg_removed|...}
     'merch_order_opened',
+    'profile_share_clicked', // [HF-APP-PARITY-MERCH-1] {own, network} (same name as the web)
+    'merch_tracking_opened', // [HF-APP-PARITY-MERCH-1] {order_id}
+    'merch_problem_submitted', // [HF-APP-PARITY-MERCH-1] {order_id, kind, has_photo, ok}
+    'merch_product_edited', // [HF-APP-PARITY-MERCH-1] {product_id, markup}
+    'merch_receipt_opened', // [HF-APP-PARITY-MERCH-1] {order_id, ok}
+    'merch_checkout_failed', // [HF-APP-PARITY-MERCH-1] {code, status, surface}
+    'merch_gstin_saved', // [HF-APP-PARITY-MERCH-1] {has_gstin}
   };
 
   static TelemetrySink sink = _debugSink;

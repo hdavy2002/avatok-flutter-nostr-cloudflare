@@ -706,6 +706,7 @@ class FanOrder {
     required this.refundStatus,
     required this.rejectReason,
     required this.timeline,
+    this.groupId,
   });
 
   factory FanOrder.fromJson(Map<String, dynamic> j) {
@@ -730,8 +731,12 @@ class FanOrder {
       refundStatus: _s(j['refundStatus']),
       rejectReason: _sn(j['rejectReason']),
       timeline: _timeline(j['timeline']),
+      groupId: _sn(j['groupId']),
     );
   }
+
+  /// [HF-APP-PARITY-MERCH-1] Set (`mgp_...`) when the order was paid together with others from the bag.
+  final String? groupId;
 
   final String id;
   final String orderNo;
@@ -754,4 +759,25 @@ class FanOrder {
   final String refundStatus;
   final String? rejectReason;
   final List<TimelineEntry> timeline;
+}
+
+/// [HF-APP-PARITY-MERCH-1] The orders of one bag payment: `GET /api/hf/merch/my-orders/<mgp_...>` -> `{group:{groupId,status,totalPaise,orders:[...]}}`.
+/// [status] is `paid`, `cancelled` or `awaiting_payment`.
+class FanGroup {
+  const FanGroup({required this.groupId, required this.status, required this.totalPaise, required this.orders});
+
+  factory FanGroup.fromJson(Map<String, dynamic> j) => FanGroup(
+        groupId: _s(j['groupId']),
+        status: _s(j['status']),
+        totalPaise: _i(j['totalPaise']),
+        orders: [for (final m in _maps(j['orders'])) FanOrder.fromJson(m)],
+      );
+
+  final String groupId;
+  final String status;
+  final int totalPaise;
+  final List<FanOrder> orders;
+
+  bool get awaitingPayment => orders.any((o) => o.status == 'awaiting_payment');
+  bool get allCancelled => orders.isNotEmpty && orders.every((o) => o.status == 'cancelled');
 }

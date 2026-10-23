@@ -272,8 +272,47 @@ class MerchRepo {
   }
 
   /// [kind] is `wrong` or `damaged`; [note] 10 to 1000 characters. Allowed once, within 48 hours of delivery.
-  Future<void> reportProblem(String orderId, {required String kind, required String note}) async {
-    await _api.postJson('$_base/my-orders/${Uri.encodeComponent(orderId)}/problem', body: {'kind': kind, 'note': note});
+  /// [photoKey] comes from [uploadProblemPhoto].
+  Future<void> reportProblem(String orderId, {required String kind, required String note, String? photoKey}) async {
+    await _api.postJson('$_base/my-orders/${Uri.encodeComponent(orderId)}/problem',
+        body: {'kind': kind, 'note': note, if (photoKey != null && photoKey.isNotEmpty) 'photoKey': photoKey});
+  }
+
+  /// [HF-APP-PARITY-MERCH-1] Uploads the photo for a problem report (PNG, JPEG or WebP, at most 5 MB) and returns its `photoKey`.
+  /// 413 `too_large`, 415 `unsupported_type`, 404 `not_found`, 429 when she tries too often.
+  Future<String> uploadProblemPhoto(String orderId, Uint8List bytes, {required String contentType}) async {
+    final j = await _api.postBytes('$_base/my-orders/${Uri.encodeComponent(orderId)}/problem-photo', bytes, contentType: contentType);
+    final k = j['photoKey'];
+    if (k is! String || k.isEmpty) throw StateError('photoKey missing');
+    return k;
+  }
+
+  /// [HF-APP-PARITY-MERCH-1] Every order paid together from the bag (`mgp_...`). The server first asks the payment gateway
+  /// when the group is still waiting, so this is also the payment-return poll.
+  Future<FanGroup> myGroup(String groupId) async {
+    final j = await _api.getJson('$_base/my-orders/${Uri.encodeComponent(groupId)}');
+    return FanGroup.fromJson(_map(j['group']));
+  }
+
+  /// [HF-APP-PARITY-MERCH-1] The GST invoice PDF of a paid order. [receiptUrl] is the `receiptUrl` of the order (absolute); the file
+  /// needs the sign-in token, so it is read through the API client and never opened as a plain link.
+  Future<List<int>> receiptBytes(String receiptUrl) {
+    final u = Uri.parse(receiptUrl);
+    return _api.getBytes(u.hasQuery ? '${u.path}?${u.query}' : u.path);
+  }
+
+  // ---------------------------------------------------------------------------------------------- [HF-APP-PARITY-MERCH-1] GSTIN
+
+  /// `GET /api/hf/merch/tax` -> `{gstin: string | null}`. Optional, recorded only.
+  Future<String?> gstin() async {
+    final g = (await _api.getJson('$_base/tax'))['gstin'];
+    return g is String && g.isNotEmpty ? g : null;
+  }
+
+  /// `PUT /api/hf/merch/tax {gstin}`; an empty string removes it. 400 `invalid_gstin`. Returns what the server kept.
+  Future<String?> saveGstin(String gstin) async {
+    final g = (await _api.putJson('$_base/tax', body: {'gstin': gstin}))['gstin'];
+    return g is String && g.isNotEmpty ? g : null;
   }
 
   // ---------------------------------------------------------------------------------------------- helpers
