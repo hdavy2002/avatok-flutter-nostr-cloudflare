@@ -13,7 +13,7 @@ faq:
     a: "When your T-shirt is shipped. We send the courier name and tracking link on WhatsApp and email, and they also show in My orders."
   - q: "Why is my order still not shipped?"
     a: "Every order is checked by our team and then printed just for you. That takes some time. Check the step in My orders."
-draft: true
+draft: false
 ---
 
 <!-- rebrand: reviewed -->

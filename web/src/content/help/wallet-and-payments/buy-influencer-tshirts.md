@@ -15,7 +15,7 @@ faq:
     a: "No. Each T-shirt is printed for you, so there are no returns or exchanges. If it arrives wrong or damaged, report it within 48 hours of delivery with a photo and we will replace it or refund you."
   - q: "How do I track my order?"
     a: "Open My orders. When your T-shirt ships you see the courier and a tracking link, and we send them to you on WhatsApp and email."
-draft: true
+draft: false
 ---
 
 <!-- rebrand: reviewed -->

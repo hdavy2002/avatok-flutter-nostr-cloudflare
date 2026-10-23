@@ -13,7 +13,7 @@ faq:
     a: "Only the first name, the city and state and a blurred address line. Never a phone number, email, full address or payment details."
   - q: "When can I withdraw merch money?"
     a: "7 days after the order is delivered (currently), with the Withdraw button. A refunded order earns nothing."
-draft: true
+draft: false
 ---
 
 <!-- rebrand: reviewed -->

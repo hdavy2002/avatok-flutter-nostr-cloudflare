@@ -15,7 +15,7 @@ faq:
     a: "You keep 60% of your markup (currently). We keep 40% and pay GST and payment fees out of our share, so they never reduce yours."
   - q: "Why is my product waiting?"
     a: "Every new product is reviewed by our team before it goes on sale. You tick that you own the art."
-draft: true
+draft: false
 ---
 
 <!-- rebrand: reviewed -->

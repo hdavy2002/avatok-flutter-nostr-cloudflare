@@ -166,9 +166,8 @@ export const faqSections: FaqSection[] = [
   },
 ];
 
-export const faqCount = faqSections.reduce((n, s) => n + s.items.length, 0);
 
-// [HF-FAQ-REFRESH-1] / [HF-HELP-MERCH-1] MERCH topic: NOT RENDERED. `merchFaqSection` is intentionally unused by /faq, the FAQPage
+// [HF-FAQ-REFRESH-1] / [HF-HELP-MERCH-1] MERCH topic: RENDERED since merch went live on 2026-10-23 (inserted into faqSections below). Originally drafted as NOT RENDERED. `merchFaqSection` is intentionally unused by /faq, the FAQPage
 // structured data and faqCount, because influencer merch (HF-MERCH-1..12) is still switched off (hfMerchEnabled /
 // hfMerchCheckoutEnabled). When merch goes live, add it to `faqSections` (e.g. insert before 'payments') in the same commit that
 // publishes the merch help articles (draft: false). faq.astro's dabbaFor()/dabbaArt() may need an entry for the 'merch' id.
@@ -188,3 +187,11 @@ export const merchFaqSection: FaqSection = {
     { q: 'Why is my product or order waiting?', a: 'Every new product is reviewed by our team before it goes on sale, and every paid order is checked before it is printed. If the printing cost has risen a lot since you set your price, an order may be cancelled with a full refund to the fan, and you are asked to raise your price.' },
   ],
 };
+
+// [HF-HELP-MERCH-1 2026-10-23] Merch is live (hfMerchEnabled on): show the topic on /faq and in the FAQPage data, before Payments.
+{
+  const at = faqSections.findIndex((x) => x.id === 'payments');
+  faqSections.splice(at < 0 ? faqSections.length : at, 0, merchFaqSection);
+}
+
+export const faqCount = faqSections.reduce((n, s) => n + s.items.length, 0);

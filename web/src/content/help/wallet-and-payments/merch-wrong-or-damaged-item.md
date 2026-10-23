@@ -13,7 +13,7 @@ faq:
     a: "Report it within 48 hours of delivery with a photo. We will replace it or refund you."
   - q: "Where does the refund go?"
     a: "Back the way you paid: to your wallet if you paid from your wallet, and to your payment method if you paid online."
-draft: true
+draft: false
 ---
 
 <!-- rebrand: reviewed -->
