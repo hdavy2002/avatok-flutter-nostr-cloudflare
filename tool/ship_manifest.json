@@ -11584,5 +11584,12 @@
         "note": "A queued fan was auto-connected after the break (needs hfCallQueueEnabled + lane flags)."
       }
     ]
+  },
+  "HF-CALL-MODES-INT-CLIENTS": {
+    "description": "Client fixes against the real call-modes API; ticker uses mode; telemetry catalog.",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [],
+    "no_telemetry": "Client-side contract fixes for already-declared flows; success asserted by HF-CALL-MODES-E1/E2 events."
   }
 }
