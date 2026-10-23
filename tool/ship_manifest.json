@@ -11936,5 +11936,22 @@
   "HF-BLOCK-PROFILE-1": {
     "description": "[HF-BLOCK-PROFILE-1] Block a person from their profile (POST /api/hf/blocks {slug}) and a Blocked people screen in Settings with Unblock; same block row and effects as blocking from a call.",
     "no_telemetry": "Server already tracks hf_dash_block (now with source=profile) and hf_dash_unblock; the rest is client UI."
+  },
+  "HF-APP-PARITY-MERCH-1": {
+    "description": "[HF-APP-PARITY-MERCH-1] App matches the website for merch, share and GST: optional GSTIN box, Share my page with WhatsApp / X / Facebook / Instagram tip (QR skipped: no QR package), Share your shop row and summary strip with order counts on My merch, edit product name and description, copy product link, hide-instead on delete, fan order tracker, bag (group) orders and payment-return polling, GST invoice download with sign-in, report a problem with a photo, remove saved addresses, and clear checkout_off / gst_not_ready / test-credit wallet messages.",
+    "two_sided": true,
+    "min_devices_on_build": 1,
+    "flags": [
+      "hfMerchEnabled"
+    ],
+    "success": [
+      {
+        "event": "profile_share_clicked",
+        "property": "network",
+        "exists": true,
+        "min_events": 1,
+        "note": "Someone tapped a share button for an influencer page from the app (own=true). Proves the tap, not that the link was posted. The other new app events (merch_receipt_opened, merch_problem_submitted, merch_gstin_saved) are secondary checks."
+      }
+    ]
   }
 }
