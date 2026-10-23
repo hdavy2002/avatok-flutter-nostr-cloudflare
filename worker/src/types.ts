@@ -158,6 +158,7 @@ export interface Env {
   VOICE_SESSION: DurableObjectNamespace;
   CONSULT_CALL: DurableObjectNamespace; // [AUMFE-CONSULT-FOUNDATION-1] Real Consultants 1:1 audio signalling, one per booking
   HF_CALL: DurableObjectNamespace; // [HF-CALLS-1] HfCallDO: one per masked paid call (state machine, alarms, billing)
+  HF_HOST_LINE: DurableObjectNamespace; // [HF-CALL-MODES-B] HfHostLineDO: one per influencer (idFromName(hostUid)); serialises the call queue, owns break/dispatch/expiry alarms
   // Durable Object — [AVA-PSTN-AGENT-1] live Gemini agent on CELL (Vobiz DID)
   // calls via bidirectional media streams. One instance per PSTN agent session
   // (`pstn-<CallUUID>`); speaks the Vobiz JSON frame protocol to the caller and

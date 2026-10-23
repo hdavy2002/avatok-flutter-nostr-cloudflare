@@ -539,6 +539,12 @@ class_name = "ConsultCallDO"
 name = "HF_CALL"
 class_name = "HfCallDO"
 
+# [HF-CALL-MODES-B] Hello Fraands call queue line, one per influencer (idFromName(hostUid)): serialises join/leave/line-free/mode/pause/sweep and owns
+# the break (60 s) / dispatch / skip (10 s) / expiry / WhatsApp-pacing alarms. DARK behind hfCallQueueEnabled (routes/config.ts).
+[[durable_objects.bindings]]
+name = "HF_HOST_LINE"
+class_name = "HfHostLineDO"
+
 # [HF-WORKER-FREE-1] Dynamic Workers require Workers Paid. Keep the LOADER
 # binding absent while this shared API runs on Workers Free; its flags stay off.
 
@@ -695,6 +701,11 @@ new_sqlite_classes = ["ConsultCallDO"]
 [[migrations]]
 tag = "v27"
 new_sqlite_classes = ["HfCallDO"]
+
+# [HF-CALL-MODES-B] Hello Fraands call queue line DO.
+[[migrations]]
+tag = "v28"
+new_sqlite_classes = ["HfHostLineDO"]
 
 # Brain reasoning + observability config (vars; secrets set via wrangler):
 #   BRAIN_REASONER_MODEL  — default @cf/meta/llama-3.1-8b-instruct-fp8 (8B)
@@ -1097,6 +1108,11 @@ class_name = "ConsultCallDO"
 name = "HF_CALL"
 class_name = "HfCallDO"
 
+# [HF-CALL-MODES-B] Hello Fraands call queue line DO.
+[[env.staging.durable_objects.bindings]]
+name = "HF_HOST_LINE"
+class_name = "HfHostLineDO"
+
 [[env.staging.migrations]]
 tag = "v1"
 new_sqlite_classes = ["CallRoom"]
@@ -1212,3 +1228,8 @@ new_sqlite_classes = ["ConsultCallDO"]
 [[env.staging.migrations]]
 tag = "v27"
 new_sqlite_classes = ["HfCallDO"]
+
+# [HF-CALL-MODES-B] Hello Fraands call queue line DO.
+[[env.staging.migrations]]
+tag = "v28"
+new_sqlite_classes = ["HfHostLineDO"]
