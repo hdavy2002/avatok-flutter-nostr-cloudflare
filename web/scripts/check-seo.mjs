@@ -60,8 +60,12 @@ for (const file of htmlFiles(dist)) {
 }
 
 assert(indexable > 0, 'No indexable HTML pages found');
-for (const output of ['sitemap-pages.xml', 'llms.txt']) {
-  assert(existsSync(join(dist, output)), `Missing discovery output: ${output}`);
+assert(existsSync(join(dist, 'sitemap-pages.xml')), 'Missing discovery output: sitemap-pages.xml');
+// [HF-RELEASE-CONTRACTS-1] llms.txt became an on-request route (HF-MERCH-FAN-WEB-1, prerender=false) so it can list live
+// influencers and merch; it is no longer a file in dist. Accept either form, but the route must still exist.
+{
+  const llmsSrc = resolve('src/pages/llms.txt.ts');
+  assert(existsSync(join(dist, 'llms.txt')) || (existsSync(llmsSrc) && /export const GET/.test(readFileSync(llmsSrc, 'utf8'))), 'Missing discovery output: llms.txt');
 }
 const sitemapPages = readFileSync(join(dist, 'sitemap-pages.xml'), 'utf8');
 const sitemapLocations = new Set([...sitemapPages.matchAll(/<loc>(https:\/\/[^<]+)<\/loc>/g)].map((match) => match[1]));
@@ -96,6 +100,10 @@ const dynamicCoverage = new Map([
   ['src/pages/shop/all.astro', 'sitemap-pages.xml'],
   ['src/pages/shop/c/[slug].astro', 'sitemap-pages.xml'],
   ['src/pages/shop/p/[slug].astro', 'sitemap-pages.xml'],
+  // [HF-RELEASE-CONTRACTS-1] Influencer merch product pages are listed in sitemap-merch.xml (HF-MERCH-FAN-WEB-1).
+  ['src/pages/h/[slug]/merch/[product].astro', 'sitemap-merch.xml'],
+  // Influencer public pages are listed in sitemap-influencers.xml (HF-MERCH-FAN-WEB-1).
+  ['src/pages/h/[slug].astro', 'sitemap-influencers.xml'],
 ]);
 function sourceFiles(directory) {
   return readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {

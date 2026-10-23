@@ -98,7 +98,7 @@ export function checkHelloFraandsPages(root, identity) {
     "You are billed by the minute for the time you speak, at the influencer's rate.",
     'Ringing, a declined, cancelled or missed call, and a call that fails before we join you all cost ₹0.',
     'If a joined call breaks within the first minute, we charge ₹1 and return the rest to your wallet.',
-    'Anyone can withdraw wallet money with the Payout button.',
+    'Anyone can withdraw wallet money with the Withdraw button.', // [HF-WITHDRAW-1] Payout renamed Withdraw (owner 2026-10-23)
     'Influencers earn a share of the rate for every minute spoken.',
   ]) assert(wallet.includes(copy), 'Wallet Standard call contract: ' + copy);
   // [HF-BILL-MINUTE-1 2026-10-18] Owner: per-minute billing, and public pages never name the payment provider.
