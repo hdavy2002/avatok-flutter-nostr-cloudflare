@@ -253,6 +253,14 @@ class _ProductsTabState extends State<_ProductsTab> {
   }
 }
 
+/// "₹120" for one value, "₹120 – ₹180" for a spread.
+String _range(Iterable<int> paise) {
+  if (paise.isEmpty) return '—';
+  final lo = paise.reduce((a, b) => a < b ? a : b);
+  final hi = paise.reduce((a, b) => a > b ? a : b);
+  return lo == hi ? merchRupees(lo) : '${merchRupees(lo)} – ${merchRupees(hi)}';
+}
+
 class _ProductCard extends StatelessWidget {
   const _ProductCard({required this.product, required this.onEdit, required this.onToggleHidden, required this.onDelete});
 
@@ -274,6 +282,11 @@ class _ProductCard extends StatelessWidget {
           Expanded(
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Text(p.title, maxLines: 2, overflow: TextOverflow.ellipsis, style: t(18)),
+              if (p.catalogName.isNotEmpty || p.colours.isNotEmpty)
+                Text(
+                  [if (p.catalogName.isNotEmpty) p.catalogName, if (p.colours.isNotEmpty) '${p.colours.length} ${p.colours.length == 1 ? 'colour' : 'colours'}'].join(' · '),
+                  style: t(14, color: C.muted, w: FontWeight.w700),
+                ),
               const SizedBox(height: 6),
               Wrap(spacing: 6, runSpacing: 6, children: [
                 merchProductChip(p.status),
@@ -284,6 +297,13 @@ class _ProductCard extends StatelessWidget {
                 p.sizes.isEmpty ? 'Markup ${merchRupees(p.markupRupees * 100)}' : 'Fans pay from ${merchRupees(p.fromPaise)} (incl. ${merchGstText(p.gstRateBps)} & delivery) · your markup ${merchRupees(p.markupRupees * 100)}',
                 style: t(14, color: C.muted, w: FontWeight.w700),
               ),
+              if (p.sizes.isNotEmpty) ...[
+                const SizedBox(height: 4),
+                Text.rich(TextSpan(children: [
+                  TextSpan(text: _range(p.sizes.map((s) => s.youEarnPaise)), style: t(15, color: C.rani)),
+                  TextSpan(text: ' design royalty per item', style: t(14, color: C.muted, w: FontWeight.w700)),
+                ])),
+              ],
             ]),
           ),
         ]),
@@ -293,7 +313,10 @@ class _ProductCard extends StatelessWidget {
         ],
         if (p.status == 'pending') ...[
           const SizedBox(height: 10),
-          Text('Our team is checking it before it goes on sale.', style: t(15, color: C.muted, w: FontWeight.w700)),
+          Text(
+            (p.reviewNote ?? '').isNotEmpty ? p.reviewNote! : 'Our team is checking your art. You can still change the price.',
+            style: t(15, color: C.muted, w: FontWeight.w700),
+          ),
         ],
         const SizedBox(height: 12),
         Wrap(spacing: 8, runSpacing: 8, children: [
@@ -364,9 +387,12 @@ class _MarkupSheetState extends State<_MarkupSheet> {
     if (m < _min) return 'The markup must be at least ${merchRupees(_min * 100)}.';
     if (m > 5000) return 'The markup can be at most ₹5,000.';
     final cap = _maxMarkup;
-    if (m > cap) return 'Clothing is capped at ₹2,500 so the 5% GST rate applies. The most you can add is ${merchRupees(cap * 100)}.';
+    if (m > cap) return '$_capHint The most you can add is ${merchRupees(cap * 100)}.';
     return null;
   }
+
+  /// [HF-MERCH-PARITY-1] The cap sentence from the catalog's own cap and this product's GST rate (web `capHint`).
+  String get _capHint => merchCapHintFor(capPaise: _cat?.priceCapPaise, gstBps: widget.product.gstRateBps ?? _cat?.gstRateBps);
 
   /// [HF-MERCH-GST-2] Highest markup that keeps every size of this product under the price cap (from the catalog cap and each base).
   /// Only clothing is capped; other categories keep the old limit.
@@ -408,7 +434,7 @@ class _MarkupSheetState extends State<_MarkupSheet> {
       if (mounted) {
         setState(() {
           _busy = false;
-          _error = merchErrorText(e);
+          _error = merchErrorText(e, capPaise: _cat?.priceCapPaise, gstBps: widget.product.gstRateBps ?? _cat?.gstRateBps);
         });
       }
     }
@@ -435,7 +461,7 @@ class _MarkupSheetState extends State<_MarkupSheet> {
             formatters: [FilteringTextInputFormatter.digitsOnly, LengthLimitingTextInputFormatter(4)],
             onChanged: (_) => setState(() => _error = null),
           ),
-          if (widget.product.capApplies == true) Padding(padding: const EdgeInsets.only(bottom: 6), child: Text(merchCapHint, style: t(13, color: C.muted))),
+          if (widget.product.capApplies == true) Padding(padding: const EdgeInsets.only(bottom: 6), child: Text(_capHint, style: t(14, color: C.muted))),
           if (valid)
             for (final s in widget.product.sizes)
               Padding(
@@ -451,11 +477,12 @@ class _MarkupSheetState extends State<_MarkupSheet> {
                       padding: const EdgeInsets.only(left: 52),
                       child: Text(
                         'Printing incl. GST ${merchRupees(s.printingPaise!)} + Shipping ${merchRupees(s.shippingPaise!)} = Base ${merchRupees(s.basePaise)}${widget.product.breakdownEstimated ? ' (estimate)' : ''}',
-                        style: t(13, color: C.muted),
+                        style: t(14, color: C.muted),
                       ),
                     ),
                 ]),
               ),
+          if (cat != null) MerchPriceNote(shareBps: cat.platformShareBps, holdDays: cat.holdDays),
           if (_error != null) ...[
             const SizedBox(height: 8),
             Text(_error!, style: t(15, color: C.ruby, w: FontWeight.w700)),
@@ -660,7 +687,7 @@ class _OrderTileState extends State<_OrderTile> {
           if (o.addressMasked.isNotEmpty) Text(o.addressMasked, style: t(15, color: C.muted, w: FontWeight.w700)),
           Padding(
             padding: const EdgeInsets.only(top: 4),
-            child: Text('The fan’s full address and phone are kept private. We print and ship for you.', style: t(13, color: C.muted, w: FontWeight.w700, h: 1.3)),
+            child: Text('The fan’s full address and phone are kept private. We print and ship for you.', style: t(14, color: C.muted, w: FontWeight.w700, h: 1.3)),
           ),
           if (ship != null) ...[
             const SizedBox(height: 10),

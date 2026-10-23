@@ -14,12 +14,15 @@ import 'silhouettes.dart';
 /// handles to scale and a round handle to turn. The layers are changed in place; the owner is told through [onChanged] while a
 /// gesture runs and through [onCommit] when it ends (that is where undo history is recorded).
 
-enum _Drag { none, move, corner, rotate }
+enum _Drag { none, move, corner, rotate, pan, zoom }
 
 double _cl(double v, double lo, double hi) => math.max(lo, math.min(hi, v));
 
 class _View {
-  _View(this.k, this.origin, this.geom);
+  _View(this.k, this.origin, this.geom, this.centre);
+
+  /// Screen point that shows the view's focus (middle of the usable stage).
+  final Offset centre;
 
   /// Screen px per stage unit.
   final double k;
@@ -57,7 +60,9 @@ class StudioStage extends StatefulWidget {
     required this.layers,
     required this.selectedId,
     required this.store,
-    required this.zoomToArea,
+    required this.zoom,
+    required this.focus,
+    required this.onView,
     required this.bottomInset,
     required this.onSelect,
     required this.onChanged,
@@ -73,8 +78,10 @@ class StudioStage extends StatefulWidget {
   final String? selectedId;
   final ImageStore store;
 
-  /// Zoom in on the print area.
-  final bool zoomToArea;
+  /// View zoom 1..4 (1 = whole product) and the stage point (0..1000) shown in the middle. View only: never touches the layers.
+  final double zoom;
+  final Offset focus;
+  final void Function(double zoom, Offset focus) onView;
 
   /// Height at the bottom that a tool panel covers (the product is centred in what is left).
   final double bottomInset;
@@ -96,6 +103,8 @@ class _StudioStageState extends State<StudioStage> {
   int _count = 1;
   bool _changed = false;
   bool _guideV = false, _guideH = false;
+  double _viewBaseK = 1, _viewStartZoom = 1, _viewRefScale = 1;
+  Offset _viewStartFocus = const Offset(500, 500), _viewStartFocal = Offset.zero, _viewW0 = Offset.zero;
 
   DesignLayer? get _selected {
     for (final l in widget.layers) {
@@ -108,10 +117,11 @@ class _StudioStageState extends State<StudioStage> {
     final geom = printAreaPx(widget.family, widget.side, widget.areaW, widget.areaH);
     final usableH = math.max(80.0, size.height - widget.bottomInset);
     final base = math.min(size.width, usableH) / 1060;
-    final z = widget.zoomToArea ? _cl(1000 / (math.max(geom.rect.width, geom.rect.height) * 1.18), 1.0, 4.0) : 1.0;
+    final z = _cl(widget.zoom, 1.0, 4.0);
     final k = base * z;
-    final c = widget.zoomToArea ? geom.rect.center : const Offset(500, 500);
-    return _View(k, Offset(size.width / 2 - c.dx * k, usableH / 2 - c.dy * k), geom);
+    final c = z <= 1.001 ? const Offset(500, 500) : widget.focus;
+    final centre = Offset(size.width / 2, usableH / 2);
+    return _View(k, Offset(centre.dx - c.dx * k, centre.dy - c.dy * k), geom, centre);
   }
 
   // ---------------------------------------------------------------------------------------------- hit tests
@@ -129,6 +139,55 @@ class _StudioStageState extends State<StudioStage> {
       if (lx.abs() <= h.width && ly.abs() <= h.height) return l;
     }
     return null;
+  }
+
+  bool _inBox(_View v, DesignLayer l, Offset p) {
+    final c = v.centreOf(l);
+    final h = _halfBox(v, l);
+    final a = -l.rotation * kRadPerDeg;
+    final dx = p.dx - c.dx, dy = p.dy - c.dy;
+    final lx = dx * math.cos(a) - dy * math.sin(a);
+    final ly = dx * math.sin(a) + dy * math.cos(a);
+    return lx.abs() <= h.width && ly.abs() <= h.height;
+  }
+
+  // View zoom and pan (screen px to stage units).
+  void _startPan(Offset focal) {
+    _drag = _Drag.pan;
+    _count = 1;
+    _viewStartFocus = widget.focus;
+    _viewStartFocal = focal;
+  }
+
+  void _startZoom(_View v, Offset focal, int count) {
+    _drag = _Drag.zoom;
+    _count = count;
+    _viewBaseK = v.k / _cl(widget.zoom, 1.0, 4.0);
+    _viewStartZoom = _cl(widget.zoom, 1.0, 4.0);
+    _viewRefScale = 1;
+    _viewW0 = Offset((focal.dx - v.origin.dx) / v.k, (focal.dy - v.origin.dy) / v.k);
+  }
+
+  void _updateView(_View v, ScaleUpdateDetails d) {
+    if (d.pointerCount != _count) {
+      _count = d.pointerCount;
+      if (d.pointerCount >= 2) {
+        _startZoom(v, d.localFocalPoint, d.pointerCount);
+        _viewRefScale = d.scale <= 0 ? 1 : d.scale;
+      } else {
+        _startPan(d.localFocalPoint);
+      }
+      return;
+    }
+    if (_drag == _Drag.pan) {
+      final f = Offset(_viewStartFocus.dx - (d.localFocalPoint.dx - _viewStartFocal.dx) / v.k, _viewStartFocus.dy - (d.localFocalPoint.dy - _viewStartFocal.dy) / v.k);
+      widget.onView(widget.zoom, f);
+    } else if (_drag == _Drag.zoom) {
+      final z = _cl(_viewStartZoom * d.scale / _viewRefScale, 1.0, 4.0);
+      final newK = _viewBaseK * z;
+      final f = _viewW0 + (v.centre - d.localFocalPoint) / newK;
+      widget.onView(z, z <= 1.001 ? const Offset(500, 500) : f);
+    }
   }
 
   Offset _rotHandle(_View v, DesignLayer l) {
@@ -201,12 +260,19 @@ class _StudioStageState extends State<StudioStage> {
         _active = hit;
         _drag = _Drag.move;
         _rebase(hit, d.localFocalPoint, 1, 1, 0);
+      } else if (widget.zoom > 1.001) {
+        _startPan(d.localFocalPoint);
       } else if (sel != null) {
         widget.onSelect(null);
       }
     } else {
-      final t = sel ?? _hitLayer(v, p);
-      if (t != null && t.visible && !t.locked) {
+      final f = d.localFocalPoint;
+      final DesignLayer? t = (sel != null && sel.visible && _inBox(v, sel, f)) ? sel : _hitLayer(v, f);
+      if (t == null) {
+        _startZoom(v, f, d.pointerCount);
+        return;
+      }
+      if (t.visible && !t.locked) {
         if (t.id != widget.selectedId) widget.onSelect(t.id);
         _active = t;
         _drag = _Drag.move;
@@ -235,6 +301,10 @@ class _StudioStageState extends State<StudioStage> {
 
   void _update(ScaleUpdateDetails d) {
     final v = _view;
+    if (v != null && (_drag == _Drag.pan || _drag == _Drag.zoom)) {
+      _updateView(v, d);
+      return;
+    }
     final l = _active;
     if (v == null || l == null || l.locked || _drag == _Drag.none) return;
     if (d.pointerCount != _count) {
@@ -269,6 +339,8 @@ class _StudioStageState extends State<StudioStage> {
           l.rotation = _snapAngle(_startRot + (d.rotation - _refRot) / kRadPerDeg);
         }
       case _Drag.none:
+      case _Drag.pan:
+      case _Drag.zoom:
         return;
     }
     _changed = true;

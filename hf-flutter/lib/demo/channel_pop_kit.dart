@@ -368,6 +368,18 @@ class GpQty extends StatelessWidget {
   }
 }
 
+/// The last pincode the fan checked or typed, kept in memory for this app session (the website keeps it in the tab's session
+/// storage the same way) so the product page and the checkout fill it in. Nothing is written to disk.
+class MerchLastPincode {
+  static String? value;
+
+  /// Remembers [pin] when it is a valid 6 digit pincode.
+  static void remember(String pin) {
+    final v = pin.trim();
+    if (RegExp(r'^[1-9][0-9]{5}$').hasMatch(v)) value = v;
+  }
+}
+
 // ------------------------------------------------------------------------------------------------ product card
 
 /// A merch tile: plain soft square (no arch, no shelf), "+ Add" on it, category, title and price under it.
@@ -381,6 +393,7 @@ class GpProductCard extends StatelessWidget {
     required this.onTap,
     this.onAdd,
     this.categorySlug = '',
+    this.soldOut = false,
   });
 
   final String title;
@@ -390,6 +403,9 @@ class GpProductCard extends StatelessWidget {
   final VoidCallback onTap;
   final VoidCallback? onAdd;
   final String categorySlug;
+
+  /// Every size is gone: the tile shows a disabled "Sold out" pill instead of "Add".
+  final bool soldOut;
 
   @override
   Widget build(BuildContext context) {
@@ -408,7 +424,22 @@ class GpProductCard extends StatelessWidget {
               borderRadius: BorderRadius.circular(18),
               child: Stack(fit: StackFit.expand, children: [
                 ColoredBox(color: GP.tile, child: url == null ? stand : NetImage(url, fit: BoxFit.contain, fallback: stand)),
-                if (onAdd != null)
+                if (soldOut)
+                  Positioned(
+                    right: 8,
+                    bottom: 8,
+                    child: Semantics(
+                      label: '$title is sold out',
+                      child: Container(
+                        constraints: const BoxConstraints(minHeight: 48),
+                        padding: const EdgeInsets.symmetric(horizontal: 14),
+                        alignment: Alignment.center,
+                        decoration: const ShapeDecoration(color: GP.line, shape: StadiumBorder()),
+                        child: Text('Sold out', style: t(15, color: GP.muted, w: FontWeight.w900)),
+                      ),
+                    ),
+                  )
+                else if (onAdd != null)
                   Positioned(
                     right: 8,
                     bottom: 8,

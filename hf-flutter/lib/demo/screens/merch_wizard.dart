@@ -47,6 +47,8 @@ class _MerchWizardScreenState extends State<MerchWizardScreen> {
   String? _artError;
   bool _own = false;
   bool _refUsed = false;
+  final Set<String> _earlierIds = <String>{}; // AI pictures from before this visit: shown under their own heading
+  String? _uploadNote; // "Uploading 2 of 3…"
 
   // step 2: product
   AsyncState<MerchCatalog> _cat = const AsyncLoading();
@@ -101,7 +103,10 @@ class _MerchWizardScreenState extends State<MerchWizardScreen> {
       setState(() {
         _ai = info;
         for (final g in info.recent) {
-          if (_arts.every((a) => a.artId != g.art.artId)) _arts.add(StudioArt(art: g.art, source: 'ai', label: g.prompt));
+          if (_arts.every((a) => a.artId != g.art.artId)) {
+            _arts.add(StudioArt(art: g.art, source: 'ai', label: g.prompt));
+            _earlierIds.add(g.art.artId);
+          }
         }
       });
     } catch (_) {
@@ -125,6 +130,7 @@ class _MerchWizardScreenState extends State<MerchWizardScreen> {
   void _removeFromTray(StudioArt a) {
     setState(() {
       _arts.removeWhere((x) => x.artId == a.artId);
+      _earlierIds.remove(a.artId);
       _picked.remove(a.artId);
     });
   }
@@ -141,7 +147,25 @@ class _MerchWizardScreenState extends State<MerchWizardScreen> {
     return out;
   }
 
-  /// Gallery -> upload. Adds the picture to the tray; returns it, or null when nothing was added (the reason is shown).
+  /// One chosen picture -> the server. On a PNG it also measures how soft the edges are, like the website does.
+  Future<StudioArt> _uploadPicked(PickedArt picked) async {
+    var up = await _repo.uploadArt(picked.bytes, contentType: picked.mime, fileName: picked.name);
+    if (picked.mime == 'image/png') {
+      final pct = await MerchArtPicker.softEdgePercent(picked.bytes);
+      if (pct > 25) {
+        up = ArtUpload(
+          artId: up.artId,
+          url: up.url,
+          width: up.width,
+          height: up.height,
+          warnings: [...up.warnings, 'Edges look soft. It may print a little fuzzy.'],
+        );
+      }
+    }
+    return StudioArt(art: up, source: 'upload', bytes: picked.bytes, label: picked.name);
+  }
+
+  /// Gallery -> upload of ONE picture (the AI guide picture). Adds it to the tray; returns it, or null when nothing was added (the reason is shown).
   Future<StudioArt?> _pickAndUpload({bool select = true}) async {
     if (_busyArt) return null;
     setState(() {
@@ -152,10 +176,7 @@ class _MerchWizardScreenState extends State<MerchWizardScreen> {
     StudioArt? made;
     try {
       final picked = await MerchArtPicker.pick();
-      if (picked != null) {
-        final up = await _repo.uploadArt(picked.bytes, contentType: picked.mime, fileName: picked.name);
-        made = StudioArt(art: up, source: 'upload', bytes: picked.bytes, label: picked.name);
-      }
+      if (picked != null) made = await _uploadPicked(picked);
     } on PlatformException catch (e) {
       problem = e.code == 'too_large' ? 'The picture must be 15 MB or smaller.' : 'Could not open that picture. Try another one.';
     } on ApiException catch (e) {
@@ -173,6 +194,52 @@ class _MerchWizardScreenState extends State<MerchWizardScreen> {
     if (err != null) toast(context, err);
     if (made != null) _addToTray(made, select: select);
     return made;
+  }
+
+  /// Gallery -> upload of up to 5 pictures at once. Each one is checked and sent in turn and added to the tray as it finishes.
+  Future<void> _pickAndUploadMany() async {
+    if (_busyArt) return;
+    setState(() {
+      _busyArt = true;
+      _artError = null;
+      _uploadNote = null;
+    });
+    final problems = <String>[];
+    try {
+      final picked = await MerchArtPicker.pickMany(max: 5);
+      for (var i = 0; i < picked.length; i++) {
+        final one = picked[i];
+        final bad = one.problem;
+        if (bad != null) {
+          problems.add(bad);
+          continue;
+        }
+        if (!mounted) return;
+        setState(() => _uploadNote = picked.length > 1 ? 'Uploading ${i + 1} of ${picked.length}…' : null);
+        try {
+          final art = await _uploadPicked(one);
+          if (!mounted) return;
+          _addToTray(art, select: true);
+        } on ApiException catch (e) {
+          problems.add('${one.name}: ${e.userMessage}');
+        } catch (e, st) {
+          merchCapture(e, st, 'art');
+          problems.add('${one.name}: Could not read that picture. Try another one.');
+        }
+      }
+    } on PlatformException catch (e) {
+      problems.add(e.code == 'too_large' ? 'The picture must be 15 MB or smaller.' : 'Could not open that picture. Try another one.');
+    } catch (e, st) {
+      merchCapture(e, st, 'art');
+      problems.add('Could not read that picture. Try another one.');
+    }
+    if (!mounted) return;
+    setState(() {
+      _busyArt = false;
+      _uploadNote = null;
+      _artError = problems.isEmpty ? null : problems.join('\n');
+    });
+    if (problems.isNotEmpty) toast(context, problems.first);
   }
 
   Future<void> _openAi() async {
@@ -209,7 +276,7 @@ class _MerchWizardScreenState extends State<MerchWizardScreen> {
           child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
             Text('Add another picture', style: t(22, color: C.maroon)),
             const SizedBox(height: 12),
-            MerchChoiceCard(icon: Icons.photo_library_rounded, title: 'Upload art or photo', sub: 'From your phone gallery', tone: DesiTone.lav, onTap: () => Navigator.of(ctx).pop('upload')),
+            MerchChoiceCard(icon: Icons.photo_library_rounded, title: 'Upload art or photo', sub: 'From your phone gallery. You can choose several.', tone: DesiTone.lav, onTap: () => Navigator.of(ctx).pop('upload')),
             if (_aiOn) ...[
               const SizedBox(height: 12),
               MerchChoiceCard(icon: Icons.auto_awesome_rounded, title: 'Create with AI', sub: _aiPriceText(), tone: DesiTone.gold, onTap: () => Navigator.of(ctx).pop('ai')),
@@ -220,7 +287,7 @@ class _MerchWizardScreenState extends State<MerchWizardScreen> {
     );
     if (!mounted) return;
     if (choice == 'upload') {
-      await _pickAndUpload();
+      await _pickAndUploadMany();
     } else if (choice == 'ai') {
       await _openAi();
     }
@@ -298,8 +365,20 @@ class _MerchWizardScreenState extends State<MerchWizardScreen> {
     if (m < _minMarkup) return 'The markup must be at least ${merchRupees(_minMarkup * 100)}.';
     if (m > 5000) return 'The markup can be at most ₹5,000.';
     final cap = _maxMarkup;
-    if (m > cap) return 'Clothing is capped at ₹2,500 so the 5% GST rate applies. The most you can add is ${merchRupees(cap * 100)}.';
+    if (m > cap) return '$_capHint The most you can add is ${merchRupees(cap * 100)}.';
     return null;
+  }
+
+  int? get _capPaiseOrNull {
+    final c = _cat;
+    return c is AsyncData<MerchCatalog> ? c.value.priceCapPaise : null;
+  }
+
+  /// [HF-MERCH-PARITY-1] The cap sentence from the catalog's own cap and this product's GST rate (web `capHint`).
+  String get _capHint {
+    final c = _cat;
+    final cat = c is AsyncData<MerchCatalog> ? c.value : null;
+    return merchCapHintFor(capPaise: cat?.priceCapPaise, gstBps: _item?.gstRateBps ?? cat?.gstRateBps);
   }
 
   /// [HF-MERCH-GST-2] Highest markup that keeps every chosen size under the price cap: the smallest per-size maximum from the quote,
@@ -349,7 +428,7 @@ class _MerchWizardScreenState extends State<MerchWizardScreen> {
       if (mounted) {
         setState(() {
           _quoting = false;
-          _quoteError = merchErrorText(e);
+          _quoteError = merchErrorText(e, capPaise: _capPaiseOrNull, gstBps: _item?.gstRateBps);
         });
       }
     }
@@ -398,7 +477,7 @@ class _MerchWizardScreenState extends State<MerchWizardScreen> {
       if (mounted) {
         setState(() {
           _publishing = false;
-          _publishError = merchErrorText(e);
+          _publishError = merchErrorText(e, capPaise: _capPaiseOrNull, gstBps: _item?.gstRateBps);
         });
       }
     } catch (e, st) {
@@ -578,11 +657,26 @@ class _MerchWizardScreenState extends State<MerchWizardScreen> {
     );
   }
 
+  Widget _artTile(StudioArt a) => MerchArtThumb(
+        a,
+        size: 96,
+        selected: _picked.contains(a.artId),
+        onTap: () => _togglePicked(a),
+        onRemove: () => _removeFromTray(a),
+        semanticLabel: a.source == 'ai' ? 'AI picture' : 'Your picture',
+      );
+
   Widget _artStep() {
     final warnings = <String>{
       for (final a in _arts)
         if (_picked.contains(a.artId)) ...a.art.warnings,
     };
+    // [HF-MERCH-PARITY-1] "checked by our team" is not a fault: one friendly line instead (same as the website).
+    final review = RegExp('checked by our team', caseSensitive: false);
+    final faults = [for (final w in warnings) if (!review.hasMatch(w)) w];
+    final teamLooks = warnings.any(review.hasMatch);
+    final mine = [for (final a in _arts) if (!_earlierIds.contains(a.artId)) a];
+    final earlier = [for (final a in _arts) if (_earlierIds.contains(a.artId)) a];
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 4, 16, 20),
       children: [
@@ -591,10 +685,11 @@ class _MerchWizardScreenState extends State<MerchWizardScreen> {
         MerchChoiceCard(
           icon: Icons.photo_library_rounded,
           title: 'Upload art or photo',
-          sub: 'From your phone gallery',
+          sub: 'From your phone gallery. You can choose up to 5 at once.',
           tone: DesiTone.lav,
           busy: _busyArt,
-          onTap: _busyArt ? null : () => unawaited(_pickAndUpload()),
+          busyLabel: _uploadNote ?? 'Uploading…',
+          onTap: _busyArt ? null : () => unawaited(_pickAndUploadMany()),
         ),
         if (_aiOn) ...[
           const SizedBox(height: 12),
@@ -602,23 +697,29 @@ class _MerchWizardScreenState extends State<MerchWizardScreen> {
         ],
         if (_artError != null) Padding(padding: const EdgeInsets.only(top: 10), child: Text(_artError!, style: t(15, color: C.ruby, w: FontWeight.w700))),
         const SizedBox(height: 20),
-        Text('My pictures', style: t(18, color: C.maroon)),
+        Row(children: [
+          Expanded(child: Text('My pictures', style: t(18, color: C.maroon))),
+          Text('${_picked.length} chosen', style: t(14, color: C.muted, w: FontWeight.w700)),
+        ]),
         const SizedBox(height: 2),
-        Text(_arts.isEmpty ? 'Your pictures will show here.' : 'Tap a picture to use it. Tap the cross to remove it.', style: t(14, color: C.muted, w: FontWeight.w700)),
+        Text(
+          mine.isEmpty
+              ? (earlier.isNotEmpty ? 'Tap one of your earlier AI pictures below, upload a picture, or create a new one with AI.' : 'Your pictures will show here.')
+              : 'Tap a picture to use it. Tap the cross to remove it.',
+          style: t(14, color: C.muted, w: FontWeight.w700),
+        ),
         const SizedBox(height: 14),
-        if (_arts.isNotEmpty)
-          Wrap(spacing: 16, runSpacing: 16, children: [
-            for (final a in _arts)
-              MerchArtThumb(
-                a,
-                size: 96,
-                selected: _picked.contains(a.artId),
-                onTap: () => _togglePicked(a),
-                onRemove: () => _removeFromTray(a),
-                semanticLabel: a.source == 'ai' ? 'AI picture' : 'Your picture',
-              ),
-          ]),
-        for (final w in warnings) MerchNote(w),
+        if (mine.isNotEmpty) Wrap(spacing: 16, runSpacing: 16, children: [for (final a in mine) _artTile(a)]),
+        if (earlier.isNotEmpty) ...[
+          const SizedBox(height: 22),
+          Text('Earlier AI pictures', style: t(18, color: C.maroon)),
+          const SizedBox(height: 2),
+          Text('Pictures you made with AI before. Tap one to use it again.', style: t(14, color: C.muted, w: FontWeight.w700)),
+          const SizedBox(height: 14),
+          Wrap(spacing: 16, runSpacing: 16, children: [for (final a in earlier) _artTile(a)]),
+        ],
+        for (final w in faults) MerchNote(w),
+        if (teamLooks) const MerchNote('Our team will look at this art before it goes on sale.', icon: Icons.verified_user_outlined, color: C.maroon),
         if (_ownRequired) ...[
           const SizedBox(height: 14),
           _ownBox(),
@@ -703,7 +804,7 @@ class _MerchWizardScreenState extends State<MerchWizardScreen> {
           for (final v in const [50, 100, 150, 200, 300, 500])
             if (v >= _minMarkup) MerchPill(label: '₹$v', selected: _markupValue == v, onTap: () => setState(() => _markup.text = '$v')),
         ]),
-        if (_capOn) Padding(padding: const EdgeInsets.only(top: 8), child: Text(merchCapHint, style: t(13, color: C.muted))),
+        if (_capOn) Padding(padding: const EdgeInsets.only(top: 8), child: Text(_capHint, style: t(14, color: C.muted))),
         if (!validMarkup) Padding(padding: const EdgeInsets.only(top: 8), child: Text(_markupProblem!, style: t(15, color: C.ruby, w: FontWeight.w700))),
         const SizedBox(height: 14),
         DesiCard(

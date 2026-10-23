@@ -19,7 +19,7 @@ import '../merch_kit.dart';
 import '../merch_parity_kit.dart'; // [HF-APP-PARITY-MERCH-1]
 import '../theme.dart';
 import '../widgets.dart';
-import 'bag.dart' show resolveBagPayment; // [HF-APP-PARITY-MERCH-1] a paid bag payment empties the bag
+import 'bag.dart' show merchWhatsappRequiredText, resolveBagPayment; // [HF-APP-PARITY-MERCH-1] a paid bag payment empties the bag
 
 /// [HF-MERCH-APP-1] The fan side of the merch shop: the "Merch" row on an influencer's page, the product sheet, checkout,
 /// My orders and one order's tracker. Everything stays hidden until `/api/config` says `hfMerchEnabled`.
@@ -593,7 +593,7 @@ class _MerchCheckoutScreenState extends State<MerchCheckoutScreen> {
         });
       } else {
         merchEvent('merch_checkout_failed', {'code': e.code, 'status': e.status, 'surface': 'single'});
-        setState(() => _error = merchCheckoutErrorText(e));
+        setState(() => _error = e.code == 'whatsapp_required' ? merchWhatsappRequiredText : merchCheckoutErrorText(e));
       }
     } catch (e, st) {
       merchCapture(e, st, 'checkout');
@@ -965,7 +965,9 @@ class _MerchMyOrdersScreenState extends State<MerchMyOrdersScreen> {
                           Expanded(
                             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                               Text(o.title, maxLines: 1, overflow: TextOverflow.ellipsis, style: t(17)),
-                              Text('${o.colour} · ${o.size} · ${merchDate(o.createdAt)}', style: t(14, color: C.muted, w: FontWeight.w700)),
+                              if (o.hostName.isNotEmpty) Text(o.hostName, maxLines: 1, overflow: TextOverflow.ellipsis, style: t(14, color: C.muted, w: FontWeight.w700)),
+                              Text('${o.colour} · ${o.size} · Qty ${o.qty}', style: t(14, color: C.muted, w: FontWeight.w700)),
+                              Text('Order ${o.orderNo} · ${merchDate(o.createdAt)}', style: t(14, color: C.muted, w: FontWeight.w700)),
                               const SizedBox(height: 6),
                               Wrap(spacing: 6, runSpacing: 4, children: [
                                 merchFanStatusChip(o.status),
@@ -1285,7 +1287,7 @@ class _MerchOrderScreenState extends State<MerchOrderScreen> with WidgetsBinding
   }
 }
 
-/// "Report a problem": wrong or damaged, what happened and an optional photo (PNG or JPEG, up to 5 MB). The photo is uploaded first
+/// "Report a problem": wrong or damaged, what happened and an optional photo (PNG, JPEG or WebP, up to 5 MB). The photo is uploaded first
 /// (`problem-photo`), then the report is sent with its key (`problem`). Sends `merch_problem_submitted {order_id, kind, has_photo, ok}`.
 class _ProblemSheet extends StatefulWidget {
   const _ProblemSheet({required this.repo, required this.orderId});
@@ -1314,7 +1316,7 @@ class _ProblemSheetState extends State<_ProblemSheet> {
 
   Future<void> _pickPhoto() async {
     try {
-      final p = await MerchArtPicker.pick();
+      final p = await MerchArtPicker.pick(allowWebp: true);
       if (p == null || !mounted) return;
       if (p.bytes.length > _maxPhotoBytes) {
         setState(() => _error = 'That photo is too big. Please choose one that is 5 MB or smaller.');

@@ -33,15 +33,14 @@ String merchDateTime(DateTime d) {
 }
 
 /// What to tell the person when a call failed: the worker's own sentence, or the stock line.
-String merchErrorText(Object e) {
+String merchErrorText(Object e, {int? capPaise, int? gstBps}) {
   if (e is ApiException) {
     // [HF-MERCH-GST-2] cap and closed-checkout answers get a clear sentence of their own.
     if (e.code == 'gst_not_ready') return 'Merch checkout opens soon. Nothing was charged.';
     if (e.code == 'over_price_cap') {
+      final hint = merchCapHintFor(capPaise: capPaise, gstBps: gstBps);
       final mx = e.extra['maxMarkupRupees'];
-      return mx is num
-          ? 'Clothing is capped at ₹2,500 so the 5% GST rate applies. The most you can add is ${merchRupees(mx.round() * 100)}.'
-          : 'Clothing is capped at ₹2,500 so the 5% GST rate applies. Please lower your markup.';
+      return mx is num ? '$hint The most you can add is ${merchRupees(mx.round() * 100)}.' : '$hint Please lower your markup.';
     }
     return e.userMessage;
   }
@@ -55,8 +54,24 @@ String merchGstText(int? bps) {
   return '${v == v.roundToDouble() ? v.round().toString() : v.toStringAsFixed(2)}% GST';
 }
 
-/// [HF-MERCH-GST-2] Shown under the markup box, only for products where the cap applies (clothing).
+/// [HF-MERCH-GST-2] Shown under the markup box, only for products where the cap applies (clothing). Used when the server did not
+/// send the cap or the GST rate; screens call [merchCapHintFor] with what they have.
 const String merchCapHint = 'Clothing is capped at ₹2,500 so the 5% GST rate applies.';
+
+/// [HF-MERCH-PARITY-1] The cap sentence built from the server's own numbers (web `capHint`): the cap in paise and the GST rate in
+/// basis points. A missing one falls back to ₹2,500 / 5%, like the website; both missing gives [merchCapHint].
+String merchCapHintFor({int? capPaise, int? gstBps}) {
+  if (capPaise == null && gstBps == null) return merchCapHint;
+  final bps = gstBps != null && gstBps > 0 ? gstBps : 500;
+  final v = bps / 100;
+  final pct = v == v.roundToDouble() ? v.round().toString() : v.toStringAsFixed(2);
+  return 'Clothing is capped at ${merchRupees(capPaise ?? 250000)} so the $pct% GST rate applies.';
+}
+
+/// [HF-MERCH-PARITY-1] The note under the price table (web `PriceNote`): the real royalty share and the hold days.
+/// [shareBps] is the platform's share, so the influencer gets the rest.
+String merchRoyaltyNote({required int shareBps, required int holdDays}) =>
+    'Your design royalty is ${((10000 - shareBps) / 100).round()}% of your markup, withdrawable $holdDays days after delivery.';
 
 /// Catalog events `merch_*` (see Telemetry.catalogEvents). Never throws.
 void merchEvent(String name, [Map<String, Object?> props = const {}]) => Telemetry.event(name, props);
@@ -260,21 +275,171 @@ class MerchField extends StatelessWidget {
 
 // ─────────────────────────────────────────────────────────────────────────────────────────────── [HF-MERCH-STUDIO-2]
 
-/// AI style chips: server id and the friendly label.
-const List<(String, String)> merchAiStyles = [
-  ('bollywood_poster', 'Bollywood poster'),
-  ('madhubani', 'Madhubani'),
-  ('warli', 'Warli'),
-  ('kalamkari', 'Kalamkari'),
-  ('pop_art', 'Pop art'),
-  ('truck_art', 'Truck art'),
-  ('watercolour', 'Watercolour'),
-  ('line_art', 'Line art'),
-  ('retro_70s', 'Retro 70s'),
-  ('typography', 'Words and lettering'),
-  ('clay_3d', '3D clay'),
-  ('photo_real', 'Real photo look'),
+/// [HF-MERCH-PARITY-1] How a style swatch is drawn (the website draws the same tiles in CSS, web `aiStyles.ts`).
+enum MerchSwatchKind { gradient, radial, stripes, dots, lines, lettering }
+
+/// One AI style: the server id, the friendly label and a small colour swatch.
+class MerchAiStyle {
+  const MerchAiStyle(this.key, this.label, this.kind, this.colours);
+
+  final String key;
+  final String label;
+  final MerchSwatchKind kind;
+
+  /// Gradient and stripe colours in order; for dots, lines and lettering: background first, then the mark colour.
+  final List<Color> colours;
+}
+
+/// AI style chips (same twelve as the website).
+const List<MerchAiStyle> merchAiStyles = [
+  MerchAiStyle('bollywood_poster', 'Bollywood poster', MerchSwatchKind.gradient, [Color(0xFFE4572E), Color(0xFFF59E0B), Color(0xFF4A1747)]),
+  MerchAiStyle('madhubani', 'Madhubani', MerchSwatchKind.gradient, [Color(0xFFD81B72), Color(0xFFFBBF24), Color(0xFF3D2C8D)]),
+  MerchAiStyle('warli', 'Warli', MerchSwatchKind.dots, [Color(0xFFA4492A), Color(0xFFFFFFFF)]),
+  MerchAiStyle('kalamkari', 'Kalamkari', MerchSwatchKind.stripes, [Color(0xFF3D2C8D), Color(0xFFB45309)]),
+  MerchAiStyle('pop_art', 'Pop art', MerchSwatchKind.dots, [Color(0xFFFBBF24), Color(0xFFE4572E)]),
+  MerchAiStyle('truck_art', 'Truck art', MerchSwatchKind.stripes, [Color(0xFFD81B72), Color(0xFFF59E0B), Color(0xFF3D2C8D)]),
+  MerchAiStyle('watercolour', 'Watercolour', MerchSwatchKind.gradient, [Color(0xFFF0A8C8), Color(0xFFFFFAF3), Color(0xFFA9C6F0)]),
+  MerchAiStyle('line_art', 'Line art', MerchSwatchKind.lines, [Color(0xFFFFFAF3), Color(0xFF2B1530)]),
+  MerchAiStyle('retro_70s', 'Retro 70s', MerchSwatchKind.gradient, [Color(0xFFF59E0B), Color(0xFFEA6A12), Color(0xFFD81B72), Color(0xFF4A1747)]),
+  MerchAiStyle('typography', 'Words and lettering', MerchSwatchKind.lettering, [Color(0xFFFFF1D6), Color(0xFF2B1530)]),
+  MerchAiStyle('clay_3d', '3D clay', MerchSwatchKind.radial, [Color(0xFFFFD1E3), Color(0xFFD81B72)]),
+  MerchAiStyle('photo_real', 'Real photo look', MerchSwatchKind.gradient, [Color(0xFFF0D9C0), Color(0xFF7A4A1E)]),
 ];
+
+/// Six example ideas for the AI picture box (same as the website).
+const List<String> merchAiExamples = [
+  'Me as a 70s Bollywood hero on a hand-painted poster',
+  'My face in Madhubani art with floral borders',
+  'A cute cartoon chai cup with the words "Chai first"',
+  'A cricket match drawn in Warli style, white lines on a plain background',
+  'A truck-art lion with bright flowers and a "Horn OK Please" banner',
+  'Retro 70s sunset with "Good Vibes Only" in big letters',
+];
+
+class _SwatchPainter extends CustomPainter {
+  const _SwatchPainter(this.style);
+
+  final MerchAiStyle style;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final c = style.colours;
+    canvas.drawRect(Offset.zero & size, Paint()..color = c.first);
+    if (style.kind == MerchSwatchKind.dots) {
+      final dot = Paint()..color = c[1];
+      const gap = 9.0;
+      for (var y = gap / 2; y < size.height; y += gap) {
+        for (var x = gap / 2; x < size.width; x += gap) {
+          canvas.drawCircle(Offset(x, y), 2.2, dot);
+        }
+      }
+    } else if (style.kind == MerchSwatchKind.lines) {
+      final line = Paint()
+        ..color = c[1]
+        ..strokeWidth = 1;
+      for (var y = 6.0; y < size.height; y += 6) {
+        canvas.drawLine(Offset(0, y), Offset(size.width, y), line);
+      }
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _SwatchPainter oldDelegate) => oldDelegate.style.key != style.key;
+}
+
+/// A small coloured tile showing what a style looks like.
+class MerchStyleSwatch extends StatelessWidget {
+  const MerchStyleSwatch(this.style, {super.key, this.size = 30});
+
+  final MerchAiStyle style;
+  final double size;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = style.colours;
+    final Widget inner = switch (style.kind) {
+      MerchSwatchKind.gradient => DecoratedBox(decoration: BoxDecoration(gradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: c))),
+      MerchSwatchKind.radial => DecoratedBox(decoration: BoxDecoration(gradient: RadialGradient(center: const Alignment(-0.3, -0.4), radius: 0.9, colors: c))),
+      MerchSwatchKind.stripes => DecoratedBox(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: const Alignment(-0.25, -0.25),
+              tileMode: TileMode.repeated,
+              colors: [for (final x in c) ...[x, x]],
+              stops: [for (var i = 0; i < c.length; i++) ...[i / c.length, (i + 1) / c.length]],
+            ),
+          ),
+        ),
+      MerchSwatchKind.lettering => ColoredBox(color: c.first, child: Center(child: Text('Aa', style: t(15, color: c[1], w: FontWeight.w900)))),
+      MerchSwatchKind.dots || MerchSwatchKind.lines => CustomPaint(painter: _SwatchPainter(style)),
+    };
+    return ExcludeSemantics(
+      child: Container(
+        width: size,
+        height: size,
+        decoration: BoxDecoration(borderRadius: BorderRadius.circular(9), border: Border.all(color: C.brass, width: 1)),
+        clipBehavior: Clip.antiAlias,
+        child: inner,
+      ),
+    );
+  }
+}
+
+/// A selectable style pill with its colour swatch.
+class MerchStyleChip extends StatelessWidget {
+  const MerchStyleChip({super.key, required this.style, required this.selected, required this.onTap});
+
+  final MerchAiStyle style;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      button: true,
+      selected: selected,
+      label: style.label,
+      child: Material(
+        color: selected ? C.maroon : C.white,
+        shape: StadiumBorder(side: BorderSide(color: selected ? C.maroon : C.line, width: 1.5)),
+        child: InkWell(
+          customBorder: const StadiumBorder(),
+          onTap: onTap,
+          child: Container(
+            constraints: const BoxConstraints(minHeight: 48),
+            padding: const EdgeInsets.fromLTRB(9, 6, 16, 6),
+            alignment: Alignment.center,
+            child: Row(mainAxisSize: MainAxisSize.min, children: [
+              MerchStyleSwatch(style),
+              const SizedBox(width: 8),
+              Flexible(child: Text(style.label, style: t(15, color: selected ? C.white : C.maroon))),
+            ]),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// A sentence under a price table: the real GST cap, royalty share and hold days.
+class MerchPriceNote extends StatelessWidget {
+  const MerchPriceNote({super.key, required this.shareBps, required this.holdDays});
+
+  final int shareBps;
+  final int holdDays;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 8),
+      child: Text(
+        'Base = printing (incl. GST) + delivery. Fans pay one all-in price: base + your markup, including GST and free delivery. ${merchRoyaltyNote(shareBps: shareBps, holdDays: holdDays)}',
+        style: t(14, color: C.muted, w: FontWeight.w700, h: 1.3),
+      ),
+    );
+  }
+}
 
 /// Page header whose back arrow calls [onBack] (the wizard decides what back means on each step).
 class MerchHeader extends StatelessWidget {
@@ -545,7 +710,7 @@ class MerchNote extends StatelessWidget {
 
 /// A big tappable choice: icon, title and a line under it.
 class MerchChoiceCard extends StatelessWidget {
-  const MerchChoiceCard({super.key, required this.icon, required this.title, required this.sub, required this.tone, required this.onTap, this.busy = false, this.corner = DesiCorner.none});
+  const MerchChoiceCard({super.key, required this.icon, required this.title, required this.sub, required this.tone, required this.onTap, this.busy = false, this.busyLabel = 'Uploading…', this.corner = DesiCorner.none});
 
   final IconData icon;
   final String title;
@@ -553,6 +718,9 @@ class MerchChoiceCard extends StatelessWidget {
   final DesiTone tone;
   final VoidCallback? onTap;
   final bool busy;
+
+  /// The title while [busy] (for example "Uploading 2 of 3…").
+  final String busyLabel;
   final DesiCorner corner;
 
   @override
@@ -572,7 +740,7 @@ class MerchChoiceCard extends StatelessWidget {
           const SizedBox(width: 14),
           Expanded(
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(busy ? 'Uploading…' : title, style: t(19, color: C.maroon)),
+              Text(busy ? busyLabel : title, style: t(19, color: C.maroon)),
               const SizedBox(height: 2),
               Text(sub, style: t(15, color: C.muted, w: FontWeight.w700)),
             ]),
@@ -700,8 +868,8 @@ class MerchPriceTable extends StatelessWidget {
       Row(children: [
         SizedBox(width: 50, child: Text('Size', style: t(14, color: C.muted))),
         Expanded(child: Text('Base', style: t(14, color: C.muted))),
-        Expanded(child: Text('Fan pays (incl. ${merchGstText(gstBps)} & delivery)*', style: t(12, color: C.muted))),
-        Expanded(child: Text('You earn (royalty)', textAlign: TextAlign.right, style: t(12, color: C.muted))),
+        Expanded(child: Text('Fan pays (incl. ${merchGstText(gstBps)} & delivery)*', style: t(14, color: C.muted))),
+        Expanded(child: Text('You earn (royalty)', textAlign: TextAlign.right, style: t(14, color: C.muted))),
       ]),
       const SizedBox(height: 4),
       if (it != null && b != null)
@@ -724,7 +892,15 @@ class MerchPriceTable extends StatelessWidget {
               ]),
             ),
       const SizedBox(height: 6),
-      Align(alignment: Alignment.centerLeft, child: Text('*Fan pays (incl. ${merchGstText(gstBps)} & delivery) = base + your markup. You earn a design royalty on your markup.', style: t(14, color: C.muted))),
+      Align(
+        alignment: Alignment.centerLeft,
+        child: Text(
+          cat == null
+              ? '*Fan pays (incl. ${merchGstText(gstBps)} & delivery) = base + your markup. You earn a design royalty on your markup.'
+              : '*Fan pays (incl. ${merchGstText(gstBps)} & delivery) = base + your markup. ${merchRoyaltyNote(shareBps: cat.platformShareBps, holdDays: cat.holdDays)}',
+          style: t(14, color: C.muted),
+        ),
+      ),
     ]);
   }
 }

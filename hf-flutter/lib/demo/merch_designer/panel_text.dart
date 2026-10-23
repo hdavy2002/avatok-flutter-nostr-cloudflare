@@ -12,8 +12,8 @@ import 'silhouettes.dart';
 /// draw Hindi), size, colour, outline, shadow, spacing and alignment. Never green.
 
 const List<String> kStudioPalette = <String>[
-  '#FFFFFF', '#1A1A1A', '#4A1747', '#D81B72', '#F59E0B', '#EA6A12', '#C0262D',
-  '#6D4FD0', '#0E7C86', '#1E3A8A', '#FACC15', '#F9A8D4', '#B45309', '#E5E7EB',
+  '#ffffff', '#fff1d6', '#fbbf24', '#f59e0b', '#ea6a12', '#e4572e', '#c8102e', '#d81b72', '#f8c8dc',
+  '#7a1f3d', '#4a1747', '#6d4fd0', '#3d2c8d', '#1a237e', '#0e7c86', '#8b5e34', '#c9a227', '#111111',
 ];
 
 final RegExp _hex6 = RegExp(r'^#?[0-9a-fA-F]{6}$');
@@ -146,8 +146,8 @@ class _TextPanelState extends State<TextPanel> {
         label: 'Space between letters',
         valueText: l.letterSpacing.toStringAsFixed(2),
         value: l.letterSpacing,
-        min: -0.05,
-        max: 0.4,
+        min: -0.1,
+        max: 0.8,
         onChanged: (v) => _edit(l, (x) => x.letterSpacing = v, key: 'ls:${l.id}'),
       ),
       StudioSlider(
@@ -155,7 +155,7 @@ class _TextPanelState extends State<TextPanel> {
         valueText: l.lineHeight.toStringAsFixed(2),
         value: l.lineHeight,
         min: 0.8,
-        max: 1.8,
+        max: 2.0,
         onChanged: (v) => _edit(l, (x) => x.lineHeight = v, key: 'lh:${l.id}'),
       ),
       const PanelLabel('Line up'),
@@ -167,6 +167,21 @@ class _TextPanelState extends State<TextPanel> {
               child: BigToolButton(icon: a.$2, label: a.$1 == 'left' ? 'Left' : (a.$1 == 'right' ? 'Right' : 'Middle'), on: l.align == a.$1, onTap: () => _edit(l, (x) => x.align = a.$1)),
             ),
           ),
+      ]),
+      const PanelLabel('See-through'),
+      StudioSlider(
+        label: 'Opacity',
+        valueText: '${(l.opacity * 100).round()}%',
+        value: l.opacity,
+        min: 0.1,
+        max: 1,
+        onChanged: (v) => _edit(l, (x) => x.opacity = v, key: 'opacity:${l.id}'),
+      ),
+      const PanelLabel('Flip and turn'),
+      toolGrid(context, [
+        BigToolButton(icon: Icons.flip_rounded, label: 'Flip left-right', on: l.flipX, onTap: () => _edit(l, (x) => x.flipX = !x.flipX)),
+        BigToolButton(icon: Icons.swap_vert_rounded, label: 'Flip up-down', on: l.flipY, onTap: () => _edit(l, (x) => x.flipY = !x.flipY)),
+        BigToolButton(icon: Icons.rotate_90_degrees_cw_outlined, label: 'Turn 90°', onTap: () => _edit(l, (x) => x.rotation = (((x.rotation / 90).round() * 90 + 90) % 360).toDouble())),
       ]),
     ]);
   }

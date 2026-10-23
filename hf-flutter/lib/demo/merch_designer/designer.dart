@@ -90,7 +90,8 @@ class _MerchDesignerState extends State<MerchDesigner> implements StudioHost {
   late ImageStore _store;
   String? _selId;
   _Tool? _tool;
-  bool _zoom = false;
+  double _zoomK = 1;
+  Offset _focus = const Offset(500, 500);
   int _colourIx = 0;
   String? _busy;
   String? _problem;
@@ -98,6 +99,7 @@ class _MerchDesignerState extends State<MerchDesigner> implements StudioHost {
   String? _editMessage;
   String? _eraseId;
   double _eraseTol = 30;
+  double _eraseSoft = 2;
   ui.Image? _erased;
   int _eraseSeq = 0;
   int _idSeq = 0;
@@ -135,6 +137,8 @@ class _MerchDesignerState extends State<MerchDesigner> implements StudioHost {
   String? get eraseLayerId => _eraseId;
   @override
   double get eraseTolerance => _eraseTol;
+  @override
+  double get eraseSoftEdge => _eraseSoft;
   @override
   bool get eraseHasPreview => _erased != null;
 
@@ -291,8 +295,61 @@ class _MerchDesignerState extends State<MerchDesigner> implements StudioHost {
         l.y += areaH / 2 - (b.top + b.bottom) / 2;
       case 'top':
         l.y += -b.top;
+      case 'left':
+        l.x += -b.left;
+      case 'right':
+        l.x += areaW - b.right;
+      case 'bottom':
+        l.y += areaH - b.bottom;
     }
     _commit();
+  }
+
+  /// [fill] false: the largest size that fits inside the print area. true: covers the print area (edges may be cut off).
+  /// Works on the turned box, so a rotated picture fits too. Always centred.
+  @override
+  void fitLayer(String id, {required bool fill}) {
+    final l = _byId(id);
+    if (l is! ImageDesignLayer) return;
+    final b = layerBoundsIn(l);
+    if (b.width <= 0 || b.height <= 0) return;
+    final kw = areaW / b.width, kh = areaH / b.height;
+    final k = fill ? math.max(kw, kh) : math.min(kw, kh);
+    l.w = l.w * k;
+    l.h = l.h * k;
+    l.x = areaW / 2;
+    l.y = areaH / 2;
+    _commit();
+  }
+
+  // ---------------------------------------------------------------------------------------------- stage zoom (view only)
+
+  void _setZoom(double z) {
+    final nz = math.max(1.0, math.min(4.0, z));
+    _rebuild(() {
+      _zoomK = nz;
+      if (nz <= 1.001) {
+        _zoomK = 1;
+        _focus = const Offset(500, 500);
+      }
+    });
+  }
+
+  void _onStageView(double z, Offset focus) {
+    _rebuild(() {
+      _zoomK = math.max(1.0, math.min(4.0, z));
+      _focus = Offset(math.max(0.0, math.min(1000.0, focus.dx)), math.max(0.0, math.min(1000.0, focus.dy)));
+    });
+  }
+
+  /// The "print box" preset: zoom in on the dashed box.
+  void _zoomPrintBox() {
+    final g = printAreaPx(_family, widget.side, areaW, areaH);
+    final z = math.max(1.0, math.min(4.0, 1000 / (math.max(g.rect.width, g.rect.height) * 1.18)));
+    _rebuild(() {
+      _zoomK = z;
+      _focus = g.rect.center;
+    });
   }
 
   void _undo() {
@@ -377,12 +434,16 @@ class _MerchDesignerState extends State<MerchDesigner> implements StudioHost {
     _clearErase();
     _eraseId = l.id;
     _eraseTol = 30;
+    _eraseSoft = 2;
     setState(() => _editMessage = null);
     runErase();
   }
 
   @override
   void setEraseTolerance(double v) => setState(() => _eraseTol = v);
+
+  @override
+  void setEraseSoftEdge(double v) => setState(() => _eraseSoft = v);
 
   @override
   void runErase() => unawaited(_runErase());
@@ -400,7 +461,7 @@ class _MerchDesignerState extends State<MerchDesigner> implements StudioHost {
     try {
       final bytes = await _store.bytesFor(l.artId, l.url);
       src = await decodePicture(bytes, maxSide: kEraseMaxSide);
-      final out = await eraseFlatColour(src, tolerance: _eraseTol.round());
+      final out = await eraseFlatColour(src, tolerance: _eraseTol.round(), feather: _eraseSoft.round());
       if (!mounted || seq != _eraseSeq || _eraseId != id) {
         out.dispose();
         return;
@@ -505,12 +566,7 @@ class _MerchDesignerState extends State<MerchDesigner> implements StudioHost {
 
   // ---------------------------------------------------------------------------------------------- numbers shown
 
-  ({String text, Color bg, Color fg, bool blocks}) _quality(double dpi) {
-    if (dpi >= 250) return (text: 'Sharp', bg: C.lavtint, fg: C.maroon, blocks: false);
-    if (dpi >= 200) return (text: 'Good', bg: C.goldtint, fg: C.amber, blocks: false);
-    if (dpi >= 150) return (text: 'Soft', bg: C.blush, fg: C.tan, blocks: false);
-    return (text: 'Too blurry', bg: C.blush, fg: C.ruby, blocks: true);
-  }
+  ({String text, Color bg, Color fg, bool blocks}) _quality(double dpi) => studioDpiQuality(dpi);
 
   List<ImageDesignLayer> get _visibleImages => <ImageDesignLayer>[
         for (final l in _layers)

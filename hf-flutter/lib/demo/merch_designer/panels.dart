@@ -23,6 +23,9 @@ abstract class StudioHost {
   String? get editMessage;
   String? get eraseLayerId;
   double get eraseTolerance;
+
+  /// Soft edge of the erase, 0 to 6 pixels.
+  double get eraseSoftEdge;
   bool get eraseHasPreview;
 
   void select(String? id);
@@ -41,14 +44,27 @@ abstract class StudioHost {
   /// Indices in [layers].
   void reorderLayers(int from, int to);
 
-  /// 'centerH' | 'centerV' | 'top'
+  /// 'left' | 'centerH' | 'right' | 'top' | 'centerV' | 'bottom' (relative to the print area, turned box)
   void alignLayer(String id, String how);
+
+  /// Picture only. [fill] false: biggest size inside the print area. true: covers the print area. Centred.
+  void fitLayer(String id, {required bool fill});
   Future<void> removeBackground(ImageDesignLayer l);
   void startErase(ImageDesignLayer l);
   void setEraseTolerance(double v);
+  void setEraseSoftEdge(double v);
   void runErase();
   Future<void> keepErase();
   void cancelErase();
+}
+
+/// Print quality words, same rules as the web studio (studioGeometry.ts dpiQuality): 300 and up Sharp, 200 Good, 150 OK, below 150
+/// too blurry to print (blocks "Looks good").
+({String text, Color bg, Color fg, bool blocks}) studioDpiQuality(double dpi) {
+  if (dpi >= 300) return (text: 'Sharp', bg: C.lavtint, fg: C.maroon, blocks: false);
+  if (dpi >= 200) return (text: 'Good', bg: C.goldtint, fg: C.amber, blocks: false);
+  if (dpi >= 150) return (text: 'OK, slightly soft', bg: C.blush, fg: C.tan, blocks: false);
+  return (text: 'Too blurry', bg: C.blush, fg: C.ruby, blocks: true);
 }
 
 // ---------------------------------------------------------------------------------------------- shared widgets
@@ -319,7 +335,14 @@ class EditPanel extends StatelessWidget {
     final l = sel;
     final erasing = host.eraseLayerId == l.id;
     final status = host.editStatus;
+    final q = studioDpiQuality(l.dpi);
     return ListView(padding: const EdgeInsets.fromLTRB(16, 0, 16, 16), children: [
+      const SizedBox(height: 8),
+      Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: BoxDecoration(color: q.bg, borderRadius: BorderRadius.circular(14), border: Border.all(color: C.line, width: 1.5)),
+        child: Text('${q.text} · ${l.dpi.round()} DPI · prints ${l.w.toStringAsFixed(1)} × ${l.h.toStringAsFixed(1)} in', style: t(15, color: q.fg, w: FontWeight.w700, h: 1.3)),
+      ),
       const PanelLabel('Background'),
       if (status != null)
         Padding(
@@ -347,6 +370,15 @@ class EditPanel extends StatelessWidget {
           onChanged: host.setEraseTolerance,
           onChangeEnd: (_) => host.runErase(),
         ),
+        StudioSlider(
+          label: 'Soft edge',
+          valueText: '${host.eraseSoftEdge.round()} px',
+          value: host.eraseSoftEdge,
+          min: 0,
+          max: 6,
+          onChanged: host.setEraseSoftEdge,
+          onChangeEnd: (_) => host.runErase(),
+        ),
         const SizedBox(height: 6),
         Row(children: [
           Expanded(child: DesiButton('Keep this', icon: Icons.check_rounded, kind: DesiButtonKind.gold, onTap: host.eraseHasPreview ? host.keepErase : null)),
@@ -369,6 +401,11 @@ class EditPanel extends StatelessWidget {
         max: 1,
         onChanged: (v) => host.mutate(l.id, (x) => x.opacity = v, key: 'opacity:${l.id}'),
       ),
+      const PanelLabel('Size'),
+      toolGrid(context, [
+        BigToolButton(icon: Icons.fit_screen_rounded, label: 'Fit to box', onTap: () => host.fitLayer(l.id, fill: false)),
+        BigToolButton(icon: Icons.crop_free_rounded, label: 'Fill the box', onTap: () => host.fitLayer(l.id, fill: true)),
+      ]),
     ]);
   }
 }
@@ -388,15 +425,20 @@ class ArrangePanel extends StatelessWidget {
     return ListView(padding: const EdgeInsets.fromLTRB(16, 0, 16, 16), children: [
       const PanelLabel('Place'),
       toolGrid(context, [
+        BigToolButton(icon: Icons.align_horizontal_left_rounded, label: 'Left', onTap: () => host.alignLayer(l.id, 'left')),
         BigToolButton(icon: Icons.align_horizontal_center_rounded, label: 'Centre across', onTap: () => host.alignLayer(l.id, 'centerH')),
+        BigToolButton(icon: Icons.align_horizontal_right_rounded, label: 'Right', onTap: () => host.alignLayer(l.id, 'right')),
+        BigToolButton(icon: Icons.vertical_align_top_rounded, label: 'Top', onTap: () => host.alignLayer(l.id, 'top')),
         BigToolButton(icon: Icons.align_vertical_center_rounded, label: 'Centre up-down', onTap: () => host.alignLayer(l.id, 'centerV')),
-        BigToolButton(icon: Icons.vertical_align_top_rounded, label: 'Move to top', onTap: () => host.alignLayer(l.id, 'top')),
+        BigToolButton(icon: Icons.vertical_align_bottom_rounded, label: 'Bottom', onTap: () => host.alignLayer(l.id, 'bottom')),
       ]),
       const PanelLabel('Order'),
       toolGrid(context, [
         BigToolButton(icon: Icons.flip_to_front_rounded, label: 'Bring forward', onTap: () => host.moveLayer(l.id, 1)),
         BigToolButton(icon: Icons.flip_to_back_rounded, label: 'Send back', onTap: () => host.moveLayer(l.id, -1)),
         BigToolButton(icon: Icons.content_copy_rounded, label: 'Make a copy', onTap: () => host.duplicateLayer(l.id)),
+        BigToolButton(icon: Icons.vertical_align_top_rounded, label: 'To front', onTap: () => host.moveLayer(l.id, 1000)),
+        BigToolButton(icon: Icons.vertical_align_bottom_rounded, label: 'To back', onTap: () => host.moveLayer(l.id, -1000)),
       ]),
       const PanelLabel('Keep or remove'),
       toolGrid(context, [
@@ -430,7 +472,7 @@ class LayersPanel extends StatelessWidget {
       return ListView(padding: const EdgeInsets.fromLTRB(16, 8, 16, 16), children: const [PanelNote('Nothing here yet. Add a picture or some text first.')]);
     }
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      const Padding(padding: EdgeInsets.symmetric(horizontal: 16), child: PanelLabel('Top one first. Press and hold a row, then drag to change the order.')),
+      const Padding(padding: EdgeInsets.symmetric(horizontal: 16), child: PanelLabel('Top one first. Use the arrows to change the order, or press and hold a row and drag. Tap a row for rename, lock and delete.')),
       Expanded(
         child: ReorderableListView.builder(
           padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
@@ -443,7 +485,7 @@ class LayersPanel extends StatelessWidget {
           },
           itemBuilder: (context, i) {
             final l = layers[n - 1 - i];
-            return _LayerRow(key: ValueKey<String>(l.id), layer: l, host: host);
+            return _LayerRow(key: ValueKey<String>(l.id), layer: l, host: host, canUp: i > 0, canDown: i < n - 1);
           },
         ),
       ),
@@ -452,55 +494,103 @@ class LayersPanel extends StatelessWidget {
 }
 
 class _LayerRow extends StatelessWidget {
-  const _LayerRow({super.key, required this.layer, required this.host});
+  const _LayerRow({super.key, required this.layer, required this.host, required this.canUp, required this.canDown});
   final DesignLayer layer;
   final StudioHost host;
 
-  Widget _icon(IconData icon, String label, VoidCallback onTap, {Color color = C.maroon}) => IconButton(
+  /// False for the top layer (it cannot go further up) and the bottom layer.
+  final bool canUp;
+  final bool canDown;
+
+  Widget _icon(IconData icon, String label, VoidCallback? onTap, {Color color = C.maroon}) => IconButton(
         tooltip: label,
         onPressed: onTap,
-        icon: Icon(icon, size: 22, color: color),
+        icon: Icon(icon, size: 24, color: onTap == null ? C.brass : color),
         padding: EdgeInsets.zero,
-        constraints: const BoxConstraints.tightFor(width: 44, height: 48),
+        constraints: const BoxConstraints.tightFor(width: 48, height: 48),
       );
+
+  Widget _thumb() {
+    final l = layer;
+    final dim = !l.visible;
+    Widget inner;
+    if (l is ImageDesignLayer) {
+      const broken = Icon(Icons.broken_image_outlined, size: 20, color: C.muted);
+      StudioArt? found;
+      for (final a in host.arts) {
+        if (a.artId == l.artId) {
+          found = a;
+          break;
+        }
+      }
+      final bytes = found?.bytes;
+      inner = bytes != null && bytes.isNotEmpty
+          ? Image.memory(bytes, fit: BoxFit.contain, cacheWidth: 96, errorBuilder: (c, e, s) => broken)
+          : Image.network(l.url, fit: BoxFit.contain, cacheWidth: 96, errorBuilder: (c, e, s) => broken);
+    } else {
+      inner = Center(child: Text('T', style: t(20, color: C.maroon, w: FontWeight.w800)));
+    }
+    return Opacity(
+      opacity: dim ? 0.45 : 1,
+      child: Container(
+        width: 40,
+        height: 40,
+        clipBehavior: Clip.antiAlias,
+        decoration: BoxDecoration(color: C.lavtint, borderRadius: BorderRadius.circular(10), border: Border.all(color: C.line, width: 1.5)),
+        child: Padding(padding: EdgeInsets.all(l is ImageDesignLayer ? 3 : 0), child: inner),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
     final l = layer;
     final on = host.selected?.id == l.id;
     return Container(
-      height: 56,
       margin: const EdgeInsets.symmetric(vertical: 3),
       decoration: BoxDecoration(
         color: on ? C.lavtint : C.white,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: on ? C.maroon : C.line, width: on ? 2 : 1.5),
       ),
-      child: Row(children: [
-        Expanded(
-          child: InkWell(
-            borderRadius: BorderRadius.circular(16),
-            onTap: () => host.select(l.id),
-            child: Padding(
-              padding: const EdgeInsets.only(left: 12),
-              child: Row(children: [
-                Icon(l is TextDesignLayer ? Icons.text_fields_rounded : Icons.image_outlined, size: 22, color: l.visible ? C.maroon : C.muted),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(l.name, maxLines: 1, overflow: TextOverflow.ellipsis, style: t(15, color: l.visible ? C.deep : C.muted, w: FontWeight.w700)),
+      child: Column(mainAxisSize: MainAxisSize.min, children: [
+        SizedBox(
+          height: 56,
+          child: Row(children: [
+            Expanded(
+              child: InkWell(
+                borderRadius: BorderRadius.circular(16),
+                onTap: () => host.select(l.id),
+                child: Padding(
+                  padding: const EdgeInsets.only(left: 8),
+                  child: Row(children: [
+                    _thumb(),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(l.name, maxLines: 1, overflow: TextOverflow.ellipsis, style: t(15, color: l.visible ? C.deep : C.muted, w: FontWeight.w700)),
+                    ),
+                  ]),
                 ),
-              ]),
+              ),
             ),
-          ),
+            _icon(Icons.arrow_upward_rounded, 'Move up', canUp ? () => host.moveLayer(l.id, 1) : null),
+            _icon(Icons.arrow_downward_rounded, 'Move down', canDown ? () => host.moveLayer(l.id, -1) : null),
+            _icon(l.visible ? Icons.visibility_outlined : Icons.visibility_off_outlined, l.visible ? 'Hide' : 'Show', () => host.mutate(l.id, (x) => x.visible = !x.visible)),
+          ]),
         ),
-        _icon(Icons.edit_outlined, 'Rename', () async {
-          final name = await askText(context, title: 'Name this layer', initial: l.name);
-          if (name != null && name.isNotEmpty) host.mutate(l.id, (x) => x.name = name);
-        }),
-        _icon(l.visible ? Icons.visibility_outlined : Icons.visibility_off_outlined, l.visible ? 'Hide' : 'Show', () => host.mutate(l.id, (x) => x.visible = !x.visible)),
-        _icon(l.locked ? Icons.lock_outline_rounded : Icons.lock_open_rounded, l.locked ? 'Unlock' : 'Lock', () => host.mutate(l.id, (x) => x.locked = !x.locked),
-            color: l.locked ? C.rani : C.maroon),
-        _icon(Icons.delete_outline_rounded, 'Delete', () => host.removeLayer(l.id), color: C.ruby),
+        if (on)
+          SizedBox(
+            height: 48,
+            child: Row(mainAxisAlignment: MainAxisAlignment.spaceEvenly, children: [
+              _icon(Icons.edit_outlined, 'Rename', () async {
+                final name = await askText(context, title: 'Name this layer', initial: l.name);
+                if (name != null && name.isNotEmpty) host.mutate(l.id, (x) => x.name = name);
+              }),
+              _icon(l.locked ? Icons.lock_outline_rounded : Icons.lock_open_rounded, l.locked ? 'Unlock' : 'Lock', () => host.mutate(l.id, (x) => x.locked = !x.locked),
+                  color: l.locked ? C.rani : C.maroon),
+              _icon(Icons.delete_outline_rounded, 'Delete', () => host.removeLayer(l.id), color: C.ruby),
+            ]),
+          ),
       ]),
     );
   }

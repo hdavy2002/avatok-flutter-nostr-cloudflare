@@ -95,6 +95,7 @@ class _ChannelMerchSectionState extends State<ChannelMerchSection> {
       priceText: _priceText(p),
       imageUrl: p.imageUrl,
       onTap: () => unawaited(context.push<Object?>('/merch/p/${Uri.encodeComponent(widget.hostSlug)}/${Uri.encodeComponent(p.slug)}', extra: it)),
+      soldOut: p.sizes.isNotEmpty && !p.sizes.any((s) => s.inStock),
       onAdd: () => unawaited(_add(it)),
     );
   }

@@ -21,10 +21,16 @@ extension _DesignerView on _MerchDesignerState {
         StudioRoundButton(icon: Icons.undo_rounded, label: 'Undo', onTap: _hist.canUndo && _busy == null ? _undo : null),
         StudioRoundButton(icon: Icons.redo_rounded, label: 'Redo', onTap: _hist.canRedo && _busy == null ? _redo : null),
         StudioRoundButton(
-          icon: _zoom ? Icons.zoom_out_map_rounded : Icons.zoom_in_rounded,
-          label: _zoom ? 'Show the whole product' : 'Zoom to the print box',
-          on: _zoom,
-          onTap: () => _rebuild(() => _zoom = !_zoom),
+          icon: _zoomK > 1.001 ? Icons.zoom_out_map_rounded : Icons.zoom_in_rounded,
+          label: _zoomK > 1.001 ? 'Show the whole product' : 'Zoom to the print box',
+          on: _zoomK > 1.001,
+          onTap: () {
+            if (_zoomK > 1.001) {
+              _setZoom(1);
+            } else {
+              _zoomPrintBox();
+            }
+          },
         ),
       ]),
     );
@@ -84,13 +90,16 @@ extension _DesignerView on _MerchDesignerState {
                       layers: _layers,
                       selectedId: _selId,
                       store: _store,
-                      zoomToArea: _zoom,
+                      zoom: _zoomK,
+                      focus: _focus,
+                      onView: _onStageView,
                       bottomInset: panelH,
                       onSelect: select,
                       onChanged: () => _rebuild(() {}),
                       onCommit: () => _commit(),
                     ),
                   ),
+                  Positioned(top: 6, right: 6, child: _zoomBar()),
                   if (_layers.isEmpty)
                     Positioned.fill(
                       child: IgnorePointer(
@@ -111,6 +120,30 @@ extension _DesignerView on _MerchDesignerState {
         if (tool != null) Positioned(left: 0, right: 0, bottom: 0, height: panelH, child: _panel(tool)),
       ]);
     });
+  }
+
+  /// Zoom stepper: view only, never changes the design. 100% to 400%.
+  Widget _zoomBar() {
+    final z = _zoomK;
+    return Material(
+      color: const Color(0xEBFFFFFF),
+      elevation: 2,
+      shadowColor: const Color(0x55000000),
+      borderRadius: BorderRadius.circular(26),
+      child: Row(mainAxisSize: MainAxisSize.min, children: [
+        StudioRoundButton(icon: Icons.remove_rounded, label: 'Zoom out', onTap: z > 1.001 ? () => _setZoom(z - 0.25) : null),
+        SizedBox(
+          width: 52,
+          child: Text('${(z * 100).round()}%', textAlign: TextAlign.center, style: t(15, color: C.deep, w: FontWeight.w700)),
+        ),
+        StudioRoundButton(icon: Icons.add_rounded, label: 'Zoom in', onTap: z < 3.999 ? () => _setZoom(z + 0.25) : null),
+        TextButton(
+          style: TextButton.styleFrom(minimumSize: const Size(52, 48), padding: const EdgeInsets.symmetric(horizontal: 10)),
+          onPressed: z > 1.001 ? () => _setZoom(1) : null,
+          child: Text('Fit', style: t(15, color: z > 1.001 ? C.maroon : C.brass)),
+        ),
+      ]),
+    );
   }
 
   Widget _panel(_Tool tool) {
@@ -149,7 +182,7 @@ extension _DesignerView on _MerchDesignerState {
 
   Widget _swatchRow() {
     final cols = _colours;
-    if (cols.length < 2) return const SizedBox(height: 4);
+    if (cols.isEmpty) return const SizedBox(height: 4);
     return SizedBox(
       height: 54,
       child: Row(children: [

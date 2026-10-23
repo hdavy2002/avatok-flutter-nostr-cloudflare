@@ -322,6 +322,8 @@ class _BagCheckoutScreenState extends State<BagCheckoutScreen> with WidgetsBindi
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    final lastPin = MerchLastPincode.value;
+    if (lastPin != null) _pin.text = lastPin;
     unawaited(_loadAddresses());
     unawaited(_loadBalance());
   }
@@ -432,7 +434,7 @@ class _BagCheckoutScreenState extends State<BagCheckoutScreen> with WidgetsBindi
     if (!RegExp(r'^[6-9][0-9]{9}$').hasMatch(_phone.text.trim())) return 'Enter a 10 digit Indian mobile number.';
     if (_line1.text.trim().length < 3) return 'Enter the house number and street.';
     if (_city.text.trim().length < 2) return 'Enter the city.';
-    if (_state.text.trim().length < 2) return 'Enter the state.';
+    if (!kIndianStates.contains(_state.text.trim())) return 'Choose the state.';
     if (!RegExp(r'^[1-9][0-9]{5}$').hasMatch(_pin.text.trim())) return 'Enter a 6 digit pincode.';
     return null;
   }
@@ -462,6 +464,7 @@ class _BagCheckoutScreenState extends State<BagCheckoutScreen> with WidgetsBindi
         state: _state.text.trim(),
         pincode: _pin.text.trim(),
       );
+      MerchLastPincode.remember(_pin.text);
       _stage = _Stage.payment;
       _error = null;
     });
@@ -533,7 +536,7 @@ class _BagCheckoutScreenState extends State<BagCheckoutScreen> with WidgetsBindi
         });
       } else {
         merchEvent('merch_checkout_failed', {'code': e.code, 'status': e.status, 'surface': 'bag'});
-        setState(() => _error = merchCheckoutErrorText(e));
+        setState(() => _error = e.code == 'whatsapp_required' ? merchWhatsappRequiredText : merchCheckoutErrorText(e));
       }
     } catch (e, st) {
       merchCapture(e, st, 'bag_checkout');
@@ -671,7 +674,7 @@ class _BagCheckoutScreenState extends State<BagCheckoutScreen> with WidgetsBindi
           _GpField(label: 'House number and street', controller: _line1, capitalization: TextCapitalization.words, formatters: [LengthLimitingTextInputFormatter(50)]),
           _GpField(label: 'Area, landmark (optional)', controller: _line2, capitalization: TextCapitalization.words, formatters: [LengthLimitingTextInputFormatter(50)]),
           _GpField(label: 'City', controller: _city, capitalization: TextCapitalization.words, formatters: [LengthLimitingTextInputFormatter(40)]),
-          _GpField(label: 'State', controller: _state, capitalization: TextCapitalization.words, formatters: [LengthLimitingTextInputFormatter(40)]),
+          _StateField(controller: _state, onChanged: () => setState(() {})),
           _GpField(label: 'Pincode', controller: _pin, keyboard: TextInputType.number, formatters: [FilteringTextInputFormatter.digitsOnly, LengthLimitingTextInputFormatter(6)]),
           _Tick(value: _saveAddress, onChanged: (v) => setState(() => _saveAddress = v), text: 'Save this address for next time'),
         ],
@@ -864,6 +867,89 @@ class _Tick extends StatelessWidget {
           Expanded(child: Text(text, style: t(15, color: GP.ink, w: FontWeight.w700, h: 1.3))),
         ]),
       ),
+    );
+  }
+}
+
+/// What a fan sees when the server wants a verified WhatsApp number before a purchase (`whatsapp_required`).
+const String merchWhatsappRequiredText =
+    'Please verify your WhatsApp number first. We send your order updates on WhatsApp, so a verified number is needed to buy. You can verify it in your profile.';
+
+/// The states and union territories the website offers at checkout (same list and spelling).
+const List<String> kIndianStates = [
+  'Andhra Pradesh', 'Arunachal Pradesh', 'Assam', 'Bihar', 'Chhattisgarh', 'Goa', 'Gujarat', 'Haryana', 'Himachal Pradesh', 'Jharkhand', 'Karnataka', 'Kerala',
+  'Madhya Pradesh', 'Maharashtra', 'Manipur', 'Meghalaya', 'Mizoram', 'Nagaland', 'Odisha', 'Punjab', 'Rajasthan', 'Sikkim', 'Tamil Nadu', 'Telangana', 'Tripura',
+  'Uttar Pradesh', 'Uttarakhand', 'West Bengal', 'Andaman and Nicobar Islands', 'Chandigarh', 'Dadra and Nagar Haveli and Daman and Diu', 'Delhi', 'Jammu and Kashmir',
+  'Ladakh', 'Lakshadweep', 'Puducherry',
+];
+
+/// A tap-to-choose State field: opens a list of the states, writes the choice into [controller].
+class _StateField extends StatelessWidget {
+  const _StateField({required this.controller, required this.onChanged});
+
+  final TextEditingController controller;
+  final VoidCallback onChanged;
+
+  Future<void> _open(BuildContext context) async {
+    final picked = await showModalBottomSheet<String>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: GP.bg,
+      builder: (ctx) => SafeArea(
+        child: ConstrainedBox(
+          constraints: BoxConstraints(maxHeight: MediaQuery.of(ctx).size.height * 0.8),
+          child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Padding(padding: const EdgeInsets.fromLTRB(16, 16, 16, 8), child: Text('Choose your state', style: t(19, color: GP.ink, w: FontWeight.w900))),
+            Flexible(
+              child: ListView.builder(
+                itemCount: kIndianStates.length,
+                itemBuilder: (_, i) {
+                  final name = kIndianStates[i];
+                  final on = name == controller.text.trim();
+                  return ListTile(
+                    minVerticalPadding: 14,
+                    title: Text(name, style: t(17, color: GP.ink, w: on ? FontWeight.w900 : FontWeight.w700)),
+                    trailing: on ? const Icon(Icons.check_rounded, color: GP.ink) : null,
+                    onTap: () => Navigator.of(ctx).pop(name),
+                  );
+                },
+              ),
+            ),
+          ]),
+        ),
+      ),
+    );
+    if (picked == null) return;
+    controller.text = picked;
+    onChanged();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final v = controller.text.trim();
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text('State', style: t(15, color: GP.ink, w: FontWeight.w900)),
+        const SizedBox(height: 6),
+        Semantics(
+          button: true,
+          label: v.isEmpty ? 'State, not chosen' : 'State, $v',
+          child: InkWell(
+            borderRadius: BorderRadius.circular(16),
+            onTap: () => unawaited(_open(context)),
+            child: Container(
+              constraints: const BoxConstraints(minHeight: 56),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+              decoration: BoxDecoration(color: GP.paper, borderRadius: BorderRadius.circular(16), border: Border.all(color: GP.inputLine, width: 2)),
+              child: Row(children: [
+                Expanded(child: Text(v.isEmpty ? 'Choose your state' : v, style: t(17, color: v.isEmpty ? GP.muted : GP.ink, w: FontWeight.w700))),
+                const Icon(Icons.expand_more_rounded, color: GP.ink),
+              ]),
+            ),
+          ),
+        ),
+      ]),
     );
   }
 }

@@ -282,6 +282,7 @@ class MerchProduct {
     this.breakdownEstimated = false,
     this.gstRateBps,
     this.capApplies,
+    this.catalogName = '',
   });
 
   factory MerchProduct.fromJson(Map<String, dynamic> j) => MerchProduct(
@@ -311,7 +312,11 @@ class MerchProduct {
         breakdownEstimated: j['breakdownEstimated'] == true,
         gstRateBps: _in(j['gstRateBps']),
         capApplies: j['capApplies'] is bool ? j['capApplies'] as bool : null,
+        catalogName: _s(j['catalogName']),
       );
+
+  /// [HF-MERCH-PARITY-1] The catalogue product's name (for example "Classic T-shirt"); empty on older servers.
+  final String catalogName;
 
   /// True when the printing / shipping split of an older product is an estimate.
   final bool breakdownEstimated;

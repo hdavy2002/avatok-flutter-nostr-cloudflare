@@ -19,6 +19,11 @@ import '../theme.dart';
 import '../widgets.dart';
 import 'bag.dart';
 
+/// The standard T-shirt size guide the website shows (size, chest in inches, length in inches). Approximate garment measurements.
+const List<(String, int, int)> kMerchSizeChart = [
+  ('S', 38, 27), ('M', 40, 28), ('L', 42, 29), ('XL', 44, 30), ('XXL', 46, 31), ('3XL', 48, 32),
+];
+
 /// One merch product, built to the owner-approved phone mock PhoneProduct ([HF-CHANNEL-APP-1]): full-width picture pager, the
 /// influencer's name, title, price with "GST + free delivery included", colours, sizes (only when the product has them),
 /// quantity, a pincode check, two trust cards, an accordion, and a bar with Add to bag / Buy now.
@@ -47,12 +52,16 @@ class _MerchProductScreenState extends State<MerchProductScreen> {
   bool _pinBusy = false;
   String? _pinError;
   bool _busy = false;
+  List<PublicProduct> _others = const [];
+  final GlobalKey<_AccordionState> _guideKey = GlobalKey<_AccordionState>();
 
   MerchRepo get _repo => widget.repo ?? Services.instance.merchRepo;
 
   @override
   void initState() {
     super.initState();
+    final lastPin = MerchLastPincode.value;
+    if (lastPin != null) _pin.text = lastPin;
     unawaited(_load());
   }
 
@@ -80,9 +89,29 @@ class _MerchProductScreenState extends State<MerchProductScreen> {
           }
         }
       });
+      unawaited(_loadOthers(page.product.id));
     } catch (e) {
       if (mounted) setState(() => _state = AsyncFailure(e));
     }
+  }
+
+  /// "More from <host>": the host's other live products. A failure just leaves the strip out.
+  Future<void> _loadOthers(String currentId) async {
+    try {
+      final shop = await _repo.publicShop(widget.hostSlug);
+      if (!mounted) return;
+      setState(() => _others = [for (final x in shop.products) if (x.id != currentId) x]);
+    } catch (_) {
+      // optional strip
+    }
+  }
+
+  void _openSizeGuide() {
+    _guideKey.currentState?.open();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final ctx = _guideKey.currentContext;
+      if (ctx != null && ctx.mounted) unawaited(Scrollable.ensureVisible(ctx, duration: const Duration(milliseconds: 250), alignment: 0.3));
+    });
   }
 
   Future<void> _checkPin() async {
@@ -100,6 +129,7 @@ class _MerchProductScreenState extends State<MerchProductScreen> {
     });
     try {
       final r = await _repo.pincode(v);
+      MerchLastPincode.remember(v);
       if (mounted) setState(() => _pinResult = r);
     } catch (e) {
       if (mounted) setState(() => _pinError = merchErrorText(e));
@@ -158,14 +188,14 @@ class _MerchProductScreenState extends State<MerchProductScreen> {
   }
 
   Widget _bar(PublicProductPage page) {
-    if (!page.checkoutEnabled) {
-      return GpBottomBar(child: GpButton('Buying opens soon', kind: GpBtn.ink, onTap: null));
-    }
+    final sizes = page.product.sizes;
+    final soldOut = sizes.isNotEmpty && !sizes.any((x) => x.inStock);
+    final canBuy = page.checkoutEnabled && !soldOut;
     return GpBottomBar(
       child: Row(children: [
-        Expanded(child: GpButton('Add to bag', kind: GpBtn.ink, onTap: _busy ? null : () => unawaited(_addToBag(page)))),
+        Expanded(child: GpButton(soldOut ? 'Sold out' : 'Add to bag', kind: GpBtn.ink, onTap: _busy || soldOut ? null : () => unawaited(_addToBag(page)))),
         const SizedBox(width: 12),
-        Expanded(child: GpButton('Buy now', onTap: () => _buyNow(page))),
+        Expanded(child: GpButton(page.checkoutEnabled ? 'Buy now' : 'Buying opens soon', onTap: canBuy ? () => _buyNow(page) : null)),
       ]),
     );
   }
@@ -254,7 +284,7 @@ class _MerchProductScreenState extends State<MerchProductScreen> {
           Semantics(header: true, child: Text(p.title, style: t(32, color: GP.ink, w: FontWeight.w900, h: 1.1))),
           const SizedBox(height: 10),
           Text(merchRupees(unit), style: t(30, color: GP.red, w: FontWeight.w900, h: 1.1)),
-          Text('GST + free delivery included', style: t(14, color: GP.muted, w: FontWeight.w700)),
+          Text('${merchGstText(p.gstRateBps ?? page.gstRateBps)} + free delivery included', style: t(14, color: GP.muted, w: FontWeight.w700)),
           const Align(alignment: Alignment.centerLeft, child: GpSticker("It's giving main character.", angle: -0.04)),
           if (colour != null) ...[
             _label('Colour: ${colour.name}'),
@@ -263,7 +293,18 @@ class _MerchProductScreenState extends State<MerchProductScreen> {
             ]),
           ],
           if (p.sizes.isNotEmpty) ...[
-            _label('Size'),
+            Padding(
+              padding: const EdgeInsets.only(top: 8, bottom: 2),
+              child: Row(children: [
+                Text('Size', style: t(16, color: GP.ink, w: FontWeight.w900)),
+                const Spacer(),
+                TextButton(
+                  style: TextButton.styleFrom(minimumSize: const Size(48, 48), foregroundColor: GP.blue),
+                  onPressed: _openSizeGuide,
+                  child: Text('Size guide', style: t(16, color: GP.blue, w: FontWeight.w800)),
+                ),
+              ]),
+            ),
             Wrap(spacing: 10, runSpacing: 10, children: [
               for (final x in p.sizes) _sizeChip(x, x.size == _size, x.pricePaise - minPrice),
             ]),
@@ -296,8 +337,15 @@ class _MerchProductScreenState extends State<MerchProductScreen> {
                 style: t(15, color: _pinError == null && _pinResult!.deliverable ? GP.blue : GP.redDeep, w: FontWeight.w800),
               ),
             ),
+          if (!page.checkoutEnabled)
+            Padding(
+              padding: const EdgeInsets.only(top: 12),
+              child: Text('Buying opens soon. You can fill your bag now and pay when it opens.', style: t(15, color: GP.muted, w: FontWeight.w700, h: 1.35)),
+            ),
           const SizedBox(height: 16),
           _trust('Free delivery', 'Anywhere in India'),
+          const SizedBox(height: 10),
+          _trust('Made for you', 'Printed after you order'),
           const SizedBox(height: 10),
           _trust('We fix mistakes', 'Wrong or damaged? Tell us in 48 hrs'),
           const SizedBox(height: 16),
@@ -306,13 +354,70 @@ class _MerchProductScreenState extends State<MerchProductScreen> {
             initiallyOpen: true,
             body: p.description.trim().isEmpty ? 'Made for you, once you order. Printed with the influencer’s design.' : p.description.trim(),
           ),
-          const _Accordion(
+          if (p.sizes.isNotEmpty) _Accordion(key: _guideKey, title: 'Size guide', content: _sizeGuide(p)),
+          _Accordion(
             title: 'Delivery & returns',
-            body: 'Free delivery anywhere in India. Made to order, so no returns for a change of mind. If it arrives wrong or damaged, tell us within 48 hours of delivery and we will fix it.',
+            body: 'Price includes printing, ${merchGstText(p.gstRateBps ?? page.gstRateBps)} and delivery across India. You’ll get a GST invoice by email.\n\n'
+                'Free delivery across India. Printed to order, so it ships in a few days.\n\n'
+                'No returns for a change of mind. If it arrives wrong or damaged, tell us within 48 hours of delivery and we make it right.',
           ),
         ]),
       ),
+      if (_others.isNotEmpty) _moreFrom(page),
     ]);
+  }
+
+  Widget _sizeGuide(PublicProduct p) {
+    var rows = [for (final r in kMerchSizeChart) if (p.sizes.any((x) => x.size == r.$1)) r];
+    if (rows.isEmpty) rows = kMerchSizeChart;
+    Widget cell(String text, {bool head = false}) => Expanded(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 8),
+            child: Text(text, style: t(15, color: head ? GP.ink : GP.muted, w: head ? FontWeight.w900 : FontWeight.w700)),
+          ),
+        );
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Row(children: [cell('Size', head: true), cell('Chest (in)', head: true), cell('Length (in)', head: true)]),
+      for (final r in rows) Row(children: [cell(r.$1, head: true), cell('${r.$2}'), cell('${r.$3}')]),
+      const SizedBox(height: 6),
+      Text('Approximate garment measurements. Between two sizes? Pick the larger one.', style: t(15, color: GP.muted, w: FontWeight.w700, h: 1.4)),
+    ]);
+  }
+
+  Widget _moreFrom(PublicProductPage page) {
+    final name = page.host.displayName.trim();
+    final first = name.contains(' ') ? name.substring(0, name.indexOf(' ')) : name;
+    final shown = _others.take(4).toList();
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Semantics(header: true, child: Text('More from ${first.isEmpty ? 'this influencer' : first}', style: t(24, color: GP.ink, w: FontWeight.w900, h: 1.15))),
+        const SizedBox(height: 12),
+        LayoutBuilder(builder: (_, box) {
+          final w = (box.maxWidth - 12) / 2;
+          return Wrap(spacing: 12, runSpacing: 16, children: [
+            for (final o in shown)
+              SizedBox(
+                width: w,
+                child: GpProductCard(
+                  title: o.title,
+                  categoryLabel: '',
+                  priceText: o.sizes.map((e) => e.pricePaise).toSet().length > 1 ? 'from ${merchRupees(o.fromPaise)}' : merchRupees(o.fromPaise),
+                  imageUrl: o.imageUrl,
+                  soldOut: o.sizes.isNotEmpty && !o.sizes.any((x) => x.inStock),
+                  onTap: () => unawaited(context.push<Object?>('/merch/p/${Uri.encodeComponent(widget.hostSlug)}/${Uri.encodeComponent(o.slug)}')),
+                ),
+              ),
+          ]);
+        }),
+        const SizedBox(height: 12),
+        GpButton(
+          'See all ${_others.length + 1}',
+          kind: GpBtn.outline,
+          onTap: () => context.canPop() ? context.pop() : unawaited(context.push<Object?>('/profile/${Uri.encodeComponent(widget.hostSlug)}')),
+        ),
+      ]),
+    );
   }
 
   Widget _label(String text) => Padding(padding: const EdgeInsets.only(top: 20, bottom: 10), child: Text(text, style: t(16, color: GP.ink, w: FontWeight.w900)));
@@ -392,10 +497,13 @@ class _MerchProductScreenState extends State<MerchProductScreen> {
 
 /// A simple open / close block (the mock's `<details>`).
 class _Accordion extends StatefulWidget {
-  const _Accordion({required this.title, required this.body, this.initiallyOpen = false});
+  const _Accordion({super.key, required this.title, this.body = '', this.content, this.initiallyOpen = false});
 
   final String title;
   final String body;
+
+  /// Shown instead of [body] when set (for example the size chart).
+  final Widget? content;
   final bool initiallyOpen;
 
   @override
@@ -404,6 +512,10 @@ class _Accordion extends StatefulWidget {
 
 class _AccordionState extends State<_Accordion> {
   late bool _open = widget.initiallyOpen;
+
+  void open() {
+    if (!_open) setState(() => _open = true);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -424,7 +536,7 @@ class _AccordionState extends State<_Accordion> {
             ),
           ),
         ),
-        if (_open) Padding(padding: const EdgeInsets.only(bottom: 14), child: Text(widget.body, style: t(15, color: GP.muted, w: FontWeight.w700, h: 1.4))),
+        if (_open) Padding(padding: const EdgeInsets.only(bottom: 14), child: widget.content ?? Text(widget.body, style: t(15, color: GP.muted, w: FontWeight.w700, h: 1.4))),
       ]),
     );
   }

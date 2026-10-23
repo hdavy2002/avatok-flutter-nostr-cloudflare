@@ -15,15 +15,6 @@ import '../widgets.dart';
 /// Asked once per app run: "the money is taken from your paid wallet money" (owner D2).
 bool _aiConfirmedThisRun = false;
 
-const List<String> _examples = [
-  'Lord Ganesha in Madhubani style',
-  'A royal peacock with flowers',
-  'Cricket fan with the tricolour',
-  'Truck art: "Horn OK Please"',
-  'Chai cup with a smile',
-  'Namaste in Hindi lettering',
-];
-
 const List<(String, String)> _aspects = [('1:1', 'Square 1:1'), ('3:4', 'Portrait 3:4'), ('4:3', 'Landscape 4:3')];
 
 const List<String> _waitLines = [
@@ -116,13 +107,13 @@ class _MerchAiSheetState extends State<MerchAiSheet> with SingleTickerProviderSt
   String _aspect = '1:1';
   bool _plain = true;
   bool _working = false;
-  bool _bgBusy = false;
+  String? _bgId; // the result whose background is being taken out
+  bool _showForm = true;
   bool _pickBusy = false;
   int _line = 0;
   String? _error;
-  StudioArt? _result;
+  final List<StudioArt> _results = <StudioArt>[]; // everything made in this sheet, newest first
   String? _baseArtId;
-  String _lastPrompt = '';
 
   @override
   void dispose() {
@@ -135,7 +126,7 @@ class _MerchAiSheetState extends State<MerchAiSheet> with SingleTickerProviderSt
   int get _charge => _info.chargePaise;
   int get _short => _charge > _info.balancePaise ? _charge - _info.balancePaise : 0;
   bool get _promptOk => _prompt.text.trim().length >= 3;
-  bool get _canGenerate => !_working && !_bgBusy && _promptOk && _short == 0;
+  bool get _canGenerate => !_working && _bgId == null && _promptOk && _short == 0;
 
   // ---------------------------------------------------------------------------------------------- actions
 
@@ -220,7 +211,6 @@ class _MerchAiSheetState extends State<MerchAiSheet> with SingleTickerProviderSt
     setState(() {
       _working = true;
       _error = null;
-      _result = null;
     });
     _startLines();
     merchEvent('merch_ai', {'action': 'generate_started', 'refs': refs.length, 'style': _style ?? 'none', 'edit': base != null, 'aspect': _aspect});
@@ -242,8 +232,8 @@ class _MerchAiSheetState extends State<MerchAiSheet> with SingleTickerProviderSt
       _stopLines();
       setState(() {
         _working = false;
-        _result = art;
-        _lastPrompt = prompt;
+        _results.insert(0, art);
+        _showForm = false;
         _baseArtId = null;
         _tray.insert(0, art);
         _info = AiInfo(
@@ -318,29 +308,28 @@ class _MerchAiSheetState extends State<MerchAiSheet> with SingleTickerProviderSt
     }
   }
 
-  Future<void> _removeBackground() async {
-    final cur = _result;
-    if (cur == null || _bgBusy) return;
+  Future<void> _removeBackground(StudioArt cur) async {
+    if (_bgId != null) return;
     setState(() {
-      _bgBusy = true;
+      _bgId = cur.artId;
       _error = null;
     });
     try {
       final up = await widget.repo.removeBackground(cur.artId);
-      final art = StudioArt(art: up, source: 'bg_removed', label: cur.label);
+      final art = StudioArt(art: up, source: 'bg_removed', label: '${cur.label ?? 'Picture'} (no background)');
       widget.onArt(art);
       merchEvent('merch_ai', {'action': 'bg_removed'});
       if (mounted) {
         setState(() {
-          _bgBusy = false;
-          _result = art;
+          _bgId = null;
+          _results.insert(0, art);
           _tray.insert(0, art);
         });
       }
     } on ApiException catch (e) {
       if (mounted) {
         setState(() {
-          _bgBusy = false;
+          _bgId = null;
           _error = e.userMessage;
         });
       }
@@ -348,29 +337,26 @@ class _MerchAiSheetState extends State<MerchAiSheet> with SingleTickerProviderSt
       merchCapture(e, st, 'bg_remove');
       if (mounted) {
         setState(() {
-          _bgBusy = false;
+          _bgId = null;
           _error = 'Could not remove the background. Please try again.';
         });
       }
     }
   }
 
-  void _useResult() {
-    final r = _result;
-    if (r == null) return;
+  void _useResult(StudioArt r) {
     merchEvent('merch_ai', {'action': 'use'});
     widget.onUse(r);
     Navigator.of(context).pop();
   }
 
-  void _changeResult() {
-    final r = _result;
-    if (r == null) return;
+  void _changeResult(StudioArt r) {
+    final words = (r.label ?? '').replaceAll(' (no background)', '');
     setState(() {
       _baseArtId = r.artId;
-      _prompt.text = _lastPrompt;
+      if (words.isNotEmpty) _prompt.text = words;
       _prompt.selection = TextSelection.collapsed(offset: _prompt.text.length);
-      _result = null;
+      _showForm = true;
       _error = null;
     });
     merchEvent('merch_ai', {'action': 'change_started'});
@@ -403,7 +389,7 @@ class _MerchAiSheetState extends State<MerchAiSheet> with SingleTickerProviderSt
             ),
           ]),
         ),
-        Expanded(child: _working ? _workingView() : (_result != null ? _resultView(_result!) : _formView())),
+        Expanded(child: _working ? _workingView() : (_results.isNotEmpty && !_showForm ? _resultsView() : _formView())),
         _bottom(),
       ]),
     );
@@ -415,6 +401,11 @@ class _MerchAiSheetState extends State<MerchAiSheet> with SingleTickerProviderSt
     return ListView(
       padding: const EdgeInsets.fromLTRB(20, 4, 20, 16),
       children: [
+        if (_results.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 14),
+            child: DesiButton('See my new pictures (${_results.length})', icon: Icons.photo_library_rounded, kind: DesiButtonKind.ghost, expand: true, onTap: () => setState(() => _showForm = false)),
+          ),
         if (base != null)
           Container(
             margin: const EdgeInsets.only(bottom: 14),
@@ -441,11 +432,11 @@ class _MerchAiSheetState extends State<MerchAiSheet> with SingleTickerProviderSt
           textCapitalization: TextCapitalization.sentences,
           onChanged: (_) => setState(() => _error = null),
           style: t(17, w: FontWeight.w700),
-          decoration: const InputDecoration(hintText: 'Example: Lord Ganesha in Madhubani style', counterText: ''),
+          decoration: const InputDecoration(hintText: 'Example: My face in Madhubani art with floral borders', counterText: ''),
         ),
         const SizedBox(height: 10),
         Wrap(spacing: 8, runSpacing: 8, children: [
-          for (final e in _examples)
+          for (final e in merchAiExamples)
             MerchPill(
               label: e,
               selected: false,
@@ -474,7 +465,7 @@ class _MerchAiSheetState extends State<MerchAiSheet> with SingleTickerProviderSt
         Text('Style (optional)', style: t(16, color: C.maroon)),
         const SizedBox(height: 8),
         Wrap(spacing: 8, runSpacing: 8, children: [
-          for (final s in merchAiStyles) MerchPill(label: s.$2, selected: _style == s.$1, onTap: () => setState(() => _style = _style == s.$1 ? null : s.$1)),
+          for (final s in merchAiStyles) MerchStyleChip(style: s, selected: _style == s.key, onTap: () => setState(() => _style = _style == s.key ? null : s.key)),
         ]),
         const SizedBox(height: 18),
         Text('Shape', style: t(16, color: C.maroon)),
@@ -537,67 +528,79 @@ class _MerchAiSheetState extends State<MerchAiSheet> with SingleTickerProviderSt
     );
   }
 
-  Widget _resultView(StudioArt r) {
-    final ratio = r.art.width > 0 && r.art.height > 0 ? (r.art.width / r.art.height).clamp(0.6, 1.6).toDouble() : 1.0;
+  Widget _resultsView() {
     return ListView(
       padding: const EdgeInsets.fromLTRB(20, 6, 20, 16),
       children: [
+        Text('Your new pictures', textAlign: TextAlign.center, style: t(20, color: C.maroon)),
+        const SizedBox(height: 4),
+        Text('Every picture you make here stays in this list.', textAlign: TextAlign.center, style: t(14, color: C.muted, w: FontWeight.w700)),
+        const SizedBox(height: 14),
+        for (final r in _results) ...[
+          _resultCard(r),
+          const SizedBox(height: 16),
+        ],
+        if (_error != null) Padding(padding: const EdgeInsets.only(bottom: 10), child: Text(_error!, style: t(15, color: C.ruby, w: FontWeight.w700))),
+        DesiButton(
+          'Make a different picture',
+          icon: Icons.auto_awesome_rounded,
+          kind: DesiButtonKind.ghost,
+          expand: true,
+          onTap: _bgId != null
+              ? null
+              : () => setState(() {
+                    _showForm = true;
+                    _baseArtId = null;
+                    _error = null;
+                  }),
+        ),
+      ],
+    );
+  }
+
+  Widget _resultCard(StudioArt r) {
+    final ratio = r.art.width > 0 && r.art.height > 0 ? (r.art.width / r.art.height).clamp(0.6, 1.6).toDouble() : 1.0;
+    final busy = _bgId == r.artId;
+    final locked = _bgId != null;
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(color: C.white, borderRadius: BorderRadius.circular(24), border: Border.all(color: C.line)),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         Center(
           child: ConstrainedBox(
-            constraints: const BoxConstraints(maxHeight: 340),
+            constraints: const BoxConstraints(maxHeight: 300),
             child: AspectRatio(
               aspectRatio: ratio,
               child: Container(
                 decoration: BoxDecoration(
                   gradient: const LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [C.lavtint, C.blush]),
-                  borderRadius: BorderRadius.circular(24),
+                  borderRadius: BorderRadius.circular(18),
                   border: Border.all(color: C.line),
                 ),
                 clipBehavior: Clip.antiAlias,
                 padding: const EdgeInsets.all(8),
-                child: _bgBusy
+                child: busy
                     ? const Center(child: CircularProgressIndicator(color: C.maroon))
                     : NetImage(r.art.url, fit: BoxFit.contain, fallback: const Center(child: CircularProgressIndicator(color: C.maroon, strokeWidth: 3))),
               ),
             ),
           ),
         ),
-        const SizedBox(height: 14),
-        Text(_bgBusy ? 'Taking the background out…' : 'Your picture is ready', textAlign: TextAlign.center, style: t(18, color: C.maroon)),
+        if (busy) Padding(padding: const EdgeInsets.only(top: 10), child: Text('Taking the background out…', textAlign: TextAlign.center, style: t(16, color: C.maroon))),
         for (final w in r.art.warnings) MerchNote(w),
-        const SizedBox(height: 14),
-        DesiButton('Use this', icon: Icons.check_rounded, kind: DesiButtonKind.rani, expand: true, onTap: _bgBusy ? null : _useResult),
-        const SizedBox(height: 10),
-        DesiButton(
-          'Change this · ${merchRupees(_charge)}',
-          icon: Icons.edit_rounded,
-          kind: DesiButtonKind.ghost,
-          expand: true,
-          onTap: _bgBusy ? null : _changeResult,
-        ),
-        const SizedBox(height: 10),
-        DesiButton('Remove background · free', icon: Icons.content_cut_rounded, kind: DesiButtonKind.ghost, expand: true, onTap: _bgBusy ? null : () => unawaited(_removeBackground())),
-        const SizedBox(height: 10),
-        DesiButton(
-          'Make a different picture',
-          kind: DesiButtonKind.ghost,
-          expand: true,
-          onTap: _bgBusy
-              ? null
-              : () => setState(() {
-                    _result = null;
-                    _baseArtId = null;
-                    _error = null;
-                  }),
-        ),
-        if (_error != null) Padding(padding: const EdgeInsets.only(top: 10), child: Text(_error!, style: t(15, color: C.ruby, w: FontWeight.w700))),
-      ],
+        const SizedBox(height: 12),
+        DesiButton('Use this', icon: Icons.check_rounded, kind: DesiButtonKind.rani, expand: true, onTap: locked ? null : () => _useResult(r)),
+        const SizedBox(height: 8),
+        DesiButton('Change this · ${merchRupees(_charge)}', icon: Icons.edit_rounded, kind: DesiButtonKind.ghost, expand: true, onTap: locked ? null : () => _changeResult(r)),
+        const SizedBox(height: 8),
+        DesiButton('Remove background · free', icon: Icons.content_cut_rounded, kind: DesiButtonKind.ghost, expand: true, onTap: locked ? null : () => unawaited(_removeBackground(r))),
+      ]),
     );
   }
 
   /// The cost card is always on screen (owner D2), with the button under it while the form is open.
   Widget _bottom() {
-    final showButton = !_working && _result == null;
+    final showButton = !_working && (_results.isEmpty || _showForm);
     final short = _short;
     final free = _charge <= 0;
     return Container(
