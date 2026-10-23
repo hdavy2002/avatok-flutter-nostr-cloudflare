@@ -70,7 +70,7 @@ export async function saveMerchArt(env: Env, uid: string, bytes: Uint8Array, dec
   const now = Date.now();
   const dpiAtFullWidth = Math.round(info.w / FULL_WIDTH_IN);
   const warnings: string[] = [];
-  if (dpiAtFullWidth < 150) warnings.push("At full size this may look blurry. Keep the art smaller on the product or upload a bigger file.");
+  if (dpiAtFullWidth < 150) warnings.push(`This picture prints sharp up to about ${Math.max(1, Math.round(info.w / 200))} inches wide. For a bigger print, use a bigger file.`);
   if (info.mime === "image/jpeg" || info.has_alpha === false) warnings.push("This image has a solid background, and it will print too. Use a PNG with a see-through background to print only your art.");
   if (info.rgb === false) warnings.push("This file is not RGB, so colours may print differently.");
   if (moderation === "unscanned") warnings.push("This image will be checked by our team before it goes on sale.");

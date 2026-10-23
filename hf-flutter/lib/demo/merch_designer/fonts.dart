@@ -20,7 +20,7 @@ class MerchFont {
   /// True when the font draws Devanagari (Hindi) letters.
   final bool devanagari;
 
-  String get sample => devanagari ? 'जय श्री राम' : label;
+  String get sample => devanagari ? 'नमस्ते दोस्तों' : label;
 
   /// The name registered with the engine (prefixed so it never clashes with an app font such as Poppins).
   String get flutterFamily => 'hfm_$family';

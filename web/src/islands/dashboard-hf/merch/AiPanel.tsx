@@ -22,6 +22,7 @@ export default function AiPanel({ open, onClose, ai, setAi, arts, addArt, onUse,
   const [plain, setPlain] = useState(true);
   const [base, setBase] = useState<StudioArt | null>(null);
   const [results, setResults] = useState<StudioArt[]>([]);
+  const resultsRef = useRef<HTMLElement>(null);
   const [busy, setBusy] = useState(false);
   const [line, setLine] = useState(0);
   const [fail, setFail] = useState<Failure | null>(null);
@@ -76,6 +77,7 @@ export default function AiPanel({ open, onClose, ai, setAi, arts, addArt, onUse,
       const art: StudioArt = { ...r.data.art, source: 'ai', label: prompt.trim().slice(0, 40) };
       addArt(art, false);
       setResults(x => [art, ...x]);
+      setTimeout(() => resultsRef.current?.scrollIntoView({ block: 'start', behavior: 'smooth' }), 60);
       setAi(p => p && { ...p, balancePaise: r.data.balancePaise, canAfford: r.data.balancePaise >= p.chargePaise });
       setBase(null);
       capture('merch_ai', { action: 'done' });
@@ -163,7 +165,7 @@ export default function AiPanel({ open, onClose, ai, setAi, arts, addArt, onUse,
 
         {busy && <div className="mc-wait" role="status"><span className="spin"><Marigold size={64} /></span><b>{WAIT_LINES[line]}</b><span className="small muted">This can take up to a minute. Please keep this window open.</span></div>}
 
-        {results.length > 0 && <section className="mc-aisec"><h3 className="mc-h3">Your new pictures</h3>
+        {results.length > 0 && <section className="mc-aisec" ref={resultsRef}><h3 className="mc-h3">Your new pictures</h3>
           {bgErr && <p role="alert" className="mc-err">{bgErr}</p>}
           <ul className="mc-results">{results.map(a => <li key={a.artId} className="mc-result">
             <img src={artSrc(a)} alt={a.label || 'AI picture'} />

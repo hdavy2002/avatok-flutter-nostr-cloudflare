@@ -77,18 +77,24 @@ p.ms-q{margin:0; width:max-content; max-width:100%}
 .ms-tool:hover{background:var(--ms-blush)}
 .ms-tool.on{background:linear-gradient(160deg,var(--ms-rani),var(--ms-rani2)); color:#fff; border-color:transparent; box-shadow:0 10px 22px -12px var(--ms-rani)}
 .ms-panel-in{display:flex; flex-direction:column; gap:12px}
-@media (min-width:700px){ .ms-panel-in{display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); align-items:start} .ms-panel-in>.ms-empty{grid-column:1/-1} }
-@media (min-width:1100px){
-  .ms-grid{grid-template-columns:96px minmax(300px,380px) minmax(0,1fr) minmax(280px,340px); grid-template-areas:"rail panel centre side"; gap:18px}
+@container msstudio (min-width:700px){ .ms-panel-in{display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); align-items:start} .ms-panel-in>.ms-empty{grid-column:1/-1} }
+/* Layout follows the studio's OWN width (it sits inside the dashboard, so the window width lies). */
+.ms-studio{container-type:inline-size; container-name:msstudio}
+@container msstudio (min-width:860px){
+  .ms-grid{grid-template-columns:88px minmax(0,1fr) minmax(300px,360px); grid-template-areas:"rail centre panel"; gap:16px}
   .ms-rail{flex-direction:column; overflow:visible; position:sticky; top:12px; padding:0}
-  .ms-tool{min-width:0; width:96px; min-height:82px; border-radius:24px}
-  .ms-tool.small-only{display:none}
+  .ms-tool{min-width:0; width:88px; min-height:78px; border-radius:22px}
   .ms-panel{position:sticky; top:12px; max-height:calc(100dvh - 24px); overflow:auto; scrollbar-width:thin; padding:2px}
   .ms-panel-in{display:flex}
   .ms-centre{position:sticky; top:12px}
+}
+@container msstudio (min-width:1240px){
+  .ms-grid{grid-template-columns:96px minmax(320px,380px) minmax(0,1fr) minmax(260px,320px); grid-template-areas:"rail panel centre side"; gap:18px}
+  .ms-tool{width:96px; min-height:82px; border-radius:24px}
+  .ms-tool.small-only{display:none}
   .ms-side{display:block; position:sticky; top:12px; max-height:calc(100dvh - 24px); overflow:auto; scrollbar-width:thin}
 }
-@media (min-width:1900px){ .ms-grid{grid-template-columns:110px minmax(340px,420px) minmax(0,1fr) minmax(320px,380px)} .ms-studio{font-size:17px} }
+@container msstudio (min-width:1700px){ .ms-grid{grid-template-columns:110px minmax(340px,420px) minmax(0,1fr) minmax(300px,380px)} }
 
 /* ── cards ── */
 .ms-card{display:flex; flex-direction:column; gap:12px; padding:16px; border-radius:24px; background:#fff; border:1.5px solid var(--ms-line); box-shadow:var(--ms-shadow)}
@@ -112,8 +118,8 @@ p.ms-q{margin:0; width:max-content; max-width:100%}
 .ms-empty-stage b{font:900 18px/1.2 var(--ms-head); background:#fff; padding:10px 18px; border-radius:999px; box-shadow:var(--ms-shadow)}
 .ms-empty-stage span{font-size:15px; color:var(--ms-muted); font-weight:700}
 .ms-areatag{position:absolute; left:14px; bottom:12px; font:700 14px/1.2 var(--ms-body); font-style:normal; background:rgba(255,255,255,.88); padding:5px 12px; border-radius:999px; color:var(--ms-muted); pointer-events:none}
-@media (min-width:700px){ .ms-stagebox{height:clamp(420px,70vw,720px)} }
-@media (min-width:1100px){ .ms-stagebox{height:clamp(480px,calc(100dvh - 190px),960px)} }
+@container msstudio (min-width:700px){ .ms-stagebox{height:clamp(420px,70cqw,720px)} }
+@container msstudio (min-width:860px){ .ms-stagebox{height:clamp(520px,calc(100dvh - 200px),960px)} }
 
 .ms-foot{display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:10px}
 .ms-swatches{display:flex; flex-wrap:wrap; align-items:center; gap:2px}

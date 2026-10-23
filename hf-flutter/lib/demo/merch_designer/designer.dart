@@ -157,14 +157,17 @@ class _MerchDesignerState extends State<MerchDesigner> implements StudioHost {
     final pw = a.art.width > 0 ? a.art.width : 1000;
     final ph = a.art.height > 0 ? a.art.height : 1000;
     final aspect = ph / pw;
-    var w = areaW * 0.7;
+    // ~70% of the print area, but never so big that a small picture prints soft (keep about 220 DPI). Same rule as the web studio.
+    var w = math.min(areaW * 0.7, pw / 220);
     var h = w * aspect;
     if (h > areaH * 0.7) {
       h = areaH * 0.7;
       w = h / aspect;
     }
+    w = math.max(w, math.min(2.0, areaW));
+    h = w * aspect;
     return ImageDesignLayer(
-      id: _newId(), name: _nextName(a.label ?? 'Picture'), x: areaW / 2, y: areaH / 2,
+      id: _newId(), name: _nextName(a.label ?? 'Picture'), x: areaW / 2, y: math.min(areaH / 2, h / 2 + 1),
       artId: a.artId, url: a.art.url, pxW: pw, pxH: ph, w: w, h: h,
     );
   }
@@ -211,7 +214,7 @@ class _MerchDesignerState extends State<MerchDesigner> implements StudioHost {
     final dark = _colourNow.computeLuminance() < 0.3;
     final l = TextDesignLayer(
       id: _newId(), name: _nextName('Text'), x: areaW / 2, y: areaH / 2,
-      text: hindi ? 'जय श्री राम' : 'Your text', font: kDefaultMerchFont,
+      text: hindi ? 'नमस्ते' : 'Your text', font: kDefaultMerchFont,
       sizeIn: math.min(3.0, math.max(0.6, areaW * 0.12)), fill: dark ? '#ffffff' : '#1a1a1a', lineHeight: 1.1, strokeIn: 0.04,
     );
     MerchFonts.loadQuiet(kDefaultMerchFont);

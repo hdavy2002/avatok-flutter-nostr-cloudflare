@@ -1,7 +1,7 @@
 /* [HF-MERCH-STUDIO-2] Step 3 "Design": the merch design studio (layers of pictures + text on the product, built on Konva).
  * React `layers` is the source of truth; engine.ts draws it. "Looks good" exports one 300 DPI transparent PNG (exportPrint.ts), uploads it and the product pictures,
  * then hands everything to the wizard through `onDone` (contract: ./types.ts). Spec: Specs/SPEC-2026-10-23-HF-MERCH-STUDIO-2.md. */
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from 'react';
 import { capture, captureException } from '../../../../lib/analytics';
 import { dpiQuality } from '../../../../lib/studioGeometry';
 import { removeBackground, uploadArt, uploadMockup, uploadPrintFile } from '../api';
@@ -28,14 +28,16 @@ const STEP = 'design';
 const r2 = (v: number): number => Math.round(v * 100) / 100;
 const uid = (): string => (typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : `l${Date.now().toString(36)}${Math.random().toString(36).slice(2, 9)}`);
 
-function useWide(): boolean {
-  const q = '(min-width: 1100px)';
+/** Wide = the studio itself (not the window) has room for the 4-column layout with the layers column. Matches the @container rule in studio.css. */
+const WIDE_PX = 1240;
+function useWide(el: RefObject<HTMLDivElement | null>): boolean {
   const [wide, setWide] = useState(false);
   useEffect(() => {
-    const m = matchMedia(q); const f = (): void => setWide(m.matches);
-    f(); m.addEventListener('change', f);
-    return () => m.removeEventListener('change', f);
-  }, []);
+    const node = el.current; if (!node) return;
+    const f = (): void => setWide(node.clientWidth >= WIDE_PX);
+    f(); const ro = new ResizeObserver(f); ro.observe(node);
+    return () => ro.disconnect();
+  }, [el]);
   return wide;
 }
 
@@ -49,7 +51,8 @@ export default function Designer(props: DesignerProps) {
   const swatches = useMemo(() => (colours.length ? colours : item.colours.slice(0, 1)), [colours, item]);
   const [colourName, setColourName] = useState(swatches[0]?.name ?? '');
   const hex = swatches.find(c => c.name === colourName)?.hex ?? swatches[0]?.hex ?? '#ffffff';
-  const wide = useWide();
+  const rootEl = useRef<HTMLDivElement>(null);
+  const wide = useWide(rootEl);
 
   /* ── state ──────────────────────────────────────────────────────────── */
   const initial = useMemo<Layer[]>(() => props.initialLayers ?? [], []); // eslint-disable-line react-hooks/exhaustive-deps
@@ -158,10 +161,12 @@ export default function Designer(props: DesignerProps) {
   };
   function addArt(a: StudioArt): void {
     const aspect = a.height / Math.max(1, a.width);
-    let w = areaIn.w * 0.7; let h = w * aspect;
+    // ~70% of the print area, but never so big that it prints soft (keep at least 220 DPI when the picture is small).
+    let w = Math.min(areaIn.w * 0.7, a.width / 220); let h = w * aspect;
     if (h > areaIn.h * 0.7) { h = areaIn.h * 0.7; w = h / aspect; }
+    w = Math.max(w, Math.min(2, areaIn.w)); h = w * aspect;
     const l: ImageLayer = {
-      id: uid(), type: 'image', name: nextName(a.label || 'Picture'), visible: true, locked: false, x: areaIn.w / 2, y: areaIn.h / 2, rotation: 0, opacity: 1, flipX: false, flipY: false,
+      id: uid(), type: 'image', name: nextName(a.label || 'Picture'), visible: true, locked: false, x: areaIn.w / 2, y: Math.min(areaIn.h / 2, h / 2 + 1), rotation: 0, opacity: 1, flipX: false, flipY: false,
       artId: a.artId, src: a.localUrl ?? a.url, pxW: a.width, pxH: a.height, w, h,
     };
     commit([...layersRef.current, l]); setSelId(l.id);
@@ -171,7 +176,7 @@ export default function Designer(props: DesignerProps) {
     const dark = parseInt(hex.slice(1, 3) || 'ff', 16) * 0.3 + parseInt(hex.slice(3, 5) || 'ff', 16) * 0.59 + parseInt(hex.slice(5, 7) || 'ff', 16) * 0.11 < 128;
     const l: TextLayer = {
       id: uid(), type: 'text', name: nextName('Text'), visible: true, locked: false, x: areaIn.w / 2, y: areaIn.h / 2, rotation: 0, opacity: 1, flipX: false, flipY: false,
-      text: hindi ? 'जय श्री राम' : 'Your text', font: DEFAULT_FONT, sizeIn: Math.min(3, Math.max(0.6, areaIn.w * 0.12)), fill: dark ? '#ffffff' : '#1a1a1a', align: 'center',
+      text: hindi ? 'नमस्ते' : 'Your text', font: DEFAULT_FONT, sizeIn: Math.min(3, Math.max(0.6, areaIn.w * 0.12)), fill: dark ? '#ffffff' : '#1a1a1a', align: 'center',
       letterSpacing: 0, lineHeight: 1.1, stroke: null, strokeIn: 0.04, shadow: false, bold: false, italic: false,
     };
     commit([...layersRef.current, l]); setSelId(l.id); setTool('text');
@@ -335,7 +340,7 @@ export default function Designer(props: DesignerProps) {
   const hist2 = hist.current;
   const chipTone = q ? q.tone : 'info';
 
-  return <div className="ms-studio" data-busy={busy ? '1' : undefined}>
+  return <div className="ms-studio" ref={rootEl} data-busy={busy ? '1' : undefined}>
     <header className="ms-head">
       <button type="button" className="ms-btn ghost" onClick={props.onBack} disabled={!!busy}><SI name="back" /> Back</button>
       <div className="ms-title"><b>{item.name}</b><span>{side === 'front' ? 'Front' : 'Back'} print · {colourName}</span></div>

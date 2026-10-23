@@ -6,7 +6,7 @@ export interface MerchFont {
   bold: boolean; italic: boolean;
 }
 
-const HI = 'जय श्री राम';
+const HI = 'नमस्ते दोस्तों';
 const mk = (family: string, file: string, label: string, devanagari: boolean, sample?: string): MerchFont =>
   ({ family, file, label, devanagari, sample: sample ?? (devanagari ? HI : label), bold: false, italic: false });
 
