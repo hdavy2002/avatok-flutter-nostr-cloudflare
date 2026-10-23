@@ -220,7 +220,7 @@ const listDesigns = guarded("admin2.studio.designs.list", async (req, env) => {
   const r = await env.DB_META.prepare(
     `SELECT d.*, p.slug AS product_slug,
        (SELECT COUNT(*) FROM studio_photos s WHERE s.design_id=d.id AND s.status='kept') AS photo_count
-     FROM studio_designs d LEFT JOIN shop_products p ON p.id=d.product_id ORDER BY d.updated_at DESC LIMIT 300`,
+     FROM studio_designs d LEFT JOIN shop_products p ON p.id=d.product_id WHERE COALESCE(d.step,'')<>'merch' ORDER BY d.updated_at DESC LIMIT 300`,
   ).all<DesignRow & { product_slug: string | null; photo_count: number }>();
   const all = r.results ?? [];
   const counts = { all: 0, draft: 0, ready: 0, live: 0, retired: 0 };

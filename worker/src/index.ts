@@ -317,6 +317,9 @@ import { runHfBookingApprovalExpiry } from "./lib/hf_booking_approval"; // [HF-B
 import { runHfOpenWindowAlerts } from "./lib/hf_open_alerts"; // [HF-BOOK-APPROVE-BE] "you're open for calls" alert (flag hfBookingApprovalEnabled)
 import { runHfPresenceNudge } from "./lib/hf_presence_nudge"; // [HF-PRESENCE-NUDGE-1] 3-hourly "you're offline" reminder (flag hfPresenceNudgeEnabled)
 import { cashfreeCheckoutHost } from "./routes/cashfree_checkout_host"; // [HF-CASHFREE-CHECKOUT-HOST-1]
+import { hfMerchRoute } from "./routes/hf_merch"; // [HF-MERCH-CORE-1] influencer merch shop (flag hfMerchEnabled)
+import { adminMerchRoute } from "./routes/admin2_merch"; // [HF-MERCH-CORE-1]
+import { runMerchTick } from "./lib/hf_merch_flow"; // [HF-MERCH-CORE-1]
 import { hfTopupRoute } from "./routes/hf_topup"; // [HF-TOPUP-1] wallet top-up, any gateway (flags hfTopupEnabled + hfTopupGateway)
 import { expireHfTopups } from "./lib/hf_topup"; // [HF-TOPUP-1] close unpaid top-ups after 24 h
 import { hfAdminDeskActionsRoute } from "./routes/hf_admin_desk_actions"; // [HF-ADMIN-COMPLETE-1] member page, wallets list, notes/resolve/reply/review
@@ -665,6 +668,10 @@ export default {
         runPodFulfilmentTick(env, ctx)
           .then((r) => { if (r.retried || r.autoSent || r.polled) console.log("[pod-fulfilment]", JSON.stringify(r)); })
           .catch((e) => { ctx.waitUntil(hooks.trackException(env, e, { route: "pod_fulfilment_tick", handled: true, app_name: "saathum" })); console.error("[pod-fulfilment] failed:", String(e)); }),
+        // [HF-MERCH-CORE-1 2026-10-23] Merch safety net: poll Cashfree orders, expire unpaid, retry refunds, credit delivered earnings. Never throws; a no-op until orders exist.
+        runMerchTick(env)
+          .then((r) => { if (r.expired || r.polled || r.refunds || r.earnings) console.log("[hf-merch-tick]", JSON.stringify(r)); })
+          .catch((e) => { ctx.waitUntil(hooks.trackException(env, e, { route: "hf_merch_tick", handled: true, app_name: "hf_merch" })); console.error("[hf-merch-tick] failed:", String(e)); }),
         // [AUMFE-POD-COST-1 2026-10-01] Once a day: refresh the stored Printrove catalogue (cheap check first; guarded; never throws).
         runPodCatalogRefresh(env)
           .catch((e) => { ctx.waitUntil(hooks.trackException(env, e, { route: "pod_catalog_refresh", handled: true, app_name: "saathum" })); console.error("[pod-catalog] failed:", String(e)); }),
@@ -1159,6 +1166,8 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
         if (bookingResponse) return bookingResponse;
       } // [HF-BOOKING-CALENDAR-1] feature stays dark until the booked-call settlement path is ready
       if (p.startsWith("/api/hf/lanes/")) { const r = await hfLanesRoute(req, env, p, ctx); if (r) return r; } // [HF-LANE-VERIFY-1]
+      if (p.startsWith("/api/hf/merch/")) { const r = await hfMerchRoute(req, env, p, ctx); if (r) return r; } // [HF-MERCH-CORE-1]
+      if (p.startsWith("/api/admin/merch/")) { const r = await adminMerchRoute(req, env, p); if (r) return r; } // [HF-MERCH-CORE-1]
       if (p.startsWith("/api/hf/wallet/topup") || p === "/api/hf/app/wallet" || p.startsWith("/api/admin/hf/topups")) { const r = await hfTopupRoute(req, env, p); if (r) return r; } // [HF-TOPUP-1]
       if (p.startsWith("/api/admin/hf/desk/")) { const r = (await hfAdminDeskActionsRoute(req, env, p)) ?? (await hfAdminDeskRoute(req, env, p)); if (r) return r; } // [HF-ADMIN-SWEEP-1]
       if (p === "/api/admin/hf/money-audit" || p.startsWith("/api/admin/hf/money-audit/")) { const r = await hfMoneyAuditRoute(req, env, p); if (r) return r; } // [HF-WIRE-13]

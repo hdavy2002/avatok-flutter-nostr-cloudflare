@@ -17,7 +17,7 @@ export type SellerOrder = {
 export type MaskInput = {
   order_id: string; order_no: string; created_at: number; pay_status: string; fulfil_status: string;
   approval_status?: string | null; refund_status?: string | null; printrove_order_ref?: string | null;
-  address_json: string; merch_json: string | null; courier: string | null; awb: string | null; tracking_url: string | null;
+  address_json: string; merch_json?: string | null; courier: string | null; awb: string | null; tracking_url: string | null;
   delivered_at: number | null; earning_credited_at?: number | null;
 } & Record<string, unknown>;
 

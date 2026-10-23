@@ -19,6 +19,7 @@ import { isClosing, CLOSING_MESSAGE } from "../lib/hf_exit"; // [HF-WALLET-EXIT-
 import { readHfStdPlan } from "../lib/hf_token_config";
 import { topupSplitFloor as topupSplit } from "../lib/hf_token_math";
 import { hfCallsRoute } from "./hf_calls";
+import { isMerchOrderId, merchCashfreeWebhook } from "./hf_merch"; // [HF-MERCH-CORE-1]
 import { topupCustomer } from "../lib/hf_topup_customer"; // [HF-WIRE-20]
 import { validateDisplayName, validateEmail } from "./hf_me"; // [HF-WIRE-21]
 import { normalizeAppWallet } from "../lib/hf_app_wallet";
@@ -134,7 +135,9 @@ async function topupWebhook(req: Request, env: Env, gateway: string): Promise<Re
   if (!verified) return json({ error: "bad signature" }, 401);
   const parsed = adapter.parseWebhook(raw);
   let res: Response;
-  if (!parsed || !isHfTopupId(parsed.our_order_id)) res = json({ ok: true, ignored: "not_a_topup" });
+  // [HF-MERCH-CORE-1] The Cashfree webhook URL is shared: a merch order id (shp_) is re-checked with Cashfree and confirmed by the merch flow.
+  if (parsed && isMerchOrderId(parsed.our_order_id)) res = await merchCashfreeWebhook(req, env, raw);
+  else if (!parsed || !isHfTopupId(parsed.our_order_id)) res = json({ ok: true, ignored: "not_a_topup" });
   else res = await settleParsedWebhook(env, adapter, parsed);
   // Some gateways (Paytm's hosted page) deliver by redirecting the buyer's browser with a form POST.
   if ((req.headers.get("content-type") ?? "").toLowerCase().includes("application/x-www-form-urlencoded") && res.status < 500) {

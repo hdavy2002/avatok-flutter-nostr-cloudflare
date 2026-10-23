@@ -17,7 +17,7 @@ import { avaReason } from "./lib/ava_reason"; // One Brain B1: unified reasoning
  */
 export const CORS: Record<string, string> = {
   "access-control-allow-origin": "*",
-  "access-control-allow-methods": "GET,POST,PUT,DELETE,OPTIONS",
+  "access-control-allow-methods": "GET,POST,PUT,PATCH,DELETE,OPTIONS",
   // [HF-ADMIN-SPEED-3] Let browsers keep the preflight answer (Chrome caps it at 2 h) instead of re-asking before every call.
   "access-control-max-age": "7200",
   "access-control-allow-headers": [
@@ -27,6 +27,8 @@ export const CORS: Record<string, string> = {
     // upload metadata — see routes/media.ts
     "x-content-type",
     "x-file-name",
+    "x-art-id", // [HF-MERCH-CORE-1] print file -> the art it belongs to
+    "x-client", // [HF-MERCH-CORE-1] "app" | "web" (checkout return handoff)
     "x-app",
     "x-folder",
     "x-uncommitted",

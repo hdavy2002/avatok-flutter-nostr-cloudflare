@@ -1,0 +1,438 @@
+// [HF-MERCH-CORE-1 2026-10-23] Influencer merch shop: influencer, public and fan routes. Spec: Specs/SPEC-2026-10-23-HF-MERCH.md section 5.
+// Every response is { ok:true, ... } or { ok:false, error, message }. Everything is dark behind hfMerchEnabled (404 not_enabled);
+// checkout is also behind hfMerchCheckoutEnabled (403 checkout_off). Admin routes live in routes/admin2_merch.ts.
+//   Influencer: GET catalog | GET quote | POST art | POST print-file | POST mockup | POST/GET products | PATCH/DELETE products/:id | GET orders(/:id) | GET summary
+//   Public:     GET public/:host | GET public/:host/:product | GET pincode/:pin | GET sitemap
+//   Fan:        POST checkout | GET my-orders(/:id) | POST my-orders/:id/problem(-photo) | GET addresses | DELETE addresses/:id
+//   Gateway:    POST webhook/cashfree
+import type { Env } from "../types";
+import { json } from "../util";
+import { requireUser, isFail, requireVerifiedWhatsApp } from "../authz";
+import { rateLimit } from "../money";
+import { metaDb } from "../db/shard";
+import { BRAND } from "../lib/brand";
+import { isClosing, CLOSING_MESSAGE } from "../lib/hf_exit";
+import { resolveGateway } from "../lib/payments/registry";
+import { getPodProvider } from "../lib/pod";
+import { sha256Hex } from "../util";
+import { IMAGE_EXT, parseImageInfo } from "../lib/studio_logic";
+import { reportWindowOpen, type ShopOrderRow } from "../lib/shop_orders_logic";
+import { alertOwnerShopProblem } from "../lib/shop_notify";
+import { appendShopEvent } from "./shop_orders";
+import { maskOrderForSeller, assertNoSellerLeak } from "../lib/hf_merch_mask";
+import { fanStatusOf, parseJson, type MerchSnapshot } from "../lib/hf_merch_types";
+import { merchCatalog, quoteBases } from "../lib/hf_merch_catalog";
+import {
+  deleteAddress, getFanOrder, getProductBySlug, getProduct, getSellerOrder, hostBySlug, hostByUid, listAddresses, listFanOrders, listLiveProductsForSeller, listSellerOrders,
+  listSellerProducts, productMerch, productShape, sellerEarnings, sellerOrderCounts, sellerProductCounts, shopSlugFor, sitemapRows, type MerchHost, type MerchProductRow,
+} from "../lib/hf_merch_store";
+import {
+  MERCH_QTY_MAX, merchCfg, reconcileCashfreeOrder, startMerchCheckout, type FlowFail,
+} from "../lib/hf_merch_flow";
+import { createMerchProduct, deleteMerchProduct, patchMerchProduct, saveMerchArt, saveMerchMockup, saveMerchPrintFile, MERCH_ART_MAX_BYTES, type PFail } from "../lib/hf_merch_products";
+import { merchFail, merchTrack, snapOf } from "../lib/hf_merch_notify";
+
+const APP = "hf_merch";
+const SELLER_STATUSES = ["new", "processing", "shipped", "delivered", "cancelled"];
+const POLL_GAP_MS = 4000;
+const PROBLEM_WINDOW_HOURS = 48;
+
+export const out = (body: Record<string, unknown>, status = 200, headers: Record<string, string> = {}): Response =>
+  json({ ok: true, ...body }, status, { "cache-control": "private, no-store", ...headers });
+export const bad = (status: number, error: string, message: string, extra: Record<string, unknown> = {}): Response =>
+  json({ ok: false, error, message, ...extra }, status, { "cache-control": "no-store" });
+const failOf = (f: FlowFail | PFail): Response => bad(f.status, f.error, f.message, f.extra ?? {});
+
+async function readJson(req: Request, max = 20000): Promise<Record<string, unknown>> {
+  const t = await req.text().catch(() => "");
+  if (!t || t.length > max) return {};
+  try { const v = JSON.parse(t); return v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : {}; } catch { return {}; }
+}
+async function readBytes(req: Request, max: number): Promise<Uint8Array | null> {
+  const declared = Number(req.headers.get("content-length") ?? 0);
+  if (declared > max) return null;
+  const buf = new Uint8Array(await req.arrayBuffer());
+  return buf.byteLength > max ? null : buf;
+}
+/** Header file names must be ASCII-safe (HTTP header trap): decode %-escapes, then keep it printable. */
+const fileNameOf = (req: Request): string => {
+  const raw = req.headers.get("x-file-name") ?? "art";
+  let s = raw; try { s = decodeURIComponent(raw); } catch { /* keep raw */ }
+  return s.replace(/[^\w.\- ]+/g, "_").slice(0, 120) || "art";
+};
+
+type SellerCtx = { uid: string; host: MerchHost };
+
+/** Influencer gate: signed in and a live host. */
+async function sellerCtx(req: Request, env: Env): Promise<SellerCtx | Response> {
+  const u = await requireUser(req, env);
+  if (isFail(u)) return bad(u.status, u.error === "auth not configured" ? "unavailable" : "unauthorized", "Please sign in.");
+  const host = await hostByUid(env, u.uid);
+  if (!host || host.status !== "live") return bad(403, "not_a_host", "Merch is for approved hosts.");
+  return { uid: u.uid, host };
+}
+
+// ---------------------------------------------------------------------------
+// Influencer
+// ---------------------------------------------------------------------------
+async function catalogRoute(env: Env): Promise<Response> {
+  const { cfg } = await merchCfg(env);
+  const c = await merchCatalog(env, cfg);
+  if (!c.ok) return bad(503, c.error, c.message);
+  return out({ items: c.items, minMarkupRupees: cfg.minMarkupRupees, platformShareBps: cfg.platformShareBps, holdDays: cfg.holdDays }, 200, { "cache-control": "private, max-age=300" });
+}
+
+/** Extension: live base price for the chosen colours and print size (the studio asks this while the influencer resizes). */
+async function quoteRoute(req: Request, env: Env): Promise<Response> {
+  const q = new URL(req.url).searchParams;
+  const { cfg } = await merchCfg(env);
+  const side = q.get("side") === "back" ? "back" : "front";
+  const r = await quoteBases(env, cfg, {
+    catalogId: q.get("catalogId") ?? "", colours: (q.get("colours") ?? "").split(",").map((s) => s.trim()).filter(Boolean), side,
+    wIn: Number(q.get("w")), hIn: Number(q.get("h")), sizes: (q.get("sizes") ?? "").split(",").map((s) => s.trim()).filter(Boolean) || undefined,
+  });
+  if (!r.ok) return bad(r.error === "catalog_unavailable" ? 503 : 400, r.error, r.message);
+  return out({ sizes: r.sizes.map((s) => ({ size: s.size, basePaise: s.baseUnitPaise, baseRupees: s.baseUnitPaise / 100 })) });
+}
+
+async function artRoute(req: Request, env: Env, s: SellerCtx): Promise<Response> {
+  const limited = await rateLimit(env, `merch:art:${s.uid}`, 40, 3600); if (limited) return limited;
+  const bytes = await readBytes(req, MERCH_ART_MAX_BYTES);
+  if (!bytes) return bad(413, "too_large", "The art must be 15 MB or smaller.");
+  const r = await saveMerchArt(env, s.uid, bytes, (req.headers.get("content-type") ?? "").split(";")[0].trim().toLowerCase(), fileNameOf(req));
+  return r.ok ? out({ artId: r.artId, url: r.url, width: r.width, height: r.height, checks: r.checks }) : failOf(r);
+}
+async function printFileRoute(req: Request, env: Env, s: SellerCtx): Promise<Response> {
+  const artId = (req.headers.get("x-art-id") ?? "").trim();
+  if (!/^dsn-[a-f0-9]{8}$/.test(artId)) return bad(400, "art_required", "Send the art id in the x-art-id header.");
+  const limited = await rateLimit(env, `merch:print:${s.uid}`, 60, 3600); if (limited) return limited;
+  const bytes = await readBytes(req, 15 * 1024 * 1024);
+  if (!bytes) return bad(413, "too_large", "The print file must be 15 MB or smaller.");
+  const r = await saveMerchPrintFile(env, s.uid, artId, bytes);
+  return r.ok ? out({ printFileId: r.printFileId, url: r.url, width: r.width, height: r.height }) : failOf(r);
+}
+async function mockupRoute(req: Request, env: Env, s: SellerCtx): Promise<Response> {
+  const limited = await rateLimit(env, `merch:mockup:${s.uid}`, 60, 3600); if (limited) return limited;
+  const bytes = await readBytes(req, 3 * 1024 * 1024);
+  if (!bytes) return bad(413, "too_large", "The picture must be 3 MB or smaller.");
+  const r = await saveMerchMockup(env, s.uid, bytes);
+  return r.ok ? out({ url: r.url }) : failOf(r);
+}
+
+async function productDto(env: Env, row: MerchProductRow, host: MerchHost, shareBps: number) {
+  return productShape(row, host, shareBps);
+}
+
+async function createProductRoute(req: Request, env: Env, s: SellerCtx): Promise<Response> {
+  const limited = await rateLimit(env, `merch:create:${s.uid}`, 30, 3600); if (limited) return limited;
+  const { cfg, flags } = await merchCfg(env);
+  const b = await readJson(req);
+  const r = await createMerchProduct(env, cfg, { productReview: flags.productReview }, s.host, b);
+  if (!r.ok) return failOf(r);
+  return out({ product: await productDto(env, r.product, s.host, cfg.platformShareBps) }, 201);
+}
+async function listProductsRoute(env: Env, s: SellerCtx): Promise<Response> {
+  const { cfg } = await merchCfg(env);
+  const rows = await listSellerProducts(env, s.uid);
+  return out({ products: rows.map((r) => productShape(r, s.host, cfg.platformShareBps)) });
+}
+async function patchProductRoute(req: Request, env: Env, s: SellerCtx, id: string): Promise<Response> {
+  const { cfg } = await merchCfg(env);
+  const r = await patchMerchProduct(env, cfg, s.host, id, await readJson(req));
+  return r.ok ? out({ product: productShape(r.product, s.host, cfg.platformShareBps) }) : failOf(r);
+}
+async function deleteProductRoute(env: Env, s: SellerCtx, id: string): Promise<Response> {
+  const r = await deleteMerchProduct(env, s.host, id);
+  return r.ok ? out({}) : failOf(r);
+}
+
+/** Order timeline from the row's own timestamps. Nothing here depends on private columns. */
+function timelineOf(row: ShopOrderRow, audience: "seller" | "fan"): Array<{ at: number; label: string }> {
+  const t: Array<{ at: number; label: string }> = [];
+  if (audience === "fan") t.push({ at: Number(row.created_at), label: "Order started" });
+  if (row.confirmed_at) t.push({ at: Number(row.confirmed_at), label: audience === "fan" ? "Payment received" : "Order placed" });
+  if (row.approved_at) t.push({ at: Number(row.approved_at), label: "Approved" });
+  if (row.sent_to_printer_at) t.push({ at: Number(row.sent_to_printer_at), label: "Sent to print" });
+  if (row.shipped_at) t.push({ at: Number(row.shipped_at), label: "Shipped" });
+  if (row.delivered_at) t.push({ at: Number(row.delivered_at), label: "Delivered" });
+  if (row.approval_status === "rejected") t.push({ at: Number(row.updated_at), label: audience === "fan" ? "Cancelled and refunded" : "Cancelled" });
+  return t.sort((a, b) => a.at - b.at);
+}
+
+async function sellerOrdersRoute(req: Request, env: Env, s: SellerCtx): Promise<Response> {
+  const st = new URL(req.url).searchParams.get("status");
+  if (st && !SELLER_STATUSES.includes(st)) return bad(400, "invalid_status", "Status must be new, processing, shipped, delivered or cancelled.");
+  const rows = await listSellerOrders(env, s.uid, st);
+  const payload = { orders: rows.map((r) => maskOrderForSeller(r)) };
+  assertNoSellerLeak(payload);
+  return out(payload);
+}
+async function sellerOrderRoute(env: Env, s: SellerCtx, id: string): Promise<Response> {
+  const row = await getSellerOrder(env, s.uid, id);
+  if (!row) return bad(404, "not_found", "No such order.");
+  const payload = { order: { ...maskOrderForSeller(row), timeline: timelineOf(row, "seller") } };
+  assertNoSellerLeak(payload);
+  return out(payload);
+}
+async function summaryRoute(env: Env, s: SellerCtx): Promise<Response> {
+  const [products, orders, earnings] = await Promise.all([sellerProductCounts(env, s.uid), sellerOrderCounts(env, s.uid), sellerEarnings(env, s.uid)]);
+  return out({ products, orders, earnings });
+}
+
+// ---------------------------------------------------------------------------
+// Public
+// ---------------------------------------------------------------------------
+const PUBLIC_CACHE = { "cache-control": "public, max-age=60, s-maxage=120" };
+function publicProduct(row: MerchProductRow, host: MerchHost, shareBps: number) {
+  const p = productShape(row, host, shareBps);
+  const prices = p.sizes.map((x) => x.pricePaise);
+  return {
+    id: p.id, slug: p.slug, title: p.title, imageUrl: p.imageUrl, colours: p.colours,
+    sizes: p.sizes.map((x) => ({ size: x.size, pricePaise: x.pricePaise, inStock: true })),
+    fromPricePaise: prices.length ? Math.min(...prices) : 0, url: p.publicUrl,
+  };
+}
+async function publicHostRoute(env: Env, slug: string): Promise<Response> {
+  const host = await hostBySlug(env, slug.toLowerCase());
+  if (!host || host.status !== "live") return bad(404, "not_found", "No such page.");
+  const { cfg, flags } = await merchCfg(env);
+  const rows = await listLiveProductsForSeller(env, host.uid);
+  return out({ host: { slug: host.slug, displayName: host.displayName, avatarUrl: host.avatarUrl }, checkoutEnabled: flags.checkout, products: rows.map((r) => publicProduct(r, host, cfg.platformShareBps)) }, 200, PUBLIC_CACHE);
+}
+async function publicProductRoute(env: Env, hostSlug: string, productSlug: string): Promise<Response> {
+  const host = await hostBySlug(env, hostSlug.toLowerCase());
+  if (!host || host.status !== "live") return bad(404, "not_found", "No such page.");
+  const row = await getProductBySlug(env, shopSlugFor(host.slug, productSlug.toLowerCase()));
+  if (!row || row.seller_uid !== host.uid) return bad(404, "not_found", "No such product.");
+  if (row.deleted_at || row.review_status === "hidden") return bad(410, "gone", "This product is no longer available.");
+  if (row.review_status !== "live") return bad(404, "not_found", "No such product.");
+  const { cfg, flags } = await merchCfg(env);
+  const m = productMerch(row);
+  const p = productShape(row, host, cfg.platformShareBps);
+  return out({
+    host: { slug: host.slug, displayName: host.displayName, avatarUrl: host.avatarUrl }, checkoutEnabled: flags.checkout,
+    product: { ...publicProduct(row, host, cfg.platformShareBps), photos: p.mockups.length ? p.mockups : p.imageUrl ? [p.imageUrl] : [], description: row.description, side: m?.side ?? "front", maxQty: MERCH_QTY_MAX },
+  }, 200, PUBLIC_CACHE);
+}
+async function pincodeRoute(env: Env, pin: string): Promise<Response> {
+  if (!/^[1-9][0-9]{5}$/.test(pin)) return bad(400, "invalid_pincode", "Enter a 6-digit pincode.");
+  const key = `merch:pin:${pin}`;
+  try { const c = await env.TOKENS.get(key, "json") as { deliverable: boolean; etaDays: number | null } | null; if (c) return out(c, 200, { "cache-control": "public, max-age=3600" }); } catch { /* cache is optional */ }
+  let res: { deliverable: boolean; etaDays: number | null };
+  try {
+    const s = await (await getPodProvider(env, "printrove")).serviceability(pin, 300);
+    res = { deliverable: !!s.ok, etaDays: s.ok && typeof s.eta_days === "number" ? s.eta_days : null };
+  } catch (e) { await merchFail(env, e, "pincode"); return bad(503, "unavailable", "We could not check this pincode right now."); }
+  try { await env.TOKENS.put(key, JSON.stringify(res), { expirationTtl: 86400 }); } catch { /* ignore */ }
+  return out(res, 200, { "cache-control": "public, max-age=3600" });
+}
+async function sitemapRoute(env: Env): Promise<Response> {
+  return out(await sitemapRows(env), 200, PUBLIC_CACHE);
+}
+
+// ---------------------------------------------------------------------------
+// Fan
+// ---------------------------------------------------------------------------
+const str = (v: unknown, max: number): string => (typeof v === "string" ? v.trim().slice(0, max) : "");
+
+async function checkoutRoute(req: Request, env: Env): Promise<Response> {
+  const u = await requireUser(req, env);
+  if (isFail(u)) return bad(u.status, "unauthorized", "Please sign in to buy.");
+  const { flags } = await merchCfg(env);
+  if (!flags.checkout) return bad(403, "checkout_off", "Buying opens soon.");
+  const wa = await requireVerifiedWhatsApp(env, u.uid);
+  if (wa) return bad(403, "whatsapp_required", "Verify your WhatsApp number first.", { reason: "whatsapp_required" });
+  if (await isClosing(env, u.uid)) return bad(409, "account_closing", CLOSING_MESSAGE, { reason: "account_closing" });
+  const b = await readJson(req);
+  if (b.acceptTerms !== true || b.acceptRefund !== true) return bad(400, "terms_required", "Please accept the terms and the refund policy.", { field: "acceptTerms" });
+  const method = b.method === "wallet" ? "wallet" : b.method === "cashfree" ? "cashfree" : null;
+  if (!method) return bad(400, "invalid_method", "Pay from your wallet or by UPI / card.", { field: "method" });
+  const requestKey = str(b.requestKey, 80);
+  if (requestKey.length < 8) return bad(400, "invalid_request_key", "Missing request key.", { field: "requestKey" });
+  const productId = str(b.productId, 40);
+  const qty = Number(b.qty ?? 1);
+  if (!productId) return bad(400, "invalid_product", "Pick a product.", { field: "productId" });
+  const limited = await rateLimit(env, `merch:checkout:${u.uid}`, 20, 3600); if (limited) return limited;
+  const product = await getProduct(env, productId);
+  if (!product || !product.seller_uid) return bad(404, "not_found", "No such product.");
+  if (product.seller_uid === u.uid) return bad(403, "own_product", "You cannot buy your own product.");
+  const host = await hostByUid(env, product.seller_uid);
+  if (!host || host.status !== "live") return bad(410, "gone", "This product is no longer available.");
+  const client = (req.headers.get("x-client") ?? b.client) === "app" ? "app" : "web";
+  const r = await startMerchCheckout(env, {
+    uid: u.uid, product, host, colour: str(b.colour, 40), size: str(b.size, 12), qty, address: b.address, saveAddress: b.saveAddress === true, method, requestKey, client,
+  });
+  if (!r.ok) return failOf(r);
+  const o = r.order;
+  const paid = o.pay_status === "confirmed";
+  return out({ orderId: o.order_id, orderNo: o.order_no, status: paid ? "paid" : "awaiting_payment", ...(r.checkoutUrl ? { checkoutUrl: r.checkoutUrl } : {}), ...(r.paymentSessionId ? { paymentSessionId: r.paymentSessionId } : {}) }, r.created ? 201 : 200);
+}
+
+function fanOrderDto(row: ShopOrderRow, now = Date.now()) {
+  const snap = snapOf(row) as Partial<MerchSnapshot>;
+  const status = fanStatusOf(row);
+  const hasShip = !!(row.courier || row.awb || row.tracking_url);
+  return {
+    id: row.order_id, orderNo: row.order_no, createdAt: Number(row.created_at), status,
+    product: { title: snap.title ?? "", imageUrl: snap.imageUrl ?? null, colour: snap.colour ?? "", size: snap.size ?? "", qty: Number(snap.qty ?? 1), hostName: snap.hostName ?? "", hostSlug: snap.hostSlug ?? "" },
+    totalPaise: Number(row.amount_paise), payMethod: row.pay_method ?? null,
+    shipping: hasShip ? { courier: row.courier ?? null, awb: row.awb ?? null, trackingUrl: row.tracking_url ?? null } : null,
+    receiptUrl: row.pay_status === "confirmed" && row.receipt_no ? `${BRAND.apiOrigin}/api/shop/orders/${row.order_id}/receipt.pdf` : null,
+    canReportProblem: row.fulfil_status === "delivered" && !row.problem_json && reportWindowOpen(row, PROBLEM_WINDOW_HOURS, now),
+    refundStatus: row.refund_status ?? "none",
+    rejectReason: row.approval_status === "rejected" ? row.reject_reason ?? null : null,
+    deepLink: `hellofraands://orders/${row.order_id}`,
+  };
+}
+async function myOrdersRoute(req: Request, env: Env): Promise<Response> {
+  const u = await requireUser(req, env);
+  if (isFail(u)) return bad(u.status, "unauthorized", "Please sign in.");
+  const rows = await listFanOrders(env, u.uid);
+  return out({ orders: rows.map((r) => fanOrderDto(r)) });
+}
+async function myOrderRoute(req: Request, env: Env, id: string): Promise<Response> {
+  const u = await requireUser(req, env);
+  if (isFail(u)) return bad(u.status, "unauthorized", "Please sign in.");
+  let row = await getFanOrder(env, u.uid, id);
+  if (!row) return bad(404, "not_found", "No such order.");
+  // The buyer came back from the payment page: ask Cashfree now instead of waiting for the webhook.
+  if (row.pay_method === "cashfree" && row.pay_status === "awaiting_payment" && Date.now() - Number(row.updated_at) > POLL_GAP_MS) {
+    try { await reconcileCashfreeOrder(env, id); } catch (e) { await merchFail(env, e, "poll", u.uid, { order_id: id }); }
+    row = (await getFanOrder(env, u.uid, id)) ?? row;
+  }
+  return out({ order: { ...fanOrderDto(row), timeline: timelineOf(row, "fan") } });
+}
+
+async function problemPhotoRoute(req: Request, env: Env, id: string): Promise<Response> {
+  const u = await requireUser(req, env);
+  if (isFail(u)) return bad(u.status, "unauthorized", "Please sign in.");
+  const row = await getFanOrder(env, u.uid, id);
+  if (!row) return bad(404, "not_found", "No such order.");
+  const limited = await rateLimit(env, `merch:pphoto:${u.uid}`, 10, 3600); if (limited) return limited;
+  const bytes = await readBytes(req, 5 * 1024 * 1024);
+  if (!bytes || !bytes.byteLength) return bad(413, "too_large", "The photo must be 5 MB or smaller.");
+  const info = parseImageInfo(bytes);
+  if (!info) return bad(415, "unsupported_type", "Send a PNG, JPEG or WebP photo.");
+  const key = `merch-problems/${u.uid}/${id}/${(await sha256Hex(bytes)).slice(0, 12)}.${IMAGE_EXT[info.mime]}`;
+  await env.DIGITAL.put(key, bytes, { httpMetadata: { contentType: info.mime } });
+  return out({ photoKey: key });
+}
+async function problemRoute(req: Request, env: Env, id: string): Promise<Response> {
+  const u = await requireUser(req, env);
+  if (isFail(u)) return bad(u.status, "unauthorized", "Please sign in.");
+  const b = await readJson(req, 4000);
+  const kind = b.kind === "wrong" ? "wrong" : b.kind === "damaged" ? "damaged" : null;
+  if (!kind) return bad(400, "invalid_kind", "Say whether the item is wrong or damaged.", { field: "kind" });
+  const note = str(b.note, 1000);
+  if (note.length < 10) return bad(400, "invalid_note", "Please describe the problem in 10 to 1000 characters.", { field: "note" });
+  const photoKey = str(b.photoKey, 300);
+  if (photoKey && !photoKey.startsWith(`merch-problems/${u.uid}/${id}/`)) return bad(400, "invalid_photo", "Upload the photo again.", { field: "photoKey" });
+  const limited = await rateLimit(env, `merch:problem:${u.uid}`, 5, 3600); if (limited) return limited;
+  const row = await getFanOrder(env, u.uid, id);
+  if (!row) return bad(404, "not_found", "No such order.");
+  if (row.problem_json) return bad(409, "already_reported", "You have already reported a problem with this order.");
+  if (row.fulfil_status !== "delivered") return bad(409, "not_delivered", "You can report a problem once your order is delivered.");
+  const now = Date.now();
+  if (!reportWindowOpen(row, PROBLEM_WINDOW_HOURS, now)) return bad(409, "window_closed", `Problems must be reported within ${PROBLEM_WINDOW_HOURS} hours of delivery.`);
+  const res = await metaDb(env).prepare("UPDATE shop_orders SET problem_json=?2, updated_at=?3 WHERE order_id=?1 AND problem_json IS NULL AND fulfil_status='delivered'")
+    .bind(id, JSON.stringify({ kind, message: note, photo_key: photoKey || null, reported_at: now }), now).run();
+  if (Number(res.meta?.changes ?? 0) !== 1) return bad(409, "already_reported", "You have already reported a problem with this order.");
+  await appendShopEvent(env, id, "problem_reported", u.uid, `${kind}: ${note}`.slice(0, 300), now).catch(() => {});
+  await merchTrack(env, u.uid, "merch_problem_reported", { order_id: id, kind, has_photo: !!photoKey });
+  await alertOwnerShopProblem(env, row, `${kind}: ${note}`).catch((e) => merchFail(env, e, "problem_alert", u.uid));
+  return out({ reported: true });
+}
+
+async function addressesRoute(req: Request, env: Env): Promise<Response> {
+  const u = await requireUser(req, env);
+  if (isFail(u)) return bad(u.status, "unauthorized", "Please sign in.");
+  return out({ addresses: await listAddresses(env, u.uid) });
+}
+async function deleteAddressRoute(req: Request, env: Env, id: string): Promise<Response> {
+  const u = await requireUser(req, env);
+  if (isFail(u)) return bad(u.status, "unauthorized", "Please sign in.");
+  return (await deleteAddress(env, u.uid, id)) ? out({}) : bad(404, "not_found", "No such address.");
+}
+
+// ---------------------------------------------------------------------------
+// Cashfree webhook (also reached from the shared wallet top-up webhook URL for shp_ ids)
+// ---------------------------------------------------------------------------
+export const isMerchOrderId = (id: string): boolean => /^shp_[a-f0-9]{20}$/.test(id);
+
+/** Signature verified over the raw body; the amount and status are then re-read from Cashfree itself before anything is confirmed. */
+export async function merchCashfreeWebhook(req: Request, env: Env, rawIn?: string): Promise<Response> {
+  const adapter = resolveGateway("cashfree");
+  if (!adapter || !adapter.configured(env)) return bad(503, "unconfigured", "Not configured.");
+  const raw = rawIn ?? (await req.text());
+  let verified = false;
+  try { verified = await adapter.verifyWebhook(env, raw, req.headers); } catch (e) { await merchFail(env, e, "webhook_verify"); }
+  if (!verified) return bad(401, "bad_signature", "Bad signature.");
+  const parsed = adapter.parseWebhook(raw);
+  if (!parsed || !isMerchOrderId(parsed.our_order_id)) return out({ ignored: "not_merch" });
+  if (parsed.status === "refunded") return out({ ignored: "refund" });
+  const r = await reconcileCashfreeOrder(env, parsed.our_order_id);
+  return r === "unavailable" ? bad(503, "unavailable", "Try again.") : out({ result: r });
+}
+
+// ---------------------------------------------------------------------------
+// Dispatcher
+// ---------------------------------------------------------------------------
+const NOT_ENABLED = () => bad(404, "not_enabled", "Merch is not available yet.");
+const dec = (s: string): string => { try { return decodeURIComponent(s); } catch { return ""; } };
+
+export async function hfMerchRoute(req: Request, env: Env, p: string, ctx?: ExecutionContext): Promise<Response | null> {
+  void ctx;
+  if (!p.startsWith("/api/hf/merch/")) return null;
+  const m = req.method;
+  try {
+    const { flags } = await merchCfg(env);
+    if (!flags.enabled) return NOT_ENABLED();
+    const rest = p.slice("/api/hf/merch/".length).split("/").map(dec);
+    const [a, b2, c2] = rest;
+    // Public
+    if (a === "sitemap" && rest.length === 1 && m === "GET") return await sitemapRoute(env);
+    if (a === "pincode" && rest.length === 2 && m === "GET") return await pincodeRoute(env, b2);
+    if (a === "public" && m === "GET") {
+      if (rest.length === 2) return await publicHostRoute(env, b2);
+      if (rest.length === 3) return await publicProductRoute(env, b2, c2);
+    }
+    if (a === "webhook" && b2 === "cashfree" && rest.length === 2 && m === "POST") return await merchCashfreeWebhook(req, env);
+    // Fan
+    if (a === "checkout" && rest.length === 1 && m === "POST") return await checkoutRoute(req, env);
+    if (a === "my-orders") {
+      if (rest.length === 1 && m === "GET") return await myOrdersRoute(req, env);
+      if (rest.length === 2 && m === "GET") return await myOrderRoute(req, env, b2);
+      if (rest.length === 3 && c2 === "problem" && m === "POST") return await problemRoute(req, env, b2);
+      if (rest.length === 3 && c2 === "problem-photo" && m === "POST") return await problemPhotoRoute(req, env, b2);
+    }
+    if (a === "addresses") {
+      if (rest.length === 1 && m === "GET") return await addressesRoute(req, env);
+      if (rest.length === 2 && m === "DELETE") return await deleteAddressRoute(req, env, b2);
+    }
+    // Influencer
+    const influencer = ["catalog", "quote", "art", "print-file", "mockup", "products", "orders", "summary"];
+    if (!influencer.includes(a)) return null;
+    const s = await sellerCtx(req, env);
+    if (s instanceof Response) return s;
+    if (a === "catalog" && m === "GET") return await catalogRoute(env);
+    if (a === "quote" && m === "GET") return await quoteRoute(req, env);
+    if (a === "art" && m === "POST") return await artRoute(req, env, s);
+    if (a === "print-file" && m === "POST") return await printFileRoute(req, env, s);
+    if (a === "mockup" && m === "POST") return await mockupRoute(req, env, s);
+    if (a === "summary" && m === "GET") return await summaryRoute(env, s);
+    if (a === "products") {
+      if (rest.length === 1 && m === "POST") return await createProductRoute(req, env, s);
+      if (rest.length === 1 && m === "GET") return await listProductsRoute(env, s);
+      if (rest.length === 2 && m === "PATCH") return await patchProductRoute(req, env, s, b2);
+      if (rest.length === 2 && m === "DELETE") return await deleteProductRoute(env, s, b2);
+    }
+    if (a === "orders") {
+      if (rest.length === 1 && m === "GET") return await sellerOrdersRoute(req, env, s);
+      if (rest.length === 2 && m === "GET") return await sellerOrderRoute(env, s, b2);
+    }
+    return null;
+  } catch (e) {
+    await merchFail(env, e, p);
+    return bad(500, "internal_error", "Something went wrong. Please try again.");
+  }
+}
