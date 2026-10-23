@@ -89,7 +89,7 @@ async function quoteRoute(req: Request, env: Env): Promise<Response> {
   const side = q.get("side") === "back" ? "back" : "front";
   const r = await quoteBases(env, cfg, {
     catalogId: q.get("catalogId") ?? "", colours: (q.get("colours") ?? "").split(",").map((s) => s.trim()).filter(Boolean), side,
-    wIn: Number(q.get("w")), hIn: Number(q.get("h")), sizes: (q.get("sizes") ?? "").split(",").map((s) => s.trim()).filter(Boolean) || undefined,
+    wIn: Number(q.get("w")), hIn: Number(q.get("h")), sizes: ((l) => (l.length ? l : undefined))((q.get("sizes") ?? "").split(",").map((s) => s.trim()).filter(Boolean)), // [HF-MERCH-QUOTE-SIZES-1] no sizes = all sizes ([] used to filter every size out)
   });
   if (!r.ok) return bad(r.error === "catalog_unavailable" ? 503 : 400, r.error, r.message);
   return out({ sizes: r.sizes.map((s) => ({ size: s.size, basePaise: s.baseUnitPaise, baseRupees: s.baseUnitPaise / 100 })) });

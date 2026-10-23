@@ -11669,5 +11669,14 @@
       "hfMerchEnabled"
     ],
     "no_telemetry": "Verified by approving a merch product in /admin/merch/products: it turns Live instead of listing_failed."
+  },
+  "HF-MERCH-QUOTE-SIZES-1": {
+    "description": "Merch quote route: no sizes param means all sizes (empty list used to filter every size out).",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [
+      "hfMerchEnabled"
+    ],
+    "no_telemetry": "Verified by GET /api/hf/merch/quote without sizes returning every size."
   }
 }
