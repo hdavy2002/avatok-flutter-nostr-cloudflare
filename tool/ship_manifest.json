@@ -11539,5 +11539,20 @@
         "note": "A fan joined an influencer's queue (flag hfCallQueueEnabled)."
       }
     ]
+  },
+  "HF-CALL-MODES-E1": {
+    "description": "Web: three-way switch, queue UI, booking lengths, in-call top-up banner (flag-gated).",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [],
+    "success": [
+      {
+        "event": "hf_web_mode_changed",
+        "property": "to",
+        "exists": true,
+        "min_events": 1,
+        "note": "Influencer changed mode on the web dashboard."
+      }
+    ]
   }
 }
