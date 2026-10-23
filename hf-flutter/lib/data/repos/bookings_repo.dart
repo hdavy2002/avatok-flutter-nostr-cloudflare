@@ -84,6 +84,16 @@ class BookingsRepo {
     ];
   }
 
+  /// One booking by id, for either side (older detail shape; [AppBooking.fromJson] reads it). 404 `booking_not_found`.
+  Future<AppBooking> booking(String id) async => _decided(await _api.getJson('/api/hf/bookings/${Uri.encodeComponent(id)}'));
+
+  /// The influencer's `waitingCount` / `bookedDays` for the calendar chips. Throws when the server cannot say.
+  Future<HostBookingSummary> hostSummary() async {
+    final j = await _api.getJson('/api/hf/bookings/summary');
+    if (j['summary'] is! Map) throw ApiException.parse(200); // not the summary answer: let the caller count from its own list
+    return HostBookingSummary.fromJson(j);
+  }
+
   Future<CancelResult> cancel(String id) async =>
       CancelResult.fromJson(await _api.deleteJson('/api/hf/bookings/${Uri.encodeComponent(id)}'));
 

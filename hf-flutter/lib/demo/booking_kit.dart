@@ -186,13 +186,16 @@ class _Pill extends StatelessWidget {
 
 /// Month calendar for the gold step: open days gold, chosen day plum, past days faded.
 class BookMonth extends StatelessWidget {
-  const BookMonth({super.key, required this.month, required this.selected, required this.fill, required this.onPick, required this.onMonth, this.dots = const {}, this.allowPast = false});
+  const BookMonth({super.key, required this.month, required this.selected, required this.fill, required this.onPick, required this.onMonth, this.dots = const {}, this.booked = const {}, this.allowPast = false});
   final DateTime month;
   final DateTime? selected;
   final Set<String> fill;
 
   /// [HF-APP-DESI-12] Days with bookings: white cell with a gold edge and a pink dot (influencer calendar).
   final Set<String> dots;
+
+  /// [HF-APP-PARITY-BOOKINGS] Days that are taken (a booking or a request): the number is struck through, like a day crossed off a paper diary.
+  final Set<String> booked;
   final bool allowPast;
   final ValueChanged<DateTime> onPick;
   final ValueChanged<DateTime> onMonth;
@@ -255,10 +258,11 @@ class BookMonth extends StatelessWidget {
     final past = d.isBefore(today);
     final on = selected != null && dayKey(selected!) == dayKey(d);
     final open = fill.contains(dayKey(d));
-    final dot = dots.contains(dayKey(d));
-    final bg = on ? C.maroon : (open ? C.goldtint : (dot ? C.white : C.clear));
-    final edge = on ? C.maroon : (open || dot ? const Color(0xFFF3DFB3) : C.clear);
-    final fg = on ? C.white : (past && !allowPast ? const Color(0xFFC9B8C6) : (open || dot ? C.deep : (past ? const Color(0xFFC9B8C6) : C.muted)));
+    final struck = booked.contains(dayKey(d));
+    final dot = dots.contains(dayKey(d)) && !struck;
+    final bg = on ? C.maroon : (open ? C.goldtint : (dot || struck ? C.white : C.clear));
+    final edge = on ? C.maroon : (open || dot || struck ? const Color(0xFFF3DFB3) : C.clear);
+    final fg = on ? C.white : (struck ? C.muted : (past && !allowPast ? const Color(0xFFC9B8C6) : (open || dot ? C.deep : (past ? const Color(0xFFC9B8C6) : C.muted))));
     return GestureDetector(
       onTap: past && !allowPast ? null : () => onPick(d),
       child: Container(
@@ -266,11 +270,29 @@ class BookMonth extends StatelessWidget {
         decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(12), border: Border.all(color: edge, width: 2)),
         child: Stack(alignment: Alignment.center, children: [
           Text('${d.day}', style: t(15, color: fg, w: FontWeight.w800)),
+          if (struck) Positioned.fill(child: CustomPaint(key: ValueKey('strike-${dayKey(d)}'), painter: BookedStrikePainter(on ? C.white : C.rani))),
           if (dot) Positioned(bottom: 3, child: Container(width: 6, height: 6, decoration: BoxDecoration(shape: BoxShape.circle, color: on ? C.lemon : C.rani))),
         ]),
       ),
     );
   }
+}
+
+/// [HF-APP-PARITY-BOOKINGS] One diagonal stroke across a calendar day: "this day is booked".
+class BookedStrikePainter extends CustomPainter {
+  const BookedStrikePainter(this.color);
+  final Color color;
+  @override
+  void paint(Canvas canvas, Size size) {
+    final p = Paint()
+      ..color = color
+      ..strokeWidth = 2.5
+      ..strokeCap = StrokeCap.round;
+    canvas.drawLine(Offset(size.width * .22, size.height * .78), Offset(size.width * .78, size.height * .22), p);
+  }
+
+  @override
+  bool shouldRepaint(BookedStrikePainter old) => old.color != color;
 }
 
 /// Full-width pill at the bottom of a booking screen: pink (next) or plum (confirm).

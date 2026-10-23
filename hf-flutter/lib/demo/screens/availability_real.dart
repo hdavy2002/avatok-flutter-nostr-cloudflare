@@ -9,6 +9,7 @@ import '../../data/repos/bookings_repo.dart';
 import '../../data/services.dart';
 import '../../data/telemetry.dart';
 import '../../ui/async_view.dart';
+import '../booking_kit.dart' show BookedStrikePainter; // [HF-APP-PARITY-BOOKINGS]
 import '../data.dart';
 import '../theme.dart';
 import '../widgets.dart';
@@ -363,7 +364,7 @@ class _RealAvailabilityScreenState extends State<RealAvailabilityScreen> {
         ),
         const SizedBox(height: 4),
         Text(
-          'A dot means that day has times open. Greyed days are more than ${a.horizonDays} days away.',
+          'A dot means that day has times open. A day with a line through it already has a booking. Greyed days are more than ${a.horizonDays} days away.',
           style: t(14, color: C.muted, w: FontWeight.w700, h: 1.4),
         ),
         if (!anyOpen) ...[
@@ -458,7 +459,8 @@ class _RealAvailabilityScreenState extends State<RealAvailabilityScreen> {
     final isToday = k == a.today;
     final Color bg = selected ? C.maroon : (has ? C.goldtint : C.clear);
     final Color fg = selected ? C.white : (inRange ? C.deep : C.muted.withValues(alpha: 0.4));
-    final label = '${dayLabel(d)}. ${has ? '${slots.length} ${slots.length == 1 ? 'time' : 'times'} open' : 'Closed'}'
+    final isBooked = _bookedOn(a, k).isNotEmpty; // [HF-APP-PARITY-BOOKINGS] a booking or request sits on this day: cross it out
+    final label = '${dayLabel(d)}. ${has ? '${slots.length} ${slots.length == 1 ? 'time' : 'times'} open' : 'Closed'}${isBooked ? '. Has a booking' : ''}'
         '${edited ? '. Not saved yet' : ''}${inRange ? '' : '. Too far ahead to open'}';
     return Semantics(
       key: ValueKey('day-$k'),
@@ -485,6 +487,7 @@ class _RealAvailabilityScreenState extends State<RealAvailabilityScreen> {
                 padding: const EdgeInsets.symmetric(horizontal: 2),
                 child: FittedBox(fit: BoxFit.scaleDown, child: Text('${d.day}', style: t(15, color: fg, w: FontWeight.w800))),
               ),
+              if (isBooked) Positioned.fill(child: CustomPaint(key: ValueKey('strike-$k'), painter: BookedStrikePainter(selected ? C.white : C.rani))),
               if (has)
                 Positioned(
                   bottom: 4,

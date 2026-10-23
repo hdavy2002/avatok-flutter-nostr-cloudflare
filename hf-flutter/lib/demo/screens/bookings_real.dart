@@ -772,8 +772,15 @@ class _RealBookingsScreenState extends State<RealBookingsScreen> {
       cancelKey: ValueKey('cancel-${b.id}'),
       cancelEnabled: b.canCancel,
       highlighted: highlighted,
+      onTap: () => unawaited(_openDetail(b)),
     );
     return highlighted ? KeyedSubtree(key: _highlightKey, child: tile) : tile;
+  }
+
+  /// [HF-APP-PARITY-BOOKINGS] The booking's own page; it comes back `true` when something changed.
+  Future<void> _openDetail(AppBooking b) async {
+    final changed = await context.push<bool>('/bookings/${Uri.encodeComponent(b.id)}', extra: b);
+    if (changed == true && mounted) unawaited(_load(quiet: true));
   }
 }
 
@@ -825,52 +832,6 @@ class AppBookingTile extends StatelessWidget {
   }
 }
 
-/// Tap a booking: who, when, the note, and Cancel (refunds the fan in full).
-Future<bool> showHostBookingSheet(BuildContext context, AppBooking b, BookingsRepo repo) async {
-  final cancelled = await showDialog<bool>(
-    context: context,
-    builder: (d) => HfDialog(
-      title: '${b.fanHandle ?? 'A fan'} · ${slotLabel(b.time)}',
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text('${dayLabel(b.date)} · ${CallFlags.bookingLengths ? '${lengthLabel(b.minutes)} call' : '${b.minutes} minute call'}', style: t(15, w: FontWeight.w700)),
-          if (b.topic != null) ...[
-            const SizedBox(height: 8),
-            Text('Topic: ${b.topic!.label}', style: t(15, color: C.tan, w: FontWeight.w700)),
-          ],
-          if (b.note.isNotEmpty) ...[
-            const SizedBox(height: 8),
-            Text('Note: ${b.note}', style: t(15, color: C.muted, w: FontWeight.w700)),
-          ],
-          const SizedBox(height: 8),
-          Text(b.cancelRule, style: t(14, color: C.muted, w: FontWeight.w700)),
-        ],
-      ),
-      actions: [
-        HfDialogAction(label: 'Close', onTap: () => Navigator.of(d).pop(false)),
-        if (b.canCancel)
-          HfDialogAction(
-            key: const ValueKey('host-cancel'),
-            kind: HfActionKind.destructive,
-            label: 'Cancel booking',
-            onTap: () async {
-              try {
-                final r = await repo.cancel(b.id);
-                if (d.mounted) Navigator.of(d).pop(true);
-                if (context.mounted) toast(context, r.message);
-              } catch (e) {
-                if (context.mounted) toast(context, _why(e));
-              }
-            },
-          ),
-      ],
-    ),
-  );
-  return cancelled == true;
-}
-
 class RealInfluencerBookingsScreen extends StatefulWidget {
   const RealInfluencerBookingsScreen({super.key, this.repo, this.highlightId});
 
@@ -891,6 +852,7 @@ class _RealInfluencerBookingsScreenState extends State<RealInfluencerBookingsScr
 
   // [HF-BOOK-APPROVE] Only filled while the approval feature is on.
   List<AppBooking> _past = const [];
+  HostBookingSummary? _summary; // [HF-APP-PARITY-BOOKINGS] the server's "N days booked / N requests waiting"; null = work it out from the list
   BookingSettings? _settings;
   bool _savingSettings = false;
   String? _busyId; // the booking being accepted / declined
@@ -948,11 +910,16 @@ class _RealInfluencerBookingsScreenState extends State<RealInfluencerBookingsScr
           }
         }
         firstEmission = false;
+        HostBookingSummary? summary = _summary;
+        try {
+          summary = await _repo.hostSummary();
+        } catch (_) {}
         if (!mounted) return;
         setState(() {
           _state = AsyncData(l);
           _past = past;
           _settings = settings;
+          _summary = summary;
         });
         if (_highlightId != null) {
           WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -972,7 +939,9 @@ class _RealInfluencerBookingsScreenState extends State<RealInfluencerBookingsScr
   }
 
   Future<void> _open(AppBooking b) async {
-    if (await showHostBookingSheet(context, b, _repo)) unawaited(_load());
+    // [HF-APP-PARITY-BOOKINGS] A full page instead of the small pop-up; it comes back `true` when something changed.
+    final changed = await context.push<bool>('/bookings/${Uri.encodeComponent(b.id)}', extra: b);
+    if (changed == true && mounted) unawaited(_load(quiet: true));
   }
 
   Future<void> _saveSettings({String? approval, bool? openAlerts}) async {
@@ -1087,14 +1056,21 @@ class _RealInfluencerBookingsScreenState extends State<RealInfluencerBookingsScr
   /// The month grid and the chosen day's bookings (the page as it always was).
   List<Widget> _calendarBlock(List<AppBooking> all) {
     final list = all.where((b) => b.day == isoDay(_day)).toList();
+    final sum = _summary ?? HostBookingSummary.fromBookings(all);
     return [
+      // [HF-APP-PARITY-BOOKINGS] Two counts on top, then the month with booked days struck through.
+      Wrap(spacing: 8, runSpacing: 8, children: [
+        KeyedSubtree(key: const ValueKey('chip-booked-days'), child: DesiChip(sum.bookedDaysText, tone: DesiTone.gold, icon: Icons.event_busy_rounded)),
+        KeyedSubtree(key: const ValueKey('chip-waiting'), child: DesiChip(sum.waitingText, tone: DesiTone.rani, icon: Icons.hourglass_top_rounded)),
+      ]),
+      const SizedBox(height: 10),
       CalendarCard(
         child: BookMonth(
           month: _month,
           selected: _day,
           allowPast: true,
           fill: const {},
-          dots: {for (final b in all) dayKey(b.date)},
+          booked: {for (final b in all) if (!b.isPast) dayKey(b.date)},
           onPick: (d) => setState(() => _day = d),
           onMonth: (m) => setState(() => _month = m),
         ),

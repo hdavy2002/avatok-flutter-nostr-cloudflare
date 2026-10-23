@@ -6,6 +6,8 @@ import '../data/models/reel.dart';
 import '../data/services.dart';
 import 'screens/availability_real.dart'; // [HF-BOOK-APPROVE-6]
 import 'screens/bookings_real.dart'; // [HF-WIRE-8]
+import 'screens/booking_detail.dart'; // [HF-APP-PARITY-BOOKINGS]
+import '../data/models/booking.dart' show AppBooking; // [HF-APP-PARITY-BOOKINGS]
 import '../data/models/channel.dart';
 import 'screens/channels.dart';
 import 'screens/edit_profile.dart'; // [HF-APP-PARITY-PROFILE]
@@ -203,6 +205,12 @@ final router = GoRouter(
       parentNavigatorKey: rootKey,
       path: '/bookings',
       builder: (_, __) => const BookingsScreen(),
+    ),
+    GoRoute(
+      // [HF-APP-PARITY-BOOKINGS] One booking in full. Push it with the booking as `extra` to paint at once.
+      parentNavigatorKey: rootKey,
+      path: '/bookings/:id',
+      builder: (_, s) => RealBookingDetailScreen(id: s.pathParameters['id']!, initial: s.extra is AppBooking ? s.extra as AppBooking : null),
     ),
     GoRoute(
       parentNavigatorKey: rootKey,

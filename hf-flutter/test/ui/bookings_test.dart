@@ -7,6 +7,7 @@ import 'package:hf_app/data/models/booking.dart';
 import 'package:hf_app/data/repos/bookings_repo.dart';
 import 'package:hf_app/data/repos/reels_repo.dart';
 import 'package:hf_app/data/repos/wallet_repo.dart';
+import 'package:hf_app/demo/screens/booking_detail.dart';
 import 'package:hf_app/demo/screens/bookings_real.dart';
 import 'package:hf_app/demo/state.dart';
 
@@ -109,7 +110,7 @@ Map<String, Object?> _avail({Map<String, Object?> days = const {}, Map<String, O
       },
     };
 
-Future<void> _pump(WidgetTester tester, Widget home) async {
+Future<void> _pump(WidgetTester tester, Widget home, {BookingsRepo? detailRepo}) async {
   tester.view.physicalSize = const Size(900, 2600);
   tester.view.devicePixelRatio = 1;
   addTearDown(tester.view.reset);
@@ -122,6 +123,8 @@ Future<void> _pump(WidgetTester tester, Widget home) async {
       GoRoute(path: '/book/:id', builder: (_, s) => Scaffold(body: Text('BOOK ${s.uri.query}'))),
       GoRoute(path: '/topup', builder: (_, __) => const Scaffold(body: Text('TOPUP PAGE'))),
       GoRoute(path: '/bookings', builder: (_, __) => const Scaffold(body: Text('BOOKINGS PAGE'))),
+      // [HF-APP-PARITY-BOOKINGS] the booking's own page
+      GoRoute(path: '/bookings/:id', builder: (_, s) => RealBookingDetailScreen(id: s.pathParameters['id']!, initial: s.extra as AppBooking?, repo: detailRepo)),
       GoRoute(path: '/reels', builder: (_, __) => const Scaffold(body: Text('REELS PAGE'))),
     ],
   );
@@ -347,16 +350,20 @@ void main() {
         }
         return {'role': 'host', 'bookings': list};
       });
-      await _pump(tester, RealInfluencerBookingsScreen(repo: BookingsRepo(api)));
+      await _pump(tester, RealInfluencerBookingsScreen(repo: BookingsRepo(api)), detailRepo: BookingsRepo(api));
       await tester.pumpAndSettle();
       expect(api.queries.first, containsPair('role', 'host'));
       expect(find.text('Ravi'), findsWidgets);
       expect(find.textContaining('Birthday surprise'), findsWidgets);
       await tester.tap(find.text('Ravi').first);
       await tester.pumpAndSettle();
-      expect(find.textContaining('Note: Birthday surprise'), findsOneWidget);
+      // [HF-APP-PARITY-BOOKINGS] the page, not the old pop-up
+      expect(find.byKey(const ValueKey('detail-note')), findsOneWidget);
+      expect(find.text('Birthday surprise'), findsOneWidget);
       expect(find.textContaining('refunded in full'), findsOneWidget);
       await tester.tap(find.byKey(const ValueKey('host-cancel')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('detail-cancel-confirm')));
       await tester.pumpAndSettle();
       expect(api.calls, contains('DELETE /api/hf/bookings/h1'));
       expect(find.text('No bookings on this day.'), findsOneWidget);

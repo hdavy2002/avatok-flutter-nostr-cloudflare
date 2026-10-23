@@ -199,6 +199,7 @@ class BookingTicketCard extends StatelessWidget {
     this.cancelKey,
     this.cancelEnabled = true,
     this.highlighted = false,
+    this.onTap,
   });
   final int index;
 
@@ -218,6 +219,9 @@ class BookingTicketCard extends StatelessWidget {
   final bool cancelEnabled;
   final bool highlighted;
 
+  /// [HF-APP-PARITY-BOOKINGS] Tap the card (not Cancel) to open the booking's page.
+  final VoidCallback? onTap;
+
   @override
   Widget build(BuildContext context) {
     final (Color stubBg, Color stubInk) = switch (kind) {
@@ -226,7 +230,7 @@ class BookingTicketCard extends StatelessWidget {
       BookingKind.completed => (C.lavtint, C.lav),
       BookingKind.cancelled || BookingKind.failed => (const Color(0xFFF3EEF2), C.muted),
     };
-    return Container(
+    final card = Container(
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(
@@ -291,6 +295,8 @@ class BookingTicketCard extends StatelessWidget {
         ]),
       ),
     );
+    if (onTap == null) return card;
+    return GestureDetector(behavior: HitTestBehavior.opaque, onTap: onTap, child: card);
   }
 }
 

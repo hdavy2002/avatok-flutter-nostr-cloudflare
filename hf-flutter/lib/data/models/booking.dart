@@ -277,31 +277,44 @@ class AppBooking {
     this.statusText,
     this.canAccept = false,
     this.canDecline = false,
+    this.freeCancelUntil,
   });
 
-  factory AppBooking.fromJson(Map<String, dynamic> j) => AppBooking(
+  /// Reads both server shapes: the app list (`startAt`, `minutes`, `fanHandle`, `holdPaise`) and the older detail
+  /// shape (`startUtc`, `durationMinutes`, `customerHandle`, `reservedPaise`). Day and time are worked out in IST when absent.
+  factory AppBooking.fromJson(Map<String, dynamic> j) {
+    final start = DateTime.tryParse('${j['startAt'] ?? j['startUtc'] ?? ''}')?.toLocal() ?? DateTime.fromMillisecondsSinceEpoch(0);
+    final haveStart = start.millisecondsSinceEpoch > 0;
+    final ist = start.toUtc().add(const Duration(hours: 5, minutes: 30));
+    final mins = _i(j['minutes']) > 0 ? _i(j['minutes']) : _i(j['durationMinutes']);
+    final status = '${j['status'] ?? ''}';
+    final hostView = _s(j['fanHandle']) != null || _s(j['customerHandle']) != null;
+    return AppBooking(
         id: '${j['id'] ?? ''}',
-        status: '${j['status'] ?? ''}',
-        startAt: DateTime.tryParse('${j['startAt'] ?? ''}')?.toLocal() ?? DateTime.fromMillisecondsSinceEpoch(0),
-        day: '${j['day'] ?? ''}',
-        time: '${j['time'] ?? ''}',
-        minutes: _i(j['minutes']) == 0 ? defaultBookingMinutes() : _i(j['minutes']),
-        holdPaise: _i(j['holdPaise']),
+        status: status,
+        startAt: start,
+        day: _s(j['day']) ?? (haveStart ? isoDay(DateTime(ist.year, ist.month, ist.day)) : ''),
+        time: _s(j['time']) ?? (haveStart ? '${ist.hour.toString().padLeft(2, '0')}:${ist.minute.toString().padLeft(2, '0')}' : ''),
+        minutes: mins == 0 ? defaultBookingMinutes() : mins,
+        holdPaise: _i(j['holdPaise']) > 0 ? _i(j['holdPaise']) : _i(j['reservedPaise']),
         canCancel: j['canCancel'] == true,
         cancelRule: _s(j['cancelRule']) ?? '',
         cancelBlockedText: _s(j['cancelBlockedText']),
         hostSlug: _s(j['hostSlug']),
         hostName: _s(j['hostName']),
-        fanHandle: _s(j['fanHandle']),
+        fanHandle: _s(j['fanHandle']) ?? _s(j['customerHandle']),
         note: _s(j['note']) ?? '',
-        expectedNetPaise: _i(j['expectedNetPaise']),
+        expectedNetPaise: _i(j['expectedNetPaise']) > 0 ? _i(j['expectedNetPaise']) : _i(j['expectedHostNetPaise']),
         approvalDeadline: j['approvalDeadline'] is String ? DateTime.tryParse(j['approvalDeadline'] as String)?.toLocal() : null,
         topic: BookingTopic.tryParse(j['topic']),
         cancelReason: _s(j['cancelReason']),
         statusText: _s(j['statusText']),
-        canAccept: j['canAccept'] == true,
-        canDecline: j['canDecline'] == true,
+        // The older detail shape has no accept/decline flags: an influencer's waiting booking can be decided (the server still checks).
+        canAccept: j.containsKey('canAccept') ? j['canAccept'] == true : (status == 'pending_approval' && hostView),
+        canDecline: j.containsKey('canDecline') ? j['canDecline'] == true : (status == 'pending_approval' && hostView),
+        freeCancelUntil: j['freeCancelUntil'] is String ? DateTime.tryParse(j['freeCancelUntil'] as String)?.toLocal() : null,
       );
+  }
 
   final String id;
   final String status;
@@ -336,6 +349,12 @@ class AppBooking {
   final bool canAccept;
   final bool canDecline;
 
+  /// Fan rows: the last moment the booking can be cancelled for free (an hour before the call). Null when the server did not say.
+  final DateTime? freeCancelUntil;
+
+  /// True for the influencer's own view of a booking (it carries the fan's handle), false for the fan's.
+  bool get viewerIsHost => fanHandle != null;
+
   bool get isPending => status == 'pending_approval';
   bool get isCancelled => status == 'cancelled';
 
@@ -343,6 +362,49 @@ class AppBooking {
   bool get isPast => status == 'completed' || status == 'cancelled' || status == 'failed';
 
   DateTime get date => parseDay(day) ?? DateTime(startAt.year, startAt.month, startAt.day);
+}
+
+const _months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+/// "24 Oct, 6:30 pm" for an IST [day] (`YYYY-MM-DD`) and [hhmm] (`18:30`). Falls back to what it was given.
+String indianWhen(String day, String hhmm) {
+  final d = parseDay(day);
+  if (d == null) return slotLabel(hhmm);
+  return '${d.day} ${_months[d.month - 1]}, ${slotLabel(hhmm)}';
+}
+
+/// The influencer's bird's-eye numbers for her calendar chips: `GET /api/hf/bookings/summary` -> `{summary}`.
+/// [waitingCount] = requests waiting for her yes; [bookedDays] = different days (IST) that have a booking or a request.
+class HostBookingSummary {
+  const HostBookingSummary({required this.waitingCount, required this.bookedDays, this.upcomingCount = 0, this.expectedNetPaise = 0});
+
+  factory HostBookingSummary.fromJson(Map<String, dynamic> j) {
+    final s = j['summary'] is Map ? Map<String, dynamic>.from(j['summary'] as Map) : j;
+    return HostBookingSummary(
+      waitingCount: _i(s['waitingCount']),
+      bookedDays: _i(s['bookedDays']),
+      upcomingCount: _i(s['upcomingCount']),
+      expectedNetPaise: _i(s['expectedHostNetPaise']),
+    );
+  }
+
+  /// The same two numbers worked out from a list already on screen (used until, or when, the server's own cannot be read).
+  factory HostBookingSummary.fromBookings(Iterable<AppBooking> all) {
+    final live = [for (final b in all) if (!b.isPast && b.day.isNotEmpty) b];
+    return HostBookingSummary(
+      waitingCount: live.where((b) => b.isPending).length,
+      bookedDays: live.map((b) => b.day).toSet().length,
+      upcomingCount: live.where((b) => !b.isPending).length,
+    );
+  }
+
+  final int waitingCount;
+  final int bookedDays;
+  final int upcomingCount;
+  final int expectedNetPaise;
+
+  String get bookedDaysText => bookedDays == 1 ? '1 day booked' : '$bookedDays days booked';
+  String get waitingText => waitingCount == 1 ? '1 request waiting' : '$waitingCount requests waiting';
 }
 
 /// The answer to a cancel: the server's own sentence for the toast.
