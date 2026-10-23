@@ -15,7 +15,7 @@ export type AdminKey = 'overview' | 'events' | 'bookings' | 'payments' | 'refund
 export interface AdminNavItem { key: AdminKey; label: string; short: string; href: string; icon: LucideIcon; /** Optional group heading shown above the first item of a run (e.g. "Shop"). */ group?: string; /** [AUMFE-POD-FULFIL-1] Small gold pill after the label (e.g. "New"). */ pill?: string }
 
 const ALL_ADMIN_NAV: AdminNavItem[] = [
-  { key: 'overview', label: 'Home', short: 'Home', href: '/admin', icon: House }, // [ADMIN2-ANALYTICS] key stays 'overview'; [HF-ADMIN-COMPLETE-1] now the Hello Fraands headline numbers (old Analytics lives at /admin/analytics)
+  { key: 'overview', label: 'Home', short: 'Home', href: '/admin', icon: House }, // [ADMIN2-ANALYTICS] key stays 'overview'; [HF-ADMIN-COMPLETE-1] now the the call app headline numbers (old Analytics lives at /admin/analytics)
   { key: 'events', label: 'Events', short: 'Events', href: '/admin/events', icon: CalendarDays },
   { key: 'freevideos', label: 'Free videos', short: 'Free', href: '/admin/free-videos', icon: MonitorPlay }, // [SAATHUM-FREEVIDEOS-ADMIN-1]
   { key: 'bookings', label: 'Bookings', short: 'Bookings', href: '/admin/bookings', icon: Ticket },
@@ -46,7 +46,7 @@ const ALL_ADMIN_NAV: AdminNavItem[] = [
   { key: 'consultant-reviews', label: 'Consultant reviews', short: 'Reviews', href: '/admin/consultant-reviews', icon: Star, group: 'Consultants' },
   // [HF-HOST-PLATFORM-1] Hosts group. Keep contiguous.
   { key: 'host-desk', label: 'Members', short: 'Members', href: '/admin/hosts/desk', icon: Users, group: 'Hosts' }, // [HF-ADMIN-SWEEP-1]
-  // [HF-ADMIN-COMPLETE-1] The Hello Fraands replacements for the retired Aum Fe pages (Wallets, Bookings, Payments, Support, Reports, Money alerts), all tabs of the desk.
+  // [HF-ADMIN-COMPLETE-1] The the call app replacements for the retired old-brand pages (Wallets, Bookings, Payments, Support, Reports, Money alerts), all tabs of the desk.
   { key: 'desk-wallets', label: 'Wallets', short: 'Wallets', href: '/admin/hosts/desk?tab=wallets', icon: Wallet, group: 'Hosts' },
   { key: 'desk-bookings', label: 'Bookings', short: 'Bookings', href: '/admin/hosts/desk?tab=bookings', icon: Ticket, group: 'Hosts' },
   { key: 'desk-topups', label: 'Wallet top-ups', short: 'Top-ups', href: '/admin/hosts/desk?tab=topups', icon: IndianRupee, group: 'Hosts' },
@@ -72,7 +72,7 @@ const ALL_ADMIN_NAV: AdminNavItem[] = [
 // This list controls every admin navigation surface, including the phone More sheet.
 export const HIDDEN_ADMIN_NAV_KEYS: ReadonlySet<AdminKey> = new Set([
   'events', 'freevideos', 'chadhava', 'knowledge', 'voice-guides',
-  // [HF-ADMIN-COMPLETE-1] Aum Fe pages that read the old orders/payments tables and the tokens-era wallet; they now redirect to the desk tabs above.
+  // [HF-ADMIN-COMPLETE-1] old-brand pages that read the old orders/payments tables and the tokens-era wallet; they now redirect to the desk tabs above.
   'bookings', 'payments', 'verify', 'refunds', 'customers', 'wallets',
   'consultants', 'consultant-bookings', 'consultant-reviews', 'host-reviews',
 ]);

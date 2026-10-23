@@ -1,4 +1,4 @@
-/* HfHome — [HF-ADMIN-COMPLETE-1] The admin landing for Hello Fraands: today's headline numbers, each one opens the page that acts on it.
+/* HfHome — [HF-ADMIN-COMPLETE-1] The admin landing for the call app: today's headline numbers, each one opens the page that acts on it.
  * Worker (admin only): GET /api/admin/hf/desk/summary. Money is rupees. Days are IST. Nothing under 14px. */
 import { useEffect, useState } from 'react';
 import { adminCall } from '../peopleKit';

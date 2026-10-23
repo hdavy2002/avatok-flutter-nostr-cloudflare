@@ -1,5 +1,5 @@
 ---
-// [HF-ADMIN-COMPLETE-1] Retired Aum Fe page (it read the old orders/payments tables and the tokens-era wallet, so it showed no Hello Fraands data). The island code stays in islands/admin2; this route sends the admin to the Hello Fraands page instead. ?wallet=<uid> opens that member.
+// [HF-ADMIN-COMPLETE-1] Retired old-brand page (it read the old orders/payments tables and the tokens-era wallet, so it showed no the call app data). The island code stays in islands/admin2; this route sends the admin to the the call app page instead. ?wallet=<uid> opens that member.
 export const prerender = false;
 const w = Astro.url.searchParams.get('wallet');
 return Astro.redirect(w ? `/admin/hosts/desk?tab=members&uid=${encodeURIComponent(w)}` : '/admin/hosts/desk?tab=wallets', 302);
