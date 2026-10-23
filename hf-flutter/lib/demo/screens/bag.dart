@@ -52,10 +52,10 @@ String _itemsText(int n) => '$n ${n == 1 ? 'item' : 'items'}';
 
 /// One product picture in a square tile (a plain icon when it has none).
 class _LineThumb extends StatelessWidget {
-  const _LineThumb(this.line, {this.size = 88});
+  const _LineThumb(this.line);
 
   final BagLine line;
-  final double size;
+  static const double size = 88;
 
   @override
   Widget build(BuildContext context) {
@@ -425,8 +425,6 @@ class _BagCheckoutScreenState extends State<BagCheckoutScreen> with WidgetsBindi
     if (!RegExp(r'^[1-9][0-9]{5}$').hasMatch(_pin.text.trim())) return 'Enter a 6 digit pincode.';
     return null;
   }
-
-  bool get _addressReady => _chosenSaved != null || _formProblem() == null;
 
   void _toPayment() {
     final s = _chosenSaved;

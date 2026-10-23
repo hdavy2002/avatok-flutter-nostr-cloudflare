@@ -203,7 +203,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final hasBook = prof != null && BookingsBridge.real;
     final hasAbout = who.bio.trim().isNotEmpty;
     _tabs = [
-      if (hasMerch) _SectionTab('Merch', _merchKey, count: shop!.items.length),
+      if (hasMerch) _SectionTab('Merch', _merchKey, count: shop.items.length),
       if (hasVideos) _SectionTab('Videos', _videosKey),
       if (hasBook) _SectionTab('Book', _bookKey),
       if (hasAbout) _SectionTab('About', _aboutKey),
@@ -254,11 +254,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       onShare: onShare,
                     ),
                     if (nav != null) KeyedSubtree(key: _navKey, child: nav),
-                    if (hasMerch) KeyedSubtree(key: _merchKey, child: ChannelMerchSection(shop: shop!, hostSlug: who.id, firstName: first))
+                    if (hasMerch) KeyedSubtree(key: _merchKey, child: ChannelMerchSection(shop: shop, hostSlug: who.id, firstName: first))
                     else if (prof != null && _shopEmpty) ChannelMerchEmpty(firstName: first),
                     if (hasVideos) ...[
                       if (hasMerch) const GpBand(),
-                      KeyedSubtree(key: _videosKey, child: ChannelVideosSection(reels: prof!.reels)),
+                      KeyedSubtree(key: _videosKey, child: ChannelVideosSection(reels: prof.reels)),
                     ],
                     if (hasBook) KeyedSubtree(key: _bookKey, child: ChannelBookSection(slug: who.id, firstName: first, hostName: who.name, avatarUrl: who.avatarUrl)),
                     if (hasAbout) ...[
