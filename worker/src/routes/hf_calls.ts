@@ -617,16 +617,17 @@ async function walletEstimateInner(req: Request, env: Env): Promise<Response> {
   const rate = Math.trunc(Number(h.price_per_min));
   const cfgAll = (await readConfig(env).catch(() => ({}))) as Record<string, unknown>;
   const tk = readHfTokenConfig(cfgAll);
+  const chunkCap = chunkSettingsFrom(cfgAll)?.capSec ?? null; // [HF-CALL-MODES-INT] null with hfCallChunkBillingEnabled off: today's 60-minute / uncapped numbers
   const stdWallet = readHfStdPlan(cfgAll).enabled; // [HF-WIRE-18] wallet stays rupee-based; only pricing switches
   const std = pricingStd(readHfStdPlan(cfgAll), cfgAll);
   if (isCreatorCategory(h.category)) {
     if (!validCreatorRate(rate)) return err(409, "invalid_pricing", "This listing's price is unavailable.");
     const [lots, v, sum] = await Promise.all([availableLots(env, u.uid), activeValuePaise(env, tk), balanceSummary(env, u.uid)]);
     const snapshot = creatorSnapshotFor(h.category, rate);
-    const e = estimateForHost(lots, snapshot.ratePaise, v);
+    const e = estimateForHost(lots, snapshot.ratePaise, v, chunkCap ?? undefined); // [HF-CALL-MODES-INT] chunk billing: the call may run to hfCallMaxMinutes
     return json({ mode: "rupees", plan: "creator", pricingVersion: snapshot.version, category: snapshot.category,
       ratePerMinRupees: e.ratePerMinRupees, ratePaisePerMin: e.ratePaise, aboutText: e.aboutText,
-      affordableSeconds: e.affordableSeconds, affordableChargePaise: e.affordableChargePaise, operationalMaxSeconds: MAX_CALL_MINUTES * 60,
+      affordableSeconds: e.affordableSeconds, affordableChargePaise: e.affordableChargePaise, operationalMaxSeconds: chunkCap ?? MAX_CALL_MINUTES * 60,
       canStart: e.canStart && sum.debtValuePaise <= 0 && sum.debtMicro <= 0, startNeedPaise: snapshot.ratePaise * TOK_START_MINUTES,
       balancePaise: sum.availablePaise, balance: formatRupees(sum.availablePaise), hasDebt: sum.debtValuePaise > 0 || sum.debtMicro > 0,
       tokensPerMinute: e.ratePerMinRupees, taxMode: snapshot.taxMode }, 200, { "cache-control": "private, no-store" });
@@ -634,12 +635,12 @@ async function walletEstimateInner(req: Request, env: Env): Promise<Response> {
   if (std.enabled) {
     // [HF-STD-PLAN-1] Same rate card for every host. Wallet affordability is uncapped; the separate 24 h ceiling is operational only.
     const [lots, v, sum] = await Promise.all([availableLots(env, u.uid), activeValuePaise(env, tk), balanceSummary(env, u.uid)]);
-    const e = estimateForHost(lots, std.tariff, v, null);
+    const e = estimateForHost(lots, std.tariff, v, chunkCap ?? null);
     const needPaise = chargePaise(std.tariff, TOK_START_MINUTES * 60);
     return json({
       mode: "rupees", plan: "standard", ...hfStdPlanPublic(cfgAll),
       ratePerMinRupees: e.ratePerMinRupees, ratePaisePerMin: e.ratePaise, aboutText: e.aboutText, affordableSeconds: e.affordableSeconds, affordableChargePaise: e.affordableChargePaise,
-      operationalMaxSeconds: STD_TECH_MAX_SECONDS,
+      operationalMaxSeconds: chunkCap ?? STD_TECH_MAX_SECONDS,
       canStart: e.canStart, startNeedPaise: needPaise, startNeed: formatRupees(needPaise),
       balancePaise: sum.availablePaise, balance: formatRupees(sum.availablePaise), hasDebt: sum.debtValuePaise > 0 || sum.debtMicro > 0,
       tokensPerMinute: e.ratePerMinRupees, // legacy field for older app builds (now the rupee rate)
@@ -647,12 +648,12 @@ async function walletEstimateInner(req: Request, env: Env): Promise<Response> {
   }
   if (!tk.enabled) return json({ mode: "inr", ratePerMinRupees: rate }, 200, { "cache-control": "private, no-store" });
   const [lots, v, sum] = await Promise.all([availableLots(env, u.uid), activeValuePaise(env, tk), balanceSummary(env, u.uid)]);
-  const e = estimateForHost(lots, rate * 100, v);
+  const e = estimateForHost(lots, rate * 100, v, chunkCap ?? undefined);
   if (stdWallet) { // [HF-WIRE-18] HF-REEL-37: her own rate on the rupee wallet (same shape as the creator estimate)
     const ir = readInfluencerRate(cfgAll);
     if (rate < ir.minRupees || rate > ir.maxRupees) return err(409, "invalid_pricing", "This listing's price is unavailable.");
     return json({ mode: "rupees", plan: "host_rate", ratePerMinRupees: e.ratePerMinRupees, ratePaisePerMin: e.ratePaise, aboutText: e.aboutText,
-      affordableSeconds: e.affordableSeconds, affordableChargePaise: e.affordableChargePaise, operationalMaxSeconds: MAX_CALL_MINUTES * 60,
+      affordableSeconds: e.affordableSeconds, affordableChargePaise: e.affordableChargePaise, operationalMaxSeconds: chunkCap ?? MAX_CALL_MINUTES * 60,
       canStart: e.canStart && sum.debtValuePaise <= 0 && sum.debtMicro <= 0, startNeedPaise: rate * 100 * TOK_START_MINUTES,
       balancePaise: sum.availablePaise, balance: formatRupees(sum.availablePaise), hasDebt: sum.debtValuePaise > 0 || sum.debtMicro > 0,
       tokensPerMinute: e.ratePerMinRupees }, 200, { "cache-control": "private, no-store" });

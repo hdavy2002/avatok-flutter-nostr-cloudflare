@@ -9,7 +9,7 @@ vi.mock("../lib/hf_vobiz_api", async () => {
   const actual = await vi.importActual<any>("../lib/hf_vobiz_api");
   return { ...actual, getCdr: async (_env: unknown, uuid: string) => structuredClone(providerState.cdrs.get(uuid) ?? null) };
 });
-vi.mock("../lib/hf_token_calls", () => ({ settleTokenCall: providerState.settle }));
+vi.mock("../lib/hf_token_calls", () => ({ settleTokenCall: (...a: unknown[]) => (providerState.settle as (...x: unknown[]) => unknown)(...a) })); // late-bound: beforeEach swaps providerState.settle
 vi.mock("../lib/hf_calls_store", () => ({
   HF_CALL_APP: "avatok", releaseHost: async () => {}, webhookBase: () => "https://example.test",
   hfReserve: async () => ({}), hfRelease: async () => {}, hfConsume: async () => {}, hfEarn: async () => {},
@@ -47,7 +47,7 @@ beforeEach(() => {
     billableSeconds: input.connectedSeconds, billedMinutes: input.connectedSeconds > 0 ? 1 : 0, shortfall: false,
     consumedValuePaise: 200, callCostPaise: 10, hostPaise: 100, platformPaise: 90, hostPaidPaise: 100, hostTestPaise: 0, tokensSpentMicro: 2, lots: [],
   }));
-  db = makeDb(["2026-10-10-hf-tokens.sql", "2026-10-09-hf-calls.sql", "2026-10-09-hf-payouts.sql", "2026-10-10-hf-calls-token-snapshot.sql", "2026-10-09-hf-hosts.sql", "2026-10-09-hf-presence.sql", "2026-10-09-hf-reviews.sql", "2026-10-12-hf-call-presence-owner.sql", "2026-10-13-hf-bookings.sql", "calendar_phase5.sql"], { alters: true });
+  db = makeDb(["2026-10-10-hf-tokens.sql", "2026-10-09-hf-calls.sql", "2026-10-09-hf-payouts.sql", "2026-10-10-hf-calls-token-snapshot.sql", "2026-10-09-hf-hosts.sql", "2026-10-09-hf-presence.sql", "2026-10-09-hf-reviews.sql", "2026-10-12-hf-call-presence-owner.sql", "2026-10-13-hf-bookings.sql", "calendar.sql", "calendar_phase5.sql"], { alters: true });
 });
 
 afterEach(() => vi.restoreAllMocks());

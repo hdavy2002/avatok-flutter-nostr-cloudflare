@@ -13,7 +13,17 @@ export function makeDb(migrations: string[] = ["2026-10-10-hf-tokens.sql"], o: {
   const db = new DatabaseSync(":memory:");
   for (const m of migrations) {
     const lines = readFileSync(new URL(`../../migrations/${m}`, import.meta.url), "utf8").split("\n");
-    db.exec(lines.filter((l) => !l.trim().startsWith("ALTER TABLE")).join("\n"));
+    try { db.exec(lines.filter((l) => !l.trim().startsWith("ALTER TABLE")).join("\n")); }
+    catch (e) {
+      // [HF-CALL-MODES-INT] A file that mixes an ALTER with an UPDATE / INDEX on the new column (2026-10-12-hf-call-presence-owner.sql) cannot run with its ALTERs
+      // filtered out. Replay it statement by statement, in file order: the ALTER only when `alters` is set, and tolerate what an earlier partial run already did.
+      if (!/no such column/.test(String(e))) throw e;
+      const stmts = lines.map((l) => l.replace(/--.*$/, "")).join("\n").split(/;\s*\n|;\s*$/).map((x) => x.trim()).filter(Boolean);
+      for (const s of stmts) {
+        if (/^ALTER TABLE/i.test(s) && !o.alters) continue;
+        try { db.exec(s + ";"); } catch (e2) { if (!/already exists|duplicate column|no such column/.test(String(e2))) throw e2; }
+      }
+    }
     // [HF-WALLET-RUPEES] production has the gp-r1 migration right after the token tables: tests see the same pricing and packs.
     if (m === "2026-10-10-hf-tokens.sql") db.exec(readFileSync(new URL("../../migrations/2026-10-10-hf-pricing-gpr1.sql", import.meta.url), "utf8"));
     if (o.alters) for (const l of lines.filter((x) => x.trim().startsWith("ALTER TABLE"))) { try { db.exec(l.replace(/--.*$/, "")); } catch { /* column already there */ } }
