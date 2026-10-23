@@ -14,9 +14,12 @@ import '../../ui/net_image.dart';
 import '../booking_kit.dart';
 import '../desi.dart';
 import '../merch_canvas.dart';
+import '../../data/merch_art_picker.dart'; // [HF-APP-PARITY-MERCH-1]
 import '../merch_kit.dart';
+import '../merch_parity_kit.dart'; // [HF-APP-PARITY-MERCH-1]
 import '../theme.dart';
 import '../widgets.dart';
+import 'bag.dart' show resolveBagPayment; // [HF-APP-PARITY-MERCH-1] a paid bag payment empties the bag
 
 /// [HF-MERCH-APP-1] The fan side of the merch shop: the "Merch" row on an influencer's page, the product sheet, checkout,
 /// My orders and one order's tracker. Everything stays hidden until `/api/config` says `hfMerchEnabled`.
@@ -481,6 +484,18 @@ class _MerchCheckoutScreenState extends State<MerchCheckoutScreen> {
     }
   }
 
+  /// [HF-APP-PARITY-MERCH-1] Removes a saved address after asking, like the website's "Remove".
+  Future<void> _removeSaved(SavedAddress a) async {
+    final gone = await removeSavedAddress(context, _repo, a);
+    if (!gone || !mounted) return;
+    final s = _saved;
+    final left = s is AsyncData<List<SavedAddress>> ? [for (final x in s.value) if (x.id != a.id) x] : <SavedAddress>[];
+    setState(() {
+      _saved = AsyncData(left);
+      if (_savedId == a.id) _savedId = left.isEmpty ? null : left.first.id;
+    });
+  }
+
   SavedAddress? get _chosenSaved {
     final s = _saved;
     final id = _savedId;
@@ -577,7 +592,8 @@ class _MerchCheckoutScreenState extends State<MerchCheckoutScreen> {
           _error = merchErrorText(e);
         });
       } else {
-        setState(() => _error = e.userMessage);
+        merchEvent('merch_checkout_failed', {'code': e.code, 'status': e.status, 'surface': 'single'});
+        setState(() => _error = merchCheckoutErrorText(e));
       }
     } catch (e, st) {
       merchCapture(e, st, 'checkout');
@@ -591,15 +607,14 @@ class _MerchCheckoutScreenState extends State<MerchCheckoutScreen> {
   }
 
   Future<void> _lowBalance(ApiException e) async {
-    final raw = e.extra['shortPaise'];
-    final short = raw is num ? raw.round() : null;
+    final text = merchLowBalanceText(e, otherWay: 'pay with UPI or a card instead'); // [HF-APP-PARITY-MERCH-1] says when only test credit is left
     final choice = await showDialog<String>(
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: C.ivory,
         title: Text('Not enough in your wallet', style: t(20, color: C.maroon)),
         content: Text(
-          short != null && short > 0 ? 'You need ${merchRupees(short)} more. Add money to your wallet, or pay with UPI or a card instead.' : 'Add money to your wallet, or pay with UPI or a card instead.',
+          text,
           style: t(16, w: FontWeight.w600, h: 1.35),
         ),
         actions: [
@@ -730,6 +745,7 @@ class _MerchCheckoutScreenState extends State<MerchCheckoutScreen> {
           title: a.name,
           lines: '${a.line1}${a.line2.isEmpty ? '' : ', ${a.line2}'}\n${a.city}, ${a.state} ${a.pincode}\n${a.phone}',
           onTap: () => setState(() => _savedId = a.id),
+          onRemove: () => unawaited(_removeSaved(a)),
         ),
         const SizedBox(height: 8),
       ],
@@ -775,12 +791,13 @@ class _MerchCheckoutScreenState extends State<MerchCheckoutScreen> {
 }
 
 class _AddressTile extends StatelessWidget {
-  const _AddressTile({required this.selected, required this.title, required this.lines, required this.onTap});
+  const _AddressTile({required this.selected, required this.title, required this.lines, required this.onTap, this.onRemove});
 
   final bool selected;
   final String title;
   final String lines;
   final VoidCallback onTap;
+  final VoidCallback? onRemove; // [HF-APP-PARITY-MERCH-1] only saved addresses can be removed
 
   @override
   Widget build(BuildContext context) {
@@ -805,6 +822,12 @@ class _AddressTile extends StatelessWidget {
                   if (lines.isNotEmpty) Text(lines, style: t(14, color: C.muted, w: FontWeight.w600)),
                 ]),
               ),
+              if (onRemove != null)
+                IconButton(
+                  tooltip: 'Remove this address',
+                  onPressed: onRemove,
+                  icon: const Icon(Icons.delete_outline_rounded, color: C.rani),
+                ),
             ]),
           ),
         ),
@@ -944,7 +967,10 @@ class _MerchMyOrdersScreenState extends State<MerchMyOrdersScreen> {
                               Text(o.title, maxLines: 1, overflow: TextOverflow.ellipsis, style: t(17)),
                               Text('${o.colour} · ${o.size} · ${merchDate(o.createdAt)}', style: t(14, color: C.muted, w: FontWeight.w700)),
                               const SizedBox(height: 6),
-                              merchFanStatusChip(o.status),
+                              Wrap(spacing: 6, runSpacing: 4, children: [
+                                merchFanStatusChip(o.status),
+                                if (o.groupId != null) const DesiChip('From your bag', tone: DesiTone.white, icon: Icons.shopping_bag_rounded), // [HF-APP-PARITY-MERCH-1]
+                              ]),
                             ]),
                           ),
                           const SizedBox(width: 8),
@@ -965,7 +991,9 @@ class _MerchMyOrdersScreenState extends State<MerchMyOrdersScreen> {
 
 // ------------------------------------------------------------------------------------------------ one order
 
-/// The tracker for one order. [waiting] keeps asking while the payment page is open (and when the app comes back to the front).
+/// The tracker for one order, or for a whole bag payment when [id] is a group id (`mgp_...`, where the bag's payment page sends the
+/// buyer back). While a payment is awaited it asks again every 3 seconds (the server asks the gateway itself), up to 40 tries.
+/// [waiting] says the payment page was just opened; an order that loads as "waiting for payment" is polled either way.
 class MerchOrderScreen extends StatefulWidget {
   const MerchOrderScreen({super.key, required this.id, this.waiting = false, this.source = 'link', this.repo});
 
@@ -980,20 +1008,30 @@ class MerchOrderScreen extends StatefulWidget {
 
 class _MerchOrderScreenState extends State<MerchOrderScreen> with WidgetsBindingObserver {
   AsyncState<FanOrder> _state = const AsyncLoading();
+  FanGroup? _group; // [HF-APP-PARITY-MERCH-1] set when [MerchOrderScreen.id] is a bag payment
   Timer? _poll;
   int _polls = 0;
   bool _opened = false;
+  bool _timedOut = false;
+  bool _receiptBusy = false;
+  bool _bagChecked = false;
 
   MerchRepo get _repo => widget.repo ?? Services.instance.merchRepo;
+  bool get _isGroup => widget.id.startsWith('mgp_');
+
+  bool get _awaiting {
+    final g = _group;
+    if (_isGroup) return g != null && g.awaitingPayment;
+    final cur = _state;
+    return cur is AsyncData<FanOrder> && cur.value.status == 'awaiting_payment';
+  }
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     unawaited(_load());
-    if (widget.waiting) {
-      _poll = Timer.periodic(const Duration(seconds: 3), (_) => unawaited(_tick()));
-    }
+    if (widget.waiting) _startPoll();
   }
 
   @override
@@ -1001,6 +1039,10 @@ class _MerchOrderScreenState extends State<MerchOrderScreen> with WidgetsBinding
     _poll?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
+  }
+
+  void _startPoll() {
+    _poll ??= Timer.periodic(const Duration(seconds: 3), (_) => unawaited(_tick()));
   }
 
   @override
@@ -1011,9 +1053,16 @@ class _MerchOrderScreenState extends State<MerchOrderScreen> with WidgetsBinding
   Future<void> _tick() async {
     _polls++;
     final cur = _state;
-    final settled = cur is AsyncData<FanOrder> && cur.value.status != 'awaiting_payment';
-    if (settled || _polls > 40) {
+    final settled = cur is AsyncData<FanOrder> && !_awaiting;
+    if (settled) {
       _poll?.cancel();
+      _poll = null;
+      return;
+    }
+    if (_polls > 40) {
+      _poll?.cancel();
+      _poll = null;
+      if (mounted) setState(() => _timedOut = true);
       return;
     }
     await _load(quiet: true);
@@ -1022,12 +1071,30 @@ class _MerchOrderScreenState extends State<MerchOrderScreen> with WidgetsBinding
   Future<void> _load({bool quiet = false}) async {
     if (!quiet && mounted) setState(() => _state = const AsyncLoading());
     try {
-      final o = await _repo.myOrder(widget.id);
+      final FanOrder o;
+      if (_isGroup) {
+        final g = await _repo.myGroup(widget.id);
+        if (g.orders.isEmpty) throw const ApiException(kind: ApiFailure.http, status: 404, code: 'not_found', message: 'No such order.');
+        _group = g;
+        o = g.orders.first;
+      } else {
+        o = await _repo.myOrder(widget.id);
+      }
       if (!mounted) return;
       setState(() => _state = AsyncData(o));
       if (!_opened) {
         _opened = true;
         merchEvent('merch_order_opened', {'status': o.status, 'source': widget.source});
+      }
+      if (_awaiting) _startPoll();
+      if (_isGroup && !_awaiting && !_bagChecked && _group != null && !_group!.allCancelled) {
+        // The payment went through: let the bag settle (empties the lines, sends bag_paid once). Quiet when there is no pending record.
+        _bagChecked = true;
+        try {
+          await resolveBagPayment();
+        } catch (_) {
+          // the bag is tidied on the next visit
+        }
       }
     } catch (e) {
       if (mounted && !quiet) setState(() => _state = AsyncFailure(e));
@@ -1044,10 +1111,24 @@ class _MerchOrderScreenState extends State<MerchOrderScreen> with WidgetsBinding
       builder: (_) => _ProblemSheet(repo: _repo, orderId: o.id),
     );
     if (done == true) {
-      if (mounted) toast(context, 'Thank you. We will look into it and get back to you.');
+      if (mounted) toast(context, 'Thanks. We have your report and will contact you.');
       unawaited(_load(quiet: true));
     }
   }
+
+  Future<void> _receipt(FanOrder o) async {
+    if (_receiptBusy) return;
+    setState(() => _receiptBusy = true);
+    await openMerchReceipt(context, _repo, o);
+    if (mounted) setState(() => _receiptBusy = false);
+  }
+
+  String _refundLine(FanOrder o) => switch (o.refundStatus) {
+        'done' => 'Your money has been sent back.',
+        'refunding' => 'Your refund is on its way.',
+        'pending_manual' => 'Our team is sending your refund by hand. We will message you when it is done.',
+        _ => '',
+      };
 
   @override
   Widget build(BuildContext context) {
@@ -1056,7 +1137,7 @@ class _MerchOrderScreenState extends State<MerchOrderScreen> with WidgetsBinding
       body: SafeArea(
         child: Column(
           children: [
-            const BookHeader('Your order'),
+            BookHeader(_isGroup ? 'Your bag orders' : 'Your order'),
             Expanded(
               child: AsyncView<FanOrder>(
                 state: _state,
@@ -1066,66 +1147,7 @@ class _MerchOrderScreenState extends State<MerchOrderScreen> with WidgetsBinding
                   onRefresh: () => _load(quiet: true),
                   child: ListView(
                     padding: const EdgeInsets.fromLTRB(16, 4, 16, 28),
-                    children: [
-                      DesiCard(
-                        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                          Row(children: [
-                            MerchThumb(o.imageUrl, size: 84),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                                Text(o.title, style: t(18)),
-                                Text('${o.colour} · ${o.size} · Qty ${o.qty}', style: t(14, color: C.muted, w: FontWeight.w700)),
-                                const SizedBox(height: 6),
-                                merchFanStatusChip(o.status),
-                              ]),
-                            ),
-                          ]),
-                          const SizedBox(height: 10),
-                          MerchKv('Order', '#${o.orderNo}'),
-                          MerchKv('Placed', merchDateTime(o.createdAt)),
-                          if (o.hostName.isNotEmpty) MerchKv('From', o.hostName),
-                          MerchKv('Paid (incl. GST & delivery)', merchRupees(o.totalPaise), strong: true),
-                          if (o.payMethod != null) MerchKv('Paid with', o.payMethod == 'wallet' ? 'Wallet' : 'UPI, card or net banking'),
-                        ]),
-                      ),
-                      if (o.status == 'awaiting_payment') ...[
-                        const SizedBox(height: 12),
-                        DesiCard(
-                          tone: DesiTone.gold,
-                          child: Row(children: [
-                            const SizedBox(width: 22, height: 22, child: CircularProgressIndicator(color: C.maroon, strokeWidth: 3)),
-                            const SizedBox(width: 12),
-                            Expanded(child: Text('Waiting for your payment to come through. This page updates by itself.', style: t(15, w: FontWeight.w700))),
-                          ]),
-                        ),
-                      ],
-                      if (o.rejectReason != null) ...[
-                        const SizedBox(height: 12),
-                        DesiCard(tone: DesiTone.rani, child: Text(o.rejectReason!, style: t(15, color: C.white, w: FontWeight.w700))),
-                      ],
-                      if (o.refundStatus.isNotEmpty && o.refundStatus != 'none') ...[
-                        const SizedBox(height: 12),
-                        DesiCard(child: MerchKv('Refund', o.refundStatus.replaceAll('_', ' '))),
-                      ],
-                      if (o.timeline.isNotEmpty) ...[
-                        const SizedBox(height: 12),
-                        DesiCard(title: 'Where it is', child: MerchTimeline(o.timeline)),
-                      ],
-                      const SizedBox(height: 12),
-                      Wrap(spacing: 10, runSpacing: 10, children: [
-                        if (o.shipping?.trackingUrl != null)
-                          DesiButton('Track parcel', icon: Icons.local_shipping_rounded, kind: DesiButtonKind.tea, onTap: () => unawaited(openMerchLink(context, o.shipping!.trackingUrl!))),
-                        if (o.receiptUrl != null)
-                          DesiButton('Download GST invoice', icon: Icons.receipt_long_rounded, kind: DesiButtonKind.ghost, onTap: () => unawaited(openMerchLink(context, o.receiptUrl!))),
-                        if (o.canReportProblem)
-                          DesiButton('Something wrong?', icon: Icons.report_problem_rounded, kind: DesiButtonKind.danger, onTap: () => unawaited(_report(o))),
-                      ]),
-                      if (o.shipping?.awb != null) ...[
-                        const SizedBox(height: 10),
-                        Text('${o.shipping?.courier ?? 'Courier'} · tracking number ${o.shipping!.awb}', style: t(14, color: C.muted, w: FontWeight.w700)),
-                      ],
-                    ],
+                    children: _group != null ? _groupChildren(_group!) : _orderChildren(o),
                   ),
                 ),
               ),
@@ -1135,8 +1157,136 @@ class _MerchOrderScreenState extends State<MerchOrderScreen> with WidgetsBinding
       ),
     );
   }
+
+  /// The "confirming your payment" card, with the website's wording after the polling has given up.
+  Widget _waitingCard() => DesiCard(
+        tone: DesiTone.gold,
+        child: _timedOut
+            ? Text(
+                'We have not heard from the bank yet. If money was taken from your account, it will show here soon, and we refund anything that does not go through.',
+                style: t(15, w: FontWeight.w700, h: 1.3),
+              )
+            : Row(children: [
+                const SizedBox(width: 22, height: 22, child: CircularProgressIndicator(color: C.maroon, strokeWidth: 3)),
+                const SizedBox(width: 12),
+                Expanded(child: Text('Confirming your payment with the bank. This usually takes a few seconds. This page updates by itself.', style: t(15, w: FontWeight.w700))),
+              ]),
+      );
+
+  List<Widget> _groupChildren(FanGroup g) {
+    final line = g.awaitingPayment
+        ? (_timedOut ? 'We are still waiting for the bank to confirm. Check back in a few minutes.' : 'Confirming your payment…')
+        : g.allCancelled
+            ? 'The payment did not go through.'
+            : 'Payment received.';
+    return [
+      DesiCard(
+        title: 'These came from your bag',
+        note: '${g.orders.length} ${g.orders.length == 1 ? 'order' : 'orders'}, one payment of ${merchRupees(g.totalPaise)}. $line',
+        child: const SizedBox.shrink(),
+      ),
+      if (g.awaitingPayment) ...[const SizedBox(height: 12), _waitingCard()],
+      for (final x in g.orders) ...[
+        const SizedBox(height: 12),
+        DesiCard(
+          onTap: () => unawaited(context.push<Object?>('/merch/orders/${Uri.encodeComponent(x.id)}?src=group')),
+          child: Row(children: [
+            MerchThumb(x.imageUrl, size: 72),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text(x.title, maxLines: 2, overflow: TextOverflow.ellipsis, style: t(17)),
+                Text('${x.colour} · ${x.size} · Qty ${x.qty}', style: t(14, color: C.muted, w: FontWeight.w700)),
+                const SizedBox(height: 6),
+                merchFanStatusChip(x.status),
+              ]),
+            ),
+            const SizedBox(width: 8),
+            Text(merchRupees(x.totalPaise), style: t(16, color: C.rani)),
+          ]),
+        ),
+      ],
+    ];
+  }
+
+  List<Widget> _orderChildren(FanOrder o) {
+    final closed = o.status == 'cancelled' || o.status == 'refunded';
+    final refund = _refundLine(o);
+    return [
+      DesiCard(
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Row(children: [
+            MerchThumb(o.imageUrl, size: 84),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text(o.title, style: t(18)),
+                Text('${o.colour} · ${o.size} · Qty ${o.qty}', style: t(14, color: C.muted, w: FontWeight.w700)),
+                const SizedBox(height: 6),
+                merchFanStatusChip(o.status),
+              ]),
+            ),
+          ]),
+          const SizedBox(height: 10),
+          MerchKv('Order', '#${o.orderNo}'),
+          MerchKv('Placed', merchDateTime(o.createdAt)),
+          if (o.hostName.isNotEmpty) MerchKv('From', o.hostName),
+          MerchKv('Paid (incl. GST & delivery)', merchRupees(o.totalPaise), strong: true),
+          if (o.payMethod != null) MerchKv('Paid with', o.payMethod == 'wallet' ? 'Wallet' : 'UPI, card or net banking'),
+          if (o.shipping?.courier != null) MerchKv('Courier', o.shipping!.courier!),
+          if (o.shipping?.awb != null) MerchKv('Tracking number', o.shipping!.awb!),
+        ]),
+      ),
+      if (!closed && o.status != 'awaiting_payment') ...[
+        const SizedBox(height: 12),
+        DesiCard(child: MerchTracker(o.status)),
+      ],
+      if (o.status == 'awaiting_payment') ...[const SizedBox(height: 12), _waitingCard()],
+      if (closed) ...[
+        const SizedBox(height: 12),
+        DesiCard(
+          tone: DesiTone.rani,
+          child: Text(
+            'This order was ${o.status == 'refunded' ? 'refunded' : 'cancelled'}.${o.rejectReason == null ? '' : ' ${o.rejectReason}'}${refund.isEmpty ? '' : ' $refund'}',
+            style: t(15, color: C.white, w: FontWeight.w700, h: 1.3),
+          ),
+        ),
+      ] else if (o.rejectReason != null) ...[
+        const SizedBox(height: 12),
+        DesiCard(tone: DesiTone.rani, child: Text(o.rejectReason!, style: t(15, color: C.white, w: FontWeight.w700))),
+      ],
+      if (!closed && refund.isNotEmpty) ...[
+        const SizedBox(height: 12),
+        DesiCard(child: MerchKv('Refund', refund)),
+      ],
+      if (o.timeline.isNotEmpty) ...[
+        const SizedBox(height: 12),
+        DesiCard(title: 'Where it is', child: MerchTimeline(o.timeline)),
+      ],
+      const SizedBox(height: 12),
+      Wrap(spacing: 10, runSpacing: 10, children: [
+        if (o.shipping?.trackingUrl != null)
+          DesiButton('Track parcel', icon: Icons.local_shipping_rounded, kind: DesiButtonKind.tea, onTap: () {
+            merchEvent('merch_tracking_opened', {'order_id': o.id});
+            unawaited(openMerchLink(context, o.shipping!.trackingUrl!));
+          }),
+        if (o.receiptUrl != null)
+          DesiButton(_receiptBusy ? 'Opening…' : 'Download GST invoice', icon: Icons.receipt_long_rounded, kind: DesiButtonKind.ghost, onTap: _receiptBusy ? null : () => unawaited(_receipt(o))),
+        if (o.hostSlug.isNotEmpty)
+          DesiButton(o.hostName.isEmpty ? 'Their page' : '${o.hostName}’s page', icon: Icons.person_rounded, kind: DesiButtonKind.ghost, onTap: () => unawaited(context.push<Object?>('/h/${Uri.encodeComponent(o.hostSlug)}'))),
+        if (o.canReportProblem)
+          DesiButton('Report a problem', icon: Icons.report_problem_rounded, kind: DesiButtonKind.danger, onTap: () => unawaited(_report(o))),
+      ]),
+      if (o.status == 'delivered' && !o.canReportProblem) ...[
+        const SizedBox(height: 10),
+        Text('Problems with an order can be reported within 48 hours of delivery.', style: t(14, color: C.muted, w: FontWeight.w700)),
+      ],
+    ];
+  }
 }
 
+/// "Report a problem": wrong or damaged, what happened and an optional photo (PNG or JPEG, up to 5 MB). The photo is uploaded first
+/// (`problem-photo`), then the report is sent with its key (`problem`). Sends `merch_problem_submitted {order_id, kind, has_photo, ok}`.
 class _ProblemSheet extends StatefulWidget {
   const _ProblemSheet({required this.repo, required this.orderId});
 
@@ -1148,8 +1298,11 @@ class _ProblemSheet extends StatefulWidget {
 }
 
 class _ProblemSheetState extends State<_ProblemSheet> {
+  static const int _maxPhotoBytes = 5 * 1024 * 1024;
+
   final TextEditingController _note = TextEditingController();
-  String _kind = 'wrong';
+  String _kind = 'damaged';
+  PickedArt? _photo;
   bool _busy = false;
   String? _error;
 
@@ -1159,19 +1312,52 @@ class _ProblemSheetState extends State<_ProblemSheet> {
     super.dispose();
   }
 
+  Future<void> _pickPhoto() async {
+    try {
+      final p = await MerchArtPicker.pick();
+      if (p == null || !mounted) return;
+      if (p.bytes.length > _maxPhotoBytes) {
+        setState(() => _error = 'That photo is too big. Please choose one that is 5 MB or smaller.');
+        return;
+      }
+      setState(() {
+        _photo = p;
+        _error = null;
+      });
+    } catch (_) {
+      if (mounted) setState(() => _error = 'We could not open your photos. Please try again.');
+    }
+  }
+
+  String _errorText(Object e) {
+    if (e is ApiException) {
+      if (e.code == 'window_closed') return 'The 48 hours to report a problem have passed.';
+      if (e.code == 'already_reported') return 'You have already reported a problem with this order.';
+      return merchErrorText(e);
+    }
+    return ApiException.genericText;
+  }
+
   Future<void> _send() async {
     setState(() {
       _busy = true;
       _error = null;
     });
+    final photo = _photo;
+    var ok = false;
     try {
-      await widget.repo.reportProblem(widget.orderId, kind: _kind, note: _note.text.trim());
+      String? key;
+      if (photo != null) key = await widget.repo.uploadProblemPhoto(widget.orderId, photo.bytes, contentType: photo.mime);
+      await widget.repo.reportProblem(widget.orderId, kind: _kind, note: _note.text.trim(), photoKey: key);
+      ok = true;
+      merchEvent('merch_problem_submitted', {'order_id': widget.orderId, 'kind': _kind, 'has_photo': key != null, 'ok': true});
       if (mounted) Navigator.of(context).pop(true);
     } catch (e) {
+      if (!ok) merchEvent('merch_problem_submitted', {'order_id': widget.orderId, 'kind': _kind, 'has_photo': photo != null, 'ok': false});
       if (mounted) {
         setState(() {
           _busy = false;
-          _error = merchErrorText(e);
+          _error = _errorText(e);
         });
       }
     }
@@ -1179,29 +1365,43 @@ class _ProblemSheetState extends State<_ProblemSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final ok = _note.text.trim().length >= 10 && !_busy;
+    final len = _note.text.trim().length;
+    final ok = len >= 10 && !_busy;
+    final photo = _photo;
     return Padding(
       padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
       child: SingleChildScrollView(
         padding: const EdgeInsets.fromLTRB(16, 18, 16, 20),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Semantics(header: true, child: Text('What went wrong?', style: t(22, color: C.maroon))),
+          Semantics(header: true, child: Text('Report a problem', style: t(22, color: C.maroon))),
+          const SizedBox(height: 4),
+          Text('Tell us within 48 hours of delivery and we will make it right.', style: t(14, color: C.muted, w: FontWeight.w700)),
           const SizedBox(height: 10),
           Wrap(spacing: 8, runSpacing: 8, children: [
-            MerchPill(label: 'Wrong T-shirt', selected: _kind == 'wrong', onTap: () => setState(() => _kind = 'wrong')),
-            MerchPill(label: 'Damaged', selected: _kind == 'damaged', onTap: () => setState(() => _kind = 'damaged')),
+            MerchPill(label: 'It arrived damaged', selected: _kind == 'damaged', onTap: () => setState(() => _kind = 'damaged')),
+            MerchPill(label: 'Wrong item, size or print', selected: _kind == 'wrong', onTap: () => setState(() => _kind = 'wrong')),
           ]),
           const SizedBox(height: 12),
           MerchField(
-            label: 'Tell us in a few words (at least 10 letters)',
+            label: 'What happened? (at least 10 letters)',
             controller: _note,
             maxLines: 4,
             capitalization: TextCapitalization.sentences,
             formatters: [LengthLimitingTextInputFormatter(1000)],
             onChanged: (_) => setState(() {}),
           ),
+          Text('Add a photo (optional, up to 5 MB)', style: t(15, color: C.maroon)),
+          const SizedBox(height: 6),
+          Wrap(spacing: 8, runSpacing: 8, crossAxisAlignment: WrapCrossAlignment.center, children: [
+            DesiButton(photo == null ? 'Choose a photo' : 'Change photo', icon: Icons.photo_camera_rounded, kind: DesiButtonKind.ghost, onTap: _busy ? null : () => unawaited(_pickPhoto())),
+            if (photo != null) ...[
+              ClipRRect(borderRadius: BorderRadius.circular(12), child: Image.memory(photo.bytes, width: 56, height: 56, fit: BoxFit.cover)),
+              IconButton(tooltip: 'Remove the photo', onPressed: _busy ? null : () => setState(() => _photo = null), icon: const Icon(Icons.close_rounded, color: C.rani)),
+            ],
+          ]),
+          const SizedBox(height: 12),
           if (_error != null) Padding(padding: const EdgeInsets.only(bottom: 8), child: Text(_error!, style: t(15, color: C.ruby, w: FontWeight.w700))),
-          DesiButton(_busy ? 'Sending…' : 'Send', kind: DesiButtonKind.rani, expand: true, onTap: ok ? () => unawaited(_send()) : null),
+          DesiButton(_busy ? 'Sending…' : 'Send report', kind: DesiButtonKind.rani, expand: true, onTap: ok ? () => unawaited(_send()) : null),
         ]),
       ),
     );

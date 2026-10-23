@@ -15,6 +15,7 @@ import '../../data/services.dart';
 import '../../ui/net_image.dart';
 import '../channel_pop_kit.dart';
 import '../merch_kit.dart';
+import '../merch_parity_kit.dart'; // [HF-APP-PARITY-MERCH-1]
 import '../theme.dart';
 import '../widgets.dart';
 
@@ -407,6 +408,16 @@ class _BagCheckoutScreenState extends State<BagCheckoutScreen> with WidgetsBindi
     }
   }
 
+  /// [HF-APP-PARITY-MERCH-1] Removes a saved address after asking, like the website's "Remove".
+  Future<void> _removeSaved(SavedAddress a) async {
+    final gone = await removeSavedAddress(context, _merch, a);
+    if (!gone || !mounted) return;
+    setState(() {
+      _saved = [for (final x in _saved) if (x.id != a.id) x];
+      if (_savedId == a.id) _savedId = _saved.isEmpty ? null : _saved.first.id;
+    });
+  }
+
   SavedAddress? get _chosenSaved {
     final id = _savedId;
     if (id == null) return null;
@@ -521,7 +532,8 @@ class _BagCheckoutScreenState extends State<BagCheckoutScreen> with WidgetsBindi
           _error = 'One item is no longer available, so nothing was charged. Remove it from your bag and try again.';
         });
       } else {
-        setState(() => _error = e.userMessage);
+        merchEvent('merch_checkout_failed', {'code': e.code, 'status': e.status, 'surface': 'bag'});
+        setState(() => _error = merchCheckoutErrorText(e));
       }
     } catch (e, st) {
       merchCapture(e, st, 'bag_checkout');
@@ -535,15 +547,14 @@ class _BagCheckoutScreenState extends State<BagCheckoutScreen> with WidgetsBindi
   }
 
   Future<void> _lowBalance(ApiException e) async {
-    final raw = e.extra['shortPaise'];
-    final short = raw is num ? raw.round() : null;
+    final text = merchLowBalanceText(e); // [HF-APP-PARITY-MERCH-1] says when only test credit is left
     final choice = await showDialog<String>(
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: GP.paper,
         title: Text('Not enough in your wallet', style: t(20, color: GP.ink, w: FontWeight.w900)),
         content: Text(
-          short != null && short > 0 ? 'You need ${merchRupees(short)} more. Add money to your wallet, or pay online instead.' : 'Add money to your wallet, or pay online instead.',
+          text,
           style: t(16, color: GP.muted, w: FontWeight.w700, h: 1.35),
         ),
         actions: [
@@ -644,6 +655,7 @@ class _BagCheckoutScreenState extends State<BagCheckoutScreen> with WidgetsBindi
             title: a.name,
             sub: '${a.line1}${a.line2.isEmpty ? '' : ', ${a.line2}'}\n${a.city}, ${a.state} ${a.pincode}\n${a.phone}',
             onTap: () => setState(() => _savedId = a.id),
+            onRemove: () => unawaited(_removeSaved(a)),
           ),
         if (_saved.isNotEmpty) _Choice(on: _savedId == null, title: 'Use a new address', sub: '', onTap: () => setState(() => _savedId = null)),
         if (_savedId == null) ...[
@@ -790,12 +802,13 @@ class _Steps extends StatelessWidget {
 }
 
 class _Choice extends StatelessWidget {
-  const _Choice({required this.on, required this.title, required this.sub, required this.onTap});
+  const _Choice({required this.on, required this.title, required this.sub, required this.onTap, this.onRemove});
 
   final bool on;
   final String title;
   final String sub;
   final VoidCallback onTap;
+  final VoidCallback? onRemove; // [HF-APP-PARITY-MERCH-1] saved addresses only
 
   @override
   Widget build(BuildContext context) {
@@ -822,6 +835,7 @@ class _Choice extends StatelessWidget {
                     if (sub.isNotEmpty) Text(sub, style: t(14, color: GP.muted, w: FontWeight.w700, h: 1.3)),
                   ]),
                 ),
+                if (onRemove != null) IconButton(tooltip: 'Remove this address', onPressed: onRemove, icon: const Icon(Icons.delete_outline_rounded, color: GP.red)),
               ]),
             ),
           ),
