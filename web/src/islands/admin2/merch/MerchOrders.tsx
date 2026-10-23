@@ -5,7 +5,7 @@ import { ChevronDown } from 'lucide-react';
 import { DesiEmpty } from '../desi';
 import { ApiError } from '../adminApi';
 import {
-  Banner, OTHER, REASONS, adminCall, click, dateIST, errBody, errCode, fail, money, usePageView,
+  Banner, OTHER, REASONS, adminCall, click, dateIST, errBody, errCode, fail, money, usePageView, ProfitTable,
   type AdminOrder, type LiveQuote,
 } from './merchKit';
 
@@ -192,6 +192,10 @@ function OrderRow({ initial, onChanged, startOpen }: { initial: AdminOrder; onCh
           </div>
         </div>
 
+        <div>
+          <h3 className="mx-h">What the platform makes</h3>
+          <ProfitTable profit={o.profit} />
+        </div>
         {costRose && <div className="mx-warn" role="alert">The printer’s price went up since the fan paid ({money(q?.risePaise)} more). Approving would leave the platform with {money(q?.platformNetAfterPaise)}, so approving is blocked. Reject and refund the fan.</div>}
         {quoteDown && awaiting && <div className="mx-warn" role="status">{q?.message ?? 'The printer’s live price could not be checked.'} You can still approve at the frozen price if you are sure.</div>}
         {o.refund.status === 'pending_manual' && <div className="mx-warn bad" role="alert">The automatic refund did not go through. Send {money(o.totalPaise)} to the fan by hand (Cashfree dashboard or bank), then press “Refund sent”.</div>}

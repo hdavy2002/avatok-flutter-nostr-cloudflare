@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   MERCH_DEFAULT_CFG, readMerchCfg, computeMerchMoney, baseUnitPaise, checkMarkup, quoteAgainstLive, earningAvailableAt, sizePrices, youEarnUnitPaise, bpsOf, bpsFloor,
-  rupeesText, DAY_MS,
+  rupeesText, DAY_MS, profitRow,
 } from "./hf_merch_math";
 
 describe("spec section 1 worked example: base 500, markup 200, Cashfree", () => {
@@ -155,5 +155,29 @@ describe("rupeesText", () => {
     expect(rupeesText(70_000)).toBe("Rs 700");
     expect(rupeesText(2_450)).toBe("Rs 24.50");
     expect(rupeesText(5)).toBe("Rs 0.05");
+  });
+});
+
+describe("[HF-MERCH-PROFIT-VIEW-1] profitRow", () => {
+  const base = { markupPaise: 20_000, influencerPaise: 12_000, gstBps: 1800, cashfreeFeeBps: 350 };
+  it("size S: Printrove 267.75 + 50 = 317.75, fan 548, platform 110.25 before, 76.67 after", () => {
+    const r = profitRow({ ...base, size: "S", printroveCostPaise: 26_775, shippingPaise: 5_000, fanPaysPaise: 54_800 });
+    expect(r.printroveTotalPaise).toBe(31_775);
+    expect(r.platformBeforeFeesPaise).toBe(11_025);
+    expect(r.gstEstPaise).toBe(1_440);
+    expect(r.cashfreeEstPaise).toBe(1_918);
+    expect(r.platformAfterFeesPaise).toBe(7_667);
+  });
+  it("size 2XL: 283.50 + 50 = 333.50, before fees 110.50", () => {
+    const r = profitRow({ ...base, size: "2XL", printroveCostPaise: 28_350, shippingPaise: 5_000, fanPaysPaise: 56_400 });
+    expect(r.printroveTotalPaise).toBe(33_350);
+    expect(r.platformBeforeFeesPaise).toBe(11_050);
+  });
+  it("wallet (0 bps) has no Cashfree part; a loss goes negative", () => {
+    const w = profitRow({ ...base, cashfreeFeeBps: 0, size: "S", printroveCostPaise: 26_775, shippingPaise: 5_000, fanPaysPaise: 54_800 });
+    expect(w.cashfreeEstPaise).toBe(0);
+    expect(w.platformAfterFeesPaise).toBe(9_585);
+    const loss = profitRow({ ...base, size: "S", printroveCostPaise: 50_000, shippingPaise: 5_000, fanPaysPaise: 54_800 });
+    expect(loss.platformAfterFeesPaise).toBeLessThan(0);
   });
 });

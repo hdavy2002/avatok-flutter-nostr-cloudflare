@@ -163,3 +163,38 @@ export function rupeesText(paise: number): string {
   const whole = Math.trunc(Math.abs(p) / 100), frac = Math.abs(p) % 100;
   return `${p < 0 ? "-" : ""}Rs ${whole.toLocaleString("en-IN")}${frac ? `.${String(frac).padStart(2, "0")}` : ""}`;
 }
+
+// [HF-MERCH-PROFIT-VIEW-1] Admin money table: what the platform makes on one size of a product / one order.
+export type ProfitRow = {
+  size: string;
+  /** Shirt + print + Printrove GST (what Printrove's dashboard shows), WITHOUT shipping. */
+  printroveCostPaise: number;
+  shippingPaise: number;
+  printroveTotalPaise: number;
+  fanPaysPaise: number;
+  influencerPaise: number;
+  /** fan pays - influencer - Printrove total. */
+  platformBeforeFeesPaise: number;
+  /** GST on the platform's markup share (markup - influencer). */
+  gstEstPaise: number;
+  /** Cashfree fee on what the fan pays; 0 when cashfreeFeeBps is 0 (wallet). */
+  cashfreeEstPaise: number;
+  platformAfterFeesPaise: number;
+};
+
+/** Pure: one row of the profit table. Reuses bpsOf, the same rounding the order split uses. */
+export function profitRow(a: {
+  size: string; printroveCostPaise: number; shippingPaise: number; fanPaysPaise: number; markupPaise: number; influencerPaise: number; gstBps: number; cashfreeFeeBps: number;
+}): ProfitRow {
+  const cost = Math.max(0, Math.trunc(a.printroveCostPaise)), ship = Math.max(0, Math.trunc(a.shippingPaise));
+  const total = cost + ship;
+  const fan = Math.trunc(a.fanPaysPaise), inf = Math.trunc(a.influencerPaise);
+  const before = fan - inf - total;
+  const share = Math.max(0, Math.trunc(a.markupPaise) - inf);
+  const gst = bpsOf(share, a.gstBps);
+  const cf = bpsOf(fan, a.cashfreeFeeBps);
+  return {
+    size: a.size, printroveCostPaise: cost, shippingPaise: ship, printroveTotalPaise: total, fanPaysPaise: fan, influencerPaise: inf,
+    platformBeforeFeesPaise: before, gstEstPaise: gst, cashfreeEstPaise: cf, platformAfterFeesPaise: before - gst - cf,
+  };
+}

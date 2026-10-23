@@ -39,13 +39,18 @@ export interface AdminOrder {
   };
   refund: { status: 'none' | 'done' | 'pending_manual' | 'refunding'; at: number | null }; earningCreditedAt: number | null;
   problem: { kind?: string; note?: string; at?: number; photoUrl: string | null } | null;
-  events?: OrderEvent[]; liveQuote?: LiveQuote;
+  events?: OrderEvent[]; liveQuote?: LiveQuote; profit?: ProfitBlock | null;
 }
+export interface ProfitRow {
+  size: string; printroveCostPaise: number; shippingPaise: number; printroveTotalPaise: number; fanPaysPaise: number; influencerPaise: number;
+  platformBeforeFeesPaise: number; gstEstPaise: number; cashfreeEstPaise: number; platformAfterFeesPaise: number;
+}
+export interface ProfitBlock { shippingPaise: number; rows: ProfitRow[]; live: boolean; note?: string }
 export interface AdminProduct {
   id: string; slug: string; title: string; description: string; status: 'pending' | 'live' | 'rejected' | 'hidden'; reviewNote: string | null;
   imageUrl: string | null; mockups: string[]; catalogName: string; colours: Array<{ name: string; hex: string }>;
   sizes: Array<{ size: string; basePaise: number; pricePaise: number; youEarnPaise: number }>; markupRupees: number; soldCount: number; publicUrl: string; createdAt: number;
-  seller: { uid: string | null; slug: string | null; displayName: string | null }; moderation: string | null;
+  seller: { uid: string | null; slug: string | null; displayName: string | null }; moderation: string | null; profit?: ProfitBlock | null;
 }
 export interface MerchSettings {
   hfMerchEnabled: boolean; hfMerchCheckoutEnabled: boolean; hfMerchAutoApprove: boolean; hfMerchProductReview: boolean;
@@ -80,3 +85,36 @@ export const REASONS = [
   'The item arrived wrong or damaged',
 ] as const;
 export const OTHER = 'Other (write below)';
+
+/** Rupees from paise: whole rupees when whole, else 2 decimals (₹267.75). */
+export const rupees = (paise: number): string => {
+  const neg = paise < 0, a = Math.abs(paise), w = Math.trunc(a / 100), f = a % 100;
+  return `${neg ? '−' : ''}₹${w.toLocaleString('en-IN')}${f ? `.${String(f).padStart(2, '0')}` : ''}`;
+};
+/** [HF-MERCH-PROFIT-VIEW-1] What the platform makes, per size. Red below ₹0 after fees, amber below ₹20. */
+export function ProfitTable({ profit }: { profit: ProfitBlock | null | undefined }) {
+  if (!profit || !profit.rows.length) return <p className="hfa-note">The money table is not available for this one.</p>;
+  return (
+    <div>
+      {profit.note && <div className="mx-warn" role="status" style={{ marginBottom: 8 }}>{profit.note}</div>}
+      <div className="mx-scroll"><table className="mx-table mx-profit">
+        <thead><tr>
+          <th>Size</th><th className="n">Printrove cost</th><th className="n">+ shipping</th><th className="n">Printrove total</th><th className="n">Fan pays</th>
+          <th className="n">Influencer gets</th><th className="n">Platform keeps (before fees)</th><th className="n">Fees</th><th className="n">Platform keeps (after fees)</th>
+        </tr></thead>
+        <tbody>{profit.rows.map((r) => {
+          const tone = r.platformAfterFeesPaise < 0 ? 'bad' : r.platformAfterFeesPaise < 2000 ? 'amber' : '';
+          return (
+            <tr key={r.size} className={tone ? `mx-p-${tone}` : undefined}>
+              <td>{r.size}</td><td className="n">{rupees(r.printroveCostPaise)}</td><td className="n">{rupees(r.shippingPaise)}</td><td className="n">{rupees(r.printroveTotalPaise)}</td>
+              <td className="n">{rupees(r.fanPaysPaise)}</td><td className="n">{rupees(r.influencerPaise)}</td><td className="n">{rupees(r.platformBeforeFeesPaise)}</td>
+              <td className="n">{rupees(r.gstEstPaise + r.cashfreeEstPaise)}<span className="mx-fee">GST {rupees(r.gstEstPaise)}{r.cashfreeEstPaise > 0 ? ` + Cashfree ${rupees(r.cashfreeEstPaise)} if paid by UPI/card` : ''}</span></td>
+              <td className="n"><b>{rupees(r.platformAfterFeesPaise)}</b></td>
+            </tr>
+          );
+        })}</tbody>
+      </table></div>
+      <p className="hfa-note">Printrove cost = shirt + print + Printrove GST, as on Printrove’s dashboard. Shipping = Printrove’s current quote. Fees = GST on our share + Cashfree fee if the fan pays by UPI/card.</p>
+    </div>
+  );
+}

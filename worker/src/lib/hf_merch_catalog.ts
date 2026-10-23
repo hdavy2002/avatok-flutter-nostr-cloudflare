@@ -6,7 +6,7 @@ import { trackException } from "../hooks";
 import { ensurePodCatalog, getPodProvider, referenceShippingRupees, loadStoredCatalog, syncCatalogToDb, PRINT_SPECS } from "./pod";
 import type { CatalogProduct, PodProvider } from "./pod";
 import { computeSizeCosts, partnerPlacement, sortSizes, variantSku, type Placement } from "./studio_logic";
-import { baseUnitPaise, type MerchCfg } from "./hf_merch_math";
+import { baseUnitPaise, profitRow, youEarnUnitPaise, type MerchCfg, type ProfitRow } from "./hf_merch_math";
 import { parseJson, type MerchSnapshot, type ProductMerch } from "./hf_merch_types";
 
 const TEE_KIND = /_tee$/;
@@ -172,3 +172,77 @@ export async function provisionPartnerListing(
 
 export const sizesOf = (merch: ProductMerch | null): string[] => sortSizes((merch?.sizes ?? []).map((s) => s.size));
 export const parseProductMerch = (raw: string | null): ProductMerch | null => { const m = parseJson<ProductMerch | null>(raw, null); return m && m.v === 1 ? m : null; };
+
+// ---------------------------------------------------------------------------
+// [HF-MERCH-PROFIT-VIEW-1] Admin profit table
+// ---------------------------------------------------------------------------
+export type ProfitBlock = { shippingPaise: number; rows: ProfitRow[]; live: boolean; note?: string };
+const toPaise = (rupees: number): number => Math.round(rupees * 100);
+
+/** Live catalogue + reference shipping, fetched ONCE per admin request. products is null when the live catalogue is unavailable. */
+export type ProfitCtx = { products: CatalogProduct[] | null; shippingRupees: number | null };
+export async function profitContext(env: Env): Promise<ProfitCtx> {
+  try {
+    const info = await ensurePodCatalog(env);
+    const shippingRupees = await referenceShippingRupees(env);
+    return { products: info.source === "printrove" ? info.products : null, shippingRupees };
+  } catch (e) {
+    await trackException(env, e, { route: "hf_merch:profit_ctx", handled: true, app_name: "hf_merch" });
+    return { products: null, shippingRupees: null };
+  }
+}
+
+/** Per frozen size: Printrove cost TODAY (garment + print + Printrove GST, no shipping; max across the chosen colours) against the frozen fan price. */
+export function buildProductProfit(ctx: ProfitCtx, cfg: MerchCfg, merch: ProductMerch | null, markupRupees: number): ProfitBlock {
+  const shipPaise = toPaise(ctx.shippingRupees ?? 0);
+  const markup = Math.trunc(markupRupees) * 100;
+  const inf = youEarnUnitPaise(markup, cfg.platformShareBps);
+  if (!merch) return { shippingPaise: shipPaise, rows: [], live: false, note: "This product has no price data." };
+  const prod = ctx.products?.find((p) => p.provider_product_id === merch.catalogId);
+  const pl = merch.placement as { print_w_in?: number; print_h_in?: number };
+  const costs = prod && pl.print_w_in && pl.print_h_in
+    ? computeSizeCosts(prod, merch.colours.map((c) => c.name), merch.side, pl.print_w_in, pl.print_h_in, null) : [];
+  let allLive = !!prod && costs.length > 0;
+  const rows = merch.sizes.map((s) => {
+    const c = costs.find((x) => x.size.toLowerCase() === s.size.toLowerCase());
+    const liveOk = !!c && c.in_stock && c.total_rupees != null;
+    if (!liveOk) allLive = false;
+    const cost = liveOk ? toPaise(c!.total_rupees as number) : Math.max(0, s.baseUnitPaise - shipPaise - cfg.baseBufferRupees * 100);
+    return profitRow({ size: s.size, printroveCostPaise: cost, shippingPaise: shipPaise, fanPaysPaise: s.baseUnitPaise + markup, markupPaise: markup, influencerPaise: inf, gstBps: cfg.gstBps, cashfreeFeeBps: cfg.cashfreeFeeBps });
+  });
+  const notes: string[] = [];
+  if (!allLive) notes.push("Printrove's live prices could not be read, so the Printrove cost is worked back from the price set when the product was made.");
+  if (ctx.shippingRupees == null) notes.push("Printrove's shipping quote could not be checked, so shipping is shown as Rs 0.");
+  return { shippingPaise: shipPaise, rows, live: allLive, ...(notes.length ? { note: notes.join(" ") } : {}) };
+}
+
+/** One order: the ordered size x qty. Money is the order's frozen snapshot; Printrove cost and shipping are today's quote (falls back to the frozen base). */
+export async function buildOrderProfit(env: Env, snap: Partial<MerchSnapshot>, pincode: string | null): Promise<ProfitBlock | null> {
+  const m = snap.money;
+  if (!m) return null;
+  const qty = Math.max(1, m.qty);
+  const ctx = await profitContext(env);
+  let shipRupees = ctx.shippingRupees;
+  let note: string | undefined;
+  if (pincode) {
+    try {
+      const provider = await getPodProvider(env, "printrove");
+      const s = await provider.serviceability(pincode, 300 * qty);
+      if (s.ok && typeof s.shipping_cost_rupees === "number") shipRupees = s.shipping_cost_rupees;
+    } catch { /* reference shipping stands */ }
+  }
+  const shipPaise = toPaise(shipRupees ?? 0);
+  const prod = ctx.products?.find((p) => p.provider_product_id === snap.catalogId);
+  let costPaise: number | null = null;
+  if (prod && snap.colour && snap.side && snap.printWIn && snap.printHIn) {
+    const c = computeSizeCosts(prod, [snap.colour], snap.side, snap.printWIn, snap.printHIn, null).find((x) => x.size.toLowerCase() === String(snap.size).toLowerCase());
+    if (c && c.in_stock && c.total_rupees != null) costPaise = toPaise(c.total_rupees) * qty;
+  }
+  const live = costPaise != null;
+  if (!live) {
+    costPaise = Math.max(0, m.basePaise - shipPaise - Number(snap.bufferRupees ?? 0) * 100 * qty);
+    note = "Printrove's live price could not be read, so the Printrove cost is worked back from the price frozen when the fan ordered.";
+  }
+  const row = profitRow({ size: String(snap.size ?? ""), printroveCostPaise: costPaise as number, shippingPaise: shipPaise, fanPaysPaise: m.totalPaise, markupPaise: m.markupPaise, influencerPaise: m.influencerPaise, gstBps: m.gstBps, cashfreeFeeBps: m.payMethod === "cashfree" ? m.cashfreeFeeBps : 0 });
+  return { shippingPaise: shipPaise, rows: [row], live, ...(note ? { note } : {}) };
+}

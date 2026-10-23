@@ -81,3 +81,10 @@
 .hf-admin .mx-lb-strip img { width: 64px; height: 64px; border-radius: 14px; object-fit: cover; display: block; background: #fff; }
 @media (max-width: 560px) { .hf-admin .mx-prow { grid-template-columns: 52px 1fr; } .hf-admin .mx-pchip { grid-column: 2; justify-self: start; } .hf-admin .mx-lb-nav { top: auto; bottom: 96px; transform: none; } }
 .hf-admin .mx-row:not(.open) .mx-body { visibility: hidden; transition: visibility 0s .28s; }
+/* [HF-MERCH-PROFIT-VIEW-1] profit table */
+.hf-admin .mx-profit { min-width: 720px; }
+.hf-admin .mx-profit th { font-size: 14px; }
+.hf-admin .mx-profit .mx-fee { display: block; font-size: 14px; font-weight: 700; color: var(--a-muted); }
+.hf-admin .mx-profit tr.mx-p-bad td { background: #fde3e6; color: var(--a-bad); }
+.hf-admin .mx-profit tr.mx-p-amber td { background: var(--a-goldtint); color: var(--a-amber); }
+.hf-admin .mx-profit tr.mx-p-bad .mx-fee, .hf-admin .mx-profit tr.mx-p-amber .mx-fee { color: inherit; }

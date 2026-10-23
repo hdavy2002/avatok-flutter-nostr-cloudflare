@@ -11685,5 +11685,12 @@
     "min_devices_on_build": 0,
     "flags": [],
     "no_telemetry": "Copy-only change (help articles, FAQ, Support and Help strings, policy text); no new event. Merch articles stay drafts and merch answers stay hidden until hfMerchEnabled is on."
+  },
+  "HF-MERCH-PROFIT-VIEW-1": {
+    "description": "Admin merch money table per size (Printrove cost, shipping, fan pays, influencer, platform before/after fees) on Approve merch and merch orders.",
+    "two_sided": false,
+    "min_devices_on_build": 0,
+    "flags": [],
+    "no_telemetry": "Admin read-only view; verified by opening a product in /admin/merch/products and an order in /admin/merch and checking the money table."
   }
 }

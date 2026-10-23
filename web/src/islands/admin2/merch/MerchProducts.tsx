@@ -5,7 +5,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ChevronDown, ChevronLeft, ChevronRight, X } from 'lucide-react';
 import { DesiEmpty } from '../desi';
-import { Banner, adminCall, click, dateIST, fail, money, usePageView, type AdminProduct } from './merchKit';
+import { Banner, adminCall, click, dateIST, fail, money, usePageView, ProfitTable, type AdminProduct } from './merchKit';
 
 type St = AdminProduct['status'];
 type Tab = St | 'all';
@@ -123,11 +123,11 @@ function Row({ p, open, onToggle, onZoom, onChanged }: {
           <div>
             <h3 className="mx-h">Prices</h3>
             <dl className="mx-kv"><dt>Influencer markup</dt><dd>{money(p.markupRupees * 100)}</dd></dl>
-            <div className="mx-scroll"><table className="mx-table">
-              <thead><tr><th>Size</th><th className="n">Base</th><th className="n">Fan pays</th><th className="n">Influencer earns</th></tr></thead>
-              <tbody>{p.sizes.map((s) => <tr key={s.size}><td>{s.size}</td><td className="n">{money(s.basePaise)}</td><td className="n">{money(s.pricePaise)}</td><td className="n">{money(s.youEarnPaise)}</td></tr>)}</tbody>
-            </table></div>
           </div>
+        </div>
+        <div>
+          <h3 className="mx-h">Money per size</h3>
+          <ProfitTable profit={p.profit} />
         </div>
         {mode ? (
           <div className="mx-form">

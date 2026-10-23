@@ -12,9 +12,10 @@ import { readConfig, writeConfigOverrides } from "./config";
 import { emailFor } from "../lib/identity";
 import { metaDb } from "../db/shard";
 import { MERCH_CFG_RANGES } from "../lib/hf_merch_math";
+import { buildOrderProfit, buildProductProfit, profitContext } from "../lib/hf_merch_catalog";
 import { fanStatusOf, parseJson, sellerStatusOf } from "../lib/hf_merch_types";
 import {
-  ADMIN_TABS, adminListOrders, adminTabCounts, getOrder, hostsByUids, listProductsByReview, orderEvents, platformRows, productShape, type AdminTab, type MerchProductRow,
+  ADMIN_TABS, adminListOrders, adminTabCounts, getOrder, hostsByUids, listProductsByReview, orderEvents, platformRows, productMerch, productShape, type AdminTab, type MerchProductRow,
 } from "../lib/hf_merch_store";
 import { approveMerchOrder, markRefundDone, merchCfg, quoteMerchOrder, rejectMerchOrder, setMerchDelivered, setMerchTracking, type FlowFail } from "../lib/hf_merch_flow";
 import { reviewMerchProduct, type PFail } from "../lib/hf_merch_products";
@@ -73,13 +74,15 @@ async function getOrderRoute(req: Request, env: Env, id: string): Promise<Respon
   if (!row || !row.seller_uid) return bad(404, "not_found", "No such order.");
   const dto = await orderDto(env, row, await hostMap(env, [row]), true);
   let liveQuote: Record<string, unknown> | undefined;
+  const snap = snapOf(row);
+  const profit = await buildOrderProfit(env, snap, parseJson<{ pincode?: string }>(row.address_json, {}).pincode ?? null).catch(() => null);
   if (new URL(req.url).searchParams.get("quote") === "1") {
     const q = await quoteMerchOrder(env, row);
     liveQuote = q.ok
       ? { quoteAvailable: true, liveBasePaise: q.quote.liveBasePaise, platformNetAfterPaise: q.quote.platformNetAfterPaise, costRose: q.quote.costRose, canApprove: q.quote.canApprove, risePaise: q.quote.risePaise, stale: q.quote.stale, source: q.quote.source }
       : { quoteAvailable: false, message: q.message, canApprove: false, canForce: true, costRose: false };
   }
-  return out({ order: liveQuote ? { ...dto, liveQuote } : dto });
+  return out({ order: { ...dto, ...(liveQuote ? { liveQuote } : {}), profit } });
 }
 
 async function orderAction(req: Request, env: Env, admin: string, id: string, action: string): Promise<Response> {
@@ -126,10 +129,11 @@ async function listProducts(req: Request, env: Env): Promise<Response> {
   const { cfg } = await merchCfg(env);
   const rows = await listProductsByReview(env, st);
   const hosts = await hostMap(env, rows);
+  const pctx = rows.length ? await profitContext(env) : { products: null, shippingRupees: null };
   return out({
     products: rows.map((r: MerchProductRow) => {
       const h = r.seller_uid ? hosts.get(r.seller_uid) : undefined;
-      return { ...productShape(r, h ?? { slug: "" }, cfg.platformShareBps), seller: { uid: r.seller_uid, slug: h?.slug ?? null, displayName: h?.displayName ?? null }, moderation: (parseJson<{ moderation?: string }>(r.merch_json, {})).moderation ?? null };
+      return { ...productShape(r, h ?? { slug: "" }, cfg.platformShareBps), profit: buildProductProfit(pctx, cfg, productMerch(r), Number(r.markup_rupees ?? 0)), seller: { uid: r.seller_uid, slug: h?.slug ?? null, displayName: h?.displayName ?? null }, moderation: (parseJson<{ moderation?: string }>(r.merch_json, {})).moderation ?? null };
     }),
   });
 }
