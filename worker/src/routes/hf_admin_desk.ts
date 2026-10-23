@@ -1,4 +1,4 @@
-// [HF-ADMIN-SWEEP-1] Hello Fraands admin "Members & activity" desk: READ-ONLY lists so the owner sees what users actually did.
+// [HF-ADMIN-SWEEP-1] the call app admin "Members & activity" desk: READ-ONLY lists so the owner sees what users actually did.
 // Before this the Hosts group could show influencers, payouts, refunds and calls, but NOT: who signed up, who booked, who
 // topped up, who wrote to support, who reported/blocked whom. (The Users/Bookings/Payments pages read Saathum tables.)
 //   GET /api/admin/hf/desk/summary
@@ -23,7 +23,7 @@ const IST_MS = 5.5 * 3600_000;
 const NAME_SQL = (reg: string, usr: string) =>
   `COALESCE(NULLIF(trim(COALESCE(${reg}.first_name,'') || ' ' || COALESCE(${reg}.last_name,'')),''), NULLIF(trim(${usr}.display_name),''))`;
 
-/** Any account that touched Hello Fraands: WhatsApp sign-up, registration, age confirm or an HF email. */
+/** Any account that touched the call app: WhatsApp sign-up, registration, age confirm or an HF email. */
 export const HF_MEMBER_SQL = `(EXISTS (SELECT 1 FROM hf_phone_signup s WHERE s.uid=u.uid)
   OR EXISTS (SELECT 1 FROM hf_user_registration r0 WHERE r0.uid=u.uid)
   OR EXISTS (SELECT 1 FROM hf_registration_progress p0 WHERE p0.uid=u.uid)

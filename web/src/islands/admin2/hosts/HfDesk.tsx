@@ -1,4 +1,4 @@
-/* HfDesk — [HF-ADMIN-SWEEP-1] Members & activity: read-only lists of what people did on Hello Fraands.
+/* HfDesk — [HF-ADMIN-SWEEP-1] Members & activity: read-only lists of what people did on the call app.
  * Worker (admin only): GET /api/admin/hf/desk/{summary,members,bookings,topups,support,reports}, GET /api/admin/hf/money-audit.
  * Nothing here changes data. Money is rupees with paise. Times are IST. Nothing under 14px. */
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
