@@ -131,7 +131,7 @@ class _MerchProfileRowState extends State<MerchProfileRow> {
                       const SizedBox(height: 6),
                       Text(p.title, maxLines: 1, overflow: TextOverflow.ellipsis, style: t(14)),
                       Text('from ${merchRupees(p.fromPaise)}', style: t(14, color: C.rani)),
-                      Text('incl. GST & free delivery', style: t(12, color: C.muted)),
+                      Text('incl. 5% GST & free delivery', style: t(12, color: C.muted)),
                     ]),
                   ),
                 ),
@@ -178,6 +178,7 @@ class _ProductSheet extends StatefulWidget {
 class _ProductSheetState extends State<_ProductSheet> {
   late PublicProduct _p = widget.summary;
   late bool _checkout = widget.checkoutEnabled;
+  int? _gstBps; // [HF-MERCH-GST-2] from the product page; null falls back to 5%
   String _colour = '';
   String _size = '';
   int _qty = 1;
@@ -212,6 +213,7 @@ class _ProductSheetState extends State<_ProductSheet> {
       setState(() {
         _p = page.product;
         _checkout = page.checkoutEnabled;
+        _gstBps = page.gstRateBps;
         _pickDefaults();
         if (_qty > _p.maxQty) _qty = _p.maxQty;
       });
@@ -341,11 +343,12 @@ class _ProductSheetState extends State<_ProductSheet> {
           ]),
           const SizedBox(height: 6),
           Text(merchRupees(_unit * _qty), style: t(26, color: C.rani)),
-          Text('incl. GST & free delivery', style: t(14, color: C.muted, w: FontWeight.w700)),
-          Text('Price includes: printing, GST and delivery across India. Made to order.', style: t(14, color: C.muted, w: FontWeight.w700)),
+          Text('incl. ${merchGstPct(_gstBps)}% GST & free delivery', style: t(14, color: C.muted, w: FontWeight.w700)),
+          Text('Price includes: printing, ${merchGstPct(_gstBps)}% GST and delivery across India. Made to order.', style: t(14, color: C.muted, w: FontWeight.w700)),
+          Text('You\'ll get a GST invoice by email.', style: t(14, color: C.muted, w: FontWeight.w700)),
           const SizedBox(height: 14),
           DesiButton(
-            _checkout ? 'Buy now' : 'Buying opens soon',
+            _checkout ? 'Buy now' : 'Coming soon',
             icon: Icons.shopping_bag_rounded,
             kind: DesiButtonKind.rani,
             expand: true,
@@ -513,7 +516,9 @@ class _MerchCheckoutScreenState extends State<MerchCheckoutScreen> {
     );
   }
 
-  bool get _ready => !_busy && _terms && _refund && (_chosenSaved != null || _formProblem() == null);
+  bool _notReady = false; // [HF-MERCH-GST-2] server answered 403 gst_not_ready
+
+  bool get _ready => !_busy && !_notReady && _terms && _refund && (_chosenSaved != null || _formProblem() == null);
 
   Future<void> _pay() async {
     final addr = _address();
@@ -565,6 +570,11 @@ class _MerchCheckoutScreenState extends State<MerchCheckoutScreen> {
       setState(() => _busy = false);
       if (e.status == 402) {
         await _lowBalance(e);
+      } else if (e.code == 'gst_not_ready') {
+        setState(() {
+          _notReady = true;
+          _error = merchErrorText(e);
+        });
       } else {
         setState(() => _error = e.userMessage);
       }
@@ -643,8 +653,9 @@ class _MerchCheckoutScreenState extends State<MerchCheckoutScreen> {
                           Text('by ${_a.host.displayName}', style: t(14, color: C.muted, w: FontWeight.w700)),
                           const SizedBox(height: 4),
                           Text(merchRupees(total), style: t(20, color: C.rani)),
-                          Text('Total (incl. GST & delivery)', style: t(14, color: C.muted, w: FontWeight.w700)),
+                          Text('Total (incl. 5% GST & delivery)', style: t(14, color: C.muted, w: FontWeight.w700)),
                           Text('No extra charges at checkout.', style: t(14, color: C.muted, w: FontWeight.w700)),
+                          Text('You\'ll get a GST invoice by email.', style: t(14, color: C.muted, w: FontWeight.w700)),
                         ]),
                       ),
                     ]),
@@ -1073,7 +1084,7 @@ class _MerchOrderScreenState extends State<MerchOrderScreen> with WidgetsBinding
                           MerchKv('Order', '#${o.orderNo}'),
                           MerchKv('Placed', merchDateTime(o.createdAt)),
                           if (o.hostName.isNotEmpty) MerchKv('From', o.hostName),
-                          MerchKv('Paid (incl. GST & delivery)', merchRupees(o.totalPaise), strong: true),
+                          MerchKv('Paid (incl. 5% GST & delivery)', merchRupees(o.totalPaise), strong: true),
                           if (o.payMethod != null) MerchKv('Paid with', o.payMethod == 'wallet' ? 'Wallet' : 'UPI, card or net banking'),
                         ]),
                       ),
@@ -1105,7 +1116,7 @@ class _MerchOrderScreenState extends State<MerchOrderScreen> with WidgetsBinding
                         if (o.shipping?.trackingUrl != null)
                           DesiButton('Track parcel', icon: Icons.local_shipping_rounded, kind: DesiButtonKind.tea, onTap: () => unawaited(openMerchLink(context, o.shipping!.trackingUrl!))),
                         if (o.receiptUrl != null)
-                          DesiButton('Receipt', icon: Icons.receipt_long_rounded, kind: DesiButtonKind.ghost, onTap: () => unawaited(openMerchLink(context, o.receiptUrl!))),
+                          DesiButton(o.gstInvoice == false ? 'Download receipt' : 'Download GST invoice', icon: Icons.receipt_long_rounded, kind: DesiButtonKind.ghost, onTap: () => unawaited(openMerchLink(context, o.receiptUrl!))),
                         if (o.canReportProblem)
                           DesiButton('Something wrong?', icon: Icons.report_problem_rounded, kind: DesiButtonKind.danger, onTap: () => unawaited(_report(o))),
                       ]),

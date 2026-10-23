@@ -12,6 +12,7 @@ import {
   INDIAN_STATES, checkoutMerch, deleteAddress, listAddresses, rupees,
   type AddressInput, type CheckoutDone, type SavedAddress,
 } from '../../lib/merchApi';
+import { gstPct } from '../../lib/merchPublic';
 
 type Step = 'boot' | 'signin' | 'whatsapp' | 'address' | 'review' | 'pay' | 'done' | 'broken';
 const LINE_MAX = 50;
@@ -34,11 +35,11 @@ const phone10 = (v: string) => v.replace(/\D/g, '').replace(/^(91|0)(?=\d{10}$)/
 
 interface Props {
   host: { slug: string; displayName: string };
-  product: { id: string; slug: string; title: string; imageUrl: string | null };
-  colour: string; size: string; qty: number; unitPaise: number; pincode: string; resumePath: string; onClose: () => void;
+  product: { id: string; slug: string; title: string; imageUrl: string | null; gstRateBps?: number };
+  colour: string; size: string; qty: number; unitPaise: number; pincode: string; resumePath: string; onClose: () => void; onNotReady?: () => void;
 }
 
-export default function Checkout({ host, product, colour, size, qty, unitPaise, pincode, resumePath, onClose }: Props) {
+export default function Checkout({ host, product, colour, size, qty, unitPaise, pincode, resumePath, onClose, onNotReady }: Props) {
   const dlg = useRef<HTMLDialogElement>(null);
   const [step, setStep] = useState<Step>('boot');
   const [saved, setSaved] = useState<SavedAddress[]>([]);
@@ -111,6 +112,7 @@ export default function Checkout({ host, product, colour, size, qty, unitPaise, 
   const fail = (status: number, code: string, message: string, body: Record<string, unknown>) => {
     capture('merch_checkout_failed', { code, status, host_slug: host.slug, product_slug: product.slug });
     if (status === 0 || status >= 500 || code === 'gateway_error') captureException(new Error(`merch_checkout_${status}_${code}`), { area: 'hf_merch_fan', step: 'pay', code });
+    if (code === 'gst_not_ready') { setMsg({ text: 'Merch checkout opens soon. Nothing was charged.' }); onNotReady?.(); return; }
     if (code === 'whatsapp_required') { go('whatsapp'); return; }
     if (code === 'insufficient_balance') {
       const short = Number(body.shortPaise) || 0; if (typeof body.balancePaise === 'number') setBalance(body.balancePaise);
@@ -162,7 +164,7 @@ export default function Checkout({ host, product, colour, size, qty, unitPaise, 
       <div className="hfm-sum">
         {product.imageUrl && <img src={product.imageUrl} alt="" width="64" height="64" />}
         <div><b>{product.title}</b><small>{colour} · {size} · Qty {qty}</small></div>
-        <strong>{rupees(total)}<small style={{ display: 'block', fontWeight: 400 }}>incl. GST &amp; delivery</small></strong>
+        <strong>{rupees(total)}<small style={{ display: 'block', fontWeight: 400 }}>incl. {gstPct(product.gstRateBps)}% GST &amp; delivery</small></strong>
       </div>
 
       {step === 'boot' && <p role="status" className="hfm-note">Getting things ready…</p>}
@@ -214,7 +216,8 @@ export default function Checkout({ host, product, colour, size, qty, unitPaise, 
         <dl className="hfm-facts">
           <div><dt>Deliver to</dt><dd>{chosen.name} · {chosen.phone}<br />{chosen.line1}{chosen.line2 ? `, ${chosen.line2}` : ''}<br />{chosen.city}, {chosen.state} {chosen.pincode}<br /><button type="button" className="hfm-link" onClick={() => go('address')}>Change address</button></dd></div>
           <div><dt>Delivery</dt><dd>Free across India. Printed to order, so it ships in a few days.</dd></div>
-          <div><dt>Total (incl. GST &amp; delivery)</dt><dd><b>{rupees(total)}</b><br />No extra charges at checkout.</dd></div>
+          <div><dt>Total (incl. {gstPct(product.gstRateBps)}% GST &amp; delivery)</dt><dd><b>{rupees(total)}</b><br />No extra charges at checkout.</dd></div>
+          <div><dt>GST invoice</dt><dd>You’ll get a GST invoice by email.</dd></div>
         </dl>
         <label className="hfm-tick"><input type="checkbox" checked={terms} onChange={e => setTerms(e.target.checked)} /><span>I agree to the <a href="/terms" target="_blank" rel="noopener">terms of use</a>.</span></label>
         <label className="hfm-tick"><input type="checkbox" checked={refund} onChange={e => setRefund(e.target.checked)} /><span>I understand there are <b>no returns</b>. If the item is wrong or damaged, I can report it within <b>48 hours</b> of delivery. See the <a href="/refunds" target="_blank" rel="noopener">refund policy</a>.</span></label>

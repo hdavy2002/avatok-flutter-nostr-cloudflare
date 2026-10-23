@@ -25,6 +25,7 @@ const p = ok?.product;
 const host = ok?.host;
 const photos = p ? (p.photos?.length ? p.photos : p.imageUrl ? [p.imageUrl] : []) : [];
 const lowest = p ? Math.min(...p.sizes.filter(s => s.inStock).map(s => s.pricePaise), p.fromPricePaise || Infinity) : 0;
+const gst = gstPct(p?.gstRateBps);
 const path = `/h/${slug}/merch/${productSlug}`;
 const pageUrl = new URL(path, BRAND.webOrigin).toString();
 const blurb = p ? (p.description?.replace(/\s+/g, ' ').trim() || `${p.title}, a ${p.colours.map(c => c.name).join(' / ') || 'cotton'} T-shirt by ${host!.displayName}, printed to order in India. Free delivery across India.`) : '';
@@ -57,9 +58,9 @@ const title = ok ? `${p!.title} — T-shirt by ${host!.displayName}` : r.status 
         <div>
           <p class="hfm-by">By <a href={`/h/${slug}`}>{host!.displayName}</a></p>
           <h1 class="hfm-h1">{p!.title}</h1>
-          <p class="hfm-from">From {rupees(lowest)} · incl. GST &amp; free delivery</p>
-          <p class="hfm-note">Price includes: printing, GST and delivery across India.</p>
-          <MerchBuy client:load host={{ slug, displayName: host!.displayName }} product={{ id: p!.id, slug: p!.slug, title: p!.title, imageUrl: photos[0] ?? null, colours: p!.colours, sizes: p!.sizes, maxQty: p!.maxQty }} checkoutEnabled={ok.checkoutEnabled} />
+          <p class="hfm-from">From {rupees(lowest)} · incl. {gst}% GST &amp; free delivery</p>
+          <p class="hfm-note">Price includes: printing, {gst}% GST and delivery across India. You’ll get a GST invoice by email.</p>
+          <MerchBuy client:load host={{ slug, displayName: host!.displayName }} product={{ id: p!.id, slug: p!.slug, title: p!.title, imageUrl: photos[0] ?? null, colours: p!.colours, sizes: p!.sizes, maxQty: p!.maxQty, gstRateBps: p!.gstRateBps }} checkoutEnabled={ok.checkoutEnabled} />
           <ul class="hfm-perks">
             <li>Free delivery across India</li>
             <li>Printed to order on a soft cotton T-shirt</li>

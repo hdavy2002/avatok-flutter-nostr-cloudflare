@@ -10,9 +10,13 @@ faq:
   - q: "How do I make a T-shirt product?"
     a: "Open Merch in your dashboard or the app. Upload your art, tick I own this art, pick a T-shirt (front or back, colours, sizes S to 5XL), place the art, add your markup and send it for review."
   - q: "What price do fans pay?"
-    a: "One all-in price: the base price for the size (printing including GST, plus delivery) plus your markup. It is labelled incl. GST and delivery, delivery in India is free and nothing is added at checkout. The lowest markup is ₹10."
+    a: "One all-in price: the base price for the size (printing including 5% GST, plus delivery) plus your markup. It is labelled incl. 5% GST and delivery, delivery in India is free and nothing is added at checkout. The lowest markup is ₹10. Shirts are capped at ₹2,500 so the 5% GST rate applies."
   - q: "How much do I earn on a T-shirt?"
-    a: "You keep 60% of your markup (currently). We keep 40% and pay GST and payment fees out of our share, so they never reduce yours."
+    a: "You earn a design royalty of 60% of your markup (currently). We sell the T-shirt to the fan, pay the GST and issue the fan a GST invoice, so none of that reduces your royalty."
+  - q: "Do I need a GST number to sell T-shirts?"
+    a: "No. You can start without one. There is an optional GSTIN field if you have a number and want to add it."
+  - q: "Do fans get a GST invoice?"
+    a: "Yes. We sell the T-shirt, so we send the fan a tax invoice at 5% GST by email and it is in their My orders."
   - q: "Why is my product waiting?"
     a: "Every new product is reviewed by our team before it goes on sale. You tick that you own the art."
 draft: false
@@ -39,9 +43,9 @@ For every size there is a **base price**. It is made of two parts that you see s
 - **Printing (incl. GST)**: the cost of printing the T-shirt, with GST already included.
 - **Shipping**: delivery to the fan anywhere in India.
 
-**Base price = printing (incl. GST) + shipping.** For example, for a Premium Oversized tee in black with a small print: printing incl. GST ₹393.75 + shipping ₹50 = base ₹444 (rounded up). Add a ₹200 markup and the fan pays **₹644 incl. GST & delivery**, and you earn ₹120.
+**Base price = printing (incl. GST) + shipping.** For example, for a Premium Oversized tee in black with a small print: printing incl. GST ₹393.75 + shipping ₹50 = base ₹444 (rounded up). Add a ₹200 markup and the fan pays **₹644 incl. 5% GST & delivery**, and you earn ₹120.
 
-The fan pays **base price + your markup** as one all-in price, labelled **incl. GST & delivery**. Delivery anywhere in India is free for the fan, and nothing is added at checkout. Bigger sizes can have a higher base price, so the fan price can differ by size.
+The fan pays **base price + your markup** as one all-in price, labelled **incl. 5% GST & delivery**. Delivery anywhere in India is free for the fan, and nothing is added at checkout. Shirts are capped at **₹2,500**, so the 5% GST rate applies; the markup box stops you going over it. Bigger sizes can have a higher base price, so the fan price can differ by size.
 
 ## Review
 
@@ -51,7 +55,9 @@ Every paid order is also checked by our team before it is printed. In the rare c
 
 ## What you earn
 
-You keep **60% of your markup** (currently), so a ₹200 markup earns you ₹120. We keep 40%, and we pay the GST and payment fees out of our share. They never reduce what you earn.
+You earn a **design royalty of 60% of your markup** (currently), so a ₹200 markup earns you ₹120. We are the seller of every T-shirt: we collect the fan's payment, pay the GST and send the fan a GST invoice. That never reduces your royalty.
+
+**You do not need a GST number to start.** There is an optional GSTIN field if you want to add one.
 
 Your merch earnings can be withdrawn **7 days after the order is delivered** (currently), with the same Withdraw button as your call earnings. An order that is refunded earns nothing. Read more in [Your merch orders and earnings](/help/hosts/merch-orders-and-earnings) and [Getting paid](/help/hosts/getting-paid).
 

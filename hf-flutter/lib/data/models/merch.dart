@@ -44,7 +44,10 @@ List<MerchColour> _colours(Object? v) => [for (final m in _maps(v)) MerchColour.
 // ------------------------------------------------------------------------------------------------ influencer
 
 class CatalogSize {
-  const CatalogSize({required this.size, required this.basePaise});
+  const CatalogSize({required this.size, required this.basePaise, this.maxMarkupRupees});
+
+  /// [HF-MERCH-GST-2] Highest markup (rupees) that keeps this size under the price cap; null when the server does not send it.
+  final int? maxMarkupRupees;
 
   final String size;
 
@@ -93,7 +96,7 @@ class CatalogItem {
       areaW: _d(a['wIn']) > 0 ? _d(a['wIn']) : 12,
       areaH: _d(a['hIn']) > 0 ? _d(a['hIn']) : 14,
       colours: _colours(j['colours']),
-      sizes: [for (final m in _maps(j['sizes'])) CatalogSize(size: _s(m['size']), basePaise: _i(m['basePaise']))],
+      sizes: [for (final m in _maps(j['sizes'])) CatalogSize(size: _s(m['size']), basePaise: _i(m['basePaise']), maxMarkupRupees: _in(m['maxMarkupRupees']))],
       mockupUrl: _sn(j['mockupUrl']),
     );
   }
@@ -131,14 +134,22 @@ class PrintArea {
 }
 
 class MerchCatalog {
-  const MerchCatalog({required this.items, required this.minMarkupRupees, required this.platformShareBps, required this.holdDays});
+  const MerchCatalog({required this.items, required this.minMarkupRupees, required this.platformShareBps, required this.holdDays, this.priceCapPaise, this.gstRateBps});
 
   factory MerchCatalog.fromJson(Map<String, dynamic> j) => MerchCatalog(
         items: [for (final m in _maps(j['items'])) CatalogItem.fromJson(m)],
         minMarkupRupees: j['minMarkupRupees'] is num ? _i(j['minMarkupRupees']) : 10,
         platformShareBps: j['platformShareBps'] is num ? _i(j['platformShareBps']) : 4000,
         holdDays: j['holdDays'] is num ? _i(j['holdDays']) : 7,
+        priceCapPaise: _in(j['priceCapPaise']),
+        gstRateBps: _in(j['gstRateBps']),
       );
+
+  /// [HF-MERCH-GST-2] Highest fan price (paise) a shirt may have so the 5% GST rate applies; null on older servers.
+  final int? priceCapPaise;
+
+  /// GST rate in basis points (500 = 5%); null on older servers.
+  final int? gstRateBps;
 
   final List<CatalogItem> items;
   final int minMarkupRupees;
@@ -223,7 +234,10 @@ class AiResult {
 
 /// [HF-MERCH-PRICE-LABELS-2] One size of a quote: printing (incl. GST) and shipping, both null on older responses.
 class QuoteLine {
-  const QuoteLine({this.printingPaise, this.shippingPaise});
+  const QuoteLine({this.printingPaise, this.shippingPaise, this.maxMarkupRupees});
+
+  /// [HF-MERCH-GST-2] Highest markup (rupees) for this size under the price cap; null when not sent.
+  final int? maxMarkupRupees;
 
   final int? printingPaise;
   final int? shippingPaise;
@@ -537,13 +551,17 @@ class PublicShop {
 }
 
 class PublicProductPage {
-  const PublicProductPage({required this.host, required this.checkoutEnabled, required this.product});
+  const PublicProductPage({required this.host, required this.checkoutEnabled, required this.product, this.gstRateBps});
 
   factory PublicProductPage.fromJson(Map<String, dynamic> j) => PublicProductPage(
         host: PublicHost.fromJson(j['host']),
         checkoutEnabled: j['checkoutEnabled'] == true,
         product: PublicProduct.fromJson(j['product'] is Map ? Map<String, dynamic>.from(j['product'] as Map) : <String, dynamic>{}),
+        gstRateBps: _in(j['gstRateBps']) ?? (j['product'] is Map ? _in((j['product'] as Map)['gstRateBps']) : null),
       );
+
+  /// [HF-MERCH-GST-2] GST rate in basis points (500 = 5%); null when the server does not send it.
+  final int? gstRateBps;
 
   final PublicHost host;
   final bool checkoutEnabled;
@@ -667,6 +685,7 @@ class FanOrder {
     required this.refundStatus,
     required this.rejectReason,
     required this.timeline,
+    this.gstInvoice,
   });
 
   factory FanOrder.fromJson(Map<String, dynamic> j) {
@@ -687,6 +706,7 @@ class FanOrder {
       payMethod: _sn(j['payMethod']),
       shipping: ShippingInfo.fromJson(j['shipping']),
       receiptUrl: _sn(j['receiptUrl']),
+      gstInvoice: j['gstInvoice'] == false ? false : null,
       canReportProblem: j['canReportProblem'] == true,
       refundStatus: _s(j['refundStatus']),
       rejectReason: _sn(j['rejectReason']),
@@ -711,6 +731,9 @@ class FanOrder {
   final String? payMethod;
   final ShippingInfo? shipping;
   final String? receiptUrl;
+
+  /// [HF-MERCH-GST-2] false = an older order whose document is a plain receipt; null/true = GST invoice.
+  final bool? gstInvoice;
   final bool canReportProblem;
   final String refundStatus;
   final String? rejectReason;

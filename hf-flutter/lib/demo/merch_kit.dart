@@ -33,7 +33,29 @@ String merchDateTime(DateTime d) {
 }
 
 /// What to tell the person when a call failed: the worker's own sentence, or the stock line.
-String merchErrorText(Object e) => e is ApiException ? e.userMessage : ApiException.genericText;
+String merchErrorText(Object e) {
+  if (e is ApiException) {
+    // [HF-MERCH-GST-2] cap and closed-checkout answers get a clear sentence of their own.
+    if (e.code == 'gst_not_ready') return 'Merch checkout opens soon. Nothing was charged.';
+    if (e.code == 'over_price_cap') {
+      final mx = e.extra['maxMarkupRupees'];
+      return mx is num
+          ? 'Shirts are capped at ₹2,500 so the 5% GST rate applies. The most you can add is ${merchRupees(mx.round() * 100)}.'
+          : 'Shirts are capped at ₹2,500 so the 5% GST rate applies. Please lower your markup.';
+    }
+    return e.userMessage;
+  }
+  return ApiException.genericText;
+}
+
+/// [HF-MERCH-GST-2] "5" from 500 basis points; 5 when the server did not send a rate.
+String merchGstPct(int? bps) {
+  final v = bps != null && bps > 0 ? bps / 100 : 5.0;
+  return v == v.roundToDouble() ? v.round().toString() : v.toStringAsFixed(2);
+}
+
+/// [HF-MERCH-GST-2] Shown under the markup box.
+const String merchCapHint = 'Shirts are capped at ₹2,500 so the 5% GST rate applies.';
 
 /// Catalog events `merch_*` (see Telemetry.catalogEvents). Never throws.
 void merchEvent(String name, [Map<String, Object?> props = const {}]) => Telemetry.event(name, props);

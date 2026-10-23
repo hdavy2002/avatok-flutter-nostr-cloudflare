@@ -8,13 +8,13 @@ import SessionBridge from '../calls/SessionBridge';
 import { capture, captureException } from '../../lib/analytics';
 import { checkPincode } from '../../lib/merchApi';
 import type { MerchColour, MerchSize } from '../../lib/merchPublic';
-import { rupees } from '../../lib/merchPublic';
+import { gstPct, rupees } from '../../lib/merchPublic';
 
 const Checkout = lazy(() => import('./Checkout'));
 
 export interface BuyProps {
   host: { slug: string; displayName: string };
-  product: { id: string; slug: string; title: string; imageUrl: string | null; colours: MerchColour[]; sizes: MerchSize[]; maxQty: number };
+  product: { id: string; slug: string; title: string; imageUrl: string | null; colours: MerchColour[]; sizes: MerchSize[]; maxQty: number; gstRateBps?: number };
   checkoutEnabled: boolean;
 }
 
@@ -25,6 +25,9 @@ export default function MerchBuy({ host, product, checkoutEnabled }: BuyProps) {
   const [size, setSize] = useState(firstSize);
   const [qty, setQty] = useState(1);
   const [open, setOpen] = useState(false);
+  const [gstClosed, setGstClosed] = useState(false); // [HF-MERCH-GST-2] server said 403 gst_not_ready
+  const canBuy = checkoutEnabled && !gstClosed;
+  const gst = gstPct(product.gstRateBps);
   const [pin, setPin] = useState('');
   const [pinMsg, setPinMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [pinBusy, setPinBusy] = useState(false);
@@ -43,7 +46,7 @@ export default function MerchBuy({ host, product, checkoutEnabled }: BuyProps) {
       if (c && product.colours.some(x => x.name === c)) setColour(c);
       if (s && sizes.some(x => x.size === s && x.inStock)) setSize(s);
       if (n >= 1 && n <= maxQty) setQty(Math.trunc(n));
-      if (checkoutEnabled) setOpen(true);
+      if (canBuy) setOpen(true);
       history.replaceState(null, '', location.pathname);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -51,7 +54,7 @@ export default function MerchBuy({ host, product, checkoutEnabled }: BuyProps) {
 
   const total = unit * qty;
   const buy = () => {
-    if (!checkoutEnabled || !size) return;
+    if (!canBuy || !size) return;
     capture('merch_buy_clicked', { host_slug: host.slug, product_slug: product.slug, product_id: product.id, colour, size, qty, price_paise: total });
     setOpen(true);
   };
@@ -86,9 +89,9 @@ export default function MerchBuy({ host, product, checkoutEnabled }: BuyProps) {
       <label htmlFor="hfm-qty">Quantity</label>
       <div className="hfm-qty"><button type="button" aria-label="One less" disabled={qty <= 1} onClick={() => setQty(q => Math.max(1, q - 1))}>−</button><output id="hfm-qty" aria-live="polite">{qty}</output><button type="button" aria-label="One more" disabled={qty >= maxQty} onClick={() => setQty(q => Math.min(maxQty, q + 1))}>+</button></div>
     </div>
-    <div className="hfm-total"><span>Total</span><b>{rupees(total)}</b><small>incl. GST &amp; free delivery across India</small></div>
-    <button type="button" className="hfm-cta" disabled={!checkoutEnabled || !size} onClick={buy}>{checkoutEnabled ? `Buy now · ${rupees(total)}` : 'Coming soon'}</button>
-    {!checkoutEnabled && <p className="hfm-note" role="status">Buying opens soon. Save this page and check back.</p>}
+    <div className="hfm-total"><span>Total</span><b>{rupees(total)}</b><small>incl. {gst}% GST &amp; free delivery across India</small></div>
+    <button type="button" className="hfm-cta" disabled={!canBuy || !size} onClick={buy}>{canBuy ? `Buy now · ${rupees(total)}` : 'Coming soon'}</button>
+    {!canBuy && <p className="hfm-note" role="status">Merch checkout opens soon. Save this page and check back.</p>}
     <form className="hfm-pin" onSubmit={check}>
       <label htmlFor="hfm-pin">Check delivery to your pincode</label>
       <div><input id="hfm-pin" inputMode="numeric" autoComplete="postal-code" maxLength={6} value={pin} onChange={e => { setPin(e.target.value.replace(/\D/g, '').slice(0, 6)); setPinMsg(null); }} placeholder="6-digit pincode" />
@@ -97,7 +100,7 @@ export default function MerchBuy({ host, product, checkoutEnabled }: BuyProps) {
     </form>
     <SessionBridge on={open} />
     {open && <Suspense fallback={null}>
-      <Checkout host={host} product={product} colour={colour} size={size} qty={qty} unitPaise={unit} pincode={/^[1-9]\d{5}$/.test(pin) ? pin : ''} resumePath={resumePath} onClose={() => setOpen(false)} />
+      <Checkout host={host} product={product} colour={colour} size={size} qty={qty} unitPaise={unit} pincode={/^[1-9]\d{5}$/.test(pin) ? pin : ''} resumePath={resumePath} onClose={() => setOpen(false)} onNotReady={() => { setGstClosed(true); setOpen(false); }} />
     </Suspense>}
   </div>;
 }

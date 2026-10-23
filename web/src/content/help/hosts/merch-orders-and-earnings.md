@@ -13,6 +13,8 @@ faq:
     a: "Only the first name, the city and state and a blurred address line. Never a phone number, email, full address or payment details."
   - q: "When can I withdraw merch money?"
     a: "7 days after the order is delivered (currently), with the Withdraw button. A refunded order earns nothing."
+  - q: "Do I need a GST number?"
+    a: "No. You can sell T-shirts without one. A GSTIN field is optional."
 draft: false
 ---
 
@@ -39,7 +41,7 @@ For the fan's privacy you see only their **first name**, their **city and state*
 
 ## What the fan paid
 
-The fan paid one all-in price, **base price + your markup**, labelled **incl. GST & delivery**. The base price is the printing (incl. GST) plus the shipping, shown size by size when you set your price. You earn **60% of your markup** (currently). For example, base ₹444 + markup ₹200 = the fan pays ₹644, and you earn ₹120.
+The fan paid one all-in price, **base price + your markup**, labelled **incl. 5% GST & delivery**. The base price is the printing (incl. GST) plus the shipping, shown size by size when you set your price. We sell the T-shirt and send the fan a GST invoice; you earn a **design royalty of 60% of your markup** (currently). Shirts are capped at ₹2,500. For example, base ₹444 + markup ₹200 = the fan pays ₹644, and you earn ₹120.
 
 ## When you get paid
 

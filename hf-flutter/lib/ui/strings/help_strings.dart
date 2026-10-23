@@ -103,9 +103,17 @@ abstract final class HelpStrings {
   static const List<(String, String)> merchFaq = <(String, String)>[
     (
       'How do I buy an influencer’s T-shirt?',
-      'Open the influencer’s profile, pick a T-shirt, colour and size, add your address, tick the Terms and refund policy and pay. '
-          'The price is all-in and labelled incl. GST & delivery: delivery in India is free and nothing is added at checkout. '
+      'Open the influencer’s profile, pick a T-shirt, colour and size, add your address, tick the Terms and refund policy and pay. We sell the T-shirt and email you a GST invoice. '
+          'The price is all-in and labelled incl. 5% GST & delivery: delivery in India is free and nothing is added at checkout. '
           'Pay from your wallet (money you added; free test credit cannot be used for merch) or with UPI, card or net banking.',
+    ),
+    (
+      'Do I get a GST invoice?',
+      'Yes. We sell the T-shirt, so we email you a tax invoice at 5% GST. You can also download it from My orders.',
+    ),
+    (
+      'Do I need a GST number to sell T-shirts?',
+      'No. You can start without one. There is an optional GSTIN field if you have a number and want to add it.',
     ),
     (
       'Where is my T-shirt order?',
@@ -124,8 +132,8 @@ abstract final class HelpStrings {
     ),
     (
       'How much do I earn from merch?',
-      'The base price is printing (incl. GST) plus shipping, shown size by size. The fan pays base plus your markup, incl. GST & delivery. '
-          'You keep 60% of your markup (currently). We keep 40% and pay GST and payment fees out of our share. '
+      'The base price is printing (incl. GST) plus shipping, shown size by size. The fan pays base plus your markup, incl. 5% GST & delivery. '
+          'Shirts are capped at ₹2,500 so the 5% GST rate applies. We sell the T-shirt and issue the fan the GST invoice; you earn a design royalty of 60% of your markup (currently). You do not need a GST number to start (the GSTIN field is optional). '
           'Merch money can be withdrawn 7 days after delivery (currently); a refunded order earns nothing. '
           'You never see the fan’s phone, email, full address or payment details.',
     ),

@@ -297,7 +297,29 @@ class _MerchWizardScreenState extends State<MerchWizardScreen> {
     if (m == null) return 'Enter a whole number of rupees.';
     if (m < _minMarkup) return 'The markup must be at least ${merchRupees(_minMarkup * 100)}.';
     if (m > 5000) return 'The markup can be at most ₹5,000.';
+    final cap = _maxMarkup;
+    if (m > cap) return 'Shirts are capped at ₹2,500 so the 5% GST rate applies. The most you can add is ${merchRupees(cap * 100)}.';
     return null;
+  }
+
+  /// [HF-MERCH-GST-2] Highest markup that keeps every chosen size under the price cap: the smallest per-size maximum from the quote,
+  /// else worked out from the catalog cap and the quoted bases, else the old ₹5,000 limit.
+  int get _maxMarkup {
+    var best = 5000;
+    for (final l in _lines.values) {
+      final v = l.maxMarkupRupees;
+      if (v != null && v < best) best = v;
+    }
+    final c = _cat;
+    final cap = c is AsyncData<MerchCatalog> ? c.value.priceCapPaise : null;
+    final bases = _bases;
+    if (cap != null && bases != null) {
+      for (final b in bases.values) {
+        final v = (cap - b) ~/ 100;
+        if (v < best) best = v;
+      }
+    }
+    return best < 0 ? 0 : best;
   }
 
   Future<void> _quote() async {
@@ -373,7 +395,7 @@ class _MerchWizardScreenState extends State<MerchWizardScreen> {
       if (mounted) {
         setState(() {
           _publishing = false;
-          _publishError = e.userMessage;
+          _publishError = merchErrorText(e);
         });
       }
     } catch (e, st) {
@@ -682,7 +704,7 @@ class _MerchWizardScreenState extends State<MerchWizardScreen> {
         const SizedBox(height: 14),
         DesiCard(
           title: 'Your prices',
-          note: 'Base price = printing (incl. GST) + shipping. Fans pay one price, incl. GST & delivery.',
+          note: 'Base price = printing (incl. GST) + shipping. Fans pay one price, incl. 5% GST & delivery.',
           tone: DesiTone.gold,
           child: _quoting
               ? const Padding(padding: EdgeInsets.all(12), child: Center(child: CircularProgressIndicator(color: C.maroon)))

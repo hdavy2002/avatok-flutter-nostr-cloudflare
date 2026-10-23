@@ -17,6 +17,8 @@ export interface FanOrder {
   totalPaise: number; payMethod: 'wallet' | 'cashfree' | null;
   shipping: { courier: string | null; awb: string | null; trackingUrl: string | null } | null;
   receiptUrl: string | null; canReportProblem: boolean;
+  /** [HF-MERCH-GST-2] false = an older order whose document is a plain receipt, not a GST invoice. */
+  gstInvoice?: boolean;
   refundStatus?: 'none' | 'refunding' | 'done' | 'pending_manual'; rejectReason?: string | null; deepLink?: string;
 }
 export type FanOrderFull = FanOrder & { timeline?: { at: number; label: string }[] };

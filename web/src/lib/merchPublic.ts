@@ -10,7 +10,11 @@ export interface PublicProductFull extends PublicProduct {
   photos: string[]; description: string | null; side: 'front' | 'back'; maxQty: number;
   /** Not sent by the server yet; when it is, the product page shows it instead of the standard chart. */
   sizeChart?: { size: string; chestIn?: number; lengthIn?: number }[];
+  /** [HF-MERCH-GST-2] GST rate in basis points (500 = 5%). Optional: the label falls back to 5%. */
+  gstRateBps?: number;
 }
+/** [HF-MERCH-GST-2] "5" from 500 bps; falls back to 5 when the server did not send a rate. */
+export const gstPct = (bps?: number | null): string => { const v = typeof bps === 'number' && bps > 0 ? bps / 100 : 5; return String(Number.isInteger(v) ? v : Number(v.toFixed(2))); };
 export interface PublicHostRef { slug: string; displayName: string; avatarUrl: string | null }
 export interface MerchSitemap { hosts: { slug: string; updatedAt: number }[]; products: { hostSlug: string; slug: string; updatedAt: number; imageUrl: string | null; title: string }[] }
 
@@ -41,11 +45,11 @@ export type MerchProductResult =
 /** One product page. 410 from the server means hidden or deleted: the page answers 410 and is not indexed. */
 export async function fetchMerchProduct(hostSlug: string, productSlug: string): Promise<MerchProductResult> {
   if (!/^[a-z0-9-]{3,40}$/.test(hostSlug) || !/^[a-z0-9][a-z0-9-]{0,80}$/.test(productSlug)) return { status: 'missing' };
-  const r = await get<{ ok: boolean; host: PublicHostRef; checkoutEnabled?: boolean; product: PublicProductFull }>(`/api/hf/merch/public/${hostSlug}/${productSlug}`);
+  const r = await get<{ ok: boolean; host: PublicHostRef; checkoutEnabled?: boolean; gstRateBps?: number; product: PublicProductFull }>(`/api/hf/merch/public/${hostSlug}/${productSlug}`);
   if (r.status === 410) return { status: 'gone' };
   if (r.status === 404) return { status: 'missing' };
   if (r.status !== 200 || !r.body?.ok || !r.body.product) return { status: 'unavailable' };
-  return { status: 'ok', host: r.body.host, checkoutEnabled: r.body.checkoutEnabled === true, product: r.body.product };
+  return { status: 'ok', host: r.body.host, checkoutEnabled: r.body.checkoutEnabled === true, product: { ...r.body.product, gstRateBps: r.body.product.gstRateBps ?? r.body.gstRateBps } };
 }
 
 /** Everything live, for the sitemaps and llms.txt. null when the feature is off or the API is down. */

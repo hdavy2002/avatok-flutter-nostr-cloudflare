@@ -94,6 +94,7 @@ class MerchRepo {
             breakdownOut[e['size'] as String] = QuoteLine(
               printingPaise: e['printingPaise'] is num ? (e['printingPaise'] as num).round() : null,
               shippingPaise: e['shippingPaise'] is num ? (e['shippingPaise'] as num).round() : null,
+              maxMarkupRupees: e['maxMarkupRupees'] is num ? (e['maxMarkupRupees'] as num).round() : null,
             );
           }
         }
