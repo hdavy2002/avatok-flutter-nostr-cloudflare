@@ -12,6 +12,8 @@ import '../../ui/async_view.dart';
 import '../booking_kit.dart';
 import '../desi.dart';
 import '../merch_kit.dart';
+import '../merch_parity_kit.dart'; // [HF-APP-PARITY-MERCH-1]
+import '../share_page_kit.dart'; // [HF-APP-PARITY-MERCH-1]
 import '../theme.dart';
 import '../widgets.dart';
 
@@ -29,10 +31,29 @@ class MerchStudioScreen extends StatefulWidget {
 class _MerchStudioScreenState extends State<MerchStudioScreen> {
   int _tab = 0;
   int _reload = 0;
+  MerchSummary? _summary; // [HF-APP-PARITY-MERCH-1] one read for the strip and the order counts
 
   MerchRepo get _repo => widget.repo ?? Services.instance.merchRepo;
 
-  void _bump() => setState(() => _reload++);
+  @override
+  void initState() {
+    super.initState();
+    unawaited(_loadSummary());
+  }
+
+  Future<void> _loadSummary() async {
+    try {
+      final s = await _repo.summary();
+      if (mounted) setState(() => _summary = s);
+    } catch (_) {
+      // the lists say what went wrong; the numbers just stay away
+    }
+  }
+
+  void _bump() {
+    setState(() => _reload++);
+    unawaited(_loadSummary());
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -47,13 +68,13 @@ class _MerchStudioScreenState extends State<MerchStudioScreen> {
               child: Row(children: [
                 MerchPill(label: 'Products', selected: _tab == 0, onTap: () => setState(() => _tab = 0)),
                 const SizedBox(width: 8),
-                MerchPill(label: 'Orders', selected: _tab == 1, onTap: () => setState(() => _tab = 1)),
+                MerchPill(label: _summary != null && _summary!.ordersNew > 0 ? 'Orders (${_summary!.ordersNew})' : 'Orders', selected: _tab == 1, onTap: () => setState(() => _tab = 1)),
               ]),
             ),
             Expanded(
               child: _tab == 0
-                  ? _ProductsTab(key: ValueKey('products-$_reload'), repo: _repo, onChanged: _bump)
-                  : _OrdersTab(key: ValueKey('orders-$_reload'), repo: _repo),
+                  ? _ProductsTab(key: ValueKey('products-$_reload'), repo: _repo, summary: _summary, onChanged: _bump)
+                  : _OrdersTab(key: ValueKey('orders-$_reload'), repo: _repo, summary: _summary),
             ),
           ],
         ),
@@ -64,44 +85,29 @@ class _MerchStudioScreenState extends State<MerchStudioScreen> {
 
 // ---------------------------------------------------------------------------------------------- summary
 
-class _Summary extends StatefulWidget {
-  const _Summary({required this.repo});
+class _Summary extends StatelessWidget {
+  const _Summary({required this.summary});
 
-  final MerchRepo repo;
-
-  @override
-  State<_Summary> createState() => _SummaryState();
-}
-
-class _SummaryState extends State<_Summary> {
-  MerchSummary? _s;
-
-  @override
-  void initState() {
-    super.initState();
-    unawaited(_load());
-  }
-
-  Future<void> _load() async {
-    try {
-      final s = await widget.repo.summary();
-      if (mounted) setState(() => _s = s);
-    } catch (_) {
-      // the lists below say what went wrong; the numbers just stay away
-    }
-  }
+  final MerchSummary? summary;
 
   @override
   Widget build(BuildContext context) {
-    final s = _s;
+    final s = summary;
     if (s == null) return const SizedBox.shrink();
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
-      child: DesiKpiGrid(children: [
-        DesiKpi(label: 'Live products', value: '${s.live}', sub: s.pending > 0 ? '${s.pending} in review' : 'on your page', tone: DesiTone.tea, icon: Icons.checkroom_rounded),
-        DesiKpi(label: 'New orders', value: '${s.ordersNew}', sub: '${s.processing + s.shipped} on the way', tone: DesiTone.rani, icon: Icons.shopping_bag_rounded),
-        DesiKpi(label: 'Coming to you', value: merchRupees(s.pendingPaise), sub: 'after delivery', tone: DesiTone.gold, icon: Icons.hourglass_top_rounded),
-        DesiKpi(label: 'Ready to withdraw', value: merchRupees(s.availablePaise), sub: 'from Payout', tone: DesiTone.lav, icon: Icons.account_balance_wallet_rounded),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        DesiKpiGrid(children: [
+          DesiKpi(label: 'Live products', value: '${s.live}', sub: s.pending > 0 ? '${s.pending} waiting for review' : 'on your page', tone: DesiTone.tea, icon: Icons.checkroom_rounded),
+          DesiKpi(label: 'New orders', value: '${s.ordersNew}', sub: '${s.processing} processing · ${s.shipped} shipped', tone: DesiTone.rani, icon: Icons.shopping_bag_rounded),
+          DesiKpi(label: 'Royalty coming', value: merchRupees(s.pendingPaise), sub: 'unlocks after the hold', tone: DesiTone.gold, icon: Icons.hourglass_top_rounded),
+          DesiKpi(label: 'Ready to withdraw', value: merchRupees(s.availablePaise), sub: 'from Payout', tone: DesiTone.lav, icon: Icons.account_balance_wallet_rounded),
+        ]),
+        const SizedBox(height: 8),
+        Align(
+          alignment: Alignment.centerLeft,
+          child: DesiButton('Earnings & withdrawals', icon: Icons.account_balance_wallet_rounded, kind: DesiButtonKind.ghost, onTap: () => unawaited(context.push<Object?>('/payout'))),
+        ),
       ]),
     );
   }
@@ -110,9 +116,10 @@ class _SummaryState extends State<_Summary> {
 // ---------------------------------------------------------------------------------------------- products
 
 class _ProductsTab extends StatefulWidget {
-  const _ProductsTab({super.key, required this.repo, required this.onChanged});
+  const _ProductsTab({super.key, required this.repo, required this.summary, required this.onChanged});
 
   final MerchRepo repo;
+  final MerchSummary? summary;
   final VoidCallback onChanged;
 
   @override
@@ -158,7 +165,7 @@ class _ProductsTabState extends State<_ProductsTab> {
     );
     if (updated != null && mounted) {
       _replace(updated);
-      toast(context, 'Markup saved.');
+      toast(context, 'Saved.');
     }
   }
 
@@ -192,13 +199,15 @@ class _ProductsTabState extends State<_ProductsTab> {
     } on ApiException catch (e) {
       if (!mounted) return;
       if (e.status == 409 && e.code == 'open_orders') {
-        await hfConfirm(
+        final canHide = p.status == 'live';
+        final hide = await hfConfirm(
           context,
           title: 'Orders still open',
           body: e.userMessage,
-          confirmLabel: null,
+          confirmLabel: canHide ? 'Hide it instead' : null,
           cancelLabel: 'OK',
         );
+        if (hide && canHide && mounted) await _toggleHidden(p);
       } else {
         toast(context, e.userMessage);
       }
@@ -219,7 +228,9 @@ class _ProductsTabState extends State<_ProductsTab> {
         child: ListView(
           padding: const EdgeInsets.fromLTRB(16, 4, 16, 28),
           children: [
-            _Summary(repo: widget.repo),
+            const ShareShopRow(), // [HF-APP-PARITY-MERCH-1]
+            _Summary(summary: widget.summary),
+            MerchGstinCard(repo: widget.repo), // [HF-APP-PARITY-MERCH-1]
             DesiButton('New product', icon: Icons.add_rounded, kind: DesiButtonKind.rani, expand: true, onTap: () => unawaited(_new())),
             const SizedBox(height: 12),
             if (items.isEmpty)
@@ -286,9 +297,14 @@ class _ProductCard extends StatelessWidget {
         ],
         const SizedBox(height: 12),
         Wrap(spacing: 8, runSpacing: 8, children: [
-          DesiButton('Edit markup', icon: Icons.edit_rounded, kind: DesiButtonKind.ghost, onTap: onEdit),
+          DesiButton('Edit price', icon: Icons.edit_rounded, kind: DesiButtonKind.ghost, onTap: onEdit),
           if (canHide)
             DesiButton(p.status == 'live' ? 'Hide' : 'Show', icon: p.status == 'live' ? Icons.visibility_off_rounded : Icons.visibility_rounded, kind: DesiButtonKind.ghost, onTap: onToggleHidden),
+          if (p.status == 'live' && p.publicUrl.isNotEmpty)
+            DesiButton('Copy link', icon: Icons.copy_rounded, kind: DesiButtonKind.ghost, onTap: () async {
+              await Clipboard.setData(ClipboardData(text: p.publicUrl));
+              if (context.mounted) toast(context, 'Link copied. Share it with your fans.');
+            }),
           DesiButton('Delete', icon: Icons.delete_outline_rounded, kind: DesiButtonKind.danger, onTap: onDelete),
         ]),
       ]),
@@ -309,6 +325,8 @@ class _MarkupSheet extends StatefulWidget {
 
 class _MarkupSheetState extends State<_MarkupSheet> {
   late final TextEditingController _c = TextEditingController(text: '${widget.product.markupRupees}');
+  late final TextEditingController _title = TextEditingController(text: widget.product.title); // [HF-APP-PARITY-MERCH-1]
+  late final TextEditingController _desc = TextEditingController(text: widget.product.description);
   MerchCatalog? _cat;
   bool _busy = false;
   String? _error;
@@ -322,6 +340,8 @@ class _MarkupSheetState extends State<_MarkupSheet> {
   @override
   void dispose() {
     _c.dispose();
+    _title.dispose();
+    _desc.dispose();
     super.dispose();
   }
 
@@ -339,6 +359,7 @@ class _MarkupSheetState extends State<_MarkupSheet> {
 
   String? get _problem {
     final m = _markup;
+    if (_title.text.trim().isEmpty) return 'Give the product a name.';
     if (m == null) return 'Enter a whole number of rupees.';
     if (m < _min) return 'The markup must be at least ${merchRupees(_min * 100)}.';
     if (m > 5000) return 'The markup can be at most ₹5,000.';
@@ -372,7 +393,16 @@ class _MarkupSheetState extends State<_MarkupSheet> {
       _error = null;
     });
     try {
-      final updated = await widget.repo.patchProduct(widget.product.id, {'markupRupees': _markup});
+      final body = <String, Object?>{};
+      if (_markup != widget.product.markupRupees) body['markupRupees'] = _markup;
+      if (_title.text.trim() != widget.product.title) body['title'] = _title.text.trim();
+      if (_desc.text.trim() != widget.product.description.trim()) body['description'] = _desc.text.trim();
+      if (body.isEmpty) {
+        if (mounted) Navigator.of(context).pop(widget.product);
+        return;
+      }
+      final updated = await widget.repo.patchProduct(widget.product.id, body);
+      merchEvent('merch_product_edited', {'product_id': widget.product.id, 'markup': _markup});
       if (mounted) Navigator.of(context).pop(updated);
     } catch (e) {
       if (mounted) {
@@ -394,10 +424,10 @@ class _MarkupSheetState extends State<_MarkupSheet> {
       child: SingleChildScrollView(
         padding: const EdgeInsets.fromLTRB(20, 18, 20, 24),
         child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, mainAxisSize: MainAxisSize.min, children: [
-          Text('Your markup', style: t(22, color: C.maroon)),
-          const SizedBox(height: 2),
-          Text(widget.product.title, maxLines: 1, overflow: TextOverflow.ellipsis, style: t(15, color: C.muted, w: FontWeight.w700)),
+          Text('Edit product', style: t(22, color: C.maroon)),
           const SizedBox(height: 14),
+          MerchField(label: 'Name', controller: _title, capitalization: TextCapitalization.sentences, formatters: [LengthLimitingTextInputFormatter(80)], onChanged: (_) => setState(() => _error = null)),
+          MerchField(label: 'Description', controller: _desc, maxLines: 3, capitalization: TextCapitalization.sentences, formatters: [LengthLimitingTextInputFormatter(600)]),
           MerchField(
             label: 'Markup per item (₹)',
             controller: _c,
@@ -431,7 +461,7 @@ class _MarkupSheetState extends State<_MarkupSheet> {
             Text(_error!, style: t(15, color: C.ruby, w: FontWeight.w700)),
           ],
           const SizedBox(height: 16),
-          DesiButton(_busy ? 'Saving…' : 'Save markup', kind: DesiButtonKind.rani, expand: true, onTap: _busy ? null : () => unawaited(_save())),
+          DesiButton(_busy ? 'Saving…' : 'Save', kind: DesiButtonKind.rani, expand: true, onTap: _busy ? null : () => unawaited(_save())),
         ]),
       ),
     );
@@ -441,9 +471,10 @@ class _MarkupSheetState extends State<_MarkupSheet> {
 // ---------------------------------------------------------------------------------------------- orders
 
 class _OrdersTab extends StatefulWidget {
-  const _OrdersTab({super.key, required this.repo});
+  const _OrdersTab({super.key, required this.repo, required this.summary});
 
   final MerchRepo repo;
+  final MerchSummary? summary;
 
   @override
   State<_OrdersTab> createState() => _OrdersTabState();
@@ -462,6 +493,21 @@ class _OrdersTabState extends State<_OrdersTab> {
   String? _status;
   AsyncState<List<SellerOrder>> _state = const AsyncLoading();
   int _run = 0;
+
+  /// "New (2)": the counts the summary strip reads, like the website's filter chips.
+  String _pillLabel((String, String?) f) {
+    final s = widget.summary;
+    final n = s == null
+        ? 0
+        : switch (f.$2) {
+            'new' => s.ordersNew,
+            'processing' => s.processing,
+            'shipped' => s.shipped,
+            'delivered' => s.delivered,
+            _ => 0,
+          };
+    return n > 0 ? '${f.$1} ($n)' : f.$1;
+  }
 
   @override
   void initState() {
@@ -491,7 +537,7 @@ class _OrdersTabState extends State<_OrdersTab> {
           children: [
             for (final f in _filters) ...[
               MerchPill(
-                label: f.$1,
+                label: _pillLabel(f),
                 selected: _status == f.$2,
                 onTap: () {
                   if (_status == f.$2) return;
@@ -598,22 +644,28 @@ class _OrderTileState extends State<_OrderTile> {
           MerchKv('Fan paid (incl. GST & delivery)', merchRupees(o.pricePaise)),
           MerchKv('Base price', merchRupees(o.basePaise)),
           MerchKv('You earn', o.status == 'cancelled' ? '₹0' : merchRupees(o.youEarnPaise), strong: true),
-          if (o.status != 'cancelled')
-            MerchKv(
-              'Withdraw from',
-              o.credited && o.availableAt != null
-                  ? merchDate(o.availableAt!)
-                  : (o.availableAt != null ? merchDate(o.availableAt!) : 'About $holdDays days after delivery'),
-            ),
+          MerchKv(
+            'Withdrawable',
+            o.status == 'cancelled'
+                ? 'Cancelled, nothing to pay'
+                : o.credited && (o.availableAt == null || !o.availableAt!.isAfter(DateTime.now()))
+                    ? 'Available now'
+                    : (o.availableAt != null ? 'From ${merchDate(o.availableAt!)}' : '$holdDays days after delivery'),
+          ),
           const SizedBox(height: 6),
           Text('Sent to', style: t(15, color: C.maroon)),
           const SizedBox(height: 2),
           Text(o.firstName, style: t(16)),
           Text([o.city, o.state].where((e) => e.isNotEmpty).join(', '), style: t(15, color: C.muted, w: FontWeight.w700)),
           if (o.addressMasked.isNotEmpty) Text(o.addressMasked, style: t(15, color: C.muted, w: FontWeight.w700)),
+          Padding(
+            padding: const EdgeInsets.only(top: 4),
+            child: Text('The fan’s full address and phone are kept private. We print and ship for you.', style: t(13, color: C.muted, w: FontWeight.w700, h: 1.3)),
+          ),
           if (ship != null) ...[
             const SizedBox(height: 10),
-            Text([ship.courier, ship.awb].whereType<String>().join(' · '), style: t(15, w: FontWeight.w700)),
+            if (ship.courier != null) MerchKv('Courier', ship.courier!),
+            if (ship.awb != null) MerchKv('Tracking no.', ship.awb!),
             if (ship.trackingUrl != null) ...[
               const SizedBox(height: 8),
               Align(
