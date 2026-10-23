@@ -11494,5 +11494,20 @@
         "note": "An influencer switched mode via the new three-way control (flag hfCallModesEnabled)."
       }
     ]
+  },
+  "HF-CALL-MODES-C": {
+    "description": "5-minute chunk billing engine, caller-only whisper, top-up extends live call, 5 h cap.",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [],
+    "success": [
+      {
+        "event": "hf_call_chunk_reserved",
+        "property": "n",
+        "gte": 0,
+        "min_events": 1,
+        "note": "A live call reserved its chunks (flag hfCallChunkBillingEnabled); settle charges only spoken seconds."
+      }
+    ]
   }
 }
