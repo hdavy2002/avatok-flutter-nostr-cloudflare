@@ -78,6 +78,7 @@ export default function ProductBuy({ host, product, checkoutEnabled }: BuyProps)
 
   return <div>
     <p className="pprice">{rupees(unit || base)} <small>· {gstText(product.gstRateBps)} + free delivery included</small></p>
+    <div className="buy-stk"><Sticker k="product" /></div>
     {product.colours.length > 0 && <>
       <p className="lbl" id="lbl-colour">Colour: {colour}</p>
       <div className="sw" role="group" aria-labelledby="lbl-colour">{product.colours.map(c => <button key={c.name} type="button" className={c.name === colour ? 'on' : ''} style={{ background: c.hex }} aria-label={c.name} aria-pressed={c.name === colour} onClick={() => setColour(c.name)} />)}</div>

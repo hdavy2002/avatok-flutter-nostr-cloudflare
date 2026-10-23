@@ -113,8 +113,8 @@ export default function MerchGrid({ host, products }: { host: { slug: string; di
             {p.imageUrl && <img src={publicImage(p.imageUrl, { width: 480 })} alt={`${p.title} by ${host.displayName}`} width="240" height="240" loading="lazy" decoding="async" />}
             <button type="button" className="add" disabled={sold} aria-label={sold ? `${p.title} is sold out` : `Add ${p.title} to bag`} onClick={() => quickAdd(p)}>{sold ? 'Sold out' : '+ Add'}</button>
           </span>
-          <span className="cat">{singularLabel(p.categoryLabel || 'Merch')}</span>
-          <b><a href={`/h/${host.slug}/merch/${p.slug}`} data-hfm-card={p.slug}>{p.title}</a></b>
+          {p.category && p.category !== 'other' && <span className="cat">{singularLabel(p.categoryLabel || 'Merch')}</span>}
+          <b style={p.category && p.category !== 'other' ? undefined : { marginTop: 14 }}><a href={`/h/${host.slug}/merch/${p.slug}`} data-hfm-card={p.slug}>{p.title}</a></b>
           <span className="pr">{rupees(p.fromPricePaise)} <small>all incl.</small></span>
         </div>;
       })}

@@ -4,7 +4,7 @@
  * The mock's fixed 1440px board and 390px phone board become one responsive page: two columns above 900px, one column below,
  * phone rules from the Phone* boards (centred hero, 2-column merch, sticky bottom bar). No horizontal scroll at 320px.
  * Painted art slots (bands, stickers, order-done) draw their CSS stand-in until the owner's file is switched on in lib/hfChannelArt.ts. */
-.gp{--bg:#FFF9F0;--paper:#FFFFFF;--ink:#1F1630;--muted:#625872;--line:#ECE3D6;--tile:#F5EEE4;--red:#E2231A;--redd:#B3170F;--mari:#FFB000;--yel:#FFD400;--rani:#E0157A;--ranit:#FDE7F1;--blue:#1B3FA0;--bluet:#E7ECFB;--mari-t:#FFF1CC;--hdr:72px;
+.gp{--bg:#FFF9F0;--paper:#FFFFFF;--ink:#1F1630;--muted:#625872;--line:#ECE3D6;--tile:#F5EEE4;--red:#E2231A;--redd:#B3170F;--mari:#FFB000;--yel:#FFD400;--rani:#E0157A;--ranit:#FDE7F1;--blue:#1B3FA0;--bluet:#E7ECFB;--mari-t:#FFF1CC;--hdr:72px;--snav:64px;
   font-family:Comfortaa,system-ui,sans-serif;color:var(--ink);background:var(--bg);font-size:17px;line-height:1.55;font-weight:600;overflow-x:clip}
 .gp *,.gp *::before,.gp *::after{box-sizing:border-box}
 .gp h1,.gp h2,.gp h3,.gp h4,.gp .nun,.gp button,.gp .btn{font-family:Nunito,system-ui,sans-serif;font-weight:900;letter-spacing:.01em;margin:0}
@@ -96,12 +96,12 @@
 .gp .disc{margin-top:18px;font-size:13px;color:var(--muted);max-width:60ch}
 /* sticky section nav: plain, professional. Sits under the sticky site header (--hdr is measured in the page script). */
 .gp .snav{position:sticky;top:var(--hdr);z-index:5;background:#fffffff2;border-block:1px solid var(--line)}
-.gp .snav .wrap{display:flex;gap:6px;height:64px;align-items:center;overflow-x:auto;scrollbar-width:none}
+.gp .snav .wrap{display:flex;gap:6px;height:var(--snav);align-items:center;overflow-x:auto;scrollbar-width:none}
 .gp .snav .wrap::-webkit-scrollbar{display:none}
 .gp .snav a{flex:none;padding:10px 18px;border-radius:999px;font-family:Nunito;font-weight:900;font-size:17px;color:var(--ink);text-decoration:none;white-space:nowrap}
 .gp .snav a.on{background:var(--ink);color:#fff}
 .gp .snav .count{display:inline-block;margin-left:6px;padding:1px 8px;border-radius:99px;background:var(--yel);color:var(--ink);font-size:13px}
-.gp [id]{scroll-margin-top:calc(var(--hdr) + 72px)}
+.gp [id]{scroll-margin-top:calc(var(--hdr) + var(--snav) + 12px)}
 /* sections */
 .gp .sec{padding:clamp(56px,6vw,100px) 0;position:relative}
 .gp .sec-h{display:flex;align-items:end;justify-content:space-between;gap:24px;flex-wrap:wrap;margin-bottom:30px}
@@ -217,7 +217,6 @@
 .gp .th img{width:100%;height:100%;object-fit:contain;mix-blend-mode:multiply}
 .gp .mainimg{position:relative;aspect-ratio:1;border-radius:28px;background:var(--tile);display:grid;place-items:center;overflow:hidden}
 .gp .mainimg>img{width:100%;height:100%;object-fit:contain;mix-blend-mode:multiply}
-.gp .mainimg .stk,.gp .mainimg img.stk-img{position:absolute;right:28px;top:28px}
 .gp .dots{display:none}
 .gp .by{display:flex;align-items:center;gap:10px;font-family:Nunito;font-weight:800}
 .gp .by i{width:36px;height:36px;border-radius:50%;background:linear-gradient(165deg,#F6C7A6,#B8325A);display:inline-block;overflow:hidden;flex:none}
@@ -233,7 +232,7 @@
 .gp .sw button.on{box-shadow:0 0 0 3px #fff,0 0 0 5px var(--ink)}
 .gp .sizes{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
 .gp .size{height:58px;border-radius:14px;border:1.5px solid var(--line);background:#fff;font-family:Nunito;font-weight:900;font-size:17px;line-height:1.1;color:var(--ink);cursor:pointer}
-.gp .size small{display:block;font-family:Comfortaa;font-weight:700;font-size:12px;color:var(--muted)}
+.gp .size small{display:block;font-family:Comfortaa;font-weight:700;font-size:13px;color:var(--muted)}
 .gp .size.on{background:var(--ink);color:#fff;border-color:var(--ink)}.gp .size.on small{color:#d8d1e6}
 .gp .size[disabled]{opacity:.45;cursor:not-allowed;text-decoration:line-through}
 .gp .qty{display:inline-flex;align-items:center;height:58px;border-radius:999px;border:1.5px solid var(--line);background:#fff}
@@ -336,13 +335,15 @@
 .gp .drawer .dh .ibtn{width:44px;height:44px}
 .gp .drawer .line{grid-template-columns:90px 1fr;gap:14px;padding:16px 0}
 .gp .drawer .line .im{width:90px;height:90px}
-.gp .drawer .line h3{font-size:18px}
-.gp .drawer .line .op{margin:0}
+.gp .drawer .line h3{font-size:17px}
+.gp .drawer .line .op{margin:0;font-size:14px}
+.gp .drawer .srow{font-size:16px}
+.gp .drawer p,.gp .drawer small{font-size:14px}
 .gp .drawer .srow.t{margin-top:auto}
 .gp .drawer .btn{width:100%;margin-top:10px}
 .gp .drawer .tail{text-align:center;margin-top:14px}
 .gp .drawer .tail .stk{font-size:14px}
-.gp .drawer .tail img.stk-img{margin:0 auto;width:200px}
+.gp .drawer .tail img.stk-img{margin:0 auto;width:180px;height:auto}
 .gp .drawer .empty{margin:24px 0}
 /* ===== PHONE (Phone* boards) ===== */
 .gp .pbar{display:none}
@@ -369,7 +370,8 @@
   .gp .priv{justify-content:center;text-align:left}
   .gp .infoline{justify-content:center}
   .gp .actrow{justify-content:center}
-  .gp .snav .wrap{gap:2px;height:56px;padding:0 8px}
+  .gp{--snav:56px}
+  .gp .snav .wrap{gap:2px;padding:0 8px}
   .gp .snav a{font-size:15px;padding:8px 12px}
   .gp .sec{padding:44px 0}
   .gp .sec-h{align-items:flex-start}
@@ -406,7 +408,6 @@
   .gp .gal{grid-template-columns:minmax(0,1fr)}
   .gp .gal .mainimg{order:1;border-radius:0;margin:0 -16px}
   .gp .gal .thumbs{order:2;grid-auto-flow:column;grid-auto-columns:64px;overflow-x:auto;scrollbar-width:none}
-  .gp .mainimg .stk,.gp .mainimg img.stk-img{right:16px;top:16px}
   .gp .buy{grid-template-columns:auto 1fr;}
   .gp .buy .desk{display:none}
   .gp .trust{grid-template-columns:1fr;gap:10px}
@@ -467,6 +468,22 @@
 .gp .meter .msum{flex:1 1 auto;min-width:0}
 .gp .photo>img[alt=""]{object-position:50% 50%}
 @media (max-width:700px){
-  .gp .sec-h img.stk-img,.gp .mainimg img.stk-img{display:none}
+  .gp .buy-stk{display:none}
   .gp .meter .meter-ic{width:64px;height:64px}
 }
+
+.gp .buy-stk{margin:6px 0 14px}
+.gp .buy-stk img.stk-img{width:clamp(150px,12vw,190px);height:auto}
+/* phones: section eyebrow, H2, sub line and sticker are centred (HF-DS phones-centred); lists and cards stay left inside */
+@media (max-width:700px){
+  .gp .sec .eyebrow,.gp .sec .h2,.gp .sec .sub{text-align:center}
+  .gp .sec-h{align-items:center;text-align:center}
+  .gp .sec-h>div{width:100%}
+  .gp .sec img.stk-img,.gp .sec .stk{margin-inline:auto}
+  .gp .sec-h .stk{margin-left:auto}
+  .gp .book-grid>div:first-child,.gp .rev-grid>div:first-child{text-align:center}
+  .gp .book-grid>div:first-child>div{justify-content:center}
+  .gp .showing,.gp .show .foot{text-align:center}
+  .gp .pprice small{display:block}
+}
+@media (max-width:699px){.gp{--hdr:92px}}

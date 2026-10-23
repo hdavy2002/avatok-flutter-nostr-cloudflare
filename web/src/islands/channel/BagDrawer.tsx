@@ -55,7 +55,7 @@ export default function BagDrawer({ checkoutEnabled }: { checkoutEnabled?: boole
         ? <a className="btn btn-r" href="/checkout/merch" onClick={() => capture('bag_checkout_started', { source: 'drawer', lines: lines.length, items: n, total_paise: total })}>Checkout</a>
         : <button className="btn btn-r" type="button" disabled aria-disabled="true">Buying opens soon</button>}
       <a className="btn btn-o" href="/bag">View bag</a>
-      <p className="tail"><Sticker k="bag" size={14} /></p>
+      <p className="tail"><Sticker k="bag" /></p>
     </>}
   </dialog>;
 }

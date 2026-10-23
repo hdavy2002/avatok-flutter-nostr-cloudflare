@@ -8,7 +8,6 @@ export const prerender = false;
 import Base from '../../../../layouts/Base.astro';
 import ProductBuy from '../../../../islands/channel/ProductBuy';
 import BagDrawer from '../../../../islands/channel/BagDrawer';
-import Sticker from '../../../../components/channel/Sticker.astro';
 import { fetchMerchHost, fetchMerchProduct, gstText, rupees, singularLabel, STANDARD_SIZE_CHART } from '../../../../lib/merchPublic';
 import { productJsonLd } from '../../../../lib/merchSeo';
 import { publicImage } from '../../../../lib/config';
@@ -66,7 +65,6 @@ const [firstName] = splitName(host?.displayName ?? '');
             {photos.length > 1 && <div class="thumbs" role="group" aria-label="More pictures">{photos.map((u, i) => <button type="button" class={`th${i === 0 ? ' on' : ''}`} data-hfm-thumb={publicImage(u, { width: 900 })} aria-label={`Picture ${i + 1} of ${photos.length}`} aria-pressed={i === 0 ? 'true' : 'false'}><img src={publicImage(u, { width: 200 })} alt="" width="96" height="96" loading="lazy" decoding="async" /></button>)}</div>}
             <div class="mainimg" style={photos.length > 1 ? undefined : 'grid-column:1/-1'}>
               {photos[0] ? <img id="hfm-hero" src={publicImage(photos[0], { width: 900 })} alt={`${p!.title} by ${host!.displayName}`} width="900" height="900" fetchpriority="high" decoding="async" /> : null}
-              <Sticker k="product" />
             </div>
           </div>
           <div>

@@ -10,5 +10,10 @@ import '../styles/hf-channel.css';
 </Base>
 <script>
   const root = document.getElementById('gp-root');
-  if (root) { const h = document.querySelector<HTMLElement>('.cv-header'); if (h) root.style.setProperty('--hdr', `${Math.round(h.getBoundingClientRect().height)}px`); }
+  const h = document.querySelector<HTMLElement>('.cv-header');
+  if (root && h) {
+    const set = () => root.style.setProperty('--hdr', `${Math.round(h.getBoundingClientRect().height)}px`);
+    set(); window.addEventListener('resize', set);
+    if ('ResizeObserver' in window) new ResizeObserver(set).observe(h);
+  }
 </script>

@@ -115,6 +115,7 @@ const bookOn = !!callHost; // the calendar itself hides when bookings are switch
 const bandArt = artUrl('bandTruck');
 const showArt = artUrl('nowShowingBg');
 const noPhotoArt = artUrl('noPhoto');
+const heroFallback = noPhotoArt ? `this.onerror=null;this.removeAttribute('fetchpriority');this.alt='';this.src='${noPhotoArt}';var a=this.parentElement&&this.parentElement.querySelector('.ai');if(a)a.remove()` : undefined;
 const emptyMerchArt = artUrl('emptyMerch');
 // Merch feature on but nothing live yet: show the 'coming soon' art instead of hiding the section.
 const merchSoon = !!(merch && merchProducts.length === 0);
@@ -148,7 +149,7 @@ const navItems = [
             <div class="photo-wrap">
               <div class="colorblock" aria-hidden="true"></div>
               <div class="photo">
-                {host.avatarUrl ? <img src={publicImage(host.avatarUrl, { width: 1200 })} width="1200" height="1500" alt={`${name}, an AI avatar chosen by the influencer`} fetchpriority="high" decoding="async" /> : noPhotoArt ? <img src={noPhotoArt} width={ART_DIMS.noPhoto.w} height={ART_DIMS.noPhoto.h} alt="" decoding="async" /> : <span class="initial" aria-hidden="true">{firstName.charAt(0).toUpperCase()}</span>}
+                {host.avatarUrl ? <img src={publicImage(host.avatarUrl, { width: 1200 })} width="1200" height="1500" alt={`${name}, an AI avatar chosen by the influencer`} fetchpriority="high" decoding="async" onerror={heroFallback} /> : noPhotoArt ? <img src={noPhotoArt} width={ART_DIMS.noPhoto.w} height={ART_DIMS.noPhoto.h} alt="" decoding="async" /> : <span class="initial" aria-hidden="true">{firstName.charAt(0).toUpperCase()}</span>}
                 <span class={`cv-online ${badgeClass}`.trim()}><span aria-hidden="true"></span>{badgeText}</span>
                 {host.avatarUrl && <span class="ai">AI avatar chosen by the influencer</span>}
               </div>
@@ -302,6 +303,9 @@ const navItems = [
     // The shared site header is sticky: the section nav sits right under it.
     const hdr = () => { const h = document.querySelector<HTMLElement>('.cv-header'); if (h) gp.style.setProperty('--hdr', `${Math.round(h.getBoundingClientRect().height)}px`); };
     hdr(); window.addEventListener('resize', hdr); window.addEventListener('load', hdr);
+    const hdrEl = document.querySelector('.cv-header');
+    if (hdrEl && 'ResizeObserver' in window) new ResizeObserver(hdr).observe(hdrEl);
+    void document.fonts?.ready.then(hdr);
     capture('channel_viewed', { host_slug: gp.dataset.hostSlug, merch_count: Number(gp.dataset.merch) || 0, reels_count: Number(gp.dataset.reels) || 0, call_eligible: gp.dataset.call === '1', status: gp.dataset.status, utm_medium: new URLSearchParams(location.search).get('utm_medium') ?? undefined });
     // Highlight the section being read.
     const links = [...gp.querySelectorAll<HTMLAnchorElement>('.snav a[href^="#"]')];

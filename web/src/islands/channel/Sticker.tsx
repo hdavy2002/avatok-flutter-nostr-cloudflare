@@ -6,6 +6,6 @@ const TONE: Record<Key, string> = { merch: 'stk', videos: 'stk p', booking: 'stk
 
 export default function Sticker({ k, size }: { k: Key; size?: number }) {
   const src = artUrl(STICKER_SLOT[k]);
-  if (src) return <img className="stk-img" src={src} alt={STICKER_TEXT[k]} width={ART_DIMS[STICKER_SLOT[k]].w} height={ART_DIMS[STICKER_SLOT[k]].h} loading="lazy" decoding="async" style={size ? { width: size } : undefined} />;
+  if (src) return <img className="stk-img" src={src} alt={STICKER_TEXT[k]} width={ART_DIMS[STICKER_SLOT[k]].w} height={ART_DIMS[STICKER_SLOT[k]].h} loading="lazy" decoding="async" />;
   return <span className={TONE[k]} style={size ? { fontSize: size } : undefined}>{STICKER_TEXT[k]}</span>;
 }
