@@ -16,7 +16,7 @@ import {
 } from "./hf_payouts";
 import { createRefundRequest, cancelRefund, refundableFor, DEFAULT_REFUND_WINDOW_DAYS, OPEN_REFUND_STATUSES, type RefundRow } from "./hf_refunds";
 import { getTestBalance } from "./hf_credits";
-import { hfTokensOn, tokenExitSummary, createExitPayoutTokens, cancelExitPayoutTokens, finishTokenExit, refundIdsOf, exitPayoutPlan, payoutSetupNextStep, type TokenExitExtra, type SetupNextStep } from "./hf_exit_tokens"; // [HF-TOK-EXIT-1]
+import { hfTokensOn, tokenExitSummary, createExitPayoutTokens, cancelExitPayoutTokens, finishTokenExit, refundIdsOf, exitPayoutPlan, payoutSetupNextStep, notifyClosureStarted, type TokenExitExtra, type SetupNextStep } from "./hf_exit_tokens"; // [HF-TOK-EXIT-1]
 import { isFanPayoutRef } from "./hf_fan_payout"; // [HF-FIX-CLOSE-ACCOUNT-1]
 import { cancelPlayRefund, hasActiveCall } from "./hf_play_refunds"; // [HF-TOK-EXIT-1]
 import { hostSummary, wholeRupees, isHostLedgerRef } from "./hf_host_ledger"; // [HF-TOK-EXIT-1]
@@ -368,7 +368,9 @@ async function startTokenExit(env: Env, uid: string, o: { forfeit: boolean; trig
   const status: ExitStatus = s.held > 0 ? "waiting_hold" : payoutId ? "waiting_payouts" : "ready";
   await upsertExit(env, uid, status, payoutId, null, s.forfeitRupees > 0 ? `forfeit:${s.forfeitRupees}` : null, []);
   await forceHostOffline(env, uid);
-  void track(env, uid, "hf_exit_started", PAYOUT_APP, { status, payout: !!payoutId, wallet_payout_paise: ti?.walletPayoutPaise ?? 0, forfeit: s.forfeitRupees, mode: "tokens" });
+  void track(env, uid, "hf_exit_started", PAYOUT_APP, { status, payout: !!payoutId, wallet_payout_paise: ti?.walletPayoutPaise ?? 0, rounding_paise: ti?.roundingPaise ?? 0, forfeit: s.forfeitRupees, mode: "tokens" });
+  // [HF-CLOSE-UPI-1] Tell the person what is paid and, for earnings in the 7-day hold, why it waits and until when (WhatsApp, best effort).
+  await notifyClosureStarted(env, uid, { walletPayoutPaise: ti?.walletPayoutPaise ?? 0, roundingPaise: ti?.roundingPaise ?? 0, availableRupees: s.withdrawable, heldRupees: s.held, releaseAt: s.heldReleaseAt });
   if (status === "ready") await advanceExit(env, (await getExitRow(env, uid))!, o.trigger);
   return { ok: true, status, payoutId, refundId: null };
 }

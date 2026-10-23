@@ -12,6 +12,8 @@
 //   topup_gst_split      [HF-STD-PLAN-1] a gp-r2 (rupee) top-up lot must satisfy paid = wallet value + GST included, to the paisa
 // [HF-STD-PLAN-1] Rupee-correct: purchases also report the GST included and the wallet value credited (rupees), per IST day. Lots made by the
 // explicit balance migration (source_lot_id set) carry old history and are NOT counted as purchases again. Call-charge corrections ('call_refund').
+// [HF-CLOSE-UPI-1] 'Rounding kept on closure': the sub-rupee rest of a closing person's wallet (payouts are whole rupees) is retired at deletion by an admin_adjust
+// row (op_id hftexit:round:<lot>); the lot_balance invariant already counts admin_adjust, so it is balanced, and the amount is shown per day here.
 // buildTokenReconciliation() is pure (rows in, report out); loadTokenReconciliation() is the D1 reader. Read-only: nothing here writes.
 import type { Env } from "../types";
 import { istDateStr } from "./hf_ist";
@@ -28,7 +30,9 @@ export interface CallRec {
   id: string; uid: string; ts: number; tokens_spent_micro: number | null; consumed_value_paise: number | null; call_cost_paise: number | null;
   host_earning_paise: number | null; platform_paise: number | null; lots_used: string | null;
 }
-export interface LedgerRec { kind: string; delta_micro: number; rupee_value_paise: number; created_at: number }
+export interface LedgerRec { kind: string; delta_micro: number; rupee_value_paise: number; created_at: number; /** [HF-CLOSE-UPI-1] needed to tell the closure-rounding retirements (hftexit:round:*) from other adjustments */ op_id?: string | null }
+/** [HF-CLOSE-UPI-1] op_id prefix of the ledger row that retires the sub-rupee wallet rest when an account closes. */
+export const CLOSURE_ROUND_PREFIX = "hftexit:round:";
 export interface HostLedgerRec { kind: string; amount_paise: number; created_at: number }
 export interface PlayRefundRec { recorded_paise: number | null; refunded_at: number }
 
@@ -41,7 +45,7 @@ export interface TokenDay {
   purchases: { count: number; paidPaise: number; tokensMicro: number; gstPaise: number; walletPaise: number };
   spent: { calls: number; tokensMicro: number; consumedPaise: number; callCostPaise: number; hostPaise: number; platformPaise: number };
   hostLedger: { earningsPaise: number; testEarningsPaise: number };
-  refunds: { revocations: number; revokedMicro: number; revokedValuePaise: number; playRefunds: number; playRefundPaise: number; debtsCreated: number; debtsCreatedPaise: number; debtsWrittenOffPaise: number; callRefunds: number; callRefundPaise: number };
+  refunds: { revocations: number; revokedMicro: number; revokedValuePaise: number; playRefunds: number; playRefundPaise: number; debtsCreated: number; debtsCreatedPaise: number; debtsWrittenOffPaise: number; callRefunds: number; callRefundPaise: number; /** [HF-CLOSE-UPI-1] rounding kept on closure: lots (and paise) under Re 1 retired from a closing person's wallet, never paid out */ closureRoundingLots: number; closureRoundingPaise: number };
   testLots: { grantedLots: number; grantedMicro: number; spentMicro: number; spentValuePaise: number };
 }
 export interface TokenReconciliation {
@@ -56,7 +60,7 @@ const emptyDay = (date: string): TokenDay => ({
   purchases: { count: 0, paidPaise: 0, tokensMicro: 0, gstPaise: 0, walletPaise: 0 },
   spent: { calls: 0, tokensMicro: 0, consumedPaise: 0, callCostPaise: 0, hostPaise: 0, platformPaise: 0 },
   hostLedger: { earningsPaise: 0, testEarningsPaise: 0 },
-  refunds: { revocations: 0, revokedMicro: 0, revokedValuePaise: 0, playRefunds: 0, playRefundPaise: 0, debtsCreated: 0, debtsCreatedPaise: 0, debtsWrittenOffPaise: 0, callRefunds: 0, callRefundPaise: 0 },
+  refunds: { revocations: 0, revokedMicro: 0, revokedValuePaise: 0, playRefunds: 0, playRefundPaise: 0, debtsCreated: 0, debtsCreatedPaise: 0, debtsWrittenOffPaise: 0, callRefunds: 0, callRefundPaise: 0, closureRoundingLots: 0, closureRoundingPaise: 0 },
   testLots: { grantedLots: 0, grantedMicro: 0, spentMicro: 0, spentValuePaise: 0 },
 });
 
@@ -130,6 +134,7 @@ export function buildTokenReconciliation(a: {
     else if (l.kind === "call_refund") { d.refunds.callRefunds++; d.refunds.callRefundPaise += n(l.rupee_value_paise); }
     else if (l.kind === "debt_create") { d.refunds.debtsCreated++; d.refunds.debtsCreatedPaise += n(l.rupee_value_paise); }
     else if (l.kind === "debt_writeoff") d.refunds.debtsWrittenOffPaise += n(l.rupee_value_paise);
+    else if (l.kind === "admin_adjust" && typeof l.op_id === "string" && l.op_id.startsWith(CLOSURE_ROUND_PREFIX)) { d.refunds.closureRoundingLots++; d.refunds.closureRoundingPaise += n(l.rupee_value_paise); }
   }
   for (const h of a.hostLedger) {
     if (!inRange(h.created_at)) continue;
@@ -168,7 +173,7 @@ export async function loadTokenReconciliation(env: Env, fromMs: number, toMs: nu
     rows<CallRec>(env,
       `SELECT id, caller_uid AS uid, COALESCE(ended_at, created_at) AS ts, tokens_spent_micro, consumed_value_paise, call_cost_paise, host_earning_paise, platform_paise, lots_used FROM hf_calls
         WHERE lots_used IS NOT NULL AND COALESCE(ended_at, created_at)>=?1 AND COALESCE(ended_at, created_at)<?2 LIMIT 20000`, fromMs, toMs),
-    rows<LedgerRec>(env, "SELECT kind, delta_micro, rupee_value_paise, created_at FROM hf_token_ledger WHERE kind IN ('refund_revoke','debt_create','debt_writeoff','call_refund') AND created_at>=?1 AND created_at<?2 LIMIT 20000", fromMs, toMs),
+    rows<LedgerRec>(env, "SELECT kind, delta_micro, rupee_value_paise, created_at, op_id FROM hf_token_ledger WHERE (kind IN ('refund_revoke','debt_create','debt_writeoff','call_refund') OR (kind='admin_adjust' AND op_id LIKE 'hftexit:round:%')) AND created_at>=?1 AND created_at<?2 LIMIT 20000", fromMs, toMs),
     rows<HostLedgerRec>(env, "SELECT kind, amount_paise, created_at FROM hf_host_ledger WHERE kind IN ('call_earning','call_earning_test') AND created_at>=?1 AND created_at<?2 LIMIT 20000", fromMs, toMs),
     rows<PlayRefundRec>(env, "SELECT recorded_paise, refunded_at FROM hf_refund_requests WHERE kind='play_refund' AND status='refunded' AND refunded_at>=?1 AND refunded_at<?2 LIMIT 5000", fromMs, toMs),
   ]);
@@ -244,13 +249,13 @@ export function tokenReconciliationCsv(r: TokenReconciliation): string {
     "date", "purchases_count", "purchases_paid_paise", "purchases_tokens_micro", "calls", "tokens_spent_micro", "consumed_value_paise", "call_cost_paise", "host_paise", "platform_paise",
     "host_ledger_earnings_paise", "host_ledger_test_earnings_paise", "revocations", "revoked_tokens_micro", "revoked_value_paise", "play_refunds", "play_refunds_paise",
     "debts_created", "debts_created_paise", "debts_written_off_paise", "test_lots_granted", "test_tokens_granted_micro", "test_tokens_spent_micro", "test_value_spent_paise",
-    "purchases_gst_included_paise", "purchases_wallet_credited_paise", "call_refunds", "call_refunds_paise",
+    "purchases_gst_included_paise", "purchases_wallet_credited_paise", "call_refunds", "call_refunds_paise", "closure_rounding_lots", "closure_rounding_paise",
   ];
   const line = (label: string, d: Omit<TokenDay, "date">) => [
     label, d.purchases.count, d.purchases.paidPaise, d.purchases.tokensMicro, d.spent.calls, d.spent.tokensMicro, d.spent.consumedPaise, d.spent.callCostPaise, d.spent.hostPaise, d.spent.platformPaise,
     d.hostLedger.earningsPaise, d.hostLedger.testEarningsPaise, d.refunds.revocations, d.refunds.revokedMicro, d.refunds.revokedValuePaise, d.refunds.playRefunds, d.refunds.playRefundPaise,
     d.refunds.debtsCreated, d.refunds.debtsCreatedPaise, d.refunds.debtsWrittenOffPaise, d.testLots.grantedLots, d.testLots.grantedMicro, d.testLots.spentMicro, d.testLots.spentValuePaise,
-    d.purchases.gstPaise, d.purchases.walletPaise, d.refunds.callRefunds, d.refunds.callRefundPaise,
+    d.purchases.gstPaise, d.purchases.walletPaise, d.refunds.callRefunds, d.refunds.callRefundPaise, d.refunds.closureRoundingLots, d.refunds.closureRoundingPaise,
   ].map(q).join(",");
   const out = ["", "TOKENS (money in paise, tokens in micro-tokens: 1 token = 1000000)", head.join(","), ...r.days.map((d) => line(d.date, d)), line("TOTAL", r.totals)];
   out.push("", "open_debts_count,open_debts_value_paise,open_debts_tokens_micro,purchase_tokens_outstanding_micro,test_tokens_outstanding_micro,host_balance_paise,purchase_wallet_outstanding_paise,test_wallet_outstanding_paise");

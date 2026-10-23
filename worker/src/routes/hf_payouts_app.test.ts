@@ -196,7 +196,7 @@ describe("POST /api/hf/payouts", () => {
     seedInfluencer({ upi: true }); wallet.balance = 1000; call("old", 20, 1000);
     const r = await jsonOf(await post(60000));
     expect(r).toMatchObject({ status: 409, error: "kyc_required", message: "We check your ID once, before your first payout." });
-    expect(r.nextStep.type).toBe("kyc"); expect(r.nextStep.url).toMatch(/^https:\/\/.+\/hosts\/kyc$/);
+    expect(r.nextStep.type).toBe("kyc"); expect(r.nextStep.url).toMatch(/^https:\/\/.+\/verify\/id\?next=%2Fdashboard%2Fwallet$/);
     expect(h.db.prepare("SELECT COUNT(*) n FROM hf_payout_requests").get().n).toBe(0);
   });
   it("KYC is asked only at the first payout: once verified (or once paid) later requests do not ask again", async () => {

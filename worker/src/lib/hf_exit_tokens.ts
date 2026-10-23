@@ -4,18 +4,21 @@
 //     (an amount owed after a Google refund of spent tokens) are written off, recorded in the ledger. A user on a call cannot close.
 //   * Hosts: INR from hf_host_ledger is paid out first (a closure payout: the Rs 500 minimum and the weekly cap are waived), after the 7-day hold,
 //     the same pattern as the WalletDO path.
-// Whole rupees only are paid out; a leftover under Re 1 is dropped with the account.
+// Whole rupees only are paid out; the sub-rupee rest is retired from the wallet and recorded when the account closes (retireClosureRounding, HF-CLOSE-UPI-1).
 import type { Env } from "../types";
 import { readConfig } from "../routes/config";
-import { track } from "../hooks";
+import { track, trackException } from "../hooks";
 import { tryDecryptPii } from "./pii_crypto";
+import { verifiedWhatsAppNumber } from "./whatsapp_notify"; // [HF-CLOSE-UPI-1] the same WhatsApp helpers payouts and refunds already use
+import { sendWhatsAppText } from "./whatsapp_send";
+import { formatRupees } from "./hf_token_math";
 import { readHfTokenConfig } from "./hf_token_config";
 import { hostSummary, reservePayout, cancelPayoutReserve, hostLedgerRef, isHostLedgerRef, wholeRupees } from "./hf_host_ledger";
 import { hostPayoutReadiness } from "./hf_payouts";
 import { retireLot, OPEN_PLAY_STATUSES } from "./hf_play_refunds";
 import { valuePaiseOfMicro, balanceSummary, hasOpenDebt } from "./hf_token_ledger";
 import { fanPurchasePaise, takeFanPayout, returnFanPayout, fanPayoutRef, isFanPayoutRef } from "./hf_fan_payout"; // [HF-FIX-CLOSE-ACCOUNT-1]
-import { brandUrl } from "./brand";
+import { brandUrl, BRAND } from "./brand";
 import type { ExitSummary } from "./hf_exit";
 
 const APP = "hfpayout";
@@ -39,8 +42,10 @@ export interface TokenExitExtra {
   testValuePaise: number; debtValuePaise: number; availablePaise: number; pendingPaise: number;
   /** [HF-FIX-CLOSE-ACCOUNT-1] The wallet's paid balance exactly as GET /api/hf/wallet shows it (net of GST, test credits excluded). */
   walletPaise: number;
-  /** The part of it a closure pays out to the person's UPI: whole rupees (the sub-rupee rest is dropped with the account). */
+  /** The part of it a closure pays out to the person's UPI: whole rupees (the sub-rupee rest is retired and recorded at deletion). */
   walletPayoutPaise: number;
+  /** [HF-CLOSE-UPI-1] The sub-rupee rest of the wallet that is NOT paid out: it is retired from the wallet when the account is deleted and recorded (finishTokenExit). */
+  roundingPaise: number;
   /** One-time UPI + ID check state for the payout (same rule as the Payout button). */
   upiOk: boolean; kycOk: boolean; payoutReady: boolean;
   /** An open debt sits beside real wallet money: nothing is paid out until support settles it. */
@@ -62,8 +67,9 @@ export async function payoutSetupState(env: Env, uid: string): Promise<{ upiOk: 
 export type SetupNextStep = { type: "upi" | "kyc"; title: string; url: string | null };
 export function payoutSetupNextStep(upiOk: boolean): SetupNextStep {
   return upiOk
-    ? { type: "kyc", title: "We check your ID once, before your first payout.", url: brandUrl("/hosts/onboarding?step=aadhaar") }
-    : { type: "upi", title: "Add your UPI ID in the app (Me, then Payout), and finish the one-time ID check.", url: null };
+    // [HF-CLOSE-UPI-1] /verify/id is the ID check for everyone (fans too); /hosts/onboarding is the influencer wizard.
+    ? { type: "kyc", title: "We check your ID once, before your first payout.", url: brandUrl("/verify/id?next=%2Fdashboard%2Fclose") }
+    : { type: "upi", title: "Add your UPI ID on the website (Wallet, Payout setup) or in the app (Me, then Payout), and finish the one-time ID check.", url: brandUrl("/dashboard/wallet#payout") };
 }
 
 /**
@@ -75,7 +81,7 @@ export async function tokenExitSummary(env: Env, uid: string, now: number, empty
   const footprint = isHf
     || await exists(env, "SELECT 1 FROM hf_token_lots WHERE uid=?1 LIMIT 1", uid)
     || await exists(env, "SELECT 1 FROM hf_host_ledger WHERE host_uid=?1 LIMIT 1", uid);
-  const blank: TokenExitExtra = { mode: "tokens", refundPaise: 0, refundLots: 0, partialLots: 0, partialPaise: 0, testValuePaise: 0, debtValuePaise: 0, availablePaise: 0, pendingPaise: 0, walletPaise: 0, walletPayoutPaise: 0, upiOk: false, kycOk: false, payoutReady: false, debtBlocked: false };
+  const blank: TokenExitExtra = { mode: "tokens", refundPaise: 0, refundLots: 0, partialLots: 0, partialPaise: 0, testValuePaise: 0, debtValuePaise: 0, availablePaise: 0, pendingPaise: 0, walletPaise: 0, walletPayoutPaise: 0, roundingPaise: 0, upiOk: false, kycOk: false, payoutReady: false, debtBlocked: false };
   if (!footprint) return { ...empty, tokensInfo: blank };
   const [rawWallet, bal, debtOpen, host, ready, setup, tests, debt, op, orf, rel] = await Promise.all([
     fanPurchasePaise(env, uid),
@@ -95,6 +101,8 @@ export async function tokenExitSummary(env: Env, uid: string, now: number, empty
   const walletPaise = bal.availablePaidPaise;
   const debtBlocked = debtOpen && rawWallet >= 100;
   const walletPayoutPaise = debtOpen ? 0 : Math.floor(Math.min(rawWallet, walletPaise) / 100) * 100;
+  // [HF-CLOSE-UPI-1] what the person is told is NOT paid: the paise under Re 1 (all of the wallet when it is under Re 1). An open debt pays nothing, so nothing is "dropped".
+  const roundingPaise = debtOpen ? 0 : Math.max(0, Math.min(rawWallet, walletPaise) - walletPayoutPaise);
   const testValuePaise = tests.reduce((t, x) => t + valuePaiseOfMicro(Number(x.m), Number(x.v)), 0);
   const hostRupees = wholeRupees(host.availablePaise) + wholeRupees(host.pendingPaise);
   const forfeitRupees = ready.bankOk || setup.payoutReady ? 0 : hostRupees;
@@ -103,7 +111,7 @@ export async function tokenExitSummary(env: Env, uid: string, now: number, empty
   const extra: TokenExitExtra = {
     mode: "tokens", refundPaise: 0, refundLots: 0, partialLots: 0, partialPaise: 0, testValuePaise,
     debtValuePaise: Number(debt?.s ?? 0), availablePaise: host.availablePaise, pendingPaise: host.pendingPaise,
-    walletPaise, walletPayoutPaise, upiOk: setup.upiOk, kycOk: setup.kycOk, payoutReady: setup.payoutReady, debtBlocked,
+    walletPaise, walletPayoutPaise, roundingPaise, upiOk: setup.upiOk, kycOk: setup.kycOk, payoutReady: setup.payoutReady, debtBlocked,
   };
   return {
     ...empty,
@@ -151,7 +159,7 @@ export async function createExitPayoutTokens(env: Env, uid: string, now = Date.n
   if (pl.walletPaise > 0 && !pl.setup.payoutReady) {
     return pl.setup.upiOk
       ? no(409, "kyc_required", "We check your ID once, before your first payout. Do that first, then close your account.", payoutSetupNextStep(true))
-      : no(409, "upi_required", "Add your UPI ID first (Me, then Payout in the app), then close your account.", payoutSetupNextStep(false));
+      : no(409, "upi_required", "Add your UPI ID first (Wallet, then Payout setup on the website, or Me, then Payout in the app), then close your account.", payoutSetupNextStep(false));
   }
   const earnRupees = pl.earnDestOk ? pl.earnRupees : 0;
   if (pl.walletPaise <= 0 && earnRupees <= 0) {
@@ -234,9 +242,60 @@ export async function writeOffDebts(env: Env, uid: string): Promise<{ count: num
   return { count, valuePaise };
 }
 
-/** Last step before the account is deleted: test lots removed, debts written off. Both idempotent, safe to run on every cron tick. */
-export async function finishTokenExit(env: Env, uid: string): Promise<{ testLots: number; debts: number }> {
+/** op_id of the ledger row that retires one lot's closure rounding (reconciliation counts these as "rounding kept on closure"). */
+export const CLOSURE_ROUND_OP_PREFIX = "hftexit:round:";
+export const closureRoundOpId = (lotId: string) => `${CLOSURE_ROUND_OP_PREFIX}${lotId}`;
+
+/**
+ * [HF-CLOSE-UPI-1] The sub-rupee rest of a wallet is never paid out (payouts are whole rupees). When the account closes, whatever purchase money is left
+ * in the wallet and is under Re 1 is RETIRED: each lot's remaining tokens go to 0 and the lot is marked revoked, with ONE ledger row per lot
+ * (kind admin_adjust, op_id hftexit:round:<lotId>, rupee value recorded). So the lot balance invariant still holds, reconciliation shows the amount as
+ * "rounding kept on closure" instead of leaving it outstanding, it can never be paid out or spent again, and nothing is owed. Idempotent per lot.
+ * A wallet of Re 1 or more (e.g. a rejected closure payout that was returned to the wallet) is left alone: that is real money, not rounding.
+ */
+export async function retireClosureRounding(env: Env, uid: string): Promise<{ lots: number; paise: number }> {
+  const total = await fanPurchasePaise(env, uid);
+  if (total >= 100) return { lots: 0, paise: 0 };
+  const rows = (await env.DB_META.prepare(
+    "SELECT id, tokens_left_micro AS m, redemption_paise_per_token AS v FROM hf_token_lots WHERE uid=?1 AND kind='purchase' AND status='active' AND tokens_left_micro>0 AND tokens_reserved_micro=0",
+  ).bind(uid).all<{ id: string; m: number; v: number }>().catch(() => ({ results: [] as { id: string; m: number; v: number }[] }))).results ?? [];
+  let lots = 0, paise = 0;
+  for (const r of rows) {
+    const rt = await retireLot(env, r.id, closureRoundOpId(r.id), "admin_adjust");
+    if (rt.applied) { lots++; paise += valuePaiseOfMicro(Number(r.m), Number(r.v)); }
+  }
+  if (lots > 0) void track(env, uid, "hf_exit_rounding_retired", APP, { lots, value_paise: paise });
+  return { lots, paise };
+}
+
+/** Last step before the account is deleted: test lots removed, debts written off, the sub-rupee wallet rest retired. All idempotent, safe to run on every cron tick. */
+export async function finishTokenExit(env: Env, uid: string): Promise<{ testLots: number; debts: number; roundingLots: number; roundingPaise: number }> {
   const testLots = await removeTestLots(env, uid);
   const w = await writeOffDebts(env, uid);
-  return { testLots, debts: w.count };
+  const r = await retireClosureRounding(env, uid);
+  return { testLots, debts: w.count, roundingLots: r.lots, roundingPaise: r.paise };
+}
+
+const istLongDate = (ms: number) => new Date(ms).toLocaleDateString("en-IN", { timeZone: "Asia/Kolkata", day: "numeric", month: "long", year: "numeric" });
+
+/** Pure: the WhatsApp text sent when a closure starts. Says what is paid, and (when earnings are in the 7-day hold) why it waits and until when. */
+export function closureStartedText(a: { walletPayoutPaise: number; roundingPaise: number; availableRupees: number; heldRupees: number; releaseAt: number | null }): string {
+  const wallet = a.walletPayoutPaise, earn = a.availableRupees * 100, held = a.heldRupees * 100;
+  const rest = a.roundingPaise > 0 ? ` The ${formatRupees(a.roundingPaise)} below ₹1 cannot be paid out and is not.` : "";
+  if (held > 0) {
+    const when = a.releaseAt ? ` which ends on ${istLongDate(a.releaseAt)}` : "";
+    return `Your ${BRAND.name} account closure has started. ${formatRupees(held)} of your earnings are still in the 7-day hold${when}. `
+      + `Your payout to your UPI (${formatRupees(wallet + earn + held)} in all, wallet money included) is made together after the hold, and your account is deleted once it is paid.${rest}`;
+  }
+  return `Your ${BRAND.name} account closure has started. Your payout of ${formatRupees(wallet + earn)} to your UPI is waiting for approval. Your account is deleted once it is paid.${rest}`;
+}
+
+/** Best-effort WhatsApp when a closure starts (the same helpers payouts and refunds use). Never throws. */
+export async function notifyClosureStarted(env: Env, uid: string, a: Parameters<typeof closureStartedText>[0]): Promise<void> {
+  try {
+    const e164 = await verifiedWhatsAppNumber(env, uid);
+    if (e164) await sendWhatsAppText(env, e164, closureStartedText(a));
+  } catch (e) {
+    await trackException(env, e, { uid, route: "hf_exit_tokens.notifyClosureStarted", handled: true, app_name: APP, extra: { area: "hf_exit" } });
+  }
 }

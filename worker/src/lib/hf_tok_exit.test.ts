@@ -21,7 +21,9 @@ import { MICRO } from "./hf_token_math";
 import {
   unspentSharePaise, requestPlayRefunds, confirmPlayRefund, rejectPlayRefund, cancelPlayRefund, setPlayRefundPort, hasActiveCall, refundableLots, playRefundOpId,
 } from "./hf_play_refunds";
-import { finishTokenExit, removeTestLots, writeOffDebts } from "./hf_exit_tokens";
+import { finishTokenExit, removeTestLots, writeOffDebts, retireClosureRounding, closureStartedText, closureRoundOpId } from "./hf_exit_tokens";
+import { markFanPayoutPaid } from "./hf_fan_payout";
+import { loadTokenReconciliation } from "./hf_reconcile_tokens";
 import { startExit, cancelExit, runHfExitCron, getExitRow, exitSummary } from "./hf_exit";
 
 const T = (n: number) => Math.round(n * MICRO);
@@ -193,15 +195,70 @@ describe("closing: test lots and debts", () => {
     const t = await lot("u1", "test", 30, 100, "t1");
     raw().prepare("INSERT INTO hf_token_debts (id, uid, amount_micro, value_paise, source_order_id, status, created_at) VALUES ('d1','u1',?,820,'O','open',?)").run(T(10), Date.now());
     const f = await finishTokenExit(env, "u1");
-    expect(f).toEqual({ testLots: 1, debts: 1 });
+    expect(f).toEqual({ testLots: 1, debts: 1, roundingLots: 0, roundingPaise: 0 });
     expect(lotRow(t).tokens_left_micro).toBe(0);
     expect(raw().prepare("SELECT status FROM hf_token_debts WHERE id='d1'").get().status).toBe("written_off");
     expect(ledgerOps("hftwo:d1").length).toBe(1);
     const again = await finishTokenExit(env, "u1");
-    expect(again).toEqual({ testLots: 0, debts: 0 });
+    expect(again).toEqual({ testLots: 0, debts: 0, roundingLots: 0, roundingPaise: 0 });
     expect(ledgerOps("hftwo:d1").length).toBe(1);
     expect(await removeTestLots(env, "u1")).toBe(0);
     expect((await writeOffDebts(env, "u1")).count).toBe(0);
+  });
+});
+
+describe("closing: the sub-rupee rest [HF-CLOSE-UPI-1]", () => {
+  it("Rs 89.74 pays Rs 89, the 74 paise are retired and recorded once, reconciliation stays clean, nothing can be paid twice", async () => {
+    const l = await lot("u1", "purchase", 89.74, 100, "GPA.9", 90);
+    raw().prepare("INSERT INTO hf_kyc (uid, verified_at, updated_at) VALUES ('u1', 1, 1)").run();
+    raw().prepare("INSERT INTO hf_payout (uid, upi_enc, upi_verified, updated_at) VALUES ('u1', 'u', 0, 1)").run();
+    const s = await exitSummary(env, "u1");
+    expect(s.tokensInfo?.walletPaise).toBe(8974);
+    expect(s.tokensInfo?.walletPayoutPaise).toBe(8900);
+    expect(s.tokensInfo?.roundingPaise).toBe(74);
+    expect((await startExit(env, "u1", { forfeit: false })).ok).toBe(true);
+    const p = raw().prepare("SELECT * FROM hf_payout_requests WHERE host_uid='u1' AND exit=1").get();
+    expect(p.amount_rupees).toBe(89);
+    expect(p.lots_paise).toBe(8900);
+    // while the payout is open the 74 paise still sit in the wallet; the closure is not finished yet
+    expect(lotRow(l).tokens_left_micro).toBe(T(0.74));
+    // pay it, then the cron finishes the closure
+    raw().prepare("UPDATE hf_payout_requests SET status='paid' WHERE id=?").run(p.id);
+    await markFanPayoutPaid(env, "u1", p.id);
+    let triggered = 0;
+    await runHfExitCron(env, async () => { triggered++; });
+    expect(triggered).toBe(1);
+    expect(lotRow(l).tokens_left_micro).toBe(0);
+    expect(lotRow(l).status).toBe("revoked");
+    const rows = ledgerOps(closureRoundOpId(l));
+    expect(rows.length).toBe(1);
+    expect(rows[0].kind).toBe("admin_adjust");
+    expect(rows[0].rupee_value_paise).toBe(74);
+    // idempotent
+    expect(await retireClosureRounding(env, "u1")).toEqual({ lots: 0, paise: 0 });
+    expect(ledgerOps(closureRoundOpId(l)).length).toBe(1);
+    // reconciliation: no lot_balance mismatch and the rest is shown as rounding kept on closure
+    const rec = await loadTokenReconciliation(env, Date.now() - DAY, Date.now() + DAY);
+    expect(rec.mismatches.filter((m) => m.kind === "lot_balance")).toEqual([]);
+    expect(rec.totals.refunds.closureRoundingLots).toBe(1);
+    expect(rec.totals.refunds.closureRoundingPaise).toBe(74);
+    expect(rec.outstanding.purchaseTokensMicro).toBe(0);
+  });
+
+  it("a wallet of Re 1 or more (e.g. a returned payout) is never retired as rounding", async () => {
+    const l = await lot("u2", "purchase", 5, 100, "GPA.5", 5);
+    expect(await retireClosureRounding(env, "u2")).toEqual({ lots: 0, paise: 0 });
+    expect(lotRow(l).tokens_left_micro).toBe(T(5));
+  });
+
+  it("the closure WhatsApp says why it waits and until when", () => {
+    const t = closureStartedText({ walletPayoutPaise: 890800, roundingPaise: 74, availableRupees: 0, heldRupees: 120, releaseAt: Date.UTC(2026, 9, 30, 6, 0) });
+    expect(t).toContain("7-day hold");
+    expect(t).toContain("30 October 2026");
+    expect(t).toContain("together");
+    const u = closureStartedText({ walletPayoutPaise: 8900, roundingPaise: 0, availableRupees: 0, heldRupees: 0, releaseAt: null });
+    expect(u).toContain("waiting for approval");
+    expect(u).not.toContain("hold");
   });
 });
 
