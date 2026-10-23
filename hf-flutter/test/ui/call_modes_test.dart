@@ -132,7 +132,7 @@ void main() {
       await tester.tap(find.byKey(const ValueKey('mode-bookings_only')));
       await tester.pumpAndSettle();
       expect(api.calls.last, 'PUT /api/hosts/me/presence');
-      expect(api.bodies.last, {'mode': 'bookings_only'});
+      expect(api.bodies.last, {'mode': 'bookings_only', 'surface': 'app'});
       expect(store.mode, 'bookings_only');
       expect(find.text('Bookings only. Fans can book you, but not call right away.'), findsOneWidget);
     });
@@ -145,7 +145,7 @@ void main() {
       expect(api.calls.where((c) => c.startsWith('PUT')), isEmpty);
       await tester.tap(find.text('Go offline'));
       await tester.pumpAndSettle();
-      expect(api.bodies.last, {'mode': 'offline'});
+      expect(api.bodies.last, {'mode': 'offline', 'surface': 'app'});
       expect(store.mode, 'offline');
     });
 
@@ -165,7 +165,7 @@ void main() {
       await tester.tap(find.byKey(const ValueKey('mode-offline')));
       await tester.pumpAndSettle();
       expect(find.text('Go offline?'), findsNothing);
-      expect(api.bodies.last, {'mode': 'offline'});
+      expect(api.bodies.last, {'mode': 'offline', 'surface': 'app'});
       expect(store.mode, 'offline');
     });
 
