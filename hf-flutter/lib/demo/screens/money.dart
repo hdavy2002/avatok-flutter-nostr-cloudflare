@@ -46,10 +46,35 @@ class _WalletScreenState extends State<WalletScreen> {
   AsyncState<WalletSnapshot> _state = const AsyncLoading();
   bool _loadingMore = false;
 
+  // Payment receipts: null while loading. [HF-APP-PARITY-WITHDRAW]
+  List<ReceiptItem>? _receipts;
+  bool _receiptsFailed = false;
+
   @override
   void initState() {
     super.initState();
-    if (_real) _load();
+    if (_real) {
+      _load();
+      _loadReceipts();
+    }
+  }
+
+  Future<void> _loadReceipts() async {
+    setState(() {
+      _receipts = null;
+      _receiptsFailed = false;
+    });
+    try {
+      final r = await _repo.receipts();
+      if (mounted) setState(() => _receipts = r);
+    } catch (_) {
+      if (mounted) {
+        setState(() {
+          _receipts = const [];
+          _receiptsFailed = true;
+        });
+      }
+    }
   }
 
   Future<void> _load() async {
@@ -126,7 +151,10 @@ class _WalletScreenState extends State<WalletScreen> {
               onRetry: _load,
               isEmpty: (_) => false,
               builder: (context, w) => RefreshIndicator(
-                onRefresh: _load,
+                onRefresh: () async {
+                  unawaited(_loadReceipts());
+                  await _load();
+                },
                 child: ListView(
                   padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
                   children: [
@@ -141,8 +169,17 @@ class _WalletScreenState extends State<WalletScreen> {
                         padding: const EdgeInsets.only(bottom: 16),
                         child: Text('Nothing here yet. Top up to start calling.', style: t(15, color: C.muted, w: FontWeight.w700)),
                       ),
-                    for (final x in w.ledger) LedgerRow(title: x.label, sub: _when(x.at), amount: x.amountPaise / 100, amountText: inr(x.amountPaise / 100, sign: true)),
+                    for (final x in w.ledger)
+                      LedgerRow(
+                        title: x.label,
+                        // A top-up shows the same sums as the top-up screen: paid, minus the GST in it.
+                        sub: x.hasGstSplit ? '${_when(x.at)} · Paid ${inr(x.paidPaise! / 100)} − GST ${inr(x.gstPaise! / 100)}' : _when(x.at),
+                        amount: x.amountPaise / 100,
+                        amountText: inr(x.amountPaise / 100, sign: true),
+                      ),
                     if (w.nextCursor != null) LoadMorePill(label: _loadingMore ? 'LOADING…' : 'LOAD MORE', onTap: _more),
+                    const SizedBox(height: 12),
+                    _receiptsSection(context),
                     const SizedBox(height: 12),
                     const DesiMogra(),
                   ],
@@ -155,6 +192,47 @@ class _WalletScreenState extends State<WalletScreen> {
     );
   }
 
+  /// "Payment receipts": one row per receipt with a View receipt action. Loading, empty and error states included.
+  Widget _receiptsSection(BuildContext context) {
+    final rs = _receipts;
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Padding(
+        padding: const EdgeInsets.only(top: 6, bottom: 10),
+        child: Text('Payment receipts', style: t(20, color: C.maroon, w: FontWeight.w900)),
+      ),
+      if (rs == null)
+        const Padding(padding: EdgeInsets.symmetric(vertical: 12), child: Center(child: CircularProgressIndicator()))
+      else if (_receiptsFailed)
+        Row(children: [
+          Expanded(child: Text('We could not load your receipts.', style: t(15, color: C.muted, w: FontWeight.w700))),
+          TextButton(onPressed: _loadReceipts, child: Text('Try again', style: t(15, color: C.rani, w: FontWeight.w800))),
+        ])
+      else if (rs.isEmpty)
+        Text('Your first top-up receipt will show up here.', style: t(15, color: C.muted, w: FontWeight.w700))
+      else
+        for (final r in rs.take(10))
+          Container(
+            margin: const EdgeInsets.only(bottom: 10),
+            padding: const EdgeInsets.fromLTRB(12, 8, 4, 8),
+            decoration: BoxDecoration(color: C.white, borderRadius: BorderRadius.circular(18), border: Border.all(color: C.line, width: 1.5)),
+            child: Row(children: [
+              Expanded(
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text(r.number, maxLines: 1, overflow: TextOverflow.ellipsis, style: t(16, w: FontWeight.w900)),
+                  Text('${r.isTaxInvoice ? 'Tax invoice' : 'Payment receipt'} · ${_when(r.issuedAt)}',
+                      maxLines: 1, overflow: TextOverflow.ellipsis, style: t(14, color: C.muted, w: FontWeight.w700)),
+                ]),
+              ),
+              TextButton(
+                onPressed: () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => ReceiptScreen(receipt: r))),
+                style: TextButton.styleFrom(minimumSize: const Size(48, 48)),
+                child: Text('View receipt', style: t(15, color: C.rani, w: FontWeight.w800)),
+              ),
+            ]),
+          ),
+    ]);
+  }
+
   Widget _gullak(BuildContext context, String balance, {List<(String, bool)> chips = const []}) => GullakCard(
         balance: balance,
         chips: chips,
@@ -162,6 +240,71 @@ class _WalletScreenState extends State<WalletScreen> {
         // [HF-WIRE-13] HF-REEL-36: anyone can withdraw wallet money to UPI (after ID + UPI check). Refunds always land in the wallet.
         onWithdraw: () => context.push('/payout'),
       );
+}
+
+/// A payment receipt drawn in the app (the printable page needs a sign-in token, so the app shows the same numbers itself).
+/// Money lines sit in the plum Hisaab card: you paid, minus the GST, added to the wallet. [HF-APP-PARITY-WITHDRAW]
+class ReceiptScreen extends StatelessWidget {
+  const ReceiptScreen({super.key, required this.receipt});
+
+  final ReceiptItem receipt;
+
+  @override
+  Widget build(BuildContext context) {
+    final r = receipt;
+    final lines = <(String, String)>[];
+    final (String, String) total;
+    if (r.hasSplit) {
+      lines.add(('You paid', inr(r.paidPaise! / 100)));
+      lines.add(('GST', '− ${inr(r.gstPaise! / 100)}'));
+      total = ('Added to wallet', inr(r.walletPaise! / 100));
+    } else {
+      total = ('Amount', inr(r.amountPaise / 100));
+    }
+    return Scaffold(
+      backgroundColor: C.ivory,
+      body: SafeArea(
+        child: Column(children: [
+          const BookHeader('Receipt'),
+          Expanded(
+            child: ListView(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+              children: [
+                DesiHero(
+                  eyebrow: r.isTaxInvoice ? 'Tax invoice' : 'Payment receipt',
+                  title: 'Rasid',
+                  sub: r.number,
+                  ghost: 'Rasid',
+                  tone: DesiTone.gold,
+                  minHeight: 120,
+                ),
+                const SizedBox(height: 12),
+                MoneyHisaab(lines: lines, total: total),
+                const SizedBox(height: 12),
+                Container(
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(color: C.white, borderRadius: BorderRadius.circular(18), border: Border.all(color: C.line, width: 1.5)),
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Text('Item', style: t(14, color: C.muted, w: FontWeight.w700)),
+                    Text('Money added to wallet', style: t(16, w: FontWeight.w900)),
+                    const SizedBox(height: 10),
+                    Text('Date', style: t(14, color: C.muted, w: FontWeight.w700)),
+                    Text(_WalletScreenState._when(r.issuedAt), style: t(16, w: FontWeight.w900)),
+                    const SizedBox(height: 10),
+                    Text('Receipt number', style: t(14, color: C.muted, w: FontWeight.w700)),
+                    Text(r.number, style: t(16, w: FontWeight.w900)),
+                  ]),
+                ),
+                const SizedBox(height: 12),
+                const DesiMogra(),
+              ],
+            ),
+          ),
+          BookBottomButton(label: 'DONE', plum: true, icon: null, onTap: () => Navigator.of(context).maybePop()),
+        ]),
+      ),
+    );
+  }
 }
 
 // ---------------------------------------------------------------------------------------------- Top up
@@ -588,11 +731,52 @@ class _PayoutScreenState extends State<PayoutScreen> {
         await Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => PayoutKycScreen(step: kyc)));
         if (mounted) await _load(keepAmount: true);
       } else {
-        toast(context, e is ApiException ? e.userMessage : ApiException.genericText);
+        toast(context, PayoutsRepo.friendlyError(e, maxPerWeek: _maxPerWeek));
       }
     } finally {
       if (mounted) setState(() => _busy = false);
     }
+  }
+
+  int get _maxPerWeek {
+    final st = _state;
+    return st is AsyncData<PayoutSummary> ? st.value.maxPerWeek : PayoutSummary.defaultMaxPerWeek;
+  }
+
+  /// Asks first, then takes the request back. The money returns to the wallet.
+  Future<void> _confirmCancel(_PayoutLine line) async {
+    final yes = await showModalBottomSheet<bool>(
+      context: context,
+      backgroundColor: C.clear,
+      builder: (_) => CallSheetFrame(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('Cancel this request?', style: t(24, color: C.maroon, w: FontWeight.w900)),
+              const SizedBox(height: 6),
+              Text('Money goes back to your wallet.', style: t(15, color: C.muted, w: FontWeight.w700, h: 1.35)),
+              const SizedBox(height: 16),
+              Builder(builder: (ctx) => MoneyPill(label: 'YES, CANCEL IT', onTap: () => Navigator.of(ctx).pop(true))),
+              const SizedBox(height: 8),
+              Builder(builder: (ctx) => MoneyPill(label: 'NO, KEEP IT', outline: true, onTap: () => Navigator.of(ctx).pop(false))),
+            ],
+          ),
+        ),
+      ),
+    );
+    if (yes != true || !mounted) return;
+    try {
+      await _repo.cancel(line.id);
+      if (!mounted) return;
+      toast(context, 'Cancelled. The money is back in your wallet.');
+    } catch (e) {
+      if (!mounted) return;
+      toast(context, PayoutsRepo.friendlyError(e));
+    }
+    if (mounted) await _load(keepAmount: true);
   }
 
   void _requestDemo() {
@@ -631,7 +815,16 @@ class _PayoutScreenState extends State<PayoutScreen> {
           vpa: demo.name.isEmpty ? 'yourname@okbank' : '${demo.name.split(' ').first.toLowerCase()}@okhdfcbank',
           checkedLine: 'Checked · name matches',
           minRupees: 0,
-          history: [for (final p in demo.payouts) (p.when, p.amount, p.status, p.status.startsWith('PAID'))],
+          history: [
+            for (final p in demo.payouts)
+              _PayoutLine(
+                id: '',
+                when: p.when,
+                amount: p.amount,
+                label: p.status,
+                kind: p.status.startsWith('PAID') ? PayoutKind.paid : PayoutKind.checking,
+              ),
+          ],
           canAsk: true,
         ),
       );
@@ -646,7 +839,11 @@ class _PayoutScreenState extends State<PayoutScreen> {
         vpa: s.upi?.vpa,
         checkedLine: s.upi == null ? null : (s.upi!.nameMatched == true ? 'Checked · name matches' : 'We check the name when we pay'),
         minRupees: s.minPaise ~/ 100,
-        history: [for (final h in s.history) (_when(h.at), h.amountPaise / 100, _label(h), h.status == PayoutStatus.paid)],
+        history: [
+          for (final h in s.history)
+            _PayoutLine(id: h.id, when: _when(h.at), amount: h.amountPaise / 100, label: _label(h), kind: _kindOf(h.status)),
+        ],
+        maxPerWeek: s.maxPerWeek,
         canAsk: s.upi != null,
         onChangeUpi: () => _editUpi(s.upi?.vpa),
       ),
@@ -659,6 +856,15 @@ class _PayoutScreenState extends State<PayoutScreen> {
         PayoutStatus.paid => h.utr == null ? 'PAID' : 'PAID · UTR ${h.utr}',
         PayoutStatus.rejected => 'NOT PAID',
         PayoutStatus.checking => 'BEING CHECKED',
+        PayoutStatus.requested => 'Requested · waiting for approval',
+        PayoutStatus.cancelled => 'Cancelled',
+      };
+  static PayoutKind _kindOf(PayoutStatus s) => switch (s) {
+        PayoutStatus.paid => PayoutKind.paid,
+        PayoutStatus.rejected => PayoutKind.notPaid,
+        PayoutStatus.checking => PayoutKind.checking,
+        PayoutStatus.requested => PayoutKind.requested,
+        PayoutStatus.cancelled => PayoutKind.cancelled,
       };
 
   /// [HF-APP-DESI-9] approved "Withdraw" layout.
@@ -668,8 +874,9 @@ class _PayoutScreenState extends State<PayoutScreen> {
     required String? vpa,
     required String? checkedLine,
     required int minRupees,
-    required List<(String, double, String, bool)> history,
+    required List<_PayoutLine> history,
     required bool canAsk,
+    int maxPerWeek = PayoutSummary.defaultMaxPerWeek,
     VoidCallback? onChangeUpi,
   }) {
     return Scaffold(
@@ -706,16 +913,22 @@ class _PayoutScreenState extends State<PayoutScreen> {
                   if (history.isEmpty) Text('No withdrawals yet.', style: t(15, color: C.muted, w: FontWeight.w700)),
                   for (final p in history)
                     PayoutRow(
-                      amount: inr(p.$2, paise: false),
-                      when: p.$1,
-                      label: p.$3,
-                      kind: p.$4 ? PayoutKind.paid : (p.$3.startsWith('NOT') ? PayoutKind.notPaid : PayoutKind.checking),
+                      amount: inr(p.amount, paise: false),
+                      when: p.when,
+                      label: p.label,
+                      kind: p.kind,
+                      onCancel: p.kind == PayoutKind.requested && _real ? () => _confirmCancel(p) : null,
                     ),
                   const SizedBox(height: 8),
                   const DesiMogra(),
                 ],
               ),
             ),
+            if (canAsk)
+              Padding(
+                padding: const EdgeInsets.only(top: 6),
+                child: Text('You can withdraw $maxPerWeek times a week', style: t(14, color: C.muted, w: FontWeight.w700), textAlign: TextAlign.center),
+              ),
             BookBottomButton(
               label: _busy ? 'SENDING…' : (canAsk ? 'REQUEST WITHDRAWAL' : 'ADD UPI TO START'),
               plum: true,
@@ -727,6 +940,17 @@ class _PayoutScreenState extends State<PayoutScreen> {
       ),
     );
   }
+}
+
+/// One row of "Past withdrawals".
+class _PayoutLine {
+  const _PayoutLine({required this.id, required this.when, required this.amount, required this.label, required this.kind});
+
+  final String id;
+  final String when;
+  final double amount;
+  final String label;
+  final PayoutKind kind;
 }
 
 /// Add or change the UPI. The server checks the format again and clears any earlier name check.

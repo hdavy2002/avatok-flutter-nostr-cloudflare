@@ -16,8 +16,9 @@ class PayoutUpi {
   final bool? nameMatched;
 }
 
-/// `checking` is a request we are looking at by hand; `paid` carries the bank reference.
-enum PayoutStatus { checking, paid, rejected }
+/// `requested` is waiting for approval (can still be cancelled); `checking` is approved and being paid; `paid` carries the bank
+/// reference; `cancelled` is a request the person took back (the money returned to the wallet).
+enum PayoutStatus { requested, checking, paid, rejected, cancelled }
 
 class PayoutItem {
   const PayoutItem({required this.id, required this.at, required this.amountPaise, required this.status, this.utr});
@@ -29,6 +30,8 @@ class PayoutItem {
         status: switch (j['status']) {
           'paid' => PayoutStatus.paid,
           'rejected' => PayoutStatus.rejected,
+          'requested' => PayoutStatus.requested,
+          'cancelled' => PayoutStatus.cancelled,
           _ => PayoutStatus.checking,
         },
         utr: j['utr'] is String ? j['utr'] as String : null,
@@ -52,7 +55,11 @@ class PayoutSummary {
     this.upi,
     this.kycStatus = KycStatus.none,
     this.history = const [],
+    this.maxPerWeek = defaultMaxPerWeek,
   });
+
+  /// The server's own default (`hfPayoutMaxPerWeek`), used until it tells us the real number.
+  static const int defaultMaxPerWeek = 2;
 
   factory PayoutSummary.fromJson(Map<String, dynamic> j) {
     final upi = j['upi'];
@@ -67,6 +74,7 @@ class PayoutSummary {
         'pending' => KycStatus.pending,
         _ => KycStatus.none,
       },
+      maxPerWeek: j['maxPerWeek'] is num && (j['maxPerWeek'] as num) >= 1 ? (j['maxPerWeek'] as num).round() : defaultMaxPerWeek,
       history: hist is List
           ? [for (final h in hist) if (h is Map) PayoutItem.fromJson(Map<String, dynamic>.from(h))]
           : const [],
@@ -79,6 +87,9 @@ class PayoutSummary {
   final PayoutUpi? upi;
   final KycStatus kycStatus;
   final List<PayoutItem> history;
+
+  /// How many withdrawal requests a person may make in a week.
+  final int maxPerWeek;
 
   /// Whole rupees the person can ask for right now.
   int get readyRupees => readyPaise ~/ 100;
@@ -121,6 +132,24 @@ class PayoutsRepo {
   /// One key per intended request: pass the same [key] when retrying after a lost answer.
   Future<void> request(int amountPaise, {required String key}) async {
     await _api.request('POST', '/api/hf/payouts', body: {'amountPaise': amountPaise}, headers: {'Idempotency-Key': key});
+  }
+
+  /// `POST /api/hosts/me/payouts/:id/cancel` - only while the request is still `requested`. The money returns to the wallet.
+  /// `409 not_cancellable` means it was just approved.
+  Future<void> cancel(String id) async {
+    await _api.request('POST', '/api/hosts/me/payouts/${Uri.encodeComponent(id)}/cancel');
+  }
+
+  /// Plain words for the refusals a withdrawal can get, by the server's exact error code. Other errors keep the server's own sentence.
+  static String friendlyError(Object error, {int maxPerWeek = PayoutSummary.defaultMaxPerWeek}) {
+    if (error is! ApiException) return ApiException.genericText;
+    return switch (error.code) {
+      'weekly_limit' => 'You can withdraw $maxPerWeek times a week, and you have used them. Please try again in a few days.',
+      'insufficient_withdrawable' => 'That is more than you can withdraw right now. Try a smaller amount.',
+      'not_cancellable' => 'This request was just approved, so it cannot be cancelled now.',
+      'upi_required' => 'Add your UPI first.',
+      _ => error.userMessage,
+    };
   }
 
   /// The ID-check step in a `kyc_required` error, or null for any other error.

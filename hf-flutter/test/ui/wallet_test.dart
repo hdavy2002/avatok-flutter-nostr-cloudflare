@@ -99,6 +99,59 @@ void main() {
     });
   });
 
+  group('Receipts and GST split', () {
+    test('a top-up row carries paid and GST; other rows do not', () {
+      final top = LedgerEntry.fromJson({'id': 'a', 'kind': 'topup', 'amountPaise': 8475, 'at': 1760000000000, 'label': 'Money added', 'paidPaise': 10000, 'gstPaise': 1525});
+      expect(top.hasGstSplit, isTrue);
+      expect(top.paidPaise, 10000);
+      expect(top.gstPaise, 1525);
+      final call = LedgerEntry.fromJson({'id': 'b', 'kind': 'call', 'amountPaise': -900, 'at': 1760000000000, 'label': 'Call'});
+      expect(call.hasGstSplit, isFalse);
+    });
+
+    test('receipts() parses the list: number, kind, split', () async {
+      final api = FakeApiClient((m, p, q, b) => {
+            'ok': true,
+            'receipts': [
+              {'id': 'hfr_1', 'number': 'HF/26-27/0001', 'kind': 'tax_invoice', 'source': 'topup', 'amountRupees': 100, 'issuedAt': 1760000000000, 'paidPaise': 10000, 'gstPaise': 1525, 'walletPaise': 8475},
+              {'id': 'hfr_2', 'number': 'HF/26-27/0002', 'kind': 'receipt', 'source': 'topup', 'amountRupees': 50, 'issuedAt': 1760000000000},
+            ],
+          });
+      final r = await WalletRepo(api).receipts();
+      expect(api.calls, ['GET /api/hf/wallet/receipts']);
+      expect(r.length, 2);
+      expect(r[0].isTaxInvoice, isTrue);
+      expect(r[0].hasSplit, isTrue);
+      expect(r[0].walletPaise, 8475);
+      expect(r[1].hasSplit, isFalse);
+      expect(r[1].amountPaise, 5000);
+    });
+
+    testWidgets('wallet shows GST as a minus line on a top-up, and View receipt opens the Receipt screen', (tester) async {
+      final api = FakeApiClient((m, p, q, b) {
+        if (p == '/api/hf/wallet/receipts') {
+          return {
+            'receipts': [
+              {'id': 'hfr_1', 'number': 'HF/26-27/0001', 'kind': 'receipt', 'amountRupees': 100, 'issuedAt': 1760000000000, 'paidPaise': 10000, 'gstPaise': 1525, 'walletPaise': 8475},
+            ],
+          };
+        }
+        return _wallet(ledger: [
+          {..._row('a', 'Money added', 8475), 'paidPaise': 10000, 'gstPaise': 1525},
+        ]);
+      });
+      await _pump(tester, WalletScreen(repo: WalletRepo(api)));
+      await tester.pumpAndSettle();
+      expect(find.textContaining('Paid ₹100.00 − GST ₹15.25'), findsOneWidget);
+      await tester.ensureVisible(find.text('View receipt'));
+      await tester.tap(find.text('View receipt'));
+      await tester.pumpAndSettle();
+      expect(find.text('HF/26-27/0001'), findsWidgets);
+      expect(find.text('− ₹15.25'), findsOneWidget);
+      expect(find.text('Added to wallet'), findsOneWidget);
+    });
+  });
+
   group('WalletRepo', () {
     test('credit maths matches the demo (and the server): paid / 1.18 rounded down', () {
       for (final rupees in [10, 100, 500, 1000, 5000]) {

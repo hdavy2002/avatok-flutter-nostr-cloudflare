@@ -11891,5 +11891,9 @@
   "HF-APP-PARITY-SAFETY": {
     "description": "[HF-APP-PARITY-SAFETY] App: Report a person (Shikayat sheet) and Block from profile and Call records, and Hearts / Waiting tiles on the influencer Home; all use existing worker routes.",
     "no_telemetry": "Client UI over existing routes; the server already tracks hf_report_submitted and hf_dash_block."
+  },
+  "HF-APP-PARITY-WITHDRAW": {
+    "description": "[HF-APP-PARITY-WITHDRAW] App withdrawals and wallet match the website: Requested/Cancelled statuses, cancel a waiting request, weekly-limit hint and friendly error, GST minus line on top-ups, in-app payment receipts. Worker: payout summary history now tells requested/approved/cancelled apart and returns maxPerWeek; app wallet top-up rows carry paid and GST.",
+    "no_telemetry": "Screen parity with the website using existing endpoints; the existing payout and receipt events cover the server side."
   }
 }

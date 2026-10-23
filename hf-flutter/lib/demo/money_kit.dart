@@ -544,45 +544,61 @@ class RulesCard extends StatelessWidget {
       );
 }
 
-enum PayoutKind { paid, checking, notPaid }
+enum PayoutKind { paid, requested, checking, notPaid, cancelled }
 
 /// One past payout: amount, date and a coloured chip.
 class PayoutRow extends StatelessWidget {
-  const PayoutRow({super.key, required this.amount, required this.when, required this.label, required this.kind});
+  const PayoutRow({super.key, required this.amount, required this.when, required this.label, required this.kind, this.onCancel});
   final String amount;
   final String when;
   final String label;
   final PayoutKind kind;
+
+  /// Only for a request still waiting for approval: shows "Cancel this request".
+  final VoidCallback? onCancel;
   @override
   Widget build(BuildContext context) {
     final (IconData icon, Color bg, Color fg) = switch (kind) {
       PayoutKind.paid => (Icons.check_rounded, C.teatint, const Color(0xFF0B5F66)),
+      PayoutKind.requested => (Icons.hourglass_top_rounded, C.goldtint, C.amber),
       PayoutKind.checking => (Icons.hourglass_top_rounded, C.goldtint, C.amber),
+      PayoutKind.cancelled => (Icons.remove_circle_outline_rounded, const Color(0xFFF3EEF2), C.muted),
       PayoutKind.notPaid => (Icons.close_rounded, const Color(0xFFF3EEF2), C.ruby),
     };
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(color: C.white, borderRadius: BorderRadius.circular(18), border: Border.all(color: C.line, width: 1.5)),
-      child: Row(children: [
-        Expanded(
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(amount, style: t(16, w: FontWeight.w900)),
-            Text(when, style: t(14, color: C.muted, w: FontWeight.w700)),
-          ]),
-        ),
-        const SizedBox(width: 8),
-        Flexible(
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
-            decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(999)),
-            child: Row(mainAxisSize: MainAxisSize.min, children: [
-              Icon(icon, size: 15, color: fg),
-              const SizedBox(width: 4),
-              Flexible(child: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis, style: t(14, color: fg, w: FontWeight.w800))),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(amount, style: t(16, w: FontWeight.w900)),
+              Text(when, style: t(14, color: C.muted, w: FontWeight.w700)),
             ]),
           ),
-        ),
+          const SizedBox(width: 8),
+          Flexible(
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
+              decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(999)),
+              child: Row(mainAxisSize: MainAxisSize.min, children: [
+                Icon(icon, size: 15, color: fg),
+                const SizedBox(width: 4),
+                Flexible(child: Text(label, maxLines: 2, overflow: TextOverflow.ellipsis, style: t(14, color: fg, w: FontWeight.w800))),
+              ]),
+            ),
+          ),
+        ]),
+        if (onCancel != null)
+          Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton(
+              onPressed: onCancel,
+              style: TextButton.styleFrom(minimumSize: const Size(48, 48), padding: const EdgeInsets.symmetric(horizontal: 4)),
+              child: Text('Cancel this request', style: t(15, color: C.ruby, w: FontWeight.w800)),
+            ),
+          ),
       ]),
     );
   }

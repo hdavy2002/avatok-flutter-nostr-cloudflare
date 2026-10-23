@@ -136,13 +136,18 @@ describe("GET /api/hf/payouts/summary", () => {
     const s = await jsonOf(await hit("GET", "/api/hf/payouts/summary"));
     expect(s).toMatchObject({ readyPaise: 200000, onHoldPaise: 30000, upi: { vpa: "asha@okhdfc", nameMatched: null } });
   });
-  it("history maps statuses: requested/approved -> checking, paid (with utr), rejected", async () => {
+  it("history maps statuses: requested, approved -> checking, paid (with utr), rejected, cancelled", async () => {
     seedInfluencer({ upi: true, kyc: true }); wallet.balance = 5000; call("old", 20, 5000);
     const a = await jsonOf(await post(50000, "a"));
     let s = await jsonOf(await hit("GET", "/api/hf/payouts/summary"));
-    expect(s.history).toEqual([expect.objectContaining({ id: a.id, amountPaise: 50000, status: "checking" })]);
+    expect(s.history).toEqual([expect.objectContaining({ id: a.id, amountPaise: 50000, status: "requested" })]);
+    expect(s.maxPerWeek).toBeGreaterThanOrEqual(1);
     currentUid = "admin1";
     await hit("POST", `/api/admin/hf/payouts/${a.id}/approve`);
+    currentUid = "host1";
+    s = await jsonOf(await hit("GET", "/api/hf/payouts/summary"));
+    expect(s.history[0].status).toBe("checking");
+    currentUid = "admin1";
     await hit("POST", `/api/admin/hf/payouts/${a.id}/paid`, { utr: "412345678901" });
     currentUid = "host1";
     s = await jsonOf(await hit("GET", "/api/hf/payouts/summary"));
@@ -151,6 +156,13 @@ describe("GET /api/hf/payouts/summary", () => {
     currentUid = "admin1"; await hit("POST", `/api/admin/hf/payouts/${b.id}/reject`, { reason: "UPI invalid" }); currentUid = "host1";
     s = await jsonOf(await hit("GET", "/api/hf/payouts/summary"));
     expect(s.history.map((x: any) => x.status).sort()).toEqual(["paid", "rejected"]);
+  });
+  it("[HF-APP-PARITY-WITHDRAW] a person's own cancel shows as cancelled in the history", async () => {
+    seedInfluencer({ upi: true, kyc: true }); wallet.balance = 5000; call("old", 20, 5000);
+    const a = await jsonOf(await post(50000, "c"));
+    await hit("POST", `/api/hosts/me/payouts/${a.id}/cancel`);
+    const s = await jsonOf(await hit("GET", "/api/hf/payouts/summary"));
+    expect(s.history).toEqual([expect.objectContaining({ id: a.id, status: "cancelled" })]);
   });
   it("[HF-WIRE-13] fans see the payout summary (nothing ready, no minimum); flag off is 404; own data only", async () => {
     const f = await jsonOf(await hit("GET", "/api/hf/payouts/summary"));

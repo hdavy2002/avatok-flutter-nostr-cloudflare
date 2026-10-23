@@ -1,7 +1,7 @@
 // [HF-WIRE-6] One wallet shape for the Android app. The existing GET /api/hf/wallet answers in three shapes (rupee WalletDO, token lots,
 // Standard plan); this folds them into {balancePaise, testCreditPaise, heldPaise, ledger[], nextCursor}. Pure: no I/O.
 export type AppLedgerKind = "call" | "topup" | "hold" | "release" | "payout" | "refund";
-export interface AppLedgerRow { id: string; kind: AppLedgerKind; amountPaise: number; at: number; label: string }
+export interface AppLedgerRow { id: string; kind: AppLedgerKind; amountPaise: number; at: number; label: string; paidPaise?: number; gstPaise?: number }
 export interface AppWallet { balancePaise: number; testCreditPaise: number; heldPaise: number; ledger: AppLedgerRow[]; nextCursor: string | null }
 
 type R = Record<string, unknown>;
@@ -34,7 +34,10 @@ export function normalizeAppWallet(b: R, page: { cursor?: string | null; limit?:
     const raw = String(h.kind ?? "");
     const amt = h.amountPaise != null ? Math.trunc(n(h.amountPaise)) : h.rupees != null ? paise(h.rupees) : paise(h.tokens);
     const at = Math.trunc(n(h.at));
-    return { id: `${raw}:${String(h.callId ?? at)}:${i}`, kind: kindOf(raw), amountPaise: amt, at, label: String(h.label ?? "") };
+    // [HF-APP-PARITY-WITHDRAW] a top-up carries what was paid and the GST in it, so the app can show "paid - GST = added".
+    const pu = raw === "purchase" && h.purchase && typeof h.purchase === "object" ? (h.purchase as R) : null;
+    const split = pu && n(pu.paidPaise) > 0 ? { paidPaise: Math.trunc(n(pu.paidPaise)), gstPaise: Math.max(0, Math.trunc(n(pu.gstPaise))) } : {};
+    return { id: `${raw}:${String(h.callId ?? at)}:${i}`, kind: kindOf(raw), amountPaise: amt, at, label: String(h.label ?? ""), ...split };
   }).sort((a, c) => c.at - a.at);
   const limit = Math.min(50, Math.max(1, Math.trunc(page.limit || 20)));
   const start = Math.max(0, Math.trunc(Number(page.cursor ?? 0)) || 0);

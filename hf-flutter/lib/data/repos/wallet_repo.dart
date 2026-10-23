@@ -82,6 +82,13 @@ class WalletRepo {
   Future<TopupStatus> status(String orderId) async =>
       TopupStatus.fromJson(await _api.getJson('/api/hf/wallet/topup/${Uri.encodeComponent(orderId)}'));
 
+  /// `GET /api/hf/wallet/receipts` -> `{receipts:[{id,number,kind,amountRupees,issuedAt,paidPaise?,gstPaise?,walletPaise?}]}`, newest first.
+  Future<List<ReceiptItem>> receipts() async {
+    final j = await _api.getJson('/api/hf/wallet/receipts');
+    final rows = j['receipts'];
+    return rows is List ? [for (final r in rows) if (r is Map) ReceiptItem.fromJson(Map<String, dynamic>.from(r))] : const [];
+  }
+
   /// Same maths as the server (paid divided by 1.18, rounded DOWN to the paisa), for the preview line.
   static int creditPaiseFor(int paidPaise) => (paidPaise * 10000) ~/ 11800;
 

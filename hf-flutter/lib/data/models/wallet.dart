@@ -13,7 +13,15 @@ LedgerKind _kind(Object? v) {
 }
 
 class LedgerEntry {
-  const LedgerEntry({required this.id, required this.kind, required this.amountPaise, required this.at, required this.label});
+  const LedgerEntry({
+    required this.id,
+    required this.kind,
+    required this.amountPaise,
+    required this.at,
+    required this.label,
+    this.paidPaise,
+    this.gstPaise,
+  });
 
   factory LedgerEntry.fromJson(Map<String, dynamic> j) => LedgerEntry(
         id: '${j['id'] ?? ''}',
@@ -21,6 +29,8 @@ class LedgerEntry {
         amountPaise: _i(j['amountPaise']),
         at: DateTime.fromMillisecondsSinceEpoch(_i(j['at'])),
         label: '${j['label'] ?? ''}',
+        paidPaise: j['paidPaise'] is num ? (j['paidPaise'] as num).round() : null,
+        gstPaise: j['gstPaise'] is num ? (j['gstPaise'] as num).round() : null,
       );
 
   final String id;
@@ -30,6 +40,50 @@ class LedgerEntry {
   final int amountPaise;
   final DateTime at;
   final String label;
+
+  /// Top-ups only: what was paid (GST included) and the GST in it. The wallet got paid minus GST ([amountPaise]).
+  final int? paidPaise;
+  final int? gstPaise;
+
+  bool get hasGstSplit => paidPaise != null && gstPaise != null && paidPaise! > 0;
+}
+
+/// One payment receipt from `GET /api/hf/wallet/receipts` (the printable HTML needs a bearer token, so the app draws it itself).
+class ReceiptItem {
+  const ReceiptItem({
+    required this.id,
+    required this.number,
+    required this.isTaxInvoice,
+    required this.amountPaise,
+    required this.issuedAt,
+    this.paidPaise,
+    this.gstPaise,
+    this.walletPaise,
+  });
+
+  factory ReceiptItem.fromJson(Map<String, dynamic> j) => ReceiptItem(
+        id: '${j['id'] ?? ''}',
+        number: '${j['number'] ?? ''}',
+        isTaxInvoice: j['kind'] == 'tax_invoice',
+        amountPaise: j['amountRupees'] is num ? ((j['amountRupees'] as num) * 100).round() : 0,
+        issuedAt: DateTime.fromMillisecondsSinceEpoch(_i(j['issuedAt'])),
+        paidPaise: j['paidPaise'] is num ? (j['paidPaise'] as num).round() : null,
+        gstPaise: j['gstPaise'] is num ? (j['gstPaise'] as num).round() : null,
+        walletPaise: j['walletPaise'] is num ? (j['walletPaise'] as num).round() : null,
+      );
+
+  final String id;
+  final String number;
+  final bool isTaxInvoice;
+
+  /// Whole-rupee amount on the record, in paise.
+  final int amountPaise;
+  final DateTime issuedAt;
+  final int? paidPaise;
+  final int? gstPaise;
+  final int? walletPaise;
+
+  bool get hasSplit => paidPaise != null && gstPaise != null && walletPaise != null;
 }
 
 /// `GET /api/hf/app/wallet`.

@@ -63,6 +63,30 @@ void main() {
       expect(s.history.first.utr, '412345678901');
     });
 
+    test('parses requested and cancelled, and the weekly cap (default 2)', () {
+      final s = PayoutSummary.fromJson(_summary(history: [
+        {'id': 'a', 'at': 1760000000000, 'amountPaise': 60000, 'status': 'requested'},
+        {'id': 'b', 'at': 1760000000000, 'amountPaise': 50000, 'status': 'cancelled'},
+        {'id': 'c', 'at': 1760000000000, 'amountPaise': 50000, 'status': 'checking'},
+      ]));
+      expect(s.history.map((h) => h.status), [PayoutStatus.requested, PayoutStatus.cancelled, PayoutStatus.checking]);
+      expect(s.maxPerWeek, 2);
+      expect(PayoutSummary.fromJson({..._summary(), 'maxPerWeek': 3}).maxPerWeek, 3);
+    });
+
+    test('cancel posts to the host cancel route', () async {
+      final api = FakeApiClient((m, p, b) => {'ok': true, 'status': 'cancelled'});
+      await PayoutsRepo(api).cancel('pay_abc12345');
+      expect(api.calls, ['POST /api/hosts/me/payouts/pay_abc12345/cancel']);
+    });
+
+    test('friendlyError maps weekly_limit by its code, and keeps other messages', () {
+      final weekly = ApiException.fromResponse(429, '{"error":"weekly_limit","message":"x"}');
+      expect(PayoutsRepo.friendlyError(weekly, maxPerWeek: 2), contains('2 times a week'));
+      final other = ApiException.fromResponse(400, '{"error":"invalid_amount","message":"Enter a whole number of rupees."}');
+      expect(PayoutsRepo.friendlyError(other), 'Enter a whole number of rupees.');
+    });
+
     test('request sends paise with an Idempotency-Key', () async {
       final api = FakeApiClient((m, p, b) => {'ok': true});
       await PayoutsRepo(api).request(60000, key: 'k-1');
@@ -87,6 +111,40 @@ void main() {
   });
 
   group('PayoutScreen', () {
+    testWidgets('shows the weekly hint, a waiting request with Cancel, and cancels after the sheet confirms', (tester) async {
+      var cancelled = false;
+      final api = FakeApiClient((m, p, b) {
+        if (m == 'POST' && p.endsWith('/cancel')) {
+          cancelled = true;
+          return {'ok': true, 'status': 'cancelled'};
+        }
+        return _summary(history: [
+          {'id': 'pay_abc12345', 'at': DateTime(2026, 10, 12).millisecondsSinceEpoch, 'amountPaise': 60000, 'status': cancelled ? 'cancelled' : 'requested'},
+        ]);
+      });
+      await _pump(tester, PayoutScreen(repo: PayoutsRepo(api)));
+      expect(find.text('You can withdraw 2 times a week'), findsOneWidget);
+      expect(find.text('Requested · waiting for approval'), findsOneWidget);
+      await tester.ensureVisible(find.text('Cancel this request'));
+      await tester.tap(find.text('Cancel this request'));
+      await tester.pumpAndSettle();
+      expect(find.text('Money goes back to your wallet.'), findsOneWidget);
+      await tester.tap(find.text('YES, CANCEL IT'));
+      await tester.pumpAndSettle();
+      expect(api.calls, contains('POST /api/hosts/me/payouts/pay_abc12345/cancel'));
+      expect(find.text('Cancelled'), findsOneWidget);
+      expect(find.text('Cancel this request'), findsNothing);
+    });
+
+    testWidgets('weekly_limit shows the friendly sentence', (tester) async {
+      final api = FakeApiClient((m, p, b) => m == 'GET' ? _summary() : ApiException.fromResponse(429, '{"error":"weekly_limit","message":"raw"}'));
+      await _pump(tester, PayoutScreen(repo: PayoutsRepo(api)));
+      await tester.tap(find.text('REQUEST WITHDRAWAL'));
+      await tester.pumpAndSettle();
+      expect(find.textContaining('2 times a week'), findsWidgets);
+      expect(find.text('raw'), findsNothing);
+    });
+
     testWidgets('shows ready and hold from the server, the UPI, and past payouts', (tester) async {
       final api = FakeApiClient((m, p, b) => _summary(history: [
             {'id': 'a', 'at': DateTime(2026, 10, 12).millisecondsSinceEpoch, 'amountPaise': 60000, 'status': 'paid', 'utr': '4521'},

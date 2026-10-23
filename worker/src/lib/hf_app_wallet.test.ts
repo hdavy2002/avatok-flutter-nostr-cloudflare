@@ -43,3 +43,14 @@ describe("[HF-WIRE-6] normalizeAppWallet", () => {
     expect(new Set([...p1.ledger, ...p2.ledger].map((l) => l.id)).size).toBe(25);
   });
 });
+
+describe("[HF-APP-PARITY-WITHDRAW] top-up rows carry the GST split", () => {
+  it("passes paid and GST for a purchase row only", () => {
+    const w = normalizeAppWallet({ mode: "tokens", tokens: { balance: 0, testTokens: 0 }, history: [
+      { at: 5, kind: "purchase", amountPaise: 8475, label: "Money added", purchase: { paidPaise: 10000, gstPaise: 1525, walletPaise: 8475 } },
+      { at: 4, kind: "call_spent", amountPaise: -300, label: "Call" },
+    ] });
+    expect(w.ledger[0]).toMatchObject({ kind: "topup", paidPaise: 10000, gstPaise: 1525 });
+    expect(w.ledger[1].paidPaise).toBeUndefined();
+  });
+});

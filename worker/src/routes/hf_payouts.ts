@@ -389,7 +389,7 @@ async function adminReject(req: Request, env: Env, ctx: ExecutionContext | undef
 
 // ── Reels app adapter [HF-WIRE-10] (paise on the wire; additive, the host routes above are unchanged) ─────────────────────────────
 //   GET  /api/hf/payouts/summary -> { readyPaise, onHoldPaise, minPaise, upi:{vpa,nameMatched}|null, kycStatus:'none'|'pending'|'verified',
-//                                     history:[{id,at,amountPaise,status:'checking'|'paid'|'rejected',utr?}] }
+//                                     history:[{id,at,amountPaise,status:'requested'|'checking'|'paid'|'rejected'|'cancelled',utr?}], maxPerWeek }
 //   PUT  /api/hf/payouts/upi {vpa} -> { ok, upi:{vpa,nameMatched} }
 //   POST /api/hf/payouts {amountPaise} + Idempotency-Key -> { ok, id, status:'requested', amountPaise }
 //        errors: 409 upi_required, 409 kyc_required {nextStep}, 400 invalid_amount|below_minimum, 402 insufficient_withdrawable, 429 weekly_limit
@@ -432,15 +432,17 @@ async function appSummary(req: Request, env: Env): Promise<Response> {
   ]);
   const vpa = pay?.upi_enc ? await tryDecryptPii(env, pay.upi_enc) : null;
   const kycStatus = kyc?.verified_at ? "verified" : kyc ? "pending" : "none";
-  const history = (hist.results ?? []).filter((r) => !isSystemRow(r) && r.status !== "cancelled").map((r) => ({
+  const history = (hist.results ?? []).filter((r) => !isSystemRow(r)).map((r) => ({
     id: r.id, at: r.created_at, amountPaise: r.amount_rupees * 100,
-    status: r.status === "paid" ? "paid" : r.status === "rejected" ? "rejected" : "checking",
+    // [HF-APP-PARITY-WITHDRAW] 'requested' (waiting, can be cancelled) is told apart from 'checking' (approved); a person's own cancel shows as 'cancelled'.
+    status: r.status === "paid" ? "paid" : r.status === "rejected" ? "rejected" : r.status === "cancelled" ? "cancelled" : r.status === "requested" ? "requested" : "checking",
     ...(r.status === "paid" && r.utr ? { utr: r.utr } : {}),
   }));
   return json({
     readyPaise: Math.max(0, readyPaise), onHoldPaise: Math.max(0, onHoldPaise),
     minPaise: (isInf && walletReadyPaise === 0 ? c.minRupees : c.fanMinRupees) * 100,
     walletReadyPaise, earningsReadyPaise, isInfluencer: isInf, // [HF-WIRE-13]
+    maxPerWeek: c.maxPerWeek, // [HF-APP-PARITY-WITHDRAW] the weekly cap, so the app hint never drifts from the server
     upi: vpa ? { vpa, nameMatched: pay?.upi_verified === 1 ? true : null } : null, kycStatus, history,
   }, 200, { "cache-control": "private, no-store" });
 }
