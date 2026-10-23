@@ -8,6 +8,7 @@ import OrdersTab from './OrdersTab';
 import ProductsTab from './ProductsTab';
 import Wizard from './Wizard';
 import ShareMyPage from '../share/ShareMyPage'; // [HF-SHARE-WEB-1]
+import TaxBox from './TaxBox';
 import { getCatalog, getSummary, merchConfig, rupees, type CatalogInfo, type Summary } from './api';
 
 type Tab = 'products' | 'orders';
@@ -45,16 +46,17 @@ export default function MerchApp() {
 
   const s = summary;
   return <>
-    <PageHead eyebrow="Merch" title="Your merch shop" sub="Put your art on T-shirts, hoodies, mugs and more, set your price, and your fans buy it from your page. We print and ship it, you earn on every sale." art={<Sticker name="swag" w={104} rot={6} />} />
+    <PageHead eyebrow="Merch" title="Your merch shop" sub="Put your art on T-shirts, hoodies, mugs and more, set your price, and your fans buy it from your page. We print and ship it, you earn a design royalty on every sale." art={<Sticker name="swag" w={104} rot={6} />} />
     <ShareMyPage variant="row" />
     {sumFailed && <Failed onRetry={loadSummary} text="We could not load your numbers." />}
     <section className="mc-strip" aria-label="Summary">
       <div className="mc-stat"><span className="small muted">Products</span><span className="num">{s ? s.products.live : '—'} live</span><span className="small muted">{s ? `${s.products.pending} waiting for review` : ''}</span></div>
       <div className="mc-stat"><span className="small muted">New orders</span><span className="num">{s ? s.orders.new : '—'}</span><span className="small muted">{s ? `${s.orders.processing} processing · ${s.orders.shipped} shipped` : ''}</span></div>
-      <div className="mc-stat"><span className="small muted">Earnings coming</span><span className="num">{s ? rupees(s.earnings.pendingPaise) : '—'}</span><span className="small muted">Delivered orders unlock after the hold</span></div>
+      <div className="mc-stat"><span className="small muted">Royalty coming</span><span className="num">{s ? rupees(s.earnings.pendingPaise) : '—'}</span><span className="small muted">Delivered orders unlock after the hold</span></div>
       <div className="mc-stat"><span className="small muted">Ready to withdraw</span><span className="num">{s ? rupees(s.earnings.availablePaise) : '—'}</span><a className="h3-link small" href="/dashboard/host/earnings">Earnings & withdrawals →</a></div>
     </section>
 
+    <TaxBox />
     {wizard ? <Wizard info={wizard} minMarkup={minMarkup} onClose={() => setWizard(null)} onPublished={() => { setWizard(null); setTab('products'); setKey(k => k + 1); loadSummary(); }} /> :
       <section className="h3-card">
         <div className="top">

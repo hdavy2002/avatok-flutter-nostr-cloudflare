@@ -3,16 +3,20 @@
 import { useCallback, useEffect, useState } from 'react';
 import { adminBlob, saveBlob } from '../adminApi';
 import { Banner, adminCall, click, dateIST, fail, money, usePageView } from './merchKit';
+import MerchGstPanel from './MerchGstPanel';
 
-interface Totals { sharePaise: number; cashfeePaise: number; gstPaise: number; netPaise: number; printroveOwedPaise: number; refundsPaise: number }
+/** gstPaise = net GST (collected − Printrove credit, plus old-style estimates on old orders) [HF-MERCH-GST-1]. */
+interface Totals { sharePaise: number; cashfeePaise: number; gstPaise: number; outputGstPaise: number; inputGstPaise: number; netPaise: number; printroveOwedPaise: number; refundsPaise: number }
 interface Res {
   month: string; totals: Totals;
   bySeller: Array<Totals & { sellerUid: string | null; slug: string | null; displayName: string | null }>;
   rows: Array<{ id: string | number; kind: string; amountPaise: number; orderId: string | null; sellerUid: string | null; note: string | null; createdAt: number }>;
 }
 const KIND: Record<string, string> = {
-  merch_share: 'Platform share', printrove_cost: 'Owed to Printrove', cashfree_fee: 'Cashfree fee (est.)', gst: 'GST (est.)',
-  refund_share: 'Share given back', refund_printrove_cost: 'Printrove cost reversed', refund_cashfree_fee: 'Cashfree fee reversed', refund_gst: 'GST reversed', refund_after_hold: 'Influencer earning absorbed',
+  merch_share: 'Platform share', printrove_cost: 'Owed to Printrove', cashfree_fee: 'Cashfree fee (est.)', gst: 'GST (old estimate)',
+  gst_output: 'GST collected from the fan', gst_input: 'Printrove GST claimed back',
+  refund_share: 'Share given back', refund_printrove_cost: 'Printrove cost reversed', refund_cashfree_fee: 'Cashfree fee reversed', refund_gst: 'GST reversed',
+  refund_gst_output: 'GST collected, reversed', refund_gst_input: 'Printrove GST claim, reversed', refund_after_hold: 'Influencer earning absorbed',
 };
 const nowMonth = () => new Date(Date.now() + 19_800_000).toISOString().slice(0, 7);
 
@@ -51,16 +55,19 @@ export default function MerchWallet() {
           <div className="mx-tiles">
             <div className="mx-tile"><b>Platform share</b><span>{money(t.sharePaise)}</span></div>
             <div className="mx-tile"><b>Cashfree fees (est.)</b><span>{money(t.cashfeePaise)}</span></div>
-            <div className="mx-tile"><b>GST (est.)</b><span>{money(t.gstPaise)}</span></div>
+            <div className="mx-tile"><b>GST collected</b><span>{money(t.outputGstPaise)}</span></div>
+            <div className="mx-tile"><b>Printrove GST claimed back</b><span>{money(t.inputGstPaise)}</span></div>
+            <div className="mx-tile"><b>Net GST to pay</b><span>{money(t.gstPaise)}</span></div>
             <div className="mx-tile"><b>Net after fees</b><span>{money(t.netPaise)}</span></div>
             <div className="mx-tile"><b>Printrove is owed</b><span>{money(t.printroveOwedPaise)}</span></div>
             <div className="mx-tile"><b>Refunds taken back</b><span>{money(t.refundsPaise)}</span></div>
           </div>
+          <MerchGstPanel month={month} />
           <section>
             <h2 className="mx-h">By influencer</h2>
             {data.bySeller.length === 0 ? <p className="mx-empty">No merch activity this month.</p> : (
               <div className="mx-scroll"><table className="mx-table">
-                <thead><tr><th>Influencer</th><th className="n">Share</th><th className="n">Cashfree</th><th className="n">GST</th><th className="n">Net</th><th className="n">Printrove</th><th className="n">Refunds</th></tr></thead>
+                <thead><tr><th>Influencer</th><th className="n">Share</th><th className="n">Cashfree</th><th className="n">Net GST</th><th className="n">Net</th><th className="n">Printrove</th><th className="n">Refunds</th></tr></thead>
                 <tbody>{data.bySeller.map((s) => (
                   <tr key={s.sellerUid ?? 'none'}><td>{s.displayName ?? s.slug ?? s.sellerUid ?? '—'}</td><td className="n">{money(s.sharePaise)}</td><td className="n">{money(s.cashfeePaise)}</td><td className="n">{money(s.gstPaise)}</td><td className="n">{money(s.netPaise)}</td><td className="n">{money(s.printroveOwedPaise)}</td><td className="n">{money(s.refundsPaise)}</td></tr>
                 ))}</tbody>

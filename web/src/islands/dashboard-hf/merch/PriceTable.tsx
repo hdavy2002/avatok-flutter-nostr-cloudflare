@@ -1,16 +1,16 @@
 /* [HF-MERCH-PRICE-LABELS-1] One per-size price table for the influencer screens (studio step 4 and the edit-markup dialog).
  * Printing (incl. GST) + Shipping = Base (rounded up to a whole rupee); Fan pays = Base + markup, all-in. Money is integer paise. */
-import { fanPaysPaise, rupees, youEarnPaise } from './api';
+import { fanPaysPaise, gstPct, rupees, youEarnPaise } from './api';
 
-export interface PriceRow { size: string; printingPaise: number; shippingPaise: number; basePaise: number }
+export interface PriceRow { size: string; printingPaise: number; shippingPaise: number; basePaise: number; maxMarkupRupees?: number }
 
-export function PriceTable({ rows, markup, okMarkup, shareBps, loading = false, label = 'Price per size' }: {
-  rows: PriceRow[]; markup: number; okMarkup: boolean; shareBps: number; loading?: boolean; label?: string;
+export function PriceTable({ rows, markup, okMarkup, shareBps, loading = false, label = 'Price per size', gstBps = 500 }: {
+  rows: PriceRow[]; markup: number; okMarkup: boolean; shareBps: number; loading?: boolean; label?: string; gstBps?: number;
 }) {
   const earn = youEarnPaise(markup, shareBps);
   return <div className="mc-scroll" tabIndex={0} role="region" aria-label={label}>
     <table className="mc-sizes mc-sizes-wide"><thead><tr>
-      <th>Size</th><th>Printing (incl. GST)</th><th>Shipping</th><th>Base</th><th>Your markup</th><th>Fan pays (incl. GST &amp; delivery)</th><th>You earn</th>
+      <th>Size</th><th>Printing (incl. GST)</th><th>Shipping</th><th>Base</th><th>Your markup</th><th>Fan pays (incl. {gstPct(gstBps)} GST &amp; delivery)</th><th>You earn (royalty)</th>
     </tr></thead><tbody>
       {rows.map(r => <tr key={r.size}>
         <td>{r.size}</td>
@@ -27,5 +27,5 @@ export function PriceTable({ rows, markup, okMarkup, shareBps, loading = false, 
 
 /** Footnote under the table. The share and hold days come from the values the screen already reads. */
 export function PriceNote({ shareBps, holdDays }: { shareBps: number; holdDays: number }) {
-  return <p className="small muted">Base = printing (incl. GST) + delivery. Fans pay one all-in price: base + your markup, including GST and free delivery. You keep {Math.round((10_000 - shareBps) / 100)}% of your markup, withdrawable {holdDays} days after delivery.</p>;
+  return <p className="small muted">Base = printing (incl. GST) + delivery. Fans pay one all-in price: base + your markup, including GST and free delivery. Your design royalty is {Math.round((10_000 - shareBps) / 100)}% of your markup, withdrawable {holdDays} days after delivery.</p>;
 }

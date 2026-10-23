@@ -3,7 +3,7 @@ import { PriceNote, PriceTable } from './PriceTable';
 import { useCallback, useEffect, useState } from 'react';
 import { captureException, capture } from '../../../lib/analytics';
 import { Dialog, Empty, Failed, Skel, Ic, useToast } from '../v3/ui';
-import { MARKUP_MAX, deleteProduct, listProducts, merchConfig, patchProduct, rupees, type Product, type ProductStatus } from './api';
+import { capText, deleteProduct, gstPct, listProducts, markupLimit, merchConfig, patchProduct, rupees, type Product, type ProductStatus } from './api';
 
 const STATUS: Record<ProductStatus, { label: string; cls: string }> = {
   pending: { label: 'Waiting for review', cls: 'gold' }, live: { label: 'Live', cls: '' }, hidden: { label: 'Hidden', cls: 'dec' }, rejected: { label: 'Rejected', cls: 'miss' },
@@ -12,6 +12,8 @@ const range = (a: number[]) => { const lo = Math.min(...a), hi = Math.max(...a);
 
 export default function ProductsTab({ shareBps, minMarkup, onNew, onChanged }: { shareBps: number; minMarkup: number; onNew: () => void; onChanged: () => void }) {
   const [items, setItems] = useState<Product[] | null>(null);
+  const [gstRateBps, setGstRateBps] = useState<number | undefined>(undefined); // [HF-MERCH-GST-1]
+  const [capPaise, setCapPaise] = useState<number | undefined>(undefined);
   const [failed, setFailed] = useState(false);
   const [edit, setEdit] = useState<Product | null>(null);
   const [del, setDel] = useState<Product | null>(null);
@@ -20,7 +22,7 @@ export default function ProductsTab({ shareBps, minMarkup, onNew, onChanged }: {
   const load = useCallback(() => {
     setFailed(false);
     void listProducts().then(r => {
-      if (r.ok) setItems(r.data.products);
+      if (r.ok) { setItems(r.data.products); setGstRateBps(r.data.gstRateBps); setCapPaise(r.data.priceCapPaise); }
       else { setFailed(true); setItems([]); if (r.status !== 401) captureException(new Error(`merch_products_${r.status}_${r.code}`), { area: 'hf_merch_creator', part: 'products' }); }
     });
   }, []);
@@ -48,8 +50,8 @@ export default function ProductsTab({ shareBps, minMarkup, onNew, onChanged }: {
         <div className="bd">
           <h3>{p.title}</h3>
           <div className="small muted">{p.catalogName}{p.colours.length ? ` · ${p.colours.length} colour${p.colours.length === 1 ? '' : 's'}` : ''}</div>
-          <div><span className="small muted">Fan pays</span> <b>{prices.length ? range(prices) : '—'}</b> <span className="small muted">(incl. GST &amp; delivery)</span></div>
-          <div className="mc-earn">{earns.length ? range(earns) : '—'} <span className="small muted" style={{ fontWeight: 600 }}>you earn per shirt</span></div>
+          <div><span className="small muted">Fan pays</span> <b>{prices.length ? range(prices) : '—'}</b> <span className="small muted">(incl. {gstPct(gstRateBps)} GST &amp; delivery)</span></div>
+          <div className="mc-earn">{earns.length ? range(earns) : '—'} <span className="small muted" style={{ fontWeight: 600 }}>design royalty per shirt</span></div>
           <div className="small muted">{p.soldCount} sold</div>
           {(p.status === 'rejected' || p.status === 'pending') && p.reviewNote && <div className="mc-note">{p.reviewNote}</div>}
           {p.status === 'pending' && !p.reviewNote && <div className="mc-note">Our team is checking your art. You can still change the price.</div>}
@@ -62,12 +64,12 @@ export default function ProductsTab({ shareBps, minMarkup, onNew, onChanged }: {
         </div>
       </article>;
     })}</div>
-    {edit && <EditDialog p={edit} shareBps={shareBps} minMarkup={minMarkup} onClose={() => setEdit(null)} onSaved={() => { setEdit(null); load(); onChanged(); toast('Saved.'); }} />}
+    {edit && <EditDialog p={edit} shareBps={shareBps} minMarkup={minMarkup} gstRateBps={gstRateBps} capPaise={capPaise} onClose={() => setEdit(null)} onSaved={() => { setEdit(null); load(); onChanged(); toast('Saved.'); }} />}
     {del && <DeleteDialog p={del} onClose={() => setDel(null)} onDone={() => { setDel(null); load(); onChanged(); toast('Deleted.'); }} onHide={async () => { const r = await patchProduct(del.id, { hidden: true }); setDel(null); toast(r.ok ? 'Hidden instead. Fans can no longer see it.' : r.message || 'Could not hide it.'); load(); onChanged(); }} />}
   </>;
 }
 
-function EditDialog({ p, shareBps, minMarkup, onClose, onSaved }: { p: Product; shareBps: number; minMarkup: number; onClose: () => void; onSaved: () => void }) {
+function EditDialog({ p, shareBps, minMarkup, gstRateBps, capPaise, onClose, onSaved }: { p: Product; shareBps: number; minMarkup: number; gstRateBps?: number; capPaise?: number; onClose: () => void; onSaved: () => void }) {
   const [markup, setMarkup] = useState(String(p.markupRupees));
   const [title, setTitle] = useState(p.title);
   const [desc, setDesc] = useState(p.description ?? '');
@@ -76,7 +78,8 @@ function EditDialog({ p, shareBps, minMarkup, onClose, onSaved }: { p: Product; 
   const [holdDays, setHoldDays] = useState(7);
   useEffect(() => { void merchConfig().then(c => setHoldDays(c.holdDays)); }, []);
   const m = Math.floor(Number(markup) || 0);
-  const okM = m >= minMarkup && m <= MARKUP_MAX;
+  const maxM = markupLimit(p.sizes); // [HF-MERCH-GST-1] smallest max across sizes (the fan price may not pass the cap)
+  const okM = m >= minMarkup && m <= maxM;
   async function save() {
     if (!okM || busy) return;
     setBusy(true); setErr(null);
@@ -94,11 +97,12 @@ function EditDialog({ p, shareBps, minMarkup, onClose, onSaved }: { p: Product; 
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginTop: 10 }}>
       <label className="f">Name<input value={title} maxLength={80} onChange={e => setTitle(e.target.value)} /></label>
       <label className="f">Description<textarea rows={3} maxLength={600} value={desc} onChange={e => setDesc(e.target.value)} /></label>
-      <label className="f">Your markup per shirt (₹{minMarkup} – ₹{MARKUP_MAX})<input inputMode="numeric" value={markup} onChange={e => setMarkup(e.target.value.replace(/[^0-9]/g, '').slice(0, 4))} /></label>
-      <PriceTable rows={p.sizes.map(x => ({ size: x.size, printingPaise: x.printingPaise, shippingPaise: x.shippingPaise, basePaise: x.basePaise }))} markup={m} okMarkup={okM} shareBps={shareBps} />
+      <label className="f">Your markup per shirt (₹{minMarkup} – ₹{maxM})<input inputMode="numeric" value={markup} onChange={e => setMarkup(e.target.value.replace(/[^0-9]/g, '').slice(0, 4))} /></label>
+      <p className="small muted">Shirts are capped at {capText(capPaise)} so the {gstPct(gstRateBps)} GST rate applies.</p>
+      <PriceTable rows={p.sizes.map(x => ({ size: x.size, printingPaise: x.printingPaise, shippingPaise: x.shippingPaise, basePaise: x.basePaise }))} markup={m} okMarkup={okM} shareBps={shareBps} gstBps={gstRateBps} />
       {p.breakdownEstimated && <p className="small muted">This product was made before we showed the split, so printing and shipping are an estimate. The base and the fan price are exact.</p>}
       <PriceNote shareBps={shareBps} holdDays={holdDays} />
-      {!okM && <p className="mc-err small">Enter a markup between ₹{minMarkup} and ₹{MARKUP_MAX}.</p>}
+      {!okM && <p className="mc-err small">Enter a markup between ₹{minMarkup} and ₹{maxM}.</p>}
       {err && <p className="mc-err small" role="alert">{err}</p>}
       <div className="acts"><button type="button" className="h3-btn rani mc-big" disabled={!okM || busy || !title.trim()} onClick={() => void save()}>{busy ? 'Saving…' : 'Save'}</button><button type="button" className="h3-btn ghost mc-big" onClick={onClose}>Cancel</button></div>
     </div>

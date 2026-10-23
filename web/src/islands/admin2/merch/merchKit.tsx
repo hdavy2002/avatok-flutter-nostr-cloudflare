@@ -17,6 +17,8 @@ export interface MerchMoney {
   qty: number; baseUnitPaise: number; markupUnitPaise: number; unitPaise: number; basePaise: number; markupPaise: number; totalPaise: number;
   influencerPaise: number; platformPaise: number; shareBps: number; payMethod: 'wallet' | 'cashfree';
   cashfreeFeeBps: number; cashfreeFeeEstPaise: number; gstBps: number; gstEstPaise: number; platformNetPaise: number;
+  /** [HF-MERCH-GST-1] absent on orders made before it shipped (gstEstPaise is then the old 18% estimate). */
+  gstRateBps?: number; taxablePaise?: number; outputGstPaise?: number; inputGstPaise?: number; netGstPaise?: number;
 }
 export interface MerchSnap {
   title?: string; imageUrl?: string | null; hostName?: string; hostSlug?: string; productSlug?: string; catalogName?: string; colour?: string; size?: string; qty?: number;
@@ -40,10 +42,14 @@ export interface AdminOrder {
   refund: { status: 'none' | 'done' | 'pending_manual' | 'refunding'; at: number | null }; earningCreditedAt: number | null;
   problem: { kind?: string; note?: string; at?: number; photoUrl: string | null } | null;
   events?: OrderEvent[]; liveQuote?: LiveQuote; profit?: ProfitBlock | null;
+  /** [HF-MERCH-GST-1] detail only. sellerTax = the influencer's optional GSTIN (record only); invoice = the tax invoice / receipt issued for this order. */
+  sellerTax?: { gstin: string } | null; invoice?: { number: string; kind: 'tax_invoice' | 'receipt' } | null;
 }
 export interface ProfitRow {
   size: string; printroveCostPaise: number; shippingPaise: number; printroveTotalPaise: number; fanPaysPaise: number; influencerPaise: number;
   platformBeforeFeesPaise: number; gstEstPaise: number; cashfreeEstPaise: number; platformAfterFeesPaise: number;
+  /** [HF-MERCH-GST-1] output GST inside the fan price, Printrove GST claimed back, and the difference (gstEstPaise carries the net). */
+  outputGstPaise?: number; inputGstPaise?: number; netGstPaise?: number;
 }
 export interface ProfitBlock { shippingPaise: number; rows: ProfitRow[]; live: boolean; note?: string }
 export interface AdminProduct {
@@ -55,6 +61,8 @@ export interface AdminProduct {
 export interface MerchSettings {
   hfMerchEnabled: boolean; hfMerchCheckoutEnabled: boolean; hfMerchAutoApprove: boolean; hfMerchProductReview: boolean;
   hfMerchPlatformShareBps: number; hfMerchMinMarkupRupees: number; hfMerchBaseBufferRupees: number; hfMerchCashfreeFeeBps: number; hfMerchGstBps: number; hfMerchHoldDays: number;
+  /** [HF-MERCH-GST-1] */
+  hfMerchRequireGstin: boolean; hfMerchGstRateBps: number; hfMerchPriceCapRupees: number; hfMerchHsn: string; gstinConfigured: boolean;
 }
 
 /** One admin page view per mount: merch_admin_page_viewed {page}. */
@@ -100,7 +108,7 @@ export function ProfitTable({ profit }: { profit: ProfitBlock | null | undefined
       <div className="mx-scroll"><table className="mx-table mx-profit">
         <thead><tr>
           <th>Size</th><th className="n">Printrove cost (incl. GST)</th><th className="n">+ shipping</th><th className="n">Printrove total</th><th className="n">Fan pays (incl. GST &amp; delivery)</th>
-          <th className="n">Influencer gets</th><th className="n">Platform keeps (before fees)</th><th className="n">Fees</th><th className="n">Platform keeps (after fees)</th>
+          <th className="n">Influencer gets</th><th className="n">Platform keeps (before fees)</th><th className="n">Fees (net GST + Cashfree)</th><th className="n">Platform keeps (after fees)</th>
         </tr></thead>
         <tbody>{profit.rows.map((r) => {
           const tone = r.platformAfterFeesPaise < 0 ? 'bad' : r.platformAfterFeesPaise < 2000 ? 'amber' : '';
@@ -108,13 +116,13 @@ export function ProfitTable({ profit }: { profit: ProfitBlock | null | undefined
             <tr key={r.size} className={tone ? `mx-p-${tone}` : undefined}>
               <td>{r.size}</td><td className="n">{rupees(r.printroveCostPaise)}</td><td className="n">{rupees(r.shippingPaise)}</td><td className="n">{rupees(r.printroveTotalPaise)}</td>
               <td className="n">{rupees(r.fanPaysPaise)}</td><td className="n">{rupees(r.influencerPaise)}</td><td className="n">{rupees(r.platformBeforeFeesPaise)}</td>
-              <td className="n">{rupees(r.gstEstPaise + r.cashfreeEstPaise)}<span className="mx-fee">GST {rupees(r.gstEstPaise)}{r.cashfreeEstPaise > 0 ? ` + Cashfree ${rupees(r.cashfreeEstPaise)} if paid by UPI/card` : ''}</span></td>
+              <td className="n">{rupees(r.gstEstPaise + r.cashfreeEstPaise)}<span className="mx-fee">Net GST {rupees(r.gstEstPaise)}{r.outputGstPaise != null && r.inputGstPaise != null ? ` (${rupees(r.outputGstPaise)} collected − ${rupees(r.inputGstPaise)} Printrove credit)` : ' (old estimate)'}{r.cashfreeEstPaise > 0 ? ` + Cashfree ${rupees(r.cashfreeEstPaise)} if paid by UPI/card` : ''}</span></td>
               <td className="n"><b>{rupees(r.platformAfterFeesPaise)}</b></td>
             </tr>
           );
         })}</tbody>
       </table></div>
-      <p className="hfa-note">Printrove cost = shirt + print + Printrove GST, as on Printrove’s dashboard. Shipping = Printrove’s current quote. Fees = GST on our share + Cashfree fee if the fan pays by UPI/card.</p>
+      <p className="hfa-note">Printrove cost = shirt + print + Printrove GST, as on Printrove’s dashboard. Shipping = Printrove’s current quote. We are the seller: the fan price includes 5% GST. Net GST = GST collected from the fan − the GST Printrove charged us (claimed back). Cashfree fee only if the fan pays by UPI/card.</p>
     </div>
   );
 }

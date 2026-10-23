@@ -9,13 +9,14 @@ export interface CatalogItem {
   id: string; kind: string; name: string; side: ('front' | 'back')[]; printArea: { wIn: number; hIn: number };
   /** [HF-MERCH-STUDIO-2] Category slug + label for the product tabs, silhouette family (studio/silhouettes.ts), per-side print areas. */
   category?: string; categoryLabel?: string; family?: string; printAreas?: { front?: { wIn: number; hIn: number }; back?: { wIn: number; hIn: number } }; imageUrl?: string;
-  colours: Colour[]; sizes: { size: string; basePaise: number; baseRupees: number; printingPaise: number; shippingPaise: number }[];
+  colours: Colour[]; sizes: { size: string; basePaise: number; baseRupees: number; printingPaise: number; shippingPaise: number; maxMarkupRupees?: number }[];
 }
-export interface CatalogInfo { items: CatalogItem[]; shippingPaise: number; bufferPaise: number; minMarkupRupees: number; platformShareBps: number; holdDays: number }
+/** [HF-MERCH-GST-1] priceCapPaise = the most one shirt may cost a fan (Rs 2,500); gstRateBps = the GST inside every fan price (500 = 5%). */
+export interface CatalogInfo { items: CatalogItem[]; shippingPaise: number; bufferPaise: number; minMarkupRupees: number; platformShareBps: number; holdDays: number; priceCapPaise?: number; gstRateBps?: number }
 export type ProductStatus = 'pending' | 'live' | 'rejected' | 'hidden';
 export interface Product {
   id: string; slug: string; title: string; description: string; status: ProductStatus; reviewNote: string | null; imageUrl: string | null;
-  mockups: string[]; catalogName: string; colours: Colour[]; sizes: { size: string; basePaise: number; pricePaise: number; youEarnPaise: number; printingPaise: number; shippingPaise: number; bufferPaise: number }[];
+  mockups: string[]; catalogName: string; colours: Colour[]; sizes: { size: string; basePaise: number; pricePaise: number; youEarnPaise: number; printingPaise: number; shippingPaise: number; bufferPaise: number; maxMarkupRupees?: number }[];
   /** true for older products whose printing / shipping split is worked back from today's shipping quote. */
   breakdownEstimated?: boolean;
   markupRupees: number; soldCount: number; publicUrl: string; createdAt: number;
@@ -42,6 +43,11 @@ export interface CreateBody {
 }
 
 export const MARKUP_MAX = 5000;
+/** [HF-MERCH-GST-1] The biggest markup every chosen size allows (the smallest maxMarkupRupees), never above MARKUP_MAX. Sizes without the field do not limit it. */
+export const markupLimit = (sizes: { maxMarkupRupees?: number }[]): number =>
+  sizes.reduce((lim, s) => (typeof s.maxMarkupRupees === 'number' ? Math.min(lim, Math.max(0, s.maxMarkupRupees)) : lim), MARKUP_MAX);
+export const capText = (capPaise?: number) => `₹${Math.round((capPaise ?? 250_000) / 100).toLocaleString('en-IN')}`;
+export const gstPct = (bps?: number) => `${(bps ?? 500) / 100}%`;
 
 let cfg: Promise<{ enabled: boolean; minMarkupRupees: number; holdDays: number }> | null = null;
 /** hfMerchEnabled (and two numbers the screens show) from /api/config, one request per page. Any failure counts as off. */
@@ -58,15 +64,19 @@ export const merchEnabled = (): Promise<boolean> => merchConfig().then(c => c.en
 const B = '/api/hf/merch';
 export const getCatalog = () => hfCall<{ ok: boolean } & CatalogInfo>('GET', `${B}/catalog`);
 export const getQuote = (p: { catalogId: string; colours: string[]; side: string; w: number; h: number; sizes: string[] }) =>
-  hfCall<{ ok: boolean; sizes: { size: string; basePaise: number; baseRupees: number; printingPaise: number; shippingPaise: number }[]; shippingPaise: number; bufferPaise: number }>('GET',
+  hfCall<{ ok: boolean; sizes: { size: string; basePaise: number; baseRupees: number; printingPaise: number; shippingPaise: number; maxMarkupRupees?: number }[]; shippingPaise: number; bufferPaise: number; priceCapPaise?: number; gstRateBps?: number }>('GET',
     `${B}/quote?catalogId=${encodeURIComponent(p.catalogId)}&colours=${encodeURIComponent(p.colours.join(','))}&side=${p.side}&w=${p.w.toFixed(2)}&h=${p.h.toFixed(2)}&sizes=${encodeURIComponent(p.sizes.join(','))}`);
 export const getSummary = () => hfCall<{ ok: boolean } & Summary>('GET', `${B}/summary`);
-export const listProducts = () => hfCall<{ ok: boolean; products: Product[] }>('GET', `${B}/products`);
+export const listProducts = () => hfCall<{ ok: boolean; products: Product[]; gstRateBps?: number; priceCapPaise?: number }>('GET', `${B}/products`);
 export const createProduct = (b: CreateBody) => hfCall<{ ok: boolean; product: Product }>('POST', `${B}/products`, b, { timeoutMs: 60_000 });
 export const patchProduct = (id: string, b: Partial<{ markupRupees: number; title: string; description: string; hidden: boolean }>) =>
   hfCall<{ ok: boolean; product: Product }>('PATCH', `${B}/products/${encodeURIComponent(id)}`, b);
 export const deleteProduct = (id: string) => hfCall<{ ok: boolean }>('DELETE', `${B}/products/${encodeURIComponent(id)}`);
 export const listOrders = (status: OrderStatus | 'all') => hfCall<{ ok: boolean; orders: SellerOrder[] }>('GET', `${B}/orders${status === 'all' ? '' : `?status=${status}`}`);
+/** [HF-MERCH-GST-1] The influencer's optional GSTIN. Recorded only: payouts do not change because of it (yet). */
+export const getTax = () => hfCall<{ ok: boolean; gstin: string | null }>('GET', `${B}/tax`);
+export const putTax = (gstin: string) => hfCall<{ ok: boolean; gstin: string | null }>('PUT', `${B}/tax`, { gstin });
+export const GSTIN_RE = /^\d{2}[A-Z]{5}\d{4}[A-Z][A-Z\d]Z[A-Z\d]$/;
 export const getOrder = (id: string) => hfCall<{ ok: boolean; order: SellerOrder }>('GET', `${B}/orders/${encodeURIComponent(id)}`);
 
 /** Raw-body upload (art, print file, mockup). Header values stay ASCII (percent-encoded file names). */

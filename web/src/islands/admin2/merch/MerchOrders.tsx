@@ -46,7 +46,13 @@ function Breakdown({ o, q }: { o: AdminOrder; q: LiveQuote | undefined }) {
       <dt>Influencer gets {(10000 - m.shareBps) / 100}%</dt><dd>{money(m.influencerPaise)}</dd>
       <dt>Platform gets {m.shareBps / 100}%</dt><dd>{money(m.platformPaise)}</dd>
       <dt>Cashfree fee (estimate)</dt><dd>−{money(m.cashfreeFeeEstPaise)}</dd>
-      <dt>GST (estimate)</dt><dd>−{money(m.gstEstPaise)}</dd>
+      {m.netGstPaise != null ? (
+        <>
+          <dt>GST collected (inside the price)</dt><dd>{money(m.outputGstPaise ?? 0)}</dd>
+          <dt>Printrove GST claimed back</dt><dd>+{money(m.inputGstPaise ?? 0)}</dd>
+          <dt>Net GST to pay</dt><dd>−{money(m.netGstPaise)}</dd>
+        </>
+      ) : <><dt>GST (old estimate)</dt><dd>−{money(m.gstEstPaise)}</dd></>}
       <dt className="tot">Platform net</dt><dd className="tot">{money(m.platformNetPaise)}</dd>
       {q && q.platformNetAfterPaise != null && <><dt className="tot">Platform net at today’s cost</dt><dd className={`tot ${rose ? 'amber' : ''}`}>{money(q.platformNetAfterPaise)}</dd></>}
     </dl>
@@ -175,6 +181,8 @@ function OrderRow({ initial, onChanged, startOpen }: { initial: AdminOrder; onCh
               <dt>Product</dt><dd>{m.title}</dd><dt>Shirt</dt><dd>{m.catalogName}</dd><dt>Size / colour / qty</dt><dd>{m.size} / {m.colour} / {m.qty ?? 1}</dd>
               <dt>Print on</dt><dd>{m.side}</dd>
               <dt>Influencer</dt><dd>{o.seller.displayName ?? '—'}{o.seller.slug ? ` (/${o.seller.slug})` : ''}</dd>
+              <dt>Influencer GSTIN (optional, record only)</dt><dd>{o.sellerTax?.gstin ?? '—'}</dd>
+              <dt>{o.invoice?.kind === 'tax_invoice' ? 'Tax invoice' : 'Receipt'}</dt><dd>{o.invoice?.number ?? '—'}</dd>
             </dl>
           </div>
           <div>
