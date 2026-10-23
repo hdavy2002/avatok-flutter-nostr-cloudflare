@@ -11264,5 +11264,20 @@
     "min_devices_on_build": 1,
     "flags": [],
     "no_telemetry": "Admin-only read views; no user-visible behaviour to assert in telemetry. Verified by opening /admin/hosts/desk after deploy."
+  },
+  "HF-BOOKING-UNIFY-1": {
+    "description": "One availability model for app and web: app saves merge dated windows without wiping weekly rules; 10-minute length everywhere; ticker shows pending requests.",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [],
+    "success": [
+      {
+        "event": "hf_booking_schedule_saved",
+        "property": "outcome",
+        "equals": "ok",
+        "min_events": 1,
+        "note": "Availability saves succeed from both editors; cross-surface behaviour covered by hf_bookings_e2e.test.ts U1-U7."
+      }
+    ]
   }
 }
