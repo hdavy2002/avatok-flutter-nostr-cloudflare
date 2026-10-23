@@ -15,7 +15,7 @@ import { onCallCompleted } from "../lib/hf_reviews";
 import { speakIntoCall } from "../lib/hf_vobiz";
 import { recordLegFromWebhook } from "../lib/hf_vobiz_ledger"; // [HF-VOBIZ-SPEND-1]
 import {
-  HF_CALL_APP, webhookBase, releaseHost, hfReserve, hfRelease, hfConsume, hfEarn, type HfCallRow,
+  HF_CALL_APP, webhookBase, releaseHost, markOnCall, hfReserve, hfRelease, hfConsume, hfEarn, type HfCallRow,
 } from "../lib/hf_calls_store";
 import { settleTestCredits } from "../lib/hf_credits";
 import { settleTokenCall, priceOf, type StdSnapshot } from "../lib/hf_token_calls"; // [HF-TOK-CALLS-1]
@@ -23,7 +23,7 @@ import { validTariff } from "../lib/hf_token_math"; // [HF-STD-PLAN-1]
 import { getCdr, parseTimeMs } from "../lib/hf_vobiz_api";
 import { relOpId, reserveChunk, getReservation, releaseOrphanChunks } from "../lib/hf_token_ledger";
 import { speakToCaller } from "../lib/hf_vobiz"; // [HF-CALL-MODES-C]
-import { notifyLineFree } from "../lib/hf_queue_store"; // [HF-CALL-MODES-C] stub until the queue lane lands; never throws
+import { notifyLineFree, dropBlockedEntries } from "../lib/hf_queue_store"; // [HF-CALL-MODES-C] never throws
 import {
   settleCall, billedMinutes, hostTokensToCredit, splitCharge, splitHostShare, paidStillNeeded, callerHandle, hostAnnounceXml, noticeAndConferenceXml, hangupXml, emptyXml,
   LIMIT_WARNING_TEXT, WARN_BEFORE_LIMIT_SEC,
@@ -434,7 +434,7 @@ export class HfCallDO {
     await this.save(s);
     await this.db().prepare("UPDATE hf_calls SET status='connected', connected_at=?1 WHERE id=?2").bind(now, s.callId).run().catch(() => undefined);
     // [HF-CALL-MODES-C] "On a call" comes from the JOINED call (spec 2.1): both legs are in the room now. Best effort; dynamic so a missing helper never blocks the call.
-    try { const m = await import("../lib/hf_calls_store"); await (m as { markOnCall?: (e: Env, h: string, c: string) => Promise<void> }).markOnCall?.(this.env, s.hostUid, s.callId); } catch { /* the line lock already shows busy */ }
+    try { await markOnCall(this.env, s.hostUid, s.callId); } catch { /* the line lock already shows busy */ }
     this.emit(s.callerUid, "hf_call_connected", { call_id: s.callId, max_minutes: s.maxMinutes, guessed });
   }
 
@@ -580,7 +580,7 @@ export class HfCallDO {
   }
 
   private mp3(key: string): string | null {
-    const base = (this.env as unknown as Record<string, string | undefined>).HF_WHISPER_MP3_BASE;
+    const base = this.env.HF_WHISPER_MP3_BASE;
     return base ? `${base.replace(/\/+$/, "")}/${key}.mp3` : null;
   }
 
@@ -782,6 +782,7 @@ export class HfCallDO {
     } catch (e) {
       await trackException(this.env, e, { route: "hf_call.block", handled: true, app_name: HF_CALL_APP, extra: { area: "hf_calls", step: "block" } });
     }
+    await dropBlockedEntries(this.env, blocker).catch(() => 0); // [HF-CALL-MODES-INT] rule 10: the '#' block also removes any queue entry between the pair
     this.emit(blocker, "hf_call_blocked", { call_id: s.callId, by });
   }
 
@@ -792,7 +793,7 @@ export class HfCallDO {
         await releaseHost(this.env, s.hostUid, s.callId);
         s.bill.hostReleased = true;
         await this.save(s);
-        await notifyLineFree(this.env, s.hostUid, s.callId).catch(() => undefined); // [HF-CALL-MODES-C] queue: the line is free
+        await notifyLineFree(this.env, s.hostUid, s.callId, s.finalStatus).catch(() => undefined); // [HF-CALL-MODES-C] queue: the line is free
       } catch (e) {
         s.bill.attempts += 1;
         s.tasks.retry = Date.now() + Math.min(MAX_RETRY_DELAY_MS, 20_000 * s.bill.attempts);
@@ -808,7 +809,7 @@ export class HfCallDO {
         await releaseHost(this.env, s.hostUid, s.callId);
         s.bill.hostReleased = true;
         await this.save(s);
-        await notifyLineFree(this.env, s.hostUid, s.callId).catch(() => undefined); // [HF-CALL-MODES-C] queue: the line is free
+        await notifyLineFree(this.env, s.hostUid, s.callId, s.finalStatus).catch(() => undefined); // [HF-CALL-MODES-C] queue: the line is free
       } catch (e) {
         s.bill.attempts += 1;
         s.tasks.retry = Date.now() + Math.min(MAX_RETRY_DELAY_MS, 20_000 * s.bill.attempts);

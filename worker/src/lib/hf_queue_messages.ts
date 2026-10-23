@@ -12,7 +12,7 @@ export function queueFirstName(displayName: string | null | undefined, fallback 
 /** The host's public page: where a fan leaves the queue, books a time or joins again. */
 export const queueHostUrl = (slug: string) => brandUrl(`/h/${encodeURIComponent(slug)}`);
 /** Where a fan tops up his wallet. */
-export const queueTopUpUrl = () => brandUrl("/dashboard/billing");
+export const queueTopUpUrl = () => brandUrl("/dashboard/wallet#add");
 
 const rupees = (paise: number) => {
   const r = Math.max(0, Math.ceil(paise)) / 100;

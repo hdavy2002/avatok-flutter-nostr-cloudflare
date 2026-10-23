@@ -4,6 +4,7 @@
 export const HF_PUSH_KINDS = [
   "notify_me", "host_approved", "host_changes", "withdrawal_approved", "withdrawal_paid", "low_balance", "review_request", "presence_nudge", "booking_reminder",
   "booking_request", "booking_update", "booking_nudge", "open_window", // [HF-BOOK-APPROVE-BE]
+  "queue_next", // [HF-CALL-MODES-INT] "you're next in the queue" (lib/hf_queue_store.ts builds title + body + path)
   "merch_order", "merch_update", // [HF-MERCH-CORE-1] influencer merch: a new order / a status change (title + body are built in lib/hf_merch_notify.ts)
 ] as const;
 export type HfPushKind = (typeof HF_PUSH_KINDS)[number];
@@ -66,6 +67,8 @@ export function hfPushCopy(kind: HfPushKind, brand: string, v: { name?: string; 
       return { kind, title: "New merch order", body: "Someone bought your merch. Open the app to see it.", path: "/dashboard/merch" };
     case "merch_update":
       return { kind, title: "Your merch order was updated", body: "Open the app to see the latest.", path: "/dashboard/orders" };
+    case "queue_next": // [HF-CALL-MODES-INT]
+      return { kind, title: brand, body: `You're next${v.name?.trim() ? ` for ${v.name.trim()}` : ""}. Keep your phone free.`, path: v.slug ? `/h/${v.slug}` : "/" };
     case "presence_nudge": // [HF-PRESENCE-NUDGE-1]
       return { kind, title: "You're showing as offline", body: `Callers can't reach you on ${brand}. Open the app and turn the switch on.`, path: "/host" };
   }

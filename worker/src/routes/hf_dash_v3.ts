@@ -24,6 +24,7 @@ import { REVIEW_WINDOW_MS } from "../lib/hf_reviews_pure";
 import { enqueueEmail } from "../lib/email_outbox";
 import { readConfig } from "./config";
 import { resolveHfHandle } from "../lib/hf_handle";
+import { dropBlockedEntries } from "../lib/hf_queue_store"; // [HF-CALL-MODES-INT]
 
 const APP = BRAND.slug;
 const DAY_MS = 86_400_000;
@@ -231,6 +232,7 @@ async function blockFromCall(req: Request, env: Env, uid: string, callId: string
     // [HF-DAILY-FLOWS-1] a blocked person leaves My Fraands too (they could not be called any more anyway)
     env.DB_META.prepare("DELETE FROM hf_favourites WHERE uid=?1 AND host_uid=?2").bind(uid, other),
   ]);
+  await dropBlockedEntries(env, uid).catch(() => 0); // [HF-CALL-MODES-INT] rule 10: a block removes any queue entry between the pair, silently (no-op without the queue table)
   void track(env, uid, "hf_dash_block", APP, { reason, call_id: callId });
   return json({ ok: true }, 200, NO_STORE);
 }

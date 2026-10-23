@@ -644,6 +644,8 @@ export interface Env {
   VOBIZ_AUTH_TOKEN?: string;
   // [HF-CALLS-1] The one Indian number (E.164) both legs of a masked paid call present. `wrangler secret put HF_CALL_DID`.
   HF_CALL_DID?: string;
+  /** [HF-CALL-MODES-INT] Public base URL of the pre-rendered caller-whisper MP3s (low_funds_1..5, topped_up) in R2; optional, the Vobiz Speak paths work without it. */
+  HF_WHISPER_MP3_BASE?: string;
   // [AUMFE-KNOWLEDGE-VECTOR-1] Vectorize indexes for the shared knowledge layer. Optional so the
   // worker runs before the indexes exist (searches then return []).
   VEC_CATALOG?: VectorizeIndex;

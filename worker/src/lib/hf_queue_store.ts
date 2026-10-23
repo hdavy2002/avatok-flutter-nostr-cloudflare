@@ -147,13 +147,22 @@ export async function pokeLine(env: Env, hostUid: string, msg: HfHostLineMessage
   }
 }
 
-/** What happened to a finished call, from its hf_calls row (HfCallDO writes end_reason before releaseHost). */
+/**
+ * What happened to a finished call, from its hf_calls row. HfCallDO's REAL values (do/hf_call.ts finish()): a call that never connected ends with
+ *   status no_answer (host never pressed 1) / host_declined (host pressed another key)        -> the influencer missed it   (host_missed)
+ *   status caller_no_answer (fan's phone did not answer) / failed+caller_hangup (fan cancelled) -> the fan did not take it   (fan_no_answer)
+ *   failed+host_hangup (host accepted, then walked away)                                       -> host_missed
+ *   failed+error / booking_window_ended / reconciliation / anything else                       -> a system problem            (failed)
+ * and any call with connected_at is "completed". NOTE the DO calls notifyLineFree while hf_calls.status is still 'finalizing', so it passes the
+ * final status explicitly (4th argument); the 5-minute sweep reads the settled row, where both agree.
+ */
 export function outcomeFromCall(row: { status?: string | null; end_reason?: string | null; connected_at?: number | null } | null): LineOutcome {
   if (!row) return "failed";
   if (row.connected_at) return "completed";
+  const st = String(row.status ?? "");
   const r = String(row.end_reason ?? "");
-  if (r === "caller_no_answer" || r === "cancelled" || r === "caller_cancelled" || r === "caller_hangup" || String(row.status ?? "") === "cancelled") return "fan_no_answer";
-  if (r === "host_declined" || r === "no_answer") return "host_missed";
+  if (st === "caller_no_answer" || st === "cancelled" || r === "caller_no_answer" || r === "cancelled" || r === "caller_cancelled" || r === "caller_hangup") return "fan_no_answer";
+  if (st === "no_answer" || st === "host_declined" || r === "no_answer" || r === "host_declined" || r === "host_hangup") return "host_missed";
   return "failed";
 }
 
@@ -161,13 +170,13 @@ export function outcomeFromCall(row: { status?: string | null; end_reason?: stri
  * The host's line became free (HfCallDO called releaseHost). Pokes the host's HfHostLineDO so it can start the break and dispatch the next fan.
  * Never throws. Flag off: no-op. No waiters and no queue entry tied to this call: no-op, the DO is not even woken.
  */
-export async function notifyLineFree(env: Env, hostUid: string, callId: string): Promise<void> {
+export async function notifyLineFree(env: Env, hostUid: string, callId: string, finalStatus?: string | null): Promise<void> {
   try {
     if (!(await queueEnabled(env))) return;
     const pending = await env.DB_META.prepare("SELECT 1 AS x FROM hf_call_queue WHERE host_uid=?1 AND (status='waiting' OR (status='offered' AND call_id=?2)) LIMIT 1").bind(hostUid, callId).first().catch(() => null);
     if (!pending) return;
     const call = await env.DB_META.prepare("SELECT status, end_reason, connected_at FROM hf_calls WHERE id=?1").bind(callId).first<{ status: string; end_reason: string | null; connected_at: number | null }>().catch(() => null);
-    await pokeLine(env, hostUid, { op: "line-free", callId, outcome: outcomeFromCall(call) });
+    await pokeLine(env, hostUid, { op: "line-free", callId, outcome: outcomeFromCall(call && finalStatus ? { ...call, status: finalStatus } : call) });
   } catch (e) {
     await trackException(env, e, { route: "hf_queue.notifyLineFree", handled: true, app_name: HF_CALL_APP, extra: { area: "hf_queue" } }).catch(() => undefined);
   }

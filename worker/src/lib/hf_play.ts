@@ -21,6 +21,7 @@ import { BRAND } from "./brand";
 import { issuePurchaseRecord } from "./hf_receipts";
 import { notifyTopupCredited } from "./hf_topup_notify";
 import { readConfig } from "../routes/config";
+import { pokeLiveCall } from "./hf_call_funds"; // [HF-CALL-MODES-INT]
 
 const APP = BRAND.slug;
 const DAY = 86_400_000;
@@ -323,6 +324,8 @@ export async function processPlayPurchase(env: Env, cfg: HfTokenConfig, a: Proce
     try {
       await notifyTopupCredited(env, { uid, orderId, paidPaise, creditPaise: split.walletPaise, gstPaise: split.gstPaise, receiptNumber });
     } catch { /* best-effort */ }
+    // [HF-CALL-MODES-INT] Every credit path (verify, RTDN, cron) lands here: a call in progress reserves its next chunk now. Idempotent, never throws, no-op with the chunk flag off.
+    await pokeLiveCall(env, uid);
   }
   const consumed = await ackAndConsume(env, pkg, { purchase_token: a.purchaseToken, product_id: a.productId }, p);
   await emit(env, uid, "hf_token_purchase_verified", { tokens: prod.tokens, paid_paise: paidPaise, wallet_paise: split.walletPaise, gst_paise: split.gstPaise, duplicate: !credit.applied, source: a.source });
