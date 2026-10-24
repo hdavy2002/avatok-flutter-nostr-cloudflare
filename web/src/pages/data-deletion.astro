@@ -16,6 +16,20 @@ import HelloFraandsPage from '../layouts/HelloFraandsPage.astro';
 <h2>Records that may remain</h2>
 <p>Call details and safety logs are kept for 1 year, in line with the DPDP Rules 2025, which ask us to keep records for at least one year, and then deleted. Payment records, unresolved disputes, and lawful preservation requests may require different treatment. Any retained records should have restricted access and must not keep a deleted profile publicly active.</p>
 <p>After three confirmed strikes, a phone-number restriction may be kept to prevent re-registration.</p>
+<h2>Instagram login data</h2>
+<p>If you remove {BRAND.name} in your Instagram settings, or ask Instagram to delete your data, we delete the Instagram login we held for your account and the comments we imported from your reels, and we hide those reels. Comments that our own users replied to stay, with their text replaced by "Comment removed". You can also press Remove on your channel inside the app.</p>
+<p id="ig-del-status" hidden></p>
+<script define:vars={{ api: BRAND.apiOrigin }}>
+  // [HF-IG-LOGIN-1] The status page behind Meta's data-deletion callback: /data-deletion?code=<confirmation code>
+  const code = new URLSearchParams(location.search).get('code');
+  const el = document.getElementById('ig-del-status');
+  if (code && el && /^hfigdel_[a-f0-9]{24}$/.test(code)) {
+    fetch(`${api}/api/hf/channels/instagram/data-deletion-status?code=${code}`)
+      .then((r) => r.json())
+      .then((j) => { el.textContent = j && j.status === 'complete' ? `Your Instagram data deletion request ${code} is complete.` : 'We could not find that deletion request.'; el.hidden = false; })
+      .catch(() => { el.textContent = 'We could not check that request right now. Please try again later.'; el.hidden = false; });
+  }
+</script>
 <h2>Confirmation and review</h2>
 <p>Read the <a href="/privacy">privacy policy</a> and <a href="/grievance">grievance process</a> for more.</p>
 </HelloFraandsPage>

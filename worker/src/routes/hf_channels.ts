@@ -28,6 +28,7 @@ import { goLiveFacts, canGoLive } from "../lib/hf_spaces"; // [HF-CREATOR-BADGES
 import { readInfluencerRate } from "../lib/hf_influencer_rate"; // [HF-WIRE-18]
 import { ensureSlug } from "../lib/hf_host_store"; // [HF-WIRE-10]
 import { importChannelReels, importCountOf, refreshDemoReels } from "../lib/hf_reels_import"; // [HF-WIRE-4]
+import { isIgOauth, instagramOauthLookup, refreshTokenIfDue, wipeInstagramChannel } from "../lib/hf_instagram"; // [HF-IG-LOGIN-1]
 import { refreshRecentReelComments } from "../lib/hf_reel_engage"; // [HF-REEL-ENGAGE-API-1]
 import {
   lookupChannel, makeVerifyCode, bioHasCode, ProviderError, youtubeOwnChannel, type ChannelLookup, type ChannelPlatform,
@@ -41,12 +42,12 @@ const NO_STORE = { "cache-control": "private, no-store" };
 const err = (status: number, error: string, message?: string, extra: Record<string, unknown> = {}) =>
   json({ ok: false, error, message: message ?? error, ...extra }, status, NO_STORE);
 
-interface ChRow {
+export interface ChRow {
   id: string; host_uid: string; platform: string; handle: string; url: string | null; platform_user_id: string | null;
   followers: number; views: number; verify_code: string | null; verified_at: number | null; status: string; consent_version: string | null;
   consent_at: number | null; provider_ref: string | null; last_sync_at: number | null; created_at: number;
 }
-const COLS = "id, host_uid, platform, handle, url, platform_user_id, followers, views, verify_code, verified_at, status, consent_version, consent_at, provider_ref, last_sync_at, created_at";
+export const COLS = "id, host_uid, platform, handle, url, platform_user_id, followers, views, verify_code, verified_at, status, consent_version, consent_at, provider_ref, last_sync_at, created_at";
 
 const PLATFORM_NAME: Record<string, string> = { instagram: "Instagram", youtube: "YouTube" };
 const WHERE_TO_PUT: Record<string, string> = { instagram: "your Instagram bio", youtube: "your YouTube channel description (About)" };
@@ -61,7 +62,7 @@ export function minViewsOf(cfg: Record<string, unknown>): number {
   return Number.isInteger(v) && v >= 0 ? v : 1000; // [HF-CREATOR-SPACES-1]
 }
 
-export function channelJson(r: ChRow) {
+export function channelJson(r: ChRow, extra: { needsReconnect?: boolean } = {}) {
   const verified = r.verified_at != null;
   const state = r.status === "disconnected" ? "disconnected" : r.status === "approved" ? "approved" : r.status === "rejected" ? "needs_followers" : "checking";
   const needsCode = r.status === "pending" && !verified;
@@ -69,6 +70,8 @@ export function channelJson(r: ChRow) {
     id: r.id, platform: r.platform, handle: r.handle, url: r.url, followers: Number(r.followers ?? 0), views: Number(r.views ?? 0), state, verified, needsCode,
     ...(needsCode && r.verify_code ? { verifyCode: r.verify_code } : {}),
     lastSyncAt: r.last_sync_at ?? null, createdAt: r.created_at,
+    // [HF-IG-LOGIN-1] how ownership was proven: the app asks bio-code Instagram channels to log in, and a dead login to reconnect.
+    viaLogin: String(r.provider_ref ?? "").endsWith("-oauth"), ...(extra.needsReconnect ? { needsReconnect: true } : {}),
   };
 }
 
@@ -80,7 +83,9 @@ function providerFailure(e: ProviderError, platform: string): Response {
   const name = PLATFORM_NAME[platform] ?? "that site";
   if (e.code === "bad_handle") return err(400, "invalid_field", `That does not look like a ${name} ${platform === "youtube" ? "channel" : "username"}. Check the spelling.`, { field: "handleOrUrl" });
   if (e.code === "provider_not_configured") return err(503, "provider_not_configured", platform === "instagram" ? "Instagram is coming soon." : "Channel checks are not switched on yet. Please try again later.");
-  if (e.code === "token_invalid") return err(400, "token_invalid", "Google sign-in expired. Please sign in with YouTube again.");
+  if (e.code === "token_invalid") return platform === "instagram"
+    ? err(400, "token_invalid", "Your Instagram login expired. Please log in with Instagram again.")
+    : err(400, "token_invalid", "Google sign-in expired. Please sign in with YouTube again.");
   return err(503, "provider_unavailable", `We could not reach ${name} just now. Please try again in a minute.`);
 }
 
@@ -179,7 +184,9 @@ export function thresholdResult(platform: string, followers: number, views: numb
 /** Re-read the channel, check the code (until verified once), refresh followers and set the status. Never called for a disconnected channel. */
 async function runCheck(env: Env, ch: ChRow, min: number, minViews: number, lookup?: ChannelLookup): Promise<{ result: CheckResult; row: ChRow }> {
   const now = Date.now();
-  const lk = lookup ?? await lookupChannel(env, ch.platform as ChannelPlatform, ch.platform === "youtube" && ch.platform_user_id ? ch.platform_user_id : ch.handle);
+  const lk = lookup ?? (isIgOauth(ch) // [HF-IG-LOGIN-1] logged-in Instagram channels are read with her own token, never through treg
+    ? await instagramOauthLookup(env, ch)
+    : await lookupChannel(env, ch.platform as ChannelPlatform, ch.platform === "youtube" && ch.platform_user_id ? ch.platform_user_id : ch.handle));
   const save = async (patch: Partial<ChRow>): Promise<ChRow> => {
     const next = { ...ch, ...patch } as ChRow;
     await env.DB_META.prepare("UPDATE hf_channels SET followers=?2, verified_at=?3, status=?4, platform_user_id=?5, handle=?6, url=?7, last_sync_at=?8, views=?9 WHERE id=?1")
@@ -299,7 +306,9 @@ export async function hfChannelsRoute(req: Request, env: Env, p: string, ctx?: E
     if (!id && method === "GET") {
       const rows = (await env.DB_META.prepare(`SELECT ${COLS} FROM hf_channels WHERE host_uid=?1 ORDER BY created_at DESC LIMIT 50`).bind(uid).all<ChRow>()).results ?? [];
       const host = await env.DB_META.prepare("SELECT status FROM hf_hosts WHERE uid=?1").bind(uid).first<{ status: string }>();
-      return json({ ok: true, channels: rows.map(channelJson), minFollowers: min, minViews, hostStatus: host?.status ?? null, qualified: rows.some((r) => r.status === "approved") }, 200, NO_STORE);
+      let dead = new Set<string>(); // [HF-IG-LOGIN-1] channels whose Instagram login must be redone
+      try { dead = new Set(((await env.DB_META.prepare("SELECT channel_id FROM hf_channel_tokens WHERE host_uid=?1 AND status='needs_reconnect'").bind(uid).all<{ channel_id: string }>()).results ?? []).map((x) => x.channel_id)); } catch { /* table not applied yet */ }
+      return json({ ok: true, channels: rows.map((r) => channelJson(r, { needsReconnect: dead.has(r.id) })), minFollowers: min, minViews, hostStatus: host?.status ?? null, qualified: rows.some((r) => r.status === "approved") }, 200, NO_STORE);
     }
 
     // ── POST /api/hf/channels ───────────────────────────────────────────────────────────────────────────────────
@@ -363,6 +372,7 @@ export async function hfChannelsRoute(req: Request, env: Env, p: string, ctx?: E
     if (method === "DELETE") {
       if (ch.status !== "disconnected") {
         await env.DB_META.prepare("UPDATE hf_channels SET status='disconnected' WHERE id=?1 AND host_uid=?2").bind(id, uid).run();
+        if (isIgOauth(ch)) await wipeInstagramChannel(env, id); // [HF-IG-LOGIN-1] token, imported comments (replied-to ones blanked), reels hidden
         await syncHostState(env, uid);
         emit("hf_channel_removed", { platform: ch.platform });
       }
@@ -415,6 +425,7 @@ export async function recheckAllChannels(env: Env, batch = 25): Promise<{ scanne
   for (const ch of rows) {
     out.scanned++;
     try {
+      if (isIgOauth(ch)) await refreshTokenIfDue(env, ch); // [HF-IG-LOGIN-1] long-lived token older than 50 days
       const r = await runCheck(env, ch, min, minViews);
       if (r.result !== "claimed") out.updated++;
       if (r.result === "approved" && cfg.hfReelsEnabled === true) await importForChannel(env, r.row, importCountOf(cfg as unknown as Record<string, unknown>)); // [HF-WIRE-4] daily refresh

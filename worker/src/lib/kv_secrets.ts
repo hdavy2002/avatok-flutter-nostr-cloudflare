@@ -8,7 +8,8 @@
 // removed login reaches every isolate within ~10 minutes (the isolate that handled the save updates at once).
 import type { Env } from "../types";
 
-const KV_SECRET_NAMES = ["TREG_API_KEY", "PRINTROVE_LOGIN"] as const;
+// [HF-IG-LOGIN-1] INSTAGRAM_APP_SECRET (Meta app secret: state signing, code exchange, signed_request) and HF_TOKEN_ENC_KEY (base64, 32 bytes: AES-GCM key for stored Instagram tokens).
+const KV_SECRET_NAMES = ["TREG_API_KEY", "PRINTROVE_LOGIN", "INSTAGRAM_APP_SECRET", "HF_TOKEN_ENC_KEY"] as const;
 export type KvSecretName = (typeof KV_SECRET_NAMES)[number];
 const MEMO_MS = 10 * 60 * 1000;
 let memo: { at: number; values: Partial<Record<KvSecretName, string>> } | null = null;

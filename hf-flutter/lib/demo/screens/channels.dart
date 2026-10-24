@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../core/brand.dart';
 import '../../data/api_exception.dart';
+import '../../data/instagram_login.dart';
 import '../../data/models/channel.dart';
 import '../../data/repos/channels_repo.dart';
 import '../../data/services.dart';
@@ -23,6 +24,14 @@ import '../desi.dart';
 // `?from=join` keeps the person inside "Join as influencer" (step 2 of 3) instead of the dashboard.
 
 String _fromQuery(String? from) => (from == null || from.isEmpty) ? '' : '?from=$from';
+
+/// [HF-IG-LOGIN-1] Whether "Log in with Instagram" is offered. `probe` asks the public config (`hfInstagramLoginEnabled`; what the app uses);
+/// tests pass `on`. `off` (the default) keeps the bio-code form only.
+enum IgLoginMode { off, probe, on }
+
+/// [HF-REEL-61] Shown on Channels for an Instagram channel that was added by bio code.
+const String kInstagramBioCodeBanner = 'Log in with Instagram to bring your comments and likes.';
+const String kInstagramReconnectBanner = 'Your Instagram login has expired. Log in again to keep bringing in comments and likes.';
 
 String channelChipLabel(Channel c, int minFollowers) => switch (c.state) {
       ChannelState.checking => 'Checking…',
@@ -146,9 +155,15 @@ class ChannelCard extends StatelessWidget {
 
 /// `/inf/channels`: every channel with its status, Resync and Remove, and "+ Add a channel".
 class ChannelsListScreen extends StatefulWidget {
-  const ChannelsListScreen({super.key, this.repo});
+  const ChannelsListScreen({super.key, this.repo, this.ig, this.reason, this.result, this.igLogin = IgLoginMode.off});
 
   final ChannelsRepo? repo;
+
+  /// [HF-IG-LOGIN-1] What the Instagram login redirect said: `connected` or `error` (+ [reason], [result]); null when she just opened the list.
+  final String? ig;
+  final String? reason;
+  final String? result;
+  final IgLoginMode igLogin;
 
   @override
   State<ChannelsListScreen> createState() => _ChannelsListScreenState();
@@ -157,11 +172,78 @@ class ChannelsListScreen extends StatefulWidget {
 class _ChannelsListScreenState extends State<ChannelsListScreen> {
   late final ChannelsRepo _repo = widget.repo ?? Services.instance.channelsRepo;
   int _key = 0;
+  bool _igOn = false;
+  String? _handledIg;
 
   @override
   void initState() {
     super.initState();
     Telemetry.event('hf_channels_open');
+    _igOn = widget.igLogin == IgLoginMode.on;
+    WidgetsBinding.instance.addPostFrameCallback((_) => _handleIgResult());
+  }
+
+  @override
+  void didUpdateWidget(ChannelsListScreen old) {
+    super.didUpdateWidget(old);
+    if (old.ig != widget.ig || old.reason != widget.reason || old.result != widget.result) {
+      _handleIgResult();
+      _reload();
+    }
+  }
+
+  Future<ChannelsList> _load() async {
+    final l = await _repo.list();
+    if (widget.igLogin == IgLoginMode.probe) _igOn = await _repo.instagramLoginEnabled();
+    return l;
+  }
+
+  /// [HF-IG-LOGIN-1] The answer of the Instagram login (deep link `<scheme>://channels?ig=...`): connected -> a toast, a personal account -> the
+  /// "Switch to a Creator account" guide, cancelled -> a toast. The list reloads on its own.
+  void _handleIgResult() {
+    final ig = widget.ig;
+    if (!mounted || ig == null) return;
+    final stamp = '$ig/${widget.reason}/${widget.result}';
+    if (_handledIg == stamp) return;
+    _handledIg = stamp;
+    final reason = widget.reason ?? '';
+    Telemetry.event('hf_ig_login_result', {'ig': ig, if (reason.isNotEmpty) 'reason': reason, if (widget.result != null) 'result': widget.result});
+    if (ig == 'connected') {
+      toast(context, widget.result == 'needs_followers' ? 'Instagram connected. We need a few more followers before you can go live.' : 'Instagram connected. Your comments and likes will come in.');
+      return;
+    }
+    switch (reason) {
+      case 'not_professional':
+      case 'personal':
+        unawaited(context.push('/inf/channels/instagram-guide'));
+      case 'cancelled':
+        toast(context, 'Login cancelled. You can try again anytime.');
+      case 'claimed':
+        toast(context, 'That Instagram account is already connected to another person.');
+      case 'limit_reached':
+        toast(context, 'You can connect up to 5 channels. Remove one first.');
+      default:
+        toast(context, 'Instagram login did not work. Please try again.');
+    }
+  }
+
+  /// [HF-REEL-61] A bio-code Instagram channel (or a login that expired) gets a banner asking her to log in.
+  List<Widget> _igBanners(ChannelsList v) {
+    if (!_igOn) return const [];
+    final reconnect = v.active.any((c) => c.isInstagram && c.needsReconnect);
+    if (!reconnect && !v.active.any((c) => c.isInstagramBioCode)) return const [];
+    return [
+      IgLoginBanner(
+        text: reconnect ? kInstagramReconnectBanner : kInstagramBioCodeBanner,
+        button: reconnect ? 'LOG IN AGAIN' : 'LOG IN WITH INSTAGRAM',
+        onTap: () async {
+          Telemetry.event('hf_ig_banner_tap', {'kind': reconnect ? 'reconnect' : 'bio_code'});
+          await context.push('/inf/channels/add/instagram');
+          _reload();
+        },
+      ),
+      const SizedBox(height: 14),
+    ];
   }
 
   void _reload() {
@@ -213,7 +295,7 @@ class _ChannelsListScreenState extends State<ChannelsListScreen> {
             const ChannelHeader('Channels'),
             Expanded(
               child: AsyncLoader<ChannelsList>(
-                load: _repo.list,
+                load: _load,
                 reloadKey: _key,
                 isEmpty: (v) => v.active.isEmpty,
                 loadingLabel: 'Loading your channels…',
@@ -232,6 +314,7 @@ class _ChannelsListScreenState extends State<ChannelsListScreen> {
                       style: t(15, color: C.muted, w: FontWeight.w700, h: 1.4),
                     ),
                     const SizedBox(height: 14),
+                    ..._igBanners(v),
                     for (final c in v.active)
                       ChannelCard(
                         channel: c,
@@ -336,11 +419,15 @@ class ChannelPlatformScreen extends StatelessWidget {
 
 /// `/inf/channels/add/:platform`: the @handle, four tick boxes, CONNECT, then the one-time code to put in the bio.
 class ChannelConsentScreen extends StatefulWidget {
-  const ChannelConsentScreen({super.key, required this.platform, this.from, this.repo, this.signIn});
+  const ChannelConsentScreen({super.key, required this.platform, this.from, this.repo, this.signIn, this.igLogin = IgLoginMode.off, this.instagramLogin});
 
   final String platform;
   final String? from;
   final ChannelsRepo? repo;
+
+  /// [HF-IG-LOGIN-1] Offer "Log in with Instagram" ([IgLoginMode]); [instagramLogin] opens the browser tab (tests pass a fake).
+  final IgLoginMode igLogin;
+  final InstagramLogin? instagramLogin;
 
   /// Google sign-in for YouTube. Tests pass a fake.
   final YoutubeSignIn? signIn;
@@ -358,6 +445,60 @@ class _ChannelConsentScreenState extends State<ChannelConsentScreen> {
   bool _busy = false;
   String? _error;
   AddedChannel? _added;
+
+  // [HF-IG-LOGIN-1] null = still asking the config whether Instagram login is on.
+  bool? _igOn;
+  bool _igTick = false;
+  bool _codeInstead = false;
+  bool _igWaiting = false;
+  InstagramLogin get _login => widget.instagramLogin ?? const UrlLauncherInstagramLogin();
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.platform != 'instagram' || widget.igLogin == IgLoginMode.off) {
+      _igOn = false;
+    } else if (widget.igLogin == IgLoginMode.on) {
+      _igOn = true;
+    } else {
+      unawaited(_probe());
+    }
+  }
+
+  Future<void> _probe() async {
+    final on = await _repo.instagramLoginEnabled();
+    if (mounted) setState(() => _igOn = on);
+  }
+
+  /// [HF-IG-LOGIN-1] Asks the server for the Instagram login page and opens it in an in-app browser tab. The answer comes back as a deep link.
+  Future<void> _loginInstagram() async {
+    if (!_igTick) {
+      setState(() => _error = 'Please tick the box so we can show your reels.');
+      return;
+    }
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+    Telemetry.event('hf_channel_add_start', {'platform': 'instagram', 'via': 'login'});
+    try {
+      final url = await _repo.instagramLoginUrl();
+      final ok = await _login.open(url);
+      Telemetry.event('hf_ig_login_open', {'ok': ok});
+      if (!mounted) return;
+      setState(() {
+        _busy = false;
+        _igWaiting = ok;
+        _error = ok ? null : 'We could not open Instagram. Please try again.';
+      });
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _busy = false;
+        _error = e.userMessage;
+      });
+    }
+  }
 
   static const _labels = [
     'Show my public videos from this channel as embeds in the Reels feed and on my profile.',
@@ -459,9 +600,13 @@ class _ChannelConsentScreenState extends State<ChannelConsentScreen> {
                   ? Center(child: Padding(padding: const EdgeInsets.all(28), child: Text('That channel type is coming soon. Please use Instagram or YouTube for now.', textAlign: TextAlign.center, style: t(18, color: C.deep, h: 1.35))))
                   : !_ig
                       ? _youtubeForm()
-                      : _added == null
-                          ? _form()
-                          : _codeStep(_added!),
+                      : _igOn == null
+                          ? const Center(child: CircularProgressIndicator())
+                          : (_igOn! && !_codeInstead && _added == null)
+                              ? _instagramLoginForm()
+                              : _added == null
+                                  ? _form()
+                                  : _codeStep(_added!),
             ),
           ],
         ),
@@ -499,9 +644,67 @@ class _ChannelConsentScreenState extends State<ChannelConsentScreen> {
         ],
       );
 
+  static final String _igLabel =
+      'I allow ${Brand.name} to read my Instagram reels, comments and likes (read only) and show my reels in the Reels feed. This account is mine.';
+
+  /// [HF-IG-LOGIN-1] HF-REEL-58: log in with Instagram (Creator / Business account). Bio code stays as a small fallback.
+  Widget _instagramLoginForm() => ListView(
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+        children: [
+          const DesiHero(eyebrow: 'Instagram', title: 'Log in with Instagram', tone: DesiTone.rani, minHeight: 100),
+          const SizedBox(height: 12),
+          Text(
+            'Log in with the Instagram account that posts your reels. That is how we know it is yours, and it lets us bring your comments and likes into ${Brand.name}. We only read: we never post, change or download anything.',
+            style: t(16, w: FontWeight.w700, h: 1.4),
+          ),
+          const SizedBox(height: 8),
+          Text('It needs a Creator or Business account. Have a personal account? We will show you how to switch. It is free and takes about a minute.', style: t(15, color: C.muted, w: FontWeight.w700, h: 1.4)),
+          const SizedBox(height: 16),
+          KeyedSubtree(
+            key: const ValueKey('ig-consent'),
+            child: ConsentTick(label: _igLabel, value: _igTick, onTap: _busy ? null : () => setState(() => _igTick = !_igTick)),
+          ),
+          if (_error != null) ...[
+            const SizedBox(height: 10),
+            Text(_error!, style: t(15, color: C.ruby, h: 1.35)),
+          ] else if (_igWaiting) ...[
+            const SizedBox(height: 10),
+            Text('Finish logging in on Instagram. You will come back here on your own.', style: t(15, color: C.muted, w: FontWeight.w700, h: 1.35)),
+          ],
+          const SizedBox(height: 14),
+          ChannelBigButton(label: _busy ? 'OPENING…' : 'LOG IN WITH INSTAGRAM', onTap: _busy ? null : () => unawaited(_loginInstagram())),
+          const SizedBox(height: 6),
+          Semantics(
+            button: true,
+            label: "Can't log in? Verify with a code instead",
+            child: InkWell(
+              key: const ValueKey('ig-code-link'),
+              onTap: _busy
+                  ? null
+                  : () => setState(() {
+                        _codeInstead = true;
+                        _error = null;
+                      }),
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(minHeight: 48),
+                child: Center(
+                  child: Text("Can't log in? Verify with a code instead", textAlign: TextAlign.center, style: t(15, color: C.maroon, w: FontWeight.w800).copyWith(decoration: TextDecoration.underline)),
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 8),
+          const DesiMogra(),
+        ],
+      );
+
   Widget _form() => ListView(
         padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
         children: [
+          if (_ig && _igOn == true) ...[
+            Text('A code only proves the account is yours. To bring in your comments and likes, log in with Instagram instead.', style: t(15, color: C.muted, w: FontWeight.w700, h: 1.4)),
+            const SizedBox(height: 10),
+          ],
           DesiField(
             label: _ig ? 'Your Instagram @username' : 'Your YouTube @handle or channel link',
             field: TextField(
@@ -756,6 +959,118 @@ class _ChannelCheckingScreenState extends State<ChannelCheckingScreen> {
         for (final b in buttons) Padding(padding: const EdgeInsets.only(bottom: 12), child: b),
         const DesiMogra(),
       ],
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------------------------- Instagram login helpers
+
+/// [HF-REEL-61] A soft banner on Channels asking her to log in with Instagram (bio-code channel, or a login that expired).
+class IgLoginBanner extends StatelessWidget {
+  const IgLoginBanner({super.key, required this.text, required this.button, required this.onTap});
+
+  final String text;
+  final String button;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      container: true,
+      label: text,
+      child: Container(
+        key: const ValueKey('ig-login-banner'),
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(color: C.goldtint, borderRadius: BorderRadius.circular(20), border: Border.all(color: C.marigold, width: 2)),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(text, style: t(16, w: FontWeight.w800, h: 1.35)),
+            const SizedBox(height: 12),
+            ChannelBigButton(label: button, onTap: onTap),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// `/inf/channels/instagram-guide`: Instagram only lets Creator and Business accounts log in. Plain steps to switch, then Try again.
+class InstagramSwitchGuideScreen extends StatefulWidget {
+  const InstagramSwitchGuideScreen({super.key});
+
+  static const List<String> steps = [
+    'Open Instagram and go to your profile.',
+    'Tap the menu, then Settings and activity.',
+    'Tap Account type and tools.',
+    'Tap Switch to professional account.',
+    'Choose Creator.',
+    'Come back here and tap Try again.',
+  ];
+
+  @override
+  State<InstagramSwitchGuideScreen> createState() => _InstagramSwitchGuideScreenState();
+}
+
+class _InstagramSwitchGuideScreenState extends State<InstagramSwitchGuideScreen> {
+  @override
+  void initState() {
+    super.initState();
+    Telemetry.event('hf_ig_guide_open');
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: C.ivory,
+      body: SafeArea(
+        child: Column(
+          children: [
+            const ChannelHeader('Switch to a Creator account'),
+            Expanded(
+              child: ListView(
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+                children: [
+                  const DesiHero(eyebrow: 'Instagram', title: 'One quick switch', sub: 'Instagram only lets Creator or Business accounts log in here.', tone: DesiTone.gold, minHeight: 110),
+                  const SizedBox(height: 12),
+                  Text('Your reels, followers and posts stay exactly as they are. It is free and takes about a minute.', style: t(16, w: FontWeight.w700, h: 1.4)),
+                  const SizedBox(height: 14),
+                  for (var i = 0; i < InstagramSwitchGuideScreen.steps.length; i++)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 10),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Container(
+                            width: 32,
+                            height: 32,
+                            alignment: Alignment.center,
+                            decoration: const BoxDecoration(color: C.maroon, shape: BoxShape.circle),
+                            child: Text('${i + 1}', style: t(16, color: C.white, w: FontWeight.w900)),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(child: Padding(padding: const EdgeInsets.only(top: 4), child: Text(InstagramSwitchGuideScreen.steps[i], style: t(17, w: FontWeight.w800, h: 1.3)))),
+                        ],
+                      ),
+                    ),
+                  const SizedBox(height: 12),
+                  ChannelBigButton(
+                    label: 'TRY AGAIN',
+                    onTap: () {
+                      Telemetry.event('hf_ig_guide_try_again');
+                      context.pushReplacement('/inf/channels/add/instagram');
+                    },
+                  ),
+                  const SizedBox(height: 12),
+                  ChannelBigButton(label: 'BACK', ghost: true, onTap: () => context.canPop() ? context.pop() : context.go('/inf/channels')),
+                  const SizedBox(height: 14),
+                  const DesiMogra(),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

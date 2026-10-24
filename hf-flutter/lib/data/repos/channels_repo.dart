@@ -58,6 +58,27 @@ class ChannelsRepo {
         await _api.deleteJson('/api/hf/channels/$id');
       });
 
+  /// [HF-IG-LOGIN-1] "Log in with Instagram": the Instagram authorize URL to open in the in-app browser. The result comes back as the deep link
+  /// `<scheme>://channels?ig=connected|error&reason=...` (see core/deep_links.dart). Errors: `not_enabled`, `provider_not_configured`.
+  Future<Uri> instagramLoginUrl() => _guard(() async {
+        final j = await _api.getJson('/api/hf/channels/instagram/start', query: {'client': 'app'});
+        final u = Uri.tryParse((j['url'] ?? '').toString());
+        if (u == null || u.scheme != 'https' || u.host != 'www.instagram.com') {
+          throw const ApiException(kind: ApiFailure.http, code: 'bad_response', message: ApiException.genericText);
+        }
+        return u;
+      });
+
+  /// [HF-IG-LOGIN-1] `hfChannelsEnabled` and `hfInstagramLoginEnabled` from the public config. Off when unreadable.
+  Future<bool> instagramLoginEnabled() async {
+    try {
+      final cfg = await _api.getJson('/api/config', auth: false, store: true);
+      return cfg['hfChannelsEnabled'] == true && cfg['hfInstagramLoginEnabled'] == true;
+    } catch (_) {
+      return false;
+    }
+  }
+
   /// The follower minimum from the public config (`hfInfluencerMinFollowers`), for screens shown before any channel exists.
   Future<int> minFollowers() async {
     try {

@@ -348,6 +348,7 @@ import { hfInviteAdminRoute } from "./routes/hf_invite_admin"; // [HF-WIRE-22]
 import { refreshInviteCreators } from "./lib/hf_invite_reels"; // [HF-WIRE-22]
 import { hfSearchRoute } from "./routes/hf_search"; // [HF-WIRE-9] search + invite votes
 import { hfChannelsRoute, recheckAllChannels } from "./routes/hf_channels"; // [HF-WIRE-3] influencer Channels (flag hfChannelsEnabled)
+import { hfInstagramRoute } from "./routes/hf_instagram"; // [HF-IG-LOGIN-1] Log in with Instagram (flag hfInstagramLoginEnabled)
 import { hfRegistrationRoute } from "./routes/hf_registration"; // [HF-REF-AUTH-1] immutable native username + legal acceptance
 import { hfTokensPlayRoute, runHfPlayCron } from "./routes/hf_tokens_play"; // [HF-TOK-PLAY-1] Play Billing token purchases + RTDN + cron
 import { consultWs } from "./routes/consultants/ws"; // [AUMFE-CONSULT-FOUNDATION-1] Real Consultants call WebSocket
@@ -1186,6 +1187,7 @@ async function dispatch(req: Request, env: Env, ctx: ExecutionContext): Promise<
       if (p === "/api/hf/wallet/receipts" || p.startsWith("/api/hf/wallet/receipts/") || p === "/api/admin/hf/reconciliation") { const r = await hfWalletLimitsRoute(req, env, p); if (r) return r; } // [HF-WALLET-LIMITS-1]
       if (isDashV3Path(p)) { const r = await hfDashV3Route(req, env, p); if (r) return r; } // [HF-DASH-V3-1]
       if (p === "/api/hf/me" || p === "/api/hf/me/ack") { const r = await hfMeRoute(req, env, p); if (r) return r; } // [HF-NATIVE-S1] [HF-NATIVE-S4]
+      if (p.startsWith("/api/hf/channels/instagram/")) { const r = await hfInstagramRoute(req, env, p, ctx); if (r) return r; } // [HF-IG-LOGIN-1] callback has no bearer: before anything that needs one
       if (p === "/api/hf/channels" || p.startsWith("/api/hf/channels/")) { const r = await hfChannelsRoute(req, env, p, ctx); if (r) return r; } // [HF-WIRE-3]
       if (p === "/api/admin/hf/invite-creators" || p.startsWith("/api/admin/hf/invite-creators/")) { const r = await hfInviteAdminRoute(req, env, p); if (r) return r; } // [HF-WIRE-22]
       if (p === "/api/admin/hf/demo-influencers" || p.startsWith("/api/admin/hf/demo-influencers/")) { const r = await hfDemoAdminRoute(req, env, p); if (r) return r; } // [HF-WIRE-14]

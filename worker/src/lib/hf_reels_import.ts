@@ -2,16 +2,19 @@
 // (title, description, likes, views, comments, thumbnail url, publish time) next to the official embed url.
 //   YouTube   -> official Data API v3: uploads playlist (UU + channel id minus UC, paged 50 at a time) + videos.list. ALL public videos up to N.
 //                Works with the API key, or with the influencer's own access token (sign-in connect). embed_url = https://www.youtube.com/embed/<id>.
-//   Instagram -> treg gateway, ScrapeCreators user reels. Stores permalink, embed url, thumbnail. The video file url is NOT stored.
+//   Instagram -> treg gateway, ScrapeCreators user reels (bio-code channels). [HF-IG-LOGIN-1] Channels connected by Instagram login: official Graph API /media with her token. Stores permalink, embed url, thumbnail. The video file url is NOT stored.
 // New reels start visible (HF-REEL-33); the influencer can hide any. Re-importing never touches visible. Secrets are never logged or returned.
 import type { Env } from "../types";
 import { ProviderError, PROVIDER_TIMEOUT_MS } from "./hf_channel_providers";
+import { instagramOauthRecent, saveIgMedia, isIgOauth } from "./hf_instagram"; // [HF-IG-LOGIN-1]
 
 type FetchLike = (url: string, init?: RequestInit) => Promise<Response>;
 
 export interface ImportedReel {
   platformVideoId: string; url: string; embedUrl: string; thumbUrl: string | null;
   caption: string; description?: string; likes: number; comments: number; views: number; publishedAt: number | null;
+  /** [HF-IG-LOGIN-1] Instagram media id (official API only): the key for reading the reel's comments. */
+  igMediaId?: string;
 }
 
 export const TREG_IG_REELS = "scrapecreators.x.v1-instagram-user-reels"; // [HF-WIRE-18] verified live 2026-10-19 via the treg catalog: GET /v1/instagram/user/reels, params handle|user_id, max_id, trim; response {items:[{code,caption,like_count,comment_count,play_count,image_versions2,taken_at,...}], max_id}
@@ -170,14 +173,17 @@ export async function refreshDemoReels(env: Env, batch = 50, f: FetchLike = fetc
   return out;
 }
 
-export interface ReelChannel { id: string; host_uid: string; platform: string; handle: string; platform_user_id: string | null }
-export interface ImportProviders { youtube?: typeof youtubeRecent; instagram?: typeof instagramRecent; auth?: YoutubeAuth }
+export interface ReelChannel { id: string; host_uid: string; platform: string; handle: string; platform_user_id: string | null; provider_ref?: string | null }
+export interface ImportProviders { youtube?: typeof youtubeRecent; instagram?: typeof instagramRecent; instagramOauth?: typeof instagramOauthRecent; auth?: YoutubeAuth }
 
 /** Upsert the latest N videos of one approved channel. Idempotent on (channel_id, platform_video_id); never changes `visible`. */
 export async function importChannelReels(env: Env, ch: ReelChannel, n: number, prov: ImportProviders = {}): Promise<{ fetched: number; inserted: number; updated: number }> {
   const list = ch.platform === "youtube"
     ? await (prov.youtube ?? youtubeRecent)(env, ch.platform_user_id ?? "", n, fetch, prov.auth)
-    : ch.platform === "instagram" ? await (prov.instagram ?? instagramRecent)(env, ch.handle, n) : [];
+    : ch.platform === "instagram"
+      // [HF-IG-LOGIN-1] a channel connected by Instagram login is read through the official API with her token; bio-code channels keep the treg import.
+      ? isIgOauth(ch) ? await (prov.instagramOauth ?? instagramOauthRecent)(env, ch, n) : await (prov.instagram ?? instagramRecent)(env, ch.handle, n)
+      : [];
   const now = Date.now();
   let inserted = 0;
   let updated = 0;
@@ -187,6 +193,7 @@ export async function importChannelReels(env: Env, ch: ReelChannel, n: number, p
       await env.DB_META.prepare("UPDATE hf_reels SET url=?2, embed_url=?3, video_url=NULL, thumb_url=?4, caption=?5, likes=?6, comments=?7, views=?8, published_at=COALESCE(?9, published_at) WHERE id=?1")
         .bind(ex.id, r.url, r.embedUrl, r.thumbUrl, r.caption, r.likes, r.comments, r.views, r.publishedAt).run();
       await saveDetails(env, ex.id, r, now);
+      if (r.igMediaId) await saveIgMedia(env, ex.id, r.igMediaId, ch.id, ch.host_uid);
       updated++;
     } else {
       const id = "hfrl_" + crypto.randomUUID().replace(/-/g, "").slice(0, 20);
@@ -194,6 +201,7 @@ export async function importChannelReels(env: Env, ch: ReelChannel, n: number, p
         "INSERT OR IGNORE INTO hf_reels (id, host_uid, channel_id, platform, platform_video_id, url, embed_url, video_url, thumb_url, caption, likes, comments, views, published_at, visible, is_demo, imported_at) VALUES (?1,?2,?3,?4,?5,?6,?7,NULL,?8,?9,?10,?11,?12,?13,1,0,?14)",
       ).bind(id, ch.host_uid, ch.id, ch.platform, r.platformVideoId, r.url, r.embedUrl, r.thumbUrl, r.caption, r.likes, r.comments, r.views, r.publishedAt, now).run();
       await saveDetails(env, id, r, now);
+      if (r.igMediaId) await saveIgMedia(env, id, r.igMediaId, ch.id, ch.host_uid);
       inserted++;
     }
   }

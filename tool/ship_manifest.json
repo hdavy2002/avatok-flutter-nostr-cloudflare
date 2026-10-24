@@ -12329,5 +12329,22 @@
         "note": "Official-API YouTube import still works."
       }
     ]
+  },
+  "HF-IG-LOGIN-1": {
+    "description": "Log in with Instagram for influencer channels (Instagram API with Instagram Login): OAuth start/callback, encrypted tokens, official-API reels + comments import, token refresh, Meta deauthorize + data-deletion callbacks, app login button + switch-to-Creator guide + reconnect banner. Flag hfInstagramLoginEnabled (default off).",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [
+      "hfInstagramLoginEnabled"
+    ],
+    "success": [
+      {
+        "event": "hf_channel_oauth_done",
+        "property": "platform",
+        "equals": "instagram",
+        "min_events": 1,
+        "note": "A Creator / Business account finished the Instagram login."
+      }
+    ]
   }
 }

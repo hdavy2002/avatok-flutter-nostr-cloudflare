@@ -7,6 +7,7 @@ import type { Env } from "../types";
 import { track, trackException } from "../hooks";
 import { BRAND } from "./brand";
 import { youtubeCommentThreads, youtubeCommentsById } from "./hf_reels_import";
+import { instagramCommentsForReel, IG_PROVIDER_REF } from "./hf_instagram"; // [HF-IG-LOGIN-1]
 
 const APP = BRAND.slug;
 type FetchLike = (url: string, init?: RequestInit) => Promise<Response>;
@@ -99,6 +100,7 @@ export async function extImportDone(env: Env, reelId: string): Promise<boolean> 
 /** Can this platform's comments be pulled here? Only YouTube, through the official Data API (needs YOUTUBE_API_KEY). [HF-CHANNEL-LOGIN-P1]
  *  Instagram comments are no longer imported through treg (HF-REEL-59). */
 export function canPullComments(env: Env, platform: string): boolean {
+  if (platform === "instagram") return !!(env.HF_TOKEN_ENC_KEY ?? "").trim(); // [HF-IG-LOGIN-1] her stored token is decrypted with this key
   return platform === "youtube" && !!(env.YOUTUBE_API_KEY ?? "").trim();
 }
 
@@ -106,10 +108,17 @@ export function canPullComments(env: Env, platform: string): boolean {
  *  - network reel (hfrl_): only when its channel was connected by login (`hf_channels.provider_ref` ends with `-oauth`), or it is a demo reel
  *    (channel_id NULL, is_demo=1: an admin-pasted YouTube link, official API). Bio-code channels get no imports.
  *  - invite reel (hfiv_): YouTube only, through the official API, behind flag `hfInviteYoutubeComments` (default true).
- *  - Instagram: never through treg. TODO(HF-CHANNEL-LOGIN Phase 2): allow `platform === "instagram" && provider_ref === "instagram-oauth"`
- *    through the Instagram API with Instagram Login; until then Instagram is always false. */
+ *  - Instagram: never through treg. [HF-IG-LOGIN-1] Only a network reel (hfrl_) whose channel was connected by Instagram login
+ *    (`provider_ref === "instagram-oauth"`), behind flag `hfInstagramLoginEnabled`, through the Instagram API with Instagram Login. */
 export async function importAllowed(env: Env, cfg: Record<string, unknown>, reelId: string, platform: string): Promise<boolean> {
-  if (platform !== "youtube") return false; // TODO Phase 2: instagram + provider_ref === "instagram-oauth"
+  if (platform === "instagram") {
+    if (cfg.hfInstagramLoginEnabled !== true || !reelId.startsWith("hfrl_")) return false;
+    try {
+      const r = await env.DB_META.prepare("SELECT c.provider_ref AS provider_ref FROM hf_reels r JOIN hf_channels c ON c.id=r.channel_id WHERE r.id=?1").bind(reelId).first<{ provider_ref: string | null }>();
+      return r?.provider_ref === IG_PROVIDER_REF;
+    } catch { return false; }
+  }
+  if (platform !== "youtube") return false;
   if (reelId.startsWith("hfiv_")) return cfg.hfInviteYoutubeComments !== false;
   try {
     const r = await env.DB_META.prepare("SELECT r.channel_id AS channel_id, r.is_demo AS is_demo, c.provider_ref AS provider_ref FROM hf_reels r LEFT JOIN hf_channels c ON c.id=r.channel_id WHERE r.id=?1").bind(reelId).first<{ channel_id: string | null; is_demo: number | null; provider_ref: string | null }>();
@@ -121,11 +130,13 @@ export async function importAllowed(env: Env, cfg: Record<string, unknown>, reel
 
 /** [HF-REEL-COMMENTS-ONCE-1] The one-time import of a reel's platform comments: a random 18-30 (or [want]), inserted, never replaced or
  *  deleted later. Success (even with comments turned off) marks the reel done for good; a failure blocks retries for 10 minutes. Never throws. */
-export async function refreshExtComments(env: Env, reelId: string, videoId: string, f: FetchLike = fetch, platform: "youtube" = "youtube", want: number = seedCount()): Promise<{ ok: boolean; count: number; reason: string }> {
+export async function refreshExtComments(env: Env, reelId: string, videoId: string, f: FetchLike = fetch, platform: "youtube" | "instagram" = "youtube", want: number = seedCount()): Promise<{ ok: boolean; count: number; reason: string }> {
   const t0 = Date.now();
   let ok = false, count = 0, reason = "";
   try {
-    const pull = await youtubeCommentThreads(env, videoId, f, want);
+    const pull = platform === "instagram"
+      ? { disabled: false, items: await instagramCommentsForReel(env, reelId, want, f) } // [HF-IG-LOGIN-1] her media id + her token
+      : await youtubeCommentThreads(env, videoId, f, want);
     const now = Date.now();
     const stmts: D1PreparedStatement[] = [];
     for (const c of pull.items.slice(0, want)) {
@@ -149,21 +160,21 @@ export async function refreshExtComments(env: Env, reelId: string, videoId: stri
 export async function refreshRecentReelComments(env: Env, cfg: Record<string, unknown>, f: FetchLike = fetch, limit = 40): Promise<{ purged: number; scanned: number; fetched: number }> {
   const out = { purged: 0, scanned: 0, fetched: 0 };
   if (!engageOn(cfg)) return out;
-  if (!canPullComments(env, "youtube")) return out;
+  if (!canPullComments(env, "youtube") && !(cfg.hfInstagramLoginEnabled === true && canPullComments(env, "instagram"))) return out;
   const since = Date.now() - RECENT_REEL_MS;
   let rows: { id: string; platform: string; platform_video_id: string }[] = [];
-  const inP = "'youtube'";
+  const inP = cfg.hfInstagramLoginEnabled === true ? "'youtube','instagram'" : "'youtube'"; // [HF-IG-LOGIN-1]
   try {
     rows = (await env.DB_META.prepare(`SELECT id, platform, platform_video_id FROM hf_reels WHERE platform IN (${inP}) AND visible=1 AND COALESCE(published_at, imported_at)>?1 ORDER BY COALESCE(published_at, imported_at) DESC LIMIT ?2`).bind(since, limit).all<{ id: string; platform: string; platform_video_id: string }>()).results ?? [];
     if (rows.length < limit && cfg.hfInviteReelsEnabled !== false) {
-      rows = rows.concat((await env.DB_META.prepare(`SELECT id, platform, platform_video_id FROM hf_invite_reels WHERE platform IN (${inP}) AND COALESCE(published_at, fetched_at)>?1 ORDER BY COALESCE(published_at, fetched_at) DESC LIMIT ?2`).bind(since, limit - rows.length).all<{ id: string; platform: string; platform_video_id: string }>()).results ?? []);
+      rows = rows.concat((await env.DB_META.prepare(`SELECT id, platform, platform_video_id FROM hf_invite_reels WHERE platform IN ('youtube') AND COALESCE(published_at, fetched_at)>?1 ORDER BY COALESCE(published_at, fetched_at) DESC LIMIT ?2`).bind(since, limit - rows.length).all<{ id: string; platform: string; platform_video_id: string }>()).results ?? []);
     }
   } catch { return out; }
   const dead = new Set<string>();
   for (const r of rows) {
     if (dead.has(r.platform) || !(await importAllowed(env, cfg, r.id, r.platform)) || (await extImportDone(env, r.id))) continue;
     out.scanned++;
-    const x = await refreshExtComments(env, r.id, r.platform_video_id, f, "youtube");
+    const x = await refreshExtComments(env, r.id, r.platform_video_id, f, r.platform === "instagram" ? "instagram" : "youtube");
     if (x.ok) out.fetched++;
     else if (x.reason === "provider_not_configured") dead.add(r.platform);
   }
@@ -202,10 +213,10 @@ export async function recheckYoutubeComments(env: Env, f: FetchLike = fetch, bat
  *  "pending" marker stops two requests importing the same reel. At most [max] reels per feed page, 3 at a time. Never throws. */
 export async function prefetchFeedComments(env: Env, cfg: Record<string, unknown>, items: { id?: unknown; platform?: unknown; platformVideoId?: unknown; url?: unknown }[], max = 6): Promise<number> {
   if (!engageOn(cfg)) return 0;
-  const todo: { id: string; platform: "youtube"; vid: string }[] = [];
+  const todo: { id: string; platform: "youtube" | "instagram"; vid: string }[] = [];
   for (const it of items) {
     const id = String(it?.id ?? "");
-    const platform = it?.platform === "youtube" ? "youtube" : null;
+    const platform = it?.platform === "youtube" ? "youtube" : it?.platform === "instagram" ? "instagram" : null; // [HF-IG-LOGIN-1]
     if (!id || !platform || !canPullComments(env, platform) || !(await importAllowed(env, cfg, id, platform))) continue;
     const vid = videoIdOf(platform, String(it?.url ?? ""));
     if (!vid || (await extImportDone(env, id))) continue;

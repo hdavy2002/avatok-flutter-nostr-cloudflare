@@ -262,7 +262,18 @@ final router = GoRouter(
     GoRoute(
       parentNavigatorKey: rootKey,
       path: '/inf/channels',
-      builder: (_, __) => const ChannelsListScreen(),
+      // [HF-IG-LOGIN-1] `?ig=connected|error&reason=&result=` is where the Instagram login sends her back (core/deep_links.dart).
+      builder: (_, s) => ChannelsListScreen(
+        ig: s.uri.queryParameters['ig'],
+        reason: s.uri.queryParameters['reason'],
+        result: s.uri.queryParameters['result'],
+        igLogin: IgLoginMode.probe,
+      ),
+    ),
+    GoRoute(
+      parentNavigatorKey: rootKey,
+      path: '/inf/channels/instagram-guide',
+      builder: (_, __) => const InstagramSwitchGuideScreen(),
     ),
     GoRoute(
       parentNavigatorKey: rootKey,
@@ -276,6 +287,7 @@ final router = GoRouter(
       builder: (_, s) => ChannelConsentScreen(
         platform: s.pathParameters['platform'] ?? '',
         from: s.uri.queryParameters['from'],
+        igLogin: IgLoginMode.probe, // [HF-IG-LOGIN-1] hidden unless hfInstagramLoginEnabled
       ),
     ),
     GoRoute(

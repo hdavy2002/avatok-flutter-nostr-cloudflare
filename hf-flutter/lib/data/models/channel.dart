@@ -38,6 +38,8 @@ class Channel {
     this.needsCode = false,
     this.verifyCode,
     this.lastSyncAt,
+    this.viaLogin = false,
+    this.needsReconnect = false,
   });
 
   final String id;
@@ -64,6 +66,15 @@ class Channel {
   /// Milliseconds since the epoch, or null when never synced.
   final int? lastSyncAt;
 
+  /// [HF-IG-LOGIN-1] Ownership was proven by logging in (Instagram / YouTube), not by a code in the bio. Only logged-in channels bring in comments and likes.
+  final bool viaLogin;
+
+  /// [HF-IG-LOGIN-1] The Instagram login expired or was withdrawn: she must log in again.
+  final bool needsReconnect;
+
+  /// [HF-IG-LOGIN-1] An Instagram channel added by bio code: the app asks her to log in (HF-REEL-61).
+  bool get isInstagramBioCode => isInstagram && !viaLogin && state != ChannelState.disconnected;
+
   bool get isInstagram => platform == 'instagram';
   String get platformName => isInstagram ? 'Instagram' : 'YouTube';
   String get followersWord => isInstagram ? 'followers' : 'subscribers';
@@ -80,6 +91,8 @@ class Channel {
         needsCode: j['needsCode'] == true,
         verifyCode: _s(j['verifyCode']),
         lastSyncAt: j['lastSyncAt'] is num ? (j['lastSyncAt'] as num).toInt() : null,
+        viaLogin: j['viaLogin'] == true,
+        needsReconnect: j['needsReconnect'] == true,
       );
 }
 

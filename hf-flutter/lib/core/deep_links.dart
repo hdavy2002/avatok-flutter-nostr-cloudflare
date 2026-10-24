@@ -31,6 +31,7 @@ class LinkTarget {
 /// - `/wallet/topup/<id>` -> the Payment screen for that top-up (return from the payment page)
 /// - `/bookings/<id>` -> [HF-BOOK-APPROVE] one booking: the influencer's Bookings page on that card, a fan's My bookings
 /// - `/bookings`, `/inf/bookings`, `/inf/availability`, `/inf/home`, `/inf/status` -> [HF-BOOK-APPROVE-PUSH] those screens
+/// - `channels?ig=connected|error&reason=&result=` -> [HF-IG-LOGIN-1] custom scheme only: the influencer's Channels screen with the Instagram login result
 /// - `/dashboard/appointments`, `/host`, `/hosts/dashboard` -> the same influencer screens, for older web-style push paths
 LinkTarget? linkTargetFor(Uri uri) {
   final scheme = uri.scheme.toLowerCase();
@@ -66,6 +67,19 @@ LinkTarget? linkTargetFor(Uri uri) {
   // [HF-MERCH-APP-1] hellofraands://orders/<id>: where the merch payment page sends the buyer back. Opens that order's tracker.
   if (scheme == Brand.scheme && segs.length == 2 && segs.first == 'orders' && RegExp(r'^[A-Za-z0-9_-]{6,64}$').hasMatch(segs[1])) {
     return LinkTarget('/merch/orders/${segs[1]}?src=link&wait=1', '/orders/:id');
+  }
+  // [HF-IG-LOGIN-1] hellofraands://channels?ig=connected|error&reason=<reason>&result=<result>: where the Instagram login (in-app browser) sends her back.
+  if (scheme == Brand.scheme && segs.length == 1 && segs.first == 'channels') {
+    final q = uri.queryParameters;
+    final ig = q['ig'];
+    if (ig != 'connected' && ig != 'error') return null;
+    final safe = RegExp(r'^[a-z_]{1,30}$');
+    final params = <String, String>{
+      'ig': ig!,
+      if (q['reason'] != null && safe.hasMatch(q['reason']!)) 'reason': q['reason']!,
+      if (q['result'] != null && safe.hasMatch(q['result']!)) 'result': q['result']!,
+    };
+    return LinkTarget(Uri(path: '/inf/channels', queryParameters: params).toString(), '/channels');
   }
   // [HF-BOOK-APPROVE-PUSH] App-friendly push paths, plus the web-style paths older pushes carried.
   if (segs.length == 1 && segs.first == 'bookings') return const LinkTarget('/bookings', '/bookings');
