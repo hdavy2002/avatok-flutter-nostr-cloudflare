@@ -12252,5 +12252,31 @@
         "note": "The reviewer (or owner test) signing in with the fixed code."
       }
     ]
+  },
+  "HF-REEL-IG-COMMENTS-1": {
+    "description": "Instagram comments imported via treg; replied-to imported comments kept; first sheet open awaits the pull; sheet header shows only N comments.",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [
+      "hfReelEngageEnabled"
+    ],
+    "success": [
+      {
+        "event": "hf_reel_ext_comments_fetch",
+        "property": "ok",
+        "equals": true,
+        "min_events": 1,
+        "note": "Includes platform=instagram pulls through treg."
+      }
+    ]
+  },
+  "HF-REEL-COMMENTS-CACHE-1": {
+    "description": "App caches the first page of a reel's comments (memory + per-account on device) so the sheet opens instantly.",
+    "two_sided": false,
+    "min_devices_on_build": 1,
+    "flags": [
+      "hfReelEngageEnabled"
+    ],
+    "no_telemetry": "Uses the existing Telemetry.cacheOutcome helper; verified by widget tests and the owner's phone."
   }
 }
